@@ -336,17 +336,19 @@ def placeholdersFor (env : Env) (p : Pos) (n : String) (k : Nat) : Except Err (L
     an error. `k` its registry key, `c` its constant, `fs` its parameters' forms; with the constants built so far
     and on the way (`specs`). -/
 def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : OExp × OExp) (vs : List String)
-    (k c : Lean.Name) (fs : List Form) (nb : List (Bool × Bool)) (specs : List Once) : EM (Once × List Once) := do
+    (k c : Lean.Name) (fs : List Form) (nb : List (Bool × Bool)) (specs : List Once) :
+    EM (Option Once × List Once) := do
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
   -- is `num`, one it puts an initial segment of ℕ at is `seg` (`nb`), so a row with a `dfn` there runs fused
   -- (`build`), as it does outside a body
   let ph ← liftExcept (placeholdersFor env p n vs.length)
-  let run (fl : List (Bool × Bool)) : EM (Once × List Once) := do
+  let run (fl : List (Bool × Bool)) (deferred := false) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
       let (gen, uni) := fl.getD k (false, true)
       let obj := if gen then (varObj ph k).getD .long else .long
       let (num, seg) := nb.getD k (false, false)
-      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num, seg, ovar := true } : ObjInfo))) ++ env.objs
+      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num, seg, ovar := true, deferred } :
+        ObjInfo))) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
     let (q, _, _) := r.plain
     let gen := fl.map (·.1)
@@ -367,7 +369,14 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     | .error _, _, .ok res => pure (mk res true false)
     | .error err, _, .error _ => throw err
   let mut fl := vs.map fun _ => (false, true)
-  let mut out ← run fl
+  -- a body that does not build with every variable `.long` but builds with the number checks on its variables left
+  -- to each use (`ObjInfo.deferred`) is well formed and has no constant: each use builds its expansion at the call's
+  -- objects, where those checks run (monomorphised, `Pre.call`'s `alt`); a body that fails both is refused with `err`
+  let some first ← tryCatch (some <$> run fl) fun err => do
+      discard <| tryCatch (run fl (deferred := true)) fun _ => throw err
+      pure none
+    | return (none, specs)
+  let mut out := first
   -- with every variable `.long` the body built above, so one whose own object fails the build is a number object;
   -- one that builds without its universe takes the routes run on demand or tested on pairs, which every object has,
   -- where its universe would refuse a call at an array (§a)
@@ -375,7 +384,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     for b in [(true, false), (true, true)] do
       -- a body that built stays built: a pair test runs nowhere (`build`'s `.call`)
       if let some o := (← tryCatch (some <$> run (fl.set i b)) fun _ => pure none) then if o.1.tst ≤ out.1.tst then fl := fl.set i b; out := o; break
-  pure out
+  pure (some out.1, out.2)
 
 /-- `n(qs) ≜ e : ty`, defined at `dp` in `env`, `c` its constant, `vs` its object variables, `d` its expansion:
     each use is a call (`Pre.call`) of the constant of `n` at its arguments' forms (`Form`, module design §5 M): an
@@ -442,8 +451,8 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
           -- a body that does not build alone at these forms (a family it reads whole, which only the use's
           -- context keys, §e) is no constant: the use is the expansion, whose build reports any error in its words
           match ← (once env dp n qs e ty vs key k fs nb (← get).specs).run with
-          | .ok (o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some o)
-          | .error _ => pure none
+          | .ok (some o, specs) => modify (fun st => { st with specs := specs ++ [o] }); pure (some o)
+          | .ok (none, _) | .error _ => pure none
       -- the arguments that need keys on demand where the body builds so (it composes them with what bounds them),
       -- else closed on their sources' universes, where a body that reads them whole needs them
       let (o?, ys) ← if fsL == fs then pure (← get? fs, xs) else match ← get? fsL with
@@ -725,7 +734,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   for (env₀, p, n, qs, e, ty, vs, d) in pend do
     let c := Parse.constOf own n
     let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
-    specs := sp ++ [o]
+    specs := sp ++ o.toList
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls d)) :: mine
   pure (env, ds, pr, cs, specs, rt, io)
 

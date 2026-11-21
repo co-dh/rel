@@ -201,6 +201,9 @@ structure ObjInfo where
   /-- An object variable of a definition elaborated once: a numeral there is the number, which each call checks its
       object holds (`build`'s `.call`). -/
   ovar : Bool := false
+  /-- An object variable whose number checks (`numObj`, `$`'s `castOK`) are left to each use: the definition's
+      verdict build (`Expand.once`), which is never emitted; each use builds the expansion, where they run. -/
+  deferred : Bool := false
   /-- How it is stored: `.long` for a declared object (F6), `.atom t` for one declared `obj F : t`; `varObj k` for the
       object variable `k` of a constant generic over it. -/
   obj : Obj := .long
@@ -582,6 +585,9 @@ partial def Pre.nilSrcs : Pre → List OTy
   | .nil a _ => [a]
   | x => x.parts.flatMap (·.1.nilSrcs)
 
+/-- `x` and every node under it, a call's expansion included. -/
+partial def Pre.nodes (x : Pre) : List Pre := x :: x.parts.flatMap (·.1.nodes)
+
 /-- Each literal of a generic definition's body in `x` (`Env.gdef`), the definition's name last; its expansion at a
     use included. -/
 partial def Pre.lits : Pre → List (Pos × OTy × OTy × List (Tup × Tup) × String)
@@ -650,6 +656,9 @@ structure Env where
   /-- The definition generic over objects whose body this is: a numeral literal in it takes its object from the
       context, an object variable the call decides (`litTy`), not from the declared objects. -/
   gdef : Option String := none
+  /-- The object variables of the definition whose body this is, at this use's objects: a body may name them
+      (`x $ φ`), as its parameters' types do. -/
+  ovars : List (String × OTy) := []
 
 /-- The definition `n`: the program's, else the one the resolver gives. -/
 def Env.def? (env : Env) (n : String) : Option Def :=
@@ -672,7 +681,7 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .name p n => match env.obj? n with
     | some i => pure i.ty
     | none => throw ⟨p, s!"unknown object '{n}'"⟩
-  | .var p n => match vs.lookup n with
+  | .var p n => match (vs.lookup n).orElse fun _ => env.ovars.lookup n with
     | some o => pure o
     | none => throw ⟨p, s!"the object variable '{n}' is not instantiated here"⟩
   | .prod a b => return .prod (← oty env vs a) (← oty env vs b)
@@ -1552,6 +1561,69 @@ def idxClass (ix : Array OTy) : Option OTy → M (Array OTy × Option Nat)
     | some (_, k) => pure (ix, some k)
     | none => pure (ix.push j, some ix.size)
 
+section Num
+
+variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
+
+/-- The atoms the value verbs (`plus`, …) and the orders `≤`, `<` run on (`stepAt`, `ltAt`): `i64`, and every float
+    atom, whose verbs are computed on `f64` words (`fval`). -/
+def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
+
+/-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
+    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`); an object variable whose checks
+    are left to each use (`ObjInfo.deferred`) admits every atom. -/
+def numObj (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) : Except Err (String × QAtomicType) :=
+  match zonk mc o with
+  | .base n =>
+    -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
+    -- run on the bits
+    let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
+    if ok t || (objs.lookup n).any (·.deferred) then pure (n, t) else
+      let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
+      let int (a : QAtomicType) := a.numFmt?.any (· matches .int ..)
+      -- an op with no integer step at all (`%`): its answer is no integer, so the program casts (`$`), explicitly
+      let cast := if int t && !atomNames.any (fun a => ok a.2 && int a.2) then
+        s!"; its answer is no integer: cast first, `x $ F` with `F` an object of {ats}" else ""
+      throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
+  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
+
+/-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
+def OExp.varAt (v : String) : OExp → OTy → Option OTy
+  | .var _ n, o => if n == v then some o else none
+  | .prod a b, .prod x y | .sum a b, .sum x y => (a.varAt v x).orElse fun _ => b.varAt v y
+  | .list a, .arr x => a.varAt v x
+  | _, _ => none
+
+/-- The atoms the value verb `k` runs on: `valueAtom`, but `%` (no integer step, `intStep`) on floats only; `max`
+    and `min` also on any ordered atom, where the order picks an operand (`build`'s `.arith`). -/
+def arithOK (k : UInt8) (t : QAtomicType) : Bool :=
+  (valueAtom t && (k != Rel.Kernel.Ew.divide || t != .i64)) ||
+    (k == Rel.Kernel.Ew.greater || k == Rel.Kernel.Ew.lesser) && t.ordNum.isSome
+
+/-- The number checks of the node `x` at its solved objects: a row's `num` variables and `$`'s `castOK`, a number
+    verb's atom. `build` runs them; a use of a generic definition runs them on its expansion first, so the error
+    names the use and the objects its variables were given (`mkDef`). -/
+def numCheck : Pre → Except Err Unit
+  | .prim r _ s t => do
+    r.num.forM fun (v, ok) => do
+      if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
+        discard <| numObj objs mc dp o r.sym ok.contains
+    -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
+    if r.sym == "$" then
+      let A ← objOf objs dp (zonk mc s); let B ← objOf objs dp (zonk mc t)
+      let nm : Obj → String := fun | .atom a => atomName a | _ => "no atom"
+      let dfr (o : OTy) : Bool := match zonk mc o with | .base n => (objs.lookup n).any (·.deferred) | _ => false
+      unless dfr s || dfr t || (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
+        throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
+          value, and $ keeps a number's value"⟩
+  | .succ p n => discard <| numObj objs mc p n "succ" (· == .i64)
+  | .arith p k n => discard <| numObj objs mc p n (Op.arith k).sym (arithOK k)
+  | .leq p n => discard <| numObj objs mc p n "≤" (·.ordNum.isSome)
+  | .lt p n => discard <| numObj objs mc p n "<" (·.ordNum.isSome)
+  | _ => pure ()
+
+end Num
+
 /-- A definition with parameters: its body elaborated at each use, lifted when a declared parameter is given
     a family, its result checked against the declared type `ty`; a test `e ⊑ f` is the coreflexive
     `D − dom(R − S)` of the keys whose fibres pass. -/
@@ -1562,6 +1634,11 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     -- one instantiation of the object variables per use, shared by the parameters left to right (§e)
     let (bs, vs) ← (ps.zip args).foldlM (fun (bs, vs) (P, a) => do
       let (b, j, vs) ← bind env p P a vs; pure (bs ++ [(b, j)], vs)) ([], [])
+    -- every variable of the declared types is in scope in the body (`x $ φ`); one the parameters leave open is fresh,
+    -- fixed by the body or the declared result (`declared`)
+    let tys := ty.toList ++ ps.filterMap (·.ty)
+    let vs ← (tys.flatMap fun (x, y) => x.vars ++ y.vars).foldlM (fun vs v => do
+      if (vs.lookup v).isSome then pure vs else pure ((v, ← fresh) :: vs)) vs
     let check (s t : OTy) : M Unit := match ty with
       | some ty => declared env p n vs ty s t
       | none => pure ()
@@ -1573,9 +1650,9 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let bound := (bs.zip pl).map fun (((n, a), _), k?) => match a, k?, idx with
       | .fam q _ s t, some k, some P => if ix.size > 1 then (n, .fam (.comp (proj ix k) q) P s t) else (n, a)
       | _, _, _ => (n, a)
-    let tys := ty.toList ++ ps.filterMap (·.ty)
-    let env' := { env with params := bound, gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none }
-    match body, idx with
+    let gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none
+    let env' := { env with params := bound, ovars := vs, gdef }
+    let r : Arg ← match body, idx with
     | .rel e, none => do
       let r ← elabE env' none e
       let (_, s, t) := r.plain; check s t; pure r
@@ -1589,6 +1666,14 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
       let S ← famOf I p (← elabE env' (some I) f)
       let (d, _) ← lSame p Pre.diff R S
       pure (.rel (.diff (.id I) (.dom d)) I I)
+    -- the number checks a generic body leaves to its uses (`ObjInfo.deferred`), on this expansion once the use has
+    -- solved its variables, so the error names the use and each variable's object; `build` runs them again
+    let mc ← Lean.getMCtx
+    let us := vs.reverse.map fun (v, o) => (v, zonk mc o)
+    if gdef.isSome && us.all (·.2.mvs.isEmpty) then
+      if let .error e := r.plain.1.nodes.forM (numCheck (← get).objs mc p) then
+        throw ⟨p, s!"`{n}` at this call, where {", ".intercalate (us.map fun (v, u) => s!"{v} is {u}")}: {e.msg}"⟩
+    pure r
 
 /-! ### Build: the solved objects, the core term -/
 
@@ -1841,34 +1926,6 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
   | some t => pure t
   | none => throw ⟨p, s!"{what}: {zonk mc o} has no universe; compose a set of its elements before it (§a)"⟩
 
-/-- The atoms the value verbs (`plus`, …) and the orders `≤`, `<` run on (`stepAt`, `ltAt`): `i64`, and every float
-    atom, whose verbs are computed on `f64` words (`fval`). -/
-def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
-
-/-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
-    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
-def numObj (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) : Except Err (String × QAtomicType) :=
-  match zonk mc o with
-  | .base n =>
-    -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
-    -- run on the bits
-    let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
-    if ok t then pure (n, t) else
-      let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
-      let int (a : QAtomicType) := a.numFmt?.any (· matches .int ..)
-      -- an op with no integer step at all (`%`): its answer is no integer, so the program casts (`$`), explicitly
-      let cast := if int t && !atomNames.any (fun a => ok a.2 && int a.2) then
-        s!"; its answer is no integer: cast first, `x $ F` with `F` an object of {ats}" else ""
-      throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
-  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
-
-/-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
-def OExp.varAt (v : String) : OExp → OTy → Option OTy
-  | .var _ n, o => if n == v then some o else none
-  | .prod a b, .prod x y | .sum a b, .sum x y => (a.varAt v x).orElse fun _ => b.varAt v y
-  | .list a, .arr x => a.varAt v x
-  | _, _ => none
-
 /-- The universe of a number object, for `succ`, the value verbs (`plus`, …), `≤`, `<`: a declared object's,
     or the one a constant is given for an object variable. -/
 def numU (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) :
@@ -2088,16 +2145,8 @@ def build : Pre → Except Err Res
   -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
-    r.num.forM fun (v, ok) => do
-      if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
-        discard <| numObj objs mc dp o r.sym ok.contains
+    numCheck objs mc dp (.prim r xs s t)
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
-    -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
-    if r.sym == "$" then
-      let nm : Obj → String := fun | .atom a => atomName a | _ => "no atom"
-      unless (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
-        throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
-          value, and $ keeps a number's value"⟩
     let row (_ : Unit) : Except Err Res :=
       (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
         have := List.sizeOf_lt_of_mem h
@@ -2121,10 +2170,7 @@ def build : Pre → Except Err Res
   -- `max`/`min` need no arithmetic: at an ordered atom with no value step they are `τ(≤)π₂ ∪ τ(>)π₁` (`min` the
   -- projections swapped), the order picking an operand; at a value atom the fused verb runs
   | .arith p k n => do
-    let mm := k == Rel.Kernel.Ew.greater || k == Rel.Kernel.Ew.lesser
-    -- `%` has no integer step (`intStep`): float atoms only
-    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym fun t =>
-      (valueAtom t && (k != Rel.Kernel.Ew.divide || t != .i64)) || mm && t.ordNum.isSome
+    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym (arithOK k)
     if valueAtom t then return ⟨_, _, .arith t k U⟩
     let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (.leq t U)
     let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (.lt t U)) swapTm)
@@ -2177,6 +2223,9 @@ def build : Pre → Except Err Res
     -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
     -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
     if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
+    -- a variable the constant is not generic over (built at `.long`) given another object: the constant does not
+    -- serve this call, so the expansion runs at the call's objects, every number check at them (monomorphised)
+    if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build q
     -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
     q.lits.forM fun (p, a, b, ps, d) => discard (litRes objs mc dp p a b ps (some d))
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
