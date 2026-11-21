@@ -1139,7 +1139,7 @@ theorem kscan_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : O
   obtain ⟨g, hg⟩ : ∃ g, segAll n seg = .ok g := by
     cases seg with
     | none => exact ⟨_, rfl⟩
-    | some e => exact ⟨_, by simp only [segAll, rawAll, hseg e rfl, if_true]⟩
+    | some e => exact ⟨_, by simp only [segAll, rawAll, hseg e rfl, if_true]; rfl⟩
   have hm' : (c :: cs).mapM (fun e => rawAll s n e >>= chainAll []) = .ok ((c :: cs).map (·.raw s n)) := by
     simp only [chainAll_nil, bind_pure]; exact hm _ hes
   unfold kscan
