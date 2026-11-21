@@ -105,4 +105,21 @@ rel_program framePow where
 -- `1.5^3 = 3.375`, `4^0 = 1`; `5^5 = 3125`, `7^7 = 823543`
 #guard framePow.failures.map toString == []
 
+-- `fround` (DataHaskell, Haskell's `round`: half to even, float to integral): no definition, the row `round : F ⟶ L`
+open Rel.Programs.prelude frameData in
+rel_program frameRound where
+    obj F : f64
+    obj L : i64
+    c : P ⟶ F ≜ {(0,0.5),(1,1.5),(2,2.5),(3,-0.5),(4,-1.5),(5,2.4),(6,2.6),(7,-2.6)}
+    cr : P ⟶ L ≜ c round
+    check cr = {(0,0),(1,2),(2,2),(3,0),(4,-2),(5,2),(6,3),(7,-3)}
+    -- derive `round v` on a frame whose `v` is `f64`
+    y : P ⟶ K×F ≜ {(0,(A,2.5)),(1,(B,-2.6)),(2,(C,3.5))}
+    yr : P ⟶ (K×F)×L ≜ y ⟨𝟙, π₂ round⟩
+    check yr = {(0,((A,2.5),2)),(1,((B,-2.6),-3)),(2,((C,3.5),4))}
+
+-- by hand: ties `0.5 1.5 2.5 -0.5 -1.5` to the even `0 2 2 -0 -2` (`-0` is the `i64` `0`), `2.4 2.6 -2.6` to
+-- `2 3 -3`; derive: `2.5 -2.6 3.5` to `2 -3 4`
+#guard frameRound.failures.map toString == []
+
 end Rel.Lang.TestFrameCols
