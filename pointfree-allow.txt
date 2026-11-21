@@ -2,6 +2,7 @@ Rel.Core.Rel.comp
 Rel.Core.Rel.nu
 Rel.Lang.atDen
 Rel.Lang.estDen
+Rel.Lang.floatDen
 Rel.Lang.foldDen
 Rel.Lang.foldrDen
 Rel.Lang.ldivDen
@@ -12,4 +13,3 @@ Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.succDen
 Rel.Lang.thinDen
-Rel.Lang.unaryDen
