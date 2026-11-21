@@ -353,6 +353,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   变量的行在 `Prim.num` 中声明它（`length`、`sum`、`positions`、`asc` 的 `ℕ`，`sums` 的 `ℕ` 与 `V`），在其它 atom 上按名
   报错；常量不泛化的对象变量在 `callTm` 中先检查，`cumSum(f)`（f64）不再报 internal。未做：float 上的 `sum`/`sums`
   （右折叠与逐块扫描在 float 上结果不同，需裁定求和顺序）、`sums` 的位置对象为任意有序 atom、行 `sqrt`。
+  S4c/S4d（分支 `tb-s4d`）：`sums` 的位置在每个以整数存储的有序 atom 上运行（`QAtomicType.intOrd`、`Prim.ord`、
+  `leAt t`、`Tab.sums_den`），f32/f64/sym 位置按名报错；`aj` 在 `date` 时间列上运行（`TestFrameTyped.ajDateT`、
+  `sumsTimeT` 钉住手算的行）。float 的 `sum`/`sums`（owner 裁定：自左向右）未做：f64 可由一次 `kscan .fadd` 精确算出，
+  f32 不能——`stepAt .f32` 每步舍入到 f32，而 `kscan` 每行只折一个 `Op`，在 f64 上累加再舍入一次结果不同
+  （2^24 + 1 + 1）；需 owner 裁定：加 `Op`、改 f32 的含义、或 f32 仍报错。库调用 `cumSum(f)`、`sumsBy(g, f)` 在 f64 上
+  已是具名报错，不再是 internal。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
@@ -383,6 +389,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `cast_holds` 由它导出。`kernRows` 的项是常量加其前置参数（`Tab.unary` 带行名）。`Prim.num` 改为对象变量 →
     允许的 atom 表（`intAtoms`、`floatAtoms`），整数对象上按名报错并给出 `$` 提示（`numObj`）。`floor` 在此为
     `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
+  - ⬜ float `sum`/`sums`：`mean`、float `describe` 需要它（S4，f32 待裁定）。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1

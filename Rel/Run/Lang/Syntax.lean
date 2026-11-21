@@ -139,8 +139,11 @@ def Expr.pos : Expr → Pos
   | .lit p _ | .fix p .. | .col p .. => p
   | .comp a _ => a.pos
 
-/-- The atom the counting rows (`length`, `sum`, `sums`, `succ`) run on. -/
+/-- The atom the counting rows (`length`, `succ`, the positions of `positions`, `asc`) run on. -/
 def intAtoms : List QAtomicType := [.i64]
+/-- The atoms a sum (`sum`, `sums`) runs at: `i64` added exactly, `f64` added left to right, q's order; `f32` is
+    refused by name with the `$` hint (`Elab.numObj`), as q widens it before adding. -/
+def sumAtoms : List QAtomicType := [.i64, .f64]
 /-- The float atoms, whose verbs run on `f64` words: those `fval` reads. -/
 def floatAtoms : List QAtomicType := [.f32, .f64]
 
@@ -163,10 +166,13 @@ structure Prim where
   /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
       (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
   whole : Bool := false
-  /-- Its object variables that must be number objects, each with the atoms it admits: those its constant reads at
-      `.long` (`sums`'s positions `ℕ` and values `V`, `length`'s and `sum`'s `ℕ`) at `i64`, a unary float verb's at the
-      float atoms; refused as `succ` refuses one (`Elab.numObj`), never left to fail inside its definition. -/
+  /-- Its number object variables, each with the atoms it runs at (`length`'s `ℕ` at `intAtoms`, `sum`'s and `sums`'s
+      values at `sumAtoms`, a unary float verb's at `floatAtoms`): an object of any other atom is refused as `succ`
+      refuses one (`Elab.numObj`), never left to fail inside its definition. -/
   num : List (String × List QAtomicType) := []
+  /-- Its object variables whose canon order it reads as their value order (`sums`'s positions): each must be an
+      object of an atom stored as an integer (`QAtomicType.intOrd`), refused by name elsewhere (`Elab.build`). -/
+  ord : List String := []
   deriving Inhabited
 
 def consRow : Prim :=
@@ -266,10 +272,10 @@ def prims : List Prim :=
    inlConvRow, inrConvRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
-   -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `ℕ` and the values `V` are two objects: only
-   -- `V` is summed, so only `V` is a number object (`num`)
-   { sym := "sums", num := [("ℕ", intAtoms), ("V", intAtoms)],
-     sig := ([((.prod (.var {} "K") (.var {} "ℕ"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "ℕ"),
+   -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only
+   -- `V` is summed, so only `V` is a number object (`num`); `P` is only ordered (`ord`)
+   { sym := "sums", num := [("V", sumAtoms)], ord := ["P"],
+     sig := ([((.prod (.var {} "K") (.var {} "P"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "P"),
        .var {} "V"),
      mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
    flatRow,

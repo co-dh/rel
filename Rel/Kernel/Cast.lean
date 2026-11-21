@@ -47,6 +47,10 @@ def ordNum (t : QAtomicType) : Option QAtomicType :=
 /-- The format of the number an ordered atom's word holds: its `ordNum`'s (`date` an `i32` day count). -/
 def storeFmt? (t : QAtomicType) : Option NumFmt := t.ordNum.bind numFmt?
 
+/-- `t` is stored as an integer (`storeFmt?`): canon's order on its words is the integer order of their values, the
+    order `sums` reads its positions in (`Lang.ordAt_int`); a float's is its bits' until PLAN S5. -/
+def intOrd (t : QAtomicType) : Bool := t.storeFmt?.any (· matches .int ..)
+
 /-- The least and the greatest integer of an integer format; a signed one's least word is q's null, no value. -/
 def NumFmt.lo : NumFmt → Int
   | .int true b => 1 - 2 ^ (b - 1)
