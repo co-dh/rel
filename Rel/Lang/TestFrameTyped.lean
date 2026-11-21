@@ -66,15 +66,15 @@ rel_program daysMinusT where
     d : N ⟶ D ≜ {(0,2022.01.08),(1,2021.12.29)}
     e : N ⟶ D ≜ ⟨d, d⟩minus
 
--- `daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus` at the library's `D : date`
+-- `daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`, generic in the date object: here the program's own `D : date`
 open Rel.Programs.frameStat in
 rel_program daysCastT where
     obj N
+    obj D : date
     d : N ⟶ D ≜ {(0,2022.01.08),(1,2021.12.29),(2,2024.03.01)}
     e : N ⟶ D ≜ {(0,2022.01.03),(1,2022.01.08),(2,2024.01.01)}
-    -- 2022.01.08 is day 19000 since 1970.01.01, 2021.12.29 day 18990
+    -- 2022.01.08 is day 19000 since 1970.01.01; by hand 8 − 3 = 5, 29 Dec to 8 Jan −10, 31 days + leap Feb's 29 = 60
     check d $ Z = {(0,19000),(1,18990),(2,19783)}
-    -- by hand: 8 − 3 = 5; 29 Dec to 8 Jan is −10; January's 31 days and leap February's 29 give 60
     check daysBetween(d, e) = {(0,5),(1,-10),(2,60)}
 
 #guard daysCastT.failures.map toString == []
