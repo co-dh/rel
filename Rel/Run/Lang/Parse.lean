@@ -32,6 +32,8 @@ structure S where
   thms : List String := []
   /-- Inside a parameter's type: an object may be an object variable (§e). -/
   vars : Bool := false
+  /-- The object variables of the definition whose body is being read: an object there may name one (`x $ φ`, §e). -/
+  ovars : List String := []
 
 abbrev P := StateT S (Except Err)
 
@@ -170,7 +172,7 @@ partial def object : P OExp := do
   let s ← get
   -- a variable is not a declared object and not a definition in scope (§e)
   if s.objs.contains w then pure (.name p w)
-  else if s.vars && isVar w && !s.known.any (·.1 == w) then pure (.var p w)
+  else if (s.vars && isVar w || s.ovars.contains w) && !s.known.any (·.1 == w) then pure (.var p w)
   else match s.res w with
     | .ext e => if e.obj then do set { s with used := e.const :: s.used }; pure (.name p w) else throw ⟨p, s!"expected an object, found '{w}'"⟩
     | .bad _ m => throw ⟨p, m⟩

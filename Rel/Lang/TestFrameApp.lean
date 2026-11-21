@@ -2,9 +2,8 @@ import Rel.Programs.FrameJoin
 
 /-! A dataframe application (doc/dataframe-design.zh.typ F6): its four frames are `input` statements, its results
     `output` statements. Each check gives the inputs their tables in a `where`; expected rows worked by hand from `tt`,
-    `qq`, `mm` (sym `C` has no quote; A's quotes 2 and 3 tie at time 3). The venues hold a text column, which no
-    literal writes, so `tradeVenue` is checked by its file only. The `#eval` at the end runs `tradeApp.io` on the CSV
-    texts of the four inputs and compares every written file with its text by hand. -/
+    `qq`, `mm`, `vv` (sym `C` has no quote and no venue; A's quotes 2 and 3 tie at time 3). The `#eval` at the end
+    runs `tradeApp.io` on the CSV texts of the four inputs and compares every written file with its text by hand. -/
 
 namespace Rel.Lang.TestFrameApp
 
@@ -20,11 +19,9 @@ rel_program tradeApp where
     schema Agg = {size : N, n : N}
     schema TradeBid = {sym : K, time : N, price : Pr, bid : N+1}
     schema SymCum = {sym : K, cum : N}
-    schema LjRow = {sym : K, time : N, qtime : N+1, bid : N+1}
     schema Venue = {sym : K, venue : [C]}
     schema TradeVenue = {sym : K, time : N, venue : [C]}
     schema Mark = {sym : K, px : N+1}
-    schema DaySize = {day : D, size : N}
     input trades : N ⟶ Trade from csv "trades.csv"
     input quotes : N ⟶ Quote from csv "quotes.csv"
     input venues : N ⟶ Venue from csv "venues.csv"
@@ -38,8 +35,6 @@ rel_program tradeApp where
     -- the trades after the first day, and the size traded per day (a `date` filtered by order, then a group key)
     late : N ⟶ Trade ≜ filterBy(dom(col Trade "day" dom(<°{(2024.01.15,∗)})), trades)
     perDay : D ⟶ N ≜ agg((trades col Trade "day")°, F(trades col Trade "size") sum)
-    -- written as rows numbered by day: an output keyed by a `date` is refused (its key is read as positions)
-    perDayRows : N ⟶ DaySize ≜ asc(dom(perDay)) ⟨𝟙, perDay⟩
     -- each trade with the bid of its sym's latest quote at or before its time, null when there is none
     withBid : N ⟶ TradeBid ≜ aj(col Trade "sym", col Trade "time", col Quote "sym", col Quote "time", trades, quotes) ⟨π₁ ⟨⟨col Trade "sym", col Trade "time"⟩, col Trade "price"⟩, π₂ (col Quote "bid" ⊕ 𝟙)⟩
     -- running size within each sym, in position order
@@ -47,15 +42,12 @@ rel_program tradeApp where
     -- every trade with each quote of its sym, or once with the null; the nulls are the trades of an unquoted sym
     lj : N ⟶ Trade×(Quote+1) ≜ leftJoin(col Trade "sym", col Quote "sym", trades, quotes)
     unquoted : 1 ⟶ N ≜ nulls(π₂, lj)
-    -- `lj`'s record-valued `Quote+1` is no CSV column; its fields each nullable are, null together
-    ljRows : N ⟶ LjRow ≜ lj ⟨⟨⟨π₁ col Trade "sym", π₁ col Trade "time"⟩, π₂ (col Quote "time" ⊕ 𝟙)⟩, π₂ (col Quote "bid" ⊕ 𝟙)⟩
     -- a text column carried through a join: each trade with its sym's venue (C has none)
     tradeVenue : N ⟶ TradeVenue ≜ innerJoin(col Trade "sym", col Venue "sym", trades, venues) ⟨⟨π₁ col Trade "sym", π₁ col Trade "time"⟩, π₂ col Venue "venue"⟩
     -- a nullable input column: its null count, and q's fills on it
     markNulls : 1 ⟶ N ≜ nulls(col Mark "px", marks)
     filled : N ⟶ Mark ≜ ⟨marks col Mark "sym", fills(marks col Mark "px")⟩
 
-    -- every result with a CSV shape; `lj` itself is written as `ljRows`
     output big to csv "big.csv"
     output bySym to csv "bysym.csv"
     output top2 to csv "top2.csv"
@@ -63,8 +55,8 @@ rel_program tradeApp where
     output cumSize to csv "cumsize.csv"
     output unquoted to csv "unquoted.csv"
     output late to csv "late.csv"
-    output perDayRows to csv "perday.csv"
-    output ljRows to csv "lj.csv"
+    output perDay to csv "perday.csv"
+    output lj to csv "lj.csv"
     output tradeVenue to csv "tradevenue.csv"
     output markNulls to csv "marknulls.csv"
     output filled to csv "filled.csv"
@@ -76,6 +68,7 @@ rel_program tradeApp where
     -- the marks: px null at rows 0 2 4 (a sum literal does not parse, so the null is built with `tot`)
     ms : N ⟶ K ≜ {(0,A),(1,B),(2,C),(3,A),(4,B)}
     mm : N ⟶ Mark ≜ ⟨ms, dom(ms) tot({(1,5),(3,7)})⟩
+    vv : N ⟶ Venue ≜ {(0,(A,"NY")),(1,(B,"LN, main"))}
 
     -- kept rows 0 2 3 4 6: A 100+200, B 150, C 300+100
     check bySym = {(A,(300,2)),(B,(150,1)),(C,(400,2))} where trades ≜ tt
@@ -85,6 +78,11 @@ rel_program tradeApp where
     check late = {(0,((((C,2024.01.16),3),7.75),300)),(1,((((B,2024.01.16),5),21.5),150)),
       (2,((((A,2024.01.17),5),12.5),50)),(3,((((C,2024.01.17),6),8.25),100))} where trades ≜ tt
     check perDay = {(2024.01.15,350),(2024.01.16,450),(2024.01.17,150)} where trades ≜ tt
+    -- trades per day, untyped: rows 0–2, 3–4, 5–6
+    check agg((trades col Trade "day")°, length) = {(2024.01.15,3),(2024.01.16,2),(2024.01.17,2)} where trades ≜ tt
+    -- the trades of A and B in position order, each with its sym's one venue
+    check tradeVenue = {(0,((A,1),"NY")),(1,((B,2),"LN, main")),(2,((A,3),"NY")),(3,((B,5),"LN, main")),
+      (4,((A,5),"NY"))} where trades ≜ tt, venues ≜ vv
     -- A at 1 → q0 (9); B at 2 → q1 (19); A at 3 → q2, q3 tie, the later q3 (11); C none (null, read as 0);
     -- B at 5 → q4 (20); A at 5 → q3 (11)
     check withBid ⟨π₁, π₂ [𝟙, {(∗,0)}]⟩ = {(0,(((A,1),10.5),9)),(1,(((B,2),20.25),19)),(2,(((A,3),11.5),11)),
@@ -126,11 +124,16 @@ def expected : List (String × String) := [
   ("unquoted", "key,val\n∗,2\n"),
   ("late", "sym,day,time,price,size\nC,2024-01-16,3,7.75,300\nB,2024-01-16,5,21.5,150\nA,2024-01-17,5,12.5,50\n\
     C,2024-01-17,6,8.25,100\n"),
-  ("perDayRows", "day,size\n2024-01-15,350\n2024-01-16,450\n2024-01-17,150\n"),
-  -- each trade's quotes of its sym in quote order (A: q0 q2 q3 q5, B: q1 q4); C's rows once, both fields null
-  ("ljRows", "sym,time,qtime,bid\nA,1,0,9\nA,1,3,10\nA,1,3,11\nA,1,6,13\nB,2,1,19\nB,2,4,20\nA,3,0,9\nA,3,3,10\n\
-    A,3,3,11\nA,3,6,13\nC,3,,\nB,5,1,19\nB,5,4,20\nA,5,0,9\nA,5,3,10\nA,5,3,11\nA,5,6,13\nC,6,,\n"),
-  -- the trades of A and B in position order, each with its sym's one venue
+  ("perDay", "key,val\n2024-01-15,350\n2024-01-16,450\n2024-01-17,150\n"),
+  -- each trade's quotes of its sym in quote order (A: q0 q2 q3 q5, B: q1 q4); C's rows once, the three `Quote`
+  -- fields empty; a factor's columns are prefixed by its schema's name
+  ("lj", "Trade.sym,Trade.day,Trade.time,Trade.price,Trade.size,Quote.sym,Quote.time,Quote.bid\n\
+    A,2024-01-15,1,10.5,100,A,0,9\nA,2024-01-15,1,10.5,100,A,3,10\nA,2024-01-15,1,10.5,100,A,3,11\n\
+    A,2024-01-15,1,10.5,100,A,6,13\nB,2024-01-15,2,20.25,50,B,1,19\nB,2024-01-15,2,20.25,50,B,4,20\n\
+    A,2024-01-15,3,11.5,200,A,0,9\nA,2024-01-15,3,11.5,200,A,3,10\nA,2024-01-15,3,11.5,200,A,3,11\n\
+    A,2024-01-15,3,11.5,200,A,6,13\nC,2024-01-16,3,7.75,300,,,\nB,2024-01-16,5,21.5,150,B,1,19\n\
+    B,2024-01-16,5,21.5,150,B,4,20\nA,2024-01-17,5,12.5,50,A,0,9\nA,2024-01-17,5,12.5,50,A,3,10\n\
+    A,2024-01-17,5,12.5,50,A,3,11\nA,2024-01-17,5,12.5,50,A,6,13\nC,2024-01-17,6,8.25,100,,,\n"),
   ("tradeVenue", "sym,time,venue\nA,1,NY\nB,2,\"LN, main\"\nA,3,NY\nB,5,\"LN, main\"\nA,5,NY\n"),
   ("markNulls", "key,val\n∗,3\n"),
   ("filled", "sym,px\nA,\nB,5\nC,5\nA,7\nB,7\n")]

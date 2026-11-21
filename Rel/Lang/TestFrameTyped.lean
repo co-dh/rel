@@ -122,7 +122,7 @@ rel_program sumsFloatPosT where
     s : K×G ⟶ N ≜ sums(x)
 
 -- `sum` at an `f64` column: refused by name (the f64 `sum` row is not built yet; `sums` is, below)
-/-- error: line 132, col 5: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
+/-- error: line 132, col 17: `summarize` at this call, where ν is N, δ is G, β is G: sum on G: G is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program sumFloatT where

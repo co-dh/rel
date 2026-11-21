@@ -210,6 +210,9 @@ structure ObjInfo where
   /-- An object variable of a definition elaborated once: a numeral there is the number, which each call checks its
       object holds (`build`'s `.call`). -/
   ovar : Bool := false
+  /-- An object variable whose number checks (`numObj`, `$`'s `castOK`) are left to each use: the definition's
+      verdict build (`Expand.once`), which is never emitted; each use builds the expansion, where they run. -/
+  deferred : Bool := false
   /-- How it is stored: `.long` for a declared object (F6), `.atom t` for one declared `obj F : t`; `varObj k` for the
       object variable `k` of a constant generic over it. -/
   obj : Obj := .long
@@ -591,6 +594,9 @@ partial def Pre.nilSrcs : Pre → List OTy
   | .nil a _ => [a]
   | x => x.parts.flatMap (·.1.nilSrcs)
 
+/-- `x` and every node under it, a call's expansion included. -/
+partial def Pre.nodes (x : Pre) : List Pre := x :: x.parts.flatMap (·.1.nodes)
+
 /-- Each literal in `x`, a generic definition's body's (`Env.gdef`) with the definition's name last; its expansion
     at a use included. -/
 partial def Pre.lits : Pre → List (Pos × OTy × OTy × List (Tup × Tup) × Option String)
@@ -659,6 +665,9 @@ structure Env where
   /-- The definition generic over objects whose body this is: a numeral literal in it takes its object from the
       context, an object variable the call decides (`litTy`), not from the declared objects. -/
   gdef : Option String := none
+  /-- The object variables of the definition whose body this is, at this use's objects: a body may name them
+      (`x $ φ`), as its parameters' types do. -/
+  ovars : List (String × OTy) := []
 
 /-- The definition `n`: the program's, else the one the resolver gives. -/
 def Env.def? (env : Env) (n : String) : Option Def :=
@@ -681,7 +690,7 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .name p n => match env.obj? n with
     | some i => pure i.ty
     | none => throw ⟨p, s!"unknown object '{n}'"⟩
-  | .var p n => match vs.lookup n with
+  | .var p n => match (vs.lookup n).orElse fun _ => env.ovars.lookup n with
     | some o => pure o
     | none => throw ⟨p, s!"the object variable '{n}' is not instantiated here"⟩
   | .prod a b => return .prod (← oty env vs a) (← oty env vs b)
@@ -1045,7 +1054,8 @@ def refusals (objs : Objs) (ws : List String) : String :=
 def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
 
 /-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
-    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
+    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`); an object variable whose checks
+    are left to each use (`ObjInfo.deferred`) admits every atom. -/
 def numObj (objs : Objs) (mc : Lean.MetavarContext) (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) :
     Except Err (String × QAtomicType) :=
   match zonk mc o with
@@ -1053,7 +1063,7 @@ def numObj (objs : Objs) (mc : Lean.MetavarContext) (p : Pos) (o : OTy) (op : St
     -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
     -- run on the bits
     let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
-    if ok t then pure (n, t) else
+    if ok t || (objs.lookup n).any (·.deferred) then pure (n, t) else
       let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
       -- the atoms `op` runs at that `t` casts to without loss (`castOK`): the program casts (`$`), explicitly
       let tos := (atomNames.filter fun a => ok a.2 && t.castOK a.2).map (atomName ·.2)
@@ -1557,6 +1567,18 @@ def OTy.bases : OTy → List String
   | .arr a => a.bases
   | .mv _ => []
 
+/-- Let-generalisation of the body `x` of the definition `n`: each object it made (a metavariable numbered from `k`
+    on) that is still open and that neither a use nor the result reaches (`keep`) becomes the object variable `n#i`.
+    No use determines it, so every use has it at the one object a constant builds a variable at, `.long` (`objOf`
+    of a name no declaration holds), and its number checks run there (`numObj`, `numCheck`). A literal's or a
+    `nil`'s open object is left to `settleOpen`; a `check` is no definition, so an object open there is refused. -/
+def generalise (n : String) (p : Pos) (k : Nat) (keep : List OTy) (x : Pre) : M Unit := do
+  let mc ← Lean.getMCtx
+  let held := (keep ++ x.nilSrcs ++ x.lits.flatMap fun (_, a, b, _) => [a, b]).flatMap fun o => (zonk mc o).mvs
+  let own := mc.decls.toList.filter fun (m, d) =>
+    d.index ≥ k && !mc.eAssignment.contains m && d.type == .const ``Obj [] && !held.contains m
+  (own.mergeSort (·.2.index ≤ ·.2.index)).zipIdx.forM fun ((m, _), i) => unify p "" (.mv m) (.base s!"{n}#{i}")
+
 /-- The letters an inferred type names its open objects by: `α`…`ω` without `ο` and `π`, which read as `o`, `π₁`. -/
 def varNames : List String := ("αβγδεζηθικλμνξρστυφχψω".toList).map Char.toString
 
@@ -1624,6 +1646,31 @@ def idxClass (ix : Array OTy) : Option OTy → M (Array OTy × Option Nat)
     | some (_, k) => pure (ix, some k)
     | none => pure (ix.push j, some ix.size)
 
+section Num
+
+variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
+
+/-- The number checks of the node `x` at its solved objects: the number objects it computes on (`numsAt`, read by
+    `settleLit` too) and `$`'s `castOK`. `build` runs them; a use of a generic definition runs them on its expansion
+    first, so the error names the use and the objects its variables were given (`mkDef`). An object the use has not
+    solved yet is checked when `build` reaches it. -/
+def numCheck (x : Pre) : Except Err Unit := do
+  x.numsAt mc |>.forM fun (o, op, ok) =>
+    if (zonk mc o).mvs.isEmpty then discard (numObj objs mc dp o op ok) else pure ()
+  match x with
+  | .prim r _ s t => do
+    -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
+    if r.sym == "$" && (zonk mc s).mvs.isEmpty && (zonk mc t).mvs.isEmpty then
+      let A ← objOf objs dp (zonk mc s); let B ← objOf objs dp (zonk mc t)
+      let nm : Obj → String := fun | .atom a => atomName a | _ => "no atom"
+      let dfr (o : OTy) : Bool := match zonk mc o with | .base n => (objs.lookup n).any (·.deferred) | _ => false
+      unless dfr s || dfr t || (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
+        throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
+          value, and $ keeps a number's value"⟩
+  | _ => pure ()
+
+end Num
+
 /-- A definition with parameters: its body elaborated at each use, lifted when a declared parameter is given
     a family, its result checked against the declared type `ty`; a test `e ⊑ f` is the coreflexive
     `D − dom(R − S)` of the keys whose fibres pass. -/
@@ -1631,9 +1678,15 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     Def where
   arity := ps.length
   apply p args := do
+    let k := (← Lean.getMCtx).mvarCounter
     -- one instantiation of the object variables per use, shared by the parameters left to right (§e)
     let (bs, vs) ← (ps.zip args).foldlM (fun (bs, vs) (P, a) => do
       let (b, j, vs) ← bind env p P a vs; pure (bs ++ [(b, j)], vs)) ([], [])
+    -- every variable of the declared types is in scope in the body (`x $ φ`); one the parameters leave open is fresh,
+    -- fixed by the body or the declared result (`declared`)
+    let tys := ty.toList ++ ps.filterMap (·.ty)
+    let vs ← (tys.flatMap fun (x, y) => x.vars ++ y.vars).foldlM (fun vs v => do
+      if (vs.lookup v).isSome then pure vs else pure ((v, ← fresh) :: vs)) vs
     let check (s t : OTy) : M Unit := match ty with
       | some ty => declared env p n vs ty s t
       | none => pure ()
@@ -1645,9 +1698,9 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let bound := (bs.zip pl).map fun (((n, a), _), k?) => match a, k?, idx with
       | .fam q _ s t, some k, some P => if ix.size > 1 then (n, .fam (.comp (proj ix k) q) P s t) else (n, a)
       | _, _, _ => (n, a)
-    let tys := ty.toList ++ ps.filterMap (·.ty)
-    let env' := { env with params := bound, gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none }
-    match body, idx with
+    let gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none
+    let env' := { env with params := bound, ovars := vs, gdef }
+    let r : Arg ← match body, idx with
     | .rel e, none => do
       let r ← elabE env' none e
       let (_, s, t) := r.plain; check s t; pure r
@@ -1661,6 +1714,16 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
       let S ← famOf I p (← elabE env' (some I) f)
       let (d, _) ← lSame p Pre.diff R S
       pure (.rel (.diff (.id I) (.dom d)) I I)
+    generalise n p k (vs.map (·.2) ++ (r :: args).flatMap fun | .rel _ s t => [s, t] | .fam _ i s t => [i, s, t])
+      r.plain.1
+    -- the number checks a generic body leaves to its uses (`ObjInfo.deferred`), on this expansion once the use has
+    -- solved its variables, so the error names the use and each variable's object; `build` runs them again
+    let mc ← Lean.getMCtx
+    let us := vs.reverse.map fun (v, o) => (v, zonk mc o)
+    if gdef.isSome && us.all (·.2.mvs.isEmpty) then
+      if let .error e := r.plain.1.nodes.forM (numCheck (← get).objs mc p) then
+        throw ⟨p, s!"`{n}` at this call, where {", ".intercalate (us.map fun (v, u) => s!"{v} is {u}")}: {e.msg}"⟩
+    pure r
 
 /-! ### Build: the solved objects, the core term -/
 
@@ -2132,7 +2195,7 @@ def build : Pre → Except Err Res
   -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
-    (Pre.prim r xs s t).numsAt mc |>.forM fun (o, op, ok) => discard <| numObj objs mc dp o op ok
+    numCheck objs mc dp (.prim r xs s t)
     -- an object whose canon order is not its value order (a float's bits, a symbol's bytes) is refused by name
     r.ord.forM fun v => do
       if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
@@ -2144,12 +2207,6 @@ def build : Pre → Except Err Res
           | _ => pure ()
         | o => throw ⟨dp, s!"{r.sym}' position object {o} is no atom; {r.sym} orders positions of {ats}"⟩
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
-    -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
-    if r.sym == "$" then
-      let nm : Obj → String := fun | .atom a => atomName a | _ => "no atom"
-      unless (match A, B with | .atom a, .atom b => QAtomicType.castOK a b | _, _ => false) do
-        throw ⟨dp, s!"$ from {zonk mc s} ({nm A}) to {zonk mc t} ({nm B}): not every {nm A} value is a {nm B} \
-          value, and $ keeps a number's value"⟩
     let row (_ : Unit) : Except Err Res :=
       (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
         have := List.sizeOf_lt_of_mem h
@@ -2226,6 +2283,9 @@ def build : Pre → Except Err Res
     -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
     -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
     if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
+    -- a variable the constant is not generic over (built at `.long`) given another object: the constant does not
+    -- serve this call, so the expansion runs at the call's objects, every number check at them (monomorphised)
+    if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build q
     -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
     q.lits.forM fun (p, a, b, ps, d) => if d.isSome then discard (litRes objs mc dp p a b ps d) else pure ()
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b

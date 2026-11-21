@@ -53,6 +53,7 @@ import Rel.Lang.TestFrameTyped
 import Rel.Lang.TestFrameUnbounded
 import Rel.Lang.TestFusedM
 import Rel.Lang.TestGenericLit
+import Rel.Lang.TestGenericNum
 import Rel.Lang.TestGenericN
 import Rel.Lang.TestGroups
 import Rel.Lang.TestHylo
