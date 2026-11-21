@@ -30,8 +30,11 @@ rel_program frameGroup where
     -- the most frequent value; among ties the first to occur (`idesc` is stable)
     mode(a : β ⟶ γ, x : ν ⟶ β) : 1 ⟶ γ ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁
 
-    -- real-valued statistics (q's names), always in `F`, never an integer quotient: `$` and `%` name a declared
-    -- object, which an object variable is not, so the library declares the ones its results live in
+/-! Real-valued statistics (q's names), always in `F`, never an integer quotient: `$` and `%` name a declared object,
+    which an object variable is not, so this program declares the ones its results live in. A program of its own:
+    its objects take part in reading every literal of a program that opens it. -/
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup in
+rel_program frameStat where
     obj F : f64
     obj Z : i64
     obj D : date

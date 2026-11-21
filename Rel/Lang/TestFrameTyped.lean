@@ -62,7 +62,7 @@ rel_program daysMinusT where
     e : N ⟶ D ≜ ⟨d, d⟩minus
 
 -- `daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus` at the library's `D : date`
-open Rel.Programs.frameGroup in
+open Rel.Programs.frameStat in
 rel_program daysCastT where
     obj N
     d : N ⟶ D ≜ {(0,2022.01.08),(1,2021.12.29),(2,2024.03.01)}

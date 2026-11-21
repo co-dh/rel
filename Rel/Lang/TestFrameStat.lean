@@ -1,13 +1,13 @@
 import Rel.Programs.FrameGroup
 
-/-! The real-valued statistics of `frameGroup` (`avg` `var` `svar` `dev` `sdev` `cov` `scov` `corr` `med`
+/-! The real-valued statistics of `frameStat` (`avg` `var` `svar` `dev` `sdev` `cov` `scov` `corr` `med`
     `valueProportions` `describe`), each in `F : f64` through `$` and the true quotient `%`, never an integer quotient.
     They read the column through prim `sum`, which runs on `i64` only, so an `f64` column is refused (pinned below);
     its sum is the fold `⦇[{(∗,0)}, plus]⦈ʳ`. Expected rows worked by hand with values exact in binary. -/
 
 namespace Rel.Lang.TestFrameStat
 
-open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup in
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program frameStatT where
     obj K = {A,B}
     obj N
@@ -73,9 +73,9 @@ rel_program frameStatT where
 #guard frameStatT.failures.map toString == []
 
 -- `avg` of an `f64` column: prim `sum` runs on `i64` only (the float summation order is undecided, PLAN S4)
-/-- error: line 82, col 5: sum on Rel.Programs.frameGroup.F: Rel.Programs.frameGroup.F is an object of f64, and sum runs on objects of i64 only -/
+/-- error: line 82, col 5: sum on Rel.Programs.frameStat.F: Rel.Programs.frameStat.F is an object of f64, and sum runs on objects of i64 only -/
 #guard_msgs in
-open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup in
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program avgFloatT where
     obj N
     f : N ⟶ F ≜ {(0,1.5),(1,0.25)}
