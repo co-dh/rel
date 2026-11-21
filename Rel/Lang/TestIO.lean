@@ -326,7 +326,7 @@ rel_program csvDateKeyIO where
 -- refused, naming the row and both columns
 /--
 info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
- "key,val\n2024-01-15,1\n2024-01-16,3\n",
+ "key,val\n2024.01.15,1\n2024.01.16,3\n",
  [(0, 5, Sum.inl (0, 10)), (1, 6, Sum.inr 0), (2, 7, Sum.inl (1, 0))],
  [(19737, 1), (19738, 3)],
  "/data/tmp/rel-test-io-rec/bad.csv: data row 2: column 'Q.sym' is not empty and column 'Q.bid' is empty (null); the columns of one `S+1` are empty together, and all of them empty is the `1`")
@@ -337,7 +337,7 @@ info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
   if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
   IO.FS.createDirAll d
   IO.FS.writeFile (d ++ "/in.csv") "N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n"
-  IO.FS.writeFile (d ++ "/days.csv") "key,val\n2024-01-16,3\n2024-01-15,1\n"
+  IO.FS.writeFile (d ++ "/days.csv") "key,val\n2024.01.16,3\n2024.01.15,1\n"
   csvRecNullIO.io; csvDateKeyIO.io
   let out ← IO.FS.readFile (d ++ "/out.csv")
   let days ← IO.FS.readFile (d ++ "/days-out.csv")

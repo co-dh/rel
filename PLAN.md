@@ -1139,6 +1139,8 @@ relk 线程池空转 2 526（与前三项重叠）。
   14m22s → 7m41s。原记录：`compile` 在每个后面的定义里重新展开前面所有的定义，耗时沿链条每步翻倍（Q 0.5 s、C 1.3、W 2.4、K 5、
   Z 11、ζ 21、plan 25 s）。`blocks.*`、`table.*`、`cycle.*` 在 compile-diff 中合计约 200 s，0 次 split，与输入规模
   无关。修法：`compile`/`CodeEnv` 引用已经编译好的定义，不再重新展开。参见 W.5a：poolStat 的合并要和 qlean 同步。
+- ✅ W.11 日期显示：一个 atom 的值按 q 的写法 `yyyy.mm.dd`（datetime `yyyy.mm.ddDhh:mm:ss.fffffffff`）显示，出处只有
+  `Db.Csv.fmtAtom`/`readAtom`（`print`、`check`、错误信息经 `Elab.wordText` 同源，CSV 与 `crate/src/csv.rs` 同步改为 `.`）；`sep` 参数去掉。
 
 ## Baseline
 
