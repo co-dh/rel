@@ -71,22 +71,14 @@ rel_program sumsPN where
 
 #guard sumsPN.failures.isEmpty
 
--- The values summed by `plus`, so they are a number object of i64 as `plus`'s are: an object of i32 or of f64 is
--- refused, naming it, its atom and the one accepted.
-/-- error: line 82, col 5: sums on I: I is an object of i32, and sums runs on objects of i64 only -/
+-- The values are summed, so they are a number object of i64 or f64 (`sumAtoms`; f64 runs in `TestFrameTyped`): an
+-- object of i32 is refused, naming it, its atom, the ones accepted and the cast to them.
+/-- error: line 82, col 5: sums on I: I is an object of i32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of i64, f64 -/
 #guard_msgs in
 rel_program sumsI where
     obj N
     obj I : i32
     x : N×N ⟶ I ≜ {((0,0),3),((0,1),4)}
     s : N×N ⟶ I ≜ sums(x)
-
-/-- error: line 90, col 5: sums on F: F is an object of f64, and sums runs on objects of i64 only -/
-#guard_msgs in
-rel_program sumsF where
-    obj N
-    obj F : f64
-    x : N×N ⟶ F ≜ {((0,0),3.5),((0,1),4)}
-    s : N×N ⟶ F ≜ sums(x)
 
 end Rel.Lang.TestSums
