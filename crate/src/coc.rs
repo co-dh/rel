@@ -5,6 +5,10 @@ use crate::pod::{self, Elt};
 
 /// coc.rs: bit 8 of the patch list's element size, set when the frames follow
 pub const COC_EXC_FRM: usize = 0x100;
+/// Bit 7 of a block's width byte: the block holds nulls in band (Lean `nulAt`). Free because a width is at most 64.
+pub const NUL_FLAG: u8 = 0x80;
+/// The width byte's residual width (Lean `widthAt`).
+pub const WIDTH_MASK: u8 = 0x7f;
 
 /// `coc_meta_view`: the 33*mblk + 24 byte buffer (the trailer: sumnul, sumn, lg, then the widths).
 #[derive(Clone, Copy)]
@@ -43,10 +47,14 @@ impl<'a> Meta<'a> {
     }
     /// coc.rs
     pub fn res_end(&self) -> usize {
-        if self.mblk == 0 { 0 } else { self.off[self.mblk - 1] as usize + self.blk() * self.width[self.mblk - 1] as usize / 8 }
+        if self.mblk == 0 { 0 } else { self.off[self.mblk - 1] as usize + self.blk() * self.w(self.mblk - 1) as usize / 8 }
     }
     /// the block size
     pub fn blk(&self) -> usize { 1 << self.lg }
+    /// Lean `widthAt`: block `b`'s residual width, the low seven bits of its width byte; every reader takes it here
+    pub fn w(&self, b: usize) -> u8 { self.width[b] & WIDTH_MASK }
+    /// Lean `nulAt`: block `b` holds nulls in band, its top residual `2^w - 1` the null (`Coc::is_nul`)
+    pub fn nul(&self, b: usize) -> bool { self.width[b] & NUL_FLAG != 0 }
     /// coc.rs
     pub fn grid(&self, n: usize) -> bool { self.mblk == n.div_ceil(self.blk()) }
 }
@@ -73,7 +81,7 @@ impl<'a> Coc<'a> {
     pub fn std(&self, n: usize) -> bool {
         let (m, e) = (&self.meta, self.meta.res_end());
         let pb = self.pack.len();
-        if !m.grid(n) || pb < e || m.width.iter().any(|&w| w > 64) { return false }
+        if !m.grid(n) || pb < e || (0..m.mblk).any(|b| m.w(b) > 64) { return false }
         if pb == e { return true }
         let (nexc, esz) = self.exc.map_or((0, 0), |x| (x.pos.len(), x.esz));
         exc_layout(m.mblk, nexc, esz, if self.fdelta.is_some() { Tail::Frames } else { Tail::None }).is_some_and(|l| pb == e + l.size)
@@ -108,7 +116,7 @@ impl<'a> Coc<'a> {
     }
     /// coc.rs: block `b`'s first `nb` elements into `out`, the patches applied.
     pub fn decode_blk<T: Elt>(&self, b: usize, nb: usize, out: &mut [T]) {
-        let (mut w, base, out) = (self.meta.width[b], self.frame(b), &mut out[..nb]);
+        let (mut w, base, out) = (self.meta.w(b), self.frame(b), &mut out[..nb]);
         let at = self.meta.off[b] as usize;
         let p = &self.pack[at..at + self.meta.blk() * w as usize / 8];
         // an odd width decoded in one pass, the lanes never stored
