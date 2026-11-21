@@ -406,6 +406,11 @@ inductive Pre
   | call (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (args : List Pre) (ts : List Bool) (alt : Pre)
       (a b : OTy)
       (ks : List Nat) (ph : List Rel.QAtomicType) (body : Res) (cv : Option (Lean.Name × Res)) (tst : Bool)
+  /-- The definition `c`'s body elaborated at the use once, each parameter the variable of `ks` (`Tm.call`), applied to
+      `args`, each built once (`Code.args`): `cl` with every parameter read closed, `od` with every one run on
+      demand. `alt` the expansion, the arguments put in place of the variables, which every analysis reads and
+      `build` runs where the call does not build. -/
+  | callE (pos : Pos) (c : String) (ks : List Nat) (args : List Pre) (alt cl od : Pre) (a b : OTy)
 
 instance : Inhabited Pre := ⟨.id (.base "")⟩
 
@@ -592,6 +597,9 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .hylo q k x a b => return .hylo (← fp q) k (← mo x) a b
   | .call q c us xs ts alt a b ks ph t cv tst =>
     return .call (← fp q) c us (← xs.mapM (f none)) ts (← mo alt) a b ks ph t cv tst
+  | .callE q c ks xs alt cl od a b =>
+    -- `cl` and `od` read no variable but `ks` (the call binds every name in scope), so a walk stops at them
+    return .callE (← fp q) c ks (← xs.mapM (f none)) (← mo alt) cl od a b
   | x => pure x
 
 /-- The parts of `x`, each with how `x` reads it. A definition's body is expanded at its use, so the prelude's
@@ -652,6 +660,11 @@ def Pre.bound (k : Nat) (x : Pre) : Option Pre :=
   match x.conjuncts.filter (·.occ k |>.isNone) with
   | [] => none
   | c :: cs => some (cs.foldl .meet c)
+
+/-- `x` with each variable `.var p k a b t` replaced by `g p k a b t`. -/
+partial def Pre.mapVar (g : Pos → Nat → OTy → OTy → Option Bool → Pre) : Pre → Pre
+  | .var p k a b t => g p k a b t
+  | x => Id.run (x.traverse pure fun _ y => pure (y.mapVar g))
 
 /-! ### Elaboration: environments and the lifted rows of §e -/
 
@@ -1331,6 +1344,28 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
     throw ⟨p, s!"hylo(c, S): c's target and S's source differ at {t} against {s}, which is neither {a} against {b} \
       (the recursion) nor one object (a constant); G is read off them"⟩
 
+/-- The body `body` of `c` elaborated once, each name of `bs` in it a variable of its own (`St.fixes`), applied to
+    the argument `bs` gives it (`Pre.callE`), so each argument is computed once however often the body reads it. An
+    argument or a body that is a family is the expansion (`bs` put in place), which §e lifts by its shape. -/
+def callOf (env : Env) (p : Pos) (c : String) (bs : List (String × Arg)) (body : Env → M Arg) : M Arg := do
+  let rels := bs.filterMap fun | (n, .rel q s t) => some (n, q, s, t) | _ => none
+  -- a variable is bound to itself, read in its own form: copying it recomputes nothing
+  let own : Pre → Option Nat := fun | .var _ k _ _ _ => some k | _ => none
+  if bs.isEmpty || rels.length != bs.length || rels.all (own ·.2.1 |>.isSome) then
+    return ← body { env with params := bs }
+  let ks ← rels.mapM fun (_, q, _) => match own q with
+    | some k => pure k
+    | none => modifyGet fun s => (s.fixes, { s with fixes := s.fixes + 1 })
+  let r ← body { env with params := (rels.zip ks).map fun ((n, q, s, t), k) =>
+    (n, if (own q).isSome then .rel q s t else .rel (.var p k s t none) s t) }
+  let σ := (ks.zip (rels.map (·.2.1))).filter fun (_, q) => (own q).isNone
+  let alt (q : Pre) := q.mapVar fun p' k a b t => (σ.lookup k).getD (.var p' k a b t)
+  let form (q : Pre) (f : Option Bool) :=
+    q.mapVar fun p' k a b t => .var p' k a b (if (σ.lookup k).isSome then f else t)
+  pure <| match r with
+    | .rel q s t => .rel (.callE p c ks (rels.map (·.2.1)) (alt q) (form q none) (form q (some false)) s t) s t
+    | .fam q i s t => .fam (alt q) i s t
+
 mutual
 
 /-- Elaborate `e` in the mode `m`: plain, or the body of a definition lifted to the index `I`. -/
@@ -1465,6 +1500,11 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .col p s c => do let (r, a, b) ← MonadExcept.ofExcept (colOf env p s c); settle m p [] (.rel (.tm r) a b)
   -- `X : a ⟶ b` in scope in the body, which has that type and is monotonic in `X`; `ν` from the conjuncts
   -- without `X`, `μ` from `𝟘` on any object, its rounds capped at run time (`muCap`)
+  -- the item elaborated once and computed once: a parameter of the term it scopes over, which binds every name in
+  -- scope as its parameters too (`callOf`), so the call's body reads no variable of the caller
+  | .whr p x e b => do
+    let a ← elabE env m e
+    callOf env p x ((x, a) :: env.params) fun env' => elabE env' m b
   | .fix p least x b => do
     let fx := s!"{if least then "μ" else "ν"}{x}"
     if m.isSome then notLiftable p fx
@@ -1810,6 +1850,8 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     let gdef := if tys.any (fun (x, y) => !(x.vars ++ y.vars).isEmpty) then some n else none
     let env' := { env with params := bound, ovars := vs, gdef }
     let r : Arg ← match body, idx with
+    -- TODO(callshare): the body as `callOf env' p n bound` fails b3 of TestFrameBench (`closed?`: a term that needs
+    -- keys where none are supplied), so a use is still the expansion
     | .rel e, none => do
       let r ← elabE env' none e
       let (_, s, t) := r.plain; check s t; pure r
@@ -2195,6 +2237,8 @@ def build : Pre → Except Err Res
   -- `R°`: closed, conversed whole; on demand, pushed to the leaves (`convTm`); a leaf whose converse does not
   -- run on demand reads `R` whole on its source's universe
   | .conv (.close _ (.conv (.close _ q _ _)) _ _) => build q
+  -- a call's converse is its expansion's, pushed to the leaves as below
+  | .conv (.close pos (.callE _ _ _ _ alt _ _ _ _) a w) => build (.conv (.close pos alt a w))
   | .conv (.close pos q a _) => do
     let ⟨A, B, t⟩ ← build q
     match convPre q t with
@@ -2361,6 +2405,27 @@ def build : Pre → Except Err Res
     q.lits.forM fun (p, a, b, ps, d) => if d.isSome then discard (litRes objs mc dp p a b ps d) else pure ()
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
+  -- each argument built once, the body with every parameter read on demand where an argument needs keys, else
+  -- closed; where that does not build (a body reading a parameter whole, an argument only tested), the expansion
+  | .callE _ c ks xs alt cl od a b =>
+    let viaCall : Except Err Res := do
+      let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
+      -- a variable bound to itself in its pair-test form is passed as its pair test, as `callArgs` passes one
+      let rs ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h
+        match x with
+        | .var _ _ _ _ (some true) => do let ⟨A, B, t⟩ ← test x; pure (⟨.prod A B, .prod A B, t⟩ : Res)
+        | _ => build x
+      -- only an argument given a variable of its own (`callOf`) takes the form chosen here
+      let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem
+      let ⟨A', B', t⟩ ← if dem then build od else build cl
+      let u := rs.foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call ks (.mkSimple c) [] t)
+      -- `Tm.dem` counts an argument run on demand even where the body closes it: that call is the expansion's
+      if u.dem && !t.dem then internal dp s!"`{c}` closes an argument that needs keys"
+      if h : A' = A ∧ B' = B then pure ⟨A, B, h.1 ▸ h.2 ▸ u⟩
+      else internal dp s!"`{c}`'s body is not at the objects of its call"
+    match viaCall with
+    | .ok r => pure r
+    | .error _ => build alt
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
@@ -2408,6 +2473,7 @@ def test (p : Pre) : Except Err Cor :=
   | .ok ⟨A, B, t⟩ => pure ⟨A, B, pairTest t⟩
   | .error err => match p with
     | .close _ q _ _ => test q
+    | .callE _ _ _ _ alt _ _ _ _ => test alt
     -- a constant that is a pair test, `τ(c(…)) : A×B ⟶ A×B` (`once`)
     -- a parameter given a pair test (`Form`)
     | .var _ k a b (some true) => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
