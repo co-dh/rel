@@ -53,16 +53,6 @@ impl<'a> Coc<'a> {
         let mut w = (0..self.meta.nblk).map(|b| self.meta.w(b));
         match w.next() { None => 0, Some(w0) if w.all(|x| x == w0) => w0, _ => 255 }
     }
-    /// Lean `foRNul`: element `i` is the null of a nullable column, tested on the encoding: its block flagged
-    /// (`Meta::nul`), no patch at it, its residual the block's top one `2^w - 1`. Nothing is decoded.
-    pub fn is_nul(&self, i: usize) -> bool {
-        let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
-        if !self.meta.nul(b) { return false }
-        if let Some(e) = self.exc.filter(|e| !e.pos.is_empty())
-            && e.pos[e.off[b] as usize..e.off[b + 1] as usize].contains(&(j as u16)) { return false }
-        let (w, p) = (self.meta.w(b), self.pack.get(self.meta.off[b] as usize..).unwrap_or(&[]));
-        res_get_in(p, w, j, p.len()) == if w == 0 { 0 } else { u64::MAX >> (64 - w as u32) }
-    }
 }
 impl<'a> Meta<'a> {
     /// coc.rs `coc_offsets` over the metadata alone: `off[b]` from the widths; answers the residuals' end.
@@ -108,8 +98,9 @@ mod tests {
         let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         assert_eq!((c.meta.w(0), c.meta.nul(0), c.meta.res_end(), c.one_width()), (6, true, pack.len(), 6));
-        assert_eq!((c.is_nul(0), c.is_nul(1), c.is_nul(2), c.get(1)), (true, false, false, 105));
+        let top = |i| res_get_in(&pack, c.meta.w(0), i, pack.len()) == (1 << c.meta.w(0)) - 1;
+        assert_eq!((top(0), top(1), top(2), c.get(1)), (true, false, false, 105));
         let plain = Coc { meta: Meta { width: &[6u8], ..meta }, ..c };
-        assert_eq!((plain.is_nul(0), plain.get(0)), (false, 163));
+        assert_eq!((plain.meta.nul(0), plain.get(0)), (false, 163));
     }
 }
