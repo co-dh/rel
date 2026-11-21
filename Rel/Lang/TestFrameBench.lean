@@ -29,7 +29,8 @@ rel_program benchN where
 
     -- B1 (Q1): shipdate ≤ 100 keeps d2 < 5; per (returnflag, linestatus): Σ quantity, Σ price, Σ rev, count, by key
     b1(x : N ⟶ LI) : N ⟶ (N×N)×(N×(N×(N×N))) ≜ sortBy(π₁, aggregate(⟨col LI "returnflag", col LI "linestatus"⟩, ⟨F(f col LI "quantity") sum, ⟨F(f col LI "price") sum, ⟨F(f rev) sum, length⟩⟩⟩, f)) where f ≜ filterBy(dom(col LI "shipdate" ≤ {(100,∗)}), x)
-    -- B3 (Q3): segment 1, orderdate < 85, shipdate > 85; Σ rev per order, the 10 largest
+    -- B3 (Q3): segment 1, orderdate < 85, shipdate > 85; Σ rev per order, the 10 largest. At 10⁵ rows `joinOn`'s
+    -- `x × y` is built whole (1500·55001 rows, below the pair bound) and fails the allocation; at 10⁶ it is past it (measured)
     -- a join's position object is free: the inner join of the two is a definition so its frame is at `N`
     co(c : N ⟶ Cust, o : N ⟶ Ord) : N ⟶ Cust×Ord ≜ innerJoin(col Cust "custkey", col Ord "custkey", filterBy(dom(col Cust "segment" {(1,1)}), c), filterBy(dom(col Ord "orderdate" < {(85,∗)}), o))
     b3(c : N ⟶ Cust, o : N ⟶ Ord, l : N ⟶ LI) : N ⟶ N×N ≜ topK({(∗,10)}, π₂, aggregate(π₂ col LI "orderkey", F(j π₂ rev) sum, j)) where j ≜ innerJoin(π₂ col Ord "orderkey", col LI "orderkey", co(c, o), filterBy(dom(col LI "shipdate" > {(85,∗)}), l))
