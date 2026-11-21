@@ -67,6 +67,13 @@ def ftoWord (t : QAtomicType) (x : UInt64) : UInt64 :=
   | .f32 => let g := f.toFloat32; if g == 0 then 0 else g.toBits.toUInt64
   | _ => 0x8000000000000000
 
+/-- The step from an `f64` answer to the word of the atom `u`: `fto u` at a float atom (rounds, keeps `±∞`), else
+    `cast .f64 u`, the exact value or `2^63` (NaN, `±∞`, a fraction, out of range). -/
+def ofF64 : QAtomicType → Op
+  | .f32 => .fto .f32
+  | .f64 => .fto .f64
+  | u => .cast .f64 u
+
 /-- Total, with the failure typed: integer `div`/`mod` by `0` is `.error`, not a null (`Ew.intStep` answers q's `0N`
 there, a value the raw word cannot tell from an ordinary one). The unary ops ignore `acc`. -/
 def eval : Op → UInt64 → UInt64 → Except String UInt64

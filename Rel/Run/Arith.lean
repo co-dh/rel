@@ -84,10 +84,10 @@ def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except Str
   let w ← fstepArr t k n a b
   pure (w, ← nanFlag n w.enc)
 
-/-- **The unary float `Op` `o` at the float atom `t`** on the `n` words `a` (`unaryDen`): one pass, each word through
-    `widen t`, `o` (a unary `Op` reads its second operand) and `Op.fto t`; then `nanFlag`. -/
-def fmapCols (t : QAtomicType) (o : Op) (n : USize) (a : Enc) : Except String (Arr t n × Enc) := do
-  let w ← colArr o n a a t t (widen t) [(.fto t, 0)]
+/-- **The unary float `Op` `o` from the float atom `t` to the atom `u`** on the `n` words `a` (`unaryDen`): one pass,
+    each word through `widen t`, `o` (a unary `Op` reads its second operand) and `Op.ofF64 u`; then `nanFlag`. -/
+def fmapCols (t u : QAtomicType) (o : Op) (n : USize) (a : Enc) : Except String (Arr u n × Enc) := do
+  let w ← colArr o n a a u t (widen t) [(.ofF64 u, 0)]
   pure (w, ← nanFlag n w.enc)
 
 /-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
