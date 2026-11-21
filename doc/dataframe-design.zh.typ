@@ -283,9 +283,9 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`recode` `recodeWithDefault`], [`x v T`；带缺省 `x v tot(T) [𝟙, c]`], [`T` 是 `Tm.val` 的字面量表], "full"),
   ([`lift` `lift2` `nullLift` `bind`], [无], [F7], "no"),
   ([`cast` `toDouble` `div` `mod` `pow` `fround` `relu` `eq` `lt` `and` `or` `not` …],
-    [`pow x i` 是 `⟨x $ F, i $ F⟩xexp`（`i` 是字面量或列）；`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`；`toDouble` 是 `x v $ F`（`obj F : f64`）],
+    [`pow x i` 是 `⟨x $ F, i $ F⟩xexp`（`i` 是字面量或列）；`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`；`toDouble` 是 `x v $ F`（`obj F : f64`）；`fround` 是 row `x v round`],
     [`$` 只保值（整数 → 浮点、窄 → 宽）；`arith` 与 `<` 在 `f64` `f32` 上（`TestFloatArith`），`div` 是取整的商，`%` 是真商；浮点 → 整数是 `floor`（`f32` `f64` 到 `i64`，NaN 与越界无像，`TestFloatArith.unaryT`）；
-    `xexp` 是 libm `pow`，负底数的整数次幂有值（`TestFrameCols.framePow`）；`fround` 未写：F4], "part"),
+    `xexp` 是 libm `pow`，负底数的整数次幂有值（`TestFrameCols.framePow`）；`round` 半数取偶（`f32` `f64` 到 `i64`，NaN 与越界无像，`TestFrameCols.frameRound`）], "full"),
   ([`over`], [`over(a, f, x)`], [], "full"),
   ([`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) ≜ dom(suffix prefix s)`；`length` 是 prim], [`splitOn` `match`：F3], "part"),
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
@@ -359,7 +359,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   (2) 已解决（请求 10/11）：统计对结果的 float 对象 `φ` 泛型，由用处的期望类型确定（`TestGenericNum.avgGT`），库不再声明
   `F`；数的运算（`sqrt` `times` …）不把结果对象连到操作数，作操作数的统计写 `𝟙(φ)`。`f32` 的结果被 prim `sum` 拒
   （`TestFrameStat.frameStatF32T`）；泛型定义中的数字字面量在每处使用的对象上构造（请求 12、13），故 `quantile` 直接写 `0.0`、`1.0`；(3) 浮点 → 整数是一元的 `floor`（`f32` `f64` 到 `i64`），`genericPercentile` 用它取 ⌊h⌋；`pow x i` 是 prim `xexp` 的
-  `⟨x $ F, i $ F⟩xexp`（`TestFrameCols.framePow`）；仍缺 `fround`；
+  `⟨x $ F, i $ F⟩xexp`（`TestFrameCols.framePow`）；`fround` 是一元的 `round`，半数取偶（`TestFrameCols.frameRound`）；
   (4) `aj` 的时间沿 `sums` 扫描：`date` `datetime` 的时间列运行（`TestFrameTyped.ajDateT` `sumsTimeT`），`f64` 的
   时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
