@@ -60,8 +60,11 @@ local macro "objs_simp" : tactic => `(tactic| simp [Prim.objs, Prim.vars, OExp.v
 theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find? s = some r' →
     ∀ A B ss, Prim.den r' B A ss = (Prim.den r A B ss)° := by
   intro r hr s r' hs hr'
-  simp only [prims, List.mem_cons, List.not_mem_nil, or_false] at hr
-  -- one goal per row, however many `prims` lists
+  simp only [prims, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hr
+  -- a `unaryOps` row has no converse; then one goal per row, however many `prims` lists
+  rcases hr with hr | ⟨_, -, rfl⟩
+  rotate_left
+  · simp at hs
   repeat' (first | subst hr | (obtain rfl | hr := hr))
   all_goals simp only [consRow, memRow, inlRow, inrRow, inlConvRow, inrConvRow, mapRow, lengthRow, sumRow, flatRow,
     reduceCtorEq, Option.some.injEq] at hs
