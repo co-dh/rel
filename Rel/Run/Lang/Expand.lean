@@ -421,14 +421,14 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- use is the expansion, which reads the arguments where `build` has every object solved. Its type's objects,
         -- and those inside it that `settleOpen` settles last (a literal's, `nil`'s source): a form chosen before
         -- reads a literal at no object, in a generic body (`litTy`) or not
-        let mc ← Lean.getMCtx
-        let inner := x.lits.flatMap (fun (_, s, t, _, _) => [s, t]) ++ x.nilSrcs
+        -- all read off what `x` computes: a variable of a call's body (`callOf`) is its argument (`St.args`)
+        let mc ← Lean.getMCtx; let xe := (← get).expand x
+        let inner := xe.lits.flatMap (fun (_, s, t, _, _) => [s, t]) ++ xe.nilSrcs
         if ([a, a'] ++ inner).any fun o => !(zonk mc o).mvs.isEmpty then return r
         let (ix', k?) ← idxClass ix j?; ix := ix'
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why
-        -- the forms are those of what `x` computes, a variable of a call's body (`callOf`) its argument
-        let st ← get; let mc ← Lean.getMCtx; let xe := st.expand x
+        let st ← get; let mc ← Lean.getMCtx
         let bx := build st.objs mc p xe
         let f : Option Bool :=
           if (build st.objs mc p (Pre.close p xe a why)).toOption.isSome then none
