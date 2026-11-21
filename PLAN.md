@@ -50,7 +50,8 @@
     代码已按 G 办理（S5，分支 `tb-s5`）：`Obj.key` 在每个定宽 atom（f32/f64 在内）上是 `atomKey`，即 `ascOrd`
     （`kasc` 用的同一个 `ordCode`）作用于存储位 `Column.bitsOf`；合并 NaN 与 `±0` 的 `Order.rank`（及
     `rank32`/`rank64`、`foRKey`、`rank_ofNat_iff`）删除；`Obj.key_ordCode` 不再排除 float；`Obj.ascBad` 只拒绝
-    `sym`、`general`，`asc` 接受 float。`LamLaw` 与 `Obj.eq_of_not_lt` 的前提保留，原因只剩 `general`（key 为 `[]`）。
+    `sym`、`general`，`asc` 接受 float。`LamLaw` 已是定理（S5，`Vals.lamLaw`）；`Obj.eq_of_not_lt` 的前提保留，
+    原因只剩 `general`（key 为 `[]`）。
 - 非 log 的输出（baseline、row 分析）写进本文件或 `doc/`，不写进 `/data/tmp`。
 - owner 决定（2026-11-20，最终）：
   - date 字面量写作 q 的 `2024.01.15`，新 token（实现：分支 `datelit`，`Elab.qForm`；值为 1970-01-01 起的天数）。
@@ -110,7 +111,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 15 | 对称除法是 definition          | `Pre.symDiv`, `Elab.lean:264`         | 无：`R/S ∩ (S/R)°`；表层语法 `R ÷ S`    | M    | ✅ 4.4      |
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
 | 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 无：share 读 `Val.empty`，情形已证      | M    | ✅ 5.1      |
-| 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | 无 gap；浮点 key 是 `LamLaw` 前提       | M    | 🔄 5.2      |
+| 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | 无 gap；`LamLaw` 是定理（S5）          | M    | 🔄 5.2      |
 | 19 | gap：hylo                      | `rep_refold`, `RefoldSpec.lean:124`   | `onNodes` 修复、`hylo_sound`；去 `ch`   | M    | ✅ 5.3      |
 | 20 | gap：lam、E、thin              | `lamDen` `Den.lean:111`; `Canon`      | 三条已证；残留缺口：f32/f64 元素        | L    | ✅ 5.4c     |
 | 21 | gap：call                      | `Tm.lean:79`; den 读 body             | 无：`Tm.den` 读 body，情形已证          | L    | ✅ 5.5      |
@@ -399,7 +400,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   没有使用够得到的字面量对象在定义可见的对象里定（`mkDef`）；`callDef` 在实参里仍有字面量 / `nil` 开放对象时不选形式。
   13 的原因不是 φ：实参里 `{(∗,0)}` 的对象在选形式时仍开放，单态的 `{(∗,0)} $ F` 在有 ν、γ 的定义里同样失败。
   `quantile` 的 0、1 写成 `{(∗,0.0)}`、`{(∗,1.0)}`；测试 `TestGenericNum.litGT`、`litGN`、`sumLitT`。
-- ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
+- ✅ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`（分支 `s5`）。代码部分已在
+  `tb-s5`（见决定 G）。`LamLaw` 不再是前提而是定理：`Vals.lt_of_codes`（`Rel/RepOrder.lean`）——在 `kasc` 读得了
+  每一列（`ascCol` 有答案）的任何 side 上，行的序码（`seenKey`）字典序在前，则元素 `Obj.lt` 在前：atom 由
+  `Obj.key_ordCode`（float 在内），pair、sum、array 逐列对应 `Obj.key` 的各部分（`lt_prod`、`lt_inl`、
+  `lt_inl_inr`、`Obj.lt_arr_of`，cell 的块由 `flatMap_range_lt` 取第一个不同块）；`Vals.lamLaw` 是 `Λ` 的序律。
+  `kasc` 拒绝 `sym`、`general`，所以无需对象条件。`lam_den`、`E_den`、`setify_den`、`tau_den`、`thin_den`、
+  `asc_holds`、`tails_den`、`inits_den`、`GenK.lam_sound`、`GenK.thin_sound` 去掉 `hB`；`def LamLaw` 删除，
+  `Tm.LamLaws` 在 `Λ` 处什么也不问（只剩不动点体正，即 `Tm.monoOK`）。未做：把 `Tm.LamLawsAt` 的参数 `L`、
+  `rowsProved` 与 `RowOK` 里的 `hl` 一并删去，`gen_sound` 直接取 `t.monoOK = true`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
   `tb-s6c`）是编码列上一次 `scan` map（`Op.cast s t`，无像写 null 字 `2^63`）+ `colMap .ne` 标志 + `keep` + `canon`，
@@ -555,7 +564,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 5.1 share：`Tm.den` 在 `Val.empty` 下读 share，`Tm.gen` 在 `Code.empty` 下建它，`gen_sound` 的 share 情形已证；
   没有 gap 留给它（p56）。
 - 🔄 5.2 Λ/thin/setify/asc 的 soundness：`Gen.thin_sound`、`Gen.setify_sound`、`Gen.asc_sound` 已证并接入（3006856）；
-  `thin` 仍有缺口：元素对象不 canonical 或 pair test 不是 `Tm.cor`；浮点 key 仍有缺口。
+  `thin` 仍有缺口：元素对象不 canonical 或 pair test 不是 `Tm.cor`；浮点 key 的缺口已由 S5 关闭。
 - ✅ 5.3 hylo：owner 选 H（删 `ch` 字段，`Tm.kids` 是唯一来源）再选 A
   （`Tm.size`，`Tm.gen` 用 `termination_by t.size`，
   `compile_sound` 对 size 强归纳，不要 mutual `kidsGen`）。
