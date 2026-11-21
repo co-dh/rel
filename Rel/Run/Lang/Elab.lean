@@ -1857,10 +1857,10 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
 /-- The column of the one word `0` of the ordered atom `t` (`wordsFoR`, a kernel's answer form): `t`'s literal zero,
     `ofBits t 0` (`zeroCol_row`). -/
 def zeroCol (t : QAtomicType) (h : t.ordNum.isSome) : Arr t 1 :=
-  Arr.mk _ ((wordsFoR_closed #[0] (n := 1) (by simp)).2.2
+  Arr.mk _ ((Rel.Verify.wordsFoR_closed #[0] (n := 1) (by simp)).2.2
     (by cases t <;> first | rfl | exact absurd h (by decide)) fun _ i hi => by
       obtain rfl : i = 0 := by simp at hi; omega
-      decide)
+      decide +revert)
 
 /-- The fold base `0`: the literal zero of the atom `t` (`zeroCol`) where it is in the universe `u`, `ran(u {0})`,
     closed, since the fold reads its start whole. A word, not `⟨𝟙,𝟙⟩ minus ∩ 𝟙`: one base at every atom, a float's too. -/

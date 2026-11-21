@@ -20,6 +20,11 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 def InitSeg (P : Int64 → Prop) : Prop :=
   (∀ x, P x → 0 ≤ x.toInt) ∧ ∀ x y, P x → 0 ≤ y.toInt → y.toInt ≤ x.toInt → P y
 
+/-- `P` an initial segment `0…k` of ℕ at the object `B`: `InitSeg` at `i64`, the atom ℕ is stored at; none elsewhere. -/
+def Seg : (B : Obj) → (B.El → Prop) → Prop
+  | .atom .i64, P => InitSeg P
+  | _, _ => False
+
 /-- A source every run holds: a list of fewer than `2^63` elements (a list cell is two `Int64` offsets). -/
 def Short : (A : Obj) → A.El → Prop
   | .arr _, xs => xs.length < 2 ^ 63
@@ -45,36 +50,35 @@ theorem chain_in {P : Int64 → Prop} (hP : (∀ x, P x) ∨ InitSeg P) (g : Nat
       · exact Int.le_refl _
   exact hP.2 _ _ hn (Int.le_trans h0 (up t ht 0 (Nat.zero_le _))) (up n (Nat.le_refl _) t ht)
 
-/-- The base `0` (`zeroTm`): its values are `0`, where `0` is in its universe. -/
-theorem zeroTm_den (u₀ : Tm .long .long) (ρ : Val) {P : Int64 → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x)
-    (v : Int64) : (∃ a, (zeroTm u₀).den ρ a v) ↔ v = 0 ∧ P 0 := by
-  -- `⟨𝟙,𝟙⟩ minus ∩ 𝟙` keeps `0` alone, where `0` is in the universe
-  have hz : ∀ y w, (Tm.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long).den ρ y w ↔
-      y = w ∧ w = 0 ∧ P 0 := fun y w => by
-    simp only [Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.rpair, Core.Rel.id]
-    constructor
-    · rintro ⟨⟨⟨a1, a2⟩, ⟨h1, h2⟩, hA⟩, rfl⟩
-      dsimp only at h1 h2
-      subst h1 h2
-      obtain ⟨-, -, v', ⟨hv, hn, -⟩, hv'⟩ := (arithDen_iff _ _ _ _ _).1 hA
-      obtain ⟨rfl, hPa⟩ := (hU _ _).1 hv'
-      rw [Rel.Verify.Ew.intStep_sub] at hv
-      split at hv
-      · exact absurd hv hn
-      rw [Int64.sub_self] at hv
-      subst hv
-      exact ⟨rfl, rfl, hPa⟩
-    · rintro ⟨rfl, rfl, h0⟩
-      have hu : u₀.den ρ 0 0 := (hU _ _).2 ⟨rfl, h0⟩
-      exact ⟨⟨(0, 0), ⟨rfl, rfl⟩, (arithDen_iff _ _ _ _ _).2 ⟨⟨0, hu⟩, ⟨0, hu⟩, 0, (by decide : stepDen Ew.sub ((0 : Int64), (0 : Int64)) 0), hu⟩⟩, rfl⟩
-  simp only [zeroTm]
-  generalize (Tm.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u₀)) .id : Tm .long .long) = z at hz ⊢
-  simp only [Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id, hz, hU]
+/-- `zeroCol t` holds `t`'s word `0`. -/
+theorem zeroCol_row {t : QAtomicType} (h : t.ordNum.isSome) (i : Fin (1 : USize).toNat) :
+    Vals.row (A := .atom t) (zeroCol t h) i = QAtomicType.ofBits t 0 := by
+  obtain ⟨w, hw⟩ : ∃ w, t.width = some w := by cases t <;> first | exact ⟨_, rfl⟩ | exact absurd h (by decide)
+  have hu : t ≠ .u1 := by rintro rfl; exact absurd h (by decide)
+  have h0 := (Rel.Verify.wordsFoR_closed #[(0 : UInt64)] (n := 1) (by simp)).2.1
+  have hi : i.1 = 0 := by have := i.2; simp at this; omega
+  rw [Vals.row_atom, Arr.get_word _ h]
+  congr 1
+  simp only [zeroCol, Arr.mk, Arr.enc, wordsFoR] at h0 ⊢
+  rw [Rel.Verify.raw_foR .i64 8 rfl (by decide)] at h0
+  rw [Rel.Verify.raw_foR t w hw hu]
+  generalize Column.foRBits _ _ _ = f at h0 ⊢
+  have hf : f 0 = 0 := by
+    have := congrArg (·[0]?) h0
+    simpa [Rel.Verify.ofNat_toNat_mod64] using this
+  simp [hi, hf]
+
+/-- The base `0` (`zeroTm`): its values are the word `0` of the atom, where it is in its universe. -/
+theorem zeroTm_den {t : QAtomicType} (h : t.ordNum.isSome) (u₀ : Tm (.atom t) (.atom t)) (ρ : Val)
+    {P : (Obj.atom t).El → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (v : (Obj.atom t).El) :
+    (∃ a, (zeroTm h u₀).den ρ a v) ↔ v = QAtomicType.ofBits t 0 ∧ P (QAtomicType.ofBits t 0) := by
+  simp only [zeroTm, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, hU,
+    zeroCol_row]
   constructor
-  · rintro ⟨a, rfl, b, -, b₁, -, -, h0, hP⟩
-    exact ⟨h0, hP⟩
+  · rintro ⟨a, rfl, b, ⟨_, ⟨rfl, hb⟩, _, rfl, -⟩, _, -, _, -, hv⟩
+    exact ⟨hv, hb⟩
   · rintro ⟨rfl, h0⟩
-    exact ⟨0, rfl, 0, ⟨0, ⟨rfl, h0⟩, rfl, rfl, h0⟩, 0, ⟨rfl, h0⟩, rfl, rfl, h0⟩
+    exact ⟨_, rfl, _, ⟨_, ⟨rfl, h0⟩, ⟨0, by simp⟩, rfl, rfl⟩, _, ⟨rfl, h0⟩, ⟨0, by simp⟩, rfl, rfl⟩
 
 /-- `Int64`'s `+` with no null and no wrap: the integer sum. -/
 theorem stepDen_add_iff (x v w : Int64) : stepDen Ew.add (x, v) w ↔
@@ -152,37 +156,47 @@ theorem count_iff {E : Obj} {Te TU : Den .long .long} {P : Int64 → Prop}
     exact ⟨0, (he 0).2 ⟨rfl, hP 0 (Nat.zero_le _)⟩, (foldDen_iter (X := .long) _ xs 0 _).2 ⟨Int64.ofNat, rfl,
       fun t ht => (hS _ _ _).2 ⟨hP t (by omega), (step t (by omega)).symm, hP (t + 1) (by omega)⟩, rfl⟩⟩
 
-/-- **The definition `⦇[0, plus]⦈` of `sum` on `TU` from the value `0` is `sum`'s fold kept in `TU`**, `P` every
-    number or an initial segment `0…k`: its elements and result in `P` and `stepDen add` folded from `0`, since from
-    `0` the prefix sums of elements of `0…k` rise to the result (`chain_in`), so all are in `P` iff it is. -/
-theorem plus_iff {TU : Den .long .long} {P : Int64 → Prop} (hP : (∀ x, P x) ∨ InitSeg P)
-    (hU : ∀ x y, TU x y ↔ x = y ∧ P x) (xs : List Int64) (w : Int64) :
-    (∃ v, (v = 0 ∧ P 0) ∧ foldDen (E := .long) (V := .long) (fun _ b => b = v) (arithDen .i64 Ew.add TU) xs w) ↔
-      (∀ x ∈ xs, P x) ∧ P w ∧ foldDen (E := .long) (V := .long) (fun _ b => b = 0) (stepDen Ew.add) xs w := by
+/-- **The definition `⦇[0, plus]⦈` of `sum` on `TU` from the word `0` is `sum`'s fold kept in `TU`**, at any atom
+    `t`, `P` every value or an initial segment `0…k`: its elements and result in `P` and `stepAt t add` folded from
+    `0`. At every value nothing is cut; on `0…k` the prefix sums of its elements rise from `0` to the result
+    (`chain_in`), so all are in `P` iff it is. -/
+theorem plus_iff {t : QAtomicType} {TU : Den (.atom t) (.atom t)} {P : (Obj.atom t).El → Prop}
+    (hP : (∀ x, P x) ∨ Seg (.atom t) P) (hU : ∀ x y, TU x y ↔ x = y ∧ P x) (xs : List (Obj.atom t).El)
+    (w : (Obj.atom t).El) :
+    (∃ v, (v = QAtomicType.ofBits t 0 ∧ P (QAtomicType.ofBits t 0)) ∧
+        foldDen (E := .atom t) (V := .atom t) (fun _ b => b = v) (arithDen t Ew.add TU) xs w) ↔
+      (∀ x ∈ xs, P x) ∧ P w ∧
+        foldDen (E := .atom t) (V := .atom t) (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add) xs w := by
   have hd : ∀ x, (∃ v, TU x v) ↔ P x := fun x =>
     ⟨fun ⟨_, h⟩ => ((hU _ _).1 h).2, fun h => ⟨x, (hU _ _).2 ⟨rfl, h⟩⟩⟩
-  have hA : ∀ a x b, arithDen .i64 Ew.add TU (a, x) b ↔ P a ∧ P x ∧ stepDen Ew.add (a, x) b ∧ P b := fun a x b => by
+  have hA : ∀ a x b, arithDen t Ew.add TU (a, x) b ↔ P a ∧ P x ∧ stepAt t Ew.add (a, x) b ∧ P b := fun a x b => by
     rw [arithDen_iff]
     constructor
     · rintro ⟨h1, h2, v', hs, hv⟩; obtain ⟨rfl, hw⟩ := (hU _ _).1 hv; exact ⟨(hd _).1 h1, (hd _).1 h2, hs, hw⟩
     · rintro ⟨h1, h2, hs, hw⟩; exact ⟨(hd _).2 h1, (hd _).2 h2, b, hs, (hU _ _).2 ⟨rfl, hw⟩⟩
   constructor
   · rintro ⟨_, ⟨rfl, h0⟩, hf⟩
-    obtain ⟨g, hg0, hs, rfl⟩ := (foldDen_iter (X := .long) (Y := .long) _ xs 0 w).1 hf
-    have hs := fun t ht => (hA _ _ _).1 (hs t ht)
-    refine ⟨fun x hx => ?_, ?_, (foldDen_iter (X := .long) (Y := .long) _ xs 0 _).2 ⟨g, hg0, fun t ht => (hs t ht).2.2.1, rfl⟩⟩
-    · obtain ⟨t, ht, rfl⟩ := List.getElem_of_mem hx; exact (hs t ht).2.1
+    obtain ⟨g, hg0, hs, rfl⟩ := (foldDen_iter (X := .atom t) (Y := .atom t) _ xs _ w).1 hf
+    have hs := fun s hs' => (hA _ _ _).1 (hs s hs')
+    refine ⟨fun x hx => ?_, ?_, (foldDen_iter (X := .atom t) (Y := .atom t) _ xs _ _).2
+      ⟨g, hg0, fun s hs' => (hs s hs').2.2.1, rfl⟩⟩
+    · obtain ⟨s, hs', rfl⟩ := List.getElem_of_mem hx; exact (hs s hs').2.1
     · rcases Nat.eq_zero_or_pos xs.length with e | e
       · rw [e, hg0]; exact h0
       · have := (hs (xs.length - 1) (by omega)).2.2.2; rwa [show xs.length - 1 + 1 = xs.length by omega] at this
   · rintro ⟨hE, hw, hf⟩
-    obtain ⟨g, hg0, hs, rfl⟩ := (foldDen_iter (X := .long) (Y := .long) _ xs 0 w).1 hf
-    have hP' := (chain_in hP g xs.length fun hI => ⟨by rw [hg0]; decide, fun t ht => by
-      obtain ⟨-, -, h1, h2, e⟩ := (stepDen_add_iff _ _ _).1 (hs t ht)
-      have := hI.1 _ (hE _ (List.getElem_mem ht))
-      rw [e, Int64.toInt_add]; simp only [Int.bmod]; split <;> omega⟩).2 hw
-    refine ⟨0, ⟨rfl, hg0 ▸ hP' 0 (Nat.zero_le _)⟩, (foldDen_iter (X := .long) (Y := .long) _ xs 0 _).2 ⟨g, hg0, fun t ht =>
-      (hA _ _ _).2 ⟨hP' t (by omega), hE _ (List.getElem_mem ht), hs t ht, hP' (t + 1) (by omega)⟩, rfl⟩⟩
+    obtain ⟨g, hg0, hs, rfl⟩ := (foldDen_iter (X := .atom t) (Y := .atom t) _ xs _ w).1 hf
+    have hP' : ∀ s ≤ xs.length, P (g s) := by
+      rcases hP with hall | hseg
+      · exact fun s _ => hall _
+      cases t <;> first | exact (hseg : False).elim | skip
+      exact (chain_in (.inr hseg) g xs.length fun hI => ⟨by rw [hg0]; decide, fun s hs' => by
+        obtain ⟨-, -, h1, h2, e⟩ := (stepDen_add_iff _ _ _).1 (hs s hs')
+        have := hI.1 _ (hE _ (List.getElem_mem hs'))
+        rw [e, Int64.toInt_add]; simp only [Int.bmod]; split <;> omega⟩).2 hw
+    refine ⟨_, ⟨rfl, hg0 ▸ hP' 0 (Nat.zero_le _)⟩, (foldDen_iter (X := .atom t) (Y := .atom t) _ xs _ _).2
+      ⟨g, hg0, fun s hs' => (hA _ _ _).2 ⟨hP' s (by omega), hE _ (List.getElem_mem hs'), hs s hs', hP' (s + 1) (by omega)⟩,
+        rfl⟩⟩
 
 /-- `lengthRow` at `[E] ⟶ ℕ` is the count of its list. -/
 theorem Prim.den_lengthRow {E : Obj} :
@@ -194,10 +208,10 @@ theorem Prim.den_lengthRow {E : Obj} :
       some ⟨RowCode.length, fun _ _ xs w => w = Int64.ofNat xs.length⟩ := rfl
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
-/-- `sumRow` at `[ℕ] ⟶ ℕ` is `sumAt`'s fold of `stepDen add` from `0`. -/
-theorem Prim.den_sumRow : Prim.den sumRow (.arr .long) .long [] =
-    foldDen (E := .long) (V := .long) (fun _ b => b = 0) (stepDen Ew.add) := by
-  have ho : sumRow.objs (.arr .long) .long = some [.long] := by
+/-- `sumRow` at `[t] ⟶ t` is `sumAt`'s fold of `stepAt t add` from the word `0`. -/
+theorem Prim.den_sumRow {t : QAtomicType} : Prim.den sumRow (.arr (.atom t)) (.atom t) [] =
+    foldDen (E := .atom t) (V := .atom t) (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add) := by
+  have ho : sumRow.objs (.arr (.atom t)) (.atom t) = some [.atom t] := by
     simp [Prim.objs, sumRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == sumRow.sym) = some ⟨RowCode.sum, fun σ _ => sumAt (σ₁ σ)⟩ := rfl
@@ -214,11 +228,11 @@ theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- `F(U)` at `[ℕ] ⟶ [ℕ]`, `U` the coreflexive on `P`: the lists whose elements are all in `P`. -/
-theorem Prim.den_mapRow_corefl {TU : Den .long .long} {P : Int64 → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
-    (xs ys : List Int64) :
-    Prim.den mapRow (.arr .long) (.arr .long) [⟨.long, .long, TU⟩] xs ys ↔ ys = xs ∧ ∀ x ∈ xs, P x := by
-  have ho : mapRow.objs (.arr .long) (.arr .long) = some [.long, .long] := by
+/-- `F(U)` at `[V] ⟶ [V]`, `U` the coreflexive on `P`: the lists whose elements are all in `P`. -/
+theorem Prim.den_mapRow_corefl {V : Obj} {TU : Den V V} {P : V.El → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
+    (xs ys : List V.El) :
+    Prim.den mapRow (.arr V) (.arr V) [⟨V, V, TU⟩] xs ys ↔ ys = xs ∧ ∀ x ∈ xs, P x := by
+  have ho : mapRow.objs (.arr V) (.arr V) = some [V, V] := by
     simp [Prim.objs, mapRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
@@ -242,7 +256,7 @@ theorem Prim.den_mapRow_corefl {TU : Den .long .long} {P : Int64 → Prop} (hU :
     source a run holds (`Short`): the count of a list of `2^63` elements or more wraps in the fused row, not in
     the definition. -/
 theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
-    {P : Int64 → Prop} (hP : (∀ x, P x) ∨ InitSeg P)
+    {P : B.El → Prop} (hP : (∀ x, P x) ∨ Seg B P)
     (hUs : ∀ u₀ u, c.uni = some (u₀, u) → (∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) ∧ ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
     (x : A.El) (hx : Short A x) (w : B.El) :
     (d.den ρ x w ↔ c.cut.den ρ x w) ∧ ((∀ x, P x) → (d.den ρ x w ↔ c.fused.den ρ x w)) := by
@@ -255,7 +269,7 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
   | length u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
-    have hd := count_iff (zeroTm_den u₀ ρ hU₀) hU x hx w
+    have hd := count_iff (zeroTm_den (t := .i64) rfl u₀ ρ hU₀) hU x hx w
     simp only [Tm.den, DfnCut.cut, DfnCut.fused, Prim.den_lengthRow]
     rw [hd]
     have hx : x.length < 2 ^ 63 := hx
@@ -267,12 +281,12 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     rintro ⟨b, rfl, hbw⟩
     obtain ⟨hw, hp⟩ := (hU _ _).1 hbw
     exact ⟨hc.2 hp, hw.symm⟩
-  | sum u₀ u =>
+  | sum h u₀ u =>
     -- `⦇[0, plus]⦈`: `plus_iff` reads the fold kept in the universe as the row cut to it
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
     simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow]
     rw [foldDen_start]
-    simp only [zeroTm_den u₀ ρ hU₀]
+    simp only [zeroTm_den h u₀ ρ hU₀]
     rw [plus_iff hP hU]
     refine ⟨⟨fun ⟨hE, hw, hf⟩ => ⟨w, ⟨x, (Prim.den_mapRow_corefl hU x x).2 ⟨rfl, hE⟩, hf⟩, (hU _ _).2 ⟨rfl, hw⟩⟩,
       fun ⟨w', ⟨y, hy, hf⟩, hw⟩ => ?_⟩, fun hall => ⟨fun h => h.2.2, fun h => ⟨fun _ _ => hall _, hall _, h⟩⟩⟩
