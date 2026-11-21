@@ -1901,39 +1901,49 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
     Tm (.prod A B) (.prod A B) :=
   .diff .id (.dom (.comp (.pair .outl (.comp .outr s)) (.diff .id c)))
 
-/-- The fold base `0` as `Pre.fold0` builds it on the universe `u`: `ran(u (⟨𝟙,𝟙⟩ minus ∩ 𝟙))`, closed on `u`
-    (`closeRes`), since the fold reads its start whole; the bare `⟨𝟙,𝟙⟩ minus ∩ 𝟙` needs keys and runs empty there. -/
-def zeroTm (u : Tm .long .long) : Tm .long .long :=
-  .ran (.comp u (.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u)) .id))
+/-- The column of the one word `0` of the ordered atom `t` (`wordsFoR`, a kernel's answer form): `t`'s literal zero,
+    `ofBits t 0` (`zeroCol_row`). -/
+def zeroCol (t : QAtomicType) (h : t.ordNum.isSome) : Arr t 1 :=
+  Arr.mk _ ((Rel.Verify.wordsFoR_closed #[0] (n := 1) (by simp)).2.2
+    (by cases t <;> first | rfl | exact absurd h (by decide)) fun _ i hi => by
+      obtain rfl : i = 0 := by simp at hi; omega
+      decide +revert)
 
-/-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the base `0` on the
-    universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`). Indexed by the
-    term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and target universe. -/
+/-- The fold base `0`: the literal zero of the atom `t` (`zeroCol`) where it is in the universe `u`, `ran(u {0})`,
+    closed, since the fold reads its start whole. A word, not `⟨𝟙,𝟙⟩ minus ∩ 𝟙`: one base at every atom, a float's too. -/
+def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) :=
+  .ran (.comp u (.uni (A := .atom t) (zeroCol t h)))
+
+/-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈` (`sumRow`'s, at its atom `t`), the
+    base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`).
+    Indexed by the term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and
+    target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
   | length {E : Obj} (u₀ u : Tm .long .long) :
-    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm u₀) (.comp .outl (.succ u)))
-  | sum (u₀ u : Tm .long .long) :
-    DfnCut (A := .arr .long) (B := .long) (.foldr (zeroTm u₀) (.arith .i64 Rel.Kernel.Ew.add u))
+    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (.succ u)))
+  | sum {t : QAtomicType} (h : t.ordNum.isSome) (u₀ u : Tm (.atom t) (.atom t)) :
+    DfnCut (A := .arr (.atom t)) (B := .atom t) (.fold (zeroTm h u₀) (.arith t Rel.Kernel.Ew.add u))
   | flat {I A B : Obj} (R : Tm I (.prod A B)) :
     DfnCut (A := .prod I A) (B := B)
       (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
 
 /-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
-def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm .long .long × Tm .long .long)
-  | .length u₀ u | .sum u₀ u => some (u₀, u)
+def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
+  | .length u₀ u | .sum _ u₀ u => some (u₀, u)
   | .flat _ => none
 
 /-- The row the definition is the fused form of. -/
 def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .length _ _ => .prim lengthRow
-  | .sum _ _ => .prim sumRow
+  | .sum _ _ _ => .prim sumRow
   | .flat R => .arg (.prim flatRow) R
 
 /-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does; a row whose law
     needs no universe, itself. -/
 def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .length _ u => .comp (.prim lengthRow) u
-  | .sum _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u) (.prim sumRow : Tm (.arr .long) .long)) u
+  | @DfnCut.sum t _ _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
+    (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
   | .flat R => .arg (.prim flatRow) R
 
 /-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
@@ -1942,7 +1952,10 @@ def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
     `Tm.dfnCut_den` proves each equal to it: no read-back of a built term decides which runs. -/
 def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d : Tm A B) × DfnCut d))) :=
   [("length", fun A B _ u => match A, B, u with | .arr _, .long, u => some ⟨_, .length u u⟩ | _, _, _ => none),
-   ("sum", fun A B _ u => match A, B, u with | .arr .long, .long, u => some ⟨_, .sum u u⟩ | _, _, _ => none),
+   ("sum", fun A B _ u => match A, B, u with
+     | .arr (.atom t), .atom t', u =>
+       if h : t' = t ∧ t.ordNum.isSome then by obtain ⟨rfl, ho⟩ := h; exact some ⟨_, .sum ho u u⟩ else none
+     | _, _, _ => none),
    ("flat", fun A B xs _ => match A, xs with
      | .prod I A, [⟨I', AB, R⟩] => if h : I' = I ∧ AB = .prod A B then some ⟨_, .flat (h.1 ▸ h.2 ▸ R)⟩ else none
      | _, _ => none)]
@@ -2246,9 +2259,17 @@ def build : Pre → Except Err Res
         else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
     let some dfn := dfns.lookup r.sym | row ()
     let o := zonk mc t
-    let some u ← uniPart objs dp o B | row ()
+    let some u ← uniPart objs dp o B | do
+      -- an object variable with no universe may be called at a bounded object, where the uncut row is not `d` unless
+      -- `d` needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it)
+      if let .base n := o then if (objs.lookup n).any fun i => i.ovar && !i.num then
+        let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
+        if (dfn A B args .id).all (·.2.uni.isSome) then
+          throw ⟨dp, s!"{r.sym} at the object variable {n} needs its universe: its definition is cut to it (§4)"⟩
+      row ()
     let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
-    let some ⟨d, c⟩ := dfn A B args u | internal dp s!"{r.sym}'s definition (dfns) takes other relations or objects"
+    -- none at an atom with no literal `0` (`zeroCol`): a placeholder, so the constant stays at `.long` (`Expand.once`)
+    let some ⟨d, c⟩ := dfn A B args u | throw ⟨dp, s!"{r.sym}'s definition (dfns) has no form at {repr A} ⟶ {repr B}"⟩
     if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩
     else if initSeg objs o then pure ⟨A, B, c.cut⟩
     else pure ⟨A, B, d⟩

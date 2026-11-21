@@ -173,31 +173,31 @@ def tails {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr 
   | ⟨m, lo, hi, f⟩ => pure ⟨L.n, L.key, ⟨m, lo, hi, f.2⟩⟩
 
 
-/-- **`sum` on the cells of longs `X`** (`rowDens`: `foldr (+) 0`, kept where every suffix sum lies strictly inside
-`(-2^63, 2^63)` and no element is the null `-2^63`): the elements EXPANDed into `(G, u)`, the suffix sums `W` of each
-cell by a backward `kscan .add` whose segments start at each cell's last element, and an element bad where it or `W`
-is the null or `W = v + W'` overflowed (`v` and `W'` of one sign, `W` of the other: the first overflow from the right
-is caught, every sum right of it being exact). A cell with a bad element (`kscatter .or`) is dropped (`Tab.keep`);
-the others read their wrapped total (`kscatter .add`), which is the exact one. -/
-def sum {n : USize} (X : Vals (.arr .long) n) : Except String (Tab (.arr .long) .long) :=
+/-- **`sum` on the cells `X` of the atom `u`** (`rowDens`: the left fold `⦇[0, plus]⦈`, `stepAt u add` from the word
+`0`, q's order): the elements EXPANDed into `(G, u)`, a segment opened at each cell's first element (`u = 0`), and
+`sumTail` (`sumsOn`'s) is each element's prefix sum in its cell and its bad word. A cell with a bad element
+(`kscatter .or`) is dropped (`Tab.keep`); the others read the sum at their last element (`kscatter .last`, `0` at an
+empty cell). -/
+def sumOn {u : QAtomicType} {n : USize} (X : Vals (.arr (.atom u)) n) :
+    Except String (Tab (.arr (.atom u)) (.atom u)) :=
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"sum: {n} cells over {m} elements past 2^63"
     let (s, e) ← cellSpan m lo hi
     let w ← colMap .sub n e.enc s.enc
-    let (T, G, u) ← expand n w
-    let v ← kgather T (← colMap .add T (← kgather T G n s.enc) u) m f.enc
-    let z ← colConst T 0
-    let last ← colMap .eq T u (← colMap .sub T (← kgather T G n w) (← colConst T 1))
-    let W := (← kscan .add true .i64 .i64 T last [z, v]).1
-    let sv ← colMap .lt T v z
-    let ovf ← colMap .and T (← colMap .eq T sv (← colMap .lt T (← colMap .sub T W v) z)) (← colMap .ne T sv
-      (← colMap .lt T W z))
-    let nul ← colConst T 0x8000000000000000
-    let bad ← colMap .or T ovf (← colMap .or T (← colMap .eq T W nul) (← colMap .eq T v nul))
+    let (T, G, i) ← expand n w
+    let v ← kgather T (← colMap .add T (← kgather T G n s.enc) i) m (Arr.enc (t := u) f)
+    let seg ← colMap .eq T i (← colConst T 0)
+    let (W, bad) ← sumTail "sum" u T seg v
     let badC ← kscatter .or T G bad n 0
-    let tot ← colArr .add n (← kscatter .add T G v n 0) (← colConst n 0)
-    canon (← keep (⟨n, ⟨m, lo, hi, f⟩, tot⟩ : Tab (.arr .long) .long) (← colMap .not n badC badC))
+    let L ← kscatter .last T G W.enc n 0
+    canon (← keep (⟨n, ⟨m, lo, hi, f⟩, ← colArr .or n L L u⟩ : Tab (.arr (.atom u)) (.atom u))
+      (← colMap .not n badC badC))
+
+/-- `sum` at the element object `V`: `sumOn` at an atom, the error elsewhere. -/
+def sum : {V : Obj} → {n : USize} → Vals (.arr V) n → Except String (Tab (.arr V) V)
+  | .atom _, _, X => sumOn X
+  | _, _, _ => throw "sum: the elements are no atom"
 
 end Tab
 

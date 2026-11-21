@@ -170,7 +170,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [product / sum], [`outl` `outr` `pair` `prod`；`junc` = `[R,S]`（目标：加 `inl` `inr`，`[R,S] = inl° ≫ R ∪ inr° ≫ S` 成为定义；`juncD` 随 lazy `Rel` 消失）],
   [power], [`lam`（Λ） `E` `est` `thin` `nil` `atPos`],
   [数据], [`val R` `uni U` `succ` `arith` `leq` `lt`],
-  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `sum`、`thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `hylo`）],
+  [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`，原 `hylo`）],
   [绑定 / 复用], [`var` `share` `own` `call` `arg`],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
 )
@@ -354,13 +354,13 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     不经 Λ 行、不 `canon`。同为融合形式，`⟦snoc 行⟧ = ⟦定义⟧`、`⟦cons 行⟧ = ⟦定义⟧` 未证],
   [`zip`], [两侧格界 → `scan(min)` 宽 → EXPAND → `gather` 两 payload 各在 `s₁[G] + u`、`s₂[G] + u` →
     `scan` 前缀和得新格；拒绝条件同 `cat`],
-  [`sum`（`⦇0, +⦈ʳ`）], [格界 → EXPAND → `gather` 元素 `v` → `scan` 标每格末元素 → 反向分段 `scan(add)` 得后缀和
-    `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → `scatter(or)` 得坏格、`scatter(add)`
-    得每格回绕总和 → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。只在 i64 上；
-    f64（与 `sums` 同一自左向右的 `scan(fadd)`）未做，按名报错。
-    `foldr` 的融合形式，`⟦sum 行⟧ = ⟦定义⟧` 未证。融合行只用在没有 universe 的对象（`long`）上；target 有 universe
-    （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（row 表的 `Prim.dfn`：`sum` 是 `⦇[0, plus]⦈ʳ`，
-    `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[−3,3,3] sum` 无结果（中间和 6），`1…5` 上
+  [`sum`（`⦇0, +⦈`）], [格界 → EXPAND → `gather` 元素 `v` → 每格首元素（偏移 0）标段 → 自左向右分段
+    `scan(add)`（i64）或 `scan(fadd)`（f64）从 0 得前缀和 `W`，测坏步（i64：溢出或 null `−2^63`；f64：`fto` 后
+    `W' ≠ W` 或 NaN）（`sumTail`，与 `sums` 共用）→ `scatter(or)` 得坏格、`scatter(last)` 取每格末行的和（空格为 0）
+    → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。值对象为 i64 或 f64
+    （`sumAtoms`），含义是左折叠 `sumAt`（`Tab.sum_holds`）。融合行只用在没有 universe 的对象上；target 有 universe
+    （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（row 表的 `Prim.dfn`：`sum` 是 `⦇[0, plus]⦈`，
+    `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[3,3,−3] sum` 无结果（中间和 6），`1…5` 上
     `length` 为 `𝟘`（fold 从 0 起步）。造出新数的 row 必须带 `dfn`],
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，
     报错并给出该位置）→ `κ` 列 `seen` 得每个 key 的首行 → `scatter(last)` 得段标 `seg` → 分段 `scan(add)`（种子 0）得
