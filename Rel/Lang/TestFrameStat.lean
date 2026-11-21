@@ -2,9 +2,8 @@ import Rel.Programs.FrameGroup
 
 /-! The real-valued statistics of `frameStat` (`avg` `var` `svar` `dev` `sdev` `cov` `scov` `corr` `quantile`
     `skewness` `zScore` `valueProportions` `describe`), each in `F : f64` through `$` and the true quotient `%`, never an integer quotient.
-    They cast the column's values to `Z : i64` first and read prim `sum`, which runs on `i64` only, so an `f64`
-    column is refused at the cast (pinned below);
-    its sum is the fold `⦇[{(∗,0)}, plus]⦈ʳ`. Expected rows worked by hand with values exact in binary. -/
+    They cast the column's values to `F` first and sum with prim `sum` there, so integer and `f64` columns both work.
+    Expected rows worked by hand with values exact in binary. -/
 
 namespace Rel.Lang.TestFrameStat
 
@@ -98,15 +97,40 @@ rel_program frameStatT where
 
 #guard frameStatT.failures.map toString == []
 
--- `avg` of an `f64` column: its entry cast to `Z` keeps values, and prim `sum`, which would take `F` instead, runs on
--- `i64` only (its `f64` row is not built; `sums` at `f64` is, `TestFrameTyped.sumsFloatT`)
-/-- error: line 109, col 17: `summarize` at this call, where ν is N, δ is F, β is F: $ from F (f64) to Z (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
-#guard_msgs in
+-- an `f64` column: the same definitions, the cast to `F` the identity
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
-rel_program avgFloatT where
+rel_program frameStatFloatT where
     obj N
-    f : N ⟶ F ≜ {(0,1.5),(1,0.25)}
-    s : 1 ⟶ F ≜ summarize(F(f) avg, f)
+    -- 0.5 2 3.5: mean 2; mean square (0.25 + 4 + 12.25)/3 = 5.5, var 5.5 − 4 = 1.5, svar 1.5·3/2 = 2.25, sdev 1.5
+    f : N ⟶ F ≜ {(0,0.5),(1,2.0),(2,3.5)}
+    check summarize(F(f) avg, f) = {(∗,2.0)}
+    check summarize(F(f) var, f) = {(∗,1.5)}
+    check summarize(F(f) svar, f) = {(∗,2.25)}
+    check summarize(F(f) sdev, f) = {(∗,1.5)}
+    -- (x − 2)/1.5
+    check zScore(f) = {(0,-1.0),(1,0.0),(2,1.0)}
+    -- count 3, mean 2, sample std 1.5, min 0.5, max 3.5
+    check describe(f) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(2.0,(1.5,(0.5,3.5)))))}
+    -- symmetric: E[x³] = (0.125 + 8 + 42.875)/3 = 17 = 2·(3·1.5 + 4), so 0
+    check summarize(F(f) skewness, f) = {(∗,0.0)}
+    -- 0 0 0 0 2.5 (`s5` of `frameStatT` halved): μ = 0.5, var 1.25 − 0.25 = 1, E[x³] = 3.125, m3 = 3.125 − 0.5·3.25 = 1.5
+    s5 : N ⟶ F ≜ {(0,0.0),(1,0.0),(2,2.5),(3,0.0),(4,0.0)}
+    check summarize(F(s5) skewness, s5) = {(∗,1.5)}
+    -- a = 0.5 1.5, b = 2a: E[ab] = 2.5, cov 2.5 − 1·2 = 0.5, devs 0.5 1, corr 1
+    a : N ⟶ F ≜ {(0,0.5),(1,1.5)}
+    b : N ⟶ F ≜ {(0,1.0),(1,3.0)}
+    check summarize(F(⟨a, b⟩) cov, a) = {(∗,0.5)}
+    check summarize(F(⟨a, b⟩) corr, a) = {(∗,1.0)}
+    -- 2.5 0.5 3.5 1 sorts to 0.5 1 2.5 3.5: p = 0.5, h = 1.5: (1 + 2.5)/2 = 1.75; p = 0.25, h = 0.75: 0.25·0.5 + 0.75·1
+    m4 : N ⟶ F ≜ {(0,2.5),(1,0.5),(2,3.5),(3,1.0)}
+    check quantile({(∗,0.5)}, m4) = {(∗,1.75)}
+    check quantile({(∗,0.25)}, m4) = {(∗,0.875)}
+    -- q's left fold: 1 + 1e16 = 1e16 (the tie rounds to the even 1e16), 1e16 − 1e16 = 0, so 0/3, where the exact mean
+    -- is 1/3 and the right fold 1 + (1e16 − 1e16) would give it
+    g : N ⟶ F ≜ {(0,1.0),(1,1e16),(2,-1e16)}
+    check summarize(F(g) avg, g) = {(∗,0.0)}
+
+#guard frameStatFloatT.failures.map toString == []
 
 -- a bounded object: 7³ = 343 and 40³ lie outside `N`, so the cubes, deviations and weights are computed in `F`
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in

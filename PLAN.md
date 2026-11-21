@@ -387,6 +387,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Prim.den_sumRow`、`Prim.den_mapRow_corefl` 泛化，无 sorry。`build`：没有 universe 的对象变量（非 `num`）上，
   定义需要 universe（`DfnCut.uni`）的行报错而不再跑未截断的融合行；占位 atom（无字面 `0`）上 `dfns` 无形式，
   所以含 `sum` 的泛型常量留在 `.long`（`Expand.once`），f64 上的 `sum` 只在单态处跑。
+  分支 `sumgen`：这不是缺口。对象变量 φ 上的 `sum`（`sumT(x : ν ⟶ [φ]) ≜ x sum`、经另一泛型定义的 `sumN`、
+  `avgS : [φ] ⟶ φ ≜ ⟨sum, length $ φ⟩%`）在 f64、i64、universe `0…5` 的对象上都得到手算的行
+  （`TestGenericNum.sumGT`）：常量对 φ 不泛型时，调用在调用处对象上展开（`Pre.call` 的 `alt`），`build` 在已知
+  atom 上选 row 与 universe 截断，对每个 `dfns` row 都如此，无需改代码。仍报错的是 `devG : [γ] ⟶ φ ≜ varG sqrt`
+  （dataframe request 11）：`sqrt : F ⟶ D` 的 `F` 与 `D` 无关，`varG` 的 φ 是类型与参数都够不到的开放对象，
+  按设计文档 §1（`Elab.generalise`）取 `.long`，`divide` 在 i64 上报错。改它要定一条开放对象取 atom 的规则
+  （例如取每个作用在它上面的数值运算都接受的 atom），与设计文档现文冲突，待 owner 裁定；写 `varG 𝟙(φ) sqrt` 可用。
 - ⬜ S5 float 上的 `Obj.key = ordCode`；`key_ordCode`、`ascBad`、float 上的 `LamLaw`。
 - 🟡 S6 行 `$`（分支 `tb-s6`，owner 裁定 J）：`x $ F` 与 `QAtomicType.embed s t` 的图复合（`castDen`），部分映射、不舍入；
   允许的对由 `castOK` 从两个 atom 的格式读出（加宽、整数 → 浮点）；有损方向在 elaboration 报错。`Tab.cast`（分支
