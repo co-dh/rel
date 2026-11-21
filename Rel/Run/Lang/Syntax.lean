@@ -110,6 +110,28 @@ def Tup.render (item : Bool) : Tup → String
 
 def Tup.show (t : Tup) : String := t.render false
 
+/-- The bytes `32…126` but `"` and `\`, which q writes as themselves inside a char's quotes. -/
+def charPlain (c : Nat) : Bool := 32 ≤ c && c < 127 && c != 34 && c != 92
+
+/-- A byte as q writes a char: `"a"` for a `charPlain` byte, else `"\ooo"`, its three octal digits; `charOf` reads it
+    back, the text form of the atom `char` (`Elab.qForm`). -/
+def charText (b : UInt8) : String :=
+  let n := b.toNat
+  if charPlain n then s!"\"{Char.ofNat n}\"" else s!"\"\\{n / 64}{n / 8 % 8}{n % 8}\""
+
+/-- The byte whose `charText` has the bytes `f`; none for any other text. -/
+def charOf : List UInt8 → Option Int
+  | [34, c, 34] => if charPlain c.toNat then some c.toNat else none
+  | [34, 92, a, b, c, 34] =>
+    if 48 ≤ a && a ≤ 51 && [b, c].all (fun d => 48 ≤ d && d ≤ 55) then
+      some (64 * (a.toNat - 48) + 8 * (b.toNat - 48) + (c.toNat - 48))
+    else none
+  | _ => none
+
+/-- A string literal (Lean's, its escapes decoded) as the array of its UTF-8 bytes, each a char word (`charText`):
+    a text `[C]` is an array of `C`s, so `"NY"` is the literal `["N" "Y"]` of the object of `char`s it is used at. -/
+def Tup.ofText (s : String) : Tup := .arr (s.toUTF8.toList.map (.leaf ∘ charText))
+
 /-- A term of §c. `name` is a program's definition or parameter; `op` a builtin with its objects and arguments;
     `app` a program's operator applied. Composition is juxtaposition. -/
 inductive Expr

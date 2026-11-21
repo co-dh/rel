@@ -226,7 +226,7 @@ def elabOnce (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     -- a variable only the declared result names is rigid too, as `mkDef` leaves it to the use
     let (s, u) := match r with | .rel _ s u => (s, u) | .fam _ _ a b => (a, b)
     declared env' p n rigid ty s u
-    settleOpen env' p r.plain.1
+    settleOpen env' p [r.plain.1]
     pure (r, os) : M (Arg × List (Obj × Obj × Bool))).run { fixes := nv + qs.length, specs, objs }
   pure (os, r, st)
 
@@ -484,7 +484,7 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     let mc ← Lean.getMCtx
     try unify p "" s' s; unify p "" t' t
     catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
-    settleOpen env p r.plain.1; settleOpen env p r'.plain.1
+    settleOpen env p [r.plain.1, r'.plain.1]
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   let mc ← Lean.getMCtx
   let (⟨A, B, R⟩, s, t) ← top env mc p e r
@@ -656,7 +656,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let (r, st) ← (do
           let r ← elabE env none e
           if let some ty := ty then let (_, s, t) := r.plain; declared env p n rigid ty s t
-          settleOpen env p r.plain.1
+          settleOpen env p [r.plain.1]
           pure r).run { specs, objs := env.objs }
         specs := st.specs
         let mc ← Lean.getMCtx; let (q, s, t) := r.plain
@@ -689,7 +689,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     | .print p e bs =>
       let (e, bs) := (rtNamesE env rt e, bs.map fun (x, l) => (rtName env rt x, l))
       let e := e.subst (← liftExcept (bindIns rt p "print" [e] bs))
-      let (r, st) ← (do let r ← elabE env none e; settleOpen env p r.plain.1; pure r).run { specs, objs := env.objs }
+      let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
     | .check p e f eq bs =>

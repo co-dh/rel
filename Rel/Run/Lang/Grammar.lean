@@ -157,6 +157,8 @@ syntax (name := tyArrow) ":" relObj "⟶" relObj : relType
 syntax (name := lWord) relWord : relLit
 syntax (name := lRow) "(" relLit+ "," relLit+ ")" : relLit
 syntax (name := lArr) "[" relLit* "]" : relLit
+-- a text `"TK, main"`: Lean's string literal, its escapes as Lean's, the array of its bytes (`Tup.ofText`)
+syntax (name := lStr) str : relLit
 
 -- one level, left to right (§c): every infix form takes the level on its left and a primary on its right
 syntax:max (name := rId) ident : rel
@@ -312,6 +314,7 @@ def typeOf (s : Syntax) : C (OExp × OExp) := do
 partial def litItem (s : Syntax) : C Tup := match s.getKind with
   | ``lWord => do pure (.leaf (← wordOf s[0]))
   | ``lRow => do pure (.pair (← tup s[1].getArgs) (← tup s[3].getArgs))
+  | ``lStr => match s[0].isStrLit? with | some t => pure (Tup.ofText t) | none => failAt s "expected a string"
   | _ => do pure (.arr (← s[1].getArgs.toList.mapM litItem))
 where tup (xs : Array Syntax) : C Tup := do
   match ← xs.toList.mapM litItem with | [t] => pure t | ts => pure (.arr ts)

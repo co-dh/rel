@@ -97,10 +97,12 @@ def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
 
 /-- The atoms with a text form of q's besides the integer: a `date` written `2024.01.15`, a `datetime`
     `2024.01.15D12:30:00.5`, read by the CSV's reader of the atom (`Db.Csv.ymd`, `Db.Csv.stamp`, C.3) at the day's
-    separator `.` where the CSV has `-`: days, nanoseconds since 1970-01-01, proleptic Gregorian, years 0001–9999. -/
+    separator `.` where the CSV has `-`: days, nanoseconds since 1970-01-01, proleptic Gregorian, years 0001–9999; a
+    `char` written `"a"` or `"\ooo"`, a byte of a string literal (`charText`, `Tup.ofText`). -/
 def qForm : Rel.QAtomicType → Option (String × (List UInt8 → Option Int))
   | .date => some ("day yyyy.mm.dd", Db.Csv.ymd 46)
   | .datetime => some ("time yyyy.mm.ddDhh:mm:ss[.f]", Db.Csv.stamp 46)
+  | .char => some ("char \"a\"", charOf)
   | _ => none
 
 /-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
@@ -582,10 +584,10 @@ partial def Pre.nilSrcs : Pre → List OTy
   | .nil a _ => [a]
   | x => x.parts.flatMap (·.1.nilSrcs)
 
-/-- Each literal of a generic definition's body in `x` (`Env.gdef`), the definition's name last; its expansion at a
-    use included. -/
-partial def Pre.lits : Pre → List (Pos × OTy × OTy × List (Tup × Tup) × String)
-  | .lit p a b ps (some d) => [(p, a, b, ps, d)]
+/-- Each literal in `x`, a generic definition's body's (`Env.gdef`) with the definition's name last; its expansion
+    at a use included. -/
+partial def Pre.lits : Pre → List (Pos × OTy × OTy × List (Tup × Tup) × Option String)
+  | .lit p a b ps d => [(p, a, b, ps, d)]
   | x => x.parts.flatMap (·.1.lits)
 
 /-- Where the variable `k` first occurs in `x`. -/
@@ -1031,6 +1033,56 @@ def refusals (objs : Objs) (ws : List String) : String :=
     | some e => acc ++ [(i.ty, e)] | none => acc) []
   s!"no declared object has the elements {ws}" ++ (if rs.isEmpty then "" else s!" ({"; ".intercalate (rs.map (·.2))})")
 
+/-- The atoms the value verbs (`plus`, …) and the orders `≤`, `<` run on (`stepAt`, `ltAt`): `i64`, and every float
+    atom, whose verbs are computed on `f64` words (`fval`). -/
+def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
+
+/-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
+    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
+def numObj (objs : Objs) (mc : Lean.MetavarContext) (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) :
+    Except Err (String × QAtomicType) :=
+  match zonk mc o with
+  | .base n =>
+    -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
+    -- run on the bits
+    let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
+    if ok t then pure (n, t) else
+      let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
+      let int (a : QAtomicType) := a.numFmt?.any (· matches .int ..)
+      -- an op with no integer step at all (`%`): its answer is no integer, so the program casts (`$`), explicitly
+      let cast := if int t && !atomNames.any (fun a => ok a.2 && int a.2) then
+        s!"; its answer is no integer: cast first, `x $ F` with `F` an object of {ats}" else ""
+      throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
+  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
+
+/-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
+def OExp.varAt (v : String) : OExp → OTy → Option OTy
+  | .var _ n, o => if n == v then some o else none
+  | .prod a b, .prod x y | .sum a b, .sum x y => (a.varAt v x).orElse fun _ => b.varAt v y
+  | .list a, .arr x => a.varAt v x
+  | _, _ => none
+
+/-- The atoms the arithmetic verb `k` runs on: the value atoms, `%` (`divide`) on floats only, as it has no integer
+    step (`intStep`); `max`, `min` on every ordered atom too, the order picking an operand. -/
+def arithOk (k : UInt8) (t : QAtomicType) : Bool :=
+  (valueAtom t && (k != Rel.Kernel.Ew.divide || t != .i64)) ||
+    (k == Rel.Kernel.Ew.greater || k == Rel.Kernel.Ew.lesser) && t.ordNum.isSome
+
+/-- The number objects the node `x` itself computes on, each with its operator and the atoms it admits: `build`
+    refuses any other (`numObj`), and `settleLit` settles a literal's open object by them. -/
+def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAtomicType → Bool))
+  | .prim r _ s t => r.num.filterMap fun (v, ok) =>
+    ((r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s)).map (·, r.sym, ok.contains)
+  | .succ _ n => [(n, "succ", (· == .i64))]
+  | .arith _ k n => [(n, (Op.arith k).sym, arithOk k)]
+  | .leq _ n => [(n, "≤", (·.ordNum.isSome))]
+  | .lt _ n => [(n, "<", (·.ordNum.isSome))]
+  | _ => []
+
+/-- `numsAt` of `x` and of its parts, a definition's body at its use included. -/
+partial def Pre.nums (mc : Lean.MetavarContext) (x : Pre) : List (OTy × String × (QAtomicType → Bool)) :=
+  x.numsAt mc ++ x.parts.flatMap (·.1.nums mc)
+
 /-- Why the rows `ts` of a literal's position do not determine its object: they are none (an empty array's
     elements), or several declared objects hold their words. -/
 def litOpen (objs : Objs) (p : Pos) (ts : List Tup) : Err :=
@@ -1062,29 +1114,41 @@ partial def litTy (objs : Objs) (gd : Option String) (p : Pos) (ts : List Tup) :
       (← litTy objs gd p (ts.map fun | .pair _ b => b | r => r)))
   | _, .arr _ => pure (.arr (← litTy objs gd p (ts.flatMap fun | .arr es => es | _ => [])))
 
-/-- The object `o` of a literal's position `ts` that the context left open: the one declared object holding its
-    words (`litTy`'s rule), or still open where several do. -/
-partial def settleLit (objs : Objs) (p : Pos) (d : String) (ts : List Tup) (o : OTy) : M Unit := do
-  match zonk (← Lean.getMCtx) o, ts with
+/-- The object `o` of a literal's position `ts` that the context left open: of the declared objects holding its
+    words (`litTy`'s rule), the one every number verb `ns` at `o` runs on (`Pre.nums`, `numObj`): `{(2024.01.15,1)}`
+    beside `length`'s count is `D ⟶ N`, though a date object also holds `1`. Still open where several are left;
+    an error where its words are held by none, or by none the verbs run on. -/
+partial def settleLit (objs : Objs) (ns : List (OTy × String × (QAtomicType → Bool))) (p : Pos) (d : Option String)
+    (ts : List Tup) (o : OTy) : M Unit := do
+  let mc ← Lean.getMCtx
+  match zonk mc o, ts with
   | _, [] => pure ()
-  | .mv _, .leaf _ :: _ =>
+  | .mv m, .leaf _ :: _ =>
     let ws := ts.filterMap fun | .leaf w => some w | _ => none
-    match holders objs ws with
+    let vs := ns.filter fun (n, _) => zonk mc n == .mv m
+    let hs := holders objs ws
+    match hs.filter fun h => vs.all fun (_, op, ok) => (numObj objs mc p h op ok).toBool with
     | [h] => unify p "the literal's object" o h
-    | [] => throw ⟨p, s!"`{d}`: {refusals objs ws}, and no object variable is put at them"⟩
+    | [] =>
+      let who := match d with | some d => s!"`{d}`: " | none => ""
+      if hs.isEmpty then throw ⟨p, s!"{who}{refusals objs ws}, and no object variable is put at them"⟩
+      throw ⟨p, s!"{who}the elements {ws} are in {hs}, and {", ".intercalate (vs.map (·.2.1)).eraseDups} runs on none of them"⟩
     | _ => pure ()
   | .prod x y, .pair .. :: _ => do
-    settleLit objs p d (ts.map fun | .pair a _ => a | r => r) x
-    settleLit objs p d (ts.map fun | .pair _ b => b | r => r) y
-  | .arr x, .arr _ :: _ => settleLit objs p d (ts.flatMap fun | .arr es => es | _ => []) x
+    settleLit objs ns p d (ts.map fun | .pair a _ => a | r => r) x
+    settleLit objs ns p d (ts.map fun | .pair _ b => b | r => r) y
+  | .arr x, .arr _ :: _ => settleLit objs ns p d (ts.flatMap fun | .arr es => es | _ => []) x
   | _, _ => pure ()
 
-/-- What no context fixed once the whole term `x` is elaborated: a `nil`'s source starts at `1`, B&dM's
-    `nil : 1 ⟶ [A]`, `Env.one` (§e); a generic body's literal takes the declared object holding its words. -/
-def settleOpen (env : Env) (p : Pos) (x : Pre) : M Unit := do
-  x.nilSrcs.forM fun a => do if let .mv _ := zonk (← Lean.getMCtx) a then unify p "nil's source" a env.one
-  x.lits.forM fun (q, a, b, ps, d) => do
-    settleLit env.objs q d (ps.map (·.1)) a; settleLit env.objs q d (ps.map (·.2)) b
+/-- What no context fixed once the terms `xs`, which share their objects (a check's two sides), are elaborated: a
+    `nil`'s source starts at `1`, B&dM's `nil : 1 ⟶ [A]`, `Env.one` (§e); a literal's open object is settled by its
+    words and the number verbs at it (`settleLit`). -/
+def settleOpen (env : Env) (p : Pos) (xs : List Pre) : M Unit := do
+  xs.forM fun x => x.nilSrcs.forM fun a => do
+    if let .mv _ := zonk (← Lean.getMCtx) a then unify p "nil's source" a env.one
+  let ns := xs.flatMap (·.nums (← Lean.getMCtx))
+  xs.forM fun x => x.lits.forM fun (q, a, b, ps, d) => do
+    settleLit env.objs ns q d (ps.map (·.1)) a; settleLit env.objs ns q d (ps.map (·.2)) b
 
 /-- The argument `q : s ⟶ _` of row `r` in the form `f` its parameter takes it: a pair test is tested on the pairs
     the row compares (`build`, `param`), not read whole. -/
@@ -1841,34 +1905,6 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
   | some t => pure t
   | none => throw ⟨p, s!"{what}: {zonk mc o} has no universe; compose a set of its elements before it (§a)"⟩
 
-/-- The atoms the value verbs (`plus`, …) and the orders `≤`, `<` run on (`stepAt`, `ltAt`): `i64`, and every float
-    atom, whose verbs are computed on `f64` words (`fval`). -/
-def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
-
-/-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
-    (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
-def numObj (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) : Except Err (String × QAtomicType) :=
-  match zonk mc o with
-  | .base n =>
-    -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
-    -- run on the bits
-    let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
-    if ok t then pure (n, t) else
-      let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
-      let int (a : QAtomicType) := a.numFmt?.any (· matches .int ..)
-      -- an op with no integer step at all (`%`): its answer is no integer, so the program casts (`$`), explicitly
-      let cast := if int t && !atomNames.any (fun a => ok a.2 && int a.2) then
-        s!"; its answer is no integer: cast first, `x $ F` with `F` an object of {ats}" else ""
-      throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
-  | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
-
-/-- The object the variable `v` of the pattern `e` stands for in `o`, `o` of `e`'s form; none where `e` has no `v`. -/
-def OExp.varAt (v : String) : OExp → OTy → Option OTy
-  | .var _ n, o => if n == v then some o else none
-  | .prod a b, .prod x y | .sum a b, .sum x y => (a.varAt v x).orElse fun _ => b.varAt v y
-  | .list a, .arr x => a.varAt v x
-  | _, _ => none
-
 /-- The universe of a number object, for `succ`, the value verbs (`plus`, …), `≤`, `<`: a declared object's,
     or the one a constant is given for an object variable. -/
 def numU (p : Pos) (o : OTy) (op : String) (ok : QAtomicType → Bool) :
@@ -2088,9 +2124,7 @@ def build : Pre → Except Err Res
   -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
-    r.num.forM fun (v, ok) => do
-      if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
-        discard <| numObj objs mc dp o r.sym ok.contains
+    (Pre.prim r xs s t).numsAt mc |>.forM fun (o, op, ok) => discard <| numObj objs mc dp o op ok
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" then
@@ -2121,10 +2155,7 @@ def build : Pre → Except Err Res
   -- `max`/`min` need no arithmetic: at an ordered atom with no value step they are `τ(≤)π₂ ∪ τ(>)π₁` (`min` the
   -- projections swapped), the order picking an operand; at a value atom the fused verb runs
   | .arith p k n => do
-    let mm := k == Rel.Kernel.Ew.greater || k == Rel.Kernel.Ew.lesser
-    -- `%` has no integer step (`intStep`): float atoms only
-    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym fun t =>
-      (valueAtom t && (k != Rel.Kernel.Ew.divide || t != .i64)) || mm && t.ordNum.isSome
+    let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym (arithOk k)
     if valueAtom t then return ⟨_, _, .arith t k U⟩
     let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (.leq t U)
     let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (.lt t U)) swapTm)

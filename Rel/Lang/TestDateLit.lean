@@ -78,4 +78,49 @@ rel_program stampRangeT where
     obj T : datetime
     x : N ⟶ T ≜ {(0,2262.04.12D00:00:00)}
 
+/-! ## Text: a string literal is the array of its bytes, each a word of the atom `char` (`Tup.ofText`, `charText`) -/
+
+-- every byte's char word read back by the `char` atom's reader; a quote and a backslash in their octal form
+#guard (List.range 256).all fun b => Rel.Lang.charOf (bytes (Rel.Lang.charText b.toUInt8)) == some b
+#guard Rel.Lang.charText 34 == "\"\\042\"" && Rel.Lang.charText 92 == "\"\\134\"" && Rel.Lang.charText 78 == "\"N\""
+#guard [bytes "\"\\400\"", bytes "\"\\08\"", bytes "\"\"\"", bytes "N"].all (Rel.Lang.charOf · == none)
+
+-- expected bytes by hand: "NY" 78 89; "TK, main" 84 75 44 32 109 97 105 110; "a\"b\\c" 97 34 98 92 99; "é" in UTF-8
+-- 195 169
+rel_program textLitT where
+    obj N
+    obj C : char
+    input x : N ⟶ [C] from csv "x.csv"
+    t : N ⟶ [C] ≜ {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
+    u : N ⟶ [C] ≜ {(0,[78 89]),(1,[84 75 44 32 109 97 105 110]),(2,[97 34 98 92 99]),(3,[195 169]),(4,[])}
+    check t = u
+    -- no type: the key words are elements of N and of C, `t`'s type decides
+    check t = {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
+    -- a text in an input's table
+    check x = {(0,"TK, main"),(1,"a\"b\\c")} where x ≜ {(0,"TK, main"),(1,"a\"b\\c")}
+
+#guard textLitT.failures.map toString == []
+
+-- a text at an object of another atom than `char`
+/-- error: line 113, col 17: no declared object has the elements ["N", "Y"] ('"N"' is not an element of N, an object of i64) -/
+#guard_msgs in
+rel_program textAtLongT where
+    obj N
+    x : N ⟶ [N] ≜ {(0,"NY")}
+
+/-! ## A check's literal settled by the verbs at its object (`Elab.settleLit`) -/
+
+-- the value words `1`, `2` are elements of N and of D (a day count); `length`'s count runs on N only, so the
+-- untyped check reads them at N as the typed `perDay` does
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup in
+rel_program dateKeyCheckT where
+    obj N
+    obj D : date
+    x : N ⟶ (N×D)×N ≜ {(0,((1,2024.01.15),5)),(1,((2,2024.01.16),6)),(2,((3,2024.01.16),7))}
+    perDay : D ⟶ N ≜ agg((x π₁ π₂)°, length)
+    check perDay = {(2024.01.15,1),(2024.01.16,2)}
+    check agg((x π₁ π₂)°, length) = {(2024.01.15,1),(2024.01.16,2)}
+
+#guard dateKeyCheckT.failures.map toString == []
+
 end Rel.Lang.TestDateLit
