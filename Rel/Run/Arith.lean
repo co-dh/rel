@@ -60,12 +60,22 @@ def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
     | some r => colMap (.cast r .i64) n a a .i64 t
     | none => pure a
 
-/-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fverbBy` with `colMap`
-    on their `f64` words, `Op.fto t` writing the word of `t`, kept where that is not `nulWord` (a NaN answer). -/
-def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n × Enc) := do
-  let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b)
+/-- The `n` `f64` answers `r` as words of the float atom `t` (`Op.fto t`), kept where that is not `nulWord` (a NaN
+    answer): the tail every float verb shares. -/
+def ftoCols (t : QAtomicType) (n : USize) (r : Enc) : Except String (Arr t n × Enc) := do
   let w ← colArr (.fto t) n r r t
   pure (w, ← colMap .ne n w.enc (← colConst n nulWord))
+
+/-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fverbBy` with `colMap`
+    on their `f64` words, then `ftoCols`. -/
+def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n × Enc) := do
+  ftoCols t n (← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b))
+
+/-- **The unary float `Op` `o` at the float atom `t`** on the `n` words `a` (`unaryDen`): `o` by `colMap` on their `f64`
+    words (a unary `Op` reads its second operand), then `ftoCols`. -/
+def fmapCols (t : QAtomicType) (o : Op) (n : USize) (a : Enc) : Except String (Arr t n × Enc) := do
+  let x ← wideCol t n a
+  ftoCols t n (← colMap o n x x)
 
 /-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
     (`stepAt` has no row there). -/

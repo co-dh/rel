@@ -261,8 +261,9 @@ open Lean Meta in
     holds of all of them and the type; none when a type differs or one is left open. The one rule by which `primE`
     fits a wrapper and a row's constant. -/
 def fitConst (c : Lean.Name) (sel : Lean.Expr → MetaM Bool) (hs : Array (Lean.Expr × Lean.Expr))
-    (ok : Array Lean.Expr → Lean.Expr → MetaM Bool) : MetaM (Option Lean.Expr) := withoutModifyingState do
-  let k ← mkConstWithFreshMVarLevels c
+    (ok : Array Lean.Expr → Lean.Expr → MetaM Bool) (args : List Lean.Expr := []) :
+    MetaM (Option Lean.Expr) := withoutModifyingState do
+  let k := mkAppN (← mkConstWithFreshMVarLevels c) args.toArray
   let (ms, _, ty) ← forallMetaTelescope (← inferType k)
   let ps ← ms.filterM fun m => do sel (← inferType m)
   unless ps.size == hs.size do return none
@@ -283,14 +284,14 @@ open Lean Meta in
     `objOrSize`), every other solved by unifying the types. The constant is the row's
     `kernRows` operator. -/
 def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (Option Lean.Expr) := do
-  let some c := kernRows.lookup r.sym | return none
+  let some (c, args) := kernRows.lookup r.sym | return none
   primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
     let some f := ws.back? | return false
     unless ← isDefEq wty (g ``Gen.Fn #[bE true, oE A, oE B]) do return false
     let v? ← forallTelescope (← instantiateMVars (← inferType f)) fun ys body => do
       let es ← ys.filterM fun y => return (← getFVarLocalDecl y).binderInfo.isExplicit
       let some v ← fitConst c (fun t => return !(← objOrSize t)) (← es.mapM fun y => return (y, ← inferType y))
-          fun _ ty => isDefEq ty body | return none
+          (fun _ ty => isDefEq ty body) args | return none
       some <$> mkLambdaFVars ys v
     let some v := v? | return false
     isDefEq f v

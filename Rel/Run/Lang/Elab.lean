@@ -1843,7 +1843,7 @@ def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) :=
 
 /-- The atoms the value verbs (`plus`, …) and the orders `≤`, `<` run on (`stepAt`, `ltAt`): `i64`, and every float
     atom, whose verbs are computed on `f64` words (`fval`). -/
-def valueAtom (t : QAtomicType) : Bool := t == .i64 || t.numFmt?.any (· matches .float ..)
+def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
 
 /-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
     (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`). -/
@@ -2088,9 +2088,9 @@ def build : Pre → Except Err Res
   -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
   -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
   | .prim r xs s t => do
-    r.num.forM fun v => do
+    r.num.forM fun (v, ok) => do
       if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
-        discard <| numObj objs mc dp o r.sym (· == .i64)
+        discard <| numObj objs mc dp o r.sym ok.contains
     let A ← toObj objs mc dp s; let B ← toObj objs mc dp t
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" then

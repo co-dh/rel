@@ -349,6 +349,14 @@ def castDen : (A B : Obj) → Den A B
   | .atom s, .atom t => fun x y => QAtomicType.embed s t x = some y
   | _, _ => fun _ _ => False
 
+/-- A unary float verb `o` of `unaryOps` at `F ⟶ F`: `o` on the value's `f64` word (`fval`), then the word of `F`'s atom
+    nearest the answer (`Op.fto`), no row where that is `2^63` (the IEEE answer is NaN); `𝟘` at an object holding no
+    float. -/
+def unaryDen (o : Rel.Kernel.Op) : (A : Obj) → Den A A
+  | .atom t => fun x w => ∃ X Y R, fval t x = some X ∧ o.eval 0 X = .ok Y ∧ (Rel.Kernel.Op.fto t).eval 0 Y = .ok R ∧
+      R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t R
+  | _ => fun _ _ => False
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
 
@@ -396,7 +404,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) .long) (Y := .long) sumsDen⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
-   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩]
+   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩] ++
+  unaryOps.map fun (s, o) => ⟨⟨s, fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => unaryDen o (σ₁ σ)⟩
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
@@ -741,8 +750,11 @@ theorem Sem.one_mono {X Y A B X' Y' : Obj} {D : Den X Y → Den A B} (hD : ∀ {
 theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = true →
     ∀ σ {X Y : Obj} {T T' : Den X Y}, T ⊑ T' → e.2 σ [⟨X, Y, T⟩] ⊑ e.2 σ [⟨X, Y, T'⟩] := by
   intro e he hm σ X Y T T' h
-  simp only [rowDens, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- one case per row whatever their number, in `rowDens` order
+  simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
+  -- a `unaryOps` row takes no relation; then one case per row whatever their number, in `rowDens` order
+  rcases he with he | ⟨_, -, rfl⟩
+  rotate_left
+  · exact Core.Rel.le_refl _
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
