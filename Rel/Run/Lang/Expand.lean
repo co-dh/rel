@@ -821,6 +821,9 @@ def closed {A B : Obj} (t : Tm A B) : Bool := !t.dem && t.fv.isEmpty
     `rel_program` command adds them all, and a program's count of constants is no measure of any one's cost.
     Regular hints, as `def` gives: an opaque `c` makes the kernel unfold the other side of `c =?= v` first. -/
 def addConst (c : Name) (ty v : Lean.Expr) : MetaM Unit := withCurrHeartbeats do
+  -- equal subterms as one object: `tmE` rebuilds an object's `oE` at each node, and every traversal after this
+  -- (`getMaxHeight`, the compiler, the kernel) visits each object once instead of once per occurrence
+  let v := ShareCommon.shareCommon' v
   let hints := .regular (getMaxHeight (← getEnv) v + 1)
   addAndCompile (.defnDecl { name := c, levelParams := [], type := ty, value := v, hints, safety := .safe })
 
