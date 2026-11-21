@@ -1,9 +1,10 @@
 import Rel.Lang.GenKFold
 import Rel.AscOrder
 import Rel.Run.Asc
+import Rel.RepOrder
 
-/-! The law of `Tab.asc` (`Rel/Run/Asc.lean`): `canon`'s rows `(0, b)` ascend in the codes `kasc` sorts by, which the
-order law of `Λ` at `ℕ ⟶ B` (`Lang.LamLaw .long B`, taken as the hypothesis `hB`) ties to `Obj.lt`; so the values,
+/-! The law of `Tab.asc` (`Rel/Run/Asc.lean`): `canon`'s rows `(0, b)` ascend in the codes `kasc` sorts by, which
+`Vals.lamLaw` ties to `Obj.lt`; so the values,
 read in position order, are the one strictly ascending list of `dom P` (`lt_sorted_unique`). -/
 
 namespace Rel
@@ -20,11 +21,8 @@ theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z
 
 namespace Tab
 
-/-- **`asc P` denotes `asc(P)`** (`ascDen` of `dom P`), given the order law of `Λ` at `ℕ ⟶ B`. -/
-theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok T)
-    (hB : ∀ (m : USize) (x : Vals (.prod .long B) m) es, Vals.cols x = .ok es → ∀ i i' : Fin m.toNat,
-      (x.row i).1 = (x.row i').1 → lexLe (ascKeys m es) i i' = true → seenKey m es i ≠ seenKey m es i' →
-        B.lt (x.row i).2 (x.row i').2) :
+/-- **`asc P` denotes `asc(P)`** (`ascDen` of `dom P`): `kasc`'s order is `Obj.lt` (`Vals.lamLaw` at `ℕ ⟶ B`). -/
+theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok T) :
     rep T = ascDen B fun b => ∃ c, P.Holds b c := by
   unfold Tab.asc at h
   split at h; · cases h
@@ -33,14 +31,14 @@ theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok
   rw [Except.bind_eq_ok'] at h; obtain ⟨U, hU, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨p, hp, h⟩ := h
   cases h
-  obtain ⟨es, -, hes, -⟩ := canon_codes hU
+  obtain ⟨es, cs, hes, hcs⟩ := canon_codes hU
   obtain ⟨sel, hrow, hsort⟩ := canon_sorted hU hes
   -- `U`'s values ascend strictly: its rows are `canon`'s input rows `sel j`, of one key `0`
   have hlt : ∀ j j' : Fin U.n.toNat, j < j' → B.lt (U.val.row j) (U.val.row j') := fun j j' hj => by
     obtain ⟨hl, hs⟩ := hsort j j' hj
     have e : ∀ j, U.val.row j = P.key.row (sel j) := fun j => congrArg Prod.snd (hrow j)
     rw [e j, e j']
-    exact hB _ ((z, P.key) : Vals (.prod .long B) P.n) es hes (sel j) (sel j')
+    exact Vals.lamLaw ((z, P.key) : Vals (.prod .long B) P.n) hes hcs (sel j) (sel j')
       (by show Vals.row (A := .long) z _ = Vals.row (A := .long) z _; rw [Vals.row_atom, Vals.row_atom,
         Arr.zeros_get hz, Arr.zeros_get hz]) hl hs
   have hH : ∀ k b, (∃ i, U.key.row i = k ∧ U.val.row i = b) ↔
