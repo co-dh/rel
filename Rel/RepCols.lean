@@ -48,24 +48,11 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
 theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType} (h : colMap op n a b .i64 s = .ok e) :
     (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
       ∀ i < n.toNat, op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  unfold colMap at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i one hone
-  split at h; · cases h
-  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  obtain ⟨hg, hxs, c, cs, hc, out, hout, he, -, hrow⟩ := raw_kscan op false s .i64 8 rfl n one [a, b] r hr
-  simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
-  simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
-  -- `one` read as booleans: each word `1`, so every row starts a segment
-  have hseg : ∀ i < n.toNat, (raw .u1 n one)[i]?.getD 0 ≠ 0 := fun i hi => by rw [colConst_u1 hone i hi]; decide
-  refine ⟨hxs a (by simp), hxs b (by simp), by rw [he, hout], fun i hi => ?_⟩
-  have := hrow i (by rw [hout]; exact hi)
-  have hc : ¬(0 < i ∧ (raw .u1 n one)[i]?.getD 0 = 0) := fun h => hseg i hi h.2
-  simp only [hc, ↓reduceIte, List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil] at this
-  rw [he]
-  simp only [Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
-  rw [← this]; cases op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) <;> rfl
+  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain h
+  refine ⟨ha, hb, hs, fun i hi => ?_⟩
+  obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
+  cases hx; cases hy; cases hw
+  simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]; exact hv
 
 /-- **An ordered element is its word read at its type**: element `i` of a column of an ordered atom `t` (`ordNum`: the
 number atoms, `char`, `date`, `datetime`) is `ofBits t` of word `i` of `Enc.raw t`, at every encoding `Enc.WF` admits
@@ -318,10 +305,14 @@ theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok 
       List.sum_cons, List.sum_nil, Nat.add_zero]; exact (UInt64.ofNat_add _ _).symm
 
 /-- `kscan`'s answer is a `foR` column. -/
-theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Enc} {es : List Enc}
-    {r : Enc × Option UInt64} (h : kscan op rev s t n seg es = .ok r) : ∃ md pk, r.1 = .foR md pk := by
+theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List Enc}
+    {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
+    ∃ md pk, r.1 = .foR md pk := by
   unfold kscan at h
-  simp only [bind, Except.bind] at h
+  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
+  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
   split at h; · cases h
   split at h; · cases h
   split at h; · cases h

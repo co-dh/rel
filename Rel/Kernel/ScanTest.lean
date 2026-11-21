@@ -33,6 +33,10 @@ private def kcols : List Enc := [.bytes (Column.packIds 64 4 fun _ => 100), .byt
 example : kwords ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[100, 100, 100, 100] [#[1, 2, 3, 4]]) #[]) =
     [101, 103, 103, 107] := by decide
 #guard kread (kscan .add false .i64 .i64 4 kseg kcols) = [101, 103, 103, 107]
+-- a per-row chain with every row its own segment (`seg = none`): `(s + 1) + (x + 1)`, then `+ 10`
+example : (chain [(.add, 1), (.add, 10)] 5).toOption = some 16 := by decide
+#guard kread (kscan .add false .i64 .i64 4 none kcols [(.add, 1)] [(.add, 10)]) = [113, 114, 115, 116]
+#guard (kscan .add false .i64 .i64 4 none kcols [(.div, 1)]).toBool = false
 -- reversed (D.6): the forward fold of every column reversed, read back reversed. Rows 3 and 2 start a segment walking
 -- back: `100+4 | 100+3, 103+2 | 100+1`
 example : kwords ((List.range 4).foldlM (kscanRow .add #[0, 1, 0, 1] #[100, 100, 100, 100] [#[4, 3, 2, 1]]) #[]) =
@@ -79,7 +83,7 @@ private def castRows (s t : QAtomicType) (ws : List UInt64) : List UInt64 :=
   kwords ((List.range ws.length).foldlM (kscanRow (.cast s t) (ws.map fun _ => 1).toArray ws.toArray [ws.toArray]) #[])
 private def castRun (s t : QAtomicType) (w : Nat) (ws : List UInt64) : List UInt64 :=
   let c : Enc := .bytes (Column.packIds (8 * w) ws.length fun i => (ws.getD i 0).toNat)
-  match kscan (.cast s t) false s t (USize.ofNat ws.length) (.foR (Coc.bools ws.length fun _ => true).1
+  match kscan (.cast s t) false s t (USize.ofNat ws.length) (some <| .foR (Coc.bools ws.length fun _ => true).1
       (Coc.bools ws.length fun _ => true).2) [c, c] with
   | .ok (e, _) => (e.raw .i64 (USize.ofNat ws.length)).toList
   | .error _ => []
@@ -116,7 +120,7 @@ example : kwords ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0, 1, 2, 
 #guard kread (kscan .add false .i64 .i64 4 kseg [.pos, .bytes (Column.packIds 64 4 (· + 1))]) = [1, 3, 5, 9]
 -- `pos` is `i64` only: as `seg` (read as booleans) and read at `i32` it holds no raw elements, the error
 example : (Ext.Enc.raw (X := Empty) .u1 (USize.ofNat32 4 (by decide)) .pos).size = 0 := by decide +kernel
-#guard (kscan .add false .i64 .i64 4 .pos kcols).toBool = false
+#guard (kscan .add false .i64 .i64 4 (some .pos) kcols).toBool = false
 #guard (kscan .add false .i32 .i64 4 kseg [.pos]).toBool = false
 
 -- The fold result: the word of the row the fold visits last, read off the row fold `out` (in fold order) as its last
@@ -130,7 +134,7 @@ example : ((List.range 4).foldlM (kscanRow .add #[0, 1, 0, 1] #[100, 100, 100, 1
 #guard (kscan .add true .i64 .i64 4 kseg kcols).toOption.map (·.2) = some (some 101)
 -- no rows: no row is visited, so there is no fold result
 example : ((List.range 0).foldlM (kscanRow .add #[] #[] [#[]]) #[]).toOption.map (·.back?) = some none := by decide
-#guard (kscan .add false .i64 .i64 0 .pos [.pos, .pos]).toOption.map (·.2) = some none
+#guard (kscan .add false .i64 .i64 0 (some .pos) [.pos, .pos]).toOption.map (·.2) = some none
 -- at a float type: `fneg` of row 3's `4.0` is `-4.0`, the sign bit flipped
 example : ((List.range 4).foldlM (kscanRow .fneg #[1, 0, 1, 0] #[0, 0, 0, 0]
     [#[0x3ff0000000000000, 0x4000000000000000, 0x4008000000000000, 0x4010000000000000]]) #[]).toOption.map (·.back?) =
@@ -154,7 +158,7 @@ private def kperm : Array Nat := (Array.range 81).flatMap fun g => #[g] ++ (Arra
 private def kpermCol (f : Nat → Nat) : Enc :=
   let c := Coc.encode 8 (Column.packIds 64 kperm.size fun i => f (kperm[i]?.getD 0))
   .foR c.1 c.2
-#guard (kscan .lt false .i64 .u1 (USize.ofNat kperm.size) (.foR (Coc.bools kperm.size fun _ => true).1
+#guard (kscan .lt false .i64 .u1 (USize.ofNat kperm.size) (some <| .foR (Coc.bools kperm.size fun _ => true).1
     (Coc.bools kperm.size fun _ => true).2) [kpermCol id, kpermCol fun _ => 81]).toOption.map
   (fun r => (r.1.raw .u1 (USize.ofNat kperm.size)).toList) = some (kperm.toList.map fun v => if v < 81 then 1 else 0)
 
