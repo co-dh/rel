@@ -269,6 +269,13 @@ def sumsAt (K : Obj) : (P V : Obj) → Den (.prod K P) V → Den (.prod K P) V
   | .atom _, .atom _, T => sumsDen T
   | _, _, _ => 𝟘
 
+/-- `sum` at the element object `V`: the left fold `⦇[0, plus]⦈` of `stepAt t add` from the word `0`, from index `0`
+    up (q's order), where `V` is an atom; none at or after a step `plus` refuses (a wrap, the null, a NaN). `𝟘` where
+    `V` is no atom (no `plus`). -/
+def sumAt : (V : Obj) → Den (.arr V) V
+  | .atom t => foldDen (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add)
+  | _ => 𝟘
+
 /-- `E(T) = Λ(∋ T)`: an array to the canonical list of the images of its elements. -/
 abbrev EDen (T : Den A B) : Den (.arr A) (.arr B) := lamDen ((fun xs a => a ∈ xs : Den (.arr A) A) ≫ T)
 
@@ -332,7 +339,7 @@ def merge : RowCode := ⟨"merge", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ�
 def loop : RowCode := ⟨"loop", fun σ => (.prod (σ₁ σ) (.arr (σ₂ σ)), σ₁ σ)⟩
 def uncons : RowCode := ⟨"uncons", fun σ => (.arr (σ₁ σ), .prod (σ₁ σ) (.arr (σ₁ σ)))⟩
 def length : RowCode := ⟨"length", fun σ => (.arr (σ₁ σ), .long)⟩
-def sum : RowCode := ⟨"sum", fun _ => (.arr .long, .long)⟩
+def sum : RowCode := ⟨"sum", fun σ => (.arr (σ₁ σ), σ₁ σ)⟩
 def inits : RowCode := ⟨"inits", fun σ => (.arr (σ₁ σ), .arr (.arr (σ₁ σ)))⟩
 def tails : RowCode := ⟨"tails", fun σ => (.arr (σ₁ σ), .arr (.arr (σ₁ σ)))⟩
 def «prefix» : RowCode := ⟨"prefix", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
@@ -390,10 +397,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
       (∀ t (ht : t < p.2.length), T (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length⟩,
    ⟨uncons, fun _ _ xs p => xs = p.1 :: p.2⟩,
    ⟨length, fun _ _ xs w => w = Int64.ofNat xs.length⟩,
-   ⟨sum, fun _ _ (xs : List Int64) (w : Int64) =>
-      (∀ t, t ≤ xs.length → -2 ^ 63 < List.sum (List.map Int64.toInt (List.drop t xs)) ∧
-        List.sum (List.map Int64.toInt (List.drop t xs)) < 2 ^ 63) ∧ (∀ x ∈ xs, x ≠ Alg.nul) ∧
-        w = xs.foldr (· + ·) 0⟩,
+   ⟨sum, fun σ _ => sumAt (σ₁ σ)⟩,
    ⟨inits, fun _ _ xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.take k⟩,
    ⟨tails, fun _ _ xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.drop k⟩,
    ⟨«prefix», fun _ _ xs ys => ys <+: xs⟩,

@@ -1859,14 +1859,14 @@ def divTest {A B C : Obj} (c : Tm (.prod A C) (.prod A C)) (s : Tm B C) :
 def zeroTm (u : Tm .long .long) : Tm .long .long :=
   .ran (.comp u (.meet (.comp (.pair .id .id) (.arith .i64 Rel.Kernel.Ew.sub u)) .id))
 
-/-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈ʳ` (`sumRow`'s), the base `0` on the
+/-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈` (`sumRow`'s), the base `0` on the
     universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`). Indexed by the
     term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
   | length {E : Obj} (u₀ u : Tm .long .long) :
     DfnCut (A := .arr E) (B := .long) (.fold (zeroTm u₀) (.comp .outl (.succ u)))
   | sum (u₀ u : Tm .long .long) :
-    DfnCut (A := .arr .long) (B := .long) (.foldr (zeroTm u₀) (.arith .i64 Rel.Kernel.Ew.add u))
+    DfnCut (A := .arr .long) (B := .long) (.fold (zeroTm u₀) (.arith .i64 Rel.Kernel.Ew.add u))
   | flat {I A B : Obj} (R : Tm I (.prod A B)) :
     DfnCut (A := .prod I A) (B := B)
       (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
