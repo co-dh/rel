@@ -410,6 +410,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `F ⟶ F`（`Op.ffloor` 的值），不是 q 的 `floor`（q 回 long）。测试 `TestFloatArith.unaryT`、`sqrtIntT`。
   - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
     f64 `sum`（格）未做。
+  - ✅ 对象变量上的数动词与 `$`（分支 `objvar`，dataframe 请求，architecture §1）：泛型定义的体可写自己的对象变量
+    （`x $ φ`，`Parse.S.ovars`、`Env.ovars`）；数动词与 `$` 在对象变量上的检查（`Elab.numCheck`）留到每次使用：
+    `Expand.once` 在全 `.long` 建不成时以 `ObjInfo.deferred` 建一次只作判定，成则定义无常量；无常量的定义、以及给
+    非泛型变量非 `.long` 对象的调用，都在调用处对象上建展开（单态化，代码生成前实例化，`rowOK` 只见具体 atom）。
+    `mkDef` 在使用解出变量后先跑 `numCheck`，错误写出调用、变量与对象。库可以对数对象泛型，不必自己声明 `F`/`Z`/`D`。
+    测试 `TestGenericNum`（`avg` 在 f64 上运行、在 i64 上于调用处报错；`daysBetween` 在用户的 `date` 对象上运行）。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1
