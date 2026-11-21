@@ -13,6 +13,7 @@ rel_program frameStatT where
     obj K = {A,B}
     obj N
     obj F : f64
+    obj D : date
     f : N ⟶ F ≜ {(0,1.5),(1,0.25),(2,2.0)}
     w1 : N ⟶ F ≜ {(0,0.5)}
     e : N ⟶ F ≜ 𝟘
@@ -63,6 +64,26 @@ rel_program frameStatT where
     check quantile({(∗,0.375)}, q5) = {(∗,4.5)}
     -- p outside [0, 1]: no answer
     check quantile({(∗,1.5)}, q5) = 𝟘
+    -- `genericPercentile`, no interpolation: the sorted row at ⌊h⌋. 1 4 7 at p = 0.5: h = 1, 4; 1 2 5 8 at p = 0.5:
+    -- h = 1.5, row 1 is 2 (`quantile` gives 3.5); p = 0.75: h = 2.25, 5; p = 0, 1: the ends
+    check genericPercentile({(∗,0.5)} 𝟙(F), t) = {(∗,4)}
+    check genericPercentile({(∗,0.5)} 𝟙(F), m4) = {(∗,2)}
+    check genericPercentile({(∗,0.75)} 𝟙(F), m4) = {(∗,5)}
+    check genericPercentile({(∗,0.0)} 𝟙(F), m4) = {(∗,1)}
+    check genericPercentile({(∗,1.0)} 𝟙(F), m4) = {(∗,8)}
+    -- 5 values 0 3 6 9 12 at p = 0.375: h = 1.5, 3; p outside [0, 1]: no answer
+    check genericPercentile({(∗,0.375)} 𝟙(F), q5) = {(∗,3)}
+    check genericPercentile({(∗,1.5)} 𝟙(F), q5) 𝟙(N) = 𝟘
+    check genericPercentile({(∗,-0.25)} 𝟙(F), q5) 𝟙(N) = 𝟘
+    -- an `f64` column and a date column: sorted 0.25 1.5 2 and 2021.12.29 2022.01.08 2022.01.13, p = 0.5 gives h = 1
+    check genericPercentile({(∗,0.5)} 𝟙(F), f) = {(∗,1.5)}
+    dd : N ⟶ D ≜ {(0,2022.01.08),(1,2022.01.13),(2,2021.12.29)}
+    check genericPercentile({(∗,0.5)} 𝟙(F), dd) = {(∗,2022.01.08)}
+    check genericPercentile({(∗,1.0)} 𝟙(F), dd) = {(∗,2022.01.13)}
+    -- a column at the enumerated `K`, in declaration order A B: B A B sorts to A B B, p = 0 gives A, p = 0.5 gives B
+    kk : N ⟶ K ≜ {(0,B),(1,A),(2,B)}
+    check genericPercentile({(∗,0.0)} 𝟙(F), kk) = {(∗,A)}
+    check genericPercentile({(∗,0.5)} 𝟙(F), kk) = {(∗,B)}
     -- 0 0 0 0 5: μ = 1, deviations −1 −1 −1 −1 4, m2 = 20/5 = 4, m3 = 60/5 = 12, 12/2³ = 1.5; 1 4 7 is symmetric: 0
     s5 : N ⟶ N ≜ {(0,0),(1,0),(2,5),(3,0),(4,0)}
     check summarize(F(s5) skewness, s5) = {(∗,1.5)}
@@ -90,6 +111,7 @@ rel_program frameStatT where
     z : N ⟶ N ≜ 𝟘
     check summarize(F(z) avg, z) 𝟙(F) = 𝟘
     check quantile({(∗,0.5)}, z) = 𝟘
+    check genericPercentile({(∗,0.0)} 𝟙(F), z) 𝟙(N) = 𝟘
     check describe(z) (𝟙 × (𝟙(F) × 𝟙)) = 𝟘
     -- count 3, mean 4, sample std 3, min 1, max 7
     check describe(t) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(4.0,(3.0,(1,7)))))}
@@ -136,7 +158,7 @@ rel_program frameStatFloatT where
 #guard frameStatFloatT.failures.map toString == []
 
 -- the result at an `f32` object: the typed definition fixes `φ` at `H`, and prim `sum` has no `f32` row
-/-- error: line 146, col 32: `avg` at this call, where γ is N, φ is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+/-- error: line 168, col 32: `avg` at this call, where γ is N, φ is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
 #guard_msgs in
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program frameStatF32T where
@@ -153,6 +175,8 @@ rel_program frameStatBoundT where
     t : N ⟶ N ≜ {(0,7),(1,1),(2,4)}
     -- sorted 1 4 7: p = 0.75 gives h = 1.5, (4 + 7)/2 = 5.5; skewness 0 (symmetric); zScore (x − 4)/3
     check quantile({(∗,0.75)}, t) = {(∗,5.5)}
+    -- at h = 1.5, ⌊h⌋ = 1: 4; the bounded positions cast to `Z`
+    check genericPercentile({(∗,0.75)} 𝟙(F), t) = {(∗,4)}
     check summarize(F(t) skewness, t) = {(∗,0.0)}
     check zScore(t) = {(0,1.0),(1,-1.0),(2,0.0)}
     -- 40 0 0 0 0: μ = 8, m2 = (32² + 4·8²)/5 = 256, m3 = (32³ − 4·8³)/5 = 6144, 6144/16³ = 1.5
