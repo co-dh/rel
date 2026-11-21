@@ -1,6 +1,7 @@
 import Rel.Lang.GenSound
 import Rel.Run.Lang.Embed
 import Rel.Lang.AllPrograms
+import Rel.ObjOrder
 
 /-! `Tm.gen_sound` is not vacuous: each registered program re-read (`Expand.read`, at the homes and scope the
     registry recorded), the definitions whose code has no error table (`Tm.hasCode`) counted, and four of them, of 8
@@ -62,6 +63,58 @@ run_cmd do
   logInfo m!"{nonmono.length} with code fail Tm.monoOK (a fixed point's body not positive): {nonmono}"
   for x in ["Rel.Programs.chess.K", "Rel.Programs.chess.N", "Rel.Programs.blocks.r", "Rel.Programs.edit.ne"] do
     unless ok.contains x do throwError "GenSoundTest: {x} has an error table, fails Tm.monoOK, or is no definition"
+
+/-- Whether `Obj.key` reads `A`'s elements as values: every atom but `general`, which keys as `[]` (all tie). A
+    float's key merges NaNs and `±0`, as q's equality does. -/
+def keyed : Obj → Bool
+  | .atom t => t != .general
+  | .prod a b | .sum a b => keyed a && keyed b
+  | .arr b => keyed b
+
+/-- `R`'s rows as a set of values: each row `Obj.key` of the pair (the order code q's `asc` sorts by, independent
+    of row order and of the storage encoding), sorted, each once. -/
+def rowsOf {A B : Obj} (R : Tab A B) : List (List Nat) :=
+  ((R.toList.map fun (x, y) => (Obj.prod A B).key (x, y)).mergeSort fun a b => !decide (b < a)).eraseReps
+
+/-! `Expand.tmE` round-trips: of the definitions with code and a keyed ok table, the smallest holding a constant, the
+    smallest holding a fold and the smallest calling a generic definition (a call at objects), each rebuilt from its
+    `Expr` is its term (`Tm.diffAt`) and runs (`Tm.code`) to the rows of the constant `rel_program` generated
+    (`n.expanded`). -/
+run_cmd do
+  let reg := Expand.relRegistry.getState (← getEnv)
+  let mut cands : Array (Nat × String × Res × Gen.Gv) := #[]
+  for (n, _, _) in reg.progs do
+    let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
+    let (ds, _, _, _, _, _) ← match ← reread n with
+      | .ok r => pure r
+      | .error e => throwError "GenSoundTest: re-reading {n}: {e}"
+    for (x, v@⟨A, B, c⟩) in gs do
+      if let some r@⟨_, _, t⟩ := ds.lookup x then
+        if t.hasCode && keyed A && keyed B && c matches .ok _ then cands := cands.push (t.size, s!"{n}.{x}", r, v)
+  -- a constant whose payload `valsE` cannot rebuild (symbol, general, ALP) is counted, not sampled
+  let (built, refused) := (cands.qsort (·.1 < ·.1)).toList.partitionMap fun (k, nm, r, v) =>
+    match Expand.tmE r.2.2 with | .ok e => .inl (k, nm, r, v, e) | .error m => .inr s!"`{nm}`: {m}"
+  logInfo m!"Expand.tmE rebuilds {built.length} of {cands.size} definitions; refuses {refused.length}: {refused.take 3}"
+  let has (p : Lean.Expr → Bool) (e : Lean.Expr) := (e.find? p).isSome
+  let objs (i : Nat) (x : Lean.Expr) := x.getAppArgs[i]?.any fun o => !o.isAppOf ``List.nil
+  let wants : List (String × (Lean.Expr → Bool)) :=
+    [("a constant", has fun x => x.isAppOf ``Tm.val || x.isAppOf ``Tm.uni),
+     ("a fold", has fun x => x.isAppOf ``Tm.fold || x.isAppOf ``Tm.foldr || x.isAppOf ``Tm.foldI),
+     ("a call to a generic definition", has fun x =>
+       (x.isAppOfArity ``Tm.call 6 && objs 4 x) || (x.isAppOfArity ``Tm.callCv 8 && objs 5 x))]
+  for (what, p) in wants do
+    let some (k, nm, ⟨A, B, t⟩, ⟨A', B', c⟩, e) := built.find? (p ·.2.2.2.2)
+      | throwError "GenSoundTest: no definition with code and a keyed ok table holds {what}"
+    unless A == A' && B == B' do throwError "GenSoundTest: `{nm}` is re-read at other objects than it is generated at"
+    let t' ← liftTermElabM do unsafe Meta.evalExpr (Tm A B) (Expand.g ``Tm #[Expand.oE A, Expand.oE B]) e
+    if let some d := Expand.Tm.diffAt id toString [] ⟨A, B, t⟩ ⟨A, B, t'⟩ then
+      throwError "GenSoundTest: `{nm}` rebuilt from `Expand.tmE` is not its term: {d}"
+    match c, (Tm.code Code.empty t').runE {} with
+    | .ok T, .ok T' => unless rowsOf T == rowsOf T' do
+        throwError "GenSoundTest: `{nm}` rebuilt runs to other rows than its generated constant"
+    | _, .error m => throwError "GenSoundTest: `{nm}` rebuilt fails: {m}"
+    | .error m, _ => throwError "GenSoundTest: `{nm}`'s generated constant fails: {m}"
+    logInfo m!"{what}: `{nm}`, {k} nodes, round-trips"
 
 /-- Two modules' registrations of the keys `j` and `k`, as `a.*` and `b.*`: each `k` calls its own module's `j`. -/
 def twice (k' : Tm .long .long) : Expand.Registry :=

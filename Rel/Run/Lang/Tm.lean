@@ -94,6 +94,20 @@ inductive Tm : Obj → Obj → Type where
 /-- A built term with its objects. -/
 abbrev Res := (A : Obj) × (B : Obj) × Tm A B
 
+/-- The object variables `σ` that make the pattern `o` the object `A`, extending `σ`: none where they cannot. -/
+def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String × Obj))
+  | .var _ n, A, σ => match σ.lookup n with
+    | some B => if A = B then some σ else none
+    | none => some ((n, A) :: σ)
+  | .prod a b, .prod A B, σ | .sum a b, .sum A B, σ => a.unify A σ >>= b.unify B
+  | .list a, .arr A, σ => a.unify A σ
+  | _, _, _ => none
+
+/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
+def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
+  let σ ← r.sig.2.1.unify A [] >>= r.sig.2.2.unify B
+  r.vars.mapM fun v => List.lookup v σ
+
 instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var false 0⟩
 
 /-- The spine `t` is headed by a row whose table is made from its relations' whole tables (`Prim.whole`). -/

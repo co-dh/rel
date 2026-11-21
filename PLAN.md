@@ -1027,10 +1027,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 
 - ✖ 7.1 library 边界：不做。owner 2026-11-18 选 7.2 的 wrapper，`compile` 留在预编译的 `RelRun`，没有东西要移；
   这推翻 Q12（“`compile` 移到持有证明的 library”）。
-- ✅ 7.2 已落地为 `Rel/Lang/CompileSpec.lean` 末尾的 `compileS` wrapper。subtype = wrapper（owner 2026-11-18）：`CompileSpec` 里的 `compileS (η) (ρ) (hη : η.Sound ρ) (t)
-  (hw : t.gap = none) : {r : Rel A B // Gen.Sound r (t.den ρ)} := ⟨compile η t, (compile_sound t hw η ρ hη).1⟩`。
-  `Tm.gen` 与 `compile_sound` 仍是两个递归；不一致时 `compile_sound` 编译不过。随去下标的 `CompileSpec` 移植一起落地。
+- ✅ 7.2 `Rel/Lang/CompileSpec.lean` 与 `compileS` 已在 a8ca355 删除。compiler 是 `Tm.gen`
+  （`Rel/Run/Lang/TmGen.lean`），定理是 `Tm.gen_sound`（`Rel/Lang/GenSound.lean`）。`gen_sound` 要求 `t.LamLaws`，
+  它在 float 的 `Λ` 处为假，所以不是每个程序都能包成 subtype；按设计卡片“`rep` 与 `compile`”，保留普通 `Tm.gen`
+  加单独的定理。
 - ⬜ 7.3 `rel_program` 发出 `compile t`，从 `Expand.lean` 删除旧路径。
+  Q1 选 A（设计卡片“闭项只算一次”：在共享常量处只算一次）：闭部分是 η 旁边携带的 share 表；`rel_program` 在程序和
+  call body 上给它们编号；`.share k R` 读槽 k；`Sound` 增加：每个槽计算 ⟦R⟧。三部分：
+  - ⬜ 7.3a `Tm.gen` 及其运行时部分移到 `RelRun`（`Rel/Run/Lang/TmGen.lean`）；`Tm.code` 不缓存 `.prod`
+    （旧 `Expand.code` 的条件）；`Expand.tmE`：一个 `Tm` 作为构造它的 `Expr`，`GenSoundTest` 测 round-trip。
+  - ⬜ 7.3b share 表：闭部分编号（含 call body），每个编号一个常量，`.share k R` 读槽 k，`Sound` 与 `gen_sound` 随之改。
+  - ⬜ 7.3c `emit` 发出 `Tm.gen η ⌜t⌝`，删除旧路径（`node`、`code`、`spine`、`body`）。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
