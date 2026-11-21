@@ -4,7 +4,7 @@ import Rel.ObjOrder
 /-! **`kasc`'s order is `Obj.lt`** (PLAN S5): on any side whose columns `kasc` reads (`ascCol` answers on each), a row
 whose order codes (`seenKey`) are below another's holds an element below the other's in `Obj.lt`. An atom's key is
 its order code (`Obj.key_ordCode`, floats included, decision G); a pair, a sum and an array compare their codes
-column after column as `Obj.key` compares its parts. So `LamLaw`'s order hypothesis holds at every object
+column after column as `Obj.key` compares its parts. So the order law `Λ` reads holds at every object
 (`Vals.lamLaw`): `kasc` refuses a symbol and a general atom, the two types whose codes are not their order. -/
 
 namespace Rel
@@ -241,7 +241,7 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es 
       · exact absurd hT (by decide)
       · exact absurd hT (Obj.lt_irrefl _ _)
 
-/-- **`LamLaw` at every object**: on a side of pairs whose columns `kasc` reads, two rows of one key whose codes
+/-- **`Λ`'s order law**: on a side of pairs whose columns `kasc` reads, two rows of one key whose codes
 ascend strictly hold values ascending in `Obj.lt`. -/
 theorem Vals.lamLaw {A B : Obj} {m : USize} (x : Vals (.prod A B) m) {es : List (AscKey × Enc)}
     (hes : Vals.cols x = .ok es) {cs} (hc : es.mapM (ascCol m) = .ok cs) (i i' : Fin m.toNat)

@@ -19,7 +19,7 @@ namespace Tab
 
 /-- **`asc(P)`: the elements of `dom P` numbered in `Obj.lt` order**, `j ↦` the `j`-th smallest from 0: `canon` of the
 rows `(0, b)`, `b` a key of `P` (one `kasc`, `kseen`, `kgather`: sorted, no duplicates), keyed by their positions
-(`Arr.pos`, no kernel). One key column makes `canon`'s order the one `Λ` reads (`LamLaw .long B`). -/
+(`Arr.pos`, no kernel). One key column makes `canon`'s order the one `Λ` reads (`Vals.lamLaw`). -/
 def asc {B : Obj} (P : Tab B B) : Except String (Tab .long B) :=
   match B.ascBad with
   | some t => .error s!"asc: elements of type {repr t} have no order code (a symbol or a general atom): number a set \
