@@ -235,14 +235,19 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     [`cov : [γ×γ] ⟶ F ≜ F(⟨π₁ $ Z, π₂ $ Z⟩) ⟨F(times) avgZ, ⟨F(π₁) avgZ, F(π₂) avgZ⟩times⟩minus`；
     `scov : [γ×γ] ⟶ F ≜ ⟨cov, ⟨length 𝟙(Z) $ F, tail length 𝟙(Z) $ F⟩%⟩times`；
     `var : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) cov`；`svar : [γ] ⟶ F ≜ F(⟨𝟙, 𝟙⟩) scov`；`dev : [γ] ⟶ F ≜ var sqrt`；`sdev : [γ] ⟶ F ≜ svar sqrt`；
-    `corr : [γ×γ] ⟶ F ≜ ⟨cov, ⟨F(π₁) dev, F(π₂) dev⟩times⟩%`],
+    `corr : [γ×γ] ⟶ F ≜ ⟨cov, ⟨F(π₁) dev, F(π₂) dev⟩times⟩%`；
+    `skewness : [γ] ⟶ F ≜ ⟨⟨F(Λ(𝟙) avg ⟨⟨𝟙, 𝟙⟩times, 𝟙⟩times) ⟨⦇[{(∗,0)}, plus]⦈ʳ, length 𝟙(Z) $ F⟩%, ⟨avg, ⟨⟨var, ⟨var, var⟩plus⟩plus, ⟨avg, avg⟩times⟩plus⟩times⟩minus, ⟨var, dev⟩times⟩%`；
+    `zScore(c) ≜ ⟨⟨agg(c, avg), ⊤ m⟩minus, ⊤ s⟩% where m ≜ summarize(F(c) avg, c), s ≜ summarize(F(c) sdev, c)`],
     [q 的 `var` `svar` `dev` `sdev` `cov` `scov` `cor`（prelude 的 `cor` 是 coreflexive，故名 `corr`）；`scov` 乘 n/(n−1)，一行时 `0·∞` 为 NaN，无像；
-    只在整数列上；`skewness` `zScore` 未写：F4], "part"),
+    `skewness` 是总体的 g1 = m3/m2^1.5（DataHaskell 的 `skewness'`），m3 = E[x³] − 3μσ² − μ³，每个值经单元素数组的 `avg` 进入 `F`，
+    立方在 `F` 中，可接在 `aggregate` 里每组用；`zScore` 每行 (x − 均值)/样本标准差（DataHaskell 的 `variance'` 是 n − 1），一行时无像；
+    只在整数列上：F4], "part"),
   ([`median` `percentile` `genericPercentile` `interQuartileRange`],
-    [`middle(c) ≜ dom(⟨dom(c), r succ⟩ cor(≤)) dom(⟨r, dom(c) succ⟩ cor(≤)) sortBy(𝟙, c) where r ≜ dom(c) ⟨⊤ count(c), succ⟩minus`；
-    `med(c) ≜ summarize(F(middle(c)) avg, middle(c))`],
-    [q 的 `med`：排序后中间一行或两行（`i ≤ r(i)+1` 且 `r(i) ≤ i+1`，`r : i ↦ m−1−i`）的 `avg`；只在整数列上；
-    分位数的下标要浮点 → 整数：F4], "part"),
+    [`quantile(p, c) ≜ summarize(F(q) ⦇[{(∗,0)}, plus]⦈ʳ, q) where h ≜ dom(⟨{(∗,0.0)}, p⟩ cor(≤)) dom(⟨p, {(∗,1.0)}⟩ cor(≤)) ⟨p, ⟨count(c) $ F, {(∗,1.0)}⟩minus⟩times, d ≜ ⟨dom(c) $ F, ⊤ h⟩minus, w ≜ ⟨⊤ {(∗,1.0)}, ⟨d, ⟨⊤ {(∗,0.0)}, d⟩minus⟩max⟩minus, q ≜ dom(⟨⊤ {(∗,0.0)}, w⟩ cor(<)) ⟨w, agg(sortBy(𝟙, c), avg)⟩times`；
+    `median` 是 `quantile({(∗,0.5)}, c)`，`percentile` 是 `quantile` 在 k/100，`interQuartileRange` 是 `⟨quantile({(∗,0.75)}, c), quantile({(∗,0.25)}, c)⟩minus`],
+    [线性插值（DataHaskell 的 `quantiles'`、polars 的 `linear`）：排序后的位置 h = p·(n−1)，值 = lower + frac·(upper − lower)，
+    即 |i − h| < 1 的行以权 1 − |i − h| 求和，不取 h 的整数部分；q 的 `med` 是 p = 0.5，不另写；p 不在 [0, 1] 时无像；
+    是 `c` 上的关系，不是数组上的，故不接在 `aggregate` 里；只在整数列上；`genericPercentile`（任意 `Ord`，不插值）未写：F4], "part"),
   ([`countDistinct` `mode`], [`countDistinct(x) ≜ count(distinct(x))`；`mode(a, x) ≜ summarize(head, s) s where s ≜ idesc(valueCounts(a, x) π₂) valueCounts(a, x) π₁`],
     [`mode` 在并列中取先出现的（`idesc` 稳定）], "full"),
   ([`collect`], [`collect(a, c, x) ≜ aggregate(a, F(x c), x)`], [结果列的类型是 `Obj.arr V`], "full"),
@@ -253,7 +258,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     `valueProportions(a, x) ≜ valueCounts(a, x) ⟨π₁, ⟨π₂ $ F, ⊤ count(x) $ F⟩%⟩`], [比例是计数经 `$ F` 后的真商 `%`], "full"),
   ([`summarize` `describeColumns`],
     [`describe(c) ≜ ⟨count(c), ⟨summarize(F(c) avg, c), ⟨tot(summarize(F(c) sdev, c)), ⟨summarize(F(c) Λ(∋) head, c), summarize(F(c) Λ(∋) last, c)⟩⟩⟩⟩`],
-    [count、mean、std（样本的，一行时为 null）、min、max；读 `avg`，只在整数列上；四分位数：F4], "part"),
+    [count、mean、std（样本的，一行时为 null）、min、max；读 `avg`，只在整数列上：F4；四分位数是 `quantile` 在 0.25、0.75，不在 `describe` 的结果中], "part"),
   ([`nulls`], [`nulls(c, x) ≜ count(filterNothing(c, x))`], [], "full"),
   ([`innerJoin` `join` `joinOn`], [`innerJoin(a, b, x, y) ≜ joinOn(J(a, b, x, y), x, y)`], [], "full"),
   ([`leftJoin`], [`leftJoin(a, b, x, y) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩`],
@@ -340,11 +345,12 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
 - *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
   在 `f64` `f32` 上（`TestFloatArith`）；`f64` 列的和是 fold `⦇[{(∗,0)}, plus]⦈ʳ`，逐列、逐组都对（`TestFrameStat`）。
-  真商 `%` 与 `sqrt` 给出 `avg` `var` `cov` `corr` `med` `valueProportions` 与 `describe` 的均值、标准差。仍缺：
+  真商 `%` 与 `sqrt` 给出 `avg` `var` `cov` `corr` `quantile` `skewness` `zScore` `valueProportions` 与 `describe` 的
+  均值、标准差。仍缺：
   (1) prim `sum` 只在 `i64` 上（`TestFrameTyped.sumFloatT`），所以实数统计只在整数列上，`f64` 列在入口的 `$ Z` 被拒；
   `sums` 在 `i64` `f64` 上，`cumSum` `sumsBy` 在 `f64` 列上运行（`TestFrameStat`），`f32` 列被拒、先 `$` 到 `f64`；
   (2) `$` 与 `%` `sqrt` 只接受声明的对象，对象变量不行，所以库自己声明 `F : f64`、`Z : i64`、`D : date`，统计不在别的
-  float 对象上；(3) 浮点 → 整数（分位数的下标）、`pow`、`fround`，故无 `percentile`、`skewness`、`zScore`；
+  float 对象上；(3) 浮点 → 整数、`pow`、`fround`；分位数不需要前者：权 1 − |i − h| 选出 h 两侧的行，`skewness` 的立方是 `times`；
   (4) `aj` 的时间沿 `sums` 扫描：`date` `datetime` 的时间列运行（`TestFrameTyped.ajDateT` `sumsTimeT`），`f64` 的
   时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
