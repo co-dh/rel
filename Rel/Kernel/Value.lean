@@ -158,10 +158,6 @@ inductive QTable (X : Type)
 /-- A vector's payload, one constructor per layout. No constructor stores the element count: it is
 the header's `n` on `QValue.vector`, one source for it. -/
 inductive Enc (X : Type)
-  /-- Fixed-width types other than boolean: q's own layout, little-endian,
-  byte for byte the same as the IPC wire format and a splayed column file. Booleans are a `u1`
-  `foR` (`Coc.bools`), not this. -/
-  | bytes : ByteArray → Enc X
   /-- Symbols. `blob` is each symbol's UTF-8 bytes *followed by its NUL*, concatenated — byte for
   byte the IPC payload and the splayed `sym` file, so sending it is a memcpy. `offs` holds the n+1
   starts, `offs[0] = 0` and `offs[n] = blob.size`; symbol `i` is `blob[offs[i] .. offs[i+1] - 1]`,
@@ -216,39 +212,10 @@ inductive Enc (X : Type)
   whose total is not the column's total in any domain, and a float is declined before the
   question is asked.
 
-  The element count is the header's for the reason `bits`' is: `nblk` only bounds it to a multiple
-  of `blk`. Only fixed-width types other than `boolean` can be encoded (`Column.WF`). A
-  `float` column is legal here and lossless, but it is Frame of Reference over raw IEEE *bit
-  patterns*, which compresses nothing -- the encoding that does is ALP, and it is a separate
-  constructor. -/
+  The element count is the header's: `nblk` only bounds it to a multiple of `blk`. Every fixed-width
+  type is held here and nowhere else (one encoding, doc/rel-architecture.zh.typ §4): a literal, a
+  kernel's answer and a file's column alike, a `float` as its stored bits. -/
   | foR : (metadata : ByteArray) → (pack : ByteArray) → Enc X
-  /-- ALP: a float column as the decimal integers `d = round (x * 10 ^ e)`, one exponent `e` per
-  block, `d` carried by `foR`'s own `metadata` and `pack`, and everything that is not a decimal at
-  its block's `e` — q's `0n`, `0w` and `-0w` among them — set aside raw in `alp`. Decoding
-  **divides**: `x = d / 10 ^ e`. `rust/src/coc.rs`'s section on ALP states the four rules that make that
-  lossless and `tools/coc/note.md` §8 measures it; `Column.alpBits` is the denotation.
-
-  **A constructor of its own, not a sixth metadata section inside `foR`.** The exports in `rust/src/coc.rs`
-  already say so — `qlean_alp_encode_f64` answers three `ByteArray`s where `qlean_coc_encode`
-  answers two — and the reason they do is that the exponents, the exception offsets, the exception
-  positions and the raw exceptions are read by *no* integral kernel. Folding them into `foR`'s
-  metadata would put four sections and a header on every `long` column that will never look at them,
-  and would make `Column.nblk`'s `metadata.size / 33` — the one place the block count comes from —
-  depend on which type the tag carries.
-
-  `alp` is 16 header bytes, `nexc : UInt64` then a flag word whose bit 0 is set for a four-byte
-  element, followed by `exc_raw` at 16, `exc_off : UInt32[nblk+1]`, `exc_pos : UInt16[nexc]` and
-  `exp : Int8[nblk]`, each section starting on a multiple of eight. `Column.alpSects` is that ladder
-  and `rust/src/coc.rs`'s `alp_layout` is the same one written once for its reader and its writer.
-
-  An exception's slot in the pack holds the block minimum, i.e. residual zero, so it can never widen
-  the pack and what it wrongly contributes to a reduction is a known constant the kernels subtract
-  back out. That is what keeps every reduction on the shared integral kernels.
-
-  Only `real`, `float` and `datetime` reach here; `Column.alpEncodes` is that list, and
-  `Column.admit` is where a column takes this form and where a column the decimal hypothesis fails
-  on is left dense instead. -/
-  | alp : (metadata : ByteArray) → (pack : ByteArray) → (alp : ByteArray) → Enc X
   /-- Symbols interned: `dict` and `offs` are the *distinct* symbols in `syms` layout, and `ids` is
   the header's `n` dictionary indices **bit-packed at `idWidth`**, which is the residual packing `foR` uses
   and not a width of its own. `=`, `asc`, `distinct`, `group`, `in` and `?` then become integer work
@@ -294,7 +261,7 @@ abbrev Enc := Ext.Enc Empty
 
 -- `Rel.QValue.atom` … as aliases of the family's constructors, so rel's code names them as before
 export Ext (QValue.atom QValue.vector QValue.dict QValue.table QValue.keyed QValue.slices QValue.func QValue.err
-  QValue.enum QValue.ext QTable.mk Enc.bytes Enc.syms Enc.foR Enc.alp Enc.enum Enc.gen)
+  QValue.enum QValue.ext QTable.mk Enc.syms Enc.foR Enc.enum Enc.gen)
 
 /-- What a rel function that recurses through `gen`, `dict` or `table` must do at an `ext`; a field is added when
 another such function must. -/
@@ -702,14 +669,8 @@ def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   | .sym, .enum dict offs ids => ids.size = (n.toNat * idWidth offs + 7) / 8 ∧ SymsWF dict offs ∧
     (∀ i < n.toNat, idAt ids (idWidth offs) i < offs.size - 1) ∧ ((List.range (offs.size - 1)).map fun i => (symKey dict offs i).data.toList).Nodup ∧
     ∀ i < offs.size - 1, (symKey dict offs i).IsValidUTF8
-  | .u1, .bytes _ => False
-  | t, .bytes b => match t.width with
-    | some w => b.size = n.toNat * w
-    | none => False
   | t, .foR metadata pack =>
     t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, (foRBits metadata pack (blockStarts metadata) i).toNat < 2) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
-  | t, .alp metadata _ a =>
-    (t = .f32 ∨ t = .f64) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧ alpF32 a = (t.width == some 4)
   -- owner decision M (PLAN): the encodings are `foR` and `pos`; `pos` holds the positions `0..n-1`, so it is a long
   | .i64, .pos => True
   | _, _ => False
@@ -723,20 +684,11 @@ Every form reads an element of a `w`-byte type as its `8 * w` bits zero-extended
 (`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here, a boolean's to its one bit. -/
 def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   match t, e with
-  | .u1, .bytes _ => #[]
   | .u1, .foR metadata pack => let starts := blockStarts metadata
     (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2)
-  | .u1, .alp _ _ _ => #[]
-  | t, .bytes b => match t.width with
-    | some w => (Array.range n.toNat).map fun i => bitsAt b (i * w) w
-    | none => #[]
   | t, .foR metadata pack => match t.width with
     | some w => let starts := blockStarts metadata
       (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2 ^ (8 * w))
-    | none => #[]
-  | t, .alp metadata pack a => match t.width with
-    | some w => let starts := blockStarts metadata
-      (Array.range n.toNat).map fun i => UInt64.ofNat ((alpBits metadata pack a starts i).toNat % 2 ^ (8 * w))
     | none => #[]
   | .sym, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
   -- a model read by proofs and kernel specifications; compiled kernels read `pos` as their loop index
@@ -1087,18 +1039,11 @@ def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :
     | .sym, .enum dict offs ids =>
       let (lo, len) := symBytes offs (idAt ids (idWidth offs) i)
       some (.sym ((String.fromUTF8? (dict.extract lo (lo + len))).getD ""))
-    | t, .bytes b => match hw : t.width with
-      | some w => some (atomOfBits t (bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw))
-      | none => none
     | t, .foR metadata pack =>
       -- `#[]` is "no hoisted table": `foRBits` then sums the blocks before `i` rather than all of
       -- them, which `blockStarts_get` says is the same start `atoms` reads out of the table
       match hw : t.width with
       | some _ => some (atomOfBits t (foRBits metadata pack #[] i) (QAtomicType.ne_general_of_width hw))
-      | none => none
-    | t, .alp metadata pack a =>
-      match hw : t.width with
-      | some _ => some (atomOfBits t (alpBits metadata pack a #[] i) (QAtomicType.ne_general_of_width hw))
       | none => none
     | .i64, .pos => some (.i64 (Int64.ofNat i))
     | _, _ => none

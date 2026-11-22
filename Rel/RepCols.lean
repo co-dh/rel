@@ -71,7 +71,7 @@ theorem Arr.get_word {t : QAtomicType} {n : USize} (x : Arr t n) (ht : t.ordNum.
   all_goals
     cases hc : x.enc <;> rw [hc] at hw <;> simp only [Enc.WF, QAtomicType.width] at hw <;>
       simp only [Enc.get, raw, if_pos i.2, QAtomicType.width, Array.getElem?_map, Array.getElem?_range, i.2, if_true,
-        Option.map_some, Option.getD_some, foRBits_starts, alpBits_starts, Option.some.injEq] <;>
+        Option.map_some, Option.getD_some, foRBits_starts, Option.some.injEq] <;>
       first | rfl | exact (atomOfBits_mod rfl (by decide) _).symm | simp_all
 
 /-- **`shiftCol n s` is the words `k + s`**. -/

@@ -26,7 +26,7 @@ private def kread (r : Except String (Enc × Option UInt64)) : List UInt64 := ma
 
 /-- Rows 0 and 2 start a segment; the seed is 100 on every row, the folded column `1 2 3 4`. -/
 private def kseg : Enc := .foR (Coc.bools 4 (· % 2 == 0)).1 (Coc.bools 4 (· % 2 == 0)).2
-private def kcols : List Enc := [.bytes (Column.packIds 64 4 fun _ => 100), .bytes (Column.packIds 64 4 (· + 1))]
+private def kcols : List Enc := [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 100), Ext.Enc.ofBytes 8 (Column.packIds 64 4 (· + 1))]
 
 -- The kernel cannot reduce a `USize` (`System.Platform.numBits` is opaque), so `decide` runs `kscan`'s row fold on the
 -- rows `kseg` and `kcols` hold and `#guard` runs the Rust on the columns: `100+1, 101+2 | 100+3, 103+4`
@@ -45,22 +45,22 @@ example : kwords ((List.range 4).foldlM (kscanRow .add #[0, 1, 0, 1] #[100, 100,
 -- an `Op.eval` error reaches the caller: `0 div 0` at row 0, both columns zeros
 example : ((List.range 4).foldlM (kscanRow .div #[1, 0, 1, 0] #[0, 0, 0, 0] [#[0, 0, 0, 0]]) #[]).toBool = false := by
   decide
-#guard (kscan .div false .i64 .i64 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0), .bytes (Column.packIds 64 4 fun _ => 0)]).toBool = false
+#guard (kscan .div false .i64 .i64 4 kseg [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0), Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0)]).toBool = false
 
 /-- `0n`'s word: a `min` from a zero seed carries it, the word being negative as an `i64`. -/
-private def knan : Enc := .bytes (Column.packIds 64 4 fun i => [1, 0xfff8000000000000, 3, 2][i]!)
+private def knan : Enc := Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun i => [1, 0xfff8000000000000, 3, 2][i]!)
 -- a NaN word both ways: forward `0, 0 min 0n | 0, 0 min 2`, reversed rows `0 | 0, 0 min 0n | 0`
 example : kwords ((List.range 4).foldlM (kscanRow .min #[1, 0, 1, 0] #[0, 0, 0, 0] [#[1, 0xfff8000000000000, 3, 2]])
     #[]) = [0, 0xfff8000000000000, 0, 0] := by decide
 example : kwords ((List.range 4).foldlM (kscanRow .min #[0, 1, 0, 1] #[0, 0, 0, 0] [#[2, 3, 0xfff8000000000000, 1]])
     #[]) = [0, 0, 0xfff8000000000000, 0] := by decide
-#guard kread (kscan .min false .i64 .i64 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0), knan]) =
+#guard kread (kscan .min false .i64 .i64 4 kseg [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0), knan]) =
   [0, 0xfff8000000000000, 0, 0]
-#guard kread (kscan .min true .i64 .i64 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0), knan]) =
+#guard kread (kscan .min true .i64 .i64 4 kseg [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0), knan]) =
   [0, 0xfff8000000000000, 0, 0]
 -- the float path on the same words: a NaN is the least float (`fmin`), and `0.0` is the word 0
-#guard kread (kscan .fmin false .f64 .f64 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0),
-  .bytes (Column.packIds 64 4 fun i => [0x3ff0000000000000, 0xfff8000000000000, 0x4008000000000000, 0x4000000000000000][i]!)]) =
+#guard kread (kscan .fmin false .f64 .f64 4 kseg [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0),
+  Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun i => [0x3ff0000000000000, 0xfff8000000000000, 0x4008000000000000, 0x4000000000000000][i]!)]) =
   [0, 0xfff8000000000000, 0, 0]
 
 /-- A boolean answer read back at `boolean`, `[]` unless it is a `foR` (D.5: a boolean is a `foR` of `u1`). -/
@@ -82,7 +82,7 @@ example : kwords ((List.range 4).foldlM (kscanRow .gt #[0, 1, 0, 1] #[100, 100, 
 private def castRows (s t : QAtomicType) (ws : List UInt64) : List UInt64 :=
   kwords ((List.range ws.length).foldlM (kscanRow (.cast s t) (ws.map fun _ => 1).toArray ws.toArray [ws.toArray]) #[])
 private def castRun (s t : QAtomicType) (w : Nat) (ws : List UInt64) : List UInt64 :=
-  let c : Enc := .bytes (Column.packIds (8 * w) ws.length fun i => (ws.getD i 0).toNat)
+  let c : Enc := Ext.Enc.ofBytes w (Column.packIds (8 * w) ws.length fun i => (ws.getD i 0).toNat)
   match kscan (.cast s t) false s t (USize.ofNat ws.length) (some <| .foR (Coc.bools ws.length fun _ => true).1
       (Coc.bools ws.length fun _ => true).2) [c, c] with
   | .ok (e, _) => (e.raw .i64 (USize.ofNat ws.length)).toList
@@ -117,7 +117,7 @@ example : kwords ((List.range 4).foldlM (kscanRow .or #[0, 1, 0, 1] #[0, 1, 0, 1
 example : (Ext.Enc.raw (X := Empty) .i64 (USize.ofNat32 4 (by decide)) .pos).toList = [0, 1, 2, 3] := by decide +kernel
 example : kwords ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0, 1, 2, 3] [#[1, 2, 3, 4]]) #[]) =
     [1, 3, 5, 9] := by decide
-#guard kread (kscan .add false .i64 .i64 4 kseg [.pos, .bytes (Column.packIds 64 4 (· + 1))]) = [1, 3, 5, 9]
+#guard kread (kscan .add false .i64 .i64 4 kseg [.pos, Ext.Enc.ofBytes 8 (Column.packIds 64 4 (· + 1))]) = [1, 3, 5, 9]
 -- `pos` is `i64` only: as `seg` (read as booleans) and read at `i32` it holds no raw elements, the error
 example : (Ext.Enc.raw (X := Empty) .u1 (USize.ofNat32 4 (by decide)) .pos).size = 0 := by decide +kernel
 #guard (kscan .add false .i64 .i64 4 (some .pos) kcols).toBool = false
@@ -139,14 +139,14 @@ example : ((List.range 0).foldlM (kscanRow .add #[] #[] [#[]]) #[]).toOption.map
 example : ((List.range 4).foldlM (kscanRow .fneg #[1, 0, 1, 0] #[0, 0, 0, 0]
     [#[0x3ff0000000000000, 0x4000000000000000, 0x4008000000000000, 0x4010000000000000]]) #[]).toOption.map (·.back?) =
     some (some 0xc010000000000000) := by decide
-#guard (kscan .fneg false .f64 .f64 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0), .bytes (Column.packIds 64 4
+#guard (kscan .fneg false .f64 .f64 4 kseg [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0), Ext.Enc.ofBytes 8 (Column.packIds 64 4
   fun i => [0x3ff0000000000000, 0x4000000000000000, 0x4008000000000000, 0x4010000000000000][i]?.getD 0)]).toOption.map (·.2) =
   some (some 0xc010000000000000)
 -- at a narrower answer type: the 64-bit accumulator `2^32 + 107` read at `int` is `107`
 example : ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0x100000064, 0x100000064, 0x100000064, 0x100000064]
     [#[1, 2, 3, 4]]) #[]).toOption.map (·.back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ 32)) = some (some 107) := by
   decide
-#guard (kscan .add false .i64 .i32 4 kseg [.bytes (Column.packIds 64 4 fun _ => 0x100000064), .bytes (Column.packIds 64 4 (· + 1))]).toOption.map
+#guard (kscan .add false .i64 .i32 4 kseg [Ext.Enc.ofBytes 8 (Column.packIds 64 4 fun _ => 0x100000064), Ext.Enc.ofBytes 8 (Column.packIds 64 4 (· + 1))]).toOption.map
   (·.2) = some (some 107)
 
 -- A compare against a constant equal to a patched block's frame: `Tab.comp`'s `p < n` of 81 × 729, each of the `n`

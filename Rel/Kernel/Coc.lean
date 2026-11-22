@@ -448,121 +448,20 @@ end Rel.Column
 namespace Rel.Ext.Enc
 open Column
 
-/-- The payload as dense bytes, whatever constructor holds it, and `none` at a type whose payload is
-not fixed-width bytes at all. This is the form every kernel family outside this file is written over,
-and the one place an encoded column is decoded for them: `.bytes` already is it, and `.foR` and
-`.alp` go through their C decoders.
-
-Not `Column.dense`, which reads the payload back through `Column.atoms` and boxes every element on the
-way. That one stays where it is used, because `QLean/Kernel/Test.lean`'s round trip holds the C
-*encoder* against the *Lean* reader, and routing it through a C decoder would make it C against C. -/
+/-- The payload as dense bytes, decoded once from its blocks, and `none` at a type whose payload is not fixed-width:
+the form a kernel family outside this file that has not yet been rewritten over blocks reads. -/
 def bytesOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
   match e, t with
-  | .bytes b, _ => some b
   | .foR metadata pack, t => t.width.map fun w =>
     Rel.Kernel.Coc.decode w.toUSize metadata pack n
-  -- at every width `Enc.get` reads it at, not only the float ones: a width this declined left
-  -- `~` comparing elements while `Kernel.columnHash` keyed every element as 0
-  | .alp metadata pack a, t => t.width.map fun w =>
-    Rel.Kernel.Coc.alpDecode w.toUSize metadata pack a n
   -- a `pos` column is a long since `Enc.WF` admits it (decision M); this old layer reads it as its `n` positions
   | .pos, .i64 => some (((List.range n.toNat).map Nat.toUInt64).foldl (fun acc v => Column.pushBits acc v 8) .empty)
   | _, _ => none
 
-/-- The same atoms in the Frame-of-Reference form, or the column unchanged at a type `encodes`
-declines. The width comes from `QAtomicType.width` rather than from a second table, so there is one
-place that says how wide a `date` is.
-
-**This is what a *result* is handed back in, and it is deliberately not what a column that arrives
-is put into.** `Column.admit` is the second, and the split is measured rather than tidy: encoding a
-million longs is a min/max scan and a bit-pack, which `xl+xl` pays inside its own 12.7 µs, while the
-ALP exponent search is per element and up to nineteen trial round trips — 6.6 ms a million doubles,
-five hundred times what the add it would follow costs. So a float result stays dense here and a float
-column takes its encoded form where it enters, which is where it is read many times over. -/
-def encode (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
-  -- a general column has no width and so lands on `none`
-  match t.width with
-  | some w =>
-    if encodes t then
-      match bytesOf t n e with
-      | some b =>
-        let (metadata, pack) := Rel.Kernel.Coc.encode w.toUSize b
-        .foR metadata pack
-      | none => e
-    else e
-  | none => e
-
-/-- Whether the encoded form is smaller than the `n * w` dense bytes it replaces: the one size rule
-for both encodings, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink". -/
-def shrinks (w : Nat) (n : USize) (e : Ext.Enc X) : Bool :=
-  match e with
-  | .foR metadata pack => metadata.size + pack.size < n.toNat * w
-  | .alp metadata pack blob => metadata.size + pack.size + blob.size < n.toNat * w
-  | _ => true
-
-/-- The fewest elements a column is encoded at. Below it the encoding cannot pay for its pass: a
-short answer is read once, by the `each` that made it, and freed. Measured in `answer`'s doc. -/
-def encodeMin : USize := 64
-
-/-- The form a column a kernel **writes** is handed back in, as `admit` is the form one that enters
-takes: an encoded answer is kept exactly when it `shrinks` the dense bytes it replaces and is decoded
-otherwise, and a dense one is encoded under the same test. Every producer of an answer goes through
-this and none through `encode` or `alpOf`, which stay unconditional so that a test can still reach an
-encoded kernel on a three-element column.
-
-Per column and not per block: the constructors hold one form a column, and a block already takes the
-narrowest residual width its range allows, so all a 64-bit block costs over dense is its metadata —
-and only the whole column's total against `n * w` says whether the narrow blocks paid that back. -/
-def answer (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Ext.Enc X :=
-  match t with
-  -- a boolean has no dense bytes to decode to: its bitmap or `u1` `foR` is kept as it is
-  | .general | .u1 => e
-  | t => match t.width, e with
-    | some w, .bytes b => if n < encodeMin then e else
-    -- ALP first at a float, as on entry: a float answer encoded with `encode` alone stayed dense, so
-    -- `(1000+N?100000)%100` was dense where the same doubles read back from a file were ALP
-    -- `shrinks` of `alpOf`, else of `encode`, decided by the encoder after its first pass
-      if alpEncodes t then
-        match (if w == 4 then Rel.Kernel.Coc.alpEncodeBelow32 b else Rel.Kernel.Coc.alpEncodeBelow64 b) with
-        | some (m, p, a) => .alp m p a
-        | none => e
-      else if encodes t then
-        match Rel.Kernel.Coc.encodeBelow w.toUSize b with
-        | some (m, p) => .foR m p
-        | none => e
-      else e
-    | some w, _ =>
-      if shrinks w n e && encodeMin ≤ n then e
-      else match bytesOf t n e with | some b => .bytes b | none => e
-    | none, _ => e
-
-end Rel.Ext.Enc
-
-
-namespace Rel.Kernel.Coc
-
-end Rel.Kernel.Coc
-
-namespace Rel.Column
-
-end Rel.Column
-
-namespace Rel.Ext.Enc
-open Column
-
-/-- The column in ALP form, whatever constructor holds it, and `none` at a type ALP is not the
-encoding for. Unconditional: `admit` is where the decline lives, and `QLean/Eval/Test.lean` forces
-this so that the corpus reaches shapes — an empty column, a block that is all exceptions — a policy
-would keep it away from. -/
-def alpOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (Ext.Enc X) :=
-  if !alpEncodes t then none else
-  match t.width, bytesOf t n e with
-  | some w, some b =>
-    let (metadata, pack, a) :=
-      if w == 4 then Rel.Kernel.Coc.alpEncode32 b else Rel.Kernel.Coc.alpEncode64 b
-    some (.alp metadata pack a)
-  | _, _ => none
-
+/-- The `foR` column of the dense payload `b`, `w` bytes an element: where every producer of a fixed-width column
+(a literal, `ofAtoms`, `blank`, a test) enters the one encoding. -/
+def ofBytes (w : Nat) (b : ByteArray) : Ext.Enc X :=
+  .foR (Rel.Kernel.Coc.encode w.toUSize b).1 (Rel.Kernel.Coc.encode w.toUSize b).2
 end Rel.Ext.Enc
 
 namespace Rel.Kernel
@@ -607,7 +506,7 @@ def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
   | .general, _ => .gen (Array.replicate n.toNat default)
   | .u1, _ => .foR (Kernel.Coc.bools n.toNat fun _ => false).1 (Kernel.Coc.bools n.toNat fun _ => false).2
   | .sym, _ => .syms .empty (Array.replicate (n.toNat + 1) 0)
-  | _, some w => .bytes ⟨Array.replicate (n.toNat * w) 0⟩
+  | _, some w => ofBytes w ⟨Array.replicate (n.toNat * w) 0⟩
   | _, none => .gen #[]
 
 /-- The payload holding exactly these atoms at `t`, count `as.size`, or `none` if one of them is not
@@ -623,7 +522,7 @@ def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first
     | .sym => some (symsOf as)
     | t => match t.width with
       | some w =>
-        some (.bytes (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))
+        some (ofBytes w (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))
           fun acc a => pushBits acc (bitsOf a) w))
       | none => none
   else none
@@ -672,14 +571,9 @@ The second case rests on every producer — `group`, `flip`, `string`, `vs`, `cr
 so a producer over an encoded column must cut it where it is built, the way `Kernel.cutFoR` does. -/
 def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
     (offs : Array Nat) (i : Nat) : Ext.QValue X :=
-  match e with
-  -- `offs` are byte offsets, so the slice's count is its bytes over the element width; a type with
-  -- no width has no `bytes` layout (`Enc.WF`)
-  | .bytes blob =>
-    let c := (offs[i + 1]! - offs[i]!) / (t.width.getD 1)
-    Kernel.needSize c "sliceAt: count" (fun _ => .vector t 0 (Enc.blank t 0) none)
-      fun c => .vector t c (.bytes (blob.extract offs[i]! offs[i + 1]!)) none
-  | _ => .vector t n e attr
+  -- no form has a per-piece cut here, so the whole column answers (a producer cuts where it builds, `Kernel.cutFoR`)
+  let _ := offs; let _ := i
+  .vector t n e attr
 
 /-- Every element of a `slices` value, which is the million-value loop it exists to avoid. Only
 where something genuinely needs them all — `~` against a general list, the wire encoder — and the

@@ -50,23 +50,12 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     elemsW w src = (Enc.raw t n e).toList := by
   have hwU : w.toUSize.toNat = w := USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw (Nat.lt_of_lt_of_le (by decide) USize.le_size))
   cases e with
-  | bytes b =>
-    have hs : b.size = n.toNat * w := by cases t <;> simp_all [Enc.WF, QAtomicType.width]
-    simp only [Enc.bytesOf, Option.some.injEq] at h
-    subst h
-    rw [raw_bytes t w ht hb, Array.toList_map, Array.toList_range, elemsW, hs, Nat.mul_div_cancel _ hw0]
   | foR M P =>
     simp only [Enc.bytesOf, ht, Option.map_some, Option.some.injEq] at h
     subst h
     have e := elemsW_decode w.toUSize (by omega) (by omega) M P n
     rw [hwU] at e
     rw [e, raw_foR t w ht hb, Array.toList_map, Array.toList_range, Coc.elems, List.map_map]; rfl
-  | alp M P a =>
-    simp only [Enc.bytesOf, ht, Option.map_some, Option.some.injEq] at h
-    subst h
-    have e := elemsW_alpDecode w.toUSize (by omega) (by omega) M P a n
-    rw [hwU] at e
-    rw [e, raw_alp t w ht hb, Array.toList_map, Array.toList_range, Coc.alpElems, List.map_map]; rfl
   | pos =>
     cases t <;> simp only [Enc.WF] at hxw
     simp only [QAtomicType.width, Option.some.injEq] at ht; subst ht
