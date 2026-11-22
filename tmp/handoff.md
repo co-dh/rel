@@ -21,11 +21,14 @@ Everything through `Rel.Lang.GenKBits` (log 85s2f-2 → clean in 85s2f-3).
 - `elemsTest_sound` takes `(wR : R.Wf)` last; its `hf` gets `P.WF → Vals.WF X →` after `f P X = .ok t`;
   `filter_sound`/`takewhile_sound` take `(wR : R.Wf)` after `hR` and pass `fun h _ _ xs ys => …`.
 
-## Open (log 85s2f-4, GenKFold errors by line)
-- 292/294 `arith_sound`: `Tab.arith_holds hu ht` needs `D.WF` (`Tab.idU_wf hD wX`-style; `wX` is in the
-  `ofVals_sound` binder `fun _ _ _ _ hK _ h …` — name it).
-- 303 `pairStep_holds`: `Tab.pair_holds hp` needs `wL wM` before `a`.
-- 403–424 `foldI_sound`: drop the removed args, pass `out.WF`.
+## Open (log 85s2f-5: 77 GenKFold errors, by line)
+The rule every remaining error follows: a binary `Tab.*_holds h` takes its two operands' `WF` right after `h`
+(`Tab.comp_holds hc wl wr k c`, `Tab.pair_holds hp wl wr a q`, `inter/union/diff_holds`), the WF from the op's `_wf`.
+- Fixed in 85s2f-5: `arith_sound`, `pairStep_holds`, `foldI_sound`'s step and `z.WF`.
+- 424 `foldI_sound`: `Tab.pair_holds hP k q` needs `wi` and the `comp_wf hc1 …` WF. 426: `Tab.comp_holds h p v`
+  needs `out.WF` and `o2.WF`; `out` is the `foldRounds` result (`hout`), so its WF is `Tab.foldRounds_wf`
+  (RepWFOps) with the same step proof as the `hstepw` lambda at 396 — bind that proof once (or let
+  `foldRounds_holds` also conclude `res.WF`, which it can from its own `hpeelw`/`hstepw`) instead of copying it.
 - 487/497, 516–534 `Tab.loop_holds`: the `foldRoundsL_holds` call (510) drops removed args, passes `out.WF`;
   `peelL_holds`/`peelR_holds` need `hrest`.
 - 576/661/897/1053 `filter_holds`/`takewhile_holds`/`mapFold_holds`/`flatten_holds`: they instantiated

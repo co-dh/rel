@@ -283,13 +283,13 @@ theorem arith_sound {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)}
     {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, K.WF → U.Reps K TU) :
     ∀ K, K.WF → (GenK.arith t k U).Reps K (arithDen t k TU) := by
   unfold GenK.arith after
-  exact ofVals_sound fun _ _ _ _ hK _ h x w hx _ _ => by
+  exact ofVals_sound fun _ _ _ _ hK wX h x w hx _ _ => by
     obtain ⟨D, hD, ht⟩ := bind_ok h
     have hu : ∀ n (X : Vals (.atom t) n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
         (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
       (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none, none⟩ ⟨trivial, trivial, trivial⟩) t h a v ((side_some rfl a).2 ha) rfl
         trivial
-    refine (Tab.arith_holds hu ht x w).trans
+    refine (Tab.arith_holds hu ht (Tab.idU_wf hD wX) x w).trans
       ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
     obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
 
@@ -300,7 +300,7 @@ theorem pairStep_holds {K C D B : Obj} {S : Rel (.prod C D) B} {TS : Den (.prod 
     (hT : (compT (L.pair M) S).runE {} = .ok T) (k : K.El) (b : B.El) :
     T.Holds k b ↔ ∃ c d, L.Holds k c ∧ M.Holds k d ∧ TS (c, d) b :=
   ((reps_iff _ _ _).1 (compT_sound (r' := L.pair M) (K := {}) (X := rpair L.Holds M.Holds)
-      (fun _ hp a q _ _ _ => Tab.pair_holds hp a q) hS wS Known.wf_empty (fun _ hp => Tab.pair_wf hp wL wM))
+      (fun _ hp a q _ _ _ => Tab.pair_holds hp wL wM a q) hS wS Known.wf_empty (fun _ hp => Tab.pair_wf hp wL wM))
       T hT k b rfl rfl trivial).trans
     ⟨fun ⟨q, ⟨h1, h2⟩, h3⟩ => ⟨q.1, q.2, h1, h2, h3⟩, fun ⟨c, d, h1, h2, h3⟩ => ⟨(c, d), ⟨h1, h2⟩, h3⟩⟩
 
@@ -405,17 +405,20 @@ theorem foldI_sound {I E V : Obj} {e : Rel I (.prod V V)} {S : Rel (.prod (.prod
         obtain ⟨o, ho, hT⟩ := bind_ok hT
         obtain ⟨c, hc, hT⟩ := bind_ok hT
         obtain ⟨pr, hpr, hT⟩ := bind_ok hT
+        have ws := pairStep_wf wS wP wel hs
+        have wo := Tab.outr_wf ho ws.2
+        have wc := Tab.comp_wf hc ws wo
         have hsq := pairStep_holds hS wS wP wel hs k
-        rw [Tab.inter_holds hT, Tab.pair_holds hpr, hsq]
+        rw [Tab.inter_holds hT ws (Tab.pair_wf hpr wi wc), Tab.pair_holds hpr wi wc, hsq]
         constructor
         · rintro ⟨⟨a, x, h1, h2, h3⟩, hi1, -⟩; exact ⟨a, x, h1, h2, h3, hi1⟩
         · rintro ⟨a, x, h1, h2, h3, hi1⟩
           have hs' : s.Holds k q' := (hsq q').2 ⟨a, x, h1, h2, h3⟩
           obtain ⟨j, -, hj⟩ := _root_.id hs'
           exact ⟨⟨a, x, h1, h2, h3⟩, hi1,
-            (Tab.comp_holds hc k q'.2).2 ⟨q', hs', (Tab.outr_holds ho q' q'.2).2 ⟨⟨j, hj⟩, rfl⟩⟩⟩)
+            (Tab.comp_holds hc ws wo k q'.2).2 ⟨q', hs', (Tab.outr_holds ho q' q'.2).2 ⟨⟨j, hj⟩, rfl⟩⟩⟩)
       _ _ _ _ _ hout (Tab.outr_wf hrest wX)
-      (Tab.pair_wf hP wi (Tab.comp_wf hc1 wes (Tab.outr_wf ho1 wes.2)))
+      (Tab.pair_wf hP wi (Tab.comp_wf hc1 wes (Tab.outr_wf ho1 wes.2))) (Tab.zero_wf hz)
       (fun k a b ha hb => ((Tab.outr_holds hrest k a).1 ha).2.trans ((Tab.outr_holds hrest k b).1 hb).2.symm)
       (fun k q hq => ⟨k.2, (Tab.outr_holds hrest k k.2).2
         ⟨((hip k q.1).1 ((Tab.pair_holds hP k q).1 hq).1).1, rfl⟩, trivial⟩) p
