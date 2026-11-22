@@ -420,7 +420,7 @@ theorem cellSpan_start_le {n m : USize} {lo up s e : Arr .i64 n} (h : cellSpan m
   rw [Except.bind_eq_ok'] at h; obtain ⟨e', he, h⟩ := h
   cases h
   have es : (Except.ok (if ((raw .i64 n lo.enc)[i.1]?.getD 0).toInt64 < (0 : UInt64).toInt64 then (0 : UInt64)
-      else (raw .i64 n lo.enc)[i.1]?.getD 0) : Except String UInt64) = .ok ((raw .i64 n s'.enc)[i.1]?.getD 0) := by
+      else (raw .i64 n lo.enc)[i.1]?.getD 0) : Except String UInt64) = .ok ((raw .i64 n s.enc)[i.1]?.getD 0) := by
     have := (colMap_raw (colArr_ok hs)).2.2.2 i.1 i.2
     rwa [colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at this
   have hl := hc i
@@ -563,7 +563,7 @@ theorem Vals.cells_expand_wf {B : Obj} {n T : USize} {w G u : Enc} {pay : Vals B
     (hc : ∀ i < n.toNat, ((raw .i64 n w)[i]?.getD 0).toNat ≤ c) (hnc : n.toNat * c < 2 ^ 63) (hn : n.toNat < 2 ^ 63)
     (hp : Vals.WF pay) : Vals.WF Y := by
   have hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = ((raw .i64 n w)[i]?.getD 0).toNat.toUInt64 :=
-    fun _ _ => (UInt64.ofNat_toNat _).symm
+    fun _ _ => UInt64.ofNat_toNat.symm
   have hs := sum_range_le_mul hc
   have hT := (expand_spec hex _ hw (by omega) hn).1
   exact Vals.cells_wf hY _ hw (by omega) (by omega) hp
