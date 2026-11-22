@@ -429,6 +429,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   RepSeen、RepSetOps、RepTabComp。⬜ 剩：`RepTabDiv`（`kgather_word`/`scatter_last_at` 的源列无 null 证明，见
   /data/tmp/rq17f8-handoff.md），其后 GenKBits、GenKFix、RepBits、RepSums、RepWhere、RepStruct、RepTabArith、DfnLaw、
   GenKFold、RepAsc、RepWFOps、GenKSpec、GenKHylo 未建；`colMap_plain`/`colPrefix_plain` 折入 `_closed` 未做。
+  ✓ 其后各模块已绿（rq17f9–f12，6f58d7f）：RepTabDiv、GenKSpec（`BitsWf` 加 `hasNul o = false`）、GenKBits
+  （`kbitrows_plain`，gather 链取无 null 的 index）、GenKFix、GenKFold、RepSums、RepWhere、RepStruct、RepTabArith、
+  DfnLaw、RepAsc、RepWFOps、GenKHylo。`Arr.lexLe_i64` 不需要改述：决定 K 下 `Arr t n` 的类型自带
+  `hasNul = false`（`Arr.plain`，rq17f6），null 只在 `t+1`，所以 `nulCodes` 在 `Arr` 列上就是码本身。新引理：
+  `expand_plain`（RepTabComp，EXPAND 的偏移列无 null）、`Tab.sumTail_plain`（RepSums，bad 列无 null）。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
