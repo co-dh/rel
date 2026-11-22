@@ -1059,6 +1059,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
   分支 `gates3`。另：`CLAUDE.md` 的 14 条规则里 9 条没有 gate。
 
+### P8 存储简化（存储审计，2026-11-21；owner 2026-11-22 列入）
+
+- 🔄 8.1 `Tab` 的规范序由产生它的一步给出，已规范的表跳过 `canon`（分支 `canonfld`）。
+- ⬜ 8.2 稠密 sum。例：`long+sym` 三行 `inl 7, inr x, inl 9`，现在存 `tag=[0,1,0] idx=[0,0,1] l=[7,9] r=[x]`，
+  改为 `tag=[0,1,0] a=[7,0,9] b=[0,x,0]`：每边一列 n 行，不属于该边的位置填 0（全 0 的块宽度 0，只占块头）。
+  去掉 `idx`、`Vals.cols` 里把两边 gather 回 n 行、concat 时平移 `idx`、`Obj.dflt`；`inl°` 是按 tag 选行再 gather，
+  不排序（今天 5 次排序）。`(A+B)+C` 按层递归：每层一列 `u1` tag，k 元 sum 有 k−1 列 tag，不另定三元存法。
+  涉及 `Vals`（Core.lean:652-693）、`Vals.gather`、`Vals.cols`、`Vals.concat`、`injCols`/`inl`/`inr`/`inlConv`/
+  `inrConv`（Struct.lean:57-125）及 `RepStruct` 的 `*_holds`、CSV/own 的 sum 列、Rust 侧 sum 的读写。
+  与 rq17 的关系：`atom+1` 走块内 null 码（决定 K，`nullband`），不经 8.2；其余 sum 用 8.2。
+  在 `nullband` 的 unit 对象决定（M/N）之后做，因为两者都改 `Vals` 的 sum 分支。
+
 ## 3. 各 phase 的并行与串行
 
 | Phase | 步数 | 并行的 worktree（不共用 section）      | 串行                                        |
