@@ -132,12 +132,6 @@ def lastB (n fold : Nat) (d : USize) : Bld Nat := do
     pure #[← call1 (kernel% USize.add) #[← call1 (kernel% UInt64.toUSize) #[← projB fold 1 0 .u64], ← lit (.size d)]]))
     0 "if"
 
-/-- `colPrefix op`: the running fold of the `n` words `a` from `0` (one segment), and its last word (`lastB`). -/
-def prefixB (op : Kernel.Op) (n a : Nat) : Bld (Nat × Nat) := do
-  let z ← wordsB n 0
-  let r ← scanB op .i64 n (some z) [z, a]
-  pure (← nth r 0 "kscan", ← lastB n (← nth r 1 "kscan") 0)
-
 /-- The registers of the columns `cs`, a loop's state: an atom's `Enc`; an array's `m`, `lo`, `hi`, its payload's. -/
 partial def regsOf (cs : Cols) : Bld (List Nat) := return (← cs.mapM fun
   | .atom _ _ e => pure [e]
@@ -232,12 +226,35 @@ def funV (n : Nat) (X : Cols) (Ts : List TabB) (b : Nat → Cols → List TabB �
     | T :: Ts => b T.n T.key Ts
     | [] => throw "a function on values: no table"
 
-/-- `funV` of a recipe on a count `n` and the `n`-row words `ws`, answering a count and words. -/
+/-- `b` on the columns `xs` (each with its row count) as a plan function (`funT`), answering one column and its count:
+    a table recipe calls it once per column, so the recipe's body no longer inlines each column's kernels, and each
+    column kind (atom type, array of a payload shape) builds one function shared by every table holding it. -/
+def funC (xs : List (Nat × Col)) (b : List (Nat × Col) → Bld (Nat × Col)) : Bld Col := do
+  let one (T : TabB) : Bld (Nat × Col) := match T.key with
+    | [c] => pure (T.n, c)
+    | _ => throw "a column function: not one column"
+  let T ← funT (xs.map fun (n, c) => ⟨n, [c], []⟩) fun Ts => do
+    let (m, c) ← b (← Ts.mapM one); pure ⟨m, [c], []⟩
+  pure (← one T).2
+
+/-- `funV` of a recipe on a count `n` and the `n`-row words `ws`, answering a size (a count, or a fold's last word)
+    and words. -/
 def funW (n : Nat) (ws : List Nat) (b : Nat → List Nat → Bld (Nat × List Nat)) : Bld (Nat × List Nat) := do
   let words (cs : Cols) : Bld (List Nat) := cs.mapM fun | .atom _ _ e => pure e | _ => throw "words: not an atom column"
   let T ← funV n (ws.map (.atom "" .i64 ·)) [] fun n cs _ => do
     let (m, xs) ← b n (← words cs); pure ⟨m, xs.map (.atom "" .i64 ·), []⟩
   pure (T.n, ← words T.key)
+
+/-- `colPrefix op`: the running fold of the `n` words `a` from `0` (one segment), and its last word (`lastB`); one
+    plan function (`funW`). -/
+def prefixB (op : Kernel.Op) (n a : Nat) : Bld (Nat × Nat) := do
+  let (l, [P]) ← funW n [a] fun n ws => do
+      let [a] := ws | throw "prefix: not one column"
+      let z ← wordsB n 0
+      let r ← scanB op .i64 n (some z) [z, a]
+      pure (← lastB n (← nth r 1 "kscan") 0, [← nth r 0 "kscan"])
+    | throw "prefix: not one column"
+  pure (P, l)
 
 /-- The `kasc` key of the `n`-row column `c` (`Vals.cols`), an `AscKey` register and its column: an atom column its
     words at its atom; an `arr` side one `cells` key over its `lo`, `hi` and its payload's keys, its column the
@@ -271,10 +288,10 @@ where ascSeenOnB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
 
 /-- The `n`-row columns `cs` at the `m` rows `ix` (`Vals.gather`): an array's `lo` and `hi` gathered, its payload
     kept. -/
-def gatherCols (m ix n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
-  | .atom p t e => return .atom p t (← gatherB m ix n e)
-  | .arr p c lo hi f => return .arr p c (← gatherB m ix n lo) (← gatherB m ix n hi) f
-  | .sum .. => sumB "gather"
+def gatherCols (m ix n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun c => funC [(n, c)] fun
+  | [(n, .atom p t e)] => return (m, .atom p t (← gatherB m ix n e))
+  | [(n, .arr p c lo hi f)] => return (m, .arr p c (← gatherB m ix n lo) (← gatherB m ix n hi) f)
+  | _ => sumB "gather"
 
 /-- **`Vals.nub`**: the `n` rows of `cs` without duplicates, ascending: each run's first input row (`kgather` of
     `p` at `f`), every column gathered there. One plan function per shape of `cs` (`funT`). -/
@@ -313,9 +330,12 @@ def clampShiftB (n x c s : Nat) : Bld Nat := do
     atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` each clamped
     into its own payload, the second's shifted past the first (`clampShiftB`). -/
 partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
-  (xs.zip ys).mapM fun
-    | (.atom p t x, .atom _ _ y) => return .atom p t (← catColB t n n₁ n₂ off x y)
-    | (.arr p m₁ lo₁ hi₁ f₁, .arr _ m₂ lo₂ hi₂ f₂) => do
+  (xs.zip ys).mapM fun (x, y) => funC [(n₁, x), (n₂, y)] fun
+    | [(n₁, x), (n₂, y)] => return (n, ← concatColB n n₁ n₂ off x y)
+    | _ => throw "concat: not two columns"
+where concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
+    | .atom p t x, .atom _ _ y => return .atom p t (← catColB t n n₁ n₂ off x y)
+    | .arr p m₁ lo₁ hi₁ f₁, .arr _ m₂ lo₂ hi₂ f₂ => do
       let (m, o) ← catB m₁ m₂
       guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) "concat: payload rows m₁ + m₂ past an Int64 bound"
         #[m₁, m₂]
@@ -323,8 +343,8 @@ partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
       let b (x₁ x₂ : Nat) : Bld Nat := do
         catColB .i64 n n₁ n₂ off (← clampShiftB n₁ x₁ m₁ z) (← clampShiftB n₂ x₂ m₂ m₁)
       return .arr p m (← b lo₁ lo₂) (← b hi₁ hi₂) (← concatB m m₁ m₂ o f₁ f₂)
-    | (.sum .., _) | (_, .sum ..) => sumB "∪"
-    | _ => throw "concat: two sides of one object with columns of different shapes"
+    | .sum .., _ | _, .sum .. => sumB "∪"
+    | _, _ => throw "concat: two sides of one object with columns of different shapes"
 
 /-- **`R ∪ S`** (`Tab.union`): `Tab.canon` of the concatenation. -/
 def unionB (R S : TabB) : Bld TabB := funT [R, S] fun
@@ -376,18 +396,27 @@ def expandB (K w : Nat) : Bld (Nat × Nat × Nat) := do
 
 /-- **`cellSpan`**: the `n` cells `lo`, `hi` clamped to a payload of `m` rows, `[s, e)`. -/
 def spanB (n m lo hi : Nat) : Bld (Nat × Nat) := do
-  let s ← mapB .max n lo (← wordsB n 0)
-  pure (s, ← mapB .max n (← mapB .min n hi (← constB n (← u64B m))) s)
+  let (_, [s, e]) ← funW n [lo, hi] fun n ws => do
+      let [lo, hi] := ws | throw "cellSpan: not two columns"
+      let s ← mapB .max n lo (← wordsB n 0)
+      pure (n, [s, ← mapB .max n (← mapB .min n hi (← constB n (← u64B m))) s])
+    | throw "cellSpan: not two columns"
+  pure (s, e)
 
 /-- **`Tab.compGroups`**: the `N` rows of `R.val` then `S.key`, their permutation `p`, groups `g`, first rows `f`, the
     count `K` of groups, per group the counts `cR`, `cS` and the width `w = cR · cS`. -/
 def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) := do
   let (N, off) ← catB R.n S.n
   let (K, g, f, p) ← ascSeenB N (← concatB N R.n S.n off R.val S.key)
-  let nR ← constB N (← call1 (kernel% USize.toUInt64) #[R.n])
-  let cR ← scatterB .add N g (← mapB .lt N p nR) K
-  let cS ← mapB .sub K (← scatterB .add N g (← wordsB N 1) K) cR
-  pure (N, p, g, f, K, cR, cS, ← mapB .mul K cR cS)
+  -- the counts on words alone, one plan function (`funW`) whatever the tables' shapes
+  let (_, [cR, cS, w]) ← funW N [g, p] fun N ws => do
+      let [g, p] := ws | throw "compGroups: not two columns"
+      let nR ← constB N (← call1 (kernel% USize.toUInt64) #[R.n])
+      let cR ← scatterB .add N g (← mapB .lt N p nR) K
+      let cS ← mapB .sub K (← scatterB .add N g (← wordsB N 1) K) cR
+      pure (K, [cR, cS, ← mapB .mul K cR cS])
+    | throw "compGroups: not three columns"
+  pure (N, p, g, f, K, cR, cS, w)
 
 /-- **`R ≫ S`** (`Tab.compOne`): the groups of equal middle values of `R.val` then `S.key` (`kasc` is stable, so a
     group's `R` rows come first), per group the counts `cR`, `cS` and the width `w = cR · cS`, EXPAND of `w` (each
@@ -395,12 +424,16 @@ def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat ×
     sides gathered there, then `canonT`. `Tab.comp`'s blocks past `blockRows` and its bit matrices change no answer. -/
 def compFromB (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) : Bld TabB := do
   let (N, p, _, f, K, cR, cS, w) := x
-  let (T, G, u) ← expandB K w
-  let ft ← gatherB T G K f
-  let ct ← gatherB T G K cS
-  let iR ← gatherB T (← mapB .add T ft (← mapB .div T u ct)) N p
-  let qS ← mapB .add T (← mapB .add T ft (← gatherB T G K cR)) (← mapB .mod T u ct)
-  let iS ← mapB .sub T (← gatherB T qS N p) (← constB T (← call1 (kernel% USize.toUInt64) #[R.n]))
+  -- the rows of each side on words alone, one plan function (`funW`) whatever the tables' shapes
+  let (T, [iR, iS]) ← funW K [f, cR, cS, w] fun K ws => do
+      let [f, cR, cS, w] := ws | throw "compOne: not four columns"
+      let (T, G, u) ← expandB K w
+      let ft ← gatherB T G K f
+      let ct ← gatherB T G K cS
+      let iR ← gatherB T (← mapB .add T ft (← mapB .div T u ct)) N p
+      let qS ← mapB .add T (← mapB .add T ft (← gatherB T G K cR)) (← mapB .mod T u ct)
+      pure (T, [iR, ← mapB .sub T (← gatherB T qS N p) (← constB T (← call1 (kernel% USize.toUInt64) #[R.n]))])
+    | throw "compOne: not two columns"
   canonT ⟨T, ← gatherCols T iR R.n R.key, ← gatherCols T iS S.n S.val⟩
 
 /-- `compFromB` on `groupsB R S`. -/
@@ -903,14 +936,16 @@ def rdivB (R S UA UB : TabB) : Bld TabB := do
     key (`ka` groups), each the `∨` of its rows (`kbitrows false`), read back by `ofBitsB`: each side's value is the
     first row of its number, so equal values written apart (two empty cells) read back as one. Its `2^63` check is
     left out: its one caller `compSelB` runs it where `bitsWinB` holds, so every count is below `2^27`. -/
-def compBitsB (R S : TabB) : Bld TabB := do
-  let (kb, bR, bS, _) ← code2B R.n S.n R.val S.key
-  let (ka, aR, ra) ← codeB R.n R.key
-  let (kc, cS, rc) ← codeB S.n S.val
-  let (ends, idx) ← csrB R.n ka aR bR
-  let m ← bitMatrixB S.n kb kc bS cS
-  let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit false), kc, kb, R.n, ka, ends, idx, m]) 0 "kbitrows"
-  ofBitsB ka kc o R.n R.key ra S.n S.val rc
+def compBitsB (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do
+    let (kb, bR, bS, _) ← code2B R.n S.n R.val S.key
+    let (ka, aR, ra) ← codeB R.n R.key
+    let (kc, cS, rc) ← codeB S.n S.val
+    let (ends, idx) ← csrB R.n ka aR bR
+    let m ← bitMatrixB S.n kb kc bS cS
+    let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit false), kc, kb, R.n, ka, ends, idx, m]) 0 "kbitrows"
+    ofBitsB ka kc o R.n R.key ra S.n S.val rc
+  | _ => throw "compBits: not two tables"
 
 /-- **`Tab.compSel bits`** (`GenK.compR`'s `compSelM`, read back): `T` the expansion of `groupsB`, `K` its groups; the
     expansion (`compFromB`) where `rowBits · T ≤ K + 1` (tested as `(K + 1) / rowBits < T`, no product), else
