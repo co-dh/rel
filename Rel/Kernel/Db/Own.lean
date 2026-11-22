@@ -14,10 +14,6 @@ parts and is refused, naming the form. Positions are `none`: no file, `n` is the
 def ownParts : Ext.Enc X → Except String (Option (UInt8 × Array ByteArray))
   | .foR metadata pack => pure (some (2, #[metadata, pack]))
   | .pos => pure none
-  | .syms _ _ => throw "a `syms` column, which the own format does not hold: a symbol column is stored as `foR` ids \
-      into a sorted dictionary (doc/rel-architecture.zh.typ §4), and no writer builds that yet"
-  | .enum _ _ _ => throw "an `enum` column, which the own format does not hold: a symbol column is stored as `foR` ids \
-      into a sorted dictionary (doc/rel-architecture.zh.typ §4), and no writer builds that yet"
   | .gen _ => throw "a general list, which qlean's own column format does not hold"
 
 /-- The constructor `ownParts` took apart, from the kind and the parts `ownMap` answers: each `ByteArray` is taken as

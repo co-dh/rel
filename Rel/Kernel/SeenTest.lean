@@ -77,15 +77,15 @@ example : view (u 8) (u 3) (kseen (u 8) [col [1, 1, 1, 1, 1, 1, 1, 2 ^ 40], col 
   decide +kernel
 #guard view (u 8) (u 3) (kseen (u 8) [col [1, 1, 1, 1, 1, 1, 1, 2 ^ 40], col [0, 0, 0, 0, 0, 0, 1, 1]]) == patched
 
--- a column that is not `foR`, a type with no order, and a `foR` whose blocks do not cover `n` are the error, named by
+-- a column that is not `foR`, and a `foR` whose blocks do not cover `n` are the error, named by
 -- their place in `es`
 def dense : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[1]: asc: constructor 3 is not foR"
 example : view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .gen #[])]) = dense := by
   decide +kernel
 #guard view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .gen #[])]) == dense
-def sym : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[0]: asc: type 9 has no fixed-width order"
-example : view (u 0) (u 0) (kseen (u 2) [(.atom .sym, wordsFoR #[0, 1])]) = sym := by decide +kernel
-#guard view (u 0) (u 0) (kseen (u 2) [(.atom .sym, wordsFoR #[0, 1])]) == sym
+-- a symbol column is ordered as its ids, an `i64` column (PLAN 8.3)
+example : view (u 2) (u 2) (kseen (u 2) [(.atom .sym, wordsFoR #[0, 1])]) = view (u 2) (u 2) (kseen (u 2) [(.atom .i64, wordsFoR #[0, 1])]) := by decide +kernel
+#guard view (u 2) (u 2) (kseen (u 2) [(.atom .sym, wordsFoR #[0, 1])]) == view (u 2) (u 2) (kseen (u 2) [(.atom .i64, wordsFoR #[0, 1])])
 def short : String ⊕ (Nat × List UInt64 × List UInt64) :=
   .inl "seen: es[0]: asc: foR: 1 blocks of 2^10 and a 128-byte pack are not the layout of 2000 elements"
 example : view (u 0) (u 0) (kseen (u 2000) [col [0, 1]]) = short := by decide +kernel

@@ -21,15 +21,15 @@ namespace QAtomicType
 
 /-- Bytes per element **in the IPC wire format and in splayed column files** — deliberately not the
 in-memory width. `boolean` is one byte on the wire and one *bit* in memory, so `Column` answers for
-it before ever consulting this; anything reading a `Column` through `width` is a bug. Symbols are
-variable width (NUL-terminated) and so have no fixed size, and a general list's elements are values,
+it before ever consulting this; anything reading a `Column` through `width` is a bug. A symbol is
+its 8-byte id in its column's dictionary, and a general list's elements are values,
 not bytes. -/
 def width : QAtomicType → Option Nat
   | u1 | u8 | char | i8 => some 1
   | i16 => some 2
   | i32 | f32 | date => some 4
-  | i64 | f64 | datetime => some 8
-  | sym | general => none
+  | i64 | f64 | datetime | sym => some 8
+  | general => none
 
 end QAtomicType
 
@@ -59,7 +59,8 @@ inductive QAtom
   | f64 : UInt64 → QAtom
   | char : UInt8 → QAtom
   | i8 : Int8 → QAtom
-  | sym : String → QAtom
+  /-- A symbol as its id: its position in the sorted, distinct dictionary beside its column (PLAN 8.3). -/
+  | sym : UInt64 → QAtom
   | date : Int32 → QAtom
   | datetime : Int64 → QAtom
   deriving Repr, Inhabited
@@ -158,23 +159,6 @@ inductive QTable (X : Type)
 /-- A vector's payload, one constructor per layout. No constructor stores the element count: it is
 the header's `n` on `QValue.vector`, one source for it. -/
 inductive Enc (X : Type)
-  /-- Symbols. `blob` is each symbol's UTF-8 bytes *followed by its NUL*, concatenated — byte for
-  byte the IPC payload and the splayed `sym` file, so sending it is a memcpy. `offs` holds the n+1
-  starts, `offs[0] = 0` and `offs[n] = blob.size`; symbol `i` is `blob[offs[i] .. offs[i+1] - 1]`,
-  without that trailing NUL. `offs` never crosses the wire, it is rebuilt by scanning for NULs.
-
-  `Nat` offsets, not fixed-width entries packed into a `ByteArray`. Any fixed width wraps: at four
-  bytes a blob reaching `2 ^ 32` makes the last offset come back smaller than the first, `symBytes`'
-  `hi > lo` guard fail, and the column read back as empty symbols — silent corruption. Widening to
-  eight only moves the counterexample to `2 ^ 64`; `Nat` ends the family, and that is what lets the
-  round-trip theorem hold with no size hypothesis. Refusing to encode an oversized blob instead
-  would cost more: `ofAtoms_isSome` is what makes `QLean/Dep/Val.lean`'s pack total, so a symbol
-  column that can fail would put an `Option` back into the indexed world.
-
-  This costs nothing at run time. A `Nat` below `2 ^ 63` is a tagged scalar in the `lean_object*`
-  slot, so the table is one word per entry and allocates nothing — the boxing that rules out an
-  `Array UInt64` here does not apply to `Nat`. -/
-  | syms : (blob : ByteArray) → (offs : Array Nat) → Enc X
   /-- Frame of Reference: the elements in blocks of `blk = 2 ^ lg` (64 .. 65536, `lg` read from the
   trailer), each block storing its minimum and the
   bit width of `x - base`, and the residuals bit-packed at that width. What it buys is not memory
@@ -216,25 +200,6 @@ inductive Enc (X : Type)
   type is held here and nowhere else (one encoding, doc/rel-architecture.zh.typ §4): a literal, a
   kernel's answer and a file's column alike, a `float` as its stored bits. -/
   | foR : (metadata : ByteArray) → (pack : ByteArray) → Enc X
-  /-- Symbols interned: `dict` and `offs` are the *distinct* symbols in `syms` layout, and `ids` is
-  the header's `n` dictionary indices **bit-packed at `idWidth`**, which is the residual packing `foR` uses
-  and not a width of its own. `=`, `asc`, `distinct`, `group`, `in` and `?` then become integer work
-  on a payload the kernels are already written for, and the blob is touched only when a symbol has
-  to be printed or sent. This is to `syms` what `foR` is to `bytes`.
-
-  **The id space is the column's own, so its width is the dictionary's and not four bytes.** An
-  `Int32` id spends 4 MB on a million elements over three symbols where two bits an element spend
-  250 KB, and these lines are memory-traffic bound: `asc`, `group` and `in` over a symbol column
-  read the ids and nothing else. `d` is `offs.size - 1` and needs no field; the count is the
-  header's — `⌈n·w/8⌉` is not invertible, and at `w = 0` the pack is empty for every `n`.
-
-  **The dictionary is the column's own, not a process-wide table.** q interns into a global symbol
-  table and compares pointers; a `Column` that meant nothing without that ambient state could not
-  round-trip, could not be serialised on its own and could not carry its own theorems, so the id
-  space is per column. What that costs is the one thing a shared table would have given free: two
-  columns do not agree on ids, so a cross-column verb maps one dictionary onto the other first —
-  `Kernel.symTranslate`, d₁+d₂ symbol comparisons, and then n integer ones. -/
-  | enum : (dict : ByteArray) → (offs : Array Nat) → (ids : ByteArray) → Enc X
   /-- A general list, q's type 0: its elements as values, under the header type
   `QAtomicType.general`: the pattern `QValue.general`. Under an atom type it is a mismatch,
   `Column.mismatch`, as a typed payload under `general` is. -/
@@ -259,7 +224,7 @@ abbrev Enc := Ext.Enc Empty
 
 -- `Rel.QValue.atom` … as aliases of the family's constructors, so rel's code names them as before
 export Ext (QValue.atom QValue.vector QValue.dict QValue.table QValue.keyed QValue.slices QValue.func QValue.err
-  QValue.enum QValue.ext QTable.mk Enc.syms Enc.foR Enc.enum Enc.gen)
+  QValue.enum QValue.ext QTable.mk Enc.foR Enc.gen)
 
 /-- What a rel function that recurses through `gen`, `dict` or `table` must do at an `ext`; a field is added when
 another such function must. -/
@@ -326,31 +291,6 @@ def pushBits (out : ByteArray) (v : UInt64) : Nat → ByteArray
 /-- Bit `i`, LSB first within a byte. Past the end reads `false`. -/
 def bitAt (b : ByteArray) (i : Nat) : Bool :=
   ((b[i / 8]?.getD 0) >>> (i % 8).toUInt8) &&& 1 == 1
-
-/-- The `i`th symbol's bytes, as `(start, length)` into `blob`, with the stored NUL excluded. The
-comparisons, sorts and hashes in `QLean/Eval/` go through this rather than `atoms`, because building
-a `String` per symbol is exactly the allocation this layout removes. Past the table it is `(0, 0)`, the
-empty symbol an id past the dictionary denotes, by the guard and not by `!`'s panicking default. -/
-def symBytes (offs : Array Nat) (i : Nat) : Nat × Nat :=
-  if i + 1 < offs.size then
-    let lo := offs[i]!
-    let hi := offs[i + 1]!
-    (lo, if hi > lo then hi - lo - 1 else 0)
-  else (0, 0)
-
-/-- The `i`th symbol's bytes, without its stored NUL — the form every comparison reads. -/
-def symKey (blob : ByteArray) (offs : Array Nat) (i : Nat) : ByteArray :=
-  let (lo, len) := symBytes offs i
-  blob.extract lo (lo + len)
-
-/-- q's order on two symbols' bytes: the first byte they differ at, unsigned, and their lengths when
-neither is a prefix of the other. Measured — `` iasc `$("ab";"a";"aa";"") `` is `3 1 2 0` and
-`` iasc `$("é";"z";"a") `` is `2 1 0`. Here rather than in a kernel because three of them read it —
-the sort, the search and the element-wise comparisons — and none imports the others. -/
-def symCmp (x y : ByteArray) : Ordering :=
-  match (List.range (min x.size y.size)).find? fun i => x[i]?.getD 0 != y[i]?.getD 0 with
-  | some i => compare (x[i]?.getD 0) (y[i]?.getD 0)
-  | none => compare x.size y.size
 
 /-- Blocks in a Frame-of-Reference payload, from the 33 bytes each one contributes to `metadata`.
 Exact rather than a floor even though the trailer follows the last block: the trailer is 24 bytes and
@@ -594,19 +534,6 @@ def laneWidth (w : Nat) : Nat :=
 entries, or a grouping's groups (`Kernel.Order.groupIds`). `rust/src/ids.rs`'s `id_width`. -/
 def idWidthOf (nd : Nat) : Nat := laneWidth (widthFor (nd - 1))
 
-/-- Bits one id takes in a column whose dictionary is `offs`: the ids run `0 .. d-1` for
-`d = offs.size - 1`, so the range they span is `d - 1`.
-
-`0` at `d ≤ 1` and that is the answer, not a floor to step over: a dictionary of one symbol has one
-id, so a zero-width pack storing nothing at all denotes the right column once `count` is stored —
-`resAt` already answers `0` at width `0`. `d = 0` lands there too and every read is then an id past
-the dictionary, which is the empty symbol, the same convention a malformed payload has always had.
-
-Derived and never stored: a stored width could disagree with the dictionary, and every kernel that
-rebuilds a dictionary — the gather that appends the empty symbol, the symbol maps that re-intern —
-would have to keep it in step. -/
-def idWidth (offs : Array Nat) : Nat := idWidthOf (offs.size - 1)
-
 /-- Element `i`'s dictionary index, at `w = idWidth offs` bits. Past the end reads `0`, the
 convention `bitsAt` sets, so a malformed column answers rather than panicking.
 
@@ -637,17 +564,6 @@ def packIds (w n : Nat) (f : Nat → Nat) : ByteArray :=
 
 end Column
 
-/-- A `syms` payload as every writer of one lays it out: at least one start, the first `0`, the last the blob's
-size, none past the blob, and none before the one ahead of it. A join reads part `p`'s entries back only from
-parts that hold this, and a cycling `sliceSyms` rebuilds the starts as a running total that matches its blob only
-where they do not decrease. -/
-structure SymsWF (b : ByteArray) (o : Array Nat) : Prop where
-  pos : 0 < o.size
-  first : o[(0 : Nat)]! = 0
-  last : o[o.size - 1]! = b.size
-  le : ∀ k < o.size, o[k]! ≤ b.size
-  mono : ∀ k < o.size - 1, o[k]! ≤ o[k + 1]!
-
 namespace Ext.Enc
 open Column
 
@@ -655,27 +571,21 @@ open Column
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
 a `u1` `foR` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
-element 0 or 1, which `raw` and `get` then read alike), ALP the three float layouts; a `foR` or `alp` payload's blocks cover its `n`, and an `enum` payload's
-pack holds its `n` ids and its dictionary's offsets end at its blob with none past it, so a symbol
-appended to the dictionary leaves every entry before it reading as it did, and no entry is there twice,
-so two ids name the same symbol only where they are equal. -/
+element 0 or 1, which `raw` and `get` then read alike); a `foR` payload's blocks cover its `n`. A `sym` column is
+its ids, positions in the sorted, distinct dictionary held beside it at the Rel level and never in the payload,
+so id order is symbol order and every integer kernel reads it unchanged (PLAN 8.3). -/
 def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   match t, e with
   | .general, .gen xs => xs.size = n.toNat
-  | .sym, .syms blob offs => offs.size = n.toNat + 1 ∧ SymsWF blob offs ∧
-    ∀ i < n.toNat, (symKey blob offs i).IsValidUTF8
-  | .sym, .enum dict offs ids => ids.size = (n.toNat * idWidth offs + 7) / 8 ∧ SymsWF dict offs ∧
-    (∀ i < n.toNat, idAt ids (idWidth offs) i < offs.size - 1) ∧ ((List.range (offs.size - 1)).map fun i => (symKey dict offs i).data.toList).Nodup ∧
-    ∀ i < offs.size - 1, (symKey dict offs i).IsValidUTF8
   | t, .foR metadata pack =>
     t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, (foRBits metadata pack (blockStarts metadata) i).toNat < 2) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
   -- owner decision M (PLAN): the encodings are `foR` and `pos`; `pos` holds the positions `0..n-1`, so it is a long
   | .i64, .pos => True
   | _, _ => False
 
-/-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and an
-interned symbol column's as its ids (coc plan §3: `bits` is ids at width 1, `enum` ids over a dictionary). A theorem
-about a numeric column is stated over this, because `atoms`' symbol branch brings `Classical.choice` with it.
+/-- `atoms`' fixed-width branches before `atomOfBits`: the raw bits of each element, a boolean's as `0`/`1` and
+a symbol column's as its ids (a symbol is its id, `QAtom.sym`). A theorem
+about a numeric column is stated over this.
 
 Every form reads an element of a `w`-byte type as its `8 * w` bits zero-extended, the dense payload's own reading, so
 `raw` is a function of the column and not of its form: `foRBits` holds an element sign-extended to 64 bits
@@ -688,7 +598,6 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     | some w => let starts := blockStarts metadata
       (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2 ^ (8 * w))
     | none => #[]
-  | .sym, .enum _ offs ids => (Array.range n.toNat).map fun i => (idAt ids (idWidth offs) i).toUInt64
   -- a model read by proofs and kernel specifications; compiled kernels read `pos` as their loop index
   | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
   | _, _ => #[]
@@ -973,7 +882,7 @@ def bitsOf : QAtom → UInt64
   | .i8 x => x.toUInt8.toUInt64
   | .f32 x => x.toUInt64
   | .f64 x => x
-  | .sym _ => 0
+  | .sym x => x
 
 /-- The atom of type `t` those raw bits denote. Total, and its type is `t` by construction, which is
 what `atoms_type` turns into the invariant `QLean/Verify/` used to assume. `symbol` is
@@ -993,7 +902,7 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
   | .datetime => .datetime v.toInt64
   | .f32 => .f32 v.toUInt32
   | .f64 => .f64 v
-  | .sym => .sym ""
+  | .sym => .sym v
 
 /-- A payload of exactly `⌈n·w/8⌉` bytes, the size every writer lays out, holds all `n` ids. -/
 theorem idsCap_of_size {ids : ByteArray} {w n : Nat} (h : ids.size = (n * w + 7) / 8) : idsCap ids w n = n := by
@@ -1002,11 +911,6 @@ theorem idsCap_of_size {ids : ByteArray} {w n : Nat} (h : ids.size = (n * w + 7)
   · rw [h]; refine Nat.min_eq_left ((Nat.le_div_iff_mul_le (by omega)).2 ?_); generalize n * w = k; omega
 
 end Column
-
-instance (b : ByteArray) (o : Array Nat) : Decidable (SymsWF b o) :=
-  decidable_of_iff (0 < o.size ∧ o[(0 : Nat)]! = 0 ∧ o[o.size - 1]! = b.size ∧ (∀ k < o.size, o[k]! ≤ b.size) ∧
-      ∀ k < o.size - 1, o[k]! ≤ o[k + 1]!)
-    ⟨fun h => ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2⟩, fun h => ⟨h.pos, h.first, h.last, h.le, h.mono⟩⟩
 
 namespace Ext.Enc
 open Column
@@ -1018,7 +922,7 @@ instance (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Decidable (WF t n e) :=
 /-- One element, without materialising the rest. `first`, `last`, indexing and every binary search
 belong here; calling `atoms` to read a single element is what this exists to prevent.
 
-It reads through the same four element denotations `atoms` maps — `bitAt`, `symBytes`, `foRBits`
+It reads through the same four element denotations `atoms` maps — `bitAt`, `foRBits`
 and `bitsAt` under `atomOfBits` — so there is one statement of what element `i` is and this is not
 a second one. What differs is only what is hoisted: `atoms` computes the block starts once for the
 whole column, and here the table is empty, so `foRBits` sums the blocks before `i` and stops —
@@ -1031,12 +935,6 @@ before this was fixed. -/
 def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :=
   if i < n.toNat then
     match t, e with
-    | .sym, .syms blob offs =>
-      let (lo, len) := symBytes offs i
-      some (.sym ((String.fromUTF8? (blob.extract lo (lo + len))).getD ""))
-    | .sym, .enum dict offs ids =>
-      let (lo, len) := symBytes offs (idAt ids (idWidth offs) i)
-      some (.sym ((String.fromUTF8? (dict.extract lo (lo + len))).getD ""))
     | t, .foR metadata pack =>
       -- `#[]` is "no hoisted table": `foRBits` then sums the blocks before `i` rather than all of
       -- them, which `blockStarts_get` says is the same start `atoms` reads out of the table
@@ -1046,15 +944,6 @@ def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :
     | .i64, .pos => some (.i64 (Int64.ofNat i))
     | _, _ => none
   else none
-
-/-- Symbols as `blob` plus its offset table. -/
-def symsOf (as : Array QAtom) : Ext.Enc X :=
-  let bs := as.map fun | .sym s => s.toUTF8 | _ => ByteArray.empty
-  -- `p`, not `pos`, which in this namespace is the constructor `Enc.pos` and would make the pattern a match on it
-  let offs := bs.foldl (init := (#[0], 0)) fun (o, p) s =>
-    (o.push (p + s.size + 1), p + s.size + 1)
-  let blob := bs.foldl (init := ByteArray.empty) fun acc s => (acc ++ s).push 0
-  .syms blob offs.1
 
 
 end Ext.Enc
@@ -1085,220 +974,6 @@ theorem foldl_push_size (b : ByteArray) (xs : List UInt8) :
   induction xs generalizing b with
   | nil => simp
   | cons x xs ih => rw [List.foldl_cons, ih, push_size]; simp only [List.length_cons]; omega
-
-/-- The bytes a symbol contributes. The NUL that follows them is `blobStep`'s, not this. -/
-def utf8Of : QAtom → ByteArray
-  | .sym s => s.toUTF8
-  | _ => ByteArray.empty
-
-/-- One step of the `offs` fold: record where the *next* symbol starts. -/
-def offStep (p : Array Nat × Nat) (s : ByteArray) : Array Nat × Nat :=
-  (p.1.push (p.2 + s.size + 1), p.2 + s.size + 1)
-
-/-- One step of the `blob` fold: a symbol's bytes, then its NUL. -/
-def blobStep (acc s : ByteArray) : ByteArray := (acc ++ s).push 0
-
-/-- Where symbol `i` starts in the blob: every earlier symbol's bytes, each plus its NUL. The
-recursion is on the index rather than on the list, so that `symStart bs 0 = 0` holds for a variable
-`bs` — offset `0` is read before the list is ever taken apart. -/
-private def symStart (bs : List ByteArray) : Nat → Nat
-  | 0 => 0
-  | i + 1 => symStart bs i + bs[i]!.size + 1
-
-/-- Dropping the first symbol shifts every start by its bytes and its NUL. This is the form the
-folds' induction step needs, where the list, not the index, is what shrinks. -/
-private theorem symStart_cons (s : ByteArray) (bs : List ByteArray) (i : Nat) :
-    symStart (s :: bs) (i + 1) = s.size + 1 + symStart bs i := by
-  induction i with
-  | zero => simp [symStart]
-  | succ i ih => rw [symStart, ih, symStart, List.getElem!_cons_succ]; omega
-
-/-- Starts grow with the index, which is what puts symbol `i`'s bytes inside the blob. -/
-private theorem symStart_le (bs : List ByteArray) {i j : Nat} (hij : i ≤ j) :
-    symStart bs i ≤ symStart bs j := by
-  obtain ⟨d, rfl⟩ : ∃ d, j = i + d := ⟨j - i, by omega⟩
-  induction d with
-  | zero => exact Nat.le_refl _
-  | succ d ih =>
-    exact Nat.le_trans (ih (by omega))
-      (by rw [show i + (d + 1) = (i + d) + 1 from by omega, symStart]; omega)
-
-/-- An offset that was already in the table is still there after another is appended. -/
-private theorem offs_push_getElem!_lt (o : Array Nat) (v j : Nat) (hj : j < o.size) :
-    (o.push v)[j]! = o[j]! := by
-  rw [getElem!_pos (o.push v) j (by rw [Array.size_push]; omega), getElem!_pos o j hj,
-    Array.getElem_push_lt hj]
-
-/-- The offset just appended. -/
-private theorem offs_push_getElem!_eq (o : Array Nat) (v : Nat) : (o.push v)[o.size]! = v := by
-  rw [getElem!_pos (o.push v) o.size (by rw [Array.size_push]; omega), Array.getElem_push_eq]
-
-/-- The offs fold appends one start per symbol. -/
-theorem foldl_offStep_size (o : Array Nat) (pos : Nat) (bs : List ByteArray) :
-    (bs.foldl offStep (o, pos)).1.size = o.size + bs.length := by
-  induction bs generalizing o pos with
-  | nil => simp
-  | cons s bs ih =>
-    rw [List.foldl_cons,
-      show offStep (o, pos) s = (o.push (pos + s.size + 1), pos + s.size + 1) from rfl,
-      ih (o.push (pos + s.size + 1)) (pos + s.size + 1), Array.size_push, List.length_cons]
-    omega
-
-/-- Appending never disturbs a start already recorded, so a read inside the initial table survives
-the rest of the fold. -/
-private theorem foldl_offStep_lt (o : Array Nat) (pos : Nat) (bs : List ByteArray) (j : Nat)
-    (hj : j < o.size) : (bs.foldl offStep (o, pos)).1[j]! = o[j]! := by
-  induction bs generalizing o pos with
-  | nil => rfl
-  | cons s bs ih =>
-    rw [List.foldl_cons,
-      show offStep (o, pos) s = (o.push (pos + s.size + 1), pos + s.size + 1) from rfl,
-      ih (o.push (pos + s.size + 1)) (pos + s.size + 1) (by rw [Array.size_push]; omega),
-      offs_push_getElem!_lt o (pos + s.size + 1) j hj]
-
-/-- Symbol `i`'s successor start is where the fold wrote it. -/
-private theorem foldl_offStep_get (o : Array Nat) (pos : Nat) (bs : List ByteArray) (i : Nat)
-    (hi : i < bs.length) :
-    (bs.foldl offStep (o, pos)).1[o.size + i]! = pos + symStart bs (i + 1) := by
-  induction bs generalizing o pos i with
-  | nil => simp at hi
-  | cons s bs ih =>
-    rw [List.foldl_cons,
-      show offStep (o, pos) s = (o.push (pos + s.size + 1), pos + s.size + 1) from rfl]
-    match i with
-    | 0 =>
-      rw [show o.size + 0 = o.size from by omega,
-        foldl_offStep_lt (o.push (pos + s.size + 1)) (pos + s.size + 1) bs o.size
-          (by rw [Array.size_push]; omega),
-        offs_push_getElem!_eq o (pos + s.size + 1), symStart_cons, symStart]
-      omega
-    | i + 1 =>
-      rw [show o.size + (i + 1) = (o.push (pos + s.size + 1)).size + i from by
-        rw [Array.size_push]; omega,
-        ih (o.push (pos + s.size + 1)) (pos + s.size + 1) i (by simpa using hi), symStart_cons]
-      omega
-
-/-- The blob fold appends each symbol's bytes and its NUL, which is what `symStart` counts. -/
-private theorem foldl_blobStep_size (acc : ByteArray) (bs : List ByteArray) :
-    (bs.foldl blobStep acc).size = acc.size + symStart bs bs.length := by
-  induction bs generalizing acc with
-  | nil => simp [symStart]
-  | cons s bs ih =>
-    rw [List.foldl_cons, ih (blobStep acc s),
-      show (blobStep acc s).size = acc.size + s.size + 1 from by
-        rw [blobStep, push_size, ByteArray.size_append],
-      List.length_cons, symStart_cons]
-    omega
-
-/-- Appending never disturbs a byte already written, so a read inside the prefix survives the rest
-of the fold. -/
-private theorem foldl_blobStep_lt (acc : ByteArray) (bs : List ByteArray) (j : Nat)
-    (hj : j < acc.size) : (bs.foldl blobStep acc)[j]? = acc[j]? := by
-  induction bs generalizing acc with
-  | nil => rfl
-  | cons s bs ih =>
-    rw [List.foldl_cons,
-      ih (blobStep acc s) (by rw [blobStep, push_size, ByteArray.size_append]; omega), blobStep,
-      push_getElem?_lt (x := 0) (by rw [ByteArray.size_append]; omega),
-      getElem?_pos (acc ++ s) j (by rw [ByteArray.size_append]; omega), getElem?_pos acc j hj,
-      ByteArray.getElem_append_left hj]
-
-/-- Byte `k` of symbol `i` reads back where the fold wrote it. -/
-private theorem foldl_blobStep_get (acc : ByteArray) (bs : List ByteArray) (i : Nat)
-    (hi : i < bs.length) (k : Nat) (hk : k < bs[i]!.size) :
-    (bs.foldl blobStep acc)[acc.size + symStart bs i + k]? = bs[i]![k]? := by
-  induction bs generalizing acc i with
-  | nil => simp at hi
-  | cons s bs ih =>
-    have hstep : (blobStep acc s).size = acc.size + s.size + 1 := by
-      rw [blobStep, push_size, ByteArray.size_append]
-    rw [List.foldl_cons]
-    match i with
-    | 0 =>
-      rw [List.getElem!_cons_zero] at hk ⊢
-      rw [show acc.size + symStart (s :: bs) 0 + k = acc.size + k from by rw [symStart]; omega,
-        foldl_blobStep_lt (blobStep acc s) bs (acc.size + k) (by omega), blobStep,
-        push_getElem?_lt (x := 0) (j := acc.size + k) (by rw [ByteArray.size_append]; omega),
-        getElem?_pos (acc ++ s) (acc.size + k) (by rw [ByteArray.size_append]; omega),
-        getElem?_pos s k hk, ByteArray.getElem_append_right (by omega)]
-      simp
-    | i + 1 =>
-      rw [List.getElem!_cons_succ] at hk ⊢
-      rw [show acc.size + symStart (s :: bs) (i + 1) + k
-            = (blobStep acc s).size + symStart bs i + k from by rw [symStart_cons, hstep]; omega]
-      exact ih (blobStep acc s) i (by simpa using hi) hk
-
-/-- Same size and same bytes is the same payload. `atoms` reads the blob with `extract`, so the
-byte-level facts above have to be lifted through it, which is the move `bitsAt_congr` makes for the
-fixed-width branch. -/
-private theorem bytes_ext {a b : ByteArray} (hs : a.size = b.size)
-    (h : ∀ k, k < b.size → a[k]? = b[k]?) : a = b := by
-  apply ByteArray.ext
-  apply Array.ext
-  · rw [ByteArray.size_data, ByteArray.size_data, hs]
-  · intro k h1 h2
-    have ha : k < a.size := by rw [← ByteArray.size_data]; exact h1
-    have hb : k < b.size := by rw [← ByteArray.size_data]; exact h2
-    have hk := h k hb
-    rw [getElem?_pos a k ha, getElem?_pos b k hb, Option.some.injEq,
-      ByteArray.getElem_eq_getElem_data, ByteArray.getElem_eq_getElem_data] at hk
-    exact hk
-
-/-- Symbol `i` comes back out of the blob exactly as it went in. -/
-private theorem extract_blobStep (bs : List ByteArray) (i : Nat) (hi : i < bs.length) :
-    (bs.foldl blobStep ByteArray.empty).extract (symStart bs i) (symStart bs i + bs[i]!.size)
-      = bs[i]! := by
-  have hsize : (bs.foldl blobStep ByteArray.empty).size = symStart bs bs.length := by
-    rw [foldl_blobStep_size, ByteArray.size_empty, Nat.zero_add]
-  -- symbol `i` ends before symbol `i + 1` starts, and that start is at most the blob's size
-  have hbound : symStart bs i + bs[i]!.size + 1 ≤ symStart bs bs.length := by
-    have hle := symStart_le bs (show i + 1 ≤ bs.length from hi)
-    rw [symStart] at hle
-    omega
-  apply bytes_ext
-  · rw [ByteArray.size_extract, hsize]; omega
-  · intro k hk
-    rw [getElem?_pos _ k (by rw [ByteArray.size_extract, hsize]; omega),
-      ByteArray.getElem_extract, ← getElem?_pos _ _ (by rw [hsize]; omega),
-      show symStart bs i + k = ByteArray.empty.size + symStart bs i + k from by
-        rw [ByteArray.size_empty]; omega]
-    exact foldl_blobStep_get ByteArray.empty bs i hi k hk
-
-/-- Offset `j` of the fold is symbol `j`'s start: entry `0` is the initial table's, the others the fold's. -/
-private theorem offStep_start (bs : List ByteArray) (j : Nat) (hj : j ≤ bs.length) :
-    (bs.foldl offStep (#[0], 0)).1[j]! = symStart bs j := by
-  match j with
-  | 0 => rw [foldl_offStep_lt #[0] 0 bs 0 (by simp)]; rfl
-  | i + 1 => simpa [Nat.add_comm] using foldl_offStep_get #[0] 0 bs i (by omega)
-
-/-- The two folds read back entry `i` as `bs[i]`: the `hi > lo` guard of `symBytes` holds outright,
-because the next start is one past this symbol's last byte. -/
-theorem symKey_folds (bs : List ByteArray) (i : Nat) (hi : i < bs.length) :
-    symKey (bs.foldl blobStep ByteArray.empty) (bs.foldl offStep (#[0], 0)).1 i = bs[i]! := by
-  have hpair : symBytes (bs.foldl offStep (#[0], 0)).1 i = (symStart bs i, bs[i]!.size) := by
-    have hs : i + 1 < (bs.foldl offStep (#[0], 0)).1.size := by
-      rw [foldl_offStep_size]; show i + 1 < 1 + bs.length; omega
-    simp only [symBytes, if_pos hs, offStep_start bs i (by omega), offStep_start bs (i + 1) (by omega), symStart]
-    rw [if_pos (by omega)]
-    congr 1
-    omega
-  unfold symKey
-  rw [hpair]
-  exact extract_blobStep bs i hi
-
-/-- The two folds lay their symbols out as `SymsWF` says: start `j` is `symStart j`, which grows with
-`j` and ends at the blob's size. -/
-theorem symsWF_folds (bs : List ByteArray) :
-    SymsWF (bs.foldl blobStep ByteArray.empty) (bs.foldl offStep (#[0], 0)).1 := by
-  have hs : (bs.foldl offStep (#[0], 0)).1.size = bs.length + 1 := by
-    rw [foldl_offStep_size]; show 1 + bs.length = bs.length + 1; omega
-  have hO : ∀ j, j ≤ bs.length → (bs.foldl offStep (#[0], 0)).1[j]! = symStart bs j := offStep_start bs
-  have hb : (bs.foldl blobStep ByteArray.empty).size = symStart bs bs.length := by
-    rw [foldl_blobStep_size, show ByteArray.empty.size = 0 from rfl, Nat.zero_add]
-  refine ⟨by omega, hO 0 (Nat.zero_le _), by rw [hs, Nat.add_sub_cancel, hO _ (Nat.le_refl _), hb],
-    fun k hk => ?_, fun k hk => ?_⟩
-  · rw [hO k (by omega), hb]; exact symStart_le bs (by omega)
-  · rw [hO k (by omega), hO (k + 1) (by omega)]; exact symStart_le bs (Nat.le_succ k)
 
 
 end Column

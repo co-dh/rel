@@ -75,13 +75,11 @@ foR: metadata 57 bytes, pack 256 bytes
 #guard_msgs in
 #eval column (.enum "dom" (.vector .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1])) none))
 
--- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is refused (no writer of the
--- sorted dictionary yet); and the writer refuses kind 5, a number that is no kind
-/-- info: (Except.ok none,
- Except.error "a `syms` column, which the own format does not hold: a symbol column is stored as `foR` ids into a sorted dictionary (doc/rel-architecture.zh.typ §4), and no writer builds that yet") -/
+-- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is its `foR` ids (PLAN 8.3) and
+-- is written as any other column; and the writer refuses kind 5, a number that is no kind
+/-- info: Except.ok none -/
 #guard_msgs in
-#eval ((ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key),
-  (ownFile (X := Empty) (.vector .sym 1 (.syms (ByteArray.mk #[97, 0]) #[0, 2]) none)).map (·.map key))
+#eval (ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key)
 /--
 info: ("error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
  "error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")

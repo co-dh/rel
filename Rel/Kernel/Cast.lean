@@ -35,13 +35,13 @@ def numFmt? (t : QAtomicType) : Option NumFmt :=
   | _, _ => none
 
 /-- The number atom an ordered atom is stored as and ordered by: a number atom itself, `char` as `u8`, `date` as `i32`
-    (days), `datetime` as `i64` (nanoseconds); none at an atom with no order (`u1 sym general`). Order needs no
+    (days), `datetime` as `i64` (nanoseconds); none at an atom with no order (`u1 general`), a symbol as `i64`, its id. Order needs no
     arithmetic, so it is read off the storage and not off `numFmt?`, which keeps `$` off `date`. -/
 def ordNum (t : QAtomicType) : Option QAtomicType :=
   match t with
   | .char => some .u8
   | .date => some .i32
-  | .datetime => some .i64
+  | .datetime | .sym => some .i64
   | t => if t.numFmt?.isSome then some t else none
 
 /-- The format of the number an ordered atom's word holds: its `ordNum`'s (`date` an `i32` day count). -/
@@ -176,7 +176,7 @@ def ofBits : (t : QAtomicType) → UInt64 → Carrier t
   | .datetime, v => v.toInt64
   | .f32, v => v.toUInt32
   | .f64, v => v
-  | .sym, _ => ""
+  | .sym, v => v
   | .general, _ => default
 
 /-- **`embed` on stored words**, the body of `Op.cast s t`: the word of `t` holding the value of the word `x` read at
@@ -265,7 +265,7 @@ def decEq : (t : QAtomicType) → t ≠ .general → DecidableEq (Carrier t)
   | .i64, _ | .datetime, _ => inferInstanceAs (DecidableEq Int64)
   | .f32, _ => inferInstanceAs (DecidableEq UInt32)
   | .f64, _ => inferInstanceAs (DecidableEq UInt64)
-  | .sym, _ => inferInstanceAs (DecidableEq String)
+  | .sym, _ => inferInstanceAs (DecidableEq UInt64)
   | .general, h => absurd rfl h
 
 /-- **A word `$` produces at `t` is canonical** (`nonCanonical`, the one predicate): `floatBits`' exponent field is never
