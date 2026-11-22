@@ -12,7 +12,7 @@
   let idx = range(cols.len()).filter(i => by-content(cols.at(i)))
   let w = (:)
   let pool = idx
-  let sum(is) = is.map(i => needs.at(i)).fold(0pt, (a, b) => a + b)
+  let sum(ids) = ids.map(i => needs.at(i)).fold(0pt, (a, b) => a + b)
   if sum(idx) <= left {
     for i in idx { w.insert(str(i), needs.at(i) * (left / sum(idx))) }
   } else {

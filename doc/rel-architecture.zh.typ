@@ -121,7 +121,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   `rep (tab (some t))` = 表读成的谓词；`rep (lazy f) = R` ⇔ 对任意 `K`、`L`，`rep (f ⟨K, L⟩) = K ≫ R ≫ L`（缺的一侧取 `𝟙`）。\
   `compile : (t : Tm A B) → η.Sound ρ → {r : Rel A B // rep r = ⟦t⟧ρ}` —— 返回值带着自己的证明，没有单独的
   `compile_sound`；每个节点的 `Gen.*_sound` 引理是 `compile` 定义的一部分，证明在编译时被擦掉。
-  前提是 gap 全部清零（见 §7 TODO）；在此之前，现有的 `compile` + `compile_sound`（带 `t.gap = none`）保留。]
+  前提是 gap 全部清零（见 §7 TODO）；在此之前，现有的 `Tm.gen` + `Tm.gen_sound`（假设 `Tm.GenHyp`）保留。]
 
 #card(c-rs, [Lean 证明不到的边界])[
   证明连到 Lean 定义为止。`@[extern]` kernel 的 Rust 实现只由 `decide`（kernel 中用 Lean body 算）与 `#guard`
@@ -175,7 +175,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [allegory], [`id` `comp` `conv` `meet` `join` `zero` `top`；`dom` `ran` → 定义 + fused 行],
   [division allegory], [`ldiv` `rdiv`；symmetric division 不是构造子，是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`，含义 `Tm.symDiv_den`），表层写作中缀 `R ÷ S`（`Bin.table`，与 `/` 同一优先级、左结合）],
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
-  [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`Elab.lean:429`，`inl° ≫ R ∪ inr° ≫ S`）],
+  [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
   [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` → 定义 + fused 行；`at` → native 行],
   [数据], [`val R` `uni U`；`succ` `arith` `leq` `lt` 等 atom 运算全部是行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
@@ -379,7 +379,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     同样分段 `scan(or)` 传播；`W'` 既非 `W` 也非 `2^63`（`−0`）报错。f32 按名报错并提示先 `$` 到 f64
     （`stepAt .f32` 每步舍入到 f32，一次 `kscan` 不能算）。不排序 `canon` 之外的东西、不回置换。含义是组合
     `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
-    `Tab.sums_holds`，无前提）。`Prim.dfn` 同 `asc`：待 `dfn` 能读行的关系参数],
+    `Tab.sums_holds`，无前提）。`Elab.dfns` 同 `asc`：待 `Elab.dfns` 能读行的关系参数],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：
     每个值换成 `t` 中表示同一个数的字（`QAtomicType.embed`，不舍入），无像时写 null 字 `2^63`（任何像都不是它：
     `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新
@@ -451,7 +451,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   text(fill: c-sem)[core], [`Rel/Core/`], [RelCore], [`Core.Rel α β`，`≫ ° ∩ ∪ 𝟙 𝟘`，`mu`，`nu`], [`propext` `Quot.sound`],
   text(fill: c-run)[kernel], [`Rel/Kernel/`], [RelKernel], [`Enc`（foR）、5 个 extern、driver], [Classical],
   text(fill: c-run)[kernel spec], [`Rel/KernelSpec/`], [RelKernel], [其余部分引用的 kernel 引理], [],
-  text(fill: c-run)[run-time], [`Rel/Run/`], [RelRun], [`Obj` `Vals` `Rel` `Known` `Alg` `Tm` `Gen` `compile`], [precompiled],
+  text(fill: c-run)[run-time], [`Rel/Run/`], [RelRun], [`Obj` `Vals` `Rel` `Known` `Alg` `Tm` `Gen` `Tm.gen`], [precompiled],
   text(fill: c-syn)[证明 + 语言], [`Rel/`、`Rel/Lang/`], [Rel], [`Rep*` 律、`KernelWF`、`Lang.Den`（语义）、`CompileSpec`], [],
   text(fill: c-rs)[Rust], [`crate/`], [`relk`], [5 个 kernel 的 `qlean_*`（`RELK.txt`）与 IO 导出（`RELIO.txt`）], [—],
   text(fill: c-rs)[native rt], [`crate/rt/`], [独立 package], [替代 `libleanshared` 的 Lean runtime], [—],
@@ -459,13 +459,13 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 
 = Gate
 
-`make check` = #box[build] · compile-diff（`compile` 对 `rel_program` 差分）· crate-test · syms · native · ldd · index ·
+`make check` = #box[build] · compile-diff（`Tm.gen` 对 `rel_program` 差分）· crate-test · syms · native · ldd · index ·
 index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt` 与 `RELIO.txt` 两个列表；另加 `lake -d freyd/relaop build RelAop -R -K rel=…`。
 
 // ───────────────────────────── 7
 = TODO：清零 gap
 
-按依赖顺序。现有的是 `Tm.gen` 与 `Tm.gen_sound`，假设为 `Tm.GenHyp`（`GenSound.lean:108`）。
+按依赖顺序。现有的是 `Tm.gen` 与 `Tm.gen_sound`，假设为 `Tm.GenHyp`。
 
 #tbl(c-run, (auto, auto, 1fr, auto), ([序], [gap], [缺什么], [能否证明]),
   [1], [`foldI`], [改为由 `fold` 定义（见下）；其正确性由 `fold` 的引理得出，不再需要 `foldI_sound`], [能：随定义消失],
@@ -481,12 +481,12 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 - `Tm` 加 `inl` `inr` `mem`；行 `inl°` `inr°` 随之删除。
 - 每个运算的归属（构造子 / 定义 / native 行 / fused 行），结论取自 `doc/tm-minimal-design.zh.typ` §3：
 
-#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
+#block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
   [构造子], [`mem`（`∋`） `inl` `inr`；`fold` `foldr` `hylo`（AOP 的标准递归组合子）],
   [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）`≤`（待验证）],
   [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`asc`（定理未证）],
   [native 行], [`cons` `snoc` `cat` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
-)
+)]
 
 - `flat` 已不是构造子（行 `flatRow`，定理 `Tm.flat_den`）；`foldI` 改为「定义 + fused 行」（tm-minimal-design §3.2）。`fold` `foldr` `hylo` 是 AOP 的标准递归组合子，留作构造子。
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
