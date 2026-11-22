@@ -5,7 +5,7 @@
 //! finds the runs: no hash, no direct-addressing table. Rows out of order are the error, naming the first such pair.
 //! Owner approval (PLAN 6.10) S: one block decoded into an L1 scratch counts as per block.
 use alloc::{format, string::String, vec, vec::Vec};
-use crate::asc::Col;
+use crate::asc::{self, Col};
 use crate::pod;
 use crate::blocks::{Blocks, Grid};
 use crate::ffi::Sink;
@@ -28,17 +28,23 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
     let (mut bits, mut x, mut buf) = (pod::vec_of("seen", "the run starts' bits", n.div_ceil(64), 0u64)?, vec![0u64; blk], vec![0u64; 2 * blk]);
     // `last[c]`: atom key `c`'s code at the row before the block; `st[j]`: row `j` against the row before it, 0 equal so
     // far, 1 greater, 2 less, decided by the first column where the two differ
-    let (mut last, mut st) = (vec![0u64; ks.len()], vec![0u8; blk]);
-    // a `cells` column's working key, its cell's rank a row (`Cells::codes`), built once and then read as an atom's codes
-    let cc: Vec<Option<Vec<u64>>> = ks.iter().map(|k| match k { Col::Cells(a) => Some(a.codes(n)), _ => None }).collect();
+    // a `cells` or `Nul` column's working keys (`asc::work`: a cell's rank a row; a null's flag, then its code), built
+    // once and then read as an atom's codes; `src` every code column in `ascCol`'s order, `None` a `pos` one
+    let cc: Vec<Vec<Vec<u64>>> = ks.iter().map(|k| match k { Col::Atom(_) | Col::Pos => Vec::new(), k => asc::work(k, n) }).collect();
+    let src: Vec<Option<Result<&asc::Key, &[u64]>>> = ks.iter().zip(&cc).flat_map(|(k, c)| match k {
+        Col::Atom(k) => vec![Some(Ok(k))],
+        Col::Pos => vec![None],
+        _ => c.iter().map(|v| Some(Err(&v[..]))).collect(),
+    }).collect();
+    let (mut last, mut st) = (vec![0u64; src.len()], vec![0u8; blk]);
     for (_, lo, nb) in g.walk() {
         st[..nb].fill(0);
-        for ((k, l), cc) in ks.iter().zip(last.iter_mut()).zip(&cc) {
-            let x: &[u64] = match (k, cc) {
-                (Col::Atom(k), _) => { k.codes(lo, &mut x[..nb], &mut buf); &x[..nb] }
-                (_, Some(c)) => &c[lo..lo + nb],
+        for (k, l) in src.iter().zip(last.iter_mut()) {
+            let x: &[u64] = match k {
+                Some(Ok(k)) => { k.codes(lo, &mut x[..nb], &mut buf); &x[..nb] }
+                Some(Err(c)) => &c[lo..lo + nb],
                 // a `pos` column ascends with no ties: every row after the first is greater
-                _ => { for (j, s) in st[..nb].iter_mut().enumerate() { if *s == 0 && lo + j > 0 { *s = 1 } } continue }
+                None => { for (j, s) in st[..nb].iter_mut().enumerate() { if *s == 0 && lo + j > 0 { *s = 1 } } continue }
             };
             for (j, s) in st[..nb].iter_mut().enumerate() {
                 let p = if j == 0 { *l } else { x[j - 1] };
