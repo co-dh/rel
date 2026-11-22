@@ -98,54 +98,6 @@ theorem bitAt_packOf (n : Nat) (f : Nat → Bool) (j : Nat) (hj : j < n) : Colum
 
 
 
-/-- One symbol laid after a blob and its starts: the bytes, a NUL, and the next start. -/
-def symStep (x : ByteArray × Array Nat) (k : ByteArray) : ByteArray × Array Nat :=
-  ((x.1 ++ k).push 0, x.2.push (x.1.size + k.size + 1))
-
-theorem ba_size_append (a b : ByteArray) : (a ++ b).size = a.size + b.size := by
-  first
-    | exact ByteArray.size_append
-    | (show (a ++ b).data.size = a.data.size + b.data.size; rw [ByteArray.data_append, Array.size_append])
-
-/-- Symbols laid one after another by `symStep`: what was there stays, and symbol `j` starts at the
-`j`-th new start, ends one byte before the next, and holds its own bytes. -/
-theorem foldl_symStep (ks : List ByteArray) (b : ByteArray) (o : Array Nat) (ho0 : 0 < o.size)
-    (ho : o[o.size - 1]? = some b.size) :
-    (∀ q < b.size, (ks.foldl symStep (b, o)).1[q]? = b[q]?) ∧
-    (∀ q < o.size, (ks.foldl symStep (b, o)).2[q]? = o[q]?) ∧
-    (ks.foldl symStep (b, o)).2.size = o.size + ks.length ∧
-    ∀ j (hj : j < ks.length), ∃ lo, (ks.foldl symStep (b, o)).2[o.size - 1 + j]? = some lo ∧
-      (ks.foldl symStep (b, o)).2[o.size + j]? = some (lo + ks[j].size + 1) ∧
-      ∀ q < ks[j].size, (ks.foldl symStep (b, o)).1[lo + q]? = ks[j][q]? := by
-  induction ks generalizing b o with
-  | nil => exact ⟨fun _ _ => rfl, fun _ _ => rfl, rfl, fun j hj => absurd hj (Nat.not_lt_zero _)⟩
-  | cons k ks ih =>
-    have hb' : ((b ++ k).push 0).size = b.size + k.size + 1 := by rw [ba_size_push, ba_size_append]
-    have hos : (o.push (b.size + k.size + 1)).size = o.size + 1 := Array.size_push ..
-    have hlast : (o.push (b.size + k.size + 1))[o.size]? = some (b.size + k.size + 1) := Array.getElem?_push_size
-    have hpre : ∀ q < o.size, (o.push (b.size + k.size + 1))[q]? = o[q]? := fun q hq => (Array.getElem?_push_lt hq).trans (Array.getElem?_eq_getElem hq).symm
-    obtain ⟨hB, hO, hS, hJ⟩ := ih ((b ++ k).push 0) (o.push (b.size + k.size + 1)) (by omega)
-      (by rw [hos, Nat.add_sub_cancel, hlast, hb'])
-    simp only [List.foldl_cons, List.length_cons]
-    rw [show symStep (b, o) k = ((b ++ k).push 0, o.push (b.size + k.size + 1)) from rfl]
-    have hB0 := hB
-    refine ⟨fun q hq => ?_, fun q hq => ?_, by rw [hS, hos]; omega, ?_⟩
-    · rw [hB0 q (by rw [hb']; omega), ba_push_getElem?, if_neg (by rw [ba_size_append]; omega), ba_append_left _ _ _ hq]
-    · rw [hO q (by omega), hpre q hq]
-    · intro j hj
-      cases j with
-      | zero =>
-        simp only [Nat.add_zero, List.getElem_cons_zero]
-        refine ⟨b.size, ?_, ?_, fun q hq => ?_⟩
-        · rw [hO _ (by omega), hpre _ (by omega), ho]
-        · rw [hO _ (by omega), hlast]
-        · rw [hB0 _ (by rw [hb']; omega), ba_push_getElem?, if_neg (by rw [ba_size_append]; omega), ba_append_right]
-      | succ j =>
-        obtain ⟨lo, h1, h2, h3⟩ := hJ j (by simpa using hj)
-        rw [hos, Nat.add_sub_cancel] at h1
-        rw [hos] at h2
-        exact ⟨lo, by rw [show o.size - 1 + (j + 1) = o.size + j by omega]; exact h1,
-          by rw [show o.size + (j + 1) = o.size + 1 + j by omega]; exact h2, h3⟩
 
 
 
@@ -172,11 +124,7 @@ theorem foldl_symStep (ks : List ByteArray) (b : ByteArray) (o : Array Nat) (ho0
 
 
 
-/-- info: 'Rel.Verify.ba_size_append' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms ba_size_append
 
-/-- info: 'Rel.Verify.foldl_symStep' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms foldl_symStep
 
 
 

@@ -2,7 +2,7 @@
   The RelRep core: a relation is a key and a value column of one length `n` over the positions
   `0 … n-1`, `R x y ↔ ∃ i, key.get i = x ∧ val.get i = y` — a tabulation, `key° ≫ val = R`.
   Columns are qlean's `Column`s in whatever encoding carries them; an element is read through
-  `Column.get` (qlean's one-element reader over `bitsAt`/`bitAt`/`foRBits`/`symBytes`), never
+  `Column.get` (qlean's one-element reader over `bitsAt`/`bitAt`/`foRBits`), never
   `Column.atoms`. Lists exist in proofs only (`toList`).
 -/
 import Rel.Kernel.Dep.Monadic

@@ -5,7 +5,7 @@ import Rel.ObjOrder
 whose order codes (`seenKey`) are below another's holds an element below the other's in `Obj.lt`. An atom's key is
 its order code (`Obj.key_ordCode`, floats included, decision G); a pair, a sum and an array compare their codes
 column after column as `Obj.key` compares its parts. So the order law `Λ` reads holds at every object
-(`Vals.lamLaw`): `kasc` refuses a symbol and a general atom, the two types whose codes are not their order. -/
+(`Vals.lamLaw`): `kasc` refuses a general atom, the one type whose codes are not its order. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
@@ -81,9 +81,8 @@ theorem Arr.lt_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
   have hv := ascCol_valid hac
   obtain ⟨⟨w, fl, s⟩, hl, rfl⟩ := Option.map_eq_some_iff.1 hof
   have hg : t ≠ .general := by rintro rfl; simp [ascLayout, orderKind] at hl
-  have hs : t ≠ .sym := by rintro rfl; simp [ascLayout, orderKind] at hl
-  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hv hg hs i
-  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom x hv hg hs i'
+  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hv hg i
+  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom x hv hg i'
   simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some,
     Array.getElem?_map, ha, hb, Option.map_some] at h
   show Obj.key _ _ < Obj.key _ _
