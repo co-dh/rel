@@ -61,7 +61,7 @@ inductive OExp
   | prod (a b : OExp)
   | sum (a b : OExp)
   | list (a : OExp)
-  deriving Repr, Inhabited
+  deriving Repr, Inhabited, BEq
 
 /-- The builtin operators of §b. A constant (arity 0) may take its objects, `⊤(A,B)`; the others take relations.
     `arith k` is the qlean kernel's integral value verb `k` on pairs of numbers (`Alg.arith`): one constructor, so

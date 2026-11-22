@@ -601,6 +601,21 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     #[← mkArrayLit (mkConst ``Res) ((parts.toList.zip sh.toList).map fun (⟨A, B, _⟩, c) => sigE ``Tm A B c)])
   let shC := mkConst (n ++ `shares)
   let es ← nt.mapM fun ⟨A, B, t⟩ => return (A, B, ← liftE (tmE sh t))
+  -- `tmE` checked, not proved: a `Lean.Expr` has no meaning inside Lean's logic. Every term written (each slot's
+  -- constant, each numbered term), evaluated, is the term `Code.program` gave, node by node (`Tm.diffAt`); a `share`
+  -- compares its slot only (`Tm.numberKey`), since that slot's constant is checked itself
+  let written := (parts.toList.zip sh.toList).map (fun (⟨A, B, _⟩, c) => sigE ``Tm A B c) ++
+    es.map fun (A, B, e) => sigE ``Tm A B e
+  let vs ← withCurrHeartbeats do
+    unsafe evalExpr (List Res) (listT (mkConst ``Res)) (← mkListLit (mkConst ``Res) written)
+  let want := parts.toList ++ nt
+  unless vs.length == want.length do
+    throwError "rel_program {n}: internal: {written.length} terms written by `Expand.tmE` evaluate to {vs.length}"
+  let slot (r : Res) : Res := ⟨r.1, r.2.1, r.2.2.numberKey⟩
+  for (w, v) in want.zip vs do
+    if let some d := Tm.diffAt id (fun i => toString (ctors.getD i .anonymous)) [] (slot w) (slot v) then
+      throwError "rel_program {n}: internal: a term written by `Expand.tmE`, evaluated, is not the term \
+        `Code.program` numbered: {d}"
   let code := es.map fun (A, B, e) => (A, B, g ``Tm.gen #[shC, oE A, oE B, e])
   let (dC, rest) := code.splitAt ds.length
   let (pC, rest) := rest.splitAt ps.length
