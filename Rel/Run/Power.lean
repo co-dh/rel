@@ -59,7 +59,7 @@ one array (`G = ∋` on `X`), read on the diagonal: `Δ = diag q D` the pairs `p
 the pairs whose swap is in `Δ` (`w = ⟨π₂, π₁⟩` on `D`; `D` holds every swap), `Y = Δ − S` the pairs `(b, c)` where
 `b` beats `c` strictly; `(xs, c)` of `G` dropped where `⟨G, G⟩ ≫ π₂` on `Y` reaches it; then `Λ` on `X`. `q` runs
 once, and only its diagonal is read, as `est` reads it. -/
-def thin {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
+def front {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
     (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
   let G ← mem X
   let P ← pair G G

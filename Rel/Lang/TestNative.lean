@@ -67,7 +67,7 @@ rel_program native1a where
     f1 : N ⟶ N ≜ xs ⦇[z0, plus]⦈
     f3 : N ⟶ N ≜ xs ⦇[z0, π₁ ∪ π₂]⦈ʳ
     es : N ⟶ N ≜ xs est(≤)
-    th : N ⟶ [N] ≜ xs thin(≤)
+    th : N ⟶ [N] ≜ xs front(≤)
     obj L = 5…6
     ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
     pf(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)

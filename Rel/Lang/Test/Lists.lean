@@ -102,7 +102,7 @@ rel_program onDemand where
     R : [α] ⟶ [β] ≜ length ≤(N,N) length°
     p : [α] ⟶ [α] ≜ dom(length{(1,1)})
     print G est(R)
-    print G thin(R)
+    print G front(R)
     print L filter(p)
     print L takewhile(p)
     print {(a,[3] [1 2]),(b,[1 2] [3])} ordered(R)

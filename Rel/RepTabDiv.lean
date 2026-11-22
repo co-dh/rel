@@ -2052,7 +2052,7 @@ private def estSp {B : Obj} [BEq B.El] (Q : Tab B B) (xs : List (List B.El)) : L
   xs.flatMap fun x => (x.filter fun b => x.all fun c => c == b || Q.toList.contains (b, c)).map (x, ·)
 
 /-- `thin(Q)` (`thinDen`): each `x` to its `c` that no `b` of `x` beats strictly, each once. -/
-private def thinSp {B : Obj} [BEq B.El] (Q : Tab B B) (xs : List (List B.El)) : List (List B.El × List B.El) :=
+private def frontSp {B : Obj} [BEq B.El] (Q : Tab B B) (xs : List (List B.El)) : List (List B.El × List B.El) :=
   xs.map fun x =>
     (x, (x.filter fun c => !x.any fun b => Q.toList.contains (b, c) && !Q.toList.contains (c, b)).eraseDups)
 
@@ -2084,11 +2084,11 @@ private def ordPs : Tab (.prod .long .long) (.prod .long .long) :=
 -- `est`, `thin` against `estDen`, `thinDen`, each order, on arrays of longs and of pairs
 #guard arrXs.all fun T => let X := T.key; ordLs.all fun Q =>
   canonOk (Tab.est (pairsIn Q) X) && specOk (Tab.est (pairsIn Q) X) (estSp Q (Vals.rows X)) &&
-  canonOk (Tab.thin (pairsIn Q) X) && cellsOk (Tab.thin (pairsIn Q) X) (thinSp Q (Vals.rows X))
+  canonOk (Tab.front (pairsIn Q) X) && cellsOk (Tab.front (pairsIn Q) X) (frontSp Q (Vals.rows X))
 #guard canonOk (Tab.est (pairsIn ordPs) pairXs) &&
   specOk (Tab.est (pairsIn ordPs) pairXs) (estSp ordPs (Vals.rows pairXs)) &&
-  canonOk (Tab.thin (pairsIn ordPs) pairXs) &&
-  cellsOk (Tab.thin (pairsIn ordPs) pairXs) (thinSp ordPs (Vals.rows pairXs))
+  canonOk (Tab.front (pairsIn ordPs) pairXs) &&
+  cellsOk (Tab.front (pairsIn ordPs) pairXs) (frontSp ordPs (Vals.rows pairXs))
 
 /-- `arrCells`-style fixtures for the list rows (`Rel/Run/List.lean`): `arrCells` (empty, clamped and repeated cells,
 so repeated rows), a prefix of it, no cells, empty cells over no payload, and cells over `2^63 - 1` and the null whose

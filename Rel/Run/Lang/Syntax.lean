@@ -70,7 +70,7 @@ inductive OExp
 inductive Op
   | id | zero | top | outl | outr | inl | inr | mem | leq | lt | succ | arith (k : UInt8)
   | nil | alpha | prim (s : String)
-  | dom | ran | lam | E | est | thin | map
+  | dom | ran | lam | E | est | front | map
   /-- `hylo(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
       name programs define (Party), so the builtin is `hylo`. -/
   | hylo
@@ -260,6 +260,16 @@ def ranRow : Prim :=
 def nilRow : Prim :=
   { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
     written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
+/-- `est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)` given `Q` as its pair test (`Tab.est`): written as its `Op`, which
+    `Calc.toTerm` reads (`Op.row`). The array object has no universe for `\`, so the row always runs. -/
+def estRow : Prim :=
+  { sym := "est", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .var {} "B"),
+    written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
+/-- `front(Q) ≜ Λ(∋ − ∋ (Q − Q°))` given `Q` as its pair test (`Tab.front`); not `mono`: a larger `Q` drops
+    more elements. -/
+def frontRow : Prim :=
+  { sym := "front", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .list (.var {} "B")),
+    written := false, mono := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -332,7 +342,7 @@ def prims : List Prim :=
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
      aop := .error "AOP declares no change of a number's representation" },
-   foldIRow, starRow, domRow, ranRow, nilRow] ++
+   foldIRow, starRow, domRow, ranRow, nilRow, estRow, frontRow] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
   floatOps.map fun (s, o, u) =>
@@ -354,7 +364,7 @@ def Op.table : List (String × Op × Nat) :=
    -- q's `%` by its word and its glyph; `Op.sym` prints the first
    ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("nil", .nil, 0), ("α", .alpha, 0),
    ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
-   ("est", .est, 1), ("thin", .thin, 1), ("F", .map, 1),
+   ("est", .est, 1), ("front", .front, 1), ("F", .map, 1),
    ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++
   (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.1.length)

@@ -237,7 +237,7 @@ abbrev EDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (O
 
 /-- `thin(Q)` as `CRel.thinOn` computes it: the canonical list of the `c` of `xs` that no `b` of `xs` beats
     strictly, `Q` read as its pair test as in `estDen`. -/
-abbrev thinDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El (.arr B)) :=
+abbrev frontDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El (.arr B)) :=
   lamDen fun xs c => c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b)
 
 /-! ### The rows of `prims` -/
@@ -407,7 +407,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
   | ρ, _, _, .est Q => estDen (Q.den ρ)
-  | ρ, _, _, .thin Q => thinDen (Q.den ρ)
+  | ρ, _, _, .front Q => frontDen (Q.den ρ)
   | _, _, _, .mem => fun xs x => x ∈ xs
   | _, _, _, .inl => Core.Rel.inl
   | _, _, _, .inr => Core.Rel.inr
@@ -535,7 +535,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
   | conv R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
-  | lam R ih | thin R ih =>
+  | lam R ih | front R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
     intro ρ ρ' h

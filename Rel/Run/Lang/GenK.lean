@@ -292,8 +292,8 @@ def onKeys (I A B C : Obj) (R : Rel I C)
     asked about (`Gen.est`'s `Q.at`). -/
 def est (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) B :=
   ofVals _ _ fun X => Tab.est (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
-def thin (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) (.arr B) :=
-  ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
+def front (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) (.arr B) :=
+  ofVals _ _ fun X => Tab.front (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
 def atPos (B : Obj) (k : Nat) : Rel (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
 
 /-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/

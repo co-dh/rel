@@ -186,7 +186,7 @@ def rowsProved : List String :=
     since it is a theorem (`Vals.lamLaw`). -/
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
-  | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R
+  | _, _, .lam R | _, _, .front R | _, _, .top R | _, _, .conv R
   | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
@@ -204,7 +204,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
-  | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
+  | _, _, .est R | _, _, .front R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
@@ -544,8 +544,8 @@ theorem GenK.cmp_wf {op : String} {t : QAtomicType} {o : Except String Kernel.Op
 /-- `est(Q)`, `thin(Q)`: the pair test `Q` answers `WF` tables on `WF` pairs (`GenK.testQ_wf`). -/
 theorem GenK.est_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.est B Q).Wf := by
   unfold GenK.est; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.est_wf (GenK.testQ_wf wQ) h hX
-theorem GenK.thin_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.thin B Q).Wf := by
-  unfold GenK.thin; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.thin_wf (GenK.testQ_wf wQ) h hX
+theorem GenK.front_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.front B Q).Wf := by
+  unfold GenK.front; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.front_wf (GenK.testQ_wf wQ) h hX
 
 /-- The folds' rounds (`Tab.foldRounds_wf`), each step `P` paired with an element, then `S` (`compT_wf`). -/
 theorem GenK.fold_wf {E V : Obj} {e : Rel V V} {S : Rel (.prod V E) V} (we : e.Wf) (wS : S.Wf) :
@@ -1236,7 +1236,7 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
   case lam => exact GenK.lam_wf (w _ (by omega))
   case est => exact GenK.est_wf (w _ (by omega))
-  case thin => exact GenK.thin_wf (w _ (by omega))
+  case front => exact GenK.front_wf (w _ (by omega))
   case succ => exact GenK.succ_wf (w _ (by omega))
   case arith => exact GenK.arith_wf (w _ (by omega))
   case leq => exact GenK.cmp_wf
@@ -1364,7 +1364,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _
   case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf Q η hs.2))
-  case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf Q η hs.2))
+  case front Q ih => exact GenK.front_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf Q η hs.2))
   case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs)) (code_wf (gen_wf S η hs.2))
