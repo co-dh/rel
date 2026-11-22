@@ -276,7 +276,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .ldiv R S U V => return .ldiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
   | _, _, .rdiv R S U V => return .rdiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
   | _, _, .pair R S => return .pair (← R.instObj ph σ) (← S.instObj ph σ)
-  | _, _, .prod R S => return .prod (← R.instObj ph σ) (← S.instObj ph σ)
   | _, _, .lam R => return .lam (← R.instObj ph σ)
   | _, _, .est Q => return .est (← Q.instObj ph σ)
   | _, _, .thin Q => return .thin (← Q.instObj ph σ)
@@ -1960,7 +1959,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .ran R => pure (.ran R)
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
-  | .prod R S => pure (.conv (.prod R S))
   | .leq t U => pure (.conv (.leq t U))
   | .lt t U => pure (.conv (.lt t U))
   | .id => pure .id
@@ -2000,7 +1998,7 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
     | none => throw r.leaf
   -- the number verbs are closed on their universe: their converse is read whole there
   | .succ U => pure (.conv (.comp U (.succ U)))
-  | .arith t k U => pure (.conv (.comp (.prod U U) (.arith t k U)))
+  | .arith t k U => pure (.conv (.comp (U.prodUni U) (.arith t k U)))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe
   | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
@@ -2157,7 +2155,8 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     | _ => pure none
   | .prod a b, .prod A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
-    pure (some (.prod u v))
+    -- `⊤(u)` reads `u` whole, so a part on demand (an unbounded `𝟙`) gives `u × v` on demand
+    pure (some (if u.dem || v.dem then u.prod v else u.prodUni v))
   | .sum a b, .sum A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
     -- `ran(u inl)` hands the values in demand to `inl`'s range, where it cannot run; a part on demand (an unbounded
@@ -2333,19 +2332,10 @@ def build : Pre → Except Err Res
   | .pair p q => do
     let ⟨A, _, t⟩ ← build p; let s ← build q; let ⟨_, C, _⟩ := s
     let u ← at? dp (A := A) (B := C) s; pure ⟨A, _, .pair t u⟩
-  -- `R×S`: both operands closed on their sources, `Alg.prod`; an operand whose source has no universe, the pair
-  -- `⟨π₁R,π₂S⟩` on demand
-  | .prod (.close pp p a w) (.close pq q b w') =>
-    let onDemand : Except Err Res := do
-      let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
-      pure ⟨.prod A C, .prod B D, .pair (.comp .outl t) (.comp .outr u)⟩
-    match build (.close pp p a w), build (.close pq q b w') with
-    -- the old index `false` on both operands, now `dem`
-    | .ok ⟨A, B, t⟩, .ok ⟨C, D, u⟩ => if t.dem || u.dem then onDemand else pure ⟨.prod A C, .prod B D, .prod t u⟩
-    | _, _ => onDemand
-  | .prod p q => do
+  -- `R×S ≜ ⟨π₁R,π₂S⟩` (`Tm.prod`), on demand; a closed use reads its source's universe (`closeRes`)
+  | .prod (.close _ p _ _) (.close _ q _ _) | .prod p q => do
     let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
-    pure ⟨.prod A C, .prod B D, .pair (.comp .outl t) (.comp .outr u)⟩
+    pure ⟨.prod A C, .prod B D, t.prod u⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩

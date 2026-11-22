@@ -84,17 +84,25 @@ def outl {n : USize} (X : Vals (.prod A B) n) : Except String (Tab (.prod A B) A
 /-- **`π₂` on the pairs `X`**, `idU X ≫ π₂`. -/
 def outr {n : USize} (X : Vals (.prod A B) n) : Except String (Tab (.prod A B) B) := canon ⟨n, X, X.2⟩
 
+/-- `L ≫ S` for `pair`, whose `L` has distinct rows, so `compGroups`' expansion (`compRows`) is the answer's row
+count: where `L.n · S.n` passes `crossMax` it is counted first and refused past `crossMax`, as `Vals.cross` is, since
+past memory the Rust side aborts the process; within it, `comp` (the same `compFrom` past `blockRows`). -/
+def compPairs (L : Tab A B) (S : Tab B C) : Except String (Tab A C) :=
+  if L.n.toNat * S.n.toNat ≤ crossMax then comp L S else do
+    let x ← compGroups L S
+    let k ← compRows x
+    if crossMax < k then
+      throw s!"pair: ⟨R, S⟩ is {k} pairs, past the bound {crossMax}: a product or pair of two relations read where \
+        nothing bounds it to fewer pairs (`R × S` of two whole objects); meet it with a table or compose a smaller \
+        table on its source"
+    else compFrom blockRows L S x
+
 /-- **`⟨R, S⟩`**: `L ≫ S` with `L = ⟨𝟙, R⟩°` on `R`'s rows (`((a, b), a)`), its rows `((a, b), c)` rebracketed as
 `(a, (b, c))` — the join of `R` and `S` on equal keys that `Tab.comp` runs, `R.val` carried in the key. The
 rebracketing keeps the column order, so the answer is `comp`'s canonical table. -/
 def pair (R : Tab A B) (S : Tab A C) : Except String (Tab A (.prod B C)) :=
   (fun (T : Tab (.prod A B) C) => ⟨T.n, T.key.1, (T.key.2, T.val)⟩) <$>
-    comp (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S
-
-/-- **`R × S`**: CROSS of `R`'s rows and `S`'s, each output row `((a, c), (b, d))`, canonical. -/
-def prod (R : Tab A B) (S : Tab C D) : Except String (Tab (.prod A C) (.prod B D)) := do
-  let ⟨T, x, y⟩ ← Vals.cross (A := .prod A B) (B := .prod C D) (R.key, R.val) (S.key, S.val)
-  canon ⟨T, (x.1, y.1), (x.2, y.2)⟩
+    compPairs (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S
 
 /-- **`inl` on the values `X`**, `idU X ≫ inl`: row `k` is `X`'s row `k` beside the left summand's row `k`, the sum
 side over `X` itself and no right row (`injCols` with tag `0`), canonical. -/

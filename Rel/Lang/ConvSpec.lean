@@ -131,7 +131,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     (∀ A₁ A₂ (h : A = .prod A₁ A₂) p, convProj (h ▸ t) = .ok p → p.den ρ = ((h ▸ t).den ρ)°) := by
   intro A B t
   induction t with
-  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
+  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _
@@ -521,7 +521,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       p'.den ρ = ((h ▸ t' : Tm ((Obj.prod A₁ A₂).inst ph σ) (B.inst ph σ)).den ρ)°) := by
   intro A B t
   induction t with
-  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
+  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
   | top _ _ | lam _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _
@@ -708,9 +708,9 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     -- `(atom t).inst ph σ` does not reduce at a float `t`: the case is proved at any `X` equal to `atom t`
     have key : ∀ {X : Obj} (_ : X = .atom t) (V : Tm X X) (q1 : Tm (.prod (.atom t) (.atom t)) (.atom t) = Tm (.prod X X) X)
         (q2 : Tm X X = Tm (.atom t) (.atom t)), (cast q1 (Tm.arith t k (cast q2 V))).ConvOK ρ →
-        (Tm.conv (Tm.comp (Tm.prod V V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
+        (Tm.conv (Tm.comp (V.prodUni V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
           ((cast q1 (Tm.arith t k (cast q2 V))).den ρ)° ∧
-        ∀ ss, (Tm.conv (Tm.comp (Tm.prod V V) (cast q1 (Tm.arith t k (cast q2 V))))).argDen ρ ss =
+        ∀ ss, (Tm.conv (Tm.comp (V.prodUni V) (cast q1 (Tm.arith t k (cast q2 V))))).argDen ρ ss =
           ((cast q1 (Tm.arith t k (cast q2 V))).argDen ρ ss)° := by
       intro X e V q1 q2 hok; subst e
       refine ⟨?_, fun _ => rfl⟩

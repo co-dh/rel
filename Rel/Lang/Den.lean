@@ -455,7 +455,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .ldiv R S U V => ldivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
-  | ρ, _, _, .prod R S => rprodMap (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
   | ρ, _, _, .est Q => estDen (Q.den ρ)
   | ρ, _, _, .thin Q => thinDen (Q.den ρ)
@@ -502,6 +501,30 @@ theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
     cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
   · intro h; exact ⟨_, _, ⟨h, rfl⟩, rfl⟩
 
+/-- **`R × S` is a definition**: `⟨π₁R, π₂S⟩` (`Tm.prod`) means `rprodMap`, each side of a pair through its
+    operand (`Rep.rpair_eq_meet_proj` for the pair as a meet of projections). -/
+theorem Tm.prod_den (ρ : Val) {A B C D : Obj} (R : Tm A B) (S : Tm C D) :
+    (R.prod S).den ρ = rprodMap (R.den ρ) (S.den ρ) := by
+  apply Core.Rel.ext; intro p q
+  simp [Tm.prod, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.graph]
+
+/-- The closed product universe `ran(⟨⊤(u), ⊤(v)⟩)` (`Tm.prodUni`) means `u × v` where `u` and `v` are
+    coreflexives, as a universe is. -/
+theorem Tm.prodUni_den (ρ : Val) {A B : Obj} (u : Tm A A) (v : Tm B B) (hu : ∀ x y, u.den ρ x y → x = y)
+    (hv : ∀ x y, v.den ρ x y → x = y) : (u.prodUni v).den ρ = rprodMap (u.den ρ) (v.den ρ) := by
+  apply Core.Rel.ext; intro p q
+  have i : Fin (1 : USize).toNat := ⟨0, by decide⟩
+  simp only [Tm.prodUni, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.inter,
+    Core.Rel.recip, Core.Rel.graph, Core.Rel.top, Core.Rel.id]
+  constructor
+  · rintro ⟨rfl, m, ⟨_, ⟨_, ⟨_, -, -⟩, ⟨-, x, -, hx⟩, -, y, -, hy⟩⟩, -⟩
+    obtain rfl := hu _ _ hx; obtain rfl := hv _ _ hy; exact ⟨hx, hy⟩
+  · intro ⟨h1, h2⟩
+    obtain ⟨a, b⟩ := p; obtain ⟨c, d⟩ := q
+    obtain rfl := hu _ _ h1; obtain rfl := hv _ _ h2
+    exact ⟨rfl, (), ⟨(), ⟨(), ⟨i, rfl, rfl⟩⟩, ⟨trivial, a, trivial, h1⟩, trivial, b, trivial, h2⟩,
+      ⟨(), ⟨(), ⟨i, rfl, rfl⟩⟩, ⟨trivial, a, trivial, h1⟩, trivial, b, trivial, h2⟩⟩
+
 /-- **Symmetric division is a definition**: the term `R/S ∩ (S/R)°` that `Pre.symDiv` builds means `R÷S` within the
     universes `UA`, `UB`. -/
 theorem Tm.symDiv_den (ρ : Val) {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) :
@@ -517,7 +540,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
   | var _ k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS =>
+  | foldr R S ihR ihS | fold R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -712,9 +735,6 @@ theorem rdiv_le {R R' : Den A C} {S : Den B C} {U U' : Den A A} {V V' : Den B B}
 theorem pair_le {X X' : Den A B} {Y Y' : Den A C} (hX : X ⊑ X') (hY : Y ⊑ Y') : rpair X Y ⊑ rpair X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
 
-theorem prod_le {X X' : Den A B} {Y Y' : Den C D} (hX : X ⊑ X') (hY : Y ⊑ Y') : rprodMap X Y ⊑ rprodMap X' Y' :=
-  le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
-
 -- `est` drops `b` only where `Q` fails, so a larger `Q` drops fewer
 theorem est_le {Q Q' : Den (.prod B B) (.prod B B)} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
   le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
@@ -896,9 +916,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
   | pair R S ihR ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 pair_le (ihR.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
-  | prod R S ihR ihS =>
-    refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
-    exact sle.map2 prod_le (ihR.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
   | diff R S ihR ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.anti2 diff_le (ihR.1 s ρ ρ' hp.1 g) (ihS.1 (!s) ρ ρ' hp.2 g)

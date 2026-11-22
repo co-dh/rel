@@ -190,15 +190,6 @@ theorem cross_wf {n m : USize} {X : Vals A n} {Y : Vals B m} {t : Tab A B} (h : 
 theorem top_wf {n m : USize} {X : Vals A n} {Y : Vals B m} {t : Tab A B} (h : Tab.top X Y = .ok t)
     (hX : Vals.WF X) (hY : Vals.WF Y) : t.WF := cross_wf h hX hY
 
-/-- **`R × S` keeps `Tab.WF`**: `Vals.cross` of the pair sides, `canon`. -/
-theorem prod_wf {R : Tab A B} {S : Tab C D} {t : Tab (.prod A C) (.prod B D)} (h : R.prod S = .ok t) (hR : R.WF)
-    (hS : S.WF) : t.WF := by
-  simp only [Tab.prod, bind, Except.bind] at h
-  split at h; · cases h
-  rename_i r hr
-  obtain ⟨h1, h2⟩ := Vals.cross_wf (A := .prod A B) (B := .prod C D) hr hR hS
-  exact canon_wf h ⟨⟨h1.1, h2.1⟩, ⟨h1.2, h2.2⟩⟩
-
 /-- **`inl X` keeps `Tab.WF`**: `X` on both sides, a right summand of no row. -/
 theorem inl_wf {n : USize} {X : Vals A n} {t : Tab A (.sum A B)} (h : Tab.inl (B := B) X = .ok t)
     (hX : Vals.WF X) : t.WF := by
@@ -255,13 +246,20 @@ theorem comp_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : R.comp S = .ok t)
   okSplit
   all_goals first | exact compOne_wf h hR hS | exact compFrom_wf h hR hS
 
-/-- **`⟨R, S⟩` keeps `Tab.WF`**: `comp` of `⟨𝟙, R⟩°` and `S`, its key rebracketed. -/
+/-- **`compPairs` keeps `Tab.WF`**: `comp`, or `compFrom` within `crossMax`. -/
+theorem compPairs_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : Tab.compPairs R S = .ok t) (hR : R.WF)
+    (hS : S.WF) : t.WF := by
+  simp only [Tab.compPairs, bind, Except.bind] at h
+  okSplit
+  all_goals first | exact comp_wf h hR hS | exact compFrom_wf h hR hS
+
+/-- **`⟨R, S⟩` keeps `Tab.WF`**: `compPairs` of `⟨𝟙, R⟩°` and `S`, its key rebracketed. -/
 theorem pair_wf {R : Tab A B} {S : Tab A C} {t : Tab A (.prod B C)} (h : R.pair S = .ok t) (hR : R.WF)
     (hS : S.WF) : t.WF := by
   simp only [Tab.pair, Functor.map, Except.map] at h
   split at h; · cases h
   rename_i T hT; cases h
-  have := comp_wf hT ⟨⟨hR.1, hR.2⟩, hR.1⟩ hS
+  have := compPairs_wf hT ⟨⟨hR.1, hR.2⟩, hR.1⟩ hS
   exact ⟨this.1.1, this.1.2, this.2⟩
 
 /-- **`Rᴵ` keeps `Tab.WF`** on a `Vals.WF` `X` (`outl_wf`, `outr_wf`, `comp_wf`, `inter_wf`). -/

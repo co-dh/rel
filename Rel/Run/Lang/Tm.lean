@@ -32,7 +32,6 @@ inductive Tm : Obj → Obj → Type where
   | ldiv {A B C : Obj} (R : Tm A B) (S : Tm A C) (UB : Tm B B) (UC : Tm C C) : Tm B C
   | rdiv {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) : Tm A B
   | pair {A B C : Obj} (R : Tm A B) (S : Tm A C) : Tm A (.prod B C)
-  | prod {A B C D : Obj} (R : Tm A B) (S : Tm C D) : Tm (.prod A C) (.prod B D)
   /-- `Λ(R)`, a map: total on the keys in demand, `[]` where `R` has no image, so it always runs on demand and a
       closed use reads its source's universe (`closeRes`). -/
   | lam {A B : Obj} (R : Tm A B) : Tm A (.arr B)
@@ -126,10 +125,21 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .var d _ => d
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
-  | _, _, .prod .. | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
+  | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
   | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
+
+/-- `R × S ≜ ⟨π₁R, π₂S⟩` (`Tm.prod_den`): on demand, each operand on its side of the pairs in demand; where none
+    are, the product is closed by its source's universe (`closeRes`, `Tm.prodUni`). -/
+def Tm.prod {A B C D : Obj} (R : Tm A B) (S : Tm C D) : Tm (.prod A C) (.prod B D) :=
+  .pair (.comp .outl R) (.comp .outr S)
+
+/-- The closed universe `u × v` of a product object, `ran(⟨⊤(u), ⊤(v)⟩)` from the one row of `1` (`⊤(u) : 1 ⟶ A`):
+    the pair on that single key is CROSS of `u`'s values and `v`'s, which `Tab.pair` refuses past `crossMax`
+    (`Tm.prodUni_den`). -/
+def Tm.prodUni {A B : Obj} (u : Tm A A) (v : Tm B B) : Tm (.prod A B) (.prod A B) :=
+  .ran (.comp (.uni (A := .one) (m := 1) ()) (.pair (.top u) (.top v)))
 
 /-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
@@ -138,7 +148,7 @@ def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S | _, _, .arg R S
   | _, _, .nu _ R S => R.size + S.size + 1
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
@@ -163,7 +173,6 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .ldiv R S U V, f => return .ldiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
   | _, _, .rdiv R S U V, f => return .rdiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
   | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
-  | _, _, .prod R S, f => return .prod (← f R lt_size) (← f S lt_size)
   | _, _, .lam R, f => return .lam (← f R lt_size)
   | _, _, .est Q, f => return .est (← f Q lt_size)
   | _, _, .thin Q, f => return .thin (← f Q lt_size)
@@ -212,7 +221,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .ldiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .rdiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .pair R S => R.fv ++ S.fv
-  | _, _, .prod R S => R.fv ++ S.fv
   | _, _, .lam R => R.fv
   | _, _, .est Q => Q.fv
   | _, _, .thin Q => Q.fv
@@ -265,7 +273,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .ldiv R S U V => .ldiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
-  | σ, _, _, .prod R S => .prod (R.subst σ) (S.subst σ)
   | σ, _, _, .lam R => .lam (R.subst σ)
   | σ, _, _, .est Q => .est (Q.subst σ)
   | σ, _, _, .thin Q => .thin (Q.subst σ)
@@ -315,7 +322,6 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .ldiv R S U V => !R.fv.contains k && S.pol s k && U.pol s k && V.pol s k
   | _, _, .rdiv R S U V => R.pol s k && !S.fv.contains k && U.pol s k && V.pol s k
   | _, _, .pair R S => R.pol s k && S.pol s k
-  | _, _, .prod R S => R.pol s k && S.pol s k
   | _, _, .own R => R.pol s k
   | _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, .mu j _ _ b => j == k || b.pol s k
