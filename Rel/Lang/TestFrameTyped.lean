@@ -167,4 +167,14 @@ rel_program sumsF32T where
     x : K×N ⟶ H ≜ {((A,0),1.5)}
     s : K×N ⟶ H ≜ sums(x)
 
+-- `sum` at an `f32` column: refused by name as `sums` is, since one `kscan` cannot round its carry to `f32` each step
+/-- error: line 178, col 11: `summarize` at this call, where ν is N, δ is H, β is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
+#guard_msgs in
+open Rel.Programs.prelude Rel.Programs.frame in
+rel_program sumF32T where
+    obj N
+    obj H : f32
+    f : N ⟶ H ≜ {(0,2.5),(1,-1.5)}
+    check summarize(F(f) sum, f) = {(∗,1.0)}
+
 end Rel.Lang.TestFrameTyped

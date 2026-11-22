@@ -455,7 +455,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `sumsTimeT` 钉住手算的行）。float 的 `sum`/`sums`（owner 裁定：自左向右）未做：f64 可由一次 `kscan .fadd` 精确算出，
   f32 不能——`stepAt .f32` 每步舍入到 f32，而 `kscan` 每行只折一个 `Op`，在 f64 上累加再舍入一次结果不同
   （2^24 + 1 + 1）；需 owner 裁定：加 `Op`、改 f32 的含义、或 f32 仍报错。库调用 `cumSum(f)`、`sumsBy(g, f)` 在 f64 上
-  已是具名报错，不再是 internal。
+  已是具名报错，不再是 internal。（f64 的 `sum`/`sums` 已由下面 S4e–S4g 做完；f32 见 fsum。）
+  fsum：f64 已完成（`sumTail` 的 `.f64` 分支，一次分段 `kscan .fadd`；`Tab.sum_holds`、`Tab.sums_holds`、
+  `sumsF_fold` 对左折叠 `foldDen … (stepAt t add)`；`TestFrameTyped.sumFloatT`/`sumsFloatT` 钉住左右结合不同的
+  `1, 1e16, −1e16`）。f32 仍按名报错（`sumsF32T`、新增 `sumF32T` 钉住 `sum` 的报错），因为一次 `kscan` 做不到：
+  `kscanRow` 的进位是 `post` 之前的答案，`pre`/`post` 链不作用在进位上，故 `pre [f32to64]` + `.fadd` + `post
+  [fto .f32]` 是在 f64 上累加、每行只舍入一次，`2^24 + 1 + 1` 得 `2^24+2`，而 `stepAt .f32 add` 的左折叠得 `2^24`。
+  所需 kernel 改动（需 owner 批准 kscan 签名）：`kscan` 加一条进位链 `carry : List (Op × UInt64)`，`kscanRow` 在
+  `op` 之后、写入 `out` 与作下一行进位之前作用（f32 为 `[(fto .f32, 0), (f32to64, 0)]`：每步舍入到 f32 再加宽），
+  Rust `qlean_k_scan` 同改；NaN 时 `fto` 给 `2^63`，加宽后不再是 NaN，故坏步须从 `fto` 的 `2^63` 判（同 f64 分支）。
+  之后 `sumAtoms` 加 `.f32`，`sumTail` 加 `.f32` 分支，`sumTail_fold` 的 f32 情形用 `ftoWord` 与 `fstep .f32` 一致。
   S4e/S4f（分支 `tb-s4e`、`tb-s4f`，owner 裁定：float 求和自左向右，q 的顺序；f32 按名报错并给出 `$` 到 f64 的提示）：
   `sums` 的值对象为 i64 或 f64（`sumAtoms`）。`Tab.sumsOn` 对值 atom 泛型：f64 上一次分段 `kscan .fadd`（种子 `+0`），
   `W' = fto W`，`W' ≠ W` 或 NaN 为坏步，`−0` 报错，分段 `kscan .or` 传播后 `keep`。`sumsDen`/`sumsAt K P V` 泛型；
