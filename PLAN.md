@@ -303,6 +303,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `rel-native.c` 4.7 MB → 7.5 MB（加 `hy`）→ 9.9 MB（再加 fold、`est`、`thin`），`cc1 -O2` 峰值 1.5 → 1.8 → 2.5 GB。
     `foldI` 的配方已接但无 semOut：提升 fold（`X⦇[e,S]⦈` 给一族）在 `native1a` 中写不出（`1 ⟶ …` 报
     “expected an object, found '1'”）。
+    分支 `nativetm8`（20d7363 之后）：表配方一律是 plan 函数（`funT`；新 `funV` 值+表、`funW` 计数+字）：`nubB`
+    （故 `canonT` `coreflB` `domOf` `piB`）`selectB`（`∩` `−`）`unionB` `packT` `unconsB` `nilB` `atB` `lamB` `memB`
+    `snocB` `cellsMapB`，以及 `ascSeenB` `expandB` `groupFoldB`；同形同体者只发一次。`rowB` 接 `uncons` `unsnoc`
+    `snoc`（`after`）`flat`（`onKeys`：`((outl X ≫ R) ∩ (outr X ≫ (outl R.val)°)) ≫ outr R.val`）。测试 `fi`
+    （`foldI`，经行 `flat`）三方逐字节相等，`native1a` 自声明 `obj 1 = {∗}`（`relc` 在 Lean scope 外读程序，
+    `⊤(1,L)` 找不到 prelude 的 `1`）。`rel-native.c` 9.94 MB → 5.74 MB（无 `fi`）/ 7.29 MB（加 `fi`），
+    `cc1 -O2` 峰值 2059 MB → 低于 1224 MB（`cap` 峰值为 `relc c` 本身）。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
