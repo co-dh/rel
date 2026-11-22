@@ -292,6 +292,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `hylo` 的 `μY` 第一轮 `Y = 𝟘`，`F(Y)` 的元素没有像，`Tab.map` 此时走左 fold（`foldRounds peelL`），plan 尚无
     这条配方（需 `uncons` `snoc` 的 plan 配方与 `Instr.loop` 上的 `foldRounds`），故 `hy` 不列入 `semOuts`。
     仍拒绝并指名：`est` `thin` 与三种 fold、`Tab.map` 的 fold 分支。
+    分支 `nativetm6`：`foldRoundsB` 是 `Instr.loop` 上的 `Tab.foldRounds`（同 `fixB`：状态为 `rest` `P` `out` 三表的
+    行数与 `regsOf`，`withRegs` 读回；一轮先 `ite` 判 `P` 无行则原样交出状态并置 `done`，否则 `peel`、`step`、
+    `out ∪ (P − dom(el) P)`，两者 `packT`）。新配方：`unconsB`（`uncons`/`unsnoc`，不建 payload）、`cellCatB`
+    （`Vals.cat`）、`snocB`（`𝟙 × τ` 后 `cat`）、`peelB`（`peelL`/`peelR`）、`piB`/`projT`（`outl`/`outr` 及其复合）、
+    `diffB`。`cellsMapB` 的 `guard` 换成 `iteT`：一遍映射或 `mapFoldB`（`Tab.map` 的左 fold，经 `funT` 成 plan
+    函数），与 `Tab.map` 同一判据。`tabB` 接 `est` `thin`（`pairsB` 的 `G` `P` `D`，再按 `Tab.est`/`Tab.thin` 复合）、
+    `fold` `foldr`（`foldB`）、`foldI`，全部经同一个 `foldRoundsB`。测试：`native1a` 加 `hy` `f1`（`⦇z0, plus⦈`）
+    `f3`（`⦇…⦈ʳ`）`es`（`est(≤)`）`th`（`thin(≤)`），共 38 个闭定义，`make native` 三方逐字节相等；
+    `rel-native.c` 4.7 MB → 7.5 MB（加 `hy`）→ 9.9 MB（再加 fold、`est`、`thin`），`cc1 -O2` 峰值 1.5 → 1.8 → 2.5 GB。
+    `foldI` 的配方已接但无 semOut：提升 fold（`X⦇[e,S]⦈` 给一族）在 `native1a` 中写不出（`1 ⟶ …` 报
+    “expected an object, found '1'”）。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
