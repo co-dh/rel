@@ -2,7 +2,6 @@
 //! The block source (coc plan §3): a column read a block at a time, whatever its kind. Every kernel walks a column
 //! through `Blocks::walk`/`span` and decodes a block through `load`/`load_w`/`view`, so the grid arithmetic and the
 //! width dispatch are written once here and each kind is one decoder.
-use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::ids;
 use crate::pod::{self, Elt};
@@ -14,12 +13,12 @@ pub mod tag {
     pub const ENUM: u32 = 2; pub const POS: u32 = 4;
 }
 
-/// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column
+/// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), or ids at `lw` bits. A bit column
 /// is ids at `lw = 1` at the column's own `lg` (`Blocks::bits`); a symbol column is ids whose keys the caller reads
 /// through its dictionary. `Pos` is `Enc.pos`, the row positions: element `i` is `i`, computed from the loop index and
 /// stored nowhere (PLAN 6.13).
 #[derive(Clone, Copy)]
-pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Alp(Cocf<'a>), Ids(&'a [u8], u32), Pos }
+pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Ids(&'a [u8], u32), Pos }
 /// The block grid of a column of `n` elements, `1 << lg` a block: what a source reads by and a `Sink` writes by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grid { pub n: usize, pub lg: u32 }
@@ -47,11 +46,10 @@ pub struct Blocks<'a> { pub src: Src<'a>, pub g: Grid }
 impl core::ops::Deref for Blocks<'_> { type Target = Grid; fn deref(&self) -> &Grid { &self.g } }
 
 impl<'a> From<Coc<'a>> for Blocks<'a> { fn from(c: Coc<'a>) -> Self { Blocks::new(Src::For(c), c.meta.n) } }
-impl<'a> From<Cocf<'a>> for Blocks<'a> { fn from(f: Cocf<'a>) -> Self { Blocks::new(Src::Alp(f), f.c.meta.n) } }
 impl<'a> Blocks<'a> {
     /// `n` elements of `src` on its grid: an encoded column's own block size, the writer's for a payload with none.
     pub fn new(src: Src<'a>, n: usize) -> Self {
-        let lg = match src { Src::For(c) | Src::Alp(Cocf { c, .. }) => c.meta.lg, _ => crate::DEFAULT_LG };
+        let lg = match src { Src::For(c) => c.meta.lg, _ => crate::DEFAULT_LG };
         Blocks { src, g: Grid { n, lg } }
     }
     /// A dense payload `p` of `w`-byte elements (`opnd_dense`).
@@ -75,16 +73,11 @@ impl<'a> Blocks<'a> {
             t => panic!("{who}: an `Enc` of constructor {t} (`syms`, `gen`) has no raw elements"),
         }
     }
-    /// Block `b`'s first `cnt` elements as `T` into `out`, patches applied. ALP answers its floats' bits, so `T` is
-    /// `i32` for `real` and `i64` for `float`; a dense payload's elements are `T`'s width.
+    /// Block `b`'s first `cnt` elements as `T` into `out`, patches applied; a dense payload's elements are `T`'s width.
     pub fn load<T: Elt>(&self, b: usize, cnt: usize, out: &mut [T]) {
         let lo = b << self.lg();
         match self.src {
             Src::For(c) => c.decode_blk(b, cnt, out),
-            Src::Alp(f) => {
-                assert_eq!(size_of::<T>(), if f.f32 { 4 } else { 8 }, "Blocks::load: an ALP block read at the wrong width");
-                f.load_blk(b, cnt, pod::bytes_mut(&mut out[..cnt]))
-            }
             Src::Ids(p, lw) => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap(ids::id_at(p, lw, lo + k) as u64) },
             Src::Pos => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap((lo + k) as u64) },
             Src::Dense(d) => pod::bytes_mut(&mut out[..cnt]).copy_from_slice(&d[lo * size_of::<T>()..(lo + cnt) * size_of::<T>()]),

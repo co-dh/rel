@@ -102,7 +102,7 @@ impl CEnc {
         let c = &self.c;
         unsafe {
             let (base, w) = (*c.base.add(b), *c.width.add(b));
-            EncPack { nb, base, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
+            EncPack { nb, frame: (base as u64).wrapping_add(if c.fdelta.is_null() { 0 } else { *c.fdelta.add(b) }), width: w,
                       res: sl_mut(res, (if whole { 1usize << c.lg() } else { nb } * w as usize).div_ceil(8)),
                       pos: sl_mut(pos, ne), raw: sl_mut(raw, ne * self.width) }
         }

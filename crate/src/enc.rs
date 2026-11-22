@@ -26,7 +26,7 @@ pub struct EncMeta<'a> {
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
     pub nb: usize,
-    pub base: i64, pub frame: u64, pub width: u8,
+    pub frame: u64, pub width: u8,
     /// `blk * width / 8` bytes at `off[b]`
     pub res: &'a mut [u8],
     /// `exc_off[b] .. exc_off[b + 1]`
@@ -349,7 +349,7 @@ mod a17_tests {
         let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
         let c = Coc { meta, pack: &[1, 2, 3], exc: None, fdelta: None };
         let mut res = [0xa5u8; crate::BLK];
-        let mut p = EncPack { nb: 3, base: 5, frame: 5, width: 8, res: &mut res, pos: &mut [], raw: &mut [] };
+        let mut p = EncPack { nb: 3, frame: 5, width: 8, res: &mut res, pos: &mut [], raw: &mut [] };
         move_pack(&mut p, &c, 0, 2);
         assert_eq!(&res[..4], [1, 2, 3, 0]);
         assert!(res[3..].iter().all(|&x| x == 0));
@@ -424,7 +424,7 @@ mod tests {
             let nb = BLK.min(n - b * BLK);
             let (e0, e1) = (eo[b] as usize, (eo[b] + ne[b]) as usize);
             eo[b + 1] = eo[b] + ne[b];
-            let mut p = EncPack { nb, base: base[b], frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b],
+            let mut p = EncPack { nb, frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b],
                                   res: &mut pack[at..at + (nb * width[b] as usize).div_ceil(8)],
                                   pos: &mut pos[e0..e1], raw: &mut raw[e0 * size_of::<T>()..e1 * size_of::<T>()] };
             pack_exc_blk(&mut p, &x[b * BLK..], ne[b]);

@@ -27,16 +27,12 @@ pub trait Elt: Pod + Default + PartialOrd + Send + Sync + 'static {
     fn bits(self) -> u64;
     /// the element as q reads it, C's `(int64_t)` cast: zero-extended at an unsigned type, sign-extended at a signed one
     fn i(self) -> i64;
-    fn f(self) -> f64;
-    fn of_f(v: f64) -> Self;
 }
 macro_rules! elt { ($($t:ty: $u:ty),*) => {$(impl Elt for $t {
     const W: usize = size_of::<$t>();
     #[inline(always)] fn wrap(v: u64) -> $t { <$t>::from_ne_bytes((v as $u).to_ne_bytes()) }
     #[inline(always)] fn bits(self) -> u64 { <$u>::from_ne_bytes(self.to_ne_bytes()) as u64 }
     #[inline(always)] fn i(self) -> i64 { self as i64 }
-    #[inline(always)] fn f(self) -> f64 { self as f64 }
-    #[inline(always)] fn of_f(v: f64) -> $t { v as $t }
 })*} }
 elt!(u8: u8, u16: u16, i16: u16, u32: u32, i32: u32, u64: u64, i64: u64, usize: usize);
 elt!(f32: u32, f64: u64);
