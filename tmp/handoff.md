@@ -1,53 +1,42 @@
-# 8.5s2c handoff (concat chain: thread `Tab.WF` / `Vals.WF` instead of the clamp)
+# 8.5s2d handoff (concat chain: thread `Tab.WF` / `Vals.WF` instead of the clamp)
 
-Branch `worktree-agent-a548a38c7a7771465` (contains afaa894 and lohi11). Build per module with
-`CAP_JOB=<name> CAP_MEM_MB=20000 /home/dh/repo/cc-guard/bin/cap lake -d <worktree> build <Mod>`; the log is
-`/data/tmp/job/<name>.log` (cap writes nothing to stdout).
+Branch `worktree-agent-a071d373f81f7d312` = master a549fae + merge of 195bc94 (8.5s2c) + WIP commits. Build per
+module with `CAP_JOB=<name> CAP_MEM_MB=20000 /home/dh/repo/cc-guard/bin/cap lake -d <worktree> build <Mod>`, then
+`cap -w <name>`; the log is `/data/tmp/job/<name>.log`.
 
-## Green
-- `Rel.RepCols`, `Rel.RepSetOps`, `Rel.RepTabComp` build (all `#guard`s pass).
-- RepSetOps: `concat_holds`, `concat_split`, `union_holds`, `select_ok`, `inter_holds`, `inter_sorted`,
-  `diff_holds`, `diff_sorted`, `le_holds` take `(hR : R.WF) (hS : S.WF)` right after `h`.
-  `#guard` cell at the old line 965 is `(0, 0, 1)` (payload of no rows, so only the empty cell is WF).
-- RepTabComp: `compOne_canon`, `compBlock_holds`, `compBlocks_canon`, `compFrom_canon`, `comp_canon`, `comp_holds`
-  take `hR hS`; `foldlM_union` takes `(hf : ∀ j X, f j = .ok X → X.WF)` and `acc.WF` after `h`.
-  Arr `#guard`s near the end: cells made WF (`(-4,2,9)`→`(0,2,9)`, `(3,1,2)`→`(0,0,2)` over `[]`, the 4-row payload
-  under `arrCells` got a fifth cell `(3,4,5)` since `arrCells` reaches `hi = 5`).
-- Moved up (DRY: an op's `_wf` beside its `_holds`, so a `_holds` that needs an intermediate table's WF can get it):
-  `okSplit` macro (now a plain `macro` in RepSetOps, the `local` one in RepWF deleted), `Tab.keep_wf`,
-  `Tab.concat_wf`, `Tab.union_wf` → RepSetOps; `Tab.compExpand_wf`, `Tab.compOne_wf`, `Tab.compBlock_wf` →
-  RepTabComp (before `foldlM_union`). Deleted from RepWF.
+## Green (build)
+`Rel.RepCols`, `Rel.RepSetOps`, `Rel.RepTabComp`, `Rel.RepStruct`, `Rel.RepTabArith`, `Rel.RepTabDiv`, `Rel.RepBits`,
+`Rel.RepWF` (log `/data/tmp/job/85s2d-7.log`).
 
-- `Rel.RepStruct` builds. RepWF's base `_wf` block (`Arr.zeros_get`, `foldlM_keeps`, `Vals.none_wf`, `zero_wf`,
-  `dom_wf`, `ran_wf`, `idU_wf`, `conv_wf`, `outl_wf`, `outr_wf`, `tagged_wf`, `select_wf`, `inter_wf`, `diff_wf`,
-  `diag_wf`, `ofBits_wf`, `Vals.cross_wf`, `cross_wf`, `top_wf`, `prod_wf`, `inl_wf`, `inr_wf`, `compBlocks_wf`,
-  `compFrom_wf`, `comp_wf`, `pair_wf`, `flat_wf`) moved verbatim to the top of RepStruct (after its `open`s) and
-  deleted from RepWF (RepWF now starts at "The bit-matrix and division ops"; RepWF not rebuilt yet).
-  `pair_holds` (`hR hS`), `flat_holds` (`hX : Vals.WF X` `hR`), `inlConv_holds`/`inrConv_holds` (`hX`) take WF.
+## Done in 8.5s2d (the rule: an op's `_wf` sits beside its `_holds`, so a `_holds` gets intermediate WF locally)
+- Moved `foldlM_keeps`, `compBlocks_wf`, `compFrom_wf`, `comp_wf` RepStruct → RepTabComp (after `compBlock_wf`).
+- Moved `Tab.uncons_wf`, `Tab.unsnoc_wf` RepWF → RepTabDiv (before `uncons_holds`); `Tab.mem_wf` RepWF → RepTabDiv
+  (before `mem_canonical`).
+- New `Vals.cat_lt` (RepTabDiv, before `Vals.cat_row`): `cat`'s `n < 2^63` guard without WF; `snoc_wf`/`cons_wf` use it.
+- WF hypotheses added (all right after `h` unless noted):
+  `Tab.succ_holds (hD : D.WF)`, `Tab.arith_holds (hD : D.WF)` (U's tables are atom-sided, so `⟨trivial, trivial⟩`);
+  `Vals.cat_row (hX hY)`; `cat_holds`/`snoc_holds`/`cons_holds (hP : P.WF)`;
+  `peel_holds (hrest huw hw₁ hw₂)` after `hr`; `peelL_holds`/`peelR_holds (hrest : rest.WF)`;
+  `Tab.ldivOf_holds (hrw hsw hUB hUC)`; `Tab.ldiv_holds (hRw hSw hUB hUC)`; `Tab.rdiv_holds (hRw hSw hUA hUB)`;
+  `lamOf_canon (wD : Vals.WF D) (wr : r.WF)` (its `r.n ≠ 0 → Vals.WF D → r.WF → U.WF` clause kept as is; now
+  redundant premises, can be simplified to `r.n ≠ 0 → U.WF` with `lamOf_wf` updated);
+  `lamOf_holds`/`lamOf_den (wD : Vals.WF D) (wr : r.WF)`; `lam_den (wD wR)`; `tau_den (wX)` before `a`;
+  `setify_den` passes `mem_wf hG hw`; `diag_holds (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)` after `hq`.
+- RepBits `ldivBits_holds` code2 pairings fixed: `(R.val, UB.val)` = `hR.2 hUB.2`, `(S.val, UC.val)` = `hS.2 hUC.2`.
 
-## Edited, not yet built
-- RepBits: `compBits_holds` takes `hR hS` (code2 of `R.val`, `S.key`: `hR.2 hS.1`); `ldivBits_holds` takes
-  `hR hS hUB hUC` (code2 pairs guessed as `(R.key,S.key)`, `(R.val,UB.key)`, `(S.val,UC.key)` → check the three
-  `Vals.code2_spec … hX hY` lines against `Tab.ldivBits`' code2 arguments); `compBits_comp`, `ldivBits_ldiv`,
-  `ldivSel_holdsBy`, `ldivSel_holds` take the same WF args; `compSel_holds` passes `hR hS` to `compFrom_canon`.
+## Failing: `Rel.RepWFOps` (log `/data/tmp/job/85s2d-7.log`)
+Errors at 159:64, 173:31, 179:90, 183:4, 191:40 (`est_holds`, 155–206); 214:89, 230:31, 232:90, 233:53, 238:16,
+243:65, 244:8, 249:30 (`thin_den`, 211–); 411:87, 462:88, 474:96 (`mu_holds`/`star_holds` area). All are callers of
+`_holds` that now take WF:
+- `est_holds`/`thin_den`: `pair_holds hP` needs `(mem_wf hG hX) (mem_wf hG hX)`; `diff_holds hY`/`hY1`/`h` need both
+  operands' WF (`ran_wf`, `diff_wf`, `pair_wf`, outl/outr_wf, `comp_wf`); `comp_holds hPO`/`hWD` likewise. The
+  outputs of `q` need WF: add `(hqw : ∀ D t, q D = .ok t → D.WF → t.WF)` (as `diag_holds`, `diag_wf`), and pass it to
+  `diag_holds hq hqw …`. `lam_den h` → `lam_den h wD wR`.
+- RepWFOps 233 caller of `diag_holds`, GenKFold 1271/1449/1460 callers of `diag_holds` need `hqw`.
 
-## Failing (`lake build Rel.RepStruct Rel.RepTabArith`, log `/data/tmp/job/85s2c-b8.log`)
-- RepTabArith.lean:209-245 `Tab.succ_holds` (errors 213:74 unsolved `case hR`, 240/245 `x : K.El` passed where a WF
-  proof is expected), 471-499 `Tab.arith_holds` (476:65 unsolved, 487/499 `simp` made no progress): thread WF the
-  same way (the `_wf` lemmas are now all in RepStruct/RepTabComp/RepSetOps, upstream of RepTabArith).
-- Every `_holds` that composes ops now discharges its intermediate tables' WF with the moved `_wf` lemmas, as in
-  `flat_holds` (RepStruct): `have w := comp_wf hL (outl_wf hO1 hX) hR` etc., then `comp_holds hL w1 hR`.
-- Not reached yet: RepTabDiv (`Vals.cat_row` ~715, `ldivOf_holds` ~1521, `lamOf_canon` ~2253, `union_nodup`,
-  `diag_holds`), RepWFOps (`mu_holds`, `star_holds`, `est_holds`, `thin_den`), GenKBits (`index_spec`,
-  `code2_rep_inj`, `ldivTabMat_spec`, `inter_law`, `compR_sound`), GenKFold (`foldRounds_holds`, `filter_holds`,
-  `takewhile_holds`, `merge_holds`, `thinL_holds`, `foldI_sound`), GenKFix (`nu_sound`, `inter_distinct`),
-  GenKSpec (`join_sound`, `diff_sound`, `rdiv_sound`), GenKHylo (`hylo_sound`), GenSound.
-
-## Recommended next step (the general fix, not per-lemma moves)
-RepWF.lean:1-137 (`foldlM_keeps`, `dom_wf`, `ran_wf`, `idU_wf`, `conv_wf`, `outl_wf`, `outr_wf`, `tagged_wf`,
-`select_wf`, `inter_wf`, `diff_wf`, `diag_wf`, …) and `ofBits_wf`, `cross_wf`, `prod_wf`, `inl_wf`, `inr_wf` use only
-RepCols lemmas and the `Run` definitions. Move every op-level `_wf` that does not use a `_holds`/`_canon` lemma into
-the module of that op's `_holds` (or into one module imported right after RepCols, before RepSetOps), so each
-`_holds` that composes ops can discharge its intermediate tables' WF locally. Then thread `hR hS` up as done here.
-Top-level callers have WF from `K.WF` / `Rel.Wf` and the GenK `_wf` lemmas (GenKBits/GenSound).
-Then: PLAN.md 8.5 bullet; delete this file before the final commit; `cellSpan` is a later item, not this one.
+## Not reached
+GenKBits, GenKFold (`peelL_holds hp`/`peelR_holds hp` at 236/275 need `hrest`; `arith_holds` 295 needs `hD`;
+`snoc_holds`/`cons_holds`/`cat_holds` at 595/682/904/1059/1162/1295/1296/1479/1486 need `hP`), GenKFix, GenKSpec
+(`ldivOf_holds` 463 needs 4 WF; `succ_holds` 486 needs `hD`), GenKHylo, GenSound (620/624/628: `GenK.after_row_sound
+fun _ _ _ h => Tab.snoc_holds h` — the row-sound hook must pass the WF it has, cf. `GenK.after_wf`).
+Then the full gate, PLAN.md 8.5 bullet, delete this file.
