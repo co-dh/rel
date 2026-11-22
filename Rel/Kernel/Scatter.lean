@@ -50,9 +50,11 @@ def scatterWords (op : Op) (is es : Array UInt64) (n : Nat) (fill : UInt64) : Ex
     else .error s!"scatter: index {i} at row {k} is not below n = {n}"
 
 /-- `scatter` over `m` rows of `ix` and `e` into `n` cells under `op`: `scatterWords` of their words, encoded by
-`Coc.encode` at 8 bytes, every cache filled. The first error in the order `ix`, `e`, the rows is the answer. -/
+`Coc.encode` at 8 bytes, every cache filled. The first error in the order `ix`, `e`, the rows is the answer. An op
+reading its divisor from the cell (`Op.readsDivisor`) is refused first: the kernel finds a failing row from `e` alone. -/
 @[extern "qlean_k_scatter"]
 def kscatter (op : @& Op) (m : USize) (ix e : @& Enc) (n : USize) (fill : UInt64) : Except String Enc := do
+  if op.readsDivisor then throw "scatter: rdiv and rmod divide by the cell, which no row test sees" else
   let o ← scatterWords op (← foRWords "scatter: ix" m ix) (← foRWords "scatter: e" m e) n.toNat fill
   -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
   let r := Coc.encode (USize.ofNat32 8 (by decide)) (o.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)

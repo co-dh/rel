@@ -108,13 +108,12 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
 #guard (whereCol 0 .pos).toOption.map (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
 
 /-- The set bits of the `g · w` bits `o`, bit `a·w + c` the row `(x[ra[a]], y[rc[c]])`: `whereCol`, then `a` and `c` by
-`colMap .div/.mod`, each side `kgather`ed. Ascending by `(a, c)`, so canonical where the numbers are `kasc` ranks. -/
+the post steps `(.rdiv, w)`, `(.rmod, w)`, each side `kgather`ed. Ascending by `(a, c)`, so canonical where the numbers are `kasc` ranks. -/
 def Tab.ofBits {A C : Obj} {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) :
     Except String (Tab A C) := do
   let (M, sel) ← whereCol (g * w) o
-  let wc ← colConst M w.toUInt64
-  let ix ← kgather M (← colMap .div M sel wc) g ra
-  let iy ← kgather M (← colMap .mod M sel wc) w rc
+  let ix ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rdiv, w.toUInt64)]) g ra
+  let iy ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rmod, w.toUInt64)]) w rc
   pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
 
 end Rel

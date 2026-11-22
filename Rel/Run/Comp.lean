@@ -91,10 +91,8 @@ def compCuts (bound : Nat) (n : USize) :
     | .error s => throw s
     | .ok P => if lastCount K P (colPrefix_closed hP).2 ≤ bound then pure none else do
       -- each constant operand a post step (`colMap_const_eq`): `max (x - 1) 0` as `[(.add, 0 - 1), (.max, 0)]`;
-      -- `bc` stays a column for `.div`, whose post step would put the constant on the left
       let dec : List (Op × UInt64) := [(.add, 0 - 1), (.max, 0)]
-      let bc ← colConst K (max bound 1).toUInt64
-      let win ← colMap .div K (← colMap .first K P P .i64 .i64 [] dec) bc
+      let win ← colMap .first K P P .i64 .i64 [] (dec ++ [(.rdiv, (max bound 1).toUInt64)])
       let big ← colMap .first K w w .i64 .i64 [] [(.le, (max bound 1).toUInt64)]
       let prev ← colMap .first K .pos .pos .i64 .i64 [] dec
       let pw ← kgather K prev K win

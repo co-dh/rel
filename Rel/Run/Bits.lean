@@ -149,7 +149,7 @@ def colIota (n : USize) : Except String Enc := shiftCol n 0
 one order (`Vals.code2`), each number's position in `xr` `kscatter`ed (`g` where `xr` holds none), read through `v`'s. -/
 def index {g n : USize} (xr : Vals A g) (v : Vals A n) : Except String Enc := do
   let (k, cx, cv, _) ← Vals.code2 xr v
-  kgather n cv k (← kscatter .last g cx (← colIota g) k g.toUInt64)
+  kgather n cv k (← kscatter .last g cx (← shiftCol g 0) k g.toUInt64)
 
 /-- **`T ∩ M`, `M` the `g · w` bits `o` over `x[ra[·]]` and `y[rc[·]]`** (`ofBits`' arguments): the rows of the canonical
 `T` whose bit is set, each side's position by `index`, so `M` is never read back as rows. -/
@@ -202,16 +202,16 @@ def ldivTabMat (R : Tab A B) (UB : Tab B B) (UC : Tab C C) {n m : USize} (g w : 
   -- `keep`: some `R` row, and every one's key a row of `M`
   let keep ← colMap .lt kb vac (← colMap .eq kb cnt (← kscatter .add R.n bR on kb 0))
   let N := kb * w
-  let i ← colIota N
-  let r ← colMap .div N i (← colConst N w.toUInt64)
+  let i ← shiftCol N 0
+  let r ← colMap .first N i i .i64 .i64 [] [(.rdiv, w.toUInt64)]
   let p1 ← colMap .add N (← colMap .first N r r .i64 .i64 [] [(.mul, kc.toUInt64)])
-    (← kgather N (← colMap .mod N i (← colConst N w.toUInt64)) w cM)
+    (← kgather N (← colMap .first N i i .i64 .i64 [] [(.rmod, w.toUInt64)]) w cM)
   let s1 ← kscatter .last N p1 (← colMap .mul N o1 (← kgather N r kb keep)) (kb * kc) 0
   let (E, eb) ← whereCol kb vac
   let NU := E * UC.n
-  let j ← colIota NU
-  let s2 ← bitMatrix NU kb kc (← kgather NU (← colMap .div NU j (← colConst NU UC.n.toUInt64)) E eb)
-    (← kgather NU (← colMap .mod NU j (← colConst NU UC.n.toUInt64)) UC.n cU)
+  let j ← shiftCol NU 0
+  let s2 ← bitMatrix NU kb kc (← kgather NU (← colMap .first NU j j .i64 .i64 [] [(.rdiv, UC.n.toUInt64)]) E eb)
+    (← kgather NU (← colMap .first NU j j .i64 .i64 [] [(.rmod, UC.n.toUInt64)]) UC.n cU)
   pure (some (kb, kc, ← colMap .add (kb * kc) s1 s2, ⟨_, zb⟩, rb, ⟨_, zc⟩, rc'))
 
 end Tab

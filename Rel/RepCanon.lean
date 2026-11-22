@@ -56,6 +56,7 @@ theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h
     (raw .i64 m ix).size = m.toNat ∧ (raw .i64 m e).size = m.toNat ∧
       scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill = .ok (raw .i64 n o) := by
   unfold kscatter at h
+  split at h; · cases h
   cases hi : foRWords "scatter: ix" m ix with
   | error s => simp [hi, bind, Except.bind] at h
   | ok is' =>
@@ -116,8 +117,8 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   unfold kscan at hr
-  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind] at hr
+  by_cases hd : (op.readsDivisor || (n != 0 && (pre ++ post).any fun p => p.1.stepFails p.2)) = true
+  · simp only [hd, ↓reduceIte] at hr; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
   split at hr; · cases hr
   rename_i cs hc

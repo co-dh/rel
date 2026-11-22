@@ -97,6 +97,7 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         ws[(is[k]?.getD 0).toNat]? = some (es[k]?.getD 0) := by
   intro is es ws'
   unfold kscatter at h
+  split at h; · cases h
   cases hi : foRWords "scatter: ix" m ix with
   | error s => simp [hi, bind, Except.bind] at h
   | ok is' =>

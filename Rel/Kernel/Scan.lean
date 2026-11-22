@@ -238,7 +238,9 @@ forward from the marked rows.
 **Owner approval A, 2026-11-20: per-row Op chain.** Each word read from `es` first goes through `chain pre` and each
 answer word through `chain post`; the fold's carry is the answer before `post`. So an element-wise computation of several
 `Op`s — widen on load, the verb, `fto`, a compare against a constant — is one pass writing one encoded column, never an
-intermediate column per `Op`. A `div` or `mod` step is refused up front, so a chain never fails part way through.
+intermediate column per `Op`. A step that can fail (`Op.stepFails`) is refused up front where a row exists, so a chain
+never fails part way through; so is an op reading its divisor from the carry (`Op.readsDivisor`), which no up-front
+test sees.
 With `rev` it is the same scan run from the last row back (van Herk's backward pass): the forward scan of every column
 reversed, `seg` included, then reversed, so `seg` marks the row a segment starts at walking backwards (its last row in
 forward order) and the last row always starts one.
@@ -251,8 +253,8 @@ Temporary name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist.
 @[extern "qlean_k_scan"]
 def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Option Enc) (es : @& List Enc)
     (pre post : @& List (Op × UInt64) := []) : Except String (Enc × Option UInt64) := do
-  if (pre ++ post).any fun p => p.1 == .div || p.1 == .mod then
-    throw "kscan: a chain step is div or mod, which fails at 0"
+  if op.readsDivisor || (n != 0 && (pre ++ post).any fun p => p.1.stepFails p.2) then
+    throw "kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)"
   let rv := fun a : Array UInt64 => if rev then a.reverse else a
   let g ← segAll n seg
   match ← es.mapM fun e => rawAll s n e >>= chainAll pre with

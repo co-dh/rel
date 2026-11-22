@@ -72,6 +72,10 @@ example : view (kscatter .add (u 3) (col [2, 0, 2]) (col [10, 11, 12]) (u 4) 7) 
 def divZero : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: Op.div: integer division by 0 at row 1"
 example : view (kscatter .div (u 2) (col [0, 0]) (col [5, 0]) (u 1) 100) = divZero := by decide +kernel
 #guard view (kscatter .div (u 2) (col [0, 0]) (col [5, 0]) (u 1) 100) == divZero
+-- an op reading its divisor from the cell is refused before any row (`Op.readsDivisor`)
+def rdivOp : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: rdiv and rmod divide by the cell, which no row test sees"
+example : view (kscatter .rdiv (u 2) (col [0, 0]) (col [5, 7]) (u 1) 100) = rdivOp := by decide +kernel
+#guard view (kscatter .rdiv (u 2) (col [0, 0]) (col [5, 7]) (u 1) 100) == rdivOp
 -- no rows: `n` cells of `fill`, none at `n = 0`
 example : view (kscatter .add (u 0) (col []) (col []) (u 0) 7) = enc8 [] := by decide +kernel
 #guard view (kscatter .add (u 0) (col []) (col []) (u 0) 7) == enc8 []
