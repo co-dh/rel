@@ -237,16 +237,14 @@ inductive Enc (X : Type)
   | enum : (dict : ByteArray) → (offs : Array Nat) → (ids : ByteArray) → Enc X
   /-- A general list, q's type 0: its elements as values, under the header type
   `QAtomicType.general`: the pattern `QValue.general`. Under an atom type it is a mismatch,
-  `Column.mismatch`, as a typed payload under `general` is.
-
-  Last, so the constructor tags of the six before it are unchanged. -/
+  `Column.mismatch`, as a typed payload under `general` is. -/
   | gen : Array (QValue X) → Enc X
   /-- The row positions `0 … n-1` of an `i64` column, `n` the header's: element `i` is `i`, and nothing is stored, in
   memory or on disk (PLAN 6.13). A kernel reads it as its loop index, never as a materialised `til n`. A kernel's
   answer is `pos` only where its arguments' forms say so, never because the values happen to be positions. `WF`
   admits it at no type until no executable reader is left that needs a dense payload (6.13b).
 
-  After `gen`, so every tag before it is unchanged; nullary, so in Lean's ABI it is the scalar `lean_box(7)`. -/
+  Nullary, so in Lean's ABI it is the scalar `lean_box(4)`, its tag, which `crate/src/blocks.rs`'s `POS` names. -/
   | pos : Enc X
   deriving Inhabited
 

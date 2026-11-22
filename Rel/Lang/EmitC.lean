@@ -54,9 +54,12 @@ def colRegs (t : QAtomicType) (kind : UInt8) (count : Nat) (bs : Array Nat) : Bl
   return #[← lit (.u8 t.code.toUInt8), ← lit (.u8 0), ← lit (.u8 kind), count, ← lit (.str ""), ps]
 
 /-- The `Enc` register `e` of `count` rows of type `t` as `output`'s six registers: a `foR` (what every kernel answers,
-    design §4) handed over as kind `2` (`Db.ownParts`), its parts its two fields, so it is written as it is encoded. -/
+    design §4) handed over as the kind `Db.ownParts` gives it, its parts its two fields, so it is written as it is
+    encoded. The tag and the kind are read off the constructor, so a renumbering of either reaches the plan. -/
 def encRegs (t : QAtomicType) (count e : Nat) : Bld (Array Nat) := do
-  colRegs t 2 count #[← projB e 2 0 .bytes, ← projB e 2 1 .bytes]
+  let f : Enc := .foR .empty .empty
+  let .ok (some (k, _)) := Db.ownParts f | throw "encRegs: `Db.ownParts` holds no `foR`"
+  colRegs t k count #[← projB e f.ctorIdx 0 .bytes, ← projB e f.ctorIdx 1 .bytes]
 
 /-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
 def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (dir : String) :
