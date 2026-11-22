@@ -223,13 +223,13 @@ info: ([0, 1, 0, 2], [3, 1], ["ibm", "aapl", "msft", "zz"], ["aapl", "ibm", "msf
   let (D', K') ← readDict dir
   let ⟨_, y⟩ ← readSym D' dir "s"
   return (t.val.toList, u.val.toList, texts D, byRank, (← IO.FS.readFile (dir ++ "/a.out")) == a,
-    (← IO.FS.readFile (dir ++ "/b.out")) == b, order, D'.toList == D.toList ∧ K'.toList == K.toList,
+    (← IO.FS.readFile (dir ++ "/b.out")) == b, order, D'.toList == D.toList && K'.toList == K.toList,
     y.toList == t.val.toList)
 
 -- the refusals: an id with no text in the dictionary, a dictionary with a text twice
 /--
 info: /data/tmp/rel-test-table/symbad/s: 1 of 1 ids are past the dictionary of 1 texts
-/data/tmp/rel-test-table/symbad/sym: 2 of 3 texts repeat one before them
+/data/tmp/rel-test-table/symbad/sym.lo: 2 of 3 texts repeat one before them
 -/
 #guard_msgs in
 #eval show IO Unit from do

@@ -1126,6 +1126,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `pointfree`、`native`、`build.sh syms` 通过；`cargo test --features std` 82 passed。138→82 的落差在 master 的
   b59ffda..000ce33（a837f6c 删除死代码的测试，随后恢复主体仍活着的；ALP 删除）；symdict2 只删了 `ids.rs`
   `at_and_max`（`id_at`/`ids_max` 已删）与 `own.rs` `check_symbols`（kind 4 已删）。`compile-diff` 只在 main 跑。
+  已做（分支 `symdict4`，基于 5120a48，决定 E 2026-11-22）：整个数据库一个字典，只追加（q 的 sym 文件）：新串取下一个
+  id，旧 id 不变，数据列不重写；id 相等 = 串相等；序经 `rank = iasc(D)° = D ≫ asc(ran D)°`，字典增长只重算 `rank`。
+  `Table.intern D x`：`N = ran R − ran D`，`F = Λ((R ≫ N)°) ≫ uncons ≫ π₁`（新串到首行），`D'` = `D` 接 `F°`；id =
+  `R ≫ D'°`。own：`writeDict`/`readDict` 写库目录的 `sym` 与 `sym.rank`（拒绝重复的串、与字典不符的 rank），
+  `writeSym`/`readSym D` 只写读 id（拒绝无文本的 id）。CSV：`readCsvDict D`、`writeCsv (Option Dict)` 共用一个字典。
+  序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。未做：程序
+  （`n.io`）的 sym 输入——`TmGen` 要把库字典穿过所有输入与 `writeCsv`，`<`/`asc` 行要接 `rank`。
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
 - ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
