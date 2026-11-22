@@ -166,6 +166,14 @@ theorem hasNul_flags {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t 
     simp only [hasNul, foRNuls]
     exact (Bool.eq_false_iff.2 fun h => by obtain ⟨i, hi, h⟩ := Array.any_eq_true.1 h; simp at h).symm
 
+/-- A column holding no null flags none of its rows (`hasNul_flags`). -/
+theorem foRNuls_plain {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t n e) (hN : hasNul e = false)
+    {i : Nat} (hi : i < n.toNat) : (foRNuls n e)[i]? = some 0 := by
+  have hs : i < (foRNuls n e).size := by cases e <;> simp [foRNuls, hi]
+  rw [hasNul_flags hw, Array.any_eq_false] at hN
+  rw [Array.getElem?_eq_getElem hs]
+  simpa using hN i hs
+
 /-- **A kernel's answer reads back its null flags**: row `i` of `wordsFoR ws nul` is flagged exactly where
 `Column.bitAt nul i`, under `wordsFoR_nul`'s `hbig` (vacuous at a null row and where `nul` flags no row of the block). -/
 theorem foRNuls_wordsFoR (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) (i : Nat)

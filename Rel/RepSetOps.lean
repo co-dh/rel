@@ -105,10 +105,10 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
       have := hmono (i + 1) k' h1; rw [hstep, if_pos hfi] at this; omega
     rwa [hdv i hi, hc64 _ (by have := hCle i; omega), hpos m i hi] at this
   -- the answer: cell `c` of `e` at each `c < K`
-  obtain ⟨his, -, -, hoe⟩ := raw_kgather _ _ _ _ _ ho'
+  obtain ⟨his, -, -, -⟩ := raw_kgather _ _ _ _ _ ho'
   have hro : Enc.raw .i64 K o' = (Enc.raw .i64 K (.pos : Enc)).map fun c =>
       (Enc.raw .i64 (K.toNat + 1).toUSize e)[c.toNat]?.getD 0 := by
-    rw [hoe, (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1]
+    rw [kgather_plain ho' (kscatter_plain he rfl), (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1]
   -- the filter ascends strictly, so a position names one index
   have hpw := List.pairwise_iff_getElem.1 ((List.pairwise_lt_range (n := m.toNat)).filter f)
   apply List.ext_getElem
@@ -142,7 +142,7 @@ theorem whereCol_size {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) 
   rename_i o' ho'
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h).symm
   obtain ⟨his, -, -, hoe⟩ := raw_kgather _ _ _ _ _ ho'
-  rw [hoe, (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.1, Array.size_map, his]
+  rw [hoe, (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.1]
 
 /-- Rows with equal codes are `lexLe` both ways. -/
 theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
@@ -544,7 +544,7 @@ theorem seenSeg_ok {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc}
   -- `kscan` reads them as booleans: `0` exactly off the first rows
   have hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat) := by
     have hu : Enc.raw .u1 n seg = (Enc.raw .i64 n seg).map fun w => UInt64.ofNat (w.toNat % 2) := by
-      obtain ⟨hfo, -⟩ := raw_scatter m.toUSize f one n 0 seg h2
+      obtain ⟨hfo, -⟩ := raw_scatter m.toUSize f one n 0 seg (kscatter_plain h1 rfl) h2
       generalize Coc.encode _ _ = q at hfo; subst hfo
       simp only [Enc.raw, QAtomicType.width, Array.map_map]
       refine Array.ext (by simp) fun j _ _ => ?_
@@ -654,11 +654,24 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
     intro q hq
-    refine ascKeys_row (by simp [List.map_fst_zip, hvl]) fun c h1 h2 => ?_
-    obtain ⟨ws, nul, hv, hws, hwq, hnul, -⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega)) (List.getElem?_eq_getElem h2)
-      (List.getElem?_eq_getElem _)
-    obtain rfl := hnul (Vals.cols_wf _ hes _ (List.getElem_mem h2)).2
-    simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
+    -- no column of either side holds a null: the codes are the words, and every flag is `0`
+    have hc : ∀ c (h1 : c < ((es.map (·.1)).zip vs).length) (h2 : c < es.length),
+        (Enc.raw .i64 C.n ((es.map (·.1)).zip vs)[c].2)[q]? = (Enc.raw .i64 C.n es[c].2)[ps[q]]? ∧
+        hasNul ((es.map (·.1)).zip vs)[c].2 = false ∧ hasNul es[c].2 = false ∧
+        (foRNuls C.n ((es.map (·.1)).zip vs)[c].2)[q]? = (foRNuls C.n es[c].2)[ps[q]]? := fun c h1 h2 => by
+      obtain ⟨ws, nul, hv, hws, hwq, hnul, -⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega))
+        (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem _)
+      obtain ⟨⟨t, hw⟩, hp⟩ := Vals.cols_wf _ hes _ (List.getElem_mem h2)
+      obtain rfl := hnul hp
+      have hcl := wordsFoR_closed ws hws.symm
+      simp only [List.getElem_zip, hv]
+      refine ⟨by rw [hcl.2.1, hwq q hq], hasNul_wordsFoR ws, hp, ?_⟩
+      rw [foRNuls_plain (hcl.2.2 (t := .i64) rfl fun h => by cases h) (hasNul_wordsFoR ws) (by omega),
+        foRNuls_plain hw hp (hpsl q hq)]
+    refine ascKeys_row (List.map_fst_zip (by simp [hvl])) (fun c h1 h2 => ?_) fun c h1 h2 => ?_
+    · obtain ⟨e1, n1, n2, -⟩ := hc c h1 h2
+      simp only [nulWords, n1, n2, Bool.false_eq_true, ↓reduceIte]; exact e1
+    · obtain ⟨-, n1, n2, e2⟩ := hc c h1 h2; exact ⟨n1.trans n2.symm, e2⟩
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey
   generalize hF : firstsOf Kf C.n.toNat = F at hmm hg hf
