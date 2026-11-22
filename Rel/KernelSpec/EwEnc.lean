@@ -62,7 +62,7 @@ theorem decode_of_encode8 {x m p : ByteArray} {n : USize} (h : Coc.encode 8 x = 
 
 end Rel.Verify
 
-/-- info: 'Rel.Verify.elemsW_decode_encode' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.elemsW_decode_encode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Rel.Verify.elemsW_decode_encode
 
@@ -82,7 +82,7 @@ end Rel.Verify
 #guard_msgs in
 #print axioms Rel.Verify.eq_of_ite_none
 
-/-- info: 'Rel.Verify.decode_of_encode8' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Rel.Verify.decode_of_encode8' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Rel.Verify.decode_of_encode8
 

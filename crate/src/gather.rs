@@ -27,7 +27,22 @@ pub fn enc(ix: &Blocks, e: &Coc) -> Result<lean::O, String> {
         Some(d)
     } else { None };
     let t = Take { ix: *ix, e: *e, sw, d, bad: AtomicUsize::new(usize::MAX) };
-    let o = Sink::new(ix.n, 8).enc().answer(&t);
+    // a null of `e` is a value: its bit (`Coc::nuls`, read on the flagged blocks) is gathered by the same indices, a
+    // block of `ix` at a time; an index past `e` reads no bit, and is the error below
+    let nul = match e.nuls() {
+        None => None,
+        Some(en) => {
+            let (mut o, mut buf) = (pod::vec_of("gather", "the answer's null bits", ix.n.div_ceil(8), 0u8)?, pod::Scr::<u64>::new(ix.blk()));
+            for (b, lo, _) in ix.walk() {
+                let x = pod::cast::<i64>(ix.view(b, 8, pod::bytes_mut(&mut buf))).expect("qlean gather: an index block buffer is misaligned for i64");
+                for (k, &u) in x.iter().enumerate() {
+                    if (u as u64) < e.meta.n as u64 && crate::enc::is_nul(&en, u as usize) { o[(lo + k) >> 3] |= 1 << ((lo + k) & 7) }
+                }
+            }
+            Some(o)
+        }
+    };
+    let o = Sink::new(ix.n, 8).enc().write_nul(&t, false, nul.as_deref().unwrap_or(&[])).expect("qlean gather: a write with no size test has an answer");
     match t.bad.into_inner() {
         usize::MAX => Ok(o),
         k => Err(format!("gather: index {} at row {k} is not below n = {}", row(ix, k), e.meta.n)),
