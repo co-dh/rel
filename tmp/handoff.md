@@ -99,3 +99,43 @@ Measured with /data/tmp/rq17f2/T1.lean (`env LEAN_PATH=<wt>/.lake/build/lib/lean
 branch reads raw words unconditionally, so either mask the words at a null there or ask word equality at a cells key
 always. Then the callers listed above under Next 2 (RepCanon, RepSetOps, RepTabComp, RepCols, GenKBits, GenKFix),
 then `lake build RelKernel RelRun Rel` and `sh crate/build.sh syms`.
+
+# rq17f3 handoff
+
+Branch `worktree-agent-ae16f80e7880c5eb6`: base cd3523e + merge 9d8d2ea (rq17f2) + rq17f3 commits.
+
+## Done (Rel.KernelSpec.Asc, Rel.KernelSpec.KSeen check green with `lean`; RelKernel rebuilt through them)
+
+- `nulWords m e c` (Kernel/Asc.lean, before `nulCodes`): `c` with `0` at each null row where `hasNul e`. `nulCodes` is
+  now `(if hasNul e then [flags.map (1 - ·)] else []) ++ [nulWords m e c]` (same values as before).
+- `ascKey`'s `cells` branch reads `nulWords m e (raw .i64 m e)`: `AscKey × Enc` admits a null in a cells column (only
+  `ascCol`'s runtime `noNul` refuses it), so the types do not rule it out; the word is masked instead.
+  `nulWords_noNul` (KernelSpec/Asc.lean): `noNul … = .ok _ → nulWords m e c = c`, used in `ascCol_ok`'s cells branch.
+- `ascKeys_row`'s word hypothesis is now `(nulWords m K[c].2 (raw .i64 m K[c].2))[q]? = (nulWords m' K'[c].2 …)[q']?`
+  (equal words only off nulls); `nulCodes_row` takes that form. `lexLe_pos`, KSeen:150 simp sets gain `nulWords`.
+- RepCanon:98 `raw_scatter … rfl h` (`.pos`), RepCanon:872 `kasc_ok` pattern has 10 components now.
+
+## Blocker (design): `ascKeys_row`'s `hasNul K[c].2 = hasNul K'[c].2` cannot be discharged by the callers
+
+The callers (RepCanon `Vals.nub_cover` :406, `kasc_grade` :908, `Vals.nub_sel` :936; RepSetOps :647) compare the
+sorted column `v = wordsFoR ws nul` with the input `e`. Instance: `e` a `foR` block of words `{5,6}` whose width byte
+has bit 7 set but no row at the top residual: `hasNul e = true`, `foRNuls m e = [0,0]`; `kasc` writes
+`nul = nulMap [0,0]`, `planBlock` flags a block only where a row is null (Coc.lean:198), so `hasNul v = false`. Then
+`nulCodes` gives `[[1,1], c]` for `e` and `[c]` for `v`: the code lists differ in length, `hkey` is false as stated.
+Options: A) a validity conjunct "a flagged block holds a null row" (the encoder meets it; callers get it from the
+Vals' encs); B) `nulCodes` keyed on the rows (`(foRNuls m e).any (· != 0)`), Rust `asc` to match; C) `hkey` up to
+constant code columns. Also missing for the flag conjunct: a lemma `foRNuls n (wordsFoR ws nul)` at `i` =
+`if bitAt nul i then 1 else 0` (from `wordsFoR_nul`'s `foROpt` readback, which carries `hbig`).
+DRY note: the four `hkey` proofs are one fact; `kasc_grade` (RepCanon:893) should be the only one, the other three
+use it with `asc_perm_grade`.
+
+## Still failing (`lake build Rel.RepCanon`, log /data/tmp/job/rq17f3-4.log), RepCols/RepSetOps/RepTabComp/GenK* not reached
+
+- RepCanon:26 `Enc.WF .u1` now gives `∀ v, foROpt … i = some v → v.toNat < 2`, the proof expects `foRBits … < 2`.
+- RepCanon:68, :74 `kscatter` unfolds to the new body (`noNul "scatter: ix"`, `if hasNul e`): proof shape changed.
+- RepCanon:205-216 whnf timeout (`raw_kgather` with the new `if hasNul e then nulMap … else .empty` nul).
+- RepCanon:406/426/466, 644-675, 775, 908, 936/953: `asc_perm`'s `hcol` has 6 components now (`ws nul hv hws hwq h0 h1`),
+  the readback goes through `wordsFoR_nul` where `nul ≠ .empty`, plus the blocker above.
+- RepCols:152-153 `raw_scatter n₁ .pos x.enc …` needs `hasNul x.enc = false`: a nullable `x` has none; concat of
+  nullable columns needs a null-aware `raw_scatter` (flags scattered beside the words, as `kscatter_ok` states).
+- Unchecked: RepSetOps :96 :108 :144 :370 :532 :639-650 :666 :779 :780, RepTabComp :393, GenKBits :1338, GenKFix :31.

@@ -95,7 +95,7 @@ theorem colConst_raw {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok 
 theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
     ∀ i < n.toNat, (raw .u1 n e)[i]?.getD 0 = UInt64.ofNat (w.toNat % 2) := by
   intro i hi
-  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e h
+  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e rfl h
   have he := colConst_raw h
   generalize Coc.encode _ _ = q at hfo; subst hfo
   have hu : raw .u1 n (.foR q.1 q.2 : Enc) = (raw .i64 n (.foR q.1 q.2 : Enc)).map fun w => UInt64.ofNat (w.toNat % 2) := by
@@ -869,7 +869,7 @@ theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × V
 theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} {ps : List Nat}
     (ha : kasc n es = .ok (vs, p)) (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray)
     (hperm : ps.Perm (List.range n.toNat)) : ps = ascGrade n.toNat (ascKeys n es) := by
-  obtain ⟨cs, hc, -, -, -, -, -, hpk⟩ := kasc_ok ha
+  obtain ⟨cs, hc, -, -, -, -, -, -, -, hpk⟩ := kasc_ok ha
   rw [ascCol_keys hc] at hpk
   have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
   have hperm' := (ascGrade_spec n.toNat (ascKeys n es)).1

@@ -147,7 +147,7 @@ theorem kseen_pos {n : USize} {ks rest : List (AscKey × Enc)} {k : Nat} {g f : 
     split at this <;> omega
   have e := congrArg (·[(ascKeys n ks).length]?) e
   have hpr : raw .i64 n (.pos : Enc) = (Array.range n.toNat).map UInt64.ofNat := rfl
-  simp only [seenKey, ascKeys_append, ascKeys, ascKey, nulCodes, hasNul, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append, List.map_append, List.map_cons, hpr, Array.getElem?_map, Array.getElem?_range, hi, hj,
+  simp only [seenKey, ascKeys_append, ascKeys, ascKey, nulCodes, nulWords, hasNul, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append, List.map_append, List.map_cons, hpr, Array.getElem?_map, Array.getElem?_range, hi, hj,
     if_true, Option.map_some, Option.getD_some] at e
   rw [List.getElem?_append_right (by simp), List.getElem?_append_right (by simp)] at e
   simp only [List.length_map, Nat.sub_self, List.getElem?_cons_zero, Option.some.injEq] at e
