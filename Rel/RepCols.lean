@@ -561,6 +561,25 @@ theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x
     split at h; · cases h
     cases h; exact hx
 
+/-- **`Vals.nub` keeps `Vals.WF`**: its rows are `Vals.gather`ed from `x`. -/
+theorem Vals.nub_wf {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
+    (hx : Vals.WF x) : Vals.WF r.2 := by
+  unfold Vals.nub at h
+  simp only [bind, Except.bind, Functor.map, Except.map] at h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  rename_i y hg; cases h; exact Vals.gather_wf hg hx
+
+/-- **`Tab.canon` keeps `Tab.WF`** (`Vals.nub_wf` of the pair side). -/
+theorem Tab.canon_wf {k v : Obj} {R t : Tab k v} (h : R.canon = .ok t) (hR : Tab.WF R) : Tab.WF t := by
+  unfold Tab.canon at h
+  cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
+  | error e => simp [hn, Functor.map, Except.map] at h
+  | ok y => simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h; subst h; exact Vals.nub_wf hn hR
+
 /-- **`Vals.catSide` keeps `Vals.WF`**: its rows are gathered from `x`, or from `o` where `x` is empty. -/
 theorem Vals.catSide_wf {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m} {idx : Arr .i64 m} {x : Vals B l}
     {o : Vals B l'} {y : Vals B m} (h : Vals.catSide s tag idx x o = .ok y) (hx : Vals.WF x) (ho : Vals.WF o) :
