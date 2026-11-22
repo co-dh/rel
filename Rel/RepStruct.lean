@@ -207,8 +207,6 @@ theorem crossIx_ok {n m T : USize} {iR iS : Enc} (h : crossIx n m = .ok (T, iR, 
   · simp [hb, bind, Except.bind] at h
   simp only [hb, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i c hc
-  split at h; · cases h
   rename_i d hd
   split at h; · cases h
   rename_i e he
@@ -219,13 +217,11 @@ theorem crossIx_ok {n m T : USize} {iR iS : Enc} (h : crossIx n m = .ok (T, iR, 
   rw [hT] at ht
   have hm0 : 0 < m.toNat := Nat.pos_of_ne_zero fun h0 => by rw [h0, Nat.mul_zero] at ht; omega
   have hmU : m.toUInt64 = m.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp)
-  have hc' : (raw .i64 (n.toNat * m.toNat).toUSize c)[t]?.getD 0 = m.toNat.toUInt64 := by
-    rw [colConst_raw hc, Array.getElem?_replicate, if_pos (by rw [hT]; exact ht), Option.getD_some, hmU]
   have hp : (raw .i64 (n.toNat * m.toNat).toUSize (.pos : Enc))[t]?.getD 0 = t.toUInt64 := raw_pos_word (by omega)
-  have e1 := (colMap_raw hd).2.2.2 t (by omega)
-  have e2 := (colMap_raw he).2.2.2 t (by omega)
-  rw [hp, hc', eval_div_nat (by omega) (by omega) hm0, Except.ok.injEq] at e1
-  rw [hp, hc', eval_mod_nat (by omega) (by omega) hm0, Except.ok.injEq] at e2
+  have e1 := (colMap_post hd).2 t (by omega)
+  have e2 := (colMap_post he).2 t (by omega)
+  rw [hp, hmU, eval_rdiv_nat (by omega) (by omega) hm0, Except.ok.injEq] at e1
+  rw [hp, hmU, eval_rmod_nat (by omega) (by omega) hm0, Except.ok.injEq] at e2
   rw [← e1, ← e2, toNat_toUInt64 (by have := Nat.div_le_self t m.toNat; omega),
     toNat_toUInt64 (by have := Nat.mod_lt t hm0; omega)]
   exact ⟨rfl, rfl⟩

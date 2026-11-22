@@ -163,8 +163,8 @@ theorem raw_kscanChain (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht 
   obtain ⟨e, v⟩ := r
   dsimp only
   unfold kscan at h
-  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+  by_cases hd : kscanRefuses op n es pre post = true
+  · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i g hg

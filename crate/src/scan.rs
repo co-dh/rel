@@ -116,9 +116,18 @@ fn widen32(x: u64) -> u64 {
 /// `Op.eval` (Rel/Kernel/Op.lean) at the constructor index `op`, one scan step on raw words: the integer ops on `i64`
 /// wrapping, the `f` ops on `f64` bits, a boolean the word 0 or 1. `Err` is the Lean `.error` text, word for word.
 pub fn op_eval(op: u8, a: u64, x: u64) -> Result<u64, &'static str> {
-    match (op, x) { (3, 0) => Err("Op.div: integer division by 0"), (4, 0) => Err("Op.mod: integer remainder by 0"), _ => Ok(op_word(op, a, x)) }
+    match (op, a, x) {
+        (3, _, 0) => Err("Op.div: integer division by 0"), (4, _, 0) => Err("Op.mod: integer remainder by 0"),
+        (47, 0, _) => Err("Op.rdiv: integer division by 0"), (48, 0, _) => Err("Op.rmod: integer remainder by 0"),
+        _ => Ok(op_word(op, a, x)),
+    }
 }
-/// `op_eval` where it has an answer: `div` and `mod` by 0, its two errors, are excluded by the caller (`kscan`'s `zero`
+/// `Op.readsDivisor`: `rdiv` and `rmod`, whose failure depends on the running value, not on the element.
+pub fn reads_divisor(op: u8) -> bool { matches!(op, 47 | 48) }
+/// `Op.stepFails`: the chain step `(o, c)` fails at some word.
+fn step_fails(o: u8, c: u64) -> bool { o == 3 || o == 4 || (reads_divisor(o) && c == 0)
+}
+/// `op_eval` where it has an answer: its errors (`div`, `mod` by 0; `rdiv`, `rmod` by a 0 carry) are excluded by the caller (`kscan`'s `zero`
 /// test runs before any row), so the loop over a block's rows carries no `Result`.
 #[inline(always)]
 pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
@@ -133,6 +142,7 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         0 => a.wrapping_add(x), 1 => a.wrapping_sub(x), 2 => a.wrapping_mul(x),
         3 => fdivmod(i(a), i(x) | (x == 0) as i64).0,
         4 => fdivmod(i(a), i(x) | (x == 0) as i64).1,
+        47 => fdivmod(i(x), i(a) | (a == 0) as i64).0, 48 => fdivmod(i(x), i(a) | (a == 0) as i64).1,
         5 => if i(x) < i(a) { x } else { a }, 6 => if i(a) < i(x) { x } else { a },
         7 => x.wrapping_neg(), 8 => if i(x) < 0 { x.wrapping_neg() } else { x },
         9 => w(a == x), 10 => w(a != x), 11 => w(i(a) < i(x)), 12 => w(i(a) <= i(x)), 13 => w(i(x) < i(a)), 14 => w(i(x) <= i(a)),
@@ -169,10 +179,10 @@ pub fn fto_word(t: u8, x: u64) -> u64 {
 }
 
 /// The code of `Op.cast s t` is `CAST + 13 * s + t` (`s`, `t` `QAtomicType` indices, below 13): one `u8` names every op.
-pub const CAST: u8 = 47;
+pub const CAST: u8 = 49;
 
-/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 47) a ctor
-/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 48) one whose field is byte 0.
+/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 49) a ctor
+/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 50) one whose field is byte 0.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn op_code(o: crate::lean::B) -> u8 {
     if o.is_scalar() { o.unbox() as u8 }
@@ -232,7 +242,7 @@ pub fn cast_word(code: u8, x: u64) -> u64 {
 /// `body` with the const `$k` bound to the op `op` (0 ..= 46, `CAST` for every cast), so a loop over rows is compiled
 /// once per op and its `op_word` folds to that op's arm: the `match` on the op runs once per block, not once per row.
 macro_rules! by_op { ($op:expr, $k:ident => $body:expr) => { by_op!(@ $op, $k, $body; 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
-    18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46) };
+    18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48) };
     (@ $op:expr, $k:ident, $body:expr; $($n:literal)*) => { match $op { $($n => { const $k: u8 = $n; $body })* _ => { const $k: u8 = CAST; $body } } } }
 
 /// The writer's block size, `kscan`'s answer grid: a block of rows is computed whole in one scratch of this many words.
@@ -462,7 +472,7 @@ impl Scan<'_> {
 /// fills and cut to `t`'s width as `Enc.raw t` reads it back; `None` at `n = 0`, where no row is visited.
 pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, es: &[B<'a>], pre: &'a [(u8, u64)], post: &[(u8, u64)])
     -> Result<(O, Option<u64>), String> {
-    if pre.iter().chain(post).any(|p| p.0 == 3 || p.0 == 4) { return Err("kscan: a chain step is div or mod, which fails at 0".into()) }
+    if n != 0 && (reads_divisor(op) && es.len() > 1 || pre.iter().chain(post).any(|&(o, c)| step_fails(o, c))) { return Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into()) }
     let g = seg.map(|e| raw_all(QT_BOOLEAN, n, e)).transpose()?;
     let cols = es.iter().map(|&e| raw_all(s, n, e)).collect::<Result<Vec<_>, _>>()?;
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
@@ -526,7 +536,7 @@ mod kscan_tests {
     }
     /// Chains `kscan` is checked under beside the empty one: `f32to64` on load and a compare against `2^63` on the
     /// answer; `neg` then `+ 3` on load and `fsqrt` then `fto f64` on the answer.
-    const CHAINS: [(&[(u8, u64)], &[(u8, u64)]); 2] = [(&[(46, 0)], &[(10, 1 << 63)]), (&[(7, 0), (0, 3)], &[(29, 0), (FTO + 6, 0)])];
+    const CHAINS: [(&[(u8, u64)], &[(u8, u64)]); 3] = [(&[(46, 0)], &[(10, 1 << 63)]), (&[(7, 0), (0, 3)], &[(29, 0), (FTO + 6, 0)]), (&[(47, 3)], &[(48, 5), (47, 2)])];
     /// `chain` on words, as `chainAll` states it.
     fn chained(c: &[(u8, u64)], v: &[u64]) -> Vec<u64> { v.iter().map(|&x| c.iter().fold(x, |x, &(o, k)| op_word(o, k, x))).collect() }
     /// Both directions, `seg` as bits and as a boolean `foR` (`kscan`'s own boolean answer, at 8 bytes), as `none` where
@@ -588,13 +598,22 @@ mod kscan_tests {
             }
         }
     }
-    // a `div` or `mod` step is refused before any column is read
+    // a step that can fail (`div`, `mod`, `rdiv`/`rmod` by 0) and an op reading its divisor from the carry are refused
+    // before any column is read
     #[test] fn kscan_refuses_a_failing_chain_step() {
         let x = enc_for(&[1, 2], 8);
-        for c in [[(3u8, 1u64)], [(4, 1)]] {
-            let e = Err("kscan: a chain step is div or mod, which fails at 0".into());
+        for c in [[(3u8, 1u64)], [(4, 1)], [(47, 0)], [(48, 0)]] {
+            let e = Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into());
             assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &c, &[]).map(|_| ()), e);
             assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &[], &c).map(|_| ()), e);
+        }
+        for op in [47u8, 48] {
+            let e = Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into());
+            assert_eq!(kscan(op, false, 6, 6, 2, None, &[x.borrow(), x.borrow()], &[], &[]).map(|_| ()), e);
+            assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &[], &[(op, 2)]).map(|_| ()), Ok(()));
+            // no column folded, or no row: nothing is evaluated, so nothing is refused (`kscanRefuses`)
+            assert!(kscan(op, false, 6, 6, 2, None, &[x.borrow()], &[], &[]).is_ok());
+            assert!(kscan(0, false, 6, 6, 0, None, &[enc_for(&[], 8).borrow()], &[], &[(op, 0)]).is_ok());
         }
     }
     #[test] fn op_eval_floors_and_types_its_errors() {
@@ -604,6 +623,10 @@ mod kscan_tests {
         assert_eq!(op_eval(3, i64::MIN as u64, -1i64 as u64), Ok(i64::MIN as u64));
         assert_eq!(op_eval(3, 7, 0), Err("Op.div: integer division by 0"));
         assert_eq!(op_eval(4, 7, 0), Err("Op.mod: integer remainder by 0"));
+        assert_eq!(op_eval(47, 2, -1i64 as u64), Ok(-1i64 as u64));
+        assert_eq!(op_eval(48, 3, -7i64 as u64), Ok(2));
+        assert_eq!(op_eval(47, 0, 7), Err("Op.rdiv: integer division by 0"));
+        assert_eq!(op_eval(48, 0, 7), Err("Op.rmod: integer remainder by 0"));
         assert_eq!(op_eval(46, 0, 0x3fc0_0000), Ok(0x3ff8_0000_0000_0000));
         assert_eq!(op_eval(25, f64::NAN.to_bits(), 1f64.to_bits()), Ok(f64::NAN.to_bits()));
         assert_eq!(op_eval(38, 0, 2.5f64.to_bits()), Ok(2f64.to_bits()));

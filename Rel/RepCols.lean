@@ -54,18 +54,6 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType} (h : co
   cases hx; cases hy; cases hw
   simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]; exact hv
 
-/-- **`colMap .first n a a` with the post chain `[(op, c)]` is `op` of the constant `c` and each word of `a`**: a map
-with a constant operand is one `kscan` (`colMap_const_eq`). -/
-theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
-    (h : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e) : (raw .i64 n e).size = n.toNat ∧
-      ∀ i < n.toNat, op.eval c ((raw .i64 n a)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  obtain ⟨-, -, hs, hr⟩ := colMap_chain h
-  refine ⟨hs, fun i hi => ?_⟩
-  obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
-  cases hx; cases hy; cases hv
-  simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
-  simpa [chain] using hw
-
 /-- **A map of one column through a post chain** at any answer type `t`: word `i` of the answer is `chain post` of
 word `i` of `a`, a boolean answer's cut to its bit (`colMap_chain` at `.first` and no `pre`). -/
 theorem colMap_first_chain {t s : QAtomicType} {n : USize} {a o : Enc} {post : List (Op × UInt64)}
@@ -75,6 +63,16 @@ theorem colMap_first_chain {t s : QAtomicType} {n : USize} {a o : Enc} {post : L
   obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain h).2.2.2 i hi
   cases hx; cases hv
   exact ⟨w, hw, ho⟩
+
+/-- **`colMap .first n a a` with the post chain `[(op, c)]` is `op` of the constant `c` and each word of `a`**: a map
+with a constant operand is one `kscan` (`colMap_const_eq`); `colMap_first_chain` at `i64` and a one-step chain. -/
+theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
+    (h : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e) : (raw .i64 n e).size = n.toNat ∧
+      ∀ i < n.toNat, op.eval c ((raw .i64 n a)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
+  refine ⟨(colMap_chain h).2.2.1, fun i hi => ?_⟩
+  obtain ⟨w, hw, ho⟩ := colMap_first_chain h i hi
+  simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
+  simpa [chain] using hw
 
 /-- `x - b` as a post step:`(.add, 0 - b)`, since `kscan` has no step subtracting its constant from the word. -/
 theorem neg_add_word (a b : UInt64) : 0 - b + a = a - b := by
@@ -129,6 +127,7 @@ theorem shiftCol_raw {n : USize} {s : UInt64} {o : Enc} (h : shiftCol n s = .ok 
 theorem kscatter_valid {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o) :
     Kernel.Enc.Valid m e := by
   unfold kscatter at h
+  split at h; · cases h
   simp only [bind, Except.bind] at h
   split at h; · cases h
   split at h; · cases h
@@ -358,8 +357,8 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
     ∃ md pk, r.1 = .foR md pk := by
   unfold kscan at h
-  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind] at h
+  by_cases hd : kscanRefuses op n es pre post = true
+  · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   split at h; · cases h
@@ -445,8 +444,6 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
   split at h; · cases h
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i one hone
-  split at h; · cases h
   rename_i p hp
   split at h
   · rename_i P hP
@@ -459,8 +456,15 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
     -- `wN G`: row `G` is tagged into `s`
     obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
     have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
-      rw [summandPos_raw hp hv ⟨G, hG⟩, colConst_raw hone]; rw [hwN]; simp only [dif_pos hG]
-      split <;> simp [hG]
+      -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`colMap_first_chain`)
+      obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv ⟨G, hG⟩
+      obtain ⟨w, hc, ho⟩ := colMap_first_chain hp G hG
+      rw [ho, hwN]; simp only [dif_pos hG, if_neg (by decide : ¬ (QAtomicType.i64 = .u1)), Option.getD_some]
+      simp only [ht, Option.getD_some] at hc
+      rw [et] at hc
+      generalize tag.get ⟨G, hG⟩ = b at hc ⊢
+      cases s <;> cases b <;> simp [chain, Op.eval, List.foldlM, pure, Except.pure, bind, Except.bind] at hc <;>
+        subst hc <;> decide
     have key : ∀ k, ((List.range k).map wN).sum ≤ k ∧ (q.1 < k → wN q.1 ≤ ((List.range k).map wN).sum) := by
       intro k; induction k with
       | zero => simp

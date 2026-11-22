@@ -21,6 +21,9 @@ inductive Op
   | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor | fround
   | feq | fne | flt | fle | fgt | fge
   | f32to64
+  /-- `div` and `mod` with the operands turned round, `eval a x = x / a`, `x % a`: a chain step `(rdiv, c)` of
+      `kscan` is `x / c`, a constant divisor, which `div`'s step `c / x` cannot write (perf11). -/
+  | rdiv | rmod
   /-- `$` (S6/S7): the word of `t` holding the value of the word read at `s` (`QAtomicType.castWord`), `2^63` where
       none; one constructor for every pair, so `Op` reaches Rust as an object (`op_code`), not a byte. -/
   | cast (s t : QAtomicType)
@@ -90,6 +93,12 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | mod, a, x =>
     if x == 0 then .error "Op.mod: integer remainder by 0"
     else .ok (Int64.ofInt (Int.fmod (i a).toInt (i x).toInt)).toUInt64
+  | rdiv, a, x =>
+    if a == 0 then .error "Op.rdiv: integer division by 0"
+    else .ok (Int64.ofInt (Int.fdiv (i x).toInt (i a).toInt)).toUInt64
+  | rmod, a, x =>
+    if a == 0 then .error "Op.rmod: integer remainder by 0"
+    else .ok (Int64.ofInt (Int.fmod (i x).toInt (i a).toInt)).toUInt64
   | min, a, x => .ok (if i x < i a then x else a)
   | max, a, x => .ok (if i a < i x then x else a)
   | neg, _, x => .ok (0 - x)
@@ -135,6 +144,17 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | cast s t, _, x => .ok (QAtomicType.castWord s t x)
   | fto t, _, x => .ok (ftoWord t x)
 
+/-- Whether `eval a x` can fail on the running value `a` (`rdiv`, `rmod`: `a` is their divisor). The kernels find a
+failure from the elements before computing (`kscan`'s up-front test, `kscatter`'s first pass), which cannot see the
+running value, so both refuse these as their op: they are chain steps, where `a` is a constant. -/
+def readsDivisor : Op → Bool
+  | rdiv | rmod => true
+  | _ => false
+
+/-- Whether the chain step `(o, c)`, `x ↦ o.eval c x`, fails at some word `x`: `div` and `mod` (at `x = 0`), and an op
+reading its divisor from `c` at `c = 0`. `kscan` refuses such a step up front, so a chain never fails part way. -/
+def stepFails (o : Op) (c : UInt64) : Bool := o == .div || o == .mod || (o.readsDivisor && c == 0)
+
 private def one (n : Float) : UInt64 := n.toBits
 private def neg1 : UInt64 := 0xffffffffffffffff
 
@@ -145,6 +165,10 @@ private def neg1 : UInt64 := 0xffffffffffffffff
 #guard Op.div.eval 7 0 matches .error _
 #guard Op.mod.eval 0xfffffffffffffff9 3 matches .ok 2
 #guard Op.mod.eval 7 0 matches .error _
+#guard Op.rdiv.eval 2 neg1 matches .ok 0xffffffffffffffff
+#guard Op.rdiv.eval 0 7 matches .error _
+#guard Op.rmod.eval 3 0xfffffffffffffff9 matches .ok 2
+#guard Op.rmod.eval 0 7 matches .error _
 #guard Op.min.eval neg1 1 matches .ok 0xffffffffffffffff
 #guard Op.max.eval neg1 1 matches .ok 1
 #guard Op.neg.eval 0 5 matches .ok 0xfffffffffffffffb

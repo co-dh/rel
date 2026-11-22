@@ -29,13 +29,14 @@ def Vals.none : (A : Obj) → Except String (Vals A 0)
   | .one => pure ()
 
 /-- The index columns of CROSS: `T = n · m` rows, `iR = pos / m`, `iS = pos % m` (`colMap` of the positions and
-`colConst T m`). `.div`, `.mod` read their words signed, so `n · m + m` stays below `2^63`, and `T` fits a `USize`. -/
+the post steps `(.rdiv, m)`, `(.rmod, m)`). `.rdiv`, `.rmod` read their words signed, so `n · m + m` stays below
+`2^63`, and `T` fits a `USize`. -/
 def crossIx (n m : USize) : Except String (USize × Enc × Enc) := do
   if 2 ^ 63 ≤ n.toNat * m.toNat + m.toNat ∨ USize.size ≤ n.toNat * m.toNat then
     throw s!"cross: {n} × {m} rows past 2^63 or USize"
   let T := (n.toNat * m.toNat).toUSize
-  let c ← colConst T m.toUInt64
-  pure (T, ← colMap .div T .pos c, ← colMap .mod T .pos c)
+  pure (T, ← colMap .first T .pos .pos .i64 .i64 [] [(.rdiv, m.toUInt64)],
+    ← colMap .first T .pos .pos .i64 .i64 [] [(.rmod, m.toUInt64)])
 
 /-- The most pairs `Vals.cross` builds, `2^28`: two `i64` columns of 4 GiB, a fifth of the memory cap. -/
 def crossMax : Nat := 2 ^ 28

@@ -199,7 +199,6 @@ theorem Tab.ofBits_holds {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : V
       ((raw .i64 w rc)[j]?.getD 0).toNat = i.1 ∧ y.row i = v := by
   simp only [Tab.ofBits, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hM, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨wc, hwc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨dv, hdv, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨md, hmd, h⟩ := h
@@ -243,13 +242,11 @@ theorem Tab.ofBits_holds {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : V
     intro t ht i hi e
     have hw0 := hwpos i hi
     have hwg := hwle i hi
-    have wcw : (raw .i64 M wc)[t]?.getD 0 = w.toNat.toUInt64 := by
-      rw [colConst_raw hwc, Array.getElem?_replicate, if_pos ht, Option.getD_some]
-      exact UInt64.toNat_inj.mp (by simp)
-    have e1 := (colMap_raw hdv).2.2.2 t ht
-    rw [e, wcw, eval_div_nat (by omega) (by omega) hw0, Except.ok.injEq] at e1
-    have e2 := (colMap_raw hmd).2.2.2 t ht
-    rw [e, wcw, eval_mod_nat (by omega) (by omega) hw0, Except.ok.injEq] at e2
+    have wcw : w.toUInt64 = w.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp)
+    have e1 := (colMap_post hdv).2 t ht
+    rw [e, wcw, eval_rdiv_nat (by omega) (by omega) hw0, Except.ok.injEq] at e1
+    have e2 := (colMap_post hmd).2 t ht
+    rw [e, wcw, eval_rmod_nat (by omega) (by omega) hw0, Except.ok.injEq] at e2
     have hdl : i / w.toNat < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (by omega)
     have hml : i % w.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le (Nat.mod_lt _ hw0) (by omega)
     have gx := (kgather_word hix t ht).2

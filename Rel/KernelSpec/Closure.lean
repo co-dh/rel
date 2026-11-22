@@ -113,8 +113,8 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
   unfold kscan at h
-  by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind] at h
+  by_cases hd : kscanRefuses op n es pre post = true
+  · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   split at h; · cases h
@@ -142,6 +142,7 @@ theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
     (h : kscatter op m ix e n fill = .ok o) :
     Enc.Valid n o ∧ (raw .i64 n o).size = n.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t n o := by
   unfold kscatter at h
+  split at h; · cases h
   simp only [bind, Except.bind] at h
   split at h; · cases h
   split at h; · cases h

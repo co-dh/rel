@@ -158,6 +158,20 @@ theorem eval_mod_nat {x y : Nat} (hx : x < 2 ^ 63) (hy : y < 2 ^ 63) (h0 : 0 < y
     ← Int.ofNat_fmod]
   exact congrArg Except.ok (UInt64.eq_of_toBitVec_eq rfl)
 
+/-- `eval_div_nat` with the divisor as the constant: `rdiv`'s answer is `div`'s wherever the divisor is not 0. -/
+theorem eval_rdiv_nat {x y : Nat} (hx : x < 2 ^ 63) (hy : y < 2 ^ 63) (h0 : 0 < y) :
+    Op.eval .rdiv y.toUInt64 x.toUInt64 = .ok (x / y).toUInt64 := by
+  have e := eval_div_nat hx hy h0
+  simp only [Op.eval] at e ⊢
+  split at e <;> simp_all
+
+/-- `eval_mod_nat` with the divisor as the constant (`eval_rdiv_nat`). -/
+theorem eval_rmod_nat {x y : Nat} (hx : x < 2 ^ 63) (hy : y < 2 ^ 63) (h0 : 0 < y) :
+    Op.eval .rmod y.toUInt64 x.toUInt64 = .ok (x % y).toUInt64 := by
+  have e := eval_mod_nat hx hy h0
+  simp only [Op.eval] at e ⊢
+  split at e <;> simp_all
+
 /-- `x - y` of words is `Nat`'s where `y ≤ x`. -/
 theorem toUInt64_sub {x y : Nat} (h : y ≤ x) : (x - y).toUInt64 = x.toUInt64 - y.toUInt64 := by
   have e : x = (x - y) + y := by omega
