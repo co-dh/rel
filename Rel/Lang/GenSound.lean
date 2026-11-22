@@ -1009,4 +1009,320 @@ theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
     ∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) :=
   (Tm.gen_sound_spine t).1
 
+/-! ### `Code.program` meets `Codes.Shares`
+
+The share table `Code.shares ts` is `Sound` and its slot `k` represents `ts[k]`'s meaning wherever every slot term
+reads the table literally (`Res.Slot`: at each `share j R`, `R` is slot `j`'s term). `Tm.number` keeps that
+(`Tm.number_spec`), so the terms `Code.program` numbers meet `Tm.GenHyp` under their table (`Code.program_sound`). -/
+
+/-- `R` is the term of slot `k` of `ts` at its objects. -/
+def Res.Slot (ts : Array Res) {A B : Obj} (k : Nat) (R : Tm A B) : Prop := ts[k]? = some ⟨A, B, R⟩
+
+theorem Tm.GenHyp.mono {P Q : {A B : Obj} → Nat → Tm A B → Prop}
+    (hPQ : ∀ {A B : Obj} (k : Nat) (R : Tm A B), P k R → Q k R) {A B : Obj} {t : Tm A B} (h : t.GenHyp P) :
+    t.GenHyp Q := by
+  induction t <;> simp_all [Tm.GenHyp]
+
+theorem Tm.pol_of_fv {A B : Obj} (t : Tm A B) : ∀ (s : Bool) (k : Nat), k ∉ t.fv → t.pol s k = true := by
+  induction t with
+  | arg f x ihf ihx => intro s k h; cases f <;> simp_all [Tm.pol, Tm.fv] <;> grind
+  | _ => intro s k h; simp only [Tm.pol, Tm.fv] at h ⊢ <;> grind
+
+/-- Every slot's term reads the table as a definition does: at each `share j R`, `R` is slot `j`'s term. -/
+def Shares.Inv (s : Shares) : Prop := ∀ x ∈ s.1, x.2.2.GenHyp (Res.Slot s.1)
+
+/-- `ts'` keeps every slot of `ts`. -/
+abbrev Shares.Ext (ts ts' : Array Res) : Prop := ∀ (k : Nat) (x : Res), ts[k]? = some x → ts'[k]? = some x
+
+theorem Shares.Ext.trans {a b c : Array Res} (h1 : Shares.Ext a b) (h2 : Shares.Ext b c) : Shares.Ext a c :=
+  fun k x h => h2 k x (h1 k x h)
+
+theorem Shares.Ext.push (ts : Array Res) (y : Res) : Shares.Ext ts (ts.push y) := fun k x h => by
+  have : k < ts.size := (Array.getElem?_eq_some_iff.1 h).1
+  rw [Array.getElem?_push, if_neg (by omega)]; exact h
+
+theorem Tm.GenHyp.ext {ts ts' : Array Res} (he : Shares.Ext ts ts') {A B : Obj} {t : Tm A B}
+    (h : t.GenHyp (Res.Slot ts)) : t.GenHyp (Res.Slot ts') :=
+  Tm.GenHyp.mono (fun k _ hR => he k _ hR) h
+
+/-- What numbering `t` to `t'` keeps, the table at `ts`: `t'` reads it (`Res.Slot`), has no more free variables,
+    no worse a sign of any, and a row stays itself (a spine's head, `Tm.pol`). -/
+def NOut {A B : Obj} (t t' : Tm A B) (ts : Array Res) : Prop :=
+  t'.GenHyp (Res.Slot ts) ∧ (∀ k ∈ t'.fv, k ∈ t.fv) ∧ (∀ s k, t.pol s k = true → t'.pol s k = true) ∧
+    (∀ r, t = .prim r → t' = t)
+
+theorem NOut.ext {A B : Obj} {t t' : Tm A B} {ts ts' : Array Res} (h : NOut t t' ts) (he : Shares.Ext ts ts') :
+    NOut t t' ts' := ⟨h.1.ext he, h.2⟩
+
+theorem NOut.trans {A B : Obj} {t t1 t2 : Tm A B} {ts : Array Res} (h1 : NOut t t1 ts) (h2 : NOut t1 t2 ts) :
+    NOut t t2 ts :=
+  ⟨h2.1, fun k hk => h1.2.1 k (h2.2.1 k hk), fun s k h => h2.2.2.1 s k (h1.2.2.1 s k h),
+    fun r h => by rw [h2.2.2.2 r (by rw [h1.2.2.2 r h]; exact h), h1.2.2.2 r h]⟩
+
+/-- `x`, run from a table every slot of which reads it, keeps that, keeps every slot, and numbers `t`. -/
+def NSpec {A B : Obj} (t : Tm A B) (x : StateM Shares (Tm A B)) : Prop :=
+  ∀ s, Shares.Inv s → Shares.Inv (x.run s).2 ∧ Shares.Ext s.1 (x.run s).2.1 ∧ NOut t (x.run s).1 (x.run s).2.1
+
+theorem closed_prim {A B : Obj} (r : Prim) : Expand.closed (Tm.prim (A := A) (B := B) r) = false := by
+  simp [Expand.closed, Tm.dem]
+
+theorem numberSlot_spec {A B : Obj} (t : Tm A B) (s : Shares) (hs : Shares.Inv s) (ht : t.GenHyp (Res.Slot s.1)) :
+    Shares.Inv (t.numberSlot.run s).2 ∧ Shares.Ext s.1 (t.numberSlot.run s).2.1 ∧
+      NOut t (t.numberSlot.run s).1 (t.numberSlot.run s).2.1 := by
+  have refl : NOut t t s.1 := ⟨ht, fun _ h => h, fun _ _ h => h, fun _ _ => rfl⟩
+  have np : Expand.closed t = true → ∀ r, t ≠ .prim r := fun h r e => by
+    subst e; rw [closed_prim] at h; cases h
+  -- a new slot: `t` pushed
+  have new : ∀ m, Expand.closed t = true →
+      let s' : Shares := (s.1.push ⟨A, B, t⟩, m)
+      Shares.Inv s' ∧ Shares.Ext s.1 s'.1 ∧ NOut t (.share s.1.size t) s'.1 := fun m h => by
+    have he := Shares.Ext.push s.1 ⟨A, B, t⟩
+    refine ⟨fun x hx => ?_, he, ⟨⟨by simp [Res.Slot], ht.ext he⟩, by simp [Tm.fv], fun _ _ _ => by simp [Tm.pol],
+      by simp [np h]⟩⟩
+    rcases Array.mem_push.1 hx with hx | hx
+    · exact (hs x hx).ext he
+    · subst hx; exact ht.ext he
+  obtain ⟨ts, m⟩ := s
+  simp only [Tm.numberSlot, StateT.run]
+  by_cases h : Expand.closed t = true
+  · simp only [h, Bool.not_true, Bool.false_eq_true, if_false]
+    split
+    · exact new m h
+    · split
+      · exact new _ h
+      · split
+        · split
+          · rename_i hAB
+            obtain ⟨rfl, rfl⟩ := hAB
+            rename_i hk _
+            refine ⟨hs, fun _ _ x => x, ⟨⟨hk, hs _ (Array.mem_of_getElem? hk)⟩, by simp [Tm.fv],
+              fun _ _ _ => by simp [Tm.pol], fun r e => absurd e (np h r)⟩⟩
+          · exact new m h
+        · exact new m h
+  · simp only [h, Bool.not_false, if_true]
+    exact ⟨hs, fun _ _ x => x, refl⟩
+
+/-- One step of `Code.shares`: the slot of `x` under the slots `σ` before it. -/
+private abbrev shStep (σ : Codes) (x : Res) : Codes := σ ++ [⟨x.1, x.2.1, x.2.2.code { Code.empty with sh := σ }⟩]
+
+private theorem shFold_take : ∀ (l : List Res) (acc : Codes),
+    (l.foldl shStep acc).take acc.length = acc ∧ (l.foldl shStep acc).length = acc.length + l.length
+  | [], acc => by simp
+  | x :: l, acc => by
+    obtain ⟨h1, h2⟩ := shFold_take l (shStep acc x)
+    refine ⟨?_, by simp [h2]; omega⟩
+    simp only [List.foldl_cons]
+    calc _ = ((l.foldl shStep (shStep acc x)).take (shStep acc x).length).take acc.length := by
+            rw [List.take_take]; congr 1; simp
+      _ = acc := by rw [h1]; simp
+
+private theorem shFold_get : ∀ (l : List Res) (acc : Codes) (i : Nat) (x : Res), l[i]? = some x →
+    (l.foldl shStep acc)[acc.length + i]? =
+      some ⟨x.1, x.2.1, x.2.2.code { Code.empty with sh := (l.foldl shStep acc).take (acc.length + i) }⟩
+  | [], _, _, _, h => by simp at h
+  | y :: l, acc, 0, x, h => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at h; subst h
+    have h0 := (shFold_take (y :: l) acc).1
+    have h1 := (shFold_take l (shStep acc y)).1
+    simp only [List.foldl_cons] at h0 ⊢
+    simp only [Nat.add_zero, h0]
+    rw [← List.getElem?_take_of_lt (Nat.lt_succ_self acc.length),
+      show acc.length.succ = (shStep acc y).length by simp, h1]; simp
+  | y :: l, acc, i + 1, x, h => by
+    simp only [List.getElem?_cons_succ] at h
+    have := shFold_get l (shStep acc y) i x h
+    simp only [List.foldl_cons]
+    have e : (shStep acc y).length + i = acc.length + (i + 1) := by simp; omega
+    rw [e] at this; exact this
+
+private theorem shFold_wf : ∀ (l : List Res) (acc : Codes), (∀ x ∈ acc, x.2.2.Wf) →
+    ∀ x ∈ l.foldl shStep acc, x.2.2.Wf
+  | [], _, h => h
+  | y :: l, acc, h => shFold_wf l _ fun x hx => by
+    rcases List.mem_append.1 hx with hx | hx
+    · exact h x hx
+    · simp only [List.mem_singleton] at hx; subst hx
+      exact Tm.code_wf (Tm.gen_wf _ _ ⟨fun _ _ _ => trivial, h⟩)
+
+private theorem shares_sh (ts : Array Res) : (Code.shares ts).sh = ts.toList.foldl shStep [] := by
+  simp only [Code.shares]; rw [← Array.foldl_toList]
+
+/-- **The share table is sound** where each slot's term reads, at each of its `share j R`, the slot `j` itself
+    (`Res.Slot`): the table represents the empty context, and its slot `k` the meaning of the term numbered `k`
+    (`Codes.Shares`), so a term that reads the table the same way meets `Tm.GenHyp` (`Tm.GenHyp.mono`). -/
+theorem Code.shares_sound (ts : Array Res) (hts : ∀ x ∈ ts, x.2.2.GenHyp (Res.Slot ts)) :
+    Sound (Code.shares ts) Val.empty ∧
+      ∀ {A B : Obj} (k : Nat) (R : Tm A B), Res.Slot ts k R → (Code.shares ts).sh.Shares k R := by
+  have hwf : ∀ x ∈ (Code.shares ts).sh, x.2.2.Wf := by
+    rw [shares_sh]; exact shFold_wf _ _ fun _ h => nomatch h
+  have hs : ∀ k, Sound { Code.empty with sh := (Code.shares ts).sh.take k } Val.empty := fun k =>
+    ⟨fun _ _ _ K => GenK.zero_sound K, fun _ _ _ => trivial, fun x hx => hwf x (List.mem_of_mem_take hx)⟩
+  refine ⟨⟨fun _ _ _ K => GenK.zero_sound K, fun _ _ _ => trivial, hwf⟩, ?_⟩
+  suffices H : ∀ n k, k < n → ∀ {A B : Obj} (R : Tm A B), Res.Slot ts k R → (Code.shares ts).sh.Shares k R from
+    fun {_ _} k R h => H (k + 1) k (by omega) R h
+  intro n
+  induction n with
+  | zero => intro k hk; omega
+  | succ n ih =>
+    intro k hk A B R hR r hr K
+    have hget := shFold_get ts.toList [] k ⟨A, B, R⟩ (by simpa [Res.Slot] using hR)
+    rw [← shares_sh] at hget
+    simp only [List.length_nil, Nat.zero_add] at hget
+    unfold Codes.at at hr; rw [hget] at hr; simp at hr; subst hr
+    refine Tm.code_of (Tm.gen_sound R _ _ ?_ (hs k)) K
+    refine Tm.GenHyp.mono ?_ (hts _ (Array.mem_of_getElem? hR))
+    intro A' B' j R' hj r' hr'
+    by_cases hjk : j < k
+    · have e : Codes.at ((Code.shares ts).sh.take k) j A' B' = (Code.shares ts).sh.at j A' B' := by
+        simp [Codes.at, hjk]
+      exact ih j (by omega) R' hj r' (e ▸ hr')
+    · simp [Codes.at, List.getElem?_take, hjk] at hr'
+
+theorem NSpec.bindSlot {A B : Obj} {t : Tm A B} {x : StateM Shares (Tm A B)} (h : NSpec t x) :
+    NSpec t (x >>= Tm.numberSlot) := fun s hs => by
+  obtain ⟨i1, e1, o1⟩ := h s hs
+  obtain ⟨i2, e2, o2⟩ := numberSlot_spec _ _ i1 o1.1
+  exact ⟨i2, e1.trans e2, (o1.ext e2).trans o2⟩
+
+theorem NSpec.bindWrap {A B : Obj} {t : Tm A B} {x : StateM Shares (Tm A B)} (h : NSpec t x) (hd : Bool) :
+    NSpec t (x >>= Tm.numberWrap hd) := by
+  cases hd
+  · exact NSpec.bindSlot h
+  · exact fun s hs => h s hs
+
+theorem NSpec.pure {A B : Obj} {t : Tm A B} (h : ∀ ts, t.GenHyp (Res.Slot ts)) : NSpec t (pure t) := fun _ hs =>
+  ⟨hs, fun _ _ x => x, h _, fun _ h => h, fun _ _ h => h, fun _ _ => rfl⟩
+
+theorem NSpec.map1 {A B A' B' : Obj} {t : Tm A B} {R : Tm A' B'} {x : StateM Shares (Tm A' B')}
+    (C : Tm A' B' → Tm A B) (h : NSpec R x) (hC : ∀ ts a, NOut R a ts → NOut t (C a) ts) :
+    NSpec t (do return C (← x)) := fun s hs => by
+  obtain ⟨i1, e1, o1⟩ := h s hs
+  exact ⟨i1, e1, hC _ _ o1⟩
+
+theorem NSpec.map2 {A B A1 B1 A2 B2 : Obj} {t : Tm A B} {R : Tm A1 B1} {S : Tm A2 B2}
+    {x : StateM Shares (Tm A1 B1)} {y : StateM Shares (Tm A2 B2)}
+    (C : Tm A1 B1 → Tm A2 B2 → Tm A B) (hx : NSpec R x) (hy : NSpec S y)
+    (hC : ∀ ts a b, NOut R a ts → NOut S b ts → NOut t (C a b) ts) :
+    NSpec t (do return C (← x) (← y)) := fun s hs => by
+  obtain ⟨i1, e1, o1⟩ := hx s hs
+  obtain ⟨i2, e2, o2⟩ := hy _ i1
+  exact ⟨i2, e1.trans e2, hC _ _ _ (o1.ext e2) o2⟩
+
+theorem NSpec.map4 {A B A1 B1 A2 B2 A3 B3 A4 B4 : Obj} {t : Tm A B} {R : Tm A1 B1} {S : Tm A2 B2}
+    {U : Tm A3 B3} {V : Tm A4 B4} {x : StateM Shares (Tm A1 B1)} {y : StateM Shares (Tm A2 B2)}
+    {z : StateM Shares (Tm A3 B3)} {w : StateM Shares (Tm A4 B4)}
+    (C : Tm A1 B1 → Tm A2 B2 → Tm A3 B3 → Tm A4 B4 → Tm A B) (hx : NSpec R x) (hy : NSpec S y) (hz : NSpec U z)
+    (hw : NSpec V w) (hC : ∀ ts a b c d, NOut R a ts → NOut S b ts → NOut U c ts → NOut V d ts → NOut t (C a b c d) ts) :
+    NSpec t (do return C (← x) (← y) (← z) (← w)) := fun s hs => by
+  obtain ⟨i1, e1, o1⟩ := hx s hs
+  obtain ⟨i2, e2, o2⟩ := hy _ i1
+  obtain ⟨i3, e3, o3⟩ := hz _ i2
+  obtain ⟨i4, e4, o4⟩ := hw _ i3
+  exact ⟨i4, e1.trans (e2.trans (e3.trans e4)), hC _ _ _ _ _ (((o1.ext e2).ext e3).ext e4) ((o2.ext e3).ext e4)
+    (o3.ext e4) o4⟩
+
+/-- The side conditions of one constructor: each part's numbering reads the table, so the node does. -/
+local macro "nout" : tactic => `(tactic| (
+  intros
+  simp only [NOut] at *
+  refine ⟨?_, ?_, ?_, fun _ e => by cases e⟩
+  · (try simp only [Tm.GenHyp] at *); grind
+  · (try simp only [Tm.fv, List.mem_append, List.mem_filter, List.not_mem_nil] at *); grind
+  · (try simp only [Tm.pol, Tm.fv, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', Bool.eq_false_iff,
+      List.contains_iff_mem, decide_eq_true_eq, decide_eq_false_iff_not, beq_iff_eq] at *); grind))
+
+/-- The constructors `Tm.number` numbers through `Tm.mapMSz`: all but `share` and a spine's nodes. -/
+def Tm.numGeneric : {A B : Obj} → Tm A B → Bool
+  | _, _, .share .. | _, _, .arg .. | _, _, .call .. | _, _, .callCv .. => false
+  | _, _, _ => true
+
+theorem Tm.number_mapMSz {A B : Obj} (t : Tm A B) (h : t.numGeneric = true) (hd : Bool) :
+    t.number hd = (t.mapMSz fun c _ => c.number) >>= Tm.numberSlot := by
+  cases t <;> simp only [Tm.numGeneric, Bool.false_eq_true] at h <;> rw [Tm.number.eq_def]
+
+set_option hygiene false in
+local macro "gh" : tactic =>
+  `(tactic| first | exact hg | exact hg.1 | exact hg.2 | exact hg.2.1 | exact hg.2.2 | exact hg.2.2.1 | exact hg.2.2.2)
+
+set_option hygiene false in
+/-- One goal of a `NSpec.map*`: a part's spec by `ih`, the node's `NOut`, or a part's term (fixed by the others). -/
+local macro "part" : tactic =>
+  `(tactic| first | (refine ih _ ?_ ?_ <;> first | (simp only [Tm.size]; omega) | gh) | nout | skip)
+
+theorem Tm.mapMSz_spec {A B : Obj} (t : Tm A B) (h : t.numGeneric = true) (hg : t.GenHyp fun _ R => R.fv = [])
+    (ih : ∀ {C D : Obj} (c : Tm C D), c.size < t.size → c.GenHyp (fun _ R => R.fv = []) → NSpec c (c.number false)) :
+    NSpec t (t.mapMSz fun c _ => c.number) := by
+  cases t <;> simp only [Tm.numGeneric, Bool.false_eq_true] at h <;> simp only [Tm.GenHyp] at hg <;>
+    dsimp only [Tm.mapMSz]
+  all_goals first
+    | exact NSpec.pure fun _ => by simp [Tm.GenHyp]
+    | (refine NSpec.map1 (R := ?_) _ ?_ ?_ <;> part)
+    | (refine NSpec.map2 (R := ?_) (S := ?_) _ ?_ ?_ ?_ <;> part)
+    | (refine NSpec.map4 (R := ?_) (S := ?_) (U := ?_) (V := ?_) _ ?_ ?_ ?_ ?_ ?_ <;> part)
+
+/-- **`Tm.number` keeps the table read literally**: from a table each slot of which reads it (`Shares.Inv`), a term
+    whose every shared part is closed numbers to one that reads the extended table (`NSpec`). -/
+theorem Tm.number_spec : ∀ (n : Nat) {A B : Obj} (t : Tm A B), t.size ≤ n →
+    t.GenHyp (fun _ R => R.fv = []) → ∀ hd, NSpec t (t.number hd) := by
+  intro n
+  induction n with
+  | zero => intro A B t h; cases t <;> simp [Tm.size] at h
+  | succ n ih =>
+    intro A B t hn hg hd
+    cases hk : t.numGeneric
+    · cases t <;> simp only [Tm.numGeneric, Bool.true_eq_false] at hk <;> simp only [Tm.GenHyp] at hg <;>
+        simp only [Tm.size] at hn <;> rw [Tm.number.eq_def] <;> dsimp only
+      case share k R =>
+        intro s hs
+        obtain ⟨i, e, o⟩ := ih R (by omega) hg.2 hd s hs
+        have hn : ∀ j, j ∉ ((R.number hd).run s).1.fv := fun j hj => by simpa [hg.1] using o.2.1 j hj
+        exact ⟨i, e, o.1, fun j hj => absurd hj (hn j), fun b j _ => Tm.pol_of_fv _ b j (hn j),
+          fun _ e => by cases e⟩
+      case call ks c os b =>
+        exact NSpec.bindWrap (NSpec.map1 _ (ih b (by omega) hg false) (by nout)) hd
+      case callCv ks c c' os b u =>
+        exact NSpec.bindWrap (NSpec.map1 (fun a => .callCv ks c c' os a u) (ih b (by omega) hg false) (by nout)) hd
+      case arg C D f x =>
+        -- `cases` binds the function as `x` and the argument as `f`
+        refine NSpec.bindWrap (NSpec.map2 (fun a b => .arg a b) (ih x (by omega) hg.1 true) (ih f (by omega) hg.2 false) ?_) hd
+        intro ts a b ⟨g1, f1, p1, r1⟩ ⟨g2, f2, p2, _⟩
+        refine ⟨⟨g1, g2⟩, fun k hk => ?_, fun s k hp => ?_, fun _ e => by cases e⟩
+        · simp only [Tm.fv, List.mem_append] at hk ⊢; grind
+        · by_cases hk : k ∈ (Tm.arg a b).fv
+          · have hk' : k ∈ (Tm.arg x f).fv := by simp only [Tm.fv, List.mem_append] at hk ⊢; grind
+            cases x with
+            | prim r =>
+              rw [r1 r rfl]
+              simp only [Tm.pol, Tm.fv, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true',
+                List.mem_append, List.not_mem_nil] at hp hk' ⊢
+              grind
+            | _ => simp only [Tm.pol, Bool.not_eq_true'] at hp
+                   all_goals first | exact absurd hk' hp | grind
+          · exact Tm.pol_of_fv _ s k hk
+    · rw [Tm.number_mapMSz t hk]
+      exact NSpec.bindSlot (Tm.mapMSz_spec t hk hg fun c hc hgc => ih c (by omega) hgc false)
+
+theorem Code.program_go : ∀ (ds : List Res), (∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) → ∀ s, Shares.Inv s →
+    let r := (ds.mapM (m := StateM Shares) fun (r : Res) => do pure (⟨r.1, r.2.1, ← r.2.2.number⟩ : Res)).run s
+    Shares.Inv r.2 ∧ Shares.Ext s.1 r.2.1 ∧ ∀ d ∈ r.1, d.2.2.GenHyp (Res.Slot r.2.1)
+  | [], _, s, hs => ⟨hs, fun _ _ x => x, fun _ h => nomatch h⟩
+  | d :: ds, h, s, hs => by
+    obtain ⟨i1, e1, o1⟩ := Tm.number_spec _ d.2.2 (Nat.le_refl _) (h d List.mem_cons_self) false s hs
+    obtain ⟨i2, e2, o2⟩ := Code.program_go ds (fun x hx => h x (List.mem_cons_of_mem _ hx)) _ i1
+    simp only [List.mapM_cons]
+    refine ⟨i2, e1.trans e2, fun x hx => ?_⟩
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact o1.1.ext e2
+    · exact o2 x hx
+
+/-- **`Code.program` meets `Codes.Shares`**: for terms whose every shared part is closed, the share table the program
+    numbers is `Sound` for the empty context, and every numbered term meets `Tm.GenHyp` under it, so `Tm.gen_sound`
+    applies to each. -/
+theorem Code.program_sound (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) :
+    Sound (Code.shares (Code.program ds).2) Val.empty ∧
+      ∀ d ∈ (Code.program ds).1, d.2.2.GenHyp (Code.shares (Code.program ds).2).sh.Shares := by
+  obtain ⟨i, -, o⟩ := Code.program_go ds h (#[], {}) fun _ h => nomatch h
+  have hs := Code.shares_sound _ i
+  exact ⟨hs.1, fun d hd => Tm.GenHyp.mono hs.2 (o d hd)⟩
+
 end Rel.Lang

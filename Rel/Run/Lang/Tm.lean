@@ -136,39 +136,62 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
   | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
 
+/-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
+    (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
+def Tm.size : {A B : Obj} → Tm A B → Nat
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
+  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
+  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
+    R.size + 1
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
+  | _, _, .nu _ R S => R.size + S.size + 1
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .prim _
+  | _, _, .atPos _ | _, _, .var .. => 1
+
+local macro "lt_size" : term => `(by simp only [Tm.size]; omega)
+
+/-- `t` with each of its parts through `f`, one level down, `f` given that the part is smaller than `t`, so a walk
+    may recurse on it with `termination_by t.size` (`Tm.number`). A `share` is closed and numbered, so no walk
+    enters it. -/
+def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
+    ({C D : Obj} → (c : Tm C D) → c.size < t.size → m (Tm C D)) → m (Tm A B)
+  | _, _, .top V, f => return .top (← f V lt_size)
+  | _, _, .comp R S, f => return .comp (← f R lt_size) (← f S lt_size)
+  | _, _, .conv R, f => return .conv (← f R lt_size)
+  | _, _, .meet R S, f => return .meet (← f R lt_size) (← f S lt_size)
+  | _, _, .join R S, f => return .join (← f R lt_size) (← f S lt_size)
+  | _, _, .diff R S, f => return .diff (← f R lt_size) (← f S lt_size)
+  | _, _, .dom R, f => return .dom (← f R lt_size)
+  | _, _, .ran R, f => return .ran (← f R lt_size)
+  | _, _, .ldiv R S U V, f => return .ldiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
+  | _, _, .rdiv R S U V, f => return .rdiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
+  | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
+  | _, _, .prod R S, f => return .prod (← f R lt_size) (← f S lt_size)
+  | _, _, .lam R, f => return .lam (← f R lt_size)
+  | _, _, .E R, f => return .E (← f R lt_size)
+  | _, _, .est Q, f => return .est (← f Q lt_size)
+  | _, _, .thin Q, f => return .thin (← f Q lt_size)
+  | _, _, .own R, f => return .own (← f R lt_size)
+  | _, _, .succ U, f => return .succ (← f U lt_size)
+  | _, _, .arith t k U, f => return .arith t k (← f U lt_size)
+  | _, _, .leq t U, f => return .leq t (← f U lt_size)
+  | _, _, .lt t U, f => return .lt t (← f U lt_size)
+  | _, _, .foldr e S, f => return .foldr (← f e lt_size) (← f S lt_size)
+  | _, _, .fold e S, f => return .fold (← f e lt_size) (← f S lt_size)
+  | _, _, .foldI e S, f => return .foldI (← f e lt_size) (← f S lt_size)
+  | _, _, .arg g x, f => return .arg (← f g lt_size) (← f x lt_size)
+  | _, _, .nu k S b, f => return .nu k (← f S lt_size) (← f b lt_size)
+  | _, _, .mu k w n b, f => return .mu k w n (← f b lt_size)
+  | _, _, .hylo k w b, f => return .hylo k w (← f b lt_size)
+  | _, _, t, _ => pure t
+
 /-- `t` with each of its parts through `f`, one level down; every walk over `Tm` is an instance (`Tm.parts`,
-    `Tm.fv`, `Expand.mus`, `Tm.number`). A `share` is closed and numbered, so no walk enters it. -/
-def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm A B)) :
-    {A B : Obj} → Tm A B → m (Tm A B)
-  | _, _, .top V => return .top (← f V)
-  | _, _, .comp R S => return .comp (← f R) (← f S)
-  | _, _, .conv R => return .conv (← f R)
-  | _, _, .meet R S => return .meet (← f R) (← f S)
-  | _, _, .join R S => return .join (← f R) (← f S)
-  | _, _, .diff R S => return .diff (← f R) (← f S)
-  | _, _, .dom R => return .dom (← f R)
-  | _, _, .ran R => return .ran (← f R)
-  | _, _, .ldiv R S U V => return .ldiv (← f R) (← f S) (← f U) (← f V)
-  | _, _, .rdiv R S U V => return .rdiv (← f R) (← f S) (← f U) (← f V)
-  | _, _, .pair R S => return .pair (← f R) (← f S)
-  | _, _, .prod R S => return .prod (← f R) (← f S)
-  | _, _, .lam R => return .lam (← f R)
-  | _, _, .E R => return .E (← f R)
-  | _, _, .est Q => return .est (← f Q)
-  | _, _, .thin Q => return .thin (← f Q)
-  | _, _, .own R => return .own (← f R)
-  | _, _, .succ U => return .succ (← f U)
-  | _, _, .arith t k U => return .arith t k (← f U)
-  | _, _, .leq t U => return .leq t (← f U)
-  | _, _, .lt t U => return .lt t (← f U)
-  | _, _, .foldr e S => return .foldr (← f e) (← f S)
-  | _, _, .fold e S => return .fold (← f e) (← f S)
-  | _, _, .foldI e S => return .foldI (← f e) (← f S)
-  | _, _, .arg g x => return .arg (← f g) (← f x)
-  | _, _, .nu k S b => return .nu k (← f S) (← f b)
-  | _, _, .mu k w n b => return .mu k w n (← f b)
-  | _, _, .hylo k w b => return .hylo k w (← f b)
-  | _, _, t => pure t
+    `Tm.fv`, `Expand.mus`, `Tm.number`), through `Tm.mapMSz`. -/
+def Tm.mapM {m : Type → Type} [Monad m] (f : {A B : Obj} → Tm A B → m (Tm A B)) {A B : Obj} (t : Tm A B) :
+    m (Tm A B) :=
+  t.mapMSz fun c _ => f c
 
 /-- The parts of `t`, in `Tm.mapM`'s order. -/
 def Tm.parts {A B : Obj} (t : Tm A B) : List Res :=
@@ -316,20 +339,6 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. | _, _, .callCv .. => true
 
 /-! ### The children of a recursion -/
-
-/-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
-    (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
-def Tm.size : {A B : Obj} → Tm A B → Nat
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
-  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
-  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
-    R.size + 1
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
-  | _, _, .nu _ R S => R.size + S.size + 1
-  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .prim _
-  | _, _, .atPos _ | _, _, .var .. => 1
 
 /-- The children `t` reads the variable `k : A ⟶ _` at: from `t`'s source to the nodes of `A` (`Tm.den_local`);
     `𝟘` where `t` does not mention `k`, `none` where it reads `k` in a shape no relation bounds. The shapes are
