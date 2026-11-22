@@ -1324,6 +1324,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ Tm28 B8（§3.4）`mem inl inr` 升为 `Tm` 构造子，删行 `∋ inl inr inl° inr°`：`inl°` `inr°` 是 `conv inl`，`Tm.dem`
   对它为真（在需求的 sum 值上跑 `Tab.inlConv`），`Tm.convInj` 给它的 code，`elabE` 的 `.conv` 不再要求闭项；
   `Tm.memAt` 代 `Tm.kids` 里的 `∋` 行；codegen 复用 `Tab.mem/inl/inr/inlConv/inrConv`，无新 kernel。
+- ✅ Tm28 B3（§1, §7）`dom ran nil` 不再是 `Tm` 构造子，而是 `prims` 行 `domRow ranRow nilRow`：`Tm.dom/ran/nil` 是造
+  `.arg (.prim r) R` 的 def，`Tm.dom_den/ran_den/nil_den` 给其意义；`dom` `ran` 互为 `conv`（`Prim.den_conv` 以
+  `Sem.one_corefl` 处理）；`Tm.kids` 的 `dom` 分支经 `Tm.idAt`；EmitC 的 `rowB` 按 `GenK.dom/ran/nil` 派发。
 
 ## 3. 各 phase 的并行与串行
 
