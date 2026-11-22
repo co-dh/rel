@@ -1086,6 +1086,35 @@ theorem pack_blockStart {E : Type} (M : ByteArray) (B : Nat) (hB : Column.blk M 
   simp only [Array.length_toList, Array.getElem_toList] at h
   exact ⟨by rw [h.1, hnb], h.2⟩
 
+/-- A block's width byte, null or not: below 193, its residual width (`% 128`) at most 64. -/
+theorem planBlock_byte (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat) (hb : b * 2 ^ lg < n) :
+    (Kernel.Coc.planBlock lg w n pl x nul b).2.2.2.2 ≤ 192 ∧
+      (Kernel.Coc.planBlock lg w n pl x nul b).2.2.2.2 % 128 ≤ 64 := by
+  cases hA : (Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).any (fun j => Column.bitAt nul (b * 2 ^ lg + j))
+  · rw [planBlock_plain lg w n pl x nul b hA]; have := (planBlock_bounds lg w n pl x b hb).2.1; omega
+  · obtain ⟨-, h1, h2, -⟩ := planBlock_nul lg w n pl x nul b hA; omega
+
+/-- With patching off no row is on the patch list: a row is null, or it lies inside its block's frame (a block that
+holds a null has a width byte of 128 or more, no width `outside` tests). -/
+theorem planBlock_inside (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (j : Nat) (hj : j < n) (hpl : pl = false) :
+    (!Column.bitAt nul j && Kernel.Coc.outside (Kernel.Coc.planBlock lg w n pl x nul (j / 2 ^ lg)).2.2.2.1
+      (Kernel.Coc.planBlock lg w n pl x nul (j / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x j)) = false := by
+  have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
+  have h1 : j / 2 ^ lg * 2 ^ lg ≤ j := Nat.div_mul_le_self _ _
+  have h2 : j < j / 2 ^ lg * 2 ^ lg + 2 ^ lg := by
+    have := Nat.mod_add_div' j (2 ^ lg); have := Nat.mod_lt j hBp; omega
+  cases hnj : Column.bitAt nul j
+  · rw [Bool.not_false, Bool.true_and]
+    cases hA : (Array.range (min (j / 2 ^ lg * 2 ^ lg + 2 ^ lg) n - j / 2 ^ lg * 2 ^ lg)).any
+        (fun k => Column.bitAt nul (j / 2 ^ lg * 2 ^ lg + k))
+    · rw [planBlock_plain lg w n pl x nul _ hA]
+      exact ((planBlock_bounds lg w n pl x _ (Nat.lt_of_le_of_lt h1 hj)).2.2.2 j h1 h2 hj).2 hpl
+    · obtain ⟨hf, h128, -, hk⟩ := planBlock_nul lg w n pl x nul _ hA
+      obtain ⟨hle, -, -⟩ := hk j h1 h2 hj hnj
+      rw [outside_false, hf]
+      exact ⟨hle, Nat.lt_of_lt_of_le (UInt64.toNat_lt _) (Nat.pow_le_pow_right (by decide) (by omega))⟩
+  · rfl
+
 /-- **The encoder model reads back element by element**, at any block size `2 ^ lg` the layout admits, patched or not,
 nulls or none: a null row (`Column.bitAt nul`) reads `none` through `Column.foROpt`, any other `some` of its key — a
 kept element its block's base, plus its frame's lift, plus its residual, a patched one its own bits. `hmax` is the one

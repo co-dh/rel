@@ -52,6 +52,28 @@ theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : By
   cases t <;> simp only [Ext.Enc.WF] <;>
     first | exact ⟨ht, hu, hle, hlg⟩ | exact ⟨ht, fun _ => hu rfl, hle, hlg⟩ | exact ⟨ht, hle, hlg⟩ | (simp [QAtomicType.width] at ht)
 
+/-- **A kernel's answer is a column, null flags or not**: `wordsFoR ws nul`, at the `ws.size` rows it holds, is valid
+(every kernel reads it), holds that many words, and is `Ext.Enc.WF` at every fixed-width type but the boolean. -/
+theorem wordsFoR_valid (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) :
+    Enc.Valid n (wordsFoR ws nul) ∧ (raw .i64 n (wordsFoR ws nul)).size = n.toNat ∧
+      ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t n (wordsFoR ws nul) := by
+  have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  have hlg : 6 ≤ Column.lgEnc ∧ Column.lgEnc ≤ 16 := ⟨by decide, by decide⟩
+  obtain ⟨hxs, -, -⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
+  rw [Array.foldl_toList] at hxs
+  simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs
+  unfold wordsFoR Coc.encode
+  simp only [h8]
+  generalize ws.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X at hxs
+  have hnX : n.toNat = X.size / 8 := by rw [hxs, hn]; omega
+  have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).1
+      (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).2) := by
+    have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true) (nul := nul)).2.2
+    refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X)⟩
+  refine ⟨hV, ?_, fun ht hu => Enc.Valid.wf hV ht fun h1 => absurd h1 hu⟩
+  rw [raw_foR .i64 8 rfl (by decide)]; simp
+
 /-- **A kernel's answer is a column**: `wordsFoR ws`, at the `ws.size` rows it holds, is valid (every kernel reads
 it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Ext.Enc.WF` at every fixed-width type,
 a boolean one where every word is `0` or `1`. -/
@@ -80,7 +102,7 @@ theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size)
     exact UInt64.toNat_inj.mp h1
   have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1
       (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2) := by
-    have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true)).2.2
+    have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true) (nul := .empty)).2.2
     refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X)⟩
   refine ⟨hV, ?_, fun ht hu => Enc.Valid.wf hV ht fun h1 i hi => ?_⟩
   · rw [raw_foR .i64 8 rfl (by decide)]
@@ -146,20 +168,21 @@ theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
   split at h; · cases h
   split at h; · cases h
   split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
   rename_i ws hs
-  change Except.ok (wordsFoR ws) = _ at h
+  split at h; · cases h
+  rename_i nul _
+  change Except.ok (wordsFoR ws nul) = _ at h
   simp only [Except.ok.injEq] at h
   subst h
-  have hc := wordsFoR_closed ws (scatterWords_size hs).symm
-  exact ⟨hc.1, by rw [hc.2.1, scatterWords_size hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+  exact wordsFoR_valid ws nul (scatterWords_size hs).symm
 
 /-- **`kgather` closes**: its answer holds `m` words, valid and `Ext.Enc.WF` at every fixed-width type but the boolean. -/
 theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
     Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m o := by
   obtain ⟨hs, -, -, rfl⟩ := raw_kgather m ix n e o h
-  have hc := wordsFoR_closed ((raw .i64 m ix).map fun i => (raw .i64 n e)[i.toNat]?.getD 0) (n := m)
-    (by rw [Array.size_map, hs])
-  exact ⟨hc.1, by rw [hc.2.1, Array.size_map, hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+  exact wordsFoR_valid _ _ (by rw [Array.size_map, hs])
 
 
 
