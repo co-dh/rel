@@ -180,6 +180,22 @@ theorem foRNuls_wordsFoR (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn :
   simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, show i < n.toNat by omega, if_true, Option.map_some]
   cases hb : Column.bitAt nul i <;> cases hf : Column.foRNul md pk (Column.blockStarts md) i <;> simp_all
 
+/-- A kernel's answer written with no null bitmap holds no null (`nulAt_encodeAt_empty`). -/
+theorem hasNul_wordsFoR (ws : Array UInt64) : hasNul (wordsFoR ws) = false := by
+  have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  unfold wordsFoR Coc.encode
+  simp only [h8, hasNul, List.any_eq_false, List.mem_range]
+  intro b hb
+  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 8 (by decide) (by decide) _ b hb]; decide
+
+/-- `raw_kgather` where the source holds no null: the answer is `wordsFoR` of the gathered words alone, so it reads
+back as them (`wordsFoR_closed`). -/
+theorem kgather_plain {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) (hN : hasNul e = false) :
+    o = wordsFoR ((raw .i64 m ix).map fun i => (raw .i64 n e)[i.toNat]?.getD 0) := by
+  obtain ⟨-, -, -, rfl⟩ := raw_kgather m ix n e o h
+  simp only [hN, Bool.false_eq_true, ↓reduceIte]
+
 /-- `scatterWords` answers its `n` cells. -/
 theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UInt64} {o : Array UInt64}
     (h : scatterWords op is es n fill = .ok o) : o.size = n := by
