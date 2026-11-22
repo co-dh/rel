@@ -281,6 +281,16 @@ def CodesRep : Codes → List Sem → Prop
     (if h : X' = X ∧ Y' = Y then ∀ K, K.WF → x.Reps K (h.1 ▸ h.2 ▸ T) else False) ∧ CodesRep xs ss
   | _, _ => False
 
+/-- Codes `xs` that represent `ss` are at their objects, which `Prim.objs` reads. -/
+theorem CodesRep.objs : ∀ {xs : Codes} {ss : List Sem}, CodesRep xs ss →
+    ss.map (fun s => (s.1, s.2.1)) = xs.map fun x => (x.1, x.2.1)
+  | [], [], _ => rfl
+  | ⟨X, Y, x⟩ :: xs, ⟨X', Y', T⟩ :: ss, h => by
+    simp only [CodesRep] at h; split at h
+    · rename_i e; obtain ⟨rfl, rfl⟩ := e; simp only [List.map_cons, CodesRep.objs h.2]
+    · exact h.1.elim
+  | [], _ :: _, h | _ :: _, [], h => by simp [CodesRep] at h
+
 /-- `Wf` codes `xs` that represent `ss`, bound at `ks`, represent `ss` bound at `ks`: what a call's body is built
     and read under (`Sound.bind` per argument). -/
 theorem Sound.args {η : Code} {ρ : Val} (hs : Sound η ρ) : ∀ (ks : List Nat) (xs : Codes) (ss : List Sem),
@@ -314,8 +324,8 @@ theorem rowOK_args {s : String} {c : RowCode} {D : RowDen c}
   have err (e : String) (X : List Sem → Den A B) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss,
       CodesRep xs ss → ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K (X ss) :=
     ⟨trivial, fun _ _ _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h⟩
-  unfold primGen Prim.den; rw [hs, if_neg fun h => h hn, hf, hD]
-  cases hσ : r.objs A B with
+  unfold primGen; rw [hs, if_neg fun h => h hn, hf]
+  cases hσ : r.objs A B (xs.map fun x => (x.1, x.2.1)) with
   | none => exact err _ _
   | some σ =>
     dsimp only; split
@@ -326,6 +336,7 @@ theorem rowOK_args {s : String} {c : RowCode} {D : RowDen c}
         obtain ⟨hw, hR⟩ := h r σ xs A' B' v hs hn hw hv
         refine ⟨hw, fun ss hss K => ?_⟩
         obtain ⟨hc, hR⟩ := hR ss hss
+        unfold Prim.den; rw [hs, hD, hss.objs, hσ]; dsimp only
         rw [dif_pos hc]; exact hR K
       · exact err _ _
     · exact err _ _

@@ -201,8 +201,8 @@ theorem plus_iff {t : QAtomicType} {TU : Den (.atom t) (.atom t)} {P : (Obj.atom
 /-- `lengthRow` at `[E] ⟶ ℕ` is the count of its list. -/
 theorem Prim.den_lengthRow {E : Obj} :
     Prim.den lengthRow (.arr E) .long [] = fun (xs : List E.El) w => w = Int64.ofNat xs.length := by
-  have ho : lengthRow.objs (.arr E) .long = some [E, .long] := by
-    simp [Prim.objs, lengthRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+  have ho : ∀ ps, lengthRow.objs (.arr E) .long ps = some [E, .long] := by
+    simp [Prim.objs, Option.orElse, lengthRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == lengthRow.sym) =
       some ⟨RowCode.length, fun _ _ xs w => w = Int64.ofNat xs.length⟩ := rfl
@@ -211,8 +211,8 @@ theorem Prim.den_lengthRow {E : Obj} :
 /-- `sumRow` at `[t] ⟶ t` is `sumAt`'s fold of `stepAt t add` from the word `0`. -/
 theorem Prim.den_sumRow {t : QAtomicType} : Prim.den sumRow (.arr (.atom t)) (.atom t) [] =
     foldDen (E := .atom t) (V := .atom t) (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add) := by
-  have ho : sumRow.objs (.arr (.atom t)) (.atom t) = some [.atom t] := by
-    simp [Prim.objs, sumRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+  have ho : ∀ ps, sumRow.objs (.arr (.atom t)) (.atom t) ps = some [.atom t] := by
+    simp [Prim.objs, Option.orElse, sumRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == sumRow.sym) = some ⟨RowCode.sum, fun σ _ => sumAt (σ₁ σ)⟩ := rfl
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
@@ -220,8 +220,8 @@ theorem Prim.den_sumRow {t : QAtomicType} : Prim.den sumRow (.arr (.atom t)) (.a
 /-- `flatRow` at `I×A ⟶ B` given `R : I ⟶ A×B` is `flatDen`. -/
 theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
     Prim.den flatRow (.prod I A) B [⟨I, .prod A B, T⟩] = flatDen T := by
-  have ho : flatRow.objs (.prod I A) B = some [I, A, B] := by
-    simp [Prim.objs, flatRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+  have ho : ∀ ps, flatRow.objs (.prod I A) B ps = some [I, A, B] := by
+    simp [Prim.objs, Option.orElse, flatRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == flatRow.sym) = some ⟨RowCode.flat, fun σ =>
       Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩ := rfl
@@ -232,8 +232,8 @@ theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
 theorem Prim.den_foldIRow {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
     Prim.den foldIRow (.prod I (.arr E)) V [⟨I, .prod V V, Te⟩, ⟨.prod (.prod I V) E, .prod I V, TS⟩] =
       foldIDen Te TS := by
-  have ho : foldIRow.objs (.prod I (.arr E)) V = some [I, V, E] := by
-    simp [Prim.objs, foldIRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+  have ho : ∀ ps, foldIRow.objs (.prod I (.arr E)) V ps = some [I, V, E] := by
+    simp [Prim.objs, Option.orElse, foldIRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == foldIRow.sym) = some ⟨RowCode.foldI, fun σ =>
       Sem.two (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ₂ σ)) (X₂ := .prod (.prod (σ₁ σ) (σ₂ σ)) (σ.getD 2 .long))
@@ -245,8 +245,8 @@ theorem Prim.den_foldIRow {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.pro
 theorem Prim.den_mapRow_corefl {V : Obj} {TU : Den V V} {P : V.El → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
     (xs ys : List V.El) :
     Prim.den mapRow (.arr V) (.arr V) [⟨V, V, TU⟩] xs ys ↔ ys = xs ∧ ∀ x ∈ xs, P x := by
-  have ho : mapRow.objs (.arr V) (.arr V) = some [V, V] := by
-    simp [Prim.objs, mapRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+  have ho : ∀ ps, mapRow.objs (.arr V) (.arr V) ps = some [V, V] := by
+    simp [Prim.objs, Option.orElse, mapRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
       fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
@@ -331,10 +331,10 @@ theorem Prim.starRow_keyLifts : starRow.KeyLifts := by
   intro I A B fs
   have hf : rowDens.find? (·.1.sym == starRow.sym) = some ⟨RowCode.star, fun σ =>
       Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩ := rfl
-  have ho : ∀ C D, starRow.objs C D = if D = C then some [C] else none := fun C D => by
+  have ho : ∀ C D ps, starRow.objs C D ps = if D = C then some [C] else none := fun C D ps => by
     by_cases h : D = C <;> simp [h, Prim.objs, starRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups,
       List.eraseDupsBy, List.eraseDupsBy.loop, List.lookup]
-  unfold Prim.den; rw [hf, ho, ho]
+  unfold Prim.den; rw [hf]; simp only [ho]
   by_cases hAB : B = A
   · subst hAB; simp only [if_true, RowCode.star, σ₁, List.headD, and_self, dite_true]
     match fs with

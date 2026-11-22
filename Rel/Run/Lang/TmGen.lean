@@ -119,7 +119,7 @@ def rowArity (s : String) : Nat := ((prims.find? (·.sym == s)).map (·.sig.1.le
     ignores a code past them, which `Prim.den` reads). -/
 def primGen (r : Prim) (A B : Obj) (xs : Codes) : Rel A B :=
   if xs.length ≠ rowArity r.sym then .tab (.error s!"Tm.gen: the row `{r.sym}` is given {xs.length} relations") else
-  match rowGens.lookup r.sym, r.objs A B with
+  match rowGens.lookup r.sym, r.objs A B (xs.map fun x => (x.1, x.2.1)) with
   | some f, some σ => match f σ xs with
     | some ⟨A', B', v⟩ => if h : A' = A ∧ B' = B then h.1 ▸ h.2 ▸ v else
       .tab (.error s!"Tm.gen: the row `{r.sym}` is not at its objects")
@@ -219,7 +219,7 @@ end
     alone (`rowLongs`, `rowObjs`), never running a row's code: a `rowGens` entry is code exactly where its codes are
     at `rowObjs`'s objects (`Codes.at`), as many as it takes, and it returns code at its last two. -/
 def primHasCode (r : Prim) (A B : Obj) (xs : List (Obj × Obj)) : Bool :=
-  match rowLongs.lookup r.sym, prims.find? (·.sym == r.sym), r.objs A B with
+  match rowLongs.lookup r.sym, prims.find? (·.sym == r.sym), r.objs A B xs with
   | some lg, some p, some σ => decide ((xs, A, B) = rowObjs p lg σ)
   | _, _, _ => false
 

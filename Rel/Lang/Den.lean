@@ -417,7 +417,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
     `𝟘` where it has none there. -/
 def Prim.den (r : Prim) (A B : Obj) (ss : List Sem) : Den A B :=
-  match rowDens.find? (·.1.sym == r.sym), r.objs A B with
+  match rowDens.find? (·.1.sym == r.sym), r.objs A B (ss.map fun s => (s.1, s.2.1)) with
   | some ⟨c, D⟩, some σ => if h : (c.ty σ).1 = A ∧ (c.ty σ).2 = B then h.1 ▸ h.2 ▸ D σ ss else 𝟘
   | _, _ => 𝟘
 
@@ -769,6 +769,13 @@ inductive Sems.le : List Sem → List Sem → Prop
   | cons {X Y : Obj} {T T' : Den X Y} {ss ss' : List Sem} :
     T ⊑ T' → Sems.le ss ss' → Sems.le (⟨X, Y, T⟩ :: ss) (⟨X, Y, T'⟩ :: ss')
 
+/-- `ss ⊑ ss'` are at the same objects, which `Prim.objs` reads. -/
+theorem Sems.le.objs {ss ss' : List Sem} (h : Sems.le ss ss') :
+    ss.map (fun s => (s.1, s.2.1)) = ss'.map fun s => (s.1, s.2.1) := by
+  induction h with
+  | nil => rfl
+  | cons _ _ ih => simp only [List.map_cons, ih]
+
 /-- `Sems.le` read with the sign `s`, as `sle` reads `⊑`. -/
 def Sems.sle (s : Bool) (ss ss' : List Sem) : Prop := cond s (Sems.le ss ss') (Sems.le ss' ss)
 
@@ -828,7 +835,7 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
 
 theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B : Obj} {ss ss' : List Sem}
     (h : Sems.le ss ss') : Prim.den r A B ss ⊑ Prim.den r A B ss' := by
-  unfold Prim.den
+  unfold Prim.den; rw [h.objs]
   split
   next c D σ hf _ =>
     have hc : c.sym = r.sym := by simpa using List.find?_some hf
@@ -1017,8 +1024,8 @@ theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C
   have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
       fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
         ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')⟩ := rfl
-  unfold Prim.den; rw [eq_of_beq hr, hf]
-  cases r.objs A B with
+  unfold Prim.den; rw [eq_of_beq hr, hf]; simp only [List.map_cons, List.map_nil]
+  cases r.objs A B [(C, D)] with
   | none => exact Iff.rfl
   | some σ =>
     dsimp only
