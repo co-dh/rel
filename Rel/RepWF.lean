@@ -1,5 +1,5 @@
 import Rel.RepCols
-import Rel.Run.Struct
+import Rel.Run.Bits
 
 /-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
@@ -267,6 +267,150 @@ theorem flat_wf {n : USize} {X : Vals (.prod I A) n} {R : Tab I (.prod A B)} {t 
   have wL := comp_wf hL (outl_wf ha hX) hR
   have wM := comp_wf hM (outr_wf hb hX) (conv_wf hd (outl_wf hc hRv))
   exact comp_wf h (inter_wf hP wL wM) (outr_wf he hRv)
+
+end Tab
+
+/-! ### The bit-matrix and division ops -/
+
+/-- **`Vals.code2`'s joined side keeps `Vals.WF`**: the concatenation of the two (`Vals.concat_wf`). -/
+theorem Vals.code2_wf {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂}
+    {r : USize × Enc × Enc × ((N : USize) × Vals A N × Enc)} (h : Vals.code2 x y = .ok r) (hx : Vals.WF x)
+    (hy : Vals.WF y) : Vals.WF r.2.2.2.2.1 := by
+  simp only [Vals.code2, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i p hp
+  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan n₁ n₂ = .ok (p.1, p.2) from hp)
+  split at h; · cases h
+  rename_i z hz
+  okSplit
+  cases h; exact Vals.concat_wf hn ho hz hx hy
+
+namespace Tab
+
+theorem compBits_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : compBits R S = .ok t) (hR : R.WF) (hS : S.WF) :
+    t.WF := by
+  simp only [Tab.compBits, bind, Except.bind] at h
+  okSplit
+  exact ofBits_wf h hR.1 hS.2
+
+/-- A table `compSelM` answers is `compFrom`'s (`compFrom_wf`). -/
+theorem compSelM_inl_wf {bits : Nat} {R : Tab A B} {S : Tab B C} {t : Tab A C}
+    (h : compSelM bits R S = .ok (.inl t)) (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.compSelM, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  all_goals first | (cases h; exact compFrom_wf ‹_› hR hS) | cases h
+
+/-- **`compSel` keeps `Tab.WF`**: `compFrom`'s table or the matrix read back (`ofBits_wf`). -/
+theorem compSel_wf {bits : Nat} {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : compSel bits R S = .ok t)
+    (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.compSel, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  all_goals first | (cases h; exact compSelM_inl_wf ‹_› hR hS) | exact ofBits_wf h hR.1 hS.2
+
+/-- **`keepBits` keeps `Tab.WF`**: rows of `T.canon` kept twice (`keep_wf`). -/
+theorem keepBits_wf {T t : Tab A C} {n m : USize} {g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m}
+    (h : T.keepBits g w o x ra y rc = .ok t) (hT : T.WF) : t.WF := by
+  simp only [Tab.keepBits, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  exact keep_wf h (keep_wf ‹_› (canon_wf ‹_› hT))
+
+/-- **`ldivBits` keeps `Tab.WF`**: its matrix read back over the joined sides of `Vals.code2` (`code2_wf`). -/
+theorem ldivBits_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldivBits R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+  simp only [Tab.ldivBits, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  exact ofBits_wf h (Vals.code2_wf ‹_› hR.2 hB.2) (Vals.code2_wf ‹_› hS.2 hC.2)
+
+theorem mem_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) B} (h : Tab.mem X = .ok t) (hX : Vals.WF X) :
+    t.WF := by
+  obtain ⟨m, lo, hi, f⟩ := X
+  simp only [Tab.mem, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.2⟩
+
+theorem cmpPairs_wf {op : Op} {t : QAtomicType} {T u : Tab (.atom t) (.atom t)} (h : cmpPairs op T = .ok u)
+    (hT : T.WF) : u.WF := by
+  simp only [Tab.cmpPairs, bind, Except.bind] at h
+  okSplit
+  exact keep_wf h hT
+
+theorem cmpOn_wf {op : Op} {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
+    {u : Tab (.atom t) (.atom t)} (h : cmpOn op K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
+  simp only [Tab.cmpOn, bind, Except.bind] at h
+  okSplit
+  exact cmpPairs_wf h (cross_wf ‹_› hK hL)
+
+theorem lt_wf {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
+    {u : Tab (.atom t) (.atom t)} (h : Tab.lt t K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
+  simp only [Tab.lt, bind, Except.bind] at h
+  okSplit
+  exact cmpOn_wf h hK hL
+
+theorem leq_wf {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
+    {u : Tab (.atom t) (.atom t)} (h : Tab.leq t K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
+  simp only [Tab.leq, bind, Except.bind] at h
+  okSplit
+  exact cmpOn_wf h hK hL
+
+/-- **`R \ S` keeps `Tab.WF`**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the vacuous part
+(`cross_wf` of `ran`s). -/
+theorem ldiv_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldiv R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+  simp only [Tab.ldiv, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i r hr; split at h; · cases h
+  rename_i s hs; split at h; · cases h
+  rename_i Q hQ
+  have wr := canon_wf hr hR
+  have ws := canon_wf hs hS
+  have wQ := compOne_wf hQ ⟨wr.2, wr.1⟩ ⟨ws.1, ws.1, ws.2⟩
+  okSplit
+  exact union_wf h ⟨Vals.gather_wf ‹_› wQ.1, Vals.gather_wf ‹_› wQ.2.2⟩
+    (cross_wf ‹_› (diff_wf ‹_› (ran_wf ‹_› hB) (ran_wf ‹_› hR)).1 (ran_wf ‹_› hC).1)
+
+/-- **`ldivSel` keeps `Tab.WF`** (`ldiv_wf`, `ldivBits_wf`). -/
+theorem ldivSel_wf {bits : Nat} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldivSel bits R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+  simp only [Tab.ldivSel, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  all_goals first | exact ldiv_wf h hR hS hB hC | exact ldivBits_wf h hR hS hB hC
+
+theorem rdiv_wf {R : Tab A C} {S : Tab B C} {UA : Tab A A} {UB : Tab B B} {t : Tab A B}
+    (h : rdiv R S UA UB = .ok t) (hR : R.WF) (hS : S.WF) (hA : UA.WF) (hB : UB.WF) : t.WF := by
+  simp only [Tab.rdiv, bind, Except.bind] at h
+  okSplit
+  exact conv_wf h (ldiv_wf ‹_› (conv_wf ‹_› hS) (conv_wf ‹_› hR) hB hA)
+
+/-- **`ldivTabMat`'s two sides keep `Vals.WF`**: each the joined side of a `Vals.code2` (`code2_wf`). -/
+theorem ldivTabMat_sides_wf {R : Tab A B} {UB : Tab B B} {UC : Tab C C} {n m g w : USize} {o ra rc : Enc}
+    {x : Vals A n} {y : Vals C m} {kb kc N N' : USize} {o' rb rc' : Enc} {zb : Vals B N} {zc : Vals C N'}
+    (h : ldivTabMat R UB UC g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc')))
+    (hR : R.WF) (hB : UB.WF) (hC : UC.WF) (hy : Vals.WF y) : Vals.WF zb ∧ Vals.WF zc := by
+  simp only [Tab.ldivTabMat, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  cases h
+  exact ⟨Vals.code2_wf ‹_› hR.2 hB.2, Vals.code2_wf ‹_› (Vals.gather_wf ‹_› hy) hC.2⟩
+
+/-- **`compTabMat`'s key side keeps `Vals.WF`**: rows of `R.key` gathered. -/
+theorem compTabMat_key_wf {R : Tab A B} {n g w ka M : USize} {o o' ra ra' : Enc} {x : Vals B n} {key : Vals A M}
+    (h : compTabMat R g w o x ra = .ok (ka, o', ⟨M, key⟩, ra')) (hR : R.WF) : Vals.WF key := by
+  simp only [Tab.compTabMat, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  cases h; exact Vals.gather_wf ‹_› hR.1
+
+theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h : Tab.inlConv X = .ok t)
+    (hX : Vals.WF X) : t.WF := by
+  obtain ⟨l, r, tag, idx, x, y⟩ := X
+  simp only [Tab.inlConv, bind, Except.bind] at h
+  okSplit
+  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inl_wf ‹_› hX.1))
+
+theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h : Tab.inrConv X = .ok t)
+    (hX : Vals.WF X) : t.WF := by
+  obtain ⟨l, r, tag, idx, x, y⟩ := X
+  simp only [Tab.inrConv, bind, Except.bind] at h
+  okSplit
+  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inr_wf ‹_› hX.2))
 
 end Tab
 
