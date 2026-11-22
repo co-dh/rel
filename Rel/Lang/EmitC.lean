@@ -490,6 +490,8 @@ partial def noneB (z : Nat) (A : Obj) (p : String := "") : Bld Cols := match A w
   | .arr b => do
     let c ← wordsB z 0
     return [.arr p z (← mapB .add z c c) (← mapB .add z c c) (← noneB z b (p ++ ".e"))]
+  -- a side of `1` stores no column (`objCols`)
+  | .one => return []
   | .sum .. => sumB "𝟘"
 
 /-- A side's columns of the object `A` at the path `p`: each atom column's `Enc` register; a positions column, which
@@ -509,6 +511,7 @@ partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A
     let (some lo, some hi) := (reg (p ++ ".lo") 6, reg (p ++ ".hi") 6)
       | throw s!"array `{p}`: its bounds have no `Enc` register"
     return [.arr p m lo hi (← colsOf b s (p ++ ".e"))]
+  | .one => return []
   | .sum .. => sumB "a side's registers"
 
 /-- The row count of a table's sides: a column's `count` register. -/
@@ -1286,9 +1289,6 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .lam (B := B) R => do
     let (n, X) ← known "Λ" D.dom
     lamB B n X (← tabB σ { dom := some (n, X) } R)
-  | _, _, .E (A := A) (B := B) R => do
-    let (n, X) ← known "E" D.dom
-    lamB B n X (← compTB (← memB A n X) (tabB σ · R) R.dem)
   | _, _, .nil (B := B) => do let (n, X) ← known "nil" D.dom; nilB B n X
   | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
   -- `GenK.est`, `GenK.thin`: `Tab.est`, `Tab.thin` on the arrays in demand, `Q` run knowing its domain `D`
@@ -1314,24 +1314,6 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .foldr (E := E) (V := V) e S => do
     let (n, X) ← known "foldr" D.dom
     foldB E V false n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) E V el P) (tabB σ · S) S.dem
-  -- `GenK.foldI`: one left fold on `I × V` from `(i, b)`, each round's step met with `⟨π₁, S ≫ π₂⟩`
-  | _, _, .foldI (I := I) (E := E) (V := V) e S => do
-    let (n, X) ← known "foldI" D.dom
-    -- one plan function (`funT`), as `foldB`
-    funT [⟨n, X, []⟩] fun
-    | [Xt] => do
-      let K := Obj.prod I (.arr E)
-      let i ← piB I (.arr E) true Xt.n Xt.key
-      let rest ← piB I (.arr E) false Xt.n Xt.key
-      let es ← compTB i (tabB σ · e) e.dem
-      let step (P el : TabB) : Bld TabB := do
-        let s ← compTB (← pairB K (.prod I V) E P el) (tabB σ · S) S.dem
-        interB s (← pairB K I V i (← projT I V false s))
-      let (m, _, _, _) ← arrCol "foldI" rest.val
-      let out ← foldRoundsB (peelB E true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) rest
-        (← pairB K I V i (← projT V V false es)) (← zeroB K (.prod I V))
-      projT I V false out
-    | _ => throw "foldI: not one table"
 
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
