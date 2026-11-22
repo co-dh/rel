@@ -163,6 +163,7 @@ Rel.Vals.concat
 Rel.Vals.pack
 Rel.Vals.row
 Rel.Vals.zip
+Rel.cellBad
 Rel.expand
 Rel.lastCount
 Rel.longWords
