@@ -1121,6 +1121,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `TestTable` 的 `#guard_msgs`：CSV sym 列往返相等，任意两行 id 的序 = 文本的序，own 往返相等。
   未做：程序（`n.io`）带字典——程序的 CSV 输入有 sym 列时 `Db.Csv.schema` 在展开时拒绝、`Table.readCsv` 运行时拒绝，
   `TmGen` 给 `writeCsv` 传空字典表；两个 sym 列合并（`∪`、join）时对字典的并 intern、重映射 id（§0.2）。
+  `symdict3` 的 gate：full build 399 jobs 0 error 0 `sorryAx`，GenSound 1594/1594；`make tags`（`Gates.lean` 改用
+  `.str _ s`，`Name.lastComponentAsString` 在 v4.28 不存在）、`decode-allow`、`panic-allow`、`bang-allow`、
+  `pointfree`、`native`、`build.sh syms` 通过；`cargo test --features std` 82 passed。138→82 的落差在 master 的
+  b59ffda..000ce33（a837f6c 删除死代码的测试，随后恢复主体仍活着的；ALP 删除）；symdict2 只删了 `ids.rs`
+  `at_and_max`（`id_at`/`ids_max` 已删）与 `own.rs` `check_symbols`（kind 4 已删）。`compile-diff` 只在 main 跑。
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
 - ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
