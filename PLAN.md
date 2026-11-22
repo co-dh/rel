@@ -906,8 +906,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       whereB groupSumB`，去掉 `frame` 的固定；“Lean 之外的 plan 与 `frame.out` 逐字节相等”到 W6 重写。
       T10 之前还欠的：`hyloCycle` 的固定和各 `Kern*` 模块的旧路径对照（随旧层删）；第三个 gate 的 `arithOut` 一半与
       `TestNative` 的 `gplan` 全是旧 export，T10 会弄断，保留它需要 W6 先做（写出路径 `lit` + `own_write` 那一半不受影响）。
-      未做（性能，不挡 T10）：`ldiv(tab, bits)` 每轮把 matrix 读回约 2800 万行再排序约 4 次，是 `sudokupc9` 剩下的主要
-      开销（按排序来源推出，perf 无 Lean 侧调用栈）；不 decode 的做法约 40 行、无证明、估计到约 7 s。μ 的 semi-naive：不做（2026-11-19，
+      ~~`ldiv(tab, bits)` 每轮把 matrix 读回~~：过时，I2 已做（`GenK.ldivM` → `Tab.ldivTabMat`，`kbitrows true`，不读回；
+      `Tab.ldivTabMat_law` 已证）。2026-11-22 在 9aed3b4 上量（`lake lean`，含约 1 s 启动）：`sudokupc9` 41 s；只算 `sup(K₀)`
+      6 s，`sup(K₀) K₀` 12 s，一轮 `K₀ ∩ π₁\(sup(K₀) K₀)` 11 s：`\` 与 `∩` 合计不到 1 s，每轮约 10 s 在 `sup(X)`
+      （`π₁X` 2.7e7 行的表，约 5 s）和 `sup(X) X` 的 `compSel`（约 5 s）。perf（多线程）：relk 57%、libleanshared 23%，
+      `for_meta` 7%、`Take::block` 4%、`k_scatter`/`k_seen`/`k_asc` 各约 1.5%，`k_bitrows` 0%；kernel 在 pool 线程上跑，
+      `--call-graph dwarf` 加 `QLEAN_THREADS=1` 也连不到 Lean 调用者。下一步若做：`π₁X ∩ π₂π₁°` 不物化 `π₁X`。μ 的 semi-naive：不做（2026-11-19，
       owner 交我定）。试过 `Δ = f(X) − X` 再 `X ∪ Δ`：每轮排序两次，`muGrow` 66 s → 79 s，已撤回。要省需要循环体对
       `∪` 分配的判定（`X ≫ X`、带 `\` 的不满足）和已排序表的归并（新 kernel）；17 个程序里只有 `Party` 用 `μ`，
       运行时间可忽略。出现受益的程序时再议。
