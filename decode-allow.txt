@@ -116,8 +116,10 @@ Rel.Tab.inrConv
 Rel.Tab.inter
 Rel.Tab.keepBits
 Rel.Tab.lam
+Rel.Tab.lamOf
 Rel.Tab.ldiv
 Rel.Tab.ldivBits
+Rel.Tab.ldivOf
 Rel.Tab.ldivSel
 Rel.Tab.ldivTabMat
 Rel.Tab.le
