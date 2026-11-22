@@ -41,4 +41,22 @@ theorem mu_mono (h : ∀ X, φ X ⊑ ψ X) : mu φ ⊑ mu ψ :=
 theorem nu_mono (h : ∀ X, φ X ⊑ ψ X) : nu φ ⊑ nu ψ :=
   le_iff.2 fun _ _ ⟨Y, hY, hy⟩ => ⟨Y, le_trans hY (h Y), hy⟩
 
+/-- `starLinear` (the prelude's `star(R) ≜ μX : 𝟙 ∪ R X`): `μX : S ∪ R X = star(R) S`, so a linear recursion runs
+    as the row `star` (`Tab.star`, semi-naive) on `S`. -/
+theorem starLinear (R : Rel α α) (S : Rel α β) :
+    mu (fun X => S ∪ R ≫ X) = mu (fun X => 𝟙 α ∪ R ≫ X) ≫ S := by
+  apply le_antisymm
+  · -- `star(R) S` is a prefixed point of `S ∪ R X`
+    refine mu_le (le_iff.2 fun a c h => ?_)
+    rcases h with h | ⟨b, hR, d, hs, hS⟩
+    · exact ⟨a, fun Y hY => le_iff.1 hY a a (Or.inl rfl), h⟩
+    · exact ⟨d, fun Y hY => le_iff.1 hY a d (Or.inr ⟨b, hR, hs Y hY⟩), hS⟩
+  · -- `star(R)` is below the pairs `(a,b)` with `S b c ⟹ M a c`, `M` the left side: a prefixed point of `𝟙 ∪ R X`
+    refine le_iff.2 fun a c h => ?_
+    obtain ⟨b, hs, hS⟩ := h
+    refine hs (fun a b => ∀ c, S b c → mu (fun X => S ∪ R ≫ X) a c) (le_iff.2 fun a b h c hc Z hZ => ?_) c hS
+    rcases h with rfl | ⟨d, hR, hd⟩
+    · exact le_iff.1 hZ a c (Or.inl hc)
+    · exact le_iff.1 hZ a c (Or.inr ⟨d, hR, hd c hc Z hZ⟩)
+
 end Rel.Core.Rel

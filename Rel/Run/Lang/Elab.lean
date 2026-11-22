@@ -848,6 +848,11 @@ def constSh (q : π τ) (I a : ω τ) (V : Option τ) (C : τ) : τ := comp (top
 /-- `constSh` onto `dom(C')`, `C` read whole there. -/
 def closedSh (q : π τ) (I a : ω τ) (C' C : τ) : τ := constSh q I a (some (close q (dom C') a "a closed term in a lifted body")) C
 
+/-- A row `X : I×a ⟶ I×b` keeping each key as a family: `⟨𝟙,⊤⟩⟨π₂,Xπ₂⟩`, `⊤ : I ⟶ a` onto `a`'s universe, as the
+    lifted `𝟙` is (`liftConst`). -/
+def rowSh (q : π τ) (I a b : ω τ) (X : τ) : τ :=
+  comp (pair (Shape.id I) (top q I a none)) (pair (outr I a) (comp X (outr I b)))
+
 end Shapes
 
 /-- A row of §e: its shape at the index `I`, the place `q`, the parts `R S` and the objects `a b c d`, and its keyed
@@ -910,7 +915,9 @@ def liftRows : List LiftRow := [
   -- `F` then `C`: `FᴵC`
   ⟨fun _ _ F C a b _ _ => thenSh a b F C, fun K _ _ h => return comp (K (← h.R) (← h.a) (← h.b)) (← h.S)⟩,
   -- `dom(F)` lifted: `dom(Fᴵ)π₂`
-  ⟨fun _ _ F _ a b _ _ => domSh a b F, fun K _ _ h => do let a ← h.a; return comp (dom (K (← h.R) a (← h.b))) (outr I a)⟩]
+  ⟨fun _ _ F _ a b _ _ => domSh a b F, fun K _ _ h => do let a ← h.a; return comp (dom (K (← h.R) a (← h.b))) (outr I a)⟩,
+  -- a keyed row (`appliedRowL`): `Xπ₂`
+  ⟨fun I q X _ a b _ _ => rowSh q I a b X, fun _ _ b h => return comp (← h.R) (outr I b)⟩]
 
 /-- The family `R : I ⟶ a×b` as one relation of the key and the source, `Rᴵ : I×a ⟶ b`, run on the pairs
     (key, source) in demand (§e, cost of the keyed fold). A row whose fibre at a source reads only that source
@@ -1235,8 +1242,26 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
 
-/-- A builtin applied with a family among its arguments, by the rows of §e. -/
+/-- Its objects are all variables, none read by its atom or order: a row reads its elements only through its
+    parameters, so at the objects `I×v` it runs on each key's fibre apart (`appliedRowL`). -/
+def Prim.keyable (r : Prim) : Bool :=
+  r.num.isEmpty && r.ord.isEmpty && !r.whole &&
+    (r.sig.2.1 :: r.sig.2.2 :: r.sig.1.flatMap fun ((x, y), _) => [x, y]).all fun | .var .. => true | _ => false
+
+/-- A row given families over `I`: each argument `R : I ⟶ a×b` keyed, `⟨π₁,Rᴵ⟩ : I×a ⟶ I×b`, the row run once on
+    them at `I×v` for each object variable `v`, and its result a family again (`rowSh`). A row not `keyable` has no
+    lifting. Its objects are variables, which `Prim.inst` makes fresh, so no declared object is read (`{}`). -/
+def appliedRowL (I : OTy) (p : Pos) (r : Prim) (as : List Arg) : M Arg := do
+  unless r.keyable do notLiftable p s!"{r.sym}( )"
+  let ks := (← as.mapM (famOf I p)).map fun (R, a, b) => (Pre.pair (.outl I a) (keyed I R a b), OTy.prod I a, OTy.prod I b)
+  let (q, s, t) := (← appliedRow {} p r ks).plain
+  let a ← fresh; let b ← fresh
+  unify p s!"the source of {r.sym} at the keys" s (.prod I a); unify p s!"the target of {r.sym} at the keys" t (.prod I b)
+  pure (.fam (rowSh p I a b q) I a b)
+
+/-- A builtin applied with a family among its arguments, by the rows of §e; a row by `appliedRowL`. -/
 def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
+  if let some x ← o.row p then return ← appliedRowL I p x as
   let fs ← as.mapM (famOf I p)
   let r ← match o, fs with
     | .dom, [R] => pure (lDom R)
