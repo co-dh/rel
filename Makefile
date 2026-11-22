@@ -86,10 +86,16 @@ NAT     := $(T)/native
 native:
 	$(GATE)
 	$(LAKE) build relc rel-native
-	rm -rf $(NAT); mkdir -p $(NAT)/lean $(NAT)/native
+	rm -rf $(NAT); mkdir -p $(NAT)/lean $(NAT)/native $(NAT)/run
+	# the inputs of `TestNative.nativeIO`, read relative to the run's directory
+	cp -r $(CURDIR)/test/native/in $(NAT)/lean/; cp -r $(CURDIR)/test/native/in $(NAT)/native/; cp -r $(CURDIR)/test/native/in $(NAT)/run/
 	# `lake env`, not `lake exe`: relc is built above, and `planIO` imports the modules from the LEAN_PATH it sets
 	$(LAKE) env $(RELC) plan $(NAT)/lean
 	(cd $(NAT)/native; $(NATIVE))
+	# the Lean meaning of the IO program, `n.io` (not the plan), whose out/ the native one must hold byte for byte
+	(cd $(NAT)/run; $(LAKE) env $(RELC) run Rel.Lang.TestNative Rel.Lang.TestNative.nativeIO)
+	find $(NAT)/run/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/run.entries
+	test -s $(NAT)/run.entries || { echo "native: relc run wrote nothing under $(NAT)/run/out" >&2; exit 1; }
 	test -d $(NAT)/lean/out || { echo "native: no $(NAT)/lean/out; it is written by: $(LAKE) env $(RELC) plan $(NAT)/lean" >&2; exit 1; }
 	test -d $(NAT)/native/out || { echo "native: no $(NAT)/native/out; it is written by: $(NATIVE), run in $(NAT)/native" >&2; exit 1; }
 	find $(NAT)/lean/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/lean.entries
@@ -97,6 +103,9 @@ native:
 	test -s $(NAT)/lean.entries || { echo "native: relc plan wrote nothing under $(NAT)/lean/out" >&2; exit 1; }
 	cmp $(NAT)/lean.entries $(NAT)/native.entries || { echo "native: the entries of out/ differ (< lean, > native):" >&2; comm -3 $(NAT)/lean.entries $(NAT)/native.entries >&2; exit 1; }
 	find $(NAT)/lean/out -type f -printf '%P\n' | sort | xargs -I{} cmp $(NAT)/lean/out/{} $(NAT)/native/out/{}
+	comm -23 $(NAT)/run.entries $(NAT)/native.entries > $(NAT)/run.missing
+	if [ -s $(NAT)/run.missing ]; then echo "native: entries relc run wrote and the native run did not:" >&2; cat $(NAT)/run.missing >&2; exit 1; fi
+	find $(NAT)/run/out -type f -printf '%P\n' | sort | xargs -I{} cmp $(NAT)/run/out/{} $(NAT)/native/out/{}
 
 # the native executable needs libc, libm and libpthread only (plus the loader and the vdso)
 ldd: native
