@@ -254,8 +254,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `ioReach` 所及的 input，算所及的运行时定义，写每个 output（表目录或 CSV，位置 key 只写 val 一侧）。
     测试 `TestNative.nativeIO`：CSV input 与表目录 input（`test/native/in`），输出到表目录与 CSV；`make native`
     在第三个目录跑 `relc run`（`n.io`，Lean 语义），native 的 `out/io` 与之逐字节相等。
-    尚未做（plan 拒绝并指名）：keyed input（读时 `Tab.canon` 排序）、可空 CSV 列 `S+1`（`ofCsv` 重组与检查）、
-    从文件 map 的 float 列（规范形检查）、把 map 来的列写成 CSV（plan 没有从 parts 数组取出 part 的指令）。
+    ✅ native-io2（`565b382`）：新指令 `part x.i`（parts 数组的第 i 个 part；不是 `proj`：`Array` 无 tag、有 size），
+    `ownSideB` 由 kind 与两个 part 重建 `Enc`（同 `Db.ownEnc`），故 map 来的列也有 `Enc` 寄存器：可写成 CSV
+    （`output s to csv`、`g.csv`），也可进 recipe（`sk ≜ s ∪ s`）；float 列 `canonFloatB`（`fto t` 后 `ne` 求和，非零即
+    `fail`，同 `Table.readArr`）；keyed input（目录 `key/` `val/`，或 CSV 的 key 列在前）读后 `canonT`。测试：
+    `nativeIO` 加 `k` `kc` `f` `g` `sk`，`make native` 逐字节相等；`canonFloatB` 的 `#eval`（`-0`、NaN，两种 float）。
+    尚未做（plan 拒绝并指名）：可空 CSV 列 `S+1`（`ofCsv` 重组与检查，等 rq17）。
   - ✅ I11 native 的 `Tm`（分支 `nativetm`）：`Plan.tabB` 按每个节点的 `GenK` 配方（§4 的 kernel 复合）建表：
     `val` `uni` `𝟘` `𝟙` `⊤` `π₁` `π₂` `≫`（`compOne`）`°` `∩` `−`（`select`）`∪` `dom` `ran` `⟨,⟩` `×`（CROSS）
     `own` `share` `var`；按需节点读上下文已知的值（`compT` 的 `ran`、`∩` `−` `⟨,⟩` 的 `bound`）。`abi` 加
