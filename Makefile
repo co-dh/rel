@@ -106,6 +106,13 @@ native:
 	comm -23 $(NAT)/run.entries $(NAT)/native.entries > $(NAT)/run.missing
 	if [ -s $(NAT)/run.missing ]; then echo "native: entries relc run wrote and the native run did not:" >&2; cat $(NAT)/run.missing >&2; exit 1; fi
 	find $(NAT)/run/out -type f -printf '%P\n' | sort | xargs -I{} cmp $(NAT)/run/out/{} $(NAT)/native/out/{}
+	# the Lean value of each term the plan outputs (`relc lean`, `writeRel`), not the plan: comparing the plan only with
+	# itself let a converse that skipped `canon` pass; each file the Lean value writes, the native run writes alike
+	mkdir -p $(NAT)/sem/out
+	$(LAKE) env $(RELC) lean $(NAT)/sem
+	find $(NAT)/sem/out -type f -printf '%P\n' | sort > $(NAT)/sem.files
+	test -s $(NAT)/sem.files || { echo "native: relc lean wrote nothing under $(NAT)/sem/out" >&2; exit 1; }
+	xargs -I{} cmp $(NAT)/sem/out/{} $(NAT)/native/out/{} < $(NAT)/sem.files
 
 # the native executable needs libc, libm and libpthread only (plus the loader and the vdso)
 ldd: native
