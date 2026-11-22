@@ -139,3 +139,44 @@ use it with `asc_perm_grade`.
 - RepCols:152-153 `raw_scatter n₁ .pos x.enc …` needs `hasNul x.enc = false`: a nullable `x` has none; concat of
   nullable columns needs a null-aware `raw_scatter` (flags scattered beside the words, as `kscatter_ok` states).
 - Unchecked: RepSetOps :96 :108 :144 :370 :532 :639-650 :666 :779 :780, RepTabComp :393, GenKBits :1338, GenKFix :31.
+
+# rq17f4 handoff
+
+Branch `worktree-agent-aa582f494541a3b41`: base cd3523e + ff 8495add (rq17f3) + rq17f4 commits.
+
+## Done (green: RelKernel through Rel.KernelSpec.Closure, Rel.Run.Core, Rel.Run.Gather, all of RelRun rebuilt)
+
+- `Ext.Enc.WF` (Kernel/Value.lean, foR branch) has a 5th conjunct (decision A): every block `b < nblk` with `nulAt` holds
+  a row `b * blk + j`, `j < blk`, `< n`, with `foRNul`. Decidable as before (bounded ∀/∃, O(blk) per flagged block).
+- `nulAt_encodeAt` (KernelSpec/Encoding.lean, before `foRBits_encode`): a flagged block of `encodeAt` holds a row null
+  in `nul`. `nulAt_encodeAt_empty` (KernelSpec/Alp.lean, after `nblk_encode`): no flag with an empty bitmap.
+- `Enc.Valid.wf` takes the conjunct as `hN`; `wordsFoR_nul` proves it (flag readback via `foROpt_encode`, `hbig`
+  vacuous at a null row); `foRBytes_wf`, `wf_bools` (Run/Core) from `nulAt_encodeAt_empty`.
+- Closure.lean: `hasNul_flags` (`WF t n e → hasNul e = (foRNuls n e).any (· != 0)`), `foRNuls_wordsFoR` (flag of
+  `wordsFoR ws nul` at row `i` = `if bitAt nul i then 1 else 0`, under `hbig`), `hasNul_wordsFoR` (empty bitmap → no
+  null), `kgather_plain` (`raw_kgather` when the source has no null: plain `wordsFoR`).
+- RepCanon: `foRNuls_bit`, `asc_col_row` (the per-column `ascKeys_row` obligations from `asc_perm`'s 6-part `hcol`:
+  masked words, `hasNul`, flags), `kasc_grade` proved over it; `Vals.nub_sel`'s `hri` uses `kgather_plain` (old :953
+  fixed).
+
+## Decision taken, report upward: `kasc_grade` now carries `(hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2)
+  (hN : N.toNat < 2 ^ 32)`
+
+`hN` is not removable: at `2 ^ 32` rows or more `encodeAt` writes no patch list, so in a block holding a null whose
+keys span all `2 ^ 64`, a non-null row keeping `2 ^ 63 - 1` keeps the null's top residual and reads back as null
+(`foROpt_encode`'s `hbig`). Instance: sorted column `v`, block with a null and a row `2^63-1` → `foRNuls v` has an
+extra `1`, so `nulCodes` differ from the input's and `hkey` is false. Fix options: a u64-offset patch list above
+`2 ^ 32` rows (encoder + Rust), or carry `hN` up through the Vals lemmas.
+
+## Still failing (`lake build Rel.RepCanon`, log /data/tmp/job/rq17f4-6.log)
+
+- :1035 `Vals.nub_sel` inline `hkey` (and :406 `Vals.nub_cover`): replace by `kasc_grade ha hwf hN` (+ `asc_perm_grade`);
+  needs a lemma "every column of `Vals.cols x` is `Ext.Enc.WF` at `n`" (does not exist; :438 gives only
+  `Kernel.Enc.Valid`) and `n < 2 ^ 32` (decision above). Coordinator: master's RepSeen (`kasc_kseen`) should cite
+  `kasc_grade` once that lands.
+- :26 (u1 bound now through `foROpt`), :68 :74 (`kscatter` body), :205-216 `Arr.gather_row` (whnf timeout on the
+  `if hasNul e …` nul; the proof also needs `raw` at a null row, which is junk: the statement must go through
+  `foROpt`/`get`, not raw words, where the source has nulls; use `kgather_plain` where `hasNul = false`), :426 :466,
+  :644-675, :775.
+- Not reached: RepCols :152-153, RepSetOps (:96 :108 :144 :370 :532 :639-650 :666 :779 :780), RepTabComp :393,
+  GenKBits :1338, GenKFix :31. RepTabComp `lexLe_congr_right` vs master's `lexLe_congr` not touched.
