@@ -326,12 +326,27 @@ theorem toNat_pow {a k : Nat} (h : a ^ k < 2 ^ 64) : (a.toUInt64 ^ k).toNat = a 
 theorem toUInt64_two_pow_sub_one (k : Nat) : (2 ^ k - 1 : Nat).toUInt64 = (2 : UInt64) ^ k - 1 := by
   rw [show (2 : UInt64) = Nat.toUInt64 2 from rfl, ← toUInt64_pow]; exact UInt64.ofNat_sub Nat.one_le_two_pow
 
-/-- What `blk` runs as: a word power (`toNat_pow`), since `foRBits` takes `blk` on every element it reads. -/
-private def blkImpl (metadata : ByteArray) : Nat := ((2 : UInt64) ^ lgOf metadata).toNat
+/-- `2 ^ d` as a `UInt64`, `0` at `d ≥ 64`: one shift, where `UInt64`'s `^` multiplies once per bit of `d` and `Nat`'s
+is a GMP number from `d = 63`. -/
+def pow2 (d : Nat) : UInt64 := if d < 64 then 1 <<< d.toUInt64 else 0
+
+theorem pow2_eq (d : Nat) : pow2 d = (2 ^ d : Nat).toUInt64 := by
+  apply UInt64.toNat_inj.1
+  unfold pow2; split
+  · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+    -- `Nat.pow_le_pow_right` to `2 ^ 63`, since `Nat.pow_lt_pow_right` brings `Classical.choice`
+    have h2 : 2 ^ d < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.pow_le_pow_right (by decide) (by omega : d ≤ 63)) (by decide)
+    rw [UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul, Nat.mod_eq_of_lt h2,
+      Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt h2]
+  · obtain ⟨m, hm⟩ : ∃ m, 2 ^ d = 2 ^ 64 * m := ⟨2 ^ (d - 64), by rw [← Nat.pow_add]; congr 1; omega⟩
+    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', hm, Nat.mul_mod_right]; rfl
+
+/-- What `blk` runs as: `pow2`, since `foRBits` takes `blk` on every element it reads. -/
+private def blkImpl (metadata : ByteArray) : Nat := (pow2 (lgOf metadata)).toNat
 
 @[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by
-  funext m; rw [blk, blkImpl]
-  exact (toNat_pow (a := 2) (Nat.pow_lt_pow_right (by decide) (by unfold lgOf; omega))).symm
+  funext m; rw [blk, blkImpl, pow2_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat']
+  exact (Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by decide) (by unfold lgOf; omega))).symm
 
 /-- The `lg` every encoder writes. -/
 def lgEnc : Nat := 10
@@ -466,25 +481,10 @@ def foRBits (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : UInt64 
       (widthAt metadata b) (i % blk metadata)
 
 /-- `2 ^ d - 1` as a `UInt64`, all ones at `d ≥ 64`: by a shift, since `2 ^ d` is a big `Nat` from `d = 63`. -/
-def ones (d : Nat) : UInt64 := if d < 64 then ((1 : UInt64) <<< d.toUInt64) - 1 else 0 - 1
+def ones (d : Nat) : UInt64 := pow2 d - 1
 
 theorem ones_eq (d : Nat) : ones d = (2 ^ d - 1).toUInt64 := by
-  apply UInt64.toNat_inj.1
-  have hp := Nat.two_pow_pos d
-  unfold ones; split
-  · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
-    -- `Nat.pow_le_pow_right` to `2 ^ 63`, since `Nat.pow_lt_pow_right` brings `Classical.choice`
-    have h2 : 2 ^ d < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.pow_le_pow_right (by decide) (by omega : d ≤ 63)) (by decide)
-    rw [UInt64.toNat_sub_of_le _ _ (by
-        rw [UInt64.le_iff_toNat_le, UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul,
-          Nat.mod_eq_of_lt h2]; omega),
-      UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul, Nat.mod_eq_of_lt h2,
-      Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (by omega)]
-  · obtain ⟨m, hm⟩ : ∃ m, 2 ^ d = 2 ^ 64 * m := ⟨2 ^ (d - 64), by rw [← Nat.pow_add]; congr 1; omega⟩
-    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', hm, show (0 - 1 : UInt64).toNat = 2 ^ 64 - 1 from rfl]
-    rw [hm] at hp
-    simp only [Nat.reducePow] at hp ⊢
-    omega
+  rw [ones, pow2_eq]; exact (UInt64.ofNat_sub Nat.one_le_two_pow).symm
 
 /-- Whether element `i` is the null of a nullable column (`atom+1`), tested on the encoding and never decoded: its
 block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is the block's top one, `2 ^ w - 1`.
