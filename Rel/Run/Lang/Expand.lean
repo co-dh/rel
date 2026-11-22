@@ -794,22 +794,26 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut mine : List (String × Def) := []
   for (env₀, p, n, qs, e, ty, vs, d) in pend do
     let c := Parse.constOf own n
-    let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
-    specs := sp ++ o.toList
+    -- a constant already built at its key (`read`'s `seed`) is not built again, as `callDef` finds it in `specs`
+    unless specs.any (·.key == c) do
+      let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
+      specs := sp ++ o.toList
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls d)) :: mine
   pure (env, ds, pr, cs, specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope
     for the next by constant. A definition whose constant `calls` holds is called, not expanded. With no `res`, a
-    text read outside any Lean scope: each program sees those before it unqualified (`Parse.openAll`). -/
+    text read outside any Lean scope: each program sees those before it unqualified (`Parse.openAll`). `seed`: the
+    constants this read builds, already built by an earlier read of the same text, so not elaborated again. -/
 def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program)) (prog : Program)
     (own : Lean.Name := .anonymous)
-    (res : Lean.Name → String → Found := fun h => Parse.openAll (homes.takeWhile (·.1 != h))) : EM Read := do
+    (res : Lean.Name → String → Found := fun h => Parse.openAll (homes.takeWhile (·.1 != h)))
+    (seed : List Once := []) : EM Read := do
   let mut ext : List (Lean.Name × Def) := []
   let mut xo : List (Lean.Name × ObjInfo) := []
   -- the constants a call builds at a form no registered constant takes (`callDef`), which `own` emits
-  let mut specs : List Once := []
+  let mut specs : List Once := seed
   -- the imports' run-time names and the statements `n.io` runs for them, each by its constant (`rtName`)
   let mut rt : Rt := []
   let mut io : List Io := []

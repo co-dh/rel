@@ -24,13 +24,16 @@ def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let reg := Expand.relRegistry.getState env
   -- a `Once` `n` built is the constant `n ++ …` (`callDef`), unless a program inside `n`'s namespace built it
   let own (c : Name) := n.isPrefixOf c && !reg.progs.any fun (m, _) => m != n && n.isPrefixOf m && m.isPrefixOf c
-  let mine := ((reg.calls.map (·.2) ++ reg.again.toList).filter (own ·.const)).map (·.key)
+  let built := (reg.calls.map (·.2) ++ reg.again.toList).filter (own ·.const)
+  let mine := built.map (·.key)
   let progs ← ((reg.chains.lookup n).getD []).mapM fun m => return (m, ← programOf m)
   let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
   let calls ← liftTermElabM reg.call?
-  liftTermElabM (Expand.read (fun k => if mine.contains k then none else calls k) progs (← programOf n) n resOf).run
+  -- the bodies `n` built are `emit`'s (`seed`), not elaborated again; a use of one is still `n`'s own `call`
+  liftTermElabM (Expand.read (fun k => if mine.contains k then none else calls k) progs (← programOf n) n resOf
+    built).run
 
 run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)
