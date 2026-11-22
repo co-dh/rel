@@ -30,6 +30,7 @@ theorem foldlM_keeps {α β : Type} {P : β → Prop} {f : β → α → Except 
 /-- **A side of no rows is `Vals.WF`**: an `arr` side of it has no cell. -/
 theorem Vals.none_wf : {A : Obj} → {x : Vals A 0} → Vals.none A = .ok x → Vals.WF x
   | .atom _, _, _ => trivial
+  | .one, _, _ => trivial
   | .prod _ _, _, h => by
     simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
@@ -482,6 +483,7 @@ end Tab
 the EXPAND of the cells' own widths, each at most `m` (`cellSpan_width`, `Vals.cells_expand_wf`). -/
 theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.pack x = .ok y → Vals.WF x → Vals.WF y
   | .atom _, _, _, _, _, _ => trivial
+  | .one, _, _, _, _, _ => trivial
   | .prod _ _, _, x, _, h, hx => by
     simp only [Vals.pack, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h

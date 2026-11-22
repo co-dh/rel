@@ -522,6 +522,7 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc
 and each producer keeps it, so a reader may take `[lo, hi)` as it is, where `Vals.row` clamps it. -/
 def Vals.WF : {A : Obj} → {n : USize} → Vals A n → Prop
   | .atom _, _, _ => True
+  | .one, _, _ => True
   | .prod _ _, _, x => Vals.WF x.1 ∧ Vals.WF x.2
   | .arr _, _, ⟨m, lo, hi, f⟩ => (∀ i, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧
       (hi.get i).toInt ≤ (m.toNat : Int)) ∧ Vals.WF f
@@ -540,6 +541,7 @@ theorem cellBad_none {n m : USize} {lo hi : Arr .i64 n} : cellBad m lo hi = none
 theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x : Vals A n} → {y : Vals A m} →
     Vals.gather m ix x = .ok y → Vals.WF x → Vals.WF y
   | .atom _, _, _, _, _, _ => trivial
+  | .one, _, _, _, _, _ => trivial
   | .prod _ _, _, x, y, h, hx => by
     simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
@@ -634,6 +636,7 @@ theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} →
     {x : Vals A n₁} → {y : Vals A n₂} → {z : Vals A n} → Vals.concat n off x y = .ok z →
       Vals.WF x → Vals.WF y → Vals.WF z
   | .atom _, _, _, _, _, _, _, _, _, _, _, _, _ => trivial
+  | .one, _, _, _, _, _, _, _, _, _, _, _, _ => trivial
   | .prod _ _, _, _, _, _, hn, hoff, x, y, z, h, hx, hy => by
     simp only [Vals.concat, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
