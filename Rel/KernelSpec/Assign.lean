@@ -53,26 +53,11 @@ theorem set!_getElem? (a : ByteArray) (p j : Nat) (x : UInt8) :
   rw [Array.set!_eq_setIfInBounds, Array.getElem?_setIfInBounds]
   by_cases h : p = j <;> by_cases h2 : p < d.size <;> simp_all
 
-/-- A `copySlice` to the end of `dst` appends the bytes of `src` it reads, clamped to `src`. -/
-theorem copySlice_end (src dst : ByteArray) (so len : Nat) :
-    (src.copySlice so dst dst.size len).data.toList = dst.data.toList ++ (src.data.toList.drop so).take len := by
-  apply List.ext_getElem?
-  intro j
-  show (dst.data.extract 0 dst.data.size ++ src.data.extract so (so + len) ++
-      dst.data.extract (dst.data.size + min len (src.data.size - so)) dst.data.size).toList[j]? = _
-  simp only [Array.getElem?_toList, Array.getElem?_append, extract_getElem?, Array.size_append, Array.size_extract,
-    List.getElem?_append, List.getElem?_take, List.getElem?_drop, Array.length_toList]
-  repeat' split
-  all_goals
-    first | rfl | (exfalso; omega) | (congr 1; omega) | exact (Array.getElem?_eq_none (by omega)).symm | exact Array.getElem?_eq_none (by omega)
-
 /-- info: 'Rel.Verify.resAt_field' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms resAt_field
 /-- info: 'Rel.Verify.set_field' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms set_field
 /-- info: 'Rel.Verify.set!_getElem?' depends on axioms: [propext] -/
 #guard_msgs in #print axioms set!_getElem?
-/-- info: 'Rel.Verify.copySlice_end' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms copySlice_end
 
 end Rel.Verify

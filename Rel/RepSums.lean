@@ -34,43 +34,10 @@ theorem Nat.xor_top {b x : Nat} (hx : x < 2 ^ (b + 1)) :
     have e' : x ^^^ 2 ^ b = (x - 2 ^ b ^^^ 2 ^ b) ^^^ 2 ^ b := by rw [e]
     rw [e', Nat.xor_assoc, Nat.xor_self, Nat.xor_zero]
 
-/-- An `Int64` from its word: the word below `2^63`, the word less `2^64` above. -/
-theorem Int64.toInt_word (a : Int64) : a.toInt =
-    if a.toUInt64.toNat < 2 ^ 63 then (a.toUInt64.toNat : Int) else (a.toUInt64.toNat : Int) - 2 ^ 64 := by
-  have h1 : a.toInt = a.toBitVec.toInt := rfl
-  have h2 : a.toUInt64.toNat = a.toBitVec.toNat := rfl
-  rw [h1, h2, BitVec.toInt_eq_toNat_cond]
-  split <;> split <;> omega
 
-/-- **The `i64` order code** (`Order.rank .i64`, `ordCode 8 false true`): the sign bit flipped, `toInt + 2^63`. -/
-theorem Int64.code_toNat (a : Int64) : (a.toUInt64 ^^^ 0x8000000000000000).toNat = (a.toInt + 2 ^ 63).toNat := by
-  have hx := a.toUInt64.toNat_lt
-  rw [UInt64.toNat_xor, show (0x8000000000000000 : UInt64).toNat = 2 ^ 63 from rfl, Nat.xor_top (b := 63) hx,
-    Int64.toInt_word]
-  split <;> omega
 
-theorem ordCode_i64 (u : UInt64) : ordCode 8 false true u = u ^^^ 0x8000000000000000 := by
-  apply UInt64.toNat_inj.1
-  have m64 : (18446744073709551615 : UInt64).toNat = 2 ^ 64 - 1 := rfl
-  simp only [ordCode, Nat.reduceMul, Nat.reduceSub, Nat.reducePow, beq_self_eq_true, if_true, Bool.false_eq_true,
-    if_false, UInt64.toNat_xor, UInt64.toNat_and, m64]
-  rw [show (18446744073709551615 : Nat) = 2 ^ 64 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
-    Nat.mod_eq_of_lt u.toNat_lt]
-  rfl
 
-/-- `ordCode` orders `i64` words as `Int64`. -/
-theorem ordCode_i64_le (a b : Int64) :
-    (ordCode 8 false true a.toUInt64).toNat ≤ (ordCode 8 false true b.toUInt64).toNat ↔ a ≤ b := by
-  have := Int64.le_toInt a; have := Int64.toInt_lt a; have := Int64.le_toInt b; have := Int64.toInt_lt b
-  rw [ordCode_i64, ordCode_i64, Int64.code_toNat, Int64.code_toNat, Int64.le_iff_toInt_le]; omega
 
-/-- **q's order on longs is `Int64`'s**. -/
-theorem Obj.lt_long (a b : Int64) : Obj.lt .long a b ↔ a < b := by
-  have h := ordCode_i64_le b a
-  show [(ordCode 8 false true a.toUInt64).toNat] < [(ordCode 8 false true b.toUInt64).toNat] ↔ a < b
-  simp only [List.cons_lt_cons_iff, List.lt_irrefl, and_false, or_false, Int64.lt_iff_toInt_lt,
-    Int64.le_iff_toInt_le] at h ⊢
-  omega
 
 /-- `kseen` read every column it was given: `ascCol` answers on each. -/
 theorem kseen_codes {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :

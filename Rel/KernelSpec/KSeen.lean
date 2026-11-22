@@ -104,25 +104,6 @@ theorem firsts_spec {α : Type} [DecidableEq α] (g : Nat → α) (m : Nat) :
     have hg := groupOf_get (g := g) hi
     refine ⟨Nat.le_of_not_lt fun hlt => hf.2 i hlt hg.symm, hg, fun q hq => hg ▸ hf.2 q hq⟩
 
-/-- **A group ends inside the rows**: group `j`'s first row `F[j]` plus the number of rows in it is at most `m`,
-because every row of the group is at or after `F[j]` (`firsts_spec`). Over any key, sorted or not. -/
-theorem firsts_count {α : Type} [DecidableEq α] (g : Nat → α) (m : Nat) {j : Nat}
-    (hj : j < (firstsOf g m).length) :
-    (firstsOf g m)[j] + ((List.range m).filter fun i => groupOf g m i = j).length ≤ m := by
-  have hF := firsts_lt g m (List.getElem_mem hj)
-  -- the rows at or after `a` below `M` are `M - a`
-  have hc : ∀ a M, ((List.range M).filter fun i => a ≤ i).length = M - a := fun a M => by
-    induction M with
-    | zero => simp
-    | succ M ih => rw [List.range_succ, List.filter_append, List.length_append, ih]; by_cases h : a ≤ M <;> simp [h] <;> omega
-  have hsub : ((List.range m).filter fun i => groupOf g m i = j).length ≤
-      ((List.range m).filter fun i => (firstsOf g m)[j] ≤ i).length := by
-    rw [← List.countP_eq_length_filter, ← List.countP_eq_length_filter]
-    refine List.countP_mono_left fun i hi e => ?_
-    have hi := List.mem_range.1 hi
-    obtain ⟨_, hle, -⟩ := (firsts_spec g m).2.2.2.2.2 i hi
-    simp only [decide_eq_true_eq] at e ⊢; subst e; exact hle
-  rw [hc] at hsub; omega
 
 /-- **Law c**: where equal keys sit in one run of rows (a sorted key, `kasc`'s answer), the first rows are the run
 starts, the rows whose key differs from the row before, the answer the retired `kdistinct` gave. -/

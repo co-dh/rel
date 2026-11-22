@@ -34,12 +34,6 @@ theorem alpDecode_eq (w : USize) (M P a : ByteArray) (n : USize) :
     · rename_i h; rw [eq_of_beq h, show (8 : USize).toNat = 8 by simp]; rfl
     · rfl
 
-/-- `Coc.alpDecode`'s elements, each `alpElems`' low `8 * w` bits. -/
-theorem elemsW_alpDecode (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (M P a : ByteArray) (n : USize) :
-    elemsW w.toNat (Coc.alpDecode w M P a n) =
-      (Coc.alpElems M P a n).map fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w.toNat)) := by
-  rw [alpDecode_eq]; exact elemsW_foldl_mod id w.toNat hw0 hw _
-
 
 
 /-- **`bytesOf` reads what `raw` reads**: the dense payload a fixed-width kernel is handed is the column's elements
@@ -104,9 +98,6 @@ theorem bitAt_packOf (n : Nat) (f : Nat → Bool) (j : Nat) (hj : j < n) : Colum
 
 /-- info: 'Rel.Verify.elemsW_decode' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms elemsW_decode
-
-/-- info: 'Rel.Verify.elemsW_alpDecode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms elemsW_alpDecode
 
 
 

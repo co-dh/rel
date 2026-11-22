@@ -49,7 +49,6 @@ instance (A : Obj) (x y : A.El) : Decidable (A.lt x y) := inferInstanceAs (Decid
 
 theorem Obj.lt_irrefl (A : Obj) (x : A.El) : ¬ A.lt x x := List.lt_irrefl _
 
-theorem Obj.lt_trans (A : Obj) {x y z : A.El} : A.lt x y → A.lt y z → A.lt x z := List.lt_trans
 
 theorem Obj.lt_asymm (A : Obj) {x y : A.El} : A.lt x y → ¬ A.lt y x := List.lt_asymm
 
@@ -143,8 +142,6 @@ theorem Obj.lt_prod (a b : Obj) (x x' : a.El) (y y' : b.El) :
 theorem Obj.lt_inl_inr (a b : Obj) (x : a.El) (y : b.El) : (Obj.sum a b).lt (.inl x) (.inr y) :=
   List.cons_lt_cons_iff.2 (.inl Nat.zero_lt_one)
 
-theorem Obj.not_lt_inr_inl (a b : Obj) (x : a.El) (y : b.El) : ¬ (Obj.sum a b).lt (.inr y) (.inl x) := by
-  show ¬ (1 :: b.key y < 0 :: a.key x); simp [List.cons_lt_cons_iff]
 
 theorem Obj.lt_inl (a b : Obj) (x y : a.El) : (Obj.sum a b).lt (.inl x) (.inl y) ↔ a.lt x y := by
   show 0 :: a.key x < 0 :: a.key y ↔ _; simp [Obj.lt]
@@ -156,9 +153,6 @@ theorem Obj.lt_inr (a b : Obj) (x y : b.El) : (Obj.sum a b).lt (.inr x) (.inr y)
 theorem Obj.lt_nil_cons (b : Obj) (y : b.El) (ys : List b.El) : (Obj.arr b).lt ([] : List b.El) (y :: ys) :=
   List.cons_lt_cons_iff.2 (.inl Nat.zero_lt_one)
 
-theorem Obj.not_lt_nil (b : Obj) (xs : List b.El) : ¬ (Obj.arr b).lt xs ([] : List b.El) := by
-  show ¬ (xs.foldr (fun x k => 1 :: b.key x ++ k) [0] < [0])
-  cases xs <;> simp [List.cons_lt_cons_iff]
 
 theorem Obj.lt_cons (b : Obj) (x y : b.El) (xs ys : List b.El) :
     (Obj.arr b).lt (x :: xs) (y :: ys) ↔ b.lt x y ∨ b.key x = b.key y ∧ (Obj.arr b).lt xs ys := by

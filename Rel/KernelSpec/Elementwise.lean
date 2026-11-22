@@ -79,8 +79,6 @@ theorem Ew.intStep_sub (nul x y : Int64) : Ew.intStep Ew.sub nul x y = if x = nu
   show (if x == nul || y == nul then nul else x - y) = _; simp only [Bool.or_eq_true, beq_iff_eq]
 theorem Ew.intStep_mul (nul x y : Int64) : Ew.intStep Ew.mul nul x y = if x = nul ∨ y = nul then nul else x * y := by
   show (if x == nul || y == nul then nul else x * y) = _; simp only [Bool.or_eq_true, beq_iff_eq]
-theorem Ew.intStep_fill (nul x y : Int64) : Ew.intStep Ew.fill nul x y = if y = nul then x else y := by
-  show (if y == nul then x else y) = _; simp only [beq_iff_eq]
 theorem Ew.intStep_lesser (nul x y : Int64) : Ew.intStep Ew.lesser nul x y = if x < y then x else y := rfl
 theorem Ew.intStep_greater (nul x y : Int64) : Ew.intStep Ew.greater nul x y = if y < x then x else y := rfl
 theorem Ew.intStep_idiv (nul x y : Int64) : Ew.intStep Ew.idiv nul x y =

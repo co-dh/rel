@@ -475,12 +475,6 @@ def defFun (ps : Array Ty) (b : Array Nat → Bld (Array Nat)) : Bld Nat := do
 /-- `apply f(args)`, `f` answering `nres` registers. -/
 def apply (f : Nat) (args : Array Nat) (nres : Nat) : Bld (Array Nat) := emit (.apply f args) nres
 
-/-- The global computed by `b`, added to the plan, and its registers read here. -/
-def global (b : Bld (Array Nat)) : Bld (Array Nat) := do
-  let (is, n, fs, gs) ← get
-  let (r, body, _, fs', gs') ← b.run (#[], 0, fs, gs)
-  set (is, n, fs', gs'.push ⟨#[], body.toList, r⟩)
-  emit (.global gs'.size) r.size
 
 /-- The plan of `main`. -/
 def Bld.plan (b : Bld Unit) : Except String Plan := do

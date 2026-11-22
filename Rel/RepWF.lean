@@ -30,11 +30,6 @@ theorem Vals.code2_wf {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂}
 
 namespace Tab
 
-theorem compBits_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : compBits R S = .ok t) (hR : R.WF) (hS : S.WF) :
-    t.WF := by
-  simp only [Tab.compBits, bind, Except.bind] at h
-  okSplit
-  exact ofBits_wf h hR.1 hS.2
 
 /-- A table `compSelM` answers is `compFrom`'s (`compFrom_wf`). -/
 theorem compSelM_inl_wf {bits : Nat} {R : Tab A B} {S : Tab B C} {t : Tab A C}
@@ -64,29 +59,9 @@ theorem ldivBits_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t
   okSplit
   exact ofBits_wf h (Vals.code2_wf ‹_› hR.2 hB.2) (Vals.code2_wf ‹_› hS.2 hC.2)
 
-theorem cmpPairs_wf {op : Op} {t : QAtomicType} {T u : Tab (.atom t) (.atom t)} (h : cmpPairs op T = .ok u)
-    (hT : T.WF) : u.WF := by
-  simp only [Tab.cmpPairs, bind, Except.bind] at h
-  okSplit
-  exact keep_wf h hT
 
-theorem cmpOn_wf {op : Op} {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
-    {u : Tab (.atom t) (.atom t)} (h : cmpOn op K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
-  simp only [Tab.cmpOn, bind, Except.bind] at h
-  okSplit
-  exact cmpPairs_wf h (cross_wf ‹_› hK hL)
 
-theorem lt_wf {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
-    {u : Tab (.atom t) (.atom t)} (h : Tab.lt t K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
-  simp only [Tab.lt, bind, Except.bind] at h
-  okSplit
-  exact cmpOn_wf h hK hL
 
-theorem leq_wf {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
-    {u : Tab (.atom t) (.atom t)} (h : Tab.leq t K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
-  simp only [Tab.leq, bind, Except.bind] at h
-  okSplit
-  exact cmpOn_wf h hK hL
 
 /-- **`r \ s` keeps `Tab.WF`**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the vacuous part
 (`cross_wf` of `ran`s). -/

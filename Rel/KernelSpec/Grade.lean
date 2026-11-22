@@ -63,8 +63,6 @@ theorem range_mergeSort {le : Nat → Nat → Bool} (trans : ∀ a b c, le a b �
   · exact ⟨rfl, fun e => absurd e Bool.false_ne_true⟩
   · exact ⟨rfl, fun _ => Nat.lt_of_le_of_ne h hne⟩
 
-/-- `x` comes no later than `y`: ascending, or descending at `desc`. -/
-def keyOrd (desc : Bool) (x y : UInt64) : Prop := if desc then y ≤ x else x ≤ y
 
 
 

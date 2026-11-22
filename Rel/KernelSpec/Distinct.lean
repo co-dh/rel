@@ -45,6 +45,5 @@ namespace Rel.Verify
 open Rel Rel.Kernel
 open Rel.Kernel.Scan (Kind)
 
-theorem kind_width (k : Kind) : 0 < k.width ∧ k.width ≤ 8 := by cases k <;> decide
 
 end Rel.Verify

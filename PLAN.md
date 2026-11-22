@@ -1164,6 +1164,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。声明 0 个删除（`unused` 只删未用 binder，且每个声明都有引用或属交付物）；
   未用 simp 参数/binder 共 41 条 simp 语句修改（15 个文件；RepWF 的 7 条在合并 master 时放弃）；未用 import 1 条（`Run.Table`→`Run.Cols`；`Lang.Table`→`RepCols` 被 `Arr.pos_get` 需要，保留）。
   避开 GenSound/Tm/Den/GenK*/Csv/Coc 文件；`lean-refactor` 自带的验证 build 因 OwnTest `#guard_msgs` 误报，改用完整 `lake build` 验证。
+  7.4b ✅ 声明级清理：删除无引用声明 219 个（5 轮至不动点；排除 `Rel.Core`、PLAN/Makefile/允许表点名的、带
+  extern/simp/instance 等属性的、GenK*/GenSound/List/RepTabDiv/Fix/Power/Where）。7.4c 合并 master：保留 master 仍引用的
+  `ones_eq`（被 private `fieldByte_eq` 引用，index 看不到）与 6.13 已证定律 G1/G2/S1（`kgather_pos_ix`、`kgather_pos_e`、
+  `kscatter_pos_ix`）；合并后新变为无引用的 4 个一并删除（`toUInt64_two_pow_sub_one`、`Tm.Sub.den`、`copySlice_end`、
+  `elemsW_alpDecode`），合计仍为 219 个。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
   分支 `gates3`。另：`CLAUDE.md` 的 14 条规则里 9 条没有 gate。

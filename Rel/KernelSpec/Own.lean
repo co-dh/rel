@@ -153,10 +153,5 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   rw [if_neg (by simpa using hz)]
   simp [UInt8.ofNat_toNat, USize.ofNat_toNat]
 
-/-- **`ownEnc` puts back what `ownParts` took apart**, each part as it was. With `ownParse_ownImage`, a column
-`Table.writeVals` writes is mapped back by `Table.readVals` as the `Enc` written; the `IO` around both is not stated. -/
-theorem ownEnc_ownParts {X : Type} {e : Ext.Enc X} {k : UInt8} {ps : Array ByteArray}
-    (h : ownParts e = .ok (some (k, ps))) : ownEnc k ps = some e := by
-  cases e <;> simp only [ownParts] at h <;> cases h <;> rfl
 
 end Rel.Db

@@ -21,11 +21,6 @@ def sx (w : Nat) (v : UInt64) : Int :=
   if v.toNat % 2 ^ (8 * w) < 2 ^ (8 * w - 1) then ((v.toNat % 2 ^ (8 * w) : Nat) : Int)
   else ((v.toNat % 2 ^ (8 * w) : Nat) : Int) - ((2 ^ (8 * w) : Nat) : Int)
 
-/-- `sx` reads only the low `8 * w` bits, which are what a `w`-byte write keeps. -/
-theorem sx_mod {w : Nat} (h8 : w ≤ 8) (v : UInt64) : sx w (UInt64.ofNat (v.toNat % 2 ^ (8 * w))) = sx w v := by
-  have : v.toNat % 2 ^ (8 * w) < 2 ^ 64 :=
-    Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) (Nat.pow_le_pow_right (by omega) (by omega))
-  simp only [sx, UInt64.toNat_ofNat', Nat.mod_eq_of_lt this, Nat.mod_mod]
 
 theorem pairwise_map_range_iff {α : Type} (R : α → α → Prop) (f : Nat → α) (m : Nat) :
     ((List.range m).map f).Pairwise R ↔ ∀ i j, i < j → j < m → R (f i) (f j) := by
@@ -103,15 +98,6 @@ theorem extract_getElem? {α : Type} (a : Array α) (s e k : Nat) :
   · rw [if_pos hk, if_pos hk, if_pos (by rw [Nat.lt_sub_iff_add_lt, Nat.lt_min] at hk; omega)]
   · rw [if_neg hk, if_neg hk]
 
-/-- The bytes `[a, m)` of `s`, read at `o`, are `s` read at `a + o`, wherever the read ends by `m`. -/
-theorem bitsAt_extract (s : ByteArray) {a m o w : Nat} (h : a + o + w ≤ m) :
-    Column.bitsAt (s.extract a m) o w = Column.bitsAt s (a + o) w :=
-  bitsAt_shift _ _ _ _ _ fun k hk => by
-    rw [show (s.extract a m)[o + k]? = (s.extract a m).data[o + k]? from rfl, ByteArray.data_extract,
-      extract_getElem?, show s[a + o + k]? = s.data[a + o + k]? from rfl]
-    split
-    · rw [Nat.add_assoc]
-    · rw [Array.getElem?_eq_none (by have : s.data.size = s.size := rfl; omega)]
 
 /-- **The foR round trip.** `Enc.raw` cannot tell `Coc.encodeAt` at any block size `2 ^ lg` the layout admits
 (`6 ≤ lg ≤ 16`) from the dense payload it encodes, read at that payload's width `w`, at any count up to `x`'s: element
