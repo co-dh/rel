@@ -1402,7 +1402,7 @@ inductive InRead
   | own (cs : List (String × QAtomicType × Nat))
   | csv (cs : List (String × QAtomicType)) (l : Nat)
 
-/-- The input edge's reads of `input x : N ⟶ v from [csv] path` (`n.io`'s `Table.read`, `Table.readCsv`). A keyed
+/-- The input edge's reads of `input x : N ⟶ v from [csv] path` (`n.io`'s `Table.read`, `Table.readCsvDict`). A keyed
     input (`Table.readKeyed`) sorts its rows, a float column read from its file is checked canonical, a nullable CSV
     column is regrouped: no plan recipe does those, so each is refused, naming the input. -/
 def readIn (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : String) : Bld InRead := do
@@ -1411,6 +1411,8 @@ def readIn (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : String)
   match csv with
   | some cs =>
     if hasSum v.obj then return ← no "a nullable CSV column, whose parts the read regroups and checks (`Table.ofCsv`)"
+    if cs.any (fun (_, _, t, _) => t == .sym) then
+      return ← no "a symbol column, whose texts the read interns into the program's dictionary (`Table.intern`)"
     let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put cs)]
     return .csv (objCols v.obj "") (← nth rs 1 "csvRead")
   | none => .own <$> (schemaCols v).mapM fun (p, q, t) => do
@@ -1459,6 +1461,9 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
       for (p, q, _) in schemaCols S do
         discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 6) 0
   | some cs =>
+    if cs.any (fun (_, _, t, _) => t == .sym) then
+      throw s!"output `{x}` to csv \"{path}\": a symbol column, whose ids the write decodes through the program's \
+        dictionary (`Table.decode`), which no plan recipe does yet"
     let mut es : List Nat := []
     let mut rows : Option Nat := none
     for (S, side, _) in sides do

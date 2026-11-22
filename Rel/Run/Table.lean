@@ -313,14 +313,7 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
   | .one, x :: cs, _ :: ns => pure ([x], cs, ns)
   | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
 
-/-- The schema as the file holds it: a symbol column is its texts (`.text` of `char`); a symbol column of another
-    shape or with names is refused. -/
-def symText (cols : Db.CsvCols) : Except String Db.CsvCols :=
-  cols.mapM fun (c, s, t, ns) =>
-    if t ≠ .sym then pure (c, s, t, ns) else if s = .atom ∧ ns = [] then pure (c, .text, .char, [])
-    else .error s!"column '{c}' is a symbol column of shape {repr s} with {ns.length} names; a symbol field is one text"
-
-/-- The parts `es` read under `symText cols`, each symbol column's three text parts replaced by its ids' one part
+/-- The parts `es` read under `Db.Csv.symText cols`, each symbol column's three text parts replaced by its ids' one part
     (`intern`) into the one dictionary `D`, left to right; the grown dictionary. -/
 def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) → Except String (List (USize × Enc) × Dict)
   | [], es => pure (es, D)
@@ -337,9 +330,11 @@ def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) �
 /-- The CSV file `path` as the table `K ⟶ S`, its symbol columns interned into the database's dictionary `D`, its
     header `cols` (the key's columns then the value's, `Db.CsvCols`), each column read straight into its encoding
     (`Db.csvRead`, `ofCsv`, `encVals`), a symbol column as its texts then interned (`internCsv`); `K = []`: positions,
-    the frame of its rows (`frame`), else keyed, its rows canonical (`canon`). The answer carries the grown `D`. -/
+    the frame of its rows (`frame`), else keyed, its rows canonical (`canon`). The answer carries the grown `D`. A
+    program's CSV inputs (`n.io`) are each read into the `D` the one before grew, so two files' equal texts are one id
+    (§0.2) and `∪`, `∩`, join meet on ids. -/
 def readCsvDict (D : Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj × Dict) := do
-  let (n, es) ← Db.csvRead path (← IO.ofExcept ((symText cols).mapError (s!"{path}: " ++ ·)))
+  let (n, es) ← Db.csvRead path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·)))
   let (es, ds) ← IO.ofExcept (internCsv path D cols es)
   let side (R : Schema) (es : List (USize × Enc)) (ns : List String) :
       Except String (Vals R.obj n × List (USize × Enc) × List String) := do
@@ -356,14 +351,6 @@ def readCsvDict (D : Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) : 
     let (k, es, ns) ← side K es ns
     let (v, es, _) ← side S es ns
     done es; pure (← canon path ⟨n, k, v⟩, ds))
-
-/-- A program's CSV input (`n.io`): `readCsvDict`, refused when the file has a symbol column, whose dictionary no
-    program carries yet (PLAN 8.3). -/
-def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj) := do
-  let ss := cols.filterMap fun (c, _, t, _) => if t = .sym then some c else none
-  unless ss.isEmpty do
-    throw (IO.userError s!"{path}: symbol columns {ss}, whose dictionary a program input does not carry yet")
-  return (← readCsvDict (← IO.ofExcept Dict.empty) K S cols path).1
 
 /-- The encodings of the side `x`'s CSV columns' parts with their counts (`toCsv` of `cols`' order), as
     `Db.CsvShape.atoms` lists them; which objects a CSV column may be is `Db.Csv.schema`'s to say. -/
@@ -396,7 +383,7 @@ def decodeCsv (path : String) (ds : Option Dict) : Db.CsvCols → List (USize ×
 def writeCsv (ds : Option Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) (t : Tab K.obj S.obj) : IO Unit := do
   let ks ← match K with | [] => pure [] | _ => IO.ofExcept (csvEncs path t.key)
   let es ← IO.ofExcept (decodeCsv path ds cols (ks ++ (← IO.ofExcept (csvEncs path t.val))))
-  Db.csvWrite path (← IO.ofExcept ((symText cols).mapError (s!"{path}: " ++ ·))) t.n es
+  Db.csvWrite path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·))) t.n es
 
 /-- The table of the run-time definition `x` (IO design B): its code run closed, as a closed definition's is
     (`Expand.emit`), its error the op's message after `x`. -/
