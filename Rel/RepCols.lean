@@ -66,6 +66,10 @@ theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
   simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
   simpa [chain] using hw
 
+/-- `x - b` as a post step: `(.add, 0 - b)`, since `kscan` has no step subtracting its constant from the word. -/
+theorem neg_add_word (a b : UInt64) : 0 - b + a = a - b := by
+  rw [UInt64.sub_eq_add_neg, UInt64.sub_eq_add_neg, UInt64.zero_add, UInt64.add_comm]
+
 /-- **A constant operand is a post step** (perf11): `colMap op' n a (colConst n c)` and the one `kscan`
 `colMap .first n a a` with the post chain `[(op, c)]` write the same words wherever `op' x c = op c x`, so the
 `kscatter` that builds the constant column is not run. -/

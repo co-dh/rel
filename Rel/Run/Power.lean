@@ -36,9 +36,10 @@ def atPos {n : USize} (k : Nat) (X : Vals (.arr B) n) : Except String (Tab (.arr
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ m.toNat + k then throw s!"at: position {k} in a payload of {m} rows, past 2^63"
-    let kc ← colConst n k.toUInt64
-    let (M, sel) ← whereCol n (← colMap .lt n kc (← colMap .sub n hi.enc lo.enc))
-    let ix ← kgather M sel n (← colMap .add n lo.enc kc)
+    -- `k < w` and `lo + k` as `kscan` post steps (`colMap_post`): no column of `k`
+    let w ← colMap .sub n hi.enc lo.enc
+    let (M, sel) ← whereCol n (← colMap .first n w w .i64 .i64 [] [(.lt, k.toUInt64)])
+    let ix ← kgather M sel n (← colMap .first n lo.enc lo.enc .i64 .i64 [] [(.add, k.toUInt64)])
     Tab.canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩, ← Vals.gather M ix f⟩
 
 /-- **`est(Q)` on the arrays `X`** (`estDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of one

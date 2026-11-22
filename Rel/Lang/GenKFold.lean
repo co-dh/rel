@@ -983,10 +983,9 @@ theorem Vals.cells_pay {B : Obj} {T n : USize} {w} {pay : Vals B T} {Y : Vals (.
   simp only [Vals.cells, bind] at h ⊢
   rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lo, hlo, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
   cases h
-  exact ⟨lo, hi, rfl, by simp [hP, hlo, hc0, hhi, Except.bind, pure, Except.pure]⟩
+  exact ⟨lo, hi, rfl, by simp [hP, hlo, hhi, Except.bind, pure, Except.pure]⟩
 
 /-- **`Tab.map`'s one pass has at most `n * m` rows**: the `T` EXPANDed rows are the summed widths of `n` cells over a
 payload of `m` (`cellSpan_spec`, `expand_spec`). -/

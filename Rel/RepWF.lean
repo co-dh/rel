@@ -342,7 +342,6 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ga, hga, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, hcm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sm, hsm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨dd, hdd, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gd, hgd, h⟩ := h
@@ -440,8 +439,6 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨wd, hwd, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Tn, G, u⟩, hex, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sG, hsG, h⟩ := h
@@ -453,11 +450,15 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
   obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i + 1 := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    have e2 := (colMap_raw hw).2.2.2 i hi
-    rw [colConst_raw hc1, Array.getElem?_replicate, if_pos hi, Option.getD_some,
-      (cellSpan_width hse' hb1 hwd i hi).1] at e2
-    simp only [Op.eval, Except.ok.injEq] at e2
-    rw [← e2, hwN]; exact (UInt64.ofNat_add _ _).symm
+    -- one `kscan`: `hi - lo`, then `+ 1` (`colMap_chain`)
+    obtain ⟨-, -, -, hr⟩ := colMap_chain hw
+    obtain ⟨x', y', v, W, hx, hy, e1, e2, ho⟩ := hr i hi
+    cases hx; cases hy
+    rw [(hse' i hi).2, (hse' i hi).1] at e1; simp only [Op.eval, Except.ok.injEq] at e1
+    simp only [chain, List.foldlM, Op.eval, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at e2
+    rw [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1), ← e2, ← e1, hwN, ← toUInt64_sub (hb1 i).1,
+      UInt64.add_comm]
+    exact (UInt64.ofNat_add _ _).symm
   have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by
     have := sum_range_le_mul (wN := wN) (k := n.toNat) (c := m.toNat + 1) fun i _ => by have := hb1 i; rw [hwN]; omega
     omega

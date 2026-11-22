@@ -16,14 +16,13 @@ theorem Tab.colIota_raw {n : USize} {e : Enc} (h : Tab.colIota n = .ok e) :
   simp only [Tab.colIota, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨one', hone', h⟩ := h
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := n.toNat_lt_size
   have hs := colPrefix_add_sum hP (fun _ => 1) fun G hG => by
     rw [colConst_raw hone, Array.getElem?_replicate, if_pos hG, Option.getD_some]; rfl
   intro i hi
-  have e1 := (colMap_raw h).2.2.2 i hi
-  rw [hs i hi, colConst_raw hone', Array.getElem?_replicate, if_pos hi, Option.getD_some] at e1
+  have e1 := (colMap_post h).2 i hi
+  rw [hs i hi] at e1
   have hsum : ∀ k, ((List.range k).map fun _ => (1 : Nat)).sum = k := by
     intro k; induction k with
     | zero => rfl
@@ -31,7 +30,7 @@ theorem Tab.colIota_raw {n : USize} {e : Enc} (h : Tab.colIota n = .ok e) :
       rw [List.range_succ_eq_map, List.map_cons, List.sum_cons, List.map_map]
       exact (congrArg (1 + ·) ih).trans (Nat.add_comm 1 k)
   rw [hsum] at e1
-  simp only [Op.eval, Except.ok.injEq] at e1
+  simp only [Op.eval, Except.ok.injEq, neg_add_word] at e1
   rw [← e1]
   apply UInt64.toNat_inj.mp
   rw [UInt64.toNat_sub_of_le _ _ (by rw [UInt64.le_iff_toNat_le, toNat_toUInt64 (by omega)]; simp),
@@ -98,14 +97,13 @@ theorem whereCol_le {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
 theorem bit_lt {a g j w : Nat} (ha : a < g) (hj : j < w) : a * w + j < g * w := by
   have := Nat.mul_le_mul_right w ha; rw [Nat.succ_mul] at this; omega
 
-/-- `colMap .lt` against a constant `N` below `2^63` is `1` exactly at the words below `N`. -/
-theorem colMap_lt_const {n N : USize} {e c l : Enc} (hc : colConst n N.toUInt64 = .ok c)
-    (hl : colMap .lt n e c = .ok l) (hN : N.toNat < 2 ^ 63) : ∀ i < n.toNat,
+/-- `x < N` as the post step `(.gt, N)`, `N` below `2^63`, is `1` exactly at the words below `N`. -/
+theorem colMap_lt_const {n N : USize} {e l : Enc}
+    (hl : colMap .first n e e .i64 .i64 [] [(.gt, N.toUInt64)] = .ok l) (hN : N.toNat < 2 ^ 63) : ∀ i < n.toNat,
     ((raw .i64 n e)[i]?.getD 0).toNat ≤ N.toNat →
       (raw .i64 n l)[i]?.getD 0 = if ((raw .i64 n e)[i]?.getD 0).toNat < N.toNat then 1 else 0 := fun i hi hle => by
-  have e1 := (colMap_raw hl).2.2.2 i hi
-  rw [colConst_raw hc, Array.getElem?_replicate, if_pos hi, Option.getD_some,
-    show (raw .i64 n e)[i]?.getD 0 = ((raw .i64 n e)[i]?.getD 0).toNat.toUInt64 from UInt64.toNat_inj.mp (by simp),
+  have e1 : Op.eval .lt ((raw .i64 n e)[i]?.getD 0) N.toUInt64 = _ := (colMap_post hl).2 i hi
+  rw [show (raw .i64 n e)[i]?.getD 0 = ((raw .i64 n e)[i]?.getD 0).toNat.toUInt64 from UInt64.toNat_inj.mp (by simp),
     show N.toUInt64 = N.toNat.toUInt64 from UInt64.toNat_inj.mp (by simp), eval_lt_nat (by omega) hN,
     Except.ok.injEq] at e1
   exact e1.symm
@@ -170,15 +168,12 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   rw [Except.bind_eq_ok'] at h; obtain ⟨ia, hia, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Y', hY', h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ic, hic, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨l1, hl1, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c2, hc2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨l2, hl2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ok, hok, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hM, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨u0, hu0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ga, hga, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cw, hcw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨mu, hmu, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gc, hgc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ps, hpos, h⟩ := h
@@ -219,8 +214,8 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
       ((raw .i64 t.n ia)[i]?.getD 0).toNat < g.toNat ∧ ((raw .i64 t.n ic)[i]?.getD 0).toNat < w.toNat) :=
     fun i hi => by
       have e3 := (colMap_raw hok).2.2.2 i hi
-      rw [colMap_lt_const hc1 hl1 hg63 i hi (Tab.index_le hia wX' wt.1 ⟨i, hi⟩),
-        colMap_lt_const hc2 hl2 hw63 i hi (Tab.index_le hic wY' wt.2 ⟨i, hi⟩)] at e3
+      rw [colMap_lt_const hl1 hg63 i hi (Tab.index_le hia wX' wt.1 ⟨i, hi⟩),
+        colMap_lt_const hl2 hw63 i hi (Tab.index_le hic wY' wt.2 ⟨i, hi⟩)] at e3
       simp only [Op.eval, Except.ok.injEq] at e3
       rw [← e3]
       by_cases p : ((raw .i64 t.n ia)[i]?.getD 0).toNat < g.toNat <;>
@@ -241,11 +236,11 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
     refine ⟨i, hi, rk, rv, ?_, hA, hC⟩
     have g1 := (kgather_word hga k hk).2; rw [hi] at g1
     have g2 := (kgather_word hgc k hk).2; rw [hi] at g2
-    have e1 := (colMap_raw hmu).2.2.2 k hk
-    rw [g1, colConst_raw hcw, Array.getElem?_replicate, if_pos hk, Option.getD_some] at e1
+    have e1 := (colMap_post hmu).2 k hk
+    rw [g1] at e1
     have e2 := (colMap_raw hpos).2.2.2 k hk
     simp only [Op.eval, Except.ok.injEq] at e1 e2
-    rw [← e2, ← e1, g2, UInt64.toNat_add, UInt64.toNat_mul, USize.toNat_toUInt64]
+    rw [← e2, ← e1, g2, UInt64.mul_comm, UInt64.toNat_add, UInt64.toNat_mul, USize.toNat_toUInt64]
     have := bit_lt hA hC
     have hm : ((raw .i64 t.n ia)[i.1]?.getD 0).toNat * w.toNat < 2 ^ 64 := by omega
     rw [Nat.mod_eq_of_lt hm, Nat.mod_eq_of_lt (by omega)]
@@ -310,7 +305,6 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
   rw [Except.bind_eq_ok'] at h; obtain ⟨X', hX', h⟩ := h
   have wX' := Vals.gather_wf hX' wx
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hl1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M0, sel⟩, hwc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨key0, hkey, h⟩ := h
@@ -343,7 +337,7 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
   -- `R`'s rows whose value is a row of `M`, at `ix`
   have hlt : ∀ q < r.n.toNat, (raw .i64 r.n lt)[q]?.getD 0 =
       if ((raw .i64 r.n ix)[q]?.getD 0).toNat < g.toNat then 1 else 0 := fun q hq =>
-    colMap_lt_const hc1 hl1 hg63 q hq (Tab.index_le hix wX' hr.2 ⟨q, hq⟩)
+    colMap_lt_const hl1 hg63 q hq (Tab.index_le hix wX' hr.2 ⟨q, hq⟩)
   have hltb : ∀ q < r.n.toNat, (raw .i64 r.n lt)[q]?.getD 0 < 2 := fun q hq => by
     rw [hlt q hq]; split <;> decide
   have hMr := whereCol_le hwc hltb
@@ -477,7 +471,6 @@ theorem Tab.compTabMat_wf {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' r
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M0, sel⟩, -, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨key0, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka0, aR, ra0⟩, hcode, h⟩ := h; try dsimp only at h
@@ -585,7 +578,6 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Xg, hXg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cg, hcg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨on, hon, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨P, sel⟩, hP, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gb, hgb, h⟩ := h
@@ -594,7 +586,6 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   rw [Except.bind_eq_ok'] at h; obtain ⟨o1, hk, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨vac, hvac, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt2, hcnt2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eq2, heq2, h⟩ := h
@@ -602,7 +593,6 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   rw [Except.bind_eq_ok'] at h; obtain ⟨io, hio, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cw, hcw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨rr, hrr, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨ckc, hckc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨rm, hrm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cw2, hcw2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨im, him, h⟩ := h
@@ -714,11 +704,11 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   have hcntw := scatter_add_count hcnt bx (fun _ => true) (fun q hq => (hbx q hq).1) (fun q hq => by
     have := (hbx q hq).2; have := kb.toNat_lt_size; omega) (fun q hq => by rw [cst hone q hq]; rfl)
   have hvacw : ∀ G < kb.toNat, (raw .i64 kb vac)[G]?.getD 0 = if Vac G then 1 else 0 := fun G hG => by
-    have e := (colMap_raw hvac).2.2.2 G hG
-    rw [cst hz0 G hG, hev, hcntw G hG, Except.ok.injEq] at e
+    have e := (colMap_post hvac).2 G hG
+    rw [hev, hcntw G hG, Except.ok.injEq] at e
     rw [← e]
     refine ifc ?_
-    rw [show (0 : UInt64) = (0 : Nat).toUInt64 from rfl, u64eq _ _ (hcl _) (by omega)]
+    rw [eq_comm, show (0 : UInt64) = (0 : Nat).toUInt64 from rfl, u64eq _ _ (hcl _) (by omega)]
     simp only [Bool.and_true, List.countP_eq_zero, List.mem_range, beq_iff_eq, Vac]
   have hvacb : ∀ G < kb.toNat, (raw .i64 kb vac)[G]?.getD 0 < 2 := fun G hG => by
     rw [hvacw G hG]; split <;> decide
@@ -785,7 +775,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
     have hg63 : g.toNat < 2 ^ 63 := by
       have := Nat.le_mul_of_pos_right g.toNat hw1; have := Tab.ofBits_lt hs; omega
     have honw : ∀ i < r.n.toNat, (raw .i64 r.n on)[i]?.getD 0 = if ixN i < g.toNat then 1 else 0 := fun i hi => by
-      have := colMap_lt_const hcg hon hg63 i hi (Tab.index_le hix wXg hr.1 ⟨i, hi⟩); rwa [hixN] at this
+      have := colMap_lt_const hon hg63 i hi (Tab.index_le hix wXg hr.1 ⟨i, hi⟩); rwa [hixN] at this
     have honb : ∀ i < r.n.toNat, (raw .i64 r.n on)[i]?.getD 0 < 2 := fun i hi => by
       rw [honw i hi]; split <;> decide
     have hsel : ∀ i, (∃ q < P.toNat, selN q = i) ↔ i < r.n.toNat ∧ ixN i < g.toNat := fun i => by
@@ -854,10 +844,11 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
         exact e.symm
       have egm := (kgather_word hgm k hk).2
       rw [emd, toNat_toUInt64 (by omega), (hcm _ hkm).1] at egm
-      have erm := (colMap_raw hrm).2.2.2 k hk
-      rw [erd, cst hckc k hk] at erm
+      have erm := (colMap_post hrm).2 k hk
+      rw [erd] at erm
       have ep := (colMap_raw hp1).2.2.2 k hk
       simp only [Op.eval, Except.ok.injEq] at erm ep
+      rw [UInt64.mul_comm] at erm
       have hb := bit_lt hkw (hcm _ hkm).2
       refine ⟨?_, hkw, hkm, ?_⟩
       · rw [← ep, ← erm, egm, UInt64.toNat_add, UInt64.toNat_mul, toNat_toUInt64 (by omega), USize.toNat_toUInt64,
@@ -1575,7 +1566,6 @@ theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o
   have hU : 2 ^ 32 ≤ USize.size := by rcases USize.size_eq with h | h <;> omega
   have hbm : Tab.bitsMax = 2 ^ 27 := rfl
   simp only [Tab.compTabMat, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h

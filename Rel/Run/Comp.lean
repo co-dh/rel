@@ -107,7 +107,7 @@ def compCuts (bound : Nat) (n : USize) :
 
 /-- Block `j` of `R ≫ S`: the rows of `R` whose block word in `c` is `j` (`keep`), composed with `S` by `compOne`. -/
 def compBlock (R : Tab A B) (S : Tab B C) (c : Enc) (j : Nat) : Except String (Tab A C) := do
-  compOne (← R.keep (← colMap .eq R.n c (← colConst R.n j.toUInt64))) S
+  compOne (← R.keep (← colMap .first R.n c c .i64 .i64 [] [(.eq, j.toUInt64)])) S
 
 /-- **`R ≫ S` over the blocks `bid`** (`nb` of them, one word per row of `R`): `bid` clamped into `[0, nb - 1]`
 (`Arr.clampShift`), so every row of `R` is in one block whatever `bid` holds; the blocks' tables met by `∪`. Only

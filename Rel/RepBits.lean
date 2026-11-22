@@ -141,7 +141,6 @@ theorem bitMatrix_spec {n na w : USize} {r c o : Enc} (h : bitMatrix n na w r c 
       if ∃ k < n.toNat, ((raw .i64 n r)[k]?.getD 0).toNat = a ∧ ((raw .i64 n c)[k]?.getD 0).toNat = j
       then 1 else 0 := by
   simp only [bitMatrix, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨wc, hwc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨m1, hm1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
@@ -159,10 +158,9 @@ theorem bitMatrix_spec {n na w : USize} {r c o : Enc} (h : bitMatrix n na w r c 
     · rintro ⟨rfl, rfl⟩; rfl
   have hixk : ∀ k < n.toNat, ((raw .i64 n ix)[k]?.getD 0).toNat =
       ((raw .i64 n r)[k]?.getD 0).toNat * w.toNat + ((raw .i64 n c)[k]?.getD 0).toNat := fun k hk => by
-    have e1 := (colMap_raw hm1).2.2.2 k hk
-    rw [colConst_raw hwc, Array.getElem?_replicate, if_pos hk, Option.getD_some] at e1
+    have e1 := (colMap_post hm1).2 k hk
     have e2 := (colMap_raw hix).2.2.2 k hk
-    simp only [Op.eval, Except.ok.injEq] at e1 e2
+    simp only [Op.eval, Except.ok.injEq] at e1 e2; rw [UInt64.mul_comm] at e1
     have hb := Nat.mul_le_mul_right w.toNat (hr k hk)
     have hck := hc k hk
     rw [Nat.succ_mul] at hb
@@ -552,7 +550,6 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
   rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eqc, heqc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨E, eb⟩, hE, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, gid⟩, hgid, h⟩ := h; try dsimp only at h
@@ -594,10 +591,13 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
       rw [colConst_raw hone, Array.getElem?_replicate, if_pos hq, Option.getD_some]; rfl)
   have hz : ∀ G < kb.toNat, ((raw .i64 kb eqc)[G]?.getD 0 = 1 ↔ ∀ i < R.n.toNat, bx i ≠ G) ∧
       (raw .i64 kb eqc)[G]?.getD 0 < 2 := fun G hG => by
-    have e := (colMap_raw heqc).2.2.2 G hG
-    have hev : ∀ x : UInt64, Op.eval .eq x 0 = .ok (if x = 0 then 1 else 0) := fun x => by
-      show Except.ok (if (x == 0) = true then 1 else 0) = _; by_cases h : x = 0 <;> simp [h]
-    rw [colConst_raw hz0, Array.getElem?_replicate, if_pos hG, Option.getD_some, hev, hcntw G hG,
+    have e := (colMap_post heqc).2 G hG
+    have hev : ∀ x : UInt64, Op.eval .eq 0 x = .ok (if x = 0 then 1 else 0) := fun x => by
+      show Except.ok (if ((0 : UInt64) == x) = true then 1 else 0) = _
+      by_cases h : x = 0
+      · simp [h]
+      · simp [h, Ne.symm h]
+    rw [hev, hcntw G hG,
       Except.ok.injEq] at e
     rw [← e]
     have hcl : ((List.range R.n.toNat).countP fun q => bx q == G && true) ≤ R.n.toNat :=

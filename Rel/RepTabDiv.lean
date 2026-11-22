@@ -423,7 +423,6 @@ theorem Vals.cells_spec {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : 
   simp only [Vals.cells, bind] at hY
   rw [Except.bind_eq_ok'] at hY; obtain ⟨P', hP', hY⟩ := hY
   rw [Except.bind_eq_ok'] at hY; obtain ⟨lo', hlo', hY⟩ := hY
-  rw [Except.bind_eq_ok'] at hY; obtain ⟨c0, hc0, hY⟩ := hY
   rw [Except.bind_eq_ok'] at hY; obtain ⟨hi', hhi', hY⟩ := hY
   cases hY
   have hP'w := colPrefix_add_sum hP' wN hw
@@ -435,7 +434,7 @@ theorem Vals.cells_spec {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : 
     rw [hP'w i.1 i.2, hw i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
   · have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
+    rw [hP'w i.1 i.2, 
       sum_range_succ'] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [← es]
@@ -607,7 +606,6 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ga, hga, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, hcm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sm, hsm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨dd, hdd, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gd, hgd, h⟩ := h
@@ -621,7 +619,6 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   simp only [Vals.cells, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨P', hP', h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lo', hlo', h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi', hhi', h⟩ := h
   cases h
   obtain ⟨hNn, hoff⟩ := catPlan_ok hpl
@@ -661,7 +658,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
     rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
   have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
     have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
+    rw [hP'w i.1 i.2, 
       sum_range_succ'] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [← es]
@@ -686,10 +683,10 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add]
   have hddw : (raw .i64 n dd)[i.1]?.getD 0 = (S₂ i.1 + m₁.toNat - (E₁ i.1 - S₁ i.1)).toUInt64 := by
-    have es1 := (colMap_raw hsm).2.2.2 _ i.2
-    rw [colConst_raw hcm, Array.getElem?_replicate, if_pos i.2, Option.getD_some, (hse₂' i.1 i.2).1, hmU] at es1
+    have es1 := (colMap_post hsm).2 _ i.2
+    rw [(hse₂' i.1 i.2).1, hmU] at es1
     have es := (colMap_raw hdd).2.2.2 _ i.2
-    simp only [Op.eval, Except.ok.injEq] at es1 es
+    simp only [Op.eval, Except.ok.injEq] at es1 es; rw [UInt64.add_comm] at es1
     have := hb₁ i.1
     rw [← es, ← es1, hw₁w i.1 i.2, ← UInt64.ofNat_add, ← toUInt64_sub (by omega)]
   have hbt : (raw .i64 T b)[((List.range i.1).map wN).sum + d]?.getD 0 =
@@ -734,17 +731,16 @@ theorem Vals.tau_spec {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n}
       (raw .i64 n lo.enc)[i.1]?.getD 0 = i.1.toUInt64 ∧ (raw .i64 n hi.enc)[i.1]?.getD 0 = (i.1 + 1).toUInt64 := by
   simp only [Vals.tau, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
   cases h
   refine ⟨P, hi, rfl, fun i => ⟨?_, ?_⟩⟩
   · unfold Arr.pos at hP; split at hP
     · rename_i o ho; cases hP; exact (shiftCol_raw ho i.1 i.2).trans (UInt64.add_zero _)
     · cases hP
-  · have es := (colMap_raw (colArr_ok hhi)).2.2.2 i.1 i.2
-    rw [raw_pos_word i.2, colConst_raw hc1, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
+  · have es := (colMap_post (colArr_ok hhi)).2 i.1 i.2
+    rw [raw_pos_word i.2] at es
     simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es]; exact (UInt64.ofNat_add _ _).symm
+    rw [← es, UInt64.add_comm]; exact (UInt64.ofNat_add _ _).symm
 
 /-- **`Vals.tau` keeps `Vals.WF`**: the cell `[i, i + 1)` is inside the `n` rows of `x`, `n` below `2^63`. -/
 theorem Vals.tau_wf {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
@@ -784,7 +780,6 @@ theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.a
   simp only [Vals.cells, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨P', hP', h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lo', hlo', h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi', hhi', h⟩ := h
   cases h
   intro i
@@ -829,7 +824,7 @@ theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.a
     rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
   have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
     have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
-    rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
+    rw [hP'w i.1 i.2, 
       sum_range_succ'] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [← es]
@@ -1071,12 +1066,14 @@ theorem eval_lt_word {a b o : UInt64} (h : Op.eval .lt a b = .ok o) : o = if a.t
 
 /-- **A row's bad word** (`Tab.sum`, `Tab.sums`): `0`/`1`, and `0` exactly when the element `v` and the sum `W` are
 not the null and `W = (W - v) + v` did not wrap (the signs of `v`, `W - v` agree and differ from `W`'s). -/
-theorem badWord_spec {N : USize} {v W z sv d sd e1 sw e2 ovf nl eW ev o1 bad : Enc}
-    (hz : colConst N 0 = .ok z) (hsv : colMap .lt N v z = .ok sv) (hd : colMap .sub N W v = .ok d)
-    (hsd : colMap .lt N d z = .ok sd) (he1 : colMap .eq N sv sd = .ok e1) (hsw : colMap .lt N W z = .ok sw)
+theorem badWord_spec {N : USize} {v W sv d sd e1 sw e2 ovf eW ev o1 bad : Enc}
+    (hsv : colMap .first N v v .i64 .i64 [] [(.gt, 0)] = .ok sv) (hd : colMap .sub N W v = .ok d)
+    (hsd : colMap .first N d d .i64 .i64 [] [(.gt, 0)] = .ok sd) (he1 : colMap .eq N sv sd = .ok e1)
+    (hsw : colMap .first N W W .i64 .i64 [] [(.gt, 0)] = .ok sw)
     (he2 : colMap .ne N sv sw = .ok e2) (hovf : colMap .and N e1 e2 = .ok ovf)
-    (hnl : colConst N 0x8000000000000000 = .ok nl) (heW : colMap .eq N W nl = .ok eW)
-    (hev : colMap .eq N v nl = .ok ev) (ho1 : colMap .or N eW ev = .ok o1) (hbad : colMap .or N ovf o1 = .ok bad) :
+    (heW : colMap .first N W W .i64 .i64 [] [(.eq, 0x8000000000000000)] = .ok eW)
+    (hev : colMap .first N v v .i64 .i64 [] [(.eq, 0x8000000000000000)] = .ok ev)
+    (ho1 : colMap .or N eW ev = .ok o1) (hbad : colMap .or N ovf o1 = .ok bad) :
     ∀ t < N.toNat, ((raw .i64 N bad)[t]?.getD 0 = 0 ∨ (raw .i64 N bad)[t]?.getD 0 = 1) ∧
       ((raw .i64 N bad)[t]?.getD 0 = 0 ↔ ((raw .i64 N v)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
         ((raw .i64 N W)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
@@ -1084,19 +1081,22 @@ theorem badWord_spec {N : USize} {v W z sv d sd e1 sw e2 ovf nl eW ev o1 bad : E
             ((raw .i64 N W)[t]?.getD 0 - (raw .i64 N v)[t]?.getD 0).toInt64 < 0) ∧
           ¬(((raw .i64 N v)[t]?.getD 0).toInt64 < 0 ↔ ((raw .i64 N W)[t]?.getD 0).toInt64 < 0))) := by
   intro t ht
-  have hsv' := eval_lt_word ((colMap_raw hsv).2.2.2 t ht)
+  -- `(.gt, 0)` reads `x < 0`, `(.eq, c)` reads `c = x`: the post step's constant is the left operand
+  have lt0 : ∀ {a e : Enc}, colMap .first N a a .i64 .i64 [] [(.gt, 0)] = .ok e →
+      (raw .i64 N e)[t]?.getD 0 = if ((raw .i64 N a)[t]?.getD 0).toInt64 < (0 : UInt64).toInt64 then 1 else 0 :=
+    fun h => eval_lt_word (b := 0) ((colMap_post h).2 t ht)
+  have hsv' := lt0 hsv
   have hd' := (colMap_raw hd).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hd'
-  have hsd' := eval_lt_word ((colMap_raw hsd).2.2.2 t ht)
+  have hsd' := lt0 hsd
   have he1' := eval_eq_word ((colMap_raw he1).2.2.2 t ht)
-  have hsw' := eval_lt_word ((colMap_raw hsw).2.2.2 t ht)
+  have hsw' := lt0 hsw
   have he2' := eval_ne_word ((colMap_raw he2).2.2.2 t ht)
   have hovf' := (colMap_raw hovf).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hovf'
-  have heW' := eval_eq_word ((colMap_raw heW).2.2.2 t ht)
-  have hev' := eval_eq_word ((colMap_raw hev).2.2.2 t ht)
+  have heW' := eval_eq_word ((colMap_post heW).2 t ht)
+  have hev' := eval_eq_word ((colMap_post hev).2 t ht)
+  simp only [eq_comm (a := (0x8000000000000000 : UInt64))] at heW' hev'
   have ho1' := (colMap_raw ho1).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at ho1'
   have hbad' := (colMap_raw hbad).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hbad'
-  rw [colConst_raw hz, Array.getElem?_replicate, if_pos ht, Option.getD_some] at hsv' hsd' hsw'
-  rw [colConst_raw hnl, Array.getElem?_replicate, if_pos ht, Option.getD_some] at heW' hev'
   rw [← hd'] at hsd'
   rw [← hbad', ← ho1', ← hovf', he1', he2', hsv', hsd', hsw', heW', hev']
   have hn : ∀ x : UInt64, x = 0x8000000000000000 ↔ x.toInt64 = Alg.nul := fun x =>
@@ -1134,7 +1134,6 @@ theorem uncons_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod B (
   rw [Except.bind_eq_ok'] at h; obtain ⟨sM, hsM, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gX, hgX, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gf, hgf, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨l, hl, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eM, heM, h⟩ := h
   have hm63 : m.toNat < 2 ^ 63 := by omega
@@ -1147,10 +1146,10 @@ theorem uncons_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod B (
   rw [hi] at hlt'
   have hEm : EN i ≤ m.toNat := by have := hb1 i; omega
   have hlw : (raw .i64 M l.enc)[j.1]?.getD 0 = (SN i + 1).toUInt64 := by
-    have es' := (colMap_raw (colArr_ok hl)).2.2.2 j.1 j.2
-    rw [colConst_raw hc1, Array.getElem?_replicate, if_pos j.2, Option.getD_some, es, (hw1 i i.2).1] at es'
+    have es' := (colMap_post (colArr_ok hl)).2 j.1 j.2
+    rw [es, (hw1 i i.2).1] at es'
     simp only [Op.eval, Except.ok.injEq] at es'
-    rw [← es']; exact (UInt64.ofNat_add _ _).symm
+    rw [← es', UInt64.add_comm]; exact (UInt64.ofNat_add _ _).symm
   exact cell_wf_nat hlw (ee.trans (hw1 i i.2).2) (by omega) hEm hm63
 
 /-- **`unsnoc` keeps `Tab.WF`**: the front of a non-empty cell `[SN, EN)` is `[SN, EN - 1)`, `EN ≤ m`
@@ -1166,7 +1165,6 @@ theorem unsnoc_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.a
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eM, heM, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨l, hl, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gX, hgX, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sM, hsM, h⟩ := h
@@ -1181,10 +1179,10 @@ theorem unsnoc_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.a
   rw [hi] at hlt'
   have hEm : EN i ≤ m.toNat := by have := hb1 i; omega
   have hlw : (raw .i64 M l.enc)[j.1]?.getD 0 = (EN i - 1).toUInt64 := by
-    have es' := (colMap_raw (colArr_ok hl)).2.2.2 j.1 j.2
-    rw [colConst_raw hc1, Array.getElem?_replicate, if_pos j.2, Option.getD_some, ee, (hw1 i i.2).2] at es'
+    have es' := (colMap_post (colArr_ok hl)).2 j.1 j.2
+    rw [ee, (hw1 i i.2).2] at es'
     simp only [Op.eval, Except.ok.injEq] at es'
-    rw [← es', toUInt64_sub (by omega)]; rfl
+    rw [← es', neg_add_word, toUInt64_sub (by omega)]; rfl
   exact cell_wf_nat (es.trans (hw1 i i.2).1) hlw (by omega) (by omega) hm63
 
 /-- **`uncons X` denotes `cons°` on the arrays `X`**: each non-empty cell of `X` to its head and its tail. -/
@@ -1202,7 +1200,6 @@ theorem uncons_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
   rw [Except.bind_eq_ok'] at h; obtain ⟨sM, hsM, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hd, hhd, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lo', hlo', h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eM, heM, h⟩ := h
   rw [canon_holds h]
@@ -1231,8 +1228,8 @@ theorem uncons_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
     obtain ⟨i4, hi4, hd4⟩ := Vals.gather_row _ hhd j
     have e4 : i4.1 = SN i := by rw [← hi4, hs2, toNat_toUInt64 (by have := hb1 i; omega)]
     have hlo : (raw .i64 M lo'.enc)[j.1]?.getD 0 = (SN i + 1).toUInt64 := by
-      have es := (colMap_raw (colArr_ok hlo')).2.2.2 j.1 j.2
-      rw [colConst_raw hc1, Array.getElem?_replicate, if_pos j.2, Option.getD_some, hs2] at es
+      have es := (colMap_post (colArr_ok hlo')).2 j.1 j.2
+      rw [hs2] at es
       simp only [Op.eval, Except.ok.injEq] at es
       have := (hb1 i).2.1; rw [← es]; apply UInt64.toNat_inj.mp; simp <;> omega
     refine ⟨i, c, hi, hKi, ?_⟩
@@ -1269,7 +1266,6 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hw, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eM, heM, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨l, hl, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sM, hsM, h⟩ := h
@@ -1302,10 +1298,10 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
     rw [(hw1 _ i.2).2] at he3
     have hEm : EN i ≤ m.toNat := by have := hb1 i; omega
     have hlw : (raw .i64 M l.enc)[j.1]?.getD 0 = (EN i - 1).toUInt64 := by
-      have es := (colMap_raw (colArr_ok hl)).2.2.2 j.1 j.2
-      rw [colConst_raw hc1, Array.getElem?_replicate, if_pos j.2, Option.getD_some, he3] at es
+      have es := (colMap_post (colArr_ok hl)).2 j.1 j.2
+      rw [he3] at es
       simp only [Op.eval, Except.ok.injEq] at es
-      rw [← es, toUInt64_sub (by omega)]; rfl
+      rw [← es, neg_add_word, toUInt64_sub (by omega)]; rfl
     obtain ⟨i4, hi4, ht4⟩ := Vals.gather_row _ htl j
     have e4 : i4.1 = EN i - 1 := by rw [← hi4, hlw, toNat_toUInt64 (by have := hb1 i; omega)]
     refine ⟨i, c, hi, hKi, ?_⟩
@@ -1338,8 +1334,6 @@ theorem uncat_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.pr
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨_, _, _⟩, -, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
@@ -1359,8 +1353,6 @@ theorem uncat_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨wd, hwd, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Tn, G, u⟩, hex, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sG, hsG, h⟩ := h
@@ -1373,12 +1365,15 @@ theorem uncat_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (
   obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i + 1 := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    have e1 := (colMap_raw hwd).2.2.2 i hi
+    -- one `kscan`: `hi - lo`, then `+ 1` (`colMap_chain`)
+    obtain ⟨-, -, -, hr⟩ := colMap_chain hw
+    obtain ⟨x', y', v, W, hx, hy, e1, e2, ho⟩ := hr i hi
+    cases hx; cases hy
     rw [(hse' i hi).2, (hse' i hi).1] at e1; simp only [Op.eval, Except.ok.injEq] at e1
-    have e2 := (colMap_raw hw).2.2.2 i hi
-    rw [colConst_raw hc1, Array.getElem?_replicate, if_pos hi, Option.getD_some] at e2
-    simp only [Op.eval, Except.ok.injEq] at e2
-    rw [← e2, ← e1, hwN, ← toUInt64_sub (hb1 i).1]; exact (UInt64.ofNat_add _ _).symm
+    simp only [chain, List.foldlM, Op.eval, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at e2
+    rw [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1), ← e2, ← e1, hwN, ← toUInt64_sub (hb1 i).1,
+      UInt64.add_comm]
+    exact (UInt64.ofNat_add _ _).symm
   have hwm : ∀ i, wN i ≤ m.toNat + 1 := fun i => by have := hb1 i; rw [hwN]; omega
   have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * (m.toNat + 1) := fun k => by
     induction k with
@@ -2206,14 +2201,12 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, g, f⟩, hseen, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨nc, hnc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cD, hcD, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lo, hlo, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨fs, hfs, h⟩ := h
@@ -2251,9 +2244,10 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   have hnU : n.toUInt64 = n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
   have hltw : ∀ q < N.toNat, (raw .i64 N lt)[q]?.getD 0 =
       if decide (ps[q]?.getD 0 < n.toNat) then 1 else 0 := fun q hq => by
-    have e := (colMap_raw hlt).2.2.2 q hq
-    rw [hpw q hq, colConst_raw hnc, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU,
-      eval_lt_nat (by have := hpsN q hq; omega) (by omega), Except.ok.injEq] at e
+    have e := (colMap_post hlt).2 q hq
+    -- `gt` with the constant on its left is `lt` with it on its right, by `Op.eval`
+    change Op.lt.eval ((raw .i64 N p)[q]?.getD 0) n.toUInt64 = _ at e
+    rw [hpw q hq, hnU, eval_lt_nat (by have := hpsN q hq; omega) (by omega), Except.ok.injEq] at e
     rw [← e]; simp
   obtain ⟨cDN, hcDN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
       fun q => Verify.groupOf Kk N.toNat q == G && decide (ps[q]?.getD 0 < n.toNat) := ⟨_, rfl⟩
@@ -2368,9 +2362,9 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
     rw [hfw G hG, hcntw G hG] at e; simp only [Op.eval, Except.ok.injEq] at e
     rw [← e, hFs]; exact (UInt64.ofNat_add _ _).symm
   have hbw : ∀ G < k, (raw .i64 k.toUSize b)[G]?.getD 0 = if 0 < cDN G then 1 else 0 := fun G hG => by
-    have e := (colMap_raw hb).2.2.2 G (by omega)
+    have e := (colMap_post hb).2 G (by omega)
     have := hle G; have := hcN G hG
-    rw [colConst_raw hc0, Array.getElem?_replicate, if_pos (by omega), Option.getD_some, hcDw G hG,
+    rw [hcDw G hG,
       show Op.eval .lt 0 (cDN G).toUInt64 = .ok (if 0 < cDN G then 1 else 0) from
         eval_lt_nat (x := 0) (by omega) (by omega), Except.ok.injEq] at e
     rw [← e]
@@ -2487,8 +2481,6 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       exact pairwise_eq_of_mem Nat.lt_irrefl (fun _ _ => Nat.lt_asymm) (hLp G hG) hLp' fun j' => by
         rw [hLm G hG hi0, hLm' j', hDi]
   ------------------------------------------------------------------ the payload: `r.val` at `p - n`
-  rw [Except.bind_eq_ok'] at h; obtain ⟨pm, hpm, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨mx, hmx, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨y, hy, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
@@ -2505,14 +2497,21 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
     omega
   · have hs63 : ps[q]?.getD 0 - n.toNat < 2 ^ 63 := by have := hpsN q hq; omega
     have hmxw : (raw .i64 N mx)[q]?.getD 0 = (ps[q]?.getD 0 - n.toNat).toUInt64 := by
-      have e1 := (colMap_raw hpm).2.2.2 q hq
-      rw [hpw q hq, colConst_raw hnc, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU] at e1
-      simp only [Op.eval, Except.ok.injEq] at e1
-      have e2 := (colMap_raw hmx).2.2.2 q hq
-      rw [← e1, ← toUInt64_sub hnq, colConst_raw hz0, Array.getElem?_replicate, if_pos hq, Option.getD_some,
-        show Op.eval .max (ps[q]?.getD 0 - n.toNat).toUInt64 0 = .ok (ps[q]?.getD 0 - n.toNat).toUInt64 by
-          rw [eval_max (by rw [toNat_toUInt64 (by omega)]; omega) (by decide)]; simp] at e2
-      exact (Except.ok.inj e2).symm
+      -- one `kscan`: `p + (0 - n)`, then `max` with `0` (`colMap_chain`)
+      obtain ⟨-, -, -, hr⟩ := colMap_chain hmx
+      obtain ⟨x', y', v, W, hx, hy', hv, hW, ho⟩ := hr q hq
+      cases hx; cases hy'; cases hv
+      rw [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
+      simp only [chain, List.foldlM, Op.eval, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hW
+      rw [hpw q hq, hnU, neg_add_word, ← toUInt64_sub hnq] at hW
+      rw [← hW]; split
+      · rfl
+      · rename_i hc
+        have z0 : (0 : UInt64).toInt64.toInt = 0 := rfl
+        change ¬ (0 : UInt64).toInt64 < (ps[q]?.getD 0 - n.toNat).toUInt64.toInt64 at hc
+        rw [Int64.lt_iff_toInt_lt, z0, toInt64_toInt_nat hs63] at hc
+        have h0 : ps[q]?.getD 0 - n.toNat = 0 := by omega
+        rw [h0]; rfl
     obtain ⟨i, hi, e⟩ := Vals.gather_row r.val hy ⟨q, hq⟩
     simp only at hi
     rw [hmxw, toNat_toUInt64 (by omega)] at hi
@@ -2734,7 +2733,6 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨kc, hkc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
@@ -2747,15 +2745,13 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   have hk63 : k < 2 ^ 63 := by omega
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
   have hwl : ∀ i, EN i - SN i < 2 ^ 63 := fun i => by have := hb1 i; omega
-  have hkw : ∀ i < n.toNat, (raw .i64 n kc)[i]?.getD 0 = k.toUInt64 := fun i hi => by
-    rw [colConst_raw hkc, Array.getElem?_replicate, if_pos hi, Option.getD_some]
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (EN i - SN i).toUInt64 := fun i hi => by
     have es := (colMap_raw hw).2.2.2 i hi
     rw [(hw1 i hi).2, (hw1 i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, toUInt64_sub (hb1 i).1]
   have hltw : ∀ i < n.toNat, (raw .i64 n lt)[i]?.getD 0 = if k < EN i - SN i then 1 else 0 := fun i hi => by
-    have es := (colMap_raw hlt).2.2.2 i hi
-    rw [hkw i hi, hww i hi, eval_lt_nat hk63 (hwl i)] at es
+    have es := (colMap_post hlt).2 i hi
+    rw [hww i hi, eval_lt_nat hk63 (hwl i)] at es
     exact (Except.ok.inj es).symm
   have h2 : ∀ i < n.toNat, (raw .i64 n lt)[i]?.getD 0 < 2 := fun i hi => by rw [hltw i hi]; split <;> decide
   have hsz := whereCol_size hwh
@@ -2771,9 +2767,9 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
     · rintro ⟨j, hj, rfl⟩; exact ⟨j, hj, by rw [Array.getElem?_eq_getElem (by omega)]; rfl⟩
     · rintro ⟨j, hj, rfl⟩; exact ⟨j, hj, by rw [Array.getElem?_eq_getElem (by omega)]; rfl⟩
   have haw : ∀ i < n.toNat, (raw .i64 n a)[i]?.getD 0 = (SN i + k).toUInt64 := fun i hi => by
-    have es := (colMap_raw ha).2.2.2 i hi
-    rw [(hw1 i hi).1, hkw i hi] at es; simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, ← UInt64.ofNat_add]
+    have es := (colMap_post ha).2 i hi
+    rw [(hw1 i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, UInt64.add_comm, ← UInt64.ofNat_add]
   let g : Nat → B.El := fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt
   have hJ : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, k < EN i - SN i ∧ ((raw .i64 M sel)[j.1]?.getD 0).toNat = i ∧
       K.row j = Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i ∧ V.row j = g (SN i + k) := by
