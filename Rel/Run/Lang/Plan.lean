@@ -36,7 +36,7 @@ inductive Val
   | i64 (x : Int64)
   | nat (n : Nat)
   | ctor (tag : Nat) (objs scal : Array Val)
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 def Val.ty : Val → Ty
   | .bytes _ => .bytes | .size _ => .size | .bit _ => .bit | .u8 _ => .u8 | .str _ => .str | .parts _ => .parts
@@ -271,7 +271,12 @@ inductive Instr
       scalar fields of the types `ss` in declaration order (`Val.ctor`'s scalars), stored unboxed as the Lean
       compiler lays them out (an `ownMap` answer's count and bytes); any other tag fails the run. -/
   | sproj (x tag nobj : Nat) (ss : Array Ty) (i : Nat)
-  deriving Inhabited
+  /-- `r… = loop k(init) { body } (out; done)`: the state, first the registers `init`, then rounds of `body`, each after
+      the registers so far and the state (numbered from the loop's first result on, as an `if`'s branch); its `out` the
+      next state, its bit `done` set ending the loop with it. `k` (a `size`) rounds with `done` clear fail the run
+      with `msg`: `Tab.fixOn`'s and `Tab.foldRounds`' cap. -/
+  | loop (k : Nat) (init : Array Nat) (body : List Instr) (out : Array Nat) (done : Nat) (msg : String)
+  deriving Inhabited, BEq
 
 /-- A function: its parameters' types (registers `0 … k-1`, borrowed), its body, its result registers (owned). A
     global is a function of no parameter. -/
@@ -279,7 +284,7 @@ structure Fun where
   params : Array Ty
   body : List Instr
   res : Array Nat
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 /-- A plan (§6): functions, each applying only earlier ones, so the call graph has no cycle; globals, computed in
     order before `main`; `main`; and its input edge, `lit`s and calls of `IO` reads only, whose registers are
@@ -306,6 +311,19 @@ abbrev Writes := Array (String × Array Val)
 
 /-- What a function means, given the globals: its parameters' values to its results', after the writes so far. -/
 abbrev Sem := Array (Array Val) → Array Val → Writes → Except String (Array Val × Writes)
+
+/-- `Instr.loop`'s rounds, at most `k`: `step` from the state `s`, its registers holding the next state `out` and the
+    bit `done`. -/
+def rounds (step : Array Val → Writes → Except String (Array Val × Writes)) (out : Array Nat) (done : Nat)
+    (msg : String) : Nat → Array Val → Writes → Except String (Array Val × Writes)
+  | 0, _, _ => throw msg
+  | k + 1, s, ws => do
+    let (xs, ws) ← step s ws
+    let s ← out.mapM (reg xs "loop")
+    match ← reg xs "loop" done with
+    | .bit true => pure (s, ws)
+    | .bit false => rounds step out done msg k s ws
+    | _ => throw s!"plan: loop's done reads register {done}, which is not a bit"
 
 mutual
 /-- What a block means after the registers `rs` and the writes `ws`: each instruction in order, each kernel looked
@@ -360,6 +378,11 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
       | some v => pure (rs.push v, ws)
       | none => throw s!"plan: sproj r{x}.{i}: constructor {tag} has {vs.size} scalar fields"
     | _ => throw s!"plan: sproj reads register {x}, which is not a constructor"
+  | .loop k init body out done msg, rs, ws => do
+    let .size c ← reg rs "loop" k | throw s!"plan: loop reads register {k} as its cap, which is not a size"
+    let (s, ws) ← rounds (fun s ws => runB abi fs gs body (rs ++ s) ws) out done msg c.toNat
+      (← init.mapM (reg rs "loop")) ws
+    pure (rs ++ s, ws)
 end
 
 /-- What function `f` means where the functions before it mean `fs`. -/
@@ -434,6 +457,14 @@ def ite (c : Nat) (t e : Bld (Array Nat)) : Bld (Array Nat) := do
   let (ti, rt) ← block t; let (ei, re) ← block e
   unless rt.size == re.size do throw s!"if r{c}: the branches answer {rt.size} and {re.size} registers"
   emit (.ite c ti rt ei re) rt.size
+
+/-- `loop k(init)` of the round `b`, given the state's registers (as many as `init`) and answering the next state's
+    and the bit `done`: the last state's registers. -/
+def loop (k : Nat) (init : Array Nat) (msg : String) (b : Array Nat → Bld (Array Nat × Nat)) : Bld (Array Nat) := do
+  let (is, n, fg) ← get
+  let ((out, d), is', _, fg') ← (b (List.range' n init.size).toArray).run (#[], n + init.size, fg)
+  unless out.size == init.size do throw s!"loop: a round answers {out.size} state registers, not {init.size}"
+  set (is, n, fg'); emit (.loop k init is'.toList out d msg) init.size
 
 /-- The function of parameters `ps` and body `b` (run on the parameter registers), added to the plan: its number. -/
 def defFun (ps : Array Ty) (b : Array Nat → Bld (Array Nat)) : Bld Nat := do
