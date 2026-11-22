@@ -36,10 +36,12 @@ theorem foRWords_valid (what : String) (m : USize) (e : Enc) :
   · exact hv.1 ‹_›
   · cases h
 
-/-- A valid `foR` column is `Ext.Enc.WF` at every fixed-width type, a boolean one where every element is `0` or `1`:
+/-- A valid `foR` column is `Ext.Enc.WF` at every fixed-width type, a boolean one where every element but a null is `0` or `1`:
 `Coc.foRStd`'s block count covers the `n` elements, the layout part of `Ext.Enc.WF`. -/
 theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : ByteArray} (h : Enc.Valid n (.foR md pk))
-    (ht : t.width.isSome) (hu : t = .u1 → ∀ i < n.toNat, (Column.foRBits md pk (Column.blockStarts md) i).toNat < 2) :
+    (ht : t.width.isSome) (hu : t = .u1 → ∀ i < n.toNat, ∀ v, Column.foROpt md pk (Column.blockStarts md) i = some v → v.toNat < 2)
+    (hN : ∀ b < Column.nblk md, Column.nulAt md b = true → ∃ j < Column.blk md, b * Column.blk md + j < n.toNat ∧
+      Column.foRNul md pk (Column.blockStarts md) (b * Column.blk md + j) = true) :
     Ext.Enc.WF t n (.foR md pk : Enc) := by
   obtain ⟨hlg, hs⟩ := h
   have hF := (foRStd_iff.1 hs).nblk
@@ -50,14 +52,22 @@ theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : By
     have := Nat.mod_lt (n.toNat + Column.blk md - 1) hb
     omega
   cases t <;> simp only [Ext.Enc.WF] <;>
-    first | exact ⟨ht, hu, hle, hlg⟩ | exact ⟨ht, fun _ => hu rfl, hle, hlg⟩ | exact ⟨ht, hle, hlg⟩ | (simp [QAtomicType.width] at ht)
+    first | exact ⟨ht, hu, hle, hlg, hN⟩ | exact ⟨ht, fun _ => hu rfl, hle, hlg, hN⟩ | exact ⟨ht, hle, hlg, hN⟩ |
+      (simp [QAtomicType.width] at ht)
 
-/-- **A kernel's answer is a column**: `wordsFoR ws`, at the `ws.size` rows it holds, is valid (every kernel reads
-it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Ext.Enc.WF` at every fixed-width type,
-a boolean one where every word is `0` or `1`. -/
-theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size) :
-    Enc.Valid n (wordsFoR ws) ∧ raw .i64 n (wordsFoR ws) = ws ∧
-      ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2) → Ext.Enc.WF t n (wordsFoR ws) := by
+/-- **A kernel's answer is a column, null flags or not**: `wordsFoR ws nul`, at the `ws.size` rows it holds, is valid
+(every kernel reads it), holds that many words, reads back through `Column.foROpt` as `none` at a null
+(`Column.bitAt nul`) and `ws` elsewhere (`foROpt_encode`, whose `hbig` is the hypothesis of that conjunct), and is
+`Ext.Enc.WF` at every fixed-width type, a boolean one where every word but a null's is `0` or `1`. -/
+theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) :
+    Enc.Valid n (wordsFoR ws nul) ∧ (raw .i64 n (wordsFoR ws nul)).size = n.toNat ∧
+      (∀ md pk, wordsFoR ws nul = .foR md pk → ∀ i (hi : i < ws.size),
+        (2 ^ 32 ≤ ws.size → Column.bitAt nul i = false → ws[i] = 9223372036854775807 → ∀ j,
+          i / 2 ^ Column.lgEnc * 2 ^ Column.lgEnc ≤ j → j < i / 2 ^ Column.lgEnc * 2 ^ Column.lgEnc + 2 ^ Column.lgEnc →
+          j < ws.size → Column.bitAt nul j = false) →
+        Column.foROpt md pk (Column.blockStarts md) i = if Column.bitAt nul i then none else some ws[i]) ∧
+      ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), Column.bitAt nul i = false → ws[i] < 2) →
+        Ext.Enc.WF t n (wordsFoR ws nul) := by
   have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp [h])
   have hlg : 6 ≤ Column.lgEnc ∧ Column.lgEnc ≤ 16 := ⟨by decide, by decide⟩
@@ -66,29 +76,136 @@ theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size)
   simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
   unfold wordsFoR Coc.encode
   simp only [h8]
-  generalize hX : ws.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X at hxs hxg
+  generalize ws.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X at hxs hxg
   have hnX : n.toNat = X.size / 8 := by rw [hxs, hn]; omega
-  -- element `i` of the encoded column is word `i` (`foRBits_encode`)
-  have hget : ∀ i (hi : i < ws.size), Column.foRBits (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1
-      (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2 (Column.blockStarts (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1) i
-      = ws[i] := fun i hi => by
-    rw [foRBits_encode Column.lgEnc hlg 8 (by decide) (by decide) X i (by omega)]
+  -- key `i` of `X` is word `i`
+  have hkey : ∀ i (hi : i < ws.size), (Coc.keyAt 8 X i).toUInt64 = ws[i] := fun i hi => by
     have h1 : (Coc.keyAt 8 X i).toUInt64.toNat % 2 ^ (8 * 8) = (Column.bitsAt X (i * 8) 8).toNat :=
       sext_bits 8 (by decide) (by decide) _ (bitsAt_lt _ _ _ (by decide))
     rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi), ofNat_toNat_mod64,
       Array.getElem_toList] at h1
     exact UInt64.toNat_inj.mp h1
-  have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1
-      (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2) := by
-    have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true)).2.2
+  have hopt : ∀ i (hi : i < ws.size), (2 ^ 32 ≤ ws.size → Column.bitAt nul i = false → ws[i] = 9223372036854775807 →
+      ∀ j, i / 2 ^ Column.lgEnc * 2 ^ Column.lgEnc ≤ j → j < i / 2 ^ Column.lgEnc * 2 ^ Column.lgEnc + 2 ^ Column.lgEnc →
+        j < ws.size → Column.bitAt nul j = false) →
+      Column.foROpt (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).1
+        (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).2
+        (Column.blockStarts (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).1) i =
+        if Column.bitAt nul i then none else some ws[i] := fun i hi hb => by
+    rw [foROpt_encode Column.lgEnc hlg 8 (by decide) (by decide) X nul i (by omega) fun h32 hni hk j a b c =>
+      hb (by omega) hni (by rw [← hkey i hi, Int64.toInt_inj.1 (hk.trans (by decide : (2 : Int) ^ 63 - 1 = (9223372036854775807 : Int64).toInt))]; decide) j a b (by omega),
+      hkey i hi]
+  have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).1
+      (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).2) := by
+    have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true) (nul := nul)).2.2
     refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X)⟩
-  refine ⟨hV, ?_, fun ht hu => Enc.Valid.wf hV ht fun h1 i hi => ?_⟩
-  · rw [raw_foR .i64 8 rfl (by decide)]
-    refine Array.ext (by simp [hn]) fun i h1 h2 => ?_
-    simp only [Array.getElem_map, Array.getElem_range]
-    rw [hget i h2, ofNat_toNat_mod64]
-  · rw [hget i (hn ▸ hi)]
-    exact UInt64.lt_iff_toNat_lt.1 (hu h1 i (hn ▸ hi))
+  refine ⟨hV, by rw [raw_foR .i64 8 rfl (by decide)]; simp, fun md pk he i hi hb => ?_,
+    fun ht hu => Enc.Valid.wf hV ht (fun h1 i hi v hv => ?_) fun b hb hf => ?_⟩
+  · injection he with h1 h2; subst h1 h2; exact hopt i hi hb
+  rotate_left
+  · -- a flagged block holds a row null in `nul` (`nulAt_encodeAt`), which reads back as the null
+    obtain ⟨hnb, hbk, -⟩ := nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true) (nul := nul)
+    rw [hnb] at hb; rw [hbk]
+    obtain ⟨j, hj, hjn, hjb⟩ := nulAt_encodeAt Column.lgEnc hlg 8 (by decide) (by decide) X nul b
+      (mul_lt_of_lt_cdiv (Nat.two_pow_pos _) hb) hf
+    refine ⟨j, hj, by omega, ?_⟩
+    have h := hopt _ (by omega) fun _ hni => absurd (hni.symm.trans hjb) Bool.false_ne_true
+    rw [if_pos hjb] at h
+    unfold Column.foROpt at h; split at h
+    · assumption
+    · cases h
+  · have hi' : i < ws.size := by omega
+    rw [hopt i hi' fun _ hni hk => absurd (hu h1 i hi' hni) (by rw [hk]; decide)] at hv
+    split at hv; · cases hv
+    rename_i hni
+    obtain rfl := Option.some.inj hv
+    exact UInt64.lt_iff_toNat_lt.1 (hu h1 i hi' (by simpa using hni))
+
+/-- **A kernel's answer is a column**: `wordsFoR ws`, at the `ws.size` rows it holds, is valid (every kernel reads
+it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Ext.Enc.WF` at every fixed-width type,
+a boolean one where every word is `0` or `1`. -/
+theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size) :
+    Enc.Valid n (wordsFoR ws) ∧ raw .i64 n (wordsFoR ws) = ws ∧
+      ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2) → Ext.Enc.WF t n (wordsFoR ws) := by
+  obtain ⟨hV, -, hopt, hwf⟩ := wordsFoR_nul ws .empty hn
+  have h0 := bitAt_empty
+  refine ⟨hV, ?_, fun ht hu => hwf ht fun h1 i hi _ => hu h1 i hi⟩
+  obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws = .foR md pk := ⟨_, _, rfl⟩
+  rw [hE, raw_foR .i64 8 rfl (by decide)]
+  refine Array.ext (by simp [hn]) fun i h1 h2 => ?_
+  have h := hopt md pk hE i h2 fun _ _ _ j _ _ _ => h0 j
+  rw [h0, if_neg Bool.false_ne_true] at h
+  unfold Column.foROpt at h; split at h; · cases h
+  simp only [Array.getElem_map, Array.getElem_range]
+  rw [Option.some.inj h, ofNat_toNat_mod64]
+
+/-- **A column holds a null exactly where a row's flag is set**: `hasNul` reads the blocks' flags, and under
+`Ext.Enc.WF` a flagged block holds a null row (owner decision F) while a null row's block is flagged (`foRNul`). So two
+columns whose rows' flags agree up to a permutation agree on `hasNul`. -/
+theorem hasNul_flags {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t n e) :
+    hasNul e = (foRNuls n e).any (· != 0) := by
+  cases e with
+  | foR md pk =>
+    have hw' : n.toNat ≤ Column.blk md * Column.nblk md ∧ ∀ b < Column.nblk md, Column.nulAt md b = true →
+        ∃ j < Column.blk md, b * Column.blk md + j < n.toNat ∧
+          Column.foRNul md pk (Column.blockStarts md) (b * Column.blk md + j) = true := by
+      cases t <;> simp only [Ext.Enc.WF] at hw <;> exact ⟨hw.2.2.1, hw.2.2.2.2⟩
+    obtain ⟨hle, hN⟩ := hw'
+    rw [Bool.eq_iff_iff, hasNul, foRNuls, List.any_eq_true, Array.any_eq_true]
+    simp only [List.mem_range, Array.size_map, Array.size_range, Array.getElem_map, Array.getElem_range]
+    constructor
+    · rintro ⟨b, hb, hf⟩
+      obtain ⟨j, -, hjn, hjf⟩ := hN b hb hf
+      exact ⟨_, hjn, by rw [hjf]; decide⟩
+    · rintro ⟨i, hi, hf⟩
+      have hf' : Column.foRNul md pk (Column.blockStarts md) i = true := by
+        cases h : Column.foRNul md pk (Column.blockStarts md) i <;> simp_all
+      refine ⟨i / Column.blk md, Nat.div_lt_of_lt_mul (Nat.lt_of_lt_of_le hi hle), ?_⟩
+      unfold Column.foRNul at hf'; simp only [Bool.and_eq_true] at hf'; exact hf'.1.1
+  | _ =>
+    simp only [hasNul, foRNuls]
+    exact (Bool.eq_false_iff.2 fun h => by obtain ⟨i, hi, h⟩ := Array.any_eq_true.1 h; simp at h).symm
+
+/-- **A kernel's answer reads back its null flags**: row `i` of `wordsFoR ws nul` is flagged exactly where
+`Column.bitAt nul i`, under `wordsFoR_nul`'s `hbig` (vacuous at a null row and where `nul` flags no row of the block). -/
+theorem foRNuls_wordsFoR (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) (i : Nat)
+    (hi : i < ws.size)
+    (hbig : 2 ^ 32 ≤ ws.size → Column.bitAt nul i = false → ws[i] = 9223372036854775807 → ∀ j,
+      i / 2 ^ Column.lgEnc * 2 ^ Column.lgEnc ≤ j → j < i / 2 ^ Column.lgEnc * 2 ^ Column.lgEnc + 2 ^ Column.lgEnc →
+      j < ws.size → Column.bitAt nul j = false) :
+    (foRNuls n (wordsFoR ws nul))[i]? = some (if Column.bitAt nul i then 1 else 0) := by
+  obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws nul = .foR md pk := ⟨_, _, rfl⟩
+  have h := (wordsFoR_nul ws nul hn).2.2.1 md pk hE i hi hbig
+  rw [hE]; unfold Column.foROpt at h
+  simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, show i < n.toNat by omega, if_true, Option.map_some]
+  cases hb : Column.bitAt nul i <;> cases hf : Column.foRNul md pk (Column.blockStarts md) i <;> simp_all
+
+/-- A column with no flagged block holds no null: `hasNul` reads the flags alone. -/
+theorem hasNul_of_nulAt {md pk : ByteArray} (h : ∀ b < Column.nblk md, Column.nulAt md b = false) :
+    hasNul (.foR md pk) = false := by
+  simp only [hasNul, List.any_eq_false, List.mem_range]; intro b hb; rw [h b hb]; decide
+
+/-- A column with no flagged block has no null row: `foRNul` needs the row's block flagged. -/
+theorem foRNul_of_plain {md pk : ByteArray} (h : hasNul (.foR md pk) = false) {i : Nat}
+    (hi : i < Column.blk md * Column.nblk md) : Column.foRNul md pk (Column.blockStarts md) i = false := by
+  simp only [hasNul, List.any_eq_false, List.mem_range, Bool.not_eq_true] at h
+  simp only [Column.foRNul, h _ (Nat.div_lt_of_lt_mul hi), Bool.false_and]
+
+/-- A kernel's answer written with no null bitmap holds no null (`nulAt_encodeAt_empty`). -/
+theorem hasNul_wordsFoR (ws : Array UInt64) : hasNul (wordsFoR ws) = false := by
+  have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+  unfold wordsFoR Coc.encode
+  simp only [h8, hasNul, List.any_eq_false, List.mem_range]
+  intro b hb
+  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 8 (by decide) (by decide) _ b hb]; decide
+
+/-- `raw_kgather` where the source holds no null: the answer is `wordsFoR` of the gathered words alone, so it reads
+back as them (`wordsFoR_closed`). -/
+theorem kgather_plain {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) (hN : hasNul e = false) :
+    o = wordsFoR ((raw .i64 m ix).map fun i => (raw .i64 n e)[i.toNat]?.getD 0) := by
+  obtain ⟨-, -, -, rfl⟩ := raw_kgather m ix n e o h
+  simp only [hN, Bool.false_eq_true, ↓reduceIte]
 
 /-- `scatterWords` answers its `n` cells. -/
 theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UInt64} {o : Array UInt64}
@@ -108,10 +225,11 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
       · cases h
     · cases h
 
-/-- **`kscan` closes**: its answer is valid at its `n` rows and `Ext.Enc.WF` at its answer type `t`. -/
+/-- **`kscan` closes**: its answer is valid at its `n` rows, `Ext.Enc.WF` at its answer type `t`, and holds no null
+(written with no null bitmap). -/
 theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List Enc}
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
-    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
+    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false := by
   unfold kscan at h
   by_cases hd : kscanRefuses op n es pre post = true
   · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
@@ -132,7 +250,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   have hW : (Array.map (fun v => if t = .u1 then v % 2 else v) (if rev = true then out.reverse else out)).size =
       n.toNat := by rw [Array.size_map]; split <;> simp [hos]
   have hc := wordsFoR_closed _ hW.symm
-  refine ⟨hc.1, hc.2.2 (by simp [ht]) fun hu i hi => ?_⟩
+  refine ⟨hc.1, hc.2.2 (by simp [ht]) fun hu i hi => ?_, hasNul_wordsFoR _⟩
   simp only [Array.getElem_map, hu, ↓reduceIte]
   exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
 
@@ -144,25 +262,36 @@ theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
   unfold kscatter at h
   split at h; · cases h
   simp only [bind, Except.bind] at h
+  -- every `split` either refutes an error branch or cases the `op` match, whose branches both go on
+  repeat' (split at h <;> try (cases h; done))
+  all_goals
+    change Except.ok (wordsFoR _ _) = _ at h
+    simp only [Except.ok.injEq] at h
+    subst h
+    have hs := (scatterWords_size ‹scatterWords _ _ _ _ _ = .ok _›).symm
+    exact ⟨(wordsFoR_nul _ _ hs).1, (wordsFoR_nul _ _ hs).2.1,
+      fun ht hu => (wordsFoR_nul _ _ hs).2.2.2 ht fun h1 => absurd h1 hu⟩
+
+/-- A `kscatter` answer holds a null only where `e` does: with no null in `e` it is `wordsFoR` of its words alone. -/
+theorem kscatter_plain {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
+    (h : kscatter op m ix e n fill = .ok o) (hN : hasNul e = false) : hasNul o = false := by
+  unfold kscatter at h
   split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  rename_i ws hs
-  change Except.ok (wordsFoR ws) = _ at h
-  simp only [Except.ok.injEq] at h
-  subst h
-  have hc := wordsFoR_closed ws (scatterWords_size hs).symm
-  exact ⟨hc.1, by rw [hc.2.1, scatterWords_size hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
+  simp only [hN, Bool.false_eq_true, ↓reduceIte, bind, Except.bind, pure, Except.pure] at h
+  repeat' (split at h <;> try (cases h; done))
+  all_goals
+    change Except.ok (wordsFoR _ _) = _ at h
+    simp only [Except.ok.injEq] at h
+    subst h
+    exact hasNul_wordsFoR _
 
 /-- **`kgather` closes**: its answer holds `m` words, valid and `Ext.Enc.WF` at every fixed-width type but the boolean. -/
 theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
     Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m o := by
   obtain ⟨hs, -, -, rfl⟩ := raw_kgather m ix n e o h
-  have hc := wordsFoR_closed ((raw .i64 m ix).map fun i => (raw .i64 n e)[i.toNat]?.getD 0) (n := m)
-    (by rw [Array.size_map, hs])
-  exact ⟨hc.1, by rw [hc.2.1, Array.size_map, hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
-
-
-
+  have hm : m.toNat = (Array.map (fun i => (raw .i64 n e)[i.toNat]?.getD 0) (raw .i64 m ix)).size := by
+    rw [Array.size_map, hs]
+  exact ⟨(wordsFoR_nul _ _ hm).1, (wordsFoR_nul _ _ hm).2.1,
+    fun ht hu => (wordsFoR_nul _ _ hm).2.2.2 ht fun h1 => absurd h1 hu⟩
 
 end Rel.Verify

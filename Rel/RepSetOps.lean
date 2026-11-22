@@ -93,7 +93,7 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
     · simp
     · show UInt64.ofNat (C i + 1) - 1 = UInt64.ofNat (C i); rw [UInt64.ofNat_add]; simp
   -- a kept row `i` is the last row sent to cell `C i`
-  obtain ⟨-, -, -, hws, -, -, hlast⟩ := raw_scatter m d .pos _ 0 e he
+  obtain ⟨-, -, -, hws, -, -, hlast⟩ := raw_scatter m d .pos _ 0 e rfl he
   have hpos : ∀ n : USize, ∀ k < n.toNat, (Enc.raw .i64 n (.pos : Enc))[k]?.getD 0 = k.toUInt64 := fun n k hk => by
     simp only [Enc.raw, Array.getElem?_map, Array.getElem?_range, hk, if_true, Option.map_some, Option.getD_some]
   have hcell : ∀ i < m.toNat, f i → (Enc.raw .i64 (K.toNat + 1).toUSize e)[C i]? = some i.toUInt64 := by
@@ -142,7 +142,7 @@ theorem whereCol_size {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) 
   rename_i o' ho'
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h).symm
   obtain ⟨his, -, -, hoe⟩ := raw_kgather _ _ _ _ _ ho'
-  rw [hoe, (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1, Array.size_map, his]
+  rw [hoe, (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.1, Array.size_map, his]
 
 /-- Rows with equal codes are `lexLe` both ways. -/
 theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
@@ -261,12 +261,21 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
       · rw [rv, dif_neg (by simp)]; simpa using hb
 
 /-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
-theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
+theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF)
+    (hN : R.n.toNat + S.n.toNat < 2 ^ 32) (a : k.El) (b : v.El) :
     U.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
   unfold Tab.union at h
   cases hc : R.concat S with
   | error s => simp [hc, bind, Except.bind] at h
-  | ok C => simp only [hc, bind, Except.bind] at h; rw [canon_holds h, concat_holds hc hR hS]
+  | ok C =>
+    simp only [hc, bind, Except.bind] at h
+    have hCn : C.n.toNat = R.n.toNat + S.n.toNat := by
+      unfold Tab.concat at hc; simp only [bind, Except.bind, pure, Except.pure] at hc
+      split at hc; · cases hc
+      rename_i p hp
+      repeat (split at hc; · cases hc)
+      cases hc; exact (catPlan_ok hp).1
+    rw [canon_holds h (hCn ▸ hN), concat_holds hc hR hS]
 
 end Tab
 
@@ -302,7 +311,7 @@ theorem union_wf {R S t : Tab k v} (h : R.union S = .ok t) (hR : R.WF) (hS : S.W
 /-- **`R.canon` is sorted and duplicate-free**: `Vals.nub_sorted` of its pair side, the rows of `U` being rows `sel j`
 of `R`, ascending in `kasc`'s order of their codes, no two with equal codes. -/
 theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey × Enc)}
-    (hes : Vals.cols (A := .prod k v) (R.key, R.val) = .ok es) :
+    (hes : Vals.cols (A := .prod k v) (R.key, R.val) = .ok es) (hN : R.n.toNat < 2 ^ 32) :
     ∃ sel : Fin U.n.toNat → Fin R.n.toNat,
       (∀ j, (U.key.row j, U.val.row j) = (R.key.row (sel j), R.val.row (sel j))) ∧
       ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys R.n es) (sel j) (sel j') = true ∧
@@ -313,10 +322,11 @@ theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey ×
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    exact Vals.nub_sorted hn hes
+    exact Vals.nub_sorted hn hes hN
 
 /-- **`R.canon`'s rows are distinct** (`Vals.nub_distinct` of its pair side). -/
-theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
+theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) (hN : R.n.toNat < 2 ^ 32)
+    {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
     (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
   unfold Tab.canon at h
   cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
@@ -324,7 +334,7 @@ theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) {j j' :
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    exact Vals.nub_distinct hn hjj
+    exact Vals.nub_distinct hn hN hjj
 
 /-- **A canonical table's columns have codes**: `canon`
 ran `Vals.cols` and `kasc` on `(R.key, R.val)`. -/
@@ -334,7 +344,7 @@ theorem canon_codes {k v : Obj} {R r : Tab k v} (h : R.canon = .ok r) :
   split at h; · cases h
   rename_i y hy
   obtain ⟨es, vs, p, -, -, -, -, -, hes, hasc, -⟩ := Vals.nub_ok hy
-  obtain ⟨cs, hcs, -⟩ := kasc_grade hasc
+  obtain ⟨cs, hcs, -⟩ := kasc_ok hasc
   exact ⟨es, cs, hes, hcs⟩
 
 
@@ -350,7 +360,7 @@ theorem union_sorted {R S U : Tab k v} (h : R.union S = .ok U) :
 `S`), `0` below (a row of `R`). -/
 theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) :
     R.concat S = .ok C ∧ C.n.toNat = R.n.toNat + S.n.toNat ∧ (Enc.raw .i64 C.n tag).size = C.n.toNat ∧
-      ∀ c < C.n.toNat, (Enc.raw .i64 C.n tag)[c]?.getD 0 = if R.n.toNat ≤ c then 1 else 0 := by
+      (∀ c < C.n.toNat, (Enc.raw .i64 C.n tag)[c]?.getD 0 = if R.n.toNat ≤ c then 1 else 0) ∧ hasNul tag = false := by
   unfold Tab.tagged at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
@@ -367,8 +377,8 @@ theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) 
   cases h
   obtain ⟨hn, hoff⟩ := catPlan_ok hp
   refine ⟨by unfold Tab.concat; simp only [hp, hK, hV, bind, Except.bind, pure, Except.pure], hn, ?_⟩
-  obtain ⟨-, -, -, hws, -, hfix, hlast⟩ := raw_scatter S.n off one n 0 _ ht
-  refine ⟨hws, fun c hc => ?_⟩
+  obtain ⟨-, -, -, hws, -, hfix, hlast⟩ := raw_scatter S.n off one n 0 _ (kscatter_plain h1 rfl) ht
+  refine ⟨hws, fun c hc => ?_, kscatter_plain ht (kscatter_plain h1 rfl)⟩
   have hc' : c < n.toNat := hc
   split
   · rename_i hl
@@ -502,7 +512,7 @@ theorem seenSeg_ok {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc}
       Option.getD_some]
     exact hc64 _ (hFlt G hG)
   -- the segment marks: `1` exactly at the first rows
-  obtain ⟨hfs, -, hw2⟩ := kscatter_words h2
+  obtain ⟨hfs, -, hw2⟩ := kscatter_words h2 (kscatter_plain h1 rfl)
   obtain ⟨hss, hsw⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw2
   have hlast1 : ∀ (l : List Nat) (a : UInt64),
       (l.map fun _ => (1 : UInt64)).foldl (fun _ y => y) a = if l = [] then a else 1 := by
@@ -579,7 +589,7 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
     obtain ⟨hgl, -⟩ := fs.2.2.2.2.2 q hq
     rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kk n.toNat q) (by omega)
   -- the last scatter keeps each group's last row
-  obtain ⟨-, -, hw⟩ := kscatter_words h
+  obtain ⟨-, -, hw⟩ := kscatter_words h (kscan_closed h4).2.2
   obtain ⟨hos', hfin⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw
   have last : ∀ j N', N' ≤ n.toNat →
       (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map ((Enc.raw .i64 n sc)[·]?.getD 0)).foldl (fun _ y => y) z =
@@ -633,7 +643,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   dsimp only at *
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hn := C.n.toNat_lt_size
-  obtain ⟨hcat, hCn, htsz, htag⟩ := tagged_ok hCt
+  obtain ⟨hcat, hCn, htsz, htag, hTN⟩ := tagged_ok hCt
   have hsplit := fun (a : k.El) (b : v.El) => concat_split hcat hR hS (a := a) (b := b)
   -- the sorted rows: `ps`, and the sorted rows' keys are the input's at `ps`
   obtain ⟨ps, hp, hperm, hvl, hcol⟩ := asc_perm _ _ _ _ hvp
@@ -645,8 +655,9 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
     intro q hq
     refine ascKeys_row (by simp [List.map_fst_zip, hvl]) fun c h1 h2 => ?_
-    obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega)) (List.getElem?_eq_getElem h2)
+    obtain ⟨ws, nul, hv, hws, hwq, hnul, -⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega)) (List.getElem?_eq_getElem h2)
       (List.getElem?_eq_getElem _)
+    obtain rfl := hnul (Vals.cols_wf _ hes _ (List.getElem_mem h2)).2
     simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey
@@ -663,7 +674,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     rw [(hsp.2.2.2.2.1 q (by omega) G), exists_prop_of_true hG, hkey _ (by have := hFlt G hG; omega), hkey q hq]
     exact ⟨fun e => Vals.row_of_codes _ hes hc _ _ e.symm, fun e => (Vals.codes_of_row _ hes hc _ _ e).symm⟩
   -- the tags in sorted order, and their `and`/`or` per group
-  obtain ⟨-, -, -, hts'⟩ := raw_kgather _ _ _ _ _ hts
+  have hts' := kgather_plain hts hTN
   have hrp : Enc.raw .i64 C.n p = (ps.map Nat.toUInt64).toArray := by
     rw [hp]; exact (wordsFoR_closed _ (by simp [hlen])).2.1
   have htv : ∀ q (hq : q < ps.length), (Enc.raw .i64 C.n ts)[q]?.getD 0 = if R.n.toNat ≤ ps[q] then 1 else 0 := by
@@ -776,8 +787,10 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     exact ⟨hiff, h2⟩
   have hsel := whereCol_spec hKs fun G hG => (hbit G (by omega)).2
   -- row `j` of the answer is input row `ps[F[sel[j]]]`
-  obtain ⟨his1, -, -, hix1'⟩ := raw_kgather _ _ _ _ _ hix1
-  obtain ⟨his2, -, -, hix'⟩ := raw_kgather _ _ _ _ _ hix
+  obtain ⟨his1, -, -, -⟩ := raw_kgather _ _ _ _ _ hix1
+  obtain ⟨his2, -, -, -⟩ := raw_kgather _ _ _ _ _ hix
+  have hix1' := kgather_plain hix1 (by rw [hf]; exact hasNul_wordsFoR _)
+  have hix' := kgather_plain hix (by rw [hp]; exact hasNul_wordsFoR _)
   have hrf : Enc.raw .i64 mm.toUSize f = (F.map Nat.toUInt64).toArray := by
     rw [hf]; exact (wordsFoR_closed _ (by rw [hmU, hmm]; simp)).2.1
   have hrix : Enc.raw .i64 K ix = ((Enc.raw .i64 K sel).map fun i => (Enc.raw .i64 mm.toUSize f)[i.toNat]?.getD 0).map
