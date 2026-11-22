@@ -1191,6 +1191,15 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
         projT I B false out
       | _ => throw "foldI: not one table"
     | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair of a key and an array, or given {xs.length} relations, not two"
+  -- `GenK.dom`/`GenK.ran`: `R` run on the keys in demand, its key (value) side as a coreflexive
+  else if c == ``GenK.dom || c == ``GenK.ran then match xs with
+    | [x] => do
+      let r ← x (if c == ``GenK.dom then { dom := D.dom <|> D.ran } else { ran := D.dom <|> D.ran })
+      coreflB r.n (if c == ``GenK.dom then r.key else r.val)
+    | _ => throw s!"row `{r.sym}` given {xs.length} relations, not one"
+  else if c == ``GenK.nil then match B with
+    | .arr b => do let (n, X) ← known r.sym D.dom; nilB b n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
 /-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
@@ -1269,8 +1278,6 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .diff R S => do
     let r ← tabB σ D R
     diffB r (← tabB σ (← if S.dem then boundOf r else pure D) S)
-  | _, _, .dom R => do let r ← tabB σ { dom := D.dom <|> D.ran } R; coreflB r.n r.key
-  | _, _, .ran R => do let r ← tabB σ { ran := D.dom <|> D.ran } R; coreflB r.n r.val
   | _, _, .pair (A := A) (B := B) (C := C) R S => do
     let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
@@ -1309,7 +1316,6 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .lam (B := B) R => do
     let (n, X) ← known "Λ" D.dom
     lamB B n X (← tabB σ { dom := some (n, X) } R)
-  | _, _, .nil (B := B) => do let (n, X) ← known "nil" D.dom; nilB B n X
   | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
   -- `GenK.est`, `GenK.thin`: `Tab.est`, `Tab.thin` on the arrays in demand, `Q` run knowing its domain `D`
   | _, _, .est (B := B) Q => do

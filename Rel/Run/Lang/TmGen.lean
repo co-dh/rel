@@ -163,15 +163,12 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .meet R S => GenK.meet A B (R.code η) (S.code η)
   | A, B, .join R S => GenK.join A B (R.code η) (S.code η)
   | A, B, .diff R S => GenK.diff A B (R.code η) (S.code η)
-  | A, _, .dom (B := B) R => GenK.dom A B (R.code η)
-  | B, _, .ran (A := A) R => GenK.ran A B (R.code η)
   | B, C, .ldiv (A := A) R S UB UC => GenK.ldiv A B C (R.code η) (S.code η) (UB.code η) (UC.code η)
   | A, B, .rdiv (C := C) R S UA UB => GenK.rdiv A B C (R.code η) (S.code η) (UA.code η) (UB.code η)
   | A, .prod B C, .pair R S => GenK.pair A B C (R.code η) (S.code η)
   | A, .arr B, .lam R => GenK.lam A B (R.code η)
   | _, B, .est Q => GenK.est B (Q.code η)
   | _, .arr B, .thin Q => GenK.thin B (Q.code η)
-  | A, .arr B, .nil => GenK.nil A B
   | .arr B, _, .mem => GenK.ofVals (.arr B) B Tab.mem
   | A, .sum _ B, .inl => GenK.ofVals A _ (Tab.inl (B := B))
   | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
@@ -239,10 +236,10 @@ mutual
     `gen` (or `argGen`) returns its error table, where `Tm.gen_sound` holds because the code fails. -/
 def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   match A, B, t with
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .mem
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .mem
   | _, _, .inl | _, _, .inr
   | _, _, .atPos _ | _, _, .var .. => true
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .est R
+  | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
@@ -306,8 +303,6 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .meet (A := A) (B := B) R S => return g ``Tm.meet #[oE A, oE B, ← tmE sh R, ← tmE sh S]
   | _, _, .join (A := A) (B := B) R S => return g ``Tm.join #[oE A, oE B, ← tmE sh R, ← tmE sh S]
   | _, _, .diff (A := A) (B := B) R S => return g ``Tm.diff #[oE A, oE B, ← tmE sh R, ← tmE sh S]
-  | _, _, .dom (A := A) (B := B) R => return g ``Tm.dom #[oE A, oE B, ← tmE sh R]
-  | _, _, .ran (A := A) (B := B) R => return g ``Tm.ran #[oE A, oE B, ← tmE sh R]
   | _, _, .ldiv (A := A) (B := B) (C := C) R S U V =>
     return g ``Tm.ldiv #[oE A, oE B, oE C, ← tmE sh R, ← tmE sh S, ← tmE sh U, ← tmE sh V]
   | _, _, .rdiv (A := A) (B := B) (C := C) R S U V =>
@@ -316,7 +311,6 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .lam (A := A) (B := B) R => return g ``Tm.lam #[oE A, oE B, ← tmE sh R]
   | _, _, .est (B := B) Q => return g ``Tm.est #[oE B, ← tmE sh Q]
   | _, _, .thin (B := B) Q => return g ``Tm.thin #[oE B, ← tmE sh Q]
-  | _, _, .nil (A := A) (B := B) => return g ``Tm.nil #[oE A, oE B]
   | _, _, .mem (B := B) => return g ``Tm.mem #[oE B]
   | _, _, .inl (A := A) (B := B) => return g ``Tm.inl #[oE A, oE B]
   | _, _, .inr (A := A) (B := B) => return g ``Tm.inr #[oE A, oE B]
