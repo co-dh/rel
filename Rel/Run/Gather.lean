@@ -112,8 +112,9 @@ the post steps `(.rdiv, w)`, `(.rmod, w)`, each side `kgather`ed. Ascending by `
 def Tab.ofBits {A C : Obj} {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) :
     Except String (Tab A C) := do
   let (M, sel) ← whereCol (g * w) o
-  let ix ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rdiv, w.toUInt64)]) g ra
-  let iy ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rmod, w.toUInt64)]) w rc
-  pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
+  expandNote s!"a {g}×{w} bit matrix read back as rows (Tab.ofBits)" M.toNat fun _ => do
+    let ix ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rdiv, w.toUInt64)]) g ra
+    let iy ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rmod, w.toUInt64)]) w rc
+    pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
 
 end Rel

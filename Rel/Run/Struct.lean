@@ -50,8 +50,9 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
     throw s!"cross: {n} values of the left object by {m} of the right is {n.toNat * m.toNat} pairs, past the bound \
       {crossMax}: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; \
       meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`)"
-  let (T, iR, iS) ← crossIx n m
-  pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
+  expandNote s!"a product of {n} × {m} values (Vals.cross)" (n.toNat * m.toNat) fun _ => do
+    let (T, iR, iS) ← crossIx n m
+    pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
 
 /-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
 through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one

@@ -26,9 +26,10 @@ def expand (K : USize) (w : Enc) : Except String (USize × Enc × Enc) := do
     let T := lastCount K P (colPrefix_closed hP).2
     if USize.size ≤ T + 1 then throw s!"expand: {T} output rows past USize"
     let T := T.toUSize
-    let o ← colMap .sub K P w
-    let G ← kgather T .pos (T + 1) (← colPrefix .max (T + 1) (← kscatter .max K o .pos (T + 1) 0))
-    pure (T, G, ← colMap .sub T .pos (← kgather T G K o))
+    expandNote s!"the {K} groups of a composition (expand)" T.toNat fun _ => do
+      let o ← colMap .sub K P w
+      let G ← kgather T .pos (T + 1) (← colPrefix .max (T + 1) (← kscatter .max K o .pos (T + 1) 0))
+      pure (T, G, ← colMap .sub T .pos (← kgather T G K o))
 
 namespace Tab
 variable {A B C : Obj}

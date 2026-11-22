@@ -34,8 +34,8 @@ UNCHANGED = h=$$( { $(2); } | sha256sum | cut -c1-64); if [ -f $(T)/$(1).pass ] 
 PASSED    = echo "$$h" > $(T)/$(1).pass
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
-.PHONY: check main-only nogmp bench indexpanic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
+GATES_LIST := build pc9-time allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode listban kernel-tested externs compile-diff
+.PHONY: check main-only nogmp bench indexpanic-allow bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -60,6 +60,17 @@ build: main-only
 allcov: build
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/AllCovered.lean
+
+# sudokupc9 (test/Pc9Time.lean) runs within PC9_MS: it went 3 s → 35 s → 12 s through two silent expansions, each
+# found only by an investigation. It reads the library `build` made; a `rel: warning: … expanded` line names an expansion.
+PC9_MS  := 6000
+pc9-time: build
+	$(GATE)
+	t0=$$(date +%s%N)
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/Pc9Time.lean
+	ms=$$(( ($$(date +%s%N) - t0) / 1000000 ))
+	echo "pc9-time: sudokupc9 took $$ms ms (budget $(PC9_MS) ms)"
+	if [ $$ms -gt $(PC9_MS) ]; then echo "sudokupc9 took $$((ms / 1000)).$$((ms % 1000 / 100)) s > $$(($(PC9_MS) / 1000)) s budget; profile with perf record -g -- $(LAKE) lean $(CURDIR)/test/Pc9Time.lean" >&2; exit 1; fi
 
 # The differential test: each closed definition of every registered program, as the constant rel_program generated
 # computes it (`expanded`), is compared with `Tm.code` run on the re-read `Tm` (which `Tm.gen_sound` is about); a
@@ -221,10 +232,24 @@ comm -23 $(T)/kernels.txt $(T)/tested.txt > $(T)/kernel-tested.txt
 echo "kernel-tested: $$(wc -l < $(T)/kernel-tested.txt) of $$(wc -l < $(T)/kernels.txt) kernels have no use in a *Test* module"
 endef
 
+# no List on the run path: a declaration of Rel.Run.*, Rel.Kernel.* (not *Test*) or Rel.Lang.GenK*, theorems exempt,
+# that mentions a reader turning an array into a List (`Array.toList`, `ByteArray.toList`, `Arr.toList`, `Tab.toList`)
+# or `List.range`; an @[extern] declaration is exempt, its Lean body being the kernel's specification, never run
+define listban_NOW
+$(LAKE) build gates
+$(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs | cut -f2 | sort -u > $(T)/listban.extern
+$(SQL) "select distinct d.src from dep d join decl_info i on i.name = d.src and i.module = d.module where i.internal = 0 and i.kind <> 'thm' and (d.module glob 'Rel.Run.*' or (d.module glob 'Rel.Kernel.*' and d.module not glob '*Test*') or d.module glob 'Rel.Lang.GenK*') and d.dst in ('Array.toList', 'ByteArray.toList', 'List.range', 'Rel.Arr.toList', 'Rel.Tab.toList')" | sort -u | comm -23 - $(T)/listban.extern > $(T)/listban.txt
+endef
+
 bang: index
 	$(GATE)
 	$(bang_NOW)
 	$(call ALLOWED,bang)
+
+listban: index
+	$(GATE)
+	$(listban_NOW)
+	$(call ALLOWED,listban)
 
 pointfree: index
 	$(GATE)
@@ -242,7 +267,7 @@ kernel-tested: index
 	$(call ALLOWED,kernel-tested)
 
 # regenerate an allowlist from what violates today; read the diff before committing it
-bang-allow pointfree-allow decode-allow kernel-tested-allow: %-allow: index
+bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow: %-allow: index
 	$(GATE)
 	$($*_NOW)
 	cp $(T)/$*.txt $*-allow.txt

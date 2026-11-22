@@ -16,6 +16,20 @@ namespace Rel
 
 open Rel Rel.Dep
 
+/-- The row count from which `expandNote` warns. -/
+def expandWarnRows : Nat := 1000000
+
+/-- `expandNote`'s code: `k ()`, after a line on stderr where `rows` reaches `expandWarnRows`. -/
+def expandNoteImpl {α : Type u} (what : String) (rows : Nat) (k : Unit → α) : α :=
+  if expandWarnRows ≤ rows then dbgTrace s!"rel: warning: {what} expanded to {rows} rows" k else k ()
+
+/-- The one place the run path turns a form that is not rows — a bit matrix (`Tab.ofBits`), a product of value sets
+    (`Vals.cross`: `⊤`, a universe of a product), the groups of a composition (`expand`) — into `rows` rows. It is
+    `k ()`; its code (`expandNoteImpl`) also warns past `expandWarnRows`, so an expansion cannot slow a program
+    silently. Reducible, so a proof about a body that calls it reads `k ()` and never names it. -/
+@[reducible, implemented_by expandNoteImpl]
+def expandNote {α : Type u} (what : String) (rows : Nat) (k : Unit → α) : α := k ()
+
 /-- An element of a column of type `t`: qlean's `Carrier`, a `QValue` in a general list. -/
 abbrev El := Carrier
 
