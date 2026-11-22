@@ -11,6 +11,7 @@ namespace Rel.Lang.TestNative
 
 open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel
 
+open Rel.Programs.prelude in
 rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
@@ -28,6 +29,15 @@ rel_program native1a where
     pl : X × N ⟶ N ≜ (x × x°) π₁
     ix : X ⟶ X ≜ x x° 𝟙
     tp : X ⟶ X ≜ x ⊤
+    le : X ⟶ N ≜ x ≤
+    lt : N ⟶ X ≜ < x°
+    ml : N ⟶ N ≜ {(1,5),(5,2),(2,2),(9,3)} ∩ ≤
+    sc : X ⟶ N ≜ x succ
+    w : N×N ⟶ N×N ≜ {((7,2),(7,2)),((2,7),(2,7)),((7,0),(7,0)),((3,5),(3,5))}
+    ps : N×N ⟶ N ≜ w plus
+    mn : N×N ⟶ N ≜ w minus
+    dv : N×N ⟶ N ≜ w div
+    tm : N×N ⟶ N ≜ w times
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
@@ -131,7 +141,9 @@ def semOuts : List (String × (String → IO Unit)) :=
   [("x", semOut native1a.x), ("un", semOut native1a.un), ("me", semOut native1a.me), ("df", semOut native1a.df),
    ("zr", semOut native1a.zr), ("cm", semOut native1a.cm), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
    ("pr", semOut native1a.pr), ("cx", semOut native1a.cx), ("po", semOut native1a.po), ("pl", semOut native1a.pl),
-   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp)]
+   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("le", semOut native1a.le), ("lt", semOut native1a.lt),
+   ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
+   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm)]
 
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
