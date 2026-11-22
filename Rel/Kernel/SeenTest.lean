@@ -79,7 +79,7 @@ example : view (u 8) (u 3) (kseen (u 8) [col [1, 1, 1, 1, 1, 1, 1, 2 ^ 40], col 
 
 -- a column that is not `foR`, and a `foR` whose blocks do not cover `n` are the error, named by
 -- their place in `es`
-def dense : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[1]: asc: constructor 3 is not foR"
+def dense : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[1]: asc: constructor 1 is not foR"
 example : view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .gen #[])]) = dense := by
   decide +kernel
 #guard view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .gen #[])]) == dense
