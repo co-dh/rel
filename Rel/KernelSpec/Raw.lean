@@ -119,9 +119,9 @@ theorem bitsAt_extract (s : ByteArray) {a m o w : Nat} (h : a + o + w ≤ m) :
 theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x : ByteArray) (n : USize) (hn : n.toNat ≤ x.size / w) :
     Enc.raw (X := X) t n (.foR (Kernel.Coc.encodeAt lg w.toUSize x).1 (Kernel.Coc.encodeAt lg w.toUSize x).2) =
-      Enc.raw (X := X) t n (.bytes x) := by
+      (Array.range n.toNat).map fun i => Column.bitsAt x (i * w) w := by
   have hw : 0 < w ∧ w ≤ 8 := by cases t <;> simp [QAtomicType.width] at ht ⊢ <;> omega
-  rw [raw_foR t w ht hb, raw_bytes t w ht hb]
+  rw [raw_foR t w ht hb]
   refine Array.ext (by simp) fun i h1 _ => ?_
   simp only [Array.getElem_map, Array.getElem_range]
   rw [foRBits_encode lg hlg w hw.1 hw.2 x i (by simp at h1; omega), unbias_keyAt w hw.1 hw.2, UInt64.ofNat_toNat]

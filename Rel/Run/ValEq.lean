@@ -41,10 +41,8 @@ def tabEq : QTable → QTable → Bool
 
 /-- `valEq` on payloads: one constructor, equal fields. -/
 def encEq : Enc → Enc → Bool
-  | .bytes b, .bytes b' => decide (b = b')
   | .syms b o, .syms b' o' => decide (b = b') && decide (o = o')
   | .foR m p, .foR m' p' => decide (m = m') && decide (p = p')
-  | .alp m p x, .alp m' p' x' => decide (m = m') && decide (p = p') && decide (x = x')
   | .enum d o i, .enum d' o' i' => decide (d = d') && decide (o = o') && decide (i = i')
   | .gen ⟨xs⟩, .gen ⟨ys⟩ => listEq xs ys
   | .pos, .pos => true
@@ -97,7 +95,7 @@ theorem tabEq_refl : (x : QTable) → tabEq x x = true
   | .mk _ ⟨v⟩ _ => by simp [tabEq, listEq_refl v]
 
 theorem encEq_refl : (e : Enc) → encEq e e = true
-  | .bytes _ | .syms .. | .foR .. | .alp .. | .enum .. | .pos => by simp [encEq]
+  | .syms .. | .foR .. | .enum .. | .pos => by simp [encEq]
   | .gen ⟨xs⟩ => by simp [encEq, listEq_refl xs]
 
 end
@@ -172,7 +170,7 @@ theorem encEq_sound : (e f : Enc) → encCellFree e = true → encEq e f = true 
       simp only [encCellFree] at hc
       rw [listEq_sound xs ys hc h]
     | _ => simp [encEq] at h
-  | .bytes _, f, _, h | .syms .., f, _, h | .foR .., f, _, h | .alp .., f, _, h
+  | .syms .., f, _, h | .foR .., f, _, h
   | .enum .., f, _, h | .pos, f, _, h => by cases f <;> simp_all [encEq]
 
 end

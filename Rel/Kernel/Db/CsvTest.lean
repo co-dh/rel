@@ -305,9 +305,9 @@ def run : IO Nat := do
 
 /-! ### The writer extern beside its body -/
 
-/-- Words `a` as a dense payload at `t`'s width (8 bytes at an atom of none), little-endian. -/
+/-- Words `a` encoded from a dense payload at `t`'s width (8 bytes at an atom of none), little-endian. -/
 def dense (t : QAtomicType) (a : Array UInt64) : Enc :=
-  .bytes ⟨(a.toList.flatMap fun x => (List.range (t.width.getD 8)).map fun k => (x >>> (8 * k).toUInt64).toUInt8).toArray⟩
+  Ext.Enc.ofBytes (t.width.getD 8) ⟨(a.toList.flatMap fun x => (List.range (t.width.getD 8)).map fun k => (x >>> (8 * k).toUInt64).toUInt8).toArray⟩
 
 /-- A word that follows no pattern: `i`'s hash. -/
 def mix (i : Nat) : UInt64 := let x := (i.toUInt64 + 1) * 0x9E3779B97F4A7C15; x ^^^ (x >>> 31)

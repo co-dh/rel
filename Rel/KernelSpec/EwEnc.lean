@@ -58,20 +58,6 @@ theorem decode_of_encode8 {x m p : ByteArray} {n : USize} (h : Coc.encode 8 x = 
   rw [show m = _ from (congrArg Prod.fst h).symm, show p = _ from (congrArg Prod.snd h).symm]
   exact elemsW_decode_encode 8 (by decide) (by decide) x n hn
 
-/-- **`Enc.answer` on an encoded column** keeps it or decodes it: either way the same elements. -/
-theorem answer_foR (t : QAtomicType) (w : Nat) (k : USize) (M P : ByteArray) (ht : t.width = some w) :
-    Enc.answer (X := X) t k (.foR M P) = .foR M P ∨
-      Enc.answer (X := X) t k (.foR M P) = .bytes (Coc.decode w.toUSize M P k) := by
-  simp only [Enc.answer]
-  split
-  · exact .inl rfl
-  · exact .inl rfl
-  · simp only [ht]
-    split
-    · exact .inl rfl
-    · exact .inr (by simp [Enc.bytesOf, ht])
-
-
 
 
 end Rel.Verify
@@ -99,16 +85,5 @@ end Rel.Verify
 /-- info: 'Rel.Verify.decode_of_encode8' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms Rel.Verify.decode_of_encode8
-
-
-
--- `Classical.choice` below is each statement's, not its proof's: `Ew.cmpStep` and `Enc.answer` (ALP) name a
--- `Float` decode.
-
-
-/-- info: 'Rel.Verify.answer_foR' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.answer_foR
-
 
 

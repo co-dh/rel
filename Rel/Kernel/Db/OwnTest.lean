@@ -49,7 +49,6 @@ def column (v : QValue) : IO Unit := do
   let g ← roundTrip f
   match ownEnc (X := Empty) g.kind g.parts with
   | some (.foR m p) => IO.println s!"foR: metadata {m.size} bytes, pack {p.size} bytes"
-  | some (.bytes b) => IO.println s!"bytes: {b.size} bytes"
   | some _ => IO.println "another constructor"
   | none => throw (IO.userError s!"ownEnc: no constructor of kind {g.kind}")
 
@@ -60,21 +59,21 @@ info: ok kind 2 count 64 domain `` part sizes [57, 808]
 foR: metadata 57 bytes, pack 808 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 64 (Ext.Enc.encode .i64 64 (.bytes (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000])))) none)
+#eval column (.vector .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000]))) none)
 
 /--
 info: ok kind 0 count 0 domain `` part sizes [0]
 bytes: 0 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 0 (.bytes .empty) none)
+#eval column (.vector .i64 0 (Ext.Enc.ofBytes 8 .empty) none)
 
 /--
 info: ok kind 0 count 3 domain `dom` part sizes [24]
 bytes: 24 bytes
 -/
 #guard_msgs in
-#eval column (.enum "dom" (.vector .i64 3 (.bytes (dense [2, 0, 1])) none))
+#eval column (.enum "dom" (.vector .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1])) none))
 
 -- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is refused (no writer of the
 -- sorted dictionary yet); and the writer refuses kind 5, a number that is no kind
@@ -95,9 +94,9 @@ info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain
   return (match w with | .ok () => "ok" | .error e => s!"error: {e}",
           match ownImage ⟨7, 0, 5, 5, "", #[]⟩ with | .ok _ => "ok" | .error e => s!"error: {e}")
 
-/-- A good kind-0 file: 2 longs, domain `ab` at bytes 40 and 41, the part at 80, 128 bytes. -/
+/-- A good kind-2 file: 2 longs Frame-of-Reference encoded, domain `ab` after the two parts' table entries. -/
 def good : ByteArray :=
-  match ownImage ⟨QAtomicType.i64.code.toUInt8, 0, 0, 2, "ab", #[dense [5, 6]]⟩ with | .ok b => b | .error _ => .empty
+  match ownImage ⟨QAtomicType.i64.code.toUInt8, 0, 2, 2, "ab", #[(Kernel.Coc.encode 8 (dense [5, 6])).1, (Kernel.Coc.encode 8 (dense [5, 6])).2]⟩ with | .ok b => b | .error _ => .empty
 
 #guard good.size == 128
 
@@ -199,13 +198,13 @@ body:   part 0 at byte 24: 200 bytes from byte 80, the file is 128 bytes
 info: extern: byte 40: a domain name of 2 bytes in UTF-8 with no NUL
 body:   byte 40: a domain name of 2 bytes in UTF-8 with no NUL
 -/
-#guard_msgs in #eval readBoth (mutate good [(40, 0xff)])
+#guard_msgs in #eval readBoth (mutate good [(56, 0xff)])
 
 /--
 info: extern: byte 40: a domain name of 2 bytes in UTF-8 with no NUL
 body:   byte 40: a domain name of 2 bytes in UTF-8 with no NUL
 -/
-#guard_msgs in #eval readBoth (mutate good [(41, 0)])
+#guard_msgs in #eval readBoth (mutate good [(57, 0)])
 
 -- `own::check`, which the body does not model: Frame of Reference metadata of 20 bytes is no whole block
 /--

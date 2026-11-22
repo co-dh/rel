@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 //! Column (a), coc.rs: the ALP (decimal float) column. `Cocf` is the read view of coc.rs `cocf` (A5: view,
 //! block loads, decode, the finishing step); the encoder's per-block steps are A9.
-use crate::coc::{Coc, Meta};
-use crate::layout::{Tail, exc_layout};
+use crate::coc::Coc;
+#[cfg(test)] use crate::coc::Meta;
+#[cfg(test)] use crate::layout::{Tail, exc_layout};
 use crate::pod;
 use crate::enc::{EncMeta, EncPack};
 use crate::pod::Elt;
@@ -37,6 +38,8 @@ pub fn alp_offsets(exc_off: &mut [u32], nblk: usize) -> usize {
 impl<'a> Cocf<'a> {
     /// coc.rs `cocf_meta_view`: metadata `m` and the ALP part `a` of an `n`-element column; `None` = misaligned
     /// or short. The pack is left empty, as `Coc::attach` leaves it for a column with none: the caller sets `c.pack`.
+    // no `Enc` form holds ALP since foronly (one encoding, foR): the reader is left to its differential tests
+    #[cfg(test)]
     pub fn meta_view(m: &'a [u8], a: &'a [u8], n: usize) -> Option<Cocf<'a>> {
         let c = Coc::attach(Meta::new(m, n)?, &[])?;
         let nexc = u64::from_ne_bytes(a.get(..8)?.try_into().ok()?);
@@ -240,6 +243,7 @@ pub fn holes<F: Elt>(x: &[F], be: i32, base: i64, d: &mut [i64], pos: &mut [u16]
 
 impl<'a> Cocf<'a> {
     /// coc.rs `cocf_view`: `meta_view` with the pack `pv` attached; `None` as `meta_view`'s.
+    #[cfg(test)]
     pub fn view(mv: &'a [u8], pv: &'a [u8], av: &'a [u8], n: usize) -> Option<Cocf<'a>> {
         let mut f = Self::meta_view(mv, av, n)?;
         f.c.pack = pv;

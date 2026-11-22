@@ -262,9 +262,8 @@ impl<'a> Col<'a> {
     fn of(s: u8, n: usize, e: B<'a>) -> Option<Col<'a>> {
         let (w, boolean) = (qtype_width(s), s == QT_BOOLEAN);
         match (e.tag(), w) {
-            (tag::BYTES, Some(w)) if !boolean => Some(Col::Dense(e.field(0).bytes(), w)),
-            (tag::FOR, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, 1)),
-            (tag::FOR | tag::ALP, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, !0)),
+            (tag::FOR, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, n, "qlean_k_scan"), w, 1)),
+            (tag::FOR, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, n, "qlean_k_scan"), w, !0)),
             // `pos` is `raw`'s at `i64` (type 4) only: the loop index
             (tag::POS, _) if s == 4 => Some(Col::Blk(Blocks::pos(n), 8, !0)),
             // ids of no bits (a dictionary of one entry) read 0 at every row
@@ -519,11 +518,10 @@ mod kscan_tests {
     }
     fn bytes(v: &[u64], w: usize) -> Vec<u8> { v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect() }
     fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w, Form::For).enc().answer(&Blocks::dense(&bytes(v, w), w)) }
-    fn enc_dense(p: &[u8]) -> O { let mut a = SArr::new(1, p.len()); a.bytes_mut().copy_from_slice(p); lean::ctor(0, [a.into()], &[]) }
     fn enc_bits(v: &[u64]) -> O { enc_for(&v.iter().map(|b| b & 1).collect::<Vec<_>>(), 1) }
     fn parts(o: &O) -> Vec<Vec<u8>> {
         let b = o.borrow();
-        (0..if b.tag() == tag::BYTES { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect()
+        (0..2).map(|i| b.field(i).bytes().to_vec()).collect()
     }
     /// A column of `n` words: a smooth run, an outlier every 97th row (a patch), negatives, a null every 301st, `0n`
     /// every 211th.
@@ -566,10 +564,6 @@ mod kscan_tests {
                 let m = |v: Vec<u64>| -> Vec<u64> { v.into_iter().map(|x| if w == 8 { x } else { x & ((1 << (8 * w)) - 1) }).collect() };
                 let (x, y, c) = (m(column(n, 3)), m(column(n, 5)), m(vec![column(n.max(3), 3)[2]; n]));
                 let col = |v: &Vec<u64>| (enc_for(v, w), v.clone());
-                // a dense payload three bytes short reads its last element's low bytes and 0 past them
-                let p = bytes(&y, w);
-                let cut = p[..p.len().saturating_sub(3)].to_vec();
-                let sv: Vec<u64> = (0..n).map(|i| (0..w).fold(0u64, |a, k| a | (cut.get(i * w + k).copied().unwrap_or(0) as u64) << (8 * k))).collect();
                 for op in [0u8, 1, 2, 3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 25, 40, 42, 46] {
                     for g in &segs {
                         for t in [QT_BOOLEAN, 6] {
@@ -578,22 +572,15 @@ mod kscan_tests {
                         }
                         check(op, s, 6, n, g, &[col(&y), col(&x)]);
                         check(op, s, 5, n, g, &[col(&y), col(&x)]);
-                        check(op, s, 6, n, g, &[col(&c), col(&x), (enc_dense(&p), y.clone())]);
-                        check(op, s, 6, n, g, &[(enc_dense(&cut), sv.clone()), col(&x)]);
                         check(op, s, 6, n, g, &[col(&x)]);
                     }
                 }
                 check(0, s, 6, n, &segs[0], &[]);
                 check(0, s, 12, n, &segs[0], &[col(&x)]);
             }
-            // `div` by a 0 anywhere fails; a dense column read as booleans holds no raw elements
+            // `div` by a 0 anywhere fails
             let z: Vec<u64> = (0..n as u64).map(|i| (i != n as u64 / 2) as u64 * 7).collect();
             check(3, 6, 6, n, &segs[0], &[(enc_for(&z, 8), z.clone()), (enc_for(&z, 8), z.clone())]);
-            if n > 0 {
-                let e = enc_dense(&bytes(&z, 1));
-                assert_eq!(kscan(0, false, QT_BOOLEAN, 6, n, Some(enc_bits(&segs[0]).borrow()), &[e.borrow()], &[], &[]).map(|(o, v)| (parts(&o), v)),
-                           Err(format!("kscan: a column holds 0 raw elements, not {n}")));
-            }
             let (a, b): (Vec<u64>, Vec<u64>) = ((0..n as u64).map(|i| i % 3 & 1).collect(), (0..n as u64).map(|i| i % 5 & 1).collect());
             // a boolean column as bits, as a `foR` of `u1`, and as a `foR` holding 0..3, which reads its low bit
             let q: Vec<u64> = (0..n as u64).map(|i| i % 4).collect();
