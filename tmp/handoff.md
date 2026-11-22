@@ -1,46 +1,57 @@
-# rq17e handoff (route B: kernel theorems over the null-aware read)
+# rq17f handoff (route B: kernel theorems over the null-aware read)
 
-Branch `worktree-agent-ac58f9733a568196d`: master d8030bc + rq17d (8d0bbba, merged clean).
+Branch `worktree-agent-ad5dbdf04aa66f661`: base b405ecd + rq17e WIP f55cd2c (merged clean) + rq17f commits.
 
-## State per module (RelKernel; Rel downstream not built yet)
+## State per module
 
-| Module                    | State                                                                                          |
-|---------------------------|------------------------------------------------------------------------------------------------|
-| Rel.KernelSpec.Encoding   | green: `foROpt_encode` (null-aware round trip, hyp `hmax`), `foRBits_encode` its `.empty` case, |
-|                           | new `planBlock_plain/_nul/_byte/_inside`, `any_nul_of`                                          |
-| Rel.KernelSpec.Alp        | green: `nblk_encode`, `foRWF_encodeAt` now for every `nul` (layout holds with null blocks)     |
-| Rel.KernelSpec.Raw        | green (unchanged; `raw_encodeAt` still `.empty` only)                                          |
-| Rel.KernelSpec.Scatter    | green: `kscatter_ok` (all inputs: words `ws` + flags `fl`, encoded with `nulMap fl`);          |
-|                           | `raw_scatter` = its `hasNul e = false` case; Law S1 `kscatter_pos_ix` restated (answer = e's   |
-|                           | words and flags re-encoded); `foRNuls_size` lives here                                         |
-| Rel.KernelSpec.Asc        | green: `ascKey` atom = `nulCodes`; `nulCodes_row`; `ascKeys_row` takes equal `hasNul` and      |
-|                           | flags; `kasc_ok`/`asc_perm`/`kasc_pos_key`/`kasc_pos_first` carry the scattered flags `ns`     |
-| Rel.Kernel.Asc + Rust     | `ascCol` cells: `noNul` on ix, lo, hi (Lean body and crate/src/ffi/asc.rs, same order)          |
-| Rel.KernelSpec.KGather    | green: `raw_kgather` answer `wordsFoR gathered (if hasNul e then nulMap gatheredFlags else ∅)`;|
-|                           | G1 `kgather_pos_ix` restated with flags, G2 unchanged                                          |
-| Rel.KernelSpec.KSeen      | green (pos case unfolds `nulCodes`)                                                            |
-| Rel.KernelSpec.EwEnc      | green; 2 `#print axioms` pins now include `Classical.choice` (via `foRBits_encode`)            |
-| Rel.KernelSpec.Closure    | FAILING :171 `kscatter_closed`: the `split at h` chain no longer matches the kscatter body     |
-|                           | (noNul ix, op match, scatterWords, nul `if`). New `wordsFoR_valid ws nul` (green) is the lemma |
-|                           | to close it with: get `ws`, `nul` with `scatterWords_size` and `exact wordsFoR_valid ws nul _`.|
-|                           | `kgather_closed` already uses `wordsFoR_valid`.                                                |
-| BitRows, kernel tests     | not reached (blocked behind Closure)                                                           |
-| Rel (RepCanon, RepSetOps, | not built. Callers to update: `ascKeys_row` (new 3rd hyp), `kasc_ok`/`asc_perm` (new `ns`/nul  |
-| RepCols, RepTabComp, …)   | outputs), `raw_kgather` (nul arg of `wordsFoR`), `raw_scatter` (needs `hasNul e = false` where |
-|                           | they had none: derive it, or move them to `kscatter_ok`)                                        |
+| Module / gate                  | State                                                                                       |
+|--------------------------------|---------------------------------------------------------------------------------------------|
+| Rel.KernelSpec.Closure         | green: `kscatter_closed` = `repeat' (split at h <;> try (cases h; done))`, then             |
+|                                | `wordsFoR_valid _ _ (scatterWords_size ‹scatterWords _ _ _ _ _ = .ok _›)` on every branch   |
+| RelKernel (library)            | green (138 jobs)                                                                            |
+| Rel.Kernel.Scan/Coc/TestChecks | green                                                                                       |
+| Rel.Kernel.AscTest             | 3 new decide/#guard pairs: `cells` null refusal in row words, `lo`, `hi` (`cellsKey`).      |
+|                                | FAILS before reaching them: Rust panic, see Blocker 1                                       |
+| Rel.Kernel.GatherTest, SeenTest| FAIL: Blocker 1 (`res_pack asked for width 1`)                                              |
+| Rel.Kernel.ScatterTest,BitRows | not reached in that run (same null-column tests, expect Blocker 1)                          |
+| cargo test --features std      | green, 74 passed, exit 0                                                                    |
+| sh crate/build.sh syms         | exit 0                                                                                      |
+| Rel.Run.Core                   | green: `foRBytes_wf` passes `(nul := .empty)` to `nblk_encode`                              |
+| Rel.Run.Gather                 | FAILING :21 `Arr.kgather_wf`: whnf timeout at :35, `wordsFoR_closed _` (nul = .empty) does  |
+|                                | not match `raw_kgather`'s `wordsFoR gw (if hasNul e then nulMap … else .empty)`. Blocker 2  |
+| RepCols/RepCanon/RepSetOps/    | not built (behind Run.Gather)                                                               |
+| RepTabComp, GenKBits, GenKFix  |                                                                                             |
 
-Gates not yet run: `cargo test --features std`, `sh crate/build.sh syms`, kernel tests' #guard/decide, full build.
+## Blocker 1: Rust `nul_pack` packs a power-of-two width with `res_pack` (crate/src/enc.rs, off limits to rq17f)
 
-## Owner decision needed (encoder)
+`enc.rs` `nul_pack`'s `go` ends `crate::simd::res_pack(&v, d, nb, p.res)`; `res_pack_scalar` asserts `w >= 3` and not
+a power of two. A null block of keys `{0}` plus a null gets `d = 1` -> panic `qlean: res_pack asked for width 1`
+(GatherTest, SeenTest), `{0,1}` plus a null `d = 2` (AscTest). `pack_block` (enc.rs:39) already routes a lane width
+through `by_width!` and an odd one through `res_pack`; fix: pack the `u64` residuals `v` through `pack_block::<u64>(p.res,
+&v[..nb], nb, 0, d as u8)` (base 0, so the residual is unchanged). No cargo test covers `nul_pack` at d ∈ {1,2,4,…}.
 
-`hmax` in `foROpt_encode` is real: `Coc.nulBlock` does not widen a block whose non-null keys span all `2^64`.
-Instance: w = 8, one block holding `Int64.min`, `Int64.max` and a null: `d = 64`, `Int64.max - Int64.min = ones 64`, so
-the `Int64.max` row reads as null. Fix that removes `hmax` (general): put a non-null row whose residual is `ones d` in
-a null-holding block on the patch list, in `Coc.encodeAt`'s `exc` filter and `crate/src/enc.rs`. Not done (Rust writer).
-The route-B kernel laws above avoid it by describing answers as `Coc.encode ws (nulMap fl)` rather than by `raw`.
+## Blocker 2 (design): `Enc.WF` and `raw` read the junk word at a null row
+
+- `raw .i64` reads `foRBits`, which at a null row is the block's top residual plus base, not a q value. So:
+  - `Arr.kgather_wf` (Run/Gather.lean:23) at `t = .u1` with `hasNul x.enc`: `Enc.WF .u1` asks every `foRBits < 2`;
+    a gathered boolean block `{0,1}` plus a null widens to `d = 2`, the null row reads `3`. Not provable as stated.
+    For `t ≠ .u1` `wordsFoR_valid` closes it; for `hasNul x.enc = false` the old proof closes it after
+    `simp only [hN]` on the `if`.
+  - `ascKeys_row` (KernelSpec/Asc.lean:138) asks equal `raw` words at rows `q`, `q'` in every column. At a null row
+    the sorted column's word is its own block's top residual, not the input's, so the RepCanon/RepSetOps callers
+    (RepCanon :406, :908, :936; RepSetOps :642) cannot discharge it from `asc_perm` where `hasNul`. Since `nulCodes`
+    zeroes a null row's code, the general statement needs equal words only where the flag is `0`.
+  - Every readback of `wordsFoR ws nul` with `nul ≠ .empty` goes through `foROpt_encode`, which carries `hmax`
+    (rq17g's encoder fix).
+- Decision needed: A) `Enc.WF`'s bound reads `Column.foROpt` (bounds only non-null rows) and `ascKeys_row`'s word
+  hypothesis is restricted to flag-0 rows; B) `Enc.WF` at a type with no null (`u1`) also asks `hasNul e = false`
+  (then `hasNul (wordsFoR ws) = false` must be proved: `planBlock_plain` + width byte < 128).
 
 ## Next
 
-1. Closure `kscatter_closed` (above), then `lake build RelKernel`, kernel tests.
-2. Null-aware `raw_encodeAt` (Raw.lean:105) from `foROpt_encode` once `hmax` is decided.
-3. Rel downstream callers (list above).
+1. Blocker 1 fix in enc.rs (by rq17g or with leave), then build the 7 kernel tests.
+2. Blocker 2 decision, then Run.Gather `Arr.kgather_wf`, then the Rel callers: `ascKeys_row` (RepCanon ×3,
+   RepSetOps), `kasc_ok`/`asc_perm` (RepCanon :398 :845 :872 :899 :924, RepSetOps :634, GenKBits :1338, GenKFix :31),
+   `raw_kgather` (RepCanon :211 :419 :948, RepSetOps :108 :144 :661 :774 :775, RepTabComp :393, Run/Gather :26),
+   `raw_scatter` (RepCols :130 :131, RepCanon :98, RepSetOps :96 :370 :532; needs `hasNul e = false`: `.pos` gives it
+   by `rfl`, `one`/`x.enc` need it or `kscatter_ok`).

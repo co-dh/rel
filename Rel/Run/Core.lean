@@ -126,7 +126,7 @@ theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isS
     (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF (X := X) t n
     (.foR (Kernel.Coc.encode (t.width.getD 0).toUSize b).1 (Kernel.Coc.encode (t.width.getD 0).toUSize b).2) := by
   have hw : 0 < t.width.getD 0 ∧ t.width.getD 0 ≤ 8 := by cases t <;> simp [QAtomicType.width] at hu ⊢
-  have h := Verify.nblk_encode Column.lgEnc (by decide) _ hw.1 hw.2 b (patch := true)
+  have h := Verify.nblk_encode Column.lgEnc (by decide) _ hw.1 hw.2 b (patch := true) (nul := .empty)
   rw [hn, Nat.mul_div_cancel_left _ hw.1] at h
   have hk : n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (t.width.getD 0).toUSize b).1 *
       Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (t.width.getD 0).toUSize b).1 := by
