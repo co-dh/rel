@@ -55,6 +55,22 @@ local macro "objs_simp" : tactic => `(tactic| simp [Prim.objs, Option.orElse, Pr
   List.eraseDupsBy, List.eraseDupsBy.loop, consRow, RowCode.cons,
   RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc, List.lookup, σ₁, σ₂])
 
+/-- A row whose meaning of its one argument is a coreflexive (`dom`, `ran`) relates a value only to itself. -/
+theorem Sem.one_corefl {X Y A : Obj} {D : Den X Y → Den A A} (hD : ∀ T a b, D T a b → a = b) :
+    ∀ ss a b, Sem.one D ss a b → a = b := by
+  intro ss a b h; unfold Sem.one at h; split at h
+  · split at h
+    · exact hD _ _ _ h
+    · exact (h : False).elim
+  · exact (h : False).elim
+
+/-- `Tm.instObj` of the rows `dom`, `ran` given their argument: one bind, as of any constructor with one part. -/
+theorem Tm.instObj_dom (ph : List Rel.QAtomicType) (σ : List Obj) {A B : Obj} (R : Tm A B) :
+    (Tm.dom R).instObj ph σ = (do return Tm.dom (← R.instObj ph σ)) := rfl
+
+theorem Tm.instObj_ran (ph : List Rel.QAtomicType) (σ : List Obj) {A B : Obj} (R : Tm A B) :
+    (Tm.ran R).instObj ph σ = (do return Tm.ran (← R.instObj ph σ)) := rfl
+
 /-- **Every row of `prims` with a converse row (`conv`) means that row's converse**, at all objects and arguments:
     `convTm`'s `prim` case. The rows are enumerated from `prims`, so a row given a `conv` it does not mean fails here. -/
 theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find? s = some r' →
@@ -78,12 +94,20 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
     funext b a; apply propext; rw [recip_apply, Prim.den_iff rfl, Prim.den_iff rfl]
     constructor
     all_goals
-      rintro ⟨σ, -, ⟨rfl, rfl⟩, h⟩
-      -- the converse row lists the variables in its own order: one, two in order, or the two swapped (`inr`/`inr°`)
+      rintro ⟨σ, hσ, ⟨rfl, rfl⟩, h⟩
+      -- the converse row lists the variables in its own order: one, two in order, or the two swapped (`inr`/`inr°`);
+      -- a row that is its own converse (`dom`, `ran`) means a coreflexive, so its two ends are one
       first
         | exact ⟨[σ₁ σ], by objs_simp, ⟨rfl, rfl⟩, h⟩
         | exact ⟨[σ₁ σ, σ₂ σ], by objs_simp, ⟨rfl, rfl⟩, h⟩
         | exact ⟨[σ₂ σ, σ₁ σ], by objs_simp, ⟨rfl, rfl⟩, h⟩
+        | (obtain rfl : b = a := by
+             first
+               | exact Sem.one_corefl (D := fun T => 𝟙 _ ∩ T ≫ T°) (fun _ _ _ h => h.1) ss _ _ h
+               | exact (Sem.one_corefl (D := fun T => 𝟙 _ ∩ T ≫ T°) (fun _ _ _ h => h.1) ss _ _ h).symm
+               | exact Sem.one_corefl (D := fun T => 𝟙 _ ∩ T° ≫ T°°) (fun _ _ _ h => h.1) ss _ _ h
+               | exact (Sem.one_corefl (D := fun T => 𝟙 _ ∩ T° ≫ T°°) (fun _ _ _ h => h.1) ss _ _ h).symm
+           exact ⟨σ, hσ, ⟨rfl, rfl⟩, h⟩)
 
 /-- What `convTm_den` needs of `t` under `ρ` at the nodes whose converse `convTm` takes as given: a variable and
     `own` are their own converse (as a row's spine too), a number verb's universe is a coreflexive, a shared term
@@ -131,10 +155,10 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     (∀ A₁ A₂ (h : A = .prod A₁ A₂) p, convProj (h ▸ t) = .ok p → p.den ρ = ((h ▸ t).den ρ)°) := by
   intro A B t
   induction t with
-  | val _ | uni _ | zero | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
+  | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
-  | top _ _ | lam _ _ | est _ _ | thin _ _ | nil | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
+  | top _ _ | lam _ _ | est _ _ | thin _ _ | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
   | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
   -- an injection's converse is `conv` of it, which runs on demand (`Tm.dem`), and its converse the injection
   | inl | inr => exact fun _ => ⟨fun u hu => by
@@ -165,13 +189,6 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     by_cases hd : (Tm.own R).dem = false
     · exact conv_false_den ρ u hu hd
     rw [convTm.eq_def, if_neg hd] at hu; cases hu; exact ⟨hok.1.symm, fun _ ss => (hok.2 ss).symm⟩
-  | dom R _ =>
-    refine fun _ => ⟨fun u hu => ?_, by noproj⟩
-    by_cases hd : (Tm.dom R).dem = false
-    · exact conv_false_den ρ u hu hd
-    rw [convTm.eq_def, if_neg hd] at hu; cases hu
-    exact ⟨funext fun _ => funext fun _ => propext
-      ⟨fun ⟨e, c, h1, h2⟩ => ⟨e.symm, c, h2, h1⟩, fun ⟨e, c, h1, h2⟩ => ⟨e.symm, c, h2, h1⟩⟩, fun _ _ => rfl⟩
   | prim r =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; dsimp only at hu
@@ -371,11 +388,12 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
           simp only [hR, hS] at hu; cases hu
           refine ⟨?_, fun _ _ => rfl⟩
           -- `⟨π₁R°,π₂⟩τ(S)π₁`: `(b,c) ↦ (a,c) ↦ a` with `a R b` and `a S c`
+          simp only [pairTest, ↓Tm.dom_den, Tm.dom_den, Tm.den]
           show rpair (graph Prod.fst ≫ r.den ρ) (graph Prod.snd) ≫
             ((𝟙 _ ∩ (graph Prod.snd ∩ graph Prod.fst ≫ S.den ρ) ≫ (graph Prod.snd ∩ graph Prod.fst ≫ S.den ρ)°) ≫
               graph Prod.fst) = _
           rw [hr]; funext q a; apply propext
-          simp only [Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
+          simp only [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
             Prod.mk.injEq]
           constructor
           · rintro ⟨a1, c1, ⟨⟨b, rfl, h1⟩, rfl⟩, a2, c2, ⟨⟨rfl, rfl⟩, w, ⟨rfl, x, rfl, h2⟩, -⟩, rfl⟩
@@ -389,12 +407,13 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
           simp only [hR, hS] at hu; cases hu
           refine ⟨?_, fun _ _ => rfl⟩
           -- `⟨π₁,π₂S°⟩ swap τ(R) swap π₂`: `(b,c) ↦ (b,a) ↦ (a,b) ↦ (b,a) ↦ a` with `a S c` and `a R b`
+          simp only [pairTest, ↓Tm.dom_den, Tm.dom_den, Tm.den]
           show rpair (graph Prod.fst) (graph Prod.snd ≫ s.den ρ) ≫
             (rpair (graph Prod.snd) (graph Prod.fst) ≫
               ((𝟙 _ ∩ (graph Prod.snd ∩ graph Prod.fst ≫ R.den ρ) ≫ (graph Prod.snd ∩ graph Prod.fst ≫ R.den ρ)°) ≫
                 (rpair (graph Prod.snd) (graph Prod.fst) ≫ graph Prod.snd))) = _
           rw [hs]; funext q a; apply propext
-          simp only [Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
+          simp only [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
             Prod.mk.injEq]
           constructor
           · rintro ⟨b1, a1, ⟨rfl, c, rfl, h2⟩, a2, b2, ⟨rfl, rfl⟩, a3, b3, ⟨⟨rfl, rfl⟩, w, ⟨rfl, x, rfl, h1⟩, -⟩,
@@ -532,10 +551,10 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       p'.den ρ = ((h ▸ t' : Tm ((Obj.prod A₁ A₂).inst ph σ) (B.inst ph σ)).den ρ)°) := by
   intro A B t
   induction t with
-  | val _ | uni _ | zero | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
+  | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
-  | top _ _ | lam _ _ | est _ _ | thin _ _ | nil | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
+  | top _ _ | lam _ _ | est _ _ | thin _ _ | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
   | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
   | id =>
     refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩
@@ -579,15 +598,6 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     cases hu'.symm.trans ht
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht; obtain ⟨_, _, rfl⟩ := ht
     exact ⟨hok.1.symm, fun _ ss => (hok.2 ss).symm⟩
-  | dom R _ =>
-    refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩
-    by_cases hd : (Tm.dom R).dem = false
-    · exact inst_false_den ph σ ρ hd hu hu' ht
-    rw [convTm.eq_def, if_neg hd] at hu; cases hu
-    cases hu'.symm.trans ht
-    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht; obtain ⟨_, _, rfl⟩ := ht
-    exact ⟨funext fun _ => funext fun _ => propext
-      ⟨fun ⟨e, c, h1, h2⟩ => ⟨e.symm, c, h2, h1⟩, fun ⟨e, c, h1, h2⟩ => ⟨e.symm, c, h2, h1⟩⟩, fun _ _ => rfl⟩
   | prim r =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     simp only [Tm.instObj, pure_ok_iff] at ht; subst ht
@@ -724,7 +734,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   | arith t k U _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
-    simp only [Tm.instObj, Tm.prodUni, bind_ok_iff, pure_ok_iff] at ht hu'
+    simp only [Tm.instObj, ↓Tm.instObj_ran, Tm.prodUni, bind_ok_iff, pure_ok_iff] at ht hu'
     obtain ⟨U', hU, U'', hb, hf⟩ := ht
     obtain ⟨_, ⟨_, ⟨_, ⟨_, h1, _, ⟨_, h2, rfl⟩, rfl⟩, rfl⟩, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
     rw [hU] at h1 h2 h3; cases h1; cases h2; cases h3; rw [hb] at hb3; cases hb3; rw [hf] at hf3; cases hf3
@@ -848,17 +858,18 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
           show graph Prod.fst ≫ r'.den ρ ∩ graph Prod.snd ≫ s'.den ρ = _; rw [hr' r' hr, hs]; exact recip_rpair _ _
         | error l =>
           simp only [hR, hS] at hu; cases hu
-          simp only [Tm.instObj, pairTest, bind_ok_iff, pure_ok_iff] at hu'
+          simp only [Tm.instObj, ↓Tm.instObj_dom, pairTest, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨_, ⟨_, ⟨_, rfl, r', hr, rfl⟩, _, rfl, rfl⟩, _,
             ⟨_, ⟨_, ⟨_, rfl, _, ⟨_, rfl, S'', hS'', rfl⟩, rfl⟩, rfl⟩, _, rfl, rfl⟩, rfl⟩ := hu'
           rw [hS'] at hS''; cases hS''
           refine ⟨?_, fun _ _ => rfl⟩
           -- `⟨π₁R°,π₂⟩τ(S)π₁`: `(b,c) ↦ (a,c) ↦ a` with `a R b` and `a S c`
+          simp only [↓Tm.dom_den, Tm.dom_den, Tm.den]
           show rpair (graph Prod.fst ≫ r'.den ρ) (graph Prod.snd) ≫
             ((𝟙 _ ∩ (graph Prod.snd ∩ graph Prod.fst ≫ S'.den ρ) ≫ (graph Prod.snd ∩ graph Prod.fst ≫ S'.den ρ)°) ≫
               graph Prod.fst) = _
           rw [hr' r' hr]; funext q a; apply propext
-          simp only [Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
+          simp only [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
             Prod.mk.injEq]
           constructor
           · rintro ⟨a1, c1, ⟨⟨b, rfl, h1⟩, rfl⟩, a2, c2, ⟨⟨rfl, rfl⟩, w, ⟨rfl, x, rfl, h2⟩, -⟩, rfl⟩
@@ -870,19 +881,20 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
         | ok s =>
           have hs := fun s' (h : s.instObj ph σ = .ok s') => ((ihS S' hS' hok.2).1 _ s' hS h).1
           simp only [hR, hS] at hu; cases hu
-          simp only [Tm.instObj, pairTest, swapTm, bind_ok_iff, pure_ok_iff] at hu'
+          simp only [Tm.instObj, ↓Tm.instObj_dom, pairTest, swapTm, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨_, ⟨_, rfl, _, ⟨_, rfl, s', hs', rfl⟩, rfl⟩, _, ⟨_, ⟨_, rfl, _, rfl, rfl⟩, _,
             ⟨_, ⟨_, ⟨_, rfl, _, ⟨_, rfl, R'', hR'', rfl⟩, rfl⟩, rfl⟩, _, ⟨_, ⟨_, rfl, _, rfl, rfl⟩, _, rfl, rfl⟩, rfl⟩,
             rfl⟩, rfl⟩ := hu'
           rw [hR'] at hR''; cases hR''
           refine ⟨?_, fun _ _ => rfl⟩
           -- `⟨π₁,π₂S°⟩ swap τ(R) swap π₂`: `(b,c) ↦ (b,a) ↦ (a,b) ↦ (b,a) ↦ a` with `a S c` and `a R b`
+          simp only [↓Tm.dom_den, Tm.dom_den, Tm.den]
           show rpair (graph Prod.fst) (graph Prod.snd ≫ s'.den ρ) ≫
             (rpair (graph Prod.snd) (graph Prod.fst) ≫
               ((𝟙 _ ∩ (graph Prod.snd ∩ graph Prod.fst ≫ R'.den ρ) ≫ (graph Prod.snd ∩ graph Prod.fst ≫ R'.den ρ)°) ≫
                 (rpair (graph Prod.snd) (graph Prod.fst) ≫ graph Prod.snd))) = _
           rw [hs s' hs']; funext q a; apply propext
-          simp only [Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
+          simp only [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, graph, rpair, Prod.exists,
             Prod.mk.injEq]
           constructor
           · rintro ⟨b1, a1, ⟨rfl, c, rfl, h2⟩, a2, b2, ⟨rfl, rfl⟩, a3, b3, ⟨⟨rfl, rfl⟩, w, ⟨rfl, x, rfl, h1⟩, -⟩,

@@ -446,15 +446,12 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .meet R S => R.den ρ ∩ S.den ρ
   | ρ, _, _, .join R S => R.den ρ ∪ S.den ρ
   | ρ, _, _, .diff R S => diffDen (R.den ρ) (S.den ρ)
-  | ρ, _, _, .dom R => 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)°
-  | ρ, _, _, .ran R => 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°°
   | ρ, _, _, .ldiv R S U V => ldivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
   | ρ, _, _, .est Q => estDen (Q.den ρ)
   | ρ, _, _, .thin Q => thinDen (Q.den ρ)
-  | _, _, _, .nil => nilDen
   | _, _, _, .mem => fun xs x => x ∈ xs
   | _, _, _, .inl => Core.Rel.inl
   | _, _, _, .inr => Core.Rel.inr
@@ -488,13 +485,44 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → De
   | _, _, _, _, _ => 𝟘
 end
 
+/-- **`dom` is a row**: `Tm.dom R`, `domRow` given `R`, means `𝟙 ∩ R R°`. -/
+theorem Tm.dom_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.dom R).den ρ = 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)° := by
+  have ho : domRow.objs A A [(A, B)] = some [A, B] := by
+    simp [Prim.objs, Option.orElse, domRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == domRow.sym) =
+      some ⟨RowCode.dom, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T ≫ T°⟩ := rfl
+  simp only [Tm.dom, Tm.den, Tm.argDen]; unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
+
+/-- **`ran` is a row**: `Tm.ran R`, `ranRow` given `R`, means `𝟙 ∩ R° R`. -/
+theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°° := by
+  have ho : ranRow.objs B B [(A, B)] = some [A, B] := by
+    simp [Prim.objs, Option.orElse, ranRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == ranRow.sym) =
+      some ⟨RowCode.ran, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T° ≫ T°°⟩ := rfl
+  simp only [Tm.ran, Tm.den, Tm.argDen]; unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
+
+/-- **`[]` is a row**: `Tm.nil`, `nilRow`, means `nilDen`. -/
+theorem Tm.nil_den (ρ : Val) {A B : Obj} : (Tm.nil : Tm A (.arr B)).den ρ = nilDen := by
+  have ho : nilRow.objs A (.arr B) [] = some [A, B] := by
+    simp [Prim.objs, Option.orElse, nilRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == nilRow.sym) = some ⟨RowCode.nil, fun _ _ => nilDen⟩ := rfl
+  simp only [Tm.nil, Tm.den]; unfold Prim.den; simp only [List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
 /-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
     kept where `a'` is the source, then `b`. -/
 theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
     (Tm.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr))).den ρ
       = flatDen (R.den ρ) := by
   apply Core.Rel.ext; intro x b
-  simp [Tm.den, flatDen, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph]
+  simp [Tm.den, Tm.dom_den, flatDen, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph]
   constructor
   · rintro ⟨a, b', ⟨h, rfl⟩, he⟩
     cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
@@ -512,7 +540,7 @@ theorem Tm.prod_den (ρ : Val) {A B C D : Obj} (R : Tm A B) (S : Tm C D) :
 theorem Tm.prodUni_den (ρ : Val) {A B : Obj} (u : Tm A A) (v : Tm B B) (hu : ∀ x y, u.den ρ x y → x = y)
     (hv : ∀ x y, v.den ρ x y → x = y) : (u.prodUni v).den ρ = rprodMap (u.den ρ) (v.den ρ) := by
   apply Core.Rel.ext; intro p q
-  simp only [Tm.prodUni, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.inter,
+  simp only [Tm.prodUni, Tm.ran_den, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.inter,
     Core.Rel.recip, Core.Rel.top, Core.Rel.id]
   constructor
   · rintro ⟨rfl, m, ⟨h1, y, -, h2⟩, -⟩
@@ -550,7 +578,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
-  | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
+  | conv R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
   | lam R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
@@ -906,12 +934,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
   | top V ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 (comp_le' (Core.Rel.le_refl _)) (ih.1 s ρ ρ' hp g)
   | conv R ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 conv_le' (ih.1 s ρ ρ' hp g)
   | own R ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact ih.1 s ρ ρ' hp g
-  | dom R ih =>
-    refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩
-    exact sle.map1 (fun h => inter_le' (Core.Rel.le_refl _) (comp_le' h (conv_le' h))) (ih.1 s ρ ρ' hp g)
-  | ran R ih =>
-    refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩
-    exact sle.map1 (fun h => inter_le' (Core.Rel.le_refl _) (comp_le' (conv_le' h) (conv_le' (conv_le' h)))) (ih.1 s ρ ρ' hp g)
   | comp R S ihR ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 comp_le' (ihR.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
@@ -1051,6 +1073,30 @@ theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C
       · rw [dif_neg hc, dif_neg hc]
     · rw [dif_neg hh, dif_neg hh]
 
+/-- A row `dom(T)` at `a` reads `T` only at `a`. -/
+theorem Prim.den_dom_congr {r : Prim} (hr : (r.sym == domRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
+    {ρ : Val} {a : A.El} (h : ∀ m, (Tm.idAt A C).den ρ a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
+    r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
+  have hf : rowDens.find? (·.1.sym == domRow.sym) =
+      some ⟨RowCode.dom, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T ≫ T°⟩ := rfl
+  unfold Prim.den; rw [eq_of_beq hr, hf]; simp only [List.map_cons, List.map_nil]
+  cases r.objs A B [(C, D)] with
+  | none => exact Iff.rfl
+  | some σ =>
+    dsimp only
+    by_cases hh : (RowCode.dom.ty σ).1 = A ∧ (RowCode.dom.ty σ).2 = B
+    · obtain ⟨rfl, rfl⟩ := hh
+      rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+      simp only [Sem.one]
+      by_cases hc : C = σ₁ σ ∧ D = σ₂ σ
+      · obtain ⟨rfl, rfl⟩ := hc
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        have hi : (Tm.idAt (σ₁ σ) (σ₁ σ)).den ρ a a := by simp only [Tm.idAt, dite_true]; exact (rfl : a = a)
+        exact and_congr_right fun e => by
+          subst e; exact exists_congr fun m => and_congr (h a hi m) (h a hi m)
+      · rw [dif_neg hc, dif_neg hc]
+    · rw [dif_neg hh, dif_neg hh]
+
 /-- **`hylo`'s body is local along its children** (`Hylo.Local`): where `X` and `Y` agree at the children
     `t.kids k A` reaches from `a`, `t` reads the same at `a` under either bound to `k`. -/
 theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D : Obj} (t : Tm C D) (c : Tm C A),
@@ -1122,14 +1168,6 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D
       exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d.1)
         (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d.2)
     · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
-  | dom R ih =>
-    intro c hc a hX d
-    unfold Tm.kids at hc; split at hc
-    · dsimp only at hc
-      refine and_congr_right fun e => ?_
-      subst e
-      exact exists_congr fun m => and_congr (ih c hc a hX m) (ih c hc a hX m)
-    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
   | own R ih =>
     intro c hc a hX d
     unfold Tm.kids at hc; split at hc
@@ -1149,7 +1187,15 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D
           simp only [Tm.den, Tm.argDen]
           refine Prim.den_map_congr (ρ := ρ) hr (fun m hm e => ?_) d
           exact ihx s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) e
-        · cases hc
+        · split at hc
+          · rename_i hr
+            cases hs : x.kids k A <;> simp only [hs, reduceCtorEq, Option.some.injEq] at hc
+            subst hc
+            rename_i s
+            simp only [Tm.den, Tm.argDen]
+            refine Prim.den_dom_congr (ρ := ρ) hr (fun m hm e => ?_) d
+            exact ihx s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) e
+          · cases hc
       | _ => dsimp only at hc; cases hc
     · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
   | _ =>

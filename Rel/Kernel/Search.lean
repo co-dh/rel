@@ -28,17 +28,17 @@ def normalise (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
   else if inf < abs then (if w == 8 then 0xfff8000000000000 else 0xffc00000)
   else v
 
-/-- What `normalise` runs as: the mask as a word power (`Column.toUInt64_pow`), the `Nat` `2 ^ 63` being GMP's. -/
+/-- What `normalise` runs as: the mask by `Column.ones`, the `Nat` `2 ^ 63` being GMP's. -/
 private def normaliseImpl (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
   if !float then v else
-  let abs := v &&& ((2 : UInt64) ^ (8 * w - 1) - 1)
+  let abs := v &&& Column.ones (8 * w - 1)
   let inf : UInt64 := if w == 8 then 0x7ff0000000000000 else 0x7f800000
   if abs == 0 then 0
   else if inf < abs then (if w == 8 then 0xfff8000000000000 else 0xffc00000)
   else v
 
 @[csimp] private theorem normalise_eq_impl : @normalise = @normaliseImpl := by
-  funext w f v; simp only [normalise, normaliseImpl, Column.toUInt64_two_pow_sub_one]
+  funext w f v; simp only [normalise, normaliseImpl, Column.ones_eq]
 
 
 
@@ -77,8 +77,8 @@ def ordKey (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
 
 /-- What `ordKey` runs as: its masks as word powers, as `ordCode`'s. -/
 private def ordKeyImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
-  let mask : UInt64 := if w == 8 then 0xffffffffffffffff else (2 : UInt64) ^ (8 * w) - 1
-  let top : UInt64 := (2 : UInt64) ^ (8 * w - 1)
+  let mask : UInt64 := if w == 8 then 0xffffffffffffffff else Column.ones (8 * w)
+  let top : UInt64 := Column.pow2 (8 * w - 1)
   if float then
     let u := normalise w true (v &&& mask)
     if u &&& top != 0 then (~~~u) &&& mask else u ||| top
@@ -87,7 +87,7 @@ private def ordKeyImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
 
 @[csimp] private theorem ordKey_eq_impl : @ordKey = @ordKeyImpl := by
   funext w f s v
-  simp only [ordKey, ordKeyImpl, Column.toUInt64_two_pow_sub_one, Column.toUInt64_pow,
+  simp only [ordKey, ordKeyImpl, Column.ones_eq, Column.pow2_eq,
     show Nat.toUInt64 2 = 2 from rfl]
 
 /-- The partition point: the first index the test fails at, over `[lo, hi)`. `bin` advances while

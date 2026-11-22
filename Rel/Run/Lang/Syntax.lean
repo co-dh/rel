@@ -250,11 +250,11 @@ def starRow : Prim :=
     prelude := `Rel.Programs.prelude.star, keyLift := true }
 /-- `dom(R) = 𝟙 ∩ R R°`, `R` run on the keys in demand (`GenK.dom`); `B` named by its parameter only (`Prim.objs`). -/
 def domRow : Prim :=
-  { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"),
+  { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"), conv := "dom",
     written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `ran(R) = 𝟙 ∩ R° R` (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
 def ranRow : Prim :=
-  { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"),
+  { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"), conv := "ran",
     written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `[] : A ⟶ [B]`, every source to the empty list (`GenK.nil`). -/
 def nilRow : Prim :=

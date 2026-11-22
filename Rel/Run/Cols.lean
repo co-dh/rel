@@ -61,6 +61,10 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
   | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.cellsOk x && Vals.cellsOk y
 
+/-- The words of `x` with `s` added (`colArr .add` with the constant `s`). -/
+def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
+  colArr .add n x.enc (← colConst n s)
+
 /-- The words of `x` clamped into `[0, c]` (`colMap .max` with `0`, then `.min` with `c`), then `s` added. -/
 def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
   let a ← colMap .max n x.enc (← colConst n 0)
@@ -125,8 +129,8 @@ def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (off : E
   else do pure ⟨n, ← cat n off (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
 
 /-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column (`off` as there). An `arr` side
-concatenates its payloads (`catPlan`, the recursive call) and its `lo`, `hi` columns, each side's clamped into its own
-payload (`Vals.row` reads a cell clamped) and the second's shifted past the first payload; a payload past `2^63` rows,
+concatenates its payloads (`catPlan`, the recursive call) and its `lo`, `hi` columns, the second's shifted past the
+first payload (`Vals.WF`: each cell already inside its own payload, so none reads the other's); a payload past `2^63` rows,
 which an `Int64` bound cannot reach, is the error. A `sum` side concatenates its tags and each summand
 (`Vals.catSummand`), its positions `Arr.pos`; past `2^63` rows, which an `Int64` position cannot reach, the error. -/
 def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → Vals A n₁ → Vals A n₂ → Except String (Vals A n)
@@ -135,8 +139,8 @@ def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → 
   | .arr _, _, _, n, off, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ =>
     if m₁.toNat + m₂.toNat < 2 ^ 63 then do
       let p ← catPlan m₁ m₂
-      let lo ← Arr.concat n off (← lo₁.clampShift m₁.toUInt64 0) (← lo₂.clampShift m₂.toUInt64 m₁.toUInt64)
-      let hi ← Arr.concat n off (← hi₁.clampShift m₁.toUInt64 0) (← hi₂.clampShift m₂.toUInt64 m₁.toUInt64)
+      let lo ← Arr.concat n off lo₁ (← lo₂.shift m₁.toUInt64)
+      let hi ← Arr.concat n off hi₁ (← hi₂.shift m₁.toUInt64)
       pure ⟨p.1, lo, hi, ← Vals.concat p.1 p.2 f₁ f₂⟩
     else .error s!"concat: {m₁} + {m₂} payload rows, past an Int64 bound"
   | .sum _ _, _, _, n, off, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩ =>

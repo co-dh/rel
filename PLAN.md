@@ -1298,8 +1298,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - ✅ 删 clamp 第一步（分支 `lohi11`，50f6fa1、86a1805）：`Tab.mem` 不再把 `lo`/`hi` 夹到 `[0, m]`，按 `[lo, hi)` 原样读；
     `mem_holds`、`E_lam`、`E_holds`、`E_den`、`setify_den` 取 `Vals.WF X`；测试格子改成 WF。保留：`Vals.row` 的
     `filterMap`/`clampFin`（全函数模型）、`Vals.catSide` 与 `compBlocks` 的 `clampShift`（求和位置、块号，不是 lo/hi）。
-  - ⬜ 删 clamp 第二步：`Vals.concat` arr 分支的 4 个 `clampShift`（`concat_row`/`concat_wf` 取 x、y 的 WF，7 个调用者），
-    `cellSpan`（`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、`Fix.map`、`Power`、`Where.positions` 的定律）。
+  - ✅ 删 clamp 第二步之一（分支 8.5s2d–h）：`Vals.concat` arr 分支不再 `clampShift`，只把第二段移过第一段 payload
+    （`Arr.shift` = 1 `colConst` + 1 `colArr .add`；每格 4 次 `clampShift` × 6 = 24 → 4）。`concat_row`/`concat_wf` 取
+    x、y 的 `Vals.WF`，经 `cat/snoc/cons/zip/uncat/prefix/suffix/inits/tails/flatten/lam/comp/flat/positions` 的
+    `_holds`/`_den` 传到 `GenK.*_sound`（多取操作数的 `Wf`）与 `gen_sound_spine`（`code_wf (gen_wf X η hs.2)`）。
+    只加 WF 前提，无语句弱化；全量构建 0 error、0 sorryAx。
+  - ⬜ 删 clamp 第二步之二：`cellSpan`（`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、`Fix.map`、`Power`、
+    `Where.positions` 的定律）。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
@@ -1326,6 +1331,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ Tm28 B8（§3.4）`mem inl inr` 升为 `Tm` 构造子，删行 `∋ inl inr inl° inr°`：`inl°` `inr°` 是 `conv inl`，`Tm.dem`
   对它为真（在需求的 sum 值上跑 `Tab.inlConv`），`Tm.convInj` 给它的 code，`elabE` 的 `.conv` 不再要求闭项；
   `Tm.memAt` 代 `Tm.kids` 里的 `∋` 行；codegen 复用 `Tab.mem/inl/inr/inlConv/inrConv`，无新 kernel。
+- ✅ Tm28 B3（§1, §7）`dom ran nil` 不再是 `Tm` 构造子，而是 `prims` 行 `domRow ranRow nilRow`：`Tm.dom/ran/nil` 是造
+  `.arg (.prim r) R` 的 def，`Tm.dom_den/ran_den/nil_den` 给其意义；`dom` `ran` 互为 `conv`（`Prim.den_conv` 以
+  `Sem.one_corefl` 处理）；`Tm.kids` 的 `dom` 分支经 `Tm.idAt`；EmitC 的 `rowB` 按 `GenK.dom/ran/nil` 派发。
 
 ## 3. 各 phase 的并行与串行
 

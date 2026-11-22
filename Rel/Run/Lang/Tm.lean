@@ -27,8 +27,6 @@ inductive Tm : Obj → Obj → Type where
   | meet {A B : Obj} (R : Tm A B) (S : Tm A B) : Tm A B
   | join {A B : Obj} (R : Tm A B) (S : Tm A B) : Tm A B
   | diff {A B : Obj} (R : Tm A B) (S : Tm A B) : Tm A B
-  | dom {A B : Obj} (R : Tm A B) : Tm A A
-  | ran {A B : Obj} (R : Tm A B) : Tm B B
   | ldiv {A B C : Obj} (R : Tm A B) (S : Tm A C) (UB : Tm B B) (UC : Tm C C) : Tm B C
   | rdiv {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) : Tm A B
   | pair {A B C : Obj} (R : Tm A B) (S : Tm A C) : Tm A (.prod B C)
@@ -39,7 +37,6 @@ inductive Tm : Obj → Obj → Type where
       `τ(Q) : B×B ⟶ B×B` (§a), run on demand on the pairs the operator compares. -/
   | est {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) B
   | thin {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) (.arr B)
-  | nil {A B : Obj} : Tm A (.arr B)
   /-- `∋`, an array to each of its elements, on the arrays in demand. -/
   | mem {B : Obj} : Tm (.arr B) B
   /-- The injections into a sum; their converses `inl°`, `inr°` are `conv inl`, `conv inr`, run on the sum values in
@@ -125,7 +122,7 @@ def Tm.whole : {A B : Obj} → Tm A B → Bool
     them needs keys where one of them does, its head alone (`prim`) is no term that runs. -/
 def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .arg R x => if R.whole then (!(R matches .prim _) && R.dem) || x.dem else R.dem
-  | _, _, .comp R _ | _, _, .dom R | _, _, .own R | _, _, .share _ R => R.dem
+  | _, _, .comp R _ | _, _, .own R | _, _, .share _ R => R.dem
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.dem
   | _, _, .join R S => R.dem || S.dem
   -- `⟨R,S⟩`'s domain is `dom R ∩ dom S`, `R ∩ S` within `R` and `S`, so one closed operand bounds the other
@@ -136,16 +133,25 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   -- an injection's converse runs on the sum values in demand (`Tab.inlConv`); any other converse is read whole
   | _, _, .conv R => (R matches .inl | .inr)
   -- every leaf listed, as in `Tm.fv`
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .ldiv .. | _, _, .rdiv ..
   | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
-  | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _
+  | _, _, .est _ | _, _, .thin _ | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _
   | _, _, .succ _ | _, _, .arith .. | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
 
 /-- `R × S ≜ ⟨π₁R, π₂S⟩` (`Tm.prod_den`): on demand, each operand on its side of the pairs in demand; where none
     are, the product is closed by its source's universe (`closeRes`, `Tm.prodUni`). -/
 def Tm.prod {A B C D : Obj} (R : Tm A B) (S : Tm C D) : Tm (.prod A C) (.prod B D) :=
   .pair (.comp .outl R) (.comp .outr S)
+
+/-- `dom(R) = 𝟙 ∩ R R°`, the row `domRow` given `R` (`Tm.dom_den`). -/
+def Tm.dom {A B : Obj} (R : Tm A B) : Tm A A := .arg (.prim domRow) R
+
+/-- `ran(R) = 𝟙 ∩ R° R`, the row `ranRow` given `R` (`Tm.ran_den`). -/
+def Tm.ran {A B : Obj} (R : Tm A B) : Tm B B := .arg (.prim ranRow) R
+
+/-- `[] : A ⟶ [B]`, the row `nilRow` (`Tm.nil_den`). -/
+def Tm.nil {A B : Obj} : Tm A (.arr B) := .prim nilRow
 
 /-- The closed universe `u × v` of a product object, `ran(⟨u, ⊤(v)⟩)`: `u` runs closed and bounds `⊤(v)`, so the
     pair is CROSS of `u`'s values and `v`'s, which `Tab.top` and `Tab.pair` refuse past `crossMax`
@@ -156,7 +162,7 @@ def Tm.prodUni {A B : Obj} (u : Tm A A) (v : Tm B B) : Tm (.prod A B) (.prod A B
 /-- One per node, a `prim` one whatever its row: `kids` puts `mem` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .est R
+  | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
@@ -164,7 +170,7 @@ def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .foldr R S | _, _, .fold R S | _, _, .arg R S
   | _, _, .nu _ R S => R.size + S.size + 1
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .mem
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .mem
   | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .var .. => 1
 
 local macro "lt_size" : term => `(by simp only [Tm.size]; omega)
@@ -180,8 +186,6 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .meet R S, f => return .meet (← f R lt_size) (← f S lt_size)
   | _, _, .join R S, f => return .join (← f R lt_size) (← f S lt_size)
   | _, _, .diff R S, f => return .diff (← f R lt_size) (← f S lt_size)
-  | _, _, .dom R, f => return .dom (← f R lt_size)
-  | _, _, .ran R, f => return .ran (← f R lt_size)
   | _, _, .ldiv R S U V, f => return .ldiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
   | _, _, .rdiv R S U V, f => return .rdiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
   | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
@@ -228,8 +232,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .meet R S => R.fv ++ S.fv
   | _, _, .join R S => R.fv ++ S.fv
   | _, _, .diff R S => R.fv ++ S.fv
-  | _, _, .dom R => R.fv
-  | _, _, .ran R => R.fv
   | _, _, .ldiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .rdiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .pair R S => R.fv ++ S.fv
@@ -248,7 +250,7 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .hylo k _ b => b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .nil | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
   | _, _, .callCv .. => []
 
 /-! ### Substitution -/
@@ -281,8 +283,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .meet R S => .meet (R.subst σ) (S.subst σ)
   | σ, _, _, .join R S => .join (R.subst σ) (S.subst σ)
   | σ, _, _, .diff R S => .diff (R.subst σ) (S.subst σ)
-  | σ, _, _, .dom R => .dom (R.subst σ)
-  | σ, _, _, .ran R => .ran (R.subst σ)
   | σ, _, _, .ldiv R S U V => .ldiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
@@ -309,7 +309,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .id => .id
   | _, _, _, .outl => .outl
   | _, _, _, .outr => .outr
-  | _, _, _, .nil => .nil
   | _, _, _, .mem => .mem
   | _, _, _, .inl => .inl
   | _, _, _, .inr => .inr
@@ -333,8 +332,6 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .meet R S => R.pol s k && S.pol s k
   | _, _, .join R S => R.pol s k && S.pol s k
   | _, _, .diff R S => R.pol s k && S.pol (!s) k
-  | _, _, .dom R => R.pol s k
-  | _, _, .ran R => R.pol s k
   | _, _, .ldiv R S U V => !R.fv.contains k && S.pol s k && U.pol s k && V.pol s k
   | _, _, .rdiv R S U V => R.pol s k && !S.fv.contains k && U.pol s k && V.pol s k
   | _, _, .pair R S => R.pol s k && S.pol s k
@@ -348,7 +345,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) | _, _, t@(.thin _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .nil | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
   | _, _, .callCv .. => true
 
 /-- `t` a `mono` row (`prims`) given relations, each occurring with sign `s` in `k` (`Tm.pol`): the spine
@@ -370,6 +367,13 @@ def Tm.memAt : (C E : Obj) → Tm C E
 @[simp] theorem Tm.size_memAt (C E : Obj) : (Tm.memAt C E).size = 1 := by
   unfold Tm.memAt; split <;> (try split) <;> (try subst_vars) <;> rfl
 
+/-- `𝟙` at `C ⟶ E`: `id` where `C` is `E`, `𝟘` at any other objects; what `kids` puts for `dom(x)`, which reads
+    `x` at its own source, a source a row's type does not tie to `x`'s. -/
+def Tm.idAt (C E : Obj) : Tm C E := if h : C = E then h ▸ .id else .zero
+
+@[simp] theorem Tm.size_idAt (C E : Obj) : (Tm.idAt C E).size = 1 := by
+  unfold Tm.idAt; split <;> (try subst_vars) <;> rfl
+
 /-- The children `t` reads the variable `k : A ⟶ _` at: from `t`'s source to the nodes of `A` (`Tm.den_local`);
     `𝟘` where `t` does not mention `k`, `none` where it reads `k` in a shape no relation bounds. The shapes are
     those `hyloG` builds `G(X)` from: the place, `⟨ , ⟩`, `[ , ]`, `F`, a part composed with a closed one. -/
@@ -383,10 +387,11 @@ def Tm.kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : Option (Tm C A) :=
       else match S.kids k A with | some s => some (.comp R s) | none => none
     | _, _, .meet R S | _, _, .join R S | _, _, .pair R S => match R.kids k A, S.kids k A with
       | some r, some s => some (.join r s) | _, _ => none
-    | _, _, .dom R | _, _, .own R => R.kids k A
-    -- `F(x)` reads `X` at the children of the members
+    | _, _, .own R => R.kids k A
+    -- `F(x)` reads `X` at the children of the members, `dom(x)` at those of its key
     | _, _, .arg (.prim r) x =>
       if r.sym == mapRow.sym then match x.kids k A with | some s => some (.comp (memAt _ _) s) | none => none
+      else if r.sym == domRow.sym then match x.kids k A with | some s => some (.comp (idAt _ _) s) | none => none
       else none
     | _, _, _ => none
   else some .zero

@@ -72,7 +72,7 @@ theorem zeroCol_row {t : QAtomicType} (h : t.ordNum.isSome) (i : Fin (1 : USize)
 theorem zeroTm_den {t : QAtomicType} (h : t.ordNum.isSome) (u₀ : Tm (.atom t) (.atom t)) (ρ : Val)
     {P : (Obj.atom t).El → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (v : (Obj.atom t).El) :
     (∃ a, (zeroTm h u₀).den ρ a v) ↔ v = QAtomicType.ofBits t 0 ∧ P (QAtomicType.ofBits t 0) := by
-  simp only [zeroTm, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, hU,
+  simp only [zeroTm, ↓Tm.ran_den, Tm.ran_den, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, hU,
     zeroCol_row]
   constructor
   · rintro ⟨a, rfl, b, ⟨_, ⟨rfl, hb⟩, _, rfl, -⟩, _, -, _, -, hv⟩
@@ -277,12 +277,12 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
   | flat R =>
     -- `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` is `flatDen` (`Tm.flat_den`), the row's meaning at every object
     have hd := congrFun (congrFun (Tm.flat_den ρ R) x) w
-    simp only [DfnCut.cut, DfnCut.fused, Tm.den, Tm.argDen, Prim.den_flatRow] at hd ⊢
+    simp only [DfnCut.cut, DfnCut.fused, ↓Tm.dom_den, Tm.dom_den, Tm.den, Tm.argDen, Prim.den_flatRow] at hd ⊢
     exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
   | foldI e S =>
     -- `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` is `foldIDen` (`foldIDen_eq`), the row's meaning at every object
     have hd := congrFun (congrFun (foldIDen_eq (e.den ρ) (S.den ρ)).symm x) w
-    simp only [DfnCut.cut, DfnCut.fused, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
+    simp only [DfnCut.cut, DfnCut.fused, ↓Tm.ran_den, Tm.ran_den, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
     exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
   | length u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is

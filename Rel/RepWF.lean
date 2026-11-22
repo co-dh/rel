@@ -13,275 +13,6 @@ case to `Tab.WF` stands on: each op's `_wf` lemma there is one of these. -/
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 
-/-- `Arr.zeros` holds `0` at every row. -/
-theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
-  unfold Arr.zeros at h; simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
-  have es := (colMap_raw (colArr_ok h)).2.2.2 _ i.2
-  rw [colConst_raw hc, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
-  simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-  rw [Arr.get_i64, ← es]; rfl
-
-set_option hygiene false in
-/-- `h : x = .ok t` split through its binds and matches: each error branch closed, each other one kept. -/
-local macro "okSplit" : tactic => `(tactic| repeat' (split at h <;> try (cases h; done)))
-
-/-- A step that keeps `P` keeps it through `List.foldlM`. -/
-theorem foldlM_keeps {α β : Type} {P : β → Prop} {f : β → α → Except String β}
-    (hf : ∀ b a b', f b a = .ok b' → P b → P b') : ∀ (l : List α) {b b' : β}, l.foldlM f b = .ok b' → P b → P b'
-  | [], _, _, h, hb => by simp only [List.foldlM, pure, Except.pure, Except.ok.injEq] at h; exact h ▸ hb
-  | a :: l, _, _, h, hb => by
-    simp only [List.foldlM, bind, Except.bind] at h
-    split at h; · cases h
-    rename_i c hc; exact foldlM_keeps hf l h (hf _ a c hc hb)
-
-/-- **A side of no rows is `Vals.WF`**: an `arr` side of it has no cell. -/
-theorem Vals.none_wf : {A : Obj} → {x : Vals A 0} → Vals.none A = .ok x → Vals.WF x
-  | .atom _, _, _ => trivial
-  | .one, _, _ => trivial
-  | .prod _ _, _, h => by
-    simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    rename_i p hp; split at h; · cases h
-    rename_i q hq; cases h
-    exact ⟨Vals.none_wf hp, Vals.none_wf hq⟩
-  | .arr _, _, h => by
-    simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    split at h; · cases h
-    split at h; · cases h
-    rename_i f hf; cases h
-    exact ⟨fun i => absurd i.2 (by simp), Vals.none_wf hf⟩
-  | .sum _ _, _, h => by
-    simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    split at h; · cases h
-    split at h; · cases h
-    rename_i p hp; split at h; · cases h
-    rename_i q hq; cases h
-    exact ⟨Vals.none_wf hp, Vals.none_wf hq⟩
-
-namespace Tab
-variable {A B C D I : Obj}
-
-/-- **`𝟘` is `Tab.WF`**: both sides `Vals.none`. -/
-theorem zero_wf {t : Tab A B} (h : (Tab.zero : Except String (Tab A B)) = .ok t) : t.WF := by
-  simp only [Tab.zero, bind, Except.bind, pure, Except.pure] at h
-  split at h; · cases h
-  rename_i x hx; split at h; · cases h
-  rename_i y hy; cases h
-  exact ⟨Vals.none_wf hx, Vals.none_wf hy⟩
-
-/-- **`dom` keeps `Tab.WF`**: `Vals.nub` of the key side, on both sides. -/
-theorem dom_wf {R : Tab A B} {t : Tab A A} (h : R.dom = .ok t) (hR : R.WF) : t.WF := by
-  unfold Tab.dom at h
-  cases hn : Vals.nub R.key with
-  | error e => simp [hn, Functor.map, Except.map] at h
-  | ok y =>
-    simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h; subst h
-    exact ⟨Vals.nub_wf hn hR.1, Vals.nub_wf hn hR.1⟩
-
-/-- **`ran` keeps `Tab.WF`**: `Vals.nub` of the value side, on both sides. -/
-theorem ran_wf {R : Tab A B} {t : Tab B B} (h : R.ran = .ok t) (hR : R.WF) : t.WF := by
-  unfold Tab.ran at h
-  cases hn : Vals.nub R.val with
-  | error e => simp [hn, Functor.map, Except.map] at h
-  | ok y =>
-    simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h; subst h
-    exact ⟨Vals.nub_wf hn hR.2, Vals.nub_wf hn hR.2⟩
-
-/-- **`idU X` is `Tab.WF`** on a `Vals.WF` `X` (`dom_wf`). -/
-theorem idU_wf {n : USize} {X : Vals A n} {t : Tab A A} (h : Tab.idU X = .ok t) (hX : Vals.WF X) : t.WF :=
-  dom_wf h ⟨hX, hX⟩
-
-/-- **`R°` keeps `Tab.WF`**: the two sides swapped, `canon`. -/
-theorem conv_wf {R : Tab A B} {t : Tab B A} (h : R.conv = .ok t) (hR : R.WF) : t.WF :=
-  canon_wf h ⟨hR.2, hR.1⟩
-
-theorem outl_wf {n : USize} {X : Vals (.prod A B) n} {t : Tab (.prod A B) A} (h : Tab.outl X = .ok t)
-    (hX : Vals.WF X) : t.WF := canon_wf h ⟨hX, hX.1⟩
-
-theorem outr_wf {n : USize} {X : Vals (.prod A B) n} {t : Tab (.prod A B) B} (h : Tab.outr X = .ok t)
-    (hX : Vals.WF X) : t.WF := canon_wf h ⟨hX, hX.2⟩
-
-/-- **`keep` keeps `Tab.WF`**: both sides gathered. -/
-theorem keep_wf {T t : Tab A B} {b : Enc} (h : T.keep b = .ok t) (hT : T.WF) : t.WF := by
-  simp only [Tab.keep, bind, Except.bind, pure, Except.pure] at h
-  okSplit
-  cases h; exact ⟨Vals.gather_wf ‹_› hT.1, Vals.gather_wf ‹_› hT.2⟩
-
-/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catPlan`'s count and offsets). -/
-theorem concat_wf {R S t : Tab A B} (h : R.concat S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.concat, bind, Except.bind, pure, Except.pure] at h
-  split at h; · cases h
-  rename_i p hp
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (p.1, p.2) from hp)
-  split at h; · cases h
-  rename_i x hx; split at h; · cases h
-  rename_i y hy; cases h
-  exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
-
-/-- **`∪` keeps `Tab.WF`**: `canon` of the concatenation. -/
-theorem union_wf {R S t : Tab A B} (h : R.union S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.union, bind, Except.bind] at h
-  split at h; · cases h
-  exact canon_wf h (concat_wf ‹_› hR hS)
-
-/-- **`tagged` keeps `Tab.WF`**: its table is the concatenation. -/
-theorem tagged_wf {R S : Tab A B} {p : Tab A B × Enc} (h : R.tagged S = .ok p) (hR : R.WF) (hS : S.WF) :
-    p.1.WF := by
-  simp only [Tab.tagged, bind, Except.bind, pure, Except.pure] at h
-  split at h; · cases h
-  rename_i q hq
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (q.1, q.2) from hq)
-  split at h; · cases h
-  rename_i x hx; split at h; · cases h
-  rename_i y hy; okSplit
-  cases h; exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
-
-/-- **`select` keeps `Tab.WF`**: the kept groups' rows gathered from the tagged concatenation. -/
-theorem select_wf {keep : USize → Enc → Enc → Except String Enc} {R S t : Tab A B} (h : select keep R S = .ok t)
-    (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.select, bind, Except.bind, Functor.map, Except.map] at h
-  split at h; · cases h
-  rename_i p hp
-  obtain ⟨C, tag⟩ := p
-  have hC : Vals.WF (A := .prod A B) (C.key, C.val) := tagged_wf hp hR hS
-  dsimp only at h
-  okSplit
-  cases h; exact Vals.gather_wf ‹_› hC
-
-theorem inter_wf {R S t : Tab A B} (h : R.inter S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := select_wf h hR hS
-
-theorem diff_wf {R S t : Tab A B} (h : R.diff S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := select_wf h hR hS
-
-/-- **`diag q D` keeps `Tab.WF`** where `q` does (`inter_wf`). -/
-theorem diag_wf {q : Tab A A → Except String (Tab A A)} (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {D t : Tab A A}
-    (h : diag q D = .ok t) (hD : D.WF) : t.WF := by
-  simp only [Tab.diag, bind, Except.bind] at h
-  split at h; · cases h
-  exact inter_wf h (hq _ _ ‹_› hD) hD
-
-end Tab
-
-/-- **`Tab.ofBits` is `Tab.WF`** on `Vals.WF` sides: both gathered. -/
-theorem Tab.ofBits_wf {n m : USize} {g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m} {t : Tab A C}
-    (h : Tab.ofBits g w o x ra y rc = .ok t) (hx : Vals.WF x) (hy : Vals.WF y) : t.WF := by
-  simp only [Tab.ofBits, bind, Except.bind, pure, Except.pure] at h
-  okSplit
-  cases h; exact ⟨Vals.gather_wf ‹_› hx, Vals.gather_wf ‹_› hy⟩
-
-/-- **`Vals.cross` keeps `Vals.WF`**: both sides gathered. -/
-theorem Vals.cross_wf {n m : USize} {x : Vals A n} {y : Vals B m} {r : (T : USize) × Vals A T × Vals B T}
-    (h : Vals.cross x y = .ok r) (hx : Vals.WF x) (hy : Vals.WF y) : Vals.WF r.2.1 ∧ Vals.WF r.2.2 := by
-  simp only [Vals.cross, bind, Except.bind, pure, Except.pure] at h
-  okSplit
-  cases h; exact ⟨Vals.gather_wf ‹_› hx, Vals.gather_wf ‹_› hy⟩
-
-namespace Tab
-
-theorem cross_wf {n m : USize} {X : Vals A n} {Y : Vals B m} {t : Tab A B} (h : Tab.cross X Y = .ok t)
-    (hX : Vals.WF X) (hY : Vals.WF Y) : t.WF := by
-  simp only [Tab.cross, bind, Except.bind] at h
-  split at h; · cases h
-  rename_i r hr
-  exact canon_wf h (Vals.cross_wf hr hX hY)
-
-theorem top_wf {n m : USize} {X : Vals A n} {Y : Vals B m} {t : Tab A B} (h : Tab.top X Y = .ok t)
-    (hX : Vals.WF X) (hY : Vals.WF Y) : t.WF := cross_wf h hX hY
-
-/-- **`inl X` keeps `Tab.WF`**: `X` on both sides, a right summand of no row. -/
-theorem inl_wf {n : USize} {X : Vals A n} {t : Tab A (.sum A B)} (h : Tab.inl (B := B) X = .ok t)
-    (hX : Vals.WF X) : t.WF := by
-  simp only [Tab.inl, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨hX, hX, Vals.none_wf ‹_›⟩
-
-theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A := A) Y = .ok t)
-    (hY : Vals.WF Y) : t.WF := by
-  simp only [Tab.inr, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨hY, Vals.none_wf ‹_›, hY⟩
-
-/-- **`compExpand` keeps `Tab.WF`**: `R.key` and `S.val` gathered at each output row, `canon`. -/
-theorem compExpand_wf {R : Tab A B} {S : Tab B C} {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc}
-    {t : Tab A C} (h : compExpand R S x = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  obtain ⟨N, p, g, f, K, cR, cS, w⟩ := x
-  simp only [Tab.compExpand, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨Vals.gather_wf ‹_› hR.1, Vals.gather_wf ‹_› hS.2⟩
-
-theorem compOne_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : compOne R S = .ok t) (hR : R.WF) (hS : S.WF) :
-    t.WF := by
-  simp only [Tab.compOne, bind, Except.bind] at h
-  split at h; · cases h
-  exact compExpand_wf h hR hS
-
-theorem compBlock_wf {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {t : Tab A C} (h : compBlock R S c j = .ok t)
-    (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compBlock, bind, Except.bind] at h
-  okSplit
-  exact compOne_wf h (keep_wf ‹_› hR) hS
-
-/-- **`compBlocks` keeps `Tab.WF`**: each block by `compBlock_wf`, met by `∪` (`union_wf`). -/
-theorem compBlocks_wf {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n} {t : Tab A C}
-    (h : compBlocks R S nb bid = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compBlocks, bind, Except.bind] at h
-  okSplit
-  refine foldlM_keeps (P := Tab.WF) (fun b a b' hb hw => ?_) _ h (compBlock_wf ‹_› hR hS)
-  simp only at hb
-  split at hb; · cases hb
-  exact union_wf hb hw (compBlock_wf ‹_› hR hS)
-
-theorem compFrom_wf {bound : Nat} {R : Tab A B} {S : Tab B C} {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc}
-    {t : Tab A C} (h : compFrom bound R S x = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compFrom, bind, Except.bind] at h
-  okSplit
-  all_goals first | exact compExpand_wf h hR hS | exact compBlocks_wf h hR hS
-
-/-- **`R ≫ S` keeps `Tab.WF`** (`compOne_wf`, `compFrom_wf`). -/
-theorem comp_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : R.comp S = .ok t) (hR : R.WF) (hS : S.WF) :
-    t.WF := by
-  simp only [Tab.comp, Tab.compWith, bind, Except.bind] at h
-  okSplit
-  all_goals first | exact compOne_wf h hR hS | exact compFrom_wf h hR hS
-
-/-- **`compPairs` keeps `Tab.WF`**: `comp`, or `compFrom` within `crossMax`. -/
-theorem compPairs_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : Tab.compPairs R S = .ok t) (hR : R.WF)
-    (hS : S.WF) : t.WF := by
-  simp only [Tab.compPairs, bind, Except.bind] at h
-  okSplit
-  all_goals first | exact comp_wf h hR hS | exact compFrom_wf h hR hS
-
-/-- **`⟨R, S⟩` keeps `Tab.WF`**: `compPairs` of `⟨𝟙, R⟩°` and `S`, its key rebracketed. -/
-theorem pair_wf {R : Tab A B} {S : Tab A C} {t : Tab A (.prod B C)} (h : R.pair S = .ok t) (hR : R.WF)
-    (hS : S.WF) : t.WF := by
-  simp only [Tab.pair, Functor.map, Except.map] at h
-  split at h; · cases h
-  rename_i T hT; cases h
-  have := compPairs_wf hT ⟨⟨hR.1, hR.2⟩, hR.1⟩ hS
-  exact ⟨this.1.1, this.1.2, this.2⟩
-
-/-- **`Rᴵ` keeps `Tab.WF`** on a `Vals.WF` `X` (`outl_wf`, `outr_wf`, `comp_wf`, `inter_wf`). -/
-theorem flat_wf {n : USize} {X : Vals (.prod I A) n} {R : Tab I (.prod A B)} {t : Tab (.prod I A) B}
-    (h : Tab.flat X R = .ok t) (hX : Vals.WF X) (hR : R.WF) : t.WF := by
-  simp only [Tab.flat, bind, Except.bind] at h
-  split at h; · cases h
-  rename_i a ha; split at h; · cases h
-  rename_i L hL; split at h; · cases h
-  rename_i b hb; split at h; · cases h
-  rename_i c hc; split at h; · cases h
-  rename_i d hd; split at h; · cases h
-  rename_i M hM; split at h; · cases h
-  rename_i P hP; split at h; · cases h
-  rename_i e he
-  have hRv : Vals.WF R.val := hR.2
-  have wL := comp_wf hL (outl_wf ha hX) hR
-  have wM := comp_wf hM (outr_wf hb hX) (conv_wf hd (outl_wf hc hRv))
-  exact comp_wf h (inter_wf hP wL wM) (outr_wf he hRv)
-
-end Tab
-
 /-! ### The bit-matrix and division ops -/
 
 /-- **`Vals.code2`'s joined side keeps `Vals.WF`**: the concatenation of the two (`Vals.concat_wf`). -/
@@ -322,7 +53,7 @@ theorem compSel_wf {bits : Nat} {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : c
 /-- **`keepBits` keeps `Tab.WF`**: rows of `T.canon` kept twice (`keep_wf`). -/
 theorem keepBits_wf {T t : Tab A C} {n m : USize} {g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m}
     (h : T.keepBits g w o x ra y rc = .ok t) (hT : T.WF) : t.WF := by
-  simp only [Tab.keepBits, bind, Except.bind] at h
+  simp only [Tab.keepBits, bind, Except.bind, pure, Except.pure] at h
   okSplit
   exact keep_wf h (keep_wf ‹_› (canon_wf ‹_› hT))
 
@@ -332,13 +63,6 @@ theorem ldivBits_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t
   simp only [Tab.ldivBits, bind, Except.bind, pure, Except.pure] at h
   okSplit
   exact ofBits_wf h (Vals.code2_wf ‹_› hR.2 hB.2) (Vals.code2_wf ‹_› hS.2 hC.2)
-
-theorem mem_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) B} (h : Tab.mem X = .ok t) (hX : Vals.WF X) :
-    t.WF := by
-  obtain ⟨m, lo, hi, f⟩ := X
-  simp only [Tab.mem, bind, Except.bind, pure, Except.pure] at h
-  okSplit
-  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.2⟩
 
 theorem cmpPairs_wf {op : Op} {t : QAtomicType} {T u : Tab (.atom t) (.atom t)} (h : cmpPairs op T = .ok u)
     (hT : T.WF) : u.WF := by
@@ -390,7 +114,7 @@ theorem ldivSel_wf {d : Tab A B → Tab A C → Tab B B → Tab C C → Except S
     {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
     (hd : ∀ {t}, d R S UB UC = .ok t → t.WF) (h : ldivSel d bits R S UB UC = .ok t) (hR : R.WF) (hS : S.WF)
     (hB : UB.WF) (hC : UC.WF) : t.WF := by
-  simp only [Tab.ldivSel, bind, Except.bind] at h
+  simp only [Tab.ldivSel, bind, Except.bind, pure, Except.pure] at h
   okSplit
   all_goals first | exact hd h | exact ldivBits_wf h hR hS hB hC
 
@@ -553,7 +277,7 @@ theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A 
   simp only [mu, bind, Except.bind] at h
   split at h; · cases h
   refine fixOn_wf Tab.WF (fun _ _ => pack_wf) (fun X t hX wX => ?_) h (zero_wf ‹_›)
-  simp only at hX
+  simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact union_wf hX wX (hf _ _ ‹_› wX)
 
@@ -562,7 +286,7 @@ theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
   simp only [nu, bind, Except.bind] at h
   split at h; · cases h
   refine fixOn_wf Tab.WF (fun _ _ => pack_wf) (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
-  simp only at hX
+  simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact inter_wf hX wX (hf _ _ ‹_› wX)
 
@@ -575,12 +299,12 @@ theorem star_wf {K B : Obj} {step : Tab B B → Except String (Tab B B)} (hf : �
   obtain rfl : r.1 = t := Except.ok.inj h
   refine (fixOn_wf (fun s : Tab K B × Tab K B => s.1.WF ∧ s.2.WF) (fun s t hs ws => ?_) (fun s t hs ws => ?_) hr
     ⟨canon_wf hP' hP, canon_wf hP' hP⟩).1
-  · simp only at hs
+  · simp only [bind] at hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
     obtain rfl : (U, D) = t := Except.ok.inj hs
     exact ⟨pack_wf hU ws.1, pack_wf hD ws.2⟩
-  · simp only at hs
+  · simp only [bind] at hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨Dr, hDr, hs⟩ := hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨T, hT, hs⟩ := hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨N, hN, hs⟩ := hs
@@ -605,7 +329,7 @@ theorem lamOf_wf {n : USize} {D : Vals A n} {r : Tab A B} {t : Tab A (.arr B)} (
     (hD : Vals.WF D) (hr : r.WF) : t.WF := by
   by_cases h0 : r.n.toNat = 0
   · simp only [Tab.lamOf, if_pos h0] at h; exact nil_wf h hD
-  · obtain ⟨U, hU, wU, -⟩ := lamOf_canon h
+  · obtain ⟨U, hU, wU, -⟩ := lamOf_canon h hD hr
     exact canon_wf hU (wU h0 hD hr)
 
 theorem lam_wf {n : USize} {D : Vals A n} {R : Tab A B} {t : Tab A (.arr B)} (h : Tab.lam D R = .ok t)
@@ -713,14 +437,14 @@ theorem cat_wf {K : Obj} {P : Tab K (.prod (.arr B) (.arr B))} {t : Tab K (.arr 
   split at h; · cases h
   exact canon_wf h ⟨hP.1, Vals.cat_wf ‹_› hP.2.1 hP.2.2⟩
 
-/-- **`snoc` keeps `Tab.WF`**: `cat` after `τ`, whose `n < 2^63` is `cat`'s guard (`Vals.cat_row`). -/
+/-- **`snoc` keeps `Tab.WF`**: `cat` after `τ`, whose `n < 2^63` is `cat`'s guard (`Vals.cat_lt`). -/
 theorem snoc_wf {K : Obj} {P : Tab K (.prod (.arr B) B)} {t : Tab K (.arr B)} (h : Tab.snoc P = .ok t)
     (hP : P.WF) : t.WF := by
   simp only [Tab.snoc, bind, Except.bind] at h
   split at h; · cases h
   rename_i y hy; split at h; · cases h
   rename_i z hz
-  exact canon_wf h ⟨hP.1, Vals.cat_wf hz hP.2.1 (Vals.tau_wf hy (Vals.cat_row hz).1 hP.2.2)⟩
+  exact canon_wf h ⟨hP.1, Vals.cat_wf hz hP.2.1 (Vals.tau_wf hy (Vals.cat_lt hz) hP.2.2)⟩
 
 theorem cons_wf {K : Obj} {P : Tab K (.prod B (.arr B))} {t : Tab K (.arr B)} (h : Tab.cons P = .ok t)
     (hP : P.WF) : t.WF := by
@@ -728,83 +452,13 @@ theorem cons_wf {K : Obj} {P : Tab K (.prod B (.arr B))} {t : Tab K (.arr B)} (h
   split at h; · cases h
   rename_i y hy; split at h; · cases h
   rename_i z hz
-  exact canon_wf h ⟨hP.1, Vals.cat_wf hz (Vals.tau_wf hy (Vals.cat_row hz).1 hP.2.1) hP.2.2⟩
+  exact canon_wf h ⟨hP.1, Vals.cat_wf hz (Vals.tau_wf hy (Vals.cat_lt hz) hP.2.1) hP.2.2⟩
 
 theorem zip_wf {K : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {t : Tab K (.arr (.prod A B))}
     (h : Tab.zip P = .ok t) (hP : P.WF) : t.WF := by
   simp only [Tab.zip, bind, Except.bind] at h
   split at h; · cases h
   exact canon_wf h ⟨hP.1, Vals.zip_wf ‹_› hP.2.1 hP.2.2⟩
-
-/-- **`uncons` keeps `Tab.WF`**: the rest of a non-empty cell `[SN, EN)` is `[SN + 1, EN)`, `EN ≤ m`
-(`cellSpan_where`). -/
-theorem uncons_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod B (.arr B))} (h : Tab.uncons X = .ok t)
-    (hX : Vals.WF X) : t.WF := by
-  obtain ⟨m, lo, up, f⟩ := X
-  simp only [Tab.uncons] at h
-  split at h; · cases h
-  rename_i hb
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨sM, hsM, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨gX, hgX, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨gf, hgf, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨l, hl, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨eM, heM, h⟩ := h
-  have hm63 : m.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hw1, hb1, -, hsel, -⟩ := cellSpan_where hse hlt hwh hm63 f
-  refine canon_wf h ⟨Vals.gather_wf hgX hX, Vals.gather_wf hgf hX.2, fun j => ?_, hX.2⟩
-  obtain ⟨i, hi, es⟩ := Arr.gather_raw s hsM j
-  obtain ⟨i', hi', ee⟩ := Arr.gather_raw e heM j
-  obtain rfl : i = i' := Fin.ext (hi.symm.trans hi')
-  have hlt' := (hsel j.1 j.2).2
-  rw [hi] at hlt'
-  have hEm : EN i ≤ m.toNat := by have := hb1 i; omega
-  have hlw : (raw .i64 M l.enc)[j.1]?.getD 0 = (SN i + 1).toUInt64 := by
-    have es' := (colMap_raw (colArr_ok hl)).2.2.2 j.1 j.2
-    rw [colConst_raw hc1, Array.getElem?_replicate, if_pos j.2, Option.getD_some, es, (hw1 i i.2).1] at es'
-    simp only [Op.eval, Except.ok.injEq] at es'
-    rw [← es']; exact (UInt64.ofNat_add _ _).symm
-  exact cell_wf_nat hlw (ee.trans (hw1 i i.2).2) (by omega) hEm hm63
-
-/-- **`unsnoc` keeps `Tab.WF`**: the front of a non-empty cell `[SN, EN)` is `[SN, EN - 1)`, `EN ≤ m`
-(`cellSpan_where`). -/
-theorem unsnoc_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.arr B) B)} (h : Tab.unsnoc X = .ok t)
-    (hX : Vals.WF X) : t.WF := by
-  obtain ⟨m, lo, up, f⟩ := X
-  simp only [Tab.unsnoc] at h
-  split at h; · cases h
-  rename_i hb
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨eM, heM, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨l, hl, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨gX, hgX, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨sM, hsM, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨gf, hgf, h⟩ := h
-  have hm63 : m.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hw1, hb1, -, hsel, -⟩ := cellSpan_where hse hlt hwh hm63 f
-  refine canon_wf h ⟨Vals.gather_wf hgX hX, ⟨fun j => ?_, hX.2⟩, Vals.gather_wf hgf hX.2⟩
-  obtain ⟨i, hi, es⟩ := Arr.gather_raw s hsM j
-  obtain ⟨i', hi', ee⟩ := Arr.gather_raw e heM j
-  obtain rfl : i = i' := Fin.ext (hi.symm.trans hi')
-  have hlt' := (hsel j.1 j.2).2
-  rw [hi] at hlt'
-  have hEm : EN i ≤ m.toNat := by have := hb1 i; omega
-  have hlw : (raw .i64 M l.enc)[j.1]?.getD 0 = (EN i - 1).toUInt64 := by
-    have es' := (colMap_raw (colArr_ok hl)).2.2.2 j.1 j.2
-    rw [colConst_raw hc1, Array.getElem?_replicate, if_pos j.2, Option.getD_some, ee, (hw1 i i.2).2] at es'
-    simp only [Op.eval, Except.ok.injEq] at es'
-    rw [← es', toUInt64_sub (by omega)]; rfl
-  exact cell_wf_nat (es.trans (hw1 i i.2).1) hlw (by omega) (by omega) hm63
 
 /-- **`uncat` keeps `Tab.WF`**: split `d ≤ EN - SN` of cell `[SN, EN)` (`expand_spec` of the counts `EN - SN + 1`) is
 `[SN, SN + d)` and `[SN + d, EN)`, inside `m` (`cellSpan_start_le` where the cell is empty). -/

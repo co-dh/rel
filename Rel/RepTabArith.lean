@@ -209,7 +209,7 @@ at the values `X`. -/
 theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .long n → Except String (Tab .long .long)}
     {TU : Core.Rel Int64 Int64}
     (hU : ∀ n (X : Vals .long n) t, U X = .ok t → ∀ a v, (∃ i, X.row i = a) → (t.Holds a v ↔ TU a v))
-    {T : Tab K .long} (h : D.succ U = .ok T) (x : K.El)
+    {T : Tab K .long} (h : D.succ U = .ok T) (hD : D.WF) (x : K.El)
     (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen TU u w := by
   simp only [Tab.succ, bind, Except.bind_eq_ok'] at h
   obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, N, hN, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
@@ -232,17 +232,18 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .lo
       simp (config := {decide := true}) only [ne_eq, this, not_false_eq_true, if_true, Ew.intStep_add]
       show (a + 1).toUInt64.toInt64 = _
       simp [ha]
-  rw [Tab.comp_holds hT]
+  have wE := Tab.comp_wf hE hD ⟨trivial, trivial⟩
+  rw [Tab.comp_holds hT ⟨wE.1, trivial⟩ ⟨trivial, trivial⟩]
   have inD : ∀ {u}, D.Holds x u → ∃ j, D.val.row j = u := fun ⟨j, _, hj⟩ => ⟨j, hj⟩
   constructor
   · rintro ⟨b, ⟨i, hx, hb⟩, hd⟩
     obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₂ _ _).1 hd
-    obtain ⟨u, hDu, hd'⟩ := (Tab.comp_holds hE x (E.val.row i)).1 ⟨i, hx, rfl⟩
+    obtain ⟨u, hDu, hd'⟩ := (Tab.comp_holds hE hD ⟨trivial, trivial⟩ x (E.val.row i)).1 ⟨i, hx, rfl⟩
     obtain ⟨rfl, y', hy'⟩ := (Tab.dom_holds hdu₁ _ _).1 hd'
     exact ⟨_, hDu, ⟨y', (hU _ _ _ hu₁ _ _ (inD hDu)).1 hy'⟩, (hrow i ▸ hb).symm, y,
       (hU _ _ _ hu₂ _ _ ⟨i, hb⟩).1 hy⟩
   · rintro ⟨u, hDu, ⟨y', hy'⟩, rfl, y, hy⟩
-    obtain ⟨i, hx, hu⟩ := (Tab.comp_holds hE x u).2
+    obtain ⟨i, hx, hu⟩ := (Tab.comp_holds hE hD ⟨trivial, trivial⟩ x u).2
       ⟨u, hDu, (Tab.dom_holds hdu₁ u u).2 ⟨rfl, y', (hU _ _ _ hu₁ _ _ (inD hDu)).2 hy'⟩⟩
     have hsi : Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul u 1 := by rw [hrow, hu]
     exact ⟨_, ⟨i, hx, hsi⟩, (Tab.dom_holds hdu₂ _ _).2 ⟨rfl, y, (hU _ _ _ hu₂ _ _ ⟨i, hsi⟩).2 hy⟩⟩
@@ -472,19 +473,25 @@ theorem Tab.arith_holds {K : Obj} {t : QAtomicType} {k : UInt8} {D : Tab K (.pro
     {U : {n : USize} → Vals (.atom t) n → Except String (Tab (.atom t) (.atom t))}
     {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
     (hU : ∀ n (X : Vals (.atom t) n) u, U X = .ok u → ∀ a v, (∃ i, X.row i = a) → (u.Holds a v ↔ TU a v))
-    {T : Tab K (.atom t)} (h : D.arith t k U = .ok T) (x : K.El) (w : (Obj.atom t).El) :
+    {T : Tab K (.atom t)} (h : D.arith t k U = .ok T) (hD : D.WF) (x : K.El) (w : (Obj.atom t).El) :
     T.Holds x w ↔ ∃ p, D.Holds x p ∧ Lang.arithDen t k TU p w := by
   simp only [Tab.arith, bind, Except.bind_eq_ok'] at h
   obtain ⟨u₁, hu₁, du₁, hdu₁, E₁, hE₁, u₂, hu₂, du₂, hdu₂, E, hE, wb, hwb, h⟩ := h
   obtain ⟨w', b⟩ := wb
   simp only at h
   obtain ⟨Kp, hKp, u₃, hu₃, hT⟩ := h
+  have w₀ : Tab.WF (⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod (.atom t) (.atom t)) D.n), D.val.1⟩ :
+      Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t)) :=
+    ⟨⟨hD.1, hD.2⟩, trivial⟩
+  have w₁ := Tab.comp_wf hE₁ w₀ ⟨trivial, trivial⟩
+  have w₂ := Tab.comp_wf hE ⟨w₁.1, trivial⟩ ⟨trivial, trivial⟩
+  have wP := Tab.keep_wf hKp ⟨w₂.1.1, trivial⟩
   have key : ∀ {A B : Obj} (T : Tab A B) a, (∃ i, T.key.row i = a) ↔ ∃ c, T.Holds a c :=
     fun _ _ => ⟨fun ⟨i, h⟩ => ⟨_, i, h, rfl⟩, fun ⟨_, i, h, _⟩ => ⟨i, h⟩⟩
   have k1 : ∀ x p, (∃ i, E₁.key.row i = (x, p)) ↔ D.Holds x p ∧ ∃ y, TU p.1 y := by
     intro x p
     rw [key]
-    simp only [Tab.comp_holds hE₁]
+    simp only [Tab.comp_holds hE₁ w₀ ⟨trivial, trivial⟩]
     constructor
     · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
       obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₁ b c).1 hdb
@@ -496,7 +503,7 @@ theorem Tab.arith_holds {K : Obj} {t : QAtomicType} {k : UInt8} {D : Tab K (.pro
   have k2 : ∀ x p, (∃ i, E.key.row i = (x, p)) ↔ D.Holds x p ∧ (∃ y, TU p.1 y) ∧ ∃ y, TU p.2 y := by
     intro x p
     rw [key]
-    simp only [Tab.comp_holds hE]
+    simp only [Tab.comp_holds hE ⟨w₁.1, trivial⟩ ⟨trivial, trivial⟩]
     constructor
     · rintro ⟨c, b, ⟨i, hi, hb⟩, hdb⟩
       obtain ⟨rfl, y, hy⟩ := (Tab.dom_holds hdu₂ b c).1 hdb
@@ -510,7 +517,7 @@ theorem Tab.arith_holds {K : Obj} {t : QAtomicType} {k : UInt8} {D : Tab K (.pro
   have inP : ∀ {v}, Kp.Holds x v → ∃ j, Kp.val.row j = v := fun ⟨j, _, hj⟩ => ⟨j, hj⟩
   have st : ∀ (i : Fin E.n.toNat) v, ((Enc.raw .i64 E.n b)[i.1]?.getD 0 ≠ 0 ∧ Vals.row (A := .atom t) w' i = v) ↔
       Lang.stepAt t k (E.key.row i).2 v := (stepColsAt_spec hwb · |>.2)
-  rw [Tab.comp_holds hT]
+  rw [Tab.comp_holds hT wP ⟨trivial, trivial⟩]
   have kp := Tab.keep_holds hKp (fun i hi => (stepColsAt_spec hwb ⟨i, hi⟩).1)
   constructor
   · rintro ⟨v, hk, hvw⟩

@@ -98,6 +98,51 @@ def intStep (op : UInt8) (nul x y : Int64) : Int64 :=
      else Int64.ofInt (if op == idiv then Int.fdiv x.toInt y.toInt else Int.fmod x.toInt y.toInt))
   else panic! s!"intStep: verb {op} has no integral case; `%` answers a float at every operand type"
 
+/-- `Int.fdiv`, `Int.fmod` of two words in words: the machine's truncating `/`, `%`, moved one step toward minus
+infinity when the division is inexact and the signs differ (`Int.fdiv_eq_tdiv`, `Int.fmod_eq_tmod`). -/
+private theorem fdiv_word (x y : Int64) (hy : y ≠ 0) :
+    Int64.ofInt (x.toInt.fdiv y.toInt) = (if x % y != 0 && (x < 0) != (y < 0) then x / y - 1 else x / y) ∧
+    Int64.ofInt (x.toInt.fmod y.toInt) = (if x % y != 0 && (x < 0) != (y < 0) then x % y + y else x % y) := by
+  have hq : Int64.ofInt (x.toInt.tdiv y.toInt) = x / y :=
+    (Int64.ofInt_eq_iff_bmod_eq_toInt _ _).2 (Int64.toInt_div x y).symm
+  have hr : Int64.ofInt (x.toInt.tmod y.toInt) = x % y := by rw [← Int64.toInt_mod, Int64.ofInt_toInt]
+  have hd : y.toInt ∣ x.toInt ↔ x % y = 0 := by
+    rw [Int.dvd_iff_tmod_eq_zero, ← Int64.toInt_mod, ← Int64.toInt_zero, Int64.toInt_inj]
+  have hx : 0 ≤ x.toInt ↔ ¬ x < 0 := by rw [Int64.lt_iff_toInt_lt, Int64.toInt_zero]; omega
+  have hy' : 0 ≤ y.toInt ↔ ¬ y < 0 := by rw [Int64.lt_iff_toInt_lt, Int64.toInt_zero]; omega
+  have hy0 : y.toInt ≠ 0 := fun h => hy (Int64.toInt_inj.1 (h.trans Int64.toInt_zero.symm))
+  rw [Int.fdiv_eq_tdiv, Int.fmod_eq_tmod, Int64.ofInt_sub, Int64.ofInt_add, hq, hr]
+  by_cases h0 : x % y = 0
+  · simp [hd, h0]
+  · have hn : ¬ y.toInt ∣ x.toInt := fun h => h0 (hd.1 h)
+    have hs : (y < 0 → y.toInt < 0) ∧ (¬ y < 0 → 0 < y.toInt) :=
+      ⟨fun h => by rwa [Int64.lt_iff_toInt_lt, Int64.toInt_zero] at h, fun h => by have := hy'.2 h; omega⟩
+    by_cases ha : x < 0 <;> by_cases hb : y < 0 <;> simp [hn, hx, hy', h0, ha, hb]
+    · have := hs.1 hb; simp [Int.sign_eq_neg_one_of_neg this, Int64.toNatClampNeg, Int.toNat_of_nonpos (Int.le_of_lt this)]
+    · have := hs.2 hb; simp [Int.sign_eq_one_of_pos this, Int.natAbs_of_nonneg (Int.le_of_lt this)]
+
+/-- What `intStep` runs as: `idiv` and `imod` by `fdiv_word`, where `Int.fdiv`, `Int.fmod` of `toInt` run in GMP once an
+operand is past a small `Int`; every other verb is `intStep` itself. -/
+private def intStepImpl (op : UInt8) (nul x y : Int64) : Int64 :=
+  if (op == idiv || op == imod) && !(x == nul || y == nul || y == 0) then
+    let c := x % y != 0 && (x < 0) != (y < 0)
+    if op == idiv then (if c then x / y - 1 else x / y) else (if c then x % y + y else x % y)
+  else intStep op nul x y
+
+@[csimp] private theorem intStep_eq_intStepImpl : @intStep = @intStepImpl := by
+  funext op nul x y; unfold intStepImpl; split
+  · rename_i h
+    simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, Bool.not_eq_true', Bool.or_eq_false_iff,
+      beq_eq_false_iff_ne] at h
+    obtain ⟨ho, hn⟩ := h
+    have hw := fdiv_word x y hn.2
+    rcases ho with rfl | rfl
+    · show (if x == nul || y == nul || y == 0 then nul else Int64.ofInt (Int.fdiv x.toInt y.toInt)) = _
+      simp [hn, hw.1]
+    · show (if x == nul || y == nul || y == 0 then nul else Int64.ofInt (Int.fmod x.toInt y.toInt)) = _
+      simp [hn, hw.2, show (imod == idiv) = false by decide]
+  · rfl
+
 
 
 
