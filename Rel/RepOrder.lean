@@ -83,7 +83,8 @@ theorem Arr.lt_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
   have hg : t ≠ .general := by rintro rfl; simp [ascLayout, orderKind] at hl
   obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hv hg i
   obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom x hv hg i'
-  simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some,
+  simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, Arr.plain, Bool.false_eq_true, if_false, List.nil_append,
+    List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some,
     Array.getElem?_map, ha, hb, Option.map_some] at h
   show Obj.key _ _ < Obj.key _ _
   rw [ex, ey, Obj.key_ordCode hl hg a hua, Obj.key_ordCode hl hg b hub]; exact h
@@ -125,7 +126,7 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es 
       fun q => by
         have e : seenKey n [(AscKey.cells n c lo.enc hi.enc fs, .pos)] q = (cellFns c.toNat (Enc.raw .i64 n lo.enc)
             (Enc.raw .i64 n hi.enc) (ascKeys c fs)).map (· q.1.toUInt64) := by
-          simp [seenKey, ascKeys, ascKey, List.map_map, Function.comp_def, Enc.raw, q.2]
+          simp [seenKey, ascKeys, ascKey, nulWords, hasNul, List.map_map, Function.comp_def, Enc.raw, q.2]
         rw [e]
         simp only [cellFns, List.map_flatMap, List.map_cons, List.map_map, Function.comp_def]
         congr 1; funext p

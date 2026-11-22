@@ -163,8 +163,8 @@ theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : 
     cases h
     obtain ⟨-, hrow⟩ := colMap_get ho
     have hU : ∀ m : USize, m.toNat < 2 ^ 64 := fun m => Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
-    obtain ⟨-, -, -, -, -, hfixA, hlastA⟩ := raw_scatter n₁ .pos x.enc n 0 a ha
-    obtain ⟨-, -, -, -, -, hfixB, hlastB⟩ := raw_scatter n₂ off y.enc n 0 b hb
+    obtain ⟨-, -, -, -, -, hfixA, hlastA⟩ := raw_scatter n₁ .pos x.enc n 0 a x.plain ha
+    obtain ⟨-, -, -, -, -, hfixB, hlastB⟩ := raw_scatter n₂ off y.enc n 0 b y.plain hb
     have hpos : ∀ k < n₁.toNat, ((raw .i64 n₁ (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
       simp [raw, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk (hU n₁))]
     have wA : ∀ j < n.toNat, (raw .i64 n a)[j]?.getD 0 =
@@ -371,14 +371,14 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
   subst h; exact ⟨_, _, rfl⟩
 
 /-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
-theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hf : ∃ md pk, P = .foR md pk) {x : Nat}
-    (hx : x < 2 ^ 63) (hl : 0 < K.toNat → (raw .i64 K P)[K.toNat - 1]?.getD 0 = x.toUInt64)
-    (h0 : K.toNat = 0 → x = 0) : lastCount K P hw = x := by
+theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hN : hasNul P = false)
+    (hf : ∃ md pk, P = .foR md pk) {x : Nat} (hx : x < 2 ^ 63) (hl : 0 < K.toNat → (raw .i64 K P)[K.toNat - 1]?.getD 0 = x.toUInt64)
+    (h0 : K.toNat = 0 → x = 0) : lastCount K P hw hN = x := by
   unfold lastCount
   split
   · rename_i hk
     obtain ⟨md, pk, rfl⟩ := hf
-    rw [Arr.get_raw_foR (Arr.mk _ hw) rfl]; change ((raw .i64 K (Enc.foR md pk))[K.toNat - 1]?.getD 0).toInt64.toNatClampNeg = x
+    rw [Arr.get_raw_foR (Arr.mk _ hw hN) rfl]; change ((raw .i64 K (Enc.foR md pk))[K.toNat - 1]?.getD 0).toInt64.toNatClampNeg = x
     rw [hl hk, ← Int64.toNat_toInt,
       toInt64_toInt (by rw [toNat_toUInt64 (by omega)]; omega), toNat_toUInt64 (by omega)]
     simp
@@ -472,7 +472,7 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
         by_cases e : q.1 = k
         · rw [e]; omega
         · have := ih.2 (by omega); omega
-    have hc := lastCount_eq (colPrefix_closed hP).2 hf (x := ((List.range n.toNat).map wN).sum)
+    have hc := lastCount_eq (colPrefix_closed hP).2 (colPrefix_plain hP) hf (x := ((List.range n.toNat).map wN).sum)
       (by have := (key n.toNat).1; omega)
       (fun hn => by rw [colPrefix_add_sum hP wN hw _ (by omega), Nat.sub_add_cancel hn])
       (fun hn => by rw [hn]; rfl)
@@ -866,7 +866,7 @@ section Checks
 private def wordsArr (t : QAtomicType) (ws : Array UInt64) (n : USize) : Option (Arr t n) :=
   if hn : n.toNat = ws.size then
     if ht : t.width.isSome then
-      if hu : t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2 then some (Arr.mk _ ((wordsFoR_closed ws hn).2.2 ht hu))
+      if hu : t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2 then some (Arr.mk _ ((wordsFoR_closed ws hn).2.2 ht hu) (hasNul_wordsFoR ws))
       else none
     else none
   else none

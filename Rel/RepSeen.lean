@@ -49,23 +49,26 @@ theorem ascCol_perm {m : USize} {c : AscKey × Enc} {x : Array UInt64} {k : List
       simp only [ascCol, bind, Except.bind, hix]; exact h)).1
     rw [← (foRWords_raw _ _ _ _ hix).1] at hx
     split at h; · cases h
+    split at h; · cases h
     rename_i hnone
     have hfind : ws.find? (fun x => decide (n.toNat ≤ x.toNat)) = none :=
       Array.find?_eq_none.2 fun a ha => Array.find?_eq_none.1 hnone a (hx ▸ hw a ha)
-    simp only [hfo, hfind]
+    have hnn : noNul "asc: cells" m (wordsFoR ws) = .ok () := by simp [noNul, hasNul_wordsFoR]
+    simp only [hfo, hnn, hfind]
     revert h
-    cases foRWords "asc: cells lo" n lo <;> cases foRWords "asc: cells hi" n hi <;> cases ascCodes c els <;>
-      intro h <;> first | exact ⟨_, rfl⟩ | cases h
+    cases foRWords "asc: cells lo" n lo <;> cases noNul "asc: cells lo" n lo <;> cases foRWords "asc: cells hi" n hi <;>
+      cases noNul "asc: cells hi" n hi <;> cases ascCodes c els <;> intro h <;> first | exact ⟨_, rfl⟩ | cases h
 
 /-- **`kasc ≫ kseen` answers**: over `kasc`'s sorted columns `vs`, keyed as `es`, `kseen` takes neither error: each
 column reads again (`ascCol_perm`) and the rows are in `kasc` order (`ascGrade_spec` through `kasc_grade`). What it
 answers is `kseen_ok`'s, the groups `Order.groupIn` numbers over the sorted rows' keys, row `q`'s key being input row
 `ps[q]`'s (`kasc_grade`). -/
-theorem kasc_kseen {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p)) :
+theorem kasc_kseen {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p))
+    (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t n x.2) (hN : n.toNat < 2 ^ 32) :
     ∃ r, kseen n ((es.map (·.1)).zip vs) = .ok r := by
   obtain ⟨ps, -, hperm, hvl, hcol⟩ := asc_perm n es vs p ha
   obtain ⟨cs, hc, -⟩ := kasc_ok ha
-  obtain ⟨-, -, -, hkey⟩ := kasc_grade ha
+  obtain ⟨-, -, -, hkey⟩ := kasc_grade ha hwf hN
   obtain ⟨hlc, hf⟩ := mapM_ok hc
   have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
   have hread : ∀ c ∈ (es.map (·.1)).zip vs, ∃ r, ascCol n c = .ok r := fun c hc' => by
