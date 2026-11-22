@@ -37,8 +37,10 @@ def file (dir q : String) : String := (System.FilePath.mk dir / q).toString
 /-- The one column writer of a side: each atom column of `x` (`cols` under the prefix `p`) to `file dir <path>`; a
     positions column has no file. -/
 def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
-  for (q, v) in cols A x p do
-    if let some f ← IO.ofExcept (ownFile q v) then
+  for (q, c) in cols A x p do
+    match c with
+    | .inl n => Db.ownWrite (file dir q) 0 0 oneKind n "" #[]
+    | .inr v => if let some f ← IO.ofExcept (ownFile q v) then
       Db.ownWrite (file dir q) f.code f.attr f.kind f.count f.domain f.parts
 
 /-- The bit pattern of a word of type `t` that is not in the canonical form `Obj.key` and the kernels assume (typed
@@ -95,8 +97,12 @@ def readVals : (A : Obj) → (dir p : String) → IO (String × (n : USize) × V
     let (_, ⟨l, x⟩) ← readVals a dir (p ++ ".l")
     let (_, ⟨r, y⟩) ← readVals b dir (p ++ ".r")
     return (file dir (p ++ ".tag"), ⟨n, l, r, tag, idx, x, y⟩)
-  -- no file: a side of `1` stores nothing, its count is its context's (a sum reads each position of it as `()`)
-  | .one, dir, p => return (file dir p, ⟨0, ()⟩)
+  -- a side of `1`: its file holds its count and no part (`Plan.oneKind`)
+  | .one, dir, p => do
+    let f ← Db.ownMap (file dir p)
+    unless f.kind == oneKind && f.parts.isEmpty do
+      throw (IO.userError s!"{file dir p}: constructor kind {f.kind} with {f.parts.size} parts, a side of `1` is kind {oneKind} with none")
+    return (file dir p, ⟨f.count, ()⟩)
 
 /-- The columns of `R`, a schema reversed (`Schema.objR`'s order), from `x`: each column's files under its name. -/
 def writeCols {n : USize} (dir : String) : (R : Schema) → Vals (Schema.objR .long .prod R) n → IO Unit
@@ -253,8 +259,10 @@ def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S
 /-- The encodings of the side `x`'s CSV columns' parts with their counts (`toCsv` of `cols`' order), as
     `Db.CsvShape.atoms` lists them; which objects a CSV column may be is `Db.Csv.schema`'s to say. -/
 def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List (USize × Enc)) := do
-  let ps ← (cols A x "").mapM fun
-    | (_, .vector _ k e _) => .ok (k, e)
+  -- a side of `1` has no CSV part: the field of a null is empty
+  let ps ← (cols A x "").filterMapM fun
+    | (_, .inl _) => .ok none
+    | (_, .inr (.vector _ k e _)) => .ok (some (k, e))
     | (p, _) => .error s!"{path}: column part `{p}` is not a vector"
   let (cs, rest) ← toCsv path A ps
   unless rest.isEmpty do .error s!"{path}: {rest.length} column parts past a side"
