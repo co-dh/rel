@@ -39,6 +39,16 @@ theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0
       exact Nat.lt_of_le_of_lt (hd b (mul_lt_of_lt_cdiv (Nat.two_pow_pos lg) h)).1 (by decide))
   exact ⟨by rw [hMr.1]; simp, by rw [blk_of_lgAt _ (by rw [hMr.2.1]; exact hlg), hMr.2.1], hMr.2.1⟩
 
+/-- A column encoded with no null bitmap flags no block (`nulAt_encodeAt`). -/
+theorem nulAt_encodeAt_empty (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray)
+    {patch : Bool} (b : Nat) (hb : b < Column.nblk (Kernel.Coc.encodeAt lg w.toUSize x patch).1) :
+    Column.nulAt (Kernel.Coc.encodeAt lg w.toUSize x patch).1 b = false := by
+  rw [(nblk_encode lg hlg w hw0 hw x (nul := .empty)).1] at hb
+  cases h : Column.nulAt (Kernel.Coc.encodeAt lg w.toUSize x patch).1 b
+  · rfl
+  · obtain ⟨j, -, -, hj⟩ := nulAt_encodeAt lg hlg w hw0 hw x .empty b (mul_lt_of_lt_cdiv (Nat.two_pow_pos _) hb) h
+    rw [bitAt_empty] at hj; cases hj
+
 /-- What the writers guarantee of a Frame-of-Reference column of `n` elements: one block per started
 `blk` elements, a pack ending where its last block's residuals do or where the patch list its header
 declares does, and no width past 64. -/

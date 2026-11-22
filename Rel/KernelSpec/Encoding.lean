@@ -1420,6 +1420,49 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
   · rw [hbits hni]
   · rfl
 
+/-- **The encoder flags a block only where it holds a null** (owner decision F): block `b`'s `nulAt` bit names a row
+`b * 2 ^ lg + j` of the block that is null in `nul`. -/
+theorem nulAt_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x nul : ByteArray)
+    {patch : Bool} (b : Nat) (hb : b * 2 ^ lg < x.size / w)
+    (h : Column.nulAt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 b = true) :
+    ∃ j < 2 ^ lg, b * 2 ^ lg + j < x.size / w ∧ Column.bitAt nul (b * 2 ^ lg + j) = true := by
+  have hwt : w.toUSize.toNat = w := by
+    rcases System.Platform.numBits_eq with h | h <;> simp [Nat.toUSize, h] <;> omega
+  have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
+  unfold Kernel.Coc.encodeAt at h
+  simp only [hwt, Nat.one_shiftLeft] at h
+  generalize x.size / w = n at *
+  cases hA : (Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).any (fun j => Column.bitAt nul (b * 2 ^ lg + j))
+  · exfalso
+    have hpb := fun c => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x c
+    have hpp := fun c => planBlock_plain lg w n (patch && decide (n < 2 ^ 32)) x nul c
+    have hpn := fun c => planBlock_nul lg w n (patch && decide (n < 2 ^ 32)) x nul c
+    generalize (patch && decide (n < 2 ^ 32)) = pl at hpb hpp hpn h
+    generalize Kernel.Coc.planBlock lg w n pl x nul = blk at hpp hpn h
+    have hd : ∀ c, c * 2 ^ lg < n → (blk c).2.2.2.2 ≤ 192 := fun c hc => by
+      cases hc' : (Array.range (min (c * 2 ^ lg + 2 ^ lg) n - c * 2 ^ lg)).any (fun j => Column.bitAt nul (c * 2 ^ lg + j))
+      · rw [hpp c hc']; have := (hpb c hc).2.1; omega
+      · exact (hpn c hc').2.2.1
+    generalize hbs : Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)) = bs at h
+    have hbsz : bs.size = (n + 2 ^ lg - 1) / 2 ^ lg := by rw [← hbs]; simp
+    have hbget : ∀ c (h : c < bs.size), bs[c] = blk c := by
+      intro c h; subst hbs; simp only [Array.getElem_map, getElem_range]
+    have hib : b < bs.size := hbsz ▸ (Nat.le_div_iff_mul_le hBp).2 (by rw [Nat.succ_mul]; omega)
+    have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
+      (bs.map fun x => (x.1.toUInt64, x.2.1.toUInt64, x.2.2.1, x.2.2.2.2)) (fun c h => by
+        simp only [Array.size_map] at h; simp only [Array.getElem_map]; rw [hbget c h]
+        exact Nat.lt_of_le_of_lt (hd c (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))) (by decide))
+    generalize Kernel.Coc.foRMeta lg (Kernel.Coc.sumNul w) n _ = M at hMr h
+    obtain ⟨-, -, hMb⟩ := hMr
+    have h3 : Column.widthByte M b = (blk b).2.2.2.2 := by
+      rw [(hMb b (by simpa using hib)).2]; simp [hbget _ hib]
+    rw [Column.nulAt, h3, hpp b hA] at h
+    have := (hpb b hb).2.1
+    simp only [decide_eq_true_eq] at h; omega
+  · obtain ⟨j, hj, hj'⟩ := Array.any_eq_true.1 hA
+    simp only [Array.size_range, getElem_range] at hj hj'
+    exact ⟨j, by omega, by omega, hj'⟩
+
 /-- `foROpt_encode` without a null: every element reads back as its key. -/
 theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray)
     {patch : Bool} (i : Nat) (hi : i < x.size / w) :

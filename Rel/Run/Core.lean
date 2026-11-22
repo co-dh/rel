@@ -133,8 +133,12 @@ theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isS
     rw [h.1, h.2.1]; simp only [Column.lgEnc, Nat.reducePow]; omega
   have hl := lgOk_encode (t.width.getD 0).toUSize (by
     rw [USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw.2 (Nat.lt_of_lt_of_le (by decide) USize.le_size))]; exact hw.2) b
+  have hN : ∀ c < Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (t.width.getD 0).toUSize b).1,
+      Column.nulAt (Kernel.Coc.encodeAt Column.lgEnc (t.width.getD 0).toUSize b).1 c = false :=
+    Verify.nulAt_encodeAt_empty Column.lgEnc (by decide) _ hw.1 hw.2 b
   cases t <;> simp only [Enc.WF] <;> first
-    | exact absurd rfl hu.1 | exact absurd hu.2 (by decide) | exact ⟨rfl, fun h => absurd h (by decide), hk, hl⟩
+    | exact absurd rfl hu.1 | exact absurd hu.2 (by decide)
+    | exact ⟨rfl, fun h => absurd h (by decide), hk, hl, fun c hc h => absurd ((hN c hc).symm.trans h) Bool.false_ne_true⟩
 
 /-- `foRBits` with no hoisted table reads the start `blockStarts` holds (`blockStarts_get`), so
     `Column.get`'s `#[]` and the kernels' table are one decode. -/
@@ -227,11 +231,14 @@ theorem wf_bools {X : Type} {n : USize} (p : Nat → Bool) :
   simp only [Nat.mul_one] at hs
   obtain ⟨hn, hk, -⟩ := Verify.nblk_encode Column.lgEnc (by decide) 1 (by decide) (by decide)
     (Column.packIds 8 n.toNat fun i => (p i).toNat) (patch := false)
-  refine ⟨rfl, fun _ i hi v hv => ?_, ?_, ?_⟩
+  refine ⟨rfl, fun _ i hi v hv => ?_, ?_, ?_, ?_⟩
   · rw [(foRBits_bools _ _ hi).1] at hv; obtain rfl := Option.some.inj hv; cases p i <;> decide
   · rw [show Kernel.Coc.bools n.toNat p = _ from congrArg (fun w => Kernel.Coc.encodeAt Column.lgEnc w _ false) h1, hn, hk, hs]
     simp only [Nat.div_one, Nat.one_mul, Column.lgEnc, Nat.reducePow]; omega
   · rw [Kernel.Coc.bools, Column.lgOk, lgAt_encodeAt Column.lgEnc (by decide) (USize.ofNat32 1 (by decide)) (by simp)]; rfl
+  · rw [show Kernel.Coc.bools n.toNat p = _ from congrArg (fun w => Kernel.Coc.encodeAt Column.lgEnc w _ false) h1]
+    exact fun b hb h => absurd ((Verify.nulAt_encodeAt_empty Column.lgEnc (by decide) 1 (by decide) (by decide) _ b
+      hb).symm.trans h) Bool.false_ne_true
 
 /-- **A boolean writer's column reads as its bitmap**: `boolBits` of `Coc.bools n` of a `packOf n f`'s bits is that
     `packOf`. Every writer's bitmap body (`cmpBitmap`, `bitBitmap`, `member*Bitmap`) is a `packOf`, so this one read
