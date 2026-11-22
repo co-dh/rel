@@ -154,9 +154,10 @@ def inits {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr 
 
 /-- **`tails` on the cells `X`** = `Λ(cat°) ≫ F(π₂)`: `Λ`'s ascending cell holds an array's splits by their first
 part, so by increasing split point, and `F(π₂)` on that cell is its payload's second column, the bounds kept: the
-suffixes by decreasing length, `[]` last. One row per key, so no `canon`. -/
+suffixes by decreasing length, `[]` last. One row per key, so no `canon`; `uncat` is a `canon` answer
+(`Tab.uncat_canonical`), so `lamOf`, no `canon` before `Λ` either. -/
 def tails {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr (.arr B))) := do
-  let L ← lam X (← uncat X)
+  let L ← lamOf X (← uncat X)
   match L.val with
   | ⟨m, lo, hi, f⟩ => pure ⟨L.n, L.key, ⟨m, lo, hi, f.2⟩⟩
 

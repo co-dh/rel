@@ -520,7 +520,7 @@ theorem tails_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr (.arr
   split at h; · cases h
   rename_i U hU; split at h; · cases h
   rename_i L hL
-  have wL := lam_wf hL hX (uncat_wf hU hX)
+  have wL := lamOf_wf hL hX (uncat_wf hU hX)
   obtain ⟨Ln, Lk, m, lo, hi, f⟩ := L
   simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   exact ⟨wL.1, wL.2.1, wL.2.2.2⟩

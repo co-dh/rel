@@ -432,16 +432,18 @@ theorem Tab.tails_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
       (Vals.row (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
     rw [Vals.row_arr, Vals.row_arr, List.map_map]
     congr 1; funext k; simp only [Function.comp_apply, apply_dite Prod.snd]; rfl
-  have hs : ∀ (hx : ∃ i, X.row i = xs) zs, lamDen U.Holds xs zs ↔
+  obtain ⟨C, hC⟩ := Tab.uncat_canonical hU
+  have hs : ∀ (hx : ∃ i, X.row i = xs) zs, lamDen C.Holds xs zs ↔
       zs = (List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k) :=
-    fun hx => lamDen_splits xs fun p => (Tab.uncat_holds hU wX xs p).trans (and_iff_right hx)
+    fun hx => lamDen_splits xs fun p =>
+      (Tab.canon_holds hC xs p).symm.trans ((Tab.uncat_holds hU wX xs p).trans (and_iff_right hx))
   constructor
   · rintro ⟨i, hk, hv⟩
-    obtain ⟨hx, hd⟩ := (Tab.lam_den hL wX (Tab.uncat_wf hU wX) xs _).1 ⟨i, hk, rfl⟩
+    obtain ⟨hx, hd⟩ := (Tab.lamOf_den hC hL wX (Tab.uncat_wf hU wX) xs _).1 ⟨i, hk, rfl⟩
     refine ⟨hx, ?_⟩
     rw [← hv, hrow, (hs hx _).1 hd, List.map_map]; rfl
   · rintro ⟨hx, rfl⟩
-    obtain ⟨i, hk, hv⟩ := (Tab.lam_den hL wX (Tab.uncat_wf hU wX) xs _).2 ⟨hx, (hs hx _).2 rfl⟩
+    obtain ⟨i, hk, hv⟩ := (Tab.lamOf_den hC hL wX (Tab.uncat_wf hU wX) xs _).2 ⟨hx, (hs hx _).2 rfl⟩
     exact ⟨i, hk, by rw [hrow]; simp only at hv; rw [hv, List.map_map]; rfl⟩
 
 theorem rowOK_tails : RowOK "tails" := rowOK_of (c := RowCode.tails) rfl rfl fun _ σ _ _ _ hs hv => by
