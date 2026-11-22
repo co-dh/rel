@@ -310,6 +310,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （`foldI`，经行 `flat`）三方逐字节相等，`native1a` 自声明 `obj 1 = {∗}`（`relc` 在 Lean scope 外读程序，
     `⊤(1,L)` 找不到 prelude 的 `1`）。`rel-native.c` 9.94 MB → 5.74 MB（无 `fi`）/ 7.29 MB（加 `fi`），
     `cc1 -O2` 峰值 2059 MB → 低于 1224 MB（`cap` 峰值为 `relc c` 本身）。
+    分支 `nativetm9`（7fe9c7c 之后）：`relc` 找不到 prelude 的 `1` 的真因是 `planIO` 的 `importModules` 未设
+    `loadExts`：registry（各程序的 homes）是 env extension，未加载时程序不读任何 home；改为 `loadExts := true`
+    （`runIO` 同），`native1a` 改用 `open Rel.Programs.prelude in`，删去自声明的 `obj 1`。表配方按列：新 `funC`
+    （每列一个 plan 函数，`gatherCols`、`concatB` 逐列调用），`prefixB` `spanB` 走 `funW`，`groupsB` 的计数与
+    `compFromB` 的行号只读字（`funW`，与表形无关），`compBitsB` 走 `funT`。`rel-native.c` 7.29 MB → 3.68 MB，
+    212 个函数（最大 `main` 12040 行、其次 2448 行）；`cap` 峰值 1417 MB 为 `relc c` 本身；native 三方逐字节相等。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
