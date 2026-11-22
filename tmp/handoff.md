@@ -24,15 +24,11 @@ module with `CAP_JOB=<name> CAP_MEM_MB=20000 /home/dh/repo/cc-guard/bin/cap lake
   `setify_den` passes `mem_wf hG hw`; `diag_holds (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)` after `hq`.
 - RepBits `ldivBits_holds` code2 pairings fixed: `(R.val, UB.val)` = `hR.2 hUB.2`, `(S.val, UC.val)` = `hS.2 hUC.2`.
 
-## Failing: `Rel.RepWFOps` (log `/data/tmp/job/85s2d-7.log`)
-Errors at 159:64, 173:31, 179:90, 183:4, 191:40 (`est_holds`, 155–206); 214:89, 230:31, 232:90, 233:53, 238:16,
-243:65, 244:8, 249:30 (`thin_den`, 211–); 411:87, 462:88, 474:96 (`mu_holds`/`star_holds` area). All are callers of
-`_holds` that now take WF:
-- `est_holds`/`thin_den`: `pair_holds hP` needs `(mem_wf hG hX) (mem_wf hG hX)`; `diff_holds hY`/`hY1`/`h` need both
-  operands' WF (`ran_wf`, `diff_wf`, `pair_wf`, outl/outr_wf, `comp_wf`); `comp_holds hPO`/`hWD` likewise. The
-  outputs of `q` need WF: add `(hqw : ∀ D t, q D = .ok t → D.WF → t.WF)` (as `diag_holds`, `diag_wf`), and pass it to
-  `diag_holds hq hqw …`. `lam_den h` → `lam_den h wD wR`.
-- RepWFOps 233 caller of `diag_holds`, GenKFold 1271/1449/1460 callers of `diag_holds` need `hqw`.
+## `Rel.RepWFOps` green (log `/data/tmp/job/85s2d-9.log`)
+- `est_holds` and `thin_den` take `(hqw : ∀ D t, q D = .ok t → D.WF → t.WF)` right after `hq`; their callers
+  (GenK*) must pass it (cf. `est_wf`, `diag_wf`, which take the same `hq`).
+- `mu_holds`/`star_holds` bodies pass the WF they already had to `union_holds`/`diff_holds`/`comp_holds`.
+- GenKFold 1271/1449/1460 callers of `diag_holds` need `hqw`.
 
 ## Not reached
 GenKBits, GenKFold (`peelL_holds hp`/`peelR_holds hp` at 236/275 need `hrest`; `arith_holds` 295 needs `hD`;
