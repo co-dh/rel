@@ -64,7 +64,7 @@ column reads again (`ascCol_perm`) and the rows are in `kasc` order (`ascGrade_s
 answers is `kseen_ok`'s, the groups `Order.groupIn` numbers over the sorted rows' keys, row `q`'s key being input row
 `ps[q]`'s (`kasc_grade`). -/
 theorem kasc_kseen {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p))
-    (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t n x.2) (hN : n.toNat < 2 ^ 32) :
+    (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t n x.2) (hN : n.toNat < 2 ^ 32) (hpl : ∀ x ∈ es, hasNul x.2 = false) :
     ∃ r, kseen n ((es.map (·.1)).zip vs) = .ok r := by
   obtain ⟨ps, -, hperm, hvl, hcol⟩ := asc_perm n es vs p ha
   obtain ⟨cs, hc, -⟩ := kasc_ok ha
@@ -75,8 +75,9 @@ theorem kasc_kseen {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
     obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hc'
     have hie : i < es.length := by simp at hi; omega
     have hic : i < cs.length := by omega
-    obtain ⟨ws, hv, hws, hwq⟩ := hcol i es[i] (vs[i]'(by omega)) (List.getElem?_eq_getElem hie)
+    obtain ⟨ws, nul, hv, hws, hwq, hnul, -⟩ := hcol i es[i] (vs[i]'(by omega)) (List.getElem?_eq_getElem hie)
       (List.getElem?_eq_getElem _)
+    obtain rfl := hnul (hpl _ (List.getElem_mem hie))
     have h0 := hf i es[i] cs[i] (List.getElem?_eq_getElem hie) (List.getElem?_eq_getElem hic)
     have hx := (ascCol_ok h0).1
     simp only [List.getElem_zip, List.getElem_map, hv]
