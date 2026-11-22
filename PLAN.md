@@ -252,6 +252,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     在第三个目录跑 `relc run`（`n.io`，Lean 语义），native 的 `out/io` 与之逐字节相等。
     尚未做（plan 拒绝并指名）：keyed input（读时 `Tab.canon` 排序）、可空 CSV 列 `S+1`（`ofCsv` 重组与检查）、
     从文件 map 的 float 列（规范形检查）、把 map 来的列写成 CSV（plan 没有从 parts 数组取出 part 的指令）。
+  - ✅ I11 native 的 `Tm`（分支 `nativetm`）：`Plan.tabB` 按每个节点的 `GenK` 配方（§4 的 kernel 复合）建表：
+    `val` `uni` `𝟘` `𝟙` `⊤` `π₁` `π₂` `≫`（`compOne`）`°` `∩` `−`（`select`）`∪` `dom` `ran` `⟨,⟩` `×`（CROSS）
+    `own` `share` `var`；按需节点读上下文已知的值（`compT` 的 `ran`、`∩` `−` `⟨,⟩` 的 `bound`）。`abi` 加
+    `USize.mul`。测试：`native1a` 14 个闭定义、`nativeIO` 的 `un` `cm`，`make native` 与 Lean 值逐字节相等。
+    仍拒绝并指名：`≤` `<`（`ordOp`）、值动词 `succ` `arith`、`\` `/`（`ldivSel`）、数组侧的 `Λ` `E` `est` `thin`
+    `nil` `at` 与三种 fold（缺 `cells` key）、`ν` `μ` `hylo`（plan 无循环指令）、`prim` `arg` `call` `callCv`
+    （行的 `Tab` 算子未移植）；求和/数组对象上的任何节点；从文件 map 的列（无 `Enc`）作运算数。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
