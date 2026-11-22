@@ -447,6 +447,74 @@ theorem mu_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except
   refine ⟨by rw [eXY]; exact sX, fun a b hF => (hY a b).2 (.inr ?_)⟩
   rw [eXY] at hF; exact hF
 
+/-- **The rounds of `Tab.muLin`**, `f` acting on relations as `F`, `F` additive (`hadd`): each round's `X` and `Δ`
+lie in any `M` that `F` keeps (`hM`), and `F(X) ⊑ X ∪ F(Δ)` (from `(𝟘, 𝟘)`; `X' = X ∪ Δ'` gives
+`F(X') ⊑ F(X) ∪ F(Δ') ⊑ X ∪ F(Δ) ∪ F(Δ') = X' ∪ F(Δ')`). The last round adds no row (`holds_of_n`), so `F(Δ) ⊑ X`
+and the answer is a prefixed point of `F`. -/
+theorem muLin_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
+    {F : Core.Rel A.El B.El → Core.Rel A.El B.El} (hf : ∀ X T, X.WF → f X = .ok T → ∀ a b, T.Holds a b ↔ F X.Holds a b)
+    (hfw : ∀ X t, f X = .ok t → X.WF → t.WF)
+    (hadd : ∀ X Y : Core.Rel A.El B.El, ∀ a b, F (fun a b => X a b ∨ Y a b) a b → F X a b ∨ F Y a b)
+    (M : Core.Rel A.El B.El) (hM : ∀ X : Core.Rel A.El B.El, (∀ a b, X a b → M a b) → ∀ a b, F X a b → M a b)
+    {Y : Tab A B} (h : Tab.muLin what cap f = .ok Y) :
+    (∀ a b, Y.Holds a b → M a b) ∧ ∀ a b, F Y.Holds a b → Y.Holds a b := by
+  simp only [Tab.muLin, bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at h
+  obtain ⟨Z, hZ, r, hr, rfl⟩ := h
+  -- a round: `Δ' = f(Δ) − X` packed, `X' = X ∪ Δ'`
+  have round : ∀ s s' : Tab A B × Tab A B, s.1.WF → s.2.WF →
+      (do let D ← (← (← f s.2).diff s.1).pack; pure (← s.1.union D, D) : Except String (Tab A B × Tab A B)) =
+        .ok s' →
+      s'.1.toList.Nodup ∧ s'.1.WF ∧ s'.2.WF ∧ (∀ a b, s'.2.Holds a b ↔ F s.2.Holds a b ∧ ¬s.1.Holds a b) ∧
+        s'.1.Holds = fun a b => s.1.Holds a b ∨ s'.2.Holds a b := by
+    intro s s' w1 w2 hs
+    simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
+    obtain ⟨T, hT, D0, hD0, D, hD, U, hU, rfl⟩ := hs
+    have wT := hfw _ _ hT w2
+    have w0 := diff_wf hD0 wT w1
+    have wD := pack_wf hD w0
+    refine ⟨union_nodup hU, union_wf hU w1 wD, wD, fun a b => ?_,
+      funext fun a => funext fun b => propext (union_holds hU w1 wD a b)⟩
+    rw [pack_holds hD w0, diff_holds hD0 wT w1, hf _ _ w2 hT]
+  let I : Tab A B × Tab A B → Prop := fun s => s.1.toList.Nodup ∧ s.1.WF ∧ s.2.WF ∧
+    (∀ a b, s.1.Holds a b → M a b) ∧ (∀ a b, s.2.Holds a b → M a b) ∧
+    ∀ a b, F s.1.Holds a b → s.1.Holds a b ∨ F s.2.Holds a b
+  have keep : ∀ s s', I s →
+      (do let D ← (← (← f s.2).diff s.1).pack; pure (← s.1.union D, D) : Except String (Tab A B × Tab A B)) =
+        .ok s' → I s' := by
+    intro s s' ⟨_, w1, w2, m1, m2, c⟩ hs
+    obtain ⟨d, w1', w2', eD, eX⟩ := round s s' w1 w2 hs
+    have mD : ∀ a b, s'.2.Holds a b → M a b := fun a b hd => hM _ m2 a b ((eD a b).1 hd).1
+    refine ⟨d, w1', w2', fun a b hx => ?_, mD, fun a b hx => ?_⟩
+    · rw [eX] at hx; exact hx.elim (m1 a b) (mD a b)
+    · rw [eX] at hx ⊢
+      rcases hadd _ _ a b hx with hx | hx
+      · rcases c a b hx with hx | hx
+        · exact .inl (.inl hx)
+        · by_cases e : s.1.Holds a b
+          · exact .inl (.inl e)
+          · exact .inl (.inr ((eD a b).2 ⟨hx, e⟩))
+      · exact .inr hx
+  have eZ : ∀ a b, ¬Z.Holds a b := fun a b hz => (zero_holds hZ a b).1 hz
+  obtain ⟨s, s', iS, hs, hp, hn⟩ := fixOn_inv I (fun s s' s'' iS hs hp => (Except.ok.inj hp : s' = s'') ▸ keep s s' iS hs)
+    _ _ _ ⟨by
+      rw [show Z.toList = [] from List.eq_nil_iff_forall_not_mem.2 fun p hp =>
+        eZ p.1 p.2 ((holds_iff_mem_toList Z p.1 p.2).2 hp)]
+      exact List.nodup_nil, zero_wf hZ, zero_wf hZ, fun a b hz => (eZ a b hz).elim,
+      fun a b hz => (eZ a b hz).elim, fun a b hz => .inr hz⟩ hr
+  obtain rfl : s' = r := Except.ok.inj hp
+  obtain ⟨dX, wX, wD, mX, -, cX⟩ := iS
+  obtain ⟨dY, -, -, eD, eX⟩ := round s s' wX wD hs
+  have hX := holds_of_n dX dY (fun a b hab => by rw [eX]; exact .inl hab) hn.symm
+  have eXY : s'.1.Holds = s.1.Holds :=
+    funext fun a => funext fun b => propext ⟨hX a b, fun hx => by rw [eX]; exact .inl hx⟩
+  refine ⟨fun a b hy => mX a b (hX a b hy), fun a b hF => ?_⟩
+  rw [eXY] at hF ⊢
+  rcases cX a b hF with hx | hx
+  · exact hx
+  · by_cases e : s.1.Holds a b
+    · exact e
+    · exact hX a b (by rw [eX]; exact .inr ((eD a b).2 ⟨hx, e⟩))
+
 open Core.Rel in
 /-- **`P ≫ star(R)`** (`Tab.star`), its step given the coreflexive `D` acting as `D ≫ R`: the table it returns is
 `P ≫ μX : 𝟙 ∪ R X`. Each round keeps `X ⊑ P μ`, `P ⊑ X`, `Δ ⊑ X`, and `k X b`, `b R c` give `k X c` or `k Δ b`; the

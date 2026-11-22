@@ -100,9 +100,12 @@ theorem GenK.nu_wf {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} (wS : S.
     (GenK.nu A B S φ).Wf :=
   GenK.tab_wf fun _ h => let ⟨_, hs, h⟩ := GenK.bind_ok h
     Tab.nu_wf (fun X _ ht wX => (wφ X wX).runE Known.wf_empty ht) h (wS.runE Known.wf_empty hs)
-theorem GenK.mu_wf {A B : Obj} {what : String} {cap : Nat} {φ : Tab A B → Rel A B} (wφ : ∀ X, X.WF → (φ X).Wf) :
-    (GenK.mu A B what cap φ).Wf :=
-  GenK.tab_wf fun _ h => Tab.mu_wf (fun X _ ht wX => (wφ X wX).runE Known.wf_empty ht) h
+theorem GenK.mu_wf {A B : Obj} {what : String} {cap : Nat} {lin : Bool} {φ : Tab A B → Rel A B}
+    (wφ : ∀ X, X.WF → (φ X).Wf) : (GenK.mu A B what cap lin φ).Wf :=
+  GenK.tab_wf fun _ h => by
+    cases lin
+    · exact Tab.mu_wf (fun X _ ht wX => (wφ X wX).runE Known.wf_empty ht) h
+    · exact Tab.muLin_wf (fun X _ ht wX => (wφ X wX).runE Known.wf_empty ht) h
 
 /-- `hylo`'s nodes are `μN : D ∪ ran(N ≫ ch)` and its answer `D ≫ μX : N ≫ φ(X)`: `Tab.mu_wf` of `WF` rounds
     (`compT_wf`, `Tab.union_wf`, `Tab.ran_wf`), then `Tab.comp_wf`. -/
@@ -1408,7 +1411,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       (fun X wX => code_wf (gen_wf b _ (hs.bind k (hconst X) wX).2)) fun _ _ h => Tm.den_mono hl.1 h
   case mu k w m b ih =>
     exact GenK.mu_sound (fun X wX => code_of ((ih (by omega)).1 _ _ hl.2 (hs.bind k (hconst X) wX)))
-      (fun X wX => code_wf (gen_wf b _ (hs.bind k (hconst X) wX).2)) fun _ _ h => Tm.den_mono hl.1 h
+      (fun X wX => code_wf (gen_wf b _ (hs.bind k (hconst X) wX).2)) (fun _ _ h => Tm.den_mono hl.1 h)
+      fun hlin X Y => Tm.den_linIn hlin _ X Y
   -- children `Tm.kids` reads in no shape: `Tm.gen`'s error table
   case hylo A' B' k w b ih =>
     have hc := Tm.genHyp_kids k A' b hl.2

@@ -255,6 +255,17 @@ theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A 
   split at hX; · cases hX
   exact union_wf hX wX (hf _ _ ‹_› wX)
 
+theorem muLin_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
+    (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : muLin what cap f = .ok t) : t.WF := by
+  simp only [muLin, bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at h
+  obtain ⟨Z, hZ, r, hr, rfl⟩ := h
+  refine (fixOn_wf (fun s : Tab A B × Tab A B => s.1.WF ∧ s.2.WF) (fun _ _ h w => Except.ok.inj h ▸ w)
+    (fun s t hs ⟨w1, w2⟩ => ?_) hr ⟨zero_wf hZ, zero_wf hZ⟩).1
+  simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
+  obtain ⟨T, hT, D0, hD0, D, hD, U, hU, rfl⟩ := hs
+  have wD := pack_wf hD (diff_wf hD0 (hf _ _ hT w2) w1)
+  exact ⟨union_wf hU w1 wD, wD⟩
+
 theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
     (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
   simp only [nu, bind, Except.bind] at h

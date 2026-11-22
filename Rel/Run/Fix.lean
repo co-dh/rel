@@ -42,6 +42,16 @@ rounds run fails with `capMsg what cap`, the chain has no fixed point that the p
 def mu (what : String) (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Tab A B) := do
   fixOn Tab.n Tab.pack (capMsg what cap) (fun X => f X >>= X.union) (cap - 1) (← Tab.zero)
 
+/-- **`μX : f(X)`, `f` additive in `X`** (`f(X ∪ Y) ⊑ f(X) ∪ f(Y)`, `Tm.linIn`), semi-naive (architecture §4): the
+state `(X, Δ)` from `(𝟘, 𝟘)`, a round `Δ' = f(Δ) − X` (packed), `X' = X ∪ Δ'`, so `f` reads only the rows the round
+before added. `X'` is `mu`'s round `X ∪ f(X)` (`f(X) ⊑ X ∪ f(Δ)` by additivity), hence the same rounds, cap and error;
+only `Δ'` is packed, since `X ∪ Δ'` adds no dead element to `X`'s payload. -/
+def muLin (what : String) (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Tab A B) := do
+  let Z ← Tab.zero
+  let r ← fixOn (fun s => s.1.n) pure (capMsg what cap)
+    (fun s => do let D ← (← (← f s.2).diff s.1).pack; pure (← s.1.union D, D)) (cap - 1) (Z, Z)
+  pure r.1
+
 /-- **`P ≫ star(R)`** = `P ≫ μX : 𝟙 ∪ R X`, semi-naive (architecture §4.5): the state `(X, Δ)` from `(P, P)`, `P`
 made canonical; a round composes only the frontier, `N = Δ ≫ R` (`step` given `ran Δ`, as `loop`'s), `Δ' = N − X`,
 `X' = X ∪ Δ'`. `≫` distributes over `∪`, so this is exact for the linear body, where `mu` composes all of `X` each
