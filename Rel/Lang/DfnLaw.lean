@@ -228,6 +228,19 @@ theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
+/-- `foldIRow` at `I×[E] ⟶ V` given `e : I ⟶ V×V`, `S : (I×V)×E ⟶ I×V` is `foldIDen`. -/
+theorem Prim.den_foldIRow {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
+    Prim.den foldIRow (.prod I (.arr E)) V [⟨I, .prod V V, Te⟩, ⟨.prod (.prod I V) E, .prod I V, TS⟩] =
+      foldIDen Te TS := by
+  have ho : foldIRow.objs (.prod I (.arr E)) V = some [I, V, E] := by
+    simp [Prim.objs, foldIRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == foldIRow.sym) = some ⟨RowCode.foldI, fun σ =>
+      Sem.two (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ₂ σ)) (X₂ := .prod (.prod (σ₁ σ) (σ₂ σ)) (σ.getD 2 .long))
+        (Y₂ := .prod (σ₁ σ) (σ₂ σ)) foldIDen⟩ := rfl
+  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.two]; exact dif_pos ⟨rfl, rfl, rfl, rfl⟩
+
 /-- `F(U)` at `[V] ⟶ [V]`, `U` the coreflexive on `P`: the lists whose elements are all in `P`. -/
 theorem Prim.den_mapRow_corefl {V : Obj} {TU : Den V V} {P : V.El → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
     (xs ys : List V.El) :
@@ -266,6 +279,11 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     have hd := congrFun (congrFun (Tm.flat_den ρ R) x) w
     simp only [DfnCut.cut, DfnCut.fused, Tm.den, Tm.argDen, Prim.den_flatRow] at hd ⊢
     exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
+  | foldI e S =>
+    -- `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` is `foldIDen` (`foldIDen_eq`), the row's meaning at every object
+    have hd := congrFun (congrFun (foldIDen_eq (e.den ρ) (S.den ρ)).symm x) w
+    simp only [DfnCut.cut, DfnCut.fused, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
+    exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
   | length u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
@@ -296,6 +314,6 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
 
 /-- **The rows of `dfns` are those of `DfnCut`** (`lengthRow`, `sumRow`, `flatRow`), whose replacement
     `Tm.dfnCut_den` proves: a row given a definition that is not one of them fails here. -/
-theorem Prim.dfn_read : dfns.map (·.1) = [lengthRow.sym, sumRow.sym, flatRow.sym] := rfl
+theorem Prim.dfn_read : dfns.map (·.1) = [lengthRow.sym, sumRow.sym, flatRow.sym, foldIRow.sym] := rfl
 
 end Rel.Lang

@@ -1,18 +1,17 @@
-# tm28b6a handoff (n-arg rows, then B6 foldI)
+# tm28b6b handoff (Tm28 B6: Tm.foldI -> fused prim row foldI)
 
-Done (WIP, not yet built green):
-- Rel/Run/Lang/Tm.lean: `Tm.pol` + new `Tm.spinePol` in one `mutual` block; `.arg f x` case is
-  `f.spinePol s k && x.pol s k || !t.fv.contains k`.
-- Rel/Lang/Den.lean: `Sems.le`, `Sems.sle`, `Sems.sle.nil/cons`; `Sem.one_mono`, `rowDens_mono`, `Prim.den_mono`
-  over `Sems.le ss ss'` (any length); `Tm.den_pol_spine` (conjunction motive: den half + argDen-of-spine half),
-  `Tm.den_pol` derived from it.
-- Rel/Run/Lang/Expand.lean `primE`: after the wrappers, a constant that is itself an `Fn` combinator of its
-  relations (any number, `GenK.foldI`) is fitted directly; tried last so no existing row's fit changes.
+Branch tm28b6b, from 5d7704e (tm28b6a). WIP commit made at the 40-call checkpoint, not yet built.
+
+Done (edits, unbuilt):
+- Deleted `Tm.foldI`, `Pre.foldI` and every arm (Tm, TmGen, Elab, ConvSpec, Den, GenSound, GenSoundTest).
+- Syntax: `foldIRow` (sig [e : I ⟶ V×V, S : (I×V)×E ⟶ I×V], I×[E] ⟶ V), last in the main `prims` list after `$`.
+- Den: `RowCode.foldI`, `Sem.two`, `Sem.two_mono`, rowDens entry (Sem.two ... foldIDen), rowDens_mono case.
+- GenK: `kernRows` moved after `end GenK` (end of file) so ``GenK.foldI`` resolves; entry ("foldI", ``GenK.foldI).
+- Elab: `lFold` emits `.prim foldIRow [e, S'] (.prod I (.arr x)) v`; `DfnCut.foldI` + uni/fused/cut; `dfns` "foldI".
+- DfnLaw: `Prim.den_foldIRow`, `Tm.dfnCut_den` foldI case via `foldIDen_eq.symm`, `Prim.dfn_read`.
+- GenSound: `rowOK_foldI`, rowsProved entry, rowsProved_ok case h33.
 
 Left:
-- build `Rel.Lang.Den Rel.Run.Lang.TmGen`, then GenSound/DfnLaw/GenSoundTest; fix fallout.
-- B6: foldIRow in Syntax `prims`, `RowCode.foldI` + `Sem.two` rowDens entry, kernRows ("foldI", GenK.foldI),
-  `DfnCut.foldI`, `dfns` entry, `Tm.dfnCut_den` case via `foldIDen_eq.symm`, `Prim.dfn_read`, `lFold`
-  (Elab ~:984) emits `Pre.prim foldIRow [e, S']`, delete `Pre.foldI`, `Tm.foldI` and every match arm (Tm.lean
-  68/137/147/183/233/289/336, Den 462/510/922, TmGen 180/239/324, Elab 293/385/595/2001/2399, ConvSpec 136/526,
-  GenSound 114/130/972, GenSoundTest 102), `rowOK_foldI` from `GenK.foldI_sound`, rowsProved entry.
+- Build `Rel.Lang.GenSoundTest Rel.Lang.DfnLaw Rel.Lang.ConvSpec`, fix fallout (rowOK_foldI's split shapes are a guess).
+- `#guard` in GenSoundTest: a lifted fold whose e/S mention the mu variable is still `monoOK`.
+- Gates: full build, make decode-allow panic-allow bang-allow pointfree, compile-diff, PLAN line.

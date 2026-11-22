@@ -295,6 +295,12 @@ def Sem.one {X Y A B : Obj} (D : Den X Y → Den A B) : List Sem → Den A B
   | [⟨X', Y', T⟩] => if h : X' = X ∧ Y' = Y then D (h.1 ▸ h.2 ▸ T) else 𝟘
   | _ => 𝟘
 
+/-- `Sem.one` for a row of two relation arguments, read at `X ⟶ Y` and `X₂ ⟶ Y₂`. -/
+def Sem.two {X Y X₂ Y₂ A B : Obj} (D : Den X Y → Den X₂ Y₂ → Den A B) : List Sem → Den A B
+  | [⟨X', Y', T⟩, ⟨X₂', Y₂', U⟩] =>
+    if h : X' = X ∧ Y' = Y ∧ X₂' = X₂ ∧ Y₂' = Y₂ then D (h.1 ▸ h.2.1 ▸ T) (h.2.2.1 ▸ h.2.2.2 ▸ U) else 𝟘
+  | _ => 𝟘
+
 /-- The arguments `ss` bound to the variables `ks`, one for one, the first outermost (as `List.lookup` finds the
     first); every other variable `𝟘`: what a call's body is read under (`Tm.call`). -/
 noncomputable def Val.args : List Nat → List Sem → Val
@@ -344,6 +350,7 @@ def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ �
 def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
+def foldI : RowCode := ⟨"foldI", fun σ => (.prod (σ₁ σ) (.arr (σ.getD 2 .long)), σ₂ σ)⟩
 end RowCode
 
 /-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
@@ -407,7 +414,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
-   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩] ++
+   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩,
+   ⟨foldI, fun σ => Sem.two (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ₂ σ))
+      (X₂ := .prod (.prod (σ₁ σ) (σ₂ σ)) (σ.getD 2 .long)) (Y₂ := .prod (σ₁ σ) (σ₂ σ)) foldIDen⟩] ++
   floatOps.map fun (s, o, _) =>
     ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩
 
@@ -459,7 +468,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
-  | ρ, _, _, .foldI e S => foldIDen (e.den ρ) (S.den ρ)
   | ρ, A, B, .var _ k => ρ k A B
   | _, _, _, .call ks _ _ b | _, _, _, .callCv ks _ _ _ b _ => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
@@ -507,7 +515,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
   | var _ k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS | foldI R S ihR ihS =>
+  | prod R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -772,6 +780,16 @@ theorem Sem.one_mono {X Y A B : Obj} {D : Den X Y → Den A B} (hD : ∀ {T T'},
       · simp only [dif_neg hh]; exact Core.Rel.le_refl _
     | cons => first | exact Core.Rel.le_refl _ | (simp only [Sem.one]; exact Core.Rel.le_refl _)
 
+theorem Sem.two_mono {X Y X₂ Y₂ A B : Obj} {D : Den X Y → Den X₂ Y₂ → Den A B}
+    (hD : ∀ {T T' U U'}, T ⊑ T' → U ⊑ U' → D T U ⊑ D T' U') {ss ss' : List Sem} (h : Sems.le ss ss') :
+    Sem.two D ss ⊑ Sem.two D ss' := by
+  rcases h with _ | @⟨X', Y', T, T', _, _, h, _ | @⟨X₂', Y₂', U, U', _, _, h', _ | _⟩⟩
+  all_goals first | exact Core.Rel.le_refl _ | simp only [Sem.two]
+  all_goals first | exact Core.Rel.le_refl _ | skip
+  by_cases hh : X' = X ∧ Y' = Y ∧ X₂' = X₂ ∧ Y₂' = Y₂
+  · simp only [dif_pos hh]; obtain ⟨rfl, rfl, rfl, rfl⟩ := hh; exact hD h h'
+  · simp only [dif_neg hh]; exact Core.Rel.le_refl _
+
 /-- Every row its `prims` entry marks `mono` reads its relation arguments monotonically, however many: the fact
     `Tm.spinePol` rests on. -/
 theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = true →
@@ -791,6 +809,7 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     exact le_iff.1 hT _ _ hm
+  · exact Sem.two_mono foldI_le h
 
 theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B : Obj} {ss ss' : List Sem}
     (h : Sems.le ss ss') : Prim.den r A B ss ⊑ Prim.den r A B ss' := by
@@ -924,9 +943,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
   | fold e S ihe ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 fold_le (ihe.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
-  | foldI e S ihe ihS =>
-    refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
-    exact sle.map2 foldI_le (ihe.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
   | prim r =>
     refine ⟨fun s ρ ρ' _ _ => sle.refl _, fun s ρ ρ' ss ss' hp _ h => ?_⟩
     simp only [Tm.spinePol] at hp

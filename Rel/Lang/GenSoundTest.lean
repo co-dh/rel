@@ -99,7 +99,7 @@ run_cmd do
   let objs (i : Nat) (x : Lean.Expr) := x.getAppArgs[i]?.any fun o => !o.isAppOf ``List.nil
   let wants : List (String × (Lean.Expr → Bool)) :=
     [("a constant", has fun x => x.isAppOf ``Tm.val || x.isAppOf ``Tm.uni),
-     ("a fold", has fun x => x.isAppOf ``Tm.fold || x.isAppOf ``Tm.foldr || x.isAppOf ``Tm.foldI),
+     ("a fold", has fun x => x.isAppOf ``Tm.fold || x.isAppOf ``Tm.foldr),
      ("a call to a generic definition", has fun x =>
        (x.isAppOfArity ``Tm.call 6 && objs 4 x) || (x.isAppOfArity ``Tm.callCv 8 && objs 5 x))]
   for (what, p) in wants do

@@ -234,34 +234,6 @@ def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Fn false A B) :
 
 end GenK
 
-/-- The rows of `prims` with a kernel body: each row's `Tab` operator, run under the `GenK` twin of the wrapper its
-    old constant runs under (`Expand.primE`), as `RowCode` gives the old ones; a row not here has no code
-    (`Tm.hasCode`). The operator is a constant given its leading arguments first: the `floatOps`
-    rows share `Tab.floatOp`, given the row. -/
-def kernRows : List (String × Lean.Name × List Lean.Expr) :=
-  ([("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
-   ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
-   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
-   ("inr", ``Tab.inr), ("inl°", ``Tab.inlConv), ("inr°", ``Tab.inrConv), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
-   ("inits", ``Tab.inits),
-   ("tails", ``Tab.tails),
-   ("concat", ``Tab.flatten),
-   ("filter", ``Tab.filter),
-   ("positions", ``Tab.positions),
-   ("asc", ``Tab.asc),
-   ("sums", ``Tab.sums),
-   ("takewhile", ``Tab.takewhile),
-   ("loop", ``Tab.loop),
-   ("merge", ``Tab.merge),
-   ("thinL", ``Tab.thinL),
-   ("F", ``Tab.map),
-   ("flat", ``Tab.flat),
-   ("$", ``Tab.cast)].map fun (s, c) => (s, c, [])) ++
-  floatOps.map fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])
-
--- every kernel row is a row of `prims`
-#guard kernRows.all fun (s, _) => prims.any (·.sym == s)
-
 /-! ### T4, T5: `≤ < succ`, the value verbs, `Λ E nil est thin at`, and the wrapper `after` of the rows -/
 
 namespace GenK
@@ -399,5 +371,34 @@ def hylo (A B : Obj) (what : String) (d e : Bool) (ch : Fn d A A) (φ : Tab A B 
   D.comp (← Tab.mu what (N.n.toNat + 3) fun Y => (compT (.ok N) (φ Y)).runE {})
 
 end GenK
+
+/-- The rows of `prims` with a kernel body: each row's `Tab` operator, run under the `GenK` twin of the wrapper its
+    old constant runs under (`Expand.primE`), as `RowCode` gives the old ones, or a `GenK` code of its relations
+    itself (`foldI`); a row not here has no code (`Tm.hasCode`). The operator is a constant given its leading
+    arguments first: the `floatOps` rows share `Tab.floatOp`, given the row. After `GenK`, which `foldI` names. -/
+def kernRows : List (String × Lean.Name × List Lean.Expr) :=
+  ([("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
+   ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
+   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
+   ("inr", ``Tab.inr), ("inl°", ``Tab.inlConv), ("inr°", ``Tab.inrConv), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
+   ("inits", ``Tab.inits),
+   ("tails", ``Tab.tails),
+   ("concat", ``Tab.flatten),
+   ("filter", ``Tab.filter),
+   ("positions", ``Tab.positions),
+   ("asc", ``Tab.asc),
+   ("sums", ``Tab.sums),
+   ("takewhile", ``Tab.takewhile),
+   ("loop", ``Tab.loop),
+   ("merge", ``Tab.merge),
+   ("thinL", ``Tab.thinL),
+   ("F", ``Tab.map),
+   ("flat", ``Tab.flat),
+   ("$", ``Tab.cast),
+   ("foldI", ``GenK.foldI)].map fun (s, c) => (s, c, [])) ++
+  floatOps.map fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])
+
+-- every kernel row is a row of `prims`
+#guard kernRows.all fun (s, _) => prims.any (·.sym == s)
 
 end Rel.Lang

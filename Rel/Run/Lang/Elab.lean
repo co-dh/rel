@@ -290,7 +290,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .share k R => return .share k (← R.instObj ph σ)
-  | _, _, .foldI e S => return .foldI (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .var d k => pure (.var d k)
   | _, _, .call ks c os b => return .call ks c (os.map (·.inst ph σ)) (← b.instObj ph σ)
   | _, _, .callCv ks c c' os b u => return .callCv ks c c' (os.map (·.inst ph σ)) (← b.instObj ph σ) (← u.instObj ph σ)
@@ -382,7 +381,6 @@ inductive Pre
   | leq (pos : Pos) (n : OTy)
   | lt (pos : Pos) (n : OTy)
   | fold (right : Bool) (e s : Pre)
-  | foldI (e s : Pre)
   /-- A literal; `gd` the generic definition whose body holds it (`Env.gdef`), where its numerals' objects are
       the call's, checked at each call. -/
   | lit (pos : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String)
@@ -592,7 +590,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .leq q n => return .leq (← fp q) n
   | .lt q n => return .lt (← fp q) n
   | .fold d e s => return .fold d (← mo e) (← mo s)
-  | .foldI e s => return .foldI (← mo e) (← mo s)
   | .lit q a b ps gd => return .lit (← fp q) a b ps gd
   | .close q x a why => return .close (← fp q) (← mo x) a why
   | .var q k a b t => return .var (← fp q) k a b t
@@ -991,7 +988,7 @@ def lFold : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy → M 
     let iv := OTy.prod I v; let vx := OTy.prod v x
     let S' := comp (pair (comp (outl iv x) (outl I v)) (pair (comp (outl iv x) (outr I v)) (outr iv x)))
       (pair (outl I vx) (keyed I S vx v))
-    pure (compSh I a (.arr x) X (foldI e S'), a, v)
+    pure (compSh I a (.arr x) X (.prim foldIRow [e, S'] (.prod I (.arr x)) v), a, v)
 
 end Rows
 
@@ -1998,7 +1995,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .atPos k => throw s!"at({k})"
   | .foldr .. => throw "⦇e,S⦈ʳ"
   | .fold .. => throw "⦇e,S⦈"
-  | .foldI .. => throw "a lifted fold"
 
 /-- `t° = Zπᵢ°` (`Proj`): `π₁° = 𝟙π₁°`, `(RS)° = S°(Zπᵢ°)`, and a meet or pair of two on one projection
     (`Proj.meet`). The error is only that `t` is not of that form: the caller reports its own leaf. -/
@@ -2061,17 +2057,22 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
   | flat {I A B : Obj} (R : Tm I (.prod A B)) :
     DfnCut (A := .prod I A) (B := B)
       (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
+  | foldI {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V)) :
+    DfnCut (A := .prod I (.arr E)) (B := V)
+      (.comp (.meet (.comp .outl (.conv .outl)) (.comp .outr (.fold (.ran (.pair .id (.comp e .outr)))
+        (.meet S (.comp .outl (.comp .outl (.conv .outl))))))) .outr)
 
 /-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
 def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
   | .length u₀ u | .sum _ u₀ u => some (u₀, u)
-  | .flat _ => none
+  | .flat _ | .foldI _ _ => none
 
 /-- The row the definition is the fused form of. -/
 def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .length _ _ => .prim lengthRow
   | .sum _ _ _ => .prim sumRow
   | .flat R => .arg (.prim flatRow) R
+  | .foldI e S => .arg (.arg (.prim foldIRow) e) S
 
 /-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does; a row whose law
     needs no universe, itself. -/
@@ -2080,6 +2081,7 @@ def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | @DfnCut.sum t _ _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
     (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
   | .flat R => .arg (.prim flatRow) R
+  | .foldI e S => .arg (.arg (.prim foldIRow) e) S
 
 /-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
     definition from the row's built relations and the universe `u` of its target (base and step both on it), at
@@ -2093,6 +2095,11 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
      | _, _, _ => none),
    ("flat", fun A B xs _ => match A, xs with
      | .prod I A, [⟨I', AB, R⟩] => if h : I' = I ∧ AB = .prod A B then some ⟨_, .flat (h.1 ▸ h.2 ▸ R)⟩ else none
+     | _, _ => none),
+   ("foldI", fun A B xs _ => match A, xs with
+     | .prod I (.arr E), [⟨I', VV, e⟩, ⟨IVE, IV, S⟩] =>
+       if h : I' = I ∧ VV = .prod B B ∧ IVE = .prod (.prod I B) E ∧ IV = .prod I B then
+         some ⟨_, .foldI (h.1 ▸ h.2.1 ▸ e) (h.2.2.1 ▸ h.2.2.2 ▸ S)⟩ else none
      | _, _ => none)]
 
 section Build
@@ -2396,15 +2403,6 @@ def build : Pre → Except Err Res
         pure ⟨.arr E, V, .fold (← closed? dp (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod V' E) V) : Tm (.prod V E) V)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
-  | .foldI e s => do
-    let r ← build e; let ⟨I, VV, _⟩ := r
-    let sr ← build s
-    match VV, sr with
-    | .prod V _, ⟨.prod _ E, _, _⟩ => do
-      let et ← at? dp (A := I) (B := .prod V V) r
-      let S ← at? dp (A := .prod (.prod I V) E) (B := .prod I V) sr
-      pure ⟨_, _, .foldI et S⟩
-    | _, _ => internal dp "the lifted fold's objects"
   | .lit p a b ps gd => litRes objs mc dp p a b ps gd
   | .close p q a why => do closeRes objs mc dp p a why (← build q)
   -- the children and the body run on the nodes in demand, no universe read

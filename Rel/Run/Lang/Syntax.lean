@@ -235,6 +235,14 @@ def flatRow : Prim :=
   { sym := "flat", sig := ([((.var {} "I", .prod (.var {} "A") (.var {} "B")), some false)],
       .prod (.var {} "I") (.var {} "A"), .var {} "B"),
     written := false, aop := .error "AOP declares no family read as one relation of the key and the source" }
+/-- `⦇e,S⦈` given a family (§e): `e : I ⟶ V×V`, `S : (I×V)×E ⟶ I×V` as one relation `I×[E] ⟶ V`, the fused form
+    of its definition `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` (`Elab.dfns`), one fold per (key, array) in demand
+    (`GenK.foldI`). -/
+def foldIRow : Prim :=
+  { sym := "foldI", sig := ([((.var {} "I", .prod (.var {} "V") (.var {} "V")), some false),
+      ((.prod (.prod (.var {} "I") (.var {} "V")) (.var {} "E"), .prod (.var {} "I") (.var {} "V")), some false)],
+      .prod (.var {} "I") (.list (.var {} "E")), .var {} "V"),
+    written := false, aop := .error "AOP declares no fold of a family read as one relation of the key and the list" }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -308,7 +316,8 @@ def prims : List Prim :=
    -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
-     aop := .error "AOP declares no change of a number's representation" }] ++
+     aop := .error "AOP declares no change of a number's representation" },
+   foldIRow] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
   floatOps.map fun (s, o, u) =>

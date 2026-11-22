@@ -100,7 +100,7 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["∋", "inl", "inr", "τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc", "inl°", "inr°",
-   "tails", "takewhile", "sums", "flat", "$"] ++ floatOps.map (·.1)
+   "tails", "takewhile", "sums", "flat", "$", "foldI"] ++ floatOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
@@ -111,7 +111,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
   | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.GenHyp P ∧ S.GenHyp P ∧ U.GenHyp P ∧ V.GenHyp P
   | _, _, .nu k S b => b.pol true k = true ∧ S.GenHyp P ∧ b.GenHyp P
   -- the children's term asks no more than the body (`Tm.genHyp_kids`)
@@ -127,7 +127,7 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .fold R S | _, _, .foldr R S | _, _, .foldI R S | _, _, .arg R S => R.monoOK && S.monoOK
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
@@ -748,6 +748,38 @@ theorem rowOK_flat : RowOK "flat" := rowOK_args (c := RowCode.flat) rfl rfl fun 
     · exact GenK.flat_sound hss
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_foldI : RowOK "foldI" := rowOK_args (c := RowCode.foldI) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
+  have hr : rowArity "foldI" = 2 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨⟨X₂, Y₂, x₂⟩, _ | ⟨_, _⟩⟩⟩ <;>
+    simp only [List.length_cons, List.length_nil, hr] at hn <;> try omega
+  rcases σ with _ | ⟨a, _ | ⟨b, _ | ⟨c, σ⟩⟩⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getElem?_cons_succ, List.getD_cons_zero,
+      List.getD_cons_succ, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    dsimp only [Option.bind] at hv
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    dsimp only [Option.bind] at hv
+    cases hv
+    refine ⟨by unfold GenK.foldI; exact GenK.ofVals_wf, fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨⟨X₂', Y₂', U⟩, _ | ⟨_, _⟩⟩⟩ <;>
+      simp only [CodesRep, and_true, and_false] at hss
+    obtain ⟨hs1, hs2⟩ := hss
+    split at hs1
+    case isFalse => exact hs1.elim
+    rename_i he; revert hs1; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hs1
+    split at hs2
+    case isFalse => exact hs2.elim
+    rename_i he; revert hs2; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hs2
+    simp only [Sem.two]
+    split
+    · exact GenK.foldI_sound hs1 (hw _ List.mem_cons_self) hs2 (hw _ (List.mem_cons_of_mem _ List.mem_cons_self))
+    · rename_i h; exact absurd ⟨rfl, rfl, rfl, rfl⟩ h
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `rowGens_proved` checks. -/
 theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h1 : r.sym = "∋"; · rw [h1]; exact rowOK_mem
@@ -782,9 +814,10 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h30 : r.sym = "sums"; · rw [h30]; exact rowOK_sums
   by_cases h31 : r.sym = "flat"; · rw [h31]; exact rowOK_flat
   by_cases h32 : r.sym = "$"; · rw [h32]; exact rowOK_cast
+  by_cases h33 : r.sym = "foldI"; · rw [h33]; exact rowOK_foldI
   by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
   simp [rowsProved, hu, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
-    h21, h22, h23, h24, h25, h26, h27, h28, h29, h30, h31, h32] at h
+    h21, h22, h23, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}
@@ -969,9 +1002,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case foldr R S ihR ihS =>
     exact GenK.foldr_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf S η hs.2))
-  case foldI R S ihR ihS =>
-    exact GenK.foldI_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_wf (gen_wf R η hs.2))
-      (code_of ((ihS (by omega)).1 η ρ hl.2 hs)) (code_wf (gen_wf S η hs.2))
   case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case E R ih =>
     exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)

@@ -177,7 +177,6 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .share k R => match η.sh.at k A B with
     | some r => r
     | none => R.code η.closed
-  | .prod I (.arr Y), V, .foldI e S => GenK.foldI I Y V e.dem S.dem (e.code η) (S.code η)
   | A, B, .var _ k => η k A B
   | A, B, .nu k S b => GenK.nu A B (S.code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .mu k w n b => GenK.mu A B w n fun X => b.code (η.bind k (GenK.const A B (.ok X)))
@@ -236,7 +235,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S
+  | _, _, .foldr R S | _, _, .fold R S
   | _, _, .nu _ R S => R.hasCode && S.hasCode
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.hasCode && S.hasCode && U.hasCode && V.hasCode
   | A, _, .hylo k _ b =>
@@ -321,7 +320,6 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .fold (E := E) (V := V) e S => return g ``Tm.fold #[oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .share (A := A) (B := B) k R =>
     return g ``Tm.share #[oE A, oE B, toExpr k, ← match sh[k]? with | some c => pure c | none => tmE sh R]
-  | _, _, .foldI (I := I) (E := E) (V := V) e S => return g ``Tm.foldI #[oE I, oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .var (A := A) (B := B) d k => return g ``Tm.var #[oE A, oE B, toExpr d, toExpr k]
   | _, _, .call (A := A) (B := B) ks c os b =>
     return g ``Tm.call #[oE A, oE B, toExpr ks, toExpr c, toExpr os, ← tmE sh b]
