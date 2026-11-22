@@ -1,30 +1,23 @@
-# kchain handoff (stop at the call budget)
+# nullband2 handoff (branch nullband2, base 52f6cd8 + merge of nullband 339f9b0)
 
-Branch `kchain` = ff3c4fc + merge of integ6 f000a93 (the fsqrt unary rows were NOT in ff3c4fc).
+Done
+- `Obj.one` constructor (Rel/Run/Core.lean): `El = Unit`, `dflt = ()`, `Vals .one n = Unit`, `Vals.row = ()`,
+  `rowsImpl = Array.replicate n ()`.
+- `Obj.key .one () = []` and `Obj.key_prefix` case (Rel/ObjOrder.lean): `inr ()` keys `[1]`, after every `inl`, so
+  null sorts last.
 
-Done:
-- `Rel/Kernel/Scan.lean`: `chain`, `chainAll`, `segAll`; `kscan op rev s t n (seg : Option Enc) es (pre post := [])`.
-  Old calls with a variable `seg : Enc` type-check by the `Enc → Option Enc` coercion and the default chains; a
-  literal dot constructor (`.pos`, `.foR …`) must be written `some .pos` (the expected type is `Option Enc`).
-- Rust `crate/src/scan.rs` (`chain`, `Scan.seg : Option`, `pre` on every load, `post` on every answer block,
-  div/mod steps refused), `crate/src/ffi/scan.rs` (9-arg export), `crate/src/lean.rs` (`B::unbox_u64`).
-  `cargo test --features std --release kscan`: 4 passed.
-- Laws: `raw_kscanChain` (general; `raw_kscan` its empty-chain case), `mapM_chain`, `chainAll_ok`, `chainAll_nil`,
-  `kscan_last`, `kscan_closed`, `kscan_foR`, `colMap_chain` (RepCanon; `colMap_get`, `colMap_raw` its cases),
-  `kscan_ok` (GenKBits; `seg : Option Enc`).
-- `colMap op n a b t s pre post` = one `kscan … none [a, b] pre post`: no `colConst n 1` column.
-- ScanTest: chained `#guard` with `seg = none` and a `decide` on `chain`; a div step refused.
+Open design point found (step 1)
+- `encVals` (Rel/Run/Table.lean:157) reads a side's count from its first column part; `.one` stores no column, so the
+  count of a `.one` side has no source. Inside a sum the count `r` of a `.one` summand is irrelevant to `Vals.row`
+  (`Obj.one.dflt = ()`), but a top-level `.one` side (a relation `A ⟶ 1` written to an own file) needs it.
+  Candidate: a `.one` side writes one part of count `n` and no bytes.
 
-Left (in order):
-1. One-pass element-wise verbs in `Rel/Run/Arith.lean` (`wideCol`, `ftoCols`, `fstepCols`, `fmapCols`) and
-   `Rel/Run/Cast.lean`: `colMap op n a b t s (pre := widen s) (post := extra ++ [(.fto t, 0)])`; the keep flag is a
-   second pass `colMap .first n w w .u1 .i64 [] [(.ne, nulWord)]` (kscan writes one column; the flag is a function
-   of the value column, so no second export). `widen`: f32 → `[(.f32to64, 0)]`, ordNum r → `[(.cast r .i64, 0)]`,
-   else `[]`. `imod` keeps several passes (x used twice). Specs in `Rel/RepTabArith.lean` follow from `colMap_chain`.
-2. Unary rows f32/f64 → f64, floor → i64 via `[(.ffloor,0), (.cast .f64 .i64,0)]` (check `castWord f64 i64` gives
-   2^63 off-range so the keep flag drops it): `unaryDen` (Rel/Lang/Den.lean), `rowDens`, prims
-   (Rel/Run/Lang/Syntax.lean), GenSound `rowOK_unary`, tests `unaryT`/`sqrtIntT` in Rel/Lang/TestFloatArith.lean.
-3. Drop `canon` after `keep` in `Tab.unary`/`Tab.cast`; one lemma "keep of a canonical table is canonical"
-   (`Tab.keep`, Rel/Run/SetOps.lean:20).
-4. Measure sqrt over 10^6 f64 and f32 rows before (96326f9) and after with `CAP_JOB=… cap`.
-5. Gates, PLAN.md S8, architecture §4, ffi export doc comment (still describes the 7-arg signature).
+Elaborator switch (not started)
+- `obj 1 = {∗}` (Rel/Programs/Prelude.lean:6) is an `ObjDef.elems` of one word; `objInfo` (Rel/Run/Lang/Expand.lean:26)
+  stores every elems object at `.long`. Rule: an elems object of ONE element is stored at `.one`.
+- Then: `uniOf` `.base` (Elab.lean ~317) returns `⟨.long, …⟩` from `ObjInfo.uni : Arr .i64`; `litCol` leaf
+  (Elab.lean ~1776) builds a long column of codes; `showEl`/`cmpEl` (Expand.lean ~68-95); `csvLeaves` match
+  (Expand.lean ~571) `.sum (.atom a) (.atom _)` -> `.sum (.atom a) .one`; TestIO csvNullIO readback type
+  `.sum .long (.atom .u8)` -> `.sum .long .one`, `Sum.inr 0` -> `Sum.inr ()`.
+
+Left: steps 2-5 of the brief (in-band `atom + one` layout, nullable foR writer, kernels, decode-allow).

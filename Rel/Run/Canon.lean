@@ -40,6 +40,8 @@ def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (
       let py ← colMap .mul n idx.enc tag.enc
       pure ((.atom .u1, tag.enc) ::
         ((← Vals.summandCols (n := n) "left" Vals.cols px x) ++ (← Vals.summandCols (n := n) "right" Vals.cols py y)))
+  -- no column: every row of `1` is its one value
+  | .one, _, _ => .ok []
 
 /-- **The side `x` without duplicate rows, ascending**: `kasc` over its atom columns (sorted columns `vs`, permutation
 `p`), `kseen` over the sorted columns (the first row of each run of equal rows, `k` of them, ascending), `kgather` of

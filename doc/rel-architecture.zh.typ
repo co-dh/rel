@@ -79,8 +79,9 @@ inductive Obj                           -- 类型的代码；A B 都是 Obj
   | prod (a b : Obj)                    -- 积：多列
   | arr  (b : Obj)                      -- 每格一个数组：平铺 payload + lo/hi
   | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置；atom+1 是一列，null 在带内（§4 foR）
+  | one                                 -- 终对象 1（决定 M）：只有一个值，不存任何列；`obj 1 = {∗}` 这类单元素对象都是它
 
-Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean 类型，prod ↦ ×，arr ↦ List，sum ↦ ⊕
+Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean 类型，prod ↦ ×，arr ↦ List，sum ↦ ⊕，one ↦ Unit
 
 structure Known (A B : Obj) where
   dom : Option (Σ n, Vals A n)          -- 已知的定义域 K
@@ -258,7 +259,8 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     （不带标志的块整块留下）；`inr°` 留 null 行；`tot(R)` 是 scatter 到全 null 列；`sum` 经 `bsum` 跳过 null。
     gather、scatter、seen 带着标志走（gather 出的块可能变成带标志）。
   - 浮点：ALP 的每块整数也是 foR（`alpBits` 读 `foRBits`），同一标志适用。
-  - 范围：只有 `atom+1` 在带内；`(V+1)+1` 与一般 `A+B` 仍是 tag/idx，内层的 `V+1` 作为 payload 存在带内。]
+  - 范围：只有 `atom+1` 在带内；`(V+1)+1` 与一般 `A+B` 仍是 tag/idx，内层的 `V+1` 作为 payload 存在带内。
+  - `1` 是单元对象 `Obj.one`（决定 M）：elaborator 把单元素对象存成它，不再是 `.long` 的 code 0；规则由类型给出。]
 
 == 原子类型：都是 foR 的 code
 
