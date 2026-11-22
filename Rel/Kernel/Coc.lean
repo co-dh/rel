@@ -140,32 +140,57 @@ def excBlob (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array Nat) (la
 read unsigned has a bit at `d` or above. A shift and not `2 ^ d`, which is a big `Nat` at `d = 64`. -/
 def outside (f : Int64) (d : Nat) (k : Int64) : Bool := k < f || d < 64 && (k - f).toUInt64 >>> d.toUInt64 != 0
 
-/-- How many of the block's keys `ks` frame `f` at width `d` patches. -/
-def npatch (ks : Array Int64) (f : Int64) (d : Nat) : Nat := (ks.filter (outside f d)).size
+/-- Sorted runs `xs` and `ys` merged by `le`, `f` the fuel (their lengths' sum suffices). -/
+def mergeBy {α : Type} (le : α → α → Bool) : Nat → List α → List α → List α
+  | 0, xs, ys => xs ++ ys
+  | _ + 1, [], ys => ys
+  | _ + 1, x :: xs, [] => x :: xs
+  | f + 1, x :: xs, y :: ys => if le x y then x :: mergeBy le f xs (y :: ys) else y :: mergeBy le f (x :: xs) ys
 
-/-- The frame at width `d`: of `mn` and the keys, the one patching fewest, the lowest of those. The incumbent's count
-rides in the accumulator, so each candidate costs one `npatch`, its own. -/
-def frameAt (ks : Array Int64) (mn : Int64) (d : Nat) : Int64 :=
-  (ks.foldl (init := (mn, npatch ks mn d)) fun (f, nf) k =>
-    let nk := npatch ks k d
-    if nk < nf || (nk == nf && k < f) then (k, nk) else (f, nf)).1
+/-- One bottom-up merge pass: neighbouring runs merged two by two. -/
+def mergePairs {α : Type} (le : α → α → Bool) : List (List α) → List (List α)
+  | a :: b :: t => mergeBy le (a.length + b.length) a b :: mergePairs le t
+  | l => l
 
-/-- The bytes block `ks` costs at width `d`, at `w` bytes an element: its residual bits rounded up to bytes, and
-`2 + w` a patch (its `u16` position and the element). -/
-def cost (ks : Array Int64) (mn : Int64) (w d : Nat) : Nat :=
-  (ks.size * d + 7) / 8 + npatch ks (frameAt ks mn d) d * (2 + w)
+/-- `l` sorted by `le`: singleton runs merged pairwise `l.length` times, past the `log₂` passes that leave one run.
+Structural recursion throughout, because `decide` reduces it, where core's `List.mergeSort` is well-founded and stops
+the kernel. -/
+def sortBy {α : Type} (le : α → α → Bool) (l : List α) : List α :=
+  (Nat.repeat (mergePairs le) l.length (l.map ([·]))).flatten
 
-/-- A block's frame key and residual width: the width of `0 .. W` that `cost` is least at, the narrower on a tie, and
-its `frameAt`; `W`, the bit length of `mx - mn`, patches nothing, and a wider width only costs more. Where `patch` is
-off — ALP's integers, whose exceptions are its own blob's — the width is `W` and the frame `mn`. -/
+/-- `l` less its longest prefix where `p` holds, and that prefix's length added to `n`. -/
+def skipWhile {α : Type} (p : α → Bool) : List α → Nat → List α × Nat
+  | a :: l, n => if p a then skipWhile p l (n + 1) else (a :: l, n)
+  | [], n => ([], n)
+
+/-- The frame at width `d` and the count of keys it patches, over a block's keys sorted ascending, `s`: of `mn` and
+the keys, the one patching fewest, the lowest of those — the least `(count, frame)` pair, whatever order the candidates
+come in. Frame `f` leaves inside the keys from `f` up to below `f + 2 ^ d`, a run of `s` whose two ends only move up as
+`f` does, so one pass counts every candidate's: linear, where a count per candidate was quadratic in a block and
+`decide` ran out of memory at 300 keys. -/
+def frameOf (s : List Int64) (mn : Int64) (d : Nat) : Int64 × Nat :=
+  (s.foldl (init := ((mn, (s.filter (outside mn d)).length), (s, 0), (s, 0)))
+    fun (b, lo, hi) f =>
+      let lo := skipWhile (· < f) lo.1 lo.2
+      let hi := skipWhile (fun k => k < f || !outside f d k) hi.1 hi.2
+      let nf := s.length - (hi.2 - lo.2)
+      (if nf < b.2 || (nf == b.2 && f < b.1) then (f, nf) else b, lo, hi)).1
+
+/-- A block's frame key and residual width: the width of `0 .. W` whose bytes are least, the narrower on a tie, and
+its `frameOf`; a width's bytes are the residual bits rounded up to bytes and `2 + w` a patch (its `u16` position and the
+element). `W`, the bit length of `mx - mn`, patches nothing, and a wider width only costs more. Where `patch` is off —
+ALP's integers, whose exceptions are its own blob's — the width is `W` and the frame `mn`. -/
 def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 × Nat :=
   if patch then
-    -- the best width's cost rides in the accumulator: recomputing it is a `frameAt` search per width
-    let d := ((List.range (Rel.Column.widthFor (mx - mn).toUInt64.toNat + 1)).foldl (init := (0, cost ks mn w 0))
-      fun (d, cd) c =>
-        let cc := cost ks mn w c
-        if cc < cd then (c, cc) else (d, cd)).1
-    (frameAt ks mn d, d)
+    -- sorted once a block; the best width's bytes and frame ride in the accumulator
+    let s := sortBy (fun a b => decide (a ≤ b)) ks.toList
+    let cost := fun (d : Nat) (p : Int64 × Nat) => (ks.size * d + 7) / 8 + p.2 * (2 + w)
+    let p0 := frameOf s mn 0
+    let r := (List.range (Rel.Column.widthFor (mx - mn).toUInt64.toNat + 1)).foldl (init := (0, cost 0 p0, p0.1))
+      fun (d, cd, f) c =>
+        let p := frameOf s mn c
+        if cost c p < cd then (c, cost c p, p.1) else (d, cd, f)
+    (r.2.2, r.1)
   else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
 /-- Block `b`, of `B` elements, of a nullable column (`atom+1`, owner decision K) where it holds a null: `x` its `n`

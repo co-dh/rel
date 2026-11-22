@@ -410,6 +410,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   10 行过（峰值 RSS 1986 MB，即 import 基线），20 行过（2370 MB），40/70/100 行在 4 GB 地址空间下 OOM；只编码
   40 行就超过 6 GB（RSS 4945 MB，24 s）。所以跨块边界（≥ 65 行，即使输入用 2^6 的块）的 `decide` 例子都放不下；
   要有，得先把 `encodeAt` 的 spec 改成 kernel 能便宜归约的形式（frame 搜索不做块内平方、读字节不走 list）。
+  🔶 cocspec（2026-11-22）：frame 搜索已线性——`planOf` 每块用结构递归的 `sortBy` 排一次序（core 的 `mergeSort`
+  是良基递归，kernel 归约不动），`frameOf` 一遍扫过、两个前缀指针数每个候选 frame 的 patch；输出与旧体逐位相同
+  （600 个随机块、36189 个 key、w = 1/8 差分 0 处不同；全部 kernel 测试原样通过）。`planOf` 300 个不同 key：旧体
+  4 GB 下 abort，新体 6.2 s / 2553 MB 过。但 1100 行例子仍放不下，剩三处与搜索无关的 kernel 代价（4 GB 地址空间）：
+  (a) 按下标读 list 背的 `ByteArray` 每次 O(i)：`keyAt` 读 `pushBits` 建的 40 行 abort，读平铺 list 的 300 行
+  abort；顺序解 1100 行只要 1.0 s——`encodeAt` 的 `keyAt`/`bitAt nul` 要改成按块顺序消费字节（连带重证
+  `foRBits_encode`、`foRWF_encodeAt`、`nblk_encode`、`wordsFoR_closed`、`raw_encodeAt`、`lgAt_encodeAt`、`foRBytes_wf`）；
+  (b) `(Array.range m).map f`（`blockOf`/`planBlock` 建 `ks` 的写法）300 个就 2260 MB；(c) 解码侧 `raw`/`foRBits`
+  逐元素按下标读：用编码器给出的 1100 行全零元数据（平铺字面量、空 pack）单独解码，40 行 1.2 s，1100 行 OOM。
+  另：一个 1024 key 的块单是 `planOf` 在 8 GB 下也 abort（33 s），kernel 每步留在 whnf 缓存里的内存是下限。
   ✅ 运行路径上的平方解码（nodecode 765527b）：`foRBits` 每个元素重算 trailer 偏移 O(nblk)，`Vals.cols` 为判形状解码整列；
   改为 `foROk` 判形状、`foRExc`/`foRFrame` 取 `blockStarts` 的 trailer；10⁵ 行 leftJoin 40.2s→0.96s、带 null 的 group-by
   187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
@@ -814,7 +824,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `CRel.ran`/`CRel.dom`（等 W3 的 `pick` 替换，以及 `sym`、`general`、`arr`、`sum` 列）。前提 `hK` 已去掉
       （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
       序码相等）；`Vals.seenKey_iff_row`（序码相等 ⇔ 行相等）、`Vals.nub_distinct`（005e20e）。缺：1024 行块边界的
-      Lean 例子（`decide +kernel` 不归约；已诊断为 `encodeAt` 的 kernel 归约代价，见 D.12 的 seen1024 一条）。
+      Lean 例子（`decide +kernel` 不归约；已诊断为 `encodeAt` 的 kernel 归约代价，见 D.12 的 seen1024 一条；
+      cocspec 去掉了 frame 搜索的平方，剩下按下标读字节与解码侧，见同处）。
     - W3 策略（2026-11-19，owner 三条决定，取代同日早先的 "全部算子齐了再一次切换"）：
       - 工作清单是 `Rel.Lang.Tm` 的构造子（43 个；`call`/`arg`/`var`/`share`/`own` 是绑定），spec 是各自的
         denotation。不照旧层 `CRel.*`/`Alg.*` 的列表移植（owner："this is stupid"）；旧算子只在 `#guard` 里做对照，
