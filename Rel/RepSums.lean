@@ -603,10 +603,10 @@ theorem _root_.Rel.Arr.get_ofBits {u : QAtomicType} (hu : u = .i64 ∨ u = .f64)
 /-- **`sumTail`'s bad column holds no null**: at either type it is a `colMap .or` (`colMap_plain`). -/
 theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad : Enc} {W : Arr u n}
     (h : Tab.sumTail what u n seg v = .ok (W, bad)) : hasNul bad = false := by
-  cases u <;> simp only [Tab.sumTail, bind, Except.bind] at h <;> (repeat' split at h) <;>
-    first
-    | cases h
-    | simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨-, rfl⟩ := h; exact colMap_plain ‹_›
+  cases u <;> simp only [Tab.sumTail, bind, Except.bind] at h
+  all_goals (repeat' split at h)
+  all_goals try cases h
+  all_goals rename_i hb; exact colMap_plain hb
 
 /-- **`sumTail` is the left fold `⦇[0, plus]⦈` of each run up to each row** (`sums` per key, `sum` per cell): `Kk`
 names the runs and `seg` marks their first rows (`runScan_ok`); row `t` of `W` is the fold of `stepAt u add` from `0`
