@@ -4,7 +4,7 @@
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {alloc::{format, string::String, vec::Vec}, core::sync::atomic::AtomicUsize,
-     crate::{DEFAULT_LG, csv::{self, Col}, ffi::{Form, Sink}, lean::{B, O, box_usize_o, boxed, ctor}, own::{self, Fail}, scan}};
+     crate::{DEFAULT_LG, csv::{self, Col}, ffi::Sink, lean::{B, O, box_usize_o, boxed, ctor}, own::{self, Fail}, scan}};
 
 /// The schema `CsvCols` (`List (String × CsvShape × QAtomicType × List String)`) as columns: each pair a ctor of two
 /// fields, the enums `CsvShape` and `QAtomicType` boxed constructor indices.
@@ -39,7 +39,7 @@ fn read(path: B, cs: B) -> Result<O, Fail> {
     let mut es: Vec<O> = Vec::new();
     for (c, (col, bad)) in cs.iter().zip(&bad).enumerate() {
         for (part, k) in csv::counts(&lx, c, col).into_iter().enumerate() {
-            let e = Sink::new(k, 8, Form::For).enc().answer(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad));
+            let e = Sink::new(k, 8).enc().answer(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad));
             es.push(ctor(0, [box_usize_o(k), e], &[]));
         }
     }

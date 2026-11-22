@@ -5,7 +5,7 @@
 use crate::pod::{self};
 use crate::blocks::{Blocks, Grid, Src, tag};
 use crate::coc::Coc;
-use crate::ffi::{Form, Sink};
+use crate::ffi::Sink;
 use crate::ids;
 use crate::lean::{B, O};
 use alloc::{format, string::String, vec::Vec};
@@ -479,7 +479,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
     let cut = if t == QT_BOOLEAN { 1 } else if tw < 8 { (1u64 << (8 * tw)) - 1 } else { !0u64 };
     // the writer may fill blocks on several threads, so the one block holding `last` stores it atomically
     let (fin, last) = (core::sync::atomic::AtomicU64::new(0), if rev { 0 } else { n.wrapping_sub(1) });
-    let e = Sink::new(n, 8, Form::For).enc().answer(&|buf: &mut [i64], lo: usize| {
+    let e = Sink::new(n, 8).enc().answer(&|buf: &mut [i64], lo: usize| {
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
         // a compare against a constant block: the compare kernel's bits, each a row's word
@@ -517,7 +517,7 @@ mod kscan_tests {
         Ok(out)
     }
     fn bytes(v: &[u64], w: usize) -> Vec<u8> { v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect() }
-    fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w, Form::For).enc().answer(&Blocks::dense(&bytes(v, w), w)) }
+    fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w).enc().answer(&Blocks::dense(&bytes(v, w), w)) }
     fn enc_bits(v: &[u64]) -> O { enc_for(&v.iter().map(|b| b & 1).collect::<Vec<_>>(), 1) }
     fn parts(o: &O) -> Vec<Vec<u8>> {
         let b = o.borrow();

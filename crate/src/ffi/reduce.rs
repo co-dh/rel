@@ -5,7 +5,7 @@
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 use {crate::lean::{B, O}, crate::{c, reduce}, alloc::{format, string::String, vec::Vec},
-     crate::{exports::scatter::{blocks_view, except, for_view}, ffi::{Form, Sink}}};
+     crate::{exports::scatter::{blocks_view, except, for_view}, ffi::Sink}};
 
 
 /// The `n` words of a block source, as `i64` (`foRWords`' reading of an index column).
@@ -37,7 +37,7 @@ fn bitrows(all: bool, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B,
     let offs: Vec<i64> = core::iter::once(0).chain(es.iter().copied()).collect();
     let mut out = crate::pod::vec_of("bitrows", "the answer's bits", no.div_ceil(8), 0u8)?;
     reduce::bit_rows(c::pool(), all, w, &offs, &is, &reduce::col_bits(&c, nm), &mut out);
-    Ok(Sink::new(no, 1, Form::For).enc().bools(crate::QLEAN_COST_COPY, &|lo, hi, o| {
+    Ok(Sink::new(no, 1).enc().bools(crate::QLEAN_COST_COPY, &|lo, hi, o| {
         o[..(hi - lo).div_ceil(8)].copy_from_slice(&out[lo / 8..hi.div_ceil(8)])
     }))
 }

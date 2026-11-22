@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! sort.rs: an encoded column's keys through a window of two blocks, each decoded on first touch, and the
-//! column's key range from its metadata. The ALP arm (`kwin.f`, sort.rs) is `alp`, `None` for an integral column.
+//! column's key range from its metadata.
 
 use crate::coc::Coc;
 use crate::key::{SK_C8, SK_I8, SK_F32, SK_F64, SK_I16, SK_I32, SK_I64, SK_U8};
@@ -69,6 +69,3 @@ mod tests {
         assert_eq!([SK_U8, SK_I8, SK_I16, SK_I32, SK_I64, SK_F32].map(key_flip), [0, 0x80, 0x8000, 0x8000_0000, 1 << 63, 0]);
     }
 }
-
-// ---- sort.rs `keys_blk_alp`, the ALP arm of `kwin` ----
-

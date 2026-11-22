@@ -64,7 +64,6 @@ mod blocks;
 /// cbindgen:ignore
 mod bitblk;
 /// cbindgen:ignore
-mod alp;
 /// cbindgen:ignore
 mod asc;
 /// cbindgen:ignore
