@@ -333,6 +333,7 @@ def suffix : RowCode := ⟨"suffix", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ)
 def concat : RowCode := ⟨"concat", fun σ => (.arr (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
 def cat : RowCode := ⟨"cat", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
 def uncat : RowCode := ⟨"uncat", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (.arr (σ₁ σ)))⟩
+def star : RowCode := ⟨"star", fun σ => (σ₁ σ, σ₁ σ)⟩
 def zip : RowCode := ⟨"zip", fun σ => (.prod (.arr (σ₁ σ)) (.arr (σ₂ σ)), .arr (.prod (σ₁ σ) (σ₂ σ)))⟩
 def snoc : RowCode := ⟨"snoc", fun σ => (.prod (.arr (σ₁ σ)) (σ₁ σ), .arr (σ₁ σ))⟩
 def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ₁ σ)) (σ₁ σ))⟩
@@ -407,7 +408,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
-   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩] ++
+   ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩,
+   -- the prelude's `star(R) ≜ μX : 𝟙 ∪ R X`, its body as `Tm.den` reads the definition's `μ`
+   ⟨star, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩] ++
   floatOps.map fun (s, o, _) =>
     ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩
 
@@ -768,6 +771,8 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     exact le_iff.1 hT _ _ hm
+  · dsimp only; refine Sem.one_mono (fun hT => Core.Rel.mu_mono fun _ => le_iff.2 fun _ _ hm => ?_) h
+    exact hm.elim .inl fun ⟨b, hb, hx⟩ => .inr ⟨b, le_iff.1 hT _ _ hb, hx⟩
 
 theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B X Y : Obj} {T T' : Den X Y}
     (h : T ⊑ T') : Prim.den r A B [⟨X, Y, T⟩] ⊑ Prim.den r A B [⟨X, Y, T'⟩] := by

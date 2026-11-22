@@ -256,7 +256,8 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
    ("thinL", ``Tab.thinL),
    ("F", ``Tab.map),
    ("flat", ``Tab.flat),
-   ("$", ``Tab.cast)].map fun (s, c) => (s, c, [])) ++
+   ("$", ``Tab.cast),
+   ("star", ``Tab.star)].map fun (s, c) => (s, c, [])) ++
   floatOps.map fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])
 
 -- every kernel row is a row of `prims`

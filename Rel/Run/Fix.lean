@@ -13,19 +13,22 @@ namespace Rel
 namespace Tab
 variable {A B : Obj}
 
-/-- `step` from `X`, at most `n` rounds, until a round leaves the row count as it was; that round's table, each
-round's payloads cut (`Tab.pack`: `∪` and `canon` keep every input payload whole, so a carried table would hold the
-dead elements of all its rounds). A round of `step` that fails fails the loop, and `n` rounds with the count still
-moving fail it with `out`: never a truncated chain passed off as the answer. -/
-def fixOn (out : String) (step : Tab A B → Except String (Tab A B)) : Nat → Tab A B → Except String (Tab A B)
+/-- `step` from `X`, at most `n` rounds, until a round leaves the row count `size` as it was; that round's state,
+each round's payloads cut (`pack`, `Tab.pack`: `∪` and `canon` keep every input payload whole, so a carried table would
+hold the dead elements of all its rounds). The state is the table (`nu`, `mu`) or the table with its frontier
+(`star`). A round of `step` that fails fails the loop, and `n` rounds with the count still moving fail it with `out`:
+never a truncated chain passed off as the answer. -/
+def fixOn {σ : Type} (size : σ → USize) (pack : σ → Except String σ) (out : String) (step : σ → Except String σ) :
+    Nat → σ → Except String σ
   | 0, _ => throw out
-  | n + 1, X => do let Y ← step X >>= pack; if Y.n == X.n then pure Y else fixOn out step n Y
+  | n + 1, X => do let Y ← step X >>= pack; if size Y == size X then pure Y else fixOn size pack out step n Y
 
 /-- **`νX : top ∩ f(X)`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical. A strict round drops a row of the
 canonical `top`, so its row count plus one rounds reach the fixed point; the old `Gen.nu`'s `+ 2` is kept. -/
 def nu (f : Tab A B → Except String (Tab A B)) (top : Tab A B) : Except String (Tab A B) := do
   let T ← top.canon
-  fixOn s!"Tab.nu: the row count still moved at {T.n} rows of top" (fun X => f X >>= X.inter) (T.n.toNat + 2) T
+  fixOn Tab.n Tab.pack s!"Tab.nu: the row count still moved at {T.n} rows of top" (fun X => f X >>= X.inter)
+    (T.n.toNat + 2) T
 
 /-- What the `μ` `what` reports when its rounds reach its cap `n`, on either path (`Expand.mus`, `Tab.mu`). -/
 def capMsg (what : String) (n : Nat) : String := s!"{what} ran its cap of {n} rounds without reaching a fixed point"
@@ -33,7 +36,17 @@ def capMsg (what : String) (n : Nat) : String := s!"{what} ran its cap of {n} ro
 /-- **`μX : f(X)`**: rounds `X ↦ X ∪ f(X)` from `𝟘`, fewer than `cap` of them, the old `Gen.mu`'s bound: `cap`
 rounds run fails with `capMsg what cap`, the chain has no fixed point that the program's bound admits. -/
 def mu (what : String) (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Tab A B) := do
-  fixOn (capMsg what cap) (fun X => f X >>= X.union) (cap - 1) (← Tab.zero)
+  fixOn Tab.n Tab.pack (capMsg what cap) (fun X => f X >>= X.union) (cap - 1) (← Tab.zero)
+
+/-- **`P ≫ star(R)`** = `P ≫ μX : 𝟙 ∪ R X`, semi-naive (architecture §4.5): the state `(X, Δ)` from `(P, P)`, `P`
+made canonical; a round composes only the frontier, `N = Δ ≫ R` (`step` given `ran Δ`, as `loop`'s), `Δ' = N − X`,
+`X' = X ∪ Δ'`. `≫` distributes over `∪`, so this is exact for the linear body, where `mu` composes all of `X` each
+round. It stops when `X` keeps its row count (`fixOn`), so `Δ'` is empty; each other round adds a row of `X`. -/
+def star {K B : Obj} (step : Tab B B → Except String (Tab B B)) (P : Tab K B) : Except String (Tab K B) := do
+  let P ← P.canon
+  let r ← fixOn (fun s => s.1.n) (fun s => do pure (← s.1.pack, ← s.2.pack)) (capMsg "star" USize.size)
+    (fun s => do let D ← (← s.2.comp (← step (← s.2.ran))).diff s.1; pure (← s.1.union D, D)) USize.size (P, P)
+  pure r.1
 
 /-- **The rounds of a fold** (`fold`, `foldr`, `foldI`), at most `f`: `rest` holds at each key `k` the part of its
 array not yet read, `P` its values so far. A round moves the rows of `P` whose key has no element left (`P − dom(el) P`)

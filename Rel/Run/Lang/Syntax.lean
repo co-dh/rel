@@ -235,6 +235,11 @@ def flatRow : Prim :=
   { sym := "flat", sig := ([((.var {} "I", .prod (.var {} "A") (.var {} "B")), some false)],
       .prod (.var {} "I") (.var {} "A"), .var {} "B"),
     written := false, aop := .error "AOP declares no family read as one relation of the key and the source" }
+/-- `star(R) ≜ μX : 𝟙 ∪ R X`, the prelude's, run as its fused form `Tab.star` (semi-naive, on the keys in demand, so
+    also on an object with no universe, where the closed `μ` cannot run). -/
+def starRow : Prim :=
+  { sym := "star", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B"),
+    prelude := `Rel.Programs.prelude.star }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -311,10 +316,12 @@ def prims : List Prim :=
      aop := .error "AOP declares no change of a number's representation" }] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
-  floatOps.map fun (s, o, u) =>
+  (floatOps.map fun (s, o, u) =>
     { sym := s, sig := ([], if o.readsAcc then .prod (.var {} "F") (.var {} "F") else .var {} "F", .var {} "D"),
       num := [("F", floatAtoms), ("D", [u])],
-      aop := .error "AOP declares no floating-point function" }
+      aop := .error "AOP declares no floating-point function" }) ++
+  -- last, so the rows before keep their positions
+  [starRow]
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
