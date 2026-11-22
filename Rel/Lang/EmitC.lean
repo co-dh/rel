@@ -31,7 +31,7 @@ instance : Reg Db.CsvShape := ⟨.u8, fun | .u8 0 => some .atom | .u8 1 => some 
     bytes and buffers. -/
 def abi : List Kernel :=
   [kernel% Rel.Kernel.kscan, kernel% Rel.Kernel.kscatter, kernel% Rel.Kernel.kgather, kernel% Rel.Kernel.kasc,
-   kernel% Rel.Kernel.kseen, kernel% Rel.Db.ownWrite, kernel% Rel.Db.ownMap, kernel% Rel.Db.csvRead,
+   kernel% Rel.Kernel.kseen, kernel% Rel.Kernel.kbitrows, kernel% Rel.Db.ownWrite, kernel% Rel.Db.ownMap, kernel% Rel.Db.csvRead,
    kernel% Rel.Db.csvWrite, kernel% Rel.Db.pushPart, kernel% USize.decEq, kernel% UInt8.decEq,
    kernel% USize.add, kernel% USize.sub, kernel% USize.mul, kernel% USize.decLt, kernel% USize.div, kernel% UInt64.toUSize, kernel% USize.toUInt64, kernel% ByteArray.usize]
 
@@ -115,15 +115,17 @@ def prefixB (op : Kernel.Op) (n a : Nat) : Bld (Nat × Nat) := do
   let r ← scanB op .i64 n (some z) [z, a]
   pure (← nth r 0 "kscan", ← lastB n (← nth r 1 "kscan") 0)
 
+/-- A `kasc` key: the atom `t` and the column `e`. -/
+def ascKey (t : QAtomicType) (e : Nat) : Bld Nat := do ctorB 0 #[← ctorB 0 #[] #[← lit (Reg.put t)], e] #[]
+
 /-- `kasc ≫ kseen` over the `n` rows of the columns `cs`: the count `k` of runs of equal rows (the last row's group
     `+ 1`, a `kscan max` fold), each sorted row's group `g`, each run's first sorted row `f`, the permutation `p`. -/
 def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
-  let key (t : QAtomicType) (e : Nat) : Bld Nat := do ctorB 0 #[← ctorB 0 #[] #[← lit (Reg.put t)], e] #[]
-  let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← cs.mapM fun (_, t, e) => key t e)]
+  let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← cs.mapM fun (_, t, e) => ascKey t e)]
   let mut l ← nth sp 0 "kasc"
   let mut sorted := #[]
   for (_, t, _) in cs do
-    sorted := sorted.push (← key t (← projB l 1 0 .obj)); l ← projB l 1 1 .obj
+    sorted := sorted.push (← ascKey t (← projB l 1 0 .obj)); l ← projB l 1 1 .obj
   let kg ← callK (kernel% Rel.Kernel.kseen) #[n, ← listB sorted.toList]
   let g ← nth kg 1 "kseen"
   let z ← wordsB n 0
@@ -188,17 +190,22 @@ def selectB (keep : Nat → Nat → Nat → Bld Nat) (R S : TabB) : Bld TabB := 
   let ix ← gatherB k (← gatherB k sel m f) n p
   pure ⟨k, ← gatherCols k ix n ks, ← gatherCols k ix n vs⟩
 
-/-- **`R ≫ S`** (`Tab.compOne`): the groups of equal middle values of `R.val` then `S.key` (`kasc` is stable, so a
-    group's `R` rows come first), per group the counts `cR`, `cS` and the width `w = cR · cS`, EXPAND of `w` (each
-    output row's group `G` and offset `u`), its `R` row `p[f + u / cS]` and `S` row `p[f + cR + u % cS] - n`, both
-    sides gathered there, then `canonT`. `Tab.comp`'s blocks past `blockRows` and its bit matrices change no answer. -/
-def compB (R S : TabB) : Bld TabB := do
+/-- **`Tab.compGroups`**: the `N` rows of `R.val` then `S.key`, their permutation `p`, groups `g`, first rows `f`, the
+    count `K` of groups, per group the counts `cR`, `cS` and the width `w = cR · cS`. -/
+def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) := do
   let (N, off) ← catB R.n S.n
   let (K, g, f, p) ← ascSeenB N (← concatB N R.n S.n off R.val S.key)
   let nR ← constB N (← call1 (kernel% USize.toUInt64) #[R.n])
   let cR ← scatterB .add N g (← mapB .lt N p nR) K
   let cS ← mapB .sub K (← scatterB .add N g (← wordsB N 1) K) cR
-  let w ← mapB .mul K cR cS
+  pure (N, p, g, f, K, cR, cS, ← mapB .mul K cR cS)
+
+/-- **`R ≫ S`** (`Tab.compOne`): the groups of equal middle values of `R.val` then `S.key` (`kasc` is stable, so a
+    group's `R` rows come first), per group the counts `cR`, `cS` and the width `w = cR · cS`, EXPAND of `w` (each
+    output row's group `G` and offset `u`), its `R` row `p[f + u / cS]` and `S` row `p[f + cR + u % cS] - n`, both
+    sides gathered there, then `canonT`. `Tab.comp`'s blocks past `blockRows` and its bit matrices change no answer. -/
+def compB (R S : TabB) : Bld TabB := do
+  let (N, p, _, f, K, cR, cS, w) ← groupsB R S
   let (P, T) ← prefixB .add K w
   let T1 ← call1 (kernel% USize.add) #[T, ← lit (.size 1)]
   let o ← mapB .sub K P w
@@ -441,6 +448,149 @@ def ascB (B : Obj) (P : TabB) : Bld TabB := do
   let U ← canonT ⟨P.n, [("", .i64, ← wordsB P.n 0)], P.key⟩
   pure ⟨U.n, [("", .i64, ← posB)], U.val⟩
 
+/-! #### `R \ S` and `R / S` (`GenK.ldiv`, `GenK.rdiv`: `Tab.ldivSel`) -/
+
+/-- The size register `x` as a word. -/
+def wordOf (x : Nat) : Bld Nat := call1 (kernel% USize.toUInt64) #[x]
+
+/-- `nth` of an `if`'s one register. -/
+def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
+
+/-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
+def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
+
+/-- **`Vals.code`**: the `n` rows of `cs` numbered by value (`ascSeenB`): the count `k`, each input row's number
+    (`kscatter .last` of the groups through `p`), each number's first input row. -/
+def codeB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat) := do
+  let (k, g, f, p) ← ascSeenB n cs
+  pure (k, ← scatterB .last n p g n, ← gatherB k f n p)
+
+/-- **`Vals.code2`**: `xs` (`n₁` rows) and `ys` (`n₂`) numbered in one order, `codeB` of their concatenation `z`: the
+    count, `xs`' numbers, `ys`', and `z`'s count, columns and each number's first row in it. -/
+def code2B (n₁ n₂ : Nat) (xs ys : Cols) : Bld (Nat × Nat × Nat × Nat × Cols × Nat) := do
+  let (N, off) ← catB n₁ n₂
+  let z ← concatB N n₁ n₂ off xs ys
+  let (k, c, rep) ← codeB N z
+  pure (k, ← gatherB n₁ (← posB) N c, ← gatherB n₂ off N c, N, z, rep)
+
+/-- **`colCat`**: the words `a` (`n₁`) then `b` (`n₂`), `concatB` of one column each. -/
+def colCatB (n₁ n₂ a b : Nat) : Bld (Nat × Nat) := do
+  let (N, off) ← catB n₁ n₂
+  pure (N, ← col1 (← concatB N n₁ n₂ off [("", .i64, a)] [("", .i64, b)]))
+
+/-- **`csr`**: the `n` rows `(gid, x)` grouped by `gid` (each below `g`): each group's end (`prefixB` of the group
+    sizes) and `x` in group order (`kasc` of `gid`, stable). -/
+def csrB (n g gid x : Nat) : Bld (Nat × Nat) := do
+  let ends := (← prefixB .add g (← scatterB .add n gid (← wordsB n 1) g)).1
+  let p ← nth (← callK (kernel% Rel.Kernel.kasc) #[n, ← listB [← ascKey .i64 gid]]) 1 "kasc"
+  pure (ends, ← gatherB n p n x)
+
+/-- **`bitMatrix`**: `na` rows of `w` bits, bit `r[k]·w + c[k]` set for each of the `n` rows. -/
+def bitMatrixB (n na w r c : Nat) : Bld Nat := do
+  scatterB .last n (← mapB .add n (← mapB .mul n r (← constB n (← wordOf w))) c) (← wordsB n 1)
+    (← call1 (kernel% USize.mul) #[na, w])
+
+/-- **`Tab.ofBits`**: the set bits of the `g · w` bits `o` (`whereB`), bit `a·w + c` the row of `x` (`nx` rows) at
+    `ra[a]` and of `y` (`ny`) at `rc[c]`. -/
+def ofBitsB (g w o nx : Nat) (x : Cols) (ra ny : Nat) (y : Cols) (rc : Nat) : Bld TabB := do
+  let (M, sel) ← whereB (← call1 (kernel% USize.mul) #[g, w]) o
+  let wc ← constB M (← wordOf w)
+  let ix ← gatherB M (← mapB .div M sel wc) g ra
+  let iy ← gatherB M (← mapB .mod M sel wc) w rc
+  pure ⟨M, ← gatherCols M ix nx x, ← gatherCols M iy ny y⟩
+
+/-- **`Tab.ldivOf`** (`r`, `s` canonical): `Q = r° ≫ ⟨𝟙, s⟩`; per group of equal `(b, c)` its row count `cnt`; the
+    count `d` of `r`'s rows of `b` (CODE over `r.val ++ Q.key`); the groups with `cnt = d`; `∪` the vacuous part
+    `(ran UB − ran r) × ran UC`. -/
+def ldivOfB (r s UB UC : TabB) : Bld TabB := do
+  let Q ← compB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
+  let C := Q.val.drop s.key.length
+  let (K, g, f, p) ← ascSeenB Q.n (Q.key ++ C)
+  let cnt ← groupFoldB .add Q.n g f K 0 (← wordsB Q.n 1)
+  let (N, sh) ← catB r.n Q.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "ldiv: rows past 2^63" #[N]
+  let (bk, bg, bf, bp) ← ascSeenB N (← concatB N r.n Q.n sh r.val Q.key)
+  let cR ← groupFoldB .add N bg bf bk 0 (← mapB .lt N bp (← constB N (← wordOf r.n)))
+  let code ← scatterB .last N bp bg N
+  let q ← gatherB K f Q.n p
+  let d ← gatherB K (← gatherB K (← mapB .add K q (← constB K (← wordOf r.n))) N code) bk cR
+  let (M, sel) ← whereB K (← mapB .eq K cnt d)
+  let ix ← gatherB M sel K q
+  let P : TabB := ⟨M, ← gatherCols M ix Q.n Q.key, ← gatherCols M ix Q.n C⟩
+  let V ← selectB (fun m _ mx => mapB .not m mx mx) (← coreflB UB.n UB.val) (← coreflB r.n r.val)
+  let W ← coreflB UC.n UC.val
+  let (T, x, y) ← crossB V.n W.n V.key W.key
+  unionB P ⟨T, x, y⟩
+
+/-- **`Tab.ldiv`**: `ldivOfB` of `canonT R`, `canonT S`. -/
+def ldivB (R S UB UC : TabB) : Bld TabB := do ldivOfB (← canonT R) (← canonT S) UB UC
+
+/-- **`Tab.ldivBits`**: `S` as `ka + 1` rows (keys numbered with `R.key`'s, row `ka` holding `ran UC`) of `kc` bits,
+    `R`'s rows grouped by value over `ran R ∪ ran UB` (`kb` groups, a value of no `R` row given row `ka`), each the
+    `∧` of its rows (`kbitrows true`). Its `2^63` check is left out: its one caller `ldivSelB` runs it where
+    `bitsWinB` holds, so every count is below `2^27`. -/
+def ldivBitsB (R S UB UC : TabB) : Bld TabB := do
+  let (ka, aR, aS, _) ← code2B R.n S.n R.key S.key
+  let (kb, bR, _, NB, zb, rb) ← code2B R.n UB.n R.val UB.val
+  let (kc, cS, cU, NC, zc, rc) ← code2B S.n UC.n S.val UC.val
+  let ka1 ← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]
+  let cnt ← scatterB .add R.n bR (← wordsB R.n 1) kb
+  let (E, eb) ← whereB kb (← mapB .eq kb cnt (← wordsB kb 0))
+  let (N, gid) ← colCatB R.n E bR eb
+  let (_, ix) ← colCatB R.n E aR (← constB E (← wordOf ka))
+  let (ends, idx) ← csrB N kb gid ix
+  let (NS, r) ← colCatB S.n UC.n aS (← constB UC.n (← wordOf ka))
+  let (_, c) ← colCatB S.n UC.n cS cU
+  let m ← bitMatrixB NS ka1 kc r c
+  let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit true), kc, ka1, N, kb, ends, idx, m]) 0 "kbitrows"
+  ofBitsB kb kc o NB zb rb NC zc rc
+
+/-- **`Tab.bitsWin bits T na g w`** on size registers, every product kept from wrapping: `x · w ≤ bits` as
+    `w = 0 ∨ ¬ bits / w < x`, and `s < rowBits · T` as `s / rowBits < T` (`s` the two products, each `≤ bits`). The
+    `2^32` bounds follow from `bits < 2^32`, checked as the plan is built. -/
+def bitsWinB (bits : Nat) (T na g w : Nat) : Bld Nat := do
+  unless bits < 2 ^ 32 do throw s!"bitsWin: the bound {bits} is not below 2^32, which `kbitrows` reads"
+  let leW (x : Nat) : Bld Nat := do ite1 (← call1 (kernel% USize.decEq) #[w, ← lit (.size 0)]) (lit (.bit true)) do
+    let q ← call1 (kernel% USize.div) #[← lit (.size bits.toUSize), w]
+    ite1 (← call1 (kernel% USize.decLt) #[q, x]) (lit (.bit false)) (lit (.bit true))
+  andB (← leW na) do andB (← leW g) do
+    let s ← call1 (kernel% USize.add) #[← call1 (kernel% USize.mul) #[na, w], ← call1 (kernel% USize.mul) #[g, w]]
+    call1 (kernel% USize.decLt) #[← call1 (kernel% USize.div) #[s, ← lit (.size Tab.rowBits.toUSize)], T]
+
+/-- `if c then t else e` of two tables whose sides have the columns of `ks`, `vs` (path, atom): the new registers. -/
+def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
+  let flat (b : Bld TabB) : Bld (Array Nat) := do
+    let T ← b
+    unless T.key.length == ks.length && T.val.length == vs.length do
+      throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, not {ks.length} and {vs.length}"
+    pure (#[T.n] ++ (T.key ++ T.val).toArray.map (·.2.2))
+  let rs ← ite c (flat t) (flat e)
+  let re (cs : Cols) (o : Nat) : Bld Cols := cs.zipIdx.mapM fun ((p, a, _), i) => return (p, a, ← nth rs (o + i) "if")
+  pure ⟨← nth rs 0 "if", ← re ks 1, ← re vs (1 + ks.length)⟩
+
+/-- **`Tab.ldivSel d bits`**: `T` the expansion of `R° ≫ S` (`groupsB`), `ka` its groups; the division `d` where
+    `rowBits · T ≤ ka + 2` (tested as `(ka + 2) / rowBits < T`, no product), else `ldivBitsB` where `bitsWinB T
+    (ka + 1) kb kc` holds, else `d`. -/
+def ldivSelB (d : TabB → TabB → TabB → TabB → Bld TabB) (bits : Nat) (R S UB UC : TabB) : Bld TabB := do
+  let (_, _, _, _, ka, _, _, w) ← groupsB ⟨R.n, R.val, R.key⟩ S
+  let T := (← prefixB .add ka w).2
+  let big ← call1 (kernel% USize.decLt)
+    #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[ka, ← lit (.size 2)], ← lit (.size Tab.rowBits.toUSize)], T]
+  iteT big R.val S.val (do
+    let kb := (← code2B R.n UB.n R.val UB.val).1
+    let kc := (← code2B S.n UC.n S.val UC.val).1
+    let win ← bitsWinB bits T (← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]) kb kc
+    iteT win R.val S.val (ldivBitsB R S UB UC) (d R S UB UC))
+    (d R S UB UC)
+
+/-- `T°` (`Tab.conv`): the sides swapped, then `canonT`. -/
+def convB (T : TabB) : Bld TabB := canonT ⟨T.n, T.val, T.key⟩
+
+/-- **`R / S`** within `UA`, `UB` (`GenK.rdiv`): `(S° \ R°)°`; the two converses are `canonT` answers, so the division
+    is `ldivOfB` (`Tab.ldivOf`), with no second `canon`. -/
+def rdivB (R S UA UB : TabB) : Bld TabB := do
+  convB (← ldivSelB ldivOfB Tab.bitsMax (← convB S) (← convB R) UB UA)
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`). Any other row is refused, naming it: each reads or answers an array or a
@@ -454,18 +604,28 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
     | _ => throw s!"asc given {xs.length} relations, not one"
   else throw s!"row `{r.sym}` (`{c}`): it reads or answers an array or a sum side, whose `cells` keys no plan recipe builds yet"
 
+/-- **`𝟘`** at `A ⟶ B`: no row. -/
+def zeroB (A B : Obj) : Bld TabB := do let z ← lit (.size 0); pure ⟨z, ← noneB z A, ← noneB z B⟩
+
+/-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
+abbrev Env := List (Nat × ((A B : Obj) → Dom → Bld TabB))
+
+/-- A variable bound to the registers `s` of a table (an input, a run-time definition): `s` in every context. -/
+def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
+  fun A B _ => return ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩
+
 mutual
-/-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` the
-    tables bound to them, `D` the values its context knows its source to hold (`compT`: a composition's left
+/-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` what
+    each reads (`Env`), `D` the values its context knows its source to hold (`compT`: a composition's left
     operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
     that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
     them and what they need. -/
-partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+partial def tabB (σ : Env) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, .val R => do
     let (k, v) := (← litSide R.key, ← litSide R.val)
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
   | A, _, .uni (m := m) U => do coreflB (← lit (.size m)) (← colsOf A (← litSide U))
-  | A, B, .zero => do let z ← lit (.size 0); pure ⟨z, ← noneB z A, ← noneB z B⟩
+  | A, B, .zero => zeroB A B
   | _, _, .id => do let (n, X) ← known "𝟙" (D.dom <|> D.ran); coreflB n X
   | _, _, .top V => do
     let (n, X) ← known "⊤" D.dom
@@ -497,15 +657,17 @@ partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → T
   | _, _, .prod (A := A) (B := B) (C := C) (D := D') R S => do prodB A B C D' (← tabB σ {} R) (← tabB σ {} S)
   | _, _, .own R | _, _, .share _ R => tabB σ D R
   | A, B, .var _ k => match σ.lookup k with
-    | some s => do pure ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩
-    | none => throw s!"variable {k}, which no input table is bound to"
+    | some b => b A B D
+    | none => throw s!"variable {k}, which no input table or call argument is bound to"
   | _, _, .leq t U => cmpB (tabB σ · U) "≤" (Tab.ordOp false t) t D
   | _, _, .lt t U => cmpB (tabB σ · U) "<" (Tab.ordOp true t) t D
   | _, _, .succ U => do let (n, X) ← known "succ" D.dom; succB (tabB σ · U) n X
   | _, _, .arith t k U => do let (n, X) ← known "arith" D.dom; arithT (tabB σ · U) t k n X
   | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) | A, B, t@(.callCv ..) => argB σ D A B t []
-  | _, _, .ldiv .. | _, _, .rdiv .. => throw
-    "a division (`Tab.ldivSel`): its grouped counts and bit matrices are not built by a plan recipe yet"
+  -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
+  | _, _, .ldiv R S UB UC => do
+    ldivSelB ldivB Tab.bitsMax (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UB) (← tabB σ {} UC)
+  | _, _, .rdiv R S UA UB => do rdivB (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UA) (← tabB σ {} UB)
   | _, _, .lam _ | _, _, .E _ | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .atPos _ | _, _, .fold ..
   | _, _, .foldr .. | _, _, .foldI .. => throw
     "a node on an array side (`Λ`, `E`, `est`, `thin`, `nil`, `at`, a fold): arrays need `cells` keys, which no plan recipe builds yet"
@@ -513,15 +675,22 @@ partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → T
     "a fixed point (`ν`, `μ`, `hylo`): rounds until no row changes, a loop, which the plan has no instruction for"
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
-    relation's table built in the context the row's wrapper gives it; a call by its body with its arguments bound at
-    `ks` (`Code.args`), each argument's table built closed. -/
-partial def argB (σ : List (Nat × Side × Side)) (D : Dom) (A B : Obj) :
+    relation's table built in the context the row's wrapper gives it; a call by its body under its arguments bound at
+    `ks` and no other variable (`Code.args`). An argument is built at each use in the context the use gives it where
+    it runs on demand, or where it cannot run closed (`GenK.memo` keeps it lazy); else once, closed (`GenK.memo`).
+    A use at other objects than the argument's reads `𝟘` (`Code.bind`). -/
+partial def argB (σ : Env) (D : Dom) (A B : Obj) :
     Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
   | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
   | .share _ R, xs => argB σ D A B R xs
   | .call ks _ _ b, xs | .callCv ks _ _ _ b _, xs => do
-    let bs ← (ks.zip xs).mapM fun (k, ⟨_, _, x⟩) => return (k, ← sidesOf (← tabB σ {} x))
-    tabB (bs ++ σ) D b
+    let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
+      let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
+        fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
+      let lazy := at_ (tabB σ · x)
+      if x.dem then pure (k, lazy) else
+        try let t ← tabB σ {} x; pure (k, at_ fun _ => pure t) catch _ => pure (k, lazy)
+    tabB bs D b
   | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
   | t, [] => tabB σ D t
   | _, xs => throw s!"{xs.length} relations given to a term that is no row and no call"
@@ -534,7 +703,7 @@ def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Sid
     | some s => pure s
     | none => throw s!"variable {k}, which no input table is bound to"
   | _, _, .share _ R => ofTm σ R
-  | _, _, t => do sidesOf (← tabB σ {} t)
+  | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, sideArg s)) {} t)
 
 
 /-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
