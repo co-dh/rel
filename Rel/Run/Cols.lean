@@ -53,6 +53,14 @@ def cellBad {n : USize} (m : USize) (lo hi : Arr .i64 n) : Option (Fin n.toNat) 
   (List.finRange n.toNat).find? fun i =>
     !decide (0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int))
 
+/-- No `arr` side of `x` has a `cellBad` cell: `Vals.WF` decided (`Vals.cellsOk_wf`), for a table no `readVals`
+read (a literal, a universe). -/
+def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
+  | .atom _, _, _ => true
+  | .prod _ _, _, x => Vals.cellsOk x.1 && Vals.cellsOk x.2
+  | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
+  | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.cellsOk x && Vals.cellsOk y
+
 /-- The words of `x` clamped into `[0, c]` (`colMap .max` with `0`, then `.min` with `c`), then `s` added. -/
 def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
   let a ← colMap .max n x.enc (← colConst n 0)

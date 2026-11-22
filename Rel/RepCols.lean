@@ -536,6 +536,17 @@ theorem cellBad_none {n m : USize} {lo hi : Arr .i64 n} : cellBad m lo hi = none
     0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
   simp [cellBad, List.find?_eq_none]
 
+/-- **`Vals.cellsOk` decides `Vals.WF`** in the direction a literal needs: its `arr` clause is `cellBad_none`. -/
+theorem Vals.cellsOk_wf : {A : Obj} → {n : USize} → {x : Vals A n} → Vals.cellsOk x = true → Vals.WF x
+  | .atom _, _, _, _ => trivial
+  | .prod _ _, _, _, h => by
+    simp only [Vals.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
+  | .arr _, _, ⟨_, _, _, _⟩, h => by
+    simp only [Vals.cellsOk, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
+    exact ⟨cellBad_none.1 h.1, Vals.cellsOk_wf h.2⟩
+  | .sum _ _, _, ⟨_, _, _, _, _, _⟩, h => by
+    simp only [Vals.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
+
 /-- **`Vals.gather` keeps `Vals.WF`**: a gathered cell is a cell of `x` (`Arr.gather_row`), over the same payload. -/
 theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x : Vals A n} → {y : Vals A m} →
     Vals.gather m ix x = .ok y → Vals.WF x → Vals.WF y

@@ -28,6 +28,15 @@ theorem _root_.Rel.Known.wf_empty : ({} : Known A B).WF := ⟨trivial, trivial, 
 /-- A context that knows only `K`'s domain is `WF` where `K` is. -/
 theorem _root_.Rel.Known.WF.dom {K : Known A B} {C : Obj} (h : K.WF) : (⟨K.dom, none, none⟩ : Known A C).WF :=
   ⟨h.1, trivial, trivial⟩
+
+/-- `R°`'s context, `K` with its sides and pairs turned over, is `WF` where `K` is (`GenK.conv`). -/
+theorem _root_.Rel.Known.WF.conv {K : Known A B} (h : K.WF) :
+    (⟨K.ran, K.dom, K.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ : Known B A).WF :=
+  ⟨h.2.1, h.1, by obtain ⟨_, _, _ | p⟩ := K; trivial; exact ⟨h.2.2.2, h.2.2.1⟩⟩
+
+/-- Either known side of `K` (`dom`, `ran`, `id` read one value set) is `Vals.WF` where `K` is. -/
+theorem _root_.Rel.Known.WF.side {K : Known A B} (h : K.WF) : (K.dom <|> K.ran).elim True fun c => Vals.WF c.2 := by
+  obtain ⟨_ | _, _, _⟩ := K; exact h.2.1; exact h.1
 open Rel.Ext Ext.Enc in
 /-- **A bit matrix as its producers (`compMat`, `compTabMat`) build it**: it reads back as rows (`Tab.ofBits`), `g · w`
     does not wrap, each of its `g · w` words is `0` or `1`, and each side's rows `x[ra[·]]`, `y[rc[·]]` are distinct:
@@ -215,7 +224,7 @@ theorem id_sound : ∀ K, K.WF → (GenK.id A).Reps K (𝟙 _) := fun K hW => by
 
 theorem conv_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
     ∀ K, K.WF → (GenK.conv A B R).Reps K X° :=
-  lift1_sound (fun K h => ⟨h.2.1, h.1, by obtain ⟨_, _, _ | p⟩ := K; trivial; exact ⟨h.2.2.2, h.2.2.1⟩⟩) hR fun _ _ _ ht hr x y hx hy ho => (Tab.conv_holds ht x y).trans (hr y x hy hx (on_conv ho))
+  lift1_sound (fun _ h => h.conv) hR fun _ _ _ ht hr x y hx hy ho => (Tab.conv_holds ht x y).trans (hr y x hy hx (on_conv ho))
 
 theorem join_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
     (hS : ∀ K, K.WF → S.Reps K Y) : ∀ K, K.WF → (GenK.join A B d e R S).Reps K (X ∪ Y) :=
@@ -224,14 +233,14 @@ theorem join_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR :
 
 theorem dom_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
     ∀ K, K.WF → (GenK.dom A B d R).Reps K (𝟙 _ ∩ X ≫ X°) :=
-  lift1_sound (fun K h => ⟨by obtain ⟨_ | _, _, _⟩ := K; exact h.2.1; exact h.1, trivial, trivial⟩) hR fun _ r _ ht hr x x' hx hx' _ => by
+  lift1_sound (fun _ h => ⟨h.side, trivial, trivial⟩) hR fun _ r _ ht hr x x' hx hx' _ => by
     refine (Tab.dom_holds ht x x').trans ⟨?_, ?_⟩
     · rintro ⟨rfl, y, h⟩; have e := hr _ y (side_or hx hx') rfl trivial; exact ⟨rfl, y, e.1 h, e.1 h⟩
     · rintro ⟨rfl, y, h, -⟩; exact ⟨rfl, y, (hr _ y (side_or hx hx') rfl trivial).2 h⟩
 
 theorem ran_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
     ∀ K, K.WF → (GenK.ran A B R).Reps K (𝟙 _ ∩ X° ≫ X°°) :=
-  lift1_sound (fun K h => ⟨trivial, by obtain ⟨_ | _, _, _⟩ := K; exact h.2.1; exact h.1, trivial⟩) hR fun _ r _ ht hr y y' hy hy' _ => by
+  lift1_sound (fun _ h => ⟨trivial, h.side, trivial⟩) hR fun _ r _ ht hr y y' hy hy' _ => by
     refine (Tab.ran_holds ht y y').trans (Iff.trans ⟨?_, ?_⟩ (ran_iff X y y').symm)
     · rintro ⟨rfl, x, h⟩; have e := hr x _ rfl (side_or hy hy') trivial; exact ⟨rfl, x, e.1 h, e.1 h⟩
     · rintro ⟨rfl, x, h, -⟩; exact ⟨rfl, x, (hr x _ rfl (side_or hy hy') trivial).2 h⟩
