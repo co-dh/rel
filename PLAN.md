@@ -420,6 +420,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `RepTabComp` 引 `Rel.RepSeen`，:226 用 `lexLe_congr rfl e.symm`）。`RepSetOps` 未绿：缺 `kscatter_plain`（三种证法
   均在 `whnf` 超时，见 /data/tmp/rq17f7-handoff.md）；`union_holds`/`canon_sorted`/`canon_distinct` 已取 `hN`，其
   调用者（GenKFold、RepTabDiv、RepWFOps、GenKSpec、GenKHylo、RepAsc、RepSums、GenKFix）未改。
+  rq17f8（部分）：合并 rq17f7（2c948e0），`kscatter` 保留 master 的 `readsDivisor` 拒绝在 null 搬运之前。
+  `kscatter_plain`（每个 op：`e` 无 null 则答案无 null；先把 `hasNul e` 改写为 `false` 再 split，不再 whnf 超时）；
+  `foRNuls_plain`（无 null 的 WF 列每行 flag 为 0）。`kasc_grade` 改取 `N < 2^32 ∨ 各列无 null`：`canon` 排序的列都来自
+  `Vals.cols`，都无 null，所以 `hN` 从 `Vals.sorted_key`/`nub_*`/`canon_*`/`ran_holds`/`dom_holds`/`union_holds`/
+  `kasc_kseen` 删去（`R.comp S` 内部的 union 无从给出行数界）；`select_ok` 直接引 `kasc_grade`。`scatter_add_count`、
+  `scatter_last_at`、`kgather_word` 取 `hasNul e = false`。`lexLe_congr_right` 折叠完成。绿：Closure、RepCanon、
+  RepSeen、RepSetOps、RepTabComp。⬜ 剩：`RepTabDiv`（`kgather_word`/`scatter_last_at` 的源列无 null 证明，见
+  /data/tmp/rq17f8-handoff.md），其后 GenKBits、GenKFix、RepBits、RepSums、RepWhere、RepStruct、RepTabArith、DfnLaw、
+  GenKFold、RepAsc、RepWFOps、GenKSpec、GenKHylo 未建；`colMap_plain`/`colPrefix_plain` 折入 `_closed` 未做。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
