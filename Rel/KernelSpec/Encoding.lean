@@ -627,6 +627,50 @@ theorem foldl_pick {α β : Type} (P : α → Prop) (g : α → β → α) (l : 
   | nil => exact h0
   | cons b l ih => exact ih _ (h a h0 b List.mem_cons_self) fun a ha c hc => h a ha c (List.mem_cons_of_mem _ hc)
 
+/-- What `Coc.mergeBy` answers holds only elements of its two runs. -/
+theorem mem_mergeBy {α : Type} (le : α → α → Bool) (a : α) :
+    ∀ (f : Nat) (xs ys : List α), a ∈ Kernel.Coc.mergeBy le f xs ys → a ∈ xs ∨ a ∈ ys
+  | 0, xs, ys, h => List.mem_append.1 h
+  | _ + 1, [], _, h => Or.inr h
+  | _ + 1, _ :: _, [], h => Or.inl h
+  | f + 1, x :: xs, y :: ys, h => by
+    simp only [Kernel.Coc.mergeBy] at h
+    split at h
+    · rcases List.mem_cons.1 h with rfl | h
+      · exact Or.inl List.mem_cons_self
+      · rcases mem_mergeBy le a f _ _ h with h | h
+        · exact Or.inl (List.mem_cons_of_mem _ h)
+        · exact Or.inr h
+    · rcases List.mem_cons.1 h with rfl | h
+      · exact Or.inr List.mem_cons_self
+      · rcases mem_mergeBy le a f _ _ h with h | h
+        · exact Or.inl h
+        · exact Or.inr (List.mem_cons_of_mem _ h)
+
+/-- A merge pass keeps only elements of the runs it merged. -/
+theorem mem_mergePairs {α : Type} (le : α → α → Bool) (a : α) :
+    ∀ ls : List (List α), a ∈ (Kernel.Coc.mergePairs le ls).flatten → a ∈ ls.flatten
+  | x :: y :: t, h => by
+    simp only [Kernel.Coc.mergePairs, List.flatten_cons, List.mem_append] at h ⊢
+    rcases h with h | h
+    · rcases mem_mergeBy le a _ x y h with h | h
+      · exact Or.inl h
+      · exact Or.inr (Or.inl h)
+    · exact Or.inr (Or.inr (mem_mergePairs le a t h))
+  | [], h => h
+  | [_], h => h
+
+/-- `Coc.sortBy` answers only elements of its list: a frame `Coc.frameOf` picks from the sorted keys is a key. -/
+theorem mem_sortBy {α : Type} (le : α → α → Bool) (l : List α) (a : α) (h : a ∈ Kernel.Coc.sortBy le l) : a ∈ l := by
+  have key : ∀ k (ls : List (List α)), a ∈ (Nat.repeat (Kernel.Coc.mergePairs le) k ls).flatten → a ∈ ls.flatten := by
+    intro k; induction k with
+    | zero => exact fun _ h => h
+    | succ k ih => exact fun ls h => ih ls (mem_mergePairs le a _ h)
+  have h := key _ _ h
+  simp only [List.mem_flatten, List.mem_map] at h
+  obtain ⟨_, ⟨b, hb, rfl⟩, hab⟩ := h
+  exact List.mem_singleton.1 hab ▸ hb
+
 /-- `Coc.planOf`'s frame is the minimum or one of the keys and its width at most that of the range; with patching
 off they are the minimum and that width. -/
 theorem planOf_bounds (pl : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) :
@@ -636,16 +680,25 @@ theorem planOf_bounds (pl : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) :
   cases pl
   · exact ⟨Or.inl rfl, Nat.le_refl _, fun _ => rfl⟩
   refine ⟨?_, ?_, fun h => nomatch h⟩
-  · show Kernel.Coc.frameAt ks mn _ = mn ∨ Kernel.Coc.frameAt ks mn _ ∈ ks.toList
-    unfold Kernel.Coc.frameAt
-    rw [← Array.foldl_toList]
-    exact foldl_pick (fun p : Int64 × Nat => p.1 = mn ∨ p.1 ∈ ks.toList) _ _ _ (Or.inl rfl) fun ⟨f, nf⟩ ha k hk => by
+  · have hf : ∀ c, (Kernel.Coc.frameOf (Kernel.Coc.sortBy (fun a b => decide (a ≤ b)) ks.toList) mn c).1 = mn ∨
+        (Kernel.Coc.frameOf (Kernel.Coc.sortBy (fun a b => decide (a ≤ b)) ks.toList) mn c).1 ∈ ks.toList := by
+      intro c
+      unfold Kernel.Coc.frameOf
+      exact foldl_pick (fun p : (Int64 × Nat) × (List Int64 × Nat) × (List Int64 × Nat) =>
+          p.1.1 = mn ∨ p.1.1 ∈ ks.toList) _ _ _ (Or.inl rfl) fun ⟨b, lo, hi⟩ ha k hk => by
+        dsimp only at ha ⊢; split
+        · exact Or.inr (mem_sortBy _ _ _ hk)
+        · exact ha
+    show (List.foldl (α := Nat × Nat × Int64) _ _ _).2.2 = mn ∨
+      (List.foldl (α := Nat × Nat × Int64) _ _ _).2.2 ∈ ks.toList
+    exact foldl_pick (fun p : Nat × Nat × Int64 => p.2.2 = mn ∨ p.2.2 ∈ ks.toList) _ _ _ (hf 0)
+      fun ⟨d, cd, f⟩ ha c _ => by
       dsimp only at ha ⊢; split
-      · exact Or.inr hk
+      · exact hf c
       · exact ha
-  · show (List.foldl _ (0, _) _).1 ≤ _
-    exact foldl_pick (fun p : Nat × Nat => p.1 ≤ Column.widthFor (mx - mn).toUInt64.toNat) _ _ _ (Nat.zero_le _)
-      fun ⟨a, _⟩ ha c hc => by
+  · show (List.foldl (α := Nat × Nat × Int64) _ _ _).1 ≤ _
+    exact foldl_pick (fun p : Nat × Nat × Int64 => p.1 ≤ Column.widthFor (mx - mn).toUInt64.toNat) _ _ _
+      (Nat.zero_le _) fun ⟨a, _, _⟩ ha c hc => by
       dsimp only at ha ⊢; split
       · exact Nat.lt_succ_iff.1 (List.mem_range.1 hc)
       · exact ha
