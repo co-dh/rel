@@ -10,8 +10,8 @@ use crate::pod::{self, Elt};
 /// `Ext.Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order; every Rust reader and writer of an `Enc` names
 /// them from here, so a constructor added or removed there is one edit here.
 pub mod tag {
-    pub const BYTES: u32 = 0; pub const FOR: u32 = 2; pub const ALP: u32 = 3;
-    pub const ENUM: u32 = 4; pub const POS: u32 = 6;
+    pub const FOR: u32 = 1;
+    pub const ENUM: u32 = 2; pub const POS: u32 = 4;
 }
 
 /// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column
@@ -65,14 +65,10 @@ impl<'a> Blocks<'a> {
     pub fn pos(n: usize) -> Self { Blocks::new(Src::Pos, n) }
     /// The `n` elements of `w` bytes a Lean `Enc` object holds, whatever its kind (coc plan §3 `Col::of`, decision C1):
     /// the one reader of `Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order. `who` names the export in a panic.
-    pub fn of(e: crate::lean::B<'a>, w: usize, n: usize, who: &str) -> Self {
+    pub fn of(e: crate::lean::B<'a>, n: usize, who: &str) -> Self {
         let f = |i| e.field(i).bytes();
         match e.tag() {
-            tag::BYTES => Blocks::new(Src::Dense(f(0).get(..n * w).unwrap_or_else(|| panic!(
-                "{who}: a dense payload of {} bytes holds fewer than {n} elements of {w} bytes", f(0).len()))), n),
             tag::FOR => Blocks::from(crate::coc::view(f(0), f(1), n).unwrap_or_else(|err| panic!("{who}: {err}"))),
-            tag::ALP => Blocks::from(Cocf::view(f(0), f(1), f(2), n).unwrap_or_else(|| panic!(
-                "{who}: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned", f(0).len(), f(2).len()))),
             tag::ENUM => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
             // `pos`, nullary, is the scalar `lean_box(tag::POS)`, which has no field
             tag::POS => Blocks::pos(n),

@@ -431,7 +431,8 @@ impl Sink {
             (Form::For, false) => lean::ctor(0, [o(m), o(b)], &[]),
             (Form::Alp, false) => lean::ctor(0, [o(m), lean::ctor(0, [o(b), o(a)], &[])], &[]),
             (Form::For, true) => lean::ctor(crate::blocks::tag::FOR as u8, [o(m), o(b)], &[]),
-            (Form::Alp, true) => lean::ctor(crate::blocks::tag::ALP as u8, [o(m), o(b), o(a)], &[]),
+            // no `Enc` constructor holds ALP (one encoding, foR); the ALP encoder answers its parts only
+            (Form::Alp, true) => panic!("Sink::finish: an ALP column has no `Enc` constructor"),
         }
     }
     /// The sink answering the `Enc` object of its form rather than the form's parts.

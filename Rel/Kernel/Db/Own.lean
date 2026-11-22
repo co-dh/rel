@@ -12,9 +12,7 @@ open Rel
 kind its part count; there is no kind 1, a boolean being a `u1` `foR`. A form with a field that is no buffer has no
 parts and is refused, naming the form. Positions are `none`: no file, `n` is the other side's (PLAN 6.13). -/
 def ownParts : Ext.Enc X → Except String (Option (UInt8 × Array ByteArray))
-  | .bytes b => pure (some (0, #[b]))
   | .foR metadata pack => pure (some (2, #[metadata, pack]))
-  | .alp metadata pack alp => pure (some (3, #[metadata, pack, alp]))
   | .pos => pure none
   | .syms _ _ => throw "a `syms` column, which the own format does not hold: a symbol column is stored as `foR` ids \
       into a sorted dictionary (doc/rel-architecture.zh.typ §4), and no writer builds that yet"
@@ -26,9 +24,7 @@ def ownParts : Ext.Enc X → Except String (Option (UInt8 × Array ByteArray))
 it is, so a mapped part stays in the mapping. -/
 def ownEnc (kind : UInt8) (parts : Array ByteArray) : Option (Ext.Enc X) :=
   match kind, parts.toList with
-  | 0, [b] => some (.bytes b)
   | 2, [metadata, pack] => some (.foR metadata pack)
-  | 3, [metadata, pack, alp] => some (.alp metadata pack alp)
   | _, _ => none
 
 /-- The file a value is written as when it is a column: a vector, or an enumeration's indices under their domain's

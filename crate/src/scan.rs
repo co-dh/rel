@@ -262,9 +262,8 @@ impl<'a> Col<'a> {
     fn of(s: u8, n: usize, e: B<'a>) -> Option<Col<'a>> {
         let (w, boolean) = (qtype_width(s), s == QT_BOOLEAN);
         match (e.tag(), w) {
-            (tag::BYTES, Some(w)) if !boolean => Some(Col::Dense(e.field(0).bytes(), w)),
-            (tag::FOR, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, 1)),
-            (tag::FOR | tag::ALP, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, w, n, "qlean_k_scan"), w, !0)),
+            (tag::FOR, Some(w)) if boolean => Some(Col::Blk(Blocks::of(e, n, "qlean_k_scan"), w, 1)),
+            (tag::FOR, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, n, "qlean_k_scan"), w, !0)),
             // `pos` is `raw`'s at `i64` (type 4) only: the loop index
             (tag::POS, _) if s == 4 => Some(Col::Blk(Blocks::pos(n), 8, !0)),
             // ids of no bits (a dictionary of one entry) read 0 at every row
@@ -523,7 +522,7 @@ mod kscan_tests {
     fn enc_bits(v: &[u64]) -> O { enc_for(&v.iter().map(|b| b & 1).collect::<Vec<_>>(), 1) }
     fn parts(o: &O) -> Vec<Vec<u8>> {
         let b = o.borrow();
-        (0..if b.tag() == tag::BYTES { 1 } else { 2 }).map(|i| b.field(i).bytes().to_vec()).collect()
+        (0..2).map(|i| b.field(i).bytes().to_vec()).collect()
     }
     /// A column of `n` words: a smooth run, an outlier every 97th row (a patch), negatives, a null every 301st, `0n`
     /// every 211th.

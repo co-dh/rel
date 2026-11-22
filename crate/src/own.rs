@@ -3,8 +3,8 @@
 //! the header and its checks, the write-all and the temp-file-and-rename replace, and the mapping of the parts.
 //!
 //! The file: bytes 0..8 `qleancol`; byte 8 the format version (`OWN_VERSION`, `OWN_OLDEST` is read too); byte 9 the q type
-//! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (0 bytes,
-//! 2 foR, 3 alp, 4 enum: the kinds `OWN_NPARTS` gives a part count); bytes 12..14 the u16 part count
+//! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (2 foR,
+//! 4 enum; 0 bytes and 3 alp were removed in version 5: the kinds `OWN_NPARTS` gives a part count); bytes 12..14 the u16 part count
 //! (`OWN_NPARTS[kind]`); bytes 14..16 the u16 byte length of the enumeration domain name; bytes 16..24 the u64 element
 //! count; then 16 bytes a part (u64 offset, u64 length), the domain name, and each part after zeros up to an offset
 //! that is a multiple of 8 and leaves `OWN_ROOM` zero bytes before it; then `OWN_ROOM` zero bytes. The parts are the
@@ -30,10 +30,10 @@ pub const OWN_MAXPARTS: usize = 3;
 
 pub const OWN_ROOM: u64 = 32;
 pub const OWN_HEAD: usize = 24;
-pub const OWN_VERSION: u8 = 4;
+pub const OWN_VERSION: u8 = 5;
 /// The part count of each constructor kind, `None` for a number that is no kind: 1 was the bitmap, gone since a boolean
 /// is a u1 foR (kind 2); 2, 3 and 4 keep their numbers, so a file on disk keeps its meaning. `Own.lean`'s `ownNParts`.
-pub const OWN_NPARTS: [Option<usize>; 5] = [Some(1), None, Some(2), Some(3), Some(2)];
+pub const OWN_NPARTS: [Option<usize>; 5] = [None, None, Some(2), None, Some(2)];
 /// The part count of `kind`, None when `kind` is no kind: the one test the writer and the reader make of it.
 pub fn nparts(kind: u8) -> Option<usize> { OWN_NPARTS.get(kind as usize).copied().flatten() }
 
@@ -181,7 +181,7 @@ pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[
 
 pub struct OwnHead { pub n: u64, pub hdr: usize, pub np: usize,
                      pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub code: u8, pub attr: u8, pub kind: u8 }
-pub const OWN_OLDEST: u8 = 3;
+pub const OWN_OLDEST: u8 = 5;
 pub fn le(m: &[u8], at: usize, w: usize) -> u64 {
     let mut b = [0u8; 8];
     b[..w].copy_from_slice(&m[at..at + w]);
@@ -197,9 +197,9 @@ pub fn head(m: &[u8], why: &mut Why) -> Option<OwnHead> {
     let n = le(m, 16, 8);
     if &m[..8] != b"qleancol" { why.say(format_args!("byte 0: the magic `qleancol`")); return None; }
     if m[8] < OWN_OLDEST || m[8] > OWN_VERSION {
-        why.say(format_args!("byte 8: format version {} or {}, found {}; a version-1 file predates the \
-Frame of Reference patch list and a version-2 one its per-block frames, and either is \
-rewritten by `set` from the data it was made from", OWN_OLDEST, OWN_VERSION, m[8]));
+        why.say(format_args!("byte 8: format version {}, found {}; a file before version 5 may hold the dense \
+`bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` \
+from the data it was made from", OWN_VERSION, m[8]));
         return None;
     }
     if nparts(kind) != Some(np) {
@@ -247,7 +247,7 @@ bytes", k, at, l, off, size));
 /// Residuals and the cached `maxv` and `bsum` cannot make a read leave its part, so they are not checked. False with
 /// `why` filled. `p` are the parts, `kind`'s first `nparts(kind)` of them.
 pub fn check(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
-    if kind == 2 || kind == 3 {
+    if kind == 2 {
         if !check_coc(kind, n, p, why) { return false }
     }
     // the dense kind's `n * width` is checked by `Own.lean`, which alone knows the type's width
@@ -312,18 +312,6 @@ in a pack of {} bytes", b, need, o, plen));
             }
             return exc_ok(t, blk as usize, nblk, nexc, esz as usize, 1, if frm { Tail::Frames } else { Tail::None }, why);
         }
-    } else {
-        if pk.len() != e {
-            why.say(format_args!("part 1: an ALP pack of exactly its {} residual bytes, found {}", e, pk.len()));
-            return false;
-        }
-        let a = p[2];
-        if a.len() < 16 {
-            why.say(format_args!("part 2: a 16-byte ALP header, found {} bytes", a.len()));
-            return false;
-        }
-        let flags = u64::from_ne_bytes(a[8..16].try_into().unwrap());
-        return exc_ok(a, blk as usize, nblk, u64::from_ne_bytes(a[..8].try_into().unwrap()), if flags & 1 != 0 { 4 } else { 8 }, 2, Tail::Exps, why);
     }
     true
 }
