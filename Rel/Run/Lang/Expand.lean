@@ -45,11 +45,15 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
   { d with apply := fun p as => do
       let reword (e : Err) : M Arg :=
         throw (if e.pos == p then e else ⟨p, s!"in `{c}` (its line {e.pos.line}): {e.msg}"⟩)
+      let row := prims.find? (·.prelude == some c)
+      -- given a family, a keyable row runs once on the keyed families, as any row applied to one does
+      match row, as.find? Arg.isFam with
+      | some x, some (.fam _ I _ _) => if x.keyable && as.length == x.sig.1.length then return ← appliedRowL I p x as
+      | _, _ => pure ()
       let r ← if imported then tryCatch (d.apply p as) reword else d.apply p as
       -- the body's positions are its program's: at the use, so what `build` raises later is at the use
       -- a prelude definition with a row of its own runs as that row's constant
       -- given relations, not families, as its parameters are
-      let row := prims.find? (·.prelude == some c)
       let rels := as.filterMap fun | .rel a s _ => some (a, s) | _ => none
       match c, r, row with
       | _, .rel q s t, some x =>

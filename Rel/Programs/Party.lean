@@ -49,7 +49,7 @@ rel_program partyPlan where
     tally : E×[N×N] ⟶ N×N ≜ ⟨(π₁rating) + (π₂F(π₂)sum), π₂F(max)sum⟩
     c : E ⟶ N×N ≜ hylo(⟨𝟙, kids⟩, tally)
     win : E ⟶ E ≜ dom((c π₁ ≥) ∩ (c π₂))
-    guests : E ⟶ E ≜ μX : win (𝟙 ∪ (boss° boss° X)) ∪ ((𝟙 − win)boss° X)
+    guests : E ⟶ E ≜ (win boss° boss° ∪ ((𝟙 − win)boss°))* win   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
     check Λ(guests) ⊑ best
     check c max = best cost(rating)
     root : E ⟶ E ≜ {(a,a)}

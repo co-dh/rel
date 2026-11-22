@@ -100,7 +100,7 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["∋", "inl", "inr", "τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc", "inl°", "inr°",
-   "tails", "takewhile", "sums", "flat", "$", "foldI"] ++ floatOps.map (·.1)
+   "tails", "takewhile", "sums", "flat", "$", "foldI", "star"] ++ floatOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
@@ -780,6 +780,38 @@ theorem rowOK_foldI : RowOK "foldI" := rowOK_args (c := RowCode.foldI) rfl rfl f
     · exact GenK.foldI_sound hs1 (hw _ List.mem_cons_self) hs2 (hw _ (List.mem_cons_of_mem _ List.mem_cons_self))
     · rename_i h; exact absurd ⟨rfl, rfl, rfl, rfl⟩ h
 
+/-- `star(R)`, `Expand.primE`'s fit of the row (`stepAfter`, `Tab.star`): each key in demand to `μX : 𝟙 ∪ R X`,
+    `R` run on the frontier each round meets (`compT_sound`, `Tab.star_holds`). -/
+theorem GenK.star_sound {B : Obj} {d : Bool} {F : Rel B B} {TF : Den B B} (hF : ∀ K, F.Reps K TF) (wF : F.Wf) :
+    ∀ K, (GenK.stepAfter B B B B d F fun F P => Tab.star F P).Reps K (Core.Rel.mu fun X => 𝟙 _ ∪ TF ≫ X) := by
+  have hF' : ∀ (D : Tab B B) T, (GenK.compT (.ok D) F).runE {} = .ok T →
+      ∀ a c, T.Holds a c ↔ ∃ b, D.Holds a b ∧ TF b c := fun D T hT a c =>
+    (GenK.reps_iff _ _ _).1 (GenK.compT_sound (r' := .ok D) (K := {}) (X := rep D)
+      (fun _ hr a b _ _ _ => by cases hr; exact Iff.rfl) hF wF) T hT a c rfl rfl trivial
+  unfold GenK.stepAfter
+  exact GenK.after_row_sound fun _ _ h k c => Tab.star_holds hF' h k c
+
+theorem rowOK_star : RowOK "star" := rowOK_args (c := RowCode.star) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
+  have h1 : rowArity "star" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨by unfold GenK.stepAfter GenK.after; exact GenK.ofVals_wf, fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.star_sound hss (hw _ (List.mem_singleton_self _))
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `rowGens_proved` checks. -/
 theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h1 : r.sym = "∋"; · rw [h1]; exact rowOK_mem
@@ -815,9 +847,10 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h31 : r.sym = "flat"; · rw [h31]; exact rowOK_flat
   by_cases h32 : r.sym = "$"; · rw [h32]; exact rowOK_cast
   by_cases h33 : r.sym = "foldI"; · rw [h33]; exact rowOK_foldI
+  by_cases h34 : r.sym = "star"; · rw [h34]; exact rowOK_star
   by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
   simp [rowsProved, hu, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
-    h21, h22, h23, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33] at h
+    h21, h22, h23, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}

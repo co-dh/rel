@@ -243,6 +243,11 @@ def foldIRow : Prim :=
       ((.prod (.prod (.var {} "I") (.var {} "V")) (.var {} "E"), .prod (.var {} "I") (.var {} "V")), some false)],
       .prod (.var {} "I") (.list (.var {} "E")), .var {} "V"),
     written := false, aop := .error "AOP declares no fold of a family read as one relation of the key and the list" }
+/-- `star(R) ≜ μX : 𝟙 ∪ R X`, the prelude's, run as its fused form `Tab.star` (semi-naive, on the keys in demand, so
+    also on an object with no universe, where the closed `μ` cannot run). -/
+def starRow : Prim :=
+  { sym := "star", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B"),
+    prelude := `Rel.Programs.prelude.star }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -317,7 +322,7 @@ def prims : List Prim :=
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
      aop := .error "AOP declares no change of a number's representation" },
-   foldIRow] ++
+   foldIRow, starRow] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
   floatOps.map fun (s, o, u) =>
