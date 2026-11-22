@@ -467,13 +467,65 @@ theorem est_wf {n : USize} {q : Tab (.prod B B) (.prod B B) → Except String (T
   have wY := diff_wf hY (diff_wf hb wD (hq _ _ ha wD)) (ran_wf hd (pair_wf hc wV wV))
   exact diff_wf h wG (comp_wf hf wP (outl_wf he wY.1))
 
-/-! ### Fixed points, given `Tab.pack` keeps `Tab.WF`
+end Tab
 
-`Vals.pack` lays its cut payload out by `Vals.cells`, whose `Vals.WF` needs the `expand` count (`Vals.cells_wf`'s
-`hT`): that is lohi3b, so `hpack` is a hypothesis here. -/
+/-! ### `pack` and the fixed points -/
+
+/-- **`Vals.pack` keeps `Vals.WF`**: a cut payload is the input's gathered and packed, laid out by `Vals.cells` over
+the EXPAND of the cells' own widths, each at most `m` (`cellSpan_width`, `Vals.cells_expand_wf`). -/
+theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.pack x = .ok y → Vals.WF x → Vals.WF y
+  | .atom _, _, _, _, _, _ => trivial
+  | .prod _ _, _, x, _, h, hx => by
+    simp only [Vals.pack, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i y1 h1
+    split at h; · cases h
+    rename_i y2 h2
+    cases h; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
+  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩, _, h, hx => by
+    simp only [Vals.pack, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i x' h1
+    split at h; · cases h
+    rename_i y' h2
+    cases h; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
+  | .arr B, n, ⟨m, lo, up, f⟩, y, h, hx => by
+    simp only [Vals.pack] at h
+    split at h; · cases h
+    rename_i hb
+    simp only [bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+    split at h; · cases h
+    split at h
+    case isFalse =>
+      rw [Except.bind_eq_ok'] at h; obtain ⟨f', hf', h⟩ := h
+      cases h; exact ⟨hx.1, Vals.pack_wf hf' hx.2⟩
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨sg, hsg, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨g', hg', h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨p, hp, h⟩ := h
+    have hm63 : m.toNat < 2 ^ 63 := by omega
+    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+    refine Vals.cells_expand_wf hex h m.toNat (fun i hi => ?_) (by omega) (by omega)
+      (Vals.pack_wf hp (Vals.gather_wf hg' hx.2))
+    obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
+    rw [e1, toNat_toUInt64 (by omega)]; exact b1
+
+/-- **`Tab.pack` keeps `Tab.WF`** (`Vals.pack_wf` on both sides). -/
+theorem Tab.pack_wf {R t : Tab A B} (h : R.pack = .ok t) (hR : R.WF) : t.WF := by
+  simp only [Tab.pack, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i x hx; split at h; · cases h
+  rename_i y hy; cases h
+  exact ⟨Vals.pack_wf hx hR.1, Vals.pack_wf hy hR.2⟩
+
+namespace Tab
 
 theorem fixOn_wf {out : String} {step : Tab A B → Except String (Tab A B)}
-    (hpack : ∀ R t : Tab A B, R.pack = .ok t → R.WF → t.WF) (hs : ∀ X t, step X = .ok t → X.WF → t.WF) :
+    (hs : ∀ X t, step X = .ok t → X.WF → t.WF) :
     ∀ {k : Nat} {X t : Tab A B}, fixOn out step k X = .ok t → X.WF → t.WF
   | 0, _, _, h, _ => by simp [fixOn, throw, throwThe, MonadExceptOf.throw] at h
   | k + 1, X, t, h, hX => by
@@ -482,27 +534,25 @@ theorem fixOn_wf {out : String} {step : Tab A B → Except String (Tab A B)}
     rename_i Y hY
     have wY : Y.WF := by
       split at hY; · cases hY
-      exact hpack _ _ hY (hs _ _ ‹_› hX)
+      exact Tab.pack_wf hY (hs _ _ ‹_› hX)
     split at h
     · cases h; exact wY
-    · exact fixOn_wf hpack hs h wY
+    · exact fixOn_wf hs h wY
 
 theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
-    (hpack : ∀ R t : Tab A B, R.pack = .ok t → R.WF → t.WF) (hf : ∀ X t, f X = .ok t → X.WF → t.WF)
-    {t : Tab A B} (h : mu what cap f = .ok t) : t.WF := by
+    (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : mu what cap f = .ok t) : t.WF := by
   simp only [mu, bind, Except.bind] at h
   split at h; · cases h
-  refine fixOn_wf hpack (fun X t hX wX => ?_) h (zero_wf ‹_›)
+  refine fixOn_wf (fun X t hX wX => ?_) h (zero_wf ‹_›)
   simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact union_wf hX wX (hf _ _ ‹_› wX)
 
 theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
-    (hpack : ∀ R t : Tab A B, R.pack = .ok t → R.WF → t.WF) (hf : ∀ X t, f X = .ok t → X.WF → t.WF)
-    {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
+    (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
   simp only [nu, bind, Except.bind] at h
   split at h; · cases h
-  refine fixOn_wf hpack (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
+  refine fixOn_wf (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
   simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact inter_wf hX wX (hf _ _ ‹_› wX)

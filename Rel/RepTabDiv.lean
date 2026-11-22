@@ -407,6 +407,28 @@ theorem cellSpan_spec {B : Obj} {n m : USize} {lo up s e : Arr .i64 n} (h : cell
     rw [show (min (Hf i) (m.toNat : Int)).toNat - min (max (Lf i) 0).toNat m.toNat = 0 by omega,
       show EN i - SN i = 0 by rw [hEN, hSN]; omega]; rfl
 
+/-- **`cellSpan` keeps the start of a cell `Vals.WF` admits**: where `0 ≤ lo ≤ m`, `s = max lo 0` is `lo`, at most
+`m`. -/
+theorem cellSpan_start_le {n m : USize} {lo up s e : Arr .i64 n} (h : cellSpan m lo up = .ok (s, e))
+    (hc : ∀ i : Fin n.toNat, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (up.get i).toInt ∧
+      (up.get i).toInt ≤ (m.toNat : Int)) (i : Fin n.toNat) : ((raw .i64 n s.enc)[i.1]?.getD 0).toNat ≤ m.toNat := by
+  simp only [cellSpan, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨s', hs, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, hcm, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨mn, hmn, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e', he, h⟩ := h
+  cases h
+  have es : (Except.ok (if ((raw .i64 n lo.enc)[i.1]?.getD 0).toInt64 < (0 : UInt64).toInt64 then (0 : UInt64)
+      else (raw .i64 n lo.enc)[i.1]?.getD 0) : Except String UInt64) = .ok ((raw .i64 n s'.enc)[i.1]?.getD 0) := by
+    have := (colMap_raw (colArr_ok hs)).2.2.2 i.1 i.2
+    rwa [colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at this
+  have hl := hc i
+  rw [Arr.get_i64] at hl
+  obtain ⟨-, hv⟩ := toInt64_nonneg (x := (raw .i64 n lo.enc)[i.1]?.getD 0) hl.1
+  rw [← Except.ok.inj es, if_neg (by rw [Int64.lt_iff_toInt_lt, show (0 : UInt64).toInt64.toInt = 0 from rfl]; omega)]
+  omega
+
 /-- **`colArr` answers `colMap`'s column**, the converse of `colArr_ok`. -/
 theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o) :
     colArr op n a b t = .ok (Arr.mk o (colMap_closed h).2) := by
@@ -460,6 +482,14 @@ theorem cellSpan_where {B : Obj} {n m M : USize} {lo up s e : Arr .i64 n} {lt se
   · obtain ⟨k, hk, e⟩ := (hmem i).2 ⟨hi, by rw [ltw i hi, if_pos c]; decide⟩
     exact ⟨k, hk, e⟩
 
+/-- **A cell `[a, b)` with `a ≤ b ≤ m`**, its bounds the words of the naturals `a` and `b`, `m` below `2^63`: the cell
+clause of `Vals.WF`. -/
+theorem cell_wf_nat {n m : USize} {lo hi : Arr .i64 n} {i : Fin n.toNat} {a b : Nat}
+    (hlo : (raw .i64 n lo.enc)[i.1]?.getD 0 = a.toUInt64) (hhi : (raw .i64 n hi.enc)[i.1]?.getD 0 = b.toUInt64)
+    (hab : a ≤ b) (hbm : b ≤ m.toNat) (hm : m.toNat < 2 ^ 63) :
+    0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
+  rw [Arr.get_i64, Arr.get_i64, hlo, hhi, toInt64_toInt_nat (by omega), toInt64_toInt_nat (by omega)]; omega
+
 /-- **`Vals.cells` lays cell `i` out at `[Σ_{<i} w, Σ_{≤i} w)`** of its payload, as the words of `lo` and `hi`. -/
 theorem Vals.cells_spec {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
     (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
@@ -506,8 +536,37 @@ theorem Vals.cells_wf {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Va
   obtain ⟨lo', hi', rfl, hb⟩ := Vals.cells_spec hY wN hw hT hT63
   refine ⟨fun i => ?_, hp⟩
   obtain ⟨hgT, hlo, hhi⟩ := hb i
-  rw [Arr.get_i64, Arr.get_i64, hlo, hhi, toInt64_toInt_nat (by omega), toInt64_toInt_nat (by omega)]
-  omega
+  exact cell_wf_nat hlo hhi (by omega) hgT hT63
+
+/-- `Σ_{<k} wN ≤ k · c` where each `wN i` below `k` is at most `c`. -/
+theorem sum_range_le_mul {wN : Nat → Nat} {c : Nat} : ∀ {k : Nat}, (∀ i < k, wN i ≤ c) →
+    ((List.range k).map wN).sum ≤ k * c
+  | 0, _ => by simp
+  | k + 1, h => by
+    have := h k (by omega); have := sum_range_le_mul (k := k) fun i hi => h i (by omega)
+    rw [sum_range_succ', Nat.succ_mul]; omega
+
+/-- **`cellSpan`'s widths**: word `i` of `e - s` is `EN i - SN i` (`cellSpan_spec`'s words), at most `m`. -/
+theorem cellSpan_width {n m : USize} {s e : Arr .i64 n} {w : Enc} {SN EN : Nat → Nat}
+    (hse : ∀ i < n.toNat, (raw .i64 n s.enc)[i]?.getD 0 = (SN i).toUInt64 ∧
+      (raw .i64 n e.enc)[i]?.getD 0 = (EN i).toUInt64)
+    (hb : ∀ i, SN i ≤ EN i ∧ SN i < 2 ^ 63 ∧ (EN i ≤ m.toNat ∨ EN i = SN i)) (hw : colMap .sub n e.enc s.enc = .ok w) :
+    ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (EN i - SN i).toUInt64 ∧ EN i - SN i ≤ m.toNat := fun i hi => by
+  have es := (colMap_raw hw).2.2.2 i hi
+  rw [(hse i hi).2, (hse i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+  exact ⟨by rw [← es, toUInt64_sub (hb i).1], by have := hb i; omega⟩
+
+/-- **`Vals.cells` over the EXPAND of its own widths keeps `Vals.WF`** (`Vals.cells_wf`): each width at most `c` and
+`n · c` below `2^63`, so the `T = Σ w` payload rows (`expand_spec`) hold every cell. -/
+theorem Vals.cells_expand_wf {B : Obj} {n T : USize} {w G u : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
+    (hex : expand n w = .ok (T, G, u)) (hY : Vals.cells n w pay = .ok Y) (c : Nat)
+    (hc : ∀ i < n.toNat, ((raw .i64 n w)[i]?.getD 0).toNat ≤ c) (hnc : n.toNat * c < 2 ^ 63) (hn : n.toNat < 2 ^ 63)
+    (hp : Vals.WF pay) : Vals.WF Y := by
+  have hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = ((raw .i64 n w)[i]?.getD 0).toNat.toUInt64 :=
+    fun _ _ => (UInt64.ofNat_toNat _).symm
+  have hs := sum_range_le_mul hc
+  have hT := (expand_spec hex _ hw (by omega) hn).1
+  exact Vals.cells_wf hY _ hw (by omega) (by omega) hp
 
 /-- **A payload laid out by the EXPANDed widths of `X`'s cells** (`Vals.pack`, `Tab.map`): the cells `n w pay` over a
 payload whose row `t` is `g` of `X`'s payload row at the gathered position `ix[t]` are `X`'s cells mapped by `g`; the
@@ -525,17 +584,11 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
   obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hse hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
-  have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
-    intro i hi
-    have es := (colMap_raw hw).2.2.2 i hi
-    rw [(hse' i hi).2, (hse' i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, hwN, toUInt64_sub (hb1 i).1]
+  have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
+    rw [hwN]; exact (cellSpan_width hse' hb1 hw i hi).1
   have hwm : ∀ i, wN i ≤ m.toNat := fun i => by have := hb1 i; rw [hwN]; omega
-  have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * m.toNat := fun k => by
-    induction k with
-    | zero => simp
-    | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hwm k; omega
-  have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by have := hsum n.toNat; omega
+  have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by
+    have := sum_range_le_mul (k := n.toNat) fun i _ => hwm i; omega
   obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
   have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
     rw [← sum_range_succ']; exact sum_range_mono wN i.2
@@ -765,10 +818,7 @@ theorem Vals.tau_spec {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n}
 theorem Vals.tau_wf {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
     (hn : n.toNat < 2 ^ 63) (hx : Vals.WF x) : Vals.WF y := by
   obtain ⟨lo, hi, rfl, hb⟩ := Vals.tau_spec h
-  refine ⟨fun i => ?_, hx⟩
-  have := i.2
-  rw [Arr.get_i64, Arr.get_i64, (hb i).1, (hb i).2, toInt64_toInt_nat (by omega), toInt64_toInt_nat (by omega)]
-  omega
+  exact ⟨fun i => cell_wf_nat (hb i).1 (hb i).2 (by omega) (by omega) hn, hx⟩
 
 /-- **`Vals.tau` reads each row as its one-element cell** `[i, i + 1)` over `x`, `n` below `2^63`. -/
 theorem Vals.tau_row {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
