@@ -161,7 +161,8 @@ instance : Reg Scan.Verb := ⟨.u8, fun
     it is borrowed (`@&`), the result's types (a product flattened) and each one's path of field indices into the
     answer, whether the answer is an `Except String` (its `error` the run's failure), whether the toolchain declares
     it (so `lean.h` defines its symbol, `static inline`), and the Lean call on registers: a pure kernel's answer, or
-    an `IO` kernel's action, which answers no register and runs only at the output edge (`Plan.exec`). -/
+    an `IO` kernel's action, which runs only at an edge (`Plan.exec`): a read, answering registers, at the input
+    edge (`Plan.input`); a write, answering none, at the output edge. -/
 structure Kernel where
   sym : String
   args : Array (Ty × Bool)
@@ -169,7 +170,7 @@ structure Kernel where
   paths : Array (List Nat)
   exc : Bool
   std : Bool
-  run : (Array Val → Except String (Array Val)) ⊕ (Array Val → IO Unit)
+  run : (Array Val → Except String (Array Val)) ⊕ (Array Val → IO (Array Val))
 
 /-- Whether `k` runs in `IO`. -/
 def Kernel.io (k : Kernel) : Bool := k.run.isRight
@@ -230,8 +231,6 @@ elab "kernel% " c:ident : term => do
   let exc := r.isAppOfArity ``Except 2
   let rp ← resTys r
   let res := rp.map (·.1)
-  if io && !res.isEmpty then
-    throwError "kernel%: `{n}` runs in `IO` and answers {res.size} registers; a plan runs `IO` only at its output edge"
   -- the toolchain's own externs are the ones `lean.h` defines; its modules are those of `Init`, `Std`, `Lean`
   let env ← getEnv
   let std := (env.getModuleIdxFor? n >>= (env.header.moduleNames[·.toNat]?)).any ([`Init, `Std, `Lean].contains ·.getRoot)
@@ -239,9 +238,9 @@ elab "kernel% " c:ident : term => do
   let as : Array Term ← (List.range ds.length).toArray.mapM fun i =>
     if io then `((← IO.ofExcept (arg $(quote sym) $vs $(quote i)))) else `((← arg $(quote sym) $vs $(quote i)))
   let call ← `($(mkIdent n) $as*)
-  let run ← if io then `(Sum.inr fun $vs => do ($call : IO Unit)) else `(Sum.inl fun $vs => do Out.out $call)
+  let run ← if io then `(Sum.inr fun $vs => do IO.ofExcept (Out.out (← $call))) else `(Sum.inl fun $vs => do Out.out $call)
   let runE ← elabTermAndSynthesize
-    (← `(($run : (Array Val → Except String (Array Val)) ⊕ (Array Val → IO Unit)))) none
+    (← `(($run : (Array Val → Except String (Array Val)) ⊕ (Array Val → IO (Array Val))))) none
   return mkAppN (mkConst ``Kernel.mk) #[toExpr sym, toExpr args, toExpr res, toExpr (rp.map (·.2)), toExpr exc,
     toExpr std, ← instantiateMVars runE]
 
@@ -267,6 +266,10 @@ inductive Instr
   /-- `r = proj x.i`: object field `i` of the constructor in register `x`, whose tag must be `tag`, read as a `t`
       (unboxed when `t` is a scalar); any other tag fails the run. -/
   | proj (x tag i : Nat) (t : Ty)
+  /-- `r = sproj x.i`: scalar field `i` of the constructor in register `x` of tag `tag`, `nobj` object fields and
+      scalar fields of the types `ss` in declaration order (`Val.ctor`'s scalars), stored unboxed as the Lean
+      compiler lays them out (an `ownMap` answer's count and bytes); any other tag fails the run. -/
+  | sproj (x tag nobj : Nat) (ss : Array Ty) (i : Nat)
   deriving Inhabited
 
 /-- A function: its parameters' types (registers `0 … k-1`, borrowed), its body, its result registers (owned). A
@@ -278,11 +281,13 @@ structure Fun where
   deriving Inhabited
 
 /-- A plan (§6): functions, each applying only earlier ones, so the call graph has no cycle; globals, computed in
-    order before `main`; and `main`. -/
+    order before `main`; `main`; and its input edge, `lit`s and calls of `IO` reads only, whose registers are
+    `main`'s first (IO step I10: an `input` is read before anything is computed, as `n.io` reads it). -/
 structure Plan where
   funs : Array Fun := #[]
   globals : Array Fun := #[]
   main : List Instr
+  input : List Instr := []
   deriving Inhabited
 
 /-- What `fail msg args` prints: `msg`, then the registers after `: `, separated by `, `. -/
@@ -320,7 +325,9 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
       let out ← f vs
       unless out.size == k.res.size do throw s!"plan: `{sym}` answered {out.size} registers, its declaration {k.res.size}"
       pure (rs ++ out, ws)
-    | .inr _ => pure (rs, ws.push (sym, vs))
+    | .inr _ =>
+      unless k.res.isEmpty do throw s!"plan: `{sym}` reads, which a plan does only at its input edge (`Plan.input`)"
+      pure (rs, ws.push (sym, vs))
   | .fail msg as, rs, _ => do throw (failText msg (← as.mapM (reg rs "fail")).toList)
   | .apply f as, rs, ws => do
     let some g := fs[f]? | throw s!"plan: apply f{f}, which is not an earlier function"
@@ -343,6 +350,15 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
       | some v => if v.ty == t then pure (rs.push v, ws) else throw s!"plan: proj r{x}.{i} is a {repr v.ty}, not a {repr t}"
       | none => throw s!"plan: proj r{x}.{i}: constructor {tag} has {os.size} object fields"
     | _ => throw s!"plan: proj reads register {x}, which is not a constructor"
+  | .sproj x tag nobj ss i, rs, ws => do
+    match ← reg rs "sproj" x with
+    | .ctor tag' os vs =>
+      unless tag' == tag && os.size == nobj && (vs.map Val.ty) == ss do
+        throw s!"plan: sproj r{x}.{i} reads constructor {tag'} of {os.size} objects and scalars {repr (vs.map Val.ty)}, not {tag} of {nobj} and {repr ss}"
+      match vs[i]? with
+      | some v => pure (rs.push v, ws)
+      | none => throw s!"plan: sproj r{x}.{i}: constructor {tag} has {vs.size} scalar fields"
+    | _ => throw s!"plan: sproj reads register {x}, which is not a constructor"
 end
 
 /-- What function `f` means where the functions before it mean `fs`. -/
@@ -356,6 +372,7 @@ def sems (abi : String → Option Kernel) (funs : Array Fun) : Array Sem :=
 /-- What `p` means, pure (decision D of `doc/rel-native-design.md` §13): the globals in order, then `main`'s
     registers, and the writes to perform. -/
 def Plan.run (abi : String → Option Kernel) (p : Plan) : Except String (Array Val × Writes) := do
+  unless p.input.isEmpty do throw "plan: an input edge, which only `Plan.exec` performs (it reads files)"
   let fs := sems abi p.funs
   let (gs, ws) ← p.globals.foldlM (fun (gs, ws) g => do
     let (v, ws) ← g.sem abi fs gs #[] ws; pure (gs.push v, ws)) (#[], #[])
@@ -364,11 +381,24 @@ def Plan.run (abi : String → Option Kernel) (p : Plan) : Except String (Array 
 /-- `p` run, then its writes performed in order by their `IO` kernels: the output edge. A run that fails writes
     nothing, where the C has written what came before its `fail`; the gates compare runs that succeed. -/
 def Plan.exec (abi : String → Option Kernel) (p : Plan) : IO (Array Val) := do
-  let (rs, ws) ← IO.ofExcept (p.run abi)
+  -- the input edge first: each read's registers become `lit`s of `main`, so the run stays pure
+  let mut ins : Array Val := #[]
+  for i in p.input do
+    match i with
+    | .lit v => ins := ins.push v
+    | .call sym as =>
+      let some k := abi sym | throw (IO.userError s!"plan: no kernel `{sym}` in the ABI table")
+      let .inr act := k.run | throw (IO.userError s!"plan: the input edge calls `{sym}`, which is no `IO` kernel")
+      let out ← act (← IO.ofExcept (as.mapM (reg ins sym)))
+      unless out.size == k.res.size do
+        throw (IO.userError s!"plan: `{sym}` answered {out.size} registers, its declaration {k.res.size}")
+      ins := ins ++ out
+    | _ => throw (IO.userError "plan: the input edge holds `lit`s and `IO` reads only")
+  let (rs, ws) ← IO.ofExcept ({ p with input := [], main := ins.toList.map Instr.lit ++ p.main }.run abi)
   for (sym, vs) in ws do
     let some k := abi sym | throw (IO.userError s!"plan: no kernel `{sym}` in the ABI table")
     match k.run with
-    | .inr act => act vs
+    | .inr act => discard <| act vs
     | .inl _ => throw (IO.userError s!"plan: `{sym}` is no `IO` kernel")
   pure rs
 
@@ -423,7 +453,14 @@ def global (b : Bld (Array Nat)) : Bld (Array Nat) := do
 /-- The plan of `main`. -/
 def Bld.plan (b : Bld Unit) : Except String Plan := do
   let ((), is, _, fs, gs) ← b.run (#[], 0, #[], #[])
-  pure ⟨fs, gs, is.toList⟩
+  pure { funs := fs, globals := gs, main := is.toList }
+
+/-- The plan of `rd`, its input edge (`lit`s and `IO` reads only, as `Plan.exec` checks), then `main`'s `b` on what
+    `rd` answers. -/
+def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String Plan := do
+  let (a, is, n, fs, gs) ← rd.run (#[], 0, #[], #[])
+  let ((), ms, _, fs, gs) ← (b a).run (#[], n, fs, gs)
+  pure { funs := fs, globals := gs, main := ms.toList, input := is.toList }
 
 /-- A side's atom columns, each with its path in the side: `""` an atom; `.1`/`.2` a product's; `.lo`/`.hi`/`.e`
     an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads. -/
@@ -439,22 +476,29 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
 def ownFile (p : String) (v : QValue) : Except String (Option Db.OwnFile) :=
   (Db.ownFile v).mapError fun e => s!"column `{p}`: {e}"
 
-/-- A side's registers: each column's path and its six `ownFile` registers. -/
+/-- A side's registers: each column's path and its six `ownFile` registers, then its `Enc` register where the plan
+    holds one (a literal or computed vector, a CSV read; not a column mapped from its file, which is its parts). -/
 abbrev Side := List (String × Array Nat)
 
 /-- The side's columns as `lit`s; a positions column has none. -/
 def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
   (cols A x "").filterMapM fun (p, v) => do
     let some f ← ownFile p v | return none
-    return some (p, ← #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count, .str f.domain, .parts f.parts].mapM lit)
+    let rs ← #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count, .str f.domain, .parts f.parts].mapM lit
+    let rs ← match v with | .vector _ _ e _ => pure (rs.push (← lit (Reg.put e))) | _ => pure rs
+    return some (p, rs)
 
-/-- The registers of a closed term's value, key side then value side. Stage 1a builds a literal and a converse,
-    which swaps the sides and emits nothing; any other node is refused. -/
-def ofTm : {A B : Obj} → Tm A B → Bld (Side × Side)
+/-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
+    to them (a run-time definition's inputs, `Once.binds`). Stage 1a builds a literal, a converse, which swaps the
+    sides and emits nothing, and a bound variable (I10), which emits nothing; any other node is refused. -/
+def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Side × Side)
   | _, _, .val R => return (← litSide R.key, ← litSide R.val)
-  | _, _, .conv R => return (← ofTm R).swap
-  | _, _, .share _ R => ofTm R
-  | _, _, _ => throw "a node other than a literal, a converse or a shared term: stage 1a builds only those"
+  | _, _, .conv R => return (← ofTm σ R).swap
+  | _, _, .share _ R => ofTm σ R
+  | _, _, .var _ k => match σ.lookup k with
+    | some s => pure s
+    | none => throw s!"variable {k}, which no input table is bound to"
+  | _, _, _ => throw "a node other than a literal, a converse, a shared term or a variable: stage 1a builds only those"
 
 /-! ### Recipes on the five kernels (design §4) -/
 

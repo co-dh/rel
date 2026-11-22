@@ -231,17 +231,27 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `crate/RELIO.txt`，不计入“RELK 到 5”；CSV 直接读成编码列，类型取自声明的 schema，不推断。
   - key 是 `N` 的输出写一张重编号的新表；其它 key 写 key 表 → val 表，磁盘上 `key/`、`val/`。
   - 转换是 prim 行 `$`（`x $ F`），只做保值方向。
-  步骤表（每步单独合并；I4 已完成，I0 由本次完成，I2、I5 进行中）：
+  步骤表（每步单独合并；I4 已完成，I0 由本次完成，I2 进行中）：
   - ✅ I0 文档：`rel-architecture`、`dataframe-design`、本条。
   - ✅ I1 表代码移到 `Rel/Run/Table.lean`（`lean-refactor move`），律留在 lib `Rel`；需要 `d9step2` 合并。
   - 🔄 I2 语法与 AST：`sInput`、`sOutput`、`check`/`print` 的 `where`；`Decl.input`/`output`；elaboration 拒绝；run-time 名作参数。
   - ✅ I3 `n.io`、`n.inputs`、`n.outputs`，推论 `Sound.inputs`；需要 I1、I2。
   - ✅ I4 crate：导出分为 `RELK.txt`（kernel）与 `RELIO.txt`（IO），`syms` gate 读两个文件。
-  - 🔄 I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），尚无 extern。
-  - ⬜ I6 `qlean_csv_read`；需要 I4、I5。 ⬜ I7 `qlean_csv_write`；需要 I6。
+  - ✅ I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），`Rel/Kernel/Db/Csv.lean`。
+  - ✅ I6 `qlean_csv_read`：`Db.csvRead` 的 body 即 `csvWords`，Rust 在 `crate/src/csv.rs`（逐块直接写进编码列），
+    `Rel.Kernel.Db.CsvTest` 逐例对照。 ✅ I7 `qlean_csv_write`：`Db.csvWrite`，body 即 `csvText`，同一测试对照。
   - ✅ I8 可空列 `V+1`、文本列 `[C]`；`sym` 仍在步骤 6 之后。
   - ✅ I9 `n.io` 中的 `from csv`/`to csv`，`relc run MOD NAME`；需要 I3、I7。
-  - ⬜ I10 native：`abi` 加 `ownMap`、`csvRead`、`csvWrite`，`Plan.ofTm` 读 input 变量；需要 I9。
+  - ✅ I10 native（分支 `i10native`）：`abi` 加 `ownMap`、`csvRead`、`csvWrite`（与 `UInt8.decEq`）。plan 加输入边
+    `Plan.input`（只有 `lit` 与 IO 读），其寄存器是 `main` 的前几个；`Plan.exec` 先执行它，再把读到的值作为 `lit`
+    接在 `main` 前，`Plan.run` 仍是纯的；C 把两者作为一个 block 打印。`kernel%` 接受有返回值的 IO kernel；新指令
+    `sproj` 读构造子的非装箱标量（`ownMap` 答的 count、code、kind），布局与 `ctorC` 共用 `scalarLayout`。
+    `Plan.ofTm σ` 读 `.var`（运行时定义的 `Once.binds` 绑到 input 的寄存器）。`ioOf` 按 `n.io` 的顺序：读
+    `ioReach` 所及的 input，算所及的运行时定义，写每个 output（表目录或 CSV，位置 key 只写 val 一侧）。
+    测试 `TestNative.nativeIO`：CSV input 与表目录 input（`test/native/in`），输出到表目录与 CSV；`make native`
+    在第三个目录跑 `relc run`（`n.io`，Lean 语义），native 的 `out/io` 与之逐字节相等。
+    尚未做（plan 拒绝并指名）：keyed input（读时 `Tab.canon` 排序）、可空 CSV 列 `S+1`（`ofCsv` 重组与检查）、
+    从文件 map 的 float 列（规范形检查）、把 map 来的列写成 CSV（plan 没有从 parts 数组取出 part 的指令）。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
