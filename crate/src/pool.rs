@@ -74,6 +74,8 @@ pub struct Line<T>(T);
 pub struct Pool {
     /// fixed width (a test's pool) or 0: `QLEAN_THREADS`, else the CPUs this process may run on
     fixed: u32,
+    /// the least `n * cost * wide` a pass splits at: `SPLIT_AT`, or `SPLIT` for a test pool that must take the real threshold
+    at: usize,
     width: AtomicU32,
     started: AtomicBool,
     /// a pass is in flight; also what makes thread creation one-time without a mutex
@@ -155,9 +157,11 @@ pub extern "C" fn worker(arg: *mut c_void) -> *mut c_void {
 }
 
 impl Pool {
-    pub const fn new(fixed: u32) -> Pool {
+    pub const fn new(fixed: u32) -> Pool { Pool::with_at(fixed, SPLIT_AT) }
+
+    pub const fn with_at(fixed: u32, at: usize) -> Pool {
         const Z: AtomicU64 = AtomicU64::new(0);
-        Pool { fixed, width: AtomicU32::new(0), started: AtomicBool::new(false), busy: AtomicBool::new(false),
+        Pool { fixed, at, width: AtomicU32::new(0), started: AtomicBool::new(false), busy: AtomicBool::new(false),
                next: AtomicU32::new(0), job: UnsafeCell::new(Job { call: nop, ctx: null(), arg: null(), n: 0, parts: 0 }),
                generation: Line(AtomicU32::new(0)), parked: AtomicU32::new(0), left: Line(AtomicU32::new(0)),
                ctr: Line([Z; 7]), spent: [const { Line(AtomicU64::new(0)) }; MAX_THREADS as usize] }
@@ -182,7 +186,7 @@ impl Pool {
     /// Whether a pass of `n` units of `cost`, touching `wide` payload bytes a unit, is worth waking threads for;
     /// `wide = 0` declines outright. Wrapping, as C's `size_t` product was.
     pub fn worth(&self, n: usize, cost: u32, wide: usize) -> bool {
-        self.width() > 1 && n.wrapping_mul(cost as usize).wrapping_mul(wide) >= SPLIT_AT
+        self.width() > 1 && n.wrapping_mul(cost as usize).wrapping_mul(wide) >= self.at
     }
 
 
@@ -284,12 +288,18 @@ pub static THE: Pool = Pool::new(if cfg!(test) { 3 } else { 0 });
 
 /// C's `qlean_run`: worker `f` over `p` on the pool (`c::Runner`, and `qrs_pool_run` under its C name).
 /// Safety: `f(lo, hi, p)` is sound on any thread for every slice of `[0, n)`, concurrently for disjoint slices.
-pub unsafe extern "C" fn run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 {
-    // Safety: `f` is the `Worker` `run_c` put in `ctx`, `p` its pass
-    unsafe fn call(f: *const (), p: *const (), _: u32, lo: usize, hi: usize) {
-        unsafe { core::mem::transmute::<*const (), Worker>(f)(lo, hi, p.cast()) }
+pub unsafe extern "C" fn run_c(f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 { unsafe { THE.run_c(f, n, cost, wide, p) } }
+
+impl Pool {
+    /// `run_c` on this pool, so a test can hand a kernel a pool of its own.
+    /// Safety: as `run_c`.
+    pub unsafe fn run_c(&'static self, f: Worker, n: usize, cost: u32, wide: usize, p: *const CPass) -> u32 {
+        // Safety: `f` is the `Worker` `run_c` put in `ctx`, `p` its pass
+        unsafe fn call(f: *const (), p: *const (), _: u32, lo: usize, hi: usize) {
+            unsafe { core::mem::transmute::<*const (), Worker>(f)(lo, hi, p.cast()) }
+        }
+        unsafe { self.enter(n, cost, wide, call, f as *const (), p.cast()) }
     }
-    unsafe { THE.enter(n, cost, wide, call, f as *const (), p.cast()) }
 }
 
 
@@ -334,6 +344,35 @@ pub mod tests {
         let stat = |k: usize| pool.ctr.0[k].load(Relaxed);
         assert_eq!(stat(PASSES), 16 * 7);
         assert_eq!(stat(SPLITS) + stat(CONTENDED) + stat(DECLINED), 16 * 7);
+    }
+
+    // The real threshold, which `SPLIT_AT` = 1 hides from every other test: `codec::decode` of a column of more than
+    // `SPLIT` elements on a pool that splits at `SPLIT` answers what one thread does, and `SPLITS` shows it split;
+    // one block of it on the same pool is declined.
+    static REAL: Pool = Pool::with_at(4, SPLIT);
+    unsafe extern "C" fn real(f: crate::c::Worker, n: usize, cost: u32, wide: usize, p: *const crate::ffi::CPass) -> u32 { unsafe { REAL.run_c(f, n, cost, wide, p) } }
+    unsafe extern "C" fn serial(f: crate::c::Worker, n: usize, _: u32, _: usize, p: *const crate::ffi::CPass) -> u32 { unsafe { f(0, n, p) }; 1 }
+
+    #[test] fn pool_splits_at_real_threshold() {
+        let (blk, n) = (crate::BLK, SPLIT + 1000);
+        let nb = n.div_ceil(blk);
+        let base: std::vec::Vec<i64> = (0..nb as i64).map(|b| b * 1000).collect();
+        let (z, off) = (std::vec![0i64; nb], (0..nb as u64).map(|b| b * blk as u64).collect::<std::vec::Vec<_>>());
+        let pack: std::vec::Vec<u8> = (0..nb * blk).map(|i| ((i / blk) * 131 + (i % blk) * 7) as u8).collect();
+        let width = std::vec![8u8; nb];
+        let meta = crate::coc::Meta { base: &base, maxv: &z, off: &off, bsum: &z, width: &width, lg: crate::DEFAULT_LG, n, nblk: nb, mblk: nb };
+        let c = crate::coc::Coc { meta, pack: &pack, exc: None, fdelta: None };
+        let mut one = std::vec![0i64; n];
+        crate::codec::decode(serial, &c, &mut one);
+        assert!(one.iter().enumerate().all(|(i, &x)| x == (i / blk) as i64 * 1000 + (((i / blk) * 131 + (i % blk) * 7) as u8) as i64), "serial decode wrong");
+        let mut many = std::vec![0i64; n];
+        crate::codec::decode(real, &c, &mut many);
+        assert!(many == one, "split decode differs from the single-thread one");
+        let stat = |k: usize| REAL.ctr.0[k].load(Relaxed);
+        assert_eq!((stat(PASSES), stat(SPLITS), stat(SLICES), stat(DECLINED)), (1, 1, 4, 0));
+        let small = crate::coc::Coc { meta: crate::coc::Meta { n: blk, nblk: 1, ..meta }, ..c };
+        crate::codec::decode(real, &small, &mut one[..blk]);
+        assert_eq!((stat(PASSES), stat(SPLITS), stat(DECLINED)), (2, 1, 1));
     }
 
     // the threshold: one unit below declines, at it splits; `wide = 0` always declines

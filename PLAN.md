@@ -520,7 +520,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 3.11 没有 demand bit 的 `Expand`。
 - 🔄 3.12 删除临时物（`CRel.ok/rel/mk`、`Gen.Dem`、…）：
   3.12a ✅ 已合并（`Pl` 去掉 `Dem`）；
-  3.12b ⬜ 未开始（`Out.Sound.memo`、`Dem`/`Dem.of`/`Cor`、多余的 `{d}` binder）。
+  3.12b ✅（`dem312b`，无代码改动）：`Out.Sound.memo`、`Dem`、`Dem.of` 在 000ce33 已不存在；`Cor` 保留，
+  它是 `Elab.test` 的结果类型（用户 `corAt`、`paramOf`、`test`），与 prelude 的 `cor(S) = dom(π₁S ∩ π₂)` 是同一个
+  relation `τ(S)`，但一个是 elaborator 中 term 的类型、一个是 `.rel` 库定义，互不替代，`prelude.cor` 保留；
+  没有一个 `{d}` binder 是未被提及的：33 个带 `d : Bool` 的声明全部在结论里把 `d` 传给 `GenK.*`；
+  3.12c ⬜ 多余的 `{d}` binder 的来源是 `Gen.Fn (_d : Bool)` 这个 phantom 索引（`GenK.*` 不再对它分派）：
+  删去它，再删 `GenK.*` 的 `d`/`e` 参数、`TmGen` 生成的 bit，以及 `GenKFold`、`GenKHylo`、`GenKBits`、
+  `GenKSpec`、`GenSound`、`RepAsc`、`RepWhere` 中 `*_sound`/`*_wf` 的 `{d}`/`{d e}`/`{d d'}` binder；
+  须等正在重写 `GenK*`/`GenSound` 的 agent 合并后做。
 - ⬜ 3.13 inline `Den`。
 
 ### P4 `Tm` 的 constructor 变更 — 3/5（串行，共用同样的 match 分支）
@@ -1299,8 +1306,12 @@ relk 线程池空转 2 526（与前三项重叠）。
   的做法不采纳：每个新 program 都要改一次。
 - ⏸ W.5a `qlean_pool_stats` 移入 relk，即 `Rel.Kernel.poolStat`（worktree commit 65760d6，未合并）。只能和 qlean 删除
   qrs 那份 `qlean_pool_stats` 的 commit 一起合并，否则 qlean 链接时有两份同名符号。
-- ⬜ W.5b 缺口：rel 里没有测试走真实 `SPLIT`（8388608）以上的 pool 路径。`cargo test` 下 `SPLIT_AT`=1，没有 Lean
-  测试读 pool 计数器；目前只有 TestCompile 本身（`muGrow.g`、`digits`、`detab.tc`）会达到这个阈值。
+- ✅ W.5b（分支 `pooltest`）：此前 rel 里没有测试走真实 `SPLIT`（8388608）以上的 pool 路径（`cargo test` 下
+  `SPLIT_AT`=1，没有 Lean 测试读 pool 计数器）。现在 `pool::tests::pool_splits_at_real_threshold`（`crate/src/pool.rs`，
+  0.32 s）：`Pool` 加字段 `at`（`Pool::new` = `with_at(_, SPLIT_AT)`，`worth` 读它），测试用一个 `at = SPLIT`、宽度 4
+  的独立 pool，对 `SPLIT + 1000` 个元素的 FoR 列（宽度 8，生成，不入库）跑 `codec::decode`。检查：(a) 结果逐元素等于闭式
+  期望值，并等于单线程（`serial` runner）的结果；(b) 该 pool 的计数器 `PASSES/SPLITS/SLICES/DECLINED` = 1/1/4/0；
+  再对其中一个 block 解码，计数器变为 `DECLINED` = 1、`SPLITS` 仍为 1（阈值确实生效）。
 - ✖ W.6 elaboration 时 `QLEAN_THREADS=1`：owner 放弃（2026-11-18）。没有测量，没有提交。只有会 split 的 program
   （`muGrow.g`、`digits`、`detab.tc`）受它影响；W.5 的做法 A 跳过 not ok 的 `muGrow.g`，不靠它也省掉那 123 s。
   W.5 的 A 因此不再等 W.6，单独落地。
