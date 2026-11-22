@@ -40,9 +40,10 @@ theorem Proj.meet_argDen {B A₁ A₂ : Obj} (x y : Proj B A₁ A₂) (t : Tm B 
 /-- `Prim.den` read off: the row's meaning at the object variables `σ` its constant's type takes at `A ⟶ B`. -/
 theorem Prim.den_iff {r : Prim} {x : (c : RowCode) × RowDen c} (e : rowDens.find? (·.1.sym == r.sym) = some x)
     {A B : Obj} {ss : List Sem} {a : A.El} {b : B.El} : Prim.den r A B ss a b ↔
-      ∃ σ, r.objs A B = some σ ∧ ∃ h : (x.1.ty σ).1 = A ∧ (x.1.ty σ).2 = B, (h.1 ▸ h.2 ▸ x.2 σ ss) a b := by
+      ∃ σ, r.objs A B (ss.map fun s => (s.1, s.2.1)) = some σ ∧
+        ∃ h : (x.1.ty σ).1 = A ∧ (x.1.ty σ).2 = B, (h.1 ▸ h.2 ▸ x.2 σ ss) a b := by
   unfold Prim.den; rw [e]
-  cases r.objs A B with
+  cases r.objs A B (ss.map fun s => (s.1, s.2.1)) with
   | none => exact ⟨fun h => False.elim h, fun ⟨_, h, _⟩ => by cases h⟩
   | some σ =>
     by_cases h : (x.1.ty σ).1 = A ∧ (x.1.ty σ).2 = B
@@ -50,7 +51,7 @@ theorem Prim.den_iff {r : Prim} {x : (c : RowCode) × RowDen c} (e : rowDens.fin
     · simp [h]; exact ⟨fun h' => False.elim h', fun ⟨h', _⟩ => h'.elim⟩
 
 /-- `Prim.objs` of a row with a converse, computed: the variables its constant's type names, as `Prim.den_conv` reads them. -/
-local macro "objs_simp" : tactic => `(tactic| simp [Prim.objs, Prim.vars, OExp.vars, OExp.unify, List.eraseDups,
+local macro "objs_simp" : tactic => `(tactic| simp [Prim.objs, Option.orElse, Prim.vars, OExp.vars, OExp.unify, List.eraseDups,
   List.eraseDupsBy, List.eraseDupsBy.loop, consRow, RowCode.cons,
   RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc, List.lookup, σ₁, σ₂])
 
@@ -66,11 +67,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   · simp at hs
   repeat' (first | subst hr | (obtain rfl | hr := hr))
   all_goals simp only [consRow, mapRow, lengthRow, sumRow, flatRow, foldIRow,
-    starRow,
+    starRow, domRow, ranRow, nilRow,
     reduceCtorEq, Option.some.injEq] at hs
   all_goals subst hs
   all_goals simp [Prim.find?, prims, consRow, mapRow, lengthRow,
-    sumRow, flatRow, foldIRow, starRow] at hr'
+    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss

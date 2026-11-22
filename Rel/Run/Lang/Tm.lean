@@ -103,16 +103,20 @@ def OExp.unify : OExp → Obj → List (String × Obj) → Option (List (String 
   | .list a, .arr A, σ => a.unify A σ
   | _, _, _ => none
 
-/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B`, read off its constant's type. -/
-def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
+/-- The row `r`'s object variables (`Prim.vars` order) at `A ⟶ B` given arguments at the objects `ps`: read off its
+    constant's type, and a variable only a parameter names (`dom(R : A ⟶ B) : A ⟶ A`'s `B`) off that argument's
+    objects, a pair-test parameter (`some true`, §a) at `X×Y ⟶ X×Y` as `rowObjs` gives it. -/
+def Prim.objs (r : Prim) (A B : Obj) (ps : List (Obj × Obj)) : Option (List Obj) := do
   let σ ← r.sig.2.1.unify A [] >>= r.sig.2.2.unify B
-  r.vars.mapM fun v => List.lookup v σ
+  r.vars.mapM fun v => (σ.lookup v).orElse fun _ => ((r.sig.1.zip ps).foldlM (fun τ (((x, y), fm), X, Y) =>
+    let (x, y) := if fm == some true then (OExp.prod x y, OExp.prod x y) else (x, y)
+    x.unify X τ >>= y.unify Y) σ) >>= List.lookup v
 
 instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var false 0⟩
 
-/-- The spine `t` is headed by a row whose table is made from its relations' whole tables (`Prim.whole`). -/
+/-- The spine `t` is headed by a row whose dem is read off its relations (`Prim.dem` `whole` or `arg`). -/
 def Tm.whole : {A B : Obj} → Tm A B → Bool
-  | _, _, .prim r => r.whole
+  | _, _, .prim r => r.dem != .keys
   | _, _, .arg f _ => f.whole
   | _, _, _ => false
 
