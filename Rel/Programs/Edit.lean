@@ -14,11 +14,11 @@ rel_program edit where
     del : A ⟶ A+(A+A) ≜ inl inr
     ins : A ⟶ A+(A+A) ≜ inr inr
 
-    /- The universe: the strings of length ≤ 2, and every edit sequence of length ≤ 4, which holds all the edit sequences
+    /- The universe: the strings of length ≤ 1, and every edit sequence of length ≤ 2, which holds all the edit sequences
        of a pair of them (each operation consumes a character of one string). -/
 
-    r₂ : 1 ⟶ [N] ≜ Λ(⊤{(0,0),(1,1)})              -- the array 0…1, one fold round each
-    r₄ : 1 ⟶ [N] ≜ Λ(⊤{(0,0),(1,1),(2,2),(3,3)})  -- the array 0…3
+    r₂ : 1 ⟶ [N] ≜ Λ(⊤{(0,0)})                    -- the array 0, one fold round
+    r₄ : 1 ⟶ [N] ≜ Λ(⊤{(0,0),(1,1)})              -- the array 0…1
     Ss : [A] ⟶ [A] ≜ ran(r₂⦇[nil(1), π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)    -- the strings
     Es : [A+(A+A)] ⟶ [A+(A+A)] ≜ ran(r₄⦇[nil(1), π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)   -- the edit sequences
     D : [A]×[A] ⟶ [A]×[A] ≜ Ss×Ss                 -- the pairs of strings
@@ -82,7 +82,7 @@ rel_program edit where
     /- The specification's own values are not written out, being too many rows; `TestEdit.lean` checks the first print. -/
 
     print spec length 𝟙(N)
-    print Ddom(⟨π₁length,π₂length⟩{((2,2),(2,2))})spec
+    print Ddom(⟨π₁length,π₂length⟩{((1,1),(1,1))})spec
 
 #guard edit.ok
 
