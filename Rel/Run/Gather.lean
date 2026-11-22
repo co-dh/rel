@@ -98,10 +98,10 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
   else .error s!"where: {m} rows, not below {B}: m + 1 cells fit a USize and the counts 0 … m are i64 words below it"
 
 -- `1 0 1 1 0`: the destinations `0 1 1 2 3` send the dropped row 1 to row 2's cell and row 4 to the spare cell `3`
-#guard (whereCol 5 (.bytes (Column.packIds 64 5 fun i => [1, 0, 1, 1, 0][i]?.getD 0))).toOption.map
+#guard (whereCol 5 (Ext.Enc.ofBytes 8 (Column.packIds 64 5 fun i => [1, 0, 1, 1, 0][i]?.getD 0))).toOption.map
   (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (3, [0, 2, 3])
 -- no kept row, and no row at all: `K = 0`
-#guard (whereCol 3 (.bytes (Column.packIds 64 3 fun _ => 0))).toOption.map
+#guard (whereCol 3 (Ext.Enc.ofBytes 8 (Column.packIds 64 3 fun _ => 0))).toOption.map
   (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
 #guard (whereCol 0 .pos).toOption.map (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
 

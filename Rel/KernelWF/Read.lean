@@ -205,10 +205,7 @@ theorem raw_lt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize) (
     exact Nat.lt_of_le_of_lt (UInt64.le_iff_toNat_le.1 (raw_boolean_le n e v hv))
       (Nat.lt_of_lt_of_le (show (1 : UInt64).toNat < 2 ^ 8 by decide) (Nat.pow_le_pow_right (by decide) (by omega)))
   cases e with
-  | bytes b =>
-    rw [Verify.raw_bytes t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact Verify.bitsAt_lt _ _ _ hw8
   | foR M P => rw [Verify.raw_foR t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact hmod _
-  | alp M P a => rw [Verify.raw_alp t w ht hb] at hv; obtain ⟨i, -, rfl⟩ := Array.mem_map.1 hv; exact hmod _
   -- `pos` is read at `i64` only, where every word is below `2 ^ 64`
   | pos =>
     by_cases hi : t = .i64
@@ -252,59 +249,10 @@ theorem bitsAt_congr {b b' : ByteArray} {o o' : Nat} : ∀ {w : Nat}, (∀ j < w
     simp only [Column.bitsAt]
     rw [bitsAt_congr (fun j hj => h j (by omega)), dite_byte b, dite_byte b', h w (by omega)]
 
-/-- Element `i` of a dense payload at a type of width `w` is read off its own `w` bytes only, whatever the
-    count it is read at. -/
-theorem get_bytes_congr {t : QAtomicType} {w : Nat} (hw : t.width = some w) {m m' : USize} {b b' : ByteArray}
-    {i i' : Nat} (hi : i < m.toNat) (hi' : i' < m'.toNat) (h : ∀ j < w, b.data[i * w + j]? = b'.data[i' * w + j]?) :
-    Enc.get (X := Empty) t m (.bytes b) i = Enc.get (X := Empty) t m' (.bytes b') i' := by
-  have hB := bitsAt_congr h
-  cases t <;> simp only [QAtomicType.width] at hw <;> cases hw <;>
-    simp only [Enc.get, hi, hi', ↓reduceIte, QAtomicType.width, hB]
-
-/-- Dense parts laid end to end after `acc` of `A` elements read, element by element, as `acc`'s elements and
-    then each part's, each at its own count. -/
-theorem foldl_bytes_get {t : QAtomicType} {w : Nat} (hw : t.width = some w) (S : USize)
-    (g : ((n : USize) × Arr t n) → ByteArray) :
-    ∀ (l : List ((n : USize) × Arr t n)) (acc : ByteArray) (A : Nat), acc.size = A * w →
-      (∀ c ∈ l, (g c).size = c.1.toNat * w) → A + (l.map (·.1.toNat)).sum ≤ S.toNat →
-      (List.range (A + (l.map (·.1.toNat)).sum)).map (fun i => Enc.get (X := Empty) t S (.bytes (l.foldl (fun a c => a ++ g c) acc)) i) =
-        (List.range A).map (fun i => Enc.get (X := Empty) t S (.bytes acc) i) ++
-          l.flatMap fun c => (List.range c.1.toNat).map fun i => Enc.get (X := Empty) t c.1 (.bytes (g c)) i
-  | [], acc, A, _, _, _ => by simp
-  | c :: l, acc, A, ha, hl, hS => by
-    have hc := hl c (by simp)
-    have ih := foldl_bytes_get hw S g l (acc ++ g c) (A + c.1.toNat)
-      (by rw [ByteArray.size_append, ha, hc, Nat.add_mul]) (fun d hd => hl d (by simp [hd]))
-      (by simp only [List.map_cons, List.sum_cons] at hS; omega)
-    simp only [List.map_cons, List.sum_cons, List.foldl_cons, List.flatMap_cons, ← Nat.add_assoc]
-    rw [ih, List.range_add, List.map_append, List.map_map, List.append_assoc]
-    simp only [List.map_cons, List.sum_cons] at hS
-    congr 1
-    · apply List.map_congr_left; intro i hi; rw [List.mem_range] at hi
-      refine get_bytes_congr hw (by omega) (by omega) fun j hj => ?_
-      have : i * w + j < A * w := by
-        have := Nat.mul_le_mul_right w (show i + 1 ≤ A by omega); rw [Nat.succ_mul] at this; omega
-      rw [ByteArray.data_append, Array.getElem?_append_left (by rw [ByteArray.size_data]; omega)]
-    congr 1
-    apply List.map_congr_left; intro i hi; rw [List.mem_range] at hi
-    simp only [Function.comp]
-    refine get_bytes_congr hw (by omega) hi fun j hj => ?_
-    rw [ByteArray.data_append, Nat.add_mul, ← ha, Nat.add_assoc,
-      Array.getElem?_append_right (by rw [ByteArray.size_data]; omega), ByteArray.size_data, Nat.add_sub_cancel_left]
-
 /-- A type with a width is at most eight bytes wide. -/
 theorem width_le8 {t : QAtomicType} {w : Nat} (hw : t.width = some w) : w ≤ 8 := by
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
     decide
-
-/-- A dense element at a type of width `w`, other than `boolean`, is its `w` bytes' atom. -/
-theorem get_bytes_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
-    {n : USize} (b : ByteArray) {i : Nat} (hi : i < n.toNat) :
-    Enc.get (X := Empty) t n (.bytes b) i =
-      some (Column.atomOfBits t (Column.bitsAt b (i * w) w) (QAtomicType.ne_general_of_width hw)) := by
-  cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-    first | exact absurd rfl hb |
-      (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
 
 /-- A Frame-of-Reference element is its `foRBits` atom. -/
 theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
@@ -314,20 +262,6 @@ theorem get_foR_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t �
   cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
     first | exact absurd rfl hb |
       (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
-
-/-- An ALP element is its `alpBits` atom. -/
-theorem get_alp_eq {t : QAtomicType} {w : Nat} (hw : t.width = some w) (hb : t ≠ .u1)
-    {n : USize} (md pk a : ByteArray) {i : Nat} (hi : i < n.toNat) :
-    Enc.get (X := Empty) t n (.alp md pk a) i =
-      some (Column.atomOfBits t (Column.alpBits md pk a #[] i) (QAtomicType.ne_general_of_width hw)) := by
-  cases t <;> simp only [QAtomicType.width, reduceCtorEq, Option.some.injEq] at hw <;> (try subst hw) <;>
-    first | exact absurd rfl hb |
-      (simp only [Enc.get, hi, ↓reduceIte, QAtomicType.width] <;> rfl)
-
-/-- `alpBits` with no hoisted table reads the start `blockStarts` holds (`foRBits_starts`). -/
-theorem alpBits_starts (md pk a : ByteArray) (i : Nat) :
-    Column.alpBits md pk a #[] i = Column.alpBits md pk a (Column.blockStarts md) i := by
-  unfold Column.alpBits; rw [foRBits_starts]
 
 end Rel.KernelWF
 
@@ -542,37 +476,29 @@ namespace Rel.Alg
 
 open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 
-/-- A small integral column is dense or Frame-of-Reference encoded (`Enc.WF`). -/
+/-- A small integral column is Frame-of-Reference encoded (`Enc.WF`). -/
 theorem small_int_enc {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) {n : USize} (x : Arr t n) :
-    (∃ b, x.enc = .bytes b) ∨ ∃ md pk, x.enc = .foR md pk := by
+    ∃ md pk, x.enc = .foR md pk := by
   have hwf := x.wf
   revert hwf
   cases x.enc with
-  | bytes b => exact fun _ => .inl ⟨b, rfl⟩
-  | foR md pk => exact fun _ => .inr ⟨md, pk, rfl⟩
+  | foR md pk => exact fun _ => ⟨md, pk, rfl⟩
   | _ => intro hwf; exfalso; rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp_all [Enc.WF, orderKind, QAtomicType.width]
 
-/-- A small integral payload's raw word `i`: a dense one's `w` bytes at `i·w`, an encoded one's `foRBits` cut to
-    `8 * w` bits. -/
+/-- A small integral payload's raw word `i`: its `foRBits` cut to `8 * w` bits. -/
 theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)
     (hk : k = .u8 ∨ k = .c8 ∨ k = .i8 ∨ k = .i16 ∨ k = .i32) {n : USize} {i : Nat} (hi : i < n.toNat) :
-    (∀ b, (Enc.raw (X := Empty) t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * k.width) k.width) ∧
-      ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 =
-        UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)) := by
+    ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 =
+      UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)) := by
   rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp [orderKind] at ht <;>
-    exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi],
-      fun md pk => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi]⟩
+    exact fun md pk => by simp [Enc.raw, QAtomicType.width, Scan.Kind.width, List.getD_eq_getElem?_getD, hi]
 
-
-/-- An eight-byte integral payload's raw word `i`: a dense one's eight bytes at `8i`, an encoded one's
-    `foRBits`. -/
+/-- An eight-byte integral payload's raw word `i`: its `foRBits`. -/
 theorem raw_long {t : QAtomicType} (ht : orderKind t = some .i64) {n : USize} {i : Nat} (hi : i < n.toNat) :
-    (∀ b, (Enc.raw (X := Empty) t n (.bytes b)).toList.getD i 0 = Column.bitsAt b (i * 8) 8) ∧
-      ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
+    ∀ md pk, (Enc.raw (X := Empty) t n (.foR md pk)).toList.getD i 0 = Column.foRBits md pk (Column.blockStarts md) i := by
   cases t <;> simp [orderKind] at ht <;>
-    exact ⟨fun b => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi],
-      fun md pk => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi]⟩
+    exact fun md pk => by simp [Enc.raw, QAtomicType.width, List.getD_eq_getElem?_getD, hi]
 
 
 /-- A shift by `-base` of an element `x` with `base ≤ x < base + 2^63`: the integer difference, not the null. -/
