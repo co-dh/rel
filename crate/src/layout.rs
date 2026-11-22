@@ -12,7 +12,8 @@ pub fn align8(x: usize) -> Option<usize> { Some(x.checked_add(7)? & !7) }
 pub fn exc_layout(nblk: usize, nexc: usize, esz: usize, tail: Tail) -> Option<ExcLayout> {
     let raw: usize = 16;
     let off = align8(raw.checked_add(nexc.checked_mul(esz)?)?)?;
-    let pos = align8(off.checked_add(nblk.checked_add(1)?.checked_mul(4)?)?)?;
+    // `u64` block offsets, as wide as the count, so a column of any length is patched; `off` is aligned, so `pos` is
+    let pos = off.checked_add(nblk.checked_add(1)?.checked_mul(8)?)?;
     let t = align8(pos.checked_add(nexc.checked_mul(2)?)?)?;
     let size = match tail {
         Tail::None => t,
@@ -21,7 +22,7 @@ pub fn exc_layout(nblk: usize, nexc: usize, esz: usize, tail: Tail) -> Option<Ex
     Some(ExcLayout { raw, off, pos, tail: t, size })
 }
 
-pub fn u32_at(t: &[u8], o: usize) -> u32 { u32::from_ne_bytes(t[o..o + 4].try_into().unwrap()) }
+pub fn u64_at(t: &[u8], o: usize) -> u64 { u64::from_ne_bytes(t[o..o + 8].try_into().unwrap()) }
 pub fn u16_at(t: &[u8], o: usize) -> u16 { u16::from_ne_bytes(t[o..o + 2].try_into().unwrap()) }
 
 /// The exception ladder at `t` in part `part`: a FoR patch list fills its tail exactly.
@@ -34,19 +35,19 @@ pub fn exc_ok(t: &[u8], blk: usize, nblk: usize, nexc: u64, esz: usize, part: i3
         return false;
     }
     let l = l.unwrap();
-    let eo = |b: usize| u32_at(t, l.off + 4 * b);
+    let eo = |b: usize| u64_at(t, l.off + 8 * b);
     let ep = |j: usize| u16_at(t, l.pos + 2 * j);
-    if eo(0) != 0 || eo(nblk) as u64 != nexc {
+    if eo(0) != 0 || eo(nblk) != nexc {
         why.say(format_args!("part {part}: exception offsets running from 0 to {nexc}, found {} to {}", eo(0), eo(nblk)));
         return false;
     }
     // as C: one branch-free pass over each whole table on slices of exact length, the walk that names the
     // culprit only when it fails
-    let offs = &t[l.off..l.off + 4 * (nblk + 1)];
+    let offs = &t[l.off..l.off + 8 * (nblk + 1)];
     let poss = &t[l.pos..l.pos + 2 * nexc as usize];
     let mut bad = false;
-    for (a, b) in offs[..4 * nblk].chunks_exact(4).zip(offs[4..].chunks_exact(4)) {
-        bad |= u32::from_ne_bytes(a.try_into().unwrap()) > u32::from_ne_bytes(b.try_into().unwrap());
+    for (a, b) in offs[..8 * nblk].chunks_exact(8).zip(offs[8..].chunks_exact(8)) {
+        bad |= u64::from_ne_bytes(a.try_into().unwrap()) > u64::from_ne_bytes(b.try_into().unwrap());
     }
     for c in poss.chunks_exact(2) { bad |= u16::from_ne_bytes(c.try_into().unwrap()) as usize >= blk; }
     if !bad { return true; }
@@ -76,9 +77,9 @@ mod tests {
     }
     #[test] fn layout_c_arithmetic() {
         let l = exc_layout(1, 0, 8, Tail::None).unwrap();
-        assert_eq!((l.raw, l.off, l.pos, l.tail, l.size), (16, 16, 24, 24, 24));
+        assert_eq!((l.raw, l.off, l.pos, l.tail, l.size), (16, 16, 32, 32, 32));
         let l = exc_layout(2, 3, 8, Tail::Frames).unwrap();
-        assert_eq!((l.off, l.pos, l.tail, l.size), (40, 56, 64, 80));
+        assert_eq!((l.off, l.pos, l.tail, l.size), (40, 64, 72, 88));
         assert!(exc_layout(1, usize::MAX, 8, Tail::None).is_none());
     }
     #[test] fn wrong_size_message() {
@@ -87,10 +88,10 @@ mod tests {
         assert_eq!(m, "part 1: the exception sections of 1 blocks and 0 exceptions of 8 bytes, found 10 bytes");
     }
     #[test] fn empty_ladder_ok() {
-        let mut t = [0u8; 40]; // nblk 1, nexc 0: off 16, pos 24, size 24
-        assert!(say(|w| exc_ok(&t[..24], 1024, 1, 0, 8, 1, Tail::None, w)).0);
+        let mut t = [0u8; 40]; // nblk 1, nexc 0: off 16, pos 32, size 32
+        assert!(say(|w| exc_ok(&t[..32], 1024, 1, 0, 8, 1, Tail::None, w)).0);
         assert!(!say(|w| exc_ok(&t, 1024, 1, 0, 8, 2, Tail::None, w)).0);
-        t[20] = 1;
-        assert_eq!(say(|w| exc_ok(&t[..24], 1024, 1, 0, 8, 2, Tail::None, w)).1, "part 2: exception offsets running from 0 to 0, found 0 to 1");
+        t[24] = 1;
+        assert_eq!(say(|w| exc_ok(&t[..32], 1024, 1, 0, 8, 2, Tail::None, w)).1, "part 2: exception offsets running from 0 to 0, found 0 to 1");
     }
 }

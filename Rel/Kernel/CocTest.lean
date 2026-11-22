@@ -31,7 +31,7 @@ def md (mn mx s n : UInt64) (w : UInt8) : List UInt8 :=
 /-- A one-block patch list of 8-byte elements: its count, its flag word, the elements, `exc_off`, `exc_pos` (each
 section padded to 8 bytes) and `last`. -/
 def patches (word : UInt64) (raw : List UInt64) (pos : List Nat) (last : List UInt8) : List UInt8 :=
-  le raw.length.toUInt64 ++ le word ++ raw.flatMap (le ·) ++ le 0 4 ++ le raw.length.toUInt64 4
+  le raw.length.toUInt64 ++ le word ++ raw.flatMap (le ·) ++ le 0 ++ le raw.length.toUInt64
     ++ pos.flatMap (fun p => le p.toUInt64 2) ++ List.replicate ((8 - 2 * pos.length % 8) % 8) 0 ++ last
 
 -- residuals 4 0 5 0: width 3 (2 bytes); width 4 costs the same 2 bytes, and the narrower wins

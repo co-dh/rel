@@ -35,6 +35,9 @@ def ownKinds : String :=
 /-- The file's first 8 bytes, `qleancol`. -/
 def ownMagic : List UInt8 := [0x71, 0x6c, 0x65, 0x61, 0x6e, 0x63, 0x6f, 0x6c]
 
+/-- Byte 8, the format version, `own.rs`'s `OWN_VERSION`: 6 since the patch list's block offsets are `u64`. -/
+def ownVersion : UInt8 := 6
+
 /-- The low `w` bytes of `v`, little-endian. -/
 def leBytes (v w : Nat) : List UInt8 := (List.range w).map fun k => (v / 256 ^ k).toUInt8
 
@@ -55,7 +58,7 @@ def ownLayout (a : Nat) : List ByteArray → List UInt8 × List UInt8
     let r := ownLayout (ownOff a + p.size) ps
     (leBytes (ownOff a) 8 ++ leBytes p.size 8 ++ r.1, List.replicate (ownOff a - a) 0 ++ p.data.toList ++ r.2)
 
-/-- The file `ownWrite` writes for `f`, or `own::write`'s refusal: bytes 0..8 `qleancol`, the version 5, code,
+/-- The file `ownWrite` writes for `f`, or `own::write`'s refusal: bytes 0..8 `qleancol`, the version `ownVersion`, code,
 attribute, kind, the part count (2 bytes), the domain name's length (2 bytes), the element count (8 bytes), the part
 table, the domain name, then `ownLayout`. -/
 def ownImage (f : OwnFile) : Except String ByteArray :=
@@ -66,7 +69,7 @@ def ownImage (f : OwnFile) : Except String ByteArray :=
   else if d.contains 0 then .error s!"a domain name with no NUL byte, found one at byte {d.idxOf 0}"
   else
     let r := ownLayout (24 + 16 * np + d.length) f.parts.toList
-    .ok ⟨(ownMagic ++ [5, f.code, f.attr, f.kind] ++ leBytes np 2 ++ leBytes d.length 2 ++ leBytes f.count.toNat 8
+    .ok ⟨(ownMagic ++ [ownVersion, f.code, f.attr, f.kind] ++ leBytes np 2 ++ leBytes d.length 2 ++ leBytes f.count.toNat 8
       ++ r.1 ++ d ++ r.2).toArray⟩
 
 /-- The one column writer: `parts` are a `Column` constructor's `ByteArray`s, written as they lie (`ownImage`). The
@@ -102,8 +105,8 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   let v := leAt b 8 1
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
   else if (List.range 8).map byte != ownMagic then .error "byte 0: the magic `qleancol`"
-  else if v != 5 then
-    .error s!"byte 8: format version 5, found {v}; a file before version 5 may hold the dense `bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` from the data it was made from"
+  else if v != ownVersion.toNat then
+    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
   else if ownNParts[kind]?.join != some np then
     .error s!"byte 11: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
   else if 24 + 16 * np + nl > b.size then

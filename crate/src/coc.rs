@@ -21,7 +21,7 @@ pub struct Meta<'a> {
 }
 /// nexc = pos.len(); `asc`: every block's positions strictly ascending (`ascending`), so `Coc::get` binary-searches them
 #[derive(Clone, Copy)]
-pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize, pub asc: bool }
+pub struct Exc<'a> { pub off: &'a [u64], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize, pub asc: bool }
 #[derive(Clone, Copy)]
 pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
 
@@ -71,7 +71,7 @@ impl<'a> Coc<'a> {
         let (nexc, esz, mb) = (nexc as usize, esz as usize, meta.mblk);
         let l = exc_layout(mb, nexc, esz, if frm != 0 { Tail::Frames } else { Tail::None })?;
         if l.size != t.len() { return None }
-        let (off, pos) = (pod::cast(&t[l.off..l.off + 4 * (mb + 1)])?, pod::cast(&t[l.pos..l.pos + 2 * nexc])?);
+        let (off, pos) = (pod::cast(&t[l.off..l.off + 8 * (mb + 1)])?, pod::cast(&t[l.pos..l.pos + 2 * nexc])?);
         let exc = Exc { off, pos, asc: ascending(off, pos),
                         raw: &t[l.raw..l.raw + nexc * esz], esz };
         let fdelta = if frm != 0 { Some(pod::cast(&t[l.tail..l.tail + 8 * mb])?) } else { None };
@@ -170,7 +170,7 @@ pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [
 /// Whether each block's patch positions `pos[off[b] .. off[b + 1]]` lie in `pos` and strictly ascend, as the writer
 /// lays them. Lean's `foRExc` reads the first match in any order and `Enc.WF` does not state the order, so an order
 /// that fails this is still a column: `Coc::get` scans it.
-pub fn ascending(off: &[u32], pos: &[u16]) -> bool {
+pub fn ascending(off: &[u64], pos: &[u16]) -> bool {
     off.windows(2).all(|r| r[0] <= r[1] && r[1] as usize <= pos.len() && pos[r[0] as usize..r[1] as usize].windows(2).all(|p| p[0] < p[1]))
 }
 

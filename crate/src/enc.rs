@@ -18,10 +18,7 @@ pub struct EncMeta<'a> {
     /// the frame above `base` (coc.rs `fdelta`), when the column keeps frames
     pub frm: Option<&'a mut u64>,
     /// the block's patch count, `exc_off[b + 1]` before the prefix sum
-    pub nexc: &'a mut u32,
-    /// whether the block may patch, Lean `Coc.encodeAt`'s `patch && n < 2 ^ 32`: a column of `2 ^ 32` elements or more
-    /// has no patch list, its block offsets being `u32`
-    pub patch: bool,
+    pub nexc: &'a mut u64,
 }
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
@@ -109,18 +106,13 @@ pub fn for_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
 }
 /// The writer's FoR block, Lean `Coc.planOf`: of the widths `d` in `0 ..= W` (`W` the bit length of `max - min`), the
 /// one whose cost `⌈nb·d/8⌉ + (2 + esz)·patches` is least, the narrower on a tie, at the frame patching fewest, the
-/// lowest of those; answers the patch count. With `m.patch` off, `W` from the minimum, which patches nothing.
+/// lowest of those; answers the patch count.
 pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     encode_meta_blk(m, x, nb);
     let (mn, top, esz) = (*m.base, *m.width as usize, size_of::<T>());
-    if !m.patch {
-        *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = 0;
-        *m.nexc = 0;
-        return 0
-    }
     let (d, f, np) = plan(&x[..nb], mn, top, esz);
     *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = (f as u64).wrapping_sub(mn as u64);
-    (*m.width, *m.nexc) = (d as u8, np as u32);
+    (*m.width, *m.nexc) = (d as u8, np as u64);
     np as u32
 }
 /// `Coc.planOf`'s width, frame and patch count for the keys `x` of minimum `mn`, `top` the bit length of their range:
@@ -259,7 +251,7 @@ pub fn move_meta(m: &mut EncMeta, p: &Coc, pb: usize) -> u32 {
     (*m.base, *m.maxv, *m.bsum, *m.width) = (p.meta.base[pb], p.meta.maxv[pb], p.meta.bsum[pb], p.meta.width[pb]);
     if let Some(fr) = m.frm.as_deref_mut() { *fr = p.fdelta.map_or(0, |d| d[pb]) }
     let ne = p.blk_nexc(pb) as u32;
-    *m.nexc = ne;
+    *m.nexc = ne as u64;
     ne
 }
 /// coc.rs `move_pack`, the taken branch: block `pb` of `c`'s residuals (`p.res` is the whole `blk * width / 8`
@@ -282,7 +274,7 @@ pub fn move_pack(p: &mut EncPack, c: &Coc, pb: usize, esz: usize) {
 
 // ---- K24b: coc.rs's writer orchestration that needs no raw pointer; ffi.rs keeps the Lean objects, the pool and the C callbacks ----
 /// coc.rs `src_run`'s lower bound on a sized block's share of the encoded size: its residuals and its patches' bytes.
-pub fn block_bytes(lg: u32, width_b: u8, nexc: u32, width: usize) -> usize { (1usize << lg) * width_b as usize / 8 + nexc as usize * (width + 2) }
+pub fn block_bytes(lg: u32, width_b: u8, nexc: u64, width: usize) -> usize { (1usize << lg) * width_b as usize / 8 + nexc as usize * (width + 2) }
 /// coc.rs `coc_enc_layout`'s patch list header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
 pub fn exc_header(t: &mut [u8], nexc: usize, w: u64) {
     t.fill(0);
@@ -297,7 +289,7 @@ pub fn tail_bytes(nexc: usize, frm: bool, width: usize, nblk: usize) -> usize {
     exc_layout(nblk, nexc, width, if frm { Tail::Frames } else { Tail::None }).expect("qlean: the exception layout overflows").size
 }
 /// coc.rs `alp_offsets`: per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
-pub fn exc_offsets(exc_off: &mut [u32], nblk: usize) -> usize {
+pub fn exc_offsets(exc_off: &mut [u64], nblk: usize) -> usize {
     exc_off[0] = 0;
     for b in 0..nblk { exc_off[b + 1] = exc_off[b + 1].wrapping_add(exc_off[b]) }
     exc_off[nblk] as usize
@@ -365,7 +357,7 @@ mod a17_tests {
     fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
         let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, patch: true };
+                              nexc: &mut nexc };
         let ne = match width {
             2 => for_blk(&mut m, &v.iter().map(|&x| x as i16).collect::<Vec<_>>(), v.len()),
             4 => for_blk(&mut m, &v.iter().map(|&x| x as i32).collect::<Vec<_>>(), v.len()),
@@ -418,20 +410,15 @@ mod a7_tests {
         let x: [i64; 1000] = core::array::from_fn(|i| if i < 24 { 0 } else { 100000 + (i & 255) as i64 });
         let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 0u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, patch: true };
+                              nexc: &mut nexc };
         assert_eq!(for_blk(&mut m, &x, 1000), 24);
         assert_eq!((base, width, frm), (0, 8, 100000));
-        // patching off (a column of `2 ^ 32` elements or more): width 17 from the minimum, no patch, no frame
-        let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, patch: false };
-        assert_eq!(for_blk(&mut m, &x, 1000), 0);
-        assert_eq!((base, width, frm, nexc), (0, 17, 0, 0));
     }
     #[test] fn encode_meta_blk_nulls() {
         let x: [i16; 4] = [i16::MIN, 3, 9, -2];
         let (mut base, mut maxv, mut width, mut bsum, mut nexc) = (0, 0, 0, 0, 0);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None, nexc: &mut nexc,
-                              patch: true };
+                              };
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
@@ -451,18 +438,18 @@ mod tests {
         for b in 0..n.div_ceil(BLK) {
             let mut nx = 0;
             let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
-                                  frm: Some(&mut frm[b]), nexc: &mut nx, patch: true };
+                                  frm: Some(&mut frm[b]), nexc: &mut nx };
             let nb = BLK.min(n - b * BLK);
             ne[b] = for_blk(&mut m, &x[b * BLK..], nb);
         }
         let (mut off, mut pack, mut at) = (vec![0u64; 2], vec![0u8; 2 * BLK * 8], 0usize);
         let (mut pos, mut raw) = (vec![0u16; ne.iter().sum::<u32>() as usize], vec![0u8; ne.iter().sum::<u32>() as usize * size_of::<T>()]);
-        let mut eo = vec![0u32; 3];
+        let mut eo = vec![0u64; 3];
         for b in 0..n.div_ceil(BLK) {
             off[b] = at as u64;
             let nb = BLK.min(n - b * BLK);
-            let (e0, e1) = (eo[b] as usize, (eo[b] + ne[b]) as usize);
-            eo[b + 1] = eo[b] + ne[b];
+            let (e0, e1) = (eo[b] as usize, (eo[b] + ne[b] as u64) as usize);
+            eo[b + 1] = eo[b] + ne[b] as u64;
             let mut p = EncPack { nb, frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b],
                                   res: &mut pack[at..at + (nb * width[b] as usize).div_ceil(8)],
                                   pos: &mut pos[e0..e1], raw: &mut raw[e0 * size_of::<T>()..e1 * size_of::<T>()] };
@@ -547,7 +534,7 @@ mod tests {
         let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm, mut t) = (0, 0, 0, 0, 0, 0u64, 0u64);
         for _ in 0..reps {
             let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                                  nexc: &mut nexc, patch: true };
+                                  nexc: &mut nexc };
             t += for_blk(&mut m, core::hint::black_box(x), x.len()) as u64 + width as u64;
         }
         t
