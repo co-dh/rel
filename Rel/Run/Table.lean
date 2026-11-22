@@ -7,6 +7,8 @@ import Rel.Run.Cols
 import Rel.Run.Canon
 import Rel.Run.Comp
 import Rel.Run.Lang.Lazy
+import Rel.Run.List
+import Rel.Run.Asc
 
 /-! # A table directory (PLAN D.9, `doc/dataframe-design.zh.typ` F6)
 
@@ -124,23 +126,38 @@ def readSide (S : Schema) (dir : String) : IO (String × (n : USize) × Vals S.o
 /-- The frame of the value side `x`: its key the positions `0 … n-1`, which are on no file. -/
 def frame {B : Obj} {n : USize} (x : Vals B n) : Except String (Tab .long B) := (Arr.pos n).map fun P => ⟨n, P, x⟩
 
-/-- A symbol column's dictionary `ℕ ⟶ [C]` (design §0.2): sorted, distinct texts, row `i` the text of id `i`. -/
+/-- A database's one symbol dictionary `D : ℕ ⟶ [C]` (design §0.2, §4.3), q's sym file: distinct texts, row `i` the
+    text of id `i`, append-only, so a new text takes the next id and an id never changes. Being distinct, id equality
+    is text equality; text order is `rank`'s. -/
 abbrev Dict := Tab .long (.arr (.atom .char))
+
+/-- The dictionary of no text. -/
+def Dict.empty : Except String Dict :=
+  frame (⟨0, Arr.ofFn .i64 0 (·.elim0), Arr.ofFn .i64 0 (·.elim0), Arr.ofFn .char 0 (·.elim0)⟩ :
+    Vals (.arr (.atom .char)) 0)
 
 /-- The encoding of the atom column `v`; `what` names it in the error. -/
 def encOf (what : String) : QValue → Except String Enc
   | .vector _ _ e _ => pure e
   | _ => .error s!"{what}: not a vector"
 
-/-- intern = `asc ≫ seen` (design §0.2), no kernel of its own: `R : ℕ ⟶ [C]` the texts `x` by row, the dictionary
-    `D` the frame of `ran R` (`Tab.ran` sorts and merges, so `D` is sorted and distinct), each row's id `R ≫ D°`, the
-    position of its text in `D`; so id order is text order. -/
-def intern {n : USize} (what : String) (x : Vals (.arr (.atom .char)) n) : Except String (Dict × Arr .sym n) := do
+/-- intern the texts `x` into `D` (design §0.2), no kernel of its own: `R : ℕ ⟶ [C]` the texts by row, the new texts
+    `N = ran R − ran D`, each to its first row `F = Λ((R ≫ N)°) ≫ uncons ≫ π₁ : [C] ⟶ ℕ`; `D'` is `D` then the texts of
+    `F°` (first-row order), renumbered; each row's id `R ≫ D'°`. `D`'s rows are kept, so no stored id changes. -/
+def intern {n : USize} (what : String) (D : Dict) (x : Vals (.arr (.atom .char)) n) :
+    Except String (Dict × Arr .sym n) := do
   let R ← frame x
-  let D ← frame (← R.ran).key
-  let I ← R.comp (← D.conv)
+  let N ← (← R.ran).diff (← D.ran)
+  let L ← Tab.lamOf N.key (← (← R.comp N).conv)
+  let F ← L.comp (← Tab.uncons L.val)
+  let D' ← frame (← D.concat (← (⟨F.n, F.key, F.val.1⟩ : Tab (.arr (.atom .char)) .long).conv)).val
+  let I ← R.comp (← D'.conv)
   unless I.n = n do .error s!"{what}: {I.n} ids for {n} texts"
-  pure (D, ← Arr.of .sym n (.vector .sym n (← encOf what I.val.1) none) what)
+  pure (D', ← Arr.of .sym n (.vector .sym n (← encOf what I.val.1) none) what)
+
+/-- `rank = iasc(D)° : ℕ ⟶ ℕ`, an id to its text's position in text order: `iasc(D) = asc(ran D) ≫ D°`, so
+    `rank = D ≫ asc(ran D)°`. It reads `D` alone: when `D` grows only `rank` is recomputed, never a data column. -/
+def rank (D : Dict) : Except String (Tab .long .long) := do D.comp (← (← Tab.asc (← D.ran)).conv)
 
 /-- The texts of the ids `y` through the dictionary `D`, `I ≫ D` with `I : ℕ ⟶ ℕ` row `i`'s id; an id past `D` has
     no text, so the answer is short and refused. -/
@@ -168,22 +185,33 @@ def readKeyed (K S : Schema) (dir : String) : IO (Tab K.obj S.obj) := do
   let (fv, v) ← readSide S (file dir "val")
   IO.ofExcept (canon dir ⟨n, k, ← same fk n fv v⟩)
 
-/-- A symbol column in `dir` under `p`: its ids the column `p`, its dictionary beside it the ordinary text column
-    `p.dict` (`writeVals` at `[C]`); the own format has no kind of its own for either. -/
-def writeSym {n : USize} (dir p : String) (D : Dict) (y : Arr .sym n) : IO Unit := do
-  writeVals (A := .atom .sym) dir p y; writeVals (A := .arr (.atom .char)) dir (p ++ ".dict") D.val
+/-- The database directory `db`'s dictionary: the ordinary text column `sym` (`writeVals` at `[C]`) and its `rank`
+    the long column `sym.rank`; the own format has no kind of its own for either. -/
+def writeDict (db : String) (D : Dict) : IO Unit := do
+  writeVals (A := .arr (.atom .char)) db "sym" D.val
+  writeVals (A := .long) db "sym.rank" (← IO.ofExcept (rank D)).val
 
-/-- The converse of `writeSym`: the dictionary at `p.dict` refused unless sorted and distinct (interning it numbers
-    its rows `0 … d-1`), and the ids at `p` unless each has a text in it (`decode`). -/
-def readSym (dir p : String) : IO (Dict × (n : USize) × Arr .sym n) := do
-  let (_, ⟨n, y⟩) ← readVals (.atom .sym) dir p
-  let (fd, ⟨d, x⟩) ← readVals (.arr (.atom .char)) dir (p ++ ".dict")
-  let (_, z) ← IO.ofExcept (intern fd x)
-  unless z.toList == (List.range d.toNat).map (·.toUInt64) do
-    throw (IO.userError s!"{fd}: a dictionary whose texts are not sorted and distinct")
+/-- The converse of `writeDict`: the texts refused unless distinct (`ran` keeps every row), the rank file unless it is
+    `rank` of them. -/
+def readDict (db : String) : IO (Dict × Tab .long .long) := do
+  let (fd, ⟨d, x⟩) ← readVals (.arr (.atom .char)) db "sym"
   let D ← IO.ofExcept (frame x)
+  let u ← IO.ofExcept D.ran
+  unless u.n = d do throw (IO.userError s!"{fd}: {d.toNat - u.n.toNat} of {d} texts repeat one before them")
+  let K ← IO.ofExcept (rank D)
+  let (fr, ⟨_, r⟩) ← readVals .long db "sym.rank"
+  unless r.toList == K.val.toList do throw (IO.userError s!"{fr}: not the rank of the dictionary {fd}")
+  return (D, K)
+
+/-- A symbol column in `dir` under `p`: its ids, the column `p`; the texts are the database's one dictionary
+    (`writeDict`). -/
+def writeSym {n : USize} (dir p : String) (y : Arr .sym n) : IO Unit := writeVals (A := .atom .sym) dir p y
+
+/-- The converse of `writeSym`: the ids at `p`, refused unless each has a text in `D` (`decode`). -/
+def readSym (D : Dict) (dir p : String) : IO ((n : USize) × Arr .sym n) := do
+  let (_, ⟨n, y⟩) ← readVals (.atom .sym) dir p
   let _ ← IO.ofExcept (decode (file dir p) D y)
-  return (D, ⟨n, y⟩)
+  return ⟨n, y⟩
 
 /-- The first part of `es` as an atom column of type `t`, entered through `Arr.of` as `readArr` enters a mapped one;
     its count, and the parts left over. -/
@@ -266,9 +294,6 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
     pure ([t, i, v] ++ g.map (·.2.2.1) ++ [r], cs, ns.drop k)
   | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
 
-/-- The dictionaries of a table's symbol columns, by header name. -/
-abbrev Dicts := List (String × Dict)
-
 /-- The schema as the file holds it: a symbol column is its texts (`.text` of `char`); a symbol column of another
     shape or with names is refused. -/
 def symText (cols : Db.CsvCols) : Except String Db.CsvCols :=
@@ -277,26 +302,26 @@ def symText (cols : Db.CsvCols) : Except String Db.CsvCols :=
     else .error s!"column '{c}' is a symbol column of shape {repr s} with {ns.length} names; a symbol field is one text"
 
 /-- The parts `es` read under `symText cols`, each symbol column's three text parts replaced by its ids' one part
-    (`intern`), its dictionary under its name. -/
-def internCsv (path : String) : Db.CsvCols → List (USize × Enc) → Except String (List (USize × Enc) × Dicts)
-  | [], es => pure (es, [])
+    (`intern`) into the one dictionary `D`, left to right; the grown dictionary. -/
+def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) → Except String (List (USize × Enc) × Dict)
+  | [], es => pure (es, D)
   | (c, s, t, _) :: cols, es =>
     if t = .sym then do
       let ⟨n, x, es⟩ ← encVals path (.arr (.atom .char)) es
-      let (D, y) ← intern s!"{path}: column '{c}'" x
-      let (es, ds) ← internCsv path cols es
-      pure ((n, ← encOf path y.1) :: es, (c, D) :: ds)
+      let (D, y) ← intern s!"{path}: column '{c}'" D x
+      let (es, D) ← internCsv path D cols es
+      pure ((n, ← encOf path y.1) :: es, D)
     else do
-      let (rest, ds) ← internCsv path cols (es.drop s.parts)
-      pure (es.take s.parts ++ rest, ds)
+      let (rest, D) ← internCsv path D cols (es.drop s.parts)
+      pure (es.take s.parts ++ rest, D)
 
-/-- The CSV file `path` as the table `K ⟶ S` and its symbol columns' dictionaries, its header `cols` (the key's columns
-    then the value's, `Db.CsvCols`), each column read straight into its encoding (`Db.csvRead`, `ofCsv`, `encVals`), a
-    symbol column as its texts then interned (`internCsv`); `K = []`: positions, the frame of its rows (`frame`), else
-    keyed, its rows canonical (`canon`). -/
-def readCsvDicts (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj × Dicts) := do
+/-- The CSV file `path` as the table `K ⟶ S`, its symbol columns interned into the database's dictionary `D`, its
+    header `cols` (the key's columns then the value's, `Db.CsvCols`), each column read straight into its encoding
+    (`Db.csvRead`, `ofCsv`, `encVals`), a symbol column as its texts then interned (`internCsv`); `K = []`: positions,
+    the frame of its rows (`frame`), else keyed, its rows canonical (`canon`). The answer carries the grown `D`. -/
+def readCsvDict (D : Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj × Dict) := do
   let (n, es) ← Db.csvRead path (← IO.ofExcept ((symText cols).mapError (s!"{path}: " ++ ·)))
-  let (es, ds) ← IO.ofExcept (internCsv path cols es)
+  let (es, ds) ← IO.ofExcept (internCsv path D cols es)
   let side (R : Schema) (es : List (USize × Enc)) (ns : List String) :
       Except String (Vals R.obj n × List (USize × Enc) × List String) := do
     let (ps, es, ns) ← ofCsv path R.obj es ns
@@ -313,13 +338,13 @@ def readCsvDicts (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.
     let (v, es, _) ← side S es ns
     done es; pure (← canon path ⟨n, k, v⟩, ds))
 
-/-- A program's CSV input (`n.io`): `readCsvDicts`, refused when the file has a symbol column, whose dictionary no
+/-- A program's CSV input (`n.io`): `readCsvDict`, refused when the file has a symbol column, whose dictionary no
     program carries yet (PLAN 8.3). -/
 def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj) := do
-  let (t, ds) ← readCsvDicts K S cols path
-  unless ds.isEmpty do
-    throw (IO.userError s!"{path}: symbol columns {ds.map (·.1)}, whose dictionaries a program input does not carry yet")
-  return t
+  let ss := cols.filterMap fun (c, _, t, _) => if t = .sym then some c else none
+  unless ss.isEmpty do
+    throw (IO.userError s!"{path}: symbol columns {ss}, whose dictionary a program input does not carry yet")
+  return (← readCsvDict (← IO.ofExcept Dict.empty) K S cols path).1
 
 /-- The encodings of the side `x`'s CSV columns' parts with their counts (`toCsv` of `cols`' order), as
     `Db.CsvShape.atoms` lists them; which objects a CSV column may be is `Db.Csv.schema`'s to say. -/
@@ -332,22 +357,22 @@ def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String
   pure cs
 
 /-- The converse of `internCsv`: each symbol column's ids part replaced by its texts' three parts, decoded through
-    its dictionary in `ds` (`decode`); a symbol column with no dictionary is refused. -/
-def decodeCsv (path : String) (ds : Dicts) : Db.CsvCols → List (USize × Enc) → Except String (List (USize × Enc))
+    the database's dictionary `D` (`decode`); a symbol column with no dictionary is refused. -/
+def decodeCsv (path : String) (ds : Option Dict) : Db.CsvCols → List (USize × Enc) → Except String (List (USize × Enc))
   | [], es => pure es
   | (c, s, t, _) :: cols, es =>
     if t = .sym then do
       let (k, e) :: es := es | .error s!"{path}: no part left for the symbol column '{c}'"
-      let some D := ds.lookup c | .error s!"{path}: the symbol column '{c}' has no dictionary"
+      let some D := ds | .error s!"{path}: the symbol column '{c}' and no dictionary"
       let x ← decode s!"{path}: column '{c}'" D (← Arr.of .sym k (.vector .sym k e none) s!"{path}: column '{c}'")
       pure ((← csvEncs path x) ++ (← decodeCsv path ds cols es))
     else do pure (es.take s.parts ++ (← decodeCsv path ds cols (es.drop s.parts)))
 
-/-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsvDicts`: its header `cols`, then each row's
+/-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsvDict`: its header `cols`, then each row's
     key columns and value columns, written from their encodings (`Db.csvWrite`), a symbol column as its texts through
-    its dictionary in `ds` (`decodeCsv`); `K = []`: positions, the value columns only, rows renumbered by their order,
-    as `write` drops the key. -/
-def writeCsv (ds : Dicts) (K S : Schema) (cols : Db.CsvCols) (path : String) (t : Tab K.obj S.obj) : IO Unit := do
+    the database's dictionary `ds` (`decodeCsv`); `K = []`: positions, the value columns only, rows renumbered by their
+    order, as `write` drops the key. -/
+def writeCsv (ds : Option Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) (t : Tab K.obj S.obj) : IO Unit := do
   let ks ← match K with | [] => pure [] | _ => IO.ofExcept (csvEncs path t.key)
   let es ← IO.ofExcept (decodeCsv path ds cols (ks ++ (← IO.ofExcept (csvEncs path t.val))))
   Db.csvWrite path (← IO.ofExcept ((symText cols).mapError (s!"{path}: " ++ ·))) t.n es

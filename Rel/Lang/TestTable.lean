@@ -191,30 +191,56 @@ column 'id' appears twice in schema [id, id]
   IO.println (say (← (read [("id", .atom .sym)] dir).toBaseIO))
   IO.println (say (← (read [("id", .long), ("id", .long)] dir).toBaseIO))
 
-/-! ## A symbol column: ids into a sorted, distinct dictionary (PLAN 8.3) -/
+/-! ## Symbol columns: ids into the database's one append-only dictionary (PLAN 8.3) -/
 
--- by hand: the texts `ibm aapl ibm msft` interned to the dictionary `aapl ibm msft` (its bytes) and the ids `1 0 1 2`; the CSV
--- written back through it equals the input; ids compare as their texts do, at every pair of rows; the own files
--- (ids `s`, dictionary `s.dict`) map back to the same dictionary and ids
+/-- The texts of `D`, in id order. -/
+def texts (D : Table.Dict) : List String := D.toList.map fun (_, b) => String.mk (b.map fun c => Char.ofNat c.toNat)
+
+-- by hand: the texts `ibm aapl ibm msft`, then a second load `zz aapl`, interned into one dictionary: ids `0 1 0 2`
+-- then `3 1` (append order), the dictionary `ibm aapl msft zz`; its `rank` orders the texts `aapl ibm msft zz`; the
+-- CSV written back through it equals each input; comparing ranks agrees with comparing texts at every pair of rows;
+-- the own files (ids `s`, dictionary `sym` with `sym.rank`) map back to the same dictionary and ids
 /--
-info: ([[97, 97, 112, 108], [105, 98, 109], [109, 115, 102, 116]], [1, 0, 1, 2], true, true, true, true)
+info: ([0, 1, 0, 2], [3, 1], ["ibm", "aapl", "msft", "zz"], ["aapl", "ibm", "msft", "zz"], true, true, true, true, true)
 -/
 #guard_msgs in
 #eval show IO _ from do
   let dir ← fresh "sym"
-  let txt := "s\nibm\naapl\nibm\nmsft\n"
-  IO.FS.writeFile (dir ++ "/in.csv") txt
   let S : Schema := [("s", .atom .sym)]
   let cols : Db.CsvCols := [("s", .atom, .sym, [])]
-  let (t, ds) ← readCsvDicts [] S cols (dir ++ "/in.csv")
-  writeCsv ds [] S cols (dir ++ "/out.csv") t
-  let some D := ds.lookup "s" | throw (IO.userError "no dictionary for s")
-  let texts := D.toList.map (·.2)
-  let rows := ["ibm", "aapl", "ibm", "msft"]
-  let ids := t.val.toList
-  let order := (ids.zip rows).all fun (i, a) => (ids.zip rows).all fun (j, b) => decide (i < j) == decide (a < b)
-  writeSym dir "s" D t.val
-  let (D', ⟨_, y⟩) ← readSym dir "s"
-  return (texts, ids, (← IO.FS.readFile (dir ++ "/out.csv")) == txt, order, D'.toList == D.toList, y.toList == ids)
+  let (a, b) := ("s\nibm\naapl\nibm\nmsft\n", "s\nzz\naapl\n")
+  IO.FS.writeFile (dir ++ "/a.csv") a; IO.FS.writeFile (dir ++ "/b.csv") b
+  let (t, D) ← readCsvDict (← IO.ofExcept Dict.empty) [] S cols (dir ++ "/a.csv")
+  let (u, D) ← readCsvDict D [] S cols (dir ++ "/b.csv")
+  writeCsv D [] S cols (dir ++ "/a.out") t; writeCsv D [] S cols (dir ++ "/b.out") u
+  let K ← IO.ofExcept (rank D)
+  let rk (i : UInt64) : Int64 := (K.toList.lookup i.toInt64).getD (-1)
+  let byRank := texts (← IO.ofExcept ((← IO.ofExcept K.conv).comp D))
+  let rows := ["ibm", "aapl", "ibm", "msft", "zz", "aapl"]
+  let ids := t.val.toList ++ u.val.toList
+  let order := (ids.zip rows).all fun (i, x) => (ids.zip rows).all fun (j, y) => decide (rk i < rk j) == decide (x < y)
+  writeDict dir D; writeSym dir "s" t.val
+  let (D', K') ← readDict dir
+  let ⟨_, y⟩ ← readSym D' dir "s"
+  return (t.val.toList, u.val.toList, texts D, byRank, (← IO.FS.readFile (dir ++ "/a.out")) == a,
+    (← IO.FS.readFile (dir ++ "/b.out")) == b, order, D'.toList == D.toList ∧ K'.toList == K.toList,
+    y.toList == t.val.toList)
+
+-- the refusals: an id with no text in the dictionary, a dictionary with a text twice
+/--
+info: /data/tmp/rel-test-table/symbad/s: 1 of 1 ids are past the dictionary of 1 texts
+/data/tmp/rel-test-table/symbad/sym: 2 of 3 texts repeat one before them
+-/
+#guard_msgs in
+#eval show IO Unit from do
+  let dir ← fresh "symbad"
+  let x : Vals (.arr (.atom .char)) 3 :=
+    ⟨3, ← longs 3 [0, 1, 2], ← longs 3 [1, 2, 3], Arr.ofFn .char 3 fun _ => 97⟩
+  let (D, _) ← IO.ofExcept (intern "one" (← IO.ofExcept Dict.empty) (⟨1, ← longs 1 [0], ← longs 1 [1],
+    Arr.ofFn .char 1 fun _ => 97⟩ : Vals (.arr (.atom .char)) 1))
+  writeSym dir "s" (Arr.ofFn .sym 1 fun _ => 5)
+  IO.println (say (← (readSym D dir "s").toBaseIO))
+  writeVals (A := .arr (.atom .char)) dir "sym" x
+  IO.println (say (← (readDict dir).toBaseIO))
 
 end Rel.Lang.TestTable

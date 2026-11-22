@@ -490,8 +490,7 @@ def ioOut (inst done : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Expr)
   | (x, A, B, k, v, c, p, cl) :: os, ws => do
     let write (t : Lean.Expr) : Lean.Expr := match c with
       -- no dictionary: a program's CSV input with a symbol column is refused (`Table.readCsv`, `Db.Csv.schema`)
-      | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp (mkConst ``List.nil [.zero])
-          (mkApp2 (mkConst ``Prod [.zero, .zero]) (mkConst ``String) (mkConst ``Table.Dict)))
+      | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp (mkConst ``Option.none [.zero]) (mkConst ``Table.Dict))
           (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
       | none => if k.isEmpty
         then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)

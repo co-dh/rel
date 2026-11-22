@@ -365,7 +365,7 @@ def schema (cols : CsvCols) : Except String Unit :=
   cols.forM fun (c, s, t, ns) =>
     -- `Table.symText` hands this reader and writer a symbol column as `.text`; a program carries no dictionary yet
     if t = .sym then .error s!"column '{c}' is a symbol column, read and written as its text through its dictionary \
-      (Table.readCsvDicts, Table.writeCsv)"
+      (Table.readCsvDict, Table.writeCsv)"
     else if t = .general then .error s!"column '{c}' is a general column, which the own format does not hold"
     else if s = .text ∧ (t ≠ .char ∨ ns ≠ []) then
       .error s!"column '{c}' is a list of {form t ns}; a CSV field holds a list of char only (text)"
