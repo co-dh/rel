@@ -49,7 +49,6 @@ Rel.Lang.GenK.nu
 Rel.Lang.GenK.pair
 Rel.Lang.GenK.pairK
 Rel.Lang.GenK.pairOn
-Rel.Lang.GenK.prod
 Rel.Lang.GenK.rdiv
 Rel.Lang.GenK.stepAfter
 Rel.Lang.GenK.succ
@@ -76,6 +75,7 @@ Rel.Lang.Table.writeCsv
 Rel.Lang.Table.writeDict
 Rel.Lang.Tm.argGen
 Rel.Lang.Tm.code
+Rel.Lang.Tm.convInj
 Rel.Lang.Tm.gen
 Rel.Lang.build
 Rel.Lang.callArgs
@@ -103,6 +103,7 @@ Rel.Tab.compFrom
 Rel.Tab.compGroups
 Rel.Tab.compMat
 Rel.Tab.compOne
+Rel.Tab.compPairs
 Rel.Tab.compRows
 Rel.Tab.compSel
 Rel.Tab.compSelM
