@@ -1527,12 +1527,10 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨bv, bp⟩, hbasc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨bk, bg, bf⟩, hbseen, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sg2, hsg2, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cn, hcn, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cR, hcR, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨code, hcode, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨q, hq, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨ck, hck, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨qa, hqa, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cq, hcq, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨d, hd, h⟩ := h
@@ -1661,8 +1659,8 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
         rw [e1, e2, hb, hc]
     have hltw : ∀ q < N.toNat, (raw .i64 N lt)[q]?.getD 0 = if decide (π2 q < r.n.toNat) then 1 else 0 :=
       fun q hq => by
-        have e := (colMap_raw hlt).2.2.2 q hq
-        rw [(hp2 q hq).1, colConst_raw hcn, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU,
+        have e : Op.lt.eval ((raw .i64 N bp)[q]?.getD 0) r.n.toUInt64 = _ := (colMap_post hlt).2 q hq
+        rw [(hp2 q hq).1, hnU,
           eval_lt_nat (by have := (hp2 q hq).2; omega) (by omega), Except.ok.injEq] at e
         rw [← e]; simp
     have hqw : ∀ G < k, (raw .i64 k.toUSize q)[G]?.getD 0 = (π1 (fs1 G)).toUInt64 := fun G hG => by
@@ -1672,10 +1670,10 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
         (raw .i64 k.toUSize d)[G]?.getD 0 = ((List.range N.toNat).countP P2).toUInt64 := by
       intro G hG h hb
       have hqaw : (raw .i64 k.toUSize qa)[G]?.getD 0 = (r.n.toNat + π1 (fs1 G)).toUInt64 := by
-        have e := (colMap_raw hqa).2.2.2 G (by omega)
-        rw [hqw G hG, colConst_raw hck, Array.getElem?_replicate, if_pos (by omega), Option.getD_some] at e
+        have e := (colMap_post hqa).2 G (by omega)
+        rw [hqw G hG] at e
         simp only [Op.eval, Except.ok.injEq] at e
-        rw [← e, hnU, ← UInt64.ofNat_add, Nat.add_comm]
+        rw [← e, hnU, ← UInt64.ofNat_add]
       obtain ⟨q2, hq2, hpq2⟩ := hsur2 (r.n.toNat + π1 (fs1 G)) (by omega)
       have hcqw : (raw .i64 k.toUSize cq)[G]?.getD 0 = (gr2 q2).toUInt64 := by
         rw [(kgather_word hcq G (by omega)).2, hqaw, toNat_toUInt64 (by omega), ← hpq2,

@@ -82,10 +82,10 @@ def ldivOf (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except St
   let bs ← Vals.cols (← Vals.concat N sh r.val Q.key)
   let (bv, bp) ← kasc N bs
   let (bk, bg, bf) ← kseen N ((bs.map (·.1)).zip bv)
-  let cR ← groupFold .add N bg (← seenSeg N bf bk.toUSize) bk.toUSize 0 (← colMap .lt N bp (← colConst N r.n.toUInt64))
+  let cR ← groupFold .add N bg (← seenSeg N bf bk.toUSize) bk.toUSize 0 (← colMap .first N bp bp .i64 .i64 [] [(.gt, r.n.toUInt64)])
   let code ← kscatter .last N bp bg N 0
   let q ← kgather K f Q.n p
-  let d ← kgather K (← kgather K (← colMap .add K q (← colConst K r.n.toUInt64)) N code) bk.toUSize cR
+  let d ← kgather K (← kgather K (← colMap .first K q q .i64 .i64 [] [(.add, r.n.toUInt64)]) N code) bk.toUSize cR
   let (M, sel) ← whereCol K (← colMap .eq K cnt d)
   let ix ← kgather M sel K q
   let P : Tab B C := ⟨M, ← Vals.gather M ix Q.key, ← Vals.gather M ix (Q.val : Vals A Q.n × Vals C Q.n).2⟩
