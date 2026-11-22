@@ -29,13 +29,40 @@ def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64
     | .foR md pk => s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
     | _ => s!"{what}: constructor {e.ctorIdx} is not foR")
 
+/-- Whether `e` holds a null (`atom+1`'s `1`, in band): a `foR` block flagged (`Column.nulAt`). It reads one width byte
+a block and no element (owner decision F: only a block holding a null is flagged), so a kernel moves null flags only
+for an argument that has them and a column with none costs what it did. -/
+def hasNul : Enc → Bool
+  | .foR md _ => (List.range (Column.nblk md)).any (Column.nulAt md)
+  | _ => false
+
+/-- The null flag of each of `e`'s `m` rows as a word, `1` at a null (`Column.foRNul`, tested on the block) and `0`
+elsewhere: what a kernel moves, gathers and compares beside the row's word (`foRWords`), so the flag is part of the
+value. Every row of `pos` is `0`. -/
+def foRNuls (m : USize) : Enc → Array UInt64
+  | .foR md pk => let st := Column.blockStarts md
+    (Array.range m.toNat).map fun i => if Column.foRNul md pk st i then 1 else 0
+  | _ => Array.replicate m.toNat 0
+
+/-- The first null row of `e`'s `m` rows as the error `{what}: row k is null`, for an argument whose type has no `1`:
+an index of `gather` or `scatter` names a row, and a null names none. -/
+def noNul (what : String) (m : USize) (e : Enc) : Except String Unit :=
+  if hasNul e then match (foRNuls m e).findIdx? (· != 0) with
+    | some k => .error s!"{what}: row {k} is null, and a null names no row"
+    | none => .ok ()
+  else .ok ()
+
 /-- Words as a `foR` answer of 8-byte elements, `foRWords`' converse: the extern `Coc.encode` (`Coc.encodeAt` at
-`lgEnc`), which `qlean_coc_encode` writes (`exports::scan::for_words`). -/
-def wordsFoR (ws : Array UInt64) : Enc :=
+`lgEnc`), which `qlean_coc_encode` writes (`exports::scan::for_words`). `nul` is `encode`'s null bitmap, row `i` null
+where `Column.bitAt nul i` (its word then unread); empty, the default, for a column with none. -/
+def wordsFoR (ws : Array UInt64) (nul : ByteArray := .empty) : Enc :=
   -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`;
   -- the extern, not its body: the body's width search is quadratic in a block and costs minutes on a wide column
-  let p := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+  let p := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul
   .foR p.1 p.2
+
+/-- The flag words `ns` (`foRNuls`' form) as `wordsFoR`'s null bitmap, one bit a row. -/
+def nulMap (ns : Array UInt64) : ByteArray := Column.packIds 1 ns.size fun i => (ns[i]?.getD 0).toNat
 
 /-- `n` cells, each `fill` until row `k` combines `es[k]` into the cell `is[k]`: the cell becomes `op.eval cell es[k]`,
 rows in order. Overwrite is `op = .last` (the last row naming a cell is the one it keeps), a sum `.add`. The first row
@@ -50,12 +77,20 @@ def scatterWords (op : Op) (is es : Array UInt64) (n : Nat) (fill : UInt64) : Ex
     else .error s!"scatter: index {i} at row {k} is not below n = {n}"
 
 /-- `scatter` over `m` rows of `ix` and `e` into `n` cells under `op`: `scatterWords` of their words, encoded by
-`Coc.encode` at 8 bytes, every cache filled. The first error in the order `ix`, `e`, the rows is the answer. -/
+`Coc.encode` at 8 bytes, every cache filled. A null of `e` is a value like any other: under `.last` its flag moves with
+it (`foRNuls` scattered the same way, a cell keeping the flag of the row it keeps, a `fill` cell none); any other op
+has no answer at a null and refuses its first null row. The first error in the order `ix`, `e`, a null index, a null
+under an op other than `.last`, the rows is the answer. -/
 @[extern "qlean_k_scatter"]
 def kscatter (op : @& Op) (m : USize) (ix e : @& Enc) (n : USize) (fill : UInt64) : Except String Enc := do
-  let o ← scatterWords op (← foRWords "scatter: ix" m ix) (← foRWords "scatter: e" m e) n.toNat fill
+  let is ← foRWords "scatter: ix" m ix
+  let es ← foRWords "scatter: e" m e
+  noNul "scatter: ix" m ix
+  match op with | .last => pure () | _ => noNul s!"scatter: e under op {op.ctorIdx}" m e
+  let o ← scatterWords op is es n.toNat fill
+  let nul ← if hasNul e then nulMap <$> scatterWords .last is (foRNuls m e) n.toNat 0 else pure .empty
   -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
-  let r := Coc.encode (USize.ofNat32 8 (by decide)) (o.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+  let r := Coc.encode (USize.ofNat32 8 (by decide)) (o.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul
   pure (.foR r.1 r.2)
 
 end Rel.Kernel

@@ -49,6 +49,12 @@ The Rust (`crate/src/gather.rs`) reads `e` by address on the encoded column, and
 already reads in one load). -/
 @[extern "qlean_k_gather"]
 def kgather (m : USize) (ix : @& Enc) (n : USize) (e : @& Enc) : Except String Enc := do
-  wordsFoR <$> gatherWords (← foRWords "gather: ix" m ix) (← foRWords "gather: e" n e)
+  let is ← foRWords "gather: ix" m ix
+  let es ← foRWords "gather: e" n e
+  noNul "gather: ix" m ix
+  -- a null of `e` is a value: its flag (`foRNuls`) is gathered by the same indices as its word
+  let o ← gatherWords is es
+  let nul ← if hasNul e then nulMap <$> gatherWords is (foRNuls n e) else pure .empty
+  pure (wordsFoR o nul)
 
 end Rel.Kernel

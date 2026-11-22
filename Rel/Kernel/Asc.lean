@@ -107,6 +107,14 @@ def cellFns (c : Nat) (lo hi : Array UInt64) (xs : List (Array UInt64)) : List (
   (List.range c).flatMap fun j =>
     (fun r => if j < len r then 1 else 0) :: xs.map fun x r => if j < len r then x[s r + j]?.getD 0 else 0
 
+/-- The code columns of an atom column `e` of `m` rows whose order codes are `c`: `[c]` where `e` holds no null
+(`hasNul`); else the null as a value of its own, q's order: first a column `0` at a null and `1` elsewhere, so a null
+sorts before every value, then `c` with `0` at a null, so all nulls are one value. -/
+def nulCodes (m : USize) (e : Enc) (c : Array UInt64) : List (Array UInt64) :=
+  if hasNul e then let ns := foRNuls m e
+    [ns.map (1 - ·), c.mapIdx fun i v => if ns[i]?.getD 0 == 0 then v else 0]
+  else [c]
+
 mutual
 /-- One key column of `kasc` at `m` rows: the words it carries and its order code columns, or why it has none. An
 `atom` column carries its `m` words (`ascWords`) coded at its type (`ascOrd`, which cuts a word to the type's width):
@@ -116,7 +124,7 @@ cell, `lo`, `hi`, then the payload's first error. -/
 def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (Array UInt64))
   | (.atom t, e) => match ascOrd t with
     | none => .error s!"asc: type {t.ctorIdx} has no fixed-width order"
-    | some f => (fun x => (x, [x.map f])) <$> ascWords m (t, e)
+    | some f => (fun x => (x, nulCodes m e (x.map f))) <$> ascWords m (t, e)
   | (.cells n c lo hi els, e) => do
     let ix ← foRWords "asc: cells" m e
     match ix.find? (n.toNat ≤ ·.toNat) with
@@ -143,6 +151,9 @@ def kasc (m : USize) (es : @& List (AscKey × Enc)) : Except String (List Enc ×
   let p := ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray
   let r ← scatterWords .last p ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0
   let vs ← cs.mapM fun c => scatterWords .last r c.1 m.toNat 0
-  pure (vs.map wordsFoR, wordsFoR p)
+  -- each column's null flags move with its words
+  let ns ← es.mapM fun (_, e) =>
+    if hasNul e then nulMap <$> scatterWords .last r (foRNuls m e) m.toNat 0 else pure .empty
+  pure (vs.zipWith (fun v n => wordsFoR v n) ns, wordsFoR p)
 
 end Rel.Kernel
