@@ -83,11 +83,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   · simp at hs
   repeat' (first | subst hr | (obtain rfl | hr := hr))
   all_goals simp only [consRow, mapRow, lengthRow, sumRow, flatRow, foldIRow,
-    starRow, domRow, ranRow, nilRow,
+    starRow, domRow, ranRow, nilRow, estRow, frontRow,
     reduceCtorEq, Option.some.injEq] at hs
   all_goals subst hs
   all_goals simp [Prim.find?, prims, consRow, mapRow, lengthRow,
-    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow] at hr'
+    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow, estRow, frontRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss

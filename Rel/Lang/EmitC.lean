@@ -1177,6 +1177,30 @@ def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X
       canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩)
     (do mapFoldB A B (← coreflB n X) R)
 
+/-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
+    group's `X` rows (`cD`, input row below `n`) first; its cell the sorted rows `[f + cD, f + c)` of `r.val` gathered
+    in sorted order (`r.val` itself where `r` has no row, an `ite`); the groups with `0 < cD` kept, keyed by their
+    first row; then `canonT`. -/
+def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fun n X Rs => do
+  let [R] := Rs | throw "Λ: not one table"
+  let r ← canonT R
+  let (N, sh) ← catB n r.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "lam: rows past 2^63" #[N]
+  let (k, g, f, p) ← ascSeenB N (← concatB N n r.n sh X r.key)
+  let nc ← constB N (← u64B n)
+  let cD ← scatterB .add N g (← mapB .lt N p nc) k
+  let lo ← mapB .add k f cD
+  let hi ← mapB .add k f (← scatterB .add N g (← wordsB N 1) k)
+  let (M, sel) ← whereB k (← mapB .lt k (← wordsB k 0) cD)
+  let iD ← gatherB M (← gatherB M sel k f) N p
+  let pay ← ite (← call1 (kernel% USize.decEq) #[r.n, ← lit (.size 0)]) (do pure (#[r.n] ++ (← regsOf r.val).toArray))
+    (do
+      let ix ← mapB .max N (← mapB .sub N p nc) (← wordsB N 0)
+      pure (#[N] ++ (← regsOf (← gatherCols N ix r.n r.val)).toArray))
+  let (pv, _) ← withRegs r.val (pay.toList.drop 1)
+  canonT ⟨M, ← gatherCols M iD n X,
+    [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
@@ -1272,29 +1296,6 @@ def atB (B : Obj) (k n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => 
   let ix ← gatherB M sel n (← mapB .add n s kc)
   canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
 
-/-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
-    group's `X` rows (`cD`, input row below `n`) first; its cell the sorted rows `[f + cD, f + c)` of `r.val` gathered
-    in sorted order (`r.val` itself where `r` has no row, an `ite`); the groups with `0 < cD` kept, keyed by their
-    first row; then `canonT`. -/
-def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fun n X Rs => do
-  let [R] := Rs | throw "Λ: not one table"
-  let r ← canonT R
-  let (N, sh) ← catB n r.n
-  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "lam: rows past 2^63" #[N]
-  let (k, g, f, p) ← ascSeenB N (← concatB N n r.n sh X r.key)
-  let nc ← constB N (← u64B n)
-  let cD ← scatterB .add N g (← mapB .lt N p nc) k
-  let lo ← mapB .add k f cD
-  let hi ← mapB .add k f (← scatterB .add N g (← wordsB N 1) k)
-  let (M, sel) ← whereB k (← mapB .lt k (← wordsB k 0) cD)
-  let iD ← gatherB M (← gatherB M sel k f) N p
-  let pay ← ite (← call1 (kernel% USize.decEq) #[r.n, ← lit (.size 0)]) (do pure (#[r.n] ++ (← regsOf r.val).toArray))
-    (do
-      let ix ← mapB .max N (← mapB .sub N p nc) (← wordsB N 0)
-      pure (#[N] ++ (← regsOf (← gatherCols N ix r.n r.val)).toArray))
-  let (pv, _) ← withRegs r.val (pay.toList.drop 1)
-  canonT ⟨M, ← gatherCols M iD n X,
-    [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
 abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
 
