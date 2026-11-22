@@ -3,6 +3,7 @@ import Rel.Run.SetOps
 import Rel.RepCols
 import Rel.RepCanon
 import Rel.RepSetOps
+import Rel.RepSeen
 
 /-! The laws of `Tab.conv` and `Tab.comp` (`Rel/Run/Comp.lean`), from the five kernels' laws and `Tab.canon_holds`. -/
 
@@ -53,14 +54,6 @@ theorem interval_count {P : Nat → Bool} {a N : Nat} (hcl : ∀ x y z, x ≤ y 
   · exact (key N).1 q hq
   · have h := (key N).2
     exact ⟨fun h1 => absurd (hN q h1) hq, fun h3 => by omega⟩
-
-/-- `lexLe` reads its second row only through its codes. -/
-theorem lexLe_congr_right : ∀ (ks : List (Array UInt64)) {i j j' : Nat},
-    ks.map (·[j]?.getD 0) = ks.map (·[j']?.getD 0) → lexLe ks i j = lexLe ks i j'
-  | [], _, _, _, _ => rfl
-  | c :: cs, i, j, j', h => by
-    simp only [List.map_cons, List.cons.injEq] at h
-    simp only [lexLe, h.1, lexLe_congr_right cs h.2]
 
 /-- Splitting a count by a second predicate. -/
 theorem countP_split (p q : Nat → Bool) : ∀ l : List Nat,
@@ -237,7 +230,7 @@ theorem sorted_groups {N n : Nat} {ps : List Nat} {ks : List (Array UInt64)} {Kk
       · have l1 := (List.pairwise_iff_getElem.1 hsort a b (by omega) (by omega) hab).1
         have l2 := (List.pairwise_iff_getElem.1 hsort b c (by omega) (by omega) hbc).1
         rw [hkey a (by omega), hkey c (by omega)] at e
-        rw [lexLe_congr_right ks e.symm] at l2
+        rw [lexLe_congr rfl e.symm] at l2
         rw [hkey a (by omega), hkey b (by omega)]
         exact (keys_of_lexLe ks l1 l2).symm
       · exact e.symm
