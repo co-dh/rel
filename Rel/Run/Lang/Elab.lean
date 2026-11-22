@@ -231,6 +231,7 @@ def _root_.Rel.Obj.atoms : Obj → List Rel.QAtomicType
   | .atom t => [t]
   | .prod a b | .sum a b => a.atoms ++ b.atoms
   | .arr b => b.atoms
+  | .one => []
 
 /-- The placeholders of a constant built where `objs` are declared: the `varAtoms` none of them is stored at, so
     no object its body can name is taken for one of its variables (`Obj.inst`), whatever atom it is stored at. -/
@@ -251,6 +252,7 @@ def _root_.Rel.Obj.inst (ph : List Rel.QAtomicType) (σ : List Obj) : Obj → Ob
   | .prod a b => .prod (a.inst ph σ) (b.inst ph σ)
   | .arr b => .arr (b.inst ph σ)
   | .sum a b => .sum (a.inst ph σ) (b.inst ph σ)
+  | .one => .one
 
 /-- `t`, built at the placeholders, at the objects `σ` (`Obj.inst`): a definition's body at a call's objects. A
     node whose objects are fixed (a table, a universe, the number verbs at `.long`) keeps them, else the error
@@ -314,7 +316,9 @@ abbrev Objs := List (String × ObjInfo)
     sides of a sum's; an `arr` has none. Whether it has one is decided here; its values are built when a reader
     forces the thunk, so an object whose universe is past `crossMax` costs nothing until a term reads it. -/
 def uniOf (objs : Objs) : OTy → Option ((A : Obj) × Thunk (Except String ((m : USize) × Vals A m)))
-  | .base n => do let ⟨m, U⟩ ← (← objs.lookup n).uni; pure ⟨.long, .pure (.ok ⟨m, U⟩)⟩
+  | .base n => do
+    let i ← objs.lookup n; let ⟨m, U⟩ ← i.uni
+    match i.obj with | .one => pure ⟨.one, .pure (.ok ⟨m, ()⟩)⟩ | _ => pure ⟨.long, .pure (.ok ⟨m, U⟩)⟩
   | .prod a b => do
     let ⟨A, ua⟩ ← uniOf objs a; let ⟨B, ub⟩ ← uniOf objs b
     pure ⟨.prod A B, .mk fun _ => do
@@ -1783,6 +1787,8 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
     let cs ← rows.mapM fun
       | .leaf w => code objs mc p o w
       | r => throw ⟨p, s!"a literal's element of {o} is a word, found {r.show}"⟩
+    -- an object stored at `1` (one element, `ObjInfo.obj`): each word checked by `code` above, no column
+    if let .base m := o then if let some { obj := .one, .. } := objs.lookup m then return ⟨.one, ()⟩
     if h : cs.length.toUSize = n then (let c : Arr .i64 n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
 
 /-- The number checks of the node `x` at its solved objects: the number objects it computes on (`numsAt`, read by

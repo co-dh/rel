@@ -23,7 +23,9 @@ def OTy.poly : OTy → Bool
   | .base _ => false
 
 def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
-  | .elems ws => pure { ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩, seg := true }
+  -- one element is the terminal object: stored at `1`, no column (`Obj.one`)
+  | .elems ws => pure { ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩,
+      seg := ws.length != 1, obj := if ws.length = 1 then .one else .long }
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
@@ -74,6 +76,8 @@ def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
     | none => toString v
   -- an object declared at another atom: its word as a literal writes it (`wordText`)
   | .base _, .atom t, x => match elWord t x with | some w => wordText t w | none => "?"
+  -- an object of one element (`1 = {∗}`): that element's name
+  | .base n, .one, () => ((objs.lookup n).bind (·.elems.head?)).getD "()"
   | .prod a b, .prod A B, (x, y) => s!"({showEl objs false a A x}, {showEl objs false b B y})"
   | .sum a _, .sum A _, .inl x => s!"inl {showEl objs true a A x}"
   | .sum _ b, .sum _ B, .inr y => s!"inr {showEl objs true b B y}"
@@ -568,7 +572,7 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
       -- the column's shape by its declared type and its stored object together; which atoms each takes is `schema`'s
       let col : Option (Db.CsvShape × QAtomicType × List String) := match t, ← liftExcept (objOf env.objs p t) with
         | .base n, .atom a => some (.atom, a, elems n)
-        | .sum (.base n) (.base u), .sum (.atom a) (.atom _) => if (elems u).length == 1 then some (.null, a, elems n) else none
+        | .sum (.base n) _, .sum (.atom a) .one => some (.null, a, elems n)
         | .arr (.base n), .arr (.atom a) => some (.text, a, elems n)
         | _, _ => none
       let some (s, a, ns) := col
@@ -860,6 +864,7 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
   | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ => do
     pure (g ``Gen.sumV #[oE a, oE b, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
       ← valsE a l x, ← valsE b r y])
+  | .one, _, _ => pure (mkConst ``Unit.unit)
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
   pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE A R.n R.key, ← valsE B R.n R.val])
@@ -872,6 +877,7 @@ def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize
     valEq lo.1 lo'.1 && valEq hi.1 hi'.1 && valsEq b p d q
   | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, .sum c d, _, ⟨_, _, tag', idx', x', y'⟩ =>
     valEq tag.1 tag'.1 && valEq idx.1 idx'.1 && valsEq a x c x' && valsEq b y d y'
+  | .one, _, _, .one, _, _ => true
   | _, _, _, _, _, _ => false
 
 /-- `t` and `u`, of one constructor, agree in their fields that are not terms; a call's constant compared by its

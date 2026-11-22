@@ -77,23 +77,23 @@ bytes: 24 bytes
 #eval column (.enum "dom" (.vector .i64 3 (.bytes (dense [2, 0, 1])) none))
 
 -- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is refused (no writer of the
--- sorted dictionary yet); and the writer refuses kind 5, a number that is no kind
+-- sorted dictionary yet); and the writer refuses kind 6, a number that is no kind
 /-- info: (Except.ok none,
  Except.error "a `syms` column, which the own format does not hold: a symbol column is stored as `foR` ids into a sorted dictionary (doc/rel-architecture.zh.typ §4), and no writer builds that yet") -/
 #guard_msgs in
 #eval ((ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key),
   (ownFile (X := Empty) (.vector .sym 1 (.syms (ByteArray.mk #[97, 0]) #[0, 2]) none)).map (·.map key))
 /--
-info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
- "error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
+info: ("error: a column of kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 6 with 0 parts and a 0-byte name",
+ "error: a column of kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 6 with 0 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
   let (_, p) ← IO.FS.createTempFile
-  let w ← (ownWrite p.toString 7 0 5 5 "" #[]).toBaseIO
+  let w ← (ownWrite p.toString 7 0 6 5 "" #[]).toBaseIO
   IO.FS.removeFile p
   return (match w with | .ok () => "ok" | .error e => s!"error: {e}",
-          match ownImage ⟨7, 0, 5, 5, "", #[]⟩ with | .ok _ => "ok" | .error e => s!"error: {e}")
+          match ownImage ⟨7, 0, 6, 5, "", #[]⟩ with | .ok _ => "ok" | .error e => s!"error: {e}")
 
 /-- A good kind-0 file: 2 longs, domain `ab` at bytes 40 and 41, the part at 80, 128 bytes. -/
 def good : ByteArray :=
@@ -139,22 +139,22 @@ body:   byte 8: format version 3 or 4, found 2; a version-1 file predates the Fr
 #guard_msgs in #eval readBoth (mutate good [(8, 2)])
 
 /--
-info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 2 with 1 parts
-body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 2 with 1 parts
+info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0, found kind 2 with 1 parts
+body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0, found kind 2 with 1 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 2)])
 
 -- kind 1 (the bitmap, gone: a boolean is a `u1` foR) is no kind, at its old part count too
 /--
-info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 1 with 1 parts
-body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 1 with 1 parts
+info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0, found kind 1 with 1 parts
+body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0, found kind 1 with 1 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 1)])
 
 -- the writer refuses kind 1 too
 /--
-info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name",
- "error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name")
+info: ("error: a column of kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name",
+ "error: a column of kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -166,8 +166,8 @@ info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain
 
 -- the worst kind and part count a header can hold, refused whole by both
 /--
-info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 255 with 65535 parts
-body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 255 with 65535 parts
+info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0, found kind 255 with 65535 parts
+body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3, 4:2 or 5:0, found kind 255 with 65535 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 255), (12, 255), (13, 255)])
 

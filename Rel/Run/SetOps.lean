@@ -133,8 +133,9 @@ def sums {K : Obj} : {P V : Obj} → Tab (.prod K P) V → Except String (Tab (.
   | .atom t, .atom .i64, x | .atom t, .atom .f64, x =>
     if t.intOrd then sumsOn x else throw s!"sums: positions of {repr t} are not ordered by value"
   | .atom _, .atom u, _ => throw s!"sums: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
-  | .atom _, .prod .., _ | .atom _, .sum .., _ | .atom _, .arr _, _ => throw "sums: the values are no atom"
-  | .prod .., _, _ | .sum .., _, _ | .arr _, _, _ => throw "sums: the positions are no atom"
+  | .atom _, .prod .., _ | .atom _, .sum .., _ | .atom _, .arr _, _ | .atom _, .one, _ =>
+    throw "sums: the values are no atom"
+  | .prod .., _, _ | .sum .., _, _ | .arr _, _, _ | .one, _, _ => throw "sums: the positions are no atom"
 
 end Tab
 

@@ -31,7 +31,7 @@ pub fn keys_blk(kind: u8, c: &Coc, b: usize, k: &mut [u64]) {
     let (mask, flip) = (mask(kind), key_flip(kind));
     let p = &c.pack[c.meta.off[b] as usize..];
     let cnt = k.len();
-    let w = c.meta.width[b];
+    let w = c.meta.w(b);
     // a patched block, and an odd width, are decoded (frame + residual, patches over it); frame is base without patches
     if c.blk_nexc(b) != 0 || !matches!(w, 0 | 8 | 16 | 32 | 64) {
         let mut dec = crate::pod::Scr::<i64>::new(c.meta.blk());

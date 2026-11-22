@@ -19,7 +19,7 @@ pub const SH_NULL: u8 = 1;
 pub const SH_TEXT: u8 = 2;
 
 /// The parts a column is stored as (`CsvShape.parts`), and how many of them hold a word per row (`rowParts`).
-pub fn nparts(shape: u8) -> usize { match shape { SH_NULL => 4, SH_TEXT => 3, _ => 1 } }
+pub fn nparts(shape: u8) -> usize { match shape { SH_NULL => 3, SH_TEXT => 3, _ => 1 } }
 fn row_parts(shape: u8) -> usize { match shape { SH_ATOM => 1, _ => 2 } }
 
 /// A field's byte count as the file means it: a quoted one's `""` counted once.
@@ -151,11 +151,11 @@ pub fn lex(b: &[u8], cols: &[Col], lg: u32) -> Result<Lexed, String> {
     Ok(lx)
 }
 
-/// Each part's count of column `c` (`layout`'s): an atom's `n`; a sum's `n`, `n`, its values, its nulls; a text's
-/// `n`, `n`, its bytes.
+/// Each part's count of column `c` (`layout`'s): an atom's `n`; a sum's `n`, `n`, its values; a text's `n`, `n`, its
+/// bytes.
 pub fn counts(lx: &Lexed, c: usize, col: &Col) -> Vec<usize> {
     let (n, t) = (lx.n, lx.tot[c]);
-    match col.shape { SH_NULL => alloc::vec![n, n, t, n - t], SH_TEXT => alloc::vec![n, n, t], _ => alloc::vec![n] }
+    match col.shape { SH_NULL | SH_TEXT => alloc::vec![n, n, t], _ => alloc::vec![n] }
 }
 
 /// The schema's names as the errors list them (`names`).
@@ -214,7 +214,6 @@ pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, o
     };
     let base = lx.base[c].get(lo >> lx.lg).copied().unwrap_or(0);
     match (col.shape, part) {
-        (SH_NULL, 3) => out.fill(0),
         (SH_NULL, 2) | (SH_TEXT, 2) => {
             let blk = lx.base[c].partition_point(|&x| x <= lo).saturating_sub(1);
             let (mut j, end) = (lx.base[c].get(blk).copied().unwrap_or(0), lo + out.len());
@@ -293,7 +292,8 @@ fn at(col: &Col, rw: &[Vec<u64>], cnt: &[usize], i: usize) -> Result<(), String>
     let (a, b) = (rw[0][i], rw.get(1).map_or(0, |x| x[i]));
     match col.shape {
         SH_NULL if a == 0 => if b < cnt[2] as u64 { Ok(()) } else { Err(format!("position {b} past the {} values of its left side", cnt[2])) },
-        SH_NULL if a == 1 => if b < cnt[3] as u64 { Ok(()) } else { Err(format!("position {b} past the {} values of its right side", cnt[3])) },
+        // the right side is `1`: a null's position reads its one value, whatever it is
+        SH_NULL if a == 1 => Ok(()),
         SH_NULL => Err(format!("tag {a}, not 0 or 1")),
         SH_TEXT => if a <= b && b <= cnt[2] as u64 { Ok(()) } else { Err(format!("cell [{a}, {b}) outside the {} bytes", cnt[2])) },
         _ => Ok(()),

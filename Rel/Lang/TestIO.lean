@@ -280,7 +280,7 @@ rel_program csvNullIO where
 -- side, the null at 0 of its right side (`inr ∗`); `name`'s cells `[0,3) [3,8) [8,8)` of the bytes `abcx,"y"`
 /--
 info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
- [(0, [97, 98, 99], Sum.inl 10), (1, [120, 44, 34, 121, 34], Sum.inr 0), (2, [], Sum.inl 7)])
+ [(0, [97, 98, 99], Sum.inl 10), (1, [120, 44, 34, 121, 34], Sum.inr ()), (2, [], Sum.inl 7)])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -290,7 +290,7 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
   IO.FS.writeFile (d ++ "/in.csv") "name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n"
   csvNullIO.io
   let out ← IO.FS.readFile (d ++ "/out.csv")
-  let back ← Table.readCsv [] [("name", .arr (.atom .char)), ("px", .sum .long (.atom .u8))]
+  let back ← Table.readCsv [] [("name", .arr (.atom .char)), ("px", .sum .long .one)]
     [("name", .text, .char, []), ("px", .null, .i64, [])] (d ++ "/out.csv")
   IO.FS.removeDirAll d
   return (out, back.toList)

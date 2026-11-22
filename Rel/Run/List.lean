@@ -48,6 +48,7 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
         Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f))
       else pure ⟨m, lo, hi, ← Vals.pack f⟩
   | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, tag, idx, ← Vals.pack x, ← Vals.pack y⟩
+  | .one, _, _ => pure ()
 
 /-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/
 def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do

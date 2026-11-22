@@ -46,7 +46,7 @@ pub fn col_bits(c: &crate::coc::Coc, n: usize) -> Vec<u8> {
     for b in 0..n.div_ceil(blk) {
         let (lo, nb) = (b << lg, (n - (b << lg)).min(blk));
         let o = &mut out[lo / 8..(lo + nb).div_ceil(8)];
-        let (w, f) = (c.meta.width[b] as usize, (c.frame(b) & 1) as u8);
+        let (w, f) = (c.meta.w(b) as usize, (c.frame(b) & 1) as u8);
         let at = c.meta.off[b] as usize;
         let p = &c.pack[at..at + blk * w / 8];
         match w {

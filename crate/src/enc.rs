@@ -254,7 +254,7 @@ pub fn move_meta(m: &mut EncMeta, f: &Cocf, pb: usize) -> u32 {
 /// list, whose positions move unchanged. `esz` is the written column's element size, `alp` its form.
 pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
     let c = &f.c;
-    let (bytes, so) = (c.meta.blk() * c.meta.width[pb] as usize / 8, c.meta.off[pb] as usize);
+    let (bytes, so) = (c.meta.blk() * c.meta.w(pb) as usize / 8, c.meta.off[pb] as usize);
     let src = c.pack.get(so..).unwrap_or(&[]);
     let avail = src.len().min(bytes);
     p.res[..avail].copy_from_slice(&src[..avail]);
