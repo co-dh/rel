@@ -88,6 +88,10 @@ def readVals : (A : Obj) → (dir p : String) → IO (String × (n : USize) × V
     let ⟨n, lo⟩ ← readArr .i64 (file dir (p ++ ".lo"))
     let hi ← same (file dir (p ++ ".lo")) n (file dir (p ++ ".hi")) (← readArr .i64 (file dir (p ++ ".hi")))
     let (_, ⟨m, e⟩) ← readVals b dir (p ++ ".e")
+    -- the one place a cell's bounds are checked (PLAN 8.5): past here every cell is a slice of its payload
+    if let some i := cellBad m lo hi then
+      throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is the cell [{lo.get i}, {hi.get i}), not a slice of the {m} rows of \
+        {file dir (p ++ ".e")}: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ {m}")
     return (file dir (p ++ ".lo"), ⟨n, m, lo, hi, e⟩)
   | .sum a b, dir, p => do
     let ⟨n, tag⟩ ← readArr .u1 (file dir (p ++ ".tag"))
