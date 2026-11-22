@@ -274,8 +274,8 @@ def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat ×
     group's `R` rows come first), per group the counts `cR`, `cS` and the width `w = cR · cS`, EXPAND of `w` (each
     output row's group `G` and offset `u`), its `R` row `p[f + u / cS]` and `S` row `p[f + cR + u % cS] - n`, both
     sides gathered there, then `canonT`. `Tab.comp`'s blocks past `blockRows` and its bit matrices change no answer. -/
-def compB (R S : TabB) : Bld TabB := do
-  let (N, p, _, f, K, cR, cS, w) ← groupsB R S
+def compFromB (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) : Bld TabB := do
+  let (N, p, _, f, K, cR, cS, w) := x
   let (T, G, u) ← expandB K w
   let ft ← gatherB T G K f
   let ct ← gatherB T G K cS
@@ -283,6 +283,9 @@ def compB (R S : TabB) : Bld TabB := do
   let qS ← mapB .add T (← mapB .add T ft (← gatherB T G K cR)) (← mapB .mod T u ct)
   let iS ← mapB .sub T (← gatherB T qS N p) (← constB T (← call1 (kernel% USize.toUInt64) #[R.n]))
   canonT ⟨T, ← gatherCols T iR R.n R.key, ← gatherCols T iS S.n S.val⟩
+
+/-- `compFromB` on `groupsB R S`. -/
+def compB (R S : TabB) : Bld TabB := do compFromB R S (← groupsB R S)
 
 /-- **`Vals.cross`** of `n` rows `xs` and `m` rows `ys` (`crossIx`): `T = n · m` rows, `xs` at `pos / m`, `ys` at
     `pos % m`. Its two checks first, as `Vals.cross` and `crossIx` make them: `n · m ≤ crossMax` (tested as
@@ -396,11 +399,6 @@ def bothB (r s : Dom → Bld TabB) (dr ds : Bool) (D : Dom) (ctx : TabB → Bld 
     let t ← r D
     pure (t, ← s (← if ds then ctx t else pure D))
 
-/-- **`compT`**: `R ≫ S`, `S` (the table `s` in a context, on demand where `ds`) read at `ran R`, its range the
-    values `ran` the composition's context knows. -/
-def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
-  compB R (← s (← if ds then (return { dom := some (← nubB R.n R.val), ran }) else pure {}))
-
 /-- **`R ∩ S`** (`Tab.inter`): `Tab.select` keeping the groups of a row of each. -/
 def interB (R S : TabB) : Bld TabB := selectB (fun m mn mx => mapB .lt m mn mx) R S
 
@@ -418,12 +416,30 @@ partial def withRegs (cs : Cols) (rs : List Nat) : Bld (Cols × List Nat) :=
     | .sum .., _ => sumB "a loop's state"
     | _, _ => throw "a loop's state: fewer registers than its columns read"
 
+/-- `nth` of an `if`'s one register. -/
+def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
+
+/-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
+def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
+
+/-- The check `Vals.pack`, `Tab.mem`, `Tab.map` make before reading `n` cells over `m` elements signed:
+    `n · m + n + m < 2^63`, on size registers as `n, m < 2^63` and `(n + 1) · (m + 1) ≤ 2^63`, the last tested as
+    `¬ 2^63 / (m + 1) < n + 1` (no sum or product wraps); else `fail` with `what` and the two counts. -/
+def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
+  let c ← lit (.size (2 ^ 63))
+  let one ← lit (.size 1)
+  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
+    let q ← call1 (kernel% USize.div) #[c, ← call1 (kernel% USize.add) #[m, one]]
+    ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, one]]) (lit (.bit false)) (lit (.bit true))
+  guard ok s!"{what}: n cells × m elements past 2^63, n · m + n + m" #[n, m]
+
 /-- **`Vals.pack`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at most
     half of it is read (`0 < m`, `2 · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered there,
     laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. -/
 partial def packB (n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
   | c@(.atom ..) => pure c
   | .arr p m lo hi f => do
+    cellsBoundB "pack" n m
     let (s, e) ← spanB n m lo hi
     let w ← mapB .sub n e s
     let (P, T) ← prefixB .add n w
@@ -623,6 +639,7 @@ def arrCol (what : String) : Cols → Bld (Nat × Nat × Nat × Cols)
     the value the payload at `s[G] + u`; then `canonT`. -/
 def memB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
   let (m, lo, hi, f) ← arrCol "∋" X
+  cellsBoundB "mem" n m
   let (s, e) ← spanB n m lo hi
   let (T, G, u) ← expandB n (← mapB .sub n e s)
   canonT ⟨T, ← gatherCols T G n X, ← repath B "" (← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f)⟩
@@ -631,12 +648,6 @@ def memB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
 
 /-- The size register `x` as a word. -/
 def wordOf (x : Nat) : Bld Nat := call1 (kernel% USize.toUInt64) #[x]
-
-/-- `nth` of an `if`'s one register. -/
-def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
-
-/-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
-def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
 
 /-- **`Vals.code`**: the `n` rows of `cs` numbered by value (`ascSeenB`): the count `k`, each input row's number
     (`kscatter .last` of the groups through `p`), each number's first input row. -/
@@ -759,12 +770,11 @@ def ldivSelB (d : TabB → TabB → TabB → TabB → Bld TabB) (bits : Nat) (R 
   let T := (← prefixB .add ka w).2
   let big ← call1 (kernel% USize.decLt)
     #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[ka, ← lit (.size 2)], ← lit (.size Tab.rowBits.toUSize)], T]
-  iteT big R.val S.val (do
-    let kb := (← code2B R.n UB.n R.val UB.val).1
-    let kc := (← code2B S.n UC.n S.val UC.val).1
-    let win ← bitsWinB bits T (← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]) kb kc
-    iteT win R.val S.val (ldivBitsB R S UB UC) (d R S UB UC))
-    (d R S UB UC)
+  -- one choice bit, so each form is built once in the plan (as `compSelB`)
+  let win ← andB big do
+    bitsWinB bits T (← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]) (← code2B R.n UB.n R.val UB.val).1
+      (← code2B S.n UC.n S.val UC.val).1
+  iteT win R.val S.val (ldivBitsB R S UB UC) (d R S UB UC)
 
 /-- `T°` (`Tab.conv`): the sides swapped, then `canonT`. -/
 def convB (T : TabB) : Bld TabB := canonT ⟨T.n, T.val, T.key⟩
@@ -773,6 +783,56 @@ def convB (T : TabB) : Bld TabB := canonT ⟨T.n, T.val, T.key⟩
     is `ldivOfB` (`Tab.ldivOf`), with no second `canon`. -/
 def rdivB (R S UA UB : TabB) : Bld TabB := do
   convB (← ldivSelB ldivOfB Tab.bitsMax (← convB S) (← convB R) UB UA)
+
+/-- **`Tab.compBits`**: `S` as `kb` rows (middle values, numbered with `R.val`'s) of `kc` bits, `R`'s rows grouped by
+    key (`ka` groups), each the `∨` of its rows (`kbitrows false`), read back by `ofBitsB`: each side's value is the
+    first row of its number, so equal values written apart (two empty cells) read back as one. Its `2^63` check is
+    left out: its one caller `compSelB` runs it where `bitsWinB` holds, so every count is below `2^27`. -/
+def compBitsB (R S : TabB) : Bld TabB := do
+  let (kb, bR, bS, _) ← code2B R.n S.n R.val S.key
+  let (ka, aR, ra) ← codeB R.n R.key
+  let (kc, cS, rc) ← codeB S.n S.val
+  let (ends, idx) ← csrB R.n ka aR bR
+  let m ← bitMatrixB S.n kb kc bS cS
+  let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit false), kc, kb, R.n, ka, ends, idx, m]) 0 "kbitrows"
+  ofBitsB ka kc o R.n R.key ra S.n S.val rc
+
+/-- **`Tab.compSel bits`** (`GenK.compR`'s `compSelM`, read back): `T` the expansion of `groupsB`, `K` its groups; the
+    expansion (`compFromB`) where `rowBits · T ≤ K + 1` (tested as `(K + 1) / rowBits < T`, no product), else
+    `compBitsB` where `bitsWinB T K ka kc` holds, else the expansion. -/
+def compSelB (bits : Nat) (R S : TabB) : Bld TabB := do
+  let x ← groupsB R S
+  let (_, _, _, _, K, _, _, w) := x
+  let T := (← prefixB .add K w).2
+  let big ← call1 (kernel% USize.decLt)
+    #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[K, ← lit (.size 1)], ← lit (.size Tab.rowBits.toUSize)], T]
+  -- one choice bit, so each form is built once in the plan (two copies of the expansion per `≫` outgrow `cc`)
+  let win ← andB big do bitsWinB bits T K (← codeB R.n R.key).1 (← codeB S.n S.val).1
+  iteT win R.key S.val (compBitsB R S) (compFromB R S x)
+
+/-- **`compT`**: `R ≫ S` (`compSelB`, as `GenK.compV`), `S` (the table `s` in a context, on demand where `ds`) read at
+    `ran R`, its range the values `ran` the composition's context knows. -/
+def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
+  compSelB Tab.bitsMax R (← s (← if ds then (return { dom := some (← nubB R.n R.val), ran }) else pure {}))
+
+/-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows), `R` the table of the relation on elements: the elements
+    EXPANDed (`v`, `T` rows), `⟨pos, v⟩ ≫ R`; where each position has exactly one image, those images in position
+    order under the same widths (`Vals.cells`), then `canonT`. Where some element has none or two, `Tab.map` runs its
+    left fold (`foldRounds`), which no plan recipe builds yet: the run fails there, naming it. -/
+def cellsMapB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := do
+  let (m, lo, hi, f) ← arrCol "F" X
+  cellsBoundB "map" n m
+  let (s, e) ← spanB n m lo hi
+  let w ← mapB .sub n e s
+  let (T, G, u) ← expandB n w
+  let v ← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f
+  let C ← compB ⟨T, [.atom "" .i64 (← posB)], v⟩ R
+  let fn ← andB (← call1 (kernel% USize.decEq) #[C.n, T]) do
+    call1 (kernel% USize.decEq) #[(← nubB C.n C.key).1, T]
+  guard fn ("F(R): an element with no image or with two under R, where `Tab.map` runs its fold (`foldRounds`), " ++
+    "which no plan recipe builds yet; images, elements") #[C.n, T]
+  let (P, _) ← prefixB .add n w
+  canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩
 
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
@@ -785,6 +845,13 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.mem then match A with
     | .arr b => do let (n, X) ← known r.sym D.dom; memB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  else if c == ``Tab.map then match A, B, xs with
+    -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand
+    | .arr a, .arr b, [x] => do
+      let (n, X) ← known r.sym D.dom
+      let M ← memB a n X
+      cellsMapB b n X (← x { dom := some (← nubB M.n M.val) })
+    | _, _, _ => throw s!"row `{r.sym}` (`{c}`) at objects that are no arrays, or given {xs.length} relations, not one"
   else if c == ``Tab.asc then match xs with
     | [x] => ascB B (← x {})
     | _ => throw s!"asc given {xs.length} relations, not one"

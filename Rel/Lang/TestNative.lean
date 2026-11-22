@@ -50,6 +50,8 @@ rel_program native1a where
     lu : X ⟶ [X] ≜ lm ∪ (dom(x) nil)
     hd : X ⟶ X ≜ lm at(0)
     ee : X ⟶ [N] ≜ lm E(x)
+    fm : X ⟶ [N] ≜ lm F(rt)
+    hy : X ⟶ N ≜ dom(x) hylo(⟨𝟙, Λ(bo°)⟩, π₁ rt)
     ld : N ⟶ N ≜ x \ x
     a1 : X ⟶ N ≜ {(A,1)}
     a2 : X ⟶ N ≜ {(A,2)}
@@ -164,7 +166,7 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("le", semOut native1a.le), ("lt", semOut native1a.lt),
    ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
    ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc), ("nl", semOut native1a.nl),
-   ("hd", semOut native1a.hd), ("ee", semOut native1a.ee),
+   ("hd", semOut native1a.hd), ("ee", semOut native1a.ee), ("lm", semOut native1a.lm), ("lu", semOut native1a.lu),
    ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
