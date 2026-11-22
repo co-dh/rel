@@ -407,6 +407,11 @@ def alpSects (nblk nexc esz : Nat) : Nat × Nat × Nat :=
   let p := (o + (nblk + 1) * 4 + 7) / 8 * 8
   (o, p, (p + nexc * 2 + 7) / 8 * 8)
 
+/-- A `w`-byte element's bits `v` as the value q holds: sign-extended from its `8 * w` bits by a shift up and an
+arithmetic shift down, except one byte, q's unsigned pair, which is its bits zero-extended. -/
+def sext (w : Nat) (v : UInt64) : Int64 :=
+  if w == 1 then v.toInt64 else (v <<< (64 - 8 * w).toUInt64).toInt64 >>> (64 - 8 * w).toUInt64.toInt64
+
 /-- Element `i`'s own bits when the pack's patch list holds it: the list `rust/src/coc.rs` lays after the
 last block's residuals when some element is a null or an outlier, the ladder `alpSects` describes,
 an element sign-extended from its stored width as `baseAt` is (one byte, q's unsigned pair, is not).
@@ -420,9 +425,7 @@ def foRExc (metadata pack : ByteArray) (i : Nat) (e : Nat := blockStart metadata
   let b := i / blk metadata
   ((List.range' (off b) (off (b + 1) - off b)).find?
       fun k => (bitsAt pack (e + p + k * 2) 2).toNat == i % blk metadata).map fun k =>
-    let v := bitsAt pack (e + 16 + k * esz) esz
-    let s := (64 - 8 * esz).toUInt64
-    if esz == 1 then v else ((v <<< s).toInt64 >>> s.toInt64).toUInt64
+    (sext esz (bitsAt pack (e + 16 + k * esz) esz)).toUInt64
 
 /-- How far block `b`'s frame, the value its residuals are measured from, lies above its minimum:
 the `u64` the patch list keeps per block after `exc_pos` when bit 8 of its width word says so, and
@@ -453,6 +456,26 @@ def foRBits (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : UInt64 
     resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b)
       (widthAt metadata b) (i % blk metadata)
 
+/-- `2 ^ d - 1` as a `UInt64`, all ones at `d ≥ 64`: by a shift, since `2 ^ d` is a big `Nat` from `d = 63`. -/
+def ones (d : Nat) : UInt64 := if d < 64 then ((1 : UInt64) <<< d.toUInt64) - 1 else 0 - 1
+
+theorem ones_eq (d : Nat) : ones d = (2 ^ d - 1).toUInt64 := by
+  apply UInt64.toNat_inj.1
+  have hp := Nat.two_pow_pos d
+  unfold ones; split
+  · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+    have h2 : 2 ^ d < 2 ^ 64 := Nat.pow_lt_pow_right (by decide) (by omega)
+    rw [UInt64.toNat_sub_of_le _ _ (by
+        rw [UInt64.le_iff_toNat_le, UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul,
+          Nat.mod_eq_of_lt h2]; omega),
+      UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul, Nat.mod_eq_of_lt h2,
+      Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (by omega)]
+  · obtain ⟨m, hm⟩ : ∃ m, 2 ^ d = 2 ^ 64 * m := ⟨2 ^ (d - 64), by rw [← Nat.pow_add]; congr 1; omega⟩
+    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', hm, show (0 - 1 : UInt64).toNat = 2 ^ 64 - 1 from rfl]
+    rw [hm] at hp
+    simp only [Nat.reducePow] at hp ⊢
+    omega
+
 /-- Whether element `i` is the null of a nullable column (`atom+1`), tested on the encoding and never decoded: its
 block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is the block's top one, `2 ^ w - 1`.
 `starts` as in `foRBits`; the Rust test is `rust/src/cocops.rs`'s `in_band_null_is_the_flagged_top_residual`. -/
@@ -461,7 +484,7 @@ def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
   let e := match starts[nblk metadata]? with | some s => s | none => blockStart metadata (nblk metadata)
   nulAt metadata b && (foRExc metadata pack i e).isNone &&
     resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b) (widthAt metadata b)
-      (i % blk metadata) == (2 ^ widthAt metadata b - 1).toUInt64
+      (i % blk metadata) == ones (widthAt metadata b)
 
 /-- Element `i` of a nullable column, the denotation of `atom+1` in one column: `none` (the `1`) at its null
 (`foRNul`), else the raw bits `foRBits` reads. A column with no flagged block reads `some` everywhere. -/
@@ -629,6 +652,44 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   -- a model read by proofs and kernel specifications; compiled kernels read `pos` as their loop index
   | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
   | _, _ => #[]
+
+/-- The low `8 * w` bits of `v` by a mask: `v.toNat % 2 ^ (8 * w)` builds a big `Nat` for a sign-extended negative
+element and at `w = 8`. -/
+def lowBytes (w : Nat) (v : UInt64) : UInt64 := if w < 8 then v &&& ((1 <<< (8 * w).toUInt64) - 1) else v
+
+theorem lowBytes_toNat (w : Nat) (v : UInt64) : (lowBytes w v).toNat = v.toNat % 2 ^ (8 * w) := by
+  unfold lowBytes; split
+  · rw [UInt64.toNat_and, show (((1 : UInt64) <<< (8 * w).toUInt64) - 1).toNat = 2 ^ (8 * w) - 1 by
+      rcases (by omega : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7) with
+        rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl, Nat.and_two_pow_sub_one_eq_mod]
+  · have : 2 ^ 64 ≤ 2 ^ (8 * w) := Nat.pow_le_pow_right (by decide) (by omega)
+    have := UInt64.toNat_lt v
+    rw [Nat.mod_eq_of_lt (by omega)]
+
+/-- `raw` as it runs: each `% 2 ^ (8 * w)` a `lowBytes` mask. -/
+def rawImpl (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
+  match t, e with
+  | .u1, .foR metadata pack => let starts := blockStarts metadata
+    (Array.range n.toNat).map fun i => (foRBits metadata pack starts i) &&& 1
+  | t, .foR metadata pack => match t.width with
+    | some w => let starts := blockStarts metadata
+      (Array.range n.toNat).map fun i => lowBytes w (foRBits metadata pack starts i)
+    | none => #[]
+  | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
+  | _, _ => #[]
+
+@[csimp] theorem raw_eq_rawImpl : @raw = @rawImpl := by
+  funext X t n e
+  have h1 : ∀ v : UInt64, UInt64.ofNat (v.toNat % 2) = v &&& 1 := fun v => by
+    apply UInt64.toNat_inj.1
+    have := UInt64.toNat_lt v
+    rw [UInt64.toNat_ofNat', UInt64.toNat_and, show (1 : UInt64).toNat = 2 ^ 1 - 1 from rfl,
+      Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt (by omega)]
+  have hw : ∀ w (v : UInt64), UInt64.ofNat (v.toNat % 2 ^ (8 * w)) = lowBytes w v := fun w v => by
+    apply UInt64.toNat_inj.1
+    rw [lowBytes_toNat, UInt64.toNat_ofNat',
+      Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.mod_le _ _) (UInt64.toNat_lt v))]
+  cases e <;> cases t <;> simp [raw, rawImpl, h1, hw]
 
 end Ext.Enc
 

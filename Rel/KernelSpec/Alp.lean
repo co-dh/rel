@@ -437,16 +437,16 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   generalize hexc : Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
       (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n) = exc
   have h32e := h32' exc hexc.symm
-  have hfsz : (Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).size =
+  have hfsz : (Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).size =
       Column.nblk M := by simp [hnb]
-  generalize Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64) bs = fs at hfsz ⊢
+  generalize Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs = fs at hfsz ⊢
   generalize (fs.any fun a => a != 0) = frm
   have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2) hnb (fun c h => by rw [(hMb c h).2]; simp)
-    (fun (a : ByteArray × Nat) (e : Nat × Nat × UInt64 × Nat × Nat) =>
+    (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
-    (fun m (e : Nat × Nat × UInt64 × Nat × Nat) j =>
+    (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>
       (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
