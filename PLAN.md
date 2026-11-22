@@ -206,6 +206,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     元素对象上成立，Row 接口要加对 σ 的前提）；`hylo`（`rep_hylo` 要 `Local chN Φ`，而 `Tm.den` 不看 `ch`，见 Q9）。
   - 性能发现：TestGroups 的耗时随最大组的大小增长（1 个 key 160 ms，1000 个 key 7 ms）。原因是 `Obj.sortByC` 的 `.arr`
     分支（`Rel/Run/Code.lean`）是 LSD radix sort，每个元素位置跑一遍 `arrPass`，一行里有 100000 个元素就是 100000 遍。
+    ✅ perf13：已不成立。`Code.lean` 在 T10f（18224ec）删除，`.arr` 的序现在是 `kasc` 的 `cells` key，Rust 侧
+    `Cells::codes`（R12）把 payload 排一次名、每个 cell 按 slice 比较，代价随元素总数。master d8030bc 上 1 个 key
+    21 ms，1000 个 key 22 ms；`perf record -g` 中 `librelk.so` 合计 5%，其余是 elaboration。TestGroups 加了
+    skewed 一例（501 组，其中一组 50000 行），守住"组数 × 最长"不再回来。
 - ✅ D.10（ee84ad8，make check 绿）：两个 `Row` 是不同概念，`Elab` 的改名 `LiftRow`/`liftRows`；TestMss 覆盖。原条目 F-c：`Rel.Lang.Row` 在 `Rel.Lang.Rows` 与 `Rel.Run.Lang.Elab` 各定义一次，同时 import 就报
   `environment already contains 'Rel.Lang.Row.mk.injEq'`，`Tm.gap` 因此不能在运行程序的模块里调用。在 master 上修，立即派。
 - ⬜ D.9 语言里的 `input`/`output` 声明：改 `Elab`/`Expand`，在 3.10/3.11（去掉 demand bit 的 `Elab`、`Expand`）之后。

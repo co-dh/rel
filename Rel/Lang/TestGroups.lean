@@ -25,6 +25,9 @@ def R : Rel .long .long :=
 def key (m : Nat) : Rel .long .long :=
   val _ _ (pairs 1000 fun v => v % m, true)
 
+/-- The values below 500 each their own key, the other 500 one key: 501 groups, one of `n / 2` rows. -/
+def skew : Rel .long .long := val _ _ (pairs 1000 fun v => min v 500, true)
+
 /-- The coreflexive of the values below 500. -/
 def p : Rel .long .long := val _ _ (pairs 500 id, true)
 
@@ -52,8 +55,12 @@ def timed (k : Rel .long .long) : IO (Nat × Tab .long (.arr .long)) := do
   let _ ← IO.ofExcept (if f.n = 0 then .error "filter: no rows" else .ok ())
   let (t1, r1) ← timed (key 1); let s1 := summary r1
   let (tk, rk) ← timed (key 1000); let sk := summary rk
-  IO.println s!"one key: {t1} ms {s1}; 1000 keys: {tk} ms {sk}; filter: {f.n} rows"
-  unless s1 == (1, n, true) && sk == (1000, n, true) do throw (IO.userError s!"groups: {s1} {sk}")
+  let (ts, rs) ← timed skew; let ss := summary rs
+  IO.println s!"one key: {t1} ms {s1}; 1000 keys: {tk} ms {sk}; skewed: {ts} ms {ss}; filter: {f.n} rows"
+  unless s1 == (1, n, true) && sk == (1000, n, true) && ss == (501, n, true) do
+    throw (IO.userError s!"groups: {s1} {sk} {ss}")
+  -- many groups beside one long one: ordering the cells costs their elements, not groups × the longest (perf13)
+  unless ts ≤ 3 * t1 + 200 do throw (IO.userError s!"groups: skewed {ts} ms against one key {t1} ms")
   unless f.n.toNat == n / 2 do throw (IO.userError s!"filter: {f.n} rows")
   -- one key's run is the unit a fold per key costs; 1000 keys within a small factor of it read no universe
   unless tk ≤ 3 * t1 + 200 do throw (IO.userError s!"groups: 1000 keys {tk} ms against one key {t1} ms")
