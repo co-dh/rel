@@ -232,6 +232,13 @@ def funV (n : Nat) (X : Cols) (Ts : List TabB) (b : Nat → Cols → List TabB �
     | T :: Ts => b T.n T.key Ts
     | [] => throw "a function on values: no table"
 
+/-- `funV` of a recipe on a count `n` and the `n`-row words `ws`, answering a count and words. -/
+def funW (n : Nat) (ws : List Nat) (b : Nat → List Nat → Bld (Nat × List Nat)) : Bld (Nat × List Nat) := do
+  let words (cs : Cols) : Bld (List Nat) := cs.mapM fun | .atom _ _ e => pure e | _ => throw "words: not an atom column"
+  let T ← funV n (ws.map (.atom "" .i64 ·)) [] fun n cs _ => do
+    let (m, xs) ← b n (← words cs); pure ⟨m, xs.map (.atom "" .i64 ·), []⟩
+  pure (T.n, ← words T.key)
+
 /-- The `kasc` key of the `n`-row column `c` (`Vals.cols`), an `AscKey` register and its column: an atom column its
     words at its atom; an `arr` side one `cells` key over its `lo`, `hi` and its payload's keys, its column the
     positions, row `i` naming cell `i`. -/
@@ -245,6 +252,11 @@ partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
 /-- `kasc ≫ kseen` over the `n` rows of the columns `cs`: the count `k` of runs of equal rows (the last row's group
     `+ 1`, a `kscan max` fold), each sorted row's group `g`, each run's first sorted row `f`, the permutation `p`. -/
 def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
+  let T ← funV n cs [] fun n cs _ => do
+    let (k, g, f, p) ← ascSeenOnB n cs; pure ⟨k, [.atom "" .i64 g, .atom "" .i64 f, .atom "" .i64 p], []⟩
+  let [.atom _ _ g, .atom _ _ f, .atom _ _ p] := T.key | throw "asc: not three columns"
+  pure (T.n, g, f, p)
+where ascSeenOnB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
   let ks ← cs.mapM (keyB n)
   let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← ks.mapM fun (k, e) => ctorB 0 #[k, e] #[])]
   let mut l ← nth sp 0 "kasc"
@@ -324,9 +336,13 @@ def unionB (R S : TabB) : Bld TabB := funT [R, S] fun
 /-- **`groupFold`**: per group of the `n` sorted rows (`m` groups `g`, first rows `f`), `op` folded over `x` from `z`
     within its run (a segmented `kscan`), the run's last row scattered to its group. -/
 def groupFoldB (op : Kernel.Op) (n g f m : Nat) (z : UInt64) (x : Nat) : Bld Nat := do
-  let seg ← scatterB .last m f (← wordsB m 1) n
-  let o ← nth (← scanB op .i64 n (some seg) [← wordsB n z, x]) 0 "kscan"
-  scatterB .last n g o m z
+  let (_, [o]) ← funW n [g, x] fun n ws => do
+      let [g, x] := ws | throw "groupFold: not two columns"
+      let seg ← scatterB .last m f (← wordsB m 1) n
+      let o ← nth (← scanB op .i64 n (some seg) [← wordsB n z, x]) 0 "kscan"
+      pure (m, [← scatterB .last n g o m z])
+    | throw "groupFold: not one column"
+  pure o
 
 /-- **`Tab.select`** (`∩`, `−`): the concatenation tagged by source (`1` at `S`'s rows), its groups of equal rows
     (`ascSeenB`), per group the `and` and the `or` of the tags, `keep` of the two, and the kept groups' first input
@@ -348,11 +364,15 @@ def selectB (keep : Nat → Nat → Nat → Bld Nat) (R S : TabB) : Bld TabB := 
 
 /-- **`expand`** of the `K` widths `w`: the count `T` of output rows, each row's group `G` and offset `u` in it. -/
 def expandB (K w : Nat) : Bld (Nat × Nat × Nat) := do
-  let (P, T) ← prefixB .add K w
-  let T1 ← call1 (kernel% USize.add) #[T, ← lit (.size 1)]
-  let o ← mapB .sub K P w
-  let G ← gatherB T (← posB) T1 (← prefixB .max T1 (← scatterB .max K o (← posB) T1)).1
-  pure (T, G, ← mapB .sub T (← posB) (← gatherB T G K o))
+  let (T, [G, u]) ← funW K [w] fun K ws => do
+      let [w] := ws | throw "expand: not one column"
+      let (P, T) ← prefixB .add K w
+      let T1 ← call1 (kernel% USize.add) #[T, ← lit (.size 1)]
+      let o ← mapB .sub K P w
+      let G ← gatherB T (← posB) T1 (← prefixB .max T1 (← scatterB .max K o (← posB) T1)).1
+      pure (T, [G, ← mapB .sub T (← posB) (← gatherB T G K o)])
+    | throw "expand: not two columns"
+  pure (T, G, u)
 
 /-- **`cellSpan`**: the `n` cells `lo`, `hi` clamped to a payload of `m` rows, `[s, e)`. -/
 def spanB (n m lo hi : Nat) : Bld (Nat × Nat) := do
@@ -1077,8 +1097,8 @@ def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X
 
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
-    relation's whole table (`GenK.ofRel`). Any other row is refused, naming it: each reads or answers an array or a
-    sum side. -/
+    relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
+    on its keys (`GenK.onKeys`). Any other row is refused, naming it. -/
 def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld TabB := do
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
@@ -1096,7 +1116,24 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.asc then match xs with
     | [x] => ascB B (← x {})
     | _ => throw s!"asc given {xs.length} relations, not one"
-  else throw s!"row `{r.sym}` (`{c}`): it reads or answers an array or a sum side, whose `cells` keys no plan recipe builds yet"
+  else if c == ``Tab.uncons || c == ``Tab.unsnoc then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; unconsB b (c == ``Tab.uncons) n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  -- `GenK.after`: `idU X ≫ snoc`
+  else if c == ``Tab.snoc then match B with
+    | .arr b => do let (n, X) ← known r.sym D.dom; snocB b (← coreflB n X)
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
+  -- `GenK.onKeys`: `R` run knowing its domain is the keys `i` of the pairs `X` in demand; then `Tab.flat`'s
+  -- composition `((outl X ≫ R) ∩ (outr X ≫ (outl R.val)°)) ≫ outr R.val`
+  else if c == ``Tab.flat then match A, xs with
+    | .prod I a, [x] => do
+      let (n, X) ← known r.sym D.dom
+      let R ← x { dom := some (← nubB n (X.take (objWidth I))) }
+      let L ← compB (← piB I a true n X) R
+      let M ← compB (← piB I a false n X) (← convB (← piB a B true R.n R.val))
+      compB (← interB L M) (← piB a B false R.n R.val)
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair, or given {xs.length} relations, not one"
+  else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
 /-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
     payload at `s + k`; then `canonT`. `s + k` is read signed, so `m + k` stays below `2^63`. -/
