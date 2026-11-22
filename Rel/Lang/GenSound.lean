@@ -1054,7 +1054,7 @@ theorem rowOK_dom : RowOK "dom" := rowOK_args (c := RowCode.dom) rfl rfl fun _ �
     rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
     simp only [Sem.one]
     split
-    · exact GenK.dom_sound hss
+    · exact GenK.dom_sound hss (hw _ (List.mem_singleton_self _))
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_ran : RowOK "ran" := rowOK_args (c := RowCode.ran) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
@@ -1075,7 +1075,7 @@ theorem rowOK_ran : RowOK "ran" := rowOK_args (c := RowCode.ran) rfl rfl fun _ �
     rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
     simp only [Sem.one]
     split
-    · exact GenK.ran_sound hss
+    · exact GenK.ran_sound hss (hw _ (List.mem_singleton_self _))
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_nil : RowOK "nil" := rowOK_of (c := RowCode.nil) rfl rfl fun _ σ _ _ _ _ hv => by
