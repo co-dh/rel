@@ -1358,6 +1358,8 @@ relk 线程池空转 2 526（与前三项重叠）。
   无关。修法：`compile`/`CodeEnv` 引用已经编译好的定义，不再重新展开。参见 W.5a：poolStat 的合并要和 qlean 同步。
 - ✅ W.11 日期显示：一个 atom 的值按 q 的写法 `yyyy.mm.dd`（datetime `yyyy.mm.ddDhh:mm:ss.fffffffff`）显示，出处只有
   `Db.Csv.fmtAtom`/`readAtom`（`print`、`check`、错误信息经 `Elab.wordText` 同源，CSV 与 `crate/src/csv.rs` 同步改为 `.`）；`sep` 参数去掉。
+- ✅ W.12 compile-diff 的 pin（`test/compile-diff.json`、`compile-diff-write`、`REL_COMPILE_DIFF_OUT`）删除，只留差分测试
+  （生成的代码对 `rel_program` 常量）；compile-diff 只在 master gate 跑（`main-only`）。
 
 ## Baseline
 

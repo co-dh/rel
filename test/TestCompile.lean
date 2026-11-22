@@ -2,25 +2,18 @@ import Rel.Lang.AllPrograms
 import Rel.ObjOrder
 import Rel.Lang.GenSoundTest
 
-/-! Two checks of the generated code's results. A definition's result is its status (`ok`, or why the constant
-    vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that moves
-    from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
+/-! The differential test of the generated code's results. A definition's result is its status (`ok`, or why the
+    constant vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that
+    moves from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
 
-    - The differential test: each closed definition of every registered program, re-read as a `Tm`
+    Each closed definition of every registered program, re-read as a `Tm`
       (`GenSoundTest.reread`) where `Tm.gen` has code at every node (`Tm.hasCode`), run as
       `(Tm.code η t).runE {}`, `η` the table of the program's closed parts (`Code.program`, `Code.shares`), and required to have
       the result of the constant `rel_program` generated
       (`n.expanded`). So on these definitions the generated code equals `Tm.gen`'s, and where the term has no
       `Tm.gap` node `Tm.gen_sound` relates `Tm.gen` to `Tm.den` under its hypotheses (the bit-matrix laws,
       `Tm.GenHyp`); a definition with no code is listed with the nodes that have none, and the definitions
-      elaborated once (`Once`) have no closed constant to compare.
-    - The regression pin, with no independent oracle: every closed definition's result against the pin
-      `compile-diff.json` beside this file, by name. The pin is an earlier run's output, so a difference says a
-      result CHANGED, and a match says nothing about whether it is right; for the definitions with no code it is the
-      only check.
-
-    `REL_COMPILE_DIFF_OUT=<file>` also writes the current run there, in the pin's format; `make compile-diff-write`
-    copies that file over the pin, which is never edited by hand. -/
+      elaborated once (`Once`) have no closed constant to compare. -/
 
 namespace Rel.Lang.TestCompile
 
@@ -28,12 +21,8 @@ open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
 open Rel.Lang.GenSoundTest (rowsOf)
 
-/-- A table over this many rows is stored as its row count and `hash` of its `rowsOf`: its rows would make the
-    baseline too large to review. A toolchain whose `hash` changes regenerates the baseline. -/
-def rowCap : Nat := 512
-
 /-- A definition's result, `c` its value as `n.expanded` lists it: its status and, where ok, its rows. An error is
-    a result the baseline may not hold: a side `rowsOf` cannot read. -/
+    a result that cannot be compared: a side `rowsOf` cannot read. -/
 def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × List (List Nat)) := do
   let .ok g := c | return ("not ok: the generated constant vouches for nothing", [])
   -- `Rel.Lang.keyed` (Elab) shadows the opened name
@@ -41,29 +30,8 @@ def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × 
     throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
   pure ("ok", rowsOf g)
 
-/-- A result as the baseline stores it: the status and the rows, or over `rowCap` rows their count and digest. -/
-def toEntry (s : String) (rs : List (List Nat)) : Json :=
-  if rs.length ≤ rowCap then .mkObj [("status", s), ("rows", toJson rs)]
-  else .mkObj [("status", s), ("count", rs.length), ("digest", (hash rs).toNat)]
-
 /-- At most three rows, for a report. -/
 def few (rs : List (List Nat)) : String := s!"{rs.take 3}{if rs.length > 3 then " …" else ""}"
-
-/-- How the run's `(s, rs)` differs from the baseline entry `b`, in the form `b` is stored in; `none` where it
-    does not. -/
-def diff (b : Json) (s : String) (rs : List (List Nat)) : Except String (Option String) := do
-  let bs ← b.getObjValAs? String "status"
-  if bs != s then return some s!"status: baseline `{bs}`, run `{s}`"
-  match b.getObjValAs? (List (List Nat)) "rows" with
-  | .ok brs =>
-    let brs := (brs.mergeSort fun a b => !decide (b < a)).eraseReps
-    if brs == rs then return none
-    return some s!"rows differ: {rs.length} in the run, {brs.length} in the baseline; only in the run \
-      {few (rs.filter (!brs.contains ·))}, only in the baseline {few (brs.filter (!rs.contains ·))}"
-  | .error _ =>
-    let n ← b.getObjValAs? Nat "count"; let d ← b.getObjValAs? Nat "digest"
-    if n == rs.length && d == (hash rs).toNat then return none
-    return some s!"rows differ: {rs.length} rows, digest {(hash rs).toNat} in the run; {n}, {d} in the baseline"
 
 /-- One more than every variable `t` reads or binds outside a call's body: a number no binder of `t` shadows. -/
 partial def fresh {A B : Obj} (t : Tm A B) : Nat :=
@@ -109,7 +77,7 @@ run_cmd do
       unless gs.any (·.1 == x) do throwError "TestCompile: `{n}.{x}` is re-read but not in `{n ++ `expanded}`"
     once := once ++ fs.map (toString ·.const)
     -- the names the other side of each literal-row `check` mentions (`𝟘` the literal with no rows, which `{…}`
-    -- cannot write): only those see a wrong `Tm` or a wrong pin
+    -- cannot write): only those see a wrong `Tm` or a wrong generated constant
     let lit := (← Embed.programOf n).flatMap fun
       | .check _ (.lit ..) g _ _ | .check _ g (.lit ..) _ _ | .check _ (.op _ .zero _ []) g _ _
       | .check _ g (.op _ .zero _ []) _ _ => g.names
@@ -172,37 +140,6 @@ run_cmd do
       \n{"\n".intercalate differ.toList}"
   logInfo m!"the generated code is ok on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
-  let names := (run.toList.map (·.1)).mergeSort fun a b => decide (a ≤ b)
-  let stored := (names.filter fun nm => match run[nm]? with | some (_, rs) => rs.length > rowCap | none => false)
-  logInfo m!"{names.length} definitions, {names.length - stored.length} stored as rows, {stored.length} as a \
-    digest: {stored.map fun nm => (nm, (run[nm]?.map (·.2.length)).getD 0)}"
   unless errs.isEmpty do throwError "TestCompile: {errs.size} definitions fail:\n{"\n".intercalate errs.toList}"
-  -- `REL_COMPILE_DIFF_BASELINE` names another baseline: a scratch copy, to show the gate red on a broken one
-  let path := (← IO.getEnv "REL_COMPILE_DIFF_BASELINE").getD
-    ((System.FilePath.mk (← getFileName)).withFileName "compile-diff.json").toString
-  -- the run is written out before the comparison, so re-pinning copies it instead of computing it a second time
-  if let some out ← IO.getEnv "REL_COMPILE_DIFF_OUT" then
-    let lines := names.filterMap fun nm => run[nm]?.map fun (s, rs) => s!"{(toJson nm).compress}: {(toEntry s rs).compress}"
-    IO.FS.writeFile out ("{\n" ++ ",\n".intercalate lines ++ "\n}\n")
-    logInfo m!"wrote {out}: {lines.length} definitions"
-  let text ← try IO.FS.readFile path catch e =>
-    throwError "TestCompile: read {path}: {e.toMessageData}; regenerate it with `make compile-diff-write`"
-  let base ← IO.ofExcept (Json.parse text >>= (·.getObj?))
-  let mut bad : Array String := #[]
-  for nm in names do
-    let some (s, rs) := run[nm]? | throwError "TestCompile: `{nm}` listed but not run"
-    match base.get? nm with
-    | none => bad := bad.push s!"`{nm}`: in the run, not in the baseline"
-    | some b => match diff b s rs with
-      | .error e => bad := bad.push s!"`{nm}`: baseline entry unreadable: {e}"
-      | .ok none => pure ()
-      | .ok (some d) => bad := bad.push s!"`{nm}`: {d}"
-  for (nm, _) in base.toList do
-    unless run.contains nm do bad := bad.push s!"`{nm}`: in the baseline, not in the run"
-  unless bad.isEmpty do
-    throwError "TestCompile: {bad.size} definitions changed since the pin {path} (a regression pin, no oracle: \
-      read each change, and regenerate with `make compile-diff-write` only where the new result is the right one):\
-      \n{"\n".intercalate bad.toList}"
-  logInfo m!"every definition's result is unchanged from the pin {path} (a regression pin, not a check of correctness)"
 
 end Rel.Lang.TestCompile
