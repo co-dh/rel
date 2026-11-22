@@ -444,14 +444,14 @@ theorem cat_wf {K : Obj} {P : Tab K (.prod (.arr B) (.arr B))} {t : Tab K (.arr 
   split at h; · cases h
   exact canon_wf h ⟨hP.1, Vals.cat_wf ‹_› hP.2.1 hP.2.2⟩
 
-/-- **`snoc` keeps `Tab.WF`**: `cat` after `τ`, whose `n < 2^63` is `cat`'s guard (`Vals.cat_row`). -/
+/-- **`snoc` keeps `Tab.WF`**: `cat` after `τ`, whose `n < 2^63` is `cat`'s guard (`Vals.cat_lt`). -/
 theorem snoc_wf {K : Obj} {P : Tab K (.prod (.arr B) B)} {t : Tab K (.arr B)} (h : Tab.snoc P = .ok t)
     (hP : P.WF) : t.WF := by
   simp only [Tab.snoc, bind, Except.bind] at h
   split at h; · cases h
   rename_i y hy; split at h; · cases h
   rename_i z hz
-  exact canon_wf h ⟨hP.1, Vals.cat_wf hz hP.2.1 (Vals.tau_wf hy (Vals.cat_row hz).1 hP.2.2)⟩
+  exact canon_wf h ⟨hP.1, Vals.cat_wf hz hP.2.1 (Vals.tau_wf hy (Vals.cat_lt hz) hP.2.2)⟩
 
 theorem cons_wf {K : Obj} {P : Tab K (.prod B (.arr B))} {t : Tab K (.arr B)} (h : Tab.cons P = .ok t)
     (hP : P.WF) : t.WF := by
@@ -459,7 +459,7 @@ theorem cons_wf {K : Obj} {P : Tab K (.prod B (.arr B))} {t : Tab K (.arr B)} (h
   split at h; · cases h
   rename_i y hy; split at h; · cases h
   rename_i z hz
-  exact canon_wf h ⟨hP.1, Vals.cat_wf hz (Vals.tau_wf hy (Vals.cat_row hz).1 hP.2.1) hP.2.2⟩
+  exact canon_wf h ⟨hP.1, Vals.cat_wf hz (Vals.tau_wf hy (Vals.cat_lt hz) hP.2.1) hP.2.2⟩
 
 theorem zip_wf {K : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {t : Tab K (.arr (.prod A B))}
     (h : Tab.zip P = .ok t) (hP : P.WF) : t.WF := by

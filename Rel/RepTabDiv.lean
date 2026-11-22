@@ -626,9 +626,19 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
       exact ⟨j, hj, (Vals.pack_row g' hp t).trans hgj⟩) h i, List.map_id]
   | .one, _, _, _, _, _ => rfl
 
+/-- **`Vals.cat` answers below `2^63` rows** (its guard), whatever its inputs. -/
+theorem Vals.cat_lt {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.cat X Y = .ok Z) :
+    n.toNat < 2 ^ 63 := by
+  obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
+  obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
+  simp only [Vals.cat] at h
+  split at h; · cases h
+  omega
+
 /-- **`Vals.cat` joins cell by cell**, below `2^63` cells (its guard): output element `d` of cell `i` (`expand_spec`)
 reads the joined payload (`Vals.concat_row`) at `SN₁ + d` where `d < w₁`, else at `m₁ + SN₂ + (d - w₁)`. -/
-theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.cat X Y = .ok Z) :
+theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.cat X Y = .ok Z)
+    (hX : Vals.WF X) (hY : Vals.WF Y) :
     n.toNat < 2 ^ 63 ∧ ∀ i, Vals.row Z i = Vals.row X i ++ Vals.row Y i := by
   obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
   obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
@@ -712,7 +722,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   have ht : ((List.range i.1).map wN).sum + d < T.toNat := by omega
   rw [List.getElem_map, List.getElem_range', Nat.one_mul, dif_pos ht]
   obtain ⟨j, hj, hgj⟩ := Vals.gather_row F hg ⟨_, ht⟩
-  rw [hgj, Vals.concat_row hNn hoff f₁ f₂ hF]
+  rw [hgj, Vals.concat_row hNn hoff f₁ f₂ hF hX.2 hY.2]
   obtain ⟨hG, hu⟩ := hrun i.1 i.2 (((List.range i.1).map wN).sum + d) (by omega) (by omega)
   rw [Nat.add_sub_cancel_left] at hu
   have hGi : ((raw .i64 T G)[((List.range i.1).map wN).sum + d]?.getD 0).toNat = i.1 := by
@@ -913,38 +923,38 @@ namespace Tab
 variable {K B : Obj}
 
 /-- **`cat P` denotes `P ≫ cat`**: each `(xs, ys)` of `P` to `xs ++ ys` (`Vals.cat_row`). -/
-theorem cat_holds {P : Tab K (.prod (.arr B) (.arr B))} {T : Tab K (.arr B)} (h : Tab.cat P = .ok T) (k : K.El)
-    (zs : List B.El) : T.Holds k zs ↔ ∃ p, P.Holds k p ∧ zs = p.1 ++ p.2 := by
+theorem cat_holds {P : Tab K (.prod (.arr B) (.arr B))} {T : Tab K (.arr B)} (h : Tab.cat P = .ok T) (hP : P.WF)
+    (k : K.El) (zs : List B.El) : T.Holds k zs ↔ ∃ p, P.Holds k p ∧ zs = p.1 ++ p.2 := by
   simp only [Tab.cat, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
   rw [canon_holds h]
-  obtain ⟨-, hrow⟩ := Vals.cat_row hZ
+  obtain ⟨-, hrow⟩ := Vals.cat_row hZ hP.2.1 hP.2.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, rfl, rfl⟩; exact ⟨_, ⟨j, rfl, rfl⟩, hrow j⟩
   · rintro ⟨p, ⟨j, rfl, rfl⟩, rfl⟩; exact ⟨j, rfl, hrow j⟩
 
 /-- **`snoc P` denotes `P ≫ snoc`**: each `(xs, a)` of `P` to `xs ++ [a]` (`Vals.cat_row` after `Vals.tau_row`). -/
-theorem snoc_holds {P : Tab K (.prod (.arr B) B)} {T : Tab K (.arr B)} (h : Tab.snoc P = .ok T) (k : K.El)
-    (ys : List B.El) : T.Holds k ys ↔ ∃ p, P.Holds k p ∧ ys = p.1 ++ [p.2] := by
+theorem snoc_holds {P : Tab K (.prod (.arr B) B)} {T : Tab K (.arr B)} (h : Tab.snoc P = .ok T) (hP : P.WF)
+    (k : K.El) (ys : List B.El) : T.Holds k ys ↔ ∃ p, P.Holds k p ∧ ys = p.1 ++ [p.2] := by
   simp only [Tab.snoc, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨t, ht, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
   rw [canon_holds h]
-  obtain ⟨hn, hrow⟩ := Vals.cat_row hZ
+  obtain ⟨hn, hrow⟩ := Vals.cat_row hZ hP.2.1 (Vals.tau_wf ht (Vals.cat_lt hZ) hP.2.2)
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, rfl, rfl⟩; exact ⟨_, ⟨j, rfl, rfl⟩, by rw [hrow j, Vals.tau_row ht hn j]; rfl⟩
   · rintro ⟨p, ⟨j, rfl, rfl⟩, rfl⟩; exact ⟨j, rfl, by rw [hrow j, Vals.tau_row ht hn j]; rfl⟩
 
 /-- **`cons P` denotes `P ≫ cons`**: each `(a, xs)` of `P` to `a :: xs` (`Vals.cat_row` after `Vals.tau_row`). -/
-theorem cons_holds {P : Tab K (.prod B (.arr B))} {T : Tab K (.arr B)} (h : Tab.cons P = .ok T) (k : K.El)
-    (ys : List B.El) : T.Holds k ys ↔ ∃ p, P.Holds k p ∧ ys = p.1 :: p.2 := by
+theorem cons_holds {P : Tab K (.prod B (.arr B))} {T : Tab K (.arr B)} (h : Tab.cons P = .ok T) (hP : P.WF)
+    (k : K.El) (ys : List B.El) : T.Holds k ys ↔ ∃ p, P.Holds k p ∧ ys = p.1 :: p.2 := by
   simp only [Tab.cons, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨t, ht, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
   rw [canon_holds h]
-  obtain ⟨hn, hrow⟩ := Vals.cat_row hZ
+  obtain ⟨hn, hrow⟩ := Vals.cat_row hZ (Vals.tau_wf ht (Vals.cat_lt hZ) hP.2.1) hP.2.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, rfl, rfl⟩; exact ⟨_, ⟨j, rfl, rfl⟩, by rw [hrow j, Vals.tau_row ht hn j]; rfl⟩

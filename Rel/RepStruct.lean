@@ -18,15 +18,6 @@ theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z
   simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
   rw [Arr.get_i64, ← es]; rfl
 
-/-- A step that keeps `P` keeps it through `List.foldlM`. -/
-theorem foldlM_keeps {α β : Type} {P : β → Prop} {f : β → α → Except String β}
-    (hf : ∀ b a b', f b a = .ok b' → P b → P b') : ∀ (l : List α) {b b' : β}, l.foldlM f b = .ok b' → P b → P b'
-  | [], _, _, h, hb => by simp only [List.foldlM, pure, Except.pure, Except.ok.injEq] at h; exact h ▸ hb
-  | a :: l, _, _, h, hb => by
-    simp only [List.foldlM, bind, Except.bind] at h
-    split at h; · cases h
-    rename_i c hc; exact foldlM_keeps hf l h (hf _ a c hc hb)
-
 /-- **A side of no rows is `Vals.WF`**: an `arr` side of it has no cell. -/
 theorem Vals.none_wf : {A : Obj} → {x : Vals A 0} → Vals.none A = .ok x → Vals.WF x
   | .atom _, _, _ => trivial
@@ -180,29 +171,6 @@ theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A
   simp only [Tab.inr, bind, Except.bind] at h
   okSplit
   exact canon_wf h ⟨hY, Vals.none_wf ‹_›, hY⟩
-
-/-- **`compBlocks` keeps `Tab.WF`**: each block by `compBlock_wf`, met by `∪` (`union_wf`). -/
-theorem compBlocks_wf {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n} {t : Tab A C}
-    (h : compBlocks R S nb bid = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compBlocks, bind, Except.bind] at h
-  okSplit
-  refine foldlM_keeps (P := Tab.WF) (fun b a b' hb hw => ?_) _ h (compBlock_wf ‹_› hR hS)
-  simp only [bind, Except.bind] at hb
-  split at hb; · cases hb
-  exact union_wf hb hw (compBlock_wf ‹_› hR hS)
-
-theorem compFrom_wf {bound : Nat} {R : Tab A B} {S : Tab B C} {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc}
-    {t : Tab A C} (h : compFrom bound R S x = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compFrom, bind, Except.bind] at h
-  okSplit
-  all_goals first | exact compExpand_wf h hR hS | exact compBlocks_wf h hR hS
-
-/-- **`R ≫ S` keeps `Tab.WF`** (`compOne_wf`, `compFrom_wf`). -/
-theorem comp_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : R.comp S = .ok t) (hR : R.WF) (hS : S.WF) :
-    t.WF := by
-  simp only [Tab.comp, Tab.compWith, bind, Except.bind] at h
-  okSplit
-  all_goals first | exact compOne_wf h hR hS | exact compFrom_wf h hR hS
 
 /-- **`⟨R, S⟩` keeps `Tab.WF`**: `comp` of `⟨𝟙, R⟩°` and `S`, its key rebracketed. -/
 theorem pair_wf {R : Tab A B} {S : Tab A C} {t : Tab A (.prod B C)} (h : R.pair S = .ok t) (hR : R.WF)
