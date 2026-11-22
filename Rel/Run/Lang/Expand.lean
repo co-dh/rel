@@ -43,9 +43,10 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
       let reword (e : Err) : M Arg :=
         throw (if e.pos == p then e else ⟨p, s!"in `{c}` (its line {e.pos.line}): {e.msg}"⟩)
       let row := prims.find? (·.prelude == some c)
-      -- given a family, a keyable row runs once on the keyed families, as any row applied to one does
+      -- given a family, a row whose meaning commutes with keying (`keyLift`) runs once on the keyed families, as
+      -- any row applied to one does
       match row, as.find? Arg.isFam with
-      | some x, some (.fam _ I _ _) => if x.keyable && as.length == x.sig.1.length then return ← appliedRowL I p x as
+      | some x, some (.fam _ I _ _) => if x.keyLift && as.length == x.sig.1.length then return ← appliedRowL I p x as
       | _, _ => pure ()
       let r ← if imported then tryCatch (d.apply p as) reword else d.apply p as
       -- the body's positions are its program's: at the use, so what `build` raises later is at the use

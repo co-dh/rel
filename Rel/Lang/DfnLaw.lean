@@ -298,4 +298,54 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     `Tm.dfnCut_den` proves: a row given a definition that is not one of them fails here. -/
 theorem Prim.dfn_read : dfns.map (·.1) = [lengthRow.sym, sumRow.sym, flatRow.sym] := rfl
 
+/-! ### Keyed lifting (§e): the law `Prim.keyLift` claims -/
+
+/-- `r` commutes with keying: at the objects `I×v`, given each family `F` keyed, `⟨π₁,Fᴵ⟩` (`keyOf`), it means the
+    keyed family of its meaning at each key `i` given the fibres `F i`. What `appliedRowL` needs to run `r` once on
+    the keyed families of a program in place of once per key. -/
+def Prim.KeyLifts (r : Prim) : Prop :=
+  ∀ (I A B : Obj) (fs : List ((X : Obj) × (Y : Obj) × (I.El → Den X Y))),
+    Prim.den r (.prod I A) (.prod I B) (fs.map fun ⟨X, Y, F⟩ => ⟨.prod I X, .prod I Y, keyOf F⟩) =
+      keyOf fun i => Prim.den r A B (fs.map fun ⟨X, Y, F⟩ => ⟨X, Y, F i⟩)
+
+/-- `star(R) ≜ μX : 𝟙 ∪ R X` commutes with keying (`star_keyOf`); at any other arguments both sides are `𝟘`. -/
+theorem Prim.starRow_keyLifts : starRow.KeyLifts := by
+  intro I A B fs
+  have hf : rowDens.find? (·.1.sym == starRow.sym) = some ⟨RowCode.star, fun σ =>
+      Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩ := rfl
+  have ho : ∀ C D, starRow.objs C D = if D = C then some [C] else none := fun C D => by
+    by_cases h : D = C <;> simp [h, Prim.objs, starRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups,
+      List.eraseDupsBy, List.eraseDupsBy.loop, List.lookup]
+  unfold Prim.den; rw [hf, ho, ho]
+  by_cases hAB : B = A
+  · subst hAB; simp only [if_true, RowCode.star, σ₁, List.headD, and_self, dite_true]
+    match fs with
+    | [] => exact keyOf_zero.symm
+    | _ :: _ :: _ => exact keyOf_zero.symm
+    | [⟨X, Y, F⟩] =>
+      simp only [List.map_cons, List.map_nil, Sem.one]
+      by_cases h : X = B ∧ Y = B
+      · obtain ⟨rfl, rfl⟩ := h; simp only [and_self, dite_true]; exact star_keyOf F
+      · simp only [Obj.prod.injEq, true_and, h, dite_false]; exact keyOf_zero.symm
+  · simp only [Obj.prod.injEq, true_and, hAB, if_false]; exact keyOf_zero.symm
+
+/-- **Every row with `keyLift` commutes with keying**: the obligations enumerated from `prims` itself, so a row that
+    sets `keyLift` without a proof here fails `rfl`. -/
+theorem Prim.keyLifts_ok (r : Prim) (hr : r ∈ prims) (hk : r.keyLift = true) : r.KeyLifts := by
+  have e : prims.filter (·.keyLift) = [starRow] := rfl
+  have h := List.mem_filter.2 ⟨hr, hk⟩
+  rw [e, List.mem_singleton] at h; subst h; exact Prim.starRow_keyLifts
+
+/-- A row given a family as `appliedRowL` runs it, on `⟨π₁,Rᴵ⟩` at `I×v`, means at each key `i` the row given the
+    fibre of `R` at `i` (`Prim.keyLifts_ok`): the lifted term denotes the per-key family. -/
+theorem Tm.den_keyedRow (ρ : Val) {r : Prim} (hr : r ∈ prims) (hk : r.keyLift = true) {I A B C D : Obj}
+    (R : Tm I (.prod A B)) :
+    (Tm.arg (.prim r : Tm (.prod I C) (.prod I D))
+        (.pair .outl (.arg (.prim flatRow) R) : Tm (.prod I A) (.prod I B))).den ρ =
+      keyOf fun i => Prim.den r C D [⟨A, B, fun a b => R.den ρ i (a, b)⟩] := by
+  have e := Prim.keyLifts_ok r hr hk I C D [⟨A, B, fun i a b => R.den ρ i (a, b)⟩]
+  simp only [List.map_cons, List.map_nil] at e
+  rw [← e]
+  simp only [Tm.den, Tm.argDen, Prim.den_flatRow]; rfl
+
 end Rel.Lang

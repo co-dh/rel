@@ -199,6 +199,9 @@ structure Prim where
   /-- Its object variables whose canon order it reads as their value order (`sums`'s positions): each must be an
       object of an atom stored as an integer (`QAtomicType.intOrd`), refused by name elsewhere (`Elab.build`). -/
   ord : List String := []
+  /-- Its meaning commutes with keying (`Prim.KeyLifts`): given families over `I`, it runs once on them keyed at the
+      objects `I×v` (`Elab.appliedRowL`). Set only beside a proof: `Prim.keyLifts_ok` lists every row that sets it. -/
+  keyLift : Bool := false
   deriving Inhabited
 
 def consRow : Prim :=
@@ -239,7 +242,7 @@ def flatRow : Prim :=
     also on an object with no universe, where the closed `μ` cannot run). -/
 def starRow : Prim :=
   { sym := "star", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B"),
-    prelude := `Rel.Programs.prelude.star }
+    prelude := `Rel.Programs.prelude.star, keyLift := true }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=

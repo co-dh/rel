@@ -59,4 +59,56 @@ theorem starLinear (R : Rel α α) (S : Rel α β) :
     · exact le_iff.1 hZ a c (Or.inl hc)
     · exact le_iff.1 hZ a c (Or.inr ⟨d, hR, hd c hc Z hZ⟩)
 
+/-! ### Keying (§e): a family `F : ι → Rel α β` run once as one relation on (key, source) -/
+
+/-- The family `F` keyed, `⟨π₁,Fᴵ⟩ : ι×α ⟶ ι×β` with `Fᴵ (i,a) b = F i a b`: each key kept, its fibre run on the
+    source. A row given families runs once on them keyed exactly where its meaning commutes with `keyOf`. -/
+def keyOf {ι : Type} (F : ι → Rel α β) : Rel (ι × α) (ι × β) := rpair (graph Prod.fst) fun x b => F x.1 x.2 b
+
+theorem keyOf_mono {ι : Type} {F G : ι → Rel α β} (h : ∀ i, F i ⊑ G i) : keyOf F ⊑ keyOf G :=
+  le_iff.2 fun x _ ⟨e, f⟩ => ⟨e, le_iff.1 (h x.1) _ _ f⟩
+
+theorem keyOf_zero {ι : Type} : keyOf (fun _ : ι => (𝟘 : Rel α β)) = 𝟘 :=
+  le_antisymm (le_iff.2 fun _ _ h => h.2.elim) (zero_le _)
+
+theorem id_keyOf {ι : Type} : 𝟙 (ι × α) = keyOf fun _ => 𝟙 α :=
+  ext fun _ _ => ⟨fun h => h ▸ ⟨rfl, rfl⟩, fun ⟨h1, h2⟩ => Prod.ext h1.symm h2⟩
+
+theorem union_keyOf {ι : Type} (F G : ι → Rel α β) : keyOf F ∪ keyOf G = keyOf fun i => F i ∪ G i :=
+  ext fun _ _ => ⟨fun h => h.elim (fun ⟨e, f⟩ => ⟨e, Or.inl f⟩) fun ⟨e, g⟩ => ⟨e, Or.inr g⟩,
+    fun ⟨e, h⟩ => h.elim (fun f => Or.inl ⟨e, f⟩) fun g => Or.inr ⟨e, g⟩⟩
+
+theorem comp_keyOf {γ ι : Type} (F : ι → Rel α β) (G : ι → Rel β γ) :
+    keyOf F ≫ keyOf G = keyOf fun i => F i ≫ G i :=
+  ext fun x _ => ⟨fun ⟨y, ⟨e1, f⟩, e2, g⟩ => ⟨e2.trans e1, y.2, f, e1 ▸ g⟩,
+    fun ⟨e, b, f, g⟩ => ⟨(x.1, b), ⟨rfl, f⟩, e, g⟩⟩
+
+/-- `μ` commutes with keying: where `Φ` at keyed families is `Ψ i` at each key, `μΦ` is `μ(Ψ i)` keyed. The fibres
+    `Y(i,−)(i,−)` of a prefixed point `Y` of `Φ` are prefixed points of `Ψ i`, as `keyOf` of them is below `Y`. -/
+theorem mu_keyOf {ι : Type} {Φ : Rel (ι × α) (ι × β) → Rel (ι × α) (ι × β)} {Ψ : ι → Rel α β → Rel α β}
+    (hΦ : Monotonic Φ) (hΨ : ∀ i, Monotonic (Ψ i)) (h : ∀ G, Φ (keyOf G) = keyOf fun i => Ψ i (G i)) :
+    mu Φ = keyOf fun i => mu (Ψ i) := by
+  apply le_antisymm
+  · refine mu_le ?_
+    rw [h]
+    exact keyOf_mono fun i => mu_prefixed (hΨ i)
+  · refine le_iff.2 fun x y ⟨hy, hx⟩ Y hY => ?_
+    have hk : keyOf (fun i a b => Y (i, a) (i, b)) ⊑ Y := le_iff.2 fun x y ⟨e, f⟩ => by
+      obtain ⟨i, a⟩ := x; obtain ⟨j, b⟩ := y; cases e; exact f
+    have hfib : ∀ i, Ψ i (fun a b => Y (i, a) (i, b)) ⊑ fun a b => Y (i, a) (i, b) := fun i =>
+      le_iff.2 fun a b hab => le_iff.1 (le_trans (hΦ _ _ hk) hY) (i, a) (i, b) (by rw [h]; exact ⟨rfl, hab⟩)
+    obtain ⟨i, a⟩ := x; obtain ⟨j, b⟩ := y; cases hy
+    exact hx _ (hfib i)
+
+/-- `star` commutes with keying: `star(⟨π₁,Fᴵ⟩) = ⟨π₁,(fun i => star(F i))ᴵ⟩`, since `𝟙`, `∪` and `≫` do
+    (`id_keyOf`, `union_keyOf`, `comp_keyOf`) and so `μ` of their composition does (`mu_keyOf`). -/
+theorem star_keyOf {ι : Type} (F : ι → Rel α α) :
+    mu (fun X => 𝟙 _ ∪ keyOf F ≫ X) = keyOf fun i => mu fun X => 𝟙 α ∪ F i ≫ X := by
+  have hm : ∀ {γ : Type} (R : Rel γ γ), Monotonic fun X => 𝟙 γ ∪ R ≫ X := fun R X Y hXY =>
+    le_iff.2 fun a b hab => by
+      rcases hab with h | ⟨c, hR, hX⟩
+      · exact Or.inl h
+      · exact Or.inr ⟨c, hR, le_iff.1 hXY _ _ hX⟩
+  exact mu_keyOf (hm _) (fun i => hm _) fun G => by rw [comp_keyOf, id_keyOf, union_keyOf]
+
 end Rel.Core.Rel
