@@ -1572,10 +1572,10 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     have hbK : bk.toUSize.toNat = bk := USize.toNat_ofNat_of_lt' (by omega)
     have hnU : r.n.toUInt64 = r.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
     -- the gathered columns hold no null: a grade, a kseen group column, a fold, a gather of a grade
-    have hpN : hasNul p = false := by obtain ⟨_, he, -⟩ := asc_perm _ _ _ _ hasc; rw [he]; exact hasNul_wordsFoR _
+    have hpN := kasc_plain hasc
     have hqN : hasNul q = false := by rw [kgather_plain hq hpN]; exact hasNul_wordsFoR _
-    have hbgN : hasNul bg = false := by rw [(kseen_ok hbseen).2.1]; exact hasNul_wordsFoR _
-    have hcodeN : hasNul code = false := kscatter_plain hcode hbgN
+    have hbgN := (kseen_plain hbseen).1
+    have hcodeN := kscatter_plain hcode hbgN
     have hcRN : hasNul cR = false := Tab.groupFold_plain hcR
     ------------------------------------------------------------------ `Q`'s rows, `r`'s rows
     have hQh : ∀ a, Q.Holds b (a, c) ↔ R.Holds a b ∧ S.Holds a c := fun a => by
@@ -2222,7 +2222,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
   obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (fun c hc => (Vals.cols_wf _ hes c hc).1) (.inr fun c hc => (Vals.cols_wf _ hes c hc).2)
-  have hpN : hasNul p = false := by obtain ⟨_, he, -⟩ := asc_perm _ _ _ _ hasc; rw [he]; exact hasNul_wordsFoR _
+  have hpN := kasc_plain hasc
   obtain ⟨hperm, hsort⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
   generalize ascGrade N.toNat (ascKeys N es) = ps at hp hkq hperm hsort
@@ -2401,7 +2401,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       (ps[Fs ((raw .i64 M sel)[j]?.getD 0).toNat]?.getD 0).toUInt64 := fun j hj => by
     obtain ⟨hG, -⟩ := hselj j hj
     obtain ⟨hF, -⟩ := hFsG _ hG
-    rw [(kgather_word hiD hpN j hj).2, (kgather_word hfs (by rw [(kseen_ok hseen).2.2]; exact hasNul_wordsFoR _) j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
+    rw [(kgather_word hiD hpN j hj).2, (kgather_word hfs (kseen_plain hseen).2 j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
   have hgat : ∀ {x : Arr .i64 k.toUSize} {y : Arr .i64 M} {w : Nat → Nat}, Arr.gather M sel x = .ok y →
       (∀ G < k, (raw .i64 k.toUSize x.enc)[G]?.getD 0 = (w G).toUInt64) →
       ∀ j < M.toNat, (raw .i64 M y.enc)[j]?.getD 0 = (w ((raw .i64 M sel)[j]?.getD 0).toNat).toUInt64 := by

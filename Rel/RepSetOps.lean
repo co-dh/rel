@@ -618,6 +618,17 @@ theorem groupFold_plain {op : Op} {n : USize} {g seg : Enc} {m : USize} {z : UIn
   rename_i _ _ _ _ r h4
   exact kscatter_plain h (kscan_closed h4).2.2
 
+/-- A `whereCol` answer holds no null: a gather of a scatter of `pos`, which holds none. -/
+theorem whereCol_plain {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) : hasNul o = false := by
+  unfold whereCol at h
+  by_cases hB : m.toNat < min (USize.size - 1) (2 ^ 63)
+  · simp only [hB, if_true, bind, Except.bind, Functor.map, Except.map] at h
+    repeat (split at h; · cases h)
+    rename_i _ e he _ o' ho'
+    obtain ⟨-, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+    rw [kgather_plain ho' (kscatter_plain he rfl)]; exact hasNul_wordsFoR _
+  · simp only [hB, if_false] at h; cases h
+
 /-- **What `select keep R S` answers**, `keep` answering per group a `0`/`1` word that is `1` iff
 `κ (and = 0) (or = 1)`: the pairs of `R ∪ S` whose flags pass `κ`, and, in `Tab.canon_sorted`'s form over
 `C = R.concat S`, its rows ascending with unequal codes. A group is a run of equal rows (`Vals.row_of_codes`,

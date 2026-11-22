@@ -510,6 +510,16 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
       rw [Array.getElem?_eq_getElem (show q < (Enc.raw .i64 m (wordsFoR ws nul)).size by omega)] at h
       simp [Option.some.inj h]
 
+/-- `kasc`'s grade holds no null: it is `wordsFoR` of the permutation (`asc_perm`). -/
+theorem kasc_plain {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (h : kasc N es = .ok (vs, p)) :
+    hasNul p = false := by
+  obtain ⟨_, he, -⟩ := asc_perm _ _ _ _ h; rw [he]; exact hasNul_wordsFoR _
+
+/-- `kseen`'s group and first-row columns hold no null: both are `wordsFoR` (`kseen_ok`). -/
+theorem kseen_plain {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f)) :
+    hasNul g = false ∧ hasNul f = false := by
+  obtain ⟨-, hg, hf⟩ := kseen_ok h; rw [hg, hf]; exact ⟨hasNul_wordsFoR _, hasNul_wordsFoR _⟩
+
 /-- **`kasc`'s grade**: `p` reads as the stable grade `ps` of the codes (`Verify.asc_perm_grade`), and the `kseen` key
 of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s: every key column is `Ext.Enc.WF` (so its
 `hasNul` is its rows' flags) and there are fewer than `2 ^ 32` rows (`asc_col_row`). -/
