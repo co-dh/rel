@@ -116,7 +116,7 @@ end Rel.Verify
 
 namespace Rel
 
-/-- `Coc.bools n p` reads back as `p`: at width 1 the bias is `0`, so element `i` is the 0/1 byte `i` it encodes
+/-- `Coc.bools n p` reads back as `p`: at width 1 a key is zero-extended, so element `i` is the 0/1 byte `i` it encodes
     (`foRBits_encode`). Here, beside `packIds_bytes`, so the driver law (`raw_ofRaw`) reads a boolean answer too. -/
 theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
     Column.foRBits (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
@@ -127,7 +127,7 @@ theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
   simp only [Nat.mul_one] at hs hb
   simp only [Kernel.Coc.bools, h1]
   rw [Verify.foRBits_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ i (by rw [hs]; simpa using hi)]
-  simp only [Kernel.Coc.unbias, Kernel.Coc.keyAt, Kernel.Coc.bias, if_true, Nat.mul_one,
+  simp only [Kernel.Coc.keyAt, Column.sext, beq_self_eq_true, if_true, Nat.mul_one,
     hb i hi (by cases p i <;> decide)]
   cases p i <;> rfl
 

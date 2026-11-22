@@ -442,21 +442,81 @@ theorem pack_fold0 {E : Type} (f : ByteArray × Nat → E → ByteArray × Nat) 
   simp only [Nat.zero_add] at a c
   exact ⟨a, c⟩
 
-theorem foldl_min_le(l : List Nat) (a : Nat) : l.foldl min a ≤ a ∧ ∀ y ∈ l, l.foldl min a ≤ y := by
+theorem toInt_min (a b : Int64) : (min a b).toInt = min a.toInt b.toInt := by
+  show (if a ≤ b then a else b).toInt = _
+  split <;> rename_i h <;> rw [Int64.le_iff_toInt_le] at h <;> omega
+
+theorem toInt_max (a b : Int64) : (max a b).toInt = max a.toInt b.toInt := by
+  show (if a ≤ b then b else a).toInt = _
+  split <;> rename_i h <;> rw [Int64.le_iff_toInt_le] at h <;> omega
+
+theorem foldl_min_le (l : List Int64) (a : Int64) :
+    (l.foldl min a).toInt ≤ a.toInt ∧ ∀ y ∈ l, (l.foldl min a).toInt ≤ y.toInt := by
   induction l generalizing a with
   | nil => simp
   | cons e l ih =>
     obtain ⟨h1, h2⟩ := ih (min a e)
+    have := toInt_min a e
     simp only [List.foldl_cons, List.mem_cons, forall_eq_or_imp]
     exact ⟨by omega, by omega, h2⟩
 
-theorem le_foldl_max (l : List Nat) (a : Nat) : a ≤ l.foldl max a ∧ ∀ y ∈ l, y ≤ l.foldl max a := by
+theorem le_foldl_max (l : List Int64) (a : Int64) :
+    a.toInt ≤ (l.foldl max a).toInt ∧ ∀ y ∈ l, y.toInt ≤ (l.foldl max a).toInt := by
   induction l generalizing a with
   | nil => simp
   | cons e l ih =>
     obtain ⟨h1, h2⟩ := ih (max a e)
+    have := toInt_max a e
     simp only [List.foldl_cons, List.mem_cons, forall_eq_or_imp]
     exact ⟨by omega, by omega, h2⟩
+
+/-- `b - a` read unsigned is the distance from `a` up to `b`: the true difference, which is below `2 ^ 64`. -/
+theorem sub_toNat (a b : Int64) (h : a.toInt ≤ b.toInt) : (b - a).toUInt64.toNat = (b.toInt - a.toInt).toNat := by
+  have ha := BitVec.toInt_eq_toNat_cond a.toBitVec
+  have hb := BitVec.toInt_eq_toNat_cond b.toBitVec
+  have hal := a.toBitVec.isLt
+  have hbl := b.toBitVec.isLt
+  rw [UInt64.toNat, Int64.toBitVec_toUInt64, Int64.toBitVec_sub, BitVec.toNat_sub]
+  simp only [Int64.toInt] at h ⊢
+  split at ha <;> split at hb <;> omega
+
+/-- A key `Coc.outside` keeps is at or above the frame and less than `2 ^ d` from it. -/
+theorem outside_false (f k : Int64) (d : Nat) :
+    Kernel.Coc.outside f d k = false ↔ f.toInt ≤ k.toInt ∧ (k - f).toUInt64.toNat < 2 ^ d := by
+  have hu := UInt64.toNat_lt (k - f).toUInt64
+  -- by halves, `Nat.div_eq_zero_iff` and not `_lt`: `omega` on an `∧` and `Nat.div_eq_zero_iff_lt` carry
+  -- `Classical.choice`
+  have h0 : (decide (d < 64) && (k - f).toUInt64 >>> d.toUInt64 != 0) = false ↔
+      (k - f).toUInt64.toNat < 2 ^ d := by
+    by_cases hd : d < 64
+    · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+      have hp := Nat.ne_of_gt (Nat.two_pow_pos d)
+      rw [Bool.and_eq_false_iff, bne_eq_false_iff_eq, ← UInt64.toNat_inj, UInt64.toNat_shiftRight, hs,
+        Nat.shiftRight_eq_div_pow, UInt64.toNat_zero, Nat.div_eq_zero_iff]
+      simp only [hd, decide_true, Bool.true_eq_false, false_or]
+      exact ⟨fun h => h.elim (fun e => absurd e hp) id, Or.inr⟩
+    · have : 2 ^ 64 ≤ 2 ^ d := Nat.pow_le_pow_right (by decide) (by omega)
+      simp only [hd, decide_false, Bool.false_and, true_iff]
+      omega
+  rw [Kernel.Coc.outside, Bool.or_eq_false_iff, h0, decide_eq_false_iff_not, Int64.lt_iff_toInt_lt, Int.not_lt]
+
+/-- `Column.sext` keeps a `w`-byte element's own `8 * w` bits: the stored form agrees with the dense bits there.
+Through `toInt` and `Int` division: `BitVec.toNat_sshiftRight` carries `Classical.choice`. -/
+theorem sext_bits (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (v : UInt64) (hv : v.toNat < 2 ^ (8 * w)) :
+    (Column.sext w v).toUInt64.toNat % 2 ^ (8 * w) = v.toNat := by
+  unfold Column.sext
+  by_cases h1 : w = 1
+  · subst h1; exact Nat.mod_eq_of_lt hv
+  rw [if_neg (by simpa using h1)]
+  rw [UInt64.toNat, Int64.toBitVec_toUInt64, Int64.toBitVec_shiftRight, UInt64.toBitVec_toInt64,
+    UInt64.toBitVec_shiftLeft, BitVec.sshiftRight_eq']
+  unfold BitVec.sshiftRight
+  rw [BitVec.toNat_ofInt, BitVec.toInt_eq_toNat_cond, BitVec.shiftLeft_eq', BitVec.toNat_shiftLeft]
+  rcases (by omega : w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7 ∨ w = 8) with rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  all_goals
+    simp only [Nat.reduceMul, Nat.reduceSub, Nat.reducePow, Int.shiftRight_eq_div_pow] at hv ⊢
+    simp [Nat.shiftLeft_eq]
+    split <;> omega
 
 theorem lt_widthFor (r : Nat) : r < 2 ^ Column.widthFor r := by
   unfold Column.widthFor; split
@@ -468,19 +528,12 @@ theorem widthFor_le (r : Nat) (h : r < 2 ^ 64) : Column.widthFor r ≤ 64 := by
   · omega
   · have := (Nat.log2_lt (by assumption)).2 h; omega
 
-theorem keyAt_lt (w : Nat) (hw : w ≤ 8) (x : ByteArray) (i : Nat) : Kernel.Coc.keyAt w x i < 2 ^ 64 := by
-  unfold Kernel.Coc.keyAt Kernel.Coc.bias
-  apply Nat.xor_lt_two_pow (UInt64.toNat_lt _)
-  split
-  · decide
-  -- `Nat.pow_le_pow_right` to `2 ^ 63`, since `Nat.pow_lt_pow_right` brings `Classical.choice`
-  · exact Nat.lt_of_le_of_lt (Nat.pow_le_pow_right (by decide) (by omega : 8 * w - 1 ≤ 63)) (by decide)
-
 /-- Element `i` of a block, against that block's extremes and residual width. -/
-theorem blockOf_bounds (B w n b : Nat) (hw : w ≤ 8) (x : ByteArray) (i : Nat)
+theorem blockOf_bounds (B w n b : Nat) (x : ByteArray) (i : Nat)
     (h1 : b * B ≤ i) (h2 : i < b * B + B) (h3 : i < n) :
-    (Kernel.Coc.blockOf B w n b x).1 ≤ Kernel.Coc.keyAt w x i ∧
-    Kernel.Coc.keyAt w x i - (Kernel.Coc.blockOf B w n b x).1 < 2 ^ (Kernel.Coc.blockOf B w n b x).2.2.2 ∧
+    (Kernel.Coc.blockOf B w n b x).1.toInt ≤ (Kernel.Coc.keyAt w x i).toInt ∧
+    (Kernel.Coc.keyAt w x i - (Kernel.Coc.blockOf B w n b x).1).toUInt64.toNat <
+      2 ^ (Kernel.Coc.blockOf B w n b x).2.2.2 ∧
     (Kernel.Coc.blockOf B w n b x).2.2.2 ≤ 64 := by
   unfold Kernel.Coc.blockOf
   simp only [← Array.foldl_toList]
@@ -488,28 +541,18 @@ theorem blockOf_bounds (B w n b : Nat) (hw : w ≤ 8) (x : ByteArray) (i : Nat)
       fun j => Kernel.Coc.keyAt w x (b * B + j)).toList := by
     simp only [Array.toList_map, toList_range, List.mem_map, List.mem_range]
     exact ⟨i - b * B, by omega, by congr 1; omega⟩
-  obtain ⟨-, hmn⟩ := foldl_min_le _ (Kernel.Coc.keyAt w x (b * B))
-  obtain ⟨hlo, hmx⟩ := le_foldl_max _ (Kernel.Coc.keyAt w x (b * B))
+  generalize ((Array.range (min (b * B + B) n - b * B)).map fun j => Kernel.Coc.keyAt w x (b * B + j)).toList = l
+    at *
+  obtain ⟨-, hmn⟩ := foldl_min_le l (Kernel.Coc.keyAt w x (b * B))
+  obtain ⟨-, hmx⟩ := le_foldl_max l (Kernel.Coc.keyAt w x (b * B))
   have a := hmn _ hm
   have c := hmx _ hm
-  have d := keyAt_lt w hw x (b * B)
-  have e : ∀ l : List Nat, (∀ y ∈ l, y < 2 ^ 64) → ∀ a < 2 ^ 64, l.foldl max a < 2 ^ 64 := by
-    intro l; induction l with
-    | nil => intro _ a ha; exact ha
-    | cons y l ih =>
-      intro hl a ha; simp only [List.foldl_cons]
-      exact ih (fun z hz => hl z (List.mem_cons_of_mem _ hz)) _ (by have := hl y List.mem_cons_self; omega)
-  refine ⟨a, ?_, widthFor_le _ ?_⟩
-  · have := lt_widthFor (List.foldl max (Kernel.Coc.keyAt w x (b * B))
-      ((Array.range (min (b * B + B) n - b * B)).map
-        fun j => Kernel.Coc.keyAt w x (b * B + j)).toList - List.foldl min (Kernel.Coc.keyAt w x (b * B))
-      ((Array.range (min (b * B + B) n - b * B)).map
-        fun j => Kernel.Coc.keyAt w x (b * B + j)).toList)
-    omega
-  · have := e ((Array.range (min (b * B + B) n - b * B)).map fun j => Kernel.Coc.keyAt w x (b * B + j)).toList (fun y hy => by
-      simp only [Array.toList_map, toList_range, List.mem_map] at hy
-      obtain ⟨_, -, rfl⟩ := hy; exact keyAt_lt w hw x _) _ d
-    omega
+  generalize List.foldl min (Kernel.Coc.keyAt w x (b * B)) l = mn at *
+  generalize List.foldl max (Kernel.Coc.keyAt w x (b * B)) l = mx at *
+  have hr := lt_widthFor (mx - mn).toUInt64.toNat
+  refine ⟨a, ?_, widthFor_le _ (UInt64.toNat_lt _)⟩
+  generalize Column.widthFor (mx - mn).toUInt64.toNat = W at hr ⊢
+  rw [sub_toNat _ _ a]; rw [sub_toNat _ _ (by omega)] at hr; omega
 
 /-- An element no patch holds: its block's base, plus its frame's lift `fr`, plus its residual. -/
 theorem foRBits_of (M P : ByteArray) (i : Nat) (B : Nat) (hB : Column.blk M = B) (base fr : UInt64) (wd : Nat)
@@ -534,20 +577,13 @@ theorem foROpt_top (M P : ByteArray) (st : Array Nat) (i : Nat) (hf : Column.nul
     (hr : Column.resAt P (match st[i / Column.blk M]? with | some s => s | none => Column.blockStart M (i / Column.blk M))
       (Column.widthAt M (i / Column.blk M)) (i % Column.blk M) = (2 ^ Column.widthAt M (i / Column.blk M) - 1).toUInt64) :
     Column.foROpt M P st i = none := by
-  simp only [Column.foROpt, Column.foRNul, hf]; simp; exact ⟨hx, hr⟩
+  simp only [Column.foROpt, Column.foRNul, Column.ones_eq, hf]; simp; exact ⟨hx, hr⟩
 
 /-- An unflagged block reads as before: every element of a block `nulAt` does not flag is `some` of its `foRBits`, so a
 column with no flagged block keeps its denotation. -/
 theorem foROpt_plain (M P : ByteArray) (st : Array Nat) (i : Nat) (hf : Column.nulAt M (i / Column.blk M) = false) :
     Column.foROpt M P st i = some (Column.foRBits M P st i) := by
   simp [Column.foROpt, Column.foRNul, hf]
-
-theorem unbias_add (w mn k : Nat) (h : mn ≤ k) :
-    Kernel.Coc.unbias w mn + (k - mn).toUInt64 = Kernel.Coc.unbias w k := by
-  unfold Kernel.Coc.unbias
-  apply UInt64.toNat_inj.1
-  simp only [UInt64.toNat_add, Nat.toUInt64_eq, UInt64.toNat_ofNat']
-  omega
 
 theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (n : USize) (M P : ByteArray) :
@@ -590,35 +626,6 @@ theorem xor_top (m n : Nat) (h : n < 2 ^ (m + 1)) :
   · exact lo _ ‹_›
   · have e : n = (n - 2 ^ m) + 2 ^ m := by omega
     rw [e, Nat.add_sub_cancel, ← lo _ (by omega), Nat.xor_assoc, Nat.xor_self, Nat.xor_zero]
-
-/-- The encoded form holds an element sign-extended to 64 bits, so it agrees with the dense bits on
-the element's own `8 * w`, which below eight bytes is all it can; `Enc.raw` reads it cut to those. -/
-theorem unbias_keyAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray) (i : Nat) :
-    (Kernel.Coc.unbias w (Kernel.Coc.keyAt w x i)).toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat := by
-  have hv := bitsAt_lt x (i * w) w hw
-  unfold Kernel.Coc.unbias Kernel.Coc.keyAt Kernel.Coc.bias
-  by_cases h1 : w = 1
-  · -- one byte is not biased: the key is the byte itself
-    subst h1
-    rw [if_pos rfl, Nat.xor_zero, Nat.toUInt64_eq, UInt64.toNat_ofNat']
-    generalize (Column.bitsAt x (i * 1) 1).toNat = v at hv ⊢
-    simp only [Nat.reducePow, Nat.reduceMul, Nat.sub_zero] at hv ⊢; omega
-  rw [if_neg h1]
-  generalize (Column.bitsAt x (i * w) w).toNat = v at hv
-  obtain ⟨m, hm⟩ : ∃ m, 8 * w = m + 1 := ⟨8 * w - 1, by omega⟩
-  obtain ⟨d, hd⟩ : ∃ d, 64 = d + (m + 1) := ⟨64 - (m + 1), by omega⟩
-  rw [hm] at hv ⊢; rw [show m + 1 - 1 = m by omega]
-  have h64 : 2 ^ 64 = 2 ^ d * 2 ^ (m + 1) := by rw [hd, Nat.pow_add]
-  have hs := Nat.pow_succ 2 m
-  have hle : 2 ^ (m + 1) ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) (by omega)
-  have hsub := Nat.sub_one_mul (2 ^ d) (2 ^ (m + 1))
-  rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_mod_of_dvd _ ⟨2 ^ d, by rw [h64, Nat.mul_comm]⟩,
-    xor_top m v hv]
-  split
-  · rw [show v + 2 ^ m + (2 ^ 64 - 2 ^ m) = v + 2 ^ d * 2 ^ (m + 1) by omega, Nat.add_mul_mod_self_right,
-      Nat.mod_eq_of_lt hv]
-  · rw [show v - 2 ^ m + (2 ^ 64 - 2 ^ m) = v + (2 ^ d - 1) * 2 ^ (m + 1) by omega, Nat.add_mul_mod_self_right,
-      Nat.mod_eq_of_lt hv]
 
 /-- Five padded sections laid end to end, each read back at its own start. -/
 theorem blob_get (pad : ByteArray → ByteArray) (hp : ∀ b k, k < b.size → (pad b)[k]? = b[k]?)
@@ -676,41 +683,42 @@ theorem foldl_pick {α β : Type} (P : α → Prop) (g : α → β → α) (l : 
 
 /-- `Coc.planOf`'s frame is the minimum or one of the keys and its width at most that of the range; with patching
 off they are the minimum and that width. -/
-theorem planOf_bounds (pl : Bool) (ks : Array Nat) (mn mx w : Nat) :
+theorem planOf_bounds (pl : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) :
     ((Kernel.Coc.planOf pl ks mn mx w).1 = mn ∨ (Kernel.Coc.planOf pl ks mn mx w).1 ∈ ks.toList) ∧
-    (Kernel.Coc.planOf pl ks mn mx w).2 ≤ Column.widthFor (mx - mn) ∧
-    (pl = false → Kernel.Coc.planOf pl ks mn mx w = (mn, Column.widthFor (mx - mn))) := by
+    (Kernel.Coc.planOf pl ks mn mx w).2 ≤ Column.widthFor (mx - mn).toUInt64.toNat ∧
+    (pl = false → Kernel.Coc.planOf pl ks mn mx w = (mn, Column.widthFor (mx - mn).toUInt64.toNat)) := by
   cases pl
   · exact ⟨Or.inl rfl, Nat.le_refl _, fun _ => rfl⟩
   refine ⟨?_, ?_, fun h => nomatch h⟩
   · show Kernel.Coc.frameAt ks mn _ = mn ∨ Kernel.Coc.frameAt ks mn _ ∈ ks.toList
     unfold Kernel.Coc.frameAt
     rw [← Array.foldl_toList]
-    exact foldl_pick (fun f => f = mn ∨ f ∈ ks.toList) _ _ _ (Or.inl rfl) fun a ha k hk => by
-      dsimp only; split
+    exact foldl_pick (fun p : Int64 × Nat => p.1 = mn ∨ p.1 ∈ ks.toList) _ _ _ (Or.inl rfl) fun ⟨f, nf⟩ ha k hk => by
+      dsimp only at ha ⊢; split
       · exact Or.inr hk
       · exact ha
   · show (List.foldl _ (0, _) _).1 ≤ _
-    exact foldl_pick (fun p : Nat × Nat => p.1 ≤ Column.widthFor (mx - mn)) _ _ _ (Nat.zero_le _) fun ⟨a, _⟩ ha c hc => by
+    exact foldl_pick (fun p : Nat × Nat => p.1 ≤ Column.widthFor (mx - mn).toUInt64.toNat) _ _ _ (Nat.zero_le _)
+      fun ⟨a, _⟩ ha c hc => by
       dsimp only at ha ⊢; split
       · exact Nat.lt_succ_iff.1 (List.mem_range.1 hc)
       · exact ha
 
-/-- Block `b`'s plan against its keys: the minimum is one of them and at most each, the frame lies from the minimum
-to below `2 ^ 64`, the width is at most 64, and with patching off no key lies outside the frame. -/
-theorem planBlock_bounds (lg w n : Nat) (hw : w ≤ 8) (pl : Bool) (x : ByteArray) (b : Nat) (hb : b * 2 ^ lg < n) :
-    (Kernel.Coc.planBlock lg w n pl x b).1 ≤ (Kernel.Coc.planBlock lg w n pl x b).2.2.2.1 ∧
-    (Kernel.Coc.planBlock lg w n pl x b).2.2.2.1 < 2 ^ 64 ∧ (Kernel.Coc.planBlock lg w n pl x b).2.2.2.2 ≤ 64 ∧
+/-- Block `b`'s plan against its keys: the minimum is one of them and at most each, the frame lies at or above the
+minimum, the width is at most 64, and with patching off no key lies outside the frame. -/
+theorem planBlock_bounds (lg w n : Nat) (pl : Bool) (x : ByteArray) (b : Nat) (hb : b * 2 ^ lg < n) :
+    (Kernel.Coc.planBlock lg w n pl x b).1.toInt ≤ (Kernel.Coc.planBlock lg w n pl x b).2.2.2.1.toInt ∧
+    (Kernel.Coc.planBlock lg w n pl x b).2.2.2.2 ≤ 64 ∧
     (∃ j, b * 2 ^ lg ≤ j ∧ j < b * 2 ^ lg + 2 ^ lg ∧ j < n ∧
       Kernel.Coc.keyAt w x j = (Kernel.Coc.planBlock lg w n pl x b).1) ∧
     ∀ i, b * 2 ^ lg ≤ i → i < b * 2 ^ lg + 2 ^ lg → i < n →
-      (Kernel.Coc.planBlock lg w n pl x b).1 ≤ Kernel.Coc.keyAt w x i ∧
+      (Kernel.Coc.planBlock lg w n pl x b).1.toInt ≤ (Kernel.Coc.keyAt w x i).toInt ∧
       (pl = false → Kernel.Coc.outside (Kernel.Coc.planBlock lg w n pl x b).2.2.2.1
         (Kernel.Coc.planBlock lg w n pl x b).2.2.2.2 (Kernel.Coc.keyAt w x i) = false) := by
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
-  have hbo := fun i => blockOf_bounds (2 ^ lg) w n b hw x i
-  have hW : (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.2.2 =
-      Column.widthFor ((Kernel.Coc.blockOf (2 ^ lg) w n b x).2.1 - (Kernel.Coc.blockOf (2 ^ lg) w n b x).1) := rfl
+  have hbo := fun i => blockOf_bounds (2 ^ lg) w n b x i
+  have hW : (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.2.2 = Column.widthFor
+      ((Kernel.Coc.blockOf (2 ^ lg) w n b x).2.1 - (Kernel.Coc.blockOf (2 ^ lg) w n b x).1).toUInt64.toNat := rfl
   have hK : ∀ k ∈ ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
       fun j => Kernel.Coc.keyAt w x (b * 2 ^ lg + j)).toList,
       ∃ j, b * 2 ^ lg ≤ j ∧ j < b * 2 ^ lg + 2 ^ lg ∧ j < n ∧ Kernel.Coc.keyAt w x j = k := by
@@ -724,10 +732,10 @@ theorem planBlock_bounds (lg w n : Nat) (hw : w ≤ 8) (pl : Bool) (x : ByteArra
     rw [← Array.foldl_toList]
     refine foldl_pick (· ∈ ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
       fun j => Kernel.Coc.keyAt w x (b * 2 ^ lg + j)).toList) _ _ _ ?_ fun a ha k hk => by
-      dsimp only
-      rcases Nat.le_total a k with h | h
-      · rw [Nat.min_eq_left h]; exact ha
-      · rw [Nat.min_eq_right h]; exact hk
+      show (if a ≤ k then a else k) ∈ _
+      split
+      · exact ha
+      · exact hk
     simp only [Array.toList_map, toList_range, List.mem_map, List.mem_range]
     exact ⟨0, by omega, rfl⟩
   obtain ⟨hf, hd, hp⟩ := planOf_bounds pl ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
@@ -750,13 +758,11 @@ theorem planBlock_bounds (lg w n : Nat) (hw : w ≤ 8) (pl : Bool) (x : ByteArra
     · exact ⟨j0, h0a, h0b, h0c, h0k.trans h.symm⟩
     · exact hK _ h
   obtain ⟨j1, h1a, h1b, h1c, h1k⟩ := hf'
-  refine ⟨h1k ▸ (hbo j1 h1a h1b h1c).1, h1k ▸ keyAt_lt w hw x j1, Nat.le_trans hd hb64, ⟨j0, h0a, h0b, h0c, h0k⟩,
+  refine ⟨h1k ▸ (hbo j1 h1a h1b h1c).1, Nat.le_trans hd hb64, ⟨j0, h0a, h0b, h0c, h0k⟩,
     fun i h1 h2 h3 => ⟨(hbo i h1 h2 h3).1, fun hpl => ?_⟩⟩
   rw [hp hpl]
   have := hbo i h1 h2 h3
-  simp only [Kernel.Coc.outside, Bool.or_eq_false_iff, decide_eq_false_iff_not]
-  -- one `omega` per conjunct: on a conjunction goal `omega` brings in `Classical.choice`
-  exact ⟨by omega, by omega⟩
+  exact (outside_false _ _ _).2 ⟨this.1, this.2.1⟩
 
 /-- Indices of a strictly increasing list below its count of entries under `m` are those whose entries are. -/
 theorem lt_count (L : List Nat) (hL : L.Pairwise (· < ·)) (m k : Nat) (hk : k < L.length) :
@@ -948,44 +954,14 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
       e + ((pad S0).size + (pad S1).size + (pad S2).size + (pad S3).size + k) by rw [p0, p1, p2, p3]; omega,
       hP _ (by omega), g4 k hk]
 
-/-- `Column.foRExc`'s reading of a `w`-byte element `v` — one byte as it is, a wider one sign-extended from its
-`8 * w` bits by a shift up and an arithmetic shift down — is `unbias` of its key: the form a block minimum is in. -/
-theorem sext_unbias (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (v : UInt64) (hv : v.toNat < 2 ^ (8 * w)) :
-    (if w == 1 then v else ((v <<< (64 - 8 * w).toUInt64).toInt64 >>> (64 - 8 * w).toUInt64.toInt64).toUInt64) =
-      Kernel.Coc.unbias w (v.toNat ^^^ Kernel.Coc.bias w) := by
-  by_cases h1 : w = 1
-  · subst h1
-    unfold Kernel.Coc.unbias Kernel.Coc.bias
-    apply UInt64.toNat_inj.1
-    simp only [Nat.reduceMul, Nat.reducePow] at hv
-    show v.toNat = _
-    rw [if_pos rfl, Nat.xor_zero, Nat.sub_zero, Nat.toUInt64_eq, UInt64.toNat_ofNat']
-    omega
-  rw [if_neg (by simpa using h1)]
-  apply UInt64.toNat_inj.1
-  -- through `toInt` and `Int` division: `BitVec.toNat_sshiftRight` carries `Classical.choice`
-  rw [UInt64.toNat, Int64.toBitVec_toUInt64, Int64.toBitVec_shiftRight, UInt64.toBitVec_toInt64,
-    UInt64.toBitVec_shiftLeft, BitVec.sshiftRight_eq']
-  unfold BitVec.sshiftRight
-  rw [BitVec.toNat_ofInt, BitVec.toInt_eq_toNat_cond, BitVec.shiftLeft_eq', BitVec.toNat_shiftLeft]
-  unfold Kernel.Coc.unbias Kernel.Coc.bias
-  rw [if_neg h1]
-  have hb := xor_top (8 * w - 1) v.toNat (by rw [show 8 * w - 1 + 1 = 8 * w by omega]; exact hv)
-  rw [hb]
-  rcases (by omega : w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7 ∨ w = 8) with rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals
-    simp only [Nat.reduceMul, Nat.reduceSub, Nat.reducePow, Int.shiftRight_eq_div_pow] at hv ⊢
-    simp [Nat.shiftLeft_eq]
-    split <;> split <;> omega
-
 /-- `Column.foRExc` on a pack whose patch list `Coc.excBlob` wrote after the residuals: element `i`'s own bits,
 sign-extended as a block minimum is, when `i` is listed, and nothing otherwise. -/
 theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (hB : 0 < B ∧ B ≤ 65536) (w : Nat)
-    (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray) (exc : Array Nat) (hs : exc.toList.Pairwise (· < ·))
+    (hw : w ≤ 8) (x : ByteArray) (exc : Array Nat) (hs : exc.toList.Pairwise (· < ·))
     (hn : exc.size < 2 ^ 32) (word : UInt64) (last : ByteArray) (hword : word.toNat % 256 = w)
     (he : Column.blockStart M (Column.nblk M) = pack.size) (i : Nat) (hi : i / B < Column.nblk M) :
     Column.foRExc M (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last) i =
-      if i ∈ exc.toList then some (Kernel.Coc.unbias w (Kernel.Coc.keyAt w x i)) else none := by
+      if i ∈ exc.toList then some (Kernel.Coc.keyAt w x i).toUInt64 else none := by
   obtain ⟨hc, hwd, hraw, hoff, hpos, -, h16, -⟩ := excBlob_reads word B hB w hw (Column.nblk M) x exc last hn _
     pack.size (fun k _ => ba_append_right _ _ _)
   obtain ⟨f1, f2⟩ := exc_find B hB.1 exc hs
@@ -1005,7 +981,7 @@ theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (
     rw [hk]
     simp only [Option.map]
     rw [hraw k hk1, hk2]
-    exact congrArg some (sext_unbias w hw0 hw _ (bitsAt_lt _ _ _ hw))
+    rfl
   · -- by cases, not `Option.eq_none_iff_forall_ne_some`, which carries `Classical.choice`
     rw [if_neg hm, Option.map_eq_none_iff]
     revert f1
@@ -1064,15 +1040,15 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     {patch : Bool} (i : Nat) (hi : i < x.size / w) :
     Column.foRBits (Kernel.Coc.encodeAt lg w.toUSize x patch).1 (Kernel.Coc.encodeAt lg w.toUSize x patch).2
       (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch).1) i =
-      Kernel.Coc.unbias w (Kernel.Coc.keyAt w x i) := by
+      (Kernel.Coc.keyAt w x i).toUInt64 := by
   have hwt : w.toUSize.toNat = w := by
     rcases System.Platform.numBits_eq with h | h <;> simp [Nat.toUSize, h] <;> omega
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
   have hB16 : 2 ^ lg ≤ 65536 := Nat.pow_le_pow_right (by decide) hlg.2
   unfold Kernel.Coc.encodeAt
-  simp only [hwt]
+  simp only [hwt, Nat.one_shiftLeft]
   generalize hn : x.size / w = n at *
-  have hpb := fun b => planBlock_bounds lg w n hw (patch && decide (n < 2 ^ 32)) x b
+  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
   have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb h32 ⊢
   generalize Kernel.Coc.planBlock lg w n pl x = blk at hpb ⊢
@@ -1081,13 +1057,13 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   have hbget : ∀ b (h : b < bs.size), bs[b] = blk b := by
     intro b h; subst hbs; simp only [Array.getElem_map, getElem_range]
   have hib : i / 2 ^ lg < bs.size := hbsz ▸ lt_cdiv hBp hi
-  have hkeys := fun j (hj : j < n) => (hpb (j / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hj)).2.2.2.2 j
+  have hkeys := fun j (hj : j < n) => (hpb (j / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hj)).2.2.2 j
     (Nat.div_mul_le_self _ _) (by have := Nat.mod_add_div' j (2 ^ lg); have := Nat.mod_lt j hBp; omega) hj
   -- the metadata
   have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
-    (bs.map fun x => (Kernel.Coc.unbias w x.1, Kernel.Coc.unbias w x.2.1, x.2.2.1, x.2.2.2.2)) (fun b h => by
+    (bs.map fun x => (x.1.toUInt64, x.2.1.toUInt64, x.2.2.1, x.2.2.2.2)) (fun b h => by
       simp only [Array.size_map] at h; simp only [Array.getElem_map]; rw [hbget b h]
-      exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.2.1 (by decide))
+      exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.1 (by decide))
   generalize Kernel.Coc.foRMeta lg (Kernel.Coc.sumNul w) n _ = M at hMr ⊢
   obtain ⟨hnb, hlgM, hMb⟩ := hMr
   -- the pair, not `by omega`: omega's proof of this `∧` goal depends on `Classical.choice`
@@ -1129,17 +1105,18 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
       exact absurd (by rw [← Array.length_toList, he]; rfl) h
     · exact Nat.lt_of_le_of_lt hen (h32 hpl)
   -- the frames
-  have hfr0 : ((Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).any
+  have hfr0 : ((Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).any
       fun a => a != 0) = false → ∀ b (h : b < bs.size), ((blk b).2.2.2.1 - (blk b).1).toUInt64 = 0 := fun h b hb =>
     Decidable.byContradiction fun hne => by
-      have : ((Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).any
-          fun a => a != 0) = true := Array.any_eq_true.2 ⟨b, by simpa using hb, by simp [hbget b hb, hne]⟩
+      have : ((Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).any
+          fun a => a != 0) = true := Array.any_eq_true.2 ⟨b, by simpa using hb, by
+            simp only [Int64.toUInt64_sub] at hne; simp [hbget b hb, hne]⟩
       rw [h] at this; cases this
-  have hfs : ∀ b (h : b < bs.size), (Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64)
+  have hfs : ∀ b (h : b < bs.size), (Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64)
       bs)[b]? = some ((blk b).2.2.2.1 - (blk b).1).toUInt64 := fun b h => by simp [h, hbget b h]
-  have hfsz : (Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).size =
+  have hfsz : (Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).size =
       Column.nblk M := by simp [hnb]
-  generalize Array.map (fun x : Nat × Nat × UInt64 × Nat × Nat => (x.2.2.2.1 - x.1).toUInt64) bs = fs
+  generalize Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs = fs
     at hfr0 hfs hfsz ⊢
   have hword : ∀ fr : Bool, (w.toUInt64 ||| if fr = true then 256 else 0).toNat % 256 = w ∧
       ((w.toUInt64 ||| if fr = true then 256 else 0).toNat / 256 % 2 = 1 ↔ fr = true) := by
@@ -1149,11 +1126,11 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   generalize (fs.any fun a => a != 0) = frm at hfr0 ⊢
   -- the residuals
   have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2) hnb (fun c h => by rw [(hMb c h).2]; simp)
-    (fun (a : ByteArray × Nat) (e : Nat × Nat × UInt64 × Nat × Nat) =>
+    (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
-    (fun m (e : Nat × Nat × UInt64 × Nat × Nat) j =>
+    (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>
       (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
@@ -1162,9 +1139,9 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   generalize (Array.foldl _ (ByteArray.empty, 0) bs).1 = pack at hQ ⊢
   have he : Column.blockStart M (Column.nblk M) = pack.size := hQ.1.symm
   -- element `i`'s block
-  obtain ⟨hmf, hf64, hd64, ⟨j0, h0a, h0b, h0c, h0k⟩, -⟩ :=
+  obtain ⟨hmf, hd64, ⟨j0, h0a, h0b, h0c, h0k⟩, -⟩ :=
     hpb (i / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hi)
-  have h2 : Column.baseAt M (i / 2 ^ lg) = Kernel.Coc.unbias w (blk (i / 2 ^ lg)).1 := by
+  have h2 : Column.baseAt M (i / 2 ^ lg) = (blk (i / 2 ^ lg)).1.toUInt64 := by
     rw [(hMb _ hib).1]; simp [hbget _ hib]
   have h3 : Column.widthAt M (i / 2 ^ lg) = (blk (i / 2 ^ lg)).2.2.2.2 := by
     rw [(hMb _ hib).2]; simp [hbget _ hib]
@@ -1183,16 +1160,16 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
           · rfl
           · have := (hmem j0).2 ⟨h0c, by rw [hj0, h0k, ho]⟩
             rw [hnil h0] at this; cases this
-        simp only [Kernel.Coc.outside, Bool.or_eq_false_iff, decide_eq_false_iff_not] at hk0
-        rw [show (blk (i / 2 ^ lg)).2.2.2.1 = (blk (i / 2 ^ lg)).1 by omega, Nat.sub_self]
+        have := ((outside_false _ _ _).1 hk0).1
+        rw [show (blk (i / 2 ^ lg)).2.2.2.1 = (blk (i / 2 ^ lg)).1 from Int64.toInt_inj.1 (by omega), Int64.sub_self]
         constructor
         · unfold Column.foRExc; simp [he]
-        · unfold Column.foRFrame; simp [he]
+        · unfold Column.foRFrame; simp [he]; rfl
       · next h0 =>
         subst htail
         rw [← hnb]
         refine ⟨?_, ?_⟩
-        · rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw0 hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
+        · rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
             (hnb ▸ hib), if_neg hnot]
         · rw [foRFrame_excBlob M pack (2 ^ lg) ⟨hBp, hB16⟩ w hw x exc (h32' h0) _ _ (hword frm).1 he fs hfsz
             (fun h => if_pos ((hword frm).2.1 h)) _ (hnb ▸ hib)]
@@ -1206,13 +1183,10 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
         Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j) - (blk (i / 2 ^ lg)).2.2.2.1 else 0).toUInt64)
       (by omega) hd64 h2 h3 ?h4 hx hfr]
     · rw [Nat.div_add_mod']
-      have hkf := hk
-      simp only [Kernel.Coc.outside, Bool.or_eq_false_iff, decide_eq_false_iff_not] at hkf
-      have hkl := keyAt_lt w hw x i
-      rw [if_pos (by simp [hi, hk]), Nat.toUInt64_eq, UInt64.toNat_ofNat',
-        Nat.mod_eq_of_lt (show Kernel.Coc.keyAt w x i - (blk (i / 2 ^ lg)).2.2.2.1 < 2 ^ 64 by omega),
-        Nat.mod_eq_of_lt (show Kernel.Coc.keyAt w x i - (blk (i / 2 ^ lg)).2.2.2.1 < 2 ^ (blk (i / 2 ^ lg)).2.2.2.2
-          by omega), ← Nat.toUInt64_eq, unbias_add _ _ _ hmf, unbias_add _ _ _ (by omega)]
+      have hkf := (outside_false _ _ _).1 hk
+      rw [if_pos (by simp [hi, hk]), Nat.mod_eq_of_lt hkf.2, Nat.toUInt64_eq, UInt64.ofNat_toNat,
+        Int64.toUInt64_sub, Int64.toUInt64_sub, UInt64.add_comm (blk (i / 2 ^ lg)).1.toUInt64, UInt64.sub_add_cancel,
+        UInt64.add_comm, UInt64.sub_add_cancel]
     case h4 =>
       intro k hk
       have hq := hQ.2 (i / 2 ^ lg) hib k (by rw [packRes_size, hbget _ hib]; exact hk)
@@ -1226,7 +1200,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     rw [← hnb]
     unfold Column.foRBits
     simp only [blockStarts_get _ (Nat.le_refl _)]
-    rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw0 hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
+    rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
       (hnb ▸ hib), if_pos hin]
 
 /-- **The Frame-of-Reference round trip, element by element**, over `foRBits` and the dense bits: element `i` of
@@ -1236,7 +1210,8 @@ theorem foRBits_encode_bits (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) 
     (Column.foRBits (Kernel.Coc.encodeAt lg w.toUSize x patch).1 (Kernel.Coc.encodeAt lg w.toUSize x patch).2
       (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch).1) i).toNat % 2 ^ (8 * w) =
       (Column.bitsAt x (i * w) w).toNat := by
-  rw [foRBits_encode lg hlg w (by omega) hw x i hi, unbias_keyAt w (by omega) hw]
+  rw [foRBits_encode lg hlg w (by omega) hw x i hi]
+  exact sext_bits w (by omega) hw _ (bitsAt_lt _ _ _ hw)
 
 /-- At a whole-byte lane `8c`, `Column.resAt` at element `j` is the `c` bytes from `c·j`, as
 `Column.bitsAt` reads them: each byte's term is that byte shifted into place, nothing cut off. -/

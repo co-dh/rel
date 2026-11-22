@@ -73,7 +73,8 @@ theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size)
       (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2 (Column.blockStarts (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).1) i
       = ws[i] := fun i hi => by
     rw [foRBits_encode Column.lgEnc hlg 8 (by decide) (by decide) X i (by omega)]
-    have h1 := unbias_keyAt 8 (by decide) (by decide) X i
+    have h1 : (Coc.keyAt 8 X i).toUInt64.toNat % 2 ^ (8 * 8) = (Column.bitsAt X (i * 8) 8).toNat :=
+      sext_bits 8 (by decide) (by decide) _ (bitsAt_lt _ _ _ (by decide))
     rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi), ofNat_toNat_mod64,
       Array.getElem_toList] at h1
     exact UInt64.toNat_inj.mp h1

@@ -5,28 +5,17 @@ import Rel.Kernel.Value
 
 namespace Rel.Kernel.Coc
 
-/-- What is added to a `w`-byte element to make unsigned comparison agree with q's order: half the
-range, which is flipping the sign bit. One byte is the exception and biases by nothing, `byte` and
-`char` being q's only unsigned fixed-width types — `boolean` is a `Column.bits` payload and never
-reaches an encoder. -/
-def bias (w : Nat) : Nat := if w = 1 then 0 else 2 ^ (8 * w - 1)
-
-/-- Element `i` of a dense payload of `w`-byte elements, biased into unsigned order. -/
-def keyAt (w : Nat) (x : ByteArray) (i : Nat) : Nat :=
-  (Rel.Column.bitsAt x (i * w) w).toNat ^^^ bias w
-
-/-- A key written back out as the `int64_t` a block minimum is stored as: the bias taken off again,
-sign-extended to 64 bits. Adding `2 ^ 64 - bias w` is that sign extension — a non-negative element
-comes back unchanged modulo `2 ^ 64`, and a negative one comes back as its two's complement in 64
-bits rather than in `8 * w`. `Column.baseAt` reads these bits and adds the residual with `UInt64`
-wrapping, so this is the form that makes the two agree. -/
-def unbias (w k : Nat) : UInt64 := (k + (2 ^ 64 - bias w)).toUInt64
+/-- Element `i` of a dense payload of `w`-byte elements as the value q holds, `Column.sext` of its bits: the reading
+`Column.foRExc` gives a patch, and `toUInt64` of it is the `int64_t` a block minimum is stored as. The encoder orders
+and subtracts keys as `Int64`, so no key is a `Nat` past a machine word. -/
+def keyAt (w : Nat) (x : ByteArray) (i : Nat) : Int64 := Rel.Column.sext w (Rel.Column.bitsAt x (i * w) w)
 
 /-- The element a block's cached sum skips, as the raw bits `Column.foRBits` answers. q's null is the
-bottom of a signed type's range, which is the key `0` written back out. One byte has none — `byte` and
-`char` are q's unsigned pair — and takes `Int64.minValue`, which no zero-extended byte is; `COC_NUL`
+bottom of a signed type's range: the `w`-byte pattern with only its top bit set, sign-extended. One byte has none —
+`byte` and `char` are q's unsigned pair — and takes `Int64.minValue`, which no zero-extended byte is; `COC_NUL`
 in `rust/src/coc.rs` is the same choice for the same reason. -/
-def sumNul (w : Nat) : UInt64 := if w = 1 then (2 ^ 63 : Nat).toUInt64 else unbias w 0
+def sumNul (w : Nat) : UInt64 :=
+  if w = 1 then Int64.minValue.toUInt64 else (Rel.Column.sext w ((1 : UInt64) <<< (8 * w - 1).toUInt64)).toUInt64
 
 /-- Block `b`, of `B` elements, of a payload of `n` `w`-byte elements: its minimum key, its maximum key, the sum of the
 elements that are not `sumNul w`, and the residual width the extremes' difference needs. The extreme
@@ -36,16 +25,15 @@ of 0 instead of an empty minimum; the sum is seeded with `0`, which is what an e
 
 The sum is here and not in a pass of its own because it is the same walk of the same block, which is
 what makes it free in `rust/src/coc.rs`'s `encode_meta` too. -/
-def blockOf (B w n b : Nat) (x : ByteArray) : Nat × Nat × UInt64 × Nat :=
+def blockOf (B w n b : Nat) (x : ByteArray) : Int64 × Int64 × UInt64 × Nat :=
   let lo := b * B
   let ks := (Array.range (min (lo + B) n - lo)).map fun j => keyAt w x (lo + j)
   let mn := ks.foldl min (keyAt w x lo)
   let mx := ks.foldl max (keyAt w x lo)
   let nul := sumNul w
   let s := ks.foldl (init := (0 : UInt64)) fun acc k =>
-    let v := unbias w k
-    if v == nul then acc else acc + v
-  (mn, mx, s, Rel.Column.widthFor (mx - mn))
+    if k.toUInt64 == nul then acc else acc + k.toUInt64
+  (mn, mx, s, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
 /-- One block's residual bytes from the residuals themselves, laid out the way `Column.resAt` reads
 them back: residual `j`'s low `w` bits at bits `[j * w, j * w + w)` of a little-endian bit stream,
@@ -100,48 +88,41 @@ def excBlob (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array Nat) (la
          Rel.Column.pushBits acc (i % B).toUInt64 2)
     ++ alpPad last
 
-/-- Whether key `k` lies outside the `2 ^ d` keys from frame `f`, so that its block patches it. -/
-def outside (f d k : Nat) : Bool := k < f || f + 2 ^ d ≤ k
-
--- `outside` runs per key per candidate frame per width in `planOf`; Lean's `2 ^ d` builds a GMP integer on every
--- call even when small, and a right shift of a small `Nat` stays scalar
-private def outsideImpl (f d k : Nat) : Bool := k < f || (k - f) >>> d != 0
-
-@[csimp] private theorem outside_eq_outsideImpl : @outside = @outsideImpl := by
-  funext f d k
-  have h : (k - f) / 2 ^ d = 0 ↔ k - f < 2 ^ d := by
-    rw [Nat.div_eq_zero_iff]; have := Nat.two_pow_pos d; omega
-  rw [Bool.eq_iff_iff]
-  simp only [outside, outsideImpl, Bool.or_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq, Nat.shiftRight_eq_div_pow, h]
-  omega
+/-- Whether key `k` lies outside the `2 ^ d` keys from frame `f`, so that its block patches it: below `f`, or `k - f`
+read unsigned has a bit at `d` or above. A shift and not `2 ^ d`, which is a big `Nat` at `d = 64`. -/
+def outside (f : Int64) (d : Nat) (k : Int64) : Bool := k < f || d < 64 && (k - f).toUInt64 >>> d.toUInt64 != 0
 
 /-- How many of the block's keys `ks` frame `f` at width `d` patches. -/
-def npatch (ks : Array Nat) (f d : Nat) : Nat := (ks.filter (outside f d)).size
+def npatch (ks : Array Int64) (f : Int64) (d : Nat) : Nat := (ks.filter (outside f d)).size
 
-/-- The frame at width `d`: of `mn` and the keys, the one patching fewest, the lowest of those. -/
-def frameAt (ks : Array Nat) (mn d : Nat) : Nat :=
-  ks.foldl (init := mn) fun f k =>
-    if npatch ks k d < npatch ks f d || (npatch ks k d == npatch ks f d && k < f) then k else f
+/-- The frame at width `d`: of `mn` and the keys, the one patching fewest, the lowest of those. The incumbent's count
+rides in the accumulator, so each candidate costs one `npatch`, its own. -/
+def frameAt (ks : Array Int64) (mn : Int64) (d : Nat) : Int64 :=
+  (ks.foldl (init := (mn, npatch ks mn d)) fun (f, nf) k =>
+    let nk := npatch ks k d
+    if nk < nf || (nk == nf && k < f) then (k, nk) else (f, nf)).1
 
 /-- The bytes block `ks` costs at width `d`, at `w` bytes an element: its residual bits rounded up to bytes, and
 `2 + w` a patch (its `u16` position and the element). -/
-def cost (ks : Array Nat) (mn w d : Nat) : Nat := (ks.size * d + 7) / 8 + npatch ks (frameAt ks mn d) d * (2 + w)
+def cost (ks : Array Int64) (mn : Int64) (w d : Nat) : Nat :=
+  (ks.size * d + 7) / 8 + npatch ks (frameAt ks mn d) d * (2 + w)
 
 /-- A block's frame key and residual width: the width of `0 .. W` that `cost` is least at, the narrower on a tie, and
 its `frameAt`; `W`, the bit length of `mx - mn`, patches nothing, and a wider width only costs more. Where `patch` is
 off — ALP's integers, whose exceptions are its own blob's — the width is `W` and the frame `mn`. -/
-def planOf (patch : Bool) (ks : Array Nat) (mn mx w : Nat) : Nat × Nat :=
+def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 × Nat :=
   if patch then
     -- the best width's cost rides in the accumulator: recomputing it is a `frameAt` search per width
-    let d := ((List.range (Rel.Column.widthFor (mx - mn) + 1)).foldl (init := (0, cost ks mn w 0)) fun (d, cd) c =>
-      let cc := cost ks mn w c
-      if cc < cd then (c, cc) else (d, cd)).1
+    let d := ((List.range (Rel.Column.widthFor (mx - mn).toUInt64.toNat + 1)).foldl (init := (0, cost ks mn w 0))
+      fun (d, cd) c =>
+        let cc := cost ks mn w c
+        if cc < cd then (c, cc) else (d, cd)).1
     (frameAt ks mn d, d)
-  else (mn, Rel.Column.widthFor (mx - mn))
+  else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
 /-- Block `b` of `n` `w`-byte elements at blocks of `2 ^ lg`: `blockOf`'s extremes and sum, then `planOf`'s frame and
 width for its keys. -/
-def planBlock (lg w n : Nat) (patch : Bool) (x : ByteArray) (b : Nat) : Nat × Nat × UInt64 × Nat × Nat :=
+def planBlock (lg w n : Nat) (patch : Bool) (x : ByteArray) (b : Nat) : Int64 × Int64 × UInt64 × Int64 × Nat :=
   let (mn, mx, s, _) := blockOf (2 ^ lg) w n b x
   let lo := b * 2 ^ lg
   let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
@@ -158,21 +139,23 @@ elements or more patches nothing: the list's block offsets are `u32`. -/
 def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) : ByteArray × ByteArray :=
   let w := width.toNat
   let n := x.size / w
+  -- the block size once as a shift, not a `2 ^ lg` at every element
+  let B := 1 <<< lg
   let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x
-  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map blk
+  let bs := (Array.range ((n + B - 1) / B)).map blk
   -- every per-element read of a plan goes to `bs`, never `blk`: each `blk` call reruns the block's width search
   let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>
-    let lo := b * 2 ^ lg
-    (acc ++ packRes (2 ^ lg) d fun j =>
+    let lo := b * B
+    (acc ++ packRes B d fun j =>
       (if lo + j < n && !outside f d (keyAt w x (lo + j)) then keyAt w x (lo + j) - f else 0).toUInt64, b + 1)).1
   let exc := (Array.range n).filter fun i =>
-    outside (bs.getD (i / 2 ^ lg) default).2.2.2.1 (bs.getD (i / 2 ^ lg) default).2.2.2.2 (keyAt w x i)
+    outside (bs.getD (i / B) default).2.2.2.1 (bs.getD (i / B) default).2.2.2.2 (keyAt w x i)
   let fs := bs.map fun (mn, _, _, f, _) => (f - mn).toUInt64
   let frm := fs.any (· != 0)
   let tail := if exc.size = 0 then ByteArray.empty else
-    excBlob (w.toUInt64 ||| if frm then 256 else 0) (2 ^ lg) w bs.size x exc
+    excBlob (w.toUInt64 ||| if frm then 256 else 0) B w bs.size x exc
       (if frm then fs.foldl (init := ByteArray.empty) fun acc v => Rel.Column.pushBits acc v 8 else ByteArray.empty)
-  (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, _, d) => (unbias w mn, unbias w mx, s, d)), pack ++ tail)
+  (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, _, d) => (mn.toUInt64, mx.toUInt64, s, d)), pack ++ tail)
 
 /-- A dense payload of `width`-byte elements as `(metadata, pack)`.
 

@@ -9,18 +9,16 @@ namespace Rel.Kernel
 
 open TestChecks
 
--- Element order is signed, and biasing is what makes unsigned comparison agree with it. Read
--- unsigned, `-1` would be the largest 64-bit element rather than the smallest.
-example : Rel.Kernel.Coc.keyAt 8 ⟨#[255,255,255,255,255,255,255,255]⟩ 0 = 2 ^ 63 - 1 := by decide
-example : Rel.Kernel.Coc.keyAt 8 ⟨#[5,0,0,0,0,0,0,0]⟩ 0 = 2 ^ 63 + 5 := by decide
--- and one byte, q's only unsigned fixed-width case, biases by nothing
+-- A key is the signed value: read unsigned, `-1` would be the largest 64-bit element rather than the smallest.
+example : Rel.Kernel.Coc.keyAt 8 ⟨#[255,255,255,255,255,255,255,255]⟩ 0 = -1 := by decide
+example : Rel.Kernel.Coc.keyAt 8 ⟨#[5,0,0,0,0,0,0,0]⟩ 0 = 5 := by decide
+-- and one byte, q's only unsigned fixed-width case, is zero-extended
 example : Rel.Kernel.Coc.keyAt 1 ⟨#[255]⟩ 0 = 255 := by decide
 
--- A block minimum goes back out sign-extended to 64 bits, whatever the element width: `-1` as a
+-- A block minimum goes out sign-extended to 64 bits, whatever the element width: `-1` as a
 -- short is stored as the `int64_t` -1, because that is what `Column.baseAt` reads and adds to.
-example : Rel.Kernel.Coc.unbias 2 (Rel.Kernel.Coc.keyAt 2 ⟨#[255,255]⟩ 0) = 0xffffffffffffffff :=
-  by decide
-example : Rel.Kernel.Coc.unbias 1 (Rel.Kernel.Coc.keyAt 1 ⟨#[255]⟩ 0) = 255 := by decide
+example : (Rel.Kernel.Coc.keyAt 2 ⟨#[255,255]⟩ 0).toUInt64 = 0xffffffffffffffff := by decide
+example : (Rel.Kernel.Coc.keyAt 1 ⟨#[255]⟩ 0).toUInt64 = 255 := by decide
 
 -- The width a range needs, at each boundary. `widthFor 0 = 0` is a block of one repeated value,
 -- which stores no residual bytes at all.

@@ -122,13 +122,13 @@ theorem packLongs_size (xs : List Int64) : (packLongs xs).size = 8 * xs.length :
 theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray)
     {patch : Bool} : Column.lgAt (Kernel.Coc.encodeAt lg width x patch).1 = lg := by
   have hKp : 0 < 2 ^ lg := Nat.two_pow_pos lg
-  simp only [Kernel.Coc.encodeAt]
+  simp only [Kernel.Coc.encodeAt, Nat.one_shiftLeft]
   generalize width.toNat = w at hw ⊢
   generalize x.size / w = n
   refine (Verify.foRMeta_reads lg hlg _ n _ fun b h => ?_).2.1
   simp only [Array.size_map, Array.size_range] at h
   simp only [Array.getElem_map, Verify.getElem_range]
-  exact Nat.lt_of_le_of_lt (Verify.planBlock_bounds lg w n hw _ x b (Verify.mul_lt_of_lt_cdiv hKp h)).2.2.1
+  exact Nat.lt_of_le_of_lt (Verify.planBlock_bounds lg w n _ x b (Verify.mul_lt_of_lt_cdiv hKp h)).2.1
     (by decide)
 
 /-- `encode`'s metadata passes `Enc.WF`'s `lgOk`: it is `encodeAt` at `Column.lgEnc`. -/
