@@ -73,6 +73,22 @@ info: no such file or directory (error code: 2)
   IO.println (say (← (readVals (.atom .f64) dir "u.1").toBaseIO))
   IO.println (say (← (readVals (.atom .sym) dir "u.1").toBaseIO))
 
+-- a list cell that is not a slice of its payload, refused naming the `.lo` file, the row and the bounds: past the
+-- payload (`hi = 7` over `m = 5`), reversed (`lo > hi`), and before it (`lo < 0`)
+/--
+info: /data/tmp/rel-test-table/badcell/a.lo: row 1 is the cell [2, 7), not a slice of the 5 rows of /data/tmp/rel-test-table/badcell/a.e: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ 5
+/data/tmp/rel-test-table/badcell/b.lo: row 0 is the cell [3, 1), not a slice of the 5 rows of /data/tmp/rel-test-table/badcell/b.e: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ 5
+/data/tmp/rel-test-table/badcell/c.lo: row 0 is the cell [-1, 2), not a slice of the 5 rows of /data/tmp/rel-test-table/badcell/c.e: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ 5
+-/
+#guard_msgs in
+#eval show IO Unit from do
+  let dir ← fresh "badcell"
+  let e ← longs 5 [1, 2, 3, 4, 5]
+  writeVals (A := .arr .long) dir "a" (⟨5, ← longs 2 [0, 2], ← longs 2 [1, 7], e⟩ : Vals (.arr .long) 2)
+  writeVals (A := .arr .long) dir "b" (⟨5, ← longs 1 [3], ← longs 1 [1], e⟩ : Vals (.arr .long) 1)
+  writeVals (A := .arr .long) dir "c" (⟨5, ← longs 1 [-1], ← longs 1 [2], e⟩ : Vals (.arr .long) 1)
+  ["a", "b", "c"].forM fun p => do IO.println (say (← (readVals (.arr .long) dir p).toBaseIO))
+
 /-! ## Schema-named tables: the two output forms -/
 
 /-- The value side of a trade: three long columns. -/

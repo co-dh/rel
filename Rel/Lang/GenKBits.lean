@@ -1,5 +1,6 @@
 import Rel.Lang.GenKSpec
 
+
 /-! The laws of `Tab.keepBits` and `Tab.compTabMat` (`Rel/Run/Bits.lean`), the two ops `GenKSpec` reads a bit matrix
     through. Both hold only for a matrix as its producers (`compMat`, `compTabMat`) build it: `0`/`1` words, `g · w`
     not wrapping, and each side's rows `x[ra[·]]`, `y[rc[·]]` distinct (`Vals.code`'s `rep`). -/
@@ -409,35 +410,6 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
     refine ⟨gr p, hgp, j, hj, (hob _ hgp j hj).2 ⟨k, hk, by rw [hkp], ?_⟩,
       ⟨i, hi, by rw [keyrow (gr p) hgp i hi ⟨p, hp⟩ rfl, rk, eq']⟩, hv⟩
     rw [hidx k hk, hkp, hpq, hA, hP]; decide
-
-/-- **A bit matrix as its producers (`compMat`, `compTabMat`) build it**: it reads back as rows (`Tab.ofBits`), `g · w`
-    does not wrap, each of its `g · w` words is `0` or `1`, and each side's rows `x[ra[·]]`, `y[rc[·]]` are distinct:
-    the hypotheses of `Tab.keepBits_law` and `Tab.compTabMat_law`. -/
-def BitsWf {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) : Prop :=
-  (∀ e, Tab.ofBits g w o x ra y rc ≠ .error e) ∧ (g * w).toNat = g.toNat * w.toNat ∧
-  (∀ a < g.toNat, ∀ j < w.toNat, ((raw .i64 (g * w) o)[a * w.toNat + j]?).any (· < 2) = true) ∧
-  (∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
-    ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a') ∧
-  ∀ c c' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[c.1]?.getD 0).toNat = i.1 →
-    ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c'
-
-/-- Every `bits` value `r` yields, run on any context (`force`), is `BitsWf`. -/
-def Rel.Wf {A B : Obj} : Rel A B → Prop
-  | .tab _ => True
-  | .lazy f => ∀ K, (f K).Wf
-  | .bits g w o x ra y rc => BitsWf g w o x ra y rc
-
-theorem Rel.Wf.force {r : Rel A B} (h : r.Wf) (K : Known A B) : (r.force K).Wf := by
-  induction r with
-  | lazy f ih => simp only [Rel.force]; exact ih K (h K)
-  | tab => exact h
-  | bits => exact h
-
-theorem Rel.Wf.retried {r : Rel A B} (h : r.Wf) (e : String) : (r.retried e).Wf := by
-  induction r with
-  | lazy f ih => exact fun K => ih K (h K)
-  | tab => trivial
-  | bits => exact h
 
 /-- `BitsWf`'s word clause in the form `Tab.ofBits_set` reads. -/
 theorem some_lt_two {xs : Array UInt64} {k : Nat} (h : (xs[k]?).any (· < 2) = true) :
@@ -1713,7 +1685,7 @@ theorem meetV_law {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) {K : Known A B} {t : T
 /-- `meetOn K T S` agrees with `P ∩ Q` on `K`, where `T` agrees with `P`: on a pair of `T`'s table, inside the
     `bound` it hands `S`, `S` agrees with `Q`; off it both sides are false. -/
 theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} (wT : T.Wf)
-    (eT : ∀ r, T.runE {} = .ok r → Agrees K (rep r) P) (wS : S.Wf) (hS : ∀ K, S.Reps K Q) :
+    (eT : ∀ r, T.runE {} = .ok r → Agrees K (rep r) P) (wS : S.Wf) (hS : ∀ K, K.WF → S.Reps K Q) :
     ∀ t, (meetOn K T S).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := by
   intro t h
   have fb : (meetV T (S.force K)).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := fun h => by
@@ -1739,10 +1711,10 @@ theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} 
       · nomatch h
     · exact fb h
 
-theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y)
+theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y)
     (wR : R.Wf) (wS : S.Wf) (K : Known A B) : ∀ t, (meetK K R S).runE K = .ok t → Agrees K (rep t) (X ∩ Y) := by
   intro t h
-  have eF : ∀ {Z : Rel A B} {W : Core.Rel A.El B.El}, (∀ K, Z.Reps K W) → ∀ r, (Z.force K).runE {} = .ok r →
+  have eF : ∀ {Z : Rel A B} {W : Core.Rel A.El B.El}, (∀ K, K.WF → Z.Reps K W) → ∀ r, (Z.force K).runE {} = .ok r →
       Agrees K (rep r) W := fun hZ r h => (reps_iff _ _ _).1 (hZ K) r ((force_runE _ K {}).symm.trans h)
   have sw : Agrees K (rep t) (Y ∩ X) → Agrees K (rep t) (X ∩ Y) := fun h x y hx hy ho => (h x y hx hy ho).trans and_comm
   cases R <;> cases S
@@ -1757,8 +1729,8 @@ theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Re
     | exact sw (meetOn_sound (wS.force K) (eF hS) wR hR t h)
     | exact meetOn_sound (wR.force K) (eF hR) wS hS t h
 
-theorem meet_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X)
-    (hS : ∀ K, S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, (GenK.meet A B d e R S).Reps K (X ∩ Y) := fun K => by
+theorem meet_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, K.WF → (GenK.meet A B d e R S).Reps K (X ∩ Y) := fun K => by
   have eR := (reps_iff _ _ _).1 (hR K); have eS := (reps_iff _ _ _).1 (hS K)
   rw [reps_iff]
   cases R <;> cases S <;> first
@@ -1848,7 +1820,7 @@ theorem compV_wf (r : Tab A B) {S : Rel B C} (wS : S.Wf) : (compV r S).Wf := by
 
 theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
     {X : Core.Rel A.El B.El} {Y : Core.Rel B.El C.El}
-    (hr : ∀ r, r' = .ok r → Agrees ⟨K.dom, none, none⟩ (rep r) X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
+    (hr : ∀ r, r' = .ok r → Agrees ⟨K.dom, none, none⟩ (rep r) X) (hS : ∀ K, K.WF → S.Reps K Y) (wS : S.Wf) :
     (compT r' S).Reps K (X ≫ Y) := by
   rcases r' with e | r
   · rw [reps_iff]; intro t ht; nomatch ht
@@ -1895,7 +1867,7 @@ theorem compT_wf (r' : Except String (Tab A B)) {S : Rel B C} (wS : S.Wf) : (com
   | bits => exact compV_wf r wS
 
 theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)} {K : Known A C} {X : Core.Rel A.El B.El}
-    {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hs : ∀ s, s' = .ok s → Agrees ⟨none, K.ran, none⟩ (rep s) Y) :
+    {Y : Core.Rel B.El C.El} (hR : ∀ K, K.WF → R.Reps K X) (hs : ∀ s, s' = .ok s → Agrees ⟨none, K.ran, none⟩ (rep s) Y) :
     (compS R K.dom s').Reps K (X ≫ Y) := by
   rcases s' with e | s
   · rw [reps_iff]; intro t ht; nomatch ht
@@ -1919,8 +1891,8 @@ theorem compS_wf (R : Rel A B) (D : Option ((n : USize) × Vals A n)) (s' : Exce
   · trivial
 
 theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.El}
-    {Y : Core.Rel B.El C.El} (hR : ∀ K, R.Reps K X) (hS : ∀ K, S.Reps K Y) (wS : S.Wf) :
-    ∀ K, (GenK.comp A B C e R S).Reps K (X ≫ Y) := fun K => by
+    {Y : Core.Rel B.El C.El} (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y) (wS : S.Wf) :
+    ∀ K, K.WF → (GenK.comp A B C e R S).Reps K (X ≫ Y) := fun K => by
   have eR := fun K => (reps_iff K R X).1 (hR K)
   have eS := fun K => (reps_iff K S Y).1 (hS K)
   cases R with
@@ -1976,11 +1948,11 @@ theorem top_wf {V : Rel B B} : (GenK.top A B V).Wf := by
 /-- **`ldiv` is `X \ Y` within `TB`, `TC`** on a `Rel.Wf` divisor: a matrix `S` is divided on its bits
     (`Tab.ldivTabMat_law`) or read back and `Tab.ldivSel`, any other `S` through `Tab.ldivSel`. -/
 theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X : Core.Rel A.El B.El}
-    {Y : Core.Rel A.El C.El} {TB : Core.Rel B.El B.El} {TC : Core.Rel C.El C.El} (hR : ∀ K, R.Reps K X)
-    (hS : ∀ K, S.Reps K Y) (hB : ∀ K, UB.Reps K TB) (hC : ∀ K, UC.Reps K TC) (wS : S.Wf) :
-    ∀ K, (GenK.ldiv A B C R S UB UC).Reps K (ldivDen X Y TB TC) := fun K => by
+    {Y : Core.Rel A.El C.El} {TB : Core.Rel B.El B.El} {TC : Core.Rel C.El C.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hS : ∀ K, K.WF → S.Reps K Y) (hB : ∀ K, K.WF → UB.Reps K TB) (hC : ∀ K, K.WF → UC.Reps K TC) (wS : S.Wf) :
+    ∀ K, K.WF → (GenK.ldiv A B C R S UB UC).Reps K (ldivDen X Y TB TC) := fun K => by
   have eY : ∀ s, S.runE {} = .ok s → Y = rep s := fun s h => agrees_empty ((reps_iff _ _ _).1 (hS {}) s h)
-  have hF : ∀ K, (S.force {}).Reps K Y := fun K => (reps_iff _ _ _).2 fun t ht => by
+  have hF : ∀ K, K.WF → (S.force {}).Reps K Y := fun K => (reps_iff _ _ _).2 fun t ht => by
     rw [force_runE] at ht; rw [eY t ht]; exact fun _ _ _ _ _ => Iff.rfl
   have wF := wS.force {}
   have fF := force_runE S {} {}

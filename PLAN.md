@@ -1117,6 +1117,69 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
   一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
   一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。
+  - ✅ 入口检查（分支 `lohi`）：`readVals` 的 `arr` 分支拒收 `lo<0`、`lo>hi`、`hi>m`，报 `.lo` 文件、行号、`[lo, hi)`
+    与 `m`；`TestTable` 三个拒收例。
+  - ✅ 不变式作为谓词，不加字段（分支 `lohi2`）：`Vals.WF`/`Tab.WF`（`RepCols`，`arr` 处 `0 ≤ lo ≤ hi ≤ m`，
+    递归经 `prod`/`sum`）；`readVals` 的检查抽成 `cellBad`（`Run/Cols`），`cellBad_none` 即 `WF` 的格子条款；保持引理
+    `Vals.gather_wf`、`nub_wf`、`Tab.canon_wf`、`catSide_wf`、`catSummand_wf`、`concat_wf`（`RepCols`），
+    `Vals.cells_wf`、`tau_wf`（`RepTabDiv`，由拆出的 `cells_spec`、`tau_spec` 给出，`cells_row`/`tau_row` 也改读它们）。
+  - ⬜ 删 clamp（未做，阻塞）：删任一 clamp，其定律（`concat_row`、`mem_holds`、`pack_row`、`cellSpan_spec`）要输入
+    的 `WF`，传递依赖 183 个定理（GenSound 41、RepTabDiv 35、GenKFold 26、GenKBits 22、GenKSpec 18 …）。输入来自程序
+    算出的任一 `Tab`：`rowOK_mem` 的 `X` 取自任意 `Known` 的 `K.dom`，`Rel.Reps` 对一切 `K` 量化。已有的槽是
+    `Rel.Wf`（`GenKBits`，`.tab _ => True`，经 `Code.Wf`/`Sound` 进 `gen_sound`，91 个 `_wf` 引理）：改成
+    `.tab (.ok t) => Tab.WF t`，加 `Known.WF`，`Reps` 只在 `Known.WF` 的 `K` 上要求；然后 91 个 `_wf` 各证其 op 保持
+    `Tab.WF`（上面的保持引理是底），`Tab.lam` 要 `kseen`/`kscatter .add` 计数规格，`Vals.cells` 的调用处要 `expand`
+    的前缀和 `≤ T`。
+  - 🔄 各 op 的保持引理（分支 `lohi3a`，`Rel/RepWF.lean`）：结构、集合、`comp`、bits、除法、比较、`inl°/inr°`、
+    `length`/`atPos`/`asc`/`est`、`nil`/`lamOf`/`lam`/`E`/`tau`/`setify` 已证；`fixOn`/`mu`/`nu` 以 `Tab.pack` 保持
+    为前提（`Vals.pack` 经 `Vals.cells`）。修了 `lamOf` 的错：`r` 无行时格子 `[f+c, f+c)` 指向 `m = 0` 的 payload 之外
+    （例：`D` 3 行、`r` 空，组 0 是 `[1,1)`，`hi = 1 > 0`），改为 `nil D`；`lamOf_canon` 多给 `U.WF`。未做：`List`
+    （`cells` 调用处，用 lohi3b 的 `expand_spec`）、`thin`/`thinL`/`merge`/`loop`/`foldRounds`、`Arith`、`Cast`、
+    `Where`，以及 `Rel.Wf` 的切换本身。
+  - ✅ `List` 与 `pack` 的保持引理（分支 `lohi4a`）：`Vals.pack_wf`/`Tab.pack_wf` 已证，`fixOn`/`mu`/`nu` 去掉
+    `hpack` 前提；`cat`/`snoc`/`cons`/`zip`/`uncons`/`unsnoc`/`uncat`/`prefix`/`suffix`/`inits`/`tails`/`sum`
+    已证（`Rel/RepWF.lean`），`positions` 并入 `positions_spec`（`Rel/RepWhere.lean`）。共用引理在
+    `Rel/RepTabDiv.lean`：`Vals.cells_expand_wf`（`Vals.cells` 铺在自身宽度的 EXPAND 上，每宽 `≤ c`、`n·c < 2^63`）、
+    `cellSpan_width`、`cell_wf_nat`、`cellSpan_start_le`（例：`uncat` 空格 `[SN, SN)` 要 `SN ≤ m`，由输入 WF 给出）。
+  - ✅ 轮次、`thin`、值动词、`$`（分支 `lohi4b`，`Rel/RepWFOps.lean`）：`foldRounds_wf`（所有折叠共用）、
+    `peelL`/`peelR`、`loop`、`merge`、`thinL`、`thin`、`arith`、`succ`、`cast`、`floatOp` 已证。合入 lohi4a 后
+    `hpack` 换成 `Tab.pack_wf`，`ListWF` 删去、直接用 `cat_wf` 等；lohi4b 的 `positions_wf` 与 `positions_spec`
+    重复，删去（连同只为它写的 `expand_span_lt`、`sum_countP_group`、`eval_ne`）。`map`/`flatten`/`filter`/
+    `takewhile` 在 `foldRounds_wf` 上证完（`map` 的单趟分支用 `Vals.cells_expand_wf`）。不再有 WF 前提。
+  - ✅ 合入 canonfld2（分支 `lohi5`）：`map_wf` 单趟分支由 `if` 条件取 `C.n = T`（例：`C` 的 payload 长 `C.n`，
+    `cells_expand_wf` 要长 `T` 的，拆开 `C` 后 `subst`）；`ldivOf_wf`（`r`、`s` 已 canonical），`ldiv_wf` 经 `canon`
+    调它，`ldivSel_wf` 对其除法 `d` 参数化（`hd : d R S UB UC = .ok t → t.WF`），`rdiv_wf` 用 `ldivOf_wf`，
+    `inits_wf` 用 `lamOf_wf`。全量构建 0 error、0 sorry；TestCompile 982/982 相等，与 pin 无差。
+  - ⬜ 切换本身（未开始）：直接依赖 `Rel.Wf`/`Rel.Reps` 的声明 136 个（GenSound 62、GenKBits 30、GenKSpec 25、
+    GenKFold 10、GenKEst 3、GenKHylo 2、GenKFix 2）。步骤：(1) `Known.WF`（`dom`/`ran`/`pairs` 各 `Vals.WF`/`Tab.WF`）；
+    `Rel.Wf` 改 `.tab (.ok t) => t.WF`、`.tab (.error _) => True`、`.lazy f => ∀ K, K.WF → (f K).Wf`，`bits` 加
+    `ofBits` 结果 `WF`；`Rel.Wf.force`/`runE` 要 `K.WF`。(2) `lift1_wf`/`lift2_wf` 取 `f` 的保持引理与参数的 `Wf`，
+    `ofVals_wf` 取 `f` 的（`K.WF` 给 `K.dom` 的 `Vals.WF`）；`compT` 在 `⟨some (ran r), K.ran, none⟩` 上 force，要
+    `ran_wf`。(3) `gen_wf_spine` 每个构造子一行 `GenK.*_wf` + `RepWF`/`RepWFOps` 的 `_wf`；`primGen_ok` 的每个 row
+    要其 op 的 `_wf`。(4) `Reps` 只在 `K.WF` 上要求，`Sound`/各 `_sound` 的 `∀ K` 加 `K.WF`。(5) 然后删 clamp。
+  - 🔄 切换进行中（分支 `lohi6`）：
+    - ✅ import 调整：`Arr.zeros_get` 从 `RepAsc` 移到 `RepWF`，`RepWF` 不再 import `RepAsc`（原来经它依赖
+      `GenKFold`），`GenKSpec` import `RepWFOps`。于是所有 `Tab` 层 `_wf` 在 `Rel.Wf` 之上可见，`GenK.*_wf` 留在原处直接用。
+    - ✅ `GenKSpec`（绿）：`Known.WF`、`BitsWf`、`Rel.Wf` 及 `force`（要 `K.WF`）、`retried`、`runE`（`Wf` 的值在
+      `WF` 的 context 上只算出 `WF` 的表）移到 `GenKSpec`；`Rel.Wf` 的 `bits` 条款是 `BitsWf ∧ Vals.WF x ∧ Vals.WF y`
+      （读回由 `Tab.ofBits_wf` 给 `WF`）。所有 `_sound` 的 `∀ K` 改成 `∀ K, K.WF →`；`lift1_sound`/`lift2_sound` 多取
+      其 context 函数保持 `WF`（`hk`/`hkl`/`hkr`）；`ofVals_sound` 的 `hf` 多得 `Vals.WF X`；新 `cut_wf`、`bound_wf`；
+      `pairOn`/`pairK`/`pair`/`diff` 的 sound 多取操作数的 `Wf`（它们在操作数算出的表的 `bound` 上运行另一操作数）；
+      `cmp_side` 多取该侧的 `WF`；`succ` 的原子侧 `Vals.WF` 为 `True`。
+    - ⬜ `GenKBits` 1683 起（`meetV_law` 之后的 meet/comp/ldiv 段）不通过：`meetOn_sound`/`meetK_sound`/`compT_sound`
+      等要 `K.WF` 与 `bound_wf`、`Tab.ran_wf`；`_wf` 引理要真证明（`Tab.inter_wf`、`keepBits_wf`、`compSel_wf`、
+      `compSelM_inl_wf`、`compTabMat_key_wf`、`ldivTabMat_sides_wf`）。之后 `GenKFold`、`GenKEst`、`GenKHylo`、
+      `GenKFix`、`GenSound`（`Sound` 加 `K.WF`、`gen_wf_spine`、`primGen_ok` 每行 `_wf`），最后删 clamp。
+  - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
+    `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
+    `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
+    难的产生者 `Tab.lam`（`f + cD ≤ f + c ≤ N` 要 `kseen`/`kscatter .add` 的计数规格）、`Vals.cells`
+    （前缀和 `≤ T` 要 `expand` 规格）、`uncons/unsnoc/uncat/zip`（`List.lean`）。每个 `⟨m, lo, hi, f⟩` 模式
+    （`Run/*`、`GenKFold`、`GenKBits`、`GenSound`、`KernelWF.Read`、测试的字面量）都多一个分量。
+  - 之后删的 clamp 与 kernel 次数（数 Lean body）：`∋`（`Tab.mem`）边界 2 `colConst` + 3 `colMap` + 宽度 1 `colMap`
+    = 6 → 1（`colMap .sub hi lo`）；concat 的 `arr` 分支 4 次 `clampShift` × 6 = 24 → 3（1 `colConst` + 2
+    `colArr .add`，只移第二段）；`cellSpan`（`pack`、`List.lean`）5 → 0。Rust 侧 `asc.rs` `Cells::span` 的
+    `clamp(0, c)` 与 `Kernel.AscKey.cells` 的 Lean body 同一 commit 去掉。
 
 ## 3. 各 phase 的并行与串行
 
