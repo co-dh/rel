@@ -609,6 +609,15 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
   rw [hfin j hj, hfl]
   exact last j n.toNat (Nat.le_refl _)
 
+/-- A `groupFold` answer holds no null: it scatters a `kscan` answer, which holds none (`kscan_closed`). -/
+theorem groupFold_plain {op : Op} {n : USize} {g seg : Enc} {m : USize} {z : UInt64} {x o : Enc}
+    (h : groupFold op n g seg m z x = .ok o) : hasNul o = false := by
+  unfold groupFold at h
+  simp only [bind, Except.bind] at h
+  repeat (split at h; · cases h)
+  rename_i _ _ _ _ r h4
+  exact kscatter_plain h (kscan_closed h4).2.2
+
 /-- **What `select keep R S` answers**, `keep` answering per group a `0`/`1` word that is `1` iff
 `κ (and = 0) (or = 1)`: the pairs of `R ∪ S` whose flags pass `κ`, and, in `Tab.canon_sorted`'s form over
 `C = R.concat S`, its rows ascending with unequal codes. A group is a run of equal rows (`Vals.row_of_codes`,

@@ -1571,6 +1571,12 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
     have hbK : bk.toUSize.toNat = bk := USize.toNat_ofNat_of_lt' (by omega)
     have hnU : r.n.toUInt64 = r.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
+    -- the gathered columns hold no null: a grade, a kseen group column, a fold, a gather of a grade
+    have hpN : hasNul p = false := by obtain ⟨_, he, -⟩ := asc_perm _ _ _ _ hasc; rw [he]; exact hasNul_wordsFoR _
+    have hqN : hasNul q = false := by rw [kgather_plain hq hpN]; exact hasNul_wordsFoR _
+    have hbgN : hasNul bg = false := by rw [(kseen_ok hbseen).2.1]; exact hasNul_wordsFoR _
+    have hcodeN : hasNul code = false := kscatter_plain hcode hbgN
+    have hcRN : hasNul cR = false := Tab.groupFold_plain hcR
     ------------------------------------------------------------------ `Q`'s rows, `r`'s rows
     have hQh : ∀ a, Q.Holds b (a, c) ↔ R.Holds a b ∧ S.Holds a c := fun a => by
       obtain ⟨U₀, hU₀, hH₀⟩ := compOne_canon hQ hw.1 hw.2; rw [canon_holds hU₀, hH₀]
@@ -1678,7 +1684,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
         rw [← e]; simp
     have hqw : ∀ G < k, (raw .i64 k.toUSize q)[G]?.getD 0 = (π1 (fs1 G)).toUInt64 := fun G hG => by
       obtain ⟨hfw, hfn, -⟩ := hf1 G hG
-      rw [(kgather_word hq G (by omega)).2, hfw, toNat_toUInt64 (by omega), (hp1 _ hfn).1]
+      rw [(kgather_word hq hpN G (by omega)).2, hfw, toNat_toUInt64 (by omega), (hp1 _ hfn).1]
     have hdG : ∀ G < k, ∀ h : π1 (fs1 G) < Q.n.toNat, Q.key.row ⟨_, h⟩ = b →
         (raw .i64 k.toUSize d)[G]?.getD 0 = ((List.range N.toNat).countP P2).toUInt64 := by
       intro G hG h hb
@@ -1689,11 +1695,11 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
         rw [← e, hnU, ← UInt64.ofNat_add]
       obtain ⟨q2, hq2, hpq2⟩ := hsur2 (r.n.toNat + π1 (fs1 G)) (by omega)
       have hcqw : (raw .i64 k.toUSize cq)[G]?.getD 0 = (gr2 q2).toUInt64 := by
-        rw [(kgather_word hcq G (by omega)).2, hqaw, toNat_toUInt64 (by omega), ← hpq2,
-          scatter_last_at hcode π2 (fun q hq => (hp2 q hq).1) (fun q hq => (hp2 q hq).2) hinj2 q2 hq2,
+        rw [(kgather_word hcq hcodeN G (by omega)).2, hqaw, toNat_toUInt64 (by omega), ← hpq2,
+          scatter_last_at hcode hbgN π2 (fun q hq => (hp2 q hq).1) (fun q hq => (hp2 q hq).2) hinj2 q2 hq2,
           (hg2 q2 hq2).1]
       have hgq := (hg2 q2 hq2).2
-      rw [(kgather_word hd G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
+      rw [(kgather_word hd hcRN G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
         fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hsg2 hcR).1
           (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hsg2 hcR).2.2 gr2 (fun q => decide (π2 q < r.n.toNat))
           (fun q hq => (hg2 q hq).1)
@@ -1752,7 +1758,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
       rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hG
       obtain ⟨hGk, hGne⟩ := hG
       rw [hK] at hGk
-      have hixw := (kgather_word hix j.1 j.2).2
+      have hixw := (kgather_word hix hqN j.1 j.2).2
       rw [Array.getElem?_eq_getElem hjM, Option.getD_some, hqw _ hGk] at hixw
       generalize ((raw .i64 M sel)[j.1]'hjM).toNat = G at hGk hGne hixw
       obtain ⟨-, hfn, -⟩ := hf1 G hGk
@@ -1786,7 +1792,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
       have hj' : j < (raw .i64 M sel).size := by simpa using hj
       have hjM : j < M.toNat := by rw [← hsz]; exact hj'
       simp only [Array.getElem_toList] at hwi
-      have hixw := (kgather_word hix j hjM).2
+      have hixw := (kgather_word hix hqN j hjM).2
       rw [Array.getElem?_eq_getElem hj', Option.getD_some, hwi, hqw _ hG] at hixw
       obtain ⟨i1, hi1, hx1⟩ := Vals.gather_row _ hX1 ⟨j, hjM⟩
       obtain ⟨i2, hi2, hy2⟩ := Vals.gather_row _ hY1 ⟨j, hjM⟩
@@ -2395,7 +2401,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       (ps[Fs ((raw .i64 M sel)[j]?.getD 0).toNat]?.getD 0).toUInt64 := fun j hj => by
     obtain ⟨hG, -⟩ := hselj j hj
     obtain ⟨hF, -⟩ := hFsG _ hG
-    rw [(kgather_word hiD hpN j hj).2, (kgather_word hfs j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
+    rw [(kgather_word hiD hpN j hj).2, (kgather_word hfs (by rw [(kseen_ok hseen).2.2]; exact hasNul_wordsFoR _) j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
   have hgat : ∀ {x : Arr .i64 k.toUSize} {y : Arr .i64 M} {w : Nat → Nat}, Arr.gather M sel x = .ok y →
       (∀ G < k, (raw .i64 k.toUSize x.enc)[G]?.getD 0 = (w G).toUInt64) →
       ∀ j < M.toNat, (raw .i64 M y.enc)[j]?.getD 0 = (w ((raw .i64 M sel)[j]?.getD 0).toNat).toUInt64 := by
@@ -2779,7 +2785,7 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
     obtain ⟨hin, hx⟩ := (hmem i).1 ⟨j.1, j.2, hi⟩
     have c : k < EN i - SN i := by rw [hltw i hin] at hx; split at hx <;> first | assumption | exact absurd rfl hx
     obtain ⟨i', hi', hVi⟩ := Vals.gather_row _ hV j
-    rw [(kgather_word hix j.1 j.2).2, hi, haw i i.2, toNat_toUInt64 (by have := hb1 i; omega)] at hi'
+    rw [(kgather_word hix (colMap_plain ha) j.1 j.2).2, hi, haw i i.2, toNat_toUInt64 (by have := hb1 i; omega)] at hi'
     refine ⟨i, c, hi, hKi, hVi.trans ?_⟩
     have hS : SN i + k < m.toNat := by have := hb1 i; omega
     simp only [g, dif_pos hS]; congr 1; exact Fin.ext hi'.symm
