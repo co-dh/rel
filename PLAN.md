@@ -1075,6 +1075,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Tm.mapMSz_spec`、`Tm.number_spec`、`Code.program_go`。
     剩余缺口：发出的常量 `n.shares`/`n.c.t<k>` 等于 `Code.program` 的输出这一点没有证明（`emit` 经 `Expand.tmE`
     把项写成 `Expr`，`tmE` 的 round-trip 只由 `GenSoundTest` 测）。
+  - ✅ 7.3c 续（分支 `tmeround`）：缺口由检查关闭，不是证明。`emit` 在写完所有槽常量和编号后的项之后，把它们
+    一次 `evalExpr` 成 `List Res`，逐个与 `Code.program` 的输出比较（`Tm.diffAt`，槽常量逐个查，`share` 只比槽号，
+    `Tm.numberKey`），不同就拒绝该程序；每个程序、每个写出的项都查，不再只抽样。`Tm.fieldsEq` 比较 row 的全部
+    字段（原来只比 `sym`），`OExp` 加 `BEq`。不能证明的原因：`Lean.Expr` 在 Lean 的逻辑里没有语义，
+    `eval (toExpr t) = t` 无法陈述；kernel `decide` 也不可行（`Code.program` 用 `Expr` 的 hash 作 HashMap key，
+    `String.hash` 是 opaque extern；`Tm` 没有 `DecidableEq`，payload 按 `valEq` 比较）。信任的只剩 Lean 的
+    求值器与 kernel 一致。发出的程序不变。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。

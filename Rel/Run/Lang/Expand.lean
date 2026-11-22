@@ -873,12 +873,17 @@ def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize
 
 /-- `t` and `u`, of one constructor, agree in their fields that are not terms; a call's constant compared by its
     registry key (`key`), since each module names the constant it built `emitter ++ key`. A `callCv`'s converse
-    constant is its constant's converse's (`convOf`), so it follows the constant. -/
+    constant is its constant's converse's (`convOf`), so it follows the constant. A row field by field, as
+    `ToExpr Prim` rebuilds it, so `emit`'s check of `tmE` sees a field written wrong. -/
 def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u : Tm C D) : Bool :=
   match t with
   | .val R => match u with | .val S => valsEq _ R.key _ S.key && valsEq _ R.val _ S.val | _ => false
   | .uni (A := A) U => match u with | .uni (A := C) V => valsEq A U C V | _ => false
-  | .prim r => match u with | .prim r' => r.sym == r'.sym | _ => false
+  | .prim r => match u with
+    | .prim r' => r.sym == r'.sym && r.sig == r'.sig && r.conv == r'.conv && r.written == r'.written &&
+      r.prelude == r'.prelude && r.mono == r'.mono && r.whole == r'.whole && r.num == r'.num && r.ord == r'.ord &&
+      match r.aop, r'.aop with | .ok a, .ok b => a == b | .error a, .error b => a == b | _, _ => false
+    | _ => false
   | .atPos k => match u with | .atPos k' => k == k' | _ => false
   | .share k _ => match u with | .share k' _ => k == k' | _ => false
   | .var d k => match u with | .var d' k' => d == d' && k == k' | _ => false
@@ -903,6 +908,9 @@ partial def Tm.diffAt (key : Lean.Name → Lean.Name) (ctor : Nat → String) (p
     else if !(A == C && B == D) then some s!"{" / ".intercalate p}: {repr A} ⟶ {repr B} against {repr C} ⟶ {repr D}"
     else if !Tm.fieldsEq key t u then some s!"{" / ".intercalate p}: its fields differ"
     else (t.inner.zip u.inner).findSome? fun (x, y) => Tm.diffAt key ctor p x y
+
+-- a row that differs only in a flag is another row: `emit`'s check of `tmE` sees `ToExpr Prim` swap two fields
+#guard (Tm.diffAt id toString [] ⟨.long, .long, .prim consRow⟩ ⟨.long, .long, .prim { consRow with mono := false }⟩).isSome
 
 /-- An entry of the registry (module design §2.3): a definition elaborated once, its constant (`once`); a program's
     homes, the programs its names reach, in the order they are read (`read`); a program's scope, its namespace and
