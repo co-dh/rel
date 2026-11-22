@@ -272,7 +272,7 @@ pub fn asc_blk(c: &Coc, b: usize, desc: bool, strict: bool) -> Ends {
         (1u64 << 63, walk(cnt, desc, strict, |j| dec[j] as u64 ^ (1 << 63)))
     } else {
         let at = c.meta.off[b] as usize;
-        let mut w = c.meta.width[b];
+        let mut w = c.meta.w(b);
         let mut lb = pod::Scr::<u64>::new(c.meta.blk());
         let p = lanes(&c.pack[at..at + c.meta.blk() * w as usize / 8], &mut w, cnt, pod::bytes_mut(&mut lb));
         fn ends_at<const W: u32>(p: &[u8], cnt: usize, desc: bool, strict: bool) -> Option<(u64, u64)> {

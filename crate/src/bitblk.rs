@@ -14,7 +14,7 @@ impl<'a> Coc<'a> {
     /// Block `b`'s payload when the block is a bit vector: width 1, frame 0 (base and frame delta), no patch.
     pub fn bit_blk(&self, b: usize) -> Option<&'a [u8]> {
         let m = &self.meta;
-        if m.width[b] != 1 || self.frame(b) != 0 || self.blk_nexc(b) != 0 { return None }
+        if m.w(b) != 1 || m.nul(b) || self.frame(b) != 0 || self.blk_nexc(b) != 0 { return None }
         let at = m.off[b] as usize;
         Some(&self.pack[at..at + m.blk() / 8])
     }
