@@ -15,6 +15,19 @@ rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
     x : X ⟶ N ≜ {(1,A),(2,B),(5,C),(5,A)}°
+    u : N ⟶ X ≜ {(1,A),(2,B)} ∪ {(5,C),(2,B)}
+    i : N ⟶ X ≜ {(1,A),(2,B)} ∩ {(5,C),(2,B)}
+    d : N ⟶ X ≜ {(1,A),(2,B)} − {(5,C),(2,B)}
+    z : X ⟶ N ≜ 𝟘
+    m : X ⟶ X ≜ x x°
+    dm : X ⟶ X ≜ dom(x)
+    rn : N ⟶ N ≜ ran(x)
+    pr : X ⟶ N × N ≜ ⟨x, x⟩
+    c : X × N ⟶ N × X ≜ x × x°
+    o : X × N ⟶ X ≜ (x × x°) π₂
+    l : X × N ⟶ N ≜ (x × x°) π₁
+    e : X ⟶ X ≜ x x° 𝟙
+    tp : X ⟶ X ≜ x ⊤
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
@@ -100,19 +113,37 @@ rel_program nativeIO where
     -- the own-format files `output t to "out/io/t"` writes, kept as test/native/in/t
     input s : N ⟶ Row from "in/t"
     cp : N ⟶ Row ≜ t
+    un : N ⟶ Row ≜ t ∪ t
+    cm : N ⟶ N ≜ t t°
     output t to "out/io/t"
     output t to csv "out/io/t.csv"
     output cp to csv "out/io/cp.csv"
     output s to "out/io/s"
+    output un to "out/io/un"
+    output cm to "out/io/cm"
 
-/-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), `plan`'s output, then the computed
-    relation's to `out/arith` and the group ids to `out/gid`. -/
+/-- `R`'s Lean value written to `dir` (`writeRel`), its error the program's. -/
+def semOut {A B : Obj} (R : Except String (Tab A B)) (dir : String) : IO Unit := do writeRel dir (← IO.ofExcept R)
+
+/-- The closed definitions of `native1a`, one per `Tm` node the plan builds (`tabB`), each written to `out/NAME`:
+    by `relc lean` from its Lean value and by the gate's plan from its term, the one list both sides read. -/
+def semOuts : List (String × (String → IO Unit)) :=
+  [("x", semOut native1a.x), ("u", semOut native1a.u), ("i", semOut native1a.i), ("d", semOut native1a.d),
+   ("z", semOut native1a.z), ("m", semOut native1a.m), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
+   ("pr", semOut native1a.pr), ("c", semOut native1a.c), ("o", semOut native1a.o), ("l", semOut native1a.l),
+   ("e", semOut native1a.e), ("tp", semOut native1a.tp)]
+
+/-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
+    the computed relation's to `out/arith` and the group ids to `out/gid`. -/
 def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
-  let b ← outputOf [] native1a "x" "out"
+  let bs ← semOuts.mapM fun (x, _) => outputOf [] native1a x ("out/" ++ x)
   let io ← ioOf [] nativeIO
   return do
-    let (b, (rd, wr)) := (← b, ← io)
-    Bld.planIO rd fun ins => do wr ins; b; arithOut "out/arith"; gidOut "out/gid"
+    let (bs, (rd, wr)) := (← bs.mapM id, ← io)
+    Bld.planIO rd fun ins => do
+      wr ins
+      for b in bs do b
+      arithOut "out/arith"; gidOut "out/gid"
 
 /-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
     the elaborator's unifier finds the objects' constants (`Obj.named`). -/
@@ -159,9 +190,7 @@ def main (args : List String) : IO UInt32 := do
     match args with
     | ["run", mod, name] => runIO mod name
     | ["c", file] => IO.FS.writeFile file (← IO.ofExcept (relc abiOf (← planIO)))
-    | ["lean", dir] =>
-      let x ← IO.ofExcept native1a.x
-      writeRel (System.FilePath.mk dir / "out").toString x
+    | ["lean", dir] => for (x, w) in semOuts do w (System.FilePath.mk dir / "out" / x).toString
     | ["plan", dir] => IO.Process.setCurrentDir dir; discard <| (← planIO).exec abiOf
     | ["g", file] => IO.FS.writeFile file (← IO.ofExcept (gplan codes >>= relc abiOf))
     | _ => throw (IO.userError "usage: relc-1a c FILE | lean DIR | plan DIR | g FILE | run MOD NAME")
