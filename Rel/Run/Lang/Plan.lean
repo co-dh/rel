@@ -36,7 +36,7 @@ inductive Val
   | i64 (x : Int64)
   | nat (n : Nat)
   | ctor (tag : Nat) (objs scal : Array Val)
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 def Val.ty : Val → Ty
   | .bytes _ => .bytes | .size _ => .size | .bit _ => .bit | .u8 _ => .u8 | .str _ => .str | .parts _ => .parts
@@ -276,7 +276,7 @@ inductive Instr
       next state, its bit `done` set ending the loop with it. `k` (a `size`) rounds with `done` clear fail the run
       with `msg`: `Tab.fixOn`'s and `Tab.foldRounds`' cap. -/
   | loop (k : Nat) (init : Array Nat) (body : List Instr) (out : Array Nat) (done : Nat) (msg : String)
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 /-- A function: its parameters' types (registers `0 … k-1`, borrowed), its body, its result registers (owned). A
     global is a function of no parameter. -/
@@ -284,7 +284,7 @@ structure Fun where
   params : Array Ty
   body : List Instr
   res : Array Nat
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 /-- A plan (§6): functions, each applying only earlier ones, so the call graph has no cycle; globals, computed in
     order before `main`; `main`; and its input edge, `lit`s and calls of `IO` reads only, whose registers are

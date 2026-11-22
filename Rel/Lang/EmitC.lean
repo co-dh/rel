@@ -260,6 +260,50 @@ def spanB (n m lo hi : Nat) : Bld (Nat × Nat) := do
   let s ← mapB .max n lo (← wordsB n 0)
   pure (s, ← mapB .max n (← mapB .min n hi (← constB n (← u64B m))) s)
 
+/-- The registers of the columns `cs`, a loop's state: an atom's `Enc`; an array's `m`, `lo`, `hi`, its payload's. -/
+partial def regsOf (cs : Cols) : Bld (List Nat) := return (← cs.mapM fun
+  | .atom _ _ e => pure [e]
+  | .arr _ m lo hi f => return [m, lo, hi] ++ (← regsOf f)
+  | .sum .. => sumB "a loop's state").flatten
+
+/-- The columns `cs` with their registers taken in order from `rs` (`regsOf`'s inverse), and the registers left. -/
+partial def withRegs (cs : Cols) (rs : List Nat) : Bld (Cols × List Nat) :=
+  cs.foldlM (init := (([] : Cols), rs)) fun (acc, rs) c => match c, rs with
+    | .atom p t _, e :: rs => pure (acc ++ [.atom p t e], rs)
+    | .arr p _ _ _ f, m :: lo :: hi :: rs => do let (f, rs) ← withRegs f rs; pure (acc ++ [.arr p m lo hi f], rs)
+    | .sum .., _ => sumB "a loop's state"
+    | _, _ => throw "a loop's state: fewer registers than its columns read"
+
+/-- The types of `regsOf cs`: an `Enc` an object, an array's count a size. -/
+partial def tysOf (cs : Cols) : Bld (List Ty) := return (← cs.mapM fun
+  | .atom .. => pure [Ty.obj]
+  | .arr _ _ _ _ f => return [.size, .obj, .obj] ++ (← tysOf f)
+  | .sum .. => sumB "a function's parameters").flatten
+
+/-- `b` on the tables `Ts` as a plan function (`defFun`), applied to their registers (each its count, then `regsOf`):
+    a recipe built at many nodes is one C function, not a copy inlined at each (which outgrows `cc -O2`). A function
+    whose body equals an earlier one's is that one, so each table shape builds one function. -/
+def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
+  let regs (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
+  let tys ← Ts.mapM fun T => return Ty.size :: (← tysOf (T.key ++ T.val))
+  let ps := List.range tys.flatten.length
+  let shape (Ts : List TabB) (rs : List Nat) : Bld (List TabB) := do
+    let (Us, _) ← Ts.foldlM (init := (([] : List TabB), rs)) fun (Us, rs) T => match rs with
+      | n :: rs => do
+        let (cs, rs) ← withRegs (T.key ++ T.val) rs
+        pure (Us ++ [⟨n, cs.take T.key.length, cs.drop T.key.length⟩], rs)
+      | [] => throw "a function's parameters: fewer registers than its tables read"
+    pure Us
+  let (is, n, fs, gs) ← get
+  let ((U, r), body, _, fs, gs) ← (do let U ← b (← shape Ts ps); pure (U, (← regs U).toArray)).run (#[], ps.length, fs, gs)
+  let F : Fun := ⟨tys.flatten.toArray, body.toList, r⟩
+  let (f, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
+  set (is, n, fs, gs)
+  let rs ← apply f (← Ts.mapM regs).flatten.toArray r.size
+  match ← shape [U] rs.toList with
+  | [V] => pure V
+  | _ => throw "a function's answer: not one table"
+
 /-- **`Tab.compGroups`**: the `N` rows of `R.val` then `S.key`, their permutation `p`, groups `g`, first rows `f`, the
     count `K` of groups, per group the counts `cR`, `cS` and the width `w = cR · cS`. -/
 def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) := do
@@ -285,7 +329,9 @@ def compFromB (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat ×
   canonT ⟨T, ← gatherCols T iR R.n R.key, ← gatherCols T iS S.n S.val⟩
 
 /-- `compFromB` on `groupsB R S`. -/
-def compB (R S : TabB) : Bld TabB := do compFromB R S (← groupsB R S)
+def compB (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do compFromB R S (← groupsB R S)
+  | _ => throw "comp: not two tables"
 
 /-- **`Vals.cross`** of `n` rows `xs` and `m` rows `ys` (`crossIx`): `T = n · m` rows, `xs` at `pos / m`, `ys` at
     `pos % m`. Its two checks first, as `Vals.cross` and `crossIx` make them: `n · m ≤ crossMax` (tested as
@@ -401,20 +447,6 @@ def bothB (r s : Dom → Bld TabB) (dr ds : Bool) (D : Dom) (ctx : TabB → Bld 
 
 /-- **`R ∩ S`** (`Tab.inter`): `Tab.select` keeping the groups of a row of each. -/
 def interB (R S : TabB) : Bld TabB := selectB (fun m mn mx => mapB .lt m mn mx) R S
-
-/-- The registers of the columns `cs`, a loop's state: an atom's `Enc`; an array's `m`, `lo`, `hi`, its payload's. -/
-partial def regsOf (cs : Cols) : Bld (List Nat) := return (← cs.mapM fun
-  | .atom _ _ e => pure [e]
-  | .arr _ m lo hi f => return [m, lo, hi] ++ (← regsOf f)
-  | .sum .. => sumB "a loop's state").flatten
-
-/-- The columns `cs` with their registers taken in order from `rs` (`regsOf`'s inverse), and the registers left. -/
-partial def withRegs (cs : Cols) (rs : List Nat) : Bld (Cols × List Nat) :=
-  cs.foldlM (init := (([] : Cols), rs)) fun (acc, rs) c => match c, rs with
-    | .atom p t _, e :: rs => pure (acc ++ [.atom p t e], rs)
-    | .arr p _ _ _ f, m :: lo :: hi :: rs => do let (f, rs) ← withRegs f rs; pure (acc ++ [.arr p m lo hi f], rs)
-    | .sum .., _ => sumB "a loop's state"
-    | _, _ => throw "a loop's state: fewer registers than its columns read"
 
 /-- `nth` of an `if`'s one register. -/
 def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
@@ -765,16 +797,19 @@ def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
 /-- **`Tab.ldivSel d bits`**: `T` the expansion of `R° ≫ S` (`groupsB`), `ka` its groups; the division `d` where
     `rowBits · T ≤ ka + 2` (tested as `(ka + 2) / rowBits < T`, no product), else `ldivBitsB` where `bitsWinB T
     (ka + 1) kb kc` holds, else `d`. -/
-def ldivSelB (d : TabB → TabB → TabB → TabB → Bld TabB) (bits : Nat) (R S UB UC : TabB) : Bld TabB := do
-  let (_, _, _, _, ka, _, _, w) ← groupsB ⟨R.n, R.val, R.key⟩ S
-  let T := (← prefixB .add ka w).2
-  let big ← call1 (kernel% USize.decLt)
-    #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[ka, ← lit (.size 2)], ← lit (.size Tab.rowBits.toUSize)], T]
-  -- one choice bit, so each form is built once in the plan (as `compSelB`)
-  let win ← andB big do
-    bitsWinB bits T (← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]) (← code2B R.n UB.n R.val UB.val).1
-      (← code2B S.n UC.n S.val UC.val).1
-  iteT win R.val S.val (ldivBitsB R S UB UC) (d R S UB UC)
+def ldivSelB (d : TabB → TabB → TabB → TabB → Bld TabB) (bits : Nat) (R S UB UC : TabB) : Bld TabB :=
+  funT [R, S, UB, UC] fun
+  | [R, S, UB, UC] => do
+    let (_, _, _, _, ka, _, _, w) ← groupsB ⟨R.n, R.val, R.key⟩ S
+    let T := (← prefixB .add ka w).2
+    let big ← call1 (kernel% USize.decLt)
+      #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[ka, ← lit (.size 2)], ← lit (.size Tab.rowBits.toUSize)], T]
+    -- one choice bit, so each form is built once in the plan (as `compSelB`)
+    let win ← andB big do
+      bitsWinB bits T (← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]) (← code2B R.n UB.n R.val UB.val).1
+        (← code2B S.n UC.n S.val UC.val).1
+    iteT win R.val S.val (ldivBitsB R S UB UC) (d R S UB UC)
+  | _ => throw "ldivSel: not four tables"
 
 /-- `T°` (`Tab.conv`): the sides swapped, then `canonT`. -/
 def convB (T : TabB) : Bld TabB := canonT ⟨T.n, T.val, T.key⟩
@@ -800,15 +835,17 @@ def compBitsB (R S : TabB) : Bld TabB := do
 /-- **`Tab.compSel bits`** (`GenK.compR`'s `compSelM`, read back): `T` the expansion of `groupsB`, `K` its groups; the
     expansion (`compFromB`) where `rowBits · T ≤ K + 1` (tested as `(K + 1) / rowBits < T`, no product), else
     `compBitsB` where `bitsWinB T K ka kc` holds, else the expansion. -/
-def compSelB (bits : Nat) (R S : TabB) : Bld TabB := do
-  let x ← groupsB R S
-  let (_, _, _, _, K, _, _, w) := x
-  let T := (← prefixB .add K w).2
-  let big ← call1 (kernel% USize.decLt)
-    #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[K, ← lit (.size 1)], ← lit (.size Tab.rowBits.toUSize)], T]
-  -- one choice bit, so each form is built once in the plan (two copies of the expansion per `≫` outgrow `cc`)
-  let win ← andB big do bitsWinB bits T K (← codeB R.n R.key).1 (← codeB S.n S.val).1
-  iteT win R.key S.val (compBitsB R S) (compFromB R S x)
+def compSelB (bits : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do
+    let x ← groupsB R S
+    let (_, _, _, _, K, _, _, w) := x
+    let T := (← prefixB .add K w).2
+    let big ← call1 (kernel% USize.decLt)
+      #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[K, ← lit (.size 1)], ← lit (.size Tab.rowBits.toUSize)], T]
+    -- one choice bit, so each form is built once in the plan (two copies of the expansion per `≫` outgrow `cc`)
+    let win ← andB big do bitsWinB bits T K (← codeB R.n R.key).1 (← codeB S.n S.val).1
+    iteT win R.key S.val (compBitsB R S) (compFromB R S x)
+  | _ => throw "compSel: not two tables"
 
 /-- **`compT`**: `R ≫ S` (`compSelB`, as `GenK.compV`), `S` (the table `s` in a context, on demand where `ds`) read at
     `ran R`, its range the values `ran` the composition's context knows. -/
