@@ -1,5 +1,5 @@
 import Rel.Lang.GenKSpec
-import Rel.RepWFOps
+
 
 /-! The laws of `Tab.keepBits` and `Tab.compTabMat` (`Rel/Run/Bits.lean`), the two ops `GenKSpec` reads a bit matrix
     through. Both hold only for a matrix as its producers (`compMat`, `compTabMat`) build it: `0`/`1` words, `g · w`
@@ -410,35 +410,6 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
     refine ⟨gr p, hgp, j, hj, (hob _ hgp j hj).2 ⟨k, hk, by rw [hkp], ?_⟩,
       ⟨i, hi, by rw [keyrow (gr p) hgp i hi ⟨p, hp⟩ rfl, rk, eq']⟩, hv⟩
     rw [hidx k hk, hkp, hpq, hA, hP]; decide
-
-/-- **A bit matrix as its producers (`compMat`, `compTabMat`) build it**: it reads back as rows (`Tab.ofBits`), `g · w`
-    does not wrap, each of its `g · w` words is `0` or `1`, and each side's rows `x[ra[·]]`, `y[rc[·]]` are distinct:
-    the hypotheses of `Tab.keepBits_law` and `Tab.compTabMat_law`. -/
-def BitsWf {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) : Prop :=
-  (∀ e, Tab.ofBits g w o x ra y rc ≠ .error e) ∧ (g * w).toNat = g.toNat * w.toNat ∧
-  (∀ a < g.toNat, ∀ j < w.toNat, ((raw .i64 (g * w) o)[a * w.toNat + j]?).any (· < 2) = true) ∧
-  (∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
-    ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a') ∧
-  ∀ c c' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[c.1]?.getD 0).toNat = i.1 →
-    ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c'
-
-/-- Every `bits` value `r` yields, run on any context (`force`), is `BitsWf`. -/
-def Rel.Wf {A B : Obj} : Rel A B → Prop
-  | .tab _ => True
-  | .lazy f => ∀ K, (f K).Wf
-  | .bits g w o x ra y rc => BitsWf g w o x ra y rc
-
-theorem Rel.Wf.force {r : Rel A B} (h : r.Wf) (K : Known A B) : (r.force K).Wf := by
-  induction r with
-  | lazy f ih => simp only [Rel.force]; exact ih K (h K)
-  | tab => exact h
-  | bits => exact h
-
-theorem Rel.Wf.retried {r : Rel A B} (h : r.Wf) (e : String) : (r.retried e).Wf := by
-  induction r with
-  | lazy f ih => exact fun K => ih K (h K)
-  | tab => trivial
-  | bits => exact h
 
 /-- `BitsWf`'s word clause in the form `Tab.ofBits_set` reads. -/
 theorem some_lt_two {xs : Array UInt64} {k : Nat} (h : (xs[k]?).any (· < 2) = true) :
