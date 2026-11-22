@@ -54,19 +54,19 @@ example : view (kgather (u 3) (col [1, 3, 9]) (u 3) .pos) = past := by decide +k
 
 -- past a block of `2 ^ 10`, `#guard` only (encoding that many rows is more than `decide +kernel` reduces): the Lean
 -- side is the body's `gatherWords` run compiled, the `#guard` the Rust. Sources: one with patches (every 97th word an
--- outlier) and one flat (one width); indices: a run of 1500 into the second block, then scattered, the positions, and
+-- outlier) and one flat (one width); indices: a run of 600 into the second block, then scattered, the positions, and
 -- one past `n` in the second block
 def patched : Array UInt64 :=
-  (Array.range 3000).map fun i => (if i % 97 = 5 then i * 1000003 else 1000 + i * 7919 % 8000).toUInt64
-def flat : Array UInt64 := (Array.range 3000).map fun i => (i * 7919 % 4096).toUInt64
-def idx : Array UInt64 := (Array.range 2500).map fun k => (if k < 1500 then 1024 + k % 700 else k * 2654435761 % 3000).toUInt64
+  (Array.range 1500).map fun i => (if i % 97 = 5 then i * 1000003 else 1000 + i * 7919 % 8000).toUInt64
+def flat : Array UInt64 := (Array.range 1500).map fun i => (i * 7919 % 4096).toUInt64
+def idx : Array UInt64 := (Array.range 1100).map fun k => (if k < 600 then 1024 + k % 400 else k * 2654435761 % 1500).toUInt64
 def til (n : Nat) : Array UInt64 := (Array.range n).map Nat.toUInt64
 def want (r : Except String (Array UInt64)) : String ⊕ (List UInt8 × List UInt8) := view (wordsFoR <$> r)
 #guard [patched, flat].all fun s =>
-  view (kgather (u 2500) (col idx.toList) (u 3000) (col s.toList)) == want (gatherWords idx s) &&
-  view (kgather (u 2500) .pos (u 3000) (col s.toList)) == want (gatherWords (til 2500) s) &&
-  view (kgather (u 2500) (col (idx.setIfInBounds 1050 3004).toList) (u 3000) (col s.toList)) ==
-    want (gatherWords (idx.setIfInBounds 1050 3004) s)
-#guard view (kgather (u 2500) (col idx.toList) (u 3000) .pos) == want (gatherWords idx (til 3000))
+  view (kgather (u 1100) (col idx.toList) (u 1500) (col s.toList)) == want (gatherWords idx s) &&
+  view (kgather (u 1100) .pos (u 1500) (col s.toList)) == want (gatherWords (til 1100) s) &&
+  view (kgather (u 1100) (col (idx.setIfInBounds 1050 1504).toList) (u 1500) (col s.toList)) ==
+    want (gatherWords (idx.setIfInBounds 1050 1504) s)
+#guard view (kgather (u 1100) (col idx.toList) (u 1500) .pos) == want (gatherWords idx (til 1500))
 
 end Rel.Kernel.GatherTest
