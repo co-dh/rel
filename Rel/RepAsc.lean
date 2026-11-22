@@ -52,14 +52,14 @@ theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok
   constructor
   · rintro ⟨i, rfl, rfl⟩
     refine ⟨ys, hys, hmem, i.1, by simp [ys, i.2], ?_⟩
-    rw [Vals.row_atom, Lang.Arr.pos_get hp]; rfl
+    rw [Vals.row_atom, Arr.pos_get hp]; rfl
   · rintro ⟨ys', hs', hm', k, hk, rfl⟩
     rw [lt_sorted_unique hs' hys fun b => (hm' b).trans (hmem b).symm] at hk
     simp only [ys, List.getElem?_ofFn] at hk
     split at hk
     · rename_i hkn
       refine ⟨⟨k, hkn⟩, ?_, Option.some.inj hk⟩
-      rw [Vals.row_atom, Lang.Arr.pos_get hp]; rfl
+      rw [Vals.row_atom, Arr.pos_get hp]; rfl
     · cases hk
 
 end Tab
