@@ -276,6 +276,12 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
     obtain ⟨i2, e2, r2⟩ := Arr.gather_row idx h2 j
     obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
     exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
+  | .one, n, _, _, h, j => by
+    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i p h1
+    obtain ⟨i, e, -⟩ := Arr.gather_row (Arr.mk (t := .i64) (n := n) .pos trivial) h1 j
+    exact ⟨i, e, rfl⟩
 
 /-- **A summand gathered at a sum side's positions**: where word `i` of `p` is `idx`'s, `y` (of `m ≤ 2^63` rows)
 gathered at `p` holds at row `i` the row of `y` that `Vals.row` reads at `idx`'s clamped position. -/
@@ -738,6 +744,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
         have e := Vals.row_of_codes g hg hc2 i i' k2
         rw [dif_pos h0, dif_pos h0]; simpa [hrow, ht, htt] using e
       · simp only [dif_neg h0]
+  | .one, _, _, _, _, _, _, _, _, _ => rfl
 
 /-- **`Arr.get_eq_of_raw`'s converse**: where two `Arr`s of one type in a column every kernel reads hold one element
 at `i` and `j`, their raw words `a`, `b` there read as one atom; and a `u1` word is below `2`, the bound every `Arr`
@@ -858,6 +865,8 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
       · rw [yl0 (by omega)]; simp [seenKey, ascKeys]
     rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs, Arr.codes_of_eq tag hc0 i i' ht, k1, k2]
+  | .one, n, _, es, hes, _, _, _, _, _ => by
+    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys]
 
 /-- **Rows of `x` are equal iff their order codes are** where `Vals.nub x` answers: `kasc` read every column
 (`Vals.row_of_codes`, `Vals.codes_of_row`). -/

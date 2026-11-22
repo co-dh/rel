@@ -82,7 +82,7 @@ def s1 : CsvCols := [("s", .text, .char, [])]
 /-- By hand: rows `(1, "ab")`, `(null, "")`, `(-3, "x,\"")`. `v`: tags `0 1 0`, each row's position in its side
     `0 0 1`, the values `1 -3`, one null; `s`: spans `[0,2) [2,2) [2,5)`, the bytes `a b x , "`. -/
 def vsParts : List (Array UInt64) :=
-  [#[0, 1, 0], #[0, 0, 1], #[1, 0xfffffffffffffffd], #[0], #[0, 2, 2], #[2, 2, 5], #[97, 98, 120, 44, 34]]
+  [#[0, 1, 0], #[0, 0, 1], #[1, 0xfffffffffffffffd], #[0, 2, 2], #[2, 2, 5], #[97, 98, 120, 44, 34]]
 def vsText : String := "v,s\n1,ab\n,\n-3,\"x,\"\"\"\n"
 
 /-- A writer's case: the schema, the row count, each column's words, and the model's answer. -/
@@ -144,23 +144,23 @@ def writeCases : List WriteCase := [
   (ab, 1, [#[1], #[120], #[1]], .inl "3 word columns, the schema [a, b] is stored as 2"),
   -- a nullable and a text column: the null is the empty field, a cell its bytes quoted as any field
   (vs, 3, vsParts, .inr (bytes vsText)),
-  (vs, 3, vsParts.take 6, .inl "6 word columns, the schema [v, s] is stored as 7"),
+  (vs, 3, vsParts.take 5, .inl "5 word columns, the schema [v, s] is stored as 6"),
   -- any layout of the same rows: positions out of order, a value no row reaches
-  (v1, 3, [#[0, 1, 0], #[1, 0, 0], #[7, 5, 9], #[0, 0]], .inr (bytes "v\n5\n\n7\n")),
+  (v1, 3, [#[0, 1, 0], #[1, 0, 0], #[7, 5, 9]], .inr (bytes "v\n5\n\n7\n")),
   -- a position outside its payload, a tag other than 0/1, a span outside the bytes, a byte past 255
-  (v1, 1, [#[0], #[3], #[1], #[]], .inl "row 0, column 'v': position 3 past the 1 values of its left side"),
-  (v1, 1, [#[1], #[0], #[], #[]], .inl "row 0, column 'v': position 0 past the 0 values of its right side"),
-  (v1, 1, [#[2], #[0], #[1], #[1]], .inl "row 0, column 'v': tag 2, not 0 or 1"),
+  (v1, 1, [#[0], #[3], #[1]], .inl "row 0, column 'v': position 3 past the 1 values of its left side"),
+  (v1, 1, [#[1], #[7], #[]], .inr (bytes "v\n\n")),
+  (v1, 1, [#[2], #[0], #[1]], .inl "row 0, column 'v': tag 2, not 0 or 1"),
   (s1, 1, [#[1], #[0], #[]], .inl "row 0, column 's': cell [1, 0) outside the 0 bytes"),
   (s1, 1, [#[0], #[1], #[300]], .inl "row 0, column 's': the word 300 has no text as text: any bytes"),
-  (v1, 2, [#[0], #[0], #[1], #[]], .inl "column 'v' holds 1 words, not 2"),
+  (v1, 2, [#[0], #[0], #[1]], .inl "column 'v' holds 1 words, not 2"),
   -- every row's positions before any text: row 1's position before row 0's byte
-  (s1 ++ v1, 2, [#[0, 0], #[1, 0], #[300], #[0, 0], #[0, 5], #[1], #[]],
+  (s1 ++ v1, 2, [#[0, 0], #[1, 0], #[300], #[0, 0], #[0, 5], #[1]],
     .inl "row 1, column 'v': position 5 past the 1 values of its left side"),
   -- schemas refused: a list of no char, a null that is also a text of the atom
   ([("s", .text, .i64, [])], 0, [#[], #[], #[]],
     .inl "column 's' is a list of i64: an integer from -9223372036854775808 to 9223372036854775807; a CSV field holds a list of char only (text)"),
-  ([("v", .null, .u8, ["A", ""])], 0, [#[], #[], #[], #[]],
+  ([("v", .null, .u8, ["A", ""])], 0, [#[], #[], #[]],
     .inl "column 'v' is nullable, and the empty field, its null, is also a text of one of A, ")]
 
 theorem writeCases_model : writeCases.all (fun (c, n, ws, a) => decide (said (csvText c n ws) = a)) = true := by
@@ -216,7 +216,7 @@ def readCases : List ReadCase := [
   -- a nullable and a text column (IO step I8); a quoted empty field is the null too, its bytes being none
   (vs, bytes vsText, .inr (3, vsParts)),
   (vs, bytes "v,s\r\n1,ab\r\n\"\",\"\"\r\n-3,\"x,\"\"\"", .inr (3, vsParts)),
-  (vs, bytes "v,s\n", .inr (0, [#[], #[], #[], #[], #[], #[], #[]])),
+  (vs, bytes "v,s\n", .inr (0, [#[], #[], #[], #[], #[], #[]])),
   (v1, bytes "v\nx\n",
     .inl "row 0 (line 2), column 'v': expected i64: an integer from -9223372036854775808 to 9223372036854775807, or the empty field (the null), found 'x'"),
   (s1, bytes "s\n\" a\n\"\n", .inr (1, [#[0], #[3], #[32, 97, 10]])),
@@ -383,7 +383,7 @@ def writes : List (CsvCols × Nat × List (Array UInt64)) :=
    (mcols, 2100, mwords 2100 fun j i => if i = 1024 ∧ j = 2 then some 0x7fffffff else none)] ++
   [(vs, 2500, vsParts' 2500 false), (vs, 2500, vsParts' 2500 true),
    (vs, 2500, poke (vsParts' 2500 true) 1 2050 4000),
-   (vs, 2500, poke (poke (vsParts' 2500 false) 1 2050 4000) 6 1500 300)]
+   (vs, 2500, poke (poke (vsParts' 2500 false) 1 2050 4000) 5 1500 300)]
 
 /-- A case's parts as `Enc`s with their counts: `foR` (`wordsFoR`), and dense payloads at each part's atom, a `u1` part
     as `foR` (a dense `u1` payload has no raw words, `Enc.raw`). -/

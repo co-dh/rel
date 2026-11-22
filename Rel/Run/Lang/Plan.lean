@@ -464,18 +464,24 @@ def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String P
   pure { funs := fs, globals := gs, main := ms.toList, input := is.toList }
 
 /-- A side's atom columns, each with its path in the side: `""` an atom; `.1`/`.2` a product's; `.lo`/`.hi`/`.e`
-    an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads. -/
-def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String × QValue)
-  | .atom _, _, x, p => [(p, x.1)]
+    an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads. A side of `1`
+    is `.inl` its count: it has a file like any side (`Db.ownNParts` kind 5), holding the count and no part. -/
+def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String × (USize ⊕ QValue))
+  | .atom _, _, x, p => [(p, .inr x.1)]
   | .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
-  | .arr b, _, ⟨_, lo, hi, f⟩, p => [(p ++ ".lo", lo.1), (p ++ ".hi", hi.1)] ++ cols b f (p ++ ".e")
+  | .arr b, _, ⟨_, lo, hi, f⟩, p => [(p ++ ".lo", .inr lo.1), (p ++ ".hi", .inr hi.1)] ++ cols b f (p ++ ".e")
   | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, p =>
-    [(p ++ ".tag", tag.1), (p ++ ".idx", idx.1)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
+    [(p ++ ".tag", .inr tag.1), (p ++ ".idx", .inr idx.1)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
+  | .one, n, _, p => [(p, .inl n)]
 
-/-- A column as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`, `parts`;
-    `none` for positions, which have no file. -/
-def ownFile (p : String) (v : QValue) : Except String (Option Db.OwnFile) :=
-  (Db.ownFile v).mapError fun e => s!"column `{p}`: {e}"
+/-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/
+def oneKind : UInt8 := 5
+
+/-- A `cols` entry as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`,
+    `parts`; a side of `1` is kind `oneKind`, its count and no part; `none` for positions, which have no file. -/
+def ownFile (p : String) : USize ⊕ QValue → Except String (Option Db.OwnFile)
+  | .inl n => pure (some { code := 0, attr := 0, kind := oneKind, count := n, domain := "", parts := #[] })
+  | .inr v => (Db.ownFile v).mapError fun e => s!"column `{p}`: {e}"
 
 /-- A side's registers: each column's path and its six `ownFile` registers, then its `Enc` register where the plan
     holds one (a literal or computed vector, a CSV read; not a column mapped from its file, which is its parts). -/
@@ -483,8 +489,9 @@ abbrev Side := List (String × Array Nat)
 
 /-- The side's columns as `lit`s; a positions column has none. -/
 def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
-  (cols A x "").filterMapM fun (p, v) => do
-    let some f ← ownFile p v | return none
+  (cols A x "").filterMapM fun (p, c) => do
+    let .inr v := c | return none
+    let some f ← ownFile p c | return none
     let rs ← #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count, .str f.domain, .parts f.parts].mapM lit
     let rs ← match v with | .vector _ _ e _ => pure (rs.push (← lit (Reg.put e))) | _ => pure rs
     return some (p, rs)

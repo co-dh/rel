@@ -107,7 +107,7 @@ pub fn mask_blk(c: &Coc, b: usize, nb: usize, op: i32, v: i64, w64: &mut [u64], 
                                    GE => Some((t, u64::MAX)), _ => Some((t, t)) };
                 if let Some((lo, hi)) = r {
                     let at = m.off[b] as usize;
-                    res_mask_cmp(&c.pack[at..at + m.blk() * m.width[b] as usize / 8], nb, m.width[b], lo, hi.wrapping_sub(lo), op == NE,
+                    res_mask_cmp(&c.pack[at..at + m.blk() * m.w(b) as usize / 8], nb, m.w(b), lo, hi.wrapping_sub(lo), op == NE,
                                  w64, scratch)
                 }
             }

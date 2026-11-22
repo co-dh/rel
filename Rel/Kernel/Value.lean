@@ -404,9 +404,17 @@ def sumNulAt (metadata : ByteArray) : Int64 := (bitsAt metadata (32 * nblk metad
 column with the metadata of a shorter one, and this is what says the sums are that shorter one's. -/
 def sumCountAt (metadata : ByteArray) : Nat := (bitsAt metadata (32 * nblk metadata + 8) 8).toNat
 
-/-- Block `b`'s residual bit width, one of 0/1/2/4/8/16/32/64. -/
-def widthAt (metadata : ByteArray) (b : Nat) : Nat :=
-  (metadata[32 * nblk metadata + 24 + b]?.getD 0).toNat
+/-- Block `b`'s width byte, as stored: its residual width (`widthAt`) and its null flag (`nulAt`). -/
+def widthByte (metadata : ByteArray) (b : Nat) : Nat := (metadata[32 * nblk metadata + 24 + b]?.getD 0).toNat
+
+/-- Block `b`'s residual bit width, `0 .. 64`: the width byte's low seven bits. Bit 7 is `nulAt`'s flag, free because a
+width is at most 64, so every reader of a width reads it here and an unflagged block's byte is its width. -/
+def widthAt (metadata : ByteArray) (b : Nat) : Nat := widthByte metadata b % 128
+
+/-- Whether block `b` holds nulls in band: bit 7 of its width byte (`rust/src/coc.rs`'s `NUL_FLAG`). In a flagged
+block the residual `2 ^ widthAt - 1` is the null (`foRNul`); an encoder flags a block only where it holds a null, and
+widens it by one bit only where its values' range already reaches `2 ^ w - 1`. -/
+def nulAt (metadata : ByteArray) (b : Nat) : Bool := 128 ≤ widthByte metadata b
 
 /-- Where each block's residuals begin, as byte offsets into the pack. `metadata` stores this too, and
 the kernels read it from there; recomputing it here is what keeps a fixed-width offset table's wrap
@@ -499,6 +507,21 @@ def foRBits (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : UInt64 
   | none => baseAt metadata b + foRFrame metadata pack b e +
     resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b)
       (widthAt metadata b) (i % blk metadata)
+
+/-- Whether element `i` is the null of a nullable column (`atom+1`), tested on the encoding and never decoded: its
+block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is the block's top one, `2 ^ w - 1`.
+`starts` as in `foRBits`; the Rust test is `rust/src/cocops.rs`'s `in_band_null_is_the_flagged_top_residual`. -/
+def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
+  let b := i / blk metadata
+  let e := match starts[nblk metadata]? with | some s => s | none => blockStart metadata (nblk metadata)
+  nulAt metadata b && (foRExc metadata pack i e).isNone &&
+    resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b) (widthAt metadata b)
+      (i % blk metadata) == (2 ^ widthAt metadata b - 1).toUInt64
+
+/-- Element `i` of a nullable column, the denotation of `atom+1` in one column: `none` (the `1`) at its null
+(`foRNul`), else the raw bits `foRBits` reads. A column with no flagged block reads `some` everywhere. -/
+def foROpt (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Option UInt64 :=
+  if foRNul metadata pack starts i then none else some (foRBits metadata pack starts i)
 
 /-- Exceptions stored out of line. Read out of the alp blob's header rather than derived, `exc_off`
 being a prefix sum whose last entry is this. -/

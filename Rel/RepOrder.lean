@@ -240,6 +240,8 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es 
       · exact Obj.lt_inl_inr a b _ _
       · exact absurd hT (by decide)
       · exact absurd hT (Obj.lt_irrefl _ _)
+  | .one, _, _, es, hes, _, _, _, _, h => by
+    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys] at h
 
 /-- **`Λ`'s order law**: on a side of pairs whose columns `kasc` reads, two rows of one key whose codes
 ascend strictly hold values ascending in `Obj.lt`. -/

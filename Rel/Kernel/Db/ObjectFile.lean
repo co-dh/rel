@@ -20,11 +20,11 @@ structure OwnFile where
   domain : String
   parts : Array ByteArray
 
-/-- `own.rs`'s `OWN_NPARTS`: the part count of each constructor kind (2 foR, 4 enum), `none` for a number that
+/-- `own.rs`'s `OWN_NPARTS`: the part count of each constructor kind (2 foR, 4 enum, 5 a side of `1`: its count and no part), `none` for a number that
 is no kind: 0 `bytes` and 3 `alp` were removed in version 5, 1 was the bitmap; the others keep their numbers. -/
-def ownNParts : List (Option Nat) := [none, none, some 2, none, some 2]
+def ownNParts : List (Option Nat) := [none, none, some 2, none, some 2, some 0]
 
-/-- The kinds with their part counts as both refusals name them, `2:2 or 4:2` (`own.rs`'s `Kinds`). -/
+/-- The kinds with their part counts as both refusals name them, `2:2, 4:2 or 5:0` (`own.rs`'s `Kinds`). -/
 def ownKinds : String :=
   match (ownNParts.zipIdx.filterMap fun (n, k) => n.map (s!"{k}:{·}")).reverse with
   | [] => ""

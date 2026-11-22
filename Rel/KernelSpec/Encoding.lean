@@ -340,7 +340,7 @@ theorem foRMeta_size (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 
   simp only [← Array.foldl_toList, ByteArray.size_append, s1, s2, s3, s4, s6, sT]; omega
 
 theorem foRMeta_reads (lg : Nat) (hlg : lg < 2 ^ 64) (nul : UInt64) (sumn : Nat)
-    (bs : Array (UInt64 × UInt64 × UInt64 × Nat)) (hw : ∀ b (h : b < bs.size), bs[b].2.2.2 < 256) :
+    (bs : Array (UInt64 × UInt64 × UInt64 × Nat)) (hw : ∀ b (h : b < bs.size), bs[b].2.2.2 < 128) :
     Column.nblk (Kernel.Coc.foRMeta lg nul sumn bs) = bs.size ∧ Column.lgAt (Kernel.Coc.foRMeta lg nul sumn bs) = lg ∧
     ∀ b (h : b < bs.size), Column.baseAt (Kernel.Coc.foRMeta lg nul sumn bs) b = bs[b].1 ∧
       Column.widthAt (Kernel.Coc.foRMeta lg nul sumn bs) b = bs[b].2.2.2 := by
@@ -382,7 +382,7 @@ theorem foRMeta_reads (lg : Nat) (hlg : lg < 2 ^ 64) (nul : UInt64) (sumn : Nat)
     rw [Nat.mul_comm b 8, Column.bitsAt_congr _ _ (8 * b) 8 (fun k hk => ?_), g1 b hb]
     · simp only [Nat.reduceMul, ofNat_toNat_mod64]; simp
     repeat rw [ba_append_left _ _ _ (by simp only [ByteArray.size_append, s1, s2, s3, s4, sT]; omega)]
-  · unfold Column.widthAt
+  · unfold Column.widthAt Column.widthByte
     rw [hn]
     unfold Kernel.Coc.foRMeta
     simp only [← Array.foldl_toList]
@@ -525,6 +525,22 @@ theorem foRBits_of (M P : ByteArray) (i : Nat) (B : Nat) (hB : Column.blk M = B)
   rw [hx]
   simp only [hf, blockStarts_get M hb, h2, h3]
   rw [resAt_packRes (Column.blk M) wd (blk_dvd8 M) hwd R P _ h4 _ (Nat.mod_lt _ (blk_pos M))]
+
+/-- **A flagged block's top residual reads as the null**: element `i` of a block `nulAt` flags, held by no patch, whose
+residual is `2 ^ w - 1` (`w` the block's `widthAt`), reads `none`, the `1` of `atom+1`. -/
+theorem foROpt_top (M P : ByteArray) (st : Array Nat) (i : Nat) (hf : Column.nulAt M (i / Column.blk M))
+    (hx : Column.foRExc M P i
+      (match st[Column.nblk M]? with | some s => s | none => Column.blockStart M (Column.nblk M)) = none)
+    (hr : Column.resAt P (match st[i / Column.blk M]? with | some s => s | none => Column.blockStart M (i / Column.blk M))
+      (Column.widthAt M (i / Column.blk M)) (i % Column.blk M) = (2 ^ Column.widthAt M (i / Column.blk M) - 1).toUInt64) :
+    Column.foROpt M P st i = none := by
+  simp only [Column.foROpt, Column.foRNul, hf]; simp; exact ⟨hx, hr⟩
+
+/-- An unflagged block reads as before: every element of a block `nulAt` does not flag is `some` of its `foRBits`, so a
+column with no flagged block keeps its denotation. -/
+theorem foROpt_plain (M P : ByteArray) (st : Array Nat) (i : Nat) (hf : Column.nulAt M (i / Column.blk M) = false) :
+    Column.foROpt M P st i = some (Column.foRBits M P st i) := by
+  simp [Column.foROpt, Column.foRNul, hf]
 
 theorem unbias_add (w mn k : Nat) (h : mn ≤ k) :
     Kernel.Coc.unbias w mn + (k - mn).toUInt64 = Kernel.Coc.unbias w k := by

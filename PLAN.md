@@ -1110,6 +1110,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   层就是 foR 编号，字典是 Rel 层旁边的一张表 `ℕ ⟶ [C]`（rel-architecture §0.2），不是 `Enc` 的字段，在 ALP 之后做；
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
+  - 🔄 `nullband2`：`Obj.one`（`El = Unit`，不存列）已加，单元素对象 elaborate 成它；CSV 可空列 4 部分 → 3（去掉 null
+    payload）。`1` 的一边与其他边一样有 own 文件（kind 5：头里的行数，0 个 part；`Plan.cols` 给出 `.inl n`），
+    顶层 `.one` 或 `A×1` 从 own 文件读回时过 `same`。`nullband4`：生成代码里 `1` 的一边是 `Gen.oneV n`；
+    `Vals.gather` 在 `.one` 上 gather 位置列 `.pos` 再丢掉，越界的下标照样报错；CSV 里 `1` 的一列是它唯一元素的名字
+    （long 列，code 0），`S+1` 的右边 `1` 不占列、行数是 null 行数（`tagCount`）；`Arr.opt`：按 `foRNul` 把元素读成
+    `Option`。剩：`Vals (.sum (.atom t) .one)` 改成一列带内 null（`Vals`、`row`、`rowsImpl`、`gather`、`concat`、
+    `cols`、`pack`、`readVals`/`encVals`、CSV 各加一支，`RepCanon`/`RepCols`/`RepTabDiv`/`GenKBits` 里每个对
+    `.sum a b` 的归纳都要先分出这一支）、可空 foR 写入器（新 extern，Lean 体 = Rust）、kernel 判 null、
+    CSV 可空列 3 部分 → 1、decode-allow 收缩。
+- 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
+  foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
+  foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
 - ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
   盒子，`t`、`n` 在类型参数里已有又存一遍；`attr` 只有 2 处读；`QValue` 的 `dict table keyed slices func err enum`
   只在 `Kernel.Value`、`Run.ValEq` 用；own 文件头的 `attr`、`domain` 写了没人读。去掉 `QValue` 盒子与 `general`

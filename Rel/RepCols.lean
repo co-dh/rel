@@ -809,6 +809,7 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
       · rename_i hc; rw [dif_neg hc] at gt; rw [← gt, hb]; rfl
+  | .one, _, _, _, _, _, _, _, _, _, _, c => by split <;> rfl
 
 /-! ## Checks: CONCAT keeps every stored word -/
 

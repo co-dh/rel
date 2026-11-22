@@ -1,6 +1,7 @@
 Rel.Alg.tagBits
 Rel.Arr.get
 Rel.Arr.of
+Rel.Arr.opt
 Rel.Arr.toList
 Rel.Ew.bitBits
 Rel.Ew.cmpBits

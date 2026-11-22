@@ -65,6 +65,16 @@ theorem get_ne (x : Arr t n) (i : Fin n.toNat) (h : t ≠ .general) :
     x.get i = ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default := by
   cases t <;> first | exact absurd rfl h | rfl
 
+/-- Element `i` read as `t+1` (owner decision K): `none` where it is the in-band null, tested on the encoding and never
+    decoded (`Column.foRNul`: a flagged block's top residual held by no patch, an ALP column's integer pack read the
+    same where no ALP exception holds `i`), else `some` of `get`. A column with no flagged block is `some` everywhere. -/
+def opt (x : Arr t n) (i : Fin n.toNat) : Option (El t) :=
+  let nul := match x.enc with
+    | .foR m p => Column.foRNul m p #[] i
+    | .alp m p a => (Column.alpExcAt m a (i / Column.blk m) (i % Column.blk m)).isNone && Column.foRNul m p #[] i
+    | _ => false
+  if nul then none else some (x.get i)
+
 /-- The elements in position order, for proofs only. -/
 def toList (x : Arr t n) : List (El t) := List.ofFn x.get
 
@@ -491,6 +501,8 @@ inductive Obj
   | prod (a b : Obj)
   | arr (b : Obj)
   | sum (a b : Obj)
+  /-- The unit (terminal) object `1`: one value, so a side of it stores nothing. -/
+  | one
 
 instance : Coe QAtomicType Obj := ⟨.atom⟩
 
@@ -504,6 +516,7 @@ instance : Coe QAtomicType Obj := ⟨.atom⟩
   | .prod a b => a.El × b.El
   | .arr b => List b.El
   | .sum a b => Sum a.El b.El
+  | .one => Unit
 
 /-- The element a row reads where its side holds no value at all (a side of `0` values), the one position no
     clamp can land in: what a gather past the side reads — an atom's `default` (q's null), an empty array, a
@@ -513,6 +526,7 @@ def Obj.dflt : (A : Obj) → A.El
   | .prod a b => (a.dflt, b.dflt)
   | .arr _ => []
   | .sum a _ => .inl a.dflt
+  | .one => ()
 
 /-- `n` values of `A`, one column per atom, side by side (struct of arrays): nothing boxed. A `arr b`
     column is one flat payload of `m` values of `b` and two long columns `lo`, `hi`: row `i` is the slice
@@ -524,6 +538,7 @@ def Obj.dflt : (A : Obj) → A.El
   | .prod a b, n => Vals a n × Vals b n
   | .arr b, n => (m : USize) × Arr .i64 n × Arr .i64 n × Vals b m
   | .sum a b, n => (l : USize) × (r : USize) × Arr .u1 n × Arr .i64 n × Vals a l × Vals b r
+  | .one, _ => Unit
 
 /-- The position `k` clamped into `[0, m)`: the nearest position of a side of `m > 0` values. -/
 def clampFin (k : Int64) (m : Nat) (h : 0 < m) : Fin m :=
@@ -541,6 +556,7 @@ def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
   | .sum a b, _, ⟨l, r, tag, idx, x, y⟩, i =>
     if tag.get i then .inr (if h : 0 < r.toNat then Vals.row y (clampFin (idx.get i) r.toNat h) else b.dflt)
     else .inl (if h : 0 < l.toNat then Vals.row x (clampFin (idx.get i) l.toNat h) else a.dflt)
+  | .one, _, _, _ => ()
 
 -- Kept with no caller: an atom side's row is the `Arr`'s element, the `List` reading of a side.
 @[simp] theorem Vals.row_atom {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin n.toNat) :
@@ -561,6 +577,7 @@ private def Vals.rowsImpl : {A : Obj} → {n : USize} → Vals A n → Array A.E
     Array.ofFn (n := n.toNat) fun i =>
       if tag.get i then .inr (ys[min (idx.get i).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
       else .inl (xs[min (idx.get i).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
+  | .one, n, _ => Array.replicate n.toNat ()
 
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
     one column per atom of a product side, so `B×C` stored as two columns IS one side of pairs. -/

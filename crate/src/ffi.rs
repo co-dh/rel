@@ -113,7 +113,7 @@ impl CEnc {
     /// called, so it is called after block `b`'s meta step.
     unsafe fn stage<'a>(&'a self, b: usize, nb: usize, st: &'a mut Staged) -> impl FnOnce(bool) -> EncPack<'a> + 'a {
         move |whole| unsafe {
-            let (w, ne) = (*self.c.width.add(b), *self.exc_off.add(b + 1) as usize);
+            let (w, ne) = (*self.c.width.add(b) & crate::coc::WIDTH_MASK, *self.exc_off.add(b + 1) as usize);
             *st = Staged { res: alloc::vec![0; (1usize << self.c.lg()) * w as usize / 8], pos: alloc::vec![0; ne], raw: alloc::vec![0; (ne * self.width).div_ceil(8)] };
             self.pack_at(b, nb, whole, st.res.as_mut_ptr(), st.pos.as_mut_ptr(), st.raw.as_mut_ptr().cast(), ne)
         }
@@ -301,7 +301,7 @@ unsafe extern "C" fn sink_run(b0: usize, b1: usize, p: *const CPass) {
             let (lo, nb) = job.g.span(b);
             (job.step)(s, b, lo, nb, crate::pod::bytes_mut(&mut buf));
             if !job.sized { continue }
-            mine += enc::block_bytes(lg, *(*s).c.width.add(b), *(*s).exc_off.add(b + 1), width);
+            mine += enc::block_bytes(lg, *(*s).c.width.add(b) & crate::coc::WIDTH_MASK, *(*s).exc_off.add(b + 1), width);
             if (b - b0) % 16 == 15 {
                 if lb.fetch_add(mine, SeqCst) + mine >= (*s).below { over.store(1, SeqCst) }
                 mine = 0;
@@ -455,7 +455,7 @@ mod sink_tests {
                 for (b, lo, nb) in s.walk() {
                     let pc = (lo..lo + nb).filter(|&i| p(i)).count();
                     let mixed = pc != 0 && pc != nb;
-                    assert_eq!((c.meta.width[b], c.meta.base[b], c.meta.maxv[b], c.meta.bsum[b]), (mixed as u8, (pc == nb) as i64, (pc != 0) as i64, pc as i64), "n {n} pattern {k} block {b}");
+                    assert_eq!((c.meta.w(b), c.meta.base[b], c.meta.maxv[b], c.meta.bsum[b]), (mixed as u8, (pc == nb) as i64, (pc != 0) as i64, pc as i64), "n {n} pattern {k} block {b}");
                     let mut x = alloc::vec![0u8; nb];
                     s.load(b, nb, &mut x);
                     assert!(x.iter().enumerate().all(|(j, &v)| v == p(lo + j) as u8), "n {n} pattern {k} block {b}");

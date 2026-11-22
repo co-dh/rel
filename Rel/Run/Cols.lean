@@ -137,5 +137,6 @@ def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → 
       let R ← Vals.catSummand n off true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m o x y => Vals.concat m o x y
       pure ⟨L.1, R.1, ← Arr.concat n off tag₁ tag₂, ← Arr.pos n, L.2, R.2⟩
     else .error s!"concat: a sum side of {n} rows, past an Int64 position"
+  | .one, _, _, _, _, _, _ => pure ()
 
 end Rel
