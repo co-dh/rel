@@ -4,7 +4,6 @@
 #let c-run = rgb("#2e7d4f")   // run-time / compiler
 #let c-rs  = rgb("#b5541c")   // Rust
 #let ink   = rgb("#222831")
-#let soft(c) = c.lighten(88%)
 
 #set document(title: "Tm 最小化设计")
 #set page(width: 25.2cm, height: 29.7cm, margin: (x: 1.8cm, y: 1.6cm), fill: rgb("#fcfbf8"),
@@ -24,16 +23,7 @@
 #show heading.where(level: 2): set text(12pt, fill: c-sem)
 #set list(marker: text(fill: c-syn)[▸])
 
-// striped table with a coloured header; an `auto` column is its widest cell, capped at 28% of the width
-#let tbl(color, cols, head, ..cells) = layout(size => table(
-  columns: cols.enumerate().map(((i, c)) => if c != auto { c } else {
-    let w = calc.max(..(head.at(i), ..cells.pos().enumerate().filter(((k, _)) => calc.rem(k, cols.len()) == i)
-      .map(((_, x)) => x)).map(x => measure(x).width)) + 12pt
-    calc.min(w, 0.28 * size.width) }),
-  stroke: none, inset: (x: 6pt, y: 4.5pt),
-  fill: (_, y) => if y == 0 { color } else if calc.even(y) { soft(color) } else { white },
-  table.header(..head.map(h => text(fill: white, weight: "bold", font: "Noto Sans CJK SC", h))),
-  ..cells, table.hline(stroke: 0.8pt + color)))
+#import "tbl.typ": tbl, soft
 #let card(color, title, body) = block(width: 100%, fill: soft(color), stroke: (left: 3pt + color),
   inset: 9pt, radius: (right: 4pt))[#text(weight: "bold", fill: color, font: "Noto Sans CJK SC", title) \ #body]
 
