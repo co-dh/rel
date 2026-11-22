@@ -230,7 +230,7 @@ theorem keep_holds {A B : Obj} {T U : Tab A B} {b : Enc} (h : T.keep b = .ok U)
     exact ⟨⟨j, hjM⟩, hx1, hy2⟩
 
 /-- **`R.concat S` denotes `R ∪ S`**, rows counted with repeats. -/
-theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (a : k.El) (b : v.El) :
+theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
     C.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
   unfold Tab.concat at h
   simp only [bind, Except.bind, pure, Except.pure] at h
@@ -243,8 +243,8 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (a : k.El) (b : 
   rename_i V hV
   cases h
   obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK
-  have rv := Vals.concat_row hn hoff R.val S.val hV
+  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨c, ha, hb⟩
@@ -261,12 +261,43 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (a : k.El) (b : 
       · rw [rv, dif_neg (by simp)]; simpa using hb
 
 /-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
-theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (a : k.El) (b : v.El) :
+theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
     U.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
   unfold Tab.union at h
   cases hc : R.concat S with
   | error s => simp [hc, bind, Except.bind] at h
-  | ok C => simp only [hc, bind, Except.bind] at h; rw [canon_holds h, concat_holds hc]
+  | ok C => simp only [hc, bind, Except.bind] at h; rw [canon_holds h, concat_holds hc hR hS]
+
+end Tab
+
+set_option hygiene false in
+/-- `h : x = .ok t` split through its binds and matches: each error branch closed, each other one kept. -/
+macro "okSplit" : tactic => `(tactic| repeat' (split at h <;> try (cases h; done)))
+
+namespace Tab
+
+/-- **`keep` keeps `Tab.WF`**: both sides gathered. -/
+theorem keep_wf {T t : Tab k v} {b : Enc} (h : T.keep b = .ok t) (hT : T.WF) : t.WF := by
+  simp only [Tab.keep, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  cases h; exact ⟨Vals.gather_wf ‹_› hT.1, Vals.gather_wf ‹_› hT.2⟩
+
+/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catPlan`'s count and offsets). -/
+theorem concat_wf {R S t : Tab k v} (h : R.concat S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.concat, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i p hp
+  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (p.1, p.2) from hp)
+  split at h; · cases h
+  rename_i x hx; split at h; · cases h
+  rename_i y hy; cases h
+  exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
+
+/-- **`∪` keeps `Tab.WF`**: `canon` of the concatenation. -/
+theorem union_wf {R S t : Tab k v} (h : R.union S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.union, bind, Except.bind] at h
+  split at h; · cases h
+  exact canon_wf h (concat_wf ‹_› hR hS)
 
 /-- **`R.canon` is sorted and duplicate-free**: `Vals.nub_sorted` of its pair side, the rows of `U` being rows `sel j`
 of `R`, ascending in `kasc`'s order of their codes, no two with equal codes. -/
@@ -351,7 +382,7 @@ theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) 
     simp [e]
 
 /-- **`R.concat S` row by row**: its rows below `R.n` are `R`'s, from there `S`'s. -/
-theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : v.El} :
+theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS : S.WF) {a : k.El} {b : v.El} :
     ((∃ c : Fin C.n.toNat, c.1 < R.n.toNat ∧ C.key.row c = a ∧ C.val.row c = b) ↔ R.Holds a b) ∧
       ((∃ c : Fin C.n.toNat, R.n.toNat ≤ c.1 ∧ C.key.row c = a ∧ C.val.row c = b) ↔ S.Holds a b) := by
   unfold Tab.concat at h
@@ -365,8 +396,8 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : 
   rename_i V hV
   cases h
   obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK
-  have rv := Vals.concat_row hn hoff R.val S.val hV
+  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩⟩
   · rintro ⟨c, hl, ha, hb⟩
@@ -581,7 +612,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         κ ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)))
-    {R S U : Tab k v} (h : select keep R S = .ok U) :
+    {R S U : Tab k v} (h : select keep R S = .ok U) (hR : R.WF) (hS : S.WF) :
     (∀ a b, U.Holds a b ↔ (R.Holds a b ∨ S.Holds a b) ∧ κ (R.Holds a b) (S.Holds a b)) ∧
     ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
       ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
@@ -598,7 +629,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hn := C.n.toNat_lt_size
   obtain ⟨hcat, hCn, htsz, htag⟩ := tagged_ok hCt
-  have hsplit := fun (a : k.El) (b : v.El) => concat_split hcat (a := a) (b := b)
+  have hsplit := fun (a : k.El) (b : v.El) => concat_split hcat hR hS (a := a) (b := b)
   -- the sorted rows: `ps`, and the sorted rows' keys are the input's at `ps`
   obtain ⟨ps, hp, hperm, hvl, hcol⟩ := asc_perm _ _ _ _ hvp
   obtain ⟨cs, hc, -⟩ := kasc_ok hvp
@@ -784,7 +815,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     have hpsg := asc_perm_grade hvp hp hperm
     subst hF hpsg
     exact Verify.firsts_sorted hkey hGG e e'
-  have hCH := concat_holds hcat a b
+  have hCH := concat_holds hcat hR hS a b
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, ha, hb⟩
@@ -854,19 +885,19 @@ theorem inter_keep (M : USize) (mn mx o : Enc) (ho : colMap .lt M mn mx = .ok o)
     (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
 
 /-- **`R.inter S` denotes `R ∩ S`**: `select` keeping the groups with `and < or`, a row of each. -/
-theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (a : k.El) (b : v.El) :
+theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
     U.Holds a b ↔ R.Holds a b ∧ S.Holds a b := by
-  rw [(select_ok (κ := (· ∧ ·)) inter_keep h).1 a b]
+  rw [(select_ok (κ := (· ∧ ·)) inter_keep h hR hS).1 a b]
   exact ⟨fun h => h.2, fun h => ⟨.inl h.1, h⟩⟩
 
 /-- **`R.inter S` is sorted and duplicate-free**, in `Tab.canon_sorted`'s form over `R.concat S` (`select_ok`). -/
-theorem inter_sorted {R S U : Tab k v} (h : R.inter S = .ok U) :
+theorem inter_sorted {R S U : Tab k v} (h : R.inter S = .ok U) (hR : R.WF) (hS : S.WF) :
     ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
       ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
         (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
         ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
           seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') :=
-  (select_ok (κ := (· ∧ ·)) inter_keep h).2
+  (select_ok (κ := (· ∧ ·)) inter_keep h hR hS).2
 
 /-- `diff`'s `keep`, `not` of the `or` (`colMap .not`), is `1` exactly where a group holds no row of `S`. -/
 theorem diff_keep (M : USize) (mn mx o : Enc) (ho : colMap .not M mx mx = .ok o) :
@@ -883,29 +914,29 @@ theorem diff_keep (M : USize) (mn mx o : Enc) (ho : colMap .not M mx mx = .ok o)
     (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
 
 /-- **`R.diff S` denotes `R − S`**: `select` keeping the groups with `or = 0`, no row of `S`. -/
-theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (a : k.El) (b : v.El) :
+theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
     U.Holds a b ↔ R.Holds a b ∧ ¬S.Holds a b := by
-  rw [(select_ok (κ := fun _ s => ¬s) diff_keep h).1 a b]
+  rw [(select_ok (κ := fun _ s => ¬s) diff_keep h hR hS).1 a b]
   exact ⟨fun h => ⟨h.1.resolve_right h.2, h.2⟩, fun h => ⟨.inl h.1, h.2⟩⟩
 
 /-- **`R.diff S` is sorted and duplicate-free**, in `Tab.canon_sorted`'s form over `R.concat S` (`select_ok`). -/
-theorem diff_sorted {R S U : Tab k v} (h : R.diff S = .ok U) :
+theorem diff_sorted {R S U : Tab k v} (h : R.diff S = .ok U) (hR : R.WF) (hS : S.WF) :
     ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
       ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
         (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
         ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
           seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') :=
-  (select_ok (κ := fun _ s => ¬s) diff_keep h).2
+  (select_ok (κ := fun _ s => ¬s) diff_keep h hR hS).2
 
 /-- **`R.le S` answers `R ⊑ S`**: `R.diff S` has no row iff every pair of `R` is one of `S` (`diff_holds`). -/
-theorem le_holds {R S : Tab k v} {r : Bool} (h : R.le S = .ok r) : r = true ↔ ∀ a b, R.Holds a b → S.Holds a b := by
+theorem le_holds {R S : Tab k v} {r : Bool} (h : R.le S = .ok r) (hR : R.WF) (hS : S.WF) : r = true ↔ ∀ a b, R.Holds a b → S.Holds a b := by
   unfold Tab.le at h
   cases hd : R.diff S with
   | error s => simp [hd, Functor.map, Except.map] at h
   | ok D =>
     simp only [hd, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have hD := diff_holds hd
+    have hD := diff_holds hd hR hS
     rw [beq_iff_eq, ← USize.toNat_inj, USize.toNat_zero]
     constructor
     · intro h0 a b hR; refine Classical.byContradiction fun hS => ?_
@@ -963,7 +994,7 @@ private def arrPay₂ : List Int64 := [9, 5, 1, 5]
   let As := [P arrCells arrPay [0, 1, 0, 0, 2] rfl, P arrCells₂ arrPay₂ [0, 1, 1, 1] rfl, P [] [] [] rfl]
   As.all fun R => As.all fun S => setOk R S
 #guard let As := [arrOn arrCells (arrTab arrCells₂ arrPay₂).key, arrOn arrCells₂ (arrTab arrCells arrPay).key,
-    arrOn [(0, 2, 1)] (arrTab [] arrPay).key]
+    arrOn [(0, 0, 1)] (arrTab [] arrPay).key]
   As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
 
 /-- Sum rows `(tag, position, value)`: left payload positions holding one value, a clamped position `5`. -/
