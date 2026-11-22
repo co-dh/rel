@@ -97,6 +97,17 @@ def parityModel (op : Op) (m : Nat) : Option (List UInt64) :=
 #guard parityModel .last 1025 == some [1024, 1023]
 #guard view (kscatter .last (u 1025) (parity 1025) .pos (u 2) 0) == enc8 [1024, 1023]
 
+-- an `e` with patches (every 97th word an outlier `k * 2 ^ 30`) into 5000 cells, the answer and both arguments
+-- several blocks: indices out of order with repeats, a permutation, and a sparse one; the Lean side `scatterWords` run
+-- compiled under each op, the Rust beside it
+def patchedE (m : Nat) : Array UInt64 :=
+  (Array.range m).map fun k => (1000 + k * 31 % 777 + if k % 97 = 5 then k * 2 ^ 30 else 0).toUInt64
+def idxs : List (Array UInt64) := [(Array.range 4000).map fun k => (k * 7919 % 900 + k % 3 * 1500).toUInt64,
+  (Array.range 5000).map fun k => (k * 2654435761 % 5000).toUInt64, (Array.range 40).map fun k => (k * 117).toUInt64]
+#guard idxs.all fun is => [Op.last, .add, .sub, .min, .first].all fun op =>
+  view (kscatter op (USize.ofNat is.size) (col is.toList) (col (patchedE is.size).toList) (u 5000) 9) ==
+    view (wordsFoR <$> scatterWords op is (patchedE is.size) 5000 9)
+
 -- `last`, each group's last row in group order: the positions scattered to `kseen`'s `g` under `.last`. `A B B` (in
 -- `kasc` order, as `kseen` takes it) has `g = 0 1 1` (2 groups), so `last = 0 2`
 def lastABB : Except String Enc := do
