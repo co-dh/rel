@@ -2,7 +2,12 @@
   `(μX : φX)` and `(νX : φX)` on a hom-set of relations (B&dM Theorem 6.1), defined for every `φ`: a fixed point
   when `φ` is monotonic. The one copy of the fixed points Rel proper uses; `Gen.mu`, `Gen.nu` compute them.
 -/
-import Rel.Core.Rel
+module
+
+public import Rel.Core.Rel
+
+-- exposed: `mu`/`nu` are unfolded by `Gen.mu`, `Gen.nu` and the denotation proofs that import them
+@[expose] public section
 
 namespace Rel.Core.Rel
 
@@ -112,3 +117,5 @@ theorem star_keyOf {ι : Type} (F : ι → Rel α α) :
   exact mu_keyOf (hm _) (fun i => hm _) fun G => by rw [comp_keyOf, id_keyOf, union_keyOf]
 
 end Rel.Core.Rel
+
+end

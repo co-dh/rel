@@ -3,6 +3,10 @@
   allegory operators of `Rel(Set)` defined on it pointwise. No class: Rel proper is about this one model, and
   `LeetQ.Aop` ties each definition to the field of freyd's `RelSet` instance by `rfl`. Imports only the toolchain.
 -/
+module
+
+-- exposed: the bodies are the interface, unfolded by every importer and by freyd's `rfl` bridge
+@[expose] public section
 
 namespace Rel.Core
 
@@ -153,3 +157,5 @@ theorem modular (R : Rel α β) (S : Rel β γ) (T : Rel α γ) : (R ≫ S) ∩ 
 end Rel
 
 end Rel.Core
+
+end
