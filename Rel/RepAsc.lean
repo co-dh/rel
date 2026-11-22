@@ -69,9 +69,9 @@ namespace Lang.GenK
 /-- A row whose table is made from its relation's whole table (`ofRel`) represents `Y` when `f` makes a table of
 meaning `Y` from one of meaning `X`. -/
 theorem ofRel_sound {A B C D : Obj} {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El}
-    {f : Tab A B → Except String (Tab C D)} {Y : Core.Rel C.El D.El} (hR : ∀ K, R.Reps K X)
-    (hf : ∀ r t, f r = .ok t → rep r = X → rep t = Y) : ∀ K, (GenK.ofRel A B C D d R f).Reps K Y :=
-  lift1_sound hR fun _ r t ht hr => by rw [hf r t ht (agrees_empty hr).symm]; exact fun _ _ _ _ _ => Iff.rfl
+    {f : Tab A B → Except String (Tab C D)} {Y : Core.Rel C.El D.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hf : ∀ r t, f r = .ok t → rep r = X → rep t = Y) : ∀ K, K.WF → (GenK.ofRel A B C D d R f).Reps K Y :=
+  lift1_sound (fun _ _ => Known.wf_empty) hR fun _ r t ht hr => by rw [hf r t ht (agrees_empty hr).symm]; exact fun _ _ _ _ _ => Iff.rfl
 
 end Lang.GenK
 

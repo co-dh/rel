@@ -27,13 +27,13 @@ def Code.Wf (η : Code) : Prop := (∀ k A B, (η k A B).Wf) ∧ ∀ x ∈ η.sh
 
 /-- The code environment `η` represents the meaning environment `ρ`, at every variable and object, in every
     context, and every bit matrix it holds is `Rel.Wf`. -/
-def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, (η k A B).Reps K (ρ k A B)) ∧ η.Wf
+def Sound (η : Code) (ρ : Val) : Prop := (∀ k A B K, K.WF → (η k A B).Reps K (ρ k A B)) ∧ η.Wf
 
 /-- The slot `k` of the table `σ` at `A ⟶ B`, where it has one, represents the meaning of the closed part `R`
     numbered `k`: what `Tm.gen_sound` asks at each `share k R` (`Tm.GenHyp`), since a slot is computed once, apart
     from the terms that read it (`Code.shares`). -/
 def Codes.Shares (σ : Codes) {A B : Obj} (k : Nat) (R : Tm A B) : Prop :=
-  ∀ r, σ.at k A B = some r → ∀ K, r.Reps K (R.den Val.empty)
+  ∀ r, σ.at k A B = some r → ∀ K, K.WF → r.Reps K (R.den Val.empty)
 
 /-- A slot of a table of `Wf` codes is `Wf`. -/
 theorem Codes.at_wf {xs : Codes} (hw : ∀ x ∈ xs, x.2.2.Wf) {i : Nat} {X Y : Obj} {r : Rel X Y}
@@ -54,7 +54,7 @@ theorem Code.args_sh (η : Code) : ∀ (ks : List Nat) (xs : Codes), (Code.args 
 /-- `η` with `k` bound to a `Wf` code `r` that represents `X` represents `ρ` with `k` bound to `X`: a fixed point's
     round (`GenK.const` of its table) or a call's argument (`Sound.args`). -/
 theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Obj} {r : Rel A B} {X : Den A B}
-    (hr : ∀ K, r.Reps K X) (hw : r.Wf) : Sound (η.bind k r) (ρ.bind k X) := by
+    (hr : ∀ K, K.WF → r.Reps K X) (hw : r.Wf) : Sound (η.bind k r) (ρ.bind k X) := by
   refine ⟨fun j A' B' K => ?_, fun j A' B' => ?_, hs.2.2⟩
   · by_cases hj : j = k
     · simp only [Code.bind, Val.bind, hj, if_true]
@@ -76,7 +76,7 @@ theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Ob
     environment sound; then `Tm.gen_sound` of an output's term gives that its table represents its meaning. -/
 theorem Sound.inputs {η : Code} {ρ : Val} (hs : Sound η ρ) :
     ∀ bs : List (Nat × (A : Obj) × (B : Obj) × (Rel A B × Den A B)),
-      (∀ b ∈ bs, (∀ K, b.2.2.2.1.Reps K b.2.2.2.2) ∧ b.2.2.2.1.Wf) →
+      (∀ b ∈ bs, (∀ K, K.WF → b.2.2.2.1.Reps K b.2.2.2.2) ∧ b.2.2.2.1.Wf) →
       Sound (bs.foldl (fun η b => η.bind b.1 b.2.2.2.1) η) (bs.foldl (fun ρ b => ρ.bind b.1 b.2.2.2.2) ρ)
   | [], _ => hs
   | b :: bs, h => Sound.inputs (hs.bind b.1 (h b (.head _)).1 (h b (.head _)).2) bs fun c hc => h c (.tail _ hc)
@@ -150,8 +150,8 @@ theorem Tm.genHyp_kids {P : {A B : Obj} → Nat → Tm A B → Prop} (k : Nat) (
 
 namespace GenK
 
-theorem memo_sound {A B : Obj} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, R.Reps K X) :
-    ∀ K, (GenK.memo A B R).Reps K X := fun K => by
+theorem memo_sound {A B : Obj} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+    ∀ K, K.WF → (GenK.memo A B R).Reps K X := fun K => by
   cases R with
   | tab t => exact hR K
   | lazy f =>
@@ -169,11 +169,11 @@ theorem memo_wf {A B : Obj} {R : Rel A B} (h : R.Wf) : (GenK.memo A B R).Wf := b
 
 end GenK
 
-theorem Tm.code_of {η : Code} {A B : Obj} {t : Tm A B} {X : Core.Rel A.El B.El} (h : ∀ K, (t.gen η).Reps K X) :
-    ∀ K, (t.code η).Reps K X := by
+theorem Tm.code_of {η : Code} {A B : Obj} {t : Tm A B} {X : Core.Rel A.El B.El} (h : ∀ K, K.WF → (t.gen η).Reps K X) :
+    ∀ K, K.WF → (t.code η).Reps K X := by
   unfold Tm.code
   -- the condition held abstract: `split` would split the `matches` inside it
-  suffices ∀ (c : Prop) [Decidable c], ∀ K, (if c then GenK.memo A B (t.gen η) else t.gen η).Reps K X from this _
+  suffices ∀ (c : Prop) [Decidable c], ∀ K, K.WF → (if c then GenK.memo A B (t.gen η) else t.gen η).Reps K X from this _
   intro c _; split
   all_goals first | exact GenK.memo_sound h | exact h
 
@@ -183,7 +183,7 @@ theorem Tm.code_of {η : Code} {A B : Obj} {t : Tm A B} {X : Core.Rel A.El B.El}
 def CodesRep : Codes → List Sem → Prop
   | [], [] => True
   | ⟨X, Y, x⟩ :: xs, ⟨X', Y', T⟩ :: ss =>
-    (if h : X' = X ∧ Y' = Y then ∀ K, x.Reps K (h.1 ▸ h.2 ▸ T) else False) ∧ CodesRep xs ss
+    (if h : X' = X ∧ Y' = Y then ∀ K, K.WF → x.Reps K (h.1 ▸ h.2 ▸ T) else False) ∧ CodesRep xs ss
   | _, _ => False
 
 /-- `Wf` codes `xs` that represent `ss`, bound at `ks`, represent `ss` bound at `ks`: what a call's body is built
@@ -204,7 +204,7 @@ theorem Sound.args {η : Code} {ρ : Val} (hs : Sound η ρ) : ∀ (ks : List Na
     takes, each `Wf`, its code is `Wf`, and represents its meaning of any `ss` that `xs` represent. -/
 def RowOK (s : String) : Prop := ∀ (r : Prim) (A B : Obj) (xs : Codes), r.sym = s → xs.length = rowArity s →
   (∀ x ∈ xs, x.2.2.Wf) → (primGen r A B xs).Wf ∧ ∀ ss, CodesRep xs ss →
-    ∀ K, (primGen r A B xs).Reps K (Prim.den r A B ss)
+    ∀ K, K.WF → (primGen r A B xs).Reps K (Prim.den r A B ss)
 
 /-- `Prim.den` and `primGen` unfolded through the `rowDens` and `rowGens` lookups: a row is `RowOK` when its
     generated code at each `σ` and `xs` is `Wf`, and at the row's objects `c.ty σ` represents its meaning `D σ ss`
@@ -214,10 +214,10 @@ theorem rowOK_args {s : String} {c : RowCode} {D : RowDen c}
     (hD : rowDens.find? (·.1.sym == s) = some ⟨c, D⟩) (hf : rowGens.lookup s = some f)
     (h : ∀ (r : Prim) σ (xs : Codes) (A B : Obj) (v : Rel A B), r.sym = s → xs.length = rowArity s →
       (∀ x ∈ xs, x.2.2.Wf) → f σ xs = some ⟨A, B, v⟩ → v.Wf ∧ ∀ ss, CodesRep xs ss →
-        ∃ hc : (c.ty σ).1 = A ∧ (c.ty σ).2 = B, ∀ K, v.Reps K (hc.1 ▸ hc.2 ▸ D σ ss)) : RowOK s := by
+        ∃ hc : (c.ty σ).1 = A ∧ (c.ty σ).2 = B, ∀ K, K.WF → v.Reps K (hc.1 ▸ hc.2 ▸ D σ ss)) : RowOK s := by
   intro r A B xs hs hn hw
   have err (e : String) (X : List Sem → Den A B) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss,
-      CodesRep xs ss → ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K (X ss) :=
+      CodesRep xs ss → ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K (X ss) :=
     ⟨trivial, fun _ _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h⟩
   unfold primGen Prim.den; rw [hs, if_neg fun h => h hn, hf, hD]
   cases hσ : r.objs A B with
@@ -239,7 +239,7 @@ theorem rowOK_args {s : String} {c : RowCode} {D : RowDen c}
 theorem rowOK_of {s : String} {c : RowCode} {D : RowDen c} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}
     (hD : rowDens.find? (·.1.sym == s) = some ⟨c, D⟩) (hf : rowGens.lookup s = some f)
     (h : ∀ (r : Prim) σ (A B : Obj) (v : Rel A B), r.sym = s → f σ [] = some ⟨A, B, v⟩ → v.Wf ∧
-      ∃ hc : (c.ty σ).1 = A ∧ (c.ty σ).2 = B, ∀ K, v.Reps K (hc.1 ▸ hc.2 ▸ D σ []))
+      ∃ hc : (c.ty σ).1 = A ∧ (c.ty σ).2 = B, ∀ K, K.WF → v.Reps K (hc.1 ▸ hc.2 ▸ D σ []))
     (h0 : rowArity s = 0 := by decide) : RowOK s :=
   rowOK_args hD hf fun r σ xs A B v hs hn _ hv => by
     cases xs with
@@ -368,7 +368,7 @@ theorem rowOK_tails : RowOK "tails" := rowOK_of (c := RowCode.tails) rfl rfl fun
 theorem GenK.after_row_sound {A B : Obj} {f : {K : Obj} → Tab K A → Except String (Tab K B)}
     {P : Core.Rel A.El B.El}
     (hf : ∀ {K : Obj} (D : Tab K A) t, f D = .ok t → ∀ k b, t.Holds k b ↔ ∃ a, D.Holds k a ∧ P a b) :
-    ∀ K, (GenK.after A B f).Reps K P :=
+    ∀ K, K.WF → (GenK.after A B f).Reps K P :=
   GenK.ofVals_row_sound fun _ X t _ h a b => by
     cases hD : Tab.idU X with
     | error e => rw [hD] at h; exact nomatch h
@@ -655,8 +655,8 @@ open Classical in
 /-- `merge(Q)`, `Expand.primE`'s fit of the row (`testAfter`, `Tab.merge`): each `(x, y)` in demand to
 `List.merge x y` under `Q`'s meaning `TQ` as the test, `Q` run on the pairs of heads it is asked about (`est`'s rule). -/
 theorem GenK.merge_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
-    (hQ : ∀ K, Q.Reps K TQ) :
-    ∀ K, (GenK.testAfter B (.prod (.arr B) (.arr B)) (.arr B) Q fun q P => Tab.merge q P).Reps K
+    (hQ : ∀ K, K.WF → Q.Reps K TQ) :
+    ∀ K, K.WF → (GenK.testAfter B (.prod (.arr B) (.arr B)) (.arr B) Q fun q P => Tab.merge q P).Reps K
       (fun p zs => zs = List.merge p.1 p.2 fun a b => decide (TQ (a, b) (a, b))) :=
   GenK.after_row_sound fun _ _ h k zs => Tab.merge_holds (fun D _ hT p hp =>
     (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl trivial)
@@ -687,8 +687,8 @@ open Classical in
 /-- `thinL(Q)`, `Expand.primE`'s fit of the row (`testVals`, `Tab.thinL`): each array in demand to `thinLDen` under
 `Q`'s meaning `TQ` as the test, `Q` run on the pairs it is asked about (`est`'s rule). -/
 theorem GenK.thinL_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
-    (hQ : ∀ K, Q.Reps K TQ) :
-    ∀ K, (GenK.testVals B (.arr B) (.arr B) Q fun q X => Tab.thinL q X).Reps K
+    (hQ : ∀ K, K.WF → Q.Reps K TQ) :
+    ∀ K, K.WF → (GenK.testVals B (.arr B) (.arr B) Q fun q X => Tab.thinL q X).Reps K
       (thinLDen fun a b => decide (TQ (a, b) (a, b))) :=
   GenK.ofVals_row_sound fun _ _ _ _ h xs w => Tab.thinL_holds (fun D _ hT p hp =>
     (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl trivial)
@@ -718,8 +718,8 @@ theorem rowOK_thinL : RowOK "thinL" := rowOK_args (c := RowCode.thinL) rfl rfl f
 /-- `Rᴵ`, `Expand.primE`'s fit of the row (`onKeys`, `Tab.flat`): the `(a', b)` of `R` at the key of each pair in
 demand, kept where `a'` is its source, `R` run on the keys in demand. -/
 theorem GenK.flat_sound {I A B : Obj} {d : Bool} {R : Rel I (.prod A B)} {X : Core.Rel I.El (Obj.prod A B).El}
-    (hR : ∀ K, R.Reps K X) :
-    ∀ K, (GenK.onKeys I A B (.prod A B) d R fun X r => Tab.flat X r).Reps K (flatDen X) :=
+    (hR : ∀ K, K.WF → R.Reps K X) :
+    ∀ K, K.WF → (GenK.onKeys I A B (.prod A B) d R fun X r => Tab.flat X r).Reps K (flatDen X) :=
   GenK.ofVals_sound fun _ _ Xs _ hK h p b hp _ _ => by
     obtain ⟨r, hr, ht⟩ := GenK.bind_ok h
     have er := (GenK.reps_iff _ _ _).1 (hR _) r hr
@@ -805,9 +805,9 @@ theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj
 /-- Every row's code given `Wf` codes is `Wf` and represents its meaning: `RowOK` where it is given as many
     relations as it takes and `rowGens` has it (`rowGens_proved`), an error table elsewhere. -/
 theorem primGen_ok (r : Prim) (A B : Obj) (xs : Codes) (hw : ∀ x ∈ xs, x.2.2.Wf) : (primGen r A B xs).Wf ∧
-    ∀ ss, CodesRep xs ss → ∀ K, (primGen r A B xs).Reps K (Prim.den r A B ss) := by
+    ∀ ss, CodesRep xs ss → ∀ K, K.WF → (primGen r A B xs).Reps K (Prim.den r A B ss) := by
   have err (e : String) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss, CodesRep xs ss →
-      ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K (Prim.den r A B ss) :=
+      ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K (Prim.den r A B ss) :=
     ⟨trivial, fun _ _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h⟩
   by_cases hn : xs.length = rowArity r.sym
   · cases hg : rowGens.lookup r.sym with
@@ -876,21 +876,21 @@ theorem Tm.gen_wf {A B : Obj} (t : Tm A B) :
 /-- `Tm.gen_sound` with its spine half: a spine given codes `xs` that are `Wf` and represent `ss` generates code
     that represents its meaning of `ss` (`Tm.argGen`, `Tm.argDen`). -/
 theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
-    (∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+    (∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, K.WF → (t.gen η).Reps K (t.den ρ)) ∧
     ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem),
       t.GenHyp η.sh.Shares → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
-        ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) := by
+        ∀ K, K.WF → (t.argGen η xs).Reps K (t.argDen ρ ss) := by
   -- strong induction on `Tm.size`: a `hylo`'s children's term (`Tm.kids`) is no subterm, only no larger than its body
   suffices H : ∀ n {A B : Obj} (t : Tm A B), t.size ≤ n →
-      (∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ)) ∧
+      (∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, K.WF → (t.gen η).Reps K (t.den ρ)) ∧
       ∀ (η : Code) (ρ : Val) (xs : Codes) (ss : List Sem),
         t.GenHyp η.sh.Shares → Sound η ρ → (∀ x ∈ xs, x.2.2.Wf) → CodesRep xs ss →
-          ∀ K, (t.argGen η xs).Reps K (t.argDen ρ ss) from H _ t (Nat.le_refl _)
+          ∀ K, K.WF → (t.argGen η xs).Reps K (t.argDen ρ ss) from H _ t (Nat.le_refl _)
   -- a fixed point's round binds its variable to its table (`Sound.bind`)
-  have hconst {A B : Obj} (Y : Tab A B) : ∀ K, (GenK.const A B (.ok Y)).Reps K (rep Y) :=
+  have hconst {A B : Obj} (Y : Tab A B) : ∀ K, K.WF → (GenK.const A B (.ok Y)).Reps K (rep Y) :=
     fun _ => (GenK.reps_iff _ _ _).2 fun t ht x y _ _ _ => by cases ht; exact Iff.rfl
   -- an error table runs to no table, so it represents every meaning
-  have herr {A B : Obj} (e : String) (X : Den A B) : ∀ K, (Rel.tab (A := A) (B := B) (.error e)).Reps K X :=
+  have herr {A B : Obj} (e : String) (X : Den A B) : ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K X :=
     fun _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h
   intro n
   induction n
@@ -906,7 +906,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case arg C D f x ihf ihx =>
     have step (η ρ) (xs : Codes) (ss : List Sem)
         (hl : f.GenHyp η.sh.Shares ∧ x.GenHyp η.sh.Shares) (hs : Sound η ρ) (hx : ∀ y ∈ xs, y.2.2.Wf) (hr : CodesRep xs ss) :
-        ∀ K, (f.argGen η (⟨C, D, x.code η⟩ :: xs)).Reps K (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) :=
+        ∀ K, K.WF → (f.argGen η (⟨C, D, x.code η⟩ :: xs)).Reps K (f.argDen ρ (⟨C, D, x.den ρ⟩ :: ss)) :=
       (ihf (by omega)).2 η ρ _ _ hl.1 hs (fun y hy => by
           rcases List.mem_cons.1 hy with rfl | hy
           · exact code_wf (gen_wf x η hs.2)
@@ -1011,7 +1011,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     positive and each shared slot its part's meaning (`Tm.GenHyp`), and an environment `η` that represents `ρ`;
     where the code is an error table (`Tm.hasCode` false) the run fails, which represents every meaning. -/
 theorem Tm.gen_sound {A B : Obj} (t : Tm A B) :
-    ∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, (t.gen η).Reps K (t.den ρ) :=
+    ∀ (η : Code) (ρ : Val), t.GenHyp η.sh.Shares → Sound η ρ → ∀ K, K.WF → (t.gen η).Reps K (t.den ρ) :=
   (Tm.gen_sound_spine t).1
 
 /-! ### `Code.program` meets `Codes.Shares`
