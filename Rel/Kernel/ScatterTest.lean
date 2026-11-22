@@ -120,4 +120,25 @@ def lastABB : Except String Enc := do
 example : view lastABB = enc8 [0, 2] := by decide +kernel
 #guard view lastABB == enc8 [0, 2]
 
+/-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
+def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
+  wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+
+-- under `.last` a null moves as a value: cell 2 keeps row 2's null, cell 0 row 1's 11, cells 1 and 3 the fill
+example : view (kscatter .last (u 3) (col [2, 0, 2]) (ncol [10, 11, 0] [2]) (u 4) 7) = view (.ok (ncol [11, 7, 0, 7] [2])) := by
+  decide +kernel
+#guard view (kscatter .last (u 3) (col [2, 0, 2]) (ncol [10, 11, 0] [2]) (u 4) 7) == view (.ok (ncol [11, 7, 0, 7] [2]))
+
+-- a later value overwrites a null: the cell is no longer null
+example : view (kscatter .last (u 2) (col [0, 0]) (ncol [0, 4] [0]) (u 1) 7) = view (.ok (col [4])) := by decide +kernel
+#guard view (kscatter .last (u 2) (col [0, 0]) (ncol [0, 4] [0]) (u 1) 7) == view (.ok (col [4]))
+
+-- any other op has no answer at a null; a null index names no cell
+def nulAdd : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: e under op 0: row 1 is null, and a null names no row"
+example : view (kscatter .add (u 2) (col [0, 0]) (ncol [1, 0] [1]) (u 1) 0) = nulAdd := by decide +kernel
+#guard view (kscatter .add (u 2) (col [0, 0]) (ncol [1, 0] [1]) (u 1) 0) == nulAdd
+def nulIx : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: ix: row 0 is null, and a null names no row"
+example : view (kscatter .last (u 2) (ncol [0, 1] [0]) (col [1, 2]) (u 2) 0) = nulIx := by decide +kernel
+#guard view (kscatter .last (u 2) (ncol [0, 1] [0]) (col [1, 2]) (u 2) 0) == nulIx
+
 end Rel.Kernel.ScatterTest

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Column (a), coc.rs: the whole-column reads of a `Coc` (A1), its sums (A3), product, any/all, min and max (A4)
 //! and the in-place shift (A6), plus `CocMut`, the writable form of the same `coc`.
+use alloc::{vec, vec::Vec};
 use crate::coc::{Coc, Meta};
 use crate::res::res_get_in;
 use crate::simd::prefetch;
@@ -23,14 +24,39 @@ impl<'a> Coc<'a> {
     /// coc.rs `coc_get`: element `i`, its patch applied. Per element: C keeps its body while a C caller remains.
     pub fn get(&self, i: usize) -> i64 {
         let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
-        if let Some(e) = self.exc.filter(|e| !e.pos.is_empty()) {
-            let r = e.off[b] as usize..e.off[b + 1] as usize;
-            // the first patch at `j`, Lean `foRExc`'s `find?`: in ascending positions it is the only one
-            let x = if e.asc { e.pos[r.clone()].binary_search(&(j as u16)).ok().map(|k| r.start + k) } else { r.clone().find(|&x| e.pos[x] as usize == j) };
-            if let Some(x) = x { return self.exc(x) }
-        }
+        if let Some(x) = self.patch(b, j) { return self.exc(x) }
+        self.frame(b).wrapping_add(self.res(b, j)) as i64
+    }
+    /// The patch of row `j` of block `b`, if any: the first at `j`, Lean `foRExc`'s `find?`; in ascending positions it
+    /// is the only one.
+    fn patch(&self, b: usize, j: usize) -> Option<usize> {
+        let e = self.exc.filter(|e| !e.pos.is_empty())?;
+        let r = e.off[b] as usize..e.off[b + 1] as usize;
+        if e.asc { e.pos[r.clone()].binary_search(&(j as u16)).ok().map(|k| r.start + k) } else { r.clone().find(|&x| e.pos[x] as usize == j) }
+    }
+    /// The residual of row `j` of block `b`, Lean `resAt`.
+    fn res(&self, b: usize, j: usize) -> u64 {
         let p = self.pack.get(self.meta.off[b] as usize..).unwrap_or(&[]);
-        self.frame(b).wrapping_add(res_get_in(p, self.meta.w(b), j, p.len())) as i64
+        res_get_in(p, self.meta.w(b), j, p.len())
+    }
+    /// Lean `foRNul`: row `i` is the null of a nullable column, tested on the encoding and never decoded: its block
+    /// flagged (`Meta::nul`), no patch holding it, its residual the block's top one `2^w - 1`.
+    pub fn is_nul(&self, i: usize) -> bool {
+        let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
+        let w = self.meta.w(b);
+        self.meta.nul(b) && self.patch(b, j).is_none() && self.res(b, j) == if w >= 64 { u64::MAX } else { (1u64 << w) - 1 }
+    }
+    /// The null bitmap of rows `0 .. n`, bit `i` (LSB first) row `i`, the form `Sink::write_nul` takes; `None` where no
+    /// block is flagged (Lean `hasNul`). Only flagged blocks are read, one width byte each for the rest.
+    pub fn nuls(&self) -> Option<Vec<u8>> {
+        let (lg, n) = (self.meta.lg, self.meta.n);
+        let fl = |b: &usize| self.meta.nul(*b);
+        if !(0..self.meta.mblk).any(|b| fl(&b)) { return None }
+        let mut o = vec![0u8; n.div_ceil(8)];
+        for b in (0..self.meta.mblk).filter(fl) {
+            for i in (b << lg..((b + 1) << lg).min(n)).filter(|&i| self.is_nul(i)) { o[i >> 3] |= 1 << (i & 7) }
+        }
+        Some(o)
     }
     /// coc.rs `coc_get_w`: `get` for a column whose every block has residual width `uw` (`one_width`).
     pub fn get_w(&self, uw: u8, i: usize) -> i64 {
@@ -122,5 +148,17 @@ mod tests {
         for i in (0..n).filter(|&i| !nulr(i)) { assert_eq!(c.get(i), val(i), "row {i}") }
         let w = c.meta.w(0);
         for i in (0..bk).filter(|&i| nulr(i)) { assert_eq!(res_get_in(&p, w, i, p.len()), (1 << w) - 1, "row {i}") }
+    }
+    // Lean `CocTest`'s pair: `i64::MIN`, `i64::MAX` and a null in one block span all `2 ^ 64` keys, so width 64, and
+    // `i64::MAX - i64::MIN` is the null's code: the writer patches that row, which reads as itself and not as the null
+    #[test] fn encode_nul_patches_a_value_at_the_null_code() {
+        let x = [i64::MIN, i64::MAX, 0];
+        let o = crate::ffi::Sink::new(3, 8).write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &[0b100])
+            .expect("encode_nul: a write with no size test has an answer");
+        let [m, p] = [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
+        let c = crate::coc::view(&m, &p, 3).unwrap_or_else(|e| panic!("encode_nul: {e}"));
+        assert_eq!((c.meta.nul(0), c.meta.w(0)), (true, 64));
+        assert_eq!((c.get(0), c.get(1)), (i64::MIN, i64::MAX));
+        assert_eq!((c.is_nul(0), c.is_nul(1), c.is_nul(2)), (false, false, true));
     }
 }

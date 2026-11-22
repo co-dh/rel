@@ -401,6 +401,34 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   92cbb31 等处删除，`kseen` 的调用者全走 kernel；doc §4 的 `seen` 行改写（`Order.idsBy` → `firstsBy`/`groupIn`，列出定律）。
   待 rq17f4 之后折叠：`lexLe_congr_right`（`RepTabComp`）是 `lexLe_congr` 的特例，`nub_cover`/`nub_sel` 内联的
   `hkey` 即 `kasc_grade`。
+  rq17f5（部分）：`nub_cover`/`nub_sel` 的 `hkey` 改为 `Vals.sorted_key`（`kasc_grade` + `asc_perm_grade`）；新引理
+  `Vals.cols_wf`（`Vals.cols` 的每列 `Ext.Enc.WF`，由 `Arr.wf` 与 `.pos` 得）；`hN : n.toNat < 2 ^ 32` 加到
+  `Vals.nub_*` 与 `Tab.canon_holds`/`ran_holds`/`dom_holds`；`kscatter_words` 加前提 `hasNul e = false`。
+  ⬜ 阻塞（待决定）：`Vals.row` 在原子上读 `Arr.get`，null 行读到的是块的 top residual，`kgather` 之后是新块的，
+  所以 `Arr.gather_row`、`Arr.eq_of_codes`、`Arr.codes_of_eq`、`Arr.get_raw_atom` 的 u1 界在有 null 的列上为假。
+  `RepSeen` 引用 `kasc_grade`、`lexLe_congr_right` 折叠仍未做。
+  rq17f6（部分）：阻塞按设计卡 "atom+1"（决定 K）解除：`Arr t n` 的类型带 `hasNul = false`（`Arr.plain`），`Arr.mk` 要它、
+  `Arr.of` 判定它；`Arr.opt` 删除（无调用者）。新引理 `Verify.hasNul_of_nulAt`、`foRNul_of_plain`、`ofBytes_plain`、
+  `bools_plain`、`Ext.Enc.blank_plain`、`colMap_plain`、`colPrefix_plain`；`kscan_closed` 多一项 `hasNul = false`。
+  `Rel.Run.*` 与 `RepCanon` 全绿（`gather_row` 经 `kgather_plain`，u1 界经 `foRNul_of_plain`，`eq_of_codes`/`codes_of_eq`
+  经 `nulCodes`/`nulWords` 在无 null 处化简）。⬜ 剩：`RepCols` 起的下游模块未建；`kscatter_words` 调用者传 `x.plain`；
+  `hN` 调用者；`RepSeen`/`lexLe_congr_right` 折叠。in-band `V+1` 今天没有 `Obj` 情形，待设计。
+  rq17f7（部分）：合并 9199fbf（`scatter.rs` 冲突：`ordered` 快路只在 `nul = None` 时走，因它不写 null 位）。绿：
+  `RepCols`（`raw_scatter` 取 `x.plain`、`lastCount_eq` 取 `hN`、`wordsArr` 取 `hasNul_wordsFoR`）、`RepOrder`、
+  `RepSeen`（`kasc_kseen` 引 `kasc_grade`，取 `hwf`/`hN`/列无 null；`ascCol_perm` 过 `noNul`）、`Gather`（`hnn` 删，
+  用 `foRNul_of_plain`）、`RepCanon`（`Vals.cols_wf` 加"列无 null"合取）。`lexLe_congr_right` 折叠未做（改
+  `RepTabComp` 引 `Rel.RepSeen`，:226 用 `lexLe_congr rfl e.symm`）。`RepSetOps` 未绿：缺 `kscatter_plain`（三种证法
+  均在 `whnf` 超时，见 /data/tmp/rq17f7-handoff.md）；`union_holds`/`canon_sorted`/`canon_distinct` 已取 `hN`，其
+  调用者（GenKFold、RepTabDiv、RepWFOps、GenKSpec、GenKHylo、RepAsc、RepSums、GenKFix）未改。
+  rq17f8（部分）：合并 rq17f7（2c948e0），`kscatter` 保留 master 的 `readsDivisor` 拒绝在 null 搬运之前。
+  `kscatter_plain`（每个 op：`e` 无 null 则答案无 null；先把 `hasNul e` 改写为 `false` 再 split，不再 whnf 超时）；
+  `foRNuls_plain`（无 null 的 WF 列每行 flag 为 0）。`kasc_grade` 改取 `N < 2^32 ∨ 各列无 null`：`canon` 排序的列都来自
+  `Vals.cols`，都无 null，所以 `hN` 从 `Vals.sorted_key`/`nub_*`/`canon_*`/`ran_holds`/`dom_holds`/`union_holds`/
+  `kasc_kseen` 删去（`R.comp S` 内部的 union 无从给出行数界）；`select_ok` 直接引 `kasc_grade`。`scatter_add_count`、
+  `scatter_last_at`、`kgather_word` 取 `hasNul e = false`。`lexLe_congr_right` 折叠完成。绿：Closure、RepCanon、
+  RepSeen、RepSetOps、RepTabComp。⬜ 剩：`RepTabDiv`（`kgather_word`/`scatter_last_at` 的源列无 null 证明，见
+  /data/tmp/rq17f8-handoff.md），其后 GenKBits、GenKFix、RepBits、RepSums、RepWhere、RepStruct、RepTabArith、DfnLaw、
+  GenKFold、RepAsc、RepWFOps、GenKSpec、GenKHylo 未建；`colMap_plain`/`colPrefix_plain` 折入 `_closed` 未做。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
@@ -1341,7 +1369,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `[2]` 得到一列 `[7]`、无标志——`Vals.gather` 在 `atom+1` 上 = `Arr.gather` = `kgather`，`gather_row` 不再成立。
     同理 `kscatter`（`foRWords`/`wordsFoR`）、`kasc`/`kseen`（比的是原始字：块 A 的 null `7` 与块 B 的值 `7` 相等）。
     顺序：先让 `foRWords`/`wordsFoR` 成对携带 null 位（`(words, nuls)`，kernel 体把 null 位当作值的一部分 gather /
-    scatter / 比较），Rust 生产者经 `Sink::write_nul` 写出；再改 `Vals`。`asc` 中 null 的次序待主人定（q：null 最小）。
+    scatter / 比较），Rust 生产者经 `Sink::write_nul` 写出；再改 `Vals`。
+    null 语义（按原则定：Rel 的名字与语义随 q）：`asc`/`iasc` 中 null 排最前；`seen`/distinct 中所有 null 相等、与任何值
+    不等。`gather`/`scatter` 的下标为 null 是错误（null 不指任何行）；`scatter` 只有 `.last` 搬运 null，其他 op 遇 null
+    是错误（不给出无定义的值）。
+    rq17d（第 3 步，WIP）：kernel 体已改。`Scatter.lean`：`hasNul`（只读宽度字节）、`foRNuls`（每行 null 位作字，
+    `foRNul` 判块）、`noNul`、`nulMap`、`wordsFoR ws (nul := .empty)`；`kgather`/`kscatter` 用同一下标搬运 null 位；
+    `Asc.nulCodes`：含 null 的原子列编码成两列（null 0 / 值 1；值码在 null 处取 0），`kasc` 搬运 null 位，`kseen` 经
+    `ascCol` 自动得到 null 相等。无 null 的列走原路径，字节不变。Rust：`Coc::is_nul`/`nuls`（只读带标志的块）、
+    `exports::scatter::no_nul`、`gather::enc`/`scatter::blocks`/`ffi::asc::kasc` 经 `Sink::write_nul` 写出，`asc::Col::Nul`
+    与 `asc::work` 返回多列。`cargo test --features std` 通过。剩：`KernelSpec` 的定理对含 null 的输入不再成立（例：
+    `raw_scatter` 的结论 `o = wordsFoR ws`；`ascKeys_row` 说行码只依赖原始字），已给 `raw_scatter`/`kscatter_pos_ix`
+    加 `hasNul e = false`；其余（`KernelSpec.Asc`、`KGather`、`KSeen`、`Closure` 及 Rel 下约 50 处用法）待做，见
+    `tmp/handoff.md`。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。

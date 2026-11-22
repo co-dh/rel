@@ -11,6 +11,9 @@ use crate::blocks::{Blocks, Grid, Src};
 use crate::enc::Producer;
 use crate::ffi::Sink;
 use crate::scan::{op_eval, op_word};
+
+/// `Op.last`'s constructor index (Rel/Kernel/Op.lean), the plain write: the one op that moves a null.
+pub const LAST: u8 = 19;
 use crate::{lean, pod};
 
 
@@ -91,8 +94,9 @@ fn ordered(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Option<Resul
 /// Owner approvals (PLAN 6.10): S, one block decoded into an L1 scratch (8 KiB) counts as per block; V, an index that
 /// does not ascend is grouped by answer block first (two passes, `m` positions of 2 bytes and values of 8, no dense
 /// array of `n` cells), each answer block then written in row order, so every cell folds its rows under `op` in row order.
-pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<lean::O, String> {
-    if let Some(r) = ordered(op, ix, e, n, fill) { return r }
+pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64, nul: Option<&[u8]>) -> Result<lean::O, String> {
+    // `ordered` writes no null bits, so a column with nulls takes the general path
+    if nul.is_none() { if let Some(r) = ordered(op, ix, e, n, fill) { return r } }
     let g = Grid { n, lg: crate::DEFAULT_LG };
     // a 2-byte offset in pass V's groups holds a block of at most 2^16
     let (lg, blk, sc) = (g.lg, g.blk(), ix.blk().max(e.blk()));
@@ -103,6 +107,9 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
     let fails = op_eval(op, 0, 0).is_err();
     // `at[b] .. at[b + 1]`: the rows answer block `b` takes, in row order once grouped
     let (mut at, mut asc, mut prev) = (pod::vec_of("scatter", "the answer blocks' row counts", g.nblk() + 1, 0usize)?, true, 0u64);
+    // `on`: the answer's null bits, `e`'s null bit `nul` scattered as `last` writes it, in row order (a cell keeps the
+    // flag of the row it keeps); none where `e` has no null
+    let mut on = match nul { Some(_) => Some(pod::vec_of("scatter", "the answer's null bits", n.div_ceil(8), 0u8)?), None => None };
     for (_, lo, nb) in ix.walk() {
         let es: &[u64] = if fails { rows(e, lo, nb, pod::bytes_mut(&mut eb)) } else { &[] };
         for (k, &i) in rows(ix, lo, nb, pod::bytes_mut(&mut buf)).iter().enumerate() {
@@ -110,20 +117,24 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
             if fails && let Err(s) = op_eval(op, 0, es[k]) { return Err(format!("scatter: {s} at row {}", lo + k)) }
             (asc, prev) = (asc && prev <= i, i);
             at[(i >> lg) as usize + 1] += 1;
+            if let (Some(en), Some(on)) = (nul, on.as_mut()) {
+                let (c, bit) = (i as usize, 1u8 << (i & 7));
+                if crate::enc::is_nul(en, lo + k) { on[c >> 3] |= bit } else { on[c >> 3] &= !bit }
+            }
         }
     }
     for b in 0..g.nblk() { at[b + 1] += at[b] }
     let s = Sink::new(n, 8).enc();
     if asc {
         // an ascending index hands answer block `b` the contiguous rows `at[b] .. at[b + 1]`, cut on `ix`'s own grid
-        return Ok(s.answer(&|o: &mut [i64], i0: usize| {
+        return Ok(s.write_nul(&|o: &mut [i64], i0: usize| {
             o.fill(fill as i64);
             let (b, mut bi, mut be) = (i0 >> lg, pod::uninit::<u64>(sc), pod::uninit::<u64>(sc));
             for (_, _, r0, r1) in ix.tiles(at[b], at[b + 1]) {
                 let (is, es) = (rows(ix, r0, r1 - r0, pod::bytes_mut(&mut bi)), rows(e, r0, r1 - r0, pod::bytes_mut(&mut be)));
                 for (&i, &x) in is.iter().zip(es) { let c = &mut o[i as usize - i0]; *c = op_word(op, *c as u64, x) as i64 }
             }
-        }))
+        }, false, on.as_deref().unwrap_or(&[])).expect("qlean scatter: a write with no size test has an answer"))
     }
     // V: each row's offset in its answer block and its value, grouped by answer block in row order
     let (mut pos, mut val) = (pod::try_uninit::<u16>("scatter", "the rows' offsets", ix.n)?, pod::try_uninit::<u64>("scatter", "the rows' values", ix.n)?);
@@ -137,11 +148,11 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
             (pos[*c], val[*c], *c) = ((i & (blk as u64 - 1)) as u16, x, *c + 1);
         }
     }
-    Ok(s.answer(&|o: &mut [i64], i0: usize| {
+    Ok(s.write_nul(&|o: &mut [i64], i0: usize| {
         o.fill(fill as i64);
         let b = i0 >> lg;
         for j in at[b]..at[b + 1] { let c = &mut o[pos[j] as usize]; *c = op_word(op, *c as u64, val[j]) as i64 }
-    }))
+    }, false, on.as_deref().unwrap_or(&[])).expect("qlean scatter: a write with no size test has an answer"))
 }
 
 #[cfg(test)]
@@ -163,7 +174,6 @@ mod tests {
 
     // `Op` constructor indices (Rel/Kernel/Op.lean)
     const DIV: u8 = 3;
-    const LAST: u8 = 19;
 
     #[test] fn index_past_n_is_an_error() {
         assert_eq!(words(LAST, &[1, 5, 9], &[1, 2, 3], 3, 0), Err("scatter: index 5 at row 1 is not below n = 3".into()));
@@ -181,7 +191,7 @@ mod tests {
         let ([mi, pi], [me, pe]) = (enc(is), enc(es));
         let ci = coc::view(&mi, &pi, is.len()).unwrap_or_else(|e| panic!("test column does not view: {e}"));
         let ce = coc::view(&me, &pe, es.len()).unwrap_or_else(|e| panic!("test column does not view: {e}"));
-        blocks(op, &Blocks::from(ci), &Blocks::from(ce), n, fill).map(|o| answer(&o))
+        blocks(op, &Blocks::from(ci), &Blocks::from(ce), n, fill, None).map(|o| answer(&o))
     }
     /// The scatter bench (PLAN 6.10 scatter-once): `blocks` over 2^24 cells, 2^23 rows, ascending and unordered, `last`;
     /// `cargo test --release scatter::tests::bench -- --ignored --nocapture` prints the median wall time of each.
@@ -195,7 +205,7 @@ mod tests {
             let ce = coc::view(&me, &pe, m).unwrap_or_else(|e| panic!("bench values do not view: {e}"));
             let mut ts: Vec<u128> = (0..15).map(|_| {
                 let t = std::time::Instant::now();
-                let o = blocks(LAST, &Blocks::from(ci), &Blocks::from(ce), n, 0).expect("bench scatter");
+                let o = blocks(LAST, &Blocks::from(ci), &Blocks::from(ce), n, 0, None).expect("bench scatter");
                 core::hint::black_box(&o);
                 t.elapsed().as_micros()
             }).collect();
