@@ -14,18 +14,16 @@ namespace Tab
 variable {A B C : Obj}
 
 /-- **`∋` on the arrays `X`** (the step `EDen` composes, `(fun xs a => a ∈ xs) ≫ T`): each cell to each of its
-elements. A cell `[lo, hi)` clamped to the payload's `[0, m)` is `[s, e)` with `s = max lo 0` and
-`e = max (min hi m) s`, so its width `e - s` is never negative and never wraps; EXPAND of the widths, the key the
-cell `X[G]`, the value the payload at `s[G] + u`; then `canon`. -/
+elements. A cell is the slice `[lo, hi)` of the payload (`Vals.WF`, which every table keeps: `0 ≤ lo ≤ hi ≤ m`), so
+its width `hi - lo` is never negative; EXPAND of the widths, the key the cell `X[G]`, the value the payload at
+`lo[G] + u`; then `canon`. -/
 def mem {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) B) :=
   match X with
   | ⟨m, lo, hi, f⟩ => do
-    -- `.max`, `.min`, `.sub` read the bounds and widths signed: every one is below `n * m + n + m`
+    -- `.sub`, `.add` read the widths and positions signed: every one is below `n * m + n + m`
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"mem: {n} cells × {m} elements past 2^63"
-    let s ← colMap .max n lo.enc (← colConst n 0)
-    let e ← colMap .max n (← colMap .min n hi.enc (← colConst n m.toUInt64)) s
-    let (T, G, u) ← expand n (← colMap .sub n e s)
-    let ix ← colMap .add T (← kgather T G n s) u
+    let (T, G, u) ← expand n (← colMap .sub n hi.enc lo.enc)
+    let ix ← colMap .add T (← kgather T G n lo.enc) u
     Tab.canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, ← Vals.gather T ix f⟩
 
 /-- **`nil` on the keys `D`** (`nilDen`): each to the empty cell, `lo = hi = 0` over a payload of no rows; then
