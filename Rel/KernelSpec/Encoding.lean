@@ -1144,6 +1144,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
   have hpn := fun b => planBlock_nul lg w n (patch && decide (n < 2 ^ 32)) x nul b
   have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb hpp hpn h32 ⊢
+  generalize hlst : decide (n < 2 ^ 32) = lst
   generalize Kernel.Coc.planBlock lg w n pl x nul = blk at hpp hpn ⊢
   have hblk : ∀ j, j / 2 ^ lg * 2 ^ lg ≤ j ∧ j < j / 2 ^ lg * 2 ^ lg + 2 ^ lg := fun j =>
     ⟨Nat.div_mul_le_self _ _, by have := Nat.mod_add_div' j (2 ^ lg); have := Nat.mod_lt j hBp; omega⟩
@@ -1180,14 +1181,14 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
   have hbg : ∀ j < n, bs.getD (j / 2 ^ lg) default = blk (j / 2 ^ lg) := fun j hj => by
     have h : j / 2 ^ lg < bs.size := hbsz ▸ lt_cdiv hBp hj
     unfold Array.getD; rw [dif_pos h]; exact hbget _ h
-  generalize hexc : Array.filter (fun i => !Column.bitAt nul i && Kernel.Coc.patched (decide (n < 2 ^ 32))
+  generalize hexc : Array.filter (fun i => !Column.bitAt nul i && Kernel.Coc.patched lst
       (bs.getD (i / 2 ^ lg) default).2.2.2.1 (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i))
       (Array.range n) = exc
   have hexs : exc.toList.Pairwise (· < ·) := by
     -- by index, not `List.pairwise_lt_range`, which carries `Classical.choice`
     subst hexc; rw [Array.toList_filter, toList_range]
     exact (List.pairwise_iff_getElem.2 fun i j _ _ h => by rw [List.getElem_range, List.getElem_range]; exact h).filter _
-  have hmem : ∀ j, j ∈ exc.toList ↔ j < n ∧ (!Column.bitAt nul j && Kernel.Coc.patched (decide (n < 2 ^ 32)) (blk (j / 2 ^ lg)).2.2.2.1
+  have hmem : ∀ j, j ∈ exc.toList ↔ j < n ∧ (!Column.bitAt nul j && Kernel.Coc.patched lst (blk (j / 2 ^ lg)).2.2.2.1
       (blk (j / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x j)) = true := by
     intro j; subst hexc; rw [Array.toList_filter, toList_range, List.mem_filter, List.mem_range]
     exact and_congr_right fun h => by rw [hbg j h]
@@ -1224,7 +1225,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
         | nil => rfl
         | cons j t =>
           have := (hmem j).1 (hl ▸ List.mem_cons_self)
-          simp only [Kernel.Coc.patched, decide_eq_false hn32, Bool.false_and, Bool.or_false] at this
+          simp only [Kernel.Coc.patched, ← hlst, decide_eq_false hn32, Bool.false_and, Bool.or_false] at this
           cases hnj : Column.bitAt nul j
           · rw [hnj, hout j this.1 hnj (Or.inl hpl)] at this; exact (Bool.false_ne_true this.2).elim
           · rw [hnj] at this; exact (Bool.false_ne_true this.2).elim
@@ -1256,13 +1257,13 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) (e.2.2.2.2 % 128) fun j =>
         if (decide (a.2 * 2 ^ lg + j < n) && Column.bitAt nul (a.2 * 2 ^ lg + j)) = true then
           Column.ones (e.2.2.2.2 % 128) else
-        (if (decide (a.2 * 2 ^ lg + j < n) && !Kernel.Coc.patched (decide (n < 2 ^ 32)) e.2.2.2.1 e.2.2.2.2
+        (if (decide (a.2 * 2 ^ lg + j < n) && !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2
           (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
           Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
     (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>
       if (decide (m * 2 ^ lg + j < n) && Column.bitAt nul (m * 2 ^ lg + j)) = true then
         Column.ones (e.2.2.2.2 % 128) else
-      (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.patched (decide (n < 2 ^ 32)) e.2.2.2.1 e.2.2.2.2
+      (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
     (fun a m e => rfl)
@@ -1331,7 +1332,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
       (Kernel.Coc.packRes (2 ^ lg) ((blk (i / 2 ^ lg)).2.2.2.2 % 128) fun j =>
         if (decide (i / 2 ^ lg * 2 ^ lg + j < n) && Column.bitAt nul (i / 2 ^ lg * 2 ^ lg + j)) = true then
           Column.ones ((blk (i / 2 ^ lg)).2.2.2.2 % 128) else
-        (if (decide (i / 2 ^ lg * 2 ^ lg + j < n) && !Kernel.Coc.patched (decide (n < 2 ^ 32)) (blk (i / 2 ^ lg)).2.2.2.1
+        (if (decide (i / 2 ^ lg * 2 ^ lg + j < n) && !Kernel.Coc.patched lst (blk (i / 2 ^ lg)).2.2.2.1
           (blk (i / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j))) = true then
           Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j) - (blk (i / 2 ^ lg)).2.2.2.1 else 0).toUInt64)[k]? := by
     intro k hk
@@ -1345,7 +1346,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
   have hbits : Column.bitAt nul i = false →
       Column.foRBits M (pack ++ tail) (Column.blockStarts M) i = (Kernel.Coc.keyAt w x i).toUInt64 := by
     intro hni
-    cases hk : Kernel.Coc.patched (decide (n < 2 ^ 32)) (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
+    cases hk : Kernel.Coc.patched lst (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
         (Kernel.Coc.keyAt w x i)
     · -- kept: base, frame and residual
       have hnot : i ∉ exc.toList := fun h => by rw [hmem, hni, hk] at h; exact Bool.false_ne_true h.2
@@ -1382,7 +1383,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
       · obtain ⟨hf, -, -, hk'⟩ := hpn _ hA
         obtain ⟨-, hlt, hcol⟩ := hk' i hi1 hi2 hi hni
         have hk := hout i hi hni (Or.inr hA)
-        cases hpt : Kernel.Coc.patched (decide (n < 2 ^ 32)) (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
+        cases hpt : Kernel.Coc.patched lst (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
             (Kernel.Coc.keyAt w x i)
         · have hnot : i ∉ exc.toList := fun h => by rw [hmem, hni, hpt] at h; exact Bool.false_ne_true h.2
           rw [(hx hnot).1, if_neg (by simp), if_pos (by simp [hi, hpt]), hf, Nat.mod_eq_of_lt hlt,
@@ -1393,7 +1394,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
           · -- a value at the null's code is patched, so the column has no patch list: `hbig` says the block holds no null
             have hn32 : ¬ n < 2 ^ 32 := fun h32n => by
               rw [hf] at hpt hk
-              simp only [Kernel.Coc.patched, hk, hb, decide_eq_true h32n, decide_eq_true (hd128.2 rfl), Bool.false_or,
+              simp only [Kernel.Coc.patched, ← hlst, hk, hb, decide_eq_true h32n, decide_eq_true (hd128.2 rfl), Bool.false_or,
                 Bool.true_and] at hpt
               all_goals cases hpt
             obtain ⟨k, hk1, hb1⟩ := Array.any_eq_true.1 hA
@@ -1406,8 +1407,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
           have h0 : exc.size ≠ 0 := fun h => by rw [hnil h] at hin; cases hin
           rw [if_neg h0] at htail; subst htail
           rw [← hnb, foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
-            (hnb ▸ hib), if_pos hin]
-          simp
+            (hnb ▸ hib), if_pos hin, Option.isNone_some, Bool.and_false, Bool.false_and]
     · have hA' := any_nul_of lg n nul (i / 2 ^ lg) i hi1 hi2 hi hni
       rw [hA] at hA'; subst hA'
       have hnot : i ∉ exc.toList := fun h => by rw [hmem, hni] at h; exact Bool.false_ne_true h.2
