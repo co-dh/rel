@@ -404,6 +404,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
+  已诊断（seen1024，2026-11-22）：不是 `Sum` 的可判定实例，是答案的编码器。每个 kernel 的答案经 `wordsFoR` →
+  `Coc.encode`，kernel 归约的是 `encodeAt 10` 的 Lean 体：`planOf`/`frameAt` 对每个候选 frame 在整块上算 `npatch`
+  （每个宽度块内平方），`keyAt` 读 `pushBits` 建的 `ByteArray`（kernel 里是 list）。实测 `wordsFoR` 往返全零列：
+  10 行过（峰值 RSS 1986 MB，即 import 基线），20 行过（2370 MB），40/70/100 行在 4 GB 地址空间下 OOM；只编码
+  40 行就超过 6 GB（RSS 4945 MB，24 s）。所以跨块边界（≥ 65 行，即使输入用 2^6 的块）的 `decide` 例子都放不下；
+  要有，得先把 `encodeAt` 的 spec 改成 kernel 能便宜归约的形式（frame 搜索不做块内平方、读字节不走 list）。
   ✅ 运行路径上的平方解码（nodecode 765527b）：`foRBits` 每个元素重算 trailer 偏移 O(nblk)，`Vals.cols` 为判形状解码整列；
   改为 `foROk` 判形状、`foRExc`/`foRFrame` 取 `blockStarts` 的 trailer；10⁵ 行 leftJoin 40.2s→0.96s、带 null 的 group-by
   187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
@@ -805,7 +811,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `CRel.ran`/`CRel.dom`（等 W3 的 `pick` 替换，以及 `sym`、`general`、`arr`、`sum` 列）。前提 `hK` 已去掉
       （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
       序码相等）；`Vals.seenKey_iff_row`（序码相等 ⇔ 行相等）、`Vals.nub_distinct`（005e20e）。缺：1024 行块边界的
-      Lean 例子（`decide +kernel` 不归约，未诊断）。
+      Lean 例子（`decide +kernel` 不归约；已诊断为 `encodeAt` 的 kernel 归约代价，见 D.12 的 seen1024 一条）。
     - W3 策略（2026-11-19，owner 三条决定，取代同日早先的 "全部算子齐了再一次切换"）：
       - 工作清单是 `Rel.Lang.Tm` 的构造子（43 个；`call`/`arg`/`var`/`share`/`own` 是绑定），spec 是各自的
         denotation。不照旧层 `CRel.*`/`Alg.*` 的列表移植（owner："this is stupid"）；旧算子只在 `#guard` 里做对照，
