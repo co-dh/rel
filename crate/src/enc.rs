@@ -220,25 +220,38 @@ pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], 
         let r = (mx as u64).wrapping_sub(mn as u64);
         let mut d = crate::bits::width_for(r);
         if any && d < 64 && r == (1u64 << d) - 1 { d += 1 }
-        (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (mn, mx, s, d | crate::coc::NUL_FLAG, 0);
+        // a value at the null's code is patched (Lean `Coc.patched`), where the column carries a patch list
+        let top = if d == 64 { u64::MAX } else { (1u64 << d) - 1 };
+        let ne = if !m.patch { 0 } else {
+            elts::<T>(x, "coc_enc_nul_meta")[..nb].iter().enumerate()
+                .filter(|&(i, v)| !is_nul(nul, lo + i) && (v.i() as u64).wrapping_sub(mn as u64) == top).count() as u32
+        };
+        (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (mn, mx, s, d | crate::coc::NUL_FLAG, ne);
         if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
     }
     crate::by_width!(int width, go(m, x, nb, nul, lo))
 }
-/// The residuals of a block `nul_meta` planned: a null row's the top one `2 ^ d - 1`, every other row's its key less
-/// the base, so the null is tested on the block and never decoded.
+/// The residuals of a block `nul_meta` planned: a null row's the top one `2 ^ d - 1`, a value at that code a patch
+/// (residual 0, its bytes in the patch list) where `nul_meta` counted patches, every other row its key less the base,
+/// so the null is tested on the block and never decoded.
 pub fn nul_pack(p: &mut EncPack, x: &[u8], width: usize, nul: &[u8], lo: usize) {
     fn go<T: Elt>(p: &mut EncPack, x: &[u8], nul: &[u8], lo: usize) {
-        let (d, nb) = (p.width & crate::coc::WIDTH_MASK, p.nb);
+        let (base, d, nb) = (p.frame, p.width & crate::coc::WIDTH_MASK, p.nb);
         if d == 0 { return }
         let top = if d == 64 { u64::MAX } else { (1u64 << d) - 1 };
-        let mut v = crate::pod::Scr::<u64>::new(nb.next_multiple_of(64));
-        for (i, (o, x)) in v.iter_mut().zip(&elts::<T>(x, "coc_enc_nul_pack")[..nb]).enumerate() {
-            *o = if is_nul(nul, lo + i) { top } else { (x.i() as u64).wrapping_sub(p.frame) }
+        // the elements whose residuals `pack_block` writes, as `pack_exc_blk` does: a patch's slot the frame (residual 0)
+        let (mut ys, mut k) = (crate::pod::Scr::<T>::filled(nb, T::wrap(base)), 0);
+        let y: &mut [T] = &mut ys;
+        for (i, &v) in elts::<T>(x, "coc_enc_nul_pack")[..nb].iter().enumerate() {
+            if is_nul(nul, lo + i) { y[i] = T::wrap(base.wrapping_add(top)) }
+            else if (v.i() as u64).wrapping_sub(base) == top && !p.pos.is_empty() {
+                let mut e = [v];
+                p.raw[k * size_of::<T>()..][..size_of::<T>()].copy_from_slice(crate::pod::bytes_mut(&mut e));
+                p.pos[k] = i as u16;
+                k += 1;
+            } else { y[i] = v }
         }
-        // `pack_block` at base 0, not `res_pack`: a null block's width may be a lane width (1, 2, 4, …), which only
-        // `pack_block`'s `by_width!` arm packs
-        pack_block::<u64>(p.res, &v[..nb], nb, 0, d)
+        pack_block(p.res, y, nb, base as i64, d)
     }
     crate::by_width!(int width, go(p, x, nul, lo))
 }
