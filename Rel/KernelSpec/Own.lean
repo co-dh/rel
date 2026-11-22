@@ -104,7 +104,7 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   have hnp : ps.size ≤ 3 := by
     have h2 := hk.1
     generalize k.toNat = kk at h2
-    rcases kk with _ | _ | _ | _ | _ | kk <;> simp [ownNParts] at h2 <;> omega
+    rcases kk with _ | _ | _ | _ | _ | _ | kk <;> simp [ownNParts] at h2 <;> omega
   have hL : ps.toList.length = ps.size := Array.length_toList
   have hr1 := ownLayout_fst_length (24 + 16 * ps.size + D.length) ps.toList
   have hsp := ownSpans_layout ps.toList 0 (24 + 16 * ps.size + D.length)

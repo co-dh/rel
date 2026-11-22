@@ -42,8 +42,11 @@ def cell (x : Int64) : Int64 :=
 /-- The table `k` at step `i`, its cells coded `10x + y`. -/
 def at? (k i : Nat) : Option (Tab .long .long) := do
   let (_, one) ← tables[k]?
-  let R ← get given.expanded s!"f{k}" .long XX
-  let ps := (R.toList.filter (·.1 == Int64.ofNat i)).map fun (_, a, b) => (if one then a else cell a, cell b)
+  -- a key `∗ : 1` is stored at `1` (no column) and shown as `0`
+  let ps ← if one then (get given.expanded s!"f{k}" .long (.prod .one .long)).map fun R =>
+      (R.toList.filter (·.1 == Int64.ofNat i)).map fun (_, _, b) => ((0 : Int64), cell b)
+    else (get given.expanded s!"f{k}" .long XX).map fun R =>
+      (R.toList.filter (·.1 == Int64.ofNat i)).map fun (_, a, b) => (cell a, cell b)
   (⟨ps.length.toUSize, List.length_map _ ▸ col (ps.map (·.1)), List.length_map _ ▸ col (ps.map (·.2))⟩ :
     Tab .long .long).canon.toOption
 

@@ -46,6 +46,8 @@ def arrV (B : Obj) (n m : USize) (lo hi : Arr .i64 n × Bool) (p : Vals B m × B
 def sumV (A B : Obj) (n l r : USize) (tag : Arr .u1 n × Bool) (idx : Arr .i64 n × Bool) (x : Vals A l × Bool)
     (y : Vals B r × Bool) : Vals (.sum A B) n × Bool :=
   (⟨l, r, tag.1, idx.1, x.1, y.1⟩, tag.2 && idx.2 && x.2 && y.2)
+/-- A side of `1`: no column, so nothing to rebuild and nothing to misfit. -/
+def oneV (n : USize) : Vals .one n × Bool := ((), true)
 def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) : Tab A B × Bool :=
   (⟨n, k.1, v.1⟩, k.2 && v.2)
 end Gen

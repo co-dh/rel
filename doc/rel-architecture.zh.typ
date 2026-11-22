@@ -83,9 +83,10 @@ inductive Obj                           -- 类型的代码；A B 都是 Obj
   | atom (t : Atom)                     -- u1 char i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
   | prod (a b : Obj)                    -- 积：多列
   | arr  (b : Obj)                      -- 每格一个数组：平铺 payload + lo/hi
-  | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置
+  | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置；atom+1 是一列，null 在带内（§4 foR）
+  | one                                 -- 终对象 1（决定 M）：只有一个值，不存任何列；`obj 1 = {∗}` 这类单元素对象都是它
 
-Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean 类型，prod ↦ ×，arr ↦ List，sum ↦ ⊕
+Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean 类型，prod ↦ ×，arr ↦ List，sum ↦ ⊕，one ↦ Unit
 
 structure Known (A B : Obj) where
   dom : Option (Σ n, Vals A n)          -- 已知的定义域 K
@@ -148,7 +149,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - 语句 `input x : A ⟶ B from "路径"` / `output x to "路径"`（后接 `csv` 为 CSV，否则为 mmap 表目录；路径就是语句里的字面量）
   不是 `Tm` 的构造子：`input` 声明一个只有类型的名字，是后续语句里程序层的 `var`；`output` 指名一个定义或 `input`。下表「绑定 / 复用」一行不变。
   key 是位置（不落盘）当且仅当 key 对象是存为 `.long` 的数对象；其它 key 对象都是 key 列。CSV 的列按对象结构展开，
-  `S+1` 是 `S` 每列一个可空列（`dataframe-design` F6 的落盘一条）。
+  `S+1` 是 `S` 每列一个可空列（`dataframe-design` F6 的落盘一条）；内存里 `atom+1` 是一列，null 是块内保留的顶残差（§4 foR）。
 - 字面量 `{(a,b),…}` 里的一个词按它所在对象的 atom 读成存储字（`Elab.wordAt`）：整数 `3` `-3`；浮点 `2.5` `1e-3`
   （按 Lean 的浮点字面量读）；`date` 上也可写 q 的日期 `2024.01.15`，`datetime` 上写 q 的时间
   `2024.01.15D12:30:00.5`（小数 1–9 位）。日期、时间是一个词（中间无空格），值是 1970-01-01 起的天数、纳秒数（公历外推，
@@ -254,6 +255,22 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 - 结论：*一种编码*，就是现有的 `Ext.Enc.foR`（曾设想的 `packed` 即去掉缓存的 `foR`，已弃用）。`Enc.raw` 只有一个解码，所有 kernel 的模型仍写在 `raw` 上。
 - 缓存（只服务速度，语义从不读，证明零成本）：`maxv`（谓词跳过整块）、`bsum`/`sumnul`/`sumn`（O(nblk) 求和）、`off`（块起点）。
 - 每个 kernel 读 foR、写 foR；写出由共享的 `Producer::block_into` 逐块完成，不经过稠密中间数组。
+
+#card(c-run, [`atom+1`：null 在带内（决定 K）])[
+  可空原子 `V+1` 存成*一列*，含义仍是 `V+1`（null = `inr ∗`）。宽度字节只用到 64，第 7 位空出来作 null 标志：
+  `widthAt` 读低 7 位，`nulAt` 读第 7 位（Rust `NUL_FLAG`、`Meta::w`、`Meta::nul`）。带标志的块里残差 $2^w − 1$ 是 null；
+  不带标志的块没有任何代价，现有列的含义不变。\
+  例：一块 $w = 6$、base $= 100$、带标志：残差 `000101` 是 $105$，`111111` 是 null（不是 $163$）。
+  若该块非 null 值的跨度 $max − min$ 恰为 $2^6 − 1 = 63$，编码器把 $w$ 加宽到 7；全 null 的块是 $w = 0$ 加标志。
+  base、`maxv` 是非 null 值的极值，`bsum` 不计 null；null 排在列的最后（与 tag 在前的现有次序一致）。
+  - 没有 null 字：规格把可空列的元素读成 `Option`（`foROpt`；`foROpt_top`：带标志块的顶残差读成 `none`；
+    `foROpt_plain`：不带标志的块读成原值）。普通的 `Arr t n` 只在没有带标志的块时成立。
+  - kernel 不解码，只在编码上判 null（`foRNul`：标志 ∧ 无 patch ∧ 残差 $= 2^w − 1$）：`inl` 不动存储；`inl°` 留非 null 行
+    （不带标志的块整块留下）；`inr°` 留 null 行；`tot(R)` 是 scatter 到全 null 列；`sum` 经 `bsum` 跳过 null。
+    gather、scatter、seen 带着标志走（gather 出的块可能变成带标志）。
+  - 浮点：ALP 的每块整数也是 foR（`alpBits` 读 `foRBits`），同一标志适用。
+  - 范围：只有 `atom+1` 在带内；`(V+1)+1` 与一般 `A+B` 仍是 tag/idx，内层的 `V+1` 作为 payload 存在带内。
+  - `1` 是单元对象 `Obj.one`（决定 M）：elaborator 把单元素对象存成它，不再是 `.long` 的 code 0；规则由类型给出。]
 
 == 原子类型：都是 foR 的 code
 

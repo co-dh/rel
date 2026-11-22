@@ -1091,6 +1091,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `inrConv`（Struct.lean:57-125）及 `RepStruct` 的 `*_holds`、CSV/own 的 sum 列、Rust 侧 sum 的读写。
   与 rq17 的关系：`atom+1` 走块内 null 码（决定 K，`nullband`），不经 8.2；其余 sum 用 8.2。
   在 `nullband` 的 unit 对象决定（M/N）之后做，因为两者都改 `Vals` 的 sum 分支。
+  - 🔄 `nullband2`：`Obj.one`（`El = Unit`，不存列）已加，单元素对象 elaborate 成它；CSV 可空列 4 部分 → 3（去掉 null
+    payload）。`1` 的一边与其他边一样有 own 文件（kind 5：头里的行数，0 个 part；`Plan.cols` 给出 `.inl n`），
+    顶层 `.one` 或 `A×1` 从 own 文件读回时过 `same`。`nullband4`：生成代码里 `1` 的一边是 `Gen.oneV n`；
+    `Vals.gather` 在 `.one` 上 gather 位置列 `.pos` 再丢掉，越界的下标照样报错；CSV 里 `1` 的一列是它唯一元素的名字
+    （long 列，code 0），`S+1` 的右边 `1` 不占列、行数是 null 行数（`tagCount`）；`Arr.opt`：按 `foRNul` 把元素读成
+    `Option`。剩：`Vals (.sum (.atom t) .one)` 改成一列带内 null（`Vals`、`row`、`rowsImpl`、`gather`、`concat`、
+    `cols`、`pack`、`readVals`/`encVals`、CSV 各加一支，`RepCanon`/`RepCols`/`RepTabDiv`/`GenKBits` 里每个对
+    `.sum a b` 的归纳都要先分出这一支）、可空 foR 写入器（新 extern，Lean 体 = Rust）、kernel 判 null、
+    CSV 可空列 3 部分 → 1、decode-allow 收缩。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。

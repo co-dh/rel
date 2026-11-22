@@ -578,6 +578,7 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     rw [Vals.cells_expand_row hb hse hw hex hsg hix id (fun t => by
       obtain ⟨j, hj, hgj⟩ := Vals.gather_row f hg' t
       exact ⟨j, hj, (Vals.pack_row g' hp t).trans hgj⟩) h i, List.map_id]
+  | .one, _, _, _, _, _ => rfl
 
 /-- **`Vals.cat` joins cell by cell**, below `2^63` cells (its guard): output element `d` of cell `i` (`expand_spec`)
 reads the joined payload (`Vals.concat_row`) at `SN₁ + d` where `d < w₁`, else at `m₁ + SN₂ + (d - w₁)`. -/

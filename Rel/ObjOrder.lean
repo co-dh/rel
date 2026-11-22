@@ -40,6 +40,7 @@ def Obj.key : (A : Obj) → A.El → List Nat
   | .arr b, xs => (xs : List b.El).foldr (fun x k => 1 :: b.key x ++ k) [0]
   | .sum a _, .inl x => 0 :: a.key x
   | .sum _ b, .inr y => 1 :: b.key y
+  | .one, () => []
 
 /-- q's `asc` order on `A`: `x` before `y`, the lexicographic order of their keys (`Obj.key`). -/
 def Obj.lt (A : Obj) (x y : A.El) : Prop := A.key x < A.key y
@@ -121,6 +122,7 @@ theorem Obj.key_prefix : (A : Obj) → (x y : A.El) → (r s : List Nat) →
     simp only [Obj.key, List.cons_append, List.cons.injEq, true_and] at h ⊢; exact Obj.key_prefix b x y _ _ h
   | .sum _ _, .inl _, .inr _, _, _, h => by simp [Obj.key] at h
   | .sum _ _, .inr _, .inl _, _, _, h => by simp [Obj.key] at h
+  | .one, (), (), _, _, _ => rfl
 
 /-- A common prefix does not change the order. -/
 theorem lt_append_left_iff (l : List Nat) {a b : List Nat} : l ++ a < l ++ b ↔ a < b := by

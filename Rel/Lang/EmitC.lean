@@ -64,6 +64,7 @@ def objCols : Obj → String → List (String × QAtomicType)
   | .prod a b, p => objCols a (p ++ ".1") ++ objCols b (p ++ ".2")
   | .arr b, p => [(p ++ ".lo", .i64), (p ++ ".hi", .i64)] ++ objCols b (p ++ ".e")
   | .sum a b, p => [(p ++ ".tag", .u1), (p ++ ".idx", .i64)] ++ objCols a (p ++ ".l") ++ objCols b (p ++ ".r")
+  | .one, _ => []
 
 /-- Whether `A` is atoms and products only, the sides whose `Vals.cols` are their atom columns as they are. -/
 def flatObj : Obj → Bool
@@ -137,6 +138,7 @@ def hasSum : Obj → Bool
   | .prod a b => hasSum a || hasSum b
   | .arr b => hasSum b
   | .sum .. => true
+  | .one => false
 
 /-- `Table.writeCols`' order of the columns of a schema reversed: the rest's, then the first. -/
 def fieldsR : Schema → List (String × Obj)
