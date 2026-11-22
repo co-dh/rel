@@ -565,8 +565,8 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
   rw [Except.bind_eq_ok'] at h; obtain ⟨m, hm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o, hk, h⟩ := h
   obtain ⟨ax, as, -, hax, has, -, -, haxs, -⟩ := Vals.code2_spec ha2  hR.1 hS.1
-  obtain ⟨bx, bu, -, hbx, hbu, -, -, -, hrb⟩ := Vals.code2_spec hb2 hR.2 hS.1
-  obtain ⟨cs, cu, -, hcs, hcu, -, -, -, hrc⟩ := Vals.code2_spec hc2 hS.2 hUC.1
+  obtain ⟨bx, bu, -, hbx, hbu, -, -, -, hrb⟩ := Vals.code2_spec hb2 hR.2 hUB.2
+  obtain ⟨cs, cu, -, hcs, hcu, -, -, -, hrc⟩ := Vals.code2_spec hc2 hS.2 hUC.2
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hw : ∀ (w : UInt64), (w.toNat).toUInt64 = w := fun w => UInt64.toNat_inj.mp (by simp)
   have hNka := ka.toNat_lt_size; have hNkb := kb.toNat_lt_size; have hNkc := kc.toNat_lt_size
@@ -824,7 +824,7 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
 theorem Tab.ldivBits_ldiv {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T T' : Tab B C}
     (h : Tab.ldivBits R S UB UC = .ok T) (h' : Tab.ldiv R S UB UC = .ok T')
     (hR : R.WF) (hS : S.WF) (hUB : UB.WF) (hUC : UC.WF) : T.Holds = T'.Holds :=
-  funext fun b => funext fun c => propext ((Tab.ldivBits_holds h hR hS hUB hUC b c).trans (Tab.ldiv_holds h' b c).symm)
+  funext fun b => funext fun c => propext ((Tab.ldivBits_holds h hR hS hUB hUC b c).trans (Tab.ldiv_holds h' hR hS hUB hUC b c).symm)
 
 /-- **`R.compSel bits S` denotes `R ≫ S`** at every `bits`: its bit branch by `Tab.compBits_holds`, its other by
 `Tab.compFrom_canon`. -/
@@ -876,6 +876,6 @@ theorem Tab.ldivSel_holds {bits : Nat} {R : Tab A B} {S : Tab A C} {UB : Tab B B
     (h : Tab.ldivSel Tab.ldiv bits R S UB UC = .ok T) (hR : R.WF) (hS : S.WF) (hUB : UB.WF) (hUC : UC.WF)
     (b : B.El) (c : C.El) :
     T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c :=
-  Tab.ldivSel_holdsBy (fun h => Tab.ldiv_holds h) h hR hS hUB hUC b c
+  Tab.ldivSel_holdsBy (fun h => Tab.ldiv_holds h hR hS hUB hUC) h hR hS hUB hUC b c
 
 end Rel
