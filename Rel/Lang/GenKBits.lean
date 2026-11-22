@@ -1996,17 +1996,6 @@ theorem lift2_wf {D E F : Obj} {f : Tab A B → Tab C D → Except String (Tab E
     | exact L (fun _ h => wR.runE Known.wf_empty h) (fun _ h => wS.runE Known.wf_empty h)
     | exact fun K hK => L (fun _ h => wR.runE (hkl K hK) h) (fun _ h => wS.runE (hkr K hK) h)
 
-/-- `pairOn`'s two tables are `WF`: the first `bound`'s (`bound_wf`), the second run on its domain. -/
-theorem pairOn_wf {D : Option ((n : USize) × Vals A n)} {T : Rel A B} {S : Rel A C} (wT : T.Wf) (wS : S.Wf)
-    (hD : D.elim True fun c => Vals.WF c.2) {p : Tab A B × Tab A C} (h : pairOn D T S = .ok p) : p.1.WF ∧ p.2.WF := by
-  obtain ⟨r, hr, h⟩ := bind_ok h
-  obtain ⟨q, hq, h⟩ := bind_ok h
-  obtain ⟨s, hs, h⟩ := bind_ok h
-  obtain rfl := Except.ok.inj h
-  have hK : (⟨D, none, none⟩ : Known A B).WF := ⟨hD, trivial, trivial⟩
-  have wq := bound_wf hK (wT.runE hK hr) hq
-  exact ⟨wq.1, wS.runE wq.2.dom hs⟩
-
 theorem pairK_wf {D : Option ((n : USize) × Vals A n)} {R : Rel A B} {S : Rel A C} (wR : R.Wf) (wS : S.Wf)
     (hD : D.elim True fun c => Vals.WF c.2) {t : Tab A (.prod B C)} (h : pairK D R S = .ok t) : t.WF := by
   have L : ∀ p, pairOn D R S = .ok p → p.1.pair p.2 = .ok t → t.WF := fun _ hp ht =>
