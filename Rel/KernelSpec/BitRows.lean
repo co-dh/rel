@@ -47,7 +47,7 @@ private theorem raw_bitmap (f : Nat → Bool) (N : Nat) (n : USize) (hn : n.toNa
     rw [getElem?_pos X i (by omega), Option.getD_some, ByteArray.getElem_eq_getElem_data]
     subst hX; simp
   have hv := foRBits_encode Column.lgEnc hlg 1 (by decide) (by decide) X (patch := false) i (by rw [Nat.div_one]; omega)
-  simp only [Coc.unbias, Coc.keyAt, Coc.bias, if_true, Nat.mul_one, bitsAt_one, hXi] at hv
+  simp only [Coc.keyAt, Column.sext, beq_self_eq_true, if_true, Nat.mul_one, bitsAt_one, hXi] at hv
   rw [raw_foR .i64 8 rfl (by decide)]
   simp only [raw, Array.getElem?_map, Array.getElem?_range, hn, hi, if_true, Option.map_some, hv]
   constructor <;> split <;> decide

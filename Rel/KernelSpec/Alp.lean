@@ -131,17 +131,17 @@ theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0
   have hwt : w.toUSize.toNat = w := by
     rcases System.Platform.numBits_eq with h | h <;> simp [Nat.toUSize, h] <;> omega
   unfold Kernel.Coc.encodeAt
-  simp only [hwt]
+  simp only [hwt, Nat.one_shiftLeft]
   generalize x.size / w = n
-  have hpb := fun b => planBlock_bounds lg w n hw (patch && decide (n < 2 ^ 32)) x b
+  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb ⊢
   generalize Kernel.Coc.planBlock lg w n pl x = blk at hpb ⊢
   have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
     ((Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg))).map fun x =>
-      (Kernel.Coc.unbias w x.1, Kernel.Coc.unbias w x.2.1, x.2.2.1, x.2.2.2.2)) (fun b h => by
+      (x.1.toUInt64, x.2.1.toUInt64, x.2.2.1, x.2.2.2.2)) (fun b h => by
       simp only [Array.size_map, Array.size_range] at h
       simp only [Array.getElem_map, getElem_range]
-      exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv (Nat.two_pow_pos lg) h)).2.2.1 (by decide))
+      exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv (Nat.two_pow_pos lg) h)).2.1 (by decide))
   exact ⟨by rw [hMr.1]; simp, by rw [blk_of_lgAt _ (by rw [hMr.2.1]; exact hlg), hMr.2.1], hMr.2.1⟩
 
 /-- A decimal the encoder accepted is one `Column.alpDec` turns back into the bits it came from:
@@ -394,9 +394,9 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
   have hB16 : 2 ^ lg ≤ 65536 := Nat.pow_le_pow_right (by decide) hlg.2
   unfold Kernel.Coc.encodeAt
-  simp only [hwt]
+  simp only [hwt, Nat.one_shiftLeft]
   generalize x.size / w = n
-  have hpb := fun b => planBlock_bounds lg w n hw8 (patch && decide (n < 2 ^ 32)) x b
+  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
   have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb h32 ⊢
   generalize Kernel.Coc.planBlock lg w n pl x = blk at hpb ⊢
@@ -405,9 +405,9 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   have hbget : ∀ b (h : b < bs.size), bs[b] = blk b := by
     intro b h; subst hbs; simp only [Array.getElem_map, getElem_range]
   have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
-    (bs.map fun x => (Kernel.Coc.unbias w x.1, Kernel.Coc.unbias w x.2.1, x.2.2.1, x.2.2.2.2)) (fun b h => by
+    (bs.map fun x => (x.1.toUInt64, x.2.1.toUInt64, x.2.2.1, x.2.2.2.2)) (fun b h => by
       simp only [Array.size_map] at h; simp only [Array.getElem_map]; rw [hbget b h]
-      exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.2.1 (by decide))
+      exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.1 (by decide))
   generalize Kernel.Coc.foRMeta lg (Kernel.Coc.sumNul w) n _ = M at hMr ⊢
   obtain ⟨hnb, hlgM, hMb⟩ := hMr
   have hBM : Column.blk M = 2 ^ lg := by rw [blk_of_lgAt M ⟨hlgM ▸ hlg.1, hlgM ▸ hlg.2⟩, hlgM]
@@ -428,7 +428,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
           have hj : j ∈ exc.toList := hl ▸ List.mem_cons_self
           rw [hexc, Array.toList_filter, toList_range, List.mem_filter, List.mem_range] at hj
           have hb : j / 2 ^ lg < bs.size := hbsz ▸ lt_cdiv hBp hj.1
-          have hk := ((hpb (j / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hj.1)).2.2.2.2 j
+          have hk := ((hpb (j / 2 ^ lg) (Nat.lt_of_le_of_lt (Nat.div_mul_le_self _ _) hj.1)).2.2.2 j
             (Nat.div_mul_le_self _ _) (by have := Nat.mod_add_div' j (2 ^ lg); have := Nat.mod_lt j hBp; omega)
             hj.1).2 hpl
           rw [show bs.getD (j / 2 ^ lg) default = bs[j / 2 ^ lg] by unfold Array.getD; rw [dif_pos hb]; rfl, hbget _ hb, hk] at hj; exact absurd hj.2 Bool.false_ne_true
@@ -478,6 +478,6 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
       · simp
       · simp only [↓reduceIte, hlast]; rw [show (8 * bs.size + 7) / 8 * 8 = 8 * bs.size by omega]
   · rw [(hMb b (hnb ▸ hb)).2]; simp only [Array.getElem_map]; rw [hbget b (hnb ▸ hb)]
-    exact (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ hnb ▸ hb))).2.2.1
+    exact (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ hnb ▸ hb))).2.1
 
 end Rel.Verify

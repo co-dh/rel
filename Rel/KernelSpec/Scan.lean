@@ -206,8 +206,9 @@ theorem raw_kscanChain (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht 
   apply Array.ext (by simp [hOs])
   intro i h1 h2
   have hi : i < W.size := by simpa [hWs] using h1
-  have hu : Coc.unbias 8 (Coc.keyAt 8 X i) = W[i] := by
-    have h1 := Verify.unbias_keyAt 8 (by decide) (by decide) X i
+  have hu : (Coc.keyAt 8 X i).toUInt64 = W[i] := by
+    have h1 : (Coc.keyAt 8 X i).toUInt64.toNat % 2 ^ (8 * 8) = (Column.bitsAt X (i * 8) 8).toNat :=
+      Verify.sext_bits 8 (by decide) (by decide) _ (Verify.bitsAt_lt _ _ _ (by decide))
     rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi),
       Verify.ofNat_toNat_mod64, Array.getElem_toList] at h1
     exact UInt64.toNat_inj.mp h1

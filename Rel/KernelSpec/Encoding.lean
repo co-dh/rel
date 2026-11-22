@@ -444,13 +444,11 @@ theorem pack_fold0 {E : Type} (f : ByteArray × Nat → E → ByteArray × Nat) 
 
 theorem toInt_min (a b : Int64) : (min a b).toInt = min a.toInt b.toInt := by
   show (if a ≤ b then a else b).toInt = _
-  have := Int64.le_iff_toInt_le (x := a) (y := b)
-  split <;> omega
+  split <;> rename_i h <;> rw [Int64.le_iff_toInt_le] at h <;> omega
 
 theorem toInt_max (a b : Int64) : (max a b).toInt = max a.toInt b.toInt := by
   show (if a ≤ b then b else a).toInt = _
-  have := Int64.le_iff_toInt_le (x := a) (y := b)
-  split <;> omega
+  split <;> rename_i h <;> rw [Int64.le_iff_toInt_le] at h <;> omega
 
 theorem foldl_min_le (l : List Int64) (a : Int64) :
     (l.foldl min a).toInt ≤ a.toInt ∧ ∀ y ∈ l, (l.foldl min a).toInt ≤ y.toInt := by
@@ -485,21 +483,22 @@ theorem sub_toNat (a b : Int64) (h : a.toInt ≤ b.toInt) : (b - a).toUInt64.toN
 /-- A key `Coc.outside` keeps is at or above the frame and less than `2 ^ d` from it. -/
 theorem outside_false (f k : Int64) (d : Nat) :
     Kernel.Coc.outside f d k = false ↔ f.toInt ≤ k.toInt ∧ (k - f).toUInt64.toNat < 2 ^ d := by
-  have hl := Int64.lt_iff_toInt_lt (x := k) (y := f)
   have hu := UInt64.toNat_lt (k - f).toUInt64
-  simp only [Kernel.Coc.outside, Bool.or_eq_false_iff, decide_eq_false_iff_not, Bool.and_eq_false_iff,
-    bne_eq_false_iff_eq]
-  by_cases hd : d < 64
-  · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
-    have : (k - f).toUInt64 >>> d.toUInt64 = 0 ↔ (k - f).toUInt64.toNat < 2 ^ d := by
-      rw [← UInt64.toNat_inj, UInt64.toNat_shiftRight, hs, Nat.shiftRight_eq_div_pow, UInt64.toNat_zero,
-        Nat.div_eq_zero_iff]
-      have := Nat.two_pow_pos d; omega
-    simp only [hd, decide_true, Bool.not_true, true_and, Bool.false_eq_true, false_or, this]
-    omega
-  · have : 2 ^ 64 ≤ 2 ^ d := Nat.pow_le_pow_right (by decide) (by omega)
-    simp only [hd, decide_false, Bool.not_false, true_or, and_true]
-    omega
+  -- by halves, `Nat.div_eq_zero_iff` and not `_lt`: `omega` on an `∧` and `Nat.div_eq_zero_iff_lt` carry
+  -- `Classical.choice`
+  have h0 : (decide (d < 64) && (k - f).toUInt64 >>> d.toUInt64 != 0) = false ↔
+      (k - f).toUInt64.toNat < 2 ^ d := by
+    by_cases hd : d < 64
+    · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+      have hp := Nat.ne_of_gt (Nat.two_pow_pos d)
+      rw [Bool.and_eq_false_iff, bne_eq_false_iff_eq, ← UInt64.toNat_inj, UInt64.toNat_shiftRight, hs,
+        Nat.shiftRight_eq_div_pow, UInt64.toNat_zero, Nat.div_eq_zero_iff]
+      simp only [hd, decide_true, Bool.true_eq_false, false_or]
+      exact ⟨fun h => h.elim (fun e => absurd e hp) id, Or.inr⟩
+    · have : 2 ^ 64 ≤ 2 ^ d := Nat.pow_le_pow_right (by decide) (by omega)
+      simp only [hd, decide_false, Bool.false_and, true_iff]
+      omega
+  rw [Kernel.Coc.outside, Bool.or_eq_false_iff, h0, decide_eq_false_iff_not, Int64.lt_iff_toInt_lt, Int.not_lt]
 
 /-- `Column.sext` keeps a `w`-byte element's own `8 * w` bits: the stored form agrees with the dense bits there.
 Through `toInt` and `Int` division: `BitVec.toNat_sshiftRight` carries `Classical.choice`. -/
@@ -552,6 +551,7 @@ theorem blockOf_bounds (B w n b : Nat) (x : ByteArray) (i : Nat)
   generalize List.foldl max (Kernel.Coc.keyAt w x (b * B)) l = mx at *
   have hr := lt_widthFor (mx - mn).toUInt64.toNat
   refine ⟨a, ?_, widthFor_le _ (UInt64.toNat_lt _)⟩
+  generalize Column.widthFor (mx - mn).toUInt64.toNat = W at hr ⊢
   rw [sub_toNat _ _ a]; rw [sub_toNat _ _ (by omega)] at hr; omega
 
 /-- An element no patch holds: its block's base, plus its frame's lift `fr`, plus its residual. -/
@@ -957,7 +957,7 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
 /-- `Column.foRExc` on a pack whose patch list `Coc.excBlob` wrote after the residuals: element `i`'s own bits,
 sign-extended as a block minimum is, when `i` is listed, and nothing otherwise. -/
 theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (hB : 0 < B ∧ B ≤ 65536) (w : Nat)
-    (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray) (exc : Array Nat) (hs : exc.toList.Pairwise (· < ·))
+    (hw : w ≤ 8) (x : ByteArray) (exc : Array Nat) (hs : exc.toList.Pairwise (· < ·))
     (hn : exc.size < 2 ^ 32) (word : UInt64) (last : ByteArray) (hword : word.toNat % 256 = w)
     (he : Column.blockStart M (Column.nblk M) = pack.size) (i : Nat) (hi : i / B < Column.nblk M) :
     Column.foRExc M (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last) i =
@@ -1109,7 +1109,8 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
       fun a => a != 0) = false → ∀ b (h : b < bs.size), ((blk b).2.2.2.1 - (blk b).1).toUInt64 = 0 := fun h b hb =>
     Decidable.byContradiction fun hne => by
       have : ((Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).any
-          fun a => a != 0) = true := Array.any_eq_true.2 ⟨b, by simpa using hb, by simp [hbget b hb, hne]⟩
+          fun a => a != 0) = true := Array.any_eq_true.2 ⟨b, by simpa using hb, by
+            simp only [Int64.toUInt64_sub] at hne; simp [hbget b hb, hne]⟩
       rw [h] at this; cases this
   have hfs : ∀ b (h : b < bs.size), (Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64)
       bs)[b]? = some ((blk b).2.2.2.1 - (blk b).1).toUInt64 := fun b h => by simp [h, hbget b h]
@@ -1163,12 +1164,12 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
         rw [show (blk (i / 2 ^ lg)).2.2.2.1 = (blk (i / 2 ^ lg)).1 from Int64.toInt_inj.1 (by omega), Int64.sub_self]
         constructor
         · unfold Column.foRExc; simp [he]
-        · unfold Column.foRFrame; simp [he]
+        · unfold Column.foRFrame; simp [he]; rfl
       · next h0 =>
         subst htail
         rw [← hnb]
         refine ⟨?_, ?_⟩
-        · rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw0 hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
+        · rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
             (hnb ▸ hib), if_neg hnot]
         · rw [foRFrame_excBlob M pack (2 ^ lg) ⟨hBp, hB16⟩ w hw x exc (h32' h0) _ _ (hword frm).1 he fs hfsz
             (fun h => if_pos ((hword frm).2.1 h)) _ (hnb ▸ hib)]
@@ -1199,7 +1200,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     rw [← hnb]
     unfold Column.foRBits
     simp only [blockStarts_get _ (Nat.le_refl _)]
-    rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw0 hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
+    rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
       (hnb ▸ hib), if_pos hin]
 
 /-- **The Frame-of-Reference round trip, element by element**, over `foRBits` and the dense bits: element `i` of

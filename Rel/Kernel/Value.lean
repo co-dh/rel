@@ -464,7 +464,8 @@ theorem ones_eq (d : Nat) : ones d = (2 ^ d - 1).toUInt64 := by
   have hp := Nat.two_pow_pos d
   unfold ones; split
   · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
-    have h2 : 2 ^ d < 2 ^ 64 := Nat.pow_lt_pow_right (by decide) (by omega)
+    -- `Nat.pow_le_pow_right` to `2 ^ 63`, since `Nat.pow_lt_pow_right` brings `Classical.choice`
+    have h2 : 2 ^ d < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.pow_le_pow_right (by decide) (by omega : d ≤ 63)) (by decide)
     rw [UInt64.toNat_sub_of_le _ _ (by
         rw [UInt64.le_iff_toNat_le, UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul,
           Nat.mod_eq_of_lt h2]; omega),
@@ -653,18 +654,20 @@ def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   | .i64, .pos => (Array.range n.toNat).map UInt64.ofNat
   | _, _ => #[]
 
-/-- The low `8 * w` bits of `v` by a mask: `v.toNat % 2 ^ (8 * w)` builds a big `Nat` for a sign-extended negative
-element and at `w = 8`. -/
-def lowBytes (w : Nat) (v : UInt64) : UInt64 := if w < 8 then v &&& ((1 <<< (8 * w).toUInt64) - 1) else v
+/-- The low `8 * w` bits of `v`, `0 < w`, by a shift up and down: `v.toNat % 2 ^ (8 * w)` builds a big `Nat` for a
+sign-extended negative element and at `w = 8`. -/
+def lowBytes (w : Nat) (v : UInt64) : UInt64 := if w < 8 then (v <<< (64 - 8 * w).toUInt64) >>> (64 - 8 * w).toUInt64 else v
 
-theorem lowBytes_toNat (w : Nat) (v : UInt64) : (lowBytes w v).toNat = v.toNat % 2 ^ (8 * w) := by
+-- through `omega` at each width: `Nat.and_two_pow_sub_one_eq_mod` carries `Classical.choice`
+theorem lowBytes_toNat (w : Nat) (hw : 0 < w) (v : UInt64) : (lowBytes w v).toNat = v.toNat % 2 ^ (8 * w) := by
+  have := UInt64.toNat_lt v
   unfold lowBytes; split
-  · rw [UInt64.toNat_and, show (((1 : UInt64) <<< (8 * w).toUInt64) - 1).toNat = 2 ^ (8 * w) - 1 by
-      rcases (by omega : w = 0 ∨ w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7) with
-        rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl, Nat.and_two_pow_sub_one_eq_mod]
-  · have : 2 ^ 64 ≤ 2 ^ (8 * w) := Nat.pow_le_pow_right (by decide) (by omega)
-    have := UInt64.toNat_lt v
-    rw [Nat.mod_eq_of_lt (by omega)]
+  · rw [UInt64.toNat_shiftRight, UInt64.toNat_shiftLeft, Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+    rcases (by omega : w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7) with
+      rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+      simp only [Nat.reduceMul, Nat.reduceSub, Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.reducePow, Nat.reduceMod] <;>
+      omega
+  · exact (Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le this (Nat.pow_le_pow_right (by decide) (by omega)))).symm
 
 /-- `raw` as it runs: each `% 2 ^ (8 * w)` a `lowBytes` mask. -/
 def rawImpl (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
@@ -685,11 +688,11 @@ def rawImpl (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
     have := UInt64.toNat_lt v
     rw [UInt64.toNat_ofNat', UInt64.toNat_and, show (1 : UInt64).toNat = 2 ^ 1 - 1 from rfl,
       Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt (by omega)]
-  have hw : ∀ w (v : UInt64), UInt64.ofNat (v.toNat % 2 ^ (8 * w)) = lowBytes w v := fun w v => by
+  have hw : ∀ w, 0 < w → ∀ v : UInt64, UInt64.ofNat (v.toNat % 2 ^ (8 * w)) = lowBytes w v := fun w hw v => by
     apply UInt64.toNat_inj.1
-    rw [lowBytes_toNat, UInt64.toNat_ofNat',
+    rw [lowBytes_toNat w hw, UInt64.toNat_ofNat',
       Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.mod_le _ _) (UInt64.toNat_lt v))]
-  cases e <;> cases t <;> simp [raw, rawImpl, h1, hw]
+  cases e <;> cases t <;> simp [raw, rawImpl, QAtomicType.width, ← h1, ← hw]
 
 end Ext.Enc
 

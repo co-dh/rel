@@ -124,6 +124,8 @@ theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t
   rw [raw_foR t w ht hb]
   refine Array.ext (by simp) fun i h1 _ => ?_
   simp only [Array.getElem_map, Array.getElem_range]
-  rw [foRBits_encode lg hlg w hw.1 hw.2 x i (by simp at h1; omega), unbias_keyAt w hw.1 hw.2, UInt64.ofNat_toNat]
+  rw [foRBits_encode lg hlg w hw.1 hw.2 x i (by simp at h1; omega),
+    show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from
+      sext_bits w hw.1 hw.2 _ (bitsAt_lt _ _ _ hw.2), UInt64.ofNat_toNat]
 
 end Rel.Verify
