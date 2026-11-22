@@ -79,10 +79,10 @@ example : view (u 8) (u 3) (kseen (u 8) [col [1, 1, 1, 1, 1, 1, 1, 2 ^ 40], col 
 
 -- a column that is not `foR`, a type with no order, and a `foR` whose blocks do not cover `n` are the error, named by
 -- their place in `es`
-def dense : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[1]: asc: constructor 0 is not foR"
-example : view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .bytes (ByteArray.mk (Array.replicate 16 0)))]) = dense := by
+def dense : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[1]: asc: constructor 3 is not foR"
+example : view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .gen #[])]) = dense := by
   decide +kernel
-#guard view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .bytes (ByteArray.mk (Array.replicate 16 0)))]) == dense
+#guard view (u 0) (u 0) (kseen (u 2) [col [0, 1], (.atom .i64, .gen #[])]) == dense
 def sym : String ⊕ (Nat × List UInt64 × List UInt64) := .inl "seen: es[0]: asc: type 9 has no fixed-width order"
 example : view (u 0) (u 0) (kseen (u 2) [(.atom .sym, wordsFoR #[0, 1])]) = sym := by decide +kernel
 #guard view (u 0) (u 0) (kseen (u 2) [(.atom .sym, wordsFoR #[0, 1])]) == sym

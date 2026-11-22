@@ -29,10 +29,10 @@ example : view (kgather (u 3) (col [1, 3, 9]) (u 3) (col [1, 2, 3])) = past := b
 #guard view (kgather (u 3) (col [1, 3, 9]) (u 3) (col [1, 2, 3])) == past
 
 -- a form other than `foR`, and a `foR` whose blocks do not cover the count, named by the argument they came in
-def dense : String ⊕ (List UInt8 × List UInt8) := .inl "gather: e: constructor 0 is not foR"
-example : view (kgather (u 2) (col [0, 1]) (u 2) (.bytes (ByteArray.mk (Array.replicate 16 0)))) = dense := by
+def dense : String ⊕ (List UInt8 × List UInt8) := .inl "gather: e: constructor 3 is not foR"
+example : view (kgather (u 2) (col [0, 1]) (u 2) (.gen #[])) = dense := by
   decide +kernel
-#guard view (kgather (u 2) (col [0, 1]) (u 2) (.bytes (ByteArray.mk (Array.replicate 16 0)))) == dense
+#guard view (kgather (u 2) (col [0, 1]) (u 2) (.gen #[])) == dense
 def short : String ⊕ (List UInt8 × List UInt8) := .inl "gather: ix: foR: 1 blocks of 2^10 and a 128-byte pack are not the layout of 2000 elements"
 example : view (kgather (u 2000) (col [0, 1]) (u 2) (col [0, 1])) = short := by decide +kernel
 #guard view (kgather (u 2000) (col [0, 1]) (u 2) (col [0, 1])) == short

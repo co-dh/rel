@@ -20,11 +20,11 @@ structure OwnFile where
   domain : String
   parts : Array ByteArray
 
-/-- `own.rs`'s `OWN_NPARTS`: the part count of each constructor kind (0 bytes, 2 foR, 3 alp, 4 enum), `none` for a
-number that is no kind: 1 was the bitmap, gone since a boolean is a `u1` `foR`; the others keep their numbers. -/
-def ownNParts : List (Option Nat) := [some 1, none, some 2, some 3, some 2]
+/-- `own.rs`'s `OWN_NPARTS`: the part count of each constructor kind (2 foR, 4 enum), `none` for a number that
+is no kind: 0 `bytes` and 3 `alp` were removed in version 5, 1 was the bitmap; the others keep their numbers. -/
+def ownNParts : List (Option Nat) := [none, none, some 2, none, some 2]
 
-/-- The kinds with their part counts as both refusals name them, `0:1, 2:2, 3:3 or 4:2` (`own.rs`'s `Kinds`). -/
+/-- The kinds with their part counts as both refusals name them, `2:2 or 4:2` (`own.rs`'s `Kinds`). -/
 def ownKinds : String :=
   match (ownNParts.zipIdx.filterMap fun (n, k) => n.map (s!"{k}:{·}")).reverse with
   | [] => ""
@@ -54,7 +54,7 @@ def ownLayout (a : Nat) : List ByteArray → List UInt8 × List UInt8
     let r := ownLayout (ownOff a + p.size) ps
     (leBytes (ownOff a) 8 ++ leBytes p.size 8 ++ r.1, List.replicate (ownOff a - a) 0 ++ p.data.toList ++ r.2)
 
-/-- The file `ownWrite` writes for `f`, or `own::write`'s refusal: bytes 0..8 `qleancol`, the version 4, code,
+/-- The file `ownWrite` writes for `f`, or `own::write`'s refusal: bytes 0..8 `qleancol`, the version 5, code,
 attribute, kind, the part count (2 bytes), the domain name's length (2 bytes), the element count (8 bytes), the part
 table, the domain name, then `ownLayout`. -/
 def ownImage (f : OwnFile) : Except String ByteArray :=
@@ -65,7 +65,7 @@ def ownImage (f : OwnFile) : Except String ByteArray :=
   else if d.contains 0 then .error s!"a domain name with no NUL byte, found one at byte {d.idxOf 0}"
   else
     let r := ownLayout (24 + 16 * np + d.length) f.parts.toList
-    .ok ⟨(ownMagic ++ [4, f.code, f.attr, f.kind] ++ leBytes np 2 ++ leBytes d.length 2 ++ leBytes f.count.toNat 8
+    .ok ⟨(ownMagic ++ [5, f.code, f.attr, f.kind] ++ leBytes np 2 ++ leBytes d.length 2 ++ leBytes f.count.toNat 8
       ++ r.1 ++ d ++ r.2).toArray⟩
 
 /-- The one column writer: `parts` are a `Column` constructor's `ByteArray`s, written as they lie (`ownImage`). The
@@ -101,8 +101,8 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   let v := leAt b 8 1
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
   else if (List.range 8).map byte != ownMagic then .error "byte 0: the magic `qleancol`"
-  else if v < 3 || v > 4 then
-    .error s!"byte 8: format version 3 or 4, found {v}; a version-1 file predates the Frame of Reference patch list and a version-2 one its per-block frames, and either is rewritten by `set` from the data it was made from"
+  else if v != 5 then
+    .error s!"byte 8: format version 5, found {v}; a file before version 5 may hold the dense `bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` from the data it was made from"
   else if ownNParts[kind]?.join != some np then
     .error s!"byte 11: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
   else if 24 + 16 * np + nl > b.size then

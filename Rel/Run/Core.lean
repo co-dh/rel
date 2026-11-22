@@ -635,10 +635,12 @@ open Rel.Column
 /-- `Enc.WF` of a literal payload at a literal `USize` count: `decide` cannot reduce `USize.toNat` of a
     numeral, so the count is read as a `Nat` numeral first. -/
 macro "wf_lit" : tactic => `(tactic| (unfold Enc.WF; simp only [USize.reduceToNat, QAtomicType.width]; decide))
+/-- The size side of `Arr.ofBytes .i64 (packLongs xs)` at a literal count. -/
+macro "longs_lit" : tactic => `(tactic| (rw [packLongs_size]; simp [QAtomicType.width]))
 /-- A literal count below `2³²` fits a `USize` on every platform (`USize.le_size`). -/
 macro "fits_lit" : tactic => `(tactic| (refine Nat.lt_of_lt_of_le ?_ USize.le_size; simp))
 
-private def l3 : Arr .i64 3 := Arr.mk (.bytes <| packLongs [7, -1, 42]) (by wf_lit)
+private def l3 : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [7, -1, 42]) (by longs_lit)
 #guard l3.toList == [7, -1, 42]
 
 private def bs : Arr .u1 3 := Arr.bools 3 (Column.bitAt ⟨#[0b101]⟩)
@@ -657,10 +659,11 @@ private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.g
 
 -- `Tab.toList` runs as `toListImpl`; the spec `List.ofFn` of the rows is computed beside it. An `arr` side whose
 -- slices are in range, past the payload and negative, and a `sum` side whose positions clamp at both ends.
-private def ta : Tab .long (.arr .long) := ⟨3, l3, ⟨4, Arr.mk (.bytes <| packLongs [0, 2, -5]) (by wf_lit),
-  Arr.mk (.bytes <| packLongs [2, 9, 0]) (by wf_lit), Arr.mk (.bytes <| packLongs [10, 20, 30, 40]) (by wf_lit)⟩⟩
-private def tsum : Tab .long (.sum .long .long) := ⟨3, l3, ⟨2, 1, bs, Arr.mk (.bytes <| packLongs [0, 7, -3]) (by wf_lit),
-  Arr.mk (.bytes <| packLongs [5, 6]) (by wf_lit), Arr.mk (.bytes <| packLongs [9]) (by wf_lit)⟩⟩
+private def ta : Tab .long (.arr .long) := ⟨3, l3, ⟨4, Arr.ofBytes .i64 (packLongs [0, 2, -5]) (by longs_lit),
+  Arr.ofBytes .i64 (packLongs [2, 9, 0]) (by longs_lit), Arr.ofBytes .i64 (packLongs [10, 20, 30, 40]) (by longs_lit)⟩⟩
+private def tsum : Tab .long (.sum .long .long) :=
+  ⟨3, l3, ⟨2, 1, bs, Arr.ofBytes .i64 (packLongs [0, 7, -3]) (by longs_lit),
+  Arr.ofBytes .i64 (packLongs [5, 6]) (by longs_lit), Arr.ofBytes .i64 (packLongs [9]) (by longs_lit)⟩⟩
 #guard (ta.toList : List (Int64 × List Int64)) == [(7, [10, 20]), (-1, [30, 40]), (42, [])]
 #guard (ta.toList : List (Int64 × List Int64)) == List.ofFn fun i => (ta.key.row i, ta.val.row i)
 #guard (tsum.toList : List (Int64 × Sum Int64 Int64)) == [(7, .inr 9), (-1, .inl 6), (42, .inr 9)]
