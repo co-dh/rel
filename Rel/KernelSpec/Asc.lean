@@ -105,11 +105,12 @@ theorem ascWords_foR {m : USize} {c : QAtomicType × Enc} {x : Array UInt64} (hw
 
 mutual
 /-- The order codes of one key column at `m` rows, `ascCol`'s on the words `Enc.raw` reads: an `atom` column's words
-through its type's `ascOrd`, a `cells` column's words through `cellFns` over its payload's `ascKeys`. -/
+through its type's `ascOrd`, a `cells` column's words through `cellFns` over its payload's `ascKeys`. A null row's
+word is never read (`nulWords`): `ascCol` refuses a null in a `cells` column, but `AscKey × Enc` admits one. -/
 def ascKey (m : USize) : AscKey × Enc → List (Array UInt64)
   | (.atom t, e) => nulCodes m e ((raw .i64 m e).map ((ascOrd t).getD id))
   | (.cells n c lo hi els, e) =>
-    (cellFns c.toNat (raw .i64 n lo) (raw .i64 n hi) (ascKeys c els)).map fun f => (raw .i64 m e).map f
+    (cellFns c.toNat (raw .i64 n lo) (raw .i64 n hi) (ascKeys c els)).map fun f => (nulWords m e (raw .i64 m e)).map f
 
 /-- The order codes `kasc` sorts by: each key column's `ascKey`, in the order of `es`. -/
 def ascKeys (m : USize) : List (AscKey × Enc) → List (Array UInt64)
@@ -123,20 +124,41 @@ theorem ascKeys_append (m : USize) (e1 e2 : List (AscKey × Enc)) : ascKeys m (e
   | cons e es ih => simp only [List.cons_append, ascKeys, ih, List.append_assoc]
 
 /-- `nulCodes` at row `q` is a function of the column's null test (`hasNul`, which decides how many code columns it
-has), its null flag and its code there. -/
-theorem nulCodes_row {m m' : USize} {e e' : Enc} {c c' : Array UInt64} {q q' : Nat} (hh : hasNul e = hasNul e')
-    (hf : (foRNuls m e)[q]? = (foRNuls m' e')[q']?) (hc : c[q]? = c'[q']?) :
-    (nulCodes m e c).map (·[q]?.getD 0) = (nulCodes m' e' c').map (·[q']?.getD 0) := by
-  unfold nulCodes; rw [hh]
-  cases hasNul e'
-  · simp [hc]
-  · simp [Array.getElem?_mapIdx, hf, hc]
+has), its null flag and its word there where that is no null (`nulWords`): a null's code is `0` whatever its word. -/
+theorem nulCodes_row {m m' : USize} {e e' : Enc} {c c' : Array UInt64} {g : UInt64 → UInt64} {q q' : Nat}
+    (hh : hasNul e = hasNul e') (hf : (foRNuls m e)[q]? = (foRNuls m' e')[q']?)
+    (hc : (nulWords m e c)[q]? = (nulWords m' e' c')[q']?) :
+    (nulCodes m e (c.map g)).map (·[q]?.getD 0) = (nulCodes m' e' (c'.map g)).map (·[q']?.getD 0) := by
+  unfold nulCodes nulWords at *; rw [hh] at hc ⊢
+  cases hN : hasNul e' <;> simp only [hN, Bool.false_eq_true, ↓reduceIte] at hc ⊢
+  · simp [Array.getElem?_map, hc]
+  · simp only [List.singleton_append, List.map_cons, List.map_nil, Array.getElem?_mapIdx, Array.getElem?_map, hf]
+      at hc ⊢
+    cases h1 : c[q]? <;> cases h2 : c'[q']? <;> simp only [h1, h2, Option.map_none, Option.map_some,
+      reduceCtorEq, Option.some.injEq] at hc ⊢ <;> by_cases hF : ((foRNuls m' e')[q']?.getD 0 == 0) = true <;>
+      simp_all
+
+/-- `nulWords` leaves the words of a column with no null row alone: `noNul`'s answer `ok`. -/
+theorem nulWords_noNul {w : String} {m : USize} {e : Enc} {u : Unit} (h : noNul w m e = .ok u) (c : Array UInt64) :
+    nulWords m e c = c := by
+  unfold noNul at h; unfold nulWords
+  split; rotate_left; · rfl
+  rename_i hN; simp only [hN, ↓reduceIte] at h
+  split at h; · cases h
+  rename_i hn
+  have h0 := Array.findIdx?_eq_none_iff.1 hn
+  refine Array.ext (by simp) fun i h1 _ => ?_
+  simp only [Array.getElem_mapIdx]
+  cases hi : (foRNuls m e)[i]? with
+  | none => rfl
+  | some x => have := h0 x (Array.mem_of_getElem? hi); simp_all
 
 /-- **A row's codes are a function of its words and null flags**: two key lists of one shape whose columns have one
-word and one null flag at rows `q` and `q'`, and one null test, have one code at those rows in every column of
-`ascKeys`, so a permuted column has the permuted codes. -/
+null test, one null flag at rows `q` and `q'`, and one word there where that is no null (`nulWords`), have one code at
+those rows in every column of `ascKeys`, so a permuted column has the permuted codes. -/
 theorem ascKeys_row {m m' : USize} {q q' : Nat} : ∀ {K K' : List (AscKey × Enc)}, K.map (·.1) = K'.map (·.1) →
-    (∀ c (h : c < K.length) (h' : c < K'.length), (raw .i64 m K[c].2)[q]? = (raw .i64 m' K'[c].2)[q']?) →
+    (∀ c (h : c < K.length) (h' : c < K'.length),
+      (nulWords m K[c].2 (raw .i64 m K[c].2))[q]? = (nulWords m' K'[c].2 (raw .i64 m' K'[c].2))[q']?) →
     (∀ c (h : c < K.length) (h' : c < K'.length), hasNul K[c].2 = hasNul K'[c].2 ∧
       (foRNuls m K[c].2)[q]? = (foRNuls m' K'[c].2)[q']?) →
     (ascKeys m K).map (·[q]?.getD 0) = (ascKeys m' K').map (·[q']?.getD 0)
@@ -152,7 +174,7 @@ theorem ascKeys_row {m m' : USize} {q q' : Nat} : ∀ {K K' : List (AscKey × En
     simp only [ascKeys, List.map_append]
     congr 1
     · cases k
-      · simp only [ascKey]; exact nulCodes_row hn0.1 hn0.2 (by simp only [Array.getElem?_map, h0])
+      · simp only [ascKey]; exact nulCodes_row hn0.1 hn0.2 h0
       · simp only [ascKey, List.map_map, Function.comp_def, Array.getElem?_map, h0]
     · exact ascKeys_row hk (fun c h h' => hw (c + 1) (by simp; omega) (by simp; omega))
         fun c h h' => hn (c + 1) (by simp; omega) (by simp; omega)
@@ -210,7 +232,7 @@ theorem ascCol_ok : ∀ {m : USize} {c : AscKey × Enc} {x : Array UInt64} {k : 
               obtain ⟨rfl, -⟩ := foRWords_raw _ _ _ _ hl
               obtain ⟨rfl, -⟩ := foRWords_raw _ _ _ _ hh
               refine ⟨rfl, hs, ?_, fun t ht => by cases ht⟩
-              rw [ascKey, ascCodes_ok hks]
+              rw [ascKey, ascCodes_ok hks, nulWords_noNul hn0]
 
 /-- What `ascCodes` answers: `ascKeys`. -/
 theorem ascCodes_ok : ∀ {m : USize} {es : List (AscKey × Enc)} {ks : List (Array UInt64)},
@@ -400,7 +422,7 @@ theorem lexLe_pos {m : USize} (hm : m.toNat ≤ 2 ^ 63) (rest : List (AscKey × 
     simp only [sx, UInt64.toNat_ofNat'] at this
     split at this <;> omega
   have hpr : raw .i64 m (.pos : Enc) = (Array.range m.toNat).map UInt64.ofNat := rfl
-  simp only [ascKeys, ascKey, nulCodes, hasNul, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
+  simp only [ascKeys, ascKey, nulCodes, nulWords, hasNul, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
     show y < m.toNat by omega, hx, if_true, Option.map_some, Option.getD_some, Bool.or_eq_true, decide_eq_true_eq,
     UInt64.lt_iff_toNat_lt]
   left

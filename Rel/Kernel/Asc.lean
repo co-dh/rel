@@ -107,13 +107,16 @@ def cellFns (c : Nat) (lo hi : Array UInt64) (xs : List (Array UInt64)) : List (
   (List.range c).flatMap fun j =>
     (fun r => if j < len r then 1 else 0) :: xs.map fun x r => if j < len r then x[s r + j]?.getD 0 else 0
 
+/-- `c`, words or codes of `e`'s `m` rows, with `0` at each null row (`foRNuls`) where `e` holds a null (`hasNul`), so
+all nulls are one value and a null row's word (its block's top residual, no q value) is never read. -/
+def nulWords (m : USize) (e : Enc) (c : Array UInt64) : Array UInt64 :=
+  if hasNul e then c.mapIdx fun i v => if (foRNuls m e)[i]?.getD 0 == 0 then v else 0 else c
+
 /-- The code columns of an atom column `e` of `m` rows whose order codes are `c`: `[c]` where `e` holds no null
 (`hasNul`); else the null as a value of its own, q's order: first a column `0` at a null and `1` elsewhere, so a null
-sorts before every value, then `c` with `0` at a null, so all nulls are one value. -/
+sorts before every value, then `c` with `0` at a null (`nulWords`). -/
 def nulCodes (m : USize) (e : Enc) (c : Array UInt64) : List (Array UInt64) :=
-  if hasNul e then let ns := foRNuls m e
-    [ns.map (1 - ·), c.mapIdx fun i v => if ns[i]?.getD 0 == 0 then v else 0]
-  else [c]
+  (if hasNul e then [(foRNuls m e).map (1 - ·)] else []) ++ [nulWords m e c]
 
 mutual
 /-- One key column of `kasc` at `m` rows: the words it carries and its order code columns, or why it has none. An
