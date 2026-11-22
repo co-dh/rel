@@ -628,35 +628,6 @@ theorem Tm.Sub.den_rename {A B A' B' : Obj} (b : Tm A' B') (σ : Tm.Sub) (ρ : V
     exact den_bind σ (fun j hj => Nat.ne_of_lt (lt_fresh (List.mem_append_right _ hj))) i
       (Nat.ne_of_lt (lt_fresh (List.mem_append_left _ hi)))
 
-/-- **Substitution lemma**: `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. -/
-theorem Tm.den_subst : ∀ {A B : Obj} (t : Tm A B) (σ : Tm.Sub), σ.Plain → ∀ ρ : Val,
-    (t.subst σ).den ρ = t.den (σ.den ρ) ∧ ∀ ss, (t.subst σ).argDen ρ ss = t.argDen (σ.den ρ) ss := by
-  intro A B t
-  induction t with
-  | var d i => intro σ hσ ρ; exact ⟨Sub.den_get ρ i d σ, fun _ => Sub.argDen_get i d σ hσ⟩
-  | nu k S b ihS ih =>
-    intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den, (ihS σ hσ ρ).1]
-    congr 1; funext X; congr 1
-    refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
-    rcases List.mem_cons.1 he with rfl | he
-    · rfl
-    · exact hσ e he ρ ss
-  | mu k _ _ b ih | hylo k _ b ih =>
-    intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den]; congr 1; funext X
-    refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
-    rcases List.mem_cons.1 he with rfl | he
-    · rfl
-    · exact hσ e he ρ ss
-  | arg f x ihf ihx =>
-    intro σ hσ ρ
-    have hx := (ihx σ hσ ρ).1
-    have hf := (ihf σ hσ ρ).2
-    exact ⟨by simp only [Tm.subst, Tm.den, hx, hf], fun _ => by simp only [Tm.subst, Tm.argDen, hx, hf]⟩
-  | own R ih =>
-    intro σ hσ ρ
-    have e := ih σ hσ ρ
-    exact ⟨by simp only [Tm.subst, Tm.den, e.1], fun _ => by simp only [Tm.subst, Tm.argDen, e.2]⟩
-  | _ => intro σ hσ ρ; exact ⟨by simp only [Tm.subst, Tm.den, *], fun _ => rfl⟩
 
 /-! ### Monotonicity -/
 

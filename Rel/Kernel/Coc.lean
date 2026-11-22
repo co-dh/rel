@@ -357,17 +357,7 @@ def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := Rel.Column.lgEnc) :
   let (metadata, pack) := encodeAt lg 8 ds false
   (metadata, pack, alpBlob f32 (2 ^ lg) w n x bs)
 
-/-- The obligation is `alpDecode (alpEncode x) = x`, **byte for byte**, NaN payloads included: `0n`
-comes back as `0n`, a second NaN stays distinct from it, `0w` and `-0w` keep their signs and `-0.0`
-does not come back as `+0.0`. That is stronger than value equality and is the whole reason exactness
-is decided on the bits.
 
-Two names and one specification: `rust/src/coc.rs` exports a kernel per element width, so there is a Lean
-declaration per C symbol, and both carry `alpEncodeAt` at the width. `Coc.encode` takes its width as
-an argument instead because the integral encoder is one C symbol; the shape here follows the C. -/
-def alpEncode64 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt false x
-
-def alpEncode32 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt true x
 
 
 
@@ -518,35 +508,6 @@ end Column
 
 namespace Ext.QValue
 
-/-- The `i`th slice of a `slices` value, as the vector it denotes. Reading one is a copy of its
-bytes and nothing else; reading them all is the loop the constructor exists to avoid, which is why
-this is by index and there is no `toArray`. Here, after `Enc.blank`.
-
-**The slice stays dense, and that is measured rather than conceded.** `CLAUDE.md`'s "the encoded form
-is the representation" is about a column that *enters* and is then read many times; a slice is read
-once, by the `each` that asked for it, so encoding it spends a whole extra pass to save part of one.
-Interleaved against the same binary with the encode spliced in, a million longs in a thousand pieces:
-`count each value group xg` 1.32x, `min each value group xg` 1.18x, `sums each value group xg` 1.12x,
-`{x+x} each value group xg` and `{x+x} each flip mxl` 1.05x — against the same pieces held as a
-general list, `{x+x} each mxl` at 1.00x and `sums each mxl` at 1.04x. Every shape is a loss.
-
-There is no boxing on the other side of that trade, which is what would have paid for the pass.
-`Kernel.overColumn` folds a dense payload at every integral type and a boolean `foR` at `boolean`, and
-the elementwise and scan families have their own dense paths: measured, `min each mxf` is 341ns per
-thousand elements and `{x+x} each mxl` 1.0µs, where `Column.atoms` alone would be 64µs. The decline
-`CLAUDE.md` warns about is real at a column that arrives, not at a slice of one.
-
-`Column.encode` answers a float column unchanged (`Coc.encodes` is false there — ALP is the float encoding and
-reaches columns through `Column.admit`), so it would be a no-op at the one type it was wanted for.
-
-The second case rests on every producer — `group`, `flip`, `string`, `vs`, `cross` — sharing a
-`.bytes` payload. A payload that is not dense has no per-piece cut here and answers the whole column,
-so a producer over an encoded column must cut it where it is built, the way `Kernel.cutFoR` does. -/
-def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) (i : Nat) : Ext.QValue X :=
-  -- no form has a per-piece cut here, so the whole column answers (a producer cuts where it builds, `Kernel.cutFoR`)
-  let _ := offs; let _ := i
-  .vector t n e attr
 
 
 end Ext.QValue

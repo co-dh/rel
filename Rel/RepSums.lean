@@ -58,11 +58,6 @@ theorem ordCode_i64 (u : UInt64) : ordCode 8 false true u = u ^^^ 0x800000000000
     Nat.mod_eq_of_lt u.toNat_lt]
   rfl
 
-/-- `ordCode` orders `i64` words as `Int64`. -/
-theorem ordCode_i64_le (a b : Int64) :
-    (ordCode 8 false true a.toUInt64).toNat ≤ (ordCode 8 false true b.toUInt64).toNat ↔ a ≤ b := by
-  have := Int64.le_toInt a; have := Int64.toInt_lt a; have := Int64.le_toInt b; have := Int64.toInt_lt b
-  rw [ordCode_i64, ordCode_i64, Int64.code_toNat, Int64.code_toNat, Int64.le_iff_toInt_le]; omega
 
 
 /-- `kseen` read every column it was given: `ascCol` answers on each. -/

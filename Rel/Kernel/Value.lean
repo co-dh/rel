@@ -453,23 +453,6 @@ def foRBits (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : UInt64 
 /-- `2 ^ d - 1` as a `UInt64`, all ones at `d ≥ 64`: by a shift, since `2 ^ d` is a big `Nat` from `d = 63`. -/
 def ones (d : Nat) : UInt64 := if d < 64 then ((1 : UInt64) <<< d.toUInt64) - 1 else 0 - 1
 
-theorem ones_eq (d : Nat) : ones d = (2 ^ d - 1).toUInt64 := by
-  apply UInt64.toNat_inj.1
-  have hp := Nat.two_pow_pos d
-  unfold ones; split
-  · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
-    -- `Nat.pow_le_pow_right` to `2 ^ 63`, since `Nat.pow_lt_pow_right` brings `Classical.choice`
-    have h2 : 2 ^ d < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.pow_le_pow_right (by decide) (by omega : d ≤ 63)) (by decide)
-    rw [UInt64.toNat_sub_of_le _ _ (by
-        rw [UInt64.le_iff_toNat_le, UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul,
-          Nat.mod_eq_of_lt h2]; omega),
-      UInt64.toNat_shiftLeft, hs, UInt64.toNat_one, Nat.shiftLeft_eq, Nat.one_mul, Nat.mod_eq_of_lt h2,
-      Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (by omega)]
-  · obtain ⟨m, hm⟩ : ∃ m, 2 ^ d = 2 ^ 64 * m := ⟨2 ^ (d - 64), by rw [← Nat.pow_add]; congr 1; omega⟩
-    rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', hm, show (0 - 1 : UInt64).toNat = 2 ^ 64 - 1 from rfl]
-    rw [hm] at hp
-    simp only [Nat.reducePow] at hp ⊢
-    omega
 
 /-- Whether element `i` is the null of a nullable column (`atom+1`), tested on the encoding and never decoded: its
 block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is the block's top one, `2 ^ w - 1`.
@@ -1010,12 +993,6 @@ namespace Column
 open Ext.Enc
 
 
-/-- The fold appends `w` bytes per element. -/
-theorem foldl_pushBits_size {w : Nat} (b : ByteArray) (as : List QAtom) :
-    (as.foldl (fun acc a => pushBits acc (bitsOf a) w) b).size = b.size + as.length * w := by
-  induction as generalizing b with
-  | nil => simp
-  | cons a as ih => rw [List.foldl_cons, ih, pushBits_size]; simp [Nat.succ_mul]; omega
 
 /-- The bit an atom contributes to a boolean column. -/
 def boolOf (a : QAtom) : Bool := match a with | .u1 b => b | _ => false

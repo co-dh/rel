@@ -141,8 +141,6 @@ section Over
 
 variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (ng w n : USize) (gid b : ByteArray)
 
-/-- Row `i`'s group id and element, as `overGroups` reads them. -/
-def gidAt (i : Nat) : Nat := Column.idAt gid w.toNat i
 def valAt (i : Nat) : Int64 := Ew.signed cls (Ew.elem cls b i)
 
 
@@ -153,15 +151,7 @@ def overStep : Array Int64 × Array Int64 → Nat → Array Int64 × Array Int64
   if g ≥ ng.toNat || (!op.boolCast && x == nul) then (fold, live)
   else (fold.set! g (op.step fold[g]! x), live.set! g (live[g]! + 1))
 
-/-- `overGroups`' answer: the folds then the counts, eight bytes a slot. -/
-def slots (fold live : Array Int64) : ByteArray :=
-  (fold ++ live).foldl (init := ByteArray.empty) fun acc v => Column.pushBits acc v.toUInt64 8
 
-theorem set!_get! (a : Array Int64) (g j : Nat) (v : Int64) (hj : j < a.size) :
-    (a.set! g v)[j]! = if g = j then v else a[j]! := by
-  rw [getElem!_pos (a.set! g v) j (by rw [Array.set!_eq_setIfInBounds, Array.size_setIfInBounds]; exact hj),
-    getElem!_pos a j hj]
-  simp only [Array.set!_eq_setIfInBounds, Array.getElem_setIfInBounds hj]
 
 
 

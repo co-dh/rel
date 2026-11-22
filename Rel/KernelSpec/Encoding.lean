@@ -126,18 +126,6 @@ theorem ba_push_getElem? (b : ByteArray) (v : UInt8) (i : Nat) :
 theorem ba_size_push (b : ByteArray) (v : UInt8) : (b.push v).size = b.size + 1 := by
   show (b.data.push v).size = b.data.size + 1; simp
 
-theorem fold_push_getElem? (L : Nat) (f : Nat → UInt8) (init : ByteArray) :
-    (Nat.fold L (init := init) fun k _ acc => acc.push (f k)).size = init.size + L ∧
-    ∀ k < L, (Nat.fold L (init := init) fun k _ acc => acc.push (f k))[init.size + k]? = some (f k) := by
-  induction L with
-  | zero => simp
-  | succ L ih =>
-    obtain ⟨hs, hg⟩ := ih
-    refine ⟨by rw [Nat.fold_succ, ba_size_push]; exact (congrArg (· + 1) hs).trans (by omega), fun k hk => ?_⟩
-    simp only [Nat.fold_succ, ba_push_getElem?, hs]
-    by_cases hkL : k = L
-    · subst hkL; simp
-    · simp [hkL, hg k (by omega)]
 
 
 theorem field_of (w p j : Nat) (h1 : j * w ≤ p) (h2 : p < j * w + w) :
@@ -260,18 +248,6 @@ theorem foldl_pushBits {E : Type} (g : E → UInt64) (w : Nat) (hw : w ≤ 8) (l
       rw [List.getElem_cons_succ, ← hb i (by simp at hi; omega), hsz,
         show a.size + w * (i + 1) = a.size + w + w * i by rw [Nat.mul_succ]; omega]
 
-/-- `Coc.decode` at a width up to eight holds `n` elements, element `i` being `foRBits`' on the low
-`8 * w` bits. -/
-theorem decodeW (w : USize) (hw : w.toNat ≤ 8) (md pk : ByteArray) (n : USize) :
-    (Kernel.Coc.decode w md pk n).size = w.toNat * n.toNat ∧
-    ∀ i < n.toNat, Column.bitsAt (Kernel.Coc.decode w md pk n) (i * w.toNat) w.toNat =
-      UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * w.toNat)) := by
-  obtain ⟨hs, -, hg⟩ := foldl_pushBits id w.toNat hw (Kernel.Coc.elems md pk n) ByteArray.empty
-  simp only [Kernel.Coc.decode]
-  refine ⟨by simpa [Kernel.Coc.elems] using hs, fun i hi => ?_⟩
-  have := hg i (by simp [Kernel.Coc.elems, hi])
-  rw [Nat.mul_comm]
-  simpa [Kernel.Coc.elems] using this
 
 theorem foldl_push8 {E : Type} (g : E → UInt8) (l : List E) (a : ByteArray) :
     (l.foldl (fun acc e => acc.push (g e)) a).size = a.size + l.length ∧

@@ -32,8 +32,6 @@ variable {t : QAtomicType} {n : USize}
 /-- The payload. The fallback is unreachable: `WFAt` holds only of a `vector`. -/
 def enc (x : Arr t n) : Enc := match x.1 with | .vector _ _ e _ => e | _ => .gen #[]
 
-/-- The attribute and index cell, `QValue.attrCell` of the vector. -/
-def attrCell (x : Arr t n) : Option (UInt8 × IndexCell) := match x.1 with | .vector _ _ _ a => a | _ => none
 
 /-- The payload agrees with the header. -/
 theorem wf (x : Arr t n) : Enc.WF t n x.enc := by
@@ -172,12 +170,6 @@ def longWords (n : USize) (e : Enc) : Option (List UInt64) :=
   | .pos => some ((List.range n.toNat).map Nat.toUInt64)
   | _ => none
 
-/-- A long payload as dense bytes: `foR` decoded once (`Coc.decode`), `pos` as `Enc.bytesOf` reads it. -/
-def longBytes (n : USize) (e : Enc) : Option ByteArray :=
-  match e with
-  | .foR md pk => some (Kernel.Coc.decode 8 md pk n)
-  | .pos => Enc.bytesOf .i64 n (.pos : Enc)
-  | _ => none
 
 /-- Under `wf`, a long column lists its words, each read as a long: the `foR` decode, or the positions. -/
 theorem Arr.toList_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
@@ -198,21 +190,8 @@ theorem Arr.toList_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : lon
     rfl
   | _ => all_goals (rw [hc] at h; cases h)
 
-/-- Element `i` of a long column is word `i`, read as a long. -/
-theorem Arr.get_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws)
-    (i : Nat) (hi : i < m.toNat) (hw : i < ws.length) : x.get ⟨i, hi⟩ = ws[i].toInt64 := by
-  rw [← Arr.getElem_toList x i (by rw [Arr.length_toList]; exact hi)]
-  simp [Arr.toList_long x h]
 
 
-/-- A dense long payload of `m` words Frame-of-Reference encoded lists them (`foRBits_encode_bits`). -/
-theorem longWords_encode {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat) :
-    longWords m (.foR (Kernel.Coc.encode (8 : Nat).toUSize b).1 (Kernel.Coc.encode (8 : Nat).toUSize b).2) =
-      some (Verify.elemsW 8 b) := by
-  simp only [longWords, Verify.elemsW, ← hm]
-  refine congrArg some (List.map_congr_left fun i hi => UInt64.toNat_inj.1 ?_)
-  rw [← Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
-  exact Verify.foRBits_encode_bits Column.lgEnc (by decide) 8 (by decide) (by decide) b i (List.mem_range.1 hi)
 
 /-- A column of `n` rows of the fixed-width type `t` from the dense payload `b`, `w` bytes a row: `Coc.encode` at `w`,
     so the column is `foR` where it is produced (decision M), a float's stored bits included. Every type with a width
@@ -333,14 +312,6 @@ open Ext.Enc
 
 end Column
 
-/-- The `str` bridge: bytes that are some string's UTF-8, read as a string the way `Column.get` reads a
-    symbol (`fromUTF8?`, `""` at invalid bytes), write back out as themselves. -/
-theorem str_bytes {B : ByteArray} (h : ∃ s : String, s.toUTF8.data.toList = B.data.toList) :
-    ((String.fromUTF8? B).getD "").toUTF8.data.toList = B.data.toList := by
-  obtain ⟨s, hs⟩ := h
-  obtain rfl : s.toByteArray = B := ByteArray.ext (Array.ext' hs)
-  simp only [String.fromUTF8?, s.isValidUTF8, dite_true, Option.getD_some]
-  rfl
 
 /-- A side of a relation: an atomic type, a product of sides, or an array of a side. A tree, so
     `Vals (.atom t)` is `Arr t` itself and every one-column path is unchanged. A `arr b` element is an

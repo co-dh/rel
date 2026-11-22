@@ -65,11 +65,6 @@ theorem cmpPairs_wf {op : Op} {t : QAtomicType} {T u : Tab (.atom t) (.atom t)} 
   okSplit
   exact keep_wf h hT
 
-theorem cmpOn_wf {op : Op} {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m}
-    {u : Tab (.atom t) (.atom t)} (h : cmpOn op K L = .ok u) (hK : Vals.WF K) (hL : Vals.WF L) : u.WF := by
-  simp only [Tab.cmpOn, bind, Except.bind] at h
-  okSplit
-  exact cmpPairs_wf h (cross_wf ‹_› hK hL)
 
 
 

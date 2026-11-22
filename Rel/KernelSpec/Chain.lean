@@ -22,9 +22,6 @@ theorem bitsAt_one (b : ByteArray) (o : Nat) : Column.bitsAt b o 1 = (b[o]?.getD
 
 
 
-theorem width_pos_le (cls : UInt8) : 0 < Ew.width cls ∧ Ew.width cls ≤ 8 := by
-  unfold Ew.width; repeat' split
-  all_goals omega
 
 
 end Rel.Verify

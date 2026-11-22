@@ -153,9 +153,6 @@ theorem Obj.lt_inr (a b : Obj) (x y : b.El) : (Obj.sum a b).lt (.inr x) (.inr y)
 theorem Obj.lt_nil_cons (b : Obj) (y : b.El) (ys : List b.El) : (Obj.arr b).lt ([] : List b.El) (y :: ys) :=
   List.cons_lt_cons_iff.2 (.inl Nat.zero_lt_one)
 
-theorem Obj.not_lt_nil (b : Obj) (xs : List b.El) : ¬ (Obj.arr b).lt xs ([] : List b.El) := by
-  show ¬ (xs.foldr (fun x k => 1 :: b.key x ++ k) [0] < [0])
-  cases xs <;> simp [List.cons_lt_cons_iff]
 
 theorem Obj.lt_cons (b : Obj) (x y : b.El) (xs ys : List b.El) :
     (Obj.arr b).lt (x :: xs) (y :: ys) ↔ b.lt x y ∨ b.key x = b.key y ∧ (Obj.arr b).lt xs ys := by

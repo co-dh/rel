@@ -10,18 +10,6 @@ open Rel Rel.Kernel
 
 
 
-theorem idxOf_lt_length {α : Type} [BEq α] [LawfulBEq α] (y : α) (l : List α) :
-    l.idxOf y < l.length ↔ y ∈ l := by
-  induction l with
-  | nil => exact ⟨fun h => absurd h (Nat.not_lt_zero 0), fun h => nomatch h⟩
-  | cons a l ih =>
-    rw [List.idxOf_cons, List.length_cons, List.mem_cons]
-    cases h : a == y
-    · have hne : ¬ y = a := fun e => Bool.noConfusion ((beq_iff_eq.2 e.symm).symm.trans h)
-      simp only [cond_false]
-      rw [Nat.add_lt_add_iff_right, ih]
-      exact ⟨Or.inr, fun o => o.elim (fun e => absurd e hne) id⟩
-    · exact ⟨fun _ => Or.inl (beq_iff_eq.1 h).symm, fun _ => Nat.succ_pos _⟩
 
 
 

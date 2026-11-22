@@ -21,11 +21,6 @@ def sx (w : Nat) (v : UInt64) : Int :=
   if v.toNat % 2 ^ (8 * w) < 2 ^ (8 * w - 1) then ((v.toNat % 2 ^ (8 * w) : Nat) : Int)
   else ((v.toNat % 2 ^ (8 * w) : Nat) : Int) - ((2 ^ (8 * w) : Nat) : Int)
 
-/-- `sx` reads only the low `8 * w` bits, which are what a `w`-byte write keeps. -/
-theorem sx_mod {w : Nat} (h8 : w ≤ 8) (v : UInt64) : sx w (UInt64.ofNat (v.toNat % 2 ^ (8 * w))) = sx w v := by
-  have : v.toNat % 2 ^ (8 * w) < 2 ^ 64 :=
-    Nat.lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos _)) (Nat.pow_le_pow_right (by omega) (by omega))
-  simp only [sx, UInt64.toNat_ofNat', Nat.mod_eq_of_lt this, Nat.mod_mod]
 
 theorem pairwise_map_range_iff {α : Type} (R : α → α → Prop) (f : Nat → α) (m : Nat) :
     ((List.range m).map f).Pairwise R ↔ ∀ i j, i < j → j < m → R (f i) (f j) := by

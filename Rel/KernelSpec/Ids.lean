@@ -12,22 +12,6 @@ import Rel.Kernel.Search
 namespace Rel.Verify
 open Rel Rel.Kernel
 
-/-- An id read at `w` bits is below `2 ^ w`: each byte's contribution is cut to `w` bits. -/
-theorem idAt_lt (ids : ByteArray) (w i : Nat) (hw : w ≤ 64) : Column.idAt ids w i < 2 ^ w := by
-  unfold Column.idAt Column.resAt
-  generalize List.range' _ _ = l
-  suffices h : ∀ (a : UInt64), a.toNat < 2 ^ w → (l.foldl (fun acc k =>
-      acc ||| ((ids[0 + k]?.getD 0).toNat * 2 ^ (8 * k) / 2 ^ (i * w) % 2 ^ w).toUInt64) a).toNat < 2 ^ w from
-    h 0 (Nat.two_pow_pos _)
-  induction l with
-  | nil => exact fun a ha => ha
-  | cons k l ih =>
-    intro a ha
-    apply ih
-    have ht : ((ids[0 + k]?.getD 0).toNat * 2 ^ (8 * k) / 2 ^ (i * w) % 2 ^ w) < 2 ^ w := Nat.mod_lt _ (Nat.two_pow_pos _)
-    have h64 : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) hw
-    rw [UInt64.toNat_or, Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le ht h64)]
-    exact Nat.or_lt_two_pow ha ht
 
 
 /-- `packIds` at a whole-byte lane `8c`: `c` bytes an id, id `i` read back as `bitsAt` reads `c` bytes. -/
@@ -56,13 +40,6 @@ theorem toUInt64_beq {a b : Nat} (ha : a < 2 ^ 64) (hb : b < 2 ^ 64) : (a.toUInt
   rw [beq_iff_eq, beq_iff_eq, ← UInt64.toNat_inj, Nat.toUInt64_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat',
     UInt64.toNat_ofNat', Nat.mod_eq_of_lt ha, Nat.mod_eq_of_lt hb]
 
-theorem idxOf_toUInt64 (l : List Nat) (y : Nat) (hl : ∀ a ∈ l, a < 2 ^ 64) (hy : y < 2 ^ 64) :
-    (l.map Nat.toUInt64).idxOf y.toUInt64 = l.idxOf y := by
-  induction l with
-  | nil => rfl
-  | cons a l ih =>
-    rw [List.map_cons, List.idxOf_cons, List.idxOf_cons, toUInt64_beq (hl a List.mem_cons_self) hy,
-      ih fun x hx => hl x (List.mem_cons_of_mem _ hx)]
 
 
 
