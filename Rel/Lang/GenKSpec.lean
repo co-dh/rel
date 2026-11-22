@@ -156,22 +156,24 @@ theorem lift2_runE {E F : Obj} (f : Tab A B → Tab C D → Except String (Tab E
 
 theorem lift1_sound {f : Tab A B → Except String (Tab C D)} {k : Known C D → Known A B} {R : Rel A B}
     {X : Core.Rel A.El B.El} {Y : Core.Rel C.El D.El} (hk : ∀ K, K.WF → (k K).WF) (hR : ∀ K, K.WF → R.Reps K X)
-    (hf : ∀ K r t, f r = .ok t → Agrees (k K) (rep r) X → Agrees K (rep t) Y) (K : Known C D) (hK : K.WF) :
-    (lift1 f k R).Reps K Y := by
+    (wR : R.Wf) (hf : ∀ K r t, f r = .ok t → r.WF → Agrees (k K) (rep r) X → Agrees K (rep t) Y) (K : Known C D)
+    (hK : K.WF) : (lift1 f k R).Reps K Y := by
   rw [reps_iff, lift1_runE]; intro t h
   obtain ⟨r, hr, ht⟩ := bind_ok h
-  exact hf K r t ht ((reps_iff _ _ _).1 (hR _ (hk K hK)) r hr)
+  exact hf K r t ht (wR.runE (hk K hK) hr) ((reps_iff _ _ _).1 (hR _ (hk K hK)) r hr)
 
 theorem lift2_sound {E F : Obj} {f : Tab A B → Tab C D → Except String (Tab E F)} {kl : Known E F → Known A B}
     {kr : Known E F → Known C D} {R : Rel A B} {S : Rel C D} {X : Core.Rel A.El B.El} {Y : Core.Rel C.El D.El}
     {Z : Core.Rel E.El F.El} (hkl : ∀ K, K.WF → (kl K).WF) (hkr : ∀ K, K.WF → (kr K).WF)
-    (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y)
-    (hf : ∀ K r s t, f r s = .ok t → Agrees (kl K) (rep r) X → Agrees (kr K) (rep s) Y → Agrees K (rep t) Z)
+    (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf)
+    (hf : ∀ K r s t, f r s = .ok t → r.WF → s.WF → Agrees (kl K) (rep r) X → Agrees (kr K) (rep s) Y →
+      Agrees K (rep t) Z)
     (K : Known E F) (hK : K.WF) : (lift2 f kl kr R S).Reps K Z := by
   rw [reps_iff, lift2_runE]; intro t h
   obtain ⟨r, hr, h⟩ := bind_ok h
   obtain ⟨s, hs, ht⟩ := bind_ok h
-  exact hf K r s t ht ((reps_iff _ _ _).1 (hR _ (hkl K hK)) r hr) ((reps_iff _ _ _).1 (hS _ (hkr K hK)) s hs)
+  exact hf K r s t ht (wR.runE (hkl K hK) hr) (wS.runE (hkr K hK) hs) ((reps_iff _ _ _).1 (hR _ (hkl K hK)) r hr)
+    ((reps_iff _ _ _).1 (hS _ (hkr K hK)) s hs)
 
 theorem ofVals_sound {f : {n : USize} → Vals A n → Except String (Tab A B)} {Y : Core.Rel A.El B.El}
     (hf : ∀ K n (X : Vals A n) t, K.dom = some ⟨n, X⟩ → Vals.WF X → f X = .ok t → Agrees K (rep t) Y) (K : Known A B)
@@ -222,74 +224,81 @@ theorem id_sound : ∀ K, K.WF → (GenK.id A).Reps K (𝟙 _) := fun K hW => by
     refine (Tab.idU_holds h a b).trans ⟨fun ⟨e, _⟩ => e, fun e => ⟨e, ?_⟩⟩
     subst e; exact (side_some rfl a).1 (hs ha hb)
 
-theorem conv_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+theorem conv_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.conv A B R).Reps K X° :=
-  lift1_sound (fun _ h => h.conv) hR fun _ _ _ ht hr x y hx hy ho => (Tab.conv_holds ht x y).trans (hr y x hy hx (on_conv ho))
+  lift1_sound (fun _ h => h.conv) hR wR fun _ _ _ ht _ hr x y hx hy ho =>
+    (Tab.conv_holds ht x y).trans (hr y x hy hx (on_conv ho))
 
 theorem join_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) : ∀ K, K.WF → (GenK.join A B R S).Reps K (X ∪ Y) :=
-  lift2_sound (fun _ h => h) (fun _ h => h) hR hS fun _ _ _ _ ht hr hs x y hx hy ho =>
-    (Tab.union_holds ht x y).trans (or_congr (hr x y hx hy ho) (hs x y hx hy ho))
+    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, K.WF → (GenK.join A B R S).Reps K (X ∪ Y) :=
+  lift2_sound (fun _ h => h) (fun _ h => h) hR hS wR wS fun _ _ _ _ ht wr ws hr hs x y hx hy ho =>
+    (Tab.union_holds ht wr ws x y).trans (or_congr (hr x y hx hy ho) (hs x y hx hy ho))
 
-theorem dom_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+theorem dom_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.dom A B R).Reps K (𝟙 _ ∩ X ≫ X°) :=
-  lift1_sound (fun _ h => ⟨h.side, trivial, trivial⟩) hR fun _ r _ ht hr x x' hx hx' _ => by
+  lift1_sound (fun _ h => ⟨h.side, trivial, trivial⟩) hR wR fun _ r _ ht _ hr x x' hx hx' _ => by
     refine (Tab.dom_holds ht x x').trans ⟨?_, ?_⟩
     · rintro ⟨rfl, y, h⟩; have e := hr _ y (side_or hx hx') rfl trivial; exact ⟨rfl, y, e.1 h, e.1 h⟩
     · rintro ⟨rfl, y, h, -⟩; exact ⟨rfl, y, (hr _ y (side_or hx hx') rfl trivial).2 h⟩
 
-theorem ran_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+theorem ran_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.ran A B R).Reps K (𝟙 _ ∩ X° ≫ X°°) :=
-  lift1_sound (fun _ h => ⟨trivial, h.side, trivial⟩) hR fun _ r _ ht hr y y' hy hy' _ => by
+  lift1_sound (fun _ h => ⟨trivial, h.side, trivial⟩) hR wR fun _ r _ ht _ hr y y' hy hy' _ => by
     refine (Tab.ran_holds ht y y').trans (Iff.trans ⟨?_, ?_⟩ (ran_iff X y y').symm)
     · rintro ⟨rfl, x, h⟩; have e := hr x _ rfl (side_or hy hy') trivial; exact ⟨rfl, x, e.1 h, e.1 h⟩
     · rintro ⟨rfl, x, h, -⟩; exact ⟨rfl, x, (hr x _ rfl (side_or hy hy') trivial).2 h⟩
 
 theorem idU_comp_holds {n : USize} {X : Vals A n} {d : Tab A A} {r l : Tab A B} (hd : Tab.idU X = .ok d)
-    (hl : d.comp r = .ok l) (x : A.El) (y : B.El) : l.Holds x y ↔ (∃ i, X.row i = x) ∧ r.Holds x y := by
-  rw [Tab.comp_holds hl]
+    (hl : d.comp r = .ok l) (hX : Vals.WF X) (hr : r.WF) (x : A.El) (y : B.El) :
+    l.Holds x y ↔ (∃ i, X.row i = x) ∧ r.Holds x y := by
+  rw [Tab.comp_holds hl (Tab.idU_wf hd hX) hr]
   exact ⟨fun ⟨b, h, hr⟩ => by obtain ⟨rfl, hx⟩ := (Tab.idU_holds hd x b).1 h; exact ⟨hx, hr⟩,
     fun ⟨hx, hr⟩ => ⟨x, (Tab.idU_holds hd x x).2 ⟨rfl, hx⟩, hr⟩⟩
 
 theorem comp_idU_holds {m : USize} {L : Vals B m} {d : Tab B B} {l w : Tab A B} (hd : Tab.idU L = .ok d)
-    (hw : l.comp d = .ok w) (x : A.El) (y : B.El) : w.Holds x y ↔ l.Holds x y ∧ ∃ j, L.row j = y := by
-  rw [Tab.comp_holds hw]
+    (hw : l.comp d = .ok w) (hL : Vals.WF L) (hl : l.WF) (x : A.El) (y : B.El) :
+    w.Holds x y ↔ l.Holds x y ∧ ∃ j, L.row j = y := by
+  rw [Tab.comp_holds hw hl (Tab.idU_wf hd hL)]
   exact ⟨fun ⟨b, h, h'⟩ => by obtain ⟨rfl, hy⟩ := (Tab.idU_holds hd b y).1 h'; exact ⟨h, hy⟩,
     fun ⟨h, hy⟩ => ⟨y, h, (Tab.idU_holds hd y y).2 ⟨rfl, hy⟩⟩⟩
 
 /-- `cut K r` is `r` on `K`'s sides. -/
-theorem cut_agrees {K : Known A B} {r w : Tab A B} (h : cut K r = .ok w) : Agrees K (rep w) (rep r) := by
-  obtain ⟨_ | ⟨n, X⟩, _ | ⟨m, L⟩, _⟩ := K <;> intro x y hx hy _
+theorem cut_agrees {K : Known A B} {r w : Tab A B} (hK : K.WF) (hr : r.WF) (h : cut K r = .ok w) :
+    Agrees K (rep w) (rep r) := by
+  obtain ⟨_ | ⟨n, X⟩, _ | ⟨m, L⟩, _⟩ := K <;> obtain ⟨wX, wL, -⟩ := hK <;> intro x y hx hy _
   · obtain rfl := Except.ok.inj (show Except.ok r = .ok w from h); exact Iff.rfl
   · obtain ⟨d, hd, h⟩ := bind_ok (show (Tab.idU L >>= fun d => r.comp d) = .ok w from h)
-    exact (comp_idU_holds hd h x y).trans (and_iff_left ((side_some rfl y).1 hy))
+    exact (comp_idU_holds hd h wL hr x y).trans (and_iff_left ((side_some rfl y).1 hy))
   · obtain ⟨d, hd, h⟩ := bind_ok h
     obtain ⟨l, hl, h⟩ := bind_ok h; obtain rfl := Except.ok.inj h
-    exact (idU_comp_holds hd hl x y).trans (and_iff_right ((side_some rfl x).1 hx))
+    exact (idU_comp_holds hd hl wX hr x y).trans (and_iff_right ((side_some rfl x).1 hx))
   · obtain ⟨d, hd, h⟩ := bind_ok h
     obtain ⟨l, hl, h⟩ := bind_ok h; obtain ⟨d', hd', h⟩ := bind_ok h
-    exact (comp_idU_holds hd' h x y).trans ((and_iff_left ((side_some rfl y).1 hy)).trans
-      ((idU_comp_holds hd hl x y).trans (and_iff_right ((side_some rfl x).1 hx))))
+    exact (comp_idU_holds hd' h wL (Tab.comp_wf hl (Tab.idU_wf hd wX) hr) x y).trans
+      ((and_iff_left ((side_some rfl y).1 hy)).trans
+      ((idU_comp_holds hd hl wX hr x y).trans (and_iff_right ((side_some rfl x).1 hx))))
 
 /-- `cut` to two known sides: the pairs of `r` whose values lie in `X` and `L`. -/
 theorem cut_holds {k : (n : USize) × Vals A n} {l : (m : USize) × Vals B m} {r w : Tab A B}
-    (h : cut ⟨some k, some l, none⟩ r = .ok w) (x : A.El) (y : B.El) :
-    rep w x y ↔ (∃ i, k.2.row i = x) ∧ rep r x y ∧ ∃ j, l.2.row j = y := by
+    (h : cut ⟨some k, some l, none⟩ r = .ok w) (hk : Vals.WF k.2) (hl : Vals.WF l.2) (hr : r.WF) (x : A.El)
+    (y : B.El) : rep w x y ↔ (∃ i, k.2.row i = x) ∧ rep r x y ∧ ∃ j, l.2.row j = y := by
   obtain ⟨d, hd, h⟩ := bind_ok h
   obtain ⟨u, hu, h⟩ := bind_ok h; obtain ⟨d', hd', h⟩ := bind_ok h
-  exact (comp_idU_holds hd' h x y).trans ((and_congr_left' (idU_comp_holds hd hu x y)).trans and_assoc)
+  exact (comp_idU_holds hd' h hl (Tab.comp_wf hu (Tab.idU_wf hd hk) hr) x y).trans
+    ((and_congr_left' (idU_comp_holds hd hu hk hr x y)).trans and_assoc)
 
 /-- `bound K r` is `r` on `K`'s sides, and every pair of it is a pair the context it hands the other operand admits. -/
-theorem bound_spec {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (h : bound K r = .ok p) :
+theorem bound_spec {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (hK : K.WF) (hr : r.WF)
+    (h : bound K r = .ok p) :
     Agrees K (rep p.1) (rep r) ∧ ∀ x y, rep p.1 x y → p.2.den.1 x x ∧ p.2.den.2 y y ∧ p.2.on x y := by
   obtain ⟨t, ht, h⟩ := bind_ok h
   obtain ⟨d, hd, h⟩ := bind_ok h
   obtain ⟨l, hl, h⟩ := bind_ok h
   obtain rfl := Except.ok.inj h
-  exact ⟨cut_agrees ht, fun x y hxy => ⟨(side_some rfl x).2 ((keyRowRep d x).2 ⟨x, (Tab.dom_holds hd x x).2 ⟨rfl, y, hxy⟩⟩),
+  exact ⟨cut_agrees hK hr ht, fun x y hxy => ⟨(side_some rfl x).2 ((keyRowRep d x).2 ⟨x, (Tab.dom_holds hd x x).2 ⟨rfl, y, hxy⟩⟩),
     (side_some rfl y).2 ((keyRowRep l y).2 ⟨y, (Tab.ran_holds hl y y).2 ⟨rfl, x, hxy⟩⟩), hxy⟩⟩
 
-theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, K.WF → V.Reps K Y) :
+theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, K.WF → V.Reps K Y) (wV : V.Wf) :
     ∀ K, K.WF → (GenK.top A B V).Reps K (Core.Rel.top ≫ Y) := fun K hW => by
   rw [reps_iff]; intro t h
   cases hK : K.dom with
@@ -299,8 +308,9 @@ theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, K.WF → V
     simp only [GenK.top, Rel.Rel.runE, hK] at h
     obtain ⟨v, hv, h⟩ := bind_ok h
     obtain ⟨w, hw, ht⟩ := bind_ok h
-    have ev := (reps_iff _ _ _).1 (hV ⟨none, K.ran, none⟩ ⟨trivial, hW.2.1, trivial⟩) v hv
-    have ew := cut_agrees hw
+    have hR : (⟨none, K.ran, none⟩ : Known B B).WF := ⟨trivial, hW.2.1, trivial⟩
+    have ev := (reps_iff _ _ _).1 (hV _ hR) v hv
+    have ew := cut_agrees hR (wV.runE hR hv) hw
     intro a b ha hb _
     refine (Tab.top_val_holds ht a b).trans
       ⟨fun ⟨_, c, _, h⟩ => ⟨c, trivial, ?_⟩, fun ⟨c, _, h⟩ => ⟨(side_some hK a).1 ha, c, trivial, ?_⟩⟩
@@ -338,6 +348,17 @@ theorem bound_wf {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (hK : 
 
 /-! ### Products and sums: `pair outl outr` (`outl outr` by `ofVals_row_sound`) -/
 
+/-- `pairOn`'s two tables are `WF`: the first `bound`'s (`bound_wf`), the second run on its domain. -/
+theorem pairOn_wf {D : Option ((n : USize) × Vals A n)} {T : Rel A B} {S : Rel A C} (wT : T.Wf) (wS : S.Wf)
+    (hD : D.elim True fun c => Vals.WF c.2) {p : Tab A B × Tab A C} (h : pairOn D T S = .ok p) : p.1.WF ∧ p.2.WF := by
+  obtain ⟨r, hr, h⟩ := bind_ok h
+  obtain ⟨q, hq, h⟩ := bind_ok h
+  obtain ⟨s, hs, h⟩ := bind_ok h
+  obtain rfl := Except.ok.inj h
+  have hK : (⟨D, none, none⟩ : Known A B).WF := ⟨hD, trivial, trivial⟩
+  have wq := bound_wf hK (wT.runE hK hr) hq
+  exact ⟨wq.1, wS.runE wq.2.dom hs⟩
+
 /-- `pairOn D T S`'s two tables relate a value of `D` as `X` and `Y` do: `S` agrees with `Y` on the domain of `T`'s
     table (`bound_spec`), and off it both sides are false. -/
 theorem pairOn_sound {D : Option ((n : USize) × Vals A n)} {T : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El}
@@ -349,7 +370,7 @@ theorem pairOn_sound {D : Option ((n : USize) × Vals A n)} {T : Rel A B} {S : R
   obtain ⟨q, hq, h⟩ := bind_ok h
   obtain ⟨s, hs, h⟩ := bind_ok h
   obtain rfl := Except.ok.inj h
-  obtain ⟨hu, hK⟩ := bound_spec hq
+  obtain ⟨hu, hK⟩ := bound_spec hD (wT.runE hD hr) hq
   have wq := bound_wf hD (wT.runE hD hr) hq
   have er := (reps_iff _ _ _).1 (hT _ hD) r hr a b ha rfl trivial
   have es := (reps_iff _ _ _).1 (hS _ wq.2.dom) s hs
@@ -363,9 +384,11 @@ theorem pairK_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Co
     (K : Known A (.prod B C)) (hK : K.WF) {t : Tab A (.prod B C)}
     (h : pairK K.dom R S = .ok t) : Agrees K (rep t) (rpair X Y) := by
   have L : ∀ p, pairOn K.dom R S = .ok p → p.1.pair p.2 = .ok t → Agrees K (rep t) (rpair X Y) :=
-    fun _ hp ht a q ha _ _ => (Tab.pair_holds ht a q).trans (pairOn_sound hR hS wR hK.dom hp a ha q.1 q.2)
+    fun _ hp ht a q ha _ _ => let w := pairOn_wf wR wS hK.1 hp
+      (Tab.pair_holds ht w.1 w.2 a q).trans (pairOn_sound hR hS wR hK.dom hp a ha q.1 q.2)
   have M : ∀ p, pairOn K.dom S R = .ok p → p.2.pair p.1 = .ok t → Agrees K (rep t) (rpair X Y) :=
-    fun _ hp ht a q ha _ _ => (Tab.pair_holds ht a q).trans
+    fun _ hp ht a q ha _ _ => let w := pairOn_wf wS wR hK.1 hp
+      (Tab.pair_holds ht w.2 w.1 a q).trans
       (and_comm.trans ((pairOn_sound hS hR wS hK.dom hp a ha q.2 q.1).trans and_comm))
   unfold pairK at h; split at h
   · split at h
@@ -381,8 +404,9 @@ theorem pair_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Cor
   have hL : ∀ K, K.WF → (Rel.lazy fun K => .tab (pairK K.dom R S) : Rel A (.prod B C)).Reps K (rpair X Y) := fun K hK =>
     (reps_iff _ _ _).2 fun _ h => pairK_sound hR hS wR wS K hK h
   have hT : ∀ K, K.WF → (lift2 Tab.pair (fun K : Known A (.prod B C) => (⟨K.dom, none, none⟩ : Known A B))
-      (fun K => ⟨K.dom, none, none⟩) R S).Reps K (rpair X Y) := lift2_sound (fun _ h => h.dom) (fun _ h => h.dom) hR hS fun _ _ _ _ ht hr hs a q ha _ _ =>
-    (Tab.pair_holds ht a q).trans (and_congr (hr a q.1 ha rfl trivial) (hs a q.2 ha rfl trivial))
+      (fun K => ⟨K.dom, none, none⟩) R S).Reps K (rpair X Y) :=
+    lift2_sound (fun _ h => h.dom) (fun _ h => h.dom) hR hS wR wS fun _ _ _ _ ht wr ws hr hs a q ha _ _ =>
+    (Tab.pair_holds ht wr ws a q).trans (and_congr (hr a q.1 ha rfl trivial) (hs a q.2 ha rfl trivial))
   cases R <;> cases S <;> first | exact hL | exact hT
 
 example : ∀ K, K.WF → (GenK.outl A B).Reps K (graph Prod.fst) := ofVals_row_sound fun _ _ _ _ h => Tab.outl_holds h
@@ -391,49 +415,55 @@ example : ∀ K, K.WF → (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_
 /-! ### `diff rdiv lam nil succ leq lt` (`nil` by `ofVals_row_sound`, `leq lt` by `cmp_sound`) -/
 
 theorem diff_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) : ∀ K, K.WF → (GenK.diff A B R S).Reps K (diffDen X Y) := by
+    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) :
+    ∀ K, K.WF → (GenK.diff A B R S).Reps K (diffDen X Y) := by
   unfold GenK.diff; split
   · intro K hW; rw [reps_iff]; intro t h
     obtain ⟨r, hr, h⟩ := bind_ok h
     obtain ⟨p, hp, h⟩ := bind_ok h
     obtain ⟨s, hs, ht⟩ := bind_ok h
-    obtain ⟨hu, hK⟩ := bound_spec hp
+    obtain ⟨hu, hK⟩ := bound_spec hW (wR.runE hW hr) hp
     have wp := bound_wf hW (wR.runE hW hr) hp
     have er := (reps_iff _ _ _).1 (hR K hW) r hr
     have es := (reps_iff _ _ _).1 (hS p.2 wp.2) s hs
     intro x y hx hy ho
-    refine (Tab.diff_holds ht x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy ho).1 ((hu x y hx hy ho).1 a),
+    refine (Tab.diff_holds ht wp.1 (wS.runE wp.2 hs) x y).trans ⟨fun ⟨a, b⟩ => ⟨(er x y hx hy ho).1 ((hu x y hx hy ho).1 a),
       fun q => b ((es x y (hK x y a).1 (hK x y a).2.1 (hK x y a).2.2).2 q)⟩, fun ⟨a, b⟩ => ?_⟩
     have a' := (hu x y hx hy ho).2 ((er x y hx hy ho).2 a)
     exact ⟨a', fun q => b ((es x y (hK x y a').1 (hK x y a').2.1 (hK x y a').2.2).1 q)⟩
-  · exact lift2_sound (fun _ h => h) (fun _ h => h) hR hS fun _ _ _ _ ht hr hs x y hx hy ho =>
-      (Tab.diff_holds ht x y).trans (and_congr (hr x y hx hy ho) (not_congr (hs x y hx hy ho)))
+  · exact lift2_sound (fun _ h => h) (fun _ h => h) hR hS wR wS fun _ _ _ _ ht wr ws hr hs x y hx hy ho =>
+      (Tab.diff_holds ht wr ws x y).trans (and_congr (hr x y hx hy ho) (not_congr (hs x y hx hy ho)))
 
 theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X : Core.Rel A.El C.El}
     {Y : Core.Rel B.El C.El} {TA : Core.Rel A.El A.El} {TB : Core.Rel B.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) (hA : ∀ K, K.WF → UA.Reps K TA) (hB : ∀ K, K.WF → UB.Reps K TB) :
-    ∀ K, K.WF → (GenK.rdiv A B C R S UA UB).Reps K (rdivDen X Y TA TB) :=
-  lift2_sound (fun _ _ => Known.wf_empty) (fun _ _ => Known.wf_empty) hR hS fun _ r s _ ht hr hs => by
+    (hS : ∀ K, K.WF → S.Reps K Y) (hA : ∀ K, K.WF → UA.Reps K TA) (hB : ∀ K, K.WF → UB.Reps K TB) (wR : R.Wf)
+    (wS : S.Wf) (wA : UA.Wf) (wB : UB.Wf) : ∀ K, K.WF → (GenK.rdiv A B C R S UA UB).Reps K (rdivDen X Y TA TB) :=
+  lift2_sound (fun _ _ => Known.wf_empty) (fun _ _ => Known.wf_empty) hR hS wR wS fun _ r s _ ht wr ws hr hs => by
     obtain ⟨sc, hsc, ht⟩ := bind_ok ht
     obtain ⟨rc, hrc, ht⟩ := bind_ok ht
     obtain ⟨ub, hub, ht⟩ := bind_ok ht
     obtain ⟨ua, hua, ht⟩ := bind_ok ht
     obtain ⟨q, hq, ht⟩ := bind_ok ht
+    have w1 := Tab.conv_wf hsc ws
+    have w2 := Tab.conv_wf hrc wr
+    have wu := wB.runE Known.wf_empty hub
+    have wa := wA.runE Known.wf_empty hua
     rw [agrees_empty hr, agrees_empty hs, agrees_empty ((reps_iff _ _ _).1 (hA {} Known.wf_empty) ua hua),
       agrees_empty ((reps_iff _ _ _).1 (hB {} Known.wf_empty) ub hub)]
     intro x y _ _ _
-    refine (Tab.conv_holds ht x y).trans
-      ((Tab.ldivSel_holdsBy (fun h => Tab.ldivOf_holds ⟨_, hsc⟩ ⟨_, hrc⟩ h) hq y x).trans ?_)
+    refine (Tab.conv_holds ht x y).trans ((Tab.ldivSel_holdsBy
+      (fun h => Tab.ldivOf_holds ⟨_, hsc⟩ ⟨_, hrc⟩ h w1 w2 wu wa) hq w1 w2 wu wa y x).trans ?_)
     simp only [ldivDen, rdivDen, rep_apply, Tab.conv_holds hsc, Tab.conv_holds hrc]
     exact and_congr Iff.rfl (or_congr Iff.rfl and_comm)
 
-theorem lam_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+theorem lam_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.lam A B R).Reps K (lamDen X) :=
   ofVals_sound fun _ _ _ _ hK hX h a ys ha _ _ => by
     obtain ⟨r, hr, ht⟩ := bind_ok h
-    have er := (reps_iff _ _ _).1 (hR _ (by exact ⟨hX, trivial, trivial⟩)) r hr
+    have hW : (⟨some ⟨_, _⟩, none, none⟩ : Known A B).WF := ⟨hX, trivial, trivial⟩
+    have er := (reps_iff _ _ _).1 (hR _ hW) r hr
     have ha' := (side_some hK a).1 ha
-    exact (Tab.lam_den ht a ys).trans ((and_iff_right ha').trans (and_congr Iff.rfl
+    exact (Tab.lam_den ht hX (wR.runE hW hr) a ys).trans ((and_iff_right ha').trans (and_congr Iff.rfl
       (forall_congr' fun b => iff_congr Iff.rfl (er a b ((side_some rfl a).2 ha') rfl trivial))))
 
 example : ∀ K, K.WF → (GenK.nil A B).Reps K nilDen := ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h
@@ -446,7 +476,7 @@ theorem succ_sound {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K
     have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
         (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
       (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none, none⟩ ⟨trivial, trivial, trivial⟩) t h a v ((side_some rfl a).2 ha) rfl trivial
-    refine (Tab.succ_holds hu ht x w).trans
+    refine (Tab.succ_holds hu ht (Tab.idU_wf hD hX) x w).trans
       ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
     obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
 
@@ -471,7 +501,8 @@ theorem cmp_side {op w : String} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
     obtain ⟨e, he, h⟩ := bind_ok h
     obtain ⟨T, ht, h⟩ := bind_ok h
     obtain rfl := Except.ok.inj h
-    exact (keyRowRep T a).trans ((exists_congr fun b => (idU_comp_holds he ht a b).trans
+    -- atom sides: `Vals.WF` holds with no cell to check
+    exact (keyRowRep T a).trans ((exists_congr fun b => (idU_comp_holds he ht trivial ⟨trivial, trivial⟩ a b).trans
       (and_iff_right ((side_some (C := .atom t) rfl a).1 ha))).trans ((keyRowRep d a).symm.trans key))
 
 /-- `cmp (ordOp s t) U` is the order `ordAt s t` of the atom `t` on `U`'s domain: on the pairs `p` a meet hands it,
@@ -495,7 +526,8 @@ theorem cmp_sound {op : String} {s : Bool} {t : QAtomicType} {U : Rel (.atom t) 
     simp only [hP] at h
     obtain ⟨q, hq, h⟩ := bind_ok h
     have hp : rep p a c := by unfold Known.on at ho; rw [hP] at ho; exact ho
-    refine ((Tab.cmpPairs_holds hop h a c).trans (and_congr ((cut_holds hq a c).trans ?_) Iff.rfl)).trans and_assoc
+    refine ((Tab.cmpPairs_holds hop h a c).trans (and_congr ((cut_holds hq trivial trivial ⟨trivial, trivial⟩ a c).trans ?_)
+      Iff.rfl)).trans and_assoc
     rw [← sk, ← sl]; exact ⟨fun ⟨x, _, z⟩ => ⟨x, z⟩, fun ⟨x, z⟩ => ⟨x, hp, z⟩⟩
 
 example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
@@ -512,7 +544,7 @@ example : ∀ K, K.WF → (ofVals A (.sum A B) fun X => Tab.inl X).Reps K Core.R
 example : ∀ K, K.WF → (ofVals B (.sum A B) fun X => Tab.inr X).Reps K Core.Rel.inr :=
   ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
 example : ∀ K, K.WF → (ofVals A (.arr A) fun X => Tab.tau X).Reps K (fun a ys => ys = [a]) :=
-  ofVals_row_sound fun _ _ _ _ h => Tab.tau_den h
+  ofVals_row_sound fun _ _ _ hX h => Tab.tau_den h hX
 example : ∀ K, K.WF → (ofVals (.arr B) (.arr B) fun X => Tab.setify X).Reps K (lamDen fun xs b => b ∈ xs) :=
   ofVals_row_sound fun _ _ _ hX h => Tab.setify_den h hX
 

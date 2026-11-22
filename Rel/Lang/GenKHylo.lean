@@ -54,7 +54,8 @@ theorem hylo_sound {A B : Obj} {what : String} {ch : Rel A A} {CH : Den A A}
       (fun M T wM hT a a' => by
         obtain ⟨R, hR, hT⟩ := bind_ok hT
         obtain ⟨P, hP, hT⟩ := bind_ok hT
-        rw [Tab.union_holds hT, Tab.ran_holds hP]
+        have wR := (compT_wf (r' := .ok M) (fun _ hr => by cases hr; exact wM) wch).runE Known.wf_empty hR
+        rw [Tab.union_holds hT wD (Tab.ran_wf hP wR), Tab.ran_holds hP]
         refine or_congr Iff.rfl (and_congr Iff.rfl ?_)
         exact exists_congr fun x => (compT_holds hch wch M wM R hR x a)) hNw
       (fun R => ∀ a a', R a a' → a = a') (fun _ _ h => h.elim)
@@ -62,18 +63,19 @@ theorem hylo_sound {A B : Obj} {what : String} {ch : Rel A A} {CH : Den A A}
     have hDN : ∀ a, D.Holds a a → N.Holds a a := fun a h => hNF a a (Or.inl h)
     have hcl : ∀ a a', N.Holds a a → CH a a' → N.Holds a' a' := fun a a' h c => hNF a' a' (Or.inr ⟨rfl, a, a, h, c⟩)
     -- the rounds on `N`: below `μ Φ`, and a prefixed point there
+    have hYw : ∀ (M : Tab A B) T, (compT (.ok N) (φ M)).runE {} = .ok T → M.WF → T.WF := fun M T hT wM =>
+      (compT_wf (r' := .ok N) (fun _ hr => by cases hr; exact wN) (wφ M wM)).runE Known.wf_empty hT
     obtain ⟨hYm, hYF⟩ := Tab.mu_holds (F := fun R a b => N.Holds a a ∧ Φ R a b)
       (fun M T wM hT a b => by
         rw [compT_holds (hφ M wM) (wφ M wM) N wN T hT a b]
         exact ⟨fun ⟨a', hn, hp⟩ => by obtain rfl := hNc a a' hn; exact ⟨hn, hp⟩, fun ⟨hn, hp⟩ => ⟨a, hn, hp⟩⟩)
-      (fun M T hT wM => (compT_wf (r' := .ok N) (fun _ hr => by cases hr; exact wN) (wφ M wM)).runE Known.wf_empty hT)
-      (fun R => ∀ a b, R a b → Core.Rel.mu Φ a b) (fun _ _ h => h.elim)
+      hYw (fun R => ∀ a b, R a b → Core.Rel.mu Φ a b) (fun _ _ h => h.elim)
       (fun R hR a b h => h.elim (hR a b) fun h => le_iff.1 (mu_prefixed hm) a b
         (le_iff.1 (hm R (Core.Rel.mu Φ) (le_iff.2 hR)) a b h.2)) hY
     have hZ : Core.Rel.mu Φ ⊑ fun a b => N.Holds a a → Y.Holds a b := mu_le <| le_iff.2 fun a b hz hn =>
       hYF a b ⟨hn, (hl (fun a b => N.Holds a a → Y.Holds a b) (rep Y) a (fun a' c b' => ⟨fun hy => hy (hcl a a' hn c), fun hy _ => hy⟩) b).1 hz⟩
     have hDa : D.Holds a a := (Tab.idU_holds hD a a).2 ⟨rfl, (side_some hK a).1 ha⟩
-    rw [rep_apply, Tab.comp_holds h]
+    rw [rep_apply, Tab.comp_holds h wD (Tab.mu_wf hYw hY)]
     exact ⟨fun ⟨a', hd, hy⟩ => by obtain ⟨rfl, -⟩ := (Tab.idU_holds hD a a').1 hd; exact hYm a b hy,
       fun hm' => ⟨a, hDa, le_iff.1 hZ a b hm' (hDN a hDa)⟩⟩
 
