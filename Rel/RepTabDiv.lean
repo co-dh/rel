@@ -2072,18 +2072,17 @@ end Checks
 namespace Tab
 variable {A B : Obj}
 
-/-- **`lam D R` is `canon` of one row per key `a` of `D`, its cell the rows of `r = canon R` with key `a`, in
-`r`'s order**: `L` lists those rows' positions ascending. GROUP over `D ++ r.key` (`sorted_groups`): group `G` holds
+/-- **`lamOf D r` is `canon` of one row per key `a` of `D`, its cell the rows of `r` with key `a`, in `r`'s
+order**: `L` lists those rows' positions ascending. GROUP over `D ++ r.key` (`sorted_groups`): group `G` holds
 the sorted positions `[Fs, Fs + cnt)`, its `D` rows first (`[Fs, Fs + cD)`, `kasc` stable) and then its `r` rows,
 ascending in `r` (`hmono`); the cell `[Fs + cD, Fs + cnt)` of the payload reads `r` at `p - n`. -/
-theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T) :
-    ∃ (r : Tab A B) (U : Tab A (.arr B)), R.canon = .ok r ∧ U.canon = .ok T ∧ ∀ a ys,
+theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)} (h : Tab.lamOf D r = .ok T) :
+    ∃ U : Tab A (.arr B), U.canon = .ok T ∧ ∀ a ys,
       U.Holds a ys ↔ (∃ i, D.row i = a) ∧
       ∃ L : List Nat, L.Pairwise (· < ·) ∧ (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) ∧
         ys = L.map fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt := by
-  dsimp only [Tab.lam] at h
+  dsimp only [Tab.lamOf] at h
   simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
   split at h; · cases h
   rename_i hN
@@ -2104,7 +2103,6 @@ theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨fs, hfs, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨iD, hiD, h⟩ := h
-  refine ⟨r, ?_⟩
   ------------------------------------------------------------------ the sorted rows and their groups
   obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
@@ -2381,7 +2379,7 @@ theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
     rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
-    exact ⟨_, hr, h, key r.val (fun q hq hnq => absurd (hpsN q hq) (by omega)) hxk halo hahi⟩
+    exact ⟨_, h, key r.val (fun q hq hnq => absurd (hpsN q hq) (by omega)) hxk halo hahi⟩
   · rename_i hr0
     rw [Except.bind_eq_ok'] at h; obtain ⟨pm, hpm, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
@@ -2394,7 +2392,7 @@ theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
     rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
-    refine ⟨_, hr, h, key y (fun q hq hnq => ?_) hxk halo hahi⟩
+    refine ⟨_, h, key y (fun q hq hnq => ?_) hxk halo hahi⟩
     have hs63 : ps[q]?.getD 0 - n.toNat < 2 ^ 63 := by have := hpsN q hq; omega
     have hmxw : (raw .i64 N mx)[q]?.getD 0 = (ps[q]?.getD 0 - n.toNat).toUInt64 := by
       have e1 := (colMap_raw hpm).2.2.2 q hq
@@ -2415,14 +2413,14 @@ theorem lam_canon {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
 images under `R`, each once and ascending by the codes `kasc` gives the rows `(a, b)` of `R` (strictly: no two
 equal by stored bits). The codes order the images strictly (`keys_of_lexLe`, `Vals.codes_of_row`), so two such
 lists are one (`pairwise_eq_of_mem`), and `lam_canon`'s cell is one (`canon_sorted`). -/
-theorem lam_holds {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
-    (a : A.El) (ys : List B.El) :
+theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)} (hr : R.canon = .ok r)
+    (h : Tab.lamOf D r = .ok T) (a : A.El) (ys : List B.El) :
     T.Holds a ys ↔ (∃ i, D.row i = a) ∧ (∀ b, b ∈ ys ↔ R.Holds a b) ∧
       ∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
         ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
           ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
             seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
-  obtain ⟨r, U, hr, hU, hH⟩ := lam_canon h
+  obtain ⟨U, hU, hH⟩ := lamOf_canon h
   obtain ⟨es0, cs, hes0, hcs⟩ := canon_codes hr
   rw [canon_holds hU, hH]
   -- the strict order the codes put on the images of `a`
@@ -2488,9 +2486,10 @@ theorem lam_holds {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} 
 /-- **`lam D R` denotes `lamDen R` on the keys `D`** (`Tm.lam`): two rows of one key whose codes ascend strictly
 (`lexLe`, distinct `seenKey`) hold values ascending in `B.lt` (`Vals.lamLaw`, `kasc`'s order is `Obj.lt`), so
 `lam_holds`'s cell is `B.lt`-ascending, and `lamDen`'s list is that cell (`pairwise_eq_of_mem`). -/
-theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
-    (a : A.El) (ys : List B.El) : T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
-  obtain ⟨r, U, hr, hU, hH⟩ := lam_canon h
+theorem lamOf_den {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)} (hr : R.canon = .ok r)
+    (h : Tab.lamOf D r = .ok T) (a : A.El) (ys : List B.El) :
+    T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
+  obtain ⟨U, hU, hH⟩ := lamOf_canon h
   obtain ⟨es0, cs0, hes0, hcs0⟩ := canon_codes hr
   have lirr : ∀ x, ¬B.lt x x := fun x => List.lt_irrefl _
   have lasym : ∀ x y, B.lt x y → ¬B.lt y x := fun _ _ => List.lt_asymm
@@ -2505,26 +2504,54 @@ theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h
     have := Vals.lamLaw (A := A) (B := B) (R.key, R.val) hes0 hcs0 (s ⟨u, hu⟩) (s ⟨u', hu'⟩) (h1.trans h3.symm) hl hne
     simp only [Fin.getElem_fin] at h2 h4
     rw [← h2, ← h4]; exact this
-  rw [lam_holds h]
+  rw [lamOf_holds hr h]
   constructor
   · rintro ⟨hD, hm, ho⟩; exact ⟨hD, up ys ho, hm⟩
   · rintro ⟨hD, hp, hm⟩
     obtain ⟨L, hLp, hLm⟩ := exists_range_filter r.n.toNat fun j hj => r.key.row ⟨j, hj⟩ = a
     have hT0 := (canon_holds hU _ _).2 ((hH _ _).2 ⟨hD, L, hLp, hLm, rfl⟩)
-    obtain ⟨-, hm0, ho0⟩ := (lam_holds h a _).1 hT0
+    obtain ⟨-, hm0, ho0⟩ := (lamOf_holds hr h a _).1 hT0
     rw [pairwise_eq_of_mem lirr lasym hp (up _ ho0) fun b => by rw [hm, hm0]]
-    exact (lam_holds h a _).1 hT0
+    exact (lamOf_holds hr h a _).1 hT0
 
-/-- **`E X R` is `lam X Q`, `Q` the pairs `(xs, b)` of `X` with `b` an image of an element of `xs`** (`mem_holds`,
-`comp_holds`): `E`'s laws are `lam`'s at `Q`. -/
+/-- **`lam D R` denotes `lamDen R` on the keys `D`**: `lamOf_den` at `canon R`. -/
+theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
+    (a : A.El) (ys : List B.El) : T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
+  simp only [Tab.lam, bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  exact lamOf_den hr h a ys
+
+/-- **`mem X` is canonical**: its last step is `canon` (`Tab.Canonical`). -/
+theorem mem_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Tab.mem X = .ok T) :
+    T.Canonical := by
+  obtain ⟨m, lo, up, f⟩ := X
+  dsimp only [Tab.mem] at h
+  split at h; · cases h
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨s, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨mn, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨wd, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Tn, G, u⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sg, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨x, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨y, -, h⟩ := h
+  exact ⟨_, h⟩
+
+/-- **`E X R` is `lamOf X r`, `r = canon Q`, `Q` the pairs `(xs, b)` of `X` with `b` an image of an element of `xs`** (`mem_holds`,
+`comp_canon`): `E`'s laws are `lamOf`'s at `Q`. -/
 theorem E_lam {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
-    ∃ Q : Tab (.arr A) B, Tab.lam X Q = .ok T ∧
+    ∃ Q r : Tab (.arr A) B, Q.canon = .ok r ∧ Tab.lamOf X r = .ok T ∧
       ∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b := by
   simp only [Tab.E, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨M0, hM0, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
-  refine ⟨Q, h, fun xs b => ?_⟩
-  rw [comp_holds hQ]
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  obtain ⟨Q, hQ, hH⟩ := comp_canon hr
+  refine ⟨Q, r, hQ, h, fun xs b => ?_⟩
+  rw [hH]
   simp only [mem_holds hM0]
   exact ⟨fun ⟨a, ⟨hX, ha⟩, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨hX, a, ha, hr⟩ => ⟨a, ⟨hX, ha⟩, hr⟩⟩
 
@@ -2537,9 +2564,9 @@ theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A
           ∃ s : Fin ys.length → Fin Q.n.toNat, (∀ u, Q.key.row (s u) = xs ∧ Q.val.row (s u) = ys[u]) ∧
             ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys Q.n es) (s u) (s u') = true ∧
               seenKey Q.n es (s u) ≠ seenKey Q.n es (s u') := by
-  obtain ⟨Q, hl, hQ⟩ := E_lam h
+  obtain ⟨Q, r, hr, hl, hQ⟩ := E_lam h
   refine ⟨Q, hQ, fun xs ys => ?_⟩
-  rw [lam_holds hl]
+  rw [lamOf_holds hr hl]
   constructor
   · rintro ⟨hX, hm, ho⟩
     exact ⟨hX, fun b => (hm b).trans ((hQ xs b).trans ⟨fun h => h.2, fun h => ⟨hX, h⟩⟩), ho⟩
@@ -2549,8 +2576,8 @@ theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A
 /-- **`E X R` denotes `EDen R` on the arrays `X`** (`Tm.E`): `lam_den` at the pairs keyed by arrays of `A`. -/
 theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
     (xs : List A.El) (ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.EDen R.Holds xs ys := by
-  obtain ⟨Q, hl, hQ⟩ := E_lam h
-  rw [lam_den hl]
+  obtain ⟨Q, r, hr, hl, hQ⟩ := E_lam h
+  rw [lamOf_den hr hl]
   simp only [Lang.EDen, Lang.lamDen, Core.Rel.comp, hQ]
   constructor
   · rintro ⟨hX, hp, hm⟩
@@ -2564,12 +2591,15 @@ theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
     T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.lamDen (fun xs b => b ∈ xs : Lang.Den (.arr B) B) xs ys := by
   unfold Tab.setify at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
-  rw [lam_den h]
+  obtain ⟨U, hU⟩ := mem_canonical hG
+  rw [lamOf_den hU h]
+  have hm' : (∃ i, X.row i = xs) → ∀ b, U.Holds xs b ↔ b ∈ xs := fun hX b =>
+    (canon_holds hU xs b).symm.trans ((mem_holds hG xs b).trans (and_iff_right hX))
   constructor
   · rintro ⟨hX, hp, hm⟩
-    exact ⟨hX, hp, fun b => (hm b).trans ((mem_holds hG xs b).trans (and_iff_right hX))⟩
+    exact ⟨hX, hp, fun b => (hm b).trans (hm' hX b)⟩
   · rintro ⟨hX, hp, hm⟩
-    exact ⟨hX, hp, fun b => (hm b).trans ((mem_holds hG xs b).trans (and_iff_right hX)).symm⟩
+    exact ⟨hX, hp, fun b => (hm b).trans (hm' hX b).symm⟩
 
 /-- **`tau X` denotes `τ` on `X`** (`rowDens`: `Y = [a]`): `lam_den` of `idU_holds`, the one list of
 `A.lt`-ascending elements `{a}` being `[a]` (`pairwise_eq_of_mem`). -/

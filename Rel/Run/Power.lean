@@ -17,8 +17,8 @@ variable {A B : Obj}
 def tau {n : USize} (X : Vals A n) : Except String (Tab A (.arr A)) := do lam X (← idU X)
 
 /-- **`setify` on the arrays `X`** (`rowDens`: `Λ(∋)`): each array to the cell of its elements, ascending and each
-once (`lam` of `mem`). -/
-def setify {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do lam X (← mem X)
+once (`Λ` of `mem`, a `canon` answer: `lamOf`). -/
+def setify {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do lamOf X (← mem X)
 
 /-- **`length` on the arrays `X`** (`rowDens`: `w = xs.length`), the fused form of the fold: each cell to its width
 `e - s` (`cellSpan`, a `colMap .sub`); then `canon`. A payload of `2^63` rows or more, whose width an `Int64`
