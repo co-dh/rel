@@ -283,15 +283,21 @@ private def fracImpl : List UInt8 → Option Nat
     simp only [frac, fracImpl, show Nat.toUInt64 10 = 10 from rfl] at h ⊢; rw [h]
 
 /-- `yyyy.mm.ddDhh:mm:ss` (the day as `ymd`) with an optional `.` and 1–9 fraction digits, as
-    nanoseconds since 1970-01-01 in `i64`. -/
-def stamp (f : List UInt8) : Option Int :=
+    nanoseconds since 1970-01-01: the `i64` word, none outside `i64`. Computed in words, an `Int` past `±2^31`
+    being a GMP number: `|d| ≤ 106752` keeps `|d|·86400·10^9 < 2^64`, and the magnitude is then checked against
+    `2^63`. -/
+def stamp (f : List UInt8) : Option UInt64 :=
   match ymd (f.take 10), f.drop 10 with
   | some d, t :: h1 :: h2 :: c1 :: m1 :: m2 :: c2 :: s1 :: s2 :: r =>
     let (hh, mm, ss) := (natOf [h1, h2], natOf [m1, m2], natOf [s1, s2])
     if t = 68 ∧ c1 = 58 ∧ c2 = 58 ∧ [h1, h2, m1, m2, s1, s2].all isDig ∧ hh < 24 ∧ mm < 60 ∧ ss < 60 then
       (frac r).bind fun ns =>
-        let x : Int := (((d * 24 + hh) * 60 + mm) * 60 + ss) * 1000000000 + ns
-        if -2 ^ 63 ≤ x ∧ x < 2 ^ 63 then some x else none
+        let s : UInt64 := ((hh * 60 + mm) * 60 + ss).toUInt64 * 1000000000 + ns.toUInt64
+        let a : UInt64 := d.natAbs.toUInt64 * 86400000000000
+        -- `d < 0`: the value is `-(a - s)`, `s < 86400·10^9 ≤ a`
+        if d.natAbs > 106752 then none
+        else if 0 ≤ d then (if (a + s) >>> 63 == 0 then some (a + s) else none)
+        else if a - s ≤ (1 : UInt64) <<< 63 then some (0 - (a - s)) else none
     else none
   | _, _ => none
 
@@ -300,12 +306,20 @@ def hexv (c : UInt8) : Option Nat :=
   if isDig c then some (c.toNat - 48) else if 97 ≤ c ∧ c ≤ 102 then some (c.toNat - 87)
   else if 65 ≤ c ∧ c ≤ 70 then some (c.toNat - 55) else none
 
-/-- The integer `x` as a word of `w` bytes, two's complement. -/
-def wordOf (w : Nat) (x : Int) : UInt64 := (x % 2 ^ (8 * w)).toNat.toUInt64
+/-- The integer `x` as a word of `w ≤ 8` bytes, two's complement: its `i64` word cut to `w` bytes. -/
+def wordOf (w : Nat) (x : Int) : UInt64 := x.toInt64.toUInt64 &&& Column.ones (8 * w)
 
-/-- A word of `w` bytes read as a signed integer. -/
+/-- A word of `w ≤ 8` bytes read as a signed integer, cut as words (`Nat`'s `^` being GMP's). -/
 def signed (w : Nat) (x : UInt64) : Int :=
-  let v := x.toNat % 2 ^ (8 * w); if v < 2 ^ (8 * w - 1) then v else (v : Int) - 2 ^ (8 * w)
+  let v := x &&& Column.ones (8 * w)
+  if v >>> (8 * w - 1).toUInt64 == 0 then v.toNat else -(((0 - v) &&& Column.ones (8 * w)).toNat : Int)
+
+/-- `±k` (`neg` the sign) as an integer of `w ≤ 8` bytes, signed (`sg`) or not: its word sign-extended to 64 bits,
+    none outside the range. The range is checked by shifts: an `Int` past `±2^31` and `2 ^ 63` are GMP numbers. -/
+def intWord (w : Nat) (sg neg : Bool) (k : Nat) : Option UInt64 :=
+  if sg && (k >>> (8 * w - 1) == 0 || neg && k >>> (8 * w - 1) == 1 && k.toUInt64 == (2 : UInt64) ^ (8 * w - 1))
+    || !sg && k >>> (8 * w) == 0 && (!neg || k == 0)
+  then some (if neg then 0 - k.toUInt64 else k.toUInt64) else none
 
 /-- A field read at an atom (C.3, column "read"); none where it is no text of the atom. -/
 def readAtom : QAtomicType → List UInt8 → Option UInt64
@@ -317,12 +331,12 @@ def readAtom : QAtomicType → List UInt8 → Option UInt64
   | .f32, f => readFloat 23 8 f
   | .f64, f => readFloat 52 11 f
   | .date, f => (ymd f).map (wordOf 4)
-  | .datetime, f => (stamp f).map (wordOf 8)
+  | .datetime, f => stamp f
   | .sym, _ | .general, _ => none
   | t, f => do
     let w ← t.width
-    let x ← intOf f
-    if -2 ^ (8 * w - 1) ≤ x ∧ x < 2 ^ (8 * w - 1) then some (wordOf w x) else none
+    let (neg, d) := if f.head? = some 45 then (true, f.tail) else (false, f)
+    if d ≠ [] ∧ d.all isDig then (intWord w true neg (natOf d)).map (· &&& Column.ones (8 * w)) else none
 
 /-- A word written at an atom (C.3, column "written"), before `cell` checks that it reads back. -/
 def fmtAtom : QAtomicType → UInt64 → Option (List UInt8)
@@ -333,9 +347,10 @@ def fmtAtom : QAtomicType → UInt64 → Option (List UInt8)
   | .f64, w => fmtFloat 52 11 w
   | .date, w => some (dayText (signed 4 w))
   | .datetime, w =>
-    let x := signed 8 w
-    let r := (x % 86400000000000).toNat
-    some (dayText (x / 86400000000000) ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
+    -- the day and the nanoseconds into it in `Int64` (division toward zero, so a negative remainder steps back a day)
+    let (q, r) := (w.toInt64 / 86400000000000, w.toInt64 % 86400000000000)
+    let (q, r) := if r < 0 then (q - 1, (r + 86400000000000).toUInt64.toNat) else (q, r.toUInt64.toNat)
+    some (dayText q.toInt ++ 68 :: pad 2 (r / 3600000000000) ++ 58 ::
       pad 2 (r / 60000000000 % 60) ++ 58 :: pad 2 (r / 1000000000 % 60) ++ 46 :: pad 9 (r % 1000000000))
   | .sym, _ | .general, _ => none
   | t, w => t.width.map fun k => intText (signed k w)
