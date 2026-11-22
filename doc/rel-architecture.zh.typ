@@ -114,6 +114,11 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - `Obj` 是可检查的数据，编译器按它分派（`Vals A n` 几列、哪个宽度的 kernel）；Lean 的 `Type` 不能模式匹配，所以程序用 `Obj`、数学用 `.El`。
 - `Tab` 是三字段结构 `{n, key, val}`（原来的 `Rel k v`），内容和 `Σ n, Vals A n × Vals B n` 相同，留名字是因为字段名 `.n .key .val` 被两千多处使用。
 - 新的组合子加 `Known` 的字段，不加 `Rel` 的构造子。
+- 「表已是 canonical」（按 `(key, val)` 升序、无重复）不放进 `Known`（它向下传边界，而这个事实从产生表的一步向上传），
+  也不加成 `Tab` 的第四个字段（`⟨n, key, val⟩` 处处要改）：它是证明 `Tab.Canonical r := ∃ U, U.canon = .ok r`，
+  在调用处静态决定。一个先 `canon` 输入的运算有 `…Of` 形式，直接取已 canonical 的表。例：`E(R)` 的 `mem X ≫ R`
+  是 `≫` 的结果，最后一步已是 `canon`（`comp_canon`），所以 `E` 调 `lamOf` 而不是 `lam`，少一次 `asc → seen → gather`；
+  `setify` 的 `mem X` 同理（`mem_canonical`）。
 - 例外 `bits`（草稿，待审）：中间结果留作位矩阵，交给下一个选位矩阵的运算，不展开成行。`Known` 只向下传边界，
   不能把矩阵交回上层；`tab` 存的是行；`lazy` 是不透明的函数，所以加一个构造子。`rep (bits ..) = rep (tab (Tab.ofBits ..))`；
   任何不认识它的运算先 `runE` 读成 `tab`。

@@ -2517,7 +2517,7 @@ theorem lamOf_den {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)
 /-- **`lam D R` denotes `lamDen R` on the keys `D`**: `lamOf_den` at `canon R`. -/
 theorem lam_den {n : USize} {D : Vals A n} {R : Tab A B} {T : Tab A (.arr B)} (h : Tab.lam D R = .ok T)
     (a : A.El) (ys : List B.El) : T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
-  dsimp only [Tab.lam] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  simp only [Tab.lam, bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
   exact lamOf_den hr h a ys
 
 /-- **`mem X` is canonical**: its last step is `canon` (`Tab.Canonical`). -/
