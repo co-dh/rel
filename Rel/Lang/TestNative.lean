@@ -32,6 +32,17 @@ rel_program native1a where
     tc : N ⟶ N ≜ μY : ed ∪ (Y ed)
     cy : N ⟶ N ≜ {(1,1),(1,2),(2,3)}
     gf : N ⟶ N ≜ νY : cy ∩ (cy Y)
+    le : X ⟶ N ≜ x ≤
+    lt : N ⟶ X ≜ < x°
+    ml : N ⟶ N ≜ {(1,5),(5,2),(2,2),(9,3)} ∩ ≤
+    sc : X ⟶ N ≜ x succ
+    w : N×N ⟶ N×N ≜ {((7,2),(7,2)),((2,7),(2,7)),((7,0),(7,0)),((3,5),(3,5))}
+    ps : N×N ⟶ N ≜ w plus
+    mn : N×N ⟶ N ≜ w minus
+    dv : N×N ⟶ N ≜ w div
+    tm : N×N ⟶ N ≜ w times
+    f(S : X ⟶ N) : X ⟶ N ≜ S succ ∪ S
+    fc : X ⟶ N ≜ f(x)
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
@@ -135,7 +146,18 @@ def semOuts : List (String × (String → IO Unit)) :=
   [("x", semOut native1a.x), ("un", semOut native1a.un), ("me", semOut native1a.me), ("df", semOut native1a.df),
    ("zr", semOut native1a.zr), ("cm", semOut native1a.cm), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
    ("pr", semOut native1a.pr), ("cx", semOut native1a.cx), ("po", semOut native1a.po), ("pl", semOut native1a.pl),
-   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("tc", semOut native1a.tc), ("gf", semOut native1a.gf)]
+   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("tc", semOut native1a.tc), ("gf", semOut native1a.gf),
+   ("le", semOut native1a.le), ("lt", semOut native1a.lt),
+   ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
+   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc)]
+
+-- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
+#eval show IO Unit from do
+  let p ← IO.ofExcept (Bld.plan do discard <| crossB (← lit (.size 32768)) (← lit (.size 8193)) [] [])
+  match p.run abiOf with
+  | .error e => unless e.startsWith "cross: values of the left object by values of the right, past the bound 268435456" do
+      throw (IO.userError s!"crossB past crossMax fails with {e}")
+  | .ok _ => throw (IO.userError "crossB of 32768 × 8193 rows passed `crossMax`")
 
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
