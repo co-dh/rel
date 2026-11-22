@@ -103,4 +103,22 @@ mod tests {
         let plain = Coc { meta: Meta { width: &[6u8], ..meta }, ..c };
         assert_eq!((plain.meta.nul(0), plain.get(0)), (false, 163));
     }
+    // `enc::encode_nul` over three blocks — mixed, all null, no null — read back through `coc::view`: a flagged block's
+    // null rows hold its top residual, every other row `get`s its value, and an unflagged block is plain
+    #[test] fn encode_nul_puts_nulls_in_band() {
+        let bk = 1usize << crate::DEFAULT_LG;
+        let n = 2 * bk + 5;
+        let val = |i: usize| (i % 7) as i64 * 3 - 4;
+        let nulr = |i: usize| i < bk && i % 5 == 1 || (bk..2 * bk).contains(&i);
+        let x: alloc::vec::Vec<u8> = (0..n).flat_map(|i| val(i).to_le_bytes()).collect();
+        let mut nul = alloc::vec![0u8; n.div_ceil(8)];
+        for i in (0..n).filter(|&i| nulr(i)) { nul[i >> 3] |= 1 << (i & 7) }
+        let (m, p) = crate::enc::encode_nul(crate::DEFAULT_LG as u32, &x, 8, &nul);
+        let c = crate::coc::view(&m, &p, n).unwrap_or_else(|e| panic!("encode_nul: {e}"));
+        assert_eq!((c.meta.nul(0), c.meta.nul(1), c.meta.nul(2)), (true, true, false));
+        assert_eq!((c.meta.w(0), c.meta.w(1), c.meta.w(2)), (5, 0, 5));
+        for i in (0..n).filter(|&i| !nulr(i)) { assert_eq!(c.get(i), val(i), "row {i}") }
+        let w = c.meta.w(0);
+        for i in (0..bk).filter(|&i| nulr(i)) { assert_eq!(res_get_in(&p, w, i, p.len()), (1 << w) - 1, "row {i}") }
+    }
 }

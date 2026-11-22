@@ -112,7 +112,7 @@ def foRMeta (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 × UInt64
   (bs.foldl (init := ByteArray.empty) fun acc b => Rel.Column.pushBits acc b.1 8)
     ++ (bs.foldl (init := ByteArray.empty) fun acc b => Rel.Column.pushBits acc b.2.1 8)
     ++ (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, pos) b =>
-          (Rel.Column.pushBits acc pos.toUInt64 8, pos + 2 ^ lg * b.2.2.2 / 8)).1
+          (Rel.Column.pushBits acc pos.toUInt64 8, pos + 2 ^ lg * (b.2.2.2 % 128) / 8)).1
     ++ (bs.foldl (init := ByteArray.empty) fun acc b => Rel.Column.pushBits acc b.2.2.1 8)
     ++ Rel.Column.pushBits (Rel.Column.pushBits (Rel.Column.pushBits ByteArray.empty nul 8) sumn.toUInt64 8)
         lg.toUInt64 8
@@ -175,6 +175,46 @@ def planBlock (lg w n : Nat) (patch : Bool) (x : ByteArray) (b : Nat) : Int64 ×
   let lo := b * 2 ^ lg
   let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
   (mn, mx, s, f, d)
+
+/-- Block `b`, of `B` elements, of a nullable column (`atom+1`, owner decision K): `x` its `n` `w`-byte elements, row
+`i` the null where `Column.bitAt nul i`. Its base, maximum and `blockOf`'s sum are taken over the rows that are not null
+(`0`, `0`, `0` where every row is); its width byte is the range's `widthFor`, one bit wider where a null shares the
+block with a value at the top residual `2 ^ d - 1` (so no value reads as the null), plus `nulAt`'s bit 7 where the block
+holds a null. A block whose range is all `2 ^ 64` keys is not widened: there its top residual reads as the null. -/
+def nulBlock (B w n b : Nat) (x nul : ByteArray) : Int64 × Int64 × UInt64 × Nat :=
+  let lo := b * B
+  let is := Array.range (min (lo + B) n - lo)
+  let ks := (is.filter fun j => !Rel.Column.bitAt nul (lo + j)).map fun j => keyAt w x (lo + j)
+  let mn := ks.foldl min (ks.getD 0 0)
+  let mx := ks.foldl max (ks.getD 0 0)
+  let s := ks.foldl (init := (0 : UInt64)) fun acc k => if k.toUInt64 == sumNul w then acc else acc + k.toUInt64
+  let has := is.any fun j => Rel.Column.bitAt nul (lo + j)
+  let d := Rel.Column.widthFor (mx - mn).toUInt64.toNat
+  let d := if has && !ks.isEmpty && d < 64 && (mx - mn).toUInt64 == Rel.Column.ones d then d + 1 else d
+  (mn, mx, s, d + if has then 128 else 0)
+
+/-- `encodeNul` at blocks of `2 ^ lg`: block `b` is `nulBlock`'s, a null row's residual is the top one `2 ^ d - 1` and
+every other row's is its key less the base, so the null is tested on the block (`Column.foRNul`) and never decoded.
+Nothing is patched, as in `bools`. -/
+def encodeNulAt (lg : Nat) (width : USize) (x nul : ByteArray) : ByteArray × ByteArray :=
+  let w := width.toNat
+  let n := x.size / w
+  let B := 1 <<< lg
+  let bs := (Array.range ((n + B - 1) / B)).map fun b => nulBlock B w n b x nul
+  let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (mn, _, _, wb) =>
+    let lo := b * B
+    let d := wb % 128
+    (acc ++ packRes B d fun j =>
+      if lo + j < n then (if Rel.Column.bitAt nul (lo + j) then Rel.Column.ones d else (keyAt w x (lo + j) - mn).toUInt64)
+      else 0, b + 1)).1
+  (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, wb) => (mn.toUInt64, mx.toUInt64, s, wb)), pack)
+
+/-- The nullable Frame of Reference column of the dense `width`-byte elements `x` whose null rows are the set bits of
+the bitmap `nul` (a bit past it is `0`): `(metadata, pack)`, each block written encoded with its nulls in band, the
+writer of `Vals (.sum (.atom t) .one)`. `rust/src/enc.rs`'s `encode_nul` writes the same bytes. -/
+@[extern "qlean_coc_encode_nul"]
+def encodeNul (width : USize) (x : @& ByteArray) (nul : @& ByteArray) : ByteArray × ByteArray :=
+  encodeNulAt Rel.Column.lgEnc width x nul
 
 /-- `encode` at blocks of `2 ^ lg` elements: the model every theorem about the encoder is stated
 over, at any `lg` the layout admits, `6 .. 16`. `encode` is this at `Column.lgEnc`.

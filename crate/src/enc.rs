@@ -203,6 +203,51 @@ pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
 pub fn coc_sumnul(width: usize) -> i64 {
     if width == 1 || width == 8 { i64::MIN } else if width == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
 }
+/// Lean `Coc.encodeNulAt` at `lg`: the nullable Frame of Reference column (owner decision K) of the `x.len() / w`
+/// `w`-byte elements of `x`, row `i` null where bit `i` of `nul` is set (a bit past `nul` is 0), as `(meta, pack)`.
+/// A block's base, maximum and sum are over its rows that are not null; a block holding a null is flagged
+/// (`coc::NUL_FLAG`) and its null rows take the top residual `2 ^ d - 1`, `d` one wider than the range where a value
+/// already sits there. Written a block at a time from the keys, never through a decoded column; nothing is patched.
+pub fn encode_nul(lg: u32, x: &[u8], w: usize, nul: &[u8]) -> (alloc::vec::Vec<u8>, alloc::vec::Vec<u8>) {
+    let (n, bk) = (x.len() / w, 1usize << lg);
+    let is_nul = |i: usize| nul.get(i >> 3).is_some_and(|b| b >> (i & 7) & 1 != 0);
+    // Lean `Coc.keyAt`: the element's bits sign-extended from `8 * w`
+    let key = |i: usize| { let mut b = [0u8; 8]; b[..w].copy_from_slice(&x[i * w..][..w]); let s = 64 - 8 * w as u32; ((u64::from_le_bytes(b) << s) as i64) >> s };
+    let snul = coc_sumnul(w);
+    let blocks: alloc::vec::Vec<(i64, i64, u64, u8)> = (0..n.div_ceil(bk)).map(|b| {
+        let (mut mn, mut mx, mut s, mut any, mut has) = (0i64, 0i64, 0u64, false, false);
+        for i in b * bk..((b + 1) * bk).min(n) {
+            if is_nul(i) { has = true; continue }
+            let k = key(i);
+            if any { (mn, mx) = (mn.min(k), mx.max(k)) } else { (mn, mx, any) = (k, k, true) }
+            if k != snul { s = s.wrapping_add(k as u64) }
+        }
+        let r = (mx as u64).wrapping_sub(mn as u64);
+        let mut d = crate::bits::width_for(r);
+        if has && any && d < 64 && r == (1u64 << d) - 1 { d += 1 }
+        (mn, mx, s, d | if has { crate::coc::NUL_FLAG } else { 0 })
+    }).collect();
+    let mut meta = alloc::vec::Vec::with_capacity(33 * blocks.len() + 24);
+    for b in &blocks { meta.extend(b.0.to_le_bytes()) }
+    for b in &blocks { meta.extend(b.1.to_le_bytes()) }
+    let mut off = alloc::vec::Vec::with_capacity(blocks.len() + 1);
+    off.push(0usize);
+    for b in &blocks { off.push(off[off.len() - 1] + bk * (b.3 & !crate::coc::NUL_FLAG) as usize / 8) }
+    for o in &off[..blocks.len()] { meta.extend((*o as u64).to_le_bytes()) }
+    for b in &blocks { meta.extend(b.2.to_le_bytes()) }
+    for v in [snul as u64, n as u64, lg as u64] { meta.extend(v.to_le_bytes()) }
+    meta.extend(blocks.iter().map(|b| b.3));
+    let mut pack = alloc::vec![0u8; off[blocks.len()]];
+    let mut v = alloc::vec![0u64; bk.next_multiple_of(64)];
+    for (b, &(mn, _, _, wb)) in blocks.iter().enumerate() {
+        let (lo, hi, d) = (b * bk, ((b + 1) * bk).min(n), wb & !crate::coc::NUL_FLAG);
+        if d == 0 { continue }
+        let top = if d == 64 { u64::MAX } else { (1u64 << d) - 1 };
+        for (o, i) in v.iter_mut().zip(lo..hi) { *o = if is_nul(i) { top } else { (key(i) as u64).wrapping_sub(mn as u64) } }
+        crate::simd::res_pack(&v, d, hi - lo, &mut pack[off[b]..off[b + 1]]);
+    }
+    (meta, pack)
+}
 
 // ---- A17: coc.rs ----
 /// coc.rs `coc_narrow`: `v` narrowed to `width` bytes into `out` (`v` itself when `width` is 8).

@@ -78,6 +78,31 @@ example : summed outlier (u 3) = 4294967296 := by decide +kernel
 example : summed lifted (u 3) = 8589934593 := by decide +kernel
 #guard summed lifted (u 3) == 8589934593
 
+/-- `xs` at 8 bytes with the rows `ns` null, encoded by `Coc.encodeNul`, as the metadata and pack bytes. -/
+def encN (xs : List UInt64) (ns : List Nat) : List UInt8 × List UInt8 :=
+  let r := Coc.encodeNul (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+  (r.1.data.toList, r.2.data.toList)
+
+/-- Each row of `encN xs ns` read back by `Column.foROpt`: `none` at a null, tested on the block. -/
+def readN (xs : List UInt64) (ns : List Nat) : List (Option UInt64) :=
+  let r := Coc.encodeNul (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+  (List.range xs.length).map (Column.foROpt r.1 r.2 #[])
+
+-- values 3 4 6 at rows 0 2 3, nulls at 1 4: range 3 = `2 ^ 2 - 1` reaches the top residual, so width 3, flagged (131);
+-- residuals 0 7 1 3 7
+example : encN [3, 0, 4, 6, 0] [1, 4] = (md 3 6 13 5 131, [120, 118] ++ List.replicate 382 0) := by decide +kernel
+#guard encN [3, 0, 4, 6, 0] [1, 4] == (md 3 6 13 5 131, [120, 118] ++ List.replicate 382 0)
+example : readN [3, 0, 4, 6, 0] [1, 4] = [some 3, none, some 4, some 6, none] := by decide +kernel
+#guard readN [3, 0, 4, 6, 0] [1, 4] == [some 3, none, some 4, some 6, none]
+
+-- every row null: width 0, flagged (128), no residual bytes
+example : encN [0, 0] [0, 1] = (md 0 0 0 2 128, []) := by decide +kernel
+#guard encN [0, 0] [0, 1] == (md 0 0 0 2 128, [])
+
+-- no null: the unpatched column, here the same bytes as `encode`'s
+example : encN [11, 7, 12, 7] [] = enc [11, 7, 12, 7] := by decide +kernel
+#guard encN [11, 7, 12, 7] [] == enc [11, 7, 12, 7]
+
 /-- `xs` as a `foR` column. -/
 def col (xs : List UInt64) : Enc := let r := Coc.encode (u 8) (dense xs); .foR r.1 r.2
 

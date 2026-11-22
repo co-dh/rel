@@ -333,7 +333,7 @@ theorem foRMeta_size (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 
       lg.toUInt64 8).size = 24 := by
     simp only [Column.pushBits_size, e0]
   have s3 := foldl_pair_size (fun (x : ByteArray × Nat) (b : UInt64 × UInt64 × UInt64 × Nat) =>
-    (Column.pushBits x.fst x.snd.toUInt64 8, x.snd + 2 ^ lg * b.snd.snd.snd / 8))
+    (Column.pushBits x.fst x.snd.toUInt64 8, x.snd + 2 ^ lg * (b.snd.snd.snd % 128) / 8))
     (fun _ _ => by simp only [Column.pushBits_size]) bs.toList (ByteArray.empty, 0)
   simp only [e0, Nat.zero_add, Array.length_toList] at s1 s2 s3 s4 s6
   unfold Kernel.Coc.foRMeta
@@ -356,7 +356,7 @@ theorem foRMeta_reads (lg : Nat) (hlg : lg < 2 ^ 64) (nul : UInt64) (sumn : Nat)
     simp only [Column.pushBits_size, e0]
   simp only [e0, Nat.zero_add, Array.length_toList] at s1 s2 s4 s6 g1 g6
   have s3 := foldl_pair_size (fun (x : ByteArray × Nat) (b : UInt64 × UInt64 × UInt64 × Nat) =>
-    (Column.pushBits x.fst x.snd.toUInt64 8, x.snd + 2 ^ lg * b.snd.snd.snd / 8))
+    (Column.pushBits x.fst x.snd.toUInt64 8, x.snd + 2 ^ lg * (b.snd.snd.snd % 128) / 8))
     (fun _ _ => by simp only [Column.pushBits_size]) bs.toList (ByteArray.empty, 0)
   simp only [e0, Array.length_toList, Nat.zero_add] at s3
   have hn : Column.nblk (Kernel.Coc.foRMeta lg nul sumn bs) = bs.size := by
