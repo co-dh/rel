@@ -50,7 +50,9 @@ def compGroups (R : Tab A B) (S : Tab B C) :
   let (vs, p) ← kasc N es
   let (k, g, f) ← kseen N ((es.map (·.1)).zip vs)
   let K := k.toUSize
-  let cR ← kscatter .add N g (← colMap .lt N p (← colConst N n.toUInt64)) K 0
+  -- `p < n` as one `kscan` with the constant in its post chain (`gt` reads `n` on its left), no `colConst`
+  -- (`colMap_const_eq`)
+  let cR ← kscatter .add N g (← colMap .first N p p .i64 .i64 [] [(.gt, n.toUInt64)]) K 0
   let cS ← colMap .sub K (← kscatter .add N g (← colConst N 1) K 0) cR
   pure (N, p, g, f, K, cR, cS, ← colMap .mul K cR cS)
 
@@ -65,7 +67,9 @@ def compExpand (R : Tab A B) (S : Tab B C) :
     let ct ← kgather T G K cS
     let iR ← kgather T (← colMap .add T ft (← colMap .div T u ct)) N p
     let qS ← colMap .add T (← colMap .add T ft (← kgather T G K cR)) (← colMap .mod T u ct)
-    let iS ← colMap .sub T (← kgather T qS N p) (← colConst T n.toUInt64)
+    let pq ← kgather T qS N p
+    -- `pq - n` as `pq + (0 - n)` in one `kscan`'s post chain, no `colConst` (`colMap_const_eq`)
+    let iS ← colMap .first T pq pq .i64 .i64 [] [(.add, 0 - n.toUInt64)]
     Tab.canon ⟨T, ← Vals.gather T iR R.key, ← Vals.gather T iS S.val⟩
 
 /-- **`R ≫ S` in one expansion**: `compGroups`, then `compExpand` of all its groups at once; its peak is the
