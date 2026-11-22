@@ -190,4 +190,21 @@ example : bview (kasc (u 4) [(.atom .i64, ncol [3, 0, 1, 0] [1, 3])]) =
 #guard bview (kasc (u 4) [(.atom .i64, ncol [3, 0, 1, 0] [1, 3])]) ==
     bview (.ok ([ncol [0, 0, 1, 3] [0, 1]], wordsFoR #[1, 3, 2, 0]))
 
+/-- A `cells` key of 2 cells over 2 payload rows, its row words `e`, cell starts `lo` and ends `hi`. -/
+def cellsKey (e lo hi : Enc) : List (AscKey × Enc) := [(.cells (u 2) (u 2) lo hi [(.atom .i64, wordsFoR #[5, 4])], e)]
+
+-- a null names no cell: in the row words, in `lo`, in `hi`, each refused with its row (Rust: `no_nul` in `ffi/asc.rs`)
+example : bview (kasc (u 3) (cellsKey (ncol [0, 1, 0] [1]) (wordsFoR #[0, 1]) (wordsFoR #[1, 2]))) =
+    .inl "asc: cells: row 1 is null, and a null names no row" := by decide +kernel
+#guard bview (kasc (u 3) (cellsKey (ncol [0, 1, 0] [1]) (wordsFoR #[0, 1]) (wordsFoR #[1, 2]))) ==
+    .inl "asc: cells: row 1 is null, and a null names no row"
+example : bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (ncol [0, 1] [0]) (wordsFoR #[1, 2]))) =
+    .inl "asc: cells lo: row 0 is null, and a null names no row" := by decide +kernel
+#guard bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (ncol [0, 1] [0]) (wordsFoR #[1, 2]))) ==
+    .inl "asc: cells lo: row 0 is null, and a null names no row"
+example : bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (wordsFoR #[0, 1]) (ncol [1, 2] [1]))) =
+    .inl "asc: cells hi: row 1 is null, and a null names no row" := by decide +kernel
+#guard bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (wordsFoR #[0, 1]) (ncol [1, 2] [1]))) ==
+    .inl "asc: cells hi: row 1 is null, and a null names no row"
+
 end Rel.Kernel.AscTest

@@ -165,18 +165,13 @@ theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
     Enc.Valid n o ∧ (raw .i64 n o).size = n.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t n o := by
   unfold kscatter at h
   simp only [bind, Except.bind] at h
-  split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  split at h; · cases h
-  rename_i ws hs
-  split at h; · cases h
-  rename_i nul _
-  change Except.ok (wordsFoR ws nul) = _ at h
-  simp only [Except.ok.injEq] at h
-  subst h
-  exact wordsFoR_valid ws nul (scatterWords_size hs).symm
+  -- every `split` either refutes an error branch or cases the `op` match, whose branches both go on
+  repeat' (split at h <;> try (cases h; done))
+  all_goals
+    change Except.ok (wordsFoR _ _) = _ at h
+    simp only [Except.ok.injEq] at h
+    subst h
+    exact wordsFoR_valid _ _ (scatterWords_size ‹scatterWords _ _ _ _ _ = .ok _›).symm
 
 /-- **`kgather` closes**: its answer holds `m` words, valid and `Ext.Enc.WF` at every fixed-width type but the boolean. -/
 theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
