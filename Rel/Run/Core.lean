@@ -66,7 +66,7 @@ theorem get_ne (x : Arr t n) (i : Fin n.toNat) (h : t ≠ .general) :
   cases t <;> first | exact absurd rfl h | rfl
 
 /-- Element `i` read as `t+1` (owner decision K): `none` where it is the in-band null, tested on the encoding and never
-    decoded (`Column.foRNul`: a flagged block's top residual held by no patch,), else `some` of `get`. A column with no flagged block is `some` everywhere. -/
+    decoded (`Column.foRNul`: a flagged block's top residual held by no patch), else `some` of `get`. A column with no flagged block is `some` everywhere. -/
 def opt (x : Arr t n) (i : Fin n.toNat) : Option (El t) :=
   let nul := match x.enc with
     | .foR m p => Column.foRNul m p #[] i
