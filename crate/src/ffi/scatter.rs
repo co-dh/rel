@@ -41,7 +41,7 @@ export! {
     /// `Coc.encode 8`; the first error met in that order is the answer, an index `>= n` or a failing step among them.
     fn qlean_k_scatter(op: B, m: usize, ix: B, e: B, n: usize, fill: u64) -> O {
         let op = crate::scan::op_code(op);
-        if crate::scan::reads_divisor(op) { return except(Err("scatter: rdiv and rmod divide by the cell, which no row test sees".into())) }
+        if crate::scan::reads_divisor(op) && m != 0 { return except(Err("scatter: rdiv and rmod divide by the cell, which no row test sees".into())) }
         except(blocks_view("scatter: ix", m, ix).and_then(|is| blocks_view("scatter: e", m, e).and_then(|es| scatter::blocks(op, &is, &es, n, fill))))
     }
 }

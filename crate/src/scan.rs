@@ -472,7 +472,7 @@ impl Scan<'_> {
 /// fills and cut to `t`'s width as `Enc.raw t` reads it back; `None` at `n = 0`, where no row is visited.
 pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, es: &[B<'a>], pre: &'a [(u8, u64)], post: &[(u8, u64)])
     -> Result<(O, Option<u64>), String> {
-    if reads_divisor(op) || (n != 0 && pre.iter().chain(post).any(|&(o, c)| step_fails(o, c))) { return Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into()) }
+    if n != 0 && (reads_divisor(op) && es.len() > 1 || pre.iter().chain(post).any(|&(o, c)| step_fails(o, c))) { return Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into()) }
     let g = seg.map(|e| raw_all(QT_BOOLEAN, n, e)).transpose()?;
     let cols = es.iter().map(|&e| raw_all(s, n, e)).collect::<Result<Vec<_>, _>>()?;
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
@@ -611,6 +611,9 @@ mod kscan_tests {
             let e = Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into());
             assert_eq!(kscan(op, false, 6, 6, 2, None, &[x.borrow(), x.borrow()], &[], &[]).map(|_| ()), e);
             assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &[], &[(op, 2)]).map(|_| ()), Ok(()));
+            // no column folded, or no row: nothing is evaluated, so nothing is refused (`kscanRefuses`)
+            assert!(kscan(op, false, 6, 6, 2, None, &[x.borrow()], &[], &[]).is_ok());
+            assert!(kscan(0, false, 6, 6, 0, None, &[enc_for(&[], 8).borrow()], &[], &[(op, 0)]).is_ok());
         }
     }
     #[test] fn op_eval_floors_and_types_its_errors() {

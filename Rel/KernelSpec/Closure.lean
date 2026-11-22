@@ -113,7 +113,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
   unfold kscan at h
-  by_cases hd : (op.readsDivisor || (n != 0 && (pre ++ post).any fun p => p.1.stepFails p.2)) = true
+  by_cases hd : kscanRefuses op n es pre post = true
   · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h

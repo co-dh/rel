@@ -357,7 +357,7 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
     ∃ md pk, r.1 = .foR md pk := by
   unfold kscan at h
-  by_cases hd : (op.readsDivisor || (n != 0 && (pre ++ post).any fun p => p.1.stepFails p.2)) = true
+  by_cases hd : kscanRefuses op n es pre post = true
   · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
@@ -444,8 +444,6 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
   split at h; · cases h
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i one hone
-  split at h; · cases h
   rename_i p hp
   split at h
   · rename_i P hP
@@ -458,8 +456,15 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
     -- `wN G`: row `G` is tagged into `s`
     obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
     have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
-      rw [summandPos_raw hp hv ⟨G, hG⟩, colConst_raw hone]; rw [hwN]; simp only [dif_pos hG]
-      split <;> simp [hG]
+      -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`colMap_first_chain`)
+      obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv ⟨G, hG⟩
+      obtain ⟨w, hc, ho⟩ := colMap_first_chain hp G hG
+      rw [ho, hwN]; simp only [dif_pos hG, if_neg (by decide : ¬ (QAtomicType.i64 = .u1)), Option.getD_some]
+      simp only [ht, Option.getD_some] at hc
+      rw [et] at hc
+      generalize tag.get ⟨G, hG⟩ = b at hc ⊢
+      cases s <;> cases b <;> simp [chain, Op.eval, List.foldlM, pure, Except.pure, bind, Except.bind] at hc <;>
+        subst hc <;> decide
     have key : ∀ k, ((List.range k).map wN).sum ≤ k ∧ (q.1 < k → wN q.1 ≤ ((List.range k).map wN).sum) := by
       intro k; induction k with
       | zero => simp

@@ -117,7 +117,7 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   unfold kscan at hr
-  by_cases hd : (op.readsDivisor || (n != 0 && (pre ++ post).any fun p => p.1.stepFails p.2)) = true
+  by_cases hd : kscanRefuses op n [a, b] pre post = true
   · simp only [hd, ↓reduceIte] at hr; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
   split at hr; · cases hr

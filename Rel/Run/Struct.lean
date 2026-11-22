@@ -29,12 +29,12 @@ def Vals.none : (A : Obj) → Except String (Vals A 0)
   | .one => pure ()
 
 /-- The index columns of CROSS: `T = n · m` rows, `iR = pos / m`, `iS = pos % m` (`colMap` of the positions and
-the post steps `(.rdiv, m)`, `(.rmod, m)`). `.rdiv`, `.rmod` read their words signed, so `n · m + m` stays below `2^63`, and `T` fits a `USize`. -/
+the post steps `(.rdiv, m)`, `(.rmod, m)`). `.rdiv`, `.rmod` read their words signed, so `n · m + m` stays below
+`2^63`, and `T` fits a `USize`. -/
 def crossIx (n m : USize) : Except String (USize × Enc × Enc) := do
   if 2 ^ 63 ≤ n.toNat * m.toNat + m.toNat ∨ USize.size ≤ n.toNat * m.toNat then
     throw s!"cross: {n} × {m} rows past 2^63 or USize"
   let T := (n.toNat * m.toNat).toUSize
-
   pure (T, ← colMap .first T .pos .pos .i64 .i64 [] [(.rdiv, m.toUInt64)],
     ← colMap .first T .pos .pos .i64 .i64 [] [(.rmod, m.toUInt64)])
 

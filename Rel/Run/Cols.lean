@@ -88,11 +88,11 @@ the others (`colMap .mul` by `tag` or by its `.not`), as `Vals.cols` gathers a s
 def summandPos (n : USize) (s : Bool) (tag : Arr .u1 n) (idx : Enc) : Except String Enc :=
   if s then colMap .mul n idx tag.enc else do colMap .mul n idx (← colMap .not n tag.enc tag.enc)
 
-/-- The count of the `n` rows `tag` gives to the summand `s`: `summandPos` of the words `1`, its running sum
+/-- The count of the `n` rows `tag` gives to the summand `s`: `tag`'s words (`.not` of them at `s = false`), their running sum
 (`colPrefix .add`), the last word (`lastCount`); past `2^63` rows, which a signed count cannot reach, the error. -/
 def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
   if 2 ^ 63 ≤ n.toNat then .error s!"count: {n} rows, past an Int64 count" else do
-    let p ← summandPos n s tag (← colConst n 1)
+    let p ← colMap .first n tag.enc tag.enc .i64 .i64 [] (if s then [] else [(.not, 0)])
     match h : colPrefix .add n p with
     | .ok P => .ok (lastCount n P (colPrefix_closed h).2)
     | .error e => .error e

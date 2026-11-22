@@ -46,6 +46,9 @@ example : (chain [(.rdiv, 3), (.rmod, 5)] 101).toOption = some 3 ∧ Op.stepFail
 #guard (kscan .add false .i64 .i64 4 none kcols [] [(.rmod, 0)]).toBool = false
 #guard (kscan .add false .i64 .i64 0 none kcols [] [(.rdiv, 0)]).toBool = true
 #guard (kscan .rdiv false .i64 .i64 4 none kcols).toBool = false
+#guard kscanRefuses .rdiv 4 kcols [] [] && !kscanRefuses .rdiv 4 (kcols.take 1) [] [] &&
+  !kscanRefuses .add 0 kcols [] [(.rdiv, 0)]
+#guard (kscan .rdiv false .i64 .i64 4 none (kcols.take 1)).toBool = true
 -- reversed (D.6): the forward fold of every column reversed, read back reversed. Rows 3 and 2 start a segment walking
 -- back: `100+4 | 100+3, 103+2 | 100+1`
 example : kwords ((List.range 4).foldlM (kscanRow .add #[0, 1, 0, 1] #[100, 100, 100, 100] [#[4, 3, 2, 1]]) #[]) =
