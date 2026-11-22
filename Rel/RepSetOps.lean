@@ -473,8 +473,13 @@ theorem runScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x,
 /-- **The segment marks of `kseen`'s groups** (`groupFold`'s and `Tab.sums`'s): ones `kscatter`ed to the first rows `f`,
 read as booleans, are `0` exactly off the groups' first rows, the form `runScan_ok` folds by. -/
 theorem seenSeg_ok {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
-    {one seg : Enc} (h1 : colConst m.toUSize 1 = .ok one) (h2 : kscatter .last m.toUSize f one n 0 = .ok seg) :
+    {seg : Enc} (h : seenSeg n f m.toUSize = .ok seg) :
     ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf (seenKey n es) n.toNat) := by
+  unfold seenSeg at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i one h1
+  have h2 := h
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
   have hn := n.toNat_lt_size
   have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
@@ -552,18 +557,13 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
       ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
         (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
           ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
-  unfold seenSeg at hs
-  simp only [bind, Except.bind] at hs
-  split at hs; · cases hs
-  rename_i one h1
   unfold groupFold at h
   simp only [bind, Except.bind] at h
   repeat (split at h; · cases h)
   rename_i _ zc h3 _ r h4
-  have h2 := hs
   obtain ⟨sc, v⟩ := r
   dsimp only at h
-  obtain ⟨-, claim⟩ := runScan_ok hop (kseen_runs hr) (seenSeg_ok hr h1 h2) h3 h4
+  obtain ⟨-, claim⟩ := runScan_ok hop (kseen_runs hr) (seenSeg_ok hr hs) h3 h4
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
   have hn := n.toNat_lt_size
   have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega

@@ -1066,12 +1066,14 @@ theorem eval_lt_word {a b o : UInt64} (h : Op.eval .lt a b = .ok o) : o = if a.t
 
 /-- **A row's bad word** (`Tab.sum`, `Tab.sums`): `0`/`1`, and `0` exactly when the element `v` and the sum `W` are
 not the null and `W = (W - v) + v` did not wrap (the signs of `v`, `W - v` agree and differ from `W`'s). -/
-theorem badWord_spec {N : USize} {v W z sv d sd e1 sw e2 ovf nl eW ev o1 bad : Enc}
-    (hz : colConst N 0 = .ok z) (hsv : colMap .lt N v z = .ok sv) (hd : colMap .sub N W v = .ok d)
-    (hsd : colMap .lt N d z = .ok sd) (he1 : colMap .eq N sv sd = .ok e1) (hsw : colMap .lt N W z = .ok sw)
+theorem badWord_spec {N : USize} {v W sv d sd e1 sw e2 ovf eW ev o1 bad : Enc}
+    (hsv : colMap .first N v v .i64 .i64 [] [(.gt, 0)] = .ok sv) (hd : colMap .sub N W v = .ok d)
+    (hsd : colMap .first N d d .i64 .i64 [] [(.gt, 0)] = .ok sd) (he1 : colMap .eq N sv sd = .ok e1)
+    (hsw : colMap .first N W W .i64 .i64 [] [(.gt, 0)] = .ok sw)
     (he2 : colMap .ne N sv sw = .ok e2) (hovf : colMap .and N e1 e2 = .ok ovf)
-    (hnl : colConst N 0x8000000000000000 = .ok nl) (heW : colMap .eq N W nl = .ok eW)
-    (hev : colMap .eq N v nl = .ok ev) (ho1 : colMap .or N eW ev = .ok o1) (hbad : colMap .or N ovf o1 = .ok bad) :
+    (heW : colMap .first N W W .i64 .i64 [] [(.eq, 0x8000000000000000)] = .ok eW)
+    (hev : colMap .first N v v .i64 .i64 [] [(.eq, 0x8000000000000000)] = .ok ev)
+    (ho1 : colMap .or N eW ev = .ok o1) (hbad : colMap .or N ovf o1 = .ok bad) :
     ∀ t < N.toNat, ((raw .i64 N bad)[t]?.getD 0 = 0 ∨ (raw .i64 N bad)[t]?.getD 0 = 1) ∧
       ((raw .i64 N bad)[t]?.getD 0 = 0 ↔ ((raw .i64 N v)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
         ((raw .i64 N W)[t]?.getD 0).toInt64 ≠ Alg.nul ∧
@@ -1079,19 +1081,22 @@ theorem badWord_spec {N : USize} {v W z sv d sd e1 sw e2 ovf nl eW ev o1 bad : E
             ((raw .i64 N W)[t]?.getD 0 - (raw .i64 N v)[t]?.getD 0).toInt64 < 0) ∧
           ¬(((raw .i64 N v)[t]?.getD 0).toInt64 < 0 ↔ ((raw .i64 N W)[t]?.getD 0).toInt64 < 0))) := by
   intro t ht
-  have hsv' := eval_lt_word ((colMap_raw hsv).2.2.2 t ht)
+  -- `(.gt, 0)` reads `x < 0`, `(.eq, c)` reads `c = x`: the post step's constant is the left operand
+  have lt0 : ∀ {a e : Enc}, colMap .first N a a .i64 .i64 [] [(.gt, 0)] = .ok e →
+      (raw .i64 N e)[t]?.getD 0 = if ((raw .i64 N a)[t]?.getD 0).toInt64 < (0 : UInt64).toInt64 then 1 else 0 :=
+    fun h => eval_lt_word (b := 0) ((colMap_post h).2 t ht)
+  have hsv' := lt0 hsv
   have hd' := (colMap_raw hd).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hd'
-  have hsd' := eval_lt_word ((colMap_raw hsd).2.2.2 t ht)
+  have hsd' := lt0 hsd
   have he1' := eval_eq_word ((colMap_raw he1).2.2.2 t ht)
-  have hsw' := eval_lt_word ((colMap_raw hsw).2.2.2 t ht)
+  have hsw' := lt0 hsw
   have he2' := eval_ne_word ((colMap_raw he2).2.2.2 t ht)
   have hovf' := (colMap_raw hovf).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hovf'
-  have heW' := eval_eq_word ((colMap_raw heW).2.2.2 t ht)
-  have hev' := eval_eq_word ((colMap_raw hev).2.2.2 t ht)
+  have heW' := eval_eq_word ((colMap_post heW).2 t ht)
+  have hev' := eval_eq_word ((colMap_post hev).2 t ht)
+  simp only [eq_comm (a := (0x8000000000000000 : UInt64))] at heW' hev'
   have ho1' := (colMap_raw ho1).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at ho1'
   have hbad' := (colMap_raw hbad).2.2.2 t ht; simp only [Op.eval, Except.ok.injEq] at hbad'
-  rw [colConst_raw hz, Array.getElem?_replicate, if_pos ht, Option.getD_some] at hsv' hsd' hsw'
-  rw [colConst_raw hnl, Array.getElem?_replicate, if_pos ht, Option.getD_some] at heW' hev'
   rw [← hd'] at hsd'
   rw [← hbad', ← ho1', ← hovf', he1', he2', hsv', hsd', hsw', heW', hev']
   have hn : ∀ x : UInt64, x = 0x8000000000000000 ↔ x.toInt64 = Alg.nul := fun x =>
@@ -2728,7 +2733,6 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨kc, hkc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
@@ -2741,15 +2745,13 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
   have hk63 : k < 2 ^ 63 := by omega
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
   have hwl : ∀ i, EN i - SN i < 2 ^ 63 := fun i => by have := hb1 i; omega
-  have hkw : ∀ i < n.toNat, (raw .i64 n kc)[i]?.getD 0 = k.toUInt64 := fun i hi => by
-    rw [colConst_raw hkc, Array.getElem?_replicate, if_pos hi, Option.getD_some]
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (EN i - SN i).toUInt64 := fun i hi => by
     have es := (colMap_raw hw).2.2.2 i hi
     rw [(hw1 i hi).2, (hw1 i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, toUInt64_sub (hb1 i).1]
   have hltw : ∀ i < n.toNat, (raw .i64 n lt)[i]?.getD 0 = if k < EN i - SN i then 1 else 0 := fun i hi => by
-    have es := (colMap_raw hlt).2.2.2 i hi
-    rw [hkw i hi, hww i hi, eval_lt_nat hk63 (hwl i)] at es
+    have es := (colMap_post hlt).2 i hi
+    rw [hww i hi, eval_lt_nat hk63 (hwl i)] at es
     exact (Except.ok.inj es).symm
   have h2 : ∀ i < n.toNat, (raw .i64 n lt)[i]?.getD 0 < 2 := fun i hi => by rw [hltw i hi]; split <;> decide
   have hsz := whereCol_size hwh
@@ -2765,9 +2767,9 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
     · rintro ⟨j, hj, rfl⟩; exact ⟨j, hj, by rw [Array.getElem?_eq_getElem (by omega)]; rfl⟩
     · rintro ⟨j, hj, rfl⟩; exact ⟨j, hj, by rw [Array.getElem?_eq_getElem (by omega)]; rfl⟩
   have haw : ∀ i < n.toNat, (raw .i64 n a)[i]?.getD 0 = (SN i + k).toUInt64 := fun i hi => by
-    have es := (colMap_raw ha).2.2.2 i hi
-    rw [(hw1 i hi).1, hkw i hi] at es; simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, ← UInt64.ofNat_add]
+    have es := (colMap_post ha).2 i hi
+    rw [(hw1 i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, UInt64.add_comm, ← UInt64.ofNat_add]
   let g : Nat → B.El := fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt
   have hJ : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, k < EN i - SN i ∧ ((raw .i64 M sel)[j.1]?.getD 0).toNat = i ∧
       K.row j = Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i ∧ V.row j = g (SN i + k) := by

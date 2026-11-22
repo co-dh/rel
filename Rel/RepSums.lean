@@ -626,14 +626,13 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
     rw [Except.bind_eq_ok'] at h; obtain ⟨sw, hsw, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨q2, hq2, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨ovf, hovf, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨nl, hnl, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨eW, heW, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨ev, hev, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨o1, ho1, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨bad', hbad, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨Wa, hWa, h⟩ := h
     simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
-    have hbw := badWord_spec hz hsv hd hsd hq1 hsw hq2 hovf hnl heW hev ho1 hbad
+    have hbw := badWord_spec hsv hd hsd hq1 hsw hq2 hovf heW hev ho1 hbad
     have hW := (runScan_ok (op := .add) (fn := (· + ·)) (fun _ _ => rfl) hruns hsu hz hr).2
     have hF := Lang.sums_fold hruns (fun q => (Enc.raw .i64 n v)[q]?.getD 0) (fun q => (Enc.raw .i64 n Ws)[q]?.getD 0)
       (fun q => (Enc.raw .i64 n bad')[q]?.getD 0) hW (fun t ht => (hbw t ht).2)
@@ -648,7 +647,6 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
     rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Ws, W2⟩, hr, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨W', hW', h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨nl, hnl, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨nE, hnE, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨nan, hnan, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨nn, hnn, h⟩ := h
@@ -669,8 +667,8 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
     have hNE := fun q hq => eval_ne_word ((colMap_raw hnE).2.2.2 q hq)
     have hNAN : ∀ q < n.toNat, (Enc.raw .i64 n nan)[q]?.getD 0 =
         if (Enc.raw .i64 n W'.enc)[q]?.getD 0 = 0x8000000000000000 then 1 else 0 := fun q hq => by
-      have := eval_eq_word ((colMap_raw hnan).2.2.2 q hq)
-      rwa [colConst_raw hnl, Array.getElem?_replicate, if_pos hq, Option.getD_some] at this
+      have := eval_eq_word ((colMap_post hnan).2 q hq)
+      simpa only [eq_comm (a := (0x8000000000000000 : UInt64))] using this
     have hOp : ∀ {o : Op} {a b e : Enc}, colMap o n a b = .ok e → ∀ q < n.toNat,
         o.eval ((Enc.raw .i64 n a)[q]?.getD 0) ((Enc.raw .i64 n b)[q]?.getD 0) = .ok ((Enc.raw .i64 n e)[q]?.getD 0) :=
       fun h q hq => (colMap_raw h).2.2.2 q hq
@@ -731,13 +729,12 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
   rw [Except.bind_eq_ok'] at h; obtain ⟨e1, he1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨m, g1, f1⟩, hk1, h⟩ := h
   split at h
-  · iterate 6 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
+  · iterate 4 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
     rw [Except.bind_eq_ok'] at h; obtain ⟨_, h, -⟩ := h; cases h
   rename_i hmn; simp only [ne_eq, Decidable.not_not] at hmn
   rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨e2, he2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨gk, g2, fk⟩, hk2, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨seg, hseg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Wa, bad⟩, hst, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
@@ -761,7 +758,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
     ((firsts_spec (seenKey C.n e2) C.n.toNat).2.2.1 i i.2 j j.2).trans
       ⟨Vals.row_of_codes C.key.1 he2 hcs2 i j, Vals.codes_of_row C.key.1 he2 hcs2 i j⟩
   -- the left fold per key up to each row, and the prefix `|` of the bad words
-  have hsu := seenSeg_ok hk2 hone hseg
+  have hsu := seenSeg_ok hk2 hseg
   obtain ⟨hu, hF⟩ := sumTail_fold (kseen_runs hk2) hsu hst
   have hB := (runScan_ok (op := .or) (fn := (· ||| ·)) (fun _ _ => rfl) (kseen_runs hk2) hsu hz hr2).2
   have hBR : ∀ t < C.n.toNat, ((Enc.raw .i64 C.n R)[t]?.getD 0 = 0 ∨ (Enc.raw .i64 C.n R)[t]?.getD 0 = 1) ∧
@@ -833,9 +830,9 @@ theorem sums_wf {K P V : Obj} {x T : Tab (.prod K P) V} (h : Tab.sums x = .ok T)
     rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨⟨_, _, _⟩, -, h⟩ := h
     split at h
-    · iterate 6 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
+    · iterate 4 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
       rw [Except.bind_eq_ok'] at h; obtain ⟨_, h, -⟩ := h; cases h
-    iterate 9 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
+    iterate 8 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
     exact Tab.keep_wf h ⟨(Tab.canon_wf hC hx).1, trivial⟩
   cases P with
   | atom t =>
@@ -871,7 +868,6 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   rw [Except.bind_eq_ok'] at h; obtain ⟨g1, hg1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨a1, ha1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨v, hv, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨seg, hseg, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨W, bad⟩, hst, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨badC, hbadC, h⟩ := h
@@ -879,7 +875,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   rw [Except.bind_eq_ok'] at h; obtain ⟨tot, htot, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨kp, hkp, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
-  dsimp only at hw hTGu hg1 ha1 hv hz0 hseg hst hbadC hL htot hkp hK
+  dsimp only at hw hTGu hg1 ha1 hv hseg hst hbadC hL htot hkp hK
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   -- the cells `[SN g, EN g)`, their widths `EN g - SN g` at `w`, laid out by EXPAND at the offsets `off g`
@@ -940,12 +936,12 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   have hsu : ∀ t < T'.toNat, ((Enc.raw .u1 T' seg)[t]?.getD 0 = 0 ↔
       t ∉ firstsOf (fun t => (Enc.raw .i64 T' G)[t]?.getD 0) T'.toNat) := fun t ht => by
     obtain ⟨hg, h1, h2⟩ := hpos t ht
-    have hl := eval_eq_word ((colMap_raw hseg).2.2.2 t ht)
-    rw [colConst_raw hz0, Array.getElem?_replicate, if_pos ht, Option.getD_some] at hl
+    have hl := eval_eq_word ((colMap_post hseg).2 t ht)
+    simp only [eq_comm (a := (0 : UInt64))] at hl
     have hit := (hG2 _ hg (t - off ((Enc.raw .i64 T' G)[t]?.getD 0).toNat) (by omega)).2
     rw [show off ((Enc.raw .i64 T' G)[t]?.getD 0).toNat + (t - off ((Enc.raw .i64 T' G)[t]?.getD 0).toNat) = t by omega] at hit
     rw [hit] at hl
-    have hlsz := (colMap_raw hseg).2.2.1
+    have hlsz := (colMap_post hseg).1
     obtain ⟨md, pk, hfo⟩ := hsf
     rw [hfo] at hl hlsz ⊢
     rw [raw_u1_foR, Array.getElem?_map, Array.getElem?_eq_getElem (by omega)]
