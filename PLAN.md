@@ -1080,6 +1080,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
   一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
   一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。
+  - ✅ 入口检查（分支 `lohi`）：`readVals` 的 `arr` 分支拒收 `lo<0`、`lo>hi`、`hi>m`，报 `.lo` 文件、行号、`[lo, hi)`
+    与 `m`；`TestTable` 三个拒收例。
+  - ⬜ 类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
+    `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
+    `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
+    难的产生者 `Tab.lam`（`f + cD ≤ f + c ≤ N` 要 `kseen`/`kscatter .add` 的计数规格）、`Vals.cells`
+    （前缀和 `≤ T` 要 `expand` 规格）、`uncons/unsnoc/uncat/zip`（`List.lean`）。每个 `⟨m, lo, hi, f⟩` 模式
+    （`Run/*`、`GenKFold`、`GenKBits`、`GenSound`、`KernelWF.Read`、测试的字面量）都多一个分量。
+  - 之后删的 clamp 与 kernel 次数（数 Lean body）：`∋`（`Tab.mem`）边界 2 `colConst` + 3 `colMap` + 宽度 1 `colMap`
+    = 6 → 1（`colMap .sub hi lo`）；concat 的 `arr` 分支 4 次 `clampShift` × 6 = 24 → 3（1 `colConst` + 2
+    `colArr .add`，只移第二段）；`cellSpan`（`pack`、`List.lean`）5 → 0。Rust 侧 `asc.rs` `Cells::span` 的
+    `clamp(0, c)` 与 `Kernel.AscKey.cells` 的 Lean body 同一 commit 去掉。
 
 ## 3. 各 phase 的并行与串行
 
