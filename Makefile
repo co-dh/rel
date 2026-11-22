@@ -12,9 +12,12 @@ export CARGO_TARGET_DIR ?= /data/tmp/relk/target/$(notdir $(CURDIR))
 CAP     := /home/dh/repo/freyd/scripts/cap
 LR      := /home/dh/repo/lean-refactor/scripts/lean-refactor
 MEM     := 20000
-# -R: lib `Rel` lists its modules by reading `Rel/` at configure time and lake caches that list in .lake/config,
-# so a renamed or deleted module stays listed until reconfigure (about 1 s)
-LAKE    := lake -R -d $(CURDIR)
+LAKE    := lake -d $(CURDIR)
+# lib `Rel` lists its modules by reading `Rel/` at configure time (`restRoots`) and lake caches that list in .lake/config,
+# so a module added, renamed or deleted under Rel/ needs `lake -R` (2 s a call); `CONF` reconfigures once when the
+# set of module files differs from the one the last reconfigure saw, instead of on every lake call
+MODHASH := $(CURDIR)/.lake/rel-modules.hash
+CONF     = h=$$(find $(CURDIR)/Rel -name '*.lean' | sort | sha256sum | cut -c1-64); if [ ! -f $(MODHASH) ] || [ "$$h" != "$$(cat $(MODHASH))" ]; then lake -R -d $(CURDIR) query RelCore:modules > /dev/null; echo "$$h" > $(MODHASH); fi
 DB      := $(CURDIR)/.lake/build/refactor-index.db
 T       := /data/tmp/rel-gates/$(notdir $(CURDIR))
 GATES   := $(CURDIR)/.lake/build/bin/gates
@@ -24,7 +27,11 @@ RELKA   := $(CURDIR)/.lake/build/lib/librelk.a
 QRT     := $(CURDIR)/.lake/build/native/cargo/qrt.o
 SQL     := sqlite3 -readonly $(DB)
 # prints the gate's wall time when it ends, pass or fail
-GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
+GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T); $(CONF)
+# $(call UNCHANGED,gate,inputs): exit the recipe (as passed) when the hash of the command `inputs` prints equals the one
+# the gate's last pass recorded; PASSED records it, so a failed run leaves no record and runs again
+UNCHANGED = h=$$( { $(2); } | sha256sum | cut -c1-64); if [ -f $(T)/$(1).pass ] && [ "$$h" = "$$(cat $(T)/$(1).pass)" ]; then echo "$(1): inputs unchanged since its last pass ($$h)"; exit 0; fi
+PASSED    = echo "$$h" > $(T)/$(1).pass
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
 GATES_LIST := build allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
@@ -36,8 +43,9 @@ check: main-only $(GATES_LIST)
 # A target that builds the whole package runs once, in the main checkout before the merge; a linked worktree builds
 # only the modules it edited, because every Rel.Kernel module has most of the package downstream of it.
 COMMON  = $$(git -C $(CURDIR) rev-parse --path-format=absolute --git-common-dir)
+# WORKTREE_CHECK=1 lets a worktree whose .lake was seeded from main's run the gates (e.g. to time `make check`)
 main-only:
-	if [ "$$(git -C $(CURDIR) rev-parse --absolute-git-dir)" != "$(COMMON)" ]; then
+	if [ -z "$(WORKTREE_CHECK)" ] && [ "$$(git -C $(CURDIR) rev-parse --absolute-git-dir)" != "$(COMMON)" ]; then
 	  echo "make $(MAKECMDGOALS): $(CURDIR) is a linked worktree; the main thread runs this in $$(dirname $(COMMON)) before the merge. Here build only the modules you edited and their tests: cap lake build <Mod> <ModTest> ..." >&2
 	  exit 1
 	fi
@@ -56,14 +64,18 @@ allcov: build
 # The differential test: each closed definition of every registered program, as the constant rel_program generated
 # computes it (`expanded`), is compared with `Tm.code` run on the re-read `Tm` (which `Tm.gen_sound` is about); a
 # definition with no code is listed with the nodes that have none. There is no stored baseline.
-# `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a change of the test.
+# A module of lib `RelGate`: its inputs are its source and its imports, all in lake's trace, so lake elaborates it again
+# when one of them changed and otherwise replays its log; a failing run writes no trace, so it runs again next time.
 compile-diff: main-only
 	$(GATE)
-	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelGate
 
+# inputs: every file of crate/ (sources, testdata, Cargo.lock, rust-toolchain.toml) and the toolchain it selects
 crate-test:
 	$(GATE)
+	$(call UNCHANGED,crate-test,find $(CURDIR)/crate -type f | sort | xargs sha256sum; (cd $(CURDIR)/crate && cargo -V && rustc -vV))
 	CAP_MEM_MB=$(MEM) $(CAP) cargo test --manifest-path $(CURDIR)/crate/Cargo.toml --features std
+	$(call PASSED,crate-test)
 
 # cargo builds crate/ alone: its defined qlean_* equal crate/RELK.txt (kernels) + crate/RELIO.txt (IO)
 syms:
