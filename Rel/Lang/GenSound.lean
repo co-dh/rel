@@ -186,7 +186,7 @@ def rowsProved : List String :=
     since it is a theorem (`Vals.lamLaw`). -/
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
-  | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R
+  | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R
   | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
@@ -196,13 +196,13 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
   -- the children's term asks no more than the body (`Tm.genHyp_kids`)
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.GenHyp P
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => True
 
 /-- `Tm.GenHyp` with nothing asked at a `share` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
-  | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
+  | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
@@ -210,7 +210,7 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => true
 
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.GenHyp fun _ _ => True := by
@@ -218,6 +218,9 @@ theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.GenHyp fu
 
 theorem Tm.genHyp_memAt {P : {A B : Obj} → Nat → Tm A B → Prop} (C E : Obj) : (Tm.memAt C E).GenHyp P := by
   unfold Tm.memAt; split <;> (try split) <;> (try subst_vars) <;> simp [Tm.GenHyp]
+
+theorem Tm.genHyp_idAt {P : {A B : Obj} → Nat → Tm A B → Prop} (C E : Obj) : (Tm.idAt C E).GenHyp P := by
+  unfold Tm.idAt; split <;> (try subst_vars) <;> simp [Tm.GenHyp]
 
 /-- `inl°`, `inr°`'s code (`Tm.convInj`) is `Wf` and is their meaning, on the sum values in demand. -/
 theorem Tm.convInj_wf {A B : Obj} {R : Tm A B} {c : Rel B A} (h : R.convInj = some c) : c.Wf := by
@@ -238,7 +241,7 @@ theorem Tm.genHyp_kids {P : {A B : Obj} → Nat → Tm A B → Prop} (k : Nat) (
   induction t
   case arg f x _ _ =>
     cases f <;> unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;>
-      simp_all (config := {decide := true}) [Tm.GenHyp, Tm.genHyp_memAt]
+      simp_all (config := {decide := true}) [Tm.GenHyp, Tm.genHyp_memAt, Tm.genHyp_idAt]
   all_goals unfold Tm.kids <;> (try dsimp only) <;> (repeat' split) <;> (try subst_vars) <;>
     simp_all [Tm.GenHyp]
 
@@ -1204,7 +1207,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case top => exact GenK.top_wf (w _ (by omega))
   case outl => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.outl_wf h hX
   case outr => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.outr_wf h hX
-  case nil => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.nil_wf h hX
   case mem => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX
   case inl => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.inl_wf h hX
   case inr => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.inr_wf h hX
@@ -1218,8 +1220,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case meet => exact GenK.meet_wf (w _ (by omega)) (w _ (by omega))
   case join => exact GenK.join_wf (w _ (by omega)) (w _ (by omega))
   case diff => exact GenK.diff_wf (w _ (by omega)) (w _ (by omega))
-  case dom => exact GenK.dom_wf (w _ (by omega))
-  case ran => exact GenK.ran_wf (w _ (by omega))
   case ldiv => exact GenK.ldiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case rdiv => exact GenK.rdiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
@@ -1323,8 +1323,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case diff R S ihR ihS =>
     exact GenK.diff_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf R η hs.2))
-  case dom R ih => exact GenK.dom_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case ran R ih => exact GenK.ran_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case rdiv R S U V ihR ihS ihU ihV =>
     exact GenK.rdiv_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs))
       (code_of ((ihU (by omega)).1 η ρ hl.2.2.1 hs)) (code_of ((ihV (by omega)).1 η ρ hl.2.2.2 hs))
@@ -1342,7 +1340,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     exact GenK.foldr_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_wf (gen_wf R η hs.2)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf S η hs.2))
   case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case nil => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h
   case mem => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.mem_holds h hX
   case inl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
   case inr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
