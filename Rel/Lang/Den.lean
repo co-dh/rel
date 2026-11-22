@@ -235,7 +235,7 @@ def sumAt : (V : Obj) → Core.Rel (Obj.El (.arr V)) (Obj.El V)
 /-- `E(T) = Λ(∋ T)`: an array to the canonical list of the images of its elements. -/
 abbrev EDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := lamDen ((fun xs a => a ∈ xs : Core.Rel (Obj.El (.arr A)) (Obj.El A)) ≫ T)
 
-/-- `thin(Q)` as `CRel.thinOn` computes it: the canonical list of the `c` of `xs` that no `b` of `xs` beats
+/-- `front(Q)`: the canonical list of the `c` of `xs` that no `b` of `xs` beats
     strictly, `Q` read as its pair test as in `estDen`. -/
 abbrev frontDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El (.arr B)) :=
   lamDen fun xs c => c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b)
@@ -306,6 +306,8 @@ def foldI : RowCode := ⟨"foldI", fun σ => (.prod (σ₁ σ) (.arr (σ.getD 2 
 def dom : RowCode := ⟨"dom", fun σ => (σ₁ σ, σ₁ σ)⟩
 def ran : RowCode := ⟨"ran", fun σ => (σ₂ σ, σ₂ σ)⟩
 def nil : RowCode := ⟨"nil", fun σ => (σ₁ σ, .arr (σ₂ σ))⟩
+def est : RowCode := ⟨"est", fun σ => (.arr (σ₁ σ), σ₁ σ)⟩
+def front : RowCode := ⟨"front", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
 end RowCode
 
 /-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
@@ -371,7 +373,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨star, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩,
    ⟨dom, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T ≫ T°⟩,
    ⟨ran, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T° ≫ T°°⟩,
-   ⟨nil, fun _ _ => nilDen⟩] ++
+   ⟨nil, fun _ _ => nilDen⟩,
+   ⟨est, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) estDen⟩,
+   ⟨front, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) frontDen⟩] ++
   floatOps.map fun (s, o, _) =>
     ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩
 
@@ -406,8 +410,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
-  | ρ, _, _, .est Q => estDen (Q.den ρ)
-  | ρ, _, _, .front Q => frontDen (Q.den ρ)
   | _, _, _, .mem => fun xs x => x ∈ xs
   | _, _, _, .inl => Core.Rel.inl
   | _, _, _, .inr => Core.Rel.inr
@@ -483,6 +485,41 @@ theorem Tm.dom_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.dom R).den ρ = �
 /-- `Tm.ran R`, `ranRow` given `R`, means `𝟙 ∩ R° R` (`Prim.den_ranRow`). -/
 theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°° := by
   simp only [Tm.ran, Tm.den, Tm.argDen]; exact Prim.den_ranRow _
+
+/-- `estRow` at `[B] ⟶ B` given the pair test `T` means `estDen T`; its definition `∋ ∩ (∈ \ (Q ∪ 𝟙)°)` means the
+    same where `T` is `τ(Q)` (`Tm.dfnCut_den`). -/
+theorem Prim.den_estRow {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) :
+    Prim.den estRow (.arr B) B [⟨.prod B B, .prod B B, T⟩] = estDen T := by
+  have ho : estRow.objs (.arr B) B [(.prod B B, .prod B B)] = some [B] := by
+    simp [Prim.objs, Option.orElse, estRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == estRow.sym) = some ⟨RowCode.est, fun σ =>
+      Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) estDen⟩ := rfl
+  unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
+
+/-- `frontRow` at `[B] ⟶ [B]` given the pair test `T` means `frontDen T`; its definition `Λ(∋ − ∋ (Q − Q°))` means
+    the same where `T` is `τ(Q)` (`Tm.dfnCut_den`). -/
+theorem Prim.den_frontRow {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) :
+    Prim.den frontRow (.arr B) (.arr B) [⟨.prod B B, .prod B B, T⟩] = frontDen T := by
+  have ho : frontRow.objs (.arr B) (.arr B) [(.prod B B, .prod B B)] = some [B] := by
+    simp [Prim.objs, Option.orElse, frontRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == frontRow.sym) = some ⟨RowCode.front, fun σ =>
+      Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) frontDen⟩ := rfl
+  unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
+
+/-- `Tm.est Q`, `estRow` given the pair test `Q`, means `estDen` of it (`Prim.den_estRow`). -/
+theorem Tm.est_den (ρ : Val) {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : (Tm.est Q).den ρ = estDen (Q.den ρ) := by
+  simp only [Tm.est, Tm.den, Tm.argDen]; exact Prim.den_estRow _
+
+/-- `Tm.front Q`, `frontRow` given the pair test `Q`, means `frontDen` of it (`Prim.den_frontRow`). -/
+theorem Tm.front_den (ρ : Val) {B : Obj} (Q : Tm (.prod B B) (.prod B B)) :
+    (Tm.front Q).den ρ = frontDen (Q.den ρ) := by
+  simp only [Tm.front, Tm.den, Tm.argDen]; exact Prim.den_frontRow _
 
 /-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
     kept where `a'` is the source, then `b`. -/

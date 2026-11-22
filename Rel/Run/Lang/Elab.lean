@@ -2100,7 +2100,8 @@ def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) 
 /-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈` (`sumRow`'s, at its atom `t`), the
     base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`);
     `⟨𝟙,R⟩π₁` (`domRow`'s, not `𝟙 ∩ R R°`, whose `R°` an on-demand `R` often cannot run), `dom(R°)` (`ranRow`'s),
-    `Λ(𝟘)` (`nilRow`'s).
+    `Λ(𝟘)` (`nilRow`'s), `∋ ∩ (∈ \ (Q ∪ 𝟙)°)` (`estRow`'s) and `Λ(∋ − ∋ (Q − Q°))` (`frontRow`'s), of the order `Q`,
+    whose fused rows read it as its pair test `τ(Q)` (`pairTest`).
     Indexed by the term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and
     target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
@@ -2118,11 +2119,15 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
   | dom {A B : Obj} (R : Tm A B) : DfnCut (A := A) (B := A) (.comp (.pair .id R) .outl)
   | ran {A B : Obj} (R : Tm A B) : DfnCut (A := B) (B := B) (.dom (.conv R))
   | nil {A B : Obj} : DfnCut (A := A) (B := .arr B) (.lam .zero)
+  -- `∈ \ (Q ∪ 𝟙)°` read under `∋ ∩`, where an array has a column, so the universes `𝟙` are never read
+  | est {B : Obj} (Q : Tm B B) :
+    DfnCut (A := .arr B) (B := B) (.meet .mem (.ldiv (.conv .mem) (.conv (.join Q .id)) .id .id))
+  | front {B : Obj} (Q : Tm B B) : DfnCut (A := .arr B) (B := .arr B) (.lam (.diff .mem (.comp .mem (.diff Q (.conv Q)))))
 
 /-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
 def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
   | .length u₀ u | .sum _ u₀ u => some (u₀, u)
-  | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil => none
+  | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil | .est _ | .front _ => none
 
 /-- The row the definition is the fused form of. -/
 def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
@@ -2133,6 +2138,8 @@ def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .dom R => .dom R
   | .ran R => .ran R
   | .nil => .nil
+  | .est Q => .est (pairTest Q)
+  | .front Q => .front (pairTest Q)
 
 /-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does; a row whose law
     needs no universe, itself. -/
@@ -2145,6 +2152,8 @@ def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .dom R => .dom R
   | .ran R => .ran R
   | .nil => .nil
+  | .est Q => .est (pairTest Q)
+  | .front Q => .front (pairTest Q)
 
 /-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
     definition from the row's built relations and the universe `u` of its target (base and step both on it), at
@@ -2172,7 +2181,15 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
      | _ => none),
    ("nil", fun A B _ _ => match B with
      | .arr E => some ⟨_, DfnCut.nil (A := A) (B := E)⟩
-     | _ => none)]
+     | _ => none),
+   ("est", fun A B xs _ => match A, xs with
+     | .arr E, [⟨E', E'', Q⟩] => if h : E' = E ∧ E'' = E ∧ B = E then by
+         obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .est Q⟩ else none
+     | _, _ => none),
+   ("front", fun A B xs _ => match A, xs with
+     | .arr E, [⟨E', E'', Q⟩] => if h : E' = E ∧ E'' = E ∧ B = .arr E then by
+         obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .front Q⟩ else none
+     | _, _ => none)]
 
 section Build
 

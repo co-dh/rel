@@ -291,12 +291,6 @@ def onKeys (I A B C : Obj) (R : Rel I C)
     (f : {n : USize} → Vals (.prod I A) n → Tab I C → Except String (Tab (.prod I A) B)) : Rel (.prod I A) B :=
   ofVals _ _ fun X => do f X (← R.runE ⟨some ⟨_, X.1⟩, none, none⟩)
 
-/-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
-    asked about (`Gen.est`'s `Q.at`). -/
-def est (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) B :=
-  ofVals _ _ fun X => Tab.est (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
-def front (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) (.arr B) :=
-  ofVals _ _ fun X => Tab.front (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
 def atPos (B : Obj) (k : Nat) : Rel (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
 
 /-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
@@ -384,6 +378,8 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
    ("loop", ``Tab.loop),
    ("merge", ``Tab.merge),
    ("thinL", ``Tab.thinL),
+   ("est", ``Tab.est),
+   ("front", ``Tab.front),
    ("F", ``Tab.map),
    ("flat", ``Tab.flat),
    ("$", ``Tab.cast),

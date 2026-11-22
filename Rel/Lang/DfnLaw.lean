@@ -306,6 +306,31 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
       · rintro ⟨-, h⟩; exact List.eq_nil_iff_forall_not_mem.2 fun b hb => (h b).1 hb
       · rintro rfl; exact ⟨List.Pairwise.nil, fun b => iff_of_false (List.not_mem_nil) fun h => h⟩
     exact ⟨hd, fun _ => hd⟩
+  | @est E Q =>
+    -- `∈ \ (Q ∪ 𝟙)°` at `w` under `w ∈ x`: every `c` of `x` has `w Q c` or is `w`, `estDen` of `τ(Q)` read on its
+    -- diagonal; the universes `𝟙` drop out since `x` has the column `w`
+    have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
+      simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+    have hd : (Tm.meet .mem (.ldiv (.conv .mem) (.conv (.join Q .id)) .id .id) : Tm (.arr E) E).den ρ x w ↔
+        (Tm.est (pairTest Q)).den ρ x w := by
+      rw [Tm.est_den]
+      simp only [Tm.den, ldivDen, estDen, hτ, Core.Rel.inter, Core.Rel.recip, Core.Rel.union, Core.Rel.id]
+      constructor
+      · rintro ⟨hw, hall, -⟩
+        exact ⟨hw, fun ⟨c, hc, hne, hq⟩ => (hall c hc).elim hq fun h => hne h.symm⟩
+      · rintro ⟨hw, hn⟩
+        refine ⟨hw, fun c hc => (Classical.em (Q.den ρ w c)).elim Or.inl fun hq =>
+          Or.inr (Classical.byContradiction fun hne => hn ⟨c, hc, fun h => hne h.symm, hq⟩), Or.inl ⟨w, hw⟩⟩
+    exact ⟨hd, fun _ => hd⟩
+  | @front E Q =>
+    -- `∋ − ∋ (Q − Q°)` keeps `c` of `x` that no `b` of `x` beats strictly, `frontDen` of `τ(Q)` on its diagonal
+    have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
+      simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+    have hd : (Tm.lam (.diff .mem (.comp .mem (.diff Q (.conv Q)))) : Tm (.arr E) (.arr E)).den ρ x w ↔
+        (Tm.front (pairTest Q)).den ρ x w := by
+      rw [Tm.front_den]
+      simp only [Tm.den, frontDen, lamDen, diffDen, hτ, Core.Rel.comp, Core.Rel.recip]
+    exact ⟨hd, fun _ => hd⟩
   | length u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
