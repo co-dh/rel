@@ -1070,6 +1070,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `inrConv`（Struct.lean:57-125）及 `RepStruct` 的 `*_holds`、CSV/own 的 sum 列、Rust 侧 sum 的读写。
   与 rq17 的关系：`atom+1` 走块内 null 码（决定 K，`nullband`），不经 8.2；其余 sum 用 8.2。
   在 `nullband` 的 unit 对象决定（M/N）之后做，因为两者都改 `Vals` 的 sum 分支。
+- 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
+  foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
+  foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
+- ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
+  盒子，`t`、`n` 在类型参数里已有又存一遍；`attr` 只有 2 处读；`QValue` 的 `dict table keyed slices func err enum`
+  只在 `Kernel.Value`、`Run.ValEq` 用；own 文件头的 `attr`、`domain` 写了没人读。去掉 `QValue` 盒子与 `general`
+  （`Carrier .general = QValue`），文件格式升版本。在 8.3 合并之后做（同改 `Enc`/`QValue`/`general`）。
+- 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
+  一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
+  一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。
 
 ## 3. 各 phase 的并行与串行
 
