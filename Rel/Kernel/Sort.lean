@@ -26,7 +26,7 @@ def firstsBy {α : Type} [BEq α] (m : Nat) (key : Nat → α) : List Nat :=
   (List.range m).filter fun i => (List.range i).all fun j => key j != key i
 
 /-- Index `i`'s group among the first occurrences `fs` (`firstsBy`): the place of the first one holding its key.
-`idsBy` packs it at an id width, `Kernel.kseen` writes it as words; the two answer different forms, so this is shared. -/
+`Kernel.kseen` writes it as words; `groupIn_firstsBy` reads it as the specification's `groupOf`. -/
 def groupIn {α : Type} [BEq α] (fs : List Nat) (key : Nat → α) (i : Nat) : Nat := fs.findIdx (key · == key i)
 
 
