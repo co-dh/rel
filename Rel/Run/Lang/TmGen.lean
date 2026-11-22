@@ -276,7 +276,7 @@ instance : ToExpr Prim where
     let ex (c : Name) (a : Lean.Expr) := mkApp3 (mkConst c [0, 0]) (mkConst ``String) (mkConst ``Lean.Name) a
     mkAppN (mkConst ``Prim.mk) #[toExpr r.sym, toExpr r.sig, toExpr r.conv, toExpr r.written, toExpr r.prelude,
       match r.aop with | .ok n => ex ``Except.ok (toExpr n) | .error e => ex ``Except.error (toExpr e),
-      toExpr r.mono, toExpr r.whole, toExpr r.num, toExpr r.ord]
+      toExpr r.mono, toExpr r.whole, toExpr r.num, toExpr r.ord, toExpr r.keyLift]
   toTypeExpr := mkConst ``Prim
 
 /-- `t` as the `Expr` that builds it, constructor by constructor, its objects by `oE` and a constant by `relE`,

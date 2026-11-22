@@ -1001,8 +1001,8 @@ def lFold : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy → M 
 end Rows
 
 /-- A row that has no lifting (§e). -/
-def notLiftable {α : Type} (p : Pos) (what : String) : M α :=
-  throw ⟨p, s!"{what} given a family is not liftable: it runs one relation on every array (§e)"⟩
+def notLiftable {α : Type} (p : Pos) (what : String) (why := "it runs one relation on every array (§e)") : M α :=
+  throw ⟨p, s!"{what} given a family is not liftable: {why}"⟩
 
 /-- The front-end form of a result: a family outside its body is a relation `i ⟶ a×b`. -/
 def Arg.plain : Arg → Pre × OTy × OTy
@@ -1240,17 +1240,13 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
 
-/-- Its objects are all variables, none read by its atom or order: a row reads its elements only through its
-    parameters, so at the objects `I×v` it runs on each key's fibre apart (`appliedRowL`). -/
-def Prim.keyable (r : Prim) : Bool :=
-  r.num.isEmpty && r.ord.isEmpty && !r.whole &&
-    (r.sig.2.1 :: r.sig.2.2 :: r.sig.1.flatMap fun ((x, y), _) => [x, y]).all fun | .var .. => true | _ => false
-
 /-- A row given families over `I`: each argument `R : I ⟶ a×b` keyed, `⟨π₁,Rᴵ⟩ : I×a ⟶ I×b`, the row run once on
-    them at `I×v` for each object variable `v`, and its result a family again (`rowSh`). A row not `keyable` has no
-    lifting. Its objects are variables, which `Prim.inst` makes fresh, so no declared object is read (`{}`). -/
+    them at `I×v` for each object variable `v`, and its result a family again (`rowSh`): what the row means at each
+    key exactly when its meaning commutes with keying, `Prim.KeyLifts`, which `Prim.keyLifts_ok` proves of every
+    row with `keyLift`; any other row has no lifting. `Prim.inst` makes its object variables fresh (`{}`). -/
 def appliedRowL (I : OTy) (p : Pos) (r : Prim) (as : List Arg) : M Arg := do
-  unless r.keyable do notLiftable p s!"{r.sym}( )"
+  unless r.keyLift do
+    notLiftable p s!"{r.sym}( )" "no theorem proves its meaning commutes with keying (`Prim.KeyLifts`, `keyLift`)"
   let ks := (← as.mapM (famOf I p)).map fun (R, a, b) => (Pre.pair (.outl I a) (keyed I R a b), OTy.prod I a, OTy.prod I b)
   let (q, s, t) := (← appliedRow {} p r ks).plain
   let a ← fresh; let b ← fresh

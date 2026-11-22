@@ -1215,6 +1215,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `appliedL` 与 `useDef` 都走它，结果只由已有的 `Tm` 构造子组成，`gen_sound` 不变。`Chess.L` 删去，`r` `q` 写
   `(VD)*` `(De)*`（棋盘上 `R⁸ = 𝟘`，输出不变）。`starLinear : μX : S ∪ R X = star(R) S` 在 `Rel.Core.Rel`
   （`Rel/Core/Fix.lean`）证明；prelude 里 `rel_aop` 形式的陈述需要 freyd `relaop/RelAop/Prelude.lean` 的证明，未做。
+- ✅ Tm28 B7c（b6b962a）lifting 由证明决定，不再按形状：删去 `Prim.keyable`，`Prim.keyLift` 只在 `Prim.KeyLifts`（行的意义与
+  `keyOf F = ⟨π₁,Fᴵ⟩` 交换）有证明时设置，`Prim.keyLifts_ok` 由 `prims.filter keyLift = [starRow]` 列出全部义务；
+  `star_keyOf`（由 `id/union/comp_keyOf` 与 `mu_keyOf`，`Rel.Core`，公理 {propext, Quot.sound}），`Tm.den_keyedRow`：lifted
+  项的意义等于逐 key 的意义；无证明的行给 family 时报 `notLiftable` 并指名 `Prim.KeyLifts`（如 `$`，原形状测试会误放行）。
 
 ## 3. 各 phase 的并行与串行
 
