@@ -83,6 +83,7 @@ Rel.Lang.uniPart
 Rel.Lang.uniTm
 Rel.Tab.E
 Rel.Tab.arith
+Rel.Tab.bump
 Rel.Tab.cat
 Rel.Tab.comp
 Rel.Tab.compBits
@@ -127,6 +128,7 @@ Rel.Tab.loop
 Rel.Tab.map
 Rel.Tab.mem
 Rel.Tab.merge
+Rel.Tab.mergeRound
 Rel.Tab.mu
 Rel.Tab.nu
 Rel.Tab.pack
@@ -157,11 +159,13 @@ Rel.Tab.zip
 Rel.Vals.cat
 Rel.Vals.catSide
 Rel.Vals.catSummand
+Rel.Vals.cellsOk
 Rel.Vals.code2
 Rel.Vals.concat
 Rel.Vals.pack
 Rel.Vals.row
 Rel.Vals.zip
+Rel.cellBad
 Rel.expand
 Rel.lastCount
 Rel.longWords

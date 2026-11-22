@@ -333,7 +333,7 @@ theorem rowOK_of {s : String} {c : RowCode} {D : RowDen c} {f : List Obj → Cod
 
 theorem rowOK_mem : RowOK "∋" := rowOK_of (c := RowCode.mem) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.mem_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.mem_holds h hX⟩⟩
 
 theorem rowOK_inl : RowOK "inl" := rowOK_of (c := RowCode.inl) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
@@ -363,7 +363,7 @@ theorem rowOK_tau : RowOK "τ" := rowOK_of (c := RowCode.tau) rfl rfl fun _ σ _
 theorem rowOK_setify : RowOK "setify" := rowOK_of (c := RowCode.setify) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
   cases σ <;> refine ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.setify_wf h hX, ?_⟩ <;>
-    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.setify_den h⟩
+    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.setify_den h hX⟩
 
 /-- An array is below itself extended by a non-empty one (`Obj.lt` on `[B]`: a proper prefix first). -/
 theorem arr_lt_append (B : Obj) : ∀ (xs ys : List B.El), ys ≠ [] → (Obj.arr B).lt xs (xs ++ ys)
@@ -1253,7 +1253,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       (code_of ((ihS (by omega)).1 η ρ hl.2 hs)) (code_wf (gen_wf S η hs.2))
   case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case E R ih =>
-    exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ _ h => Tab.mem_holds h)
+    exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ hX h => Tab.mem_holds h hX)
       (code_of ((ih (by omega)).1 η ρ hl hs)) (GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX)
       (code_wf (gen_wf R η hs.2)))
   case nil => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h

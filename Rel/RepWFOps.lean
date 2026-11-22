@@ -170,7 +170,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
   rw [Except.bind_eq_ok'] at h; obtain ⟨O, hO, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨PO, hPO, h⟩ := h
   have eP : ∀ xs p, P.Holds xs p ↔ ((∃ i, X.row i = xs) ∧ p.1 ∈ xs) ∧ ((∃ i, X.row i = xs) ∧ p.2 ∈ xs) :=
-    fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG _ _) (mem_holds hG _ _))
+    fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG hX _ _) (mem_holds hG hX _ _))
   -- a pair of one array's elements is a row of `D`, so `q D` agrees with `TQ` there
   have hQ : ∀ xs p, P.Holds xs p → (T1.Holds p p ↔ TQ p p) := fun xs p hx =>
     hq D T1 (ran_wf hD (pair_wf hP (mem_wf hG hX) (mem_wf hG hX))) hT1 p
@@ -182,7 +182,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
     constructor
     · rintro ⟨⟨⟨rfl, xs, hx⟩, hq'⟩, hr⟩
       refine ⟨rfl, ⟨xs, hx⟩, fun t => hq' ((hQ xs p hx).2 t), fun e => hr ⟨rfl, p.1, ?_⟩⟩
-      have hb := (mem_holds hG xs p.1).2 ((eP xs p).1 hx).1
+      have hb := (mem_holds hG hX xs p.1).2 ((eP xs p).1 hx).1
       rw [pair_holds hW]
       exact ⟨(ran_holds hV _ _).2 ⟨rfl, xs, hb⟩, (ran_holds hV _ _).2 ⟨e, xs, hb⟩⟩
     · rintro ⟨rfl, ⟨xs, hx⟩, hq', hne⟩
@@ -190,7 +190,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
       rintro ⟨-, a, hw⟩
       obtain ⟨h1, h2⟩ := (pair_holds hW a p).1 hw
       exact hne (((ran_holds hV _ _).1 h1).1.symm.trans ((ran_holds hV _ _).1 h2).1)
-  rw [diff_holds h, mem_holds hG, comp_holds hPO]
+  rw [diff_holds h, mem_holds hG hX, comp_holds hPO]
   constructor
   · rintro ⟨⟨hx, hb⟩, hno⟩
     refine ⟨hx, hb, fun ⟨c, hc, hne, hq'⟩ => hno ⟨(b, c), (eP xs (b, c)).2 ⟨⟨hx, hb⟩, hx, hc⟩, ?_⟩⟩
@@ -227,7 +227,7 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
   rw [Except.bind_eq_ok'] at h; obtain ⟨PO, hPO, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Gd, hGd, h⟩ := h
   have eP : ∀ xs p, P.Holds xs p ↔ ((∃ i, X.row i = xs) ∧ p.1 ∈ xs) ∧ ((∃ i, X.row i = xs) ∧ p.2 ∈ xs) :=
-    fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG _ _) (mem_holds hG _ _))
+    fun xs p => (pair_holds hP xs p).trans (and_congr (mem_holds hG hX _ _) (mem_holds hG hX _ _))
   -- `Δ = diag q D`: the pairs of one array on whose diagonal `TQ` holds
   have eD : ∀ p p', Dg.Holds p p' ↔ p = p' ∧ (∃ xs, P.Holds xs p) ∧ TQ p p := fun p p' => by
     rw [diag_holds hq (fun p p' hd => ((ran_holds hD p p').1 hd).1)
@@ -254,7 +254,7 @@ theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (T
   refine and_congr_right fun hx => ?_
   simp only [Lang.thinDen, Lang.lamDen]
   refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl ?_
-  rw [diff_holds hGd, mem_holds hG xs c, comp_holds hPO, and_iff_right hx]
+  rw [diff_holds hGd, mem_holds hG hX xs c, comp_holds hPO, and_iff_right hx]
   refine and_congr_right fun hc => not_congr ⟨fun ⟨p, hp, ho⟩ => ?_, fun ⟨b, hb, hbt, hn⟩ => ?_⟩
   · obtain ⟨hk, hc'⟩ := (outr_holds hO p c).1 ho
     obtain ⟨p', hy⟩ := (Rep.keyRowRep Y p).1 hk

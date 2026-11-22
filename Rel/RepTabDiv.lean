@@ -2616,7 +2616,8 @@ theorem mem_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h 
 
 /-- **`E X R` is `lamOf X r`, `r = canon Q`, `Q` the pairs `(xs, b)` of `X` with `b` an image of an element of `xs`** (`mem_holds`,
 `comp_canon`): `E`'s laws are `lamOf`'s at `Q`. -/
-theorem E_lam {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
+theorem E_lam {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
+    (hw : Vals.WF X) :
     ∃ Q r : Tab (.arr A) B, Q.canon = .ok r ∧ Tab.lamOf X r = .ok T ∧
       ∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b := by
   simp only [Tab.E, bind] at h
@@ -2630,7 +2631,8 @@ theorem E_lam {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) 
 
 /-- **`E X R` denotes `E(R)` on the arrays `X`, each cell in the order codes of `Q`** (`E_lam`, `lam_holds`): `xs`
 of `X` to the images of its elements under `R`, each once, ascending by the codes of the rows `(xs, b)` of `Q`. -/
-theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
+theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
+    (hw : Vals.WF X) :
     ∃ Q : Tab (.arr A) B, (∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b) ∧
       ∀ xs ys, T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ (∀ b, b ∈ ys ↔ ∃ a, a ∈ xs ∧ R.Holds a b) ∧
         ∀ es, Vals.cols (A := .prod (.arr A) B) (Q.key, Q.val) = .ok es →
@@ -2648,8 +2650,8 @@ theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A
 
 /-- **`E X R` denotes `EDen R` on the arrays `X`** (`Tm.E`): `lam_den` at the pairs keyed by arrays of `A`. -/
 theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
-    (hw : Vals.WF X)
-    (xs : List A.El) (ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.EDen R.Holds xs ys := by
+    (hw : Vals.WF X) (xs : List A.El) (ys : List B.El) :
+    T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.EDen R.Holds xs ys := by
   obtain ⟨Q, r, hr, hl, hQ⟩ := E_lam h hw
   rw [lamOf_den hr hl]
   simp only [Lang.EDen, Lang.lamDen, Core.Rel.comp, hQ]
