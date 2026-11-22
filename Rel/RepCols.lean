@@ -517,6 +517,169 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc
       obtain ⟨hl, e⟩ := Vals.catSide_row hg₂ hv₂ (by omega) _ ht
       rw [dif_pos hl, e]
 
+/-- **A side whose every cell is a slice of its payload** (PLAN 8.5): at an `arr` side each row's `[lo, hi)` has
+`0 ≤ lo ≤ hi ≤ m`, and the payload is `WF`; a `sum` side asks it of both summands. `readVals` checks it (`cellBad`)
+and each producer keeps it, so a reader may take `[lo, hi)` as it is, where `Vals.row` clamps it. -/
+def Vals.WF : {A : Obj} → {n : USize} → Vals A n → Prop
+  | .atom _, _, _ => True
+  | .prod _ _, _, x => Vals.WF x.1 ∧ Vals.WF x.2
+  | .arr _, _, ⟨m, lo, hi, f⟩ => (∀ i, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧
+      (hi.get i).toInt ≤ (m.toNat : Int)) ∧ Vals.WF f
+  | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.WF x ∧ Vals.WF y
+
+/-- Both sides of `R` `Vals.WF`. -/
+def Tab.WF {k v : Obj} (R : Tab k v) : Prop := Vals.WF R.key ∧ Vals.WF R.val
+
+/-- **`readVals` establishes `Vals.WF`**: its `arr` case refuses unless `cellBad` finds no cell, which is the cell
+clause; the payload is read by the same function. -/
+theorem cellBad_none {n m : USize} {lo hi : Arr .i64 n} : cellBad m lo hi = none ↔ ∀ i : Fin n.toNat,
+    0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
+  simp [cellBad, List.find?_eq_none]
+
+/-- **`Vals.gather` keeps `Vals.WF`**: a gathered cell is a cell of `x` (`Arr.gather_row`), over the same payload. -/
+theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x : Vals A n} → {y : Vals A m} →
+    Vals.gather m ix x = .ok y → Vals.WF x → Vals.WF y
+  | .atom _, _, _, _, _, _ => trivial
+  | .prod _ _, _, x, y, h, hx => by
+    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i a ha; split at h; · cases h
+    rename_i b hb; cases h
+    exact ⟨Vals.gather_wf ha hx.1, Vals.gather_wf hb hx.2⟩
+  | .arr _, _, ⟨c, lo, hi, f⟩, y, h, hx => by
+    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i L hL; split at h; · cases h
+    rename_i H hH; cases h
+    refine ⟨fun j => ?_, hx.2⟩
+    obtain ⟨i, hi1, e1⟩ := Arr.gather_row lo hL j
+    obtain ⟨i', hi2, e2⟩ := Arr.gather_row hi hH j
+    rw [e1, e2, show i' = i from Fin.ext (hi2.symm.trans hi1)]; exact hx.1 i
+  | .sum _ _, _, ⟨l, r, tag, idx, a, b⟩, y, h, hx => by
+    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    split at h; · cases h
+    cases h; exact hx
+
+/-- **`Vals.catSide` keeps `Vals.WF`**: its rows are gathered from `x`, or from `o` where `x` is empty. -/
+theorem Vals.catSide_wf {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m} {idx : Arr .i64 m} {x : Vals B l}
+    {o : Vals B l'} {y : Vals B m} (h : Vals.catSide s tag idx x o = .ok y) (hx : Vals.WF x) (ho : Vals.WF o) :
+    Vals.WF y := by
+  unfold Vals.catSide at h
+  split at h
+  · simp only [bind, Except.bind] at h
+    split at h; · cases h
+    split at h
+    · split at h; · cases h
+      exact Vals.gather_wf h ho
+    · cases h
+  · simp only [bind, Except.bind] at h
+    split at h; · cases h
+    split at h; · cases h
+    exact Vals.gather_wf h hx
+
+/-- **`Vals.catSummand` keeps `Vals.WF`** where `cat` does. -/
+theorem Vals.catSummand_wf {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc} {s : Bool} {tag₁ : Arr .u1 n₁}
+    {idx₁ : Arr .i64 n₁} {x₁ : Vals B l₁} {tag₂ : Arr .u1 n₂} {idx₂ : Arr .i64 n₂} {x₂ : Vals B l₂}
+    {cat : {m₁ m₂ : USize} → (m : USize) → Enc → Vals B m₁ → Vals B m₂ → Except String (Vals B m)}
+    (hcat : ∀ {m₁ m₂ m : USize} {o : Enc} {a : Vals B m₁} {b : Vals B m₂} {z : Vals B m},
+      m.toNat = m₁.toNat + m₂.toNat → (∀ k < m₂.toNat, ((raw .i64 m₂ o)[k]?.getD 0).toNat = m₁.toNat + k) →
+      cat m o a b = .ok z → Vals.WF a → Vals.WF b → Vals.WF z)
+    (hn : n.toNat = n₁.toNat + n₂.toNat)
+    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k)
+    {z : (m : USize) × Vals B m} (h : Vals.catSummand n off s tag₁ idx₁ x₁ tag₂ idx₂ x₂ cat = .ok z)
+    (h₁ : Vals.WF x₁) (h₂ : Vals.WF x₂) : Vals.WF z.2 := by
+  unfold Vals.catSummand at h
+  split at h
+  · simp only [bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i p hp
+    split at h; · cases h
+    rename_i hc; cases h
+    obtain ⟨hpn, hpo⟩ := catPlan_ok (show catPlan l₁ l₂ = .ok (p.1, p.2) from hp)
+    exact hcat hpn hpo hc h₁ h₂
+  split at h; · cases h
+  simp only [bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i a ha
+  split at h; · cases h
+  rename_i b hb
+  split at h; · cases h
+  rename_i hc; cases h
+  exact hcat hn hoff hc (Vals.catSide_wf ha h₁ h₂) (Vals.catSide_wf hb h₂ h₁)
+
+/-- **`Vals.concat` keeps `Vals.WF`**: a cell of `x` stays inside the first `m₁` payload rows, one of `y` moves
+past them by `m₁`, inside the `m₁ + m₂` rows of the joined payload. -/
+theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
+    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) →
+    {x : Vals A n₁} → {y : Vals A n₂} → {z : Vals A n} → Vals.concat n off x y = .ok z →
+      Vals.WF x → Vals.WF y → Vals.WF z
+  | .atom _, _, _, _, _, _, _, _, _, _, _, _, _ => trivial
+  | .prod _ _, _, _, _, _, hn, hoff, x, y, z, h, hx, hy => by
+    simp only [Vals.concat, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i z1 h1
+    split at h; · cases h
+    rename_i z2 h2
+    cases h
+    exact ⟨Vals.concat_wf hn hoff h1 hx.1 hy.1, Vals.concat_wf hn hoff h2 hx.2 hy.2⟩
+  | .arr _, n₁, n₂, _, _, hn, hoff, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, hx, hy => by
+    simp only [Vals.concat] at h
+    split at h
+    case isFalse => cases h
+    simp only [bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i p hp
+    split at h; · cases h
+    rename_i L₁ hL₁
+    split at h; · cases h
+    rename_i L₂ hL₂
+    split at h; · cases h
+    rename_i lo hlo
+    split at h; · cases h
+    rename_i H₁ hH₁
+    split at h; · cases h
+    rename_i H₂ hH₂
+    split at h; · cases h
+    rename_i hi hhi
+    split at h; · cases h
+    rename_i F hF
+    cases h
+    obtain ⟨hpn, hpo⟩ := catPlan_ok (show catPlan m₁ m₂ = .ok (p.1, p.2) from hp)
+    refine ⟨fun c => ?_, Vals.concat_wf hpn hpo hF hx.2 hy.2⟩
+    have hU : ∀ m : USize, m.toUInt64.toNat = m.toNat := fun m => by
+      have := m.toNat_lt_size; have := USize.size_le; simp
+    have e0 : (0 : UInt64).toNat = 0 := rfl
+    rw [Arr.concat_get hn hoff hlo c, Arr.concat_get hn hoff hhi c]
+    split
+    · rename_i hc
+      have l1 := Arr.clampShift_get (by rw [hU, e0]; omega) hL₁ ⟨c.1, hc⟩
+      have h1 := Arr.clampShift_get (by rw [hU, e0]; omega) hH₁ ⟨c.1, hc⟩
+      rw [hU, e0] at l1 h1
+      have := hx.1 ⟨c.1, hc⟩
+      rw [l1, h1]; omega
+    · rename_i hc
+      have hc' : c.1 - n₁.toNat < n₂.toNat := by omega
+      have l2 := Arr.clampShift_get (by rw [hU, hU]; omega) hL₂ ⟨_, hc'⟩
+      have h2 := Arr.clampShift_get (by rw [hU, hU]; omega) hH₂ ⟨_, hc'⟩
+      rw [hU, hU] at l2 h2
+      have := hy.1 ⟨_, hc'⟩
+      rw [l2, h2]; omega
+  | .sum _ _, _, _, _, _, hn, hoff, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩, z, h, hx, hy => by
+    simp only [Vals.concat] at h
+    split at h
+    case isFalse => cases h
+    simp only [bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i L hL
+    split at h; · cases h
+    rename_i R hR
+    split at h; · cases h
+    split at h; · cases h
+    cases h
+    exact ⟨Vals.catSummand_wf (fun hm ho hc a b => Vals.concat_wf hm ho hc a b) hn hoff hL hx.1 hy.1,
+      Vals.catSummand_wf (fun hm ho hc a b => Vals.concat_wf hm ho hc a b) hn hoff hR hx.2 hy.2⟩
+
 /-- **Row `c` of `Vals.concat`** is row `c` of `x` below `n₁`, row `c - n₁` of `y` from there. -/
 theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
     (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) →
