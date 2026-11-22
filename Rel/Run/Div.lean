@@ -56,11 +56,6 @@ def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr 
 /-- **`Λ(R)` on the keys `D`**: `lamOf` of `canon R`; a caller whose `R` is `Tab.Canonical` already calls `lamOf`. -/
 def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)) := R.canon >>= lamOf D
 
-/-- **`E(R)` on the arrays `X`** (`EDen R = lamDen (∋ ≫ R)`): `Λ` on `X` of `mem X ≫ R`, a `comp` answer, so
-canonical (`comp_canonical`): `lamOf`, no second `canon`. -/
-def E {n : USize} (X : Vals (.arr A) n) (R : Tab A B) : Except String (Tab (.arr A) (.arr B)) := do
-  lamOf X (← (← mem X).comp R)
-
 /-- **`nil` on the keys `D`** (`nilDen`): each to the empty cell, `lo = hi = 0` over a payload of no rows; then
 `canon`. -/
 def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do

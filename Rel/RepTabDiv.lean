@@ -1859,11 +1859,6 @@ private def D := Alg.col ds
 private def lamSp {A B : Obj} [BEq A.El] [BEq B.El] (ks : List A.El) (R : Tab A B) : List (A.El × List B.El) :=
   ks.map fun a => (a, ((R.toList.filter (·.1 == a)).map (·.2)).eraseDups)
 
-/-- `E(R) = Λ(∋ ≫ R)` (`EDen`) on the arrays `xs`: each to the images of its elements, each once. -/
-private def ESp {A B : Obj} [BEq A.El] [BEq B.El] (xs : List (List A.El)) (R : Tab A B) :
-    List (List A.El × List B.El) :=
-  xs.map fun x => (x, ((R.toList.filter fun r => x.contains r.1).map (·.2)).eraseDups)
-
 -- `Λ` on `D` against `lamDen` on `D`, and `nil`
 #guard ts.all fun ps => canonOk (Tab.lam D (tab ps)) && cellsOk (Tab.lam D (tab ps)) (lamSp ds (tab ps))
 #guard newL (Tab.lam D (tab [(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (3, -7)])) ==
@@ -1874,25 +1869,6 @@ private def ESp {A B : Obj} [BEq A.El] [BEq B.El] (xs : List (List A.El)) (R : T
 /-- `-0.0`, `+0.0`, NaN with payloads `1` and `2`, `+inf`, `-inf`, `1.5`, `-0.0` again, as `f64` bits. -/
 private def f64s : List UInt64 := [0x8000000000000000, 0, 0x7ff8000000000001, 0x7ff8000000000002, 0x7ff0000000000000,
   0xfff0000000000000, 0x3ff8000000000000, 0x8000000000000000]
-
--- `E` against `EDen` on `arrCells` (empty cells, `[5]` from three ranges, `[5,1]` twice), on no cells, and with a
--- relation of no rows
-#guard [(arrCells, arrPay), ([], arrPay)].all fun (cs, ps) =>
-  let X := (arrTab cs ps).key
-  [tab [(5, 1), (9, 2), (1, 3), (5, 4)], tab [(9, 0)], tab []].all fun R =>
-    canonOk (Tab.E X R) && cellsOk (Tab.E X R) (ESp (Vals.rows X) R)
-
--- `E` on float and tuple elements: cells over `f64s` (`[-0.0]` from `[0,1)` and `[7,8)`, the empty cell, both NaNs)
--- and over pairs (`[(1,5)]` from two ranges)
-#guard
-  let x := Arr.ofFn .f64 8 (f64s.getD · 0) ⟨by decide, by decide⟩
-  let X := (arrOn [(0, 1, 0), (7, 8, 0), (2, 4, 0), (3, 3, 0), (0, 8, 0), (5, 7, 0)] x).key
-  let R : Tab (.atom .f64) .long := ⟨8, x, Alg.col [1, 1, 2, 3, 4, 4, 5, 6]⟩
-  let Y := (arrOn [(0, 1, 0), (2, 3, 0), (0, 4, 0), (1, 1, 0)] ((Alg.col [1, 2, 1, 3], Alg.col [5, 5, 5, 6]) :
-    Vals (.prod .long .long) 4)).key
-  let S : Tab (.prod .long .long) .long := ⟨3, (Alg.col [1, 1, 3], Alg.col [5, 5, 6]), Alg.col [7, 8, 9]⟩
-  canonOk (Tab.E X R) && cellsOk (Tab.E X R) (ESp (Vals.rows X) R) &&
-  canonOk (Tab.E Y S) && cellsOk (Tab.E Y S) (ESp (Vals.rows Y) S)
 
 -- `∋` on cells (empty ones, clamped ones, one cell twice) against `x ∋ a`, and on no cells
 #guard [(arrCells, arrPay), (arrCells.take 3, arrPay), ([], arrPay), ([(0, 0, 1), (0, 0, 1)], [])].all fun (cs, ps) =>
@@ -2553,50 +2529,6 @@ theorem mem_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h 
   rw [Except.bind_eq_ok'] at h; obtain ⟨x, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨y, -, h⟩ := h
   exact ⟨_, h⟩
-
-/-- **`E X R` is `lamOf X r`, `r = canon Q`, `Q` the pairs `(xs, b)` of `X` with `b` an image of an element of `xs`** (`mem_holds`,
-`comp_canon`): `E`'s laws are `lamOf`'s at `Q`. -/
-theorem E_lam {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
-    ∃ Q r : Tab (.arr A) B, Q.canon = .ok r ∧ Tab.lamOf X r = .ok T ∧
-      ∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b := by
-  simp only [Tab.E, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨M0, hM0, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
-  obtain ⟨Q, hQ, hH⟩ := comp_canon hr
-  refine ⟨Q, r, hQ, h, fun xs b => ?_⟩
-  rw [hH]
-  simp only [mem_holds hM0]
-  exact ⟨fun ⟨a, ⟨hX, ha⟩, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨hX, a, ha, hr⟩ => ⟨a, ⟨hX, ha⟩, hr⟩⟩
-
-/-- **`E X R` denotes `E(R)` on the arrays `X`, each cell in the order codes of `Q`** (`E_lam`, `lam_holds`): `xs`
-of `X` to the images of its elements under `R`, each once, ascending by the codes of the rows `(xs, b)` of `Q`. -/
-theorem E_holds {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T) :
-    ∃ Q : Tab (.arr A) B, (∀ xs b, Q.Holds xs b ↔ (∃ i, X.row i = xs) ∧ ∃ a, a ∈ xs ∧ R.Holds a b) ∧
-      ∀ xs ys, T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ (∀ b, b ∈ ys ↔ ∃ a, a ∈ xs ∧ R.Holds a b) ∧
-        ∀ es, Vals.cols (A := .prod (.arr A) B) (Q.key, Q.val) = .ok es →
-          ∃ s : Fin ys.length → Fin Q.n.toNat, (∀ u, Q.key.row (s u) = xs ∧ Q.val.row (s u) = ys[u]) ∧
-            ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys Q.n es) (s u) (s u') = true ∧
-              seenKey Q.n es (s u) ≠ seenKey Q.n es (s u') := by
-  obtain ⟨Q, r, hr, hl, hQ⟩ := E_lam h
-  refine ⟨Q, hQ, fun xs ys => ?_⟩
-  rw [lamOf_holds hr hl]
-  constructor
-  · rintro ⟨hX, hm, ho⟩
-    exact ⟨hX, fun b => (hm b).trans ((hQ xs b).trans ⟨fun h => h.2, fun h => ⟨hX, h⟩⟩), ho⟩
-  · rintro ⟨hX, hm, ho⟩
-    exact ⟨hX, fun b => (hm b).trans ((hQ xs b).trans ⟨fun h => h.2, fun h => ⟨hX, h⟩⟩).symm, ho⟩
-
-/-- **`E X R` denotes `EDen R` on the arrays `X`** (`Tm.E`): `lam_den` at the pairs keyed by arrays of `A`. -/
-theorem E_den {n : USize} {X : Vals (.arr A) n} {R : Tab A B} {T : Tab (.arr A) (.arr B)} (h : Tab.E X R = .ok T)
-    (xs : List A.El) (ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.EDen R.Holds xs ys := by
-  obtain ⟨Q, r, hr, hl, hQ⟩ := E_lam h
-  rw [lamOf_den hr hl]
-  simp only [Lang.EDen, Lang.lamDen, Core.Rel.comp, hQ]
-  constructor
-  · rintro ⟨hX, hp, hm⟩
-    exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩, fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩⟩⟩
-  · rintro ⟨hX, hp, hm⟩
-    exact ⟨hX, hp, fun b => (hm b).trans ⟨fun ⟨a, ha, hr⟩ => ⟨hX, a, ha, hr⟩, fun ⟨_, a, ha, hr⟩ => ⟨a, ha, hr⟩⟩⟩
 
 /-- **`setify X` denotes `Λ(∋)` on the arrays `X`** (`rowDens`'s `setify`): `lam_den` of `mem_holds`. -/
 theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.setify X = .ok T)
