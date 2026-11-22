@@ -247,7 +247,7 @@ theorem longWords_encode {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat)
     encoded here at its exit, which goes with the old layer (W5). -/
 def Arr.ofBytes (t : QAtomicType) {n : USize} (b : ByteArray) (h : b.size = t.width.getD 0 * n.toNat)
     (hu : t ≠ .u1 ∧ t.width.isSome := by decide) : Arr t n :=
-  Arr.mk (Enc.ofBytes (t.width.getD 0) b) (foRBytes_wf t hu b h)
+  Arr.mk (Ext.Enc.ofBytes (t.width.getD 0) b) (foRBytes_wf t hu b h)
 
 /-- Element `i` of a long `Arr.ofBytes b` is the eight bytes at `8i`, read as a long. -/
 theorem Arr.get_longArr {n : USize} (b : ByteArray) (h : b.size = 8 * n.toNat) (i : Fin n.toNat) :
@@ -272,13 +272,13 @@ def Arr.ofFn (t : QAtomicType) (n : USize) (f : Fin n.toNat → UInt64) (hu : t 
 /-- An `int` column encoded from the dense payload `b` lists `b`'s four-byte words, read back by
     `foRBits_encode_bits`. -/
 theorem toList_ofBytes_int {m : USize} (x : Arr .i32 m) {b : ByteArray} (hm : b.size / 4 = m.toNat)
-    (hc : x.enc = Enc.ofBytes 4 b) :
+    (hc : x.enc = Ext.Enc.ofBytes 4 b) :
     x.toList = (List.range m.toNat).map fun i => (Column.bitsAt b (i * 4) 4).toUInt32.toInt32 := by
   apply List.ext_getElem (by rw [Arr.length_toList]; simp)
   intro i h1 _
   have hn : i < m.toNat := by rw [Arr.length_toList] at h1; omega
   rw [Arr.getElem_toList, List.getElem_map, List.getElem_range, Arr.get_ne x _ (by decide)]
-  simp only [Enc.get, if_pos hn, hc, Enc.ofBytes, QAtomicType.width]
+  simp only [Enc.get, if_pos hn, hc, Ext.Enc.ofBytes, QAtomicType.width]
   · have hi : i < b.size / 4 := by omega
     show (Column.foRBits _ _ #[] i).toUInt32.toInt32 = _
     rw [foRBits_starts]

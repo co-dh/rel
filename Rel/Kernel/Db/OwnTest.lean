@@ -59,21 +59,21 @@ info: ok kind 2 count 64 domain `` part sizes [57, 808]
 foR: metadata 57 bytes, pack 808 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 64 (Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000]))) none)
+#eval column (.vector .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000]))) none)
 
 /--
 info: ok kind 0 count 0 domain `` part sizes [0]
 bytes: 0 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 0 (Enc.ofBytes 8 .empty) none)
+#eval column (.vector .i64 0 (Ext.Enc.ofBytes 8 .empty) none)
 
 /--
 info: ok kind 0 count 3 domain `dom` part sizes [24]
 bytes: 24 bytes
 -/
 #guard_msgs in
-#eval column (.enum "dom" (.vector .i64 3 (Enc.ofBytes 8 (dense [2, 0, 1])) none))
+#eval column (.enum "dom" (.vector .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1])) none))
 
 -- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is refused (no writer of the
 -- sorted dictionary yet); and the writer refuses kind 5, a number that is no kind
