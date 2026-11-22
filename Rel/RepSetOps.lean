@@ -626,7 +626,7 @@ theorem whereCol_plain {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
     repeat (split at h; · cases h)
     rename_i _ e he _ o' ho'
     obtain ⟨-, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
-    rw [kgather_plain ho' (kscatter_plain he rfl)]; exact hasNul_wordsFoR _
+    exact kgather_noNul ho' (kscatter_plain he rfl)
   · simp only [hB, if_false] at h; cases h
 
 /-- **What `select keep R S` answers**, `keep` answering per group a `0`/`1` word that is `1` iff

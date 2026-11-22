@@ -215,6 +215,11 @@ theorem kgather_plain {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o
   obtain ⟨-, -, -, rfl⟩ := raw_kgather m ix n e o h
   simp only [hN, Bool.false_eq_true, ↓reduceIte]
 
+/-- A gather of a column with no null holds none (`kgather_plain`), as `kscatter_plain` for a scatter. -/
+theorem kgather_noNul {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) (hN : hasNul e = false) :
+    hasNul o = false := by
+  rw [kgather_plain h hN]; exact hasNul_wordsFoR _
+
 /-- `scatterWords` answers its `n` cells. -/
 theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UInt64} {o : Array UInt64}
     (h : scatterWords op is es n fill = .ok o) : o.size = n := by
