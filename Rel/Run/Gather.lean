@@ -75,12 +75,20 @@ theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {p
   unfold colMap at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact kscan_closed hr
+  exact ⟨(kscan_closed hr).1, (kscan_closed hr).2.1⟩
+
+/-- `colMap`'s answer holds no null (`kscan_closed`). -/
+theorem colMap_plain {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
+    (h : colMap op n a b t s pre post = .ok o) : hasNul o = false := by
+  unfold colMap at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  exact (kscan_closed hr).2.2
 
 /-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Arr.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=
   match h : kgather m ix n x.enc with
-  | .ok o => .ok (Arr.mk o (Arr.kgather_wf x h))
+  | .ok o => .ok (Arr.mk o (Arr.kgather_wf x h) (by rw [Verify.kgather_plain h x.plain]; exact Verify.hasNul_wordsFoR _))
   | .error s => .error s
 
 /-- The rows `ix` (`m` positions) of the side `x`: each atom column `Arr.gather`ed at `ix`; a `sum` side gathers its tag
@@ -91,7 +99,7 @@ def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n 
   | .arr _, _, ⟨c, lo, hi, f⟩ => do pure ⟨c, ← Arr.gather m ix lo, ← Arr.gather m ix hi, f⟩
   | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, ← Arr.gather m ix tag, ← Arr.gather m ix idx, x, y⟩
   -- no column, but `ix` is checked as every side's is: gathering the positions `0 … n-1` refuses an index past `n`
-  | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial); pure ()
+  | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial rfl); pure ()
 
 /-- The positions of the `1` words among the `m` words `b` (each `0` or `1`), ascending, and their count `K`. WHERE
 as `scan → scatter`, O(m) and no sort: the prefix sum `s` of `b` (`kscan .add`, one segment) returns the count `K` as

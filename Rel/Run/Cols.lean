@@ -21,7 +21,7 @@ def shiftCol (n : USize) (s : UInt64) : Except String Enc := colMap .first n .po
 def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
     (pre post : List (Op × UInt64) := []) : Except String (Arr t n) :=
   match h : colMap op n a b t s pre post with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
+  | .ok o => .ok (Arr.mk o (colMap_closed h).2 (colMap_plain h))
   | .error s => .error s
 
 /-- **`colArr` is `colMap`** on the array's column. -/
@@ -77,11 +77,18 @@ theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact kscan_closed hr
+  exact ⟨(kscan_closed hr).1, (kscan_closed hr).2.1⟩
+
+/-- `colPrefix`'s answer holds no null (`kscan_closed`). -/
+theorem colPrefix_plain {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) : hasNul o = false := by
+  unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  exact (kscan_closed hr).2.2
 
 /-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
-def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) : Nat :=
-  if hn : 0 < n.toNat then (Arr.get (Arr.mk e h) ⟨n.toNat - 1, by omega⟩).toNatClampNeg else 0
+def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) (hN : hasNul e = false) : Nat :=
+  if hn : 0 < n.toNat then (Arr.get (Arr.mk e h hN) ⟨n.toNat - 1, by omega⟩).toNatClampNeg else 0
 
 /-- The positions of a sum side's summand `s` (`false` left, `true` right): `idx` on the rows `tag` gives to it, `0` on
 the others (`colMap .mul` by `tag` or by its `.not`), as `Vals.cols` gathers a summand. -/
@@ -94,13 +101,13 @@ def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
   if 2 ^ 63 ≤ n.toNat then .error s!"count: {n} rows, past an Int64 count" else do
     let p ← summandPos n s tag (← colConst n 1)
     match h : colPrefix .add n p with
-    | .ok P => .ok (lastCount n P (colPrefix_closed h).2)
+    | .ok P => .ok (lastCount n P (colPrefix_closed h).2 (colPrefix_plain h))
     | .error e => .error e
 
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/
 def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
   match h : shiftCol n 0 with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
+  | .ok o => .ok (Arr.mk o (colMap_closed h).2 (colMap_plain h))
   | .error e => .error e
 
 /-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its

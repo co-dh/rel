@@ -219,10 +219,11 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
       · cases h
     · cases h
 
-/-- **`kscan` closes**: its answer is valid at its `n` rows and `Ext.Enc.WF` at its answer type `t`. -/
+/-- **`kscan` closes**: its answer is valid at its `n` rows, `Ext.Enc.WF` at its answer type `t`, and holds no null
+(written with no null bitmap). -/
 theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List Enc}
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
-    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
+    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false := by
   unfold kscan at h
   by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
   · simp [hd, bind, Except.bind] at h
@@ -243,7 +244,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   have hW : (Array.map (fun v => if t = .u1 then v % 2 else v) (if rev = true then out.reverse else out)).size =
       n.toNat := by rw [Array.size_map]; split <;> simp [hos]
   have hc := wordsFoR_closed _ hW.symm
-  refine ⟨hc.1, hc.2.2 (by simp [ht]) fun hu i hi => ?_⟩
+  refine ⟨hc.1, hc.2.2 (by simp [ht]) fun hu i hi => ?_, hasNul_wordsFoR _⟩
   simp only [Array.getElem_map, hu, ↓reduceIte]
   exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
 
