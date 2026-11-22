@@ -188,7 +188,7 @@ def rowsProved : List String :=
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
   | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R
-  | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
+  | _, _, .own R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
@@ -204,7 +204,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
+  | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
@@ -525,17 +525,6 @@ theorem GenK.lam_wf {A B : Obj} {R : Rel A B} (wR : R.Wf) : (GenK.lam A B R).Wf 
   unfold GenK.lam
   exact GenK.ofVals_wf fun _ X _ hX h => let ⟨_, hr, h⟩ := GenK.bind_ok h
     Tab.lam_wf h hX (wR.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hr)
-
-/-- A value verb on `U`'s universe, `U` run knowing the values asked about (`Tab.succ_wf`, `Tab.arith_wf`). -/
-theorem GenK.succ_wf {U : Rel .long .long} (wU : U.Wf) : (GenK.succ U).Wf := by
-  unfold GenK.succ
-  exact GenK.after_wf fun _ _ h wD => Tab.succ_wf (fun X _ hT hX =>
-    wU.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hT) h wD
-theorem GenK.arith_wf {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)} (wU : U.Wf) :
-    (GenK.arith t k U).Wf := by
-  unfold GenK.arith
-  exact GenK.after_wf fun _ _ h wD => Tab.arith_wf (fun X _ hT hX =>
-    wU.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hT) h wD
 
 /-- A comparison answers a table of atoms, `WF` with no cell to check. -/
 theorem GenK.cmp_wf {op : String} {t : QAtomicType} {o : Except String Kernel.Op} {U : Rel (.atom t) (.atom t)} :
@@ -1269,8 +1258,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case lam => exact GenK.lam_wf (w _ (by omega))
   case est => exact GenK.est_wf (w _ (by omega))
   case thin => exact GenK.thin_wf (w _ (by omega))
-  case succ => exact GenK.succ_wf (w _ (by omega))
-  case arith => exact GenK.arith_wf (w _ (by omega))
   case leq => exact GenK.cmp_wf
   case lt => exact GenK.cmp_wf
   case fold => exact GenK.fold_wf (w _ (by omega)) (w _ (by omega))
@@ -1390,8 +1377,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case inl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
   case inr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
-  case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs))
   case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _

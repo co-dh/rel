@@ -433,8 +433,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, A, B, .prim r => Prim.den r A B []
   | _, _, _, .atPos k => atDen k
   | ρ, _, _, .own R => R.den ρ
-  | ρ, _, _, .succ U => succDen (U.den ρ)
-  | ρ, _, _, .arith t k U => arithDen t k (U.den ρ)
   | ρ, _, _, .leq t U => leqDen t (U.den ρ)
   | ρ, _, _, .lt t U => ltDen t (U.den ρ)
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
@@ -503,6 +501,34 @@ theorem Tm.dom_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.dom R).den ρ = �
 theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°° := by
   simp only [Tm.ran, Tm.den, Tm.argDen]; exact Prim.den_ranRow _
 
+/-- `succRow` at `ℕ ⟶ ℕ` is `Ew.intStep`'s `u + 1` (`succOn`). -/
+theorem Prim.den_succRow : Prim.den succRow .long .long [] = fun u w => w = Ew.intStep Ew.add Alg.nul u 1 := by
+  have ho : ∀ ps, succRow.objs .long .long ps = some [.long] := by
+    simp [Prim.objs, Option.orElse, succRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == succRow.sym) =
+      some ⟨⟨"succ", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => succOn (σ₁ σ)⟩ := rfl
+  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+/-- `arithRow "plus"` at the atom `t` is `stepAt t add` (`stepOn`). -/
+theorem Prim.den_plusRow {t : QAtomicType} :
+    Prim.den (arithRow "plus") (.prod (.atom t) (.atom t)) (.atom t) [] = stepAt t Ew.add := by
+  have ho : ∀ ps, (arithRow "plus").objs (.prod (.atom t) (.atom t)) (.atom t) ps = some [.atom t] := by
+    simp [Prim.objs, Option.orElse, arithRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (arithRow "plus").sym) =
+      some ⟨⟨"plus", fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₁ σ)⟩, fun σ _ => stepOn Ew.add (σ₁ σ)⟩ := rfl
+  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+/-- **`succ` cut to a coreflexive `U` is `succDen`**: `U succ U` (`Tm.cut1`) keeps `u` and `u + 1` both in `U`. -/
+theorem Tm.cut1_succ_den (ρ : Val) (U : Tm .long .long) (hU : ∀ x y, U.den ρ x y → x = y) :
+    (Tm.cut1 succRow U).den ρ = succDen (U.den ρ) := by
+  funext a w; apply propext
+  simp only [Tm.cut1, Tm.den, Tm.argDen, Prim.den_succRow, Core.Rel.comp, succDen]
+  constructor
+  · rintro ⟨a', h1, w', rfl, h2⟩; obtain rfl := hU _ _ h1; obtain rfl := hU _ _ h2; exact ⟨⟨_, h1⟩, rfl, _, h2⟩
+  · rintro ⟨⟨v, h1⟩, rfl, v', h2⟩; obtain rfl := hU _ _ h1; obtain rfl := hU _ _ h2; exact ⟨_, h1, _, rfl, h2⟩
+
 /-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
     kept where `a'` is the source, then `b`. -/
 theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
@@ -565,7 +591,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
-  | conv R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
+  | conv R ih | est R ih | leq _ R ih | lt _ R ih
   | lam R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
@@ -667,21 +693,11 @@ theorem pair_le {X X' : Core.Rel (Obj.El A) (Obj.El B)} {Y Y' : Core.Rel (Obj.El
 theorem est_le {Q Q' : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
   le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
 
-theorem succ_le {U U' : Core.Rel (Obj.El .long) (Obj.El .long)} (hU : U ⊑ U') : succDen U ⊑ succDen U' :=
-  le_iff.2 fun _ _ ⟨⟨v, hv⟩, e, v', hv'⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, e, v', le_iff.1 hU _ _ hv'⟩
-
 theorem leq_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : leqDen t U ⊑ leqDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
 theorem lt_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : ltDen t U ⊑ ltDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
-
-theorem arith_le {t : QAtomicType} {k : UInt8} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') :
-    arithDen t k U ⊑ arithDen t k U' :=
-  comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
-      (conv_le' (comp_le' (Core.Rel.le_refl _) hU))))
-    (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
-      (conv_le' (comp_le' (Core.Rel.le_refl _) hU)))) (comp_le' (Core.Rel.le_refl _) hU))
 
 theorem foldr_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El (.prod A B)) (Obj.El B)} (he : e ⊑ e') (hS : S ⊑ S') :
     foldrDen e S ⊑ foldrDen e' S' :=
@@ -888,8 +904,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
     · simp only [Tm.pol, Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
       exact sle.lfp fun X => ih.1 s _ _ hp (g.bind e X)
   | est Q ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 est_le (ih.1 s ρ ρ' hp g)
-  | succ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 succ_le (ih.1 s ρ ρ' hp g)
-  | arith _ _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 arith_le (ih.1 s ρ ρ' hp g)
   | leq _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 leq_le (ih.1 s ρ ρ' hp g)
   | lt _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 lt_le (ih.1 s ρ ρ' hp g)
   | foldr e S ihe ihS =>
