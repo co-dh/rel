@@ -14,18 +14,23 @@ open Lean Elab Command Rel.Lang Rel.Lang.Embed
 /-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`) and with
     the registry's definitions elaborated once (`calls`), as `rel_program` reads it: a use of one is a `call` node
     holding its body at the call's objects (`Tm.den`, `Tm.gen` read the body), a use with no constant its
-    expansion. The registry is the final one, not the one `n` was elaborated under: a key registered by a later
-    program is one `n` would have built itself (`walk`'s `once`), with the same body; a key registered twice is
-    read at its first `Once`, the second checked to be the same definition (`Registry.call?`). -/
+    expansion. The registry is the final one without the keys `n` built itself (`walk`'s `once`), which `emit`
+    registered after `n`'s read: so `n` is re-read as it was read, each such call holding its own `call`, not a
+    call of the registered constant (`callCv`), and its terms equal `emit`'s. A key a later program registered is
+    one `n` never reached, since `n` would have built it; a key registered twice is read at its first `Once`, the
+    second checked to be the same definition (`Registry.call?`). -/
 def reread (n : Name) : CommandElabM (Except Err Expand.Read) := do
   let env ← getEnv; let opts ← getOptions
   let reg := Expand.relRegistry.getState env
+  -- a `Once` `n` built is the constant `n ++ …` (`callDef`), unless a program inside `n`'s namespace built it
+  let own (c : Name) := n.isPrefixOf c && !reg.progs.any fun (m, _) => m != n && n.isPrefixOf m && m.isPrefixOf c
+  let mine := ((reg.calls.map (·.2) ++ reg.again.toList).filter (own ·.const)).map (·.key)
   let progs ← ((reg.chains.lookup n).getD []).mapM fun m => return (m, ← programOf m)
   let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
   let calls ← liftTermElabM reg.call?
-  liftTermElabM (Expand.read calls progs (← programOf n) n resOf).run
+  liftTermElabM (Expand.read (fun k => if mine.contains k then none else calls k) progs (← programOf n) n resOf).run
 
 run_cmd do
   let reg := Expand.relRegistry.getState (← getEnv)

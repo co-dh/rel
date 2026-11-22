@@ -109,7 +109,7 @@ run_cmd do
     -- (`renumber`; one with none as `gt.size`, which no slot term reads), equal (`Tm.diffAt`) to a generated slot
     -- term has that slot's code, the same pure function of an equal term; any other part is computed here, as
     -- `Code.shares` does. `emit` numbers prints, checks and outputs with the definitions, so the two numberings
-    -- differ, and a re-read under the final registry may hold a call where `emit` held another (`callCv`)
+    -- differ
     let some (.defnInfo sc) := (← getEnv).find? (n ++ `shares)
       | throwError "TestCompile: no definition `{n ++ `shares}`"
     unless sc.value.isAppOfArity ``Code.shares 1 do
