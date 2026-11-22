@@ -129,7 +129,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   -- a block with no null has a width byte below 128, so its residual width `% 128` is the byte
   have hd128 : ∀ c (h : c < bs.size), bs[c].2.2.2.2 % 128 = bs[c].2.2.2.2 := fun c h => by
     rw [hbget c h]; exact Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (hpb c (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.1 (by decide))
-  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2 % 128) hnb (fun c h => by rw [(hMb c h).2]; simp [hd128 c h])
+  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2 % 128) hnb (fun c h => by rw [Column.widthAt, (hMb c h).2]; simp [hd128 c h])
     (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) (e.2.2.2.2 % 128) fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
@@ -165,7 +165,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
       cases frm
       · simp
       · simp only [↓reduceIte, hlast]; rw [show (8 * bs.size + 7) / 8 * 8 = 8 * bs.size by omega]
-  · rw [(hMb b (hnb ▸ hb)).2]; simp only [Array.getElem_map]; rw [hbget b (hnb ▸ hb)]
-    exact (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ hnb ▸ hb))).2.1
+  · rw [Column.widthAt, (hMb b (hnb ▸ hb)).2]; simp only [Array.getElem_map]; rw [hbget b (hnb ▸ hb)]
+    exact Nat.le_trans (Nat.mod_le _ _) (hpb b (mul_lt_of_lt_cdiv hBp (hbsz ▸ hnb ▸ hb))).2.1
 
 end Rel.Verify
