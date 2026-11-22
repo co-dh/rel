@@ -70,8 +70,8 @@ theorem Arr.get_word {t : QAtomicType} {n : USize} (x : Arr t n) (ht : t.ordNum.
   cases t <;> first | exact absurd ht (by decide) | skip
   all_goals
     cases hc : x.enc <;> rw [hc] at hw <;> simp only [Enc.WF, QAtomicType.width] at hw <;>
-      simp only [Enc.get, raw, if_pos i.2, QAtomicType.width, Array.getElem?_map, Array.getElem?_range, i.2, if_true,
-        Option.map_some, Option.getD_some, foRBits_starts, Option.some.injEq] <;>
+      simp only [Enc.get, raw, QAtomicType.width, Array.getElem?_map, Array.getElem?_range, i.2,
+        if_true, Option.map_some, Option.getD_some, foRBits_starts, Option.some.injEq] <;>
       first | rfl | exact (atomOfBits_mod rfl (by decide) _).symm | simp_all
 
 /-- **`shiftCol n s` is the words `k + s`**. -/
@@ -325,7 +325,7 @@ theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok 
   induction G with
   | zero =>
     have := hr 0 hG
-    simp only [if_pos rfl, Op.eval, hw 0 hG, Except.ok.injEq] at this
+    simp only [Op.eval, hw 0 hG, Except.ok.injEq] at this
     rw [← this]; simp
   | succ G ih =>
     have := hr (G + 1) hG
@@ -340,7 +340,7 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
     ∃ md pk, r.1 = .foR md pk := by
   unfold kscan at h
   by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+  · simp [hd, bind, Except.bind] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   split at h; · cases h
@@ -348,7 +348,7 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
   split at h; · cases h
   split at h; · cases h
   split at h; · cases h
-  simp only [pure, Except.pure, Except.ok.injEq] at h
+  simp only [Except.ok.injEq] at h
   subst h; exact ⟨_, _, rfl⟩
 
 /-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/

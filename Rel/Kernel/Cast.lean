@@ -237,8 +237,8 @@ def castWord (s t : QAtomicType) (x : UInt64) : UInt64 :=
     `ordNum` to one `i64` word, so an order read on the widened words (`iordAt`) is one of the values. -/
 theorem castWord_ofBits {t r : QAtomicType} (hr : t.ordNum = some r) {x y : UInt64} (h : ofBits t x = ofBits t y) :
     castWord r .i64 x = castWord r .i64 y := by
-  cases t <;> simp (config := {decide := true}) only [ordNum, numFmt?, width, Option.isSome, reduceCtorEq,
-    Option.some.injEq, ite_true, ite_false] at hr <;> subst hr <;>
+  cases t <;> simp (config := { decide := true }) only [ordNum, reduceCtorEq, Option.some.injEq,
+    ite_true, ite_false] at hr <;> subst hr <;>
     exact congrArg (fun v => ((embed _ .i64 v).map (word .i64)).getD 0x8000000000000000) h
 
 /-- The fields of `floatBits`' word: sign `sg`, exponent `ex` (never all ones), fraction `fr`; a negative word is no

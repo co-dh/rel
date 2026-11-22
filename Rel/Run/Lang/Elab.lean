@@ -1377,12 +1377,12 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
   let any := match s with | .mv _ => true | _ => false
   if t == a && (s == b || any) then return (.var p k a b none, b, true)
   match t, s with
-  | .prod t₁ t₂, .prod s₁ s₂ | .prod t₁ t₂, s₁@(.mv _) =>
+  | .prod t₁ t₂, .prod s₁ _s₂ | .prod t₁ t₂, s₁@(.mv _) =>
     let s₂ := match s with | .prod _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
     if !m₁ && !m₂ then return (.id t, t, false)
     return (.pair (.comp (.outl t₁ t₂) g₁) (.comp (.outr t₁ t₂) g₂), .prod u₁ u₂, true)
-  | .sum t₁ t₂, .sum s₁ s₂ | .sum t₁ t₂, s₁@(.mv _) =>
+  | .sum t₁ t₂, .sum s₁ _s₂ | .sum t₁ t₂, s₁@(.mv _) =>
     let s₂ := match s with | .sum _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
     if !m₁ && !m₂ then return (.id t, t, false)
@@ -1587,7 +1587,7 @@ inductive Match
   | clash (n : String) (o o' : OTy)
 
 /-- `t` as `mk a b`, an unsolved variable solved to that form; none when `t` is another object. -/
-def split (p : Pos) (mk : OTy → OTy → OTy) (t : OTy) : M (Option (OTy × OTy)) := do
+def split (_p : Pos) (mk : OTy → OTy → OTy) (t : OTy) : M (Option (OTy × OTy)) := do
   let a ← fresh; let b ← fresh
   if ← defEq t (mk a b) then let mc ← Lean.getMCtx; pure (some (zonk mc a, zonk mc b)) else pure none
 

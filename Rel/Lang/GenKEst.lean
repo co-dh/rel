@@ -28,7 +28,7 @@ theorem thin_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod 
     h hX
 
 theorem atPos_sound {B : Obj} (k : Nat) : ∀ K, K.WF → (GenK.atPos B k).Reps K (atDen k) :=
-  ofVals_row_sound fun _ _ _ _ h => Tab.atPos_holds h
+  ofVals_row_sound fun _ _ _ hX h => Tab.atPos_holds h hX
 
 end GenK
 

@@ -228,7 +228,7 @@ theorem Arr.dense_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : long
     rw [hc] at h; cases h
     refine ⟨_, rfl, rfl, ?_, ?_⟩
     · rw [List.foldl_map, Verify.elemsW_foldl_mod Nat.toUInt64 8 (by decide) (by decide)]
-      exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp [UInt64.toNat_ofNat, Nat.mod_mod])
+      exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp)
     · rw [List.foldl_map, (Verify.foldl_pushBits Nat.toUInt64 8 (by decide) _ _).1]; simp
   | foR md pk =>
     rw [hc] at h; cases h
@@ -336,7 +336,7 @@ theorem Arr.get_bool_bits {m : USize} (x : Arr .u1 m) {b : ByteArray}
 theorem wf_bools {X : Type} {n : USize} (p : Nat → Bool) :
     Ext.Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Ext.Enc X) := by
   have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
-    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+    rcases System.Platform.numBits_eq with h | h <;> simp)
   obtain ⟨hs, -⟩ := Verify.packIds_bytes 1 n.toNat (fun i => (p i).toNat) (by decide) (by decide)
   simp only [Nat.mul_one] at hs
   obtain ⟨hn, hk, -⟩ := Verify.nblk_encode Column.lgEnc (by decide) 1 (by decide) (by decide)

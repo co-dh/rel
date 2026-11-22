@@ -1161,7 +1161,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `eval (toExpr t) = t` 无法陈述；kernel `decide` 也不可行（`Code.program` 用 `Expr` 的 hash 作 HashMap key，
     `String.hash` 是 opaque extern；`Tm` 没有 `DecidableEq`，payload 按 `valEq` 比较）。信任的只剩 Lean 的
     求值器与 kernel 一致。发出的程序不变。
-- ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
+- ✅ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。声明 0 个删除（`unused` 只删未用 binder，且每个声明都有引用或属交付物）；
+  未用 simp 参数/binder 共 41 条 simp 语句修改（15 个文件；RepWF 的 7 条在合并 master 时放弃）；未用 import 1 条（`Run.Table`→`Run.Cols`；`Lang.Table`→`RepCols` 被 `Arr.pos_get` 需要，保留）。
+  避开 GenSound/Tm/Den/GenK*/Csv/Coc 文件；`lean-refactor` 自带的验证 build 因 OwnTest `#guard_msgs` 误报，改用完整 `lake build` 验证。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
   分支 `gates3`。另：`CLAUDE.md` 的 14 条规则里 9 条没有 gate。
@@ -1301,8 +1303,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     x、y 的 `Vals.WF`，经 `cat/snoc/cons/zip/uncat/prefix/suffix/inits/tails/flatten/lam/comp/flat/positions` 的
     `_holds`/`_den` 传到 `GenK.*_sound`（多取操作数的 `Wf`）与 `gen_sound_spine`（`code_wf (gen_wf X η hs.2)`）。
     只加 WF 前提，无语句弱化；全量构建 0 error、0 sorryAx。
-  - ⬜ 删 clamp 第二步之二：`cellSpan`（`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、`Fix.map`、`Power`、
-    `Where.positions` 的定律）。
+  - ✅ 删 clamp 第二步之二（8.5s2i）：`cellSpan` 删去，`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、
+    `Fix.map`、`length`、`atPos`、`Where.positions` 直接读格子的 `lo`/`hi`（每次使用 5 次 kernel 调用 → 0：
+    2 `colArr .max` + 1 `colMap .min` + 2 `colConst`；`cat`/`zip` 每次 10 → 0）。`cellSpan_spec`/`cellSpan_where`/
+    `cellSpan_start_le`/`Vals.cells_expand_row`/`expand_cells_le` 取 `Vals.WF` 的格子条款代替 `cellSpan` 的结果；
+    `uncons/unsnoc/uncat/length/atPos/sum_holds`、`Vals.zip_row`/`zip_holds`、`Vals.pack_row`/`pack_holds`/
+    `pack_toList`、`foldRounds_holds` 的 `hpack` 多取输入的 `WF`，经 `peelL/peelR_holds`、`mu/star_holds`、
+    `nu_sound`、`comp_uncons`、`rowOK_*`（`ofVals_row_sound`/`after_row_sound` 已给的 `WF`）传入。只加 WF 前提，
+    无语句弱化。`Vals.row` 的 `clampFin`（全函数模型）保留。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；

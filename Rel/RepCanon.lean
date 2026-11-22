@@ -117,7 +117,7 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   unfold kscan at hr
   by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
+  · simp [hd, bind, Except.bind] at hr
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
   split at hr; · cases hr
   rename_i cs hc
@@ -142,7 +142,7 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   rw [(wordsFoR_closed _ hW.symm).2.1]
   have hr := hrow i (by omega)
   rw [if_neg (fun hh => by simp [hi] at hh)] at hr
-  simp only [List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte, List.foldlM_cons, List.foldlM_nil, bind,
+  simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind,
     Except.bind] at hr
   cases he : op.eval (ca[i]?.getD 0) (cb[i]?.getD 0) with
   | error e => rw [he] at hr; cases hr
@@ -172,8 +172,8 @@ theorem Arr.get_i64 {n : USize} (x : Arr .i64 n) (i : Fin n.toNat) :
   have hw := x.wf
   rw [Arr.get_ne x i (by decide)]
   cases hc : x.enc <;> rw [hc] at hw <;>
-    simp_all [Enc.WF, Enc.get, Enc.raw, QAtomicType.width, Column.atomOfBits, Dep.Carrier.of?, foRBits_starts,
-      ofNat_toNat_mod64]
+    simp_all [Enc.WF, Enc.get, Enc.raw, QAtomicType.width, Column.atomOfBits, Dep.Carrier.of?,
+      foRBits_starts]
 
 /-- A word below `2^63` and below `m` clamps to itself. -/
 theorem clampFin_word {w : UInt64} {m : Nat} (h : 0 < m) (hw : w.toNat < m) (hm : m ≤ 2 ^ 63) :
@@ -696,7 +696,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     have hs : ∀ q, seenKey n (es1 ++ es2) q = seenKey n es1 q ++ seenKey n es2 q := fun q => by
       simp [seenKey, ascKeys_append]
     rw [hs, hs] at hk
-    obtain ⟨k1, k2⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
+    obtain ⟨k1, k2⟩ := List.append_inj hk (by simp [seenKey])
     show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i')
     rw [Vals.row_of_codes x.1 h1 hc1 i i' k1, Vals.row_of_codes x.2 h2 hc2 i i' k2]
   | .arr _, n, ⟨c, lo, hi, f⟩, es, hes, cs, hc, i, i', hk => by
@@ -719,7 +719,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs] at hk
     obtain ⟨k0, k12⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
-    obtain ⟨k1, k2⟩ := List.append_inj k12 (by simp [seenKey, ascKeys])
+    obtain ⟨k1, k2⟩ := List.append_inj k12 (by simp [seenKey])
     have ht := heq i i' k0
     show Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i = Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i'
     simp only [Vals.row, ht]

@@ -115,7 +115,7 @@ inductive QValue (X : Type)
   the key-row index (`Index.keys`), built on the table's first lookup or append and kept and extended
   from then on; a construction goes through `QValue.key`. The `Bool` is `dict`'s: q's sorted
   dictionary, `` `s#kt ``, which no flag of either table says. -/
-  | keyed : QTable X → QTable X → (sorted : Bool) → {ix : IndexCell} → QValue X
+  | keyed : QTable X → QTable X → (sorted : Bool) → {_ix : IndexCell} → QValue X
   /-- A general list whose elements are all vectors of one type, laid out as **one** payload and
   the boundaries that cut it: `string`'s answer, `flip`'s rows, and every `each` over a string
   family. The fields are the whole payload's, its header the element type and the total element count;

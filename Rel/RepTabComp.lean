@@ -478,7 +478,7 @@ theorem expand_groups {K M : USize} {o sc pm : Enc} (hsc : kscatter .max K o .po
   induction t with
   | zero =>
     have e := hpre 0 ht
-    simp only [if_pos rfl] at e
+    simp only at e
     exact step 0 ht 0 (by decide) (fun _ _ h => absurd h (Nat.not_lt_zero _)) (Or.inl rfl) e
   | succ t ih =>
     obtain ⟨i1, i2, i3⟩ := ih (by omega)
@@ -725,7 +725,7 @@ theorem Tab.compOne_canon {A B C : Obj}
         Fs G ≤ q ∧ q < Fs G + cRN G) := by
     intro G hG
     have hG' : G < (firstsOf Kk N.toNat).length := by omega
-    have := sorted_groups (n := R.n.toNat) hlen hsort (fun q hq => by rw [hkq q hq]; simp [seenKey, ascKeys]) hG'
+    have := sorted_groups (n := R.n.toNat) hlen hsort (fun q hq => by rw [hkq q hq]; simp [seenKey]) hG'
     rw [hFs, List.getElem?_eq_getElem hG', Option.getD_some, hcntN, hcRN]; exact this
   have hrw : ∀ t G, G < k → Sw G ≤ t → t < Sw G + wN G →
       (raw .i64 Tn.toUSize iR)[t]?.getD 0 = (ps[Fs G + (t - Sw G) / bN G]?.getD 0).toUInt64 ∧
