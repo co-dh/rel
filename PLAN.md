@@ -397,6 +397,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   92cbb31 等处删除，`kseen` 的调用者全走 kernel；doc §4 的 `seen` 行改写（`Order.idsBy` → `firstsBy`/`groupIn`，列出定律）。
   待 rq17f4 之后折叠：`lexLe_congr_right`（`RepTabComp`）是 `lexLe_congr` 的特例，`nub_cover`/`nub_sel` 内联的
   `hkey` 即 `kasc_grade`。
+  rq17f5（部分）：`nub_cover`/`nub_sel` 的 `hkey` 改为 `Vals.sorted_key`（`kasc_grade` + `asc_perm_grade`）；新引理
+  `Vals.cols_wf`（`Vals.cols` 的每列 `Ext.Enc.WF`，由 `Arr.wf` 与 `.pos` 得）；`hN : n.toNat < 2 ^ 32` 加到
+  `Vals.nub_*` 与 `Tab.canon_holds`/`ran_holds`/`dom_holds`；`kscatter_words` 加前提 `hasNul e = false`。
+  ⬜ 阻塞（待决定）：`Vals.row` 在原子上读 `Arr.get`，null 行读到的是块的 top residual，`kgather` 之后是新块的，
+  所以 `Arr.gather_row`、`Arr.eq_of_codes`、`Arr.codes_of_eq`、`Arr.get_raw_atom` 的 u1 界在有 null 的列上为假。
+  `RepSeen` 引用 `kasc_grade`、`lexLe_congr_right` 折叠仍未做。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。

@@ -51,8 +51,10 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
 section
 open Ext.Enc
 
-/-- **`kscatter` under any `op`, on words**: the answer reads back as `scatterWords` of its arguments' words. -/
-theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o) :
+/-- **`kscatter` under any `op`, on words**: the answer reads back as `scatterWords` of its arguments' words where `e`
+holds no null; a null row's raw word is its block's top residual, not the word scattered there. -/
+theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o)
+    (hne : hasNul e = false) :
     (raw .i64 m ix).size = m.toNat ∧ (raw .i64 m e).size = m.toNat ∧
       scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill = .ok (raw .i64 n o) := by
   unfold kscatter at h
@@ -64,14 +66,16 @@ theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h
     | ok es' =>
       obtain ⟨rfl, hisz⟩ := foRWords_raw _ _ _ _ hi
       obtain ⟨rfl, hesz⟩ := foRWords_raw _ _ _ _ he
+      simp only [hi, he, hne, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
       cases hw : scatterWords op (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
-      | error s => simp [hi, he, hw, bind, Except.bind] at h
+      | error s => exfalso; revert h; rw [hw]; split <;> (try split) <;> (try split) <;> simp_all
       | ok ws =>
-        simp only [hi, he, hw, bind, Except.bind, pure, Except.pure] at h
         have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
-        rw [h8] at h
         have hs := scatterWords_size hw
-        have ho := (Except.ok.inj h).symm
+        -- the `noNul` checks and the op's guard only fail; past them the answer is the words' encoding
+        have ho : o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
+            (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 := by
+          revert h; rw [hw, h8]; split <;> (try split) <;> (try split) <;> simp_all
         obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
         rw [Array.foldl_toList] at hxs hxg
         simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
@@ -85,7 +89,7 @@ theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h
 /-- **`colConst n w` is `n` words `w`.** -/
 theorem colConst_raw {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
     raw .i64 n e = Array.replicate n.toNat w := by
-  obtain ⟨-, -, hw⟩ := kscatter_words h
+  obtain ⟨-, -, hw⟩ := kscatter_words h rfl
   have h0 : (raw .i64 0 (.pos : Enc)).size = 0 := by simp [raw]
   unfold scatterWords at hw
   rw [h0] at hw
