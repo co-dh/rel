@@ -1286,7 +1286,7 @@ theorem Vals.gather_ok_of_ok {M M' : USize} {ix ix' : Enc} (hi : Enc.Valid M' ix
     simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .one, n, _, _, _, hr => by
     obtain ⟨p, hp⟩ := Arr.gather_ok (Arr.mk (t := .i64) (n := n) .pos trivial) trivial hi hr
-    simp only [Vals.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+    simp only [Vals.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨(), trivial⟩
 
 /-- `ascCol` of a `cells` key answered: its `lo` and `hi` are valid at its `n` cells. -/
 theorem ascCol_cells_valid {m n c : USize} {lo hi e : Enc} {els : List (AscKey × Enc)} {xk}
@@ -1346,7 +1346,7 @@ theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) :
     simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .one, n, _, _, _, _, hr => by
     obtain ⟨p, hp⟩ := Arr.gather_ok (Arr.mk (t := .i64) (n := n) .pos trivial) trivial hi hr
-    simp only [Vals.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+    simp only [Vals.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨(), trivial⟩
 
 /-- **A side `Vals.code` numbers is gathered at any valid positions below its length**. -/
 theorem Vals.gather_ok_of_code {n M k : USize} {x : Vals A n} {c rep ix : Enc} (h : Vals.code x = .ok (k, c, rep))

@@ -70,6 +70,7 @@ def keyed : Obj → Bool
   | .atom t => t != .general
   | .prod a b | .sum a b => keyed a && keyed b
   | .arr b => keyed b
+  | .one => true -- `1` has one element, so its one key reads it exactly
 
 /-- `R`'s rows as a set of values: each row `Obj.key` of the pair (the order code q's `asc` sorts by, independent
     of row order and of the storage encoding), sorted, each once. -/

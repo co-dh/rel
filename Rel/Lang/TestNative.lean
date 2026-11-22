@@ -128,7 +128,7 @@ def planIO : IO Plan := do
   let p ← match ← plan with | .ok p => pure p | .error e => throwError e
   let (_, ws) ← match p.run abiOf with | .ok r => pure r | .error e => throwError e
   let x ← match native1a.x with | .ok x => pure x | .error e => throwError e
-  let side (s : String) (cs : List (String × QValue)) := cs.map fun (p, v) => ("out/" ++ s ++ p, v)
+  let side (s : String) (cs : List (String × (USize ⊕ QValue))) := cs.map fun (p, v) => ("out/" ++ s ++ p, v)
   let want ← match (side "key" (cols _ x.key "") ++ side "val" (cols _ x.val "")).filterMapM
       (fun (p, v) => do pure ((← ownFile p v).map fun f => (p, f))) with | .ok w => pure w | .error e => throwError e
   let got := ws.toList.filterMap fun (_, vs) => match vs.toList with

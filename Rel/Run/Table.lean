@@ -38,9 +38,7 @@ def file (dir q : String) : String := (System.FilePath.mk dir / q).toString
     positions column has no file. -/
 def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
   for (q, c) in cols A x p do
-    match c with
-    | .inl n => Db.ownWrite (file dir q) 0 0 oneKind n "" #[]
-    | .inr v => if let some f ← IO.ofExcept (ownFile q v) then
+    if let some f ← IO.ofExcept (ownFile q c) then
       Db.ownWrite (file dir q) f.code f.attr f.kind f.count f.domain f.parts
 
 /-- The bit pattern of a word of type `t` that is not in the canonical form `Obj.key` and the kernels assume (typed
