@@ -74,7 +74,7 @@ def diff (R S : Tab k v) : Except String (Tab k v) :=
   select (fun m _ mx => colMap .not m mx mx) R S
 
 /-- **The pairs of `D` that the test `q` holds on the diagonal**: `q(D) ∩ D`, `D` coreflexive (a `ran`), so a row `p`
-stays where `q` relates `p` to `p`. The one reading of a test `Q` in `thin`, `thinL`, `merge`. -/
+stays where `q` relates `p` to `p`. The one reading of a test `Q` in `front`, `thinL`, `merge`. -/
 def diag (q : Tab k k → Except String (Tab k k)) (D : Tab k k) : Except String (Tab k k) := do (← q D).inter D
 
 /-- **`R ⊑ S`**: `R − S` has no row. -/

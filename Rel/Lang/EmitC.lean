@@ -1139,7 +1139,7 @@ def mapFoldB (A B : Obj) (I R : TabB) : Bld TabB := funT [I, R] fun
   | _ => throw "F(R)'s fold: not two tables"
 
 /-- `G = ∋` on the `n` arrays `X` of `B`, `P = ⟨G, G⟩` and `D = ran P`: the pairs of elements of one array that
-    `Tab.est` and `Tab.thin` ask their test about. -/
+    `Tab.est` and `Tab.front` ask their test about. -/
 def pairsB (B : Obj) (n : Nat) (X : Cols) : Bld (TabB × TabB × TabB) := do
   let G ← memB B n X
   let P ← pairB (.arr B) B B G G
@@ -1176,6 +1176,30 @@ def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X
       let (P, _) ← prefixB .add n w
       canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩)
     (do mapFoldB A B (← coreflB n X) R)
+
+/-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
+    group's `X` rows (`cD`, input row below `n`) first; its cell the sorted rows `[f + cD, f + c)` of `r.val` gathered
+    in sorted order (`r.val` itself where `r` has no row, an `ite`); the groups with `0 < cD` kept, keyed by their
+    first row; then `canonT`. -/
+def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fun n X Rs => do
+  let [R] := Rs | throw "Λ: not one table"
+  let r ← canonT R
+  let (N, sh) ← catB n r.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "lam: rows past 2^63" #[N]
+  let (k, g, f, p) ← ascSeenB N (← concatB N n r.n sh X r.key)
+  let nc ← constB N (← u64B n)
+  let cD ← scatterB .add N g (← mapB .lt N p nc) k
+  let lo ← mapB .add k f cD
+  let hi ← mapB .add k f (← scatterB .add N g (← wordsB N 1) k)
+  let (M, sel) ← whereB k (← mapB .lt k (← wordsB k 0) cD)
+  let iD ← gatherB M (← gatherB M sel k f) N p
+  let pay ← ite (← call1 (kernel% USize.decEq) #[r.n, ← lit (.size 0)]) (do pure (#[r.n] ++ (← regsOf r.val).toArray))
+    (do
+      let ix ← mapB .max N (← mapB .sub N p nc) (← wordsB N 0)
+      pure (#[N] ++ (← regsOf (← gatherCols N ix r.n r.val)).toArray))
+  let (pv, _) ← withRegs r.val (pay.toList.drop 1)
+  canonT ⟨M, ← gatherCols M iD n X,
+    [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
 
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
@@ -1238,6 +1262,23 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
       let r ← x (if c == ``GenK.dom then { dom := D.dom <|> D.ran } else { ran := D.dom <|> D.ran })
       coreflB r.n (if c == ``GenK.dom then r.key else r.val)
     | _ => throw s!"row `{r.sym}` given {xs.length} relations, not one"
+  -- `GenK.testVals`: `Tab.est`, `Tab.front` on the arrays in demand, the pair test `Q` run knowing its domain `Dt`
+  else if c == ``Tab.est || c == ``Tab.front then match A, xs with
+    | .arr b, [q] => do
+      let (n, X) ← known r.sym D.dom
+      let (G, P, Dt) ← pairsB b n X
+      if c == ``Tab.est then
+        let V ← coreflB G.n G.val
+        let VV ← pairB b b b V V
+        let Y ← diffB (← diffB Dt (← q { dom := some (Dt.n, Dt.val) })) (← coreflB VV.n VV.val)
+        diffB G (← compB P (← piB b b true Y.n Y.key))
+      else
+        let Δ ← interB (← q { dom := some (Dt.n, Dt.val) }) Dt
+        let w ← pairB (.prod b b) b b (← piB b b false Dt.n Dt.key) (← piB b b true Dt.n Dt.key)
+        let wΔ ← compB w Δ
+        let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
+        lamB b n X (← diffB G (← compB P (← piB b b false Y.n Y.key)))
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
   else if c == ``GenK.nil then match B with
     | .arr b => do let (n, X) ← known r.sym D.dom; nilB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
@@ -1255,29 +1296,6 @@ def atB (B : Obj) (k n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => 
   let ix ← gatherB M sel n (← mapB .add n s kc)
   canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
 
-/-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
-    group's `X` rows (`cD`, input row below `n`) first; its cell the sorted rows `[f + cD, f + c)` of `r.val` gathered
-    in sorted order (`r.val` itself where `r` has no row, an `ite`); the groups with `0 < cD` kept, keyed by their
-    first row; then `canonT`. -/
-def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fun n X Rs => do
-  let [R] := Rs | throw "Λ: not one table"
-  let r ← canonT R
-  let (N, sh) ← catB n r.n
-  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "lam: rows past 2^63" #[N]
-  let (k, g, f, p) ← ascSeenB N (← concatB N n r.n sh X r.key)
-  let nc ← constB N (← u64B n)
-  let cD ← scatterB .add N g (← mapB .lt N p nc) k
-  let lo ← mapB .add k f cD
-  let hi ← mapB .add k f (← scatterB .add N g (← wordsB N 1) k)
-  let (M, sel) ← whereB k (← mapB .lt k (← wordsB k 0) cD)
-  let iD ← gatherB M (← gatherB M sel k f) N p
-  let pay ← ite (← call1 (kernel% USize.decEq) #[r.n, ← lit (.size 0)]) (do pure (#[r.n] ++ (← regsOf r.val).toArray))
-    (do
-      let ix ← mapB .max N (← mapB .sub N p nc) (← wordsB N 0)
-      pure (#[N] ++ (← regsOf (← gatherCols N ix r.n r.val)).toArray))
-  let (pv, _) ← withRegs r.val (pay.toList.drop 1)
-  canonT ⟨M, ← gatherCols M iD n X,
-    [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
 abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
 
@@ -1364,22 +1382,6 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (n, X) ← known "Λ" D.dom
     lamB B n X (← tabB σ { dom := some (n, X) } R)
   | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
-  -- `GenK.est`, `GenK.thin`: `Tab.est`, `Tab.thin` on the arrays in demand, `Q` run knowing its domain `D`
-  | _, _, .est (B := B) Q => do
-    let (n, X) ← known "est" D.dom
-    let (G, P, Dt) ← pairsB B n X
-    let V ← coreflB G.n G.val
-    let VV ← pairB B B B V V
-    let Y ← diffB (← diffB Dt (← tabB σ { dom := some (Dt.n, Dt.val) } Q)) (← coreflB VV.n VV.val)
-    diffB G (← compB P (← piB B B true Y.n Y.key))
-  | _, _, .thin (B := B) Q => do
-    let (n, X) ← known "thin" D.dom
-    let (G, P, Dt) ← pairsB B n X
-    let Δ ← interB (← tabB σ { dom := some (Dt.n, Dt.val) } Q) Dt
-    let w ← pairB (.prod B B) B B (← piB B B false Dt.n Dt.key) (← piB B B true Dt.n Dt.key)
-    let wΔ ← compB w Δ
-    let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
-    lamB B n X (← diffB G (← compB P (← piB B B false Y.n Y.key)))
   -- `GenK.fold`, `GenK.foldr`: `Tab.foldRounds` from `idU X` and `X × ran e`, `S` on `⟨P, el⟩` (`⟨el, P⟩`)
   | _, _, .fold (E := E) (V := V) e S => do
     let (n, X) ← known "fold" D.dom

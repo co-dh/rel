@@ -83,11 +83,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   · simp at hs
   repeat' (first | subst hr | (obtain rfl | hr := hr))
   all_goals simp only [consRow, mapRow, lengthRow, sumRow, flatRow, foldIRow,
-    starRow, domRow, ranRow, nilRow,
+    starRow, domRow, ranRow, nilRow, estRow, frontRow,
     reduceCtorEq, Option.some.injEq] at hs
   all_goals subst hs
   all_goals simp [Prim.find?, prims, consRow, mapRow, lengthRow,
-    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow] at hr'
+    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow, estRow, frontRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss
@@ -158,7 +158,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
   | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
-  | top _ _ | lam _ _ | est _ _ | thin _ _ | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
+  | top _ _ | lam _ _ | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
   | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
   -- an injection's converse is `conv` of it, which runs on demand (`Tm.dem`), and its converse the injection
   | inl | inr => exact fun _ => ⟨fun u hu => by
@@ -554,7 +554,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
-  | top _ _ | lam _ _ | est _ _ | thin _ _ | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
+  | top _ _ | lam _ _ | mem | atPos _ | foldr _ _ _ _ | fold _ _ _ _
   | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩
   | id =>
     refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩

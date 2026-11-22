@@ -179,15 +179,15 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc",
-   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil"] ++ floatOps.map (·.1)
+   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil", "est", "front"] ++ floatOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
     since it is a theorem (`Vals.lamLaw`). -/
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
-  | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R
-  | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
+  | _, _, .lam R | _, _, .top R | _, _, .conv R
+  | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
@@ -204,7 +204,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
-  | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
+  | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
@@ -540,12 +540,6 @@ theorem GenK.arith_wf {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)
 theorem GenK.cmp_wf {op : String} {t : QAtomicType} {o : Except String Kernel.Op} {U : Rel (.atom t) (.atom t)} :
     (GenK.cmp op o U).Wf :=
   fun _ _ => GenK.tab_wf fun _ _ => ⟨trivial, trivial⟩
-
-/-- `est(Q)`, `thin(Q)`: the pair test `Q` answers `WF` tables on `WF` pairs (`GenK.testQ_wf`). -/
-theorem GenK.est_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.est B Q).Wf := by
-  unfold GenK.est; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.est_wf (GenK.testQ_wf wQ) h hX
-theorem GenK.thin_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.thin B Q).Wf := by
-  unfold GenK.thin; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.thin_wf (GenK.testQ_wf wQ) h hX
 
 /-- The folds' rounds (`Tab.foldRounds_wf`), each step `P` paired with an element, then `S` (`compT_wf`). -/
 theorem GenK.fold_wf {E V : Obj} {e : Rel V V} {S : Rel (.prod V E) V} (we : e.Wf) (wS : S.Wf) :
@@ -939,6 +933,50 @@ theorem rowOK_thinL : RowOK "thinL" := rowOK_args (c := RowCode.thinL) rfl rfl f
     · exact GenK.thinL_sound hss (hw _ (List.mem_singleton_self _))
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_est : RowOK "est" := rowOK_args (c := RowCode.est) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
+  have h1 : rowArity "est" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨GenK.testVals_wf (fun _ hq _ _ h hX => Tab.est_wf hq h hX) (hw _ (List.mem_singleton_self _)),
+      fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.est_sound hss (hw _ (List.mem_singleton_self _))
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
+theorem rowOK_front : RowOK "front" := rowOK_args (c := RowCode.front) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
+  have h1 : rowArity "front" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, σ⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨GenK.testVals_wf (fun _ hq _ _ h hX => Tab.front_wf hq h hX) (hw _ (List.mem_singleton_self _)),
+      fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.front_sound hss (hw _ (List.mem_singleton_self _))
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
 /-- `Rᴵ`, `Expand.primE`'s fit of the row (`onKeys`, `Tab.flat`): the `(a', b)` of `R` at the key of each pair in
 demand, kept where `a'` is its source, `R` run on the keys in demand. -/
 theorem GenK.flat_sound {I A B : Obj} {R : Rel I (.prod A B)} {X : Core.Rel I.El (Obj.prod A B).El}
@@ -1122,9 +1160,11 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h35 : r.sym = "dom"; · rw [h35]; exact rowOK_dom
   by_cases h36 : r.sym = "ran"; · rw [h36]; exact rowOK_ran
   by_cases h37 : r.sym = "nil"; · rw [h37]; exact rowOK_nil
+  by_cases h38 : r.sym = "est"; · rw [h38]; exact rowOK_est
+  by_cases h39 : r.sym = "front"; · rw [h39]; exact rowOK_front
   by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
   simp [rowsProved, hu, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
-    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37] at h
+    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37, h38, h39] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}
@@ -1235,8 +1275,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case rdiv => exact GenK.rdiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
   case lam => exact GenK.lam_wf (w _ (by omega))
-  case est => exact GenK.est_wf (w _ (by omega))
-  case thin => exact GenK.thin_wf (w _ (by omega))
   case succ => exact GenK.succ_wf (w _ (by omega))
   case arith => exact GenK.arith_wf (w _ (by omega))
   case leq => exact GenK.cmp_wf
@@ -1363,8 +1401,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs))
   case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _
-  case est Q ih => exact GenK.est_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf Q η hs.2))
-  case thin Q ih => exact GenK.thin_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf Q η hs.2))
   case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs)) (code_wf (gen_wf S η hs.2))

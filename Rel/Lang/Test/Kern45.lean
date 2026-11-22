@@ -6,7 +6,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 /-! The kernel path, steps T4, T5, T7: `kernT45` uses `≤ < succ plus Λ E nil at` and the rows
     `∋ τ length setify sum snoc cons cat zip cons° snoc° cat°` with T2 operators, so it runs on the five kernels,
-    on inputs with empty cells and duplicate rows. `es`, `th` are `est(≤)`, `thin(≤)` on `x`, the pair test
+    on inputs with empty cells and duplicate rows. `es`, `th` are `est(≤)`, `front(≤)` on `x`, the pair test
     elaborated through `⟨π₁, π₂⟩`. -/
 rel_program kernT45 where
     obj N = 0…5
@@ -43,7 +43,7 @@ rel_program kernT45 where
     us : N ⟶ [N]×N ≜ x snoc°
     ut : N ⟶ [N]×[N] ≜ x cat°
     es : N ⟶ N ≜ x est(≤)
-    th : N ⟶ [N] ≜ x thin(≤)
+    th : N ⟶ [N] ≜ x front(≤)
     -- the rows worked by hand from each definition's relations, not read from a run
     check r = {(1,2),(2,3),(3,3)}
     check w = {(1,(1,2)),(2,(3,4)),(3,(5,5))}
@@ -82,7 +82,7 @@ rel_program kernT45 where
     check uc = {(1,(3,1 2)),(3,(1,[2])),(4,(1,[2]))}
     check us = {(1,(3 1,2)),(3,([1],2)),(4,([1],2))}
     check ut = {(1,([],3 1 2)),(1,([3],1 2)),(1,(3 1,[2])),(1,(3 1 2,[])),(2,([],[])),(3,([],1 2)),(3,([1],[2])),(3,(1 2,[])),(4,([],1 2)),(4,([1],[2])),(4,(1 2,[]))}
-    -- `est(≤)`: the elements `≤` every other one, the least; `thin(≤)` the set of them
+    -- `est(≤)`: the elements `≤` every other one, the least; `front(≤)` the set of them
     check es = {(1,1),(3,1),(4,1)}
     check th = {(1,[1]),(2,[]),(3,[1]),(4,[1])}
 
@@ -110,22 +110,22 @@ rel_program sumFold where
 #guard ["le", "a1", "ms", "sm", "es"].all fun d => ((get kernT45.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ((get kernT45.expanded "th" .long (.arr .long)).map (·.n.toNat != 0)) == some true
 
-/-! `thin` reads its test on the diagonal (`thinDen`: `TQ (b,c) (b,c)`), so a `Q` that is not coreflexive counts
+/-! `front` reads its test on the diagonal (`frontDen`: `TQ (b,c) (b,c)`), so a `Q` that is not coreflexive counts
     only at its diagonal. `qn` has `(2,1) ↦ (2,1)` and `(1,2) ↦ (2,1)`: on the diagonal `2` beats `1` strictly
     (`(1,2) ↦ (1,2)` is absent), and `(1,2) ↦ (2,1)` counts for nothing. Worked by hand on `x`: `3 1 2` keeps `2 3`,
     `1 2` keeps `2`, `[]` keeps `[]`. A reading by domain would keep `1 2 3` and `1 2`; `Q(D) − dom(swap)` on pairs
     would keep `1 3` and `[1]`. -/
-rel_program thinDiag where
+rel_program frontDiag where
     obj N = 0…5
     x : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,1 2)}
     qn : N×N ⟶ N×N ≜ {((1,2),(2,1)),((2,1),(2,1))}
     pp : N ⟶ [N]×[N] ≜ {(1,([1],[2])),(2,([2],[1])),(3,([],[1]))}
 
-#guard thinDiag.ok
+#guard frontDiag.ok
 #guard (do
-    let X ← get thinDiag.expanded "x" .long (.arr .long)
-    let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
-    let l := ((Tab.thin (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
+    let X ← get frontDiag.expanded "x" .long (.arr .long)
+    let Q ← get frontDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
+    let l := ((Tab.front (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
     let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [2, 3]), ([], []), ([1, 2], [2])]
     pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
 
@@ -135,14 +135,14 @@ rel_program thinDiag where
     `3 1` and `[1]`. `merge` on `pp`: `[1] [2]`, not `1 ≤ 2`, takes `2` first: `2 1`; `[2] [1]`, `2 ≤ 1`: `2 1`;
     `[] [1]`: `[1]`. By domain `[1] [2]` would give `1 2`. -/
 #guard (do
-    let X ← get thinDiag.expanded "x" .long (.arr .long)
-    let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
+    let X ← get frontDiag.expanded "x" .long (.arr .long)
+    let Q ← get frontDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
     let l := ((Tab.thinL (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
     let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [3, 2]), ([], []), ([1, 2], [2])]
     pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
 #guard (do
-    let P ← get thinDiag.expanded "pp" .long (.prod (.arr .long) (.arr .long))
-    let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
+    let P ← get frontDiag.expanded "pp" .long (.prod (.arr .long) (.arr .long))
+    let Q ← get frontDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
     let l := ((Tab.merge (fun _ => .ok Q) P).toOption.map Tab.toList).getD []
     let e : List ((Obj.long).El × (Obj.arr .long).El) := [(1, [2, 1]), (2, [2, 1]), (3, [1])]
     pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true

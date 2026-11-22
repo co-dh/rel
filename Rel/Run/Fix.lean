@@ -87,7 +87,7 @@ def loop {K X Y : Obj} (F : Tab (.prod X Y) (.prod X Y) → Except String (Tab (
 /-- **`P ≫ merge(Q)`**: on each `(x, y)` of `ran P`, the states `((x, y), acc)` from `((x, y), [])`, one round per
 element of `cat(x, y)` (`foldRounds`, `peelL` of it as the clock), so `|x| + |y|` rounds. A round takes the head `a`
 of `x` where `(a, b) Q (a, b)` (`l = dom(⟨a, b⟩ ≫ diag(Q))`, `Q` given the pairs of heads, read on the diagonal as
-`thin` reads it) or `y` is empty, else the head `b` of `y`,
+`front` reads it) or `y` is empty, else the head `b` of `y`,
 and `snoc`s it to `acc`; the result is `acc`. -/
 def mergeRound {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
     (S : Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B))) (_ : Tab K B) :

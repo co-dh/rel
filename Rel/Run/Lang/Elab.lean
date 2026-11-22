@@ -300,8 +300,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .rdiv R S U V => return .rdiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
   | _, _, .pair R S => return .pair (← R.instObj ph σ) (← S.instObj ph σ)
   | _, _, .lam R => return .lam (← R.instObj ph σ)
-  | _, _, .est Q => return .est (← Q.instObj ph σ)
-  | _, _, .thin Q => return .thin (← Q.instObj ph σ)
   | _, _, .mem => pure .mem
   | _, _, .inl => pure .inl
   | _, _, .inr => pure .inr
@@ -394,8 +392,6 @@ inductive Pre
   | pair (p q : Pre)
   | prod (p q : Pre)
   | lam (p : Pre)
-  | est (p : Pre)
-  | thin (p : Pre)
   | nil (a b : OTy)
   | mem (b : OTy)
   | inl (a b : OTy)
@@ -609,8 +605,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
   | .lam x => return .lam (← f (some (.not "Λ")) x)
-  | .est x => return .est (← mo x)
-  | .thin x => return .thin (← f (some (.not "thin")) x)
   | .own x => return .own (← mo x)
   | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
   | .succ q n => return .succ (← fp q) n
@@ -1020,7 +1014,7 @@ def lJunc : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
       (comp S (pair (comp (outl b c) (Pre.inr a b)) (outr b c))), .sum a b, c)
 
 /-- `Λ(R)` lifted on the sources `S : I ⟶ a` of each key, `Rπ₁` (`dom`) when none: `⟨𝟙,S⟩⟨π₂,Λ(Rᴵ)⟩`. `Λ` takes
-    `S = ⊤` onto `a`'s universe, being total; `E` and `thin` take `dom`, as their `a = [x]` has no universe. -/
+    `S = ⊤` onto `a`'s universe, being total; `E` and `front` take `dom`, as their `a = [x]` has no universe. -/
 def lLam (S : Option Pre) : Pre × OTy × OTy → Pre × OTy × OTy
   | (R, a, b) => (comp (pair (id I) (S.getD (comp R (outl a b)))) (pair (outr I a) (lam (keyed I R a b))), a, .arr b)
 
@@ -1067,6 +1061,8 @@ def Op.row (p : Pos) : Op → M (Option Prim)
     | some r => pure (some r)
     | none => throw ⟨p, s!"internal: no row `{s}` in `prims`"⟩
   | .map => pure (some mapRow)
+  | .est => pure (some estRow)
+  | .front => pure (some frontRow)
   | _ => pure none
 
 /-- A constant: fresh objects for its type, the explicit ones `(A,B)` unified with source and target. -/
@@ -1273,11 +1269,6 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
     | .ran => pure (.rel (.ran (.close p q s "ran( ) reads its argument whole")) t t)
     | .lam => pure (.rel (.lam q) s (.arr t))
     | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
-    | .est | .thin => do
-      unify p s!"the target of {o.sym}'s argument" t s
-      -- the order is tested on the pairs the operator compares (`build`, `param`), not read whole
-      let c := Pre.close p q s s!"{o.sym}( )"
-      pure (if o == .est then .rel (.est c) (.arr s) s else .rel (.thin c) (.arr s) (.arr s))
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
 
@@ -1478,10 +1469,10 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .comp a b => do
     let x ← elabE env m a
     let p := b.pos
-    -- `Xest(Q)`, `Xthin(Q)` with `Q` a family: `est`, `thin` run one `Q` on every array, so the rows of §e
+    -- `Xest(Q)`, `Xfront(Q)` with `Q` a family: `est`, `front` run one `Q` on every array, so the rows of §e
     -- work on `G ≜ X∋`, the values of each key; a closed `Q` takes the closed row below
     let q? ← match m, b with
-      | some _, .op _ .est [] [qe] | some _, .op _ .thin [] [qe] => do
+      | some _, .op _ .est [] [qe] | some _, .op _ .front [] [qe] => do
         let y ← elabE env m qe; pure (if y.isFam then some y else none)
       | _, _ => pure none
     let est := match b with | .op _ .est _ _ => true | _ => false
@@ -2049,8 +2040,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .outl => throw "π₁"
   | .outr => throw "π₂"
   | .lam _ => throw "Λ( )"
-  | .est _ => throw "est( )"
-  | .thin _ => throw "thin( )"
   | .mem => throw "∋"
   | .inl => pure (.conv .inl)
   | .inr => pure (.conv .inr)
@@ -2111,7 +2100,8 @@ def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) 
 /-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈` (`sumRow`'s, at its atom `t`), the
     base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`);
     `⟨𝟙,R⟩π₁` (`domRow`'s, not `𝟙 ∩ R R°`, whose `R°` an on-demand `R` often cannot run), `dom(R°)` (`ranRow`'s),
-    `Λ(𝟘)` (`nilRow`'s).
+    `Λ(𝟘)` (`nilRow`'s), `∋ ∩ (∈ \ (Q ∪ 𝟙)°)` (`estRow`'s) and `Λ(∋ − ∋ (Q − Q°))` (`frontRow`'s), of the order `Q`,
+    whose fused rows read it as its pair test `τ(Q)` (`pairTest`).
     Indexed by the term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and
     target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
@@ -2129,11 +2119,15 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
   | dom {A B : Obj} (R : Tm A B) : DfnCut (A := A) (B := A) (.comp (.pair .id R) .outl)
   | ran {A B : Obj} (R : Tm A B) : DfnCut (A := B) (B := B) (.dom (.conv R))
   | nil {A B : Obj} : DfnCut (A := A) (B := .arr B) (.lam .zero)
+  -- `∈ \ (Q ∪ 𝟙)°` read under `∋ ∩`, where an array has a column, so the universes `𝟙` are never read
+  | est {B : Obj} (Q : Tm B B) :
+    DfnCut (A := .arr B) (B := B) (.meet .mem (.ldiv (.conv .mem) (.conv (.join Q .id)) .id .id))
+  | front {B : Obj} (Q : Tm B B) : DfnCut (A := .arr B) (B := .arr B) (.lam (.diff .mem (.comp .mem (.diff Q (.conv Q)))))
 
 /-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
 def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
   | .length u₀ u | .sum _ u₀ u => some (u₀, u)
-  | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil => none
+  | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil | .est _ | .front _ => none
 
 /-- The row the definition is the fused form of. -/
 def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
@@ -2144,6 +2138,8 @@ def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .dom R => .dom R
   | .ran R => .ran R
   | .nil => .nil
+  | .est Q => .est (pairTest Q)
+  | .front Q => .front (pairTest Q)
 
 /-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does; a row whose law
     needs no universe, itself. -/
@@ -2156,6 +2152,8 @@ def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .dom R => .dom R
   | .ran R => .ran R
   | .nil => .nil
+  | .est Q => .est (pairTest Q)
+  | .front Q => .front (pairTest Q)
 
 /-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
     definition from the row's built relations and the universe `u` of its target (base and step both on it), at
@@ -2183,7 +2181,15 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
      | _ => none),
    ("nil", fun A B _ _ => match B with
      | .arr E => some ⟨_, DfnCut.nil (A := A) (B := E)⟩
-     | _ => none)]
+     | _ => none),
+   ("est", fun A B xs _ => match A, xs with
+     | .arr E, [⟨E', E'', Q⟩] => if h : E' = E ∧ E'' = E ∧ B = E then by
+         obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .est Q⟩ else none
+     | _, _ => none),
+   ("front", fun A B xs _ => match A, xs with
+     | .arr E, [⟨E', E'', Q⟩] => if h : E' = E ∧ E'' = E ∧ B = .arr E then by
+         obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .front Q⟩ else none
+     | _, _ => none)]
 
 section Build
 
@@ -2409,8 +2415,6 @@ def build : Pre → Except Err Res
   | .prod p q => do
     let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
-  | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
-  | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .mem b => return ⟨_, _, .mem (B := ← toObj objs mc dp b)⟩
   | .inl a b => return ⟨_, _, .inl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
@@ -2440,7 +2444,9 @@ def build : Pre → Except Err Res
         if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
         else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
     let some dfn := dfns.lookup r.sym | row ()
-    let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
+    -- relations that do not build alone give no definition: the row runs, a pair-test parameter tested on pairs
+    -- (`param`, as `length ≤ length°` on `[N]`), any other rebuilt by `row`, which reports its own error
+    let .ok args := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x | row ()
     -- a definition that needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it) is its fused row at every
     -- object: the target's universe is not read, since `uniPart` forces a declared one and may fail on it
     if let some ⟨_, c⟩ := dfn A B args .id then if c.uni.isNone then return ⟨A, B, c.fused⟩
@@ -2630,7 +2636,7 @@ def test (p : Pre) : Except Err Cor :=
     | _ => throw err
 termination_by (sizeOf p, 1)
 
-/-- The order (or coreflexive) parameter `Q : B ⟶ B` of `est thin filter takewhile thinL merge`
+/-- The order (or coreflexive) parameter `Q : B ⟶ B` of `est front filter takewhile thinL merge`
     as its pair test `τ(Q)` (§a), which the operator runs on the pairs it compares: a closed `Q` and a `Q` that
     runs on demand alike, and any `Q` testable on pairs. `why` names the operator; the error names the leaf. -/
 def param : Pre → Except Err ((B : Obj) × Tm (.prod B B) (.prod B B))

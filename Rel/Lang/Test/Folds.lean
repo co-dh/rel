@@ -95,7 +95,7 @@ rel_program objVars where
       | _, _ => false
 
 open Rel.Programs.prelude in
-/-- The order of `est thin thinL` given as a converse `Q°` against the converse written by hand: a builtin
+/-- The order of `est front thinL` given as a converse `Q°` against the converse written by hand: a builtin
     (`≤°`, `≥`), a parametrised definition applied then conversed (`R(rating)°`), and a monomorphic one (`R₀°`). -/
 rel_program estConv where
     obj E = {a,b,c}
@@ -110,11 +110,11 @@ rel_program estConv where
     R₀ : [E] ⟶ [E] ≜ c₀ ≤ c₀°
     R₀c : [E] ⟶ [E] ≜ c₀ ≥ c₀°
     check Λ(Hn)est(≤°) = Λ(Hn)est(≥)
-    check Λ(Hn)thin(≤°) = Λ(Hn)thin(≥)
+    check Λ(Hn)front(≤°) = Λ(Hn)front(≥)
     check Λ(H)est(R(rating)°) = Λ(H)est(Rc(rating))
-    check Λ(H)thin(R(rating)°) = Λ(H)thin(Rc(rating))
+    check Λ(H)front(R(rating)°) = Λ(H)front(Rc(rating))
     check Λ(H)est(R₀°) = Λ(H)est(R₀c)
-    check Λ(H)thin(R₀°) = Λ(H)thin(R₀c)
+    check Λ(H)front(R₀°) = Λ(H)front(R₀c)
     check Λ(H)thinL(R₀°) = Λ(H)thinL(R₀c)
     check Λ(H)est(R₀) = Λ(H)est(R(rating))
     print Λ(Hn)est(≤°)
