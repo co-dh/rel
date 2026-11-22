@@ -759,11 +759,11 @@ theorem rowOK_foldI : RowOK "foldI" := rowOK_args (c := RowCode.foldI) rfl rfl f
     split at hv
     case isFalse => simp at hv
     rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
-    dsimp only [Option.bind] at hv
+    simp only [Option.bind_some] at hv
     split at hv
     case isFalse => simp at hv
     rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
-    dsimp only [Option.bind] at hv
+    simp only [Option.bind_some] at hv
     cases hv
     refine ⟨by unfold GenK.foldI; exact GenK.ofVals_wf, fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
     rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨⟨X₂', Y₂', U⟩, _ | ⟨_, _⟩⟩⟩ <;>

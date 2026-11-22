@@ -133,6 +133,15 @@ run_meta do
 #guard_msgs in
 run_meta discard (twice (.call [] `b.k [] .id)).call?
 
+-- a lifted fold (the row `foldI`) whose start and step both read the μ variable `0` is positive in it, so `monoOK`:
+-- `Tm.spinePol` reads the row's `mono`, as for a row of one relation
+#guard
+  let x : Tm (.prod .long (.arr .long)) .long := .var false 0
+  let e : Tm .long (.prod .long .long) := .comp (.conv .outl) (.pair x x)
+  let S : Tm (.prod (.prod .long .long) .long) (.prod .long .long) :=
+    .comp (.comp .outl .outl) (.comp (.conv .outl) (.pair .outl x))
+  (Tm.mu 0 "foldI" 1 (.arg (.arg (.prim foldIRow) e) S : Tm (.prod .long (.arr .long)) .long)).monoOK
+
 /-- The placeholders of a constant built where an object `F` is stored at `.f64` (no form declares one yet), and
     twelve call objects for its variables. -/
 def phF : List Rel.QAtomicType := placeholdersOf [("F", { ty := .base "F", obj := .atom .f64 })]
