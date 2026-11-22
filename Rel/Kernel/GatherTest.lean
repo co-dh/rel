@@ -29,7 +29,7 @@ example : view (kgather (u 3) (col [1, 3, 9]) (u 3) (col [1, 2, 3])) = past := b
 #guard view (kgather (u 3) (col [1, 3, 9]) (u 3) (col [1, 2, 3])) == past
 
 -- a form other than `foR`, and a `foR` whose blocks do not cover the count, named by the argument they came in
-def dense : String ⊕ (List UInt8 × List UInt8) := .inl "gather: e: constructor 3 is not foR"
+def dense : String ⊕ (List UInt8 × List UInt8) := .inl s!"gather: e: constructor {(.gen #[] : Enc).ctorIdx} is not foR"
 example : view (kgather (u 2) (col [0, 1]) (u 2) (.gen #[])) = dense := by
   decide +kernel
 #guard view (kgather (u 2) (col [0, 1]) (u 2) (.gen #[])) == dense

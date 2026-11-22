@@ -33,17 +33,17 @@ rel_program floatT where
 #guard floatT.prints == ["a = {(-2.5, 3.0), (0.0, 0.0), (0.001, 15000000000.0), (2.5, 1.0)}",
   "c = {(1e-8, 1e21), (0.1, 123.456), (0.3333333333333333, -0.00000015)}"]
 
-/-- error: line 39, col 13: an object of sym is not declared: no literal of sym is stored; the atoms are [u8, i16, i32, i64, f32, f64, char, i8, date, datetime] -/
+-- a symbol is its id (PLAN 8.3), an 8-byte atom ordered as `i64`, so `sym` is declared
 #guard_msgs in
 rel_program symT where
     obj S : sym
 
-/-- error: line 44, col 13: an object of general is not declared: no literal of general is stored; the atoms are [u8, i16, i32, i64, f32, f64, char, i8, date, datetime] -/
+/-- error: line 44, col 13: an object of general is not declared: no literal of general is stored; the atoms are [u8, i16, i32, i64, f32, f64, char, i8, sym, date, datetime] -/
 #guard_msgs in
 rel_program generalT where
     obj G : general
 
-/-- error: line 49, col 13: unknown atom 'float'; the atoms are [u8, i16, i32, i64, f32, f64, char, i8, date, datetime] -/
+/-- error: line 49, col 13: unknown atom 'float'; the atoms are [u8, i16, i32, i64, f32, f64, char, i8, sym, date, datetime] -/
 #guard_msgs in
 rel_program unknownT where
     obj U : float

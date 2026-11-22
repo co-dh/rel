@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! ids.rs, 25, 40; own.rs, 245.
-use crate::bits::{lane_width, width_for};
+#[cfg(test)] use crate::bits::{lane_width, width_for};
 
 /// The one width dispatch, switched once per column and never per element. `by_width!(w, f::<A…>(args))` is
 /// `f::<A…, W>(args)` at the id width `w` bits, so `id_at`'s match folds as the C's `IDS_WIDTHS` does; `int w` and
@@ -25,21 +25,7 @@ macro_rules! by_width {
 }
 
 
-/// `Column.idWidth`: zero at one entry and at none -- there is one id, so nothing is stored.
-pub fn id_width(nd: usize) -> u32 { if nd < 2 { 0 } else { lane_width(width_for((nd - 1) as u64)) as u32 } }
 
-
-/// Bytes `n` ids occupy at `w` bits: `⌈n·w/8⌉`, wrapping like the C `size_t` arithmetic.
-pub fn ids_bytes(n: usize, w: u32) -> usize { n.wrapping_mul(w as usize).wrapping_add(7) / 8 }
-/// `ids_avail`: how many ids a payload of `len` bytes holds at `w` bits, which every kernel clamps the count Lean handed it
-/// to (`ids_bytes` is not invertible, so this rounds down). `usize::MAX` at width 0: a one-entry dictionary stores nothing
-/// and `id_at` answers 0 at every index.
-pub fn ids_avail(len: usize, w: u32) -> usize { if w == 0 { usize::MAX } else { len.wrapping_mul(8) / w as usize } }
-
-/// `Column.idAt`. Narrow widths share a byte, low field first; eight and above are whole elements. Inlined with a
-/// fixed-width load per arm, as ids.rs's `static inline` is: an out-of-line call per element was most of `find` ids.
-#[inline(always)]
-pub fn id_at(p: &[u8], w: u32, i: usize) -> usize { by_width!(w, lane(p, i)) as usize }
 /// Element `i` of `p` at the lane width `W` bits (0, 1, 2, 4, 8, 16, 32, 64): the one reader of a lane, so a width
 /// dispatch is `by_width!` over a function that reads through it, the width a constant inside.
 #[inline(always)]
@@ -73,7 +59,7 @@ pub fn unpack<const W: u32, T>(p: &[u8], out: &mut [T], mut f: impl FnMut(usize,
                 for (t, e) in c.iter_mut().enumerate() { f(i + t, e, (x >> (t as u32 * W) & m) as usize) }
                 i += per;
             }
-            for (j, e) in out[i..].iter_mut().enumerate() { f(i + j, e, id_at(p, W, i + j)) }
+            for (j, e) in out[i..].iter_mut().enumerate() { f(i + j, e, lane::<W>(p, i + j) as usize) }
         }
         _ => {
             for (j, (e, c)) in out.iter_mut().zip(p.chunks_exact(whole_bytes(W))).enumerate() { f(j, e, word::<W>(c)) }
@@ -90,25 +76,6 @@ pub fn word<const W: u32>(c: &[u8]) -> usize {
 }
 
 
-// The largest of whole bytes' fields at a constant narrow width: a const generic so the field loop unrolls.
-pub fn narrow_max<const W: u32>(p: &[u8]) -> u8 {
-    p.iter().fold(0, |a, &b| (0..8 / W).map(|k| b >> (k * W) & ((1 << W) - 1)).fold(a, u8::max))
-}
-
-/// The largest of `n` ids at `w` bits, in one pass.
-pub fn ids_max(p: &[u8], w: u32, n: usize) -> usize {
-    fn at<const W: u32>(p: &[u8], n: usize) -> usize {
-        match W {
-            0 => 0,
-            1 | 2 | 4 => {
-                let nb = n / (8 / W as usize);
-                (nb * (8 / W as usize)..n).fold(narrow_max::<W>(&p[..nb]) as usize, |m, i| m.max(lane::<W>(p, i) as usize))
-            }
-            _ => p.chunks_exact(W as usize / 8).take(n).map(word::<W>).max().unwrap_or(0),
-        }
-    }
-    by_width!(w, at(p, n))
-}
 
 
 // `W` const so `id_at`'s match folds, as the C's `IDS_WIDTHS` does.
@@ -123,36 +90,21 @@ mod tests {
     #[test] fn widths() {
         assert_eq!((width_for(0), width_for(1), width_for(255), width_for(256), width_for(u64::MAX)), (0, 1, 8, 9, 64));
         assert_eq!([0, 1, 2, 3, 4, 5, 8, 9, 16, 17, 32, 33, 64].map(lane_width), [0, 1, 2, 4, 4, 8, 8, 16, 16, 32, 32, 64, 64]);
-        assert_eq!([0, 1, 2, 3, 4, 5, 256, 257, 65537].map(id_width), [0, 0, 1, 2, 2, 4, 8, 16, 32]);
-        assert_eq!((ids_bytes(0, 4), ids_bytes(3, 1), ids_bytes(5, 2), ids_bytes(3, 64)), (0, 1, 2, 24));
     }
-    // `unpack` against the per-id `id_at` on ids written by `id_put`, across the word boundary and its tail
+    // `unpack` against the per-id `lane` on ids written by `id_put`, across the word boundary and its tail
     #[test] fn unpack_matches_id_at() {
         fn go<const W: u32>() {
             for n in [0usize, 1, 7, 63, 64, 65, 200, 517] {
                 let mask = if W == 64 { !0 } else { (1u64 << W) - 1 };
                 let val = |i: usize| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17) & mask;
-                let mut a = alloc::vec![0u8; ids_bytes(n, W)];
+                let mut a = alloc::vec![0u8; (n * W as usize + 7) / 8];
                 (0..n).for_each(|i| id_put(&mut a, W, i, val(i)));
-                assert!((0..n).all(|i| id_at(&a, W, i) as u64 == val(i)), "id_at w={W} n={n}");
+                assert!((0..n).all(|i| lane::<W>(&a, i) == val(i)), "id_at w={W} n={n}");
                 let mut got = alloc::vec![usize::MAX; n];
-                unpack::<W, usize>(&a, &mut got, |i, e, v| { assert!(*e == usize::MAX); *e = v; assert_eq!(v, id_at(&a, W, i)) });
-                assert!(got.iter().enumerate().all(|(i, &v)| v == id_at(&a, W, i)), "unpack w={W} n={n}");
+                unpack::<W, usize>(&a, &mut got, |i, e, v| { assert!(*e == usize::MAX); *e = v; assert_eq!(v, lane::<W>(&a, i) as usize) });
+                assert!(got.iter().enumerate().all(|(i, &v)| v == lane::<W>(&a, i) as usize), "unpack w={W} n={n}");
             }
         }
         go::<0>(); go::<1>(); go::<2>(); go::<4>(); go::<8>(); go::<16>(); go::<32>(); go::<64>();
-    }
-    #[test] fn at_and_max() {
-        let p = [0b1110_0100u8, 0b0000_0011, 5, 0, 0, 0, 0, 0, 0, 0];
-        assert_eq!([0, 1, 2, 3].map(|i| id_at(&p, 2, i)), [0, 1, 2, 3]);
-        assert_eq!(id_at(&p, 4, 1), 14);
-        assert_eq!(id_at(&p, 16, 1), 5);
-        assert_eq!(id_at(&p, 0, 99), 0);
-        for w in [1u32, 2, 4, 8, 16, 32, 64] {
-            for n in 0..(80 / w as usize).min(10) {
-                assert_eq!(ids_max(&p, w, n), (0..n).map(|i| id_at(&p, w, i)).max().unwrap_or(0), "w={w} n={n}");
-            }
-        }
-        assert_eq!(ids_max(&p, 0, 5), 0);
     }
 }

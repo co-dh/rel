@@ -176,7 +176,7 @@ def ofBits : (t : QAtomicType) → UInt64 → Carrier t
   | .datetime, v => v.toInt64
   | .f32, v => v.toUInt32
   | .f64, v => v
-  | .sym, _ => ""
+  | .sym, v => v
   | .general, _ => default
 
 /-- **`embed` on stored words**, the body of `Op.cast s t`: the word of `t` holding the value of the word `x` read at
@@ -265,7 +265,7 @@ def decEq : (t : QAtomicType) → t ≠ .general → DecidableEq (Carrier t)
   | .i64, _ | .datetime, _ => inferInstanceAs (DecidableEq Int64)
   | .f32, _ => inferInstanceAs (DecidableEq UInt32)
   | .f64, _ => inferInstanceAs (DecidableEq UInt64)
-  | .sym, _ => inferInstanceAs (DecidableEq String)
+  | .sym, _ => inferInstanceAs (DecidableEq UInt64)
   | .general, h => absurd rfl h
 
 /-- **A word `$` produces at `t` is canonical** (`nonCanonical`, the one predicate): `floatBits`' exponent field is never

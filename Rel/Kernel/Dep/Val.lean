@@ -27,7 +27,7 @@ its q type, which defeats the point of indexing by the q type.
   | .i64 | .datetime => Int64
   | .f32 => UInt32
   | .f64 => UInt64
-  | .sym => String
+  | .sym => UInt64
 
 /-- rel's own carriers, at no extension, as `QValue` is `Ext.QValue Empty`. -/
 abbrev Carrier := Ext.Carrier Empty

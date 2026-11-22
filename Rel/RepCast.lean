@@ -66,9 +66,9 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 1 ∧ QAtomicType.embed s t (X.get i) = some (w.get i)) ∨
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 0 ∧ QAtomicType.embed s t (X.get i) = none) := by
     intro i
-    obtain ⟨a, ha, -, hxa⟩ := Arr.get_raw_atom X hv.1 hgs (storeFmt_ne hst.1).2.1 i
+    obtain ⟨a, ha, -, hxa⟩ := Arr.get_raw_atom X hv.1 hgs i
     obtain ⟨v, hev, hwv⟩ := hcm.2 i.1 i.2
-    obtain ⟨b, hb, -, hwb⟩ := Arr.get_raw_atom w hv.2 hgt (storeFmt_ne hst.2).2.1 i
+    obtain ⟨b, hb, -, hwb⟩ := Arr.get_raw_atom w hv.2 hgt i
     rw [ha] at hev
     simp only [Option.getD_some, Op.eval, Except.ok.injEq] at hev
     rw [if_neg htu] at hwv

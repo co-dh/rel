@@ -14,17 +14,6 @@ import Rel.Kernel.Structural
 
 namespace Rel.Verify
 open Rel Rel.Kernel
-
-/-- Symbol `i` of a blob as the kernels compare it: its bytes without the stored NUL. -/
-def symAt (b : ByteArray) (o : Array Nat) (i : Nat) : List UInt8 := (Column.symKey b o i).data.toList
-
-/-- The symbols of a symbol payload in element order: a blob's own, an interned column's dictionary
-entry at each id. -/
-def symsOf (n : Nat) : Ext.Enc X → List (List UInt8)
-  | .syms b o => (List.range (o.size - 1)).map (symAt b o)
-  | .enum d o ids => (List.range n).map fun i => symAt d o (Column.idAt ids (Column.idWidth o) i)
-  | _ => []
-
 theorem bget (x : ByteArray) (i : Nat) : x[i]? = x.data.toList[i]? := by
   rw [Array.getElem?_toList]
   by_cases h : i < x.size
@@ -34,40 +23,6 @@ theorem bget (x : ByteArray) (i : Nat) : x[i]? = x.data.toList[i]? := by
 theorem extract_toList (b : ByteArray) (s e : Nat) :
     (b.extract s e).data.toList = (b.data.toList.drop s).take (e - s) :=
   copySlice_end b ByteArray.empty s (e - s)
-
-/-- A symbol whose end lies inside its blob is its `symBytes` without the last byte, the NUL. -/
-theorem symAt_eq_dropLast (b : ByteArray) (o : Array Nat) (i : Nat) (h : o[i + 1]! ≤ b.size) :
-    symAt b o i = (symBytes b o i).dropLast := by
-  unfold symAt symBytes Column.symKey Column.symBytes
-  simp only
-  split
-  · rw [extract_toList, List.dropLast_eq_take, List.length_take, List.length_drop, Array.length_toList,
-      List.take_take]
-    congr 1
-    split <;> simp only [ByteArray.size] at h <;> omega
-  · rename_i hn
-    rw [getElem!_neg o (i + 1) hn, extract_toList]
-    simp
-
-/-- `symCmp` answers `.eq` exactly when the two byte strings are one. -/
-theorem symCmp_eq_iff (x y : ByteArray) : Column.symCmp x y = .eq ↔ x.data.toList = y.data.toList := by
-  have hx : x.size = x.data.toList.length := Array.length_toList.symm
-  have hy : y.size = y.data.toList.length := Array.length_toList.symm
-  unfold Column.symCmp
-  simp only [bget]
-  split
-  · rename_i i hf
-    have hne : x.data.toList[i]?.getD 0 ≠ y.data.toList[i]?.getD 0 := by simpa using List.find?_some hf
-    -- not `Std.compare_eq_iff_eq`, whose `LawfulEqOrd UInt8` is classical
-    rw [show ∀ a b : UInt8, compare a b = .eq ↔ a = b from fun _ _ =>
-      compareOfLessAndEq_eq_eq UInt8.le_refl UInt8.not_le]
-    exact ⟨fun h => absurd h hne, fun h => absurd (by rw [h]) hne⟩
-  · rename_i hf
-    rw [Nat.compare_eq_eq, hx, hy]
-    refine ⟨fun hs => List.ext_getElem hs fun k hk _ => ?_, fun h => by rw [h]⟩
-    have h1 := List.find?_eq_none.1 hf k (List.mem_range.2 (by omega))
-    have h2 : x.data.toList[k]?.getD 0 = y.data.toList[k]?.getD 0 := by simpa using h1
-    rwa [List.getElem?_eq_getElem hk, List.getElem?_eq_getElem (hs ▸ hk), Option.getD_some, Option.getD_some] at h2
 
 theorem getElem_idxOf' {α : Type} [BEq α] [LawfulBEq α] (l : List α) (k : α) (h : l.idxOf k < l.length) :
     l[l.idxOf k] = k := by
@@ -181,12 +136,6 @@ open Rel Rel.Kernel
 
 theorem toUSize_toNat {n : Nat} (h : n < USize.size) : n.toUSize.toNat = n := USize.toNat_ofNat_of_lt' h
 
-theorem idWidth_toNat (o : Array Nat) : (Column.idWidth o).toUSize.toNat = Column.idWidth o := by
-  have hW := laneWidth_cases (Column.widthFor (o.size - 1 - 1))
-  simp only [show Column.laneWidth (Column.widthFor (o.size - 1 - 1)) = Column.idWidth o from rfl] at hW
-  have hs : 2 ^ 32 ≤ USize.size := USize.le_size
-  exact toUSize_toNat (by omega)
-
 /-- Through a distinct dictionary `(range d).map f`, the first element whose entry is `k` is the first
 whose id is `k`'s index in the dictionary. -/
 theorem map_range_inj {α : Type} {f : Nat → α} {d : Nat} (hD : ((List.range d).map f).Nodup) {i j : Nat}
@@ -207,115 +156,6 @@ theorem bitsAt_foldl8 (m : Nat) (g : Nat → UInt64) (a : ByteArray) (ha : a.siz
   have := hb j (by simpa using hj)
   simp only [ha, Nat.zero_add, List.getElem_range] at this
   rw [Nat.mul_comm, this, UInt64.toNat_ofNat', Nat.mod_mod, Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
-
-/-- One step of the fold that joins `syms` parts: the part's starts after its leading `0`, shifted past the blob so far, keep
-every earlier entry and read the part's entry `k` at `k` past the earlier ones. -/
-theorem concatSyms_step {blob b : ByteArray} {offs o : Array Nat} (hA : SymsWF blob offs) (hB : SymsWF b o) :
-    SymsWF (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) ∧
-      (offs ++ (o.extract 1 o.size).map (· + blob.size)).size = offs.size + (o.size - 1) ∧
-      (∀ i < offs.size - 1, symBytes (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) i =
-        symBytes blob offs i) ∧
-      ∀ k < o.size - 1, symBytes (blob ++ b) (offs ++ (o.extract 1 o.size).map (· + blob.size)) (offs.size - 1 + k) =
-        symBytes b o k := by
-  have hsz : (offs ++ (o.extract 1 o.size).map (· + blob.size)).size = offs.size + (o.size - 1) := by
-    rw [Array.size_append, Array.size_map, Array.size_extract, Nat.min_self]
-  have hO : ∀ t, (offs ++ (o.extract 1 o.size).map (· + blob.size))[t]! =
-      if t < offs.size then offs[t]! else if t < offs.size + (o.size - 1) then o[t - offs.size + 1]! + blob.size
-      else 0 := by
-    intro t
-    by_cases h1 : t < offs.size
-    · rw [if_pos h1, getElem!_pos (offs ++ (o.extract 1 o.size).map (· + blob.size)) t (by rw [hsz]; omega),
-        getElem!_pos offs t h1, Array.getElem_append_left h1]
-    · rw [if_neg h1]
-      by_cases h2 : t < offs.size + (o.size - 1)
-      · rw [if_pos h2, getElem!_pos (offs ++ (o.extract 1 o.size).map (· + blob.size)) t (by rw [hsz]; omega),
-          getElem!_pos o (t - offs.size + 1) (by omega), Array.getElem_append_right (by omega)]
-        -- not `Array.getElem_extract`, which is classical
-        have hx := extract_getElem? o 1 o.size (t - offs.size)
-        rw [if_pos (by omega), getElem?_pos (o.extract 1 o.size) (t - offs.size) (by rw [Array.size_extract]; omega),
-          show 1 + (t - offs.size) = t - offs.size + 1 by omega, getElem?_pos o (t - offs.size + 1) (by omega)] at hx
-        rw [Array.getElem_map, Option.some.inj hx]
-      · rw [if_neg h2]; exact getElem!_neg (offs ++ (o.extract 1 o.size).map (· + blob.size)) t (by rw [hsz]; omega)
-  have hl : (blob ++ b).data.toList = blob.data.toList ++ b.data.toList := by
-    rw [ByteArray.data_append, Array.toList_append]
-  have hbl : blob.data.toList.length = blob.size := Array.length_toList
-  have hbs : (blob ++ b).size = blob.size + b.size := ByteArray.size_append
-  have hp := hA.pos
-  refine ⟨⟨by omega, by rw [hO, if_pos hp, hA.first], ?_, fun t _ => ?_, fun t ht => ?_⟩, hsz, fun i hi => ?_,
-    fun k hk => ?_⟩
-  · rw [hsz, hO, hbs]
-    by_cases h0 : o.size - 1 = 0
-    · rw [if_pos (by omega), h0, Nat.add_zero, hA.last]
-      have := hB.last; rw [h0, hB.first] at this; omega
-    · rw [if_neg (by omega), if_pos (by omega), show offs.size + (o.size - 1) - 1 - offs.size + 1 = o.size - 1 by omega,
-        hB.last]; omega
-  · rw [hO, hbs]
-    split
-    · have := hA.le t ‹_›; omega
-    · split
-      · have := hB.le (t - offs.size + 1) (by omega); omega
-      · exact Nat.zero_le _
-  · rw [hsz] at ht
-    rw [hO, hO]
-    by_cases h1 : t + 1 < offs.size
-    · rw [if_pos (by omega), if_pos h1]; exact hA.mono t (by omega)
-    · by_cases h2 : t < offs.size
-      · have e : offs[t]! = blob.size := by rw [show t = offs.size - 1 by omega]; exact hA.last
-        rw [if_pos h2, if_neg h1, if_pos (by omega), e]; omega
-      · have := hB.mono (t - offs.size + 1) (by omega)
-        rw [if_neg h2, if_neg h1, if_pos (by omega), if_pos (by omega),
-          show t + 1 - offs.size + 1 = t - offs.size + 1 + 1 by omega]; omega
-  · unfold symBytes
-    have := hA.le i (by omega); have := hA.le (i + 1) (by omega)
-    rw [hO i, hO (i + 1), if_pos (by omega), if_pos (by omega), hl, List.drop_append_of_le_length (by omega),
-      List.take_append_of_le_length (by rw [List.length_drop]; omega)]
-  · unfold symBytes
-    have hlo : (offs ++ (o.extract 1 o.size).map (· + blob.size))[offs.size - 1 + k]! = blob.size + o[k]! := by
-      rw [hO]
-      by_cases k0 : k = 0
-      · subst k0; rw [if_pos (by omega), Nat.add_zero, hA.last, hB.first, Nat.add_zero]
-      · rw [if_neg (by omega), if_pos (by omega), show offs.size - 1 + k - offs.size + 1 = k by omega]; omega
-    have hhi : (offs ++ (o.extract 1 o.size).map (· + blob.size))[offs.size - 1 + k + 1]! = blob.size + o[k + 1]! := by
-      rw [hO, if_neg (by omega), if_pos (by omega), show offs.size - 1 + k + 1 - offs.size + 1 = k + 1 by omega]; omega
-    rw [hlo, hhi, hl, ← hbl, List.drop_append, Nat.add_sub_add_left, List.drop_eq_nil_of_le (by omega),
-      List.nil_append, Nat.add_sub_cancel_left]
-
-/-- The fold that joins `syms` parts, over a list of well-formed parts from a well-formed blob: well formed, one entry per entry
-of the parts, the blob's own entries kept, and part `p`'s entry `k` past the blob's and the parts' before `p`. -/
-theorem concatSyms_foldl (L : List (ByteArray × Array Nat)) (hL : ∀ x ∈ L, SymsWF x.1 x.2) (acc : ByteArray × Array Nat)
-    (hacc : SymsWF acc.1 acc.2) :
-    SymsWF (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).1
-        (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2 ∧
-      (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2.size - 1 =
-        acc.2.size - 1 + (L.map fun x => x.2.size - 1).sum ∧
-      (∀ i < acc.2.size - 1,
-        symBytes (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).1
-          (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2 i =
-        symBytes acc.1 acc.2 i) ∧
-      ∀ p (hp : p < L.length), ∀ k < L[p].2.size - 1,
-        symBytes (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).1
-          (L.foldl (fun acc x => (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size))) acc).2
-          (acc.2.size - 1 + ((L.take p).map fun x => x.2.size - 1).sum + k) = symBytes L[p].1 L[p].2 k := by
-  induction L generalizing acc with
-  | nil => exact ⟨hacc, rfl, fun _ _ => rfl, fun p hp => absurd hp (Nat.not_lt_zero _)⟩
-  | cons x L ih =>
-    obtain ⟨s1, s2, s3, s4⟩ := concatSyms_step hacc (hL x (List.mem_cons_self ..))
-    obtain ⟨i1, i2, i3, i4⟩ := ih (fun y hy => hL y (List.mem_cons_of_mem _ hy))
-      (acc.1 ++ x.1, acc.2 ++ (x.2.extract 1 x.2.size).map (· + acc.1.size)) s1
-    dsimp only at i2 i3 i4
-    have hp := hacc.pos
-    simp only [List.foldl_cons]
-    refine ⟨i1, by rw [i2, s2, List.map_cons, List.sum_cons]; omega, fun i hi => ?_, fun p hp' k hk => ?_⟩
-    · rw [i3 i (by omega), s3 i hi]
-    · cases p with
-      | zero =>
-        simp only [List.take_zero, List.map_nil, List.sum_nil, Nat.add_zero, List.getElem_cons_zero] at hk ⊢
-        rw [i3 _ (by omega), s4 k hk]
-      | succ p =>
-        simp only [List.take_succ_cons, List.map_cons, List.sum_cons, List.getElem_cons_succ] at hk ⊢
-        rw [← i4 p (Nat.lt_of_succ_lt_succ hp') k hk, s2]
-        congr 1; omega
-
 
 
 end Rel.Verify

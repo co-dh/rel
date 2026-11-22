@@ -34,7 +34,7 @@ example : view (kscatter .last (u 3) (col [1, 5, 9]) (col [1, 2, 3]) (u 3) 0) = 
 #guard view (kscatter .last (u 3) (col [1, 5, 9]) (col [1, 2, 3]) (u 3) 0) == past
 
 -- a form other than `foR`, and a `foR` whose blocks do not cover `m`
-def dense : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: e: constructor 3 is not foR"
+def dense : String ⊕ (List UInt8 × List UInt8) := .inl s!"scatter: e: constructor {(.gen #[] : Enc).ctorIdx} is not foR"
 example : view (kscatter .last (u 2) (col [0, 1]) (.gen #[]) (u 2) 0) = dense := by
   decide +kernel
 #guard view (kscatter .last (u 2) (col [0, 1]) (.gen #[]) (u 2) 0) == dense
