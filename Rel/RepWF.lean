@@ -1,5 +1,8 @@
 import Rel.RepCols
 import Rel.Run.Bits
+import Rel.Run.Power
+import Rel.Run.Asc
+import Rel.Run.Fix
 
 /-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
@@ -411,6 +414,96 @@ theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h
   simp only [Tab.inrConv, bind, Except.bind] at h
   okSplit
   all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inr_wf ‹_› hX.2))
+
+/-! ### The power operators that build no cell -/
+
+theorem length_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) .long} (h : Tab.length X = .ok t)
+    (hX : Vals.WF X) : t.WF := by
+  obtain ⟨m, lo, hi, f⟩ := X
+  simp only [Tab.length, bind, Except.bind] at h
+  okSplit
+  exact canon_wf h ⟨hX, trivial⟩
+
+theorem atPos_wf {n : USize} {k : Nat} {X : Vals (.arr B) n} {t : Tab (.arr B) B} (h : Tab.atPos k X = .ok t)
+    (hX : Vals.WF X) : t.WF := by
+  obtain ⟨m, lo, hi, f⟩ := X
+  simp only [Tab.atPos, bind, Except.bind] at h
+  okSplit
+  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.2⟩
+
+/-- **`asc` keeps `Tab.WF`**: the value side of a `canon` of `P.key`. -/
+theorem asc_wf {P : Tab B B} {t : Tab .long B} (h : Tab.asc P = .ok t) (hP : P.WF) : t.WF := by
+  simp only [Tab.asc, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  rename_i U hU; split at h; · cases h
+  cases h; exact ⟨trivial, (canon_wf hU ⟨trivial, hP.1⟩).2⟩
+
+/-- **`est` keeps `Tab.WF`** where the test `q` does: every table it builds is `mem X`, `pair`, `ran`, `−`, `≫` of
+`Tab.WF` ones. -/
+theorem est_wf {n : USize} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
+    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {X : Vals (.arr B) n} {t : Tab (.arr B) B} (h : Tab.est q X = .ok t)
+    (hX : Vals.WF X) : t.WF := by
+  simp only [Tab.est, bind, Except.bind] at h
+  split at h; · cases h
+  rename_i G hG; split at h; · cases h
+  rename_i P hP; split at h; · cases h
+  rename_i D hD; split at h; · cases h
+  rename_i V hV; split at h; · cases h
+  rename_i a ha; split at h; · cases h
+  rename_i b hb; split at h; · cases h
+  rename_i c hc; split at h; · cases h
+  rename_i d hd; split at h; · cases h
+  rename_i Y hY; split at h; · cases h
+  rename_i e he; split at h; · cases h
+  rename_i f hf
+  have wG := mem_wf hG hX
+  have wP := pair_wf hP wG wG
+  have wD := ran_wf hD wP
+  have wV := ran_wf hV wG
+  have wY := diff_wf hY (diff_wf hb wD (hq _ _ ha wD)) (ran_wf hd (pair_wf hc wV wV))
+  exact diff_wf h wG (comp_wf hf wP (outl_wf he wY.1))
+
+/-! ### Fixed points, given `Tab.pack` keeps `Tab.WF`
+
+`Vals.pack` lays its cut payload out by `Vals.cells`, whose `Vals.WF` needs the `expand` count (`Vals.cells_wf`'s
+`hT`): that is lohi3b, so `hpack` is a hypothesis here. -/
+
+theorem fixOn_wf {out : String} {step : Tab A B → Except String (Tab A B)}
+    (hpack : ∀ R t : Tab A B, R.pack = .ok t → R.WF → t.WF) (hs : ∀ X t, step X = .ok t → X.WF → t.WF) :
+    ∀ {k : Nat} {X t : Tab A B}, fixOn out step k X = .ok t → X.WF → t.WF
+  | 0, _, _, h, _ => by simp [fixOn, throw, throwThe, MonadExceptOf.throw] at h
+  | k + 1, X, t, h, hX => by
+    simp only [fixOn, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i Y hY
+    have wY : Y.WF := by
+      split at hY; · cases hY
+      exact hpack _ _ hY (hs _ _ ‹_› hX)
+    split at h
+    · cases h; exact wY
+    · exact fixOn_wf hpack hs h wY
+
+theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
+    (hpack : ∀ R t : Tab A B, R.pack = .ok t → R.WF → t.WF) (hf : ∀ X t, f X = .ok t → X.WF → t.WF)
+    {t : Tab A B} (h : mu what cap f = .ok t) : t.WF := by
+  simp only [mu, bind, Except.bind] at h
+  split at h; · cases h
+  refine fixOn_wf hpack (fun X t hX wX => ?_) h (zero_wf ‹_›)
+  simp only [bind, Except.bind] at hX
+  split at hX; · cases hX
+  exact union_wf hX wX (hf _ _ ‹_› wX)
+
+theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
+    (hpack : ∀ R t : Tab A B, R.pack = .ok t → R.WF → t.WF) (hf : ∀ X t, f X = .ok t → X.WF → t.WF)
+    {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
+  simp only [nu, bind, Except.bind] at h
+  split at h; · cases h
+  refine fixOn_wf hpack (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
+  simp only [bind, Except.bind] at hX
+  split at hX; · cases hX
+  exact inter_wf hX wX (hf _ _ ‹_› wX)
 
 end Tab
 
