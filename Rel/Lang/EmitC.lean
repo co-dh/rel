@@ -279,12 +279,50 @@ def bothB (r s : Dom → Bld TabB) (dr ds : Bool) (D : Dom) : Bld (TabB × TabB)
     let t ← r D
     pure (t, ← s (← if ds then some <$> domOf t else pure D))
 
+/-- **`compT`**: `R ≫ S`, `S` (the table `s` in a context, on demand where `ds`) read at `ran R`. -/
+def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) : Bld TabB := do
+  compB R (← s (← if ds then some <$> nubB R.n R.val else pure none))
+
+/-- **`R ∩ S`** (`Tab.inter`): `Tab.select` keeping the groups of a row of each. -/
+def interB (R S : TabB) : Bld TabB := selectB (fun m mn mx => mapB .lt m mn mx) R S
+
+/-- **`Tab.fixOn`**: rounds of `step` from `X` (`Plan.loop`, the state its count and columns), at most the register
+    `k` of them, until a round leaves the row count as it was; that round's table. `k` rounds with the count still
+    moving fail with `msg`. `Tab.pack` is the identity on the flat sides a `TabB` holds. -/
+def fixB (msg : String) (step : TabB → Bld TabB) (k : Nat) (X : TabB) : Bld TabB := do
+  let st (T : TabB) : Array Nat := #[T.n] ++ ((T.key ++ T.val).map (·.2.2)).toArray
+  let shape (rs : Array Nat) : Bld TabB := do
+    let cs := ((X.key ++ X.val).zip (rs.extract 1 rs.size).toList).map fun ((p, t, _), e) => (p, t, e)
+    pure ⟨← nth rs 0 "loop", cs.take X.key.length, cs.drop X.key.length⟩
+  shape (← loop k (st X) msg fun rs => do
+    let X ← shape rs
+    let Y ← step X
+    pure (st Y, ← call1 (kernel% USize.decEq) #[Y.n, X.n]))
+
+/-- **`Tab.nu`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical, its row count plus two of them. -/
+def nuB (f : TabB → Bld TabB) (top : TabB) : Bld TabB := do
+  let T ← canonT top
+  fixB "Tab.nu: the row count still moved at the rows of top + 2 rounds" (fun X => do interB X (← f X))
+    (← call1 (kernel% USize.add) #[T.n, ← lit (.size 2)]) T
+
+/-- **`Tab.mu`**: rounds `X ↦ X ∪ f(X)` from `Z` (`𝟘`), at most the register `k` of them. -/
+def muB (msg : String) (k : Nat) (f : TabB → Bld TabB) (Z : TabB) : Bld TabB :=
+  fixB msg (fun X => do unionB X (← f X)) k Z
+
+/-- A round count `c` as a `size` literal; past a `size`, refused rather than wrapped. -/
+def sizeB (c : Nat) : Bld Nat := do
+  unless c < USize.size do throw s!"a cap of {c} rounds, past a size"
+  lit (.size c.toUSize)
+
+/-- What a variable reads in `tabB`, given its objects: an input's registers (`Side`s) or a fixed point's round. -/
+abbrev Env := List (Nat × (Obj → Obj → Bld TabB))
+
 /-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` the
     tables bound to them, `D` the values its context knows its source to hold (`compT`: a composition's left
     operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
     that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
     them and what they need. -/
-partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+partial def tabB (σ : Env) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, .val R => do
     let (k, v) := (← litSide R.key, ← litSide R.val)
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
@@ -300,13 +338,11 @@ partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → T
     let (n, X) ← known "π₁" D; canonT ⟨n, X, repath A "" (X.take (objCols A "").length)⟩
   | _, _, .outr (A := A) (B := B) => do
     let (n, X) ← known "π₂" D; canonT ⟨n, X, repath B "" (X.drop (objCols A "").length)⟩
-  | _, _, .comp R S => do
-    let r ← tabB σ D R
-    compB r (← tabB σ (← if S.dem then some <$> nubB r.n r.val else pure none) S)
+  | _, _, .comp R S => do compTB (← tabB σ D R) (tabB σ · S) S.dem
   | _, _, .conv R => do let r ← tabB σ none R; canonT ⟨r.n, r.val, r.key⟩
   | _, _, .meet R S => do
     let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem D
-    selectB (fun m mn mx => mapB .lt m mn mx) r s
+    interB r s
   | _, _, .join R S => do unionB (← tabB σ D R) (← tabB σ D S)
   | _, _, .diff R S => do
     let r ← tabB σ D R
@@ -319,8 +355,26 @@ partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → T
   | _, _, .prod (A := A) (B := B) (C := C) (D := D') R S => do prodB A B C D' (← tabB σ none R) (← tabB σ none S)
   | _, _, .own R | _, _, .share _ R => tabB σ D R
   | A, B, .var _ k => match σ.lookup k with
-    | some s => do pure ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩
+    | some t => t A B
     | none => throw s!"variable {k}, which no input table is bound to"
+  | _, _, .nu k S b => do nuB (fun X => tabB ((k, fun _ _ => pure X) :: σ) none b) (← tabB σ none S)
+  | A, B, .mu k w cap b => do
+    muB (Tab.capMsg w cap) (← sizeB (cap - 1)) (fun X => tabB ((k, fun _ _ => pure X) :: σ) none b)
+      (← tabB σ none (.zero : Tm A B))
+  | A, B, .hylo k w b => do
+    -- `GenK.hylo` on the keys `X` in demand: the nodes `N`, no cycle among them (`ν`), then `D ≫ μY : N ≫ φ(Y)`
+    let (n, X) ← known "hylo" D
+    let some ch := b.kids k A | throw s!"Tm.gen: {w} gives the hylo no children (Tm.kids)"
+    let Dt ← coreflB n X
+    let N ← muB (Tab.capMsg w USize.size) (← sizeB (USize.size - 1)) (fun N => do
+        let C ← compTB N (tabB σ · ch) ch.dem; unionB Dt (← coreflB C.n C.val))
+      (← tabB σ none (.zero : Tm A A))
+    let C ← compTB N (tabB σ · ch) ch.dem
+    let cyc ← nuB (fun P => do let CP ← compB C P; coreflB CP.n CP.key) N
+    guard (← call1 (kernel% USize.decEq) #[cyc.n, ← lit (.size 0)]) (GenK.cycleMsg w) #[cyc.n, N.n]
+    compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
+      (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
+      (fun Y => compTB N (tabB ((k, fun _ _ => pure Y) :: σ) · b) b.dem) (← tabB σ none (.zero : Tm A B)))
   | _, _, .leq .. | _, _, .lt .. => throw
     "`≤`/`<` (`GenK.cmp`): its order `Op` per atom (`Tab.ordOp`, floats widened) and the pairs a meet hands it are not built by a plan recipe yet"
   | _, _, .succ _ | _, _, .arith .. => throw
@@ -330,8 +384,6 @@ partial def tabB (σ : List (Nat × Side × Side)) (D : Dom) : {A B : Obj} → T
   | _, _, .lam _ | _, _, .E _ | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .atPos _ | _, _, .fold ..
   | _, _, .foldr .. | _, _, .foldI .. => throw
     "a node on an array side (`Λ`, `E`, `est`, `thin`, `nil`, `at`, a fold): arrays need `cells` keys, which no plan recipe builds yet"
-  | _, _, .nu .. | _, _, .mu .. | _, _, .hylo .. => throw
-    "a fixed point (`ν`, `μ`, `hylo`): rounds until no row changes, a loop, which the plan has no instruction for"
   | _, _, .prim _ | _, _, .arg .. | _, _, .call .. | _, _, .callCv .. => throw
     "a library row or a constant's call: its row's `Tab` operator (`kernRows`) is not built by a plan recipe yet"
 
@@ -342,7 +394,8 @@ def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Sid
     | some s => pure s
     | none => throw s!"variable {k}, which no input table is bound to"
   | _, _, .share _ R => ofTm σ R
-  | _, _, t => do sidesOf (← tabB σ none t)
+  | _, _, t => do
+    sidesOf (← tabB (σ.map fun (k, s) => (k, fun A B => do pure ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩)) none t)
 
 
 /-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
@@ -595,6 +648,7 @@ partial def reads (base : Nat) : Instr → List Nat
   | .ctor _ os ss => os.toList ++ ss.toList
   | .proj x .. | .sproj x .. => [x]
   | .lit _ | .global _ => []
+  | .loop k init b out d _ => k :: init.toList ++ ((b.flatMap (reads base) ++ out.toList ++ [d]).filter (· < base))
 
 /-- How many registers an instruction defines. -/
 def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Array (Array Ty)) : Instr → Except String Nat
@@ -604,6 +658,7 @@ def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Arra
   | .apply f _ => match fres[f]? with | some t => pure t.size | none => throw s!"apply f{f}: no earlier function"
   | .global g => match gtys[g]? with | some t => pure t.size | none => throw s!"global g{g}: no earlier global"
   | .ite _ _ rt _ _ => pure rt.size
+  | .loop _ init .. => pure init.size
   | .ctor .. | .proj .. | .sproj .. => pure 1
 
 /-- The emitter's state: the next fresh C name, the prototypes, the statics. -/
@@ -774,6 +829,30 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
       let set (xs : Array String) := String.join ((os.zip xs.toList).map fun ((o, _), v) => s!"{ind}  {o} = {v};\n")
       c := c ++ s!"{ind}if ({x}) \{\n" ++ tc ++ set txs ++ s!"{ind}} else \{\n" ++ ec ++ set exs ++ s!"{ind}}\n"
       for (o, t) in os do rs := rs.push (o, t, true); live := live ++ [rs.size - 1]
+    | .loop k init body out done msg =>
+      let (kx, kt, _) ← creg rs k
+      unless kt == .size do throw s!"loop reads register {k}, a {repr kt}, not a size"
+      -- the state owns a reference to each `init`; a round releases the state it reads and leaves the next one owned
+      let st ← init.toList.mapM fun a => do let (y, t, _) ← creg rs a; pure (← fresh, y, t)
+      let cnt ← fresh
+      c := c ++ s!"{ind}size_t {cnt} = {kx};\n"
+      for (x, y, t) in st do c := c ++ s!"{ind}{cTy t} {x} = {y};" ++ (if isObj t then s!" lean_inc({x});\n" else "\n")
+      let srs := rs ++ (st.map fun (x, _, t) => (x, t, true)).toArray
+      let (bc, brs, bxs) ← blockC abi fres gtys (ind ++ "    ") srs ((List.range st.length).map (rs.size + ·)) body
+        (out.push done)
+      for ((_, _, t), a) in st.zip out.toList do
+        let t' := (← creg brs a).2.1
+        unless t' == t do throw s!"loop: next state register {a} is a {repr t'}, the state's a {repr t}"
+      -- through temporaries, since a next state may be another slot of this one
+      let tmp ← st.mapM fun (_, _, t) => return (← fresh, t)
+      let dn ← fresh
+      let some dv := bxs.back? | throw "loop: a round answers no done register"
+      c := c ++ s!"{ind}for (;;) \{\n{ind}  if ({cnt}-- == 0) \{ fputs({cStr msg}, stderr); fputc('\\n', stderr); exit(1); }\n" ++
+        s!"{ind}  uint8_t {dn};\n{ind}  \{\n" ++ bc ++
+        String.join ((tmp.zip bxs.toList).map fun ((x, t), v) => s!"{ind}    {cTy t} {x} = {v};\n") ++
+        String.join ((st.zip tmp).map fun ((x, _, _), (y, _)) => s!"{ind}    {x} = {y};\n") ++
+        s!"{ind}    {dn} = {dv};\n{ind}  }\n{ind}  if ({dn}) break;\n{ind}}\n"
+      for (x, _, t) in st do rs := rs.push (x, t, true); live := live ++ [rs.size - 1]
     let (l, s) := release rs live after; live := l; c := c ++ s
   -- the results: moved where held, counted otherwise
   let mut outs : Array String := #[]

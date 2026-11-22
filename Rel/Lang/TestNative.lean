@@ -28,6 +28,10 @@ rel_program native1a where
     pl : X × N ⟶ N ≜ (x × x°) π₁
     ix : X ⟶ X ≜ x x° 𝟙
     tp : X ⟶ X ≜ x ⊤
+    ed : N ⟶ N ≜ {(1,2),(2,3),(3,5)}
+    tc : N ⟶ N ≜ μY : ed ∪ (Y ed)
+    cy : N ⟶ N ≜ {(1,1),(1,2),(2,3)}
+    gf : N ⟶ N ≜ νY : cy ∩ (cy Y)
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
@@ -131,7 +135,7 @@ def semOuts : List (String × (String → IO Unit)) :=
   [("x", semOut native1a.x), ("un", semOut native1a.un), ("me", semOut native1a.me), ("df", semOut native1a.df),
    ("zr", semOut native1a.zr), ("cm", semOut native1a.cm), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
    ("pr", semOut native1a.pr), ("cx", semOut native1a.cx), ("po", semOut native1a.po), ("pl", semOut native1a.pl),
-   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp)]
+   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("tc", semOut native1a.tc), ("gf", semOut native1a.gf)]
 
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
