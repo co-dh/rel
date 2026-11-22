@@ -81,23 +81,38 @@ def atomName (t : Rel.QAtomicType) : String :=
 /-- The bits of the float of `w` bytes nearest `±m·10^e` (`s` false) or `±m·10^(-e)` (`s` true): `OfScientific`,
     the reader of Lean's own float literals; `neg` its sign, so `-0.0` is the negative zero. -/
 def floatBits (w : Nat) (neg : Bool) (m : Nat) (s : Bool) (e : Nat) : UInt64 :=
-  if w == 4 then let x : Float32 := OfScientific.ofScientific m s e; (if neg then -x else x).toBits.toUInt64
-  else let x : Float := OfScientific.ofScientific m s e; (if neg then -x else x).toBits
+  -- Clinger's fast path: `m` and `10^e` exact in the float, so one rounded `*` or `/`, where `OfScientific` builds
+  -- `m·5^e` or `m·2^k` as a `Nat`, a GMP number past `2^63`
+  if w == 4 then
+    let x : Float32 := if m >>> 24 == 0 && e ≤ 10 then
+        let (a, p) := (m.toUInt64.toFloat32, ((10 : UInt64) ^ e).toFloat32); if s then a / p else a * p
+      else OfScientific.ofScientific m s e
+    (if neg then -x else x).toBits.toUInt64
+  else
+    let x : Float := if m >>> 53 == 0 && e ≤ 22 then
+        let (a, p) := (m.toUInt64.toFloat, ((5 : UInt64) ^ e).toFloat.scaleB e); if s then a / p else a * p
+      else OfScientific.ofScientific m s e
+    (if neg then -x else x).toBits
 
 /-- The float of `w` bytes with bits `b` as its sign and `M`, `E`, its value `±M·2^E`; none at an infinity or a NaN
-    (every exponent bit set). -/
+    (every exponent bit set). The fields are cut from the word as words: `b.toNat` of a negative float is past `2^63`. -/
 def floatParts (w : Nat) (b : UInt64) : Option (Bool × Nat × Int) :=
-  let (mb, eb) : Nat × Nat := if w == 4 then (23, 8) else (52, 11)
-  let (fr, ex, neg) := (b.toNat % 2 ^ mb, b.toNat / 2 ^ mb % 2 ^ eb, b.toNat / 2 ^ (mb + eb) % 2 == 1)
-  let bias : Int := 2 ^ (eb - 1) - 1
-  if ex == 2 ^ eb - 1 then none
-  else if ex == 0 then some (neg, fr, 1 - bias - mb) else some (neg, fr + 2 ^ mb, ex - bias - mb)
+  let (mb, eb) : UInt64 × UInt64 := if w == 4 then (23, 8) else (52, 11)
+  let (fr, ex, neg) := (b &&& ((1 <<< mb) - 1), (b >>> mb) &&& ((1 <<< eb) - 1), (b >>> (mb + eb)) &&& 1 == 1)
+  let bias : Int := ((1 <<< (eb - 1)) - 1 : UInt64).toNat
+  if ex == (1 <<< eb) - 1 then none
+  else if ex == 0 then some (neg, fr.toNat, 1 - bias - mb.toNat)
+  else some (neg, (fr ||| (1 <<< mb)).toNat, ex.toNat - bias - mb.toNat)
 
-/-- A number word's sign (`-`, which `Embed.wNeg` writes before the token) and its token as Lean reads a number
+/-- A number word's sign, `-`, which `Embed.wNeg` writes before the token, and its token. -/
+def wordSign (w : String) : Bool × String :=
+  match w.toList with | '-' :: cs => (true, String.ofList cs) | cs => (false, String.ofList cs)
+
+/-- A number word's sign (`wordSign`) and its token as Lean reads a number
     literal: a whole number `k` as `(k, false, 0)`, a scientific one (`2.5`, `1e-3`, `1.5e10`) by
     `Syntax.decodeScientificLitVal?`, `m·10^(∓e)` as `(m, s, e)`. -/
 def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
-  let (neg, d) := match w.toList with | '-' :: cs => (true, String.ofList cs) | cs => (false, String.ofList cs)
+  let (neg, d) := wordSign w
   match d.toNat? with
   | some k => some (neg, k, false, 0)
   | none => (Lean.Syntax.decodeScientificLitVal? d).map fun (m, s, e) => (neg, m, s, e)
@@ -127,9 +142,17 @@ def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Er
       let x := if t.nonCanonical (floatBits b neg m s e) then floatBits b false m s e else floatBits b neg m s e
       if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
     | none => throw ⟨p, no⟩
-  | some (b, false, sg) => match w.toInt? <|> (qForm t).bind (·.2 (Db.Csv.bytes w)) with
-    | some k => let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
-      if lo ≤ k ∧ k < hi then pure (Int64.ofInt k).toUInt64 else throw ⟨p, s!"{no}: it is not in {lo}…{hi - 1}"⟩
+  | some (b, false, sg) =>
+    -- sign and magnitude, the range checked by shifts: an `Int` past `±2^31` and the bound `2 ^ 63` are GMP numbers
+    let sk := (let (neg, d) := wordSign w; d.toNat?.map (neg, ·)) <|>
+      ((qForm t).bind (·.2 (Db.Csv.bytes w))).map fun k => (decide (k < 0), k.natAbs)
+    match sk with
+    | some (neg, k) =>
+      if sg && (k >>> (8 * b - 1) == 0 || neg && k >>> (8 * b - 1) == 1 && k.toUInt64 == (2 : UInt64) ^ (8 * b - 1))
+        || !sg && k >>> (8 * b) == 0 && (!neg || k == 0)
+      then pure (if neg then 0 - k.toUInt64 else k.toUInt64)
+      else let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
+        throw ⟨p, s!"{no}: it is not in {lo}…{hi - 1}"⟩
     | none => throw ⟨p, match qForm t with
       | some (f, _) => s!"{no}: it is no integer and no {f} of the years 0001–9999 in the range of {atomName t}"
       | none => no⟩

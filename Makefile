@@ -28,7 +28,7 @@ GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
 GATES_LIST := build allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
-.PHONY: check main-only index panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
+.PHONY: check main-only nogmp index panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -228,6 +228,26 @@ bang-allow pointfree-allow decode-allow kernel-tested-allow: %-allow: index
 	$(GATE)
 	$($*_NOW)
 	cp $(T)/$*.txt $*-allow.txt
+
+# no GMP from this package's code: every *Test* module under Rel/ is elaborated with test/nogmp/nogmp.c preloaded,
+# which aborts on a GMP allocation whose stack holds a frame of a shared library under .lake/build/lib (a precompiled
+# module), except in a module initializer (a closed term computed once at load, listed); Lean's own GMP use (elaborator,
+# kernel, interpreter) is only counted. Every test module elaborates the package, so this runs in the main checkout.
+# The native program links no GMP at all (crate/rt aborts in lean_big_usize_to_nat), so its run is `native`
+NOGMP   := $(CURDIR)/.lake/build/nogmp/libnogmp.so
+# `make nogmp NOGMP_MODE=log` lists every site with its count instead of stopping at the first
+NOGMP_MODE ?= abort
+$(NOGMP): $(CURDIR)/test/nogmp/nogmp.c
+	mkdir -p $(dir $@)
+	cc -O2 -Wall -Werror -shared -fPIC -o $@ $< -ldl -lpthread
+nogmp: main-only $(NOGMP) native
+	$(GATE)
+	nm $(NATIVE) > $(T)/nogmp.nm
+	if grep ' __gmp' $(T)/nogmp.nm >&2; then echo "nogmp: $(NATIVE) links GMP (above)" >&2; exit 1; fi
+	find $(CURDIR)/Rel -path "*Test*" -name "*.lean" | sort > $(T)/nogmp.tests
+	test -s $(T)/nogmp.tests || { echo "nogmp: no *Test* module under $(CURDIR)/Rel" >&2; exit 1; }
+	xargs -I{} env REL_NOGMP=$(NOGMP_MODE) REL_NOGMP_OURS=$(CURDIR)/.lake/build/lib LD_PRELOAD=$(NOGMP) \
+	  CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean {} < $(T)/nogmp.tests
 
 # every @[extern] name declared in RelKernel is defined in what a native program links: librelk.a (the kernels) or
 # qrt.o (the Lean runtime symbols crate/rt provides, e.g. lean_array_push)

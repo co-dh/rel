@@ -36,6 +36,20 @@ def ordCode (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
   let u := v &&& mask
   if float then (if u &&& top != 0 then u ^^^ mask else u ||| top) else if signed then u ^^^ top else u
 
+/-- What `ordCode` runs as: its masks as word powers (`Column.toUInt64_two_pow`); the `Nat` `2 ^ 63` at `w = 8` is a
+GMP number. -/
+private def ordCodeImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
+  let mask : UInt64 := if w == 8 then 0xffffffffffffffff else (2 : UInt64) ^ (8 * w) - 1
+  let top : UInt64 := (2 : UInt64) ^ (8 * w - 1)
+  let u := v &&& mask
+  if float then (if u &&& top != 0 then u ^^^ mask else u ||| top) else if signed then u ^^^ top else u
+
+@[csimp] private theorem ordCode_eq_impl : @ordCode = @ordCodeImpl := by
+  funext w f s v
+  have h : (2 ^ (8 * w) - 1 : Nat).toUInt64 = (2 : UInt64) ^ (8 * w) - 1 := by
+    rw [← Column.toUInt64_two_pow]; exact UInt64.ofNat_sub Nat.one_le_two_pow
+  simp only [ordCode, ordCodeImpl, h, Column.toUInt64_two_pow]
+
 /-- The order code of a raw word of a column of type `t`: `ordCode` at `t`'s layout (`ascLayout`). -/
 def ascOrd (t : QAtomicType) : Option (UInt64 → UInt64) :=
   (ascLayout t).map fun (w, f, s) => ordCode w f s
