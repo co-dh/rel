@@ -44,13 +44,13 @@ namespace GenK
     monotone, so `ν = TS ∩ Φ(ν) ⊑ X ∩ Φ(X)`) and lies inside `TS`; the last round is its table before it, so
     `X ⊑ TS ∩ Φ(X)` and `X ⊑ ν` (`le_nu`). -/
 theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den A B} {Φ : Den A B → Den A B}
-    (hS : ∀ K, S.Reps K TS) (hφ : ∀ X K, (φ X).Reps K (Φ (rep X))) (hm : Monotonic Φ) :
-    ∀ K, (GenK.nu A B S φ).Reps K (Core.Rel.nu fun X => TS ∩ Φ X) := by
-  intro K; rw [reps_iff]; intro t h
+    (hS : ∀ K, K.WF → S.Reps K TS) (hφ : ∀ X K, K.WF → (φ X).Reps K (Φ (rep X))) (hm : Monotonic Φ) :
+    ∀ K, K.WF → (GenK.nu A B S φ).Reps K (Core.Rel.nu fun X => TS ∩ Φ X) := by
+  intro K _; rw [reps_iff]; intro t h
   obtain ⟨s, hs, h⟩ := bind_ok (show (S.runE {} >>= fun s => Tab.nu (fun X => (φ X).runE {}) s) = .ok t from h)
-  obtain rfl : TS = rep s := agrees_empty ((reps_iff _ _ _).1 (hS {}) s hs)
+  obtain rfl : TS = rep s := agrees_empty ((reps_iff _ _ _).1 (hS {} Known.wf_empty) s hs)
   have eφ : ∀ X g, (φ X).runE {} = .ok g → Φ (rep X) = rep g :=
-    fun X g hg => agrees_empty ((reps_iff _ _ _).1 (hφ X {}) g hg)
+    fun X g hg => agrees_empty ((reps_iff _ _ _).1 (hφ X {} Known.wf_empty) g hg)
   have hfix : rep s ∩ Φ (Core.Rel.nu fun X => rep s ∩ Φ X) = Core.Rel.nu fun X => rep s ∩ Φ X :=
     nu_fix (φ := fun X => rep s ∩ Φ X) fun X Y hXY =>
       le_inter (inter_le_left _ _) (Core.Rel.le_trans (inter_le_right _ _) (hm X Y hXY))
@@ -89,12 +89,13 @@ theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den 
     monotone, so `X ∪ Φ(X) ⊑ μ ∪ Φ(μ) = μ`); the answer is a prefixed point of `Φ`, so `μ` lies inside it
     (`mu_le`). A run reaching its cap is an error, which represents anything. -/
 theorem mu_sound {A B : Obj} {w : String} {cap : Nat} {φ : Tab A B → Rel A B} {Φ : Den A B → Den A B}
-    (hφ : ∀ X K, (φ X).Reps K (Φ (rep X))) (hm : Monotonic Φ) :
-    ∀ K, (GenK.mu A B w cap φ).Reps K (Core.Rel.mu Φ) := by
-  intro K; rw [reps_iff]; intro t h
+    (hφ : ∀ X K, K.WF → (φ X).Reps K (Φ (rep X))) (wφ : ∀ X, (φ X).Wf) (hm : Monotonic Φ) :
+    ∀ K, K.WF → (GenK.mu A B w cap φ).Reps K (Core.Rel.mu Φ) := by
+  intro K _; rw [reps_iff]; intro t h
   obtain ⟨mt, ft⟩ := Tab.mu_holds (F := Φ)
-    (fun X g hg a b => by
-      show rep g a b ↔ Φ (rep X) a b; rw [agrees_empty ((reps_iff _ _ _).1 (hφ X {}) g hg)])
+    (fun X g _ hg a b => by
+      show rep g a b ↔ Φ (rep X) a b; rw [agrees_empty ((reps_iff _ _ _).1 (hφ X {} Known.wf_empty) g hg)])
+    (fun X g hg _ => (wφ X).runE Known.wf_empty hg)
     (· ⊑ Core.Rel.mu Φ) (le_iff.2 fun _ _ hz => hz.elim)
     (fun X mX => le_iff.2 fun a b hab => hab.elim (le_iff.1 mX a b)
       fun hx => le_iff.1 (mu_prefixed hm) a b (le_iff.1 (hm _ _ mX) a b hx))

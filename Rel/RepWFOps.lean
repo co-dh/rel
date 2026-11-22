@@ -396,6 +396,40 @@ theorem map_wf {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {t : 
   obtain ⟨c, hc, p, hp, hs⟩ := hs
   exact snoc_wf hs (pair_wf hp wa (comp_wf hc wel hR))
 
+/-- **The rounds of `Tab.mu`**, its step `f` acting on relations as `F`: the table it returns satisfies every
+property `S` that `𝟘` has and each round `X ↦ X ∪ F(X)` keeps (`fixOn_inv`), and is a prefixed point of `F`: the
+last round keeps the row count of the table before it, so it keeps the relation (`holds_of_n`). -/
+theorem mu_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
+    {F : Core.Rel A.El B.El → Core.Rel A.El B.El} (hf : ∀ X T, X.WF → f X = .ok T → ∀ a b, T.Holds a b ↔ F X.Holds a b)
+    (hfw : ∀ X t, f X = .ok t → X.WF → t.WF)
+    (S : Core.Rel A.El B.El → Prop) (h0 : S fun _ _ => False) (hS : ∀ X, S X → S fun a b => X a b ∨ F X a b)
+    {Y : Tab A B} (h : Tab.mu what cap f = .ok Y) : S Y.Holds ∧ ∀ a b, F Y.Holds a b → Y.Holds a b := by
+  unfold Tab.mu at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
+  -- a round: `X ∪ f(X)`, then `pack`
+  have round : ∀ X U U', X.WF → (f X >>= X.union) = .ok U → U.pack = .ok U' →
+      U'.toList.Nodup ∧ U'.Holds = (fun a b => X.Holds a b ∨ F X.Holds a b) ∧ U'.WF := by
+    intro X U U' wX hU hp
+    simp only [bind] at hU; rw [Except.bind_eq_ok'] at hU; obtain ⟨T, hT, hu⟩ := hU
+    refine ⟨(pack_toList hp).2 ▸ union_nodup hu, funext fun a => funext fun b => propext ?_,
+      pack_wf hp (union_wf hu wX (hfw _ _ hT wX))⟩
+    rw [pack_holds hp, union_holds hu, hf X T wX hT]
+  have eZ : Z.Holds = fun _ _ => False := funext fun a => funext fun b => propext (zero_holds hZ a b)
+  obtain ⟨X, U, ⟨dX, sX, wX⟩, hU, hp, hn⟩ := fixOn_inv (fun X : Tab A B => X.toList.Nodup ∧ S X.Holds ∧ X.WF)
+    (fun X U U' ⟨_, sX, wX⟩ hU hp => by
+      obtain ⟨d, e, w⟩ := round X U U' wX hU hp
+      rw [e]; exact ⟨d, hS _ sX, w⟩) _ _ _
+    ⟨by
+      rw [show Z.toList = [] from List.eq_nil_iff_forall_not_mem.2 fun p hp => by
+        have := (holds_iff_mem_toList Z p.1 p.2).2 hp; rw [eZ] at this; exact this]
+      exact List.nodup_nil, by rw [eZ]; exact h0, zero_wf hZ⟩ h
+  obtain ⟨dY, eY, -⟩ := round X U Y wX hU hp
+  have hY : ∀ a b, Y.Holds a b ↔ X.Holds a b ∨ F X.Holds a b := fun a b => by rw [eY]
+  have hX := holds_of_n dX dY (fun a b hab => (hY a b).2 (.inl hab)) hn.symm
+  have eXY : Y.Holds = X.Holds := funext fun a => funext fun b => propext ⟨hX a b, fun hx => (hY a b).2 (.inl hx)⟩
+  refine ⟨by rw [eXY]; exact sX, fun a b hF => (hY a b).2 (.inr ?_)⟩
+  rw [eXY] at hF; exact hF
+
 end Tab
 
 end Rel

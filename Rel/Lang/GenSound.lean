@@ -253,37 +253,37 @@ theorem rowOK_of {s : String} {c : RowCode} {D : RowDen c} {f : List Obj → Cod
 
 theorem rowOK_mem : RowOK "∋" := rowOK_of (c := RowCode.mem) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.mem_holds h⟩⟩
 
 theorem rowOK_inl : RowOK "inl" := rowOK_of (c := RowCode.inl) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;>
-    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inl_holds h⟩⟩
+    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h⟩⟩
 
 theorem rowOK_inr : RowOK "inr" := rowOK_of (c := RowCode.inr) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;>
-    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inr_holds h⟩⟩
+    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h⟩⟩
 
 theorem rowOK_inlC : RowOK "inl°" := rowOK_of (c := RowCode.inlC) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;>
-    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inlConv_holds h⟩⟩
+    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inlConv_holds h⟩⟩
 
 theorem rowOK_inrC : RowOK "inr°" := rowOK_of (c := RowCode.inrC) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨_, _ | _⟩ <;>
-    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inrConv_holds h⟩⟩
+    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inrConv_holds h⟩⟩
 
 theorem rowOK_tau : RowOK "τ" := rowOK_of (c := RowCode.tau) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
   cases σ <;> refine ⟨GenK.ofVals_wf, ?_⟩ <;>
-    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.tau_den h⟩
+    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.tau_den h⟩
 
 theorem rowOK_setify : RowOK "setify" := rowOK_of (c := RowCode.setify) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
   cases σ <;> refine ⟨GenK.ofVals_wf, ?_⟩ <;>
-    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.setify_den h⟩
+    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.setify_den h⟩
 
 /-- An array is below itself extended by a non-empty one (`Obj.lt` on `[B]`: a proper prefix first). -/
 theorem arr_lt_append (B : Obj) : ∀ (xs ys : List B.El), ys ≠ [] → (Obj.arr B).lt xs (xs ++ ys)
@@ -362,14 +362,14 @@ theorem Tab.tails_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
 theorem rowOK_tails : RowOK "tails" := rowOK_of (c := RowCode.tails) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
   cases σ <;> refine ⟨GenK.ofVals_wf, ?_⟩ <;>
-    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.tails_den h⟩
+    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.tails_den h⟩
 
 /-- A row run after the keys (`GenK.after`) represents `P` when `f D`, on the keys' coreflexive `D`, holds `D ≫ P`. -/
 theorem GenK.after_row_sound {A B : Obj} {f : {K : Obj} → Tab K A → Except String (Tab K B)}
     {P : Core.Rel A.El B.El}
     (hf : ∀ {K : Obj} (D : Tab K A) t, f D = .ok t → ∀ k b, t.Holds k b ↔ ∃ a, D.Holds k a ∧ P a b) :
     ∀ K, (GenK.after A B f).Reps K P :=
-  GenK.ofVals_row_sound fun _ X t h a b => by
+  GenK.ofVals_row_sound fun _ X t _ h a b => by
     cases hD : Tab.idU X with
     | error e => rw [hD] at h; exact nomatch h
     | ok D =>
@@ -393,7 +393,7 @@ theorem rowOK_cat : RowOK "cat" := rowOK_of (c := RowCode.cat) rfl rfl fun _ σ 
 
 theorem rowOK_uncat : RowOK "uncat" := rowOK_of (c := RowCode.uncat) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.uncat_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.uncat_holds h⟩⟩
 
 /-- **`cat° ≫ graph f`** on the cells `X` (`Tab.prefix`, `Tab.suffix`): `uncat`'s splits composed with a table `g` of
 them that holds `graph f`. -/
@@ -429,19 +429,19 @@ theorem Tab.suffix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.
 
 theorem rowOK_prefix : RowOK "prefix" := rowOK_of (c := RowCode.prefix) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.prefix_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.prefix_holds h⟩⟩
 
 theorem rowOK_suffix : RowOK "suffix" := rowOK_of (c := RowCode.suffix) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.suffix_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.suffix_holds h⟩⟩
 
 theorem rowOK_uncons : RowOK "uncons" := rowOK_of (c := RowCode.uncons) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.uncons_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.uncons_holds h⟩⟩
 
 theorem rowOK_unsnoc : RowOK "unsnoc" := rowOK_of (c := RowCode.unsnoc) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.unsnoc_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.unsnoc_holds h⟩⟩
 
 /-- **`inits` on the cells `X`** (`Tab.inits`) = `Λ(prefix)`: each array of `X` to its prefixes by increasing length. -/
 theorem Tab.inits_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr (.arr B))}
@@ -459,7 +459,7 @@ theorem Tab.inits_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
 theorem rowOK_inits : RowOK "inits" := rowOK_of (c := RowCode.inits) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
   cases σ <;> refine ⟨GenK.ofVals_wf, ?_⟩ <;>
-    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.inits_den h⟩
+    exact ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inits_den h⟩
 
 theorem rowOK_zip : RowOK "zip" := rowOK_of (c := RowCode.zip) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
@@ -468,17 +468,17 @@ theorem rowOK_zip : RowOK "zip" := rowOK_of (c := RowCode.zip) rfl rfl fun _ σ 
 
 theorem rowOK_concat : RowOK "concat" := rowOK_of (c := RowCode.concat) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.flatten_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.flatten_holds h⟩⟩
 
 theorem rowOK_length : RowOK "length" := rowOK_of (c := RowCode.length) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.length_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.length_holds h⟩⟩
 
 /-- `$` at the objects `σ` names: the graph `castDen`, no ordering hypothesis. -/
 theorem rowOK_cast : RowOK "$" := rowOK_of (c := RowCode.cast) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
-    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.cast_den h⟩⟩
+    exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.cast_den h⟩⟩
 
 /-- A `floatOps` row at the object `σ` names: the graph `floatDen` of its `Op`, one case per row. -/
 theorem rowOK_float {s : String} (hs : s ∈ floatOps.map (·.1)) : RowOK s := by
@@ -490,15 +490,15 @@ theorem rowOK_float {s : String} (hs : s ∈ floatOps.map (·.1)) : RowOK s := b
     | exact rowOK_of (c := ⟨_, fun σ => (σ₁ σ, σ₂ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
         cases hv
         rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
-          exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.floatOp_den rfl h⟩⟩
+          exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.floatOp_den rfl h⟩⟩
     | exact rowOK_of (c := ⟨_, fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₂ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
         cases hv
         rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
-          exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.floatOp_den rfl h⟩⟩
+          exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.floatOp_den rfl h⟩⟩
 
 theorem rowOK_sum : RowOK "sum" := rowOK_of (c := RowCode.sum) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ h => Tab.sum_holds h⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.sum_holds h⟩⟩
 
 theorem rowOK_loop : RowOK "loop" := rowOK_args (c := RowCode.loop) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
   have h1 : rowArity "loop" = 1 := by decide
@@ -690,7 +690,7 @@ theorem GenK.thinL_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (
     (hQ : ∀ K, Q.Reps K TQ) :
     ∀ K, (GenK.testVals B (.arr B) (.arr B) Q fun q X => Tab.thinL q X).Reps K
       (thinLDen fun a b => decide (TQ (a, b) (a, b))) :=
-  GenK.ofVals_row_sound fun _ _ _ h xs w => Tab.thinL_holds (fun D _ hT p hp =>
+  GenK.ofVals_row_sound fun _ _ _ _ h xs w => Tab.thinL_holds (fun D _ hT p hp =>
     (GenK.reps_iff ⟨some ⟨D.n, D.val⟩, none, none⟩ _ _).1 (hQ _) _ hT p _ ((GenK.side_some rfl p).2 hp) rfl trivial)
     h xs w
 
@@ -941,8 +941,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case zero => exact GenK.zero_sound
   case id => exact GenK.id_sound
   case top V ih => exact GenK.top_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case outl => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
-  case outr => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
+  case outl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.outl_holds h
+  case outr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.outr_holds h
   case comp R S ihR ihS =>
     exact GenK.comp_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf S η hs.2))
@@ -974,9 +974,9 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       (code_of ((ihS (by omega)).1 η ρ hl.2 hs)) (code_wf (gen_wf S η hs.2))
   case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case E R ih =>
-    exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
+    exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ _ h => Tab.mem_holds h)
       (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf R η hs.2)))
-  case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
+  case nil => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
@@ -990,7 +990,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs))
       (fun X => code_of ((ihb (by omega)).1 _ _ hl.2.2 (hs.bind k (hconst X) (by trivial)))) fun _ _ h => Tm.den_mono hl.1 h
   case mu k w m b ih =>
-    exact GenK.mu_sound (fun X => code_of ((ih (by omega)).1 _ _ hl.2 (hs.bind k (hconst X) (by trivial)))) fun _ _ h => Tm.den_mono hl.1 h
+    exact GenK.mu_sound (fun X => code_of ((ih (by omega)).1 _ _ hl.2 (hs.bind k (hconst X) (by trivial))))
+      (fun X => code_wf (gen_wf b _ (hs.bind k (hconst X) (by trivial)).2)) fun _ _ h => Tm.den_mono hl.1 h
   -- children `Tm.kids` reads in no shape: `Tm.gen`'s error table
   case hylo A' B' k w b ih =>
     have hc := Tm.genHyp_kids k A' b hl.2

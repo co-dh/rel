@@ -175,9 +175,9 @@ theorem ofVals_sound {f : {n : USize} → Vals A n → Except String (Tab A B)} 
 /-- A leaf on demand whose `Tab` law is "a key in demand, related by `P`": `id outl outr nil`, and the rows
     `∋ inl inr` (`τ`, `setify` given their `Obj.lt` hypothesis) run under `ofVals`. -/
 theorem ofVals_row_sound {f : {n : USize} → Vals A n → Except String (Tab A B)} {P : Core.Rel A.El B.El}
-    (hf : ∀ n (X : Vals A n) t, f X = .ok t → ∀ a b, t.Holds a b ↔ (∃ i, X.row i = a) ∧ P a b) :
+    (hf : ∀ n (X : Vals A n) t, Vals.WF X → f X = .ok t → ∀ a b, t.Holds a b ↔ (∃ i, X.row i = a) ∧ P a b) :
     ∀ K, K.WF → (ofVals A B f).Reps K P :=
-  ofVals_sound fun _ _ _ _ hK hX h a b ha _ _ => (hf _ _ _ h a b).trans (and_iff_right ((side_some hK a).1 ha))
+  ofVals_sound fun _ _ _ _ hK hX h a b ha _ _ => (hf _ _ _ hX h a b).trans (and_iff_right ((side_some hK a).1 ha))
 
 /-! ### Structural ops: `id comp conv meet join zero top dom ran` -/
 
@@ -413,8 +413,8 @@ theorem prod_sound {R : Rel A B} {S : Rel C D} {X : Core.Rel A.El B.El} {Y : Cor
       (proj_comp_holds (Tab.outl_holds ho₁) hl (fun j b => er _ b ((side_some rfl _).2 ⟨j, rfl⟩) rfl trivial) i q.1)
       (proj_comp_holds (Tab.outr_holds ho₂) hm (fun j d => es _ d ((side_some rfl _).2 ⟨j, rfl⟩) rfl trivial) i q.2))
 
-example : ∀ K, K.WF → (GenK.outl A B).Reps K (graph Prod.fst) := ofVals_row_sound fun _ _ _ h => Tab.outl_holds h
-example : ∀ K, K.WF → (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_sound fun _ _ _ h => Tab.outr_holds h
+example : ∀ K, K.WF → (GenK.outl A B).Reps K (graph Prod.fst) := ofVals_row_sound fun _ _ _ _ h => Tab.outl_holds h
+example : ∀ K, K.WF → (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_sound fun _ _ _ _ h => Tab.outr_holds h
 
 /-! ### `diff rdiv lam nil succ leq lt` (`nil` by `ofVals_row_sound`, `leq lt` by `cmp_sound`) -/
 
@@ -464,7 +464,7 @@ theorem lam_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K,
     exact (Tab.lam_den ht a ys).trans ((and_iff_right ha').trans (and_congr Iff.rfl
       (forall_congr' fun b => iff_congr Iff.rfl (er a b ((side_some rfl a).2 ha') rfl trivial))))
 
-example : ∀ K, K.WF → (GenK.nil A B).Reps K nilDen := ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
+example : ∀ K, K.WF → (GenK.nil A B).Reps K nilDen := ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h
 
 theorem succ_sound {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, K.WF → U.Reps K TU) :
     ∀ K, K.WF → (GenK.succ U).Reps K (succDen TU) := by
@@ -534,15 +534,15 @@ example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom
 /-! ### The rows with a law, under `ofVals` (the wrapper `Expand.primE` fits a row on values alone to) -/
 
 example : ∀ K, K.WF → (ofVals (.arr A) A fun X => Tab.mem X).Reps K (fun xs b => b ∈ xs) :=
-  ofVals_row_sound fun _ _ _ h => Tab.mem_holds h
+  ofVals_row_sound fun _ _ _ _ h => Tab.mem_holds h
 example : ∀ K, K.WF → (ofVals A (.sum A B) fun X => Tab.inl X).Reps K Core.Rel.inl :=
-  ofVals_row_sound fun _ _ _ h => Tab.inl_holds h
+  ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
 example : ∀ K, K.WF → (ofVals B (.sum A B) fun X => Tab.inr X).Reps K Core.Rel.inr :=
-  ofVals_row_sound fun _ _ _ h => Tab.inr_holds h
+  ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
 example : ∀ K, K.WF → (ofVals A (.arr A) fun X => Tab.tau X).Reps K (fun a ys => ys = [a]) :=
-  ofVals_row_sound fun _ _ _ h => Tab.tau_den h
+  ofVals_row_sound fun _ _ _ _ h => Tab.tau_den h
 example : ∀ K, K.WF → (ofVals (.arr B) (.arr B) fun X => Tab.setify X).Reps K (lamDen fun xs b => b ∈ xs) :=
-  ofVals_row_sound fun _ _ _ h => Tab.setify_den h
+  ofVals_row_sound fun _ _ _ _ h => Tab.setify_den h
 
 end GenK
 
