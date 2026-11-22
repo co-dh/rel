@@ -33,10 +33,6 @@ inductive Tm : Obj → Obj → Type where
   /-- `Λ(R)`, a map: total on the keys in demand, `[]` where `R` has no image, so it always runs on demand and a
       closed use reads its source's universe (`closeRes`). -/
   | lam {A B : Obj} (R : Tm A B) : Tm A (.arr B)
-  /-- An operator that takes an order `Q : B ⟶ B` (or a coreflexive `p`) holds it as its pair test
-      `τ(Q) : B×B ⟶ B×B` (§a), run on demand on the pairs the operator compares. -/
-  | est {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) B
-  | thin {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) (.arr B)
   /-- `∋`, an array to each of its elements, on the arrays in demand. -/
   | mem {B : Obj} : Tm (.arr B) B
   /-- The injections into a sum; their converses `inl°`, `inr°` are `conv inl`, `conv inr`, run on the sum values in
@@ -136,7 +132,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .ldiv .. | _, _, .rdiv ..
   | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
-  | _, _, .est _ | _, _, .thin _ | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _
   | _, _, .succ _ | _, _, .arith .. | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
 
 /-- `R × S ≜ ⟨π₁R, π₂S⟩` (`Tm.prod_den`): on demand, each operand on its side of the pairs in demand; where none
@@ -153,6 +149,12 @@ def Tm.ran {A B : Obj} (R : Tm A B) : Tm B B := .arg (.prim ranRow) R
 /-- `[] : A ⟶ [B]`, the row `nilRow` (`Tm.nil_den`). -/
 def Tm.nil {A B : Obj} : Tm A (.arr B) := .prim nilRow
 
+/-- `est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)`, the row `estRow` given the pair test `τ(Q)` (`Tm.est_den`). -/
+def Tm.est {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) B := .arg (.prim estRow) Q
+
+/-- `front(Q) ≜ Λ(∋ − ∋ (Q − Q°))`, the row `frontRow` given the pair test `τ(Q)` (`Tm.front_den`). -/
+def Tm.front {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) (.arr B) := .arg (.prim frontRow) Q
+
 /-- The closed universe `u × v` of a product object, `ran(⟨u, ⊤(v)⟩)`: `u` runs closed and bounds `⊤(v)`, so the
     pair is CROSS of `u`'s values and `v`'s, which `Tab.top` and `Tab.pair` refuse past `crossMax`
     (`Tm.prodUni_den`). -/
@@ -162,8 +164,8 @@ def Tm.prodUni {A B : Obj} (u : Tm A A) (v : Tm B B) : Tm (.prod A B) (.prod A B
 /-- One per node, a `prim` one whatever its row: `kids` puts `mem` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
-  | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .est R
-  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
+  | _, _, .top R | _, _, .conv R | _, _, .lam R
+  | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
@@ -190,8 +192,6 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .rdiv R S U V, f => return .rdiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
   | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
   | _, _, .lam R, f => return .lam (← f R lt_size)
-  | _, _, .est Q, f => return .est (← f Q lt_size)
-  | _, _, .thin Q, f => return .thin (← f Q lt_size)
   | _, _, .own R, f => return .own (← f R lt_size)
   | _, _, .succ U, f => return .succ (← f U lt_size)
   | _, _, .arith t k U, f => return .arith t k (← f U lt_size)
@@ -236,8 +236,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .rdiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .pair R S => R.fv ++ S.fv
   | _, _, .lam R => R.fv
-  | _, _, .est Q => Q.fv
-  | _, _, .thin Q => Q.fv
   | _, _, .own R => R.fv
   | _, _, .succ U => U.fv
   | _, _, .arith _ _ U => U.fv
@@ -287,8 +285,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
   | σ, _, _, .lam R => .lam (R.subst σ)
-  | σ, _, _, .est Q => .est (Q.subst σ)
-  | σ, _, _, .thin Q => .thin (Q.subst σ)
   | σ, _, _, .own R => .own (R.subst σ)
   | σ, _, _, .succ U => .succ (U.subst σ)
   | σ, _, _, .arith t k U => .arith t k (U.subst σ)
@@ -339,11 +335,10 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, .mu j _ _ b => j == k || b.pol s k
   | _, _, .hylo j _ b => j == k || b.pol s k
-  | _, _, .est Q => Q.pol s k
   | _, _, .succ U | _, _, .arith _ _ U | _, _, .leq _ U | _, _, .lt _ U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S => e.pol s k && S.pol s k
   | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
-  | _, _, t@(.lam _) | _, _, t@(.thin _) => !t.fv.contains k
+  | _, _, t@(.lam _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
   | _, _, .callCv .. => true

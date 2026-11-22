@@ -168,7 +168,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, .prod B C, .pair R S => GenK.pair A B C (R.code η) (S.code η)
   | A, .arr B, .lam R => GenK.lam A B (R.code η)
   | _, B, .est Q => GenK.est B (Q.code η)
-  | _, .arr B, .thin Q => GenK.thin B (Q.code η)
+  | _, .arr B, .front Q => GenK.front B (Q.code η)
   | .arr B, _, .mem => GenK.ofVals (.arr B) B Tab.mem
   | A, .sum _ B, .inl => GenK.ofVals A _ (Tab.inl (B := B))
   | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
@@ -240,7 +240,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .inl | _, _, .inr
   | _, _, .atPos _ | _, _, .var .. => true
   | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .est R
-  | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
+  | _, _, .front R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S
@@ -310,7 +310,7 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .pair (A := A) (B := B) (C := C) R S => return g ``Tm.pair #[oE A, oE B, oE C, ← tmE sh R, ← tmE sh S]
   | _, _, .lam (A := A) (B := B) R => return g ``Tm.lam #[oE A, oE B, ← tmE sh R]
   | _, _, .est (B := B) Q => return g ``Tm.est #[oE B, ← tmE sh Q]
-  | _, _, .thin (B := B) Q => return g ``Tm.thin #[oE B, ← tmE sh Q]
+  | _, _, .front (B := B) Q => return g ``Tm.front #[oE B, ← tmE sh Q]
   | _, _, .mem (B := B) => return g ``Tm.mem #[oE B]
   | _, _, .inl (A := A) (B := B) => return g ``Tm.inl #[oE A, oE B]
   | _, _, .inr (A := A) (B := B) => return g ``Tm.inr #[oE A, oE B]

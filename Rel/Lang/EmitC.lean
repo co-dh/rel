@@ -1372,7 +1372,7 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let VV ← pairB B B B V V
     let Y ← diffB (← diffB Dt (← tabB σ { dom := some (Dt.n, Dt.val) } Q)) (← coreflB VV.n VV.val)
     diffB G (← compB P (← piB B B true Y.n Y.key))
-  | _, _, .thin (B := B) Q => do
+  | _, _, .front (B := B) Q => do
     let (n, X) ← known "thin" D.dom
     let (G, P, Dt) ← pairsB B n X
     let Δ ← interB (← tabB σ { dom := some (Dt.n, Dt.val) } Q) Dt

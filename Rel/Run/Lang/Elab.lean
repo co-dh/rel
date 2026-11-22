@@ -300,8 +300,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .rdiv R S U V => return .rdiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
   | _, _, .pair R S => return .pair (← R.instObj ph σ) (← S.instObj ph σ)
   | _, _, .lam R => return .lam (← R.instObj ph σ)
-  | _, _, .est Q => return .est (← Q.instObj ph σ)
-  | _, _, .thin Q => return .thin (← Q.instObj ph σ)
   | _, _, .mem => pure .mem
   | _, _, .inl => pure .inl
   | _, _, .inr => pure .inr
@@ -394,8 +392,6 @@ inductive Pre
   | pair (p q : Pre)
   | prod (p q : Pre)
   | lam (p : Pre)
-  | est (p : Pre)
-  | thin (p : Pre)
   | nil (a b : OTy)
   | mem (b : OTy)
   | inl (a b : OTy)
@@ -609,8 +605,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
   | .lam x => return .lam (← f (some (.not "Λ")) x)
-  | .est x => return .est (← mo x)
-  | .thin x => return .thin (← f (some (.not "thin")) x)
   | .own x => return .own (← mo x)
   | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
   | .succ q n => return .succ (← fp q) n
@@ -1067,6 +1061,8 @@ def Op.row (p : Pos) : Op → M (Option Prim)
     | some r => pure (some r)
     | none => throw ⟨p, s!"internal: no row `{s}` in `prims`"⟩
   | .map => pure (some mapRow)
+  | .est => pure (some estRow)
+  | .front => pure (some frontRow)
   | _ => pure none
 
 /-- A constant: fresh objects for its type, the explicit ones `(A,B)` unified with source and target. -/
@@ -1273,11 +1269,6 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
     | .ran => pure (.rel (.ran (.close p q s "ran( ) reads its argument whole")) t t)
     | .lam => pure (.rel (.lam q) s (.arr t))
     | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
-    | .est | .thin => do
-      unify p s!"the target of {o.sym}'s argument" t s
-      -- the order is tested on the pairs the operator compares (`build`, `param`), not read whole
-      let c := Pre.close p q s s!"{o.sym}( )"
-      pure (if o == .est then .rel (.est c) (.arr s) s else .rel (.thin c) (.arr s) (.arr s))
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
 
@@ -1478,10 +1469,10 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .comp a b => do
     let x ← elabE env m a
     let p := b.pos
-    -- `Xest(Q)`, `Xthin(Q)` with `Q` a family: `est`, `thin` run one `Q` on every array, so the rows of §e
+    -- `Xest(Q)`, `Xfront(Q)` with `Q` a family: `est`, `front` run one `Q` on every array, so the rows of §e
     -- work on `G ≜ X∋`, the values of each key; a closed `Q` takes the closed row below
     let q? ← match m, b with
-      | some _, .op _ .est [] [qe] | some _, .op _ .thin [] [qe] => do
+      | some _, .op _ .est [] [qe] | some _, .op _ .front [] [qe] => do
         let y ← elabE env m qe; pure (if y.isFam then some y else none)
       | _, _ => pure none
     let est := match b with | .op _ .est _ _ => true | _ => false
@@ -2049,8 +2040,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .outl => throw "π₁"
   | .outr => throw "π₂"
   | .lam _ => throw "Λ( )"
-  | .est _ => throw "est( )"
-  | .thin _ => throw "thin( )"
   | .mem => throw "∋"
   | .inl => pure (.conv .inl)
   | .inr => pure (.conv .inr)
@@ -2409,8 +2398,6 @@ def build : Pre → Except Err Res
   | .prod p q => do
     let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
-  | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
-  | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .mem b => return ⟨_, _, .mem (B := ← toObj objs mc dp b)⟩
   | .inl a b => return ⟨_, _, .inl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩

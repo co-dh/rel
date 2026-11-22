@@ -43,7 +43,7 @@ rel_program kernT45 where
     us : N ⟶ [N]×N ≜ x snoc°
     ut : N ⟶ [N]×[N] ≜ x cat°
     es : N ⟶ N ≜ x est(≤)
-    th : N ⟶ [N] ≜ x thin(≤)
+    th : N ⟶ [N] ≜ x front(≤)
     -- the rows worked by hand from each definition's relations, not read from a run
     check r = {(1,2),(2,3),(3,3)}
     check w = {(1,(1,2)),(2,(3,4)),(3,(5,5))}
@@ -115,7 +115,7 @@ rel_program sumFold where
     (`(1,2) ↦ (1,2)` is absent), and `(1,2) ↦ (2,1)` counts for nothing. Worked by hand on `x`: `3 1 2` keeps `2 3`,
     `1 2` keeps `2`, `[]` keeps `[]`. A reading by domain would keep `1 2 3` and `1 2`; `Q(D) − dom(swap)` on pairs
     would keep `1 3` and `[1]`. -/
-rel_program thinDiag where
+rel_program frontDiag where
     obj N = 0…5
     x : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,1 2)}
     qn : N×N ⟶ N×N ≜ {((1,2),(2,1)),((2,1),(2,1))}
@@ -125,7 +125,7 @@ rel_program thinDiag where
 #guard (do
     let X ← get thinDiag.expanded "x" .long (.arr .long)
     let Q ← get thinDiag.expanded "qn" (.prod .long .long) (.prod .long .long)
-    let l := ((Tab.thin (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
+    let l := ((Tab.front (fun _ => .ok Q) X.val).toOption.map Tab.toList).getD []
     let e : List ((Obj.arr .long).El × (Obj.arr .long).El) := [([3, 1, 2], [2, 3]), ([], []), ([1, 2], [2])]
     pure (e.all (l.contains ·) && l.all (e.contains ·))) == some true
 
