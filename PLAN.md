@@ -906,6 +906,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       whereB groupSumB`，去掉 `frame` 的固定；“Lean 之外的 plan 与 `frame.out` 逐字节相等”到 W6 重写。
       T10 之前还欠的：`hyloCycle` 的固定和各 `Kern*` 模块的旧路径对照（随旧层删）；第三个 gate 的 `arithOut` 一半与
       `TestNative` 的 `gplan` 全是旧 export，T10 会弄断，保留它需要 W6 先做（写出路径 `lit` + `own_write` 那一半不受影响）。
+      pc9-regress（2026-11-22）：`sudokupc9` 3.1 s → 35 s 是真回退（程序逐字节相同，同为 `lake lean` 热构建：10342bc 3.3 s，
+      5690422 35 s）。first-parent bisect：c164861 3.3 s、205f5bc 3.6 s、e76c990（只改 pin），首个坏提交 7f9e4d7（integ3）
+      24.3 s；integ3 内 d3dc7f9 3.6 s，故为 paramL2（fde8044）。机制：`GenK.meetOn` 对 `.bits` 操作数也走 `T.runE {}`，
+      即 `Tab.ofBits` 把 matrix 读回成行再 `bound`：`sup(X) = π₁X ∩ π₂π₁°` 里 `π₁X` 是 59049 × 729 的 matrix，读回 2.7e7 行，
+      之后 `sup(X) X` 也只能按行算（perf 的 `Take::block`、`for_meta`）。paramL2 前 `.bits` 走 `meetV`（`keepBits`，不读回）。
+      验证（未提交）：`meetOn` 加一支 `.bits … x … y … => meetV T (S.force ⟨K.dom 或 x, K.ran 或 y, none⟩)`（matrix 的行、列
+      值集合作 S 的界，不读回），master 35 s → 12.4 s，`#guard` 通过；同时撤回 paramL2 的 `callDef` 按需形式再无收益（11.8 s）。
+      未提交的原因：`meetOn_sound`/`meetOn_wf` 在 `GenKBits`（rq17f6 持有），需多一个情形，并要 matrix 的 `x`/`y` 是合法
+      `Known` 边界的引理。余下约 8 s 是第二处回退，在 666343f（26.9 s）与 e80c027（35.4 s）之间，未 bisect。
       未做（性能，不挡 T10）：`ldiv(tab, bits)` 每轮把 matrix 读回约 2800 万行再排序约 4 次，是 `sudokupc9` 剩下的主要
       开销（按排序来源推出，perf 无 Lean 侧调用栈）；不 decode 的做法约 40 行、无证明、估计到约 7 s。μ 的 semi-naive：不做（2026-11-19，
       owner 交我定）。试过 `Δ = f(X) − X` 再 `X ∪ Δ`：每轮排序两次，`muGrow` 66 s → 79 s，已撤回。要省需要循环体对
