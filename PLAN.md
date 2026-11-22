@@ -1053,7 +1053,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （`Expand.tmE`，其已编号的部分读作槽号）共用一个槽；spine 的头不编号。`Code.shares` 每个槽只算一次，
     `Code.program` 给一个程序的所有定义一张表。`.share k R` 读槽 k，表里没有时就地构建。`Sound` 增加：每个槽 `Wf`
     （`Code.Wf`）；`Tm.GenHyp`（原 `Tm.LamLawsAt`）增加参数 `P`，在 `share k R` 处要求 `Codes.Shares`（槽 k 表示 ⟦R⟧）。
-    只改了 `gen_sound` 与 `gen_wf` 的 share、call 两个 case。未证：`Tm.number`/`Code.shares` 满足 `Codes.Shares`（7.3c）。
+    只改了 `gen_sound` 与 `gen_wf` 的 share、call 两个 case。`Tm.number`/`Code.shares` 满足 `Codes.Shares`：
+    已证（分支 `shares`，见 7.3c 末）。
     测量（`test/TestCompile.lean`，`REL_COMPILE_TIMES`）：chess 整个程序的 share 表 31.1 s，之后每个定义 0 ms；
     旧的 `Tm.gen` 路径 `chess.mate` 246 s、`chess.m` 245 s。所有程序合计 90.5 s；963 个定义与生成的常量相等，pin 不变。
   - ✅ 7.3c（分支 `s73c`）`Expand.emit` 移到 `TmGen`：程序的全部项（定义、print、check、output 用到的 run-time
@@ -1063,7 +1064,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     的节点用 `Tm.hasCode` 判断，报错列出 `noCode`（从 `test/TestCompile.lean` 移来），消息同旧。删除：`node`、
     `code`、`share`、`spine`、`body`、kernel twin（`kernelTwin`、`lams`、`RM`）、`Expand.number`（`Tm.number`
     取代）、`Tm.kernelNode`/`offKernel`/`onKernel`。保留 `primFit`：`once` 用它判断对象变量是不是数对象，
-    `rowGens` 用它生成。未证：`Code.program` 建的表满足 `Codes.Shares`，只有测试（`TestCompile`）。
+    `rowGens` 用它生成。
+  - ✅ 7.3c 续（分支 `shares`）：`Code.program` 建的表满足 `Codes.Shares`，定理 `Code.program_sound`
+    （`Rel/Lang/GenSound.lean` 末）：各定义的每个 `share` 部分闭（`GenHyp fun _ R => R.fv = []`）时，
+    `Code.shares (Code.program ds).2` 对 `Val.empty` `Sound`，且每个编号后的项满足 `GenHyp …sh.Shares`，
+    `Tm.gen_sound` 对它适用。为此 `Tm.number` 改为全函数（`termination_by t.size`，经 `Tm.mapMSz`：`Tm.mapM`
+    带子项 size 证明，`Tm.mapM` 由它定义）：旧的 `partial` 版本在 HashMap 命中时返回 `.share k t`（`t` 是新部分，
+    与槽 k 的项只有 opaque 的 `Expr` key 相等，不可证），现在返回槽 k 自己的项（`Tm.numberSlot`）；`emit` 只写
+    槽号的常量，发出的程序不变。证明的各层：`Res.Slot`（项逐字读表）、`Code.shares_sound`、`numberSlot_spec`、
+    `Tm.mapMSz_spec`、`Tm.number_spec`、`Code.program_go`。
+    剩余缺口：发出的常量 `n.shares`/`n.c.t<k>` 等于 `Code.program` 的输出这一点没有证明（`emit` 经 `Expand.tmE`
+    把项写成 `Expr`，`tmE` 的 round-trip 只由 `GenSoundTest` 测）。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。

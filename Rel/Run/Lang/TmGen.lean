@@ -340,41 +340,50 @@ end Expand
 
 /-! ### The share table: each closed part of a program computed once -/
 
-/-- The closed parts numbered so far, and the slot of each by its key (`Tm.number.key`). -/
+/-- The closed parts numbered so far, and the slot of each by its key (`Tm.numberKey`). -/
 abbrev Shares := Array Res × Std.HashMap Lean.Expr Nat
 
+/-- `t` with each numbered part read as its slot: equal keys are equal terms, slot by slot. -/
+def Tm.numberKey {A B : Obj} (t : Tm A B) : Tm A B := match t with
+  | .share k _ => .share k .zero
+  | .call ks c os b => .call ks c os b.numberKey
+  | .callCv ks c c' os b u => .callCv ks c c' os b.numberKey u
+  | t => Id.run (t.mapMSz fun c _ => pure c.numberKey)
+termination_by t.size
+decreasing_by all_goals first | assumption | (simp only [Tm.size]; omega)
+
+/-- `t` as a slot where it is closed: a slot of an equal part numbered before (its key, `Tm.numberKey`), read as that
+    slot's own term, so a `share k R` always holds slot `k`'s term; else a new slot. -/
+def Tm.numberSlot {A B : Obj} (t : Tm A B) : StateM Shares (Tm A B) := fun (ts, m) =>
+  if !Expand.closed t then (t, ts, m) else
+  let new (m : Std.HashMap Lean.Expr Nat) : Tm A B × Shares := (.share ts.size t, ts.push ⟨A, B, t⟩, m)
+  -- a part `tmE` cannot rebuild (a symbol, general or ALP payload) has no key: a slot of its own, never shared
+  match Expand.tmE #[] t.numberKey with
+  | .error _ => new m
+  | .ok e => match m[e]? with
+    | none => new (m.insert e ts.size)
+    | some k => match ts[k]? with
+      | some ⟨A', B', R⟩ => if h : A' = A ∧ B' = B then (.share k (h.1 ▸ h.2 ▸ R), ts, m) else new m
+      | none => new m
+
+/-- `numberSlot` but at the head of a spine (`hd`), where a node stays as it is: the head and the earlier arguments
+    are each a function of the arguments still to come (`Tm.argGen`), no closed part however closed it reads, and
+    a slot would run it on none of them. -/
+abbrev Tm.numberWrap (hd : Bool) {A B : Obj} (t : Tm A B) : StateM Shares (Tm A B) :=
+  if hd then pure t else t.numberSlot
+
 /-- `t` with each closed part `R` (`Expand.closed`) wrapped as `.share k R`, `k` its slot: a new one appended to the
-    table, or the slot of an equal part numbered before (its `Expand.tmE` with its own parts read as their slots).
-    A call's body is entered, which `Tm.mapM` does not, so its closed parts are computed once per program
-    (`Code.shares`), not at each call site and fixed-point round. A part's own parts get the lower slots. -/
-partial def Tm.number {A B : Obj} : Tm A B → StateM Shares (Tm A B)
-  | .share _ R => R.number
-  | t@(.arg ..) | t@(.call ..) | t@(.callCv ..) => do w (← head t)
-  | t => do w (← t.mapM Tm.number)
-where
-  /-- A spine `t` numbered but for its head and its earlier arguments: each is a function of the arguments still
-      to come (`Tm.argGen`), no closed part however closed it reads, and a slot would run it on none of them. -/
-  head {A B : Obj} : Tm A B → StateM Shares (Tm A B)
-    | .arg f x => return .arg (← head f) (← x.number)
-    | .call ks c os b => return .call ks c os (← b.number)
-    | .callCv ks c c' os b u => return .callCv ks c c' os (← b.number) u
-    | .share _ R => head R
-    | t => t.number
-  w {A B : Obj} (t : Tm A B) : StateM Shares (Tm A B) := do
-    if !Expand.closed t then return t
-    let (ts, m) ← get
-    -- a part `tmE` cannot rebuild (a symbol, general or ALP payload) has no key: a slot of its own, never shared
-    match Expand.tmE #[] (key t) with
-    | .ok e => match m[e]? with
-      | some k => return .share k t
-      | none => set (ts.push ⟨A, B, t⟩, m.insert e ts.size); return .share ts.size t
-    | .error _ => set (ts.push ⟨A, B, t⟩, m); return .share ts.size t
-  /-- `t` with each numbered part read as its slot: equal keys are equal terms, slot by slot. -/
-  key {A B : Obj} : Tm A B → Tm A B
-    | .share k _ => .share k .zero
-    | .call ks c os b => .call ks c os (key b)
-    | .callCv ks c c' os b u => .callCv ks c c' os (key b) u
-    | t => Id.run (t.mapM fun c => pure (key c))
+    table, or the slot of an equal part numbered before (`Tm.numberSlot`). A call's body is entered, which
+    `Tm.mapM` does not, so its closed parts are computed once per program (`Code.shares`), not at each call site
+    and fixed-point round. A part's own parts get the lower slots. -/
+def Tm.number {A B : Obj} (t : Tm A B) (hd : Bool := false) : StateM Shares (Tm A B) := match t with
+  | .share _ R => R.number hd
+  | .arg f x => (do return .arg (← f.number true) (← x.number)) >>= Tm.numberWrap hd
+  | .call ks c os b => (do return .call ks c os (← b.number)) >>= Tm.numberWrap hd
+  | .callCv ks c c' os b u => (do return .callCv ks c c' os (← b.number) u) >>= Tm.numberWrap hd
+  | t => do (← t.mapMSz fun c _ => c.number).numberSlot
+termination_by t.size
+decreasing_by all_goals first | assumption | (simp only [Tm.size]; omega)
 
 /-- The share table of the closed parts `ts`: slot `k` the code of `ts[k]` under the slots before it (which hold its
     own parts, `Tm.number`), each computed here, once. -/
@@ -385,9 +394,8 @@ def Code.shares (ts : Array Res) : Code :=
     (`Code.shares`) computes each, a call body's included, once per program: `emit` builds it once per program, as
     the constant `n.shares`. -/
 def Code.program (ds : List Res) : List Res × Array Res :=
-  let (ds', ts, _) := (ds.mapM (m := StateM Shares) fun (r : Res) => do
-    pure (⟨r.1, r.2.1, ← r.2.2.number⟩ : Res)).run (#[], {})
-  (ds', ts)
+  let r := (ds.mapM (m := StateM Shares) fun (r : Res) => do pure (⟨r.1, r.2.1, ← r.2.2.number⟩ : Res)).run (#[], {})
+  (r.1, r.2.1)
 
 /-- Two call sites of one body `b`, which reads its parameter `0` beside the closed part `(𝟘)°`; each call given a
     free variable, so neither call is closed. -/
