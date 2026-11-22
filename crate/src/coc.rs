@@ -21,7 +21,7 @@ pub struct Meta<'a> {
 }
 /// nexc = pos.len(); `asc`: every block's positions strictly ascending (`ascending`), so `Coc::get` binary-searches them
 #[derive(Clone, Copy)]
-pub struct Exc<'a> { pub off: &'a [u32], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize, pub asc: bool }
+pub struct Exc<'a> { pub off: &'a [u64], pub pos: &'a [u16], pub raw: &'a [u8], pub esz: usize, pub asc: bool }
 #[derive(Clone, Copy)]
 pub struct Coc<'a> { pub meta: Meta<'a>, pub pack: &'a [u8], pub exc: Option<Exc<'a>>, pub fdelta: Option<&'a [u64]> }
 
@@ -71,7 +71,7 @@ impl<'a> Coc<'a> {
         let (nexc, esz, mb) = (nexc as usize, esz as usize, meta.mblk);
         let l = exc_layout(mb, nexc, esz, if frm != 0 { Tail::Frames } else { Tail::None })?;
         if l.size != t.len() { return None }
-        let (off, pos) = (pod::cast(&t[l.off..l.off + 4 * (mb + 1)])?, pod::cast(&t[l.pos..l.pos + 2 * nexc])?);
+        let (off, pos) = (pod::cast(&t[l.off..l.off + 8 * (mb + 1)])?, pod::cast(&t[l.pos..l.pos + 2 * nexc])?);
         let exc = Exc { off, pos, asc: ascending(off, pos),
                         raw: &t[l.raw..l.raw + nexc * esz], esz };
         let fdelta = if frm != 0 { Some(pod::cast(&t[l.tail..l.tail + 8 * mb])?) } else { None };

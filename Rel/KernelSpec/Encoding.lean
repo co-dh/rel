@@ -839,7 +839,7 @@ theorem excBlob_eq (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array N
         pad (Column.pushBits (Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8)
         ++ pad (exc.foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (Column.bitsAt x (i * w) w) w)
         ++ pad ((Array.range (nb + 1)).foldl (init := ByteArray.empty) fun acc b =>
-             Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
+             Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 8)
         ++ pad (exc.foldl (init := ByteArray.empty) fun acc i => Column.pushBits acc (i % B).toUInt64 2)
         ++ pad last := by
   refine ⟨_, fun b k h => ?_, fun b => ?_, rfl⟩
@@ -852,12 +852,12 @@ theorem excBlob_eq (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array N
 /-- What each reader of an exception ladder answers on `Coc.excBlob`'s bytes, laid at offset `e` of `P`: the count,
 the word, each listed element's bits, the block offsets, the places in the block and the last section. -/
 theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w : Nat) (hw : w ≤ 8) (nb : Nat)
-    (x : ByteArray) (exc : Array Nat) (last : ByteArray) (hn : exc.size < 2 ^ 32) (P : ByteArray) (e : Nat)
+    (x : ByteArray) (exc : Array Nat) (last : ByteArray) (hn : exc.size < 2 ^ 64) (P : ByteArray) (e : Nat)
     (hP : ∀ k < (Kernel.Coc.excBlob word B w nb x exc last).size,
       P[e + k]? = (Kernel.Coc.excBlob word B w nb x exc last)[k]?) :
     (Column.bitsAt P e 8).toNat = exc.size ∧ Column.bitsAt P (e + 8) 8 = word ∧
     (∀ k (h : k < exc.size), Column.bitsAt P (e + 16 + k * w) w = Column.bitsAt x (exc[k] * w) w) ∧
-    (∀ b ≤ nb, (Column.bitsAt P (e + (Column.alpSects nb exc.size w).1 + b * 4) 4).toNat =
+    (∀ b ≤ nb, (Column.bitsAt P (e + (Column.alpSects nb exc.size w).1 + b * 8) 8).toNat =
       (exc.filter (· < b * B)).size) ∧
     (∀ k (h : k < exc.size), (Column.bitsAt P (e + (Column.alpSects nb exc.size w).2.1 + k * 2) 2).toNat =
       exc[k] % B) ∧
@@ -874,7 +874,7 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
   generalize hS1 : exc.foldl (init := ByteArray.empty)
     (fun acc i => Column.pushBits acc (Column.bitsAt x (i * w) w) w) = S1 at hP ⊢
   generalize hS2 : (Array.range (nb + 1)).foldl (init := ByteArray.empty)
-    (fun acc b => Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4) = S2 at hP ⊢
+    (fun acc b => Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 8) = S2 at hP ⊢
   generalize hS3 : exc.foldl (init := ByteArray.empty)
     (fun acc i => Column.pushBits acc (i % B).toUInt64 2) = S3 at hP ⊢
   have X8 : (Column.pushBits ByteArray.empty exc.size.toUInt64 8).size = 8 := by rw [Column.pushBits_size, e0]
@@ -888,13 +888,13 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
     simp only [Nat.zero_add, Array.getElem_toList] at this
     rw [this, Nat.mod_eq_of_lt (bitsAt_lt _ _ _ hw), UInt64.ofNat_toNat]
   have hS2' : S2 = (List.range (nb + 1)).foldl (init := ByteArray.empty)
-      (fun acc b => Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4) := by
+      (fun acc b => Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 8) := by
     rw [← hS2, ← Array.foldl_toList, toList_range]
-  have W2 := foldl_pushBits (fun b => (exc.filter (· < b * B)).size.toUInt64) 4 (by decide)
+  have W2 := foldl_pushBits (fun b => (exc.filter (· < b * B)).size.toUInt64) 8 (by decide)
     (List.range (nb + 1)) ByteArray.empty
   rw [← hS2', e0] at W2
-  have z2 : S2.size = 4 * (nb + 1) := by rw [W2.1, List.length_range, Nat.zero_add]
-  have r2 : ∀ b ≤ nb, (Column.bitsAt S2 (4 * b) 4).toNat = (exc.filter (· < b * B)).size := by
+  have z2 : S2.size = 8 * (nb + 1) := by rw [W2.1, List.length_range, Nat.zero_add]
+  have r2 : ∀ b ≤ nb, (Column.bitsAt S2 (8 * b) 8).toNat = (exc.filter (· < b * B)).size := by
     intro b hb
     have := W2.2.2 b (by simp; omega)
     rw [Nat.zero_add, List.getElem_range] at this
@@ -914,7 +914,7 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
   obtain ⟨g0, g1, g2, g3, g4⟩ := blob_get pad hpg (fun b => by rw [hps]; omega) S0 S1 S2 S3 last
   have p0 : (pad S0).size = 16 := by rw [hps, z0]
   have p1 : (pad S1).size = (exc.size * w + 7) / 8 * 8 := by rw [hps, z1]
-  have p2 : (pad S2).size = (4 * (nb + 1) + 7) / 8 * 8 := by rw [hps, z2]
+  have p2 : (pad S2).size = (8 * (nb + 1) + 7) / 8 * 8 := by rw [hps, z2]
   have p3 : (pad S3).size = (2 * exc.size + 7) / 8 * 8 := by rw [hps, z3]
   have p4 : last.size ≤ (pad last).size := by rw [hps]; omega
   have hAs : (pad S0 ++ pad S1 ++ pad S2 ++ pad S3 ++ pad last).size =
@@ -947,14 +947,14 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
       rw [← g1 (w * k + t) (by omega), p0, Nat.add_assoc]
   · rw [← r2 b hb]
     congr 1
-    exact hPA _ ((16 + exc.size * w + 7) / 8 * 8 + 4 * b) S2 (4 * b) 4 (by omega) (by omega) fun t ht => by
-      rw [← g2 (4 * b + t) (by omega), p0, p1]; congr 1; omega
+    exact hPA _ ((16 + exc.size * w + 7) / 8 * 8 + 8 * b) S2 (8 * b) 8 (by omega) (by omega) fun t ht => by
+      rw [← g2 (8 * b + t) (by omega), p0, p1]; congr 1; omega
   · rw [← r3 k hk]
     congr 1
-    exact hPA _ (((16 + exc.size * w + 7) / 8 * 8 + (nb + 1) * 4 + 7) / 8 * 8 + 2 * k) S3 (2 * k) 2 (by omega)
+    exact hPA _ ((16 + exc.size * w + 7) / 8 * 8 + (nb + 1) * 8 + 2 * k) S3 (2 * k) 2 (by omega)
       (by omega) fun t ht => by
       rw [← g3 (2 * k + t) (by omega), p0, p1, p2]; congr 1; omega
-  · rw [show e + ((((16 + exc.size * w + 7) / 8 * 8 + (nb + 1) * 4 + 7) / 8 * 8 + exc.size * 2 + 7) / 8 * 8) + k =
+  · rw [show e + (((16 + exc.size * w + 7) / 8 * 8 + (nb + 1) * 8 + exc.size * 2 + 7) / 8 * 8) + k =
       e + ((pad S0).size + (pad S1).size + (pad S2).size + (pad S3).size + k) by rw [p0, p1, p2, p3]; omega,
       hP _ (by omega), g4 k hk]
 
@@ -962,7 +962,7 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
 sign-extended as a block minimum is, when `i` is listed, and nothing otherwise. -/
 theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (hB : 0 < B ∧ B ≤ 65536) (w : Nat)
     (hw : w ≤ 8) (x : ByteArray) (exc : Array Nat) (hs : exc.toList.Pairwise (· < ·))
-    (hn : exc.size < 2 ^ 32) (word : UInt64) (last : ByteArray) (hword : word.toNat % 256 = w)
+    (hn : exc.size < 2 ^ 64) (word : UInt64) (last : ByteArray) (hword : word.toNat % 256 = w)
     (he : Column.blockStart M (Column.nblk M) = pack.size) (i : Nat) (hi : i / B < Column.nblk M) :
     Column.foRExc M (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last) i =
       if i ∈ exc.toList then some (Kernel.Coc.keyAt w x i).toUInt64 else none := by
@@ -970,7 +970,7 @@ theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (
     pack.size (fun k _ => ba_append_right _ _ _)
   obtain ⟨f1, f2⟩ := exc_find B hB.1 exc hs
     (fun b => (Column.bitsAt (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last)
-      (pack.size + (Column.alpSects (Column.nblk M) exc.size w).1 + b * 4) 4).toNat)
+      (pack.size + (Column.alpSects (Column.nblk M) exc.size w).1 + b * 8) 8).toNat)
     (fun k => (Column.bitsAt (pack ++ Kernel.Coc.excBlob word B w (Column.nblk M) x exc last)
       (pack.size + (Column.alpSects (Column.nblk M) exc.size w).2.1 + k * 2) 2).toNat) i
     (fun b hb => hoff b (by omega)) hpos
@@ -999,7 +999,7 @@ theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (
 /-- `Column.foRFrame` on a pack whose patch list `Coc.excBlob` wrote after the residuals: block `b`'s entry of the
 frames `fs` the list ends in when bit 8 of its word says so, and `0` otherwise. -/
 theorem foRFrame_excBlob (M pack : ByteArray) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w : Nat) (hw : w ≤ 8)
-    (x : ByteArray) (exc : Array Nat) (hn : exc.size < 2 ^ 32) (word : UInt64) (last : ByteArray)
+    (x : ByteArray) (exc : Array Nat) (hn : exc.size < 2 ^ 64) (word : UInt64) (last : ByteArray)
     (hword : word.toNat % 256 = w) (he : Column.blockStart M (Column.nblk M) = pack.size) (fs : Array UInt64)
     (hfs : fs.size = Column.nblk M)
     (hl : word.toNat / 256 % 2 = 1 → last = fs.foldl (fun acc v => Column.pushBits acc v 8) ByteArray.empty)
@@ -1053,9 +1053,9 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   simp only [hwt, Nat.one_shiftLeft, bitAt_empty, Bool.and_false, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
     Bool.true_and]
   generalize hn : x.size / w = n at *
-  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
-  have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
-  generalize (patch && decide (n < 2 ^ 32)) = pl at hpb h32 ⊢
+  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 64)) x b
+  have h64 : (patch && decide (n < 2 ^ 64)) = true → n < 2 ^ 64 := fun h => by simp at h; exact h.2
+  generalize (patch && decide (n < 2 ^ 64)) = pl at hpb h64 ⊢
   generalize Kernel.Coc.planBlock lg w n pl x .empty = blk at hpb ⊢
   generalize hbs : Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)) = bs
   have hbsz : bs.size = (n + 2 ^ lg - 1) / 2 ^ lg := by rw [← hbs]; simp
@@ -1097,8 +1097,8 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
       (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n) = exc at hexs hmem hen ⊢
   have hnil : exc.size = 0 → exc.toList = [] := fun h => by
     rw [← Array.length_toList] at h; exact List.eq_nil_of_length_eq_zero h
-  -- a list is written only with patching on, so below `2 ^ 32` elements
-  have h32' : exc.size ≠ 0 → exc.size < 2 ^ 32 := fun h => by
+  -- a list is written only with patching on, so below `2 ^ 64` elements
+  have h64' : exc.size ≠ 0 → exc.size < 2 ^ 64 := fun h => by
     cases hpl : pl
     · -- by cases on the list, not `List.eq_nil_iff_forall_not_mem`, which carries `Classical.choice`
       have he : exc.toList = [] := by
@@ -1108,7 +1108,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
           have := (hmem j).1 (hl ▸ List.mem_cons_self)
           rw [(hkeys j this.1).2 hpl] at this; exact absurd this.2 Bool.false_ne_true
       exact absurd (by rw [← Array.length_toList, he]; rfl) h
-    · exact Nat.lt_of_le_of_lt hen (h32 hpl)
+    · exact Nat.lt_of_le_of_lt hen (h64 hpl)
   -- the frames
   have hfr0 : ((Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).any
       fun a => a != 0) = false → ∀ b (h : b < bs.size), ((blk b).2.2.2.1 - (blk b).1).toUInt64 = 0 := fun h b hb =>
@@ -1177,9 +1177,9 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
         subst htail
         rw [← hnb]
         refine ⟨?_, ?_⟩
-        · rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
+        · rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h64' h0) _ _ (hword frm).1 he i
             (hnb ▸ hib), if_neg hnot]
-        · rw [foRFrame_excBlob M pack (2 ^ lg) ⟨hBp, hB16⟩ w hw x exc (h32' h0) _ _ (hword frm).1 he fs hfsz
+        · rw [foRFrame_excBlob M pack (2 ^ lg) ⟨hBp, hB16⟩ w hw x exc (h64' h0) _ _ (hword frm).1 he fs hfsz
             (fun h => if_pos ((hword frm).2.1 h)) _ (hnb ▸ hib)]
           cases frm
           · rw [if_neg (fun h => Bool.false_ne_true ((hword false).2.1 h)), hfr0 rfl _ hib]
@@ -1208,7 +1208,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     rw [← hnb]
     unfold Column.foRBits
     simp only [blockStarts_get _ (Nat.le_refl _)]
-    rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h32' h0) _ _ (hword frm).1 he i
+    rw [foRExc_excBlob M pack (2 ^ lg) hBM ⟨hBp, hB16⟩ w hw x exc hexs (h64' h0) _ _ (hword frm).1 he i
       (hnb ▸ hib), if_pos hin]
 
 /-- **The Frame-of-Reference round trip, element by element**, over `foRBits` and the dense bits: element `i` of

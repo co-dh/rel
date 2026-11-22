@@ -18,7 +18,7 @@ pub struct EncMeta<'a> {
     /// the frame above `base` (coc.rs `fdelta`), when the column keeps frames
     pub frm: Option<&'a mut u64>,
     /// the block's patch count, `exc_off[b + 1]` before the prefix sum
-    pub nexc: &'a mut u32,
+    pub nexc: &'a mut u64,
     /// whether the block may patch, Lean `Coc.encodeAt`'s `patch && n < 2 ^ 32`: a column of `2 ^ 32` elements or more
     /// has no patch list, its block offsets being `u32`
     pub patch: bool,
@@ -120,7 +120,7 @@ pub fn for_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) -> u32 {
     }
     let (d, f, np) = plan(&x[..nb], mn, top, esz);
     *m.frm.as_deref_mut().expect("for_blk: a Frame of Reference column keeps its frames") = (f as u64).wrapping_sub(mn as u64);
-    (*m.width, *m.nexc) = (d as u8, np as u32);
+    (*m.width, *m.nexc) = (d as u8, np as u64);
     np as u32
 }
 /// `Coc.planOf`'s width, frame and patch count for the keys `x` of minimum `mn`, `top` the bit length of their range:
@@ -258,7 +258,7 @@ pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
 pub fn move_meta(m: &mut EncMeta, p: &Coc, pb: usize) -> u32 {
     (*m.base, *m.maxv, *m.bsum, *m.width) = (p.meta.base[pb], p.meta.maxv[pb], p.meta.bsum[pb], p.meta.width[pb]);
     if let Some(fr) = m.frm.as_deref_mut() { *fr = p.fdelta.map_or(0, |d| d[pb]) }
-    let ne = p.blk_nexc(pb) as u32;
+    let ne = p.blk_nexc(pb) as u64;
     *m.nexc = ne;
     ne
 }
@@ -297,7 +297,7 @@ pub fn tail_bytes(nexc: usize, frm: bool, width: usize, nblk: usize) -> usize {
     exc_layout(nblk, nexc, width, if frm { Tail::Frames } else { Tail::None }).expect("qlean: the exception layout overflows").size
 }
 /// coc.rs `alp_offsets`: per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
-pub fn exc_offsets(exc_off: &mut [u32], nblk: usize) -> usize {
+pub fn exc_offsets(exc_off: &mut [u64], nblk: usize) -> usize {
     exc_off[0] = 0;
     for b in 0..nblk { exc_off[b + 1] = exc_off[b + 1].wrapping_add(exc_off[b]) }
     exc_off[nblk] as usize

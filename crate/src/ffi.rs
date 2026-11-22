@@ -24,7 +24,7 @@ pub struct CCoc {
     pub base: *mut i64, pub maxv: *mut i64, pub width: *mut u8, pub off: *mut u64, pub bsum: *mut i64,
     pub sumnul: *mut i64, pub sumn: *mut u64, pub pack: *mut u8,
     pub n: usize, pub nblk: usize, pub packbytes: usize, pub mblk: usize,
-    pub exc_off: *const u32, pub exc_pos: *const u16, pub exc_raw: *const u8, pub fdelta: *mut u64,
+    pub exc_off: *const u64, pub exc_pos: *const u16, pub exc_raw: *const u8, pub fdelta: *mut u64,
     pub nexc: usize, pub exc_esz: usize,
 }
 impl CCoc {
@@ -81,7 +81,7 @@ pub struct CEnc {
     pub src: *const CSrc, pub n: usize, pub width: usize,
     pub blk: Option<unsafe extern "C" fn(*mut c_void, usize, *const c_void, usize)>,
     pub c: CCoc, pub meta: *mut c_void, pub pack: *mut c_void,
-    pub exc_off: *mut u32, pub exc_heap: *mut u32, pub frm_heap: *mut u64, pub exc_pos: *mut u16,
+    pub exc_off: *mut u64, pub exc_heap: *mut u64, pub frm_heap: *mut u64, pub exc_pos: *mut u16,
     pub exc_raw: *mut u8, pub out: *mut u8, pub planned: c_int, pub frm: c_int,
     pub at: usize, pub nexc: usize, pub tail: usize, pub below: usize, pub lb: usize, pub over: c_int,
 }
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn qrs_coc_enc_open(s: *mut CEnc, n: usize, width: usize) 
         (*s).c = meta_view(lean::sarray_cptr(meta), msz, n);
         (*s).frm_heap = coc_alloc(nblk * 8).cast();
         (*s).c.fdelta = (*s).frm_heap;
-        (*s).exc_heap = coc_alloc((nblk + 1) * 4).cast();
+        (*s).exc_heap = coc_alloc((nblk + 1) * 8).cast();
         (*s).exc_off = (*s).exc_heap;
     }
 }
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn qrs_coc_enc_layout(s: *mut CEnc) {
         if let Some(l) = l {
             let t = (*s).c.pack.add(at);
             put(t, tail, width as u64 | if frm { 0x100 } else { 0 }); // COC_EXC_FRM
-            core::ptr::copy_nonoverlapping((*s).exc_off.cast::<u8>(), t.add(l.off), (nblk + 1) * 4);
+            core::ptr::copy_nonoverlapping((*s).exc_off.cast::<u8>(), t.add(l.off), (nblk + 1) * 8);
             if frm { core::ptr::copy_nonoverlapping((*s).frm_heap.cast::<u8>(), t.add(o_frm), nblk * 8) }
             coc_free((*s).exc_heap.cast());
             (*s).exc_heap = null_mut();

@@ -124,14 +124,14 @@ private def alpPad (b : ByteArray) : ByteArray :=
 
 /-- The exception ladder `Column.alpSects` reads back, `rust/src/layout.rs`'s `exc_layout`: the header (the count of
 `exc`, then `word`), `exc_raw` (element `i` of `x` at `w` bytes, each `i` of `exc`), `exc_off` (at each of the `nb + 1`
-block starts, the exceptions before it), `exc_pos` (each one's place in its block of `B`) and `last`, each section
+block starts, the exceptions before it, a `u64` like the count, so a column of any length is patched), `exc_pos` (each one's place in its block of `B`) and `last`, each section
 aligned. ALP's blob ends in its block exponents, a FoR patch list in its frames or in nothing. -/
 def excBlob (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array Nat) (last : ByteArray) : ByteArray :=
   alpPad (Rel.Column.pushBits (Rel.Column.pushBits ByteArray.empty exc.size.toUInt64 8) word 8)
     ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
          Rel.Column.pushBits acc (Rel.Column.bitsAt x (i * w) w) w)
     ++ alpPad ((Array.range (nb + 1)).foldl (init := ByteArray.empty) fun acc b =>
-         Rel.Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 4)
+         Rel.Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 8)
     ++ alpPad (exc.foldl (init := ByteArray.empty) fun acc i =>
          Rel.Column.pushBits acc (i % B).toUInt64 2)
     ++ alpPad last
@@ -230,15 +230,16 @@ Block `b` is `planBlock`'s base, frame `f` and width byte `d` (its residual widt
 `outside` leaves is patched — its residual 0, its bits in the patch list `excBlob` lays after the residuals — a null row
 takes the top residual `2 ^ d - 1`, so the null is tested on the block (`Column.foRNul`) and never decoded, and every
 other is its key less `f` at `d` bits. The patch list exists where a block patches, its frames (`f - mn` a block) where
-one is not its minimum; `rust/src/enc.rs`'s `for_blk`, `nul_meta` and `pack_exc_blk` write the same bytes. A column of
-`2 ^ 32` elements or more patches nothing: the list's block offsets are `u32`. -/
+one is not its minimum; `rust/src/enc.rs`'s `for_blk`, `nul_meta` and `pack_exc_blk` write the same bytes. The list's
+count and block offsets are `u64`, so patching is off only past `2 ^ 64` elements, which no column in memory reaches;
+the test stays because a `ByteArray`'s size has no bound in the logic, and the readers' theorems need the count to fit. -/
 def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) (nul : ByteArray := .empty) :
     ByteArray × ByteArray :=
   let w := width.toNat
   let n := x.size / w
   -- the block size once as a shift, not a `2 ^ lg` at every element
   let B := 1 <<< lg
-  let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x nul
+  let blk := planBlock lg w n (patch && decide (n < 2 ^ 64)) x nul
   let bs := (Array.range ((n + B - 1) / B)).map blk
   -- every per-element read of a plan goes to `bs`, never `blk`: each `blk` call reruns the block's width search
   let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>

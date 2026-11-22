@@ -28,8 +28,8 @@ theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0
   simp only [hwt, Nat.one_shiftLeft, bitAt_empty, Bool.and_false, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
     Bool.true_and]
   generalize x.size / w = n
-  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
-  generalize (patch && decide (n < 2 ^ 32)) = pl at hpb ⊢
+  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 64)) x b
+  generalize (patch && decide (n < 2 ^ 64)) = pl at hpb ⊢
   generalize Kernel.Coc.planBlock lg w n pl x .empty = blk at hpb ⊢
   have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
     ((Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg))).map fun x =>
@@ -81,9 +81,9 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   simp only [hwt, Nat.one_shiftLeft, bitAt_empty, Bool.and_false, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
     Bool.true_and]
   generalize x.size / w = n
-  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
-  have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
-  generalize (patch && decide (n < 2 ^ 32)) = pl at hpb h32 ⊢
+  have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 64)) x b
+  have h64 : (patch && decide (n < 2 ^ 64)) = true → n < 2 ^ 64 := fun h => by simp at h; exact h.2
+  generalize (patch && decide (n < 2 ^ 64)) = pl at hpb h64 ⊢
   generalize Kernel.Coc.planBlock lg w n pl x .empty = blk at hpb ⊢
   generalize hbs : Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)) = bs
   have hbsz : bs.size = (n + 2 ^ lg - 1) / 2 ^ lg := by rw [← hbs]; simp
@@ -97,10 +97,10 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   obtain ⟨hnb, hlgM, hMb⟩ := hMr
   have hBM : Column.blk M = 2 ^ lg := by rw [blk_of_lgAt M ⟨hlgM ▸ hlg.1, hlgM ▸ hlg.2⟩, hlgM]
   simp only [Array.size_map] at hnb hMb
-  -- a patch list is written only with patching on, so below `2 ^ 32` elements
-  have h32' : ∀ exc : Array Nat, exc = (Array.range n).filter (fun i => Kernel.Coc.outside
+  -- a patch list is written only with patching on, so below `2 ^ 64` elements
+  have h64' : ∀ exc : Array Nat, exc = (Array.range n).filter (fun i => Kernel.Coc.outside
       (bs.getD (i / 2 ^ lg) default).2.2.2.1 (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) →
-      exc.size ≠ 0 → exc.size < 2 ^ 32 := fun exc hexc h => by
+      exc.size ≠ 0 → exc.size < 2 ^ 64 := fun exc hexc h => by
     have hen : exc.size ≤ n := by
       rw [hexc, ← Array.length_toList, Array.toList_filter, toList_range]
       exact Nat.le_trans (List.length_filter_le _ _) (by simp)
@@ -118,10 +118,10 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
             hj.1).2 hpl
           rw [show bs.getD (j / 2 ^ lg) default = bs[j / 2 ^ lg] by unfold Array.getD; rw [dif_pos hb]; rfl, hbget _ hb, hk] at hj; exact absurd hj.2 Bool.false_ne_true
       exact absurd (by rw [← Array.length_toList, he]; rfl) h
-    · exact Nat.lt_of_le_of_lt hen (h32 hpl)
+    · exact Nat.lt_of_le_of_lt hen (h64 hpl)
   generalize hexc : Array.filter (fun i => Kernel.Coc.outside (bs.getD (i / 2 ^ lg) default).2.2.2.1
       (bs.getD (i / 2 ^ lg) default).2.2.2.2 (Kernel.Coc.keyAt w x i)) (Array.range n) = exc
-  have h32e := h32' exc hexc.symm
+  have h64e := h64' exc hexc.symm
   have hfsz : (Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs).size =
       Column.nblk M := by simp [hnb]
   generalize Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs = fs at hfsz ⊢
@@ -151,7 +151,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
       obtain ⟨hc, hwd, -, -, -, -, -, hsz⟩ := excBlob_reads (w.toUInt64 ||| if frm = true then 256 else 0) (2 ^ lg)
         ⟨hBp, hB16⟩ w hw8 bs.size x exc
         (if frm = true then fs.foldl (init := ByteArray.empty) fun acc v => Column.pushBits acc v 8 else ByteArray.empty)
-        (h32e h0) _ pack.size (fun k _ => ba_append_right _ _ _)
+        (h64e h0) _ pack.size (fun k _ => ba_append_right _ _ _)
       have hW : ([1, 2, 4, 8].contains ((w.toUInt64 ||| if frm = true then 256 else 0).toNat % 256) &&
           decide ((w.toUInt64 ||| if frm = true then 256 else 0).toNat < 512)) = true ∧
           (w.toUInt64 ||| if frm = true then 256 else 0).toNat % 256 = w ∧

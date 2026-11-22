@@ -419,7 +419,7 @@ def resAt (pack : ByteArray) (s w j : Nat) : UInt64 :=
 blob, `exp`; `exc_raw` is always at 16, after the u64 count and the u64 element width or flags. -/
 def alpSects (nblk nexc esz : Nat) : Nat × Nat × Nat :=
   let o := (16 + nexc * esz + 7) / 8 * 8
-  let p := (o + (nblk + 1) * 4 + 7) / 8 * 8
+  let p := o + (nblk + 1) * 8
   (o, p, (p + nexc * 2 + 7) / 8 * 8)
 
 /-- A `w`-byte element's bits `v` as the value q holds: sign-extended from its `8 * w` bits by a shift up and an
@@ -436,7 +436,7 @@ def foRExc (metadata pack : ByteArray) (i : Nat) (e : Nat := blockStart metadata
   if pack.size ≤ e then none else
   let esz := (bitsAt pack (e + 8) 8).toNat % 256
   let (o, p, _) := alpSects (nblk metadata) (bitsAt pack e 8).toNat esz
-  let off (b : Nat) := (bitsAt pack (e + o + b * 4) 4).toNat
+  let off (b : Nat) := (bitsAt pack (e + o + b * 8) 8).toNat
   let b := i / blk metadata
   ((List.range' (off b) (off (b + 1) - off b)).find?
       fun k => (bitsAt pack (e + p + k * 2) 2).toNat == i % blk metadata).map fun k =>
@@ -507,7 +507,7 @@ def alpEsz (a : ByteArray) : Nat := if alpF32 a then 4 else 8
 
 /-- Where block `b`'s exceptions start in `exc_pos` and `exc_raw`, `b = nblk` giving `nexc`. -/
 def alpExcOff (metadata a : ByteArray) (b : Nat) : Nat :=
-  (bitsAt a ((alpSects (nblk metadata) (alpNexc a) (alpEsz a)).1 + b * 4) 4).toNat
+  (bitsAt a ((alpSects (nblk metadata) (alpNexc a) (alpEsz a)).1 + b * 8) 8).toNat
 
 /-- Exception `j`'s position **inside its own block**, which is why `Column.blk` fitting a `UInt16`
 is what this layout rests on. -/
