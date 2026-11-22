@@ -16,7 +16,8 @@ rel_program prelude where
     cor(S : α ⟶ β) : α×β ⟶ α×β ≜ dom(π₁S ∩ π₂)                  -- the pairs of S, as a coreflexive
     mid(R : α ⟶ α) : α ⟶ α×α ≜ ⟨R°,R⟩                            -- y ↦ (x,z) with x R y and y R z: mid(<) is x<y<z
     iasc(c : β ⟶ α) : β ⟶ β ≜ asc(ran(⟨c,𝟙⟩))π₂                  -- q's iasc: j ↦ the position of c's j-th smallest, ties by position
-    star(R : α ⟶ α) : α ⟶ α ≜ μX : 𝟙 ∪ R X                       -- R*, the reflexive transitive closure; μX : S ∪ R X is R* S
+    -- infix operators fold left to right, so `R X` is parenthesised: `𝟙 ∪ R X` is `(𝟙 ∪ R) X`, whose `μ` is `𝟘`
+    star(R : α ⟶ α) : α ⟶ α ≜ μX : 𝟙 ∪ (R X)                     -- R*, the reflexive transitive closure
 
     -- The list functions of B&dM written as their definitions (diagram order); `ran(nil)` is the fold's seed [].
 
@@ -51,6 +52,7 @@ rel_program prelude where
     theorem Eunion(R : α ⟶ β) : E(R) = E(Λ(R))E(∋)                 -- E(R) is the union of the images of Λ(R)
     theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) : E(R S) = E(R)E(S)        -- E is a functor
     theorem estMap(f : α ⟶ β, R : β ⟶ β) if dom(f) = 𝟙, simple(f), 𝟙 ⊑ R : Λ(f)est(R) = f  -- a singleton's R-extreme is itself
+    theorem starLinear(R : α ⟶ α, S : α ⟶ β) : μX : S ∪ (R X) = star(R) S  -- a linear recursion is star(R) on S
 
 end Rel.Programs
 
