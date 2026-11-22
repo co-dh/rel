@@ -29,11 +29,12 @@ def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64
     | .foR md pk => s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
     | _ => s!"{what}: constructor {e.ctorIdx} is not foR")
 
-/-- Words as a `foR` answer of 8-byte elements, `foRWords`' converse: `Coc.encodeAt` at `lgEnc`, which
-`qlean_coc_encode` writes (`exports::scan::for_words`). -/
+/-- Words as a `foR` answer of 8-byte elements, `foRWords`' converse: the extern `Coc.encode` (`Coc.encodeAt` at
+`lgEnc`), which `qlean_coc_encode` writes (`exports::scan::for_words`). -/
 def wordsFoR (ws : Array UInt64) : Enc :=
-  -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
-  let p := Coc.encodeAt Column.lgEnc (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+  -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`;
+  -- the extern, not its body: the body's width search is quadratic in a block and costs minutes on a wide column
+  let p := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
   .foR p.1 p.2
 
 /-- `n` cells, each `fill` until row `k` combines `es[k]` into the cell `is[k]`: the cell becomes `op.eval cell es[k]`,
