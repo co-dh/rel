@@ -252,7 +252,7 @@ def starRow : Prim :=
 def domRow : Prim :=
   { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"),
     written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
-/-- `ran(R) = 𝟙 ∩ R° R`, read whole (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
+/-- `ran(R) = 𝟙 ∩ R° R` (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
 def ranRow : Prim :=
   { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"),
     written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
