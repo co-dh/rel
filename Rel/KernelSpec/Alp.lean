@@ -17,59 +17,9 @@ theorem range_split (lo hi n : Nat) (h1 : lo ≤ hi) (h2 : hi ≤ n) :
   rw [show 0 + 1 * hi = hi by omega, show hi + (n - hi) = n by omega] at b
   rw [List.range_eq_range', List.range_eq_range', ← b, ← a]
 
-theorem filter_lt_range (P : Nat → Bool) (n m : Nat) :
-    ((List.range n).filter P).filter (fun y => decide (y < m)) = (List.range (min m n)).filter P := by
-  by_cases h : n ≤ m
-  · rw [Nat.min_eq_right h, List.filter_eq_self.2]
-    intro a ha; rw [List.mem_filter, List.mem_range] at ha; exact decide_eq_true (by omega)
-  · rw [Nat.min_eq_left (by omega), range_split m m n (Nat.le_refl _) (by omega), Nat.sub_self,
-      List.range'_zero, List.append_nil, List.filter_append, List.filter_append]
-    have e1 : ((List.range m).filter P).filter (fun y => decide (y < m)) = (List.range m).filter P :=
-      List.filter_eq_self.2 fun a ha => by rw [List.mem_filter, List.mem_range] at ha; exact decide_eq_true ha.1
-    have e2 : ((List.range' m (n - m)).filter P).filter (fun y => decide (y < m)) = [] :=
-      filter_nil_of _ _ fun a ha => by
-        rw [List.mem_filter, List.mem_range'_1] at ha; exact decide_eq_false (by omega)
-    rw [e1, e2, List.append_nil]
 
-/-- In `A ++ B ++ C`, an index lands in `B` exactly when its entry lies in `B`'s range. -/
-theorem block_index (L A B C : List Nat) (hL : L = A ++ B ++ C) (lo hi : Nat)
-    (hA : ∀ y ∈ A, y < lo) (hB : ∀ y ∈ B, lo ≤ y ∧ y < hi) (hC : ∀ y ∈ C, hi ≤ y)
-    (k : Nat) (hk : k < L.length) :
-    (A.length ≤ k ∧ k < A.length + B.length) ↔ (lo ≤ L[k] ∧ L[k] < hi) := by
-  subst hL
-  rw [List.getElem_append]
-  split
-  · next h1 =>
-    rw [List.length_append] at h1
-    rw [List.getElem_append]
-    split
-    · next h2 =>
-      have := hA _ (List.getElem_mem h2)
-      exact ⟨fun h => absurd h.1 (by omega), fun h => absurd h.1 (by omega)⟩
-    · next h2 =>
-      have := hB _ (List.getElem_mem (show k - A.length < B.length by omega))
-      exact ⟨fun _ => this, fun _ => ⟨by omega, by omega⟩⟩
-  · next h1 =>
-    rw [List.length_append] at h1
-    have := hC _ (List.getElem_mem (show k - (A ++ B).length < C.length by
-      simp only [List.length_append] at hk ⊢; omega))
-    exact ⟨fun h => absurd h.2 (by omega), fun h => absurd h.2 (by omega)⟩
 
-theorem sum_blocks (K n m : Nat) :
-    ((List.range m).map fun c => min (c * K + K) n - c * K).sum =
-      min (m * K) n := by
-  induction m with
-  | zero => simp
-  | succ m ih =>
-    rw [List.range_succ, List.map_append, List.sum_append_nat, ih]
-    simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
-    rw [Nat.succ_mul]; omega
 
-theorem foldl_max_lt (l : List Nat) (g : Nat → Nat) (m a : Nat) (ha : a < m) (hg : ∀ j, g j < m) :
-    l.foldl (fun acc j => max acc (g j)) a < m := by
-  induction l generalizing a with
-  | nil => exact ha
-  | cons y l ih => exact ih _ (Nat.max_lt.2 ⟨ha, hg y⟩)
 
 /-- The integers `Coc.alpEncodeAt` hands to `Coc.encode`: each block's entries at eight bytes, a
 block that is not the last holding `blk` of them. -/
@@ -107,21 +57,7 @@ theorem foldl_blocks (K : Nat) (B : Nat × Array (Option UInt64) → UInt64) (L 
         a.size + 8 * ((c + 1) * K + j) by rw [hb0, Nat.add_mul, Nat.one_mul]; omega] at this
       exact this
 
-theorem blocks_size (B : Nat × Array (Option UInt64) → UInt64) (bs : Array (Nat × Array (Option UInt64))) :
-    (bs.foldl (fun acc be => be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) acc) ByteArray.empty).size =
-      8 * (bs.toList.map (·.2.size)).sum := by
-  rw [← Array.foldl_toList, (foldl_blocks 0 B bs.toList ByteArray.empty).1,
-    show ByteArray.empty.size = 0 from rfl, Nat.zero_add]
 
-theorem blocks_read (K : Nat) (B : Nat × Array (Option UInt64) → UInt64) (bs : Array (Nat × Array (Option UInt64)))
-    (hfull : ∀ c (h : c + 1 < bs.size), bs[c].2.size = K) (c : Nat) (hc : c < bs.size) (j : Nat)
-    (hj : j < bs[c].2.size) (v : UInt64) (hv : bs[c].2[j] = some v) :
-    Column.bitsAt (bs.foldl (fun acc be => be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) acc)
-      ByteArray.empty) (8 * (c * K + j)) 8 = v := by
-  have := (foldl_blocks K B bs.toList ByteArray.empty).2.2 (fun c h => by simpa using hfull c (by simpa using h))
-    c (by simpa using hc) j (by simpa using hj) v (by simpa using hv)
-  rw [Array.foldl_toList, show ByteArray.empty.size = 0 from rfl, Nat.zero_add] at this
-  exact this
 
 /-- `Coc.encode`'s block count, the one `Column.alpSects` is laid out by. -/
 theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray)
@@ -144,59 +80,7 @@ theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0
       exact Nat.lt_of_le_of_lt (hpb b (mul_lt_of_lt_cdiv (Nat.two_pow_pos lg) h)).2.1 (by decide))
   exact ⟨by rw [hMr.1]; simp, by rw [blk_of_lgAt _ (by rw [hMr.2.1]; exact hlg), hMr.2.1], hMr.2.1⟩
 
-/-- A decimal the encoder accepted is one `Column.alpDec` turns back into the bits it came from:
-`Coc.alpDat` answers `some d` only after comparing `alpDec d e f32` with them. -/
-theorem alpDat_some (f32 : Bool) (x : UInt64) (e : Nat) (v : UInt64) (h : Kernel.Coc.alpDat f32 x e = some v) :
-    Column.alpDec v e f32 = x := by
-  unfold Kernel.Coc.alpDat at h; dsimp only at h
-  split at h
-  · split at h
-    · next hb => obtain rfl := Option.some.inj h; exact beq_iff_eq.1 hb
-    · exact absurd h (by simp)
-  · exact absurd h (by simp)
 
-/-- What each reader of the alp blob answers on what `Coc.alpBlob` wrote, at the element width the
-blob's flag declares. -/
-theorem alpBlob_reads (f32 : Bool) (K : Nat) (hK : 0 < K ∧ K ≤ 65536) (w : Nat) (hw : (if f32 then 4 else 8) = w) (n : Nat) (x : ByteArray)
-    (bs : Array (Nat × Array (Option UInt64))) (M : ByteArray) (exc : Array Nat)
-    (hexc : exc = (Array.range n).filter fun i => ((bs[i / K]!).2[i % K]!).isNone)
-    (hM : Column.nblk M = bs.size) (hn : n < 2 ^ 32) (he : ∀ b (h : b < bs.size), bs[b].1 < 256) :
-    Column.alpF32 (Kernel.Coc.alpBlob f32 K w n x bs) = f32 ∧
-    (∀ k (h : k < exc.size), Column.alpExcRaw (Kernel.Coc.alpBlob f32 K w n x bs) k =
-      Column.bitsAt x (exc[k] * w) w) ∧
-    (∀ b ≤ bs.size, Column.alpExcOff M (Kernel.Coc.alpBlob f32 K w n x bs) b =
-      (exc.filter (· < b * K)).size) ∧
-    (∀ k (h : k < exc.size), Column.alpExcPos M (Kernel.Coc.alpBlob f32 K w n x bs) k = exc[k] % K) ∧
-    (∀ b (h : b < bs.size), Column.alpExpAt M (Kernel.Coc.alpBlob f32 K w n x bs) b = bs[b].1) ∧
-    Column.alpNexc (Kernel.Coc.alpBlob f32 K w n x bs) = exc.size := by
-  have hw8 : w ≤ 8 := by subst hw; cases f32 <;> decide
-  have hen : exc.size ≤ n := by
-    rw [hexc, ← Array.length_toList, Array.toList_filter, toList_range]
-    exact Nat.le_trans (List.length_filter_le _ _) (by simp)
-  have hA : Kernel.Coc.alpBlob f32 K w n x bs = Kernel.Coc.excBlob (if f32 then 1 else 0) K w bs.size x exc
-      (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8) := by subst hexc; rfl
-  rw [hA]
-  have W4 := foldl_push8 (fun be : Nat × Array (Option UInt64) => be.1.toUInt8) bs.toList ByteArray.empty
-  rw [Array.foldl_toList] at W4
-  generalize bs.foldl (init := ByteArray.empty) (fun acc be => acc.push be.1.toUInt8) = L at W4 ⊢
-  -- the blob is an exception ladder read from its start
-  obtain ⟨hc, hwd, hraw, hoff, hpos, hlast, -⟩ := excBlob_reads (if f32 then 1 else 0) K hK w hw8 bs.size x exc L
-    (by omega) (Kernel.Coc.excBlob (if f32 then 1 else 0) K w bs.size x exc L) 0 (fun k _ => by rw [Nat.zero_add])
-  simp only [Nat.zero_add] at hwd hraw hoff hpos hlast
-  generalize Kernel.Coc.excBlob (if f32 then 1 else 0) K w bs.size x exc L = A at hc hwd hraw hoff hpos hlast ⊢
-  have hf32 : Column.alpF32 A = f32 := by unfold Column.alpF32; rw [hwd]; cases f32 <;> decide
-  have hesz : Column.alpEsz A = w := by unfold Column.alpEsz; rw [hf32, hw]
-  have hnx : Column.alpNexc A = exc.size := hc
-  refine ⟨hf32, fun k hk => ?_, fun b hb => ?_, fun k hk => ?_, fun b hb => ?_, hnx⟩
-  · unfold Column.alpExcRaw; rw [hesz, hraw k hk]
-  · unfold Column.alpExcOff; rw [hM, hnx, hesz, hoff b hb]
-  · unfold Column.alpExcPos; rw [hM, hnx, hesz, hpos k hk]
-  · unfold Column.alpExpAt; rw [hM, hnx, hesz]
-    have e0 : ByteArray.empty.size = 0 := rfl
-    have := W4.2.2 b (by simpa using hb)
-    simp only [e0, Nat.zero_add, Array.getElem_toList] at this W4
-    rw [hlast b (by rw [W4.1]; simpa using hb), this]
-    simp [Nat.mod_eq_of_lt (he b hb)]
 
 
 /-- What the writers guarantee of a Frame-of-Reference column of `n` elements: one block per started

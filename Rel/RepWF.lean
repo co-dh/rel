@@ -59,11 +59,6 @@ theorem ldivBits_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t
   okSplit
   exact ofBits_wf h (Vals.code2_wf ‹_› hR.2 hB.2) (Vals.code2_wf ‹_› hS.2 hC.2)
 
-theorem cmpPairs_wf {op : Op} {t : QAtomicType} {T u : Tab (.atom t) (.atom t)} (h : cmpPairs op T = .ok u)
-    (hT : T.WF) : u.WF := by
-  simp only [Tab.cmpPairs, bind, Except.bind] at h
-  okSplit
-  exact keep_wf h hT
 
 
 

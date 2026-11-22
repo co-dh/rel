@@ -50,13 +50,6 @@ namespace Rel.KernelWF
 
 open Rel.Kernel Rel
 
-/-- A `Nat.fold` that pushes a byte a step answers one byte per step. -/
-private theorem fold_push_size (g : Nat → UInt8) :
-    ∀ (k : Nat) (b : ByteArray), (Nat.fold k (fun i _ acc => acc.push (g i)) b).size = b.size + k
-  | 0, b => by simp
-  | k + 1, b => by
-    rw [Nat.fold_succ, ← Nat.add_assoc, ← fold_push_size g k b]
-    simp only [ByteArray.size, ByteArray.push, Array.size_push]
 
 
 end Rel.KernelWF

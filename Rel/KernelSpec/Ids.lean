@@ -34,11 +34,6 @@ theorem packIds_bytes (c m : Nat) (f : Nat → Nat) (hc : 1 ≤ c) (hc8 : c ≤ 
 
 
 
-/-- `Nat.toUInt64` is injective below `2 ^ 64`, so a search through it is the search on `Nat`s. -/
-theorem toUInt64_beq {a b : Nat} (ha : a < 2 ^ 64) (hb : b < 2 ^ 64) : (a.toUInt64 == b.toUInt64) = (a == b) := by
-  apply Bool.eq_iff_iff.2
-  rw [beq_iff_eq, beq_iff_eq, ← UInt64.toNat_inj, Nat.toUInt64_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat',
-    UInt64.toNat_ofNat', Nat.mod_eq_of_lt ha, Nat.mod_eq_of_lt hb]
 
 
 

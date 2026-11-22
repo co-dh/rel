@@ -15,9 +15,6 @@ open Rel Rel.Kernel
 
 
 
-/-- The elements a dense fold reads at class `cls`, in order: `Ew.signed`'s value of each. -/
-def denseElems (cls : UInt8) (b : ByteArray) : List Int64 :=
-  (List.range (b.size / Ew.width cls)).map fun i => Ew.signed cls (Ew.elem cls b i)
 
 
 

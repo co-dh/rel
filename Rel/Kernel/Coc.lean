@@ -334,28 +334,6 @@ def alpBlob (f32 : Bool) (B w n : Nat) (x : ByteArray) (bs : Array (Nat × Array
   excBlob (if f32 then 1 else 0) B w bs.size x ((Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone)
     (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
 
-/-- A dense payload of `w`-byte floats as `(metadata, pack, alp)`. Three passes, the first of them
-the expensive one — up to nineteen trial round trips an element — because a block's exponent is not
-known until every one of its elements has been asked for its own.
-
-Every exception is packed as its block's minimum, i.e. residual zero. It therefore cannot widen the
-pack, and what it wrongly contributes to a reduction is a constant the layer below subtracts back
-out; `encode` recomputes that same minimum from the integers handed to it. -/
-def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := Rel.Column.lgEnc) :
-    ByteArray × ByteArray × ByteArray :=
-  let w := if f32 then 4 else 8
-  let n := x.size / w
-  let own := (Array.range n).map fun i => alpOwn f32 (Rel.Column.bitsAt x (i * w) w)
-  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map fun b =>
-    alpBlockOf f32 (2 ^ lg) w n b x own
-  let ds := bs.foldl (init := ByteArray.empty) fun acc be =>
-    let mn := be.2.foldl (init := (none : Option Int)) fun m d => match d with
-      | none => m
-      | some v => some (match m with | none => v.toInt64.toInt | some a => min a v.toInt64.toInt)
-    let base := (Int64.ofInt (mn.getD 0)).toUInt64
-    be.2.foldl (init := acc) fun a d => Rel.Column.pushBits a (d.getD base) 8
-  let (metadata, pack) := encodeAt lg 8 ds false
-  (metadata, pack, alpBlob f32 (2 ^ lg) w n x bs)
 
 
 
@@ -392,29 +370,7 @@ end Rel.Kernel.Coc
 
 namespace Rel.Column
 
-/-- The types Frame of Reference is the encoding *for*. `CLAUDE.md` settles that the encoded form is
-the representation rather than a fast path, so this is not a policy about when it pays — it is which
-types it is the right encoding for at all. Every exclusion is measured or structural:
 
-* `boolean` is `bits`, one bit per element, which is already eight times less than q spends;
-* `byte` and `char` are one byte, so the residual width is already the type width and the metadata
-  per block is a net loss — `tools/coc/note.md` §5 has them at 0.98–1.02x across the board, measured
-  when a block cost 25 bytes and so a 2.4% loss; at 33 it is 3.2% and the exclusion only holds
-  harder. `CLAUDE.md` grants them explicitly;
-* `f32` and `f64` are floats. Frame of Reference over raw IEEE bit patterns is
-  lossless and shrinks nothing, patterns not clustering the way the values do; their encoding is
-  `alpEncodes`, below;
-* `symbol` has no fixed width. -/
-def encodes : QAtomicType → Bool
-  | .i16 | .i32 | .date | .i64 | .datetime => true
-  | _ => false
-
-/-- The types ALP is the encoding for: the two float types and no others. `f32` is four bytes and
-goes through the `_f32` kernels, `f64` is eight and goes through the `_f64` ones — `QAtomicType.width`
-is what chooses. -/
-def alpEncodes : QAtomicType → Bool
-  | .f32 | .f64 => true
-  | _ => false
 
 end Rel.Column
 

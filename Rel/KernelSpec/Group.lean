@@ -141,7 +141,6 @@ section Over
 
 variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (ng w n : USize) (gid b : ByteArray)
 
-def valAt (i : Nat) : Int64 := Ew.signed cls (Ew.elem cls b i)
 
 
 /-- `overGroups`' step, which `overGroups_eq` checks is the body's. -/

@@ -171,24 +171,6 @@ def longWords (n : USize) (e : Enc) : Option (List UInt64) :=
   | _ => none
 
 
-/-- Under `wf`, a long column lists its words, each read as a long: the `foR` decode, or the positions. -/
-theorem Arr.toList_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
-    x.toList = ws.map UInt64.toInt64 := by
-  unfold longWords at h
-  cases hc : x.enc with
-  | foR md pk =>
-    rw [hc] at h; cases h
-    apply List.ext_getElem (by rw [Arr.length_toList]; simp)
-    intro i h1 h2; rw [Arr.getElem_toList, Arr.get_long_foR x hc]; simp
-  | pos =>
-    rw [hc] at h; cases h
-    apply List.ext_getElem (by rw [Arr.length_toList]; simp)
-    intro i h1 h2
-    have hi : i < m.toNat := by rwa [Arr.length_toList] at h1
-    rw [Arr.getElem_toList, Arr.get_ne x _ (by decide)]
-    simp only [Enc.get, hc, if_pos hi, Option.bind_some, List.getElem_map, List.getElem_range]
-    rfl
-  | _ => all_goals (rw [hc] at h; cases h)
 
 
 

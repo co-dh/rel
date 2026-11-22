@@ -42,21 +42,7 @@ theorem Int64.toInt_word (a : Int64) : a.toInt =
   rw [h1, h2, BitVec.toInt_eq_toNat_cond]
   split <;> split <;> omega
 
-/-- **The `i64` order code** (`Order.rank .i64`, `ordCode 8 false true`): the sign bit flipped, `toInt + 2^63`. -/
-theorem Int64.code_toNat (a : Int64) : (a.toUInt64 ^^^ 0x8000000000000000).toNat = (a.toInt + 2 ^ 63).toNat := by
-  have hx := a.toUInt64.toNat_lt
-  rw [UInt64.toNat_xor, show (0x8000000000000000 : UInt64).toNat = 2 ^ 63 from rfl, Nat.xor_top (b := 63) hx,
-    Int64.toInt_word]
-  split <;> omega
 
-theorem ordCode_i64 (u : UInt64) : ordCode 8 false true u = u ^^^ 0x8000000000000000 := by
-  apply UInt64.toNat_inj.1
-  have m64 : (18446744073709551615 : UInt64).toNat = 2 ^ 64 - 1 := rfl
-  simp only [ordCode, Nat.reduceMul, Nat.reduceSub, Nat.reducePow, beq_self_eq_true, if_true, Bool.false_eq_true,
-    if_false, UInt64.toNat_xor, UInt64.toNat_and, m64]
-  rw [show (18446744073709551615 : Nat) = 2 ^ 64 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod,
-    Nat.mod_eq_of_lt u.toNat_lt]
-  rfl
 
 
 

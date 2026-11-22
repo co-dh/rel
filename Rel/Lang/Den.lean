@@ -575,27 +575,7 @@ noncomputable def Tm.Sub.den (ρ : Val) : Tm.Sub → Val
     the variable's own is (`compile` too runs a row only under a `prim` head). -/
 def Tm.Sub.Plain (σ : Tm.Sub) : Prop := ∀ e ∈ σ, ∀ ρ ss, e.2.2.2.argDen ρ ss = 𝟘
 
-theorem Tm.Sub.argDen_get {ρ : Val} {ss : List Sem} (i : Nat) {A' B' : Obj} (d : Bool) :
-    ∀ σ : Tm.Sub, σ.Plain → (σ.get i d : Tm A' B').argDen ρ ss = 𝟘
-  | [], _ => rfl
-  | (k, ⟨A, B, s⟩) :: σ, hσ => by
-    simp only [Sub.get]
-    split
-    · split
-      · rename_i h; obtain ⟨rfl, rfl⟩ := h; exact hσ _ List.mem_cons_self ρ ss
-      · rfl
-    · exact argDen_get i d σ fun e he => hσ e (List.mem_cons_of_mem _ he)
 
-theorem Tm.Sub.den_get (ρ : Val) (i : Nat) {A' B' : Obj} (d : Bool) :
-    ∀ σ : Tm.Sub, (σ.get i d : Tm A' B').den ρ = σ.den ρ i A' B'
-  | [] => rfl
-  | (k, ⟨A, B, s⟩) :: σ => by
-    by_cases e : i = k
-    · subst e
-      by_cases h : A = A' ∧ B = B'
-      · obtain ⟨rfl, rfl⟩ := h; simp [Sub.get, Sub.den, Val.bind]
-      · simp [Sub.get, Sub.den, Val.bind, h, Tm.den]
-    · simp only [Sub.get, Sub.den, if_neg e, Val.bind_ne e]; exact den_get ρ i d σ
 
 theorem Tm.lt_fresh : ∀ {l : List Nat} {i : Nat}, i ∈ l → i < Tm.fresh l
   | a :: l, i, h => by
@@ -613,20 +593,6 @@ theorem Tm.Sub.den_bind {ρ : Val} {k : Nat} {A B : Obj} {X : Den A B} :
     · subst e; exact Val.bind_same
     · rw [Val.bind_ne e, Val.bind_ne e]; exact den_bind σ (fun l hl => h l (by simp [Sub.fvs, hl])) i hi
 
-/-- Under a binder `k` renamed to `k'`, fresh for the body `b` and `σ`: the substituted body read with `k'` bound
-    to `X` is the body read with `k` bound to `X` over `σ`'s meaning. -/
-theorem Tm.Sub.den_rename {A B A' B' : Obj} (b : Tm A' B') (σ : Tm.Sub) (ρ : Val) (k : Nat)
-    (X : Den A B) : b.den (Sub.den (ρ.bind (fresh (b.fv ++ σ.fvs)) X)
-      ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ)) = b.den ((σ.den ρ).bind k X) := by
-  refine (b.den_congr _ _ fun i hi => ?_).1
-  have hv : (Tm.var false (fresh (b.fv ++ σ.fvs)) : Tm A B).den (ρ.bind (fresh (b.fv ++ σ.fvs)) X) = X := by
-    simp [Tm.den, Val.bind]
-  simp only [Sub.den, hv]
-  by_cases e : i = k
-  · subst e; exact Val.bind_same
-  · rw [Val.bind_ne e, Val.bind_ne e]
-    exact den_bind σ (fun j hj => Nat.ne_of_lt (lt_fresh (List.mem_append_right _ hj))) i
-      (Nat.ne_of_lt (lt_fresh (List.mem_append_left _ hi)))
 
 
 /-! ### Monotonicity -/
