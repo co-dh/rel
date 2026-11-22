@@ -55,3 +55,47 @@ through `by_width!` and an odd one through `res_pack`; fix: pack the `u64` resid
    `raw_kgather` (RepCanon :211 :419 :948, RepSetOps :108 :144 :661 :774 :775, RepTabComp :393, Run/Gather :26),
    `raw_scatter` (RepCols :130 :131, RepCanon :98, RepSetOps :96 :370 :532; needs `hasNul e = false`: `.pos` gives it
    by `rfl`, `one`/`x.enc` need it or `kscatter_ok`).
+
+# rq17f2 handoff
+
+Branch `worktree-agent-aca6ec9d099a599c9` (base 8852c9a + merge 361c818 + rq17f2 commits).
+
+## Done (built green: RelKernel spec modules through Rel.KernelSpec.Closure, Ids, Raw; Rel.Run.Core; Rel.Run.Gather)
+
+- `foROpt_encode` (KernelSpec/Encoding.lean:1123): `hbig` now asks only at a row that is no null
+  (`Column.bitAt nul i = false →`); the proof used it only in that branch. `rawOpt_encodeAt` (Raw.lean) likewise.
+- `wordsFoR_nul` (KernelSpec/Closure.lean:55, replaces `wordsFoR_valid`): Valid, raw size, the `foROpt` readback
+  (`none` at a null, `ws[i]` elsewhere; hypothesis = `hbig`), and `Enc.WF` at every type, u1 bounded only at non-null
+  rows. `wordsFoR_closed` is its `nul = .empty` specialisation; `kscatter_closed`/`kgather_closed` use it.
+- `nulMap` (Kernel/Scatter.lean) is `packOf ns.size (ns[i] != 0)`, same bytes as before on 0/1 flags, read back by
+  `Verify.bitAt_packOf`.
+- `Arr.kgather_wf` (Run/Gather.lean:21) over the null-aware read (decision A): a non-null gathered row reads a
+  non-null source row (`hasNul` false: no block flagged; true: its flag via `bitAt_packOf`).
+- `foRBits_bools` (KernelSpec/Ids.lean:55) now `foROpt … = some … ∧ foRBits … = …`; `wf_bools`, `boolBits_bools`,
+  `bitAt_bools` (Run/Core) use `.1`/`.2`; `get_boolBits` (Run/Core:202) takes `hnn` (row `j` no null), discharged in
+  `get_boolsOf` from `foRBits_bools.1`.
+
+## Blocker: kernel `decide` of a kscatter/kgather pair with a null column
+
+Measured with /data/tmp/rq17f2/T1.lean (`env LEAN_PATH=<wt>/.lake/build/lib/lean lean T1.lean`):
+- `Coc.encodeAt … nul` alone, null bitmap a small literal (`packIds 1 4 …`): 536 ms for two copies. Encoder is fine.
+- `hasNul`, `foRNuls` of an `ncol`: < 150 ms.
+- `view (kscatter .last (u 3) (col [2,0,2]) (col [10,11,0]) (u 4) 7) = enc8 [11,7,0,7]`: 1.6 s.
+- same with `ncol [10,11,0] [2]` against `lit [11,7,0,7] [2]` (encodeAt with the literal bitmap): fails after 166 s,
+  "Decidable instance … did not reduce", stuck at the `match view (kscatter …)`. The model value equals the rhs on
+  paper (words `[11,7,0,7]`, flags `[0,0,1,0]`, bitmap byte 4 both ways), so this is cost, not a false pair.
+- Hypothesis (not confirmed): the null bitmap reaching `encodeAt` is the unevaluated term
+  `nulMap (scatterWords … (foRNuls m e) …)` with `e` itself an encoder term; every `bitAt nul j` the encoder makes
+  re-reduces it, and the kernel's whnf cache compares those huge terms (perf: 48% `expr_eq_fn`, 30% its hash cache).
+  Next: profile T1's a2 with `perf record -g`; try in T1 a copy of kscatter's body that matches the nul ByteArray
+  to a literal first (e.g. `nulMap` built by `ByteArray.mk` of a `List.map`) to see whether a small nul term fixes
+  it; the fix must be in the model (all ScatterTest/GatherTest/AscTest/SeenTest null pairs pay it), not per test.
+- ScatterTest, GatherTest, AscTest, SeenTest, BitRowsTest not yet built green on this branch; CocTest, ScanTest
+  were green on rq17f.
+
+## Left (step 3 of rq17f2, untouched)
+
+`ascKeys_row` (KernelSpec/Asc.lean:157, worktree numbering) restricted to flag-0 rows (decision A); note its `cells`
+branch reads raw words unconditionally, so either mask the words at a null there or ask word equality at a cells key
+always. Then the callers listed above under Next 2 (RepCanon, RepSetOps, RepTabComp, RepCols, GenKBits, GenKFix),
+then `lake build RelKernel RelRun Rel` and `sh crate/build.sh syms`.
