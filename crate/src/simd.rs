@@ -475,14 +475,6 @@ mod ev {
 
 }
 
-/// `(int64_t)nearbyint(s)` for |s| < 2^53 (coc.rs `dat`): `cvtsd2si` rounds in the current mode, to nearest even, in one
-/// instruction and without libm.
-#[inline(always)]
-pub fn cvt_nearest(s: f64) -> i64 {
-    // SAFETY: SSE2 is the x86_64 baseline and the intrinsic works on a register.
-    unsafe { core::arch::x86_64::_mm_cvtsd_si64(core::arch::x86_64::_mm_set_sd(s)) }
-}
-
 
 // ---- the moving-window extremes (scan.rs `MW_EXT`) ----
 // The carried `ex = better(v, ex) ? v : ex` is a one-register chain. LLVM lowers a scalar select there to a cmov and its

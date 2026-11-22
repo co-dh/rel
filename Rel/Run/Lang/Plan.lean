@@ -124,14 +124,15 @@ instance {α : Type} [Reg α] : Reg (List α) :=
   ⟨.obj, listGet?, fun l => l.foldr (fun a r => .ctor 1 #[Reg.put a, r] #[]) (.ctor 0 #[] #[])⟩
 
 /-- An `Enc` is the constructor `Db.ownParts` takes apart: its tag, and its parts as its fields, which they are for
-    the forms whose fields are all buffers (`bytes`, `foR`, `alp`) and for `pos`, which has none; `Db.ownEnc` puts
-    them back. Every other form (`syms`, `enum`, `gen`) has a field that is no part: `Db.ownParts` refuses it, so it
-    is put with no fields and `get?` refuses its tag — a run that reaches one fails naming the register, never reads
-    a constructor the C does not hold. -/
+    the forms whose fields are all buffers (`foR`) and for `pos`, which has none; `Db.ownEnc` puts them back. Every
+    other form (`syms`, `enum`, `gen`) has a field that is no part: `Db.ownParts` refuses it, so it is put with no
+    fields and `get?` refuses its tag — a run that reaches one fails naming the register, never reads a constructor
+    the C does not hold. `get?` finds the own-format kind whose constructor has the tag, so no tag is written here. -/
 instance : Reg Enc := ⟨.obj, fun
-  | .ctor 6 #[] #[] => some .pos
-  | .ctor k ps #[] => if [0, 2, 3].contains k then
-      ps.mapM (fun | .bytes b => some b | _ => none) >>= Db.ownEnc k.toUInt8 else none
+  | .ctor k ps #[] => do
+    let bs ← ps.mapM fun | .bytes b => some b | _ => none
+    if k == (.pos : Enc).ctorIdx && bs.isEmpty then some .pos
+    else (List.range Db.ownNParts.length).findSome? fun i => (Db.ownEnc i.toUInt8 bs).filter (·.ctorIdx == k)
   | _ => none, fun e => .ctor e.ctorIdx (match Db.ownParts e with | .ok (some (_, ps)) => ps.map .bytes | _ => #[]) #[]⟩
 
 mutual

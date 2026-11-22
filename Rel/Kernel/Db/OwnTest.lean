@@ -49,7 +49,6 @@ def column (v : QValue) : IO Unit := do
   let g ← roundTrip f
   match ownEnc (X := Empty) g.kind g.parts with
   | some (.foR m p) => IO.println s!"foR: metadata {m.size} bytes, pack {p.size} bytes"
-  | some (.bytes b) => IO.println s!"bytes: {b.size} bytes"
   | some _ => IO.println "another constructor"
   | none => throw (IO.userError s!"ownEnc: no constructor of kind {g.kind}")
 
@@ -60,21 +59,21 @@ info: ok kind 2 count 64 domain `` part sizes [57, 808]
 foR: metadata 57 bytes, pack 808 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 64 (Ext.Enc.encode .i64 64 (.bytes (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000])))) none)
+#eval column (.vector .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000]))) none)
 
 /--
-info: ok kind 0 count 0 domain `` part sizes [0]
-bytes: 0 bytes
+info: ok kind 2 count 0 domain `` part sizes [24, 0]
+foR: metadata 24 bytes, pack 0 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 0 (.bytes .empty) none)
+#eval column (.vector .i64 0 (Ext.Enc.ofBytes 8 .empty) none)
 
 /--
-info: ok kind 0 count 3 domain `dom` part sizes [24]
-bytes: 24 bytes
+info: ok kind 2 count 3 domain `dom` part sizes [57, 256]
+foR: metadata 57 bytes, pack 256 bytes
 -/
 #guard_msgs in
-#eval column (.enum "dom" (.vector .i64 3 (.bytes (dense [2, 0, 1])) none))
+#eval column (.enum "dom" (.vector .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1])) none))
 
 -- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is refused (no writer of the
 -- sorted dictionary yet); and the writer refuses kind 5, a number that is no kind
@@ -84,8 +83,8 @@ bytes: 24 bytes
 #eval ((ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key),
   (ownFile (X := Empty) (.vector .sym 1 (.syms (ByteArray.mk #[97, 0]) #[0, 2]) none)).map (·.map key))
 /--
-info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
- "error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
+info: ("error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
+ "error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -95,11 +94,13 @@ info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain
   return (match w with | .ok () => "ok" | .error e => s!"error: {e}",
           match ownImage ⟨7, 0, 5, 5, "", #[]⟩ with | .ok _ => "ok" | .error e => s!"error: {e}")
 
-/-- A good kind-0 file: 2 longs, domain `ab` at bytes 40 and 41, the part at 80, 128 bytes. -/
+/-- A good kind-2 file: 2 longs Frame-of-Reference encoded, domain `ab` after the two parts' table entries. -/
 def good : ByteArray :=
-  match ownImage ⟨QAtomicType.i64.code.toUInt8, 0, 0, 2, "ab", #[dense [5, 6]]⟩ with | .ok b => b | .error _ => .empty
+  match ownImage ⟨QAtomicType.i64.code.toUInt8, 0, 2, 2, "ab", #[(Kernel.Coc.encode 8 (dense [5, 6])).1, (Kernel.Coc.encode 8 (dense [5, 6])).2]⟩ with | .ok b => b | .error _ => .empty
 
-#guard good.size == 128
+-- header 24, part table 24..56, domain 56..58, part 0 (57 bytes) at `ownOff 58 = 96`, part 1 (128 bytes) at
+-- `ownOff 153 = 192`, 32 trailing zeros
+#guard good.size == 352
 
 /-- `b` with byte `i` set to `v` for each `(i, v)`. -/
 def mutate (b : ByteArray) (edits : List (Nat × UInt8)) : ByteArray :=
@@ -115,8 +116,8 @@ def readBoth (b : ByteArray) : IO Unit := do
   IO.println s!"extern: {say m}\nbody:   {say s}"
 
 /--
-info: extern: ok kind 0 count 2 domain `ab` part sizes [16]
-body:   ok kind 0 count 2 domain `ab` part sizes [16]
+info: extern: ok kind 2 count 2 domain `ab` part sizes [57, 128]
+body:   ok kind 2 count 2 domain `ab` part sizes [57, 128]
 -/
 #guard_msgs in #eval readBoth good
 
@@ -133,28 +134,41 @@ body:   byte 0: the magic `qleancol`
 #guard_msgs in #eval readBoth (mutate good [(0, 120)])
 
 /--
-info: extern: byte 8: format version 3 or 4, found 2; a version-1 file predates the Frame of Reference patch list and a version-2 one its per-block frames, and either is rewritten by `set` from the data it was made from
-body:   byte 8: format version 3 or 4, found 2; a version-1 file predates the Frame of Reference patch list and a version-2 one its per-block frames, and either is rewritten by `set` from the data it was made from
+info: extern: byte 8: format version 5, found 2; a file before version 5 may hold the dense `bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` from the data it was made from
+body:   byte 8: format version 5, found 2; a file before version 5 may hold the dense `bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` from the data it was made from
 -/
 #guard_msgs in #eval readBoth (mutate good [(8, 2)])
 
+-- a kind at a part count not its own
 /--
-info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 2 with 1 parts
-body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 2 with 1 parts
+info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 2 with 1 parts
+body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 2 with 1 parts
 -/
-#guard_msgs in #eval readBoth (mutate good [(11, 2)])
+#guard_msgs in #eval readBoth (mutate good [(12, 1)])
 
--- kind 1 (the bitmap, gone: a boolean is a `u1` foR) is no kind, at its old part count too
+-- kinds 0 (`bytes`), 1 (the bitmap) and 3 (`alp`) are gone, each refused at its old part count
 /--
-info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 1 with 1 parts
-body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 1 with 1 parts
+info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 0 with 1 parts
+body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 0 with 1 parts
 -/
-#guard_msgs in #eval readBoth (mutate good [(11, 1)])
+#guard_msgs in #eval readBoth (mutate good [(11, 0), (12, 1)])
+
+/--
+info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 1 with 1 parts
+body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 1 with 1 parts
+-/
+#guard_msgs in #eval readBoth (mutate good [(11, 1), (12, 1)])
+
+/--
+info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 3 with 3 parts
+body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 3 with 3 parts
+-/
+#guard_msgs in #eval readBoth (mutate good [(11, 3), (12, 3)])
 
 -- the writer refuses kind 1 too
 /--
-info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name",
- "error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name")
+info: ("error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name",
+ "error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -166,16 +180,17 @@ info: ("error: a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain
 
 -- the worst kind and part count a header can hold, refused whole by both
 /--
-info: extern: byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 255 with 65535 parts
-body:   byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 255 with 65535 parts
+info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 255 with 65535 parts
+body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 255 with 65535 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 255), (12, 255), (13, 255)])
 
+-- a domain name of 2 + 512 bytes
 /--
-info: extern: byte 24: a part table and domain name ending at byte 140, the file is 128 bytes
-body:   byte 24: a part table and domain name ending at byte 140, the file is 128 bytes
+info: extern: byte 24: a part table and domain name ending at byte 570, the file is 352 bytes
+body:   byte 24: a part table and domain name ending at byte 570, the file is 352 bytes
 -/
-#guard_msgs in #eval readBoth (mutate good [(14, 100)])
+#guard_msgs in #eval readBoth (mutate good [(15, 2)])
 
 /--
 info: extern: part 0 at byte 24: a data offset that is a multiple of 8, found 81
@@ -184,28 +199,36 @@ body:   part 0 at byte 24: a data offset that is a multiple of 8, found 81
 #guard_msgs in #eval readBoth (mutate good [(24, 81)])
 
 /--
-info: extern: part 0 at byte 24: 32 reserved bytes after byte 42 before its data, found offset 72
-body:   part 0 at byte 24: 32 reserved bytes after byte 42 before its data, found offset 72
+info: extern: part 0 at byte 24: 32 reserved bytes after byte 58 before its data, found offset 72
+body:   part 0 at byte 24: 32 reserved bytes after byte 58 before its data, found offset 72
 -/
 #guard_msgs in #eval readBoth (mutate good [(24, 72)])
 
+-- part 0's length 57 + 256
 /--
-info: extern: part 0 at byte 24: 200 bytes from byte 80, the file is 128 bytes
-body:   part 0 at byte 24: 200 bytes from byte 80, the file is 128 bytes
+info: extern: part 0 at byte 24: 313 bytes from byte 96, the file is 352 bytes
+body:   part 0 at byte 24: 313 bytes from byte 96, the file is 352 bytes
 -/
-#guard_msgs in #eval readBoth (mutate good [(32, 200)])
+#guard_msgs in #eval readBoth (mutate good [(33, 1)])
+
+-- part 1 too close after part 0, which ends at byte 153
+/--
+info: extern: part 1 at byte 40: 32 reserved bytes after byte 153 before its data, found offset 160
+body:   part 1 at byte 40: 32 reserved bytes after byte 153 before its data, found offset 160
+-/
+#guard_msgs in #eval readBoth (mutate good [(40, 160)])
 
 /--
-info: extern: byte 40: a domain name of 2 bytes in UTF-8 with no NUL
-body:   byte 40: a domain name of 2 bytes in UTF-8 with no NUL
+info: extern: byte 56: a domain name of 2 bytes in UTF-8 with no NUL
+body:   byte 56: a domain name of 2 bytes in UTF-8 with no NUL
 -/
-#guard_msgs in #eval readBoth (mutate good [(40, 0xff)])
+#guard_msgs in #eval readBoth (mutate good [(56, 0xff)])
 
 /--
-info: extern: byte 40: a domain name of 2 bytes in UTF-8 with no NUL
-body:   byte 40: a domain name of 2 bytes in UTF-8 with no NUL
+info: extern: byte 56: a domain name of 2 bytes in UTF-8 with no NUL
+body:   byte 56: a domain name of 2 bytes in UTF-8 with no NUL
 -/
-#guard_msgs in #eval readBoth (mutate good [(41, 0)])
+#guard_msgs in #eval readBoth (mutate good [(57, 0)])
 
 -- `own::check`, which the body does not model: Frame of Reference metadata of 20 bytes is no whole block
 /--
@@ -239,9 +262,9 @@ info: ("error: a domain name with no NUL byte, found one at byte 1",
 #guard_msgs in
 #eval show IO _ from do
   let (_, p) ← IO.FS.createTempFile
-  let w ← (ownWrite p.toString 7 0 0 0 "a\x00b" #[.empty]).toBaseIO
+  let w ← (ownWrite p.toString 7 0 2 0 "a\x00b" #[.empty, .empty]).toBaseIO
   IO.FS.removeFile p
   return (match w with | .ok () => "ok" | .error e => s!"error: {e}",
-          match ownImage ⟨7, 0, 0, 0, "a\x00b", #[.empty]⟩ with | .ok _ => "ok" | .error e => s!"error: {e}")
+          match ownImage ⟨7, 0, 2, 0, "a\x00b", #[.empty, .empty]⟩ with | .ok _ => "ok" | .error e => s!"error: {e}")
 
 end Rel.Db.OwnTest

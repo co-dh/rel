@@ -2,7 +2,6 @@
 //! The block source (coc plan §3): a column read a block at a time, whatever its kind. Every kernel walks a column
 //! through `Blocks::walk`/`span` and decodes a block through `load`/`load_w`/`view`, so the grid arithmetic and the
 //! width dispatch are written once here and each kind is one decoder.
-use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::ids;
 use crate::pod::{self, Elt};
@@ -10,16 +9,16 @@ use crate::pod::{self, Elt};
 /// `Ext.Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order; every Rust reader and writer of an `Enc` names
 /// them from here, so a constructor added or removed there is one edit here.
 pub mod tag {
-    pub const BYTES: u32 = 0; pub const FOR: u32 = 2; pub const ALP: u32 = 3;
-    pub const ENUM: u32 = 4; pub const POS: u32 = 6;
+    pub const FOR: u32 = 1;
+    pub const ENUM: u32 = 2; pub const POS: u32 = 4;
 }
 
-/// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), ALP (`Cocf`), or ids at `lw` bits. A bit column
+/// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), or ids at `lw` bits. A bit column
 /// is ids at `lw = 1` at the column's own `lg` (`Blocks::bits`); a symbol column is ids whose keys the caller reads
 /// through its dictionary. `Pos` is `Enc.pos`, the row positions: element `i` is `i`, computed from the loop index and
 /// stored nowhere (PLAN 6.13).
 #[derive(Clone, Copy)]
-pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Alp(Cocf<'a>), Ids(&'a [u8], u32), Pos }
+pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Ids(&'a [u8], u32), Pos }
 /// The block grid of a column of `n` elements, `1 << lg` a block: what a source reads by and a `Sink` writes by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grid { pub n: usize, pub lg: u32 }
@@ -47,11 +46,10 @@ pub struct Blocks<'a> { pub src: Src<'a>, pub g: Grid }
 impl core::ops::Deref for Blocks<'_> { type Target = Grid; fn deref(&self) -> &Grid { &self.g } }
 
 impl<'a> From<Coc<'a>> for Blocks<'a> { fn from(c: Coc<'a>) -> Self { Blocks::new(Src::For(c), c.meta.n) } }
-impl<'a> From<Cocf<'a>> for Blocks<'a> { fn from(f: Cocf<'a>) -> Self { Blocks::new(Src::Alp(f), f.c.meta.n) } }
 impl<'a> Blocks<'a> {
     /// `n` elements of `src` on its grid: an encoded column's own block size, the writer's for a payload with none.
     pub fn new(src: Src<'a>, n: usize) -> Self {
-        let lg = match src { Src::For(c) | Src::Alp(Cocf { c, .. }) => c.meta.lg, _ => crate::DEFAULT_LG };
+        let lg = match src { Src::For(c) => c.meta.lg, _ => crate::DEFAULT_LG };
         Blocks { src, g: Grid { n, lg } }
     }
     /// A dense payload `p` of `w`-byte elements (`opnd_dense`).
@@ -65,30 +63,21 @@ impl<'a> Blocks<'a> {
     pub fn pos(n: usize) -> Self { Blocks::new(Src::Pos, n) }
     /// The `n` elements of `w` bytes a Lean `Enc` object holds, whatever its kind (coc plan §3 `Col::of`, decision C1):
     /// the one reader of `Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order. `who` names the export in a panic.
-    pub fn of(e: crate::lean::B<'a>, w: usize, n: usize, who: &str) -> Self {
+    pub fn of(e: crate::lean::B<'a>, n: usize, who: &str) -> Self {
         let f = |i| e.field(i).bytes();
         match e.tag() {
-            tag::BYTES => Blocks::new(Src::Dense(f(0).get(..n * w).unwrap_or_else(|| panic!(
-                "{who}: a dense payload of {} bytes holds fewer than {n} elements of {w} bytes", f(0).len()))), n),
             tag::FOR => Blocks::from(crate::coc::view(f(0), f(1), n).unwrap_or_else(|err| panic!("{who}: {err}"))),
-            tag::ALP => Blocks::from(Cocf::view(f(0), f(1), f(2), n).unwrap_or_else(|| panic!(
-                "{who}: an ALP column's metadata of {} bytes or its blob of {} are short or misaligned", f(0).len(), f(2).len()))),
             tag::ENUM => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
             // `pos`, nullary, is the scalar `lean_box(tag::POS)`, which has no field
             tag::POS => Blocks::pos(n),
             t => panic!("{who}: an `Enc` of constructor {t} (`syms`, `gen`) has no raw elements"),
         }
     }
-    /// Block `b`'s first `cnt` elements as `T` into `out`, patches applied. ALP answers its floats' bits, so `T` is
-    /// `i32` for `real` and `i64` for `float`; a dense payload's elements are `T`'s width.
+    /// Block `b`'s first `cnt` elements as `T` into `out`, patches applied; a dense payload's elements are `T`'s width.
     pub fn load<T: Elt>(&self, b: usize, cnt: usize, out: &mut [T]) {
         let lo = b << self.lg();
         match self.src {
             Src::For(c) => c.decode_blk(b, cnt, out),
-            Src::Alp(f) => {
-                assert_eq!(size_of::<T>(), if f.f32 { 4 } else { 8 }, "Blocks::load: an ALP block read at the wrong width");
-                f.load_blk(b, cnt, pod::bytes_mut(&mut out[..cnt]))
-            }
             Src::Ids(p, lw) => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap(ids::id_at(p, lw, lo + k) as u64) },
             Src::Pos => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap((lo + k) as u64) },
             Src::Dense(d) => pod::bytes_mut(&mut out[..cnt]).copy_from_slice(&d[lo * size_of::<T>()..(lo + cnt) * size_of::<T>()]),

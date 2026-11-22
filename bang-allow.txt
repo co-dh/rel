@@ -1,5 +1,4 @@
 Rel.Column.symBytes
-Rel.Ext.QValue.sliceAt
 Rel.Kernel.Coc.alpBlob
 Rel.Kernel.Coc.alpBlockOf
 Rel.Lang.Expand.emit

@@ -160,9 +160,10 @@ def suffix {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr
   let u ← uncat X; u.comp (← outr u.val)
 
 /-- **`inits` on the cells `X`** = `Λ(prefix)`: an array's prefixes are each a proper prefix of the longer ones, so
-`Λ`'s ascending cell holds them by increasing length, `[]` first, each once. -/
+`Λ`'s ascending cell holds them by increasing length, `[]` first, each once. `prefix` is a `comp` answer, so
+canonical (`Tab.comp_canon`): `lamOf`, no second `canon`. -/
 def inits {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr (.arr B))) := do
-  lam X (← «prefix» X)
+  lamOf X (← «prefix» X)
 
 /-- **`tails` on the cells `X`** = `Λ(cat°) ≫ F(π₂)`: `Λ`'s ascending cell holds an array's splits by their first
 part, so by increasing split point, and `F(π₂)` on that cell is its payload's second column, the bounds kept: the

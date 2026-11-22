@@ -119,6 +119,7 @@ Rel.Tab.lam
 Rel.Tab.lamOf
 Rel.Tab.ldiv
 Rel.Tab.ldivBits
+Rel.Tab.ldivOf
 Rel.Tab.ldivSel
 Rel.Tab.ldivTabMat
 Rel.Tab.le
@@ -162,8 +163,6 @@ Rel.Vals.pack
 Rel.Vals.row
 Rel.Vals.zip
 Rel.expand
-Rel.floatWords
 Rel.lastCount
-Rel.longBytes
 Rel.longWords
 Rel.tagCount

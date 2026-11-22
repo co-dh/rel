@@ -122,8 +122,7 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
         have hraw : ws' = ws := by
           show raw .i64 n o = ws
           have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
-          rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
-            raw_bytes .i64 8 rfl (by decide)]
+          rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega)]
           refine Array.ext (by simp [hs]) fun i h1 _ => ?_
           simp only [Array.getElem_map, Array.getElem_range]
           rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]

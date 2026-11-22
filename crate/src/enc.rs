@@ -7,7 +7,6 @@
 //! boundary), as the pool does. Rust gets one block at a time: `EncMeta` is what the meta pass may write for block
 //! `b`, `EncPack` what the pack pass may write; `ffi::CEnc` cuts them, so parallel blocks hold disjoint borrows.
 
-use crate::alp::Cocf;
 use crate::coc::Coc;
 use crate::pod::Elt;
 
@@ -20,8 +19,6 @@ pub struct EncMeta<'a> {
     pub frm: Option<&'a mut u64>,
     /// the block's patch count, `exc_off[b + 1]` before the prefix sum
     pub nexc: &'a mut u32,
-    /// ALP: the block's exponent
-    pub exp: Option<&'a mut i8>,
     /// whether the block may patch, Lean `Coc.encodeAt`'s `patch && n < 2 ^ 32`: a column of `2 ^ 32` elements or more
     /// has no patch list, its block offsets being `u32`
     pub patch: bool,
@@ -29,7 +26,7 @@ pub struct EncMeta<'a> {
 /// Block `b`'s output region in a column being written: residuals and patch slots, from the layout's offsets.
 pub struct EncPack<'a> {
     pub nb: usize,
-    pub base: i64, pub frame: u64, pub width: u8, pub exp: i8,
+    pub frame: u64, pub width: u8,
     /// `blk * width / 8` bytes at `off[b]`
     pub res: &'a mut [u8],
     /// `exc_off[b] .. exc_off[b + 1]`
@@ -202,23 +199,9 @@ pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
     fn go<T: Elt>(p: &mut EncPack, x: &[u8]) { let ne = p.pos.len() as u32; pack_exc_blk(p, elts::<T>(x, "coc_enc_for_pack"), ne) }
     crate::by_width!(int width, go(p, x))
 }
-/// coc.rs `coc_enc_alp_meta`: `x` is `f32` (`width` 4) or `f64`.
-pub fn alp_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
-    use crate::alp::alp_meta_blk;
-    let ne = if width == 4 { alp_meta_blk(m, elts::<f32>(x, "coc_enc_alp_meta"), nb) } else { alp_meta_blk(m, elts::<f64>(x, "coc_enc_alp_meta"), nb) };
-    *m.nexc = ne
-}
-/// coc.rs `coc_enc_alp_pack`: the block exponent is `p.exp`, its patches' bits go to `p.raw`.
-pub fn alp_pack(p: &mut EncPack, x: &[u8], width: usize) {
-    use crate::alp::alp_pack_blk;
-    let (be, raw) = (p.exp as i32, core::mem::take(&mut p.raw));
-    if width == 4 { alp_pack_blk(p, be, elts::<f32>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f32>(raw).expect("qlean coc_enc_alp_pack: misaligned f32 patch bits")) }
-    else { alp_pack_blk(p, be, elts::<f64>(x, "coc_enc_alp_pack"), crate::pod::cast_mut::<f64>(raw).expect("qlean coc_enc_alp_pack: misaligned f64 patch bits")) }
-}
-/// coc.rs `coc_sumnul`: the null the writer's block sums skip, which its trailer records: the element type's own,
-/// and a float's integers are an `i64` column.
-pub fn coc_sumnul(width: usize, alp: bool) -> i64 {
-    if alp || width == 1 || width == 8 { i64::MIN } else if width == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
+/// coc.rs `coc_sumnul`: the null the writer's block sums skip, which its trailer records: the element type's own.
+pub fn coc_sumnul(width: usize) -> i64 {
+    if width == 1 || width == 8 { i64::MIN } else if width == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
 }
 
 // ---- A17: coc.rs ----
@@ -233,37 +216,25 @@ pub fn narrow<'b>(width: usize, v: &'b [i64], out: &'b mut [u8]) -> &'b [u8] {
     assert!(matches!(width, 1 | 2 | 4 | 8), "qlean: a Frame of Reference element of {width} bytes; the writer has 1, 2, 4 and 8");
     crate::by_width!(int width, put(v, out))
 }
-/// coc.rs `move_meta`, the branch where block `pb` of the column `f` is taken whole: its metadata is the block's,
-/// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`. The branches that call
-/// back into the source (`ints`, `hint`, `fill`) stay C.
-pub fn move_meta(m: &mut EncMeta, f: &Cocf, pb: usize) -> u32 {
-    let p = &f.c;
+/// coc.rs `move_meta`, the branch where block `pb` of the column `p` is taken whole: its metadata is the block's,
+/// and its patch count is what the layout prefix-sums. Answers it, and leaves it in `m.nexc`.
+pub fn move_meta(m: &mut EncMeta, p: &Coc, pb: usize) -> u32 {
     (*m.base, *m.maxv, *m.bsum, *m.width) = (p.meta.base[pb], p.meta.maxv[pb], p.meta.bsum[pb], p.meta.width[pb]);
-    let ne = if let Some(e) = m.exp.as_deref_mut() {
-        *e = f.exp[pb];
-        f.exc_off[pb + 1] - f.exc_off[pb]
-    } else {
-        if let Some(fr) = m.frm.as_deref_mut() { *fr = p.fdelta.map_or(0, |d| d[pb]) }
-        p.blk_nexc(pb) as u32
-    };
+    if let Some(fr) = m.frm.as_deref_mut() { *fr = p.fdelta.map_or(0, |d| d[pb]) }
+    let ne = p.blk_nexc(pb) as u32;
     *m.nexc = ne;
     ne
 }
-/// coc.rs `move_pack`, the taken branch: block `pb` of `f`'s residuals (`p.res` is the whole `blk * width / 8`
+/// coc.rs `move_pack`, the taken branch: block `pb` of `c`'s residuals (`p.res` is the whole `blk * width / 8`
 /// bytes, a pack shorter than its widths claim reading zeros past its end, `Column.resAt`'s convention) and its patch
-/// list, whose positions move unchanged. `esz` is the written column's element size, `alp` its form.
-pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
-    let c = &f.c;
+/// list, whose positions move unchanged. `esz` is the written column's element size.
+pub fn move_pack(p: &mut EncPack, c: &Coc, pb: usize, esz: usize) {
     let (bytes, so) = (c.meta.blk() * c.meta.width[pb] as usize / 8, c.meta.off[pb] as usize);
     let src = c.pack.get(so..).unwrap_or(&[]);
     let avail = src.len().min(bytes);
     p.res[..avail].copy_from_slice(&src[..avail]);
     p.res[avail..bytes].fill(0);
-    if alp {
-        let (from, to) = (f.exc_off[pb] as usize, f.exc_off[pb + 1] as usize);
-        p.pos[..to - from].copy_from_slice(&f.exc_pos[from..to]);
-        p.raw[..(to - from) * esz].copy_from_slice(&f.exc_raw[from * esz..to * esz]);
-    } else if let Some(e) = c.exc.filter(|e| !e.pos.is_empty()) {
+    if let Some(e) = c.exc.filter(|e| !e.pos.is_empty()) {
         // the element's first `esz` bytes: a patch of a wider column is truncated as the written column is
         for (q, j) in (e.off[pb] as usize..e.off[pb + 1] as usize).enumerate() {
             p.pos[q] = e.pos[j];
@@ -273,41 +244,36 @@ pub fn move_pack(p: &mut EncPack, f: &Cocf, pb: usize, alp: bool, esz: usize) {
 }
 
 // ---- K24b: coc.rs's writer orchestration that needs no raw pointer; ffi.rs keeps the Lean objects, the pool and the C callbacks ----
-/// A block's metadata step: the writer's own choice for the column's form (`m.exp` is the exponent slot of an ALP column).
-pub fn meta_step(m: &mut EncMeta, x: &[u8], width: usize, nb: usize) {
-    if m.exp.is_some() { alp_meta(m, x, width, nb) } else { for_meta(m, x, width, nb) }
-}
-/// A block's pack step, as `meta_step`.
-pub fn pack_step(p: &mut EncPack, x: &[u8], width: usize, alp: bool) { if alp { alp_pack(p, x, width) } else { for_pack(p, x, width) } }
 /// coc.rs `src_run`'s lower bound on a sized block's share of the encoded size: its residuals and its patches' bytes.
 pub fn block_bytes(lg: u32, width_b: u8, nexc: u32, width: usize) -> usize { (1usize << lg) * width_b as usize / 8 + nexc as usize * (width + 2) }
-/// coc.rs `coc_enc_layout`'s patch list or ALP blob header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
+/// coc.rs `coc_enc_layout`'s patch list header: `nexc` and `w` in its first 16 bytes, the rest of `t` zero.
 pub fn exc_header(t: &mut [u8], nexc: usize, w: u64) {
     t.fill(0);
     t[..8].copy_from_slice(&(nexc as u64).to_ne_bytes());
     t[8..16].copy_from_slice(&w.to_ne_bytes());
 }
 /// coc.rs `coc_enc_plan`'s tail: the bytes after the residuals, the patch list of Frame of Reference (with its frames when
-/// `frm`) or ALP's blob; 0 for a column with neither.
-pub fn tail_bytes(alp: bool, nexc: usize, frm: bool, width: usize, nblk: usize) -> usize {
+/// `frm`); 0 for a column with none.
+pub fn tail_bytes(nexc: usize, frm: bool, width: usize, nblk: usize) -> usize {
     use crate::layout::{exc_layout, Tail};
-    let tail = if alp { Some(Tail::Exps) } else if nexc != 0 { Some(if frm { Tail::Frames } else { Tail::None }) } else { None };
-    tail.map_or(0, |t| exc_layout(nblk, nexc, width, t).expect("qlean: the exception layout overflows").size)
+    if nexc == 0 { return 0 }
+    exc_layout(nblk, nexc, width, if frm { Tail::Frames } else { Tail::None }).expect("qlean: the exception layout overflows").size
+}
+/// coc.rs `alp_offsets`: per-block patch counts in `exc_off[1..=nblk]` into prefix sums; answers the total.
+pub fn exc_offsets(exc_off: &mut [u32], nblk: usize) -> usize {
+    exc_off[0] = 0;
+    for b in 0..nblk { exc_off[b + 1] = exc_off[b + 1].wrapping_add(exc_off[b]) }
+    exc_off[nblk] as usize
 }
 
 /// What a `Sink` (`ffi.rs`) writes, a block of its grid at a time: the block's elements, or, where the answer holds whole
-/// blocks of a column already in the writer's form, the block itself (`take`); ALP's hints have no answer by default.
+/// blocks of a column already in the writer's form, the block itself (`take`).
 pub trait Producer: Sync {
     /// Elements `lo .. lo + nb` (block `b` of the writer's grid) at `w` bytes each: a slice of the producer's own memory, or
     /// written into `buf` (`16 * nb` bytes, 8-aligned).
     fn block<'s>(&'s self, b: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8];
     /// Block `pb` of a column in the writer's own form that answer block `b` equals, with `pb`.
-    fn take(&self, _b: usize) -> Option<(Cocf<'_>, usize)> { None }
-    /// ALP: block `b`'s decimals `d`, exponents `ee` (negative = exception) of its first `nb` elements, and the block's exponent;
-    /// with `raw` also each exception's `width` raw bytes at `raw[i * width..]`. `None` when the producer has no answer.
-    fn ints(&self, _b: usize, _nb: usize, _d: &mut [i64], _ee: &mut [i8], _raw: Option<&mut [u8]>) -> Option<i32> { None }
-    /// ALP: a block exponent for block `b` and the most exceptions it may leave.
-    fn hint(&self, _b: usize) -> Option<(i32, u32)> { None }
+    fn take(&self, _b: usize) -> Option<(Coc<'_>, usize)> { None }
 }
 /// A kernel's `fill` (elements `i0 .. i0 + v.len()` as `i64`) narrowed to the writer's `w` bytes, in `buf`.
 pub fn filled<'s>(fill: impl FnOnce(&mut [i64], usize), lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] {
@@ -331,42 +297,14 @@ impl Producer for crate::blocks::Blocks<'_> {
 /// coc.rs `move_meta` then `move_pack`: block `m.b` of the producer `mv`, its metadata into `m`, then its residuals and patches
 /// into `pack(whole)` (asked once, after `m` is written; `whole` for a taken block's full `blk * width / 8` residual region),
 /// so whatever the producer computes for the block it computes once. A moved block's metadata, residuals and patch list are its
-/// column's (the positions are the block's own), which the writer's own step would choose for the same elements. Else the ALP
-/// shortcuts: the producer's decimals (`ints`), or the sources' exponent where it leaves no more exceptions than they had
-/// (`hint`); else the writer's own steps. `x` is read only on the last two paths.
+/// column's (the positions are the block's own), which the writer's own step would choose for the same elements. Else the
+/// writer's own steps, reading `x`.
 pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
                         nb: usize, width: usize) {
-    use crate::alp::{alp_exc_at, alp_fin_blk, alp_meta_exp};
-    let (b, alp) = (m.b, m.exp.is_some());
-    if let Some((f, pb)) = mv.take(b) { move_meta(m, &f, pb); return move_pack(&mut pack(true), &f, pb, alp, width) }
-    if alp {
-        let (mut d, mut ee, mut raw) = (crate::pod::Scr::<i64>::new(nb), crate::pod::Scr::<i8>::new(nb), crate::pod::Scr::<u64>::new(nb));
-        let raw = &mut crate::pod::bytes_mut(&mut raw)[..nb * width];
-        if let Some(e) = mv.ints(b, nb, &mut d, &mut ee, Some(raw)).filter(|&e| e >= 0) {
-            // `alp_fin_blk` moves only the exceptions' decimals, which the pack sets to the base below
-            *m.nexc = alp_fin_blk(m, e, &mut d, &ee, nb);
-            let p = &mut pack(false);
-            let (base, wd) = (p.base, p.width);
-            // an exception's decimal packs as the block's base, residual 0, its raw bits in the patch list
-            for (k, i) in (0..nb).filter(|&i| ee[i] < 0).enumerate() {
-                d[i] = base;
-                p.pos[k] = i as u16;
-                p.raw[k * width..(k + 1) * width].copy_from_slice(&raw[i * width..(i + 1) * width]);
-            }
-            pack_block(p.res, &d, nb, base, wd);
-            return;
-        }
-    }
+    if let Some((c, pb)) = mv.take(m.b) { move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
     let x = x();
-    let hinted = if alp { mv.hint(b).filter(|&(e, _)| e >= 0) } else { None }.is_some_and(|(e, lim)| {
-        // the search's up to 19 trials an element were what re-encoding a part off the grid cost
-        let f64s = width != 4;
-        let kept = if f64s { alp_exc_at(elts::<f64>(x, "move_meta"), e, lim + 1) } else { alp_exc_at(elts::<f32>(x, "move_meta"), e, lim + 1) };
-        if kept <= lim { *m.nexc = if f64s { alp_meta_exp(m, elts::<f64>(x, "move_meta"), nb, e) } else { alp_meta_exp(m, elts::<f32>(x, "move_meta"), nb, e) } }
-        kept <= lim
-    });
-    if !hinted { meta_step(m, x, width, nb) }
-    pack_step(&mut pack(false), x, width, alp)
+    for_meta(m, x, width, nb);
+    for_pack(&mut pack(false), x, width)
 }
 
 #[cfg(test)]
@@ -388,7 +326,7 @@ mod a17_tests {
     fn meta(v: &[i64], width: usize) -> (u32, i64, i64, i64, u8, u64) {
         let (mut base, mut maxv, mut width_, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 7u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width_, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None, patch: true };
+                              nexc: &mut nexc, patch: true };
         let ne = match width {
             2 => for_blk(&mut m, &v.iter().map(|&x| x as i16).collect::<Vec<_>>(), v.len()),
             4 => for_blk(&mut m, &v.iter().map(|&x| x as i32).collect::<Vec<_>>(), v.len()),
@@ -409,10 +347,10 @@ mod a17_tests {
         // block 0 of width 8 whose pack holds 3 of its 1024 bytes: the rest reads as zeros, `Column.resAt`'s convention
         let (base, z, off, width) = ([5i64], [0i64], [0u64], [8u8]);
         let meta = crate::coc::Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
-        let f = Cocf { c: Coc { meta, pack: &[1, 2, 3], exc: None, fdelta: None }, exp: &[], exc_off: &[], exc_pos: &[], exc_raw: &[], f32: false };
+        let c = Coc { meta, pack: &[1, 2, 3], exc: None, fdelta: None };
         let mut res = [0xa5u8; crate::BLK];
-        let mut p = EncPack { nb: 3, base: 5, frame: 5, width: 8, exp: 0, res: &mut res, pos: &mut [], raw: &mut [] };
-        move_pack(&mut p, &f, 0, false, 2);
+        let mut p = EncPack { nb: 3, frame: 5, width: 8, res: &mut res, pos: &mut [], raw: &mut [] };
+        move_pack(&mut p, &c, 0, 2);
         assert_eq!(&res[..4], [1, 2, 3, 0]);
         assert!(res[3..].iter().all(|&x| x == 0));
     }
@@ -441,12 +379,12 @@ mod a7_tests {
         let x: [i64; 1000] = core::array::from_fn(|i| if i < 24 { 0 } else { 100000 + (i & 255) as i64 });
         let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm) = (0, 0, 0, 0, 0, 0u64);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None, patch: true };
+                              nexc: &mut nexc, patch: true };
         assert_eq!(for_blk(&mut m, &x, 1000), 24);
         assert_eq!((base, width, frm), (0, 8, 100000));
         // patching off (a column of `2 ^ 32` elements or more): width 17 from the minimum, no patch, no frame
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                              nexc: &mut nexc, exp: None, patch: false };
+                              nexc: &mut nexc, patch: false };
         assert_eq!(for_blk(&mut m, &x, 1000), 0);
         assert_eq!((base, width, frm, nexc), (0, 17, 0, 0));
     }
@@ -454,7 +392,7 @@ mod a7_tests {
         let x: [i16; 4] = [i16::MIN, 3, 9, -2];
         let (mut base, mut maxv, mut width, mut bsum, mut nexc) = (0, 0, 0, 0, 0);
         let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: None, nexc: &mut nexc,
-                              exp: None, patch: true };
+                              patch: true };
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
@@ -474,7 +412,7 @@ mod tests {
         for b in 0..n.div_ceil(BLK) {
             let mut nx = 0;
             let mut m = EncMeta { b, base: &mut base[b], maxv: &mut maxv[b], width: &mut width[b], bsum: &mut bsum[b],
-                                  frm: Some(&mut frm[b]), nexc: &mut nx, exp: None, patch: true };
+                                  frm: Some(&mut frm[b]), nexc: &mut nx, patch: true };
             let nb = BLK.min(n - b * BLK);
             ne[b] = for_blk(&mut m, &x[b * BLK..], nb);
         }
@@ -486,7 +424,7 @@ mod tests {
             let nb = BLK.min(n - b * BLK);
             let (e0, e1) = (eo[b] as usize, (eo[b] + ne[b]) as usize);
             eo[b + 1] = eo[b] + ne[b];
-            let mut p = EncPack { nb, base: base[b], frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b], exp: 0,
+            let mut p = EncPack { nb, frame: (base[b] as u64).wrapping_add(frm[b]), width: width[b],
                                   res: &mut pack[at..at + (nb * width[b] as usize).div_ceil(8)],
                                   pos: &mut pos[e0..e1], raw: &mut raw[e0 * size_of::<T>()..e1 * size_of::<T>()] };
             pack_exc_blk(&mut p, &x[b * BLK..], ne[b]);
@@ -570,7 +508,7 @@ mod tests {
         let (mut base, mut maxv, mut width, mut bsum, mut nexc, mut frm, mut t) = (0, 0, 0, 0, 0, 0u64, 0u64);
         for _ in 0..reps {
             let mut m = EncMeta { b: 0, base: &mut base, maxv: &mut maxv, width: &mut width, bsum: &mut bsum, frm: Some(&mut frm),
-                                  nexc: &mut nexc, exp: None, patch: true };
+                                  nexc: &mut nexc, patch: true };
             t += for_blk(&mut m, core::hint::black_box(x), x.len()) as u64 + width as u64;
         }
         t
@@ -590,7 +528,6 @@ mod a16_tests {
     // Expected values come from running the original C loops of coc.rs and coc.rs (/data/tmp/qrs/A16/diff.c
     // compares the block steps over 12,000 columns).
     #[test] fn sumnul() {
-        assert_eq!([(1, false), (2, false), (4, false), (8, false), (4, true)].map(|(w, a)| coc_sumnul(w, a)),
-                   [i64::MIN, i16::MIN as i64, i32::MIN as i64, i64::MIN, i64::MIN]);
+        assert_eq!([1, 2, 4, 8].map(coc_sumnul), [i64::MIN, i16::MIN as i64, i32::MIN as i64, i64::MIN]);
     }
 }

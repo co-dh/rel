@@ -8,7 +8,7 @@ use alloc::{format, string::String, vec, vec::Vec};
 use crate::asc::Col;
 use crate::pod;
 use crate::blocks::{Blocks, Grid};
-use crate::ffi::{Form, Sink};
+use crate::ffi::Sink;
 use crate::lean;
 
 
@@ -52,7 +52,7 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
         for (j, &s) in st[..nb].iter().enumerate() { w[j >> 6] |= ((s == 1) as u64) << (j & 63) }
     }
     if pos {
-        let til = || Sink::new(n, 8, Form::For).enc().answer(&Blocks::pos(n));
+        let til = || Sink::new(n, 8).enc().answer(&Blocks::pos(n));
         return Ok((n, til(), til()))
     }
     let bit = |i: usize| bits[i >> 6] >> (i & 63) & 1 == 1;
@@ -60,12 +60,12 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
     let mut at = pod::vec_of("seen", "the blocks' start counts", g.nblk() + 1, 0usize)?;
     for b in 0..g.nblk() { at[b + 1] = at[b] + bits[b * wb..(b * wb + wb).min(bits.len())].iter().map(|w| w.count_ones() as usize).sum::<usize>() }
     let k = at[g.nblk()];
-    let go = Sink::new(n, 8, Form::For).enc().answer(&|o: &mut [i64], i0: usize| {
+    let go = Sink::new(n, 8).enc().answer(&|o: &mut [i64], i0: usize| {
         let mut c = at[i0 / blk] + (i0 / blk * blk..i0).filter(|&i| bit(i)).count();
         for (j, x) in o.iter_mut().enumerate() { c += bit(i0 + j) as usize; *x = c as i64 - 1 }
     });
     // answer position `p` lies in the first row block whose `at` passes it
-    let fo = Sink::new(k, 8, Form::For).enc().answer(&|o: &mut [i64], p0: usize| {
+    let fo = Sink::new(k, 8).enc().answer(&|o: &mut [i64], p0: usize| {
         let (mut b, mut i) = (at.partition_point(|&a| a <= p0) - 1, 0usize);
         let mut skip = p0 - at[b];
         'out: loop {
@@ -112,9 +112,9 @@ mod tests {
     // one-to-one with the words), narrow and wide, ties across a block edge, a patch at the end, two columns; on keys out
     // of order, the first such row, at a block edge too; with a `pos` column after them, `til n` or the same error
     #[test] fn blocks_is_encode_of_words() {
-        let enc = |ws: &[u64]| { let o = Sink::new(ws.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(ws), 8)); [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) };
+        let enc = |ws: &[u64]| { let o = Sink::new(ws.len(), 8).answer(&Blocks::dense(pod::bytes(ws), 8)); [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) };
         let bytes = |o: &lean::O| [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
-        let want = |w: &[u64]| bytes(&Sink::new(w.len(), 8, Form::For).enc().answer(&Blocks::dense(pod::bytes(w), 8)));
+        let want = |w: &[u64]| bytes(&Sink::new(w.len(), 8).enc().answer(&Blocks::dense(pod::bytes(w), 8)));
         for n in [0usize, 1, 2, 1024, 1025, 5000] {
             let a: Vec<u64> = (0..n as u64).map(|i| (i * 7919) % 97).collect();
             let b: Vec<u64> = (0..n as u64).map(|i| (i / 300) % 2).collect();

@@ -1075,6 +1075,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Tm.mapMSz_spec`、`Tm.number_spec`、`Code.program_go`。
     剩余缺口：发出的常量 `n.shares`/`n.c.t<k>` 等于 `Code.program` 的输出这一点没有证明（`emit` 经 `Expand.tmE`
     把项写成 `Expr`，`tmE` 的 round-trip 只由 `GenSoundTest` 测）。
+  - ✅ 7.3c 续（分支 `tmeround`）：缺口由检查关闭，不是证明。`emit` 在写完所有槽常量和编号后的项之后，把它们
+    一次 `evalExpr` 成 `List Res`，逐个与 `Code.program` 的输出比较（`Tm.diffAt`，槽常量逐个查，`share` 只比槽号，
+    `Tm.numberKey`），不同就拒绝该程序；每个程序、每个写出的项都查，不再只抽样。`Tm.fieldsEq` 比较 row 的全部
+    字段（原来只比 `sym`），`OExp` 加 `BEq`。不能证明的原因：`Lean.Expr` 在 Lean 的逻辑里没有语义，
+    `eval (toExpr t) = t` 无法陈述；kernel `decide` 也不可行（`Code.program` 用 `Expr` 的 hash 作 HashMap key，
+    `String.hash` 是 opaque extern；`Tm` 没有 `DecidableEq`，payload 按 `valEq` 比较）。信任的只剩 Lean 的
+    求值器与 kernel 一致。发出的程序不变。
 - ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
@@ -1082,7 +1089,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 
 ### P8 存储简化（存储审计，2026-11-21；owner 2026-11-22 列入）
 
-- 🔄 8.1 `Tab` 的规范序由产生它的一步给出，已规范的表跳过 `canon`（分支 `canonfld`）。
+- 🔄 8.1 `Tab` 的规范序由产生它的一步给出，已规范的表跳过 `canon`（分支 `canonfld`）。`canonfld2`：`ldivOf`（`ldiv`
+  去掉两个输入 `canon`），`ldivSel` 的回退除法作参数；`Tab.rdiv`、`GenK.rdiv`（两个 `conv` 答案）走 `ldivOf`，
+  `inits`（`prefix` 是 `comp` 答案）走 `lamOf`。每次 `rdiv` 走计数分支省 2 次 `canon` = atom×atom 时 10 次 kernel
+  调用（每次 `kasc`、`kseen`、`kgather` 各 1，加每列 1 次 `kgather`），位矩阵分支不变；每次 `inits` 省 1 次 `canon`。
+  `GenK.E` 未做：`GenK.comp` 的位矩阵读回（`Tab.ofBits`）不是 `canon` 答案，给读回加 `canon` 会让每次读回多付同样
+  的 kernel 调用，净亏。`tau`/`thin`/`tails` 的 `lam` 输入（`idU`、`diff`、`uncat` 答案）都不是 `canon` 答案。
 - ⬜ 8.2 稠密 sum。例：`long+sym` 三行 `inl 7, inr x, inl 9`，现在存 `tag=[0,1,0] idx=[0,0,1] l=[7,9] r=[x]`，
   改为 `tag=[0,1,0] a=[7,0,9] b=[0,x,0]`：每边一列 n 行，不属于该边的位置填 0（全 0 的块宽度 0，只占块头）。
   去掉 `idx`、`Vals.cols` 里把两边 gather 回 n 行、concat 时平移 `idx`、`Obj.dflt`；`inl°` 是按 tag 选行再 gather，
@@ -1091,9 +1103,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `inrConv`（Struct.lean:57-125）及 `RepStruct` 的 `*_holds`、CSV/own 的 sum 列、Rust 侧 sum 的读写。
   与 rq17 的关系：`atom+1` 走块内 null 码（决定 K，`nullband`），不经 8.2；其余 sum 用 8.2。
   在 `nullband` 的 unit 对象决定（M/N）之后做，因为两者都改 `Vals` 的 sum 分支。
-- 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
-  foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
-  foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
+- 🔄 8.3 一种编码（分支 `foronly`）：`Ext.Enc` 只留 `foR`、`pos` 与 `gen`。已做：删 `bytes`、`alp`（Lean 类型与
+  `WF`/`raw`/`get`；`Enc.ofBytes` 是每个定宽列进入 foR 的唯一入口；`answer`/`encode`/`alpOf` 删除；own 格式 v5，
+  拒读 v4 及 kind 0/3；Rust `blocks::tag` 重编号 `FOR=1 ENUM=2 POS=4`）。
+  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，进行中；删 `syms`/`enum`：`sym` 列在 `Enc`
+  层就是 foR 编号，字典是 Rel 层旁边的一张表 `ℕ ⟶ [C]`（rel-architecture §0.2），不是 `Enc` 的字段，在 ALP 之后做；
+  `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
+  保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
 - ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
   盒子，`t`、`n` 在类型参数里已有又存一遍；`attr` 只有 2 处读；`QValue` 的 `dict table keyed slices func err enum`
   只在 `Kernel.Value`、`Run.ValEq` 用；own 文件头的 `attr`、`domain` 写了没人读。去掉 `QValue` 盒子与 `general`

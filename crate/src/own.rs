@@ -3,8 +3,8 @@
 //! the header and its checks, the write-all and the temp-file-and-rename replace, and the mapping of the parts.
 //!
 //! The file: bytes 0..8 `qleancol`; byte 8 the format version (`OWN_VERSION`, `OWN_OLDEST` is read too); byte 9 the q type
-//! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (0 bytes,
-//! 2 foR, 3 alp, 4 enum: the kinds `OWN_NPARTS` gives a part count); bytes 12..14 the u16 part count
+//! code of the elements; byte 10 the attribute (0 none, 1 `s#, 2 `u#, 3 `p#, 4 `g#); byte 11 the constructor kind (2 foR,
+//! 4 enum; 0 bytes and 3 alp were removed in version 5: the kinds `OWN_NPARTS` gives a part count); bytes 12..14 the u16 part count
 //! (`OWN_NPARTS[kind]`); bytes 14..16 the u16 byte length of the enumeration domain name; bytes 16..24 the u64 element
 //! count; then 16 bytes a part (u64 offset, u64 length), the domain name, and each part after zeros up to an offset
 //! that is a multiple of 8 and leaves `OWN_ROOM` zero bytes before it; then `OWN_ROOM` zero bytes. The parts are the
@@ -30,10 +30,10 @@ pub const OWN_MAXPARTS: usize = 3;
 
 pub const OWN_ROOM: u64 = 32;
 pub const OWN_HEAD: usize = 24;
-pub const OWN_VERSION: u8 = 4;
+pub const OWN_VERSION: u8 = 5;
 /// The part count of each constructor kind, `None` for a number that is no kind: 1 was the bitmap, gone since a boolean
 /// is a u1 foR (kind 2); 2, 3 and 4 keep their numbers, so a file on disk keeps its meaning. `Own.lean`'s `ownNParts`.
-pub const OWN_NPARTS: [Option<usize>; 5] = [Some(1), None, Some(2), Some(3), Some(2)];
+pub const OWN_NPARTS: [Option<usize>; 5] = [None, None, Some(2), None, Some(2)];
 /// The part count of `kind`, None when `kind` is no kind: the one test the writer and the reader make of it.
 pub fn nparts(kind: u8) -> Option<usize> { OWN_NPARTS.get(kind as usize).copied().flatten() }
 
@@ -181,7 +181,7 @@ pub fn write(target: &CStr, code: u8, attr: u8, kind: u8, count: u64, domain: &[
 
 pub struct OwnHead { pub n: u64, pub hdr: usize, pub np: usize,
                      pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub code: u8, pub attr: u8, pub kind: u8 }
-pub const OWN_OLDEST: u8 = 3;
+pub const OWN_OLDEST: u8 = 5;
 pub fn le(m: &[u8], at: usize, w: usize) -> u64 {
     let mut b = [0u8; 8];
     b[..w].copy_from_slice(&m[at..at + w]);
@@ -197,9 +197,9 @@ pub fn head(m: &[u8], why: &mut Why) -> Option<OwnHead> {
     let n = le(m, 16, 8);
     if &m[..8] != b"qleancol" { why.say(format_args!("byte 0: the magic `qleancol`")); return None; }
     if m[8] < OWN_OLDEST || m[8] > OWN_VERSION {
-        why.say(format_args!("byte 8: format version {} or {}, found {}; a version-1 file predates the \
-Frame of Reference patch list and a version-2 one its per-block frames, and either is \
-rewritten by `set` from the data it was made from", OWN_OLDEST, OWN_VERSION, m[8]));
+        why.say(format_args!("byte 8: format version {}, found {}; a file before version 5 may hold the dense \
+`bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` \
+from the data it was made from", OWN_VERSION, m[8]));
         return None;
     }
     if nparts(kind) != Some(np) {
@@ -247,7 +247,7 @@ bytes", k, at, l, off, size));
 /// Residuals and the cached `maxv` and `bsum` cannot make a read leave its part, so they are not checked. False with
 /// `why` filled. `p` are the parts, `kind`'s first `nparts(kind)` of them.
 pub fn check(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> bool {
-    if kind == 2 || kind == 3 {
+    if kind == 2 {
         if !check_coc(kind, n, p, why) { return false }
     }
     // the dense kind's `n * width` is checked by `Own.lean`, which alone knows the type's width
@@ -312,18 +312,6 @@ in a pack of {} bytes", b, need, o, plen));
             }
             return exc_ok(t, blk as usize, nblk, nexc, esz as usize, 1, if frm { Tail::Frames } else { Tail::None }, why);
         }
-    } else {
-        if pk.len() != e {
-            why.say(format_args!("part 1: an ALP pack of exactly its {} residual bytes, found {}", e, pk.len()));
-            return false;
-        }
-        let a = p[2];
-        if a.len() < 16 {
-            why.say(format_args!("part 2: a 16-byte ALP header, found {} bytes", a.len()));
-            return false;
-        }
-        let flags = u64::from_ne_bytes(a[8..16].try_into().unwrap());
-        return exc_ok(a, blk as usize, nblk, u64::from_ne_bytes(a[..8].try_into().unwrap()), if flags & 1 != 0 { 4 } else { 8 }, 2, Tail::Exps, why);
     }
     true
 }
@@ -392,17 +380,14 @@ mod tests {
     use super::*;
     use alloc::vec;
 
-    // kind 0, one part at 64 of length 16, domain name 0 bytes: hdr = 24 + 16 = 40, end + 32 = 72 > 64 is
-    // refused, so the part sits at 72.
+    // kind 2, two parts of 16 bytes, domain name 0 bytes: hdr = 24 + 2 * 16 = 56, so part 0 sits at 56 + 32 = 88 and
+    // part 1 at 88 + 16 + 32 = 136; the file is 160 bytes.
     #[test] fn head_ok() {
-        let mut m = vec![0u8; 96];
-        m[..8].copy_from_slice(b"qleancol");
-        m[8] = 4; m[11] = 0; m[12] = 1; m[16] = 7;
-        m[24..32].copy_from_slice(&72u64.to_le_bytes());
-        m[32..40].copy_from_slice(&16u64.to_le_bytes());
+        let mut m = good(); m[16] = 7;
         let mut buf = [0u8; 64];
         let h = head(&m, &mut Why::new(&mut buf)).unwrap();
-        assert_eq!((h.n, h.hdr, h.np, h.off[0], h.len[0], h.kind), (7, 40, 1, 72, 16, 0));
+        assert_eq!((h.n, h.hdr, h.np, h.off[0], h.len[0], h.off[1], h.kind), (7, 56, 2, 88, 16, 136, 2));
+        m[16] = 0;
     }
 
     fn err(m: &[u8]) -> alloc::string::String {
@@ -412,40 +397,46 @@ mod tests {
         alloc::string::String::from_utf8(buf[..z].to_vec()).unwrap()
     }
     fn good() -> alloc::vec::Vec<u8> {
-        let mut m = vec![0u8; 96];
+        let mut m = vec![0u8; 160];
         m[..8].copy_from_slice(b"qleancol");
-        m[8] = 4; m[12] = 1;
-        m[24..32].copy_from_slice(&72u64.to_le_bytes());
+        m[8] = OWN_VERSION; m[11] = 2; m[12] = 2;
+        m[24..32].copy_from_slice(&88u64.to_le_bytes());
         m[32..40].copy_from_slice(&16u64.to_le_bytes());
+        m[40..48].copy_from_slice(&136u64.to_le_bytes());
+        m[48..56].copy_from_slice(&16u64.to_le_bytes());
         m
     }
     #[test] fn head_errors() {
         let mut m = good(); m[0] = b'x';
         assert_eq!(err(&m), "byte 0: the magic `qleancol`");
-        let mut m = good(); m[8] = 2;
-        assert!(err(&m).starts_with("byte 8: format version 3 or 4, found 2; a version-1 file predates the Frame"));
+        let mut m = good(); m[8] = 4;
+        assert!(err(&m).starts_with("byte 8: format version 5, found 4; a file before version 5 may hold the dense"));
         let mut m = good(); m[11] = 5;
-        assert_eq!(err(&m), "byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 5 with 1 parts");
-        let mut m = good(); m[11] = 2;
-        assert_eq!(err(&m), "byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 2 with 1 parts");
-        // kind 1 is no kind, whatever its part count
-        let mut m = good(); m[11] = 1;
-        assert_eq!(err(&m), "byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 1 with 1 parts");
+        assert_eq!(err(&m), "byte 11: a constructor kind and part count 2:2 or 4:2, found kind 5 with 2 parts");
+        let mut m = good(); m[12] = 1;
+        assert_eq!(err(&m), "byte 11: a constructor kind and part count 2:2 or 4:2, found kind 2 with 1 parts");
+        // kinds 0 (`bytes`), 1 (the bitmap) and 3 (`alp`) are no kind, whatever their part count
+        for k in [0u8, 1, 3] {
+            let mut m = good(); m[11] = k; m[12] = 1;
+            assert_eq!(err(&m), format!("byte 11: a constructor kind and part count 2:2 or 4:2, found kind {k} with 1 parts"));
+        }
         let mut m = good(); m[11] = 255; m[12] = 255; m[13] = 255;
-        assert_eq!(err(&m), "byte 11: a constructor kind and part count 0:1, 2:2, 3:3 or 4:2, found kind 255 with 65535 parts");
-        let mut m = good(); m[14] = 100;
-        assert_eq!(err(&m), "byte 24: a part table and domain name ending at byte 140, the file is 96 bytes");
-        let mut m = good(); m[24] = 73;
-        assert_eq!(err(&m), "part 0 at byte 24: a data offset that is a multiple of 8, found 73");
-        let mut m = good(); m[24] = 64;
-        assert_eq!(err(&m), "part 0 at byte 24: 32 reserved bytes after byte 40 before its data, found offset 64");
-        let mut m = good(); m[32] = 40;
-        assert_eq!(err(&m), "part 0 at byte 24: 40 bytes from byte 72, the file is 96 bytes");
-        // a 2-byte domain name at byte 40, the part moved to 80 so the reserved bytes still fit
-        let mut m = good(); m.resize(104, 0); m[14] = 2; m[24] = 80; m[40] = 0xff;
-        assert_eq!(err(&m), "byte 40: a domain name of 2 bytes in UTF-8 with no NUL");
-        m[40] = b'a'; m[41] = 0;
-        assert_eq!(err(&m), "byte 40: a domain name of 2 bytes in UTF-8 with no NUL");
+        assert_eq!(err(&m), "byte 11: a constructor kind and part count 2:2 or 4:2, found kind 255 with 65535 parts");
+        let mut m = good(); m[14] = 200;
+        assert_eq!(err(&m), "byte 24: a part table and domain name ending at byte 256, the file is 160 bytes");
+        let mut m = good(); m[24] = 89;
+        assert_eq!(err(&m), "part 0 at byte 24: a data offset that is a multiple of 8, found 89");
+        let mut m = good(); m[24] = 80;
+        assert_eq!(err(&m), "part 0 at byte 24: 32 reserved bytes after byte 56 before its data, found offset 80");
+        let mut m = good(); m[40] = 128;
+        assert_eq!(err(&m), "part 1 at byte 40: 32 reserved bytes after byte 104 before its data, found offset 128");
+        let mut m = good(); m[32] = 80;
+        assert_eq!(err(&m), "part 0 at byte 24: 80 bytes from byte 88, the file is 160 bytes");
+        // a 2-byte domain name at byte 56, the parts moved to 96 and 144 so the reserved bytes still fit
+        let mut m = good(); m.resize(168, 0); m[14] = 2; m[24] = 96; m[40] = 144; m[56] = 0xff;
+        assert_eq!(err(&m), "byte 56: a domain name of 2 bytes in UTF-8 with no NUL");
+        m[56] = b'a'; m[57] = 0;
+        assert_eq!(err(&m), "byte 56: a domain name of 2 bytes in UTF-8 with no NUL");
     }
 
     // expected values: the C of e16b3fd (/data/tmp/qrs/K26/diff.c: 40000 parts of every kind, mutated headers, 0 mismatches)
@@ -487,33 +478,34 @@ mod tests {
         std::fs::create_dir_all(f.parent().unwrap()).expect("own tests: cannot create the scratch directory");
         alloc::ffi::CString::new(f.to_str().unwrap()).unwrap()
     }
-    // a kind 0 column written then mapped: the parts come back at their offsets, the file is the layout of the header note
+    // a kind 4 column (3 symbols, 5 two-bit ids) written then mapped: the parts come back at their offsets, the file is
+    // the layout of the header note
     #[test] fn write_then_map() {
         let p = tmp("w.col");
-        write(&p, 7, 2, 0, 3, b"dom", &[b"abc"]).unwrap();
+        write(&p, 7, 2, 4, 5, b"dom", &[b"a\0b\0c\0", &[0, 0]]).unwrap();
         let m = map(&p).unwrap();
-        assert_eq!((m.code, m.attr, m.kind, m.n, m.domain.as_str(), m.spans.len()), (7, 2, 0, 3, "dom", 1));
-        assert_eq!(&m.map[m.spans[0].0..m.spans[0].0 + 3], b"abc");
-        assert_eq!(m.spans[0].0 % 8, 0);
+        assert_eq!((m.code, m.attr, m.kind, m.n, m.domain.as_str(), m.spans.len()), (7, 2, 4, 5, "dom", 2));
+        assert_eq!(&m.map[m.spans[0].0..m.spans[0].0 + 6], b"a\0b\0c\0");
+        assert_eq!((m.spans[0].0 % 8, m.spans[1].0 % 8), (0, 0));
         let f = std::fs::read(p.to_str().unwrap()).unwrap();
-        assert_eq!(&f[..12], b"qleancol\x04\x07\x02\x00");
-        assert_eq!(f.len(), m.spans[0].0 + 3 + OWN_ROOM as usize);
+        assert_eq!(&f[..12], b"qleancol\x05\x07\x02\x04");
+        assert_eq!(f.len(), m.spans[1].0 + 2 + OWN_ROOM as usize);
     }
     #[test] fn write_refuses_and_fails() {
         let p = tmp("r.col");
         assert!(matches!(write(&p, 7, 0, 5, 3, b"", &[b"abc"]), Err(Fail::User(w)) if w == "a column of kind and part count \
-0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given kind 5 with 1 parts and a 0-byte name"));
+2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 1 parts and a 0-byte name"));
         assert!(matches!(write(&p, 7, 0, 2, 3, b"", &[b"abc"]), Err(Fail::User(_))));
         // kind 1, the bitmap, is no kind: refused at its old part count
         assert!(matches!(write(&p, 7, 0, 1, 3, b"", &[b"abc"]), Err(Fail::User(w)) if w.ends_with("given kind 1 with 1 parts and a 0-byte name")));
         // the worst case fits `write`'s buffer whole
         let mut buf = [0u8; OWN_WHY];
         refuse_head(255, usize::MAX, usize::MAX, &mut Why::new(&mut buf));
-        assert_eq!(text(&buf), "a column of kind and part count 0:1, 2:2, 3:3 or 4:2 and a domain name under 65536 bytes, given \
+        assert_eq!(text(&buf), "a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given \
 kind 255 with 18446744073709551615 parts and a 18446744073709551615-byte name");
-        assert!(matches!(write(&p, 7, 0, 0, 3, b"a\0b", &[b"abc"]),
+        assert!(matches!(write(&p, 7, 0, 2, 3, b"a\0b", &[b"abc", b"d"]),
                          Err(Fail::User(w)) if w == "a domain name with no NUL byte, found one at byte 1"));
-        assert!(matches!(write(c"/dev/null/x", 7, 0, 0, 3, b"", &[b"abc"]), Err(Fail::Errno(20))));
+        assert!(matches!(write(c"/dev/null/x", 7, 0, 2, 3, b"", &[b"abc", b"d"]), Err(Fail::Errno(20))));
         assert!(matches!(map(c"/data/tmp/relk-absent-dir/x"), Err(Fail::Errno(os::ENOENT))));
         assert!(matches!(map(c"/data/tmp"), Err(Fail::Errno(os::EISDIR))));
         let short = tmp("short.col");

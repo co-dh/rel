@@ -8,7 +8,7 @@
 use alloc::{format, string::String};
 use crate::blocks::{Blocks, Grid};
 use crate::enc::Producer;
-use crate::ffi::{Form, Sink};
+use crate::ffi::Sink;
 use crate::scan::{op_eval, op_word};
 use crate::{lean, pod};
 
@@ -46,7 +46,7 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Result<le
         }
     }
     for b in 0..g.nblk() { at[b + 1] += at[b] }
-    let s = Sink::new(n, 8, Form::For).enc();
+    let s = Sink::new(n, 8).enc();
     if asc {
         // an ascending index hands answer block `b` the contiguous rows `at[b] .. at[b + 1]`, cut on `ix`'s own grid
         return Ok(s.answer(&|o: &mut [i64], i0: usize| {
@@ -116,7 +116,7 @@ mod tests {
     }
     /// `Coc.encode 8` of `ws` as `(meta, pack)`, the form a `foR` argument holds
     fn enc(ws: &[u64]) -> [Vec<u8>; 2] {
-        let o = Sink::new(ws.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(ws), 8));
+        let o = Sink::new(ws.len(), 8).answer(&Blocks::dense(pod::bytes(ws), 8));
         [0, 1].map(|i| o.borrow().field(i).bytes().to_vec())
     }
     fn answer(o: &lean::O) -> [Vec<u8>; 2] { [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) }
@@ -136,7 +136,7 @@ mod tests {
         for is in cases {
             let es: Vec<u64> = (0..is.len() as u64).map(|k| 1000 + (k * 31) % 777 + if k % 97 == 5 { k << 30 } else { 0 }).collect();
             for op in [LAST, ADD, SUB, MIN, FIRST, DIV] {
-                let want = Sink::new(n, 8, Form::For).enc().answer(&Blocks::dense(pod::bytes(&words(op, &is, &es, n, 9).unwrap()), 8));
+                let want = Sink::new(n, 8).enc().answer(&Blocks::dense(pod::bytes(&words(op, &is, &es, n, 9).unwrap()), 8));
                 assert_eq!(run(op, &is, &es, n, 9), Ok(answer(&want)), "op {op} m {}", is.len());
             }
         }

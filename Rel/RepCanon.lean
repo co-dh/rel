@@ -85,8 +85,7 @@ theorem kscatter_words {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h
         simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
         refine ⟨hisz, hesz, congrArg Except.ok ?_⟩
         have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
-        rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega),
-          raw_bytes .i64 8 rfl (by decide)]
+        rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega)]
         refine (Array.ext (by simp [hs]) fun i h1 _ => ?_).symm
         simp only [Array.getElem_map, Array.getElem_range]
         rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]

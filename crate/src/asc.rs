@@ -266,7 +266,7 @@ pub fn grade(run: Runner, ks: &[Key], m: usize) -> Option<Vec<i64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ffi::{Form, Sink};
+    use crate::ffi::Sink;
     #[test] fn codes_order_as_q_does() {
         assert_eq!(ord_key(4, false, true, 5), 0x8000_0005);
         assert_eq!(ord_key(4, false, true, 0xffff_ffff), 0x7fff_ffff);
@@ -311,7 +311,7 @@ mod tests {
                 (6, (0..m).map(|_| rnd() as i64).collect()),
             ];
             let enc: Vec<(u8, [Vec<u8>; 2])> = cols.iter().map(|(t, x)| {
-                let o = Sink::new(m, 8, Form::For).answer(&Blocks::dense(pod::bytes(x), 8));
+                let o = Sink::new(m, 8).answer(&Blocks::dense(pod::bytes(x), 8));
                 (*t, [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()))
             }).collect();
             let key = |i: usize| Key::new(crate::coc::view(&enc[i].1[0], &enc[i].1[1], m).ok().expect("asc test: view"), order(enc[i].0).expect("asc test: order"));
@@ -331,7 +331,7 @@ mod tests {
 
     /// The words `x` as a `foR` column's metadata and pack, `Coc::view`ed by `col`.
     fn enc(x: &[i64]) -> [Vec<u8>; 2] {
-        let o = Sink::new(x.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(x), 8));
+        let o = Sink::new(x.len(), 8).answer(&Blocks::dense(pod::bytes(x), 8));
         [0, 1].map(|i| o.borrow().field(i).bytes().to_vec())
     }
     fn col(e: &[Vec<u8>; 2], m: usize) -> Coc<'_> { crate::coc::view(&e[0], &e[1], m).ok().expect("asc test: view") }
