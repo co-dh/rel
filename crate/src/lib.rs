@@ -92,8 +92,6 @@ mod scan;
 /// cbindgen:ignore
 mod scatter;
 /// cbindgen:ignore
-mod search;
-/// cbindgen:ignore
 mod sort;
 /// cbindgen:ignore
 mod structural;
