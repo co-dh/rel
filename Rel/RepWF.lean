@@ -234,7 +234,6 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     rename_i hb
     simp only [bind] at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
     split at h; · cases h
     split at h
@@ -247,7 +246,7 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     rw [Except.bind_eq_ok'] at h; obtain ⟨g', hg', h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨p, hp, h⟩ := h
     have hm63 : m.toNat < 2 ^ 63 := by omega
-    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hx.1 hm63 f
     refine Vals.cells_expand_wf hex h m.toNat (fun i hi => ?_) (by omega) (by omega)
       (Vals.pack_wf hp (Vals.gather_wf hg' hx.2))
     obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
@@ -362,8 +361,6 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, off⟩, hpl, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨F, hF, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s₁, e₁⟩, hse₁, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s₂, e₂⟩, hse₂, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₁, hw₁, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₂, hw₂, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
@@ -384,8 +381,8 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
   obtain ⟨hNn, hoff⟩ := catPlan_ok hpl
   have hm₁ : m₁.toNat < 2 ^ 63 := by omega
   have hm₂ : m₂.toNat < 2 ^ 63 := by omega
-  obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hse₁ hm₁ f₁
-  obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hse₂ hm₂ f₂
+  obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hX.1 hm₁ f₁
+  obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hY.1 hm₂ f₂
   refine Vals.cells_expand_wf hex h (m₁.toNat + m₂.toNat) (fun i hi => ?_) (by omega) (by omega)
     (Vals.gather_wf hg (Vals.concat_wf hNn hoff hF hX.2 hY.2))
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
@@ -405,8 +402,6 @@ theorem Vals.zip_wf {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.ar
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s₁, e₁⟩, hse₁, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s₂, e₂⟩, hse₂, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₁, hw₁, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₂, hw₂, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
@@ -419,8 +414,8 @@ theorem Vals.zip_wf {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.ar
   rw [Except.bind_eq_ok'] at h; obtain ⟨y, hy, h⟩ := h
   have hm₁ : m₁.toNat < 2 ^ 63 := by omega
   have hm₂ : m₂.toNat < 2 ^ 63 := by omega
-  obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hse₁ hm₁ f₁
-  obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hse₂ hm₂ f₂
+  obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hX.1 hm₁ f₁
+  obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hY.1 hm₂ f₂
   refine Vals.cells_expand_wf hex h (m₁.toNat + m₂.toNat) (fun i hi => ?_) (by omega) (by omega)
     ⟨Vals.gather_wf hx hX.2, Vals.gather_wf hy hY.2⟩
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
@@ -470,7 +465,6 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨wd, hwd, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
@@ -481,7 +475,7 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
   rw [Except.bind_eq_ok'] at h; obtain ⟨eG, heG, h⟩ := h
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i + 1 := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
     have e2 := (colMap_raw hw).2.2.2 i hi
@@ -500,8 +494,8 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
     obtain ⟨g, hg, h1, h2⟩ := exists_group wN n.toNat t (by rw [← hTn]; exact t.2)
     obtain ⟨hG, hu⟩ := hrun g hg t h1 h2
     have hGg : ((raw .i64 Tn G)[t.1]?.getD 0).toNat = g := by rw [hG, toNat_toUInt64 (by omega)]
-    obtain ⟨i2, hi2, hs2⟩ := Arr.gather_raw s hsG t
-    obtain ⟨i3, hi3, he3⟩ := Arr.gather_raw e heG t
+    obtain ⟨i2, hi2, hs2⟩ := Arr.gather_raw lo hsG t
+    obtain ⟨i3, hi3, he3⟩ := Arr.gather_raw up heG t
     obtain rfl : i2 = ⟨g, hg⟩ := Fin.ext (hi2.symm.trans hGg)
     obtain rfl : i3 = ⟨g, hg⟩ := Fin.ext (hi3.symm.trans hGg)
     rw [(hse' g hg).1] at hs2
@@ -511,7 +505,7 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
       have es := (colMap_raw (colArr_ok hmid)).2.2.2 _ t.2
       rw [hs2, hu] at es; simp only [Op.eval, Except.ok.injEq] at es
       rw [← es, ← UInt64.ofNat_add]
-    have hSm := cellSpan_start_le hse hX.1 ⟨g, hg⟩
+    have hSm := cellSpan_start_le hX.1 ⟨g, hg⟩
     rw [(hse' g hg).1, toNat_toUInt64 (by have := hb1 g; omega)] at hSm
     have hd' : SN g + (t.1 - ((List.range g).map wN).sum) ≤ EN g := by have := hb1 g; omega
     refine ⟨SN g, _, EN g, hs2, hmw, he3, hd', ?_⟩

@@ -16,12 +16,6 @@ is a slice `[lo, hi)` of the input's own payload. No column is decoded or re-enc
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- The bounds `[s, e)` of `n` cells `[lo, hi)` clamped to a payload of `m` rows, as `Vals.row` reads a cell:
-`s = max lo 0`, `e = max (min hi m) s`, so the width `e - s` is never negative. -/
-def cellSpan {n : USize} (m : USize) (lo hi : Arr .i64 n) : Except String (Arr .i64 n × Arr .i64 n) := do
-  let s ← colArr .max n lo.enc (← colConst n 0)
-  pure (s, ← colArr .max n (← colMap .min n hi.enc (← colConst n m.toUInt64)) s.enc)
-
 /-- `n` cells of the widths `w`, laid out one after another over the payload `pay`: `hi` the running sum of `w`
 (`colPrefix .add`, the layout `expand` places its groups by), `lo = hi - w`. -/
 def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Except String (Vals (.arr B) n) := do
@@ -36,16 +30,15 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
   | .atom _, _, x => pure x
   | .prod _ _, _, x => do pure (← Vals.pack x.1, ← Vals.pack x.2)
   | .arr _, n, ⟨m, lo, hi, f⟩ => do
-    -- `cellSpan`, the widths, their prefix sums and the positions `s + u` are read signed: each below `n * m + n + m`
+    -- the bounds, widths, their prefix sums and the positions `lo + u` are read signed: each below `n * m + n + m`
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"pack: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let w ← colMap .sub n e.enc s.enc
+    let w ← colMap .sub n hi.enc lo.enc
     match hP : colPrefix .add n w with
     | .error err => throw err
     | .ok P =>
       if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2 ≤ m.toNat then do
         let (T, G, u) ← expand n w
-        Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f))
+        Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
       else pure ⟨m, lo, hi, ← Vals.pack f⟩
   | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, tag, idx, ← Vals.pack x, ← Vals.pack y⟩
   | .one, _, _ => pure ()
@@ -69,13 +62,11 @@ def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals
       throw s!"cat: {n} cells over {m₁} + {m₂} elements past 2^63"
     let (N, off) ← catPlan m₁ m₂
     let F ← Vals.concat N off f₁ f₂
-    let (s₁, e₁) ← cellSpan m₁ lo₁ hi₁
-    let (s₂, e₂) ← cellSpan m₂ lo₂ hi₂
-    let w₁ ← colMap .sub n e₁.enc s₁.enc
-    let w ← colMap .add n w₁ (← colMap .sub n e₂.enc s₂.enc)
+    let w₁ ← colMap .sub n hi₁.enc lo₁.enc
+    let w ← colMap .add n w₁ (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w
-    let a ← colMap .add T (← kgather T G n s₁.enc) u
-    let d ← colMap .sub n (← colMap .add n s₂.enc (← colConst n m₁.toUInt64)) w₁
+    let a ← colMap .add T (← kgather T G n lo₁.enc) u
+    let d ← colMap .sub n (← colMap .add n lo₂.enc (← colConst n m₁.toUInt64)) w₁
     let b ← colMap .add T (← kgather T G n d) u
     let c ← colMap .lt T u (← kgather T G n w₁)
     Vals.cells n w (← Vals.gather T (← colMap .add T b (← colMap .mul T c (← colMap .sub T a b))) F)
@@ -88,12 +79,10 @@ def Vals.zip {A B : Obj} {n : USize} (X : Vals (.arr A) n) (Y : Vals (.arr B) n)
   | ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ => do
     if 2 ^ 63 ≤ n.toNat * (m₁.toNat + m₂.toNat) + n.toNat + m₁.toNat + m₂.toNat then
       throw s!"zip: {n} cells over {m₁} + {m₂} elements past 2^63"
-    let (s₁, e₁) ← cellSpan m₁ lo₁ hi₁
-    let (s₂, e₂) ← cellSpan m₂ lo₂ hi₂
-    let w ← colMap .min n (← colMap .sub n e₁.enc s₁.enc) (← colMap .sub n e₂.enc s₂.enc)
+    let w ← colMap .min n (← colMap .sub n hi₁.enc lo₁.enc) (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w
-    let x ← Vals.gather T (← colMap .add T (← kgather T G n s₁.enc) u) f₁
-    let y ← Vals.gather T (← colMap .add T (← kgather T G n s₂.enc) u) f₂
+    let x ← Vals.gather T (← colMap .add T (← kgather T G n lo₁.enc) u) f₁
+    let y ← Vals.gather T (← colMap .add T (← kgather T G n lo₂.enc) u) f₂
     Vals.cells n w ((x, y) : Vals (.prod A B) T)
 
 namespace Tab
@@ -121,11 +110,10 @@ def uncons {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.pro
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat + m.toNat + 1 then throw s!"uncons: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let (M, sel) ← whereCol n (← colMap .lt n s.enc e.enc)
-    let sM ← Arr.gather M sel s
+    let (M, sel) ← whereCol n (← colMap .lt n lo.enc hi.enc)
+    let sM ← Arr.gather M sel lo
     canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
-      (← Vals.gather M sM.enc f, ⟨m, ← colArr .add M sM.enc (← colConst M 1), ← Arr.gather M sel e, f⟩)⟩
+      (← Vals.gather M sM.enc f, ⟨m, ← colArr .add M sM.enc (← colConst M 1), ← Arr.gather M sel hi, f⟩)⟩
 
 /-- **`snoc°` on the cells `X`**: each non-empty cell `[s, e)` to the slice `[s, e - 1)` and its last element (the
 payload at `e - 1`). -/
@@ -133,11 +121,10 @@ def unsnoc {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.pro
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat + m.toNat + 1 then throw s!"unsnoc: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let (M, sel) ← whereCol n (← colMap .lt n s.enc e.enc)
-    let l ← colArr .sub M (← Arr.gather M sel e).enc (← colConst M 1)
+    let (M, sel) ← whereCol n (← colMap .lt n lo.enc hi.enc)
+    let l ← colArr .sub M (← Arr.gather M sel hi).enc (← colConst M 1)
     canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
-      (⟨m, ← Arr.gather M sel s, l, f⟩, ← Vals.gather M l.enc f)⟩
+      (⟨m, ← Arr.gather M sel lo, l, f⟩, ← Vals.gather M l.enc f)⟩
 
 /-- **`cat°` on the cells `X`**: each cell `[s, e)` to its `e - s + 1` splits, EXPAND of those counts into `(G, u)`,
 split `u` of cell `G` the slices `[s, s + u)` and `[s + u, e)`. -/
@@ -146,11 +133,10 @@ def uncat {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.prod
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat * (m.toNat + 1) + n.toNat + m.toNat + 1 then
       throw s!"uncat: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let (T, G, u) ← expand n (← colMap .add n (← colMap .sub n e.enc s.enc) (← colConst n 1))
-    let sG ← Arr.gather T G s
+    let (T, G, u) ← expand n (← colMap .add n (← colMap .sub n hi.enc lo.enc) (← colConst n 1))
+    let sG ← Arr.gather T G lo
     let mid ← colArr .add T sG.enc u
-    canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, (⟨m, sG, mid, f⟩, ⟨m, mid, ← Arr.gather T G e, f⟩)⟩
+    canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, (⟨m, sG, mid, f⟩, ⟨m, mid, ← Arr.gather T G hi, f⟩)⟩
 
 /-- **`prefix` on the cells `X`**: the prelude's `cat° π₁`, `uncat` then `outl` on its splits. -/
 def «prefix» {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
@@ -185,10 +171,9 @@ def sumOn {u : QAtomicType} {n : USize} (X : Vals (.arr (.atom u)) n) :
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"sum: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let w ← colMap .sub n e.enc s.enc
+    let w ← colMap .sub n hi.enc lo.enc
     let (T, G, i) ← expand n w
-    let v ← kgather T (← colMap .add T (← kgather T G n s.enc) i) m (Arr.enc (t := u) f)
+    let v ← kgather T (← colMap .add T (← kgather T G n lo.enc) i) m (Arr.enc (t := u) f)
     let seg ← colMap .eq T i (← colConst T 0)
     let (W, bad) ← sumTail "sum" u T seg v
     let badC ← kscatter .or T G bad n 0

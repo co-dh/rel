@@ -888,6 +888,7 @@ atom: EXPAND lays each cell `g` out as the run `[off g, off g + w g)` of rows, w
 segment, so `sumTail_fold` gives the run's last row the fold of the whole cell; a cell is kept with that row's word
 (`kscatter .last`, `0` for an empty cell) exactly when none of its rows' bad words is set (`kscatter .or`). -/
 theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) V} (h : Tab.sum X = .ok T)
+    (hX : Vals.WF X)
     (xs : List V.El) (c : V.El) : T.Holds xs c ↔ (∃ i, X.row i = xs) ∧ Lang.sumAt V xs c := by
   cases V
   all_goals first | (simp only [Tab.sum, throw, throwThe, MonadExceptOf.throw] at h; cases h) | skip
@@ -898,7 +899,6 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T', G, i⟩, hTGu, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨g1, hg1, h⟩ := h
@@ -916,7 +916,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   -- the cells `[SN g, EN g)`, their widths `EN g - SN g` at `w`, laid out by EXPAND at the offsets `off g`
-  obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hse hm63 f
+  obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
   have hwv : ∀ g < n.toNat, (Enc.raw .i64 n w)[g]?.getD 0 = (EN g - SN g).toUInt64 := fun g hg => by
     have es := (colMap_raw hw).2.2.2 g hg
     rw [(hw1 g hg).2, (hw1 g hg).1] at es; simp only [Op.eval, Except.ok.injEq] at es

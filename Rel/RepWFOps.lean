@@ -385,7 +385,6 @@ theorem map_wf {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {t : 
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨s, e⟩, hse, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sg, -, h⟩ := h
@@ -401,7 +400,7 @@ theorem map_wf {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {t : 
     obtain rfl : CN = T := hc.1
     rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
     have hm63 : m.toNat < 2 ^ 63 := by omega
-    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
     have wC := comp_wf hC ⟨trivial, Vals.gather_wf hv hX.2⟩ hR
     refine canon_wf h ⟨hX, Vals.cells_expand_wf hex hY m.toNat (fun i hi => ?_) (by dsimp only; omega) (by dsimp only; omega) wC.2⟩
     obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
@@ -429,9 +428,9 @@ theorem mu_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except
       U'.toList.Nodup ∧ U'.Holds = (fun a b => X.Holds a b ∨ F X.Holds a b) ∧ U'.WF := by
     intro X U U' wX hU hp
     simp only [bind] at hU; rw [Except.bind_eq_ok'] at hU; obtain ⟨T, hT, hu⟩ := hU
-    refine ⟨(pack_toList hp).2 ▸ union_nodup hu, funext fun a => funext fun b => propext ?_,
-      pack_wf hp (union_wf hu wX (hfw _ _ hT wX))⟩
-    rw [pack_holds hp, union_holds hu wX (hfw _ _ hT wX), hf X T wX hT]
+    have wU := union_wf hu wX (hfw _ _ hT wX)
+    refine ⟨(pack_toList hp wU).2 ▸ union_nodup hu, funext fun a => funext fun b => propext ?_, pack_wf hp wU⟩
+    rw [pack_holds hp wU, union_holds hu wX (hfw _ _ hT wX), hf X T wX hT]
   have eZ : Z.Holds = fun _ _ => False := funext fun a => funext fun b => propext (zero_holds hZ a b)
   obtain ⟨X, U, ⟨dX, sX, wX⟩, hU, hp, hn⟩ := fixOn_inv (fun X : Tab A B => X.toList.Nodup ∧ S X.Holds ∧ X.WF)
     (fun X U U' ⟨_, sX, wX⟩ hU hp => by
@@ -490,16 +489,17 @@ theorem star_holds {K B : Obj} {step : Tab B B → Except String (Tab B B)} {R :
     rw [Except.bind_eq_ok'] at hp; obtain ⟨D', hD', hp⟩ := hp
     obtain rfl : (U', D') = Z' := Except.ok.inj hp
     have wN := comp_wf hN w2 (hsw _ _ hT (ran_wf hDr w2))
+    have wD := diff_wf hD wN w1
+    have wU := union_wf hU w1 wD
     have eD : ∀ k c, D'.Holds k c ↔ (∃ b, s.2.Holds k b ∧ R b c) ∧ ¬s.1.Holds k c := fun k c => by
-      rw [pack_holds hD', diff_holds hD wN w1, comp_holds hN w2 (hsw _ _ hT (ran_wf hDr w2))]
+      rw [pack_holds hD' wD, diff_holds hD wN w1, comp_holds hN w2 (hsw _ _ hT (ran_wf hDr w2))]
       refine and_congr_left fun _ => ⟨fun ⟨b, hb, hbc⟩ => ?_, fun ⟨b, hb, hbc⟩ => ⟨b, hb, ?_⟩⟩
       · obtain ⟨b', hb', hbc'⟩ := (hs _ _ hT (ran_wf hDr w2) b c).1 hbc
         obtain ⟨rfl, -⟩ := (ran_holds hDr b b').1 hb'
         exact ⟨b, hb, hbc'⟩
       · exact (hs _ _ hT (ran_wf hDr w2) b c).2 ⟨b, (ran_holds hDr b b).2 ⟨rfl, k, hb⟩, hbc⟩
-    have wD := diff_wf hD wN w1
-    refine ⟨(pack_toList hU').2 ▸ union_nodup hU, eD, fun k c => ?_, pack_wf hU' (union_wf hU w1 wD), pack_wf hD' wD⟩
-    rw [pack_holds hU', union_holds hU w1 wD, ← pack_holds hD']
+    refine ⟨(pack_toList hU' wU).2 ▸ union_nodup hU, eD, fun k c => ?_, pack_wf hU' wU, pack_wf hD' wD⟩
+    rw [pack_holds hU' wU, union_holds hU w1 wD, ← pack_holds hD' wD]
   let I : Tab K B × Tab K B → Prop := fun s => s.1.toList.Nodup ∧ (∀ k b, s.2.Holds k b → s.1.Holds k b) ∧
     (∀ k b, s.1.Holds k b → ∃ a, P'.Holds k a ∧ Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a b) ∧
     (∀ k a, P'.Holds k a → s.1.Holds k a) ∧

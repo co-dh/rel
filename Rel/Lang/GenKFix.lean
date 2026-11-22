@@ -61,9 +61,9 @@ theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den 
     intro X Y Y' wX hY hp
     obtain ⟨g, hg, hi⟩ := bind_ok hY
     have wg := (wφ X wX).runE Known.wf_empty hg
-    refine ⟨(Tab.pack_toList hp).2 ▸ Tab.toList_nodup fun _ _ => Tab.inter_distinct hi wX wg, fun a b => ?_,
+    refine ⟨(Tab.pack_toList hp (Tab.inter_wf hi wX wg)).2 ▸ Tab.toList_nodup fun _ _ => Tab.inter_distinct hi wX wg, fun a b => ?_,
       Tab.pack_wf hp (Tab.inter_wf hi wX wg)⟩
-    rw [Tab.pack_holds hp, Tab.inter_holds hi wX wg, eφ X g wX hg]; rfl
+    rw [Tab.pack_holds hp (Tab.inter_wf hi wX wg), Tab.inter_holds hi wX wg, eφ X g wX hg]; rfl
   unfold Tab.nu at h
   obtain ⟨T, hT, h⟩ := bind_ok h
   obtain ⟨X, Y, ⟨dX, nX, sX, wX⟩, hY, hp, hn⟩ := Tab.fixOn_inv
