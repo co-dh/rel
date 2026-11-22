@@ -301,7 +301,7 @@ theorem succ_wf {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .long n �
     (hU : ∀ {n : USize} (X : Vals .long n) T, U X = .ok T → Vals.WF X → T.WF) {T : Tab K .long}
     (h : succ D U = .ok T) (hD : D.WF) : T.WF := by
   simp only [succ, bind, Except.bind_eq_ok'] at h
-  obtain ⟨u1, hu1, d1, hd1, E, hE, ne, -, s, -, u2, hu2, d2, hd2, h⟩ := h
+  obtain ⟨u1, hu1, d1, hd1, E, hE, s, -, u2, hu2, d2, hd2, h⟩ := h
   exact comp_wf h ⟨(comp_wf hE hD (dom_wf hd1 (hU _ _ hu1 trivial))).1, trivial⟩ (dom_wf hd2 (hU _ _ hu2 trivial))
 
 /-- **`$` keeps `Tab.WF`**: `X` keyed to the cast words, `keep`. -/

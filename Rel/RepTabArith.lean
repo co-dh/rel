@@ -208,6 +208,28 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
   rw [if_neg (by simpa using e4), if_neg (by simpa using e5)] at h
   cases h
 
+/-- **`succCol` is `Ew.intStep`'s `u + 1`** at each row (the null to itself). -/
+theorem Tab.succCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : Tab.succCol n X.enc = .ok s)
+    (i : Fin n.toNat) : Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (X.row i) 1 := by
+  simp only [Tab.succCol, bind, Except.bind_eq_ok'] at hs
+  obtain ⟨ne, hne, hs⟩ := hs
+  show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get X i) 1
+  rw [Arr.get_i64, Arr.get_i64]
+  have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2
+  have r2 := (colMap_post hne).2 i i.2
+  rw [ev_ne] at r2
+  simp only [ne_comm (a := nulWord)] at r2
+  rw [← Except.ok.inj r2] at r1
+  rw [← Except.ok.inj r1]
+  generalize (raw .i64 n X.enc)[i.1]?.getD 0 = A
+  obtain ⟨a, rfl⟩ : ∃ a : Int64, a.toUInt64 = A := ⟨A.toInt64, UInt64.toUInt64_toInt64 A⟩
+  by_cases ha : a = Alg.nul
+  · subst ha; decide
+  · have : a.toUInt64 ≠ nulWord := fun e => ha ((toU_inj _ _).1 e)
+    simp (config := {decide := true}) only [ne_eq, this, not_false_eq_true, if_true, Ew.intStep_add]
+    show (a + 1).toUInt64.toInt64 = _
+    simp [ha]
+
 /-- **`Tab.succ` answers `D ≫ succDen U`** (`Rel/Lang/Den.lean`): a row `(x, w)` of the answer is a row `(x, u)` of `D`
 with `u` in `dom U`, `w = u + 1` (`Ew.intStep`, the null to itself), and `w` in `dom U`; `U X` agrees with `TU`
 at the values `X`. -/
@@ -217,25 +239,8 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .lo
     {T : Tab K .long} (h : D.succ U = .ok T) (hD : D.WF) (x : K.El)
     (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen TU u w := by
   simp only [Tab.succ, bind, Except.bind_eq_ok'] at h
-  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
-  have hrow : ∀ i : Fin E.n.toNat, Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (E.val.row i) 1 := by
-    intro i
-    show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get E.val i) 1
-    rw [Arr.get_i64, Arr.get_i64]
-    have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2
-    have r2 := (colMap_post hne).2 i i.2
-    rw [ev_ne] at r2
-    simp only [ne_comm (a := nulWord)] at r2
-    rw [← Except.ok.inj r2] at r1
-    rw [← Except.ok.inj r1]
-    generalize (raw .i64 E.n E.val.enc)[i.1]?.getD 0 = A
-    obtain ⟨a, rfl⟩ : ∃ a : Int64, a.toUInt64 = A := ⟨A.toInt64, UInt64.toUInt64_toInt64 A⟩
-    by_cases ha : a = Alg.nul
-    · subst ha; decide
-    · have : a.toUInt64 ≠ nulWord := fun e => ha ((toU_inj _ _).1 e)
-      simp (config := {decide := true}) only [ne_eq, this, not_false_eq_true, if_true, Ew.intStep_add]
-      show (a + 1).toUInt64.toInt64 = _
-      simp [ha]
+  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
+  have hrow := Tab.succCol_row hs
   have wE := Tab.comp_wf hE hD ⟨trivial, trivial⟩
   rw [Tab.comp_holds hT ⟨wE.1, trivial⟩ ⟨trivial, trivial⟩]
   have inD : ∀ {u}, D.Holds x u → ∃ j, D.val.row j = u := fun ⟨j, _, hj⟩ => ⟨j, hj⟩

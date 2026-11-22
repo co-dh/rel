@@ -338,10 +338,20 @@ def prims : List Prim :=
    foldIRow, starRow, domRow, ranRow, nilRow] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
-  floatOps.map fun (s, o, u) =>
+  (floatOps.map fun (s, o, u) =>
     { sym := s, sig := ([], if o.readsAcc then .prod (.var {} "F") (.var {} "F") else .var {} "F", .var {} "D"),
       num := [("F", floatAtoms), ("D", [u])],
-      aop := .error "AOP declares no floating-point function" }
+      aop := .error "AOP declares no floating-point function" }) ++
+  -- the value verbs (`arithOps`), `succ`, the order tests `lt` `le` (`cmpOps`): rows on atoms, no universe inside;
+  -- `build` writes each, cut to a bounded object's universe `U` as `⟨π₁U, π₂U⟩ row U` (§3.5), so none is written
+  arithOps.map (fun (s, _) =>
+    { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .var {} "N"), num := [("N", intAtoms ++ floatAtoms)],
+      written := false, aop := .error "AOP declares no arithmetic on atoms" }) ++
+  [{ sym := "succ", sig := ([], .var {} "N", .var {} "N"), num := [("N", intAtoms)], written := false,
+     aop := .error "AOP declares no successor on atoms" }] ++
+  cmpOps.map fun (s, _) =>
+    { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
+      aop := .error "AOP declares no order on atoms" }
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

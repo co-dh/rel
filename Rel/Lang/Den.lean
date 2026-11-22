@@ -325,6 +325,22 @@ def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B
       (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
   | _, _ => fun _ _ => False
 
+/-- A value verb `k` of `arithOps` at `A`: `stepAt` at an atom (`arithDen` with no universe), `𝟘` elsewhere. -/
+def stepOn (k : UInt8) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El A)
+  | .atom t => stepAt t k
+  | _ => fun _ _ => False
+
+/-- The row `succ` at `A`: at `i64` each value to `Ew.intStep`'s `u + 1` (`succDen` with no universe), `𝟘` elsewhere. -/
+def succOn : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A)
+  | .atom .i64 => fun u w => w = Ew.intStep Ew.add Alg.nul u 1
+  | _ => fun _ _ => False
+
+/-- An order test of `cmpOps` at `A`: at an atom the coreflexive on the pairs `(a, b)` with `ltAt t a b` (`s`) or
+    `leAt t a b`, `𝟘` elsewhere. -/
+def ordDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El (.prod A A))
+  | .atom t => fun p q => q = p ∧ if s then ltAt t p.1 p.2 else leAt t p.1 p.2
+  | _ => fun _ _ => False
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Core.Rel (Obj.El (c.ty σ).1) (Obj.El (c.ty σ).2)
 
@@ -372,8 +388,11 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨dom, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T ≫ T°⟩,
    ⟨ran, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T° ≫ T°°⟩,
    ⟨nil, fun _ _ => nilDen⟩] ++
-  floatOps.map fun (s, o, _) =>
-    ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩
+  floatOps.map (fun (s, o, _) =>
+    ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩) ++
+  arithOps.map (fun (s, k) => ⟨⟨s, fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₁ σ)⟩, fun σ _ => stepOn k (σ₁ σ)⟩) ++
+  [⟨⟨"succ", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => succOn (σ₁ σ)⟩] ++
+  cmpOps.map fun (s, b) => ⟨⟨s, fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen b (σ₁ σ)⟩
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
@@ -734,10 +753,11 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     ∀ σ {ss ss' : List Sem}, Sems.le ss ss' → e.2 σ ss ⊑ e.2 σ ss' := by
   intro e he hm σ ss ss' h
   simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- a `floatOps` row takes no relation; then one case per row whatever their number, in `rowDens` order
-  rcases he with he | ⟨_, -, rfl⟩
+  -- a `floatOps`, `arithOps`, `succ` or `cmpOps` row takes no relation; then one case per row whatever their number,
+  -- in `rowDens` order
+  rcases he with (((he | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩) | rfl) | ⟨_, -, rfl⟩
   rotate_left
-  · exact Core.Rel.le_refl _
+  iterate 4 exact Core.Rel.le_refl _
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
