@@ -70,7 +70,8 @@ run_cmd do
   let mut closed := 0
   -- each closed definition no literal-row `check` of its program mentions
   let mut unchecked : List String := []
-  for (n, _, _) in reg.progs do
+  let only ← IO.getEnv "REL_ONLY"
+  for (n, _, _) in reg.progs.filter (fun p => only.all (· == toString p.1)) do
     let p0 ← IO.monoMsNow
     let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
     let (ds, _, _, _, fs, _) ← match ← GenSoundTest.reread n with
