@@ -392,8 +392,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `kscatter` 接受 `Op`，覆盖是 `.last`，`last` 是位置的 scatter（23059eb）。
   ⬜ 未做：宽的无序 key 上 Lean body 有答案而 Rust 报错，且组 id 规则写了两次（`kseen` 的 body 与 `Order.idsBy`），
   修复 `seenfix` 已合并（0957f87：`kseen` 的 body 返回 Rust 的 hash 错误；`Order.groupIn` 是组 id 的唯一来源）；
-  余下：composite 定理；`kasc ≫ kseen` 的 runs 引理；移植 `Order.groupIds*` 的调用者；
-  `doc/rel-architecture.zh.typ` 仍写 `distinct`。
+  ✅ 余下各项（seen-rest）：composite 定理 `kasc_kseen`（`Rel/RepSeen.lean`：`kasc` 答出时，`kseen` 在其排好的列上
+  不报错；所答由 `kseen_ok`、`kasc_grade` 给出）；runs 引理已有（`kseen_runs`，`RepSetOps`）；`Order.groupIds*` 已在
+  92cbb31 等处删除，`kseen` 的调用者全走 kernel；doc §4 的 `seen` 行改写（`Order.idsBy` → `firstsBy`/`groupIn`，列出定律）。
+  待 rq17f4 之后折叠：`lexLe_congr_right`（`RepTabComp`）是 `lexLe_congr` 的特例，`nub_cover`/`nub_sel` 内联的
+  `hkey` 即 `kasc_grade`。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
