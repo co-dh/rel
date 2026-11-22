@@ -4,7 +4,6 @@ import Rel.Run.Power
 import Rel.Run.Asc
 import Rel.Run.Fix
 import Rel.RepTabDiv
-import Rel.RepAsc
 
 /-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
@@ -13,6 +12,15 @@ case to `Tab.WF` stands on: each op's `_wf` lemma there is one of these. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+
+/-- `Arr.zeros` holds `0` at every row. -/
+theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
+  unfold Arr.zeros at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
+  have es := (colMap_raw (colArr_ok h)).2.2.2 _ i.2
+  rw [colConst_raw hc, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
+  simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
+  rw [Arr.get_i64, ← es]; rfl
 
 set_option hygiene false in
 /-- `h : x = .ok t` split through its binds and matches: each error branch closed, each other one kept. -/

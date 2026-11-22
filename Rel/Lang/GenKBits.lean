@@ -1,4 +1,5 @@
 import Rel.Lang.GenKSpec
+import Rel.RepWFOps
 
 /-! The laws of `Tab.keepBits` and `Tab.compTabMat` (`Rel/Run/Bits.lean`), the two ops `GenKSpec` reads a bit matrix
     through. Both hold only for a matrix as its producers (`compMat`, `compTabMat`) build it: `0`/`1` words, `g · w`

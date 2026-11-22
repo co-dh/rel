@@ -10,15 +10,6 @@ read in position order, are the one strictly ascending list of `dom P` (`lt_sort
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Rel.Rep
 
-/-- `Arr.zeros` holds `0` at every row. -/
-theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
-  unfold Arr.zeros at h; simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
-  have es := (colMap_raw (colArr_ok h)).2.2.2 _ i.2
-  rw [colConst_raw hc, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
-  simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-  rw [Arr.get_i64, ← es]; rfl
-
 namespace Tab
 
 /-- **`asc P` denotes `asc(P)`** (`ascDen` of `dom P`): `kasc`'s order is `Obj.lt` (`Vals.lamLaw` at `ℕ ⟶ B`). -/
