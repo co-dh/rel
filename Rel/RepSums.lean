@@ -471,13 +471,11 @@ theorem ordAt_int {t : QAtomicType} (h : t.intOrd = true) : OrdAt t :=
       · exact Int.le_of_lt e
       · exact Int.le_refl _⟩
 
-/-- Only an atom with an order code (`ascOrd`) can have canon's order be `ltAt`: `u1`'s `false < true`, `sym`'s
-`"" < "a"` have no `ltAt`, and a `general` value is not `leAt` itself. -/
+/-- Only an atom with an order code (`ascOrd`) can have canon's order be `ltAt`: `u1`'s `false < true` has
+no `ltAt`, and a `general` value is not `leAt` itself. -/
 theorem OrdAt.ascOrd {t : QAtomicType} (h : OrdAt t) : ∃ f, ascOrd t = some f := by
   cases t
   case u1 => exact absurd ((h.1 false true).1 (by decide)) (by simp [ltAt, iordAt, QAtomicType.ordNum,
-    QAtomicType.numFmt?])
-  case sym => exact absurd ((h.1 "" "a").1 (by decide)) (by simp [ltAt, iordAt, QAtomicType.ordNum,
     QAtomicType.numFmt?])
   case general => exact absurd ((h.2 default default).2 (.inr rfl)) (by simp [leAt, iordAt, QAtomicType.ordNum,
     QAtomicType.numFmt?])
@@ -602,10 +600,9 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   have hlex := (hord i j hij).1
   rw [hes', ascKeys_append, lexLe_append_of_eq _ _ hcode] at hlex
   have hg : t ≠ .general := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hf
-  have hs : t ≠ .sym := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hf
   have hv := (Arr.eq_of_codes x.key.2 hcs1).1
-  obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hv hg hs (sel i)
-  obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hv hg hs (sel j)
+  obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hv hg (sel i)
+  obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hv hg (sel j)
   simp only [ascKeys, ascKey, List.cons_append, lexLe, Array.getElem?_map, ha, hb,
     Option.map_some, Option.getD_some, hf, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true,
     beq_iff_eq] at hlex

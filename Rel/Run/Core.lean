@@ -2,7 +2,7 @@
   The RelRep core: a relation is a key and a value column of one length `n` over the positions
   `0 … n-1`, `R x y ↔ ∃ i, key.get i = x ∧ val.get i = y` — a tabulation, `key° ≫ val = R`.
   Columns are qlean's `Column`s in whatever encoding carries them; an element is read through
-  `Column.get` (qlean's one-element reader over `bitsAt`/`bitAt`/`foRBits`/`symBytes`), never
+  `Column.get` (qlean's one-element reader over `bitsAt`/`bitAt`/`foRBits`), never
   `Column.atoms`. Lists exist in proofs only (`toList`).
 -/
 import Rel.Kernel.Dep.Monadic
@@ -391,18 +391,6 @@ def Arr.bools (n : USize) (p : Nat → Bool) : Arr .u1 n :=
 theorem Ext.Enc.blank_WF {X : Type} (t : QAtomicType) (n : USize) : Ext.Enc.WF t n (Ext.Enc.blank (X := X) t n) := by
   cases t
   case u1 => exact wf_bools fun _ => false
-  case sym =>
-    have h0 : ∀ k, (Array.replicate (n.toNat + 1) 0)[k]! = 0 := fun k => by
-      by_cases hk : k < n.toNat + 1
-      · rw [getElem!_pos _ k (by simpa using hk)]; simp
-      · rw [getElem!_neg _ k (by simpa using hk)]; rfl
-    show (Array.replicate (n.toNat + 1) 0).size = n.toNat + 1 ∧
-      SymsWF ByteArray.empty (Array.replicate (n.toNat + 1) 0) ∧
-      ∀ i < n.toNat, (Column.symKey ByteArray.empty (Array.replicate (n.toNat + 1) 0) i).IsValidUTF8
-    -- every entry is the empty bytes, which are valid
-    exact ⟨by simp, ⟨by simp, h0 0, by rw [h0]; rfl, fun k _ => by rw [h0]; exact Nat.zero_le _,
-      fun k _ => by rw [h0, h0]; exact Nat.le_refl _⟩,
-      fun i _ => by simp only [Column.symKey, Column.symBytes, h0]; split <;> decide⟩
   case general => simp [Ext.Enc.blank, Ext.Enc.WF]
   -- every fixed-width type: `blank` is `ofBytes` of `n` zero elements
   all_goals exact foRBytes_wf _ (by decide) _ ((Array.size_replicate).trans (Nat.mul_comm _ _))
@@ -425,21 +413,8 @@ theorem ofAtoms_WF {X : Type} {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc 
     cases hc
     have := wf_bools (X := X) (n := as.size.toUSize) fun i => (as[i]?.map boolOf).getD false
     rwa [USize.toNat_ofNat_of_lt' hs] at this
-  | .sym, _, _, hc =>
-    cases hc
-    unfold WF; rw [USize.toNat_ofNat_of_lt' hs]
-    show ((as.map utf8Of).foldl offStep (#[0], 0)).1.size = as.size + 1 ∧
-      SymsWF ((as.map utf8Of).foldl blobStep ByteArray.empty) ((as.map utf8Of).foldl offStep (#[0], 0)).1 ∧
-      ∀ i < as.size, (symKey ((as.map utf8Of).foldl blobStep ByteArray.empty)
-        ((as.map utf8Of).foldl offStep (#[0], 0)).1 i).IsValidUTF8
-    rw [← Array.foldl_toList blobStep, ← Array.foldl_toList offStep]
-    refine ⟨by rw [foldl_offStep_size]; simp <;> omega, symsWF_folds _, fun i hi => ?_⟩
-    -- every entry is a `String`'s `toUTF8`, or the empty bytes for a non-symbol
-    rw [symKey_folds _ i (by simpa using hi), getElem!_pos _ i (by simpa using hi), Array.getElem_toList,
-      Array.getElem_map]
-    cases as[i] <;> first | exact String.isValidUTF8 _ | exact (by decide : ByteArray.empty.IsValidUTF8)
   | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
-  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc =>
+  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc | .sym, _, _, hc =>
     cases hc
     refine foRBytes_wf _ (by decide) _ ?_
     rw [USize.toNat_ofNat_of_lt' hs, ← Array.foldl_toList, foldl_pushBits_size, h0]
@@ -455,41 +430,6 @@ theorem str_bytes {B : ByteArray} (h : ∃ s : String, s.toUTF8.data.toList = B.
   obtain rfl : s.toByteArray = B := ByteArray.ext (Array.ext' hs)
   simp only [String.fromUTF8?, s.isValidUTF8, dite_true, Option.getD_some]
   rfl
-
-/-- A symbol payload's element `i`, read as `Enc.get` reads it, writes out as `symsOf`'s symbol `i`
-    wherever that symbol is UTF-8. -/
-theorem get_sym_bytes {n : USize} {e : Enc} {i : Nat} (d : String) (hw : Enc.WF .sym n e)
-    (hi : i < n.toNat) (h2 : i < (Verify.symsOf n.toNat e).length)
-    (hk : ∃ s : String, s.toUTF8.data.toList = (Verify.symsOf n.toNat e)[i]) :
-    (((Enc.get .sym n e i).bind fun a => Carrier.of? (X := Empty) .sym (.atom a)).getD d).toUTF8.data.toList = (Verify.symsOf n.toNat e)[i] := by
-  cases e with
-  | syms b o =>
-    rw [show Enc.get (X := Empty) .sym n (.syms b o) i = some (.sym ((String.fromUTF8? (Column.symKey b o i)).getD ""))
-      by simp only [Enc.get, if_pos hi]; rfl]
-    simp only [Option.bind_some, Carrier.of?, Option.getD_some, Verify.symsOf, List.getElem_map,
-      List.getElem_range, Verify.symAt] at hk ⊢
-    exact str_bytes hk
-  | enum d o ids =>
-    rw [show Enc.get (X := Empty) .sym n (.enum d o ids) i = some (.sym ((String.fromUTF8?
-      (Column.symKey d o (Column.idAt ids (Column.idWidth o) i))).getD "")) by simp only [Enc.get, if_pos hi]; rfl]
-    simp only [Option.bind_some, Carrier.of?, Option.getD_some, Verify.symsOf, List.getElem_map,
-      List.getElem_range, Verify.symAt] at hk ⊢
-    exact str_bytes hk
-  | _ => all_goals first | exact (show False from hw).elim | exact absurd hw.1 (by decide)
-
-/-- Under `wf`, a symbol column whose symbols are UTF-8 lists them: each element's bytes are `symsOf`'s
-    symbol at its position, a blob's own or an interned column's dictionary entry. -/
-theorem Arr.toList_sym {m : USize} (x : Arr .sym m)
-    (hu : ∀ k ∈ Verify.symsOf m.toNat x.enc, ∃ s : String, s.toUTF8.data.toList = k) :
-    x.toList.map (·.toUTF8.data.toList) = Verify.symsOf m.toNat x.enc := by
-  have hw := x.wf
-  have hl : (Verify.symsOf m.toNat x.enc).length = m.toNat := by
-    revert hw; generalize x.enc = e; intro hw
-    cases e <;> simp_all [Enc.WF, QAtomicType.width, Verify.symsOf] <;> omega
-  refine List.ext_getElem (by rw [List.length_map, Arr.length_toList, hl]) fun i h1 h2 => ?_
-  rw [List.length_map, Arr.length_toList] at h1
-  rw [List.getElem_map, Arr.getElem_toList, Arr.get_ne x _ (by decide)]
-  exact get_sym_bytes _ hw h1 h2 (hu _ (List.getElem_mem h2))
 
 /-- A side of a relation: an atomic type, a product of sides, or an array of a side. A tree, so
     `Vals (.atom t)` is `Arr t` itself and every one-column path is unchanged. A `arr b` element is an
@@ -663,13 +603,6 @@ private def l3 : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [7, -1, 42]) (by long
 private def bs : Arr .u1 3 := Arr.bools 3 (Column.bitAt ⟨#[0b101]⟩)
 #guard bs.toList == [true, false, true]
 
--- one symbol column, as `syms` and as `enum` over the dictionary `a, bc`
-private def blob : ByteArray := ByteArray.mk #[97, 0, 98, 99, 0]
-private def ss : Arr .sym 3 := Arr.mk (.syms (ByteArray.mk #[98, 99, 0, 97, 0, 98, 99, 0]) #[0, 3, 5, 8]) (by wf_lit)
-private def es : Arr .sym 3 :=
-  Arr.mk (.enum blob #[0, 2, 5] (packIds (idWidth #[0, 2, 5]) 3 fun i => [1, 0, 1][i]!)) (by wf_lit)
-#guard ss.toList == ["bc", "a", "bc"]
-#guard es.toList == ss.toList
 
 private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.general #[] 0 : QValue)]) (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl)
 #guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.i64 1), .general #[] _ _ => true | _, _ => false
@@ -690,8 +623,6 @@ private def big (d : Nat) : Arr .i64 1100 := Arr.ofFn .i64 1100 fun i => (i.1 * 
 private def tbig : Tab .long (.arr .long) := ⟨1100, big 0, ⟨1100, big 0, big 3, big 5⟩⟩
 #guard (tbig.toList : List (Int64 × List Int64)) == List.ofFn fun i => (tbig.key.row i, tbig.val.row i)
 
-#guard ss.toList.zipIdx == [("bc", 0), ("a", 1), ("bc", 2)]
-example : ss.Holds 1 "a" := ⟨⟨1, by simp⟩, rfl, by simp only [Arr.get_ne _ _ (show QAtomicType.sym ≠ .general by decide), Enc.get, USize.reduceToNat]; decide⟩
 
 end Checks
 

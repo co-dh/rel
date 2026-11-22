@@ -486,7 +486,9 @@ def ioOut (inst done : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Expr)
   | [], ws => ws.foldrM (fun w r => bindIO inst w (mkConst ``Unit) "_" fun _ => pure r) done
   | (x, A, B, k, v, c, p, cl) :: os, ws => do
     let write (t : Lean.Expr) : Lean.Expr := match c with
-      | some h => mkApp5 (mkConst ``Table.writeCsv) (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
+      -- no dictionary: a program's CSV input with a symbol column is refused (`Table.readCsv`, `Db.Csv.schema`)
+      | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp (mkConst ``Option.none [.zero]) (mkConst ``Table.Dict))
+          (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
       | none => if k.isEmpty
         then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
           (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)

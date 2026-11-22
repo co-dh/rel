@@ -53,11 +53,6 @@ theorem set!_getElem? (a : ByteArray) (p j : Nat) (x : UInt8) :
   rw [Array.set!_eq_setIfInBounds, Array.getElem?_setIfInBounds]
   by_cases h : p = j <;> by_cases h2 : p < d.size <;> simp_all
 
-/-- Symbol `i` of a blob `b` with offsets `o`, as the bytes between its offset and the next: its NUL included,
-which is what `scatterSyms` copies. -/
-def symBytes (b : ByteArray) (o : Array Nat) (i : Nat) : List UInt8 :=
-  (b.data.toList.drop o[i]!).take (o[i + 1]! - o[i]!)
-
 /-- A `copySlice` to the end of `dst` appends the bytes of `src` it reads, clamped to `src`. -/
 theorem copySlice_end (src dst : ByteArray) (so len : Nat) :
     (src.copySlice so dst dst.size len).data.toList = dst.data.toList ++ (src.data.toList.drop so).take len := by
@@ -71,45 +66,6 @@ theorem copySlice_end (src dst : ByteArray) (so len : Nat) :
   all_goals
     first | rfl | (exfalso; omega) | (congr 1; omega) | exact (Array.getElem?_eq_none (by omega)).symm | exact Array.getElem?_eq_none (by omega)
 
-/-- `(a.push x)[t]!`: `a`'s own below its size, `x` at it. -/
-theorem push_get! (a : Array Nat) (x t : Nat) : (a.push x)[t]! = if t < a.size then a[t]! else if t = a.size then x else 0 := by
-  simp only [getElem!_def, ← Array.getElem?_toList, Array.toList_push, List.getElem?_append, Array.length_toList]
-  by_cases h : t < a.size
-  · rw [if_pos h, if_pos h]
-  · rw [if_neg h, if_neg h]
-    by_cases h2 : t = a.size
-    · subst h2; rw [if_pos rfl, Nat.sub_self]; rfl
-    · rw [if_neg h2, List.getElem?_eq_none (by rw [List.length_singleton]; omega)]; rfl
-
-/-- One step of `scatterSyms`' fold: appending the bytes `s` to the blob and its new end to the offsets adds
-symbol `j` as `s` and leaves every earlier symbol as it was. -/
-theorem symBytes_push (ob ob' : ByteArray) (oo : Array Nat) (j : Nat) (s : List UInt8)
-    (h1 : oo.size = j + 1) (h2 : oo[j]! = ob.size) (h3 : ∀ t ≤ j, oo[t]! ≤ ob.size)
-    (hob : ob'.data.toList = ob.data.toList ++ s) :
-    (oo.push ob'.size).size = j + 1 + 1 ∧ (oo.push ob'.size)[j + 1]! = ob'.size ∧
-      (∀ t ≤ j + 1, (oo.push ob'.size)[t]! ≤ ob'.size) ∧ symBytes ob' (oo.push ob'.size) j = s ∧
-      ∀ t < j, symBytes ob' (oo.push ob'.size) t = symBytes ob oo t := by
-  have hl : ob'.size = ob.size + s.length := by
-    have := congrArg List.length hob
-    simp only [Array.length_toList, List.length_append] at this
-    exact this
-  have hl' : ob.data.toList.length = ob.size := Array.length_toList
-  have old : ∀ t ≤ j, (oo.push ob'.size)[t]! = oo[t]! := fun t ht => by
-    rw [push_get!, if_pos (show t < oo.size by omega)]
-  have new : (oo.push ob'.size)[j + 1]! = ob'.size := by
-    rw [push_get!, if_neg (show ¬ j + 1 < oo.size by omega), if_pos h1.symm]
-  refine ⟨by rw [Array.size_push, h1], new, fun t ht => ?_, ?_, fun t ht => ?_⟩
-  · rcases Nat.lt_or_eq_of_le ht with ht | rfl
-    · rw [old t (by omega)]; have := h3 t (by omega); omega
-    · rw [new]; exact Nat.le_refl _
-  · unfold symBytes
-    rw [old j (Nat.le_refl _), new, h2, hob, List.drop_append_of_le_length (by omega),
-      List.drop_eq_nil_of_le (by omega), List.nil_append, hl, Nat.add_sub_cancel_left, List.take_length]
-  · unfold symBytes
-    have := h3 t (by omega); have := h3 (t + 1) (by omega)
-    rw [old t (by omega), old (t + 1) (by omega), hob, List.drop_append_of_le_length (by omega),
-      List.take_append_of_le_length (by rw [List.length_drop]; omega)]
-
 /-- info: 'Rel.Verify.resAt_field' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms resAt_field
 /-- info: 'Rel.Verify.set_field' depends on axioms: [propext, Quot.sound] -/
@@ -118,9 +74,5 @@ theorem symBytes_push (ob ob' : ByteArray) (oo : Array Nat) (j : Nat) (s : List 
 #guard_msgs in #print axioms set!_getElem?
 /-- info: 'Rel.Verify.copySlice_end' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms copySlice_end
-/-- info: 'Rel.Verify.push_get!' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms push_get!
-/-- info: 'Rel.Verify.symBytes_push' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms symBytes_push
 
 end Rel.Verify

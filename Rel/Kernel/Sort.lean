@@ -46,11 +46,11 @@ namespace Rel.Kernel
 open Rel.Kernel.Scan (Kind)
 open Rel.Kernel.Order
 
-/-- The layout a column of this type is ordered at. Every q type but the two that have no key of a
+/-- The layout a column of this type is ordered at. Every q type but `general`, which has no key of a
 fixed width is here, at the layout whose tag is its own (`date` and `datetime` aside, read at `i32` and
 `i64`); `char` is at `c8`, whose key is its unsigned byte — the blank is not a null
-to a comparison, which is `Eval.missing`'s split read from the ordering side. `symbol` has its own
-three entry points. -/
+to a comparison, which is `Eval.missing`'s split read from the ordering side. A symbol is at `i64`: its id, below `2 ^ 63`.
+-/
 def orderKind : QAtomicType → Option Kind
   | .u1 => some .bit
   | .u8 => some .u8
@@ -58,10 +58,10 @@ def orderKind : QAtomicType → Option Kind
   | .i8 => some .i8
   | .i16 => some .i16
   | .i32 | .date => some .i32
-  | .i64 | .datetime => some .i64
+  | .i64 | .datetime | .sym => some .i64
   | .f32 => some .f32
   | .f64 => some .f64
-  | .sym | .general => none
+  | .general => none
 
 
 end Rel.Kernel

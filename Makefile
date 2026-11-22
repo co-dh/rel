@@ -27,7 +27,7 @@ SQL     := sqlite3 -readonly $(DB)
 GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(T)
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
+GATES_LIST := build allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
 .PHONY: check main-only index panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
@@ -69,6 +69,13 @@ crate-test:
 syms:
 	$(GATE)
 	sh $(CURDIR)/crate/build.sh syms
+
+# crate/src/tag.rs, Rust's `Enc` tags, is what `gates tags` generates from Lean's `ctorIdx`
+tags:
+	$(GATE)
+	$(LAKE) build Rel.Kernel.Value gates
+	$(LAKE) env $(GATES) tags Rel.Kernel.Value > $(T)/tag.rs
+	cmp $(T)/tag.rs $(CURDIR)/crate/src/tag.rs || { echo "tags: crate/src/tag.rs differs from Lean's Enc; regenerate: $(LAKE) env $(GATES) tags Rel.Kernel.Value > crate/src/tag.rs" >&2; diff $(T)/tag.rs $(CURDIR)/crate/src/tag.rs >&2; exit 1; }
 
 # out/ of the native executable equals the out/ `relc plan` writes from Lean (`Plan.exec`, the same plan): the same
 # entries, and each file byte for byte. The obligations are the Lean side's files, so a file the native run left out fails.

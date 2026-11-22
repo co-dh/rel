@@ -1184,8 +1184,36 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.3 一种编码（分支 `foronly`）：`Ext.Enc` 只留 `foR`、`pos` 与 `gen`。已做：删 `bytes`、`alp`（Lean 类型与
   `WF`/`raw`/`get`；`Enc.ofBytes` 是每个定宽列进入 foR 的唯一入口；`answer`/`encode`/`alpOf` 删除；own 格式 v5，
   拒读 v4 及 kind 0/3；Rust `blocks::tag` 重编号 `FOR=1 ENUM=2 POS=4`）。
-  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，进行中；删 `syms`/`enum`：`sym` 列在 `Enc`
-  层就是 foR 编号，字典是 Rel 层旁边的一张表 `ℕ ⟶ [C]`（rel-architecture §0.2），不是 `Enc` 的字段，在 ALP 之后做；
+  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，进行中。
+  已做（分支 `symdict`）：删 `Enc.syms`/`Enc.enum`（Lean `WF`/`raw`/`get`、`SymsWF`、`symKey`/`symCmp`、`idWidth`、
+  `symsOf`；Rust `tag::ENUM`、`Src::Ids`、own kind 4）。`Enc` 现在是 `foR`=0、`gen`=1、`pos`=2，Rust `FOR=0 POS=2`；
+  `QAtom.sym : UInt64` 是编号，`width .sym = 8`，`orderKind .sym = i64`，所以 `asc`/比较/`seen` 在编号上原样跑；
+  own 仍是 v5（kind 2 含义不变，Lean 写端从没写过 kind 4）。测试按 `ctorIdx` 读 tag；`crate/src/tag.rs` 由
+  `gates tags Rel.Kernel.Value` 生成，`make tags` 检查它与 Lean 一致。
+  已做（分支 `symdict3`）：字典 `Table.Dict = Tab .long (.arr (.atom .char))`（§0.2 的 `ℕ ⟶ [C]`）。
+  `Table.intern`：`R` = 文本按行的 frame，`D` = `ran R` 的 frame（`Tab.ran` 排序、去重），id = `R ≫ D°`；所以 id 序 =
+  文本序，没有新 kernel、没有 hash。`Table.decode`：`I ≫ D`，id 超出字典即报错。CSV：`symText` 把 sym 列当
+  `.text char` 交给 `Db.csvRead`/`csvWrite`（Rust 不变），`internCsv`/`decodeCsv` 在三段文本与一段 id 之间换；
+  `readCsvDicts` 返回表与各 sym 列的字典，`writeCsv ds` 经字典写回。own：`writeSym`/`readSym`，id 列 `p` 旁边是
+  普通文本列 `p.dict`，没有新 kind；读时拒绝未排序或有重复的字典、拒绝无文本的 id；`readArr` 不再拒绝 sym。
+  `TestTable` 的 `#guard_msgs`：CSV sym 列往返相等，任意两行 id 的序 = 文本的序，own 往返相等。
+  未做：程序（`n.io`）带字典——程序的 CSV 输入有 sym 列时 `Db.Csv.schema` 在展开时拒绝、`Table.readCsv` 运行时拒绝，
+  `TmGen` 给 `writeCsv` 传空字典表；两个 sym 列合并（`∪`、join）时对字典的并 intern、重映射 id（§0.2）。
+  `symdict3` 的 gate：full build 399 jobs 0 error 0 `sorryAx`，GenSound 1594/1594；`make tags`（`Gates.lean` 改用
+  `.str _ s`，`Name.lastComponentAsString` 在 v4.28 不存在）、`decode-allow`、`panic-allow`、`bang-allow`、
+  `pointfree`、`native`、`build.sh syms` 通过；`cargo test --features std` 82 passed。138→82 的落差在 master 的
+  b59ffda..000ce33（a837f6c 删除死代码的测试，随后恢复主体仍活着的；ALP 删除）；symdict2 只删了 `ids.rs`
+  `at_and_max`（`id_at`/`ids_max` 已删）与 `own.rs` `check_symbols`（kind 4 已删）。`compile-diff` 只在 main 跑。
+  已做（分支 `symdict4`，基于 5120a48，决定 E 2026-11-22）：整个数据库一个字典，只追加（q 的 sym 文件）：新串取下一个
+  id，旧 id 不变，数据列不重写；id 相等 = 串相等；序经 `rank = iasc(D)° = D ≫ asc(ran D)°`，字典增长只重算 `rank`。
+  `Table.intern D x`：`N = ran R − ran D`，`F = Λ((R ≫ N)°) ≫ uncons ≫ π₁`（新串到首行），`D'` = `D` 接 `F°`；id =
+  `R ≫ D'°`。own：`writeDict`/`readDict` 写库目录的 `sym` 与 `sym.rank`（拒绝重复的串、与字典不符的 rank），
+  `writeSym`/`readSym D` 只写读 id（拒绝无文本的 id）。CSV：`readCsvDict D`、`writeCsv (Option Dict)` 共用一个字典。
+  序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。未做：程序
+  （`n.io`）的 sym 输入——`TmGen` 要把库字典穿过所有输入与 `writeCsv`，`<`/`asc` 行要接 `rank`。
+  `symdict4` 的 gate：full build 399 jobs 0 error 0 `sorryAx`；`make decode-allow panic-allow bang-allow pointfree
+  tags native`、`build.sh syms` 通过；`cargo test --features std` 82 passed；compile-diff 与 `test/compile-diff.json`
+  无差异（`TestCompile` 要 `CAP_MEM_MB=20000`，默认 12288 MB 时 qlean kernel 分配失败）。
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
   - 🔄 `nullband2`：`Obj.one`（`El = Unit`，不存列）已加，单元素对象 elaborate 成它；CSV 可空列 4 部分 → 3（去掉 null

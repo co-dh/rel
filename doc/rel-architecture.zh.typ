@@ -268,15 +268,18 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`char`], [8 位无符号 code（字节值，保序）；字符串 = `arr char`], [`asc` 按字节序；`arr char` 按字典序],
   [`i8` `i16` `i32` `i64`], [翻转符号位，得到同宽的无符号数（保序）；再按块 foR], [`asc`、`scan(lt)` 直接在 code 上；算术按声明宽度回绕],
   [`f32` `f64`], [保序位映射：正数翻转符号位，负数翻转全部位，得到 `UInt32` / `UInt64`], [code 的序 = 浮点的全序（NaN 也有位置）；`fadd` `fmul` `flt` 等先还原再算],
-  [`sym`], [保序字典 id：字典 = 排好序、无重复的字符串表（`arr char`），列存 id], [id 的序 = 字符串的序，所以 `asc`、join、`∩` 都只看 id],
+  [`sym`], [字典 id：整个数据库一个字典 `D : ℕ ⟶ [C]`，无重复、只追加（q 的 sym 文件），列存 id], [`D` 无重复，所以 id 相等 = 字符串相等：`=`、join、`∩`、`group`、`distinct` 只看 id；序经 `rank ≜ iasc(D)°`：`<` 在 sym 上 = `rank ≫ < ≫ rank°`，`asc` = `rank ≫ asc`],
 )
 
 - 原子的宽度只决定 code 的值域上限（`i8` ≤ 8 位 …）；块的宽度 $w$ 仍按数据选，常常比声明宽度窄。
 
 - data frame = `Rel A B` 的 `tab`，`B` 是若干原子列的 `prod`：struct of arrays，每列一个 foR `Enc`。
 - `alp`（浮点小数压缩）不再是一种形式；需要时作为 float 列的 fast path，配一条定理说明 decode 后等于保序位映射。
-- intern（建字典）= `asc ≫ seen`：字符串排序、去重得字典（`first` 经 `gather` 取回代表串）；每个字符串的 id = 它所在组的编号
-  `g`（`asc` 的排列经 `scatter` 回原位）。两个 `sym` 列合并（`∪`、join 两侧字典不同）时对字典的并做一次 intern、重映射 id。不是 kernel。
+- intern（追加进字典）：`R : ℕ ⟶ [C]` 是按行的字符串。新串 `N ≜ ran(R) − ran(D)`；每个新串到它的首行
+  `F ≜ Λ((R N)°) uncons π₁ : [C] ⟶ ℕ`；新字典 `D'` = `D` 的行接上 `F°` 的串（按首行的序），重新编号；每行的 id = `R D'°`。
+  `D` 的行不动，所以已存的 id 不变、数据列从不重写。不是 kernel，也没有 hash。
+- `rank ≜ iasc(D)° = D asc(ran D)° : ℕ ⟶ ℕ`，id 到它的串在字符串序中的位置。`D` 增长时只重算 `rank`，代价 = 字典长度，
+  与数据无关；`kasc` 在 sym 上只给 id 序，所以 `asc` 拒绝 sym（`Obj.ascBad`），序一律经 `rank`。没有 kernel 解码。
 
 == 5 个 kernel：2 个原语 + 3 个优化
 

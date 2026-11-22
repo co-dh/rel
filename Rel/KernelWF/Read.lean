@@ -272,11 +272,6 @@ namespace Rel.KernelWF
 
 open Tab Rel.Kernel Rel.Dep Rel Rel.Alg
 
-/-- An id width is a lane. -/
-theorem idWidth_lane (o : Array Nat) : Column.idWidth o = 0 ∨ Column.idWidth o = 1 ∨ Column.idWidth o = 2 ∨
-    Column.idWidth o = 4 ∨ Column.idWidth o = 8 ∨ Column.idWidth o = 16 ∨ Column.idWidth o = 32 ∨
-    Column.idWidth o = 64 := Verify.laneWidth_cases _
-
 end Rel.KernelWF
 
 -- from Rel.KernelWF.RazeRowN
@@ -319,18 +314,6 @@ namespace Rel.KernelWF
 
 open Tab Rel.Kernel Rel.Verify
 
-
-/-- `extract` of a range that ends where it starts, or before, is empty. -/
-theorem extract_empty (b : ByteArray) {lo hi : Nat} (h : hi ≤ lo) : b.extract lo hi = b.extract lo lo := by
-  apply ByteArray.ext; simp only [ByteArray.data_extract]
-  rw [Array.extract_eq_empty_of_le (by omega), Array.extract_eq_empty_of_le (by omega)]
-
-/-- Symbol `j`'s bytes as `symBytes` cuts them: its start to the NUL before the next start. -/
-theorem extract_upto (b : ByteArray) (lo hi : Nat) :
-    b.extract lo (lo + if hi > lo then hi - lo - 1 else 0) = b.extract lo (hi - 1) := by
-  split
-  · congr 1; omega
-  · rw [Nat.add_zero, extract_empty b (show hi - 1 ≤ lo by omega)]
 
 /-- `pushBits` appends: the bytes it writes do not depend on the payload before them. -/
 theorem pushBits_append (a : ByteArray) (v : UInt64) (w : Nat) :
@@ -561,18 +544,6 @@ theorem pred_lt_idWidthOf {nd : Nat} (h8 : Column.idWidthOf nd < 8) : nd - 1 < 2
     all_goals omega
   exact Nat.lt_of_lt_of_le h (Nat.pow_le_pow_right (by decide) hl)
 
-/-- The lane of a dictionary holds its largest id: `idWidth o` is a lane, and `o.size - 2 < 2 ^ idWidth o`. -/
-theorem idWidth_facts (o : Array Nat) :
-    (Column.idWidth o = 0 ∨ Column.idWidth o = 1 ∨ Column.idWidth o = 2 ∨ Column.idWidth o = 4 ∨
-      Column.idWidth o = 8 ∨ Column.idWidth o = 16 ∨ Column.idWidth o = 32 ∨ Column.idWidth o = 64) ∧
-    (Column.idWidth o < 8 → o.size - 1 - 1 < 2 ^ Column.idWidth o) :=
-  ⟨laneWidth_cases _, fun h => pred_lt_idWidthOf h⟩
-
-/-- A symbol payload is a blob or interned (`Enc.WF`). -/
-theorem symbol_enc {n : USize} {e : Enc} (hwf : Enc.WF .sym n e) :
-    (∃ b o, e = .syms b o) ∨ ∃ d o ids, e = .enum d o ids := by
-  cases e <;> simp [Enc.WF, QAtomicType.width] at hwf ⊢
-
 end Rel.Alg
 
 -- from Rel.KernelWF.CodesProd
@@ -621,15 +592,6 @@ theorem width_num {t : QAtomicType} {k : Scan.Kind} (h : orderKind t = some k) (
     t.width = some k.width := by
   cases t <;> simp only [orderKind, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
     first | exact absurd rfl hk | rfl
-
-/-- Row `i` of a symbol column that `Enc.get` decodes from valid UTF-8 bytes `s`: its `Obj.key` is `s`'s symbol
-    key, the decode-then-`toUTF8` round trip returning the bytes. -/
-theorem key_symAt {n : USize} (x : Arr .sym n) {i : Nat} (hi : i < n.toNat) {s : ByteArray}
-    (hs : s.IsValidUTF8) (hg : Enc.get .sym n x.enc i = some (.sym ((String.fromUTF8? s).getD ""))) :
-    (Obj.atom .sym).key (x.get ⟨i, hi⟩) = s.data.toList.map (·.toNat + 1) ++ [0] := by
-  rw [Arr.get_ne _ _ (by decide), hg]
-  simp only [Option.bind_some, Carrier.of?, Option.getD_some, Obj.key, String.fromUTF8?, dif_pos hs]
-  rfl
 
 theorem arr_not_lt_of_key {A : Obj} {x y : A.El} (e : A.key x = A.key y) : ¬ A.lt x y := fun h =>
   Obj.lt_irrefl A y (by unfold Obj.lt at h ⊢; rwa [e] at h)

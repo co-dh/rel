@@ -11,10 +11,9 @@ namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
 /-- **An element is the atom of its word**: in a column every kernel reads (`foR`, or `pos` at `i64`), element `i` is
-`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. A `sym` column
-has no word reading (`Enc.get` declines it), so `sym` is excluded. -/
+`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. -/
 theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kernel.Enc.Valid n x.enc)
-    (hg : t ≠ .general) (hs : t ≠ .sym) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
+    (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
       x.get i = (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
   have hw := x.wf
   rw [Arr.get_ne x i hg]
@@ -25,7 +24,7 @@ theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kerne
       (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some,
       Nat.reduceMul, ofNat_toNat_mod64], fun hu => by
         subst hu; simp only [Enc.WF] at hw; exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2), ?_⟩
-    cases t <;> first | exact absurd rfl hg | exact absurd rfl hs |
+    cases t <;> first | exact absurd rfl hg |
       simp only [Enc.get, if_pos i.2, QAtomicType.width, foRBits_starts, Option.bind_some]
   | pos =>
     rw [hc] at hw
@@ -45,15 +44,8 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   have hg : t ≠ .general := by
     rintro rfl; have hw := x.wf
     cases hc : x.enc <;> (rw [hc] at hw hx; simp only [Enc.WF, Kernel.Enc.Valid] at hw hx) <;> exact absurd hw.1 (by decide)
-  by_cases hs : t = .sym
-  · -- `Enc.get` declines a `sym` word column, so both elements are the default
-    subst hs
-    have dflt : ∀ {n} (z : Arr .sym n), Kernel.Enc.Valid n z.enc → ∀ k : Fin n.toNat, z.get k = default := by
-      intro n z hz k; rw [Arr.get_ne z k hg]
-      cases hc : z.enc <;> rw [hc] at hz <;> simp_all [Enc.get, QAtomicType.width, Kernel.Enc.Valid]
-    rw [dflt x hx i, dflt y hy j]
-  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg hs i
-  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg hs j
+  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg i
+  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg j
   rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
 
 section
@@ -196,7 +188,7 @@ theorem clampFin_word {w : UInt64} {m : Nat} (h : 0 < m) (hw : w.toNat < m) (hm 
 /-- A boolean element is `true` exactly where its word is `1`. -/
 theorem Arr.get_u1 {n : USize} (x : Arr .u1 n) (hx : Kernel.Enc.Valid n x.enc) (i : Fin n.toNat) :
     ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ a = (if x.get i then 1 else 0) := by
-  obtain ⟨a, ha, hu, e⟩ := Arr.get_raw_atom x hx (by decide) (by decide) i
+  obtain ⟨a, ha, hu, e⟩ := Arr.get_raw_atom x hx (by decide) i
   refine ⟨a, ha, ?_⟩
   have h2 : a.toNat < 2 := UInt64.lt_iff_toNat_lt.1 (hu rfl)
   rw [e]
@@ -754,38 +746,13 @@ theorem Arr.atom_of_get_eq {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Ar
     (hg : t ≠ .general) {a b : UInt64} (ha : (Enc.raw .i64 n x.enc)[i.1]? = some a)
     (hb : (Enc.raw .i64 m y.enc)[j.1]? = some b) :
     (t = .u1 → a < 2 ∧ b < 2) ∧ (x.get i = y.get j → Column.atomOfBits t a hg = Column.atomOfBits t b hg) := by
-  -- off `sym`, an element is `Carrier.of?` of its word's atom (`Arr.get_raw_atom`, any encoding), which keeps the atom
-  by_cases hs : t ≠ .sym
-  · obtain ⟨a', ha', hua, ex⟩ := Arr.get_raw_atom x hx hg hs i
-    obtain ⟨b', hb', hub, ey⟩ := Arr.get_raw_atom y hy hg hs j
-    obtain rfl := Option.some.inj (ha.symm.trans ha'); obtain rfl := Option.some.inj (hb.symm.trans hb')
-    refine ⟨fun hu => ⟨hua hu, hub hu⟩, fun h => ?_⟩
-    rw [ex, ey] at h
-    cases t <;> first | exact absurd rfl hg | exact absurd rfl hs | simp_all [Column.atomOfBits, Dep.Carrier.of?]
-  -- a `sym` column is `foR` (`Enc.WF`), whose element is read off its word
-  have foR_of : ∀ {n} (z : Arr t n), Kernel.Enc.Valid n z.enc → ∃ md pk, z.enc = .foR md pk := by
-    intro n z hz; have hw := z.wf
-    cases hc : z.enc with
-    | foR md pk => exact ⟨md, pk, rfl⟩
-    | pos => rw [hc] at hw; cases t <;> simp only [Enc.WF] at hw <;> exact absurd (by decide) hs
-    | _ => all_goals (rw [hc] at hz; simp only [Kernel.Enc.Valid] at hz)
-  obtain ⟨md, pk, hcx⟩ := foR_of x hx
-  obtain ⟨md', pk', hcy⟩ := foR_of y hy
-  have hwx := x.wf; rw [hcx] at hwx
-  have hwy := y.wf; rw [hcy] at hwy
-  have word : ∀ {n : USize} md pk (i : Fin n.toNat),
-      (Enc.raw .i64 n (.foR md pk : Enc))[i.1]? = some (Column.foRBits md pk (Column.blockStarts md) i) :=
-    fun md pk i => by simp only [raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
-      Array.getElem?_range, i.2, if_true, Option.map_some, Nat.reduceMul, ofNat_toNat_mod64]
-  rw [hcx, word] at ha; rw [hcy, word] at hb
-  cases ha; cases hb
-  refine ⟨fun hu => ?_, fun h => ?_⟩
-  · subst hu; simp only [Enc.WF] at hwx hwy
-    exact ⟨UInt64.lt_iff_toNat_lt.2 (hwx.2.1 trivial i i.2), UInt64.lt_iff_toNat_lt.2 (hwy.2.1 trivial j j.2)⟩
-  rw [Arr.get_ne x i hg, Arr.get_ne y j hg, hcx, hcy] at h
-  simp only [← foRBits_starts]
-  cases t <;> first | exact absurd rfl hg |
-    (simp only [Enc.get, if_pos i.2, if_pos j.2, QAtomicType.width] at h; simp_all [Column.atomOfBits, Dep.Carrier.of?])
+  -- an element is `Carrier.of?` of its word's atom (`Arr.get_raw_atom`, any encoding), which keeps the atom
+  obtain ⟨a', ha', hua, ex⟩ := Arr.get_raw_atom x hx hg i
+  obtain ⟨b', hb', hub, ey⟩ := Arr.get_raw_atom y hy hg j
+  obtain rfl := Option.some.inj (ha.symm.trans ha'); obtain rfl := Option.some.inj (hb.symm.trans hb')
+  refine ⟨fun hu => ⟨hua hu, hub hu⟩, fun h => ?_⟩
+  rw [ex, ey] at h
+  cases t <;> first | exact absurd rfl hg | simp_all [Column.atomOfBits, Dep.Carrier.of?]
 
 /-- **Equal elements of one column, equal order codes**, `Arr.eq_of_codes`' converse: equal elements are equal atoms
 (`Arr.atom_of_get_eq`), which have equal codes (`ascOrd_atom`). -/

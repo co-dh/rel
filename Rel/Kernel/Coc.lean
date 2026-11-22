@@ -505,7 +505,6 @@ def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
   match t, t.width with
   | .general, _ => .gen (Array.replicate n.toNat default)
   | .u1, _ => .foR (Kernel.Coc.bools n.toNat fun _ => false).1 (Kernel.Coc.bools n.toNat fun _ => false).2
-  | .sym, _ => .syms .empty (Array.replicate (n.toNat + 1) 0)
   | _, some w => ofBytes w ⟨Array.replicate (n.toNat * w) 0⟩
   | _, none => .gen #[]
 
@@ -519,7 +518,6 @@ def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first
     | .general => absurd rfl h
     | .u1 => some (.foR (Kernel.Coc.bools as.size fun i => (as[i]?.map boolOf).getD false).1
         (Kernel.Coc.bools as.size fun i => (as[i]?.map boolOf).getD false).2)
-    | .sym => some (symsOf as)
     | t => match t.width with
       | some w =>
         some (ofBytes w (as.foldl (init := ByteArray.emptyWithCapacity (as.size * w))

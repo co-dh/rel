@@ -17,7 +17,7 @@ def atomKey (a : QAtom) : List Nat := match ascOrd a.type with
   | none => []
 
 /-- The key of an element, a list of naturals compared lexicographically (`Obj.lt`). At a fixed-width atom it is
-    `atomKey`; a symbol keys by its unsigned bytes, a prefix before what extends it. Each key is
+    `atomKey` (a symbol at its id, ordered as `i64`). Each key is
     self-delimiting (`Obj.key_prefix`), so a pair's key is its components' keys side by side and orders
     them lexicographically; an array's elements each follow a `1` and the array ends in `0`, so a proper
     prefix sorts first; a sum's tag leads, `inl` before `inr`. A general atom has no kernel order
@@ -34,7 +34,7 @@ def Obj.key : (A : Obj) → A.El → List Nat
   | .atom .datetime, x => atomKey (.datetime (x : Int64))
   | .atom .f32, x => atomKey (.f32 (x : UInt32))
   | .atom .f64, x => atomKey (.f64 (x : UInt64))
-  | .atom .sym, x => (x : String).toUTF8.data.toList.map (·.toNat + 1) ++ [0]
+  | .atom .sym, x => atomKey (.sym (x : UInt64))
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y
   | .arr b, xs => (xs : List b.El).foldr (fun x k => 1 :: b.key x ++ k) [0]
@@ -73,31 +73,11 @@ theorem Obj.lt_trichotomy (A : Obj) (x y : A.El) : A.lt x y ∨ A.key x = A.key 
         · exact .inr (.inr (.inr ⟨rfl, h⟩))
       · exact .inr (.inr (.inl h))
 
-/-- Two lists of no `0` each, ended by `0`: one key extending the other is the same key. -/
-theorem key_term {l m r s : List Nat} (hl : ∀ a ∈ l, a ≠ 0) (hm : ∀ a ∈ m, a ≠ 0)
-    (h : l ++ [0] ++ r = m ++ [0] ++ s) : l = m := by
-  induction l generalizing m with
-  | nil => cases m with
-    | nil => rfl
-    | cons b m => simp at h; exact absurd h.1.symm (hm b (by simp))
-  | cons a l ih => cases m with
-    | nil => simp at h; exact absurd h.1 (hl a (by simp))
-    | cons b m =>
-      simp only [List.cons_append, List.cons.injEq] at h
-      rw [h.1, ih (fun x hx => hl x (by simp [hx])) (fun x hx => hm x (by simp [hx])) h.2]
-
 /-- **Keys are self-delimiting**: a key that a key extends is that key. -/
 theorem Obj.key_prefix : (A : Obj) → (x y : A.El) → (r s : List Nat) →
     A.key x ++ r = A.key y ++ s → A.key x = A.key y
   | .atom t, x, y, r, s, h => by
-    cases t
-    case sym =>
-      simp only [Obj.key, List.append_assoc] at h ⊢
-      have := key_term (l := (x : String).toUTF8.data.toList.map (·.toNat + 1))
-        (m := (y : String).toUTF8.data.toList.map (·.toNat + 1)) (by simp) (by simp)
-        (by simpa only [List.append_assoc] using h)
-      rw [this]
-    all_goals exact (List.append_inj h (by simp [Obj.key, atomKey, QAtom.type, ascOrd, ascLayout, orderKind])).1
+    cases t <;> exact (List.append_inj h (by simp [Obj.key, atomKey, QAtom.type, ascOrd, ascLayout, orderKind])).1
   | .prod a b, (x, y), (x', y'), r, s, h => by
     simp only [Obj.key, List.append_assoc] at h ⊢
     have e := Obj.key_prefix a x x' _ _ h
@@ -215,8 +195,7 @@ theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {f s : Bool} (ht : ascLayout
 #guard (Obj.arr .long).key ([] : List Int64) < (Obj.arr .long).key ([1] : List Int64)
 #guard (Obj.arr .long).key ([1] : List Int64) < (Obj.arr .long).key ([1, 0] : List Int64)
 #guard (Obj.atom .i64).key (-1 : Int64) < (Obj.atom .i64).key (0 : Int64)
-#guard (Obj.atom .sym).key "a" < (Obj.atom .sym).key "aa"
-#guard (Obj.atom .sym).key "aa" < (Obj.atom .sym).key "ab"
+#guard (Obj.atom .sym).key (0 : UInt64) < (Obj.atom .sym).key (1 : UInt64)
 -- a float by its bits: `-1.0 < -0.0 < 0.0 < 1.0`, the two zeros two keys
 #guard (Obj.atom .f64).key (0xbff0000000000000 : UInt64) < (Obj.atom .f64).key (0x8000000000000000 : UInt64)
 #guard (Obj.atom .f64).key (0x8000000000000000 : UInt64) < (Obj.atom .f64).key (0 : UInt64)

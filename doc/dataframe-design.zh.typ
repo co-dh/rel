@@ -149,7 +149,8 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   每个新位置的编号都是一次 `asc`；定义见 3.1。
 - *`N` 的元素是虚的。* frame 只有 `m`：位置不落盘。
 - *落盘（q / kdb 的方式）。* 目录 = 表；文件 = 列，是一个 mmap 的 `foR` `Enc`，没有序列化（`CLAUDE.md` 的 Goal）；
-  `.d` 文件 = `Schema` 的列顺序；`sym` 列共用一个字典文件。键为位置（存为 `.long` 的数对象，如 `N`）的输出写一张重编号的
+  `.d` 文件 = `Schema` 的列顺序；整个数据库的 `sym` 列共用一个字典文件 `sym`（只追加：新串取下一个 id，旧 id 不变，数据列不重写），旁边是它的
+  `sym.rank`。键为位置（存为 `.long` 的数对象，如 `N`）的输出写一张重编号的
   新表；其它键（任何 atom 的对象，如 `obj D : date`，或 schema）写成 key 表与 val 表，磁盘上 `key/`、`val/` 两个目录。
   CSV 是第二种格式：一个文件，key 列在前、val 列在后；列按对象的结构展开（`Expand.csvLeaves`）：schema 每个字段一列，
   积的每个因子各自展开、具名因子以其名为前缀（`Trade×(Quote+1)` 得 `Trade.sym` … `Quote.sym` …），`S+1` 是 `S` 的每列
@@ -276,7 +277,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`union`], [`union(x, y) ≜ distinct(append(x, y))`], [], "full"),
   ([`intersect`], [`intersect(x, y) ≜ distinct(semiJoin(𝟙, 𝟙, x, y))`], [], "full"),
   ([`difference` `symmetricDifference`], [`difference(x, y) ≜ distinct(antiJoin(𝟙, 𝟙, x, y))`；`symmetricDifference(x, y) ≜ append(difference(x, y), difference(y, x))`], [], "full"),
-  ([`<>`（行拼接）], [`append(x, y) ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)`], [`sym` 列先合并字典（`rel-architecture` §4.3）], "full"),
+  ([`<>`（行拼接）], [`append(x, y) ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)`], [`sym` 列同一个数据库字典，id 原样拼接（`rel-architecture` §4.3）], "full"),
   ([`|||`（列拼接）], [`hstack(x, y) ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩`], [两个 frame 行数不同时结果是 `𝟘`：F9], "full"),
   ([`impute` `imputeWith` `fromMaybe` `castWithDefault`], [`x v [𝟙, c]`；`imputeWith` 是 `x v [𝟙, summarize(f, x)]`], [`c : 1 ⟶ V`], "full"),
   ([`toMaybe` `isJust` `isNothing` `isNull` `fromJust` `whenPresent`], [`inl`、`dom(inl°)`、`dom(inr°)`、`dom(inr°)`、`inl°`、`e ⊕ 𝟙`], [复合，库中没有定义], "full"),
