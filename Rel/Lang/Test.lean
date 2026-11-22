@@ -10,7 +10,6 @@ import Rel.Lang.Test.Literals
 import Rel.Lang.Test.Chs
 import Rel.Lang.Test.Prelude
 import Rel.Lang.Test.Fixpoints
-import Rel.Lang.Test.MuGrow
 import Rel.Lang.Test.AC
 import Rel.Lang.Test.Kern2
 import Rel.Lang.Test.Kern45

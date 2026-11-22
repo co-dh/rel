@@ -7,7 +7,7 @@ namespace Rel.Programs
 open Rel.Programs.prelude in
 rel_program blocks where
     obj X = {A,B,C}                               -- the blocks
-    obj N = 0…27                                  -- counts: a bound fixed before the search
+    obj N = 0…12                                  -- counts: a bound fixed before the search, the 13 states
     obj St = [X×X]                                 -- a state: the set of its pairs
     S₀ : X ⟶ X ≜ {(C,A),(A,A),(B,B)}              -- C on A, A and B on the table
     G : X ⟶ X ≜ {(A,B),(B,C)}                     -- A on B, B on C
@@ -21,7 +21,7 @@ rel_program blocks where
     ⇝ : [X×X]×(X×X) ⟶ X×X ≜ S'(π₁∋,π₂)            -- the pairs it leads to
     t : [X×X] ⟶ [X×X] ≜ cΛ(⇝)                     -- one move
     s₀ : [X×X] ⟶ [X×X] ≜ ran(Λ(⊤(X,X)⟨𝟙,S₀⟩))     -- the start state
-    r : [X×X] ⟶ [N] ≜ dom(s₀)Λ(⊤)                 -- the array 0…27, one fold round each
+    r : [X×X] ⟶ [N] ≜ dom(s₀)Λ(⊤)                 -- the array 0…12, one fold round each
     L(D : α ⟶ β, B : β ⟶ β) : β×N ⟶ β×N ≜ ran(r⦇[⟨D,D⊤{(0,0)}⟩, π₁ ∪ (π₁⟨π₁B,π₂ succ⟩)]⦈)   -- (s,k): s is k steps of B from D
     Q : [X×X] ⟶ [X×X] ≜ ran(L(s₀,t)π₁)            -- the reachable states
     H : [X×X] ⟶ [X×X] ≜ Qh(∋)                     -- the reachable states holding G

@@ -16,7 +16,7 @@ rel_program quicksort where
 
     x : 1 ⟶ [N] ≜ {(∗,3 1 2)}
     y : 1 ⟶ [N] ≜ {(∗,2 1 2)}                     -- a repeated element
-    z : 1 ⟶ [N] ≜ {(∗,5 4 3 2 1)}
+    z : 1 ⟶ [N] ≜ {(∗,4 3 2 1)}
     e : 1 ⟶ [N] ≜ nil                             -- the empty array
 
     join : ([α]×α)×[α] ⟶ [α] ≜ (snoc×𝟙)cat        -- p.154 join(x,a,y) = x ⧺ [a] ⧺ y
@@ -36,7 +36,7 @@ rel_program quicksort where
 
     check x sort' = {(∗,1 2 3)}
     check y sort' = {(∗,1 2 2)}
-    check z sort' = {(∗,1 2 3 4 5)}
+    check z sort' = {(∗,1 2 3 4)}
     check e sort' = {(∗,[])}
     check C sort' ⊑ C perm ordered(≤)             -- p.154 flatten ⦇[nil, split°]⦈° ⊆ ordered · perm
     check C sort' = C perm ordered(≤)

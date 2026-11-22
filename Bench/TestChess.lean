@@ -1,5 +1,5 @@
 import Rel.Lang.Test
-import Rel.Programs.Chess
+import Bench.Chess
 /- Turned off: it re-runs `Programs.chess` on many boards at every build (about 15 s). Remove this comment
    wrapper to turn it back on.
 

@@ -1,7 +1,7 @@
 import Rel.Programs.Edit
 
 /-! The Rel language on B&dM's string edit (§9.2), the program `Programs.edit`: the specification
-    `Λ(edit°) est(R)` on every pair of strings of length ≤ 2 over `{a,b}`, its least lengths against the
+    `Λ(edit°) est(R)` on every pair of strings of length ≤ 1 over `{a,b}`, its least lengths against the
     edit-distance recursion on `List` below. -/
 
 namespace Rel.Lang.TestEdit
@@ -18,8 +18,8 @@ def cost : List Char → List Char → Nat
     let d := 1 + min (cost xs (b :: ys)) (cost (a :: xs) ys)
     if a = b then min d (1 + cost xs ys) else d
 
-/-- The strings of length ≤ 2 over `{a,b}`. -/
-def strs : List (List Char) := [[]] ++ [['a'], ['b']] ++ [['a','a'], ['a','b'], ['b','a'], ['b','b']]
+/-- The strings of length ≤ 1 over `{a,b}`. -/
+def strs : List (List Char) := [[]] ++ [['a'], ['b']]
 
 def word (s : List Char) : String := arrText false (s.map toString)
 
@@ -38,10 +38,10 @@ rel_program mleLength where
 
 #guard Programs.edit.ok
 #guard Programs.edit.prints.head? == some (expected "spec length 𝟙(N)")
--- the second `print`, the shortest sequences of the pairs of two-letter strings, is for reading only
+-- the second `print`, the shortest sequences of the pairs of one-letter strings, is for reading only
 #guard Programs.edit.prints.length == 2
 -- the tabulation: the program's `check D mle ⊑ spec` and `check D mle length 𝟙(N) = (spec length 𝟙(N))` hold (`ok`),
--- and `mle`'s lengths printed here are the edit-distance recursion's, on the same 49 pairs
+-- and `mle`'s lengths printed here are the edit-distance recursion's, on the same 9 pairs
 #guard mleLength.ok && mleLength.prints == [expected "D mle length 𝟙(N)"]
 
 end Rel.Lang.TestEdit

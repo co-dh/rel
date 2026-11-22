@@ -17,14 +17,12 @@ import Rel.Programs.Quicksort
 import Rel.Programs.Selsort
 import Rel.Programs.SudokuAC
 import Rel.Programs.SudokuPC
-import Rel.Programs.SudokuPC9
 import Rel.Programs.Wumpus
 import Rel.Lang.EmbedTest
 import Rel.Lang.ModuleTest
 import Rel.Lang.Test
 import Rel.Lang.TestArcs
 import Rel.Lang.TestAsc
-import Rel.Lang.TestChess
 import Rel.Lang.TestCircuit
 import Rel.Lang.TestDemand
 import Rel.Lang.TestFloatObj

@@ -94,6 +94,12 @@ lean_lib RelGate where
   srcDir := "test"
   roots := #[`TestCompile]
 
+/-- `make bench`: the programs whose instance measures size or throughput, each over what a program may cost the gate
+    (`gateMs`, `test/TestCompile.lean`), in `Bench/`; building the library runs them. No gate imports it. -/
+lean_lib RelBench where
+  -- its own root, `Bench`: a glob over `Rel` would claim every module of lib `Rel` too
+  globs := #[.submodules `Bench]
+
 /-- `Rel.Lang.TestNative`'s `main`: prints its plan as C (`relc c FILE`) and writes the Lean side's column directory
     (`lean DIR`, `plan DIR`). -/
 lean_exe relc where

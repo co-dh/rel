@@ -1,20 +1,20 @@
 import Rel.Programs.Prelude
 
-/-! # Mate in one -/
+/-! # Mate in one, on a 4×4 board (the 8×8 board is `Bench/Chess.lean`) -/
 
 namespace Rel.Programs
 
 open Rel.Programs.prelude in
 rel_program chess where
-    obj Sq = 0…63                                 -- the squares, a1 = 0, b1 = 1, …, h8 = 63
+    obj Sq = 0…15                                 -- the squares, a1 = 0, b1 = 1, …, d4 = 15
     obj Pc = {P,N,B,R,Q,K,p,n,b,r,q,k}            -- the pieces, white then black: colour*6 + kind
     obj Bd = [Sq×Pc]                               -- a board: the set of its (square, piece) rows
-    on : Sq ⟶ Pc ≜ {(6,K),(48,R),(1,R),(60,k)}    -- W Kg1 Ra7 Rb1, B Ke8
+    on : Sq ⟶ Pc ≜ {(7,K),(0,R),(15,k)}           -- W Kd2 Ra1, B Kd4
 
-    h : Sq ⟶ Sq ≜ {(7,7),(15,15),(23,23),(31,31),(39,39),(47,47),(55,55),(63,63)}   -- the h-file
+    h : Sq ⟶ Sq ≜ {(3,3),(7,7),(11,11),(15,15)}   -- the d-file, the last
     → : Sq ⟶ Sq ≜ (𝟙 − h)succ                     -- one file right
     ← : Sq ⟶ Sq ≜ →°                              -- one file left
-    ↑ : Sq ⟶ Sq ≜ succ succ succ succ succ succ succ succ   -- one rank up
+    ↑ : Sq ⟶ Sq ≜ succ succ succ succ             -- one rank up
     ↓ : Sq ⟶ Sq ≜ ↑°                              -- one rank down
     ↗ : Sq ⟶ Sq ≜ ↑→
     ↖ : Sq ⟶ Sq ≜ ↑←
@@ -24,8 +24,8 @@ rel_program chess where
     N : Sq ⟶ Sq ≜ ↑↑→ ∪ (↑→→) ∪ (↑↑←) ∪ (↑←←) ∪ (↓↓→) ∪ (↓→→) ∪ (↓↓←) ∪ (↓←←)   -- knight steps
     X₀ : Sq ⟶ Sq ≜ ↗ ∪ ↖                          -- a white pawn's forward diagonals
     X₁ : Sq ⟶ Sq ≜ ↘ ∪ ↙                          -- a black pawn's forward diagonals
-    S₀ : Sq ⟶ Sq ≜ {(8,8),(9,9),(10,10),(11,11),(12,12),(13,13),(14,14),(15,15)}         -- white's pawn rank
-    S₁ : Sq ⟶ Sq ≜ {(48,48),(49,49),(50,50),(51,51),(52,52),(53,53),(54,54),(55,55)}     -- black's pawn rank
+    S₀ : Sq ⟶ Sq ≜ {(4,4),(5,5),(6,6),(7,7)}      -- white's pawn rank
+    S₁ : Sq ⟶ Sq ≜ {(8,8),(9,9),(10,10),(11,11)}  -- black's pawn rank
 
     e(on : Sq ⟶ Pc) : Sq ⟶ Sq ≜ 𝟙 − dom(on)       -- the empty squares
     k(on : Sq ⟶ Pc) : Sq ⟶ Sq ≜ dom(on{(k,k)})    -- the black king's square
@@ -58,7 +58,7 @@ rel_program chess where
     mate : [Sq×Pc]×(Sq×Sq) ⟶ [Sq×Pc]×(Sq×Sq) ≜ j a(k(⇝),f(⇝),W₁) i(B(⇝),Pin₁,W₁,k(⇝))   -- the moves that mate
     m : Sq×Sq ⟶ Pc ≜ ran(mate π₂)π₁ on           -- each mating move, the piece it moves
 
-    check m = {((1,57),R)}                        -- Rb1-b8 mates
+    check m = {((0,12),R)}                        -- Ra1-a4 mates: Kd2 holds c3, d3; the rook c4, d4
 
 #guard chess.ok
 
