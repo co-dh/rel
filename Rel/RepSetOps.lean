@@ -950,13 +950,13 @@ private def setOk {k v : Obj} [BEq k.El] [BEq v.El] (R S : Tab k v) : Bool :=
 #guard [T₁, T₂, T₃, []].all fun ps => [T₁, T₂, T₃, []].all fun qs => setOk (tab ps) (tab qs)
 
 /-- Cells over the payload `9 5 1 5`, the second part of each pair being shifted past `arrPay` by `Vals.concat`:
-`[5]` and `[5,1]` (in `arrCells` too, from other ranges), the empty cell, `[1,5]`, and `[5]` from `[-4,2)` clamped. -/
-private def arrCells₂ : List (Int64 × Int64 × Int64) := [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (3, 4, 5), (-4, 2, 9)]
+`[5]` and `[5,1]` (in `arrCells` too, from other ranges), the empty cell, `[1,5]`, and `[9,5]`. -/
+private def arrCells₂ : List (Int64 × Int64 × Int64) := [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (3, 4, 5), (0, 2, 9)]
 private def arrPay₂ : List Int64 := [9, 5, 1, 5]
 
 -- `arr` sides as the key and as the value: cells over different payloads, a side of no payload rows, a table of no
 -- rows; tuple elements (`arr (long × long)`) and nested arrays (`arr (arr long)`)
-#guard let As := [arrTab arrCells arrPay, arrTab arrCells₂ arrPay₂, arrTab [(0, 0, 1), (3, 1, 2)] [], arrTab [] arrPay]
+#guard let As := [arrTab arrCells arrPay, arrTab arrCells₂ arrPay₂, arrTab [(0, 0, 1), (0, 0, 2)] [], arrTab [] arrPay]
   As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
 #guard let P (cs : List (Int64 × Int64 × Int64)) (ps qs : List Int64) (h : qs.length = ps.length) :
     Tab (.arr (.prod .long .long)) .long := arrOn cs (B := .prod .long .long) (Alg.col ps, h ▸ Alg.col qs)

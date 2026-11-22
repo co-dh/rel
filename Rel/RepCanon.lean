@@ -1146,10 +1146,10 @@ def arrOn {B : Obj} (cs : List (Int64 × Int64 × Int64)) {m : USize} (f : Vals 
 def arrTab (cs : List (Int64 × Int64 × Int64)) (ps : List Int64) : Tab (.arr .long) .long := arrOn cs (Alg.col ps)
 
 /-- Cells over the payload `5 1 5 9 5`: `[5,1]` twice from one range, `[5]` from three ranges (`[0,1)`, `[2,3)`, and
-`[-1,1)` clamped), the empty cell from `[3,3)` and from `hi < lo`, a proper prefix `[5]` of `[5,1]`, and `[3,9)` clamped
-to `[9,5]`. -/
+`[4,5)`), the empty cell from `[3,3)` and from `[1,1)`, a proper prefix `[5]` of `[5,1]`, and `[3,5)` = `[9,5]`; every
+cell `0 ≤ lo ≤ hi ≤ 5` (`Vals.WF`, which every table keeps). -/
 def arrCells : List (Int64 × Int64 × Int64) :=
-  [(0, 2, 1), (2, 3, 1), (0, 2, 1), (3, 3, 2), (4, 5, 2), (2, 4, 7), (0, 1, 1), (3, 1, 2), (-1, 1, 1), (3, 9, 0)]
+  [(0, 2, 1), (2, 3, 1), (0, 2, 1), (3, 3, 2), (4, 5, 2), (2, 4, 7), (0, 1, 1), (1, 1, 2), (4, 5, 1), (3, 5, 0)]
 def arrPay : List Int64 := [5, 1, 5, 9, 5]
 
 -- `arr` sides, as the key, the value and both, and a side of no cells

@@ -1170,6 +1170,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       等要 `K.WF` 与 `bound_wf`、`Tab.ran_wf`；`_wf` 引理要真证明（`Tab.inter_wf`、`keepBits_wf`、`compSel_wf`、
       `compSelM_inl_wf`、`compTabMat_key_wf`、`ldivTabMat_sides_wf`）。之后 `GenKFold`、`GenKEst`、`GenKHylo`、
       `GenKFix`、`GenSound`（`Sound` 加 `K.WF`、`gen_wf_spine`、`primGen_ok` 每行 `_wf`），最后删 clamp。
+  - ✅ 切换完成（分支 `lohi10`，0cddb58、f6abf97）：`Rel.Wf` `.tab (.ok t) => t.WF`，所有 `_sound` 取 `K.WF`；
+    `gen_wf_spine` 对 `Tm.size` 强归纳（`hylo` 的 `kids`），每个构造子一行 `GenK.*_wf`；字面量 `val`/`uni` 在
+    `Tm.gen` 以 `Vals.cellsOk` 检查格子（不经 `readVals`）。全量构建 0 error、0 sorryAx，GenSoundTest 1594/1594。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
