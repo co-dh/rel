@@ -1157,6 +1157,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `ofVals_wf` 取 `f` 的（`K.WF` 给 `K.dom` 的 `Vals.WF`）；`compT` 在 `⟨some (ran r), K.ran, none⟩` 上 force，要
     `ran_wf`。(3) `gen_wf_spine` 每个构造子一行 `GenK.*_wf` + `RepWF`/`RepWFOps` 的 `_wf`；`primGen_ok` 的每个 row
     要其 op 的 `_wf`。(4) `Reps` 只在 `K.WF` 上要求，`Sound`/各 `_sound` 的 `∀ K` 加 `K.WF`。(5) 然后删 clamp。
+  - 🔄 切换进行中（分支 `lohi6`）：
+    - ✅ import 调整：`Arr.zeros_get` 从 `RepAsc` 移到 `RepWF`，`RepWF` 不再 import `RepAsc`（原来经它依赖
+      `GenKFold`），`GenKSpec` import `RepWFOps`。于是所有 `Tab` 层 `_wf` 在 `Rel.Wf` 之上可见，`GenK.*_wf` 留在原处直接用。
+    - ✅ `GenKSpec`（绿）：`Known.WF`、`BitsWf`、`Rel.Wf` 及 `force`（要 `K.WF`）、`retried`、`runE`（`Wf` 的值在
+      `WF` 的 context 上只算出 `WF` 的表）移到 `GenKSpec`；`Rel.Wf` 的 `bits` 条款是 `BitsWf ∧ Vals.WF x ∧ Vals.WF y`
+      （读回由 `Tab.ofBits_wf` 给 `WF`）。所有 `_sound` 的 `∀ K` 改成 `∀ K, K.WF →`；`lift1_sound`/`lift2_sound` 多取
+      其 context 函数保持 `WF`（`hk`/`hkl`/`hkr`）；`ofVals_sound` 的 `hf` 多得 `Vals.WF X`；新 `cut_wf`、`bound_wf`；
+      `pairOn`/`pairK`/`pair`/`diff` 的 sound 多取操作数的 `Wf`（它们在操作数算出的表的 `bound` 上运行另一操作数）；
+      `cmp_side` 多取该侧的 `WF`；`succ` 的原子侧 `Vals.WF` 为 `True`。
+    - ⬜ `GenKBits` 1683 起（`meetV_law` 之后的 meet/comp/ldiv 段）不通过：`meetOn_sound`/`meetK_sound`/`compT_sound`
+      等要 `K.WF` 与 `bound_wf`、`Tab.ran_wf`；`_wf` 引理要真证明（`Tab.inter_wf`、`keepBits_wf`、`compSel_wf`、
+      `compSelM_inl_wf`、`compTabMat_key_wf`、`ldivTabMat_sides_wf`）。之后 `GenKFold`、`GenKEst`、`GenKHylo`、
+      `GenKFix`、`GenSound`（`Sound` 加 `K.WF`、`gen_wf_spine`、`primGen_ok` 每行 `_wf`），最后删 clamp。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
