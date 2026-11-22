@@ -72,12 +72,5 @@ theorem rounds_lfp {ch : α → α → Prop} {Φ : Core.Rel α β → Core.Rel �
   (rounds_inv hm hl hN n N _ ⟨fun _ h => h, fun _ h hn => absurd h hn, fun _ _ _ h => h,
     fun _ _ h hn => absurd h hn⟩).2.1 a hNa (hdone a) b
 
-/-- **Rounds stuck mean a cycle**: when no pending node is ready, no pending node is accessible along `ch`, so
-    `ch` (the coalgebra `c`) is not well-founded at any of them. -/
-theorem stuck_not_acc {ch : α → α → Prop} {pend : α → Prop} (hs : ∀ a, ¬ ready ch pend a) :
-    ∀ a, Acc (fun x y => ch y x) a → ¬ pend a := by
-  intro a hacc
-  induction hacc with
-  | intro a _ ih => exact fun hp => hs a ⟨hp, fun a' hc hp' => ih a' hc hp'⟩
 
 end Rel.Hylo

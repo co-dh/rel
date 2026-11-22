@@ -42,9 +42,6 @@ variable {A B C : Obj} {Φ Ψ : Den A B → Den A B} {Y : Den A B}
 
 /-! ### The named meanings: each the `T` of its node's `Gen.*_sound` lemma -/
 
-/-- A table's value rows are the values its `rep` relates. -/
-theorem valRow {A B : Obj} (U : Tab A B) (b : B.El) : (∃ p, U.val.row p = b) ↔ ∃ a, rep U a b :=
-  ⟨fun ⟨p, e⟩ => ⟨U.key.row p, p, rfl, e⟩, fun ⟨_, p, _, e⟩ => ⟨p, e⟩⟩
 
 /-- `R − S`, pointwise. -/
 abbrev diffDen (TR TS : Den A B) : Den A B := fun x y => TR x y ∧ ¬ TS x y
@@ -144,38 +141,6 @@ abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E
     (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
     w = ys[xs.length]'(by omega)
 
-/-- The left fold read from the back: `foldlDen` on `xs` is the chain `rep_foldOnC` reads at `l` (`ordL`), the
-    right fold's chain on `xs.reverse`, the pair `(acc, x)` and `ys` reversed. -/
-theorem foldDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
-    foldDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.reverse.length + 1,
-      (∃ a, Te a (ys[xs.reverse.length]'(by omega))) ∧
-      (∀ t (ht : t < xs.reverse.length), TS (ys[t + 1]'(by omega), xs.reverse[t]'ht) (ys[t]'(by omega))) ∧
-      w = ys[0]'(by omega) := by
-  -- `ys ↦ ys.reverse` both ways: chain position `s` of one is `|xs| - s` of the other
-  have rv : ∀ (zs : List V.El) (hz : zs.length = xs.length + 1) (i j : Nat) (hi : i < zs.reverse.length)
-      (hj : j < zs.length), j = xs.length - i → zs.reverse[i] = zs[j] := by
-    intro zs hz i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
-  have rx : ∀ (i j : Nat) (hi : i < xs.reverse.length) (hj : j < xs.length), j = xs.length - 1 - i →
-      xs.reverse[i] = xs[j] := by
-    intro i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
-  constructor
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    refine ⟨ys.reverse, by simp [hy], ⟨a, by rw [rv ys hy _ 0 _ (by omega) (by simp)]; exact ha⟩, fun t ht => ?_,
-      by rw [rv ys hy 0 xs.length _ (by omega) (by simp)]⟩
-    simp only [List.length_reverse] at ht
-    rw [rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega), rv ys hy t (xs.length - 1 - t + 1) _ (by omega)
-      (by omega), rx t (xs.length - 1 - t) _ (by omega) rfl]
-    exact hS _ (by omega)
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    simp only [List.length_reverse] at hy ha hS
-    refine ⟨ys.reverse, by simp [hy], ⟨a, ?_⟩, fun t ht => ?_, ?_⟩
-    · rw [rv ys hy 0 xs.length _ (by omega) (by simp)]; exact ha
-    · have h := hS (xs.length - 1 - t) (by omega)
-      rw [rx _ t _ ht (by omega)] at h
-      rw [rv ys hy t (xs.length - 1 - t + 1) _ (by omega) (by omega),
-        rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega)]
-      exact h
-    · rw [rv ys hy xs.length 0 _ (by omega) (by simp)]
 
 /-- `fold(e, S)` given a family: at the key `i`, the left fold whose start is the fibre of `e` at `i` and whose step
     is `S` at `i`, keeping the key. -/
@@ -227,13 +192,6 @@ theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.pr
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
 abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
 
-/-- `flatDen` is a composition: `(π₁ ≫ T) ∩ (π₂ ≫ π₁°)` keeps the `(a', b)` of `T` at the key with `a'` the
-    source, then `π₂`. -/
-theorem flatDen_eq {I A B : Obj} (T : Den I (.prod A B)) :
-    flatDen T = ((graph Prod.fst ≫ T) ∩ (graph Prod.snd ≫ (graph Prod.fst)°)) ≫ graph Prod.snd :=
-  Core.Rel.ext fun x b => ⟨fun h => ⟨(x.2, b), ⟨⟨x.1, rfl, h⟩, x.2, rfl, rfl⟩, rfl⟩,
-    fun ⟨⟨_, _⟩, ⟨⟨_, hi, hT⟩, _, ha, ha'⟩, hb⟩ => by
-      simp only [Core.Rel.recip, Core.Rel.graph, flatDen] at *; subst hi ha ha' hb; exact hT⟩
 
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
 abbrev estDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) B :=
@@ -608,97 +566,13 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
 
 /-! ### Substitution -/
 
-/-- `σ` read under `ρ`: each entry binds its variable to its term's meaning, the first entry outermost. -/
-noncomputable def Tm.Sub.den (ρ : Val) : Tm.Sub → Val
-  | [] => ρ
-  | (k, ⟨_, _, s⟩) :: σ => (Sub.den ρ σ).bind k (s.den ρ)
 
-/-- No term of `σ` is a row's spine: a term put for a variable heading `arg`s keeps that spine's meaning `𝟘`, as
-    the variable's own is (`compile` too runs a row only under a `prim` head). -/
-def Tm.Sub.Plain (σ : Tm.Sub) : Prop := ∀ e ∈ σ, ∀ ρ ss, e.2.2.2.argDen ρ ss = 𝟘
 
-theorem Tm.Sub.argDen_get {ρ : Val} {ss : List Sem} (i : Nat) {A' B' : Obj} (d : Bool) :
-    ∀ σ : Tm.Sub, σ.Plain → (σ.get i d : Tm A' B').argDen ρ ss = 𝟘
-  | [], _ => rfl
-  | (k, ⟨A, B, s⟩) :: σ, hσ => by
-    simp only [Sub.get]
-    split
-    · split
-      · rename_i h; obtain ⟨rfl, rfl⟩ := h; exact hσ _ List.mem_cons_self ρ ss
-      · rfl
-    · exact argDen_get i d σ fun e he => hσ e (List.mem_cons_of_mem _ he)
 
-theorem Tm.Sub.den_get (ρ : Val) (i : Nat) {A' B' : Obj} (d : Bool) :
-    ∀ σ : Tm.Sub, (σ.get i d : Tm A' B').den ρ = σ.den ρ i A' B'
-  | [] => rfl
-  | (k, ⟨A, B, s⟩) :: σ => by
-    by_cases e : i = k
-    · subst e
-      by_cases h : A = A' ∧ B = B'
-      · obtain ⟨rfl, rfl⟩ := h; simp [Sub.get, Sub.den, Val.bind]
-      · simp [Sub.get, Sub.den, Val.bind, h, Tm.den]
-    · simp only [Sub.get, Sub.den, if_neg e, Val.bind_ne e]; exact den_get ρ i d σ
 
-theorem Tm.lt_fresh : ∀ {l : List Nat} {i : Nat}, i ∈ l → i < Tm.fresh l
-  | a :: l, i, h => by
-    rcases List.mem_cons.1 h with rfl | h
-    · exact Nat.lt_succ_of_le (Nat.le_max_left _ _)
-    · exact Nat.lt_of_lt_of_le (lt_fresh h) (Nat.succ_le_succ (Nat.le_max_right _ _))
 
-/-- Binding a variable `k` no term of `σ` mentions changes `σ`'s meaning only at `k`. -/
-theorem Tm.Sub.den_bind {ρ : Val} {k : Nat} {A B : Obj} {X : Den A B} :
-    ∀ σ : Tm.Sub, (∀ j ∈ σ.fvs, j ≠ k) → ∀ i, i ≠ k → σ.den (ρ.bind k X) i = σ.den ρ i
-  | [], _, _, hi => Val.bind_ne hi
-  | (j, ⟨_, _, s⟩) :: σ, h, i, hi => by
-    simp only [Sub.den, (s.den_congr (ρ.bind k X) ρ fun l hl => Val.bind_ne (h l (by simp [Sub.fvs, hl]))).1]
-    by_cases e : i = j
-    · subst e; exact Val.bind_same
-    · rw [Val.bind_ne e, Val.bind_ne e]; exact den_bind σ (fun l hl => h l (by simp [Sub.fvs, hl])) i hi
 
-/-- Under a binder `k` renamed to `k'`, fresh for the body `b` and `σ`: the substituted body read with `k'` bound
-    to `X` is the body read with `k` bound to `X` over `σ`'s meaning. -/
-theorem Tm.Sub.den_rename {A B A' B' : Obj} (b : Tm A' B') (σ : Tm.Sub) (ρ : Val) (k : Nat)
-    (X : Den A B) : b.den (Sub.den (ρ.bind (fresh (b.fv ++ σ.fvs)) X)
-      ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ)) = b.den ((σ.den ρ).bind k X) := by
-  refine (b.den_congr _ _ fun i hi => ?_).1
-  have hv : (Tm.var false (fresh (b.fv ++ σ.fvs)) : Tm A B).den (ρ.bind (fresh (b.fv ++ σ.fvs)) X) = X := by
-    simp [Tm.den, Val.bind]
-  simp only [Sub.den, hv]
-  by_cases e : i = k
-  · subst e; exact Val.bind_same
-  · rw [Val.bind_ne e, Val.bind_ne e]
-    exact den_bind σ (fun j hj => Nat.ne_of_lt (lt_fresh (List.mem_append_right _ hj))) i
-      (Nat.ne_of_lt (lt_fresh (List.mem_append_left _ hi)))
 
-/-- **Substitution lemma**: `⟦t σ⟧ρ = ⟦t⟧(⟦σ⟧ρ)`. -/
-theorem Tm.den_subst : ∀ {A B : Obj} (t : Tm A B) (σ : Tm.Sub), σ.Plain → ∀ ρ : Val,
-    (t.subst σ).den ρ = t.den (σ.den ρ) ∧ ∀ ss, (t.subst σ).argDen ρ ss = t.argDen (σ.den ρ) ss := by
-  intro A B t
-  induction t with
-  | var d i => intro σ hσ ρ; exact ⟨Sub.den_get ρ i d σ, fun _ => Sub.argDen_get i d σ hσ⟩
-  | nu k S b ihS ih =>
-    intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den, (ihS σ hσ ρ).1]
-    congr 1; funext X; congr 1
-    refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
-    rcases List.mem_cons.1 he with rfl | he
-    · rfl
-    · exact hσ e he ρ ss
-  | mu k _ _ b ih | hylo k _ b ih =>
-    intro σ hσ ρ; refine ⟨?_, fun _ => rfl⟩; simp only [Tm.subst, Tm.den]; congr 1; funext X
-    refine (ih _ (fun e he ρ ss => ?_) _).1.trans (Sub.den_rename b σ ρ k X)
-    rcases List.mem_cons.1 he with rfl | he
-    · rfl
-    · exact hσ e he ρ ss
-  | arg f x ihf ihx =>
-    intro σ hσ ρ
-    have hx := (ihx σ hσ ρ).1
-    have hf := (ihf σ hσ ρ).2
-    exact ⟨by simp only [Tm.subst, Tm.den, hx, hf], fun _ => by simp only [Tm.subst, Tm.argDen, hx, hf]⟩
-  | own R ih =>
-    intro σ hσ ρ
-    have e := ih σ hσ ρ
-    exact ⟨by simp only [Tm.subst, Tm.den, e.1], fun _ => by simp only [Tm.subst, Tm.argDen, e.2]⟩
-  | _ => intro σ hσ ρ; exact ⟨by simp only [Tm.subst, Tm.den, *], fun _ => rfl⟩
 
 /-! ### Monotonicity -/
 
@@ -1021,24 +895,8 @@ theorem Tm.den_mono {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol true k = t
     {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k X) ⊑ t.den (ρ.bind k Y) :=
   t.den_pol k true _ _ h (Val.Grow.of_le hXY)
 
-/-- `⟦t⟧` is antitone in `X` where `X` occurs only negatively. -/
-theorem Tm.den_anti {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol false k = true) {ρ : Val}
-    {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k Y) ⊑ t.den (ρ.bind k X) :=
-  t.den_pol k false _ _ h (Val.Grow.of_le hXY)
 
-/-- `μX : φ = φ[μX : φ]` where `X` occurs in `φ` only positively. -/
-theorem Tm.den_mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B)
-    (h : b.pol true k = true) (ρ : Val) :
-    (Tm.mu k what cap b).den ρ = (b.subst [(k, ⟨A, B, .mu k what cap b⟩)]).den ρ := by
-  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
-  exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
 
-/-- `νX : S ∩ φ = S ∩ φ[νX : S ∩ φ]` where `X` occurs in `φ` only positively; `S` is outside the binder. -/
-theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B) (h : b.pol true k = true) (ρ : Val) :
-    (Tm.nu k S b).den ρ = (Tm.meet S (b.subst [(k, ⟨A, B, .nu k S b⟩)])).den ρ := by
-  show _ = S.den ρ ∩ _
-  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
-  exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
 /-- `Tm.memAt` at `[E] ⟶ E` is `∋`: it relates a list to its members. -/
 theorem Tm.den_memAt {ρ : Val} {E : Obj} : (Tm.memAt (.arr E) E).den ρ = fun (xs : (Obj.arr E).El) x => x ∈ xs := by

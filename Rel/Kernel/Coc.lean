@@ -330,11 +330,6 @@ inside an `Int64` at `Column.blk` elements, and what leaves room to shift a whol
 constant. `rust/src/coc.rs`'s `ALP_P53`. -/
 def alpP53 : Float := 9007199254740992.0
 
-/-- q's in-band sentinels — `0n`, `0w` and `-0w` — are the patterns whose exponent field is all
-ones. Tested on the raw bits and before any decimal test, so that a round trip returns the same NaN
-and not merely some NaN. `rust/src/coc.rs`'s `COC_SENT` at each width. -/
-def alpSentinel (f32 : Bool) (x : UInt64) : Bool :=
-  if f32 then (x >>> 23) &&& 0xff == 0xff else (x >>> 52) &&& 0x7ff == 0x7ff
 
 /-- The element as a `Float`. A four-byte element widens exactly and order-preservingly, which is
 why the whole layer is type-erased into `Float` for the reason the integral one is type-erased into
@@ -356,11 +351,6 @@ def alpDat (f32 : Bool) (x : UInt64) (e : Nat) : Option UInt64 :=
     if Rel.Column.alpDec d e f32 == x then some d else none
   else none
 
-/-- The smallest exponent at which `x` is a decimal, `none` for a sentinel or for a value that is a
-decimal at no exponent at all. -/
-def alpOwn (f32 : Bool) (x : UInt64) : Option Nat :=
-  if alpSentinel f32 x then none
-  else (List.range 19).find? fun e => (alpDat f32 x e).isSome
 
 /-- Block `b`'s exponent and each of its elements' `d`, `none` at an exception. The exponent is the
 largest any of the block's elements needs and then **every** element is re-verified at it: raising
@@ -382,55 +372,11 @@ def alpBlob (f32 : Bool) (B w n : Nat) (x : ByteArray) (bs : Array (Nat × Array
   excBlob (if f32 then 1 else 0) B w bs.size x ((Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone)
     (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
 
-/-- A dense payload of `w`-byte floats as `(metadata, pack, alp)`. Three passes, the first of them
-the expensive one — up to nineteen trial round trips an element — because a block's exponent is not
-known until every one of its elements has been asked for its own.
 
-Every exception is packed as its block's minimum, i.e. residual zero. It therefore cannot widen the
-pack, and what it wrongly contributes to a reduction is a constant the layer below subtracts back
-out; `encode` recomputes that same minimum from the integers handed to it. -/
-def alpEncodeAt (f32 : Bool) (x : ByteArray) (lg : Nat := Rel.Column.lgEnc) :
-    ByteArray × ByteArray × ByteArray :=
-  let w := if f32 then 4 else 8
-  let n := x.size / w
-  let own := (Array.range n).map fun i => alpOwn f32 (Rel.Column.bitsAt x (i * w) w)
-  let bs := (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)).map fun b =>
-    alpBlockOf f32 (2 ^ lg) w n b x own
-  let ds := bs.foldl (init := ByteArray.empty) fun acc be =>
-    let mn := be.2.foldl (init := (none : Option Int)) fun m d => match d with
-      | none => m
-      | some v => some (match m with | none => v.toInt64.toInt | some a => min a v.toInt64.toInt)
-    let base := (Int64.ofInt (mn.getD 0)).toUInt64
-    be.2.foldl (init := acc) fun a d => Rel.Column.pushBits a (d.getD base) 8
-  let (metadata, pack) := encodeAt lg 8 ds false
-  (metadata, pack, alpBlob f32 (2 ^ lg) w n x bs)
 
-/-- The obligation is `alpDecode (alpEncode x) = x`, **byte for byte**, NaN payloads included: `0n`
-comes back as `0n`, a second NaN stays distinct from it, `0w` and `-0w` keep their signs and `-0.0`
-does not come back as `+0.0`. That is stronger than value equality and is the whole reason exactness
-is decided on the bits.
 
-Two names and one specification: `rust/src/coc.rs` exports a kernel per element width, so there is a Lean
-declaration per C symbol, and both carry `alpEncodeAt` at the width. `Coc.encode` takes its width as
-an argument instead because the integral encoder is one C symbol; the shape here follows the C. -/
-def alpEncode64 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt false x
 
-def alpEncode32 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt true x
 
-/-- `encode` when its parts are fewer bytes than the `x.size / width * width` dense ones. -/
-def encodeBelow (width : USize) (x : @& ByteArray) : Option (ByteArray × ByteArray) :=
-  let (m, p) := encode width x
-  if m.size + p.size < x.size / width.toNat * width.toNat then some (m, p) else none
-
-/-- `alpEncode64` when its parts are fewer bytes than the dense ones. -/
-def alpEncodeBelow64 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
-  let (m, p, a) := alpEncode64 x
-  if m.size + p.size + a.size < x.size / 8 * 8 then some (m, p, a) else none
-
-/-- `alpEncode32` when its parts are fewer bytes than the dense ones. -/
-def alpEncodeBelow32 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
-  let (m, p, a) := alpEncode32 x
-  if m.size + p.size + a.size < x.size / 4 * 4 then some (m, p, a) else none
 
 /-- The elements as raw bits, `elems`' counterpart on this constructor and the one place the block
 starts are hoisted out of the loop. Every specification below is a fold over it. -/
@@ -462,29 +408,7 @@ end Rel.Kernel.Coc
 
 namespace Rel.Column
 
-/-- The types Frame of Reference is the encoding *for*. `CLAUDE.md` settles that the encoded form is
-the representation rather than a fast path, so this is not a policy about when it pays — it is which
-types it is the right encoding for at all. Every exclusion is measured or structural:
 
-* `boolean` is `bits`, one bit per element, which is already eight times less than q spends;
-* `byte` and `char` are one byte, so the residual width is already the type width and the metadata
-  per block is a net loss — `tools/coc/note.md` §5 has them at 0.98–1.02x across the board, measured
-  when a block cost 25 bytes and so a 2.4% loss; at 33 it is 3.2% and the exclusion only holds
-  harder. `CLAUDE.md` grants them explicitly;
-* `f32` and `f64` are floats. Frame of Reference over raw IEEE bit patterns is
-  lossless and shrinks nothing, patterns not clustering the way the values do; their encoding is
-  `alpEncodes`, below;
-* `symbol` has no fixed width. -/
-def encodes : QAtomicType → Bool
-  | .i16 | .i32 | .date | .i64 | .datetime => true
-  | _ => false
-
-/-- The types ALP is the encoding for: the two float types and no others. `f32` is four bytes and
-goes through the `_f32` kernels, `f64` is eight and goes through the `_f64` ones — `QAtomicType.width`
-is what chooses. -/
-def alpEncodes : QAtomicType → Bool
-  | .f32 | .f64 => true
-  | _ => false
 
 end Rel.Column
 
@@ -573,56 +497,12 @@ end Ext.Enc
 namespace Column
 open Ext.Enc
 
-/-- `ofAtoms` fails on exactly one condition, so a caller that already knows its atoms are at `t`
-gets a payload back. Every assembler in `QLean/Eval/` establishes that condition by filtering or
-testing before it commits to a vector, which is what makes its announced type honest. -/
-theorem ofAtoms_isSome {t : QAtomicType} {as : Array QAtom} (hn : t ≠ .general)
-    (h : ∀ a ∈ as, a.type = t) : (ofAtoms (X := X) t as).isSome := by
-  unfold ofAtoms
-  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])]
-  cases t <;> first | contradiction | simp [QAtomicType.width]
 
 end Column
 
 namespace Ext.QValue
 
-/-- The `i`th slice of a `slices` value, as the vector it denotes. Reading one is a copy of its
-bytes and nothing else; reading them all is the loop the constructor exists to avoid, which is why
-this is by index and there is no `toArray`. Here, after `Enc.blank`.
 
-**The slice stays dense, and that is measured rather than conceded.** `CLAUDE.md`'s "the encoded form
-is the representation" is about a column that *enters* and is then read many times; a slice is read
-once, by the `each` that asked for it, so encoding it spends a whole extra pass to save part of one.
-Interleaved against the same binary with the encode spliced in, a million longs in a thousand pieces:
-`count each value group xg` 1.32x, `min each value group xg` 1.18x, `sums each value group xg` 1.12x,
-`{x+x} each value group xg` and `{x+x} each flip mxl` 1.05x — against the same pieces held as a
-general list, `{x+x} each mxl` at 1.00x and `sums each mxl` at 1.04x. Every shape is a loss.
-
-There is no boxing on the other side of that trade, which is what would have paid for the pass.
-`Kernel.overColumn` folds a dense payload at every integral type and a boolean `foR` at `boolean`, and
-the elementwise and scan families have their own dense paths: measured, `min each mxf` is 341ns per
-thousand elements and `{x+x} each mxl` 1.0µs, where `Column.atoms` alone would be 64µs. The decline
-`CLAUDE.md` warns about is real at a column that arrives, not at a slice of one.
-
-`Column.encode` answers a float column unchanged (`Coc.encodes` is false there — ALP is the float encoding and
-reaches columns through `Column.admit`), so it would be a no-op at the one type it was wanted for.
-
-The second case rests on every producer — `group`, `flip`, `string`, `vs`, `cross` — sharing a
-`.bytes` payload. A payload that is not dense has no per-piece cut here and answers the whole column,
-so a producer over an encoded column must cut it where it is built, the way `Kernel.cutFoR` does. -/
-def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) (i : Nat) : Ext.QValue X :=
-  -- no form has a per-piece cut here, so the whole column answers (a producer cuts where it builds, `Kernel.cutFoR`)
-  let _ := offs; let _ := i
-  .vector t n e attr
-
-/-- Every element of a `slices` value, which is the million-value loop it exists to avoid. Only
-where something genuinely needs them all — `~` against a general list, the wire encoder — and the
-count is small, or the cost is the one the constructor was avoiding. -/
-def slicesExpand (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) : Array (Ext.QValue X) :=
-  if offs.isEmpty then #[]
-  else (Array.range (offs.size - 1)).map (sliceAt t n e attr offs)
 
 end Ext.QValue
 

@@ -161,77 +161,7 @@ theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok 
     (by rw [Array.size_map, hs])
   exact ⟨hc.1, by rw [hc.2.1, Array.size_map, hs], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
 
-/-- **`kasc` closes**: every sorted column and the permutation hold `m` words, valid and `Ext.Enc.WF` at every fixed-width
-type but the boolean. -/
-theorem kasc_closed {m : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
-    ∀ o ∈ p :: vs, Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧
-      ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m o := by
-  obtain ⟨cs, -, r, -, wss, hw, rfl, rfl⟩ := kasc_ok h
-  have hm : ∀ ws ∈ ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray ::
-      wss, ws.size = m.toNat := by
-    intro ws hws
-    rcases List.mem_cons.1 hws with rfl | hws
-    · simp [(ascGrade_spec m.toNat _).1.length_eq]
-    · obtain ⟨hl, hf⟩ := mapM_ok hw
-      obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hws
-      obtain ⟨c, hc⟩ : ∃ c, cs[i]? = some c := ⟨cs[i], List.getElem?_eq_getElem (by omega)⟩
-      exact scatterWords_size (hf i c _ hc (List.getElem?_eq_getElem hi))
-  have H : ∀ ws ∈ ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray :: wss, Enc.Valid m (wordsFoR ws) ∧
-      (raw .i64 m (wordsFoR ws)).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m (wordsFoR ws) :=
-    fun ws hws => have hc := wordsFoR_closed ws (hm ws hws).symm
-      ⟨hc.1, by rw [hc.2.1, hm ws hws], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
-  intro o ho
-  rcases List.mem_cons.1 ho with rfl | ho
-  · exact H _ List.mem_cons_self
-  · obtain ⟨ws, hws, rfl⟩ := List.mem_map.1 ho
-    exact H ws (List.mem_cons_of_mem _ hws)
 
-/-- **`kseen` closes**: the group of each row holds `n` words and the first rows `k`, each valid and `Ext.Enc.WF` at every
-fixed-width type but the boolean. -/
-theorem kseen_closed {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f))
-    (hk : k < USize.size) :
-    ∀ c ∈ [(n, g), (k.toUSize, f)], Enc.Valid c.1 c.2 ∧ (raw .i64 c.1 c.2).size = c.1.toNat ∧
-      ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t c.1 c.2 := by
-  obtain ⟨rfl, rfl, rfl⟩ := kseen_ok h
-  have H : ∀ (c : USize) (ws : Array UInt64), c.toNat = ws.size → Enc.Valid c (wordsFoR ws) ∧
-      (raw .i64 c (wordsFoR ws)).size = c.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t c (wordsFoR ws) :=
-    fun c ws hws => have hc := wordsFoR_closed ws hws
-      ⟨hc.1, by rw [hc.2.1, hws], fun ht hu => hc.2.2 ht fun h => absurd h hu⟩
-  intro c hc
-  rcases List.mem_cons.1 hc with rfl | hc
-  · exact H _ _ (by simp)
-  · rw [List.mem_singleton] at hc; subst hc
-    exact H _ _ (by simp [Nat.toUSize, USize.toNat_ofNat_of_lt' hk])
 
-/-- **`kseen`'s groups on words**: every row's group word is below the count `k`, and group `G`'s first row `f[G]` plus
-the number of rows whose group word is `G` is at most `n` (`firsts_count`): the run `[f[G], f[G] + c[G])` a
-`kscatter .add` count `c` gives (`scatterWords_add`) lies inside the `n` rows. -/
-theorem kseen_groups {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f))
-    (hk : k < USize.size) :
-    (∀ i < n.toNat, ((raw .i64 n g)[i]?.getD 0).toNat < k) ∧ ∀ G < k,
-      ((raw .i64 k.toUSize f)[G]?.getD 0).toNat +
-        ((List.range n.toNat).filter fun i => ((raw .i64 n g)[i]?.getD 0).toNat = G).length ≤ n.toNat := by
-  obtain ⟨hkk, rfl, rfl⟩ := kseen_ok h
-  have hn : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
-  subst hkk
-  rw [(wordsFoR_closed _ (by simp)).2.1, (wordsFoR_closed (n := (firstsOf (seenKey n es) n.toNat).length.toUSize) _
-    (by simp [Nat.toUSize, USize.toNat_ofNat_of_lt' hk])).2.1]
-  -- row `i`'s group word reads back as `groupOf i`, below the count of groups and so below `2^64`
-  have hg : ∀ i < n.toNat, (((Array.ofFn (n := n.toNat) fun i =>
-      (groupOf (seenKey n es) n.toNat i.1).toUInt64)[i]?.getD 0).toNat = groupOf (seenKey n es) n.toNat i) :=
-    fun i hi => by
-      rw [Array.getElem?_ofFn, dif_pos hi, Option.getD_some, UInt64.toNat_ofNat']
-      have := groupOf_lt (g := seenKey n es) hi
-      have : (firstsOf (seenKey n es) n.toNat).length ≤ n.toNat := by
-        unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
-      exact Nat.mod_eq_of_lt (show groupOf (seenKey n es) n.toNat i < 2 ^ 64 by omega)
-  refine ⟨fun i hi => by rw [hg i hi]; exact groupOf_lt hi, fun G hG => ?_⟩
-  have hf : (((firstsOf (seenKey n es) n.toNat).map Nat.toUInt64).toArray[G]?.getD 0).toNat =
-      (firstsOf (seenKey n es) n.toNat)[G] := by
-    simp only [List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hG, Option.map_some,
-      Option.getD_some, UInt64.toNat_ofNat']
-    exact Nat.mod_eq_of_lt (Nat.lt_trans (firsts_lt _ _ (List.getElem_mem hG)) hn)
-  rw [hf, List.filter_congr fun i hi => by rw [hg i (List.mem_range.1 hi)]]
-  exact firsts_count _ _ hG
 
 end Rel.Verify

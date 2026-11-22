@@ -69,11 +69,6 @@ def objCols : Obj → String → List (String × QAtomicType)
   | .sum a b, p => [(p ++ ".tag", .u1), (p ++ ".idx", .i64)] ++ objCols a (p ++ ".l") ++ objCols b (p ++ ".r")
   | .one, _ => []
 
-/-- Whether `A` is atoms and products only, the sides whose `Vals.cols` are their atom columns as they are. -/
-def flatObj : Obj → Bool
-  | .atom _ => true
-  | .prod a b => flatObj a && flatObj b
-  | _ => false
 
 /-! ### A term's table as a plan: the `GenK` recipe of each `Tm` node on the five kernels (design §4) -/
 
@@ -477,12 +472,6 @@ def pairB (A B C : Obj) (R S : TabB) : Bld TabB := do
   let a := objWidth A
   pure ⟨T.n, ← repath A "" (T.key.take a), (← repath B ".1" (T.key.drop a)) ++ (← repath C ".2" T.val)⟩
 
-/-- **`R × S`** (`Tab.prod`): CROSS of the two tables' rows, each row `((a, c), (b, d))`, then `canonT`. -/
-def prodB (A B C D : Obj) (R S : TabB) : Bld TabB := do
-  let (T, x, y) ← crossB R.n S.n (R.key ++ R.val) (S.key ++ S.val)
-  let (a, c) := (R.key.length, S.key.length)
-  canonT ⟨T, (← repath A ".1" (x.take a)) ++ (← repath C ".2" (y.take c)),
-    (← repath B ".1" (x.drop a)) ++ (← repath D ".2" (y.drop c))⟩
 
 /-- **`Vals.none`**: a side of `A` at `p` with no row: each atom column `Arr.zeros t 0`, an array's `lo`, `hi` the
     same over a payload of no row; `z` the register of the count `0`. -/

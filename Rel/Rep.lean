@@ -40,14 +40,6 @@ def _root_.Rel.Rel.Reps (K : Known A B) : Rel A B → Core.Rel A.El B.El → Pro
 /-- `rep R x y` is `R.Holds x y`, by definition. -/
 theorem rep_apply (R : Tab A B) (x : A.El) (y : B.El) : rep R x y = R.Holds x y := rfl
 
-/-- Where `P ≫ R ≫ 𝟙 = P ≫ S ≫ 𝟙` and `x` is a key of the coreflexive `P`, `R` and `S` agree at `x`. -/
-theorem atKey {P : Core.Rel A.El A.El} {R S : Core.Rel A.El B.El} (hP : ∀ x y, P x y → x = y)
-    (E : P ≫ R ≫ 𝟙 _ = P ≫ S ≫ 𝟙 _) {x : A.El} (hx : P x x) (y : B.El) : R x y ↔ S x y := by
-  have f : ∀ R' S' : Core.Rel A.El B.El, P ≫ R' ≫ 𝟙 _ = P ≫ S' ≫ 𝟙 _ → R' x y → S' x y := by
-    intro R' S' E' r
-    have h : (P ≫ R' ≫ 𝟙 _) x y := ⟨x, hx, y, r, rfl⟩
-    rw [E'] at h; obtain ⟨z, p, w, s, e⟩ := h; cases hP x z p; cases (e : w = y); exact s
-  exact ⟨f R S E, f S R E.symm⟩
 
 /-- What a context knows of each side is a coreflexive. -/
 theorem _root_.Rel.Known.cor (K : Known A B) : (∀ x y, K.den.1 x y → x = y) ∧ (∀ x y, K.den.2 x y → x = y) := by
@@ -58,20 +50,8 @@ theorem _root_.Rel.Known.cor (K : Known A B) : (∀ x y, K.den.1 x y → x = y) 
     | some _ => obtain ⟨_, h₁, h₂⟩ := h; exact h₁.trans h₂.symm
   exact ⟨e K.dom, e K.ran⟩
 
-/-- Inside `K`'s sides, `X` cut to them is `X`. -/
-theorem restrict (K : Known A B) {X : Core.Rel A.El B.El} {x : A.El} {y : B.El} (hx : K.den.1 x x)
-    (hy : K.den.2 y y) : (K.den.1 ≫ X ≫ K.den.2) x y ↔ X x y :=
-  ⟨fun ⟨a, p, b, r, q⟩ => by cases K.cor.1 x a p; cases K.cor.2 b y q; exact r, fun r => ⟨x, hx, y, r, hy⟩⟩
 
-/-- A coreflexive's row values: on the keys of `D`, every key is one of `D.val`'s rows. -/
-theorem keyRow {D : Tab A A} {x : A.El} (h : rep D x x) : ∃ i, D.val.row i = x :=
-  let ⟨i, _, e⟩ := h; ⟨i, e⟩
 
-theorem rowKey {D : Tab A A} (hD : ∀ x y, rep D x y → x = y) {x : A.El} :
-    (∃ i, D.val.row i = x) → rep D x x := by
-  rintro ⟨i, rfl⟩
-  have h : rep D (D.key.row i) (D.val.row i) := ⟨i, rfl, rfl⟩
-  rw [hD _ _ h] at h; exact h
 
 /-- A relation's key rows are the keys its `rep` relates. -/
 theorem keyRowRep (U : Tab A B) (a : A.El) : (∃ p, U.key.row p = a) ↔ ∃ b, rep U a b :=

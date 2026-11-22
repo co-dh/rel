@@ -38,11 +38,6 @@ def readsAcc : Op → Bool
   | fround | f32to64 | cast .. | fto _ => false
   | _ => true
 
-/-- Whether `eval (eval a b) c = eval a (eval b c)`, so a scan may be cut into blocks and the blocks' totals combined.
-Float `+ *` round, so they are not; `min`/`max` are, as `fmin`/`fmax` are under a total order (a NaN is the least). -/
-def assoc : Op → Bool
-  | add | mul | min | max | and | or | first | last | fmin | fmax => true
-  | _ => false
 
 private def i (x : UInt64) : Int64 := x.toInt64
 private def f (x : UInt64) : Float := Float.ofBits x

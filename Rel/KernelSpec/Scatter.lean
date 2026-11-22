@@ -190,36 +190,5 @@ theorem scatterWords_fold {op : Op} {f : UInt64 → UInt64 → UInt64} (hf : ∀
       · cases h) _ _ ws (by simp) h
   exact ⟨hs, fun j hjn => by rw [hj j]; simp [hjn]⟩
 
-/-- **`scatter .add` counts** (`scatterWords_fold` at `+`): where the words `es` are the naturals `eN` and their sum
-from `fill` stays below `2^64`, cell `j` is `fill` plus the `eN k` of the rows `k` naming `j`, with no wrap. With
-`eN = 1` it is the number of rows naming `j`; a pointwise smaller `eN` gives a smaller cell. -/
-theorem scatterWords_add {is es ws : Array UInt64} {n : Nat} {fill : UInt64}
-    (h : scatterWords .add is es n fill = .ok ws) (eN : Nat → Nat)
-    (he : ∀ k < is.size, es[k]?.getD 0 = (eN k).toUInt64)
-    (hs : fill.toNat + ((List.range is.size).map eN).sum < 2 ^ 64) :
-    ws.size = n ∧ ∀ j < n, (ws[j]?.getD 0).toNat =
-      fill.toNat + (((List.range is.size).filter fun k => (is[k]?.getD 0).toNat = j).map eN).sum := by
-  obtain ⟨hsz, hj⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) h
-  -- a sublist of the rows sums to at most their sum, and summing it in `UInt64` from `a` does not wrap
-  have hle : ∀ (p : Nat → Bool) (l : List Nat), ((l.filter p).map eN).sum ≤ (l.map eN).sum := fun p l => by
-    induction l with
-    | nil => simp
-    | cons k l ih => cases hp : p k <;> simp [hp] <;> omega
-  have hfold : ∀ (l : List Nat) (a : UInt64), (∀ k ∈ l, k < is.size) → a.toNat + (l.map eN).sum < 2 ^ 64 →
-      ((l.map (es[·]?.getD 0)).foldl (· + ·) a).toNat = a.toNat + (l.map eN).sum := fun l => by
-    induction l with
-    | nil => simp
-    | cons k l ih =>
-      intro a hl hb
-      simp only [List.map_cons, List.foldl_cons, List.sum_cons] at hb ⊢
-      have hk : (es[k]?.getD 0).toNat = eN k := by
-        rw [he k (hl k List.mem_cons_self), UInt64.toNat_ofNat']; exact Nat.mod_eq_of_lt (by omega)
-      have ha : (a + es[k]?.getD 0).toNat = a.toNat + eN k := by
-        rw [UInt64.toNat_add, hk]; exact Nat.mod_eq_of_lt (by omega)
-      rw [ih _ (fun k' h' => hl k' (List.mem_cons_of_mem _ h')) (by omega), ha]; omega
-  refine ⟨hsz, fun j hjn => ?_⟩
-  rw [hj j hjn]
-  exact hfold _ _ (fun k hk => List.mem_range.1 (List.mem_filter.1 hk).1)
-    (Nat.lt_of_le_of_lt (Nat.add_le_add_left (hle _ _) _) hs)
 
 end Rel.Verify

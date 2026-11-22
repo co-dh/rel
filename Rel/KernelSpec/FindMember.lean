@@ -8,44 +8,8 @@ import Rel.Kernel.Search
 namespace Rel.Verify
 open Rel Rel.Kernel
 
-/-- A search over `List.range n` answering `n` for "absent" is the position of the first match. -/
-theorem find?_range_getD {α : Type} [BEq α] (f : Nat → α) (y : α) (n : Nat) :
-    ((List.range n).find? fun i => f i == y).getD n = ((List.range n).map f).idxOf y := by
-  suffices h : ∀ k s, ((List.range' s k).find? fun i => f i == y).getD (s + k) =
-      s + ((List.range' s k).map f).idxOf y by
-    have := h n 0; rwa [Nat.zero_add, Nat.zero_add, ← List.range_eq_range'] at this
-  intro k
-  induction k with
-  | zero => intro s; rfl
-  | succ k ih =>
-    intro s
-    rw [List.range'_succ, List.find?_cons, List.map_cons, List.idxOf_cons]
-    cases h : f s == y
-    · simp only [cond_false]
-      rw [show s + (k + 1) = s + 1 + k by omega, ih (s + 1)]; omega
-    · rfl
 
-theorem idxOf_le_length {α : Type} [BEq α] (y : α) (l : List α) : l.idxOf y ≤ l.length := by
-  induction l with
-  | nil => exact Nat.le_refl 0
-  | cons a l ih =>
-    rw [List.idxOf_cons, List.length_cons]
-    cases a == y
-    · exact Nat.succ_le_succ ih
-    · exact Nat.zero_le _
 
-theorem idxOf_lt_length {α : Type} [BEq α] [LawfulBEq α] (y : α) (l : List α) :
-    l.idxOf y < l.length ↔ y ∈ l := by
-  induction l with
-  | nil => exact ⟨fun h => absurd h (Nat.not_lt_zero 0), fun h => nomatch h⟩
-  | cons a l ih =>
-    rw [List.idxOf_cons, List.length_cons, List.mem_cons]
-    cases h : a == y
-    · have hne : ¬ y = a := fun e => Bool.noConfusion ((beq_iff_eq.2 e.symm).symm.trans h)
-      simp only [cond_false]
-      rw [Nat.add_lt_add_iff_right, ih]
-      exact ⟨Or.inr, fun o => o.elim (fun e => absurd e hne) id⟩
-    · exact ⟨fun _ => Or.inl (beq_iff_eq.1 h).symm, fun _ => Nat.succ_pos _⟩
 
 
 
