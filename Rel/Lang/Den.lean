@@ -347,6 +347,9 @@ def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD
 def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
 def foldI : RowCode := ⟨"foldI", fun σ => (.prod (σ₁ σ) (.arr (σ.getD 2 .long)), σ₂ σ)⟩
+def dom : RowCode := ⟨"dom", fun σ => (σ₁ σ, σ₁ σ)⟩
+def ran : RowCode := ⟨"ran", fun σ => (σ₂ σ, σ₂ σ)⟩
+def nil : RowCode := ⟨"nil", fun σ => (σ₁ σ, .arr (σ₂ σ))⟩
 end RowCode
 
 /-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
@@ -409,7 +412,10 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨foldI, fun σ => Sem.two (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ₂ σ))
       (X₂ := .prod (.prod (σ₁ σ) (σ₂ σ)) (σ.getD 2 .long)) (Y₂ := .prod (σ₁ σ) (σ₂ σ)) foldIDen⟩,
    -- the prelude's `star(R) ≜ μX : 𝟙 ∪ R X`, its body as `Tm.den` reads the definition's `μ`
-   ⟨star, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩] ++
+   ⟨star, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩,
+   ⟨dom, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T ≫ T°⟩,
+   ⟨ran, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T° ≫ T°°⟩,
+   ⟨nil, fun _ _ => nilDen⟩] ++
   floatOps.map fun (s, o, _) =>
     ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩
 
@@ -832,6 +838,10 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
   · exact Sem.two_mono foldI_le h
   · dsimp only; refine Sem.one_mono (fun hT => Core.Rel.mu_mono fun _ => le_iff.2 fun _ _ hm => ?_) h
     exact hm.elim .inl fun ⟨b, hb, hx⟩ => .inr ⟨b, le_iff.1 hT _ _ hb, hx⟩
+  -- `dom`, `ran`: `𝟙 ∩ T T°`, `𝟙 ∩ T° T` grow with `T`
+  all_goals
+    dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
+    obtain ⟨he, y, h1, h2⟩ := hm; exact ⟨he, y, le_iff.1 hT _ _ h1, le_iff.1 hT _ _ h2⟩
 
 theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B : Obj} {ss ss' : List Sem}
     (h : Sems.le ss ss') : Prim.den r A B ss ⊑ Prim.den r A B ss' := by

@@ -248,6 +248,18 @@ def foldIRow : Prim :=
 def starRow : Prim :=
   { sym := "star", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B"),
     prelude := `Rel.Programs.prelude.star, keyLift := true }
+/-- `dom(R) = 𝟙 ∩ R R°`, `R` run on the keys in demand (`GenK.dom`); `B` named by its parameter only (`Prim.objs`). -/
+def domRow : Prim :=
+  { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"),
+    written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
+/-- `ran(R) = 𝟙 ∩ R° R`, read whole (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
+def ranRow : Prim :=
+  { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"),
+    written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
+/-- `[] : A ⟶ [B]`, every source to the empty list (`GenK.nil`). -/
+def nilRow : Prim :=
+  { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
+    written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -320,7 +332,7 @@ def prims : List Prim :=
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
      aop := .error "AOP declares no change of a number's representation" },
-   foldIRow, starRow] ++
+   foldIRow, starRow, domRow, ranRow, nilRow] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name
   floatOps.map fun (s, o, u) =>

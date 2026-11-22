@@ -179,7 +179,7 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc",
-   "tails", "takewhile", "sums", "flat", "$", "foldI", "star"] ++ floatOps.map (·.1)
+   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil"] ++ floatOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
@@ -1027,6 +1027,53 @@ theorem rowOK_star : RowOK "star" := rowOK_args (c := RowCode.star) rfl rfl fun 
     · exact GenK.star_sound hss (hw _ (List.mem_singleton_self _))
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
+theorem rowOK_dom : RowOK "dom" := rowOK_args (c := RowCode.dom) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
+  have h1 : rowArity "dom" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, _ | ⟨b, σ⟩⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_cons_succ, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨GenK.dom_wf (hw _ (List.mem_singleton_self _)), fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.dom_sound hss
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
+theorem rowOK_ran : RowOK "ran" := rowOK_args (c := RowCode.ran) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
+  have h1 : rowArity "ran" = 1 := by decide
+  rcases xs with _ | ⟨⟨X, Y, x⟩, _ | ⟨_, _⟩⟩ <;> simp only [List.length_cons, List.length_nil, h1] at hn <;>
+    try omega
+  rcases σ with _ | ⟨a, _ | ⟨b, σ⟩⟩ <;>
+    simp only [Codes.at, List.getElem?_cons_zero, List.getD_cons_zero, List.getD_cons_succ, List.getD_nil] at hv
+  all_goals
+    split at hv
+    case isFalse => simp at hv
+    rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
+    cases hv
+    refine ⟨GenK.ran_wf (hw _ (List.mem_singleton_self _)), fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
+    rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
+    split at hss
+    case isFalse => exact hss.elim
+    rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
+    simp only [Sem.one]
+    split
+    · exact GenK.ran_sound hss
+    · rename_i h; exact absurd ⟨rfl, rfl⟩ h
+
+theorem rowOK_nil : RowOK "nil" := rowOK_of (c := RowCode.nil) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨a, _ | ⟨b, σ⟩⟩ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.nil_wf h hX,
+    ⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h⟩
+
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `rowGens_proved` checks. -/
 theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h4 : r.sym = "τ"; · rw [h4]; exact rowOK_tau
@@ -1058,9 +1105,12 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h32 : r.sym = "$"; · rw [h32]; exact rowOK_cast
   by_cases h33 : r.sym = "foldI"; · rw [h33]; exact rowOK_foldI
   by_cases h34 : r.sym = "star"; · rw [h34]; exact rowOK_star
+  by_cases h35 : r.sym = "dom"; · rw [h35]; exact rowOK_dom
+  by_cases h36 : r.sym = "ran"; · rw [h36]; exact rowOK_ran
+  by_cases h37 : r.sym = "nil"; · rw [h37]; exact rowOK_nil
   by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
   simp [rowsProved, hu, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
-    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34] at h
+    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}
