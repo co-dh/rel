@@ -33,7 +33,7 @@ def run (x : Except String (Tab (.prod .long .long) .long)) : Except String (Lis
 /-- `n` rows `(0, i) ↦ 1`, one key: the row count and the last sum, both `n`. -/
 def ones (n : USize) : Except String (Nat × Int64) := do
   let p ← Arr.pos n
-  let t ← Tab.sums (⟨n, (← Arr.zeros .i64 n, p), ← colArr .add n (← colConst n 1) (← colConst n 0)⟩ :
+  let t ← Tab.sums (⟨n, (← Arr.zeros .i64 n, p), ← colArr .first n .pos .pos .i64 .i64 [] [(.and, 0), (.or, 1)]⟩ :
     Tab (.prod .long .long) .long)
   if h : 0 < t.n.toNat then pure (t.n.toNat, Vals.row (A := .long) t.val ⟨t.n.toNat - 1, by omega⟩)
   else throw "sums: no rows"

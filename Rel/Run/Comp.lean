@@ -90,16 +90,17 @@ def compCuts (bound : Nat) (n : USize) :
     match hP : colPrefix .add K w with
     | .error s => throw s
     | .ok P => if lastCount K P (colPrefix_closed hP).2 ≤ bound then pure none else do
-      let z ← colConst K 0
-      let one ← colConst K 1
+      -- each constant operand a post step (`colMap_const_eq`): `max (x - 1) 0` as `[(.add, 0 - 1), (.max, 0)]`;
+      -- `bc` stays a column for `.div`, whose post step would put the constant on the left
+      let dec : List (Op × UInt64) := [(.add, 0 - 1), (.max, 0)]
       let bc ← colConst K (max bound 1).toUInt64
-      let win ← colMap .div K (← colMap .max K (← colMap .sub K P one) z) bc
-      let big ← colMap .le K bc w
-      let prev ← colMap .max K (← colMap .sub K .pos one) z
+      let win ← colMap .div K (← colMap .first K P P .i64 .i64 [] dec) bc
+      let big ← colMap .first K w w .i64 .i64 [] [(.le, (max bound 1).toUInt64)]
+      let prev ← colMap .first K .pos .pos .i64 .i64 [] dec
       let pw ← kgather K prev K win
       let pb ← kgather K prev K big
       let cut ← colMap .or K (← colMap .ne K win pw) (← colMap .or K big pb)
-      match hI : colPrefix .add K (← colMap .and K cut (← colMap .lt K z .pos)) with
+      match hI : colPrefix .add K (← colMap .and K cut (← colMap .first K .pos .pos .i64 .i64 [] [(.lt, 0)])) with
       | .error s => throw s
       | .ok I =>
         let rowG ← kgather n .pos N (← kscatter .last N p g N 0)

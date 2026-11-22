@@ -11,12 +11,11 @@ open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 open scoped Rel.Core.Rel
 /-- `Arr.zeros` holds `0` at every row. -/
 theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
-  unfold Arr.zeros at h; simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
-  have es := (colMap_raw (colArr_ok h)).2.2.2 _ i.2
-  rw [colConst_raw hc, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
-  simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-  rw [Arr.get_i64, ← es]; rfl
+  unfold Arr.zeros at h
+  obtain ⟨w, hw, es⟩ := colMap_first_chain (colArr_ok h) i.1 i.2
+  simp [chain, Op.eval] at hw
+  have e0 : (raw .i64 n z.enc)[i.1]?.getD 0 = 0 := by simp [es, ← hw]
+  rw [Arr.get_i64, e0]; rfl
 
 /-- **A side of no rows is `Vals.WF`**: an `arr` side of it has no cell. -/
 theorem Vals.none_wf : {A : Obj} → {x : Vals A 0} → Vals.none A = .ok x → Vals.WF x
@@ -398,10 +397,6 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
   · simp [hb, bind, Except.bind] at h
   simp only [hb, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i z hz
-  split at h; · cases h
-  rename_i o ho
-  split at h; · cases h
   rename_i t ht
   split at h; · cases h
   rename_i i hi
@@ -410,19 +405,17 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
   have hk : k.1 < n.toNat := k.2
   refine ⟨?_, ?_⟩
   · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (colArr_ok ht)).1 k
-    obtain ⟨v, ev, hv⟩ := (colMap_get (colArr_ok ht)).2 k.1 hk
-    rw [colConst_raw hz, colConst_raw ho] at ev
+    obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok ht) k.1 hk
     rw [ha] at hv
-    simp only [Array.getElem?_replicate, hk, if_true, Option.getD_some, Op.eval, Except.ok.injEq] at ev
+    simp [chain, Op.eval, bind, Except.bind, pure, Except.pure] at ev
     simp only [if_true, Option.some.injEq] at hv
     subst ev; subst hv
     cases s <;> cases hg : t.get k <;> rw [hg] at he <;> revert he <;> decide
   · rw [Arr.get_i64]
-    obtain ⟨v, ev, hv⟩ := (colMap_get (colArr_ok hi)).2 k.1 hk
-    rw [raw_pos_word hk, colConst_raw hz] at ev
-    simp only [Op.eval, Array.getElem?_replicate, hk, if_true, Option.getD_some, UInt64.add_zero,
-      Except.ok.injEq] at ev
-    have hw : (raw .i64 n i.enc)[k.1]?.getD 0 = k.1.toUInt64 := by simp [hv, ev]
+    obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok hi) k.1 hk
+    rw [raw_pos_word hk] at ev
+    cases ev
+    have hw : (raw .i64 n i.enc)[k.1]?.getD 0 = k.1.toUInt64 := by simp [hv]
     rw [hw, clampFin_word _ (by rw [toNat_toUInt64 (by omega)]; exact hk) (by omega)]
     exact Fin.ext (toNat_toUInt64 (by omega))
 
