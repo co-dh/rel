@@ -154,19 +154,55 @@ def gidOut (dir : String) : Bld Unit := do
 
 rel_program nativeIO where
     obj N
+    obj F : f64
     schema Row = {px : N, qty : N}
+    schema Key = {px : N}
+    schema Q = {qty : N}
+    schema FRow = {px : N, w : F}
     input t : N ⟶ Row from csv "in/t.csv"
     -- the own-format files `output t to "out/io/t"` writes, kept as test/native/in/t
     input s : N ⟶ Row from "in/t"
+    -- keyed: in/k/key/px and in/k/val/qty are in/t's two columns, rows not in key order, so the read sorts them
+    input k : Key ⟶ Q from "in/k"
+    input kc : Key ⟶ Q from csv "in/t.csv"
+    input f : N ⟶ FRow from csv "in/f.csv"
+    -- the own-format files `output f to "out/io/f"` writes, kept as test/native/in/f: a float column mapped from its file
+    input g : N ⟶ FRow from "in/f"
     cp : N ⟶ Row ≜ t
     un : N ⟶ Row ≜ t ∪ t
     cm : N ⟶ N ≜ t t°
+    sk : N ⟶ Row ≜ s ∪ s
     output t to "out/io/t"
     output t to csv "out/io/t.csv"
     output cp to csv "out/io/cp.csv"
     output s to "out/io/s"
+    output s to csv "out/io/s.csv"
+    output sk to "out/io/sk"
     output un to "out/io/un"
     output cm to "out/io/cm"
+    output k to "out/io/k"
+    output k to csv "out/io/k.csv"
+    output kc to "out/io/kc"
+    output f to "out/io/f"
+    output g to "out/io/g"
+    output g to csv "out/io/g.csv"
+
+-- a float column mapped from its file is checked canonical as `Table.readArr` checks it: `-0` and a NaN fail the run,
+-- `+0`, `-2.25` and `+∞` pass, at both float atoms
+#eval show IO Unit from do
+  let check (t : QAtomicType) (ws : Array UInt64) : Except String Unit := do
+    let p ← Bld.plan do canonFloatB "w" t (← lit (.size ws.size.toUSize)) (← lit (Reg.put (wordsFoR ws)))
+    discard <| p.run abiOf
+  let cases : List (QAtomicType × List UInt64 × Array UInt64) :=
+    [(.f64, [0x8000000000000000, 0x7ff8000000000001], #[0, 0xc002000000000000, 0x7ff0000000000000]),
+     (.f32, [0x80000000, 0x7fc00000], #[0, 0xc0100000, 0x7f800000])]
+  for (t, bad, good) in cases do
+    if let .error e := check t good then throw (IO.userError s!"canonFloatB at {repr t} refuses canonical words: {e}")
+    for b in bad do
+      match check t (good.push b) with
+      | .error e => unless e.startsWith "w: a" && (e.splitOn "not canonical").length == 2 do
+          throw (IO.userError s!"canonFloatB at {repr t} fails {b} with {e}")
+      | .ok _ => throw (IO.userError s!"canonFloatB at {repr t} passes the word {b}")
 
 /-- `R`'s Lean value written to `dir` (`writeRel`), its error the program's. -/
 def semOut {A B : Obj} (R : Except String (Tab A B)) (dir : String) : IO Unit := do writeRel dir (← IO.ofExcept R)
