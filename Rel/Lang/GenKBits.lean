@@ -37,7 +37,7 @@ theorem Tab.index_spec {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h
   obtain ⟨-, hfill, hlast⟩ := (scatterWords_spec _ _ _ _).2 _ hw
   have hix : ∀ q < g.toNat, ((raw .i64 g cx)[q]?.getD 0).toNat = fx q := fun q hq => by
     rw [(hfx q hq).1, toNat_toUInt64 (by have := (hfx q hq).2; omega)]
-  have gj := (kgather_word h j.1 j.2).2
+  have gj := (kgather_word h (kscatter_plain hsc (colMap_plain hio)) j.1 j.2).2
   rw [(hfv j.1 j.2).1, toNat_toUInt64 (by have := (hfv j.1 j.2).2; omega)] at gj
   rw [gj]
   by_cases hex : ∃ q < g.toNat, fx q = fv j.1
