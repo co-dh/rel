@@ -19,7 +19,8 @@ theorem kgather_valid {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o
   exact (foRWords_valid _ _ _).2 _ hws
 
 /-- **A gathered `Arr` is an `Arr` of its type**: the source is a valid column under `Enc.WF`, so a `foR` one at a type
-with a width, whose words at `u1` are below `2`; the gathered words are some of them. -/
+with a width, whose words at `u1` but a null's are below `2`; a gathered row that is no null reads a source row that is
+no null (its flag moves with it, `raw_kgather`), so its word is one of them. -/
 theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n) (h : kgather m ix n x.enc = .ok o) :
     Enc.WF t m o := by
   have hv := kgather_valid h
@@ -28,20 +29,32 @@ theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n
   generalize x.enc = e at hv hw hlt ⊢
   cases e with
   | foR md pk =>
-    have hw' : t.width.isSome = true ∧
-        (t = .u1 → ∀ i < n.toNat, (Column.foRBits md pk (Column.blockStarts md) i).toNat < 2) := by
+    have hw' : t.width.isSome = true ∧ (t = .u1 → ∀ i < n.toNat, ∀ v,
+        Column.foROpt md pk (Column.blockStarts md) i = some v → v.toNat < 2) ∧
+        n.toNat ≤ Column.blk md * Column.nblk md := by
       cases t <;> simp only [Enc.WF] at hw <;>
-        first | exact ⟨hw.1, hw.2.1⟩ | exact ⟨hw.1, fun _ => hw.2.1 trivial⟩ | exact ⟨hw.1, fun h => absurd h (by decide)⟩
-    refine (wordsFoR_closed _ (by rw [Array.size_map, his])).2.2 hw'.1 fun hu k hk => ?_
+        first | exact ⟨hw.1, hw.2.1, hw.2.2.1⟩ | exact ⟨hw.1, fun _ => hw.2.1 trivial, hw.2.2.1⟩ | exact ⟨hw.1, fun h => absurd h (by decide), hw.2.1⟩
+    refine (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.2.2 hw'.1 fun hu k hk hnk => ?_
     rw [Array.size_map] at hk
     have hi := hlt k (by omega)
     rw [Array.getElem?_eq_getElem hk, Option.getD_some] at hi
+    -- the source row is no null: no block is flagged, or its flag is the gathered row's
+    have hnn : Column.foRNul md pk (Column.blockStarts md) (Enc.raw .i64 m ix)[k].toNat = false := by
+      cases hN : hasNul (.foR md pk : Enc)
+      · simp only [hasNul, List.any_eq_false, List.mem_range, Bool.not_eq_true] at hN
+        simp only [Column.foRNul, hN _ (Nat.div_lt_of_lt_mul (Nat.lt_of_lt_of_le hi hw'.2.2)), Bool.false_and]
+      · cases hf : Column.foRNul md pk (Column.blockStarts md) (Enc.raw .i64 m ix)[k].toNat
+        · rfl
+        · rw [hN, if_pos rfl] at hnk; unfold nulMap at hnk
+          rw [bitAt_packOf _ _ k (by simpa using hk)] at hnk
+          simp [hk, foRNuls, hi, hf] at hnk
     simp only [Array.getElem_map, raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
       Array.getElem?_range, hi, if_true, Option.map_some, Option.getD_some, Nat.reduceMul, ofNat_toNat_mod64]
-    exact UInt64.lt_iff_toNat_lt.2 (hw'.2 hu _ hi)
+    exact UInt64.lt_iff_toNat_lt.2 (hw'.2.1 hu _ hi _ (by simp [Column.foROpt, hnn]))
   | pos =>
     -- `pos` is a column only at `i64` (`Enc.WF`), where the gathered words need no bound
     cases t <;> simp only [Enc.WF] at hw
+    simp only [hasNul, Bool.false_eq_true, if_false]
     exact (wordsFoR_closed _ (by rw [Array.size_map, his])).2.2 rfl (fun h => absurd h (by decide))
   | _ => all_goals simp only [Kernel.Enc.Valid] at hv
 
@@ -62,12 +75,20 @@ theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {p
   unfold colMap at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact kscan_closed hr
+  exact ⟨(kscan_closed hr).1, (kscan_closed hr).2.1⟩
+
+/-- `colMap`'s answer holds no null (`kscan_closed`). -/
+theorem colMap_plain {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
+    (h : colMap op n a b t s pre post = .ok o) : hasNul o = false := by
+  unfold colMap at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+  exact (kscan_closed hr).2.2
 
 /-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Arr.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=
   match h : kgather m ix n x.enc with
-  | .ok o => .ok (Arr.mk o (Arr.kgather_wf x h))
+  | .ok o => .ok (Arr.mk o (Arr.kgather_wf x h) (by rw [Verify.kgather_plain h x.plain]; exact Verify.hasNul_wordsFoR _))
   | .error s => .error s
 
 /-- The rows `ix` (`m` positions) of the side `x`: each atom column `Arr.gather`ed at `ix`; a `sum` side gathers its tag
@@ -78,7 +99,7 @@ def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n 
   | .arr _, _, ⟨c, lo, hi, f⟩ => do pure ⟨c, ← Arr.gather m ix lo, ← Arr.gather m ix hi, f⟩
   | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, ← Arr.gather m ix tag, ← Arr.gather m ix idx, x, y⟩
   -- no column, but `ix` is checked as every side's is: gathering the positions `0 … n-1` refuses an index past `n`
-  | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial); pure ()
+  | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial rfl); pure ()
 
 /-- The positions of the `1` words among the `m` words `b` (each `0` or `1`), ascending, and their count `K`. WHERE
 as `scan → scatter`, O(m) and no sort: the prefix sum `s` of `b` (`kscan .add`, one segment) returns the count `K` as

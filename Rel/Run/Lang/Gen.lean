@@ -29,11 +29,12 @@ def unhex (s : String) : ByteArray := Id.run do
   pure b
 
 /-- The `foR` column of `t` whose metadata and pack are the hex texts `m` and `p`, rebuilt as it was written, and its
-    fit as its ok bit: `Enc.WF` is decided, so a payload that does not fit `n` is a blank column with bit false, never a
+    fit as its ok bit: `Enc.WF` and no null (`hasNul`) are decided, so a payload that does not fit `n` is a blank column with bit false, never a
     wrong column read as right. -/
 def atom (t : QAtomicType) (n : USize) (m p : String) : Arr t n × Bool :=
   let e := Enc.foR (unhex m) (unhex p)
-  if h : Enc.WF t n e then (Arr.mk e h, true) else (Arr.mk (Enc.blank t n) (Enc.blank_WF t n), false)
+  if h : Enc.WF t n e ∧ hasNul e = false then (Arr.mk e h.1 h.2, true)
+  else (Arr.mk (Enc.blank t n) (Enc.blank_WF t n) (Enc.blank_plain t n), false)
 
 /-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs. -/
 def pairV (A B : Obj) (n : USize) (x : Vals A n × Bool) (y : Vals B n × Bool) : Vals (.prod A B) n × Bool :=
