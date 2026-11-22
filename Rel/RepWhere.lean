@@ -40,8 +40,8 @@ open Classical in
 count of them (`kscatter .add`) its width, so cell `i` reads its own run's kept rows, as offsets `u`. The counts sum
 to the `K` kept rows, so the new cells lie inside the payload: `positions` keeps `Tab.WF` (`Vals.cells_wf`). -/
 theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n} {res : Tab (.arr B) (.arr .long)}
-    (h : Tab.positions P X = .ok res) : (∀ xs ys, res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧
-      ys = positionsL (fun x => decide (∃ y, P.Holds x y)) xs) ∧ (Vals.WF X → res.WF) := by
+    (h : Tab.positions P X = .ok res) (wP : P.WF) (wX : Vals.WF X) : (∀ xs ys, res.Holds xs ys ↔
+      (∃ i, X.row i = xs) ∧ ys = positionsL (fun x => decide (∃ y, P.Holds x y)) xs) ∧ res.WF := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.positions] at h
   split at h; · cases h
@@ -105,7 +105,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
       rwa [colConst_raw hcD, Array.getElem?_replicate, if_pos ht, Option.getD_some] at this
     rw [← Except.ok.inj es]
     have hDn := D.n.toNat_lt_size
-    rcases Tab.index_spec hia ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
+    rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
     · have hk : ∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y := ((Tab.dom_holds hD _ _).1 ⟨a, hra, rfl⟩).2
       have hne : (raw .i64 T ia)[t]?.getD 0 ≠ D.n.toUInt64 := fun c => by
         have := congrArg UInt64.toNat c; rw [ea, USize.toNat_toUInt64] at this; omega
@@ -165,8 +165,8 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
   suffices hY' : ∀ i : Fin n.toNat, Vals.row Y i =
       positionsL (fun x => decide (∃ y, P.Holds x y)) (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) by
-    refine ⟨fun xs ys => ?_, fun hX =>
-      canon_wf h ⟨hX, Vals.cells_wf hY cN hcn (by rw [hK]; exact Nat.le_refl _) (by omega) trivial⟩⟩
+    refine ⟨fun xs ys => ?_,
+      canon_wf h ⟨wX, Vals.cells_wf hY cN hcn (by rw [hK]; exact Nat.le_refl _) (by omega) trivial⟩⟩
     rw [canon_holds h]
     simp only [Tab.Holds]
     constructor
@@ -214,16 +214,16 @@ namespace Lang.GenK
 open Classical in
 /-- `positions(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.positions`): each array in demand to the positions
 of its elements in `dom T` (`elemsTest_sound`). -/
-theorem positions_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF → R.Reps K T) :
+theorem positions_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.elems B B (.arr .long) R fun P X => Tab.positions P X).Reps K
       (fun xs ys => ys = positionsL (fun x => decide (∃ y, T x y)) xs) :=
   elemsTest_sound (C := .arr .long) (F := fun p (xs : List B.El) => positionsL p xs)
-    (fun h xs ys => (Tab.positions_spec h).1 xs ys)
+    (fun h wP wX xs ys => (Tab.positions_spec h wP wX).1 xs ys)
     (fun p q xs h => by
       simp only [positionsL]; congr 1; exact List.filter_congr fun t _ => by
         cases e : xs[t]? with
         | none => rfl
-        | some x => simp only [Option.any_some]; exact h x (List.mem_of_getElem? e)) hR
+        | some x => simp only [Option.any_some]; exact h x (List.mem_of_getElem? e)) hR wR
 
 end Lang.GenK
 
