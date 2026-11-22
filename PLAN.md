@@ -866,7 +866,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       状态（2026-11-19 13:42，master `f90f42e`，`make check` 绿，compile-diff 427 / 33）：新 kernel 上仍 3 / 15；RELK 80。
       已合入：`kbitrows` + `Tab.compBits` / `Tab.ldivBits` + 定理 `Tab.compBits_comp` / `Tab.ldivBits_ldiv`（同样的行，`Canon` 未证）；
       `Tab.comp` 展开分块（`blockRows = 2^24`，`comp_holds` 不变）；`kasc` 的 `cmp_rows` 每元素读一次整列宽度的问题已修
-      （基准 64 s → 0.39 s）；`own_write` 创建缺失的父目录。未做：编译器选用 `compBits`、去掉 `sudokupc9` 与 `muGrow` 的固定、
+      （基准 64 s → 0.39 s）；`own_write` 创建缺失的父目录。未做：编译器选用 `compBits`、去掉 `sudokupc9` 与 `muGrow` 的固定
+      （✅ 2026-11-22 核对 `cd3523e`：`GenK.compR` / `ldiv` / `rdiv` / `ldivM` 经 `Tab.compSelM` / `Tab.ldivSel` 按 `Tab.bitsWin`
+      选，`66384ef`；`sudokupc9` 的 `rel.kernel false` 随 `9907da6` 删去；`muGrow` 走 kernel 路径，`3d7d677`）、
       T6 / T8（`t68c`，闭项只算一次的规则见 architecture §0 草稿）。
       状态（2026-11-19 16:34，master `a362914`，`make check` 绿，compile-diff 598 / 34，旧条目无变化）：新 kernel 上 17 / 17
       （全部程序 `offKernel = []`）；RELK 80。T3–T9 完成。已合入：T6 / T8、`rows5`（`inits tails concat filter takewhile`）、
