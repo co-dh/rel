@@ -1808,9 +1808,9 @@ theorem compR_runE (r : Tab A B) (s : Tab B C) (K : Known A C) :
   rcases Tab.compSelM Tab.bitsMax r s with e | t | ⟨g, w, o, ra, rc⟩ <;> rfl
 
 theorem compR_sound {r : Tab A B} {s : Tab B C} {K : Known A C} {Z : Core.Rel A.El C.El}
-    (H : Agrees K (rep r ≫ rep s) Z) : (compR r s).Reps K Z := by
+    (wr : r.WF) (ws : s.WF) (H : Agrees K (rep r ≫ rep s) Z) : (compR r s).Reps K Z := by
   rw [reps_iff, compR_runE]; intro t ht x z hx hz ho
-  exact (Tab.compSel_holds ht x z).trans (H x z hx hz ho)
+  exact (Tab.compSel_holds ht wr ws x z).trans (H x z hx hz ho)
 
 theorem compR_wf {r : Tab A B} {s : Tab B C} (wr : r.WF) (ws : s.WF) : (compR r s).Wf := by
   unfold compR; split
@@ -1818,7 +1818,7 @@ theorem compR_wf {r : Tab A B} {s : Tab B C} (wr : r.WF) (ws : s.WF) : (compR r 
   next t h => exact Tab.compSelM_inl_wf h wr ws
   all_goals trivial
 
-theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.El C.El} (wS : S.Wf)
+theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.El C.El} (wr : r.WF) (wS : S.Wf)
     (H : ∀ s, S.runE {} = .ok s → Agrees K (rep r ≫ rep s) Z) : (compV r S).Reps K Z := by
   cases S with
   | bits g w o x ra y rc =>
@@ -1830,8 +1830,8 @@ theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.
       · exact absurd hs (hr e)
       split
       · rw [reps_iff]; intro t ht
-        rw [Tab.compTabMat_law hc ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx]; exact H s hs
-      · exact compR_sound (H s hs)
+        rw [Tab.compTabMat_law hc ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx wr wS.2.1]; exact H s hs
+      · exact compR_sound wr (Tab.ofBits_wf hs wS.2.1 wS.2.2) (H s hs)
   | tab t0 =>
     cases t0 with
     | error e => rw [reps_iff]; intro t ht; nomatch ht
