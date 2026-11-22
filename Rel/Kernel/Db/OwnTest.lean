@@ -81,8 +81,8 @@ foR: metadata 57 bytes, pack 256 bytes
 #guard_msgs in
 #eval (ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key)
 /--
-info: ("error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
- "error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
+info: ("error: a column of kind and part count 2:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
+ "error: a column of kind and part count 2:2 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -139,34 +139,34 @@ body:   byte 8: format version 5, found 2; a file before version 5 may hold the 
 
 -- a kind at a part count not its own
 /--
-info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 2 with 1 parts
-body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 2 with 1 parts
+info: extern: byte 11: a constructor kind and part count 2:2, found kind 2 with 1 parts
+body:   byte 11: a constructor kind and part count 2:2, found kind 2 with 1 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(12, 1)])
 
 -- kinds 0 (`bytes`), 1 (the bitmap) and 3 (`alp`) are gone, each refused at its old part count
 /--
-info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 0 with 1 parts
-body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 0 with 1 parts
+info: extern: byte 11: a constructor kind and part count 2:2, found kind 0 with 1 parts
+body:   byte 11: a constructor kind and part count 2:2, found kind 0 with 1 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 0), (12, 1)])
 
 /--
-info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 1 with 1 parts
-body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 1 with 1 parts
+info: extern: byte 11: a constructor kind and part count 2:2, found kind 1 with 1 parts
+body:   byte 11: a constructor kind and part count 2:2, found kind 1 with 1 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 1), (12, 1)])
 
 /--
-info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 3 with 3 parts
-body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 3 with 3 parts
+info: extern: byte 11: a constructor kind and part count 2:2, found kind 3 with 3 parts
+body:   byte 11: a constructor kind and part count 2:2, found kind 3 with 3 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 3), (12, 3)])
 
 -- the writer refuses kind 1 too
 /--
-info: ("error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name",
- "error: a column of kind and part count 2:2 or 4:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name")
+info: ("error: a column of kind and part count 2:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name",
+ "error: a column of kind and part count 2:2 and a domain name under 65536 bytes, given kind 1 with 1 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -178,8 +178,8 @@ info: ("error: a column of kind and part count 2:2 or 4:2 and a domain name unde
 
 -- the worst kind and part count a header can hold, refused whole by both
 /--
-info: extern: byte 11: a constructor kind and part count 2:2 or 4:2, found kind 255 with 65535 parts
-body:   byte 11: a constructor kind and part count 2:2 or 4:2, found kind 255 with 65535 parts
+info: extern: byte 11: a constructor kind and part count 2:2, found kind 255 with 65535 parts
+body:   byte 11: a constructor kind and part count 2:2, found kind 255 with 65535 parts
 -/
 #guard_msgs in #eval readBoth (mutate good [(11, 255), (12, 255), (13, 255)])
 
