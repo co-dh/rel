@@ -18,9 +18,9 @@ variable {k v : Obj}
 
 /-- **`R ∩ S`'s rows are distinct**: two of them are rows of `R.concat S` with unequal codes (`inter_sorted`), and
     `kasc` ran on that table's columns, so equal rows would have equal codes (`Vals.codes_of_row`). -/
-theorem inter_distinct {R S U : Tab k v} (h : R.inter S = .ok U) {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
-    (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
-  obtain ⟨C, es, hC, hes, sel, hs, hlt⟩ := Tab.inter_sorted h
+theorem inter_distinct {R S U : Tab k v} (h : R.inter S = .ok U) (wR : R.WF) (wS : S.WF) {j j' : Fin U.n.toNat}
+    (hjj : j ≠ j') : (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
+  obtain ⟨C, es, hC, hes, sel, hs, hlt⟩ := Tab.inter_sorted h wR wS
   obtain ⟨cs, hc⟩ : ∃ cs, es.mapM (ascCol C.n) = .ok cs := by
     unfold Tab.inter Tab.select at h
     obtain ⟨⟨C', tag⟩, hCt, h⟩ := GenK.bind_ok h
@@ -60,9 +60,10 @@ theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den 
       Y'.toList.Nodup ∧ (∀ a b, Y'.Holds a b ↔ X.Holds a b ∧ Φ (rep X) a b) ∧ Y'.WF := by
     intro X Y Y' wX hY hp
     obtain ⟨g, hg, hi⟩ := bind_ok hY
-    refine ⟨(Tab.pack_toList hp).2 ▸ Tab.toList_nodup fun _ _ => Tab.inter_distinct hi, fun a b => ?_,
-      Tab.pack_wf hp (Tab.inter_wf hi wX ((wφ X wX).runE Known.wf_empty hg))⟩
-    rw [Tab.pack_holds hp, Tab.inter_holds hi, eφ X g wX hg]; rfl
+    have wg := (wφ X wX).runE Known.wf_empty hg
+    refine ⟨(Tab.pack_toList hp).2 ▸ Tab.toList_nodup fun _ _ => Tab.inter_distinct hi wX wg, fun a b => ?_,
+      Tab.pack_wf hp (Tab.inter_wf hi wX wg)⟩
+    rw [Tab.pack_holds hp, Tab.inter_holds hi wX wg, eφ X g wX hg]; rfl
   unfold Tab.nu at h
   obtain ⟨T, hT, h⟩ := bind_ok h
   obtain ⟨X, Y, ⟨dX, nX, sX, wX⟩, hY, hp, hn⟩ := Tab.fixOn_inv
