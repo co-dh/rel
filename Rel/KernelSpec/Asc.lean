@@ -182,19 +182,28 @@ theorem ascCol_ok : ∀ {m : USize} {c : AscKey × Enc} {x : Array UInt64} {k : 
     cases hix : foRWords "asc: cells" m e with
     | error s => simp [hix, bind, Except.bind] at h
     | ok ix =>
+      cases hn0 : noNul "asc: cells" m e with
+      | error s => simp [hix, hn0, bind, Except.bind] at h
+      | ok u0 =>
       cases hf : ix.find? (n.toNat ≤ ·.toNat) with
-      | some r => simp [hix, hf, bind, Except.bind] at h
+      | some r => simp [hix, hn0, hf, bind, Except.bind] at h
       | none =>
         cases hl : foRWords "asc: cells lo" n lo with
-        | error s => simp [hix, hf, hl, bind, Except.bind] at h
+        | error s => simp [hix, hn0, hf, hl, bind, Except.bind] at h
         | ok l =>
+          cases hn1 : noNul "asc: cells lo" n lo with
+          | error s => simp [hix, hn0, hf, hl, hn1, bind, Except.bind] at h
+          | ok u1 =>
           cases hh : foRWords "asc: cells hi" n hi with
-          | error s => simp [hix, hf, hl, hh, bind, Except.bind] at h
+          | error s => simp [hix, hn0, hf, hl, hn1, hh, bind, Except.bind] at h
           | ok hw =>
+            cases hn2 : noNul "asc: cells hi" n hi with
+            | error s => simp [hix, hn0, hf, hl, hn1, hh, hn2, bind, Except.bind] at h
+            | ok u2 =>
             cases hks : ascCodes c els with
-            | error s => simp [hix, hf, hl, hh, hks, bind, Except.bind] at h
+            | error s => simp [hix, hn0, hf, hl, hn1, hh, hn2, hks, bind, Except.bind] at h
             | ok ks =>
-              simp only [hix, hf, hl, hh, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
+              simp only [hix, hn0, hf, hl, hn1, hh, hn2, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
                 Prod.mk.injEq] at h
               obtain ⟨rfl, rfl⟩ := h
               obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hix

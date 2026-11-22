@@ -119,19 +119,23 @@ mutual
 /-- One key column of `kasc` at `m` rows: the words it carries and its order code columns, or why it has none. An
 `atom` column carries its `m` words (`ascWords`) coded at its type (`ascOrd`, which cuts a word to the type's width):
 a type with no order, then `ascWords`' error. A `cells` column carries its `m` words, each below its `n` cells, and is
-coded by `cellFns` over `lo`, `hi` and its payload's codes (`ascCodes` at `c` rows): the column, a word naming no
-cell, `lo`, `hi`, then the payload's first error. -/
+coded by `cellFns` over `lo`, `hi` and its payload's codes (`ascCodes` at `c` rows): the column, a null in it (a
+null names no cell, `noNul`), a word naming no cell, `lo` and a null in it, `hi` and a null in it, then the payload's
+first error. -/
 def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (Array UInt64))
   | (.atom t, e) => match ascOrd t with
     | none => .error s!"asc: type {t.ctorIdx} has no fixed-width order"
     | some f => (fun x => (x, nulCodes m e (x.map f))) <$> ascWords m (t, e)
   | (.cells n c lo hi els, e) => do
     let ix ← foRWords "asc: cells" m e
+    noNul "asc: cells" m e
     match ix.find? (n.toNat ≤ ·.toNat) with
     | some r => .error s!"asc: cells: row word {r} names no cell of {n}"
     | none => do
       let l ← foRWords "asc: cells lo" n lo
+      noNul "asc: cells lo" n lo
       let h ← foRWords "asc: cells hi" n hi
+      noNul "asc: cells hi" n hi
       let ks ← ascCodes c els
       pure (ix, (cellFns c.toNat l h ks).map fun f => ix.map f)
 
