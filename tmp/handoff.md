@@ -18,19 +18,25 @@ Branch `worktree-agent-a548a38c7a7771465` (contains afaa894 and lohi11). Build p
   `Tab.concat_wf`, `Tab.union_wf` → RepSetOps; `Tab.compExpand_wf`, `Tab.compOne_wf`, `Tab.compBlock_wf` →
   RepTabComp (before `foldlM_union`). Deleted from RepWF.
 
+- `Rel.RepStruct` builds. RepWF's base `_wf` block (`Arr.zeros_get`, `foldlM_keeps`, `Vals.none_wf`, `zero_wf`,
+  `dom_wf`, `ran_wf`, `idU_wf`, `conv_wf`, `outl_wf`, `outr_wf`, `tagged_wf`, `select_wf`, `inter_wf`, `diff_wf`,
+  `diag_wf`, `ofBits_wf`, `Vals.cross_wf`, `cross_wf`, `top_wf`, `prod_wf`, `inl_wf`, `inr_wf`, `compBlocks_wf`,
+  `compFrom_wf`, `comp_wf`, `pair_wf`, `flat_wf`) moved verbatim to the top of RepStruct (after its `open`s) and
+  deleted from RepWF (RepWF now starts at "The bit-matrix and division ops"; RepWF not rebuilt yet).
+  `pair_holds` (`hR hS`), `flat_holds` (`hX : Vals.WF X` `hR`), `inlConv_holds`/`inrConv_holds` (`hX`) take WF.
+
 ## Edited, not yet built
 - RepBits: `compBits_holds` takes `hR hS` (code2 of `R.val`, `S.key`: `hR.2 hS.1`); `ldivBits_holds` takes
   `hR hS hUB hUC` (code2 pairs guessed as `(R.key,S.key)`, `(R.val,UB.key)`, `(S.val,UC.key)` → check the three
   `Vals.code2_spec … hX hY` lines against `Tab.ldivBits`' code2 arguments); `compBits_comp`, `ldivBits_ldiv`,
   `ldivSel_holdsBy`, `ldivSel_holds` take the same WF args; `compSel_holds` passes `hR hS` to `compFrom_canon`.
-- RepStruct: `pair_holds` takes `hR hS` (the table `⟨R.n, (R.key, R.val), R.key⟩` is WF by `⟨⟨hR.1, hR.2⟩, hR.1⟩`).
 
-## Failing (`lake build Rel.RepTabComp Rel.RepBits`, log `/data/tmp/job/85s2c-b4.log`)
-- RepStruct.lean:186-195 `flat_holds`: `comp_holds h`, `inter_holds hJ`, `comp_holds hL`, `comp_holds hM` need the
-  WF of `X`'s outl/outr/conv tables and of `R`. The `_wf` lemmas it needs (`outl_wf`, `outr_wf`, `conv_wf`,
-  `inter_wf` → `select_wf` → `tagged_wf`) are in RepWF (RepWF.lean:93-129 now), DOWNSTREAM of RepStruct.
-- RepStruct.lean:301-309 `inlConv_holds`, 354-362 `inrConv_holds`: `diff_holds hM`, `comp_holds hE` need WF.
-- RepTabArith.lean:213-245 `Tab.succ_holds`, 471-499 `Tab.arith_holds`: `comp_holds`/`union_holds`/… need WF.
+## Failing (`lake build Rel.RepStruct Rel.RepTabArith`, log `/data/tmp/job/85s2c-b8.log`)
+- RepTabArith.lean:209-245 `Tab.succ_holds` (errors 213:74 unsolved `case hR`, 240/245 `x : K.El` passed where a WF
+  proof is expected), 471-499 `Tab.arith_holds` (476:65 unsolved, 487/499 `simp` made no progress): thread WF the
+  same way (the `_wf` lemmas are now all in RepStruct/RepTabComp/RepSetOps, upstream of RepTabArith).
+- Every `_holds` that composes ops now discharges its intermediate tables' WF with the moved `_wf` lemmas, as in
+  `flat_holds` (RepStruct): `have w := comp_wf hL (outl_wf hO1 hX) hR` etc., then `comp_holds hL w1 hR`.
 - Not reached yet: RepTabDiv (`Vals.cat_row` ~715, `ldivOf_holds` ~1521, `lamOf_canon` ~2253, `union_nodup`,
   `diag_holds`), RepWFOps (`mu_holds`, `star_holds`, `est_holds`, `thin_den`), GenKBits (`index_spec`,
   `code2_rep_inj`, `ldivTabMat_spec`, `inter_law`, `compR_sound`), GenKFold (`foldRounds_holds`, `filter_holds`,
