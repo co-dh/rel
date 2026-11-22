@@ -317,6 +317,7 @@ def ofExc {α : Type} : Except String α → Bld α
   | .ok a => pure a
   | .error e => throw e
 
+open Rel.Kernel in
 /-- **`stepColsAt`**: the value verb `k` at `t` on the `n` operand rows `a`, `b`, its answer and keep flag; at `i64`
     `stepCols`' compares, at a float atom `fstepArr` (one pass by `fverbOne`, else `fverbBy` on the widened columns,
     each pass a `mapB`) and `nanFlag`. -/
@@ -444,12 +445,12 @@ def ascB (B : Obj) (P : TabB) : Bld TabB := do
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`). Any other row is refused, naming it: each reads or answers an array or a
     sum side. -/
-def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List ((C : Obj) × (D : Obj) × (Dom → Bld TabB))) : Bld TabB := do
+def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld TabB := do
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
   else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
   else if c == ``Tab.asc then match xs with
-    | [⟨_, _, x⟩] => ascB B (← x {})
+    | [x] => ascB B (← x {})
     | _ => throw s!"asc given {xs.length} relations, not one"
   else throw s!"row `{r.sym}` (`{c}`): it reads or answers an array or a sum side, whose `cells` keys no plan recipe builds yet"
 
@@ -521,7 +522,7 @@ partial def argB (σ : List (Nat × Side × Side)) (D : Dom) (A B : Obj) :
   | .call ks _ _ b, xs | .callCv ks _ _ _ b _, xs => do
     let bs ← (ks.zip xs).mapM fun (k, ⟨_, _, x⟩) => return (k, ← sidesOf (← tabB σ {} x))
     tabB (bs ++ σ) D b
-  | .prim r, xs => rowB r A B D (xs.map fun ⟨C, E, x⟩ => ⟨C, E, (tabB σ · x)⟩)
+  | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
   | t, [] => tabB σ D t
   | _, xs => throw s!"{xs.length} relations given to a term that is no row and no call"
 end

@@ -11,7 +11,6 @@ namespace Rel.Lang.TestNative
 
 open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel
 
-open Rel.Programs.prelude in
 rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
@@ -38,6 +37,8 @@ rel_program native1a where
     mn : N×N ⟶ N ≜ w minus
     dv : N×N ⟶ N ≜ w div
     tm : N×N ⟶ N ≜ w times
+    f(S : X ⟶ N) : X ⟶ N ≜ S succ ∪ S
+    fc : X ⟶ N ≜ f(x)
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
@@ -143,7 +144,15 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("pr", semOut native1a.pr), ("cx", semOut native1a.cx), ("po", semOut native1a.po), ("pl", semOut native1a.pl),
    ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("le", semOut native1a.le), ("lt", semOut native1a.lt),
    ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
-   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm)]
+   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc)]
+
+-- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
+#eval show IO Unit from do
+  let p ← IO.ofExcept (Bld.plan do discard <| crossB (← lit (.size 32768)) (← lit (.size 8193)) [] [])
+  match p.run abiOf with
+  | .error e => unless e.startsWith "cross: values of the left object by values of the right, past the bound 268435456" do
+      throw (IO.userError s!"crossB past crossMax fails with {e}")
+  | .ok _ => throw (IO.userError "crossB of 32768 × 8193 rows passed `crossMax`")
 
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
