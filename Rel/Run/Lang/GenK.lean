@@ -133,10 +133,13 @@ def bound {A B : Obj} (K : Known A B) (r : Tab A B) : Except String (Tab A B × 
   let t ← cut K r; let d ← Tab.dom t; let l ← Tab.ran t
   pure (t, ⟨some ⟨d.n, d.key⟩, some ⟨l.n, l.key⟩, some t⟩)
 
-/-- `T ∩ S` in `K`, `T` already run: its table bounds `S` (`bound`), a bit matrix's read back as rows (in `ν` the
-    `ldiv` beside a parameter run on demand is one); a lazy or failed `T` meets `S` run on `K`. -/
+/-- `T ∩ S` in `K`, `T` already run: its table bounds `S` (`bound`); a bit matrix bounds each side `K` leaves unknown
+    by its own row and column values, never read back as rows (in `ν` the `ldiv` beside a parameter run on demand is
+    one, and its matrix can be far larger than its sides); a lazy or failed `T` meets `S` run on `K`. -/
 def meetOn {A B : Obj} (K : Known A B) (T S : Rel A B) : Rel A B := match T with
   | .lazy _ => meetV T (S.force K)
+  | .bits (n := n) (m := m) _ _ _ x _ y _ =>
+    meetV T (S.force ⟨K.dom.orElse fun _ => some ⟨n, x⟩, K.ran.orElse fun _ => some ⟨m, y⟩, none⟩)
   | T => match T.runE {} with
     | .ok r => match bound K r with
       | .ok p => meetV (.tab (.ok p.1)) (S.force p.2)
