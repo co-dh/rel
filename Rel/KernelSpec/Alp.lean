@@ -131,11 +131,12 @@ theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0
   have hwt : w.toUSize.toNat = w := by
     rcases System.Platform.numBits_eq with h | h <;> simp [Nat.toUSize, h] <;> omega
   unfold Kernel.Coc.encodeAt
-  simp only [hwt, Nat.one_shiftLeft]
+  simp only [hwt, Nat.one_shiftLeft, bitAt_empty, Bool.and_false, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
+    Bool.true_and]
   generalize x.size / w = n
   have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb ⊢
-  generalize Kernel.Coc.planBlock lg w n pl x = blk at hpb ⊢
+  generalize Kernel.Coc.planBlock lg w n pl x .empty = blk at hpb ⊢
   have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
     ((Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg))).map fun x =>
       (x.1.toUInt64, x.2.1.toUInt64, x.2.2.1, x.2.2.2.2)) (fun b h => by
@@ -394,12 +395,13 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
   have hB16 : 2 ^ lg ≤ 65536 := Nat.pow_le_pow_right (by decide) hlg.2
   unfold Kernel.Coc.encodeAt
-  simp only [hwt, Nat.one_shiftLeft]
+  simp only [hwt, Nat.one_shiftLeft, bitAt_empty, Bool.and_false, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
+    Bool.true_and]
   generalize x.size / w = n
   have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
   have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb h32 ⊢
-  generalize Kernel.Coc.planBlock lg w n pl x = blk at hpb ⊢
+  generalize Kernel.Coc.planBlock lg w n pl x .empty = blk at hpb ⊢
   generalize hbs : Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)) = bs
   have hbsz : bs.size = (n + 2 ^ lg - 1) / 2 ^ lg := by rw [← hbs]; simp
   have hbget : ∀ b (h : b < bs.size), bs[b] = blk b := by
@@ -441,9 +443,12 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
       Column.nblk M := by simp [hnb]
   generalize Array.map (fun x : Int64 × Int64 × UInt64 × Int64 × Nat => (x.2.2.2.1 - x.1).toUInt64) bs = fs at hfsz ⊢
   generalize (fs.any fun a => a != 0) = frm
-  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2) hnb (fun c h => by rw [(hMb c h).2]; simp)
+  -- a block with no null has a width byte below 128, so its residual width `% 128` is the byte
+  have hd128 : ∀ c (h : c < bs.size), bs[c].2.2.2.2 % 128 = bs[c].2.2.2.2 := fun c h => by
+    rw [hbget c h]; exact Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (hpb c (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.1 (by decide))
+  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2 % 128) hnb (fun c h => by rw [(hMb c h).2]; simp [hd128 c h])
     (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
-      (a.1 ++ Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
+      (a.1 ++ Kernel.Coc.packRes (2 ^ lg) (e.2.2.2.2 % 128) fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
     (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>

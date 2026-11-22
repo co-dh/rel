@@ -1235,6 +1235,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `widthAt` 同读法）。`CocTest`：三对 `decide`/`#guard`（混合块、全 null 块、无 null = `encode`）与 `foROpt` 读回；
     Rust 测试 `encode_nul_puts_nulls_in_band`。剩：`Vals` 的 sum 分支及其后各项（见上）；待主人定：null 码是否
     每块都留（见交接报告的代价）。
+    rq17b 第 1 步已做：写入器只有一个。`Coc.encodeAt lg w x patch nul`（`nul` 默认空位图）/ `Coc.encode w x nul`
+    （extern `qlean_coc_encode`，`qlean_coc_encode_nul`、`encodeNul`、`encodeNulAt`、Rust `encode_nul` 删除）；
+    块步 `Coc.planBlock … nul b`：块内有 null 走 `nulBlock`（置位、不打补丁），否则走原 `blockOf`+`planOf`。
+    “每块都留 null 码”只改 `planBlock` 这一处。Rust：`Sink::write_nul`、`enc::move_blk` 按块分 `nul_meta`/`nul_pack`
+    与 `for_meta`/`for_pack`。`Encoding.foRBits_encode`、`planBlock_bounds` 以空位图陈述（`bitAt_empty`）。
+    剩：第 2–5 步（`Vals (.sum (.atom t) .one) := Arr t n` 及其各用处、kernel 在块上判 null、CSV 3 → 1、decode-allow）。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。

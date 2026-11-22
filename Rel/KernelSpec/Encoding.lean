@@ -704,17 +704,21 @@ theorem planOf_bounds (pl : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) :
       · exact Nat.lt_succ_iff.1 (List.mem_range.1 hc)
       · exact ha
 
+/-- The empty bitmap marks no row: the writer's `nul` for a column with no null. -/
+@[simp] theorem bitAt_empty (i : Nat) : Column.bitAt ByteArray.empty i = false := by
+  unfold Column.bitAt; rw [getElem?_neg _ _ (by simp)]; simp
+
 /-- Block `b`'s plan against its keys: the minimum is one of them and at most each, the frame lies at or above the
 minimum, the width is at most 64, and with patching off no key lies outside the frame. -/
 theorem planBlock_bounds (lg w n : Nat) (pl : Bool) (x : ByteArray) (b : Nat) (hb : b * 2 ^ lg < n) :
-    (Kernel.Coc.planBlock lg w n pl x b).1.toInt ≤ (Kernel.Coc.planBlock lg w n pl x b).2.2.2.1.toInt ∧
-    (Kernel.Coc.planBlock lg w n pl x b).2.2.2.2 ≤ 64 ∧
+    (Kernel.Coc.planBlock lg w n pl x .empty b).1.toInt ≤ (Kernel.Coc.planBlock lg w n pl x .empty b).2.2.2.1.toInt ∧
+    (Kernel.Coc.planBlock lg w n pl x .empty b).2.2.2.2 ≤ 64 ∧
     (∃ j, b * 2 ^ lg ≤ j ∧ j < b * 2 ^ lg + 2 ^ lg ∧ j < n ∧
-      Kernel.Coc.keyAt w x j = (Kernel.Coc.planBlock lg w n pl x b).1) ∧
+      Kernel.Coc.keyAt w x j = (Kernel.Coc.planBlock lg w n pl x .empty b).1) ∧
     ∀ i, b * 2 ^ lg ≤ i → i < b * 2 ^ lg + 2 ^ lg → i < n →
-      (Kernel.Coc.planBlock lg w n pl x b).1.toInt ≤ (Kernel.Coc.keyAt w x i).toInt ∧
-      (pl = false → Kernel.Coc.outside (Kernel.Coc.planBlock lg w n pl x b).2.2.2.1
-        (Kernel.Coc.planBlock lg w n pl x b).2.2.2.2 (Kernel.Coc.keyAt w x i) = false) := by
+      (Kernel.Coc.planBlock lg w n pl x .empty b).1.toInt ≤ (Kernel.Coc.keyAt w x i).toInt ∧
+      (pl = false → Kernel.Coc.outside (Kernel.Coc.planBlock lg w n pl x .empty b).2.2.2.1
+        (Kernel.Coc.planBlock lg w n pl x .empty b).2.2.2.2 (Kernel.Coc.keyAt w x i) = false) := by
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
   have hbo := fun i => blockOf_bounds (2 ^ lg) w n b x i
   have hW : (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.2.2 = Column.widthFor
@@ -744,11 +748,12 @@ theorem planBlock_bounds (lg w n : Nat) (pl : Bool) (x : ByteArray) (b : Nat) (h
   rw [← hW] at hd hp
   obtain ⟨j0, h0a, h0b, h0c, h0k⟩ := hK _ hmn
   have hb64 := (hbo j0 h0a h0b h0c).2.2
-  have e : Kernel.Coc.planBlock lg w n pl x b = ((Kernel.Coc.blockOf (2 ^ lg) w n b x).1,
+  have e : Kernel.Coc.planBlock lg w n pl x .empty b = ((Kernel.Coc.blockOf (2 ^ lg) w n b x).1,
       (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.1, (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.2.1,
       Kernel.Coc.planOf pl ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
         fun j => Kernel.Coc.keyAt w x (b * 2 ^ lg + j)) (Kernel.Coc.blockOf (2 ^ lg) w n b x).1
-        (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.1 w) := rfl
+        (Kernel.Coc.blockOf (2 ^ lg) w n b x).2.1 w) := by
+    unfold Kernel.Coc.planBlock; simp only [bitAt_empty]; exact if_neg (by rw [Array.any_eq_true]; simp)
   rw [e]; dsimp only
   have hf' : ∃ j, b * 2 ^ lg ≤ j ∧ j < b * 2 ^ lg + 2 ^ lg ∧ j < n ∧ Kernel.Coc.keyAt w x j =
       (Kernel.Coc.planOf pl ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
@@ -1046,12 +1051,13 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
   have hB16 : 2 ^ lg ≤ 65536 := Nat.pow_le_pow_right (by decide) hlg.2
   unfold Kernel.Coc.encodeAt
-  simp only [hwt, Nat.one_shiftLeft]
+  simp only [hwt, Nat.one_shiftLeft, bitAt_empty, Bool.and_false, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
+    Bool.true_and]
   generalize hn : x.size / w = n at *
   have hpb := fun b => planBlock_bounds lg w n (patch && decide (n < 2 ^ 32)) x b
   have h32 : (patch && decide (n < 2 ^ 32)) = true → n < 2 ^ 32 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 32)) = pl at hpb h32 ⊢
-  generalize Kernel.Coc.planBlock lg w n pl x = blk at hpb ⊢
+  generalize Kernel.Coc.planBlock lg w n pl x .empty = blk at hpb ⊢
   generalize hbs : Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)) = bs
   have hbsz : bs.size = (n + 2 ^ lg - 1) / 2 ^ lg := by rw [← hbs]; simp
   have hbget : ∀ b (h : b < bs.size), bs[b] = blk b := by
@@ -1124,10 +1130,13 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     rcases (by omega : w = 1 ∨ w = 2 ∨ w = 3 ∨ w = 4 ∨ w = 5 ∨ w = 6 ∨ w = 7 ∨ w = 8) with
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> cases fr <;> decide
   generalize (fs.any fun a => a != 0) = frm at hfr0 ⊢
-  -- the residuals
-  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2) hnb (fun c h => by rw [(hMb c h).2]; simp)
+  -- the residuals; a block with no null has a width byte below 128, so its residual width `% 128` is the byte
+  have hd128 : ∀ c (h : c < bs.size), bs[c].2.2.2.2 % 128 = bs[c].2.2.2.2 := fun c h => by
+    rw [hbget c h]; exact Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (hpb c (mul_lt_of_lt_cdiv hBp (hbsz ▸ h))).2.1 (by decide))
+  have hdi : (blk (i / 2 ^ lg)).2.2.2.2 % 128 = (blk (i / 2 ^ lg)).2.2.2.2 := hbget _ hib ▸ hd128 _ hib
+  have hQ := pack_blockStart M (2 ^ lg) hBM bs (·.2.2.2.2 % 128) hnb (fun c h => by rw [(hMb c h).2]; simp [hd128 c h])
     (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
-      (a.1 ++ Kernel.Coc.packRes (2 ^ lg) e.2.2.2.2 fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
+      (a.1 ++ Kernel.Coc.packRes (2 ^ lg) (e.2.2.2.2 % 128) fun j => (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.outside e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
     (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>
@@ -1189,8 +1198,8 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
         UInt64.add_comm, UInt64.sub_add_cancel]
     case h4 =>
       intro k hk
-      have hq := hQ.2 (i / 2 ^ lg) hib k (by rw [packRes_size, hbget _ hib]; exact hk)
-      rw [hbget _ hib] at hq
+      have hq := hQ.2 (i / 2 ^ lg) hib k (by rw [packRes_size, hbget _ hib, hdi]; exact hk)
+      rw [hbget _ hib, hdi] at hq
       rw [getElem?_pos _ k (by rw [packRes_size]; exact hk)] at hq ⊢
       exact ba_append_of _ _ _ _ hq
   · -- patched: its own bits
