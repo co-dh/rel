@@ -1409,16 +1409,18 @@ theorem pack_holds {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') (a : k.El)
 end Tab
 
 
-/-- **`ldiv` holds as `ldivDen`**: a pair `(b, c)` of the counting stage has as many `R`-witnesses `a` of `b` with
-`S a c` as `R`-witnesses of `b` at all, so (rows being distinct) every one; the vacuous `b`s come from the `CROSS`. -/
-theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
-    (h : Tab.ldiv R S UB UC = .ok T) (b : B.El) (c : C.El) :
-    T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c := by
+/-- **`ldivOf` holds as `ldivDen`** on canonical `r`, `s`: a pair `(b, c)` of the counting stage has as many
+`r`-witnesses `a` of `b` with `s a c` as `r`-witnesses of `b` at all, so (rows being distinct) every one; the vacuous
+`b`s come from the `CROSS`. -/
+theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
+    (hr : r.Canonical) (hs : s.Canonical) (h : Tab.ldivOf r s UB UC = .ok T) (b : B.El) (c : C.El) :
+    T.Holds b c ↔ Lang.ldivDen r.Holds s.Holds UB.Holds UC.Holds b c := by
   classical
-  unfold Tab.ldiv at h
+  obtain ⟨R, hr⟩ := hr; obtain ⟨S, hs⟩ := hs
+  rw [show r.Holds = R.Holds from funext fun a => funext fun b => propext (canon_holds hr a b),
+    show s.Holds = S.Holds from funext fun a => funext fun c => propext (canon_holds hs a c)]
+  unfold Tab.ldivOf at h
   simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨s, hs, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
@@ -1694,10 +1696,10 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
       have h1 := (diff_holds hdf _ _).1 ⟨i, rfl, rfl⟩
       obtain ⟨e, hb⟩ := (ran_holds hub _ _).1 h1.1
       rw [← e] at h1
-      exact ⟨hb, fun ha => h1.2 ((ran_holds hrr _ _).2 ⟨rfl, ha⟩)⟩
+      exact ⟨hb, fun ⟨a, ha⟩ => h1.2 ((ran_holds hrr _ _).2 ⟨rfl, a, (canon_holds hr _ _).2 ha⟩)⟩
     · rintro ⟨hb, hn⟩
-      obtain ⟨i, h1, -⟩ := (diff_holds hdf b b).2
-        ⟨(ran_holds hub b b).2 ⟨rfl, hb⟩, fun h' => hn ((ran_holds hrr b b).1 h').2⟩
+      obtain ⟨i, h1, -⟩ := (diff_holds hdf b b).2 ⟨(ran_holds hub b b).2 ⟨rfl, hb⟩, fun h' =>
+        hn (((ran_holds hrr b b).1 h').2.imp fun a ha => (canon_holds hr a b).1 ha)⟩
       exact ⟨i, h1⟩
   have hU : (∃ j, uc.key.row j = c) ↔ ∃ c', UC.Holds c' c := by
     constructor
@@ -1725,7 +1727,18 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
       · exact absurd ha hb
       · exact Or.inr ⟨⟨hb', hb⟩, hc'⟩
 
-/-- **`rdiv` holds as `rdivDen`**: it is `ldiv` of the two converses, conversed (`R / S = (S° \ R°)°`). -/
+/-- **`ldiv` holds as `ldivDen`**: `ldivOf_holds` at `canon R`, `canon S`. -/
+theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
+    (h : Tab.ldiv R S UB UC = .ok T) (b : B.El) (c : C.El) :
+    T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c := by
+  simp only [Tab.ldiv, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨s, hs, h⟩ := h
+  rw [ldivOf_holds ⟨R, hr⟩ ⟨S, hs⟩ h, show r.Holds = R.Holds from funext fun a => funext fun b => propext
+    (canon_holds hr a b), show s.Holds = S.Holds from funext fun a => funext fun c => propext (canon_holds hs a c)]
+
+/-- **`rdiv` holds as `rdivDen`**: it is `ldivOf` of the two converses (`canon` answers), conversed
+(`R / S = (S° \ R°)°`). -/
 theorem Tab.rdiv_holds {A B C : Obj} {R : Tab A C} {S : Tab B C} {UA : Tab A A} {UB : Tab B B} {T : Tab A B}
     (h : Tab.rdiv R S UA UB = .ok T) (a : A.El) (b : B.El) :
     T.Holds a b ↔ Lang.rdivDen R.Holds S.Holds UA.Holds UB.Holds a b := by
@@ -1734,7 +1747,7 @@ theorem Tab.rdiv_holds {A B C : Obj} {R : Tab A C} {S : Tab B C} {UA : Tab A A} 
   rw [Except.bind_eq_ok'] at h; obtain ⟨S', hS, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨R', hR, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨L, hL, h⟩ := h
-  rw [conv_holds h, ldiv_holds hL]
+  rw [conv_holds h, ldivOf_holds ⟨_, hS⟩ ⟨_, hR⟩ hL]
   simp only [Lang.ldivDen, Lang.rdivDen, conv_holds hS, conv_holds hR, and_comm (a := ∃ b', UB.Holds b' b)]
 
 /-! ## Checks on `foR` tables -/

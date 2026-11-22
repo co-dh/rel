@@ -850,20 +850,28 @@ theorem Tab.compSel_holds {bits : Nat} {R : Tab A B} {S : Tab B C} {X : Tab A C}
       simp only [Tab.compBits, bind]; rw [hm]; exact h
     · rw [Except.bind_eq_ok'] at he; obtain ⟨Y, hY, he⟩ := he; exact hF hY (hP he)
 
-/-- **`R.ldivSel bits S UB UC` denotes `R\S` within `UB`, `UC`** at every `bits`: its bit branch by
-`Tab.ldivBits_holds`, its other by `Tab.ldiv_holds`. -/
-theorem Tab.ldivSel_holds {bits : Nat} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
-    (h : Tab.ldivSel bits R S UB UC = .ok T) (b : B.El) (c : C.El) :
+/-- **`R.ldivSel d bits S UB UC` denotes `R\S` within `UB`, `UC`** at every `bits`, where the division `d` does on
+`R`, `S`: its bit branch by `Tab.ldivBits_holds`, its other by `hd`. -/
+theorem Tab.ldivSel_holdsBy {d : Tab A B → Tab A C → Tab B B → Tab C C → Except String (Tab B C)} {bits : Nat}
+    {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
+    (hd : ∀ {T}, d R S UB UC = .ok T → ∀ b c, T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c)
+    (h : Tab.ldivSel d bits R S UB UC = .ok T) (b : B.El) (c : C.El) :
     T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c := by
   simp only [Tab.ldivSel, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨x, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   split at h
-  · exact Tab.ldiv_holds h b c
+  · exact hd h b c
   · rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
     split at h
     · exact Tab.ldivBits_holds h b c
-    · exact Tab.ldiv_holds h b c
+    · exact hd h b c
+
+/-- **`R.ldivSel ldiv bits S UB UC` denotes `R\S` within `UB`, `UC`**: `ldivSel_holdsBy` with `Tab.ldiv_holds`. -/
+theorem Tab.ldivSel_holds {bits : Nat} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
+    (h : Tab.ldivSel Tab.ldiv bits R S UB UC = .ok T) (b : B.El) (c : C.El) :
+    T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c :=
+  Tab.ldivSel_holdsBy (fun h => Tab.ldiv_holds h) h b c
 
 end Rel

@@ -364,7 +364,8 @@ theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X 
     rw [agrees_empty hr, agrees_empty hs, agrees_empty ((reps_iff _ _ _).1 (hA {}) ua hua),
       agrees_empty ((reps_iff _ _ _).1 (hB {}) ub hub)]
     intro x y _ _ _
-    refine (Tab.conv_holds ht x y).trans ((Tab.ldivSel_holds hq y x).trans ?_)
+    refine (Tab.conv_holds ht x y).trans
+      ((Tab.ldivSel_holdsBy (fun h => Tab.ldivOf_holds ⟨_, hsc⟩ ⟨_, hrc⟩ h) hq y x).trans ?_)
     simp only [ldivDen, rdivDen, rep_apply, Tab.conv_holds hsc, Tab.conv_holds hrc]
     exact and_congr Iff.rfl (or_congr Iff.rfl and_comm)
 

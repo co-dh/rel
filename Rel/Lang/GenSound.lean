@@ -449,8 +449,12 @@ theorem Tab.inits_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
     T.Holds xs yss ↔ (∃ i, X.row i = xs) ∧ yss = (List.range (xs.length + 1)).map fun k => xs.take k := by
   unfold Tab.inits at h
   obtain ⟨P, hP, h⟩ := GenK.bind_ok h
-  rw [Tab.lam_den h]
-  exact and_congr_right fun hx => lamDen_inits xs (fun ys => (Tab.prefix_holds hP xs ys).trans (and_iff_right hx)) yss
+  have hP' := hP; unfold Tab.prefix at hP'
+  obtain ⟨u, -, hP'⟩ := GenK.bind_ok hP'; obtain ⟨o, -, hP'⟩ := GenK.bind_ok hP'
+  obtain ⟨U, hU, -⟩ := Tab.comp_canon hP'
+  rw [Tab.lamOf_den hU h]
+  exact and_congr_right fun hx => lamDen_inits xs (fun ys =>
+    (Tab.canon_holds hU xs ys).symm.trans ((Tab.prefix_holds hP xs ys).trans (and_iff_right hx))) yss
 
 theorem rowOK_inits : RowOK "inits" := rowOK_of (c := RowCode.inits) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
