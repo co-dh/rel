@@ -441,36 +441,48 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Co
   | _, _, _, _, _ => 𝟘
 end
 
-/-- **`dom` is a row**: `Tm.dom R`, `domRow` given `R`, means `𝟙 ∩ R R°`. -/
-theorem Tm.dom_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.dom R).den ρ = 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)° := by
+/-- `domRow` at `A ⟶ A` given `T : A ⟶ B` means `𝟙 ∩ T T°`; its definition `⟨𝟙,R⟩π₁` means the same
+    (`Tm.dfnCut_den`). -/
+theorem Prim.den_domRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
+    Prim.den domRow A A [⟨A, B, T⟩] = 𝟙 _ ∩ T ≫ T° := by
   have ho : domRow.objs A A [(A, B)] = some [A, B] := by
     simp [Prim.objs, Option.orElse, domRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == domRow.sym) =
       some ⟨RowCode.dom, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T ≫ T°⟩ := rfl
-  simp only [Tm.dom, Tm.den, Tm.argDen]; unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  unfold Prim.den; simp only [List.map_cons, List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- **`ran` is a row**: `Tm.ran R`, `ranRow` given `R`, means `𝟙 ∩ R° R`. -/
-theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°° := by
+/-- `ranRow` at `B ⟶ B` given `T : A ⟶ B` means `𝟙 ∩ T° T`; its definition `dom(R°)` means the same
+    (`Tm.dfnCut_den`). -/
+theorem Prim.den_ranRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
+    Prim.den ranRow B B [⟨A, B, T⟩] = 𝟙 _ ∩ T° ≫ T°° := by
   have ho : ranRow.objs B B [(A, B)] = some [A, B] := by
     simp [Prim.objs, Option.orElse, ranRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == ranRow.sym) =
       some ⟨RowCode.ran, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) fun T => 𝟙 _ ∩ T° ≫ T°°⟩ := rfl
-  simp only [Tm.ran, Tm.den, Tm.argDen]; unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  unfold Prim.den; simp only [List.map_cons, List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- **`[]` is a row**: `Tm.nil`, `nilRow`, means `nilDen`. -/
-theorem Tm.nil_den (ρ : Val) {A B : Obj} : (Tm.nil : Tm A (.arr B)).den ρ = nilDen := by
+/-- `nilRow` at `A ⟶ [B]` means `nilDen`; its definition `Λ(𝟘)` means the same (`Tm.dfnCut_den`). -/
+theorem Prim.den_nilRow {A B : Obj} : Prim.den nilRow A (.arr B) [] = nilDen := by
   have ho : nilRow.objs A (.arr B) [] = some [A, B] := by
     simp [Prim.objs, Option.orElse, nilRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == nilRow.sym) = some ⟨RowCode.nil, fun _ _ => nilDen⟩ := rfl
-  simp only [Tm.nil, Tm.den]; unfold Prim.den; simp only [List.map_nil]
+  unfold Prim.den; simp only [List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+/-- `Tm.dom R`, `domRow` given `R`, means `𝟙 ∩ R R°` (`Prim.den_domRow`). -/
+theorem Tm.dom_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.dom R).den ρ = 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)° := by
+  simp only [Tm.dom, Tm.den, Tm.argDen]; exact Prim.den_domRow _
+
+/-- `Tm.ran R`, `ranRow` given `R`, means `𝟙 ∩ R° R` (`Prim.den_ranRow`). -/
+theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°° := by
+  simp only [Tm.ran, Tm.den, Tm.argDen]; exact Prim.den_ranRow _
 
 /-- `Rᴵ`'s definition `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Pre.flat`) means `flatDen`: the `(a', b)` of `R` at the key,
     kept where `a'` is the source, then `b`. -/

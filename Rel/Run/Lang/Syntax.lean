@@ -248,15 +248,18 @@ def foldIRow : Prim :=
 def starRow : Prim :=
   { sym := "star", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B"),
     prelude := `Rel.Programs.prelude.star, keyLift := true }
-/-- `dom(R) = 𝟙 ∩ R R°`, `R` run on the keys in demand (`GenK.dom`); `B` named by its parameter only (`Prim.objs`). -/
+/-- `dom(R) = 𝟙 ∩ R R°`, the fused form of its definition `⟨𝟙,R⟩π₁` (`Elab.dfns`), `R` run on the keys in demand
+    (`GenK.dom`); `B` named by its parameter only (`Prim.objs`). -/
 def domRow : Prim :=
   { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"), conv := "dom",
     written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
-/-- `ran(R) = 𝟙 ∩ R° R` (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
+/-- `ran(R) = 𝟙 ∩ R° R`, the fused form of its definition `dom(R°)` (`Elab.dfns`), one column sorted where the
+    definition sorts two (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
 def ranRow : Prim :=
   { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"), conv := "ran",
     written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
-/-- `[] : A ⟶ [B]`, every source to the empty list (`GenK.nil`). -/
+/-- `[] : A ⟶ [B]`, every source to the empty list, the fused form of its definition `Λ(𝟘)` (`Elab.dfns`), a
+    constant column (`GenK.nil`). -/
 def nilRow : Prim :=
   { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
     written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
