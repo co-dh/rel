@@ -313,16 +313,25 @@ def lgOf (metadata : ByteArray) : Nat := min 16 (max 6 (lgAt metadata))
 /-- `2 ^ lgOf`, the elements a block holds. -/
 def blk (metadata : ByteArray) : Nat := 2 ^ lgOf metadata
 
-/-- What `blk` runs as: a `UInt64` shift. `2 ^ lgOf` runs as `lean_nat_pow` and `1 <<< lgOf` on `Nat` as
-`lean_nat_shiftl`, and both go through a GMP `mpz` (alloc, `mul_2exp`, free) even for a small result; `foRBits` takes
-`blk` on every element it reads and `blockStart` on every block it sums, which made GMP a fifth of `TestCompile`. -/
-private def blkImpl (metadata : ByteArray) : Nat := ((1 : UInt64) <<< (lgOf metadata).toUInt64).toNat
+/-- A power of two as a word: `UInt64`'s `^` multiplies words, where `Nat`'s `^` and `<<<` run as `lean_nat_pow`,
+`lean_nat_shiftl`, which build a GMP number even for a small result. -/
+theorem toUInt64_pow (a k : Nat) : (a ^ k : Nat).toUInt64 = a.toUInt64 ^ k := by
+  induction k with
+  | zero => rfl
+  | succ k ih => rw [Nat.pow_succ, UInt64.pow_succ, ← ih]; exact UInt64.ofNat_mul _ _
+
+theorem toNat_pow {a k : Nat} (h : a ^ k < 2 ^ 64) : (a.toUInt64 ^ k).toNat = a ^ k := by
+  rw [← toUInt64_pow]; exact Nat.mod_eq_of_lt h
+
+theorem toUInt64_two_pow_sub_one (k : Nat) : (2 ^ k - 1 : Nat).toUInt64 = (2 : UInt64) ^ k - 1 := by
+  rw [show (2 : UInt64) = Nat.toUInt64 2 from rfl, ← toUInt64_pow]; exact UInt64.ofNat_sub Nat.one_le_two_pow
+
+/-- What `blk` runs as: a word power (`toNat_pow`), since `foRBits` takes `blk` on every element it reads. -/
+private def blkImpl (metadata : ByteArray) : Nat := ((2 : UInt64) ^ lgOf metadata).toNat
 
 @[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by
-  funext m
-  have h : lgOf m < 64 := by unfold lgOf; omega
-  have h2 : 2 ^ lgOf m < 2 ^ 64 := Nat.pow_lt_pow_right (by decide) h
-  simp [blk, blkImpl, UInt64.toNat_shiftLeft, Nat.shiftLeft_eq, Nat.mod_eq_of_lt h, Nat.mod_eq_of_lt h2]
+  funext m; rw [blk, blkImpl]
+  exact (toNat_pow (a := 2) (Nat.pow_lt_pow_right (by decide) (by unfold lgOf; omega))).symm
 
 /-- The `lg` every encoder writes. -/
 def lgEnc : Nat := 10

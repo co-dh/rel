@@ -30,6 +30,10 @@ def nu (f : Tab A B → Except String (Tab A B)) (top : Tab A B) : Except String
   fixOn Tab.n Tab.pack s!"Tab.nu: the row count still moved at {T.n} rows of top" (fun X => f X >>= X.inter)
     (T.n.toNat + 2) T
 
+/-- The most rounds a loop with no bound of its own runs (`star`, the `μ` of `GenK.hylo`): `Int64`'s greatest value,
+past the rows any table holds. `USize.size` is `2^64`, a GMP `Nat` that every round's count-down subtracts from. -/
+@[noinline] def roundsMax : Nat := 2 ^ 63 - 1
+
 /-- What the `μ` `what` reports when its rounds reach its cap `n`, on either path (`Expand.mus`, `Tab.mu`). -/
 def capMsg (what : String) (n : Nat) : String := s!"{what} ran its cap of {n} rounds without reaching a fixed point"
 
@@ -44,8 +48,8 @@ made canonical; a round composes only the frontier, `N = Δ ≫ R` (`step` given
 round. It stops when `X` keeps its row count (`fixOn`), so `Δ'` is empty; each other round adds a row of `X`. -/
 def star {K B : Obj} (step : Tab B B → Except String (Tab B B)) (P : Tab K B) : Except String (Tab K B) := do
   let P ← P.canon
-  let r ← fixOn (fun s => s.1.n) (fun s => do pure (← s.1.pack, ← s.2.pack)) (capMsg "star" USize.size)
-    (fun s => do let D ← (← s.2.comp (← step (← s.2.ran))).diff s.1; pure (← s.1.union D, D)) USize.size (P, P)
+  let r ← fixOn (fun s => s.1.n) (fun s => do pure (← s.1.pack, ← s.2.pack)) (capMsg "star" roundsMax)
+    (fun s => do let D ← (← s.2.comp (← step (← s.2.ran))).diff s.1; pure (← s.1.union D, D)) roundsMax (P, P)
   pure r.1
 
 /-- **The rounds of a fold** (`fold`, `foldr`, `foldI`), at most `f`: `rest` holds at each key `k` the part of its

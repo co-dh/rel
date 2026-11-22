@@ -353,7 +353,7 @@ def cycleMsg (what : String) : String := s!"{what} reaches a node from itself, s
 def hylo (A B : Obj) (what : String) (ch : Rel A A) (φ : Tab A B → Rel A B) : Rel A B :=
   ofVals _ _ fun X => do
   let D ← Tab.idU X
-  let N ← Tab.mu what USize.size fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)
+  let N ← Tab.mu what Tab.roundsMax fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)
   let C ← (compT (.ok N) ch).runE {}
   let cyc ← Tab.nu (fun P => do (← C.comp P).dom) N
   if cyc.n != 0 then throw s!"{cycleMsg what} ({cyc.n} of {N.n} nodes)"

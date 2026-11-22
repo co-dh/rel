@@ -95,6 +95,16 @@ expansion's `rowBits · T` bits. -/
 def bitsWin (bits T na g w : Nat) : Bool :=
   na * w ≤ bits && g * w ≤ bits && na * w < 2 ^ 32 && g * w < 2 ^ 32 && na * w + g * w < rowBits * T
 
+/-- What `bitsWin` runs as: `< 2 ^ 32` as a shift, since a `Nat` literal past `2^32` is built from its digits by GMP
+(`lean_cstr_to_nat`) on every call. -/
+private def bitsWinImpl (bits T na g w : Nat) : Bool :=
+  na * w ≤ bits && g * w ≤ bits && (na * w) >>> 32 == 0 && (g * w) >>> 32 == 0 && na * w + g * w < rowBits * T
+
+@[csimp] private theorem bitsWin_eq_impl : @bitsWin = @bitsWinImpl := by
+  have e (x : Nat) : (x >>> 32 == 0) = decide (x < 2 ^ 32) := by
+    cases h : decide (x < 2 ^ 32) <;> simp_all [Nat.shiftRight_eq_div_pow, Nat.div_eq_zero_iff]
+  funext bits T na g w; simp only [bitsWin, bitsWinImpl, e]
+
 /-- **`R ≫ S`, on a bit matrix where `bitsWin` holds** (`compBits`, `Tab.compBits_holds`), else `compFrom` on the
 same `compGroups` (`Tab.comp_canon`). `T` is `compGroups`' expansion, the matrix `K` rows (`K` the middle values, as
 `compBits`' `kb`) and `ka` rows of `kc` bits. A nonempty expansion has `ka, kc ≥ 1`, so `rowBits · T ≤ K + 1` fails
