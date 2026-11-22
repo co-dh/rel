@@ -392,3 +392,65 @@ info: ["val\nx\ny\n", "val\nx\ny\nz\n", "val\nx\n"]
   let r ← [d ++ "/a-out.csv", d ++ "/u.csv", d ++ "/i.csv"].mapM fun f : String => IO.FS.readFile f
   IO.FS.removeDirAll d
   return r
+
+/-! ## Own symbol columns: one dictionary per library (owner decisions N, Q, O) -/
+
+-- each program writes one own table into the library `one` (the directory holding it), so its dictionary starts as
+-- `one`'s and the texts it adds are appended there
+rel_program libAIO where
+    obj N
+    obj S : sym
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-lib/a.csv"
+    output a to "/data/tmp/rel-test-io-lib/one/a"
+
+rel_program libBIO where
+    obj N
+    obj S : sym
+    input b : N ⟶ S from csv "/data/tmp/rel-test-io-lib/b.csv"
+    output b to "/data/tmp/rel-test-io-lib/one/b"
+
+rel_program libMeetIO where
+    obj N
+    obj S : sym
+    input a : N ⟶ S from "/data/tmp/rel-test-io-lib/one/a"
+    input b : N ⟶ S from "/data/tmp/rel-test-io-lib/one/b"
+    input c : N ⟶ S from csv "/data/tmp/rel-test-io-lib/c.csv"
+    common : N ⟶ S ≜ a ∩ b
+    both : N ⟶ S ≜ a ∪ c
+    output common to "/data/tmp/rel-test-io-lib/one/common"
+    output both to "/data/tmp/rel-test-io-lib/one/both"
+
+-- by hand: `libAIO` writes `a` = ibm aapl into `one` (ids 0 1, the dictionary `ibm aapl`); `libBIO` writes `b` =
+-- msft aapl, interned into that dictionary: msft takes id 2 and aapl keeps 1. `libMeetIO` reads both as they lie and
+-- `c.csv` = zz ibm into `one`'s dictionary (zz 3, ibm 0): `common` = a ∩ b = {(1,1)}, renumbered (0,1); `both` =
+-- a ∪ c = {(0,0),(0,3),(1,0),(1,1)}, renumbered; the dictionary after is `ibm aapl msft zz`
+/--
+info: (["ibm", "aapl", "msft", "zz"], [[(0, 0), (1, 1)], [(0, 2), (1, 1)], [(0, 1)], [(0, 0), (1, 3), (2, 0), (3, 1)]])
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-lib"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nibm\naapl\n"
+  IO.FS.writeFile (d ++ "/b.csv") "val\nmsft\naapl\n"
+  IO.FS.writeFile (d ++ "/c.csv") "val\nzz\nibm\n"
+  libAIO.io; libBIO.io; libMeetIO.io
+  let S : Schema := [("val", .atom .sym)]
+  let D ← Table.libDict (d ++ "/one")
+  let r ← ["a", "b", "common", "both"].mapM fun t => return (← Table.read S (d ++ "/one/" ++ t)).toList
+  IO.FS.removeDirAll d
+  return (D.toList.map fun (_, b) => String.ofList (b.map fun (c : UInt64) => Char.ofNat c.toNat), r)
+
+-- two own inputs with symbol columns in two libraries, met by `∩`: refused where the program is elaborated
+/--
+error: rel_program expansion: the symbol columns of `a` are ids in the library /data/tmp/rel-test-io-lib/one and those of `b` in the library /data/tmp/rel-test-io-lib/two, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)
+-/
+#guard_msgs in
+rel_program twoLibT where
+    obj N
+    obj S : sym
+    input a : N ⟶ S from "/data/tmp/rel-test-io-lib/one/a"
+    input b : N ⟶ S from "/data/tmp/rel-test-io-lib/two/b"
+    common : N ⟶ S ≜ a ∩ b
+    output common to "/data/tmp/rel-test-io-lib/one/common"

@@ -259,4 +259,63 @@ info: /data/tmp/rel-test-table/symbad/s: 1 of 1 ids are past the dictionary of 1
   writeVals (A := .arr (.atom .char)) dir "sym" x
   IO.println (say (← (readDict dir).toBaseIO))
 
+/-! ## One dictionary per library (owner decisions N, Q, O) -/
+
+/-- The texts `xs` as a side of `[C]`, each its bytes. -/
+def strs (xs : List String) : IO (Vals (.arr (.atom .char)) xs.length.toUSize) := do
+  let bs := xs.flatMap (·.toUTF8.toList)
+  let ls := xs.map (·.utf8ByteSize)
+  let lo := (ls.foldl (fun (acc, s) l => (acc ++ [s], s + l)) (([] : List Nat), 0)).1
+  return ⟨bs.length.toUSize, ← longs _ (lo.map Int64.ofNat), ← longs _ ((lo.zipWith (· + ·) ls).map Int64.ofNat),
+    Arr.ofFn .char bs.length.toUSize fun i => (bs.getD i.val 0).toUInt64⟩
+
+-- by hand: the library `lib`, the directory holding `t1` and `t2`, has no dictionary at first; `t1` with the texts
+-- `ibm aapl` gets ids `0 1` and the dictionary `ibm aapl` in `lib`; `t2` with `msft ibm`, interned into that
+-- dictionary, gets `2 0` (`ibm` keeps id 0), read back as written, and the dictionary grows to `ibm aapl msft`; the
+-- table directory holds its ids alone; a dictionary that does not start with the library's (`zz` at id 0) is refused
+/--
+info: (["ibm", "aapl", "msft"], [0, 1], [2, 0], [2, 0], ["s"],
+  "/data/tmp/rel-test-table/lib: the library's dictionary of 3 texts and the program's of 1 differ at id 0; a dictionary is append-only, so these ids are not of this library")
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let L ← fresh "lib"
+  let S : Schema := [("s", .atom .sym)]
+  let own (D : Dict) (t : String) (xs : List String) : IO (List UInt64) := do
+    let (D, y) ← IO.ofExcept (intern t D (← strs xs))
+    writeOwn D [] S (file L t) (write S (file L t) y)
+    return y.toList
+  let a ← own (← libDict L) "t1" ["ibm", "aapl"]
+  let b ← own (← libDict L) "t2" ["msft", "ibm"]
+  let D ← libDict L
+  let t ← readOwn D (file L "t2") (read S (file L "t2"))
+  let (E, z) ← IO.ofExcept (intern "t3" (← IO.ofExcept Dict.empty) (← strs ["zz"]))
+  let r ← (writeOwn E [] S (file L "t3") (write S (file L "t3") z)).toBaseIO
+  return (texts D, a, b, t.val.toList, ← names (file L "t1"), say r)
+
+-- a program's own tables with symbol columns: `a` and `c` in the library `/db/one`, `b` in `/db/two` (its key the
+-- symbol column) is refused naming both; `x` has none, so its library does not count
+/--
+info: the symbol columns of `a` are ids in the library /db/one and those of `b` in the library /db/two, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)
+-/
+#guard_msgs in
+#eval IO.println (match progLib [("a", "/db/one/t", [], [("s", .atom .sym)]), ("x", "/db/two/u", [], [("n", .long)]),
+    ("b", "/db/two/v", [("k", .atom .sym)], [("n", .long)]), ("c", "/db/one/w", [], [("s", .atom .sym)])] with
+  | .ok l => s!"{l}" | .error e => e)
+#guard progLib [("a", "/db/one/t", [], [("s", .atom .sym)]), ("x", "/db/two/u", [], [("n", .long)]),
+  ("c", "/db/one/w/", [], [("s", .arr (.atom .sym))])] matches .ok (some "/db/one")
+
+-- `unenum` by hand: `ibm aapl ibm` interned into `D` (ids `0 1 0`), its texts back through `D`; those texts interned
+-- into another library's dictionary `zz` take the ids `1 2 1` there, and `unenum` through it gives the same texts
+/-- info: (true, [1, 2, 1], true) -/
+#guard_msgs in
+#eval show IO _ from do
+  let x ← strs ["ibm", "aapl", "ibm"]
+  let (D, I) ← IO.ofExcept (intern "a" (← IO.ofExcept Dict.empty) x)
+  let T ← IO.ofExcept (unenum "a" D (← IO.ofExcept (frame I)))
+  let (E, _) ← IO.ofExcept (intern "b" (← IO.ofExcept Dict.empty) (← strs ["zz"]))
+  let (E, J) ← IO.ofExcept (intern "b" E T.val)
+  let U ← IO.ofExcept (unenum "b" E (← IO.ofExcept (frame J)))
+  return (T.toList == (← IO.ofExcept (frame x)).toList, J.toList, U.toList == T.toList)
+
 end Rel.Lang.TestTable

@@ -490,7 +490,7 @@ def ioOut (inst done d : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Exp
     let write (t : Lean.Expr) : Lean.Expr := match c with
       | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp2 (mkConst ``Option.some [.zero]) (mkConst ``Table.Dict) d)
           (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
-      | none => if k.isEmpty
+      | none => mkApp5 (mkConst ``Table.writeOwn) d (toExpr k) (toExpr v) (toExpr p) <| if k.isEmpty
         then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
           (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)
         else mkApp4 (mkConst ``Table.writeKeyed) (toExpr k) (toExpr v) (toExpr p) t
@@ -520,7 +520,8 @@ def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr))
         fun r => ioGo inst sh body reach fin ss ((x, A, B, mkApp3 (mkConst ``Prod.fst [0, 0]) tT dT r) :: σ)
           (mkApp3 (mkConst ``Prod.snd [0, 0]) tT dT r)
     | none =>
-      let m := if k.isEmpty then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
+      let m := mkApp5 (mkConst ``Table.readOwn) (oE A) (oE B) d (toExpr p) <| if k.isEmpty
+        then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
         else mkApp3 (mkConst ``Table.readKeyed) (toExpr k) (toExpr v) (toExpr p)
       bindIO inst m tT x fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ) d
   | .defn x c ds :: ss, σ, d => if !reach.contains x then ioGo inst sh body reach fin ss σ d else do
@@ -559,8 +560,16 @@ def ioE (io : List Io) (reach : List String) (sh : Lean.Expr) (body : Lean.Name 
   let inst ← synthInstance (mkApp (mkConst ``Bind [0, 0]) (mkConst ``IO))
   let outs := io.filterMap fun | .output x A B k v c p cl => some (x, A, B, k, v, c, p, cl) | _ => none
   let done ← mkAppOptM ``Pure.pure #[mkConst ``IO, none, mkConst ``Unit, mkConst ``Unit.unit]
-  -- the program reads no database directory, so its dictionary starts empty and grows with its CSV inputs
-  bindIO inst (← mkAppM ``IO.ofExcept #[mkConst ``Table.Dict.empty]) (mkConst ``Table.Dict) "dict" fun d =>
+  -- the dictionary starts as the library's of the own tables with symbol columns (`progLib`), else empty, and grows
+  -- with the CSV inputs, appended after the library's texts so the library's ids stay
+  let owns := io.filterMap fun
+    | .input x _ _ k v none p => if reach.contains x then some (x, p, k, v) else none
+    | .output x _ _ k v none p _ => some (x, p, k, v)
+    | _ => none
+  let d0 ← match ← liftE (Table.progLib owns) with
+    | some L => pure (mkApp (mkConst ``Table.libDict) (toExpr L))
+    | none => mkAppM ``IO.ofExcept #[mkConst ``Table.Dict.empty]
+  bindIO inst d0 (mkConst ``Table.Dict) "dict" fun d =>
     ioGo inst sh body reach (fun σ d => ioOut inst done d σ outs []) io [] d
 
 /-- The Lean definitions of what the program `n` reads (`read`). Its terms (definitions, prints, checks, and the bodies
