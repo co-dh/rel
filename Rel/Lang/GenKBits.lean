@@ -97,13 +97,14 @@ theorem Tab.ofBits_lt {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals
 
 /-- **`Tab.ofBits` of a `0`/`1` matrix**: `ofBits_holds` with bit `a·w + j` set where its word is `1`. -/
 theorem Tab.ofBits_set {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m} {X : Tab A C}
-    (h : Tab.ofBits g w o x ra y rc = .ok X) (hgw : (g * w).toNat = g.toNat * w.toNat)
+    (h : Tab.ofBits g w o x ra y rc = .ok X) (hra : hasNul ra = false) (hrc : hasNul rc = false)
+    (hgw : (g * w).toNat = g.toNat * w.toNat)
     (ho : ∀ a < g.toNat, ∀ j < w.toNat, ∃ v : UInt64, (raw .i64 (g * w) o)[a * w.toNat + j]? = some v ∧ v < 2)
     (u : A.El) (v : C.El) :
     X.Holds u v ↔ ∃ a < g.toNat, ∃ j < w.toNat, (raw .i64 (g * w) o)[a * w.toNat + j]?.getD 0 = 1 ∧
       (∃ i : Fin n.toNat, ((raw .i64 g ra)[a]?.getD 0).toNat = i.1 ∧ x.row i = u) ∧ ∃ i : Fin m.toNat,
       ((raw .i64 w rc)[j]?.getD 0).toNat = i.1 ∧ y.row i = v :=
-  Tab.ofBits_holds h _ hgw (hgw ▸ Tab.ofBits_lt h) (fun a ha j hj => by
+  Tab.ofBits_holds h hra hrc _ hgw (hgw ▸ Tab.ofBits_lt h) (fun a ha j hj => by
     obtain ⟨v, hv, hv2⟩ := ho a ha j hj; exact ⟨v, hv, hv2, by simp only [hv, Option.getD_some]⟩) u v
 
 /-- **`whereCol` lists the positions of the `1` words**: some answer row holds `i` exactly when `b[i]` is set. -/
@@ -134,6 +135,7 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
       ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a')
     (hy : ∀ c c' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[c.1]?.getD 0).toNat = i.1 →
       ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c')
+    (hra : hasNul ra = false) (hrc : hasNul rc = false)
     (hT : T.WF) (wx : Vals.WF x) (wy : Vals.WF y) : rep u = rep T ∩ rep s := by
   simp only [Tab.keepBits, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨t, ht, h⟩ := h
@@ -155,7 +157,7 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   have wX' := Vals.gather_wf hX' wx
   have wY' := Vals.gather_wf hY' wy
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
-  have hS := Tab.ofBits_set hs hgw ho
+  have hS := Tab.ofBits_set hs hra hrc hgw ho
   have hb := hgw ▸ Tab.ofBits_lt hs
   -- `u0` row `k` is `t` row `sel[k]`
   unfold Tab.keep at hu0; rw [hM] at hu0
@@ -538,8 +540,9 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
         Lang.ldivDen r.Holds s.Holds ub.Holds uc.Holds b c) ∧
       (∀ a a' : Fin kb.toNat, ∀ i i' : Fin N.toNat, ((raw .i64 kb rb)[a.1]?.getD 0).toNat = i.1 →
         ((raw .i64 kb rb)[a'.1]?.getD 0).toNat = i'.1 → zb.row i = zb.row i' → a = a') ∧
-      ∀ c c' : Fin kc.toNat, ∀ i i' : Fin N'.toNat, ((raw .i64 kc rc')[c.1]?.getD 0).toNat = i.1 →
-        ((raw .i64 kc rc')[c'.1]?.getD 0).toNat = i'.1 → zc.row i = zc.row i' → c = c' := by
+      (∀ c c' : Fin kc.toNat, ∀ i i' : Fin N'.toNat, ((raw .i64 kc rc')[c.1]?.getD 0).toNat = i.1 →
+        ((raw .i64 kc rc')[c'.1]?.getD 0).toNat = i'.1 → zc.row i = zc.row i' → c = c') ∧
+      hasNul rb = false ∧ hasNul rc' = false := by
   classical
   simp only [Tab.ldivTabMat, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kb0, bR, bU, Nb, zb0, rb0⟩, hb2, h⟩ := h; try dsimp only at h
@@ -667,7 +670,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
         exact (hn ⟨a', ha'⟩ (by rw [r2, r1])).elim
       · rintro ⟨hlt, -⟩; omega
   -- `cnt[G]` counts `r`'s rows valued `G`; `vac[G]` is `1` exactly when there is none
-  have hcntw := scatter_add_count hcnt bx (fun _ => true) (fun q hq => (hbx q hq).1) (fun q hq => by
+  have hcntw := scatter_add_count hcnt (kscatter_plain hone rfl) bx (fun _ => true) (fun q hq => (hbx q hq).1) (fun q hq => by
     have := (hbx q hq).2; have := kb.toNat_lt_size; omega) (fun q hq => by rw [colConst_raw hone, Array.getElem?_replicate, if_pos hq, Option.getD_some]; rfl)
   have hvacw : ∀ G < kb.toNat, (raw .i64 kb vac)[G]?.getD 0 = if Vac G then 1 else 0 := fun G hG => by
     have e := (colMap_post hvac).2 G hG
@@ -766,7 +769,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       · intro H q hq hgq
         obtain ⟨hi, hlt⟩ := (hsel _).1 ⟨q, hq, rfl⟩
         rw [(kgather_word hgi q hq).2, hselN, hixN, H _ hi hgq hlt]; decide
-    have hcnt2w := scatter_add_count hcnt2 bx (fun q => decide (ixN q < g.toNat)) (fun q hq => (hbx q hq).1)
+    have hcnt2w := scatter_add_count hcnt2 (colMap_plain hon) bx (fun q => decide (ixN q < g.toNat)) (fun q hq => (hbx q hq).1)
       (fun q hq => by have := (hbx q hq).2; have := kb.toNat_lt_size; omega) (fun q hq => by rw [honw q hq]; simp)
     have hkeepw : (raw .i64 kb keep)[G]?.getD 0 = if ¬Vac G ∧ Kp G then 1 else 0 := by
       have e := (colMap_raw hkeep).2.2.2 G hG
@@ -885,7 +888,8 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       · rw [if_pos hq]; exact ⟨by decide, iff_of_true rfl (.inr hq)⟩
       · rw [if_neg hq]; exact ⟨by decide, iff_of_false (by decide) fun h => h.elim (fun h => hv h.1) hq⟩
   have hb63 : kb.toNat * kc.toNat < 2 ^ 63 := by omega
-  refine ⟨hkbc, hb63, PP, hout', fun b c => ?_, Vals.code2_rep_inj hb2 hr.2 hub.2, Vals.code2_rep_inj hc2 wyM huc.2⟩
+  refine ⟨hkbc, hb63, PP, hout', fun b c => ?_, Vals.code2_rep_inj hb2 hr.2 hub.2, Vals.code2_rep_inj hc2 wyM huc.2,
+    (Vals.code2_plain hb2).2.2, (Vals.code2_plain hc2).2.2⟩
   show _ ↔ (∀ a, r.Holds a b → s.Holds a c) ∧
     ((∃ a, r.Holds a b) ∨ ((∃ b', ub.Holds b' b) ∧ ∃ c', uc.Holds c' c))
   constructor
@@ -966,9 +970,9 @@ theorem Tab.ldivTabMat_law {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc :
       ((raw .i64 w rc)[j'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → j = j')
     (hr : r.WF) (hub : ub.WF) (huc : uc.WF) (wx : Vals.WF x) (wy : Vals.WF y) :
     rep t = Lang.ldivDen (rep r) (rep s) (rep ub) (rep uc) := by
-  obtain ⟨hkbc, hb63, PP, hw, hden, -, -⟩ := Tab.ldivTabMat_spec h hs ho hx hy hr hub huc wx wy
+  obtain ⟨hkbc, hb63, PP, hw, hden, -, -, hrb, hrc⟩ := Tab.ldivTabMat_spec h hs ho hx hy hr hub huc wx wy
   apply Core.Rel.ext; intro b c
-  exact (Tab.ofBits_holds ht PP hkbc hb63 hw b c).trans (hden b c)
+  exact (Tab.ofBits_holds ht hrb hrc PP hkbc hb63 hw b c).trans (hden b c)
 
 /-- **`ldivTabMat` keeps a matrix `BitsWf`** where its own reads back: its words, `kb · kc` and both sides' distinct
     rows from `Tab.ldivTabMat_spec`. -/
