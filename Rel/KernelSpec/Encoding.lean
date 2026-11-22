@@ -946,9 +946,9 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
     exact hPA _ (16 + w * k) S1 (w * k) w (by rw [Nat.mul_comm]; omega) (by omega) fun t ht => by
       rw [← g1 (w * k + t) (by omega), p0, Nat.add_assoc]
   · rw [← r2 b hb]
-    congr 1
-    exact hPA _ ((16 + exc.size * w + 7) / 8 * 8 + 8 * b) S2 (8 * b) 8 (by omega) (by omega) fun t ht => by
-      rw [← g2 (8 * b + t) (by omega), p0, p1]; congr 1; omega
+    -- `congrArg`, not `congr 1`, whose closing `rfl` unfolds an 8-byte `bitsAt` past the heartbeat limit
+    exact congrArg UInt64.toNat (hPA _ ((16 + exc.size * w + 7) / 8 * 8 + 8 * b) S2 (8 * b) 8 (by omega) (by omega)
+      fun t ht => by rw [← g2 (8 * b + t) (by omega), p0, p1]; congr 1; omega)
   · rw [← r3 k hk]
     congr 1
     exact hPA _ ((16 + exc.size * w + 7) / 8 * 8 + (nb + 1) * 8 + 2 * k) S3 (2 * k) 2 (by omega)

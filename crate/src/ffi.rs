@@ -93,7 +93,7 @@ impl CEnc {
         let c = &self.c;
         unsafe { EncMeta { b, base: &mut *c.base.add(b), maxv: &mut *c.maxv.add(b), width: &mut *c.width.add(b), bsum: &mut *c.bsum.add(b),
                            frm: if c.fdelta.is_null() { None } else { Some(&mut *c.fdelta.add(b)) }, nexc: &mut *self.exc_off.add(b + 1),
-                           patch: (self.n as u64) < 1 << 32 } }
+                           } }
     }
     /// Block `b`'s pack view after its meta step (`exc_off[b + 1]` still the block's count), its residuals at `res`, its `ne`
     /// patches at `pos` and `raw`: the `nb` elements' `ceil(nb * width / 8)` residual bytes, or with `whole` the full

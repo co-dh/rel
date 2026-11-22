@@ -77,7 +77,7 @@ mod tests {
     }
     #[test] fn layout_c_arithmetic() {
         let l = exc_layout(1, 0, 8, Tail::None).unwrap();
-        assert_eq!((l.raw, l.off, l.pos, l.tail, l.size), (16, 16, 24, 24, 24));
+        assert_eq!((l.raw, l.off, l.pos, l.tail, l.size), (16, 16, 32, 32, 32));
         let l = exc_layout(2, 3, 8, Tail::Frames).unwrap();
         assert_eq!((l.off, l.pos, l.tail, l.size), (40, 64, 72, 88));
         assert!(exc_layout(1, usize::MAX, 8, Tail::None).is_none());

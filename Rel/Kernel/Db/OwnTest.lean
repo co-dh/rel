@@ -55,8 +55,8 @@ def column (v : QValue) : IO Unit := do
 -- 64 longs 0..62 and one outlier: Frame of Reference, one block of 1024 at 6 bits (768 residual bytes) and a 40-byte
 -- patch list holding the outlier
 /--
-info: ok kind 2 count 64 domain `` part sizes [57, 808]
-foR: metadata 57 bytes, pack 808 bytes
+info: ok kind 2 count 64 domain `` part sizes [57, 816]
+foR: metadata 57 bytes, pack 816 bytes
 -/
 #guard_msgs in
 #eval column (.vector .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000]))) none)
@@ -132,8 +132,8 @@ body:   byte 0: the magic `qleancol`
 #guard_msgs in #eval readBoth (mutate good [(0, 120)])
 
 /--
-info: extern: byte 8: format version 5, found 2; a file before version 5 may hold the dense `bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` from the data it was made from
-body:   byte 8: format version 5, found 2; a file before version 5 may hold the dense `bytes` (kind 0) or `alp` (kind 3) form, which version 5 removed (one encoding, foR), and is rewritten by `set` from the data it was made from
+info: extern: byte 8: format version 6, found 2; a file before version 6 is rewritten by `set` from the data it was made from: version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms
+body:   byte 8: format version 6, found 2; a file before version 6 is rewritten by `set` from the data it was made from: version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms
 -/
 #guard_msgs in #eval readBoth (mutate good [(8, 2)])
 

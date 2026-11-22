@@ -170,7 +170,7 @@ pub fn lanes<'b>(p: &'b [u8], w: &mut u8, nb: usize, buf: &'b mut [u8]) -> &'b [
 /// Whether each block's patch positions `pos[off[b] .. off[b + 1]]` lie in `pos` and strictly ascend, as the writer
 /// lays them. Lean's `foRExc` reads the first match in any order and `Enc.WF` does not state the order, so an order
 /// that fails this is still a column: `Coc::get` scans it.
-pub fn ascending(off: &[u32], pos: &[u16]) -> bool {
+pub fn ascending(off: &[u64], pos: &[u16]) -> bool {
     off.windows(2).all(|r| r[0] <= r[1] && r[1] as usize <= pos.len() && pos[r[0] as usize..r[1] as usize].windows(2).all(|p| p[0] < p[1]))
 }
 
