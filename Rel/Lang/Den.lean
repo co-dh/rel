@@ -445,7 +445,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
   | ρ, _, _, .prod R S => rprodMap (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
-  | ρ, _, _, .E R => EDen (R.den ρ)
   | ρ, _, _, .est Q => estDen (Q.den ρ)
   | ρ, _, _, .thin Q => thinDen (Q.den ρ)
   | _, _, _, .nil => nilDen
@@ -521,7 +520,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
   | conv R ih | dom R ih | ran R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
-  | lam R ih | E R ih | thin R ih =>
+  | lam R ih | thin R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
     intro ρ ρ' h
@@ -937,13 +936,17 @@ theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B) (h : b.pol true k 
   rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
   exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
-/-- `memRow` at `[E] ⟶ E` relates a list to its members. -/
-theorem Prim.den_memRow {E : Obj} {xs : (Obj.arr E).El} {x : E.El} (h : x ∈ xs) :
-    Prim.den memRow (.arr E) E [] xs x := by
+/-- `memRow` at `[E] ⟶ E` is `∋`: it relates a list to its members. -/
+theorem Prim.den_memRow {E : Obj} : Prim.den memRow (.arr E) E [] = fun (xs : (Obj.arr E).El) x => x ∈ xs := by
   have ho : memRow.objs (.arr E) E = some [E] := by simp [Prim.objs, memRow, OExp.unify, Prim.vars, OExp.vars]; rfl
   have hf : rowDens.find? (·.1.sym == memRow.sym) =
       some ⟨RowCode.mem, fun σ _ (xs : List (σ₁ σ).El) x => x ∈ xs⟩ := rfl
-  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; exact h
+  funext xs x; unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+
+/-- **`E` is a definition**: the term `Λ(∋ R)` that `applied` and `appliedL` build for `E(R)` means `EDen`. -/
+theorem Tm.E_den (ρ : Val) {A B : Obj} (R : Tm A B) :
+    (Tm.lam (.comp (.prim (A := .arr A) (B := A) memRow) R)).den ρ = EDen (R.den ρ) := by
+  simp only [Tm.den, Prim.den_memRow]
 
 /-- A row `F(T)` at `xs` reads `T` only at the members of `xs`. -/
 theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
@@ -965,7 +968,7 @@ theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C
       · obtain ⟨rfl, rfl⟩ := hc
         rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
         exact and_congr_right fun _ => forall_congr' fun t => forall_congr' fun ht => forall_congr' fun ht' =>
-          h _ (Prim.den_memRow (List.getElem_mem ht)) _
+          h _ (Prim.den_memRow ▸ List.getElem_mem ht) _
       · rw [dif_neg hc, dif_neg hc]
     · rw [dif_neg hh, dif_neg hh]
 

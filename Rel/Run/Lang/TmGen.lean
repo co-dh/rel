@@ -161,7 +161,6 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, .prod B C, .pair R S => GenK.pair A B C R.dem S.dem (R.code η) (S.code η)
   | .prod A C, .prod B D, .prod R S => GenK.prod A B C D (R.code η) (S.code η)
   | A, .arr B, .lam R => GenK.lam A B R.dem (R.code η)
-  | .arr A, .arr B, .E R => GenK.E A B R.dem (R.code η)
   | _, B, .est Q => GenK.est B (Q.code η)
   | _, .arr B, .thin Q => GenK.thin B (Q.code η)
   | A, .arr B, .nil => GenK.nil A B
@@ -232,7 +231,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   match A, B, t with
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
   | _, _, .atPos _ | _, _, .var .. => true
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
@@ -306,7 +305,6 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .prod (A := A) (B := B) (C := C) (D := D) R S =>
     return g ``Tm.prod #[oE A, oE B, oE C, oE D, ← tmE sh R, ← tmE sh S]
   | _, _, .lam (A := A) (B := B) R => return g ``Tm.lam #[oE A, oE B, ← tmE sh R]
-  | _, _, .E (A := A) (B := B) R => return g ``Tm.E #[oE A, oE B, ← tmE sh R]
   | _, _, .est (B := B) Q => return g ``Tm.est #[oE B, ← tmE sh Q]
   | _, _, .thin (B := B) Q => return g ``Tm.thin #[oE B, ← tmE sh Q]
   | _, _, .nil (A := A) (B := B) => return g ``Tm.nil #[oE A, oE B]

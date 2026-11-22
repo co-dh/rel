@@ -570,6 +570,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Pre.rdivWhole`），`Tm.symDiv_den` 证其含义是 `symDivDen`，`TestSymDiv` 测行。表层语法是中缀 `R ÷ S`
   （owner 2026-11-20 决定；`Bin.table` 的一项，与 `/` 同一优先级），`TestSymDiv` 测它与手写定义行相同。
 - ✅ 4.5 默认是 `[nil, snoc]` 上的左 fold；只用 `snoc` 构造。
+- ✅ Tm28 B1（`doc/tm-minimal-design.zh.typ` §3，分支 `tm28b1`）：`E` 是定义 `E(R) ≜ Λ(∋ R)`，不是 `Tm` 构造子。删
+  `Tm.E`、`Pre.E`、`GenK.E` 及其每个 match 分支；`applied` 构造 `Λ(∋ R)`（`appliedL` 本来如此），表层 `E( )` 不变。
+  `Tm.E_den` 证 `⟦Λ(∋ R)⟧ = EDen ⟦R⟧`；`Prim.den_memRow` 加强为等式 `⟦∋⟧ = (x ∈ xs)`。
 
 ### P5 按既定顺序关闭 gap — 7/8（5.4a-c 并行，其余串行）
 
@@ -1093,8 +1096,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   去掉两个输入 `canon`），`ldivSel` 的回退除法作参数；`Tab.rdiv`、`GenK.rdiv`（两个 `conv` 答案）走 `ldivOf`，
   `inits`（`prefix` 是 `comp` 答案）走 `lamOf`。每次 `rdiv` 走计数分支省 2 次 `canon` = atom×atom 时 10 次 kernel
   调用（每次 `kasc`、`kseen`、`kgather` 各 1，加每列 1 次 `kgather`），位矩阵分支不变；每次 `inits` 省 1 次 `canon`。
-  `GenK.E` 未做：`GenK.comp` 的位矩阵读回（`Tab.ofBits`）不是 `canon` 答案，给读回加 `canon` 会让每次读回多付同样
-  的 kernel 调用，净亏。`tau`/`thin`/`tails` 的 `lam` 输入（`idU`、`diff`、`uncat` 答案）都不是 `canon` 答案。
+  `GenK.E` 一项取消：Tm28 B1 删去了 `GenK.E`，`E(R)` 现在就是 `GenK.lam` 套 `GenK.comp`，其 `lam` 输入仍是位矩阵
+  读回（`Tab.ofBits`），不是 `canon` 答案，所以与 `lam` 的其余输入同样处理。`tau`/`thin`/`tails` 的 `lam` 输入（`idU`、`diff`、`uncat` 答案）都不是 `canon` 答案。
 - ⬜ 8.2 稠密 sum。例：`long+sym` 三行 `inl 7, inr x, inl 9`，现在存 `tag=[0,1,0] idx=[0,0,1] l=[7,9] r=[x]`，
   改为 `tag=[0,1,0] a=[7,0,9] b=[0,x,0]`：每边一列 n 行，不属于该边的位置填 0（全 0 的块宽度 0，只占块头）。
   去掉 `idx`、`Vals.cols` 里把两边 gather 回 n 行、concat 时平移 `idx`、`Obj.dflt`；`inl°` 是按 tag 选行再 gather，
