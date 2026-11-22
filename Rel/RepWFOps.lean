@@ -248,7 +248,11 @@ theorem map_wf {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {t : 
   rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨dC, -, h⟩ := h
   split at h
-  · rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
+  · rename_i hc
+    simp only [Bool.and_eq_true, beq_iff_eq] at hc
+    obtain ⟨CN, Ck, Cv⟩ := C
+    obtain rfl : CN = T := hc.1
+    rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
     have hm63 : m.toNat < 2 ^ 63 := by omega
     obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
     have wC := comp_wf hC ⟨trivial, Vals.gather_wf hv hX.2⟩ hR

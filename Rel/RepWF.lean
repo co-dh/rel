@@ -357,34 +357,41 @@ theorem leq_wf {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Vals 
   okSplit
   exact cmpOn_wf h hK hL
 
-/-- **`R \ S` keeps `Tab.WF`**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the vacuous part
+/-- **`r \ s` keeps `Tab.WF`**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the vacuous part
 (`cross_wf` of `ran`s). -/
-theorem ldiv_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
-    (h : ldiv R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
-  simp only [Tab.ldiv, bind, Except.bind, pure, Except.pure] at h
+theorem ldivOf_wf {r : Tab A B} {s : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldivOf r s UB UC = .ok t) (hr : r.WF) (hs : s.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+  simp only [Tab.ldivOf, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i r hr; split at h; · cases h
-  rename_i s hs; split at h; · cases h
   rename_i Q hQ
-  have wr := canon_wf hr hR
-  have ws := canon_wf hs hS
-  have wQ := compOne_wf hQ ⟨wr.2, wr.1⟩ ⟨ws.1, ws.1, ws.2⟩
+  have wQ := compOne_wf hQ ⟨hr.2, hr.1⟩ ⟨hs.1, hs.1, hs.2⟩
   okSplit
   exact union_wf h ⟨Vals.gather_wf ‹_› wQ.1, Vals.gather_wf ‹_› wQ.2.2⟩
-    (cross_wf ‹_› (diff_wf ‹_› (ran_wf ‹_› hB) (ran_wf ‹_› hR)).1 (ran_wf ‹_› hC).1)
+    (cross_wf ‹_› (diff_wf ‹_› (ran_wf ‹_› hB) (ran_wf ‹_› hr)).1 (ran_wf ‹_› hC).1)
 
-/-- **`ldivSel` keeps `Tab.WF`** (`ldiv_wf`, `ldivBits_wf`). -/
-theorem ldivSel_wf {bits : Nat} {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
-    (h : ldivSel bits R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+theorem ldiv_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldiv R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+  simp only [Tab.ldiv, bind, Except.bind] at h
+  split at h; · cases h
+  rename_i r hr; split at h; · cases h
+  rename_i s hs
+  exact ldivOf_wf h (canon_wf hr hR) (canon_wf hs hS) hB hC
+
+/-- **`ldivSel d` keeps `Tab.WF`** where its division `d` does at these arguments (`ldiv_wf`, `ldivOf_wf`), with
+`ldivBits_wf`. -/
+theorem ldivSel_wf {d : Tab A B → Tab A C → Tab B B → Tab C C → Except String (Tab B C)} {bits : Nat}
+    {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (hd : ∀ {t}, d R S UB UC = .ok t → t.WF) (h : ldivSel d bits R S UB UC = .ok t) (hR : R.WF) (hS : S.WF)
+    (hB : UB.WF) (hC : UC.WF) : t.WF := by
   simp only [Tab.ldivSel, bind, Except.bind, pure, Except.pure] at h
   okSplit
-  all_goals first | exact ldiv_wf h hR hS hB hC | exact ldivBits_wf h hR hS hB hC
+  all_goals first | exact hd h | exact ldivBits_wf h hR hS hB hC
 
 theorem rdiv_wf {R : Tab A C} {S : Tab B C} {UA : Tab A A} {UB : Tab B B} {t : Tab A B}
     (h : rdiv R S UA UB = .ok t) (hR : R.WF) (hS : S.WF) (hA : UA.WF) (hB : UB.WF) : t.WF := by
   simp only [Tab.rdiv, bind, Except.bind] at h
   okSplit
-  exact conv_wf h (ldiv_wf ‹_› (conv_wf ‹_› hS) (conv_wf ‹_› hR) hB hA)
+  exact conv_wf h (ldivOf_wf ‹_› (conv_wf ‹_› hS) (conv_wf ‹_› hR) hB hA)
 
 /-- **`ldivTabMat`'s two sides keep `Vals.WF`**: each the joined side of a `Vals.code2` (`code2_wf`). -/
 theorem ldivTabMat_sides_wf {R : Tab A B} {UB : Tab B B} {UC : Tab C C} {n m g w : USize} {o ra rc : Enc}
@@ -862,7 +869,7 @@ theorem inits_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr (.arr
     (hX : Vals.WF X) : t.WF := by
   simp only [Tab.inits, bind, Except.bind] at h
   split at h; · cases h
-  exact lam_wf h hX (prefix_wf ‹_› hX)
+  exact lamOf_wf h hX (prefix_wf ‹_› hX)
 
 /-- **`tails` keeps `Tab.WF`**: `Λ(cat°)`'s cells kept, over the second column of their payload. -/
 theorem tails_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr (.arr B))} (h : Tab.tails X = .ok t)
