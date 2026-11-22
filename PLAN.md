@@ -1346,6 +1346,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     同理 `kscatter`（`foRWords`/`wordsFoR`）、`kasc`/`kseen`（比的是原始字：块 A 的 null `7` 与块 B 的值 `7` 相等）。
     顺序：先让 `foRWords`/`wordsFoR` 成对携带 null 位（`(words, nuls)`，kernel 体把 null 位当作值的一部分 gather /
     scatter / 比较），Rust 生产者经 `Sink::write_nul` 写出；再改 `Vals`。`asc` 中 null 的次序待主人定（q：null 最小）。
+    ✅ rq17h 主人定 B（29e12ef）：补丁表 `exc_off` 改 u64，`2^32` 行以上的列照常打补丁；`encodeAt` 的门槛成 `n < 2^64`
+    （u64 计数自身的上限），`excBlob_*` 前提 `< 2^32` → `< 2^64`；own 格式版本 5 → 6，旧文件按名拒读。每块 +4 字节。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
