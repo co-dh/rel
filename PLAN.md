@@ -1277,7 +1277,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `[2]` 得到一列 `[7]`、无标志——`Vals.gather` 在 `atom+1` 上 = `Arr.gather` = `kgather`，`gather_row` 不再成立。
     同理 `kscatter`（`foRWords`/`wordsFoR`）、`kasc`/`kseen`（比的是原始字：块 A 的 null `7` 与块 B 的值 `7` 相等）。
     顺序：先让 `foRWords`/`wordsFoR` 成对携带 null 位（`(words, nuls)`，kernel 体把 null 位当作值的一部分 gather /
-    scatter / 比较），Rust 生产者经 `Sink::write_nul` 写出；再改 `Vals`。`asc` 中 null 的次序待主人定（q：null 最小）。
+    scatter / 比较），Rust 生产者经 `Sink::write_nul` 写出；再改 `Vals`。
+    null 语义（按原则定：Rel 的名字与语义随 q）：`asc`/`iasc` 中 null 排最前；`seen`/distinct 中所有 null 相等、与任何值
+    不等。`gather`/`scatter` 的下标为 null 是错误（null 不指任何行）；`scatter` 只有 `.last` 搬运 null，其他 op 遇 null
+    是错误（不给出无定义的值）。
+    rq17d（第 3 步，WIP）：kernel 体已改。`Scatter.lean`：`hasNul`（只读宽度字节）、`foRNuls`（每行 null 位作字，
+    `foRNul` 判块）、`noNul`、`nulMap`、`wordsFoR ws (nul := .empty)`；`kgather`/`kscatter` 用同一下标搬运 null 位；
+    `Asc.nulCodes`：含 null 的原子列编码成两列（null 0 / 值 1；值码在 null 处取 0），`kasc` 搬运 null 位，`kseen` 经
+    `ascCol` 自动得到 null 相等。无 null 的列走原路径，字节不变。Rust：`Coc::is_nul`/`nuls`（只读带标志的块）、
+    `exports::scatter::no_nul`、`gather::enc`/`scatter::blocks`/`ffi::asc::kasc` 经 `Sink::write_nul` 写出，`asc::Col::Nul`
+    与 `asc::work` 返回多列。`cargo test --features std` 通过。剩：`KernelSpec` 的定理对含 null 的输入不再成立（例：
+    `raw_scatter` 的结论 `o = wordsFoR ws`；`ascKeys_row` 说行码只依赖原始字），已给 `raw_scatter`/`kscatter_pos_ix`
+    加 `hasNul e = false`；其余（`KernelSpec.Asc`、`KGather`、`KSeen`、`Closure` 及 Rel 下约 50 处用法）待做，见
+    `tmp/handoff.md`。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
