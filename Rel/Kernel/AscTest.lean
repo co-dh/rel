@@ -175,4 +175,19 @@ def spans : List (AscKey × Enc) :=
     wcol 3000 fun i => (i * 7919 % 200).toUInt64)]
 #guard pview (u 3000) (kasc (u 3000) spans) == grade 3000 spans
 
+/-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
+def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
+  wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+
+/-- An answer as its error, or each column's and the permutation's metadata and pack bytes. -/
+def bview : Except String (List Enc × Enc) → String ⊕ List (List UInt8 × List UInt8)
+  | .error s => .inl s
+  | .ok (vs, p) => .inr ((vs ++ [p]).map fun | .foR md pk => (md.toList, pk.toList) | _ => ([], []))
+
+-- q's order: the nulls (rows 1 and 3, kept in input order) first, then 1 and 3; the flags move with the words
+example : bview (kasc (u 4) [(.atom .i64, ncol [3, 0, 1, 0] [1, 3])]) =
+    bview (.ok ([ncol [0, 0, 1, 3] [0, 1]], wordsFoR #[1, 3, 2, 0])) := by decide +kernel
+#guard bview (kasc (u 4) [(.atom .i64, ncol [3, 0, 1, 0] [1, 3])]) ==
+    bview (.ok ([ncol [0, 0, 1, 3] [0, 1]], wordsFoR #[1, 3, 2, 0]))
+
 end Rel.Kernel.AscTest

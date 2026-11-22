@@ -171,4 +171,20 @@ def halves : String ⊕ (Nat × List UInt64 × List UInt64) :=
 #guard view (u 2000) (u 4) (kseen (u 2000) [col ((List.range 2000).map fun i => (i / 1000).toUInt64),
   col ((List.range 2000).map fun i => (i / 500 % 2).toUInt64)]) == halves
 
+/-- `xs` with the rows `ns` null (`atom+1`, in band) as an `i64` key column; a null row's word is never read. -/
+def ncol (xs : List UInt64) (ns : List Nat) : AscKey × Enc :=
+  (.atom .i64, wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat))
+
+-- all nulls are one value, and it is not a value's: rows 0 and 1 null, 2 and 3 the value 1
+def nulls : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 0, 1, 1], [0, 2])
+example : view (u 4) (u 2) (kseen (u 4) [ncol [0, 0, 1, 1] [0, 1]]) = nulls := by decide +kernel
+#guard view (u 4) (u 2) (kseen (u 4) [ncol [0, 0, 1, 1] [0, 1]]) == nulls
+-- the block `[null, 7]` is width 0 at base 7, so the null's residual word is 7 too (rq17c): still two groups
+def nul7 : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, [0, 1], [0, 1])
+example : view (u 2) (u 2) (kseen (u 2) [ncol [0, 7] [0]]) = nul7 := by decide +kernel
+#guard view (u 2) (u 2) (kseen (u 2) [ncol [0, 7] [0]]) == nul7
+-- a null sorts first, so a value before a null is out of `kasc` order
+example : view (u 0) (u 0) (kseen (u 2) [ncol [5, 0] [1]]) = unsorted 0 := by decide +kernel
+#guard view (u 0) (u 0) (kseen (u 2) [ncol [5, 0] [1]]) == unsorted 0
+
 end Rel.Kernel.SeenTest
