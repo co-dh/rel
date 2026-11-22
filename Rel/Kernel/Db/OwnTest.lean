@@ -83,8 +83,8 @@ foR: metadata 57 bytes, pack 256 bytes
 #eval ((ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key),
   (ownFile (X := Empty) (.vector .sym 1 (.syms (ByteArray.mk #[97, 0]) #[0, 2]) none)).map (·.map key))
 /--
-info: ("error: a column of kind and part count 2:2, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name",
- "error: a column of kind and part count 2:2, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 5 with 0 parts and a 0-byte name")
+info: ("error: a column of kind and part count 2:2, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 6 with 0 parts and a 0-byte name",
+ "error: a column of kind and part count 2:2, 4:2 or 5:0 and a domain name under 65536 bytes, given kind 6 with 0 parts and a 0-byte name")
 -/
 #guard_msgs in
 #eval show IO _ from do
