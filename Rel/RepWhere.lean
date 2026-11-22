@@ -37,10 +37,11 @@ namespace Tab
 open Classical in
 /-- **`positions P X` denotes `positionsL`** of the test `∃ y, P x y` on each array of `X`: the kept element rows
 (`whereCol_spec`) are the runs of the cells (`expand_spec`) filtered one after another (`filter_runs`), each cell's
-count of them (`kscatter .add`) its width, so cell `i` reads its own run's kept rows, as offsets `u`. -/
-theorem positions_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n} {res : Tab (.arr B) (.arr .long)}
-    (h : Tab.positions P X = .ok res) (xs : List B.El) (ys : List Int64) :
-    res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys = positionsL (fun x => decide (∃ y, P.Holds x y)) xs := by
+count of them (`kscatter .add`) its width, so cell `i` reads its own run's kept rows, as offsets `u`. The counts sum
+to the `K` kept rows, so the new cells lie inside the payload: `positions` keeps `Tab.WF` (`Vals.cells_wf`). -/
+theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n} {res : Tab (.arr B) (.arr .long)}
+    (h : Tab.positions P X = .ok res) : (∀ xs ys, res.Holds xs ys ↔ (∃ i, X.row i = xs) ∧
+      ys = positionsL (fun x => decide (∃ y, P.Holds x y)) xs) ∧ (Vals.WF X → res.WF) := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.positions] at h
   split at h; · cases h
@@ -63,7 +64,6 @@ theorem positions_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n
   rw [Except.bind_eq_ok'] at h; obtain ⟨pay, hpay, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
-  rw [canon_holds h]
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
@@ -162,14 +162,17 @@ theorem positions_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n
     rw [colConst_raw hz, Array.getElem?_replicate, if_pos hj, Option.getD_some, (kgather_word hgs j hj).2] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [Vals.row_atom, Arr.get_i64, ← es]
+  have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
   suffices hY' : ∀ i : Fin n.toNat, Vals.row Y i =
       positionsL (fun x => decide (∃ y, P.Holds x y)) (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) by
+    refine ⟨fun xs ys => ?_, fun hX =>
+      canon_wf h ⟨hX, Vals.cells_wf hY cN hcn (by rw [hK]; exact Nat.le_refl _) (by omega) trivial⟩⟩
+    rw [canon_holds h]
     simp only [Tab.Holds]
     constructor
     · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, hY' i⟩
     · rintro ⟨⟨i, rfl⟩, rfl⟩; exact ⟨i, rfl, hY' i⟩
   intro i
-  have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
   have hiS : off i.1 + wN i.1 ≤ T.toNat := by rw [hTn, hoff, hoff, ← sum_range_succ']; exact sum_range_mono wN i.2
   have hpos : ∀ d < wN i.1, keep (off i.1 + d) =
       (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i)[d]?.any (fun x => decide (∃ y, P.Holds x y)) := fun d hd => by
@@ -215,7 +218,7 @@ theorem positions_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : �
     ∀ K, (GenK.elems B B (.arr .long) d R fun P X => Tab.positions P X).Reps K
       (fun xs ys => ys = positionsL (fun x => decide (∃ y, T x y)) xs) :=
   elemsTest_sound (C := .arr .long) (F := fun p (xs : List B.El) => positionsL p xs)
-    (fun h xs ys => Tab.positions_holds h xs ys)
+    (fun h xs ys => (Tab.positions_spec h).1 xs ys)
     (fun p q xs h => by
       simp only [positionsL]; congr 1; exact List.filter_congr fun t _ => by
         cases e : xs[t]? with
