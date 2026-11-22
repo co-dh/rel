@@ -287,7 +287,7 @@ open Lean Meta in
     `kernRows` operator. -/
 def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (Option Lean.Expr) := do
   let some (c, args) := kernRows.lookup r.sym | return none
-  primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
+  let w? ← primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
     let some f := ws.back? | return false
     unless ← isDefEq wty (g ``Gen.Fn #[bE true, oE A, oE B]) do return false
     let v? ← forallTelescope (← instantiateMVars (← inferType f)) fun ys body => do
@@ -297,6 +297,11 @@ def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (
       some <$> mkLambdaFVars ys v
     let some v := v? | return false
     isDefEq f v
+  if w?.isSome then return w?
+  -- a constant that is itself a code of its relations, any number of them (`GenK.foldI`): its `Fn` binders are
+  -- `xs`, its demand bits and objects solved by unifying; tried last, so no wrapper's fit changes
+  fitConst c (fun t => pure (t.isAppOf ``Gen.Fn)) xs (fun _ ty => isDefEq ty (g ``Gen.Fn #[bE true, oE A, oE B]))
+      args
 
 /-- Each fit `primFit` made, by row, objects and its relations' types. Process-wide rather than in the environment:
     the fit reads only this library's constants, and a backtracking elaborator (`restore`) would drop an env's. -/

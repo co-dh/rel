@@ -1212,6 +1212,16 @@ theorem NSpec.map2 {A B A1 B1 A2 B2 : Obj} {t : Tm A B} {R : Tm A1 B1} {S : Tm A
   obtain ⟨i2, e2, o2⟩ := hy _ i1
   exact ⟨i2, e1.trans e2, hC _ _ _ (o1.ext e2) o2⟩
 
+/-- `NSpec.map2` given a fact `Q` of every term `x` returns, which `hC` reads (a spine's head, `Tm.number_spine`). -/
+theorem NSpec.map2Q {A B A1 B1 A2 B2 : Obj} {t : Tm A B} {R : Tm A1 B1} {S : Tm A2 B2}
+    {x : StateM Shares (Tm A1 B1)} {y : StateM Shares (Tm A2 B2)} {Q : Tm A1 B1 → Prop}
+    (C : Tm A1 B1 → Tm A2 B2 → Tm A B) (hx : NSpec R x) (hq : ∀ s, Shares.Inv s → Q (x.run s).1)
+    (hy : NSpec S y) (hC : ∀ ts a b, Q a → NOut R a ts → NOut S b ts → NOut t (C a b) ts) :
+    NSpec t (do return C (← x) (← y)) := fun s hs => by
+  obtain ⟨i1, e1, o1⟩ := hx s hs
+  obtain ⟨i2, e2, o2⟩ := hy _ i1
+  exact ⟨i2, e1.trans e2, hC _ _ _ (hq s hs) (o1.ext e2) o2⟩
+
 theorem NSpec.map4 {A B A1 B1 A2 B2 A3 B3 A4 B4 : Obj} {t : Tm A B} {R : Tm A1 B1} {S : Tm A2 B2}
     {U : Tm A3 B3} {V : Tm A4 B4} {x : StateM Shares (Tm A1 B1)} {y : StateM Shares (Tm A2 B2)}
     {z : StateM Shares (Tm A3 B3)} {w : StateM Shares (Tm A4 B4)}
@@ -1264,6 +1274,27 @@ theorem Tm.mapMSz_spec {A B : Obj} (t : Tm A B) (h : t.numGeneric = true) (hg : 
     | (refine NSpec.map2 (R := ?_) (S := ?_) _ ?_ ?_ ?_ <;> part)
     | (refine NSpec.map4 (R := ?_) (S := ?_) (U := ?_) (V := ?_) _ ?_ ?_ ?_ ?_ ?_ <;> part)
 
+/-- A spine numbered at its head (`hd`) stays a spine of its row with each argument's sign kept: no slot is made
+    at the head (`Tm.numberWrap`), a row is never closed (`closed_prim`), and each argument keeps `Tm.pol` (`NOut`). -/
+theorem Tm.number_spine {A B : Obj} (t : Tm A B) (s : Bool) (k : Nat) (hg : t.GenHyp fun _ R => R.fv = [])
+    (ih : ∀ {C D : Obj} (c : Tm C D), c.size ≤ t.size → c.GenHyp (fun _ R => R.fv = []) → ∀ hd,
+      NSpec c (c.number hd))
+    (hp : t.spinePol s k = true) (st : Shares) (hs : Shares.Inv st) :
+    ((t.number true).run st).1.spinePol s k = true := by
+  induction t generalizing st with
+  | prim r => rw [(ih _ (Nat.le_refl _) hg true st hs).2.2.2.2.2 r rfl]; exact hp
+  | arg f x ihf _ =>
+    simp only [Tm.spinePol, Bool.and_eq_true] at hp
+    simp only [Tm.GenHyp] at hg
+    have hf := ih f (by simp only [Tm.size]; omega) hg.1 true st hs
+    have hx := ih x (by simp only [Tm.size]; omega) hg.2 false _ hf.1
+    rw [Tm.number.eq_def]
+    simp only [Tm.numberWrap]
+    show Tm.spinePol s k (.arg ((f.number true).run st).1 ((x.number).run ((f.number true).run st).2).1) = true
+    simp only [Tm.spinePol, Bool.and_eq_true]
+    exact ⟨ihf hg.1 (fun c hc => ih c (by simp only [Tm.size]; omega)) hp.1 st hs, hx.2.2.2.2.1 s k hp.2⟩
+  | _ => simp [Tm.spinePol] at hp
+
 /-- **`Tm.number` keeps the table read literally**: from a table each slot of which reads it (`Shares.Inv`), a term
     whose every shared part is closed numbers to one that reads the extended table (`NSpec`). -/
 theorem Tm.number_spec : ∀ (n : Nat) {A B : Obj} (t : Tm A B), t.size ≤ n →
@@ -1288,20 +1319,18 @@ theorem Tm.number_spec : ∀ (n : Nat) {A B : Obj} (t : Tm A B), t.size ≤ n �
         exact NSpec.bindWrap (NSpec.map1 (fun a => .callCv ks c c' os a u) (ih b (by omega) hg false) (by nout)) hd
       case arg C D f x =>
         -- `cases` binds the function as `x` and the argument as `f`
-        refine NSpec.bindWrap (NSpec.map2 (fun a b => .arg a b) (ih x (by omega) hg.1 true) (ih f (by omega) hg.2 false) ?_) hd
-        intro ts a b ⟨g1, f1, p1, r1⟩ ⟨g2, f2, p2, _⟩
+        refine NSpec.bindWrap (NSpec.map2Q (Q := fun a => ∀ s k, x.spinePol s k = true → a.spinePol s k = true)
+          (fun a b => .arg a b) (ih x (by omega) hg.1 true)
+          (fun st hst s k h => Tm.number_spine x s k hg.1 (fun c hc hgc => ih c (by omega) hgc) h st hst)
+          (ih f (by omega) hg.2 false) ?_) hd
+        intro ts a b q ⟨g1, f1, p1, r1⟩ ⟨g2, f2, p2, _⟩
         refine ⟨⟨g1, g2⟩, fun k hk => ?_, fun s k hp => ?_, fun _ e => by cases e⟩
         · simp only [Tm.fv, List.mem_append] at hk ⊢; grind
         · by_cases hk : k ∈ (Tm.arg a b).fv
           · have hk' : k ∈ (Tm.arg x f).fv := by simp only [Tm.fv, List.mem_append] at hk ⊢; grind
-            cases x with
-            | prim r =>
-              rw [r1 r rfl]
-              simp only [Tm.pol, Tm.fv, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true',
-                List.mem_append, List.not_mem_nil] at hp hk' ⊢
-              grind
-            | _ => simp only [Tm.pol, Bool.not_eq_true'] at hp
-                   all_goals first | exact absurd hk' hp | grind
+            have hp : x.spinePol s k = true ∧ f.pol s k = true := by simpa [Tm.pol, hk'] using hp
+            simp only [Tm.pol, Bool.or_eq_true, Bool.and_eq_true]
+            exact Or.inl ⟨q s k hp.1, p2 s k hp.2⟩
           · exact Tm.pol_of_fv _ s k hk
     · rw [Tm.number_mapMSz t hk]
       exact NSpec.bindSlot (Tm.mapMSz_spec t hk hg fun c hc hgc => ih c (by omega) hgc false)

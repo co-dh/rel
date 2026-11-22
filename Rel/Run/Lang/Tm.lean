@@ -307,11 +307,12 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .call ks c os b => .call ks c os b
   | _, _, _, .callCv ks c c' os b u => .callCv ks c c' os b u
 
+mutual
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
     occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `E`, `thin` hold an image
-    whole (`lamDen`'s `↔`), so their part must be too. A row passes its argument's sign where its `prims` entry is
-    `mono` (`rowDens_mono`), `F(X)` among them. -/
+    whole (`lamDen`'s `↔`), so their part must be too. A row given any number of relations passes their sign where
+    its `prims` entry is `mono` (`Tm.spinePol`, `rowDens_mono`), `F(X)` among them. -/
 def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .var _ j => if j == k then s else true
   | _, _, .top V => V.pol s k
@@ -333,10 +334,18 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .est Q => Q.pol s k
   | _, _, .succ U | _, _, .arith _ _ U | _, _, .leq _ U | _, _, .lt _ U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S | _, _, .foldI e S => e.pol s k && S.pol s k
-  | _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
-  | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
+  | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
+  | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. | _, _, .callCv .. => true
+
+/-- `t` a `mono` row (`prims`) given relations, each occurring with sign `s` in `k` (`Tm.pol`): the spine
+    `.arg (… (.arg (.prim r) x₁) …) xₙ`, of any length `n` (`Tm.den_pol_spine`). -/
+def Tm.spinePol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
+  | _, _, .prim r => (Prim.find? r.sym).any (·.mono)
+  | _, _, .arg f x => f.spinePol s k && x.pol s k
+  | _, _, _ => false
+end
 
 /-! ### The children of a recursion -/
 
