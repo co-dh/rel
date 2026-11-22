@@ -2640,7 +2640,7 @@ theorem mem_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h 
 theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.setify X = .ok T)
     (hw : Vals.WF X)
     (xs : List B.El) (ys : List B.El) :
-    T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.lamDen (fun xs b => b ∈ xs : Lang.Den (.arr B) B) xs ys := by
+    T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.lamDen (fun xs b => b ∈ xs : Core.Rel (Obj.El (.arr B)) (Obj.El B)) xs ys := by
   unfold Tab.setify at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
   obtain ⟨U, hU⟩ := mem_canonical hG

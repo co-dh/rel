@@ -26,8 +26,8 @@ body `φ Y` representing `Φ (rep Y)` for every table `Y`, `Φ` monotonic and lo
 nodes `N` (`Tab.mu_holds`) are coreflexive, hold the keys in demand and are closed under `CH`; the rounds on `N` stay
 below `μ Φ` and end at `Y` with `N ≫ Φ(Y) ⊑ Y`, so `Z = (N ⇒ Y)` is a prefixed point and `μ Φ ⊑ Y` on `N`. No
 well-foundedness is read: a cyclic `ch` makes the code an error table, which represents `μ Φ` vacuously. -/
-theorem hylo_sound {A B : Obj} {what : String} {ch : Rel A A} {CH : Den A A}
-    {φ : Tab A B → Rel A B} {Φ : Den A B → Den A B} (hch : ∀ K, K.WF → ch.Reps K CH) (wch : ch.Wf)
+theorem hylo_sound {A B : Obj} {what : String} {ch : Rel A A} {CH : Core.Rel (Obj.El A) (Obj.El A)}
+    {φ : Tab A B → Rel A B} {Φ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B)} (hch : ∀ K, K.WF → ch.Reps K CH) (wch : ch.Wf)
     (hφ : ∀ Y, Y.WF → ∀ K, K.WF → (φ Y).Reps K (Φ (rep Y))) (wφ : ∀ Y, Y.WF → (φ Y).Wf) (hm : Monotonic Φ)
     (hl : ∀ X Y a, (∀ a', CH a a' → ∀ b, (X a' b ↔ Y a' b)) → ∀ b, (Φ X a b ↔ Φ Y a b)) :
     ∀ K, K.WF → (GenK.hylo A B what ch φ).Reps K (Core.Rel.mu Φ) := by

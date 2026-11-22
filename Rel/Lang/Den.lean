@@ -17,11 +17,9 @@ open Rel.Kernel Tab Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
-/-- An arrow `A ⟶ B` of `Rel(Set)` between the elements of two objects. -/
-abbrev Den (A B : Obj) := Core.Rel (A.El) (B.El)
-
-/-- The meaning of each variable `k`, at the objects the term asks for. -/
-abbrev Val := Nat → (A B : Obj) → Den A B
+/-- The meaning of each variable `k`, at the objects the term asks for: an arrow `A ⟶ B` of `Rel(Set)` between the
+    elements of the two objects. -/
+abbrev Val := Nat → (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
 
 /-- No variable bound: what a closed term (`share`) is read under. -/
 def Val.empty : Val := fun _ _ _ => 𝟘
@@ -29,44 +27,44 @@ def Val.empty : Val := fun _ _ _ => 𝟘
 open Classical in
 /-- `ρ` with the variable `k` bound to `X : A ⟶ B`. A use of `k` at other objects is ill-typed and reads `𝟘`, so
     the binder hides every outer `k`, as `Tm.fv` drops it. -/
-noncomputable def Val.bind (ρ : Val) (k : Nat) {A B : Obj} (X : Den A B) : Val := fun j A' B' =>
+noncomputable def Val.bind (ρ : Val) (k : Nat) {A B : Obj} (X : Core.Rel (Obj.El A) (Obj.El B)) : Val := fun j A' B' =>
   if j = k then (if h : A = A' ∧ B = B' then h.1 ▸ h.2 ▸ X else 𝟘) else ρ j A' B'
 
-theorem Val.bind_ne {ρ : Val} {k j : Nat} {A B : Obj} {X : Den A B} (h : j ≠ k) : ρ.bind k X j = ρ j := by
+theorem Val.bind_ne {ρ : Val} {k j : Nat} {A B : Obj} {X : Core.Rel (Obj.El A) (Obj.El B)} (h : j ≠ k) : ρ.bind k X j = ρ j := by
   funext A' B'; simp [Val.bind, h]
 
-theorem Val.bind_same {ρ ρ' : Val} {k : Nat} {A B : Obj} {X : Den A B} : ρ.bind k X k = ρ'.bind k X k := by
+theorem Val.bind_same {ρ ρ' : Val} {k : Nat} {A B : Obj} {X : Core.Rel (Obj.El A) (Obj.El B)} : ρ.bind k X k = ρ'.bind k X k := by
   funext A' B'; simp [Val.bind]
 
-variable {A B C : Obj} {Φ Ψ : Den A B → Den A B} {Y : Den A B}
+variable {A B C : Obj} {Φ Ψ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B)} {Y : Core.Rel (Obj.El A) (Obj.El B)}
 
 /-! ### The named meanings: each the `T` of its node's `Gen.*_sound` lemma -/
 
 
 /-- `R − S`, pointwise. -/
-abbrev diffDen (TR TS : Den A B) : Den A B := fun x y => TR x y ∧ ¬ TS x y
+abbrev diffDen (TR TS : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El B) := fun x y => TR x y ∧ ¬ TS x y
 
 /-- `R\S` within the universes `UB`, `UC`: the book's left division where `R` has a column, every pair of the
     universes where it has none. -/
-abbrev ldivDen (TR : Den A B) (TS : Den A C) (TB : Den B B) (TC : Den C C) : Den B C :=
+abbrev ldivDen (TR : Core.Rel (Obj.El A) (Obj.El B)) (TS : Core.Rel (Obj.El A) (Obj.El C)) (TB : Core.Rel (Obj.El B) (Obj.El B)) (TC : Core.Rel (Obj.El C) (Obj.El C)) : Core.Rel (Obj.El B) (Obj.El C) :=
   fun b c => (∀ a, TR a b → TS a c) ∧ ((∃ a, TR a b) ∨ ((∃ b', TB b' b) ∧ ∃ c', TC c' c))
 
 /-- `R/S` within the universes `UA`, `UB`, the mirror of `ldivDen`. -/
-abbrev rdivDen (TR : Den A C) (TS : Den B C) (TA : Den A A) (TB : Den B B) : Den A B :=
+abbrev rdivDen (TR : Core.Rel (Obj.El A) (Obj.El C)) (TS : Core.Rel (Obj.El B) (Obj.El C)) (TA : Core.Rel (Obj.El A) (Obj.El A)) (TB : Core.Rel (Obj.El B) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El B) :=
   fun x y => (∀ c, TS y c → TR x c) ∧ ((∃ c, TS y c) ∨ ((∃ a, TA a x) ∧ ∃ b, TB b y))
 
 /-- `R÷S = R/S ∩ (S/R)°` within the universes `UA`, `UB`: `x` to `y` when `R x` and `S y` are one image. -/
-abbrev symDivDen (TA : Den A A) (TB : Den B B) (TR : Den A C) (TS : Den B C) : Den A B :=
+abbrev symDivDen (TA : Core.Rel (Obj.El A) (Obj.El A)) (TB : Core.Rel (Obj.El B) (Obj.El B)) (TR : Core.Rel (Obj.El A) (Obj.El C)) (TS : Core.Rel (Obj.El B) (Obj.El C)) : Core.Rel (Obj.El A) (Obj.El B) :=
   rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
 
 /-- `nil`: every source to the empty array. -/
-abbrev nilDen : Den A (.arr B) := fun _ Y => Y = []
+abbrev nilDen : Core.Rel (Obj.El A) (Obj.El (.arr B)) := fun _ Y => Y = []
 
 /-- `at(k)`: the element at position `k`. -/
-abbrev atDen (k : Nat) : Den (.arr B) B := fun xs x => ∃ h : k < xs.length, x = xs[k]'h
+abbrev atDen (k : Nat) : Core.Rel (Obj.El (.arr B)) (Obj.El B) := fun xs x => ∃ h : k < xs.length, x = xs[k]'h
 
 /-- `succ` on the universe `TU`: `u` and its successor both in it. -/
-abbrev succDen (TU : Den .long .long) : Den .long .long :=
+abbrev succDen (TU : Core.Rel (Obj.El .long) (Obj.El .long)) : Core.Rel (Obj.El .long) (Obj.El .long) :=
   fun u w => (∃ v, TU u v) ∧ w = Ew.intStep Ew.add Alg.nul u 1 ∧ ∃ v, TU w v
 
 /-- The float order `o` (`Op.flt`, `Op.fle`) on two values of `t`: IEEE's on their `f64` words (`fval`); no pair at an
@@ -98,22 +96,22 @@ def leAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
   | t, a, b => iordAt Rel.Kernel.Op.le t a b
 
 /-- `≤` on the universe `TU` of the atom `t`. -/
-abbrev leqDen (t : QAtomicType) (TU : Den (.atom t) (.atom t)) : Den (.atom t) (.atom t) :=
+abbrev leqDen (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t)) :=
   fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ leAt t a b
 
 /-- `<` on the universe `TU` of the atom `t`. -/
-abbrev ltDen (t : QAtomicType) (TU : Den (.atom t) (.atom t)) : Den (.atom t) (.atom t) :=
+abbrev ltDen (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t)) :=
   fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ ltAt t a b
 
 /-- The value verb `k` itself (`Alg.arith`): `Int64`'s step, not the null and, for `+ - *`, not wrapped. -/
-abbrev stepDen (k : UInt8) : Den (.prod .long .long) .long :=
+abbrev stepDen (k : UInt8) : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long) :=
   fun p w => w = Ew.intStep k Alg.nul p.1 p.2 ∧ w ≠ Alg.nul ∧
     (if k == Ew.add then (0 ≤ p.2 ↔ p.1 ≤ w) else if k == Ew.sub then (0 ≤ p.2 ↔ w ≤ p.1)
      else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w p.1 = p.2 ∨ p.1 = 0) else True)
 
 /-- The value verb `k` at the atom `t`: `stepDen k` at `i64`; at a float atom `fstep` on the operands' `f64` words
     (`fval`), the word of `t` it answers, no row where that is `2^63` (the IEEE answer is NaN); none elsewhere. -/
-def stepAt : (t : QAtomicType) → UInt8 → Den (.prod (.atom t) (.atom t)) (.atom t)
+def stepAt : (t : QAtomicType) → UInt8 → Core.Rel (Obj.El (.prod (.atom t) (.atom t))) (Obj.El (.atom t))
   | .i64, k => stepDen k
   | t, k => fun p w => ∃ x y r, fval t p.1 = some x ∧ fval t p.2 = some y ∧ fstep t k x y = .ok r ∧
       r ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t r
@@ -121,12 +119,12 @@ def stepAt : (t : QAtomicType) → UInt8 → Den (.prod (.atom t) (.atom t)) (.a
 /-- The value verb `k` on the universe `TU` of the atom `t`: both inputs in `TU` (`dom(π₁ TU)`, `dom(π₂ TU)`), as
     `succDen`'s, then the step, its result in `TU`. The input test makes `(TU×TU) arith = arith` at a coreflexive
     `TU`. -/
-abbrev arithDen (t : QAtomicType) (k : UInt8) (TU : Den (.atom t) (.atom t)) : Den (.prod (.atom t) (.atom t)) (.atom t) :=
+abbrev arithDen (t : QAtomicType) (k : UInt8) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) : Core.Rel (Obj.El (.prod (.atom t) (.atom t))) (Obj.El (.atom t)) :=
   (𝟙 _ ∩ (graph Prod.fst ≫ TU) ≫ (graph Prod.fst ≫ TU)°) ≫
     ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepAt t k ≫ TU))
 
 /-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value. -/
-abbrev foldrDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr E) V :=
+abbrev foldrDen {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
   fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
     (∃ a, Te a (ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm))) ∧
     (∀ t (ht : t < xs.length), TS (xs[t]'ht, ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
@@ -135,7 +133,7 @@ abbrev foldrDen {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) : Den (.arr 
 
 /-- The left fold `⦇e, S⦈` over `[nil, snoc]`: a chain of values `ys`, its first from `e`, each the step `S` of the
     value before and the element (`(acc, x)`, index 0 first), the result its last. -/
-abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E) V :=
+abbrev foldDen {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
   fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
     (∃ a, Te a (ys[0]'(by omega))) ∧
     (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
@@ -144,13 +142,13 @@ abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E
 
 /-- `fold(e, S)` given a family: at the key `i`, the left fold whose start is the fibre of `e` at `i` and whose step
     is `S` at `i`, keeping the key. -/
-abbrev foldIDen {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
-    Den (.prod I (.arr E)) V :=
+abbrev foldIDen {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) :
+    Core.Rel (Obj.El (.prod I (.arr E))) (Obj.El V) :=
   fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS ((p.1, q.1), q.2) (p.1, v)) p.2 w
 
 /-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
     `π₁ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
-theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
+theorem foldIDen_eq {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) :
     foldIDen Te TS =
       ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
         (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
@@ -190,71 +188,71 @@ theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.pr
 
 
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
-abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
+abbrev flatDen {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B))) : Core.Rel (Obj.El (.prod I A)) (Obj.El B) := fun x b => T x.1 (x.2, b)
 
 
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
-abbrev estDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) B :=
+abbrev estDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El B) :=
   fun xs b => b ∈ xs ∧ ¬ ∃ c, c ∈ xs ∧ c ≠ b ∧ ¬ TQ (b, c) (b, c)
 
 /-- `Λ(T)` with `𝒫B` held as `[B]` (D2 = C): `a` to the one list of its image strictly ascending by `Obj.lt`, the
     order `Rel.Canon` puts a table's rows in; no list where that image has no such list. -/
-abbrev lamDen (T : Den A B) : Den A (.arr B) := fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b
+abbrev lamDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El (.arr B)) := fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b
 
 /-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
-abbrev mapDen {A B : Obj} (T : Den A B) : Den (.arr A) (.arr B) := fun xs ys => ys.length = xs.length ∧
+abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := fun xs ys => ys.length = xs.length ∧
   ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')
 
 /-- `dom(T) (𝟙 × ≥) dom(T)`: `(k, i)` to `(k, j)`, both in `dom(T)`, `j ≤ i` in the order `leAt t` of the position
     atom `t`; `𝟙 × ≥` is `π₁ π₁° ∩ π₂ ≥ π₂°`. -/
-abbrev upToDen {K V : Obj} {t : QAtomicType} (T : Den (.prod K (.atom t)) V) :
-    Den (.prod K (.atom t)) (.prod K (.atom t)) :=
+abbrev upToDen {K V : Obj} {t : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El V)) :
+    Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El (.prod K (.atom t))) :=
   (𝟙 _ ∩ T ≫ T°) ≫ ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
-    (graph Prod.snd ≫ (fun a b => leAt t b a : Den (.atom t) (.atom t)) ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
+    (graph Prod.snd ≫ (fun a b => leAt t b a : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
 
 /-- q's `sums` per key, `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` with `agg(R, f) = dom(R) Λ(R) f`: `(k, i)` to
     the left fold of `plus` from `0` over `x`'s values at `(k, j)`, `j ≤ i` ascending; none at or after a step that
     `plus` refuses (a wrap, the null, a NaN). The values are
     those of the atom `u`, the fold `stepAt u` from the word `0`: left to right at a float atom, q's order. -/
-abbrev sumsDen {K : Obj} {t u : QAtomicType} (T : Den (.prod K (.atom t)) (.atom u)) :
-    Den (.prod K (.atom t)) (.atom u) :=
+abbrev sumsDen {K : Obj} {t u : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El (.atom u))) :
+    Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El (.atom u)) :=
   (𝟙 _ ∩ upToDen T ≫ (upToDen T)°) ≫ lamDen (upToDen T) ≫ mapDen T ≫
-    foldDen (fun _ b => b = QAtomicType.ofBits u 0 : Den (.atom u) (.atom u)) (stepAt u Ew.add)
+    foldDen (fun _ b => b = QAtomicType.ofBits u 0 : Core.Rel (Obj.El (.atom u)) (Obj.El (.atom u))) (stepAt u Ew.add)
 
 /-- `sums` at the position object `P` and the value object `V`: `sumsDen` where both are atoms, `𝟘` elsewhere (no
     `≤`, no `plus`). -/
-def sumsAt (K : Obj) : (P V : Obj) → Den (.prod K P) V → Den (.prod K P) V
+def sumsAt (K : Obj) : (P V : Obj) → Core.Rel (Obj.El (.prod K P)) (Obj.El V) → Core.Rel (Obj.El (.prod K P)) (Obj.El V)
   | .atom _, .atom _, T => sumsDen T
   | _, _, _ => 𝟘
 
 /-- `sum` at the element object `V`: the left fold `⦇[0, plus]⦈` of `stepAt t add` from the word `0`, from index `0`
     up (q's order), where `V` is an atom; none at or after a step `plus` refuses (a wrap, the null, a NaN). `𝟘` where
     `V` is no atom (no `plus`). -/
-def sumAt : (V : Obj) → Den (.arr V) V
+def sumAt : (V : Obj) → Core.Rel (Obj.El (.arr V)) (Obj.El V)
   | .atom t => foldDen (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add)
   | _ => 𝟘
 
 /-- `E(T) = Λ(∋ T)`: an array to the canonical list of the images of its elements. -/
-abbrev EDen (T : Den A B) : Den (.arr A) (.arr B) := lamDen ((fun xs a => a ∈ xs : Den (.arr A) A) ≫ T)
+abbrev EDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := lamDen ((fun xs a => a ∈ xs : Core.Rel (Obj.El (.arr A)) (Obj.El A)) ≫ T)
 
 /-- `thin(Q)` as `CRel.thinOn` computes it: the canonical list of the `c` of `xs` that no `b` of `xs` beats
     strictly, `Q` read as its pair test as in `estDen`. -/
-abbrev thinDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) (.arr B) :=
+abbrev thinDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El (.arr B)) :=
   lamDen fun xs c => c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b)
 
 /-! ### The rows of `prims` -/
 
 /-- A relation argument's meaning with its objects. -/
-abbrev Sem := (X Y : Obj) × Den X Y
+abbrev Sem := (X Y : Obj) × Core.Rel (Obj.El X) (Obj.El Y)
 
 /-- A row's meaning `D` of its one relation argument, read at `X ⟶ Y`; `𝟘` where the arguments are not one at
     `X ⟶ Y`, where `RowCode.unary` has no code. -/
-def Sem.one {X Y A B : Obj} (D : Den X Y → Den A B) : List Sem → Den A B
+def Sem.one {X Y A B : Obj} (D : Core.Rel (Obj.El X) (Obj.El Y) → Core.Rel (Obj.El A) (Obj.El B)) : List Sem → Core.Rel (Obj.El A) (Obj.El B)
   | [⟨X', Y', T⟩] => if h : X' = X ∧ Y' = Y then D (h.1 ▸ h.2 ▸ T) else 𝟘
   | _ => 𝟘
 
 /-- `Sem.one` for a row of two relation arguments, read at `X ⟶ Y` and `X₂ ⟶ Y₂`. -/
-def Sem.two {X Y X₂ Y₂ A B : Obj} (D : Den X Y → Den X₂ Y₂ → Den A B) : List Sem → Den A B
+def Sem.two {X Y X₂ Y₂ A B : Obj} (D : Core.Rel (Obj.El X) (Obj.El Y) → Core.Rel (Obj.El X₂) (Obj.El Y₂) → Core.Rel (Obj.El A) (Obj.El B)) : List Sem → Core.Rel (Obj.El A) (Obj.El B)
   | [⟨X', Y', T⟩, ⟨X₂', Y₂', U⟩] =>
     if h : X' = X ∧ Y' = Y ∧ X₂' = X₂ ∧ Y₂' = Y₂ then D (h.1 ▸ h.2.1 ▸ T) (h.2.2.1 ▸ h.2.2.2 ▸ U) else 𝟘
   | _ => 𝟘
@@ -312,14 +310,14 @@ end RowCode
 
 /-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
     never rounds; `𝟘` where a side is no atom. -/
-def castDen : (A B : Obj) → Den A B
+def castDen : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
   | .atom s, .atom t => fun x y => QAtomicType.embed s t x = some y
   | _, _ => fun _ _ => False
 
 /-- A float verb `o` of `floatOps`: at `F ⟶ D` for an `o` reading one operand, `o` on the value's `f64` word (`fval`);
     at `F×F ⟶ D` for one reading two, `o` on the two components' words; then the word of `D`'s atom for the answer
     (`Op.ofF64`), no row where that is `2^63` (NaN, or no value of `D`'s atom); `𝟘` at any other objects. -/
-def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Den A B
+def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
   | .atom t, .atom u => fun x w => o.readsAcc = false ∧ ∃ X Y R, fval t x = some X ∧ o.eval 0 X = .ok Y ∧
       (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
   | .prod (.atom t) (.atom t'), .atom u => fun x w => o.readsAcc = true ∧ t = t' ∧ ∃ X X' Y R,
@@ -328,7 +326,7 @@ def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Den A B
   | _, _ => fun _ _ => False
 
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
-abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Den (c.ty σ).1 (c.ty σ).2
+abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Core.Rel (Obj.El (c.ty σ).1) (Obj.El (c.ty σ).2)
 
 open Classical RowCode in
 /-- Every row of `prims` with its meaning. `setify` is `Λ(∋)`. -/
@@ -358,7 +356,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨zip, fun _ _ p zs => zs = p.1.zip p.2⟩,
    ⟨snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩,
    ⟨unsnoc, fun _ _ xs p => xs = p.1 ++ [p.2]⟩,
-   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Den (.arr (σ₁ σ)) (σ₁ σ))⟩,
+   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Core.Rel (Obj.El (.arr (σ₁ σ))) (Obj.El (σ₁ σ)))⟩,
    -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
    ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
       ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩,
@@ -380,7 +378,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
     `𝟘` where it has none there. -/
-def Prim.den (r : Prim) (A B : Obj) (ss : List Sem) : Den A B :=
+def Prim.den (r : Prim) (A B : Obj) (ss : List Sem) : Core.Rel (Obj.El A) (Obj.El B) :=
   match rowDens.find? (·.1.sym == r.sym), r.objs A B (ss.map fun s => (s.1, s.2.1)) with
   | some ⟨c, D⟩, some σ => if h : (c.ty σ).1 = A ∧ (c.ty σ).2 = B then h.1 ▸ h.2 ▸ D σ ss else 𝟘
   | _, _ => 𝟘
@@ -391,7 +389,7 @@ mutual
 /-- `⟦t⟧ρ`, one clause per constructor. A row and its arguments (`prim` under `arg`s) mean the row's meaning of
     its arguments' (`Tm.argDen`). A call (the `let` node) is its body read under its arguments bound at `ks`
     (`Val.args`), never under the caller's `ρ`; given none, under no variable. -/
-noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
+noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A) (Obj.El B)
   | _, _, _, .val R => rep R
   | _, _, _, .uni U => (graph U.row)° ≫ graph U.row
   | _, _, _, .zero => 𝟘
@@ -434,7 +432,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
     the order `compile` passes their codes; a call's body with them bound at its `ks`; `𝟘` where `f` is neither
     a row nor a call under `arg`s. `share` and `own` are seen through, as `Tm.gen` passes their part's row on. -/
-noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Den A B
+noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Core.Rel (Obj.El A) (Obj.El B)
   | _, A, B, .prim r, ss => Prim.den r A B ss
   | _, _, _, .call ks _ _ b, ss | _, _, _, .callCv ks _ _ _ b _, ss => b.den (Val.args ks ss)
   | ρ, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
@@ -580,13 +578,13 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
 def Val.Grow (k : Nat) (ρ ρ' : Val) : Prop := (∀ A B, ρ k A B ⊑ ρ' k A B) ∧ ∀ i, i ≠ k → ρ i = ρ' i
 
 /-- `X ⊑ Y` read with the sign `s`: `true` keeps it, `false` turns it round. -/
-def sle (s : Bool) {A B : Obj} (X Y : Den A B) : Prop := cond s (X ⊑ Y) (Y ⊑ X)
+def sle (s : Bool) {A B : Obj} (X Y : Core.Rel (Obj.El A) (Obj.El B)) : Prop := cond s (X ⊑ Y) (Y ⊑ X)
 
 theorem Val.Grow.congr {k : Nat} {ρ ρ' : Val} (g : Grow k ρ ρ') {A B : Obj} {t : Tm A B}
     (h : t.fv.contains k = false) : t.den ρ = t.den ρ' :=
   (t.den_congr ρ ρ' fun i hi => g.2 i fun e => by subst e; simp [hi] at h).1
 
-theorem Val.Grow.bind {k j : Nat} {ρ ρ' : Val} (g : Grow k ρ ρ') (hj : j ≠ k) {A B : Obj} (X : Den A B) :
+theorem Val.Grow.bind {k j : Nat} {ρ ρ' : Val} (g : Grow k ρ ρ') (hj : j ≠ k) {A B : Obj} (X : Core.Rel (Obj.El A) (Obj.El B)) :
     Grow k (ρ.bind j X) (ρ'.bind j X) := by
   refine ⟨fun A' B' => ?_, fun i hi => ?_⟩
   · rw [Val.bind_ne (Ne.symm hj), Val.bind_ne (Ne.symm hj)]; exact g.1 A' B'
@@ -595,7 +593,7 @@ theorem Val.Grow.bind {k j : Nat} {ρ ρ' : Val} (g : Grow k ρ ρ') (hj : j ≠
     · rw [Val.bind_ne e, Val.bind_ne e]; exact g.2 i hi
 
 /-- Binding `k` to a larger `Y` grows the valuation at `k`. -/
-theorem Val.Grow.of_le {k : Nat} {ρ : Val} {X Y : Den A B} (hXY : X ⊑ Y) : Grow k (ρ.bind k X) (ρ.bind k Y) := by
+theorem Val.Grow.of_le {k : Nat} {ρ : Val} {X Y : Core.Rel (Obj.El A) (Obj.El B)} (hXY : X ⊑ Y) : Grow k (ρ.bind k X) (ρ.bind k Y) := by
   refine ⟨fun A' B' => ?_, fun i hi => by rw [Val.bind_ne hi, Val.bind_ne hi]⟩
   simp only [Val.bind, if_true]
   by_cases h : A = A' ∧ B = B'
@@ -605,66 +603,66 @@ theorem Val.Grow.of_le {k : Nat} {ρ : Val} {X Y : Den A B} (hXY : X ⊑ Y) : Gr
 section ops
 variable {D E F : Obj}
 
-theorem comp_le' {X X' : Den A B} {Y Y' : Den B C} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ≫ Y ⊑ X' ≫ Y' :=
+theorem comp_le' {X X' : Core.Rel (Obj.El A) (Obj.El B)} {Y Y' : Core.Rel (Obj.El B) (Obj.El C)} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ≫ Y ⊑ X' ≫ Y' :=
   le_iff.2 fun a c h => by
     rw [comp_apply] at h ⊢; obtain ⟨b, h1, h2⟩ := h; exact ⟨b, le_iff.1 hX _ _ h1, le_iff.1 hY _ _ h2⟩
 
-theorem conv_le' {X X' : Den A B} (hX : X ⊑ X') : X° ⊑ X'° :=
+theorem conv_le' {X X' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') : X° ⊑ X'° :=
   le_iff.2 fun a b h => by rw [recip_apply] at h ⊢; exact le_iff.1 hX _ _ h
 
-theorem inter_le' {X X' Y Y' : Den A B} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ∩ Y ⊑ X' ∩ Y' :=
+theorem inter_le' {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ∩ Y ⊑ X' ∩ Y' :=
   le_iff.2 fun a b h => by rw [inter_apply] at h ⊢; exact ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
 
-theorem union_le' {X X' Y Y' : Den A B} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ∪ Y ⊑ X' ∪ Y' :=
+theorem union_le' {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ∪ Y ⊑ X' ∪ Y' :=
   le_iff.2 fun a b h => by rw [union_apply] at h ⊢; exact h.imp (le_iff.1 hX _ _) (le_iff.1 hY _ _)
 
-theorem diff_le {X X' Y Y' : Den A B} (hX : X ⊑ X') (hY : Y' ⊑ Y) : diffDen X Y ⊑ diffDen X' Y' :=
+theorem diff_le {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY : Y' ⊑ Y) : diffDen X Y ⊑ diffDen X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, fun h' => h.2 (le_iff.1 hY _ _ h')⟩
 
-theorem ldiv_le {R : Den A B} {S S' : Den A C} {U U' : Den B B} {V V' : Den C C} (hS : S ⊑ S') (hU : U ⊑ U')
+theorem ldiv_le {R : Core.Rel (Obj.El A) (Obj.El B)} {S S' : Core.Rel (Obj.El A) (Obj.El C)} {U U' : Core.Rel (Obj.El B) (Obj.El B)} {V V' : Core.Rel (Obj.El C) (Obj.El C)} (hS : S ⊑ S') (hU : U ⊑ U')
     (hV : V ⊑ V') : ldivDen R S U V ⊑ ldivDen R S' U' V' :=
   le_iff.2 fun _ _ h => ⟨fun a ha => le_iff.1 hS _ _ (h.1 a ha),
     h.2.imp id fun ⟨⟨b', hb⟩, c', hc⟩ => ⟨⟨b', le_iff.1 hU _ _ hb⟩, c', le_iff.1 hV _ _ hc⟩⟩
 
-theorem rdiv_le {R R' : Den A C} {S : Den B C} {U U' : Den A A} {V V' : Den B B} (hR : R ⊑ R') (hU : U ⊑ U')
+theorem rdiv_le {R R' : Core.Rel (Obj.El A) (Obj.El C)} {S : Core.Rel (Obj.El B) (Obj.El C)} {U U' : Core.Rel (Obj.El A) (Obj.El A)} {V V' : Core.Rel (Obj.El B) (Obj.El B)} (hR : R ⊑ R') (hU : U ⊑ U')
     (hV : V ⊑ V') : rdivDen R S U V ⊑ rdivDen R' S U' V' :=
   le_iff.2 fun _ _ h => ⟨fun c hc => le_iff.1 hR _ _ (h.1 c hc),
     h.2.imp id fun ⟨⟨a, ha⟩, b, hb⟩ => ⟨⟨a, le_iff.1 hU _ _ ha⟩, b, le_iff.1 hV _ _ hb⟩⟩
 
-theorem pair_le {X X' : Den A B} {Y Y' : Den A C} (hX : X ⊑ X') (hY : Y ⊑ Y') : rpair X Y ⊑ rpair X' Y' :=
+theorem pair_le {X X' : Core.Rel (Obj.El A) (Obj.El B)} {Y Y' : Core.Rel (Obj.El A) (Obj.El C)} (hX : X ⊑ X') (hY : Y ⊑ Y') : rpair X Y ⊑ rpair X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
 
 -- `est` drops `b` only where `Q` fails, so a larger `Q` drops fewer
-theorem est_le {Q Q' : Den (.prod B B) (.prod B B)} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
+theorem est_le {Q Q' : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
   le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
 
-theorem succ_le {U U' : Den .long .long} (hU : U ⊑ U') : succDen U ⊑ succDen U' :=
+theorem succ_le {U U' : Core.Rel (Obj.El .long) (Obj.El .long)} (hU : U ⊑ U') : succDen U ⊑ succDen U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, e, v', hv'⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, e, v', le_iff.1 hU _ _ hv'⟩
 
-theorem leq_le {t : QAtomicType} {U U' : Den (.atom t) (.atom t)} (hU : U ⊑ U') : leqDen t U ⊑ leqDen t U' :=
+theorem leq_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : leqDen t U ⊑ leqDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
-theorem lt_le {t : QAtomicType} {U U' : Den (.atom t) (.atom t)} (hU : U ⊑ U') : ltDen t U ⊑ ltDen t U' :=
+theorem lt_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : ltDen t U ⊑ ltDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
-theorem arith_le {t : QAtomicType} {k : UInt8} {U U' : Den (.atom t) (.atom t)} (hU : U ⊑ U') :
+theorem arith_le {t : QAtomicType} {k : UInt8} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') :
     arithDen t k U ⊑ arithDen t k U' :=
   comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
       (conv_le' (comp_le' (Core.Rel.le_refl _) hU))))
     (comp_le' (inter_le' (Core.Rel.le_refl _) (comp_le' (comp_le' (Core.Rel.le_refl _) hU)
       (conv_le' (comp_le' (Core.Rel.le_refl _) hU)))) (comp_le' (Core.Rel.le_refl _) hU))
 
-theorem foldr_le {e e' : Den B B} {S S' : Den (.prod A B) B} (he : e ⊑ e') (hS : S ⊑ S') :
+theorem foldr_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El (.prod A B)) (Obj.El B)} (he : e ⊑ e') (hS : S ⊑ S') :
     foldrDen e S ⊑ foldrDen e' S' :=
   le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
     ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
-theorem fold_le {e e' : Den B B} {S S' : Den (.prod B A) B} (he : e ⊑ e') (hS : S ⊑ S') :
+theorem fold_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El (.prod B A)) (Obj.El B)} (he : e ⊑ e') (hS : S ⊑ S') :
     foldDen e S ⊑ foldDen e' S' :=
   le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
     ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
-theorem foldI_le {e e' : Den C (.prod B B)} {S S' : Den (.prod (.prod C B) A) (.prod C B)} (he : e ⊑ e')
+theorem foldI_le {e e' : Core.Rel (Obj.El C) (Obj.El (.prod B B))} {S S' : Core.Rel (Obj.El (.prod (.prod C B) A)) (Obj.El (.prod C B))} (he : e ⊑ e')
     (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=
   le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
     (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
@@ -674,7 +672,7 @@ end ops
 /-- `ss'` grows `ss` argument by argument, each at the same objects. -/
 inductive Sems.le : List Sem → List Sem → Prop
   | nil : Sems.le [] []
-  | cons {X Y : Obj} {T T' : Den X Y} {ss ss' : List Sem} :
+  | cons {X Y : Obj} {T T' : Core.Rel (Obj.El X) (Obj.El Y)} {ss ss' : List Sem} :
     T ⊑ T' → Sems.le ss ss' → Sems.le (⟨X, Y, T⟩ :: ss) (⟨X, Y, T'⟩ :: ss')
 
 /-- `ss ⊑ ss'` are at the same objects, which `Prim.objs` reads. -/
@@ -689,13 +687,13 @@ def Sems.sle (s : Bool) (ss ss' : List Sem) : Prop := cond s (Sems.le ss ss') (S
 
 theorem Sems.sle.nil (s : Bool) : Sems.sle s [] [] := by cases s <;> exact Sems.le.nil
 
-theorem Sems.sle.cons {s : Bool} {X Y : Obj} {T T' : Den X Y} {ss ss' : List Sem} (h : Rel.Lang.sle s T T')
+theorem Sems.sle.cons {s : Bool} {X Y : Obj} {T T' : Core.Rel (Obj.El X) (Obj.El Y)} {ss ss' : List Sem} (h : Rel.Lang.sle s T T')
     (hs : Sems.sle s ss ss') : Sems.sle s (⟨X, Y, T⟩ :: ss) (⟨X, Y, T'⟩ :: ss') := by
   cases s
   · exact Sems.le.cons h hs
   · exact Sems.le.cons h hs
 
-theorem Sem.one_mono {X Y A B : Obj} {D : Den X Y → Den A B} (hD : ∀ {T T'}, T ⊑ T' → D T ⊑ D T')
+theorem Sem.one_mono {X Y A B : Obj} {D : Core.Rel (Obj.El X) (Obj.El Y) → Core.Rel (Obj.El A) (Obj.El B)} (hD : ∀ {T T'}, T ⊑ T' → D T ⊑ D T')
     {ss ss' : List Sem} (h : Sems.le ss ss') : Sem.one D ss ⊑ Sem.one D ss' := by
   cases h with
   | nil => exact Core.Rel.le_refl _
@@ -708,7 +706,7 @@ theorem Sem.one_mono {X Y A B : Obj} {D : Den X Y → Den A B} (hD : ∀ {T T'},
       · simp only [dif_neg hh]; exact Core.Rel.le_refl _
     | cons => first | exact Core.Rel.le_refl _ | (simp only [Sem.one]; exact Core.Rel.le_refl _)
 
-theorem Sem.two_mono {X Y X₂ Y₂ A B : Obj} {D : Den X Y → Den X₂ Y₂ → Den A B}
+theorem Sem.two_mono {X Y X₂ Y₂ A B : Obj} {D : Core.Rel (Obj.El X) (Obj.El Y) → Core.Rel (Obj.El X₂) (Obj.El Y₂) → Core.Rel (Obj.El A) (Obj.El B)}
     (hD : ∀ {T T' U U'}, T ⊑ T' → U ⊑ U' → D T U ⊑ D T' U') {ss ss' : List Sem} (h : Sems.le ss ss') :
     Sem.two D ss ⊑ Sem.two D ss' := by
   rcases h with _ | @⟨X', Y', T, T', _, _, h, _ | @⟨X₂', Y₂', U, U', _, _, h', _ | _⟩⟩
@@ -757,25 +755,25 @@ theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) 
     · simp only [dif_neg hh]; exact Core.Rel.le_refl _
   next => exact Core.Rel.le_refl _
 
-theorem sle.refl {s : Bool} (X : Den A B) : sle s X X := by cases s <;> exact Core.Rel.le_refl X
+theorem sle.refl {s : Bool} (X : Core.Rel (Obj.El A) (Obj.El B)) : sle s X X := by cases s <;> exact Core.Rel.le_refl X
 
-theorem sle.of_eq {s : Bool} {X Y : Den A B} (h : X = Y) : sle s X Y := h ▸ sle.refl X
+theorem sle.of_eq {s : Bool} {X Y : Core.Rel (Obj.El A) (Obj.El B)} (h : X = Y) : sle s X Y := h ▸ sle.refl X
 
-theorem sle.map1 {A' B' : Obj} {f : Den A B → Den A' B'} (hf : ∀ {X X'}, X ⊑ X' → f X ⊑ f X') :
+theorem sle.map1 {A' B' : Obj} {f : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A') (Obj.El B')} (hf : ∀ {X X'}, X ⊑ X' → f X ⊑ f X') :
     ∀ {s X X'}, sle s X X' → sle s (f X) (f X')
   | true, _, _, h | false, _, _, h => hf h
 
-theorem sle.map2 {A' B' A'' B'' : Obj} {f : Den A B → Den A' B' → Den A'' B''}
+theorem sle.map2 {A' B' A'' B'' : Obj} {f : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A') (Obj.El B') → Core.Rel (Obj.El A'') (Obj.El B'')}
     (hf : ∀ {X X' Y Y'}, X ⊑ X' → Y ⊑ Y' → f X Y ⊑ f X' Y') :
     ∀ {s X X' Y Y'}, sle s X X' → sle s Y Y' → sle s (f X Y) (f X' Y')
   | true, _, _, _, _, h1, h2 | false, _, _, _, _, h1, h2 => hf h1 h2
 
 /-- The second argument antitone: `diff`. -/
-theorem sle.anti2 {f : Den A B → Den A B → Den A B} (hf : ∀ {X X' Y Y'}, X ⊑ X' → Y' ⊑ Y → f X Y ⊑ f X' Y') :
+theorem sle.anti2 {f : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B)} (hf : ∀ {X X' Y Y'}, X ⊑ X' → Y' ⊑ Y → f X Y ⊑ f X' Y') :
     ∀ {s X X' Y Y'}, sle s X X' → sle (!s) Y Y' → sle s (f X Y) (f X' Y')
   | true, _, _, _, _, h1, h2 | false, _, _, _, _, h1, h2 => hf h1 h2
 
-theorem sle.map3 {A' B' A'' B'' A''' B''' : Obj} {f : Den A B → Den A' B' → Den A'' B'' → Den A''' B'''}
+theorem sle.map3 {A' B' A'' B'' A''' B''' : Obj} {f : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A') (Obj.El B') → Core.Rel (Obj.El A'') (Obj.El B'') → Core.Rel (Obj.El A''') (Obj.El B''')}
     (hf : ∀ {X X' Y Y' Z Z'}, X ⊑ X' → Y ⊑ Y' → Z ⊑ Z' → f X Y Z ⊑ f X' Y' Z') :
     ∀ {s X X' Y Y' Z Z'}, sle s X X' → sle s Y Y' → sle s Z Z' → sle s (f X Y Z) (f X' Y' Z')
   | true, _, _, _, _, _, _, h1, h2, h3 | false, _, _, _, _, _, _, h1, h2, h3 => hf h1 h2 h3
@@ -838,7 +836,7 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
     have hS := ihS.1 s ρ ρ' hp.1 g
     by_cases e : j = k
     · subst e
-      have hb : ∀ {A' B' : Obj} (X : Den A' B'), ρ.bind j X = ρ'.bind j X := fun X => funext fun i => by
+      have hb : ∀ {A' B' : Obj} (X : Core.Rel (Obj.El A') (Obj.El B')), ρ.bind j X = ρ'.bind j X := fun X => funext fun i => by
         by_cases e' : i = j
         · subst e'; exact Val.bind_same
         · rw [Val.bind_ne e', Val.bind_ne e', g.2 i e']
@@ -850,7 +848,7 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
     simp only [Tm.den]
     by_cases e : j = k
     · subst e
-      have hb : ∀ {A' B' : Obj} (X : Den A' B'), ρ.bind j X = ρ'.bind j X := fun X => funext fun i => by
+      have hb : ∀ {A' B' : Obj} (X : Core.Rel (Obj.El A') (Obj.El B')), ρ.bind j X = ρ'.bind j X := fun X => funext fun i => by
         by_cases e' : i = j
         · subst e'; exact Val.bind_same
         · rw [Val.bind_ne e', Val.bind_ne e', g.2 i e']
@@ -892,7 +890,7 @@ theorem Tm.den_pol (k : Nat) {A B : Obj} (t : Tm A B) (s : Bool) (ρ ρ' : Val) 
 
 /-- `⟦t⟧` is monotone in `X` where `X` occurs only positively. -/
 theorem Tm.den_mono {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol true k = true) {ρ : Val}
-    {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k X) ⊑ t.den (ρ.bind k Y) :=
+    {X Y : Core.Rel (Obj.El A) (Obj.El B)} (hXY : X ⊑ Y) : t.den (ρ.bind k X) ⊑ t.den (ρ.bind k Y) :=
   t.den_pol k true _ _ h (Val.Grow.of_le hXY)
 
 
@@ -908,7 +906,7 @@ theorem Tm.E_den (ρ : Val) {A B : Obj} (R : Tm A B) :
   simp only [Tm.den]
 
 /-- A row `F(T)` at `xs` reads `T` only at the members of `xs`. -/
-theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
+theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Core.Rel (Obj.El C) (Obj.El D)}
     {ρ : Val} {a : A.El} (h : ∀ m, (Tm.memAt A C).den ρ a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
     r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
   have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
@@ -932,7 +930,7 @@ theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C
     · rw [dif_neg hh, dif_neg hh]
 
 /-- A row `dom(T)` at `a` reads `T` only at `a`. -/
-theorem Prim.den_dom_congr {r : Prim} (hr : (r.sym == domRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
+theorem Prim.den_dom_congr {r : Prim} (hr : (r.sym == domRow.sym) = true) {A B C D : Obj} {T T' : Core.Rel (Obj.El C) (Obj.El D)}
     {ρ : Val} {a : A.El} (h : ∀ m, (Tm.idAt A C).den ρ a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
     r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
   have hf : rowDens.find? (·.1.sym == domRow.sym) =
@@ -957,7 +955,7 @@ theorem Prim.den_dom_congr {r : Prim} (hr : (r.sym == domRow.sym) = true) {A B C
 
 /-- **`hylo`'s body is local along its children** (`Hylo.Local`): where `X` and `Y` agree at the children
     `t.kids k A` reaches from `a`, `t` reads the same at `a` under either bound to `k`. -/
-theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D : Obj} (t : Tm C D) (c : Tm C A),
+theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Core.Rel (Obj.El A) (Obj.El B)) : ∀ {C D : Obj} (t : Tm C D) (c : Tm C A),
     t.kids k A = some c → ∀ a, (∀ a', c.den ρ a a' → ∀ b, (X a' b ↔ Y a' b)) →
       ∀ d, t.den (ρ.bind k X) a d ↔ t.den (ρ.bind k Y) a d := by
   have free : ∀ {C D : Obj} (t : Tm C D), t.fv.contains k = false → ∀ a d,

@@ -98,7 +98,7 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 2  | `Known = {dom, ran}`           | `Gen.Dem`, `Gen.lean:25`, 只有 dom    | `ran` 一侧没有对应物                    | M    | ✅ 3.3      |
 | 3  | CRel 删除，ok → Option         | `CRel`, `Run/CRelDef.lean:8`          | 2297 个 decl；`.rel` 在 ok=false 时被读 | L    | 🔄 3.12     |
 | 4  | `Fn`、`Dem` 删除               | `Gen.lean:48`, `:25`; `Pl` `:51`      | 7 个 module 中 224 + 182 个 decl        | L    | 🔄 3.12b    |
-| 5  | `Den` 被 inline                | `abbrev Den`, `Lang/Den.lean:20`      | 274 个 decl；`LR` 没有 inline 命令      | M    | ⬜ 3.13     |
+| 5  | `Den` 被 inline                | `abbrev Den`, `Lang/Den.lean:20`      | 206 处用在 12 个 module；`LR notate`     | M    | ✅ 3.13     |
 | 6  | `Tm` 没有 `Bool` 下标          | `Tm`, `Run/Lang/Tm.lean:15`           | `Res`、Elab、Expand、Bits、Plan         | L    | ✅ 3.9      |
 | 7  | `compile` 返回 subtype         | `compile`, `Compile.lean:235`         | 先关闭所有 gap；R2                      | L    | ✅ 7.2      |
 | 8  | Syn、Le、Eqv、Hom.den 消失     | `Lang/Syn.lean`, 347 行               | 在 rel 中是叶子；freyd import 它        | S    | ✅ 1.2      |
@@ -594,7 +594,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   没有一个 `{d}` binder 是未被提及的：33 个带 `d : Bool` 的声明全部在结论里把 `d` 传给 `GenK.*`；
   3.12c ✅ 删去 `Gen.Fn`（phantom 索引连同别名本身，code 的类型就是 `Rel A B`）、15 个 `GenK.*` 的 21 个 `d`/`e`
   参数、`TmGen`/`Expand` 生成的 bit（`bE`），以及 33 个 `*_sound`/`*_wf` 的 `{d}`/`{d e}`/`{d d'}` binder。
-- ⬜ 3.13 inline `Den`。
+- ✅ 3.13 inline `Den`：`lean-refactor notate Rel.Lang.Den --form 'Core.Rel (Obj.El $0) (Obj.El $1)'` 改写 12 个 module 中的 206 处应用，再删去 `abbrev Den`；没有已存在的别名可用（`Obj → Obj → Type` 的只有 `Tm`）。
 
 ### P4 `Tm` 的 constructor 变更 — 3/5（串行，共用同样的 match 分支）
 

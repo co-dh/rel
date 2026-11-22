@@ -118,7 +118,7 @@ theorem stepDen_add_iff (x v w : Int64) : stepDen Ew.add (x, v) w ↔
 
 /-- The definition `⦇[0, π₁ succ]⦈` of `length` on `TU`, its base `Te` the value `0`: the counts `0…n` all in `TU`,
     the result `n`. -/
-theorem count_iff {E : Obj} {Te TU : Den .long .long} {P : Int64 → Prop}
+theorem count_iff {E : Obj} {Te TU : Core.Rel (Obj.El .long) (Obj.El .long)} {P : Int64 → Prop}
     (he : ∀ v, (∃ a, Te a v) ↔ v = 0 ∧ P 0) (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
     (xs : List E.El) (hn : xs.length < 2 ^ 63) (w : Int64) :
     foldDen (E := E) (V := .long) Te (graph Prod.fst ≫ succDen TU) xs w ↔
@@ -132,7 +132,7 @@ theorem count_iff {E : Obj} {Te TU : Den .long .long} {P : Int64 → Prop}
       rw [Int64.toInt_ofNat_of_lt (by omega), show Alg.nul.toInt = -2 ^ 63 by decide] at this
       omega
     rw [Rel.Verify.Ew.intStep_add, if_neg (not_or.2 ⟨hnt, by decide⟩), Int64.ofNat_add]; rfl
-  have hS : ∀ a x b, (graph Prod.fst ≫ succDen TU : Den (.prod .long E) .long) (a, x) b ↔
+  have hS : ∀ a x b, (graph Prod.fst ≫ succDen TU : Core.Rel (Obj.El (.prod .long E)) (Obj.El .long)) (a, x) b ↔
       P a ∧ b = Ew.intStep Ew.add Alg.nul a 1 ∧ P b := fun a x b => by
     simp only [Core.Rel.comp, Core.Rel.graph, succDen, hd]
     exact ⟨fun ⟨_, rfl, h⟩ => h, fun h => ⟨a, rfl, h⟩⟩
@@ -160,7 +160,7 @@ theorem count_iff {E : Obj} {Te TU : Den .long .long} {P : Int64 → Prop}
     `t`, `P` every value or an initial segment `0…k`: its elements and result in `P` and `stepAt t add` folded from
     `0`. At every value nothing is cut; on `0…k` the prefix sums of its elements rise from `0` to the result
     (`chain_in`), so all are in `P` iff it is. -/
-theorem plus_iff {t : QAtomicType} {TU : Den (.atom t) (.atom t)} {P : (Obj.atom t).El → Prop}
+theorem plus_iff {t : QAtomicType} {TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} {P : (Obj.atom t).El → Prop}
     (hP : (∀ x, P x) ∨ Seg (.atom t) P) (hU : ∀ x y, TU x y ↔ x = y ∧ P x) (xs : List (Obj.atom t).El)
     (w : (Obj.atom t).El) :
     (∃ v, (v = QAtomicType.ofBits t 0 ∧ P (QAtomicType.ofBits t 0)) ∧
@@ -218,7 +218,7 @@ theorem Prim.den_sumRow {t : QAtomicType} : Prim.den sumRow (.arr (.atom t)) (.a
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
 /-- `flatRow` at `I×A ⟶ B` given `R : I ⟶ A×B` is `flatDen`. -/
-theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
+theorem Prim.den_flatRow {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B))) :
     Prim.den flatRow (.prod I A) B [⟨I, .prod A B, T⟩] = flatDen T := by
   have ho : ∀ ps, flatRow.objs (.prod I A) B ps = some [I, A, B] := by
     simp [Prim.objs, Option.orElse, flatRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
@@ -229,7 +229,7 @@ theorem Prim.den_flatRow {I A B : Obj} (T : Den I (.prod A B)) :
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
 /-- `foldIRow` at `I×[E] ⟶ V` given `e : I ⟶ V×V`, `S : (I×V)×E ⟶ I×V` is `foldIDen`. -/
-theorem Prim.den_foldIRow {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.prod I V) E) (.prod I V)) :
+theorem Prim.den_foldIRow {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) :
     Prim.den foldIRow (.prod I (.arr E)) V [⟨I, .prod V V, Te⟩, ⟨.prod (.prod I V) E, .prod I V, TS⟩] =
       foldIDen Te TS := by
   have ho : ∀ ps, foldIRow.objs (.prod I (.arr E)) V ps = some [I, V, E] := by
@@ -242,7 +242,7 @@ theorem Prim.den_foldIRow {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.pro
   simp only [Sem.two]; exact dif_pos ⟨rfl, rfl, rfl, rfl⟩
 
 /-- `F(U)` at `[V] ⟶ [V]`, `U` the coreflexive on `P`: the lists whose elements are all in `P`. -/
-theorem Prim.den_mapRow_corefl {V : Obj} {TU : Den V V} {P : V.El → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
+theorem Prim.den_mapRow_corefl {V : Obj} {TU : Core.Rel (Obj.El V) (Obj.El V)} {P : V.El → Prop} (hU : ∀ x y, TU x y ↔ x = y ∧ P x)
     (xs ys : List V.El) :
     Prim.den mapRow (.arr V) (.arr V) [⟨V, V, TU⟩] xs ys ↔ ys = xs ∧ ∀ x ∈ xs, P x := by
   have ho : ∀ ps, mapRow.objs (.arr V) (.arr V) ps = some [V, V] := by
@@ -319,7 +319,7 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     keyed family of its meaning at each key `i` given the fibres `F i`. What `appliedRowL` needs to run `r` once on
     the keyed families of a program in place of once per key. -/
 def Prim.KeyLifts (r : Prim) : Prop :=
-  ∀ (I A B : Obj) (fs : List ((X : Obj) × (Y : Obj) × (I.El → Den X Y))),
+  ∀ (I A B : Obj) (fs : List ((X : Obj) × (Y : Obj) × (I.El → Core.Rel (Obj.El X) (Obj.El Y)))),
     Prim.den r (.prod I A) (.prod I B) (fs.map fun ⟨X, Y, F⟩ => ⟨.prod I X, .prod I Y, keyOf F⟩) =
       keyOf fun i => Prim.den r A B (fs.map fun ⟨X, Y, F⟩ => ⟨X, Y, F i⟩)
 
