@@ -6,7 +6,7 @@ use crate::pod::{self};
 use crate::blocks::{Blocks, Grid, Src, tag};
 use crate::coc::Coc;
 use crate::ffi::Sink;
-use crate::ids;
+
 use crate::lean::{B, O};
 use alloc::{format, string::String, vec::Vec};
 
@@ -95,10 +95,9 @@ mod tests {
 
 /// `QAtomicType`'s constructor indices `kscan` tells apart (Rel/Kernel/Value.lean's order).
 pub const QT_BOOLEAN: u8 = 0;
-pub const QT_SYMBOL: u8 = 9;
 /// `QAtomicType.width` at the constructor index `t`: `None` at `sym` (9) and `general` (12).
 pub fn qtype_width(t: u8) -> Option<usize> {
-    match t { 0 | 1 | 7 | 8 => Some(1), 2 => Some(2), 3 | 5 | 10 => Some(4), 4 | 6 | 11 => Some(8), _ => None }
+    match t { 0 | 1 | 7 | 8 => Some(1), 2 => Some(2), 3 | 5 | 10 => Some(4), 4 | 6 | 9 | 11 => Some(8), _ => None }
 }
 
 /// `Int.fdiv` and `Int.fmod` cut to 64 bits (`Int64.ofInt`): floored, so `i64::MIN / -1` wraps to `i64::MIN`; `y != 0`.
@@ -266,9 +265,6 @@ impl<'a> Col<'a> {
             (tag::FOR, Some(w)) if !boolean => Some(Col::Blk(Blocks::of(e, n, "qlean_k_scan"), w, !0)),
             // `pos` is `raw`'s at `i64` (type 4) only: the loop index
             (tag::POS, _) if s == 4 => Some(Col::Blk(Blocks::pos(n), 8, !0)),
-            // ids of no bits (a dictionary of one entry) read 0 at every row
-            (tag::ENUM, _) if s == QT_SYMBOL => Some(match ids::id_width(e.field(1).words().len().saturating_sub(1)) {
-                0 => Col::Dense(&[], 8), lw => Col::Blk(Blocks::ids(e.field(2).bytes(), n, lw), 8, !0) }),
             _ => None,
         }
     }

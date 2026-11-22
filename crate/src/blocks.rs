@@ -3,22 +3,20 @@
 //! through `Blocks::walk`/`span` and decodes a block through `load`/`load_w`/`view`, so the grid arithmetic and the
 //! width dispatch are written once here and each kind is one decoder.
 use crate::coc::Coc;
-use crate::ids;
 use crate::pod::{self, Elt};
 
 /// `Ext.Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order; every Rust reader and writer of an `Enc` names
 /// them from here, so a constructor added or removed there is one edit here.
 pub mod tag {
-    pub const FOR: u32 = 1;
-    pub const ENUM: u32 = 2; pub const POS: u32 = 4;
+    pub const FOR: u32 = 0;
+    pub const POS: u32 = 2;
 }
 
-/// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), or ids at `lw` bits. A bit column
-/// is ids at `lw = 1` at the column's own `lg` (`Blocks::bits`); a symbol column is ids whose keys the caller reads
-/// through its dictionary. `Pos` is `Enc.pos`, the row positions: element `i` is `i`, computed from the loop index and
+/// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), or the positions. `Pos` is `Enc.pos`, the row
+/// positions: element `i` is `i`, computed from the loop index and
 /// stored nowhere (PLAN 6.13).
 #[derive(Clone, Copy)]
-pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Ids(&'a [u8], u32), Pos }
+pub enum Src<'a> { Dense(&'a [u8]), For(Coc<'a>), Pos }
 /// The block grid of a column of `n` elements, `1 << lg` a block: what a source reads by and a `Sink` writes by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grid { pub n: usize, pub lg: u32 }
@@ -54,11 +52,6 @@ impl<'a> Blocks<'a> {
     }
     /// A dense payload `p` of `w`-byte elements (`opnd_dense`).
     pub fn dense(p: &'a [u8], w: usize) -> Self { Blocks::new(Src::Dense(p), p.len() / w) }
-    /// `Column.idsCap`'s count of `n` ids at `lw` bits, which is all `id_at` may read (`opnd_ids`).
-    pub fn ids(p: &'a [u8], n: usize, lw: u32) -> Self {
-        let n = n.min(ids::ids_avail(p.len(), lw));
-        Blocks::new(Src::Ids(&p[..ids::ids_bytes(n, lw)], lw), n)
-    }
     /// The positions `0 .. n` (`Enc.pos`), on the writer's grid.
     pub fn pos(n: usize) -> Self { Blocks::new(Src::Pos, n) }
     /// The `n` elements of `w` bytes a Lean `Enc` object holds, whatever its kind (coc plan §3 `Col::of`, decision C1):
@@ -67,10 +60,9 @@ impl<'a> Blocks<'a> {
         let f = |i| e.field(i).bytes();
         match e.tag() {
             tag::FOR => Blocks::from(crate::coc::view(f(0), f(1), n).unwrap_or_else(|err| panic!("{who}: {err}"))),
-            tag::ENUM => Blocks::ids(f(2), n, ids::id_width(e.field(1).words().len().saturating_sub(1))),
             // `pos`, nullary, is the scalar `lean_box(tag::POS)`, which has no field
             tag::POS => Blocks::pos(n),
-            t => panic!("{who}: an `Enc` of constructor {t} (`syms`, `gen`) has no raw elements"),
+            t => panic!("{who}: an `Enc` of constructor {t} (`gen`) has no raw elements"),
         }
     }
     /// Block `b`'s first `cnt` elements as `T` into `out`, patches applied; a dense payload's elements are `T`'s width.
@@ -78,7 +70,6 @@ impl<'a> Blocks<'a> {
         let lo = b << self.lg();
         match self.src {
             Src::For(c) => c.decode_blk(b, cnt, out),
-            Src::Ids(p, lw) => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap(ids::id_at(p, lw, lo + k) as u64) },
             Src::Pos => for (k, o) in out[..cnt].iter_mut().enumerate() { *o = T::wrap((lo + k) as u64) },
             Src::Dense(d) => pod::bytes_mut(&mut out[..cnt]).copy_from_slice(&d[lo * size_of::<T>()..(lo + cnt) * size_of::<T>()]),
         }
@@ -91,10 +82,6 @@ impl<'a> Blocks<'a> {
         let bad = || -> ! { panic!("qlean Blocks: a block buffer of {n} bytes is misaligned for {w}-byte elements") };
         match (self.src, w) {
             (Src::Dense(d), _) => { let lo = (b << self.lg()) * w; out.copy_from_slice(&d[lo..lo + cnt * w]) }
-            (Src::Ids(p, lw), 16) => {
-                let lo = b << self.lg();
-                for k in 0..cnt { out[k * 16..k * 16 + 16].fill(0); out[k * 16..k * 16 + 8].copy_from_slice(&(ids::id_at(p, lw, lo + k) as u64).to_le_bytes()) }
-            }
             (Src::Pos, 16) => {
                 let lo = b << self.lg();
                 for k in 0..cnt { out[k * 16..k * 16 + 16].fill(0); out[k * 16..k * 16 + 8].copy_from_slice(&((lo + k) as u64).to_le_bytes()) }
@@ -129,11 +116,9 @@ mod tests {
     #[test]
     fn kinds_agree() {
         let n = 2100usize;
-        let v: alloc::vec::Vec<u32> = (0..n as u32).map(|i| i % 13).collect();
+        let v: alloc::vec::Vec<u32> = (0..n as u32).collect();
         let d = Blocks::dense(pod::bytes(&v), 4);
-        let mut p = alloc::vec![0u8; ids::ids_bytes(n, 4)];
-        for (k, &x) in v.iter().enumerate() { crate::testutil::id_put(&mut p, 4, k, x as u64) }
-        let i = Blocks::ids(&p, n, 4);
+        let i = Blocks::pos(n);
         let mut got = 0;
         for (b, lo, nb) in d.walk() {
             assert_eq!(lo, got);

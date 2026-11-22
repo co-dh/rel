@@ -1106,8 +1106,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.3 一种编码（分支 `foronly`）：`Ext.Enc` 只留 `foR`、`pos` 与 `gen`。已做：删 `bytes`、`alp`（Lean 类型与
   `WF`/`raw`/`get`；`Enc.ofBytes` 是每个定宽列进入 foR 的唯一入口；`answer`/`encode`/`alpOf` 删除；own 格式 v5，
   拒读 v4 及 kind 0/3；Rust `blocks::tag` 重编号 `FOR=1 ENUM=2 POS=4`）。
-  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，进行中；删 `syms`/`enum`：`sym` 列在 `Enc`
-  层就是 foR 编号，字典是 Rel 层旁边的一张表 `ℕ ⟶ [C]`（rel-architecture §0.2），不是 `Enc` 的字段，在 ALP 之后做；
+  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，进行中。
+  已做（分支 `symdict`）：删 `Enc.syms`/`Enc.enum`（Lean `WF`/`raw`/`get`、`SymsWF`、`symKey`/`symCmp`、`idWidth`、
+  `symsOf`；Rust `tag::ENUM`、`Src::Ids`、own kind 4）。`Enc` 现在是 `foR`=0、`gen`=1、`pos`=2，Rust `FOR=0 POS=2`；
+  `QAtom.sym : UInt64` 是编号，`width .sym = 8`，`orderKind .sym = i64`，所以 `asc`/比较/`seen` 在编号上原样跑；
+  own 仍是 v5（kind 2 含义不变，Lean 写端从没写过 kind 4）。未做：字典表 `ℕ ⟶ [C]`（排序、去重的 `arr char`，
+  rel-architecture §0.2，`intern = asc ≫ seen`）的构造与输出时的反查：今天没有入口产生 `sym` 列（CSV、own 都拒绝）；
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
 - ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
