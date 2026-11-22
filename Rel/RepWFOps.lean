@@ -83,7 +83,7 @@ theorem merge_wf {K B : Obj} (hpack : ∀ {k v : Obj} (R t : Tab k v), R.pack = 
   have wout : out.WF := foldRounds_wf hpack (fun _ _ hp hr => peelL_wf hL hp hr) (fun S el T hs wS _ => ?_) hout
     (hL.cat hc wD) (pair_wf hI wD (nil_wf hnl wD.1)) (zero_wf hz)
   · exact comp_wf h hP (comp_wf ho wout (outr_wf ha wout.2))
-  simp only [bind, Except.bind_eq_ok'] at hs
+  simp only [Except.bind_eq_ok'] at hs
   obtain ⟨o1, h1, xy, hxy, o2, h2, acc, hacc, o3, h3, x, hx, o4, h4, y, hy, u1, hu1, ux, hux, u2, hu2, uy, huy,
     o5, h5, a, ha, o6, h6, b, hb, ab, hab, r1, hr1, dg, hdg, cm, hcm, l, hl, dy, hdy, dx, hdx, df, hdf, tx, htx,
     ty, hty, o7, h7, c7, hc7, p1, hp1, q1, hq1, s1, hs1, sx, hsx, o8, h8, c8, hc8, p2, hp2, q2, hq2, s2, hs2, sy, hsy,
@@ -115,7 +115,7 @@ theorem thinL_wf {B : Obj} {n : USize} (hpack : ∀ {k v : Obj} (R t : Tab k v),
   obtain ⟨I, hI, N, hN, z, hz, h⟩ := h
   refine foldRounds_wf hpack (fun _ _ hp hr => peelR_wf hL hp hr) (fun P el t hs wP wel => ?_) h (idU_wf hI hX)
     (nil_wf hN hX) (zero_wf hz)
-  simp only [bind, Except.bind_eq_ok'] at hs
+  simp only [Except.bind_eq_ok'] at hs
   obtain ⟨p, hp, E, hE, o1, h1, x, hx, o2, h2, ys, hys, u0, hu0, u, hu, o3, h3, b, hb, ab, hab, ba, hba,
     r1, hr1, d1, hd1, c1, hc1, up, hup, r2, hr2, d2, hd2, c2, hc2, down, hdown, du, hdu, e1, he1, e2, he2, e3, he3,
     lone, hlone, o4, h4, bs, hbs, k1, hk1, xb, hxb, k2, hk2, c3, hc3, v1, hv1, c4, hc4, r, hr, hs⟩ := hs
@@ -237,6 +237,10 @@ theorem sum_countP_group (gr : Nat → Nat) (P : Nat → Bool) (l : List Nat) : 
       by_cases hP : P q <;> by_cases h1 : gr q < n <;> by_cases h2 : gr q = n <;> by_cases h3 : gr q < n + 1 <;>
         simp [hP, h1, h2, h3] <;> omega
 
+/-- `Op.ne` answers the `0`/`1` word of `!=`. -/
+theorem eval_ne (a c : UInt64) : Op.eval .ne a c = .ok (if (a != c) = true then 1 else 0) := by
+  simp only [Op.eval]; cases (a != c) <;> rfl
+
 /-- **`positions(p)` keeps `Tab.WF`**: cell `i` of the answer holds the `c[i]` kept elements of cell `i`
 (`scatter_add_count`), and the `c[i]` sum to at most the `K` kept rows its payload has (`whereCol_spec`,
 `sum_countP_group`), `K ≤ T < 2^63` (`expand_span_lt`): `Vals.cells_wf`. -/
@@ -254,9 +258,8 @@ theorem Tab.positions_wf {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
   let Pq : Nat → Bool := fun q => (Enc.raw .i64 T ki)[q]?.getD 0 != (Enc.raw .i64 T c0)[q]?.getD 0
   have he : ∀ q < T.toNat, (Enc.raw .i64 T b)[q]?.getD 0 = if Pq q then 1 else 0 := fun q hq => by
     have es := (colMap_raw hbb).2.2.2 q hq
-    simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es]; simp only [Pq]
-    cases (Enc.raw .i64 T ki)[q]?.getD 0 != (Enc.raw .i64 T c0)[q]?.getD 0 <;> rfl
+    rw [eval_ne, Except.ok.injEq] at es
+    exact es.symm
   have hK : K.toNat = (List.range T.toNat).countP Pq := by
     have hs := whereCol_spec hsel fun q hq => by rw [he q hq]; split <;> decide
     rw [← whereCol_size hsel, ← Array.length_toList, ← List.length_map (f := UInt64.toNat), hs,
