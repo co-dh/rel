@@ -69,12 +69,14 @@ theorem GenK.uni_wf {A : Obj} {m : USize} {U : Vals A m × Bool} (h : U.2 = true
   · exact GenK.tab_wf fun _ ht => Tab.idU_wf ht (h ‹_›)
   · trivial
 
-theorem GenK.conv_wf {A B : Obj} {R : Rel A B} (wR : R.Wf) : (GenK.conv A B R).Wf :=
-  GenK.lift1_wf (fun _ h => h.conv) (fun _ _ w h => Tab.conv_wf h w) wR
-theorem GenK.dom_wf {A B : Obj} {d : Bool} {R : Rel A B} (wR : R.Wf) : (GenK.dom A B d R).Wf :=
-  GenK.lift1_wf (fun _ h => ⟨h.side, trivial, trivial⟩) (fun _ _ w h => Tab.dom_wf h w) wR
-theorem GenK.ran_wf {A B : Obj} {R : Rel A B} (wR : R.Wf) : (GenK.ran A B R).Wf :=
-  GenK.lift1_wf (fun _ h => ⟨trivial, h.side, trivial⟩) (fun _ _ w h => Tab.ran_wf h w) wR
+theorem GenK.conv_wf {A B : Obj} {R : Rel A B} (wR : R.Wf) : (GenK.conv A B R).Wf := by
+  unfold GenK.conv; exact GenK.lift1_wf (fun _ h => h.conv) (fun _ _ w h => Tab.conv_wf h w) wR
+theorem GenK.dom_wf {A B : Obj} {d : Bool} {R : Rel A B} (wR : R.Wf) : (GenK.dom A B d R).Wf := by
+  unfold GenK.dom; refine GenK.lift1_wf ?_ (fun _ _ w h => Tab.dom_wf h w) wR
+  exact fun _ h => ⟨h.side, trivial, trivial⟩
+theorem GenK.ran_wf {A B : Obj} {R : Rel A B} (wR : R.Wf) : (GenK.ran A B R).Wf := by
+  unfold GenK.ran; refine GenK.lift1_wf ?_ (fun _ _ w h => Tab.ran_wf h w) wR
+  exact fun _ h => ⟨trivial, h.side, trivial⟩
 theorem GenK.join_wf {A B : Obj} {d e : Bool} {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) : (GenK.join A B d e R S).Wf :=
   GenK.lift2_wf (fun _ h => h) (fun _ h => h) (fun _ _ _ wr ws h => Tab.union_wf h wr ws) wR wS
 
@@ -116,9 +118,11 @@ theorem GenK.hylo_wf {A B : Obj} {what : String} {d e : Bool} {ch : Rel A A} {φ
     obtain ⟨r, hr, ht⟩ := GenK.bind_ok ht
     obtain ⟨q, hq, ht⟩ := GenK.bind_ok ht
     exact Tab.union_wf ht wD (Tab.ran_wf hq (after M wM wch hr))) hN
+  -- `C`, the cycle check `cyc`, and the `if` that throws on a cycle: none reaches the answer
   obtain ⟨_, -, h⟩ := GenK.bind_ok h
   obtain ⟨_, -, h⟩ := GenK.bind_ok h
   split at h; · cases h
+  obtain ⟨_, -, h⟩ := GenK.bind_ok h
   obtain ⟨Y, hY, h⟩ := GenK.bind_ok h
   exact Tab.comp_wf h wD (Tab.mu_wf (fun M _ ht wM => after N wN (wφ M wM) ht) hY)
 
@@ -507,6 +511,111 @@ theorem GenK.onKeys_wf {I A B C : Obj} {d : Bool} {R : Fn d I C}
   GenK.ofVals_wf fun _ X t hX h => by
     obtain ⟨P, hP, h⟩ := GenK.bind_ok h
     exact hf X P t h hX (wR.runE (K := ⟨some ⟨_, X.1⟩, none, none⟩) ⟨hX.1, trivial, trivial⟩ hP)
+
+/-- `Λ(R)` on `WF` keys, `R` run knowing them (`Tab.lam_wf`); `E(R)` is `Λ(∋ ≫ R)`. -/
+theorem GenK.lam_wf {A B : Obj} {d : Bool} {R : Rel A B} (wR : R.Wf) : (GenK.lam A B d R).Wf := by
+  unfold GenK.lam
+  exact GenK.ofVals_wf fun _ X _ hX h => let ⟨_, hr, h⟩ := GenK.bind_ok h
+    Tab.lam_wf h hX (wR.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hr)
+theorem GenK.E_wf {A B : Obj} {d : Bool} {R : Rel A B} (wR : R.Wf) : (GenK.E A B d R).Wf := by
+  unfold GenK.E; exact GenK.lam_wf (GenK.comp_wf (GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX) wR)
+
+/-- A value verb on `U`'s universe, `U` run knowing the values asked about (`Tab.succ_wf`, `Tab.arith_wf`). -/
+theorem GenK.succ_wf {U : Rel .long .long} (wU : U.Wf) : (GenK.succ U).Wf := by
+  unfold GenK.succ
+  exact GenK.after_wf fun _ _ h wD => Tab.succ_wf (fun X _ hT hX =>
+    wU.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hT) h wD
+theorem GenK.arith_wf {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)} (wU : U.Wf) :
+    (GenK.arith t k U).Wf := by
+  unfold GenK.arith
+  exact GenK.after_wf fun _ _ h wD => Tab.arith_wf (fun X _ hT hX =>
+    wU.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hT) h wD
+
+/-- A comparison answers a table of atoms, `WF` with no cell to check. -/
+theorem GenK.cmp_wf {op : String} {t : QAtomicType} {o : Except String Kernel.Op} {U : Rel (.atom t) (.atom t)} :
+    (GenK.cmp op o U).Wf :=
+  fun _ _ => GenK.tab_wf fun _ _ => ⟨trivial, trivial⟩
+
+/-- `est(Q)`, `thin(Q)`: the pair test `Q` answers `WF` tables on `WF` pairs (`GenK.testQ_wf`). -/
+theorem GenK.est_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.est B Q).Wf := by
+  unfold GenK.est; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.est_wf (GenK.testQ_wf wQ) h hX
+theorem GenK.thin_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.thin B Q).Wf := by
+  unfold GenK.thin; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.thin_wf (GenK.testQ_wf wQ) h hX
+
+/-- `R × S` on a known domain `Z`: `outl Z ≫ R` paired with `outr Z ≫ S`, each run on its side of `Z`; else
+    `Tab.prod` of the closed tables. -/
+theorem GenK.prod_wf {A B C D : Obj} {R : Rel A B} {S : Rel C D} (wR : R.Wf) (wS : S.Wf) :
+    (GenK.prod A B C D R S).Wf := by
+  intro K hK
+  cases hd : K.dom with
+  | none =>
+    simp only [hd]
+    refine GenK.tab_wf fun _ h => ?_
+    obtain ⟨r, hr, h⟩ := GenK.bind_ok h
+    obtain ⟨s, hs, h⟩ := GenK.bind_ok h
+    exact Tab.prod_wf h (wR.runE Known.wf_empty hr) (wS.runE Known.wf_empty hs)
+  | some c =>
+    obtain ⟨n, Z⟩ := c
+    have hZ : Vals.WF Z := by have := hK.1; rw [hd] at this; exact this
+    simp only [hd]
+    refine GenK.tab_wf fun _ h => ?_
+    obtain ⟨a, ha, h⟩ := GenK.bind_ok h
+    obtain ⟨r, hr, h⟩ := GenK.bind_ok h
+    obtain ⟨l, hl, h⟩ := GenK.bind_ok h
+    obtain ⟨b, hb, h⟩ := GenK.bind_ok h
+    obtain ⟨s, hs, h⟩ := GenK.bind_ok h
+    obtain ⟨q, hq, h⟩ := GenK.bind_ok h
+    exact Tab.pair_wf h
+      (Tab.comp_wf hl (Tab.outl_wf ha hZ) (wR.runE (K := ⟨some ⟨n, Z.1⟩, none, none⟩) ⟨hZ.1, trivial, trivial⟩ hr))
+      (Tab.comp_wf hq (Tab.outr_wf hb hZ) (wS.runE (K := ⟨some ⟨n, Z.2⟩, none, none⟩) ⟨hZ.2, trivial, trivial⟩ hs))
+
+/-- The folds' rounds (`Tab.foldRounds_wf`), each step `P` paired with an element, then `S` (`compT_wf`). -/
+theorem GenK.fold_wf {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod V E) V} (we : e.Wf) (wS : S.Wf) :
+    (GenK.fold E V d e S).Wf := by
+  unfold GenK.fold
+  refine GenK.ofVals_wf fun _ X _ hX h => ?_
+  obtain ⟨I, hI, h⟩ := GenK.bind_ok h
+  obtain ⟨v, hv, h⟩ := GenK.bind_ok h
+  obtain ⟨T, hT, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  exact Tab.foldRounds_wf (fun _ _ => Tab.peelL_wf)
+    (fun _ _ _ hs wP wel => (GenK.compT_wf (fun _ hp => Tab.pair_wf hp wP wel) wS).runE Known.wf_empty hs) h
+    (Tab.idU_wf hI hX) (Tab.top_wf hT hX (we.runE Known.wf_empty hv).2) (Tab.zero_wf hz)
+theorem GenK.foldr_wf {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod E V) V} (we : e.Wf) (wS : S.Wf) :
+    (GenK.foldr E V d e S).Wf := by
+  unfold GenK.foldr
+  refine GenK.ofVals_wf fun _ X _ hX h => ?_
+  obtain ⟨I, hI, h⟩ := GenK.bind_ok h
+  obtain ⟨v, hv, h⟩ := GenK.bind_ok h
+  obtain ⟨T, hT, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  exact Tab.foldRounds_wf (fun _ _ => Tab.peelR_wf)
+    (fun _ _ _ hs wP wel => (GenK.compT_wf (fun _ hp => Tab.pair_wf hp wel wP) wS).runE Known.wf_empty hs) h
+    (Tab.idU_wf hI hX) (Tab.top_wf hT hX (we.runE Known.wf_empty hv).2) (Tab.zero_wf hz)
+theorem GenK.foldI_wf {I E V : Obj} {d d' : Bool} {e : Rel I (.prod V V)} {S : Rel (.prod (.prod I V) E) (.prod I V)}
+    (we : e.Wf) (wS : S.Wf) : (GenK.foldI I E V d d' e S).Wf := by
+  unfold GenK.foldI
+  refine GenK.ofVals_wf fun _ X _ hX h => ?_
+  obtain ⟨i, hi, h⟩ := GenK.bind_ok h
+  have wi := Tab.outl_wf hi hX
+  obtain ⟨es, hes, h⟩ := GenK.bind_ok h
+  have wes := (GenK.compT_wf (r' := .ok i) (fun _ e => by cases e; exact wi) we).runE Known.wf_empty hes
+  obtain ⟨b, hb, h⟩ := GenK.bind_ok h
+  obtain ⟨c, hc, h⟩ := GenK.bind_ok h
+  obtain ⟨p0, hp0, h⟩ := GenK.bind_ok h
+  obtain ⟨p, hp, h⟩ := GenK.bind_ok h
+  obtain ⟨z, hz, h⟩ := GenK.bind_ok h
+  obtain ⟨out, hout, h⟩ := GenK.bind_ok h
+  obtain ⟨g, hg, h⟩ := GenK.bind_ok h
+  have wout := Tab.foldRounds_wf (fun _ _ => Tab.peelL_wf) (fun P el _ hs wP wel => by
+      obtain ⟨s, hs', hs⟩ := GenK.bind_ok hs
+      have ws := (GenK.compT_wf (fun _ hq => Tab.pair_wf hq wP wel) wS).runE Known.wf_empty hs'
+      obtain ⟨o1, h1, hs⟩ := GenK.bind_ok hs
+      obtain ⟨o2, h2, hs⟩ := GenK.bind_ok hs
+      obtain ⟨o3, h3, hs⟩ := GenK.bind_ok hs
+      exact Tab.inter_wf hs ws (Tab.pair_wf h3 wi (Tab.comp_wf h2 ws (Tab.outr_wf h1 ws.2))))
+    hout (Tab.outr_wf hb hX) (Tab.pair_wf hp wi (Tab.comp_wf hp0 wes (Tab.outr_wf hc wes.2))) (Tab.zero_wf hz)
+  exact Tab.comp_wf h wout (Tab.outr_wf hg wout.2)
 
 theorem rowOK_snoc : RowOK "snoc" := rowOK_of (c := RowCode.snoc) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
@@ -971,11 +1080,11 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
     refine ⟨fun η _ => ?_, fun η xs _ hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
     · exact (primGen_ok r _ _ [] fun _ h => nomatch h).1
     · exact (primGen_ok r _ _ xs hx).1
-  case arg f x =>
+  case arg C D f x =>
     refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;>
-      simp only [Tm.gen, Tm.argGen] <;> refine (H f (by omega)).2 η _ hη fun y hy => ?_ <;>
+      simp only [Tm.gen, Tm.argGen] <;> refine (H x (by omega)).2 η _ hη fun y hy => ?_ <;>
       rcases List.mem_cons.1 hy with rfl | hy
-    any_goals exact c x (by omega) η hη
+    any_goals exact c f (by omega) η hη
     all_goals first | exact hx y hy | simp at hy
   case share _ R =>
     refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
@@ -991,29 +1100,49 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   all_goals refine ⟨fun η hη => ?_, fun η xs _ _ => by unfold Tm.argGen; exact trivial⟩
   all_goals simp only [Tm.gen]
   case var k => exact hη.1 k _ _
-  case hylo A' B' k w b =>
-    have := Tm.size_kids k A' b
+  case hylo k w b =>
+    have := Tm.size_kids k A b
     split
     · trivial
     · exact GenK.hylo_wf (c _ (by omega) η hη) fun X wX => c b (by omega) _ (hη.bind k (GenK.const_wf wX))
-  -- each op's `GenK.*_wf` on its operands' codes, a fixed point's body under its variable bound to a `WF` table
-  all_goals first
-    | exact c _ (by omega) η hη
-    | exact GenK.zero_wf
-    | exact GenK.id_wf
-    | (refine GenK.val_wf fun h => ?_; simp only [Bool.and_eq_true] at h
-       exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩)
-    | exact GenK.uni_wf Vals.cellsOk_wf
-    | ((first | apply GenK.conv_wf | apply GenK.dom_wf | apply GenK.ran_wf | apply GenK.meet_wf | apply GenK.join_wf
-          | apply GenK.diff_wf | apply GenK.pair_wf | apply GenK.comp_wf | apply GenK.ldiv_wf | apply GenK.rdiv_wf
-          | apply GenK.top_wf | apply GenK.nu_wf | apply GenK.mu_wf) <;>
-        first
-          | exact c _ (by omega) η hη
-          | exact fun X wX => c _ (by omega) _ (hη.bind _ (GenK.const_wf wX)))
-    | trivial
-    | exact GenK.ofVals_wf
-    | exact fun _ => trivial
-    | (intro K; cases h : K.dom <;> simp [h, Rel.Rel.Wf])
+  -- each op's `GenK.*_wf` on its operands' codes `w`, a fixed point's body under its variable bound to a `WF` table
+  all_goals have w := fun {C D : Obj} (s : Tm C D) (h : s.size ≤ n) => c s h η hη
+  case val =>
+    refine GenK.val_wf fun h => ?_
+    simp only [Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
+  case uni => exact GenK.uni_wf Vals.cellsOk_wf
+  case zero => exact GenK.zero_wf
+  case id => exact GenK.id_wf
+  case top => exact GenK.top_wf (w _ (by omega))
+  case outl => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.outl_wf h hX
+  case outr => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.outr_wf h hX
+  case nil => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.nil_wf h hX
+  case atPos => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.atPos_wf h hX
+  case own => exact w _ (by omega)
+  case comp => exact GenK.comp_wf (w _ (by omega)) (w _ (by omega))
+  case conv => exact GenK.conv_wf (w _ (by omega))
+  case meet => exact GenK.meet_wf (w _ (by omega)) (w _ (by omega))
+  case join => exact GenK.join_wf (w _ (by omega)) (w _ (by omega))
+  case diff => exact GenK.diff_wf (w _ (by omega)) (w _ (by omega))
+  case dom => exact GenK.dom_wf (w _ (by omega))
+  case ran => exact GenK.ran_wf (w _ (by omega))
+  case ldiv => exact GenK.ldiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
+  case rdiv => exact GenK.rdiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
+  case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
+  case prod => exact GenK.prod_wf (w _ (by omega)) (w _ (by omega))
+  case lam => exact GenK.lam_wf (w _ (by omega))
+  case E => exact GenK.E_wf (w _ (by omega))
+  case est => exact GenK.est_wf (w _ (by omega))
+  case thin => exact GenK.thin_wf (w _ (by omega))
+  case succ => exact GenK.succ_wf (w _ (by omega))
+  case arith => exact GenK.arith_wf (w _ (by omega))
+  case leq => exact GenK.cmp_wf
+  case lt => exact GenK.cmp_wf
+  case fold => exact GenK.fold_wf (w _ (by omega)) (w _ (by omega))
+  case foldr => exact GenK.foldr_wf (w _ (by omega)) (w _ (by omega))
+  case foldI => exact GenK.foldI_wf (w _ (by omega)) (w _ (by omega))
+  case nu => exact GenK.nu_wf (w _ (by omega)) fun X wX => c _ (by omega) _ (hη.bind _ (GenK.const_wf wX))
+  case mu => exact GenK.mu_wf fun X wX => c _ (by omega) _ (hη.bind _ (GenK.const_wf wX))
 
 /-- **Every bit matrix `Tm.gen` passes on is `Rel.Wf`** (`Tm.gen_wf_spine`, its first half). -/
 theorem Tm.gen_wf {A B : Obj} (t : Tm A B) :

@@ -35,7 +35,7 @@ theorem _root_.Rel.Known.WF.conv {K : Known A B} (h : K.WF) :
   ⟨h.2.1, h.1, by obtain ⟨_, _, _ | p⟩ := K; trivial; exact ⟨h.2.2.2, h.2.2.1⟩⟩
 
 /-- Either known side of `K` (`dom`, `ran`, `id` read one value set) is `Vals.WF` where `K` is. -/
-theorem _root_.Rel.Known.WF.side {K : Known A B} (h : K.WF) : (K.dom <|> K.ran).elim True fun c => Vals.WF c.2 := by
+theorem _root_.Rel.Known.WF.side {K : Known A A} (h : K.WF) : (K.dom <|> K.ran).elim True fun c => Vals.WF c.2 := by
   obtain ⟨_ | _, _, _⟩ := K; exact h.2.1; exact h.1
 open Rel.Ext Ext.Enc in
 /-- **A bit matrix as its producers (`compMat`, `compTabMat`) build it**: it reads back as rows (`Tab.ofBits`), `g · w`
