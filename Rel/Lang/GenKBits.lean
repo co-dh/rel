@@ -1716,8 +1716,16 @@ theorem meetV_law {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) {K : Known A B} {t : T
     | exact keep_law wS (fun _ h => wR.runE Known.wf_empty h) h
     | (obtain ⟨u, s, hu, hs, e⟩ := keep_law wR (fun _ h => wS.runE Known.wf_empty h) h; exact ⟨s, u, hs, hu, fun a c => (e a c).trans and_comm⟩)
 
+/-- `K` with each unknown side filled by a `Vals.WF` value set (`meetOn` bounding `S` by a bit matrix's sides) is
+    `WF`. -/
+theorem _root_.Rel.Known.WF.orElse {K : Known A B} (h : K.WF) {n m : USize} {x : Vals A n} {y : Vals B m}
+    (hx : Vals.WF x) (hy : Vals.WF y) :
+    (⟨K.dom.orElse fun _ => some ⟨n, x⟩, K.ran.orElse fun _ => some ⟨m, y⟩, none⟩ : Known A B).WF := by
+  obtain ⟨_ | _, _ | _, _⟩ := K <;> exact ⟨by first | exact hx | exact h.1, by first | exact hy | exact h.2.1, trivial⟩
+
 /-- `meetOn K T S` agrees with `P ∩ Q` on `K`, where `T` agrees with `P`: on a pair of `T`'s table, inside the
-    `bound` it hands `S`, `S` agrees with `Q`; off it both sides are false. -/
+    `bound` it hands `S` (a bit matrix's: `K`'s sides, else the matrix's row and column values), `S` agrees with `Q`;
+    off it both sides are false. -/
 theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} (hK : K.WF) (wT : T.Wf)
     (eT : ∀ r, T.runE {} = .ok r → Agrees K (rep r) P) (wS : S.Wf) (hS : ∀ K, K.WF → S.Reps K Q) :
     ∀ t, (meetOn K T S).runE K = .ok t → Agrees K (rep t) (P ∩ Q) := by
@@ -1728,6 +1736,26 @@ theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} 
     exact fun x y hx hy ho => (e x y).trans (and_congr (eT r hr x y hx hy ho) (es x y hx hy ho))
   unfold meetOn at h; split at h
   · exact fb h
+  · rename_i n m g w o x ra y rc
+    have hK' := hK.orElse wT.2.1 wT.2.2
+    obtain ⟨r, s, hr, hs, e⟩ := meetV_law wT (wS.force hK') h
+    have es := (reps_iff _ _ _).1 (hS _ hK') s ((force_runE S _ {}).symm.trans hs)
+    -- a row of the matrix has its key among `x` and its value among `y`, so it lies inside the bound `S` was run on
+    have hin : ∀ a c, K.den.1 a a → K.den.2 c c → rep r a c →
+        (⟨K.dom.orElse fun _ => some ⟨n, x⟩, K.ran.orElse fun _ => some ⟨m, y⟩, none⟩ : Known A B).den.1 a a ∧
+        (⟨K.dom.orElse fun _ => some ⟨n, x⟩, K.ran.orElse fun _ => some ⟨m, y⟩, none⟩ : Known A B).den.2 c c := by
+      intro a c ha hc hac
+      obtain ⟨⟨_, hgw, ho, -, -⟩, -, -⟩ := wT
+      obtain ⟨_, _, _, _, _, ⟨i, -, hi⟩, j, -, hj⟩ :=
+        (Tab.ofBits_set hr hgw (fun a ha j hj => some_lt_two (ho a ha j hj)) a c).1 hac
+      obtain ⟨_ | _, _ | _, _⟩ := K <;>
+        exact ⟨by first | exact ha | exact (side_some rfl a).2 ⟨i, hi⟩, by first | exact hc | exact (side_some rfl c).2 ⟨j, hj⟩⟩
+    have er := eT r hr
+    intro a c ha hc ho
+    refine (e a c).trans ⟨fun ⟨u, v⟩ => ⟨(er a c ha hc ho).1 u, (es a c (hin a c ha hc u).1 (hin a c ha hc u).2 trivial).1 v⟩,
+      fun ⟨u, v⟩ => ?_⟩
+    have u' := (er a c ha hc ho).2 u
+    exact ⟨u', (es a c (hin a c ha hc u').1 (hin a c ha hc u').2 trivial).2 v⟩
   · split at h
     · rename_i r0 h0
       split at h
@@ -1796,6 +1824,7 @@ theorem meetV_wf {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) : (meetV R S).Wf := by
 theorem meetOn_wf {K : Known A B} (hK : K.WF) {T S : Rel A B} (wT : T.Wf) (wS : S.Wf) : (meetOn K T S).Wf := by
   unfold meetOn; split
   · exact meetV_wf wT (wS.force hK)
+  · exact meetV_wf wT (wS.force (hK.orElse wT.2.1 wT.2.2))
   · split
     · rename_i r0 h0
       split
