@@ -147,10 +147,9 @@ def map {A B : Obj} {n : USize} (R : Tab A B) (X : Vals (.arr A) n) : Except Str
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"map: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let w ← colMap .sub n e.enc s.enc
+    let w ← colMap .sub n hi.enc lo.enc
     let (T, G, u) ← expand n w
-    let v ← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f
+    let v ← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f
     let C ← (⟨T, ← Arr.pos T, v⟩ : Tab .long A).comp R
     if C.n == T && (← C.dom).n == T then canon (⟨n, X, ← Vals.cells n w C.val⟩ : Tab (.arr A) (.arr B))
     else

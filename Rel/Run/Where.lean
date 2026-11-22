@@ -23,10 +23,9 @@ def positions {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (T
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"positions: {n} cells over {m} elements past 2^63"
-    let (s, e) ← cellSpan m lo hi
-    let w ← colMap .sub n e.enc s.enc
+    let w ← colMap .sub n hi.enc lo.enc
     let (T, G, u) ← expand n w
-    let v ← Vals.gather T (← colMap .add T (← kgather T G n s.enc) u) f
+    let v ← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f
     let D ← P.dom
     -- `index` answers `D.n` exactly where the element is no key of `D`: tested by `≠`, no signed compare
     let b ← colMap .ne T (← index D.key v) (← colConst T D.n.toUInt64)

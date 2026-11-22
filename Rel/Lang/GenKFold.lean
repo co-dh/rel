@@ -995,7 +995,7 @@ theorem expand_cells_le {A : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A
     (hw : colMap .sub n e.enc s.enc = .ok w) (hex : expand n w = .ok (T, G, u)) : T.toNat ≤ n.toNat * m.toNat := by
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (Ext.Enc.raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
     intro i hi

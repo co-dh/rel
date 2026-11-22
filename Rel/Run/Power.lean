@@ -21,26 +21,24 @@ once (`Λ` of `mem`, a `canon` answer: `lamOf`). -/
 def setify {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do lamOf X (← mem X)
 
 /-- **`length` on the arrays `X`** (`rowDens`: `w = xs.length`), the fused form of the fold: each cell to its width
-`e - s` (`cellSpan`, a `colMap .sub`); then `canon`. A payload of `2^63` rows or more, whose width an `Int64`
-cannot hold, is the error. -/
+`hi - lo` (a `colMap .sub`); then `canon`. A payload of `2^63` rows or more, whose width an `Int64` cannot hold, is
+the error. -/
 def length {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) .long) :=
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ m.toNat then throw s!"length: a payload of {m} rows, past an Int64 count"
-    let (s, e) ← cellSpan m lo hi
-    Tab.canon ⟨n, ⟨m, lo, hi, f⟩, ← colArr .sub n e.enc s.enc⟩
+    Tab.canon ⟨n, ⟨m, lo, hi, f⟩, ← colArr .sub n hi.enc lo.enc⟩
 
 /-- **`at(k)` on the arrays `X`** (`atDen`), positions from `0`: the cells wider than `k` (`whereCol` of
-`k < e - s`), each to the payload at `s + k` (`kgather` there); then `canon`. `s + k` and the widths are read signed,
-so `m + k` stays below `2^63`. -/
+`k < hi - lo`), each to the payload at `lo + k` (`kgather` there); then `canon`. `lo + k` and the widths are read
+signed, so `m + k` stays below `2^63`. -/
 def atPos {n : USize} (k : Nat) (X : Vals (.arr B) n) : Except String (Tab (.arr B) B) :=
   match X with
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ m.toNat + k then throw s!"at: position {k} in a payload of {m} rows, past 2^63"
-    let (s, e) ← cellSpan m lo hi
     let kc ← colConst n k.toUInt64
-    let (M, sel) ← whereCol n (← colMap .lt n kc (← colMap .sub n e.enc s.enc))
-    let ix ← kgather M sel n (← colMap .add n s.enc kc)
+    let (M, sel) ← whereCol n (← colMap .lt n kc (← colMap .sub n hi.enc lo.enc))
+    let ix ← kgather M sel n (← colMap .add n lo.enc kc)
     Tab.canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩, ← Vals.gather M ix f⟩
 
 /-- **`est(Q)` on the arrays `X`** (`estDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of one
