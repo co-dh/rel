@@ -77,6 +77,12 @@ lean_lib Rel where
   globs := (run_io restRoots __dir__).map fun (m, file, dir) =>
     if dir then (if file then .andSubmodules m else .submodules m) else .one m
 
+/-- `make compile-diff`: the differential test, built (so traced and replayed when its imports are unchanged) rather than
+    elaborated on every run. Outside the `Rel` glob, so `lake build Rel` does not run it. -/
+lean_lib RelGate where
+  srcDir := "test"
+  roots := #[`TestCompile]
+
 /-- `Rel.Lang.TestNative`'s `main`: prints its plan as C (`relc c FILE`) and writes the Lean side's column directory
     (`lean DIR`, `plan DIR`). -/
 lean_exe relc where
