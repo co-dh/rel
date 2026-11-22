@@ -59,6 +59,11 @@ variable {k v : Obj}
 def canon (R : Tab k v) : Except String (Tab k v) :=
   (fun y => ⟨y.1, y.2.1, y.2.2⟩) <$> Vals.nub (A := .prod k v) (R.key, R.val)
 
+/-- **`r` is canonical**: `canon`'s answer on some table, so sorted and duplicate-free (`canon_sorted`,
+`canon_distinct`). A proof, decided where `r` is produced; a consumer that would `canon` its input has an `…Of` form
+taking such an `r` (`lamOf`), so no kernel runs on a table known canonical. -/
+def Canonical (r : Tab k v) : Prop := ∃ U : Tab k v, U.canon = .ok r
+
 /-- **The range of `R`**, `𝟙 ∩ R° ≫ R°°`: the value side without duplicates (`Vals.nub`), each row paired with
 itself. -/
 def ran (R : Tab k v) : Except String (Tab v v) := (fun y => ⟨y.1, y.2, y.2⟩) <$> Vals.nub R.val

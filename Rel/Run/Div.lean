@@ -28,14 +28,13 @@ def mem {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) B) :=
     let ix ← colMap .add T (← kgather T G n s) u
     Tab.canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, ← Vals.gather T ix f⟩
 
-/-- **`Λ(R)` on the keys `D`** (`lamDen`): each `a` of `D` to the cell of its values in `R`, ascending and each once,
-`[]` where `R` has none. One GROUP over the keys of `D` then `r = canon R` (`Vals.concat`): `kasc` being stable, a
+/-- **`Λ(r)` on the keys `D`, `r` canonical** (`Tab.Canonical`; `lamDen`): each `a` of `D` to the cell of its values
+in `r`, ascending and each once, `[]` where `r` has none. One GROUP over the keys of `D` then `r` (`Vals.concat`): `kasc` being stable, a
 group's sorted rows are its `D` rows (`cD`, input row below `n`), then its `r` rows, which `canon` put in ascending
 value order. The cell of group `G` is the sorted rows `[f + cD, f + c)` of the payload `r.val` gathered in sorted
 order (a `D` row reads `r`'s row `0`, inside no cell); the groups with `0 < cD` are kept (`whereCol`), keyed by their
 first row, a row of `D`. Then `canon`. -/
-def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)) := do
-  let r ← R.canon
+def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr B)) := do
   let (N, sh) ← catPlan n r.n
   -- `.lt`, `.sub`, `.max` read positions and counts signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"lam: {N} rows past 2^63"
@@ -54,9 +53,13 @@ def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)
       Vals.gather N (← colMap .max N (← colMap .sub N p nc) (← colConst N 0)) r.val
   Tab.canon ⟨M, ← Vals.gather M iD D, ⟨pay.1, ← Arr.gather M sel lo, ← Arr.gather M sel hi, pay.2⟩⟩
 
-/-- **`E(R)` on the arrays `X`** (`EDen R = lamDen (∋ ≫ R)`): `lam` on `X` of `mem X ≫ R`. -/
+/-- **`Λ(R)` on the keys `D`**: `lamOf` of `canon R`; a caller whose `R` is `Tab.Canonical` already calls `lamOf`. -/
+def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)) := R.canon >>= lamOf D
+
+/-- **`E(R)` on the arrays `X`** (`EDen R = lamDen (∋ ≫ R)`): `Λ` on `X` of `mem X ≫ R`, a `comp` answer, so
+canonical (`comp_canonical`): `lamOf`, no second `canon`. -/
 def E {n : USize} (X : Vals (.arr A) n) (R : Tab A B) : Except String (Tab (.arr A) (.arr B)) := do
-  lam X (← (← mem X).comp R)
+  lamOf X (← (← mem X).comp R)
 
 /-- **`nil` on the keys `D`** (`nilDen`): each to the empty cell, `lo = hi = 0` over a payload of no rows; then
 `canon`. -/
