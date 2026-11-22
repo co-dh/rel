@@ -180,6 +180,11 @@ theorem foRNuls_wordsFoR (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn :
   simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, show i < n.toNat by omega, if_true, Option.map_some]
   cases hb : Column.bitAt nul i <;> cases hf : Column.foRNul md pk (Column.blockStarts md) i <;> simp_all
 
+/-- A column with no flagged block holds no null: `hasNul` reads the flags alone. -/
+theorem hasNul_of_nulAt {md pk : ByteArray} (h : ∀ b < Column.nblk md, Column.nulAt md b = false) :
+    hasNul (.foR md pk) = false := by
+  simp only [hasNul, List.any_eq_false, List.mem_range]; intro b hb; rw [h b hb]; decide
+
 /-- A kernel's answer written with no null bitmap holds no null (`nulAt_encodeAt_empty`). -/
 theorem hasNul_wordsFoR (ws : Array UInt64) : hasNul (wordsFoR ws) = false := by
   have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
