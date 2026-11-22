@@ -316,6 +316,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （每列一个 plan 函数，`gatherCols`、`concatB` 逐列调用），`prefixB` `spanB` 走 `funW`，`groupsB` 的计数与
     `compFromB` 的行号只读字（`funW`，与表形无关），`compBitsB` 走 `funT`。`rel-native.c` 7.29 MB → 3.68 MB，
     212 个函数（最大 `main` 12040 行、其次 2448 行）；`cap` 峰值 1417 MB 为 `relc c` 本身；native 三方逐字节相等。
+    分支 `nativetm10`（d8030bc 之后）：`main` 大的原因是 `tabB` 的节点配方本身（`crossB` `cmpB` `succB` `arithT`、
+    字面量、`known` 的切片……）与每个 output 的 `sidesOf` 和写都内联在调用处，只有经 `funT` 的配方才成函数。改为：
+    `tabB` = `funT [] (nodeB …)`，每个 `Tm` 节点一律一个 plan 函数；`mainStepB`（每个 output 的边与写，`outputOf`、
+    `ioOf`、测试的 `arithOut` `gidOut`）一律一个 plan 函数；`iteT` 的两支各一个函数。通用核心 `funB`：闭包变换的寄存器
+    类型依次取读者声明（`useTy`）、结果槽（`tysOf`）、所在 block 的定义（`defTy`，`resN` 数寄存器）；体只有一条无 block
+    的指令时就地展开（不发 `apply`）。按 clang AST 的函数范围计：`rel-native.c` 3.66 MB → 2.92 MB，201 → 435 个函数，
+    `main` 12371 → 250 行，最大函数 12371 → 1039 行（`\` 的 `ldivOfB`：其 `compB` `concatB` `crossB` 仍内联）；`cc -O2`
+    28.2 s → 17.6 s，`cc1` 峰值 490 → 401 MB；`lake build rel-native`（改 TestNative 后）20.9 s；native 三方逐字节相等。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：

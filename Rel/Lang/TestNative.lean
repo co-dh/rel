@@ -204,7 +204,7 @@ def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
     Bld.planIO rd fun ins => do
       wr ins
       for b in bs do b
-      arithOut "out/arith"; gidOut "out/gid"
+      mainStepB (arithOut "out/arith"); mainStepB (gidOut "out/gid")
 
 /-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
     the elaborator's unifier finds the objects' constants (`Obj.named`). -/

@@ -184,15 +184,70 @@ partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
     | .loop k _ b .. => if k == a then some .size else useTy fs a b
     | _ => none) <|> useTy fs a is
 
-/-- `b` on the tables `Ts` as a plan function (`defFun`), applied to their registers (each its count, then `regsOf`):
-    a recipe built at many nodes is one C function, not a copy inlined at each (which outgrows `cc -O2`). A function
-    whose body equals an earlier one's is that one, so each table shape builds one function. Closure conversion: the
-    body is built after the enclosing scope's `n` registers, and those it reads (a variable's table, a cap) become
-    parameters after the tables', first read first, typed as their reader declares (`useTy`), so `b` may close over
-    anything in scope. -/
+/-- The number of registers the instruction `i` defines, `fs` and `gs` the plan's functions and globals. -/
+def resN (fs gs : Array Fun) : Instr → Nat
+  | .lit _ | .ctor .. | .proj .. | .sproj .. => 1
+  | .fail .. => 0
+  | .call s _ => (abiOf s).elim 0 (·.res.size)
+  | .apply g _ => (fs[g]?).elim 0 (·.res.size)
+  | .global g => (gs[g]?).elim 0 (·.res.size)
+  | .ite _ _ rt _ _ => rt.size
+  | .loop _ init .. => init.size
+
+/-- The type of register `a` as the instruction defining it declares it, in the block `is` numbered from `base`
+    (`pre` the registers before it): a literal's, a kernel's or a function's result, a field read. -/
+partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is : List Instr) (a : Nat) : Option Ty :=
+  if a < base then pre a else match is with
+  | [] => none
+  | i :: is =>
+    let funTy (F : Fun) (j : Nat) : Option Ty := F.res[j]?.bind (defTy fs gs (F.params[·]?) F.params.size F.body)
+    let j := a - base
+    if j < resN fs gs i then match i with
+      | .lit v => some v.ty
+      | .ctor .. => some .obj
+      | .proj _ _ _ t => some t
+      | .sproj _ _ _ ss k => ss[k]?
+      | .fail .. => none
+      | .call s _ => (abiOf s).bind (·.res[j]?)
+      | .apply g _ => (fs[g]?).bind (funTy · j)
+      | .global g => (gs[g]?).bind (funTy · j)
+      | .ite _ t rt _ _ => rt[j]?.bind (defTy fs gs pre base t)
+      | .loop _ init .. => init[j]?.bind pre
+    else defTy fs gs (defTy fs gs pre base [i]) (base + resN fs gs i) is a
+
+/-- `b` on parameters of the types `tys` as a plan function, applied to `args`; `b` answers its result registers,
+    their types and a value `α` (the answer's shape): a recipe built at many nodes is one C function, not a copy
+    inlined at each (which outgrows `cc -O2`). A function whose body equals an earlier one's is that one, so each
+    table shape builds one function. Closure conversion: the body is built after the enclosing scope's `n` registers,
+    and those it reads (a variable's table, a cap) become parameters after `tys`, first read first, typed as their
+    reader declares (`useTy`) or, one only answered, as its result slot, so `b` may close over anything in scope. -/
+def funB {α : Type} (tys : List Ty) (args : List Nat) (b : List Nat → Bld (Array Nat × List Ty × α)) :
+    Bld (Array Nat × α) := do
+  let (is, n, fs, gs) ← get
+  let k := tys.length
+  unless args.length == k do throw s!"a function of {k} parameters applied to {args.length} registers"
+  let ((r, rtys, x), body, m, fs, gs) ← (b (List.range' n k)).run (#[], n + k, fs, gs)
+  -- a body of at most one instruction holding no block is spliced in place: its `apply` costs as much
+  let flat : Instr → Bool := fun | .ite .. | .loop .. => false | _ => true
+  if body.all flat && body.size ≤ 1 then
+    let g (a : Nat) : Nat := if a < n then a else if a < n + k then args.getD (a - n) a else a - k
+    set (is ++ body.map (·.rename g), m - k, fs, gs); return (r.map g, x)
+  let cs := ((body.toList.flatMap (reads n) ++ r.toList).filter (· < n)).eraseDups
+  -- a register no reader types is typed by its definition in the enclosing block
+  let dty := defTy fs gs (fun _ => none) (n - (is.toList.map (resN fs gs)).sum) is.toList
+  let ctys ← cs.mapM fun a => match useTy fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?) <|> dty a with
+    | some t => pure t
+    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
+  let f (a : Nat) : Nat := if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
+  let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
+  let (g, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
+  set (is, n, fs, gs)
+  return (← apply g (args ++ cs).toArray r.size, x)
+
+/-- `funB` on tables: each `T` of `Ts` passed as its count, then `regsOf`, and the answer a table likewise. -/
 def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
   let regs (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
-  let tys := (← Ts.mapM fun T => return Ty.size :: (← tysOf (T.key ++ T.val))).flatten
+  let tysT (T : TabB) : Bld (List Ty) := return Ty.size :: (← tysOf (T.key ++ T.val))
   let shape (Ts : List TabB) (rs : List Nat) : Bld (List TabB) := do
     let (Us, _) ← Ts.foldlM (init := (([] : List TabB), rs)) fun (Us, rs) T => match rs with
       | n :: rs => do
@@ -200,22 +255,15 @@ def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
         pure (Us ++ [⟨n, cs.take T.key.length, cs.drop T.key.length⟩], rs)
       | [] => throw "a function's parameters: fewer registers than its tables read"
     pure Us
-  let (is, n, fs, gs) ← get
-  let k := tys.length
-  let ((U, r), body, _, fs, gs) ← (do let U ← b (← shape Ts (List.range' n k)); pure (U, (← regs U).toArray)).run
-    (#[], n + k, fs, gs)
-  let cs := ((body.toList.flatMap (reads n) ++ r.toList).filter (· < n)).eraseDups
-  let ctys ← cs.mapM fun a => match useTy fs a body.toList with
-    | some t => pure t
-    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
-  let f (a : Nat) : Nat := if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
-  let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
-  let (g, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
-  set (is, n, fs, gs)
-  let rs ← apply g ((← Ts.mapM regs).flatten ++ cs).toArray r.size
+  let (rs, U) ← funB (← Ts.mapM tysT).flatten (← Ts.mapM regs).flatten fun ps => do
+    let U ← b (← shape Ts ps); pure ((← regs U).toArray, ← tysT U, U)
   match ← shape [U] rs.toList with
   | [V] => pure V
   | _ => throw "a function's answer: not one table"
+
+/-- A step of `main` (an output: its sides and writes) as one plan function (`funB`), so `main` is one `apply` per
+    step and holds none of the step's registers. -/
+def mainStepB (b : Bld Unit) : Bld Unit := discard <| funB [] [] fun _ => do b; pure (#[], [], ())
 
 /-- `funT` of a recipe on the `n` values `X` (a leaf on demand's), and on the tables `Ts`. -/
 def funV (n : Nat) (X : Cols) (Ts : List TabB) (b : Nat → Cols → List TabB → Bld TabB) : Bld TabB :=
@@ -898,7 +946,8 @@ def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
     unless T.key.length == ks.length && T.val.length == vs.length && rs.length == w do
       throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, {rs.length} registers, not {ks.length} and {vs.length}, {w}"
     pure (#[T.n] ++ rs.toArray)
-  let rs ← ite c (flat t) (flat e)
+  -- each branch one plan function (`funT`), as a node is: a choice between two recipes inlines neither
+  let rs ← ite c (flat (funT [] fun _ => t)) (flat (funT [] fun _ => e))
   let (cs, _) ← withRegs (ks ++ vs) (rs.toList.drop 1)
   pure ⟨← nth rs 0 "if", cs.take ks.length, cs.drop ks.length⟩
 
@@ -1234,12 +1283,18 @@ def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
   fun A B _ => return ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩
 
 mutual
-/-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` what
+/-- **A term's table**: its node's recipe (`nodeB`) as one plan function (`funT`), closing over the tables of its
+    context and its variables, so every node kind is built by one path and the block applying it (`main`, a
+    function, a loop's round) holds one `apply` per node, never the node's kernels inlined. -/
+partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB :=
+  fun t => funT [] fun _ => nodeB σ D t
+
+/-- A node's table, by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` what
     each reads (`Vars`), `D` the values its context knows its source to hold (`compT`: a composition's left
     operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
     that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
     them and what they need. -/
-partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, .val R => do
     let (k, v) := (← litSide R.key, ← litSide R.val)
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
@@ -1383,7 +1438,7 @@ def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Exce
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
     let some ⟨_, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
-    pure (do output dir (← ofTm [] t))
+    pure (mainStepB do output dir (← ofTm [] t))
 
 /-- The Lean side of the same output: `R`'s two sides written by the table writer under the names `output` gives
     them, from the value Lean computed, not from a plan. -/
@@ -1520,13 +1575,14 @@ def ioOf (n : Lean.Name) :
             let ⟨_, _, t⟩ := o.res
             σ := σ ++ [(x, ← ofTm env t)]
         | .output x _ _ k v c p cl =>
-          let t ← match cl, σ.lookup x with
-            | none, some t => pure t
-            | some _, _ => match ds.lookup x with
-              | some ⟨_, _, t⟩ => ofTm [] t
-              | none => throw s!"output `{x}`: no closed definition `{x}`"
-            | none, none => throw s!"output `{x}`: not read or computed before it"
-          writeOut x k v c p t
+          mainStepB do
+            let t ← match cl, σ.lookup x with
+              | none, some t => pure t
+              | some _, _ => match ds.lookup x with
+                | some ⟨_, _, t⟩ => ofTm [] t
+                | none => throw s!"output `{x}`: no closed definition `{x}`"
+              | none, none => throw s!"output `{x}`: not read or computed before it"
+            writeOut x k v c p t
         | _ => pure ()
     pure (rd, wr)
 
