@@ -1026,9 +1026,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
           `Tab.mu_holds`、`GenK.mu_sound` 由 `Tab.fixOn_inv` 推出）。差分测试慢的 3 项已查：不是回归，这 3 个定义此前"无代码"不参加
           比较；`Tm.gen` 一侧每个调用点重算 body（`chess.mate` 260 次调用 / 13 个被调定义），时间全在 kernel；决定不改（带缓存的
           求值器要复制 `Tm.gen` 的分情形）。`gen_sound` 仍带的前提：`LamLaws`（`Λ`/`E`/`τ`/`setify`/`tails` 处的 `LamLaw`，加循环体
-          单调——后者可判定且全部通过）。待做：`Tm.ConvOK` 的 `callCv` 前提（`instObj` 与 `den`/`convTm` 交换）；`reread` 读最终
-          registry 的检查；`Arr.pos_get`/`Arr.pos_clamp`、`expand_cells_le`/`Vals.cells_expand_row` 两处重复证明文本；`Tm.spineHead`
-          的死分支。
+          单调——后者可判定且全部通过）。待做（gs-clean 核对于 cd3523e）：
+          - ✅ `Tm.ConvOK` 的 `callCv` 前提不在 `gen_sound` 上：`gen_sound` 只带 `GenHyp`，`Tm.ConvOK` 只被 `convTm_den`
+            读，`convTm_den` 无调用处；`callTm` 建的 `callCv` 由 `callTm_convOK`（s5conv）推出。
+          - ✅ `reread` 读最终 registry：perf14c c6f97f8 / perf14d cd3523e 改为在程序自己 read 时的 registry 下重读。
+          - ✅ 重复证明文本（gs-clean 1850c5a）：`GenKFold` 里 `Arr.pos_get` 的副本删去，用 `RepCols` 的；
+            `expand_cells_le` 删去，`Tab.map_holds` 用 `cellSpan_width` + `expand_spec` 得 `T ≤ n·m`（同 `cells_expand_row`）。
+          - ✅ `Tm.spineHead` 已随 `Tm.gap` 在 61c77cb 删去；`Expand.spineHead`（`noCode` 的报告）没有死分支。
         - 2026-11-20 01:59，master aa5060f：覆盖 218 / 235（新口径：17 个程序的定义加上每个注册的共享定义各算一次；旧口径 203 不再
           打印）。check-57（4e82176）、check-58（3bd6f13）全绿，差分 478 / 478、compile-diff 476 / 2。已合入：s5t23（stage 5 T2/T3：
           `den`/`gen` of `call` = body under `Val.args`/`Code.args`，`Sound.args`，`gen_sound_spine` 的 `call`/`callCv`/`share`
