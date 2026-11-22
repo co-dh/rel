@@ -1246,6 +1246,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     “每块都留 null 码”只改 `planBlock` 这一处。Rust：`Sink::write_nul`、`enc::move_blk` 按块分 `nul_meta`/`nul_pack`
     与 `for_meta`/`for_pack`。`Encoding.foRBits_encode`、`planBlock_bounds` 以空位图陈述（`bitAt_empty`）。
     剩：第 2–5 步（`Vals (.sum (.atom t) .one) := Arr t n` 及其各用处、kernel 在块上判 null、CSV 3 → 1、decode-allow）。
+    主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
+    代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
+    rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`
+    以空位图编码，所以 null 行被读成它的残差字、写回时成了一个值。例：块宽 3、frame 0，第 2 行 null 存 `7`；gather
+    `[2]` 得到一列 `[7]`、无标志——`Vals.gather` 在 `atom+1` 上 = `Arr.gather` = `kgather`，`gather_row` 不再成立。
+    同理 `kscatter`（`foRWords`/`wordsFoR`）、`kasc`/`kseen`（比的是原始字：块 A 的 null `7` 与块 B 的值 `7` 相等）。
+    顺序：先让 `foRWords`/`wordsFoR` 成对携带 null 位（`(words, nuls)`，kernel 体把 null 位当作值的一部分 gather /
+    scatter / 比较），Rust 生产者经 `Sink::write_nul` 写出；再改 `Vals`。`asc` 中 null 的次序待主人定（q：null 最小）。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
