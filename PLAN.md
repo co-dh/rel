@@ -648,6 +648,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ Tm28 B1（`doc/tm-minimal-design.zh.typ` §3，分支 `tm28b1`）：`E` 是定义 `E(R) ≜ Λ(∋ R)`，不是 `Tm` 构造子。删
   `Tm.E`、`Pre.E`、`GenK.E` 及其每个 match 分支；`applied` 构造 `Λ(∋ R)`（`appliedL` 本来如此），表层 `E( )` 不变。
   `Tm.E_den` 证 `⟦Λ(∋ R)⟧ = EDen ⟦R⟧`；`Prim.den_memRow` 加强为等式 `⟦∋⟧ = (x ∈ xs)`。
+- ✅ Tm28 B2（§3）：`R × S` 是定义 `Tm.prod R S ≜ ⟨π₁R, π₂S⟩`（`Tm.prod_den`），删 `Tm.prod` 构造子、`GenK.prod`、
+  `Tab.prod` 与 `Tm.code` 的「`prod` 不 memo」特例；积 universe 为 closed 的 `Tm.prodUni u v ≜ ran(⟨u, ⊤(v)⟩)`
+  （`Tm.prodUni_den`，`uniPart` 与 `arith` 的 converse 共用）；`crossMax` 跟到 `Tab.pair`（`Tab.compPairs` 先数行）。
 
 ### P5 按既定顺序关闭 gap — 7/8（5.4a-c 并行，其余串行）
 

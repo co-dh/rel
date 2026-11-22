@@ -135,11 +135,11 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
 def Tm.prod {A B C D : Obj} (R : Tm A B) (S : Tm C D) : Tm (.prod A C) (.prod B D) :=
   .pair (.comp .outl R) (.comp .outr S)
 
-/-- The closed universe `u × v` of a product object, `ran(⟨⊤(u), ⊤(v)⟩)` from the one row of `1` (`⊤(u) : 1 ⟶ A`):
-    the pair on that single key is CROSS of `u`'s values and `v`'s, which `Tab.pair` refuses past `crossMax`
+/-- The closed universe `u × v` of a product object, `ran(⟨u, ⊤(v)⟩)`: `u` runs closed and bounds `⊤(v)`, so the
+    pair is CROSS of `u`'s values and `v`'s, which `Tab.top` and `Tab.pair` refuse past `crossMax`
     (`Tm.prodUni_den`). -/
 def Tm.prodUni {A B : Obj} (u : Tm A A) (v : Tm B B) : Tm (.prod A B) (.prod A B) :=
-  .ran (.comp (.uni (A := .one) (m := 1) ()) (.pair (.top u) (.top v)))
+  .ran (.pair u (.top v))
 
 /-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/

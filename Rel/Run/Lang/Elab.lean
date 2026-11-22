@@ -2332,10 +2332,17 @@ def build : Pre → Except Err Res
   | .pair p q => do
     let ⟨A, _, t⟩ ← build p; let s ← build q; let ⟨_, C, _⟩ := s
     let u ← at? dp (A := A) (B := C) s; pure ⟨A, _, .pair t u⟩
-  -- `R×S ≜ ⟨π₁R,π₂S⟩` (`Tm.prod`), on demand; a closed use reads its source's universe (`closeRes`)
-  | .prod (.close _ p _ _) (.close _ q _ _) | .prod p q => do
-    let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
-    pure ⟨.prod A C, .prod B D, t.prod u⟩
+  -- `R×S ≜ ⟨π₁R,π₂S⟩` (`Tm.prod`); both operands closed on their sources, it runs closed on `dom R × dom S`, since
+  -- the product object may have no universe of its own (`[A]×[A]`); otherwise on demand
+  | .prod (.close pp p a w) (.close pq q b w') =>
+    let onDemand : Except Err Res := do
+      let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
+    match build (.close pp p a w), build (.close pq q b w') with
+    | .ok ⟨A, B, t⟩, .ok ⟨C, D, u⟩ =>
+      if t.dem || u.dem then onDemand else pure ⟨.prod A C, .prod B D, .comp ((Tm.dom t).prodUni (.dom u)) (t.prod u)⟩
+    | _, _ => onDemand
+  | .prod p q => do
+    let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩

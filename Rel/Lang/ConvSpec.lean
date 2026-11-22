@@ -275,6 +275,8 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
       refine ⟨?_, ?_⟩
       · obtain rfl := hok _ _ h1; exact h1
       · obtain rfl := hok _ _ h2; exact h2
+    rw [show (Tm.conv (Tm.comp (U.prodUni U) (Tm.arith t k U))).den ρ =
+      ((U.prodUni U).den ρ ≫ (Tm.arith t k U).den ρ)° from rfl, Tm.prodUni_den ρ U U hok hok]
     refine congrArg (·°) (funext fun p => funext fun w => propext ⟨fun ⟨q, ⟨h1, h2⟩, ha⟩ => ?_, fun ha => ⟨p, key p w ha, ha⟩⟩)
     have e : p = q := Prod.ext (hok _ _ h1) (hok _ _ h2)
     subst e; exact ha
@@ -700,9 +702,9 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   | arith t k U _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
-    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
+    simp only [Tm.instObj, Tm.prodUni, bind_ok_iff, pure_ok_iff] at ht hu'
     obtain ⟨U', hU, U'', hb, hf⟩ := ht
-    obtain ⟨_, ⟨_, ⟨_, h1, _, h2, rfl⟩, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
+    obtain ⟨_, ⟨_, ⟨_, ⟨_, h1, _, ⟨_, h2, rfl⟩, rfl⟩, rfl⟩, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
     rw [hU] at h1 h2 h3; cases h1; cases h2; cases h3; rw [hb] at hb3; cases hb3; rw [hf] at hf3; cases hf3
     obtain ⟨e, rfl⟩ := back_ok ph σ hb; obtain ⟨_, rfl⟩ := fixed_ok ph σ hf
     -- `(atom t).inst ph σ` does not reduce at a float `t`: the case is proved at any `X` equal to `atom t`
@@ -720,6 +722,8 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
         refine ⟨?_, ?_⟩
         · obtain rfl := hok _ _ h1; exact h1
         · obtain rfl := hok _ _ h2; exact h2
+      rw [show (Tm.conv (Tm.comp (V.prodUni V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
+        ((V.prodUni V).den ρ ≫ (cast q1 (Tm.arith t k (cast q2 V))).den ρ)° from rfl, Tm.prodUni_den ρ V V hok hok]
       refine congrArg (·°) (funext fun p => funext fun w => propext ⟨fun ⟨q, ⟨h1, h2⟩, ha⟩ => ?_, fun ha => ⟨p, key p w ha, ha⟩⟩)
       have e : p = q := Prod.ext (hok _ _ h1) (hok _ _ h2)
       subst e; exact ha

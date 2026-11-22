@@ -508,22 +508,20 @@ theorem Tm.prod_den (ρ : Val) {A B C D : Obj} (R : Tm A B) (S : Tm C D) :
   apply Core.Rel.ext; intro p q
   simp [Tm.prod, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.graph]
 
-/-- The closed product universe `ran(⟨⊤(u), ⊤(v)⟩)` (`Tm.prodUni`) means `u × v` where `u` and `v` are
-    coreflexives, as a universe is. -/
+/-- The closed product universe `ran(⟨u, ⊤(v)⟩)` (`Tm.prodUni`) means `u × v` where `u` and `v` are coreflexives,
+    as a universe is. -/
 theorem Tm.prodUni_den (ρ : Val) {A B : Obj} (u : Tm A A) (v : Tm B B) (hu : ∀ x y, u.den ρ x y → x = y)
     (hv : ∀ x y, v.den ρ x y → x = y) : (u.prodUni v).den ρ = rprodMap (u.den ρ) (v.den ρ) := by
   apply Core.Rel.ext; intro p q
-  have i : Fin (1 : USize).toNat := ⟨0, by decide⟩
   simp only [Tm.prodUni, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.inter,
-    Core.Rel.recip, Core.Rel.graph, Core.Rel.top, Core.Rel.id]
+    Core.Rel.recip, Core.Rel.top, Core.Rel.id]
   constructor
-  · rintro ⟨rfl, m, ⟨_, ⟨_, ⟨_, -, -⟩, ⟨-, x, -, hx⟩, -, y, -, hy⟩⟩, -⟩
-    obtain rfl := hu _ _ hx; obtain rfl := hv _ _ hy; exact ⟨hx, hy⟩
-  · intro ⟨h1, h2⟩
+  · rintro ⟨rfl, m, ⟨h1, y, -, h2⟩, -⟩
+    obtain rfl := hu _ _ h1; obtain rfl := hv _ _ h2; exact ⟨h1, h2⟩
+  · rintro ⟨h1, h2⟩
     obtain ⟨a, b⟩ := p; obtain ⟨c, d⟩ := q
     obtain rfl := hu _ _ h1; obtain rfl := hv _ _ h2
-    exact ⟨rfl, (), ⟨(), ⟨(), ⟨i, rfl, rfl⟩⟩, ⟨trivial, a, trivial, h1⟩, trivial, b, trivial, h2⟩,
-      ⟨(), ⟨(), ⟨i, rfl, rfl⟩⟩, ⟨trivial, a, trivial, h1⟩, trivial, b, trivial, h2⟩⟩
+    exact ⟨rfl, a, ⟨h1, b, trivial, h2⟩, h1, b, trivial, h2⟩
 
 /-- **Symmetric division is a definition**: the term `R/S ∩ (S/R)°` that `Pre.symDiv` builds means `R÷S` within the
     universes `UA`, `UB`. -/
