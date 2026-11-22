@@ -62,10 +62,6 @@ inductive Tm : Obj → Obj → Type where
   /-- `R`, closed, numbered `k` among the program's closed parts (`Tm.number`): its code is built once
       (`Code.shares`). -/
   | share {A B : Obj} (k : Nat) (R : Tm A B) : Tm A B
-  /-- `⦇e,S⦈` given a family (§e), on the pairs (key, array) in demand: one fold with carrier `I×V`, seeded at
-      each key by the fibre of `e` there, its step `S` given `((i,v),x)` and carrying the key `i`. -/
-  | foldI {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V)) :
-      Tm (.prod I (.arr E)) V
   /-- The variable `k` of the fixed point that binds it: its value in the round being run; or a constant's
       parameter, on the keys in demand when its argument is a pair test (`Form`). `d`: its demand bit, which the
       use site fixes, as `call` stores its own. -/
@@ -133,7 +129,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .prod .. | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
-  | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
+  | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
 
 /-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
@@ -143,7 +139,7 @@ def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
-  | _, _, .foldr R S | _, _, .fold R S | _, _, .foldI R S | _, _, .arg R S
+  | _, _, .foldr R S | _, _, .fold R S | _, _, .arg R S
   | _, _, .nu _ R S => R.size + S.size + 1
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .prim _
@@ -178,7 +174,6 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .lt t U, f => return .lt t (← f U lt_size)
   | _, _, .foldr e S, f => return .foldr (← f e lt_size) (← f S lt_size)
   | _, _, .fold e S, f => return .fold (← f e lt_size) (← f S lt_size)
-  | _, _, .foldI e S, f => return .foldI (← f e lt_size) (← f S lt_size)
   | _, _, .arg g x, f => return .arg (← f g lt_size) (← f x lt_size)
   | _, _, .nu k S b, f => return .nu k (← f S lt_size) (← f b lt_size)
   | _, _, .mu k w n b, f => return .mu k w n (← f b lt_size)
@@ -227,7 +222,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .leq _ U => U.fv
   | _, _, .lt _ U => U.fv
   | _, _, .foldr e S | _, _, .fold e S => e.fv ++ S.fv
-  | _, _, .foldI e S => e.fv ++ S.fv
   | _, _, .arg g x => g.fv ++ x.fv
   | _, _, .nu k S b => S.fv ++ b.fv.filter (· != k)
   | _, _, .mu k _ _ b => b.fv.filter (· != k)
@@ -282,7 +276,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .lt t U => .lt t (U.subst σ)
   | σ, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
   | σ, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
-  | σ, _, _, .foldI e S => .foldI (e.subst σ) (S.subst σ)
   | σ, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
   | σ, A, B, .nu k S b =>
     .nu (fresh (b.fv ++ σ.fvs)) (S.subst σ) (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
@@ -303,11 +296,12 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .call ks c os b => .call ks c os b
   | _, _, _, .callCv ks c c' os b u => .callCv ks c c' os b u
 
+mutual
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
     occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `thin` hold an image
-    whole (`lamDen`'s `↔`), so their part must be too. A row passes its argument's sign where its `prims` entry is
-    `mono` (`rowDens_mono`), `F(X)` among them. -/
+    whole (`lamDen`'s `↔`), so their part must be too. A row given any number of relations passes their sign where
+    its `prims` entry is `mono` (`Tm.spinePol`, `rowDens_mono`), `F(X)` among them. -/
 def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .var _ j => if j == k then s else true
   | _, _, .top V => V.pol s k
@@ -328,11 +322,19 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .hylo j _ b => j == k || b.pol s k
   | _, _, .est Q => Q.pol s k
   | _, _, .succ U | _, _, .arith _ _ U | _, _, .leq _ U | _, _, .lt _ U => U.pol s k
-  | _, _, .foldr e S | _, _, .fold e S | _, _, .foldI e S => e.pol s k && S.pol s k
-  | _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
-  | _, _, t@(.lam _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
+  | _, _, .foldr e S | _, _, .fold e S => e.pol s k && S.pol s k
+  | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
+  | _, _, t@(.lam _) | _, _, t@(.thin _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. | _, _, .callCv .. => true
+
+/-- `t` a `mono` row (`prims`) given relations, each occurring with sign `s` in `k` (`Tm.pol`): the spine
+    `.arg (… (.arg (.prim r) x₁) …) xₙ`, of any length `n` (`Tm.den_pol_spine`). -/
+def Tm.spinePol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
+  | _, _, .prim r => (Prim.find? r.sym).any (·.mono)
+  | _, _, .arg f x => f.spinePol s k && x.pol s k
+  | _, _, _ => false
+end
 
 /-! ### The children of a recursion -/
 

@@ -573,6 +573,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 4.3 `foldI`：owner 选 D，constructor 保留为融合形式，
   用 `foldIDen_eq` + `foldI_sound` 与定义相连
   （已证，e172821 合并，无额外前提；`Gen.foldI` 的 step 是交 `S ∩ π₁π₁π₁°`）。
+- ✅ Tm28 B6（n 参数行 + foldI）：5d7704e 让一行可取任意个关系参数（`Tm.spinePol`、`Sems.le`、`Tm.den_pol_spine`，
+  `primE` 直接拟合一个 `Fn` 组合子）；9030fca 把 `Tm.foldI` 换成两参数的融合行 `foldIRow`（`GenK.foldI`），定义
+  `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` 是 `DfnCut.foldI`（`Tm.dfnCut_den` 用 `foldIDen_eq`），`rowOK_foldI`
+  来自 `GenK.foldI_sound`；`Tm.foldI`、`Pre.foldI` 及其所有分支删除。GenSoundTest 1594 of 1594。
 - ✅ 4.4 owner 决定：symmetric division 是定义，不是 `Tm` 构造子。`Pre.symDiv` = `R/S ∩ (S/R)°`（与 `/` 共用
   `Pre.rdivWhole`），`Tm.symDiv_den` 证其含义是 `symDivDen`，`TestSymDiv` 测行。表层语法是中缀 `R ÷ S`
   （owner 2026-11-20 决定；`Bin.table` 的一项，与 `/` 同一优先级），`TestSymDiv` 测它与手写定义行相同。

@@ -100,7 +100,7 @@ run_cmd do
   let objs (i : Nat) (x : Lean.Expr) := x.getAppArgs[i]?.any fun o => !o.isAppOf ``List.nil
   let wants : List (String × (Lean.Expr → Bool)) :=
     [("a constant", has fun x => x.isAppOf ``Tm.val || x.isAppOf ``Tm.uni),
-     ("a fold", has fun x => x.isAppOf ``Tm.fold || x.isAppOf ``Tm.foldr || x.isAppOf ``Tm.foldI),
+     ("a fold", has fun x => x.isAppOf ``Tm.fold || x.isAppOf ``Tm.foldr),
      ("a call to a generic definition", has fun x =>
        (x.isAppOfArity ``Tm.call 6 && objs 4 x) || (x.isAppOfArity ``Tm.callCv 8 && objs 5 x))]
   for (what, p) in wants do
@@ -133,6 +133,15 @@ run_meta do
 /-- error: rel registry: the key `k` is held by `a.k` and by `b.k`, built by two modules neither importing the other, with different bodies: at call: its fields differ -/
 #guard_msgs in
 run_meta discard (twice (.call [] `b.k [] .id)).call?
+
+-- a lifted fold (the row `foldI`) whose start and step both read the μ variable `0` is positive in it, so `monoOK`:
+-- `Tm.spinePol` reads the row's `mono`, as for a row of one relation
+#guard
+  let x : Tm (.prod .long (.arr .long)) .long := .var false 0
+  let e : Tm .long (.prod .long .long) := .comp (.conv .outl) (.pair x x)
+  let S : Tm (.prod (.prod .long .long) .long) (.prod .long .long) :=
+    .comp (.comp .outl .outl) (.comp (.conv .outl) (.pair .outl x))
+  (Tm.mu 0 "foldI" 1 (.arg (.arg (.prim foldIRow) e) S : Tm (.prod .long (.arr .long)) .long)).monoOK
 
 /-- The placeholders of a constant built where an object `F` is stored at `.f64` (no form declares one yet), and
     twelve call objects for its variables. -/
