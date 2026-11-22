@@ -440,7 +440,8 @@ info: (["ibm", "aapl", "msft", "zz"], [[(0, 0), (1, 1)], [(0, 2), (1, 1)], [(0, 
   let D ← Table.libDict (d ++ "/one")
   let r ← ["a", "b", "common", "both"].mapM fun t => return (← Table.read S (d ++ "/one/" ++ t)).toList
   IO.FS.removeDirAll d
-  return (D.toList.map fun (_, b) => String.ofList (b.map fun (c : UInt64) => Char.ofNat c.toNat), r)
+  let ts : List String := D.toList.map fun (_, b) => String.ofList (b.map fun c => Char.ofNat c.toNat)
+  return (ts, r)
 
 -- two own inputs with symbol columns in two libraries, met by `∩`: refused where the program is elaborated
 /--
