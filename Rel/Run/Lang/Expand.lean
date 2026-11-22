@@ -250,7 +250,6 @@ open Lean in deriving instance ToExpr for Rel.Db.CsvShape
 
 open Lean in def oE (A : Obj) : Lean.Expr := toExpr A
 open Lean in def uE (n : USize) : Lean.Expr := mkApp (mkConst ``USize.ofNat) (toExpr n.toNat)
-open Lean in def bE (b : Bool) : Lean.Expr := toExpr b
 open Lean in def g (n : Lean.Name) (as : Array Lean.Expr) : Lean.Expr := mkAppN (mkConst n) as
 
 /-- The row a spine of `arg`s is headed by, and its relations in order. -/
@@ -259,8 +258,8 @@ def primOf : {A B : Obj} → Tm A B → Option (Prim × List Res)
   | _, _, .arg f x => (primOf f).map fun (r, xs) => (r, xs ++ [⟨_, _, x⟩])
   | _, _, _ => none
 
-/-- The type `Gen.Fn t.dem A B` of a code of `t : Tm A B`. -/
-def fnTy (t : Res) : Lean.Expr := g ``Gen.Fn #[bE t.2.2.dem, oE t.1, oE t.2.1]
+/-- The type `Rel A B` of a code of `t : Tm A B`. -/
+def fnTy (t : Res) : Lean.Expr := g ``Rel.Rel #[oE t.1, oE t.2.1]
 
 /-- The wrappers a row's constant runs under (`GenK.ofVals` …), tried in order. -/
 def primWrappers : List Lean.Name :=
@@ -291,14 +290,14 @@ def objOrSize (t : Lean.Expr) : MetaM Bool := return (← whnfR t).isConstOf ``O
 
 open Lean Meta in
 /-- Row `r`'s constant at `A ⟶ B` given its relations `xs` (codes with their types), under the first wrapper it
-    fits: the wrapper's `Fn` parts are `xs`, its function's explicit binders the constant's that are relations (not
+    fits: the wrapper's `Rel` parts are `xs`, its function's explicit binders the constant's that are relations (not
     `objOrSize`), every other solved by unifying the types. The constant is the row's
     `kernRows` operator. -/
 def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (Option Lean.Expr) := do
   let some (c, args) := kernRows.lookup r.sym | return none
-  let w? ← primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Gen.Fn)) xs fun ws wty => do
+  let w? ← primWrappers.findSomeM? fun w => fitConst w (fun t => pure (t.isAppOf ``Rel.Rel)) xs fun ws wty => do
     let some f := ws.back? | return false
-    unless ← isDefEq wty (g ``Gen.Fn #[bE true, oE A, oE B]) do return false
+    unless ← isDefEq wty (g ``Rel.Rel #[oE A, oE B]) do return false
     let v? ← forallTelescope (← instantiateMVars (← inferType f)) fun ys body => do
       let es ← ys.filterM fun y => return (← getFVarLocalDecl y).binderInfo.isExplicit
       let some v ← fitConst c (fun t => return !(← objOrSize t)) (← es.mapM fun y => return (y, ← inferType y))
@@ -307,9 +306,9 @@ def primE (r : Prim) (A B : Obj) (xs : Array (Lean.Expr × Lean.Expr)) : MetaM (
     let some v := v? | return false
     isDefEq f v
   if w?.isSome then return w?
-  -- a constant that is itself a code of its relations, any number of them (`GenK.foldI`): its `Fn` binders are
-  -- `xs`, its demand bits and objects solved by unifying; tried last, so no wrapper's fit changes
-  fitConst c (fun t => pure (t.isAppOf ``Gen.Fn)) xs (fun _ ty => isDefEq ty (g ``Gen.Fn #[bE true, oE A, oE B]))
+  -- a constant that is itself a code of its relations, any number of them (`GenK.foldI`): its `Rel` binders are
+  -- `xs`, its objects solved by unifying; tried last, so no wrapper's fit changes
+  fitConst c (fun t => pure (t.isAppOf ``Rel.Rel)) xs (fun _ ty => isDefEq ty (g ``Rel.Rel #[oE A, oE B]))
       args
 
 /-- Each fit `primFit` made, by row, objects and its relations' types. Process-wide rather than in the environment:

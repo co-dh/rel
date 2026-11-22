@@ -23,23 +23,23 @@ namespace GenK
 open Rel Gen
 
 /-- A closed leaf: the table `t` computes, or its message. -/
-def const (A B : Obj) (t : Except String (Tab A B)) : Fn false A B := .tab t
+def const (A B : Obj) (t : Except String (Tab A B)) : Rel A B := .tab t
 
 /-- A literal: its `foR` columns as `Gen.atom` rebuilt them, in canonical order (`Tab.canon`); a column whose
     payload does not fit its length is an error. -/
-def val (A B : Obj) (R : Tab A B × Bool) : Fn false A B :=
+def val (A B : Obj) (R : Tab A B × Bool) : Rel A B :=
   const A B (if R.2 then Tab.canon R.1 else .error s!"val: a literal column of {R.1.n} rows does not fit its payload")
-def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Fn false A A :=
+def uni (A : Obj) (m : USize) (U : Vals A m × Bool) : Rel A A :=
   const A A (if U.2 then Tab.idU U.1 else .error s!"uni: a universe column of {m} rows does not fit its payload")
-def zero (A B : Obj) : Fn false A B := const A B Tab.zero
+def zero (A B : Obj) : Rel A B := const A B Tab.zero
 
 /-- A leaf on demand: `f` on the values its context knows its domain to hold; an error where it is unknown. -/
-def ofVals (A B : Obj) (f : {n : USize} → Vals A n → Except String (Tab A B)) : Fn true A B :=
+def ofVals (A B : Obj) (f : {n : USize} → Vals A n → Except String (Tab A B)) : Rel A B :=
   .lazy fun K => K.dom.elim (.tab (.error "a leaf on demand ran with its domain unknown")) fun c => .tab (f c.2)
 
 /-- `𝟙` on the values its context knows of either side: a coreflexive's two sides are one value set (as `dom`), so
     a known range bounds it as a known domain does (`⊤`'s value side runs on the range alone). -/
-def id (A : Obj) : Fn true A A :=
+def id (A : Obj) : Rel A A :=
   .lazy fun K => (K.dom <|> K.ran).elim (.tab (.error "a leaf on demand ran with its domain unknown"))
     fun c => .tab (Tab.idU c.2)
 
@@ -78,7 +78,7 @@ def compS {A B C : Obj} (R : Rel A B) (D : Option ((n : USize) × Vals A n)) : E
 /-- `R S` (`Tab.compSel`: a bit matrix where `Tab.bitsWin` holds), `R` lazy: one operand runs first on the side of
     the context it touches and hands its other side to the second as a bound (§0) — `S` where it is a table or the
     context bounds only the range, else `R`; where the first cannot run, the other goes first. -/
-def comp (A B C : Obj) (e : Bool) (R : Fn true A B) (S : Fn e B C) : Fn true A C := match R with
+def comp (A B C : Obj) (R : Rel A B) (S : Rel B C) : Rel A C := match R with
   | .tab r => compT r S
   | R@(.bits ..) => compT (R.runE {}) S
   | .lazy f => .lazy fun K => match S with
@@ -112,7 +112,7 @@ def lift2 {A B C D E F : Obj} (f : Tab A B → Tab C D → Except String (Tab E 
 
 /-- `R°` reads `R` on the converse of every side the context knows, its pairs too (`T ∩ ≥` tests `T°`'s against
     `≤`). -/
-def conv (A B : Obj) (R : Fn false A B) : Fn false B A :=
+def conv (A B : Obj) (R : Rel A B) : Rel B A :=
   lift1 Tab.conv (fun K => ⟨K.ran, K.dom, K.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩) R
 
 /-- `r` cut to the values `K` knows of its sides, `idU X ≫ r ≫ idU L`, a side left whole where it is unknown. -/
@@ -152,30 +152,30 @@ def meetK {A B : Obj} (K : Known A B) (R S : Rel A B) : Rel A B := match R, S wi
   | .lazy _, S => meetOn K S R
   | R, S => meetOn K R S
 
-def meet (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d && e) A B := match R, S with
+def meet (A B : Obj) (R : Rel A B) (S : Rel A B) : Rel A B := match R, S with
   | .lazy _, _ | _, .lazy _ => .lazy fun K => meetK K R S
   | R, S => meetV R S
-def join (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn (d || e) A B :=
+def join (A B : Obj) (R : Rel A B) (S : Rel A B) : Rel A B :=
   lift2 Tab.union (fun K => K) (fun K => K) R S
 /-- `R − S`: a lazy `S` is needed only on `R`'s pairs, so it runs knowing `R`'s sides (`bound`). -/
-def diff (A B : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A B) : Fn d A B := match S with
+def diff (A B : Obj) (R : Rel A B) (S : Rel A B) : Rel A B := match S with
   | .lazy _ => .lazy fun K => .tab do let p ← bound K (← R.runE K); Tab.diff p.1 (← S.runE p.2)
   | S => lift2 Tab.diff (fun K => K) (fun K => K) R S
 /-- A coreflexive's two sides are one value set, so either side the context knows bounds `R`'s side. -/
-def dom (A B : Obj) (d : Bool) (R : Fn d A B) : Fn d A A :=
+def dom (A B : Obj) (R : Rel A B) : Rel A A :=
   lift1 Tab.dom (fun K => ⟨K.dom <|> K.ran, none, none⟩) R
-def ran (A B : Obj) (R : Fn false A B) : Fn false B B :=
+def ran (A B : Obj) (R : Rel A B) : Rel B B :=
   lift1 Tab.ran (fun K => ⟨none, K.dom <|> K.ran, none⟩) R
 
 /-! ### T3: `⊤ π₁ π₂ ⟨R,S⟩ × \ /`, `ν`, `μ` -/
 
 /-- `X × L`: the known domain values by `V`'s values cut to the known range. `V` runs knowing that range, so
     between two bounded neighbours `P ⊤ Q` reads only `P`'s and `Q`'s values, never `B`'s whole universe. -/
-def top (A B : Obj) (V : Fn false B B) : Fn true A B := .lazy fun K => match K.dom with
+def top (A B : Obj) (V : Rel B B) : Rel A B := .lazy fun K => match K.dom with
   | none => .tab (.error "⊤ ran with its domain unknown")
   | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran, none⟩ (← V.runE ⟨none, K.ran, none⟩)).val
-def outl (A B : Obj) : Fn true (.prod A B) A := ofVals _ _ fun X => Tab.outl X
-def outr (A B : Obj) : Fn true (.prod A B) B := ofVals _ _ fun X => Tab.outr X
+def outl (A B : Obj) : Rel (.prod A B) A := ofVals _ _ fun X => Tab.outl X
+def outr (A B : Obj) : Rel (.prod A B) B := ofVals _ _ fun X => Tab.outr X
 /-- `⟨T, S⟩`'s two tables on the domain `D`, `T` run first: `⟨T,S⟩ a (b,c)` needs `T a b`, so `T`'s table cut to `D`
     bounds the domain `S` runs on (`bound`). -/
 def pairOn {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (T : Rel A B) (S : Rel A C) :
@@ -192,12 +192,12 @@ def pairK {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (R : Rel A B) (S 
   | .lazy _, _ => do let p ← pairOn D S R; p.2.pair p.1
   | _, _ => do let p ← pairOn D R S; p.1.pair p.2
 
-def pair (A B C : Obj) (d e : Bool) (R : Fn d A B) (S : Fn e A C) : Fn (d && e) A (.prod B C) := match R, S with
+def pair (A B C : Obj) (R : Rel A B) (S : Rel A C) : Rel A (.prod B C) := match R, S with
   | .lazy _, _ | _, .lazy _ => .lazy fun K => .tab (pairK K.dom R S)
   | R, S => lift2 Tab.pair (fun K => ⟨K.dom, none, none⟩) (fun K => ⟨K.dom, none, none⟩) R S
 /-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
     side of `Z`; where none is known, CROSS of the two tables. -/
-def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod A C) (.prod B D) :=
+def prod (A B C D : Obj) (R : Rel A B) (S : Rel C D) : Rel (.prod A C) (.prod B D) :=
   .lazy fun K => .tab <| match K.dom with
     | some ⟨n, Z⟩ => do
       let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none, none⟩)
@@ -205,8 +205,8 @@ def prod (A B C D : Obj) (R : Fn false A B) (S : Fn false C D) : Fn false (.prod
     | none => do Tab.prod (← R.runE {}) (← S.runE {})
 /-- `R/S` and `R\S` read both sides whole, with the universes `UA`, `UB` (`UB`, `UC`); `ldiv` is `Tab.ldivSel`, a bit
     matrix where `Tab.bitsWin` holds; `rdiv`'s two converses are `canon` answers, so its division is `Tab.ldivOf`. -/
-def rdiv (A B C : Obj) (R : Fn false A C) (S : Fn false B C) (UA : Fn false A A) (UB : Fn false B B) :
-    Fn false A B :=
+def rdiv (A B C : Obj) (R : Rel A C) (S : Rel B C) (UA : Rel A A) (UB : Rel B B) :
+    Rel A B :=
   lift2 (fun r s => do
       (← Tab.ldivSel Tab.ldivOf Tab.bitsMax (← s.conv) (← r.conv) (← UB.runE {}) (← UA.runE {})).conv)
     (fun _ => {}) (fun _ => {}) R S
@@ -219,17 +219,17 @@ def ldivM {A B C : Obj} (r : Tab A B) (ub : Tab B B) (uc : Tab C C) {n m : USize
   | .ok none => .tab do Tab.ldivSel Tab.ldiv Tab.bitsMax r (← Tab.ofBits g w o x ra y rc) ub uc
   | .error e => .tab (.error e)
 
-def ldiv (A B C : Obj) (R : Fn false A B) (S : Fn false A C) (UB : Fn false B B) (UC : Fn false C C) :
-    Fn false B C := match S.force {} with
+def ldiv (A B C : Obj) (R : Rel A B) (S : Rel A C) (UB : Rel B B) (UC : Rel C C) :
+    Rel B C := match S.force {} with
   | .bits g w o x ra y rc => match R.runE {}, UB.runE {}, UC.runE {} with
     | .ok r, .ok ub, .ok uc => ldivM r ub uc g w o x ra y rc
     | .error e, _, _ | _, .error e, _ | _, _, .error e => .tab (.error e)
   | S => lift2 (fun r s => do Tab.ldivSel Tab.ldiv Tab.bitsMax r s (← UB.runE {}) (← UC.runE {})) (fun _ => {}) (fun _ => {}) R S
 
 /-- `νX : S ∩ φ` by plain rounds (`Tab.nu`), no AC-3 delta rounds; `μX : φ` (`Tab.mu`), at most `cap` rounds. -/
-def nu (A B : Obj) (S : Fn false A B) (φ : Tab A B → Fn false A B) : Fn false A B :=
+def nu (A B : Obj) (S : Rel A B) (φ : Tab A B → Rel A B) : Rel A B :=
   .tab do Tab.nu (fun X => (φ X).runE {}) (← S.runE {})
-def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Fn false A B) : Fn false A B :=
+def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Rel A B) : Rel A B :=
   .tab (Tab.mu what cap fun X => (φ X).runE {})
 
 end GenK
@@ -241,16 +241,16 @@ namespace GenK
 open Rel Gen
 
 /-- A row composed after the keys: `f` on the coreflexive of the values the context knows (`Gen.after`'s rule). -/
-def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : Fn true A B :=
+def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : Rel A B :=
   ofVals A B fun X => do f (← Tab.idU X)
 
 /-- `succ`, a value verb on `U`'s universe: the keys' coreflexive `D`, then `D ≫ succDen U` (`Tab.succ`),
     `D ≫ arithDen k U` (`Tab.arith`), `U` run knowing its domain is the values each step asks about, so an infinite
     universe (`𝟙`) is as good as a table. -/
-def succ (U : Fn false .long .long) : Fn true .long .long :=
+def succ (U : Rel .long .long) : Rel .long .long :=
   after _ _ fun D => Tab.succ D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
-def arith (t : QAtomicType) (k : UInt8) (U : Fn false (.atom t) (.atom t)) :
-    Fn true (.prod (.atom t) (.atom t)) (.atom t) :=
+def arith (t : QAtomicType) (k : UInt8) (U : Rel (.atom t) (.atom t)) :
+    Rel (.prod (.atom t) (.atom t)) (.atom t) :=
   after _ _ fun D => Tab.arith t k D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
 
 /-- One side of `cmp`: `U` run knowing its domain is the values `s` the context knows of that side, its `dom`, cut
@@ -265,63 +265,63 @@ def cmpSide (op w : String) {t : QAtomicType} (U : Rel (.atom t) (.atom t)) (s :
 
 /-- `K ≫ o ≫ L` on `U`'s universe, the two sides as `cmpSide` reads them (§0 `Known`): on the pairs `P` a meet hands
     it, `P` cut to those sides and tested pair by pair (`Tab.cmpPairs`); else CROSS of the sides (`Tab.cmpOn`). -/
-def cmp (op : String) {t : QAtomicType} (o : Except String Kernel.Op) (U : Fn false (.atom t) (.atom t)) :
-    Fn false (.atom t) (.atom t) := .lazy fun K => .tab do
+def cmp (op : String) {t : QAtomicType} (o : Except String Kernel.Op) (U : Rel (.atom t) (.atom t)) :
+    Rel (.atom t) (.atom t) := .lazy fun K => .tab do
   let o ← o
   let k ← cmpSide op "left" U K.dom; let l ← cmpSide op "right" U K.ran
   match K.pairs with
   | some p => Tab.cmpPairs o (← cut ⟨some k, some l, none⟩ p)
   | none => Tab.cmpOn o k.2 l.2
-def leq (t : QAtomicType) (U : Fn false (.atom t) (.atom t)) : Fn false (.atom t) (.atom t) :=
+def leq (t : QAtomicType) (U : Rel (.atom t) (.atom t)) : Rel (.atom t) (.atom t) :=
   cmp "≤" (Tab.ordOp false t) U
-def lt (t : QAtomicType) (U : Fn false (.atom t) (.atom t)) : Fn false (.atom t) (.atom t) :=
+def lt (t : QAtomicType) (U : Rel (.atom t) (.atom t)) : Rel (.atom t) (.atom t) :=
   cmp "<" (Tab.ordOp true t) U
 
 /-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
-def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
+def lam (A B : Obj) (R : Rel A B) : Rel A (.arr B) :=
   ofVals _ _ fun X => do Tab.lam X (← R.runE ⟨some ⟨_, X⟩, none, none⟩)
-def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
+def nil (A B : Obj) : Rel A (.arr B) := ofVals _ _ fun X => Tab.nil X
 /-- `f` on `R` run knowing its domain is `ran(∋)` at the arrays `X` in demand (`Gen.elems`' rule): the wrapper of the
     rows given a relation on elements (`filter`, `takewhile`). -/
-def elems (A B C : Obj) (d : Bool) (R : Fn d A B)
-    (f : {n : USize} → Tab A B → Vals (.arr A) n → Except String (Tab (.arr A) C)) : Fn true (.arr A) C :=
+def elems (A B C : Obj) (R : Rel A B)
+    (f : {n : USize} → Tab A B → Vals (.arr A) n → Except String (Tab (.arr A) C)) : Rel (.arr A) C :=
   ofVals _ _ fun X => do let k ← (← Tab.mem X).ran; f (← R.runE ⟨some ⟨k.n, k.key⟩, none, none⟩) X
 /-- A row whose table `f` makes from its relation's whole table (`asc`): `R` run in no context, since the answer at
     any key reads every row of `R`; the context cuts the table (`Rel.Reps` reads it on the context's sides). -/
-def ofRel (A B C D : Obj) (d : Bool) (R : Fn d A B) (f : Tab A B → Except String (Tab C D)) : Fn true C D :=
+def ofRel (A B C D : Obj) (R : Rel A B) (f : Tab A B → Except String (Tab C D)) : Rel C D :=
   lift1 f (fun _ => {}) R
 /-- `f` on the pairs `X = (i, a)` in demand and `R` run knowing its domain is their keys `i`: the wrapper of a row
     given a family `R : I ⟶ C` (`flat`). -/
-def onKeys (I A B C : Obj) (d : Bool) (R : Fn d I C)
-    (f : {n : USize} → Vals (.prod I A) n → Tab I C → Except String (Tab (.prod I A) B)) : Fn true (.prod I A) B :=
+def onKeys (I A B C : Obj) (R : Rel I C)
+    (f : {n : USize} → Vals (.prod I A) n → Tab I C → Except String (Tab (.prod I A) B)) : Rel (.prod I A) B :=
   ofVals _ _ fun X => do f X (← R.runE ⟨some ⟨_, X.1⟩, none, none⟩)
 
 /-- `est(Q)`, `thin(Q)` on the arrays in demand, the pair test `Q` run knowing its domain is the pairs `D` it is
     asked about (`Gen.est`'s `Q.at`). -/
-def est (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) B :=
+def est (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) B :=
   ofVals _ _ fun X => Tab.est (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
-def thin (B : Obj) (Q : Fn true (.prod B B) (.prod B B)) : Fn true (.arr B) (.arr B) :=
+def thin (B : Obj) (Q : Rel (.prod B B) (.prod B B)) : Rel (.arr B) (.arr B) :=
   ofVals _ _ fun X => Tab.thin (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
-def atPos (B : Obj) (k : Nat) : Fn true (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
+def atPos (B : Obj) (k : Nat) : Rel (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
 
 /-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
 
 /-- `⦇e,S⦈` on the arrays `X` in demand (§4 `fold`: a Lean loop of rounds, `Tab.foldRounds`): each array from every
     value of `e`, round `k` the pairs `(acc, x)` (`⟨P, el⟩`), `S` run on them (`compT`). -/
-def fold (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod V E) V) : Fn true (.arr E) V :=
+def fold (E V : Obj) (e : Rel V V) (S : Rel (.prod V E) V) : Rel (.arr E) V :=
   ofVals _ _ fun X => do
     Tab.foldRounds Tab.peelL (fun P el => do (compT (P.pair el) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
       (← Tab.top X (← e.runE {}).val) (← Tab.zero)
 /-- `⦇e,S⦈ʳ`: the mirror, each array from its end, `S` on `(x, acc)` (`⟨el, P⟩`). -/
-def foldr (E V : Obj) (d : Bool) (e : Fn false V V) (S : Fn d (.prod E V) V) : Fn true (.arr E) V :=
+def foldr (E V : Obj) (e : Rel V V) (S : Rel (.prod E V) V) : Rel (.arr E) V :=
   ofVals _ _ fun X => do
     Tab.foldRounds Tab.peelR (fun P el => do (compT (el.pair P) S).runE {}) (X.1.toNat + 2) (← Tab.idU X)
       (← Tab.top X (← e.runE {}).val) (← Tab.zero)
 
 /-- `⦇e,S⦈` given a family on the pairs `X = (i, xs)` in demand (`foldIDen_eq`): one left fold on the carrier `I×V`
     from `(i, b)`, `b` from `e` at `i`; each round's step `S` met with `⟨π₁, S ≫ π₂⟩`, so it keeps the key's `i`. -/
-def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod (.prod I V) E) (.prod I V)) :
-    Fn true (.prod I (.arr E)) V := ofVals _ _ fun X => do
+def foldI (I E V : Obj) (e : Rel I (.prod V V)) (S : Rel (.prod (.prod I V) E) (.prod I V)) :
+    Rel (.prod I (.arr E)) V := ofVals _ _ fun X => do
   let i ← Tab.outl X
   let es ← (compT (.ok i) e).runE {}
   let step (P : Tab _ (.prod I V)) (el : Tab _ E) : Except String (Tab _ (.prod I V)) := do
@@ -336,18 +336,18 @@ def foldI (I E V : Obj) (d d' : Bool) (e : Fn d I (.prod V V)) (S : Fn d' (.prod
 
 /-- The twins of `Gen.testVals`, `Gen.testAfter`: the row's `Tab` operator given `Q` as its pair test, run knowing its
     domain is the pairs `D` it is asked about (`est`'s rule); on the values in demand, or composed after them. -/
-def testVals (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
+def testVals (B A C : Obj) (Q : Rel (.prod B B) (.prod B B))
     (f : {n : USize} → (Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))) → Vals A n →
-      Except String (Tab A C)) : Fn true A C :=
+      Except String (Tab A C)) : Rel A C :=
   ofVals _ _ fun X => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) X
-def testAfter (B A C : Obj) (Q : Fn true (.prod B B) (.prod B B))
+def testAfter (B A C : Obj) (Q : Rel (.prod B B) (.prod B B))
     (f : {K : Obj} → (Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))) → Tab K A →
-      Except String (Tab K C)) : Fn true A C :=
+      Except String (Tab K C)) : Rel A C :=
   after _ _ fun P => f (fun D => Q.runE ⟨some ⟨D.n, D.val⟩, none, none⟩) P
 /-- The twin of `Gen.stepAfter`: the step `F` given the coreflexive `D` of the pairs a round meets, `D ≫ F`
     (`compT`: not run on no pair). -/
-def stepAfter (S T A C : Obj) (d : Bool) (F : Fn d S T)
-    (f : {K : Obj} → (Tab S S → Except String (Tab S T)) → Tab K A → Except String (Tab K C)) : Fn true A C :=
+def stepAfter (S T A C : Obj) (F : Rel S T)
+    (f : {K : Obj} → (Tab S S → Except String (Tab S T)) → Tab K A → Except String (Tab K C)) : Rel A C :=
   after _ _ fun P => f (fun D => (compT (.ok D) F).runE {}) P
 
 /-- What the hylo `what` reports when its coalgebra reaches a node from itself, on either path (`Expand.mus`). -/
@@ -358,7 +358,7 @@ def cycleMsg (what : String) : String := s!"{what} reaches a node from itself, s
     `h` has its value from round `h + 1` on, so `|N| + 2` rounds reach the fixed point where `ch` has no cycle on `N`.
     A cycle fails it (`Gen.hylo`'s rule): the nodes with an endless descent, `νP : dom(N ≫ ch ≫ P)` from `N`, are
     those that reach a node from themselves, where the least fixed point would be a silent `𝟘`. -/
-def hylo (A B : Obj) (what : String) (d e : Bool) (ch : Fn d A A) (φ : Tab A B → Fn e A B) : Fn true A B :=
+def hylo (A B : Obj) (what : String) (ch : Rel A A) (φ : Tab A B → Rel A B) : Rel A B :=
   ofVals _ _ fun X => do
   let D ← Tab.idU X
   let N ← Tab.mu what USize.size fun N => do D.union (← (← (compT (.ok N) ch).runE {}).ran)

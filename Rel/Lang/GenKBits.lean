@@ -1737,8 +1737,8 @@ theorem meetK_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF
     | exact sw (meetOn_sound hK (wS.force hK) (eF hS) wR hR t h)
     | exact meetOn_sound hK (wR.force hK) (eF hR) wS hS t h
 
-theorem meet_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, K.WF → (GenK.meet A B d e R S).Reps K (X ∩ Y) :=
+theorem meet_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) : ∀ K, K.WF → (GenK.meet A B R S).Reps K (X ∩ Y) :=
   fun K hK => by
   have eR := (reps_iff _ _ _).1 (hR K hK); have eS := (reps_iff _ _ _).1 (hS K hK)
   rw [reps_iff]
@@ -1787,7 +1787,7 @@ theorem meetK_wf {K : Known A B} (hK : K.WF) {R S : Rel A B} (wR : R.Wf) (wS : S
       | exact meetOn_wf hK w wS
   all_goals first | exact meetOn_wf hK wS wR | exact meetOn_wf hK wR wS
 
-theorem meet_wf {d e : Bool} {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) : (GenK.meet A B d e R S).Wf := by
+theorem meet_wf {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) : (GenK.meet A B R S).Wf := by
   unfold GenK.meet; split <;> first | exact meetV_wf wR wS | exact fun K hK => meetK_wf hK wR wS
 
 theorem compR_runE (r : Tab A B) (s : Tab B C) (K : Known A C) :
@@ -1929,9 +1929,9 @@ theorem compS_wf {R : Rel A B} {D : Option ((n : USize) × Vals A n)} {s' : Exce
   · next r hr => exact compR_wf (wR.runE (K := ⟨D, some ⟨s.n, s.key⟩, none⟩) ⟨hD, (ws s rfl).1, trivial⟩ hr) (ws s rfl)
   · trivial
 
-theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.El}
+theorem comp_sound {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.El}
     {Y : Core.Rel B.El C.El} (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) :
-    ∀ K, K.WF → (GenK.comp A B C e R S).Reps K (X ≫ Y) := fun K hK => by
+    ∀ K, K.WF → (GenK.comp A B C R S).Reps K (X ≫ Y) := fun K hK => by
   have eR := fun K hK => (reps_iff K R X).1 (hR K hK)
   have eS := fun K hK => (reps_iff K S Y).1 (hS K hK)
   have kD : (⟨K.dom, none, none⟩ : Known A B).WF := hK.dom
@@ -1954,8 +1954,8 @@ theorem comp_sound {e : Bool} {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.E
       | (refine compT_sound (fun t ht => ?_) hS wS hK (fun t ht => ?_) <;> injection ht with h <;> subst h <;>
           first | exact eR _ kD _ ‹_› | exact wr _ ‹_›)
 
-theorem comp_wf {e : Bool} {R : Rel A B} {S : Rel B C} (wR : R.Wf) (wS : S.Wf) :
-    (GenK.comp A B C e R S).Wf := by
+theorem comp_wf {R : Rel A B} {S : Rel B C} (wR : R.Wf) (wS : S.Wf) :
+    (GenK.comp A B C R S).Wf := by
   cases R with
   | tab r => exact compT_wf (fun _ h => wR.runE Known.wf_empty h) wS
   | bits => exact compT_wf (fun _ h => wR.runE Known.wf_empty h) wS
@@ -2021,13 +2021,13 @@ theorem pairK_wf {D : Option ((n : USize) × Vals A n)} {R : Rel A B} {S : Rel A
   · exact M p hp ht
   · exact L p hp ht
 
-theorem pair_wf {d e : Bool} {R : Rel A B} {S : Rel A C} (wR : R.Wf) (wS : S.Wf) :
-    (GenK.pair A B C d e R S).Wf := by
+theorem pair_wf {R : Rel A B} {S : Rel A C} (wR : R.Wf) (wS : S.Wf) :
+    (GenK.pair A B C R S).Wf := by
   unfold GenK.pair; split <;> first
     | exact fun K hK => tab_wf fun _ h => pairK_wf wR wS hK.1 h
     | exact lift2_wf (fun _ h => h.dom) (fun _ h => h.dom) (fun _ _ _ hr hs h => Tab.pair_wf h hr hs) wR wS
 
-theorem diff_wf {d e : Bool} {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) : (GenK.diff A B d e R S).Wf := by
+theorem diff_wf {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) : (GenK.diff A B R S).Wf := by
   unfold GenK.diff; split
   · exact fun K hK => tab_wf fun t h => by
       obtain ⟨r, hr, h⟩ := bind_ok h
