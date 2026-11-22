@@ -58,7 +58,8 @@ theorem Vals.code_spec {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h :
 /-- **`Vals.code2` numbers `x` and `y` in one order**: `x`'s row `i` gets `cx i`, `y`'s row `j` gets `cy j`, each below
 `k`, and two rows (of either side) get one number exactly when they are equal. -/
 theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} {k : USize} {bx bY : Enc}
-    {Z : (N : USize) × Vals A N × Enc} (h : Vals.code2 x y = .ok (k, bx, bY, Z)) :
+    {Z : (N : USize) × Vals A N × Enc} (h : Vals.code2 x y = .ok (k, bx, bY, Z))
+    (hx : Vals.WF x) (hy : Vals.WF y) :
     ∃ cx cy : Nat → Nat, k.toNat ≤ n₁.toNat + n₂.toNat ∧
       (∀ i < n₁.toNat, (raw .i64 n₁ bx)[i]?.getD 0 = (cx i).toUInt64 ∧ cx i < k.toNat) ∧
       (∀ j < n₂.toNat, (raw .i64 n₂ bY)[j]?.getD 0 = (cy j).toUInt64 ∧ cy j < k.toNat) ∧
@@ -77,7 +78,7 @@ theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} 
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl, rfl, rfl⟩ := h
   obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
-  have hzr := Vals.concat_row hNn hoff x y hz
+  have hzr := Vals.concat_row hNn hoff x y hz hx hy
   obtain ⟨hkN, hck, hrep, hceq⟩ := Vals.code_spec hcode
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
