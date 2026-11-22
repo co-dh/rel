@@ -129,8 +129,8 @@ theorem outr_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) B} 
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by subst h1 h2; rfl⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by subst h1 h2; rfl⟩⟩
 
 /-- **`R.pair S` denotes `⟨R, S⟩`** (`Tm.den` at `pair`: `rpair`). -/
-theorem pair_holds {R : Tab A B} {S : Tab A C} {T : Tab A (.prod B C)} (h : R.pair S = .ok T) (a : A.El)
-    (q : (Obj.prod B C).El) : T.Holds a q ↔ Core.Rel.rpair R.Holds S.Holds a q := by
+theorem pair_holds {R : Tab A B} {S : Tab A C} {T : Tab A (.prod B C)} (h : R.pair S = .ok T) (hR : R.WF)
+    (hS : S.WF) (a : A.El) (q : (Obj.prod B C).El) : T.Holds a q ↔ Core.Rel.rpair R.Holds S.Holds a q := by
   unfold Tab.pair at h
   cases hc : comp (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S with
   | error s => simp [hc, Functor.map, Except.map] at h
@@ -138,7 +138,7 @@ theorem pair_holds {R : Tab A B} {S : Tab A C} {T : Tab A (.prod B C)} (h : R.pa
     simp only [hc, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
     obtain ⟨b, c⟩ := q
-    have e := comp_holds hc (a, b) c
+    have e := comp_holds hc ⟨⟨hR.1, hR.2⟩, hR.1⟩ hS (a, b) c
     simp only [Tab.Holds, Core.Rel.rpair, Vals.row, Prod.mk.injEq] at e ⊢
     rw [show (∃ i, U.key.1.row i = a ∧ U.key.2.row i = b ∧ U.val.row i = c) ↔
       ∃ i, (U.key.1.row i = a ∧ U.key.2.row i = b) ∧ U.val.row i = c from by simp only [and_assoc], e]
