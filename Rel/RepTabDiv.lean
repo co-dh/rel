@@ -460,12 +460,14 @@ theorem cellSpan_where {B : Obj} {n m M : USize} {lo up s e : Arr .i64 n} {lt se
   · obtain ⟨k, hk, e⟩ := (hmem i).2 ⟨hi, by rw [ltw i hi, if_pos c]; decide⟩
     exact ⟨k, hk, e⟩
 
-/-- **`Vals.cells` lays cell `i` out at `[Σ_{<i} w, Σ_{≤i} w)`** of its payload. -/
-theorem Vals.cells_row {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
+/-- **`Vals.cells` lays cell `i` out at `[Σ_{<i} w, Σ_{≤i} w)`** of its payload, as the words of `lo` and `hi`. -/
+theorem Vals.cells_spec {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
     (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
-    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) (i : Fin n.toNat) :
-    Vals.row Y i = (List.range' ((List.range i.1).map wN).sum (wN i.1)).map
-      fun k => if h : k < T.toNat then Vals.row pay ⟨k, h⟩ else B.dflt := by
+    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) :
+    ∃ lo hi : Arr .i64 n, Y = ⟨T, lo, hi, pay⟩ ∧ ∀ i : Fin n.toNat,
+      ((List.range i.1).map wN).sum + wN i.1 ≤ T.toNat ∧
+      (raw .i64 n lo.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 ∧
+      (raw .i64 n hi.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
   simp only [Vals.cells, bind] at hY
   rw [Except.bind_eq_ok'] at hY; obtain ⟨P', hP', hY⟩ := hY
   rw [Except.bind_eq_ok'] at hY; obtain ⟨lo', hlo', hY⟩ := hY
@@ -473,19 +475,39 @@ theorem Vals.cells_row {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : V
   rw [Except.bind_eq_ok'] at hY; obtain ⟨hi', hhi', hY⟩ := hY
   cases hY
   have hP'w := colPrefix_add_sum hP' wN hw
+  refine ⟨lo', hi', rfl, fun i => ?_⟩
   have hgS : ((List.range i.1).map wN).sum + wN i.1 ≤ ((List.range n.toNat).map wN).sum := by
     rw [← sum_range_succ']; exact sum_range_mono wN i.2
-  have hlo : (raw .i64 n lo'.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 := by
-    have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
+  refine ⟨by omega, ?_, ?_⟩
+  · have es := (colMap_raw (colArr_ok hlo')).2.2.2 i.1 i.2
     rw [hP'w i.1 i.2, hw i.1 i.2, sum_range_succ'] at es; simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← toUInt64_sub (by omega), Nat.add_sub_cancel]
-  have hhi : (raw .i64 n hi'.enc)[i.1]?.getD 0 = (((List.range i.1).map wN).sum + wN i.1).toUInt64 := by
-    have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
+  · have es := (colMap_raw (colArr_ok hhi')).2.2.2 i.1 i.2
     rw [hP'w i.1 i.2, colConst_raw hc0, Array.getElem?_replicate, if_pos i.2, Option.getD_some,
       sum_range_succ'] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [← es]
-  rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) (by omega) hT63, Nat.add_sub_cancel_left]
+
+/-- **`Vals.cells` reads cell `i` as the payload rows `[Σ_{<i} w, Σ_{≤i} w)`** (`Vals.cells_spec`). -/
+theorem Vals.cells_row {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
+    (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
+    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) (i : Fin n.toNat) :
+    Vals.row Y i = (List.range' ((List.range i.1).map wN).sum (wN i.1)).map
+      fun k => if h : k < T.toNat then Vals.row pay ⟨k, h⟩ else B.dflt := by
+  obtain ⟨lo', hi', rfl, hb⟩ := Vals.cells_spec hY wN hw hT hT63
+  obtain ⟨hgT, hlo, hhi⟩ := hb i
+  rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) hgT hT63, Nat.add_sub_cancel_left]
+
+/-- **`Vals.cells` keeps `Vals.WF`**: cell `i` is `[Σ_{<i} w, Σ_{≤i} w)`, inside the `T` payload rows the widths sum
+to at most (`Vals.cells_spec`). -/
+theorem Vals.cells_wf {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
+    (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
+    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) (hp : Vals.WF pay) : Vals.WF Y := by
+  obtain ⟨lo', hi', rfl, hb⟩ := Vals.cells_spec hY wN hw hT hT63
+  refine ⟨fun i => ?_, hp⟩
+  obtain ⟨hgT, hlo, hhi⟩ := hb i
+  rw [Arr.get_i64, Arr.get_i64, hlo, hhi, toInt64_toInt_nat (by omega), toInt64_toInt_nat (by omega)]
+  omega
 
 /-- **A payload laid out by the EXPANDed widths of `X`'s cells** (`Vals.pack`, `Tab.map`): the cells `n w pay` over a
 payload whose row `t` is `g` of `X`'s payload row at the gathered position `ix[t]` are `X`'s cells mapped by `g`; the
@@ -721,24 +743,38 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
     rw [dif_pos hS]
     congr 1; apply Fin.ext; simp only; have := hb₁ i.1; omega
 
-/-- **`Vals.tau` reads each row as its one-element cell** `[i, i + 1)` over `x`, `n` below `2^63`. -/
-theorem Vals.tau_row {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
-    (hn : n.toNat < 2 ^ 63) (i : Fin n.toNat) : Vals.row y i = [Vals.row x i] := by
+/-- **`Vals.tau` lays row `i` out as the cell `[i, i + 1)`** over `x`, as the words of `lo` and `hi`. -/
+theorem Vals.tau_spec {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y) :
+    ∃ lo hi : Arr .i64 n, y = ⟨n, lo, hi, x⟩ ∧ ∀ i : Fin n.toNat,
+      (raw .i64 n lo.enc)[i.1]?.getD 0 = i.1.toUInt64 ∧ (raw .i64 n hi.enc)[i.1]?.getD 0 = (i.1 + 1).toUInt64 := by
   simp only [Vals.tau, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi, hhi, h⟩ := h
   cases h
-  have hPw : (raw .i64 n P.enc)[i.1]?.getD 0 = i.1.toUInt64 := by
-    unfold Arr.pos at hP; split at hP
+  refine ⟨P, hi, rfl, fun i => ⟨?_, ?_⟩⟩
+  · unfold Arr.pos at hP; split at hP
     · rename_i o ho; cases hP; exact (shiftCol_raw ho i.1 i.2).trans (UInt64.add_zero _)
     · cases hP
-  have hhw : (raw .i64 n hi.enc)[i.1]?.getD 0 = (i.1 + 1).toUInt64 := by
-    have es := (colMap_raw (colArr_ok hhi)).2.2.2 i.1 i.2
+  · have es := (colMap_raw (colArr_ok hhi)).2.2.2 i.1 i.2
     rw [raw_pos_word i.2, colConst_raw hc1, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es]; exact (UInt64.ofNat_add _ _).symm
-  rw [Vals.row_cell P hi x i hPw hhw (by omega) (by omega) hn, Nat.add_sub_cancel_left]
+
+/-- **`Vals.tau` keeps `Vals.WF`**: the cell `[i, i + 1)` is inside the `n` rows of `x`, `n` below `2^63`. -/
+theorem Vals.tau_wf {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
+    (hn : n.toNat < 2 ^ 63) (hx : Vals.WF x) : Vals.WF y := by
+  obtain ⟨lo, hi, rfl, hb⟩ := Vals.tau_spec h
+  refine ⟨fun i => ?_, hx⟩
+  have := i.2
+  rw [Arr.get_i64, Arr.get_i64, (hb i).1, (hb i).2, toInt64_toInt_nat (by omega), toInt64_toInt_nat (by omega)]
+  omega
+
+/-- **`Vals.tau` reads each row as its one-element cell** `[i, i + 1)` over `x`, `n` below `2^63`. -/
+theorem Vals.tau_row {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
+    (hn : n.toNat < 2 ^ 63) (i : Fin n.toNat) : Vals.row y i = [Vals.row x i] := by
+  obtain ⟨P, hi, rfl, hb⟩ := Vals.tau_spec h
+  rw [Vals.row_cell P hi x i (hb i).1 (hb i).2 (by omega) (by omega) hn, Nat.add_sub_cancel_left]
   simp
 
 /-- **`Vals.zip` zips cell by cell**: output element `d` of cell `i` (`expand_spec` over the widths `min w₁ w₂`)
@@ -2077,11 +2113,24 @@ order**: `L` lists those rows' positions ascending. GROUP over `D ++ r.key` (`so
 the sorted positions `[Fs, Fs + cnt)`, its `D` rows first (`[Fs, Fs + cD)`, `kasc` stable) and then its `r` rows,
 ascending in `r` (`hmono`); the cell `[Fs + cD, Fs + cnt)` of the payload reads `r` at `p - n`. -/
 theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)} (h : Tab.lamOf D r = .ok T) :
-    ∃ U : Tab A (.arr B), U.canon = .ok T ∧ ∀ a ys,
+    ∃ U : Tab A (.arr B), U.canon = .ok T ∧ (r.n.toNat ≠ 0 → Vals.WF D → r.WF → U.WF) ∧ ∀ a ys,
       U.Holds a ys ↔ (∃ i, D.row i = a) ∧
       ∃ L : List Nat, L.Pairwise (· < ·) ∧ (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) ∧
         ys = L.map fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt := by
   dsimp only [Tab.lamOf] at h
+  split at h
+  · rename_i hr0
+    unfold Tab.nil at h; simp only [bind, Except.bind] at h
+    split at h; · cases h
+    split at h; · cases h
+    refine ⟨_, h, fun h0 => absurd hr0 h0, fun a ys => ?_⟩
+    simp only [Tab.Holds, Vals.row]
+    constructor
+    · rintro ⟨i, h1, h2⟩
+      exact ⟨⟨i, h1⟩, [], List.Pairwise.nil, fun j => ⟨nofun, fun ⟨hj, _⟩ => absurd hj (by omega)⟩, h2.symm⟩
+    · rintro ⟨⟨i, h1⟩, L, -, hL, rfl⟩
+      have : L = [] := List.eq_nil_iff_forall_not_mem.2 fun j hj => by obtain ⟨hj', _⟩ := (hL j).1 hj; omega
+      subst this; exact ⟨i, h1, rfl⟩
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
   split at h; · cases h
@@ -2371,29 +2420,24 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       congr 1
       exact pairwise_eq_of_mem Nat.lt_irrefl (fun _ _ => Nat.lt_asymm) (hLp G hG) hLp' fun j' => by
         rw [hLm G hG hi0, hLm' j', hDi]
-  ------------------------------------------------------------------ the payload: `r.val` at `p - n`, or no rows
-  split at h
-  · rename_i hr0
-    rw [Except.bind_eq_ok'] at h; obtain ⟨pay, hpay, h⟩ := h
-    cases hpay
-    rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
-    exact ⟨_, h, key r.val (fun q hq hnq => absurd (hpsN q hq) (by omega)) hxk halo hahi⟩
-  · rename_i hr0
-    rw [Except.bind_eq_ok'] at h; obtain ⟨pm, hpm, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨mx, hmx, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨pay, hpay, h⟩ := h
-    simp only [Functor.map, Except.map] at hpay
-    split at hpay; · cases hpay
-    rename_i y hy
-    cases hpay
-    rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
-    refine ⟨_, h, key y (fun q hq hnq => ?_) hxk halo hahi⟩
-    have hs63 : ps[q]?.getD 0 - n.toNat < 2 ^ 63 := by have := hpsN q hq; omega
+  ------------------------------------------------------------------ the payload: `r.val` at `p - n`
+  rw [Except.bind_eq_ok'] at h; obtain ⟨pm, hpm, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z0, hz0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨mx, hmx, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨y, hy, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨xk, hxk, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨alo, halo, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ahi, hahi, h⟩ := h
+  -- the cell of a kept group `G` is `[Fs G + cDN G, Fs G + cntN G)`, inside the `N` sorted rows (`hcN`)
+  refine ⟨_, h, fun _ hD hr => ⟨Vals.gather_wf hxk hD, fun j => ?_, Vals.gather_wf hy hr.2⟩,
+    key y (fun q hq hnq => ?_) hxk halo hahi⟩
+  · obtain ⟨hG, -⟩ := hselj j.1 j.2
+    have wl := hgat halo hlow j.1 j.2; have wh := hgat hahi hhiw j.1 j.2
+    generalize ((raw .i64 M sel)[j.1]?.getD 0).toNat = G at hG wl wh
+    have hcN' := hcN G hG; have hle' := hle G
+    rw [Arr.get_i64, Arr.get_i64, wl, wh, toInt64_toInt_nat (by omega), toInt64_toInt_nat (by omega)]
+    omega
+  · have hs63 : ps[q]?.getD 0 - n.toNat < 2 ^ 63 := by have := hpsN q hq; omega
     have hmxw : (raw .i64 N mx)[q]?.getD 0 = (ps[q]?.getD 0 - n.toNat).toUInt64 := by
       have e1 := (colMap_raw hpm).2.2.2 q hq
       rw [hpw q hq, colConst_raw hnc, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU] at e1
@@ -2420,7 +2464,7 @@ theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr 
         ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
           ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
             seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
-  obtain ⟨U, hU, hH⟩ := lamOf_canon h
+  obtain ⟨U, hU, -, hH⟩ := lamOf_canon h
   obtain ⟨es0, cs, hes0, hcs⟩ := canon_codes hr
   rw [canon_holds hU, hH]
   -- the strict order the codes put on the images of `a`
@@ -2489,7 +2533,7 @@ theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr 
 theorem lamOf_den {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)} (hr : R.canon = .ok r)
     (h : Tab.lamOf D r = .ok T) (a : A.El) (ys : List B.El) :
     T.Holds a ys ↔ (∃ i, D.row i = a) ∧ Lang.lamDen R.Holds a ys := by
-  obtain ⟨U, hU, hH⟩ := lamOf_canon h
+  obtain ⟨U, hU, -, hH⟩ := lamOf_canon h
   obtain ⟨es0, cs0, hes0, hcs0⟩ := canon_codes hr
   have lirr : ∀ x, ¬B.lt x x := fun x => List.lt_irrefl _
   have lasym : ∀ x y, B.lt x y → ¬B.lt y x := fun _ _ => List.lt_asymm

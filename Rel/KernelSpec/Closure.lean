@@ -202,4 +202,35 @@ theorem kseen_closed {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : En
   · rw [List.mem_singleton] at hc; subst hc
     exact H _ _ (by simp [Nat.toUSize, USize.toNat_ofNat_of_lt' hk])
 
+/-- **`kseen`'s groups on words**: every row's group word is below the count `k`, and group `G`'s first row `f[G]` plus
+the number of rows whose group word is `G` is at most `n` (`firsts_count`): the run `[f[G], f[G] + c[G])` a
+`kscatter .add` count `c` gives (`scatterWords_add`) lies inside the `n` rows. -/
+theorem kseen_groups {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f))
+    (hk : k < USize.size) :
+    (∀ i < n.toNat, ((raw .i64 n g)[i]?.getD 0).toNat < k) ∧ ∀ G < k,
+      ((raw .i64 k.toUSize f)[G]?.getD 0).toNat +
+        ((List.range n.toNat).filter fun i => ((raw .i64 n g)[i]?.getD 0).toNat = G).length ≤ n.toNat := by
+  obtain ⟨hkk, rfl, rfl⟩ := kseen_ok h
+  have hn : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
+  subst hkk
+  rw [(wordsFoR_closed _ (by simp)).2.1, (wordsFoR_closed (n := (firstsOf (seenKey n es) n.toNat).length.toUSize) _
+    (by simp [Nat.toUSize, USize.toNat_ofNat_of_lt' hk])).2.1]
+  -- row `i`'s group word reads back as `groupOf i`, below the count of groups and so below `2^64`
+  have hg : ∀ i < n.toNat, (((Array.ofFn (n := n.toNat) fun i =>
+      (groupOf (seenKey n es) n.toNat i.1).toUInt64)[i]?.getD 0).toNat = groupOf (seenKey n es) n.toNat i) :=
+    fun i hi => by
+      rw [Array.getElem?_ofFn, dif_pos hi, Option.getD_some, UInt64.toNat_ofNat']
+      have := groupOf_lt (g := seenKey n es) hi
+      have : (firstsOf (seenKey n es) n.toNat).length ≤ n.toNat := by
+        unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
+      exact Nat.mod_eq_of_lt (show groupOf (seenKey n es) n.toNat i < 2 ^ 64 by omega)
+  refine ⟨fun i hi => by rw [hg i hi]; exact groupOf_lt hi, fun G hG => ?_⟩
+  have hf : (((firstsOf (seenKey n es) n.toNat).map Nat.toUInt64).toArray[G]?.getD 0).toNat =
+      (firstsOf (seenKey n es) n.toNat)[G] := by
+    simp only [List.getElem?_toArray, List.getElem?_map, List.getElem?_eq_getElem hG, Option.map_some,
+      Option.getD_some, UInt64.toNat_ofNat']
+    exact Nat.mod_eq_of_lt (Nat.lt_trans (firsts_lt _ _ (List.getElem_mem hG)) hn)
+  rw [hf, List.filter_congr fun i hi => by rw [hg i (List.mem_range.1 hi)]]
+  exact firsts_count _ _ hG
+
 end Rel.Verify
