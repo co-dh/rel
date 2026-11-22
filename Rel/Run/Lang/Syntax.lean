@@ -65,10 +65,10 @@ inductive OExp
 
 /-- The builtin operators of §b. A constant (arity 0) may take its objects, `⊤(A,B)`; the others take relations.
     `arith k` is the qlean kernel's integral value verb `k` on pairs of numbers (`Alg.arith`): one constructor, so
-    every verb is typed, lifted and run by one path; `prim s` the row `s` of `prims`. `inl`, `inr`, `map` run as
-    their rows too (`Op.row`), kept as constructors for `Calc.toTerm`'s readings over any allegory. -/
+    every verb is typed, lifted and run by one path; `prim s` the row `s` of `prims`. `inl`, `inr`, `mem` (`∋`) are
+    `Tm` constructors; `map` runs as its row (`Op.row`), kept a constructor for `Calc.toTerm`'s reading as a relator. -/
 inductive Op
-  | id | zero | top | outl | outr | inl | inr | leq | lt | succ | arith (k : UInt8)
+  | id | zero | top | outl | outr | inl | inr | mem | leq | lt | succ | arith (k : UInt8)
   | nil | alpha | prim (s : String)
   | dom | ran | lam | E | est | thin | map
   /-- `hylo(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
@@ -208,19 +208,7 @@ def consRow : Prim :=
   { sym := "cons", sig := ([], .prod (.var {} "B") (.list (.var {} "B")), .list (.var {} "B")),
     conv := "uncons", aop := .ok `Freyd.Alg.RelSet.ListRel.cons }
 
-def memRow : Prim :=
-  { sym := "∋", sig := ([], .list (.var {} "B"), .var {} "B"), aop := .ok `Freyd.Alg.PowerAllegory.eps }
-
--- `inl`, `inr`, `F(R)` are written as their `Op`s, which `Calc.toTerm` reads as a coproduct's injections and a relator
-def inlRow : Prim :=
-  { sym := "inl", sig := ([], .var {} "A", .sum (.var {} "A") (.var {} "B")), conv := "inl°", written := false }
-def inrRow : Prim :=
-  { sym := "inr", sig := ([], .var {} "B", .sum (.var {} "A") (.var {} "B")), conv := "inr°", written := false }
--- the injections' converses, which `[R,S] = inl°R ∪ inr°S` runs on the sum values in demand (`convTm`)
-def inlConvRow : Prim :=
-  { sym := "inl°", sig := ([], .sum (.var {} "A") (.var {} "B"), .var {} "A"), conv := "inl", written := false }
-def inrConvRow : Prim :=
-  { sym := "inr°", sig := ([], .sum (.var {} "A") (.var {} "B"), .var {} "B"), conv := "inr", written := false }
+-- `F(R)` is written as its `Op`, which `Calc.toTerm` reads as a relator
 def mapRow : Prim :=
   { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
     written := false }
@@ -255,7 +243,7 @@ def starRow : Prim :=
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
   [{ sym := "τ", sig := ([], .var {} "A", .list (.var {} "A")),
-     aop := .ok `Freyd.Alg.singletonMap }, consRow, memRow, inlRow, inrRow, mapRow,
+     aop := .ok `Freyd.Alg.singletonMap }, consRow, mapRow,
    -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`);
    -- not `mono`: a larger `p` keeps more elements, a different list, not a superset of pairs (`rowDens`)
    { sym := "filter", sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
@@ -310,8 +298,6 @@ def prims : List Prim :=
    -- (`Obj.lt`) has no term (`lt` is on ℕ's universe only), and no law proves `ascDen` equal to it
    { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
      mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
-   -- last, so the rows before keep their positions (`Rows.lean`'s numbering)
-   inlConvRow, inrConvRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
    -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only
@@ -339,7 +325,7 @@ def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
     in it (§c). -/
 def Op.table : List (String × Op × Nat) :=
   [("𝟙", .id, 0), ("𝟘", .zero, 0), ("⊤", .top, 0), ("π₁", .outl, 0),
-   ("π₂", .outr, 0), ("inl", .inl, 0), ("inr", .inr, 0), ("≤", .leq, 0), ("<", .lt, 0), ("succ", .succ, 0),
+   ("π₂", .outr, 0), ("inl", .inl, 0), ("inr", .inr, 0), ("∋", .mem, 0), ("≤", .leq, 0), ("<", .lt, 0), ("succ", .succ, 0),
    ("plus", .arith Rel.Kernel.Ew.add, 0), ("times", .arith Rel.Kernel.Ew.mul, 0),
    ("minus", .arith Rel.Kernel.Ew.sub, 0), ("div", .arith Rel.Kernel.Ew.idiv, 0),
    ("mod", .arith Rel.Kernel.Ew.imod, 0), ("max", .arith Rel.Kernel.Ew.greater, 0),
