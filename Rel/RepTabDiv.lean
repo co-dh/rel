@@ -1329,6 +1329,24 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
     obtain ⟨h1, h2⟩ := List.append_inj' hx rfl
     exact ⟨⟨k, hk⟩, hKi, by rw [hv, h1, (List.cons.inj h2).1]⟩
 
+/-- **`uncat X` is canonical**: its last step is `canon`, so a `Λ` of it is `lamOf` (`Tab.tails`). -/
+theorem uncat_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (.arr B) (.arr B))}
+    (h : Tab.uncat X = .ok T) : T.Canonical := by
+  obtain ⟨m, lo, up, f⟩ := X
+  dsimp only [Tab.uncat] at h
+  split at h; · cases h
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨_, _, _⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  exact ⟨_, h⟩
+
 /-- **`uncat X` denotes `cat°` on the arrays `X`**: each cell of `X` to each of its splits. Cell `i` is `[SN, EN)`
 (`cellSpan_spec`); EXPAND of the widths `EN - SN + 1` puts split `d` of cell `i` at row `Σ_{<i} w + d`, which reads
 the slices `[SN, SN + d)` and `[SN + d, EN)` of the payload. -/

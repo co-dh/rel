@@ -1187,12 +1187,24 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 
 ### P8 存储简化（存储审计，2026-11-21；owner 2026-11-22 列入）
 
-- 🔄 8.1 `Tab` 的规范序由产生它的一步给出，已规范的表跳过 `canon`（分支 `canonfld`）。`canonfld2`：`ldivOf`（`ldiv`
+- ✅ 8.1 `Tab` 的规范序由产生它的一步给出，已规范的表跳过 `canon`（分支 `canonfld`）。`canonfld2`：`ldivOf`（`ldiv`
   去掉两个输入 `canon`），`ldivSel` 的回退除法作参数；`Tab.rdiv`、`GenK.rdiv`（两个 `conv` 答案）走 `ldivOf`，
   `inits`（`prefix` 是 `comp` 答案）走 `lamOf`。每次 `rdiv` 走计数分支省 2 次 `canon` = atom×atom 时 10 次 kernel
   调用（每次 `kasc`、`kseen`、`kgather` 各 1，加每列 1 次 `kgather`），位矩阵分支不变；每次 `inits` 省 1 次 `canon`。
   `GenK.E` 一项取消：Tm28 B1 删去了 `GenK.E`，`E(R)` 现在就是 `GenK.lam` 套 `GenK.comp`，其 `lam` 输入仍是位矩阵
-  读回（`Tab.ofBits`），不是 `canon` 答案，所以与 `lam` 的其余输入同样处理。`tau`/`thin`/`tails` 的 `lam` 输入（`idU`、`diff`、`uncat` 答案）都不是 `canon` 答案。
+  读回（`Tab.ofBits`），不是 `canon` 答案，所以与 `lam` 的其余输入同样处理。`tau`/`thin` 的 `lam` 输入（`idU`、`diff`
+  答案）不是 `canon` 答案。`canonfld3`：`tails` 的 `lam` 输入是 `uncat` 答案，`uncat` 最后一步就是 `canon`
+  （`Tab.uncat_canonical`），所以走 `lamOf`；每次 `tails` 省 1 次 `canon` = 9 次 kernel 调用（`kasc`、`kseen`、
+  `kgather` 各 1，三个 `arr` 列各 `lo`、`hi` 2 次 `kgather`）。
+  余下的 `canon` 都必须留，按两类：
+  - 产生新行的一步，答案的序与重复由这一步决定，`canon` 就是给出规范序的那一步：`conv`（两边对调，序变）、
+    `compExpand`（展开有重复）、`union`（`concat`）、`mem`、`nil`、`lamOf` 末尾、`asc`、`cross`、`outl`、`outr`、
+    `inl`、`inr`、`cat`、`snoc`、`cons`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、`length`、`atPos`、
+    `positions`、`map`、`GenK.val`（字面量）、`Table.canon`（文件读入）。
+  - 规范化输入的一步，其调用方的输入都不是 `canon` 答案：`lam`（`GenK.lam` 任意 `R`；`tau` 的 `idU`；`thin` 的
+    `diff`）、`ldiv`（`GenK.ldiv`、`GenK.ldivM` 任意 `r`；`ldivM` 回退的 `s` 是 `ofBits` 读回）、`keepBits`
+    （`meetV` 任意表）、`nu`（`GenK.nu` 任意 `S`；`hylo` 的 `N` 是 `mu` 答案，即 `pack` 过的 `union` 答案，
+    `pack` 重写列，所以不是 `canon` 答案）、`star`、`sumsOn`（行参数任意）、`showRel`（打印）。
 - ⬜ 8.2 稠密 sum。例：`long+sym` 三行 `inl 7, inr x, inl 9`，现在存 `tag=[0,1,0] idx=[0,0,1] l=[7,9] r=[x]`，
   改为 `tag=[0,1,0] a=[7,0,9] b=[0,x,0]`：每边一列 n 行，不属于该边的位置填 0（全 0 的块宽度 0，只占块头）。
   去掉 `idx`、`Vals.cols` 里把两边 gather 回 n 行、concat 时平移 `idx`、`Obj.dflt`；`inl°` 是按 tag 选行再 gather，
