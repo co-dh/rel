@@ -608,6 +608,19 @@ def ascB (B : Obj) (P : TabB) : Bld TabB := do
   let U ← canonT ⟨P.n, [.atom "" .i64 (← wordsB P.n 0)], P.key⟩
   pure ⟨U.n, [.atom "" .i64 (← posB)], U.val⟩
 
+/-- The one array column of a side of `[B]`, or the error naming `what` reads it. -/
+def arrCol (what : String) : Cols → Bld (Nat × Nat × Nat × Cols)
+  | [.arr _ m lo hi f] => pure (m, lo, hi, f)
+  | cs => throw s!"{what}: a side of {cs.length} columns where one array side is read"
+
+/-- **`Tab.mem`** (`∋`) on the arrays `X` (`n` rows): EXPAND of the clamped widths `e - s`, the key the cell `X[G]`,
+    the value the payload at `s[G] + u`; then `canonT`. -/
+def memB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
+  let (m, lo, hi, f) ← arrCol "∋" X
+  let (s, e) ← spanB n m lo hi
+  let (T, G, u) ← expandB n (← mapB .sub n e s)
+  canonT ⟨T, ← gatherCols T G n X, ← repath B "" (← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f)⟩
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`). Any other row is refused, naming it: each reads or answers an array or a
@@ -616,10 +629,56 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
   else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
+  else if c == ``Tab.mem then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; memB b n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
   else if c == ``Tab.asc then match xs with
     | [x] => ascB B (← x {})
     | _ => throw s!"asc given {xs.length} relations, not one"
   else throw s!"row `{r.sym}` (`{c}`): it reads or answers an array or a sum side, whose `cells` keys no plan recipe builds yet"
+
+/-- **`Tab.nil`** on the keys `X` (`n` rows): each to the empty cell, `lo = hi = 0` over a payload of no row of `B`;
+    then `canonT`. -/
+def nilB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
+  let c ← wordsB n 0
+  let z ← mapB .add n c c
+  let z0 ← lit (.size 0)
+  canonT ⟨n, X, [.arr "" z0 z z (← noneB z0 B ".e")]⟩
+
+/-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
+    payload at `s + k`; then `canonT`. `s + k` is read signed, so `m + k` stays below `2^63`. -/
+def atB (B : Obj) (k n : Nat) (X : Cols) : Bld TabB := do
+  let (m, lo, hi, f) ← arrCol "at" X
+  guard (← call1 (kernel% USize.decLt) #[← call1 (kernel% USize.add) #[m, ← lit (.size k.toUSize)],
+    ← lit (.size (2 ^ 63))]) s!"at: position {k} in a payload of m rows, past 2^63" #[m]
+  let (s, e) ← spanB n m lo hi
+  let kc ← constB n (← lit (.u64 k.toUInt64))
+  let (M, sel) ← whereB n (← mapB .lt n kc (← mapB .sub n e s))
+  let ix ← gatherB M sel n (← mapB .add n s kc)
+  canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
+
+/-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
+    group's `X` rows (`cD`, input row below `n`) first; its cell the sorted rows `[f + cD, f + c)` of `r.val` gathered
+    in sorted order (`r.val` itself where `r` has no row, an `ite`); the groups with `0 < cD` kept, keyed by their
+    first row; then `canonT`. -/
+def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := do
+  let r ← canonT R
+  let (N, sh) ← catB n r.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "lam: rows past 2^63" #[N]
+  let (k, g, f, p) ← ascSeenB N (← concatB N n r.n sh X r.key)
+  let nc ← constB N (← u64B n)
+  let cD ← scatterB .add N g (← mapB .lt N p nc) k
+  let lo ← mapB .add k f cD
+  let hi ← mapB .add k f (← scatterB .add N g (← wordsB N 1) k)
+  let (M, sel) ← whereB k (← mapB .lt k (← wordsB k 0) cD)
+  let iD ← gatherB M (← gatherB M sel k f) N p
+  let pay ← ite (← call1 (kernel% USize.decEq) #[r.n, ← lit (.size 0)]) (do pure (#[r.n] ++ (← regsOf r.val).toArray))
+    (do
+      let ix ← mapB .max N (← mapB .sub N p nc) (← wordsB N 0)
+      pure (#[N] ++ (← regsOf (← gatherCols N ix r.n r.val)).toArray))
+  let (pv, _) ← withRegs r.val (pay.toList.drop 1)
+  canonT ⟨M, ← gatherCols M iD n X,
+    [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
 
 mutual
 /-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` the
@@ -689,9 +748,16 @@ partial def tabB (σ : TmEnv) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) | A, B, t@(.callCv ..) => argB σ D A B t []
   | _, _, .ldiv .. | _, _, .rdiv .. => throw
     "a division (`Tab.ldivSel`): its grouped counts and bit matrices are not built by a plan recipe yet"
-  | _, _, .lam _ | _, _, .E _ | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .atPos _ | _, _, .fold ..
-  | _, _, .foldr .. | _, _, .foldI .. => throw
-    "a node on an array side (`Λ`, `E`, `est`, `thin`, `nil`, `at`, a fold): arrays need `cells` keys, which no plan recipe builds yet"
+  | _, _, .lam (B := B) R => do
+    let (n, X) ← known "Λ" D.dom
+    lamB B n X (← tabB σ { dom := some (n, X) } R)
+  | _, _, .E (A := A) (B := B) R => do
+    let (n, X) ← known "E" D.dom
+    lamB B n X (← compTB (← memB A n X) (tabB σ · R) R.dem)
+  | _, _, .nil (B := B) => do let (n, X) ← known "nil" D.dom; nilB B n X
+  | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
+  | _, _, .est _ | _, _, .thin _ | _, _, .fold .. | _, _, .foldr .. | _, _, .foldI .. => throw
+    "`est`, `thin`, a fold: their recipes (`Tab.est`, `Tab.thin`, `Tab.foldRounds` on `Instr.loop`) are not built by a plan yet"
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
     relation's table built in the context the row's wrapper gives it; a call by its body with its arguments bound at

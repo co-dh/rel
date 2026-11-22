@@ -43,7 +43,13 @@ rel_program native1a where
     tm : N×N ⟶ N ≜ w times
     f(S : X ⟶ N) : X ⟶ N ≜ S succ ∪ S
     fc : X ⟶ N ≜ f(x)
-
+    bo : X ⟶ X ≜ {(B,A),(C,A)}
+    rt : X ⟶ N ≜ {(A,3),(B,7),(C,2)}
+    lm : X ⟶ [X] ≜ dom(x) Λ(bo°)
+    nl : X ⟶ [N] ≜ dom(x) nil
+    lu : X ⟶ [X] ≜ lm ∪ (dom(x) nil)
+    hd : X ⟶ X ≜ lm at(0)
+    ee : X ⟶ [N] ≜ lm E(x)
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
 
@@ -149,7 +155,9 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("tc", semOut native1a.tc), ("gf", semOut native1a.gf),
    ("le", semOut native1a.le), ("lt", semOut native1a.lt),
    ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
-   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc)]
+   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc), ("nl", semOut native1a.nl),
+   ("hd", semOut native1a.hd), ("ee", semOut native1a.ee)]
+-- `lm`, `lu` (`Λ` at keys with no value) are left out: Lean writes 2 rows, the plan 3 (PLAN I11, open)
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
