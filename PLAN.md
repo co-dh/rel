@@ -267,7 +267,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     分支 `nativetm3a` 加：`\` `/`（`ldivSelB` 即 `Tab.ldivSel`：`groupsB`（`compGroups`）的展开数与组数在运行时
     `ite` 选择 `ldivBitsB`（`code2B` 编号、`csrB` 分组、`kbitrows true`、`ofBitsB` 读回）或计数的 `ldivOfB`，
     `bitsWinB` 用除法比较不溢出；`\` 的除法是 `ldivB`（先 `canonT`），`/` 的两个 converse 已是 `canonT` 答案，
-    传 `ldivOfB`，即 canonfld2 的 `Tab.ldivOf`）；`abi` 加 `kbitrows`。call 实参按 `Code.args`：变量表 `Env` 存
+    传 `ldivOfB`，即 canonfld2 的 `Tab.ldivOf`）；`abi` 加 `kbitrows`。call 实参按 `Code.args`：变量表 `Vars` 存
     每个变量的建表函数，按需（`dem`）或闭合建表失败（`GenK.memo` 留 lazy）的实参在每个使用处按其上下文建表，
     其余闭合建一次；body 只见实参（`Code.args` 的 `η.closed`）；对象不符读 `𝟘`（`Code.bind`）。测试：`native1a`
     加 `ld`（位矩阵）`l1`（计数）`rd`（`/`）`gc`（实参 `succ` 按需），共 27 个闭定义，`make native` 逐字节相等。

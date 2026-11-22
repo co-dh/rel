@@ -608,7 +608,7 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
 def zeroB (A B : Obj) : Bld TabB := do let z ← lit (.size 0); pure ⟨z, ← noneB z A, ← noneB z B⟩
 
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
-abbrev Env := List (Nat × ((A B : Obj) → Dom → Bld TabB))
+abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
 
 /-- A variable bound to the registers `s` of a table (an input, a run-time definition): `s` in every context. -/
 def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
@@ -616,11 +616,11 @@ def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
 
 mutual
 /-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` what
-    each reads (`Env`), `D` the values its context knows its source to hold (`compT`: a composition's left
+    each reads (`Vars`), `D` the values its context knows its source to hold (`compT`: a composition's left
     operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
     that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
     them and what they need. -/
-partial def tabB (σ : Env) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, .val R => do
     let (k, v) := (← litSide R.key, ← litSide R.val)
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
@@ -679,7 +679,7 @@ partial def tabB (σ : Env) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     `ks` and no other variable (`Code.args`). An argument is built at each use in the context the use gives it where
     it runs on demand, or where it cannot run closed (`GenK.memo` keeps it lazy); else once, closed (`GenK.memo`).
     A use at other objects than the argument's reads `𝟘` (`Code.bind`). -/
-partial def argB (σ : Env) (D : Dom) (A B : Obj) :
+partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
     Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
   | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
   | .share _ R, xs => argB σ D A B R xs
