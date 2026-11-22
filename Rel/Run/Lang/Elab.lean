@@ -308,8 +308,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .prim r => pure (.prim r)
   | _, _, .atPos k => pure (.atPos k)
   | _, _, .own R => return .own (← R.instObj ph σ)
-  | _, _, .succ U => do fixed (.succ (← back (← U.instObj ph σ)))
-  | _, _, .arith t k U => do fixed (.arith t k (← back (← U.instObj ph σ)))
   | _, _, .leq t U => do fixed (.leq t (← back (← U.instObj ph σ)))
   | _, _, .lt t U => do fixed (.lt t (← back (← U.instObj ph σ)))
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
@@ -2036,9 +2034,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .prim r => match r.conv.bind Prim.find? with
     | some r' => pure (.prim r')
     | none => throw r.leaf
-  -- the number verbs are closed on their universe: their converse is read whole there
-  | .succ U => pure (.conv (.comp U (.succ U)))
-  | .arith t k U => pure (.conv (.comp (U.prodUni U) (.arith t k U)))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe
   | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
@@ -2116,9 +2111,9 @@ def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) 
     target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
   | length {E : Obj} (u₀ u : Tm .long .long) :
-    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (.succ u)))
+    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (Tm.cut1 succRow u)))
   | sum {t : QAtomicType} (h : t.ordNum.isSome) (u₀ u : Tm (.atom t) (.atom t)) :
-    DfnCut (A := .arr (.atom t)) (B := .atom t) (.fold (zeroTm h u₀) (.arith t Rel.Kernel.Ew.add u))
+    DfnCut (A := .arr (.atom t)) (B := .atom t) (.fold (zeroTm h u₀) (Tm.cut2 (arithRow "plus") u))
   | flat {I A B : Obj} (R : Tm I (.prod A B)) :
     DfnCut (A := .prod I A) (B := B)
       (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
@@ -2462,12 +2457,14 @@ def build : Pre → Except Err Res
   | .atPos k b => return ⟨_, _, .atPos k (B := ← toObj objs mc dp b)⟩
   | .succ p n => do
     let (m, _) ← numObj objs mc p n "succ" (· == .i64)
-    return ⟨_, _, .succ (← numU.declared objs p "succ" m .i64)⟩
+    return ⟨_, _, Tm.cut1 succRow (← numU.declared objs p "succ" m .i64)⟩
   -- `max`/`min` need no arithmetic: at an ordered atom with no value step they are `τ(≤)π₂ ∪ τ(>)π₁` (`min` the
   -- projections swapped), the order picking an operand; at a value atom the fused verb runs
   | .arith p k n => do
     let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym (arithOk k)
-    if valueAtom t then return ⟨_, _, .arith t k U⟩
+    if valueAtom t then
+      let some (s, _) := arithOps.find? (·.2 == k) | internal dp s!"no row of arithOps has the verb {k}"
+      return ⟨_, _, Tm.cut2 (arithRow s) U⟩
     let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (.leq t U)
     let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (.lt t U)) swapTm)
     let (hi, lo) : Tm (.prod (.atom t) (.atom t)) (.atom t) × Tm (.prod (.atom t) (.atom t)) (.atom t) :=

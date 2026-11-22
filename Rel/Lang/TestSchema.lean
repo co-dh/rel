@@ -36,7 +36,7 @@ def exc := ok (kv.exclude ["v"])
 def ren := ok (kv.rename "v" "w")
 #guard ren.1.names == ["k", "w"]
 
-def der := ok (kv.derive "u" (.comp (col kv "v") (.succ (.uni (Alg.col ((List.range 64).map Int64.ofNat))))))
+def der := ok (kv.derive "u" (.comp (col kv "v") (Tm.cut1 succRow (.uni (Alg.col ((List.range 64).map Int64.ofNat))))))
 #guard der.1.names == ["k", "v", "u"]
 
 /-! The join of `kv` with `kw`, on `k`. -/

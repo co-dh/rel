@@ -263,6 +263,19 @@ def ranRow : Prim :=
 def nilRow : Prim :=
   { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
     written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
+/-- The value verb `s` of `arithOps`, `N×N ⟶ N` on a number atom, no universe inside (§3.5): `build` cuts it to a
+    bounded object's universe `U` as `(U×U) s U` (`Tm.cut2`), so it is never written. -/
+def arithRow (s : String) : Prim :=
+  { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .var {} "N"), num := [("N", intAtoms ++ floatAtoms)],
+    written := false, aop := .error "AOP declares no arithmetic on atoms" }
+/-- `succ : N ⟶ N` on `i64`, no universe inside: cut to `U` as `U succ U` (`Tm.cut1`). -/
+def succRow : Prim :=
+  { sym := "succ", sig := ([], .var {} "N", .var {} "N"), num := [("N", intAtoms)], written := false,
+    aop := .error "AOP declares no successor on atoms" }
+/-- The order test `s` of `cmpOps`, the coreflexive `N×N ⟶ N×N` on the pairs in order, no universe inside. -/
+def cmpRow (s : String) : Prim :=
+  { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
+    aop := .error "AOP declares no order on atoms" }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -344,14 +357,7 @@ def prims : List Prim :=
       aop := .error "AOP declares no floating-point function" }) ++
   -- the value verbs (`arithOps`), `succ`, the order tests `lt` `le` (`cmpOps`): rows on atoms, no universe inside;
   -- `build` writes each, cut to a bounded object's universe `U` as `⟨π₁U, π₂U⟩ row U` (§3.5), so none is written
-  arithOps.map (fun (s, _) =>
-    { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .var {} "N"), num := [("N", intAtoms ++ floatAtoms)],
-      written := false, aop := .error "AOP declares no arithmetic on atoms" }) ++
-  [{ sym := "succ", sig := ([], .var {} "N", .var {} "N"), num := [("N", intAtoms)], written := false,
-     aop := .error "AOP declares no successor on atoms" }] ++
-  cmpOps.map fun (s, _) =>
-    { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
-      aop := .error "AOP declares no order on atoms" }
+  arithOps.map (arithRow ·.1) ++ [succRow] ++ cmpOps.map (cmpRow ·.1)
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 
