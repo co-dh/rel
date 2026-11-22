@@ -1300,6 +1300,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   已做（分支 `83s6`）：程序（`n.io`）带一个字典（§0.2 一库一字典）：`TmGen` 从 `Dict.empty` 起，按输入顺序把每个 CSV
   输入的 sym 列经 `readCsvDict` intern 进同一个 `D`，所有 `writeCsv` 经最后的 `D` 解码；两个输入的同一串是同一 id，
   `∪`/`∩`/join 直接在 id 上，无需重映射。展开时 `Db.Csv.symText` 后再查 `schema`；`Table.readCsv` 删除；EmitC 拒绝 sym CSV 列。
+  已做（分支 `symlib`，`bc4836c`，主人决定 N/Q/O 2026-11-22）：一库一字典。库 = 表目录的父目录（`Table.lib`），表
+  只靠所在位置记它的库，不另存字段；字典即 `writeDict` 的 `<库>/sym` 与 `<库>/sym.rank`（`libDict`：缺则空、缺一部分
+  即报错）。更正上文：`intern` 的 id 序不是文本序——新串接在 `D` 之后、按首行序（代码已如此），序只经 `rank`。
+  程序在展开时定它的库（`progLib`：读或写的 own 表中有 sym 列者，须同一库），字典 `d` 从该库的字典起（不再从
+  `Dict.empty`），CSV 输入的新串接在其后；own 输入的 id 原样读、对 `d` 检查（`readOwn`/`checkSyms`）；own 输出先把
+  `d` 追加进库的字典（`writeLib`：库的字典须是 `d` 的前若干行，否则报出第一个不同的 id），再原样写 id
+  （`writeOwn`）。两库相遇：展开时报错 “the symbol columns of `a` are ids in the library L₁ and those of `b` in the
+  library L₂, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)”——按程序判，
+  不按 `∩`/join 的数据流判，因为一个程序只持一个字典。`Table.unenum (I : A ⟶ sym) = I ≫ D`（`Tab.comp`，无新
+  kernel），`decode` 是它在 frame 上的特例。未做：语言里的 `unenum` 行——字典 `D` 还不是 `Tm` 的项，须先给 `Tm`
+  一个字典项（请求）。测试：`TestTable`（两表同库共享 id、追加违例、`progLib` 报错、`unenum` 往返），`TestIO`
+  （`libAIO`/`libBIO`/`libMeetIO` 端到端、`twoLibT` 报错）。
   `symdict3` 的 gate：full build 399 jobs 0 error 0 `sorryAx`，GenSound 1594/1594；`make tags`（`Gates.lean` 改用
   `.str _ s`，`Name.lastComponentAsString` 在 v4.28 不存在）、`decode-allow`、`panic-allow`、`bang-allow`、
   `pointfree`、`native`、`build.sh syms` 通过；`cargo test --features std` 82 passed。138→82 的落差在 master 的
