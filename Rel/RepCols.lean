@@ -217,50 +217,37 @@ theorem Arr.clampShift_get {n : USize} {c s : UInt64} {x y : Arr .i64 n} (hcs : 
     (h : x.clampShift c s = .ok y) (i : Fin n.toNat) :
     (y.get i).toInt = min (max (x.get i).toInt 0) c.toNat + s.toNat := by
   unfold Arr.clampShift colArr at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i z hz
-  split at h; · cases h
-  rename_i a ha
-  split at h; · cases h
-  rename_i cc hcc
-  split at h; · cases h
-  rename_i b hb
-  split at h; · cases h
-  rename_i k hk
   split at h
   · rename_i o ho
     cases h
-    have r1 := (colMap_raw ha).2.2.2 i.1 i.2
-    have r2 := (colMap_raw hb).2.2.2 i.1 i.2
-    have r3 := (colMap_raw ho).2.2.2 i.1 i.2
-    rw [colConst_raw hz] at r1; rw [colConst_raw hcc] at r2; rw [colConst_raw hk] at r3
-    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some] at r1 r2 r3
+    obtain ⟨-, -, -, hr⟩ := colMap_chain ho
+    obtain ⟨x', y', v, W, hx, hy, hv, hw, ho'⟩ := hr i.1 i.2
+    cases hx; cases hy; cases hv
     rw [Arr.get_i64, Arr.get_i64]
     show ((raw .i64 n o)[i.1]?.getD 0).toInt64.toInt = _
-    generalize (raw .i64 n x.enc)[i.1]?.getD 0 = w at r1 ⊢
-    generalize (raw .i64 n a)[i.1]?.getD 0 = A at r1 r2
-    generalize (raw .i64 n b)[i.1]?.getD 0 = B at r2 r3
-    generalize (raw .i64 n o)[i.1]?.getD 0 = O at r3 ⊢
-    have e1 : (if w.toInt64 < (0 : UInt64).toInt64 then 0 else w) = A := Except.ok.inj r1
-    have e2 : (if c.toInt64 < A.toInt64 then c else A) = B := Except.ok.inj r2
-    have e3 : B + s = O := Except.ok.inj r3
-    subst e1 e2 e3
+    rw [ho', Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
+    generalize (raw .i64 n x.enc)[i.1]?.getD 0 = w at hw ⊢
+    have e : s + (if (if (0 : UInt64).toInt64 < w.toInt64 then w else 0).toInt64 < c.toInt64 then
+        (if (0 : UInt64).toInt64 < w.toInt64 then w else 0) else c) = W := Except.ok.inj hw
+    subst e
     have hc : c.toInt64.toInt = c.toNat := by rw [Verify.toInt_toInt64, if_pos (by omega)]
     have h0 : (0 : UInt64).toInt64.toInt = 0 := rfl
-    have hw := UInt64.toNat_lt w
-    have hs := UInt64.toNat_lt s
+    have hz0 : (0 : UInt64).toNat = 0 := rfl
     have hW := Verify.toInt_toInt64 w
+    have hw := UInt64.toNat_lt w
+    -- each branch adds `s` to a word `X ≤ c`, which stays below `2^63`
+    have key : ∀ X : UInt64, X.toNat ≤ c.toNat → (s + X).toInt64.toInt = X.toNat + s.toNat := fun X hX => by
+      rw [Verify.toInt_toInt64, UInt64.toNat_add, Nat.mod_eq_of_lt (by omega), if_pos (by omega)]; omega
     simp only [Int64.lt_iff_toInt_lt, hc, h0]
-    by_cases h1 : w.toInt64.toInt < 0
-    · simp only [h1, if_true, h0]
-      rw [if_neg (by omega), Verify.toInt_toInt64, UInt64.toNat_add, if_pos (by simp; omega)]
-      simp; omega
-    · simp only [h1, if_false]
-      by_cases h2 : (c.toNat : Int) < w.toInt64.toInt
-      · rw [if_pos h2, Verify.toInt_toInt64, UInt64.toNat_add, if_pos (by omega)]; omega
-      · rw [if_neg h2, Verify.toInt_toInt64, UInt64.toNat_add]
-        split at hW <;> rw [if_pos (by omega)] <;> omega
+    by_cases h1 : 0 < w.toInt64.toInt
+    · simp only [h1, ↓reduceIte]
+      by_cases h2 : w.toInt64.toInt < (c.toNat : Int)
+      · simp only [h2, ↓reduceIte]; rw [key w (by split at hW <;> omega)]; split at hW <;> omega
+      · simp only [h2, ↓reduceIte]; rw [key c (Nat.le_refl _)]; split at hW <;> omega
+    · simp only [h1, ↓reduceIte, h0]
+      by_cases h2 : (0 : Int) < c.toNat
+      · simp only [h2, ↓reduceIte]; rw [key 0 (by rw [hz0]; omega)]; split at hW <;> omega
+      · simp only [h2, ↓reduceIte]; rw [key c (Nat.le_refl _)]; split at hW <;> omega
   · cases h
 
 /-- **`Arr.shift s x`** reads each long of `x` plus `s`, where that long is in `[0, 2^63 - s)`. -/

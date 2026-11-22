@@ -66,11 +66,10 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
   colArr .first n x.enc x.enc .i64 .i64 [] [(.add, s)]
 
-/-- The words of `x` clamped into `[0, c]` (`colMap .max` with `0`, then `.min` with `c`), then `s` added. -/
-def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
-  let a ← colMap .max n x.enc (← colConst n 0)
-  let b ← colMap .min n a (← colConst n c)
-  colArr .add n b (← colConst n s)
+/-- The words of `x` clamped into `[0, c]` (`max` with `0`, then `min` with `c`), then `s` added: one `kscan` whose post
+chain holds the three constants (`colMap_const_eq`). -/
+def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
+  colArr .first n x.enc x.enc .i64 .i64 [] [(.max, 0), (.min, c), (.add, s)]
 
 /-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
 theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :

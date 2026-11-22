@@ -1514,6 +1514,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
   rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, g, f⟩, hseen, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sg1, hsg1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
@@ -1525,6 +1526,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
   rw [Except.bind_eq_ok'] at h; obtain ⟨bs, hbs, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨bv, bp⟩, hbasc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨bk, bg, bf⟩, hbseen, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sg2, hsg2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cn, hcn, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hlt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cR, hcR, h⟩ := h
@@ -1635,8 +1637,8 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     ------------------------------------------------------------------ the words of `cnt`, `d`, `eqc`
     have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 =
         ((List.range Q.n.toNat).countP fun q => gr1 q == G && true).toUInt64 :=
-      fun G hG => fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hseen hcnt).1
-        (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hseen hcnt).2.2 gr1 (fun _ => true) (fun q hq => (hg1 q hq).1)
+      fun G hG => fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hseen hsg1 hcnt).1
+        (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hseen hsg1 hcnt).2.2 gr1 (fun _ => true) (fun q hq => (hg1 q hq).1)
         (fun q hq => by have := (hg1 q hq).2; omega) (fun q hq => by rw [colConst_raw hc1]; simp [hq]) G (by omega)
     have hcntG : ∀ G < k, ∀ h : π1 (fs1 G) < Q.n.toNat, Q.key.row ⟨_, h⟩ = b → Q.val.2.row ⟨_, h⟩ = c →
         ((List.range Q.n.toNat).countP fun q => gr1 q == G && true) = (List.range Q.n.toNat).countP P1 := by
@@ -1681,8 +1683,8 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
           (hg2 q2 hq2).1]
       have hgq := (hg2 q2 hq2).2
       rw [(kgather_word hd G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
-        fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hcR).1
-          (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hcR).2.2 gr2 (fun q => decide (π2 q < r.n.toNat))
+        fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hsg2 hcR).1
+          (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hsg2 hcR).2.2 gr2 (fun q => decide (π2 q < r.n.toNat))
           (fun q hq => (hg2 q hq).1)
           (fun q hq => by have := (hg2 q hq).2; omega) hltw (gr2 q2) (by omega), ← hcnt2 P2]
       have hz2 : ∀ h2 : π2 q2 < N.toNat, z.row ⟨_, h2⟩ = b := fun h2 => by
