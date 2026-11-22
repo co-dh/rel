@@ -250,20 +250,20 @@ namespace GenK
 theorem memo_sound {A B : Obj} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
     ∀ K, K.WF → (GenK.memo A B R).Reps K X := fun K hK => by
   cases R with
-  | tab t => exact hR K hK
   | lazy f =>
-    simp only [GenK.memo]; split
-    next t h =>
-      refine (reps_iff _ _ _).2 fun t' h' x y _ _ _ => ?_
-      cases h'; exact (reps_iff _ _ _).1 (hR {} Known.wf_empty) t h x y rfl rfl trivial
-    next => exact hR K hK
-  | bits => exact (reps_iff _ _ _).2 fun t h x y _ _ _ => (reps_iff _ _ _).1 (hR {} Known.wf_empty) t h x y rfl rfl trivial
+    -- the forced value runs nothing new (`force_runE`), so in any `K` it computes what `R` computes closed
+    have hF : ((Rel.lazy f).force {}).Reps K X := (reps_iff _ _ _).2 fun t h x y _ _ _ => by
+      rw [force_runE] at h; exact (reps_iff _ _ _).1 (hR {} Known.wf_empty) t h x y rfl rfl trivial
+    simp only [GenK.memo]; generalize (Rel.lazy f).force {} = v at hF ⊢
+    rcases v with ⟨_ | _⟩ | _ | _ <;> first | exact hF | exact hR K hK
+  | _ => exact hR K hK
 
 theorem memo_wf {A B : Obj} {R : Rel A B} (h : R.Wf) : (GenK.memo A B R).Wf := by
   cases R with
-  | tab => exact h
-  | lazy f => simp only [GenK.memo]; split <;> first | exact h | exact h.runE Known.wf_empty ‹_›
-  | bits => exact tab_wf fun _ ht => h.runE Known.wf_empty ht
+  | lazy f =>
+    have hF := h.force Known.wf_empty; simp only [GenK.memo]; generalize (Rel.lazy f).force {} = v at hF ⊢
+    rcases v with ⟨_ | _⟩ | _ | _ <;> first | exact hF | exact h
+  | _ => exact h
 
 end GenK
 
