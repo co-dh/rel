@@ -1467,6 +1467,5 @@ relk 线程池空转 2 526（与前三项重叠）。
 
 ## Baseline
 
-在 `e78e922`，`make check` exit 0。compile-diff："compile agrees with the generated code on 241 definitions; not ok
-on 25"（`sudokuac.s`、`Test.given.q{R,M,F,h}`、`Test.orders.Of`、`Test.muGrow.g`、`TestWumpus.given.f0`-`f16`、
-`TestRefold.refoldCycle.bad`）。每个 phase gate 都必须复现 241 / 25，或解释差异。
+compile-diff 只是差分测试：生成的代码对 `Tm.gen`，gate = 0 个不同。pin（`test/compile-diff.json`）已删（W.12），
+所以旧的 241 / 25 phase-gate 目标不再成立。它只在 master gate 中运行，worktree 不运行。
