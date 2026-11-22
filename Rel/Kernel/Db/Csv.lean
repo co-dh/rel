@@ -359,11 +359,18 @@ def form : QAtomicType → List String → String
 /-- The schema's names as the errors list them. -/
 def names (cols : CsvCols) : String := s!"[{", ".intercalate (cols.map (·.1))}]"
 
+/-- The schema as the file holds it: a symbol column is its texts (`.text` of `char`), which `Table.intern` turns into
+    ids; a symbol column of another shape or with names is refused. -/
+def symText (cols : CsvCols) : Except String CsvCols :=
+  cols.mapM fun (c, s, t, ns) =>
+    if t ≠ .sym then pure (c, s, t, ns) else if s = .atom ∧ ns = [] then pure (c, .text, .char, [])
+    else .error s!"column '{c}' is a symbol column of shape {repr s} with {ns.length} names; a symbol field is one text"
+
 /-- The refusals of a schema, before any byte: no column, or a column CSV does not hold (C.3). -/
 def schema (cols : CsvCols) : Except String Unit :=
   if cols = [] then .error "the schema has no column, and a CSV record has at least one field" else
   cols.forM fun (c, s, t, ns) =>
-    -- `Table.symText` hands this reader and writer a symbol column as `.text`; a program carries no dictionary yet
+    -- the reader and writer take a symbol column as its texts (`symText`), the dictionary being `Table`'s
     if t = .sym then .error s!"column '{c}' is a symbol column, read and written as its text through its dictionary \
       (Table.readCsvDict, Table.writeCsv)"
     else if t = .general then .error s!"column '{c}' is a general column, which the own format does not hold"

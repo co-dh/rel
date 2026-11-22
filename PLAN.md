@@ -1197,8 +1197,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `readCsvDicts` 返回表与各 sym 列的字典，`writeCsv ds` 经字典写回。own：`writeSym`/`readSym`，id 列 `p` 旁边是
   普通文本列 `p.dict`，没有新 kind；读时拒绝未排序或有重复的字典、拒绝无文本的 id；`readArr` 不再拒绝 sym。
   `TestTable` 的 `#guard_msgs`：CSV sym 列往返相等，任意两行 id 的序 = 文本的序，own 往返相等。
-  未做：程序（`n.io`）带字典——程序的 CSV 输入有 sym 列时 `Db.Csv.schema` 在展开时拒绝、`Table.readCsv` 运行时拒绝，
-  `TmGen` 给 `writeCsv` 传空字典表；两个 sym 列合并（`∪`、join）时对字典的并 intern、重映射 id（§0.2）。
+  已做（分支 `83s6`）：程序（`n.io`）带一个字典（§0.2 一库一字典）：`TmGen` 从 `Dict.empty` 起，按输入顺序把每个 CSV
+  输入的 sym 列经 `readCsvDict` intern 进同一个 `D`，所有 `writeCsv` 经最后的 `D` 解码；两个输入的同一串是同一 id，
+  `∪`/`∩`/join 直接在 id 上，无需重映射。展开时 `Db.Csv.symText` 后再查 `schema`；`Table.readCsv` 删除；EmitC 拒绝 sym CSV 列。
   `symdict3` 的 gate：full build 399 jobs 0 error 0 `sorryAx`，GenSound 1594/1594；`make tags`（`Gates.lean` 改用
   `.str _ s`，`Name.lastComponentAsString` 在 v4.28 不存在）、`decode-allow`、`panic-allow`、`bang-allow`、
   `pointfree`、`native`、`build.sh syms` 通过；`cargo test --features std` 82 passed。138→82 的落差在 master 的
@@ -1209,8 +1210,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Table.intern D x`：`N = ran R − ran D`，`F = Λ((R ≫ N)°) ≫ uncons ≫ π₁`（新串到首行），`D'` = `D` 接 `F°`；id =
   `R ≫ D'°`。own：`writeDict`/`readDict` 写库目录的 `sym` 与 `sym.rank`（拒绝重复的串、与字典不符的 rank），
   `writeSym`/`readSym D` 只写读 id（拒绝无文本的 id）。CSV：`readCsvDict D`、`writeCsv (Option Dict)` 共用一个字典。
-  序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。未做：程序
-  （`n.io`）的 sym 输入——`TmGen` 要把库字典穿过所有输入与 `writeCsv`，`<`/`asc` 行要接 `rank`。
+  序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。未做：`<`/`asc`
+  行要接 `rank`；程序读库目录（own 格式）的 sym 列时从 `readDict` 起字典。
   `symdict4` 的 gate：full build 399 jobs 0 error 0 `sorryAx`；`make decode-allow panic-allow bang-allow pointfree
   tags native`、`build.sh syms` 通过；`cargo test --features std` 82 passed；compile-diff 与 `test/compile-diff.json`
   无差异（`TestCompile` 要 `CAP_MEM_MB=20000`，默认 12288 MB 时 qlean kernel 分配失败）。

@@ -290,7 +290,7 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
   IO.FS.writeFile (d ++ "/in.csv") "name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n"
   csvNullIO.io
   let out ← IO.FS.readFile (d ++ "/out.csv")
-  let back ← Table.readCsv [] [("name", .arr (.atom .char)), ("px", .sum .long .one)]
+  let (back, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] [("name", .arr (.atom .char)), ("px", .sum .long .one)]
     [("name", .text, .char, []), ("px", .null, .i64, [])] (d ++ "/out.csv")
   IO.FS.removeDirAll d
   return (out, back.toList)
@@ -343,11 +343,11 @@ info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
   let days ← IO.FS.readFile (d ++ "/days-out.csv")
   let cols : Db.CsvCols := [("N", .atom, .i64, []), ("Q.sym", .null, .i64, ["A", "B"]), ("Q.bid", .null, .i64, [])]
   let S : Schema := [("val", .prod .long (.sum (.prod .long .long) .one))]
-  let back ← Table.readCsv [] S cols (d ++ "/out.csv")
-  let dback ← Table.readCsv [("key", .atom .date)] [("val", .long)] [("key", .atom, .date, []), ("val", .atom, .i64, [])]
-    (d ++ "/days-out.csv")
+  let (back, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] S cols (d ++ "/out.csv")
+  let (dback, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [("key", .atom .date)] [("val", .long)]
+    [("key", .atom, .date, []), ("val", .atom, .i64, [])] (d ++ "/days-out.csv")
   IO.FS.writeFile (d ++ "/bad.csv") "N,Q.sym,Q.bid\n5,A,10\n6,A,\n"
-  let bad ← try (do let _ ← Table.readCsv [] S cols (d ++ "/bad.csv"); pure "read") catch e => pure e.toString
+  let bad ← try (do let _ ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] S cols (d ++ "/bad.csv"); pure "read") catch e => pure e.toString
   IO.FS.removeDirAll d
   return (out, days, back.toList, dback.toList, bad)
 
@@ -359,3 +359,36 @@ rel_program csvNestT where
     obj N
     schema R = {a : (N+1)+1}
     input t : N ⟶ R from csv "t.csv"
+
+/-! ## A symbol column: the program's one dictionary -/
+
+-- (PLAN 8.3) each CSV input's texts interned into the program's one dictionary (§0.2), in input order, and every
+-- output decoded through it; so two files' equal texts are one id and `∪`, `∩` meet on ids
+rel_program csvSymIO where
+    obj N
+    obj S : sym
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-sym/a.csv"
+    input b : N ⟶ S from csv "/data/tmp/rel-test-io-sym/b.csv"
+    both : N ⟶ S ≜ a ∪ b
+    common : N ⟶ S ≜ a ∩ b
+    output a to csv "/data/tmp/rel-test-io-sym/a-out.csv"
+    output both to csv "/data/tmp/rel-test-io-sym/u.csv"
+    output common to csv "/data/tmp/rel-test-io-sym/i.csv"
+
+-- by hand: `a` interns x, y as ids 0, 1; `b`'s x is id 0 again and its z the next id, 2. `a` written back is its
+-- file; `both` = {(0,0),(1,1),(1,2)}, the pair (0,x) of the two files one row; `common` = {(0,0)}. Were `b` its own
+-- dictionary (x 0, z 1), `both`'s (1,z) would read back as y
+/--
+info: ["val\nx\ny\n", "val\nx\ny\nz\n", "val\nx\n"]
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-sym"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nx\ny\n"
+  IO.FS.writeFile (d ++ "/b.csv") "val\nx\nz\n"
+  csvSymIO.io
+  let r ← [d ++ "/a-out.csv", d ++ "/u.csv", d ++ "/i.csv"].mapM fun f : String => IO.FS.readFile f
+  IO.FS.removeDirAll d
+  return r

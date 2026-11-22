@@ -479,15 +479,15 @@ def bindIO (inst m α : Lean.Expr) (x : String) (k : Lean.Expr → MetaM Lean.Ex
 /-- The writes of `n.io` (`ioE`), after each output's table is bound: `ws` the writes so far, `σ` the run-time names'
     tables (name, `A`, `B`, table); a closed definition's table from its constant (`Rel.tab`), run as a run-time one's
     (`Table.ofRun`). An output keyed by positions writes its value side, renumbered (`Table.write`), any other the key
-    table and the value table (`Table.writeKeyed`); a CSV output both forms in one file (`Table.writeCsv`). -/
-def ioOut (inst done : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Expr)) :
+    table and the value table (`Table.writeKeyed`); a CSV output both forms in one file (`Table.writeCsv`), its symbol
+    columns decoded through the program's dictionary `d`. -/
+def ioOut (inst done d : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Expr)) :
     List (String × Obj × Obj × Schema × Schema × Option Db.CsvCols × String × Option Lean.Name) → List Lean.Expr →
       MetaM Lean.Expr
   | [], ws => ws.foldrM (fun w r => bindIO inst w (mkConst ``Unit) "_" fun _ => pure r) done
   | (x, A, B, k, v, c, p, cl) :: os, ws => do
     let write (t : Lean.Expr) : Lean.Expr := match c with
-      -- no dictionary: a program's CSV input with a symbol column is refused (`Table.readCsv`, `Db.Csv.schema`)
-      | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp (mkConst ``Option.none [.zero]) (mkConst ``Table.Dict))
+      | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp2 (mkConst ``Option.some [.zero]) (mkConst ``Table.Dict) d)
           (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
       | none => if k.isEmpty
         then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
@@ -496,27 +496,33 @@ def ioOut (inst done : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Expr)
     match cl, σ.lookup x with
     | some c, _ =>
       bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) (mkApp3 (mkConst ``Rel.Rel.tab) (oE A) (oE B)
-        (mkConst c))) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t => ioOut inst done σ os (ws ++ [write t])
-    | none, some (_, _, t) => ioOut inst done σ os (ws ++ [write t])
+        (mkConst c))) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t => ioOut inst done d σ os (ws ++ [write t])
+    | none, some (_, _, t) => ioOut inst done d σ os (ws ++ [write t])
     | none, none => throwError "rel_program expansion: internal: the output `{x}` is no run-time name bound before it"
 
 /-- The reads and run-time definitions of `n.io` (`ioE`) from `ss` on, each one `reach` holds bound once in statement
-    order: an input read from its path (`Table.read`, `readKeyed`, `readCsv`); a definition its constant's body
+    order: an input read from its path (`Table.read`, `readKeyed`, `readCsvDict`); a definition its constant's body
     (`body`, numbered with the program's terms, as an `Expr`) run by `Tm.gen` under the share table `sh`, its
     variables (`Once.binds`) bound to the tables of its run-time names (`Code.args`, as `Sound.inputs` states), and
-    run (`Table.ofRun`); then `fin` of the tables bound. -/
+    run (`Table.ofRun`); then `fin` of the tables bound and the dictionary. `d` is the program's one dictionary
+    (§0.2): each CSV input's texts interned into the `d` the input before grew, so equal texts are one id. -/
 def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr)) (reach : List String)
-    (fin : List (String × Obj × Obj × Lean.Expr) → MetaM Lean.Expr) :
-    List Io → List (String × Obj × Obj × Lean.Expr) → MetaM Lean.Expr
-  | [], σ => fin σ
-  | .input x A B k v c p :: ss, σ => if !reach.contains x then ioGo inst sh body reach fin ss σ else
-    let m := match c with
-      | some h => mkApp4 (mkConst ``Table.readCsv) (toExpr k) (toExpr v) (toExpr h) (toExpr p)
-      | none => if k.isEmpty then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
+    (fin : List (String × Obj × Obj × Lean.Expr) → Lean.Expr → MetaM Lean.Expr) :
+    List Io → List (String × Obj × Obj × Lean.Expr) → Lean.Expr → MetaM Lean.Expr
+  | [], σ, d => fin σ d
+  | .input x A B k v c p :: ss, σ, d => if !reach.contains x then ioGo inst sh body reach fin ss σ d else
+    let tT := mkApp2 (mkConst ``Tab) (oE A) (oE B)
+    let dT := mkConst ``Table.Dict
+    match c with
+    | some h =>
+      bindIO inst (mkApp5 (mkConst ``Table.readCsvDict) d (toExpr k) (toExpr v) (toExpr h) (toExpr p)) (pairT tT dT) x
+        fun r => ioGo inst sh body reach fin ss ((x, A, B, mkApp3 (mkConst ``Prod.fst [0, 0]) tT dT r) :: σ)
+          (mkApp3 (mkConst ``Prod.snd [0, 0]) tT dT r)
+    | none =>
+      let m := if k.isEmpty then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
         else mkApp3 (mkConst ``Table.readKeyed) (toExpr k) (toExpr v) (toExpr p)
-    bindIO inst m (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x fun t =>
-      ioGo inst sh body reach fin ss ((x, A, B, t) :: σ)
-  | .defn x c ds :: ss, σ => if !reach.contains x then ioGo inst sh body reach fin ss σ else do
+      bindIO inst m tT x fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ) d
+  | .defn x c ds :: ss, σ, d => if !reach.contains x then ioGo inst sh body reach fin ss σ d else do
     let some (o, e) := body c
       | throwError "rel_program expansion: internal: `{x}` reaches an output and its constant `{c}` has no body here"
     let ⟨A, B, _⟩ := o.res
@@ -534,8 +540,8 @@ def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr))
     let xs ← mkListLit (mkApp2 (mkConst ``Sigma [0, 0]) (mkConst ``Obj) (sigM ``Rel.Rel)) (args.map fun (X, Y, t) => sigE ``Rel.Rel X Y (tabRel (oE X) (oE Y) t))
     let v := g ``Tm.gen #[g ``Code.args #[sh, toExpr o.binds, xs], oE A, oE B, e]
     bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) v) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x
-      fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ)
-  | .output .. :: ss, σ => ioGo inst sh body reach fin ss σ
+      fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ) d
+  | .output .. :: ss, σ, d => ioGo inst sh body reach fin ss σ d
 
 /-- The run-time names the outputs of `io` reach, through each definition's own (each mentions only names before
     it). -/
@@ -552,7 +558,9 @@ def ioE (io : List Io) (reach : List String) (sh : Lean.Expr) (body : Lean.Name 
   let inst ← synthInstance (mkApp (mkConst ``Bind [0, 0]) (mkConst ``IO))
   let outs := io.filterMap fun | .output x A B k v c p cl => some (x, A, B, k, v, c, p, cl) | _ => none
   let done ← mkAppOptM ``Pure.pure #[mkConst ``IO, none, mkConst ``Unit, mkConst ``Unit.unit]
-  ioGo inst sh body reach (fun σ => ioOut inst done σ outs []) io []
+  -- the program reads no database directory, so its dictionary starts empty and grows with its CSV inputs
+  bindIO inst (← mkAppM ``IO.ofExcept #[mkConst ``Table.Dict.empty]) (mkConst ``Table.Dict) "dict" fun d =>
+    ioGo inst sh body reach (fun σ d => ioOut inst done d σ outs []) io [] d
 
 /-- The Lean definitions of what the program `n` reads (`read`). Its terms (definitions, prints, checks, and the bodies
     of the run-time definitions an output reaches) numbered together (`Code.program`): `n.c.t<k>` the term of slot

@@ -593,7 +593,8 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
             object of one element) or a text `[C]`; declare it a table directory (drop `csv`)"⟩
       hdr := hdr ++ [(c, s, a, ns)]
     if let .error m := Schema.check hdr then throw ⟨p, s!"{what}: {m}"⟩
-    if let .error m := Db.Csv.schema hdr then throw ⟨p, s!"{what}: {m}"⟩
+    -- a symbol column is checked as its texts: `n.io` interns them into the program's dictionary (`Table.readCsvDict`)
+    if let .error m := Db.Csv.symText hdr >>= Db.Csv.schema then throw ⟨p, s!"{what}: {m}"⟩
   pure (A, B, K, S, hdr)
 
 /-- The term for each run-time name the terms `es` of a `check` or `print` (`what`) at `p` reach (IO design A.4),
