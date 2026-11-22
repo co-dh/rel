@@ -500,6 +500,14 @@ theorem expand_groups {K M : USize} {o sc pm : Enc} (hsc : kscatter .max K o .po
 /-- **EXPAND places each group's run**: where word `g` of the `K` widths is `wN g`, below
 `2^63` in total, there are `T = Σ wN` rows, and row `t` of group `g`'s run `[Σ_{<g} wN, Σ_{≤g} wN)` has group `g`
 and offset `t - Σ_{<g} wN`. -/
+/-- **EXPAND's offsets hold no null**: `u` is a `colMap .sub` (`colMap_plain`). -/
+theorem expand_plain {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u)) : hasNul u = false := by
+  unfold expand at h; split at h; · cases h
+  simp only [bind, Except.bind] at h; (repeat' split at h) <;>
+    first
+    | cases h
+    | simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨-, -, rfl⟩ := h; exact colMap_plain ‹_›
+
 theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u)) (wN : Nat → Nat)
     (hw : ∀ g < K.toNat, (raw .i64 K w)[g]?.getD 0 = (wN g).toUInt64)
     (hs : ((List.range K.toNat).map wN).sum < 2 ^ 63) (hK : K.toNat < 2 ^ 63) :
