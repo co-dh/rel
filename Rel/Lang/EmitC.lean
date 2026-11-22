@@ -58,6 +58,63 @@ def colRegs (t : QAtomicType) (kind : UInt8) (count : Nat) (bs : Array Nat) : Bl
 def encRegs (t : QAtomicType) (count e : Nat) : Bld (Array Nat) := do
   colRegs t 2 count #[← projB e 2 0 .bytes, ← projB e 2 1 .bytes]
 
+/-- The atom columns of the object `A`, each with its path as `cols` names it under `p`, from the object alone. -/
+def objCols : Obj → String → List (String × QAtomicType)
+  | .atom t, p => [(p, t)]
+  | .prod a b, p => objCols a (p ++ ".1") ++ objCols b (p ++ ".2")
+  | .arr b, p => [(p ++ ".lo", .i64), (p ++ ".hi", .i64)] ++ objCols b (p ++ ".e")
+  | .sum a b, p => [(p ++ ".tag", .u1), (p ++ ".idx", .i64)] ++ objCols a (p ++ ".l") ++ objCols b (p ++ ".r")
+
+/-- Whether `A` is atoms and products only, the sides whose `Vals.cols` are their atom columns as they are. -/
+def flatObj : Obj → Bool
+  | .atom _ => true
+  | .prod a b => flatObj a && flatObj b
+  | _ => false
+
+/-- **`Tab.canon`** (design §4: `asc → seen → gather`, as `Vals.nub` of the pair side) of the relation whose sides
+    `s` are of the objects `A`, `B`: `kasc` over the key's atom columns then the value's, `kseen` on the sorted columns,
+    the count `k` of runs (the last row's group `+ 1`: a `kscan max` fold of the groups, `0` at no row), `kgather` of
+    the permutation at each run's first row, and every column gathered there. An array or a sum side (`cells` keys,
+    summand gathers) and a column with no `Enc` register (mapped from its file) are refused, naming them. -/
+def canonB (A B : Obj) (s : Side × Side) : Bld (Side × Side) := do
+  unless flatObj A && flatObj B do throw "canon of an array or a sum side, whose `cells` keys no plan recipe builds yet"
+  let col (sd : Side) (p : String) (t : QAtomicType) : Bld (String × QAtomicType × Nat × Nat) := do
+    let some rs := sd.lookup p | throw s!"canon: column `{p}` has no registers (a positions column)"
+    let (some n, some e) := (rs[3]?, rs[6]?) | throw s!"canon: column `{p}` has no `Enc` register (mapped from its file)"
+    pure (p, t, n, e)
+  let ks ← (objCols A "").mapM fun (p, t) => col s.1 p t
+  let vs ← (objCols B "").mapM fun (p, t) => col s.2 p t
+  let some (_, _, n, _) := (ks ++ vs).head? | throw "canon of a relation with no atom column"
+  let key (t : QAtomicType) (e : Nat) : Bld Nat := do ctorB 0 #[← ctorB 0 #[] #[← lit (Reg.put t)], e] #[]
+  let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← (ks ++ vs).mapM fun (_, t, _, e) => key t e)]
+  let mut l ← nth sp 0 "kasc"
+  let mut sorted := #[]
+  for (_, t, _, _) in ks ++ vs do
+    sorted := sorted.push (← key t (← projB l 1 0 .obj)); l ← projB l 1 1 .obj
+  let kg ← callK (kernel% Rel.Kernel.kseen) #[n, ← listB sorted.toList]
+  let z ← constB n (← lit (.u64 0))
+  let mx ← nth (← scanB .max .i64 n (some z) [z, ← nth kg 1 "kseen"]) 1 "kscan"
+  let k ← nth (← ite (← call1 (kernel% USize.decEq) #[n, ← lit (.size 0)]) (do pure #[← lit (.size 0)]) (do
+    pure #[← call1 (kernel% USize.add) #[← call1 (kernel% UInt64.toUSize) #[← projB mx 1 0 .u64], ← lit (.size 1)]]))
+    0 "if"
+  let ix ← call1 (kernel% Rel.Kernel.kgather) #[k, ← nth kg 2 "kseen", n, ← nth sp 1 "kasc"]
+  let side (cs : List (String × QAtomicType × Nat × Nat)) : Bld Side := cs.mapM fun (p, t, _, e) => do
+    let g ← call1 (kernel% Rel.Kernel.kgather) #[k, ix, n, e]
+    pure (p, (← encRegs t k g).push g)
+  pure (← side ks, ← side vs)
+
+/-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
+    to them (a run-time definition's inputs, `Once.binds`). Stage 1a builds a literal, a converse (`Tab.conv`: the
+    sides swapped, then `canonB`), a shared term and a bound variable (I10); any other node is refused. -/
+def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Side × Side)
+  | _, _, .val R => return (← litSide R.key, ← litSide R.val)
+  | A, B, .conv R => do canonB A B (← ofTm σ R).swap
+  | _, _, .share _ R => ofTm σ R
+  | _, _, .var _ k => match σ.lookup k with
+    | some s => pure s
+    | none => throw s!"variable {k}, which no input table is bound to"
+  | _, _, _ => throw "a node other than a literal, a converse, a shared term or a variable: stage 1a builds only those"
+
 /-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
 def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (dir : String) :
     Lean.Meta.MetaM (Except String (Bld Unit)) := do
@@ -73,13 +130,6 @@ def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
   Table.writeVals dir "key" R.key; Table.writeVals dir "val" R.val
 
 /-! ### A program's IO statements (IO step I10): what `n.io` reads, computes and writes, as a plan -/
-
-/-- The atom columns of the object `A`, each with its path as `cols` names it under `p`, from the object alone. -/
-def objCols : Obj → String → List (String × QAtomicType)
-  | .atom t, p => [(p, t)]
-  | .prod a b, p => objCols a (p ++ ".1") ++ objCols b (p ++ ".2")
-  | .arr b, p => [(p ++ ".lo", .i64), (p ++ ".hi", .i64)] ++ objCols b (p ++ ".e")
-  | .sum a b, p => [(p ++ ".tag", .u1), (p ++ ".idx", .i64)] ++ objCols a (p ++ ".l") ++ objCols b (p ++ ".r")
 
 /-- Whether `A` holds a sum, whose CSV columns (`S+1`) `Table.ofCsv` regroups and checks, which no plan recipe does. -/
 def hasSum : Obj → Bool

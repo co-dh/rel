@@ -488,18 +488,6 @@ def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
     let rs ← match v with | .vector _ _ e _ => pure (rs.push (← lit (Reg.put e))) | _ => pure rs
     return some (p, rs)
 
-/-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
-    to them (a run-time definition's inputs, `Once.binds`). Stage 1a builds a literal, a converse, which swaps the
-    sides and emits nothing, and a bound variable (I10), which emits nothing; any other node is refused. -/
-def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Side × Side)
-  | _, _, .val R => return (← litSide R.key, ← litSide R.val)
-  | _, _, .conv R => return (← ofTm σ R).swap
-  | _, _, .share _ R => ofTm σ R
-  | _, _, .var _ k => match σ.lookup k with
-    | some s => pure s
-    | none => throw s!"variable {k}, which no input table is bound to"
-  | _, _, _ => throw "a node other than a literal, a converse, a shared term or a variable: stage 1a builds only those"
-
 /-! ### Recipes on the five kernels (design §4) -/
 
 /-- `need`'s test on the bit `c`: set, nothing runs; clear, `fail msg args`. -/

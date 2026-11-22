@@ -2,7 +2,7 @@ import Rel.Lang.EmitC
 import Rel.Run.Lang.Embed
 
 /-! Stage 1a of the native backend (`doc/rel-native-design.md` §13): `x ≜ {…}°`, `output x to "out"`. Its plan is
-    literals and `qlean_own_write` calls only: the converse is a register rename. `main` is the `relc-1a` exe:
+    literals, the converse's `canon` (`kasc`, `kseen`, `kgather`) and `qlean_own_write` calls. `main` is the `relc-1a` exe:
     `c FILE` prints the plan as C, `lean DIR` writes `DIR/out` from the value Lean computed (`writeRel`), `plan DIR`
     runs the plan in `DIR` (`Plan.run`). The language has no `output` declaration yet (stage 2), so the output is
     stated here, as `planOf`'s arguments. -/
@@ -122,12 +122,22 @@ def planIO : IO Plan := do
   let (r, _) ← gatePlan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
   IO.ofExcept r
 
--- two columns, each seven `lit`s (six `ownFile` registers and the `Enc`, `Side`), a path `lit` and one
--- `qlean_own_write`; nothing else is called
+-- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`), column for column:
+-- each written `OwnFile` equal to the one `Db.ownFile` makes of the value's column
 #eval show Lean.Meta.MetaM Unit from do
   let p ← match ← plan with | .ok p => pure p | .error e => throwError e
-  unless p.main.length == 18 && p.main.all fun | .call s _ => s == "qlean_own_write" | .fail .. => false | _ => true do
-    throwError "the plan has {p.main.length} instructions, not eighteen `lit`s and `qlean_own_write` calls"
+  let (_, ws) ← match p.run abiOf with | .ok r => pure r | .error e => throwError e
+  let x ← match native1a.x with | .ok x => pure x | .error e => throwError e
+  let side (s : String) (cs : List (String × QValue)) := cs.map fun (p, v) => ("out/" ++ s ++ p, v)
+  let want ← match (side "key" (cols _ x.key "") ++ side "val" (cols _ x.val "")).filterMapM
+      (fun (p, v) => do pure ((← ownFile p v).map fun f => (p, f))) with | .ok w => pure w | .error e => throwError e
+  let got := ws.toList.filterMap fun (_, vs) => match vs.toList with
+    | .str p :: c :: a :: k :: n :: d :: ps :: _ => (p, ·) <$> Reg.get? (α := Db.OwnFile) (.ctor 0 #[d, ps] #[c, a, k, n])
+    | _ => none
+  let flat (pf : String × Db.OwnFile) :=
+    (pf.1, pf.2.code, pf.2.attr, pf.2.kind, pf.2.count.toNat, pf.2.domain, pf.2.parts.toList.map (·.toList))
+  unless got.length == ws.size && got.map flat == want.map flat do
+    throwError "the plan of `x` writes {got.length} of {ws.size} columns, not those of its Lean value"
 
 /-- `NAME.io` (IO design B) of the program `NAME` elaborated in the module `MOD`, both read by Lean's name parser,
     run in the environment of the modules on `LEAN_PATH` (as `planIO`); its error is the program's. -/
