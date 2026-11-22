@@ -236,7 +236,9 @@ pub fn nul_pack(p: &mut EncPack, x: &[u8], width: usize, nul: &[u8], lo: usize) 
         for (i, (o, x)) in v.iter_mut().zip(&elts::<T>(x, "coc_enc_nul_pack")[..nb]).enumerate() {
             *o = if is_nul(nul, lo + i) { top } else { (x.i() as u64).wrapping_sub(p.frame) }
         }
-        crate::simd::res_pack(&v, d, nb, p.res)
+        // `pack_block` at base 0, not `res_pack`: a null block's width may be a lane width (1, 2, 4, …), which only
+        // `pack_block`'s `by_width!` arm packs
+        pack_block::<u64>(p.res, &v[..nb], nb, 0, d)
     }
     crate::by_width!(int width, go(p, x, nul, lo))
 }
@@ -435,6 +437,15 @@ mod a7_tests {
         encode_meta_blk(&mut m, &x, 4);
         // the null is the minimum, so the sum skips it
         assert_eq!((base, maxv, width, bsum), (i16::MIN as i64, 9, 16, 10));
+    }
+    #[test] fn nul_pack_lane_widths() {
+        // row 2 null; keys {0} give width 1 (the null at the top residual 1), keys {0, 1} width 2 (top 3)
+        for (x, d, want) in [([0i64, 0, 0, 0], 1u8, 0b0100u8), ([0, 1, 0, 0], 2, 0b00_11_01_00)] {
+            let mut res = [0u8; 8];
+            let mut p = EncPack { nb: 4, frame: 0, width: d, res: &mut res, pos: &mut [], raw: &mut [] };
+            nul_pack(&mut p, crate::pod::bytes(&x), 8, &[0b0100], 0);
+            assert_eq!(res[0], want, "d {d}");
+        }
     }
 }
 

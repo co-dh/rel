@@ -36,10 +36,10 @@ theorem foRWords_valid (what : String) (m : USize) (e : Enc) :
   · exact hv.1 ‹_›
   · cases h
 
-/-- A valid `foR` column is `Ext.Enc.WF` at every fixed-width type, a boolean one where every element is `0` or `1`:
+/-- A valid `foR` column is `Ext.Enc.WF` at every fixed-width type, a boolean one where every element but a null is `0` or `1`:
 `Coc.foRStd`'s block count covers the `n` elements, the layout part of `Ext.Enc.WF`. -/
 theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : ByteArray} (h : Enc.Valid n (.foR md pk))
-    (ht : t.width.isSome) (hu : t = .u1 → ∀ i < n.toNat, (Column.foRBits md pk (Column.blockStarts md) i).toNat < 2) :
+    (ht : t.width.isSome) (hu : t = .u1 → ∀ i < n.toNat, ∀ v, Column.foROpt md pk (Column.blockStarts md) i = some v → v.toNat < 2) :
     Ext.Enc.WF t n (.foR md pk : Enc) := by
   obtain ⟨hlg, hs⟩ := h
   have hF := (foRStd_iff.1 hs).nblk
@@ -104,12 +104,14 @@ theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size)
       (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X).2) := by
     have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true) (nul := .empty)).2.2
     refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X)⟩
-  refine ⟨hV, ?_, fun ht hu => Enc.Valid.wf hV ht fun h1 i hi => ?_⟩
+  refine ⟨hV, ?_, fun ht hu => Enc.Valid.wf hV ht fun h1 i hi v hv => ?_⟩
   · rw [raw_foR .i64 8 rfl (by decide)]
     refine Array.ext (by simp [hn]) fun i h1 h2 => ?_
     simp only [Array.getElem_map, Array.getElem_range]
     rw [hget i h2, ofNat_toNat_mod64]
-  · rw [hget i (hn ▸ hi)]
+  · unfold Column.foROpt at hv; split at hv; · cases hv
+    obtain rfl := Option.some.inj hv
+    rw [hget i (hn ▸ hi)]
     exact UInt64.lt_iff_toNat_lt.1 (hu h1 i (hn ▸ hi))
 
 /-- `scatterWords` answers its `n` cells. -/
