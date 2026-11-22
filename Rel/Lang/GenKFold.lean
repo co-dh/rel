@@ -33,7 +33,7 @@ theorem Tab.foldRounds_holds {K E V : Obj} {peel : Tab K (.arr E) → Except Str
     (hstep : ∀ P el T, step P el = .ok T → P.WF → el.WF → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
       (∀ k v, P.Holds k v → ∃ r, ((∃ x, el.Holds k x) ↔ ∃ x r', Pe r x r') ∧ ∀ v', P.Holds k v' → I k r v') →
       ∀ k v', T.Holds k v' ↔ ∃ v x, P.Holds k v ∧ el.Holds k x ∧ St k v x v')
-    (hpack : ∀ R R' : Tab K V, R.pack = .ok R' → ∀ a b, R'.Holds a b ↔ R.Holds a b) :
+    (hpack : ∀ R R' : Tab K V, R.pack = .ok R' → R.WF → ∀ a b, R'.Holds a b ↔ R.Holds a b) :
     ∀ f rest P out res, Tab.foldRounds peel step f rest P out = .ok res → rest.WF → P.WF → out.WF →
       (∀ k r r', rest.Holds k r → rest.Holds k r' → r = r') → (∀ k v, P.Holds k v → ∃ r, rest.Holds k r ∧ I k r v) →
       res.WF ∧ ∀ k w, res.Holds k w ↔ out.Holds k w ∨ ∃ r v, rest.Holds k r ∧ P.Holds k v ∧ W k r v w := by
@@ -71,10 +71,10 @@ theorem Tab.foldRounds_holds {K E V : Obj} {peel : Tab K (.arr E) → Except Str
         · obtain ⟨r₁, r', hr₁, hp⟩ := (hel k x).1 hx; rw [hf k _ _ hr₁ hr] at hp; exact ⟨x, r', hp⟩
         · obtain ⟨r₁, hr₁, hi⟩ := hsub k v' hv'; rw [hf k _ _ hr₁ hr] at hi; exact hi
     have hP'h : ∀ k v', P'.Holds k v' ↔ ∃ v x, P.Holds k v ∧ el.Holds k x ∧ St k v x v' :=
-      fun k v' => (hpack _ _ hP' k v').trans (hstep _ _ _ hs wP wel hel1 hPI k v')
+      fun k v' => (hpack _ _ hP' (hstepw _ _ _ hs wP wel) k v').trans (hstep _ _ _ hs wP wel hel1 hPI k v')
     have ho : ∀ k w, o'.Holds k w ↔ out.Holds k w ∨ (P.Holds k w ∧ ¬ ∃ x, el.Holds k x) := by
       intro k w
-      rw [hpack _ _ ho', Tab.union_holds hu wout wdf, Tab.diff_holds hdf wP wc, Tab.comp_holds hc wd wP]
+      rw [hpack _ _ ho' (Tab.union_wf hu wout wdf), Tab.union_holds hu wout wdf, Tab.diff_holds hdf wP wc, Tab.comp_holds hc wd wP]
       simp only [Tab.dom_holds hd]
       exact or_congr Iff.rfl (and_congr_right fun hw => not_congr
         ⟨fun ⟨_, ⟨rfl, x, hx⟩, _⟩ => ⟨x, hx⟩, fun ⟨x, hx⟩ => ⟨k, ⟨rfl, x, hx⟩, hw⟩⟩)
@@ -242,7 +242,7 @@ theorem Tab.foldRoundsL_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
       cases r with
       | nil => exact (hne rfl).elim
       | cons x r' => exact ⟨x, r', rfl⟩)
-    (fun _ _ hp => Tab.pack_holds hp)
+    (fun _ _ hp w => Tab.pack_holds hp w)
 
 /-- **`foldRounds` by `peelR` is the right fold of the step**: `foldRounds_holds` at `Pe = snoc°`, `W` the right fold
 (`foldrDen`) of `St k` from the value it is given. -/
@@ -276,7 +276,7 @@ theorem Tab.foldRoundsR_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
       obtain ⟨r, he, hall⟩ := hP k v hv
       refine ⟨r, he.trans ⟨fun ⟨x, r', hp⟩ => by rw [hp]; simp, fun hne => ?_⟩, hall⟩
       exact ⟨r.getLast hne, r.dropLast, (List.dropLast_concat_getLast hne).symm⟩)
-    (fun _ _ hp => Tab.pack_holds hp)
+    (fun _ _ hp w => Tab.pack_holds hp w)
 
 namespace GenK
 
@@ -990,12 +990,14 @@ theorem Vals.cells_pay {B : Obj} {T n : USize} {w} {pay : Vals B T} {Y : Vals (.
 
 /-- **`Tab.map`'s one pass has at most `n * m` rows**: the `T` EXPANDed rows are the summed widths of `n` cells over a
 payload of `m` (`cellSpan_spec`, `expand_spec`). -/
-theorem expand_cells_le {A : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A m} {s e : Arr .i64 n} {w G u}
-    {T : USize} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat) (hse : cellSpan m lo up = .ok (s, e))
-    (hw : colMap .sub n e.enc s.enc = .ok w) (hex : expand n w = .ok (T, G, u)) : T.toNat ≤ n.toNat * m.toNat := by
+theorem expand_cells_le {A : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A m} {w G u}
+    {T : USize} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat)
+    (hse : ∀ i : Fin n.toNat, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (up.get i).toInt ∧
+      (up.get i).toInt ≤ (m.toNat : Int))
+    (hw : colMap .sub n up.enc lo.enc = .ok w) (hex : expand n w = .ok (T, G, u)) : T.toNat ≤ n.toNat * m.toNat := by
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
+  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (Ext.Enc.raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
     intro i hi
@@ -1022,7 +1024,6 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
   · simp [bind, Except.bind] at h
   rename_i hb
   obtain ⟨_, -, h⟩ := GenK.bind_ok h
-  obtain ⟨⟨s, e⟩, hse, h⟩ := GenK.bind_ok h
   obtain ⟨w, hw, h⟩ := GenK.bind_ok h
   obtain ⟨⟨T, G, u⟩, hex, h⟩ := GenK.bind_ok h
   dsimp only at h
@@ -1038,7 +1039,7 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
     simp only [Bool.and_eq_true, beq_iff_eq] at hcd
     obtain ⟨hn, hd⟩ := hcd
     obtain ⟨Y, hY, hc⟩ := GenK.bind_ok h
-    have hT : T.toNat ≤ 2 ^ 63 := by have := expand_cells_le (f := f) hb hse hw hex; omega
+    have hT : T.toNat ≤ 2 ^ 63 := by have := expand_cells_le (f := f) hb wX.1 hw hex; omega
     have wPv : (⟨T, P, v⟩ : Tab .long A).WF := ⟨trivial, Vals.gather_wf hv wX.2⟩
     have rows := Tab.comp_pos_rows hP hT hC hD hn hd wPv wR
     subst hn
@@ -1056,11 +1057,11 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
     have hg : ∀ t, g (v.row t) = C.val.row t := fun t => by
       have hx : ∃ y, R.Holds (v.row t) y := ⟨_, (himg t _).2 rfl⟩
       simp only [g, dif_pos hx]; exact (himg t _).1 (Classical.choose_spec hx)
-    have hrow := Vals.cells_expand_row hb hse hw hex hsg hix g (fun t => by
+    have hrow := Vals.cells_expand_row hb wX.1 hw hex hsg hix g (fun t => by
       obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
       exact ⟨j, hj, by rw [← hvj, hg]⟩) hY
     obtain ⟨lo', hi', -, hY'⟩ := Vals.cells_pay hY v
-    have hrow' := Vals.cells_expand_row hb hse hw hex hsg hix id (fun t => by
+    have hrow' := Vals.cells_expand_row hb wX.1 hw hex hsg hix id (fun t => by
       obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
       exact ⟨j, hj, hvj⟩) hY'
     -- every element of a cell is a payload row, so `R` maps it to `g` of it and nothing else
@@ -1151,9 +1152,9 @@ theorem Tab.comp_uncons {K C : Obj} {R : Tab K (.arr C)} {u : Tab (.arr C) (.pro
     {T : Tab K (.prod C (.arr C))} (hu : Tab.uncons R.val = .ok u) (h : R.comp u = .ok T) (wR : R.WF) (k : K.El)
     (p : (Obj.prod C (.arr C)).El) : T.Holds k p ↔ ∃ xs, R.Holds k xs ∧ xs = p.1 :: p.2 := by
   rw [Tab.comp_holds h wR (Tab.uncons_wf hu wR.2)]
-  refine ⟨fun ⟨v, hv, h2⟩ => ⟨v, hv, ((Tab.uncons_holds hu v p).1 h2).2⟩, fun ⟨v, hv, e⟩ => ⟨v, hv, ?_⟩⟩
+  refine ⟨fun ⟨v, hv, h2⟩ => ⟨v, hv, ((Tab.uncons_holds hu wR.2 v p).1 h2).2⟩, fun ⟨v, hv, e⟩ => ⟨v, hv, ?_⟩⟩
   obtain ⟨i, _, hi⟩ := hv
-  exact (Tab.uncons_holds hu v p).2 ⟨⟨i, hi⟩, e⟩
+  exact (Tab.uncons_holds hu wR.2 v p).2 ⟨⟨i, hi⟩, e⟩
 
 /-- `merge(Q)`'s round on the state `((x, y), acc)` (`Tab.merge`'s `tx`, `ty`): the head of `x` appended where `le`
 takes it before the head of `y` or `y` is empty, else the head of `y`; none where both are empty. -/

@@ -1301,8 +1301,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     x、y 的 `Vals.WF`，经 `cat/snoc/cons/zip/uncat/prefix/suffix/inits/tails/flatten/lam/comp/flat/positions` 的
     `_holds`/`_den` 传到 `GenK.*_sound`（多取操作数的 `Wf`）与 `gen_sound_spine`（`code_wf (gen_wf X η hs.2)`）。
     只加 WF 前提，无语句弱化；全量构建 0 error、0 sorryAx。
-  - ⬜ 删 clamp 第二步之二：`cellSpan`（`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、`Fix.map`、`Power`、
-    `Where.positions` 的定律）。
+  - ✅ 删 clamp 第二步之二（8.5s2i）：`cellSpan` 删去，`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、
+    `Fix.map`、`length`、`atPos`、`Where.positions` 直接读格子的 `lo`/`hi`（每次使用 5 次 kernel 调用 → 0：
+    2 `colArr .max` + 1 `colMap .min` + 2 `colConst`；`cat`/`zip` 每次 10 → 0）。`cellSpan_spec`/`cellSpan_where`/
+    `cellSpan_start_le`/`Vals.cells_expand_row`/`expand_cells_le` 取 `Vals.WF` 的格子条款代替 `cellSpan` 的结果；
+    `uncons/unsnoc/uncat/length/atPos/sum_holds`、`Vals.zip_row`/`zip_holds`、`Vals.pack_row`/`pack_holds`/
+    `pack_toList`、`foldRounds_holds` 的 `hpack` 多取输入的 `WF`，经 `peelL/peelR_holds`、`mu/star_holds`、
+    `nu_sound`、`comp_uncons`、`rowOK_*`（`ofVals_row_sound`/`after_row_sound` 已给的 `WF`）传入。只加 WF 前提，
+    无语句弱化。`Vals.row` 的 `clampFin`（全函数模型）保留。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；

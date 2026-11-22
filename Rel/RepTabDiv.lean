@@ -508,7 +508,7 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
+  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hse hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
     rw [hwN]; exact (cellSpan_width hse' hb1 hw i hi).1
@@ -561,6 +561,7 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     split at h; · cases h
     rename_i hb
     simp only [bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
     split at h; · cases h
     rename_i P hP
@@ -763,7 +764,8 @@ theorem Vals.tau_row {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} 
 /-- **`Vals.zip` zips cell by cell**: output element `d` of cell `i` (`expand_spec` over the widths `min w₁ w₂`)
 reads `X`'s payload at `SN₁ + d` and `Y`'s at `SN₂ + d`. -/
 theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.arr B) n}
-    {Z : Vals (.arr (.prod A B)) n} (h : Vals.zip X Y = .ok Z) : ∀ i, Vals.row Z i = (Vals.row X i).zip (Vals.row Y i) := by
+    {Z : Vals (.arr (.prod A B)) n} (h : Vals.zip X Y = .ok Z) (hX : Vals.WF X) (hY : Vals.WF Y) :
+    ∀ i, Vals.row Z i = (Vals.row X i).zip (Vals.row Y i) := by
   obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
   obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
   simp only [Vals.zip] at h
@@ -911,12 +913,12 @@ theorem cons_holds {P : Tab K (.prod B (.arr B))} {T : Tab K (.arr B)} (h : Tab.
 
 /-- **`zip P` denotes `P ≫ zip`**: each `(xs, ys)` of `P` to `xs.zip ys` (`Vals.zip_row`). -/
 theorem zip_holds {A : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {T : Tab K (.arr (.prod A B))}
-    (h : Tab.zip P = .ok T) (k : K.El) (zs : (Obj.arr (.prod A B)).El) :
+    (h : Tab.zip P = .ok T) (wP : P.WF) (k : K.El) (zs : (Obj.arr (.prod A B)).El) :
     T.Holds k zs ↔ ∃ p, P.Holds k p ∧ zs = p.1.zip p.2 := by
   simp only [Tab.zip, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Z, hZ, h⟩ := h
   rw [canon_holds h]
-  have hrow := Vals.zip_row hZ
+  have hrow := Vals.zip_row hZ wP.2.1 wP.2.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, rfl, rfl⟩; exact ⟨_, ⟨j, rfl, rfl⟩, hrow j⟩
@@ -925,7 +927,7 @@ theorem zip_holds {A : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {T : Tab K (.a
 /-- **`length X` denotes `length` on the arrays `X`**: each cell `[SN, EN)` (`cellSpan_spec`) to its width
 `EN - SN`. -/
 theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} (h : Tab.length X = .ok T)
-    (xs : List B.El) (w : Int64) : T.Holds xs w ↔ (∃ i, X.row i = xs) ∧ w = Int64.ofNat xs.length := by
+    (hX : Vals.WF X) (xs : List B.El) (w : Int64) : T.Holds xs w ↔ (∃ i, X.row i = xs) ∧ w = Int64.ofNat xs.length := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.length] at h
   split at h; · cases h
@@ -1189,7 +1191,7 @@ theorem unsnoc_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.a
 
 /-- **`uncons X` denotes `cons°` on the arrays `X`**: each non-empty cell of `X` to its head and its tail. -/
 theorem uncons_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod B (.arr B))}
-    (h : Tab.uncons X = .ok T) (xs : List B.El) (p : (Obj.prod B (.arr B)).El) :
+    (h : Tab.uncons X = .ok T) (hX : Vals.WF X) (xs : List B.El) (p : (Obj.prod B (.arr B)).El) :
     T.Holds xs p ↔ (∃ i, X.row i = xs) ∧ xs = p.1 :: p.2 := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.uncons] at h
@@ -1258,7 +1260,7 @@ theorem uncons_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
 
 /-- **`unsnoc X` denotes `snoc°` on the arrays `X`**: each non-empty cell of `X` to its front and its last element. -/
 theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (.arr B) B)}
-    (h : Tab.unsnoc X = .ok T) (xs : List B.El) (p : (Obj.prod (.arr B) B).El) :
+    (h : Tab.unsnoc X = .ok T) (hX : Vals.WF X) (xs : List B.El) (p : (Obj.prod (.arr B) B).El) :
     T.Holds xs p ↔ (∃ i, X.row i = xs) ∧ xs = p.1 ++ [p.2] := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.unsnoc] at h
@@ -1333,7 +1335,7 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
 (`cellSpan_spec`); EXPAND of the widths `EN - SN + 1` puts split `d` of cell `i` at row `Σ_{<i} w + d`, which reads
 the slices `[SN, SN + d)` and `[SN + d, EN)` of the payload. -/
 theorem uncat_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (.arr B) (.arr B))}
-    (h : Tab.uncat X = .ok T) (xs : List B.El) (p : (Obj.prod (.arr B) (.arr B)).El) :
+    (h : Tab.uncat X = .ok T) (hX : Vals.WF X) (xs : List B.El) (p : (Obj.prod (.arr B) (.arr B)).El) :
     T.Holds xs p ↔ (∃ i, X.row i = xs) ∧ xs = p.1 ++ p.2 := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.uncat] at h
@@ -1460,7 +1462,7 @@ theorem peelL_holds {K E : Obj} {rest : Tab K (.arr E)} {el : Tab K E} {rest' : 
   have wu := uncons_wf hu hrest.2
   have wc := comp_wf hc hrest wu
   obtain ⟨h1, h2⟩ := peel_holds (C := .prod E (.arr E)) (fun r q => r = q.1 :: q.2) Prod.fst Prod.snd
-    (uncons_holds hu) hc (outl_holds ho₁) (outr_holds ho₂) ha hb hrest wu (outl_wf ho₁ wc.2) (outr_wf ho₂ wc.2)
+    (uncons_holds hu hrest.2) hc (outl_holds ho₁) (outr_holds ho₂) ha hb hrest wu (outl_wf ho₁ wc.2) (outr_wf ho₂ wc.2)
   exact ⟨fun k x => (h1 k x).trans ⟨fun ⟨r, q, hr, hp, hx⟩ => ⟨r, q.2, hr, hx ▸ hp⟩,
       fun ⟨r, r', hr, hp⟩ => ⟨r, (x, r'), hr, hp, rfl⟩⟩,
     fun k r' => (h2 k r').trans ⟨fun ⟨r, q, hr, hp, hx⟩ => ⟨r, q.1, hr, hx ▸ hp⟩,
@@ -1478,19 +1480,19 @@ theorem peelR_holds {K E : Obj} {rest : Tab K (.arr E)} {el : Tab K E} {rest' : 
   have wu := unsnoc_wf hu hrest.2
   have wc := comp_wf hc hrest wu
   obtain ⟨h1, h2⟩ := peel_holds (C := .prod (.arr E) E) (fun r q => r = q.1 ++ [q.2]) Prod.snd Prod.fst
-    (unsnoc_holds hu) hc (outr_holds ho₂) (outl_holds ho₁) ha hb hrest wu (outr_wf ho₂ wc.2) (outl_wf ho₁ wc.2)
+    (unsnoc_holds hu hrest.2) hc (outr_holds ho₂) (outl_holds ho₁) ha hb hrest wu (outr_wf ho₂ wc.2) (outl_wf ho₁ wc.2)
   exact ⟨fun k x => (h1 k x).trans ⟨fun ⟨r, q, hr, hp, hx⟩ => ⟨r, q.1, hr, hx ▸ hp⟩,
       fun ⟨r, r', hr, hp⟩ => ⟨r, (r', x), hr, hp, rfl⟩⟩,
     fun k r' => (h2 k r').trans ⟨fun ⟨r, q, hr, hp, hx⟩ => ⟨r, q.2, hr, hx ▸ hp⟩,
       fun ⟨r, x, hr, hp⟩ => ⟨r, (r', x), hr, hp, rfl⟩⟩⟩
 
 /-- **`R.pack` denotes `R`** (`Vals.pack_row` on both sides): `foldRounds_holds`' `hpack`. -/
-theorem pack_holds {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') (a : k.El) (b : v.El) :
+theorem pack_holds {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') (wR : R.WF) (a : k.El) (b : v.El) :
     R'.Holds a b ↔ R.Holds a b := by
   unfold Tab.pack at h; simp only [bind, Except.bind_eq_ok'] at h
   obtain ⟨key, hk, val, hv, h⟩ := h
   cases h
-  simp only [Tab.Holds, Vals.pack_row _ hk, Vals.pack_row _ hv]
+  simp only [Tab.Holds, Vals.pack_row _ hk wR.1, Vals.pack_row _ hv wR.2]
 
 end Tab
 
@@ -2708,7 +2710,7 @@ namespace Tab
 /-- **`atPos k X` denotes `atDen k`** (`Tab.atPos`): the cells `[SN, EN)` wider than `k` (`cellSpan_spec`,
 `whereCol` of `k < EN - SN`), each to the payload row `SN + k`. -/
 theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B}
-    (h : Tab.atPos k X = .ok T) (xs : List B.El) (x : B.El) :
+    (h : Tab.atPos k X = .ok T) (hX : Vals.WF X) (xs : List B.El) (x : B.El) :
     T.Holds xs x ↔ (∃ i, X.row i = xs) ∧ Lang.atDen k xs x := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.atPos] at h
@@ -2806,12 +2808,13 @@ theorem toList_nodup {k v : Obj} {R : Tab k v}
   exact h _ _ fun e => Nat.ne_of_lt hij (congrArg Fin.val e)
 
 /-- **`pack` keeps the row count and every row**, in order (`Vals.pack_row`). -/
-theorem pack_toList {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') : R'.n = R.n ∧ R'.toList = R.toList := by
+theorem pack_toList {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') (wR : R.WF) :
+    R'.n = R.n ∧ R'.toList = R.toList := by
   simp only [Tab.pack, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨kk, hk, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨vv, hv, h⟩ := h
   cases h
-  exact ⟨rfl, by simp only [Tab.toList, Vals.pack_row _ hk, Vals.pack_row _ hv]⟩
+  exact ⟨rfl, by simp only [Tab.toList, Vals.pack_row _ hk wR.1, Vals.pack_row _ hv wR.2]⟩
 
 /-- **`R ∪ S`'s rows are distinct**: it is `canon` of the concatenation (`union_sorted`, `canon_distinct`). -/
 theorem union_nodup {k v : Obj} {R S U : Tab k v} (h : R.union S = .ok U) : U.toList.Nodup := by
