@@ -203,50 +203,42 @@ pub fn for_pack(p: &mut EncPack, x: &[u8], width: usize) {
 pub fn coc_sumnul(width: usize) -> i64 {
     if width == 1 || width == 8 { i64::MIN } else if width == 2 { i16::MIN as i64 } else { i32::MIN as i64 }
 }
-/// Lean `Coc.encodeNulAt` at `lg`: the nullable Frame of Reference column (owner decision K) of the `x.len() / w`
-/// `w`-byte elements of `x`, row `i` null where bit `i` of `nul` is set (a bit past `nul` is 0), as `(meta, pack)`.
-/// A block's base, maximum and sum are over its rows that are not null; a block holding a null is flagged
-/// (`coc::NUL_FLAG`) and its null rows take the top residual `2 ^ d - 1`, `d` one wider than the range where a value
-/// already sits there. Written a block at a time from the keys, never through a decoded column; nothing is patched.
-pub fn encode_nul(lg: u32, x: &[u8], w: usize, nul: &[u8]) -> (alloc::vec::Vec<u8>, alloc::vec::Vec<u8>) {
-    let (n, bk) = (x.len() / w, 1usize << lg);
-    let is_nul = |i: usize| nul.get(i >> 3).is_some_and(|b| b >> (i & 7) & 1 != 0);
-    // Lean `Coc.keyAt`: the element's bits sign-extended from `8 * w`
-    let key = |i: usize| { let mut b = [0u8; 8]; b[..w].copy_from_slice(&x[i * w..][..w]); let s = 64 - 8 * w as u32; ((u64::from_le_bytes(b) << s) as i64) >> s };
-    let snul = coc_sumnul(w);
-    let blocks: alloc::vec::Vec<(i64, i64, u64, u8)> = (0..n.div_ceil(bk)).map(|b| {
-        let (mut mn, mut mx, mut s, mut any, mut has) = (0i64, 0i64, 0u64, false, false);
-        for i in b * bk..((b + 1) * bk).min(n) {
-            if is_nul(i) { has = true; continue }
-            let k = key(i);
+/// Row `i` of a column is null: bit `i` of the bitmap `nul` (Lean `Column.bitAt`; a bit past `nul` is 0).
+pub fn is_nul(nul: &[u8], i: usize) -> bool { nul.get(i >> 3).is_some_and(|b| b >> (i & 7) & 1 != 0) }
+/// Lean `Coc.nulBlock`, the null branch of the writer's block step `Coc.planBlock`: block `m.b`'s `nb` elements `x`
+/// (rows `lo ..`), some null. Base, maximum and sum over the rows that are not null, the width one wider than the range
+/// where a value sits at the top residual `2 ^ d - 1`, flagged (`coc::NUL_FLAG`); its frame the base, nothing patched.
+pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], lo: usize) {
+    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize, nul: &[u8], lo: usize) {
+        let (mut mn, mut mx, mut s, mut any) = (0i64, 0i64, 0i64, false);
+        for (i, v) in elts::<T>(x, "coc_enc_nul_meta")[..nb].iter().enumerate() {
+            if is_nul(nul, lo + i) { continue }
+            let k = v.i();
             if any { (mn, mx) = (mn.min(k), mx.max(k)) } else { (mn, mx, any) = (k, k, true) }
-            if k != snul { s = s.wrapping_add(k as u64) }
+            if k != self::nul::<T>() { s = s.wrapping_add(k) }
         }
         let r = (mx as u64).wrapping_sub(mn as u64);
         let mut d = crate::bits::width_for(r);
-        if has && any && d < 64 && r == (1u64 << d) - 1 { d += 1 }
-        (mn, mx, s, d | if has { crate::coc::NUL_FLAG } else { 0 })
-    }).collect();
-    let mut meta = alloc::vec::Vec::with_capacity(33 * blocks.len() + 24);
-    for b in &blocks { meta.extend(b.0.to_le_bytes()) }
-    for b in &blocks { meta.extend(b.1.to_le_bytes()) }
-    let mut off = alloc::vec::Vec::with_capacity(blocks.len() + 1);
-    off.push(0usize);
-    for b in &blocks { off.push(off[off.len() - 1] + bk * (b.3 & !crate::coc::NUL_FLAG) as usize / 8) }
-    for o in &off[..blocks.len()] { meta.extend((*o as u64).to_le_bytes()) }
-    for b in &blocks { meta.extend(b.2.to_le_bytes()) }
-    for v in [snul as u64, n as u64, lg as u64] { meta.extend(v.to_le_bytes()) }
-    meta.extend(blocks.iter().map(|b| b.3));
-    let mut pack = alloc::vec![0u8; off[blocks.len()]];
-    let mut v = alloc::vec![0u64; bk.next_multiple_of(64)];
-    for (b, &(mn, _, _, wb)) in blocks.iter().enumerate() {
-        let (lo, hi, d) = (b * bk, ((b + 1) * bk).min(n), wb & !crate::coc::NUL_FLAG);
-        if d == 0 { continue }
-        let top = if d == 64 { u64::MAX } else { (1u64 << d) - 1 };
-        for (o, i) in v.iter_mut().zip(lo..hi) { *o = if is_nul(i) { top } else { (key(i) as u64).wrapping_sub(mn as u64) } }
-        crate::simd::res_pack(&v, d, hi - lo, &mut pack[off[b]..off[b + 1]]);
+        if any && d < 64 && r == (1u64 << d) - 1 { d += 1 }
+        (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (mn, mx, s, d | crate::coc::NUL_FLAG, 0);
+        if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
     }
-    (meta, pack)
+    crate::by_width!(int width, go(m, x, nb, nul, lo))
+}
+/// The residuals of a block `nul_meta` planned: a null row's the top one `2 ^ d - 1`, every other row's its key less
+/// the base, so the null is tested on the block and never decoded.
+pub fn nul_pack(p: &mut EncPack, x: &[u8], width: usize, nul: &[u8], lo: usize) {
+    fn go<T: Elt>(p: &mut EncPack, x: &[u8], nul: &[u8], lo: usize) {
+        let (d, nb) = (p.width & crate::coc::WIDTH_MASK, p.nb);
+        if d == 0 { return }
+        let top = if d == 64 { u64::MAX } else { (1u64 << d) - 1 };
+        let mut v = crate::pod::Scr::<u64>::new(nb.next_multiple_of(64));
+        for (i, (o, x)) in v.iter_mut().zip(&elts::<T>(x, "coc_enc_nul_pack")[..nb]).enumerate() {
+            *o = if is_nul(nul, lo + i) { top } else { (x.i() as u64).wrapping_sub(p.frame) }
+        }
+        crate::simd::res_pack(&v, d, nb, p.res)
+    }
+    crate::by_width!(int width, go(p, x, nul, lo))
 }
 
 // ---- A17: coc.rs ----
@@ -343,11 +335,13 @@ impl Producer for crate::blocks::Blocks<'_> {
 /// into `pack(whole)` (asked once, after `m` is written; `whole` for a taken block's full `blk * width / 8` residual region),
 /// so whatever the producer computes for the block it computes once. A moved block's metadata, residuals and patch list are its
 /// column's (the positions are the block's own), which the writer's own step would choose for the same elements. Else the
-/// writer's own steps, reading `x`.
+/// writer's own steps, reading `x`, rows `lo ..` null where `nul` says (Lean `Coc.planBlock`): a block holding a null is
+/// `nul_meta`'s, any other `for_meta`'s.
 pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
-                        nb: usize, width: usize) {
+                        nb: usize, width: usize, nul: &[u8], lo: usize) {
     if let Some((c, pb)) = mv.take(m.b) { move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
     let x = x();
+    if (lo..lo + nb).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo); return nul_pack(&mut pack(false), x, width, nul, lo) }
     for_meta(m, x, width, nb);
     for_pack(&mut pack(false), x, width)
 }

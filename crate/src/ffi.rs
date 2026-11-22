@@ -329,14 +329,16 @@ impl Sink {
     /// The column `p` denotes, as the Lean answer (`(meta, pack)`);
     /// with `shrinks`, `None` where the encoded form is not smaller than the `n * width` dense bytes it replaces
     /// (`Enc.shrinks`, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink").
-    pub fn write<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool) -> Option<lean::O> {
+    pub fn write<P: Producer + ?Sized>(self, p: &P, shrinks: bool) -> Option<lean::O> { self.write_nul(p, shrinks, &[]) }
+    /// `write` of a column whose null rows are the set bits of `nul` (Lean `Coc.encodeAt`'s `nul`; empty: none).
+    pub fn write_nul<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool, nul: &[u8]) -> Option<lean::O> {
         let (w, n) = (self.e.width, self.g.n);
         let below = if shrinks { n * w } else { usize::MAX };
         // what the residuals and exceptions may come to before the size test is already failed, the metadata being fixed
         let msz = unsafe { lean::sarray_size(self.e.meta.cast()) };
         if below != usize::MAX { if below <= msz { return None } self.e.below = below - msz }
         self.staged(crate::QLEAN_COST_ARITH, below, &|s, b, lo, nb, buf, st| unsafe {
-            enc::move_blk(p, &mut (*s).meta_blk(b), (*s).stage(b, nb, st), || p.block(b, lo, nb, w, buf), nb, w)
+            enc::move_blk(p, &mut (*s).meta_blk(b), (*s).stage(b, nb, st), || p.block(b, lo, nb, w, buf), nb, w, nul, lo)
         })?;
         Some(self.finish())
     }

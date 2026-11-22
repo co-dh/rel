@@ -168,76 +168,62 @@ def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 �
     (frameAt ks mn d, d)
   else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
-/-- Block `b` of `n` `w`-byte elements at blocks of `2 ^ lg`: `blockOf`'s extremes and sum, then `planOf`'s frame and
-width for its keys. -/
-def planBlock (lg w n : Nat) (patch : Bool) (x : ByteArray) (b : Nat) : Int64 × Int64 × UInt64 × Int64 × Nat :=
-  let (mn, mx, s, _) := blockOf (2 ^ lg) w n b x
-  let lo := b * 2 ^ lg
-  let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
-  (mn, mx, s, f, d)
-
-/-- Block `b`, of `B` elements, of a nullable column (`atom+1`, owner decision K): `x` its `n` `w`-byte elements, row
-`i` the null where `Column.bitAt nul i`. Its base, maximum and `blockOf`'s sum are taken over the rows that are not null
-(`0`, `0`, `0` where every row is); its width byte is the range's `widthFor`, one bit wider where a null shares the
-block with a value at the top residual `2 ^ d - 1` (so no value reads as the null), plus `nulAt`'s bit 7 where the block
-holds a null. A block whose range is all `2 ^ 64` keys is not widened: there its top residual reads as the null. -/
+/-- Block `b`, of `B` elements, of a nullable column (`atom+1`, owner decision K) where it holds a null: `x` its `n`
+`w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its base, maximum and `blockOf`'s sum are taken over the
+rows that are not null (`0`, `0`, `0` where every row is); its width byte is the range's `widthFor`, one bit wider where
+a value sits at the top residual `2 ^ d - 1` (so no value reads as the null), plus `nulAt`'s bit 7. A block whose range
+is all `2 ^ 64` keys is not widened: there its top residual reads as the null. -/
 def nulBlock (B w n b : Nat) (x nul : ByteArray) : Int64 × Int64 × UInt64 × Nat :=
   let lo := b * B
-  let is := Array.range (min (lo + B) n - lo)
-  let ks := (is.filter fun j => !Rel.Column.bitAt nul (lo + j)).map fun j => keyAt w x (lo + j)
+  let ks := ((Array.range (min (lo + B) n - lo)).filter fun j => !Rel.Column.bitAt nul (lo + j)).map
+    fun j => keyAt w x (lo + j)
   let mn := ks.foldl min (ks.getD 0 0)
   let mx := ks.foldl max (ks.getD 0 0)
   let s := ks.foldl (init := (0 : UInt64)) fun acc k => if k.toUInt64 == sumNul w then acc else acc + k.toUInt64
-  let has := is.any fun j => Rel.Column.bitAt nul (lo + j)
   let d := Rel.Column.widthFor (mx - mn).toUInt64.toNat
-  let d := if has && !ks.isEmpty && d < 64 && (mx - mn).toUInt64 == Rel.Column.ones d then d + 1 else d
-  (mn, mx, s, d + if has then 128 else 0)
+  (mn, mx, s, 128 + if !ks.isEmpty && d < 64 && (mx - mn).toUInt64 == Rel.Column.ones d then d + 1 else d)
 
-/-- `encodeNul` at blocks of `2 ^ lg`: block `b` is `nulBlock`'s, a null row's residual is the top one `2 ^ d - 1` and
-every other row's is its key less the base, so the null is tested on the block (`Column.foRNul`) and never decoded.
-Nothing is patched, as in `bools`. -/
-def encodeNulAt (lg : Nat) (width : USize) (x nul : ByteArray) : ByteArray × ByteArray :=
-  let w := width.toNat
-  let n := x.size / w
-  let B := 1 <<< lg
-  let bs := (Array.range ((n + B - 1) / B)).map fun b => nulBlock B w n b x nul
-  let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (mn, _, _, wb) =>
-    let lo := b * B
-    let d := wb % 128
-    (acc ++ packRes B d fun j =>
-      if lo + j < n then (if Rel.Column.bitAt nul (lo + j) then Rel.Column.ones d else (keyAt w x (lo + j) - mn).toUInt64)
-      else 0, b + 1)).1
-  (foRMeta lg (sumNul w) n (bs.map fun (mn, mx, s, wb) => (mn.toUInt64, mx.toUInt64, s, wb)), pack)
-
-/-- The nullable Frame of Reference column of the dense `width`-byte elements `x` whose null rows are the set bits of
-the bitmap `nul` (a bit past it is `0`): `(metadata, pack)`, each block written encoded with its nulls in band, the
-writer of `Vals (.sum (.atom t) .one)`. `rust/src/enc.rs`'s `encode_nul` writes the same bytes. -/
-@[extern "qlean_coc_encode_nul"]
-def encodeNul (width : USize) (x : @& ByteArray) (nul : @& ByteArray) : ByteArray × ByteArray :=
-  encodeNulAt Rel.Column.lgEnc width x nul
+/-- The writer's block step, block `b` of `n` `w`-byte elements at blocks of `2 ^ lg`, row `i` null where
+`Column.bitAt nul i`: `(base, max, sum, frame, width byte)`. A block holding a null is `nulBlock`'s, its frame its base;
+any other is `blockOf`'s extremes and sum with `planOf`'s frame and width. Which blocks reserve the null's top residual
+is decided here and nowhere else. -/
+def planBlock (lg w n : Nat) (patch : Bool) (x nul : ByteArray) (b : Nat) : Int64 × Int64 × UInt64 × Int64 × Nat :=
+  let lo := b * 2 ^ lg
+  if (Array.range (min (lo + 2 ^ lg) n - lo)).any fun j => Rel.Column.bitAt nul (lo + j) then
+    let (mn, mx, s, d) := nulBlock (2 ^ lg) w n b x nul
+    (mn, mx, s, mn, d)
+  else
+  let (mn, mx, s, _) := blockOf (2 ^ lg) w n b x
+  let (f, d) := planOf patch ((Array.range (min (lo + 2 ^ lg) n - lo)).map fun j => keyAt w x (lo + j)) mn mx w
+  (mn, mx, s, f, d)
 
 /-- `encode` at blocks of `2 ^ lg` elements: the model every theorem about the encoder is stated
-over, at any `lg` the layout admits, `6 .. 16`. `encode` is this at `Column.lgEnc`.
+over, at any `lg` the layout admits, `6 .. 16`. `encode` is this at `Column.lgEnc`. The one writer of null and non-null
+columns: `nul` the bitmap of the null rows (a bit past it is `0`), empty for a column with none.
 
-Block `b` is `blockOf`'s extremes and sum with `planOf`'s frame `f` and width `d`: an element whose key `outside`
-leaves is patched — its residual 0, its bits in the patch list `excBlob` lays after the residuals — and every other
-is its key less `f` at `d` bits. The patch list exists where a block patches, its frames (`f - mn` a block) where
-one is not its minimum; `rust/src/enc.rs`'s `for_blk` and `pack_exc_blk` write the same bytes. A column of `2 ^ 32`
-elements or more patches nothing: the list's block offsets are `u32`. -/
-def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) : ByteArray × ByteArray :=
+Block `b` is `planBlock`'s base, frame `f` and width byte `d` (its residual width `d % 128`): an element whose key
+`outside` leaves is patched — its residual 0, its bits in the patch list `excBlob` lays after the residuals — a null row
+takes the top residual `2 ^ d - 1`, so the null is tested on the block (`Column.foRNul`) and never decoded, and every
+other is its key less `f` at `d` bits. The patch list exists where a block patches, its frames (`f - mn` a block) where
+one is not its minimum; `rust/src/enc.rs`'s `for_blk`, `nul_meta` and `pack_exc_blk` write the same bytes. A column of
+`2 ^ 32` elements or more patches nothing: the list's block offsets are `u32`. -/
+def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) (nul : ByteArray := .empty) :
+    ByteArray × ByteArray :=
   let w := width.toNat
   let n := x.size / w
   -- the block size once as a shift, not a `2 ^ lg` at every element
   let B := 1 <<< lg
-  let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x
+  let blk := planBlock lg w n (patch && decide (n < 2 ^ 32)) x nul
   let bs := (Array.range ((n + B - 1) / B)).map blk
   -- every per-element read of a plan goes to `bs`, never `blk`: each `blk` call reruns the block's width search
   let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>
     let lo := b * B
-    (acc ++ packRes B d fun j =>
+    (acc ++ packRes B (d % 128) fun j =>
+      if lo + j < n && Rel.Column.bitAt nul (lo + j) then Rel.Column.ones (d % 128) else
       (if lo + j < n && !outside f d (keyAt w x (lo + j)) then keyAt w x (lo + j) - f else 0).toUInt64, b + 1)).1
   let exc := (Array.range n).filter fun i =>
-    outside (bs.getD (i / B) default).2.2.2.1 (bs.getD (i / B) default).2.2.2.2 (keyAt w x i)
+    !Rel.Column.bitAt nul i &&
+      outside (bs.getD (i / B) default).2.2.2.1 (bs.getD (i / B) default).2.2.2.2 (keyAt w x i)
   let fs := bs.map fun (mn, _, _, f, _) => (f - mn).toUInt64
   let frm := fs.any (· != 0)
   let tail := if exc.size = 0 then ByteArray.empty else
@@ -253,9 +239,11 @@ states the round trip and not the bytes.
 
 `width` is `QAtomicType.width`, and only 1, 2, 4 and 8 are legal: the kernels are instantiated at
 those four element types, `Column.encode` below refuses everything else, and the C aborts rather than
-answering an empty pair, which would drop a column's contents silently. -/
+answering an empty pair, which would drop a column's contents silently. `nul` is `encodeAt`'s: the bitmap of the
+null rows, empty for a column with none. -/
 @[extern "qlean_coc_encode"]
-def encode (width : USize) (x : @& ByteArray) : ByteArray × ByteArray := encodeAt Rel.Column.lgEnc width x
+def encode (width : USize) (x : @& ByteArray) (nul : @& ByteArray := .empty) : ByteArray × ByteArray :=
+  encodeAt Rel.Column.lgEnc width x true nul
 
 /-- The `u1` Frame of Reference column of the `n` booleans `p`, the form every boolean writer answers: `encodeAt` of
 their 0/1 bytes, unpatched, so a mixed block's residuals are its bitmap at width 1 and an all-0 or all-1 block is

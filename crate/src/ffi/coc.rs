@@ -26,14 +26,9 @@ pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
 }
 
 export! {
-    /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`)
-    fn qlean_coc_encode(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode", width), false) }
-    /// `(meta, pack)` of the nullable column `x` of `width`-byte elements whose null rows are the set bits of `nul`
-    fn qlean_coc_encode_nul(width: usize, x: B, nul: B) -> O {
-        let (m, p) = crate::enc::encode_nul(crate::DEFAULT_LG as u32, x.bytes(), elt_width("qlean_coc_encode_nul", width), nul.bytes());
-        let arr = |v: &[u8]| { let mut a = SArr::new(1, v.len()); a.bytes_mut().copy_from_slice(v); O::from(a) };
-        ctor(0, [arr(&m), arr(&p)], &[])
-    }
+    /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`), its null rows the set bits of
+    /// `nul` (empty: none)
+    fn qlean_coc_encode(width: usize, x: B, nul: B) -> O { encode(x, elt_width("qlean_coc_encode", width), false, nul.bytes()) }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
         let c = view("qlean_coc_decode", meta, pack, n);
@@ -62,8 +57,8 @@ pub fn dec<T: pod::Elt + Send>(c: &Coc) -> O {
 
 /// The dense column `x` of `w`-byte elements through a `Sink`: the answer, or with `shrinks` `some` of it, `none`
 /// where the encoded form is not shorter than `x` (the `*_below` exports).
-pub fn encode(x: B, w: usize, shrinks: bool) -> O {
+pub fn encode(x: B, w: usize, shrinks: bool, nul: &[u8]) -> O {
     let (s, p) = (Sink::new(x.bytes().len() / w, w), Blocks::dense(x.bytes(), w));
-    if !shrinks { return s.answer(&p) }
-    s.write(&p, true).map_or_else(|| boxed(0), |a| ctor(1, [a], &[]))
+    if !shrinks { return s.write_nul(&p, false, nul).expect("qlean_coc_encode: a write with no size test has an answer") }
+    s.write_nul(&p, true, nul).map_or_else(|| boxed(0), |a| ctor(1, [a], &[]))
 }

@@ -78,14 +78,14 @@ example : summed outlier (u 3) = 4294967296 := by decide +kernel
 example : summed lifted (u 3) = 8589934593 := by decide +kernel
 #guard summed lifted (u 3) == 8589934593
 
-/-- `xs` at 8 bytes with the rows `ns` null, encoded by `Coc.encodeNul`, as the metadata and pack bytes. -/
+/-- `xs` at 8 bytes with the rows `ns` null, encoded by `Coc.encode`, as the metadata and pack bytes. -/
 def encN (xs : List UInt64) (ns : List Nat) : List UInt8 × List UInt8 :=
-  let r := Coc.encodeNul (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+  let r := Coc.encode (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
   (r.1.data.toList, r.2.data.toList)
 
 /-- Each row of `encN xs ns` read back by `Column.foROpt`: `none` at a null, tested on the block. -/
 def readN (xs : List UInt64) (ns : List Nat) : List (Option UInt64) :=
-  let r := Coc.encodeNul (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+  let r := Coc.encode (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
   (List.range xs.length).map (Column.foROpt r.1 r.2 #[])
 
 -- values 3 4 6 at rows 0 2 3, nulls at 1 4: range 3 = `2 ^ 2 - 1` reaches the top residual, so width 3, flagged (131);
