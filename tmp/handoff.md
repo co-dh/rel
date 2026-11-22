@@ -44,3 +44,16 @@ The route-B kernel laws above avoid it by describing answers as `Coc.encode ws (
 1. Closure `kscatter_closed` (above), then `lake build RelKernel`, kernel tests.
 2. Null-aware `raw_encodeAt` (Raw.lean:105) from `foROpt_encode` once `hmax` is decided.
 3. Rel downstream callers (list above).
+
+# rq17g (null code never denotes a value)
+
+Done: `Coc.patched lst f d k = outside f d k || lst && 128 ≤ d && (k - f) == ones (d % 128)` is the one patch test of
+`Coc.encodeAt` (pack and patch list); `lst = decide (n < 2 ^ 32)` (a column that can carry a patch list). Rust
+`enc::nul_meta` counts and `nul_pack` writes the same patches (`nul_pack` now packs through `pack_block`, which also
+fixes a panic at power-of-two widths: `res_pack` refuses them). `hmax` gone; `foROpt_encode` keeps `hbig` only for
+`2 ^ 32 ≤ n` (no patch list there, so a null block spanning all 2^64 keys is unrepresentable). New `rawOpt_encodeAt`
+(Raw). CocTest pair `readN [Int64.min, Int64.max, 0] [2]`; cargo test `encode_nul_patches_a_value_at_the_null_code`.
+Green: Coc, Encoding, Alp, Raw, KernelSpec.Scatter, KernelSpec.Asc; cargo 75 passed; `build.sh syms` 0.
+Not run: CocTest's `#guard`s (need the RelKernel dynlib, blocked by Closure :171, rq17f); its `decide +kernel` passed.
+Proof note: generalize `decide (n < 2 ^ 32) = lst` right after `pl`; without it `generalize (Array.foldl _ …).1 = pack`
+times out in `whnf`.

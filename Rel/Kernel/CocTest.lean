@@ -95,6 +95,13 @@ example : encN [3, 0, 4, 6, 0] [1, 4] = (md 3 6 13 5 131, [120, 118] ++ List.rep
 example : readN [3, 0, 4, 6, 0] [1, 4] = [some 3, none, some 4, some 6, none] := by decide +kernel
 #guard readN [3, 0, 4, 6, 0] [1, 4] == [some 3, none, some 4, some 6, none]
 
+-- `Int64.min`, `Int64.max` and a null in one block: the range is all `2 ^ 64` keys, width 64 cannot widen, and
+-- `Int64.max - Int64.min = 2 ^ 64 - 1` is the null's code, so the `Int64.max` row is patched and reads as itself
+example : readN [0x8000000000000000, 0x7fffffffffffffff, 0] [2] =
+    [some 0x8000000000000000, some 0x7fffffffffffffff, none] := by decide +kernel
+#guard readN [0x8000000000000000, 0x7fffffffffffffff, 0] [2] ==
+    [some 0x8000000000000000, some 0x7fffffffffffffff, none]
+
 -- every row null: width 0, flagged (128), no residual bytes
 example : encN [0, 0] [0, 1] = (md 0 0 0 2 128, []) := by decide +kernel
 #guard encN [0, 0] [0, 1] == (md 0 0 0 2 128, [])

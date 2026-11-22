@@ -149,4 +149,16 @@ mod tests {
         let w = c.meta.w(0);
         for i in (0..bk).filter(|&i| nulr(i)) { assert_eq!(res_get_in(&p, w, i, p.len()), (1 << w) - 1, "row {i}") }
     }
+    // Lean `CocTest`'s pair: `i64::MIN`, `i64::MAX` and a null in one block span all `2 ^ 64` keys, so width 64, and
+    // `i64::MAX - i64::MIN` is the null's code: the writer patches that row, which reads as itself and not as the null
+    #[test] fn encode_nul_patches_a_value_at_the_null_code() {
+        let x = [i64::MIN, i64::MAX, 0];
+        let o = crate::ffi::Sink::new(3, 8).write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &[0b100])
+            .expect("encode_nul: a write with no size test has an answer");
+        let [m, p] = [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
+        let c = crate::coc::view(&m, &p, 3).unwrap_or_else(|e| panic!("encode_nul: {e}"));
+        assert_eq!((c.meta.nul(0), c.meta.w(0)), (true, 64));
+        assert_eq!((c.get(0), c.get(1)), (i64::MIN, i64::MAX));
+        assert_eq!((c.is_nul(0), c.is_nul(1), c.is_nul(2)), (false, false, true));
+    }
 }
