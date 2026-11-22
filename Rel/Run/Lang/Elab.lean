@@ -637,8 +637,22 @@ def Pre.parts (x : Pre) : List (Pre × Pol) :=
     if let some pol := pol then modify (· ++ [(y, pol)])
     pure y).run [])).2
 
+/-- `Pre.rewrite`, each node visited once per address: an expansion holds each argument once per use (`callOf`'s
+    `alt`), so nested definitions share subterms and a walk of the tree is exponential in the nesting. -/
+unsafe def Pre.rewriteShared (fp : Pos → Pos) (g : Pre → Option Pre) (x : Pre) : Pre :=
+  (go x).run' {}
+where go (y : Pre) : StateM (Std.HashMap USize Pre) Pre := do
+  if let some z := (← get)[ptrAddrUnsafe y]? then return z
+  let z ← match g y with | some z => pure z | none => y.traverse (pure ∘ fp) fun _ c => go c
+  modifyGet fun m => (z, m.insert (ptrAddrUnsafe y) z)
+
+/-- `x` with each node `g` names replaced, every other rebuilt from its parts with its positions through `fp`. -/
+@[implemented_by Pre.rewriteShared]
+partial def Pre.rewrite (fp : Pos → Pos) (g : Pre → Option Pre) (x : Pre) : Pre :=
+  match g x with | some z => z | none => Id.run (x.traverse (pure ∘ fp) fun _ y => pure (y.rewrite fp g))
+
 /-- `x` with every position `p`: a prelude body at its use, so an error `build` raises in it is at the use (§c). -/
-partial def Pre.at (p : Pos) (x : Pre) : Pre := Id.run (x.traverse (fun _ => pure p) fun _ y => pure (y.at p))
+def Pre.at (p : Pos) (x : Pre) : Pre := x.rewrite (fun _ => p) fun _ => none
 
 /-- The source of each `nil` in `x`, a definition's body at its use included. -/
 partial def Pre.nilSrcs : Pre → List OTy
@@ -690,9 +704,8 @@ def Pre.bound (k : Nat) (x : Pre) : Option Pre :=
   | c :: cs => some (cs.foldl .meet c)
 
 /-- `x` with each variable `.var p k a b t` replaced by `g p k a b t`. -/
-partial def Pre.mapVar (g : Pos → Nat → OTy → OTy → Option Bool → Pre) : Pre → Pre
-  | .var p k a b t => g p k a b t
-  | x => Id.run (x.traverse pure fun _ y => pure (y.mapVar g))
+def Pre.mapVar (g : Pos → Nat → OTy → OTy → Option Bool → Pre) : Pre → Pre :=
+  Pre.rewrite (fun q => q) fun | .var p k a b t => some (g p k a b t) | _ => none
 
 /-- `x` with each variable of a call's body (`St.args`) the argument it stands for: what `x` computes. -/
 def St.expand (st : St) (x : Pre) : Pre := x.mapVar fun p k a b t => (st.args.lookup k).getD (.var p k a b t)
