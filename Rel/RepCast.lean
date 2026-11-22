@@ -127,6 +127,8 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
   | .prod (.atom _) (.sum ..), _, _, _, h, _, _
   | .prod (.prod ..) _, _, _, _, h, _, _ | .prod (.arr _) _, _, _, _, h, _, _ | .prod (.sum ..) _, _, _, _, h, _, _
   | .arr _, _, _, _, h, _, _ | .sum .., _, _, _, h, _, _ => simp [Tab.floatOp, hs] at h
+  | .one, _, _, _, h, _, _ | .prod .one _, _, _, _, h, _, _ | .prod (.atom _) .one, _, _, _, h, _, _
+  | .atom _, .one, _, _, h, _, _ | .prod (.atom _) (.atom _), .one, _, _, h, _, _ => simp [Tab.floatOp, hs] at h
 
 /-- `$` at any objects: the graph `castDen A B` on the values `X`, no row where a side is no atom. -/
 theorem cast_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.cast X = .ok T) (a : A.El) (b : B.El) :

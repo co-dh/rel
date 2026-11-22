@@ -867,7 +867,7 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → {es
     rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs, Arr.codes_of_eq tag hc0 i i' ht, k1, k2]
   | .one, n, _, es, hes, _, _, _, _, _ => by
-    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; rfl
+    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys]
 
 /-- **Rows of `x` are equal iff their order codes are** where `Vals.nub x` answers: `kasc` read every column
 (`Vals.row_of_codes`, `Vals.codes_of_row`). -/

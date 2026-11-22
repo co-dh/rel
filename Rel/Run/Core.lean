@@ -65,6 +65,16 @@ theorem get_ne (x : Arr t n) (i : Fin n.toNat) (h : t ≠ .general) :
     x.get i = ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default := by
   cases t <;> first | exact absurd rfl h | rfl
 
+/-- Element `i` read as `t+1` (owner decision K): `none` where it is the in-band null, tested on the encoding and never
+    decoded (`Column.foRNul`: a flagged block's top residual held by no patch, an ALP column's integer pack read the
+    same where no ALP exception holds `i`), else `some` of `get`. A column with no flagged block is `some` everywhere. -/
+def opt (x : Arr t n) (i : Fin n.toNat) : Option (El t) :=
+  let nul := match x.enc with
+    | .foR m p => Column.foRNul m p #[] i
+    | .alp m p a => (Column.alpExcAt m a (i / Column.blk m) (i % Column.blk m)).isNone && Column.foRNul m p #[] i
+    | _ => false
+  if nul then none else some (x.get i)
+
 /-- The elements in position order, for proofs only. -/
 def toList (x : Arr t n) : List (El t) := List.ofFn x.get
 

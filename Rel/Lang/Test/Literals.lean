@@ -82,7 +82,7 @@ rel_program arrs where
 
 #guard arrs.ok && printed arrs.prints == ["{(∗, 3 1 2)}", "{(a b, 1)}", "{(∗, (1, 2) (3, 4))}", "{(∗, [1] [2 3])}",
   "{((a, 1 2), [3])}", "{(a, -1 2), (b, [])}", "{(∗, [1 2] [])}", "{(3 1 2, a b)}", "{(∗, [[]] [[1]])}"]
-#guard (get arrs.expanded "x" .long (.arr .long)).map (·.toList) == some [((0 : Int64), [(3 : Int64), 1, 2])]
+#guard (get arrs.expanded "x" .one (.arr .long)).map (·.toList) == some [((), [(3 : Int64), 1, 2])]
 -- a printed literal reads back as itself
 #eval trips ["{(∗, 3 1 2)}", "{(∗, [1] [2 3])}", "{((a, 1 2), [3])}", "{(b, [])}", "{(∗, (1, 2) (3, 4))}"]
 -- an element position whose arrays are all empty, a word in no object, rows nesting differently, a comma

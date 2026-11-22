@@ -327,7 +327,7 @@ rel_program csvDateKeyIO where
 /--
 info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
  "key,val\n2024.01.15,1\n2024.01.16,3\n",
- [(0, 5, Sum.inl (0, 10)), (1, 6, Sum.inr 0), (2, 7, Sum.inl (1, 0))],
+ [(0, 5, Sum.inl (0, 10)), (1, 6, Sum.inr ()), (2, 7, Sum.inl (1, 0))],
  [(19737, 1), (19738, 3)],
  "/data/tmp/rel-test-io-rec/bad.csv: data row 2: column 'Q.sym' is not empty and column 'Q.bid' is empty (null); the columns of one `S+1` are empty together, and all of them empty is the `1`")
 -/
@@ -342,7 +342,7 @@ info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
   let out ← IO.FS.readFile (d ++ "/out.csv")
   let days ← IO.FS.readFile (d ++ "/days-out.csv")
   let cols : Db.CsvCols := [("N", .atom, .i64, []), ("Q.sym", .null, .i64, ["A", "B"]), ("Q.bid", .null, .i64, [])]
-  let S : Schema := [("val", .prod .long (.sum (.prod .long .long) (.atom .u8)))]
+  let S : Schema := [("val", .prod .long (.sum (.prod .long .long) .one))]
   let back ← Table.readCsv [] S cols (d ++ "/out.csv")
   let dback ← Table.readCsv [("key", .atom .date)] [("val", .long)] [("key", .atom, .date, []), ("val", .atom, .i64, [])]
     (d ++ "/days-out.csv")

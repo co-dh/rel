@@ -237,8 +237,8 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
           unless a == b do
             .error s!"{path}: data row {j + 1}: column '{c}' is {s a} and column '{c'}' is {s b}; the columns of one \
               `S+1` are empty together, and all of them empty is the `1`"
-    -- the right side `1` of no rows: every row reads its one value
-    pure ([t, i, v] ++ g.map (·.2.2) ++ [(0, .pos)], cs, ns.drop k)
+    -- the right side `1` holds the null rows, as `inr` builds it: their count, no column
+    pure ([t, i, v] ++ g.map (·.2.2) ++ [((← tagCount n true x).toUSize, .pos)], cs, ns.drop k)
   | .one, x :: cs, _ :: ns => pure ([x], cs, ns)
   | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
 
