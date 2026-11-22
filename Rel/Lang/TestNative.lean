@@ -167,7 +167,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
    ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc), ("nl", semOut native1a.nl),
    ("hd", semOut native1a.hd), ("ee", semOut native1a.ee), ("lm", semOut native1a.lm), ("lu", semOut native1a.lu),
-   ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc)]
+   ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
+   ("fm", semOut native1a.fm)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do

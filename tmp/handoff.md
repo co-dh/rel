@@ -1,13 +1,18 @@
-# nativetm4 handoff
+# nativetm5 handoff
 
-Merge of nativetm3b (f20d4c1) and nativetm3a (e581d7d): σ is `Vars`, `ldivSelB`/`groupsB` on the `Col` tree.
+Done:
+- Step 1: `funT` (Rel/Lang/EmitC.lean, before `groupsB`) builds a recipe as a plan function and `apply`s it; an equal
+  `Fun` (derived `BEq` on `Val`, `Instr`, `Fun` in Rel/Run/Lang/Plan.lean) is reused, so one C function per table
+  shape. `compSelB`, `compB`, `ldivSelB` go through it. `rel-native.c` 7.8 MB -> 4.5 MB (4.7 MB with `fm`),
+  `cc1 -O2` peak 1.35-1.47 GB; `make native` exit 0.
+- Step 2: `fm ≜ lm F(rt)` is byte-equal (plan = native = Lean) and in `semOuts`. The "0 images" failure was `hy`,
+  not `fm`: `hylo`'s `μY` starts from `Y = 𝟘`, so `F(Y)` gives no image to an element, where `Tab.map`
+  (Rel/Run/Fix.lean:122) runs its left fold `foldRounds peelL (fun acc el => snoc (acc.pair (el.comp R)))`.
 
-WIP after the merge:
-- `≫` follows `Tab.compSel` (`compSelB`: bit matrix when `bitsWin`, else `compFromB`); fixes the Λ mismatch of `lm`/`lu`
-  (GenK's `compSelM` read back empty cells at the first code's lo/hi). `relc lean` = `relc plan` on every semOut.
-- `cellsBoundB` guards `n·m + n + m < 2^63` in pack and mem.
-- Open: `make native` OOMs in `cc1 -O2` (20 GB) on the 7.8 MB `rel-native.c`; `-O1` compiles at 3.9 GB. `compSelB`
-  builds both forms at every `≫`; emit it once as a plan function (`defFun`/`apply`, as gfun) to shrink the C.
-- Open: `cellsMapB` (row `F`) fails on `fm ≜ lm F(rt)` with 0 images (C.n = 0): the domain passed to `R` or the
-  path of `v` does not meet `rt`'s key. `fm`, `hy` are in native1a but not in semOuts.
-- Not started: est, thin, fold/foldr/foldI (foldRounds on Instr.loop).
+Left:
+- `Tab.map`'s fold branch in `cellsMapB`, then `hy` into `semOuts`. Needs plan recipes for `uncons` (`peelL`),
+  `snoc`, `pair` on array sides, and `Tab.foldRounds` (Rel/Run/Fix.lean:44) on `Instr.loop` (`loop` in
+  Rel/Run/Lang/Plan.lean; `fixB` in EmitC is the model: state = count + `regsOf`, `withRegs` to read back).
+  `cellsMapB` should `iteT` between the one-pass form and the fold on the bit it now `guard`s.
+- `est`, `thin` (`Tab.est`, `Tab.thin`), `fold`/`foldr`/`foldI` (`GenK.fold`, Rel/Run/Lang/GenK.lean ~345): all on
+  `foldRounds`, so the same loop recipe serves them. Each a `native1a` def plus a `semOuts` entry.
