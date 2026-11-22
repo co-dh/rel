@@ -110,9 +110,9 @@ def Prim.objs (r : Prim) (A B : Obj) : Option (List Obj) := do
 
 instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var false 0⟩
 
-/-- The spine `t` is headed by a row whose table is made from its relations' whole tables (`Prim.whole`). -/
+/-- The spine `t` is headed by a row whose dem is read off its relations (`Prim.dem` `whole` or `arg`). -/
 def Tm.whole : {A B : Obj} → Tm A B → Bool
-  | _, _, .prim r => r.whole
+  | _, _, .prim r => r.dem != .keys
   | _, _, .arg f _ => f.whole
   | _, _, _ => false
 

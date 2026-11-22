@@ -173,6 +173,16 @@ def sumAtoms : List QAtomicType := [.i64, .f64]
 /-- The float atoms, whose verbs run on `f64` words: those `fval` reads. -/
 def floatAtoms : List QAtomicType := [.f32, .f64]
 
+/-- How a row runs on demand (§a, `Tm.dem`): `keys` always; `whole` its table made from its relations' whole tables
+    (`GenK.ofRel`), so a closed `asc(P)` runs whole at a source with no universe; `arg` its relations run on the keys
+    in demand (`dom`). A row of `whole` or `arg` given its relations needs keys exactly where one of them does. -/
+inductive PrimDem | keys | whole | arg
+  deriving Inhabited, BEq, DecidableEq, Repr
+
+instance : Lean.ToExpr PrimDem where
+  toExpr d := Lean.mkConst (match d with | .keys => ``PrimDem.keys | .whole => ``PrimDem.whole | .arg => ``PrimDem.arg)
+  toTypeExpr := Lean.mkConst ``PrimDem
+
 /-- A builtin run on the keys in demand: `sym` as written (`written`), or the prelude's definition, the constant
     `prelude`, run as it (`Expand.useDef`), or neither: a converse only (`convTm`), or an `Op` of its own that
     `Calc.toTerm` reads over any allegory (`Op.row`); `sig` its relation parameters (each `X ⟶ Y` and its form:
@@ -189,9 +199,8 @@ structure Prim where
   prelude : Option Lean.Name := none
   aop : Except String Lean.Name := .error "it is not written"
   mono : Bool := true
-  /-- Its table is made from its relations' whole tables (`GenK.ofRel`): it needs no keys where they need none
-      (`Tm.dem`), so a closed `asc(P)` runs whole at a source with no universe. -/
-  whole : Bool := false
+  /-- Whether it runs on demand (`Tm.dem`, `PrimDem`). -/
+  dem : PrimDem := .keys
   /-- Its number object variables, each with the atoms it runs at (`length`'s `ℕ` at `intAtoms`, `sum`'s and `sums`'s
       values at `sumAtoms`, a unary float verb's at `floatAtoms`): an object of any other atom is refused as `succ`
       refuses one (`Elab.numObj`), never left to fail inside its definition. -/
@@ -297,7 +306,7 @@ def prims : List Prim :=
    -- larger `P` renumbers. Its definition `(dom(P) Λ(> P) length)°` is no `Elab.dfns` row: `>` on any object
    -- (`Obj.lt`) has no term (`lt` is on ℕ's universe only), and no law proves `ascDen` equal to it
    { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
-     mono := false, aop := .error "AOP declares no numbering of a set by its order", whole := true },
+     mono := false, aop := .error "AOP declares no numbering of a set by its order", dem := .whole },
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
    -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only
@@ -305,7 +314,7 @@ def prims : List Prim :=
    { sym := "sums", num := [("V", sumAtoms)], ord := ["P"],
      sig := ([((.prod (.var {} "K") (.var {} "P"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "P"),
        .var {} "V"),
-     mono := false, aop := .error "AOP declares no prefix sums per key", whole := true },
+     mono := false, aop := .error "AOP declares no prefix sums per key", dem := .whole },
    flatRow,
    -- `x $ F`: each value of `x : A ⟶ N` to the same number at `F`'s atom (`QAtomicType.embed`, typed base S6), written
    -- as its own infix form, which names the target object
