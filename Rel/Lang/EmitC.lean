@@ -31,9 +31,9 @@ instance : Reg Db.CsvShape := ⟨.u8, fun | .u8 0 => some .atom | .u8 1 => some 
     bytes and buffers. -/
 def abi : List Kernel :=
   [kernel% Rel.Kernel.kscan, kernel% Rel.Kernel.kscatter, kernel% Rel.Kernel.kgather, kernel% Rel.Kernel.kasc,
-   kernel% Rel.Kernel.kseen, kernel% Rel.Db.ownWrite, kernel% Rel.Db.ownMap, kernel% Rel.Db.csvRead,
+   kernel% Rel.Kernel.kseen, kernel% Rel.Kernel.kbitrows, kernel% Rel.Db.ownWrite, kernel% Rel.Db.ownMap, kernel% Rel.Db.csvRead,
    kernel% Rel.Db.csvWrite, kernel% Rel.Db.pushPart, kernel% USize.decEq, kernel% UInt8.decEq,
-   kernel% USize.add, kernel% USize.div, kernel% UInt64.toUSize, kernel% USize.toUInt64, kernel% ByteArray.usize]
+   kernel% USize.add, kernel% USize.sub, kernel% USize.mul, kernel% USize.decLt, kernel% USize.div, kernel% UInt64.toUSize, kernel% USize.toUInt64, kernel% ByteArray.usize]
 
 def abiOf (sym : String) : Option Kernel := abi.find? (·.sym == sym)
 
@@ -75,53 +75,1313 @@ def flatObj : Obj → Bool
   | .prod a b => flatObj a && flatObj b
   | _ => false
 
-/-- **`Tab.canon`** (design §4: `asc → seen → gather`, as `Vals.nub` of the pair side) of the relation whose sides
-    `s` are of the objects `A`, `B`: `kasc` over the key's atom columns then the value's, `kseen` on the sorted columns,
-    the count `k` of runs (the last row's group `+ 1`: a `kscan max` fold of the groups, `0` at no row), `kgather` of
-    the permutation at each run's first row, and every column gathered there. An array or a sum side (`cells` keys,
-    summand gathers) and a column with no `Enc` register (mapped from its file) are refused, naming them. -/
-def canonB (A B : Obj) (s : Side × Side) : Bld (Side × Side) := do
-  unless flatObj A && flatObj B do throw "canon of an array or a sum side, whose `cells` keys no plan recipe builds yet"
-  let col (sd : Side) (p : String) (t : QAtomicType) : Bld (String × QAtomicType × Nat × Nat) := do
-    let some rs := sd.lookup p | throw s!"canon: column `{p}` has no registers (a positions column)"
-    let (some n, some e) := (rs[3]?, rs[6]?) | throw s!"canon: column `{p}` has no `Enc` register (mapped from its file)"
-    pure (p, t, n, e)
-  let ks ← (objCols A "").mapM fun (p, t) => col s.1 p t
-  let vs ← (objCols B "").mapM fun (p, t) => col s.2 p t
-  let some (_, _, n, _) := (ks ++ vs).head? | throw "canon of a relation with no atom column"
-  let key (t : QAtomicType) (e : Nat) : Bld Nat := do ctorB 0 #[← ctorB 0 #[] #[← lit (Reg.put t)], e] #[]
-  let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← (ks ++ vs).mapM fun (_, t, _, e) => key t e)]
+/-! ### A term's table as a plan: the `GenK` recipe of each `Tm` node on the five kernels (design §4) -/
+
+/-- A column of a side as the plan holds it, node for node as `Vals`: an atom column (its path as `cols` names it, its
+    atom, its `Enc` register); an `arr` side (its path; its payload's row count `m`, a `size` register; `lo`, `hi`,
+    `Enc` registers of `i64`; its payload's columns, `m` rows); a `sum` side, which `sumB` alone reads. A product side
+    is its two sides' columns one after the other (`Cols`), in `objCols` order. -/
+inductive Col where
+  | atom (p : String) (t : QAtomicType) (e : Nat)
+  | arr (p : String) (m lo hi : Nat) (pay : List Col)
+  | sum (p : String) (l r tag idx : Nat) (x y : List Col)
+  deriving Inhabited
+
+/-- A side's columns. -/
+abbrev Cols := List Col
+
+/-- Every recipe's case of a `sum` side, the one place a sum's layout would be read (so a change of it, `nullband4`'s
+    in-band `foR` for `sum (atom t) one`, lands here alone); `what` names the recipe. No recipe reads one yet. -/
+def sumB {α : Type} (what : String) : Bld α :=
+  throw s!"{what} on a sum side (tag, idx, two payloads): no plan recipe reads a sum yet"
+
+/-- The number of `Col`s of a side of `A`: a product's two sides', else one. -/
+def objWidth : Obj → Nat
+  | .prod a b => objWidth a + objWidth b
+  | _ => 1
+
+/-- A table in registers: its row count (a `size`), its key's and value's columns. -/
+structure TabB where
+  n : Nat
+  key : Cols
+  val : Cols
+  deriving Inhabited
+
+/-- `colMap op` (one `kscan` pass, every row a segment) of the `n` rows of `a`, `b` read at `s`, written at `t`. -/
+def mapB (op : Kernel.Op) (n a b : Nat) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
+    (pre post : List (Kernel.Op × UInt64) := []) : Bld Nat := do
+  nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put s), ← lit (Reg.put t),
+    n, ← ctorB 0 #[] #[], ← listB [a, b], ← lit (Reg.put pre), ← lit (Reg.put post)]) 0 "kscan"
+
+/-- `colConst n w`: `n` cells of the word `w`. -/
+def wordsB (n : Nat) (w : UInt64) : Bld Nat := do constB n (← lit (.u64 w))
+
+/-- `kscatter op` of the `rows` words `x` to the cells `dst` of `cells`, the others `fill`. -/
+def scatterB (op : Kernel.Op) (rows dst x cells : Nat) (fill : UInt64 := 0) : Bld Nat := do
+  call1 (kernel% Rel.Kernel.kscatter) #[← lit (Reg.put op), rows, dst, x, cells, ← lit (.u64 fill)]
+
+/-- `kgather` of the `n`-row column `x` at the `m` rows `ix`. -/
+def gatherB (m ix n x : Nat) : Bld Nat := call1 (kernel% Rel.Kernel.kgather) #[m, ix, n, x]
+
+/-- The positions `0, 1, …`, the `Enc` of every length. -/
+def posB : Bld Nat := lit (Reg.put (Ext.Enc.pos : Enc))
+
+/-- The last word of an `n`-row `kscan`'s fold `fold`, plus `d`, as a size; `0` at `n = 0`, where no row is folded
+    (`lastCount`). -/
+def lastB (n fold : Nat) (d : USize) : Bld Nat := do
+  nth (← ite (← call1 (kernel% USize.decEq) #[n, ← lit (.size 0)]) (do pure #[← lit (.size 0)]) (do
+    pure #[← call1 (kernel% USize.add) #[← call1 (kernel% UInt64.toUSize) #[← projB fold 1 0 .u64], ← lit (.size d)]]))
+    0 "if"
+
+/-- The registers of the columns `cs`, a loop's state: an atom's `Enc`; an array's `m`, `lo`, `hi`, its payload's. -/
+partial def regsOf (cs : Cols) : Bld (List Nat) := return (← cs.mapM fun
+  | .atom _ _ e => pure [e]
+  | .arr _ m lo hi f => return [m, lo, hi] ++ (← regsOf f)
+  | .sum .. => sumB "a loop's state").flatten
+
+/-- The columns `cs` with their registers taken in order from `rs` (`regsOf`'s inverse), and the registers left. -/
+partial def withRegs (cs : Cols) (rs : List Nat) : Bld (Cols × List Nat) :=
+  cs.foldlM (init := (([] : Cols), rs)) fun (acc, rs) c => match c, rs with
+    | .atom p t _, e :: rs => pure (acc ++ [.atom p t e], rs)
+    | .arr p _ _ _ f, m :: lo :: hi :: rs => do let (f, rs) ← withRegs f rs; pure (acc ++ [.arr p m lo hi f], rs)
+    | .sum .., _ => sumB "a loop's state"
+    | _, _ => throw "a loop's state: fewer registers than its columns read"
+
+/-- The types of `regsOf cs`: an `Enc` an object, an array's count a size. -/
+partial def tysOf (cs : Cols) : Bld (List Ty) := return (← cs.mapM fun
+  | .atom .. => pure [Ty.obj]
+  | .arr _ _ _ _ f => return [.size, .obj, .obj] ++ (← tysOf f)
+  | .sum .. => sumB "a function's parameters").flatten
+
+/-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
+    block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
+partial def reads (base : Nat) : Instr → List Nat
+  | .call _ as | .fail _ as | .apply _ as => as.toList
+  | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
+  | .ctor _ os ss => os.toList ++ ss.toList
+  | .proj x .. | .sproj x .. => [x]
+  | .lit _ | .global _ => []
+  | .loop k init b out d _ => k :: init.toList ++ ((b.flatMap (reads base) ++ out.toList ++ [d]).filter (· < base))
+
+/-- `i` with each register `a` it names read as `f a`: blocks share one register space, so nested ones move alike. -/
+partial def Instr.rename (f : Nat → Nat) : Instr → Instr
+  | .lit v => .lit v
+  | .call s as => .call s (as.map f)
+  | .fail m as => .fail m (as.map f)
+  | .apply g as => .apply g (as.map f)
+  | .global g => .global g
+  | .ite c t rt e re => .ite (f c) (t.map (·.rename f)) (rt.map f) (e.map (·.rename f)) (re.map f)
+  | .ctor tag os ss => .ctor tag (os.map f) (ss.map f)
+  | .proj x tag i t => .proj (f x) tag i t
+  | .sproj x tag nobj ss i => .sproj (f x) tag nobj ss i
+  | .loop k init b out d msg => .loop (f k) (init.map f) (b.map (·.rename f)) (out.map f) (f d) msg
+
+/-- The type the block `is` reads the outer register `a` as: the declared type of the first reader's argument, a
+    kernel's (`abiOf`) or a function's of `fs`; an `if`'s bit, a `loop`'s cap, a `proj`'s constructor. -/
+partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
+  | [] => none
+  | i :: is => (match i with
+    | .call s as => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
+    | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
+    | .ite c t _ e _ => if c == a then some .bit else useTy fs a t <|> useTy fs a e
+    | .proj x .. | .sproj x .. => if x == a then some .obj else none
+    | .loop k _ b .. => if k == a then some .size else useTy fs a b
+    | _ => none) <|> useTy fs a is
+
+/-- `b` on the tables `Ts` as a plan function (`defFun`), applied to their registers (each its count, then `regsOf`):
+    a recipe built at many nodes is one C function, not a copy inlined at each (which outgrows `cc -O2`). A function
+    whose body equals an earlier one's is that one, so each table shape builds one function. Closure conversion: the
+    body is built after the enclosing scope's `n` registers, and those it reads (a variable's table, a cap) become
+    parameters after the tables', first read first, typed as their reader declares (`useTy`), so `b` may close over
+    anything in scope. -/
+def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
+  let regs (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
+  let tys := (← Ts.mapM fun T => return Ty.size :: (← tysOf (T.key ++ T.val))).flatten
+  let shape (Ts : List TabB) (rs : List Nat) : Bld (List TabB) := do
+    let (Us, _) ← Ts.foldlM (init := (([] : List TabB), rs)) fun (Us, rs) T => match rs with
+      | n :: rs => do
+        let (cs, rs) ← withRegs (T.key ++ T.val) rs
+        pure (Us ++ [⟨n, cs.take T.key.length, cs.drop T.key.length⟩], rs)
+      | [] => throw "a function's parameters: fewer registers than its tables read"
+    pure Us
+  let (is, n, fs, gs) ← get
+  let k := tys.length
+  let ((U, r), body, _, fs, gs) ← (do let U ← b (← shape Ts (List.range' n k)); pure (U, (← regs U).toArray)).run
+    (#[], n + k, fs, gs)
+  let cs := ((body.toList.flatMap (reads n) ++ r.toList).filter (· < n)).eraseDups
+  let ctys ← cs.mapM fun a => match useTy fs a body.toList with
+    | some t => pure t
+    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
+  let f (a : Nat) : Nat := if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
+  let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
+  let (g, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
+  set (is, n, fs, gs)
+  let rs ← apply g ((← Ts.mapM regs).flatten ++ cs).toArray r.size
+  match ← shape [U] rs.toList with
+  | [V] => pure V
+  | _ => throw "a function's answer: not one table"
+
+/-- `funT` of a recipe on the `n` values `X` (a leaf on demand's), and on the tables `Ts`. -/
+def funV (n : Nat) (X : Cols) (Ts : List TabB) (b : Nat → Cols → List TabB → Bld TabB) : Bld TabB :=
+  funT (⟨n, X, []⟩ :: Ts) fun
+    | T :: Ts => b T.n T.key Ts
+    | [] => throw "a function on values: no table"
+
+/-- `b` on the columns `xs` (each with its row count) as a plan function (`funT`), answering one column and its count:
+    a table recipe calls it once per column, so the recipe's body no longer inlines each column's kernels, and each
+    column kind (atom type, array of a payload shape) builds one function shared by every table holding it. -/
+def funC (xs : List (Nat × Col)) (b : List (Nat × Col) → Bld (Nat × Col)) : Bld Col := do
+  let one (T : TabB) : Bld (Nat × Col) := match T.key with
+    | [c] => pure (T.n, c)
+    | _ => throw "a column function: not one column"
+  let T ← funT (xs.map fun (n, c) => ⟨n, [c], []⟩) fun Ts => do
+    let (m, c) ← b (← Ts.mapM one); pure ⟨m, [c], []⟩
+  pure (← one T).2
+
+/-- `funV` of a recipe on a count `n` and the `n`-row words `ws`, answering a size (a count, or a fold's last word)
+    and words. -/
+def funW (n : Nat) (ws : List Nat) (b : Nat → List Nat → Bld (Nat × List Nat)) : Bld (Nat × List Nat) := do
+  let words (cs : Cols) : Bld (List Nat) := cs.mapM fun | .atom _ _ e => pure e | _ => throw "words: not an atom column"
+  let T ← funV n (ws.map (.atom "" .i64 ·)) [] fun n cs _ => do
+    let (m, xs) ← b n (← words cs); pure ⟨m, xs.map (.atom "" .i64 ·), []⟩
+  pure (T.n, ← words T.key)
+
+/-- `colPrefix op`: the running fold of the `n` words `a` from `0` (one segment), and its last word (`lastB`); one
+    plan function (`funW`). -/
+def prefixB (op : Kernel.Op) (n a : Nat) : Bld (Nat × Nat) := do
+  let (l, [P]) ← funW n [a] fun n ws => do
+      let [a] := ws | throw "prefix: not one column"
+      let z ← wordsB n 0
+      let r ← scanB op .i64 n (some z) [z, a]
+      pure (← lastB n (← nth r 1 "kscan") 0, [← nth r 0 "kscan"])
+    | throw "prefix: not one column"
+  pure (P, l)
+
+/-- The `kasc` key of the `n`-row column `c` (`Vals.cols`), an `AscKey` register and its column: an atom column its
+    words at its atom; an `arr` side one `cells` key over its `lo`, `hi` and its payload's keys, its column the
+    positions, row `i` naming cell `i`. -/
+partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
+  | .atom _ t e => return (← ctorB 0 #[] #[← lit (Reg.put t)], e)
+  | .arr _ m lo hi f => do
+    let els ← f.mapM fun c => do let (k, e) ← keyB m c; ctorB 0 #[k, e] #[]
+    return (← ctorB 1 #[lo, hi, ← listB els] #[n, m], ← posB)
+  | .sum .. => sumB "asc"
+
+/-- `kasc ≫ kseen` over the `n` rows of the columns `cs`: the count `k` of runs of equal rows (the last row's group
+    `+ 1`, a `kscan max` fold), each sorted row's group `g`, each run's first sorted row `f`, the permutation `p`. -/
+def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
+  let T ← funV n cs [] fun n cs _ => do
+    let (k, g, f, p) ← ascSeenOnB n cs; pure ⟨k, [.atom "" .i64 g, .atom "" .i64 f, .atom "" .i64 p], []⟩
+  let [.atom _ _ g, .atom _ _ f, .atom _ _ p] := T.key | throw "asc: not three columns"
+  pure (T.n, g, f, p)
+where ascSeenOnB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
+  let ks ← cs.mapM (keyB n)
+  let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← ks.mapM fun (k, e) => ctorB 0 #[k, e] #[])]
   let mut l ← nth sp 0 "kasc"
   let mut sorted := #[]
-  for (_, t, _, _) in ks ++ vs do
-    sorted := sorted.push (← key t (← projB l 1 0 .obj)); l ← projB l 1 1 .obj
+  for (k, _) in ks do
+    sorted := sorted.push (← ctorB 0 #[k, ← projB l 1 0 .obj] #[]); l ← projB l 1 1 .obj
   let kg ← callK (kernel% Rel.Kernel.kseen) #[n, ← listB sorted.toList]
-  let z ← constB n (← lit (.u64 0))
-  let mx ← nth (← scanB .max .i64 n (some z) [z, ← nth kg 1 "kseen"]) 1 "kscan"
-  let k ← nth (← ite (← call1 (kernel% USize.decEq) #[n, ← lit (.size 0)]) (do pure #[← lit (.size 0)]) (do
-    pure #[← call1 (kernel% USize.add) #[← call1 (kernel% UInt64.toUSize) #[← projB mx 1 0 .u64], ← lit (.size 1)]]))
-    0 "if"
-  let ix ← call1 (kernel% Rel.Kernel.kgather) #[k, ← nth kg 2 "kseen", n, ← nth sp 1 "kasc"]
-  let side (cs : List (String × QAtomicType × Nat × Nat)) : Bld Side := cs.mapM fun (p, t, _, e) => do
-    let g ← call1 (kernel% Rel.Kernel.kgather) #[k, ix, n, e]
-    pure (p, (← encRegs t k g).push g)
-  pure (← side ks, ← side vs)
+  let g ← nth kg 1 "kseen"
+  let z ← wordsB n 0
+  let k ← lastB n (← nth (← scanB .max .i64 n (some z) [z, g]) 1 "kscan") 1
+  pure (k, g, ← nth kg 2 "kseen", ← nth sp 1 "kasc")
+
+/-- The `n`-row columns `cs` at the `m` rows `ix` (`Vals.gather`): an array's `lo` and `hi` gathered, its payload
+    kept. -/
+def gatherCols (m ix n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun c => funC [(n, c)] fun
+  | [(n, .atom p t e)] => return (m, .atom p t (← gatherB m ix n e))
+  | [(n, .arr p c lo hi f)] => return (m, .arr p c (← gatherB m ix n lo) (← gatherB m ix n hi) f)
+  | _ => sumB "gather"
+
+/-- **`Vals.nub`**: the `n` rows of `cs` without duplicates, ascending: each run's first input row (`kgather` of
+    `p` at `f`), every column gathered there. One plan function per shape of `cs` (`funT`). -/
+def nubB (n : Nat) (cs : Cols) : Bld (Nat × Cols) := do
+  let T ← funV n cs [] fun n cs _ => do
+    let (k, _, f, p) ← ascSeenB n cs; pure ⟨k, ← gatherCols k (← gatherB k f n p) n cs, []⟩
+  pure (T.n, T.key)
+
+/-- **`Tab.canon`**: `nubB` of the pair side, the key's columns then the value's. -/
+def canonT (T : TabB) : Bld TabB := do
+  let (k, cs) ← nubB T.n (T.key ++ T.val)
+  pure ⟨k, cs.take T.key.length, cs.drop T.key.length⟩
+
+/-- **`Tab.dom`** of the side `cs` of `n` rows (`Tab.ran` of the value side, `Tab.idU`): `nubB`, each row paired with
+    itself. -/
+def coreflB (n : Nat) (cs : Cols) : Bld TabB := do let (k, cs) ← nubB n cs; pure ⟨k, cs, cs⟩
+
+/-- **`catPlan`**: the count `n₁ + n₂` and the cells `off` (`n₁ + pos`) of the second part's rows. -/
+def catB (n₁ n₂ : Nat) : Bld (Nat × Nat) := do
+  pure (← call1 (kernel% USize.add) #[n₁, n₂],
+    ← mapB .add n₂ (← posB) (← constB n₂ (← call1 (kernel% USize.toUInt64) #[n₁])))
+
+/-- A `size` register as a `u64` word. -/
+def u64B (s : Nat) : Bld Nat := call1 (kernel% USize.toUInt64) #[s]
+
+/-- **`Arr.concat`**: the `n₁` words `x` `kscatter`ed to `pos` and the `n₂` words `y` to `off`, added. -/
+def catColB (t : QAtomicType) (n n₁ n₂ off x y : Nat) : Bld Nat := do
+  mapB .add n (← scatterB .last n₁ (← posB) x n) (← scatterB .last n₂ off y n) t
+
+/-- **`Arr.clampShift`**: the `n` words `x` clamped into `[0, c]`, then `s` added (`c`, `s` `size` registers). -/
+def clampShiftB (n x c s : Nat) : Bld Nat := do
+  let a ← mapB .max n x (← wordsB n 0)
+  mapB .add n (← mapB .min n a (← constB n (← u64B c))) (← constB n (← u64B s))
+
+/-- **`Vals.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
+    atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` each clamped
+    into its own payload, the second's shifted past the first (`clampShiftB`). -/
+partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
+  (xs.zip ys).mapM fun (x, y) => funC [(n₁, x), (n₂, y)] fun
+    | [(n₁, x), (n₂, y)] => return (n, ← concatColB n n₁ n₂ off x y)
+    | _ => throw "concat: not two columns"
+where concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
+    | .atom p t x, .atom _ _ y => return .atom p t (← catColB t n n₁ n₂ off x y)
+    | .arr p m₁ lo₁ hi₁ f₁, .arr _ m₂ lo₂ hi₂ f₂ => do
+      let (m, o) ← catB m₁ m₂
+      guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) "concat: payload rows m₁ + m₂ past an Int64 bound"
+        #[m₁, m₂]
+      let z ← lit (.size 0)
+      let b (x₁ x₂ : Nat) : Bld Nat := do
+        catColB .i64 n n₁ n₂ off (← clampShiftB n₁ x₁ m₁ z) (← clampShiftB n₂ x₂ m₂ m₁)
+      return .arr p m (← b lo₁ lo₂) (← b hi₁ hi₂) (← concatB m m₁ m₂ o f₁ f₂)
+    | .sum .., _ | _, .sum .. => sumB "∪"
+    | _, _ => throw "concat: two sides of one object with columns of different shapes"
+
+/-- **`R ∪ S`** (`Tab.union`): `Tab.canon` of the concatenation. -/
+def unionB (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do
+    let (n, off) ← catB R.n S.n
+    canonT ⟨n, ← concatB n R.n S.n off R.key S.key, ← concatB n R.n S.n off R.val S.val⟩
+  | _ => throw "∪: not two tables"
+
+/-- **`groupFold`**: per group of the `n` sorted rows (`m` groups `g`, first rows `f`), `op` folded over `x` from `z`
+    within its run (a segmented `kscan`), the run's last row scattered to its group. -/
+def groupFoldB (op : Kernel.Op) (n g f m : Nat) (z : UInt64) (x : Nat) : Bld Nat := do
+  let (_, [o]) ← funW n [g, x] fun n ws => do
+      let [g, x] := ws | throw "groupFold: not two columns"
+      let seg ← scatterB .last m f (← wordsB m 1) n
+      let o ← nth (← scanB op .i64 n (some seg) [← wordsB n z, x]) 0 "kscan"
+      pure (m, [← scatterB .last n g o m z])
+    | throw "groupFold: not one column"
+  pure o
+
+/-- **`Tab.select`** (`∩`, `−`): the concatenation tagged by source (`1` at `S`'s rows), its groups of equal rows
+    (`ascSeenB`), per group the `and` and the `or` of the tags, `keep` of the two, and the kept groups' first input
+    rows gathered (`whereB`). -/
+def selectB (keep : Nat → Nat → Nat → Bld Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do
+    let (n, off) ← catB R.n S.n
+    let tag ← scatterB .last S.n off (← wordsB S.n 1) n
+    let ks ← concatB n R.n S.n off R.key S.key
+    let vs ← concatB n R.n S.n off R.val S.val
+    let (m, g, f, p) ← ascSeenB n (ks ++ vs)
+    let ts ← gatherB n p n tag
+    let mn ← groupFoldB .and n g f m 1 ts
+    let mx ← groupFoldB .or n g f m 0 ts
+    let (k, sel) ← whereB m (← keep m mn mx)
+    let ix ← gatherB k (← gatherB k sel m f) n p
+    pure ⟨k, ← gatherCols k ix n ks, ← gatherCols k ix n vs⟩
+  | _ => throw "select: not two tables"
+
+/-- **`expand`** of the `K` widths `w`: the count `T` of output rows, each row's group `G` and offset `u` in it. -/
+def expandB (K w : Nat) : Bld (Nat × Nat × Nat) := do
+  let (T, [G, u]) ← funW K [w] fun K ws => do
+      let [w] := ws | throw "expand: not one column"
+      let (P, T) ← prefixB .add K w
+      let T1 ← call1 (kernel% USize.add) #[T, ← lit (.size 1)]
+      let o ← mapB .sub K P w
+      let G ← gatherB T (← posB) T1 (← prefixB .max T1 (← scatterB .max K o (← posB) T1)).1
+      pure (T, [G, ← mapB .sub T (← posB) (← gatherB T G K o)])
+    | throw "expand: not two columns"
+  pure (T, G, u)
+
+/-- **`cellSpan`**: the `n` cells `lo`, `hi` clamped to a payload of `m` rows, `[s, e)`. -/
+def spanB (n m lo hi : Nat) : Bld (Nat × Nat) := do
+  let (_, [s, e]) ← funW n [lo, hi] fun n ws => do
+      let [lo, hi] := ws | throw "cellSpan: not two columns"
+      let s ← mapB .max n lo (← wordsB n 0)
+      pure (n, [s, ← mapB .max n (← mapB .min n hi (← constB n (← u64B m))) s])
+    | throw "cellSpan: not two columns"
+  pure (s, e)
+
+/-- **`Tab.compGroups`**: the `N` rows of `R.val` then `S.key`, their permutation `p`, groups `g`, first rows `f`, the
+    count `K` of groups, per group the counts `cR`, `cS` and the width `w = cR · cS`. -/
+def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) := do
+  let (N, off) ← catB R.n S.n
+  let (K, g, f, p) ← ascSeenB N (← concatB N R.n S.n off R.val S.key)
+  -- the counts on words alone, one plan function (`funW`) whatever the tables' shapes
+  let (_, [cR, cS, w]) ← funW N [g, p] fun N ws => do
+      let [g, p] := ws | throw "compGroups: not two columns"
+      let nR ← constB N (← call1 (kernel% USize.toUInt64) #[R.n])
+      let cR ← scatterB .add N g (← mapB .lt N p nR) K
+      let cS ← mapB .sub K (← scatterB .add N g (← wordsB N 1) K) cR
+      pure (K, [cR, cS, ← mapB .mul K cR cS])
+    | throw "compGroups: not three columns"
+  pure (N, p, g, f, K, cR, cS, w)
+
+/-- **`R ≫ S`** (`Tab.compOne`): the groups of equal middle values of `R.val` then `S.key` (`kasc` is stable, so a
+    group's `R` rows come first), per group the counts `cR`, `cS` and the width `w = cR · cS`, EXPAND of `w` (each
+    output row's group `G` and offset `u`), its `R` row `p[f + u / cS]` and `S` row `p[f + cR + u % cS] - n`, both
+    sides gathered there, then `canonT`. `Tab.comp`'s blocks past `blockRows` and its bit matrices change no answer. -/
+def compFromB (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) : Bld TabB := do
+  let (N, p, _, f, K, cR, cS, w) := x
+  -- the rows of each side on words alone, one plan function (`funW`) whatever the tables' shapes
+  let (T, [iR, iS]) ← funW K [f, cR, cS, w] fun K ws => do
+      let [f, cR, cS, w] := ws | throw "compOne: not four columns"
+      let (T, G, u) ← expandB K w
+      let ft ← gatherB T G K f
+      let ct ← gatherB T G K cS
+      let iR ← gatherB T (← mapB .add T ft (← mapB .div T u ct)) N p
+      let qS ← mapB .add T (← mapB .add T ft (← gatherB T G K cR)) (← mapB .mod T u ct)
+      pure (T, [iR, ← mapB .sub T (← gatherB T qS N p) (← constB T (← call1 (kernel% USize.toUInt64) #[R.n]))])
+    | throw "compOne: not two columns"
+  canonT ⟨T, ← gatherCols T iR R.n R.key, ← gatherCols T iS S.n S.val⟩
+
+/-- `compFromB` on `groupsB R S`. -/
+def compB (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do compFromB R S (← groupsB R S)
+  | _ => throw "comp: not two tables"
+
+/-- **`Vals.cross`** of `n` rows `xs` and `m` rows `ys` (`crossIx`): `T = n · m` rows, `xs` at `pos / m`, `ys` at
+    `pos % m`. Its two checks first, as `Vals.cross` and `crossIx` make them: `n · m ≤ crossMax` (tested as
+    `crossMax / m < n`, so no product wraps), then `n · m + m < 2^63`; `fail` appends the counts to the message. -/
+def crossB (n m : Nat) (xs ys : Cols) : Bld (Nat × Cols × Cols) := do
+  let past ← nth (← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) (do pure #[← lit (.bit false)]) (do
+    pure #[← call1 (kernel% USize.decLt) #[← call1 (kernel% USize.div) #[← lit (.size crossMax.toUSize), m], n]])) 0 "if"
+  discard <| ite past (do
+    discard <| emit (.fail (s!"cross: values of the left object by values of the right, past the bound {crossMax} " ++
+      "pairs: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it " ++
+      "with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`)") #[n, m]) 0
+    pure #[]) (pure #[])
+  let T ← call1 (kernel% USize.mul) #[n, m]
+  guard (← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.sub) #[← lit (.size (2 ^ 63)), T]])
+    "cross: rows past 2^63 or USize, n × m" #[n, m]
+  let c ← constB T (← call1 (kernel% USize.toUInt64) #[m])
+  pure (T, ← gatherCols T (← mapB .div T (← posB) c) n xs, ← gatherCols T (← mapB .mod T (← posB) c) m ys)
+
+/-- The columns `cs` of a side of `A`, under the paths `A`'s side has at `pre` (`cols`). -/
+partial def repath (A : Obj) (pre : String) (cs : Cols) : Bld Cols := match A, cs with
+  | .atom _, [.atom _ t e] => pure [.atom pre t e]
+  | .prod a b, cs => return (← repath a (pre ++ ".1") (cs.take (objWidth a))) ++
+      (← repath b (pre ++ ".2") (cs.drop (objWidth a)))
+  | .arr b, [.arr _ m lo hi f] => return [.arr pre m lo hi (← repath b (pre ++ ".e") f)]
+  | .sum .., _ => sumB "a path"
+  | _, cs => throw s!"{cs.length} columns where a side of {repr A} is read"
+
+/-- **`⟨R, S⟩`** (`Tab.pair`): `⟨(a, b), a⟩` on `R`'s rows composed with `S`, each key `(a, b)` rebracketed to `a`
+    beside `(b, c)`. -/
+def pairB (A B C : Obj) (R S : TabB) : Bld TabB := do
+  let T ← compB ⟨R.n, (← repath A ".1" R.key) ++ (← repath B ".2" R.val), R.key⟩ S
+  let a := objWidth A
+  pure ⟨T.n, ← repath A "" (T.key.take a), (← repath B ".1" (T.key.drop a)) ++ (← repath C ".2" T.val)⟩
+
+/-- **`R × S`** (`Tab.prod`): CROSS of the two tables' rows, each row `((a, c), (b, d))`, then `canonT`. -/
+def prodB (A B C D : Obj) (R S : TabB) : Bld TabB := do
+  let (T, x, y) ← crossB R.n S.n (R.key ++ R.val) (S.key ++ S.val)
+  let (a, c) := (R.key.length, S.key.length)
+  canonT ⟨T, (← repath A ".1" (x.take a)) ++ (← repath C ".2" (y.take c)),
+    (← repath B ".1" (x.drop a)) ++ (← repath D ".2" (y.drop c))⟩
+
+/-- **`Vals.none`**: a side of `A` at `p` with no row: each atom column `Arr.zeros t 0`, an array's `lo`, `hi` the
+    same over a payload of no row; `z` the register of the count `0`. -/
+partial def noneB (z : Nat) (A : Obj) (p : String := "") : Bld Cols := match A with
+  | .atom t => do let c ← wordsB z 0; return [.atom p t (← mapB .add z c c t)]
+  | .prod a b => return (← noneB z a (p ++ ".1")) ++ (← noneB z b (p ++ ".2"))
+  | .arr b => do
+    let c ← wordsB z 0
+    return [.arr p z (← mapB .add z c c) (← mapB .add z c c) (← noneB z b (p ++ ".e"))]
+  | .sum .. => sumB "𝟘"
+
+/-- A side's columns of the object `A` at the path `p`: each atom column's `Enc` register; a positions column, which
+    has no registers (`litSide`), the positions; an array's `lo`, `hi` and payload, its row count a payload column's
+    `count`. A column mapped from its file (no `Enc`) is refused, naming it. -/
+partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A with
+  | .atom t => match s.lookup p with
+    | none => return [.atom p t (← posB)]
+    | some rs => match rs[6]? with
+      | some e => pure [.atom p t e]
+      | none => throw s!"column `{p}` is mapped from its file, whose parts no plan recipe reads as an `Enc` yet"
+  | .prod a b => return (← colsOf a s (p ++ ".1")) ++ (← colsOf b s (p ++ ".2"))
+  | .arr b => do
+    let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
+    let some m := (objCols b (p ++ ".e")).findSome? (reg ·.1 3)
+      | throw s!"array `{p}`: no payload column holds a row count register"
+    let (some lo, some hi) := (reg (p ++ ".lo") 6, reg (p ++ ".hi") 6)
+      | throw s!"array `{p}`: its bounds have no `Enc` register"
+    return [.arr p m lo hi (← colsOf b s (p ++ ".e"))]
+  | .sum .. => sumB "a side's registers"
+
+/-- The row count of a table's sides: a column's `count` register. -/
+def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[3]?) with
+  | some n => pure n
+  | none => throw "a table whose every column is positions, so no register holds its row count"
+
+/-- The `n`-row columns `cs` as `output` takes them, in `cols` order: an atom column's registers; an array's `lo`,
+    `hi`, then its payload's columns at its count `m`. -/
+partial def flatB (n : Nat) (cs : Cols) : Bld Side := return (← cs.mapM fun
+  | .atom p t e => return [(p, (← encRegs t n e).push e)]
+  | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo).push lo), (p ++ ".hi", (← encRegs .i64 n hi).push hi)]
+      ++ (← flatB m f)
+  | .sum .. => sumB "output").flatten
+
+/-- A `TabB`'s sides as `output` takes them: each column's six registers (`encRegs`), then its `Enc`. -/
+def sidesOf (T : TabB) : Bld (Side × Side) := do pure (← flatB T.n T.key, ← flatB T.n T.val)
+
+/-- What a node's context knows of its sides (design §0 `Known`): the values of its domain and of its range, each a
+    count and columns, and the pairs a meet hands it (`GenK.bound`). -/
+structure Dom where
+  dom : Option (Nat × Cols) := none
+  ran : Option (Nat × Cols) := none
+  pairs : Option TabB := none
+  deriving Inhabited
+
+/-- The values a leaf on demand reads, or `GenK.ofVals`' error where they are unknown. -/
+def known (what : String) : Option (Nat × Cols) → Bld (Nat × Cols)
+  | some d => pure d
+  | none => throw s!"{what}: a leaf on demand ran with its domain unknown"
+
+/-- `T`'s domain values (`Tab.dom`'s side), the bound `GenK.bound` hands the other operand of `∩`, `−`, `⟨,⟩`. -/
+def domOf (T : TabB) : Bld (Nat × Cols) := nubB T.n T.key
+
+/-- `GenK.bound`'s context of `T`: its two sides' values and `T` itself as the pairs (`∩`, `−`). -/
+def boundOf (T : TabB) : Bld Dom := return ⟨some (← domOf T), some (← nubB T.n T.val), some T⟩
+
+/-- Two operands `r`, `s` in the context `D`, as `GenK.meetK`/`pairK` order them: the one not on demand first, the
+    context `ctx` of its table bounding the other where that one runs on demand. -/
+def bothB (r s : Dom → Bld TabB) (dr ds : Bool) (D : Dom) (ctx : TabB → Bld Dom) : Bld (TabB × TabB) := do
+  if dr && !ds then let t ← s D; pure (← r (← ctx t), t)
+  else
+    let t ← r D
+    pure (t, ← s (← if ds then ctx t else pure D))
+
+/-- **`R ∩ S`** (`Tab.inter`): `Tab.select` keeping the groups of a row of each. -/
+def interB (R S : TabB) : Bld TabB := selectB (fun m mn mx => mapB .lt m mn mx) R S
+
+/-- `nth` of an `if`'s one register. -/
+def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
+
+/-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
+def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
+
+/-- The check `Vals.pack`, `Tab.mem`, `Tab.map` make before reading `n` cells over `m` elements signed:
+    `n · m + n + m < 2^63`, on size registers as `n, m < 2^63` and `(n + 1) · (m + 1) ≤ 2^63`, the last tested as
+    `¬ 2^63 / (m + 1) < n + 1` (no sum or product wraps); else `fail` with `what` and the two counts. -/
+def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
+  let c ← lit (.size (2 ^ 63))
+  let one ← lit (.size 1)
+  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
+    let q ← call1 (kernel% USize.div) #[c, ← call1 (kernel% USize.add) #[m, one]]
+    ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, one]]) (lit (.bit false)) (lit (.bit true))
+  guard ok s!"{what}: n cells × m elements past 2^63, n · m + n + m" #[n, m]
+
+/-- **`Vals.pack`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at most
+    half of it is read (`0 < m`, `2 · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered there,
+    laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. -/
+partial def packB (n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
+  | c@(.atom ..) => pure c
+  | .arr p m lo hi f => do
+    cellsBoundB "pack" n m
+    let (s, e) ← spanB n m lo hi
+    let w ← mapB .sub n e s
+    let (P, T) ← prefixB .add n w
+    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB m f)]).toArray
+    let cut : Bld (Array Nat) := do
+      let (T', G, u) ← expandB n w
+      let g ← gatherCols T' (← mapB .add T' (← gatherB T' G n s) u) m f
+      pure (← regsOf [.arr p T' (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← packB T' g)]).toArray
+    let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.add) #[T, T]]
+    let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) keep (ite wide keep cut)
+    match ← withRegs [.arr p m lo hi f] rs.toList with
+    | ([c], _) => pure c
+    | _ => throw "pack: an array's registers read as no one column"
+  | .sum .. => sumB "pack"
+
+/-- **`Tab.pack`**: both sides' payloads cut (`packB`). -/
+def packT (T : TabB) : Bld TabB := funT [T] fun
+  | [T] => return ⟨T.n, ← packB T.n T.key, ← packB T.n T.val⟩
+  | _ => throw "pack: not one table"
+
+/-- **`Tab.fixOn`**: rounds of `step` from `X` (`Plan.loop`, the state its count and columns), at most the register
+    `k` of them, until a round leaves the row count as it was; that round's table. `k` rounds with the count still
+    moving fail with `msg`. Each round's table has its payloads cut (`packT`). One plan function (`funT`), `step`'s
+    reads of the scope its parameters. -/
+def fixB (msg : String) (step : TabB → Bld TabB) (k : Nat) (X : TabB) : Bld TabB := funT [X] fun
+  | [X] => do
+    let st (T : TabB) : Bld (Array Nat) := return #[T.n] ++ (← regsOf (T.key ++ T.val)).toArray
+    let shape (rs : Array Nat) : Bld TabB := do
+      let (cs, _) ← withRegs (X.key ++ X.val) (rs.toList.drop 1)
+      pure ⟨← nth rs 0 "loop", cs.take X.key.length, cs.drop X.key.length⟩
+    shape (← loop k (← st X) msg fun rs => do
+      let X ← shape rs
+      let Y ← packT (← step X)
+      pure (← st Y, ← call1 (kernel% USize.decEq) #[Y.n, X.n]))
+  | _ => throw "a fixed point: not one table"
+
+/-- **`Tab.nu`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical, its row count plus two of them. -/
+def nuB (f : TabB → Bld TabB) (top : TabB) : Bld TabB := do
+  let T ← canonT top
+  fixB "Tab.nu: the row count still moved at the rows of top + 2 rounds" (fun X => do interB X (← f X))
+    (← call1 (kernel% USize.add) #[T.n, ← lit (.size 2)]) T
+
+/-- **`Tab.mu`**: rounds `X ↦ X ∪ f(X)` from `Z` (`𝟘`), at most the register `k` of them. -/
+def muB (msg : String) (k : Nat) (f : TabB → Bld TabB) (Z : TabB) : Bld TabB :=
+  fixB msg (fun X => do unionB X (← f X)) k Z
+
+/-- A round count `c` as a `size` literal; past a `size`, refused rather than wrapped. -/
+def sizeB (c : Nat) : Bld Nat := do
+  unless c < USize.size do throw s!"a cap of {c} rounds, past a size"
+  lit (.size c.toUSize)
+
+/-- The `Enc` of a one-column side. -/
+def col1 (cs : Cols) : Bld Nat := match cs with
+  | [.atom _ _ e] => pure e
+  | _ => throw s!"a side of {cs.length} columns where an atom's one column is read"
+
+/-- **`Tab.keep`**: the rows of `T` whose `0`/`1` word in `b` is `1` (`whereB`), both sides gathered there. -/
+def keepB (T : TabB) (b : Nat) : Bld TabB := do
+  let (k, sel) ← whereB T.n b
+  pure ⟨k, ← gatherCols k sel T.n T.key, ← gatherCols k sel T.n T.val⟩
+
+/-- **`wideCol`**: the `n` words of `a` read at `t` through `widen t`, `a` itself where the chain is empty. -/
+def wideB (t : QAtomicType) (n a : Nat) : Bld Nat :=
+  if (widen t).isEmpty then pure a else mapB .first n a a .i64 t (widen t)
+
+/-- A step's error as the plan's refusal, with its message. -/
+def ofExc {α : Type} : Except String α → Bld α
+  | .ok a => pure a
+  | .error e => throw e
+
+open Rel.Kernel in
+/-- **`stepColsAt`**: the value verb `k` at `t` on the `n` operand rows `a`, `b`, its answer and keep flag; at `i64`
+    `stepCols`' compares, at a float atom `fstepArr` (one pass by `fverbOne`, else `fverbBy` on the widened columns,
+    each pass a `mapB`) and `nanFlag`. -/
+def stepB (t : QAtomicType) (k : UInt8) (n a b : Nat) : Bld (Nat × Nat) := do
+  let m (o : Kernel.Op) (x y : Nat) : Bld Nat := mapB o n x y
+  match t with
+  | .i64 =>
+    let nul ← wordsB n nulWord
+    let z ← wordsB n 0
+    let ne (x : Nat) : Bld Nat := m .ne x nul
+    let both ← m .and (← ne a) (← ne b)
+    if k == Ew.add || k == Ew.sub then
+      let w ← m (if k == Ew.add then .add else .sub) a b
+      let ord ← if k == Ew.add then m .le a w else m .le w a
+      let ex ← m .eq (← m .ge b z) ord
+      pure (w, ← m .and (← m .and both (← ne w)) ex)
+    else if k == Ew.mul then
+      let w ← m .mul a b
+      let a0 ← m .eq a z
+      let ex ← m .or (← m .eq (← m .div w (← m .or a a0)) b) a0
+      pure (w, ← m .and (← m .and both (← ne w)) ex)
+    else if k == Ew.idiv || k == Ew.imod then
+      let b0 ← m .eq b z
+      let w ← m (if k == Ew.idiv then .div else .mod) a (← m .or b b0)
+      pure (w, ← m .and (← m .and both (← m .not b0 b0)) (← ne w))
+    else if k == Ew.greater || k == Ew.lesser then
+      let w ← m (if k == Ew.greater then .max else .min) a b
+      pure (w, ← ne w)
+    else throw s!"arith: verb code {k} is none of + - * div mod max min"
+  | .f32 | .f64 =>
+    let w ← match fverbOne k with
+      | some (o, c) => mapB o n a b t t (widen t) (c ++ [(.fto t, 0)])
+      | none => do
+        -- `fverbBy`'s composition run on builders: a part it reads twice is built twice, the same words
+        let r ← ofExc (fverbBy (fun o (x y : Bld Nat) => pure do mapB o n (← x) (← y)) k (wideB t n a) (wideB t n b))
+        let r ← r
+        mapB (.fto t) n r r t
+    pure (w, ← mapB .first n w w .u1 .i64 [] [(.ne, nulWord)])
+  | t => throw s!"arith on objects of {repr t}: no value verb"
+
+/-- **`K ≫ o ≫ L`** (`GenK.cmp`) on `U`'s universe, `u` its table in a context: each side `dom U` cut to the values
+    the context knows of it (`cmpSide`, its message where nothing bounds it), then the pairs a meet hands it cut to
+    the two sides, else CROSS of them (`Tab.cmpOn`), the rows whose widened words pass `o` kept (`Tab.cmpPairs`). -/
+def cmpB (u : Dom → Bld TabB) (op : String) (o : Except String Kernel.Op) (t : QAtomicType) (D : Dom) : Bld TabB := do
+  let o ← ofExc o
+  let side (w : String) (s : Option (Nat × Cols)) : Bld (Nat × Cols) := do
+    let U ← try u { dom := s } catch e => throw (if s.isSome then e else
+      s!"{op} on an unbounded object: nothing bounds its {w} side; compose it with a table on that side ({e})")
+    let d ← coreflB U.n U.key
+    match s with
+    | none => pure (d.n, d.key)
+    | some (n, X) => do let c ← compB (← coreflB n X) d; pure (c.n, c.key)
+  let k ← side "left" D.dom
+  let l ← side "right" D.ran
+  let T ← match D.pairs with
+    | some p => do compB (← compB (← coreflB k.1 k.2) p) (← coreflB l.1 l.2)
+    | none => do let (T, x, y) ← crossB k.1 l.1 k.2 l.2; canonT ⟨T, x, y⟩
+  keepB T (← mapB o T.n (← wideB t T.n (← col1 T.key)) (← wideB t T.n (← col1 T.val)))
+
+/-- `dom U` at the values `c`, `u` the table of `U` in a context. -/
+def domAt (u : Dom → Bld TabB) (c : Nat × Cols) : Bld TabB := do let t ← u { dom := some c }; coreflB t.n t.key
+
+/-- **`D ≫ succDen U`** (`Tab.succ`) on the values `X`: `D = idU X`, `≫ dom U`, each value `v` to `v + [v ≠ null]`,
+    `≫ dom U`. -/
+def succB (u : Dom → Bld TabB) (n : Nat) (X : Cols) : Bld TabB := do
+  let D ← coreflB n X
+  let E ← compB D (← domAt u (D.n, D.val))
+  let v ← col1 E.val
+  let s := [.atom "" .i64 (← mapB .add E.n v (← mapB .ne E.n v (← wordsB E.n nulWord)))]
+  compB ⟨E.n, E.key, s⟩ (← domAt u (E.n, s))
+
+/-- **`D ≫ arithDen k U`** (`Tab.arith`) on the pairs `X`: `D = idU X`; the rows whose first operand is in `dom U`,
+    of those the ones whose second is (two `compB`s, each row keyed by `D`'s key and its operands); `stepB` on the
+    operands; the kept rows with their answers (`keepB`); `≫ U`. -/
+def arithT (u : Dom → Bld TabB) (t : QAtomicType) (k : UInt8) (n : Nat) (X : Cols) : Bld TabB := do
+  let D ← coreflB n X
+  let opnd (cs : Cols) (i : Nat) : Bld Cols := match cs[i]? with
+    | some (.atom _ t e) => pure [.atom "" t e]
+    | _ => throw s!"arith: a pair side of {cs.length} columns, not of two atoms"
+  let a ← opnd D.val 0
+  let E₁ ← compB ⟨D.n, D.key ++ D.val, a⟩ (← domAt u (D.n, a))
+  let b ← opnd E₁.key (D.key.length + 1)
+  let E ← compB ⟨E₁.n, E₁.key, b⟩ (← domAt u (E₁.n, b))
+  let (w, f) ← stepB t k E.n (← col1 (← opnd E.key D.key.length)) (← col1 (← opnd E.key (D.key.length + 1)))
+  let P ← keepB ⟨E.n, E.key.take D.key.length, [.atom "" t w]⟩ f
+  compB P (← u { dom := some (P.n, P.val) })
+
+/-- **`Tab.floatOp s`** on the values `X` of `A` (`floatDen`): `fmapCols` of the row's `Op` from `A`'s float atom (each
+    component's, for a row reading two) to `B`'s number atom, each value to its answer, kept where it is a word of
+    `B`'s atom; `Tab.floatOp`'s errors at the objects it refuses. -/
+def floatOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
+  let fmap (t u : QAtomicType) (o : Kernel.Op) (a b : Nat) : Bld TabB := do
+    let w ← mapB o n a b u t (widen t) [(.ofF64 u, 0)]
+    keepB ⟨n, X, [.atom "" u w]⟩ (← mapB .first n w w .u1 .i64 [] [(.ne, nulWord)])
+  match floatOps.lookup s, A, B with
+  | some (o, _), .atom t, .atom u =>
+    if o.readsAcc = false ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do let x ← col1 X; fmap t u o x x
+    else throw s!"{s} runs from a float object to a number object, found {repr t} to {repr u}"
+  | some (o, _), .prod (.atom t) (.atom t'), .atom u =>
+    if o.readsAcc = true ∧ t = t' ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
+      let (some (Col.atom _ _ x), some (Col.atom _ _ y)) := (X[0]?, X[1]?)
+        | throw s!"{s}: a pair side of {X.length} columns, not of two atoms"
+      fmap t u o x y
+    else throw s!"{s} runs from a pair of one float object to a number object, found {repr t}×{repr t'} to {repr u}"
+  | some _, _, _ => throw s!"{s} runs from a float object, or a pair of one, to a number object"
+  | none, _, _ => throw s!"{s}: no float verb"
+
+/-- **`Tab.cast`** (`$`) on the values `X` of `A`: each value to the word of `B`'s atom holding its number, kept where
+    that is not `nulWord`. -/
+def castB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
+  | .atom s, .atom t => do
+    unless QAtomicType.castOK s t do throw s!"$: no cast from {repr s} to {repr t}"
+    let x ← col1 X
+    let w ← mapB (.cast s t) n x x t
+    keepB ⟨n, X, [.atom "" t w]⟩ (← mapB .ne n w (← wordsB n nulWord))
+  | _, _ => throw "$: casts a number object to a number object"
+
+/-- **`Tab.asc`** of `P : B ⟶ B`: `canon` of the rows `(0, b)`, `b` a key of `P`, keyed by their positions. -/
+def ascB (B : Obj) (P : TabB) : Bld TabB := do
+  if let some t := B.ascBad then
+    throw s!"asc: elements of type {repr t} have no order code (a symbol or a general atom): number a set of numbers"
+  let U ← canonT ⟨P.n, [.atom "" .i64 (← wordsB P.n 0)], P.key⟩
+  pure ⟨U.n, [.atom "" .i64 (← posB)], U.val⟩
+
+/-- The one array column of a side of `[B]`, or the error naming `what` reads it. -/
+def arrCol (what : String) : Cols → Bld (Nat × Nat × Nat × Cols)
+  | [.arr _ m lo hi f] => pure (m, lo, hi, f)
+  | cs => throw s!"{what}: a side of {cs.length} columns where one array side is read"
+
+/-- **`Tab.mem`** (`∋`) on the arrays `X` (`n` rows): EXPAND of the clamped widths `e - s`, the key the cell `X[G]`,
+    the value the payload at `s[G] + u`; then `canonT`. -/
+def memB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, f) ← arrCol "∋" X
+  cellsBoundB "mem" n m
+  let (s, e) ← spanB n m lo hi
+  let (T, G, u) ← expandB n (← mapB .sub n e s)
+  canonT ⟨T, ← gatherCols T G n X, ← repath B "" (← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f)⟩
+
+/-! #### `R \ S` and `R / S` (`GenK.ldiv`, `GenK.rdiv`: `Tab.ldivSel`) -/
+
+/-- The size register `x` as a word. -/
+def wordOf (x : Nat) : Bld Nat := call1 (kernel% USize.toUInt64) #[x]
+
+/-- **`Vals.code`**: the `n` rows of `cs` numbered by value (`ascSeenB`): the count `k`, each input row's number
+    (`kscatter .last` of the groups through `p`), each number's first input row. -/
+def codeB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat) := do
+  let (k, g, f, p) ← ascSeenB n cs
+  pure (k, ← scatterB .last n p g n, ← gatherB k f n p)
+
+/-- **`Vals.code2`**: `xs` (`n₁` rows) and `ys` (`n₂`) numbered in one order, `codeB` of their concatenation `z`: the
+    count, `xs`' numbers, `ys`', and `z`'s count, columns and each number's first row in it. -/
+def code2B (n₁ n₂ : Nat) (xs ys : Cols) : Bld (Nat × Nat × Nat × Nat × Cols × Nat) := do
+  let (N, off) ← catB n₁ n₂
+  let z ← concatB N n₁ n₂ off xs ys
+  let (k, c, rep) ← codeB N z
+  pure (k, ← gatherB n₁ (← posB) N c, ← gatherB n₂ off N c, N, z, rep)
+
+/-- **`colCat`**: the words `a` (`n₁`) then `b` (`n₂`), `concatB` of one column each. -/
+def colCatB (n₁ n₂ a b : Nat) : Bld (Nat × Nat) := do
+  let (N, off) ← catB n₁ n₂
+  pure (N, ← col1 (← concatB N n₁ n₂ off [.atom "" .i64 a] [.atom "" .i64 b]))
+
+/-- **`csr`**: the `n` rows `(gid, x)` grouped by `gid` (each below `g`): each group's end (`prefixB` of the group
+    sizes) and `x` in group order (`kasc` of `gid`, stable). -/
+def csrB (n g gid x : Nat) : Bld (Nat × Nat) := do
+  let ends := (← prefixB .add g (← scatterB .add n gid (← wordsB n 1) g)).1
+  let (k, e) ← keyB n (.atom "" .i64 gid)
+  let p ← nth (← callK (kernel% Rel.Kernel.kasc) #[n, ← listB [← ctorB 0 #[k, e] #[]]]) 1 "kasc"
+  pure (ends, ← gatherB n p n x)
+
+/-- **`bitMatrix`**: `na` rows of `w` bits, bit `r[k]·w + c[k]` set for each of the `n` rows. -/
+def bitMatrixB (n na w r c : Nat) : Bld Nat := do
+  scatterB .last n (← mapB .add n (← mapB .mul n r (← constB n (← wordOf w))) c) (← wordsB n 1)
+    (← call1 (kernel% USize.mul) #[na, w])
+
+/-- **`Tab.ofBits`**: the set bits of the `g · w` bits `o` (`whereB`), bit `a·w + c` the row of `x` (`nx` rows) at
+    `ra[a]` and of `y` (`ny`) at `rc[c]`. -/
+def ofBitsB (g w o nx : Nat) (x : Cols) (ra ny : Nat) (y : Cols) (rc : Nat) : Bld TabB := do
+  let (M, sel) ← whereB (← call1 (kernel% USize.mul) #[g, w]) o
+  let wc ← constB M (← wordOf w)
+  let ix ← gatherB M (← mapB .div M sel wc) g ra
+  let iy ← gatherB M (← mapB .mod M sel wc) w rc
+  pure ⟨M, ← gatherCols M ix nx x, ← gatherCols M iy ny y⟩
+
+/-- **`Tab.ldivOf`** (`r`, `s` canonical): `Q = r° ≫ ⟨𝟙, s⟩`; per group of equal `(b, c)` its row count `cnt`; the
+    count `d` of `r`'s rows of `b` (CODE over `r.val ++ Q.key`); the groups with `cnt = d`; `∪` the vacuous part
+    `(ran UB − ran r) × ran UC`. -/
+def ldivOfB (r s UB UC : TabB) : Bld TabB := do
+  let Q ← compB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
+  let C := Q.val.drop s.key.length
+  let (K, g, f, p) ← ascSeenB Q.n (Q.key ++ C)
+  let cnt ← groupFoldB .add Q.n g f K 0 (← wordsB Q.n 1)
+  let (N, sh) ← catB r.n Q.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "ldiv: rows past 2^63" #[N]
+  let (bk, bg, bf, bp) ← ascSeenB N (← concatB N r.n Q.n sh r.val Q.key)
+  let cR ← groupFoldB .add N bg bf bk 0 (← mapB .lt N bp (← constB N (← wordOf r.n)))
+  let code ← scatterB .last N bp bg N
+  let q ← gatherB K f Q.n p
+  let d ← gatherB K (← gatherB K (← mapB .add K q (← constB K (← wordOf r.n))) N code) bk cR
+  let (M, sel) ← whereB K (← mapB .eq K cnt d)
+  let ix ← gatherB M sel K q
+  let P : TabB := ⟨M, ← gatherCols M ix Q.n Q.key, ← gatherCols M ix Q.n C⟩
+  let V ← selectB (fun m _ mx => mapB .not m mx mx) (← coreflB UB.n UB.val) (← coreflB r.n r.val)
+  let W ← coreflB UC.n UC.val
+  let (T, x, y) ← crossB V.n W.n V.key W.key
+  unionB P ⟨T, x, y⟩
+
+/-- **`Tab.ldiv`**: `ldivOfB` of `canonT R`, `canonT S`. -/
+def ldivB (R S UB UC : TabB) : Bld TabB := do ldivOfB (← canonT R) (← canonT S) UB UC
+
+/-- **`Tab.ldivBits`**: `S` as `ka + 1` rows (keys numbered with `R.key`'s, row `ka` holding `ran UC`) of `kc` bits,
+    `R`'s rows grouped by value over `ran R ∪ ran UB` (`kb` groups, a value of no `R` row given row `ka`), each the
+    `∧` of its rows (`kbitrows true`). Its `2^63` check is left out: its one caller `ldivSelB` runs it where
+    `bitsWinB` holds, so every count is below `2^27`. -/
+def ldivBitsB (R S UB UC : TabB) : Bld TabB := do
+  let (ka, aR, aS, _) ← code2B R.n S.n R.key S.key
+  let (kb, bR, _, NB, zb, rb) ← code2B R.n UB.n R.val UB.val
+  let (kc, cS, cU, NC, zc, rc) ← code2B S.n UC.n S.val UC.val
+  let ka1 ← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]
+  let cnt ← scatterB .add R.n bR (← wordsB R.n 1) kb
+  let (E, eb) ← whereB kb (← mapB .eq kb cnt (← wordsB kb 0))
+  let (N, gid) ← colCatB R.n E bR eb
+  let (_, ix) ← colCatB R.n E aR (← constB E (← wordOf ka))
+  let (ends, idx) ← csrB N kb gid ix
+  let (NS, r) ← colCatB S.n UC.n aS (← constB UC.n (← wordOf ka))
+  let (_, c) ← colCatB S.n UC.n cS cU
+  let m ← bitMatrixB NS ka1 kc r c
+  let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit true), kc, ka1, N, kb, ends, idx, m]) 0 "kbitrows"
+  ofBitsB kb kc o NB zb rb NC zc rc
+
+/-- **`Tab.bitsWin bits T na g w`** on size registers, every product kept from wrapping: `x · w ≤ bits` as
+    `w = 0 ∨ ¬ bits / w < x`, and `s < rowBits · T` as `s / rowBits < T` (`s` the two products, each `≤ bits`). The
+    `2^32` bounds follow from `bits < 2^32`, checked as the plan is built. -/
+def bitsWinB (bits : Nat) (T na g w : Nat) : Bld Nat := do
+  unless bits < 2 ^ 32 do throw s!"bitsWin: the bound {bits} is not below 2^32, which `kbitrows` reads"
+  let leW (x : Nat) : Bld Nat := do ite1 (← call1 (kernel% USize.decEq) #[w, ← lit (.size 0)]) (lit (.bit true)) do
+    let q ← call1 (kernel% USize.div) #[← lit (.size bits.toUSize), w]
+    ite1 (← call1 (kernel% USize.decLt) #[q, x]) (lit (.bit false)) (lit (.bit true))
+  andB (← leW na) do andB (← leW g) do
+    let s ← call1 (kernel% USize.add) #[← call1 (kernel% USize.mul) #[na, w], ← call1 (kernel% USize.mul) #[g, w]]
+    call1 (kernel% USize.decLt) #[← call1 (kernel% USize.div) #[s, ← lit (.size Tab.rowBits.toUSize)], T]
+
+/-- `if c then t else e` of two tables whose sides have the shape of `ks`, `vs` (`regsOf`): the new registers, read
+    back into that shape (`withRegs`). -/
+def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
+  let w := (← regsOf (ks ++ vs)).length
+  let flat (b : Bld TabB) : Bld (Array Nat) := do
+    let T ← b
+    let rs ← regsOf (T.key ++ T.val)
+    unless T.key.length == ks.length && T.val.length == vs.length && rs.length == w do
+      throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, {rs.length} registers, not {ks.length} and {vs.length}, {w}"
+    pure (#[T.n] ++ rs.toArray)
+  let rs ← ite c (flat t) (flat e)
+  let (cs, _) ← withRegs (ks ++ vs) (rs.toList.drop 1)
+  pure ⟨← nth rs 0 "if", cs.take ks.length, cs.drop ks.length⟩
+
+/-- **`Tab.ldivSel d bits`**: `T` the expansion of `R° ≫ S` (`groupsB`), `ka` its groups; the division `d` where
+    `rowBits · T ≤ ka + 2` (tested as `(ka + 2) / rowBits < T`, no product), else `ldivBitsB` where `bitsWinB T
+    (ka + 1) kb kc` holds, else `d`. -/
+def ldivSelB (d : TabB → TabB → TabB → TabB → Bld TabB) (bits : Nat) (R S UB UC : TabB) : Bld TabB :=
+  funT [R, S, UB, UC] fun
+  | [R, S, UB, UC] => do
+    let (_, _, _, _, ka, _, _, w) ← groupsB ⟨R.n, R.val, R.key⟩ S
+    let T := (← prefixB .add ka w).2
+    let big ← call1 (kernel% USize.decLt)
+      #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[ka, ← lit (.size 2)], ← lit (.size Tab.rowBits.toUSize)], T]
+    -- one choice bit, so each form is built once in the plan (as `compSelB`)
+    let win ← andB big do
+      bitsWinB bits T (← call1 (kernel% USize.add) #[ka, ← lit (.size 1)]) (← code2B R.n UB.n R.val UB.val).1
+        (← code2B S.n UC.n S.val UC.val).1
+    iteT win R.val S.val (ldivBitsB R S UB UC) (d R S UB UC)
+  | _ => throw "ldivSel: not four tables"
+
+/-- `T°` (`Tab.conv`): the sides swapped, then `canonT`. -/
+def convB (T : TabB) : Bld TabB := canonT ⟨T.n, T.val, T.key⟩
+
+/-- **`R / S`** within `UA`, `UB` (`GenK.rdiv`): `(S° \ R°)°`; the two converses are `canonT` answers, so the division
+    is `ldivOfB` (`Tab.ldivOf`), with no second `canon`. -/
+def rdivB (R S UA UB : TabB) : Bld TabB := do
+  convB (← ldivSelB ldivOfB Tab.bitsMax (← convB S) (← convB R) UB UA)
+
+/-- **`Tab.compBits`**: `S` as `kb` rows (middle values, numbered with `R.val`'s) of `kc` bits, `R`'s rows grouped by
+    key (`ka` groups), each the `∨` of its rows (`kbitrows false`), read back by `ofBitsB`: each side's value is the
+    first row of its number, so equal values written apart (two empty cells) read back as one. Its `2^63` check is
+    left out: its one caller `compSelB` runs it where `bitsWinB` holds, so every count is below `2^27`. -/
+def compBitsB (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do
+    let (kb, bR, bS, _) ← code2B R.n S.n R.val S.key
+    let (ka, aR, ra) ← codeB R.n R.key
+    let (kc, cS, rc) ← codeB S.n S.val
+    let (ends, idx) ← csrB R.n ka aR bR
+    let m ← bitMatrixB S.n kb kc bS cS
+    let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit false), kc, kb, R.n, ka, ends, idx, m]) 0 "kbitrows"
+    ofBitsB ka kc o R.n R.key ra S.n S.val rc
+  | _ => throw "compBits: not two tables"
+
+/-- **`Tab.compSel bits`** (`GenK.compR`'s `compSelM`, read back): `T` the expansion of `groupsB`, `K` its groups; the
+    expansion (`compFromB`) where `rowBits · T ≤ K + 1` (tested as `(K + 1) / rowBits < T`, no product), else
+    `compBitsB` where `bitsWinB T K ka kc` holds, else the expansion. -/
+def compSelB (bits : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do
+    let x ← groupsB R S
+    let (_, _, _, _, K, _, _, w) := x
+    let T := (← prefixB .add K w).2
+    let big ← call1 (kernel% USize.decLt)
+      #[← call1 (kernel% USize.div) #[← call1 (kernel% USize.add) #[K, ← lit (.size 1)], ← lit (.size Tab.rowBits.toUSize)], T]
+    -- one choice bit, so each form is built once in the plan (two copies of the expansion per `≫` outgrow `cc`)
+    let win ← andB big do bitsWinB bits T K (← codeB R.n R.key).1 (← codeB S.n S.val).1
+    iteT win R.key S.val (compBitsB R S) (compFromB R S x)
+  | _ => throw "compSel: not two tables"
+
+/-- **`compT`**: `R ≫ S` (`compSelB`, as `GenK.compV`), `S` (the table `s` in a context, on demand where `ds`) read at
+    `ran R`, its range the values `ran` the composition's context knows. -/
+def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
+  compSelB Tab.bitsMax R (← s (← if ds then (return { dom := some (← nubB R.n R.val), ran }) else pure {}))
+
+/-! #### The rounds of a fold (`Tab.foldRounds`) and the list rows its steps read -/
+
+/-- **`R − S`** (`Tab.diff`): `Tab.select` keeping the groups of no `S` row. -/
+def diffB (R S : TabB) : Bld TabB := selectB (fun m _ mx => mapB .not m mx mx) R S
+
+/-- **`𝟘`** at `A ⟶ B`: no row. -/
+def zeroB (A B : Obj) : Bld TabB := do let z ← lit (.size 0); pure ⟨z, ← noneB z A, ← noneB z B⟩
+
+/-- **`Tab.nil`** on the keys `X` (`n` rows): each to the empty cell, `lo = hi = 0` over a payload of no row of `B`;
+    then `canonT`. -/
+def nilB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let c ← wordsB n 0
+  let z ← mapB .add n c c
+  let z0 ← lit (.size 0)
+  canonT ⟨n, X, [.arr "" z0 z z (← noneB z0 B ".e")]⟩
+
+/-- **`Tab.outl`** (`left`) or **`Tab.outr`** on the `n` pairs `X` of `A` and `B`: each pair beside its component, then
+    `canonT`. -/
+def piB (A B : Obj) (left : Bool) (n : Nat) (X : Cols) : Bld TabB := do
+  let w := objWidth A
+  canonT ⟨n, X, ← if left then repath A "" (X.take w) else repath B "" (X.drop w)⟩
+
+/-- **`T ≫ π₁`** (`left`) or **`T ≫ π₂`**, `T`'s value a pair of `A` and `B`: `T.comp (outl T.val)` (`piB`). -/
+def projT (A B : Obj) (left : Bool) (T : TabB) : Bld TabB := do compB T (← piB A B left T.n T.val)
+
+/-- The check `uncons`, `unsnoc` make on `n` cells over `m` elements, `n + m + 1 < 2^63`, on size registers with
+    `n, m < 2^63` tested first, so the sum does not wrap; else `fail` with `what` and the two counts. -/
+def sumBoundB (what : String) (n m : Nat) : Bld Unit := do
+  let c ← lit (.size (2 ^ 63))
+  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
+    call1 (kernel% USize.decLt) #[← call1 (kernel% USize.add) #[← call1 (kernel% USize.add) #[n, m], ← lit (.size 1)], c]
+  guard ok s!"{what}: n cells over m elements past 2^63, n + m + 1" #[n, m]
+
+/-- **`Tab.uncons`** (`cons°`, `left`) or **`Tab.unsnoc`** (`snoc°`) on the cells `X` (`n` rows) of `B`: each non-empty
+    cell `[s, e)` (`whereB` of `s < e`) to its first element (the payload at `s`) and the slice `[s + 1, e)`, or to the
+    slice `[s, e - 1)` and its last element (at `e - 1`); then `canonT`. No payload is built: each answer cell is a
+    slice of `X`'s own. -/
+def unconsB (B : Obj) (left : Bool) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, f) ← arrCol (if left then "uncons" else "unsnoc") X
+  sumBoundB (if left then "uncons" else "unsnoc") n m
+  let (s, e) ← spanB n m lo hi
+  let (M, sel) ← whereB n (← mapB .lt n s e)
+  let key ← gatherCols M sel n X
+  if left then
+    let sM ← gatherB M sel n s
+    canonT ⟨M, key, (← repath B ".1" (← gatherCols M sM m f)) ++
+      [.arr ".2" m (← mapB .add M sM (← wordsB M 1)) (← gatherB M sel n e) (← repath B ".2.e" f)]⟩
+  else
+    let l ← mapB .sub M (← gatherB M sel n e) (← wordsB M 1)
+    canonT ⟨M, key, [.arr ".1" m (← gatherB M sel n s) l (← repath B ".1.e" f)] ++ (← repath B ".2" (← gatherCols M l m f))⟩
+
+/-- **`Vals.cat`** of the `n` cells `x`, `y` of `B` (`arrCol`s): row `i` the cell `x[i] ++ y[i]`, the payloads joined
+    (`concatB`), EXPAND of the summed widths, element `u` of cell `G` read at `s₁[G] + u` where `u < w₁`, else at
+    `m₁ + s₂[G] + u - w₁` (`b + c · (a - b)`), laid out one cell after another (`Vals.cells`). -/
+def cellCatB (B : Obj) (n : Nat) (x y : Nat × Nat × Nat × Cols) : Bld Col := do
+  let (m₁, lo₁, hi₁, f₁) := x
+  let (m₂, lo₂, hi₂, f₂) := y
+  let (N, off) ← catB m₁ m₂
+  cellsBoundB "cat" n N
+  let F ← concatB N m₁ m₂ off f₁ f₂
+  let (s₁, e₁) ← spanB n m₁ lo₁ hi₁
+  let (s₂, e₂) ← spanB n m₂ lo₂ hi₂
+  let w₁ ← mapB .sub n e₁ s₁
+  let w ← mapB .add n w₁ (← mapB .sub n e₂ s₂)
+  let (T, G, u) ← expandB n w
+  let a ← mapB .add T (← gatherB T G n s₁) u
+  let b ← mapB .add T (← gatherB T G n (← mapB .sub n (← mapB .add n s₂ (← constB n (← u64B m₁))) w₁)) u
+  let c ← mapB .lt T u (← gatherB T G n w₁)
+  let pay ← gatherCols T (← mapB .add T b (← mapB .mul T c (← mapB .sub T a b))) N F
+  let (P, _) ← prefixB .add n w
+  pure (.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" pay))
+
+/-- **`Tab.snoc`**: `(xs, a)` to `xs ++ [a]`, `Vals.cat` after `𝟙 × τ` (`Vals.tau`: row `i` the one-element cell
+    `[i, i + 1)` over the rows of `a`); then `canonT`. -/
+def snocB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
+  let [P] := Ps | throw "snoc: not one table"
+  let x ← arrCol "snoc" (P.val.take 1)
+  let tau := (P.n, ← posB, ← mapB .add P.n (← posB) (← wordsB P.n 1), ← repath B ".e" (P.val.drop 1))
+  canonT ⟨P.n, P.key, [← cellCatB B P.n x tau]⟩
+
+/-- **`Tab.peelL`** (`left`) or **`Tab.peelR`** on `rest`, cells of `E`: `rest ≫ cons°` (`snoc°`), its first (last)
+    element read now and the rest (`projT`). -/
+def peelB (E : Obj) (left : Bool) (rest : TabB) : Bld (TabB × TabB) := do
+  let c ← compB rest (← unconsB E left rest.n rest.val)
+  if left then pure (← projT E (.arr E) true c, ← projT E (.arr E) false c)
+  else pure (← projT (.arr E) E false c, ← projT (.arr E) E true c)
+
+/-- **`Tab.foldRounds`** on `Instr.loop`, as `fixB` runs `Tab.fixOn`: the state `rest`, `P`, `out` (each its count,
+    then `regsOf`), at most the register `k` rounds. A round where `P` has no row answers the state as it is and ends
+    the loop; else `peel rest` gives the elements `el` read now and the rest, `P` becomes `step P el`, and `out` gains
+    `P − dom(el) P` (the rows whose key has no element left), both cut (`packT`). The answer is the last `out`. -/
+def foldRoundsB (peel : TabB → Bld (TabB × TabB)) (step : TabB → TabB → Bld TabB) (k : Nat) (rest P out : TabB) :
+    Bld TabB := do
+  let st (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
+  let shape (X : TabB) : List Nat → Bld (TabB × List Nat)
+    | n :: rs => do
+      let (cs, rs) ← withRegs (X.key ++ X.val) rs
+      pure (⟨n, cs.take X.key.length, cs.drop X.key.length⟩, rs)
+    | [] => throw "a fold's state: fewer registers than its tables read"
+  let three (rs : List Nat) : Bld (TabB × TabB × TabB) := do
+    let (R, rs) ← shape rest rs
+    let (Q, rs) ← shape P rs
+    pure (R, Q, (← shape out rs).1)
+  let init := ((← st rest) ++ (← st P) ++ (← st out)).toArray
+  let s ← loop k init "Tab.foldRounds: rows still folding when the rounds ran out" fun rs => do
+    let (R, Q, O) ← three rs.toList
+    let e ← call1 (kernel% USize.decEq) #[Q.n, ← lit (.size 0)]
+    let nx ← ite e (pure rs) do
+      let (el, R') ← peel R
+      let Q' ← packT (← step Q el)
+      let O' ← packT (← unionB O (← diffB Q (← compB (← coreflB el.n el.key) Q)))
+      return ((← st R') ++ (← st Q') ++ (← st O')).toArray
+    pure (nx, e)
+  return (← three s.toList).2.2
+
+/-- **`Tab.map`'s left fold** `⦇nil, ⟨π₁, π₂ ≫ R⟩ ≫ snoc⦈` on the arrays `I = idU X` of `A` (`foldRoundsB`, `peelB`),
+    their payload's row count plus two rounds; one plan function per table shape (`funT`). -/
+def mapFoldB (A B : Obj) (I R : TabB) : Bld TabB := funT [I, R] fun
+  | [I, R] => do
+    let (m, _, _, _) ← arrCol "F" I.key
+    foldRoundsB (peelB A true) (fun acc el => do snocB B (← pairB (.arr A) (.arr B) B acc (← compB el R)))
+      (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) I (← nilB B I.n I.key) (← zeroB (.arr A) (.arr B))
+  | _ => throw "F(R)'s fold: not two tables"
+
+/-- `G = ∋` on the `n` arrays `X` of `B`, `P = ⟨G, G⟩` and `D = ran P`: the pairs of elements of one array that
+    `Tab.est` and `Tab.thin` ask their test about. -/
+def pairsB (B : Obj) (n : Nat) (X : Cols) : Bld (TabB × TabB × TabB) := do
+  let G ← memB B n X
+  let P ← pairB (.arr B) B B G G
+  pure (G, P, ← coreflB P.n P.val)
+
+/-- **`GenK.fold`** (`left`) or **`GenK.foldr`** on the `n` arrays `X` of `E`: `foldRoundsB` from `idU X` and
+    `Tab.top X (ran e)` (`ev` the table of `e`), `step` a round's, their payload's row count plus two rounds. One
+    plan function (`funT`), `step`'s reads of the scope its parameters. -/
+def foldB (E V : Obj) (left : Bool) (n : Nat) (X : Cols) (ev : TabB) (step : TabB → TabB → Bld TabB) : Bld TabB :=
+  funT [⟨n, X, []⟩, ev] fun
+  | [I, ev] => do
+    let (m, _, _, _) ← arrCol "fold" I.key
+    let (T, x, y) ← crossB I.n ev.n I.key ev.val
+    foldRoundsB (peelB E left) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB I.n I.key)
+      (← canonT ⟨T, x, y⟩) (← zeroB (.arr E) V)
+  | _ => throw "fold: not two tables"
+
+/-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows) of `A`, `R` the table of the relation on elements: the elements
+    EXPANDed (`v`, `T` rows), `⟨pos, v⟩ ≫ R`; where each position has exactly one image, those images in position
+    order under the same widths (`Vals.cells`), then `canonT`; else the left fold (`mapFoldB`), as `Tab.map` chooses. -/
+def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fun n X Rs => do
+  let [R] := Rs | throw "F: not one table"
+  let (m, lo, hi, f) ← arrCol "F" X
+  cellsBoundB "map" n m
+  let (s, e) ← spanB n m lo hi
+  let w ← mapB .sub n e s
+  let (T, G, u) ← expandB n w
+  let v ← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f
+  let C ← compB ⟨T, [.atom "" .i64 (← posB)], v⟩ R
+  let fn ← andB (← call1 (kernel% USize.decEq) #[C.n, T]) do
+    call1 (kernel% USize.decEq) #[(← nubB C.n C.key).1, T]
+  -- the value side's shape for `iteT`: its registers are not read
+  iteT fn X [.arr "" T lo hi (← repath B ".e" C.val)] (do
+      let (P, _) ← prefixB .add n w
+      canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩)
+    (do mapFoldB A B (← coreflB n X) R)
+
+/-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
+    runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
+    relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
+    on its keys (`GenK.onKeys`). Any other row is refused, naming it. -/
+def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld TabB := do
+  let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
+  if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
+  else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
+  else if c == ``Tab.mem then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; memB b n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  else if c == ``Tab.map then match A, B, xs with
+    -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand
+    | .arr a, .arr b, [x] => do
+      let (n, X) ← known r.sym D.dom
+      let M ← memB a n X
+      cellsMapB a b n X (← x { dom := some (← nubB M.n M.val) })
+    | _, _, _ => throw s!"row `{r.sym}` (`{c}`) at objects that are no arrays, or given {xs.length} relations, not one"
+  else if c == ``Tab.asc then match xs with
+    | [x] => ascB B (← x {})
+    | _ => throw s!"asc given {xs.length} relations, not one"
+  else if c == ``Tab.uncons || c == ``Tab.unsnoc then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; unconsB b (c == ``Tab.uncons) n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  -- `GenK.after`: `idU X ≫ snoc`
+  else if c == ``Tab.snoc then match B with
+    | .arr b => do let (n, X) ← known r.sym D.dom; snocB b (← coreflB n X)
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
+  -- `GenK.onKeys`: `R` run knowing its domain is the keys `i` of the pairs `X` in demand; then `Tab.flat`'s
+  -- composition `((outl X ≫ R) ∩ (outr X ≫ (outl R.val)°)) ≫ outr R.val`
+  else if c == ``Tab.flat then match A, xs with
+    | .prod I a, [x] => do
+      let (n, X) ← known r.sym D.dom
+      let R ← x { dom := some (← nubB n (X.take (objWidth I))) }
+      let L ← compB (← piB I a true n X) R
+      let M ← compB (← piB I a false n X) (← convB (← piB a B true R.n R.val))
+      compB (← interB L M) (← piB a B false R.n R.val)
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair, or given {xs.length} relations, not one"
+  else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
+
+/-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
+    payload at `s + k`; then `canonT`. `s + k` is read signed, so `m + k` stays below `2^63`. -/
+def atB (B : Obj) (k n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, f) ← arrCol "at" X
+  guard (← call1 (kernel% USize.decLt) #[← call1 (kernel% USize.add) #[m, ← lit (.size k.toUSize)],
+    ← lit (.size (2 ^ 63))]) s!"at: position {k} in a payload of m rows, past 2^63" #[m]
+  let (s, e) ← spanB n m lo hi
+  let kc ← constB n (← lit (.u64 k.toUInt64))
+  let (M, sel) ← whereB n (← mapB .lt n kc (← mapB .sub n e s))
+  let ix ← gatherB M sel n (← mapB .add n s kc)
+  canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
+
+/-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
+    group's `X` rows (`cD`, input row below `n`) first; its cell the sorted rows `[f + cD, f + c)` of `r.val` gathered
+    in sorted order (`r.val` itself where `r` has no row, an `ite`); the groups with `0 < cD` kept, keyed by their
+    first row; then `canonT`. -/
+def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fun n X Rs => do
+  let [R] := Rs | throw "Λ: not one table"
+  let r ← canonT R
+  let (N, sh) ← catB n r.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "lam: rows past 2^63" #[N]
+  let (k, g, f, p) ← ascSeenB N (← concatB N n r.n sh X r.key)
+  let nc ← constB N (← u64B n)
+  let cD ← scatterB .add N g (← mapB .lt N p nc) k
+  let lo ← mapB .add k f cD
+  let hi ← mapB .add k f (← scatterB .add N g (← wordsB N 1) k)
+  let (M, sel) ← whereB k (← mapB .lt k (← wordsB k 0) cD)
+  let iD ← gatherB M (← gatherB M sel k f) N p
+  let pay ← ite (← call1 (kernel% USize.decEq) #[r.n, ← lit (.size 0)]) (do pure (#[r.n] ++ (← regsOf r.val).toArray))
+    (do
+      let ix ← mapB .max N (← mapB .sub N p nc) (← wordsB N 0)
+      pure (#[N] ++ (← regsOf (← gatherCols N ix r.n r.val)).toArray))
+  let (pv, _) ← withRegs r.val (pay.toList.drop 1)
+  canonT ⟨M, ← gatherCols M iD n X,
+    [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
+/-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
+abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
+
+/-- A variable bound to the registers `s` of a table (an input, a run-time definition): `s` in every context. -/
+def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
+  fun A B _ => return ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩
+
+mutual
+/-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` what
+    each reads (`Vars`), `D` the values its context knows its source to hold (`compT`: a composition's left
+    operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
+    that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
+    them and what they need. -/
+partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+  | A, B, .val R => do
+    let (k, v) := (← litSide R.key, ← litSide R.val)
+    canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
+  | A, _, .uni (m := m) U => do coreflB (← lit (.size m)) (← colsOf A (← litSide U))
+  | A, B, .zero => zeroB A B
+  | _, _, .id => do let (n, X) ← known "𝟙" (D.dom <|> D.ran); coreflB n X
+  | _, _, .top V => do
+    let (n, X) ← known "⊤" D.dom
+    let v ← tabB σ {} V
+    let (T, x, y) ← crossB n v.n X v.val
+    canonT ⟨T, x, y⟩
+  | _, _, .outl (A := A) => do
+    let (n, X) ← known "π₁" D.dom; canonT ⟨n, X, ← repath A "" (X.take (objWidth A))⟩
+  | _, _, .outr (A := A) (B := B) => do
+    let (n, X) ← known "π₂" D.dom; canonT ⟨n, X, ← repath B "" (X.drop (objWidth A))⟩
+  | _, _, .comp R S => do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) S.dem D.ran
+  | _, _, .conv R => do
+    let r ← tabB σ ⟨D.ran, D.dom, D.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ R; canonT ⟨r.n, r.val, r.key⟩
+  | _, _, .meet R S => do
+    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem D boundOf
+    interB r s
+  | _, _, .join R S => do unionB (← tabB σ D R) (← tabB σ D S)
+  | _, _, .diff R S => do
+    let r ← tabB σ D R
+    diffB r (← tabB σ (← if S.dem then boundOf r else pure D) S)
+  | _, _, .dom R => do let r ← tabB σ { dom := D.dom <|> D.ran } R; coreflB r.n r.key
+  | _, _, .ran R => do let r ← tabB σ { ran := D.dom <|> D.ran } R; coreflB r.n r.val
+  | _, _, .pair (A := A) (B := B) (C := C) R S => do
+    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
+      fun t => return { dom := some (← domOf t) }
+    pairB A B C r s
+  | _, _, .prod (A := A) (B := B) (C := C) (D := D') R S => do prodB A B C D' (← tabB σ {} R) (← tabB σ {} S)
+  | _, _, .own R | _, _, .share _ R => tabB σ D R
+  | A, B, .var _ k => match σ.lookup k with
+    | some b => b A B D
+    | none => throw s!"variable {k}, which no input table or call argument is bound to"
+  | _, _, .nu k S b => do nuB (fun X => tabB ((k, fun _ _ _ => pure X) :: σ) {} b) (← tabB σ {} S)
+  | A, B, .mu k w cap b => do
+    muB (Tab.capMsg w cap) (← sizeB (cap - 1)) (fun X => tabB ((k, fun _ _ _ => pure X) :: σ) {} b)
+      (← tabB σ {} (.zero : Tm A B))
+  | A, B, .hylo k w b => do
+    -- `GenK.hylo` on the keys `X` in demand: the nodes `N`, no cycle among them (`ν`), then `D ≫ μY : N ≫ φ(Y)`
+    let (n, X) ← known "hylo" D.dom
+    let some ch := b.kids k A | throw s!"Tm.gen: {w} gives the hylo no children (Tm.kids)"
+    let Dt ← coreflB n X
+    let N ← muB (Tab.capMsg w USize.size) (← sizeB (USize.size - 1)) (fun N => do
+        let C ← compTB N (tabB σ · ch) ch.dem; unionB Dt (← coreflB C.n C.val))
+      (← tabB σ {} (.zero : Tm A A))
+    let C ← compTB N (tabB σ · ch) ch.dem
+    let cyc ← nuB (fun P => do let CP ← compB C P; coreflB CP.n CP.key) N
+    guard (← call1 (kernel% USize.decEq) #[cyc.n, ← lit (.size 0)]) (GenK.cycleMsg w) #[cyc.n, N.n]
+    compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
+      (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
+      (fun Y => compTB N (tabB ((k, fun _ _ _ => pure Y) :: σ) · b) b.dem) (← tabB σ {} (.zero : Tm A B)))
+  | _, _, .leq t U => cmpB (tabB σ · U) "≤" (Tab.ordOp false t) t D
+  | _, _, .lt t U => cmpB (tabB σ · U) "<" (Tab.ordOp true t) t D
+  | _, _, .succ U => do let (n, X) ← known "succ" D.dom; succB (tabB σ · U) n X
+  | _, _, .arith t k U => do let (n, X) ← known "arith" D.dom; arithT (tabB σ · U) t k n X
+  | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) | A, B, t@(.callCv ..) => argB σ D A B t []
+  -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
+  | _, _, .ldiv R S UB UC => do
+    ldivSelB ldivB Tab.bitsMax (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UB) (← tabB σ {} UC)
+  | _, _, .rdiv R S UA UB => do rdivB (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UA) (← tabB σ {} UB)
+  | _, _, .lam (B := B) R => do
+    let (n, X) ← known "Λ" D.dom
+    lamB B n X (← tabB σ { dom := some (n, X) } R)
+  | _, _, .E (A := A) (B := B) R => do
+    let (n, X) ← known "E" D.dom
+    lamB B n X (← compTB (← memB A n X) (tabB σ · R) R.dem)
+  | _, _, .nil (B := B) => do let (n, X) ← known "nil" D.dom; nilB B n X
+  | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
+  -- `GenK.est`, `GenK.thin`: `Tab.est`, `Tab.thin` on the arrays in demand, `Q` run knowing its domain `D`
+  | _, _, .est (B := B) Q => do
+    let (n, X) ← known "est" D.dom
+    let (G, P, Dt) ← pairsB B n X
+    let V ← coreflB G.n G.val
+    let VV ← pairB B B B V V
+    let Y ← diffB (← diffB Dt (← tabB σ { dom := some (Dt.n, Dt.val) } Q)) (← coreflB VV.n VV.val)
+    diffB G (← compB P (← piB B B true Y.n Y.key))
+  | _, _, .thin (B := B) Q => do
+    let (n, X) ← known "thin" D.dom
+    let (G, P, Dt) ← pairsB B n X
+    let Δ ← interB (← tabB σ { dom := some (Dt.n, Dt.val) } Q) Dt
+    let w ← pairB (.prod B B) B B (← piB B B false Dt.n Dt.key) (← piB B B true Dt.n Dt.key)
+    let wΔ ← compB w Δ
+    let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
+    lamB B n X (← diffB G (← compB P (← piB B B false Y.n Y.key)))
+  -- `GenK.fold`, `GenK.foldr`: `Tab.foldRounds` from `idU X` and `X × ran e`, `S` on `⟨P, el⟩` (`⟨el, P⟩`)
+  | _, _, .fold (E := E) (V := V) e S => do
+    let (n, X) ← known "fold" D.dom
+    foldB E V true n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) V E P el) (tabB σ · S) S.dem
+  | _, _, .foldr (E := E) (V := V) e S => do
+    let (n, X) ← known "foldr" D.dom
+    foldB E V false n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) E V el P) (tabB σ · S) S.dem
+  -- `GenK.foldI`: one left fold on `I × V` from `(i, b)`, each round's step met with `⟨π₁, S ≫ π₂⟩`
+  | _, _, .foldI (I := I) (E := E) (V := V) e S => do
+    let (n, X) ← known "foldI" D.dom
+    -- one plan function (`funT`), as `foldB`
+    funT [⟨n, X, []⟩] fun
+    | [Xt] => do
+      let K := Obj.prod I (.arr E)
+      let i ← piB I (.arr E) true Xt.n Xt.key
+      let rest ← piB I (.arr E) false Xt.n Xt.key
+      let es ← compTB i (tabB σ · e) e.dem
+      let step (P el : TabB) : Bld TabB := do
+        let s ← compTB (← pairB K (.prod I V) E P el) (tabB σ · S) S.dem
+        interB s (← pairB K I V i (← projT I V false s))
+      let (m, _, _, _) ← arrCol "foldI" rest.val
+      let out ← foldRoundsB (peelB E true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) rest
+        (← pairB K I V i (← projT V V false es)) (← zeroB K (.prod I V))
+      projT I V false out
+    | _ => throw "foldI: not one table"
+
+
+/-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
+    relation's table built in the context the row's wrapper gives it; a call by its body under its arguments bound at
+    `ks` and no other variable (`Code.args`). An argument is built at each use in the context the use gives it where
+    it runs on demand, or where it cannot run closed (`GenK.memo` keeps it lazy); else once, closed (`GenK.memo`).
+    A use at other objects than the argument's reads `𝟘` (`Code.bind`). -/
+partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
+    Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
+  | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
+  | .share _ R, xs => argB σ D A B R xs
+  | .call ks _ _ b, xs | .callCv ks _ _ _ b _, xs => do
+    let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
+      let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
+        fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
+      let lazy := at_ (tabB σ · x)
+      if x.dem then pure (k, lazy) else
+        try let t ← tabB σ {} x; pure (k, at_ fun _ => pure t) catch _ => pure (k, lazy)
+    tabB bs D b
+  | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
+  | t, [] => tabB σ D t
+  | _, xs => throw s!"{xs.length} relations given to a term that is no row and no call"
+end
 
 /-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
-    to them (a run-time definition's inputs, `Once.binds`). Stage 1a builds a literal, a converse (`Tab.conv`: the
-    sides swapped, then `canonB`), a shared term and a bound variable (I10); any other node is refused. -/
+    to them (a run-time definition's inputs, `Once.binds`): a variable's own registers, else `tabB`'s table. -/
 def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Side × Side)
-  | _, _, .val R => return (← litSide R.key, ← litSide R.val)
-  | A, B, .conv R => do canonB A B (← ofTm σ R).swap
-  | _, _, .share _ R => ofTm σ R
   | _, _, .var _ k => match σ.lookup k with
     | some s => pure s
     | none => throw s!"variable {k}, which no input table is bound to"
-  | _, _, _ => throw "a node other than a literal, a converse, a shared term or a variable: stage 1a builds only those"
+  | _, _, .share _ R => ofTm σ R
+  | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, sideArg s)) {} t)
 
-/-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
-def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (dir : String) :
-    Lean.Meta.MetaM (Except String (Bld Unit)) := do
+
+unsafe def progOfUnsafe (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Program) × Program) := do
+  let env ← Lean.getEnv
+  let opts ← Lean.getOptions
+  let val (m : Lean.Name) : Lean.Meta.MetaM Program := match env.evalConstCheck Program opts ``Program m with
+    | .ok p => pure p
+    | .error e => throwError "cannot read the program `{m}`: {e}"
+  let hs := ((Expand.relRegistry.getState env).chains.lookup n).getD []
+  return (← hs.mapM fun h => return (h, ← val h), ← val n)
+
+/-- The program `n` (a `rel_program`) and the programs its names reach, its homes as `rel_program` recorded them
+    (`RegEntry.chain`), each with its value: what `Expand.read` reads it after, so a name of the prelude resolves. -/
+@[implemented_by progOfUnsafe] opaque progOf (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Program) × Program)
+
+/-- The plan's steps of `output x to dir` in the program `n`, read after its homes (`progOf`, `Expand.read`). -/
+def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
+  let (chain, prog) ← progOf n
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
@@ -230,12 +1490,13 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
     discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put cs), n, ← listB es] 0
 
-/-- The plan of the IO statements of the program `prog`, read after the programs `chain` (`Expand.read`), as `n.io`
+/-- The plan of the IO statements of the program `n`, read after its homes (`progOf`, `Expand.read`), as `n.io`
     runs them: the input edge reads the inputs the outputs reach (`Expand.ioReach`, `readIn`); `main` builds each
     run-time definition they reach on the tables of its run-time names (`ofTm`, its variables `Once.binds`), then
     writes each output (`writeOut`), a closed definition's from its term. -/
-def ioOf (chain : List (Lean.Name × Program)) (prog : Program) :
+def ioOf (n : Lean.Name) :
     Lean.Meta.MetaM (Except String (Bld (List (String × InRead)) × (List (String × InRead) → Bld Unit))) := do
+  let (chain, prog) ← progOf n
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _, _, _, os, io) ← r.mapError (s!"{repr ·}")
@@ -362,15 +1623,6 @@ def ctorC (x : String) (tag : Nat) (os ss : List (String × Ty)) : Except String
   pure (s!"lean_object *{x} = lean_alloc_ctor({tag}, {os.length}, {end_ - 8 * os.length});" ++
     String.join (os.zipIdx.map fun ((y, t), i) => s!" lean_ctor_set({x}, {i}, {cBox t y});") ++ sets ++ "\n")
 
-/-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
-    block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
-partial def reads (base : Nat) : Instr → List Nat
-  | .call _ as | .fail _ as | .apply _ as => as.toList
-  | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
-  | .ctor _ os ss => os.toList ++ ss.toList
-  | .proj x .. | .sproj x .. => [x]
-  | .lit _ | .global _ => []
-
 /-- How many registers an instruction defines. -/
 def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Array (Array Ty)) : Instr → Except String Nat
   | .lit _ => pure 1
@@ -379,6 +1631,7 @@ def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Arra
   | .apply f _ => match fres[f]? with | some t => pure t.size | none => throw s!"apply f{f}: no earlier function"
   | .global g => match gtys[g]? with | some t => pure t.size | none => throw s!"global g{g}: no earlier global"
   | .ite _ _ rt _ _ => pure rt.size
+  | .loop _ init .. => pure init.size
   | .ctor .. | .proj .. | .sproj .. => pure 1
 
 /-- The emitter's state: the next fresh C name, the prototypes, the statics. -/
@@ -549,6 +1802,30 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
       let set (xs : Array String) := String.join ((os.zip xs.toList).map fun ((o, _), v) => s!"{ind}  {o} = {v};\n")
       c := c ++ s!"{ind}if ({x}) \{\n" ++ tc ++ set txs ++ s!"{ind}} else \{\n" ++ ec ++ set exs ++ s!"{ind}}\n"
       for (o, t) in os do rs := rs.push (o, t, true); live := live ++ [rs.size - 1]
+    | .loop k init body out done msg =>
+      let (kx, kt, _) ← creg rs k
+      unless kt == .size do throw s!"loop reads register {k}, a {repr kt}, not a size"
+      -- the state owns a reference to each `init`; a round releases the state it reads and leaves the next one owned
+      let st ← init.toList.mapM fun a => do let (y, t, _) ← creg rs a; pure (← fresh, y, t)
+      let cnt ← fresh
+      c := c ++ s!"{ind}size_t {cnt} = {kx};\n"
+      for (x, y, t) in st do c := c ++ s!"{ind}{cTy t} {x} = {y};" ++ (if isObj t then s!" lean_inc({x});\n" else "\n")
+      let srs := rs ++ (st.map fun (x, _, t) => (x, t, true)).toArray
+      let (bc, brs, bxs) ← blockC abi fres gtys (ind ++ "    ") srs ((List.range st.length).map (rs.size + ·)) body
+        (out.push done)
+      for ((_, _, t), a) in st.zip out.toList do
+        let t' := (← creg brs a).2.1
+        unless t' == t do throw s!"loop: next state register {a} is a {repr t'}, the state's a {repr t}"
+      -- through temporaries, since a next state may be another slot of this one
+      let tmp ← st.mapM fun (_, _, t) => return (← fresh, t)
+      let dn ← fresh
+      let some dv := bxs.back? | throw "loop: a round answers no done register"
+      c := c ++ s!"{ind}for (;;) \{\n{ind}  if ({cnt}-- == 0) \{ fputs({cStr msg}, stderr); fputc('\\n', stderr); exit(1); }\n" ++
+        s!"{ind}  uint8_t {dn};\n{ind}  \{\n" ++ bc ++
+        String.join ((tmp.zip bxs.toList).map fun ((x, t), v) => s!"{ind}    {cTy t} {x} = {v};\n") ++
+        String.join ((st.zip tmp).map fun ((x, _, _), (y, _)) => s!"{ind}    {x} = {y};\n") ++
+        s!"{ind}    {dn} = {dv};\n{ind}  }\n{ind}  if ({dn}) break;\n{ind}}\n"
+      for (x, _, t) in st do rs := rs.push (x, t, true); live := live ++ [rs.size - 1]
     let (l, s) := release rs live after; live := l; c := c ++ s
   -- the results: moved where held, counted otherwise
   let mut outs : Array String := #[]

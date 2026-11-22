@@ -1,5 +1,6 @@
 import Rel.Lang.EmitC
 import Rel.Run.Lang.Embed
+import Rel.Programs.Prelude
 
 /-! Stage 1a of the native backend (`doc/rel-native-design.md` §13): `x ≜ {…}°`, `output x to "out"`. Its plan is
     literals, the converse's `canon` (`kasc`, `kseen`, `kgather`) and `qlean_own_write` calls. `main` is the `relc-1a` exe:
@@ -11,13 +12,71 @@ namespace Rel.Lang.TestNative
 
 open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel
 
+-- the prelude's `1` (`ℓ`'s `⊤(1,L)`), read by `relc` outside this Lean scope through the program's recorded homes
+open Rel.Programs.prelude in
 rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
     x : X ⟶ N ≜ {(1,A),(2,B),(5,C),(5,A)}°
+    un : N ⟶ X ≜ {(1,A),(2,B)} ∪ {(5,C),(2,B)}
+    me : N ⟶ X ≜ {(1,A),(2,B)} ∩ {(5,C),(2,B)}
+    df : N ⟶ X ≜ {(1,A),(2,B)} − {(5,C),(2,B)}
+    zr : X ⟶ N ≜ 𝟘
+    cm : X ⟶ X ≜ x x°
+    dm : X ⟶ X ≜ dom(x)
+    rn : N ⟶ N ≜ ran(x)
+    pr : X ⟶ N × N ≜ ⟨x, x⟩
+    cx : X × N ⟶ N × X ≜ x × x°
+    po : X × N ⟶ X ≜ (x × x°) π₂
+    pl : X × N ⟶ N ≜ (x × x°) π₁
+    ix : X ⟶ X ≜ x x° 𝟙
+    tp : X ⟶ X ≜ x ⊤
+    ed : N ⟶ N ≜ {(1,2),(2,3),(3,5)}
+    tc : N ⟶ N ≜ μY : ed ∪ (Y ed)
+    cy : N ⟶ N ≜ {(1,1),(1,2),(2,3)}
+    gf : N ⟶ N ≜ νY : cy ∩ (cy Y)
+    le : X ⟶ N ≜ x ≤
+    lt : N ⟶ X ≜ < x°
+    ml : N ⟶ N ≜ {(1,5),(5,2),(2,2),(9,3)} ∩ ≤
+    sc : X ⟶ N ≜ x succ
+    w : N×N ⟶ N×N ≜ {((7,2),(7,2)),((2,7),(2,7)),((7,0),(7,0)),((3,5),(3,5))}
+    ps : N×N ⟶ N ≜ w plus
+    mn : N×N ⟶ N ≜ w minus
+    dv : N×N ⟶ N ≜ w div
+    tm : N×N ⟶ N ≜ w times
+    f(S : X ⟶ N) : X ⟶ N ≜ S succ ∪ S
+    fc : X ⟶ N ≜ f(x)
+    bo : X ⟶ X ≜ {(B,A),(C,A)}
+    rt : X ⟶ N ≜ {(A,3),(B,7),(C,2)}
+    lm : X ⟶ [X] ≜ dom(x) Λ(bo°)
+    nl : X ⟶ [N] ≜ dom(x) nil
+    lu : X ⟶ [X] ≜ lm ∪ (dom(x) nil)
+    hd : X ⟶ X ≜ lm at(0)
+    ee : X ⟶ [N] ≜ lm E(x)
+    fm : X ⟶ [N] ≜ lm F(rt)
+    hy : X ⟶ N ≜ dom(x) hylo(⟨𝟙, Λ(bo°)⟩, π₁ rt)
+    ld : N ⟶ N ≜ x \ x
+    a1 : X ⟶ N ≜ {(A,1)}
+    a2 : X ⟶ N ≜ {(A,2)}
+    l1 : N ⟶ N ≜ a1 \ a2
+    rd : N ⟶ N ≜ x° / x°
+    g(S : N ⟶ N) : X ⟶ N ≜ x S
+    gc : X ⟶ N ≜ g(succ)
+    xs : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,2 2)}
+    z0 : N ⟶ N ≜ {(0,0)}
+    f1 : N ⟶ N ≜ xs ⦇[z0, plus]⦈
+    f3 : N ⟶ N ≜ xs ⦇[z0, π₁ ∪ π₂]⦈ʳ
+    es : N ⟶ N ≜ xs est(≤)
+    th : N ⟶ [N] ≜ xs thin(≤)
+    obj L = 5…6
+    ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
+    pf(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
+    q1 : X ⟶ X ≜ {(A,B),(B,C)}
+    fa : N ⟶ X×X ≜ {(0,0)}⊤(N,X)⟨𝟙,bo⟩ ∪ ({(1,1)}⊤(N,X)⟨𝟙,q1⟩)
+    fi : N ⟶ (X×X)×(X×X) ≜ pf(fa)
 
 /-- `output x to "out"`. -/
-def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
+def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``native1a "x" "out") >>= Bld.plan
 
 /-! F-e: a computed relation as columns. `arithB` on two literal columns answers a count register and `Enc`
     registers; the output is the one-row relation of lists `gu ↦ s`: each side's `.e` a computed column handed over
@@ -100,27 +159,65 @@ rel_program nativeIO where
     -- the own-format files `output t to "out/io/t"` writes, kept as test/native/in/t
     input s : N ⟶ Row from "in/t"
     cp : N ⟶ Row ≜ t
+    un : N ⟶ Row ≜ t ∪ t
+    cm : N ⟶ N ≜ t t°
     output t to "out/io/t"
     output t to csv "out/io/t.csv"
     output cp to csv "out/io/cp.csv"
     output s to "out/io/s"
+    output un to "out/io/un"
+    output cm to "out/io/cm"
 
-/-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), `plan`'s output, then the computed
-    relation's to `out/arith` and the group ids to `out/gid`. -/
+/-- `R`'s Lean value written to `dir` (`writeRel`), its error the program's. -/
+def semOut {A B : Obj} (R : Except String (Tab A B)) (dir : String) : IO Unit := do writeRel dir (← IO.ofExcept R)
+
+/-- The closed definitions of `native1a`, one per `Tm` node the plan builds (`tabB`), each written to `out/NAME`:
+    by `relc lean` from its Lean value and by the gate's plan from its term, the one list both sides read. -/
+def semOuts : List (String × (String → IO Unit)) :=
+  [("x", semOut native1a.x), ("un", semOut native1a.un), ("me", semOut native1a.me), ("df", semOut native1a.df),
+   ("zr", semOut native1a.zr), ("cm", semOut native1a.cm), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
+   ("pr", semOut native1a.pr), ("cx", semOut native1a.cx), ("po", semOut native1a.po), ("pl", semOut native1a.pl),
+   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp), ("tc", semOut native1a.tc), ("gf", semOut native1a.gf),
+   ("le", semOut native1a.le), ("lt", semOut native1a.lt),
+   ("ml", semOut native1a.ml), ("sc", semOut native1a.sc), ("ps", semOut native1a.ps), ("mn", semOut native1a.mn),
+   ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc), ("nl", semOut native1a.nl),
+   ("hd", semOut native1a.hd), ("ee", semOut native1a.ee), ("lm", semOut native1a.lm), ("lu", semOut native1a.lu),
+   ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
+   ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
+   ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi)]
+
+-- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
+#eval show IO Unit from do
+  let p ← IO.ofExcept (Bld.plan do discard <| crossB (← lit (.size 32768)) (← lit (.size 8193)) [] [])
+  match p.run abiOf with
+  | .error e => unless e.startsWith "cross: values of the left object by values of the right, past the bound 268435456" do
+      throw (IO.userError s!"crossB past crossMax fails with {e}")
+  | .ok _ => throw (IO.userError "crossB of 32768 × 8193 rows passed `crossMax`")
+
+/-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
+    the computed relation's to `out/arith` and the group ids to `out/gid`. -/
 def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
-  let b ← outputOf [] native1a "x" "out"
-  let io ← ioOf [] nativeIO
+  let bs ← semOuts.mapM fun (x, _) => outputOf ``native1a x ("out/" ++ x)
+  let io ← ioOf ``nativeIO
   return do
-    let (b, (rd, wr)) := (← b, ← io)
-    Bld.planIO rd fun ins => do wr ins; b; arithOut "out/arith"; gidOut "out/gid"
+    let (bs, (rd, wr)) := (← bs.mapM id, ← io)
+    Bld.planIO rd fun ins => do
+      wr ins
+      for b in bs do b
+      arithOut "out/arith"; gidOut "out/gid"
 
 /-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
     the elaborator's unifier finds the objects' constants (`Obj.named`). -/
-def planIO : IO Plan := do
+unsafe def planIOImpl : IO Plan := do
   Lean.initSearchPath (← Lean.findSysroot)
-  let env ← Lean.importModules #[{ module := `Rel.Lang.TestNative }] {}
+  -- `loadExts`: the registry (`Expand.relRegistry`, each program's homes) is an extension; unloaded, a program
+  -- reads no home, and a name of the prelude (`⊤(1,L)`'s `1`) resolves to nothing
+  Lean.enableInitializersExecution
+  let env ← Lean.importModules (loadExts := true) #[{ module := `Rel.Lang.TestNative }] {}
   let (r, _) ← gatePlan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
   IO.ofExcept r
+
+@[implemented_by planIOImpl] opaque planIO : IO Plan
 
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`), column for column:
 -- each written `OwnFile` equal to the one `Db.ownFile` makes of the value's column
@@ -144,7 +241,7 @@ def planIO : IO Plan := do
 unsafe def runIOImpl (mod name : String) : IO Unit := do
   Lean.initSearchPath (← Lean.findSysroot)
   Lean.enableInitializersExecution
-  let env ← Lean.importModules #[{ module := mod.toName }] {}
+  let env ← Lean.importModules (loadExts := true) #[{ module := mod.toName }] {}
   (← IO.ofExcept (env.evalConst (IO Unit) {} (name.toName ++ `io)))
 
 @[implemented_by runIOImpl] opaque runIO (mod name : String) : IO Unit
@@ -159,9 +256,7 @@ def main (args : List String) : IO UInt32 := do
     match args with
     | ["run", mod, name] => runIO mod name
     | ["c", file] => IO.FS.writeFile file (← IO.ofExcept (relc abiOf (← planIO)))
-    | ["lean", dir] =>
-      let x ← IO.ofExcept native1a.x
-      writeRel (System.FilePath.mk dir / "out").toString x
+    | ["lean", dir] => for (x, w) in semOuts do w (System.FilePath.mk dir / "out" / x).toString
     | ["plan", dir] => IO.Process.setCurrentDir dir; discard <| (← planIO).exec abiOf
     | ["g", file] => IO.FS.writeFile file (← IO.ofExcept (gplan codes >>= relc abiOf))
     | _ => throw (IO.userError "usage: relc-1a c FILE | lean DIR | plan DIR | g FILE | run MOD NAME")

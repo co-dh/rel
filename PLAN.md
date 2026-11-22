@@ -252,6 +252,70 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     在第三个目录跑 `relc run`（`n.io`，Lean 语义），native 的 `out/io` 与之逐字节相等。
     尚未做（plan 拒绝并指名）：keyed input（读时 `Tab.canon` 排序）、可空 CSV 列 `S+1`（`ofCsv` 重组与检查）、
     从文件 map 的 float 列（规范形检查）、把 map 来的列写成 CSV（plan 没有从 parts 数组取出 part 的指令）。
+  - ✅ I11 native 的 `Tm`（分支 `nativetm`）：`Plan.tabB` 按每个节点的 `GenK` 配方（§4 的 kernel 复合）建表：
+    `val` `uni` `𝟘` `𝟙` `⊤` `π₁` `π₂` `≫`（`compOne`）`°` `∩` `−`（`select`）`∪` `dom` `ran` `⟨,⟩` `×`（CROSS）
+    `own` `share` `var`；按需节点读上下文已知的值（`compT` 的 `ran`、`∩` `−` `⟨,⟩` 的 `bound`）。`abi` 加
+    `USize.mul`。测试：`native1a` 14 个闭定义、`nativeIO` 的 `un` `cm`，`make native` 与 Lean 值逐字节相等。
+    分支 `nativetm2b`：plan 加循环指令 `Instr.loop`（状态寄存器、一轮的 block、`done` 位、轮数上限用尽即 `fail`，
+    即 `Tab.fixOn`/`foldRounds` 的轮次；C 是 `for (;;)`，状态经临时变量换代），`fixB` 是 `Tab.fixOn`，`nuB`/`muB`
+    是 `Tab.nu`/`Tab.mu`；`tabB` 移植 `ν` `μ` `hylo`（`GenK.hylo`：节点 `μ`、`ν` 查环、`D ≫ μY`），变量环境 `TmEnv`
+    读输入的 `Side` 或一轮的表。测试 `tc`（`μ`）`gf`（`ν`）逐字节相等；`hylo` 无测试：叶子要和或数组侧。
+    分支 `nativetm2a` 加：上下文 `Dom` 改为 `Known` 的三项（`dom` `ran` `pairs`），`∩` `−` 交出 `bound`；
+    `≤` `<`（`cmpB`：`Tab.ordOp`、`wideCol`，有 `pairs` 时切到两侧再逐对测，否则 CROSS）；`succ` `arith`
+    （`succB` `arithT`：两次与 `dom U` 复合，`stepB` 即 `stepColsAt` 的 i64 比较与 float 的 `fverbOne`/`fverbBy`）；
+    `prim` `arg` `call` `callCv`（`argB` 按 `Tm.argGen` 拆 spine：call 的实参闭合建表后绑定到 `ks`；行按其
+    `kernRows` 算子的 wrapper：`floatOp` `$` 走 `ofVals`，`asc` 走 `ofRel`）。`crossB` 加 `Vals.cross` 的
+    `crossMax` 与 `crossIx` 的 2^63 检查（`fail` 把计数附在消息后，文字同 Lean 但数值不内插）；`abi` 加
+    `USize.sub` `USize.decLt`。测试：`native1a` 加 `le` `lt` `ml`（`∩ ≤` 的 pairs）`sc` `ps` `mn` `dv` `tm`
+    `fc`（局部 call），共 23 个闭定义，`make native` 逐字节相等；CROSS 超界的 `#eval`。
+    分支 `nativetm3b`（合并 2a、2b）：`Cols` 改为 `Col` 树（`atom` / `arr {m, lo, hi, payload}` / `sum`，积是列表拼接），
+    `sum` 的所有情形只经 `sumB`（目前拒绝并指名配方）；`keyB` 给 `arr` 侧 `AscKey.cells`，`concatB` 拼 payload 并
+    `clampShift` lo/hi，`gatherCols` 留 payload，`fixB` 每轮 `packT`（`Vals.pack`），`expandB` `spanB` 从 `compB` 抽出；
+    节点 `nil`（`nilB`）`at`（`atB`）`Λ`（`lamB` = `lamOf ∘ canon`）`E`（`memB ≫ R` 再 `lamB`）与行 `∋`（`memB`）。
+    测试 `nl` `hd` `ee` 逐字节相等；`lm`（`dom(x) Λ(bo°)`）`lu` 不等：Lean 写 2 行，plan 写 3 行（无值的键），未查明，
+    暂不列入 `semOuts`。`hylo` 测试需行 `F`（`Tab.map`）。
+    分支 `nativetm3a` 加：`\` `/`（`ldivSelB` 即 `Tab.ldivSel`：`groupsB`（`compGroups`）的展开数与组数在运行时
+    `ite` 选择 `ldivBitsB`（`code2B` 编号、`csrB` 分组、`kbitrows true`、`ofBitsB` 读回）或计数的 `ldivOfB`，
+    `bitsWinB` 用除法比较不溢出；`\` 的除法是 `ldivB`（先 `canonT`），`/` 的两个 converse 已是 `canonT` 答案，
+    传 `ldivOfB`，即 canonfld2 的 `Tab.ldivOf`）；`abi` 加 `kbitrows`。call 实参按 `Code.args`：变量表 `Vars` 存
+    每个变量的建表函数，按需（`dem`）或闭合建表失败（`GenK.memo` 留 lazy）的实参在每个使用处按其上下文建表，
+    其余闭合建一次；body 只见实参（`Code.args` 的 `η.closed`）；对象不符读 `𝟘`（`Code.bind`）。测试：`native1a`
+    加 `ld`（位矩阵）`l1`（计数）`rd`（`/`）`gc`（实参 `succ` 按需），共 27 个闭定义，`make native` 逐字节相等。
+    分支 `nativetm4`（合并 3a、3b）：σ 是 3a 的 `Vars`（`ν` `μ` `hylo` 的一轮绑定为 `fun _ _ _ => pure X`），
+    `ldivSelB` 的 `iteT` 按 `regsOf`/`withRegs` 读回 `Col` 树，`groupsB` 与 `expandB` 共用于 `compB`。
+    仍拒绝并指名：`est` `thin` 与三种 fold（`foldRounds` 未接 `Instr.loop`）、行 `F` 及其余数组/求和行、
+    求和侧（`sumB`）；从文件 map 的列（无 `Enc`）作运算数。
+    分支 `nativetm5`：`funT` 把一个配方建成 plan 函数（`defFun`）并在每个使用处 `apply`，函数体相同即复用前一个
+    （`Fun`、`Instr`、`Val` 派生 `BEq`），所以每种表形状一个 C 函数；`compSelB`、`compB`、`ldivSelB` 经它。
+    `rel-native.c` 由 7.8 MB 降到 4.5 MB，`cc1 -O2` 峰值由超过 20 GB 降到 1.4 GB，`make native` 通过。
+    行 `F`（`cellsMapB`）：`fm ≜ lm F(rt)` 逐字节相等，列入 `semOuts`（共 33 个闭定义）。`hy`（`hylo`）仍失败：
+    `hylo` 的 `μY` 第一轮 `Y = 𝟘`，`F(Y)` 的元素没有像，`Tab.map` 此时走左 fold（`foldRounds peelL`），plan 尚无
+    这条配方（需 `uncons` `snoc` 的 plan 配方与 `Instr.loop` 上的 `foldRounds`），故 `hy` 不列入 `semOuts`。
+    仍拒绝并指名：`est` `thin` 与三种 fold、`Tab.map` 的 fold 分支。
+    分支 `nativetm6`：`foldRoundsB` 是 `Instr.loop` 上的 `Tab.foldRounds`（同 `fixB`：状态为 `rest` `P` `out` 三表的
+    行数与 `regsOf`，`withRegs` 读回；一轮先 `ite` 判 `P` 无行则原样交出状态并置 `done`，否则 `peel`、`step`、
+    `out ∪ (P − dom(el) P)`，两者 `packT`）。新配方：`unconsB`（`uncons`/`unsnoc`，不建 payload）、`cellCatB`
+    （`Vals.cat`）、`snocB`（`𝟙 × τ` 后 `cat`）、`peelB`（`peelL`/`peelR`）、`piB`/`projT`（`outl`/`outr` 及其复合）、
+    `diffB`。`cellsMapB` 的 `guard` 换成 `iteT`：一遍映射或 `mapFoldB`（`Tab.map` 的左 fold，经 `funT` 成 plan
+    函数），与 `Tab.map` 同一判据。`tabB` 接 `est` `thin`（`pairsB` 的 `G` `P` `D`，再按 `Tab.est`/`Tab.thin` 复合）、
+    `fold` `foldr`（`foldB`）、`foldI`，全部经同一个 `foldRoundsB`。测试：`native1a` 加 `hy` `f1`（`⦇z0, plus⦈`）
+    `f3`（`⦇…⦈ʳ`）`es`（`est(≤)`）`th`（`thin(≤)`），共 38 个闭定义，`make native` 三方逐字节相等；
+    `rel-native.c` 4.7 MB → 7.5 MB（加 `hy`）→ 9.9 MB（再加 fold、`est`、`thin`），`cc1 -O2` 峰值 1.5 → 1.8 → 2.5 GB。
+    `foldI` 的配方已接但无 semOut：提升 fold（`X⦇[e,S]⦈` 给一族）在 `native1a` 中写不出（`1 ⟶ …` 报
+    “expected an object, found '1'”）。
+    分支 `nativetm8`（20d7363 之后）：表配方一律是 plan 函数（`funT`；新 `funV` 值+表、`funW` 计数+字）：`nubB`
+    （故 `canonT` `coreflB` `domOf` `piB`）`selectB`（`∩` `−`）`unionB` `packT` `unconsB` `nilB` `atB` `lamB` `memB`
+    `snocB` `cellsMapB`，以及 `ascSeenB` `expandB` `groupFoldB`；同形同体者只发一次。`rowB` 接 `uncons` `unsnoc`
+    `snoc`（`after`）`flat`（`onKeys`：`((outl X ≫ R) ∩ (outr X ≫ (outl R.val)°)) ≫ outr R.val`）。测试 `fi`
+    （`foldI`，经行 `flat`）三方逐字节相等，`native1a` 自声明 `obj 1 = {∗}`（`relc` 在 Lean scope 外读程序，
+    `⊤(1,L)` 找不到 prelude 的 `1`）。`rel-native.c` 9.94 MB → 5.74 MB（无 `fi`）/ 7.29 MB（加 `fi`），
+    `cc1 -O2` 峰值 2059 MB → 低于 1224 MB（`cap` 峰值为 `relc c` 本身）。
+    分支 `nativetm9`（7fe9c7c 之后）：`relc` 找不到 prelude 的 `1` 的真因是 `planIO` 的 `importModules` 未设
+    `loadExts`：registry（各程序的 homes）是 env extension，未加载时程序不读任何 home；改为 `loadExts := true`
+    （`runIO` 同），`native1a` 改用 `open Rel.Programs.prelude in`，删去自声明的 `obj 1`。表配方按列：新 `funC`
+    （每列一个 plan 函数，`gatherCols`、`concatB` 逐列调用），`prefixB` `spanB` 走 `funW`，`groupsB` 的计数与
+    `compFromB` 的行号只读字（`funW`，与表形无关），`compBitsB` 走 `funT`。`rel-native.c` 7.29 MB → 3.68 MB，
+    212 个函数（最大 `main` 12040 行、其次 2448 行）；`cap` 峰值 1417 MB 为 `relc c` 本身；native 三方逐字节相等。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
