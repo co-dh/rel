@@ -27,11 +27,16 @@
 #set list(marker: text(fill: c-syn)[▸])
 
 // striped table with a coloured header
-#let tbl(color, cols, head, ..cells) = table(
-  columns: cols, stroke: none, inset: (x: 6pt, y: 4.5pt),
+// an `auto` column is its widest cell, capped at 28% of the width: one long cell must not starve the `fr` columns
+#let tbl(color, cols, head, ..cells) = layout(size => table(
+  columns: cols.enumerate().map(((i, c)) => if c != auto { c } else {
+    let w = calc.max(..(head.at(i), ..cells.pos().enumerate().filter(((k, _)) => calc.rem(k, cols.len()) == i)
+      .map(((_, x)) => x)).map(x => measure(x).width)) + 12pt
+    calc.min(w, 0.28 * size.width) }),
+  stroke: none, inset: (x: 6pt, y: 4.5pt),
   fill: (_, y) => if y == 0 { color } else if calc.even(y) { soft(color) } else { white },
   table.header(..head.map(h => text(fill: white, weight: "bold", font: "Noto Sans CJK SC", h))),
-  ..cells, table.hline(stroke: 0.8pt + color))
+  ..cells, table.hline(stroke: 0.8pt + color)))
 #let card(color, title, body) = block(width: 100%, fill: soft(color), stroke: (left: 3pt + color),
   inset: 9pt, radius: (right: 4pt))[#text(weight: "bold", fill: color, font: "Noto Sans CJK SC", title) \ #body]
 
@@ -269,7 +274,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 
 == 5 个 kernel：2 个原语 + 3 个优化
 
-#tbl(c-rs, (auto, 1.4fr, auto, 1fr), ([kernel], [形状（输入输出都是 foR）], [定律], [现有 driver]),
+#tbl(c-rs, (auto, 2.2fr, 1.8fr, 1fr), ([kernel], [形状（输入输出都是 foR）], [定律], [现有 driver]),
   [`scan`], [`(op : @& Op) (rev : Bool) (s t) (n) (seg : Option Enc) (es : List Enc) (pre post : List (Op × UInt64)) : Enc × Option UInt64`，分段前缀折叠；含 map（`seg = none`：每行一段）与 fold。每个输入字先过 `pre` 链、每个输出字再过 `post` 链（每步 `op.eval x c`），一趟完成 element-wise 的复合（批准 A）。第二个分量是折叠结果：最后访问的那一行（正向第 `n − 1` 行，`rev` 时第 0 行）按 `t` 的宽度截取的字，`n = 0` 时为 `none`；kernel 写输出时从累加器取得，无需解码输出（`kscan_last`）], [`raw_scan`], [`scan` `map` `fold`],
   [`gather`], [`(ix : Enc) (e : Enc) (fill) : Enc`，`out[i] = e[ix[i]]`], [`raw_permute`], [`permute`],
   [`scatter`], [`(ix : Enc) (e : Enc) (n) (fill) : Enc`，`out[ix[i]] = e[i]`], [`raw_scatter`（新）], [—],
@@ -433,7 +438,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 
 == Rust 侧
 
-#tbl(c-rs, (auto, 1.3fr, 1fr, 1fr), ([IO 导出（不是 kernel）], [形状], [Lean 模型], [定律]),
+#tbl(c-rs, (auto, 2.5fr, 1fr, 1fr), ([IO 导出（不是 kernel）], [形状], [Lean 模型], [定律]),
   [`own_map`], [`(path) : IO OwnFile`：mmap 一个列文件，`own::check` 拒绝会读越界的块], [`ownParse`（不含 `own::check`）], [—],
   [`own_write`], [`(path code attr kind count domain parts) : IO Unit`：写临时文件再 rename], [`ownImage`], [`ownParse_ownImage`],
   [`csv_read`], [`(path cols) : IO (USize × List Enc)`：CSV 直接读成按声明的 schema 定型的 foR 列，不经解码的整列], [`csvWords`], [—],
