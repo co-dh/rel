@@ -9,7 +9,7 @@ rel_program chess where
     obj Sq = 0…15                                 -- the squares, a1 = 0, b1 = 1, …, d4 = 15
     obj Pc = {P,N,B,R,Q,K,p,n,b,r,q,k}            -- the pieces, white then black: colour*6 + kind
     obj Bd = [Sq×Pc]                               -- a board: the set of its (square, piece) rows
-    on : Sq ⟶ Pc ≜ {(3,K),(8,R),(1,R),(15,k)}     -- W Kd1 Ra3 Rb1, B Kd4
+    on : Sq ⟶ Pc ≜ {(7,K),(0,R),(15,k)}           -- W Kd2 Ra1, B Kd4
 
     h : Sq ⟶ Sq ≜ {(3,3),(7,7),(11,11),(15,15)}   -- the d-file, the last
     → : Sq ⟶ Sq ≜ (𝟙 − h)succ                     -- one file right
@@ -58,7 +58,7 @@ rel_program chess where
     mate : [Sq×Pc]×(Sq×Sq) ⟶ [Sq×Pc]×(Sq×Sq) ≜ j a(k(⇝),f(⇝),W₁) i(B(⇝),Pin₁,W₁,k(⇝))   -- the moves that mate
     m : Sq×Sq ⟶ Pc ≜ ran(mate π₂)π₁ on           -- each mating move, the piece it moves
 
-    check m = {((1,13),R)}                        -- Rb1-b4 mates
+    check m = {((0,12),R)}                        -- Ra1-a4 mates: Kd2 holds c3, d3; the rook c4, d4
 
 #guard chess.ok
 
