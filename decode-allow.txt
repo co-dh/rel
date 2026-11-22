@@ -161,8 +161,6 @@ Rel.Vals.pack
 Rel.Vals.row
 Rel.Vals.zip
 Rel.expand
-Rel.floatWords
 Rel.lastCount
-Rel.longBytes
 Rel.longWords
 Rel.tagCount
