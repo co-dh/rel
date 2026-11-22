@@ -35,12 +35,15 @@ def tagged (R S : Tab k v) : Except String (Tab k v × Enc) := do
 /-- **`R ∪ S`**: `Tab.canon` of the concatenation. -/
 def union (R S : Tab k v) : Except String (Tab k v) := R.concat S >>= canon
 
+/-- The segment marks of `n` rows whose `m` runs start at the rows `f` (`kseen`): ones `kscatter`ed to `f`. Built once
+per grouping, read by every `groupFold` over it. -/
+def seenSeg (n : USize) (f : Enc) (m : USize) : Except String Enc := do
+  kscatter .last m f (← colConst m 1) n 0
+
 /-- **The fold of each group of a sorted table** (design §4, rows `∩ −` and `R\S`): over `n` rows in `kasc` order
-whose `m` groups `g` are runs starting at the rows `f` (`kseen`), the segment marks are the rows `f` (`kscatter` of
-ones), a segmented `kscan` folds `op` over `x` from `z` within each run, and a group's answer is its run's last row
-(`kscatter .last` through `g`, the later row overwriting). -/
-def groupFold (op : Op) (n : USize) (g f : Enc) (m : USize) (z : UInt64) (x : Enc) : Except String Enc := do
-  let seg ← kscatter .last m f (← colConst m 1) n 0
+whose `m` groups `g` are runs marked by `seg` (`seenSeg`), a segmented `kscan` folds `op` over `x` from `z` within each
+run, and a group's answer is its run's last row (`kscatter .last` through `g`, the later row overwriting). -/
+def groupFold (op : Op) (n : USize) (g seg : Enc) (m : USize) (z : UInt64) (x : Enc) : Except String Enc := do
   let (o, _) ← kscan op false .i64 .i64 n seg [← colConst n z, x]
   kscatter .last n g o m z
 
@@ -55,8 +58,9 @@ def select (keep : USize → Enc → Enc → Except String Enc) (R S : Tab k v) 
   let (vs, p) ← kasc C.n es
   let (m, g, f) ← kseen C.n ((es.map (·.1)).zip vs)
   let ts ← kgather C.n p C.n tag
-  let mn ← groupFold .and C.n g f m.toUSize 1 ts
-  let mx ← groupFold .or C.n g f m.toUSize 0 ts
+  let seg ← seenSeg C.n f m.toUSize
+  let mn ← groupFold .and C.n g seg m.toUSize 1 ts
+  let mx ← groupFold .or C.n g seg m.toUSize 0 ts
   let (K, sel) ← whereCol m.toUSize (← keep m.toUSize mn mx)
   let ix ← kgather K (← kgather K sel m.toUSize f) C.n p
   (fun y => ⟨K, y.1, y.2⟩) <$> Vals.gather K ix x

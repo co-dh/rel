@@ -547,15 +547,20 @@ the total `fn`, group `j`'s word is `fn` folded from `z` over `x` at the rows of
 (`segScan_ok`), so the group's last row is all of it. -/
 theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
     {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
-    {z : UInt64} {x o : Enc} (h : groupFold op n g f m.toUSize z x = .ok o) :
+    {z : UInt64} {seg x o : Enc} (hs : seenSeg n f m.toUSize = .ok seg) (h : groupFold op n g seg m.toUSize z x = .ok o) :
     (Enc.raw .i64 n g).size = n.toNat ∧ (Enc.raw .i64 m.toUSize o).size = m.toUSize.toNat ∧
       ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
         (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
           ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+  unfold seenSeg at hs
+  simp only [bind, Except.bind] at hs
+  split at hs; · cases hs
+  rename_i one h1
   unfold groupFold at h
   simp only [bind, Except.bind] at h
   repeat (split at h; · cases h)
-  rename_i _ one h1 _ seg h2 _ zc h3 _ r h4
+  rename_i _ zc h3 _ r h4
+  have h2 := hs
   obtain ⟨sc, v⟩ := r
   dsimp only at h
   obtain ⟨-, claim⟩ := runScan_ok hop (kseen_runs hr) (seenSeg_ok hr h1 h2) h3 h4
@@ -622,7 +627,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   unfold select at h
   simp only [bind, Except.bind, Functor.map, Except.map] at h
   repeat (split at h; · cases h)
-  rename_i _ Ct hCt _ es hes _ vp hvp _ r hr _ ts hts _ mn hmn _ mx hmx _ kb hkb _ Ks hKs _ ix1 hix1 _ ix hix _ y hy
+  rename_i _ Ct hCt _ es hes _ vp hvp _ r hr _ ts hts _ sg hsg _ mn hmn _ mx hmx _ kb hkb _ Ks hKs _ ix1 hix1 _ ix hix _ y hy
   obtain ⟨C, tag⟩ := Ct; obtain ⟨vs, p⟩ := vp; obtain ⟨mm, g, f⟩ := r; obtain ⟨K, sel⟩ := Ks
   injection h with h; subst h
   dsimp only at *
@@ -699,8 +704,8 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
       refine ⟨this.1, ?_⟩
       rw [this.2]
       rcases hx with rfl | rfl <;> rcases hacc with rfl | rfl <;> simp
-  obtain ⟨hgs, hfmn⟩ := groupFold_ok (fn := (· &&& ·)) (fun _ _ => rfl) hr hmn
-  have hfmx := (groupFold_ok (fn := (· ||| ·)) (fun _ _ => rfl) hr hmx).2
+  obtain ⟨hgs, hfmn⟩ := groupFold_ok (fn := (· &&& ·)) (fun _ _ => rfl) hr hsg hmn
+  have hfmx := (groupFold_ok (fn := (· ||| ·)) (fun _ _ => rfl) hr hsg hmx).2
   -- the list a group's fold reads, and its members
   have hl01 : ∀ G, ∀ x ∈ ((List.range (Enc.raw .i64 C.n g).size).filter fun q =>
       ((Enc.raw .i64 C.n g)[q]?.getD 0).toNat = G).map ((Enc.raw .i64 C.n ts)[·]?.getD 0), x = 0 ∨ x = 1 := by

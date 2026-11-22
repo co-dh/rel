@@ -13,8 +13,9 @@ def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do
   let r ← kscan op false .i64 .i64 n z [z, a]
   pure r.1
 
-/-- The `n` words `i + s`: `colMap .add` of the positions and `colConst n s`. -/
-def shiftCol (n : USize) (s : UInt64) : Except String Enc := do colMap .add n .pos (← colConst n s)
+/-- The `n` words `i + s`: one `kscan` of the positions with `s` added by its post chain, not `colMap .add` of a
+`colConst n s`, which costs a `kscatter` more (`colMap_const_eq`). -/
+def shiftCol (n : USize) (s : UInt64) : Except String Enc := colMap .first n .pos .pos .i64 .i64 [] [(.add, s)]
 
 /-- `colMap`'s answer as an `Arr t n`, the map's output well formed at `t` (`colMap_closed`). -/
 def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
@@ -61,15 +62,14 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
   | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.cellsOk x && Vals.cellsOk y
 
-/-- The words of `x` with `s` added (`colArr .add` with the constant `s`). -/
-def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
-  colArr .add n x.enc (← colConst n s)
+/-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
+def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
+  colArr .first n x.enc x.enc .i64 .i64 [] [(.add, s)]
 
-/-- The words of `x` clamped into `[0, c]` (`colMap .max` with `0`, then `.min` with `c`), then `s` added. -/
-def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
-  let a ← colMap .max n x.enc (← colConst n 0)
-  let b ← colMap .min n a (← colConst n c)
-  colArr .add n b (← colConst n s)
+/-- The words of `x` clamped into `[0, c]` (`max` with `0`, then `min` with `c`), then `s` added: one `kscan` whose post
+chain holds the three constants (`colMap_const_eq`). -/
+def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
+  colArr .first n x.enc x.enc .i64 .i64 [] [(.max, 0), (.min, c), (.add, s)]
 
 /-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
 theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :
@@ -100,9 +100,7 @@ def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/
 def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
   match h : shiftCol n 0 with
-  | .ok o => .ok (Arr.mk o (by
-      unfold shiftCol at h; simp only [bind, Except.bind] at h
-      split at h <;> first | cases h | exact (colMap_closed h).2))
+  | .ok o => .ok (Arr.mk o (colMap_closed h).2)
   | .error e => .error e
 
 /-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its

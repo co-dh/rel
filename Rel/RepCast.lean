@@ -50,7 +50,6 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
   obtain ⟨hgs, -, -⟩ := storeFmt_ne hst.1
   obtain ⟨hgt, -, htu⟩ := storeFmt_ne hst.2
   obtain ⟨w, hw, h⟩ := Except.bind_eq_ok'.1 h
-  obtain ⟨c, hc, h⟩ := Except.bind_eq_ok'.1 h
   obtain ⟨flag, hf, hU⟩ := Except.bind_eq_ok'.1 h
   have hv : Kernel.Enc.Valid n X.enc ∧ Kernel.Enc.Valid n w.enc := by
     unfold Tab.keep at hU
@@ -59,8 +58,7 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
     obtain ⟨V, hV, -⟩ := Except.bind_eq_ok'.1 hU
     exact ⟨gather_valid (x := X) hK, gather_valid (x := w) hV⟩
   have hcm := colMap_get (colArr_ok hw)
-  have hfl := colMap_raw hf
-  have hcr := colConst_raw hc
+  have hfl := colMap_post hf
   -- each row: the flag `1` and the image read back, or the flag `0` and no image
   have row : ∀ i : Fin n.toNat,
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 1 ∧ QAtomicType.embed s t (X.get i) = some (w.get i)) ∨
@@ -73,10 +71,11 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
     simp only [Option.getD_some, Op.eval, Except.ok.injEq] at hev
     rw [if_neg htu] at hwv
     rw [hwv] at hb; cases hb
-    have hfi := hfl.2.2.2 i.1 i.2
-    rw [hwv, hcr] at hfi
-    simp only [Option.getD_some, Array.getElem?_replicate, i.2, if_true] at hfi
+    have hfi := hfl.2 i.1 i.2
+    rw [hwv] at hfi
+    simp only [Option.getD_some] at hfi
     have hfv := eval_ne_word hfi
+    simp only [ne_comm (a := nulWord)] at hfv
     rw [hxa, of_atomOfBits _ hgs hst.1, hwb, of_atomOfBits _ hgt hst.2]
     subst hev
     cases he : QAtomicType.embed s t (QAtomicType.ofBits s a) with

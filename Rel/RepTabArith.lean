@@ -119,18 +119,23 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
       Lang.stepDen k ((wd n a i).toInt64, (wd n b i).toInt64) v := by
   have cm : ∀ {op x y e}, colMap op n x y = .ok e → ∀ {r}, op.eval (wd n x i) (wd n y i) = .ok r → wd n e i = r :=
     fun hc _ he => (Except.ok.inj (he.symm.trans ((colMap_raw hc).2.2.2 i hi))).symm
-  have cc : ∀ {c e}, colConst n c = .ok e → wd n e i = c := fun hc => by simp [wd, colConst_raw hc, hi]
+  have cp : ∀ {op op' : Op} {c x e}, (∀ y, op.eval c y = op'.eval y c) →
+      colMap .first n x x .i64 .i64 [] [(op, c)] = .ok e → ∀ {r}, op'.eval (wd n x i) c = .ok r → wd n e i = r :=
+    fun hop hc _ he => (Except.ok.inj (he.symm.trans ((hop _).symm.trans ((colMap_post hc).2 i hi)))).symm
+  have sne : ∀ y : UInt64, Op.ne.eval nulWord y = Op.ne.eval y nulWord := fun y => by simp only [Op.eval, bne_comm]
+  have seq : ∀ y : UInt64, Op.eq.eval 0 y = Op.eq.eval y 0 := fun y => by simp only [Op.eval, BEq.comm]
+  have sge : ∀ y : UInt64, Op.le.eval 0 y = Op.ge.eval y 0 := fun _ => rfl
   have ofA : ∀ A : UInt64, ∃ x : Int64, x.toUInt64 = A := fun A => ⟨A.toInt64, UInt64.toUInt64_toInt64 A⟩
   simp only [stepCols, bind, Except.bind_eq_ok'] at h
-  obtain ⟨N, hN, Z, hZ, na, hna, nb, hnb, bo, hbo, h⟩ := h
+  obtain ⟨na, hna, nb, hnb, bo, hbo, h⟩ := h
   by_cases e1 : k = Ew.add
   · subst e1
     simp (config := { decide := true }) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, if_true, if_false,
       Bool.or_false, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq,
       Prod.mk.injEq] at h
     obtain ⟨w', hw', ord, hord, g, hg, ex, hex, nw, hnw, t1, ht1, kp, hkp, rfl, rfl⟩ := h
-    rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
-      cm hex (ev_eq _ _), cm hg (ev_ge _ _), cm hord (ev_le _ _), cm (colArr_ok hw') rfl, cc hN, cc hZ]
+    rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cp sne hna (ev_ne _ _), cp sne hnb (ev_ne _ _), cp sne hnw (ev_ne _ _),
+      cm hex (ev_eq _ _), cp sge hg (ev_ge _ _), cm hord (ev_le _ _), cm (colArr_ok hw') rfl]
     simp only [bit_and, bit_eq]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
@@ -144,8 +149,8 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
       Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure, Except.pure,
       Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨w', hw', ord, hord, g, hg, ex, hex, nw, hnw, t1, ht1, kp, hkp, rfl, rfl⟩ := h
-    rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
-      cm hex (ev_eq _ _), cm hg (ev_ge _ _), cm hord (ev_le _ _), cm (colArr_ok hw') rfl, cc hN, cc hZ]
+    rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cp sne hna (ev_ne _ _), cp sne hnb (ev_ne _ _), cp sne hnw (ev_ne _ _),
+      cm hex (ev_eq _ _), cp sge hg (ev_ge _ _), cm hord (ev_le _ _), cm (colArr_ok hw') rfl]
     simp only [bit_and, bit_eq]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
@@ -159,10 +164,10 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
       Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure, Except.pure,
       Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨w', hw', a0, ha0, o1, ho1, dv, hdv, e0, he0, ex, hex, nw, hnw, t1, ht1, kp, hkp, rfl, rfl⟩ := h
-    have h0 : wd n o1 i ≠ 0 := by rw [cm ho1 rfl, cm ha0 (ev_eq _ _), cc hZ, or_zero]; exact one_ne _
-    rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
-      cm hex rfl, cm he0 (ev_eq _ _), cm hdv (ev_div _ _ h0), cm ho1 rfl, cm ha0 (ev_eq _ _),
-      cm (colArr_ok hw') rfl, cc hN, cc hZ]
+    have h0 : wd n o1 i ≠ 0 := by rw [cm ho1 rfl, cp seq ha0 (ev_eq _ _), or_zero]; exact one_ne _
+    rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cp sne hna (ev_ne _ _), cp sne hnb (ev_ne _ _), cp sne hnw (ev_ne _ _),
+      cm hex rfl, cm he0 (ev_eq _ _), cm hdv (ev_div _ _ h0), cm ho1 rfl, cp seq ha0 (ev_eq _ _),
+      cm (colArr_ok hw') rfl]
     simp only [bit_and, bit_or, or_zero]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
@@ -176,10 +181,10 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
         if_false, Bool.or_false, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq,
         Prod.mk.injEq] at h
       obtain ⟨b0, hb0, o, ho, w', hw', nb0, hnb0, t, ht, nw, hnw, kp, hkp, rfl, rfl⟩ := h
-      have h0 : wd n o i ≠ 0 := by rw [cm ho rfl, cm hb0 (ev_eq _ _), cc hZ, or_zero]; exact one_ne _
-      rw [cm hkp rfl, cm ht rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
+      have h0 : wd n o i ≠ 0 := by rw [cm ho rfl, cp seq hb0 (ev_eq _ _), or_zero]; exact one_ne _
+      rw [cm hkp rfl, cm ht rfl, cm hbo rfl, cp sne hna (ev_ne _ _), cp sne hnb (ev_ne _ _), cp sne hnw (ev_ne _ _),
         cm hnb0 (ev_not _ _), cm (colArr_ok hw') (by first | exact ev_div _ _ h0 | exact ev_mod _ _ h0), cm ho rfl,
-        cm hb0 (ev_eq _ _), cc hN, cc hZ]
+        cp seq hb0 (ev_eq _ _)]
       simp only [bit_and, bit_not, or_zero]
       refine ⟨bit_lt _, fun v => ?_⟩
       rw [bit_ne]
@@ -193,7 +198,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
         Ew.lesser, if_true, if_false, Bool.false_or, Except.bind_eq_ok', pure, Except.pure,
         Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨w', hw', nw, hnw, rfl, rfl⟩ := h
-      rw [cm hnw (ev_ne _ _), cm (colArr_ok hw') (by first | exact ev_max _ _ | exact ev_min _ _), cc hN]
+      rw [cp sne hnw (ev_ne _ _), cm (colArr_ok hw') (by first | exact ev_max _ _ | exact ev_min _ _)]
       refine ⟨bit_lt _, fun v => ?_⟩
       rw [bit_ne]
       obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
@@ -212,16 +217,15 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .lo
     {T : Tab K .long} (h : D.succ U = .ok T) (hD : D.WF) (x : K.El)
     (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen TU u w := by
   simp only [Tab.succ, bind, Except.bind_eq_ok'] at h
-  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, N, hN, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
+  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
   have hrow : ∀ i : Fin E.n.toNat, Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (E.val.row i) 1 := by
     intro i
     show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get E.val i) 1
     rw [Arr.get_i64, Arr.get_i64]
     have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2
-    have r2 := (colMap_raw hne).2.2.2 i i.2
-    rw [colConst_raw hN] at r2
-    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some] at r2
+    have r2 := (colMap_post hne).2 i i.2
     rw [ev_ne] at r2
+    simp only [ne_comm (a := nulWord)] at r2
     rw [← Except.ok.inj r2] at r1
     rw [← Except.ok.inj r1]
     generalize (raw .i64 E.n E.val.enc)[i.1]?.getD 0 = A

@@ -575,7 +575,6 @@ theorem Tab.compOne_canon {A B C : Obj}
   rw [Except.bind_eq_ok'] at hx; obtain ⟨es, hes, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨vs, p⟩, hasc, hx⟩ := hx; try dsimp only at hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨k, g, f⟩, hseen, hx⟩ := hx; try dsimp only at hx
-  rw [Except.bind_eq_ok'] at hx; obtain ⟨cn, hcn, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨lt, hlt, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨cR, hcR, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨c1, hc1, hx⟩ := hx
@@ -596,7 +595,6 @@ theorem Tab.compOne_canon {A B C : Obj}
   rw [Except.bind_eq_ok'] at h; obtain ⟨md, hmd, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨qS, hqS, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨pq, hpq, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c3, hc3, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨iS, hiS, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨X, hX, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
@@ -630,8 +628,10 @@ theorem Tab.compOne_canon {A B C : Obj}
   have hnU : R.n.toUInt64 = R.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
   have hltw : ∀ q < N.toNat, (raw .i64 N lt)[q]?.getD 0 =
       if decide (ps[q]?.getD 0 < R.n.toNat) then 1 else 0 := fun q hq => by
-    have e := (colMap_raw hlt).2.2.2 q hq
-    rw [hpw q hq, colConst_raw hcn, Array.getElem?_replicate, if_pos hq, Option.getD_some, hnU,
+    have e := (colMap_post hlt).2 q hq
+    -- `gt` with the constant on its left is `lt` with it on its right, by `Op.eval`
+    change Op.lt.eval ((raw .i64 N p)[q]?.getD 0) R.n.toUInt64 = _ at e
+    rw [hpw q hq, hnU,
       eval_lt_nat (by have := hpsN q hq; omega) (by omega), Except.ok.injEq] at e
     rw [← e]; simp
   obtain ⟨cRN, hcRN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
@@ -779,10 +779,12 @@ theorem Tab.compOne_canon {A B C : Obj}
     have hnps : R.n.toNat ≤ ps[Fs G + cRN G + (t - Sw G) % bN G]?.getD 0 :=
       Nat.le_of_not_lt fun hc => by have := (sgR _).1 ⟨qSg.1, qSg.2, hc⟩; omega
     refine ⟨wiR, ?_, qRg, qSg.1, qSg.2, hnps⟩
-    have e := (colMap_raw hiS).2.2.2 t htT
-    rw [wpq, colConst_raw hc3, Array.getElem?_replicate, if_pos htT, Option.getD_some, hnU] at e
+    have e := (colMap_post hiS).2 t htT
+    rw [wpq, hnU] at e
     simp only [Op.eval, Except.ok.injEq] at e
-    rw [← e, toUInt64_sub hnps]
+    have hneg : ∀ a b : UInt64, 0 - b + a = a - b := fun a b => by
+      rw [UInt64.sub_eq_add_neg, UInt64.sub_eq_add_neg, UInt64.zero_add, UInt64.add_comm]
+    rw [← e, hneg, toUInt64_sub hnps]
   ------------------------------------------------------------------ the rows of `U` are the pairs of `R ≫ S`
   have fs := firsts_spec Kk N.toNat
   have zR : ∀ i (hi : i < R.n.toNat), z.row ⟨i, by omega⟩ = R.val.row ⟨i, hi⟩ := fun i hi => by
