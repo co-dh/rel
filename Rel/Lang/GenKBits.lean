@@ -1643,7 +1643,7 @@ theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o
   subst M0
   have eK' := eq_of_heq eK
   subst key0
-  obtain ⟨hr, hgw0, ho, -, -, -, hrcN, -⟩ := hw
+  obtain ⟨hr, hgw0, ho, -, -, hraN, hrcN, -⟩ := hw
   rcases hs : Tab.ofBits g w o x ra y rc with e | s
   · exact absurd hs (hr e)
   obtain ⟨-, hrc, -, ⟨My, iy, vy, hvy⟩⟩ := Tab.ofBits_reads hs
@@ -1668,7 +1668,7 @@ theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o
     simp only [Bool.false_eq_true, ↓reduceIte] at H
     obtain ⟨k, hk1, hk2, hon⟩ := H
     have hkM : k < M.toNat := Nat.lt_of_lt_of_le hk2 (hseg a ha).2
-    refine (Tab.ofBits_in hs hgw0 ho2 (hidx k hkM) hj fun h0 => ?_).2
+    refine (Tab.ofBits_in hs hraN hrcN hgw0 ho2 (hidx k hkM) hj fun h0 => ?_).2
     rw [h0] at hon; exact absurd hon (by decide)
 
 /-- **`Tab.ofBits` reads back every matrix `ldivTabMat` builds from a `BitsWf` one**: `ldivTabMat_spec` gives its
@@ -2172,7 +2172,7 @@ theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X 
     have rX := agrees_empty ((reps_iff _ _ _).1 (hR {} Known.wf_empty) r hr)
     have rB := agrees_empty ((reps_iff _ _ _).1 (hB {} Known.wf_empty) ub hu)
     have rC := agrees_empty ((reps_iff _ _ _).1 (hC {} Known.wf_empty) uc hv)
-    obtain ⟨hr0, -, ho, hx, hy, hra, hrc⟩ := wF.1
+    obtain ⟨hr0, -, ho, hx, hy, hra, hrc, -⟩ := wF.1
     have wr := wR.runE Known.wf_empty hr
     have wu := wB.runE Known.wf_empty hu
     have wv := wC.runE Known.wf_empty hv
