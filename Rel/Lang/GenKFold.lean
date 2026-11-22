@@ -812,17 +812,6 @@ theorem Arr.lexLe_i64 {n : USize} (x : Arr .i64 n) (rest : List (AscKey × Enc))
   · exact Nat.le_of_lt (UInt64.lt_iff_toNat_lt.1 h)
   · exact Nat.le_of_eq (congrArg UInt64.toNat h)
 
-theorem Arr.pos_get {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (c : Fin n.toNat) :
-    P.get c = c.1.toUInt64.toInt64 := by
-  unfold Arr.pos at h
-  split at h
-  · rename_i o ho
-    cases h
-    rw [Arr.get_i64]
-    show ((Enc.raw .i64 n o)[c.1]?.getD 0).toInt64 = _
-    rw [shiftCol_raw ho c.1 c.2, UInt64.add_zero]
-  · cases h
-
 /-- **`⟨pos, v⟩ ≫ R` with one image per position is in position order**: where `C`, the composite of the `T`
 positions `pos` (`Arr.pos`) keyed to `v` with `R`, has `T` rows and `T` distinct keys (`dom`), row `j` of `C` has key
 `j` and is the only row there. Its keys are positions; `dom C`'s ascend strictly (`nub_sorted`, `nub_distinct`) so
@@ -988,28 +977,6 @@ theorem Vals.cells_pay {B : Obj} {T n : USize} {w} {pay : Vals B T} {Y : Vals (.
   cases h
   exact ⟨lo, hi, rfl, by simp [hP, hlo, hc0, hhi, Except.bind, pure, Except.pure]⟩
 
-/-- **`Tab.map`'s one pass has at most `n * m` rows**: the `T` EXPANDed rows are the summed widths of `n` cells over a
-payload of `m` (`cellSpan_spec`, `expand_spec`). -/
-theorem expand_cells_le {A : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals A m} {w G u}
-    {T : USize} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat)
-    (hse : ∀ i : Fin n.toNat, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (up.get i).toInt ∧
-      (up.get i).toInt ≤ (m.toNat : Int))
-    (hw : colMap .sub n up.enc lo.enc = .ok w) (hex : expand n w = .ok (T, G, u)) : T.toNat ≤ n.toNat * m.toNat := by
-  have hm63 : m.toNat < 2 ^ 63 := by omega
-  have hn63 : n.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
-  obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
-  have hww : ∀ i < n.toNat, (Ext.Enc.raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
-    intro i hi
-    have es := (colMap_raw hw).2.2.2 i hi
-    rw [(hse' i hi).2, (hse' i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
-    rw [← es, hwN, toUInt64_sub (hb1 i).1]
-  have hsum : ∀ k, ((List.range k).map wN).sum ≤ k * m.toNat := fun k => by
-    induction k with
-    | zero => simp
-    | succ k ih => rw [sum_range_succ', Nat.succ_mul]; have := hb1 k; rw [hwN]; omega
-  rw [(expand_spec hex wN hww (by have := hsum n.toNat; omega) hn63).1]; exact hsum _
-
 /-- **`F(R)` on the cells `X`** (`Tab.map`): each array `xs` of `X` to every `ys` of its length with `xs[t] R ys[t]`.
 The fold branch is `mapFold_holds`; in the one-pass branch every element `x` of a cell is a payload row `v[t]`, whose
 only image is `C`'s row `t` (`comp_pos_rows`), and the new cells are the old ones mapped by that image
@@ -1039,7 +1006,13 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
     simp only [Bool.and_eq_true, beq_iff_eq] at hcd
     obtain ⟨hn, hd⟩ := hcd
     obtain ⟨Y, hY, hc⟩ := GenK.bind_ok h
-    have hT : T.toNat ≤ 2 ^ 63 := by have := expand_cells_le (f := f) hb wX.1 hw hex; omega
+    -- the `T` EXPANDed rows are the summed widths of `n` cells, each at most `m` (`cellSpan_width`, `expand_spec`)
+    have hT : T.toNat ≤ 2 ^ 63 := by
+      obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec wX.1 (by omega) f
+      have hwd := cellSpan_width hse' hb1 hw
+      have hs := sum_range_le_mul (wN := fun i => EN i - SN i) (k := n.toNat) fun i hi => (hwd i hi).2
+      have := (expand_spec hex _ (fun i hi => (hwd i hi).1) (by omega) (by omega)).1
+      omega
     have wPv : (⟨T, P, v⟩ : Tab .long A).WF := ⟨trivial, Vals.gather_wf hv wX.2⟩
     have rows := Tab.comp_pos_rows hP hT hC hD hn hd wPv wR
     subst hn
