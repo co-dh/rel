@@ -420,6 +420,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   (b) `(Array.range m).map f`（`blockOf`/`planBlock` 建 `ks` 的写法）300 个就 2260 MB；(c) 解码侧 `raw`/`foRBits`
   逐元素按下标读：用编码器给出的 1100 行全零元数据（平铺字面量、空 pack）单独解码，40 行 1.2 s，1100 行 OOM。
   另：一个 1024 key 的块单是 `planOf` 在 8 GB 下也 abort（33 s），kernel 每步留在 whnf 缓存里的内存是下限。
+  ✅ 关闭（owner 2026-11-22，决定 S）：1024 行块边界由编译执行的 `#guard` 对 Rust 检查，`decide` 只覆盖小输入；
+  不改 `encodeAt` 的读法，也不另写无 extern 的模型副本。
   ✅ 运行路径上的平方解码（nodecode 765527b）：`foRBits` 每个元素重算 trailer 偏移 O(nblk)，`Vals.cols` 为判形状解码整列；
   改为 `foROk` 判形状、`foRExc`/`foRFrame` 取 `blockStarts` 的 trailer；10⁵ 行 leftJoin 40.2s→0.96s、带 null 的 group-by
   187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
