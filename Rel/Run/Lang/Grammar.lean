@@ -394,18 +394,9 @@ partial def prim (s : Syntax) : C (List Lang.Expr) := do
   | ``rConv => match (← prim s[0]).reverse with
     | e :: es => pure ((.conv (← posOf s[1]) e :: es).reverse)
     | [] => failAt s "expected a term"
-  -- `e*` on the last of the terms, as `°`: the closure `μX : 𝟙 ∪ e X`, no op of its own, so typed, checked and run
-  -- as every `μ`; `X` primed past every name of `e` and of the scope, so it captures none
+  -- `e*` on the last of the terms, as `°`: the prelude's `star(e)` (`μX : 𝟙 ∪ e X`), its notation
   | ``rStar => match (← prim s[0]).reverse with
-    | e :: es => do
-      let st ← get
-      let used := e.names ++ st.known.map (·.1) ++ st.taken.map (·.1) ++ st.objs
-      let xs := (List.range (used.length + 1)).map fun k => "X" ++ String.ofList (List.replicate k '\'')
-      match xs.find? fun x => !used.contains x && (Parse.builtin x).isNone with
-      | some x =>
-        let q ← posOf s[1]
-        pure ((.fix q true x (.bin q .join (.op q .id [] []) (.comp e (.name q x))) :: es).reverse)
-      | none => failAt s "no variable for the μ of `*` is free of the names in scope"
+    | e :: es => do pure ((.app (← posOf s[1]) "star" [e] :: es).reverse)
     | [] => failAt s "expected a term"
   | k =>
     -- Lean gives every category `$x`, at any quotation depth: outside a quotation it is no term of the language

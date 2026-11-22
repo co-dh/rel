@@ -16,10 +16,10 @@ rel_program closure where
     c : N ⟶ N ≜ μX : 𝟙 ∪ (R X)
     check c = {(0,0),(1,1),(2,2),(3,3),(4,4),(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
 #guard closure.ok
--- postfix `*`, at the level of `°`: `R*` reads as that `μ`, its variable primed past every name in scope (the object
--- `X` here) and in its operand (`X'` here); `°` and `*` chain either way
-#eval readsAll [("R*", "(μX' : (𝟙 ∪ (R X')))"), ("R°*", "(μX' : (𝟙 ∪ (R° X')))"), ("R*°", "(μX' : (𝟙 ∪ (R X')))°"),
-  ("R S*", "(R (μX' : (𝟙 ∪ (S X'))))"), ("(R X')*", "(μX'' : (𝟙 ∪ ((R X') X'')))")]
+-- postfix `*`, at the level of `°`: `R*` reads as the prelude's `star(R)` (`μX : 𝟙 ∪ R X`); `°` and `*` chain
+-- either way
+#eval readsAll [("R*", "star(R)"), ("R°*", "star(R°)"), ("R*°", "star(R)°"), ("R S*", "(R star(S))"),
+  ("(R X')*", "star((R X'))")]
 -- `R*` against the hand-written `μ` and its value; `R°*` and `R*°` against its converse; `X`, a name of the
 -- program, is not captured by the `μ` of `(R X)*`
 open Rel.Programs.prelude in

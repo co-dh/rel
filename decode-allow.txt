@@ -105,7 +105,6 @@ Rel.Tab.diag
 Rel.Tab.diff
 Rel.Tab.est
 Rel.Tab.filter
-Rel.Tab.fixOn
 Rel.Tab.flat
 Rel.Tab.flatten
 Rel.Tab.foldRounds
@@ -139,6 +138,7 @@ Rel.Tab.rdiv
 Rel.Tab.select
 Rel.Tab.setify
 Rel.Tab.snoc
+Rel.Tab.star
 Rel.Tab.succ
 Rel.Tab.suffix
 Rel.Tab.sum

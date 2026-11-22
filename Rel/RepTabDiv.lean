@@ -2959,14 +2959,14 @@ last round adds no row, so its `Δ'` is empty and `X` is closed under `R`, which
 theorem star_holds {K B : Obj} {step : Tab B B → Except String (Tab B B)} {R : Core.Rel B.El B.El}
     (hs : ∀ D T, step D = .ok T → ∀ a c, T.Holds a c ↔ ∃ b, D.Holds a b ∧ R b c)
     {P Y : Tab K B} (h : Tab.star step P = .ok Y) (k : K.El) (c : B.El) :
-    Y.Holds k c ↔ ∃ a, P.Holds k a ∧ mu (fun X => 𝟙 _ ∪ R ≫ X) a c := by
+    Y.Holds k c ↔ ∃ a, P.Holds k a ∧ Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a c := by
   have hm : Monotonic fun X : Core.Rel B.El B.El => 𝟙 _ ∪ R ≫ X := fun X Y hXY =>
     le_iff.2 fun a c h => h.elim .inl fun ⟨b, hb, hx⟩ => .inr ⟨b, hb, le_iff.1 hXY _ _ hx⟩
   have pre := le_iff.1 (mu_prefixed hm)
   -- `μ ≫ R ⊑ μ`: `μ` lies in `{(a, b) | ∀ c, b R c → a μ c}`
-  have muR : ∀ a b c, mu (fun X => 𝟙 _ ∪ R ≫ X) a b → R b c → mu (fun X => 𝟙 _ ∪ R ≫ X) a c :=
+  have muR : ∀ a b c, Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a b → R b c → Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a c :=
     fun a b c hab hbc => le_iff.1 (mu_le (φ := fun X => 𝟙 _ ∪ R ≫ X)
-      (Y := fun a b => ∀ c, R b c → mu (fun X => 𝟙 _ ∪ R ≫ X) a c) (le_iff.2 fun a b h c hbc => h.elim
+      (Y := fun a b => ∀ c, R b c → Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a c) (le_iff.2 fun a b h c hbc => h.elim
         (fun e => pre a c (.inr ⟨c, (e : a = b) ▸ hbc, pre c c (.inl rfl)⟩))
         fun ⟨a', ha, hz⟩ => pre a c (.inr ⟨a', ha, hz c hbc⟩))) a b hab c hbc
   simp only [Tab.star, bind] at h
@@ -3002,7 +3002,7 @@ theorem star_holds {K B : Obj} {step : Tab B B → Except String (Tab B B)} {R :
     refine ⟨(pack_toList hU').2 ▸ union_nodup hU, eD, fun k c => ?_⟩
     rw [pack_holds hU', union_holds hU, ← pack_holds hD']
   let I : Tab K B × Tab K B → Prop := fun s => s.1.toList.Nodup ∧ (∀ k b, s.2.Holds k b → s.1.Holds k b) ∧
-    (∀ k b, s.1.Holds k b → ∃ a, P'.Holds k a ∧ mu (fun X => 𝟙 _ ∪ R ≫ X) a b) ∧
+    (∀ k b, s.1.Holds k b → ∃ a, P'.Holds k a ∧ Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a b) ∧
     (∀ k a, P'.Holds k a → s.1.Holds k a) ∧ ∀ k b c, s.1.Holds k b → R b c → s.1.Holds k c ∨ s.2.Holds k b
   obtain ⟨X, Z, ⟨dX, -, sX, pX, cX⟩, hZ, hp, hn⟩ := fixOn_inv I
     (fun s Z Z' ⟨_, dsub, sX, pX, cX⟩ hZ hp => by
