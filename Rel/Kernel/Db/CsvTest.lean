@@ -92,7 +92,7 @@ abbrev WriteCase := CsvCols × Nat × List (Array UInt64) × (String ⊕ List UI
 def writeCases : List WriteCase := [
   -- a schema CSV does not hold is refused before any word, as the reader refuses it (`readCases`)
   ([("g", .atom, .general, [])], 0, [#[]], .inl "column 'g' is a general column, which the own format does not hold"),
-  ([("s", .atom, .sym, [])], 0, [#[]], .inl "column 's' is a symbol column, which waits for the own-format sym writer (D.9 step 6)"),
+  ([("s", .atom, .sym, [])], 0, [#[]], .inl "column 's' is a symbol column, read and written as its text through its dictionary (Table.readCsvDicts, Table.writeCsv)"),
   ([], 0, [], .inl "the schema has no column, and a CSV record has at least one field"),
   -- a NaN and `-0` have no text: the column is not canonical (ruling 6)
   ([("f", .atom, .f64, [])], 2, [#[0, 0x8000000000000000]],
@@ -173,7 +173,7 @@ abbrev ReadCase := CsvCols × List UInt8 × (String ⊕ (Nat × List (Array UInt
 
 def readCases : List ReadCase := [
   -- `sym` and `general` columns, and no column, are refused before any byte is read
-  ([("s", .atom, .sym, [])], [], .inl "column 's' is a symbol column, which waits for the own-format sym writer (D.9 step 6)"),
+  ([("s", .atom, .sym, [])], [], .inl "column 's' is a symbol column, read and written as its text through its dictionary (Table.readCsvDicts, Table.writeCsv)"),
   ([("g", .atom, .general, [])], one "1\n", .inl "column 'g' is a general column, which the own format does not hold"),
   ([], bytes "\n", .inl "the schema has no column, and a CSV record has at least one field"),
   -- the epoch, 1970.01.01 (owner, question F.3: N), and the ends of the range

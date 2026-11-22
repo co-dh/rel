@@ -166,7 +166,7 @@ pub fn schema(cols: &[Col]) -> Result<(), String> {
     if cols.is_empty() { return Err("the schema has no column, and a CSV record has at least one field".into()) }
     for c in cols {
         match c.t {
-            QT_SYM => return Err(format!("column '{}' is a symbol column, which waits for the own-format sym writer (D.9 step 6)", c.name)),
+            QT_SYM => return Err(format!("column '{}' is a symbol column, read and written as its text through its dictionary (Table.readCsvDicts, Table.writeCsv)", c.name)),
             QT_GENERAL => return Err(format!("column '{}' is a general column, which the own format does not hold", c.name)),
             _ => {}
         }

@@ -54,14 +54,14 @@ def say {α : Type} (r : Except IO.Error α) : String := match r with | .ok _ =>
   roundTrip "list" "l" x
 
 -- the refusals, each naming its file: a missing file, two columns of one side whose counts differ, a type code
--- other than the declared one (a long read as a float among them), and the symbol column no reader takes yet
+-- other than the declared one (a long read as a float among them), a long read as a symbol column among them
 /--
 info: no such file or directory (error code: 2)
   file: /data/tmp/rel-test-table/bad/nope
 /data/tmp/rel-test-table/bad/u.2 has 3 rows and /data/tmp/rel-test-table/bad/u.1 has 4: the columns of one side have one count
 /data/tmp/rel-test-table/bad/u.1: atom type code 7, the column is Rel.QAtomicType.u8 (code 4)
 /data/tmp/rel-test-table/bad/u.1: atom type code 7, the column is Rel.QAtomicType.f64 (code 9)
-/data/tmp/rel-test-table/bad/u.1: a symbol column, which waits for the own-format sym writer (D.9 step 6)
+/data/tmp/rel-test-table/bad/u.1: atom type code 7, the column is Rel.QAtomicType.sym (code 11)
 -/
 #guard_msgs in
 #eval show IO Unit from do
@@ -177,7 +177,7 @@ info: no such file or directory (error code: 2)
   file: /data/tmp/rel-test-table/schemabad/qty
 /data/tmp/rel-test-table/schemabad/px: atom type code 7, the column is Rel.QAtomicType.i32 (code 6)
 /data/tmp/rel-test-table/schemabad/px has 2 rows and /data/tmp/rel-test-table/schemabad/id has 3: the columns of one side have one count
-/data/tmp/rel-test-table/schemabad/id: a symbol column, which waits for the own-format sym writer (D.9 step 6)
+/data/tmp/rel-test-table/schemabad/id: atom type code 7, the column is Rel.QAtomicType.sym (code 11)
 column 'id' appears twice in schema [id, id]
 -/
 #guard_msgs in
@@ -190,5 +190,31 @@ column 'id' appears twice in schema [id, id]
   IO.println (say (← (read [("id", .long), ("px", .long)] dir).toBaseIO))
   IO.println (say (← (read [("id", .atom .sym)] dir).toBaseIO))
   IO.println (say (← (read [("id", .long), ("id", .long)] dir).toBaseIO))
+
+/-! ## A symbol column: ids into a sorted, distinct dictionary (PLAN 8.3) -/
+
+-- by hand: the texts `ibm aapl ibm msft` interned to the dictionary `aapl ibm msft` (its bytes) and the ids `1 0 1 2`; the CSV
+-- written back through it equals the input; ids compare as their texts do, at every pair of rows; the own files
+-- (ids `s`, dictionary `s.dict`) map back to the same dictionary and ids
+/--
+info: ([[97, 97, 112, 108], [105, 98, 109], [109, 115, 102, 116]], [1, 0, 1, 2], true, true, true, true)
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let dir ← fresh "sym"
+  let txt := "s\nibm\naapl\nibm\nmsft\n"
+  IO.FS.writeFile (dir ++ "/in.csv") txt
+  let S : Schema := [("s", .atom .sym)]
+  let cols : Db.CsvCols := [("s", .atom, .sym, [])]
+  let (t, ds) ← readCsvDicts [] S cols (dir ++ "/in.csv")
+  writeCsv ds [] S cols (dir ++ "/out.csv") t
+  let some D := ds.lookup "s" | throw (IO.userError "no dictionary for s")
+  let texts := D.toList.map (·.2)
+  let rows := ["ibm", "aapl", "ibm", "msft"]
+  let ids := t.val.toList
+  let order := (ids.zip rows).all fun (i, a) => (ids.zip rows).all fun (j, b) => decide (i < j) == decide (a < b)
+  writeSym dir "s" D t.val
+  let (D', ⟨_, y⟩) ← readSym dir "s"
+  return (texts, ids, (← IO.FS.readFile (dir ++ "/out.csv")) == txt, order, D'.toList == D.toList, y.toList == ids)
 
 end Rel.Lang.TestTable
