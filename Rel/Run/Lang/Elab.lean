@@ -82,14 +82,15 @@ def atomName (t : Rel.QAtomicType) : String :=
     the reader of Lean's own float literals; `neg` its sign, so `-0.0` is the negative zero. -/
 def floatBits (w : Nat) (neg : Bool) (m : Nat) (s : Bool) (e : Nat) : UInt64 :=
   -- Clinger's fast path: `m` and `10^e` exact in the float, so one rounded `*` or `/`, where `OfScientific` builds
-  -- `m·5^e` or `m·2^k` as a `Nat`, a GMP number past `2^63`
+  -- `m·5^e` or `m·2^k` as a `Nat`, a GMP number past `2^63`. `m` is exact when it converts back to itself (below
+  -- `2^63`, where the rounded value cannot saturate `toUInt64`), not only below `2^53`: `1.5e16` is `15·10^15`
   if w == 4 then
-    let x : Float32 := if m >>> 24 == 0 && e ≤ 10 then
+    let x : Float32 := if m >>> 63 == 0 && m.toUInt64.toFloat32.toUInt64 == m.toUInt64 && e ≤ 10 then
         let (a, p) := (m.toUInt64.toFloat32, ((10 : UInt64) ^ e).toFloat32); if s then a / p else a * p
       else OfScientific.ofScientific m s e
     (if neg then -x else x).toBits.toUInt64
   else
-    let x : Float := if m >>> 53 == 0 && e ≤ 22 then
+    let x : Float := if m >>> 63 == 0 && m.toUInt64.toFloat.toUInt64 == m.toUInt64 && e ≤ 22 then
         let (a, p) := (m.toUInt64.toFloat, ((5 : UInt64) ^ e).toFloat.scaleB e); if s then a / p else a * p
       else OfScientific.ofScientific m s e
     (if neg then -x else x).toBits
@@ -120,11 +121,12 @@ def numParts (w : String) : Option (Bool × Nat × Bool × Nat) :=
 /-- The atoms with a text form of q's besides the integer: a `date` written `2024.01.15`, a `datetime`
     `2024.01.15D12:30:00.5`, read by the CSV's reader of the atom (`Db.Csv.ymd`, `Db.Csv.stamp`, C.3) at the day's
     separator `.`, as the CSV: days, nanoseconds since 1970-01-01, proleptic Gregorian, years 0001–9999; a
-    `char` written `"a"` or `"\ooo"`, a byte of a string literal (`charText`, `Tup.ofText`). -/
-def qForm : Rel.QAtomicType → Option (String × (List UInt8 → Option Int))
-  | .date => some ("day yyyy.mm.dd", Db.Csv.ymd)
+    `char` written `"a"` or `"\ooo"`, a byte of a string literal (`charText`, `Tup.ofText`). The reader gives the
+    word sign-extended to 64 bits, as `Db.Csv.intWord`; each is in its atom's range (`stamp` checks `i64`'s). -/
+def qForm : Rel.QAtomicType → Option (String × (List UInt8 → Option UInt64))
+  | .date => some ("day yyyy.mm.dd", fun f => (Db.Csv.ymd f).map (·.toInt64.toUInt64))
   | .datetime => some ("time yyyy.mm.ddDhh:mm:ss[.f]", Db.Csv.stamp)
-  | .char => some ("char \"a\"", charOf)
+  | .char => some ("char \"a\"", fun f => (charOf f).map (·.toInt64.toUInt64))
   | _ => none
 
 /-- The word `w` stored at the atom `t` of the object `n` (`litLayout`): a float of `t`'s width read as Lean reads a
@@ -143,17 +145,15 @@ def wordAt (p : Pos) (n : String) (t : Rel.QAtomicType) (w : String) : Except Er
       if (floatParts b x).isSome then pure x else throw ⟨p, s!"{no}: it is beyond the range of {atomName t}"⟩
     | none => throw ⟨p, no⟩
   | some (b, false, sg) =>
-    -- sign and magnitude, the range checked by shifts: an `Int` past `±2^31` and the bound `2 ^ 63` are GMP numbers
-    let sk := (let (neg, d) := wordSign w; d.toNat?.map (neg, ·)) <|>
-      ((qForm t).bind (·.2 (Db.Csv.bytes w))).map fun k => (decide (k < 0), k.natAbs)
-    match sk with
-    | some (neg, k) =>
-      if sg && (k >>> (8 * b - 1) == 0 || neg && k >>> (8 * b - 1) == 1 && k.toUInt64 == (2 : UInt64) ^ (8 * b - 1))
-        || !sg && k >>> (8 * b) == 0 && (!neg || k == 0)
-      then pure (if neg then 0 - k.toUInt64 else k.toUInt64)
-      else let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
+    -- sign and magnitude (`Db.Csv.intWord`): an `Int` past `±2^31` is a GMP number
+    let (neg, d) := wordSign w
+    match d.toNat?, (qForm t).bind (·.2 (Db.Csv.bytes w)) with
+    | some k, _ => match Db.Csv.intWord b sg neg k with
+      | some x => pure x
+      | none => let (lo, hi) : Int × Int := if sg then (-2 ^ (8 * b - 1), 2 ^ (8 * b - 1)) else (0, 2 ^ (8 * b))
         throw ⟨p, s!"{no}: it is not in {lo}…{hi - 1}"⟩
-    | none => throw ⟨p, match qForm t with
+    | none, some x => pure x
+    | none, none => throw ⟨p, match qForm t with
       | some (f, _) => s!"{no}: it is no integer and no {f} of the years 0001–9999 in the range of {atomName t}"
       | none => no⟩
 
@@ -182,7 +182,8 @@ def floatText (w : Nat) (b : UInt64) : String :=
       let (a, c) := if k ≥ 0 then (num, den * 10 ^ k.toNat) else (num * 10 ^ (-k).toNat, den)
       ((2 * a + c) / (2 * c), k)
     let mx := if w == 4 then 9 else 17
-    let (D, k) := (((List.range mx).map (near ∘ (· + 1))).find? fun (D, k) => floatBits w neg D (k < 0) k.natAbs == b).getD (near mx)
+    -- the `mx`-digit one is not read back: it always reads back, and has no exact `floatBits` fast path
+    let (D, k) := (((List.range (mx - 1)).map (near ∘ (· + 1))).find? fun (D, k) => floatBits w neg D (k < 0) k.natAbs == b).getD (near mx)
     let (D, k) := stripZeros 20 D k
     let s := toString D
     let P : Int := (s.length : Int) - 1 + k
@@ -215,8 +216,9 @@ def wordText (t : Rel.QAtomicType) (x : UInt64) : String :=
   | some s => String.ofList (s.map (Char.ofNat ·.toNat))
   | none => match litLayout t with
     | some (b, true, _) => floatText b x
-    | some (b, false, sg) => let u := x.toNat % 2 ^ (8 * b)
-      toString (if sg ∧ u ≥ 2 ^ (8 * b - 1) then (u : Int) - 2 ^ (8 * b) else u)
+    -- cut and negated as words: `x.toNat` of a negative one is past `2^63`, a GMP number
+    | some (b, false, sg) => let u := x &&& Column.ones (8 * b)
+      if sg && u >>> (8 * b - 1).toUInt64 != 0 then s!"-{(0 - u) &&& Column.ones (8 * b)}" else toString u
     | none => "?"
 
 /-- A declared object: what it stands for, and, for a base object, its elements and universe. -/

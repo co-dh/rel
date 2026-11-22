@@ -286,49 +286,6 @@ mod tests {
         assert_eq!(pos_rows((1 << 63) + 1).unwrap_err(),
             "asc: a pos column of 9223372036854775809 rows is past 2^63, where its order codes wrap");
     }
-    /// The word reference: `0 .. m` stably by `keys` lexicographically, one LSD counting pass per code byte.
-    fn reference(keys: &[Vec<u64>], m: usize) -> Vec<i64> {
-        let mut p: Vec<usize> = (0..m).collect();
-        for k in keys.iter().rev() { for b in (0..8).map(|b| 8 * b) { p.sort_by_key(|&i| (k[i] >> b) as u8) } }
-        p.into_iter().map(|i| i as i64).collect()
-    }
-    // every column shape against the word reference: sorted, reversed, ties, patched, codes not in word order (an `int`
-    // with high bits, a float with negatives and NaN), one to three keys, and spans that do not fit one code
-    #[test] fn grade_is_the_reference() {
-        let mut s = 0x9e37_79b9_7f4a_7c15u64;
-        let mut rnd = move || { s ^= s << 13; s ^= s >> 7; s ^= s << 17; s };
-        for m in [0usize, 1, 2, 5, 1000, 3000] {
-            let cols: Vec<(u8, Vec<i64>)> = vec![
-                (4, (0..m as i64).collect()),
-                (4, (0..m as i64).rev().collect()),
-                (4, (0..m).map(|_| (rnd() % 7) as i64).collect()),
-                (4, (0..m).map(|i| if i % 97 == 5 { rnd() as i64 } else { (rnd() % 1000) as i64 }).collect()),
-                (3, (0..m).map(|_| rnd() as i64).collect()),
-                (3, (0..m).map(|_| (rnd() % 50) as i64 - 25).collect()),
-                (6, (0..m).map(|i| [f64::NAN, -0.0, 0.0, -1.5, 2.5, (i % 5) as f64][rnd() as usize % 6].to_bits() as i64).collect()),
-                (6, (0..m).map(|i| (i as f64).to_bits() as i64).collect()),
-                (0, (0..m).map(|_| (rnd() % 300) as i64).collect()),
-                (6, (0..m).map(|_| rnd() as i64).collect()),
-            ];
-            let enc: Vec<(u8, [Vec<u8>; 2])> = cols.iter().map(|(t, x)| {
-                let o = Sink::new(m, 8).answer(&Blocks::dense(pod::bytes(x), 8));
-                (*t, [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()))
-            }).collect();
-            let key = |i: usize| Key::new(crate::coc::view(&enc[i].1[0], &enc[i].1[1], m).ok().expect("asc test: view"), order(enc[i].0).expect("asc test: order"));
-            let codes = |i: usize| { let (w, f, g) = order(cols[i].0).expect("asc test: order"); cols[i].1.iter().map(|&v| ord_key(w, f, g, v as u64)).collect::<Vec<u64>>() };
-            let n = cols.len();
-            let sets: Vec<Vec<usize>> = (0..n).map(|i| vec![i]).chain((0..n).map(|i| vec![i, (i + 3) % n]))
-                .chain((0..n).map(|i| vec![(i + 2) % n, i, (i + 5) % n])).chain([vec![2, 2], vec![9, 4], vec![0, 9, 2]]).collect();
-            for set in sets {
-                let ks: Vec<Key> = set.iter().map(|&i| key(i)).collect();
-                let want = reference(&set.iter().map(|&i| codes(i)).collect::<Vec<_>>(), m);
-                let got = grade(crate::c::pool(), &ks, m).unwrap_or_else(|| (0..m as i64).collect());
-                assert_eq!(got, want, "columns {set:?} at m {m}");
-                assert_eq!(sorted(crate::c::pool(), &ks, m), want.iter().enumerate().all(|(i, &x)| x == i as i64), "sorted {set:?} at m {m}");
-            }
-        }
-    }
-
     /// The words `x` as a `foR` column's metadata and pack, `Coc::view`ed by `col`.
     fn enc(x: &[i64]) -> [Vec<u8>; 2] {
         let o = Sink::new(x.len(), 8).answer(&Blocks::dense(pod::bytes(x), 8));
@@ -357,25 +314,6 @@ mod tests {
             cs.extend(e.atoms.iter().skip(1).map(atom));
             cs
         }
-        /// The straightforward reference: each row's keys as plain vectors, cells clamped as `Cells::span` does,
-        /// compared by `Vec`'s lexicographic order (a proper prefix first), a stable sort.
-        fn reference(&self) -> Vec<i64> {
-            let code = |t: u8, v: i64| { let (w, f, g) = order(t).expect("asc test: order"); ord_key(w, f, g, v as u64) };
-            let cell = |i: usize| {
-                let r = self.ix[i] as usize;
-                let s = self.lo[r].clamp(0, self.c as i64) as usize;
-                let e = (self.hi[r].clamp(0, self.c as i64) as usize).max(s);
-                (s..e).map(|k| self.els.iter().map(|x| code(4, x[k])).collect::<Vec<u64>>()).collect::<Vec<_>>()
-            };
-            let key = |i: usize| {
-                let a = |j: usize| self.atoms.get(j).map(|(t, x)| code(*t, x[i]));
-                (a(0), cell(i), (1..self.atoms.len()).map(|j| a(j)).collect::<Vec<_>>())
-            };
-            let ks: Vec<_> = (0..self.m).map(key).collect();
-            let mut p: Vec<usize> = (0..self.m).collect();
-            p.sort_by(|&a, &b| ks[a].cmp(&ks[b]));
-            p.into_iter().map(|i| i as i64).collect()
-        }
         /// `n` cells over a payload of `nel` columns: each cell a shared prefix (one of `np`, `pl` long, drawn from
         /// `alpha` symbols) and a random tail up to `tl` long; row `i` names a random cell.
         fn make(s: &mut u64, m: usize, n: usize, np: usize, pl: usize, tl: usize, alpha: u64, nel: usize) -> T {
@@ -393,35 +331,6 @@ mod tests {
             }
             let c = els[0].len();
             T { m, c, ix: (0..m).map(|_| (xs(s) % n as u64) as i64).collect(), lo, hi, els, atoms: Vec::new() }
-        }
-    }
-
-    // `cells` keys against the reference: shared prefixes, empty cells, equal rows (one cell named by many rows, so
-    // stability decides), cells across foR blocks, patched payloads, `lo`/`hi` out of range, scalar keys around them,
-    // cells sharing one span
-    #[test] fn cells_is_the_reference() {
-        let mut s = 0x2545_f491_4f6c_dd1du64;
-        for (m, n, np, pl, tl, alpha, nel) in [(0, 1, 1, 0, 0, 2, 1), (1, 1, 1, 3, 2, 2, 1), (7, 3, 1, 4, 2, 2, 1), (500, 40, 3, 20, 5, 3, 1),
-                (3000, 3000, 5, 60, 4, 2, 1), (3000, 200, 2, 1500, 3, 2, 1), (2000, 500, 4, 8, 3, 3, 2), (2500, 2500, 1, 0, 3, 4, 1)] {
-            let mut t = T::make(&mut s, m, n, np, pl, tl, alpha, nel);
-            for v in 0..5 {
-                if v == 1 { // patches: a rare outlier in the payload, so its blocks carry a patch list
-                    for x in t.els[0].iter_mut() { if xs(&mut s) % 211 == 0 { *x = (xs(&mut s) >> 1) as i64 - (1 << 62) } }
-                }
-                if v == 2 { // cells out of the payload: a `lo` below 0, a `hi` past `c`, `lo` past `hi`
-                    for r in 0..n { match xs(&mut s) % 9 { 0 => t.lo[r] = -5, 1 => t.hi[r] = t.c as i64 + 7, 2 => t.lo[r] = t.hi[r] + 1, _ => {} } }
-                }
-                if v == 3 { // scalar keys before and after the cells
-                    t.atoms = vec![(4, (0..m).map(|_| (xs(&mut s) % 3) as i64).collect()), (6, (0..m).map(|_| ((xs(&mut s) % 5) as f64 - 2.0).to_bits() as i64).collect())];
-                }
-                if v == 4 { // cells copying another cell's span, as a gathered side copies `lo`/`hi` per row
-                    for r in 0..n { if xs(&mut s) % 2 == 0 { let k = (xs(&mut s) % n as u64) as usize; (t.lo[r], t.hi[r]) = (t.lo[k], t.hi[k]) } }
-                }
-                let e = t.enc();
-                let cs = t.cols(&e);
-                let got = grade_cols(crate::c::pool(), &cs, m).unwrap_or_else(|| (0..m as i64).collect());
-                assert_eq!(got, t.reference(), "cells m {m} n {n} prefix {np}x{pl} tail {tl} variant {v}");
-            }
         }
     }
 

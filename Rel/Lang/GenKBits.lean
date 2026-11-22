@@ -41,14 +41,14 @@ theorem Tab.colIota_raw {n : USize} {e : Enc} (h : Tab.colIota n = .ok e) :
 /-- **`index xr v` finds each row of `v` among the `g` rows of `xr`**: row `j`'s word is a position `a` of `xr` holding
     `v`'s row `j`, or `g` where no row of `xr` holds it. -/
 theorem Tab.index_spec {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h : Tab.index xr v = .ok e)
-    (j : Fin n.toNat) :
+    (hxr : Vals.WF xr) (hv : Vals.WF v) (j : Fin n.toNat) :
     (∃ a : Fin g.toNat, ((raw .i64 n e)[j.1]?.getD 0).toNat = a.1 ∧ xr.row a = v.row j) ∨
       (((raw .i64 n e)[j.1]?.getD 0).toNat = g.toNat ∧ ∀ a : Fin g.toNat, xr.row a ≠ v.row j) := by
   simp only [Tab.index, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, cx, cv, Z⟩, hc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨io, hio, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sc, hsc, h⟩ := h
-  obtain ⟨fx, fv, -, hfx, hfv, -, -, hxv, -⟩ := Vals.code2_spec hc
+  obtain ⟨fx, fv, -, hfx, hfv, -, -, hxv, -⟩ := Vals.code2_spec hc hxr hv
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hGU := g.toNat_lt_size
   have hkU := k.toNat_lt_size
@@ -75,8 +75,8 @@ theorem Tab.index_spec {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h
 
 /-- `index`'s words are at most `g`. -/
 theorem Tab.index_le {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h : Tab.index xr v = .ok e)
-    (j : Fin n.toNat) : ((raw .i64 n e)[j.1]?.getD 0).toNat ≤ g.toNat := by
-  rcases Tab.index_spec h j with ⟨a, ea, -⟩ | ⟨ea, -⟩
+    (hxr : Vals.WF xr) (hv : Vals.WF v) (j : Fin n.toNat) : ((raw .i64 n e)[j.1]?.getD 0).toNat ≤ g.toNat := by
+  rcases Tab.index_spec h hxr hv j with ⟨a, ea, -⟩ | ⟨ea, -⟩
   · rw [ea]; exact Nat.le_of_lt a.2
   · exact Nat.le_of_eq ea
 
@@ -162,8 +162,8 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
     (hx : ∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
       ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a')
     (hy : ∀ c c' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[c.1]?.getD 0).toNat = i.1 →
-      ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c') :
-    rep u = rep T ∩ rep s := by
+      ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c')
+    (hT : T.WF) (wx : Vals.WF x) (wy : Vals.WF y) : rep u = rep T ∩ rep s := by
   simp only [Tab.keepBits, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨t, ht, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨X', hX', h⟩ := h
@@ -183,6 +183,9 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
   rw [Except.bind_eq_ok'] at h; obtain ⟨gc, hgc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ps, hpos, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨bw, hbw, h⟩ := h
+  have wt := Tab.canon_wf ht hT
+  have wX' := Vals.gather_wf hX' wx
+  have wY' := Vals.gather_wf hY' wy
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hS := Tab.ofBits_set hs hgw ho
   have hb := hgw ▸ Tab.ofBits_lt hs
@@ -216,8 +219,8 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
       ((raw .i64 t.n ia)[i]?.getD 0).toNat < g.toNat ∧ ((raw .i64 t.n ic)[i]?.getD 0).toNat < w.toNat) :=
     fun i hi => by
       have e3 := (colMap_raw hok).2.2.2 i hi
-      rw [colMap_lt_const hc1 hl1 hg63 i hi (Tab.index_le hia ⟨i, hi⟩),
-        colMap_lt_const hc2 hl2 hw63 i hi (Tab.index_le hic ⟨i, hi⟩)] at e3
+      rw [colMap_lt_const hc1 hl1 hg63 i hi (Tab.index_le hia wX' wt.1 ⟨i, hi⟩),
+        colMap_lt_const hc2 hl2 hw63 i hi (Tab.index_le hic wY' wt.2 ⟨i, hi⟩)] at e3
       simp only [Op.eval, Except.ok.injEq] at e3
       rw [← e3]
       by_cases p : ((raw .i64 t.n ia)[i]?.getD 0).toNat < g.toNat <;>
@@ -261,11 +264,11 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
     obtain ⟨i, -, rk, rv, ep, hA, hC⟩ := hrow k hk
     refine ⟨⟨i, rk.symm, rv.symm⟩, _, hA, _, hC, ?_, ?_, ?_⟩
     · dsimp only; rw [← ep, ← hbw k hk]; exact (one _ (hbw2 k hk)).1 hb1
-    · rcases Tab.index_spec hia i with ⟨a', ea, ra'⟩ | ⟨ea, -⟩
+    · rcases Tab.index_spec hia wX' wt.1 i with ⟨a', ea, ra'⟩ | ⟨ea, -⟩
       · obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hX' a'
         exact ⟨i0, by rw [ea]; exact h0, by rw [← r0, ra', ← rk]⟩
       · omega
-    · rcases Tab.index_spec hic i with ⟨c', ec, rc'⟩ | ⟨ec, -⟩
+    · rcases Tab.index_spec hic wY' wt.2 i with ⟨c', ec, rc'⟩ | ⟨ec, -⟩
       · obtain ⟨i1, h1, r1⟩ := Vals.gather_row _ hY' c'
         exact ⟨i1, by rw [ec]; exact h1, by rw [← r1, rc', ← rv]⟩
       · omega
@@ -273,14 +276,14 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
     have hA : ((raw .i64 t.n ia)[i.1]?.getD 0).toNat = a0 := by
       obtain ⟨i0', h0', r0'⟩ := Vals.gather_row _ hX' ⟨a0, ha0⟩
       have e : i0' = i0 := Fin.ext (h0'.symm.trans h0)
-      rcases Tab.index_spec hia i with ⟨a', ea, ra'⟩ | ⟨-, hn⟩
+      rcases Tab.index_spec hia wX' wt.1 i with ⟨a', ea, ra'⟩ | ⟨-, hn⟩
       · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hX' a'
         rw [ea]; exact congrArg Fin.val (hx a' ⟨a0, ha0⟩ i2 i0 h2 h0 (by rw [← r2, ra', ← r0]))
       · exact (hn ⟨a0, ha0⟩ (by rw [r0', e, r0])).elim
     have hC : ((raw .i64 t.n ic)[i.1]?.getD 0).toNat = j := by
       obtain ⟨i1', h1', r1'⟩ := Vals.gather_row _ hY' ⟨j, hj⟩
       have e : i1' = i1 := Fin.ext (h1'.symm.trans h1)
-      rcases Tab.index_spec hic i with ⟨c', ec, rc'⟩ | ⟨-, hn⟩
+      rcases Tab.index_spec hic wY' wt.2 i with ⟨c', ec, rc'⟩ | ⟨-, hn⟩
       · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hY' c'
         rw [ec]; exact congrArg Fin.val (hy c' ⟨j, hj⟩ i2 i1 h2 h1 (by rw [← r2, rc', ← r1]))
       · exact (hn ⟨j, hj⟩ (by rw [r1', e, r1])).elim
@@ -301,10 +304,11 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
     (hs : Tab.ofBits g w o x ra y rc = .ok s)
     (ho : ∀ a < g.toNat, ∀ j < w.toNat, ∃ v : UInt64, (raw .i64 (g * w) o)[a * w.toNat + j]? = some v ∧ v < 2)
     (hx : ∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
-      ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a') :
+      ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a') (hr : r.WF) (wx : Vals.WF x) :
     rep t = rep r ≫ rep s := by
   simp only [Tab.compTabMat, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨X', hX', h⟩ := h
+  have wX' := Vals.gather_wf hX' wx
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hl1, h⟩ := h
@@ -339,7 +343,7 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
   -- `R`'s rows whose value is a row of `M`, at `ix`
   have hlt : ∀ q < r.n.toNat, (raw .i64 r.n lt)[q]?.getD 0 =
       if ((raw .i64 r.n ix)[q]?.getD 0).toNat < g.toNat then 1 else 0 := fun q hq =>
-    colMap_lt_const hc1 hl1 hg63 q hq (Tab.index_le hix ⟨q, hq⟩)
+    colMap_lt_const hc1 hl1 hg63 q hq (Tab.index_le hix wX' hr.2 ⟨q, hq⟩)
   have hltb : ∀ q < r.n.toNat, (raw .i64 r.n lt)[q]?.getD 0 < 2 := fun q hq => by
     rw [hlt q hq]; split <;> decide
   have hMr := whereCol_le hwc hltb
@@ -381,7 +385,7 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
     obtain ⟨k, hk, hgk, hon⟩ := (hob a' ha' j hj).1 hP
     have hpk := (hπ k hk).1
     obtain ⟨q, hq, rkey, hqg⟩ := hselp (π k) hpk
-    rcases Tab.index_spec hix q with ⟨a, ea, ra⟩ | ⟨ea, -⟩
+    rcases Tab.index_spec hix wX' hr.2 q with ⟨a, ea, ra⟩ | ⟨ea, -⟩
     · obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hX' a
       refine ⟨r.val.row q, ⟨q, ?_, rfl⟩, (hS _ v).2 ⟨a.1, a.2, j, hj, ?_, ⟨i0, h0, by rw [← r0, ra]⟩, hv⟩⟩
       · rw [← rkey, ← keyrow a' ha' i hi ⟨π k, hpk⟩ hgk, ru]
@@ -395,7 +399,7 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
     have hA : ((raw .i64 r.n ix)[q.1]?.getD 0).toNat = a := by
       obtain ⟨i0', h0', r0'⟩ := Vals.gather_row _ hX' ⟨a, ha⟩
       have e : i0' = i0 := Fin.ext (h0'.symm.trans h0)
-      rcases Tab.index_spec hix q with ⟨a2, ea, ra2⟩ | ⟨-, hn⟩
+      rcases Tab.index_spec hix wX' hr.2 q with ⟨a2, ea, ra2⟩ | ⟨-, hn⟩
       · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hX' a2
         rw [ea]; exact congrArg Fin.val (hx a2 ⟨a, ha⟩ i2 i0 h2 h0 (by rw [← r2, ra2, ← r0]))
       · exact (hn ⟨a, ha⟩ (by rw [r0', e, r0])).elim
@@ -533,10 +537,10 @@ theorem csr_kbitrows {all : Bool} {n g na w : USize} {gid x ends idx m o : Enc}
 
 /-- `Vals.code2`'s `rep` names distinct rows of its CONCAT `z`: two numbers whose rows are equal are one. -/
 theorem Vals.code2_rep_inj {n₁ n₂ k N : USize} {x : Vals A n₁} {y : Vals A n₂} {bx bY rep : Enc} {z : Vals A N}
-    (h : Vals.code2 x y = .ok (k, bx, bY, ⟨N, z, rep⟩)) :
+    (h : Vals.code2 x y = .ok (k, bx, bY, ⟨N, z, rep⟩)) (wx : Vals.WF x) (wy : Vals.WF y) :
     ∀ a a' : Fin k.toNat, ∀ i i' : Fin N.toNat, ((raw .i64 k rep)[a.1]?.getD 0).toNat = i.1 →
       ((raw .i64 k rep)[a'.1]?.getD 0).toNat = i'.1 → z.row i = z.row i' → a = a' := fun a a' i i' hi hi' e => by
-  obtain ⟨cx, cy, -, -, -, -, -, -, hrep⟩ := Vals.code2_spec h
+  obtain ⟨cx, cy, -, -, -, -, -, -, hrep⟩ := Vals.code2_spec h wx wy
   obtain ⟨t, ht, hex, hx, hy⟩ := hrep a a.2
   obtain ⟨t', ht', -, hx', hy'⟩ := hrep a' a'.2
   obtain rfl : t = i := Fin.ext (ht.symm.trans hi)
@@ -557,7 +561,8 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
     (hx : ∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
       ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a')
     (hy : ∀ j j' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[j.1]?.getD 0).toNat = i.1 →
-      ((raw .i64 w rc)[j'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → j = j') :
+      ((raw .i64 w rc)[j'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → j = j')
+    (hr : r.WF) (hub : ub.WF) (huc : uc.WF) (wx : Vals.WF x) (wy : Vals.WF y) :
     (kb * kc).toNat = kb.toNat * kc.toNat ∧ kb.toNat * kc.toNat < 2 ^ 63 ∧ ∃ PP : Nat → Nat → Prop,
       (∀ G < kb.toNat, ∀ jj < kc.toNat, ∃ v : UInt64,
         (raw .i64 (kb * kc) o')[G * kc.toNat + jj]? = some v ∧ v < 2 ∧ (v = 1 ↔ PP G jj)) ∧
@@ -650,8 +655,10 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   have hcl : ∀ p : Nat → Bool, (List.range r.n.toNat).countP p < 2 ^ 64 := fun p =>
     Nat.lt_of_le_of_lt List.countP_le_length (by rw [List.length_range]; have := r.n.toNat_lt_size; omega)
   have hkb63 := whereCol_lt hE
-  obtain ⟨bx, bu, -, hbx, hbu, -, -, -, hrb⟩ := Vals.code2_spec hb2
-  obtain ⟨cm, cu, -, hcm, hcu, hcmi, -, -, hrc⟩ := Vals.code2_spec hc2
+  have wyM := Vals.gather_wf hyM wy
+  have wXg := Vals.gather_wf hXg wx
+  obtain ⟨bx, bu, -, hbx, hbu, -, -, -, hrb⟩ := Vals.code2_spec hb2 hr.2 hub.2
+  obtain ⟨cm, cu, -, hcm, hcu, hcmi, -, -, hrc⟩ := Vals.code2_spec hc2 wyM huc.2
   obtain ⟨ixN, hixN⟩ : ∃ f : Nat → Nat, ∀ i, ((raw .i64 r.n ix)[i]?.getD 0).toNat = f i := ⟨_, fun _ => rfl⟩
   obtain ⟨selN, hselN⟩ : ∃ f : Nat → Nat, ∀ q, ((raw .i64 P sel)[q]?.getD 0).toNat = f q := ⟨_, fun _ => rfl⟩
   let Vac := fun G => ∀ i < r.n.toNat, bx i ≠ G
@@ -685,7 +692,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       (raw .i64 (g * w) o)[ixN i * w.toNat + j]?.getD 0 = 1 ∧
       ∃ i' : Fin m.toNat, ((raw .i64 w rc)[j]?.getD 0).toNat = i'.1 ∧ y.row i' = c := fun i c => by
     rw [hS]
-    rcases Tab.index_spec hix i with ⟨a, ea, ra⟩ | ⟨ea, hn⟩
+    rcases Tab.index_spec hix wXg hr.1 i with ⟨a, ea, ra⟩ | ⟨ea, hn⟩
     · rw [hixN] at ea
       obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hXg a
       constructor
@@ -778,7 +785,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
     have hg63 : g.toNat < 2 ^ 63 := by
       have := Nat.le_mul_of_pos_right g.toNat hw1; have := Tab.ofBits_lt hs; omega
     have honw : ∀ i < r.n.toNat, (raw .i64 r.n on)[i]?.getD 0 = if ixN i < g.toNat then 1 else 0 := fun i hi => by
-      have := colMap_lt_const hcg hon hg63 i hi (Tab.index_le hix ⟨i, hi⟩); rwa [hixN] at this
+      have := colMap_lt_const hcg hon hg63 i hi (Tab.index_le hix wXg hr.1 ⟨i, hi⟩); rwa [hixN] at this
     have honb : ∀ i < r.n.toNat, (raw .i64 r.n on)[i]?.getD 0 < 2 := fun i hi => by
       rw [honw i hi]; split <;> decide
     have hsel : ∀ i, (∃ q < P.toNat, selN q = i) ↔ i < r.n.toNat ∧ ixN i < g.toNat := fun i => by
@@ -921,7 +928,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       · rw [if_pos hq]; exact ⟨by decide, iff_of_true rfl (.inr hq)⟩
       · rw [if_neg hq]; exact ⟨by decide, iff_of_false (by decide) fun h => h.elim (fun h => hv h.1) hq⟩
   have hb63 : kb.toNat * kc.toNat < 2 ^ 63 := by omega
-  refine ⟨hkbc, hb63, PP, hout', fun b c => ?_, Vals.code2_rep_inj hb2, Vals.code2_rep_inj hc2⟩
+  refine ⟨hkbc, hb63, PP, hout', fun b c => ?_, Vals.code2_rep_inj hb2 hr.2 hub.2, Vals.code2_rep_inj hc2 wyM huc.2⟩
   show _ ↔ (∀ a, r.Holds a b → s.Holds a c) ∧
     ((∃ a, r.Holds a b) ∨ ((∃ b', ub.Holds b' b) ∧ ∃ c', uc.Holds c' c))
   constructor
@@ -999,9 +1006,10 @@ theorem Tab.ldivTabMat_law {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc :
     (hx : ∀ a a' : Fin g.toNat, ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a.1]?.getD 0).toNat = i.1 →
       ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a')
     (hy : ∀ j j' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[j.1]?.getD 0).toNat = i.1 →
-      ((raw .i64 w rc)[j'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → j = j') :
+      ((raw .i64 w rc)[j'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → j = j')
+    (hr : r.WF) (hub : ub.WF) (huc : uc.WF) (wx : Vals.WF x) (wy : Vals.WF y) :
     rep t = Lang.ldivDen (rep r) (rep s) (rep ub) (rep uc) := by
-  obtain ⟨hkbc, hb63, PP, hw, hden, -, -⟩ := Tab.ldivTabMat_spec h hs ho hx hy
+  obtain ⟨hkbc, hb63, PP, hw, hden, -, -⟩ := Tab.ldivTabMat_spec h hs ho hx hy hr hub huc wx wy
   apply Core.Rel.ext; intro b c
   exact (Tab.ofBits_holds ht PP hkbc hb63 hw b c).trans (hden b c)
 
@@ -1010,13 +1018,13 @@ theorem Tab.ldivTabMat_law {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc :
 theorem Tab.ldivTabMat_wf {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc : Tab C C} {g w kb kc : USize}
     {o o' ra rb rc rc' : Enc} {x : Vals A n} {y : Vals C m} {zb : Vals B N} {zc : Vals C N'}
     (h : Tab.ldivTabMat r ub uc g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc')))
-    (hr : ∀ e, Tab.ofBits kb kc o' zb rb zc rc' ≠ .error e) (hw : BitsWf g w o x ra y rc) :
-    BitsWf kb kc o' zb rb zc rc' := by
+    (hr : ∀ e, Tab.ofBits kb kc o' zb rb zc rc' ≠ .error e) (hw : BitsWf g w o x ra y rc) (hrw : r.WF)
+    (hub : ub.WF) (huc : uc.WF) (wx : Vals.WF x) (wy : Vals.WF y) : BitsWf kb kc o' zb rb zc rc' := by
   obtain ⟨hr0, -, ho, hx, hy⟩ := hw
   rcases hs : Tab.ofBits g w o x ra y rc with e | s
   · exact absurd hs (hr0 e)
   obtain ⟨hkbc, -, PP, hw', -, hxb, hyc⟩ :=
-    Tab.ldivTabMat_spec h hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy
+    Tab.ldivTabMat_spec h hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy hrw hub huc wx wy
   refine ⟨hr, hkbc, fun a ha j hj => ?_, hxb, hyc⟩
   obtain ⟨v, hv, hv2, -⟩ := hw' a ha j hj
   rw [hv]; exact decide_eq_true hv2
@@ -1617,14 +1625,15 @@ theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o
 theorem Tab.ldivTabMat_reads {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc : Tab C C} {g w kb kc : USize}
     {o o' ra rb rc rc' : Enc} {x : Vals A n} {y : Vals C m} {zb : Vals B N} {zc : Vals C N'}
     (hw : BitsWf g w o x ra y rc)
-    (h : Tab.ldivTabMat r ub uc g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc'))) :
+    (h : Tab.ldivTabMat r ub uc g w o x ra y rc = .ok (some (kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc')))
+    (hrw : r.WF) (hub : ub.WF) (huc : uc.WF) (wx : Vals.WF x) (wy : Vals.WF y) :
     ∀ e, Tab.ofBits kb kc o' zb rb zc rc' ≠ .error e := by
   have hU : 2 ^ 32 ≤ USize.size := by rcases USize.size_eq with h | h <;> omega
   obtain ⟨hr, -, ho, hx, hy⟩ := hw
   rcases hs : Tab.ofBits g w o x ra y rc with e | s
   · exact absurd hs (hr e)
   obtain ⟨hkbc, -, PP, hw', -, -, -⟩ :=
-    Tab.ldivTabMat_spec h hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy
+    Tab.ldivTabMat_spec h hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy hrw hub huc wx wy
   simp only [Tab.ldivTabMat, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kb0, bR, bU, Nb, zb0, rb0⟩, hb2, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨yM, hyM, h⟩ := h
@@ -1663,30 +1672,33 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {A B C : Obj}
 
-theorem inter_law {R S : Rel A B} {t : Tab A B} (h : (do Tab.inter (← R.runE {}) (← S.runE {})) = .ok t) :
+theorem inter_law {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) {t : Tab A B}
+    (h : (do Tab.inter (← R.runE {}) (← S.runE {})) = .ok t) :
     ∃ r s, R.runE {} = .ok r ∧ S.runE {} = .ok s ∧ ∀ a c, rep t a c ↔ rep r a c ∧ rep s a c := by
   obtain ⟨r, hr, h⟩ := bind_ok h
   obtain ⟨s, hs, ht⟩ := bind_ok h
-  exact ⟨r, s, hr, hs, Tab.inter_holds ht⟩
+  exact ⟨r, s, hr, hs, Tab.inter_holds ht (wR.runE Known.wf_empty hr) (wS.runE Known.wf_empty hs)⟩
 
+/-- `T ∩ M` for a `Rel.Wf` matrix `M` (`BitsWf` over `WF` sides) and a `T` that is `WF` where it runs. -/
 theorem keep_law {n m : USize} {T : Except String (Tab A B)} {g w : USize} {o ra rc : Enc} {x : Vals A n}
-    {y : Vals B m} {t : Tab A B} (hw : BitsWf g w o x ra y rc) (h : (T >>= (Tab.keepBits · g w o x ra y rc)) = .ok t) :
+    {y : Vals B m} {t : Tab A B} (hw : BitsWf g w o x ra y rc ∧ Vals.WF x ∧ Vals.WF y)
+    (hT : ∀ u, T = .ok u → u.WF) (h : (T >>= (Tab.keepBits · g w o x ra y rc)) = .ok t) :
     ∃ u s, T = .ok u ∧ Tab.ofBits g w o x ra y rc = .ok s ∧ ∀ a c, rep t a c ↔ rep u a c ∧ rep s a c := by
   obtain ⟨u, hu, h⟩ := bind_ok h
-  obtain ⟨hr, hgw, ho, hx, hy⟩ := hw
+  obtain ⟨⟨hr, hgw, ho, hx, hy⟩, wx, wy⟩ := hw
   rcases hs : Tab.ofBits g w o x ra y rc with e | s
   · exact absurd hs (hr e)
   refine ⟨u, s, hu, rfl, fun a c => ?_⟩
-  rw [Tab.keepBits_law h hs hgw (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy]; exact Iff.rfl
+  rw [Tab.keepBits_law h hs hgw (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy (hT u hu) wx wy]; exact Iff.rfl
 
 /-- `meetV` of two values is the meet of the two tables they read as. -/
 theorem meetV_law {R S : Rel A B} (wR : R.Wf) (wS : S.Wf) {K : Known A B} {t : Tab A B}
     (h : (meetV R S).runE K = .ok t) :
     ∃ r s, R.runE {} = .ok r ∧ S.runE {} = .ok s ∧ ∀ a c, rep t a c ↔ rep r a c ∧ rep s a c := by
   cases R <;> cases S <;> first
-    | exact inter_law h
-    | exact keep_law wS.1 h
-    | (obtain ⟨u, s, hu, hs, e⟩ := keep_law wR.1 h; exact ⟨s, u, hs, hu, fun a c => (e a c).trans and_comm⟩)
+    | exact inter_law wR wS h
+    | exact keep_law wS (fun _ h => wR.runE Known.wf_empty h) h
+    | (obtain ⟨u, s, hu, hs, e⟩ := keep_law wR (fun _ h => wS.runE Known.wf_empty h) h; exact ⟨s, u, hs, hu, fun a c => (e a c).trans and_comm⟩)
 
 /-- `meetOn K T S` agrees with `P ∩ Q` on `K`, where `T` agrees with `P`: on a pair of `T`'s table, inside the
     `bound` it hands `S`, `S` agrees with `Q`; off it both sides are false. -/
@@ -1707,7 +1719,7 @@ theorem meetOn_sound {K : Known A B} {T S : Rel A B} {P Q : Core.Rel A.El B.El} 
         have wp := bound_wf hK (wT.runE Known.wf_empty h0) hp
         obtain ⟨r, s, hr, hs, e⟩ := meetV_law (R := .tab (.ok p.1)) wp.1 (wS.force wp.2) h
         obtain rfl := Except.ok.inj hr
-        obtain ⟨hu, hK⟩ := bound_spec hp
+        obtain ⟨hu, hK⟩ := bound_spec hK (wT.runE Known.wf_empty h0) hp
         have er := eT r0 h0
         have es := (reps_iff _ _ _).1 (hS p.2 wp.2) s ((force_runE S p.2 {}).symm.trans hs)
         intro x y hx hy ho
@@ -1796,9 +1808,9 @@ theorem compR_runE (r : Tab A B) (s : Tab B C) (K : Known A C) :
   rcases Tab.compSelM Tab.bitsMax r s with e | t | ⟨g, w, o, ra, rc⟩ <;> rfl
 
 theorem compR_sound {r : Tab A B} {s : Tab B C} {K : Known A C} {Z : Core.Rel A.El C.El}
-    (H : Agrees K (rep r ≫ rep s) Z) : (compR r s).Reps K Z := by
+    (wr : r.WF) (ws : s.WF) (H : Agrees K (rep r ≫ rep s) Z) : (compR r s).Reps K Z := by
   rw [reps_iff, compR_runE]; intro t ht x z hx hz ho
-  exact (Tab.compSel_holds ht x z).trans (H x z hx hz ho)
+  exact (Tab.compSel_holds ht wr ws x z).trans (H x z hx hz ho)
 
 theorem compR_wf {r : Tab A B} {s : Tab B C} (wr : r.WF) (ws : s.WF) : (compR r s).Wf := by
   unfold compR; split
@@ -1806,7 +1818,7 @@ theorem compR_wf {r : Tab A B} {s : Tab B C} (wr : r.WF) (ws : s.WF) : (compR r 
   next t h => exact Tab.compSelM_inl_wf h wr ws
   all_goals trivial
 
-theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.El C.El} (wS : S.Wf)
+theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.El C.El} (wr : r.WF) (wS : S.Wf)
     (H : ∀ s, S.runE {} = .ok s → Agrees K (rep r ≫ rep s) Z) : (compV r S).Reps K Z := by
   cases S with
   | bits g w o x ra y rc =>
@@ -1818,17 +1830,17 @@ theorem compV_sound {r : Tab A B} {S : Rel B C} {K : Known A C} {Z : Core.Rel A.
       · exact absurd hs (hr e)
       split
       · rw [reps_iff]; intro t ht
-        rw [Tab.compTabMat_law hc ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx]; exact H s hs
-      · exact compR_sound (H s hs)
+        rw [Tab.compTabMat_law hc ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx wr wS.2.1]; exact H s hs
+      · exact compR_sound wr (Tab.ofBits_wf hs wS.2.1 wS.2.2) (H s hs)
   | tab t0 =>
     cases t0 with
     | error e => rw [reps_iff]; intro t ht; nomatch ht
-    | ok s => exact compR_sound (H s rfl)
+    | ok s => exact compR_sound wr wS (H s rfl)
   | lazy f =>
     show (match (Rel.lazy f).runE {} with | .ok s => compR r s | .error e => .tab (.error e)).Reps K Z
     rcases hs : (Rel.lazy f).runE {} with e | s
     · rw [reps_iff]; intro t ht; nomatch ht
-    · exact compR_sound (H s hs)
+    · exact compR_sound wr (wS.runE Known.wf_empty hs) (H s hs)
 
 theorem compV_wf {r : Tab A B} {S : Rel B C} (wr : r.WF) (wS : S.Wf) : (compV r S).Wf := by
   cases S with
@@ -1872,7 +1884,7 @@ theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
       rcases hd : Tab.ran r with e | d
       · rw [reps_iff]; intro t ht; nomatch ht
       have kW : (⟨some ⟨d.n, d.key⟩, K.ran, none⟩ : Known B C).WF := ⟨(Tab.ran_wf hd (wr r rfl)).1, hK.2.1, trivial⟩
-      refine compV_sound (wS.force kW) fun s hs a c ha hc _ => exists_congr fun b => ?_
+      refine compV_sound (wr r rfl) (wS.force kW) fun s hs a c ha hc _ => exists_congr fun b => ?_
       rw [force_runE] at hs
       have es := (reps_iff _ _ _).1 (hS _ kW) s hs
       have inRan : rep r a b → (⟨some ⟨d.n, d.key⟩, K.ran, none⟩ : Known B C).den.1 b b := fun h =>
@@ -1881,10 +1893,10 @@ theorem compT_sound {r' : Except String (Tab A B)} {S : Rel B C} {K : Known A C}
       exact ⟨fun ⟨h1, h2⟩ => ⟨e1.1 h1, (es b c (inRan h1) hc trivial).1 h2⟩,
         fun ⟨h1, h2⟩ => ⟨e1.2 h1, (es b c (inRan (e1.2 h1)) hc trivial).2 h2⟩⟩
   | tab t0 =>
-    exact compV_sound wS fun (s : Tab B C) hs a c ha _ _ => exists_congr fun b =>
+    exact compV_sound (wr r rfl) wS fun (s : Tab B C) hs a c ha _ _ => exists_congr fun b =>
       and_congr (er a b ha rfl trivial) ((reps_iff _ _ _).1 (hS {} Known.wf_empty) s hs b c rfl rfl trivial)
   | bits g w o x ra y rc =>
-    exact compV_sound wS fun (s : Tab B C) hs a c ha _ _ => exists_congr fun b =>
+    exact compV_sound (wr r rfl) wS fun (s : Tab B C) hs a c ha _ _ => exists_congr fun b =>
       and_congr (er a b ha rfl trivial) ((reps_iff _ _ _).1 (hS {} Known.wf_empty) s hs b c rfl rfl trivial)
 
 theorem compT_wf {r' : Except String (Tab A B)} {S : Rel B C} (wr : ∀ r, r' = .ok r → r.WF) (wS : S.Wf) :
@@ -1906,7 +1918,7 @@ theorem compT_wf {r' : Except String (Tab A B)} {S : Rel B C} (wr : ∀ r, r' = 
 
 theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)} {K : Known A C} {X : Core.Rel A.El B.El}
     {Y : Core.Rel B.El C.El} (hR : ∀ K, K.WF → R.Reps K X) (hs : ∀ s, s' = .ok s → Agrees ⟨none, K.ran, none⟩ (rep s) Y)
-    (hK : K.WF) (ws : ∀ s, s' = .ok s → s.WF) :
+    (hK : K.WF) (ws : ∀ s, s' = .ok s → s.WF) (wR : R.Wf) :
     (compS R K.dom s').Reps K (X ≫ Y) := by
   rcases s' with e | s
   · rw [reps_iff]; intro t ht; nomatch ht
@@ -1914,8 +1926,9 @@ theorem compS_sound {R : Rel A B} {s' : Except String (Tab B C)} {K : Known A C}
   simp only [compS]
   rcases hr : R.runE ⟨K.dom, some ⟨s.n, s.key⟩, none⟩ with e | r
   · rw [reps_iff]; intro t ht; nomatch ht
-  have er := (reps_iff _ R X).1 (hR ⟨K.dom, some ⟨s.n, s.key⟩, none⟩ ⟨hK.1, (ws s rfl).1, trivial⟩) r hr
-  refine compR_sound fun a c ha hc _ => exists_congr fun b => ?_
+  have kS : (⟨K.dom, some ⟨s.n, s.key⟩, none⟩ : Known A B).WF := ⟨hK.1, (ws s rfl).1, trivial⟩
+  have er := (reps_iff _ R X).1 (hR _ kS) r hr
+  refine compR_sound (wR.runE kS hr) (ws s rfl) fun a c ha hc _ => exists_congr fun b => ?_
   have key : ∀ {b}, rep s b c → (⟨K.dom, some ⟨s.n, s.key⟩, none⟩ : Known A B).den.2 b b := fun h =>
     (side_some rfl _).2 ((keyRowRep s _).2 ⟨c, h⟩)
   exact ⟨fun ⟨h1, h2⟩ => ⟨(er a b ha (key h2) trivial).1 h1, (es b c rfl hc trivial).1 h2⟩,
@@ -1945,11 +1958,11 @@ theorem comp_sound {R : Rel A B} {S : Rel B C} {X : Core.Rel A.El B.El}
     simp only [GenK.comp, Rel.Rel.Reps]
     -- each leaf runs one operand on the side of `K` it touches, so its table agrees there
     split <;> (try split) <;> (try split) <;> first
-      | exact compS_sound hR (eS _ kR) hK ws
+      | exact compS_sound hR (eS _ kR) hK ws wR
       | exact compT_sound (eR _ kD) hS wS hK wr
-      | exact retried_reps (compS_sound hR (eS _ kR) hK ws)
+      | exact retried_reps (compS_sound hR (eS _ kR) hK ws wR)
       | exact retried_reps (compT_sound (eR _ kD) hS wS hK wr)
-      | (refine compS_sound hR (fun t ht => ?_) hK (fun t ht => ?_) <;> injection ht with h <;> subst h <;>
+      | (refine compS_sound hR (fun t ht => ?_) hK (fun t ht => ?_) wR <;> injection ht with h <;> subst h <;>
           first | exact eS _ kR _ ‹_› | exact ws _ ‹_›)
       | (refine compT_sound (fun t ht => ?_) hS wS hK (fun t ht => ?_) <;> injection ht with h <;> subst h <;>
           first | exact eR _ kD _ ‹_› | exact wr _ ‹_›)
@@ -1995,17 +2008,6 @@ theorem lift2_wf {D E F : Obj} {f : Tab A B → Tab C D → Except String (Tab E
   cases R <;> cases S <;> first
     | exact L (fun _ h => wR.runE Known.wf_empty h) (fun _ h => wS.runE Known.wf_empty h)
     | exact fun K hK => L (fun _ h => wR.runE (hkl K hK) h) (fun _ h => wS.runE (hkr K hK) h)
-
-/-- `pairOn`'s two tables are `WF`: the first `bound`'s (`bound_wf`), the second run on its domain. -/
-theorem pairOn_wf {D : Option ((n : USize) × Vals A n)} {T : Rel A B} {S : Rel A C} (wT : T.Wf) (wS : S.Wf)
-    (hD : D.elim True fun c => Vals.WF c.2) {p : Tab A B × Tab A C} (h : pairOn D T S = .ok p) : p.1.WF ∧ p.2.WF := by
-  obtain ⟨r, hr, h⟩ := bind_ok h
-  obtain ⟨q, hq, h⟩ := bind_ok h
-  obtain ⟨s, hs, h⟩ := bind_ok h
-  obtain rfl := Except.ok.inj h
-  have hK : (⟨D, none, none⟩ : Known A B).WF := ⟨hD, trivial, trivial⟩
-  have wq := bound_wf hK (wT.runE hK hr) hq
-  exact ⟨wq.1, wS.runE wq.2.dom hs⟩
 
 theorem pairK_wf {D : Option ((n : USize) × Vals A n)} {R : Rel A B} {S : Rel A C} (wR : R.Wf) (wS : S.Wf)
     (hD : D.elim True fun c => Vals.WF c.2) {t : Tab A (.prod B C)} (h : pairK D R S = .ok t) : t.WF := by
@@ -2072,8 +2074,8 @@ theorem top_wf {V : Rel B B} (wV : V.Wf) : (GenK.top A B V).Wf := by
     (`Tab.ldivTabMat_law`) or read back and `Tab.ldivSel`, any other `S` through `Tab.ldivSel`. -/
 theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X : Core.Rel A.El B.El}
     {Y : Core.Rel A.El C.El} {TB : Core.Rel B.El B.El} {TC : Core.Rel C.El C.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) (hB : ∀ K, K.WF → UB.Reps K TB) (hC : ∀ K, K.WF → UC.Reps K TC) (wS : S.Wf) :
-    ∀ K, K.WF → (GenK.ldiv A B C R S UB UC).Reps K (ldivDen X Y TB TC) := fun K hK => by
+    (hS : ∀ K, K.WF → S.Reps K Y) (hB : ∀ K, K.WF → UB.Reps K TB) (hC : ∀ K, K.WF → UC.Reps K TC)
+    (wR : R.Wf) (wS : S.Wf) (wB : UB.Wf) (wC : UC.Wf) : ∀ K, K.WF → (GenK.ldiv A B C R S UB UC).Reps K (ldivDen X Y TB TC) := fun K hK => by
   have eY : ∀ s, S.runE {} = .ok s → Y = rep s := fun s h =>
     agrees_empty ((reps_iff _ _ _).1 (hS {} Known.wf_empty) s h)
   have hF : ∀ K, K.WF → (S.force {}).Reps K Y := fun K _ => (reps_iff _ _ _).2 fun t ht => by
@@ -2091,26 +2093,30 @@ theorem ldiv_sound {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} {X 
     have rB := agrees_empty ((reps_iff _ _ _).1 (hB {} Known.wf_empty) ub hu)
     have rC := agrees_empty ((reps_iff _ _ _).1 (hC {} Known.wf_empty) uc hv)
     obtain ⟨hr0, -, ho, hx, hy⟩ := wF.1
+    have wr := wR.runE Known.wf_empty hr
+    have wu := wB.runE Known.wf_empty hu
+    have wv := wC.runE Known.wf_empty hv
     simp only [ldivM]
     rcases hm : Tab.ldivTabMat r ub uc g w o x ra y rc with e | (_ | ⟨kb, kc, o', ⟨N, zb⟩, rb, ⟨N', zc⟩, rc'⟩) <;>
       dsimp only <;> rw [reps_iff] <;> intro t ht
     · nomatch ht
     · obtain ⟨s, hs, ht⟩ := bind_ok ht
       rw [rX, eY s (fF.symm.trans hs), rB, rC]
-      exact fun b c _ _ _ => Tab.ldivSel_holds ht b c
+      exact fun b c _ _ _ => Tab.ldivSel_holds ht wr (Tab.ofBits_wf hs wF.2.1 wF.2.2) wu wv b c
     · rcases hs : Tab.ofBits g w o x ra y rc with e | s
       · exact absurd hs (hr0 e)
-      rw [Tab.ldivTabMat_law hm ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy, rX,
+      rw [Tab.ldivTabMat_law hm ht hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy wr wu wv wF.2.1 wF.2.2, rX,
         eY s (fF.symm.trans hs), rB, rC]
       exact fun _ _ _ _ _ => Iff.rfl
   all_goals
     dsimp only
-    refine lift2_sound (fun _ _ => Known.wf_empty) (fun _ _ => Known.wf_empty) hR hF (fun _ _ _ _ ht hr hs => ?_) K hK
+    refine lift2_sound (fun _ _ => Known.wf_empty) (fun _ _ => Known.wf_empty) hR hF wR wF (fun _ _ _ _ ht wr ws hr hs => ?_) K hK
     obtain ⟨ub, hub, ht⟩ := bind_ok ht
     obtain ⟨uc, huc, ht⟩ := bind_ok ht
     rw [agrees_empty hr, agrees_empty hs, agrees_empty ((reps_iff _ _ _).1 (hB {} Known.wf_empty) ub hub),
       agrees_empty ((reps_iff _ _ _).1 (hC {} Known.wf_empty) uc huc)]
-    exact fun b c _ _ _ => Tab.ldivSel_holds ht b c
+    exact fun b c _ _ _ =>
+      Tab.ldivSel_holds ht wr ws (wB.runE Known.wf_empty hub) (wC.runE Known.wf_empty huc) b c
 
 /-- **`ldiv` keeps `Tab.WF`**: a matrix answer is `BitsWf` (`Tab.ldivTabMat_wf`) over `WF` sides
     (`Tab.ldivTabMat_sides_wf`); a table answer is `Tab.ldivSel`'s of `WF` operands (`Tab.ldivSel_wf`). -/
@@ -2135,7 +2141,8 @@ theorem ldiv_wf {R : Rel A B} {S : Rel A C} {UB : Rel B B} {UC : Rel C C} (wR : 
         obtain ⟨s, hs, ht⟩ := bind_ok ht
         have ws := Tab.ofBits_wf hs wF.2.1 wF.2.2
         exact Tab.ldivSel_wf (fun h => Tab.ldiv_wf h wr ws wu wv) ht wr ws wu wv
-    · exact ⟨Tab.ldivTabMat_wf hm (Tab.ldivTabMat_reads wF.1 hm) wF.1, Tab.ldivTabMat_sides_wf hm wr wu wv wF.2.2⟩
+    · exact ⟨Tab.ldivTabMat_wf hm (Tab.ldivTabMat_reads wF.1 hm wr wu wv wF.2.1 wF.2.2) wF.1 wr wu wv wF.2.1 wF.2.2,
+        Tab.ldivTabMat_sides_wf hm wr wu wv wF.2.2⟩
   all_goals exact lift2_wf (fun _ _ => Known.wf_empty) (fun _ _ => Known.wf_empty) (fun r s t hr hs h => by
     obtain ⟨ub, hub, h⟩ := bind_ok h
     obtain ⟨uc, huc, h⟩ := bind_ok h
