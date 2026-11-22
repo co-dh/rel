@@ -852,11 +852,149 @@ def compSelB (bits : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
 def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
   compSelB Tab.bitsMax R (← s (← if ds then (return { dom := some (← nubB R.n R.val), ran }) else pure {}))
 
-/-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows), `R` the table of the relation on elements: the elements
+/-! #### The rounds of a fold (`Tab.foldRounds`) and the list rows its steps read -/
+
+/-- **`R − S`** (`Tab.diff`): `Tab.select` keeping the groups of no `S` row. -/
+def diffB (R S : TabB) : Bld TabB := selectB (fun m _ mx => mapB .not m mx mx) R S
+
+/-- **`𝟘`** at `A ⟶ B`: no row. -/
+def zeroB (A B : Obj) : Bld TabB := do let z ← lit (.size 0); pure ⟨z, ← noneB z A, ← noneB z B⟩
+
+/-- **`Tab.nil`** on the keys `X` (`n` rows): each to the empty cell, `lo = hi = 0` over a payload of no row of `B`;
+    then `canonT`. -/
+def nilB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
+  let c ← wordsB n 0
+  let z ← mapB .add n c c
+  let z0 ← lit (.size 0)
+  canonT ⟨n, X, [.arr "" z0 z z (← noneB z0 B ".e")]⟩
+
+/-- **`Tab.outl`** (`left`) or **`Tab.outr`** on the `n` pairs `X` of `A` and `B`: each pair beside its component, then
+    `canonT`. -/
+def piB (A B : Obj) (left : Bool) (n : Nat) (X : Cols) : Bld TabB := do
+  let w := objWidth A
+  canonT ⟨n, X, ← if left then repath A "" (X.take w) else repath B "" (X.drop w)⟩
+
+/-- **`T ≫ π₁`** (`left`) or **`T ≫ π₂`**, `T`'s value a pair of `A` and `B`: `T.comp (outl T.val)` (`piB`). -/
+def projT (A B : Obj) (left : Bool) (T : TabB) : Bld TabB := do compB T (← piB A B left T.n T.val)
+
+/-- The check `uncons`, `unsnoc` make on `n` cells over `m` elements, `n + m + 1 < 2^63`, on size registers with
+    `n, m < 2^63` tested first, so the sum does not wrap; else `fail` with `what` and the two counts. -/
+def sumBoundB (what : String) (n m : Nat) : Bld Unit := do
+  let c ← lit (.size (2 ^ 63))
+  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
+    call1 (kernel% USize.decLt) #[← call1 (kernel% USize.add) #[← call1 (kernel% USize.add) #[n, m], ← lit (.size 1)], c]
+  guard ok s!"{what}: n cells over m elements past 2^63, n + m + 1" #[n, m]
+
+/-- **`Tab.uncons`** (`cons°`, `left`) or **`Tab.unsnoc`** (`snoc°`) on the cells `X` (`n` rows) of `B`: each non-empty
+    cell `[s, e)` (`whereB` of `s < e`) to its first element (the payload at `s`) and the slice `[s + 1, e)`, or to the
+    slice `[s, e - 1)` and its last element (at `e - 1`); then `canonT`. No payload is built: each answer cell is a
+    slice of `X`'s own. -/
+def unconsB (B : Obj) (left : Bool) (n : Nat) (X : Cols) : Bld TabB := do
+  let (m, lo, hi, f) ← arrCol (if left then "uncons" else "unsnoc") X
+  sumBoundB (if left then "uncons" else "unsnoc") n m
+  let (s, e) ← spanB n m lo hi
+  let (M, sel) ← whereB n (← mapB .lt n s e)
+  let key ← gatherCols M sel n X
+  if left then
+    let sM ← gatherB M sel n s
+    canonT ⟨M, key, (← repath B ".1" (← gatherCols M sM m f)) ++
+      [.arr ".2" m (← mapB .add M sM (← wordsB M 1)) (← gatherB M sel n e) (← repath B ".2.e" f)]⟩
+  else
+    let l ← mapB .sub M (← gatherB M sel n e) (← wordsB M 1)
+    canonT ⟨M, key, [.arr ".1" m (← gatherB M sel n s) l (← repath B ".1.e" f)] ++ (← repath B ".2" (← gatherCols M l m f))⟩
+
+/-- **`Vals.cat`** of the `n` cells `x`, `y` of `B` (`arrCol`s): row `i` the cell `x[i] ++ y[i]`, the payloads joined
+    (`concatB`), EXPAND of the summed widths, element `u` of cell `G` read at `s₁[G] + u` where `u < w₁`, else at
+    `m₁ + s₂[G] + u - w₁` (`b + c · (a - b)`), laid out one cell after another (`Vals.cells`). -/
+def cellCatB (B : Obj) (n : Nat) (x y : Nat × Nat × Nat × Cols) : Bld Col := do
+  let (m₁, lo₁, hi₁, f₁) := x
+  let (m₂, lo₂, hi₂, f₂) := y
+  let (N, off) ← catB m₁ m₂
+  cellsBoundB "cat" n N
+  let F ← concatB N m₁ m₂ off f₁ f₂
+  let (s₁, e₁) ← spanB n m₁ lo₁ hi₁
+  let (s₂, e₂) ← spanB n m₂ lo₂ hi₂
+  let w₁ ← mapB .sub n e₁ s₁
+  let w ← mapB .add n w₁ (← mapB .sub n e₂ s₂)
+  let (T, G, u) ← expandB n w
+  let a ← mapB .add T (← gatherB T G n s₁) u
+  let b ← mapB .add T (← gatherB T G n (← mapB .sub n (← mapB .add n s₂ (← constB n (← u64B m₁))) w₁)) u
+  let c ← mapB .lt T u (← gatherB T G n w₁)
+  let pay ← gatherCols T (← mapB .add T b (← mapB .mul T c (← mapB .sub T a b))) N F
+  let (P, _) ← prefixB .add n w
+  pure (.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" pay))
+
+/-- **`Tab.snoc`**: `(xs, a)` to `xs ++ [a]`, `Vals.cat` after `𝟙 × τ` (`Vals.tau`: row `i` the one-element cell
+    `[i, i + 1)` over the rows of `a`); then `canonT`. -/
+def snocB (B : Obj) (P : TabB) : Bld TabB := do
+  let x ← arrCol "snoc" (P.val.take 1)
+  let tau := (P.n, ← posB, ← mapB .add P.n (← posB) (← wordsB P.n 1), ← repath B ".e" (P.val.drop 1))
+  canonT ⟨P.n, P.key, [← cellCatB B P.n x tau]⟩
+
+/-- **`Tab.peelL`** (`left`) or **`Tab.peelR`** on `rest`, cells of `E`: `rest ≫ cons°` (`snoc°`), its first (last)
+    element read now and the rest (`projT`). -/
+def peelB (E : Obj) (left : Bool) (rest : TabB) : Bld (TabB × TabB) := do
+  let c ← compB rest (← unconsB E left rest.n rest.val)
+  if left then pure (← projT E (.arr E) true c, ← projT E (.arr E) false c)
+  else pure (← projT (.arr E) E false c, ← projT (.arr E) E true c)
+
+/-- **`Tab.foldRounds`** on `Instr.loop`, as `fixB` runs `Tab.fixOn`: the state `rest`, `P`, `out` (each its count,
+    then `regsOf`), at most the register `k` rounds. A round where `P` has no row answers the state as it is and ends
+    the loop; else `peel rest` gives the elements `el` read now and the rest, `P` becomes `step P el`, and `out` gains
+    `P − dom(el) P` (the rows whose key has no element left), both cut (`packT`). The answer is the last `out`. -/
+def foldRoundsB (peel : TabB → Bld (TabB × TabB)) (step : TabB → TabB → Bld TabB) (k : Nat) (rest P out : TabB) :
+    Bld TabB := do
+  let st (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
+  let shape (X : TabB) : List Nat → Bld (TabB × List Nat)
+    | n :: rs => do
+      let (cs, rs) ← withRegs (X.key ++ X.val) rs
+      pure (⟨n, cs.take X.key.length, cs.drop X.key.length⟩, rs)
+    | [] => throw "a fold's state: fewer registers than its tables read"
+  let three (rs : List Nat) : Bld (TabB × TabB × TabB) := do
+    let (R, rs) ← shape rest rs
+    let (Q, rs) ← shape P rs
+    pure (R, Q, (← shape out rs).1)
+  let init := ((← st rest) ++ (← st P) ++ (← st out)).toArray
+  let s ← loop k init "Tab.foldRounds: rows still folding when the rounds ran out" fun rs => do
+    let (R, Q, O) ← three rs.toList
+    let e ← call1 (kernel% USize.decEq) #[Q.n, ← lit (.size 0)]
+    let nx ← ite e (pure rs) do
+      let (el, R') ← peel R
+      let Q' ← packT (← step Q el)
+      let O' ← packT (← unionB O (← diffB Q (← compB (← coreflB el.n el.key) Q)))
+      return ((← st R') ++ (← st Q') ++ (← st O')).toArray
+    pure (nx, e)
+  return (← three s.toList).2.2
+
+/-- **`Tab.map`'s left fold** `⦇nil, ⟨π₁, π₂ ≫ R⟩ ≫ snoc⦈` on the arrays `I = idU X` of `A` (`foldRoundsB`, `peelB`),
+    their payload's row count plus two rounds; one plan function per table shape (`funT`). -/
+def mapFoldB (A B : Obj) (I R : TabB) : Bld TabB := funT [I, R] fun
+  | [I, R] => do
+    let (m, _, _, _) ← arrCol "F" I.key
+    foldRoundsB (peelB A true) (fun acc el => do snocB B (← pairB (.arr A) (.arr B) B acc (← compB el R)))
+      (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) I (← nilB B I.n I.key) (← zeroB (.arr A) (.arr B))
+  | _ => throw "F(R)'s fold: not two tables"
+
+/-- `G = ∋` on the `n` arrays `X` of `B`, `P = ⟨G, G⟩` and `D = ran P`: the pairs of elements of one array that
+    `Tab.est` and `Tab.thin` ask their test about. -/
+def pairsB (B : Obj) (n : Nat) (X : Cols) : Bld (TabB × TabB × TabB) := do
+  let G ← memB B n X
+  let P ← pairB (.arr B) B B G G
+  pure (G, P, ← coreflB P.n P.val)
+
+/-- **`GenK.fold`** (`left`) or **`GenK.foldr`** on the `n` arrays `X` of `E`: `foldRoundsB` from `idU X` and
+    `Tab.top X (ran e)` (`ev` the table of `e`), `step` a round's, their payload's row count plus two rounds. Not a
+    plan function: `step` reads the registers of the variables in scope. -/
+def foldB (E V : Obj) (left : Bool) (n : Nat) (X : Cols) (ev : TabB) (step : TabB → TabB → Bld TabB) : Bld TabB := do
+  let (m, _, _, _) ← arrCol "fold" X
+  let (T, x, y) ← crossB n ev.n X ev.val
+  foldRoundsB (peelB E left) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB n X)
+    (← canonT ⟨T, x, y⟩) (← zeroB (.arr E) V)
+
+/-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows) of `A`, `R` the table of the relation on elements: the elements
     EXPANDed (`v`, `T` rows), `⟨pos, v⟩ ≫ R`; where each position has exactly one image, those images in position
-    order under the same widths (`Vals.cells`), then `canonT`. Where some element has none or two, `Tab.map` runs its
-    left fold (`foldRounds`), which no plan recipe builds yet: the run fails there, naming it. -/
-def cellsMapB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := do
+    order under the same widths (`Vals.cells`), then `canonT`; else the left fold (`mapFoldB`), as `Tab.map` chooses. -/
+def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := do
   let (m, lo, hi, f) ← arrCol "F" X
   cellsBoundB "map" n m
   let (s, e) ← spanB n m lo hi
@@ -866,10 +1004,11 @@ def cellsMapB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := do
   let C ← compB ⟨T, [.atom "" .i64 (← posB)], v⟩ R
   let fn ← andB (← call1 (kernel% USize.decEq) #[C.n, T]) do
     call1 (kernel% USize.decEq) #[(← nubB C.n C.key).1, T]
-  guard fn ("F(R): an element with no image or with two under R, where `Tab.map` runs its fold (`foldRounds`), " ++
-    "which no plan recipe builds yet; images, elements") #[C.n, T]
-  let (P, _) ← prefixB .add n w
-  canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩
+  -- the value side's shape for `iteT`: its registers are not read
+  iteT fn X [.arr "" T lo hi (← repath B ".e" C.val)] (do
+      let (P, _) ← prefixB .add n w
+      canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩)
+    (do mapFoldB A B (← coreflB n X) R)
 
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
@@ -887,20 +1026,12 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
     | .arr a, .arr b, [x] => do
       let (n, X) ← known r.sym D.dom
       let M ← memB a n X
-      cellsMapB b n X (← x { dom := some (← nubB M.n M.val) })
+      cellsMapB a b n X (← x { dom := some (← nubB M.n M.val) })
     | _, _, _ => throw s!"row `{r.sym}` (`{c}`) at objects that are no arrays, or given {xs.length} relations, not one"
   else if c == ``Tab.asc then match xs with
     | [x] => ascB B (← x {})
     | _ => throw s!"asc given {xs.length} relations, not one"
   else throw s!"row `{r.sym}` (`{c}`): it reads or answers an array or a sum side, whose `cells` keys no plan recipe builds yet"
-
-/-- **`Tab.nil`** on the keys `X` (`n` rows): each to the empty cell, `lo = hi = 0` over a payload of no row of `B`;
-    then `canonT`. -/
-def nilB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := do
-  let c ← wordsB n 0
-  let z ← mapB .add n c c
-  let z0 ← lit (.size 0)
-  canonT ⟨n, X, [.arr "" z0 z z (← noneB z0 B ".e")]⟩
 
 /-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
     payload at `s + k`; then `canonT`. `s + k` is read signed, so `m + k` stays below `2^63`. -/
@@ -936,9 +1067,6 @@ def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := do
   let (pv, _) ← withRegs r.val (pay.toList.drop 1)
   canonT ⟨M, ← gatherCols M iD n X,
     [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
-/-- **`𝟘`** at `A ⟶ B`: no row. -/
-def zeroB (A B : Obj) : Bld TabB := do let z ← lit (.size 0); pure ⟨z, ← noneB z A, ← noneB z B⟩
-
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
 abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
 
@@ -977,7 +1105,7 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .join R S => do unionB (← tabB σ D R) (← tabB σ D S)
   | _, _, .diff R S => do
     let r ← tabB σ D R
-    selectB (fun m _ mx => mapB .not m mx mx) r (← tabB σ (← if S.dem then boundOf r else pure D) S)
+    diffB r (← tabB σ (← if S.dem then boundOf r else pure D) S)
   | _, _, .dom R => do let r ← tabB σ { dom := D.dom <|> D.ran } R; coreflB r.n r.key
   | _, _, .ran R => do let r ← tabB σ { ran := D.dom <|> D.ran } R; coreflB r.n r.val
   | _, _, .pair (A := A) (B := B) (C := C) R S => do
@@ -1024,8 +1152,43 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     lamB B n X (← compTB (← memB A n X) (tabB σ · R) R.dem)
   | _, _, .nil (B := B) => do let (n, X) ← known "nil" D.dom; nilB B n X
   | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
-  | _, _, .est _ | _, _, .thin _ | _, _, .fold .. | _, _, .foldr .. | _, _, .foldI .. => throw
-    "`est`, `thin`, a fold: their recipes (`Tab.est`, `Tab.thin`, `Tab.foldRounds` on `Instr.loop`) are not built by a plan yet"
+  -- `GenK.est`, `GenK.thin`: `Tab.est`, `Tab.thin` on the arrays in demand, `Q` run knowing its domain `D`
+  | _, _, .est (B := B) Q => do
+    let (n, X) ← known "est" D.dom
+    let (G, P, Dt) ← pairsB B n X
+    let V ← coreflB G.n G.val
+    let VV ← pairB B B B V V
+    let Y ← diffB (← diffB Dt (← tabB σ { dom := some (Dt.n, Dt.val) } Q)) (← coreflB VV.n VV.val)
+    diffB G (← compB P (← piB B B true Y.n Y.key))
+  | _, _, .thin (B := B) Q => do
+    let (n, X) ← known "thin" D.dom
+    let (G, P, Dt) ← pairsB B n X
+    let Δ ← interB (← tabB σ { dom := some (Dt.n, Dt.val) } Q) Dt
+    let w ← pairB (.prod B B) B B (← piB B B false Dt.n Dt.key) (← piB B B true Dt.n Dt.key)
+    let wΔ ← compB w Δ
+    let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
+    lamB B n X (← diffB G (← compB P (← piB B B false Y.n Y.key)))
+  -- `GenK.fold`, `GenK.foldr`: `Tab.foldRounds` from `idU X` and `X × ran e`, `S` on `⟨P, el⟩` (`⟨el, P⟩`)
+  | _, _, .fold (E := E) (V := V) e S => do
+    let (n, X) ← known "fold" D.dom
+    foldB E V true n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) V E P el) (tabB σ · S) S.dem
+  | _, _, .foldr (E := E) (V := V) e S => do
+    let (n, X) ← known "foldr" D.dom
+    foldB E V false n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) E V el P) (tabB σ · S) S.dem
+  -- `GenK.foldI`: one left fold on `I × V` from `(i, b)`, each round's step met with `⟨π₁, S ≫ π₂⟩`
+  | _, _, .foldI (I := I) (E := E) (V := V) e S => do
+    let (n, X) ← known "foldI" D.dom
+    let K := Obj.prod I (.arr E)
+    let i ← piB I (.arr E) true n X
+    let rest ← piB I (.arr E) false n X
+    let es ← compTB i (tabB σ · e) e.dem
+    let step (P el : TabB) : Bld TabB := do
+      let s ← compTB (← pairB K (.prod I V) E P el) (tabB σ · S) S.dem
+      interB s (← pairB K I V i (← projT I V false s))
+    let (m, _, _, _) ← arrCol "foldI" rest.val
+    let out ← foldRoundsB (peelB E true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) rest
+      (← pairB K I V i (← projT V V false es)) (← zeroB K (.prod I V))
+    projT I V false out
 
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each

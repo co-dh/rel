@@ -59,6 +59,12 @@ rel_program native1a where
     rd : N ⟶ N ≜ x° / x°
     g(S : N ⟶ N) : X ⟶ N ≜ x S
     gc : X ⟶ N ≜ g(succ)
+    xs : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2),(4,2 2)}
+    z0 : N ⟶ N ≜ {(0,0)}
+    f1 : N ⟶ N ≜ xs ⦇[z0, plus]⦈
+    f3 : N ⟶ N ≜ xs ⦇[z0, π₁ ∪ π₂]⦈ʳ
+    es : N ⟶ N ≜ xs est(≤)
+    th : N ⟶ [N] ≜ xs thin(≤)
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
@@ -168,7 +174,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("dv", semOut native1a.dv), ("tm", semOut native1a.tm), ("fc", semOut native1a.fc), ("nl", semOut native1a.nl),
    ("hd", semOut native1a.hd), ("ee", semOut native1a.ee), ("lm", semOut native1a.lm), ("lu", semOut native1a.lu),
    ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
-   ("fm", semOut native1a.fm)]
+   ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
+   ("es", semOut native1a.es), ("th", semOut native1a.th)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
