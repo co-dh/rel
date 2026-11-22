@@ -280,5 +280,4 @@ theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok 
   exact ⟨(wordsFoR_nul _ _ hm).1, (wordsFoR_nul _ _ hm).2.1,
     fun ht hu => (wordsFoR_nul _ _ hm).2.2.2 ht fun h1 => absurd h1 hu⟩
 
-
 end Rel.Verify

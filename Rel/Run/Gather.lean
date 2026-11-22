@@ -26,7 +26,8 @@ theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n
   have hv := kgather_valid h
   obtain ⟨his, -, hlt, rfl⟩ := raw_kgather m ix n x.enc o h
   have hw := x.wf
-  generalize x.enc = e at hv hw hlt ⊢
+  have hN := x.plain
+  generalize x.enc = e at hv hw hlt hN ⊢
   cases e with
   | foR md pk =>
     have hw' : t.width.isSome = true ∧ (t = .u1 → ∀ i < n.toNat, ∀ v,
@@ -34,20 +35,11 @@ theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n
         n.toNat ≤ Column.blk md * Column.nblk md := by
       cases t <;> simp only [Enc.WF] at hw <;>
         first | exact ⟨hw.1, hw.2.1, hw.2.2.1⟩ | exact ⟨hw.1, fun _ => hw.2.1 trivial, hw.2.2.1⟩ | exact ⟨hw.1, fun h => absurd h (by decide), hw.2.1⟩
-    refine (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.2.2 hw'.1 fun hu k hk hnk => ?_
+    refine (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.2.2 hw'.1 fun hu k hk _ => ?_
     rw [Array.size_map] at hk
     have hi := hlt k (by omega)
     rw [Array.getElem?_eq_getElem hk, Option.getD_some] at hi
-    -- the source row is no null: no block is flagged, or its flag is the gathered row's
-    have hnn : Column.foRNul md pk (Column.blockStarts md) (Enc.raw .i64 m ix)[k].toNat = false := by
-      cases hN : hasNul (.foR md pk : Enc)
-      · simp only [hasNul, List.any_eq_false, List.mem_range, Bool.not_eq_true] at hN
-        simp only [Column.foRNul, hN _ (Nat.div_lt_of_lt_mul (Nat.lt_of_lt_of_le hi hw'.2.2)), Bool.false_and]
-      · cases hf : Column.foRNul md pk (Column.blockStarts md) (Enc.raw .i64 m ix)[k].toNat
-        · rfl
-        · rw [hN, if_pos rfl] at hnk; unfold nulMap at hnk
-          rw [bitAt_packOf _ _ k (by simpa using hk)] at hnk
-          simp [hk, foRNuls, hi, hf] at hnk
+    have hnn := foRNul_of_plain hN (Nat.lt_of_lt_of_le hi hw'.2.2)
     simp only [Array.getElem_map, raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
       Array.getElem?_range, hi, if_true, Option.map_some, Option.getD_some, Nat.reduceMul, ofNat_toNat_mod64]
     exact UInt64.lt_iff_toNat_lt.2 (hw'.2.1 hu _ hi _ (by simp [Column.foROpt, hnn]))
