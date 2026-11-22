@@ -142,8 +142,9 @@ termination_by 2 * t.size + 1
     kernel twin computes, the two bound by the differential test (`test/TestCompile.lean`). -/
 def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   match A, B, t with
-  | A, B, .val R => GenK.val A B (R, true)
-  | A, _, .uni (m := m) U => GenK.uni A m (U, true)
+  -- a literal enters no `readVals`, so its cells are checked here (`Vals.cellsOk`, PLAN 8.5)
+  | A, B, .val R => GenK.val A B (R, Vals.cellsOk R.key && Vals.cellsOk R.val)
+  | A, _, .uni (m := m) U => GenK.uni A m (U, Vals.cellsOk U)
   | A, B, .zero => GenK.zero A B
   | A, _, .id => GenK.id A
   | A, B, .top V => GenK.top A B (V.code η)

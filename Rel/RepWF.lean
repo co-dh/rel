@@ -4,7 +4,6 @@ import Rel.Run.Power
 import Rel.Run.Asc
 import Rel.Run.Fix
 import Rel.RepTabDiv
-import Rel.RepAsc
 
 /-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
@@ -13,6 +12,15 @@ case to `Tab.WF` stands on: each op's `_wf` lemma there is one of these. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+
+/-- `Arr.zeros` holds `0` at every row. -/
+theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
+  unfold Arr.zeros at h; simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
+  have es := (colMap_raw (colArr_ok h)).2.2.2 _ i.2
+  rw [colConst_raw hc, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
+  simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
+  rw [Arr.get_i64, ← es]; rfl
 
 set_option hygiene false in
 /-- `h : x = .ok t` split through its binds and matches: each error branch closed, each other one kept. -/
@@ -533,26 +541,20 @@ theorem Tab.pack_wf {R t : Tab A B} (h : R.pack = .ok t) (hR : R.WF) : t.WF := b
 
 namespace Tab
 
-theorem fixOn_wf {out : String} {step : Tab A B → Except String (Tab A B)}
-    (hs : ∀ X t, step X = .ok t → X.WF → t.WF) :
-    ∀ {k : Nat} {X t : Tab A B}, fixOn out step k X = .ok t → X.WF → t.WF
-  | 0, _, _, h, _ => by simp [fixOn, throw, throwThe, MonadExceptOf.throw] at h
-  | k + 1, X, t, h, hX => by
-    simp only [fixOn, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    rename_i Y hY
-    have wY : Y.WF := by
-      split at hY; · cases hY
-      exact Tab.pack_wf hY (hs _ _ ‹_› hX)
-    split at h
-    · cases h; exact wY
-    · exact fixOn_wf hs h wY
+/-- A property `W` that `pack` and every round of `step` keep holds of `fixOn`'s answer (`fixOn_inv`), whatever the
+state: the table (`nu`, `mu`) or the table with its frontier (`star`). -/
+theorem fixOn_wf {σ : Type} {size : σ → USize} {pack : σ → Except String σ} {out : String}
+    {step : σ → Except String σ} (W : σ → Prop) (hp : ∀ X t, pack X = .ok t → W X → W t)
+    (hs : ∀ X t, step X = .ok t → W X → W t) {k : Nat} {X t : σ} (h : fixOn size pack out step k X = .ok t)
+    (hX : W X) : W t :=
+  let ⟨_, _, wX, hY, hT, _⟩ := fixOn_inv W (fun _ _ _ wX hY hY' => hp _ _ hY' (hs _ _ hY wX)) k X t hX h
+  hp _ _ hT (hs _ _ hY wX)
 
 theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
     (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : mu what cap f = .ok t) : t.WF := by
   simp only [mu, bind, Except.bind] at h
   split at h; · cases h
-  refine fixOn_wf (fun X t hX wX => ?_) h (zero_wf ‹_›)
+  refine fixOn_wf Tab.WF (fun _ _ => pack_wf) (fun X t hX wX => ?_) h (zero_wf ‹_›)
   simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact union_wf hX wX (hf _ _ ‹_› wX)
@@ -561,10 +563,34 @@ theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
     (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
   simp only [nu, bind, Except.bind] at h
   split at h; · cases h
-  refine fixOn_wf (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
+  refine fixOn_wf Tab.WF (fun _ _ => pack_wf) (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
   simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact inter_wf hX wX (hf _ _ ‹_› wX)
+
+/-- `P ≫ star(R)` on a `WF` `P`, `step` keeping `WF`: each round's `X` and `Δ` stay `WF` (`fixOn_wf` on the pair). -/
+theorem star_wf {K B : Obj} {step : Tab B B → Except String (Tab B B)} (hf : ∀ D t, step D = .ok t → D.WF → t.WF)
+    {P t : Tab K B} (h : star step P = .ok t) (hP : P.WF) : t.WF := by
+  simp only [star, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨P', hP', h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  obtain rfl : r.1 = t := Except.ok.inj h
+  refine (fixOn_wf (fun s : Tab K B × Tab K B => s.1.WF ∧ s.2.WF) (fun s t hs ws => ?_) (fun s t hs ws => ?_) hr
+    ⟨canon_wf hP' hP, canon_wf hP' hP⟩).1
+  · simp only [bind] at hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
+    obtain rfl : (U, D) = t := Except.ok.inj hs
+    exact ⟨pack_wf hU ws.1, pack_wf hD ws.2⟩
+  · simp only [bind] at hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨Dr, hDr, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨T, hT, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨N, hN, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
+    obtain rfl : (U, D) = t := Except.ok.inj hs
+    have wD := diff_wf hD (comp_wf hN ws.2 (hf _ _ hT (ran_wf hDr ws.2))) ws.1
+    exact ⟨union_wf hU ws.1 wD, wD⟩
 
 /-! ### `Λ`: `nil`, `lamOf`, `lam`, `E` -/
 
@@ -589,13 +615,6 @@ theorem lam_wf {n : USize} {D : Vals A n} {R : Tab A B} {t : Tab A (.arr B)} (h 
   simp only [Tab.lam, bind, Except.bind] at h
   split at h; · cases h
   exact lamOf_wf h hD (canon_wf ‹_› hR)
-
-theorem E_wf {C : Obj} {n : USize} {X : Vals (.arr A) n} {R : Tab A C} {t : Tab (.arr A) (.arr C)}
-    (h : Tab.E X R = .ok t) (hX : Vals.WF X) (hR : R.WF) : t.WF := by
-  simp only [Tab.E, bind, Except.bind] at h
-  split at h; · cases h
-  rename_i Q hQ; split at h; · cases h
-  exact lamOf_wf h hX (comp_wf ‹_› (mem_wf hQ hX) hR)
 
 theorem tau_wf {n : USize} {X : Vals A n} {t : Tab A (.arr A)} (h : Tab.tau X = .ok t) (hX : Vals.WF X) : t.WF := by
   simp only [Tab.tau, bind, Except.bind] at h

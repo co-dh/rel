@@ -859,6 +859,32 @@ theorem sums_den {K P V : Obj} {x T : Tab (.prod K P) V} (h : Tab.sums x = .ok T
     | _ => cases h
   | _ => cases h
 
+/-- **`sums` keeps `Tab.WF`**: its table is `keep` of `canon x`'s key beside atom sums (`canon_wf`, `keep_wf`). -/
+theorem sums_wf {K P V : Obj} {x T : Tab (.prod K P) V} (h : Tab.sums x = .ok T) (hx : x.WF) : T.WF := by
+  have on : ∀ {t u : QAtomicType} {x T : Tab (.prod K (.atom t)) (.atom u)}, Tab.sumsOn x = .ok T → x.WF → T.WF := by
+    intro t u x T h hx
+    dsimp only [Tab.sumsOn] at h
+    simp only [bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨_, _, _⟩, -, h⟩ := h
+    split at h
+    · iterate 6 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
+      rw [Except.bind_eq_ok'] at h; obtain ⟨_, h, -⟩ := h; cases h
+    iterate 9 (rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h)
+    exact Tab.keep_wf h ⟨(Tab.canon_wf hC hx).1, trivial⟩
+  cases P with
+  | atom t =>
+    cases V with
+    | atom u =>
+      cases u <;> simp only [Tab.sums] at h <;> try cases h
+      all_goals
+        split at h
+        · exact on h hx
+        · cases h
+    | _ => cases h
+  | _ => cases h
+
 
 /-- **`sum X` denotes `sumAt`, the left fold `⦇[0, plus]⦈` of each cell** (`rowDens`' `sum`) at an `i64` or `f64`
 atom: EXPAND lays each cell `g` out as the run `[off g, off g + w g)` of rows, whose first row (offset `0`) opens a

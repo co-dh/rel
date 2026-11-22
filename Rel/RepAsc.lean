@@ -10,15 +10,6 @@ read in position order, are the one strictly ascending list of `dom P` (`lt_sort
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify Rel.Rep
 
-/-- `Arr.zeros` holds `0` at every row. -/
-theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
-  unfold Arr.zeros at h; simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
-  have es := (colMap_raw (colArr_ok h)).2.2.2 _ i.2
-  rw [colConst_raw hc, Array.getElem?_replicate, if_pos i.2, Option.getD_some] at es
-  simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-  rw [Arr.get_i64, ← es]; rfl
-
 namespace Tab
 
 /-- **`asc P` denotes `asc(P)`** (`ascDen` of `dom P`): `kasc`'s order is `Obj.lt` (`Vals.lamLaw` at `ℕ ⟶ B`). -/
@@ -78,9 +69,9 @@ namespace Lang.GenK
 /-- A row whose table is made from its relation's whole table (`ofRel`) represents `Y` when `f` makes a table of
 meaning `Y` from one of meaning `X`. -/
 theorem ofRel_sound {A B C D : Obj} {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El}
-    {f : Tab A B → Except String (Tab C D)} {Y : Core.Rel C.El D.El} (hR : ∀ K, R.Reps K X)
-    (hf : ∀ r t, f r = .ok t → rep r = X → rep t = Y) : ∀ K, (GenK.ofRel A B C D d R f).Reps K Y :=
-  lift1_sound hR fun _ r t ht hr => by rw [hf r t ht (agrees_empty hr).symm]; exact fun _ _ _ _ _ => Iff.rfl
+    {f : Tab A B → Except String (Tab C D)} {Y : Core.Rel C.El D.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hf : ∀ r t, f r = .ok t → rep r = X → rep t = Y) : ∀ K, K.WF → (GenK.ofRel A B C D d R f).Reps K Y :=
+  lift1_sound (fun _ _ => Known.wf_empty) hR fun _ r t ht hr => by rw [hf r t ht (agrees_empty hr).symm]; exact fun _ _ _ _ _ => Iff.rfl
 
 end Lang.GenK
 
