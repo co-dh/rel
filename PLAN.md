@@ -252,6 +252,21 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     在第三个目录跑 `relc run`（`n.io`，Lean 语义），native 的 `out/io` 与之逐字节相等。
     尚未做（plan 拒绝并指名）：keyed input（读时 `Tab.canon` 排序）、可空 CSV 列 `S+1`（`ofCsv` 重组与检查）、
     从文件 map 的 float 列（规范形检查）、把 map 来的列写成 CSV（plan 没有从 parts 数组取出 part 的指令）。
+  - ✅ I11 native 的 `Tm`（分支 `nativetm`）：`Plan.tabB` 按每个节点的 `GenK` 配方（§4 的 kernel 复合）建表：
+    `val` `uni` `𝟘` `𝟙` `⊤` `π₁` `π₂` `≫`（`compOne`）`°` `∩` `−`（`select`）`∪` `dom` `ran` `⟨,⟩` `×`（CROSS）
+    `own` `share` `var`；按需节点读上下文已知的值（`compT` 的 `ran`、`∩` `−` `⟨,⟩` 的 `bound`）。`abi` 加
+    `USize.mul`。测试：`native1a` 14 个闭定义、`nativeIO` 的 `un` `cm`，`make native` 与 Lean 值逐字节相等。
+    分支 `nativetm2a` 加：上下文 `Dom` 改为 `Known` 的三项（`dom` `ran` `pairs`），`∩` `−` 交出 `bound`；
+    `≤` `<`（`cmpB`：`Tab.ordOp`、`wideCol`，有 `pairs` 时切到两侧再逐对测，否则 CROSS）；`succ` `arith`
+    （`succB` `arithT`：两次与 `dom U` 复合，`stepB` 即 `stepColsAt` 的 i64 比较与 float 的 `fverbOne`/`fverbBy`）；
+    `prim` `arg` `call` `callCv`（`argB` 按 `Tm.argGen` 拆 spine：call 的实参闭合建表后绑定到 `ks`；行按其
+    `kernRows` 算子的 wrapper：`floatOp` `$` 走 `ofVals`，`asc` 走 `ofRel`）。`crossB` 加 `Vals.cross` 的
+    `crossMax` 与 `crossIx` 的 2^63 检查（`fail` 把计数附在消息后，文字同 Lean 但数值不内插）；`abi` 加
+    `USize.sub` `USize.decLt`。测试：`native1a` 加 `le` `lt` `ml`（`∩ ≤` 的 pairs）`sc` `ps` `mn` `dv` `tm`
+    `fc`（局部 call），共 23 个闭定义，`make native` 逐字节相等；CROSS 超界的 `#eval`。
+    仍拒绝并指名：`\` `/`（`ldivSel` 的分组计数与位矩阵）、数组/求和侧的行（`∋` `length` `inl` 等）、
+    数组侧的 `Λ` `E` `est` `thin` `nil` `at` 与三种 fold（缺 `cells` key）、`ν` `μ` `hylo`（plan 无循环指令）；
+    按需（`dem`）的 call 实参（闭合建表即报 Lean 的按需错误）；从文件 map 的列（无 `Enc`）作运算数。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
