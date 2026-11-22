@@ -2444,7 +2444,9 @@ def build : Pre → Except Err Res
         if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
         else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
     let some dfn := dfns.lookup r.sym | row ()
-    let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
+    -- relations that do not build alone give no definition: the row runs, a pair-test parameter tested on pairs
+    -- (`param`, as `length ≤ length°` on `[N]`), any other rebuilt by `row`, which reports its own error
+    let .ok args := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x | row ()
     -- a definition that needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it) is its fused row at every
     -- object: the target's universe is not read, since `uniPart` forces a declared one and may fail on it
     if let some ⟨_, c⟩ := dfn A B args .id then if c.uni.isNone then return ⟨A, B, c.fused⟩
