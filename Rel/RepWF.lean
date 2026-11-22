@@ -22,10 +22,6 @@ theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z
   simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
   rw [Arr.get_i64, ← es]; rfl
 
-set_option hygiene false in
-/-- `h : x = .ok t` split through its binds and matches: each error branch closed, each other one kept. -/
-local macro "okSplit" : tactic => `(tactic| repeat' (split at h <;> try (cases h; done)))
-
 /-- A step that keeps `P` keeps it through `List.foldlM`. -/
 theorem foldlM_keeps {α β : Type} {P : β → Prop} {f : β → α → Except String β}
     (hf : ∀ b a b', f b a = .ok b' → P b → P b') : ∀ (l : List α) {b b' : β}, l.foldlM f b = .ok b' → P b → P b'
@@ -103,29 +99,6 @@ theorem outl_wf {n : USize} {X : Vals (.prod A B) n} {t : Tab (.prod A B) A} (h 
 
 theorem outr_wf {n : USize} {X : Vals (.prod A B) n} {t : Tab (.prod A B) B} (h : Tab.outr X = .ok t)
     (hX : Vals.WF X) : t.WF := canon_wf h ⟨hX, hX.2⟩
-
-/-- **`keep` keeps `Tab.WF`**: both sides gathered. -/
-theorem keep_wf {T t : Tab A B} {b : Enc} (h : T.keep b = .ok t) (hT : T.WF) : t.WF := by
-  simp only [Tab.keep, bind, Except.bind, pure, Except.pure] at h
-  okSplit
-  cases h; exact ⟨Vals.gather_wf ‹_› hT.1, Vals.gather_wf ‹_› hT.2⟩
-
-/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catPlan`'s count and offsets). -/
-theorem concat_wf {R S t : Tab A B} (h : R.concat S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.concat, bind, Except.bind, pure, Except.pure] at h
-  split at h; · cases h
-  rename_i p hp
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (p.1, p.2) from hp)
-  split at h; · cases h
-  rename_i x hx; split at h; · cases h
-  rename_i y hy; cases h
-  exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
-
-/-- **`∪` keeps `Tab.WF`**: `canon` of the concatenation. -/
-theorem union_wf {R S t : Tab A B} (h : R.union S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.union, bind, Except.bind] at h
-  split at h; · cases h
-  exact canon_wf h (concat_wf ‹_› hR hS)
 
 /-- **`tagged` keeps `Tab.WF`**: its table is the concatenation. -/
 theorem tagged_wf {R S : Tab A B} {p : Tab A B × Enc} (h : R.tagged S = .ok p) (hR : R.WF) (hS : S.WF) :
@@ -211,26 +184,6 @@ theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A
   simp only [Tab.inr, bind, Except.bind] at h
   okSplit
   exact canon_wf h ⟨hY, Vals.none_wf ‹_›, hY⟩
-
-/-- **`compExpand` keeps `Tab.WF`**: `R.key` and `S.val` gathered at each output row, `canon`. -/
-theorem compExpand_wf {R : Tab A B} {S : Tab B C} {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc}
-    {t : Tab A C} (h : compExpand R S x = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  obtain ⟨N, p, g, f, K, cR, cS, w⟩ := x
-  simp only [Tab.compExpand, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨Vals.gather_wf ‹_› hR.1, Vals.gather_wf ‹_› hS.2⟩
-
-theorem compOne_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : compOne R S = .ok t) (hR : R.WF) (hS : S.WF) :
-    t.WF := by
-  simp only [Tab.compOne, bind, Except.bind] at h
-  split at h; · cases h
-  exact compExpand_wf h hR hS
-
-theorem compBlock_wf {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {t : Tab A C} (h : compBlock R S c j = .ok t)
-    (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compBlock, bind, Except.bind] at h
-  okSplit
-  exact compOne_wf h (keep_wf ‹_› hR) hS
 
 /-- **`compBlocks` keeps `Tab.WF`**: each block by `compBlock_wf`, met by `∪` (`union_wf`). -/
 theorem compBlocks_wf {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n} {t : Tab A C}

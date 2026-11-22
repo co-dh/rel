@@ -563,7 +563,7 @@ theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u))
 /-- **`R.compOne S` is `canon` of a table denoting `R ≫ S`**: so `T` holds `R ≫ S` and is sorted without duplicates
 (`Tab.canon_sorted` at `U`). -/
 theorem Tab.compOne_canon {A B C : Obj}
-    {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.compOne S = .ok T) :
+    {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.compOne S = .ok T) (hR : R.WF) (hS : S.WF) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   rw [Tab.compOne] at h; simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
   dsimp only [Tab.compGroups] at hx
@@ -786,9 +786,9 @@ theorem Tab.compOne_canon {A B C : Obj}
   ------------------------------------------------------------------ the rows of `U` are the pairs of `R ≫ S`
   have fs := firsts_spec Kk N.toNat
   have zR : ∀ i (hi : i < R.n.toNat), z.row ⟨i, by omega⟩ = R.val.row ⟨i, hi⟩ := fun i hi => by
-    rw [Vals.concat_row hNn hoff R.val S.key hz, dif_pos hi]
+    rw [Vals.concat_row hNn hoff R.val S.key hz hR.2 hS.1, dif_pos hi]
   have zS : ∀ j (hj : j < S.n.toNat), z.row ⟨R.n.toNat + j, by omega⟩ = S.key.row ⟨j, hj⟩ := fun j hj => by
-    rw [Vals.concat_row hNn hoff R.val S.key hz, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
+    rw [Vals.concat_row hNn hoff R.val S.key hz hR.2 hS.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
   unfold Tab.Holds
   constructor
   · rintro ⟨t, ha, hc⟩
@@ -857,18 +857,39 @@ theorem Tab.compOne_canon {A B C : Obj}
 namespace Tab
 variable {A B C : Obj}
 
-/-- A `∪` fold of the tables `f j` from `acc`: every `f j` answers, it holds what `acc` or some `f j` holds, and past
-the first step it is a `canon`. -/
-theorem foldlM_union {k v : Obj} {f : Nat → Except String (Tab k v)} :
-    ∀ (L : List Nat) (acc T : Tab k v), L.foldlM (fun acc j => do acc.union (← f j)) acc = .ok T →
+/-- **`compExpand` keeps `Tab.WF`**: `R.key` and `S.val` gathered at each output row, `canon`. -/
+theorem compExpand_wf {R : Tab A B} {S : Tab B C} {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc}
+    {t : Tab A C} (h : compExpand R S x = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
+  obtain ⟨N, p, g, f, K, cR, cS, w⟩ := x
+  simp only [Tab.compExpand, bind, Except.bind] at h
+  okSplit
+  exact canon_wf h ⟨Vals.gather_wf ‹_› hR.1, Vals.gather_wf ‹_› hS.2⟩
+
+theorem compOne_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : compOne R S = .ok t) (hR : R.WF) (hS : S.WF) :
+    t.WF := by
+  simp only [Tab.compOne, bind, Except.bind] at h
+  split at h; · cases h
+  exact compExpand_wf h hR hS
+
+theorem compBlock_wf {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {t : Tab A C} (h : compBlock R S c j = .ok t)
+    (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.compBlock, bind, Except.bind] at h
+  okSplit
+  exact compOne_wf h (keep_wf ‹_› hR) hS
+
+/-- A `∪` fold of the tables `f j` from `acc`, each `Tab.WF`: every `f j` answers, it holds what `acc` or some `f j`
+holds, and past the first step it is a `canon`. -/
+theorem foldlM_union {k v : Obj} {f : Nat → Except String (Tab k v)} (hf : ∀ j X, f j = .ok X → X.WF) :
+    ∀ (L : List Nat) (acc T : Tab k v), L.foldlM (fun acc j => do acc.union (← f j)) acc = .ok T → acc.WF →
       (∀ j ∈ L, ∃ X, f j = .ok X) ∧ (L = [] → T = acc) ∧ (L ≠ [] → ∃ U : Tab k v, U.canon = .ok T) ∧
       ∀ a b, T.Holds a b ↔ acc.Holds a b ∨ ∃ j ∈ L, ∃ X, f j = .ok X ∧ X.Holds a b
-  | [], acc, T, h => by
+  | [], acc, T, h, _ => by
     simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at h; subst h; simp
-  | j :: L, acc, T, h => by
+  | j :: L, acc, T, h, hacc => by
     rw [List.foldlM_cons] at h; simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨acc', h1, h2⟩ := h
     rw [Except.bind_eq_ok'] at h1; obtain ⟨X, hX, hu⟩ := h1
-    obtain ⟨hL, h0, hc, hH⟩ := foldlM_union L acc' T h2
+    have hXw := hf j X hX
+    obtain ⟨hL, h0, hc, hH⟩ := foldlM_union hf L acc' T h2 (union_wf hu hacc hXw)
     refine ⟨fun i hi => ?_, by simp, fun _ => ?_, fun a b => ?_⟩
     · rcases List.mem_cons.1 hi with rfl | hi
       · exact ⟨X, hX⟩
@@ -876,7 +897,7 @@ theorem foldlM_union {k v : Obj} {f : Nat → Except String (Tab k v)} :
     · by_cases hL0 : L = []
       · obtain rfl := h0 hL0; obtain ⟨C, -, hC⟩ := union_sorted hu; exact ⟨C, hC⟩
       · exact hc hL0
-    · rw [hH, union_holds hu]; constructor
+    · rw [hH, union_holds hu hacc hXw]; constructor
       · rintro ((h | h) | ⟨i, hi, Y, hY, h⟩)
         · exact .inl h
         · exact .inr ⟨j, by simp, X, hX, h⟩
@@ -889,7 +910,7 @@ theorem foldlM_union {k v : Obj} {f : Nat → Except String (Tab k v)} :
 
 /-- **Block `j` denotes `R ≫ S` from the rows of `R` whose word in `c` is `j`.** -/
 theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab A C}
-    (h : compBlock R S c j = .ok X) (a : A.El) (d : C.El) :
+    (h : compBlock R S c j = .ok X) (hR : R.WF) (hS : S.WF) (a : A.El) (d : C.El) :
     X.Holds a d ↔ ∃ b, (∃ i : Fin R.n.toNat, (raw .i64 R.n c)[i.1]?.getD 0 = j.toUInt64 ∧ R.key.row i = a ∧
       R.val.row i = b) ∧ S.Holds b d := by
   unfold compBlock at h; simp only [bind] at h
@@ -904,7 +925,7 @@ theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab
         .ok (if (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64 then 1 else 0) := by
       show Except.ok (if ((raw .i64 R.n c)[i]?.getD 0 == j.toUInt64) = true then 1 else 0) = _; simp
     rw [e2] at e1; exact (Except.ok.inj e1).symm
-  obtain ⟨U, hU, hH⟩ := compOne_canon h
+  obtain ⟨U, hU, hH⟩ := compOne_canon h (keep_wf hRj hR) hS
   rw [canon_holds hU, hH]
   refine exists_congr fun b => and_congr_left fun _ => ?_
   rw [keep_holds hRj (fun i hi => by rw [hmi i hi]; split <;> decide)]
@@ -914,7 +935,7 @@ theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab
 /-- **`compBlocks` denotes `R ≫ S` and is a `canon`**, whatever the block words `bid`: clamped into `[0, nb - 1]`,
 every row of `R` is in one block, and every block is in the `∪`. -/
 theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n} {T : Tab A C}
-    (h : compBlocks R S nb bid = .ok T) :
+    (h : compBlocks R S nb bid = .ok T) (hR : R.WF) (hS : S.WF) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   unfold compBlocks at h
   split at h; · cases h
@@ -923,7 +944,8 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨T0, h0, h⟩ := h
-  obtain ⟨hL, hnil, hcan, hH⟩ := foldlM_union (f := fun j => compBlock R S c.enc (j + 1)) _ _ _ h
+  obtain ⟨hL, hnil, hcan, hH⟩ := foldlM_union (f := fun j => compBlock R S c.enc (j + 1))
+    (fun _ _ hX => compBlock_wf hX hR hS) _ _ _ h (compBlock_wf h0 hR hS)
   -- each row's clamped word is a block `j ≤ nb - 1`
   have hj : ∀ i : Fin R.n.toNat, ∃ j ≤ nb - 1, (raw .i64 R.n c.enc)[i.1]?.getD 0 = j.toUInt64 := fun i => by
     have e := Arr.clampShift_get (by simp; omega) hc i
@@ -934,54 +956,56 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
     refine ⟨((raw .i64 R.n c.enc)[i.1]?.getD 0).toNat, ?_, by simp⟩
     have : ((nb - 1).toUInt64.toNat : Int) = (nb - 1 : Nat) := by rw [toNat_toUInt64 (by omega)]
     omega
-  have hR : ∀ a d, T.Holds a d ↔ ∃ b, R.Holds a b ∧ S.Holds b d := fun a d => by
-    rw [hH, compBlock_holds h0]; constructor
+  have hT : ∀ a d, T.Holds a d ↔ ∃ b, R.Holds a b ∧ S.Holds b d := fun a d => by
+    rw [hH, compBlock_holds h0 hR hS]; constructor
     · rintro (⟨b, ⟨i, -, h1, h2⟩, hs⟩ | ⟨j, -, X, hX, hx⟩)
       · exact ⟨b, ⟨i, h1, h2⟩, hs⟩
-      · obtain ⟨b, ⟨i, -, h1, h2⟩, hs⟩ := (compBlock_holds hX a d).1 hx; exact ⟨b, ⟨i, h1, h2⟩, hs⟩
+      · obtain ⟨b, ⟨i, -, h1, h2⟩, hs⟩ := (compBlock_holds hX hR hS a d).1 hx; exact ⟨b, ⟨i, h1, h2⟩, hs⟩
     · rintro ⟨b, ⟨i, h1, h2⟩, hs⟩
       obtain ⟨j, hjn, hji⟩ := hj i
       rcases Nat.eq_zero_or_pos j with rfl | hpos
       · exact .inl ⟨b, ⟨i, hji, h1, h2⟩, hs⟩
       · have hmem : j - 1 ∈ List.range (nb - 1) := List.mem_range.2 (by omega)
         obtain ⟨X, hX⟩ := hL _ hmem
-        refine .inr ⟨j - 1, hmem, X, hX, (compBlock_holds hX a d).2 ⟨b, ⟨i, ?_, h1, h2⟩, hs⟩⟩
+        refine .inr ⟨j - 1, hmem, X, hX, (compBlock_holds hX hR hS a d).2 ⟨b, ⟨i, ?_, h1, h2⟩, hs⟩⟩
         rw [hji, Nat.sub_add_cancel hpos]
   by_cases hL0 : List.range (nb - 1) = []
   · obtain rfl := hnil hL0
     have h0' := h0; unfold compBlock at h0'; simp only [bind] at h0'
     rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
     rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
-    rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
-    obtain ⟨U, hU, -⟩ := compOne_canon h0'
-    exact ⟨U, hU, fun a d => by rw [← hR, canon_holds hU]⟩
+    rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, hk0, h0'⟩ := h0'
+    obtain ⟨U, hU, -⟩ := compOne_canon h0' (keep_wf hk0 hR) hS
+    exact ⟨U, hU, fun a d => by rw [← hT, canon_holds hU]⟩
   · obtain ⟨U, hU⟩ := hcan hL0
-    exact ⟨U, hU, fun a d => by rw [← hR, canon_holds hU]⟩
+    exact ⟨U, hU, fun a d => by rw [← hT, canon_holds hU]⟩
 
 /-- **`R.compWith bound S` is `canon` of a table denoting `R ≫ S`**, at every `bound`; `Tab.comp` is `bound =
 blockRows`. -/
 theorem compFrom_canon {bound : Nat} {R : Tab A B} {S : Tab B C}
     {x : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc} {T : Tab A C} (hx : compGroups R S = .ok x)
-    (h : compFrom bound R S x = .ok T) :
+    (h : compFrom bound R S x = .ok T) (hR : R.WF) (hS : S.WF) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   simp only [compFrom, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o, -, h⟩ := h
   rcases o with _ | ⟨nb, bid⟩
-  · exact compOne_canon (by rw [compOne, hx]; exact h)
-  · exact compBlocks_canon h
+  · exact compOne_canon (by rw [compOne, hx]; exact h) hR hS
+  · exact compBlocks_canon h hR hS
 
-theorem comp_canon {bound : Nat} {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : compWith bound R S = .ok T) :
+theorem comp_canon {bound : Nat} {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : compWith bound R S = .ok T)
+    (hR : R.WF) (hS : S.WF) :
     ∃ U : Tab A C, U.canon = .ok T ∧ ∀ a c, U.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   unfold compWith at h
   split at h
-  · exact compOne_canon h
+  · exact compOne_canon h hR hS
   · simp only [bind] at h; rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
-    exact compFrom_canon hx h
+    exact compFrom_canon hx h hR hS
 
 /-- **`R.comp S` denotes `R ≫ S`** (`Rep.rep_comp`'s statement, pointwise). -/
-theorem comp_holds {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.comp S = .ok T) (a : A.El) (c : C.El) :
+theorem comp_holds {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : R.comp S = .ok T) (hR : R.WF) (hS : S.WF)
+    (a : A.El) (c : C.El) :
     T.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
-  obtain ⟨U, hU, hH⟩ := comp_canon h; rw [canon_holds hU]; exact hH a c
+  obtain ⟨U, hU, hH⟩ := comp_canon h hR hS; rw [canon_holds hU]; exact hH a c
 
 /-- **`R.conv` denotes `R°`** (`Rep.rep_conv`'s statement, pointwise). -/
 theorem conv_holds {R : Tab A B} {S : Tab B A} (h : R.conv = .ok S) (b : B.El) (a : A.El) :
@@ -1084,15 +1108,15 @@ private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (h
   (⟨3, Arr.bools 3 fun i => i == 1, Alg.col [7, 8, 9]⟩ : Tab (.atom .u1) .long)
 #guard compOk (⟨4, Alg.col [3, 1, 2, 1], (Alg.col [1, 1, 2, 2], Alg.col [5, 6, 5, 6])⟩ : Tab .long (.prod .long .long))
   (⟨3, (Alg.col [2, 1, 1], Alg.col [5, 6, 5]), Alg.col [7, 8, 9]⟩ : Tab (.prod .long .long) .long)
--- an `arr` middle column: cells over two payloads (equal cells from different ranges, the empty cell, clamped
--- ranges), a side of no payload rows, a table of no rows, tuple elements and nested arrays
-#guard let As := [arrTab arrCells arrPay, arrTab [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (-4, 2, 9)] [9, 5, 1, 5],
-    arrTab [(0, 0, 1), (3, 1, 2)] [], arrTab [] arrPay]
+-- an `arr` middle column: cells over two payloads (equal cells from different ranges, the empty cell),
+-- a side of no payload rows, a table of no rows, tuple elements and nested arrays
+#guard let As := [arrTab arrCells arrPay, arrTab [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (0, 2, 9)] [9, 5, 1, 5],
+    arrTab [(0, 0, 1), (0, 0, 2)] [], arrTab [] arrPay]
   As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
 #guard let As := [arrOn arrCells (B := .prod .long .long) (Alg.col arrPay, Alg.col [0, 1, 0, 0, 2]),
     arrOn [(1, 3, 7), (0, 0, 2), (2, 5, 1)] (B := .prod .long .long) (Alg.col arrPay, Alg.col [1, 0, 0, 1, 0])]
   As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
-#guard let As := [arrOn arrCells (arrTab [(1, 2, 1), (0, 2, 7), (0, 0, 2), (2, 4, 1)] [9, 5, 1, 5]).key,
+#guard let As := [arrOn arrCells (arrTab [(1, 2, 1), (0, 2, 7), (0, 0, 2), (2, 4, 1), (3, 4, 5)] [9, 5, 1, 5]).key,
     arrOn [(0, 2, 1), (1, 3, 7)] (arrTab arrCells arrPay).key]
   As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
 -- a `sum` middle column, with long and with `arr` summands

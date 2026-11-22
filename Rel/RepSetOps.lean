@@ -268,6 +268,37 @@ theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : 
   | error s => simp [hc, bind, Except.bind] at h
   | ok C => simp only [hc, bind, Except.bind] at h; rw [canon_holds h, concat_holds hc hR hS]
 
+end Tab
+
+set_option hygiene false in
+/-- `h : x = .ok t` split through its binds and matches: each error branch closed, each other one kept. -/
+macro "okSplit" : tactic => `(tactic| repeat' (split at h <;> try (cases h; done)))
+
+namespace Tab
+
+/-- **`keep` keeps `Tab.WF`**: both sides gathered. -/
+theorem keep_wf {T t : Tab k v} {b : Enc} (h : T.keep b = .ok t) (hT : T.WF) : t.WF := by
+  simp only [Tab.keep, bind, Except.bind, pure, Except.pure] at h
+  okSplit
+  cases h; exact ⟨Vals.gather_wf ‹_› hT.1, Vals.gather_wf ‹_› hT.2⟩
+
+/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catPlan`'s count and offsets). -/
+theorem concat_wf {R S t : Tab k v} (h : R.concat S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.concat, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  rename_i p hp
+  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (p.1, p.2) from hp)
+  split at h; · cases h
+  rename_i x hx; split at h; · cases h
+  rename_i y hy; cases h
+  exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
+
+/-- **`∪` keeps `Tab.WF`**: `canon` of the concatenation. -/
+theorem union_wf {R S t : Tab k v} (h : R.union S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
+  simp only [Tab.union, bind, Except.bind] at h
+  split at h; · cases h
+  exact canon_wf h (concat_wf ‹_› hR hS)
+
 /-- **`R.canon` is sorted and duplicate-free**: `Vals.nub_sorted` of its pair side, the rows of `U` being rows `sel j`
 of `R`, ascending in `kasc`'s order of their codes, no two with equal codes. -/
 theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey × Enc)}
