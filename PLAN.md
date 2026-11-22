@@ -520,7 +520,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 3.11 没有 demand bit 的 `Expand`。
 - 🔄 3.12 删除临时物（`CRel.ok/rel/mk`、`Gen.Dem`、…）：
   3.12a ✅ 已合并（`Pl` 去掉 `Dem`）；
-  3.12b ⬜ 未开始（`Out.Sound.memo`、`Dem`/`Dem.of`/`Cor`、多余的 `{d}` binder）。
+  3.12b ✅（`dem312b`，无代码改动）：`Out.Sound.memo`、`Dem`、`Dem.of` 在 000ce33 已不存在；`Cor` 保留，
+  它是 `Elab.test` 的结果类型（用户 `corAt`、`paramOf`、`test`），与 prelude 的 `cor(S) = dom(π₁S ∩ π₂)` 是同一个
+  relation `τ(S)`，但一个是 elaborator 中 term 的类型、一个是 `.rel` 库定义，互不替代，`prelude.cor` 保留；
+  没有一个 `{d}` binder 是未被提及的：33 个带 `d : Bool` 的声明全部在结论里把 `d` 传给 `GenK.*`；
+  3.12c ⬜ 多余的 `{d}` binder 的来源是 `Gen.Fn (_d : Bool)` 这个 phantom 索引（`GenK.*` 不再对它分派）：
+  删去它，再删 `GenK.*` 的 `d`/`e` 参数、`TmGen` 生成的 bit，以及 `GenKFold`、`GenKHylo`、`GenKBits`、
+  `GenKSpec`、`GenSound`、`RepAsc`、`RepWhere` 中 `*_sound`/`*_wf` 的 `{d}`/`{d e}`/`{d d'}` binder；
+  须等正在重写 `GenK*`/`GenSound` 的 agent 合并后做。
 - ⬜ 3.13 inline `Den`。
 
 ### P4 `Tm` 的 constructor 变更 — 3/5（串行，共用同样的 match 分支）
