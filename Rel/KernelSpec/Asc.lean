@@ -227,8 +227,6 @@ theorem ascCodes_ok : ∀ {m : USize} {es : List (AscKey × Enc)} {ks : List (Ar
     rw [← h, ascKeys, (ascCol_ok hc).2.2.1, ascCodes_ok hks]
 end
 
-theorem foRNuls_size (m : USize) (e : Enc) : (foRNuls m e).size = m.toNat := by cases e <;> simp [foRNuls]
-
 /-- `scatterWords` twice through a permutation `ps` of `til M`: `til M` through `ps` puts `k` at `ps[k]`, and `x`
 through that puts `x[ps[k]]` at `k`. -/
 theorem scatter_grade {M : Nat} (hM : M < 2 ^ 64) {ps : List Nat} (hp : ps.Perm (List.range M))

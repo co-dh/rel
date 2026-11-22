@@ -72,6 +72,9 @@ theorem scatterWords_spec (is es : Array UInt64) (n : Nat) (fill : UInt64) :
   refine ⟨by simpa using hs, fun j hj hn => by rw [hfix j hn]; simp [hj], fun k hk hl => hlast k hk hl ?_⟩
   simpa using hall k hk
 
+/-- `foRNuls` has one flag per row. -/
+theorem foRNuls_size (m : USize) (e : Enc) : (foRNuls m e).size = m.toNat := by cases e <;> simp [foRNuls]
+
 /-- What `foRWords` answers is `Enc.raw` at a 64-bit column, `m` words of it. -/
 theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
     (h : foRWords what m e = .ok ws) : ws = raw .i64 m e ∧ ws.size = m.toNat := by
@@ -80,22 +83,26 @@ theorem foRWords_raw (what : String) (m : USize) (e : Enc) (ws : Array UInt64)
   · cases h; refine ⟨rfl, ?_⟩; cases e <;> simp_all [raw, QAtomicType.width]
   · cases h
 
-/-- Design §4's `scatter` law, on words: the `n` words `ws` `Enc.raw` reads from an answer of `kscatter`, against the
-`m` words `is` and `es` it reads from `ix` and `e`: every index is below `n`, a cell no row names is `fill`, and
-`ws[is[k]] = es[k]` for every row `k` no later row overrides. The answer is `foR`, `Coc.encode` of `ws` at 8 bytes. -/
-theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
-    (hnul : hasNul e = false) (h : kscatter .last m ix e n fill = .ok o) :
+/-- Design §4's `scatter` law under `.last`, for every input: the answer is `Coc.encode` at 8 bytes of `n` words `ws`
+and, where `e` holds a null, of `n` null flags `fl` (`nulMap`). Against the `m` words `is`, `es` and flags `fs` read
+from `ix` and `e`: every index is below `n`, a cell no row names is `fill` with no null, and a cell named by row `k`
+and no later row holds `es[k]` and `fs[k]`. -/
+theorem kscatter_ok (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
+    (h : kscatter .last m ix e n fill = .ok o) :
     let is := raw .i64 m ix
     let es := raw .i64 m e
-    let ws := raw .i64 n o
-    o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
-      (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 ∧
-      is.size = m.toNat ∧ es.size = m.toNat ∧ ws.size = n.toNat ∧
+    let fs := foRNuls m e
+    ∃ ws fl : Array UInt64,
+      o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+          (if hasNul e then nulMap fl else .empty)).1
+        (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+          (if hasNul e then nulMap fl else .empty)).2 ∧
+      is.size = m.toNat ∧ es.size = m.toNat ∧ ws.size = n.toNat ∧ fl.size = n.toNat ∧
       (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧
-      (∀ j < n.toNat, (∀ k < m.toNat, (is[k]?.getD 0).toNat ≠ j) → ws[j]? = some fill) ∧
+      (∀ j < n.toNat, (∀ k < m.toNat, (is[k]?.getD 0).toNat ≠ j) → ws[j]? = some fill ∧ fl[j]? = some 0) ∧
       ∀ k < m.toNat, (∀ k', k < k' → k' < m.toNat → is[k']?.getD 0 ≠ is[k]?.getD 0) →
-        ws[(is[k]?.getD 0).toNat]? = some (es[k]?.getD 0) := by
-  intro is es ws'
+        ws[(is[k]?.getD 0).toNat]? = some (es[k]?.getD 0) ∧ fl[(is[k]?.getD 0).toNat]? = some (fs[k]?.getD 0) := by
+  intro is es fs
   unfold kscatter at h
   cases hi : foRWords "scatter: ix" m ix with
   | error s => simp [hi, bind, Except.bind] at h
@@ -112,45 +119,81 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
       cases hw : scatterWords .last (raw .i64 m ix) (raw .i64 m e) n.toNat fill with
       | error s => simp [hi, he, hn, hw, bind, Except.bind, pure, Except.pure] at h
       | ok ws =>
-        simp only [hi, he, hn, hw, hnul, bind, Except.bind, pure, Except.pure, Bool.false_eq_true, ↓reduceIte] at h
-        have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
-        rw [h8] at h
         obtain ⟨hx, hok⟩ := scatterWords_spec (raw .i64 m ix) (raw .i64 m e) n.toNat fill
         obtain ⟨hs, hfix, hlast⟩ := hok ws hw
         have hall := hx.1 ⟨ws, hw⟩
-        have ho := (Except.ok.inj h).symm
-        -- the answer reads back the words it packs
-        obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
-        rw [Array.foldl_toList] at hxs hxg
-        simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
-        have hraw : ws' = ws := by
-          show raw .i64 n o = ws
-          have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
-          rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega)]
-          refine Array.ext (by simp [hs]) fun i h1 _ => ?_
-          simp only [Array.getElem_map, Array.getElem_range]
-          rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]
-        rw [hraw]
-        refine ⟨ho, hisz, hesz, hs, fun k hk => hall k (by omega), fun j hj hn => hfix j hj
-          fun k hk => hn k (by omega), fun k hk hl => hlast k (by omega) fun k' a b hc => hl k' a (by omega) ?_⟩
-        exact UInt64.toNat_inj.mp hc
+        -- the flags scatter by the same indices, so they answer too
+        obtain ⟨hxf, hokf⟩ := scatterWords_spec (raw .i64 m ix) (foRNuls m e) n.toNat 0
+        obtain ⟨fl, hf⟩ := hxf.2 hall
+        obtain ⟨hfs, hffix, hflast⟩ := hokf fl hf
+        have h8 : USize.ofNat32 8 (by decide) = 8 := USize.toNat_inj.mp (by simp)
+        simp only [hi, he, hn, hw, bind, Except.bind, h8] at h
+        have ho : o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+            (if hasNul e then nulMap fl else .empty)).1
+            (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+            (if hasNul e then nulMap fl else .empty)).2 := by
+          cases hN : hasNul e <;>
+            simp [hN, hf, Functor.map, Except.map, pure, Except.pure] at h ⊢ <;> exact h.symm
+        refine ⟨ws, fl, ho, hisz, hesz, hs, hfs, fun k hk => hall k (by omega),
+          fun j hj hn => ⟨hfix j hj fun k hk => hn k (by omega), hffix j hj fun k hk => hn k (by omega)⟩,
+          fun k hk hl => ⟨hlast k (by omega) fun k' a b hc => hl k' a (by omega) (UInt64.toNat_inj.mp hc),
+            hflast k (by omega) fun k' a b hc => hl k' a (by omega) (UInt64.toNat_inj.mp hc)⟩⟩
+
+/-- `kscatter_ok` where `e` holds no null: the answer is `ws` encoded alone, so `Enc.raw` reads `ws` back. -/
+theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : Enc)
+    (hnul : hasNul e = false) (h : kscatter .last m ix e n fill = .ok o) :
+    let is := raw .i64 m ix
+    let es := raw .i64 m e
+    let ws := raw .i64 n o
+    o = .foR (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).1
+      (Coc.encode 8 (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)).2 ∧
+      is.size = m.toNat ∧ es.size = m.toNat ∧ ws.size = n.toNat ∧
+      (∀ k < m.toNat, (is[k]?.getD 0).toNat < n.toNat) ∧
+      (∀ j < n.toNat, (∀ k < m.toNat, (is[k]?.getD 0).toNat ≠ j) → ws[j]? = some fill) ∧
+      ∀ k < m.toNat, (∀ k', k < k' → k' < m.toNat → is[k']?.getD 0 ≠ is[k]?.getD 0) →
+        ws[(is[k]?.getD 0).toNat]? = some (es[k]?.getD 0) := by
+  intro is es ws'
+  obtain ⟨ws, fl, ho, hisz, hesz, hs, -, hall, hfix, hlast⟩ := kscatter_ok m ix e n fill o h
+  simp only [hnul, Bool.false_eq_true, ↓reduceIte] at ho
+  -- the answer reads back the words it packs
+  obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
+  rw [Array.foldl_toList] at hxs hxg
+  simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
+  have hraw : ws' = ws := by
+    show raw .i64 n o = ws
+    have h88 : (8 : USize) = (8 : Nat).toUSize := rfl
+    rw [ho, Coc.encode, h88, raw_encodeAt .i64 8 rfl (by decide) Column.lgEnc (by decide) _ n (by rw [hxs]; omega)]
+    refine Array.ext (by simp [hs]) fun i h1 _ => ?_
+    simp only [Array.getElem_map, Array.getElem_range]
+    rw [Nat.mul_comm, hxg i (by simp at h1; omega), ofNat_toNat_mod64, Array.getElem_toList]
+  rw [hraw]
+  exact ⟨ho, hisz, hesz, hs, hall, fun j hj hn => (hfix j hj hn).1, fun k hk hl => (hlast k hk hl).1⟩
 
 /-- Law S1 (PLAN 6.13): scattering to the positions `ix = pos` at `m = n` writes every cell once, at its own row, so the
-answer reads back as `e`: the identity is a permutation, and a caller holding `pos` skips the call. -/
-theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (hnul : hasNul e = false)
-    (h : kscatter .last n .pos e n fill = .ok o) :
-    raw .i64 n o = raw .i64 n e := by
-  obtain ⟨-, his, hes, hws, -, -, hlast⟩ := raw_scatter n .pos e n fill o hnul h
+answer is `e`'s words and null flags encoded again: the identity is a permutation, and a caller holding `pos` skips the
+call. -/
+theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (h : kscatter .last n .pos e n fill = .ok o) :
+    o = .foR (Coc.encode 8 ((raw .i64 n e).foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+        (if hasNul e then nulMap (foRNuls n e) else .empty)).1
+      (Coc.encode 8 ((raw .i64 n e).foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+        (if hasNul e then nulMap (foRNuls n e) else .empty)).2 := by
+  obtain ⟨ws, fl, ho, -, hes, hws, hfl, -, -, hlast⟩ := kscatter_ok n .pos e n fill o h
   have hm : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
   -- row `k` of `pos` is `k`
   have hrow : ∀ k < n.toNat, ((raw .i64 n (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
     simp [raw, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
-  apply Array.ext (by rw [hws, hes])
-  intro j h1 h2
-  have hj : j < n.toNat := by omega
-  have hw := hlast j hj fun k' _ hk' hc => by have := congrArg UInt64.toNat hc; rw [hrow k' hk', hrow j hj] at this; omega
-  rw [hrow j hj, Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some] at hw
-  exact Option.some.inj hw
+  have hl : ∀ j < n.toNat, (∀ k', j < k' → k' < n.toNat →
+      (raw .i64 n (.pos : Enc))[k']?.getD 0 ≠ (raw .i64 n (.pos : Enc))[j]?.getD 0) := fun j hj k' _ hk' hc => by
+    have := congrArg UInt64.toNat hc; rw [hrow k' hk', hrow j hj] at this; omega
+  have hw : ws = raw .i64 n e := Array.ext (by rw [hws, hes]) fun j h1 h2 => by
+    have := (hlast j (by omega) (hl j (by omega))).1
+    rwa [hrow j (by omega), Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some,
+      Option.some.injEq] at this
+  have hf : fl = foRNuls n e := Array.ext (by rw [hfl, foRNuls_size]) fun j h1 h2 => by
+    have := (hlast j (by omega) (hl j (by omega))).2
+    rwa [hrow j (by omega), Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some,
+      Option.some.injEq] at this
+  rw [ho, hw, hf]
 
 /-- A fold whose every successful `step` names a cell `ix k` below `n` and combines `es k` into it by `f`: a successful
 run over the rows `l` from `o` of `n` cells keeps the size, and cell `j` ends as `f` folded over `es k` for the rows `k`
