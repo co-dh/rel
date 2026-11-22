@@ -1120,12 +1120,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （例：`D` 3 行、`r` 空，组 0 是 `[1,1)`，`hi = 1 > 0`），改为 `nil D`；`lamOf_canon` 多给 `U.WF`。未做：`List`
     （`cells` 调用处，用 lohi3b 的 `expand_spec`）、`thin`/`thinL`/`merge`/`loop`/`foldRounds`、`Arith`、`Cast`、
     `Where`，以及 `Rel.Wf` 的切换本身。
-  - 🔄 `List` 与 `pack` 的保持引理（分支 `lohi4a`）：`Vals.pack_wf`/`Tab.pack_wf` 已证，`fixOn`/`mu`/`nu` 去掉
+  - ✅ `List` 与 `pack` 的保持引理（分支 `lohi4a`）：`Vals.pack_wf`/`Tab.pack_wf` 已证，`fixOn`/`mu`/`nu` 去掉
     `hpack` 前提；`cat`/`snoc`/`cons`/`zip`/`uncons`/`unsnoc`/`uncat`/`prefix`/`suffix`/`inits`/`tails`/`sum`
     已证（`Rel/RepWF.lean`），`positions` 并入 `positions_spec`（`Rel/RepWhere.lean`）。共用引理在
     `Rel/RepTabDiv.lean`：`Vals.cells_expand_wf`（`Vals.cells` 铺在自身宽度的 EXPAND 上，每宽 `≤ c`、`n·c < 2^63`）、
     `cellSpan_width`、`cell_wf_nat`、`cellSpan_start_le`（例：`uncat` 空格 `[SN, SN)` 要 `SN ≤ m`，由输入 WF 给出）。
-    未做：`map`/`flatten`/`filter`/`takewhile`（走 `foldRounds`，等 lohi4b 的 `foldRounds_wf`）。
+  - ✅ 轮次、`thin`、值动词、`$`（分支 `lohi4b`，`Rel/RepWFOps.lean`）：`foldRounds_wf`（所有折叠共用）、
+    `peelL`/`peelR`、`loop`、`merge`、`thinL`、`thin`、`arith`、`succ`、`cast`、`floatOp` 已证。合入 lohi4a 后
+    `hpack` 换成 `Tab.pack_wf`，`ListWF` 删去、直接用 `cat_wf` 等；lohi4b 的 `positions_wf` 与 `positions_spec`
+    重复，删去（连同只为它写的 `expand_span_lt`、`sum_countP_group`、`eval_ne`）。`map`/`flatten`/`filter`/
+    `takewhile` 在 `foldRounds_wf` 上证完（`map` 的单趟分支用 `Vals.cells_expand_wf`）。不再有 WF 前提。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
