@@ -731,7 +731,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   共用一个 `for_view`（8196e68）；编码器选宽度提速，同一 plan（e340c19，`for_meta` 70% → 7–11%，`kgatherp` 4–8×）；
   Sink 每块只调一次 producer（2b042fd，约 2%）。之后合并、待 make check：`kgather` 在 #idx ≥ #src 且源列非 flat 时整列
   解码一次（860961e，ts −16–20%，xn −27–29%，sz 不变；owner 交我决定）；scan 浮点 NaN 规则（131f437，release 向量化交换
-  操作数，取第一个 NaN 并置 quiet 位）。未做：scatter 写仍两遍（`encode_scatter`）；scatter exactly-once 检查随 6.13。
+  操作数，取第一个 NaN 并置 quiet 位）。✅ scatter 一遍（scatter-once）：`encode_scatter` 已在 260e2d6
+  作为死代码删除，答案经 `Sink` 每块写一次；剩下的两遍在输入：pass 1 解码整列 `ix` 只为查越界、数每块行数、判升序，
+  写时再解码一次。现在 `ix` 的 metadata（`base`/`maxv`）若块间有序，`scatter::ordered` 按 metadata 二分找每个答案块的
+  `ix` 块、块内二分切行，每个答案块自己验它切的块升序且首尾等于 metadata（c0554c0 只让含块最小下标的答案块验，并行时别的答案块在未验的乱序块上二分切行，
+  BitsTest 越界 panic，已在 master 回退），op 错误与越界在同一遍里记下取最小行；验不过回到原路径（V 不变）。
+  bench `scatter::tests::bench`（2^24 格、2^23 行、`last`）：升序 47–53 → 29–32 ms，乱序不变（72–92 ms，噪声）。
+  scatter exactly-once 检查随 6.13。
   原条目：迁移使用者，按 6.0 的表每组一步；同时让 `scan`/`scatter`/`gather`/`asc`/`distinct` 直接在 foR 块上计算，
   去掉 `foRWords` 解码与 `wordsFoR` 重编码（CLAUDE.md 规则：解码需 owner 批准）。vortex 1M 复测：relk 多数格输给 q，
   主因就是这层解码/编码；`asc` 的 kern 本身也慢（38 ms 对 q 6 ms）。分析 `/data/tmp/p610-blocks.md`。
