@@ -282,11 +282,6 @@ inside an `Int64` at `Column.blk` elements, and what leaves room to shift a whol
 constant. `rust/src/coc.rs`'s `ALP_P53`. -/
 def alpP53 : Float := 9007199254740992.0
 
-/-- q's in-band sentinels — `0n`, `0w` and `-0w` — are the patterns whose exponent field is all
-ones. Tested on the raw bits and before any decimal test, so that a round trip returns the same NaN
-and not merely some NaN. `rust/src/coc.rs`'s `COC_SENT` at each width. -/
-def alpSentinel (f32 : Bool) (x : UInt64) : Bool :=
-  if f32 then (x >>> 23) &&& 0xff == 0xff else (x >>> 52) &&& 0x7ff == 0x7ff
 
 /-- The element as a `Float`. A four-byte element widens exactly and order-preservingly, which is
 why the whole layer is type-erased into `Float` for the reason the integral one is type-erased into

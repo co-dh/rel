@@ -71,7 +71,6 @@ def opt (x : Arr t n) (i : Fin n.toNat) : Option (El t) :=
 /-- The elements in position order, for proofs only. -/
 def toList (x : Arr t n) : List (El t) := List.ofFn x.get
 
-theorem length_toList (x : Arr t n) : x.toList.length = n.toNat := List.length_ofFn
 
 -- Kept with no caller: the specification of `Arr` as a `List`, `Arr` the implementation, `List` for proofs.
 
