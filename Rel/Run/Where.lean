@@ -28,9 +28,11 @@ def positions {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (T
     let v ← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f
     let D ← P.dom
     -- `index` answers `D.n` exactly where the element is no key of `D`: tested by `≠`, no signed compare
-    let b ← colMap .ne T (← index D.key v) (← colConst T D.n.toUInt64)
+    let ix ← index D.key v
+    let b ← colMap .first T ix ix .i64 .i64 [] [(.ne, D.n.toUInt64)]
     let (K, sel) ← whereCol T b
-    let pay ← colArr .add K (← kgather K sel T u) (← colConst K 0)
+    let uK ← kgather K sel T u
+    let pay ← colArr .first K uK uK
     canon ⟨n, ⟨m, lo, hi, f⟩, ← Vals.cells n (← kscatter .add T G b n 0) (pay : Vals .long K)⟩
 
 end Tab

@@ -91,18 +91,17 @@ def sumTail (what : String) (u : QAtomicType) (n : USize) (seg v : Enc) : Except
   match u with
   | .i64 =>
     let W := (← kscan .add false .i64 .i64 n seg [z, v]).1
-    let sv ← colMap .lt n v z
-    let ovf ← colMap .and n (← colMap .eq n sv (← colMap .lt n (← colMap .sub n W v) z)) (← colMap .ne n sv
-      (← colMap .lt n W z))
-    let nul ← colConst n 0x8000000000000000
-    let bad ← colMap .or n ovf (← colMap .or n (← colMap .eq n W nul) (← colMap .eq n v nul))
-    pure (← colArr .add n W z, bad)
+    let sv ← colMap .first n v v .i64 .i64 [] [(.gt, 0)]
+    let ovf ← colMap .and n (← colMap .eq n sv (← colMap .sub n W v .i64 .i64 [] [(.gt, 0)])) (← colMap .ne n sv
+      (← colMap .first n W W .i64 .i64 [] [(.gt, 0)]))
+    let bad ← colMap .or n ovf (← colMap .or n (← colMap .first n W W .i64 .i64 [] [(.eq, 0x8000000000000000)])
+      (← colMap .first n v v .i64 .i64 [] [(.eq, 0x8000000000000000)]))
+    pure (← colArr .first n W W, bad)
   | .f64 =>
     let W := (← kscan .fadd false .i64 .i64 n seg [z, v]).1
     let W' ← colArr (.fto .f64) n W W .f64
-    let nul ← colConst n 0x8000000000000000
     let ne ← colMap .ne n W'.enc W
-    let nan ← colMap .eq n W'.enc nul
+    let nan ← colMap .first n W'.enc W'.enc .i64 .i64 [] [(.eq, 0x8000000000000000)]
     let (k, _) ← whereCol n (← colMap .and n ne (← colMap .not n nan nan))
     if k ≠ 0 then throw s!"{what}: an f64 prefix sum is -0, which no sum of canonical words from +0 makes"
     pure (W', ← colMap .or n ne nan)
@@ -119,14 +118,14 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
   let n := C.n
   let (m, _, f) ← kseen n (← Vals.cols (A := .prod K (.atom t)) C.key)
   if m ≠ n.toNat then
-    let firsts ← kscatter .last m.toUSize f (← colConst m.toUSize 1) n 0
-    let (d, sel) ← whereCol n (← colMap .eq n firsts (← colConst n 0))
+    let firsts ← seenSeg n f m.toUSize
+    let (d, sel) ← whereCol n (← colMap .first n firsts firsts .i64 .i64 [] [(.eq, 0)])
     let p ← Vals.gather (A := .atom t) d sel C.key.2
     let at0 := if h : 0 < d.toNat then s!"{t.num (Vals.row (A := .atom t) p ⟨0, h⟩)}" else "?"
     throw s!"sums: x is not simple: two values at the position {at0} of one key ({n.toNat - m} doubled in all); \
       sums folds one value per (key, position)"
   let (gk, _, fk) ← kseen n (← Vals.cols C.key.1)
-  let seg ← kscatter .last gk.toUSize fk (← colConst gk.toUSize 1) n 0
+  let seg ← seenSeg n fk gk.toUSize
   let (W, bad) ← sumTail "sums" u n seg (Arr.enc (t := u) C.val)
   let badR := (← kscan .or false .i64 .i64 n seg [← colConst n 0, bad]).1
   keep ⟨n, C.key, W⟩ (← colMap .not n badR badR)

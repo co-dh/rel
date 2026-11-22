@@ -20,7 +20,7 @@ open Rel.Ext Rel.Kernel Rel.Verify
 (`colPrefix .add`, the layout `expand` places its groups by), `lo = hi - w`. -/
 def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Except String (Vals (.arr B) n) := do
   let P ← colPrefix .add n w
-  pure ⟨T, ← colArr .sub n P w, ← colArr .add n P (← colConst n 0), pay⟩
+  pure ⟨T, ← colArr .sub n P w, ← colArr .first n P P, pay⟩
 
 /-- `x` with every array payload cut to the elements its cells read, where at most half of it is read (`2 · T ≤ m`,
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads
@@ -49,7 +49,7 @@ def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do
 
 /-- **`τ` on the rows of `x`**: row `i` the one-element cell `[i, i + 1)` over `x` itself. -/
 def Vals.tau {B : Obj} {n : USize} (x : Vals B n) : Except String (Vals (.arr B) n) := do
-  pure ⟨n, ← Arr.pos n, ← colArr .add n .pos (← colConst n 1), x⟩
+  pure ⟨n, ← Arr.pos n, ← colArr .first n .pos .pos .i64 .i64 [] [(.add, 1)], x⟩
 
 /-- **Row `i` the cell `X[i] ++ Y[i]`**: the payloads `f₁`, `f₂` joined (`Vals.concat`, `f₂` from `m₁` on), the
 widths `w₁ + w₂` EXPANDed into `(G, u)`, and output element `u` of cell `G` read at `s₁[G] + u` where `u < w₁`, else
@@ -66,7 +66,7 @@ def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals
     let w ← colMap .add n w₁ (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w
     let a ← colMap .add T (← kgather T G n lo₁.enc) u
-    let d ← colMap .sub n (← colMap .add n lo₂.enc (← colConst n m₁.toUInt64)) w₁
+    let d ← colMap .sub n (← colMap .first n lo₂.enc lo₂.enc .i64 .i64 [] [(.add, m₁.toUInt64)]) w₁
     let b ← colMap .add T (← kgather T G n d) u
     let c ← colMap .lt T u (← kgather T G n w₁)
     Vals.cells n w (← Vals.gather T (← colMap .add T b (← colMap .mul T c (← colMap .sub T a b))) F)
@@ -113,7 +113,7 @@ def uncons {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.pro
     let (M, sel) ← whereCol n (← colMap .lt n lo.enc hi.enc)
     let sM ← Arr.gather M sel lo
     canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
-      (← Vals.gather M sM.enc f, ⟨m, ← colArr .add M sM.enc (← colConst M 1), ← Arr.gather M sel hi, f⟩)⟩
+      (← Vals.gather M sM.enc f, ⟨m, ← colArr .first M sM.enc sM.enc .i64 .i64 [] [(.add, 1)], ← Arr.gather M sel hi, f⟩)⟩
 
 /-- **`snoc°` on the cells `X`**: each non-empty cell `[s, e)` to the slice `[s, e - 1)` and its last element (the
 payload at `e - 1`). -/
@@ -122,7 +122,8 @@ def unsnoc {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.pro
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat + m.toNat + 1 then throw s!"unsnoc: {n} cells over {m} elements past 2^63"
     let (M, sel) ← whereCol n (← colMap .lt n lo.enc hi.enc)
-    let l ← colArr .sub M (← Arr.gather M sel hi).enc (← colConst M 1)
+    let hM ← Arr.gather M sel hi
+    let l ← colArr .first M hM.enc hM.enc .i64 .i64 [] [(.add, 0 - 1)]
     canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
       (⟨m, ← Arr.gather M sel lo, l, f⟩, ← Vals.gather M l.enc f)⟩
 
@@ -133,7 +134,7 @@ def uncat {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.prod
   | ⟨m, lo, hi, f⟩ => do
     if 2 ^ 63 ≤ n.toNat * (m.toNat + 1) + n.toNat + m.toNat + 1 then
       throw s!"uncat: {n} cells over {m} elements past 2^63"
-    let (T, G, u) ← expand n (← colMap .add n (← colMap .sub n hi.enc lo.enc) (← colConst n 1))
+    let (T, G, u) ← expand n (← colMap .sub n hi.enc lo.enc .i64 .i64 [] [(.add, 1)])
     let sG ← Arr.gather T G lo
     let mid ← colArr .add T sG.enc u
     canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, (⟨m, sG, mid, f⟩, ⟨m, mid, ← Arr.gather T G hi, f⟩)⟩
@@ -175,7 +176,7 @@ def sumOn {u : QAtomicType} {n : USize} (X : Vals (.arr (.atom u)) n) :
     let w ← colMap .sub n hi.enc lo.enc
     let (T, G, i) ← expand n w
     let v ← kgather T (← colMap .add T (← kgather T G n lo.enc) i) m (Arr.enc (t := u) f)
-    let seg ← colMap .eq T i (← colConst T 0)
+    let seg ← colMap .first T i i .i64 .i64 [] [(.eq, 0)]
     let (W, bad) ← sumTail "sum" u T seg v
     let badC ← kscatter .or T G bad n 0
     let L ← kscatter .last T G W.enc n 0
