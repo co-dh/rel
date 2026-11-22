@@ -95,9 +95,10 @@ abbrev Cols := List Col
 def sumB {α : Type} (what : String) : Bld α :=
   throw s!"{what} on a sum side (tag, idx, two payloads): no plan recipe reads a sum yet"
 
-/-- The number of `Col`s of a side of `A`: a product's two sides', else one. -/
+/-- The number of `Col`s of a side of `A`: a product's two sides', none for `1` (`objCols`), else one. -/
 def objWidth : Obj → Nat
   | .prod a b => objWidth a + objWidth b
+  | .one => 0
   | _ => 1
 
 /-- A table in registers: its row count (a `size`), its key's and value's columns. -/
@@ -465,6 +466,7 @@ partial def repath (A : Obj) (pre : String) (cs : Cols) : Bld Cols := match A, c
   | .prod a b, cs => return (← repath a (pre ++ ".1") (cs.take (objWidth a))) ++
       (← repath b (pre ++ ".2") (cs.drop (objWidth a)))
   | .arr b, [.arr _ m lo hi f] => return [.arr pre m lo hi (← repath b (pre ++ ".e") f)]
+  | .one, [] => pure []
   | .sum .., _ => sumB "a path"
   | _, cs => throw s!"{cs.length} columns where a side of {repr A} is read"
 
@@ -1137,7 +1139,7 @@ def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
-    on its keys (`GenK.onKeys`). Any other row is refused, naming it. -/
+    on its keys (`GenK.onKeys`), `foldI` one fold per (key, array) in demand. Any other row is refused, naming it. -/
 def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld TabB := do
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
@@ -1172,6 +1174,26 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
       let M ← compB (← piB I a false n X) (← convB (← piB a B true R.n R.val))
       compB (← interB L M) (← piB a B false R.n R.val)
     | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair, or given {xs.length} relations, not one"
+  -- `GenK.foldI`: one left fold on `I × V` from `(i, b)`, each round's step met with `⟨π₁, S ≫ π₂⟩`
+  else if c == ``GenK.foldI then match A, xs with
+    | .prod I (.arr E), [e, S] => do
+      let (n, X) ← known r.sym D.dom
+      -- one plan function (`funT`), as `foldB`
+      funT [⟨n, X, []⟩] fun
+      | [Xt] => do
+        let K := Obj.prod I (.arr E)
+        let i ← piB I (.arr E) true Xt.n Xt.key
+        let rest ← piB I (.arr E) false Xt.n Xt.key
+        let es ← compTB i e true
+        let step (P el : TabB) : Bld TabB := do
+          let s ← compTB (← pairB K (.prod I B) E P el) S true
+          interB s (← pairB K I B i (← projT I B false s))
+        let (m, _, _, _) ← arrCol "foldI" rest.val
+        let out ← foldRoundsB (peelB E true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) rest
+          (← pairB K I B i (← projT B B false es)) (← zeroB K (.prod I B))
+        projT I B false out
+      | _ => throw "foldI: not one table"
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair of a key and an array, or given {xs.length} relations, not two"
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
 /-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
