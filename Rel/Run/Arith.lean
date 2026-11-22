@@ -126,4 +126,41 @@ def succ (D : Tab K .long) (U : {n : USize} → Vals .long n → Except String (
 
 end Tab
 
+/-- The value verbs, each a row of `prims` under its q name with its `Ew` code (`Tab.arithOp`), on pairs of one
+    number atom and no universe (§3.5); `max` `min` are the fused rows of their definition `τ(≤)π₂ ∪ τ(>)π₁` at a
+    value atom. -/
+def arithOps : List (String × UInt8) :=
+  [("plus", Kernel.Ew.add), ("minus", Kernel.Ew.sub), ("times", Kernel.Ew.mul), ("div", Kernel.Ew.idiv),
+   ("mod", Kernel.Ew.imod), ("divide", Kernel.Ew.divide), ("max", Kernel.Ew.greater), ("min", Kernel.Ew.lesser)]
+
+/-- The orders as tests on pairs, each a row of `prims` (`Tab.cmpOp`): `lt` is `<` (`ordOp true`), `le` is `≤`. `le`
+    is a row, not `lt ∪ 𝟙`: at a float atom `-0.0 ≤ +0.0` holds, `-0.0 < +0.0` does not (`Rel.Lang.AtomOrderTest`). -/
+def cmpOps : List (String × Bool) := [("lt", true), ("le", false)]
+
+namespace Tab
+
+/-- **The row `s` of `arithOps` on the pairs `X`** (`rowDens`: `stepOn`): `stepColsAt` of the two components, the
+    rows it keeps with their answers (`Tab.keep`, no `canon`). The row is the first argument so `kernRows` names one
+    constant for every name, as `Tab.floatOp`. -/
+def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match arithOps.lookup s, A, B, X with
+  | some k, .prod (.atom t) (.atom t'), .atom u, X =>
+    if t = u ∧ t' = u then do
+      let (w, b) ← stepColsAt u k n X.1.enc X.2.enc
+      Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ b
+    else .error s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
+  | some _, _, _, _ => .error s!"{s} runs from a pair of one number object to it"
+  | none, _, _, _ => .error s!"{s}: no value verb"
+
+/-- **The row `succ` on the values `X`** (`rowDens`: `succOn`): each `u` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping
+    `u + 1`, the null to itself) by two `colMap`s, `Tab.succ`'s step without its universe. -/
+def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match A, B, X with
+  | .atom .i64, .atom .i64, X => do
+    let s ← colArr .add n X.enc (← colMap .first n X.enc X.enc .i64 .i64 [] [(.ne, nulWord)])
+    pure ⟨n, X, s⟩
+  | _, _, _ => .error "succ runs from an object of i64 to it"
+
+end Tab
+
 end Rel
