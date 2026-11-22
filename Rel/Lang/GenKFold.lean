@@ -28,13 +28,14 @@ theorem Tab.foldRounds_holds {K E V : Obj} {peel : Tab K (.arr E) → Except Str
     (hpeel : ∀ rest el rest', peel rest = .ok (el, rest') →
       (∀ k x, el.Holds k x ↔ ∃ r r', rest.Holds k r ∧ Pe r x r') ∧
       ∀ k r', rest'.Holds k r' ↔ ∃ r x, rest.Holds k r ∧ Pe r x r')
-    (hpeelw : ∀ r p, peel r = .ok p → r.WF → p.1.WF ∧ p.2.WF)
-    (hstepw : ∀ P el t, step P el = .ok t → P.WF → el.WF → t.WF)
-    (hstep : ∀ P el T, step P el = .ok T → P.WF → el.WF → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
+    (Wt : ∀ {A B : Obj}, Tab A B → Prop) (hpeelw : ∀ r p, peel r = .ok p → Wt r → Wt p.1 ∧ Wt p.2)
+    (hstepw : ∀ P el t, step P el = .ok t → Wt P → Wt el → Wt t)
+    (hpackw : ∀ R R' : Tab K V, R.pack = .ok R' → Wt R → Wt R')
+    (hstep : ∀ P el T, step P el = .ok T → Wt P → Wt el → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
       (∀ k v, P.Holds k v → ∃ r, ((∃ x, el.Holds k x) ↔ ∃ x r', Pe r x r') ∧ ∀ v', P.Holds k v' → I k r v') →
       ∀ k v', T.Holds k v' ↔ ∃ v x, P.Holds k v ∧ el.Holds k x ∧ St k v x v')
     (hpack : ∀ R R' : Tab K V, R.pack = .ok R' → ∀ a b, R'.Holds a b ↔ R.Holds a b) :
-    ∀ f rest P out res, Tab.foldRounds peel step f rest P out = .ok res → rest.WF → P.WF →
+    ∀ f rest P out res, Tab.foldRounds peel step f rest P out = .ok res → Wt rest → Wt P →
       (∀ k r r', rest.Holds k r → rest.Holds k r' → r = r') → (∀ k v, P.Holds k v → ∃ r, rest.Holds k r ∧ I k r v) →
       ∀ k w, res.Holds k w ↔ out.Holds k w ∨ ∃ r v, rest.Holds k r ∧ P.Holds k v ∧ W k r v w := by
   intro f
@@ -88,7 +89,7 @@ theorem Tab.foldRounds_holds {K E V : Obj} {peel : Tab K (.arr E) → Except Str
       obtain ⟨r₀, hr₀, hi⟩ := hsub k v₀ hv₀
       rw [hf k _ _ hr₀ hr] at hi
       exact ⟨r', (hrest' k r').2 ⟨r, x, hr, hp⟩, hI k r x r' v₀ v hi hp hs⟩
-    rw [ih _ _ _ _ h wr' (Tab.pack_wf hP' (hstepw _ _ _ hs wP wel)) hf' hsub' k w, ho, or_assoc]
+    rw [ih _ _ _ _ h wr' (hpackw _ _ hP' (hstepw _ _ _ hs wP wel)) hf' hsub' k w, ho, or_assoc]
     refine or_congr Iff.rfl ⟨?_, ?_⟩
     · rintro (⟨hw, hn⟩ | ⟨r', v', hr', hv', hW'⟩)
       · obtain ⟨r, hr, -⟩ := hsub k w hw
@@ -210,11 +211,13 @@ theorem foldDen_fibre {I E V : Obj} (TS : Den (.prod (.prod I V) E) (.prod I V))
 theorem Tab.foldRoundsL_holds {K E V : Obj} {step : Tab K V → Tab K E → Except String (Tab K V)}
     (St : K.El → V.El → E.El → V.El → Prop) (I : K.El → (Obj.arr E).El → V.El → Prop)
     (hI : ∀ k x r v v', I k (x :: r) v → St k v x v' → I k r v')
-    (hstepw : ∀ P el t, step P el = .ok t → P.WF → el.WF → t.WF)
-    (hstep : ∀ P el T, step P el = .ok T → P.WF → el.WF → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
+    (Wt : ∀ {A B : Obj}, Tab A B → Prop) (hpeelw : ∀ (r : Tab K (.arr E)) p, Tab.peelL r = .ok p → Wt r → Wt p.1 ∧ Wt p.2)
+    (hpackw : ∀ R R' : Tab K V, R.pack = .ok R' → Wt R → Wt R')
+    (hstepw : ∀ P el t, step P el = .ok t → Wt P → Wt el → Wt t)
+    (hstep : ∀ P el T, step P el = .ok T → Wt P → Wt el → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
       (∀ k v, P.Holds k v → ∃ r, ((∃ x, el.Holds k x) ↔ r ≠ []) ∧ ∀ v', P.Holds k v' → I k r v') →
       ∀ k v', T.Holds k v' ↔ ∃ v x, P.Holds k v ∧ el.Holds k x ∧ St k v x v') :
-    ∀ f rest P out res, Tab.foldRounds Tab.peelL step f rest P out = .ok res → rest.WF → P.WF →
+    ∀ f rest P out res, Tab.foldRounds Tab.peelL step f rest P out = .ok res → Wt rest → Wt P →
       (∀ k r r', rest.Holds k r → rest.Holds k r' → r = r') → (∀ k v, P.Holds k v → ∃ r, rest.Holds k r ∧ I k r v) →
       ∀ k w, res.Holds k w ↔ out.Holds k w ∨
         ∃ r v, rest.Holds k r ∧ P.Holds k v ∧ foldDen (fun _ b => b = v) (fun q v' => St k q.1 q.2 v') r w :=
@@ -229,7 +232,7 @@ theorem Tab.foldRoundsL_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
       exact (foldDen_cons _ _ x r' w).trans ⟨fun ⟨_, v', ⟨_, h0⟩, hs, h⟩ => ⟨v', h0 ▸ hs, h⟩,
         fun ⟨v', hs, h⟩ => ⟨v, v', ⟨v, rfl⟩, hs, h⟩⟩)
     (fun k _ x r' v v' hi (hp : _ = x :: r') hs => hI k x r' v v' (hp ▸ hi) hs)
-    (fun _ _ _ hp => Tab.peelL_holds hp) (fun _ _ => Tab.peelL_wf) hstepw
+    (fun _ _ _ hp => Tab.peelL_holds hp) Wt hpeelw hstepw hpackw
     (fun P el T h wP wel hu hP => hstep P el T h wP wel hu fun k v hv => by
       obtain ⟨r, he, hall⟩ := hP k v hv
       refine ⟨r, he.trans ⟨fun ⟨x, r', hp⟩ => by rw [hp]; exact List.cons_ne_nil _ _, fun hne => ?_⟩, hall⟩
@@ -243,11 +246,13 @@ theorem Tab.foldRoundsL_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
 theorem Tab.foldRoundsR_holds {K E V : Obj} {step : Tab K V → Tab K E → Except String (Tab K V)}
     (St : K.El → V.El → E.El → V.El → Prop) (I : K.El → (Obj.arr E).El → V.El → Prop)
     (hI : ∀ k x r v v', I k (r ++ [x]) v → St k v x v' → I k r v')
-    (hstepw : ∀ P el t, step P el = .ok t → P.WF → el.WF → t.WF)
-    (hstep : ∀ P el T, step P el = .ok T → P.WF → el.WF → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
+    (Wt : ∀ {A B : Obj}, Tab A B → Prop) (hpeelw : ∀ (r : Tab K (.arr E)) p, Tab.peelR r = .ok p → Wt r → Wt p.1 ∧ Wt p.2)
+    (hpackw : ∀ R R' : Tab K V, R.pack = .ok R' → Wt R → Wt R')
+    (hstepw : ∀ P el t, step P el = .ok t → Wt P → Wt el → Wt t)
+    (hstep : ∀ P el T, step P el = .ok T → Wt P → Wt el → (∀ k x x', el.Holds k x → el.Holds k x' → x = x') →
       (∀ k v, P.Holds k v → ∃ r, ((∃ x, el.Holds k x) ↔ r ≠ []) ∧ ∀ v', P.Holds k v' → I k r v') →
       ∀ k v', T.Holds k v' ↔ ∃ v x, P.Holds k v ∧ el.Holds k x ∧ St k v x v') :
-    ∀ f rest P out res, Tab.foldRounds Tab.peelR step f rest P out = .ok res → rest.WF → P.WF →
+    ∀ f rest P out res, Tab.foldRounds Tab.peelR step f rest P out = .ok res → Wt rest → Wt P →
       (∀ k r r', rest.Holds k r → rest.Holds k r' → r = r') → (∀ k v, P.Holds k v → ∃ r, rest.Holds k r ∧ I k r v) →
       ∀ k w, res.Holds k w ↔ out.Holds k w ∨
         ∃ r v, rest.Holds k r ∧ P.Holds k v ∧ foldrDen (fun _ b => b = v) (fun q v' => St k q.2 q.1 v') r w :=
@@ -265,7 +270,7 @@ theorem Tab.foldRoundsR_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
       exact (foldrDen_snoc _ _ x r' w).trans ⟨fun ⟨_, v', ⟨_, h0⟩, hs, h⟩ => ⟨v', h0 ▸ hs, h⟩,
         fun ⟨v', hs, h⟩ => ⟨v, v', ⟨v, rfl⟩, hs, h⟩⟩)
     (fun k _ x r' v v' hi (hp : _ = r' ++ [x]) hs => hI k x r' v v' (hp ▸ hi) hs)
-    (fun _ _ _ hp => Tab.peelR_holds hp) (fun _ _ => Tab.peelR_wf) hstepw
+    (fun _ _ _ hp => Tab.peelR_holds hp) Wt hpeelw hstepw hpackw
     (fun P el T h wP wel hu hP => hstep P el T h wP wel hu fun k v hv => by
       obtain ⟨r, he, hall⟩ := hP k v hv
       refine ⟨r, he.trans ⟨fun ⟨x, r', hp⟩ => by rw [hp]; simp, fun hne => ?_⟩, hall⟩
@@ -318,7 +323,8 @@ theorem fold_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod V E) V} 
     have ee := (reps_iff _ _ _).1 (he {} Known.wf_empty) te hte
     have hX := (side_some hK xs).1 hx
     refine (Tab.foldRoundsL_holds (fun _ v x v' => TS (v, x) v')
-      (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun _ _ _ hT wP wel => pairStep_wf wS wP wel hT)
+      (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial)
+      @Tab.WF (fun _ _ => Tab.peelL_wf) (fun _ _ => Tab.pack_wf) (fun _ _ _ hT wP wel => pairStep_wf wS wP wel hT)
       (fun P el T hT wP wel _ _ k v' => (pairStep_holds hS wS wP wel hT k v')) _ _ _ _ _ h
       (Tab.idU_wf hr wX) (Tab.top_wf hP wX (we.runE Known.wf_empty hte).2)
       (fun k a b ha hb => ((Tab.idU_holds hr k a).1 ha).1.symm.trans ((Tab.idU_holds hr k b).1 hb).1)
@@ -345,7 +351,8 @@ theorem foldr_sound {E V : Obj} {d : Bool} {e : Rel V V} {S : Rel (.prod E V) V}
     have ee := (reps_iff _ _ _).1 (he {} Known.wf_empty) te hte
     have hX := (side_some hK xs).1 hx
     refine (Tab.foldRoundsR_holds (fun _ v x v' => TS (x, v) v')
-      (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun _ _ _ hT wP wel => pairStep_wf wS wel wP hT)
+      (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial)
+      @Tab.WF (fun _ _ => Tab.peelR_wf) (fun _ _ => Tab.pack_wf) (fun _ _ _ hT wP wel => pairStep_wf wS wel wP hT)
       (fun P el T hT wP wel _ _ k v' => (pairStep_holds hS wS wel wP hT k v').trans
         ⟨fun ⟨x, v, h1, h2, h3⟩ => ⟨v, x, h2, h1, h3⟩, fun ⟨v, x, h1, h2, h3⟩ => ⟨x, v, h2, h1, h3⟩⟩)
       _ _ _ _ _ h (Tab.idU_wf hr wX) (Tab.top_wf hP wX (we.runE Known.wf_empty hte).2)
@@ -386,7 +393,8 @@ theorem foldI_sound {I E V : Obj} {d d' : Bool} {e : Rel I (.prod V V)} {S : Rel
     have wes := (compT_wf (r' := .ok i) (fun _ h' => by cases h'; exact wi) we).runE Known.wf_empty hes
     have hip : ∀ k a, i.Holds k a ↔ (∃ j, X.row j = k) ∧ a = k.1 := fun k a => Tab.outl_holds hi k a
     have hout' := Tab.foldRoundsL_holds (fun k q x q' => TS (q, x) q' ∧ i.Holds k q'.1)
-      (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun P el T hT wP wel => by
+      (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial)
+      @Tab.WF (fun _ _ => Tab.peelL_wf) (fun _ _ => Tab.pack_wf) (fun P el T hT wP wel => by
         obtain ⟨s, hs, hT⟩ := bind_ok hT
         obtain ⟨o, ho, hT⟩ := bind_ok hT
         obtain ⟨c, hc, hT⟩ := bind_ok hT
@@ -465,8 +473,9 @@ theorem foldDen_iter {X Y : Obj} (TF : Den (.prod X Y) X) :
 /-- **`P ≫ loop(F)`** (`Tab.loop`), its step `F` given the pairs `D` a round meets acting as `D ≫ TF`: each `(c, ys)`
 of `P` to the left fold of `TF` along `ys` from `c` (`foldRoundsL_holds`, keyed by `ran P`). -/
 theorem Tab.loop_holds {K X Y : Obj} {F : Tab (.prod X Y) (.prod X Y) → Except String (Tab (.prod X Y) X)}
-    {TF : Den (.prod X Y) X} (hF : ∀ D T, F D = .ok T → ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x)
-    {P : Tab K (.prod X (.arr Y))} {res : Tab K X} (h : Tab.loop F P = .ok res) (k : K.El) (c : X.El) :
+    {TF : Den (.prod X Y) X} (hFw : ∀ D t, F D = .ok t → D.WF → t.WF)
+    (hF : ∀ D T, F D = .ok T → D.WF → ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x)
+    {P : Tab K (.prod X (.arr Y))} {res : Tab K X} (h : Tab.loop F P = .ok res) (wP : P.WF) (k : K.El) (c : X.El) :
     res.Holds k c ↔ ∃ p : (Obj.prod X (.arr Y)).El, P.Holds k p ∧ foldDen (fun _ b => b = p.1) TF p.2 c := by
   unfold Tab.loop at h
   obtain ⟨D, hD, h⟩ := GenK.bind_ok h
@@ -496,21 +505,32 @@ theorem Tab.loop_holds {K X Y : Obj} {F : Tab (.prod X Y) (.prod X Y) → Except
       have hb := (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩
       obtain ⟨i, -, hi⟩ := hb
       exact ⟨p, (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩, (Tab.outl_holds ho2 p p.1).2 ⟨⟨i, hi⟩, rfl⟩⟩
-  have hfr' := Tab.foldRoundsL_holds (fun _ v x v' => TF (v, x) v') (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT _ _ k v' => by
+  have wD := Tab.ran_wf hD wP
+  have hfr' := Tab.foldRoundsL_holds (fun _ v x v' => TF (v, x) v') (fun _ _ _ => True)
+    (fun _ _ _ _ _ _ _ => trivial)
+    @Tab.WF (fun _ _ => Tab.peelL_wf) (fun _ _ => Tab.pack_wf) (fun S el T hT wS wel => by
       obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
       obtain ⟨Dp, hDp, hT⟩ := GenK.bind_ok hT
       obtain ⟨T', hT', hT⟩ := GenK.bind_ok hT
+      have wp := Tab.pair_wf hp wS wel
+      exact Tab.comp_wf hT wp (hFw _ _ hT' (Tab.ran_wf hDp wp)))
+    (fun S el T hT wS wel _ _ k v' => by
+      obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
+      obtain ⟨Dp, hDp, hT⟩ := GenK.bind_ok hT
+      obtain ⟨T', hT', hT⟩ := GenK.bind_ok hT
+      have wDp := Tab.ran_wf hDp (Tab.pair_wf hp wS wel)
       rw [Tab.comp_holds hT]
       constructor
       · rintro ⟨q, hq, hTq⟩
-        obtain ⟨q', hd, hq'⟩ := (hF _ _ hT' q v').1 hTq
+        obtain ⟨q', hd, hq'⟩ := (hF _ _ hT' wDp q v').1 hTq
         obtain ⟨rfl, -⟩ := (Tab.ran_holds hDp q q').1 hd
         obtain ⟨h1, h2⟩ := (Tab.pair_holds hp k q).1 hq
         exact ⟨q.1, q.2, h1, h2, hq'⟩
       · rintro ⟨v, x, h1, h2, h3⟩
         have hq := (Tab.pair_holds hp k (v, x)).2 ⟨h1, h2⟩
-        exact ⟨(v, x), hq, (hF _ _ hT' _ v').2 ⟨(v, x), (Tab.ran_holds hDp _ _).2 ⟨rfl, k, hq⟩, h3⟩⟩)
-    _ _ _ _ _ hfr (fun p a b ha hb => ((hrest' p a).1 ha).2.trans ((hrest' p b).1 hb).2.symm)
+        exact ⟨(v, x), hq, (hF _ _ hT' wDp _ v').2 ⟨(v, x), (Tab.ran_holds hDp _ _).2 ⟨rfl, k, hq⟩, h3⟩⟩)
+    _ _ _ _ _ hfr (Tab.comp_wf hrest wD (Tab.outr_wf ho1 wD.2)) (Tab.comp_wf hP0 wD (Tab.outl_wf ho2 wD.2))
+    (fun p a b ha hb => ((hrest' p a).1 ha).2.trans ((hrest' p b).1 hb).2.symm)
     (fun p v hv => ⟨p.2, (hrest' p p.2).2 ⟨((hP0' p v).1 hv).1, rfl⟩, trivial⟩)
   rw [Tab.comp_holds h]
   refine exists_congr fun p => and_congr_right fun hp => ?_
@@ -554,7 +574,8 @@ theorem Tab.filter_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
         · exact ⟨v, v, ⟨v, rfl⟩, Or.inr ⟨hx, rfl⟩, (ih _ _).2 (by simp [List.filter_cons, hx])⟩
   have hfr := Tab.foldRoundsL_holds
     (fun _ v x v' => ((∃ y, P.Holds x y) ∧ v' = v ++ [x]) ∨ ((¬∃ y, P.Holds x y) ∧ v' = v))
-    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT hu _ k v' => by
+    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun {_ _} _ => True) (fun _ _ _ _ => ⟨trivial, trivial⟩)
+    (fun _ _ _ _ => trivial) (fun _ _ _ _ _ _ => trivial) (fun S el T hT _ _ hu _ k v' => by
       obtain ⟨kk, hk, hT⟩ := GenK.bind_ok hT
       obtain ⟨pk, hpk, hT⟩ := GenK.bind_ok hT
       obtain ⟨s, hs, hT⟩ := GenK.bind_ok hT
@@ -583,7 +604,7 @@ theorem Tab.filter_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) 
           obtain ⟨hb', hy⟩ := (hkk b).1 hb
           obtain rfl := hu k x b hx hb'
           exact hn hy)
-    _ _ _ _ _ h
+    _ _ _ _ _ h trivial trivial
     (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
     (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
@@ -638,7 +659,8 @@ theorem Tab.takewhile_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr 
       w = ws.foldr g v := fun ws v w => by simpa only [List.reverse_reverse] using hfold' ws.reverse v w
   have hfr := Tab.foldRoundsR_holds
     (fun _ v x v' => ((∃ y, P.Holds x y) ∧ v' = x :: v) ∨ ((¬∃ y, P.Holds x y) ∧ v' = []))
-    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT hu _ k v' => by
+    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun {_ _} _ => True) (fun _ _ _ _ => ⟨trivial, trivial⟩)
+    (fun _ _ _ _ => trivial) (fun _ _ _ _ _ _ => trivial) (fun S el T hT _ _ hu _ k v' => by
       obtain ⟨kk, hk, hT⟩ := GenK.bind_ok hT
       obtain ⟨pk, hpk, hT⟩ := GenK.bind_ok hT
       obtain ⟨c, hc, hT⟩ := GenK.bind_ok hT
@@ -673,7 +695,7 @@ theorem Tab.takewhile_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr 
           obtain ⟨hb', hy⟩ := (hkk b).1 hb
           obtain rfl := hu k x b hx hb'
           exact hn hy)
-    _ _ _ _ _ h
+    _ _ _ _ _ h trivial trivial
     (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
     (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
@@ -873,7 +895,8 @@ theorem Tab.mapFold_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr 
           refine ⟨v, v ++ [y], ⟨v, rfl⟩, ⟨y, hz 0 (by simp) (by simp), rfl⟩, (ih _ _).2 ⟨zs, by simp, by simpa using hl,
             fun t ht ht' => hz (t + 1) (by simpa using ht) (by simpa using ht')⟩⟩
   have hfr := Tab.foldRoundsL_holds (fun _ v x v' => ∃ y, R.Holds x y ∧ v' = v ++ [y])
-    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT _ _ k v' => by
+    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun {_ _} _ => True) (fun _ _ _ _ => ⟨trivial, trivial⟩)
+    (fun _ _ _ _ => trivial) (fun _ _ _ _ _ _ => trivial) (fun S el T hT _ _ _ _ k v' => by
       obtain ⟨c, hc, hT⟩ := GenK.bind_ok hT
       obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
       rw [Tab.snoc_holds hT]
@@ -884,7 +907,7 @@ theorem Tab.mapFold_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr 
         exact ⟨q.1, x, h1, hx, q.2, hR, rfl⟩
       · rintro ⟨v, x, h1, h2, y, hR, rfl⟩
         exact ⟨(v, y), (Tab.pair_holds hp k (v, y)).2 ⟨h1, (Tab.comp_holds hc k y).2 ⟨x, h2, hR⟩⟩, rfl⟩)
-    _ _ _ _ _ h
+    _ _ _ _ _ h trivial trivial
     (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
     (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
@@ -1028,13 +1051,14 @@ theorem Tab.flatten_holds {B : Obj} {n : USize} {X : Vals (.arr (.arr B)) n} {re
       · rintro ⟨_, v', ⟨_, rfl⟩, rfl, hw⟩; rw [ih] at hw; subst hw; simp
       · intro hw; subst hw; exact ⟨v, v ++ x, ⟨v, rfl⟩, rfl, (ih _ _).2 (by simp)⟩
   have hfr := Tab.foldRoundsL_holds (fun _ v x v' => v' = v ++ x)
-    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun S el T hT _ _ k v' => by
+    (fun _ _ _ => True) (fun _ _ _ _ _ _ _ => trivial) (fun {_ _} _ => True) (fun _ _ _ _ => ⟨trivial, trivial⟩)
+    (fun _ _ _ _ => trivial) (fun _ _ _ _ _ _ => trivial) (fun S el T hT _ _ _ _ k v' => by
       obtain ⟨p, hp, hT⟩ := GenK.bind_ok hT
       rw [Tab.cat_holds hT]
       constructor
       · rintro ⟨q, hq, rfl⟩; obtain ⟨h1, h2⟩ := (Tab.pair_holds hp k q).1 hq; exact ⟨q.1, q.2, h1, h2, rfl⟩
       · rintro ⟨v, x, h1, h2, rfl⟩; exact ⟨(v, x), (Tab.pair_holds hp k (v, x)).2 ⟨h1, h2⟩, rfl⟩)
-    _ _ _ _ _ h
+    _ _ _ _ _ h trivial trivial
     (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
     (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
