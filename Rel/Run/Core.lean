@@ -504,17 +504,29 @@ def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
     front to back. `Vals.row` at an `arr` side scans all `m` payload values per row, reading `lo i` and `hi i` at
     each, which over all rows is `n * m` reads; here a row is the payload's slice `[lo i, hi i)`, the clamp
     `Vals.row` applies, and a sum row indexes its side's rows by the clamped position. -/
+private def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) :=
+  match t, x with
+  | .general, x => Array.ofFn x.get
+  -- `Arr.get`'s atom with the block starts hoisted (`Enc.get`'s `starts`): `x.get` per element sums every block
+  -- before it, so a whole `.foR` column read that way is quadratic in its block count
+  | t, x =>
+    let s := match x.enc with | .foR m _ => Column.blockStarts m | _ => #[]
+    Array.ofFn (n := n.toNat) fun i => ((Enc.get t n x.enc i s).bind fun a => Carrier.of? t (.atom a)).getD default
+
 private def Vals.rowsImpl : {A : Obj} → {n : USize} → Vals A n → Array A.El
-  | .atom _, _, x => Array.ofFn x.get
+  | .atom _, _, x => Arr.rowsImpl x
   | .prod _ _, _, x => (Vals.rowsImpl x.1).zip (Vals.rowsImpl x.2)
   | .arr _, n, ⟨_, lo, hi, f⟩ =>
     let fs := Vals.rowsImpl f
-    Array.ofFn (n := n.toNat) fun i => (fs.extract (lo.get i).toInt.toNat (hi.get i).toInt.toNat).toList
+    let los := Arr.rowsImpl lo; let his := Arr.rowsImpl hi
+    Array.ofFn (n := n.toNat) fun i =>
+      (fs.extract (los[i]?.getD 0).toInt.toNat (his[i]?.getD 0).toInt.toNat).toList
   | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ =>
     let xs := Vals.rowsImpl x; let ys := Vals.rowsImpl y
+    let tags := Arr.rowsImpl tag; let idxs := Arr.rowsImpl idx
     Array.ofFn (n := n.toNat) fun i =>
-      if tag.get i then .inr (ys[min (idx.get i).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
-      else .inl (xs[min (idx.get i).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
+      if tags[i]?.getD false then .inr (ys[min (idxs[i]?.getD 0).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
+      else .inl (xs[min (idxs[i]?.getD 0).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
   | .one, n, _ => Array.replicate n.toNat ()
 
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
