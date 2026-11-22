@@ -48,13 +48,12 @@ def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr 
   let (vs, p) ← kasc N es
   let (k, g, f) ← kseen N ((es.map (·.1)).zip vs)
   let K := k.toUSize
-  let nc ← colConst N n.toUInt64
-  let cD ← kscatter .add N g (← colMap .lt N p nc) K 0
+  let cD ← kscatter .add N g (← colMap .first N p p .i64 .i64 [] [(.gt, n.toUInt64)]) K 0
   let lo ← colArr .add K f cD
   let hi ← colArr .add K f (← kscatter .add N g (← colConst N 1) K 0)
-  let (M, sel) ← whereCol K (← colMap .lt K (← colConst K 0) cD)
+  let (M, sel) ← whereCol K (← colMap .first K cD cD .i64 .i64 [] [(.lt, 0)])
   let iD ← kgather M (← kgather M sel K f) N p
-  let pay ← Vals.gather N (← colMap .max N (← colMap .sub N p nc) (← colConst N 0)) r.val
+  let pay ← Vals.gather N (← colMap .first N p p .i64 .i64 [] [(.add, 0 - n.toUInt64), (.max, 0)]) r.val
   Tab.canon ⟨M, ← Vals.gather M iD D, ⟨N, ← Arr.gather M sel lo, ← Arr.gather M sel hi, pay⟩⟩
 
 /-- **`Λ(R)` on the keys `D`**: `lamOf` of `canon R`; a caller whose `R` is `Tab.Canonical` already calls `lamOf`. -/

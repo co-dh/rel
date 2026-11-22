@@ -44,7 +44,7 @@ def csr (n g : USize) (gid x : Enc) : Except String (Enc × Enc) := do
 
 /-- The matrix of `na` rows of `w` bits with bit `r[k]·w + c[k]` set for each of the `n` rows: ones `kscatter`ed. -/
 def bitMatrix (n na w : USize) (r c : Enc) : Except String Enc := do
-  kscatter .last n (← colMap .add n (← colMap .mul n r (← colConst n w.toUInt64)) c) (← colConst n 1) (na * w) 0
+  kscatter .last n (← colMap .add n (← colMap .first n r r .i64 .i64 [] [(.mul, w.toUInt64)]) c) (← colConst n 1) (na * w) 0
 
 namespace Tab
 
@@ -74,7 +74,7 @@ def ldivBits (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except 
   if 2 ^ 63 ≤ (ka.toNat + 1 + kb.toNat) * kc.toNat + kb.toNat then
     throw s!"ldivBits: {ka} or {kb} rows of {kc} bits past 2^63"
   let cnt ← kscatter .add R.n bR (← colConst R.n 1) kb 0
-  let (E, eb) ← whereCol kb (← colMap .eq kb cnt (← colConst kb 0))
+  let (E, eb) ← whereCol kb (← colMap .first kb cnt cnt .i64 .i64 [] [(.eq, 0)])
   let (N, gid) ← colCat R.n E bR eb
   let (_, ix) ← colCat R.n E aR (← colConst E ka.toUInt64)
   let (ends, idx) ← csr N kb gid ix

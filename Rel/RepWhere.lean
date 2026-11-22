@@ -55,11 +55,9 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   rw [Except.bind_eq_ok'] at h; obtain ⟨v, hv, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨D, hD, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ia, hia, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cD, hcD, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨b, hbm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨K, sel⟩, hwh, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨gs, hgs, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨pay, hpay, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
@@ -100,8 +98,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
     intro t ht
     have es : (Except.ok (if ((raw .i64 T ia)[t]?.getD 0 != D.n.toUInt64) = true then (1 : UInt64) else 0) :
         Except String UInt64) = .ok ((raw .i64 T b)[t]?.getD 0) := by
-      have := (colMap_raw hbm).2.2.2 t ht
-      rwa [colConst_raw hcD, Array.getElem?_replicate, if_pos ht, Option.getD_some] at this
+      rw [← (colMap_post hbm).2 t ht, bne_comm]; rfl
     rw [← Except.ok.inj es]
     have hDn := D.n.toNat_lt_size
     rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
@@ -158,7 +155,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hpj : ∀ j (hj : j < K.toNat), Vals.row (A := .long) pay ⟨j, hj⟩ =
       ((raw .i64 T u)[((raw .i64 K sel)[j]?.getD 0).toNat]?.getD 0).toInt64 := fun j hj => by
     have es := (colMap_raw (colArr_ok hpay)).2.2.2 j hj
-    rw [colConst_raw hz, Array.getElem?_replicate, if_pos hj, Option.getD_some, (kgather_word hgs j hj).2] at es
+    rw [(kgather_word hgs j hj).2] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [Vals.row_atom, Arr.get_i64, ← es]
   have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
