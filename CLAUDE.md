@@ -15,9 +15,11 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
   plan, C emitter, tests), `Programs` (the `.rel` programs), tests.
 - `crate/` — the Rust crate `relk`: the kernels the externs name (`RELK.txt` lists its exports). `crate/rt/` — the
   Lean runtime a native Rel program links instead of `libleanshared` (a package of its own).
-- Lake libraries (`lakefile.lean`): `RelCore`, `RelKernel` (precompiled; `Rel.Kernel.*` + `Rel.KernelSpec.*`),
-  `RelRun` (precompiled), `Rel` (the rest, read from the directory). `extern_lib relk` builds `crate/` with
-  `crate/build.sh`. `lean_exe relc` prints a plan as C; `target rel-native` links it with `librelk.a` and `qrt.o`.
+- Lake libraries (`lakefile.lean`): `RelCore`, `RelKernel` (precompiled; `Rel.Kernel.*` + `Rel.KernelSpec.*` but
+  their `*Test*` modules, so a test edit relinks no shared library), `RelRun` (precompiled), `Rel` (the rest and the
+  kernel tests, read from the directory), `RelGate` (`test/TestCompile.lean`, the differential test `make compile-diff`
+  builds). `extern_lib relk` builds `crate/` with `crate/build.sh`. `lean_exe relc` prints a plan as C; `target
+  rel-native` links it with `librelk.a` and `qrt.o`.
 - No `require`. Lean namespaces say nothing about qlean or freyd: qlean `require`s this package and names `Rel.*`;
   freyd's bridge (`relaop/`) ties `Rel.Core` to freyd's `RelSet` by `rfl`.
 

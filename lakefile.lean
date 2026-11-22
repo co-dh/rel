@@ -39,12 +39,22 @@ def relkLib (pkg : Package) : FetchM (Job System.FilePath) := do
 /-- The kernels every `@[extern]` of `RelKernel` names; a precompiled module's shared library links it. -/
 extern_lib relk pkg := relkLib pkg
 
+/-- The modules under `Rel/Kernel` and `Rel/KernelSpec`, read from the directory and split into (tests, the rest). A
+    test is a module whose name matches `*Test*`, as the Makefile's test gates read it. -/
+def kernelModules (dir : System.FilePath) : IO (Array Lean.Name × Array Lean.Name) := do
+  let files := (← (dir / "Rel" / "Kernel").walkDir) ++ (← (dir / "Rel" / "KernelSpec").walkDir)
+  let mods ← (files.filter (·.extension == some "lean")).mapM (Lean.moduleNameOfFileName · (some dir))
+  -- sorted: `walkDir` order varies between checkouts
+  return (mods.qsort (·.toString < ·.toString)).partition fun m => (m.toString.splitOn "Test").length > 1
+
 /-- The kernels' Lean side: each `@[extern "qlean_…"] def` is its own specification. Precompiled, so that `#eval`,
     `#guard` and the elaborator run the Rust. -/
 lean_lib RelKernel where
   -- `KernelSpec` too: kernel modules import its lemmas, and a precompiled module's imports must sit in a library whose
-  -- shared library it can link without a cycle
-  globs := #[.submodules `Rel.Kernel, .submodules `Rel.KernelSpec]
+  -- shared library it can link without a cycle. Not the tests: every precompiled module of the lib is in its shared
+  -- library, which every module of `RelRun` and `Rel` traces, so a test edit would rebuild the whole package; they are
+  -- in lib `Rel`
+  globs := (run_io kernelModules __dir__).2.map .one
   -- no root: the default one, `RelKernel`, names no module, and Lake would load the library as that module's plugin
   roots := #[]
   precompileModules := true
@@ -70,12 +80,13 @@ def restRoots (dir : System.FilePath) : IO (Array (Lean.Name × Bool × Bool)) :
   (stems.qsort (· < ·)).toList.eraseDups.toArray.mapM fun (s : String) => do
     return (`Rel ++ Lean.Name.mkSimple s, ← (dir / "Rel" / s!"{s}.lean").pathExists, ← (dir / "Rel" / s).isDir)
 
-/-- The laws, the language's specification, the programs and the tests; interpreted. -/
+/-- The laws, the language's specification, the programs and the tests (the kernels' too); interpreted. -/
 @[default_target]
 lean_lib Rel where
   -- a module file, a directory of modules, or both: `andSubmodules` reads the directory, so a file alone is `one`
-  globs := (run_io restRoots __dir__).map fun (m, file, dir) =>
-    if dir then (if file then .andSubmodules m else .submodules m) else .one m
+  globs := (run_io restRoots __dir__).map (fun (m, file, dir) => (show Glob from
+    if dir then (if file then .andSubmodules m else .submodules m) else .one m)) ++
+    (run_io kernelModules __dir__).1.map .one
 
 /-- `make compile-diff`: the differential test, built (so traced and replayed when its imports are unchanged) rather than
     elaborated on every run. Outside the `Rel` glob, so `lake build Rel` does not run it. -/

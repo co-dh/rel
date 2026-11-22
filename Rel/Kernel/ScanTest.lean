@@ -161,6 +161,29 @@ private def kpermCol (f : Nat → Nat) : Enc :=
 #guard (kscan .lt false .i64 .u1 (USize.ofNat kperm.size) (some <| .foR (Coc.bools kperm.size fun _ => true).1
     (Coc.bools kperm.size fun _ => true).2) [kpermCol id, kpermCol fun _ => 81]).toOption.map
   (fun r => (r.1.raw .u1 (USize.ofNat kperm.size)).toList) = some (kperm.toList.map fun v => if v < 81 then 1 else 0)
+-- every compare at, below and above that frame, the constant on either side: each row's bit is `Op.eval` of its two
+-- words, run compiled
+private def kconst (v : Nat) : Enc := kpermCol fun _ => v
+#guard [80, 81, 82].all fun v => [Op.eq, .ne, .lt, .le, .gt, .ge].all fun op => [false, true].all fun sw =>
+  (kscan op false .i64 .u1 (USize.ofNat kperm.size) (some <| .foR (Coc.bools kperm.size fun _ => true).1
+    (Coc.bools kperm.size fun _ => true).2) (if sw then [kconst v, kpermCol id] else [kpermCol id, kconst v])).toOption.map
+  (fun r => (r.1.raw .u1 (USize.ofNat kperm.size)).toList) == some (kperm.toList.map fun p =>
+    (op.eval (if sw then v else p).toUInt64 (if sw then p else v).toUInt64).toOption.getD 2)
+
+-- Past a block, `#guard` only: 2500 rows, a segment starting at every thousandth row and at `i % 37 = 3`, the seed and
+-- the folded column with patches (every 97th word an outlier), each op's answer against `kscanRow`'s fold run compiled
+private def kn : Nat := 2500
+private def kstarts : Array UInt64 := (Array.range kn).map fun i => if i % 1000 = 0 || i % 37 = 3 then 1 else 0
+private def kpatched (k : Nat) : Array UInt64 :=
+  (Array.range kn).map fun i => (if i % 97 = k then i * 2 ^ 33 else i * 7919 % 5000 + k).toUInt64
+private def kfoR (ws : Array UInt64) : Enc :=
+  let c := Coc.encode 8 (Column.packIds 64 ws.size fun i => (ws[i]?.getD 0).toNat)
+  .foR c.1 c.2
+#guard [Op.add, .sub, .min, .max, .first, .last, .and, .or, .lt, .eq].all fun op =>
+  (kscan op false .i64 .i64 (USize.ofNat kn) (some <| .foR (Coc.bools kn fun i => kstarts[i]? == some 1).1
+    (Coc.bools kn fun i => kstarts[i]? == some 1).2) [kfoR (kpatched 5), kfoR (kpatched 11)]).toOption.map
+    (fun r => (r.1.raw .i64 (USize.ofNat kn)).toList) ==
+  ((List.range kn).foldlM (kscanRow op kstarts (kpatched 5) [kpatched 11]) #[]).toOption.map (·.toList)
 
 end Rel.Kernel
 

@@ -154,4 +154,21 @@ def edge : String ⊕ (Nat × List UInt64 × List UInt64) :=
 #guard view (u 1100) (u 3) (kseen (u 1100) [cells (u 3) (u 1100) [1020, 1020, 0] [1030, 1029, 1100]
     [col ((List.range 1100).map Nat.toUInt64)] (List.replicate 400 2 ++ List.replicate 400 1 ++ List.replicate 300 0)]) == edge
 
+-- atom keys past a block of `2 ^ 10`, `#guard` only, the expected words plain arithmetic: a tie across the block edge
+-- at 1024 (one run from row 1020); a drop at the edge itself (row 1024 below row 1023); a patch at the end (the
+-- outlier `2 ^ 40` on row 1999 its own group beside runs of 7); two columns, the second splitting each run of the first
+-- in two, one of them across the edge
+def tieEdge : String ⊕ (Nat × List UInt64 × List UInt64) := .inr (2, List.replicate 1020 0 ++ List.replicate 980 1, [0, 1020])
+#guard view (u 2000) (u 2) (kseen (u 2000) [col ((List.range 2000).map fun i => if i < 1020 then 0 else 1)]) == tieEdge
+#guard view (u 0) (u 0) (kseen (u 2000) [col ((List.range 2000).map fun i => if i < 1024 then 1 else 0)]) == unsorted 1023
+def runs7 : String ⊕ (Nat × List UInt64 × List UInt64) :=
+  .inr (287, (List.range 2000).map fun i => (if i < 1999 then i / 7 else 286).toUInt64,
+    ((List.range 286).map fun k => (7 * k).toUInt64) ++ [1999])
+#guard view (u 2000) (u 287) (kseen (u 2000)
+  [col ((List.range 2000).map fun i => (i / 7 + if i = 1999 then 2 ^ 40 else 0).toUInt64)]) == runs7
+def halves : String ⊕ (Nat × List UInt64 × List UInt64) :=
+  .inr (4, (List.range 2000).map fun i => (i / 500).toUInt64, [0, 500, 1000, 1500])
+#guard view (u 2000) (u 4) (kseen (u 2000) [col ((List.range 2000).map fun i => (i / 1000).toUInt64),
+  col ((List.range 2000).map fun i => (i / 500 % 2).toUInt64)]) == halves
+
 end Rel.Kernel.SeenTest

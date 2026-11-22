@@ -146,4 +146,33 @@ def edge : List (AscKey × Enc) :=
 #guard pview (u 1100) (kasc (u 1100) edge) ==
   .inr ([2, 1, 0].flatMap fun r => ((List.range 1100).filter (· % 3 = r)).map Nat.toUInt64)
 
+/-- `kasc`'s permutation as the Lean side computes it: `ascGrade` of `ascCodes`, run compiled. -/
+def grade (m : Nat) (es : List (AscKey × Enc)) : String ⊕ List UInt64 :=
+  match ascCodes (USize.ofNat m) es with
+  | .ok ks => .inr ((ascGrade m ks).map Nat.toUInt64)
+  | .error s => .inl s
+/-- `m` words of `f`, encoded as a kernel's answer. -/
+def wcol (m : Nat) (f : Nat → UInt64) : Enc := wordsFoR ((Array.range m).map f)
+
+-- past a block, `#guard` only, against `grade`: 3000 rows of three keys in many blocks, the first with ties and patches
+-- (every 97th word an outlier, every 89th a negative), an `int` whose high bits the order ignores, and a float with
+-- negatives, `-0.0` and NaN
+def atoms : List (AscKey × Enc) :=
+  [(.atom .i64, wcol 3000 fun i => if i % 97 = 5 then (2 ^ 62 + i).toUInt64 else if i % 89 = 3 then neg1 - i.toUInt64
+      else (i * 7919 % 50).toUInt64),
+   (.atom .i32, wcol 3000 fun i => (i * 2654435761 % 7).toUInt64 ||| 0xffffffff00000000),
+   (.atom .f64, wcol 3000 fun i => if i % 61 = 0 then 0x7ff8000000000000 else if i % 59 = 1 then 0x8000000000000000
+      else (Float.ofInt ((i % 5 : Nat) - 2 : Int)).toBits)]
+#guard pview (u 3000) (kasc (u 3000) atoms) == grade 3000 atoms
+-- `cells` over a patched payload of 3000 rows (every 211th word an outlier) in a small alphabet, so cells share
+-- prefixes: 200 cells across the blocks, empty ones, ones past the payload's end, and 3000 rows naming them, so equal
+-- cells tie in input order; an `i64` key before them
+def spans : List (AscKey × Enc) :=
+  [(.atom .i64, wcol 3000 fun i => (i % 3).toUInt64),
+   (.cells (u 200) (u 3000) (wcol 200 fun k => (k * 13 % 2900).toUInt64)
+      (wcol 200 fun k => if k % 50 = 7 then 3005 else (k * 13 % 2900 + k % 40).toUInt64)
+      [(.atom .i64, wcol 3000 fun i => if i % 211 = 0 then (2 ^ 62 + i).toUInt64 else (i * 7919 % 3).toUInt64)],
+    wcol 3000 fun i => (i * 7919 % 200).toUInt64)]
+#guard pview (u 3000) (kasc (u 3000) spans) == grade 3000 spans
+
 end Rel.Kernel.AscTest
