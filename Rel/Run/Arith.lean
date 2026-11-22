@@ -26,22 +26,21 @@ null at a null operand, `div`/`mod` also at a zero divisor, which is replaced by
 (`w ≤ a`); a `*` where `w div a ≠ b` and `a ≠ 0` (`a = 0` replaced by `1` for the divide). `max`/`min` never wrap and
 read no null. Any other code is the error naming it. -/
 def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × Enc) := do
-  let nul ← colConst n nulWord
-  let z ← colConst n 0
-  let ne (x : Enc) : Except String Enc := colMap .ne n x nul
+  let ne (x : Enc) : Except String Enc := colMap .first n x x .i64 .i64 [] [(.ne, nulWord)]
+  let isZ (x : Enc) : Except String Enc := colMap .first n x x .i64 .i64 [] [(.eq, 0)]
   let both ← colMap .and n (← ne a) (← ne b)
   if k == Ew.add || k == Ew.sub then
     let w ← colArr (if k == Ew.add then .add else .sub) n a b
     let ord ← if k == Ew.add then colMap .le n a w.enc else colMap .le n w.enc a
-    let ex ← colMap .eq n (← colMap .ge n b z) ord
+    let ex ← colMap .eq n (← colMap .first n b b .i64 .i64 [] [(.le, 0)]) ord
     pure (w, ← colMap .and n (← colMap .and n both (← ne w.enc)) ex)
   else if k == Ew.mul then
     let w ← colArr .mul n a b
-    let a0 ← colMap .eq n a z
+    let a0 ← isZ a
     let ex ← colMap .or n (← colMap .eq n (← colMap .div n w.enc (← colMap .or n a a0)) b) a0
     pure (w, ← colMap .and n (← colMap .and n both (← ne w.enc)) ex)
   else if k == Ew.idiv || k == Ew.imod then
-    let b0 ← colMap .eq n b z
+    let b0 ← isZ b
     let w ← colArr (if k == Ew.idiv then .div else .mod) n a (← colMap .or n b b0)
     pure (w, ← colMap .and n (← colMap .and n both (← colMap .not n b0 b0)) (← ne w.enc))
   else if k == Ew.greater || k == Ew.lesser then
