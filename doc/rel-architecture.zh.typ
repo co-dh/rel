@@ -488,7 +488,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 按依赖顺序。现有的是 `Tm.gen` 与 `Tm.gen_sound`，假设为 `Tm.GenHyp`。
 
 #tbl(c-run, (auto, auto, 1fr, auto), ([序], [gap], [缺什么], [能否证明]),
-  [1], [`foldI`], [改为由 `fold` 定义（见下）；其正确性由 `fold` 的引理得出，不再需要 `foldI_sound`], [能：随定义消失],
+  [1], [`foldI`], [由 `fold` 定义，运行时是 fused 行 `foldIRow`（B6）；行与定义由 `Prim.den_foldIRow` 与 `GenK.foldI_sound` 相连], [已证],
   [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [能：改 `Expand` 不共享开项，无需新证明],
   [3], [`setify` / `asc` 行], [`asc`、`seen` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
   [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [多半能（positive body）；可能要加 locality 前提],
