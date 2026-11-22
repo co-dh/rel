@@ -143,7 +143,8 @@ def ldivSel (d : Tab A B → Tab A C → Tab B B → Tab C C → Except String (
 
 /-- `0 … n-1`: the prefix sums of `n` ones, less one. -/
 def colIota (n : USize) : Except String Enc := do
-  colMap .sub n (← colPrefix .add n (← colConst n 1)) (← colConst n 1)
+  let P ← colPrefix .add n (← colConst n 1)
+  colMap .first n P P .i64 .i64 [] [(.add, 0 - 1)]
 
 /-- Each row of `v`, its position among the `g` distinct values `xr`, or `g` where it is none of them: both numbered in
 one order (`Vals.code2`), each number's position in `xr` `kscatter`ed (`g` where `xr` holds none), read through `v`'s. -/
@@ -158,11 +159,12 @@ def keepBits (T : Tab A C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) 
   let t ← T.canon
   let ia ← index (← Vals.gather g ra x) t.key
   let ic ← index (← Vals.gather w rc y) t.val
-  let ok ← colMap .and t.n (← colMap .lt t.n ia (← colConst t.n g.toUInt64))
-    (← colMap .lt t.n ic (← colConst t.n w.toUInt64))
+  let ok ← colMap .and t.n (← colMap .first t.n ia ia .i64 .i64 [] [(.gt, g.toUInt64)])
+    (← colMap .first t.n ic ic .i64 .i64 [] [(.gt, w.toUInt64)])
   let (M, sel) ← whereCol t.n ok
   let u ← t.keep ok
-  let pos ← colMap .add M (← colMap .mul M (← kgather M sel t.n ia) (← colConst M w.toUInt64)) (← kgather M sel t.n ic)
+  let ia' ← kgather M sel t.n ia
+  let pos ← colMap .add M (← colMap .first M ia' ia' .i64 .i64 [] [(.mul, w.toUInt64)]) (← kgather M sel t.n ic)
   u.keep (← kgather M pos (g * w) o)
 
 /-- **`R ≫ M`, `M` as in `keepBits`, on its matrix**: `R`'s rows whose value is a row of `M` (`index`), grouped by key
@@ -171,7 +173,7 @@ def keepBits (T : Tab A C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) 
 def compTabMat (R : Tab A B) {n : USize} (g w : USize) (o : Enc) (x : Vals B n) (ra : Enc) :
     Except String (USize × Enc × ((M : USize) × Vals A M) × Enc) := do
   let ix ← index (← Vals.gather g ra x) R.val
-  let (M, sel) ← whereCol R.n (← colMap .lt R.n ix (← colConst R.n g.toUInt64))
+  let (M, sel) ← whereCol R.n (← colMap .first R.n ix ix .i64 .i64 [] [(.gt, g.toUInt64)])
   let key ← Vals.gather M sel R.key
   let (ka, aR, ra') ← Vals.code key
   let (ends, idx) ← csr M ka aR (← kgather M sel R.n ix)
@@ -192,18 +194,18 @@ def ldivTabMat (R : Tab A B) (UB : Tab B B) (UC : Tab C C) {n m : USize} (g w : 
   if bitsMax < kb.toNat * w.toNat ∨ bitsMax < kb.toNat * kc.toNat ∨ bitsMax < kb.toNat * UC.n.toNat then
     return none
   let ix ← index (← Vals.gather g ra x) R.key
-  let on ← colMap .lt R.n ix (← colConst R.n g.toUInt64)
+  let on ← colMap .first R.n ix ix .i64 .i64 [] [(.gt, g.toUInt64)]
   let (P, sel) ← whereCol R.n on
   let (ends, idx) ← csr P kb (← kgather P sel R.n bR) (← kgather P sel R.n ix)
   let o1 ← kbitrows true w g P kb ends idx o
   let cnt ← kscatter .add R.n bR (← colConst R.n 1) kb 0
-  let vac ← colMap .eq kb cnt (← colConst kb 0)
+  let vac ← colMap .first kb cnt cnt .i64 .i64 [] [(.eq, 0)]
   -- `keep`: some `R` row, and every one's key a row of `M`
   let keep ← colMap .lt kb vac (← colMap .eq kb cnt (← kscatter .add R.n bR on kb 0))
   let N := kb * w
   let i ← colIota N
   let r ← colMap .div N i (← colConst N w.toUInt64)
-  let p1 ← colMap .add N (← colMap .mul N r (← colConst N kc.toUInt64))
+  let p1 ← colMap .add N (← colMap .first N r r .i64 .i64 [] [(.mul, kc.toUInt64)])
     (← kgather N (← colMap .mod N i (← colConst N w.toUInt64)) w cM)
   let s1 ← kscatter .last N p1 (← colMap .mul N o1 (← kgather N r kb keep)) (kb * kc) 0
   let (E, eb) ← whereCol kb vac

@@ -1,17 +1,10 @@
-perf11c handoff (stopped near the 100-call limit)
+perf11d handoff (checkpoint at 40 calls; base cd3523e + merge of perf11c 2e9cc10)
 
-Landed (code + proofs, edited modules build: RepTabComp RepTabDiv RepBits RepWF RepWhere GenKFold GenSound RepSums):
-- List: Vals.cells hi (`colArr .first P P`), Vals.tau, Vals.cat d, uncons, unsnoc, uncat widths (post on the `.sub`)
-- Where.positions both sites; Comp.compBlock; Div.lamOf (gt n, lt 0, add (0-n) then max 0)
-- Bits: bitMatrix `.mul r w`, ldivBits `.eq cnt 0`
-- RepCols.neg_add_word (`0 - b + a = a - b`), replacing RepTabComp's inline copy
+Done (not yet built): Bits colIota, keepBits (3), compTabMat, ldivTabMat (on, vac, p1) moved to post steps in
+Rel/Run/Bits.lean; GenKBits proofs edited: colIota_raw, colMap_lt_const (now stated over `colMap .first n e e
+.i64 .i64 [] [(.gt, N)]`, no colConst hyp), keepBits_law, compTabMat_law/wf, ldivTabMat_spec (vac, on, erm).
+Still to check: ldivTabMat_reads (~1580) bind count; build Rel.Lang.GenKBits.
 
-Reverted to base (proofs not done):
-- Bits colIota, keepBits (3), compTabMat, ldivTabMat (on, vac, p1): GenKBits.lean errors at colIota_raw (19),
-  keepBits_law (183), compTabMat_law/wf (315, 481), ldivTabMat_spec (621), ldivTabMat_reads (1582)
-- SetOps sumTail (i64 + f64), sumsOn (seenSeg twice, `.eq firsts 0`), List.sumOn `.eq i 0`: RepSums errors at
-  sumTail_fold 633/656 (badWord_spec, RepTabDiv:~1074, states colConst hyps), sums_holds 735/745 (iterate 6 -> 4,
-  seg via seenSeg), 837/838, sumOn proof 881
-
-Not run: full gate `lake build RelCore RelKernel RelRun Rel RelBench`, kernel-count measurement.
-`cap` exits 1 with no output in this worktree (cap -w shows nothing); plain `lake -d <wt> build <mods>` works.
+Left: SetOps sumTail/sumsOn, List.sumOn (Rel/RepSums.lean, badWord_spec RepTabDiv ~1074); item 3 inspection;
+gate; kernel counts (/data/tmp/perf11b/count.sh, before = /data/tmp/perf11b/after.tsv).
+Sandbox note: every Bash call needs dangerouslyDisableSandbox (sandbox arg list too long).
