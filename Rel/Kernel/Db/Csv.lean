@@ -268,6 +268,20 @@ def frac : List UInt8 → Option Nat
   | [] => some 0
   | c :: fr => if c = 46 ∧ fr ≠ [] ∧ fr.length ≤ 9 ∧ fr.all isDig then some (natOf fr * 10 ^ (9 - fr.length)) else none
 
+/-- What `frac` runs as: the power of ten as a word power (`Column.toNat_pow`), `Nat`'s `^` being GMP's. -/
+private def fracImpl : List UInt8 → Option Nat
+  | [] => some 0
+  | c :: fr => if c = 46 ∧ fr ≠ [] ∧ fr.length ≤ 9 ∧ fr.all isDig then
+      some (natOf fr * ((10 : UInt64) ^ (9 - fr.length)).toNat) else none
+
+@[csimp] private theorem frac_eq_impl : @frac = @fracImpl := by
+  funext f; cases f with
+  | nil => rfl
+  | cons c fr =>
+    have h := Column.toNat_pow (a := 10) (k := 9 - fr.length)
+      (Nat.lt_of_le_of_lt (Nat.pow_le_pow_right (by decide) (Nat.sub_le 9 _)) (by decide))
+    simp only [frac, fracImpl, show Nat.toUInt64 10 = 10 from rfl] at h ⊢; rw [h]
+
 /-- `yyyy.mm.ddDhh:mm:ss` (the day as `ymd`) with an optional `.` and 1–9 fraction digits, as
     nanoseconds since 1970-01-01 in `i64`. -/
 def stamp (f : List UInt8) : Option Int :=

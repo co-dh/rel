@@ -315,19 +315,23 @@ def blk (metadata : ByteArray) : Nat := 2 ^ lgOf metadata
 
 /-- A power of two as a word: `UInt64`'s `^` multiplies words, where `Nat`'s `^` and `<<<` run as `lean_nat_pow`,
 `lean_nat_shiftl`, which build a GMP number even for a small result. -/
-theorem toUInt64_two_pow (k : Nat) : (2 ^ k : Nat).toUInt64 = (2 : UInt64) ^ k := by
+theorem toUInt64_pow (a k : Nat) : (a ^ k : Nat).toUInt64 = a.toUInt64 ^ k := by
   induction k with
   | zero => rfl
   | succ k ih => rw [Nat.pow_succ, UInt64.pow_succ, ← ih]; exact UInt64.ofNat_mul _ _
 
-theorem toNat_two_pow {k : Nat} (h : k < 64) : ((2 : UInt64) ^ k).toNat = 2 ^ k := by
-  rw [← toUInt64_two_pow]; exact Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by decide) h)
+theorem toNat_pow {a k : Nat} (h : a ^ k < 2 ^ 64) : (a.toUInt64 ^ k).toNat = a ^ k := by
+  rw [← toUInt64_pow]; exact Nat.mod_eq_of_lt h
 
-/-- What `blk` runs as: a word power (`toNat_two_pow`), since `foRBits` takes `blk` on every element it reads. -/
+theorem toUInt64_two_pow_sub_one (k : Nat) : (2 ^ k - 1 : Nat).toUInt64 = (2 : UInt64) ^ k - 1 := by
+  rw [show (2 : UInt64) = Nat.toUInt64 2 from rfl, ← toUInt64_pow]; exact UInt64.ofNat_sub Nat.one_le_two_pow
+
+/-- What `blk` runs as: a word power (`toNat_pow`), since `foRBits` takes `blk` on every element it reads. -/
 private def blkImpl (metadata : ByteArray) : Nat := ((2 : UInt64) ^ lgOf metadata).toNat
 
 @[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by
-  funext m; rw [blk, blkImpl, toNat_two_pow (by unfold lgOf; omega)]
+  funext m; rw [blk, blkImpl]
+  exact (toNat_pow (a := 2) (Nat.pow_lt_pow_right (by decide) (by unfold lgOf; omega))).symm
 
 /-- The `lg` every encoder writes. -/
 def lgEnc : Nat := 10
