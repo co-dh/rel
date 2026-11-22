@@ -1279,7 +1279,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   不排序（今天 5 次排序）。`(A+B)+C` 按层递归：每层一列 `u1` tag，k 元 sum 有 k−1 列 tag，不另定三元存法。
   涉及 `Vals`（Core.lean:652-693）、`Vals.gather`、`Vals.cols`、`Vals.concat`、`injCols`/`inl`/`inr`/`inlConv`/
   `inrConv`（Struct.lean:57-125）及 `RepStruct` 的 `*_holds`、CSV/own 的 sum 列、Rust 侧 sum 的读写。
-  与 rq17 的关系：`atom+1` 是一般的 sum（决定 H，2026-11-22，取代 K 的带内 null），与其余 sum 一样走 8.2。
+  与 rq17 的关系：`atom+1` 走块内 null 码（决定 K，`nullband`），不经 8.2；其余 sum 用 8.2。
   在 `nullband` 的 unit 对象决定（M/N）之后做，因为两者都改 `Vals` 的 sum 分支。
 - 🔄 8.3 一种编码（分支 `foronly`）：`Ext.Enc` 只留 `foR`、`pos` 与 `gen`。已做：删 `bytes`、`alp`（Lean 类型与
   `WF`/`raw`/`get`；`Enc.ofBytes` 是每个定宽列进入 foR 的唯一入口；`answer`/`encode`/`alpOf` 删除；own 格式 v5，
