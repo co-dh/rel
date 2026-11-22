@@ -64,7 +64,7 @@ theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size)
   obtain ⟨hxs, -, hxg⟩ := foldl_pushBits (fun v => v) 8 (by decide) ws.toList ByteArray.empty
   rw [Array.foldl_toList] at hxs hxg
   simp only [show ByteArray.empty.size = 0 from rfl, Nat.zero_add, Array.length_toList] at hxs hxg
-  unfold wordsFoR
+  unfold wordsFoR Coc.encode
   simp only [h8]
   generalize hX : ws.foldl (init := ByteArray.empty) (fun acc w => Column.pushBits acc w 8) = X at hxs hxg
   have hnX : n.toNat = X.size / 8 := by rw [hxs, hn]; omega
