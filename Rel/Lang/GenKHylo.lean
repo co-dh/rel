@@ -28,7 +28,7 @@ below `μ Φ` and end at `Y` with `N ≫ Φ(Y) ⊑ Y`, so `Z = (N ⇒ Y)` is a p
 well-foundedness is read: a cyclic `ch` makes the code an error table, which represents `μ Φ` vacuously. -/
 theorem hylo_sound {A B : Obj} {what : String} {d e : Bool} {ch : Rel A A} {CH : Den A A}
     {φ : Tab A B → Rel A B} {Φ : Den A B → Den A B} (hch : ∀ K, K.WF → ch.Reps K CH) (wch : ch.Wf)
-    (hφ : ∀ Y K, K.WF → (φ Y).Reps K (Φ (rep Y))) (wφ : ∀ Y, (φ Y).Wf) (hm : Monotonic Φ)
+    (hφ : ∀ Y, Y.WF → ∀ K, K.WF → (φ Y).Reps K (Φ (rep Y))) (wφ : ∀ Y, Y.WF → (φ Y).Wf) (hm : Monotonic Φ)
     (hl : ∀ X Y a, (∀ a', CH a a' → ∀ b, (X a' b ↔ Y a' b)) → ∀ b, (Φ X a b ↔ Φ Y a b)) :
     ∀ K, K.WF → (GenK.hylo A B what d e ch φ).Reps K (Core.Rel.mu Φ) := by
   unfold GenK.hylo
@@ -63,10 +63,10 @@ theorem hylo_sound {A B : Obj} {what : String} {d e : Bool} {ch : Rel A A} {CH :
     have hcl : ∀ a a', N.Holds a a → CH a a' → N.Holds a' a' := fun a a' h c => hNF a' a' (Or.inr ⟨rfl, a, a, h, c⟩)
     -- the rounds on `N`: below `μ Φ`, and a prefixed point there
     obtain ⟨hYm, hYF⟩ := Tab.mu_holds (F := fun R a b => N.Holds a a ∧ Φ R a b)
-      (fun M T _ hT a b => by
-        rw [compT_holds (hφ M) (wφ M) N wN T hT a b]
+      (fun M T wM hT a b => by
+        rw [compT_holds (hφ M wM) (wφ M wM) N wN T hT a b]
         exact ⟨fun ⟨a', hn, hp⟩ => by obtain rfl := hNc a a' hn; exact ⟨hn, hp⟩, fun ⟨hn, hp⟩ => ⟨a, hn, hp⟩⟩)
-      (fun M T hT _ => (compT_wf (r' := .ok N) (fun _ hr => by cases hr; exact wN) (wφ M)).runE Known.wf_empty hT)
+      (fun M T hT wM => (compT_wf (r' := .ok N) (fun _ hr => by cases hr; exact wN) (wφ M wM)).runE Known.wf_empty hT)
       (fun R => ∀ a b, R a b → Core.Rel.mu Φ a b) (fun _ _ h => h.elim)
       (fun R hR a b h => h.elim (hR a b) fun h => le_iff.1 (mu_prefixed hm) a b
         (le_iff.1 (hm R (Core.Rel.mu Φ) (le_iff.2 hR)) a b h.2)) hY
