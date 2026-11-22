@@ -28,6 +28,12 @@ pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
 export! {
     /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`)
     fn qlean_coc_encode(width: usize, x: B) -> O { encode(x, elt_width("qlean_coc_encode", width), false) }
+    /// `(meta, pack)` of the nullable column `x` of `width`-byte elements whose null rows are the set bits of `nul`
+    fn qlean_coc_encode_nul(width: usize, x: B, nul: B) -> O {
+        let (m, p) = crate::enc::encode_nul(crate::DEFAULT_LG as u32, x.bytes(), elt_width("qlean_coc_encode_nul", width), nul.bytes());
+        let arr = |v: &[u8]| { let mut a = SArr::new(1, v.len()); a.bytes_mut().copy_from_slice(v); O::from(a) };
+        ctor(0, [arr(&m), arr(&p)], &[])
+    }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
         let c = view("qlean_coc_decode", meta, pack, n);

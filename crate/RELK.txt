@@ -1,5 +1,6 @@
 qlean_coc_decode
 qlean_coc_encode
+qlean_coc_encode_nul
 qlean_k_asc
 qlean_k_bitrows
 qlean_k_gather

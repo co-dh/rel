@@ -1229,6 +1229,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `cols`、`pack`、`readVals`/`encVals`、CSV 各加一支，`RepCanon`/`RepCols`/`RepTabDiv`/`GenKBits` 里每个对
     `.sum a b` 的归纳都要先分出这一支）、可空 foR 写入器（新 extern，Lean 体 = Rust）、kernel 判 null、
     CSV 可空列 3 部分 → 1、decode-allow 收缩。
+    已做（分支 rq17）：可空 foR 写入器 `Coc.encodeNul`（extern `qlean_coc_encode_nul`，Lean 体 `encodeNulAt` =
+    Rust `enc::encode_nul`）：块的 base/max/sum 只取非 null 行；含 null 的块置 `nulAt` 位，null 行写顶端残差
+    `2 ^ d - 1`，值已占顶端时宽一位；不打补丁；逐块写编码，不解码。`foRMeta` 的块偏移按宽度字节的低 7 位算（与
+    `widthAt` 同读法）。`CocTest`：三对 `decide`/`#guard`（混合块、全 null 块、无 null = `encode`）与 `foROpt` 读回；
+    Rust 测试 `encode_nul_puts_nulls_in_band`。剩：`Vals` 的 sum 分支及其后各项（见上）；待主人定：null 码是否
+    每块都留（见交接报告的代价）。
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
