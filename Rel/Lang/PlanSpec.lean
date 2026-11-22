@@ -256,42 +256,6 @@ theorem Builds.defFun {fg fg1 fg' : Array Fun × Array Fun} {ps : Array Ty} {b :
     monadLift_self, pure_bind, bind_assoc, hrun, ok_bind]
   exact hr2
 
-/-- `global b`, then `k` on its registers: the global holds what `b` answers on no register. -/
-theorem Builds.global {fg fgB fg' : Array Fun × Array Fun} {b : Bld (Array Nat)} {k : Array Nat → Bld (Array Nat)}
-    {v rs out : Array Val} (hb : Builds abi fg fgB b #[] v)
-    (hk : ∀ G : Fun, Builds abi (fgB.1, fgB.2.push G) fg' (k (List.range' rs.size v.size).toArray) (rs ++ v) out) :
-    Builds abi fg fg' (Plan.global b >>= k) rs out := by
-  obtain ⟨F0, G0⟩ := fg; obtain ⟨FB, GB⟩ := fgB
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, hb⟩ := hb
-  obtain ⟨body, xs0, r, hrun, hsem, hm⟩ := hb #[]
-  simp only [Array.empty_append, Array.size_empty] at hrun hm hsem
-  have hv : v.size = r.size := mapM_ok_size (hm "")
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, hk₀⟩ := hk ⟨#[], body.toList, r⟩
-  refine ⟨⟨a1 ++ a2, ?_⟩, ⟨b1 ++ #[⟨#[], body.toList, r⟩] ++ b2, ?_⟩, fun is => ?_⟩
-  · rw [ha2]; simp only at ha1 ⊢; subst ha1; simp only [Array.append_assoc]
-  · rw [hb2]; simp only at hb1 ⊢; subst hb1; simp only [Array.push_eq_append, Array.append_assoc]
-  obtain ⟨js, xs, r2, hr2, hbk, hm2⟩ := hk₀ (is.push (.global GB.size))
-  refine ⟨#[.global GB.size] ++ js, v ++ xs, r2, ?_, fun fs gs hE ws => ?_, fun who => by
-    simpa [← Array.append_assoc] using hm2 who⟩
-  · simp only [Plan.global, StateT.run_bind, StateT.run_get, StateT.run_set, liftM, StateT.run_monadLift,
-      monadLift_self, pure_bind, bind_assoc, hrun, ok_bind, emit_run]
-    rw [← hv, show rs.size + v.size = (rs ++ v).size by simp, hr2]; simp [← Array.append_assoc]
-  · have hE1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
-    obtain ⟨v', hv', fs', hf', hs'⟩ := hE1.2 GB.size (by simp)
-    have hE2 : Env abi fs gs (FB ++ #[], GB ++ #[⟨#[], body.toList, r⟩]) := by
-      rw [Array.append_empty, ← Array.push_eq_append]; exact hE1
-    have hEB : Env abi fs' (gs.extract 0 GB.size) (FB, GB) :=
-      hE2.restrict (by simpa using hf') (by simp [Array.extract_extract])
-    have e : v' = v := by
-      have h1 := hs' ws
-      simp [Fun.sem, hsem fs' _ hEB ws, hm "result", ok_bind, pure, Except.pure, Functor.map, Except.map] at h1
-      exact h1.symm
-    subst e
-    have hi : runI abi fs gs (.global GB.size) rs ws = .ok (rs ++ v', ws) := by
-      simp only [runI, hv']; rfl
-    rw [Array.toList_append, show (#[Instr.global GB.size] : Array Instr).toList = [.global GB.size] from rfl,
-      List.singleton_append, runB.eq_2, hi]
-    exact (hbk fs gs hE ws).trans (by simp [← Array.append_assoc])
 
 /-- A block of two parts runs as the first, then the second on what it left. -/
 theorem runB_append (l1 l2 : List Instr) (rs : Array Val) (ws : Writes) :
@@ -323,27 +287,6 @@ theorem Builds.bind {fg fg1 fg' : Array Fun × Array Fun} {b : Bld (Array Nat)} 
   · rw [Array.toList_append, runB_append, hs fs gs (Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE) ws, ok_bind]
     simpa [Array.append_assoc] using hs2 fs gs hE ws
 
-/-- `if c then t else e` with the bit in `c` set: only `t` runs, so `e` need only build, as many registers wide. -/
-theorem Builds.ite_then {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {t e : Bld (Array Nat)} {rs ot : Array Val}
-    (hc : rs[c]? = some (.bit true)) (ht : Builds abi fg fg1 t rs ot)
-    (he : (∃ a, fg2.1 = fg1.1 ++ a) ∧ (∃ a, fg2.2 = fg1.2 ++ a) ∧
-      ∃ re je n', e.run (#[], rs.size, fg1) = .ok (re, je, n', fg2) ∧ ot.size = re.size) :
-    Builds abi fg fg2 (Plan.ite c t e) rs ot := by
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, ht⟩ := ht
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, re, je, n', hre, hs⟩ := he
-  obtain ⟨jt, xt, rt, hrt, hbt, hmt⟩ := ht #[]
-  have st : ot.size = rt.size := mapM_ok_size (hmt "")
-  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
-    fun is => ⟨#[.ite c jt.toList rt je.toList re], ot, (List.range' rs.size rt.size).toArray,
-    ?_, fun fs gs hE ws => ?_, fun who => st ▸ mapM_reg_range rs _ who⟩⟩
-  · have hrs : rt.size = re.size := by omega
-    simp only [Plan.ite, block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, monadLift_self,
-      hrt, hre, ok_bind, pure_bind, bind_assoc]
-    simp [ok_bind, hrs, emit_run, ← st]; omega
-  · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
-    rw [show (#[Instr.ite c jt.toList rt je.toList re] : Array Instr).toList = [.ite c jt.toList rt je.toList re]
-      from rfl, runB.eq_2]
-    simp [runI, reg_of hc, hbt fs gs hE1, hmt, runB.eq_1, ok_bind, Functor.map, Except.map]
 
 /-- `guard c` with the bit in `c` set defines no register: `k` runs after the registers so far. -/
 theorem Builds.guard {fg fg' : Array Fun × Array Fun} {c : Nat} {msg : String} {as : Array Nat} {k : Bld (Array Nat)}

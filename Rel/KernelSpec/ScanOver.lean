@@ -49,47 +49,6 @@ theorem intScan_scanOf (v : Scan.Verb) (k : Kind) (w : Nat) (hi lo nl : Int64) :
       intScan v k b m w hi lo nl = scanOf m w (k.bitsAt b) k.isNull seed step emit := by
   cases v <;> exact ⟨_, _, _, fun _ _ => rfl⟩
 
-/-- **`intScan` over `Coc.decode`**, which is `scanFoR` at every integral layout, at every verb:
-output `j` is the step folded from the seed over the first `j + 1` elements `foRBits` decodes, each
-truncated to the layout's width, a null leaving the accumulator where it was. -/
-theorem intScan_foR (v : Scan.Verb) (k : Kind) (hk : k ≠ .bit) (w : Nat) (hw : w ≤ 8) (hi lo nl : Int64) :
-    ∃ (seed : Int64) (step : Int64 → UInt64 → Int64) (emit : Int64 → UInt64),
-      ∀ (n : USize) (md pk : ByteArray), ∀ j < n.toNat,
-        Column.bitsAt (intScan v k (Coc.decode k.width.toUSize md pk n)
-            (min n.toNat (k.avail (Coc.decode k.width.toUSize md pk n))) w hi lo nl) (j * w) w =
-          UInt64.ofNat ((emit (((List.range (j + 1)).map fun i =>
-            UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width))).foldl
-              (fun a x => if k.isNull x then a else step a x) seed)).toNat % 2 ^ (8 * w)) := by
-  obtain ⟨seed, step, emit, h⟩ := intScan_scanOf v k w hi lo nl
-  refine ⟨seed, step, emit, fun n md pk j hj => ?_⟩
-  have hkw : k.width.toUSize.toNat ≤ 8 ∧ 0 < k.width.toUSize.toNat ∧ k.width.toUSize.toNat = k.width := by
-    cases k <;> simp only [Kind.width, Nat.toUSize, USize.toNat_ofNat'] <;>
-      rcases System.Platform.numBits_eq with h | h <;> simp [h]
-  have hav : ∀ b, k.avail b = b.size / k.width := by
-    intro b; cases k <;> first | exact absurd rfl hk | rfl
-  have hrd : ∀ b i, k.bitsAt b i = Column.bitsAt b (i * k.width) k.width := by
-    intro b i; cases k <;> first | exact absurd rfl hk | rfl
-  obtain ⟨hs, hg⟩ := decodeW k.width.toUSize hkw.1 md pk n
-  rw [hkw.2.2] at hs hg
-  have hm : (List.range (j + 1)).map (k.bitsAt (Coc.decode k.width.toUSize md pk n)) =
-      (List.range (j + 1)).map fun i =>
-        UInt64.ofNat ((Column.foRBits md pk (Column.blockStarts md) i).toNat % 2 ^ (8 * k.width)) :=
-    List.map_congr_left fun i hi => by
-      rw [hrd, hg i (Nat.lt_of_lt_of_le (List.mem_range.1 hi) hj)]
-  rw [h, hav, hs, Nat.mul_div_cancel_left _ (hkw.2.2 ▸ hkw.2.1), Nat.min_self, scanOf_get _ _ hw _ _ _ _ _ _ hj, hm]
 
-/-- **`Coc.over`**, at every verb: `overList` from `Over.seed` over the `n` elements `foRBits`
-decodes, read as `Int64`. -/
-theorem over_eq (op : Coc.Over) (nul : Int64) (md pk : ByteArray) (n : USize) :
-    Coc.over op nul md pk n =
-      overList op nul (op.seed nul)
-        ((List.range n.toNat).map fun i => (Column.foRBits md pk (Column.blockStarts md) i).toInt64) := by
-  rw [overList, foldl_filter, List.foldl_map]
-  simp only [Coc.over, Coc.elems, List.foldl_map]
-  congr 1
-  funext acc i
-  cases op.boolCast <;> cases h : ((Column.foRBits md pk (Column.blockStarts md) i).toInt64 == nul) <;>
-    simp only [h, bne, Bool.not_true, Bool.not_false, Bool.true_and, Bool.false_and, Bool.true_or,
-      Bool.false_or, Bool.false_eq_true, ↓reduceIte]
 
 end Rel.Verify

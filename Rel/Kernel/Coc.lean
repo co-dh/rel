@@ -369,20 +369,8 @@ def alpEncode64 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpE
 
 def alpEncode32 (x : @& ByteArray) : ByteArray × ByteArray × ByteArray := alpEncodeAt true x
 
-/-- `encode` when its parts are fewer bytes than the `x.size / width * width` dense ones. -/
-def encodeBelow (width : USize) (x : @& ByteArray) : Option (ByteArray × ByteArray) :=
-  let (m, p) := encode width x
-  if m.size + p.size < x.size / width.toNat * width.toNat then some (m, p) else none
 
-/-- `alpEncode64` when its parts are fewer bytes than the dense ones. -/
-def alpEncodeBelow64 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
-  let (m, p, a) := alpEncode64 x
-  if m.size + p.size + a.size < x.size / 8 * 8 then some (m, p, a) else none
 
-/-- `alpEncode32` when its parts are fewer bytes than the dense ones. -/
-def alpEncodeBelow32 (x : @& ByteArray) : Option (ByteArray × ByteArray × ByteArray) :=
-  let (m, p, a) := alpEncode32 x
-  if m.size + p.size + a.size < x.size / 4 * 4 then some (m, p, a) else none
 
 /-- The elements as raw bits, `elems`' counterpart on this constructor and the one place the block
 starts are hoisted out of the loop. Every specification below is a fold over it. -/
@@ -525,14 +513,6 @@ end Ext.Enc
 namespace Column
 open Ext.Enc
 
-/-- `ofAtoms` fails on exactly one condition, so a caller that already knows its atoms are at `t`
-gets a payload back. Every assembler in `QLean/Eval/` establishes that condition by filtering or
-testing before it commits to a vector, which is what makes its announced type honest. -/
-theorem ofAtoms_isSome {t : QAtomicType} {as : Array QAtom} (hn : t ≠ .general)
-    (h : ∀ a ∈ as, a.type = t) : (ofAtoms (X := X) t as).isSome := by
-  unfold ofAtoms
-  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])]
-  cases t <;> first | contradiction | simp [QAtomicType.width]
 
 end Column
 
@@ -568,13 +548,6 @@ def sliceAt (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 
   let _ := offs; let _ := i
   .vector t n e attr
 
-/-- Every element of a `slices` value, which is the million-value loop it exists to avoid. Only
-where something genuinely needs them all — `~` against a general list, the wire encoder — and the
-count is small, or the cost is the one the constructor was avoiding. -/
-def slicesExpand (t : QAtomicType) (n : USize) (e : Ext.Enc X) (attr : Option (UInt8 × IndexCell))
-    (offs : Array Nat) : Array (Ext.QValue X) :=
-  if offs.isEmpty then #[]
-  else (Array.range (offs.size - 1)).map (sliceAt t n e attr offs)
 
 end Ext.QValue
 

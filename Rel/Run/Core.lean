@@ -40,9 +40,6 @@ theorem wf (x : Arr t n) : Enc.WF t n x.enc := by
   obtain ⟨v, h⟩ := x; cases v <;> first | exact h.2.2 | exact h.elim
 
 -- Kept with no caller: the specification of `Arr` as a `List`, `Arr` the implementation, `List` for proofs.
-/-- The vector is its header, its payload and its attribute: what a kernel matching `.vector t n e a` sees. -/
-theorem val_eq (x : Arr t n) : x.1 = .vector t n x.enc x.attrCell := by
-  obtain ⟨v, h⟩ := x; cases v <;> first | exact h.elim | (obtain ⟨rfl, rfl, -⟩ := h; rfl)
 
 /-- `e` under the header `t`, `n` and the attribute `a`. -/
 def mk (e : Enc) (h : Enc.WF t n e) (a : Option (UInt8 × IndexCell) := none) : Arr t n := ⟨.vector t n e a, rfl, rfl, h⟩
@@ -85,12 +82,6 @@ theorem getElem_toList (x : Arr t n) (i : Nat) (h : i < x.toList.length) :
 /-- The list as a relation from its positions: `x i y ↔ x[j] = y` at the `j` with `Int64.ofNat j = i`. -/
 def Holds (x : Arr t n) (i : Int64) (y : El t) : Prop := ∃ j : Fin n.toNat, Int64.ofNat j = i ∧ x.get j = y
 
-theorem holds_iff_mem_zipIdx (x : Arr t n) (i : Int64) (y : El t) :
-    x.Holds i y ↔ ∃ j, Int64.ofNat j = i ∧ (y, j) ∈ x.toList.zipIdx := by
-  simp only [Holds, List.mem_zipIdx_iff_getElem?, List.getElem?_eq_some_iff, length_toList]
-  constructor
-  · rintro ⟨j, rfl, rfl⟩; exact ⟨j, rfl, j.2, by rw [getElem_toList]⟩
-  · rintro ⟨j, rfl, h, rfl⟩; exact ⟨⟨j, h⟩, rfl, by rw [getElem_toList]⟩
 
 /-- A kernel's answer as an `Arr`, the one way in: `WFAt` is decided (the header's two fields and
     `Enc.WF`), never assumed; `what` names the producer in the error. The vector is the kernel's, mark
@@ -103,9 +94,6 @@ def of (t : QAtomicType) (n : USize) (v : QValue) (what : String) : Except Strin
 
 end Arr
 
-/-- The group holding each of `n` positions under the offsets `o`: the last cut at or below it, `o bin til n`
-    (`binBytes`). -/
-def groupOf (o : ByteArray) (n : USize) : ByteArray := Kernel.binBytes 8 false true false o (Kernel.tilLongs n)
 
 /-- `xs` as a dense long payload, eight bytes each: the literal columns of every module's checks. -/
 def packLongs (xs : List Int64) : ByteArray := xs.foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty
@@ -216,29 +204,6 @@ theorem Arr.get_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWo
   rw [← Arr.getElem_toList x i (by rw [Arr.length_toList]; exact hi)]
   simp [Arr.toList_long x h]
 
-/-- The dense payload a kernel reads off a long column that lists `longWords`: a `foR` one decoded (`decodeW`) to the
-    same words, a `pos` one its positions. -/
-theorem Arr.dense_long {m : USize} (x : Arr .i64 m) {ws : List UInt64} (h : longWords m x.enc = some ws) :
-    ∃ B, longBytes m x.enc = some B ∧ Enc.bytesOf .i64 m x.enc = some B ∧
-      Verify.elemsW 8 B = ws ∧ B.size / 8 = m.toNat := by
-  have h8 : (8 : Nat).toUSize.toNat = 8 := USize.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le (by decide) USize.le_size)
-  unfold longWords at h
-  cases hc : x.enc with
-  | pos =>
-    rw [hc] at h; cases h
-    refine ⟨_, rfl, rfl, ?_, ?_⟩
-    · rw [List.foldl_map, Verify.elemsW_foldl_mod Nat.toUInt64 8 (by decide) (by decide)]
-      exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp [UInt64.toNat_ofNat, Nat.mod_mod])
-    · rw [List.foldl_map, (Verify.foldl_pushBits Nat.toUInt64 8 (by decide) _ _).1]; simp
-  | foR md pk =>
-    rw [hc] at h; cases h
-    obtain ⟨hsz, hg⟩ := Verify.decodeW (8 : Nat).toUSize (by rw [h8]; decide) md pk m
-    rw [h8] at hsz hg
-    refine ⟨Kernel.Coc.decode (8 : Nat).toUSize md pk m, rfl, by simp only [Enc.bytesOf, QAtomicType.width]; rfl,
-      List.ext_getElem (by simp [Verify.elemsW, hsz]) fun i h1 _ => ?_, by rw [hsz]; omega⟩
-    simp only [Verify.elemsW, List.getElem_map, List.getElem_range]
-    rw [hg i (by simpa [Verify.elemsW, hsz] using h1), Verify.ofNat_toNat_mod64]
-  | _ => all_goals (rw [hc] at h; cases h)
 
 /-- A dense long payload of `m` words Frame-of-Reference encoded lists them (`foRBits_encode_bits`). -/
 theorem longWords_encode {m : USize} (b : ByteArray) (hm : b.size / 8 = m.toNat) :
@@ -257,16 +222,7 @@ def Arr.ofBytes (t : QAtomicType) {n : USize} (b : ByteArray) (h : b.size = t.wi
     (hu : t ≠ .u1 ∧ t.width.isSome := by decide) : Arr t n :=
   Arr.mk (Ext.Enc.ofBytes (t.width.getD 0) b) (foRBytes_wf t hu b h)
 
-/-- Element `i` of a long `Arr.ofBytes b` is the eight bytes at `8i`, read as a long. -/
-theorem Arr.get_longArr {n : USize} (b : ByteArray) (h : b.size = 8 * n.toNat) (i : Fin n.toNat) :
-    (Arr.ofBytes .i64 b h).get i = (Column.bitsAt b (i.1 * 8) 8).toInt64 := by
-  rw [Arr.get_long _ (longWords_encode b (by omega)) i.1 i.2 (by simp [Verify.elemsW]; omega)]
-  simp [Verify.elemsW]
 
-/-- A long `Arr.ofBytes b` lists `b`'s eight-byte words, each read as a long. -/
-theorem Arr.toList_longArr {n : USize} (b : ByteArray) (h : b.size = 8 * n.toNat) :
-    (Arr.ofBytes .i64 b h).toList = ((List.range n.toNat).map fun i => Column.bitsAt b (i * 8) 8).map UInt64.toInt64 := by
-  rw [Arr.toList_long _ (longWords_encode b (by omega)), Verify.elemsW, show b.size / 8 = n.toNat by omega]
 
 /-- The column of `t` holding the stored words `f` at the positions `0 … n-1`, each cut to `t`'s width (a float is its
     bits, `-0.0` and a NaN's payload included), packed by Lean with no kernel: `Arr.ofBytes` of the packing. -/
@@ -277,23 +233,6 @@ def Arr.ofFn (t : QAtomicType) (n : USize) (f : Fin n.toNat → UInt64) (hu : t 
       (by cases t <;> simp [QAtomicType.width] at hu ⊢) (List.ofFn f) .empty).1
     rw [h]; simp) hu
 
-/-- An `int` column encoded from the dense payload `b` lists `b`'s four-byte words, read back by
-    `foRBits_encode_bits`. -/
-theorem toList_ofBytes_int {m : USize} (x : Arr .i32 m) {b : ByteArray} (hm : b.size / 4 = m.toNat)
-    (hc : x.enc = Ext.Enc.ofBytes 4 b) :
-    x.toList = (List.range m.toNat).map fun i => (Column.bitsAt b (i * 4) 4).toUInt32.toInt32 := by
-  apply List.ext_getElem (by rw [Arr.length_toList]; simp)
-  intro i h1 _
-  have hn : i < m.toNat := by rw [Arr.length_toList] at h1; omega
-  rw [Arr.getElem_toList, List.getElem_map, List.getElem_range, Arr.get_ne x _ (by decide)]
-  simp only [Enc.get, if_pos hn, hc, Ext.Enc.ofBytes, QAtomicType.width]
-  · have hi : i < b.size / 4 := by omega
-    show (Column.foRBits _ _ #[] i).toUInt32.toInt32 = _
-    rw [foRBits_starts]
-    congr 1
-    apply UInt32.toNat_inj.1
-    rw [UInt64.toNat_toUInt32, UInt64.toNat_toUInt32, Kernel.Coc.encode, Verify.foRBits_encode_bits Column.lgEnc (by decide) 4 (by decide) (by decide) b i hi,
-      Nat.mod_eq_of_lt (Verify.bitsAt_lt _ _ _ (by decide))]
 
 /-- Reading a word as a long loses nothing. -/
 theorem toInt64_inj {x y : UInt64} (h : x.toInt64 = y.toInt64) : x = y := by
@@ -304,9 +243,6 @@ def Alg.tagBits {n : USize} (x : Arr .u1 n) : ByteArray :=
   (Kernel.boolBits .u1 n x.enc).get (by
     have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF, Kernel.boolBits])
 
-/-- A boolean column's payload reads as its bitmap `tagBits`. -/
-theorem Alg.enc_tagBits {n : USize} (x : Arr .u1 n) : Kernel.boolBits .u1 n x.enc = some (Alg.tagBits x) :=
-  (Option.some_get _).symm
 
 /-- Under `Enc.WF`, a boolean payload's element `j` is bit `j` of the bitmap `boolBits` reads: a
     `u1` `foR` element is `0` or `1`, so its low bit, which `bitsOfFoR` keeps, is whether it is nonzero. -/
@@ -326,10 +262,6 @@ theorem get_boolBits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {b : ByteArray}
     · obtain rfl : v = 0 := UInt64.toNat_inj.1 h; rfl
     · obtain rfl : v = 1 := UInt64.toNat_inj.1 h; rfl
 
-/-- A boolean column's element `i` is bit `i` of its bitmap (`get_boolBits`). -/
-theorem Arr.get_bool_bits {m : USize} (x : Arr .u1 m) {b : ByteArray}
-    (ht : Kernel.boolBits .u1 m x.enc = some b) (i : Fin m.toNat) : x.get i = Column.bitAt b i.1 := by
-  rw [Arr.get_ne x i (by decide), get_boolBits x.wf ht i.2]; rfl
 
 /-- `Coc.bools` at a count `n` is a well formed boolean column of `n` rows: each element `0` or `1`
     (`foRBits_bools`), its blocks covering `n`, its `lg` the encoder's. -/
@@ -398,27 +330,6 @@ theorem Ext.Enc.blank_WF {X : Type} (t : QAtomicType) (n : USize) : Ext.Enc.WF t
 namespace Column
 open Ext.Enc
 
-/-- What `ofAtoms` builds is well formed: its header is the atoms' type and count, and each layout
-holds exactly that many. Here, after `wf_bools`, because a boolean is a `u1` `foR`. -/
-theorem ofAtoms_WF {X : Type} {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc X} {hn : t ≠ .general}
-    (h : ∀ a ∈ as, a.type = t) (hc : ofAtoms t as hn = some e) (hs : as.size < USize.size) :
-    WF t as.size.toUSize e := by
-  unfold ofAtoms at hc
-  rw [if_pos (Array.all_eq_true'.mpr fun x hx => by simp [h x hx])] at hc
-  have h0 : ∀ k, (ByteArray.emptyWithCapacity k).size = 0 := fun _ =>
-    ByteArray.size_eq_zero_iff.mpr rfl
-  match t, hn, h, hc with
-  | .general, hn, _, _ => exact absurd rfl hn
-  | .u1, _, _, hc =>
-    cases hc
-    have := wf_bools (X := X) (n := as.size.toUSize) fun i => (as[i]?.map boolOf).getD false
-    rwa [USize.toNat_ofNat_of_lt' hs] at this
-  | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
-  | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc | .sym, _, _, hc =>
-    cases hc
-    refine foRBytes_wf _ (by decide) _ ?_
-    rw [USize.toNat_ofNat_of_lt' hs, ← Array.foldl_toList, foldl_pushBits_size, h0]
-    simp [QAtomicType.width] <;> omega
 
 end Column
 
@@ -566,8 +477,6 @@ open Rel.Kernel
 /-- One long as an eight-byte payload: the atom operand of an `av`/`va` kernel call. -/
 def one (v : UInt64) : ByteArray := Column.pushBits .empty v 8
 
-theorem bitsAt_one (v : UInt64) : Column.bitsAt (one v) 0 8 = v := by
-  simpa using Verify.bitsAt_pushBits8 ByteArray.empty v
 
 /-- `Ew.cmp`'s `u1` `foR` read through `boolBits` (its `foR` branch, `bitsOfFoR`): the bitmap a bitmap consumer
     (`Ew.notBits`) takes, one name for the read so no consumer restates it. -/
@@ -578,17 +487,7 @@ def Ew.cmpBits (op cls shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray 
 def Ew.bitBits (op shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
   let c := Ew.bit op shape a b n; bitsOfFoR c.1 c.2 n
 
-/-- `Ew.cmpBits` is the bitmap `cmpBitmap`, whose bits `Verify.cmp_bitAt` states (`boolBits_bools`). -/
-theorem Ew.cmpBits_eq (op cls shape : UInt8) (a b : ByteArray) (n : USize) :
-    Ew.cmpBits op cls shape a b n = Ew.cmpBitmap op cls shape a b n :=
-  Option.some.inj (boolBits_bools (n := n) fun i =>
-    Ew.cmpStep op cls (Ew.elem cls a (Ew.shapeIdx shape i).1) (Ew.elem cls b (Ew.shapeIdx shape i).2))
 
-/-- `Ew.bitBits` is the bitmap `bitBitmap`, whose bits `Verify.Ew.bit_bitAt` states (`boolBits_bools`). -/
-theorem Ew.bitBits_eq (op shape : UInt8) (a b : ByteArray) (n : USize) :
-    Ew.bitBits op shape a b n = Ew.bitBitmap op shape a b n :=
-  Option.some.inj (boolBits_bools (n := n) fun i =>
-    Ew.bitStep op (Column.bitAt a (Ew.shapeIdx shape i).1) (Column.bitAt b (Ew.shapeIdx shape i).2))
 
 /-- `~` on `m` bits: `Ew.bit` xor a ones mask, the mask a one-bit atom in shape `av` (xor is `≠` on bits). -/
 def Ew.notBits (m : USize) (b : ByteArray) : ByteArray := Ew.bitBits (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m

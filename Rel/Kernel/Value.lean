@@ -339,24 +339,9 @@ def lgEnc : Nat := 10
 /-- Block `b`'s minimum, as raw bits: the value its residuals are measured from. -/
 def baseAt (metadata : ByteArray) (b : Nat) : UInt64 := bitsAt metadata (b * 8) 8
 
-/-- Block `b`'s maximum, as raw bits. The denotation below never reads it — `foRBits` needs only the
-minimum and the residual — but it is one of the sections and the kernels that answer `max` and that
-move a block whole read it, so it is stated here beside the section it neighbours. -/
-def maxvAt (metadata : ByteArray) (b : Nat) : UInt64 :=
-  bitsAt metadata (8 * nblk metadata + b * 8) 8
 
-/-- Block `b`'s cached sum, as raw bits. A cache like `maxv`, and read by even less: the denotation
-never touches it and neither does any Lean body here, `Coc.over`'s being the fold over the elements
-that the C answers from this instead. `sumNulAt` is the condition under which it may. -/
-def bsumAt (metadata : ByteArray) (b : Nat) : UInt64 :=
-  bitsAt metadata (24 * nblk metadata + b * 8) 8
 
-/-- The null `bsumAt` skipped, and `0` — no type's null — for metadata that carries no sums. -/
-def sumNulAt (metadata : ByteArray) : Int64 := (bitsAt metadata (32 * nblk metadata) 8).toInt64
 
-/-- The element count `bsumAt` was taken at. It is not `count`: `Column.appendFoR` answers a longer
-column with the metadata of a shorter one, and this is what says the sums are that shorter one's. -/
-def sumCountAt (metadata : ByteArray) : Nat := (bitsAt metadata (32 * nblk metadata + 8) 8).toNat
 
 /-- Block `b`'s width byte, as stored: its residual width (`widthAt`) and its null flag (`nulAt`). -/
 def widthByte (metadata : ByteArray) (b : Nat) : Nat := (metadata[32 * nblk metadata + 24 + b]?.getD 0).toNat
@@ -891,15 +876,6 @@ def nanBits : UInt64 := 0xfff8000000000000
 
 def nanBits32 : UInt32 := 0xffc00000
 
-/-- Days from 2000.01.01 to the first of `y`-`m`, which is the month payload's own anchor: q's
-`` `date$1999.12m `` is `1999.12.01`. Here and not in `Eval` because the kernels' unit conversion
-(`Kernel.Ew.tickStep`) reads a month through it too. -/
-def daysOfFirst (y m : Int) : Int :=
-  let y := if m ≤ 2 then y - 1 else y
-  let era := (if y ≥ 0 then y else y - 399) / 400
-  let yoe := y - era * 400
-  let doy := (153 * ((m + 9) % 12) + 2) / 5
-  era * 146097 + (yoe * 365 + yoe / 4 - yoe / 100 + doy) - 730425
 end Rel
 
 
@@ -934,22 +910,6 @@ def type : QAtom → QAtomicType
   | char _ => .char | i8 _ => .i8 | sym _ => .sym
   | date _ => .date | datetime _ => .datetime
 
-/-- q's `~` on atoms: bit-pattern identity, so a null matches a null. -/
-def identical : QAtom → QAtom → Bool
-  | u1 a, u1 b => a == b
-  | u8 a, u8 b | char a, char b => a == b
-  | i16 a, i16 b => a == b
-  | i32 a, i32 b | date a, date b => a == b
-  | i64 a, i64 b | datetime a, datetime b => a == b
-  | i8 a, i8 b => a == b
-  -- the two zeros are one value to `~` even though their bit patterns differ: measured,
-  -- `-0.0~0.0` and `-0.0e~0.0e` are both `1b`, and `distinct -0.0 0.0` is the single `,-0f`.
-  -- Everything else stays bit equality, which is what keeps `0n~0n` true.
-  | f32 a, f32 b => a == b || (a &&& 0x7fffffff == 0 && b &&& 0x7fffffff == 0)
-  | f64 a, f64 b =>
-    a == b || (a &&& 0x7fffffffffffffff == 0 && b &&& 0x7fffffffffffffff == 0)
-  | sym a, sym b => a == b
-  | _, _ => false
 
 end QAtom
 
@@ -962,10 +922,6 @@ goes through `QValue.ofArray`. The attribute is a parameter because a general li
     (a : Option (UInt8 × IndexCell) := none) : Ext.QValue X :=
   .vector .general n (.gen xs) a
 
-/-- A general list over `xs`, its count `xs.size`: the one place a Lean `Array`'s size becomes a
-`USize` count, under the proof that it fits. -/
-def Ext.QValue.ofArray (xs : Array (Ext.QValue X)) : Ext.QValue X :=
-  Kernel.needSize xs.size "ofArray: elements" (fun _ => .general #[] 0) fun n => .general xs n
 
 namespace Column
 
@@ -1005,11 +961,6 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
   | .f64 => .f64 v
   | .sym => .sym v
 
-/-- A payload of exactly `⌈n·w/8⌉` bytes, the size every writer lays out, holds all `n` ids. -/
-theorem idsCap_of_size {ids : ByteArray} {w n : Nat} (h : ids.size = (n * w + 7) / 8) : idsCap ids w n = n := by
-  unfold idsCap; split
-  · rfl
-  · rw [h]; refine Nat.min_eq_left ((Nat.le_div_iff_mul_le (by omega)).2 ?_); generalize n * w = k; omega
 
 end Column
 
@@ -1069,12 +1020,6 @@ theorem foldl_pushBits_size {w : Nat} (b : ByteArray) (as : List QAtom) :
 /-- The bit an atom contributes to a boolean column. -/
 def boolOf (a : QAtom) : Bool := match a with | .u1 b => b | _ => false
 
-/-- Pushing a list of bytes appends exactly that many. -/
-theorem foldl_push_size (b : ByteArray) (xs : List UInt8) :
-    (xs.foldl ByteArray.push b).size = b.size + xs.length := by
-  induction xs generalizing b with
-  | nil => simp
-  | cons x xs ih => rw [List.foldl_cons, ih, push_size]; simp only [List.length_cons]; omega
 
 
 end Column

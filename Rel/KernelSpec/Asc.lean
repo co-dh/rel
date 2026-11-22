@@ -278,16 +278,6 @@ theorem ascCol_keys {m : USize} {es : List (AscKey × Enc)} {cs} (hc : es.mapM (
         subst hc
         rw [List.flatMap_cons, ih hes, ascKeys, (ascCol_ok he).2.2.1]
 
-/-- **`asc_sorted`** (design §4): the permutation `kasc` answers lists the rows ordered lexicographically by their
-order codes (`ascKeys`), the first column the most significant, and **stably**: a row comes before a row whose codes
-equal its own only when it came before it in the input. -/
-theorem asc_sorted (m : USize) (es : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
-    (h : kasc m es = .ok (vs, p)) :
-    ∃ ps : List Nat, p = wordsFoR (ps.map Nat.toUInt64).toArray ∧
-      ps.Pairwise fun i j => lexLe (ascKeys m es) i j = true ∧ (lexLe (ascKeys m es) j i = true → i < j) := by
-  obtain ⟨cs, hc, -, -, -, -, -, hp⟩ := kasc_ok h
-  rw [ascCol_keys hc] at hp
-  exact ⟨_, hp, (ascGrade_spec _ _).2⟩
 
 /-- **`asc_perm`** (design §4): the permutation `kasc` answers is a permutation `ps` of `til m`, and the answer for each
 key column `e` holds `m` words, word `k` being `e`'s raw word at row `ps[k]`. -/

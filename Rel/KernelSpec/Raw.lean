@@ -103,15 +103,6 @@ theorem extract_getElem? {α : Type} (a : Array α) (s e k : Nat) :
   · rw [if_pos hk, if_pos hk, if_pos (by rw [Nat.lt_sub_iff_add_lt, Nat.lt_min] at hk; omega)]
   · rw [if_neg hk, if_neg hk]
 
-/-- The bytes `[a, m)` of `s`, read at `o`, are `s` read at `a + o`, wherever the read ends by `m`. -/
-theorem bitsAt_extract (s : ByteArray) {a m o w : Nat} (h : a + o + w ≤ m) :
-    Column.bitsAt (s.extract a m) o w = Column.bitsAt s (a + o) w :=
-  bitsAt_shift _ _ _ _ _ fun k hk => by
-    rw [show (s.extract a m)[o + k]? = (s.extract a m).data[o + k]? from rfl, ByteArray.data_extract,
-      extract_getElem?, show s[a + o + k]? = s.data[a + o + k]? from rfl]
-    split
-    · rw [Nat.add_assoc]
-    · rw [Array.getElem?_eq_none (by have : s.data.size = s.size := rfl; omega)]
 
 /-- **The foR round trip.** `Enc.raw` cannot tell `Coc.encodeAt` at any block size `2 ^ lg` the layout admits
 (`6 ≤ lg ≤ 16`) from the dense payload it encodes, read at that payload's width `w`, at any count up to `x`'s: element

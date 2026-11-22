@@ -42,9 +42,6 @@ variable {A B C : Obj} {Φ Ψ : Den A B → Den A B} {Y : Den A B}
 
 /-! ### The named meanings: each the `T` of its node's `Gen.*_sound` lemma -/
 
-/-- A table's value rows are the values its `rep` relates. -/
-theorem valRow {A B : Obj} (U : Tab A B) (b : B.El) : (∃ p, U.val.row p = b) ↔ ∃ a, rep U a b :=
-  ⟨fun ⟨p, e⟩ => ⟨U.key.row p, p, rfl, e⟩, fun ⟨_, p, _, e⟩ => ⟨p, e⟩⟩
 
 /-- `R − S`, pointwise. -/
 abbrev diffDen (TR TS : Den A B) : Den A B := fun x y => TR x y ∧ ¬ TS x y
@@ -144,38 +141,6 @@ abbrev foldDen {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) : Den (.arr E
     (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
     w = ys[xs.length]'(by omega)
 
-/-- The left fold read from the back: `foldlDen` on `xs` is the chain `rep_foldOnC` reads at `l` (`ordL`), the
-    right fold's chain on `xs.reverse`, the pair `(acc, x)` and `ys` reversed. -/
-theorem foldDen_rev {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
-    foldDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.reverse.length + 1,
-      (∃ a, Te a (ys[xs.reverse.length]'(by omega))) ∧
-      (∀ t (ht : t < xs.reverse.length), TS (ys[t + 1]'(by omega), xs.reverse[t]'ht) (ys[t]'(by omega))) ∧
-      w = ys[0]'(by omega) := by
-  -- `ys ↦ ys.reverse` both ways: chain position `s` of one is `|xs| - s` of the other
-  have rv : ∀ (zs : List V.El) (hz : zs.length = xs.length + 1) (i j : Nat) (hi : i < zs.reverse.length)
-      (hj : j < zs.length), j = xs.length - i → zs.reverse[i] = zs[j] := by
-    intro zs hz i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
-  have rx : ∀ (i j : Nat) (hi : i < xs.reverse.length) (hj : j < xs.length), j = xs.length - 1 - i →
-      xs.reverse[i] = xs[j] := by
-    intro i j hi hj he; rw [List.getElem_reverse]; congr 1; simp only [List.length_reverse] at hi; omega
-  constructor
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    refine ⟨ys.reverse, by simp [hy], ⟨a, by rw [rv ys hy _ 0 _ (by omega) (by simp)]; exact ha⟩, fun t ht => ?_,
-      by rw [rv ys hy 0 xs.length _ (by omega) (by simp)]⟩
-    simp only [List.length_reverse] at ht
-    rw [rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega), rv ys hy t (xs.length - 1 - t + 1) _ (by omega)
-      (by omega), rx t (xs.length - 1 - t) _ (by omega) rfl]
-    exact hS _ (by omega)
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    simp only [List.length_reverse] at hy ha hS
-    refine ⟨ys.reverse, by simp [hy], ⟨a, ?_⟩, fun t ht => ?_, ?_⟩
-    · rw [rv ys hy 0 xs.length _ (by omega) (by simp)]; exact ha
-    · have h := hS (xs.length - 1 - t) (by omega)
-      rw [rx _ t _ ht (by omega)] at h
-      rw [rv ys hy t (xs.length - 1 - t + 1) _ (by omega) (by omega),
-        rv ys hy (t + 1) (xs.length - 1 - t) _ (by omega) (by omega)]
-      exact h
-    · rw [rv ys hy xs.length 0 _ (by omega) (by simp)]
 
 /-- `fold(e, S)` given a family: at the key `i`, the left fold whose start is the fibre of `e` at `i` and whose step
     is `S` at `i`, keeping the key. -/
@@ -227,13 +192,6 @@ theorem foldIDen_eq {I E V : Obj} (Te : Den I (.prod V V)) (TS : Den (.prod (.pr
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
 abbrev flatDen {I A B : Obj} (T : Den I (.prod A B)) : Den (.prod I A) B := fun x b => T x.1 (x.2, b)
 
-/-- `flatDen` is a composition: `(π₁ ≫ T) ∩ (π₂ ≫ π₁°)` keeps the `(a', b)` of `T` at the key with `a'` the
-    source, then `π₂`. -/
-theorem flatDen_eq {I A B : Obj} (T : Den I (.prod A B)) :
-    flatDen T = ((graph Prod.fst ≫ T) ∩ (graph Prod.snd ≫ (graph Prod.fst)°)) ≫ graph Prod.snd :=
-  Core.Rel.ext fun x b => ⟨fun h => ⟨(x.2, b), ⟨⟨x.1, rfl, h⟩, x.2, rfl, rfl⟩, rfl⟩,
-    fun ⟨⟨_, _⟩, ⟨⟨_, hi, hT⟩, _, ha, ha'⟩, hb⟩ => by
-      simp only [Core.Rel.recip, Core.Rel.graph, flatDen] at *; subst hi ha ha' hb; exact hT⟩
 
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
 abbrev estDen (TQ : Den (.prod B B) (.prod B B)) : Den (.arr B) B :=
@@ -1021,24 +979,8 @@ theorem Tm.den_mono {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol true k = t
     {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k X) ⊑ t.den (ρ.bind k Y) :=
   t.den_pol k true _ _ h (Val.Grow.of_le hXY)
 
-/-- `⟦t⟧` is antitone in `X` where `X` occurs only negatively. -/
-theorem Tm.den_anti {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol false k = true) {ρ : Val}
-    {X Y : Den A B} (hXY : X ⊑ Y) : t.den (ρ.bind k Y) ⊑ t.den (ρ.bind k X) :=
-  t.den_pol k false _ _ h (Val.Grow.of_le hXY)
 
-/-- `μX : φ = φ[μX : φ]` where `X` occurs in `φ` only positively. -/
-theorem Tm.den_mu_unfold {A B : Obj} (k : Nat) (what : String) (cap : Nat) (b : Tm A B)
-    (h : b.pol true k = true) (ρ : Val) :
-    (Tm.mu k what cap b).den ρ = (b.subst [(k, ⟨A, B, .mu k what cap b⟩)]).den ρ := by
-  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
-  exact (Core.Rel.mu_fix fun _ _ hXY => den_mono h hXY).symm
 
-/-- `νX : S ∩ φ = S ∩ φ[νX : S ∩ φ]` where `X` occurs in `φ` only positively; `S` is outside the binder. -/
-theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B) (h : b.pol true k = true) (ρ : Val) :
-    (Tm.nu k S b).den ρ = (Tm.meet S (b.subst [(k, ⟨A, B, .nu k S b⟩)])).den ρ := by
-  show _ = S.den ρ ∩ _
-  rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
-  exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
 /-- `Tm.memAt` at `[E] ⟶ E` is `∋`: it relates a list to its members. -/
 theorem Tm.den_memAt {ρ : Val} {E : Obj} : (Tm.memAt (.arr E) E).den ρ = fun (xs : (Obj.arr E).El) x => x ∈ xs := by

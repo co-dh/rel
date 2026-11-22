@@ -139,10 +139,6 @@ theorem fold_push_getElem? (L : Nat) (f : Nat → UInt8) (init : ByteArray) :
     · subst hkL; simp
     · simp [hkL, hg k (by omega)]
 
-theorem fold_push0 (L : Nat) (f : Nat → UInt8) (init : ByteArray) (h : init.size = 0) (k : Nat) (hk : k < L) :
-    (Nat.fold L (init := init) fun k _ acc => acc.push (f k))[k]? = some (f k) := by
-  have := (fold_push_getElem? L f init).2 k hk
-  rwa [h, Nat.zero_add] at this
 
 theorem field_of (w p j : Nat) (h1 : j * w ≤ p) (h2 : p < j * w + w) :
     p / w = j ∧ p % w = p - j * w := by
@@ -237,24 +233,7 @@ theorem bitsAt_shift (A S : ByteArray) (o o' w : Nat) (h : ∀ k < w, A[o + k]? 
 /-- The `w`-byte elements of a payload, as `Column.bitsAt` reads them. -/
 def elemsW (w : Nat) (d : ByteArray) : List UInt64 := (List.range (d.size / w)).map fun i => Column.bitsAt d (i * w) w
 
-/-- The first `n` ids of a payload packed at `w` bits, as `Column.idAt` reads them: `elemsW`'s
-reader for an interned column's ids and a grouping's group ids. -/
-def idsW (w n : Nat) (d : ByteArray) : List Nat := (List.range (Column.idsCap d w n)).map (Column.idAt d w ·)
 
-/-- `packIds` reads `f` at the first `n` indices only. -/
-theorem packIds_congr (w n : Nat) {f g : Nat → Nat} (h : ∀ i < n, f i = g i) :
-    Column.packIds w n f = Column.packIds w n g := by
-  unfold Column.packIds
-  split
-  · congr 1; funext i hi acc; rw [h i hi]
-  · split
-    · rfl
-    · dsimp only
-      congr 1; funext k _ acc; congr 1; congr 1; funext j _ b'
-      dsimp only
-      by_cases hlt : k * (8 / w) + j < n
-      · rw [if_pos hlt, if_pos hlt, h _ hlt]
-      · rw [if_neg hlt, if_neg hlt]
 
 /-- A fold of `w`-byte writes: its size, the bytes before it untouched, and element `i` read back
 where it was written, modulo `2 ^ (8 * w)`. `Coc.decode`, `Coc.foRMeta`'s sections and `binBytes`'
@@ -569,15 +548,6 @@ theorem foRBits_of (M P : ByteArray) (i : Nat) (B : Nat) (hB : Column.blk M = B)
   simp only [hf, blockStarts_get M hb, h2, h3]
   rw [resAt_packRes (Column.blk M) wd (blk_dvd8 M) hwd R P _ h4 _ (Nat.mod_lt _ (blk_pos M))]
 
-/-- **A flagged block's top residual reads as the null**: element `i` of a block `nulAt` flags, held by no patch, whose
-residual is `2 ^ w - 1` (`w` the block's `widthAt`), reads `none`, the `1` of `atom+1`. -/
-theorem foROpt_top (M P : ByteArray) (st : Array Nat) (i : Nat) (hf : Column.nulAt M (i / Column.blk M))
-    (hx : Column.foRExc M P i
-      (match st[Column.nblk M]? with | some s => s | none => Column.blockStart M (Column.nblk M)) = none)
-    (hr : Column.resAt P (match st[i / Column.blk M]? with | some s => s | none => Column.blockStart M (i / Column.blk M))
-      (Column.widthAt M (i / Column.blk M)) (i % Column.blk M) = (2 ^ Column.widthAt M (i / Column.blk M) - 1).toUInt64) :
-    Column.foROpt M P st i = none := by
-  simp only [Column.foROpt, Column.foRNul, Column.ones_eq, hf]; simp; exact ⟨hx, hr⟩
 
 /-- An unflagged block reads as before: every element of a block `nulAt` does not flag is `some` of its `foRBits`, so a
 column with no flagged block keeps its denotation. -/

@@ -131,21 +131,6 @@ theorem raw_scatter (m : USize) (ix e : Enc) (n : USize) (fill : UInt64) (o : En
           fun k hk => hn k (by omega), fun k hk hl => hlast k (by omega) fun k' a b hc => hl k' a (by omega) ?_⟩
         exact UInt64.toNat_inj.mp hc
 
-/-- Law S1 (PLAN 6.13): scattering to the positions `ix = pos` at `m = n` writes every cell once, at its own row, so the
-answer reads back as `e`: the identity is a permutation, and a caller holding `pos` skips the call. -/
-theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (h : kscatter .last n .pos e n fill = .ok o) :
-    raw .i64 n o = raw .i64 n e := by
-  obtain ⟨-, his, hes, hws, -, -, hlast⟩ := raw_scatter n .pos e n fill o h
-  have hm : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
-  -- row `k` of `pos` is `k`
-  have hrow : ∀ k < n.toNat, ((raw .i64 n (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
-    simp [raw, Array.getElem?_range, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
-  apply Array.ext (by rw [hws, hes])
-  intro j h1 h2
-  have hj : j < n.toNat := by omega
-  have hw := hlast j hj fun k' _ hk' hc => by have := congrArg UInt64.toNat hc; rw [hrow k' hk', hrow j hj] at this; omega
-  rw [hrow j hj, Array.getElem?_eq_getElem h1, Array.getElem?_eq_getElem h2, Option.getD_some] at hw
-  exact Option.some.inj hw
 
 /-- A fold whose every successful `step` names a cell `ix k` below `n` and combines `es k` into it by `f`: a successful
 run over the rows `l` from `o` of `n` cells keeps the size, and cell `j` ends as `f` folded over `es k` for the rows `k`
@@ -190,36 +175,5 @@ theorem scatterWords_fold {op : Op} {f : UInt64 → UInt64 → UInt64} (hf : ∀
       · cases h) _ _ ws (by simp) h
   exact ⟨hs, fun j hjn => by rw [hj j]; simp [hjn]⟩
 
-/-- **`scatter .add` counts** (`scatterWords_fold` at `+`): where the words `es` are the naturals `eN` and their sum
-from `fill` stays below `2^64`, cell `j` is `fill` plus the `eN k` of the rows `k` naming `j`, with no wrap. With
-`eN = 1` it is the number of rows naming `j`; a pointwise smaller `eN` gives a smaller cell. -/
-theorem scatterWords_add {is es ws : Array UInt64} {n : Nat} {fill : UInt64}
-    (h : scatterWords .add is es n fill = .ok ws) (eN : Nat → Nat)
-    (he : ∀ k < is.size, es[k]?.getD 0 = (eN k).toUInt64)
-    (hs : fill.toNat + ((List.range is.size).map eN).sum < 2 ^ 64) :
-    ws.size = n ∧ ∀ j < n, (ws[j]?.getD 0).toNat =
-      fill.toNat + (((List.range is.size).filter fun k => (is[k]?.getD 0).toNat = j).map eN).sum := by
-  obtain ⟨hsz, hj⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) h
-  -- a sublist of the rows sums to at most their sum, and summing it in `UInt64` from `a` does not wrap
-  have hle : ∀ (p : Nat → Bool) (l : List Nat), ((l.filter p).map eN).sum ≤ (l.map eN).sum := fun p l => by
-    induction l with
-    | nil => simp
-    | cons k l ih => cases hp : p k <;> simp [hp] <;> omega
-  have hfold : ∀ (l : List Nat) (a : UInt64), (∀ k ∈ l, k < is.size) → a.toNat + (l.map eN).sum < 2 ^ 64 →
-      ((l.map (es[·]?.getD 0)).foldl (· + ·) a).toNat = a.toNat + (l.map eN).sum := fun l => by
-    induction l with
-    | nil => simp
-    | cons k l ih =>
-      intro a hl hb
-      simp only [List.map_cons, List.foldl_cons, List.sum_cons] at hb ⊢
-      have hk : (es[k]?.getD 0).toNat = eN k := by
-        rw [he k (hl k List.mem_cons_self), UInt64.toNat_ofNat']; exact Nat.mod_eq_of_lt (by omega)
-      have ha : (a + es[k]?.getD 0).toNat = a.toNat + eN k := by
-        rw [UInt64.toNat_add, hk]; exact Nat.mod_eq_of_lt (by omega)
-      rw [ih _ (fun k' h' => hl k' (List.mem_cons_of_mem _ h')) (by omega), ha]; omega
-  refine ⟨hsz, fun j hjn => ?_⟩
-  rw [hj j hjn]
-  exact hfold _ _ (fun k hk => List.mem_range.1 (List.mem_filter.1 hk).1)
-    (Nat.lt_of_le_of_lt (Nat.add_le_add_left (hle _ _) _) hs)
 
 end Rel.Verify

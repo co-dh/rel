@@ -312,9 +312,6 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     obtain ⟨rfl, hPw⟩ := (hU _ _).1 hw
     exact ⟨hE, hPw, hf⟩
 
-/-- **The rows of `dfns` are those of `DfnCut`** (`lengthRow`, `sumRow`, `flatRow`), whose replacement
-    `Tm.dfnCut_den` proves: a row given a definition that is not one of them fails here. -/
-theorem Prim.dfn_read : dfns.map (·.1) = [lengthRow.sym, sumRow.sym, flatRow.sym, foldIRow.sym] := rfl
 
 /-! ### Keyed lifting (§e): the law `Prim.keyLift` claims -/
 

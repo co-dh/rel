@@ -145,10 +145,6 @@ variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (ng w n : USize) (gid b : B
 def gidAt (i : Nat) : Nat := Column.idAt gid w.toNat i
 def valAt (i : Nat) : Int64 := Ew.signed cls (Ew.elem cls b i)
 
-/-- The rows `overGroups` steps group `j` on: its id is `j` and its element is not skipped as null. -/
-def rowsOf (j : Nat) : List Nat :=
-  (List.range (Column.idsCap gid w.toNat (min n.toNat (b.size / Ew.width cls)))).filter fun i =>
-    gidAt w gid i == j && (op.boolCast || valAt cls b i != nul)
 
 /-- `overGroups`' step, which `overGroups_eq` checks is the body's. -/
 def overStep : Array Int64 × Array Int64 → Nat → Array Int64 × Array Int64 := fun (fold, live) i =>
@@ -167,74 +163,7 @@ theorem set!_get! (a : Array Int64) (g j : Nat) (v : Int64) (hj : j < a.size) :
     getElem!_pos a j hj]
   simp only [Array.set!_eq_setIfInBounds, Array.getElem_setIfInBounds hj]
 
-theorem overStep_fold (l : List Nat) (a c : Array Int64) (ha : a.size = ng.toNat) (hc : c.size = ng.toNat) :
-    (l.foldl (overStep op cls nul ng w gid b) (a, c)).1.size = ng.toNat ∧
-    (l.foldl (overStep op cls nul ng w gid b) (a, c)).2.size = ng.toNat ∧ ∀ j < ng.toNat,
-      (l.foldl (overStep op cls nul ng w gid b) (a, c)).1[j]! =
-        (l.filter fun i => gidAt w gid i == j && (op.boolCast || valAt cls b i != nul)).foldl
-          (fun acc i => op.step acc (valAt cls b i)) a[j]! ∧
-      (l.foldl (overStep op cls nul ng w gid b) (a, c)).2[j]! =
-        c[j]! + Int64.ofNat (l.filter fun i => gidAt w gid i == j && (op.boolCast || valAt cls b i != nul)).length := by
-  induction l generalizing a c with
-  | nil => exact ⟨ha, hc, fun j _ => ⟨rfl, by rw [List.filter_nil, List.length_nil]; exact (Int64.add_zero _).symm⟩⟩
-  | cons i l ih =>
-    rw [List.foldl_cons]
-    by_cases hs : (Column.idAt gid w.toNat i ≥ ng.toNat ||
-        (!op.boolCast && Ew.signed cls (Ew.elem cls b i) == nul)) = true
-    · have e : overStep op cls nul ng w gid b (a, c) i = (a, c) := by simp only [overStep, hs, if_true]
-      rw [e]
-      obtain ⟨h1, h2, h3⟩ := ih a c ha hc
-      refine ⟨h1, h2, fun j hj => ?_⟩
-      have hr : (gidAt w gid i == j && (op.boolCast || valAt cls b i != nul)) = false := by
-        by_cases hg : ng.toNat ≤ gidAt w gid i
-        · rw [Bool.eq_false_iff.2 fun h => absurd (beq_iff_eq.1 h) (by omega), Bool.false_and]
-        · cases hb : op.boolCast
-          · cases hx : (Ew.signed cls (Ew.elem cls b i) == nul)
-            · rw [hb, hx] at hs
-              simp only [Bool.not_false, Bool.and_false, Bool.or_false, decide_eq_true_eq] at hs
-              exact absurd hs hg
-            · simp only [valAt, bne, hx, Bool.not_true, Bool.or_false, Bool.and_false]
-          · rw [hb] at hs
-            simp only [Bool.not_true, Bool.false_and, Bool.or_false, decide_eq_true_eq] at hs
-            exact absurd hs hg
-      rw [List.filter_cons_of_neg (by rw [hr]; exact Bool.false_ne_true)]
-      exact h3 j hj
-    · have e : overStep op cls nul ng w gid b (a, c) i =
-          (a.set! (gidAt w gid i) (op.step a[gidAt w gid i]! (valAt cls b i)),
-            c.set! (gidAt w gid i) (c[gidAt w gid i]! + 1)) := by
-        simp only [overStep, hs, if_false, Bool.false_eq_true]; rfl
-      rw [e]
-      obtain ⟨h1, h2, h3⟩ := ih (a.set! (gidAt w gid i) (op.step a[gidAt w gid i]! (valAt cls b i)))
-        (c.set! (gidAt w gid i) (c[gidAt w gid i]! + 1))
-        (by rw [Array.set!_eq_setIfInBounds, Array.size_setIfInBounds]; exact ha)
-        (by rw [Array.set!_eq_setIfInBounds, Array.size_setIfInBounds]; exact hc)
-      refine ⟨h1, h2, fun j hj => ?_⟩
-      obtain ⟨h3a, h3b⟩ := h3 j hj
-      rw [h3a, h3b, set!_get! _ _ _ _ (ha ▸ hj), set!_get! _ _ _ _ (hc ▸ hj)]
-      have hk : (op.boolCast || valAt cls b i != nul) = true := by
-        simp only [valAt]
-        cases hb : op.boolCast
-        · cases hx : (Ew.signed cls (Ew.elem cls b i) == nul)
-          · simp only [bne, hx, Bool.not_false, Bool.or_true]
-          · exact (hs (by rw [hb, hx, Bool.not_false, Bool.and_true, Bool.or_true])).elim
-        · rfl
-      by_cases hg : gidAt w gid i = j
-      · rw [if_pos hg, if_pos hg, List.filter_cons_of_pos (by rw [beq_iff_eq.2 hg, hk]; rfl), List.foldl_cons,
-          List.length_cons, Int64.ofNat_add, ← hg]
-        exact ⟨rfl, by rw [Int64.add_assoc, Int64.add_comm 1]; rfl⟩
-      · rw [if_neg hg, if_neg hg, List.filter_cons_of_neg (by rw [Bool.eq_false_iff.2 fun h => hg (beq_iff_eq.1 h)]; exact Bool.false_ne_true)]
-        exact ⟨rfl, rfl⟩
 
-theorem slots_spec (fold live : Array Int64) :
-    (slots fold live).size = 8 * (fold.size + live.size) ∧
-    ∀ j (hj : j < (fold ++ live).size), (Column.bitsAt (slots fold live) (j * 8) 8).toInt64 = (fold ++ live)[j] := by
-  obtain ⟨hs, -, hg⟩ := foldl_pushBits (fun v : Int64 => v.toUInt64) 8 (by decide) (fold ++ live).toList ByteArray.empty
-  rw [Array.foldl_toList] at hs hg
-  refine ⟨by rw [slots, hs, Array.length_toList, Array.size_append]; simp, fun j hj => ?_⟩
-  have e := hg j (by rw [Array.length_toList]; exact hj)
-  rw [show ByteArray.empty.size + 8 * j = j * 8 by simp [Nat.mul_comm]] at e
-  rw [slots, e, show 8 * 8 = 64 from rfl, Nat.mod_eq_of_lt (UInt64.toNat_lt _), UInt64.ofNat_toNat,
-    Int64.toInt64_toUInt64, Array.getElem_toList]
 
 /-- `laneWidth` answers one of the eight lanes. -/
 theorem laneWidth_cases (x : Nat) : Column.laneWidth x = 0 ∨ Column.laneWidth x = 1 ∨
@@ -277,11 +206,6 @@ theorem idsCap_packIds {W : Nat} (m : Nat) (f : Nat → Nat)
 
 end Over
 
-theorem get!_eq (b : ByteArray) (k : Nat) : b.get! k = b[k]?.getD 0 := by
-  rcases b with ⟨a⟩
-  by_cases h : k < a.size
-  · rw [getElem?_pos (ByteArray.mk a) k h]; simp [ByteArray.get!, h, ByteArray.getElem_eq_getElem_data]
-  · rw [getElem?_neg (ByteArray.mk a) k h]; simp [ByteArray.get!, h]; rfl
 
 
 section Segs

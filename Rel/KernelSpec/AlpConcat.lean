@@ -37,22 +37,6 @@ theorem elemsW_alpDecode_alpBits (M P a : ByteArray) (n w : USize) (hw : w.toNat
   simp only [Function.comp_apply]
   rw [hw, Nat.mod_eq_of_lt (alpBits_lt _ _ _ _ _), UInt64.ofNat_toNat]
 
-/-- **The ALP round trip on the decoded words**, at either element width: decoding what
-`Coc.alpEncodeAt f32 x` wrote, at `x`'s element count, gives `x`'s words. -/
-theorem elemsW_alpDecode_alpEncodeAt (f32 : Bool) (w : Nat) (hw : (if f32 then 4 else 8) = w) (x : ByteArray)
-    (hx : x.size / w < 2 ^ 32) :
-    elemsW w (Coc.alpDecode w.toUSize (Coc.alpEncodeAt f32 x).1 (Coc.alpEncodeAt f32 x).2.1
-      (Coc.alpEncodeAt f32 x).2.2 (x.size / w).toUSize) = elemsW w x := by
-  obtain ⟨hf, hrt⟩ := alpBits_alpEncodeAt f32 Column.lgEnc (by decide) w hw x hx
-  have hw8 : w ≤ 8 := by subst hw; cases f32 <;> decide
-  have hwU : w.toUSize.toNat = w :=
-    USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw8 (Nat.lt_of_lt_of_le (by decide) USize.le_size))
-  have hN : (x.size / w).toUSize.toNat = x.size / w := USize.toNat_ofNat_of_lt' (Nat.lt_of_lt_of_le hx USize.le_size)
-  have rd := elemsW_alpDecode_alpBits (Coc.alpEncodeAt f32 x).1 (Coc.alpEncodeAt f32 x).2.1
-    (Coc.alpEncodeAt f32 x).2.2 (x.size / w).toUSize w.toUSize (by rw [hwU]; unfold Column.alpEsz; rw [hf, hw])
-  rw [hwU, hN] at rd
-  rw [rd, elemsW]
-  exact List.map_congr_left fun i hi => hrt i (List.mem_range.1 hi)
 
 /-- The `w`-byte elements of a join are the parts', when the first part ends on an element. -/
 theorem elemsW_append (w : Nat) (hw : 0 < w) (a b : ByteArray) (ha : a.size % w = 0) :
@@ -75,17 +59,6 @@ theorem elemsW_append (w : Nat) (hw : 0 < w) (a b : ByteArray) (ha : a.size % w 
     exact bitsAt_shift _ _ _ _ w fun t ht => by
       rw [show i * w + t = a.size + ((i - q) * w + t) by omega, ba_append_right]
 
-/-- A left fold of joins, read in `w`-byte elements, is its parts' elements in order, when every part
-ends on an element. -/
-theorem elemsW_foldl_append (w : Nat) (hw : 0 < w) (parts : List ByteArray) (acc : ByteArray)
-    (ha : acc.size % w = 0) (hp : ∀ p ∈ parts, p.size % w = 0) :
-    elemsW w (parts.foldl (· ++ ·) acc) = elemsW w acc ++ (parts.map (elemsW w)).flatten := by
-  induction parts generalizing acc with
-  | nil => simp
-  | cons p ps ih =>
-    rw [List.foldl_cons, ih _ (by rw [ByteArray.size_append, Nat.add_mod, ha, hp p (by simp)]; simp)
-      (fun r hr => hp r (by simp [hr])), elemsW_append w hw acc p ha]
-    simp [List.append_assoc]
 
 
 end Rel.Verify
