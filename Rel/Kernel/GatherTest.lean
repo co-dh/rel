@@ -69,4 +69,18 @@ def want (r : Except String (Array UInt64)) : String ⊕ (List UInt8 × List UIn
     want (gatherWords (idx.setIfInBounds 1050 1504) s)
 #guard view (kgather (u 1100) (col idx.toList) (u 1500) .pos) == want (gatherWords idx (til 1500))
 
+/-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
+def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
+  wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+
+-- a null of `e` is a value: rows 0 and 2 read `e`'s null at 1, row 1 reads 5 (rq17c: before, the null read as 7)
+example : view (kgather (u 3) (col [1, 0, 1]) (u 2) (ncol [5, 0] [1])) = view (.ok (ncol [0, 5, 0] [0, 2])) := by
+  decide +kernel
+#guard view (kgather (u 3) (col [1, 0, 1]) (u 2) (ncol [5, 0] [1])) == view (.ok (ncol [0, 5, 0] [0, 2]))
+
+-- a null index names no row: the error, after both layouts
+def nulIx : String ⊕ (List UInt8 × List UInt8) := .inl "gather: ix: row 1 is null, and a null names no row"
+example : view (kgather (u 2) (ncol [0, 0] [1]) (u 2) (col [5, 6])) = nulIx := by decide +kernel
+#guard view (kgather (u 2) (ncol [0, 0] [1]) (u 2) (col [5, 6])) == nulIx
+
 end Rel.Kernel.GatherTest

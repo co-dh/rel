@@ -107,7 +107,7 @@ mutual
 /-- The order codes of one key column at `m` rows, `ascCol`'s on the words `Enc.raw` reads: an `atom` column's words
 through its type's `ascOrd`, a `cells` column's words through `cellFns` over its payload's `ascKeys`. -/
 def ascKey (m : USize) : AscKey × Enc → List (Array UInt64)
-  | (.atom t, e) => [(raw .i64 m e).map ((ascOrd t).getD id)]
+  | (.atom t, e) => nulCodes m e ((raw .i64 m e).map ((ascOrd t).getD id))
   | (.cells n c lo hi els, e) =>
     (cellFns c.toNat (raw .i64 n lo) (raw .i64 n hi) (ascKeys c els)).map fun f => (raw .i64 m e).map f
 
@@ -122,24 +122,40 @@ theorem ascKeys_append (m : USize) (e1 e2 : List (AscKey × Enc)) : ascKeys m (e
   | nil => rw [List.nil_append, ascKeys, List.nil_append]
   | cons e es ih => simp only [List.cons_append, ascKeys, ih, List.append_assoc]
 
-/-- **A row's codes are a function of its words**: two key lists of one shape whose columns have one word at rows
-`q` and `q'` have one code at those rows in every column of `ascKeys`, so a permuted column has the permuted codes. -/
+/-- `nulCodes` at row `q` is a function of the column's null test (`hasNul`, which decides how many code columns it
+has), its null flag and its code there. -/
+theorem nulCodes_row {m m' : USize} {e e' : Enc} {c c' : Array UInt64} {q q' : Nat} (hh : hasNul e = hasNul e')
+    (hf : (foRNuls m e)[q]? = (foRNuls m' e')[q']?) (hc : c[q]? = c'[q']?) :
+    (nulCodes m e c).map (·[q]?.getD 0) = (nulCodes m' e' c').map (·[q']?.getD 0) := by
+  unfold nulCodes; rw [hh]
+  cases hasNul e'
+  · simp [hc]
+  · simp [Array.getElem?_mapIdx, hf, hc]
+
+/-- **A row's codes are a function of its words and null flags**: two key lists of one shape whose columns have one
+word and one null flag at rows `q` and `q'`, and one null test, have one code at those rows in every column of
+`ascKeys`, so a permuted column has the permuted codes. -/
 theorem ascKeys_row {m m' : USize} {q q' : Nat} : ∀ {K K' : List (AscKey × Enc)}, K.map (·.1) = K'.map (·.1) →
     (∀ c (h : c < K.length) (h' : c < K'.length), (raw .i64 m K[c].2)[q]? = (raw .i64 m' K'[c].2)[q']?) →
+    (∀ c (h : c < K.length) (h' : c < K'.length), hasNul K[c].2 = hasNul K'[c].2 ∧
+      (foRNuls m K[c].2)[q]? = (foRNuls m' K'[c].2)[q']?) →
     (ascKeys m K).map (·[q]?.getD 0) = (ascKeys m' K').map (·[q']?.getD 0)
-  | [], [], _, _ => by simp only [ascKeys]; rfl
-  | [], _ :: _, hk, _ => by simp at hk
-  | _ :: _, [], hk, _ => by simp at hk
-  | (k, e) :: K, (k', e') :: K', hk, hw => by
+  | [], [], _, _, _ => by simp only [ascKeys]; rfl
+  | [], _ :: _, hk, _, _ => by simp at hk
+  | _ :: _, [], hk, _, _ => by simp at hk
+  | (k, e) :: K, (k', e') :: K', hk, hw, hn => by
     simp only [List.map_cons, List.cons.injEq] at hk
     obtain ⟨rfl, hk⟩ := hk
     have h0 := hw 0 (by simp) (by simp)
-    simp only [List.getElem_cons_zero] at h0
+    have hn0 := hn 0 (by simp) (by simp)
+    simp only [List.getElem_cons_zero] at h0 hn0
     simp only [ascKeys, List.map_append]
     congr 1
-    · cases k <;> simp only [ascKey, List.map_cons, List.map_nil, List.map_map, Function.comp_def,
-        Array.getElem?_map, h0]
-    · exact ascKeys_row hk fun c h h' => hw (c + 1) (by simp; omega) (by simp; omega)
+    · cases k
+      · simp only [ascKey]; exact nulCodes_row hn0.1 hn0.2 (by simp only [Array.getElem?_map, h0])
+      · simp only [ascKey, List.map_map, Function.comp_def, Array.getElem?_map, h0]
+    · exact ascKeys_row hk (fun c h h' => hw (c + 1) (by simp; omega) (by simp; omega))
+        fun c h h' => hn (c + 1) (by simp; omega) (by simp; omega)
 
 mutual
 /-- What `ascCol` answers: the column's words as `Enc.raw` reads them, `m` of them, and its codes `ascKey`; an `atom`
@@ -166,19 +182,28 @@ theorem ascCol_ok : ∀ {m : USize} {c : AscKey × Enc} {x : Array UInt64} {k : 
     cases hix : foRWords "asc: cells" m e with
     | error s => simp [hix, bind, Except.bind] at h
     | ok ix =>
+      cases hn0 : noNul "asc: cells" m e with
+      | error s => simp [hix, hn0, bind, Except.bind] at h
+      | ok u0 =>
       cases hf : ix.find? (n.toNat ≤ ·.toNat) with
-      | some r => simp [hix, hf, bind, Except.bind] at h
+      | some r => simp [hix, hn0, hf, bind, Except.bind] at h
       | none =>
         cases hl : foRWords "asc: cells lo" n lo with
-        | error s => simp [hix, hf, hl, bind, Except.bind] at h
+        | error s => simp [hix, hn0, hf, hl, bind, Except.bind] at h
         | ok l =>
+          cases hn1 : noNul "asc: cells lo" n lo with
+          | error s => simp [hix, hn0, hf, hl, hn1, bind, Except.bind] at h
+          | ok u1 =>
           cases hh : foRWords "asc: cells hi" n hi with
-          | error s => simp [hix, hf, hl, hh, bind, Except.bind] at h
+          | error s => simp [hix, hn0, hf, hl, hn1, hh, bind, Except.bind] at h
           | ok hw =>
+            cases hn2 : noNul "asc: cells hi" n hi with
+            | error s => simp [hix, hn0, hf, hl, hn1, hh, hn2, bind, Except.bind] at h
+            | ok u2 =>
             cases hks : ascCodes c els with
-            | error s => simp [hix, hf, hl, hh, hks, bind, Except.bind] at h
+            | error s => simp [hix, hn0, hf, hl, hn1, hh, hn2, hks, bind, Except.bind] at h
             | ok ks =>
-              simp only [hix, hf, hl, hh, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
+              simp only [hix, hn0, hf, hl, hn1, hh, hn2, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
                 Prod.mk.injEq] at h
               obtain ⟨rfl, rfl⟩ := h
               obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hix
@@ -245,7 +270,10 @@ theorem scatter_grade {M : Nat} (hM : M < 2 ^ 64) {ps : List Nat} (hp : ps.Perm 
 theorem kasc_ok {m : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (h : kasc m es = .ok (vs, p)) :
     ∃ cs, es.mapM (ascCol m) = .ok cs ∧ ∃ r, scatterWords .last ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray
       ((List.range m.toNat).map Nat.toUInt64).toArray m.toNat 0 = .ok r ∧
-      ∃ wss, cs.mapM (fun c => scatterWords .last r c.1 m.toNat 0) = .ok wss ∧ vs = wss.map wordsFoR ∧
+      ∃ wss, cs.mapM (fun c => scatterWords .last r c.1 m.toNat 0) = .ok wss ∧
+      ∃ ns, es.mapM (fun x : AscKey × Enc => if hasNul x.2 = true then
+        nulMap <$> scatterWords .last r (foRNuls m x.2) m.toNat 0 else pure ByteArray.empty) = .ok ns ∧
+        vs = wss.zipWith (fun v n => wordsFoR v n) ns ∧
         p = wordsFoR ((ascGrade m.toNat (cs.flatMap (·.2))).map Nat.toUInt64).toArray := by
   unfold kasc at h
   cases hc : es.mapM (ascCol m) with
@@ -258,8 +286,13 @@ theorem kasc_ok {m : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc
       cases hw : cs.mapM (fun c => scatterWords .last r c.1 m.toNat 0) with
       | error s => simp [hc, hr, hw, bind, Except.bind] at h
       | ok wss =>
-        simp only [hc, hr, hw, bind, Except.bind, pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-        exact ⟨cs, rfl, r, hr, wss, hw, h.1.symm, h.2.symm⟩
+        cases hn : es.mapM (fun x : AscKey × Enc => if hasNul x.2 = true then
+            nulMap <$> scatterWords .last r (foRNuls m x.2) m.toNat 0 else pure ByteArray.empty) with
+        | error s => simp [hc, hr, hw, hn, bind, Except.bind] at h
+        | ok ns =>
+          simp only [hc, hr, hw, bind, Except.bind] at h; rw [hn] at h
+          simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+          exact ⟨cs, rfl, r, hr, wss, hw, ns, hn, h.1.symm, h.2.symm⟩
 
 /-- The key columns' codes are `ascKeys`. -/
 theorem ascCol_keys {m : USize} {es : List (AscKey × Enc)} {cs} (hc : es.mapM (ascCol m) = .ok cs) :
@@ -285,19 +318,25 @@ theorem asc_perm (m : USize) (es : List (AscKey × Enc)) (vs : List Enc) (p : En
     (h : kasc m es = .ok (vs, p)) :
     ∃ ps : List Nat, p = wordsFoR (ps.map Nat.toUInt64).toArray ∧ ps.Perm (List.range m.toNat) ∧
       vs.length = es.length ∧ ∀ (c : Nat) e v, es[c]? = some e → vs[c]? = some v →
-        ∃ ws : Array UInt64, v = wordsFoR ws ∧ ws.size = m.toNat ∧
-          ∀ k (hk : k < ps.length), ws[k]? = (raw .i64 m e.2)[ps[k]]? := by
-  obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
+        ∃ (ws : Array UInt64) (nul : ByteArray), v = wordsFoR ws nul ∧ ws.size = m.toNat ∧
+          (∀ k (hk : k < ps.length), ws[k]? = (raw .i64 m e.2)[ps[k]]?) ∧
+          (hasNul e.2 = false → nul = .empty) ∧
+          (hasNul e.2 = true → ∃ nf : Array UInt64, nul = nulMap nf ∧ nf.size = m.toNat ∧
+            ∀ k (hk : k < ps.length), nf[k]? = (foRNuls m e.2)[ps[k]]?) := by
+  obtain ⟨cs, hc, r, hr, wss, hw, ns, hn, rfl, rfl⟩ := kasc_ok h
   obtain ⟨hlen, hf⟩ := mapM_ok hc
   obtain ⟨wlen, wf⟩ := mapM_ok hw
+  obtain ⟨nlen, nf⟩ := mapM_ok hn
   have hM : m.toNat < 2 ^ 64 := by have := m.toNat_lt_size; rcases USize.size_eq with h | h <;> omega
   have hperm := (ascGrade_spec m.toNat (cs.flatMap (·.2))).1
-  refine ⟨_, rfl, hperm, by simp [wlen, hlen], fun c e v hec hvc => ?_⟩
-  simp only [List.getElem?_map] at hvc
+  refine ⟨_, rfl, hperm, by simp [wlen, hlen, nlen], fun c e v hec hvc => ?_⟩
   cases hwc : wss[c]? with
-  | none => simp [hwc] at hvc
+  | none => simp [List.getElem?_zipWith, hwc] at hvc
   | some ws =>
-    simp only [hwc, Option.map_some, Option.some.injEq] at hvc
+    cases hnc : ns[c]? with
+    | none => simp [List.getElem?_zipWith, hwc, hnc] at hvc
+    | some nl =>
+    simp only [List.getElem?_zipWith, hwc, hnc, Option.some.injEq] at hvc
     subst hvc
     cases hcc : cs[c]? with
     | none =>
@@ -307,7 +346,16 @@ theorem asc_perm (m : USize) (es : List (AscKey × Enc)) (vs : List Enc) (p : En
     | some cc =>
       obtain ⟨hx, hxs, -, -⟩ := ascCol_ok (hf c e cc hec hcc)
       obtain ⟨hvs, hk⟩ := scatter_grade hM hperm hr hxs (wf c cc ws hcc hwc)
-      exact ⟨ws, rfl, hvs, fun k hk' => by rw [hk k hk', hx]⟩
+      have hne := nf c e nl hec hnc
+      refine ⟨ws, nl, rfl, hvs, fun k hk' => by rw [hk k hk', hx], fun h0 => ?_, fun h1 => ?_⟩
+      · simp only [h0, Bool.false_eq_true, ↓reduceIte, pure, Except.pure, Except.ok.injEq] at hne; exact hne.symm
+      · simp only [h1, ↓reduceIte] at hne
+        cases hs : scatterWords .last r (foRNuls m e.2) m.toNat 0 with
+        | error s => simp [hs, Functor.map, Except.map] at hne
+        | ok fl =>
+          simp only [hs, Functor.map, Except.map, Except.ok.injEq] at hne
+          obtain ⟨hfs, hfk⟩ := scatter_grade hM hperm hr (foRNuls_size m e.2) hs
+          exact ⟨fl, hne.symm, hfs, hfk⟩
 
 theorem mapM_append_ok {α β ε : Type} {f : α → Except ε β} {l1 l2 : List α} {r : List β}
     (h : (l1 ++ l2).mapM f = .ok r) : ∃ r1 r2, l1.mapM f = .ok r1 ∧ l2.mapM f = .ok r2 ∧ r = r1 ++ r2 := by
@@ -352,7 +400,7 @@ theorem lexLe_pos {m : USize} (hm : m.toNat ≤ 2 ^ 63) (rest : List (AscKey × 
     simp only [sx, UInt64.toNat_ofNat'] at this
     split at this <;> omega
   have hpr : raw .i64 m (.pos : Enc) = (Array.range m.toNat).map UInt64.ofNat := rfl
-  simp only [ascKeys, ascKey, List.cons_append, List.nil_append, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
+  simp only [ascKeys, ascKey, nulCodes, hasNul, Bool.false_eq_true, ↓reduceIte, List.cons_append, List.nil_append, lexLe, hpr, Array.getElem?_map, Array.getElem?_range,
     show y < m.toNat by omega, hx, if_true, Option.map_some, Option.getD_some, Bool.or_eq_true, decide_eq_true_eq,
     UInt64.lt_iff_toNat_lt]
   left
@@ -371,7 +419,7 @@ and every later column decide nothing: `kasc` with them answers the permutation 
 leading columns. -/
 theorem kasc_pos_key (m : USize) (ks rest : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
     (h : kasc m (ks ++ (.atom .i64, .pos) :: rest) = .ok (vs, p)) : kasc m ks = .ok (vs.take ks.length, p) := by
-  obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
+  obtain ⟨cs, hc, r, hr, wss, hw, ns, hn, rfl, rfl⟩ := kasc_ok h
   obtain ⟨cs1, cs2, hc1, hc2, rfl⟩ := mapM_append_ok hc
   have hm := ascCol_pos hc2
   have hg : ascGrade m.toNat ((cs1 ++ cs2).flatMap (·.2)) = ascGrade m.toNat (cs1.flatMap (·.2)) := by
@@ -379,17 +427,21 @@ theorem kasc_pos_key (m : USize) (ks rest : List (AscKey × Enc)) (vs : List Enc
     exact ascGrade_append (fun y x hyx hx => lexLe_pos hm rest hyx hx) _
   rw [hg] at hr
   obtain ⟨w1, w2, hw1, -, rfl⟩ := mapM_append_ok hw
-  have hl : (w1.map wordsFoR).length = ks.length := by rw [List.length_map, (mapM_ok hw1).1, (mapM_ok hc1).1]
-  rw [hg, List.map_append, List.take_left' hl]
+  obtain ⟨n1, n2, hn1, -, rfl⟩ := mapM_append_ok hn
+  have hwn : w1.length = n1.length := by rw [(mapM_ok hw1).1, (mapM_ok hc1).1, (mapM_ok hn1).1]
+  have hl : (w1.zipWith (fun v n => wordsFoR v n) n1).length = ks.length := by
+    rw [List.length_zipWith, hwn, (mapM_ok hn1).1, Nat.min_self]
+  rw [hg, List.zipWith_append hwn, List.take_left' hl]
   unfold kasc
-  simp only [hc1, hr, hw1, bind, Except.bind, pure, Except.pure]
+  simp only [hc1, hr, hw1, bind, Except.bind]; rw [hn1]; rfl
 
 /-- **Law A2** (PLAN 6.13): with a `pos` column first the rows are already in order: the permutation is the `pos`
 column and every answer column is its own words. -/
 theorem kasc_pos_first (m : USize) (rest : List (AscKey × Enc)) (vs : List Enc) (p : Enc)
     (h : kasc m ((.atom .i64, .pos) :: rest) = .ok (vs, p)) :
-    p = wordsFoR (raw .i64 m (.pos : Enc)) ∧ vs = ((.atom .i64, .pos) :: rest).map fun e => wordsFoR (raw .i64 m e.2) := by
-  obtain ⟨cs, hc, r, hr, wss, hw, rfl, rfl⟩ := kasc_ok h
+    p = wordsFoR (raw .i64 m (.pos : Enc)) ∧ vs = ((.atom .i64, .pos) :: rest).map fun e =>
+      wordsFoR (raw .i64 m e.2) (if hasNul e.2 then nulMap (foRNuls m e.2) else .empty) := by
+  obtain ⟨cs, hc, r, hr, wss, hw, ns, hn, rfl, rfl⟩ := kasc_ok h
   have hm := ascCol_pos hc
   -- a strictly sorted permutation of `til m` is `til m`
   have hg : ascGrade m.toNat (cs.flatMap (·.2)) = List.range m.toNat := by
@@ -401,23 +453,40 @@ theorem kasc_pos_first (m : USize) (rest : List (AscKey × Enc)) (vs : List Enc)
   have hM : m.toNat < 2 ^ 64 := by have := m.toNat_lt_size; rcases USize.size_eq with h | h <;> omega
   obtain ⟨hlen, hf⟩ := mapM_ok hc
   obtain ⟨wlen, wf⟩ := mapM_ok hw
+  obtain ⟨nlen, nf⟩ := mapM_ok hn
   have hpr : ((List.range m.toNat).map Nat.toUInt64).toArray = raw .i64 m (.pos : Enc) := by
     show _ = (Array.range m.toNat).map UInt64.ofNat
     apply Array.ext (by simp) fun k h1 h2 => ?_
     simp [Nat.toUInt64_eq]
-  refine ⟨by rw [hg, hpr], List.ext_getElem (by simp [wlen, hlen]) fun c h1 h2 => ?_⟩
-  rw [List.length_map] at h1 h2
-  rw [List.getElem_map, List.getElem_map]
+  -- scattering by the identity permutation keeps a column
+  have hid : ∀ {x v : Array UInt64}, x.size = m.toNat → scatterWords .last r x m.toNat 0 = .ok v → v = x :=
+    fun hxs hv => by
+    obtain ⟨hvs, hk⟩ := scatter_grade hM (List.Perm.refl _) hr hxs hv
+    refine Array.ext_getElem? fun k => ?_
+    by_cases hkm : k < m.toNat
+    · have := hk k (by rw [List.length_range]; exact hkm)
+      rwa [List.getElem_range] at this
+    · rw [Array.getElem?_eq_none (by omega), Array.getElem?_eq_none (by omega)]
+  refine ⟨by rw [hg, hpr], List.ext_getElem (by simp [wlen, hlen, nlen]) fun c h1 h2 => ?_⟩
+  rw [List.length_zipWith] at h1
+  rw [List.length_map] at h2
+  rw [List.getElem_zipWith, List.getElem_map]
   have hcl : c < cs.length := by omega
+  have hwl : c < wss.length := by omega
+  have hnl : c < ns.length := by omega
   obtain ⟨hx, hxs, -, -⟩ := ascCol_ok (hf c _ _ (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem hcl))
-  obtain ⟨hvs, hk⟩ := scatter_grade hM (List.Perm.refl _) hr hxs (wf c _ _ (List.getElem?_eq_getElem hcl)
-    (List.getElem?_eq_getElem h1))
-  refine congrArg wordsFoR (Array.ext_getElem? fun k => ?_)
-  rw [← hx]
-  by_cases hkm : k < m.toNat
-  · have := hk k (by rw [List.length_range]; exact hkm)
-    rwa [List.getElem_range] at this
-  · rw [Array.getElem?_eq_none (by omega), Array.getElem?_eq_none (by omega)]
+  have hne := nf c _ _ (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem hnl)
+  rw [hid hxs (wf c _ _ (List.getElem?_eq_getElem hcl) (List.getElem?_eq_getElem hwl)), hx]
+  congr 1
+  generalize ((.atom .i64, .pos) :: rest : List (AscKey × Enc))[c] = E at hne ⊢
+  cases h0 : hasNul E.2
+  · simp only [h0, Bool.false_eq_true, ↓reduceIte, pure, Except.pure, Except.ok.injEq] at hne ⊢; exact hne.symm
+  · simp only [h0, ↓reduceIte] at hne ⊢
+    cases hs : scatterWords .last r (foRNuls m E.2) m.toNat 0 with
+    | error s => simp [hs, Functor.map, Except.map] at hne
+    | ok fl =>
+      simp only [hs, Functor.map, Except.map, Except.ok.injEq] at hne
+      rw [← hne, hid (foRNuls_size _ _) hs]
 
 /-- The float branch of `ordCode` is one to one on the masked word `u`: `^^^ M` and `||| T` are each one to one where
 they apply, and they disagree at `T`, the sign bit, which `M` covers. -/
