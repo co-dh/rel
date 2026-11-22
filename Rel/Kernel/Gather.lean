@@ -54,6 +54,7 @@ def kgather (m : USize) (ix : @& Enc) (n : USize) (e : @& Enc) : Except String E
   noNul "gather: ix" m ix
   -- a null of `e` is a value: its flag (`foRNuls`) is gathered by the same indices as its word
   let o ← gatherWords is es
-  wordsFoR o <$> if hasNul e then nulMap <$> gatherWords is (foRNuls n e) else pure .empty
+  let nul ← if hasNul e then nulMap <$> gatherWords is (foRNuls n e) else pure .empty
+  pure (wordsFoR o nul)
 
 end Rel.Kernel

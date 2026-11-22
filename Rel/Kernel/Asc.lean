@@ -154,6 +154,6 @@ def kasc (m : USize) (es : @& List (AscKey × Enc)) : Except String (List Enc ×
   -- each column's null flags move with its words
   let ns ← es.mapM fun (_, e) =>
     if hasNul e then nulMap <$> scatterWords .last r (foRNuls m e) m.toNat 0 else pure .empty
-  pure (vs.zipWith wordsFoR ns, wordsFoR p)
+  pure (vs.zipWith (fun v n => wordsFoR v n) ns, wordsFoR p)
 
 end Rel.Kernel
