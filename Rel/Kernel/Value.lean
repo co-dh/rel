@@ -615,14 +615,18 @@ open Column
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
 a `u1` `foR` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
-element 0 or 1, which `raw` and `get` then read alike); a `foR` payload's blocks cover its `n`. A `sym` column is
+element but a null 0 or 1, read through `foROpt`, since a null row holds its block's top residual and no value); a `foR` payload's blocks cover its `n`, and a block flagged `nulAt` holds a null row (`foRNul`). A `sym` column is
 its ids, positions in the sorted, distinct dictionary held beside it at the Rel level and never in the payload,
 so id order is symbol order and every integer kernel reads it unchanged (PLAN 8.3). -/
 def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
   match t, e with
   | .general, .gen xs => xs.size = n.toNat
   | t, .foR metadata pack =>
-    t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, (foRBits metadata pack (blockStarts metadata) i).toNat < 2) ∧ n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata
+    t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, ∀ v, foROpt metadata pack (blockStarts metadata) i = some v → v.toNat < 2) ∧
+      n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧
+      -- owner decision F: a block is flagged only where it holds a null, so a column's `hasNul` is its rows' flags
+      ∀ b < nblk metadata, nulAt metadata b = true → ∃ j < blk metadata, b * blk metadata + j < n.toNat ∧
+        foRNul metadata pack (blockStarts metadata) (b * blk metadata + j) = true
   -- owner decision M (PLAN): the encodings are `foR` and `pos`; `pos` holds the positions `0..n-1`, so it is a long
   | .i64, .pos => True
   | _, _ => False

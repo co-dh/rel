@@ -114,4 +114,27 @@ theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t
     show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from
       sext_bits w hw.1 hw.2 _ (bitsAt_lt _ _ _ hw.2), UInt64.ofNat_toNat]
 
+/-- **The foR round trip of a nullable column** (`atom+1`): row `i` of `Coc.encodeAt` with the null rows `nul`, read
+through `Column.foROpt` and cut to the payload's `8 * w` bits, is `none` at a null and `x`'s element elsewhere
+(`foROpt_encode`). `raw_encodeAt` is its null-free case. `hbig` is `foROpt_encode`'s, at every row: only a column of
+`2 ^ 32` rows or more, which carries no patch list, needs it. -/
+theorem rawOpt_encodeAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x nul : ByteArray)
+    {patch : Bool} (n : Nat) (hn : n ≤ x.size / w)
+    (hbig : 2 ^ 32 ≤ x.size / w → ∀ i < n, Column.bitAt nul i = false → (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1 → ∀ j,
+      i / 2 ^ lg * 2 ^ lg ≤ j → j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
+    (Array.range n).map (fun i => (Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1
+      (Kernel.Coc.encodeAt lg w.toUSize x patch nul).2
+      (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1) i).map
+        fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w))) =
+      (Array.range n).map fun i => if Column.bitAt nul i then none else some (Column.bitsAt x (i * w) w) := by
+  refine Array.ext (by simp) fun i h1 _ => ?_
+  simp only [Array.size_map, Array.size_range] at h1
+  simp only [Array.getElem_map, Array.getElem_range]
+  rw [foROpt_encode lg hlg w hw0 hw x nul i (by omega) fun h => hbig h i h1]
+  cases Column.bitAt nul i
+  · simp only [Bool.false_eq_true, ↓reduceIte, Option.map_some]
+    rw [show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from
+      sext_bits w hw0 hw _ (bitsAt_lt _ _ _ hw), UInt64.ofNat_toNat]
+  · simp only [↓reduceIte, Option.map_none]
+
 end Rel.Verify

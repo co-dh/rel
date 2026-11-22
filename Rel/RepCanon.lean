@@ -95,7 +95,7 @@ theorem colConst_raw {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok 
 theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
     ∀ i < n.toNat, (raw .u1 n e)[i]?.getD 0 = UInt64.ofNat (w.toNat % 2) := by
   intro i hi
-  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e h
+  obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n w e rfl h
   have he := colConst_raw h
   generalize Coc.encode _ _ = q at hfo; subst hfo
   have hu : raw .u1 n (.foR q.1 q.2 : Enc) = (raw .i64 n (.foR q.1 q.2 : Enc)).map fun w => UInt64.ofNat (w.toNat % 2) := by
@@ -869,7 +869,7 @@ theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × V
 theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} {ps : List Nat}
     (ha : kasc n es = .ok (vs, p)) (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray)
     (hperm : ps.Perm (List.range n.toNat)) : ps = ascGrade n.toNat (ascKeys n es) := by
-  obtain ⟨cs, hc, -, -, -, -, -, hpk⟩ := kasc_ok ha
+  obtain ⟨cs, hc, -, -, -, -, -, -, -, hpk⟩ := kasc_ok ha
   rw [ascCol_keys hc] at hpk
   have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
   have hperm' := (ascGrade_spec n.toNat (ascKeys n es)).1
@@ -888,10 +888,103 @@ theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List
   rw [← hc64 _ (List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem h1))),
     ← hc64 _ (List.mem_range.1 (hperm'.mem_iff.1 (List.getElem_mem h2))), e2]
 
+/-- A flag word of `foRNuls` is `0` or `1`. -/
+theorem foRNuls_bit (m : USize) (e : Enc) {i : Nat} (hi : i < m.toNat) :
+    (foRNuls m e)[i]? = some (if (foRNuls m e)[i]?.getD 0 != 0 then 1 else 0) := by
+  cases e <;> simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, Array.getElem?_replicate, hi, if_true,
+    Option.map_some, Option.getD_some] <;> (try split) <;> simp_all
+
+/-- **A sorted column agrees with its input row by row, nulls included**: `v`, `asc_perm`'s answer for the input
+column `e` through the permutation `ps`, holds at row `q` input row `ps[q]`'s null flag and, off a null, its word; and
+`v` holds a null exactly where `e` does (`hasNul_flags`, `e` being `Ext.Enc.WF`). Below `2 ^ 32` rows `wordsFoR` reads
+back every flag it wrote (`foRNuls_wordsFoR`'s `hbig`); at more, a row keeping `2 ^ 63 - 1` in a block with a null
+reads as the null. -/
+theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64} {nul : ByteArray} {ps : List Nat}
+    (hm : m.toNat < 2 ^ 32) (hw : Ext.Enc.WF t m e) (hv : v = wordsFoR ws nul) (hws : ws.size = m.toNat)
+    (hwq : ∀ k (hk : k < ps.length), ws[k]? = (Enc.raw .i64 m e)[ps[k]]?)
+    (h0 : hasNul e = false → nul = .empty)
+    (h1 : hasNul e = true → ∃ nf : Array UInt64, nul = nulMap nf ∧ nf.size = m.toNat ∧
+      ∀ k (hk : k < ps.length), nf[k]? = (foRNuls m e)[ps[k]]?)
+    (hperm : ps.Perm (List.range m.toNat)) (q : Nat) (hq : q < ps.length) :
+    (nulWords m v (Enc.raw .i64 m v))[q]? = (nulWords m e (Enc.raw .i64 m e))[ps[q]]? ∧
+      hasNul v = hasNul e ∧ (foRNuls m v)[q]? = (foRNuls m e)[ps[q]]? := by
+  subst hv
+  have hlen : ps.length = m.toNat := by simpa using hperm.length_eq
+  have hlt : ∀ k (hk : k < ps.length), ps[k] < m.toNat := fun k hk => List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hk))
+  -- the flags: `nul` is `e`'s flags through `ps`, or empty where `e` has none
+  have hfv : ∀ k (hk : k < ps.length), (foRNuls m (wordsFoR ws nul))[k]? = (foRNuls m e)[ps[k]]? := by
+    intro k hk
+    rw [foRNuls_wordsFoR ws nul hws.symm k (by omega) fun h32 => absurd h32 (by omega)]
+    rw [foRNuls_bit m e (hlt k hk)]
+    cases hN : hasNul e
+    · rw [h0 hN, bitAt_empty]
+      have hz : (foRNuls m e)[ps[k]]?.getD 0 = 0 := by
+        have hf := hasNul_flags hw; rw [hN] at hf
+        cases hx : (foRNuls m e)[ps[k]]? with
+        | none => rfl
+        | some x =>
+          simp only [Option.getD_some]
+          refine Decidable.byContradiction fun hne => Bool.false_ne_true (hf.trans (Array.any_eq_true.2 ?_))
+          obtain ⟨hlt', hx'⟩ := Array.getElem?_eq_some_iff.1 hx
+          exact ⟨ps[k], hlt', by rw [hx']; simpa using hne⟩
+      simp [hz]
+    · obtain ⟨nf, rfl, hnf, hnk⟩ := h1 hN
+      unfold nulMap; rw [bitAt_packOf _ _ k (by omega), hnk k hk]
+  -- a row that is no null reads back its word
+  have hraw : ∀ k (hk : k < ws.size), Column.bitAt nul k = false → (Enc.raw .i64 m (wordsFoR ws nul))[k]? = some ws[k] := by
+    intro k hk hnk
+    obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws nul = .foR md pk := ⟨_, _, rfl⟩
+    have h := (wordsFoR_nul ws nul hws.symm).2.2.1 md pk hE k hk fun h32 => absurd h32 (by omega)
+    rw [hnk, if_neg Bool.false_ne_true] at h
+    unfold Column.foROpt at h; split at h; · cases h
+    rw [hE, raw_foR .i64 8 rfl (by decide)]
+    simp only [Array.getElem?_map, Array.getElem?_range, show k < m.toNat by omega, if_true, Option.map_some,
+      Nat.reduceMul, Option.some.inj h, ofNat_toNat_mod64]
+  have hwv : Ext.Enc.WF .i64 m (wordsFoR ws nul) := (wordsFoR_nul ws nul hws.symm).2.2.2 rfl fun h => by cases h
+  have hsz : (foRNuls m (wordsFoR ws nul)).size = m.toNat := foRNuls_size m _
+  have hse : (foRNuls m e).size = m.toNat := foRNuls_size m e
+  -- `v` holds a null exactly where `e` does: its flags are `e`'s through the permutation `ps`
+  have hH : hasNul (wordsFoR ws nul) = hasNul e := by
+    rw [hasNul_flags hwv, hasNul_flags hw, Bool.eq_iff_iff, Array.any_eq_true, Array.any_eq_true]
+    constructor
+    · rintro ⟨k, hk, hf⟩
+      have := hfv k (by omega)
+      rw [Array.getElem?_eq_getElem hk, Array.getElem?_eq_getElem (by rw [hse]; exact hlt k (by omega))] at this
+      exact ⟨_, _, (Option.some.inj this) ▸ hf⟩
+    · rintro ⟨i, hi, hf⟩
+      obtain ⟨k, hk, hki⟩ := List.mem_iff_getElem.1 (hperm.mem_iff.2 (List.mem_range.2 (show i < m.toNat by omega)))
+      have := hfv k hk
+      rw [Array.getElem?_eq_getElem (by omega), Array.getElem?_eq_getElem (by rw [hse]; exact hlt k hk)] at this
+      refine ⟨k, by omega, ?_⟩
+      rw [Option.some.inj this]; simp only [hki]; exact hf
+  refine ⟨?_, hH, hfv q hq⟩
+  unfold nulWords
+  rw [hH]
+  have hrq : (Enc.raw .i64 m e)[ps[q]]? = ws[q]? := (hwq q hq).symm
+  have hrv : (Enc.raw .i64 m (wordsFoR ws nul)).size = m.toNat := (wordsFoR_nul ws nul hws.symm).2.1
+  cases hN : hasNul e
+  · obtain rfl := h0 hN
+    simp only [Bool.false_eq_true, ↓reduceIte]
+    rw [hraw q (by omega) (bitAt_empty q), hrq, Array.getElem?_eq_getElem (by omega)]
+  · simp only [↓reduceIte, Array.getElem?_mapIdx, hfv q hq, hrq, Array.getElem?_eq_getElem (show q < ws.size by omega),
+      Array.getElem?_eq_getElem (show q < (Enc.raw .i64 m (wordsFoR ws nul)).size by omega), Option.map_some]
+    cases hf : (foRNuls m e)[ps[q]]?.getD 0 == 0
+    · simp
+    · -- a row whose flag is `0` is no null in `nul`, so it reads back its word
+      have hnq : Column.bitAt nul q = false := by
+        have h := (foRNuls_wordsFoR ws nul hws.symm q (by omega) fun h32 => absurd h32 (by omega)).symm.trans (hfv q hq)
+        cases hb : Column.bitAt nul q
+        · rfl
+        · rw [hb] at h; rw [← h] at hf; simp at hf
+      have h := hraw q (by omega) hnq
+      rw [Array.getElem?_eq_getElem (show q < (Enc.raw .i64 m (wordsFoR ws nul)).size by omega)] at h
+      simp [Option.some.inj h]
+
 /-- **`kasc`'s grade**: `p` reads as the stable grade `ps` of the codes (`Verify.asc_perm_grade`), and the `kseen` key
-of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s. -/
+of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s: every key column is `Ext.Enc.WF` (so its
+`hasNul` is its rows' flags) and there are fewer than `2 ^ 32` rows (`asc_col_row`). -/
 theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
-    (ha : kasc N es = .ok (vs, p)) :
+    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2) (hN : N.toNat < 2 ^ 32) :
     ∃ cs, es.mapM (ascCol N) = .ok cs ∧
       Enc.raw .i64 N p = ((ascGrade N.toNat (ascKeys N es)).map Nat.toUInt64).toArray ∧
       ∀ q (hq : q < (ascGrade N.toNat (ascKeys N es)).length),
@@ -905,10 +998,16 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
   revert hq; rw [← hpsg]; intro hq
   -- the sorted columns hold input row `ps[q]`'s words at row `q`, so every code does (`ascKeys_row`), `cells` keys' too
   simp only [seenKey]
-  refine ascKeys_row (List.map_fst_zip (by simp [hvl])) fun c h h' => ?_
-  obtain ⟨ws, hv, hws, hwq⟩ := hcol c es[c] (vs[c]'(by simp at h; omega)) (List.getElem?_eq_getElem h')
-    (List.getElem?_eq_getElem _)
-  simp only [List.getElem_zip, hv, (wordsFoR_closed ws hws.symm).2.1, hwq q hq]
+  have hc : ∀ c (h : c < ((es.map (·.1)).zip vs).length) (h' : c < es.length),
+      (nulWords N vs[c] (Enc.raw .i64 N vs[c]))[q]? = (nulWords N es[c].2 (Enc.raw .i64 N es[c].2))[ps[q]]? ∧
+        hasNul vs[c] = hasNul es[c].2 ∧ (foRNuls N vs[c])[q]? = (foRNuls N es[c].2)[ps[q]]? := fun c h h' => by
+    obtain ⟨ws, nul, hv, hws, hwq, h0, h1⟩ := hcol c es[c] (vs[c]'(by simp at h; omega)) (List.getElem?_eq_getElem h')
+      (List.getElem?_eq_getElem _)
+    obtain ⟨t, hw⟩ := hwf es[c] (List.getElem_mem h')
+    exact asc_col_row hN hw hv hws hwq h0 h1 hperm q hq
+  refine ascKeys_row (List.map_fst_zip (by simp [hvl])) (fun c h h' => ?_) fun c h h' => ?_
+  · simp only [List.getElem_zip]; exact (hc c h h').1
+  · simp only [List.getElem_zip]; exact (hc c h h').2
 
 /-- **Which input row each row of `Vals.nub x` is**: `kasc`'s permutation `ps` (its grade by the codes `ascKeys`),
 `K` the sorted rows' keys (`K q` the key of input row `ps[q]`), and row `j` of the answer input row `ps[F[j]]`, `F` the
@@ -950,7 +1049,8 @@ theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Va
     rw [hf]; exact (wordsFoR_closed _ (by rw [hkU, hk]; simp)).2.1
   have hri : Enc.raw .i64 k.toUSize ix = (((firstsOf K n.toNat).map Nat.toUInt64).toArray.map fun w =>
       ((ps.map Nat.toUInt64).toArray)[w.toNat]?.getD 0) := by
-    rw [hix', (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1, hrf, hrp]
+    rw [kgather_plain hix (by rw [hp]; exact hasNul_wordsFoR _), (wordsFoR_closed _ (by rw [Array.size_map, his])).2.1,
+      hrf, hrp]
   have hq' : (firstsOf K n.toNat)[j.1] < n.toNat := firsts_lt K n.toNat (List.getElem_mem hgl)
   have hfG : (firstsOf K n.toNat)[j.1] < ps.length := by omega
   rw [List.getElem?_eq_getElem hgl, Option.bind_some, List.getElem?_eq_getElem hfG, ← e1, hri]
