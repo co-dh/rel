@@ -128,6 +128,13 @@ def primGen (r : Prim) (A B : Obj) (xs : Codes) : Rel A B :=
 
 #guard rowGens.length = kernRows.length
 
+/-- `inl°`, `inr°` on the sum values in demand (`Tab.inlConv`, `Tab.inrConv`), where `GenK.conv` of an injection would
+    read its source's universe; none for any other term. -/
+def Tm.convInj {A B : Obj} : Tm A B → Option (Rel B A)
+  | .inl (B := B) => some (GenK.ofVals _ _ (Tab.inlConv (B := B)))
+  | .inr (A := A) => some (GenK.ofVals _ _ (Tab.inrConv (A := A)))
+  | _ => none
+
 mutual
 /-- `Expand.code`, its shared constants the slots of `η.sh` (`Tm.gen`): a `t` that needs no keys memoised
     (`GenK.memo`), any other its node. A `prod` is never memoised: it runs on the pairs its context supplies, where memoising builds the whole cross
@@ -151,7 +158,9 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | .prod A B, _, .outl => GenK.outl A B
   | .prod A B, _, .outr => GenK.outr A B
   | A, C, .comp (B := B) R S => GenK.comp A B C S.dem (R.code η) (S.code η)
-  | B, A, .conv R => GenK.conv A B (R.code η)
+  | B, A, .conv R => match R.convInj with
+    | some c => c
+    | none => GenK.conv A B (R.code η)
   | A, B, .meet R S => GenK.meet A B R.dem S.dem (R.code η) (S.code η)
   | A, B, .join R S => GenK.join A B R.dem S.dem (R.code η) (S.code η)
   | A, B, .diff R S => GenK.diff A B R.dem S.dem (R.code η) (S.code η)
@@ -165,6 +174,9 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | _, B, .est Q => GenK.est B (Q.code η)
   | _, .arr B, .thin Q => GenK.thin B (Q.code η)
   | A, .arr B, .nil => GenK.nil A B
+  | .arr B, _, .mem => GenK.ofVals (.arr B) B Tab.mem
+  | A, .sum _ B, .inl => GenK.ofVals A _ (Tab.inl (B := B))
+  | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
   | .arr B, _, .atPos k => GenK.atPos B k
   | _, _, .own R => R.code η
   | _, _, .succ U => GenK.succ (U.code η)
@@ -229,7 +241,8 @@ mutual
     `gen` (or `argGen`) returns its error table, where `Tm.gen_sound` holds because the code fails. -/
 def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   match A, B, t with
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .mem
+  | _, _, .inl | _, _, .inr
   | _, _, .atPos _ | _, _, .var .. => true
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
@@ -308,6 +321,9 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .est (B := B) Q => return g ``Tm.est #[oE B, ← tmE sh Q]
   | _, _, .thin (B := B) Q => return g ``Tm.thin #[oE B, ← tmE sh Q]
   | _, _, .nil (A := A) (B := B) => return g ``Tm.nil #[oE A, oE B]
+  | _, _, .mem (B := B) => return g ``Tm.mem #[oE B]
+  | _, _, .inl (A := A) (B := B) => return g ``Tm.inl #[oE A, oE B]
+  | _, _, .inr (A := A) (B := B) => return g ``Tm.inr #[oE A, oE B]
   | _, _, .prim (A := A) (B := B) r => return g ``Tm.prim #[oE A, oE B, toExpr r]
   | _, _, .atPos (B := B) k => return g ``Tm.atPos #[oE B, toExpr k]
   | _, _, .own (A := A) R => return g ``Tm.own #[oE A, ← tmE sh R]

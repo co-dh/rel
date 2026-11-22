@@ -1319,6 +1319,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `keyOf F = ⟨π₁,Fᴵ⟩` 交换）有证明时设置，`Prim.keyLifts_ok` 由 `prims.filter keyLift = [starRow]` 列出全部义务；
   `star_keyOf`（由 `id/union/comp_keyOf` 与 `mu_keyOf`，`Rel.Core`，公理 {propext, Quot.sound}），`Tm.den_keyedRow`：lifted
   项的意义等于逐 key 的意义；无证明的行给 family 时报 `notLiftable` 并指名 `Prim.KeyLifts`（如 `$`，原形状测试会误放行）。
+- ✅ Tm28 B8（§3.4）`mem inl inr` 升为 `Tm` 构造子，删行 `∋ inl inr inl° inr°`：`inl°` `inr°` 是 `conv inl`，`Tm.dem`
+  对它为真（在需求的 sum 值上跑 `Tab.inlConv`），`Tm.convInj` 给它的 code，`elabE` 的 `.conv` 不再要求闭项；
+  `Tm.memAt` 代 `Tm.kids` 里的 `∋` 行；codegen 复用 `Tab.mem/inl/inr/inlConv/inrConv`，无新 kernel。
 
 ## 3. 各 phase 的并行与串行
 
