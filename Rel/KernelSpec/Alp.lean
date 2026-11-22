@@ -9,53 +9,11 @@ namespace Rel.Verify
 
 open Rel
 
-theorem range_split (lo hi n : Nat) (h1 : lo ≤ hi) (h2 : hi ≤ n) :
-    List.range n = List.range lo ++ List.range' lo (hi - lo) ++ List.range' hi (n - hi) := by
-  have a := List.range'_append (s := 0) (m := lo) (n := hi - lo) (step := 1)
-  have b := List.range'_append (s := 0) (m := hi) (n := n - hi) (step := 1)
-  rw [show 0 + 1 * lo = lo by omega, show lo + (hi - lo) = hi by omega] at a
-  rw [show 0 + 1 * hi = hi by omega, show hi + (n - hi) = n by omega] at b
-  rw [List.range_eq_range', List.range_eq_range', ← b, ← a]
 
 
 
 
 
-/-- The integers `Coc.alpEncodeAt` hands to `Coc.encode`: each block's entries at eight bytes, a
-block that is not the last holding `blk` of them. -/
-theorem foldl_blocks (K : Nat) (B : Nat × Array (Option UInt64) → UInt64) (L : List (Nat × Array (Option UInt64)))
-    (a : ByteArray) :
-    (L.foldl (fun acc be => be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) acc) a).size =
-      a.size + 8 * (L.map (·.2.size)).sum ∧
-    (∀ i < a.size, (L.foldl (fun acc be => be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) acc) a)[i]? =
-      a[i]?) ∧
-    ((∀ c (h : c + 1 < L.length), L[c].2.size = K) →
-      ∀ c (h : c < L.length) j (hj : j < L[c].2.size) v, L[c].2[j] = some v →
-        Column.bitsAt (L.foldl (fun acc be => be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) acc) a)
-          (a.size + 8 * (c * K + j)) 8 = v) := by
-  induction L generalizing a with
-  | nil => simp
-  | cons be L ih =>
-    obtain ⟨is, ip, ir⟩ := foldl_pushBits (fun d => d.getD (B be)) 8 (by decide) be.2.toList a
-    simp only [Array.foldl_toList, Array.length_toList] at is ip ir
-    obtain ⟨hs, hp, hr⟩ := ih (be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) a)
-    simp only [List.foldl_cons, List.length_cons, List.map_cons, List.sum_cons]
-    refine ⟨by rw [hs, is]; omega, fun i hi => by rw [hp i (by omega), ip i hi], ?_⟩
-    intro hfull c hc j hj v hv
-    cases c with
-    | zero =>
-      simp only [List.getElem_cons_zero] at hj hv
-      rw [Nat.zero_mul, Nat.zero_add,
-        Column.bitsAt_congr (be.2.foldl (fun a d => Column.pushBits a (d.getD (B be)) 8) a) _ (a.size + 8 * j) 8
-          (fun k hk => hp _ (by omega)), ir j (by simpa using hj)]
-      simp [hv]
-    | succ c =>
-      simp only [List.getElem_cons_succ] at hj hv
-      have hb0 : be.2.size = K := by simpa using hfull 0 (by simp at hc ⊢; omega)
-      have := hr (fun c' h' => by simpa using hfull (c' + 1) (by simp; omega)) c (by simp at hc; omega) j hj v hv
-      rw [is, show a.size + 8 * be.2.size + 8 * (c * K + j) =
-        a.size + 8 * ((c + 1) * K + j) by rw [hb0, Nat.add_mul, Nat.one_mul]; omega] at this
-      exact this
 
 
 

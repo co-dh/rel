@@ -571,27 +571,10 @@ noncomputable def Tm.Sub.den (ρ : Val) : Tm.Sub → Val
   | [] => ρ
   | (k, ⟨_, _, s⟩) :: σ => (Sub.den ρ σ).bind k (s.den ρ)
 
-/-- No term of `σ` is a row's spine: a term put for a variable heading `arg`s keeps that spine's meaning `𝟘`, as
-    the variable's own is (`compile` too runs a row only under a `prim` head). -/
-def Tm.Sub.Plain (σ : Tm.Sub) : Prop := ∀ e ∈ σ, ∀ ρ ss, e.2.2.2.argDen ρ ss = 𝟘
 
 
 
-theorem Tm.lt_fresh : ∀ {l : List Nat} {i : Nat}, i ∈ l → i < Tm.fresh l
-  | a :: l, i, h => by
-    rcases List.mem_cons.1 h with rfl | h
-    · exact Nat.lt_succ_of_le (Nat.le_max_left _ _)
-    · exact Nat.lt_of_lt_of_le (lt_fresh h) (Nat.succ_le_succ (Nat.le_max_right _ _))
 
-/-- Binding a variable `k` no term of `σ` mentions changes `σ`'s meaning only at `k`. -/
-theorem Tm.Sub.den_bind {ρ : Val} {k : Nat} {A B : Obj} {X : Den A B} :
-    ∀ σ : Tm.Sub, (∀ j ∈ σ.fvs, j ≠ k) → ∀ i, i ≠ k → σ.den (ρ.bind k X) i = σ.den ρ i
-  | [], _, _, hi => Val.bind_ne hi
-  | (j, ⟨_, _, s⟩) :: σ, h, i, hi => by
-    simp only [Sub.den, (s.den_congr (ρ.bind k X) ρ fun l hl => Val.bind_ne (h l (by simp [Sub.fvs, hl]))).1]
-    by_cases e : i = j
-    · subst e; exact Val.bind_same
-    · rw [Val.bind_ne e, Val.bind_ne e]; exact den_bind σ (fun l hl => h l (by simp [Sub.fvs, hl])) i hi
 
 
 

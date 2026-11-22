@@ -74,8 +74,6 @@ def toList (x : Arr t n) : List (El t) := List.ofFn x.get
 theorem length_toList (x : Arr t n) : x.toList.length = n.toNat := List.length_ofFn
 
 -- Kept with no caller: the specification of `Arr` as a `List`, `Arr` the implementation, `List` for proofs.
-theorem getElem_toList (x : Arr t n) (i : Nat) (h : i < x.toList.length) :
-    x.toList[i] = x.get ⟨i, by rw [length_toList] at h; exact h⟩ := List.getElem_ofFn ..
 
 /-- The list as a relation from its positions: `x i y ↔ x[j] = y` at the `j` with `Int64.ofNat j = i`. -/
 def Holds (x : Arr t n) (i : Int64) (y : El t) : Prop := ∃ j : Fin n.toNat, Int64.ofNat j = i ∧ x.get j = y

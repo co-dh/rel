@@ -308,11 +308,6 @@ def alpDat (f32 : Bool) (x : UInt64) (e : Nat) : Option UInt64 :=
     if Rel.Column.alpDec d e f32 == x then some d else none
   else none
 
-/-- The smallest exponent at which `x` is a decimal, `none` for a sentinel or for a value that is a
-decimal at no exponent at all. -/
-def alpOwn (f32 : Bool) (x : UInt64) : Option Nat :=
-  if alpSentinel f32 x then none
-  else (List.range 19).find? fun e => (alpDat f32 x e).isSome
 
 /-- Block `b`'s exponent and each of its elements' `d`, `none` at an exception. The exponent is the
 largest any of the block's elements needs and then **every** element is re-verified at it: raising

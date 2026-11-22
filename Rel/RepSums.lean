@@ -34,13 +34,6 @@ theorem Nat.xor_top {b x : Nat} (hx : x < 2 ^ (b + 1)) :
     have e' : x ^^^ 2 ^ b = (x - 2 ^ b ^^^ 2 ^ b) ^^^ 2 ^ b := by rw [e]
     rw [e', Nat.xor_assoc, Nat.xor_self, Nat.xor_zero]
 
-/-- An `Int64` from its word: the word below `2^63`, the word less `2^64` above. -/
-theorem Int64.toInt_word (a : Int64) : a.toInt =
-    if a.toUInt64.toNat < 2 ^ 63 then (a.toUInt64.toNat : Int) else (a.toUInt64.toNat : Int) - 2 ^ 64 := by
-  have h1 : a.toInt = a.toBitVec.toInt := rfl
-  have h2 : a.toUInt64.toNat = a.toBitVec.toNat := rfl
-  rw [h1, h2, BitVec.toInt_eq_toNat_cond]
-  split <;> split <;> omega
 
 
 
