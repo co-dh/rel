@@ -212,7 +212,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     skewed 一例（501 组，其中一组 50000 行），守住"组数 × 最长"不再回来。
 - ✅ D.10（ee84ad8，make check 绿）：两个 `Row` 是不同概念，`Elab` 的改名 `LiftRow`/`liftRows`；TestMss 覆盖。原条目 F-c：`Rel.Lang.Row` 在 `Rel.Lang.Rows` 与 `Rel.Run.Lang.Elab` 各定义一次，同时 import 就报
   `environment already contains 'Rel.Lang.Row.mk.injEq'`，`Tm.gap` 因此不能在运行程序的模块里调用。在 master 上修，立即派。
-- ⬜ D.9 语言里的 `input`/`output` 声明：改 `Elab`/`Expand`，在 3.10/3.11（去掉 demand bit 的 `Elab`、`Expand`）之后。
+- ✅ D.9 语言里的 `input`/`output` 声明：改 `Elab`/`Expand`，在 3.10/3.11（去掉 demand bit 的 `Elab`、`Expand`）之后。
   D.11 的表层语法也在这里：`.rel` 里的 `col "…"`，以及带 schema 的 `input`/`output`。
   步骤 1（与语言表层无关，分支 `d9table`）：`Rel/Lang/Table.lean` 的 `readVals` 是 `cols` 的逆：从目录里每列一个自有格式文件
   （按 `cols` 的路径加列名前缀）mmap（`ownMap`）出值一侧，经 `Arr.of` 检查进入；位置 key 不落盘。唯一的 writer 是
@@ -238,7 +238,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   步骤表（每步单独合并；I4 已完成，I0 由本次完成，I2 进行中）：
   - ✅ I0 文档：`rel-architecture`、`dataframe-design`、本条。
   - ✅ I1 表代码移到 `Rel/Run/Table.lean`（`lean-refactor move`），律留在 lib `Rel`；需要 `d9step2` 合并。
-  - 🔄 I2 语法与 AST：`sInput`、`sOutput`、`check`/`print` 的 `where`；`Decl.input`/`output`；elaboration 拒绝；run-time 名作参数。
+  - ✅ I2 语法与 AST：`sInput`、`sOutput`、`check`/`print` 的 `where`；`Decl.input`/`output`；elaboration 拒绝；run-time 名作参数。
   - ✅ I3 `n.io`、`n.inputs`、`n.outputs`，推论 `Sound.inputs`；需要 I1、I2。
   - ✅ I4 crate：导出分为 `RELK.txt`（kernel）与 `RELIO.txt`（IO），`syms` gate 读两个文件。
   - ✅ I5 Lean 里的 CSV 模型（`csvWords`、`csvText`、每个 atom 的读写、往返律），`Rel/Kernel/Db/Csv.lean`。
@@ -369,8 +369,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   那行 “Compiling relk (/home/dh/repo/rel/crate)” 是 Lake 重放从 main 复制来的 `.lake` trace 里的日志。见
   `/data/tmp/typedbase/ioout-notes.md`。
   I7 ✅（分支 `io-i7`）：`qlean_csv_write`（列入 `RELIO.txt`），`@[extern]` 在 `Db.csvWrite` 上，body 即 `rawAll` + `csvText`；按 1024 行一块读编码列、逐行格式化、临时文件 rename；写侧 case 表 `decide +kernel`，extern 与 body 及读回在全部用例上一致。选择记在 `/data/tmp/io/i7-notes.md`。
-- ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；余下：TestFrame 的
-  frame 按 `Schema` 索引（随 D.9）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
+- ✅ D.11 表层语法（`schema S = {k : K, v : N}`、`col S "v"`）已合并（da636a9）；`Schema` 层此前已合并（5ab6d2e，master 0fb9879，`Rel/Lang/Schema.lean`、`TestSchema.lean`）；TestFrame 的
+  frame 按 `Schema` 索引（D.9 收尾：`frame` 的 `x` 是 `input x : P ⟶ S`，列经 `col S "…"`，`check … where x ≜ …`）。frame 的 schema 进入类型（owner 经 dataframe 会话决定，选 wrapper，不加 `Obj` constructor）：
   `Schema := List (String × Obj)`；`Schema.obj : Schema → Obj` 是 definition（按 `.d` 列序的嵌套 `prod`）；frame 的项按
   schema 索引；`col S "price"` 存在当且仅当 `("price", T) ∈ S`，在 elaboration 时判定，出错时报出列名；
   select/exclude/rename/derive/join 是 `Schema` 上的函数。kernel、存储、`rep`、`lam_sound` 不变。
