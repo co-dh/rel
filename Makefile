@@ -35,7 +35,7 @@ PASSED    = echo "$$h" > $(T)/$(1).pass
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
 GATES_LIST := build allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
-.PHONY: check main-only nogmp index panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
+.PHONY: check main-only nogmp bench indexpanic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -69,6 +69,12 @@ allcov: build
 compile-diff: main-only
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelGate
+
+# size and throughput, outside every gate: lib `RelBench` (Bench/) holds the programs over what a program may cost the
+# gate (`gateMs` in test/TestCompile.lean, which fails naming each); building it runs them
+bench:
+	$(GATE)
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) build RelBench
 
 # inputs: every file of crate/ (sources, testdata, Cargo.lock, rust-toolchain.toml) and the toolchain it selects
 crate-test:

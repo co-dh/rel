@@ -49,8 +49,10 @@ partial def reuse (prev : List (Nat × Res)) {A B : Obj} (t : Tm A B) : Tm A B :
   | some k => .var false k
   | none => Id.run (t.mapM fun c => pure (reuse prev c))
 
-/-- A run slower than this many milliseconds is reported as slow. -/
-def slowMs : Nat := 60000
+/-- What one program may cost this gate, in ms: its constant evaluated, its re-read and every run of its code. The gate
+    checks correctness, so a program's instance is small; an instance that measures size or throughput lives in
+    `Bench/` (`make bench`), which no gate imports. -/
+def gateMs : Nat := 1000
 
 run_cmd do
   let reg := relRegistry.getState (← getEnv)
@@ -63,12 +65,13 @@ run_cmd do
   let mut differ : Array String := #[]
   let mut none' : List (String × List String) := []
   let mut once : List String := []
-  let mut slow : List (String × Nat) := []
+  let mut slow : List (Name × Nat) := []
   let mut times : Array String := #[]
   let mut closed := 0
   -- each closed definition no literal-row `check` of its program mentions
   let mut unchecked : List String := []
   for (n, _, _) in reg.progs do
+    let p0 ← IO.monoMsNow
     let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
     let (ds, _, _, _, fs, _) ← match ← GenSoundTest.reread n with
       | .ok r => pure r
@@ -113,7 +116,6 @@ run_cmd do
             let k := base + prev.length
             prev := (k, ⟨A', B', t⟩) :: prev; η := η.bind k (GenK.const A' B' (.ok T))
           times := times.push s!"{nm}\t{ms}"
-          if ms > slowMs then slow := slow ++ [(nm, ms)]
           match r with
           | .error e => differ := differ.push s!"`{nm}`: `Tm.gen`'s result unreadable: {e}"
           | .ok (s', rs') =>
@@ -122,13 +124,16 @@ run_cmd do
               {rs'.length} by `Tm.gen`; only generated {few (rs.filter (!rs'.contains ·))}, only by `Tm.gen` \
               {few (rs'.filter (!rs.contains ·))}"
             else same := same ++ [nm]
+    let pm := (← IO.monoMsNow) - p0
+    times := times.push s!"{n}.(program)\t{pm}"
+    if pm > gateMs then slow := slow ++ [(n, pm)]
   -- `REL_COMPILE_TIMES` names a file for each compared definition's run time, tab-separated, in ms
   if let some p ← IO.getEnv "REL_COMPILE_TIMES" then IO.FS.writeFile p ("\n".intercalate times.toList ++ "\n")
   -- each node kind with no code, with the number of definitions it is in
   let kinds := (none'.flatMap (·.2)).eraseDups.map fun k => (k, (none'.filter (·.2.contains k)).length)
   logInfo m!"the differential test (generated code against `Tm.gen`): {same.length + differ.size} compared, \
     {same.length} equal, {differ.size} different, {none'.length} with no code ({kinds}), {once.length} elaborated \
-    once (no closed constant), {slow.length} slow (over {slowMs} ms: {slow})\nno code: {none'}\nonce: {once}"
+    once (no closed constant)\nno code: {none'}\nonce: {once}"
   logInfo m!"{closed - unchecked.length} of {closed} closed definitions are mentioned by a literal-row `check`; \
     {unchecked.length} are not: {unchecked}"
   -- every closed definition of `n.expanded` is in exactly one of `same`, `differ`, `none'`, `errs` (fails below)
@@ -141,5 +146,8 @@ run_cmd do
   logInfo m!"the generated code is ok on {run.size - open'.length} definitions; not ok on \
     {open'.length}: {open'}"
   unless errs.isEmpty do throwError "TestCompile: {errs.size} definitions fail:\n{"\n".intercalate errs.toList}"
+  unless slow.isEmpty do
+    throwError "TestCompile: {slow.length} programs cost this gate over {gateMs} ms each (program, ms): {slow}; \
+      give each a small instance, and move the large one to Bench/ (`make bench`)"
 
 end Rel.Lang.TestCompile
