@@ -214,8 +214,8 @@ namespace Lang.GenK
 open Classical in
 /-- `positions(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.positions`): each array in demand to the positions
 of its elements in `dom T` (`elemsTest_sound`). -/
-theorem positions_sound {B : Obj} {d : Bool} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF → R.Reps K T) :
-    ∀ K, K.WF → (GenK.elems B B (.arr .long) d R fun P X => Tab.positions P X).Reps K
+theorem positions_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF → R.Reps K T) :
+    ∀ K, K.WF → (GenK.elems B B (.arr .long) R fun P X => Tab.positions P X).Reps K
       (fun xs ys => ys = positionsL (fun x => decide (∃ y, T x y)) xs) :=
   elemsTest_sound (C := .arr .long) (F := fun p (xs : List B.El) => positionsL p xs)
     (fun h xs ys => (Tab.positions_spec h).1 xs ys)

@@ -18,21 +18,21 @@ def pairs (m : Nat) (f : Nat → Nat) : Tab .long .long :=
   ⟨m.toUSize, Arr.ofFn .i64 _ fun i => i.val.toUInt64, Arr.ofFn .i64 _ fun i => (f i.val).toUInt64⟩
 
 /-- The frame: row `i` holds the value `i·7919 mod 1000`. -/
-def R : Fn false .long .long :=
+def R : Rel .long .long :=
   val _ _ (pairs n fun i => i * 7919 % 1000, true)
 
 /-- The key `v mod m` of each of the 1000 values. -/
-def key (m : Nat) : Fn false .long .long :=
+def key (m : Nat) : Rel .long .long :=
   val _ _ (pairs 1000 fun v => v % m, true)
 
 /-- The coreflexive of the values below 500. -/
-def p : Fn false .long .long := val _ _ (pairs 500 id, true)
+def p : Rel .long .long := val _ _ (pairs 500 id, true)
 
-def groups (k : Fn false .long .long) : Fn false .long (.arr .long) :=
-  let rk := comp _ _ _ false R k
-  comp _ _ _ true (ran _ _ rk) (lam _ _ true (conv _ _ rk))
+def groups (k : Rel .long .long) : Rel .long (.arr .long) :=
+  let rk := comp _ _ _ R k
+  comp _ _ _ (ran _ _ rk) (lam _ _ (conv _ _ rk))
 
-def filter : Fn false .long .long := comp _ _ _ false R p
+def filter : Rel .long .long := comp _ _ _ R p
 
 /-- The groups' count, their rows in all, and whether every list ascends strictly; read through `toList`, the
     proof-side decoder, so it stays outside the timed run. -/
@@ -41,7 +41,7 @@ def summary (r : Tab .long (.arr .long)) : Nat × Nat × Bool :=
   (l.length, (l.map (·.2.length)).sum, l.all fun (_, ys) => (ys.zip ys.tail).all fun (a, b) => decide ((a : Int64) < b))
 
 /-- The run of `groups(k)` and its wall time; the row count forces it. -/
-def timed (k : Fn false .long .long) : IO (Nat × Tab .long (.arr .long)) := do
+def timed (k : Rel .long .long) : IO (Nat × Tab .long (.arr .long)) := do
   let t0 ← IO.monoMsNow; let r ← IO.ofExcept ((groups k).runE {})
   let _ ← IO.ofExcept (if r.n = 0 then .error "groups: no rows" else .ok ())
   let t1 ← IO.monoMsNow; pure (t1 - t0, r)

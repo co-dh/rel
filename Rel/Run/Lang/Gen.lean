@@ -1,7 +1,7 @@
 import Rel.Run.Lang.Lazy
 
-/-! What the code a `rel_program` definition expands into names besides `GenK`: the type of a code (`Fn`), a
-    definition's listed value (`Gv`, `entry`), and the literal columns rebuilt from their payloads. -/
+/-! What the code a `rel_program` definition expands into names besides `GenK`: a definition's listed value
+    (`Gv`, `entry`), and the literal columns rebuilt from their payloads. -/
 
 open Rel.Ext
 
@@ -13,9 +13,6 @@ namespace Gen
 
 open Rel Rel.Kernel
 
-/-- A term's code: its relation, a table run now or a function of what its context knows of its sides. `d` is
-    phantom: the combinators still dispatch on it until they match on `tab`/`lazy` (3.6). -/
-abbrev Fn (_d : Bool) (A B : Obj) := Rel A B
 /-- A definition's value with its objects: what `rel_program n` lists as `n.expanded`. -/
 abbrev Gv := (A : Obj) × (B : Obj) × Except String (Tab A B)
 

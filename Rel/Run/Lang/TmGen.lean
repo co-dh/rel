@@ -87,7 +87,7 @@ run_elab do
       fun a b => a.count true ≤ b.count true
     let some (lg, e) ← choices.findSomeM? fun lg => do
         let (ps, oA, oB) := rowObjs r lg ((List.range vs.length).map fun k => (varObj varAtoms k).getD .long)
-        let ts := ps.toArray.map fun (X, Y) => g ``Gen.Fn #[bE true, oE X, oE Y]
+        let ts := ps.toArray.map fun (X, Y) => g ``Rel.Rel #[oE X, oE Y]
         withLocalDeclsDND (ts.map (`x, ·)) fun xs => do
           let some f ← primFit r oA oB ts | return none
           let v := f.beta xs
@@ -150,18 +150,18 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .top V => GenK.top A B (V.code η)
   | .prod A B, _, .outl => GenK.outl A B
   | .prod A B, _, .outr => GenK.outr A B
-  | A, C, .comp (B := B) R S => GenK.comp A B C S.dem (R.code η) (S.code η)
+  | A, C, .comp (B := B) R S => GenK.comp A B C (R.code η) (S.code η)
   | B, A, .conv R => GenK.conv A B (R.code η)
-  | A, B, .meet R S => GenK.meet A B R.dem S.dem (R.code η) (S.code η)
-  | A, B, .join R S => GenK.join A B R.dem S.dem (R.code η) (S.code η)
-  | A, B, .diff R S => GenK.diff A B R.dem S.dem (R.code η) (S.code η)
-  | A, _, .dom (B := B) R => GenK.dom A B R.dem (R.code η)
+  | A, B, .meet R S => GenK.meet A B (R.code η) (S.code η)
+  | A, B, .join R S => GenK.join A B (R.code η) (S.code η)
+  | A, B, .diff R S => GenK.diff A B (R.code η) (S.code η)
+  | A, _, .dom (B := B) R => GenK.dom A B (R.code η)
   | B, _, .ran (A := A) R => GenK.ran A B (R.code η)
   | B, C, .ldiv (A := A) R S UB UC => GenK.ldiv A B C (R.code η) (S.code η) (UB.code η) (UC.code η)
   | A, B, .rdiv (C := C) R S UA UB => GenK.rdiv A B C (R.code η) (S.code η) (UA.code η) (UB.code η)
-  | A, .prod B C, .pair R S => GenK.pair A B C R.dem S.dem (R.code η) (S.code η)
+  | A, .prod B C, .pair R S => GenK.pair A B C (R.code η) (S.code η)
   | .prod A C, .prod B D, .prod R S => GenK.prod A B C D (R.code η) (S.code η)
-  | A, .arr B, .lam R => GenK.lam A B R.dem (R.code η)
+  | A, .arr B, .lam R => GenK.lam A B (R.code η)
   | _, B, .est Q => GenK.est B (Q.code η)
   | _, .arr B, .thin Q => GenK.thin B (Q.code η)
   | A, .arr B, .nil => GenK.nil A B
@@ -171,8 +171,8 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | _, _, .arith t k U => GenK.arith t k (U.code η)
   | _, _, .leq t U => GenK.leq t (U.code η)
   | _, _, .lt t U => GenK.lt t (U.code η)
-  | .arr Y, V, .foldr e S => GenK.foldr Y V S.dem (e.code η) (S.code η)
-  | .arr Y, V, .fold e S => GenK.fold Y V S.dem (e.code η) (S.code η)
+  | .arr Y, V, .foldr e S => GenK.foldr Y V (e.code η) (S.code η)
+  | .arr Y, V, .fold e S => GenK.fold Y V (e.code η) (S.code η)
   -- its slot, computed once per program; where the table has none, built here under no variable
   | A, B, .share k R => match η.sh.at k A B with
     | some r => r
@@ -184,7 +184,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, B, .hylo k w b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b
     if (b.kids k A).isNone then .tab (.error s!"Tm.gen: {w} gives the hylo no children (Tm.kids)") else
-    GenK.hylo A B w ((b.kids k A).getD .zero).dem b.dem (((b.kids k A).getD .zero).code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
+    GenK.hylo A B w (((b.kids k A).getD .zero).code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .prim r => primGen r A B []
   | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
   | _, _, .call ks _ _ b | _, _, .callCv ks _ _ _ b _ => b.code (Code.args η ks [])

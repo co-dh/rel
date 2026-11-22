@@ -226,13 +226,13 @@ theorem conv_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → 
     ∀ K, K.WF → (GenK.conv A B R).Reps K X° :=
   lift1_sound (fun _ h => h.conv) hR fun _ _ _ ht hr x y hx hy ho => (Tab.conv_holds ht x y).trans (hr y x hy hx (on_conv ho))
 
-theorem join_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) : ∀ K, K.WF → (GenK.join A B d e R S).Reps K (X ∪ Y) :=
+theorem join_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hS : ∀ K, K.WF → S.Reps K Y) : ∀ K, K.WF → (GenK.join A B R S).Reps K (X ∪ Y) :=
   lift2_sound (fun _ h => h) (fun _ h => h) hR hS fun _ _ _ _ ht hr hs x y hx hy ho =>
     (Tab.union_holds ht x y).trans (or_congr (hr x y hx hy ho) (hs x y hx hy ho))
 
-theorem dom_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
-    ∀ K, K.WF → (GenK.dom A B d R).Reps K (𝟙 _ ∩ X ≫ X°) :=
+theorem dom_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+    ∀ K, K.WF → (GenK.dom A B R).Reps K (𝟙 _ ∩ X ≫ X°) :=
   lift1_sound (fun _ h => ⟨h.side, trivial, trivial⟩) hR fun _ r _ ht hr x x' hx hx' _ => by
     refine (Tab.dom_holds ht x x').trans ⟨?_, ?_⟩
     · rintro ⟨rfl, y, h⟩; have e := hr _ y (side_or hx hx') rfl trivial; exact ⟨rfl, y, e.1 h, e.1 h⟩
@@ -375,9 +375,9 @@ theorem pairK_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Co
   · exact M p hp ht
   · exact L p hp ht
 
-theorem pair_sound {d e : Bool} {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Core.Rel A.El C.El}
+theorem pair_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Core.Rel A.El C.El}
     (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) :
-    ∀ K, K.WF → (GenK.pair A B C d e R S).Reps K (rpair X Y) := by
+    ∀ K, K.WF → (GenK.pair A B C R S).Reps K (rpair X Y) := by
   have hL : ∀ K, K.WF → (Rel.lazy fun K => .tab (pairK K.dom R S) : Rel A (.prod B C)).Reps K (rpair X Y) := fun K hK =>
     (reps_iff _ _ _).2 fun _ h => pairK_sound hR hS wR wS K hK h
   have hT : ∀ K, K.WF → (lift2 Tab.pair (fun K : Known A (.prod B C) => (⟨K.dom, none, none⟩ : Known A B))
@@ -427,8 +427,8 @@ example : ∀ K, K.WF → (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_
 
 /-! ### `diff rdiv lam nil succ leq lt` (`nil` by `ofVals_row_sound`, `leq lt` by `cmp_sound`) -/
 
-theorem diff_sound {d e : Bool} {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
-    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) : ∀ K, K.WF → (GenK.diff A B d e R S).Reps K (diffDen X Y) := by
+theorem diff_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
+    (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) : ∀ K, K.WF → (GenK.diff A B R S).Reps K (diffDen X Y) := by
   unfold GenK.diff; split
   · intro K hW; rw [reps_iff]; intro t h
     obtain ⟨r, hr, h⟩ := bind_ok h
@@ -464,8 +464,8 @@ theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X 
     simp only [ldivDen, rdivDen, rep_apply, Tab.conv_holds hsc, Tab.conv_holds hrc]
     exact and_congr Iff.rfl (or_congr Iff.rfl and_comm)
 
-theorem lam_sound {d : Bool} {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
-    ∀ K, K.WF → (GenK.lam A B d R).Reps K (lamDen X) :=
+theorem lam_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) :
+    ∀ K, K.WF → (GenK.lam A B R).Reps K (lamDen X) :=
   ofVals_sound fun _ _ _ _ hK hX h a ys ha _ _ => by
     obtain ⟨r, hr, ht⟩ := bind_ok h
     have er := (reps_iff _ _ _).1 (hR _ (by exact ⟨hX, trivial, trivial⟩)) r hr
