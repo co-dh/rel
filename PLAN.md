@@ -1114,6 +1114,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `.tab (.ok t) => Tab.WF t`，加 `Known.WF`，`Reps` 只在 `Known.WF` 的 `K` 上要求；然后 91 个 `_wf` 各证其 op 保持
     `Tab.WF`（上面的保持引理是底），`Tab.lam` 要 `kseen`/`kscatter .add` 计数规格，`Vals.cells` 的调用处要 `expand`
     的前缀和 `≤ T`。
+  - 🔄 各 op 的保持引理（分支 `lohi3a`，`Rel/RepWF.lean`）：结构、集合、`comp`、bits、除法、比较、`inl°/inr°`、
+    `length`/`atPos`/`asc`/`est`、`nil`/`lamOf`/`lam`/`E`/`tau`/`setify` 已证；`fixOn`/`mu`/`nu` 以 `Tab.pack` 保持
+    为前提（`Vals.pack` 经 `Vals.cells`）。修了 `lamOf` 的错：`r` 无行时格子 `[f+c, f+c)` 指向 `m = 0` 的 payload 之外
+    （例：`D` 3 行、`r` 空，组 0 是 `[1,1)`，`hi = 1 > 0`），改为 `nil D`；`lamOf_canon` 多给 `U.WF`。未做：`List`
+    （`cells` 调用处，用 lohi3b 的 `expand_spec`）、`thin`/`thinL`/`merge`/`loop`/`foldRounds`、`Arith`、`Cast`、
+    `Where`，以及 `Rel.Wf` 的切换本身。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；

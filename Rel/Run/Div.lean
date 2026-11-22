@@ -28,13 +28,21 @@ def mem {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) B) :=
     let ix ← colMap .add T (← kgather T G n s) u
     Tab.canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, ← Vals.gather T ix f⟩
 
+/-- **`nil` on the keys `D`** (`nilDen`): each to the empty cell, `lo = hi = 0` over a payload of no rows; then
+`canon`. -/
+def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
+  let z ← Arr.zeros .i64 n
+  Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.none B⟩⟩
+
 /-- **`Λ(r)` on the keys `D`, `r` canonical** (`Tab.Canonical`; `lamDen`): each `a` of `D` to the cell of its values
 in `r`, ascending and each once, `[]` where `r` has none. One GROUP over the keys of `D` then `r` (`Vals.concat`): `kasc` being stable, a
 group's sorted rows are its `D` rows (`cD`, input row below `n`), then its `r` rows, which `canon` put in ascending
 value order. The cell of group `G` is the sorted rows `[f + cD, f + c)` of the payload `r.val` gathered in sorted
 order (a `D` row reads `r`'s row `0`, inside no cell); the groups with `0 < cD` are kept (`whereCol`), keyed by their
-first row, a row of `D`. Then `canon`. -/
-def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr B)) := do
+first row, a row of `D`. Then `canon`. An `r` of no rows is `nil D`: a cell's bounds index the payload beside it,
+and over no rows the only cell is `[0, 0)`, where `[f + cD, f + c)` would point past it. -/
+def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr B)) :=
+  if r.n.toNat = 0 then nil D else do
   let (N, sh) ← catPlan n r.n
   -- `.lt`, `.sub`, `.max` read positions and counts signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"lam: {N} rows past 2^63"
@@ -48,10 +56,8 @@ def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr 
   let hi ← colArr .add K f (← kscatter .add N g (← colConst N 1) K 0)
   let (M, sel) ← whereCol K (← colMap .lt K (← colConst K 0) cD)
   let iD ← kgather M (← kgather M sel K f) N p
-  let pay ← if r.n.toNat = 0 then pure (⟨r.n, r.val⟩ : (m : USize) × Vals B m) else
-    (fun y => (⟨N, y⟩ : (m : USize) × Vals B m)) <$>
-      Vals.gather N (← colMap .max N (← colMap .sub N p nc) (← colConst N 0)) r.val
-  Tab.canon ⟨M, ← Vals.gather M iD D, ⟨pay.1, ← Arr.gather M sel lo, ← Arr.gather M sel hi, pay.2⟩⟩
+  let pay ← Vals.gather N (← colMap .max N (← colMap .sub N p nc) (← colConst N 0)) r.val
+  Tab.canon ⟨M, ← Vals.gather M iD D, ⟨N, ← Arr.gather M sel lo, ← Arr.gather M sel hi, pay⟩⟩
 
 /-- **`Λ(R)` on the keys `D`**: `lamOf` of `canon R`; a caller whose `R` is `Tab.Canonical` already calls `lamOf`. -/
 def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)) := R.canon >>= lamOf D
@@ -60,12 +66,6 @@ def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)
 canonical (`comp_canonical`): `lamOf`, no second `canon`. -/
 def E {n : USize} (X : Vals (.arr A) n) (R : Tab A B) : Except String (Tab (.arr A) (.arr B)) := do
   lamOf X (← (← mem X).comp R)
-
-/-- **`nil` on the keys `D`** (`nilDen`): each to the empty cell, `lo = hi = 0` over a payload of no rows; then
-`canon`. -/
-def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
-  let z ← Arr.zeros .i64 n
-  Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.none B⟩⟩
 
 /-- **`R \ S` within `UB`, `UC`** (`ldivDen`), by counting: `b` of `ran R` to `c` where
 `#{a | R a b ∧ S a c} = #{a | R a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`

@@ -3,6 +3,8 @@ import Rel.Run.Bits
 import Rel.Run.Power
 import Rel.Run.Asc
 import Rel.Run.Fix
+import Rel.RepTabDiv
+import Rel.RepAsc
 
 /-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
@@ -504,6 +506,48 @@ theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
   simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact inter_wf hX wX (hf _ _ ‹_› wX)
+
+/-! ### `Λ`: `nil`, `lamOf`, `lam`, `E` -/
+
+theorem nil_wf {n : USize} {D : Vals A n} {t : Tab A (.arr B)} (h : Tab.nil D = .ok t) (hD : Vals.WF D) :
+    t.WF := by
+  unfold Tab.nil at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i z hz; split at h; · cases h
+  refine canon_wf h ⟨hD, fun i => ?_, Vals.none_wf ‹_›⟩
+  rw [Arr.zeros_get hz]; simp
+
+/-- **`lamOf` keeps `Tab.WF`**: `nil` at an `r` of no rows, else `lamOf_canon`'s cells inside the `N` sorted rows. -/
+theorem lamOf_wf {n : USize} {D : Vals A n} {r : Tab A B} {t : Tab A (.arr B)} (h : Tab.lamOf D r = .ok t)
+    (hD : Vals.WF D) (hr : r.WF) : t.WF := by
+  by_cases h0 : r.n.toNat = 0
+  · simp only [Tab.lamOf, if_pos h0] at h; exact nil_wf h hD
+  · obtain ⟨U, hU, wU, -⟩ := lamOf_canon h
+    exact canon_wf hU (wU h0 hD hr)
+
+theorem lam_wf {n : USize} {D : Vals A n} {R : Tab A B} {t : Tab A (.arr B)} (h : Tab.lam D R = .ok t)
+    (hD : Vals.WF D) (hR : R.WF) : t.WF := by
+  simp only [Tab.lam, bind, Except.bind] at h
+  split at h; · cases h
+  exact lamOf_wf h hD (canon_wf ‹_› hR)
+
+theorem E_wf {C : Obj} {n : USize} {X : Vals (.arr A) n} {R : Tab A C} {t : Tab (.arr A) (.arr C)}
+    (h : Tab.E X R = .ok t) (hX : Vals.WF X) (hR : R.WF) : t.WF := by
+  simp only [Tab.E, bind, Except.bind] at h
+  split at h; · cases h
+  rename_i Q hQ; split at h; · cases h
+  exact lamOf_wf h hX (comp_wf ‹_› (mem_wf hQ hX) hR)
+
+theorem tau_wf {n : USize} {X : Vals A n} {t : Tab A (.arr A)} (h : Tab.tau X = .ok t) (hX : Vals.WF X) : t.WF := by
+  simp only [Tab.tau, bind, Except.bind] at h
+  split at h; · cases h
+  exact lam_wf h hX (idU_wf ‹_› hX)
+
+theorem setify_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr B)} (h : Tab.setify X = .ok t)
+    (hX : Vals.WF X) : t.WF := by
+  simp only [Tab.setify, bind, Except.bind] at h
+  split at h; · cases h
+  exact lamOf_wf h hX (mem_wf ‹_› hX)
 
 end Tab
 
