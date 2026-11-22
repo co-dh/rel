@@ -3,8 +3,10 @@ import Rel.ObjOrder
 import Rel.Lang.GenSoundTest
 
 /-! The differential test of the generated code's results. A definition's result is its status (`ok`, or why the
-    constant vouches for nothing) and, where ok, its table as a SET of rows read as values (`rowsOf`), so a body that
-    moves from `Obj.lt` order to `kasc` order, or to another encoding, reads the same.
+    constant vouches for nothing) and, where ok, its table compared as a SET of rows read as values (`Tab.le` both
+    ways, as a program's `check R = S` decides), so a body that moves from `Obj.lt` order to `kasc` order, or to
+    another encoding, reads the same. The kernels compare: `rowsOf` sorts boxed `Nat` keys in the interpreter, which
+    cost a table of 10^5 rows hundreds of ms, so it only lists the rows of a difference.
 
     Each closed definition of every registered program, re-read as a `Tm`
       (`GenSoundTest.reread`) where `Tm.gen` has code at every node (`Tm.hasCode`), run as
@@ -21,14 +23,14 @@ open Lean Elab Command Tab Rel.Lang Rel.Lang.Expand
 
 open Rel.Lang.GenSoundTest (rowsOf)
 
-/-- A definition's result, `c` its value as `n.expanded` lists it: its status and, where ok, its rows. An error is
-    a result that cannot be compared: a side `rowsOf` cannot read. -/
-def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × List (List Nat)) := do
-  let .ok g := c | return ("not ok: the generated constant vouches for nothing", [])
+/-- A definition's result, `c` its value as `n.expanded` lists it: its status and, where ok, its table. An error is
+    a result that cannot be compared: a side holding a `general` atom, whose rows do not read as values. -/
+def result {A B : Obj} (c : Except String (Tab A B)) : Except String (String × Option (Tab A B)) := do
+  let .ok g := c | return ("not ok: the generated constant vouches for nothing", none)
   -- `Rel.Lang.keyed` (Elab) shadows the opened name
   if !(Rel.Lang.GenSoundTest.keyed A && Rel.Lang.GenSoundTest.keyed B) then
     throw "a side holds a `general` atom, whose `Obj.key` is `[]`"
-  pure ("ok", rowsOf g)
+  pure ("ok", some g)
 
 /-- At most three rows, for a report. -/
 def few (rs : List (List Nat)) : String := s!"{rs.take 3}{if rs.length > 3 then " …" else ""}"
@@ -57,7 +59,7 @@ def gateMs : Nat := 1000
 run_cmd do
   let reg := relRegistry.getState (← getEnv)
   let ctors := (← getConstInfoInduct ``Tm).ctors
-  let mut run : Std.HashMap String (String × List (List Nat)) := {}
+  let mut run : Std.HashMap String String := {}
   let mut errs : Array String := #[]
   let mut open' : List String := []
   -- the differential test's obligations: each definition is compared (`same` or `differ`), `none'`, or `once`
@@ -100,12 +102,15 @@ run_cmd do
       unless lit.contains x do unchecked := unchecked ++ [nm]
       closed := closed + 1
       let some ⟨A', B', t⟩ := dn.lookup x | throwError "TestCompile: `{nm}` is in `{n ++ `expanded}` but not re-read"
-      unless A' == A && B' == B do throwError "TestCompile: `{nm}` is re-read at other objects than it is generated at"
+      -- the proof casts the re-read term to the generated constant's objects, so the two tables compare
+      let .isTrue h := inferInstanceAs (Decidable (A' = A ∧ B' = B))
+        | throwError "TestCompile: `{nm}` is re-read at other objects than it is generated at"
+      let t : Tm A B := h.1 ▸ h.2 ▸ t
       match result c with
       | .error e => errs := errs.push s!"`{nm}`: {e}"
-      | .ok (s, rs) =>
+      | .ok (s, R) =>
         if run.contains nm then throwError "TestCompile: `{nm}` is visited twice"
-        run := run.insert nm (s, rs)
+        run := run.insert nm s
         if s != "ok" then open' := open' ++ [nm]
         if !t.hasCode then none' := none' ++ [(nm, (noCode ctors t).eraseDups)] else
           let t0 ← IO.monoMsNow
@@ -114,16 +119,22 @@ run_cmd do
           let ms := (← IO.monoMsNow) - t0
           if let .ok T := g then
             let k := base + prev.length
-            prev := (k, ⟨A', B', t⟩) :: prev; η := η.bind k (GenK.const A' B' (.ok T))
+            prev := (k, ⟨A, B, t⟩) :: prev; η := η.bind k (GenK.const A B (.ok T))
           times := times.push s!"{nm}\t{ms}"
           match r with
           | .error e => differ := differ.push s!"`{nm}`: `Tm.gen`'s result unreadable: {e}"
-          | .ok (s', rs') =>
-            if s' != s then differ := differ.push s!"`{nm}`: status: generated `{s}`, `Tm.gen` `{s'}`"
-            else if rs' != rs then differ := differ.push s!"`{nm}`: rows differ: {rs.length} generated, \
-              {rs'.length} by `Tm.gen`; only generated {few (rs.filter (!rs'.contains ·))}, only by `Tm.gen` \
-              {few (rs'.filter (!rs.contains ·))}"
-            else same := same ++ [nm]
+          | .ok (s', R') =>
+            if s' != s then differ := differ.push s!"`{nm}`: status: generated `{s}`, `Tm.gen` `{s'}`" else
+            match R, R' with
+            | some R, some R' =>
+              match (do pure ((← R.le R') && (← R'.le R)) : Except String Bool) with
+              | .error e => differ := differ.push s!"`{nm}`: comparing the tables: {e}"
+              | .ok true => same := same ++ [nm]
+              | .ok false =>
+                let (rs, rs') := (rowsOf R, rowsOf R')
+                differ := differ.push s!"`{nm}`: rows differ: {rs.length} generated, {rs'.length} by `Tm.gen`; \
+                  only generated {few (rs.filter (!rs'.contains ·))}, only by `Tm.gen` {few (rs'.filter (!rs.contains ·))}"
+            | _, _ => same := same ++ [nm]
     let pm := (← IO.monoMsNow) - p0
     times := times.push s!"{n}.(program)\t{pm}"
     if pm > gateMs then slow := slow ++ [(n, pm)]
