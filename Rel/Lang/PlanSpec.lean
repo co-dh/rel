@@ -213,11 +213,11 @@ theorem Builds.ite {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {bt : Bool} {
   · have hrs : rt.size = re.size := by omega
     simp only [Plan.ite, block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, monadLift_self, hrt, hre,
       ok_bind, pure_bind, bind_assoc]
-    simp [ok_bind, hrs, emit_run, ← st, ho, ← Array.append_assoc]
+    simp [hrs, emit_run, ho]
   · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
     rw [show (#[Instr.ite c jt.toList rt je.toList re] : Array Instr).toList = [.ite c jt.toList rt je.toList re]
       from rfl, runB.eq_2]
-    cases bt <;> simp [runI, reg_of hc, hbt fs gs hE1, hbe fs gs hE, hmt, hme, runB.eq_1, ok_bind, pure, Except.pure,
+    cases bt <;> simp [runI, reg_of hc, hbt fs gs hE1, hbe fs gs hE, hmt, hme, runB.eq_1, ok_bind,
       Functor.map, Except.map]
 
 /-- `defFun ps b`, then `k` on its number. `Q pv o` says what the function answers: `o` on the parameters `pv`;
@@ -245,7 +245,7 @@ theorem Builds.defFun {fg fg1 fg' : Array Fun × Array Fun} {ps : Array Ty} {b :
     simp only [Except.ok.injEq, Prod.mk.injEq] at hr'
     obtain ⟨rfl, rfl, -⟩ := hr'
     have hE' : Env abi (fs.extract 0 F1.size) gs (F1, G1) := hE.restrict (FEnv.extract hE.1) rfl
-    simp [Fun.sem, hrun' _ gs hE' ws, hm' "result", ok_bind, pure, Except.pure, Functor.map, Except.map]
+    simp [Fun.sem, hrun' _ gs hE' ws, hm' "result", ok_bind, Functor.map, Except.map]
   obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, hk₀⟩ := hk _ hF
   refine ⟨⟨a1 ++ #[⟨ps, body.toList, r⟩] ++ a2, ?_⟩, ⟨b1 ++ b2, ?_⟩, fun is => ?_⟩
   · rw [ha2]; simp only at ha1 ⊢; subst ha1; simp only [Array.push_eq_append, Array.append_assoc]
@@ -284,7 +284,7 @@ theorem Builds.global {fg fgB fg' : Array Fun × Array Fun} {b : Bld (Array Nat)
       hE2.restrict (by simpa using hf') (by simp [Array.extract_extract])
     have e : v' = v := by
       have h1 := hs' ws
-      simp [Fun.sem, hsem fs' _ hEB ws, hm "result", ok_bind, pure, Except.pure, Functor.map, Except.map] at h1
+      simp [Fun.sem, hsem fs' _ hEB ws, hm "result", ok_bind, Functor.map, Except.map] at h1
       exact h1.symm
     subst e
     have hi : runI abi fs gs (.global GB.size) rs ws = .ok (rs ++ v', ws) := by
@@ -339,7 +339,7 @@ theorem Builds.ite_then {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {t e : B
   · have hrs : rt.size = re.size := by omega
     simp only [Plan.ite, block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, monadLift_self,
       hrt, hre, ok_bind, pure_bind, bind_assoc]
-    simp [ok_bind, hrs, emit_run, ← st]; omega
+    simp [hrs, emit_run]; omega
   · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
     rw [show (#[Instr.ite c jt.toList rt je.toList re] : Array Instr).toList = [.ite c jt.toList rt je.toList re]
       from rfl, runB.eq_2]
@@ -355,7 +355,7 @@ theorem Builds.guard {fg fg' : Array Fun × Array Fun} {c : Nat} {msg : String} 
   rw [e]
   refine Builds.emit_bind (fun _ _ _ ws => ?_) (by simpa using hk)
   simp only [runI, reg_of hc, ok_bind, runB.eq_1]
-  simp [ok_bind]; rfl
+  simp; rfl
 
 /-! ### Straight-line builders -/
 

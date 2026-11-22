@@ -122,7 +122,7 @@ theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
     Column.foRBits (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
       (p i).toNat.toUInt64 := by
   have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
-    rcases System.Platform.numBits_eq with h | h <;> simp [h])
+    rcases System.Platform.numBits_eq with h | h <;> simp)
   obtain ⟨hs, hb⟩ := Verify.packIds_bytes 1 n (fun i => (p i).toNat) (by decide) (by decide)
   simp only [Nat.mul_one] at hs hb
   simp only [Kernel.Coc.bools, h1]

@@ -125,9 +125,9 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
   obtain ⟨N, hN, Z, hZ, na, hna, nb, hnb, bo, hbo, h⟩ := h
   by_cases e1 : k = Ew.add
   · subst e1
-    simp (config := {decide := true}) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser, if_true,
-      if_false, Bool.true_or, Bool.false_or, Bool.or_false, bind, Except.bind_eq_ok', pure, Except.pure,
-      Except.ok.injEq, Prod.mk.injEq] at h
+    simp (config := { decide := true }) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, if_true, if_false,
+      Bool.or_false, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq,
+      Prod.mk.injEq] at h
     obtain ⟨w', hw', ord, hord, g, hg, ex, hex, nw, hnw, t1, ht1, kp, hkp, rfl, rfl⟩ := h
     rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
       cm hex (ev_eq _ _), cm hg (ev_ge _ _), cm hord (ev_le _ _), cm (colArr_ok hw') rfl, cc hN, cc hZ]
@@ -140,8 +140,8 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
     exact add_iff x y v
   by_cases e2 : k = Ew.sub
   · subst e2
-    simp (config := {decide := true}) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser, if_true,
-      if_false, Bool.true_or, Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure, Except.pure,
+    simp (config := { decide := true }) only [Ew.sub, Ew.lesser, if_true, if_false, Bool.true_or,
+      Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure, Except.pure,
       Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨w', hw', ord, hord, g, hg, ex, hex, nw, hnw, t1, ht1, kp, hkp, rfl, rfl⟩ := h
     rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
@@ -155,15 +155,15 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
     exact sub_iff x y v
   by_cases e3 : k = Ew.mul
   · subst e3
-    simp (config := {decide := true}) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser, if_true,
-      if_false, Bool.true_or, Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure, Except.pure,
+    simp (config := { decide := true }) only [Ew.add, Ew.sub, Ew.mul, if_true, if_false,
+      Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure, Except.pure,
       Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨w', hw', a0, ha0, o1, ho1, dv, hdv, e0, he0, ex, hex, nw, hnw, t1, ht1, kp, hkp, rfl, rfl⟩ := h
     have h0 : wd n o1 i ≠ 0 := by rw [cm ho1 rfl, cm ha0 (ev_eq _ _), cc hZ, or_zero]; exact one_ne _
     rw [cm hkp rfl, cm ht1 rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
       cm hex rfl, cm he0 (ev_eq _ _), cm hdv (ev_div _ _ h0), cm ho1 rfl, cm ha0 (ev_eq _ _),
       cm (colArr_ok hw') rfl, cc hN, cc hZ]
-    simp only [bit_and, bit_or, bit_eq, or_zero]
+    simp only [bit_and, bit_or, or_zero]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
     obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
@@ -172,9 +172,9 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
   by_cases e4 : k = Ew.idiv ∨ k = Ew.imod
   · rcases e4 with rfl | rfl
     all_goals
-      simp (config := {decide := true}) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser, if_true,
-        if_false, Bool.true_or, Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure,
-        Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+      simp (config := { decide := true }) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, if_true,
+        if_false, Bool.or_false, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq,
+        Prod.mk.injEq] at h
       obtain ⟨b0, hb0, o, ho, w', hw', nb0, hnb0, t, ht, nw, hnw, kp, hkp, rfl, rfl⟩ := h
       have h0 : wd n o i ≠ 0 := by rw [cm ho rfl, cm hb0 (ev_eq _ _), cc hZ, or_zero]; exact one_ne _
       rw [cm hkp rfl, cm ht rfl, cm hbo rfl, cm hna (ev_ne _ _), cm hnb (ev_ne _ _), cm hnw (ev_ne _ _),
@@ -189,9 +189,9 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
   by_cases e5 : k = Ew.greater ∨ k = Ew.lesser
   · rcases e5 with rfl | rfl
     all_goals
-      simp (config := {decide := true}) only [Ew.add, Ew.sub, Ew.mul, Ew.idiv, Ew.imod, Ew.greater, Ew.lesser, if_true,
-        if_false, Bool.true_or, Bool.false_or, Bool.or_false, Bool.or_true, bind, Except.bind_eq_ok', pure,
-        Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+      simp (config := { decide := true }) only [Ew.add, Ew.sub, Ew.mul, Ew.imod, Ew.greater,
+        Ew.lesser, if_true, if_false, Bool.false_or, Except.bind_eq_ok', pure, Except.pure,
+        Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨w', hw', nw, hnw, rfl, rfl⟩ := h
       rw [cm hnw (ev_ne _ _), cm (colArr_ok hw') (by first | exact ev_max _ _ | exact ev_min _ _), cc hN]
       refine ⟨bit_lt _, fun v => ?_⟩
@@ -199,7 +199,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
       obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
       simp only [nulWord_eq, Int64.toInt64_toUInt64, toU_ite, ne_eq, toU_inj]
       first | exact max_iff x y v | exact min_iff x y v
-  simp only [Bool.or_eq_true, beq_iff_eq, e1, e2, e3, false_or, if_false, decide_false] at h
+  simp only [Bool.or_eq_true, beq_iff_eq, e1, e2, e3, false_or, if_false] at h
   rw [if_neg (by simpa using e4), if_neg (by simpa using e5)] at h
   cases h
 
@@ -477,7 +477,7 @@ theorem Tab.arith_holds {K : Obj} {t : QAtomicType} {k : UInt8} {D : Tab K (.pro
   simp only [Tab.arith, bind, Except.bind_eq_ok'] at h
   obtain ⟨u₁, hu₁, du₁, hdu₁, E₁, hE₁, u₂, hu₂, du₂, hdu₂, E, hE, wb, hwb, h⟩ := h
   obtain ⟨w', b⟩ := wb
-  simp only [bind, Except.bind_eq_ok'] at h
+  simp only at h
   obtain ⟨Kp, hKp, u₃, hu₃, hT⟩ := h
   have key : ∀ {A B : Obj} (T : Tab A B) a, (∃ i, T.key.row i = a) ↔ ∃ c, T.Holds a c :=
     fun _ _ => ⟨fun ⟨i, h⟩ => ⟨_, i, h, rfl⟩, fun ⟨_, i, h, _⟩ => ⟨i, h⟩⟩

@@ -271,7 +271,7 @@ theorem kgather_pos_ix {m n : USize} {e o : Enc} (h : kgather m .pos n e = .ok o
   have hm : m.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
   -- row `k` of `pos` is `k`, and the last row `m - 1` is below `n`
   have hrow : ∀ k < m.toNat, ((raw .i64 m (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
-    simp [raw, Array.getElem?_range, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
+    simp [raw, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
   have hle : m.toNat ≤ n.toNat := by
     rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
     · omega

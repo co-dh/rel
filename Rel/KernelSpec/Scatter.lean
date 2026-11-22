@@ -139,7 +139,7 @@ theorem kscatter_pos_ix {n : USize} {e o : Enc} {fill : UInt64} (h : kscatter .l
   have hm : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
   -- row `k` of `pos` is `k`
   have hrow : ∀ k < n.toNat, ((raw .i64 n (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
-    simp [raw, Array.getElem?_range, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
+    simp [raw, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk hm)]
   apply Array.ext (by rw [hws, hes])
   intro j h1 h2
   have hj : j < n.toNat := by omega
@@ -169,9 +169,9 @@ private theorem foldCells {f : UInt64 → UInt64 → UInt64} {ix : Nat → Nat} 
       by_cases e : ix k = j
       · subst e
         rw [Array.getElem?_setIfInBounds_self_of_lt (hs ▸ hk)]
-        simp [List.filter_cons]
+        simp
       · rw [Array.getElem?_setIfInBounds_ne e]
-        simp [List.filter_cons, e]
+        simp [e]
 
 /-- **`scatter` under an `op` whose `eval` is the total `f` is a per-cell fold** (design §4: `out[ix[k]] := op(out[ix[k]],
 e[k])` in row order): a successful run holds `n` cells, cell `j` being `f` folded over `es[k]` for the rows `k` naming

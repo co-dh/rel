@@ -229,7 +229,7 @@ theorem compBlocks_wf {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n
   simp only [Tab.compBlocks, bind, Except.bind] at h
   okSplit
   refine foldlM_keeps (P := Tab.WF) (fun b a b' hb hw => ?_) _ h (compBlock_wf ‹_› hR hS)
-  simp only [bind, Except.bind] at hb
+  simp only at hb
   split at hb; · cases hb
   exact union_wf hb hw (compBlock_wf ‹_› hR hS)
 
@@ -322,7 +322,7 @@ theorem compSel_wf {bits : Nat} {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : c
 /-- **`keepBits` keeps `Tab.WF`**: rows of `T.canon` kept twice (`keep_wf`). -/
 theorem keepBits_wf {T t : Tab A C} {n m : USize} {g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m}
     (h : T.keepBits g w o x ra y rc = .ok t) (hT : T.WF) : t.WF := by
-  simp only [Tab.keepBits, bind, Except.bind, pure, Except.pure] at h
+  simp only [Tab.keepBits, bind, Except.bind] at h
   okSplit
   exact keep_wf h (keep_wf ‹_› (canon_wf ‹_› hT))
 
@@ -390,7 +390,7 @@ theorem ldivSel_wf {d : Tab A B → Tab A C → Tab B B → Tab C C → Except S
     {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
     (hd : ∀ {t}, d R S UB UC = .ok t → t.WF) (h : ldivSel d bits R S UB UC = .ok t) (hR : R.WF) (hS : S.WF)
     (hB : UB.WF) (hC : UC.WF) : t.WF := by
-  simp only [Tab.ldivSel, bind, Except.bind, pure, Except.pure] at h
+  simp only [Tab.ldivSel, bind, Except.bind] at h
   okSplit
   all_goals first | exact hd h | exact ldivBits_wf h hR hS hB hC
 
@@ -553,7 +553,7 @@ theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A 
   simp only [mu, bind, Except.bind] at h
   split at h; · cases h
   refine fixOn_wf Tab.WF (fun _ _ => pack_wf) (fun X t hX wX => ?_) h (zero_wf ‹_›)
-  simp only [bind, Except.bind] at hX
+  simp only at hX
   split at hX; · cases hX
   exact union_wf hX wX (hf _ _ ‹_› wX)
 
@@ -562,7 +562,7 @@ theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
   simp only [nu, bind, Except.bind] at h
   split at h; · cases h
   refine fixOn_wf Tab.WF (fun _ _ => pack_wf) (fun X t hX wX => ?_) h (canon_wf ‹_› hT)
-  simp only [bind, Except.bind] at hX
+  simp only at hX
   split at hX; · cases hX
   exact inter_wf hX wX (hf _ _ ‹_› wX)
 
@@ -575,12 +575,12 @@ theorem star_wf {K B : Obj} {step : Tab B B → Except String (Tab B B)} (hf : �
   obtain rfl : r.1 = t := Except.ok.inj h
   refine (fixOn_wf (fun s : Tab K B × Tab K B => s.1.WF ∧ s.2.WF) (fun s t hs ws => ?_) (fun s t hs ws => ?_) hr
     ⟨canon_wf hP' hP, canon_wf hP' hP⟩).1
-  · simp only [bind] at hs
+  · simp only at hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
     obtain rfl : (U, D) = t := Except.ok.inj hs
     exact ⟨pack_wf hU ws.1, pack_wf hD ws.2⟩
-  · simp only [bind] at hs
+  · simp only at hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨Dr, hDr, hs⟩ := hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨T, hT, hs⟩ := hs
     rw [Except.bind_eq_ok'] at hs; obtain ⟨N, hN, hs⟩ := hs

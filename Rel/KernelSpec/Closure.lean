@@ -114,7 +114,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 := by
   unfold kscan at h
   by_cases hd : ((pre ++ post).any fun p => p.1 == .div || p.1 == .mod) = true
-  · simp [hd, bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+  · simp [hd, bind, Except.bind] at h
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   split at h; · cases h
@@ -126,7 +126,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   have hos := (chainAll_ok hp).1.trans (foldlM_kscanRow _ _ _ _ _ _ hf).1
   split at h; · cases h
   rename_i ht
-  simp only [pure, Except.pure, Except.ok.injEq] at h
+  simp only [Except.ok.injEq] at h
   subst h
   dsimp only
   have hW : (Array.map (fun v => if t = .u1 then v % 2 else v) (if rev = true then out.reverse else out)).size =

@@ -467,7 +467,8 @@ theorem small_int_enc {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some
   revert hwf
   cases x.enc with
   | foR md pk => exact fun _ => ⟨md, pk, rfl⟩
-  | _ => intro hwf; exfalso; rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp_all [Enc.WF, orderKind, QAtomicType.width]
+  | _ => intro hwf; exfalso; rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases t <;> simp_all [Enc.WF,
+    orderKind]
 
 /-- A small integral payload's raw word `i`: its `foRBits` cut to `8 * w` bits. -/
 theorem raw_small_int {t : QAtomicType} {k : Scan.Kind} (ht : orderKind t = some k)

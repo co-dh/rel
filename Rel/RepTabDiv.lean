@@ -68,14 +68,12 @@ theorem ordOp_iff {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok 
     {a' b' : Enc} (ha : wideCol t n x.enc = .ok a') (hb : wideCol t n y.enc = .ok b') (i : Fin n.toNat) :
     (∃ e : Bool, op.eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok (if e then 1 else 0)) ∧
     (ordAt s t (x.get i) (y.get i) ↔ op.eval ((raw .i64 n a')[i.1]?.getD 0) ((raw .i64 n b')[i.1]?.getD 0) = .ok 1) := by
-  cases t <;> simp (config := {decide := true}) only [ordOp, QAtomicType.ordNum, QAtomicType.numFmt?,
-    QAtomicType.width, Option.isSome, throw, throwThe, MonadExceptOf.throw, pure, Except.pure, reduceCtorEq,
-    Except.ok.injEq, ite_true, ite_false] at hop
+  cases t <;> simp (config := { decide := true }) only [ordOp, throw, throwThe, MonadExceptOf.throw,
+    pure, Except.pure, reduceCtorEq, Except.ok.injEq, ite_true, ite_false] at hop
   case u8 | char | i16 | i32 | date | i8 | datetime =>
     subst hop; exact iord_iff rfl (fun _ => rfl) (fun _ _ => by cases s <;> exact Iff.rfl) x y ha hb i
   case i64 =>
-    simp only [wideCol, widen, if_pos (rfl : ([] : List (Op × UInt64)) = []), ite_true, pure, Except.pure,
-      Except.ok.injEq] at ha hb
+    simp only [wideCol, widen, ite_true, pure, Except.pure, Except.ok.injEq] at ha hb
     subst ha hb hop
     rw [Arr.get_i64, Arr.get_i64]
     generalize (raw .i64 n x.enc)[i.1]?.getD 0 = A; generalize (raw .i64 n y.enc)[i.1]?.getD 0 = B
@@ -89,7 +87,7 @@ theorem ordOp_iff {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok 
   case f32 | f64 =>
     subst hop
     simp only [ordAt, Lang.ltAt, Lang.leAt, Lang.fordAt, wideCol_word x ha (by decide) i,
-      wideCol_word y hb (by decide) i, Option.some.injEq, exists_eq_left']
+      wideCol_word y hb (by decide) i, Option.some.injEq]
     cases s <;> simp only [Bool.false_eq_true, ↓reduceIte] <;>
       exact ⟨⟨_, rfl⟩, fun ⟨_, _, e1, e2, h⟩ => e1 ▸ e2 ▸ h, fun h => ⟨_, _, rfl, rfl, h⟩⟩
 
@@ -250,7 +248,7 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
     rw [hxi, hyj]
     simp only [Vals.row, List.mem_filterMap, List.mem_finRange, true_and]
     refine ⟨j, ?_⟩
-    rw [if_pos ((hcell _ j.1 j.2).2 (by have := hwN g; rw [hI] at hj; simp only [Fin.val_mk]; omega))]
+    rw [if_pos ((hcell _ j.1 j.2).2 (by have := hwN g; rw [hI] at hj; simp only; omega))]
   · rintro ⟨⟨i, rfl⟩, hb⟩
     simp only [Vals.row, List.mem_filterMap, List.mem_finRange, true_and] at hb
     obtain ⟨j, hj⟩ := hb
@@ -464,7 +462,7 @@ theorem cell_wf_nat {n m : USize} {lo hi : Arr .i64 n} {i : Fin n.toNat} {a b : 
 /-- **`Vals.cells` lays cell `i` out at `[Σ_{<i} w, Σ_{≤i} w)`** of its payload, as the words of `lo` and `hi`. -/
 theorem Vals.cells_spec {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
     (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
-    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) :
+    (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (_hT63 : T.toNat < 2 ^ 63) :
     ∃ lo hi : Arr .i64 n, Y = ⟨T, lo, hi, pay⟩ ∧ ∀ i : Fin n.toNat,
       ((List.range i.1).map wN).sum + wN i.1 ≤ T.toNat ∧
       (raw .i64 n lo.enc)[i.1]?.getD 0 = ((List.range i.1).map wN).sum.toUInt64 ∧
@@ -2400,7 +2398,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       obtain ⟨hG, hc⟩ := hselj j hj
       have hi0 := hgD _ hG hc
       obtain ⟨i, hi, e⟩ := Vals.gather_row D hxk ⟨j, hj⟩
-      simp only [Fin.val_mk] at hi
+      simp only at hi
       rw [hiDj j hj, toNat_toUInt64 (by omega)] at hi
       exact ⟨hi0, by rw [e]; congr 1; exact Fin.ext hi.symm⟩
     simp only [Tab.Holds]
@@ -2459,7 +2457,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
           rw [eval_max (by rw [toNat_toUInt64 (by omega)]; omega) (by decide)]; simp] at e2
       exact (Except.ok.inj e2).symm
     obtain ⟨i, hi, e⟩ := Vals.gather_row r.val hy ⟨q, hq⟩
-    simp only [Fin.val_mk] at hi
+    simp only at hi
     rw [hmxw, toNat_toUInt64 (by omega)] at hi
     exact ⟨hq, by omega, by rw [e]; congr 1; exact Fin.ext hi.symm⟩
 
