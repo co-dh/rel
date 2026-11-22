@@ -1,51 +1,47 @@
-# 8.5s2e handoff (concat chain: thread `Tab.WF` / `Vals.WF` instead of the clamp)
+# 8.5s2f handoff (thread `Tab.WF` / `Vals.WF` instead of the clamp)
 
-Branch `worktree-agent-a690ca983804d79b2` = master de81c61 + merge of 6ba4b20 (8.5s2d) + WIP commits. Build one module
-with `CAP_JOB=<name> CAP_MEM_MB=20000 /home/dh/repo/cc-guard/bin/cap lake -d <worktree> build <Mod>`; log
-`/data/tmp/job/<name>.log`. This worktree has its own index (`<worktree>/.lake/build/refactor-index.db`, built after
-the merge); `use_site` (columns `name, decl_module, use_module, l1, ..., parent, is_definition`) lists callers.
-
-## Merge resolution (done)
-- `Rel/RepWF.lean`: 6ba4b20's side (the base `_wf` lemmas live in RepStruct now).
-- `Rel/RepStruct.lean`: master's B2/B8 applied there: `prod_wf` deleted; `compPairs_wf` added before `pair_wf`;
-  `pair_wf` uses `compPairs_wf`; `compPairs_holds` takes `(hR : R.WF) (hS : S.WF)` after `h`; `pair_holds` passes them.
+Branch `worktree-agent-abc2762303a655130` = master 035657b + merge of da1e639 (8.5s2e) + WIP commits. Build one
+module with `CAP_JOB=<name> CAP_MEM_MB=20000 /home/dh/repo/cc-guard/bin/cap lake -d <worktree> build <Mod>`; log
+`/data/tmp/job/<name>.log`. Signatures of the changed `_holds`/`_wf` lemmas: read the error text (`has type r.WF → …`)
+or the source; the main index is stale for every lemma 8.5s2d/e touched.
 
 ## Green
-Everything through `Rel.RepWFOps` (log 85s2e-1), `Rel.Lang.GenKSpec` (log 85s2e-3).
+Everything through `Rel.Lang.GenKBits` (log 85s2f-2 → clean in 85s2f-3).
 
-## Done in GenKSpec (the rule: a `_sound` lemma gets its operands' WF from their `Rel.Wf`)
-- `lift1_sound` takes `(wR : R.Wf)` after `hR`; `lift2_sound` `(wR wS)` after `hS`; their `hf` receives the operand
-  tables' `WF` right after the `f … = .ok t` hypothesis (`r.WF`, then `s.WF`).
-- New WF premises: `conv_sound`/`dom_sound`/`ran_sound`/`lam_sound (wR)`, `join_sound (wR wS)`, `diff_sound (wR wS)`
-  (was `wR` only), `rdiv_sound (wR wS wA wB)` after `hB`, `top_sound (wV)` after `hV`;
-  `idU_comp_holds (hX hr)`, `comp_idU_holds (hL hl)` after the comp hyp; `cut_agrees (hK hr)` before `h`;
-  `cut_holds (hk hl hr)` after `h`; `bound_spec (hK hr)` before `h`. Atom-sided tables pass `trivial`/`⟨trivial,
-  trivial⟩` (cmp_side, cmp_sound).
-- `pairOn_wf` moved GenKBits → GenKSpec (before `pairOn_sound`); `pairK_sound` uses it for `pair_holds`.
-- GenSound callers to update (all have `code_wf (gen_wf X η hs.2)` at hand, cf. `pair`): `conv` 1257, `join` 1261,
-  `diff` 1263 (add wS), `dom` 1265, `ran` 1266, `rdiv` 1268 (4 Wf), `lam` 1283, `top` 1248.
+## Done in 8.5s2f
+- GenKBits: `compV_sound` tab/lazy branches; `compT_sound` passes `(wr r rfl)`; `compS_sound` takes `(wR : R.Wf)`
+  last (callers in `comp_sound` pass `wR`); `ldiv_sound` takes `(wR wS wB wC)` (order of `ldiv_wf`) — its GenSound
+  caller must pass all four; `ldivSel_holds`/`ldivTabMat_law`/`_reads`/`_wf` get their WF args.
+- RepAsc: `GenK.ofRel_sound` takes `(wR : R.Wf)` after `hR`; GenSound 808/830 pass `(hw _ (List.mem_singleton_self _))`
+  (those two lines are now > 120 chars: wrap).
+- GenKFold, the fold engine: `Tab.foldRounds_holds` lost its abstract `Wt` and `hpackw`; it is stated over `Tab.WF`
+  (`hpeel` gets `rest.WF →`, `hpeelw`/`hstepw` over `Tab.WF`, conclusion takes `rest.WF → P.WF → out.WF →`).
+  `foldRoundsL_holds`/`foldRoundsR_holds` lost `Wt`, `hpeelw`, `hpackw` (they supply `Tab.peelL_wf`/`peelR_wf`);
+  callers drop those three args and pass `out.WF` after `P.WF`. `fold_sound`/`foldr_sound` done (`Tab.zero_wf hz`).
+- `elemsTest_sound` takes `(wR : R.Wf)` last; its `hf` gets `P.WF → Vals.WF X →` after `f P X = .ok t`;
+  `filter_sound`/`takewhile_sound` take `(wR : R.Wf)` after `hR` and pass `fun h _ _ xs ys => …`.
 
-## GenKBits: in progress (log 85s2e-7, remaining errors)
-Done: `Tab.index_spec`/`Tab.index_le (hxr hv)` after `h`; `Tab.keepBits_law (hT wx wy)`, `Tab.compTabMat_law (hr wx)`
-at the end; `Vals.code2_rep_inj (wx wy)` after `h`; `Tab.ldivTabMat_spec`/`_law (hr hub huc wx wy)` at the end;
-`Tab.ldivTabMat_wf`/`Tab.ldivTabMat_reads (hrw hub huc wx wy)` at the end; `inter_law (wR wS)`;
-`keep_law` takes the whole `Rel.Wf` of a `bits` value (`BitsWf ∧ Vals.WF x ∧ Vals.WF y`) and `hT : ∀ u, T = .ok u
-→ u.WF`; `meetOn_sound` passes WF to `bound_spec`; `compR_sound (wr ws)` before `H`; `compV_sound (wr)` before `wS`.
-Remaining errors (line: what):
-- 1838, 1843: `compV_sound` `tab` branch: `compR_sound H s rfl` / `H s hs` need `wr` and `s`'s WF
-  (`wS.runE Known.wf_empty hs`).
-- 1887, 1896, 1899: callers of `compV_sound` need `wr` before `wS` (the `r` there comes from a `runE`, use
-  `wR.runE … hr`).
-- 1930: a `compR_sound`/`lift` caller whose `fun a c ha hc x` now needs the extra WF args.
-- 2101/2102: `ldivSel_holds ht b` needs `(hR hS hUB hUC)` before `b` (the `ldiv_sound` body).
-- 2109: `ldiv_sound`'s `lift2_sound` call needs `wR wS` after `hS`, and its `hf` gets `wr ws` after `ht`.
-- 2139: `Tab.ldivTabMat_reads wF.left hm` needs `(hrw hub huc wx wy)`: x,y WF from the `bits` value's `Rel.Wf`
-  (`wF.2.1`, `wF.2.2`), r/ub/uc WF from their `runE`.
-Then the callers of `ldivTabMat_wf` (search `use_site`), `Rel.RepWhere` 108 (`Tab.index_spec` in
-`positions_spec` needs `hxr hv`), `Rel.RepAsc` 74 (`lift1_sound` in `GenK.ofRel_sound` needs `wR`, hf gets `r.WF`).
-
-## Not reached (from the 8.5s2d handoff, still open)
-GenKFold (`peelL_holds hp`/`peelR_holds hp` need `hrest`; `arith_holds` needs `hD`; `snoc/cons/cat_holds` need
-`hP`; `diag_holds` needs `hqw`), GenKFix, GenKHylo, GenKEst (`est_holds`/`thin_den` need `hqw`), GenSound
-(callers above; `GenK.after_row_sound fun _ _ _ h => Tab.snoc_holds h` at ~620/624/628: its `hf` already receives
-`D.WF` — pass it). Then the full gate, `make decode-allow panic-allow bang-allow`, PLAN.md 8.5 bullet, delete this file.
+## Open (log 85s2f-4, GenKFold errors by line)
+- 292/294 `arith_sound`: `Tab.arith_holds hu ht` needs `D.WF` (`Tab.idU_wf hD wX`-style; `wX` is in the
+  `ofVals_sound` binder `fun _ _ _ _ hK _ h …` — name it).
+- 303 `pairStep_holds`: `Tab.pair_holds hp` needs `wL wM` before `a`.
+- 403–424 `foldI_sound`: drop the removed args, pass `out.WF`.
+- 487/497, 516–534 `Tab.loop_holds`: the `foldRoundsL_holds` call (510) drops removed args, passes `out.WF`;
+  `peelL_holds`/`peelR_holds` need `hrest`.
+- 576/661/897/1053 `filter_holds`/`takewhile_holds`/`mapFold_holds`/`flatten_holds`: they instantiated
+  `Wt := fun _ => True`; now they need real WF: add `(wP : P.WF) (wX : Vals.WF X)` (as `elemsTest_sound`'s `hf`
+  now supplies), delete the `(fun {_ _} _ => True) (fun _ _ _ _ => ⟨trivial, trivial⟩) (fun _ _ _ _ => trivial)`
+  args, give `hstepw` the step's `_wf` and the initial `rest/P0/z` their `_wf`. Their callers: `filter_sound`,
+  `takewhile_sound` (pass `h wP wX`), `RepWFOps` unaffected.
+- 787/817 (`Tab.comp_holds hC _ _` needs WF args; a `_canon` lemma whose hypothesis gained `.WF →`).
+- 989, 1076/1084/1092 (`snoc/cons/cat_holds` need `hP`), 1147–1349 `merge_holds` (`diag_holds` needs `hqw`),
+  1361–1500 `thinL_holds`.
+- RepWhere `positions_spec` (line 42): add `(wP : P.WF) (wX : Vals.WF X)` after `h`, conclusion `∧ res.WF`;
+  108: `Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2) ⟨t, ht⟩` (check `index`'s `xr` is `D.key`);
+  callers RepWhere 220 (`positions_sound` → `elemsTest_sound … (fun h wP wX xs ys => (positions_spec h wP wX).1 xs ys)`,
+  gets `(wR : R.Wf)`), GenSound 778 (`elems_wf` hook: `fun _ _ _ h wP hX => (positions_spec h wP hX).2`).
+- Then GenKEst (`est_holds`/`thin_den` need `hqw`), GenKFix, GenKHylo, GenSound (callers 1248, 1257, 1261, 1263,
+  1265, 1266, 1268, 1283 pass `code_wf (gen_wf X η hs.2)` as `pair` does; `ldiv`, `filter`, `takewhile`,
+  `positions` rows pass `hw _ (List.mem_singleton_self _)`; `after_row_sound` hooks at ~620/624/628 pass the `D.WF`
+  their `hf` receives).
+- Then the full gate, `make -C <worktree> decode-allow panic-allow bang-allow`, PLAN.md 8.5 bullet, delete this file.
