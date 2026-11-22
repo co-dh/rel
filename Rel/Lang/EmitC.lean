@@ -1276,7 +1276,6 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
     pairB A B C r s
-  | _, _, .prod (A := A) (B := B) (C := C) (D := D') R S => do prodB A B C D' (← tabB σ {} R) (← tabB σ {} S)
   | _, _, .own R | _, _, .share _ R => tabB σ D R
   | A, B, .var _ k => match σ.lookup k with
     | some b => b A B D

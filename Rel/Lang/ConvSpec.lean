@@ -131,7 +131,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     (∀ A₁ A₂ (h : A = .prod A₁ A₂) p, convProj (h ▸ t) = .ok p → p.den ρ = ((h ▸ t).den ρ)°) := by
   intro A B t
   induction t with
-  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
+  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _
@@ -275,6 +275,8 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
       refine ⟨?_, ?_⟩
       · obtain rfl := hok _ _ h1; exact h1
       · obtain rfl := hok _ _ h2; exact h2
+    rw [show (Tm.conv (Tm.comp (U.prodUni U) (Tm.arith t k U))).den ρ =
+      ((U.prodUni U).den ρ ≫ (Tm.arith t k U).den ρ)° from rfl, Tm.prodUni_den ρ U U hok hok]
     refine congrArg (·°) (funext fun p => funext fun w => propext ⟨fun ⟨q, ⟨h1, h2⟩, ha⟩ => ?_, fun ha => ⟨p, key p w ha, ha⟩⟩)
     have e : p = q := Prod.ext (hok _ _ h1) (hok _ _ h2)
     subst e; exact ha
@@ -521,7 +523,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       p'.den ρ = ((h ▸ t' : Tm ((Obj.prod A₁ A₂).inst ph σ) (B.inst ph σ)).den ρ)°) := by
   intro A B t
   induction t with
-  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _ | prod _ _ _ _
+  | val _ | uni _ | zero | conv _ _ | ran _ _ | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
   | top _ _ | lam _ _ | est _ _ | thin _ _ | nil | atPos _ | foldr _ _ _ _ | fold _ _ _ _
@@ -700,17 +702,17 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   | arith t k U _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
-    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
+    simp only [Tm.instObj, Tm.prodUni, bind_ok_iff, pure_ok_iff] at ht hu'
     obtain ⟨U', hU, U'', hb, hf⟩ := ht
-    obtain ⟨_, ⟨_, ⟨_, h1, _, h2, rfl⟩, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
+    obtain ⟨_, ⟨_, ⟨_, ⟨_, h1, _, ⟨_, h2, rfl⟩, rfl⟩, rfl⟩, _, ⟨_, h3, _, hb3, hf3⟩, rfl⟩, rfl⟩ := hu'
     rw [hU] at h1 h2 h3; cases h1; cases h2; cases h3; rw [hb] at hb3; cases hb3; rw [hf] at hf3; cases hf3
     obtain ⟨e, rfl⟩ := back_ok ph σ hb; obtain ⟨_, rfl⟩ := fixed_ok ph σ hf
     -- `(atom t).inst ph σ` does not reduce at a float `t`: the case is proved at any `X` equal to `atom t`
     have key : ∀ {X : Obj} (_ : X = .atom t) (V : Tm X X) (q1 : Tm (.prod (.atom t) (.atom t)) (.atom t) = Tm (.prod X X) X)
         (q2 : Tm X X = Tm (.atom t) (.atom t)), (cast q1 (Tm.arith t k (cast q2 V))).ConvOK ρ →
-        (Tm.conv (Tm.comp (Tm.prod V V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
+        (Tm.conv (Tm.comp (V.prodUni V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
           ((cast q1 (Tm.arith t k (cast q2 V))).den ρ)° ∧
-        ∀ ss, (Tm.conv (Tm.comp (Tm.prod V V) (cast q1 (Tm.arith t k (cast q2 V))))).argDen ρ ss =
+        ∀ ss, (Tm.conv (Tm.comp (V.prodUni V) (cast q1 (Tm.arith t k (cast q2 V))))).argDen ρ ss =
           ((cast q1 (Tm.arith t k (cast q2 V))).argDen ρ ss)° := by
       intro X e V q1 q2 hok; subst e
       refine ⟨?_, fun _ => rfl⟩
@@ -720,6 +722,8 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
         refine ⟨?_, ?_⟩
         · obtain rfl := hok _ _ h1; exact h1
         · obtain rfl := hok _ _ h2; exact h2
+      rw [show (Tm.conv (Tm.comp (V.prodUni V) (cast q1 (Tm.arith t k (cast q2 V))))).den ρ =
+        ((V.prodUni V).den ρ ≫ (cast q1 (Tm.arith t k (cast q2 V))).den ρ)° from rfl, Tm.prodUni_den ρ V V hok hok]
       refine congrArg (·°) (funext fun p => funext fun w => propext ⟨fun ⟨q, ⟨h1, h2⟩, ha⟩ => ?_, fun ha => ⟨p, key p w ha, ha⟩⟩)
       have e : p = q := Prod.ext (hok _ _ h1) (hok _ _ h2)
       subst e; exact ha

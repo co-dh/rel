@@ -189,7 +189,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
   | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R
   | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.GenHyp P ∧ S.GenHyp P ∧ U.GenHyp P ∧ V.GenHyp P
   | _, _, .nu k S b => b.pol true k = true ∧ S.GenHyp P ∧ b.GenHyp P
@@ -205,7 +205,7 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
@@ -539,33 +539,6 @@ theorem GenK.est_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (G
   unfold GenK.est; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.est_wf (GenK.testQ_wf wQ) h hX
 theorem GenK.thin_wf {B : Obj} {Q : Rel (.prod B B) (.prod B B)} (wQ : Q.Wf) : (GenK.thin B Q).Wf := by
   unfold GenK.thin; exact GenK.ofVals_wf fun _ _ _ hX h => Tab.thin_wf (GenK.testQ_wf wQ) h hX
-
-/-- `R × S` on a known domain `Z`: `outl Z ≫ R` paired with `outr Z ≫ S`, each run on its side of `Z`; else
-    `Tab.prod` of the closed tables. -/
-theorem GenK.prod_wf {A B C D : Obj} {R : Rel A B} {S : Rel C D} (wR : R.Wf) (wS : S.Wf) :
-    (GenK.prod A B C D R S).Wf := by
-  intro K hK
-  cases hd : K.dom with
-  | none =>
-    simp only [hd]
-    refine GenK.tab_wf fun _ h => ?_
-    obtain ⟨r, hr, h⟩ := GenK.bind_ok h
-    obtain ⟨s, hs, h⟩ := GenK.bind_ok h
-    exact Tab.prod_wf h (wR.runE Known.wf_empty hr) (wS.runE Known.wf_empty hs)
-  | some c =>
-    obtain ⟨n, Z⟩ := c
-    have hZ : Vals.WF Z := by have := hK.1; rw [hd] at this; exact this
-    simp only [hd]
-    refine GenK.tab_wf fun _ h => ?_
-    obtain ⟨a, ha, h⟩ := GenK.bind_ok h
-    obtain ⟨r, hr, h⟩ := GenK.bind_ok h
-    obtain ⟨l, hl, h⟩ := GenK.bind_ok h
-    obtain ⟨b, hb, h⟩ := GenK.bind_ok h
-    obtain ⟨s, hs, h⟩ := GenK.bind_ok h
-    obtain ⟨q, hq, h⟩ := GenK.bind_ok h
-    exact Tab.pair_wf h
-      (Tab.comp_wf hl (Tab.outl_wf ha hZ) (wR.runE (K := ⟨some ⟨n, Z.1⟩, none, none⟩) ⟨hZ.1, trivial, trivial⟩ hr))
-      (Tab.comp_wf hq (Tab.outr_wf hb hZ) (wS.runE (K := ⟨some ⟨n, Z.2⟩, none, none⟩) ⟨hZ.2, trivial, trivial⟩ hs))
 
 /-- The folds' rounds (`Tab.foldRounds_wf`), each step `P` paired with an element, then `S` (`compT_wf`). -/
 theorem GenK.fold_wf {E V : Obj} {e : Rel V V} {S : Rel (.prod V E) V} (we : e.Wf) (wS : S.Wf) :
@@ -1197,7 +1170,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case ldiv => exact GenK.ldiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case rdiv => exact GenK.rdiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
-  case prod => exact GenK.prod_wf (w _ (by omega)) (w _ (by omega))
   case lam => exact GenK.lam_wf (w _ (by omega))
   case est => exact GenK.est_wf (w _ (by omega))
   case thin => exact GenK.thin_wf (w _ (by omega))
@@ -1307,7 +1279,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case pair R S ihR ihS =>
     exact GenK.pair_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf R η hs.2)) (code_wf (gen_wf S η hs.2))
-  case prod R S ihR ihS => exact GenK.prod_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
   case fold R S ihR ihS =>
     exact GenK.fold_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_wf (gen_wf R η hs.2)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf S η hs.2))
