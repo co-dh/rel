@@ -264,9 +264,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `crossMax` 与 `crossIx` 的 2^63 检查（`fail` 把计数附在消息后，文字同 Lean 但数值不内插）；`abi` 加
     `USize.sub` `USize.decLt`。测试：`native1a` 加 `le` `lt` `ml`（`∩ ≤` 的 pairs）`sc` `ps` `mn` `dv` `tm`
     `fc`（局部 call），共 23 个闭定义，`make native` 逐字节相等；CROSS 超界的 `#eval`。
-    仍拒绝并指名：`\` `/`（`ldivSel` 的分组计数与位矩阵）、数组/求和侧的行（`∋` `length` `inl` 等）、
+    分支 `nativetm3a` 加：`\` `/`（`ldivSelB` 即 `Tab.ldivSel`：`groupsB`（`compGroups`）的展开数与组数在运行时
+    `ite` 选择 `ldivBitsB`（`code2B` 编号、`csrB` 分组、`kbitrows true`、`ofBitsB` 读回）或计数的 `ldivOfB`，
+    `bitsWinB` 用除法比较不溢出；`\` 的除法是 `ldivB`（先 `canonT`），`/` 的两个 converse 已是 `canonT` 答案，
+    传 `ldivOfB`，即 canonfld2 的 `Tab.ldivOf`）；`abi` 加 `kbitrows`。call 实参按 `Code.args`：变量表 `Env` 存
+    每个变量的建表函数，按需（`dem`）或闭合建表失败（`GenK.memo` 留 lazy）的实参在每个使用处按其上下文建表，
+    其余闭合建一次；body 只见实参（`Code.args` 的 `η.closed`）；对象不符读 `𝟘`（`Code.bind`）。测试：`native1a`
+    加 `ld`（位矩阵）`l1`（计数）`rd`（`/`）`gc`（实参 `succ` 按需），共 27 个闭定义，`make native` 逐字节相等。
+    仍拒绝并指名：数组/求和侧的行（`∋` `length` `inl` 等）、
     数组侧的 `Λ` `E` `est` `thin` `nil` `at` 与三种 fold（缺 `cells` key）、`ν` `μ` `hylo`（plan 无循环指令）；
-    按需（`dem`）的 call 实参（闭合建表即报 Lean 的按需错误）；从文件 map 的列（无 `Enc`）作运算数。
+    从文件 map 的列（无 `Enc`）作运算数。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；
   空 schema、重名列被拒。float 检查对唯一谓词 `Table.nonCanonical`（typed base S5 定义规范 float 后由它填）。定理：
