@@ -155,7 +155,7 @@ partial def reads (base : Nat) : Instr → List Nat
   | .call _ as | .fail _ as | .apply _ as => as.toList
   | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
   | .ctor _ os ss => os.toList ++ ss.toList
-  | .proj x .. | .sproj x .. => [x]
+  | .proj x .. | .sproj x .. | .part x _ => [x]
   | .lit _ | .global _ => []
   | .loop k init b out d _ => k :: init.toList ++ ((b.flatMap (reads base) ++ out.toList ++ [d]).filter (· < base))
 
@@ -170,6 +170,7 @@ partial def Instr.rename (f : Nat → Nat) : Instr → Instr
   | .ctor tag os ss => .ctor tag (os.map f) (ss.map f)
   | .proj x tag i t => .proj (f x) tag i t
   | .sproj x tag nobj ss i => .sproj (f x) tag nobj ss i
+  | .part x i => .part (f x) i
   | .loop k init b out d msg => .loop (f k) (init.map f) (b.map (·.rename f)) (out.map f) (f d) msg
 
 /-- The type the block `is` reads the outer register `a` as: the declared type of the first reader's argument, a
@@ -181,12 +182,13 @@ partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
     | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
     | .ite c t _ e _ => if c == a then some .bit else useTy fs a t <|> useTy fs a e
     | .proj x .. | .sproj x .. => if x == a then some .obj else none
+    | .part x _ => if x == a then some .parts else none
     | .loop k _ b .. => if k == a then some .size else useTy fs a b
     | _ => none) <|> useTy fs a is
 
 /-- The number of registers the instruction `i` defines, `fs` and `gs` the plan's functions and globals. -/
 def resN (fs gs : Array Fun) : Instr → Nat
-  | .lit _ | .ctor .. | .proj .. | .sproj .. => 1
+  | .lit _ | .ctor .. | .proj .. | .sproj .. | .part .. => 1
   | .fail .. => 0
   | .call s _ => (abiOf s).elim 0 (·.res.size)
   | .apply g _ => (fs[g]?).elim 0 (·.res.size)
@@ -207,6 +209,7 @@ partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is
       | .ctor .. => some .obj
       | .proj _ _ _ t => some t
       | .sproj _ _ _ ss k => ss[k]?
+      | .part .. => some .bytes
       | .fail .. => none
       | .call s _ => (abiOf s).bind (·.res[j]?)
       | .apply g _ => (fs[g]?).bind (funTy · j)
@@ -541,7 +544,7 @@ partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A
     | none => return [.atom p t (← posB)]
     | some rs => match rs[6]? with
       | some e => pure [.atom p t e]
-      | none => throw s!"column `{p}` is mapped from its file, whose parts no plan recipe reads as an `Enc` yet"
+      | none => throw s!"column `{p}` has no `Enc` register (a literal that is no vector)"
   | .prod a b => return (← colsOf a s (p ++ ".1")) ++ (← colsOf b s (p ++ ".2"))
   | .arr b => do
     let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
@@ -1466,61 +1469,99 @@ def fieldsR : Schema → List (String × Obj)
 def schemaCols (S : Schema) : List (String × String × QAtomicType) :=
   ((objCols S.obj "").zip ((fieldsR S.reverse).flatMap fun (n, A) => objCols A n)).map fun ((p, t), (q, _)) => (p, q, t)
 
-/-- An input as its read at the input edge answers it: each atom column's path, atom and `ownMap` register (a table
-    directory), or the atom columns of the side and `csvRead`'s list register (a CSV file). -/
+/-- An input as its read at the input edge answers it, with its key schema `k` (`[]`: positions) and value schema
+    `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
+    atom columns of the key and of the value and `csvRead`'s list register (a CSV file). -/
 inductive InRead
-  | own (cs : List (String × QAtomicType × Nat))
-  | csv (cs : List (String × QAtomicType)) (l : Nat)
+  | own (k v : Schema) (kc vc : List (String × QAtomicType × Nat))
+  | csv (k v : Schema) (kc vc : List (String × QAtomicType)) (l : Nat)
 
-/-- The input edge's reads of `input x : N ⟶ v from [csv] path` (`n.io`'s `Table.read`, `Table.readCsvDict`). A keyed
-    input (`Table.readKeyed`) sorts its rows, a float column read from its file is checked canonical, a nullable CSV
-    column is regrouped: no plan recipe does those, so each is refused, naming the input. -/
+/-- The input edge's reads of `input x : k ⟶ v from [csv] path` (`n.io`'s `Table.read`, `Table.readKeyed`,
+    `Table.readCsvDict`): a keyed table directory's `key/` and `val/`, a keyed CSV file's key columns then value
+    columns. A nullable CSV column is regrouped, a symbol column interned: no plan recipe does those, so each is
+    refused, naming the input. -/
 def readIn (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : String) : Bld InRead := do
   let no (why : String) : Bld InRead := throw s!"input `{x}` from \"{path}\": {why}, which no plan recipe does yet"
-  unless k.isEmpty do return ← no "a keyed input, whose rows the read sorts (`Table.canon`)"
   match csv with
   | some cs =>
-    if hasSum v.obj then return ← no "a nullable CSV column, whose parts the read regroups and checks (`Table.ofCsv`)"
+    if hasSum k.obj || hasSum v.obj then
+      return ← no "a nullable CSV column, whose parts the read regroups and checks (`Table.ofCsv`)"
     if cs.any (fun (_, _, t, _) => t == .sym) then
       return ← no "a symbol column, whose texts the read interns into the program's dictionary (`Table.intern`)"
     let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put cs)]
-    return .csv (objCols v.obj "") (← nth rs 1 "csvRead")
-  | none => .own <$> (schemaCols v).mapM fun (p, q, t) => do
-    if [QAtomicType.sym, .general, .f32, .f64].contains t then
-      discard <| no s!"column `{q}` of type {repr t}, refused or checked by `Table.readArr`"
-    return (p, t, ← call1 (kernel% Rel.Db.ownMap) #[← lit (.str (Table.file path q))])
+    let kc := if k.isEmpty then [] else objCols k.obj ""
+    return .csv k v kc (objCols v.obj "") (← nth rs 1 "csvRead")
+  | none =>
+    let own (S : Schema) (dir : String) := (schemaCols S).mapM fun (p, q, t) => do
+      if [QAtomicType.sym, .general].contains t then
+        discard <| no s!"column `{q}` of type {repr t}, refused by `Table.readArr`"
+      return (p, t, ← call1 (kernel% Rel.Db.ownMap) #[← lit (.str (Table.file dir q))])
+    if k.isEmpty then return .own k v [] (← own v path)
+    return .own k v (← own k (Table.file path "key")) (← own v (Table.file path "val"))
 
-/-- The side an input's read answered, in `main`: a CSV column's count and `Enc` taken off `csvRead`'s list, a
-    mapped file's fields off `ownMap`'s answer, its type code and count checked as `Table.readArr`/`Table.same` check
-    them (the attribute not taken over, the domain the empty one a vector has). -/
-def sideOf (x : String) : InRead → Bld Side
-  | .csv cs l => do
-    let mut l := l
-    let mut s : Side := []
-    for (p, t) in cs do
-      let cell ← projB l 1 0 .obj
-      let (n, e) := (← projB cell 0 0 .size, ← projB cell 0 1 .obj)
-      s := s ++ [(p, (← encRegs t n e).push e)]
-      l ← projB l 1 1 .obj
-    pure s
-  | .own cs => do
-    let mut s : Side := []
-    let mut n₀ : Option Nat := none
-    for (p, t, f) in cs do
-      let sc (i : Nat) := emit1 (.sproj f 0 2 #[.u8, .u8, .u8, .size] i)
-      let code ← lit (.u8 t.code.toUInt8)
-      guard (← call1 (kernel% UInt8.decEq) #[← sc 0, code]) s!"input `{x}`: column `{p}` has another atom type code than {repr t}" #[]
-      let n ← sc 3
-      if let some m := n₀ then
-        guard (← call1 (kernel% USize.decEq) #[n, m]) s!"input `{x}`: column `{p}` of another row count than the first" #[n, m]
-      n₀ := some n
-      s := s ++ [(p, #[code, ← lit (.u8 0), ← sc 2, n, ← lit (.str ""), ← projB f 0 1 .parts])]
-    pure s
+/-- `Table.readArr`'s check of the float column `e` of `n` rows at `t`: each word canonical (`QAtomicType.nonCanonical`:
+    no NaN, no `-0`), i.e. equal to the canonical word nearest it (`fto t` of the widened word, as a float verb's answer
+    is made, `stepB`); else the run fails with the count of the rows that are not. -/
+def canonFloatB (what : String) (t : QAtomicType) (n e : Nat) : Bld Unit := do
+  let c ← mapB .first n e e t t (widen t) [(.fto t, 0)]
+  let (_, k) ← prefixB .add n (← mapB .ne n e c .i64 t)
+  guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
+    s!"{what}: a {repr t} column of rows whose bit pattern is not canonical (a NaN or -0)" #[k]
+
+/-- The side an input's mapped files answer (`Table.readArr`): each column's type code, constructor kind and count
+    checked as `Table.readArr`/`Table.same` check them (the attribute not taken over, the domain the empty one a
+    vector has), its `Enc` rebuilt from its parts as `Db.ownEnc` rebuilds it, a float column checked canonical
+    (`canonFloatB`); `n₀` the count of the side read before, the one every column has. -/
+def ownSideB (x : String) (cs : List (String × QAtomicType × Nat)) (n₀ : Option Nat) : Bld (Side × Option Nat) := do
+  let fe : Enc := .foR .empty .empty
+  let .ok (some (kind, _)) := Db.ownParts fe | throw "ownSideB: `Db.ownParts` holds no `foR`"
+  let mut s : Side := []
+  let mut n₀ := n₀
+  for (p, t, f) in cs do
+    let sc (i : Nat) := emit1 (.sproj f 0 2 #[.u8, .u8, .u8, .size] i)
+    let code ← lit (.u8 t.code.toUInt8)
+    guard (← call1 (kernel% UInt8.decEq) #[← sc 0, code]) s!"input `{x}`: column `{p}` has another atom type code than {repr t}" #[]
+    let k ← sc 2
+    guard (← call1 (kernel% UInt8.decEq) #[k, ← lit (.u8 kind)])
+      s!"input `{x}`: column `{p}` has another constructor kind than {kind}, the one `Db.ownEnc` rebuilds" #[k]
+    let n ← sc 3
+    if let some m := n₀ then
+      guard (← call1 (kernel% USize.decEq) #[n, m]) s!"input `{x}`: column `{p}` of another row count than the first" #[n, m]
+    n₀ := some n
+    let ps ← projB f 0 1 .parts
+    let e ← ctorB fe.ctorIdx #[← partB ps 0, ← partB ps 1] #[]
+    if t matches .f32 | .f64 then canonFloatB s!"input `{x}`: column `{p}`" t n e
+    s := s ++ [(p, #[code, ← lit (.u8 0), k, n, ← lit (.str ""), ps, e])]
+  pure (s, n₀)
+
+/-- The CSV columns `cs` of a side, each count and `Enc` taken off `csvRead`'s list `l`; the rest of the list. -/
+def csvSideB (cs : List (String × QAtomicType)) (l : Nat) : Bld (Side × Nat) := do
+  let mut l := l
+  let mut s : Side := []
+  for (p, t) in cs do
+    let cell ← projB l 1 0 .obj
+    let (n, e) := (← projB cell 0 0 .size, ← projB cell 0 1 .obj)
+    s := s ++ [(p, (← encRegs t n e).push e)]
+    l ← projB l 1 1 .obj
+  pure (s, l)
+
+/-- The table an input's read answered, in `main`: its key side and value side (`csvSideB`, `ownSideB`); a keyed
+    one's rows sorted with equal rows merged (`canonT`, `Table.canon`), as `Table.readKeyed`/`readCsvDict` read it. -/
+def sideOf (x : String) (r : InRead) : Bld (Side × Side) := do
+  let (k, v, s) ← match r with
+    | .csv k v kc vc l => do
+      let (ks, l) ← csvSideB kc l
+      pure (k, v, ks, (← csvSideB vc l).1)
+    | .own k v kc vc => do
+      let (ks, n₀) ← ownSideB x kc none
+      pure (k, v, ks, (← ownSideB x vc n₀).1)
+  if k.isEmpty then return s
+  sidesOf (← canonT ⟨← countOf s, ← colsOf k.obj s.1, ← colsOf v.obj s.2⟩)
 
 /-- `output x to [csv] path` of the table `s` (`n.io`'s `Table.write`, `writeKeyed`, `writeCsv`): key `k = []`, the
     value side only, its rows renumbered by their order; else `key/` and `val/` (a CSV file: the key's columns, then
-    the value's). A positions column has no file and no CSV part, and a column mapped from its file has no `Enc` for
-    the CSV writer: each is refused, naming the column. -/
+    the value's), each column from its `Enc` register (a column mapped from its file too, `ownSideB`). A positions
+    column has no file and no CSV part: it is refused, naming the column. -/
 def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : String) (s : Side × Side) : Bld Unit := do
   let sides := if k.isEmpty then [(v, s.2, path)] else [(k, s.1, Table.file path "key"), (v, s.2, Table.file path "val")]
   let col (S : Schema) (side : Side) (p : String) : Bld (Array Nat) := match side.lookup p with
@@ -1541,7 +1582,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
       for (p, _, _) in schemaCols S do
         let r ← col S side p
         let (some m, some e) := (r[3]?, r[6]?)
-          | throw s!"output `{x}` to csv \"{path}\": column `{p}` is mapped from its file, whose parts the plan holds as an array, not as the `Enc` `csvWrite` takes"
+          | throw s!"output `{x}` to csv \"{path}\": column `{p}` has no `Enc` register, which `csvWrite` takes"
         rows := some m
         es := es ++ [← ctorB 0 #[m, e] #[]]
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
@@ -1563,7 +1604,7 @@ def ioOf (n : Lean.Name) :
       | _ => pure none
     let wr (ins : List (String × InRead)) : Bld Unit := do
       let mut σ : List (String × Side × Side) := []
-      for (x, r) in ins do σ := σ ++ [(x, [], ← sideOf x r)]
+      for (x, r) in ins do σ := σ ++ [(x, ← sideOf x r)]
       for s in io do
         match s with
         | .defn x c deps =>
@@ -1690,7 +1731,7 @@ def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Arra
   | .global g => match gtys[g]? with | some t => pure t.size | none => throw s!"global g{g}: no earlier global"
   | .ite _ _ rt _ _ => pure rt.size
   | .loop _ init .. => pure init.size
-  | .ctor .. | .proj .. | .sproj .. => pure 1
+  | .ctor .. | .proj .. | .sproj .. | .part .. => pure 1
 
 /-- The emitter's state: the next fresh C name, the prototypes, the statics. -/
 abbrev EM := StateT (Nat × List String × String) (Except String)
@@ -1792,6 +1833,13 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
       c := c ++ s!"{ind}{cTy t} {x} = ({cTy t})" ++
         (if sz == 0 then s!"lean_ctor_get_usize({y}, {o});\n" else s!"lean_ctor_get_uint{8 * sz}({y}, {o});\n")
       rs := rs.push (x, t, true)
+    | .part r i =>
+      let (y, ty, _) ← creg rs r
+      unless ty == .parts do throw s!"part reads register {r}, a {repr ty}, not a parts array"
+      let x ← fresh
+      c := c ++ s!"{ind}if (lean_array_size({y}) <= {i}) \{ fprintf(stderr, \"plan: part r{r}.{i} of an array of %zu parts\\n\", " ++
+        s!"lean_array_size({y})); exit(1); }\n{ind}lean_object *{x} = lean_array_get_core({y}, {i}); lean_inc({x});\n"
+      rs := rs.push (x, .bytes, true); live := live ++ [rs.size - 1]
     | .call sym as =>
       let some k := abi sym | throw s!"no kernel `{sym}` in the ABI table"
       unless k.args.size == as.size do throw s!"`{sym}` takes {k.args.size} registers, given {as.size}"

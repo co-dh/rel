@@ -271,6 +271,10 @@ inductive Instr
       scalar fields of the types `ss` in declaration order (`Val.ctor`'s scalars), stored unboxed as the Lean
       compiler lays them out (an `ownMap` answer's count and bytes); any other tag fails the run. -/
   | sproj (x tag nobj : Nat) (ss : Array Ty) (i : Nat)
+  /-- `r = part x.i`: part `i` (a `bytes`) of the parts array in register `x` (an `ownMap` answer's), an array of
+      fewer parts failing the run. Not a `proj`: the runtime lays an `Array` out with a size and no tag, its elements
+      read by `lean_array_get_core`, not as a constructor's fields. -/
+  | part (x i : Nat)
   /-- `r… = loop k(init) { body } (out; done)`: the state, first the registers `init`, then rounds of `body`, each after
       the registers so far and the state (numbered from the loop's first result on, as an `if`'s branch); its `out` the
       next state, its bit `done` set ending the loop with it. `k` (a `size`) rounds with `done` clear fail the run
@@ -378,6 +382,12 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
       | some v => pure (rs.push v, ws)
       | none => throw s!"plan: sproj r{x}.{i}: constructor {tag} has {vs.size} scalar fields"
     | _ => throw s!"plan: sproj reads register {x}, which is not a constructor"
+  | .part x i, rs, ws => do
+    match ← reg rs "part" x with
+    | .parts bs => match bs[i]? with
+      | some b => pure (rs.push (.bytes b), ws)
+      | none => throw s!"plan: part r{x}.{i} of an array of {bs.size} parts"
+    | _ => throw s!"plan: part reads register {x}, which is not a parts array"
   | .loop k init body out done msg, rs, ws => do
     let .size c ← reg rs "loop" k | throw s!"plan: loop reads register {k} as its cap, which is not a size"
     let (s, ws) ← rounds (fun s ws => runB abi fs gs body (rs ++ s) ws) out done msg c.toNat
@@ -546,6 +556,9 @@ def ctorB (tag : Nat) (objs scal : Array Nat) : Bld Nat := emit1 (.ctor tag objs
 
 /-- `r = proj x.i`, `x` of tag `tag`, read as a `t`. -/
 def projB (x tag i : Nat) (t : Ty) : Bld Nat := emit1 (.proj x tag i t)
+
+/-- `r = part x.i`, a `bytes`. -/
+def partB (x i : Nat) : Bld Nat := emit1 (.part x i)
 
 /-- The list of the registers `rs`, laid out as `Reg (List α)` lays it. -/
 def listB (rs : List Nat) : Bld Nat := do rs.foldrM (fun x l => ctorB 1 #[x, l] #[]) (← ctorB 0 #[] #[])
