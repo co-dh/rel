@@ -72,45 +72,52 @@ element of `cat(x, y)` (`foldRounds`, `peelL` of it as the clock), so `|x| + |y|
 of `x` where `(a, b) Q (a, b)` (`l = dom(⟨a, b⟩ ≫ diag(Q))`, `Q` given the pairs of heads, read on the diagonal as
 `thin` reads it) or `y` is empty, else the head `b` of `y`,
 and `snoc`s it to `acc`; the result is `acc`. -/
+def mergeRound {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
+    (S : Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B))) (_ : Tab K B) :
+    Except String (Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B))) := do
+  let xy ← S.comp (← outl S.val); let acc ← S.comp (← outr S.val)
+  let x ← xy.comp (← outl xy.val); let y ← xy.comp (← outr xy.val)
+  let ux ← x.comp (← uncons x.val); let uy ← y.comp (← uncons y.val)
+  let a ← ux.comp (← outl ux.val); let b ← uy.comp (← outl uy.val)
+  let h ← a.pair b
+  let l ← (← h.comp (← diag q (← h.ran))).dom
+  let dy ← uy.dom
+  let tx ← l.union (← (← ux.dom).diff dy); let ty ← dy.diff l
+  let sx ← (← (← ux.comp (← outr ux.val)).pair y).pair (← snoc (← acc.pair a))
+  let sy ← (← x.pair (← uy.comp (← outr uy.val))).pair (← snoc (← acc.pair b))
+  (← tx.comp sx).union (← ty.comp sy)
+
+@[inherit_doc mergeRound]
 def merge {K B : Obj} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
     (P : Tab K (.prod (.arr B) (.arr B))) : Except String (Tab K (.arr B)) := do
   let D ← P.ran
-  let step (S : Tab _ (.prod (.prod (.arr B) (.arr B)) (.arr B))) (_ : Tab _ B) := do
-    let xy ← S.comp (← outl S.val); let acc ← S.comp (← outr S.val)
-    let x ← xy.comp (← outl xy.val); let y ← xy.comp (← outr xy.val)
-    let ux ← x.comp (← uncons x.val); let uy ← y.comp (← uncons y.val)
-    let a ← ux.comp (← outl ux.val); let b ← uy.comp (← outl uy.val)
-    let h ← a.pair b
-    let l ← (← h.comp (← diag q (← h.ran))).dom
-    let dy ← uy.dom
-    let tx ← l.union (← (← ux.dom).diff dy); let ty ← dy.diff l
-    let sx ← (← (← ux.comp (← outr ux.val)).pair y).pair (← snoc (← acc.pair a))
-    let sy ← (← x.pair (← uy.comp (← outr uy.val))).pair (← snoc (← acc.pair b))
-    (← tx.comp sx).union (← ty.comp sy)
-  let out ← foldRounds peelL step (D.val.1.1.toNat + D.val.2.1.toNat + 2) (← cat D) (← D.pair (← nil D.key))
-    (← zero)
+  let out ← foldRounds peelL (mergeRound q) (D.val.1.1.toNat + D.val.2.1.toNat + 2) (← cat D)
+    (← D.pair (← nil D.key)) (← zero)
   P.comp (← out.comp (← outr out.val))
 
 /-- **`thinL(Q)` on the arrays `X`** = `⦇nil, bump(Q)⦈ʳ` (`thinLDen`: `ys[t]` is `xs[t]` bumped into `ys[t+1]`), the
 right fold by `foldRounds` and `peelR`. `bump(Q)` on the pairs `E = (x, ys)` a round meets, `u = ys ≫ cons°` its
 `(b, bs)`: `x :: bs` where `(x, b) Q (x, b)` (`up`), `ys` where `(b, x) Q (b, x)` (`down`), `x :: ys` where `ys` is
 empty or neither (`lone`); `Q` given only the pairs `(x, b)`, `(b, x)` asked, read on the diagonal (`diag`). -/
+def bump {B : Obj} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
+    (p : Tab (.arr B) (.prod B (.arr B))) : Except String (Tab (.arr B) (.arr B)) := do
+  let E ← p.ran
+  let x ← E.comp (← outl E.val); let ys ← E.comp (← outr E.val)
+  let u ← ys.comp (← uncons ys.val)
+  let b ← u.comp (← outl u.val)
+  let ab ← x.pair b; let ba ← b.pair x
+  let up ← (← ab.comp (← diag q (← ab.ran))).dom
+  let down ← (← ba.comp (← diag q (← ba.ran))).dom
+  let du ← u.dom
+  let lone ← (← E.diff du).union (← (← du.diff up).diff down)
+  let bs ← u.comp (← outr u.val)
+  let r ← (← (← cons lone).union (← up.comp (← cons (← x.pair bs)))).union (← down.comp ys)
+  p.comp r
+
+@[inherit_doc bump]
 def thinL {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B)))
-    (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do
-  let bump (p : Tab (.arr B) (.prod B (.arr B))) : Except String (Tab (.arr B) (.arr B)) := do
-    let E ← p.ran
-    let x ← E.comp (← outl E.val); let ys ← E.comp (← outr E.val)
-    let u ← ys.comp (← uncons ys.val)
-    let b ← u.comp (← outl u.val)
-    let ab ← x.pair b; let ba ← b.pair x
-    let up ← (← ab.comp (← diag q (← ab.ran))).dom
-    let down ← (← ba.comp (← diag q (← ba.ran))).dom
-    let du ← u.dom
-    let lone ← (← E.diff du).union (← (← du.diff up).diff down)
-    let bs ← u.comp (← outr u.val)
-    let r ← (← (← cons lone).union (← up.comp (← cons (← x.pair bs)))).union (← down.comp ys)
-    p.comp r
-  foldRounds peelR (fun P el => do bump (← el.pair P)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
+    (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) :=
+  do foldRounds peelR (fun P el => do bump q (← el.pair P)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
 open Rel.Ext Rel.Kernel in
 /-- **`F(R)` on the cells `X`** (`mapDen`: `xs F(R) ys` iff `|ys| = |xs|` and `xs[i] R ys[i]`), `R` given on the

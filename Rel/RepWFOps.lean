@@ -60,17 +60,11 @@ theorem loop_wf {K X Y : Obj}
 
 /-- **`P ≫ merge(Q)` keeps `Tab.WF`** where `q` does: a round's state is `≫`, `pair`, `∪`, `−`, `dom`, `snoc` of the
 state before (`foldRounds_wf`, `peelL_wf`). -/
-theorem merge_wf {K B : Obj}
+theorem mergeRound_wf {K B : Obj}
     {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {P : Tab K (.prod (.arr B) (.arr B))} {t : Tab K (.arr B)}
-    (h : merge q P = .ok t) (hP : P.WF) : t.WF := by
-  simp only [merge, bind, Except.bind_eq_ok'] at h
-  obtain ⟨D, hD, c, hc, nl, hnl, I, hI, z, hz, out, hout, a, ha, o, ho, h⟩ := h
-  have wD := ran_wf hD hP
-  have wout : out.WF := foldRounds_wf (fun _ _ => peelL_wf) (fun S el T hs wS _ => ?_) hout
-    (cat_wf hc wD) (pair_wf hI wD (nil_wf hnl wD.1)) (zero_wf hz)
-  · exact comp_wf h hP (comp_wf ho wout (outr_wf ha wout.2))
-  simp only [Except.bind_eq_ok'] at hs
+    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {S T : Tab K (.prod (.prod (.arr B) (.arr B)) (.arr B))} {el : Tab K B}
+    (hs : mergeRound q S el = .ok T) (wS : S.WF) : T.WF := by
+  simp only [mergeRound, bind, Except.bind_eq_ok'] at hs
   obtain ⟨o1, h1, xy, hxy, o2, h2, acc, hacc, o3, h3, x, hx, o4, h4, y, hy, u1, hu1, ux, hux, u2, hu2, uy, huy,
     o5, h5, a, ha, o6, h6, b, hb, ab, hab, r1, hr1, dg, hdg, cm, hcm, l, hl, dy, hdy, dx, hdx, df, hdf, tx, htx,
     ty, hty, o7, h7, c7, hc7, p1, hp1, q1, hq1, s1, hs1, sx, hsx, o8, h8, c8, hc8, p2, hp2, q2, hq2, s2, hs2, sy, hsy,
@@ -92,21 +86,26 @@ theorem merge_wf {K B : Obj}
   have wsy := pair_wf hsy (pair_wf hp2 wx (comp_wf hc8 wuy (outr_wf h8 wuy.2))) (snoc_wf hs2 (pair_wf hq2 wacc wb))
   exact union_wf hs (comp_wf hc1 wtx wsx) (comp_wf hc2 wty wsy)
 
-/-- **`thinL(Q)` keeps `Tab.WF`** where `q` does: `bump`'s answer is `≫`, `pair`, `∪`, `−`, `dom`, `cons` of the
-round's pairs (`foldRounds_wf`, `peelR_wf`). -/
-theorem thinL_wf {B : Obj} {n : USize}
+theorem merge_wf {K B : Obj}
     {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr B)}
-    (h : thinL q X = .ok t) (hX : Vals.WF X) : t.WF := by
-  simp only [thinL, bind, Except.bind_eq_ok'] at h
-  obtain ⟨I, hI, N, hN, z, hz, h⟩ := h
-  refine foldRounds_wf (fun _ _ => peelR_wf) (fun P el t hs wP wel => ?_) h (idU_wf hI hX)
-    (nil_wf hN hX) (zero_wf hz)
-  simp only [Except.bind_eq_ok'] at hs
-  obtain ⟨p, hp, E, hE, o1, h1, x, hx, o2, h2, ys, hys, u0, hu0, u, hu, o3, h3, b, hb, ab, hab, ba, hba,
+    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {P : Tab K (.prod (.arr B) (.arr B))} {t : Tab K (.arr B)}
+    (h : merge q P = .ok t) (hP : P.WF) : t.WF := by
+  simp only [merge, bind, Except.bind_eq_ok'] at h
+  obtain ⟨D, hD, c, hc, nl, hnl, I, hI, z, hz, out, hout, a, ha, o, ho, h⟩ := h
+  have wD := ran_wf hD hP
+  have wout : out.WF := foldRounds_wf (fun _ _ => peelL_wf) (fun _ _ _ hs wS _ => mergeRound_wf hq hs wS) hout
+    (cat_wf hc wD) (pair_wf hI wD (nil_wf hnl wD.1)) (zero_wf hz)
+  exact comp_wf h hP (comp_wf ho wout (outr_wf ha wout.2))
+
+/-- **`bump(Q)` keeps `Tab.WF`** where `q` does: its answer is `≫`, `pair`, `∪`, `−`, `dom`, `cons` of the round's
+pairs. -/
+theorem bump_wf {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
+    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {p : Tab (.arr B) (.prod B (.arr B))} {t : Tab (.arr B) (.arr B)}
+    (hs : bump q p = .ok t) (wp : p.WF) : t.WF := by
+  simp only [bump, bind, Except.bind_eq_ok'] at hs
+  obtain ⟨E, hE, o1, h1, x, hx, o2, h2, ys, hys, u0, hu0, u, hu, o3, h3, b, hb, ab, hab, ba, hba,
     r1, hr1, d1, hd1, c1, hc1, up, hup, r2, hr2, d2, hd2, c2, hc2, down, hdown, du, hdu, e1, he1, e2, he2, e3, he3,
     lone, hlone, o4, h4, bs, hbs, k1, hk1, xb, hxb, k2, hk2, c3, hc3, v1, hv1, c4, hc4, r, hr, hs⟩ := hs
-  have wp := pair_wf hp wel wP
   have wE := ran_wf hE wp
   have wx := comp_wf hx wE (outl_wf h1 wE.2)
   have wys := comp_wf hys wE (outr_wf h2 wE.2)
@@ -122,6 +121,20 @@ theorem thinL_wf {B : Obj} {n : USize}
   have wr := union_wf hr (union_wf hv1 (cons_wf hk1 wlone) (comp_wf hc3 wup (cons_wf hk2 (pair_wf hxb wx wbs))))
     (comp_wf hc4 wdown wys)
   exact comp_wf hs wp wr
+
+/-- **`thinL(Q)` keeps `Tab.WF`** where `q` does: a round is `bump(Q)` of the round's pairs (`foldRounds_wf`,
+`peelR_wf`, `bump_wf`). -/
+theorem thinL_wf {B : Obj} {n : USize}
+    {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
+    (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr B)}
+    (h : thinL q X = .ok t) (hX : Vals.WF X) : t.WF := by
+  simp only [thinL, bind, Except.bind_eq_ok'] at h
+  obtain ⟨I, hI, N, hN, z, hz, h⟩ := h
+  refine foldRounds_wf (fun _ _ => peelR_wf) (fun P el t hs wP wel => ?_) h (idU_wf hI hX)
+    (nil_wf hN hX) (zero_wf hz)
+  simp only [Except.bind_eq_ok'] at hs
+  obtain ⟨p, hp, hs⟩ := hs
+  exact bump_wf hq hs (pair_wf hp wel wP)
 
 /-- **`thin(Q)` keeps `Tab.WF`** where `q` does: `mem`, `pair`, `ran`, `diag`, `−`, `≫`, then `lam`. -/
 theorem thin_wf {B : Obj} {n : USize} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
