@@ -21,7 +21,7 @@ def cast {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
     -- the elaborator admits only `castOK` pairs; elsewhere `colMap` would keep `t`'s low bits of the null word
     if QAtomicType.castOK s t then do
       let w ← colArr (.cast s t) n X.enc X.enc t
-      let flag ← colMap .ne n w.enc (← colConst n nulWord)
+      let flag ← colMap .first n w.enc w.enc .i64 .i64 [] [(.ne, nulWord)]
       Tab.keep (k := .atom s) (v := .atom t) ⟨n, X, w⟩ flag
     else .error s!"$: no cast from {repr s} to {repr t}"
   | _, _, _ => .error "$: casts a number object to a number object"

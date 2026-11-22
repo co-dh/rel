@@ -212,16 +212,15 @@ theorem Tab.succ_holds {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .lo
     {T : Tab K .long} (h : D.succ U = .ok T) (hD : D.WF) (x : K.El)
     (w : Int64) : T.Holds x w ↔ ∃ u, D.Holds x u ∧ Lang.succDen TU u w := by
   simp only [Tab.succ, bind, Except.bind_eq_ok'] at h
-  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, N, hN, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
+  obtain ⟨u₁, hu₁, du₁, hdu₁, E, hE, ne, hne, s, hs, u₂, hu₂, du₂, hdu₂, hT⟩ := h
   have hrow : ∀ i : Fin E.n.toNat, Vals.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (E.val.row i) 1 := by
     intro i
     show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get E.val i) 1
     rw [Arr.get_i64, Arr.get_i64]
     have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2
-    have r2 := (colMap_raw hne).2.2.2 i i.2
-    rw [colConst_raw hN] at r2
-    simp only [Array.getElem?_replicate, i.2, if_true, Option.getD_some] at r2
+    have r2 := (colMap_post hne).2 i i.2
     rw [ev_ne] at r2
+    simp only [ne_comm (a := nulWord)] at r2
     rw [← Except.ok.inj r2] at r1
     rw [← Except.ok.inj r1]
     generalize (raw .i64 E.n E.val.enc)[i.1]?.getD 0 = A

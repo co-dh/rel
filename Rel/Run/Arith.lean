@@ -122,7 +122,7 @@ null to itself) by two `colMap`s, `≫ dom U`; `U X` the universe at the values 
 def succ (D : Tab K .long) (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) :
     Except String (Tab K .long) := do
   let E ← D.comp (← (← U D.val).dom)
-  let s ← colArr .add E.n E.val.enc (← colMap .ne E.n E.val.enc (← colConst E.n nulWord))
+  let s ← colArr .add E.n E.val.enc (← colMap .first E.n E.val.enc E.val.enc .i64 .i64 [] [(.ne, nulWord)])
   Tab.comp ⟨E.n, E.key, s⟩ (← (← U s).dom)
 
 end Tab
