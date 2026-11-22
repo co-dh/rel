@@ -51,6 +51,14 @@ partial def reuse (prev : List (Nat × Res)) {A B : Obj} (t : Tm A B) : Tm A B :
   | some k => .var false k
   | none => Id.run (t.mapM fun c => pure (reuse prev c))
 
+/-- `t` with each numbered part read as slot `f k` of another numbering, `k` its own (`Tm.numberKey` at `f = id`):
+    a call's body is entered, as `Tm.number` numbers it. -/
+partial def renumber (f : Nat → Nat) {A B : Obj} (t : Tm A B) : Tm A B := match t with
+  | .share k _ => .share (f k) .zero
+  | .call ks c os b => .call ks c os (renumber f b)
+  | .callCv ks c c' os b u => .callCv ks c c' os (renumber f b) u
+  | t => Id.run (t.mapMSz fun c _ => pure (renumber f c))
+
 /-- What one program may cost this gate, in ms: its constant evaluated, its re-read and every run of its code. The gate
     checks correctness, so a program's instance is small; an instance that measures size or throughput lives in
     `Bench/` (`make bench`), which no gate imports. -/
@@ -74,7 +82,10 @@ run_cmd do
   let mut unchecked : List String := []
   for (n, _, _) in reg.progs do
     let p0 ← IO.monoMsNow
-    let gs ← unsafe IO.ofExcept ((← getEnv).evalConst (List (String × Gen.Gv)) (← getOptions) (n ++ `expanded))
+    -- one evaluation of both, so `n.shares`, which every definition of `n.expanded` reads, is computed once
+    let gT := listT (pairT (mkConst ``String) (mkConst ``Gen.Gv))
+    let (η1, gs) ← liftTermElabM (unsafe Meta.evalExpr (Code × List (String × Gen.Gv)) (pairT (mkConst ``Code) gT)
+      (mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``Code) gT (mkConst (n ++ `shares)) (mkConst (n ++ `expanded))))
     let (ds, _, _, _, fs, _) ← match ← GenSoundTest.reread n with
       | .ok r => pure r
       | .error e => throwError "TestCompile: re-reading {n}: {e}"
@@ -93,7 +104,30 @@ run_cmd do
     -- the program numbered as one (`Code.program`): each closed part, a call body's included, computed once
     let t0 ← IO.monoMsNow
     let (dn, ts) := Code.program (ds.map (·.2))
-    let η0 ← IO.lazyPure fun _ => Code.shares ts
+    -- `Code.shares ts`, reading the generated side's table (`n.shares`, computed evaluating `n.expanded`) instead of
+    -- running every kernel twice: a re-read part `ts[k]`, its own parts read as the generated slots they matched
+    -- (`renumber`; one with none as `gt.size`, which no slot term reads), equal (`Tm.diffAt`) to a generated slot
+    -- term has that slot's code, the same pure function of an equal term; any other part is computed here, as
+    -- `Code.shares` does. `emit` numbers prints, checks and outputs with the definitions, so the two numberings
+    -- differ, and a re-read under the final registry may hold a call where `emit` held another (`callCv`)
+    let some (.defnInfo sc) := (← getEnv).find? (n ++ `shares)
+      | throwError "TestCompile: no definition `{n ++ `shares}`"
+    unless sc.value.isAppOfArity ``Code.shares 1 do
+      throwError "TestCompile: `{n ++ `shares}` is not `Code.shares` of the slot terms: {sc.value}"
+    let gt ← liftTermElabM
+      (unsafe Meta.evalExpr (Array Res) (mkApp (mkConst ``Array [0]) (mkConst ``Res)) sc.value.appArg!)
+    let mut sh : Codes := []
+    let mut slots : Array (Option Nat) := #[]
+    for h : k in [0:ts.size] do
+      let ⟨A, B, u⟩ := ts[k]
+      let key := renumber (fun i => (slots[i]?.join).getD gt.size) u
+      match gt.findIdx? fun ⟨C, D, v⟩ => C == A && D == B &&
+          (Tm.diffAt id (fun _ => "") [] ⟨A, B, key⟩ ⟨C, D, v.numberKey⟩).isNone with
+      | some j =>
+        let some x := η1.sh[j]? | throwError "TestCompile: `{n ++ `shares}` has {η1.sh.length} slots, not {gt.size}"
+        slots := slots.push (some j); sh := sh ++ [x]
+      | none => slots := slots.push none; sh := sh ++ [⟨A, B, u.code { Code.empty with sh }⟩]
+    let η0 : Code := { Code.empty with sh }
     times := times.push s!"{n}.(share table)\t{(← IO.monoMsNow) - t0}"
     let dn := (ds.map (·.1)).zip dn
     let mut η : Code := η0
