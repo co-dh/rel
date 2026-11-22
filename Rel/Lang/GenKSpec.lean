@@ -48,7 +48,7 @@ def _root_.Rel.BitsWf {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra :
     ((raw .i64 g ra)[a'.1]?.getD 0).toNat = i'.1 → x.row i = x.row i' → a = a') ∧
   (∀ c c' : Fin w.toNat, ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[c.1]?.getD 0).toNat = i.1 →
     ((raw .i64 w rc)[c'.1]?.getD 0).toNat = i'.1 → y.row i = y.row i' → c = c') ∧
-  hasNul ra = false ∧ hasNul rc = false
+  hasNul ra = false ∧ hasNul rc = false ∧ hasNul o = false
 
 /-- **`r` yields only `Tab.WF` tables**: a table is `WF`, a `lazy` value is on every `WF` context (`force`), and a
     `bits` value is `BitsWf` over `WF` sides, so it reads back `WF` (`Tab.ofBits_wf`). -/
