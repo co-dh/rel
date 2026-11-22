@@ -5,6 +5,15 @@ import Rel.Kernel.Need
 
 namespace Rel
 
+/-- `Sum` equality decided through `Sum.elim`, whose motive does not mention the two sides. Core's derived
+`instDecidableEqSum` matches on both with a motive `Decidable (a = b)`, and under `decide +kernel` over a kernel's answer
+the kernel copies that motive with both answers inside it at every step: a scatter pair that reduces in 2 s ran 166 s and
+failed (`expr_eq_fn` 48%, its hash cache 30%, `level ==` 19%). -/
+instance (priority := high) instDecidableEqSumElim {α β : Type _} [DecidableEq α] [DecidableEq β] :
+    DecidableEq (α ⊕ β) := fun a b =>
+  decidable_of_iff (Sum.elim (fun x => Sum.elim (fun y => decide (x = y)) (fun _ => false) b)
+    (fun x => Sum.elim (fun _ => false) (fun y => decide (x = y)) b) a = true) (by cases a <;> cases b <;> simp)
+
 /-- The element type of a column. The constructor index is the tag the Rust kernels read: the fixed-width
 types come first, so `u1`..`i8` (0..8) are `crate/src/key.rs`'s `SK_*` kinds, then `sym`, `date` (i32 days),
 `datetime` (i64 ns) and `general`. `code` gives q's type code. `general` is q's type 0, a list of any values;
