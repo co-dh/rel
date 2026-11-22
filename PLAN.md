@@ -1146,6 +1146,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `hpack` 换成 `Tab.pack_wf`，`ListWF` 删去、直接用 `cat_wf` 等；lohi4b 的 `positions_wf` 与 `positions_spec`
     重复，删去（连同只为它写的 `expand_span_lt`、`sum_countP_group`、`eval_ne`）。`map`/`flatten`/`filter`/
     `takewhile` 在 `foldRounds_wf` 上证完（`map` 的单趟分支用 `Vals.cells_expand_wf`）。不再有 WF 前提。
+  - ✅ 合入 canonfld2（分支 `lohi5`）：`map_wf` 单趟分支由 `if` 条件取 `C.n = T`（例：`C` 的 payload 长 `C.n`，
+    `cells_expand_wf` 要长 `T` 的，拆开 `C` 后 `subst`）；`ldivOf_wf`（`r`、`s` 已 canonical），`ldiv_wf` 经 `canon`
+    调它，`ldivSel_wf` 对其除法 `d` 参数化（`hd : d R S UB UC = .ok t → t.WF`），`rdiv_wf` 用 `ldivOf_wf`，
+    `inits_wf` 用 `lamOf_wf`。全量构建 0 error、0 sorry；TestCompile 982/982 相等，与 pin 无差。
+  - ⬜ 切换本身（未开始）：直接依赖 `Rel.Wf`/`Rel.Reps` 的声明 136 个（GenSound 62、GenKBits 30、GenKSpec 25、
+    GenKFold 10、GenKEst 3、GenKHylo 2、GenKFix 2）。步骤：(1) `Known.WF`（`dom`/`ran`/`pairs` 各 `Vals.WF`/`Tab.WF`）；
+    `Rel.Wf` 改 `.tab (.ok t) => t.WF`、`.tab (.error _) => True`、`.lazy f => ∀ K, K.WF → (f K).Wf`，`bits` 加
+    `ofBits` 结果 `WF`；`Rel.Wf.force`/`runE` 要 `K.WF`。(2) `lift1_wf`/`lift2_wf` 取 `f` 的保持引理与参数的 `Wf`，
+    `ofVals_wf` 取 `f` 的（`K.WF` 给 `K.dom` 的 `Vals.WF`）；`compT` 在 `⟨some (ran r), K.ran, none⟩` 上 force，要
+    `ran_wf`。(3) `gen_wf_spine` 每个构造子一行 `GenK.*_wf` + `RepWF`/`RepWFOps` 的 `_wf`；`primGen_ok` 的每个 row
+    要其 op 的 `_wf`。(4) `Reps` 只在 `K.WF` 上要求，`Sound`/各 `_sound` 的 `∀ K` 加 `K.WF`。(5) 然后删 clamp。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
