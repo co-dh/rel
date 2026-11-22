@@ -15,18 +15,18 @@ rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
     x : X ⟶ N ≜ {(1,A),(2,B),(5,C),(5,A)}°
-    u : N ⟶ X ≜ {(1,A),(2,B)} ∪ {(5,C),(2,B)}
-    i : N ⟶ X ≜ {(1,A),(2,B)} ∩ {(5,C),(2,B)}
-    d : N ⟶ X ≜ {(1,A),(2,B)} − {(5,C),(2,B)}
-    z : X ⟶ N ≜ 𝟘
-    m : X ⟶ X ≜ x x°
+    un : N ⟶ X ≜ {(1,A),(2,B)} ∪ {(5,C),(2,B)}
+    me : N ⟶ X ≜ {(1,A),(2,B)} ∩ {(5,C),(2,B)}
+    df : N ⟶ X ≜ {(1,A),(2,B)} − {(5,C),(2,B)}
+    zr : X ⟶ N ≜ 𝟘
+    cm : X ⟶ X ≜ x x°
     dm : X ⟶ X ≜ dom(x)
     rn : N ⟶ N ≜ ran(x)
     pr : X ⟶ N × N ≜ ⟨x, x⟩
-    c : X × N ⟶ N × X ≜ x × x°
-    o : X × N ⟶ X ≜ (x × x°) π₂
-    l : X × N ⟶ N ≜ (x × x°) π₁
-    e : X ⟶ X ≜ x x° 𝟙
+    cx : X × N ⟶ N × X ≜ x × x°
+    po : X × N ⟶ X ≜ (x × x°) π₂
+    pl : X × N ⟶ N ≜ (x × x°) π₁
+    ix : X ⟶ X ≜ x x° 𝟙
     tp : X ⟶ X ≜ x ⊤
 
 /-- `output x to "out"`. -/
@@ -128,10 +128,10 @@ def semOut {A B : Obj} (R : Except String (Tab A B)) (dir : String) : IO Unit :=
 /-- The closed definitions of `native1a`, one per `Tm` node the plan builds (`tabB`), each written to `out/NAME`:
     by `relc lean` from its Lean value and by the gate's plan from its term, the one list both sides read. -/
 def semOuts : List (String × (String → IO Unit)) :=
-  [("x", semOut native1a.x), ("u", semOut native1a.u), ("i", semOut native1a.i), ("d", semOut native1a.d),
-   ("z", semOut native1a.z), ("m", semOut native1a.m), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
-   ("pr", semOut native1a.pr), ("c", semOut native1a.c), ("o", semOut native1a.o), ("l", semOut native1a.l),
-   ("e", semOut native1a.e), ("tp", semOut native1a.tp)]
+  [("x", semOut native1a.x), ("un", semOut native1a.un), ("me", semOut native1a.me), ("df", semOut native1a.df),
+   ("zr", semOut native1a.zr), ("cm", semOut native1a.cm), ("dm", semOut native1a.dm), ("rn", semOut native1a.rn),
+   ("pr", semOut native1a.pr), ("cx", semOut native1a.cx), ("po", semOut native1a.po), ("pl", semOut native1a.pl),
+   ("ix", semOut native1a.ix), ("tp", semOut native1a.tp)]
 
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
