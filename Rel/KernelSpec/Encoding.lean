@@ -1426,7 +1426,7 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     Column.foRBits (Kernel.Coc.encodeAt lg w.toUSize x patch).1 (Kernel.Coc.encodeAt lg w.toUSize x patch).2
       (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch).1) i =
       (Kernel.Coc.keyAt w x i).toUInt64 := by
-  have h := foROpt_encode lg hlg w hw0 hw x .empty (patch := patch) i hi fun _ _ j _ _ _ => bitAt_empty j
+  have h := foROpt_encode lg hlg w hw0 hw x .empty (patch := patch) i hi fun _ _ _ j _ _ _ => bitAt_empty j
   simp only [Column.foROpt, bitAt_empty, Bool.false_eq_true, ↓reduceIte] at h
   split at h
   · cases h

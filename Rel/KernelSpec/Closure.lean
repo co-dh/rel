@@ -90,7 +90,7 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
         (Column.blockStarts (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).1) i =
         if Column.bitAt nul i then none else some ws[i] := fun i hi hb => by
     rw [foROpt_encode Column.lgEnc hlg 8 (by decide) (by decide) X nul i (by omega) fun h32 hni hk j a b c =>
-      hb (by omega) hni (by rw [← hkey i hi, Int64.toInt_inj.1 (hk.trans (by decide))]; decide) j a b (by omega),
+      hb (by omega) hni (by rw [← hkey i hi, Int64.toInt_inj.1 (hk.trans (by decide : (2 : Int) ^ 63 - 1 = (9223372036854775807 : Int64).toInt))]; decide) j a b (by omega),
       hkey i hi]
   have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).1
       (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul).2) := by
@@ -183,15 +183,18 @@ theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
     change Except.ok (wordsFoR _ _) = _ at h
     simp only [Except.ok.injEq] at h
     subst h
-    have hc := wordsFoR_nul _ _ (scatterWords_size ‹scatterWords _ _ _ _ _ = .ok _›).symm
-    exact ⟨hc.1, hc.2.1, fun ht hu => hc.2.2.2 ht fun h1 => absurd h1 hu⟩
+    have hs := (scatterWords_size ‹scatterWords _ _ _ _ _ = .ok _›).symm
+    exact ⟨(wordsFoR_nul _ _ hs).1, (wordsFoR_nul _ _ hs).2.1,
+      fun ht hu => (wordsFoR_nul _ _ hs).2.2.2 ht fun h1 => absurd h1 hu⟩
 
 /-- **`kgather` closes**: its answer holds `m` words, valid and `Ext.Enc.WF` at every fixed-width type but the boolean. -/
 theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
     Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m o := by
   obtain ⟨hs, -, -, rfl⟩ := raw_kgather m ix n e o h
-  have hc := wordsFoR_nul _ _ (n := m) (by rw [Array.size_map, hs])
-  exact ⟨hc.1, hc.2.1, fun ht hu => hc.2.2.2 ht fun h1 => absurd h1 hu⟩
+  have hm : m.toNat = (Array.map (fun i => (raw .i64 n e)[i.toNat]?.getD 0) (raw .i64 m ix)).size := by
+    rw [Array.size_map, hs]
+  exact ⟨(wordsFoR_nul _ _ hm).1, (wordsFoR_nul _ _ hm).2.1,
+    fun ht hu => (wordsFoR_nul _ _ hm).2.2.2 ht fun h1 => absurd h1 hu⟩
 
 
 end Rel.Verify
