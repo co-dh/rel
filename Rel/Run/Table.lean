@@ -3,7 +3,6 @@ import Rel.Run.Lang.Schema
 import Rel.Kernel.Db.ObjectFile
 import Rel.Kernel.Db.Csv
 import Rel.Kernel.Cast
-import Rel.Run.Cols
 import Rel.Run.Canon
 import Rel.Run.Comp
 import Rel.Run.Lang.Lazy

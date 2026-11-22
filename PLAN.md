@@ -1161,7 +1161,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `eval (toExpr t) = t` 无法陈述；kernel `decide` 也不可行（`Code.program` 用 `Expr` 的 hash 作 HashMap key，
     `String.hash` 是 opaque extern；`Tm` 没有 `DecidableEq`，payload 按 `valEq` 比较）。信任的只剩 Lean 的
     求值器与 kernel 一致。发出的程序不变。
-- ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
+- ✅ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。声明 0 个删除（`unused` 只删未用 binder，且每个声明都有引用或属交付物）；
+  未用 simp 参数/binder 共 48 条 simp 语句修改（16 个文件）；未用 import 1 条（`Run.Table`→`Run.Cols`；`Lang.Table`→`RepCols` 被 `Arr.pos_get` 需要，保留）。
+  避开 GenSound/Tm/Den/GenK*/Csv/Coc 文件；`lean-refactor` 自带的验证 build 因 OwnTest `#guard_msgs` 误报，改用完整 `lake build` 验证。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
   分支 `gates3`。另：`CLAUDE.md` 的 14 条规则里 9 条没有 gate。
