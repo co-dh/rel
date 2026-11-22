@@ -256,8 +256,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `val` `uni` `𝟘` `𝟙` `⊤` `π₁` `π₂` `≫`（`compOne`）`°` `∩` `−`（`select`）`∪` `dom` `ran` `⟨,⟩` `×`（CROSS）
     `own` `share` `var`；按需节点读上下文已知的值（`compT` 的 `ran`、`∩` `−` `⟨,⟩` 的 `bound`）。`abi` 加
     `USize.mul`。测试：`native1a` 14 个闭定义、`nativeIO` 的 `un` `cm`，`make native` 与 Lean 值逐字节相等。
+    分支 `nativetm2b`：plan 加循环指令 `Instr.loop`（状态寄存器、一轮的 block、`done` 位、轮数上限用尽即 `fail`，
+    即 `Tab.fixOn`/`foldRounds` 的轮次；C 是 `for (;;)`，状态经临时变量换代），`fixB` 是 `Tab.fixOn`，`nuB`/`muB`
+    是 `Tab.nu`/`Tab.mu`；`tabB` 移植 `ν` `μ` `hylo`（`GenK.hylo`：节点 `μ`、`ν` 查环、`D ≫ μY`），变量环境 `TmEnv`
+    读输入的 `Side` 或一轮的表。测试 `tc`（`μ`）`gf`（`ν`）逐字节相等；`hylo` 无测试：叶子要和或数组侧。
     仍拒绝并指名：`≤` `<`（`ordOp`）、值动词 `succ` `arith`、`\` `/`（`ldivSel`）、数组侧的 `Λ` `E` `est` `thin`
-    `nil` `at` 与三种 fold（缺 `cells` key）、`ν` `μ` `hylo`（plan 无循环指令）、`prim` `arg` `call` `callCv`
+    `nil` `at` 与三种 fold（缺 `cells` key：`Cols` 是同一行数的扁平列，数组侧要每个数组节点的 payload 行数 `m`、
+    `lo`/`hi`，`canon` 要 `AscKey.cells`，`∪` 要 payload 拼接，fold 的 `Tab.pack` 改字节）、`prim` `arg` `call` `callCv`
     （行的 `Tab` 算子未移植）；求和/数组对象上的任何节点；从文件 map 的列（无 `Enc`）作运算数。
   步骤 2（分支 `d9step2`）：`Table.write S dir x`（一侧，按 schema 列名）、`Table.read S dir : IO (Tab .long S.obj)`
   （key 为位置）、`writeKeyed K S`/`readKeyed K S`（`key/`、`val/`）；缺文件、类型码不同、行数不同都报文件名与期望/实际；

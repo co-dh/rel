@@ -315,14 +315,14 @@ def sizeB (c : Nat) : Bld Nat := do
   lit (.size c.toUSize)
 
 /-- What a variable reads in `tabB`, given its objects: an input's registers (`Side`s) or a fixed point's round. -/
-abbrev Env := List (Nat × (Obj → Obj → Bld TabB))
+abbrev TmEnv := List (Nat × (Obj → Obj → Bld TabB))
 
 /-- **A term's table**, each node by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` the
     tables bound to them, `D` the values its context knows its source to hold (`compT`: a composition's left
     operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
     that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
     them and what they need. -/
-partial def tabB (σ : Env) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+partial def tabB (σ : TmEnv) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, .val R => do
     let (k, v) := (← litSide R.key, ← litSide R.val)
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
