@@ -1117,12 +1117,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
   一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
   一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。
-- 🔄 Tm28 B7（`doc/tm-minimal-design.zh.typ` §4）`star`：prelude 定义 `star(R) ≜ μX : 𝟙 ∪ R X`，`R*` 是它的记号
+- ✅ Tm28 B7（`doc/tm-minimal-design.zh.typ` §4）`star`：prelude 定义 `star(R) ≜ μX : 𝟙 ∪ R X`，`R*` 是它的记号
   （parser 不再造变量名）；fused 行 `star` → `Tab.star`（semi-naive：`(X, Δ)` 从 `(P, P)`，每轮只算 `Δ R − X`），
   `Tab.fixOn` 改为任意状态（`nu` `mu` 传 `Tab.n Tab.pack`，`star` 带前沿），定理 `Tab.star_holds`、`GenK.star_sound`、
-  `rowOK_star`。`Party.guests` 改为 `(win boss° boss° ∪ ((𝟙 − win)boss°))* win`。未做：`Chess.L` 仍是 `R⁰ ∪ … ∪ R⁷`，
-  因为它的参数是 family（`r`、`q` 读 `on`，`W(∋)` 在棋盘上 lifted），`useDef` 对 family 参数不走行而展开定义的 `μ`，
-  报「μX given a family is not liftable」（`Elab.lean:1517`，§e）；需要行 `star` 的 lifted 形式（`appliedL`）。
+  `rowOK_star`。`Party.guests` 改为 `(win boss° boss° ∪ ((𝟙 − win)boss°))* win`。行给 family 参数时的 lifting
+  （对所有行，不是 `star` 特例）：`Prim.keyable`（对象全是变量，没有 `num` `ord` `whole`）的行由 `appliedRowL` 在
+  `I×v` 上对 keyed 参数 `⟨π₁,Rᴵ⟩` 运行一次，结果 `rowSh = ⟨𝟙,⊤⟩⟨π₂,Xπ₂⟩` 是 family（`keyed` 认得它，给 `Xπ₂`）；
+  `appliedL` 与 `useDef` 都走它，结果只由已有的 `Tm` 构造子组成，`gen_sound` 不变。`Chess.L` 删去，`r` `q` 写
+  `(VD)*` `(De)*`（棋盘上 `R⁸ = 𝟘`，输出不变）。`starLinear : μX : S ∪ R X = star(R) S` 在 `Rel.Core.Rel`
+  （`Rel/Core/Fix.lean`）证明；prelude 里 `rel_aop` 形式的陈述需要 freyd `relaop/RelAop/Prelude.lean` 的证明，未做。
 
 ## 3. 各 phase 的并行与串行
 
