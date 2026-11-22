@@ -280,13 +280,50 @@ partial def tysOf (cs : Cols) : Bld (List Ty) := return (← cs.mapM fun
   | .arr _ _ _ _ f => return [.size, .obj, .obj] ++ (← tysOf f)
   | .sum .. => sumB "a function's parameters").flatten
 
+/-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
+    block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
+partial def reads (base : Nat) : Instr → List Nat
+  | .call _ as | .fail _ as | .apply _ as => as.toList
+  | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
+  | .ctor _ os ss => os.toList ++ ss.toList
+  | .proj x .. | .sproj x .. => [x]
+  | .lit _ | .global _ => []
+  | .loop k init b out d _ => k :: init.toList ++ ((b.flatMap (reads base) ++ out.toList ++ [d]).filter (· < base))
+
+/-- `i` with each register `a` it names read as `f a`: blocks share one register space, so nested ones move alike. -/
+partial def Instr.rename (f : Nat → Nat) : Instr → Instr
+  | .lit v => .lit v
+  | .call s as => .call s (as.map f)
+  | .fail m as => .fail m (as.map f)
+  | .apply g as => .apply g (as.map f)
+  | .global g => .global g
+  | .ite c t rt e re => .ite (f c) (t.map (·.rename f)) (rt.map f) (e.map (·.rename f)) (re.map f)
+  | .ctor tag os ss => .ctor tag (os.map f) (ss.map f)
+  | .proj x tag i t => .proj (f x) tag i t
+  | .sproj x tag nobj ss i => .sproj (f x) tag nobj ss i
+  | .loop k init b out d msg => .loop (f k) (init.map f) (b.map (·.rename f)) (out.map f) (f d) msg
+
+/-- The type the block `is` reads the outer register `a` as: the declared type of the first reader's argument, a
+    kernel's (`abiOf`) or a function's of `fs`; an `if`'s bit, a `loop`'s cap, a `proj`'s constructor. -/
+partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
+  | [] => none
+  | i :: is => (match i with
+    | .call s as => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
+    | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
+    | .ite c t _ e _ => if c == a then some .bit else useTy fs a t <|> useTy fs a e
+    | .proj x .. | .sproj x .. => if x == a then some .obj else none
+    | .loop k _ b .. => if k == a then some .size else useTy fs a b
+    | _ => none) <|> useTy fs a is
+
 /-- `b` on the tables `Ts` as a plan function (`defFun`), applied to their registers (each its count, then `regsOf`):
     a recipe built at many nodes is one C function, not a copy inlined at each (which outgrows `cc -O2`). A function
-    whose body equals an earlier one's is that one, so each table shape builds one function. -/
+    whose body equals an earlier one's is that one, so each table shape builds one function. Closure conversion: the
+    body is built after the enclosing scope's `n` registers, and those it reads (a variable's table, a cap) become
+    parameters after the tables', first read first, typed as their reader declares (`useTy`), so `b` may close over
+    anything in scope. -/
 def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
   let regs (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
-  let tys ← Ts.mapM fun T => return Ty.size :: (← tysOf (T.key ++ T.val))
-  let ps := List.range tys.flatten.length
+  let tys := (← Ts.mapM fun T => return Ty.size :: (← tysOf (T.key ++ T.val))).flatten
   let shape (Ts : List TabB) (rs : List Nat) : Bld (List TabB) := do
     let (Us, _) ← Ts.foldlM (init := (([] : List TabB), rs)) fun (Us, rs) T => match rs with
       | n :: rs => do
@@ -295,11 +332,18 @@ def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
       | [] => throw "a function's parameters: fewer registers than its tables read"
     pure Us
   let (is, n, fs, gs) ← get
-  let ((U, r), body, _, fs, gs) ← (do let U ← b (← shape Ts ps); pure (U, (← regs U).toArray)).run (#[], ps.length, fs, gs)
-  let F : Fun := ⟨tys.flatten.toArray, body.toList, r⟩
-  let (f, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
+  let k := tys.length
+  let ((U, r), body, _, fs, gs) ← (do let U ← b (← shape Ts (List.range' n k)); pure (U, (← regs U).toArray)).run
+    (#[], n + k, fs, gs)
+  let cs := ((body.toList.flatMap (reads n) ++ r.toList).filter (· < n)).eraseDups
+  let ctys ← cs.mapM fun a => match useTy fs a body.toList with
+    | some t => pure t
+    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
+  let f (a : Nat) : Nat := if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
+  let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
+  let (g, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
   set (is, n, fs, gs)
-  let rs ← apply f (← Ts.mapM regs).flatten.toArray r.size
+  let rs ← apply g ((← Ts.mapM regs).flatten ++ cs).toArray r.size
   match ← shape [U] rs.toList with
   | [V] => pure V
   | _ => throw "a function's answer: not one table"
@@ -492,16 +536,19 @@ def packT (T : TabB) : Bld TabB := return ⟨T.n, ← packB T.n T.key, ← packB
 
 /-- **`Tab.fixOn`**: rounds of `step` from `X` (`Plan.loop`, the state its count and columns), at most the register
     `k` of them, until a round leaves the row count as it was; that round's table. `k` rounds with the count still
-    moving fail with `msg`. Each round's table has its payloads cut (`packT`). -/
-def fixB (msg : String) (step : TabB → Bld TabB) (k : Nat) (X : TabB) : Bld TabB := do
-  let st (T : TabB) : Bld (Array Nat) := return #[T.n] ++ (← regsOf (T.key ++ T.val)).toArray
-  let shape (rs : Array Nat) : Bld TabB := do
-    let (cs, _) ← withRegs (X.key ++ X.val) (rs.toList.drop 1)
-    pure ⟨← nth rs 0 "loop", cs.take X.key.length, cs.drop X.key.length⟩
-  shape (← loop k (← st X) msg fun rs => do
-    let X ← shape rs
-    let Y ← packT (← step X)
-    pure (← st Y, ← call1 (kernel% USize.decEq) #[Y.n, X.n]))
+    moving fail with `msg`. Each round's table has its payloads cut (`packT`). One plan function (`funT`), `step`'s
+    reads of the scope its parameters. -/
+def fixB (msg : String) (step : TabB → Bld TabB) (k : Nat) (X : TabB) : Bld TabB := funT [X] fun
+  | [X] => do
+    let st (T : TabB) : Bld (Array Nat) := return #[T.n] ++ (← regsOf (T.key ++ T.val)).toArray
+    let shape (rs : Array Nat) : Bld TabB := do
+      let (cs, _) ← withRegs (X.key ++ X.val) (rs.toList.drop 1)
+      pure ⟨← nth rs 0 "loop", cs.take X.key.length, cs.drop X.key.length⟩
+    shape (← loop k (← st X) msg fun rs => do
+      let X ← shape rs
+      let Y ← packT (← step X)
+      pure (← st Y, ← call1 (kernel% USize.decEq) #[Y.n, X.n]))
+  | _ => throw "a fixed point: not one table"
 
 /-- **`Tab.nu`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical, its row count plus two of them. -/
 def nuB (f : TabB → Bld TabB) (top : TabB) : Bld TabB := do
@@ -983,13 +1030,16 @@ def pairsB (B : Obj) (n : Nat) (X : Cols) : Bld (TabB × TabB × TabB) := do
   pure (G, P, ← coreflB P.n P.val)
 
 /-- **`GenK.fold`** (`left`) or **`GenK.foldr`** on the `n` arrays `X` of `E`: `foldRoundsB` from `idU X` and
-    `Tab.top X (ran e)` (`ev` the table of `e`), `step` a round's, their payload's row count plus two rounds. Not a
-    plan function: `step` reads the registers of the variables in scope. -/
-def foldB (E V : Obj) (left : Bool) (n : Nat) (X : Cols) (ev : TabB) (step : TabB → TabB → Bld TabB) : Bld TabB := do
-  let (m, _, _, _) ← arrCol "fold" X
-  let (T, x, y) ← crossB n ev.n X ev.val
-  foldRoundsB (peelB E left) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB n X)
-    (← canonT ⟨T, x, y⟩) (← zeroB (.arr E) V)
+    `Tab.top X (ran e)` (`ev` the table of `e`), `step` a round's, their payload's row count plus two rounds. One
+    plan function (`funT`), `step`'s reads of the scope its parameters. -/
+def foldB (E V : Obj) (left : Bool) (n : Nat) (X : Cols) (ev : TabB) (step : TabB → TabB → Bld TabB) : Bld TabB :=
+  funT [⟨n, X, []⟩, ev] fun
+  | [I, ev] => do
+    let (m, _, _, _) ← arrCol "fold" I.key
+    let (T, x, y) ← crossB I.n ev.n I.key ev.val
+    foldRoundsB (peelB E left) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB I.n I.key)
+      (← canonT ⟨T, x, y⟩) (← zeroB (.arr E) V)
+  | _ => throw "fold: not two tables"
 
 /-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows) of `A`, `R` the table of the relation on elements: the elements
     EXPANDed (`v`, `T` rows), `⟨pos, v⟩ ≫ R`; where each position has exactly one image, those images in position
@@ -1178,17 +1228,21 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   -- `GenK.foldI`: one left fold on `I × V` from `(i, b)`, each round's step met with `⟨π₁, S ≫ π₂⟩`
   | _, _, .foldI (I := I) (E := E) (V := V) e S => do
     let (n, X) ← known "foldI" D.dom
-    let K := Obj.prod I (.arr E)
-    let i ← piB I (.arr E) true n X
-    let rest ← piB I (.arr E) false n X
-    let es ← compTB i (tabB σ · e) e.dem
-    let step (P el : TabB) : Bld TabB := do
-      let s ← compTB (← pairB K (.prod I V) E P el) (tabB σ · S) S.dem
-      interB s (← pairB K I V i (← projT I V false s))
-    let (m, _, _, _) ← arrCol "foldI" rest.val
-    let out ← foldRoundsB (peelB E true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) rest
-      (← pairB K I V i (← projT V V false es)) (← zeroB K (.prod I V))
-    projT I V false out
+    -- one plan function (`funT`), as `foldB`
+    funT [⟨n, X, []⟩] fun
+    | [Xt] => do
+      let K := Obj.prod I (.arr E)
+      let i ← piB I (.arr E) true Xt.n Xt.key
+      let rest ← piB I (.arr E) false Xt.n Xt.key
+      let es ← compTB i (tabB σ · e) e.dem
+      let step (P el : TabB) : Bld TabB := do
+        let s ← compTB (← pairB K (.prod I V) E P el) (tabB σ · S) S.dem
+        interB s (← pairB K I V i (← projT I V false s))
+      let (m, _, _, _) ← arrCol "foldI" rest.val
+      let out ← foldRoundsB (peelB E true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) rest
+        (← pairB K I V i (← projT V V false es)) (← zeroB K (.prod I V))
+      projT I V false out
+    | _ => throw "foldI: not one table"
 
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
@@ -1464,16 +1518,6 @@ def ctorC (x : String) (tag : Nat) (os ss : List (String × Ty)) : Except String
     if n == 0 then s!" lean_ctor_set_usize({x}, {o}, {y});" else s!" lean_ctor_set_uint{8 * n}({x}, {o}, (uint{8 * n}_t){y});")
   pure (s!"lean_object *{x} = lean_alloc_ctor({tag}, {os.length}, {end_ - 8 * os.length});" ++
     String.join (os.zipIdx.map fun ((y, t), i) => s!" lean_ctor_set({x}, {i}, {cBox t y});") ++ sets ++ "\n")
-
-/-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
-    block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
-partial def reads (base : Nat) : Instr → List Nat
-  | .call _ as | .fail _ as | .apply _ as => as.toList
-  | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
-  | .ctor _ os ss => os.toList ++ ss.toList
-  | .proj x .. | .sproj x .. => [x]
-  | .lit _ | .global _ => []
-  | .loop k init b out d _ => k :: init.toList ++ ((b.flatMap (reads base) ++ out.toList ++ [d]).filter (· < base))
 
 /-- How many registers an instruction defines. -/
 def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Array (Array Ty)) : Instr → Except String Nat
