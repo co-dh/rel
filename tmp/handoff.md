@@ -99,3 +99,13 @@ Measured with /data/tmp/rq17f2/T1.lean (`env LEAN_PATH=<wt>/.lake/build/lib/lean
 branch reads raw words unconditionally, so either mask the words at a null there or ask word equality at a cells key
 always. Then the callers listed above under Next 2 (RepCanon, RepSetOps, RepTabComp, RepCols, GenKBits, GenKFix),
 then `lake build RelKernel RelRun Rel` and `sh crate/build.sh syms`.
+
+# rq17dec handoff
+
+Cause of the slow null pairs (probes under /data/tmp/rq17dec): not the model. Every piece of `kscatter`'s null path
+reduces in the kernel in about 2 s (`foROk`/`foRNuls`/`raw` of a null column, `nulMap`, the encoder with a computed
+bitmap: R.lean, S.lean). The cost is core's derived `instDecidableEqSum`, the instance every test's
+`view … = view …` at `String ⊕ (List UInt8 × List UInt8)` picks: the same pair through `pr` (the `inr` payload, a
+`Prod`), through `==`, or under a `Sum.elim`-based instance takes 1.6-2.1 s; with `instDecidableEqSum` it does not
+finish (S.lean s0 vs the handoff's 166 s). Fix: `Rel.instDecidableEqSumElim` (Rel/Kernel/Value.lean top), priority
+high, decided through `Sum.elim`, whose motive does not mention the two sides.
