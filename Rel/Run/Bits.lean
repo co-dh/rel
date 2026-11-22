@@ -117,17 +117,19 @@ def compSel (bits : Nat) (R : Tab A B) (S : Tab B C) : Except String (Tab A C) :
   | .inr (ka, kc, o, ra, rc) => Tab.ofBits ka kc o R.key ra S.val rc
 
 /-- **`R \ S` within `UB`, `UC`, on a bit matrix where `bitsWin` holds** (`ldivBits`, `Tab.ldivBits_holds`), else
-`ldiv` (`Tab.ldiv_holds`). `T` is the expansion of `R° ≫ S` (`compGroups`; `ldiv`'s `Q` before `R`, `S` are
+the division `d`: `ldiv` (`Tab.ldiv_holds`), or `ldivOf` where `R`, `S` are `Tab.Canonical` (`Tab.ldivOf_holds`), so
+no `canon` runs on them. `T` is the expansion of `R° ≫ S` (`compGroups`; `ldiv`'s `Q` before `R`, `S` are
 deduplicated), the matrix `ka + 1` rows (`ka` the keys, as `ldivBits`' `ka`) and `kb` rows of `kc` bits. A nonempty
 expansion has `kb, kc ≥ 1`, so `rowBits · T ≤ ka + 2` fails `bitsWin` before the two codes are paid for. -/
-def ldivSel (bits : Nat) (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
+def ldivSel (d : Tab A B → Tab A C → Tab B B → Tab C C → Except String (Tab B C)) (bits : Nat) (R : Tab A B)
+    (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
   let x ← compGroups (⟨R.n, R.val, R.key⟩ : Tab B A) S
   let T ← compRows x
   let ka := x.2.2.2.2.1.toNat
-  if rowBits * T ≤ ka + 2 then ldiv R S UB UC else do
+  if rowBits * T ≤ ka + 2 then d R S UB UC else do
     let kb := (← Vals.code2 R.val UB.val).1.toNat
     let kc := (← Vals.code2 S.val UC.val).1.toNat
-    if bitsWin bits T (ka + 1) kb kc then ldivBits R S UB UC else ldiv R S UB UC
+    if bitsWin bits T (ka + 1) kb kc then ldivBits R S UB UC else d R S UB UC
 
 /-- `0 … n-1`: the prefix sums of `n` ones, less one. -/
 def colIota (n : USize) : Except String Enc := do

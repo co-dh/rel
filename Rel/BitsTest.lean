@@ -71,7 +71,7 @@ def selComp (bits : Nat) (R S : List (Int64 × Int64)) : Bool :=
 
 /-- `ldivSel bits` and `ldiv` of the same tables answer the same rows, both succeeding. -/
 def selLdiv (bits : Nat) (R S : List (Int64 × Int64)) (UB UC : List Int64) : Bool :=
-  match (do Tab.ldivSel bits (← tab R) (← tab S) (← diag UB) (← diag UC)),
+  match (do Tab.ldivSel Tab.ldiv bits (← tab R) (← tab S) (← diag UB) (← diag UC)),
       (do Tab.ldiv (← tab R) (← tab S) (← diag UB) (← diag UC)) with
   | .ok X, .ok Y => X.toList == Y.toList
   | _, _ => false

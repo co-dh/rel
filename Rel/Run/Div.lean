@@ -67,16 +67,15 @@ def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
   let z ← Arr.zeros .i64 n
   Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.none B⟩⟩
 
-/-- **`R \ S` within `UB`, `UC`** (`ldivDen`), by counting: `b` of `ran R` to `c` where
-`#{a | R a b ∧ S a c} = #{a | R a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`
+/-- **`r \ s` within `UB`, `UC`, `r`, `s` canonical** (`Tab.Canonical`; `ldivDen`), by counting: `b` of `ran r` to `c`
+where `#{a | r a b ∧ s a c} = #{a | r a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`
 (`r`, `s` canonical, so `Q`'s rows `(b, (a, c))` are distinct and hold each `a` once; `compOne`, not the blocked
 `comp`: with no duplicate to remove, the expansion is `Q` itself and blocks would not lower the peak); GROUP over `(b, c)` and its
 row count `cnt` (`groupFold .add`, a segmented `kscan`); the count `d` of `R`'s rows of `b`, read at each group's first row by CODE over
 `r.val ++ Q.key` (the run of `r` rows of each `b` group, `groupFold .add` of `p < r.n`, each input row's group by
 `kscatter .last` through `p`); the groups with `cnt = d` (`whereCol`). The vacuous part is `(ran UB − ran R) × ran UC`,
 and the two are met by `∪`. -/
-def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
-  let r ← R.canon; let s ← S.canon
+def ldivOf (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
   let Q ← (Tab.mk r.n r.val r.key).compOne (Tab.mk s.n s.key (s.key, s.val) : Tab A (.prod A C))
   let x : Vals (.prod B C) Q.n := (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)
   let es ← Vals.cols x
@@ -97,11 +96,17 @@ def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except Stri
   let (M, sel) ← whereCol K (← colMap .eq K cnt d)
   let ix ← kgather M sel K q
   let P : Tab B C := ⟨M, ← Vals.gather M ix Q.key, ← Vals.gather M ix (Q.val : Vals A Q.n × Vals C Q.n).2⟩
-  P.union (← cross (← (← UB.ran).diff (← R.ran)).key (← UC.ran).key)
+  P.union (← cross (← (← UB.ran).diff (← r.ran)).key (← UC.ran).key)
 
-/-- **`R / S` within `UA`, `UB`** (`rdivDen`): `(S° \ R°)°` within `UB`, `UA`. -/
+/-- **`R \ S` within `UB`, `UC`**: `ldivOf` of `canon R`, `canon S`; a caller whose `R`, `S` are `Tab.Canonical`
+calls `ldivOf`. -/
+def ldiv (R : Tab A B) (S : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
+  ldivOf (← R.canon) (← S.canon) UB UC
+
+/-- **`R / S` within `UA`, `UB`** (`rdivDen`): `(S° \ R°)°` within `UB`, `UA`; the two converses are `canon` answers
+(`Tab.conv`), so `ldivOf`. -/
 def rdiv (R : Tab A C) (S : Tab B C) (UA : Tab A A) (UB : Tab B B) : Except String (Tab A B) := do
-  (← ldiv (← S.conv) (← R.conv) UB UA).conv
+  (← ldivOf (← S.conv) (← R.conv) UB UA).conv
 
 /-- The order `Op` of the atom `t` (`ltAt`, `leAt`): `<` (`s`) or `≤` on the `wideCol` words, IEEE's at a float
 atom, signed at every other ordered atom (`ordNum`); the error naming an atom with no order. -/
