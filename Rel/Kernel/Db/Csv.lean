@@ -17,24 +17,24 @@ open Rel
 
 /-- How a column's object holds its field (IO step I8), and so the parts it is stored as:
 - `atom`: the field is a text of the atom; one column of words.
-- `null`: `V+1`, `V` the atom and `1` an object of one value: the empty field is the null (`inr`), any other field a
-  text of `V` (`inl`); `Obj.sum`'s parts `tag` (`1` at a null), `idx` (the row's position in its side), `V`'s values,
-  the null's values (all the one value, word `0`).
+- `null`: `V+1`, `V` the atom and `1` the unit object (`Obj.one`): the empty field is the null (`inr ()`), any other
+  field a text of `V` (`inl`); `Obj.sum`'s parts `tag` (`1` at a null), `idx` (the row's position in its side), `V`'s
+  values; the side `1` stores nothing.
 - `text`: `[C]`, `C` the atom `char`: the field's bytes are the cell; `Obj.arr`'s parts `lo`, `hi` (the row's cell is
   `[lo, hi)` of the payload) and the payload, every cell's bytes in file order. -/
 inductive CsvShape | atom | null | text
   deriving DecidableEq, Repr, Inhabited
 
 /-- The parts a column of shape `s` is stored as, in order (`Obj.sum`'s `tag idx l r`, `Obj.arr`'s `lo hi e`). -/
-def CsvShape.parts : CsvShape → Nat | .atom => 1 | .null => 4 | .text => 3
+def CsvShape.parts : CsvShape → Nat | .atom => 1 | .null => 3 | .text => 3
 
 /-- How many of the parts hold one word per row (the rest are payloads of their own count). -/
 def CsvShape.rowParts : CsvShape → Nat | .atom => 1 | .null => 2 | .text => 2
 
-/-- Each part's atom as the writer reads it (`Kernel.rawAll`), the column's atom being `t`; `none` for the null's
-    values, of which only the count is read: they are all the one value. -/
+/-- Each part's atom as the writer reads it (`Kernel.rawAll`), the column's atom being `t`; `none` for a part whose
+    count alone is read. -/
 def CsvShape.atoms (t : QAtomicType) : CsvShape → List (Option QAtomicType)
-  | .atom => [some t] | .null => [some .u1, some .i64, some t, none] | .text => [some .i64, some .i64, some t]
+  | .atom => [some t] | .null => [some .u1, some .i64, some t] | .text => [some .i64, some .i64, some t]
 
 /-- A column as the file names and types it: header name, shape, atom, and the names of a named-element object in
 declared order (empty for every other object). -/
@@ -447,8 +447,7 @@ def spans : Nat → List (List UInt64) → List (UInt64 × UInt64)
     sum its tags, positions, values in row order and as many nulls; a text its spans and its bytes in row order. -/
 def layout : CsvShape → List (List UInt64) → List (Array UInt64)
   | .atom, fs => [(fs.map (·.headD 0)).toArray]
-  | .null, fs => [(fs.map fun f => if f = [] then 1 else 0).toArray, (idxs 0 0 fs).toArray, fs.flatten.toArray,
-      (List.replicate (fs.filter (· = [])).length 0).toArray]
+  | .null, fs => [(fs.map fun f => if f = [] then 1 else 0).toArray, (idxs 0 0 fs).toArray, fs.flatten.toArray]
   | .text, fs => [((spans 0 fs).map (·.1)).toArray, ((spans 0 fs).map (·.2)).toArray, fs.flatten.toArray]
 
 /-- The columns' parts from the rows' fields' words `rs` (row × column), each column's in turn. -/
@@ -459,12 +458,12 @@ def wordsOf (cols : CsvCols) (rs : List (List (List UInt64))) : List (Array UInt
     rows): a position past its side, a tag other than `0`/`1`, a span outside the payload is the refusal. -/
 def fieldAt : CsvShape → List (Array UInt64) → Nat → Except String (List UInt64)
   | .atom, [a], i => .ok [a.getD i 0]
-  | .null, [tag, idx, l, r], i =>
+  | .null, [tag, idx, l], i =>
     let k := (idx.getD i 0).toNat
     if tag.getD i 0 = 0 then
       if k < l.size then .ok [l.getD k 0] else .error s!"position {k} past the {l.size} values of its left side"
-    else if tag.getD i 0 = 1 then
-      if k < r.size then .ok [] else .error s!"position {k} past the {r.size} values of its right side"
+    -- the right side is `1`: a null's position reads its one value, whatever it is
+    else if tag.getD i 0 = 1 then .ok []
     else .error s!"tag {tag.getD i 0}, not 0 or 1"
   | .text, [lo, hi, e], i =>
     let (a, b) := ((lo.getD i 0).toNat, (hi.getD i 0).toNat)

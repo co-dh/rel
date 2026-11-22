@@ -278,12 +278,12 @@ pub fn check_coc(kind: u8, n: u64, p: [&[u8]; OWN_MAXPARTS], why: &mut Why) -> b
     // one branch-free pass that vectorises; only a file it rejects is walked again for the block
     let plen = pk.len() as u64;
     let bad = (0..nblk).fold(false, |bad, b| {
-        let (wd, o) = (meta.width[b] as u64, meta.off[b]);
+        let (wd, o) = (meta.w(b) as u64, meta.off[b]);
         bad | (wd > 64) | (o % 8 != 0) | (o > plen) | (blk * wd / 8 > plen.wrapping_sub(o))
     });
     if bad {
         for b in 0..nblk {
-            let (wd, o) = (meta.width[b] as u64, meta.off[b]);
+            let (wd, o) = (meta.w(b) as u64, meta.off[b]);
             let need = blk * wd / 8;
             if wd > 64 {
                 why.say(format_args!("part 0 block {}: a residual width of 0..64 bits, found {}", b, wd));

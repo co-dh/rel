@@ -470,6 +470,7 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
   | .arr b, _, ⟨_, lo, hi, f⟩, p => [(p ++ ".lo", lo.1), (p ++ ".hi", hi.1)] ++ cols b f (p ++ ".e")
   | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, p =>
     [(p ++ ".tag", tag.1), (p ++ ".idx", idx.1)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
+  | .one, _, _, _ => []
 
 /-- A column as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`, `parts`;
     `none` for positions, which have no file. -/

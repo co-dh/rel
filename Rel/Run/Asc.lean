@@ -14,6 +14,7 @@ def Obj.ascBad : Obj → Option QAtomicType
   | .atom t => match ascLayout t with | some _ => none | none => some t
   | .prod a b | .sum a b => a.ascBad <|> b.ascBad
   | .arr b => b.ascBad
+  | .one => none
 
 namespace Tab
 

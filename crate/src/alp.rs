@@ -62,7 +62,7 @@ impl<'a> Cocf<'a> {
     /// coc.rs `cocf_lanes`: block `b`'s residuals as whole lanes (`buf`, blk * 8, when they must be unpacked);
     /// answers them, the lane width and the residual width.
     pub fn lanes<'b>(&self, b: usize, nb: usize, buf: &'b mut [u8]) -> (&'b [u8], u8, u8) where 'a: 'b {
-        let (w0, at) = (self.c.meta.width[b], self.c.meta.off[b] as usize);
+        let (w0, at) = (self.c.meta.w(b), self.c.meta.off[b] as usize);
         let mut w = w0;
         let p = crate::coc::lanes(&self.c.pack[at..at + self.c.meta.blk() * w0 as usize / 8], &mut w, nb, buf);
         (p, w, w0)
@@ -304,7 +304,7 @@ mod tests {
                             assert_eq!(fnv_w(&buf), c.u(), "load_blk b {b} nb {nb} n {n}");
                             let (lw, lh) = (c.u() as u8, c.u());
                             let (lp, w, w0) = f.lanes(b, nb, bytes_mut(&mut lb));
-                            assert_eq!((w, w0), (lw, f.c.meta.width[b]), "lanes b {b}");
+                            assert_eq!((w, w0), (lw, f.c.meta.w(b)), "lanes b {b}");
                             assert_eq!(fnv(&lp[..(nb * w as usize).div_ceil(8)]), lh, "lanes b {b} nb {nb}");
                             let (i0, i1) = (c.u() as usize, c.u() as usize);
                             buf = [0xabababababababab; BLK];

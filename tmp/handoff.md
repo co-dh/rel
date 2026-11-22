@@ -1,30 +1,29 @@
-# kchain handoff (stop at the call budget)
+# nullband2 handoff (branch nullband2, base 52f6cd8 + `merge --no-ff 339f9b0` nullband)
 
-Branch `kchain` = ff3c4fc + merge of integ6 f000a93 (the fsqrt unary rows were NOT in ff3c4fc).
+Done (commits on nullband2)
+- `Obj.one` (Rel/Run/Core.lean): `El = Unit`, `dflt = ()`, `Vals .one n = Unit`, `row`, `rowsImpl`.
+- `.one` cases: `Obj.key` = `[]` and `key_prefix` (ObjOrder.lean; `inr ()` keys `[1]`, null last), `Vals.gather`,
+  `Vals.concat`, `Vals.none`, `Vals.cols` (no column), `Vals.pack`, `Obj.ascBad`, `Tab.sums` refusals, `Plan.cols`,
+  `readVals`/`encVals` (no file/part; count 0, a sum reads every position of `1` as `()`), `Obj.atoms`, `Obj.inst`,
+  `valsE`, `valsEq`, `showEl` (the element's name).
+- Elaborator: `objInfo` `.elems ws` with one element stores at `.one` (Expand.lean:26), `seg := false`; `uniOf` `.base`
+  at `.one` gives `⟨1, ()⟩` (Elab.lean ~317); `litCol` leaf at a `.one` object gives `()` after `code` checks each word.
+- CSV nullable column 4 parts -> 3 (null payload dropped; the right side is `1`): `CsvShape.parts/atoms`, `layout`,
+  `fieldAt` (tag 1 reads `[]` whatever the position), Table `toCsv`/`triples`/`ofCsv` at `.sum a .one`,
+  `csvLeaves` match `.sum (.atom a) .one`; csv.rs `nparts`, `counts`, `fill` (arm `(SH_NULL, 3)` removed), `at`
+  (tag 1 Ok). TestIO csvNullIO expects `.sum .long .one`, `Sum.inr ()`.
+- doc §0 `Obj` block + K card line; PLAN P8 line.
 
-Done:
-- `Rel/Kernel/Scan.lean`: `chain`, `chainAll`, `segAll`; `kscan op rev s t n (seg : Option Enc) es (pre post := [])`.
-  Old calls with a variable `seg : Enc` type-check by the `Enc → Option Enc` coercion and the default chains; a
-  literal dot constructor (`.pos`, `.foR …`) must be written `some .pos` (the expected type is `Option Enc`).
-- Rust `crate/src/scan.rs` (`chain`, `Scan.seg : Option`, `pre` on every load, `post` on every answer block,
-  div/mod steps refused), `crate/src/ffi/scan.rs` (9-arg export), `crate/src/lean.rs` (`B::unbox_u64`).
-  `cargo test --features std --release kscan`: 4 passed.
-- Laws: `raw_kscanChain` (general; `raw_kscan` its empty-chain case), `mapM_chain`, `chainAll_ok`, `chainAll_nil`,
-  `kscan_last`, `kscan_closed`, `kscan_foR`, `colMap_chain` (RepCanon; `colMap_get`, `colMap_raw` its cases),
-  `kscan_ok` (GenKBits; `seg : Option Enc`).
-- `colMap op n a b t s pre post` = one `kscan … none [a, b] pre post`: no `colConst n 1` column.
-- ScanTest: chained `#guard` with `seg = none` and a `decide` on `chain`; a div step refused.
+Failing (build3, /data/tmp/job/nullband2-build3.log)
+- Rel/Kernel/Db/CsvTest.lean test data still has 4 parts per null column: lines 146-158 (`writeCases`: v1 cases with
+  `#[..]` 4th array; 152 "position 0 past the 0 values of its right side" case is now Ok -> delete or change to Ok),
+  163 (`[#[], #[], #[], #[]]` -> 3), 217-225 (`readCases`: `vsParts`, 219 has 7 empty arrays -> 6), `vsParts`,
+  `vsParts'` (~line 370-384, `poke ... 6` index shifts by one), the error text "stored as 7" -> 6 at 147.
+  Errors: `CsvTest.lean:167:2 decide proved that the proposition ... false`, `228:105`, `448:0 csvWrite [v, s] of 2500
+  rows: the extern writes 5079648 bytes, the body writes 15460 bytes`.
+- Downstream of CsvTest not yet compiled: rest of Rel/Run/Lang (Elab 20 sum matches, TmGen, Syntax), Rel/Rep*,
+  Rel/Lang/GenKBits, GenSoundTest, RepCanon, RepTabDiv, RepCols, RepOrder (each `induction`/match on `Obj` needs a
+  `.one` case).
 
-Left (in order):
-1. One-pass element-wise verbs in `Rel/Run/Arith.lean` (`wideCol`, `ftoCols`, `fstepCols`, `fmapCols`) and
-   `Rel/Run/Cast.lean`: `colMap op n a b t s (pre := widen s) (post := extra ++ [(.fto t, 0)])`; the keep flag is a
-   second pass `colMap .first n w w .u1 .i64 [] [(.ne, nulWord)]` (kscan writes one column; the flag is a function
-   of the value column, so no second export). `widen`: f32 → `[(.f32to64, 0)]`, ordNum r → `[(.cast r .i64, 0)]`,
-   else `[]`. `imod` keeps several passes (x used twice). Specs in `Rel/RepTabArith.lean` follow from `colMap_chain`.
-2. Unary rows f32/f64 → f64, floor → i64 via `[(.ffloor,0), (.cast .f64 .i64,0)]` (check `castWord f64 i64` gives
-   2^63 off-range so the keep flag drops it): `unaryDen` (Rel/Lang/Den.lean), `rowDens`, prims
-   (Rel/Run/Lang/Syntax.lean), GenSound `rowOK_unary`, tests `unaryT`/`sqrtIntT` in Rel/Lang/TestFloatArith.lean.
-3. Drop `canon` after `keep` in `Tab.unary`/`Tab.cast`; one lemma "keep of a canonical table is canonical"
-   (`Tab.keep`, Rel/Run/SetOps.lean:20).
-4. Measure sqrt over 10^6 f64 and f32 rows before (96326f9) and after with `CAP_JOB=… cap`.
-5. Gates, PLAN.md S8, architecture §4, ffi export doc comment (still describes the 7-arg signature).
+Left: steps 2-5 of the brief (`Vals (.sum (.atom t) .one)` = one `Arr t n` in band; nullable foR writer; kernels on
+the flag; decode-allow shrink); CSV then goes 3 parts -> 1.

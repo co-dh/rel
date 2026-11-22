@@ -26,6 +26,7 @@ def Vals.none : (A : Obj) → Except String (Vals A 0)
   | .prod a b => do pure (← Vals.none a, ← Vals.none b)
   | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← Vals.none b⟩
   | .sum a b => do pure ⟨0, 0, ← Arr.zeros .u1 0, ← Arr.zeros .i64 0, ← Vals.none a, ← Vals.none b⟩
+  | .one => pure ()
 
 /-- The index columns of CROSS: `T = n · m` rows, `iR = pos / m`, `iS = pos % m` (`colMap` of the positions and
 `colConst T m`). `.div`, `.mod` read their words signed, so `n · m + m` stays below `2^63`, and `T` fits a `USize`. -/
