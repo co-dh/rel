@@ -1817,8 +1817,9 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
   | .sum x y =>
     if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
       let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
-      pure ⟨.sum A B, ⟨0, 0, Arr.mk (Rel.Ext.Enc.blank .u1 0) (Rel.Ext.Enc.blank_WF .u1 0), Arr.mk (Rel.Ext.Enc.blank .i64 0)
-        (Rel.Ext.Enc.blank_WF .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
+      pure ⟨.sum A B, ⟨0, 0, Arr.mk (Rel.Ext.Enc.blank .u1 0) (Rel.Ext.Enc.blank_WF .u1 0) (Rel.Ext.Enc.blank_plain .u1 0),
+        Arr.mk (Rel.Ext.Enc.blank .i64 0)
+        (Rel.Ext.Enc.blank_WF .i64 0) (Rel.Ext.Enc.blank_plain .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
     -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
@@ -2090,7 +2091,7 @@ def zeroCol (t : QAtomicType) (h : t.ordNum.isSome) : Arr t 1 :=
   Arr.mk _ ((Rel.Verify.wordsFoR_closed #[0] (n := 1) (by simp)).2.2
     (by cases t <;> first | rfl | exact absurd h (by decide)) fun _ i hi => by
       obtain rfl : i = 0 := by simp at hi; omega
-      decide +revert)
+      decide +revert) (Rel.Verify.hasNul_wordsFoR #[0])
 
 /-- The fold base `0`: the literal zero of the atom `t` (`zeroCol`) where it is in the universe `u`, `ran(u {0})`,
     closed, since the fold reads its start whole. A word, not `⟨𝟙,𝟙⟩ minus ∩ 𝟙`: one base at every atom, a float's too. -/
