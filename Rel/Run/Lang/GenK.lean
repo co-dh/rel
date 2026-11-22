@@ -91,13 +91,12 @@ def comp (A B C : Obj) (R : Rel A B) (S : Rel B C) : Rel A C := match R with
         | .ok r => compT (.ok r) S
         | .error e => (compS (.lazy f) K.dom (S.runE ⟨none, K.ran, none⟩)).retried e
 
-/-- The code of a closed term with `dem = false` as its table, computed once: such a term has one table whatever
-    the context, so this changes no result and saves re-running it at each use (a fold reading it in every round). -/
+/-- The code of a closed term with `dem = false` computed once: only a `lazy` is replaced, by what it forces to
+    closed (`tab` or `bits`, never read back to rows); any other value is already computed and returned as is. -/
 def memo (A B : Obj) : Rel A B → Rel A B
-  | .tab t => .tab t
   -- a lazy one that cannot run closed (`<` on an infinite universe) needs its context: kept lazy, never frozen
-  | .lazy f => match (Rel.lazy f).runE {} with | .ok t => .tab (.ok t) | .error _ => .lazy f
-  | R => .tab (R.runE {})
+  | .lazy f => match (Rel.lazy f).force {} with | .tab (.error _) => .lazy f | v => v
+  | R => R
 
 /-- An op on one table: a table now, or lazy, its argument run on what `k` makes of the context. -/
 def lift1 {A B C D : Obj} (f : Tab A B → Except String (Tab C D)) (k : Known C D → Known A B) : Rel A B → Rel C D
