@@ -1,5 +1,6 @@
 import Rel.Lang.EmitC
 import Rel.Run.Lang.Embed
+import Rel.Programs.Prelude
 
 /-! Stage 1a of the native backend (`doc/rel-native-design.md` §13): `x ≜ {…}°`, `output x to "out"`. Its plan is
     literals, the converse's `canon` (`kasc`, `kseen`, `kgather`) and `qlean_own_write` calls. `main` is the `relc-1a` exe:
@@ -11,6 +12,8 @@ namespace Rel.Lang.TestNative
 
 open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel
 
+-- the prelude's `1` (`ℓ`'s `⊤(1,L)`), read by `relc` outside this Lean scope through the program's recorded homes
+open Rel.Programs.prelude in
 rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
@@ -65,8 +68,6 @@ rel_program native1a where
     f3 : N ⟶ N ≜ xs ⦇[z0, π₁ ∪ π₂]⦈ʳ
     es : N ⟶ N ≜ xs est(≤)
     th : N ⟶ [N] ≜ xs thin(≤)
-    -- the prelude's `1`, declared here: `relc` reads the program outside its Lean scope, where `⊤(1,L)` finds no `1`
-    obj 1 = {∗}
     obj L = 5…6
     ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
     pf(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
@@ -207,11 +208,16 @@ def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
 
 /-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
     the elaborator's unifier finds the objects' constants (`Obj.named`). -/
-def planIO : IO Plan := do
+unsafe def planIOImpl : IO Plan := do
   Lean.initSearchPath (← Lean.findSysroot)
-  let env ← Lean.importModules #[{ module := `Rel.Lang.TestNative }] {}
+  -- `loadExts`: the registry (`Expand.relRegistry`, each program's homes) is an extension; unloaded, a program
+  -- reads no home, and a name of the prelude (`⊤(1,L)`'s `1`) resolves to nothing
+  Lean.enableInitializersExecution
+  let env ← Lean.importModules (loadExts := true) #[{ module := `Rel.Lang.TestNative }] {}
   let (r, _) ← gatePlan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
   IO.ofExcept r
+
+@[implemented_by planIOImpl] opaque planIO : IO Plan
 
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`), column for column:
 -- each written `OwnFile` equal to the one `Db.ownFile` makes of the value's column
@@ -235,7 +241,7 @@ def planIO : IO Plan := do
 unsafe def runIOImpl (mod name : String) : IO Unit := do
   Lean.initSearchPath (← Lean.findSysroot)
   Lean.enableInitializersExecution
-  let env ← Lean.importModules #[{ module := mod.toName }] {}
+  let env ← Lean.importModules (loadExts := true) #[{ module := mod.toName }] {}
   (← IO.ofExcept (env.evalConst (IO Unit) {} (name.toName ++ `io)))
 
 @[implemented_by runIOImpl] opaque runIO (mod name : String) : IO Unit
