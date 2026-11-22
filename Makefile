@@ -28,7 +28,7 @@ GATE     = SECONDS=0; trap 'echo "[$@] $$SECONDS s, exit $$?"' EXIT; mkdir -p $(
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
 GATES_LIST := build allcov crate-test syms native ldd index-complete axioms noreduce panic bang pointfree decode kernel-tested externs compile-diff
-.PHONY: check main-only index compile-diff-write panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
+.PHONY: check main-only index panic-allow bang-allow pointfree-allow decode-allow kernel-tested-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -53,23 +53,13 @@ allcov: build
 	$(GATE)
 	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/AllCovered.lean
 
-# A regression pin, not a correctness check: each closed definition of every registered program, as the constant
-# rel_program generated computes it (`expanded`), has the status and set of rows test/compile-diff.json pins, by name.
-# The pin is an earlier run's output, so red means changed, green not right. The same run is the differential test:
-# each definition with no `Tm.gap` node also run as `Tm.code` (which `Tm.gen_sound` is about), and must agree.
-# `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a new pin.
+# The differential test: each closed definition of every registered program, as the constant rel_program generated
+# computes it (`expanded`), is compared with `Tm.code` run on the re-read `Tm` (which `Tm.gen_sound` is about); a
+# definition with no code is listed with the nodes that have none. There is no stored baseline.
+# `lake lean` builds the imports only and elaborates the gate every time: an olean would survive a change of the test.
 compile-diff: main-only
 	$(GATE)
-	REL_COMPILE_DIFF_OUT=$(T)/compile-diff.json CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
-
-# re-pins test/compile-diff.json to the run `make compile-diff` just wrote (a copy: the run takes minutes, so it is
-# computed once); read the diff that gate printed before committing, since nothing else checks the pin. Refuses a
-# run older than a built module, which is a run of other sources.
-compile-diff-write: main-only
-	$(GATE)
-	test -f $(T)/compile-diff.json || { echo "compile-diff-write: no run at $(T)/compile-diff.json; run 'make compile-diff' first" >&2; exit 1; }
-	new=$$(find $(CURDIR)/.lake/build/lib/lean -name '*.olean' -newer $(T)/compile-diff.json -print -quit) || exit 1; test -z "$$new" || { echo "compile-diff-write: $$new is newer than the run at $(T)/compile-diff.json; run 'make compile-diff' first" >&2; exit 1; }
-	cp $(T)/compile-diff.json $(CURDIR)/test/compile-diff.json
+	CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) lean $(CURDIR)/test/TestCompile.lean
 
 crate-test:
 	$(GATE)
