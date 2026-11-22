@@ -50,7 +50,7 @@ fn read(path: B, cs: B) -> Result<O, Fail> {
 
 /// `Db.csvWrite path cols n es`, in its body's order: the parent directories (`createDirAll`), the part count, each part
 /// read as `rawAll` reads it at its count (`scan::raw_all`: any `Enc` form, a block at a time through `Col::load`, never
-/// decoded whole; the null's values only counted, `CsvShape.atoms`), `csvText`'s schema refusals, then the rows
+/// decoded whole, `CsvShape.atoms`), `csvText`'s schema refusals, then the rows
 /// (`csv::write`). `IO Unit`.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 fn write(path: B, cs: B, n: usize, es: B) -> Result<O, Fail> {
@@ -60,17 +60,17 @@ fn write(path: B, cs: B, n: usize, es: B) -> Result<O, Fail> {
     let (mut v, mut l) = (Vec::new(), es);
     while !l.is_scalar() { v.push((l.field(0).field(0).usize_field(0), l.field(0).field(1))); l = l.field(1) }
     csv::arity(&cs, v.len()).map_err(at)?;
-    // each part's atom, `CsvShape.atoms`: `None` for the null's values
+    // each part's atom, `CsvShape.atoms`
     let ts = cs.iter().flat_map(|c| match c.shape {
-        csv::SH_NULL => alloc::vec![Some(csv::QT_U1), Some(csv::QT_I64), Some(c.t), None],
-        csv::SH_TEXT => alloc::vec![Some(csv::QT_I64), Some(csv::QT_I64), Some(c.t)],
-        _ => alloc::vec![Some(c.t)],
+        csv::SH_NULL => alloc::vec![csv::QT_U1, csv::QT_I64, c.t],
+        csv::SH_TEXT => alloc::vec![csv::QT_I64, csv::QT_I64, c.t],
+        _ => alloc::vec![c.t],
     });
-    let src = ts.zip(&v).map(|(t, &(k, e))| t.map(|t| scan::raw_all(t, k, e)).transpose()).collect::<Result<Vec<_>, _>>().map_err(at)?;
+    let src = ts.zip(&v).map(|(t, &(k, e))| scan::raw_all(t, k, e)).collect::<Result<Vec<_>, _>>().map_err(at)?;
     csv::schema(&cs).map_err(at)?;
     let cnt: Vec<usize> = v.iter().map(|p| p.0).collect();
     let mut tmp = alloc::vec![0u8; 8 << DEFAULT_LG];
-    csv::write(path.cstr(), &cs, n, &cnt, DEFAULT_LG, |p, lo, out| match &src[p] { Some(s) => s.load(lo, out, &mut tmp), None => out.fill(0) })
+    csv::write(path.cstr(), &cs, n, &cnt, DEFAULT_LG, |p, lo, out| src[p].load(lo, out, &mut tmp))
         .map_err(|e| match e { Fail::User(t) => at(t), e => e })?;
     Ok(boxed(0))
 }
