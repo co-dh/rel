@@ -782,9 +782,7 @@ theorem Tab.compOne_canon {A B C : Obj}
     have e := (colMap_post hiS).2 t htT
     rw [wpq, hnU] at e
     simp only [Op.eval, Except.ok.injEq] at e
-    have hneg : ∀ a b : UInt64, 0 - b + a = a - b := fun a b => by
-      rw [UInt64.sub_eq_add_neg, UInt64.sub_eq_add_neg, UInt64.zero_add, UInt64.add_comm]
-    rw [← e, hneg, toUInt64_sub hnps]
+    rw [← e, neg_add_word, toUInt64_sub hnps]
   ------------------------------------------------------------------ the rows of `U` are the pairs of `R ≫ S`
   have fs := firsts_spec Kk N.toNat
   have zR : ∀ i (hi : i < R.n.toNat), z.row ⟨i, by omega⟩ = R.val.row ⟨i, hi⟩ := fun i hi => by
@@ -948,16 +946,17 @@ theorem compBlock_holds {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {X : Tab
     X.Holds a d ↔ ∃ b, (∃ i : Fin R.n.toNat, (raw .i64 R.n c)[i.1]?.getD 0 = j.toUInt64 ∧ R.key.row i = a ∧
       R.val.row i = b) ∧ S.Holds b d := by
   unfold compBlock at h; simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨m, hm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨Rj, hRj, h⟩ := h
   have hmi : ∀ i < R.n.toNat, (raw .i64 R.n m)[i]?.getD 0 =
       if (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64 then 1 else 0 := fun i hi => by
-    have e1 := (colMap_raw hm).2.2.2 i hi
-    simp only [colConst_raw he, Array.getElem?_replicate, hi, if_true, Option.getD_some] at e1
-    have e2 : Op.eval .eq ((raw .i64 R.n c)[i]?.getD 0) j.toUInt64 =
+    have e1 := (colMap_post hm).2 i hi
+    have e2 : Op.eval .eq j.toUInt64 ((raw .i64 R.n c)[i]?.getD 0) =
         .ok (if (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64 then 1 else 0) := by
-      show Except.ok (if ((raw .i64 R.n c)[i]?.getD 0 == j.toUInt64) = true then 1 else 0) = _; simp
+      show Except.ok (if (j.toUInt64 == (raw .i64 R.n c)[i]?.getD 0) = true then 1 else 0) = _
+      by_cases hq : (raw .i64 R.n c)[i]?.getD 0 = j.toUInt64
+      · simp [hq]
+      · simp [hq, Ne.symm hq]
     rw [e2] at e1; exact (Except.ok.inj e1).symm
   obtain ⟨U, hU, hH⟩ := compOne_canon h (keep_wf hRj hR) hS
   rw [canon_holds hU, hH]
@@ -1006,7 +1005,6 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
   by_cases hL0 : List.range (nb - 1) = []
   · obtain rfl := hnil hL0
     have h0' := h0; unfold compBlock at h0'; simp only [bind] at h0'
-    rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
     rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, -, h0'⟩ := h0'
     rw [Except.bind_eq_ok'] at h0'; obtain ⟨_, hk0, h0'⟩ := h0'
     obtain ⟨U, hU, -⟩ := compOne_canon h0' (keep_wf hk0 hR) hS

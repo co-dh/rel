@@ -176,7 +176,7 @@ def sumOn {u : QAtomicType} {n : USize} (X : Vals (.arr (.atom u)) n) :
     let w ← colMap .sub n hi.enc lo.enc
     let (T, G, i) ← expand n w
     let v ← kgather T (← colMap .add T (← kgather T G n lo.enc) i) m (Arr.enc (t := u) f)
-    let seg ← colMap .first T i i .i64 .i64 [] [(.eq, 0)]
+    let seg ← colMap .eq T i (← colConst T 0)
     let (W, bad) ← sumTail "sum" u T seg v
     let badC ← kscatter .or T G bad n 0
     let L ← kscatter .last T G W.enc n 0
