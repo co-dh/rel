@@ -741,10 +741,11 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     ∀ σ {ss ss' : List Sem}, Sems.le ss ss' → e.2 σ ss ⊑ e.2 σ ss' := by
   intro e he hm σ ss ss' h
   simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- a `floatOps` row takes no relation; then one case per row whatever their number, in `rowDens` order
-  rcases he with he | ⟨_, -, rfl⟩
+  -- a `floatOps`, `arithOps`, `succ` or `cmpOps` row takes no relation; then one case per row whatever their number,
+  -- in `rowDens` order
+  rcases he with (((he | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩) | rfl) | ⟨_, -, rfl⟩
   rotate_left
-  · exact Core.Rel.le_refl _
+  iterate 4 exact Core.Rel.le_refl _
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h

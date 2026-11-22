@@ -179,7 +179,8 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc",
-   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil"] ++ floatOps.map (·.1)
+   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil"] ++ floatOps.map (·.1) ++
+  arithOps.map (·.1) ++ ["succ"] ++ cmpOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
@@ -720,6 +721,34 @@ theorem rowOK_float {s : String} (hs : s ∈ floatOps.map (·.1)) : RowOK s := b
         rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
           exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.floatOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.floatOp_den rfl h⟩⟩
 
+/-- An `arithOps` row at the atom `σ` names: `stepOn` of its verb (`Tab.arithOp_den`), one case per row. -/
+theorem rowOK_arith {s : String} (hs : s ∈ arithOps.map (·.1)) : RowOK s := by
+  simp only [arithOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
+  repeat' (rcases hs with rfl | hs)
+  all_goals first | (subst hs) | skip
+  all_goals
+    exact rowOK_of (c := ⟨_, fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+      cases hv
+      rcases σ with _ | ⟨_, _⟩ <;>
+        exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.arithOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.arithOp_den rfl h⟩⟩
+
+/-- `succ` at the atom `σ` names: `succOn` (`Tab.succOp_den`). -/
+theorem rowOK_succ : RowOK "succ" := rowOK_of (c := ⟨"succ", fun σ => (σ₁ σ, σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨_, _⟩ <;>
+    exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.succOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.succOp_den h⟩⟩
+
+/-- A `cmpOps` row at the atom `σ` names: the coreflexive `ordDen` of its order (`Tab.cmpOp_den`), one case per row. -/
+theorem rowOK_cmp {s : String} (hs : s ∈ cmpOps.map (·.1)) : RowOK s := by
+  simp only [cmpOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
+  repeat' (rcases hs with rfl | hs)
+  all_goals first | (subst hs) | skip
+  all_goals
+    exact rowOK_of (c := ⟨_, fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+      cases hv
+      rcases σ with _ | ⟨_, _⟩ <;>
+        exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.cmpOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.cmpOp_den rfl h⟩⟩
+
 theorem rowOK_sum : RowOK "sum" := rowOK_of (c := RowCode.sum) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.sum_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.sum_holds h hX⟩⟩
@@ -1123,7 +1152,10 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h36 : r.sym = "ran"; · rw [h36]; exact rowOK_ran
   by_cases h37 : r.sym = "nil"; · rw [h37]; exact rowOK_nil
   by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
-  simp [rowsProved, hu, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
+  by_cases ha : r.sym ∈ arithOps.map (·.1); · exact rowOK_arith ha
+  by_cases h38 : r.sym = "succ"; · rw [h38]; exact rowOK_succ
+  by_cases hc : r.sym ∈ cmpOps.map (·.1); · exact rowOK_cmp hc
+  simp [rowsProved, hu, ha, hc, h38, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
     h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/

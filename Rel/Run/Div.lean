@@ -113,16 +113,20 @@ order reads them (`wideCol`), one element-wise test per row. -/
 def cmpPairs (op : Op) {t : QAtomicType} (T : Tab (.atom t) (.atom t)) : Except String (Tab (.atom t) (.atom t)) := do
   T.keep (← colMap op T.n (← wideCol t T.n T.key.enc) (← wideCol t T.n T.val.enc))
 
-/-- **The row `s` of `cmpOps` on the pairs `X`** (`rowDens`: `ordDen`): the coreflexive on the pairs whose two words
-    pass the order `ordOp` of their atom, compared as `cmpPairs` compares a table's two columns. -/
+/-- The order test `<` (`lt`) or `≤` on the pairs `X` of the atom `t`: the coreflexive on the pairs whose two words
+    pass `ordOp lt t`, compared as `cmpPairs` compares a table's two columns. -/
+def cmpAt (lt : Bool) (t : QAtomicType) {n : USize} (X : Vals (.prod (.atom t) (.atom t)) n) :
+    Except String (Tab (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))) := do
+  let a ← wideCol t n X.1.enc; let c ← wideCol t n X.2.enc
+  Tab.keep ⟨n, X, X⟩ (← colMap (← ordOp lt t) n a c)
+
+/-- **The row `s` of `cmpOps` on the pairs `X`** (`rowDens`: `ordDen`): `cmpAt` at their one atom. -/
 def cmpOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match cmpOps.lookup s, A, B, X with
   | some lt, .prod (.atom t) (.atom t'), .prod (.atom u) (.atom u'), X =>
-    if h : t' = t ∧ u = t ∧ u' = t then by
-      obtain ⟨rfl, rfl, rfl⟩ := h
-      exact do
-        let a ← wideCol t n X.1.enc; let c ← wideCol t n X.2.enc
-        Tab.keep ⟨n, X, X⟩ (← colMap (← ordOp lt t) n a c)
+    -- three `if`s, so the casts are `Eq.rec` on `t = t`, which reduce, where an `And.rec` on the proof does not
+    if h₁ : t' = t then if h₂ : u = t then if h₃ : u' = t then by subst h₁ h₂ h₃; exact cmpAt lt _ X
+    else .error s!"{s} compares two values of one atom" else .error s!"{s} compares two values of one atom"
     else .error s!"{s} runs on pairs of one number object, found {repr t}×{repr t'} to {repr u}×{repr u'}"
   | some _, _, _, _ => .error s!"{s} runs on pairs of one number object"
   | none, _, _, _ => .error s!"{s}: no order"

@@ -117,6 +117,57 @@ theorem cmpPairs_holds {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t =
   · rintro ⟨⟨i, rfl, rfl⟩, hr⟩
     exact ⟨i, (hwv i).2.2 hr, rfl, rfl⟩
 
+/-- **`cmpAt lt t X` is the coreflexive `ordDen lt` on `X`**: row `i` of `X` kept where `ordOp lt t` answers `1`,
+    as in `cmpPairs_holds`. -/
+theorem cmpAt_holds {lt : Bool} {t : QAtomicType} {n : USize} {X : Vals (.prod (.atom t) (.atom t)) n}
+    {T : Tab (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))} (h : cmpAt lt t X = .ok T)
+    (a b : (Obj.prod (.atom t) (.atom t)).El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.ordDen lt (.atom t) a b := by
+  unfold cmpAt at h; simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i ka hka
+  split at h; · cases h
+  rename_i kv hkv
+  split at h; · cases h
+  rename_i op hop
+  split at h; · cases h
+  rename_i w hw
+  obtain ⟨-, -, -, hev⟩ := colMap_raw hw
+  have hwv : ∀ i : Fin n.toNat, (raw .i64 n w)[i.1]?.getD 0 < 2 ∧
+      ((raw .i64 n w)[i.1]?.getD 0 ≠ 0 ↔ ordAt lt t (X.1.row i) (X.2.row i)) := by
+    intro i
+    obtain ⟨⟨e, he⟩, hP⟩ := ordOp_iff hop X.1 X.2 hka hkv i
+    rw [Vals.row_atom, Vals.row_atom, hP, he, ← Except.ok.inj (he.symm.trans (hev i.1 i.2))]
+    cases e <;> simp
+  rw [keep_holds h (fun i hi => (hwv ⟨i, hi⟩).1)]
+  simp only [Tab.Holds, Lang.ordDen]
+  constructor
+  · rintro ⟨i, hi, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, rfl, (hwv i).2.1 hi⟩
+  · rintro ⟨⟨i, rfl⟩, rfl, ho⟩; exact ⟨i, (hwv i).2.2 ho, rfl, rfl⟩
+
+/-- **A row `s` of `cmpOps` on the pairs `X`** denotes `ordDen` of its order there (`cmpAt_holds`); no row at a pair of
+    two atoms or of non-atoms. -/
+theorem cmpOp_den {B : Obj} {n : USize} {X : Vals (.prod B B) n} {T : Tab (.prod B B) (.prod B B)} {s : String}
+    {lt : Bool} (hs : cmpOps.lookup s = some lt) (h : cmpOp s X = .ok T) (a b : (Obj.prod B B).El) :
+    T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.ordDen lt B a b := by
+  cases B
+  case atom t =>
+    simp only [cmpOp, hs] at h
+    rw [dif_pos (by simp), dif_pos (by simp), dif_pos (by simp)] at h
+    exact cmpAt_holds h a b
+  all_goals simp [cmpOp, hs] at h
+
+/-- **A row of `cmpOps` keeps `Tab.WF`**: `X` keyed to itself, `keep`. -/
+theorem cmpOp_wf {s : String} {B : Obj} {n : USize} {X : Vals (.prod B B) n} {T : Tab (.prod B B) (.prod B B)}
+    (h : cmpOp s X = .ok T) (hX : Vals.WF X) : T.WF := by
+  rcases hl : cmpOps.lookup s with _ | lt <;> cases B <;> simp only [cmpOp, hl] at h
+  case some.atom t =>
+    rw [dif_pos (by simp), dif_pos (by simp), dif_pos (by simp)] at h
+    change cmpAt lt t X = .ok T at h
+    simp only [cmpAt, bind, Except.bind_eq_ok'] at h
+    obtain ⟨_, -, _, -, _, -, _, -, h⟩ := h
+    exact keep_wf h ⟨hX, hX⟩
+  all_goals cases h
+
 /-- **`cmpOn op K L` is `K ≫ ordAt s t ≫ L`**: `cmpPairs` of `cross K L`. -/
 theorem cmpOn_holds {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t = .ok op)
     {n m : USize} {K : Vals (.atom t) n} {L : Vals (.atom t) m} {T : Tab (.atom t) (.atom t)} (h : cmpOn op K L = .ok T)

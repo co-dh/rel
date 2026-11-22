@@ -116,12 +116,16 @@ def arith (t : QAtomicType) (k : UInt8) (D : Tab K (.prod (.atom t) (.atom t)))
   let P ← Tab.keep ⟨E.n, E.key.1, w⟩ b
   Tab.comp P (← U P.val)
 
-/-- **`D ≫ succDen U`**: `D ≫ dom U`, each value `u` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the
-null to itself) by two `colMap`s, `≫ dom U`; `U X` the universe at the values `X`, as in `arith`. -/
+/-- Each word `u` of the `i64` column `e` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the null to itself) by
+    two `colMap`s: the step of `succ` and `succOp`. -/
+def succCol (n : USize) (e : Enc) : Except String (Arr .i64 n) := do
+  colArr .add n e (← colMap .first n e e .i64 .i64 [] [(.ne, nulWord)])
+
+/-- **`D ≫ succDen U`**: `D ≫ dom U`, `succCol`, `≫ dom U`; `U X` the universe at the values `X`, as in `arith`. -/
 def succ (D : Tab K .long) (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) :
     Except String (Tab K .long) := do
   let E ← D.comp (← (← U D.val).dom)
-  let s ← colArr .add E.n E.val.enc (← colMap .first E.n E.val.enc E.val.enc .i64 .i64 [] [(.ne, nulWord)])
+  let s ← succCol E.n E.val.enc
   Tab.comp ⟨E.n, E.key, s⟩ (← (← U s).dom)
 
 end Tab
@@ -152,12 +156,11 @@ def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String 
   | some _, _, _, _ => .error s!"{s} runs from a pair of one number object to it"
   | none, _, _, _ => .error s!"{s}: no value verb"
 
-/-- **The row `succ` on the values `X`** (`rowDens`: `succOn`): each `u` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping
-    `u + 1`, the null to itself) by two `colMap`s, `Tab.succ`'s step without its universe. -/
+/-- **The row `succ` on the values `X`** (`rowDens`: `succOn`): `succCol`, `Tab.succ`'s step without its universe. -/
 def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .atom .i64, .atom .i64, X => do
-    let s ← colArr .add n X.enc (← colMap .first n X.enc X.enc .i64 .i64 [] [(.ne, nulWord)])
+    let s ← succCol n X.enc
     pure ⟨n, X, s⟩
   | _, _, _ => .error "succ runs from an object of i64 to it"
 
