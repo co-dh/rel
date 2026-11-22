@@ -24,7 +24,8 @@ def OTy.poly : OTy → Bool
 
 def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
   -- one element is the terminal object: stored at `1`, no column (`Obj.one`)
-  | .elems ws => pure { ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩,
+  | .elems ws => pure {
+      ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩,
       seg := ws.length != 1, obj := if ws.length = 1 then .one else .long }
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
@@ -572,6 +573,8 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
       -- the column's shape by its declared type and its stored object together; which atoms each takes is `schema`'s
       let col : Option (Db.CsvShape × QAtomicType × List String) := match t, ← liftExcept (objOf env.objs p t) with
         | .base n, .atom a => some (.atom, a, elems n)
+        -- `1`: its one element's name, the code `0` of a long column (`Table.csvEncs`)
+        | .base n, .one => some (.atom, .i64, elems n)
         | .sum (.base n) _, .sum (.atom a) .one => some (.null, a, elems n)
         | .arr (.base n), .arr (.atom a) => some (.text, a, elems n)
         | _, _ => none
@@ -864,7 +867,7 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
   | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ => do
     pure (g ``Gen.sumV #[oE a, oE b, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
       ← valsE a l x, ← valsE b r y])
-  | .one, _, _ => pure (mkConst ``Unit.unit)
+  | .one, n, _ => pure (g ``Gen.oneV #[uE n])
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
   pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE A R.n R.key, ← valsE B R.n R.val])

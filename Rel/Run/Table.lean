@@ -180,7 +180,9 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
     let ⟨l, x, es⟩ ← encVals path a es
     let ⟨r, y, es⟩ ← encVals path b es
     if h : m = n then pure ⟨n, ⟨l, r, tag, h ▸ idx, x, y⟩, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"
-  | .one, es => pure ⟨0, (), es⟩
+  -- a side of `1`: its part (a CSV column of its one element's code, or a sum's empty right side) gives the count
+  | .one, (n, _) :: es => pure ⟨n, (), es⟩
+  | .one, [] => .error s!"{path}: no column part left for a side of `1`"
 
 /-- How many atom columns `A` has when it is a product of atoms (the `S` of a CSV `S+1`); none for any other object. -/
 def atomCount : Obj → Option Nat
@@ -195,9 +197,12 @@ def toCsv {α : Type} (path : String) : Obj → List α → Except String (List 
   | .atom _, x :: ps => pure ([x], ps)
   | .prod a b, ps => do let (x, ps) ← toCsv path a ps; let (y, ps) ← toCsv path b ps; pure (x ++ y, ps)
   | .arr (.atom _), lo :: hi :: e :: ps => pure ([lo, hi, e], ps)
+  -- the column of a `1` is its one element's name in every row
+  | .one, x :: ps => pure ([x], ps)
+  -- the right side's `1` part is dropped: a null is an empty field
   | .sum a .one, t :: i :: ps => match atomCount a with
-    | some k => if k ≤ ps.length then pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
-      else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a sum"
+    | some k => if k + 1 ≤ ps.length then pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop (k + 1))
+      else .error s!"{path}: {ps.length} parts for the {k} nullable columns and the `1` of a sum"
     | none => .error s!"{path}: a sum whose left is no product of atoms has no CSV columns"
   | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
 
@@ -232,7 +237,9 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
           unless a == b do
             .error s!"{path}: data row {j + 1}: column '{c}' is {s a} and column '{c'}' is {s b}; the columns of one \
               `S+1` are empty together, and all of them empty is the `1`"
-    pure ([t, i, v] ++ g.map (·.2.2), cs, ns.drop k)
+    -- the right side `1` of no rows: every row reads its one value
+    pure ([t, i, v] ++ g.map (·.2.2) ++ [(0, .pos)], cs, ns.drop k)
+  | .one, x :: cs, _ :: ns => pure ([x], cs, ns)
   | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
 
 /-- The CSV file `path` as the table `K ⟶ S`, its header `cols` (the key's columns then the value's, `Db.CsvCols`),
@@ -259,10 +266,10 @@ def readCsv (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S
 /-- The encodings of the side `x`'s CSV columns' parts with their counts (`toCsv` of `cols`' order), as
     `Db.CsvShape.atoms` lists them; which objects a CSV column may be is `Db.Csv.schema`'s to say. -/
 def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String (List (USize × Enc)) := do
-  -- a side of `1` has no CSV part: the field of a null is empty
-  let ps ← (cols A x "").filterMapM fun
-    | (_, .inl _) => .ok none
-    | (_, .inr (.vector _ k e _)) => .ok (some (k, e))
+  -- a side of `1` stores no column; its CSV part is its one element's code `0` in each of its rows
+  let ps ← (cols A x "").mapM fun
+    | (_, .inl k) => return (k, ← colConst k 0)
+    | (_, .inr (.vector _ k e _)) => .ok (k, e)
     | (p, _) => .error s!"{path}: column part `{p}` is not a vector"
   let (cs, rest) ← toCsv path A ps
   unless rest.isEmpty do .error s!"{path}: {rest.length} column parts past a side"
