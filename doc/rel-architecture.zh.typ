@@ -372,7 +372,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`est(Q)`], [`G = ∋`、`D = ran ⟨G, G⟩`、`V = ran G`；`Y = (D − Q(D)) − ran ⟨V, V⟩`（失败的对，去掉对角）；
     结果 `G − ⟨G, G⟩ ≫ Y ≫ π₁`。只用 `∋` `⟨,⟩` `ran` `−` `≫` `π₁` 各行，`Q` 只在一个数组内的对 `D` 上跑；
     `D` 是 coreflexive，`D − Q(D)` 只看 `Q p p`，即 `Q` 按对角读（`D − Q(D) = D − (Q(D) ∩ D)`）],
-  [`thin(Q)`], [`G` `D` 同上；`Q` 按对角读（同 `est`）：`Δ = Q(D) ∩ D`（`D` 中 `Q p p` 的对 `p`）；
+  [`front(Q)`], [`G` `D` 同上；`Q` 按对角读（同 `est`）：`Δ = Q(D) ∩ D`（`D` 中 `Q p p` 的对 `p`）；
     `w = D ≫ ⟨π₂, π₁⟩`，`S = dom (w ≫ Δ)`（交换后也在 `Δ` 中的对；`D` 含每对的交换），`Y = Δ − S`
     （严格胜出的对）；结果 `Λ(G − ⟨G, G⟩ ≫ Y ≫ π₂)` on `X`。`Q` 只跑一次],
   [`cat`（`(xs, ys) ↦ xs ++ ys`）], [两 payload 拼接（`scatter` + `scan(add)`）→ 两侧格界 → `scan` 宽 `w₁ + w₂` →
@@ -433,11 +433,11 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`loop(F)`（草稿，待审）], [`P ≫ loop(F)`：在 `ran P` 的每个 `(c, ys)` 上，以 `c` 起、沿 `ys` 的左折叠
     （`Tab.foldRounds` + `cons°`），每轮 `p ≫ F(ran p)`，`p` 为该轮的对 `(acc, y)`],
   [`merge(Q)`（草稿，待审）], [状态 `((x, y), acc)` 自 `((x, y), [])` 起，以 `cat(x, y)` 为时钟跑 `|x| + |y|` 轮
-    `Tab.foldRounds`：`Q` 按对角读（同 `thin`）：`l = dom(⟨a, b⟩ ≫ (Q(D) ∩ D))`，`D = ran ⟨a, b⟩`
+    `Tab.foldRounds`：`Q` 按对角读（同 `front`）：`l = dom(⟨a, b⟩ ≫ (Q(D) ∩ D))`，`D = ran ⟨a, b⟩`
     （`a`、`b` 为两侧 `cons°` 的头；`(a, b) Q (a, b)` 的键），`l` 或 `y` 空时取 `a`，否则取 `b`，
     `snoc` 到 `acc`；结果 `π₂`],
   [`thinL(Q)`（草稿，待审）], [`⦇nil, bump(Q)⦈ʳ`（`Tab.foldRounds` + `snoc°`）；`bump` 在对 `(x, ys)` 上：
-    `u = ys ≫ cons°` 得 `(b, bs)`，`Q` 按对角读（同 `thin`，`Q(D) ∩ D`）：`(x, b) Q (x, b)` 时 `x :: bs`，
+    `u = ys ≫ cons°` 得 `(b, bs)`，`Q` 按对角读（同 `front`，`Q(D) ∩ D`）：`(x, b) Q (x, b)` 时 `x :: bs`，
     `(b, x) Q (b, x)` 时 `ys`，`ys` 空或两者皆否时 `cons`（`x :: ys`）],
   [`F(R)`（草稿，待审）], [格界 → EXPAND → `gather` 元素成平铺 payload `v`（`T` 行）→ `⟨pos, v⟩ ≫ R`（按位置作键）；
     每个位置恰一个像（`R` 在这些元素上是函数）时，像按位置序即新 payload，格宽不变（`Vals.cells`），一遍完成；
@@ -492,7 +492,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
   [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [能：改 `Expand` 不共享开项，无需新证明],
   [3], [`setify` / `asc` 行], [`asc`、`seen` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
   [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [多半能（positive body）；可能要加 locality 前提],
-  [5], [`lam` `E` `thin`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1）],
+  [5], [`lam` `E` `front`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1）],
   [6], [`call`], [泛型定义还没有语义（stage 5）], [能：语义 = 展开成定义的项],
   [—], [body 非 positive 的 `μ` / `ν`], [非单调函数的不动点，Knaster–Tarski 不适用，迭代可能振荡], [不能；改为 elaboration 时报错，不再是 gap],
 )

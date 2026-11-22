@@ -1139,7 +1139,7 @@ def mapFoldB (A B : Obj) (I R : TabB) : Bld TabB := funT [I, R] fun
   | _ => throw "F(R)'s fold: not two tables"
 
 /-- `G = ∋` on the `n` arrays `X` of `B`, `P = ⟨G, G⟩` and `D = ran P`: the pairs of elements of one array that
-    `Tab.est` and `Tab.thin` ask their test about. -/
+    `Tab.est` and `Tab.front` ask their test about. -/
 def pairsB (B : Obj) (n : Nat) (X : Cols) : Bld (TabB × TabB × TabB) := do
   let G ← memB B n X
   let P ← pairB (.arr B) B B G G
@@ -1238,6 +1238,23 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
       let r ← x (if c == ``GenK.dom then { dom := D.dom <|> D.ran } else { ran := D.dom <|> D.ran })
       coreflB r.n (if c == ``GenK.dom then r.key else r.val)
     | _ => throw s!"row `{r.sym}` given {xs.length} relations, not one"
+  -- `GenK.testVals`: `Tab.est`, `Tab.front` on the arrays in demand, the pair test `Q` run knowing its domain `Dt`
+  else if c == ``Tab.est || c == ``Tab.front then match A, xs with
+    | .arr b, [q] => do
+      let (n, X) ← known r.sym D.dom
+      let (G, P, Dt) ← pairsB b n X
+      if c == ``Tab.est then
+        let V ← coreflB G.n G.val
+        let VV ← pairB b b b V V
+        let Y ← diffB (← diffB Dt (← q { dom := some (Dt.n, Dt.val) })) (← coreflB VV.n VV.val)
+        diffB G (← compB P (← piB b b true Y.n Y.key))
+      else
+        let Δ ← interB (← q { dom := some (Dt.n, Dt.val) }) Dt
+        let w ← pairB (.prod b b) b b (← piB b b false Dt.n Dt.key) (← piB b b true Dt.n Dt.key)
+        let wΔ ← compB w Δ
+        let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
+        lamB b n X (← diffB G (← compB P (← piB b b false Y.n Y.key)))
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
   else if c == ``GenK.nil then match B with
     | .arr b => do let (n, X) ← known r.sym D.dom; nilB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
@@ -1364,22 +1381,6 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (n, X) ← known "Λ" D.dom
     lamB B n X (← tabB σ { dom := some (n, X) } R)
   | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
-  -- `GenK.est`, `GenK.thin`: `Tab.est`, `Tab.thin` on the arrays in demand, `Q` run knowing its domain `D`
-  | _, _, .est (B := B) Q => do
-    let (n, X) ← known "est" D.dom
-    let (G, P, Dt) ← pairsB B n X
-    let V ← coreflB G.n G.val
-    let VV ← pairB B B B V V
-    let Y ← diffB (← diffB Dt (← tabB σ { dom := some (Dt.n, Dt.val) } Q)) (← coreflB VV.n VV.val)
-    diffB G (← compB P (← piB B B true Y.n Y.key))
-  | _, _, .front (B := B) Q => do
-    let (n, X) ← known "thin" D.dom
-    let (G, P, Dt) ← pairsB B n X
-    let Δ ← interB (← tabB σ { dom := some (Dt.n, Dt.val) } Q) Dt
-    let w ← pairB (.prod B B) B B (← piB B B false Dt.n Dt.key) (← piB B B true Dt.n Dt.key)
-    let wΔ ← compB w Δ
-    let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
-    lamB B n X (← diffB G (← compB P (← piB B B false Y.n Y.key)))
   -- `GenK.fold`, `GenK.foldr`: `Tab.foldRounds` from `idU X` and `X × ran e`, `S` on `⟨P, el⟩` (`⟨el, P⟩`)
   | _, _, .fold (E := E) (V := V) e S => do
     let (n, X) ← known "fold" D.dom

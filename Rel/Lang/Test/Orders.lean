@@ -5,7 +5,7 @@ namespace Rel.Lang.Test
 open Tab Rel.Lang Rel.Alg Rel
 
 open Rel.Programs.prelude Programs.blocks in
-/-- `Λ(S)est(P)`, `Λ(S)thin(P)` with the order `P` a family (the rows of §e on `S∋`) against the order closed
+/-- `Λ(S)est(P)`, `Λ(S)front(P)` with the order `P` a family (the rows of §e on `S∋`) against the order closed
     (the closed row), on the reachable states — `est` of a map is the map — and on their complements, where a
     block has two values. -/
 rel_program orders where

@@ -1014,7 +1014,7 @@ def lJunc : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
       (comp S (pair (comp (outl b c) (Pre.inr a b)) (outr b c))), .sum a b, c)
 
 /-- `Λ(R)` lifted on the sources `S : I ⟶ a` of each key, `Rπ₁` (`dom`) when none: `⟨𝟙,S⟩⟨π₂,Λ(Rᴵ)⟩`. `Λ` takes
-    `S = ⊤` onto `a`'s universe, being total; `E` and `thin` take `dom`, as their `a = [x]` has no universe. -/
+    `S = ⊤` onto `a`'s universe, being total; `E` and `front` take `dom`, as their `a = [x]` has no universe. -/
 def lLam (S : Option Pre) : Pre × OTy × OTy → Pre × OTy × OTy
   | (R, a, b) => (comp (pair (id I) (S.getD (comp R (outl a b)))) (pair (outr I a) (lam (keyed I R a b))), a, .arr b)
 
@@ -2634,7 +2634,7 @@ def test (p : Pre) : Except Err Cor :=
     | _ => throw err
 termination_by (sizeOf p, 1)
 
-/-- The order (or coreflexive) parameter `Q : B ⟶ B` of `est thin filter takewhile thinL merge`
+/-- The order (or coreflexive) parameter `Q : B ⟶ B` of `est front filter takewhile thinL merge`
     as its pair test `τ(Q)` (§a), which the operator runs on the pairs it compares: a closed `Q` and a `Q` that
     runs on demand alike, and any `Q` testable on pairs. `why` names the operator; the error names the leaf. -/
 def param : Pre → Except Err ((B : Obj) × Tm (.prod B B) (.prod B B))

@@ -1,11 +1,11 @@
 import Rel.Run.List
 
-/-! The power operators `est`, `thin`, `atPos` of `Tm` (`Rel/Run/Lang/Tm.lean`) and the `prims` rows `τ`, `length`,
+/-! The power operators `est`, `front`, `atPos` of `Tm` (`Rel/Run/Lang/Tm.lean`) and the `prims` rows `τ`, `length`,
 `setify` (`rowDens`) as operators on `Tab` over the five kernels (PLAN 6.14 W3, step T5), on the encoded columns as they
 are, as `Rel/Run/Div.lean`. Each is run on the values in demand `X` its context gives, as the old `Gen.*` and
-`RowCode.*` bodies read them, and its right-hand side is its denotation (`Rel/Lang/Den.lean`: `estDen`, `thinDen`,
-`atDen`, `rowDens`). `est` and `thin` read their order as a test `q` of pairs, run only on the pairs one array holds
-(`Gen.est`, `Gen.thin`); `τ` and `setify` are `Λ` of `𝟙` and of `∋`; `length` and `atPos` read the cell bounds. -/
+`RowCode.*` bodies read them, and its right-hand side is its denotation (`Rel/Lang/Den.lean`: `estDen`, `frontDen`,
+`atDen`, `rowDens`). `est` and `front` read their order as a test `q` of pairs, run only on the pairs one array holds
+(`Gen.est`, `Gen.front`); `τ` and `setify` are `Λ` of `𝟙` and of `∋`; `length` and `atPos` read the cell bounds. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
@@ -54,7 +54,7 @@ def est {n : USize} (q : Tab (.prod B B) (.prod B B) → Except String (Tab (.pr
   let Y ← (← D.diff (← q D)).diff (← ran (← pair V V))
   G.diff (← P.comp (← outl Y.key))
 
-/-- **`thin(Q)` on the arrays `X`** (`thinDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of
+/-- **`front(Q)` on the arrays `X`** (`frontDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of
 one array (`G = ∋` on `X`), read on the diagonal: `Δ = diag q D` the pairs `p` with `q p p`; `S = dom (w ≫ Δ)`
 the pairs whose swap is in `Δ` (`w = ⟨π₂, π₁⟩` on `D`; `D` holds every swap), `Y = Δ − S` the pairs `(b, c)` where
 `b` beats `c` strictly; `(xs, c)` of `G` dropped where `⟨G, G⟩ ≫ π₂` on `Y` reaches it; then `Λ` on `X`. `q` runs

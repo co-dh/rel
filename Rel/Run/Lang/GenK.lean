@@ -229,7 +229,7 @@ def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Rel A B) : Rel 
 
 end GenK
 
-/-! ### T4, T5: `≤ < succ`, the value verbs, `Λ E nil est thin at`, and the wrapper `after` of the rows -/
+/-! ### T4, T5: `≤ < succ`, the value verbs, `Λ E nil est front at`, and the wrapper `after` of the rows -/
 
 namespace GenK
 

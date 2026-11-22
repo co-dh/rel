@@ -6,7 +6,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 /-! The kernel path, steps T4, T5, T7: `kernT45` uses `≤ < succ plus Λ E nil at` and the rows
     `∋ τ length setify sum snoc cons cat zip cons° snoc° cat°` with T2 operators, so it runs on the five kernels,
-    on inputs with empty cells and duplicate rows. `es`, `th` are `est(≤)`, `thin(≤)` on `x`, the pair test
+    on inputs with empty cells and duplicate rows. `es`, `th` are `est(≤)`, `front(≤)` on `x`, the pair test
     elaborated through `⟨π₁, π₂⟩`. -/
 rel_program kernT45 where
     obj N = 0…5
@@ -82,7 +82,7 @@ rel_program kernT45 where
     check uc = {(1,(3,1 2)),(3,(1,[2])),(4,(1,[2]))}
     check us = {(1,(3 1,2)),(3,([1],2)),(4,([1],2))}
     check ut = {(1,([],3 1 2)),(1,([3],1 2)),(1,(3 1,[2])),(1,(3 1 2,[])),(2,([],[])),(3,([],1 2)),(3,([1],[2])),(3,(1 2,[])),(4,([],1 2)),(4,([1],[2])),(4,(1 2,[]))}
-    -- `est(≤)`: the elements `≤` every other one, the least; `thin(≤)` the set of them
+    -- `est(≤)`: the elements `≤` every other one, the least; `front(≤)` the set of them
     check es = {(1,1),(3,1),(4,1)}
     check th = {(1,[1]),(2,[]),(3,[1]),(4,[1])}
 
@@ -110,7 +110,7 @@ rel_program sumFold where
 #guard ["le", "a1", "ms", "sm", "es"].all fun d => ((get kernT45.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ((get kernT45.expanded "th" .long (.arr .long)).map (·.n.toNat != 0)) == some true
 
-/-! `thin` reads its test on the diagonal (`thinDen`: `TQ (b,c) (b,c)`), so a `Q` that is not coreflexive counts
+/-! `front` reads its test on the diagonal (`frontDen`: `TQ (b,c) (b,c)`), so a `Q` that is not coreflexive counts
     only at its diagonal. `qn` has `(2,1) ↦ (2,1)` and `(1,2) ↦ (2,1)`: on the diagonal `2` beats `1` strictly
     (`(1,2) ↦ (1,2)` is absent), and `(1,2) ↦ (2,1)` counts for nothing. Worked by hand on `x`: `3 1 2` keeps `2 3`,
     `1 2` keeps `2`, `[]` keeps `[]`. A reading by domain would keep `1 2 3` and `1 2`; `Q(D) − dom(swap)` on pairs

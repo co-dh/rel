@@ -317,7 +317,7 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
 mutual
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
-    occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `thin` hold an image
+    occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `front` hold an image
     whole (`lamDen`'s `↔`), so their part must be too. A row given any number of relations passes their sign where
     its `prims` entry is `mono` (`Tm.spinePol`, `rowDens_mono`), `F(X)` among them. -/
 def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool

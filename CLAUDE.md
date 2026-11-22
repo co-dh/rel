@@ -33,7 +33,7 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
   Lean's `List`.
 - The algebra on it: composition `≫`, converse `°`, `∩`, `∪`, `⊑`, `𝟘`, `⊤`, `𝟙`, left/right/symmetric
   division, `Λ` and `∋`, pair `⟨R,S⟩` and product, sum `[R,S]`, fold `⦇e,f⦈`, hylo, functors `F(R)`, natural
-  and lax natural transformations (`∋`, `est`, `thin`), maps on positions, and `where` (q's `where`: a set of positions
+  and lax natural transformations (`∋`, `est`, `front`), maps on positions, and `where` (q's `where`: a set of positions
   numbered in position order, the one place row order enters; not `Enc.enum`, the symbol dictionary encoding).
 
 ## Goal
@@ -55,7 +55,7 @@ Rel is a programming language of its own, not an implementation of k or q:
   Where code and that document differ, say so and ask; never propose a second design beside it, because a
   design invented without reading it has been rejected each time.
 - **Notation follows freyd's.** Composition in diagram order by juxtaposition or `≫` (`R ≫ S`: first `R`, then `S`);
-  applying an operator takes parentheses (`F(R)`, `thin(Q)`, `f(a)`); a converse with a name of its own is written by
+  applying an operator takes parentheses (`F(R)`, `front(Q)`, `f(a)`); a converse with a name of its own is written by
   that name (`≥`, not `≤°`; `∈`, not `∋°`).
 - **Everything is a relation: that is the design goal** — a prim row or a library definition takes relations and
   returns a relation (`asc(P) : ℕ ⟶ α` numbers a set by value), never a function on list cells standing in for one

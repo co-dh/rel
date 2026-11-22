@@ -2051,7 +2051,7 @@ private def pairsIn {B : Obj} (Q : Tab B B) (D : Tab (.prod B B) (.prod B B)) :
 private def estSp {B : Obj} [BEq B.El] (Q : Tab B B) (xs : List (List B.El)) : List (List B.El × B.El) :=
   xs.flatMap fun x => (x.filter fun b => x.all fun c => c == b || Q.toList.contains (b, c)).map (x, ·)
 
-/-- `thin(Q)` (`thinDen`): each `x` to its `c` that no `b` of `x` beats strictly, each once. -/
+/-- `front(Q)` (`frontDen`): each `x` to its `c` that no `b` of `x` beats strictly, each once. -/
 private def frontSp {B : Obj} [BEq B.El] (Q : Tab B B) (xs : List (List B.El)) : List (List B.El × List B.El) :=
   xs.map fun x =>
     (x, (x.filter fun c => !x.any fun b => Q.toList.contains (b, c) && !Q.toList.contains (c, b)).eraseDups)
@@ -2081,7 +2081,7 @@ private def ordPs : Tab (.prod .long .long) (.prod .long .long) :=
 #guard let X : Vals (.prod .long .long) 4 := (Alg.col [1, 2, 1, 3], Alg.col [5, 5, 5, 6])
   canonOk (Tab.tau X) && specOk (Tab.tau X) ((Vals.rows X).map fun a => (a, [a]))
 
--- `est`, `thin` against `estDen`, `thinDen`, each order, on arrays of longs and of pairs
+-- `est`, `front` against `estDen`, `frontDen`, each order, on arrays of longs and of pairs
 #guard arrXs.all fun T => let X := T.key; ordLs.all fun Q =>
   canonOk (Tab.est (pairsIn Q) X) && specOk (Tab.est (pairsIn Q) X) (estSp Q (Vals.rows X)) &&
   canonOk (Tab.front (pairsIn Q) X) && cellsOk (Tab.front (pairsIn Q) X) (frontSp Q (Vals.rows X))
@@ -2697,7 +2697,7 @@ open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
 namespace Tab
 
 /-- **The test `q` agrees with `TQ` on the diagonal of the pairs it is given** (`D.val`): the one hypothesis on a test
-`Q` of `est`, `thin`, `thinL`, `merge`, which read `Q` only at `p Q p`. -/
+`Q` of `est`, `front`, `thinL`, `merge`, which read `Q` only at `p Q p`. -/
 def QDiag {k : Obj} (q : Tab k k → Except String (Tab k k)) (TQ : k.El → k.El → Prop) : Prop :=
   ∀ D T, D.WF → q D = .ok T → ∀ p, (∃ i, D.val.row i = p) → (T.Holds p p ↔ TQ p p)
 

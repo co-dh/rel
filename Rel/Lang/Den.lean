@@ -583,8 +583,8 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
-  | conv R ih | est R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
-  | lam R ih | front R ih =>
+  | conv R ih | succ R ih | arith _ _ R ih | leq _ R ih | lt _ R ih
+  | lam R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
     intro ρ ρ' h
@@ -787,10 +787,12 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
   · exact Sem.two_mono foldI_le h
   · dsimp only; refine Sem.one_mono (fun hT => Core.Rel.mu_mono fun _ => le_iff.2 fun _ _ hm => ?_) h
     exact hm.elim .inl fun ⟨b, hb, hx⟩ => .inr ⟨b, le_iff.1 hT _ _ hb, hx⟩
-  -- `dom`, `ran`: `𝟙 ∩ T T°`, `𝟙 ∩ T° T` grow with `T`
+  -- `dom`, `ran`: `𝟙 ∩ T T°`, `𝟙 ∩ T° T` grow with `T`; `est`: a larger test refutes fewer elements
   all_goals
     dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
-    obtain ⟨he, y, h1, h2⟩ := hm; exact ⟨he, y, le_iff.1 hT _ _ h1, le_iff.1 hT _ _ h2⟩
+    first
+    | (obtain ⟨he, y, h1, h2⟩ := hm; exact ⟨he, y, le_iff.1 hT _ _ h1, le_iff.1 hT _ _ h2⟩)
+    | exact le_iff.1 (est_le hT) _ _ hm
 
 theorem Prim.den_mono {r : Prim} (hr : (Prim.find? r.sym).any (·.mono) = true) {A B : Obj} {ss ss' : List Sem}
     (h : Sems.le ss ss') : Prim.den r A B ss ⊑ Prim.den r A B ss' := by
@@ -904,7 +906,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
       simp only [hb]; exact sle.refl _
     · simp only [Tm.pol, Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
       exact sle.lfp fun X => ih.1 s _ _ hp (g.bind e X)
-  | est Q ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 est_le (ih.1 s ρ ρ' hp g)
   | succ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 succ_le (ih.1 s ρ ρ' hp g)
   | arith _ _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 arith_le (ih.1 s ρ ρ' hp g)
   | leq _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 leq_le (ih.1 s ρ ρ' hp g)

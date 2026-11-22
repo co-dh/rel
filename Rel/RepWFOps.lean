@@ -2,7 +2,7 @@ import Rel.RepWF
 import Rel.Run.Cast
 import Rel.Run.Where
 
-/-! **`Tab.WF` kept by the rounds, `thin`, the value verbs, `$` and the folds on cells** (PLAN 8.5), on the
+/-! **`Tab.WF` kept by the rounds, `front`, the value verbs, `$` and the folds on cells** (PLAN 8.5), on the
 lemmas of `Rel/RepWF.lean` (`Tab.pack_wf` and the List ops'). `positions` is `positions_spec` (`Rel/RepWhere.lean`). -/
 
 namespace Rel
@@ -136,7 +136,7 @@ theorem thinL_wf {B : Obj} {n : USize}
   obtain ⟨p, hp, hs⟩ := hs
   exact bump_wf hq hs (pair_wf hp wel wP)
 
-/-- **`thin(Q)` keeps `Tab.WF`** where `q` does: `mem`, `pair`, `ran`, `diag`, `−`, `≫`, then `lam`. -/
+/-- **`front(Q)` keeps `Tab.WF`** where `q` does: `mem`, `pair`, `ran`, `diag`, `−`, `≫`, then `lam`. -/
 theorem front_wf {B : Obj} {n : USize} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
     (hq : ∀ D t, q D = .ok t → D.WF → t.WF) {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr B)}
     (h : front q X = .ok t) (hX : Vals.WF X) : t.WF := by
@@ -213,7 +213,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
     obtain rfl : b = b' := hb1
     exact hno ⟨c, ((eP xs _).1 hp).2.2, fun e => hne e.symm, hq'⟩
 
-/-- **`thin q X` denotes `thinDen`** (`Tab.thin`), its test `q` agreeing with `TQ` on the diagonal of the pairs it is
+/-- **`front q X` denotes `frontDen`** (`Tab.front`), its test `q` agreeing with `TQ` on the diagonal of the pairs it is
 given: `(xs, c)` of `G = ∋` dropped exactly where some `(b, c)` of `D = ran ⟨G, G⟩` has `TQ (b, c) (b, c)` and its
 swap has not; then `lam_den`. -/
 theorem front_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
