@@ -68,6 +68,55 @@ def NumFmt.exact : NumFmt → NumFmt → Bool
   | .float e p, .float e' p' => e ≤ e' && p ≤ p'
   | .float .., .int .. => false
 
+private theorem two_pow_le_add_one {x y : Nat} (hy : 1 ≤ y) : 2 ^ x ≤ 2 ^ y + 1 ↔ x ≤ y := by
+  constructor
+  · intro h; apply Decidable.byContradiction; intro hxy
+    have : 2 ^ (y + 1) ≤ 2 ^ x := Nat.pow_le_pow_right (by decide) (by omega)
+    have : 2 ≤ 2 ^ y := by simpa using Nat.pow_le_pow_right (n := 2) (by decide) hy
+    rw [Nat.pow_succ] at *; omega
+  · intro h; have := Nat.pow_le_pow_right (n := 2) (by decide) h; omega
+
+private theorem two_pow_le_one {x : Nat} : 2 ^ x ≤ 1 ↔ x = 0 := by
+  constructor
+  · intro h; apply Decidable.byContradiction; intro hx
+    have := Nat.pow_le_pow_right (n := 2) (by decide) (Nat.one_le_iff_ne_zero.2 hx); simp at this; omega
+  · intro h; simp [h]
+
+/-- What `exact` runs as: the bounds compared by their exponents. `lo`, `hi` of a 64-bit format are `∓2^63`, past
+`Int`'s small values (`±2^31`), so comparing them builds GMP numbers. -/
+private def NumFmt.exactImpl : NumFmt → NumFmt → Bool
+  | .int s b, .int s' b' =>
+    (if s' then !s || b - 1 ≤ b' - 1 else !s || b ≤ 1) &&
+    (match s, s' with | true, true => b - 1 ≤ b' - 1 | true, false => b - 1 ≤ b' | false, true => b ≤ b' - 1
+                      | false, false => b ≤ b')
+  | .int s b, .float _ p => if s then b - 1 ≤ p + 1 else b ≤ p + 1
+  | .float e p, .float e' p' => e ≤ e' && p ≤ p'
+  | .float .., .int .. => false
+
+@[csimp] private theorem NumFmt.exact_eq_impl : @NumFmt.exact = @NumFmt.exactImpl := by
+  funext f g
+  have P (x y : Nat) : ((2 : Int) ^ x ≤ 2 ^ y) ↔ x ≤ y := by
+    rw [show (2 : Int) = ((2 : Nat) : Int) from rfl, ← Int.natCast_pow, ← Int.natCast_pow, Int.ofNat_le]
+    exact Nat.pow_le_pow_iff_right (by decide)
+  have Q (x p : Nat) : ((2 : Int) ^ x ≤ 2 ^ (p + 1) + 1) ↔ x ≤ p + 1 := by
+    rw [show (2 : Int) = ((2 : Nat) : Int) from rfl, ← Int.natCast_pow, ← Int.natCast_pow]
+    rw [← two_pow_le_add_one (Nat.le_add_left 1 p)]; omega
+  have R (x : Nat) : ((2 : Int) ^ x ≤ 1) ↔ x = 0 := by
+    rw [show (2 : Int) = ((2 : Nat) : Int) from rfl, ← Int.natCast_pow, ← two_pow_le_one]; omega
+  have W (x : Nat) : (1 : Int) ≤ 2 ^ x := by simpa using (P 0 x).2 (Nat.zero_le _)
+  cases f with
+  | int s b => cases g with
+    | int s' b' =>
+      have := P (b - 1) (b' - 1); have := P (b - 1) b'; have := P b (b' - 1); have := P b b'; have := R (b - 1)
+      have := W (b - 1); have := W (b' - 1); have := W b; have := W b'
+      cases s <;> cases s' <;>
+        (simp only [NumFmt.exact, NumFmt.exactImpl, NumFmt.lo, NumFmt.hi]; rw [Bool.eq_iff_iff]; try simp) <;> omega
+    | float e p =>
+      have := Q (b - 1) p; have := Q b p; have := W (b - 1); have := W b; have := W (p + 1)
+      cases s <;>
+        (simp only [NumFmt.exact, NumFmt.exactImpl, NumFmt.lo, NumFmt.hi]; rw [Bool.eq_iff_iff]; try simp) <;> omega
+  | float e p => cases g <;> simp [NumFmt.exact, NumFmt.exactImpl]
+
 /-- `$` admits `s → t`: both hold a number (`storeFmt?`), at most one counts in a unit of its own (no number atom:
     `date` days, `datetime` its stored unit), and every value of `s` exact at `t`, or an integer to a float. -/
 def castOK (s t : QAtomicType) : Bool :=
