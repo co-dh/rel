@@ -62,11 +62,6 @@ def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr 
 /-- **`Λ(R)` on the keys `D`**: `lamOf` of `canon R`; a caller whose `R` is `Tab.Canonical` already calls `lamOf`. -/
 def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)) := R.canon >>= lamOf D
 
-/-- **`E(R)` on the arrays `X`** (`EDen R = lamDen (∋ ≫ R)`): `Λ` on `X` of `mem X ≫ R`, a `comp` answer, so
-canonical (`comp_canonical`): `lamOf`, no second `canon`. -/
-def E {n : USize} (X : Vals (.arr A) n) (R : Tab A B) : Except String (Tab (.arr A) (.arr B)) := do
-  lamOf X (← (← mem X).comp R)
-
 /-- **`r \ s` within `UB`, `UC`, `r`, `s` canonical** (`Tab.Canonical`; `ldivDen`), by counting: `b` of `ran r` to `c`
 where `#{a | r a b ∧ s a c} = #{a | r a b}`, no complement (`doc/rel-architecture.zh.typ`, `R\S`): `Q = r° ≫ ⟨𝟙, s⟩`
 (`r`, `s` canonical, so `Q`'s rows `(b, (a, c))` are distinct and hold each `a` once; `compOne`, not the blocked

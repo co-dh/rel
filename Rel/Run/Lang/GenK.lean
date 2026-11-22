@@ -308,9 +308,6 @@ def lt (t : QAtomicType) (U : Fn false (.atom t) (.atom t)) : Fn false (.atom t)
 /-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
 def lam (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true A (.arr B) :=
   ofVals _ _ fun X => do Tab.lam X (← R.runE ⟨some ⟨_, X⟩, none, none⟩)
-/-- `E(R) = Λ(∋ ≫ R)` (`Tab.E`'s composition): `R` runs knowing its domain is `ran(∋)` at the arrays in demand. -/
-def E (A B : Obj) (d : Bool) (R : Fn d A B) : Fn true (.arr A) (.arr B) :=
-  lam _ _ true (comp _ _ _ d (ofVals _ _ fun X => Tab.mem X) R)
 def nil (A B : Obj) : Fn true A (.arr B) := ofVals _ _ fun X => Tab.nil X
 /-- `f` on `R` run knowing its domain is `ran(∋)` at the arrays `X` in demand (`Gen.elems`' rule): the wrapper of the
     rows given a relation on elements (`filter`, `takewhile`). -/

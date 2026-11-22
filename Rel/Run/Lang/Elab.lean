@@ -278,7 +278,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .pair R S => return .pair (← R.instObj ph σ) (← S.instObj ph σ)
   | _, _, .prod R S => return .prod (← R.instObj ph σ) (← S.instObj ph σ)
   | _, _, .lam R => return .lam (← R.instObj ph σ)
-  | _, _, .E R => return .E (← R.instObj ph σ)
   | _, _, .est Q => return .est (← Q.instObj ph σ)
   | _, _, .thin Q => return .thin (← Q.instObj ph σ)
   | _, _, .nil => pure .nil
@@ -372,7 +371,6 @@ inductive Pre
   | pair (p q : Pre)
   | prod (p q : Pre)
   | lam (p : Pre)
-  | E (p : Pre)
   | est (p : Pre)
   | thin (p : Pre)
   | nil (a b : OTy)
@@ -586,7 +584,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
   | .lam x => return .lam (← f (some (.not "Λ")) x)
-  | .E x => return .E (← f (some (.not "E")) x)
   | .est x => return .est (← mo x)
   | .thin x => return .thin (← f (some (.not "thin")) x)
   | .own x => return .own (← mo x)
@@ -1230,7 +1227,7 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
     | .dom => pure (.rel (.dom q) s s)
     | .ran => pure (.rel (.ran (.close p q s "ran( ) reads its argument whole")) t t)
     | .lam => pure (.rel (.lam q) s (.arr t))
-    | .E => pure (.rel (.E q) (.arr s) (.arr t))
+    | .E => pure (.rel (.lam (.comp (.prim memRow [] (.arr s) s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
     | .est | .thin => do
       unify p s!"the target of {o.sym}'s argument" t s
       -- the order is tested on the pairs the operator compares (`build`, `param`), not read whole
@@ -1996,7 +1993,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .outl => throw "π₁"
   | .outr => throw "π₂"
   | .lam _ => throw "Λ( )"
-  | .E _ => throw "E( )"
   | .est _ => throw "est( )"
   | .thin _ => throw "thin( )"
   | .nil => throw "nil"
@@ -2323,7 +2319,6 @@ def build : Pre → Except Err Res
     let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
     pure ⟨.prod A C, .prod B D, .pair (.comp .outl t) (.comp .outr u)⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
-  | .E p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .E t⟩
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩

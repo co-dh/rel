@@ -107,7 +107,7 @@ def rowsProved : List String :=
     since it is a theorem (`Vals.lamLaw`). -/
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
-  | _, _, .lam R | _, _, .E R | _, _, .thin R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R
+  | _, _, .lam R | _, _, .thin R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R
   | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .est R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
@@ -123,7 +123,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
 /-- `Tm.GenHyp` with nothing asked at a `share` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
-  | _, _, .lam R | _, _, .E R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
+  | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .own R
   | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .est R | _, _, .thin R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
@@ -973,9 +973,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
     exact GenK.foldI_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_wf (gen_wf R η hs.2))
       (code_of ((ihS (by omega)).1 η ρ hl.2 hs)) (code_wf (gen_wf S η hs.2))
   case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case E R ih =>
-    exact GenK.lam_sound (GenK.comp_sound (GenK.ofVals_row_sound fun _ _ _ h => Tab.mem_holds h)
-      (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf R η hs.2)))
   case nil => exact GenK.ofVals_row_sound fun _ _ _ h => Tab.nil_holds h
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))

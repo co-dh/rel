@@ -36,7 +36,6 @@ inductive Tm : Obj → Obj → Type where
   /-- `Λ(R)`, a map: total on the keys in demand, `[]` where `R` has no image, so it always runs on demand and a
       closed use reads its source's universe (`closeRes`). -/
   | lam {A B : Obj} (R : Tm A B) : Tm A (.arr B)
-  | E {A B : Obj} (R : Tm A B) : Tm (.arr A) (.arr B)
   /-- An operator that takes an order `Q : B ⟶ B` (or a coreflexive `p`) holds it as its pair test
       `τ(Q) : B×B ⟶ B×B` (§a), run on demand on the pairs the operator compares. -/
   | est {B : Obj} (Q : Tm (.prod B B) (.prod B B)) : Tm (.arr B) B
@@ -132,14 +131,14 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .conv _ | _, _, .ran _ | _, _, .ldiv .. | _, _, .rdiv ..
   | _, _, .prod .. | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
-  | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _ | _, _, .E _
+  | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
   | _, _, .est _ | _, _, .thin _ | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .succ _ | _, _, .arith ..
   | _, _, .foldr .. | _, _, .fold .. | _, _, .foldI .. | _, _, .hylo .. => true
 
 /-- One per node, a `prim` one whatever its row: `kids` puts `memRow` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
-  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .E R | _, _, .est R
+  | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
@@ -170,7 +169,6 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
   | _, _, .prod R S, f => return .prod (← f R lt_size) (← f S lt_size)
   | _, _, .lam R, f => return .lam (← f R lt_size)
-  | _, _, .E R, f => return .E (← f R lt_size)
   | _, _, .est Q, f => return .est (← f Q lt_size)
   | _, _, .thin Q, f => return .thin (← f Q lt_size)
   | _, _, .own R, f => return .own (← f R lt_size)
@@ -221,7 +219,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .pair R S => R.fv ++ S.fv
   | _, _, .prod R S => R.fv ++ S.fv
   | _, _, .lam R => R.fv
-  | _, _, .E R => R.fv
   | _, _, .est Q => Q.fv
   | _, _, .thin Q => Q.fv
   | _, _, .own R => R.fv
@@ -276,7 +273,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
   | σ, _, _, .prod R S => .prod (R.subst σ) (S.subst σ)
   | σ, _, _, .lam R => .lam (R.subst σ)
-  | σ, _, _, .E R => .E (R.subst σ)
   | σ, _, _, .est Q => .est (Q.subst σ)
   | σ, _, _, .thin Q => .thin (Q.subst σ)
   | σ, _, _, .own R => .own (R.subst σ)
@@ -309,7 +305,7 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
 
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
-    occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `E`, `thin` hold an image
+    occur on both sides (`ldivDen`'s `∀` and its `∃`), so they must be free of `k`; `Λ`, `thin` hold an image
     whole (`lamDen`'s `↔`), so their part must be too. A row passes its argument's sign where its `prims` entry is
     `mono` (`rowDens_mono`), `F(X)` among them. -/
 def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
@@ -334,7 +330,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .succ U | _, _, .arith _ _ U | _, _, .leq _ U | _, _, .lt _ U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S | _, _, .foldI e S => e.pol s k && S.pol s k
   | _, _, t@(.arg (.prim r) x) => (Prim.find? r.sym).any (·.mono) && x.pol s k || !t.fv.contains k
-  | _, _, t@(.lam _) | _, _, t@(.E _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
+  | _, _, t@(.lam _) | _, _, t@(.thin _) | _, _, t@(.arg ..) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .nil | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call .. | _, _, .callCv .. => true
 

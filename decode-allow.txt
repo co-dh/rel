@@ -17,7 +17,6 @@ Rel.Lang.Expand.read
 Rel.Lang.Expand.top
 Rel.Lang.Expand.walk
 Rel.Lang.Gen.atom
-Rel.Lang.GenK.E
 Rel.Lang.GenK.arith
 Rel.Lang.GenK.bound
 Rel.Lang.GenK.cmp
