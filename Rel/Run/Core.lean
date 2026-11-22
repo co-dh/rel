@@ -565,16 +565,24 @@ def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
     each, which over all rows is `n * m` reads; here a row is the payload's slice `[lo i, hi i)`, the clamp
     `Vals.row` applies, and a sum row indexes its side's rows by the clamped position. -/
 private def Vals.rowsImpl : {A : Obj} → {n : USize} → Vals A n → Array A.El
-  | .atom _, _, x => Array.ofFn x.get
+  | .atom .general, _, x => Array.ofFn x.get
+  -- `Arr.get`'s atom with the block starts hoisted (`Enc.get`'s `starts`): `x.get` per element sums every block
+  -- before it, so a whole `.foR` column read that way is quadratic in its block count
+  | .atom t, _, x =>
+    let s := match x.enc with | .foR m _ => Column.blockStarts m | _ => #[]
+    Array.ofFn fun i => ((Enc.get t _ x.enc i s).bind fun a => Carrier.of? t (.atom a)).getD default
   | .prod _ _, _, x => (Vals.rowsImpl x.1).zip (Vals.rowsImpl x.2)
   | .arr _, n, ⟨_, lo, hi, f⟩ =>
     let fs := Vals.rowsImpl f
-    Array.ofFn (n := n.toNat) fun i => (fs.extract (lo.get i).toInt.toNat (hi.get i).toInt.toNat).toList
+    let los := Vals.rowsImpl (A := .atom .i64) lo; let his := Vals.rowsImpl (A := .atom .i64) hi
+    Array.ofFn (n := n.toNat) fun i =>
+      (fs.extract (los[i]?.getD 0).toInt.toNat (his[i]?.getD 0).toInt.toNat).toList
   | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ =>
     let xs := Vals.rowsImpl x; let ys := Vals.rowsImpl y
+    let tags := Vals.rowsImpl (A := .atom .u1) tag; let idxs := Vals.rowsImpl (A := .atom .i64) idx
     Array.ofFn (n := n.toNat) fun i =>
-      if tag.get i then .inr (ys[min (idx.get i).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
-      else .inl (xs[min (idx.get i).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
+      if tags[i]?.getD false then .inr (ys[min (idxs[i]?.getD 0).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
+      else .inl (xs[min (idxs[i]?.getD 0).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
   | .one, n, _ => Array.replicate n.toNat ()
 
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
