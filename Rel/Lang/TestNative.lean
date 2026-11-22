@@ -1,6 +1,5 @@
 import Rel.Lang.EmitC
 import Rel.Run.Lang.Embed
-import Rel.Programs.Prelude
 
 /-! Stage 1a of the native backend (`doc/rel-native-design.md` §13): `x ≜ {…}°`, `output x to "out"`. Its plan is
     literals, the converse's `canon` (`kasc`, `kseen`, `kgather`) and `qlean_own_write` calls. `main` is the `relc-1a` exe:
@@ -12,8 +11,6 @@ namespace Rel.Lang.TestNative
 
 open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel
 
--- `1` is the prelude's object (`obj 1 = {∗}`), as in `Test/Folds.lean`
-open Rel.Programs.prelude in
 rel_program native1a where
     obj X = {A,B,C}
     obj N = 0…9
@@ -68,15 +65,9 @@ rel_program native1a where
     f3 : N ⟶ N ≜ xs ⦇[z0, π₁ ∪ π₂]⦈ʳ
     es : N ⟶ N ≜ xs est(≤)
     th : N ⟶ [N] ≜ xs thin(≤)
-    obj L = 5…6
-    ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
-    pf(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
-    q1 : X ⟶ X ≜ {(A,B),(B,C)}
-    fa : N ⟶ X×X ≜ {(0,0)}⊤(N,X)⟨𝟙,bo⟩ ∪ ({(1,1)}⊤(N,X)⟨𝟙,q1⟩)
-    fi : N ⟶ (X×X)×(X×X) ≜ pf(fa)
 
 /-- `output x to "out"`. -/
-def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf [] native1a "x" "out") >>= Bld.plan
+def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``native1a "x" "out") >>= Bld.plan
 
 /-! F-e: a computed relation as columns. `arithB` on two literal columns answers a count register and `Enc`
     registers; the output is the one-row relation of lists `gu ↦ s`: each side's `.e` a computed column handed over
@@ -184,7 +175,7 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("hd", semOut native1a.hd), ("ee", semOut native1a.ee), ("lm", semOut native1a.lm), ("lu", semOut native1a.lu),
    ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
    ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
-   ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi)]
+   ("es", semOut native1a.es), ("th", semOut native1a.th)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
@@ -197,8 +188,8 @@ def semOuts : List (String × (String → IO Unit)) :=
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
 def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
-  let bs ← semOuts.mapM fun (x, _) => outputOf [] native1a x ("out/" ++ x)
-  let io ← ioOf [] nativeIO
+  let bs ← semOuts.mapM fun (x, _) => outputOf ``native1a x ("out/" ++ x)
+  let io ← ioOf ``nativeIO
   return do
     let (bs, (rd, wr)) := (← bs.mapM id, ← io)
     Bld.planIO rd fun ins => do

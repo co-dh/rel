@@ -1277,9 +1277,22 @@ def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Sid
   | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, sideArg s)) {} t)
 
 
-/-- The plan's steps of `output x to dir` in the program `prog`, read after the programs `chain` (`Expand.read`). -/
-def outputOf (chain : List (Lean.Name × Program)) (prog : Program) (x : String) (dir : String) :
-    Lean.Meta.MetaM (Except String (Bld Unit)) := do
+unsafe def progOfUnsafe (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Program) × Program) := do
+  let env ← Lean.getEnv
+  let opts ← Lean.getOptions
+  let val (m : Lean.Name) : Lean.Meta.MetaM Program := match env.evalConstCheck Program opts ``Program m with
+    | .ok p => pure p
+    | .error e => throwError "cannot read the program `{m}`: {e}"
+  let hs := ((Expand.relRegistry.getState env).chains.lookup n).getD []
+  return (← hs.mapM fun h => return (h, ← val h), ← val n)
+
+/-- The program `n` (a `rel_program`) and the programs its names reach, its homes as `rel_program` recorded them
+    (`RegEntry.chain`), each with its value: what `Expand.read` reads it after, so a name of the prelude resolves. -/
+@[implemented_by progOfUnsafe] opaque progOf (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Program) × Program)
+
+/-- The plan's steps of `output x to dir` in the program `n`, read after its homes (`progOf`, `Expand.read`). -/
+def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
+  let (chain, prog) ← progOf n
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
@@ -1387,12 +1400,13 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
     discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put cs), n, ← listB es] 0
 
-/-- The plan of the IO statements of the program `prog`, read after the programs `chain` (`Expand.read`), as `n.io`
+/-- The plan of the IO statements of the program `n`, read after its homes (`progOf`, `Expand.read`), as `n.io`
     runs them: the input edge reads the inputs the outputs reach (`Expand.ioReach`, `readIn`); `main` builds each
     run-time definition they reach on the tables of its run-time names (`ofTm`, its variables `Once.binds`), then
     writes each output (`writeOut`), a closed definition's from its term. -/
-def ioOf (chain : List (Lean.Name × Program)) (prog : Program) :
+def ioOf (n : Lean.Name) :
     Lean.Meta.MetaM (Except String (Bld (List (String × InRead)) × (List (String × InRead) → Bld Unit))) := do
+  let (chain, prog) ← progOf n
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _, _, _, os, io) ← r.mapError (s!"{repr ·}")
