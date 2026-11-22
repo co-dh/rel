@@ -4,7 +4,7 @@
 #![deny(unsafe_code)]
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{asc, blocks::Blocks, c::pool, exports::scatter::{POS, for_view, except}, ffi::{Form, Sink}, lean::{B, O, boxed, ctor}, pod},
+use {crate::{asc, blocks::Blocks, c::pool, exports::scatter::{POS, for_view, except}, ffi::Sink, lean::{B, O, boxed, ctor}, pod},
     alloc::{format, string::String, vec::Vec}};
 
 /// `foRWords`: `m` words of a `pos` (word `i` is `i`, at any row count) or `foR` column.
@@ -47,7 +47,7 @@ fn kasc(m: usize, es: B) -> Result<O, String> {
     // decide nothing a stable sort by the keys before it does not
     let nk = ks.iter().position(|k| matches!(k, asc::Col::Pos)).unwrap_or(ks.len());
     let p = if nk == 0 { None } else { asc::grade_cols(pool(), &ks[..nk], m) };
-    let sink = || Sink::new(m, 8, Form::For).enc();
+    let sink = || Sink::new(m, 8).enc();
     // the permutation, which is also a `pos` column sorted
     let pe = || match &p {
         None => sink().answer(&Blocks::pos(m)),

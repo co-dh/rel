@@ -4,7 +4,7 @@
 //! read per row (`Rel.Verify.gatherWords_eq`). An index `>= n` is an error naming it, never a fill.
 use alloc::{format, string::String, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-use crate::{blocks::Blocks, coc::Coc, codec, enc::Producer, ffi::{Form, Sink}, lean, pod, structural};
+use crate::{blocks::Blocks, coc::Coc, codec, enc::Producer, ffi::Sink, lean, pod, structural};
 
 
 /// `words` on the encoded columns `ix` (`ix.meta.n` rows) and `e` (`e.meta.n` elements), answered as `Coc.encode 8`
@@ -27,7 +27,7 @@ pub fn enc(ix: &Blocks, e: &Coc) -> Result<lean::O, String> {
         Some(d)
     } else { None };
     let t = Take { ix: *ix, e: *e, sw, d, bad: AtomicUsize::new(usize::MAX) };
-    let o = Sink::new(ix.n, 8, Form::For).enc().answer(&t);
+    let o = Sink::new(ix.n, 8).enc().answer(&t);
     match t.bad.into_inner() {
         usize::MAX => Ok(o),
         k => Err(format!("gather: index {} at row {k} is not below n = {}", row(ix, k), e.meta.n)),
@@ -47,7 +47,7 @@ pub fn of_pos(ix: &Blocks, n: usize) -> Result<lean::O, String> {
             return Err(format!("gather: index {} at row {} is not below n = {n}", x[k] as u64, lo + k))
         }
     }
-    Ok(Sink::new(ix.n, 8, Form::For).enc().answer(ix))
+    Ok(Sink::new(ix.n, 8).enc().answer(ix))
 }
 /// `enc`'s producer: answer block `lo .. lo + nb` is `e` at index rows `lo .. lo + nb`; `d` the decoded `e` when there
 /// is one; `bad` the first row past `e`.
@@ -101,7 +101,7 @@ mod tests {
     // `enc` writes the bytes the encoder writes for `words`' answer, and fails as `words` does, on a source with patches
     // (read by address, and decoded a block at a time under a long run) and one of one width (the flat address)
     #[test] fn enc_is_words_encoded() {
-        let fr = |v: &[u64]| Sink::new(v.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(v), 8));
+        let fr = |v: &[u64]| Sink::new(v.len(), 8).answer(&Blocks::dense(pod::bytes(v), 8));
         let parts = |o: &lean::O| [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
         let n = 3000usize;
         let patched: Vec<u64> = (0..n as u64).map(|i| if i % 97 == 5 { i * 1_000_003 } else { 1000 + (i * 7919) % 8000 }).collect();
@@ -129,7 +129,7 @@ mod tests {
     // `pos` as either argument is `words` over `0 .. len`: as `ix` it is read from the loop index (G1 when `m = n`), as
     // `e` the answer is `ix` re-encoded (G2), and an index past `n` fails with `words`' text either way
     #[test] fn pos_is_words_of_positions() {
-        let fr = |v: &[u64]| Sink::new(v.len(), 8, Form::For).answer(&Blocks::dense(pod::bytes(v), 8));
+        let fr = |v: &[u64]| Sink::new(v.len(), 8).answer(&Blocks::dense(pod::bytes(v), 8));
         let parts = |o: &lean::O| [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
         let til = |n: usize| (0..n as u64).collect::<Vec<u64>>();
         let n = 3000usize;
