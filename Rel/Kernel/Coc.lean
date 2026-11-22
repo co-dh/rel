@@ -103,6 +103,18 @@ def excBlob (word : UInt64) (B w nb : Nat) (x : ByteArray) (exc : Array Nat) (la
 /-- Whether key `k` lies outside the `2 ^ d` keys from frame `f`, so that its block patches it. -/
 def outside (f d k : Nat) : Bool := k < f || f + 2 ^ d ≤ k
 
+-- `outside` runs per key per candidate frame per width in `planOf`; Lean's `2 ^ d` builds a GMP integer on every
+-- call even when small, and a right shift of a small `Nat` stays scalar
+private def outsideImpl (f d k : Nat) : Bool := k < f || (k - f) >>> d != 0
+
+@[csimp] private theorem outside_eq_outsideImpl : @outside = @outsideImpl := by
+  funext f d k
+  have h : (k - f) / 2 ^ d = 0 ↔ k - f < 2 ^ d := by
+    rw [Nat.div_eq_zero_iff]; have := Nat.two_pow_pos d; omega
+  rw [Bool.eq_iff_iff]
+  simp only [outside, outsideImpl, Bool.or_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq, Nat.shiftRight_eq_div_pow, h]
+  omega
+
 /-- How many of the block's keys `ks` frame `f` at width `d` patches. -/
 def npatch (ks : Array Nat) (f d : Nat) : Nat := (ks.filter (outside f d)).size
 

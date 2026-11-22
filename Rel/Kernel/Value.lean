@@ -313,11 +313,16 @@ def lgOf (metadata : ByteArray) : Nat := min 16 (max 6 (lgAt metadata))
 /-- `2 ^ lgOf`, the elements a block holds. -/
 def blk (metadata : ByteArray) : Nat := 2 ^ lgOf metadata
 
-/-- What `blk` runs as: a shift on a small `Nat`. `2 ^ lgOf` runs as `lean_nat_pow`, which goes through GMP, and
-`foRBits` takes `blk` on every element it reads. -/
-private def blkImpl (metadata : ByteArray) : Nat := 1 <<< lgOf metadata
+/-- What `blk` runs as: a `UInt64` shift. `2 ^ lgOf` runs as `lean_nat_pow` and `1 <<< lgOf` on `Nat` as
+`lean_nat_shiftl`, and both go through a GMP `mpz` (alloc, `mul_2exp`, free) even for a small result; `foRBits` takes
+`blk` on every element it reads and `blockStart` on every block it sums, which made GMP a fifth of `TestCompile`. -/
+private def blkImpl (metadata : ByteArray) : Nat := ((1 : UInt64) <<< (lgOf metadata).toUInt64).toNat
 
-@[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by funext m; simp [blk, blkImpl, Nat.shiftLeft_eq]
+@[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by
+  funext m
+  have h : lgOf m < 64 := by unfold lgOf; omega
+  have h2 : 2 ^ lgOf m < 2 ^ 64 := Nat.pow_lt_pow_right (by decide) h
+  simp [blk, blkImpl, UInt64.toNat_shiftLeft, Nat.shiftLeft_eq, Nat.mod_eq_of_lt h, Nat.mod_eq_of_lt h2]
 
 /-- The `lg` every encoder writes. -/
 def lgEnc : Nat := 10
@@ -955,14 +960,14 @@ The body used to be `(atoms t c)[i]!`, which materialised the whole column to re
 it — 64 lookups on a vector of a million cost 64 million boxed atoms. It had no caller yet, so
 nothing was slowed by it; `tools/bench-ts.lean` was the first and measured 3.4 µs per element
 before this was fixed. -/
-def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) : Option QAtom :=
+def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) (starts : Array Nat := #[]) : Option QAtom :=
   if i < n.toNat then
     match t, e with
     | t, .foR metadata pack =>
-      -- `#[]` is "no hoisted table": `foRBits` then sums the blocks before `i` rather than all of
-      -- them, which `blockStarts_get` says is the same start `atoms` reads out of the table
+      -- `starts` is `#[]` (no hoisted table) for a single read: `foRBits` then sums the blocks before `i`, which
+      -- `blockStarts_get` says is the start a whole-column reader passing `blockStarts metadata` reads out of it
       match hw : t.width with
-      | some _ => some (atomOfBits t (foRBits metadata pack #[] i) (QAtomicType.ne_general_of_width hw))
+      | some _ => some (atomOfBits t (foRBits metadata pack starts i) (QAtomicType.ne_general_of_width hw))
       | none => none
     | .i64, .pos => some (.i64 (Int64.ofNat i))
     | _, _ => none
