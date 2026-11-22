@@ -543,7 +543,7 @@ example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom
 /-! ### The rows with a law, under `ofVals` (the wrapper `Expand.primE` fits a row on values alone to) -/
 
 example : ∀ K, K.WF → (ofVals (.arr A) A fun X => Tab.mem X).Reps K (fun xs b => b ∈ xs) :=
-  ofVals_row_sound fun _ _ _ _ h => Tab.mem_holds h
+  ofVals_row_sound fun _ _ _ hX h => Tab.mem_holds h hX
 example : ∀ K, K.WF → (ofVals A (.sum A B) fun X => Tab.inl X).Reps K Core.Rel.inl :=
   ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
 example : ∀ K, K.WF → (ofVals B (.sum A B) fun X => Tab.inr X).Reps K Core.Rel.inr :=
@@ -551,7 +551,7 @@ example : ∀ K, K.WF → (ofVals B (.sum A B) fun X => Tab.inr X).Reps K Core.R
 example : ∀ K, K.WF → (ofVals A (.arr A) fun X => Tab.tau X).Reps K (fun a ys => ys = [a]) :=
   ofVals_row_sound fun _ _ _ _ h => Tab.tau_den h
 example : ∀ K, K.WF → (ofVals (.arr B) (.arr B) fun X => Tab.setify X).Reps K (lamDen fun xs b => b ∈ xs) :=
-  ofVals_row_sound fun _ _ _ _ h => Tab.setify_den h
+  ofVals_row_sound fun _ _ _ hX h => Tab.setify_den h hX
 
 end GenK
 

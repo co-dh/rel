@@ -161,10 +161,10 @@ theorem leq_dom_holds {t : QAtomicType} {U d T : Tab (.atom t) (.atom t)} (hd : 
     (h : Tab.leq t d.key d.key = .ok T) (a c : (Obj.atom t).El) : T.Holds a c ↔ Lang.leqDen t U.Holds a c := by
   rw [leq_holds h, dom_key hd, dom_key hd]
 
-/-- **`mem X` denotes `∋` on the arrays `X`**: each cell of `X` to each of its elements. Cell `i` is `[s, e)` with
-`s = max lo 0`, `e = max (min hi m) s` (`Vals.row` of an `arr` side reads `lo ≤ j < hi` over `j < m`, the same
-`j`); EXPAND of the widths `e - s` (`expand_spec`) puts output row `Σ_{<i} w + (j - s)` at cell `i`, element `j`. -/
-theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Tab.mem X = .ok T)
+/-- **`mem X` denotes `∋` on the arrays `X`**: each cell of `X` to each of its elements. Cell `i` is `[lo, hi)`,
+`0 ≤ lo ≤ hi ≤ m` (`Vals.WF`; `Vals.row` of an `arr` side reads `lo ≤ j < hi` over `j < m`, the same `j`); EXPAND
+of the widths `hi - lo` (`expand_spec`) puts output row `Σ_{<i} w + (j - lo)` at cell `i`, element `j`. -/
+theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Tab.mem X = .ok T) (hX : Vals.WF X)
     (xs : List B.El) (b : B.El) : T.Holds xs b ↔ (∃ i, X.row i = xs) ∧ b ∈ xs := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.mem] at h
@@ -172,11 +172,6 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, hc0, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨s, hs, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, hcm, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨mn, hmn, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨wd, hwd, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Tn, G, u⟩, hex, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sg, hsg, h⟩ := h
@@ -202,43 +197,19 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
       (((lo.get i).toInt ≤ (j : Int) ∧ (j : Int) < (up.get i).toInt) ↔ SN i ≤ j ∧ j < EN i) := by
     intro i j hj
     rw [Arr.get_i64, Arr.get_i64, ← hLf, ← hHf, hEN, hSN]; omega
-  -- the words `s`, `e - s`
-  have hsw : ∀ i < n.toNat, (raw .i64 n s)[i]?.getD 0 = (SN i).toUInt64 := by
+  -- the words `lo`, `hi - lo`: `0 ≤ lo ≤ hi ≤ m` (`Vals.WF`), so `lo = SN`, `hi = EN`
+  have hW : ∀ i < n.toNat, 0 ≤ Lf i ∧ Lf i ≤ Hf i ∧ Hf i ≤ m.toNat := fun i hi => by
+    have := hX.1 ⟨i, hi⟩; rwa [Arr.get_i64, Arr.get_i64, ← hLf, ← hHf] at this
+  have hsw : ∀ i < n.toNat, (raw .i64 n lo.enc)[i]?.getD 0 = (SN i).toUInt64 := by
     intro i hi
-    have es : (Except.ok (if ((raw .i64 n lo.enc)[i]?.getD 0).toInt64 < (0 : UInt64).toInt64 then (0 : UInt64)
-        else (raw .i64 n lo.enc)[i]?.getD 0) : Except String UInt64) = .ok ((raw .i64 n s)[i]?.getD 0) := by
-      have := (colMap_raw hs).2.2.2 i hi
-      rwa [colConst_raw hc0, Array.getElem?_replicate, if_pos hi, Option.getD_some] at this
-    rw [← Except.ok.inj es, hSN]
-    have z : (0 : UInt64).toInt64.toInt = 0 := rfl
-    split <;> rename_i hl <;> rw [Int64.lt_iff_toInt_lt, z, ← hLf] at hl
-    · rw [show (Lf i).toNat = 0 by omega]; rfl
-    · obtain ⟨h63, hv⟩ := toInt64_nonneg (x := (raw .i64 n lo.enc)[i]?.getD 0) (by rw [← hLf]; omega)
-      rw [← hLf] at hv; rw [hv, Int.toNat_natCast]; simp
-  have hmw : ∀ i < n.toNat, ((raw .i64 n mn)[i]?.getD 0).toInt64.toInt = min (Hf i) m.toNat := by
+    obtain ⟨h63, hv⟩ := toInt64_nonneg (x := (raw .i64 n lo.enc)[i]?.getD 0) (by rw [← hLf]; have := hW i hi; omega)
+    rw [← hLf] at hv; rw [hSN, hv, Int.toNat_natCast]; simp
+  have hew : ∀ i < n.toNat, (raw .i64 n up.enc)[i]?.getD 0 = (EN i).toUInt64 := by
     intro i hi
-    have es : (Except.ok (if (m.toNat.toUInt64).toInt64 < ((raw .i64 n up.enc)[i]?.getD 0).toInt64
-        then m.toNat.toUInt64 else (raw .i64 n up.enc)[i]?.getD 0) : Except String UInt64) = .ok ((raw .i64 n mn)[i]?.getD 0) := by
-      have := (colMap_raw hmn).2.2.2 i hi
-      rwa [colConst_raw hcm, Array.getElem?_replicate, if_pos hi, Option.getD_some, hmU] at this
-    rw [← Except.ok.inj es]
-    have zm := toInt64_toInt_nat hm63
-    split <;> rename_i hl <;> rw [Int64.lt_iff_toInt_lt, zm, ← hHf] at hl
-    · rw [zm]; omega
-    · rw [← hHf]; omega
-  have hew : ∀ i < n.toNat, (raw .i64 n e)[i]?.getD 0 = (EN i).toUInt64 := by
-    intro i hi
-    have es : (Except.ok (if ((raw .i64 n mn)[i]?.getD 0).toInt64 < ((raw .i64 n s)[i]?.getD 0).toInt64
-        then (raw .i64 n s)[i]?.getD 0 else (raw .i64 n mn)[i]?.getD 0) : Except String UInt64) = .ok ((raw .i64 n e)[i]?.getD 0) :=
-      (colMap_raw he).2.2.2 i hi
-    have hS63 : SN i < 2 ^ 63 := by rw [hSN]; have := hL63 i; omega
-    have zs : ((raw .i64 n s)[i]?.getD 0).toInt64.toInt = SN i := by rw [hsw i hi]; exact toInt64_toInt_nat hS63
-    rw [← Except.ok.inj es]
-    split <;> rename_i hl <;> rw [Int64.lt_iff_toInt_lt, zs, hmw i hi] at hl
-    · rw [hsw i hi, hEN]; congr 1; omega
-    · obtain ⟨h63, hv⟩ := toInt64_nonneg (x := (raw .i64 n mn)[i]?.getD 0) (by rw [hmw i hi]; omega)
-      rw [hmw i hi] at hv
-      rw [← UInt64.ofNat_toNat (x := (raw .i64 n mn)[i]?.getD 0), hEN]; congr 1; omega
+    have := hW i hi
+    obtain ⟨h63, hv⟩ := toInt64_nonneg (x := (raw .i64 n up.enc)[i]?.getD 0) (by rw [← hHf]; omega)
+    rw [← hHf] at hv
+    rw [← UInt64.ofNat_toNat (x := (raw .i64 n up.enc)[i]?.getD 0), hEN, hSN]; congr 1; omega
   have hww : ∀ i < n.toNat, (raw .i64 n wd)[i]?.getD 0 = (wN i).toUInt64 := by
     intro i hi
     have es := (colMap_raw hwd).2.2.2 i hi
@@ -2011,15 +1982,15 @@ private def tcNew (E X : Tab .long .long) : Except String (Tab .long .long) := d
 
 /-! ### `Rel/Run/Power.lean` against the old layer -/
 
-/-- Arrays of longs: `arrCells` (empty cells, clamped ones, one cell twice, unsorted), a prefix of it, no cells, and
+/-- Arrays of longs: `arrCells` (empty cells, one cell twice, unsorted), a prefix of it, no cells, and
 empty cells over no payload. -/
 private def arrXs : List (Tab (.arr .long) .long) :=
   [arrTab arrCells arrPay, arrTab (arrCells.take 3) arrPay, arrTab [] arrPay, arrTab [(0, 0, 1), (0, 0, 1)] []]
 
 /-- Arrays of pairs over the payload `(1,5) (2,5) (1,5) (3,6)`: `[(1,5)]` from two ranges, the empty cell, a cell
-clamped, one cell twice. -/
+to the end, one cell twice. -/
 private def pairXs : Vals (.arr (.prod .long .long)) 6 :=
-  (arrOn [(0, 1, 0), (2, 3, 0), (0, 4, 0), (1, 1, 0), (2, 9, 0), (0, 4, 0)]
+  (arrOn [(0, 1, 0), (2, 3, 0), (0, 4, 0), (1, 1, 0), (2, 4, 0), (0, 4, 0)]
     ((Alg.col [1, 2, 1, 3], Alg.col [5, 5, 5, 6]) : Vals (.prod .long .long) 4)).key
 
 /-- The test of pairs of `Q`: the pairs `D` composed with `𝟙` on `Q`'s rows, so `(b, c)` to itself iff `Q b c`. -/
@@ -2612,11 +2583,6 @@ theorem mem_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h 
   split at h; · cases h
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c0, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨s, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cm, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨mn, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨e, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨wd, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Tn, G, u⟩, -, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sg, -, h⟩ := h
@@ -2627,6 +2593,7 @@ theorem mem_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h 
 
 /-- **`setify X` denotes `Λ(∋)` on the arrays `X`** (`rowDens`'s `setify`): `lam_den` of `mem_holds`. -/
 theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.setify X = .ok T)
+    (hw : Vals.WF X)
     (xs : List B.El) (ys : List B.El) :
     T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.lamDen (fun xs b => b ∈ xs : Lang.Den (.arr B) B) xs ys := by
   unfold Tab.setify at h; simp only [bind] at h
@@ -2634,7 +2601,7 @@ theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
   obtain ⟨U, hU⟩ := mem_canonical hG
   rw [lamOf_den hU h]
   have hm' : (∃ i, X.row i = xs) → ∀ b, U.Holds xs b ↔ b ∈ xs := fun hX b =>
-    (canon_holds hU xs b).symm.trans ((mem_holds hG xs b).trans (and_iff_right hX))
+    (canon_holds hU xs b).symm.trans ((mem_holds hG hw xs b).trans (and_iff_right hX))
   constructor
   · rintro ⟨hX, hp, hm⟩
     exact ⟨hX, hp, fun b => (hm b).trans (hm' hX b)⟩

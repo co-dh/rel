@@ -1196,6 +1196,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       等要 `K.WF` 与 `bound_wf`、`Tab.ran_wf`；`_wf` 引理要真证明（`Tab.inter_wf`、`keepBits_wf`、`compSel_wf`、
       `compSelM_inl_wf`、`compTabMat_key_wf`、`ldivTabMat_sides_wf`）。之后 `GenKFold`、`GenKEst`、`GenKHylo`、
       `GenKFix`、`GenSound`（`Sound` 加 `K.WF`、`gen_wf_spine`、`primGen_ok` 每行 `_wf`），最后删 clamp。
+  - ✅ 切换完成（分支 `lohi10`，0cddb58、f6abf97）：`Rel.Wf` `.tab (.ok t) => t.WF`，所有 `_sound` 取 `K.WF`；
+    `gen_wf_spine` 对 `Tm.size` 强归纳（`hylo` 的 `kids`），每个构造子一行 `GenK.*_wf`；字面量 `val`/`uni` 在
+    `Tm.gen` 以 `Vals.cellsOk` 检查格子（不经 `readVals`）。全量构建 0 error、0 sorryAx，GenSoundTest 1594/1594。
+  - ✅ 删 clamp 第一步（分支 `lohi11`，50f6fa1、86a1805）：`Tab.mem` 不再把 `lo`/`hi` 夹到 `[0, m]`，按 `[lo, hi)` 原样读；
+    `mem_holds`、`E_lam`、`E_holds`、`E_den`、`setify_den` 取 `Vals.WF X`；测试格子改成 WF。保留：`Vals.row` 的
+    `filterMap`/`clampFin`（全函数模型）、`Vals.catSide` 与 `compBlocks` 的 `clampShift`（求和位置、块号，不是 lo/hi）。
+  - ⬜ 删 clamp 第二步：`Vals.concat` arr 分支的 4 个 `clampShift`（`concat_row`/`concat_wf` 取 x、y 的 WF，7 个调用者），
+    `cellSpan`（`pack`、`cat`、`zip`、`uncons`、`unsnoc`、`uncat`、`sumOn`、`Fix.map`、`Power`、`Where.positions` 的定律）。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；

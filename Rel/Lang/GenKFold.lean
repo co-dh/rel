@@ -1531,7 +1531,7 @@ theorem elemsTest_sound {B C : Obj} {d : Bool} {R : Rel B B} {T : Den B B}
     have hi := (side_some hK xs).1 hx
     have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none, none⟩ ⟨(Tab.ran_wf hk (Tab.mem_wf hM wX)).1, trivial, trivial⟩) P hP
     have hPT : ∀ x ∈ xs, (∃ y, P.Holds x y) ↔ ∃ y, T x y := fun x hm => by
-      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
+      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM wX xs x).2 ⟨hi, hm⟩⟩
       exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl trivial
     show t.Holds xs ys ↔ _
     rw [hf h, and_iff_right hi, hF _ _ xs fun x hm => decide_eq_decide.2 (hPT x hm)]
@@ -1571,7 +1571,7 @@ theorem map_sound {A B : Obj} {d : Bool} {R : Rel A B} {T : Den A B} (hR : ∀ K
     have hi := (side_some hK xs).1 hx
     have ha := (reps_iff _ _ _).1 (hR ⟨some ⟨k.n, k.key⟩, none, none⟩ ⟨(Tab.ran_wf hk (Tab.mem_wf hM wX)).1, trivial, trivial⟩) P hP
     have hPT : ∀ x ∈ xs, ∀ y, P.Holds x y ↔ T x y := fun x hm y => by
-      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM xs x).2 ⟨hi, hm⟩⟩
+      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM wX xs x).2 ⟨hi, hm⟩⟩
       exact ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl trivial
     show t.Holds xs ys ↔ _
     rw [Tab.map_holds h, and_iff_right hi]
