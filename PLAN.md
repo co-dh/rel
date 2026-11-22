@@ -1161,7 +1161,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `eval (toExpr t) = t` 无法陈述；kernel `decide` 也不可行（`Code.program` 用 `Expr` 的 hash 作 HashMap key，
     `String.hash` 是 opaque extern；`Tm` 没有 `DecidableEq`，payload 按 `valEq` 比较）。信任的只剩 Lean 的
     求值器与 kernel 一致。发出的程序不变。
-- ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。
+- ⬜ 7.4 清理：`LR unused`、`unused-simp`、`remove-import`。7.4b ✅ 声明级清理：删除无引用声明 219 个（5 轮至不动点；
+  排除 `Rel.Core`、PLAN/Makefile/允许表点名的、带 extern/simp/instance 等属性的、GenK*/GenSound/List/RepTabDiv/Fix/Power/Where）。
 - ✅ 7.5 已合并（dbdc72d，`gates3`）：gate `bang`（allowlist 32）、`pointfree`（13）、`kernel-tested`（68 of 84）；`pointfree` 的范围 = L。原条目，规则 gate（owner 选）：三个 gate，allowlist 只减不增：`!` 下标（今天 32 个 def）；关系值 def 的 body 里的
   `∃`（`Rel/Lang/Den.lean` 11 个 + `thinLDen`）；测试 module 里用到的每个 extern（85 个里 69 个没有被用到）。
   分支 `gates3`。另：`CLAUDE.md` 的 14 条规则里 9 条没有 gate。
