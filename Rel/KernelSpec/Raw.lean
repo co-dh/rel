@@ -120,7 +120,7 @@ through `Column.foROpt` and cut to the payload's `8 * w` bits, is `none` at a nu
 `2 ^ 32` rows or more, which carries no patch list, needs it. -/
 theorem rawOpt_encodeAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x nul : ByteArray)
     {patch : Bool} (n : Nat) (hn : n ≤ x.size / w)
-    (hbig : 2 ^ 32 ≤ x.size / w → ∀ i < n, (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1 → ∀ j,
+    (hbig : 2 ^ 32 ≤ x.size / w → ∀ i < n, Column.bitAt nul i = false → (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1 → ∀ j,
       i / 2 ^ lg * 2 ^ lg ≤ j → j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
     (Array.range n).map (fun i => (Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1
       (Kernel.Coc.encodeAt lg w.toUSize x patch nul).2

@@ -1119,10 +1119,11 @@ theorem planBlock_inside (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (j : Nat
 nulls or none: a null row (`Column.bitAt nul`) reads `none` through `Column.foROpt`, any other `some` of its key — a
 kept element its block's base, plus its frame's lift, plus its residual, a patched one its own bits. `hbig` is the one
 case no encoding holds: a column of `2 ^ 32` rows or more carries no patch list, so in a block holding a null whose keys
-span all `2 ^ 64` the key `2 ^ 63 - 1` keeps the null's top residual. -/
+span all `2 ^ 64` a row that is no null keeping the key `2 ^ 63 - 1` keeps the null's top residual. -/
 theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x nul : ByteArray)
     {patch : Bool} (i : Nat) (hi : i < x.size / w)
-    (hbig : 2 ^ 32 ≤ x.size / w → (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1 → ∀ j, i / 2 ^ lg * 2 ^ lg ≤ j →
+    (hbig : 2 ^ 32 ≤ x.size / w → Column.bitAt nul i = false → (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1 →
+      ∀ j, i / 2 ^ lg * 2 ^ lg ≤ j →
       j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
     Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 (Kernel.Coc.encodeAt lg w.toUSize x patch nul).2
       (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1) i =
@@ -1399,7 +1400,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
               all_goals cases hpt
             obtain ⟨k, hk1, hb1⟩ := Array.any_eq_true.1 hA
             simp only [Array.size_range, getElem_range] at hk1 hb1
-            rw [hbig (by omega) (hcol (beq_iff_eq.1 hb)) (i / 2 ^ lg * 2 ^ lg + k) (by omega) (by omega) (by omega)]
+            rw [hbig (by omega) hni (hcol (beq_iff_eq.1 hb)) (i / 2 ^ lg * 2 ^ lg + k) (by omega) (by omega) (by omega)]
               at hb1
             cases hb1
         · -- a value at the null's code: the patch list holds it, so it is no null

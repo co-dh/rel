@@ -61,8 +61,9 @@ def wordsFoR (ws : Array UInt64) (nul : ByteArray := .empty) : Enc :=
   let p := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul
   .foR p.1 p.2
 
-/-- The flag words `ns` (`foRNuls`' form) as `wordsFoR`'s null bitmap, one bit a row. -/
-def nulMap (ns : Array UInt64) : ByteArray := Column.packIds 1 ns.size fun i => (ns[i]?.getD 0).toNat
+/-- The flag words `ns` (`foRNuls`' form) as `wordsFoR`'s null bitmap, one bit a row, set where the flag is not `0`:
+`packOf`, the one bit packer, so `bitAt_packOf` reads it back. -/
+def nulMap (ns : Array UInt64) : ByteArray := packOf ns.size fun i => ns[i]?.getD 0 != 0
 
 /-- `n` cells, each `fill` until row `k` combines `es[k]` into the cell `is[k]`: the cell becomes `op.eval cell es[k]`,
 rows in order. Overwrite is `op = .last` (the last row naming a cell is the one it keeps), a sum `.add`. The first row
