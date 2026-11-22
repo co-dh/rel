@@ -796,15 +796,16 @@ theorem ordCode_i64_nonneg {a : Nat} (h : a < 2 ^ 63) : (ordCode 8 false true a.
     rw [Nat.testBit_lt_two_pow h1, Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le h (Nat.pow_le_pow_right (by omega)
       (by omega))), Nat.testBit_two_pow, decide_eq_false (by omega : ¬ 63 = i)]; simp
 
-/-- **`lexLe` on a key list led by an `i64` column** orders that column's codes. -/
+/-- **`lexLe` on a key list led by an `i64` column** orders that column's codes. An `Arr` holds no null
+(`Arr.plain`), so its `nulCodes` are its codes alone. -/
 theorem Arr.lexLe_i64 {n : USize} (x : Arr .i64 n) (rest : List (AscKey × Enc)) {i j : Fin n.toNat}
     (h : lexLe (ascKeys n ((.atom .i64, x.enc) :: rest)) i j = true) :
     (ordCode 8 false true (x.get i).toUInt64).toNat ≤ (ordCode 8 false true (x.get j).toUInt64).toNat := by
   have hs := size_raw (t := .i64) n x.enc x.wf (by decide) (by decide) (by decide)
   have hi : i.1 < (Enc.raw .i64 n x.enc).size := by rw [hs]; exact i.2
   have hj : j.1 < (Enc.raw .i64 n x.enc).size := by rw [hs]; exact j.2
-  simp only [ascKeys, ascKey, ascOrd, ascLayout, orderKind, Option.map_some, Option.getD_some, List.cons_append,
-    lexLe, Array.getElem?_map, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hj,
+  simp only [ascKeys, ascKey, nulCodes, nulWords, x.plain, Bool.false_eq_true, ↓reduceIte, List.nil_append,
+    ascOrd, ascLayout, orderKind, Option.map_some, Option.getD_some, List.cons_append, lexLe, Array.getElem?_map, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hj,
     Option.map_some, Option.getD_some, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h
   rw [Arr.get_i64, Arr.get_i64, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hj,
     Option.getD_some, Option.getD_some, UInt64.toUInt64_toInt64, UInt64.toUInt64_toInt64]
