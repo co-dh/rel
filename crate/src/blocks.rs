@@ -5,11 +5,10 @@
 use crate::coc::Coc;
 use crate::pod::{self, Elt};
 
-/// `Ext.Enc`'s constructor tags, in `Rel/Kernel/Value.lean`'s order; every Rust reader and writer of an `Enc` names
-/// them from here, so a constructor added or removed there is one edit here.
+/// `Ext.Enc`'s constructor tags, generated from Lean's `ctorIdx` (`make tags` writes and checks `tag.rs`); every Rust
+/// reader and writer of an `Enc` names them from here.
 pub mod tag {
-    pub const FOR: u32 = 0;
-    pub const POS: u32 = 2;
+    include!("tag.rs");
 }
 
 /// The kinds a column's blocks come from: a dense payload, FoR (`Coc`), or the positions. `Pos` is `Enc.pos`, the row

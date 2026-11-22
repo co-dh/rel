@@ -65,7 +65,7 @@ example : view (u 3) (kasc (u 3) []) = .inr ([], [0, 1, 2]) := by decide +kernel
 def gen : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: type 12 has no fixed-width order"
 example : view (u 2) (kasc (u 2) [(.atom .general, col [0, 1]), (.atom .i64, .gen #[])]) = gen := by decide +kernel
 #guard view (u 2) (kasc (u 2) [(.atom .general, col [0, 1]), (.atom .i64, .gen #[])]) == gen
-def dense : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: constructor 1 is not foR"
+def dense : String ⊕ (List (List UInt64) × List UInt64) := .inl s!"asc: constructor {(.gen #[] : Enc).ctorIdx} is not foR"
 example : view (u 2) (kasc (u 2) [(.atom .i64, .gen #[]), (.atom .general, col [0, 1])]) = dense := by decide +kernel
 #guard view (u 2) (kasc (u 2) [(.atom .i64, .gen #[]), (.atom .general, col [0, 1])]) == dense
 -- one block of `2 ^ 6` holds fewer than `65` elements
