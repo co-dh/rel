@@ -407,6 +407,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ⬜ 阻塞（待决定）：`Vals.row` 在原子上读 `Arr.get`，null 行读到的是块的 top residual，`kgather` 之后是新块的，
   所以 `Arr.gather_row`、`Arr.eq_of_codes`、`Arr.codes_of_eq`、`Arr.get_raw_atom` 的 u1 界在有 null 的列上为假。
   `RepSeen` 引用 `kasc_grade`、`lexLe_congr_right` 折叠仍未做。
+  rq17f6（部分）：阻塞按设计卡 "atom+1"（决定 K）解除：`Arr t n` 的类型带 `hasNul = false`（`Arr.plain`），`Arr.mk` 要它、
+  `Arr.of` 判定它；`Arr.opt` 删除（无调用者）。新引理 `Verify.hasNul_of_nulAt`、`foRNul_of_plain`、`ofBytes_plain`、
+  `bools_plain`、`Ext.Enc.blank_plain`、`colMap_plain`、`colPrefix_plain`；`kscan_closed` 多一项 `hasNul = false`。
+  `Rel.Run.*` 与 `RepCanon` 全绿（`gather_row` 经 `kgather_plain`，u1 界经 `foRNul_of_plain`，`eq_of_codes`/`codes_of_eq`
+  经 `nulCodes`/`nulWords` 在无 null 处化简）。⬜ 剩：`RepCols` 起的下游模块未建；`kscatter_words` 调用者传 `x.plain`；
+  `hN` 调用者；`RepSeen`/`lexLe_congr_right` 折叠。in-band `V+1` 今天没有 `Obj` 情形，待设计。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
   未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。

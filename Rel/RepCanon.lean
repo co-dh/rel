@@ -23,7 +23,9 @@ theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kerne
     refine ⟨Column.foRBits md pk (Column.blockStarts md) i, by simp only [raw_foR .i64 8 rfl
       (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some,
       Nat.reduceMul, ofNat_toNat_mod64], fun hu => by
-        subst hu; simp only [Enc.WF] at hw; exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2), ?_⟩
+        subst hu; have hp := x.plain; rw [hc] at hp; simp only [Enc.WF] at hw
+        exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2 _ (by
+          simp [Column.foROpt, foRNul_of_plain hp (Nat.lt_of_lt_of_le i.2 hw.2.2.1)])), ?_⟩
     cases t <;> first | exact absurd rfl hg |
       simp only [Enc.get, if_pos i.2, QAtomicType.width, foRBits_starts, Option.bind_some]
   | pos =>
@@ -212,7 +214,8 @@ theorem Arr.gather_row {t : QAtomicType} {m n : USize} {ix : Enc} (x : Arr t n) 
   · rename_i o ho
     cases h
     have hv := kgather_valid ho
-    obtain ⟨his, hes, hlt, ho'⟩ := raw_kgather m ix n _ o ho
+    obtain ⟨his, hes, hlt, -⟩ := raw_kgather m ix n _ o ho
+    have ho' := kgather_plain ho x.plain
     have hc := wordsFoR_closed ((Enc.raw .i64 m ix).map fun i => (Enc.raw .i64 n x.enc)[i.toNat]?.getD 0)
       (n := m) (by rw [Array.size_map, his])
     have hj : j.1 < (Enc.raw .i64 m ix).size := by rw [his]; exact j.2
@@ -276,7 +279,7 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
     simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i p h1
-    obtain ⟨i, e, -⟩ := Arr.gather_row (Arr.mk (t := .i64) (n := n) .pos trivial) h1 j
+    obtain ⟨i, e, -⟩ := Arr.gather_row (Arr.mk (t := .i64) (n := n) .pos trivial rfl) h1 j
     exact ⟨i, e, rfl⟩
 
 /-- **A summand gathered at a sum side's positions**: where word `i` of `p` is `idx`'s, `y` (of `m ≤ 2^63` rows)
@@ -662,7 +665,7 @@ theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
   obtain ⟨f, hof⟩ := (ascCol_ok hac).2.2.2 t rfl
   have hv := ascCol_valid hac
   refine ⟨hv, fun i i' hk => ?_⟩
-  simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
+  simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, Arr.plain, Bool.false_eq_true, if_false, List.nil_append, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some, List.cons.injEq, and_true,
     Array.getElem?_map] at hk
   exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
     (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
@@ -839,18 +842,9 @@ theorem Verify.ascCodes_of_cells {m n c : USize} {lo hi e : Enc} {els : List (As
   cases hks : ascCodes c els with
   | ok ks => exact ⟨ks, rfl⟩
   | error s =>
-    cases hix : foRWords "asc: cells" m e with
-    | error s => simp [hix, bind, Except.bind] at h
-    | ok ix =>
-      cases hf : ix.find? (n.toNat ≤ ·.toNat) with
-      | some r => simp [hix, hf, bind, Except.bind] at h
-      | none =>
-        cases hl : foRWords "asc: cells lo" n lo with
-        | error s => simp [hix, hf, hl, bind, Except.bind] at h
-        | ok l =>
-          cases hh : foRWords "asc: cells hi" n hi with
-          | error s => simp [hix, hf, hl, hh, bind, Except.bind] at h
-          | ok hw => simp [hix, hf, hl, hh, hks, bind, Except.bind] at h
+    -- every step before `ascCodes` only fails or passes, and past them `ascCodes`' error is the answer
+    exfalso; revert h; simp only [bind, Except.bind]
+    repeat' (split <;> try simp_all)
 
 /-- What `Vals.cols` answers at an `arr` side, unfolded: one `cells` key over the payload's columns `fs`, which `kasc`
 reads; two rows have equal codes exactly where their cells have one length and equal payload codes element by
@@ -874,7 +868,7 @@ theorem Vals.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c
   refine ⟨fs, hfs, ascCodes_mapM hks, fun i i' => ?_⟩
   have hr : ∀ q : Fin n.toNat, seenKey n [(AscKey.cells n c lo.enc hi.enc fs, .pos)] q =
       (cellFns c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) (ascKeys c fs)).map (· q.1.toUInt64) :=
-    fun q => by simp [seenKey, ascKeys, ascKey, List.map_map, Function.comp_def, Enc.raw, q.2]
+    fun q => by simp [seenKey, ascKeys, ascKey, nulCodes, nulWords, hasNul, List.map_map, Function.comp_def, Enc.raw, q.2]
   rw [hr, hr, cellFns_eq_iff]
   rfl
 
@@ -972,7 +966,7 @@ theorem Arr.codes_of_eq {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
     have hi := Array.getElem?_eq_getElem (show i.1 < _ by rw [hs]; exact i.2)
     have hi' := Array.getElem?_eq_getElem (show i'.1 < _ by rw [hs]; exact i'.2)
     obtain ⟨hu, he⟩ := Arr.atom_of_get_eq x x hv hv i i' hg hi hi'
-    simp only [seenKey, ascKeys, ascKey, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some, Array.getElem?_map, hi, hi',
+    simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, Arr.plain, Bool.false_eq_true, if_false, List.nil_append, List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some, Array.getElem?_map, hi, hi',
       Option.map_some]
     exact congrArg (· :: []) ((ascOrd_atom hof hg hu).2 (he hr))
 

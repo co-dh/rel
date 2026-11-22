@@ -185,6 +185,12 @@ theorem hasNul_of_nulAt {md pk : ByteArray} (h : ∀ b < Column.nblk md, Column.
     hasNul (.foR md pk) = false := by
   simp only [hasNul, List.any_eq_false, List.mem_range]; intro b hb; rw [h b hb]; decide
 
+/-- A column with no flagged block has no null row: `foRNul` needs the row's block flagged. -/
+theorem foRNul_of_plain {md pk : ByteArray} (h : hasNul (.foR md pk) = false) {i : Nat}
+    (hi : i < Column.blk md * Column.nblk md) : Column.foRNul md pk (Column.blockStarts md) i = false := by
+  simp only [hasNul, List.any_eq_false, List.mem_range, Bool.not_eq_true] at h
+  simp only [Column.foRNul, h _ (Nat.div_lt_of_lt_mul hi), Bool.false_and]
+
 /-- A kernel's answer written with no null bitmap holds no null (`nulAt_encodeAt_empty`). -/
 theorem hasNul_wordsFoR (ws : Array UInt64) : hasNul (wordsFoR ws) = false := by
   have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
