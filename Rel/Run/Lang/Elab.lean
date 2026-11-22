@@ -2109,7 +2109,9 @@ def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) 
   .ran (.comp u (.uni (A := .atom t) (zeroCol t h)))
 
 /-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈` (`sumRow`'s, at its atom `t`), the
-    base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`).
+    base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`);
+    `⟨𝟙,R⟩π₁` (`domRow`'s, not `𝟙 ∩ R R°`, whose `R°` an on-demand `R` often cannot run), `dom(R°)` (`ranRow`'s),
+    `Λ(𝟘)` (`nilRow`'s).
     Indexed by the term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and
     target universe. -/
 inductive DfnCut : {A B : Obj} → Tm A B → Type
@@ -2124,11 +2126,14 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
     DfnCut (A := .prod I (.arr E)) (B := V)
       (.comp (.meet (.comp .outl (.conv .outl)) (.comp .outr (.fold (.ran (.pair .id (.comp e .outr)))
         (.meet S (.comp .outl (.comp .outl (.conv .outl))))))) .outr)
+  | dom {A B : Obj} (R : Tm A B) : DfnCut (A := A) (B := A) (.comp (.pair .id R) .outl)
+  | ran {A B : Obj} (R : Tm A B) : DfnCut (A := B) (B := B) (.dom (.conv R))
+  | nil {A B : Obj} : DfnCut (A := A) (B := .arr B) (.lam .zero)
 
 /-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
 def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
   | .length u₀ u | .sum _ u₀ u => some (u₀, u)
-  | .flat _ | .foldI _ _ => none
+  | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil => none
 
 /-- The row the definition is the fused form of. -/
 def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
@@ -2136,6 +2141,9 @@ def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .sum _ _ _ => .prim sumRow
   | .flat R => .arg (.prim flatRow) R
   | .foldI e S => .arg (.arg (.prim foldIRow) e) S
+  | .dom R => .dom R
+  | .ran R => .ran R
+  | .nil => .nil
 
 /-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does; a row whose law
     needs no universe, itself. -/
@@ -2145,6 +2153,9 @@ def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
     (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
   | .flat R => .arg (.prim flatRow) R
   | .foldI e S => .arg (.arg (.prim foldIRow) e) S
+  | .dom R => .dom R
+  | .ran R => .ran R
+  | .nil => .nil
 
 /-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
     definition from the row's built relations and the universe `u` of its target (base and step both on it), at
@@ -2163,7 +2174,16 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
      | .prod I (.arr E), [⟨I', VV, e⟩, ⟨IVE, IV, S⟩] =>
        if h : I' = I ∧ VV = .prod B B ∧ IVE = .prod (.prod I B) E ∧ IV = .prod I B then
          some ⟨_, .foldI (h.1 ▸ h.2.1 ▸ e) (h.2.2.1 ▸ h.2.2.2 ▸ S)⟩ else none
-     | _, _ => none)]
+     | _, _ => none),
+   ("dom", fun A B xs _ => match xs with
+     | [⟨A', _, R⟩] => if h : A' = A ∧ B = A then by obtain ⟨rfl, rfl⟩ := h; exact some ⟨_, .dom R⟩ else none
+     | _ => none),
+   ("ran", fun A B xs _ => match xs with
+     | [⟨_, B', R⟩] => if h : A = B' ∧ B = B' then by obtain ⟨rfl, rfl⟩ := h; exact some ⟨_, .ran R⟩ else none
+     | _ => none),
+   ("nil", fun A B _ _ => match B with
+     | .arr E => some ⟨_, DfnCut.nil (A := A) (B := E)⟩
+     | _ => none)]
 
 section Build
 
@@ -2420,16 +2440,17 @@ def build : Pre → Except Err Res
         if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
         else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
     let some dfn := dfns.lookup r.sym | row ()
+    let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
+    -- a definition that needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it) is its fused row at every
+    -- object: the target's universe is not read, since `uniPart` forces a declared one and may fail on it
+    if let some ⟨_, c⟩ := dfn A B args .id then if c.uni.isNone then return ⟨A, B, c.fused⟩
     let o := zonk mc t
     let some u ← uniPart objs dp o B | do
-      -- an object variable with no universe may be called at a bounded object, where the uncut row is not `d` unless
-      -- `d` needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it)
+      -- an object variable with no universe may be called at a bounded object, where the uncut row is not `d`
       if let .base n := o then if (objs.lookup n).any fun i => i.ovar && !i.num then
-        let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
         if (dfn A B args .id).all (·.2.uni.isSome) then
           throw ⟨dp, s!"{r.sym} at the object variable {n} needs its universe: its definition is cut to it (§4)"⟩
       row ()
-    let args ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x
     -- none at an atom with no literal `0` (`zeroCol`): a placeholder, so the constant stays at `.long` (`Expand.once`)
     let some ⟨d, c⟩ := dfn A B args u | throw ⟨dp, s!"{r.sym}'s definition (dfns) has no form at {repr A} ⟶ {repr B}"⟩
     if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩

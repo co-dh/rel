@@ -284,6 +284,28 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     have hd := congrFun (congrFun (foldIDen_eq (e.den ρ) (S.den ρ)).symm x) w
     simp only [DfnCut.cut, DfnCut.fused, ↓Tm.ran_den, Tm.ran_den, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
     exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
+  | dom R =>
+    -- `⟨𝟙,R⟩π₁` keeps `a` with some `b` of `R`: `𝟙 ∩ R R°` (`Prim.den_domRow`), the row's meaning at every object
+    have hd : (Tm.comp (.pair .id R) .outl).den ρ x w ↔ (Tm.dom R).den ρ x w := by
+      simp only [Tm.dom, Tm.den, Tm.argDen, Prim.den_domRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter,
+        Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+      constructor
+      · rintro ⟨⟨a, b⟩, ⟨rfl, hb⟩, rfl⟩; exact ⟨rfl, b, hb, hb⟩
+      · rintro ⟨rfl, b, hb, -⟩; exact ⟨(x, b), ⟨rfl, hb⟩, rfl⟩
+    exact ⟨hd, fun _ => hd⟩
+  | ran R =>
+    -- `dom(R°)` is `𝟙 ∩ R° R°°` (`Prim.den_domRow` at `R°`), `ranRow`'s meaning (`Prim.den_ranRow`)
+    have hd : (Tm.dom (.conv R)).den ρ x w ↔ (Tm.ran R).den ρ x w := by
+      simp only [Tm.dom, Tm.ran, Tm.den, Tm.argDen, Prim.den_domRow, Prim.den_ranRow]
+    exact ⟨hd, fun _ => hd⟩
+  | @nil _ E =>
+    -- `Λ(𝟘)` maps every source to the list of no elements, `[]` (`Prim.den_nilRow`)
+    have hd : (Tm.lam .zero : Tm A (.arr E)).den ρ x w ↔ (Tm.nil : Tm A (.arr E)).den ρ x w := by
+      simp only [Tm.nil, Tm.den, Prim.den_nilRow, lamDen, nilDen]
+      constructor
+      · rintro ⟨-, h⟩; exact List.eq_nil_iff_forall_not_mem.2 fun b hb => (h b).1 hb
+      · rintro rfl; exact ⟨List.Pairwise.nil, fun b => iff_of_false (List.not_mem_nil) fun h => h⟩
+    exact ⟨hd, fun _ => hd⟩
   | length u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
