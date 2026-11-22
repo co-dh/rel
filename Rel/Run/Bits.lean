@@ -141,10 +141,9 @@ def ldivSel (d : Tab A B → Tab A C → Tab B B → Tab C C → Except String (
     let kc := (← Vals.code2 S.val UC.val).1.toNat
     if bitsWin bits T (ka + 1) kb kc then ldivBits R S UB UC else d R S UB UC
 
-/-- `0 … n-1`: the prefix sums of `n` ones, less one. -/
-def colIota (n : USize) : Except String Enc := do
-  let P ← colPrefix .add n (← colConst n 1)
-  colMap .first n P P .i64 .i64 [] [(.add, 0 - 1)]
+/-- `0 … n-1`: the positions written by one `kscan` (`shiftCol n 0`), not prefix sums of a `colConst n 1`, which cost
+two `kscatter`s and a second `kscan` more. -/
+def colIota (n : USize) : Except String Enc := shiftCol n 0
 
 /-- Each row of `v`, its position among the `g` distinct values `xr`, or `g` where it is none of them: both numbered in
 one order (`Vals.code2`), each number's position in `xr` `kscatter`ed (`g` where `xr` holds none), read through `v`'s. -/

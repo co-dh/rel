@@ -66,7 +66,17 @@ theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
   simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
   simpa [chain] using hw
 
-/-- `x - b` as a post step: `(.add, 0 - b)`, since `kscan` has no step subtracting its constant from the word. -/
+/-- **A map of one column through a post chain** at any answer type `t`: word `i` of the answer is `chain post` of
+word `i` of `a`, a boolean answer's cut to its bit (`colMap_chain` at `.first` and no `pre`). -/
+theorem colMap_first_chain {t s : QAtomicType} {n : USize} {a o : Enc} {post : List (Op × UInt64)}
+    (h : colMap .first n a a t s [] post = .ok o) : ∀ i < n.toNat, ∃ w,
+      chain post ((raw s n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
+  intro i hi
+  obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain h).2.2.2 i hi
+  cases hx; cases hv
+  exact ⟨w, hw, ho⟩
+
+/-- `x - b` as a post step:`(.add, 0 - b)`, since `kscan` has no step subtracting its constant from the word. -/
 theorem neg_add_word (a b : UInt64) : 0 - b + a = a - b := by
   rw [UInt64.sub_eq_add_neg, UInt64.sub_eq_add_neg, UInt64.zero_add, UInt64.add_comm]
 

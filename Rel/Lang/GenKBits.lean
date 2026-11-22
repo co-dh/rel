@@ -13,29 +13,7 @@ variable {A B C : Obj}
 /-- **`colIota n` holds `0 … n-1`**. -/
 theorem Tab.colIota_raw {n : USize} {e : Enc} (h : Tab.colIota n = .ok e) :
     ∀ i < n.toNat, (raw .i64 n e)[i]?.getD 0 = i.toUInt64 := by
-  simp only [Tab.colIota, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨one, hone, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
-  have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
-  have hNU := n.toNat_lt_size
-  have hs := colPrefix_add_sum hP (fun _ => 1) fun G hG => by
-    rw [colConst_raw hone, Array.getElem?_replicate, if_pos hG, Option.getD_some]; rfl
-  intro i hi
-  have e1 := (colMap_post h).2 i hi
-  rw [hs i hi] at e1
-  have hsum : ∀ k, ((List.range k).map fun _ => (1 : Nat)).sum = k := by
-    intro k; induction k with
-    | zero => rfl
-    | succ k ih =>
-      rw [List.range_succ_eq_map, List.map_cons, List.sum_cons, List.map_map]
-      exact (congrArg (1 + ·) ih).trans (Nat.add_comm 1 k)
-  rw [hsum] at e1
-  simp only [Op.eval, Except.ok.injEq, neg_add_word] at e1
-  rw [← e1]
-  apply UInt64.toNat_inj.mp
-  rw [UInt64.toNat_sub_of_le _ _ (by rw [UInt64.le_iff_toNat_le, toNat_toUInt64 (by omega)]; simp),
-    toNat_toUInt64 (by omega), toNat_toUInt64 (by omega)]
-  simp
+  intro i hi; rw [shiftCol_raw h i hi, UInt64.add_zero]
 
 /-- **`index xr v` finds each row of `v` among the `g` rows of `xr`**: row `j`'s word is a position `a` of `xr` holding
     `v`'s row `j`, or `g` where no row of `xr` holds it. -/

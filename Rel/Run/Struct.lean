@@ -14,10 +14,10 @@ both index columns one `kscan` map (`colMap .div`, `.mod`) of the positions by t
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- `n` zero words at the atom type `t`: `colArr .add` of two `colConst n 0`, written at `t`. -/
-def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) := do
-  let z ← colConst n 0
-  colArr .add n z z t
+/-- `n` zero words at the atom type `t`: one `kscan` of the positions through the post step `(.and, 0)`, written at
+`t`; a constant operand is a post step, not a `colConst` scatter (`colMap_const_eq`). -/
+def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) :=
+  colArr .first n .pos .pos t .i64 [] [(.and, 0)]
 
 /-- No row of `A`: `Arr.zeros _ 0` per atom column; an `arr` side of no cells over no payload, a `sum` side over two
 summands of no rows. -/
@@ -52,13 +52,12 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
   let (T, iR, iS) ← crossIx n m
   pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
 
-/-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (`colConst`,
-written at `u1` by `colMap .add` of `0`), row `k` at position `k` (`colMap .add` of the positions and `0`). A summand
-past `2^63` rows, which an `Int64` position cannot reach, is the error. -/
+/-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
+through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one
+`kscan`). A summand past `2^63` rows, which an `Int64` position cannot reach, is the error. -/
 def injCols (n : USize) (s : Bool) : Except String (Arr .u1 n × Arr .i64 n) := do
   if 2 ^ 63 < n.toNat then throw s!"inj: {n} rows, past an Int64 position"
-  let z ← colConst n 0
-  pure (← colArr .add n z (← colConst n (if s then 1 else 0)) .u1, ← colArr .add n .pos z .i64)
+  pure (← colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)], ← colArr .first n .pos .pos .i64)
 
 namespace Tab
 variable {A B C D I : Obj}
