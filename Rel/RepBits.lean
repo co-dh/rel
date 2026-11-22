@@ -403,7 +403,7 @@ theorem csr_spec {n g : USize} {gid x ends idx : Enc} (h : csr n g gid x = .ok (
 
 /-- **`R.compBits S` denotes `R ≫ S`** (`Tab.comp_holds`' statement). -/
 theorem Tab.compBits_holds {R : Tab A B} {S : Tab B C} {X : Tab A C} (h : Tab.compBits R S = .ok X)
-    (a : A.El) (c : C.El) : X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+    (hR : R.WF) (hS : S.WF) (a : A.El) (c : C.El) : X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   simp only [Tab.compBits, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka', kc', o', ra', rc'⟩, hM, hX⟩ := h; try dsimp only at hX
   simp only [Tab.compMat, bind] at hM
@@ -421,7 +421,7 @@ theorem Tab.compBits_holds {R : Tab A B} {S : Tab B C} {X : Tab A C} (h : Tab.co
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := h
   have h := hX
-  obtain ⟨cx, cy, -, hcx, hcy, -, -, hxy, -⟩ := Vals.code2_spec hb2
+  obtain ⟨cx, cy, -, hcx, hcy, -, -, hxy, -⟩ := Vals.code2_spec hb2 hR.2 hS.1
   obtain ⟨-, haR, hra, haeq⟩ := Vals.code_spec ha
   obtain ⟨-, hcS, hrc, hceq⟩ := Vals.code_spec hc
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
@@ -540,7 +540,7 @@ theorem colCat_raw {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b
 
 /-- **`R.ldivBits S UB UC` denotes `R\S` within `UB`, `UC`** (`Tab.ldiv_holds`' statement). -/
 theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
-    (h : Tab.ldivBits R S UB UC = .ok T) (b : B.El) (c : C.El) :
+    (h : Tab.ldivBits R S UB UC = .ok T) (hR : R.WF) (hS : S.WF) (hUB : UB.WF) (hUC : UC.WF) (b : B.El) (c : C.El) :
     T.Holds b c ↔ Lang.ldivDen R.Holds S.Holds UB.Holds UC.Holds b c := by
   simp only [Tab.ldivBits, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka, aR, aS, Za⟩, ha2, h⟩ := h; try dsimp only at h
@@ -564,9 +564,9 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨NS2, cc⟩, hcc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨m, hm, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o, hk, h⟩ := h
-  obtain ⟨ax, as, -, hax, has, -, -, haxs, -⟩ := Vals.code2_spec ha2
-  obtain ⟨bx, bu, -, hbx, hbu, -, -, -, hrb⟩ := Vals.code2_spec hb2
-  obtain ⟨cs, cu, -, hcs, hcu, -, -, -, hrc⟩ := Vals.code2_spec hc2
+  obtain ⟨ax, as, -, hax, has, -, -, haxs, -⟩ := Vals.code2_spec ha2  hR.1 hS.1
+  obtain ⟨bx, bu, -, hbx, hbu, -, -, -, hrb⟩ := Vals.code2_spec hb2 hR.2 hS.1
+  obtain ⟨cs, cu, -, hcs, hcu, -, -, -, hrc⟩ := Vals.code2_spec hc2 hS.2 hUC.1
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hw : ∀ (w : UInt64), (w.toNat).toUInt64 = w := fun w => UInt64.toNat_inj.mp (by simp)
   have hNka := ka.toNat_lt_size; have hNkb := kb.toNat_lt_size; have hNkc := kc.toNat_lt_size
@@ -828,7 +828,7 @@ theorem Tab.ldivBits_ldiv {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C
 /-- **`R.compSel bits S` denotes `R ≫ S`** at every `bits`: its bit branch by `Tab.compBits_holds`, its other by
 `Tab.compFrom_canon`. -/
 theorem Tab.compSel_holds {bits : Nat} {R : Tab A B} {S : Tab B C} {X : Tab A C} (h : Tab.compSel bits R S = .ok X)
-    (a : A.El) (c : C.El) : X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+    (hR : R.WF) (hS : S.WF) (a : A.El) (c : C.El) : X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
   simp only [Tab.compSel, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
   simp only [Tab.compSelM, bind] at he
