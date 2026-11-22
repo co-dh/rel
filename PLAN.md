@@ -551,6 +551,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     链尾 `Op.ofF64 u`（float atom 用 `fto`，保留 `±∞`；否则 `cast f64 u`，NaN、`±∞`、越界为 `2^63`，由
     `nanFlag` 滤去，`#guard` 钉住）。`unaryDen o A B`、`Tab.unary : Tab A B`、`nanFlag_spec` 在任何数 atom。
     sqrt 10^6 行（最好一次）：f64 4493 → 762 µs，f32 5322 → 1279 µs。
+    ✅ perf11f（3da3cb3，合入 7543bb6）：常量除数的 `rdiv`/`rmod` 作 `kscan` 链的 `post` 步（`Op.rdiv/rmod`，`kscanRefuses`，
+    `kscan_post_ok`）；`Bench.Blocks` 的 scan 90950 不变、scatter 87334 → 85987；`Bench.Edit` 的 scan 179437 → 179371、
+    scatter 67148 → 66482；wall 1031 → 985 ms（Blocks）、1319 → 1199 ms（Edit）；`Bench.SudokuPC9` scan 3414、scatter 3970、wall 27.5 s。
   - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
     f64 `sum`（格）已落地（分支 `sumL2`）。
   - ✅ 对象变量上的数动词与 `$`（分支 `objvar`，dataframe 请求，architecture §1）：泛型定义的体可写自己的对象变量
