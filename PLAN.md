@@ -1133,6 +1133,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `writeSym`/`readSym D` 只写读 id（拒绝无文本的 id）。CSV：`readCsvDict D`、`writeCsv (Option Dict)` 共用一个字典。
   序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。未做：程序
   （`n.io`）的 sym 输入——`TmGen` 要把库字典穿过所有输入与 `writeCsv`，`<`/`asc` 行要接 `rank`。
+  `symdict4` 的 gate：full build 399 jobs 0 error 0 `sorryAx`；`make decode-allow panic-allow bang-allow pointfree
+  tags native`、`build.sh syms` 通过；`cargo test --features std` 82 passed；compile-diff 与 `test/compile-diff.json`
+  无差异（`TestCompile` 要 `CAP_MEM_MB=20000`，默认 12288 MB 时 qlean kernel 分配失败）。
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
 - ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
