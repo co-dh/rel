@@ -138,7 +138,7 @@ theorem Code.Wf.bind {η : Code} (hη : η.Wf) (k : Nat) {A B : Obj} {r : Rel A 
 
 /-- `η` with `k` bound to a `Wf` code `r` that represents `X` represents `ρ` with `k` bound to `X`: a fixed point's
     round (`GenK.const` of its table) or a call's argument (`Sound.args`). -/
-theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Obj} {r : Rel A B} {X : Den A B}
+theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Obj} {r : Rel A B} {X : Core.Rel (Obj.El A) (Obj.El B)}
     (hr : ∀ K, K.WF → r.Reps K X) (hw : r.Wf) : Sound (η.bind k r) (ρ.bind k X) := by
   refine ⟨fun j A' B' K hK => ?_, hs.2.bind k hw⟩
   by_cases hj : j = k
@@ -154,7 +154,7 @@ theorem Sound.bind {η : Code} {ρ : Val} (hs : Sound η ρ) (k : Nat) {A B : Ob
     `GenK.val_sound`; a run-time definition's code, `Tm.gen_sound` of its body at the names before it), leaves the
     environment sound; then `Tm.gen_sound` of an output's term gives that its table represents its meaning. -/
 theorem Sound.inputs {η : Code} {ρ : Val} (hs : Sound η ρ) :
-    ∀ bs : List (Nat × (A : Obj) × (B : Obj) × (Rel A B × Den A B)),
+    ∀ bs : List (Nat × (A : Obj) × (B : Obj) × (Rel A B × Core.Rel (Obj.El A) (Obj.El B))),
       (∀ b ∈ bs, (∀ K, K.WF → b.2.2.2.1.Reps K b.2.2.2.2) ∧ b.2.2.2.1.Wf) →
       Sound (bs.foldl (fun η b => η.bind b.1 b.2.2.2.1) η) (bs.foldl (fun ρ b => ρ.bind b.1 b.2.2.2.2) ρ)
   | [], _ => hs
@@ -324,7 +324,7 @@ theorem rowOK_args {s : String} {c : RowCode} {D : RowDen c}
       (∀ x ∈ xs, x.2.2.Wf) → f σ xs = some ⟨A, B, v⟩ → v.Wf ∧ ∀ ss, CodesRep xs ss →
         ∃ hc : (c.ty σ).1 = A ∧ (c.ty σ).2 = B, ∀ K, K.WF → v.Reps K (hc.1 ▸ hc.2 ▸ D σ ss)) : RowOK s := by
   intro r A B xs hs hn hw
-  have err (e : String) (X : List Sem → Den A B) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss,
+  have err (e : String) (X : List Sem → Core.Rel (Obj.El A) (Obj.El B)) : (Rel.tab (A := A) (B := B) (.error e)).Wf ∧ ∀ ss,
       CodesRep xs ss → ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K (X ss) :=
     ⟨trivial, fun _ _ _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h⟩
   unfold primGen; rw [hs, if_neg fun h => h hn, hf]
@@ -387,14 +387,14 @@ theorem arr_lt_take (B : Obj) (xs : List B.El) {i j : Nat} (hij : i < j) (hj : j
   rwa [e] at h
 
 /-- **`Λ(T)` at `a` is `L`** when `L` ascends strictly in `Obj.lt` and its members are the image of `a` under `T`. -/
-theorem lamDen_eq {A B : Obj} {T : Den A B} {a : A.El} {L : List B.El} (hL : L.Pairwise B.lt)
+theorem lamDen_eq {A B : Obj} {T : Core.Rel (Obj.El A) (Obj.El B)} {a : A.El} {L : List B.El} (hL : L.Pairwise B.lt)
     (hm : ∀ b, b ∈ L ↔ T a b) (zs : List B.El) : lamDen T a zs ↔ zs = L :=
   ⟨fun ⟨hp, hz⟩ => pairwise_eq_of_mem (Obj.lt_irrefl _) (fun _ _ => Obj.lt_asymm _) hp hL
     fun b => (hz b).trans (hm b).symm, fun h => h ▸ ⟨hL, hm⟩⟩
 
 /-- **`Λ(cat°)` at `xs`**: the one list strictly ascending in `Obj.lt` of the splits `(p₁, p₂)` of `xs` is the splits by
 increasing split point, since a shorter first part is a proper prefix of a longer one. -/
-theorem lamDen_splits {B : Obj} {T : Den (.arr B) (.prod (.arr B) (.arr B))} (xs : List B.El)
+theorem lamDen_splits {B : Obj} {T : Core.Rel (Obj.El (.arr B)) (Obj.El (.prod (.arr B) (.arr B)))} (xs : List B.El)
     (hT : ∀ p, T xs p ↔ xs = p.1 ++ p.2) (zs : List (Obj.prod (.arr B) (.arr B)).El) :
     lamDen T xs zs ↔ zs = (List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k) :=
   lamDen_eq ((pairwise_map_range_iff _ _ _).2 fun _ _ hij hj =>
@@ -406,7 +406,7 @@ theorem lamDen_splits {B : Obj} {T : Den (.arr B) (.prod (.arr B) (.arr B))} (xs
 
 /-- **`Λ(prefix)` at `xs`**: the one list strictly ascending in `Obj.lt` of the prefixes of `xs` is its prefixes by
 increasing length. -/
-theorem lamDen_inits {B : Obj} {T : Den (.arr B) (.arr B)} (xs : List B.El) (hT : ∀ ys, T xs ys ↔ ys <+: xs)
+theorem lamDen_inits {B : Obj} {T : Core.Rel (Obj.El (.arr B)) (Obj.El (.arr B))} (xs : List B.El) (hT : ∀ ys, T xs ys ↔ ys <+: xs)
     (zs : List (List B.El)) : lamDen T xs zs ↔ zs = (List.range (xs.length + 1)).map fun k => xs.take k :=
   lamDen_eq ((pairwise_map_range_iff _ _ _).2 fun _ _ hij hj => arr_lt_take B xs hij (by omega)) (fun ys => by
     rw [hT, List.mem_map]
@@ -876,7 +876,7 @@ theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs
 open Classical in
 /-- `merge(Q)`, `Expand.primE`'s fit of the row (`testAfter`, `Tab.merge`): each `(x, y)` in demand to
 `List.merge x y` under `Q`'s meaning `TQ` as the test, `Q` run on the pairs of heads it is asked about (`est`'s rule). -/
-theorem GenK.merge_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
+theorem GenK.merge_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))}
     (hQ : ∀ K, K.WF → Q.Reps K TQ) (wQ : Q.Wf) :
     ∀ K, K.WF → (GenK.testAfter B (.prod (.arr B) (.arr B)) (.arr B) Q fun q P => Tab.merge q P).Reps K
       (fun p zs => zs = List.merge p.1 p.2 fun a b => decide (TQ (a, b) (a, b))) :=
@@ -908,7 +908,7 @@ theorem rowOK_merge : RowOK "merge" := rowOK_args (c := RowCode.merge) rfl rfl f
 open Classical in
 /-- `thinL(Q)`, `Expand.primE`'s fit of the row (`testVals`, `Tab.thinL`): each array in demand to `thinLDen` under
 `Q`'s meaning `TQ` as the test, `Q` run on the pairs it is asked about (`est`'s rule). -/
-theorem GenK.thinL_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Den (.prod B B) (.prod B B)}
+theorem GenK.thinL_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))}
     (hQ : ∀ K, K.WF → Q.Reps K TQ) (wQ : Q.Wf) :
     ∀ K, K.WF → (GenK.testVals B (.arr B) (.arr B) Q fun q X => Tab.thinL q X).Reps K
       (thinLDen fun a b => decide (TQ (a, b) (a, b))) :=
@@ -1005,7 +1005,7 @@ theorem rowOK_foldI : RowOK "foldI" := rowOK_args (c := RowCode.foldI) rfl rfl f
 
 /-- `star(R)`, `Expand.primE`'s fit of the row (`stepAfter`, `Tab.star`): each key in demand to `μX : 𝟙 ∪ R X`,
     `R` run on the frontier each round meets (`compT_sound`, `Tab.star_holds`). -/
-theorem GenK.star_sound {B : Obj} {F : Rel B B} {TF : Den B B} (hF : ∀ K, K.WF → F.Reps K TF)
+theorem GenK.star_sound {B : Obj} {F : Rel B B} {TF : Core.Rel (Obj.El B) (Obj.El B)} (hF : ∀ K, K.WF → F.Reps K TF)
     (wF : F.Wf) :
     ∀ K, K.WF → (GenK.stepAfter B B B B F fun F P => Tab.star F P).Reps K (Core.Rel.mu fun X => 𝟙 _ ∪ TF ≫ X) := by
   have hF' : ∀ (D : Tab B B) T, (GenK.compT (.ok D) F).runE {} = .ok T → D.WF →
@@ -1265,7 +1265,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   have hconst {A B : Obj} (Y : Tab A B) : ∀ K, K.WF → (GenK.const A B (.ok Y)).Reps K (rep Y) :=
     fun _ _ => (GenK.reps_iff _ _ _).2 fun t ht x y _ _ _ => by cases ht; exact Iff.rfl
   -- an error table runs to no table, so it represents every meaning
-  have herr {A B : Obj} (e : String) (X : Den A B) : ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K X :=
+  have herr {A B : Obj} (e : String) (X : Core.Rel (Obj.El A) (Obj.El B)) : ∀ K, K.WF → (Rel.tab (A := A) (B := B) (.error e)).Reps K X :=
     fun _ _ => (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE] at h
   intro n
   induction n

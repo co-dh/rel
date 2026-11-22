@@ -43,7 +43,7 @@ namespace GenK
 /-- **`νX : S ∩ φ`** (`Tab.nu`): from `S`'s canonical table, rounds `X ↦ X ∩ φ(X)`. Each round holds `ν` (`Φ`
     monotone, so `ν = TS ∩ Φ(ν) ⊑ X ∩ Φ(X)`) and lies inside `TS`; the last round is its table before it, so
     `X ⊑ TS ∩ Φ(X)` and `X ⊑ ν` (`le_nu`). -/
-theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den A B} {Φ : Den A B → Den A B}
+theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Core.Rel (Obj.El A) (Obj.El B)} {Φ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B)}
     (hS : ∀ K, K.WF → S.Reps K TS) (wS : S.Wf) (hφ : ∀ X, X.WF → ∀ K, K.WF → (φ X).Reps K (Φ (rep X)))
     (wφ : ∀ X, X.WF → (φ X).Wf) (hm : Monotonic Φ) :
     ∀ K, K.WF → (GenK.nu A B S φ).Reps K (Core.Rel.nu fun X => TS ∩ Φ X) := by
@@ -91,7 +91,7 @@ theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Den 
 /-- **`μX : φ`** (`Tab.mu`): from `𝟘`, rounds `X ↦ X ∪ φ(X)` (`Tab.mu_holds`). Each round lies inside `μ` (`Φ`
     monotone, so `X ∪ Φ(X) ⊑ μ ∪ Φ(μ) = μ`); the answer is a prefixed point of `Φ`, so `μ` lies inside it
     (`mu_le`). A run reaching its cap is an error, which represents anything. -/
-theorem mu_sound {A B : Obj} {w : String} {cap : Nat} {φ : Tab A B → Rel A B} {Φ : Den A B → Den A B}
+theorem mu_sound {A B : Obj} {w : String} {cap : Nat} {φ : Tab A B → Rel A B} {Φ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B)}
     (hφ : ∀ X, X.WF → ∀ K, K.WF → (φ X).Reps K (Φ (rep X))) (wφ : ∀ X, X.WF → (φ X).Wf) (hm : Monotonic Φ) :
     ∀ K, K.WF → (GenK.mu A B w cap φ).Reps K (Core.Rel.mu Φ) := by
   intro K _; rw [reps_iff]; intro t h

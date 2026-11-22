@@ -153,7 +153,7 @@ theorem thin_wf {B : Obj} {n : USize} {q : Tab (.prod B B) (.prod B B) → Excep
 given (`QDiag`): `(xs, b)` of `G = ∋` dropped exactly where some `(b, c)` of `ran ⟨G, G⟩` off the diagonal fails
 `TQ`. -/
 theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Lang.Den (.prod B B) (.prod B B)} (hq : QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
+    {TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hq : QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
     {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Tab.est q X = .ok T)
     (hX : Vals.WF X) (xs : List B.El) (b : B.El) :
     T.Holds xs b ↔ (∃ i, X.row i = xs) ∧ Lang.estDen TQ xs b := by
@@ -217,7 +217,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
 given: `(xs, c)` of `G = ∋` dropped exactly where some `(b, c)` of `D = ran ⟨G, G⟩` has `TQ (b, c) (b, c)` and its
 swap has not; then `lam_den`. -/
 theorem thin_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Lang.Den (.prod B B) (.prod B B)} (hq : QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
+    {TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hq : QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
     {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)} (h : Tab.thin q X = .ok T) (hX : Vals.WF X)
     (xs ys : List B.El) : T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ Lang.thinDen TQ xs ys := by
   unfold Tab.thin at h; simp only [bind] at h

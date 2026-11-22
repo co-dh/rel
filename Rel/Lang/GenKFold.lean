@@ -120,7 +120,7 @@ theorem Tab.foldRounds_holds {K E V : Obj} {peel : Tab K (.arr E) → Except Str
 
 /-- **The left fold peeled at its head** (`cons°`): a chain from `Te` on `x :: xs` is a first value `v` from `Te`, one
 step to `v'`, and a chain from `v'` on `xs`. It is `foldRounds_holds`'s `hW` for `peelL`, with `W r v = foldDen (= v) TS r`. -/
-theorem foldDen_cons {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (x : E.El) (xs : List E.El) (w : V.El) :
+theorem foldDen_cons {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (x : E.El) (xs : List E.El) (w : V.El) :
     foldDen Te TS (x :: xs) w ↔ ∃ v v', (∃ a, Te a v) ∧ TS (v, x) v' ∧ foldDen (fun _ b => b = v') TS xs w := by
   constructor
   · rintro ⟨_ | ⟨v, ys⟩, hy, ⟨a, ha⟩, hS, rfl⟩
@@ -135,32 +135,32 @@ theorem foldDen_cons {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (x : E.
     | succ t => exact hS t (by simpa using ht)
 
 /-- The left fold of no elements from the value `v` is `v`. -/
-theorem foldDen_nil {E V : Obj} (TS : Den (.prod V E) V) (v w : V.El) :
+theorem foldDen_nil {E V : Obj} (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (v w : V.El) :
     foldDen (fun _ b => b = v) TS [] w ↔ w = v :=
   ⟨fun ⟨_, _, ⟨_, h0⟩, _, hw⟩ => hw.trans h0,
     fun hw => ⟨[v], rfl, ⟨v, rfl⟩, fun _ ht => absurd ht (Nat.not_lt_zero _), hw⟩⟩
 
 /-- The right fold of no elements from the value `v` is `v`. -/
-theorem foldrDen_nil {E V : Obj} (TS : Den (.prod E V) V) (v w : V.El) :
+theorem foldrDen_nil {E V : Obj} (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (v w : V.El) :
     foldrDen (fun _ b => b = v) TS [] w ↔ w = v :=
   ⟨fun ⟨_, _, ⟨_, h0⟩, _, hw⟩ => hw.trans h0,
     fun hw => ⟨[v], rfl, ⟨v, rfl⟩, fun _ ht => absurd ht (Nat.not_lt_zero _), hw⟩⟩
 
 /-- A left fold from `Te` is one from a value `v` of `Te`'s range. -/
-theorem foldDen_start {E V : Obj} (Te : Den V V) (TS : Den (.prod V E) V) (xs : List E.El) (w : V.El) :
+theorem foldDen_start {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (w : V.El) :
     foldDen Te TS xs w ↔ ∃ v, (∃ a, Te a v) ∧ foldDen (fun _ b => b = v) TS xs w :=
   ⟨fun ⟨ys, hy, h0, hS, hw⟩ => ⟨_, h0, ys, hy, ⟨w, rfl⟩, hS, hw⟩,
     fun ⟨_, ⟨a, ha⟩, ys, hy, ⟨_, h0⟩, hS, hw⟩ => ⟨ys, hy, ⟨a, h0 ▸ ha⟩, hS, hw⟩⟩
 
 /-- A right fold from `Te` is one from a value `v` of `Te`'s range. -/
-theorem foldrDen_start {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) (xs : List E.El) (w : V.El) :
+theorem foldrDen_start {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (xs : List E.El) (w : V.El) :
     foldrDen Te TS xs w ↔ ∃ v, (∃ a, Te a v) ∧ foldrDen (fun _ b => b = v) TS xs w :=
   ⟨fun ⟨ys, hy, h0, hS, hw⟩ => ⟨_, h0, ys, hy, ⟨w, rfl⟩, hS, hw⟩,
     fun ⟨_, ⟨a, ha⟩, ys, hy, ⟨_, h0⟩, hS, hw⟩ => ⟨ys, hy, ⟨a, h0 ▸ ha⟩, hS, hw⟩⟩
 
 /-- **The right fold peeled at its last element** (`snoc°`): a chain from `Te` on `xs ++ [x]` is a first value `v`
 from `Te`, one step `TS (x, v)` to `v'`, and a chain from `v'` on `xs` (the mirror of `foldDen_cons`). -/
-theorem foldrDen_snoc {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) (x : E.El) (xs : List E.El) (w : V.El) :
+theorem foldrDen_snoc {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (x : E.El) (xs : List E.El) (w : V.El) :
     foldrDen Te TS (xs ++ [x]) w ↔
       ∃ v v', (∃ a, Te a v) ∧ TS (x, v) v' ∧ foldrDen (fun _ b => b = v') TS xs w := by
   have hl : (xs ++ [x]).length = xs.length + 1 := by simp
@@ -191,7 +191,7 @@ theorem foldrDen_snoc {E V : Obj} (Te : Den V V) (TS : Den (.prod E V) V) (x : E
 
 /-- **A left fold whose step keeps the index `c`** (`foldI`'s round, the step met with the key's index `Q`): from
 `(c, v)` it ends at `(c, w)` where the left fold at `c` from `v` ends at `w`. -/
-theorem foldDen_fibre {I E V : Obj} (TS : Den (.prod (.prod I V) E) (.prod I V)) (Q : I.El → Prop) (c : I.El)
+theorem foldDen_fibre {I E V : Obj} (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) (Q : I.El → Prop) (c : I.El)
     (hQ : ∀ a, Q a ↔ a = c) (r : List E.El) : ∀ (v : V.El) (w : (Obj.prod I V).El),
     foldDen (fun _ b => b = (c, v)) (fun q q' => TS (q.1, q.2) q' ∧ Q q'.1) r w ↔
       w.1 = c ∧ foldDen (fun _ b => b = v) (fun q v' => TS ((c, q.1), q.2) (c, v')) r w.2 := by
@@ -297,7 +297,7 @@ theorem arith_sound {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)}
 
 /-- A round's step `compT (r ≫ S)` on the pairs `r` of `P` and `el` (`⟨P, el⟩` or `⟨el, P⟩`): the pairs related by
 `S`'s meaning `TS`. -/
-theorem pairStep_holds {K C D B : Obj} {S : Rel (.prod C D) B} {TS : Den (.prod C D) B}
+theorem pairStep_holds {K C D B : Obj} {S : Rel (.prod C D) B} {TS : Core.Rel (Obj.El (.prod C D)) (Obj.El B)}
     (hS : ∀ K, K.WF → S.Reps K TS) (wS : S.Wf) {L : Tab K C} {M : Tab K D} {T : Tab K B} (wL : L.WF) (wM : M.WF)
     (hT : (compT (L.pair M) S).runE {} = .ok T) (k : K.El) (b : B.El) :
     T.Holds k b ↔ ∃ c d, L.Holds k c ∧ M.Holds k d ∧ TS (c, d) b :=
@@ -313,8 +313,8 @@ theorem pairStep_wf {K C D B : Obj} {S : Rel (.prod C D) B} (wS : S.Wf) {L : Tab
 
 /-- `⦇e,S⦈` on the arrays in demand: `foldRoundsL_holds` from `idU X` (each array whole) and `top X e` (each value
 of `e`), the step `TS (v, x)`. -/
-theorem fold_sound {E V : Obj} {e : Rel V V} {S : Rel (.prod V E) V} {Te : Den V V}
-    {TS : Den (.prod V E) V} (he : ∀ K, K.WF → e.Reps K Te) (we : e.Wf) (hS : ∀ K, K.WF → S.Reps K TS)
+theorem fold_sound {E V : Obj} {e : Rel V V} {S : Rel (.prod V E) V} {Te : Core.Rel (Obj.El V) (Obj.El V)}
+    {TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)} (he : ∀ K, K.WF → e.Reps K Te) (we : e.Wf) (hS : ∀ K, K.WF → S.Reps K TS)
     (wS : S.Wf) : ∀ K, K.WF → (GenK.fold E V e S).Reps K (foldDen Te TS) :=
   ofVals_sound fun _ _ X t hK wX h xs w hx _ _ => by
     obtain ⟨r, hr, h⟩ := bind_ok h
@@ -341,8 +341,8 @@ theorem fold_sound {E V : Obj} {e : Rel V V} {S : Rel (.prod V E) V} {Te : Den V
       exact ⟨xs, v, (Tab.idU_holds hr xs xs).2 ⟨rfl, hX⟩, (Tab.top_holds hP xs v).2 ⟨hX, j, hj⟩, hW⟩
 
 /-- `⦇e,S⦈ʳ` on the arrays in demand: `foldRoundsR_holds` from `idU X` and `top X e`, the step `TS (x, v)`. -/
-theorem foldr_sound {E V : Obj} {e : Rel V V} {S : Rel (.prod E V) V} {Te : Den V V}
-    {TS : Den (.prod E V) V} (he : ∀ K, K.WF → e.Reps K Te) (we : e.Wf) (hS : ∀ K, K.WF → S.Reps K TS)
+theorem foldr_sound {E V : Obj} {e : Rel V V} {S : Rel (.prod E V) V} {Te : Core.Rel (Obj.El V) (Obj.El V)}
+    {TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)} (he : ∀ K, K.WF → e.Reps K Te) (we : e.Wf) (hS : ∀ K, K.WF → S.Reps K TS)
     (wS : S.Wf) : ∀ K, K.WF → (GenK.foldr E V e S).Reps K (foldrDen Te TS) :=
   ofVals_sound fun _ _ X t hK wX h xs w hx _ _ => by
     obtain ⟨r, hr, h⟩ := bind_ok h
@@ -373,7 +373,7 @@ theorem foldr_sound {E V : Obj} {e : Rel V V} {S : Rel (.prod E V) V} {Te : Den 
 `TS` met with the key's index (`St p q x q' = TS (q, x) q' ∧ q'.1 = p.1`), from `(p.1, b)` with `b` from `e` at `p.1`;
 `foldDen_fibre` reads it as the fold at `p.1`. -/
 theorem foldI_sound {I E V : Obj} {e : Rel I (.prod V V)} {S : Rel (.prod (.prod I V) E) (.prod I V)}
-    {Te : Den I (.prod V V)} {TS : Den (.prod (.prod I V) E) (.prod I V)} (he : ∀ K, K.WF → e.Reps K Te)
+    {Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))} {TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))} (he : ∀ K, K.WF → e.Reps K Te)
     (we : e.Wf) (hS : ∀ K, K.WF → S.Reps K TS) (wS : S.Wf) :
     ∀ K, K.WF → (GenK.foldI I E V e S).Reps K (foldIDen Te TS) :=
   ofVals_sound fun _ _ X t hK wX h p v hp _ _ => by
@@ -456,7 +456,7 @@ end GenK
 
 /-- The left fold from `c` along `ys` is the iteration `rowDens` states for `loop`: states `g 0 = c`, each step
 `TF (g t, ys[t]) (g (t+1))`, ending at `g |ys|`. -/
-theorem foldDen_iter {X Y : Obj} (TF : Den (.prod X Y) X) :
+theorem foldDen_iter {X Y : Obj} (TF : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) :
     ∀ (ys : List Y.El) (c w : X.El), foldDen (fun _ b => b = c) TF ys w ↔
       ∃ g : Nat → X.El, g 0 = c ∧ (∀ t (ht : t < ys.length), TF (g t, ys[t]'ht) (g (t + 1))) ∧ w = g ys.length
   | [], c, w => by
@@ -479,7 +479,7 @@ theorem foldDen_iter {X Y : Obj} (TF : Den (.prod X Y) X) :
 /-- **`P ≫ loop(F)`** (`Tab.loop`), its step `F` given the pairs `D` a round meets acting as `D ≫ TF`: each `(c, ys)`
 of `P` to the left fold of `TF` along `ys` from `c` (`foldRoundsL_holds`, keyed by `ran P`). -/
 theorem Tab.loop_holds {K X Y : Obj} {F : Tab (.prod X Y) (.prod X Y) → Except String (Tab (.prod X Y) X)}
-    {TF : Den (.prod X Y) X} (hFw : ∀ D t, F D = .ok t → D.WF → t.WF)
+    {TF : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)} (hFw : ∀ D t, F D = .ok t → D.WF → t.WF)
     (hF : ∀ D T, F D = .ok T → D.WF → ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x)
     {P : Tab K (.prod X (.arr Y))} {res : Tab K X} (h : Tab.loop F P = .ok res) (wP : P.WF) (k : K.El) (c : X.El) :
     res.Holds k c ↔ ∃ p : (Obj.prod X (.arr Y)).El, P.Holds k p ∧ foldDen (fun _ b => b = p.1) TF p.2 c := by
@@ -1202,7 +1202,7 @@ open Classical in
 `(x, y)` of `P` to `List.merge x y` under `a ≤ b ⟺ (a, b) TQ (a, b)`. The fold keeps one state per key, the `mergeRun`
 of its clock read so far (the invariant of `foldRoundsL_holds`), so a round's pairs of heads are of one state. -/
 theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Den (.prod B B) (.prod B B)} (hq : Tab.QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
+    {TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hq : Tab.QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
     {P : Tab K (.prod (.arr B) (.arr B))} {res : Tab K (.arr B)} (h : Tab.merge q P = .ok res) (wP : P.WF) (k : K.El)
     (zs : List B.El) : res.Holds k zs ↔
       ∃ p : (Obj.prod (.arr B) (.arr B)).El, P.Holds k p ∧ zs = List.merge p.1 p.2 fun a b => decide (TQ (a, b) (a, b)) := by
@@ -1437,7 +1437,7 @@ diagonal: each array `xs` of `X` to `thinLDen`, the right fold from `[]` of `bum
 (`foldRoundsR_holds`). A round's step is keyed by the pair `(x, ys)` it meets, so it needs no invariant. -/
 theorem Tab.thinL_holds {B : Obj} {n : USize}
     {q : Tab (.prod B B) (.prod B B) → Except String (Tab (.prod B B) (.prod B B))}
-    {TQ : Den (.prod B B) (.prod B B)} (hq : Tab.QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
+    {TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hq : Tab.QDiag q TQ) (hqw : ∀ D t, q D = .ok t → D.WF → t.WF)
     {X : Vals (.arr B) n} {res : Tab (.arr B) (.arr B)} (h : Tab.thinL q X = .ok res) (hX : Vals.WF X)
     (xs w : List B.El) :
     res.Holds xs w ↔ (∃ i, X.row i = xs) ∧ thinLDen (fun a b => decide (TQ (a, b) (a, b))) xs w := by
@@ -1615,7 +1615,7 @@ open Classical in
 /-- A row given one test `p`, run on the arrays in demand (`elems`) as `f`, whose law reads `P` only through the test
 `∃ y, P x y` on the array's elements, by `F` (which reads its test only on the elements): it represents `F` of the
 test of `p`'s meaning `T`, `p` run knowing its domain is those elements, where it agrees with `T`. -/
-theorem elemsTest_sound {B C : Obj} {R : Rel B B} {T : Den B B}
+theorem elemsTest_sound {B C : Obj} {R : Rel B B} {T : Core.Rel (Obj.El B) (Obj.El B)}
     {f : {n : USize} → Tab B B → Vals (.arr B) n → Except String (Tab (.arr B) C)}
     {F : (B.El → Bool) → List B.El → C.El}
     (hf : ∀ {n : USize} {P : Tab B B} {X : Vals (.arr B) n} {t : Tab (.arr B) C}, f P X = .ok t → P.WF → Vals.WF X →
@@ -1640,7 +1640,7 @@ theorem elemsTest_sound {B C : Obj} {R : Rel B B} {T : Den B B}
 open Classical in
 /-- `filter(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.filter`): each array in demand to its elements in
 `dom T` (`elemsTest_sound`). -/
-theorem filter_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
+theorem filter_sound {B : Obj} {R : Rel B B} {T : Core.Rel (Obj.El B) (Obj.El B)} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.elems B B (.arr B) R fun P X => Tab.filter P X).Reps K
       (fun xs ys => ys = xs.filter fun x => decide (∃ y, T x y)) :=
   elemsTest_sound (C := .arr B) (F := fun p (xs : List B.El) => xs.filter p)
@@ -1649,7 +1649,7 @@ theorem filter_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF →
 open Classical in
 /-- `takewhile(p)`, `Expand.primE`'s fit of the row (`elems`, `Tab.takewhile`): each array in demand to its longest
 prefix in `dom T` (`elemsTest_sound`). -/
-theorem takewhile_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
+theorem takewhile_sound {B : Obj} {R : Rel B B} {T : Core.Rel (Obj.El B) (Obj.El B)} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.elems B B (.arr B) R fun P X => Tab.takewhile P X).Reps K
       (fun xs ys => ys = xs.takeWhile fun x => decide (∃ y, T x y)) :=
   elemsTest_sound (C := .arr B) (F := fun p (xs : List B.El) => xs.takeWhile p)
@@ -1661,7 +1661,7 @@ theorem takewhile_sound {B : Obj} {R : Rel B B} {T : Den B B} (hR : ∀ K, K.WF 
 
 /-- `F(R)`, `Expand.primE`'s fit of the row (`elems`, `Tab.map`): each array in demand to every array of its length
 related pointwise by `R`'s meaning `T`, `R` run knowing its domain is the elements, where it agrees with `T`. -/
-theorem map_sound {A B : Obj} {R : Rel A B} {T : Den A B} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
+theorem map_sound {A B : Obj} {R : Rel A B} {T : Core.Rel (Obj.El A) (Obj.El B)} (hR : ∀ K, K.WF → R.Reps K T) (wR : R.Wf) :
     ∀ K, K.WF → (GenK.elems A B (.arr B) R fun P X => Tab.map P X).Reps K
       (fun xs ys => ys.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')) := by
   unfold GenK.elems
@@ -1683,7 +1683,7 @@ theorem map_sound {A B : Obj} {R : Rel A B} {T : Den A B} (hR : ∀ K, K.WF → 
 
 /-- `loop(F)`, `Expand.primE`'s fit of the row (`stepAfter`, `Tab.loop`): each `(c, ys)` in demand to the states
 of `rowDens`' `loop` iteration of `F`'s meaning `TF`, `F` run on the pairs each round meets (`compT_sound`). -/
-theorem loop_sound {X Y : Obj} {F : Rel (.prod X Y) X} {TF : Den (.prod X Y) X}
+theorem loop_sound {X Y : Obj} {F : Rel (.prod X Y) X} {TF : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)}
     (hF : ∀ K, K.WF → F.Reps K TF) (wF : F.Wf) :
     ∀ K, K.WF → (GenK.stepAfter (.prod X Y) X (.prod X (.arr Y)) X F fun F P => Tab.loop F P).Reps K
       (fun p c => ∃ g : Nat → X.El, g 0 = p.1 ∧

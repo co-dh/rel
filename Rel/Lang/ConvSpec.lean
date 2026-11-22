@@ -9,7 +9,7 @@ open scoped Rel.Core.Rel
 /-! ### `convTm` read back: the converse it builds means the converse (§4.2) -/
 
 /-- `t°` as `Proj` holds it: `Zπ₁°` or `Zπ₂°`. -/
-noncomputable def Proj.den (ρ : Val) {B A₁ A₂ : Obj} : Proj B A₁ A₂ → Den B (.prod A₁ A₂)
+noncomputable def Proj.den (ρ : Val) {B A₁ A₂ : Obj} : Proj B A₁ A₂ → Core.Rel (Obj.El B) (Obj.El (.prod A₁ A₂))
   | .inl z => z.den ρ ≫ (graph Prod.fst)°
   | .inr z => z.den ρ ≫ (graph Prod.snd)°
 
@@ -56,7 +56,7 @@ local macro "objs_simp" : tactic => `(tactic| simp [Prim.objs, Option.orElse, Pr
   RowCode.uncons, RowCode.cat, RowCode.uncat, RowCode.snoc, RowCode.unsnoc, List.lookup, σ₁, σ₂])
 
 /-- A row whose meaning of its one argument is a coreflexive (`dom`, `ran`) relates a value only to itself. -/
-theorem Sem.one_corefl {X Y A : Obj} {D : Den X Y → Den A A} (hD : ∀ T a b, D T a b → a = b) :
+theorem Sem.one_corefl {X Y A : Obj} {D : Core.Rel (Obj.El X) (Obj.El Y) → Core.Rel (Obj.El A) (Obj.El A)} (hD : ∀ T a b, D T a b → a = b) :
     ∀ ss a b, Sem.one D ss a b → a = b := by
   intro ss a b h; unfold Sem.one at h; split at h
   · split at h
