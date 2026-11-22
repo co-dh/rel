@@ -514,7 +514,8 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
 of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s: every key column is `Ext.Enc.WF` (so its
 `hasNul` is its rows' flags) and there are fewer than `2 ^ 32` rows (`asc_col_row`). -/
 theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
-    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2) (hN : N.toNat < 2 ^ 32) :
+    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2)
+    (hN : N.toNat < 2 ^ 32 ∨ ∀ x ∈ es, hasNul x.2 = false) :
     ∃ cs, es.mapM (ascCol N) = .ok cs ∧
       Enc.raw .i64 N p = ((ascGrade N.toNat (ascKeys N es)).map Nat.toUInt64).toArray ∧
       ∀ q (hq : q < (ascGrade N.toNat (ascKeys N es)).length),
@@ -534,7 +535,19 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
     obtain ⟨ws, nul, hv, hws, hwq, h0, h1⟩ := hcol c es[c] (vs[c]'(by simp at h; omega)) (List.getElem?_eq_getElem h')
       (List.getElem?_eq_getElem _)
     obtain ⟨t, hw⟩ := hwf es[c] (List.getElem_mem h')
-    exact asc_col_row hN hw hv hws hwq h0 h1 hperm q hq
+    rcases hN with hN | hpl
+    · exact asc_col_row hN hw hv hws hwq h0 h1 hperm q hq
+    -- a plain column sorts with no null bitmap: its codes are its words and every flag is `0` (no row bound needed)
+    have hp := hpl _ (List.getElem_mem h')
+    obtain rfl := h0 hp
+    have hcl := wordsFoR_closed ws hws.symm
+    have hqN : q < N.toNat := by simpa using Nat.lt_of_lt_of_eq hq hperm.length_eq
+    have hpq : ps[q] < N.toNat := List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hq))
+    rw [hv]
+    refine ⟨?_, by rw [hasNul_wordsFoR, hp], ?_⟩
+    · simp only [nulWords, hasNul_wordsFoR, hp, Bool.false_eq_true, ↓reduceIte]; rw [hcl.2.1, hwq q hq]
+    · rw [foRNuls_plain (hcl.2.2 (t := .i64) rfl fun h => by cases h) (hasNul_wordsFoR ws) hqN,
+        foRNuls_plain hw hp hpq]
   refine ascKeys_row (List.map_fst_zip (by simp [hvl])) (fun c h h' => ?_) fun c h h' => ?_
   · simp only [List.getElem_zip]; exact (hc c h h').1
   · simp only [List.getElem_zip]; exact (hc c h h').2
@@ -593,17 +606,18 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
 /-- **The sorted rows' key at `q` is input row `ps[q]`'s**, `ps` the permutation `asc_perm` reads `p` as: `kasc_grade`
 on a side's columns (`Vals.cols_wf`), below `2 ^ 32` rows. -/
 theorem Vals.sorted_key {A : Obj} {n : USize} {x : Vals A n} {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es)
-    {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p)) (hN : n.toNat < 2 ^ 32) {ps : List Nat}
+    {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p)) {ps : List Nat}
     (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray) (hperm : ps.Perm (List.range n.toNat)) :
     ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
-  obtain ⟨-, -, -, hk⟩ := kasc_grade ha (fun c hc => (Vals.cols_wf x hes c hc).1) hN
+  obtain ⟨-, -, -, hk⟩ := kasc_grade ha (fun c hc => (Vals.cols_wf x hes c hc).1)
+    (.inr fun c hc => (Vals.cols_wf x hes c hc).2)
   rw [asc_perm_grade ha hp hperm]; exact hk
 
 /-- **Every row of `x` has a row of `Vals.nub x` equal to it in the kernels' order codes** (`seenKey` over the side's
 columns `es`): the first input row of its run among the sorted rows. Where equal codes mean equal rows, the two sides
 hold the same rows (`Vals.nub_rows`). Below `2 ^ 32` rows (`kasc_grade`). -/
 theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (hN : n.toNat < 2 ^ 32) (i : Fin n.toNat) :
+    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (i : Fin n.toNat) :
     ∃ j : Fin r.1.toNat, ∃ i' : Fin n.toNat, Vals.row r.2 j = Vals.row x i' ∧ seenKey n es i' = seenKey n es i := by
   obtain ⟨es', vs, p, k, g, f, ix, y, hes', ha, hs, hix, hy, rfl⟩ := Vals.nub_ok h
   have hee : es = es' := Except.ok.inj (hes.symm.trans hes'); subst hee
@@ -612,7 +626,7 @@ theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × 
   have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
   have hn := n.toNat_lt_size
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
-  have hkey := Vals.sorted_key hes ha hN hp hperm
+  have hkey := Vals.sorted_key hes ha hp hperm
   generalize seenKey n ((es.map (·.1)).zip vs) = K at hk hf hkey
   obtain ⟨q, hq, hqi⟩ := List.getElem_of_mem (hperm.mem_iff.2 (List.mem_range.2 i.2))
   obtain ⟨hgl, -, hgk, -⟩ := (firsts_spec K n.toNat).2.2.2.2.2 q (by omega)
@@ -1056,18 +1070,18 @@ theorem Vals.seenKey_of_row {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize
 /-- **`Vals.nub x` holds exactly `x`'s rows**: `Vals.nub_sub` one way, `Vals.nub_cover` with `Vals.row_of_seenKey`
 the other. -/
 theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    (hN : n.toNat < 2 ^ 32) (a : A.El) : (∃ j, Vals.row r.2 j = a) ↔ ∃ i, Vals.row x i = a := by
+    (a : A.El) : (∃ j, Vals.row r.2 j = a) ↔ ∃ i, Vals.row x i = a := by
   obtain ⟨es, _, _, _, _, _, _, _, hes, _⟩ := Vals.nub_ok h
   constructor
   · rintro ⟨j, rfl⟩; obtain ⟨i, hi⟩ := Vals.nub_sub h j; exact ⟨i, hi.symm⟩
-  · rintro ⟨i, rfl⟩; obtain ⟨j, i', h1, h2⟩ := Vals.nub_cover h hes hN i
+  · rintro ⟨i, rfl⟩; obtain ⟨j, i', h1, h2⟩ := Vals.nub_cover h hes i
     exact ⟨j, h1.trans (Vals.row_of_seenKey h hes i' i h2)⟩
 
 /-- **Which input row each row of `Vals.nub x` is**: `kasc`'s permutation `ps` (its grade by the codes `ascKeys`),
 `K` the sorted rows' keys (`K q` the key of input row `ps[q]`), and row `j` of the answer input row `ps[F[j]]`, `F` the
 first rows of `K` (`firstsOf`, `k` of them). -/
 theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (hN : n.toNat < 2 ^ 32) :
+    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) :
     ∃ (ps : List Nat) (K : Nat → List UInt64), ps = ascGrade n.toNat (ascKeys n es) ∧
       (∀ q (hq : q < ps.length), K q = seenKey n es ps[q]) ∧ r.1.toNat = (firstsOf K n.toNat).length ∧
       ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, Vals.row r.2 j = Vals.row x i ∧
@@ -1083,7 +1097,7 @@ theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Va
   have hrp : Enc.raw .i64 n p = (ps.map Nat.toUInt64).toArray := by
     rw [hp]; exact (wordsFoR_closed _ (by simp [hlen])).2.1
   have hpsg := asc_perm_grade ha hp hperm
-  have hkey := Vals.sorted_key hes ha hN hp hperm
+  have hkey := Vals.sorted_key hes ha hp hperm
   generalize seenKey n ((es.map (·.1)).zip vs) = K at hk hf hkey
   have hkn : k ≤ n.toNat := by rw [hk]; unfold firstsOf; exact Nat.le_trans (List.length_filter_le _ _) (by simp)
   have hkU : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
@@ -1141,11 +1155,11 @@ theorem Verify.firsts_sorted {n : USize} {es : List (AscKey × Enc)} {K : Nat �
 /-- **`Vals.nub x` is sorted and has no two rows with one key**: its rows are input rows `sel j`, ascending in `kasc`'s
 order of their codes (`lexLe` over `ascKeys`), no two with equal codes (`seenKey`). -/
 theorem Vals.nub_sorted {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (hN : n.toNat < 2 ^ 32) :
+    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) :
     ∃ sel : Fin r.1.toNat → Fin n.toNat, (∀ j, Vals.row r.2 j = Vals.row x (sel j)) ∧
       ∀ j j' : Fin r.1.toNat, j.1 < j'.1 → lexLe (ascKeys n es) (sel j) (sel j') = true ∧
         seenKey n es (sel j) ≠ seenKey n es (sel j') := by
-  obtain ⟨ps, K, hps, hkey, -, hsel⟩ := Vals.nub_sel h hes hN
+  obtain ⟨ps, K, hps, hkey, -, hsel⟩ := Vals.nub_sel h hes
   obtain ⟨sel, hs⟩ := Classical.axiomOfChoice hsel
   subst hps
   exact ⟨sel, fun j => (hs j).1, fun j j' hjj => Verify.firsts_sorted hkey hjj (hs j).2 (hs j').2⟩
@@ -1153,9 +1167,9 @@ theorem Vals.nub_sorted {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) ×
 /-- **The rows of `Vals.nub x` are pairwise distinct**: two of them are input rows with unequal codes
 (`Vals.nub_sorted`), so unequal rows (`Vals.seenKey_of_row`). -/
 theorem Vals.nub_distinct {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    (hN : n.toNat < 2 ^ 32) {j j' : Fin r.1.toNat} (hjj : j ≠ j') : Vals.row r.2 j ≠ Vals.row r.2 j' := by
+    {j j' : Fin r.1.toNat} (hjj : j ≠ j') : Vals.row r.2 j ≠ Vals.row r.2 j' := by
   obtain ⟨es, _, _, _, _, _, _, _, hes, _⟩ := Vals.nub_ok h
-  obtain ⟨sel, hs, hlt⟩ := Vals.nub_sorted h hes hN
+  obtain ⟨sel, hs, hlt⟩ := Vals.nub_sorted h hes
   intro e
   rw [hs, hs] at e
   rcases Nat.lt_or_gt_of_ne (Fin.val_ne_of_ne hjj) with l | l
@@ -1166,40 +1180,40 @@ namespace Tab
 variable {k v : Obj}
 
 /-- **`R.canon` denotes `R`**. -/
-theorem canon_holds {R S : Tab k v} (h : R.canon = .ok S) (hN : R.n.toNat < 2 ^ 32) (a : k.El) (b : v.El) : S.Holds a b ↔ R.Holds a b := by
+theorem canon_holds {R S : Tab k v} (h : R.canon = .ok S) (a : k.El) (b : v.El) : S.Holds a b ↔ R.Holds a b := by
   unfold Tab.canon at h
   cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
   | error s => simp [hn, Functor.map, Except.map] at h
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have := Vals.nub_rows hn hN (a, b)
+    have := Vals.nub_rows hn (a, b)
     simp only [Tab.Holds, Vals.row, Prod.mk.injEq] at this ⊢
     exact this
 
 /-- **`R.ran` denotes `𝟙 ∩ R° ≫ R°°`** (`CRel.rep_ran`'s statement, pointwise). -/
-theorem ran_holds {R : Tab k v} {S : Tab v v} (h : R.ran = .ok S) (hN : R.n.toNat < 2 ^ 32) (a b : v.El) : S.Holds a b ↔ a = b ∧ ∃ x, R.Holds x a := by
+theorem ran_holds {R : Tab k v} {S : Tab v v} (h : R.ran = .ok S) (a b : v.El) : S.Holds a b ↔ a = b ∧ ∃ x, R.Holds x a := by
   unfold Tab.ran at h
   cases hn : Vals.nub R.val with
   | error s => simp [hn, Functor.map, Except.map] at h
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have := Vals.nub_rows hn hN a
+    have := Vals.nub_rows hn a
     simp only [Tab.Holds]
     constructor
     · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, Vals.row R.key i, i, rfl, hi⟩
     · rintro ⟨rfl, x, i, -, hi⟩; obtain ⟨j, hj⟩ := this.2 ⟨i, hi⟩; exact ⟨j, hj, hj⟩
 
 /-- **`R.dom` denotes `𝟙 ∩ R ≫ R°`** (`CRel.rep_dom`'s statement, pointwise). -/
-theorem dom_holds {R : Tab k v} {S : Tab k k} (h : R.dom = .ok S) (hN : R.n.toNat < 2 ^ 32) (a b : k.El) : S.Holds a b ↔ a = b ∧ ∃ y, R.Holds a y := by
+theorem dom_holds {R : Tab k v} {S : Tab k k} (h : R.dom = .ok S) (a b : k.El) : S.Holds a b ↔ a = b ∧ ∃ y, R.Holds a y := by
   unfold Tab.dom at h
   cases hn : Vals.nub R.key with
   | error s => simp [hn, Functor.map, Except.map] at h
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    have := Vals.nub_rows hn hN a
+    have := Vals.nub_rows hn a
     simp only [Tab.Holds]
     constructor
     · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, Vals.row R.val i, i, hi, rfl⟩

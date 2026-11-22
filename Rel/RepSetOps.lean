@@ -261,21 +261,14 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
       · rw [rv, dif_neg (by simp)]; simpa using hb
 
 /-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
-theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF)
-    (hN : R.n.toNat + S.n.toNat < 2 ^ 32) (a : k.El) (b : v.El) :
+theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
     U.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
   unfold Tab.union at h
   cases hc : R.concat S with
   | error s => simp [hc, bind, Except.bind] at h
   | ok C =>
     simp only [hc, bind, Except.bind] at h
-    have hCn : C.n.toNat = R.n.toNat + S.n.toNat := by
-      unfold Tab.concat at hc; simp only [bind, Except.bind, pure, Except.pure] at hc
-      split at hc; · cases hc
-      rename_i p hp
-      repeat (split at hc; · cases hc)
-      cases hc; exact (catPlan_ok hp).1
-    rw [canon_holds h (hCn ▸ hN), concat_holds hc hR hS]
+    rw [canon_holds h, concat_holds hc hR hS]
 
 end Tab
 
@@ -311,7 +304,7 @@ theorem union_wf {R S t : Tab k v} (h : R.union S = .ok t) (hR : R.WF) (hS : S.W
 /-- **`R.canon` is sorted and duplicate-free**: `Vals.nub_sorted` of its pair side, the rows of `U` being rows `sel j`
 of `R`, ascending in `kasc`'s order of their codes, no two with equal codes. -/
 theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey × Enc)}
-    (hes : Vals.cols (A := .prod k v) (R.key, R.val) = .ok es) (hN : R.n.toNat < 2 ^ 32) :
+    (hes : Vals.cols (A := .prod k v) (R.key, R.val) = .ok es) :
     ∃ sel : Fin U.n.toNat → Fin R.n.toNat,
       (∀ j, (U.key.row j, U.val.row j) = (R.key.row (sel j), R.val.row (sel j))) ∧
       ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys R.n es) (sel j) (sel j') = true ∧
@@ -322,10 +315,10 @@ theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey ×
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    exact Vals.nub_sorted hn hes hN
+    exact Vals.nub_sorted hn hes
 
 /-- **`R.canon`'s rows are distinct** (`Vals.nub_distinct` of its pair side). -/
-theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) (hN : R.n.toNat < 2 ^ 32)
+theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U)
     {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
     (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
   unfold Tab.canon at h
@@ -334,7 +327,7 @@ theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) (hN : R
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    exact Vals.nub_distinct hn hN hjj
+    exact Vals.nub_distinct hn hjj
 
 /-- **A canonical table's columns have codes**: `canon`
 ran `Vals.cols` and `kasc` on `(R.key, R.val)`. -/
@@ -653,25 +646,9 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hq))
   have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
-    intro q hq
-    -- no column of either side holds a null: the codes are the words, and every flag is `0`
-    have hc : ∀ c (h1 : c < ((es.map (·.1)).zip vs).length) (h2 : c < es.length),
-        (Enc.raw .i64 C.n ((es.map (·.1)).zip vs)[c].2)[q]? = (Enc.raw .i64 C.n es[c].2)[ps[q]]? ∧
-        hasNul ((es.map (·.1)).zip vs)[c].2 = false ∧ hasNul es[c].2 = false ∧
-        (foRNuls C.n ((es.map (·.1)).zip vs)[c].2)[q]? = (foRNuls C.n es[c].2)[ps[q]]? := fun c h1 h2 => by
-      obtain ⟨ws, nul, hv, hws, hwq, hnul, -⟩ := hcol c es[c] (vs[c]'(by simp at h1; omega))
-        (List.getElem?_eq_getElem h2) (List.getElem?_eq_getElem _)
-      obtain ⟨⟨t, hw⟩, hp⟩ := Vals.cols_wf _ hes _ (List.getElem_mem h2)
-      obtain rfl := hnul hp
-      have hcl := wordsFoR_closed ws hws.symm
-      simp only [List.getElem_zip, hv]
-      refine ⟨by rw [hcl.2.1, hwq q hq], hasNul_wordsFoR ws, hp, ?_⟩
-      rw [foRNuls_plain (hcl.2.2 (t := .i64) rfl fun h => by cases h) (hasNul_wordsFoR ws) (by omega),
-        foRNuls_plain hw hp (hpsl q hq)]
-    refine ascKeys_row (List.map_fst_zip (by simp [hvl])) (fun c h1 h2 => ?_) fun c h1 h2 => ?_
-    · obtain ⟨e1, n1, n2, -⟩ := hc c h1 h2
-      simp only [nulWords, n1, n2, Bool.false_eq_true, ↓reduceIte]; exact e1
-    · obtain ⟨-, n1, n2, e2⟩ := hc c h1 h2; exact ⟨n1.trans n2.symm, e2⟩
+    obtain ⟨-, -, -, hk⟩ := kasc_grade hvp (fun x hx => (Vals.cols_wf _ hes x hx).1)
+      (.inr fun x hx => (Vals.cols_wf _ hes x hx).2)
+    rw [asc_perm_grade hvp hp hperm]; exact hk
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey
   generalize hF : firstsOf Kf C.n.toNat = F at hmm hg hf
