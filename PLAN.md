@@ -943,7 +943,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       值集合作 S 的界，不读回），`lake lean` 热构建 35 s → 10.4–11.1 s，`#guard` 通过；同时撤回 paramL2 的 `callDef` 按需
       形式再无收益（11.8 s）。`meetOn_sound`/`meetOn_wf` 多一个情形，新引理 `Known.WF.orElse`（`K` 未知的一边用 `Vals.WF`
       值集合补上仍 `WF`；matrix 的 `x`/`y` 的 `Vals.WF` 已在 `Rel.Wf (.bits …)` 里），行落在 `x × y` 内由 `Tab.ofBits_set`。
-      余下约 8 s 是第二处回退，在 666343f（26.9 s）与 e80c027（35.4 s）之间，未 bisect。
+      第二处回退已修（026c1ce）：`GenK.memo` 的兜底分支 `| R => .tab (R.runE {})` 把 `.bits` 经 `Tab.ofBits` 读回成行，
+      `K₀ ∩ π₁\(sup(X) X)` 每轮成了两张表的 `Tab.inter`，而不是 `meetV` 的 tab∩bits。规则：`memo` 只把 `lazy` 换成它在空
+      上下文 `force` 出的值（`tab` 或 `bits`）；别的值已算过一次，原样返回，表示由读它的运算选。`lake lean` 热构建
+      12.4 s → 3.1 s（两次 3.10 s、3.15 s）。`memo_sound`/`memo_wf` 用已有的 `force_runE`、`Rel.Wf.force`，无新引理；
+      architecture §0 “存成 `tab`”改为“存成 `force` 后的值（`tab` 或 `bits`）”。
       ~~`ldiv(tab, bits)` 每轮把 matrix 读回~~：过时，I2 已做（`GenK.ldivM` → `Tab.ldivTabMat`，`kbitrows true`，不读回；
       `Tab.ldivTabMat_law` 已证）。2026-11-22 在 9aed3b4 上量（`lake lean`，含约 1 s 启动）：`sudokupc9` 41 s；只算 `sup(K₀)`
       6 s，`sup(K₀) K₀` 12 s，一轮 `K₀ ∩ π₁\(sup(K₀) K₀)` 11 s：`\` 与 `∩` 合计不到 1 s，每轮约 10 s 在 `sup(X)`
