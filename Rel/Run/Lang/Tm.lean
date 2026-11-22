@@ -351,6 +351,19 @@ def Tm.spinePol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, _ => false
 end
 
+/-- `X`, the variable `k`, occurs in `t` only where `⟦t⟧` distributes over `∪` in it, `⟦t⟧(X ∪ Y) ⊑ ⟦t⟧X ∪ ⟦t⟧Y`
+    (`Tm.den_linIn`): what lets `μ` run semi-naive (`Tab.muLin`). `k` itself, a part free of `k`, `∪` of two such, `°`
+    and `own` of one, `≫`, `∩`, `⟨,⟩` with `k` in one operand only: in both, `(X ∪ Y) ≫ (X ∪ Y)` holds `X ≫ Y`. Any
+    other node holding `k` fails: `−`, `Λ`, a division (`∀`), a fold or nested fixed point, a row's argument (`F(X ∪ Y)`
+    relates lists mixing `X` and `Y` steps, which neither `F(X)` nor `F(Y)` holds). -/
+def Tm.linIn (k : Nat) : {A B : Obj} → Tm A B → Bool
+  | _, _, .var _ _ => true
+  | _, _, .join R S => R.linIn k && S.linIn k
+  | _, _, .comp R S | _, _, .meet R S | _, _, .pair R S =>
+    R.linIn k && !S.fv.contains k || !R.fv.contains k && S.linIn k
+  | _, _, .conv R | _, _, .own R => R.linIn k
+  | _, _, t => !t.fv.contains k
+
 /-! ### The children of a recursion -/
 
 /-- `∋` at `C ⟶ E`: `mem` where `C` is `[E]`, `𝟘` at any other objects, as a row's meaning is at objects not its

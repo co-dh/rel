@@ -184,7 +184,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
     | none => R.code η.closed
   | A, B, .var _ k => η k A B
   | A, B, .nu k S b => GenK.nu A B (S.code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
-  | A, B, .mu k w n b => GenK.mu A B w n fun X => b.code (η.bind k (GenK.const A B (.ok X)))
+  | A, B, .mu k w n b => GenK.mu A B w n (b.linIn k) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   -- children `Tm.kids` reads in no shape bound no recursion: `Expand.node` refuses it, as here
   | A, B, .hylo k w b =>
     have : ((b.kids k A).getD .zero).size ≤ b.size := Tm.size_kids k A b

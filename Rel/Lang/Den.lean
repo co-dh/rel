@@ -943,6 +943,69 @@ theorem Tm.den_mono {A' B' : Obj} {t : Tm A' B'} {k : Nat} (h : t.pol true k = t
     {X Y : Core.Rel (Obj.El A) (Obj.El B)} (hXY : X ⊑ Y) : t.den (ρ.bind k X) ⊑ t.den (ρ.bind k Y) :=
   t.den_pol k true _ _ h (Val.Grow.of_le hXY)
 
+/-- **`⟦t⟧` distributes over `∪` in `X`** where `t.linIn k`, by induction on `Tm.linIn`'s cases; a part free of `k`
+    reads the same under the three bindings (`Val.Grow.congr`). What makes `Tab.muLin`'s rounds `Tab.mu`'s
+    (`GenK.mu_sound`). -/
+theorem Tm.den_linIn {k : Nat} {A' B' : Obj} {t : Tm A' B'} (h : t.linIn k = true) (ρ : Val)
+    (X Y : Core.Rel (Obj.El A) (Obj.El B)) : t.den (ρ.bind k (X ∪ Y)) ⊑ t.den (ρ.bind k X) ∪ t.den (ρ.bind k Y) := by
+  have g₁ : Val.Grow k (ρ.bind k X) (ρ.bind k (X ∪ Y)) := Val.Grow.of_le (le_iff.2 fun _ _ => Or.inl)
+  have g₂ : Val.Grow k (ρ.bind k Y) (ρ.bind k (X ∪ Y)) := Val.Grow.of_le (le_iff.2 fun _ _ => Or.inr)
+  have hk : ∀ A' B', ρ.bind k (X ∪ Y) k A' B' ⊑ ρ.bind k X k A' B' ∪ ρ.bind k Y k A' B' := fun A' B' => by
+    simp only [Val.bind, if_true]
+    by_cases e : A = A' ∧ B = B'
+    · obtain ⟨rfl, rfl⟩ := e; simp only [dif_pos (show A = A ∧ B = B from ⟨rfl, rfl⟩)]
+      exact le_iff.2 fun _ _ h => h
+    · simp only [dif_neg e]; exact le_iff.2 fun _ _ h => h.elim
+  generalize ρ.bind k (X ∪ Y) = ρ₀ at g₁ g₂ hk ⊢
+  generalize ρ.bind k X = ρ₁ at g₁ g₂ hk ⊢
+  generalize ρ.bind k Y = ρ₂ at g₁ g₂ hk ⊢
+  have free : ∀ {A B : Obj} (t : Tm A B), t.fv.contains k = false → t.den ρ₀ ⊑ t.den ρ₁ ∪ t.den ρ₂ :=
+    fun t hc => le_iff.2 fun a b h => Or.inl (by rw [g₁.congr hc]; exact h)
+  revert h
+  induction t with
+  | var _ j =>
+    intro _
+    by_cases e : j = k
+    · subst e; exact hk _ _
+    · exact free _ (by simp [Tm.fv, Ne.symm e])
+  | join R S ihR ihS =>
+    intro h; simp only [Tm.linIn, Bool.and_eq_true] at h; simp only [Tm.den]
+    exact le_iff.2 fun a b hab => hab.elim
+      (fun hr => (le_iff.1 (ihR h.1) a b hr).elim (fun h => Or.inl (Or.inl h)) fun h => Or.inr (Or.inl h))
+      fun hs => (le_iff.1 (ihS h.2) a b hs).elim (fun h => Or.inl (Or.inr h)) fun h => Or.inr (Or.inr h)
+  | comp R S ihR ihS =>
+    intro h; simp only [Tm.linIn, Bool.or_eq_true, Bool.and_eq_true, Bool.not_eq_true'] at h; simp only [Tm.den]
+    rcases h with ⟨hR, hS⟩ | ⟨hR, hS⟩
+    · rw [g₁.congr hS, g₂.congr hS]
+      exact le_iff.2 fun a c ⟨b, hab, hbc⟩ =>
+        (le_iff.1 (ihR hR) a b hab).elim (fun h => Or.inl ⟨b, h, hbc⟩) fun h => Or.inr ⟨b, h, hbc⟩
+    · rw [g₁.congr hR, g₂.congr hR]
+      exact le_iff.2 fun a c ⟨b, hab, hbc⟩ =>
+        (le_iff.1 (ihS hS) b c hbc).elim (fun h => Or.inl ⟨b, hab, h⟩) fun h => Or.inr ⟨b, hab, h⟩
+  | meet R S ihR ihS =>
+    intro h; simp only [Tm.linIn, Bool.or_eq_true, Bool.and_eq_true, Bool.not_eq_true'] at h; simp only [Tm.den]
+    rcases h with ⟨hR, hS⟩ | ⟨hR, hS⟩
+    · rw [g₁.congr hS, g₂.congr hS]
+      exact le_iff.2 fun a b ⟨hr, hs⟩ =>
+        (le_iff.1 (ihR hR) a b hr).elim (fun h => Or.inl ⟨h, hs⟩) fun h => Or.inr ⟨h, hs⟩
+    · rw [g₁.congr hR, g₂.congr hR]
+      exact le_iff.2 fun a b ⟨hr, hs⟩ =>
+        (le_iff.1 (ihS hS) a b hs).elim (fun h => Or.inl ⟨hr, h⟩) fun h => Or.inr ⟨hr, h⟩
+  | pair R S ihR ihS =>
+    intro h; simp only [Tm.linIn, Bool.or_eq_true, Bool.and_eq_true, Bool.not_eq_true'] at h; simp only [Tm.den]
+    rcases h with ⟨hR, hS⟩ | ⟨hR, hS⟩
+    · rw [g₁.congr hS, g₂.congr hS]
+      exact le_iff.2 fun a p ⟨hr, hs⟩ =>
+        (le_iff.1 (ihR hR) a p.1 hr).elim (fun h => Or.inl ⟨h, hs⟩) fun h => Or.inr ⟨h, hs⟩
+    · rw [g₁.congr hR, g₂.congr hR]
+      exact le_iff.2 fun a p ⟨hr, hs⟩ =>
+        (le_iff.1 (ihS hS) a p.2 hs).elim (fun h => Or.inl ⟨hr, h⟩) fun h => Or.inr ⟨hr, h⟩
+  | conv R ih =>
+    intro h; simp only [Tm.linIn] at h; simp only [Tm.den]
+    exact le_iff.2 fun b a hab => le_iff.1 (ih h) a b hab
+  | own R ih => intro h; simp only [Tm.linIn] at h; simp only [Tm.den]; exact ih h
+  | _ => intro h; exact free _ (by simpa [Tm.linIn] using h)
+
 
 
 

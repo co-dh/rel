@@ -957,6 +957,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       owner 交我定）。试过 `Δ = f(X) − X` 再 `X ∪ Δ`：每轮排序两次，`muGrow` 66 s → 79 s，已撤回。要省需要循环体对
       `∪` 分配的判定（`X ≫ X`、带 `\` 的不满足）和已排序表的归并（新 kernel）；17 个程序里只有 `Party` 用 `μ`，
       运行时间可忽略。出现受益的程序时再议。
+      ✅ 2026-11-22 owner 定 D：μ 体对 `X` 线性（`Tm.linIn`）时走 semi-naive `Tab.muLin`（`Δ' = F(Δ) − X`，只算新行），
+      `Tm.den_linIn`（`⟦t⟧(X ∪ Y) ⊑ ⟦t⟧X ∪ ⟦t⟧Y`）+ `Tab.muLin_holds` 证与 `Tab.mu` 同解（`GenK.mu_sound`）。
+      `muGrow` 32 s → 5.0 s（其中 import 0.7 s）。余下每轮仍与 `|X|` 成正比：`∪` 是 concat + `canon`（重排全部 `X`），
+      `−` 是 `select`（`kasc` 全部 `X ++ F(Δ)`）；perf：`write_nul` 21%、pool 空转 17%、排序 15%、`for_meta` 10%。
+      再省需要已排序表的归并 / 对已排序 `X` 的成员测试（新 kernel 组合），未做。
       未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
       `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
       状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`

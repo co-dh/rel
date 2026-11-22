@@ -220,11 +220,12 @@ def ldiv (A B C : Obj) (R : Rel A B) (S : Rel A C) (UB : Rel B B) (UC : Rel C C)
     | .error e, _, _ | _, .error e, _ | _, _, .error e => .tab (.error e)
   | S => lift2 (fun r s => do Tab.ldivSel Tab.ldiv Tab.bitsMax r s (← UB.runE {}) (← UC.runE {})) (fun _ => {}) (fun _ => {}) R S
 
-/-- `νX : S ∩ φ` by plain rounds (`Tab.nu`), no AC-3 delta rounds; `μX : φ` (`Tab.mu`), at most `cap` rounds. -/
+/-- `νX : S ∩ φ` by plain rounds (`Tab.nu`), no AC-3 delta rounds; `μX : φ` (`Tab.mu`), at most `cap` rounds,
+    semi-naive (`Tab.muLin`) where `lin`: the body is additive in `X` (`Tm.linIn`). -/
 def nu (A B : Obj) (S : Rel A B) (φ : Tab A B → Rel A B) : Rel A B :=
   .tab do Tab.nu (fun X => (φ X).runE {}) (← S.runE {})
-def mu (A B : Obj) (what : String) (cap : Nat) (φ : Tab A B → Rel A B) : Rel A B :=
-  .tab (Tab.mu what cap fun X => (φ X).runE {})
+def mu (A B : Obj) (what : String) (cap : Nat) (lin : Bool) (φ : Tab A B → Rel A B) : Rel A B :=
+  .tab ((bif lin then Tab.muLin else Tab.mu) what cap fun X => (φ X).runE {})
 
 end GenK
 
