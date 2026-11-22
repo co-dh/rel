@@ -29,7 +29,6 @@ Rel.Lang.GenK.compV
 Rel.Lang.GenK.cut
 Rel.Lang.GenK.diff
 Rel.Lang.GenK.elems
-Rel.Lang.GenK.est
 Rel.Lang.GenK.fold
 Rel.Lang.GenK.foldI
 Rel.Lang.GenK.foldr
@@ -52,7 +51,6 @@ Rel.Lang.GenK.pairOn
 Rel.Lang.GenK.rdiv
 Rel.Lang.GenK.stepAfter
 Rel.Lang.GenK.succ
-Rel.Lang.GenK.thin
 Rel.Lang.GenK.top
 Rel.Lang.Table.decode
 Rel.Lang.Table.decodeCsv
@@ -160,7 +158,7 @@ Rel.Tab.tagged
 Rel.Tab.tails
 Rel.Tab.takewhile
 Rel.Tab.tau
-Rel.Tab.thin
+Rel.Tab.front
 Rel.Tab.thinL
 Rel.Tab.uncat
 Rel.Tab.union
