@@ -52,6 +52,54 @@ def packRes (B w : Nat) (res : Nat → UInt64) : ByteArray :=
     (List.range' (8 * k / w) ((8 * k + 7) / w + 1 - 8 * k / w)).foldl (init := (0 : UInt8)) fun b j =>
       b ||| ((res j).toNat % 2 ^ w * 2 ^ (j * w) / 2 ^ (8 * k)).toUInt8).toArray⟩
 
+/-- What `packRes` runs as: field `j`'s bits `m` (cut by `Column.ones`) moved into byte `k` by one word shift, where the
+spec's `2 ^ (j * w)` and `2 ^ (8 * k)` are GMP numbers from the eighth byte on. -/
+private def packResImpl (B w : Nat) (res : Nat → UInt64) : ByteArray :=
+  if w = 0 then ByteArray.empty else
+  ⟨((List.range (B * w / 8)).map fun k =>
+    (List.range' (8 * k / w) ((8 * k + 7) / w + 1 - 8 * k / w)).foldl (init := (0 : UInt8)) fun b j =>
+      b ||| (let m := res j &&& Rel.Column.ones w; let s := j * w
+        if 8 * k ≤ s then (if s - 8 * k < 8 then (m <<< (s - 8 * k).toUInt64).toUInt8 else 0)
+        else if 8 * k - s < 64 then (m >>> (8 * k - s).toUInt64).toUInt8 else 0)).toArray⟩
+
+private theorem fieldByte_eq (w s k : Nat) (v : UInt64) :
+    (v.toNat % 2 ^ w * 2 ^ s / 2 ^ (8 * k)).toUInt8 =
+      (let m := v &&& Rel.Column.ones w
+       if 8 * k ≤ s then (if s - 8 * k < 8 then (m <<< (s - 8 * k).toUInt64).toUInt8 else 0)
+       else if 8 * k - s < 64 then (m >>> (8 * k - s).toUInt64).toUInt8 else 0) := by
+  have hm : (v &&& Rel.Column.ones w).toNat = v.toNat % 2 ^ w := by
+    rw [UInt64.toNat_and, Rel.Column.ones_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat']
+    apply Nat.eq_of_testBit_eq; intro t
+    simp only [Nat.testBit_and, Nat.testBit_mod_two_pow, Nat.testBit_two_pow_sub_one]
+    by_cases ht : t < 64
+    · simp [ht, Bool.and_comm]
+    · have := Nat.testBit_lt_two_pow (Nat.lt_of_lt_of_le v.toNat_lt (Nat.pow_le_pow_right (by decide) (by omega : 64 ≤ t)))
+      simp [this]
+  have hlt : (v &&& Rel.Column.ones w).toNat < 2 ^ 64 := UInt64.toNat_lt _
+  rw [← hm]
+  generalize v &&& Rel.Column.ones w = m at hlt ⊢
+  apply UInt8.toNat_inj.1
+  simp only [Nat.toUInt8_eq, UInt8.toNat_ofNat']
+  split
+  · obtain ⟨d, rfl⟩ : ∃ d, s = 8 * k + d := ⟨s - 8 * k, by omega⟩
+    rw [Nat.pow_add, ← Nat.mul_assoc, Nat.mul_comm _ (2 ^ (8 * k)), Nat.mul_assoc,
+      Nat.mul_div_cancel_left _ (Nat.two_pow_pos _), Nat.add_sub_cancel_left]
+    split
+    · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+      rw [UInt64.toNat_toUInt8, UInt64.toNat_shiftLeft, hs, Nat.shiftLeft_eq, Nat.mod_mod_of_dvd _ (by decide : 2 ^ 8 ∣ 2 ^ 64)]
+    · obtain ⟨e, rfl⟩ : ∃ e, d = 8 + e := ⟨d - 8, by omega⟩
+      rw [Nat.pow_add, ← Nat.mul_assoc, Nat.mul_comm, ← Nat.mul_assoc, Nat.mul_mod_left]; rfl
+  · obtain ⟨d, hd⟩ : ∃ d, 8 * k = s + d := ⟨8 * k - s, by omega⟩
+    rw [hd]
+    rw [Nat.pow_add, ← Nat.div_div_eq_div_mul, Nat.mul_div_cancel _ (Nat.two_pow_pos _), Nat.add_sub_cancel_left]
+    split
+    · have hs : (d.toUInt64).toNat % 64 = d := by simp only [Nat.toUInt64_eq, UInt64.toNat_ofNat']; omega
+      rw [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight, hs, Nat.shiftRight_eq_div_pow]
+    · rw [Nat.div_eq_of_lt (Nat.lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by decide) (by omega)))]; rfl
+
+@[csimp] private theorem packRes_eq_packResImpl : @packRes = @packResImpl := by
+  funext B w res; unfold packRes packResImpl; simp only [fieldByte_eq]
+
 /-- The metadata of the blocks `(base, maxv, bsum, width)` describe, in the five sections and the
 trailer `QLean/Value.lean` lays out. `off` is the prefix sum of `2 ^ lg * width / 8` rather than anything
 carried over, because that is what `Column.blockStarts` recomputes — copying an argument's offsets
