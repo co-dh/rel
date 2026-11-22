@@ -230,7 +230,7 @@ theorem keep_holds {A B : Obj} {T U : Tab A B} {b : Enc} (h : T.keep b = .ok U)
     exact ⟨⟨j, hjM⟩, hx1, hy2⟩
 
 /-- **`R.concat S` denotes `R ∪ S`**, rows counted with repeats. -/
-theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (a : k.El) (b : v.El) :
+theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
     C.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
   unfold Tab.concat at h
   simp only [bind, Except.bind, pure, Except.pure] at h
@@ -243,8 +243,8 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (a : k.El) (b : 
   rename_i V hV
   cases h
   obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK
-  have rv := Vals.concat_row hn hoff R.val S.val hV
+  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨c, ha, hb⟩
@@ -351,7 +351,7 @@ theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) 
     simp [e]
 
 /-- **`R.concat S` row by row**: its rows below `R.n` are `R`'s, from there `S`'s. -/
-theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : v.El} :
+theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS : S.WF) {a : k.El} {b : v.El} :
     ((∃ c : Fin C.n.toNat, c.1 < R.n.toNat ∧ C.key.row c = a ∧ C.val.row c = b) ↔ R.Holds a b) ∧
       ((∃ c : Fin C.n.toNat, R.n.toNat ≤ c.1 ∧ C.key.row c = a ∧ C.val.row c = b) ↔ S.Holds a b) := by
   unfold Tab.concat at h
@@ -365,8 +365,8 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) {a : k.El} {b : 
   rename_i V hV
   cases h
   obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK
-  have rv := Vals.concat_row hn hoff R.val S.val hV
+  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩⟩
   · rintro ⟨c, hl, ha, hb⟩
@@ -963,7 +963,7 @@ private def arrPay₂ : List Int64 := [9, 5, 1, 5]
   let As := [P arrCells arrPay [0, 1, 0, 0, 2] rfl, P arrCells₂ arrPay₂ [0, 1, 1, 1] rfl, P [] [] [] rfl]
   As.all fun R => As.all fun S => setOk R S
 #guard let As := [arrOn arrCells (arrTab arrCells₂ arrPay₂).key, arrOn arrCells₂ (arrTab arrCells arrPay).key,
-    arrOn [(0, 2, 1)] (arrTab [] arrPay).key]
+    arrOn [(0, 1, 1)] (arrTab [] arrPay).key]
   As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
 
 /-- Sum rows `(tag, position, value)`: left payload positions holding one value, a clamped position `5`. -/
