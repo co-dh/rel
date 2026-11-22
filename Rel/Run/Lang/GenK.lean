@@ -195,14 +195,6 @@ def pairK {A B C : Obj} (D : Option ((n : USize) × Vals A n)) (R : Rel A B) (S 
 def pair (A B C : Obj) (R : Rel A B) (S : Rel A C) : Rel A (.prod B C) := match R, S with
   | .lazy _, _ | _, .lazy _ => .lazy fun K => .tab (pairK K.dom R S)
   | R, S => lift2 Tab.pair (fun K => ⟨K.dom, none, none⟩) (fun K => ⟨K.dom, none, none⟩) R S
-/-- `R × S`: on the pairs `Z` a context knows, `⟨π₁ ≫ R, π₂ ≫ S⟩` on `Z`, each operand run knowing its domain is that
-    side of `Z`; where none is known, CROSS of the two tables. -/
-def prod (A B C D : Obj) (R : Rel A B) (S : Rel C D) : Rel (.prod A C) (.prod B D) :=
-  .lazy fun K => .tab <| match K.dom with
-    | some ⟨n, Z⟩ => do
-      let l ← (← Tab.outl Z).comp (← R.runE ⟨some ⟨n, Z.1⟩, none, none⟩)
-      l.pair (← (← Tab.outr Z).comp (← S.runE ⟨some ⟨n, Z.2⟩, none, none⟩))
-    | none => do Tab.prod (← R.runE {}) (← S.runE {})
 /-- `R/S` and `R\S` read both sides whole, with the universes `UA`, `UB` (`UB`, `UC`); `ldiv` is `Tab.ldivSel`, a bit
     matrix where `Tab.bitsWin` holds; `rdiv`'s two converses are `canon` answers, so its division is `Tab.ldivOf`. -/
 def rdiv (A B C : Obj) (R : Rel A C) (S : Rel B C) (UA : Rel A A) (UB : Rel B B) :
@@ -374,10 +366,10 @@ end GenK
     itself (`foldI`); a row not here has no code (`Tm.hasCode`). The operator is a constant given its leading
     arguments first: the `floatOps` rows share `Tab.floatOp`, given the row. After `GenK`, which `foldI` names. -/
 def kernRows : List (String × Lean.Name × List Lean.Expr) :=
-  ([("∋", ``Tab.mem), ("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
+  ([("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
-   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat), ("inl", ``Tab.inl),
-   ("inr", ``Tab.inr), ("inl°", ``Tab.inlConv), ("inr°", ``Tab.inrConv), ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
+   ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat),
+   ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),
    ("inits", ``Tab.inits),
    ("tails", ``Tab.tails),
    ("concat", ``Tab.flatten),

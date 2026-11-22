@@ -276,11 +276,13 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .ldiv R S U V => return .ldiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
   | _, _, .rdiv R S U V => return .rdiv (← R.instObj ph σ) (← S.instObj ph σ) (← U.instObj ph σ) (← V.instObj ph σ)
   | _, _, .pair R S => return .pair (← R.instObj ph σ) (← S.instObj ph σ)
-  | _, _, .prod R S => return .prod (← R.instObj ph σ) (← S.instObj ph σ)
   | _, _, .lam R => return .lam (← R.instObj ph σ)
   | _, _, .est Q => return .est (← Q.instObj ph σ)
   | _, _, .thin Q => return .thin (← Q.instObj ph σ)
   | _, _, .nil => pure .nil
+  | _, _, .mem => pure .mem
+  | _, _, .inl => pure .inl
+  | _, _, .inr => pure .inr
   | _, _, .prim r => pure (.prim r)
   | _, _, .atPos k => pure (.atPos k)
   | _, _, .own R => return .own (← R.instObj ph σ)
@@ -373,6 +375,9 @@ inductive Pre
   | est (p : Pre)
   | thin (p : Pre)
   | nil (a b : OTy)
+  | mem (b : OTy)
+  | inl (a b : OTy)
+  | inr (a b : OTy)
   /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`); a row
       of `dfns` is the fused form of its definition, which `build` cuts to `t`'s universe. -/
   | prim (r : Prim) (args : List Pre) (s t : OTy)
@@ -427,7 +432,7 @@ def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
 def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
-  .join (.comp (.prim inlConvRow [] (.sum a b) a) r) (.comp (.prim inrConvRow [] (.sum a b) b) s)
+  .join (.comp (.conv (.inl a b)) r) (.comp (.conv (.inr a b)) s)
 
 /-- A fold's base `0` at the number object `n`, the coreflexive `⟨𝟙,𝟙⟩minus ∩ 𝟙`: `x − x` kept where it is `x`;
     none where `0` is not in `n` (`minus` keeps its result there). -/
@@ -976,8 +981,8 @@ def lProd : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy
 def lJunc : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, c), (S, b, c') => do
     unify p "the target of the case's second part" c' c
-    pure (join (comp R (pair (comp (outl a c) (Pre.prim inlRow [] a (.sum a b))) (outr a c)))
-      (comp S (pair (comp (outl b c) (Pre.prim inrRow [] b (.sum a b))) (outr b c))), .sum a b, c)
+    pure (join (comp R (pair (comp (outl a c) (Pre.inl a b)) (outr a c)))
+      (comp S (pair (comp (outl b c) (Pre.inr a b)) (outr b c))), .sum a b, c)
 
 /-- `Λ(R)` lifted on the sources `S : I ⟶ a` of each key, `Rπ₁` (`dom`) when none: `⟨𝟙,S⟩⟨π₂,Λ(Rᴵ)⟩`. `Λ` takes
     `S = ⊤` onto `a`'s universe, being total; `E` and `thin` take `dom`, as their `a = [x]` has no universe. -/
@@ -1026,8 +1031,6 @@ def Op.row (p : Pos) : Op → M (Option Prim)
   | .prim s => match Prim.find? s with
     | some r => pure (some r)
     | none => throw ⟨p, s!"internal: no row `{s}` in `prims`"⟩
-  | .inl => pure (some inlRow)
-  | .inr => pure (some inrRow)
   | .map => pure (some mapRow)
   | _ => pure none
 
@@ -1051,6 +1054,9 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
     | .nil => (.nil a b, a, .arr b)
+    | .mem => (.mem a, .arr a, a)
+    | .inl => (.inl a b, a, .sum a b)
+    | .inr => (.inr b a, a, .sum b a)
     | .alpha => (.junc (.nil a b) (.prim consRow [] (.prod b (.arr b)) (.arr b)) a (.prod b (.arr b)),
         .sum a (.prod b (.arr b)), .arr b)
     | .index k => (.atPos k b, .arr b, b)
@@ -1231,7 +1237,7 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
     | .dom => pure (.rel (.dom q) s s)
     | .ran => pure (.rel (.ran (.close p q s "ran( ) reads its argument whole")) t t)
     | .lam => pure (.rel (.lam q) s (.arr t))
-    | .E => pure (.rel (.lam (.comp (.prim memRow [] (.arr s) s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
+    | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
     | .est | .thin => do
       unify p s!"the target of {o.sym}'s argument" t s
       -- the order is tested on the pairs the operator compares (`build`, `param`), not read whole
@@ -1261,7 +1267,7 @@ def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
     | .dom, [R] => pure (lDom R)
     | .ran, [R] => pure (lRan R)
     | .lam, [R] => pure (lLam I (some (.top p I R.2.1 none)) R)
-    | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.prim memRow [] (.arr b) b) (.arr b) b) R))
+    | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.mem b) (.arr b) b) R))
     | o, _ => notLiftable p s!"{o.sym}( )"
   pure (.fam r.1 I r.2.1 r.2.2)
 
@@ -1358,7 +1364,7 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
     let s₂ := match s with | .sum _ s₂ => s₂ | _ => s₁
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁; let (g₂, u₂, m₂) ← hyloG p k a b t₂ s₂
     if !m₁ && !m₂ then return (.id t, t, false)
-    return (.junc (.comp g₁ (.prim inlRow [] u₁ (.sum u₁ u₂))) (.comp g₂ (.prim inrRow [] u₂ (.sum u₁ u₂))) t₁ t₂,
+    return (.junc (.comp g₁ (.inl u₁ u₂)) (.comp g₂ (.inr u₁ u₂)) t₁ t₂,
       .sum u₁ u₂, true)
   | .arr t₁, .arr s₁ | .arr t₁, s₁@(.mv _) =>
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁
@@ -1458,7 +1464,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match m, q? with
     | some I, some q => do
       let e ← fresh
-      let G ← lThen p (← famOf I p x) (.prim memRow [] (.arr e) e, .arr e, e)
+      let G ← lThen p (← famOf I p x) (.mem e, .arr e, e)
       let Q ← famOf I p q
       let r ← if est then do lSame p Pre.meet G (← lLdiv I p (lConv G) (lConv Q))
         else do pure (lLam I none (← lSame p Pre.diff G (← lComp I p G (← lSame p Pre.diff Q (lConv Q)))))
@@ -1960,7 +1966,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .ran R => pure (.ran R)
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
-  | .prod R S => pure (.conv (.prod R S))
   | .leq t U => pure (.conv (.leq t U))
   | .lt t U => pure (.conv (.lt t U))
   | .id => pure .id
@@ -2000,7 +2005,7 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
     | none => throw r.leaf
   -- the number verbs are closed on their universe: their converse is read whole there
   | .succ U => pure (.conv (.comp U (.succ U)))
-  | .arith t k U => pure (.conv (.comp (.prod U U) (.arith t k U)))
+  | .arith t k U => pure (.conv (.comp (U.prodUni U) (.arith t k U)))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe
   | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
@@ -2014,6 +2019,9 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .est _ => throw "est( )"
   | .thin _ => throw "thin( )"
   | .nil => throw "nil"
+  | .mem => throw "∋"
+  | .inl => pure (.conv .inl)
+  | .inr => pure (.conv .inr)
   | .hylo .. => throw "hylo( )"
   | .atPos k => throw s!"at({k})"
   | .foldr .. => throw "⦇e,S⦈ʳ"
@@ -2157,15 +2165,16 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     | _ => pure none
   | .prod a b, .prod A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
-    pure (some (.prod u v))
+    -- `⊤(u)` reads `u` whole, so a part on demand (an unbounded `𝟙`) gives `u × v` on demand
+    pure (some (if u.dem || v.dem then u.prod v else u.prodUni v))
   | .sum a b, .sum A B => do
     let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
     -- `ran(u inl)` hands the values in demand to `inl`'s range, where it cannot run; a part on demand (an unbounded
     -- `𝟙`) gives `dom(inl° u inl ∪ inr° v inr)`, which hands them to `inl°`'s domain, split by tag
     if u.dem || v.dem then
-      pure (some (.dom (B := .sum A B) (.join (.comp (B := A) (.prim inlConvRow) (.comp (B := A) u (.prim inlRow)))
-        (.comp (B := B) (.prim inrConvRow) (.comp (B := B) v (.prim inrRow))))))
-    else pure (some (.join (.ran (.comp u (.prim inlRow))) (.ran (.comp v (.prim inrRow)))))
+      pure (some (.dom (B := .sum A B) (.join (.comp (B := A) (.conv .inl) (.comp (B := A) u .inl))
+        (.comp (B := B) (.conv .inr) (.comp (B := B) v .inr)))))
+    else pure (some (.join (.ran (.comp u .inl)) (.ran (.comp v .inr))))
   | _, _ => pure none
 
 /-- `o` is an unbounded number object (`ObjInfo.num`): a declared one, or an object variable a call puts one at. -/
@@ -2302,7 +2311,10 @@ def build : Pre → Except Err Res
     | .error leaf => do
       let U ← uniTm objs mc dp pos a A s!"the converse of {leaf} does not run on demand, so R° reads R whole"
       pure ⟨B, A, .conv (.comp U t)⟩
-  | .conv p => do let r ← build p; let ⟨A, B, _⟩ := r; pure ⟨B, A, .conv (← closed? dp (A := A) (B := B) r)⟩
+  -- closed, or a converse that runs on demand itself (`Tm.dem`: `inl°`, `inr°`)
+  | .conv p => do
+    let r ← build p; let ⟨A, B, _⟩ := r; let t ← at? dp (A := A) (B := B) r
+    if (Tm.conv t).dem then pure ⟨B, A, .conv t⟩ else pure ⟨B, A, .conv (← closed? dp (A := A) (B := B) r)⟩
   -- a side that cannot run is tested on the pairs the other side gives (`test`)
   | .meet p q => match build p, build q with
     | .ok ⟨A, B, t⟩, .ok s => do let u ← at? dp (A := A) (B := B) s; pure ⟨A, B, .meet t u⟩
@@ -2333,23 +2345,24 @@ def build : Pre → Except Err Res
   | .pair p q => do
     let ⟨A, _, t⟩ ← build p; let s ← build q; let ⟨_, C, _⟩ := s
     let u ← at? dp (A := A) (B := C) s; pure ⟨A, _, .pair t u⟩
-  -- `R×S`: both operands closed on their sources, `Alg.prod`; an operand whose source has no universe, the pair
-  -- `⟨π₁R,π₂S⟩` on demand
+  -- `R×S ≜ ⟨π₁R,π₂S⟩` (`Tm.prod`); both operands closed on their sources, it runs closed on `dom R × dom S`, since
+  -- the product object may have no universe of its own (`[A]×[A]`); otherwise on demand
   | .prod (.close pp p a w) (.close pq q b w') =>
     let onDemand : Except Err Res := do
-      let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
-      pure ⟨.prod A C, .prod B D, .pair (.comp .outl t) (.comp .outr u)⟩
+      let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
     match build (.close pp p a w), build (.close pq q b w') with
-    -- the old index `false` on both operands, now `dem`
-    | .ok ⟨A, B, t⟩, .ok ⟨C, D, u⟩ => if t.dem || u.dem then onDemand else pure ⟨.prod A C, .prod B D, .prod t u⟩
+    | .ok ⟨A, B, t⟩, .ok ⟨C, D, u⟩ =>
+      if t.dem || u.dem then onDemand else pure ⟨.prod A C, .prod B D, .comp ((Tm.dom t).prodUni (.dom u)) (t.prod u)⟩
     | _, _ => onDemand
   | .prod p q => do
-    let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q
-    pure ⟨.prod A C, .prod B D, .pair (.comp .outl t) (.comp .outr u)⟩
+    let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
   | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
   | .est p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .est c⟩
   | .thin p => do let ⟨_, c⟩ ← param p; pure ⟨_, _, .thin c⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
+  | .mem b => return ⟨_, _, .mem (B := ← toObj objs mc dp b)⟩
+  | .inl a b => return ⟨_, _, .inl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
+  | .inr a b => return ⟨_, _, .inr (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`). A row of
   -- `dfns` means its definition `d` (§4: every step stays in the target object). `Tm.dfnCut_den` proves `d` equal to
   -- the row followed by `𝟙` of the target (`c.cut`) where the universe is every number or `0…k`, and to the row

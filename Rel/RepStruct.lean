@@ -128,37 +128,35 @@ theorem outr_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) B} 
   rw [canon_holds h]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by subst h1 h2; rfl⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by subst h1 h2; rfl⟩⟩
 
+/-- **`compPairs` denotes `R ≫ S`**: `comp`, or `compFrom` of `compGroups` within `crossMax` (`compFrom_canon`). -/
+theorem compPairs_holds {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : compPairs R S = .ok T) (a : A.El)
+    (c : C.El) : T.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c := by
+  unfold compPairs at h
+  split at h
+  · exact comp_holds h a c
+  · simp only [bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨k, -, h⟩ := h
+    split at h; · cases h
+    obtain ⟨U, hU, hH⟩ := compFrom_canon hx h
+    rw [canon_holds hU]; exact hH a c
+
 /-- **`R.pair S` denotes `⟨R, S⟩`** (`Tm.den` at `pair`: `rpair`). -/
 theorem pair_holds {R : Tab A B} {S : Tab A C} {T : Tab A (.prod B C)} (h : R.pair S = .ok T) (a : A.El)
     (q : (Obj.prod B C).El) : T.Holds a q ↔ Core.Rel.rpair R.Holds S.Holds a q := by
   unfold Tab.pair at h
-  cases hc : comp (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S with
+  cases hc : compPairs (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S with
   | error s => simp [hc, Functor.map, Except.map] at h
   | ok U =>
     simp only [hc, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
     obtain ⟨b, c⟩ := q
-    have e := comp_holds hc (a, b) c
+    have e := compPairs_holds hc (a, b) c
     simp only [Tab.Holds, Core.Rel.rpair, Vals.row, Prod.mk.injEq] at e ⊢
     rw [show (∃ i, U.key.1.row i = a ∧ U.key.2.row i = b ∧ U.val.row i = c) ↔
       ∃ i, (U.key.1.row i = a ∧ U.key.2.row i = b) ∧ U.val.row i = c from by simp only [and_assoc], e]
     exact ⟨fun ⟨_, ⟨i, ⟨h1, h2⟩, h3⟩, hS⟩ => ⟨⟨i, h1, h2⟩, by subst h3; rwa [h1] at hS⟩,
       fun ⟨⟨i, h1, h2⟩, hS⟩ => ⟨a, ⟨i, ⟨h1, h2⟩, h1⟩, hS⟩⟩
-
-/-- **`R.prod S` denotes `R × S`** (`Tm.den` at `prod`: `rprodMap`). -/
-theorem prod_holds {R : Tab A B} {S : Tab C D} {T : Tab (.prod A C) (.prod B D)} (h : R.prod S = .ok T)
-    (p : (Obj.prod A C).El) (q : (Obj.prod B D).El) : T.Holds p q ↔ Core.Rel.rprodMap R.Holds S.Holds p q := by
-  unfold Tab.prod at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i r hr
-  obtain ⟨T', x, y⟩ := r
-  rw [canon_holds h]
-  obtain ⟨a, c⟩ := p; obtain ⟨b, d⟩ := q
-  have e := Vals.cross_rows hr (a, b) (c, d)
-  simp only [Tab.Holds, Core.Rel.rprodMap, Vals.row, Prod.mk.injEq] at e ⊢
-  rw [← e]
-  exact ⟨fun ⟨t, ⟨h1, h2⟩, h3, h4⟩ => ⟨t, ⟨h1, h3⟩, h2, h4⟩, fun ⟨t, ⟨h1, h3⟩, h2, h4⟩ => ⟨t, ⟨h1, h2⟩, h3, h4⟩⟩
 
 /-- **`Tab.flat X R` denotes `Rᴵ` on the pairs `X`** (`Tm.den` at `flat`: `idU X ≫ flatDen ⟦R⟧`,
 `flatDen T x b = T x.1 (x.2, b)`). -/
@@ -431,16 +429,14 @@ private def outOk {A B : Obj} [BEq A.El] [BEq B.El] {n : USize} (X : Vals (.prod
 #guard ints.all fun ps => let R := tabW ps; outOk (A := .long) (B := .long) (R.key, R.val)
 #guard outOk (A := .long) (B := .atom .f64) (F.key, F.val) && outOk (A := .long) (B := .prod .long .long) (P.key, P.val)
 
-/-- `pair` and `prod` against their denotations as sets. -/
+/-- `pair` against its denotation as a set. -/
 private def pairOk {A B C : Obj} [BEq A.El] [BEq B.El] [BEq C.El] (R : Tab A B) (S : Tab A C) : Bool :=
     specOk (R.pair S) (R.toList.flatMap fun (a, b) => S.toList.filterMap fun (a', c) =>
       if a == a' then some (a, (b, c)) else none)
-private def prodOk {A B C D : Obj} [BEq A.El] [BEq B.El] [BEq C.El] [BEq D.El] (R : Tab A B) (S : Tab C D) : Bool :=
-    specOk (R.prod S) (R.toList.flatMap fun (a, b) => S.toList.map fun (c, d) => ((a, c), (b, d)))
 
--- `⟨R, S⟩` and `R × S`: integers (duplicates, an empty side, no common key), a float and a tuple value
-#guard ints.all fun ps => ints.all fun qs => pairOk (tabW ps) (tabW qs) && prodOk (tabW ps) (tabW qs)
-#guard pairOk F P && pairOk P F && prodOk F P && prodOk P (tabW (ints.getD 0 []))
+-- `⟨R, S⟩`: integers (duplicates, an empty side, no common key), a float and a tuple value
+#guard ints.all fun ps => ints.all fun qs => pairOk (tabW ps) (tabW qs)
+#guard pairOk F P && pairOk P F
 
 /-- `flat X R` against `Rᴵ` on `X` as a set: `((i, a), b)` for `(i, a)` of `X` and `(i, (a, b))` of `R`. -/
 private def flatOk {I A B : Obj} [BEq I.El] [BEq A.El] [BEq B.El] {n : USize} (X : Vals (.prod I A) n)
@@ -483,7 +479,6 @@ end Checks
 #print axioms Tab.outl_holds
 #print axioms Tab.outr_holds
 #print axioms Tab.pair_holds
-#print axioms Tab.prod_holds
 #print axioms Tab.inl_holds
 #print axioms Tab.inr_holds
 #print axioms Tab.inlConv_holds

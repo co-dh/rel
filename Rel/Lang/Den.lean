@@ -320,9 +320,6 @@ abbrev σ₂ (σ : List Obj) : Obj := σ.getD 1 .long
 namespace RowCode
 def tau : RowCode := ⟨"τ", fun σ => (σ₁ σ, .arr (σ₁ σ))⟩
 def cons : RowCode := ⟨"cons", fun σ => (.prod (σ₁ σ) (.arr (σ₁ σ)), .arr (σ₁ σ))⟩
-def mem : RowCode := ⟨"∋", fun σ => (.arr (σ₁ σ), σ₁ σ)⟩
-def inl : RowCode := ⟨"inl", fun σ => (σ₁ σ, .sum (σ₁ σ) (σ₂ σ))⟩
-def inr : RowCode := ⟨"inr", fun σ => (σ₁ σ, .sum (σ₂ σ) (σ₁ σ))⟩
 def map : RowCode := ⟨"F", fun σ => (.arr (σ₁ σ), .arr (σ₂ σ))⟩
 def filter : RowCode := ⟨"filter", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
 def takewhile : RowCode := ⟨"takewhile", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
@@ -346,8 +343,6 @@ def unsnoc : RowCode := ⟨"unsnoc", fun σ => (.arr (σ₁ σ), .prod (.arr (σ
 def setify : RowCode := ⟨"setify", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
 def positions : RowCode := ⟨"positions", fun σ => (.arr (σ₁ σ), .arr .long)⟩
 def asc : RowCode := ⟨"asc", fun σ => (.long, σ₁ σ)⟩
-def inlC : RowCode := ⟨"inl°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₁ σ)⟩
-def inrC : RowCode := ⟨"inr°", fun σ => (.sum (σ₁ σ) (σ₂ σ), σ₂ σ)⟩
 def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
@@ -379,9 +374,6 @@ open Classical RowCode in
 def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨tau, fun _ _ a Y => Y = [a]⟩,
    ⟨cons, fun _ _ p ys => ys = p.1 :: p.2⟩,
-   ⟨mem, fun σ _ (xs : List (σ₁ σ).El) x => x ∈ xs⟩,
-   ⟨inl, fun _ _ => Core.Rel.inl⟩,
-   ⟨inr, fun _ _ => Core.Rel.inr⟩,
    ⟨map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩,
    ⟨filter, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys => ys = xs.filter fun x => decide (∃ y, T x y)⟩,
    ⟨takewhile, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
@@ -411,8 +403,6 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
       ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩,
    -- q's `asc` of the set `dom P`: `j` to its `j`-th element in `Obj.lt` order
    ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩,
-   ⟨inlC, fun _ _ s a => Core.Rel.inl a s⟩,
-   ⟨inrC, fun _ _ s b => Core.Rel.inr b s⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
    ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩,
@@ -455,11 +445,13 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Den A B
   | ρ, _, _, .ldiv R S U V => ldivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
-  | ρ, _, _, .prod R S => rprodMap (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
   | ρ, _, _, .est Q => estDen (Q.den ρ)
   | ρ, _, _, .thin Q => thinDen (Q.den ρ)
   | _, _, _, .nil => nilDen
+  | _, _, _, .mem => fun xs x => x ∈ xs
+  | _, _, _, .inl => Core.Rel.inl
+  | _, _, _, .inr => Core.Rel.inr
   | _, A, B, .prim r => Prim.den r A B []
   | _, _, _, .atPos k => atDen k
   | ρ, _, _, .own R => R.den ρ
@@ -502,6 +494,28 @@ theorem Tm.flat_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) :
     cases (show ((x.2, b'), x.2) = ((x.2, b), x.2) from he); exact h
   · intro h; exact ⟨_, _, ⟨h, rfl⟩, rfl⟩
 
+/-- **`R × S` is a definition**: `⟨π₁R, π₂S⟩` (`Tm.prod`) means `rprodMap`, each side of a pair through its
+    operand (`Rep.rpair_eq_meet_proj` for the pair as a meet of projections). -/
+theorem Tm.prod_den (ρ : Val) {A B C D : Obj} (R : Tm A B) (S : Tm C D) :
+    (R.prod S).den ρ = rprodMap (R.den ρ) (S.den ρ) := by
+  apply Core.Rel.ext; intro p q
+  simp [Tm.prod, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.graph]
+
+/-- The closed product universe `ran(⟨u, ⊤(v)⟩)` (`Tm.prodUni`) means `u × v` where `u` and `v` are coreflexives,
+    as a universe is. -/
+theorem Tm.prodUni_den (ρ : Val) {A B : Obj} (u : Tm A A) (v : Tm B B) (hu : ∀ x y, u.den ρ x y → x = y)
+    (hv : ∀ x y, v.den ρ x y → x = y) : (u.prodUni v).den ρ = rprodMap (u.den ρ) (v.den ρ) := by
+  apply Core.Rel.ext; intro p q
+  simp only [Tm.prodUni, Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.inter,
+    Core.Rel.recip, Core.Rel.top, Core.Rel.id]
+  constructor
+  · rintro ⟨rfl, m, ⟨h1, y, -, h2⟩, -⟩
+    obtain rfl := hu _ _ h1; obtain rfl := hv _ _ h2; exact ⟨h1, h2⟩
+  · rintro ⟨h1, h2⟩
+    obtain ⟨a, b⟩ := p; obtain ⟨c, d⟩ := q
+    obtain rfl := hu _ _ h1; obtain rfl := hv _ _ h2
+    exact ⟨rfl, a, ⟨h1, b, trivial, h2⟩, h1, b, trivial, h2⟩
+
 /-- **Symmetric division is a definition**: the term `R/S ∩ (S/R)°` that `Pre.symDiv` builds means `R÷S` within the
     universes `UA`, `UB`. -/
 theorem Tm.symDiv_den (ρ : Val) {A B C : Obj} (R : Tm A C) (S : Tm B C) (UA : Tm A A) (UB : Tm B B) :
@@ -517,7 +531,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
   | var _ k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
-  | prod R S ihR ihS | foldr R S ihR ihS | fold R S ihR ihS =>
+  | foldr R S ihR ihS | fold R S ihR ihS =>
     intro ρ ρ' h
     exact ⟨by simp only [Tm.den, (ihR ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1,
       (ihS ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
@@ -712,9 +726,6 @@ theorem rdiv_le {R R' : Den A C} {S : Den B C} {U U' : Den A A} {V V' : Den B B}
 theorem pair_le {X X' : Den A B} {Y Y' : Den A C} (hX : X ⊑ X') (hY : Y ⊑ Y') : rpair X Y ⊑ rpair X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
 
-theorem prod_le {X X' : Den A B} {Y Y' : Den C D} (hX : X ⊑ X') (hY : Y ⊑ Y') : rprodMap X Y ⊑ rprodMap X' Y' :=
-  le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩
-
 -- `est` drops `b` only where `Q` fails, so a larger `Q` drops fewer
 theorem est_le {Q Q' : Den (.prod B B) (.prod B B)} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
   le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
@@ -896,9 +907,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
   | pair R S ihR ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 pair_le (ihR.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
-  | prod R S ihR ihS =>
-    refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
-    exact sle.map2 prod_le (ihR.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
   | diff R S ihR ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.anti2 diff_le (ihR.1 s ρ ρ' hp.1 g) (ihS.1 (!s) ρ ρ' hp.2 g)
@@ -993,21 +1001,18 @@ theorem Tm.den_nu_unfold {A B : Obj} (k : Nat) (S b : Tm A B) (h : b.pol true k 
   rw [(b.den_subst _ (fun e he _ _ => by obtain rfl := List.mem_singleton.1 he; rfl) _).1]
   exact (Core.Rel.nu_fix fun _ _ hXY => inter_le' (Core.Rel.le_refl _) (den_mono h hXY)).symm
 
-/-- `memRow` at `[E] ⟶ E` is `∋`: it relates a list to its members. -/
-theorem Prim.den_memRow {E : Obj} : Prim.den memRow (.arr E) E [] = fun (xs : (Obj.arr E).El) x => x ∈ xs := by
-  have ho : memRow.objs (.arr E) E = some [E] := by simp [Prim.objs, memRow, OExp.unify, Prim.vars, OExp.vars]; rfl
-  have hf : rowDens.find? (·.1.sym == memRow.sym) =
-      some ⟨RowCode.mem, fun σ _ (xs : List (σ₁ σ).El) x => x ∈ xs⟩ := rfl
-  funext xs x; unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+/-- `Tm.memAt` at `[E] ⟶ E` is `∋`: it relates a list to its members. -/
+theorem Tm.den_memAt {ρ : Val} {E : Obj} : (Tm.memAt (.arr E) E).den ρ = fun (xs : (Obj.arr E).El) x => x ∈ xs := by
+  simp only [Tm.memAt, dite_true]; rfl
 
 /-- **`E` is a definition**: the term `Λ(∋ R)` that `applied` and `appliedL` build for `E(R)` means `EDen`. -/
 theorem Tm.E_den (ρ : Val) {A B : Obj} (R : Tm A B) :
-    (Tm.lam (.comp (.prim (A := .arr A) (B := A) memRow) R)).den ρ = EDen (R.den ρ) := by
-  simp only [Tm.den, Prim.den_memRow]
+    (Tm.lam (.comp (.mem (B := A)) R)).den ρ = EDen (R.den ρ) := by
+  simp only [Tm.den]
 
 /-- A row `F(T)` at `xs` reads `T` only at the members of `xs`. -/
 theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Den C D}
-    {a : A.El} (h : ∀ m, Prim.den memRow A C [] a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
+    {ρ : Val} {a : A.El} (h : ∀ m, (Tm.memAt A C).den ρ a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
     r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
   have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
       fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
@@ -1025,7 +1030,7 @@ theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C
       · obtain ⟨rfl, rfl⟩ := hc
         rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
         exact and_congr_right fun _ => forall_congr' fun t => forall_congr' fun ht => forall_congr' fun ht' =>
-          h _ (Prim.den_memRow ▸ List.getElem_mem ht) _
+          h _ (Tm.den_memAt ▸ List.getElem_mem ht) _
       · rw [dif_neg hc, dif_neg hc]
     · rw [dif_neg hh, dif_neg hh]
 
@@ -1125,7 +1130,7 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Den A B) : ∀ {C D
           subst hc
           rename_i s
           simp only [Tm.den, Tm.argDen]
-          refine Prim.den_map_congr hr (fun m hm e => ?_) d
+          refine Prim.den_map_congr (ρ := ρ) hr (fun m hm e => ?_) d
           exact ihx s hs m (fun a' h' => hX a' ⟨m, hm, h'⟩) e
         · cases hc
       | _ => dsimp only at hc; cases hc

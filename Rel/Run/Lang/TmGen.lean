@@ -2,7 +2,7 @@ import Rel.Run.Lang.Expand
 import Rel.Run.Lang.Grammar
 
 /-! `Tm.gen`, the compiler: a term to its `GenK` code, one op per constructor in `Expand.node`'s argument order;
-    `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`, but never a `prod`); `rowGens`, each row's code;
+    `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`); `rowGens`, each row's code;
     `Tm.hasCode`, where it has none; `Expand.tmE`, a term as the Lean `Expr` that builds it. In `RelRun`, so
     `rel_program` runs it; its theorem `Tm.gen_sound` is in `Rel.Lang.GenSound`. -/
 
@@ -128,12 +128,18 @@ def primGen (r : Prim) (A B : Obj) (xs : Codes) : Rel A B :=
 
 #guard rowGens.length = kernRows.length
 
+/-- `inl°`, `inr°` on the sum values in demand (`Tab.inlConv`, `Tab.inrConv`), where `GenK.conv` of an injection would
+    read its source's universe; none for any other term. -/
+def Tm.convInj {A B : Obj} : Tm A B → Option (Rel B A)
+  | .inl (B := B) => some (GenK.ofVals _ _ (Tab.inlConv (B := B)))
+  | .inr (A := A) => some (GenK.ofVals _ _ (Tab.inrConv (A := A)))
+  | _ => none
+
 mutual
 /-- `Expand.code`, its shared constants the slots of `η.sh` (`Tm.gen`): a `t` that needs no keys memoised
-    (`GenK.memo`), any other its node. A `prod` is never memoised: it runs on the pairs its context supplies, where memoising builds the whole cross
-    product, which can pass `crossMax`. -/
+    (`GenK.memo`), any other its node. -/
 def Tm.code (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
-  if !t.dem && !(t matches .prod ..) then GenK.memo A B (t.gen η) else t.gen η
+  if !t.dem then GenK.memo A B (t.gen η) else t.gen η
 termination_by 2 * t.size + 1
 
 /-- `Expand.node`: `t`'s own `GenK` op, its parts by `Tm.code`. A fixed point's variable reads its round's table
@@ -151,7 +157,9 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | .prod A B, _, .outl => GenK.outl A B
   | .prod A B, _, .outr => GenK.outr A B
   | A, C, .comp (B := B) R S => GenK.comp A B C (R.code η) (S.code η)
-  | B, A, .conv R => GenK.conv A B (R.code η)
+  | B, A, .conv R => match R.convInj with
+    | some c => c
+    | none => GenK.conv A B (R.code η)
   | A, B, .meet R S => GenK.meet A B (R.code η) (S.code η)
   | A, B, .join R S => GenK.join A B (R.code η) (S.code η)
   | A, B, .diff R S => GenK.diff A B (R.code η) (S.code η)
@@ -160,11 +168,13 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | B, C, .ldiv (A := A) R S UB UC => GenK.ldiv A B C (R.code η) (S.code η) (UB.code η) (UC.code η)
   | A, B, .rdiv (C := C) R S UA UB => GenK.rdiv A B C (R.code η) (S.code η) (UA.code η) (UB.code η)
   | A, .prod B C, .pair R S => GenK.pair A B C (R.code η) (S.code η)
-  | .prod A C, .prod B D, .prod R S => GenK.prod A B C D (R.code η) (S.code η)
   | A, .arr B, .lam R => GenK.lam A B (R.code η)
   | _, B, .est Q => GenK.est B (Q.code η)
   | _, .arr B, .thin Q => GenK.thin B (Q.code η)
   | A, .arr B, .nil => GenK.nil A B
+  | .arr B, _, .mem => GenK.ofVals (.arr B) B Tab.mem
+  | A, .sum _ B, .inl => GenK.ofVals A _ (Tab.inl (B := B))
+  | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
   | .arr B, _, .atPos k => GenK.atPos B k
   | _, _, .own R => R.code η
   | _, _, .succ U => GenK.succ (U.code η)
@@ -229,12 +239,13 @@ mutual
     `gen` (or `argGen`) returns its error table, where `Tm.gen_sound` holds because the code fails. -/
 def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   match A, B, t with
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .nil | _, _, .mem
+  | _, _, .inl | _, _, .inr
   | _, _, .atPos _ | _, _, .var .. => true
   | _, _, .top R | _, _, .conv R | _, _, .dom R | _, _, .ran R | _, _, .lam R | _, _, .est R
   | _, _, .thin R | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
-  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S | _, _, .prod R S
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S
   | _, _, .nu _ R S => R.hasCode && S.hasCode
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.hasCode && S.hasCode && U.hasCode && V.hasCode
@@ -302,12 +313,13 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .rdiv (A := A) (B := B) (C := C) R S U V =>
     return g ``Tm.rdiv #[oE A, oE B, oE C, ← tmE sh R, ← tmE sh S, ← tmE sh U, ← tmE sh V]
   | _, _, .pair (A := A) (B := B) (C := C) R S => return g ``Tm.pair #[oE A, oE B, oE C, ← tmE sh R, ← tmE sh S]
-  | _, _, .prod (A := A) (B := B) (C := C) (D := D) R S =>
-    return g ``Tm.prod #[oE A, oE B, oE C, oE D, ← tmE sh R, ← tmE sh S]
   | _, _, .lam (A := A) (B := B) R => return g ``Tm.lam #[oE A, oE B, ← tmE sh R]
   | _, _, .est (B := B) Q => return g ``Tm.est #[oE B, ← tmE sh Q]
   | _, _, .thin (B := B) Q => return g ``Tm.thin #[oE B, ← tmE sh Q]
   | _, _, .nil (A := A) (B := B) => return g ``Tm.nil #[oE A, oE B]
+  | _, _, .mem (B := B) => return g ``Tm.mem #[oE B]
+  | _, _, .inl (A := A) (B := B) => return g ``Tm.inl #[oE A, oE B]
+  | _, _, .inr (A := A) (B := B) => return g ``Tm.inr #[oE A, oE B]
   | _, _, .prim (A := A) (B := B) r => return g ``Tm.prim #[oE A, oE B, toExpr r]
   | _, _, .atPos (B := B) k => return g ``Tm.atPos #[oE B, toExpr k]
   | _, _, .own (A := A) R => return g ``Tm.own #[oE A, ← tmE sh R]

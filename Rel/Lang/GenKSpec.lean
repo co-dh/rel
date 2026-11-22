@@ -336,7 +336,7 @@ theorem bound_wf {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (hK : 
   have wt := cut_wf hK hr ht
   exact ⟨wt, (Tab.dom_wf hd wt).1, (Tab.ran_wf hl wt).1, wt⟩
 
-/-! ### Products and sums: `pair prod outl outr` (`outl outr` by `ofVals_row_sound`) -/
+/-! ### Products and sums: `pair outl outr` (`outl outr` by `ofVals_row_sound`) -/
 
 /-- `pairOn D T S`'s two tables relate a value of `D` as `X` and `Y` do: `S` agrees with `Y` on the domain of `T`'s
     table (`bound_spec`), and off it both sides are false. -/
@@ -384,43 +384,6 @@ theorem pair_sound {R : Rel A B} {S : Rel A C} {X : Core.Rel A.El B.El} {Y : Cor
       (fun K => ⟨K.dom, none, none⟩) R S).Reps K (rpair X Y) := lift2_sound (fun _ h => h.dom) (fun _ h => h.dom) hR hS fun _ _ _ _ ht hr hs a q ha _ _ =>
     (Tab.pair_holds ht a q).trans (and_congr (hr a q.1 ha rfl trivial) (hs a q.2 ha rfl trivial))
   cases R <;> cases S <;> first | exact hL | exact hT
-
-/-- `o ≫ r` on the pairs `Z`, `o` a projection `f` on `Z` (`Tab.outl`, `Tab.outr`): each pair to what `r` relates
-    its `f`-side to. -/
-theorem proj_comp_holds {P : Obj} {n : USize} {Z : Vals (.prod A C) n} {f : (Obj.prod A C).El → P.El}
-    {o : Tab (.prod A C) P} {r : Tab P B} {l : Tab (.prod A C) B} {X : Core.Rel P.El B.El}
-    (ho : ∀ p a, o.Holds p a ↔ (∃ i, Z.row i = p) ∧ graph f p a) (hl : o.comp r = .ok l)
-    (er : ∀ i b, r.Holds (f (Z.row i)) b ↔ X (f (Z.row i)) b) (i : Fin n.toNat) (b : B.El) :
-    l.Holds (Z.row i) b ↔ X (f (Z.row i)) b :=
-  (Tab.comp_holds hl _ _).trans ⟨fun ⟨_, h1, h2⟩ => by obtain ⟨-, rfl⟩ := (ho _ _).1 h1; exact (er i b).1 h2,
-    fun h => ⟨_, (ho _ _).2 ⟨⟨i, rfl⟩, rfl⟩, (er i b).2 h⟩⟩
-
-theorem prod_sound {R : Rel A B} {S : Rel C D} {X : Core.Rel A.El B.El} {Y : Core.Rel C.El D.El}
-    (hR : ∀ K, K.WF → R.Reps K X) (hS : ∀ K, K.WF → S.Reps K Y) : ∀ K, K.WF → (GenK.prod A B C D R S).Reps K (rprodMap X Y) := fun K hW => by
-  rw [reps_iff]; intro t h
-  cases hK : K.dom with
-  | none =>
-    simp only [GenK.prod, Rel.Rel.runE, hK] at h
-    obtain ⟨r, hr, h⟩ := bind_ok h
-    obtain ⟨s, hs, ht⟩ := bind_ok h
-    have er := (reps_iff _ _ _).1 (hR {} Known.wf_empty) r hr; have es := (reps_iff _ _ _).1 (hS {} Known.wf_empty) s hs
-    exact fun p q _ _ _ => (Tab.prod_holds ht p q).trans (and_congr (er p.1 q.1 rfl rfl trivial) (es p.2 q.2 rfl rfl trivial))
-  | some c =>
-    obtain ⟨n, Z⟩ := c
-    simp only [GenK.prod, Rel.Rel.runE, hK] at h
-    obtain ⟨o₁, ho₁, h⟩ := bind_ok h
-    obtain ⟨r, hr, h⟩ := bind_ok h
-    obtain ⟨l, hl, h⟩ := bind_ok h
-    obtain ⟨o₂, ho₂, h⟩ := bind_ok h
-    obtain ⟨s, hs, h⟩ := bind_ok h
-    obtain ⟨m, hm, ht⟩ := bind_ok h
-    have er := (reps_iff _ _ _).1 (hR _ (by have h1 := hW.1; rw [hK] at h1; exact ⟨h1.1, trivial, trivial⟩)) r hr
-    have es := (reps_iff _ _ _).1 (hS _ (by have h1 := hW.1; rw [hK] at h1; exact ⟨h1.2, trivial, trivial⟩)) s hs
-    intro p q hp _ _
-    obtain ⟨i, rfl⟩ := (side_some hK p).1 hp
-    exact (Tab.pair_holds ht _ q).trans (and_congr
-      (proj_comp_holds (Tab.outl_holds ho₁) hl (fun j b => er _ b ((side_some rfl _).2 ⟨j, rfl⟩) rfl trivial) i q.1)
-      (proj_comp_holds (Tab.outr_holds ho₂) hm (fun j d => es _ d ((side_some rfl _).2 ⟨j, rfl⟩) rfl trivial) i q.2))
 
 example : ∀ K, K.WF → (GenK.outl A B).Reps K (graph Prod.fst) := ofVals_row_sound fun _ _ _ _ h => Tab.outl_holds h
 example : ∀ K, K.WF → (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_sound fun _ _ _ _ h => Tab.outr_holds h

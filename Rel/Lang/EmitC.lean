@@ -1144,9 +1144,6 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
   else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
-  else if c == ``Tab.mem then match A with
-    | .arr b => do let (n, X) ← known r.sym D.dom; memB b n X
-    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
   else if c == ``Tab.map then match A, B, xs with
     -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand
     | .arr a, .arr b, [x] => do
@@ -1250,6 +1247,8 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
   | A, _, .uni (m := m) U => do coreflB (← lit (.size m)) (← colsOf A (← litSide U))
   | A, B, .zero => zeroB A B
+  | _, _, .mem (B := b) => do let (n, X) ← known "∋" D.dom; memB b n X
+  | _, _, .inl | _, _, .inr => sumB "an injection"
   | _, _, .id => do let (n, X) ← known "𝟙" (D.dom <|> D.ran); coreflB n X
   | _, _, .top V => do
     let (n, X) ← known "⊤" D.dom
@@ -1276,7 +1275,6 @@ partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
     pairB A B C r s
-  | _, _, .prod (A := A) (B := B) (C := C) (D := D') R S => do prodB A B C D' (← tabB σ {} R) (← tabB σ {} S)
   | _, _, .own R | _, _, .share _ R => tabB σ D R
   | A, B, .var _ k => match σ.lookup k with
     | some b => b A B D
