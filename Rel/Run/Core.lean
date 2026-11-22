@@ -131,8 +131,8 @@ theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
 /-- A dense payload `b` of `n` elements of a fixed-width type `t` other than `u1`, `w` bytes each, Frame-of-Reference
     encoded at `w` is well formed at `n`: every such column the runtime builds (`Arr.ofBytes`), which `decide` cannot
     evaluate through `Coc.encode`. -/
-theorem foRBytes_wf (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isSome) (b : ByteArray) {n : USize}
-    (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF (X := Empty) t n
+theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isSome) (b : ByteArray) {n : USize}
+    (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF (X := X) t n
     (.foR (Kernel.Coc.encode (t.width.getD 0).toUSize b).1 (Kernel.Coc.encode (t.width.getD 0).toUSize b).2) := by
   have hw : 0 < t.width.getD 0 ∧ t.width.getD 0 ≤ 8 := by cases t <;> simp [QAtomicType.width] at hu ⊢
   have h := Verify.nblk_encode Column.lgEnc (by decide) _ hw.1 hw.2 b (patch := true)
@@ -395,7 +395,9 @@ theorem Ext.Enc.blank_WF {X : Type} (t : QAtomicType) (n : USize) : Ext.Enc.WF t
     exact ⟨by simp, ⟨by simp, h0 0, by rw [h0]; rfl, fun k _ => by rw [h0]; exact Nat.zero_le _,
       fun k _ => by rw [h0, h0]; exact Nat.le_refl _⟩,
       fun i _ => by simp only [Column.symKey, Column.symBytes, h0]; split <;> decide⟩
-  all_goals simp [Ext.Enc.blank, Ext.Enc.WF, QAtomicType.width, ByteArray.size]
+  case general => simp [Ext.Enc.blank, Ext.Enc.WF]
+  -- every fixed-width type: `blank` is `ofBytes` of `n` zero elements
+  all_goals exact foRBytes_wf _ (by decide) _ ((Array.size_replicate).trans (Nat.mul_comm _ _))
 
 namespace Column
 open Ext.Enc
@@ -431,9 +433,9 @@ theorem ofAtoms_WF {X : Type} {t : QAtomicType} {as : Array QAtom} {e : Ext.Enc 
   | .u8, _, _, hc | .char, _, _, hc | .i16, _, _, hc | .i32, _, _, hc | .i64, _, _, hc
   | .f32, _, _, hc | .f64, _, _, hc | .i8, _, _, hc | .date, _, _, hc | .datetime, _, _, hc =>
     cases hc
-    unfold WF; rw [USize.toNat_ofNat_of_lt' hs]
-    simp only [WF, QAtomicType.width]
-    rw [← Array.foldl_toList, foldl_pushBits_size, h0]; simp <;> omega
+    refine foRBytes_wf _ (by decide) _ ?_
+    rw [USize.toNat_ofNat_of_lt' hs, ← Array.foldl_toList, foldl_pushBits_size, h0]
+    simp [QAtomicType.width] <;> omega
 
 end Column
 
