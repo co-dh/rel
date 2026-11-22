@@ -47,6 +47,12 @@ def catPlan (n₁ n₂ : USize) : Except String (USize × Enc) :=
     pure ((n₁.toNat + n₂.toNat).toUSize, ← shiftCol n₂ n₁.toUInt64)
   else .error s!"concat: {n₁} + {n₂} rows do not fit a USize"
 
+/-- The first of the `n` cells `[lo, hi)` that is no slice of a payload of `m` rows (`0 ≤ lo ≤ hi ≤ m` fails), the
+check `readVals` makes once (PLAN 8.5); `none` is `Vals.WF`'s cell clause (`cellBad_none`). -/
+def cellBad {n : USize} (m : USize) (lo hi : Arr .i64 n) : Option (Fin n.toNat) :=
+  (List.finRange n.toNat).find? fun i =>
+    !decide (0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int))
+
 /-- The words of `x` clamped into `[0, c]` (`colMap .max` with `0`, then `.min` with `c`), then `s` added. -/
 def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) := do
   let a ← colMap .max n x.enc (← colConst n 0)
