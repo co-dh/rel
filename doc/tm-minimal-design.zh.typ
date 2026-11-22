@@ -47,14 +47,15 @@
   - `Tm`（`Rel/Run/Lang/Tm.lean:16`）只留原语。
   - 每个可定义的运算是 prelude（`Rel/Programs/Prelude.lean`）里的一条 point-free 定义。
   - `prims`（`Rel/Run/Lang/Syntax.lean:240`）的一行是某条定义的快速实现，由定理绑定，elaborator 用它替换定义。
-  本文给出：判定规则、逐个运算的结论、构造子前后对照、迁移批次、待决问题。只改文档，不改 `.lean` / `.rs`。
+  本文给出：判定规则、逐个运算的结论、构造子前后对照、迁移批次。只改文档，不改 `.lean` / `.rs`。
 ]
 
-#card(c-run, [用户已决定（2026-11-22）：B E F J L P Q T])[
+#card(c-run, [用户已决定（2026-11-22）：B E F J L P Q T U X A])[
   - B：`∋` `inl` `inr` 升为构造子。 E：`hylo` 留作构造子。 J：留 `prim` 与 `call`，只删 `callCv` `own` `share`；`const` 表以后再做。
-  - L：二元行 `at`。 P：`thin` 改名（新问题 U–W）。 Q：`Prim.dem` 三值，`dom` 是 fused 行。 T：留 `var`，`d` 移入环境 `δ`，不做 PHOAS。
+  - L：二元行 `at`。 P：`thin` 改名。 Q：`Prim.dem` 三值，`dom` 是 fused 行。 T：留 `var`，`d` 移入环境 `δ`，不做 PHOAS。
   - F：任意 object 上的序是定义 `lt` 加 fused 行；两条前提是批次 B5 的未验证项。
-  - 仍待决：U–W（`thin` 的新名字）。正文已按这些决定改写。
+  - U：`thin` 改名 `front(Q)`。 X：`foldr` 留作构造子（AOP 递归组合子），个数仍为 28。 A：`share` 改为零元 `call`。
+  - 全部问题已决定，无待决项。正文已按这些决定改写。
 ]
 
 = 一个例子，然后是规则
@@ -92,7 +93,7 @@
   [除法], [`ldiv rdiv`], [`ldiv rdiv`（`symDiv` 已是定义：`Pre.symDiv`，`Elab.lean:424`，`Tm.symDiv_den`，`Den.lean:497`）],
   [Boolean], [`diff`], [`diff`],
   [积 / 和], [`outl outr pair prod`；`inl inr inl° inr°` 是行；`[R,S]` 已是定义 `Pre.junc`（`Elab.lean:429`）], [`outl outr pair inl inr`；`prod` → 定义；`inl inr` 由行升为构造子，行 `inl° inr°` 删除（§3.4）],
-  [power], [`lam E est thin nil atPos`；`∋` 是行 `memRow`], [`lam mem`（`mem` 即 `∋`）；`E` → 定义；`nil` `est` `thin` → 定义 + fused 行；`at` → native 行],
+  [power], [`lam E est front nil atPos`；`∋` 是行 `memRow`], [`lam mem`（`mem` 即 `∋`）；`E` → 定义；`nil` `est` `front` → 定义 + fused 行；`at` → native 行],
   [数据], [`val uni succ arith leq lt`], [`val uni`；atom 运算全部是行（§3.5）],
   [递归], [`mu nu fold foldr foldI hylo`], [`mu nu fold foldr hylo`；`foldI` → 定义 + fused 行（§4）],
   [绑定], [`var share own call callCv arg`], [`var arg call`（§5）：`callCv` `own` `share` 删除],
@@ -125,7 +126,7 @@
   [`ran(R)`], [`ran(R) ≜ dom(R°)`], [新增 `Tm.ran_den`，由 `Tm.dom_den` 得。行：`GenK.ran_sound`（`GenKSpec.lean:180`）], [行 `ran` → `Tab.ran`（`Canon.lean:67`）。定义要先 `Tab.conv`（两列重排序），行只排一列],
   [`nil`], [`nil ≜ Λ(𝟘)`], [新增 `Tm.nil_den`：`lamDen 𝟘 a ys ↔ ys = []`（`lamDen`，`Den.lean:244`；`nilDen`，`Den.lean:66`）。行：`Tab.nil_holds`（`RepTabDiv.lean:23`）], [行 `nil` → `Tab.nil`（`Rel/Run/Div.lean:64`），常数列。`nil` 是每个 fold 的初值，所以保留行],
   [`est(Q)`], [`est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)`。`∈ \ S°` 是最大的 `Y` 使 `∈ Y ⊑ S°`：`xs Y b` 则 `xs` 的每个 `c` 满足 `b S c`], [新增 `Tm.est_den`：等于 `estDen`（`Den.lean:239`）。`∪ 𝟙` 正是 `estDen` 里的 `c ≠ b`，所以不需要 `Q` 自反的假设。行：`Tab.est_holds`（`RepTabDiv.lean:2651`）、`GenK.est_sound`（`GenKEst.lean:14`）], [行 `est`，参数是 pair test `τ(Q)`，与 `thinL` `merge` 同形（`Prim.sig` 的 `some true`，`GenK.testVals`，`GenK.lean:369`）→ `Tab.est`（`Power.lean:49`）。数组 object 没有 universe，定义里的 `\` 不能运行，所以该处永远选行（`DfnCut.fused` 的既有规则）。lifted 路径已按定义构造（`Elab.lean:1439-1446`）],
-  [`thin(Q)`], [`thin(Q) ≜ Λ(∋ − ∋ (Q − Q°))`：去掉被别的元素严格压过的元素], [新增 `Tm.thin_den`：等于 `thinDen`（`Den.lean:284`）。行：`Tab.thin_den`（`RepTabDiv.lean:2705`）、`GenK.thin_sound`（`GenKEst.lean:20`）], [行 `thin` → `Tab.thin`（`Power.lean:63`）。`Q` closed 时定义可直接运行，但要把整张 `Q` 与成员表连接；行只在同一数组内的元素对上读 `Q`。按决定 P 改名，名字见问题 U–W],
+  [`front(Q)`], [`front(Q) ≜ Λ(∋ − ∋ (Q − Q°))`：去掉被别的元素严格压过的元素], [新增 `Tm.thin_den`：等于 `thinDen`（`Den.lean:284`）。行：`Tab.thin_den`（`RepTabDiv.lean:2705`）、`GenK.thin_sound`（`GenKEst.lean:20`）], [行 `front` → `Tab.thin`（`Power.lean:63`）。`Q` closed 时定义可直接运行，但要把整张 `Q` 与成员表连接；行只在同一数组内的元素对上读 `Q`。按决定 P 改名，名字见决定 U],
   [`foldI(e,S)`], [`foldI(e,S) ≜ ⟨π₂ ⦇e,S⦈, π₁⟩ dom(π₁π₁ ∩ π₂) π₁π₂`：carrier 为 `I×V` 的一个 `fold`，再按 key 取出], [已有 `foldIDen_eq`（`Den.lean:188`）。行：`GenK.foldI_sound`（`GenKFold.lean:348`）], [行 `foldI` → `GenK.foldI`（`GenK.lean:353`）。定义在每个数组上为 `e` 的所有 key 设初值；行只为与该数组配对的 key 设初值。这回答了架构 §7 的「先验证两者确实可写出」：可写出，但须留行],
   [`length` `sum` `flat`], [已有：`DfnCut`（`Elab.lean:2056-2063`）], [已有：`Tm.dfnCut_den`], [不变；定义的文本移入 prelude（§6）],
   [`asc(P)`], [`asc(P) ≜ (dom(P) Λ(> P) length)°`，其中 `>` 是任意 object 上的序], [无：没有定理把 `ascDen`（`Rel/AscOrder.lean:34`）与它等同（`Syntax.lean:292-294`）；批次 B5 的未验证项], [行 `asc` → `Tab.asc`（`Rel/Run/Asc.lean:20`）。`>` 用 §3.1 的 `lt`（决定 F）],
@@ -339,18 +340,18 @@ sort(≤)     今天：arg (call … prelude.sort …)   // 定义，体内联
 合并为一个，键是 `Prim.prelude`（行指名它的定义；不需要 §5.1 的表）：
 
 - 定义的文本一律在 prelude。`length ≜ ⦇[0, π₁ succ]⦈`、`sum`、`flat` 从 `DfnCut` 的 Lean 构造移为 prelude 文本；`DfnCut` 只保留「按 universe 选 fused / cut / 定义」的规则，其定义项由 `callTm` 读自行的 `prelude` 常量。`Elab.dfns` 删除。
-- 用户写的永远是定义名；行没有独立的 surface 名字。`Op.table`（`Syntax.lean:323-336`）里 `dom ran E est thin nil` 等项改为 prelude 常量。
+- 用户写的永远是定义名；行没有独立的 surface 名字。`Op.table`（`Syntax.lean:323-336`）里 `dom ran E est front nil` 等项改为 prelude 常量。
 - 选择规则不变（`Elab.lean:2330-2363`）：不需要 universe 或 universe 无界 → 行；universe 是初始段 → `cut`；否则 → 定义。
 - 每个 fused 项必须有定理。今天「unchecked」的六行（`filter` 等）成为待证义务，列在批次 B10；证出之前留在一个显式的 `unproved` 名单里，名单只能变短。
 
 = 对各部分的改动汇总
 
 #tbl(c-sem, (auto, 1fr), ([部分], [改动]),
-  [`Tm` 的遍历], [`size mapMSz fv subst pol kids`（`Tm.lean:141-346`）、`Expand.tmE`（`TmGen.lean:283`）、`Tm.number`：每删一个构造子各少一条子句。`Tm.pol` 里 `lam E thin` 的「部分须不含变量」只剩 `lam`],
+  [`Tm` 的遍历], [`size mapMSz fv subst pol kids`（`Tm.lean:141-346`）、`Expand.tmE`（`TmGen.lean:283`）、`Tm.number`：每删一个构造子各少一条子句。`Tm.pol` 里 `lam E front` 的「部分须不含变量」只剩 `lam`],
   [`Tm.dem`], [加环境 `δ`；`dom own share callCv` 的透传子句消失；`arg` 子句读 `Prim.dem` 三值；新增 `conv inl` `conv inr` 为 true 的子句（今天 `conv` 恒为 false）],
   [pair test `τ(Q)`], [`pairTest`（`Elab.lean:1901`）与 `test`（`Elab.lean:2501-2545`）构造 `dom` 之处改为构造行 `dom`；`τ(<)` 化简为 `lt` 行],
   [`convTm`], [§5.2：`prim` `call` 都查 `convOf`；`dom ran` 的自逆规则改为行的 `conv` 项 `dom ↦ dom`、`ran ↦ ran`；`inl inr` 的规则见 §3.4],
-  [`GenK`], [删 `E prod own`；`dom ran nil est thin atPos succ arith leq lt foldI` 的函数体不动，改由行的表项引用；新增 `star`],
+  [`GenK`], [删 `E prod own`；`dom ran nil est front atPos succ arith leq lt foldI` 的函数体不动，改由行的表项引用；新增 `star`],
   [`Tm.gen` / `Tm.gen_sound`], [`Tm.gen`（`TmGen.lean:143-193`）从 41 条到 28 条。`Tm.gen_sound`（`GenSound.lean:1005`）相应情形移到 `rowsProved_ok`；已有的 `GenK.*_sound` 引理原样复用],
   [`Tm.den`], [从 41 条到 28 条；被删构造子的命名语义（`estDen` `thinDen` `EDen` `nilDen` `foldIDen` 等）留作行的 `den` 或定理的右端],
   [kernel（`crate/`）], [不动。`Tab.star` 与索引列的 `Tab.atPos` 都只用现有 kernel],
@@ -367,7 +368,7 @@ sort(≤)     今天：arg (call … prelude.sort …)   // 定义，体内联
   [B1], [`E` → prelude 定义；删 `Tm.E` `GenK.E`；`Tm.E_den`], [`Tm.lean` `Den.lean` `GenK.lean` `TmGen.lean` `GenSound.lean` `Elab.lean` `Prelude.lean`], [低：代码已是定义],
   [B2], [`×` → `⟨π₁R, π₂S⟩`；`uniPart` 的积 universe；删 `Tm.prod` `GenK.prod` 与 `Tm.code` 的特例；`Tm.prod_den`], [同上，加 `ConvSpec.lean`], [中：closed 积由 false 变 on demand，`crossMax` 的检查要跟到 `Tab.pair`],
   [B3], [`Prim.dem` 三值；行 `dom` `ran` `nil`；删三个构造子；`pairTest` `test` `uniPart` `DfnCut.flat` 改为构造行], [`Syntax.lean` `Tm.lean` `Elab.lean` `Den.lean` `GenSound.lean`], [高：`dom` 在 elaborator 里用得最多；须先合],
-  [B4], [行 `est` 与改名后的 `thin`（照 `thinL`）；prelude 定义；`Tm.est_den` `Tm.thin_den`；与 freyd `thinRel` 的定理], [`Syntax.lean` `Prelude.lean` `Den.lean` `GenSound.lean` `relaop/RelAop/Prelude.lean`，用到 `thin` 的程序], [中：`Mss` 的 `calc` 用到 `est` 的 prelude 定理；名字等问题 U–W],
+  [B4], [行 `est` 与 `front`（照 `thinL`）；prelude 定义；`Tm.est_den` `Tm.thin_den`；与 freyd `thinRel` 的定理], [`Syntax.lean` `Prelude.lean` `Den.lean` `GenSound.lean` `relaop/RelAop/Prelude.lean`，用到 `front` 的程序], [中：`Mss` 的 `calc` 用到 `est` 的 prelude 定理；改名 `thin` → `front` 触及：prelude（`Rel/Programs/Prelude.lean`）、`Op.table`（`Syntax.lean:323-336`）、`doc/rel-architecture.zh.typ`、用到 `thin` 的模块（索引 `use_site`）：`Rel.Lang.Den` `GenKEst` `GenKFold` `GenSound` `Test.Kern45` `TestNative` `Rel.RepTabDiv` `Rel.Run.Lang.{Elab,GenK,Syntax,Tm,TmGen,Plan,Embed}` `Rel.Lang.ConvSpec`；`Rel/Programs/` 下无 `.rel` 文本用到 `thin`],
   [B5], [atom 运算全部成行；删 `succ arith leq lt`；二元行 `at`，删 `atPos`；prelude 的 `lt`（决定 F）与 fused 行 `lt`；`asc` 的定义。\ 未验证项：(1) atom 上 `Obj.lt`（`Rel/ObjOrder.lean:44`）与 `ltAt`（`Den.lean:90`）是否一致，浮点尤其；不一致则浮点 atom 的 `<` 另为 native 行。(2) `asc` 的定理 `ascDen = ⟦(dom(P) Λ(> P) length)°⟧` 尚无证明；证出之前 `asc` 留在 `unproved` 名单。(3) `leAt = ltAt ∨ =`], [`Syntax.lean` `Tm.lean` `Elab.lean` `Den.lean` `GenSound.lean` `Power.lean` `Prelude.lean`], [中：三条未验证项；`Frame*` 大量使用算术],
   [B6], [`foldI` → fused 行], [`Syntax.lean` `Tm.lean` `Elab.lean`（`lFold`，`:982`）`Den.lean`], [低],
   [B7], [prelude `star`，`R*` 改为它的记号；`Tab.star` 与 `Tab.star_holds`；`Party.guests`、`Chess.L` 改写], [`Grammar.lean` `Prelude.lean` `Fix.lean` `Party.lean` `Chess.lean`], [中：新的证明],
@@ -401,15 +402,7 @@ TODO（`:487-494`）的修改：
 
 §4.5 的 `μ` 行：把「semi-naive 只多一个 `−`」改为「整体迭代（`Tab.fixOn`）；线性递归走行 `star`（semi-naive）」。§4.6 的 `length` 项：「定理未证」与 `Prim.dfn` 改为「`Tm.dfnCut_den` 已证」与 `Elab.dfns`。
 
-= 待决问题
-
-每个选项一个字母，全文不重复。推荐项标 ★。
-
-#tbl(c-sem, (auto, 1fr, 1fr), ([问题], [选项], [理由]),
-  [`thin` 的新名字（决定 P 要求改名）], [★ U：`front(Q)`。\ V：`undominated(Q)`。\ W：`thinSet(Q)`], [仓库规则：有 kdb/q 函数就用它的名字，否则用 AOP 的名字。q 没有这个函数。AOP 的 `thin Q` 是关系（freyd `thinRel`，`AOP/A8_1.lean:70`，`thinRel_pt`：任何压得住全体的子集都算）；数组上的 `thinL`（freyd `ListRel.thinL`，`AOP/A8_3.lean:565`；Rel 的行 `thinL`）是另一个运算，结果依赖顺序。「集合上确定的那一个 thinning」在 AOP 里没有名字。\ U：不被别的元素严格压过的元素之集，通称 Pareto front；短。\ V：字面就是定义，较长。\ W：保留与 AOP 的 `thin` 的联系并与 `thinL` 成对，但它仍不是 AOP 的 `thin`。\ 无论哪个名字，都补定理 `新名(Q) ⊑ setify thinRel(Q)`（`Q` 传递时）],
-)
-
-== 已决定的问题（记录）
+= 已决定的问题
 
 #tbl(c-syn, (auto, auto, 1fr), ([问题], [决定], [未选的选项]),
   [`∋` `inl` `inr` 放在哪], [B：升为构造子], [A 留作行（本文上一版的推荐）；C 连 `outl` `outr` 也降为行],
@@ -420,6 +413,9 @@ TODO（`:487-494`）的修改：
   [`thin` 的含义], [P：改名], [O 保留名字],
   [`dom` 行的 dem], [Q：`Prim.dem` 三值，`dom` 是 fused 行], [R `dom` 例外留作构造子],
   [`var`], [T：留 `var`，`d` 移入 `δ`，不做 PHOAS], [S 去掉 `var`，只用组合子],
+  [`thin` 的新名字], [U：`thin` → `front(Q)`], [V `undominated`；W `thinSet`],
+  [`foldr`], [X：留作构造子（AOP 的递归组合子），个数仍为 28], [删除并入 prelude],
+  [`share`], [A：改为零元 `call`], [留作构造子],
 )
 
 == 决定带来的出入
@@ -428,7 +424,7 @@ TODO（`:487-494`）的修改：
 - B：`E(R) ≜ Λ(∋ R)` 与 `est` 等定义里的 `∋` 现在是构造子 `mem`；`Tm.kids` 不再按 `Prim` 相等来认 `memRow`。
 - E：`foldr` 按同一准则留作构造子，所以目标是 28 个而不是 27 个；prelude 不加 `reverse`。
 - E 与 T：§5.3 的方案 (a)（`hylo(c,S)` 不带 `k` 与体）不采用；`hylo k what body` 的形状不变，`Tm.kids` 与 `Tm.den_local` 照旧需要。
-- J：`share` 删除后须有去处，本文取「零元 `call`」；逆的来源仍是两处（`Prim.conv` 与 `Elab.convs`），由 `convOf` 一个函数查。fused 行的合并（§6）改以 `Prim.prelude` 为键，不依赖 `const` 表。
+- J：`share` 删除后须有去处，决定 A：`share` 改为零元 `call`；逆的来源仍是两处（`Prim.conv` 与 `Elab.convs`），由 `convOf` 一个函数查。fused 行的合并（§6）改以 `Prim.prelude` 为键，不依赖 `const` 表。
 - F：`lt` 的定义用到 `at`，所以 `at`（L）与 `lt`（F）在同一批 B5。
 - 构造子个数：上一版写「今天 44」，实际 41。
 
