@@ -537,7 +537,7 @@ def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String P
 abbrev SideCol := USize ⊕ (t : QAtomicType) × (k : USize) × Opt t k
 
 /-- A side's atom columns, each with its path in the side: `""` an atom; `.1`/`.2` a product's; `.lo`/`.hi`/`.e`
-    an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads, a band sum
+    an array's bounds and payload; `.tag`/`.l`/`.r` a sum's tags and two summand columns, a band sum
     (`Obj.band`) its one nullable column at the side's own path. A side of `1`
     is `.inl` its count: it has a file like any side (`Db.ownNParts` kind 5), holding the count and no part. -/
 def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String × SideCol)
@@ -547,9 +547,7 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
     [(p ++ ".lo", .inr ⟨_, _, Opt.ofArr lo⟩), (p ++ ".hi", .inr ⟨_, _, Opt.ofArr hi⟩)] ++ cols b f (p ++ ".e")
   | .sum a b, _, s, p => match s.view with
     | .opt _ x => [(p, .inr ⟨_, _, x⟩)]
-    | .gen _ _ _ tag idx x y =>
-    [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩), (p ++ ".idx", .inr ⟨_, _, Opt.ofArr idx⟩)] ++ cols a x (p ++ ".l") ++
-      cols b y (p ++ ".r")
+    | .gen _ tag x y => [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
   | .one, n, _, p => [(p, .inl n)]
 
 /-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/

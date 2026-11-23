@@ -48,9 +48,9 @@ def pairV (A B : Obj) (n : USize) (x : Vals A n × Bool) (y : Vals B n × Bool) 
   ((x.1, y.1), x.2 && y.2)
 def arrV (B : Obj) (n m : USize) (lo hi : Arr .i64 n × Bool) (p : Vals B m × Bool) : Vals (.arr B) n × Bool :=
   (⟨m, lo.1, hi.1, p.1⟩, lo.2 && hi.2 && p.2)
-def sumV (A B : Obj) (h : Obj.band A B = none) (n l r : USize) (tag : Arr .u1 n × Bool) (idx : Arr .i64 n × Bool)
-    (x : Vals A l × Bool) (y : Vals B r × Bool) : Vals (.sum A B) n × Bool :=
-  (Vals.ofGen h l r tag.1 idx.1 x.1 y.1, tag.2 && idx.2 && x.2 && y.2)
+def sumV (A B : Obj) (h : Obj.band A B = none) (n : USize) (tag : Arr .u1 n × Bool) (x : Vals A n × Bool)
+    (y : Vals B n × Bool) : Vals (.sum A B) n × Bool :=
+  (Vals.ofGen h tag.1 x.1 y.1, tag.2 && x.2 && y.2)
 /-- A band sum's one nullable column (`Obj.band`), rebuilt as `atom` rebuilds a column but nulls allowed: `Enc.WF`
     decided, a payload that does not fit `n` a blank column with bit false. -/
 def optV (A B : Obj) (t : QAtomicType) (h : Obj.band A B = some t) (n : USize) (m p : String) :
