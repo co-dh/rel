@@ -318,4 +318,13 @@ info: the symbol columns of `a` are ids in the library /db/one and those of `b` 
   let U ← IO.ofExcept (unenum "b" E (← IO.ofExcept (frame J)))
   return (T.toList == (← IO.ofExcept (frame x)).toList, J.toList, U.toList == T.toList)
 
+/-- A `u1` column as a file holds it: `bs`, one byte each, encoded by the one writer `Coc.encode`. -/
+def u1Of (bs : List UInt8) : Except String (Arr .u1 bs.length.toUSize) :=
+  Arr.of .u1 _ (.foR (Coc.encode 1 ⟨bs.toArray⟩).1 (Coc.encode 1 ⟨bs.toArray⟩).2) "u1 file"
+-- `Column.u1Ok` on the blocks: `0`/`1` values are accepted, a value 2 widens its block and is rejected
+#guard ((u1Of [0, 1, 1, 0, 1]).toOption.map Arr.toList) == some [false, true, true, false, true]
+#guard ((u1Of [1, 1, 1]).toOption.map Arr.toList) == some [true, true, true]
+#guard (u1Of [0, 1, 2, 1]).toOption.isNone
+#guard (u1Of [2, 2]).toOption.isNone
+
 end Rel.Lang.TestTable

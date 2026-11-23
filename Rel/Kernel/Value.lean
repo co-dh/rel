@@ -432,6 +432,17 @@ arithmetic shift down, except one byte, q's unsigned pair, which is its bits zer
 def sext (w : Nat) (v : UInt64) : Int64 :=
   if w == 1 then v.toInt64 else (v <<< (64 - 8 * w).toUInt64).toInt64 >>> (64 - 8 * w).toUInt64.toInt64
 
+/-- Patch `k`'s value in the patch list at `e`, sign-extended from its stored width (`foRExc`). -/
+def foRPatch (pack : ByteArray) (e k : Nat) : UInt64 :=
+  let esz := (bitsAt pack (e + 8) 8).toNat % 256
+  (sext esz (bitsAt pack (e + 16 + k * esz) esz)).toUInt64
+
+/-- The patches block `b` owns, as indices into the patch list at `e`: `exc_off`'s entries `b` to `b + 1`. -/
+def foRPatches (metadata pack : ByteArray) (e b : Nat) : List Nat :=
+  let o := (alpSects (nblk metadata) (bitsAt pack e 8).toNat ((bitsAt pack (e + 8) 8).toNat % 256)).1
+  let off (b : Nat) := (bitsAt pack (e + o + b * 8) 8).toNat
+  List.range' (off b) (off (b + 1) - off b)
+
 /-- Element `i`'s own bits when the pack's patch list holds it: the list `rust/src/coc.rs` lays after the
 last block's residuals when some element is a null or an outlier, the ladder `alpSects` describes,
 an element sign-extended from its stored width as `baseAt` is (one byte, q's unsigned pair, is not).
@@ -439,13 +450,9 @@ an element sign-extended from its stored width as `baseAt` is (one byte, q's uns
 (`Verify.blockStarts_get`), because the sum over every block on each element read is what made a column read quadratic. -/
 def foRExc (metadata pack : ByteArray) (i : Nat) (e : Nat := blockStart metadata (nblk metadata)) : Option UInt64 :=
   if pack.size ≤ e then none else
-  let esz := (bitsAt pack (e + 8) 8).toNat % 256
-  let (o, p, _) := alpSects (nblk metadata) (bitsAt pack e 8).toNat esz
-  let off (b : Nat) := (bitsAt pack (e + o + b * 8) 8).toNat
-  let b := i / blk metadata
-  ((List.range' (off b) (off (b + 1) - off b)).find?
-      fun k => (bitsAt pack (e + p + k * 2) 2).toNat == i % blk metadata).map fun k =>
-    (sext esz (bitsAt pack (e + 16 + k * esz) esz)).toUInt64
+  let p := (alpSects (nblk metadata) (bitsAt pack e 8).toNat ((bitsAt pack (e + 8) 8).toNat % 256)).2.1
+  ((foRPatches metadata pack e (i / blk metadata)).find?
+      fun k => (bitsAt pack (e + p + k * 2) 2).toNat == i % blk metadata).map (foRPatch pack e)
 
 /-- How far block `b`'s frame, the value its residuals are measured from, lies above its minimum:
 the `u64` the patch list keeps per block after `exc_pos` when bit 8 of its width word says so, and
@@ -497,6 +504,21 @@ def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
 (`foRNul`), else the raw bits `foRBits` reads. A column with no flagged block reads `some` everywhere. -/
 def foROpt (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Option UInt64 :=
   if foRNul metadata pack starts i then none else some (foRBits metadata pack starts i)
+
+/-- Whether every value a `foR` payload holds is below 2, decided per block from its metadata and patch list alone,
+never per element (`Verify.u1Ok_bound`): an unpatched value is `baseAt + foRFrame + residual`, the residual at most
+`ones (widthAt)` and, in a block `nulAt` flags, one less (the top one is the null), and a patched value is its patch.
+Every `u1` column the encoder writes passes, since it picks the minimal width (`widthFor` of the block's range), so a
+`0`/`1` block is base `0` width `1` or base `0`/`1` width `0`; a file whose `u1` block has a larger frame or width is
+rejected, even where each of its values happens to be `0` or `1`. So is a `u1` block flagged for a null: the encoder
+widens it to width 2 (residual 3 the null), whose metadata admits a residual 2; a nullable column (`Opt`) is
+decided by `Enc.WF` itself. -/
+def u1Ok (metadata pack : ByteArray) : Bool :=
+  let e := blockStart metadata (nblk metadata)
+  Nat.all (nblk metadata) fun b _ =>
+    (baseAt metadata b).toNat + (foRFrame metadata pack b e).toNat + (ones (widthAt metadata b)).toNat <
+      2 + (nulAt metadata b).toNat &&
+    (pack.size ≤ e || (foRPatches metadata pack e b).all fun k => (foRPatch pack e k).toNat < 2)
 
 /-- Exceptions stored out of line. Read out of the alp blob's header rather than derived, `exc_off`
 being a prefix sum whose last entry is this. -/

@@ -519,6 +519,83 @@ theorem foROpt_plain (M P : ByteArray) (st : Array Nat) (i : Nat) (hf : Column.n
     Column.foROpt M P st i = some (Column.foRBits M P st i) := by
   simp [Column.foROpt, Column.foRNul, hf]
 
+/-- A residual is at most `ones w`: `w` bits, all ones from `w = 64` up. -/
+theorem resAt_le_ones (P : ByteArray) (s w j : Nat) : (Column.resAt P s w j).toNat ≤ (Column.ones w).toNat := by
+  rcases Nat.lt_or_ge w 64 with hw | hw
+  · have h2 : 2 ^ w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) (by omega)
+    have hp := Nat.two_pow_pos w
+    rw [Column.ones_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (by omega)]
+    have fold : ∀ (f : UInt64 → Nat → UInt64), (∀ a k, a.toNat < 2 ^ w → (f a k).toNat < 2 ^ w) →
+        ∀ (l : List Nat) (a : UInt64), a.toNat < 2 ^ w → (l.foldl f a).toNat < 2 ^ w := by
+      intro f hf l
+      induction l with
+      | nil => exact fun _ h => h
+      | cons k l ih => exact fun a h => ih _ (hf a k h)
+    have : (Column.resAt P s w j).toNat < 2 ^ w := by
+      unfold Column.resAt
+      refine fold _ (fun a k h => ?_) _ 0 hp
+      rw [UInt64.toNat_or]
+      refine Nat.or_lt_two_pow h ?_
+      rw [Nat.toUInt64_eq, UInt64.toNat_ofNat']
+      exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) (Nat.mod_lt _ hp)
+    omega
+  · have h1 : (Column.ones w).toNat = 2 ^ 64 - 1 := by
+      unfold Column.ones Column.pow2; rw [if_neg (by omega)]; rfl
+    have := UInt64.toNat_lt (Column.resAt P s w j)
+    omega
+
+/-- A patch `Column.foRExc` answers with is one of block `i / blk`'s, read by `Column.foRPatch`, and the list is there. -/
+theorem foRExc_some {M P : ByteArray} {i e : Nat} {v : UInt64} (h : Column.foRExc M P i e = some v) :
+    ¬ P.size ≤ e ∧ ∃ k ∈ Column.foRPatches M P e (i / Column.blk M), Column.foRPatch P e k = v := by
+  unfold Column.foRExc at h
+  split at h
+  · cases h
+  · rename_i hs
+    obtain ⟨k, hk, hv⟩ := Option.map_eq_some_iff.1 h
+    exact ⟨hs, k, List.mem_of_find?_eq_some hk, hv⟩
+
+/-- `Column.u1Ok`, a check per block, bounds every value of the column below 2: the element-wise clause `Enc.WF` states
+at `u1`, for each element of a block the metadata has. -/
+theorem u1Ok_bound (M P : ByteArray) (h : Column.u1Ok M P = true) (i : Nat)
+    (hi : i / Column.blk M < Column.nblk M) (v : UInt64)
+    (hv : Column.foROpt M P (Column.blockStarts M) i = some v) : v.toNat < 2 := by
+  unfold Column.u1Ok at h
+  simp only [Nat.all_eq_finRange_all, List.all_eq_true] at h
+  have hb := h ⟨i / Column.blk M, hi⟩ (List.mem_finRange _)
+  simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, List.all_eq_true] at hb
+  obtain ⟨hr, hx⟩ := hb
+  unfold Column.foROpt Column.foRNul Column.foRBits at hv
+  simp only [blockStarts_get M (Nat.le_refl _), blockStarts_get M (Nat.le_of_lt hi)] at hv
+  generalize hE : Column.foRExc M P i (Column.blockStart M (Column.nblk M)) = x at hv
+  cases x with
+  | some u =>
+    simp only [Option.isNone_some, Bool.and_false, Bool.false_and, Bool.false_eq_true, if_false,
+      Option.some.injEq] at hv
+    subst hv
+    obtain ⟨hs, k, hk, rfl⟩ := foRExc_some hE
+    exact hx.resolve_left hs k hk
+  | none =>
+    simp only [Option.isNone_none, Bool.and_true] at hv
+    have hr1 := resAt_le_ones P (Column.blockStart M (i / Column.blk M)) (Column.widthAt M (i / Column.blk M))
+      (i % Column.blk M)
+    split at hv
+    · cases hv
+    rename_i hn
+    cases hv
+    generalize Column.resAt P (Column.blockStart M (i / Column.blk M)) (Column.widthAt M (i / Column.blk M))
+      (i % Column.blk M) = r at hn hr1 ⊢
+    generalize Column.ones (Column.widthAt M (i / Column.blk M)) = o at hn hr1 hr
+    have hrn : r.toNat + (Column.nulAt M (i / Column.blk M)).toNat ≤ o.toNat := by
+      cases hN : Column.nulAt M (i / Column.blk M)
+      · simpa using hr1
+      · have hne : r.toNat ≠ o.toNat := fun e => hn (by simp [hN, UInt64.toNat_inj.1 e])
+        simp only [Bool.toNat_true]; omega
+    generalize (Column.foRFrame M P (i / Column.blk M) (Column.blockStart M (Column.nblk M))) = f at hr ⊢
+    rw [UInt64.toNat_add, UInt64.toNat_add]
+    have := Nat.mod_le ((Column.baseAt M (i / Column.blk M)).toNat + f.toNat) (2 ^ 64)
+    have := Nat.mod_le (((Column.baseAt M (i / Column.blk M)).toNat + f.toNat) % 2 ^ 64 + r.toNat) (2 ^ 64)
+    omega
+
 theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (n : USize) (M P : ByteArray) :
     Enc.raw (X := X) t n (.foR M P) = (Array.range n.toNat).map fun i =>
@@ -1064,7 +1141,7 @@ theorem foRExc_excBlob (M pack : ByteArray) (B : Nat) (hBM : Column.blk M = B) (
       (pack.size + (Column.alpSects (Column.nblk M) exc.size w).2.1 + k * 2) 2).toNat) i
     (fun b hb => hoff b (by omega)) hpos
   simp only [Column.alpSects] at f1 f2
-  unfold Column.foRExc
+  unfold Column.foRExc Column.foRPatches Column.foRPatch
   simp only [he, ByteArray.size_append, hwd, hword, hc, hBM, Column.alpSects]
   rw [if_neg (by omega)]
   rcases Decidable.em (i ∈ exc.toList) with hm | hm

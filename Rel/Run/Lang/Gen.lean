@@ -33,8 +33,10 @@ def unhex (s : String) : ByteArray := Id.run do
     wrong column read as right. -/
 def atom (t : QAtomicType) (n : USize) (m p : String) : Arr t n × Bool :=
   let e := Enc.foR (unhex m) (unhex p)
-  if h : Enc.WF t n e ∧ hasNul e = false then (Arr.mk e h.1 h.2, true)
-  else (Arr.mk (Enc.blank t n) (Enc.blank_WF t n) (Enc.blank_plain t n), false)
+  match Enc.wf? t n e with
+  | some ⟨h⟩ => if hN : hasNul e = false then (Arr.mk e h hN, true) else blank
+  | none => blank
+where blank := (Arr.mk (Enc.blank t n) (Enc.blank_WF t n) (Enc.blank_plain t n), false)
 
 /-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs. -/
 def pairV (A B : Obj) (n : USize) (x : Vals A n × Bool) (y : Vals B n × Bool) : Vals (.prod A B) n × Bool :=
