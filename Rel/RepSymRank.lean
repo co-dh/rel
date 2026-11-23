@@ -8,6 +8,7 @@ public import Rel.RepTabComp
 public import Rel.RepStruct
 public import Rel.RepCanon
 public import Rel.RepSums
+public import Rel.Lang.DfnLaw
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -316,3 +317,65 @@ theorem symAsc_lt_iff {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.
   exact (ascDen_lt hbd as as').trans ((Obj.lt_long r r').trans (rank_lt_iff hR wD hb hf ht ht' hr hr'))
 
 end Rel.Lang.Table
+
+namespace Rel.Lang
+
+open Rel Rel.Rep Table
+
+/-- `ran(R)` relates `x` to itself when `x` is a target of `R` (`Tm.ran_den`). -/
+theorem Tm.ran_den' (ρ : Val) {A B : Obj} (R : Tm A B) (x v : Obj.El B) :
+    (Tm.ran R).den ρ x v ↔ x = v ∧ ∃ m, R.den ρ m x := by
+  rw [Tm.ran_den]
+  simp only [Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip]
+  constructor
+  · rintro ⟨rfl, m, h, -⟩; exact ⟨rfl, m, h⟩
+  · rintro ⟨rfl, m, h⟩; exact ⟨rfl, m, h, h⟩
+
+/-- `dom(R)` relates `x` to itself when `x` is a source of `R` (`Tm.dom_den`). -/
+theorem Tm.dom_den' (ρ : Val) {A B : Obj} (R : Tm A B) (x v : Obj.El A) :
+    (Tm.dom R).den ρ x v ↔ x = v ∧ ∃ y, R.den ρ x y := by
+  rw [Tm.dom_den]
+  simp only [Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip]
+  constructor
+  · rintro ⟨rfl, m, h, -⟩; exact ⟨rfl, m, h⟩
+  · rintro ⟨rfl, m, h⟩; exact ⟨rfl, m, h, h⟩
+
+/-- **`<` on `sym` is the order of the texts**: with `r` the term `rank(D)` (`Elab.symOrd`), `r ≫ <(ran r) ≫ r°`
+holds `(a, b)` when both ids have a rank and the text of `a` is before the text of `b` (`Obj.lt`, the order of `asc`),
+whatever order the ids were inserted in. -/
+theorem Tm.symLt_den (ρ : Val) (r : Tm (.atom .sym) (.atom .i64)) {D : Dict} {Rk : Tab .long .long}
+    (h : rank D = .ok Rk) (wD : D.WF) (hb : D.n.toNat < 2 ^ 63)
+    (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') (hr : ∀ a q, r.den ρ a q ↔ Rk.Holds a.toInt64 q)
+    (a b : UInt64) :
+    (Tm.comp r (.comp (.lt .i64 (.ran r)) (.conv r))).den ρ a b ↔
+      (∃ q, Rk.Holds a.toInt64 q) ∧ (∃ s, Rk.Holds b.toInt64 s) ∧
+        ∃ t u, D.Holds a.toInt64 t ∧ D.Holds b.toInt64 u ∧ Obj.lt (.arr (.atom .char)) t u := by
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.recip, ltDen, ltAt, Tm.ran_den', hr]
+  constructor
+  · rintro ⟨x, hx, y, ⟨-, -, hxy⟩, hy⟩
+    obtain ⟨t, ht, -⟩ := (rank_holds h wD _ _).1 hx
+    obtain ⟨u, hu, -⟩ := (rank_holds h wD _ _).1 hy
+    exact ⟨⟨x, hx⟩, ⟨y, hy⟩, t, u, ht, hu, (rank_lt_iff h wD hb hf ht hu hx hy).1 hxy⟩
+  · rintro ⟨⟨x, hx⟩, ⟨y, hy⟩, t, u, ht, hu, hlt⟩
+    exact ⟨x, hx, y, ⟨⟨x, rfl, a, hx⟩, ⟨y, rfl, b, hy⟩, (rank_lt_iff h wD hb hf ht hu hx hy).2 hlt⟩, hy⟩
+
+/-- **`asc` on `sym` numbers by text**: with `r` the term `rank(D)` and `Q = dom(S) r` for the set `S` (`Elab.symOrd`),
+`asc(ran Q) ≫ Q°` is the table `symAsc D P` gives for `P` the relation `S` means, so `symAsc_lt_iff` orders it by text. -/
+theorem Tm.symAsc_den (ρ : Val) (r : Tm (.atom .sym) (.atom .i64)) (S : Tm (.atom .sym) (.atom .sym)) {D : Dict}
+    {Rk : Tab .long .long} {P : Tab (.atom .sym) (.atom .sym)} {T : Tab .long (.atom .sym)}
+    (h : symAsc D P = .ok T) (hR : rank D = .ok Rk) (wD : D.WF) (wP : Vals.WF P.key)
+    (hr : ∀ a q, r.den ρ a q ↔ Rk.Holds a.toInt64 q) (hS : ∀ a b, S.den ρ a b ↔ P.Holds a b) (j : Int64) (a : UInt64) :
+    (Tm.comp (Tm.asc (.ran (.comp (.dom S) r))) (.conv (.comp (.dom S) r))).den ρ j a ↔ T.Holds j a := by
+  rw [symAsc_holds h hR wD wP]
+  have hset : (fun b => ∃ c, (Tm.ran (.comp (.dom S) r)).den ρ b c) =
+      fun b => ∃ x, (∃ y, P.Holds x y) ∧ Rk.Holds x.toInt64 b := funext fun b => propext <| by
+    simp only [Tm.ran_den', Tm.den, Core.Rel.comp, Tm.dom_den', hr, hS]
+    constructor
+    · rintro ⟨-, rfl, m, x, ⟨rfl, y, hy⟩, hx⟩; exact ⟨m, ⟨y, hy⟩, hx⟩
+    · rintro ⟨x, ⟨y, hy⟩, hx⟩; exact ⟨b, rfl, x, x, ⟨rfl, y, hy⟩, hx⟩
+  simp only [Tm.den, Tm.asc, Tm.argDen, Prim.den_ascRow, Core.Rel.comp, Core.Rel.recip, hset, Tm.dom_den', hr, hS]
+  constructor
+  · rintro ⟨q, hq, x, ⟨rfl, y, hy⟩, hx⟩; exact ⟨⟨y, hy⟩, q, hx, hq⟩
+  · rintro ⟨⟨y, hy⟩, q, hx, hq⟩; exact ⟨q, hq, a, ⟨rfl, y, hy⟩, hx⟩
+
+end Rel.Lang

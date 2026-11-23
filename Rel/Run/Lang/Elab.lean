@@ -2649,7 +2649,9 @@ def build : Pre → Except Err Res
   -- `asc(P)` at `sym`: `asc(ran(P r)) (P r)°`, the set `P` through the ranks, numbered, and back through them
   | .ranked (.prim r [x] s t) rk => do
     if symObj objs mc t then
-      return ← symOrd dp dp "asc" (some (← build x)) (fun Q Qc => ⟨_, .comp (Tm.asc (.ran Q)) Qc⟩)
+      -- `asc` numbers `dom P`, so `P` enters as `dom(P)`, whatever relation it is
+      let ⟨A, _, P⟩ ← build x
+      return ← symOrd dp dp "asc" (some ⟨A, A, .dom P⟩) (fun Q Qc => ⟨_, .comp (Tm.asc (.ran Q)) Qc⟩)
         (← (match rk with | none => pure none | some q => do pure (some (← build q))))
     build (.prim r [x] s t)
   | .ranked q _ => build q
