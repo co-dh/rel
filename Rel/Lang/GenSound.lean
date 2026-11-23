@@ -760,6 +760,12 @@ theorem rowOK_cmp {s : String} (hs : s ∈ cmpOps.map (·.1)) : RowOK s := by
       rcases σ with _ | ⟨_, _⟩ <;>
         exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.cmpOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.cmpOp_den rfl h⟩⟩
 
+theorem ordRelDen_eq (s : Bool) (t : QAtomicType) (TU : Core.Rel (Obj.atom t).El (Obj.atom t).El) :
+    ordRelDen s (.atom t) TU = fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ Tab.ordAt s t a b := by
+  funext a b; apply propext; cases s
+  · exact leqDen_iff t TU a b
+  · exact ltDen_iff t TU a b
+
 /-- `cmpRelRow` given `U` at the atom `σ` names: `ltDen`, `leqDen` of it (`GenK.cmp_sound`); an error table at any
     other object, whose meaning `ordRelDen` is `𝟘`. -/
 theorem rowOK_cmpRel (b : Bool) : RowOK (ordSym b) := by
@@ -783,9 +789,11 @@ theorem rowOK_cmpRel (b : Bool) : RowOK (ordSym b) := by
       simp only [Sem.one]
       split
       · first
-          | exact GenK.cmp_sound hss (hw _ (List.mem_singleton_self _))
+          | exact fun K wK => Eq.mp (congrArg (Rel.Rel.Reps K _) (ordRelDen_eq _ _ T).symm)
+              (GenK.cmp_sound hss (hw _ (List.mem_singleton_self _)) K wK)
           | (cases Y' <;> first
-              | exact GenK.cmp_sound hss (hw _ (List.mem_singleton_self _))
+              | exact fun K wK => Eq.mp (congrArg (Rel.Rel.Reps K _) (ordRelDen_eq _ _ T).symm)
+                  (GenK.cmp_sound hss (hw _ (List.mem_singleton_self _)) K wK)
               | exact fun _ _ => (GenK.reps_iff _ _ _).2 fun t h => by
                   simp [Rel.Rel.runE, GenK.cmpRel, List.getD_cons_zero] at h)
       · rename_i h; exact absurd ⟨rfl, rfl⟩ h

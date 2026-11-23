@@ -307,14 +307,14 @@ theorem Tm.symLt_den (ρ : Val) (r : Tm (.atom .sym) (.atom .i64)) {D : Dict} {R
     (Tm.comp r (.comp (Tm.lt (t := .i64) (.ran r)) (.conv r))).den ρ a b ↔
       (∃ q, Rk.Holds a.toInt64 q) ∧ (∃ s, Rk.Holds b.toInt64 s) ∧
         ∃ t u, D.Holds a.toInt64 t ∧ D.Holds b.toInt64 u ∧ Obj.lt (.arr (.atom .char)) t u := by
-  simp only [Tm.den, Tm.lt, Tm.argDen, Prim.den_cmpRelRow_lt, Core.Rel.comp, Core.Rel.recip, ltDen, ltAt, Tm.ran_den', hr]
+  simp only [Tm.den, Tm.lt, Tm.argDen, Prim.den_cmpRelRow_lt, Core.Rel.comp, Core.Rel.recip, inU_iff, ltAt, Tm.ran_den', Core.Rel.id, Core.Rel.recip, hr]
   constructor
-  · rintro ⟨x, hx, y, ⟨-, -, hxy⟩, hy⟩
+  · rintro ⟨x, hx, y, ⟨x', ⟨rfl, v, rfl, m, hm⟩, y3, hxy, rfl, v', rfl, m', hm'⟩, hy⟩
     obtain ⟨t, ht, -⟩ := (rank_holds h wD _ _).1 hx
     obtain ⟨u, hu, -⟩ := (rank_holds h wD _ _).1 hy
-    exact ⟨⟨x, hx⟩, ⟨y, hy⟩, t, u, ht, hu, (rank_lt_iff h wD hb hf ht hu hx hy).1 hxy⟩
+    exact ⟨⟨x, hx⟩, ⟨_, hy⟩, t, u, ht, hu, (rank_lt_iff h wD hb hf ht hu hx hy).1 hxy⟩
   · rintro ⟨⟨x, hx⟩, ⟨y, hy⟩, t, u, ht, hu, hlt⟩
-    exact ⟨x, hx, y, ⟨⟨x, rfl, a, hx⟩, ⟨y, rfl, b, hy⟩, (rank_lt_iff h wD hb hf ht hu hx hy).2 hlt⟩, hy⟩
+    exact ⟨x, hx, y, ⟨x, ⟨rfl, x, rfl, a, hx⟩, y, (rank_lt_iff h wD hb hf ht hu hx hy).2 hlt, rfl, y, rfl, b, hy⟩, hy⟩
 
 /-- **`asc` on `sym` numbers by text**: with `r` the term `rank(D)` and `Q = dom(S) r` for the set `S` (`Elab.symOrd`),
 `asc(ran Q) ≫ Q°` is the table `symAsc D P` gives for `P` the relation `S` means, so `symAsc_lt_iff` orders it by text. -/

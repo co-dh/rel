@@ -216,13 +216,13 @@ theorem dom_key {k v : Obj} {U : Tab k v} {d : Tab k k} (hd : U.dom = .ok d) (hU
 theorem lt_dom_holds {t : QAtomicType} {U d T : Tab (.atom t) (.atom t)} (hd : U.dom = .ok d) (hU : U.WF)
     (h : Tab.lt t d.key d.key = .ok T) (a c : (Obj.atom t).El) : T.Holds a c ↔ Lang.ltDen t U.Holds a c := by
   have wd := dom_wf hd hU
-  rw [lt_holds h wd.1 wd.1, dom_key hd hU.1, dom_key hd hU.1]
+  rw [lt_holds h wd.1 wd.1, dom_key hd hU.1, dom_key hd hU.1]; exact (Lang.ltDen_iff _ _ _ _).symm
 
 /-- **`leq` on both sides `dom U` denotes `leqDen`**: `leq_holds` at `K = L = dom U`. -/
 theorem leq_dom_holds {t : QAtomicType} {U d T : Tab (.atom t) (.atom t)} (hd : U.dom = .ok d) (hU : U.WF)
     (h : Tab.leq t d.key d.key = .ok T) (a c : (Obj.atom t).El) : T.Holds a c ↔ Lang.leqDen t U.Holds a c := by
   have wd := dom_wf hd hU
-  rw [leq_holds h wd.1 wd.1, dom_key hd hU.1, dom_key hd hU.1]
+  rw [leq_holds h wd.1 wd.1, dom_key hd hU.1, dom_key hd hU.1]; exact (Lang.leqDen_iff _ _ _ _).symm
 
 /-- **`mem X` denotes `∋` on the arrays `X`**: each cell of `X` to each of its elements. Cell `i` is `[lo, hi)`,
 `0 ≤ lo ≤ hi ≤ m` (`Vals.WF`; `ValsB.row` of an `arr` side reads `lo ≤ j < hi` over `j < m`, the same `j`); EXPAND
@@ -2767,13 +2767,14 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
     refine ⟨⟨i, rfl⟩, ?_⟩
     show 0 ≤ (ValsB.row (o := false) (A := .long) k i).toInt ∧ Lang.atDen (ValsB.row (o := false) (A := .long) k i).toInt.toNat
       (ValsB.row (o := false) (A := .arr B) ⟨m, lo, up, f⟩ i) (g (SN i + (kw i).toNat))
-    rw [hkn, Int.toNat_natCast, hel i]
+    rw [hkn, Int.toNat_natCast, hel i, Lang.atDen_iff]
     exact ⟨by omega, by simpa using c'.2, by simp⟩
-  · rintro ⟨⟨i, rfl⟩, h0, hk, rfl⟩
+  · rintro ⟨⟨i, rfl⟩, h0, hk⟩
+    obtain ⟨hl, rfl⟩ := (Lang.atDen_iff _ _ _).1 hk
     have h0' : 0 ≤ (ValsB.row (o := false) (A := .long) k i).toInt := h0
     rw [hkv i] at h0'
     obtain ⟨h63, hkn'⟩ := toInt64_nonneg h0'
-    have hk' : (ValsB.row (o := false) (A := .long) k i).toInt.toNat < (ValsB.row (o := false) (A := .arr B) ⟨m, lo, up, f⟩ i).length := hk
+    have hk' : (ValsB.row (o := false) (A := .long) k i).toInt.toNat < (ValsB.row (o := false) (A := .arr B) ⟨m, lo, up, f⟩ i).length := hl
     have hkn : (ValsB.row (o := false) (A := .long) k i).toInt.toNat = (kw i).toNat := by rw [hkv i, hkn']; simp
     have hP : (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i := by
       refine ⟨h63, ?_⟩; rw [hkn, hel i] at hk'; simpa using hk'

@@ -72,11 +72,20 @@ theorem rdivDen_iff {TR : Core.Rel (Obj.El A) (Obj.El C)} {TS : Core.Rel (Obj.El
 abbrev symDivDen (TA : Core.Rel (Obj.El A) (Obj.El A)) (TB : Core.Rel (Obj.El B) (Obj.El B)) (TR : Core.Rel (Obj.El A) (Obj.El C)) (TS : Core.Rel (Obj.El B) (Obj.El C)) : Core.Rel (Obj.El A) (Obj.El B) :=
   rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
 
+/-- The test `a ∈ TU`: the coreflexive on the points `TU` relates to something. -/
+abbrev inU {α : Type} (TU : Core.Rel α α) : Core.Rel α α := 𝟙 α ∩ TU ≫ TU°
+
+theorem inU_iff {α : Type} (TU : Core.Rel α α) (a b : α) : inU TU a b ↔ a = b ∧ ∃ v, TU a v :=
+  ⟨fun ⟨h, v, hv, _⟩ => ⟨h, v, hv⟩, fun ⟨h, v, hv⟩ => ⟨h, v, hv, by subst h; exact hv⟩⟩
+
 /-- `nil`: every source to the empty array. -/
 abbrev nilDen : Core.Rel (Obj.El A) (Obj.El (.arr B)) := graph fun _ => []
 
 /-- `at(k)`: the element at position `k`. -/
-abbrev atDen (k : Nat) : Core.Rel (Obj.El (.arr B)) (Obj.El B) := fun xs x => ∃ h : k < xs.length, x = xs[k]'h
+abbrev atDen (k : Nat) : Core.Rel (Obj.El (.arr B)) (Obj.El B) := graph (fun xs => xs[k]?) ≫ (graph some)°
+
+theorem atDen_iff (k : Nat) (xs : Obj.El (.arr B)) (x : Obj.El B) : atDen k xs x ↔ ∃ h : k < xs.length, x = xs[k]'h :=
+  (graph_recip_graph _ _ _ _).trans (List.getElem?_eq_some_iff.trans (exists_congr fun _ => eq_comm))
 
 /-- The row `at` at `A×N ⟶ A`'s arrays: at `i64` the pair `(xs, k)` to `xs[k]` for a nonneg `k` (`atDen`), `𝟘` elsewhere. -/
 def atOn (B : Obj) : (N : Obj) → Core.Rel (Obj.El (.prod (.arr B) N)) (Obj.El B)
@@ -97,12 +106,28 @@ theorem atOn_iff (p : Obj.El (.prod (.arr B) (.atom .i64))) (x : Obj.El B) :
 
 /-- `succ` on the universe `TU`: `u` and its successor both in it. -/
 abbrev succDen (TU : Core.Rel (Obj.El .long) (Obj.El .long)) : Core.Rel (Obj.El .long) (Obj.El .long) :=
-  fun u w => (∃ v, TU u v) ∧ w = Ew.intStep Ew.add Alg.nul u 1 ∧ ∃ v, TU w v
+  inU TU ≫ graph (Ew.intStep Ew.add Alg.nul · 1) ≫ inU TU
+
+theorem succDen_iff (TU : Core.Rel (Obj.El .long) (Obj.El .long)) (u w : Obj.El .long) :
+    succDen TU u w ↔ (∃ v, TU u v) ∧ w = Ew.intStep Ew.add Alg.nul u 1 ∧ ∃ v, TU w v := by
+  simp only [Core.Rel.comp_apply, graph, inU_iff]
+  constructor
+  · rintro ⟨_, ⟨rfl, hu⟩, _, rfl, rfl, hw⟩; exact ⟨hu, rfl, hw⟩
+  · rintro ⟨hu, rfl, hw⟩; exact ⟨u, ⟨rfl, hu⟩, _, rfl, rfl, hw⟩
 
 /-- The float order `o` (`Op.flt`, `Op.fle`) on two values of `t`: IEEE's on their `f64` words (`fval`); no pair at an
     atom holding no float. -/
 abbrev fordAt (o : Rel.Kernel.Op) (t : QAtomicType) (a b : (Obj.atom t).El) : Prop :=
   ∃ x y, fval t a = some x ∧ fval t b = some y ∧ o.eval x y = .ok 1
+
+/-- The word `R` of an answer `r` as a value of `u`'s atom (`ofBits`); none for an error and where `R` is `2^63` (the
+    IEEE answer is NaN, or no value of `u`'s atom). -/
+def wordOut (u : QAtomicType) (r : Except String UInt64) : Option (Obj.atom u).El :=
+  r.toOption.bind fun R => if R = 0x8000000000000000 then none else some (QAtomicType.ofBits u R)
+
+theorem wordOut_eq_some (u : QAtomicType) (r : Except String UInt64) (w : (Obj.atom u).El) :
+    wordOut u r = some w ↔ ∃ R, r = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R := by
+  cases r <;> simp [wordOut, Except.toOption] <;> grind
 
 /-- The integer order `o` (`Op.lt`, `Op.le`) on two values of the ordered atom `t` stored as the number atom `r`
     (`ordNum`): `Int64`'s on the `i64` words of their values (`castWord r .i64`, q's null the least), read from any
@@ -129,11 +154,25 @@ def leAt : (t : QAtomicType) → (Obj.atom t).El → (Obj.atom t).El → Prop
 
 /-- `≤` on the universe `TU` of the atom `t`. -/
 abbrev leqDen (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t)) :=
-  fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ leAt t a b
+  inU TU ≫ (leAt t : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) ≫ inU TU
+
+theorem leqDen_iff (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) (a b : Obj.El (.atom t)) :
+    leqDen t TU a b ↔ (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ leAt t a b := by
+  simp only [Core.Rel.comp_apply, inU_iff]
+  constructor
+  · rintro ⟨_, ⟨rfl, ha⟩, _, h, rfl, hb⟩; exact ⟨ha, hb, h⟩
+  · rintro ⟨ha, hb, h⟩; exact ⟨a, ⟨rfl, ha⟩, b, h, rfl, hb⟩
 
 /-- `<` on the universe `TU` of the atom `t`. -/
 abbrev ltDen (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t)) :=
-  fun a b => (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ ltAt t a b
+  inU TU ≫ (ltAt t : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) ≫ inU TU
+
+theorem ltDen_iff (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) (a b : Obj.El (.atom t)) :
+    ltDen t TU a b ↔ (∃ v, TU a v) ∧ (∃ v, TU b v) ∧ ltAt t a b := by
+  simp only [Core.Rel.comp_apply, inU_iff]
+  constructor
+  · rintro ⟨_, ⟨rfl, ha⟩, _, h, rfl, hb⟩; exact ⟨ha, hb, h⟩
+  · rintro ⟨ha, hb, h⟩; exact ⟨a, ⟨rfl, ha⟩, b, h, rfl, hb⟩
 
 /-- The value verb `k` itself (`Alg.arith`): `Int64`'s step, not the null and, for `+ - *`, not wrapped. -/
 abbrev stepDen (k : UInt8) : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long) :=
@@ -143,10 +182,28 @@ abbrev stepDen (k : UInt8) : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long
 
 /-- The value verb `k` at the atom `t`: `stepDen k` at `i64`; at a float atom `fstep` on the operands' `f64` words
     (`fval`), the word of `t` it answers, no row where that is `2^63` (the IEEE answer is NaN); none elsewhere. -/
+theorem exceptBind_eq_ok {ε α β : Type} (e : Except ε α) (g : α → Except ε β) (R : β) :
+    e.bind g = .ok R ↔ ∃ Y, e = .ok Y ∧ g Y = .ok R := by cases e <;> simp [Except.bind]
+
+/-- `stepAt` at a float atom: the graph of the `Option` computation of `fstep` on the operands' words. -/
+abbrev fstepDen (t : QAtomicType) (k : UInt8) : Core.Rel (Obj.El (.prod (.atom t) (.atom t))) (Obj.El (.atom t)) :=
+  graph (fun p => (fval t p.1).bind fun x => (fval t p.2).bind fun y => wordOut t (fstep t k x y)) ≫ (graph some)°
+
 def stepAt : (t : QAtomicType) → UInt8 → Core.Rel (Obj.El (.prod (.atom t) (.atom t))) (Obj.El (.atom t))
   | .i64, k => stepDen k
-  | t, k => fun p w => ∃ x y r, fval t p.1 = some x ∧ fval t p.2 = some y ∧ fstep t k x y = .ok r ∧
-      r ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t r
+  | t, k => fstepDen t k
+
+theorem stepAt_ne (t : QAtomicType) (k : UInt8) (h : t ≠ .i64) : stepAt t k = fstepDen t k := by
+  cases t <;> first | rfl | exact absurd rfl h
+
+theorem fstepDen_iff (t : QAtomicType) (k : UInt8) (p : Obj.El (.prod (.atom t) (.atom t))) (w : Obj.El (.atom t)) :
+    fstepDen t k p w ↔ ∃ x y r, fval t p.1 = some x ∧ fval t p.2 = some y ∧ fstep t k x y = .ok r ∧
+      r ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t r := by
+  refine (graph_recip_graph _ _ _ _).trans ?_
+  simp only [Option.bind_eq_some_iff]
+  constructor
+  · rintro ⟨x, hx, y, hy, h⟩; obtain ⟨r, hr, hne, rfl⟩ := (wordOut_eq_some _ _ _).1 h; exact ⟨x, y, r, hx, hy, hr, hne, rfl⟩
+  · rintro ⟨x, y, r, hx, hy, hr, hne, rfl⟩; exact ⟨x, hx, y, hy, (wordOut_eq_some _ _ _).2 ⟨r, hr, hne, rfl⟩⟩
 
 /-- The value verb `k` on the universe `TU` of the atom `t`: both inputs in `TU` (`dom(π₁ TU)`, `dom(π₂ TU)`), as
     `succDen`'s, then the step, its result in `TU`. The input test makes `(TU×TU) arith = arith` at a coreflexive
@@ -478,12 +535,42 @@ theorem castDen_iff (s t : QAtomicType) (x : Obj.El (.atom s)) (y : Obj.El (.ato
     at `F×F ⟶ D` for one reading two, `o` on the two components' words; then the word of `D`'s atom for the answer
     (`Op.ofF64`), no row where that is `2^63` (NaN, or no value of `D`'s atom); `𝟘` at any other objects. -/
 def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
-  | .atom t, .atom u => fun x w => o.readsAcc = false ∧ ∃ X Y R, fval t x = some X ∧ o.eval 0 X = .ok Y ∧
-      (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
-  | .prod (.atom t) (.atom t'), .atom u => fun x w => o.readsAcc = true ∧ t = t' ∧ ∃ X X' Y R,
-      fval t x.1 = some X ∧ fval t' x.2 = some X' ∧ o.eval X X' = .ok Y ∧
-      (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
-  | _, _ => fun _ _ => False
+  | .atom t, .atom u => if o.readsAcc = false then
+      graph (fun x => (fval t x).bind fun X => wordOut u ((o.eval 0 X).bind fun Y => (Rel.Kernel.Op.ofF64 u).eval 0 Y)) ≫
+        (graph some)° else 𝟘
+  | .prod (.atom t) (.atom t'), .atom u => if o.readsAcc = true ∧ t = t' then
+      graph (fun x => (fval t x.1).bind fun X => (fval t' x.2).bind fun X' =>
+        wordOut u ((o.eval X X').bind fun Y => (Rel.Kernel.Op.ofF64 u).eval 0 Y)) ≫ (graph some)° else 𝟘
+  | _, _ => 𝟘
+
+theorem floatDen_iff₁ (o : Rel.Kernel.Op) (t u : QAtomicType) (x : Obj.El (.atom t)) (w : Obj.El (.atom u)) :
+    floatDen o (.atom t) (.atom u) x w ↔ o.readsAcc = false ∧ ∃ X Y R, fval t x = some X ∧ o.eval 0 X = .ok Y ∧
+      (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R := by
+  by_cases h : o.readsAcc = false
+  · simp only [floatDen, h, if_true, true_and]
+    refine (graph_recip_graph _ _ _ _).trans ?_
+    simp only [Option.bind_eq_some_iff]
+    constructor
+    · rintro ⟨X, hX, hw⟩; obtain ⟨R, hR, hne, rfl⟩ := (wordOut_eq_some _ _ _).1 hw
+      obtain ⟨Y, hY, hR'⟩ := (exceptBind_eq_ok _ _ _).1 hR; exact ⟨X, Y, R, hX, hY, hR', hne, rfl⟩
+    · rintro ⟨X, Y, R, hX, hY, hR, hne, rfl⟩
+      exact ⟨X, hX, (wordOut_eq_some _ _ _).2 ⟨R, (exceptBind_eq_ok _ _ _).2 ⟨Y, hY, hR⟩, hne, rfl⟩⟩
+  · simp only [floatDen]; rw [if_neg h]; exact ⟨False.elim, fun ⟨h', _⟩ => absurd h' h⟩
+
+theorem floatDen_iff₂ (o : Rel.Kernel.Op) (t t' u : QAtomicType) (x : Obj.El (.prod (.atom t) (.atom t')))
+    (w : Obj.El (.atom u)) : floatDen o (.prod (.atom t) (.atom t')) (.atom u) x w ↔ o.readsAcc = true ∧ t = t' ∧
+      ∃ X X' Y R, fval t x.1 = some X ∧ fval t' x.2 = some X' ∧ o.eval X X' = .ok Y ∧
+      (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R := by
+  by_cases h : o.readsAcc = true ∧ t = t'
+  · simp only [floatDen, h, if_true, h.1, h.2, true_and]
+    refine (graph_recip_graph _ _ _ _).trans ?_
+    simp only [Option.bind_eq_some_iff]
+    constructor
+    · rintro ⟨X, hX, X', hX', hw⟩; obtain ⟨R, hR, hne, rfl⟩ := (wordOut_eq_some _ _ _).1 hw
+      obtain ⟨Y, hY, hR'⟩ := (exceptBind_eq_ok _ _ _).1 hR; exact ⟨X, X', Y, R, hX, hX', hY, hR', hne, rfl⟩
+    · rintro ⟨X, X', Y, R, hX, hX', hY, hR, hne, rfl⟩
+      exact ⟨X, hX, X', hX', (wordOut_eq_some _ _ _).2 ⟨R, (exceptBind_eq_ok _ _ _).2 ⟨Y, hY, hR⟩, hne, rfl⟩⟩
+  · simp only [floatDen]; rw [if_neg h]; exact ⟨False.elim, fun ⟨a, b, _⟩ => absurd ⟨a, b⟩ h⟩
 
 /-- A value verb `k` at `1+i64` where it orders null (`nulVerb k = some (o, b, _)`, `Op.nulFold`): null is below every
     value, so two values give `Ew.intStep k` of them, and a null beside a value gives the value where `b` is `and`
@@ -785,7 +872,8 @@ theorem Prim.den_plusRow {t : QAtomicType} :
 theorem Tm.cut1_succ_den (ρ : Val) (U : Tm .long .long) (hU : ∀ x y, U.den ρ x y → x = y) :
     (Tm.cut1 succRow U).den ρ = succDen (U.den ρ) := by
   funext a w; apply propext
-  simp only [Tm.cut1, Tm.den, Tm.argDen, Prim.den_succRow, Core.Rel.comp, succDen]
+  rw [succDen_iff]
+  simp only [Tm.cut1, Tm.den, Tm.argDen, Prim.den_succRow, Core.Rel.comp]
   constructor
   · rintro ⟨a', h1, w', rfl, h2⟩; obtain rfl := hU _ _ h1; obtain rfl := hU _ _ h2; exact ⟨⟨_, h1⟩, rfl, _, h2⟩
   · rintro ⟨⟨v, h1⟩, rfl, v', h2⟩; obtain rfl := hU _ _ h1; obtain rfl := hU _ _ h2; exact ⟨_, h1, _, rfl, h2⟩
@@ -956,10 +1044,14 @@ theorem est_le {Q Q' : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hQ :
   le_iff.2 fun _ _ h => (estDen_iff ..).2 (let h := (estDen_iff ..).1 h; ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩)
 
 theorem leq_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : leqDen t U ⊑ leqDen t U' :=
-  le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
+  le_iff.2 fun _ _ h => by
+    rw [leqDen_iff] at h ⊢; obtain ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ := h
+    exact ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
 theorem lt_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : ltDen t U ⊑ ltDen t U' :=
-  le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
+  le_iff.2 fun _ _ h => by
+    rw [ltDen_iff] at h ⊢; obtain ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ := h
+    exact ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
 theorem ordRelDen_le (s : Bool) (A : Obj) {U U' : Core.Rel (Obj.El A) (Obj.El A)} (hU : U ⊑ U') :
     ordRelDen s A U ⊑ ordRelDen s A U' := by
