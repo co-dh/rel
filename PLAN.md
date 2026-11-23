@@ -1467,6 +1467,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       （`i64+1`、`u1+1` 经 row/gather/concat/cols/pack/readVals/encVals/CSV、null 在前、跨块）未加。Rep*/GenK* 未建。
     - 🔄 nullband3a2：合入 null1x（`Obj.opt X = .sum .one X`，null = `inl ()`）。撤回 nullorder 翻转（`git revert 19fd603`：`Obj.key` `inl ↦ 0::`，`cols` 键列是 `tag`，删 `colMap_not_u1`、`lt_inr_inl` 与 tag 的 `foROk` 检查）。`Obj.band` 认 `1+t`（`.one, .atom t`），`optEl`/`optOf` null = `inl ()`；`Struct.inl` = `Opt.nuls`、`inr` = `Vals.optInr`。frame 库（`Frame`/`FrameJoin`/`FrameGroup`）与 `TestFrame*` 全改 `1+X`：`tot = R inr ∪ (…) ⊤ inl`，`bind = c [inl, f]`，`[𝟙, d]` → `[d, 𝟙]`，`y ⊕ 𝟙` → `𝟙 ⊕ y`。`Gen.optV`（band 列按 hex 重建）、`sumV` 带 `Obj.band = none` 证据（`Expand.bandRfl`），`valsE`/`valsEq` 经 `Vals.view`；`Elab` 空 sum 字面量经 `Vals.none`。RelRun 全绿（worktree 建）。
       未做：CSV 3 → 1（`Table.toCsv`/`ofCsv` 的 `.opt a` 仍按 tag/idx/1/v 部分，band 侧只有 1 部分 `Opt`，运行时会报 "too few parts"；需 `Db.Csv` 的 `null` 形状改为一列带内 null，Rust 端同改）；`TestNullband` 往返（`1+i64`、`1+u1`）；Rel 库（Rep*/GenK*/测试）未建。缺 kernel 的两处仍报错：`Opt.concat` 两边任一含 null；band 列上的 `inl°`/`inr°`。
+    - 🔄 nullband3c（部分）：CSV 3 → 1 的 Lean 一侧。`Db.CsvShape` 加 `opt`：`1+V` 整个 side 是 band（`Obj.band`）时，
+      CSV 列就是那一个 `Opt` 列（一个编码，空字段 = 块内 null 码）；模型里它是两个字部分（值、`foRNuls` 形式的 null
+      标志），`csvRead` 用 `wordsFoR v (nulMap f)` 合成一个编码，`raws` 把一个编码读成 `rawAll` + `foRNuls`；
+      `CsvShape.encs`（编码数）与 `parts`（字部分数）分开，`arity` 带计数函数。`.null`（tag/idx/值）只留给 `S` 有多列的
+      `1+S`。`Table.toCsv`/`ofCsv` 的 band 支原样传一个部分，`internCsv`/`decodeCsv` 按 `encs` 切；`Expand.csvLeaves`
+      每个叶子带 `whole`（叶子就是 `b` 本身），`ioCols` 在 `whole` 且 `Obj.band` 有值时选 `opt`。`csvWords_csvText`
+      陈述不变（`Rel.KernelSpec.Csv` 已建）。未做：Rust `crate/src/csv.rs` 的 `SH_OPT = 3`（读：值按 null 位图写进一个
+      编码，`Sink::write_nul`；写：每块读值与 null 标志）及 FFI——在此之前 extern 把 `opt` 当 atom；`CsvTest` 的 `opt`
+      用例；`TestNullband` 往返（`1+i64`、`1+u1`、跨块 gather/concat、CSV 写读）。
     - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
       3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
     ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序
