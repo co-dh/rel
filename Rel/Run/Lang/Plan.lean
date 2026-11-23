@@ -262,6 +262,10 @@ inductive Instr
   | lit (v : Val)
   /-- `r… = call sym(args)`: the `@[extern]` kernel of C symbol `sym` on the registers `args`. -/
   | call (sym : String) (args : Array Nat)
+  /-- `r… = call sym(args)` of an `IO` read at the input edge, unless the file at the path in register `args[0]` (a
+      `str`) is absent: then the literal registers `dflt`, as many as the kernel answers. A library's dictionary files
+      (`Table.libDict`) are read this way: none yet is the empty dictionary. -/
+  | readOpt (sym : String) (args : Array Nat) (dflt : Array Val)
   /-- `need`'s failing branch: print `msg` and the registers `args`, exit 1. -/
   | fail (msg : String) (args : Array Nat)
   /-- `r… = apply f(args)`: the plan's function number `f`, which must come before the one applying it. -/
@@ -386,6 +390,7 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
     | .inr _ =>
       unless k.res.isEmpty do throw s!"plan: `{sym}` reads, which a plan does only at its input edge (`Plan.input`)"
       pure (rs, ws.push (sym, vs))
+  | .readOpt sym .., _, _ => throw s!"plan: `{sym}` reads, which a plan does only at its input edge (`Plan.input`)"
   | .fail msg as, rs, _ => do throw (← failText msg (← as.mapM (reg rs "fail")).toList)
   | .apply f as, rs, ws => do
     let some g := fs[f]? | throw s!"plan: apply f{f}, which is not an earlier function"
@@ -451,17 +456,24 @@ def Plan.run (abi : String → Option Kernel) (p : Plan) : Except String (Array 
     nothing, where the C has written what came before its `fail`; the gates compare runs that succeed. -/
 def Plan.exec (abi : String → Option Kernel) (p : Plan) : IO (Array Val) := do
   -- the input edge first: each read's registers become `lit`s of `main`, so the run stays pure
+  let read (ins : Array Val) (sym : String) (as : Array Nat) (dflt : Option (Array Val)) : IO (Array Val) := do
+    let some k := abi sym | throw (IO.userError s!"plan: no kernel `{sym}` in the ABI table")
+    let .inr act := k.run | throw (IO.userError s!"plan: the input edge calls `{sym}`, which is no `IO` kernel")
+    let vs : Array Val ← IO.ofExcept (as.mapM (reg ins sym))
+    let path? : Option Val := vs[0]?
+    let out ← match dflt, path? with
+      | none, _ => act vs
+      | some d, some (.str path) => if ← System.FilePath.pathExists path then act vs else pure d
+      | some _, _ => throw (IO.userError s!"plan: readOpt `{sym}`: its first register is not a path")
+    unless out.size == k.res.size do
+      throw (IO.userError s!"plan: `{sym}` answered {out.size} registers, its declaration {k.res.size}")
+    pure out
   let mut ins : Array Val := #[]
   for i in p.input do
     match i with
     | .lit v => ins := ins.push v
-    | .call sym as =>
-      let some k := abi sym | throw (IO.userError s!"plan: no kernel `{sym}` in the ABI table")
-      let .inr act := k.run | throw (IO.userError s!"plan: the input edge calls `{sym}`, which is no `IO` kernel")
-      let out ← act (← IO.ofExcept (as.mapM (reg ins sym)))
-      unless out.size == k.res.size do
-        throw (IO.userError s!"plan: `{sym}` answered {out.size} registers, its declaration {k.res.size}")
-      ins := ins ++ out
+    | .call sym as => ins := ins ++ (← read ins sym as none)
+    | .readOpt sym as d => ins := ins ++ (← read ins sym as (some d))
     | _ => throw (IO.userError "plan: the input edge holds `lit`s and `IO` reads only")
   let (rs, ws) ← IO.ofExcept ({ p with input := [], main := ins.toList.map Instr.lit ++ p.main }.run abi)
   for (sym, vs) in ws do
@@ -489,6 +501,10 @@ def emit (i : Instr) (nres : Nat) : Bld (Array Nat) :=
 
 /-- `call sym(args)` of a kernel answering `nres` registers: the new registers. -/
 def call (sym : String) (args : Array Nat) (nres : Nat) : Bld (Array Nat) := emit (.call sym args) nres
+
+/-- `readOpt sym(args)` of an `IO` read answering `nres` registers, `dflt` where the file at `args[0]` is absent. -/
+def readOpt (sym : String) (args : Array Nat) (dflt : Array Val) : Bld (Array Nat) :=
+  emit (.readOpt sym args dflt) dflt.size
 
 /-- `b` as a block of its own after the registers so far: its instructions and result registers; the functions and
     globals it adds stay. -/
