@@ -112,7 +112,10 @@ theorem compTabMat_key_wf {R : Tab A B} {n g w ka M : USize} {o o' ra ra' : Enc}
 theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h : Tab.inlConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
   rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
-  · cases h
+  · obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+    simp only [bind, Except.bind] at h
+    okSplit
+    exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inl_wf ‹_› trivial))
   have hXw := hX
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
