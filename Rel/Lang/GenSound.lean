@@ -776,17 +776,19 @@ theorem rowOK_cmpRel (b : Bool) : RowOK (ordSym b) := by
       rename_i he; revert hv; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hv
       cases hv
       refine ⟨?_, fun ss hss => ⟨⟨rfl, rfl⟩, ?_⟩⟩
-      · cases a <;> first | exact GenK.cmp_wf | exact trivial
+      · first | exact GenK.cmp_wf | (cases Y <;> first | exact GenK.cmp_wf | exact trivial)
       rcases ss with _ | ⟨⟨X', Y', T⟩, _ | ⟨_, _⟩⟩ <;> simp only [CodesRep, and_true, and_false] at hss
       split at hss
       case isFalse => exact hss.elim
       rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
       simp only [Sem.one]
       split
-      · cases a
-        all_goals first
-          | exact (GenK.reps_iff _ _ _).2 fun t h => by simp [Rel.Rel.runE, GenK.cmpRel] at h
+      · first
           | exact GenK.cmp_sound hss (hw _ (List.mem_singleton_self _))
+          | (cases Y' <;> first
+              | exact GenK.cmp_sound hss (hw _ (List.mem_singleton_self _))
+              | exact fun _ _ => (GenK.reps_iff _ _ _).2 fun t h => by
+                  simp [Rel.Rel.runE, GenK.cmpRel, List.getD_cons_zero] at h)
       · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_sum : RowOK "sum" := rowOK_of (c := RowCode.sum) rfl rfl fun _ σ _ _ _ _ hv => by
