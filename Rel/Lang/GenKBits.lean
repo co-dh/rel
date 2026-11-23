@@ -1158,10 +1158,15 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
     cases seg with
     | none => exact ⟨_, rfl⟩
     | some e => exact ⟨_, by simp only [segAll, rawAll, hseg e rfl, if_true]; rfl⟩
-  have hcols : kscanCols op s n ((c :: cs).map (n, ·)) [] post = .ok ((c :: cs).map (·.raw s n), #[]) := by
+  have hnf : nulFillOf op ((c :: cs).map (n, ·)) = none := by
+    have : ((c :: cs).map (n, ·)).any (fun p => hasNul p.2) = false := by
+      simp only [List.any_eq_false, List.mem_map]; rintro _ ⟨x, hx, rfl⟩; simp [hpl x hx]
+    simp [nulFillOf]
+    exact fun _ _ _ => ⟨hpl c List.mem_cons_self, fun x hx => hpl x (List.mem_cons_of_mem _ hx)⟩
+  have hcols : kscanCols op s n ((c :: cs).map (n, ·)) [] post = .ok ((c :: cs).map (·.raw s n), []) := by
     unfold kscanCols
     rw [hm _ hes]
-    simp only [hst, hnl, hnn _ hpl, hany, Bool.false_eq_true, if_false, ↓reduceIte, List.length_nil, List.drop_zero, List.map_nil, List.nil_append, bind, Except.bind, pure, Except.pure]
+    simp only [hnf, hst, hnl, hnn _ hpl, hany, Bool.false_eq_true, if_false, ↓reduceIte, List.length_nil, List.drop_zero, List.map_nil, List.nil_append, bind, Except.bind, pure, Except.pure]
   -- `hop` at a row and the carry 0 rules out a folded op reading its divisor from the carry
   have hd : kscanRefuses op n ((c :: cs).map (n, ·)) [] post = false := by
     unfold kscanRefuses
@@ -1180,7 +1185,7 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
   rw [hg, hcols]
   obtain ⟨out, hout⟩ := hf op _ hx (List.range n.toNat) (fun i hi => List.mem_range.1 hi)
     (if rev then g.reverse else g) (if rev then (c.raw s n).reverse else c.raw s n) #[]
-  obtain ⟨nl, hnl⟩ := hf .first [] (fun _ _ a => ⟨a, rfl⟩) (List.range n.toNat) (fun i hi => List.mem_range.1 hi)
+  obtain ⟨nl, hnl⟩ := hf (op.nulFold.elim .first (·.1)) [] (fun _ _ a => ⟨a, rfl⟩) (List.range n.toNat) (fun i hi => List.mem_range.1 hi)
     (if rev then g.reverse else g) (if rev then (#[] : Array UInt64).reverse else #[]) #[]
   obtain ⟨o2, ho2⟩ : ∃ o2, chainAll post out = .ok o2 := by
     rcases Nat.eq_zero_or_pos n.toNat with h0 | h0
@@ -1189,7 +1194,8 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
       subst hout; exact ⟨_, rfl⟩
     · exact chainAll_ok (hpost (by omega)) out
   simp only [bind, Except.bind, List.map_cons, pure, Except.pure]
-  rw [hout]; simp only [ho2, hnl, Except.pure, hw]; exact ⟨_, rfl⟩
+  rw [hout]; simp only [List.headD_nil, List.drop_nil, List.map_nil, List.any_nil, ho2, hnl, Except.pure, hw]
+  exact ⟨_, rfl⟩
 
 /-- **`kscan` answers** on columns of `n` raw words, a seed column first, at a type of fixed width, where `op` answers
     on every row's word of every column after the seed. -/
@@ -1255,7 +1261,7 @@ theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (
     rw [colPrefix_add_sum hP (fun G => if f G then 1 else 0)
       (fun G hG => by rw [hbit G hG]; by_cases hfg : f G <;> simp [hfg]) i hi, hsum]
   have hk : sk.2.getD 0 = (C m.toNat).toUInt64 := by
-    rw [kscan_last (w := 8) rfl (kscanStream_ne (by decide) _ _ _) hsk']
+    rw [kscan_last (w := 8) rfl (kscanStream_ne (by decide) _ _ _) (Or.inl rfl) hsk']
     simp only [Bool.false_eq_true, if_false]
     rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
     · rw [h0, hC]; simp [(colPrefix_raw hP).2.1, h0]
@@ -1266,7 +1272,7 @@ theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (
     rw [hk, hc64 _ (by have := hCle m.toNat; omega)]
     exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
   obtain ⟨d, hd⟩ := colMap_ok (op := .sub) (n := m) (a := sk.1) (b := b) (t := .i64) rfl (colPrefix_raw hP).2.1 sb
-    (kscan_lock_closed (kscanStream_ne (by decide) _ _ _) hsk').2.2 hbN (fun _ _ _ => ⟨_, rfl⟩)
+    (kscan_lock_closed (kscanStream_ne (by decide) _ _ _) (Or.inl rfl) hsk').2.2 hbN (fun _ _ _ => ⟨_, rfl⟩)
   have hdv : ∀ i < m.toNat, (raw .i64 m d)[i]?.getD 0 = (C i).toUInt64 := by
     intro i hi
     have := (colMap_raw hd).2.2.2 i hi
