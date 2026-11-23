@@ -121,7 +121,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 
 - `inl°`、`inr°` 是 `prims` 的行；`[R, S] = inl° R ∪ inr° S`：按 tag 分情况，null 一支读 `R : 1 ⟶ B`。
 - `tot(R)`（3.1）把部分的 `R : A ⟶ B` 变回全的 `A ⟶ 1+B`：`R` 有值取值，否则 null。
-- 存储（决定 K）：`1+atom` 是*一列*，null 在该列自己的 foR 块里：宽度字节第 7 位是块的 null 标志，带标志的块把顶残差 $2^w − 1$（全 1）留作 null 码，无 null 的块照旧；kernel 用 `foRNul` 在编码上判 null，不解码。`Vals` 的 `1+atom` 换成 `Opt` ✅ 27be090（原：未做）。
+- 存储（决定 K）：`1+atom` 是*一列*，null 在该列自己的 foR 块里：宽度字节第 7 位是块的 null 标志；带标志的块以 min−1 为块基，null 码是残差 0（非 null 的值残差 ≥ 1），无 null 的块照旧；kernel 用 `foRNul` 在编码上判 null（块标志 ∧ 无 patch ∧ 残差 0），不解码。`Vals` 的 `1+atom` 换成 `Opt` ✅ 27be090（原：未做）。
 - 只有 `1+atom` 在带内：`1+(1+V)` 与一般 `A+B` 仍是 tag 列加各分支内的位置（第 0 节的 `sum`），内层 `1+V` 在带内。
 - 次序随 q：可空类型写作 `1+X`，null 是 `inl ()`；和的次序 `inl < inr` 就是 `inl () < inr a`，null 小于每个值；例的列 `asc` 后是 `[null, 1, 2, 4]`。
 

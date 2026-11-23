@@ -432,7 +432,7 @@ TODO（`:487-494`）的修改：
   [`:497`], [`Tm` 去掉 `d`：做法是 §5 的 `δ`；`Fn d A B` 仍在 `GenK` 里使用，本文不处理],
 )
 
-§4.5 的 `μ` 行：把「semi-naive 只多一个 `−`」改为「整体迭代（`Tab.fixOn`）；线性递归走行 `star`（semi-naive）」。§4.6 的 `length` 项：「定理未证」与 `Prim.dfn` 改为「`Tm.dfnCut_den` 已证」与 `Elab.dfns`。
+✅ c1cdea4（原：§4.5 的 `μ` 行：把「semi-naive 只多一个 `−`」改为「整体迭代（`Tab.fixOn`）；线性递归走行 `star`（semi-naive）」。§4.6 的 `length` 项：「定理未证」与 `Prim.dfn` 改为「`Tm.dfnCut_den` 已证」与 `Elab.dfns`。）
 
 = 已决定的问题
 
@@ -465,8 +465,8 @@ TODO（`:487-494`）的修改：
 - `Tm.gap`、`compile`、`compile_sound`（§7 `:479`）不存在；现为 `Tm.gen` / `Tm.gen_sound` / `Tm.GenHyp`。
 - §1 表漏 `foldr` `foldI` `callCv`；列了不存在的 `junc` `juncD`；`inl` `inr` 是行不是构造子。
 - §7 `:494` 称 `flat` 是构造子；它已是行加定义。
-- §4.6 称 `length` 的定理未证并提到 `Prim.dfn`；`Tm.dfnCut_den` 已证，字段叫 `Elab.dfns`。
-- §4.5 称 `μ` 是 semi-naive；`Tab.mu` 是整体迭代。
+- ✅ c1cdea4（原：§4.6 称 `length` 的定理未证并提到 `Prim.dfn`；`Tm.dfnCut_den` 已证，字段叫 `Elab.dfns`。）
+- ✅ c1cdea4（原：§4.5 称 `μ` 是 semi-naive；`Tab.mu` 是整体迭代。）
 - §7 `:497` 称 `Tm` 去掉 `d`、删 `Fn`；`Tm.var` 仍存 `d`，`GenK` 仍用 `Fn d A B`。
 - `Tm.fv` 的注释写「40-constructor family」（`Tm.lean:209`）；实际 41 个。
 - `Prim` 的文档注释称 fused 行「keyed in `Elab.dfns`」；六条带 `prelude :=` 的行不在 `dfns` 里，走的是 `useDef`，没有定理。
