@@ -121,10 +121,11 @@ theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t
 
 /-- **The foR round trip of a nullable column** (`1+atom`): row `i` of `Coc.encodeAt` with the null rows `nul`, read
 through `Column.foROpt` and cut to the payload's `8 * w` bits, is `none` at a null and `x`'s element elsewhere
-(`foROpt_encode`). `raw_encodeAt` is its null-free case. `hbig` is `foROpt_encode`'s, at every row: only a column of
+(`foROpt_encode`). `raw_encodeAt` is its null-free case. `hle` is `planBlock_nul`'s. `hbig` is `foROpt_encode`'s, at every row: only a column of
 `2 ^ 64` rows or more, which carries no patch list, needs it. -/
 theorem rawOpt_encodeAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x nul : ByteArray)
     {patch : Bool} {least : Int64} (n : Nat) (hn : n ≤ x.size / w)
+    (hle : ∀ j < x.size / w, Column.bitAt nul j = false → least.toInt ≤ (Kernel.Coc.keyAt w x j).toInt)
     (hbig : 2 ^ 64 ≤ x.size / w → ∀ i < n, Column.bitAt nul i = false → Kernel.Coc.lowKey least (Kernel.Coc.keyAt w x i) = true → ∀ j,
       i / 2 ^ lg * 2 ^ lg ≤ j → j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
     (Array.range n).map (fun i => (Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1
@@ -135,7 +136,7 @@ theorem rawOpt_encodeAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (lg : Nat) (hlg :
   refine Array.ext (by simp) fun i h1 _ => ?_
   simp only [Array.size_map, Array.size_range] at h1
   simp only [Array.getElem_map, Array.getElem_range]
-  rw [foROpt_encode lg hlg w hw0 hw x nul i (by omega) fun h => hbig h i h1]
+  rw [foROpt_encode lg hlg w hw0 hw x nul i (by omega) hle fun h => hbig h i h1]
   cases Column.bitAt nul i
   · simp only [Bool.false_eq_true, ↓reduceIte, Option.map_some]
     rw [show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from

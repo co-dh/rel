@@ -854,18 +854,20 @@ theorem planBlock_plain (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : Byte
 
 /-- Block `b`'s plan where it holds a null (`nulBlock`): its frame is its base, its width byte carries `nulAt`'s bit
 over a residual width of at most 64, and a row that is not null lies at or above the base, fits the width, and sits at
-residual 0 (the null's code) only as a `lowKey`, the one key the base cannot go below. -/
+residual 0 (the null's code) only as a `lowKey`, the one key the base cannot go below. `hle` is what makes `least` the
+type's least key: every row that is not null is at or above it, so the base `mn - 1` of any other key does not wrap. -/
 theorem planBlock_nul (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
     (h : (Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).any
       (fun j => Column.bitAt nul (b * 2 ^ lg + j)) = true) :
     (Kernel.Coc.planBlock least lg w n pl x nul b).2.2.2.1 = (Kernel.Coc.planBlock least lg w n pl x nul b).1 ∧
     128 ≤ (Kernel.Coc.planBlock least lg w n pl x nul b).2.2.2.2 ∧ (Kernel.Coc.planBlock least lg w n pl x nul b).2.2.2.2 ≤ 192 ∧
+    ((∀ i < n, Column.bitAt nul i = false → least.toInt ≤ (Kernel.Coc.keyAt w x i).toInt) →
     ∀ i, b * 2 ^ lg ≤ i → i < b * 2 ^ lg + 2 ^ lg → i < n → Column.bitAt nul i = false →
       (Kernel.Coc.planBlock least lg w n pl x nul b).1.toInt ≤ (Kernel.Coc.keyAt w x i).toInt ∧
       (Kernel.Coc.keyAt w x i - (Kernel.Coc.planBlock least lg w n pl x nul b).1).toUInt64.toNat <
         2 ^ ((Kernel.Coc.planBlock least lg w n pl x nul b).2.2.2.2 % 128) ∧
       ((Kernel.Coc.keyAt w x i - (Kernel.Coc.planBlock least lg w n pl x nul b).1).toUInt64 = 0 →
-        Kernel.Coc.lowKey least (Kernel.Coc.keyAt w x i) = true) := by
+        Kernel.Coc.lowKey least (Kernel.Coc.keyAt w x i) = true)) := by
   have e : Kernel.Coc.planBlock least lg w n pl x nul b = ((Kernel.Coc.nulBlock least (2 ^ lg) w n b x nul).1,
       (Kernel.Coc.nulBlock least (2 ^ lg) w n b x nul).2.1, (Kernel.Coc.nulBlock least (2 ^ lg) w n b x nul).2.2.1,
       (Kernel.Coc.nulBlock least (2 ^ lg) w n b x nul).1, (Kernel.Coc.nulBlock least (2 ^ lg) w n b x nul).2.2.2) := by
@@ -880,16 +882,39 @@ theorem planBlock_nul (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteAr
     subst hks
     simp only [Array.toList_map, Array.toList_filter, Array.toList_range, List.mem_map, List.mem_filter, List.mem_range]
     exact ⟨i - b * 2 ^ lg, ⟨by omega, by simp [Nat.add_sub_cancel' h1, h4]⟩, by rw [Nat.add_sub_cancel' h1]⟩
-  generalize ks.getD 0 0 = a0
+  -- every key of the block, given the column's `hle`
+  have hge : (∀ i < n, Column.bitAt nul i = false → least.toInt ≤ (Kernel.Coc.keyAt w x i).toInt) →
+      ∀ y ∈ ks.toList, least.toInt ≤ y.toInt := fun hle y hy => by
+    subst hks
+    simp only [Array.toList_map, Array.toList_filter, Array.toList_range, List.mem_map, List.mem_filter,
+      List.mem_range] at hy
+    obtain ⟨j, ⟨hj, hj2⟩, rfl⟩ := hy
+    exact hle (b * 2 ^ lg + j) (by omega) (by simpa using hj2)
+  have ha0 : (∀ y ∈ ks.toList, least.toInt ≤ y.toInt) → ks.isEmpty = false → least.toInt ≤ (ks.getD 0 0).toInt :=
+    fun hge hne => by
+    have h0 : 0 < ks.size := Nat.pos_of_ne_zero fun h => by simp [Array.isEmpty, h] at hne
+    refine hge _ ?_
+    rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem h0]
+    exact List.getElem_mem (by simpa using h0)
+  generalize ks.getD 0 0 = a0 at ha0 ⊢
   simp only [← Array.foldl_toList]
   have hmn := (foldl_min_le ks.toList a0).2
   have hmx := (le_foldl_max ks.toList a0).2
-  generalize List.foldl min a0 ks.toList = mn at hmn ⊢
+  have hmnge : (∀ y ∈ ks.toList, least.toInt ≤ y.toInt) → ks.isEmpty = false →
+      least.toInt ≤ (List.foldl min a0 ks.toList).toInt := fun hge hne =>
+    foldl_pick (fun a => least.toInt ≤ a.toInt) min ks.toList a0 (ha0 hge hne) fun a ha k hk => by
+      show least.toInt ≤ (if a ≤ k then a else k).toInt
+      split
+      · exact ha
+      · exact hge k hk
+  generalize List.foldl min a0 ks.toList = mn at hmn hmnge ⊢
   generalize List.foldl max a0 ks.toList = mx at hmx ⊢
   generalize hf : (if ks.isEmpty || Kernel.Coc.lowKey least mn then mn else mn - 1) = f
   -- the base is the least key or one below it, and the latter only where that key is no `lowKey`
-  have hfa : f.toInt ≤ mn.toInt ∧ ((f = mn ∧ (ks.isEmpty = true ∨ Kernel.Coc.lowKey least mn = true)) ∨
+  have hfa : (∀ y ∈ ks.toList, least.toInt ≤ y.toInt) →
+      f.toInt ≤ mn.toInt ∧ ((f = mn ∧ (ks.isEmpty = true ∨ Kernel.Coc.lowKey least mn = true)) ∨
       (Kernel.Coc.lowKey least mn = false ∧ f.toInt = mn.toInt - 1)) := by
+    intro hge'
     subst hf
     split
     · next hc =>
@@ -897,9 +922,15 @@ theorem planBlock_nul (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteAr
       simpa using hc
     · next hc =>
       have hlk : Kernel.Coc.lowKey least mn = false := by simp at hc; exact hc.2
+      -- the base is below a key that is no `least`, hence above the `Int64` least, so `mn - 1` does not wrap
+      have hkne : ks.isEmpty = false := by revert hc; cases ks.isEmpty <;> simp
       have hne : mn.toInt ≠ -2 ^ 63 := fun h => by
-        have : mn = Int64.minValue := Int64.toInt_inj.1 (by rw [h, Int64.toInt_minValue])
-        simp [Kernel.Coc.lowKey, this] at hlk
+        have h1 := hmnge hge' hkne
+        have h2 : least.toInt ≠ mn.toInt := fun e => by
+          have : mn = least := Int64.toInt_inj.1 e.symm
+          simp [Kernel.Coc.lowKey, this] at hlk
+        have := Int64.le_toInt least
+        omega
       have h1 : (mn - 1).toInt = mn.toInt - 1 := by
         have := Int64.le_toInt mn
         have := Int64.toInt_lt mn
@@ -910,7 +941,8 @@ theorem planBlock_nul (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteAr
   have hR := lt_widthFor (mx - f).toUInt64.toNat
   have hd64 := widthFor_le (mx - f).toUInt64.toNat (UInt64.toNat_lt _)
   generalize Column.widthFor (mx - f).toUInt64.toNat = d at hR hd64 ⊢
-  refine ⟨by omega, by omega, fun i h1 h2 h3 h4 => ?_⟩
+  refine ⟨by omega, by omega, fun hle i h1 h2 h3 h4 => ?_⟩
+  have hfa := hfa (hge hle)
   have hk := hmem i h1 h2 h3 h4
   have a := hmn _ hk
   have c := hmx _ hk
@@ -1211,8 +1243,9 @@ theorem planBlock_byte (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteA
   · obtain ⟨-, h1, h2, -⟩ := planBlock_nul least lg w n pl x nul b hA; omega
 
 /-- With patching off no row lies outside its frame: a row is null, or it lies inside its block's frame (a block that
-holds a null has a width byte of 128 or more, no width `outside` tests). -/
-theorem planBlock_inside (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (j : Nat) (hj : j < n) (hpl : pl = false) :
+holds a null has a width byte of 128 or more, no width `outside` tests). `hle` is `planBlock_nul`'s. -/
+theorem planBlock_inside (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (j : Nat) (hj : j < n) (hpl : pl = false)
+    (hle : ∀ i < n, Column.bitAt nul i = false → least.toInt ≤ (Kernel.Coc.keyAt w x i).toInt) :
     (!Column.bitAt nul j && Kernel.Coc.outside (Kernel.Coc.planBlock least lg w n pl x nul (j / 2 ^ lg)).2.2.2.1
       (Kernel.Coc.planBlock least lg w n pl x nul (j / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x j)) = false := by
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
@@ -1226,9 +1259,9 @@ theorem planBlock_inside (least : Int64) (lg w n : Nat) (pl : Bool) (x nul : Byt
     · rw [planBlock_plain least lg w n pl x nul _ hA]
       exact ((planBlock_bounds least lg w n pl x _ (Nat.lt_of_le_of_lt h1 hj)).2.2.2 j h1 h2 hj).2 hpl
     · obtain ⟨hf, h128, -, hk⟩ := planBlock_nul least lg w n pl x nul _ hA
-      obtain ⟨hle, -, -⟩ := hk j h1 h2 hj hnj
+      obtain ⟨hle', -, -⟩ := hk hle j h1 h2 hj hnj
       rw [outside_false, hf]
-      exact ⟨hle, Nat.lt_of_lt_of_le (UInt64.toNat_lt _) (Nat.pow_le_pow_right (by decide) (by omega))⟩
+      exact ⟨hle', Nat.lt_of_lt_of_le (UInt64.toNat_lt _) (Nat.pow_le_pow_right (by decide) (by omega))⟩
   · rfl
 
 /-- **The encoder model reads back element by element**, at any block size `2 ^ lg` the layout admits, patched or not,
@@ -1238,6 +1271,7 @@ case no encoding holds: a column of `2 ^ 64` rows or more carries no patch list,
 span all `2 ^ 64` a row that is no null keeping the key `2 ^ 63 - 1` keeps the null's top residual. -/
 theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x nul : ByteArray)
     {patch : Bool} {least : Int64} (i : Nat) (hi : i < x.size / w)
+    (hle : ∀ j < x.size / w, Column.bitAt nul j = false → least.toInt ≤ (Kernel.Coc.keyAt w x j).toInt)
     (hbig : 2 ^ 64 ≤ x.size / w → Column.bitAt nul i = false → Kernel.Coc.lowKey least (Kernel.Coc.keyAt w x i) = true →
       ∀ j, i / 2 ^ lg * 2 ^ lg ≤ j →
       j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
@@ -1323,9 +1357,9 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
       exact ((hpb _ (Nat.lt_of_le_of_lt h1 hj)).2.2.2 j h1 h2 hj).2
         (hc.resolve_right (by rw [hA]; exact Bool.false_ne_true))
     · obtain ⟨hf, h128, -, hk⟩ := hpn _ hA
-      obtain ⟨hle, -, -⟩ := hk j h1 h2 hj hnj
+      obtain ⟨hle', -, -⟩ := hk hle j h1 h2 hj hnj
       rw [outside_false, hf]
-      exact ⟨hle, Nat.lt_of_lt_of_le (UInt64.toNat_lt _) (Nat.pow_le_pow_right (by decide) (by omega))⟩
+      exact ⟨hle', Nat.lt_of_lt_of_le (UInt64.toNat_lt _) (Nat.pow_le_pow_right (by decide) (by omega))⟩
   -- a list is written only with patching on, so below `2 ^ 64` elements
   have h64' : exc.size ≠ 0 → exc.size < 2 ^ 64 := fun h => by
     by_cases hn64 : n < 2 ^ 64
@@ -1468,7 +1502,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
           2 ^ ((blk (i / 2 ^ lg)).2.2.2.2 % 128) := by
         cases A
         · rw [Nat.mod_eq_of_lt (Nat.lt_of_not_le fun h => Bool.false_ne_true (hd128.1 h))]; exact hkf.2
-        · obtain ⟨hf, -, -, hk'⟩ := hpn _ hA; rw [hf]; exact (hk' i hi1 hi2 hi hni).2.1
+        · obtain ⟨hf, -, -, hk'⟩ := hpn _ hA; rw [hf]; exact (hk' hle i hi1 hi2 hi hni).2.1
       rw [foRBits_of M (pack ++ tail) i (2 ^ lg) hBM _ _ _ _ (Nat.le_of_lt hibM) hd64 h2
         (by rw [Column.widthAt, h3]) hP hx1 hx2]
       simp only [Nat.div_add_mod']
@@ -1493,7 +1527,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
     · cases A
       · rfl
       · obtain ⟨hf, -, -, hk'⟩ := hpn _ hA
-        obtain ⟨hle, hlt, hcol⟩ := hk' i hi1 hi2 hi hni
+        obtain ⟨hle, hlt, hcol⟩ := hk' hle i hi1 hi2 hi hni
         have hk := hout i hi hni (Or.inr hA)
         cases hpt : Kernel.Coc.patched lst (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
             (Kernel.Coc.keyAt w x i)
@@ -1582,7 +1616,8 @@ theorem foRBits_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 
     Column.foRBits (Kernel.Coc.encodeAt lg w.toUSize x patch).1 (Kernel.Coc.encodeAt lg w.toUSize x patch).2
       (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch).1) i =
       (Kernel.Coc.keyAt w x i).toUInt64 := by
-  have h := foROpt_encode lg hlg w hw0 hw x .empty (patch := patch) (least := Int64.minValue) i hi fun _ _ _ j _ _ _ => bitAt_empty j
+  have h := foROpt_encode lg hlg w hw0 hw x .empty (patch := patch) (least := Int64.minValue) i hi
+    (fun _ _ _ => by rw [Int64.toInt_minValue]; exact Int64.le_toInt _) fun _ _ _ j _ _ _ => bitAt_empty j
   simp only [Column.foROpt, bitAt_empty, Bool.false_eq_true, ↓reduceIte] at h
   split at h
   · cases h
