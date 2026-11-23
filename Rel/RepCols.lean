@@ -663,7 +663,7 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
 /-- **Summand `s` of one side, `Vals.catSide`**, read at a row `q` the tags give to it: the summand is not empty, and
 the row is its row at `q`'s position clamped. -/
 theorem Vals.catSide_row {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m} {idx : Arr .i64 m} {x : Vals B l}
-    {o : Vals B l'} {g : Vals B m} (h : Vals.catSide s tag idx x o = .ok g) (hv : Kernel.Enc.Valid m tag.enc)
+    {o : Vals B l'} {g : Vals B m} (h : Vals.catSide s tag idx x o = .ok g)
     (h63 : l.toNat ≤ 2 ^ 63) (q : Fin m.toNat) (ht : tag.get q = s) :
     ∃ hl : 0 < l.toNat, Vals.row g q = Vals.row x (clampFin (idx.get q) l.toNat hl) := by
   unfold Vals.catSide at h
@@ -757,7 +757,7 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {s : Bool}
       (hm : m.toNat = m₁.toNat + m₂.toNat) →
       cat m x y = .ok z → Vals.WF x → Vals.WF y → ∀ c : Fin m.toNat, Vals.row z c =
         if hc : c.1 < m₁.toNat then Vals.row x ⟨c.1, hc⟩ else Vals.row y ⟨c.1 - m₁.toNat, by omega⟩)
-    (hv₁ : Kernel.Enc.Valid n₁ tag₁.enc) (hv₂ : Kernel.Enc.Valid n₂ tag₂.enc) (hx₁ : Vals.WF x₁) (hx₂ : Vals.WF x₂)
+    (hx₁ : Vals.WF x₁) (hx₂ : Vals.WF x₂)
     (h : Vals.catSummand n s tag₁ idx₁ x₁ tag₂ idx₂ x₂ cat = .ok L)
     {P : Arr .i64 n} (hP : ∀ c h0, clampFin (P.get c) n.toNat h0 = c) (c : Fin n.toNat)
     (ht : (if hc : c.1 < n₁.toNat then tag₁.get ⟨c.1, hc⟩ else tag₂.get ⟨c.1 - n₁.toNat, by omega⟩) = s) :
@@ -792,11 +792,11 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {s : Bool}
     split
     · rename_i hc
       rw [dif_pos hc] at ht
-      obtain ⟨hl, e⟩ := Vals.catSide_row hg₁ hv₁ (by omega) ⟨c.1, hc⟩ ht
+      obtain ⟨hl, e⟩ := Vals.catSide_row hg₁ (by omega) ⟨c.1, hc⟩ ht
       rw [dif_pos hl, e]
     · rename_i hc
       rw [dif_neg hc] at ht
-      obtain ⟨hl, e⟩ := Vals.catSide_row hg₂ hv₂ (by omega) _ ht
+      obtain ⟨hl, e⟩ := Vals.catSide_row hg₂ (by omega) _ ht
       rw [dif_pos hl, e]
 
 /-- **`Vals.catSummand` keeps `Vals.WF`** where `cat` does. -/
@@ -997,14 +997,14 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → (hn : n.toNat 
     have hpos := fun c h0 => Arr.pos_clamp hP hn63 c h0
     have gt := Arr.concat_get hn htag c
     cases hb : tag.get c
-    · have e := Vals.catSummand_row hn (fun x y hm hz => Vals.concat_row hm x y hz) hv₁ hv₂ hx.1 hy.1 hL hpos c
+    · have e := Vals.catSummand_row hn (fun x y hm hz => Vals.concat_row hm x y hz) hx.1 hy.1 hL hpos c
         (by rw [← gt, hb])
       simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, Bool.false_eq_true, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
       · rename_i hc; rw [dif_neg hc] at gt; rw [← gt, hb]; rfl
-    · have e := Vals.catSummand_row hn (fun x y hm hz => Vals.concat_row hm x y hz) hv₁ hv₂ hx.2 hy.2 hR hpos c
+    · have e := Vals.catSummand_row hn (fun x y hm hz => Vals.concat_row hm x y hz) hx.2 hy.2 hR hpos c
         (by rw [← gt, hb])
       simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, ↓reduceIte]
       rw [e]
