@@ -114,13 +114,13 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
     generalize k.toNat = kk at h2
     rcases kk with _ | _ | _ | _ | _ | _ | kk <;> simp [ownNParts] at h2 <;> omega
   have hm : ownMagic.size = 8 := rfl
-  have hh : (⟨#[7, c, k]⟩ : ByteArray) = leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 := by
+  have hh : (⟨#[8, c, k]⟩ : ByteArray) = leBytes (8 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 := by
     simp only [leBytes_one]; apply ByteArray.ext; simp [ByteArray.data_append]
   rw [hh] at hb ⊢
   have he : ∀ B : ByteArray, B ++ .empty = B := fun B => by apply ByteArray.ext; simp
   have hr1 := ownLayout_fst_size ps (24 + 16 * ps.size) 0 ps.size
   have hsp := ownSpans_layout ps ps.size 0 (24 + 16 * ps.size)
-    (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 ++ leBytes ps.size 1 ++
+    (ownMagic ++ leBytes (8 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 ++ leBytes ps.size 1 ++
       leBytes 0 4 ++ leBytes n.toNat 8) .empty (by omega)
   rw [he] at hsp
   have hn : n.toNat < 256 ^ 8 := Nat.lt_of_lt_of_le n.toNat_lt_size (by simpa using USize.size_le)
@@ -128,14 +128,14 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc, ByteArray.size_empty] at hb hsp ⊢
   have hsp := hsp trivial (by omega) hb
   have e8 := leAt_leBytes ownMagic (leBytes c.toNat 1 ++ leBytes k.toNat 1 ++ leBytes ps.size 1 ++ leBytes 0 4 ++
-    leBytes n.toNat 8 ++ r.1 ++ r.2) (7 : UInt8).toNat 1 (by decide)
-  have e9 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1) (leBytes k.toNat 1 ++ leBytes ps.size 1 ++
+    leBytes n.toNat 8 ++ r.1 ++ r.2) (8 : UInt8).toNat 1 (by decide)
+  have e9 := leAt_leBytes (ownMagic ++ leBytes (8 : UInt8).toNat 1) (leBytes k.toNat 1 ++ leBytes ps.size 1 ++
     leBytes 0 4 ++ leBytes n.toNat 8 ++ r.1 ++ r.2) c.toNat 1 (by have := c.toNat_lt; simpa using this)
-  have e10 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1) (leBytes ps.size 1 ++
+  have e10 := leAt_leBytes (ownMagic ++ leBytes (8 : UInt8).toNat 1 ++ leBytes c.toNat 1) (leBytes ps.size 1 ++
     leBytes 0 4 ++ leBytes n.toNat 8 ++ r.1 ++ r.2) k.toNat 1 (by have := k.toNat_lt; simpa using this)
-  have e11 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1)
+  have e11 := leAt_leBytes (ownMagic ++ leBytes (8 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1)
     (leBytes 0 4 ++ leBytes n.toNat 8 ++ r.1 ++ r.2) ps.size 1 (by simp; omega)
-  have e16 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 ++
+  have e16 := leAt_leBytes (ownMagic ++ leBytes (8 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 ++
     leBytes ps.size 1 ++ leBytes 0 4) (r.1 ++ r.2) n.toNat 8 hn
   simp only [ByteArray.size_append, leBytes_size, hm, ByteArray.append_assoc] at e8 e9 e10 e11 e16
   have byte : ∀ (B : ByteArray) (o : Nat) (x : UInt8), leAt B o 1 = x.toNat → (B.data[o]?.getD 0) = x :=

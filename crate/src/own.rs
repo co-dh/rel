@@ -191,8 +191,8 @@ pub fn head(m: &[u8], why: &mut Why) -> Option<OwnHead> {
     if &m[..8] != b"qleancol" { why.say(format_args!("byte 0: the magic `qleancol`")); return None; }
     if m[8] < OWN_OLDEST || m[8] > OWN_VERSION {
         why.say(format_args!("byte 8: format version {}, found {}; a file before version {} is rewritten by `set` from the data \
-it was made from: version 8 moved the null of a flagged block from its top residual to residual 0, version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block \
-offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms", OWN_VERSION, m[8], OWN_VERSION));
+it was made from: version 8 made null residual 0, 7 removed the attribute byte and the domain name, 6 widened the patch list's block \
+offsets to u64, and 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms", OWN_VERSION, m[8], OWN_VERSION));
         return None;
     }
     if nparts(kind) != Some(np) {

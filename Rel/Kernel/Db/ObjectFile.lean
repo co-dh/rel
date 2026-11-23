@@ -104,7 +104,7 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
   else if b.extract 0 8 ≠ ownMagic then .error "byte 0: the magic `qleancol`"
   else if v != ownVersion.toNat then
-    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 8 moved the null of a flagged block from its top residual to residual 0, version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
+    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 8 made null residual 0, 7 removed the attribute byte and the domain name, 6 widened the patch list's block offsets to u64, and 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
   else if ownNParts[kind]?.join != some np then
     .error s!"byte 10: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
   else if 24 + 16 * np > b.size then

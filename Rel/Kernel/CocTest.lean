@@ -90,15 +90,15 @@ def readN (xs : List UInt64) (ns : List Nat)
   let r := enc (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
   (List.range xs.length).map (Column.foROpt r.1 r.2 #[])
 
--- values 3 4 6 at rows 0 2 3, nulls at 1 4: range 3 = `2 ^ 2 - 1` reaches the top residual, so width 3, flagged (131);
--- residuals 0 7 1 3 7
-example : encN [3, 0, 4, 6, 0] [1, 4] = (md 3 6 13 5 131, [120, 118] ++ List.replicate 382 0) := by decide +kernel
-#guard encN [3, 0, 4, 6, 0] [1, 4] == (md 3 6 13 5 131, [120, 118] ++ List.replicate 382 0)
+-- values 3 4 6 at rows 0 2 3, nulls at 1 4: base 2 (least value less one), range 4 so width 3, flagged (131);
+-- residuals 1 0 2 4 0
+example : encN [3, 0, 4, 6, 0] [1, 4] = (md 2 6 13 5 131, [129, 8] ++ List.replicate 382 0) := by decide +kernel
+#guard encN [3, 0, 4, 6, 0] [1, 4] == (md 2 6 13 5 131, [129, 8] ++ List.replicate 382 0)
 example : readN [3, 0, 4, 6, 0] [1, 4] = [some 3, none, some 4, some 6, none] := by decide +kernel
 #guard readN [3, 0, 4, 6, 0] [1, 4] == [some 3, none, some 4, some 6, none]
 
--- `Int64.min`, `Int64.max` and a null in one block: the range is all `2 ^ 64` keys, width 64 cannot widen, and
--- `Int64.max - Int64.min = 2 ^ 64 - 1` is the null's code, so the `Int64.max` row is patched and reads as itself.
+-- `Int64.min`, `Int64.max` and a null in one block: the range is all `2 ^ 64` keys, width 64, and the base cannot go
+-- below `Int64.min`, so its row sits at residual 0, the null's code: it is patched and reads as itself.
 -- The Lean body runs at the least block the layout admits, `2 ^ 6`: the kernel walks the pack from byte 0 on every
 -- byte a reader takes, and the patch list sits after the block's `2 ^ lg * 8` residual bytes, 8192 at `lgEnc`
 -- (45 s, 16.7 GB) and 512 at 6; the answer is the same rows, which is all `lg` cannot change.
