@@ -1133,7 +1133,6 @@ def Op.row (p : Pos) : Op → M (Option Prim)
     | some r => pure (some r)
     | none => throw ⟨p, s!"internal: no row `{s}` in `prims`"⟩
   | .map => pure (some mapRow)
-  | .est => pure (some estRow)
   | _ => pure none
 
 /-- `at(k) : [b] ⟶ b` is its definition `⟨𝟙, ⊤ {k}⟩ at` (`indexRow`): the pair of the array and the constant index `k`,
@@ -1600,13 +1599,14 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     let p := b.pos
     -- `Xest(Q)`, `Xfront(Q)` with `Q` a family: they run one `Q` on every array, so the rows of §e work on
     -- `G ≜ X∋`, the values of each key (a lifted `Λ` of `front`'s definition would need `[x]`'s universe, which it
-    -- has none); a closed `Q` takes the closed row below. `front` is the prelude's, found by its row's constant.
-    let front := match b with
-      | .app _ n [_] => match env.res n with | .ext e => some e.const == frontRow.prelude | _ => false
+    -- has none); a closed `Q` takes the closed row below. `front`, `est` are the prelude's, found by their rows' constants.
+    let named (r : Prim) := match b with
+      | .app _ n [_] => match env.res n with | .ext e => some e.const == r.prelude | _ => false
       | _ => false
-    let est := match b with | .op _ .est _ _ => true | _ => false
+    let front := named frontRow
+    let est := named estRow
     let q? ← match m, b with
-      | some _, .op _ .est [] [qe] | some _, .app _ _ [qe] => do
+      | some _, .app _ _ [qe] => do
         if front || est then do let y ← elabE env m qe; pure (if y.isFam then some y else none) else pure none
       | _, _ => pure none
     -- `X⦇R⦈` with `R` a family: the fold keyed by the index, on the arrays `X` gives each key (§e)
