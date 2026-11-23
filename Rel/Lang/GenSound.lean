@@ -644,11 +644,11 @@ theorem Tab.suffix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.
 
 theorem rowOK_prefix : RowOK "prefix" := rowOK_of (c := RowCode.prefix) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.prefix_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.prefix_holds h hX⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.prefix_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h a b => (Tab.prefix_holds h hX a b).trans (and_congr_right fun _ => (splitDen_iff true a b).symm)⟩⟩
 
 theorem rowOK_suffix : RowOK "suffix" := rowOK_of (c := RowCode.suffix) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
-  cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.suffix_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.suffix_holds h hX⟩⟩
+  cases σ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.suffix_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h a b => (Tab.suffix_holds h hX a b).trans (and_congr_right fun _ => (splitDen_iff false a b).symm)⟩⟩
 
 theorem rowOK_uncons : RowOK "uncons" := rowOK_of (c := RowCode.uncons) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv

@@ -526,38 +526,53 @@ def ordRelDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A) → Core
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Core.Rel (Obj.El (c.ty σ).1) (Obj.El (c.ty σ).2)
 
+/-- The rows `prefix`/`suffix`: the first/second component of a splitting of `xs` (`uncat`). -/
+def splitDen (s : Bool) (A : Type) : Core.Rel (List A) (List A) :=
+  (graph fun p : List A × List A => p.1 ++ p.2)° ≫ if s then graph Prod.fst else graph Prod.snd
+
+theorem splitDen_iff (s : Bool) {A : Type} (xs ys : List A) : splitDen s A xs ys ↔ if s then ys <+: xs else ys <:+ xs := by
+  cases s
+  · exact ⟨fun ⟨p, h, e⟩ => ⟨p.1, by subst e; exact h.symm⟩, fun ⟨t, h⟩ => ⟨(t, ys), h.symm, rfl⟩⟩
+  · exact ⟨fun ⟨p, h, e⟩ => ⟨p.2, by subst e; exact h.symm⟩, fun ⟨t, h⟩ => ⟨(ys, t), h.symm, rfl⟩⟩
+
+/-- The row `loop` given the step `T`: the left fold `foldDen` of `T` over the list whose start is the pair's own first
+    component (`foldDen_iter`). Pointwise until `foldDen` has a start read from the input (PF-FOLD), which this row
+    needs and no relation `Rel (V × List E) V` built from `foldDen`'s constant-start form gives. -/
+def loopDen {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) : Core.Rel (Obj.El (.prod X (.arr Y))) (Obj.El X) :=
+  fun p c => ∃ g : Nat → X.El, g 0 = p.1 ∧ (∀ t (ht : t < p.2.length), T (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length
+
 open Classical RowCode in
 /-- Every row of `prims` with its meaning. `setify` is `Λ(∋)`. -/
 def rowDens : List ((c : RowCode) × RowDen c) :=
-  [⟨tau, fun _ _ a Y => Y = [a]⟩,
-   ⟨cons, fun _ _ p ys => ys = p.1 :: p.2⟩,
+  [⟨tau, fun _ _ => graph fun a => [a]⟩,
+   ⟨cons, fun _ _ => graph fun p => p.1 :: p.2⟩,
    ⟨map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩,
-   ⟨filter, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys => ys = xs.filter fun x => decide (∃ y, T x y)⟩,
-   ⟨takewhile, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
-      ys = xs.takeWhile fun x => decide (∃ y, T x y)⟩,
+   ⟨filter, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => graph fun xs => xs.filter fun x => decide (∃ y, T x y)⟩,
+   ⟨takewhile, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T =>
+      graph fun xs => xs.takeWhile fun x => decide (∃ y, T x y)⟩,
    ⟨thinL, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T =>
       thinLDen fun a b => decide (T (a, b) (a, b))⟩,
-   ⟨merge, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T p zs =>
-      zs = List.merge p.1 p.2 fun a b => decide (T (a, b) (a, b))⟩,
-   ⟨loop, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ₁ σ) fun T p c => ∃ g : Nat → (σ₁ σ).El, g 0 = p.1 ∧
-      (∀ t (ht : t < p.2.length), T (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length⟩,
-   ⟨uncons, fun _ _ xs p => xs = p.1 :: p.2⟩,
-   ⟨length, fun _ _ xs w => w = Int64.ofNat xs.length⟩,
+   ⟨merge, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T =>
+      graph fun p => List.merge p.1 p.2 fun a b => decide (T (a, b) (a, b))⟩,
+   ⟨loop, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ₁ σ) loopDen⟩,
+   ⟨uncons, fun _ _ => (graph fun p => p.1 :: p.2)°⟩,
+   ⟨length, fun _ _ => graph fun xs => Int64.ofNat xs.length⟩,
    ⟨sum, fun σ _ => sumAt (σ₁ σ)⟩,
-   ⟨inits, fun _ _ xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.take k⟩,
-   ⟨tails, fun _ _ xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.drop k⟩,
-   ⟨«prefix», fun _ _ xs ys => ys <+: xs⟩,
-   ⟨suffix, fun _ _ xs ys => ys <:+ xs⟩,
-   ⟨concat, fun _ _ xss ys => ys = xss.flatten⟩,
-   ⟨cat, fun _ _ p zs => zs = p.1 ++ p.2⟩,
-   ⟨uncat, fun _ _ xs p => xs = p.1 ++ p.2⟩,
-   ⟨zip, fun _ _ p zs => zs = p.1.zip p.2⟩,
-   ⟨snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩,
-   ⟨unsnoc, fun _ _ xs p => xs = p.1 ++ [p.2]⟩,
+   ⟨inits, fun _ _ => graph fun xs => (List.range (xs.length + 1)).map fun k => xs.take k⟩,
+   ⟨tails, fun _ _ => graph fun xs => (List.range (xs.length + 1)).map fun k => xs.drop k⟩,
+   -- the prefixes of `xs` are the first components of its splittings `uncat`, the suffixes the second
+   ⟨«prefix», fun σ _ => splitDen true (σ₁ σ).El⟩,
+   ⟨suffix, fun σ _ => splitDen false (σ₁ σ).El⟩,
+   ⟨concat, fun _ _ => graph fun xss => xss.flatten⟩,
+   ⟨cat, fun _ _ => graph fun p => p.1 ++ p.2⟩,
+   ⟨uncat, fun _ _ => (graph fun p => p.1 ++ p.2)°⟩,
+   ⟨zip, fun _ _ => graph fun p => p.1.zip p.2⟩,
+   ⟨snoc, fun _ _ => graph fun p => p.1 ++ [p.2]⟩,
+   ⟨unsnoc, fun _ _ => (graph fun p => p.1 ++ [p.2])°⟩,
    ⟨setify, fun σ _ => lamDen (memDen (A := σ₁ σ))⟩,
    -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
-   ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
-      ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩,
+   ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T =>
+      graph (positionsL fun x => decide (∃ y, T x y))⟩,
    -- q's `asc` of the set `dom P`: `j` to its `j`-th element in `Obj.lt` order
    ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
