@@ -236,10 +236,46 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
       · cases h
     · cases h
 
+/-- **`kscanCols` flags no null row** where every source holds none: a lock-step call carries no flags, and a stream's are
+the sources' `foRNuls`, all `0` (`hasNul_flags`). -/
+theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize × Enc)} {pre post : List (Op × UInt64)}
+    {ws : List (Array UInt64)} {ns : Array UInt64} (hN : ∀ p ∈ es, hasNul p.2 = false)
+    (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (h : kscanCols op s n es pre post = .ok (ws, ns)) :
+    ns.any (· != 0) = false := by
+  by_cases hs : kscanStream op es pre post = true
+  · unfold kscanCols at h
+    simp only [hs, if_true] at h
+    cases hm : es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll pre) with
+    | error m => rw [hm] at h; simp [bind, Except.bind] at h
+    | ok ws' =>
+      rw [hm] at h; simp only [bind, Except.bind] at h
+      by_cases hsum : ((es.map (·.1.toNat)).sum != n.toNat) = true
+      · simp [hsum] at h
+      · simp only [hsum, Bool.false_eq_true, if_false, pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+        rw [← h.2]
+        have key : ∀ (l : List (USize × Enc)) (a : Array UInt64), (∀ p ∈ l, hasNul p.2 = false) →
+            (∀ p ∈ l, Ext.Enc.WF s p.1 p.2) → a.any (· != 0) = false →
+            (l.foldl (fun a p => a ++ foRNuls p.1 p.2) a).any (· != 0) = false := by
+          intro l
+          induction l with
+          | nil => intro a _ _ ha; exact ha
+          | cons q l ih =>
+            intro a hn hw ha
+            refine ih _ (fun p hp => hn p (by simp [hp])) (fun p hp => hw p (by simp [hp])) ?_
+            have hq := hn q (by simp)
+            rw [hasNul_flags (hw q (by simp)), ← Bool.not_eq_true, Bool.not_eq_true] at hq
+            rw [Array.any_append, ha, hq]; rfl
+        exact key es #[] hN hW (by simp)
+  · rw [Bool.not_eq_true] at hs
+    obtain ⟨-, rfl, -⟩ := kscanCols_lock hs h
+    simp
+
 /-- **`kscan` closes**: its answer is valid at its `n` rows, `Ext.Enc.WF` at its answer type `t`, and holds no null
-(written with no null bitmap). -/
-theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List Enc}
-    {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
+(written with no null bitmap) where no source holds a null: a stream's flags are then all `0`. -/
+theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc}
+    {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hN : ∀ p ∈ es, hasNul p.2 = false) (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false := by
   unfold kscan at h
   by_cases hd : kscanRefuses op n es pre post = true
@@ -247,17 +283,23 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   split at h; · cases h
+  rename_i cs hc
   split at h; · cases h
+  rename_i c cs' ns
+  have hns := kscanCols_nul hN hW hc
   split at h; · cases h
   rename_i out₀ hf
   split at h; · cases h
   rename_i out hp
   have hos := (chainAll_ok hp).1.trans (foldlM_kscanRow _ _ _ _ _ _ hf).1
   split at h; · cases h
-  rename_i ht
+  rename_i w' ht
+  split at h; · cases h
+  rename_i nl hnl
   simp only [Except.ok.injEq] at h
   subst h
   dsimp only
+  simp only [hns, Bool.false_eq_true, if_false]
   have hW : (Array.map (fun v => if t = .u1 then v % 2 else v) (if rev = true then out.reverse else out)).size =
       n.toNat := by rw [Array.size_map]; split <;> simp [hos]
   have hc := wordsFoR_closed _ hW.symm
