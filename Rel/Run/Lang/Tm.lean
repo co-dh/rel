@@ -46,9 +46,6 @@ inductive Tm : Obj → Obj → Type where
   | inr {A B : Obj} : Tm B (.sum A B)
   /-- The row `r` of `prims` at `A ⟶ B`, an instance of its constant's type; its relations given by `arg`. -/
   | prim {A B : Obj} (r : Prim) : Tm A B
-  /-- The prelude's `perm`, kept as its own converse (`convTm`): the one converse rule the language has for a
-      definition, because `perm° = perm` is a theorem it cannot derive from the fold `perm` is. -/
-  | own {A : Obj} (R : Tm A A) : Tm A A
   /-- `⦇e,S⦈ʳ`, the right fold, on the arrays in demand: each read from its end, `S` on `(x, acc)`. -/
   | foldr {E V : Obj} (e : Tm V V) (S : Tm (.prod E V) V) : Tm (.arr E) V
   /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
@@ -62,11 +59,11 @@ inductive Tm : Obj → Obj → Type where
   | var {A B : Obj} (d : Bool) (k : Nat) : Tm A B
   /-- `let ks := args in b`: the definition elaborated once to the constant `c`, called before its arguments
       (`arg`). `b` its body at the call's objects (`Tm.instObj`), `ks` the variables of `b` its arguments bind, in
-      the order `arg` gives them; `c` at `os`, the objects of the variables it is generic over, its shared code. -/
-  | call {A B : Obj} (ks : List Nat) (c : Lean.Name) (os : List Obj) (b : Tm A B) : Tm A B
-  /-- A `call` whose body has a converse `u` (`convTm`), the constant `c'` that converse's. Its own constructor:
-      an `Option (Tm B A)` field makes a nested family the kernel refuses. -/
-  | callCv {A B : Obj} (ks : List Nat) (c c' : Lean.Name) (os : List Obj) (b : Tm A B) (u : Tm B A) : Tm A B
+      the order `arg` gives them; `c` at `os`, the objects of the variables it is generic over, its shared code.
+      `cv`: the constant of the converse `c°` (`convTm`), `none` where no converse runs on demand. `c°` is `c` itself
+      where it is a theorem (`perm° = perm`, which the fold `perm` is cannot derive), else `c'` the converse the body
+      `b` derives. -/
+  | call {A B : Obj} (ks : List Nat) (c : Lean.Name) (cv : Option Lean.Name) (os : List Obj) (b : Tm A B) : Tm A B
   /-- `f` given one more argument `x`: a relation, a pair test, or the universe of one of its object variables. -/
   | arg {A B C D : Obj} (f : Tm A B) (x : Tm C D) : Tm A B
   /-- `νX : φ`, `X` the variable `k`: rounds of `body` from `S`, the conjuncts of `φ` without `X`, down to the
@@ -121,8 +118,7 @@ def Tm.bounds : {A B : Obj} → Tm A B → Bool
     them needs keys where one of them does, its head alone (`prim`) is no term that runs. -/
 def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .arg R x => if R.whole then (!(R matches .prim _) && R.dem) || x.dem else R.dem && !R.bounds
-  | _, _, .comp R _ | _, _, .own R | _, _, .share _ R => R.dem
-  | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.dem
+  | _, _, .comp R _ | _, _, .share _ R | _, _, .call _ _ _ _ R => R.dem
   | _, _, .join R S => R.dem || S.dem
   -- `⟨R,S⟩`'s domain is `dom R ∩ dom S`, `R ∩ S` within `R` and `S`, so one closed operand bounds the other
   -- (`GenK.pairK`, `GenK.meetK`); `R − S` within `R`, which bounds `S` (`GenK.diff`)
@@ -184,8 +180,7 @@ def Tm.cut2 {A : Obj} (r : Prim) (U : Tm A A) : Tm (.prod A A) A := .comp (U.pro
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .top R | _, _, .conv R | _, _, .lam R
-  | _, _, .own R
-  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
+  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ _ R =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S | _, _, .arg R S
@@ -211,7 +206,6 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .rdiv R S U V, f => return .rdiv (← f R lt_size) (← f S lt_size) (← f U lt_size) (← f V lt_size)
   | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
   | _, _, .lam R, f => return .lam (← f R lt_size)
-  | _, _, .own R, f => return .own (← f R lt_size)
   | _, _, .foldr e S, f => return .foldr (← f e lt_size) (← f S lt_size)
   | _, _, .fold e S, f => return .fold (← f e lt_size) (← f S lt_size)
   | _, _, .arg g x, f => return .arg (← f g lt_size) (← f x lt_size)
@@ -231,10 +225,9 @@ def Tm.parts {A B : Obj} (t : Tm A B) : List Res :=
   (Id.run ((t.mapM (m := StateM (List Res)) fun c => do modify (· ++ [⟨_, _, c⟩]); pure c).run [])).2
 
 /-- The terms a check over every node of `t` visits next: its parts, and the term `Tm.mapM` does not enter, a
-    `share`'s and a call's body (and its converse's), since a `callOf` call's body is no registry constant's. -/
+    `share`'s and a call's body, since a `callOf` call's body is no registry constant's. -/
 def Tm.inner {A B : Obj} : Tm A B → List Res
-  | .share _ R | .call _ _ _ R => [⟨_, _, R⟩]
-  | .callCv _ _ _ _ R U => [⟨_, _, R⟩, ⟨_, _, U⟩]
+  | .share _ R | .call _ _ _ _ R => [⟨_, _, R⟩]
   | t => t.parts
 
 /-- The variables free in `t`: a binder (`μ`, `ν`, `hylo`) drops its own, and a `share` is closed. Structural,
@@ -251,7 +244,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .rdiv R S U V => R.fv ++ S.fv ++ U.fv ++ V.fv
   | _, _, .pair R S => R.fv ++ S.fv
   | _, _, .lam R => R.fv
-  | _, _, .own R => R.fv
   | _, _, .foldr e S | _, _, .fold e S => e.fv ++ S.fv
   | _, _, .arg g x => g.fv ++ x.fv
   | _, _, .nu k S b => S.fv ++ b.fv.filter (· != k)
@@ -259,8 +251,7 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .hylo k _ b => b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call ..
-  | _, _, .callCv .. => []
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call .. => []
 
 /-! ### Substitution -/
 
@@ -296,7 +287,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
   | σ, _, _, .lam R => .lam (R.subst σ)
-  | σ, _, _, .own R => .own (R.subst σ)
   | σ, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
   | σ, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
   | σ, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
@@ -317,8 +307,7 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .inr => .inr
   | _, _, _, .prim r => .prim r
   | _, _, _, .share k R => .share k R
-  | _, _, _, .call ks c os b => .call ks c os b
-  | _, _, _, .callCv ks c c' os b u => .callCv ks c c' os b u
+  | _, _, _, .call ks c cv os b => .call ks c cv os b
 
 mutual
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
@@ -337,7 +326,6 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .ldiv R S U V => !R.fv.contains k && S.pol s k && U.pol s k && V.pol s k
   | _, _, .rdiv R S U V => R.pol s k && !S.fv.contains k && U.pol s k && V.pol s k
   | _, _, .pair R S => R.pol s k && S.pol s k
-  | _, _, .own R => R.pol s k
   | _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, .mu j _ _ b => j == k || b.pol s k
   | _, _, .hylo j _ b => j == k || b.pol s k
@@ -345,8 +333,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call ..
-  | _, _, .callCv .. => true
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call .. => true
 
 /-- `t` a `mono` row (`prims`) given relations, each occurring with sign `s` in `k` (`Tm.pol`): the spine
     `.arg (… (.arg (.prim r) x₁) …) xₙ`, of any length `n` (`Tm.den_pol_spine`). -/
@@ -366,7 +353,7 @@ def Tm.linIn (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .join R S => R.linIn k && S.linIn k
   | _, _, .comp R S | _, _, .meet R S | _, _, .pair R S =>
     R.linIn k && !S.fv.contains k || !R.fv.contains k && S.linIn k
-  | _, _, .conv R | _, _, .own R => R.linIn k
+  | _, _, .conv R => R.linIn k
   | _, _, t => !t.fv.contains k
 
 /-! ### The children of a recursion -/
@@ -400,7 +387,6 @@ def Tm.kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : Option (Tm C A) :=
       else match S.kids k A with | some s => some (.comp R s) | none => none
     | _, _, .meet R S | _, _, .join R S | _, _, .pair R S => match R.kids k A, S.kids k A with
       | some r, some s => some (.join r s) | _, _ => none
-    | _, _, .own R => R.kids k A
     -- `F(x)` reads `X` at the children of the members, `dom(x)` at those of its key
     | _, _, .arg (.prim r) x =>
       if r.sym == mapRow.sym then match x.kids k A with | some s => some (.comp (memAt _ _) s) | none => none

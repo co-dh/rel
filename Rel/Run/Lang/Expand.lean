@@ -46,9 +46,7 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
     let cs ← cs.mapM fun (c, o) => return (c, (← (oty env [] o).run {}).1)
     pure { ty := Schema.objAt (.base n) .prod cs, cols := cs }
 
-/-- The definition `d` whose constant is `c`, as a use sees it. `prelude.perm` is its own converse, the one converse
-    rule kept for a definition (`Tm.own`): `perm° = perm` is a theorem the language cannot derive from the fold
-    `perm` is: it has no kernel, so it is no row. A prelude definition that is a row's constant `Prim.prelude`, given
+/-- The definition `d` whose constant is `c`, as a use sees it. A prelude definition that is a row's constant `Prim.prelude`, given
     relations and not families, runs as that row's kernel. `imported`: `d` is another program's, so an error its body raises at a use names `c` and its
     line there, at the use; one about the arguments (at the use) passes as it is. -/
 def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
@@ -71,7 +69,6 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
         if rels.length == as.length && as.length == x.sig.1.length then
           pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
         else pure (.rel (if imported then q.at p else q) s t)
-      | `Rel.Programs.prelude.perm, .rel q s t, _ => pure (.rel (.own (q.at p)) s t)
       | _, .rel q s t, _ => pure (.rel (if imported then q.at p else q) s t)
       | _, .fam q i a b, _ => pure (.fam (if imported then q.at p else q) i a b) }
 
@@ -180,13 +177,13 @@ def sigOf (o : Once) : Sig :=
   let ⟨_, _, t⟩ := o.res
   { const := o.const, vars := o.gen.zip ((List.range o.gen.length).map t.fv.contains), tst := o.tst, kf := o.kf }
 
-/-- The converse of `o`'s body, when it has one (`convTm`) and is not a pair test, and its constant. `convTm` takes
+/-- The constant of the converse `convTm` derives from `o`'s body, unless `o` is a pair test: `convTm` takes
     a parameter for its own converse (`Tm.ConvOK`), true of one tested on pairs only: a body reading a parameter run
-    on demand (`R : A ⟶ B`, whose converse is no parameter) has none. -/
-def convOf (o : Once) : Option (Lean.Name × Res) :=
+    on demand (`R : A ⟶ B`, whose converse is no parameter) has none. Whether the body has a converse is `convTm`'s
+    answer at the call's node (`Tm.call`). -/
+def convOf (o : Once) : Option Lean.Name :=
   let dem := o.res.2.2.dem && o.forms.zipIdx.any fun (f, i) => f == some false && o.res.2.2.fv.contains (o.gen.length + i)
-  if o.tst || dem then none else match o.res with
-    | ⟨A, B, t⟩ => (convTm t).toOption.map fun u => (o.const ++ `conv, ⟨B, A, u⟩)
+  if o.tst || dem then none else some (o.const ++ `conv)
 
 /-- A statement `n.io` runs (IO design B), in statement order; a name is the spelling the program's statements reach
     it by: its own short name, an imported one's constant (`Parse.constOf`). -/
@@ -428,7 +425,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
     `n` is the program `emitter`'s, else under `emitter`. The expansion gives the call's type and is what the
     analyses read. -/
 def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty : OExp × OExp) (vs : List String)
-    (c emitter : Lean.Name) (calls : Lean.Name → Option Once) (d : Def) : Def :=
+    (c emitter : Lean.Name) (calls : Lean.Name → Option Once) (cs : List (String × String)) (d : Def) : Def :=
   { d with apply := fun p as => do
       let r ← d.apply p as
       let (bs, m) ← (qs.zip as).foldlM (fun (bs, m) (P, a) => do
@@ -504,7 +501,10 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         throw ⟨p, s!"internal: `{o.const}`'s body reads the variables {free}, which its call binds not ({o.binds})"⟩
       xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
-      let (ks, ph, t, cv) := (o.binds, o.ph, o.res, convOf o)
+      -- `n° = n` a theorem of its program (`convs cs`): its own converse, the constant `k` itself; any other
+      -- converse is the one `convTm` derives from the body (`Tm.call`), whatever the theorems say
+      let own := match cs.lookup n with | some n' => if n' == n then some k else none | none => none
+      let (ks, ph, t, cv) := (o.binds, o.ph, o.res, own <|> convOf o)
       let us := us ++ ix.toList
       unless us.length == fl.length do
         throw ⟨p, s!"internal: `{k}` has {fl.length} object variables in the registry, {us.length} here"⟩
@@ -789,7 +789,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
           let vs := varsOf qs ty
           let c := Parse.constOf own n
           if (calls c).isSome then
-            env := { env with defs := (n, wrap n (callDef env p n qs e ty vs c emitter calls d)) :: env.defs }; continue
+            env := { env with defs := (n, wrap n (callDef env p n qs e ty vs c emitter calls (convs prog) d)) :: env.defs }; continue
           -- built once for `emit`, which adds its constant before any constant that calls it; the uses after it
           -- outside a body expand it, since its constant is built after the program is read, so that an error a use
           -- raises in the body, in the use's words, comes first
@@ -838,7 +838,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     unless specs.any (·.key == c) do
       let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
       specs := sp ++ o.toList
-    mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls d)) :: mine
+    mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls (convs prog) d)) :: mine
   pure (env, ds, pr, cs, specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
@@ -947,8 +947,8 @@ def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize
   | _, _, _, _, _, _ => false
 
 /-- `t` and `u`, of one constructor, agree in their fields that are not terms; a call's constant compared by its
-    registry key (`key`), since each module names the constant it built `emitter ++ key`. A `callCv`'s converse
-    constant is its constant's converse's (`convOf`), so it follows the constant. A row field by field, as
+    registry key (`key`), since each module names the constant it built `emitter ++ key`; so is its converse
+    constant `cv` (`convOf`). A row field by field, as
     `ToExpr Prim` rebuilds it, so `emit`'s check of `tmE` sees a field written wrong. -/
 def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u : Tm C D) : Bool :=
   match t with
@@ -961,9 +961,8 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
     | _ => false
   | .share k _ => match u with | .share k' _ => k == k' | _ => false
   | .var d k => match u with | .var d' k' => d == d' && k == k' | _ => false
-  | .call ks c os _ => match u with | .call ks' c' os' _ => ks == ks' && key c == key c' && os == os' | _ => false
-  | .callCv ks c _ os .. => match u with
-    | .callCv ks' c' _ os' .. => ks == ks' && key c == key c' && os == os' | _ => false
+  | .call ks c cv os _ => match u with
+    | .call ks' c' cv' os' _ => ks == ks' && key c == key c' && cv.map key == cv'.map key && os == os' | _ => false
   | .nu k .. => match u with | .nu k' .. => k == k' | _ => false
   | .mu k w n _ => match u with | .mu k' w' n' _ => k == k' && w == w' && n == n' | _ => false
   | .hylo k w _ => match u with | .hylo k' w' _ => k == k' && w == w' | _ => false
@@ -1032,7 +1031,9 @@ def Registry.call? (r : Registry) : MetaM (Lean.Name → Option Once) := do
     let ctors := (← getConstInfoInduct ``Tm).ctors
     let ctor (i : Nat) := toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous)
     let keys : Std.HashMap Lean.Name Lean.Name :=
-      (r.calls.map (·.2) ++ r.again.toList).foldl (fun m o => m.insert o.const o.key) {}
+      -- a derived converse is named `const ++ conv` (`convOf`), so its key is the key's `conv`
+      (r.calls.map (·.2) ++ r.again.toList).foldl (fun m o =>
+        (convOf o).elim (m.insert o.const o.key) fun cv => (m.insert o.const o.key).insert cv (o.key ++ `conv)) {}
     let key (c : Lean.Name) := keys.getD c c
     for o' in r.again do
       let some o := r.calls.lookup o'.key

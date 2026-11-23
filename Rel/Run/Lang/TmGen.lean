@@ -182,7 +182,6 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | .arr B, _, .mem => GenK.ofVals (.arr B) B Tab.mem
   | A, .sum _ B, .inl => GenK.ofVals A _ (Tab.inl (B := B))
   | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
-  | _, _, .own R => R.code η
   | .arr Y, V, .foldr e S => GenK.foldr Y V (e.code η) (S.code η)
   | .arr Y, V, .fold e S => GenK.fold Y V (e.code η) (S.code η)
   -- its slot, computed once per program; where the table has none, built here under no variable
@@ -199,7 +198,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
     GenK.hylo A B w (((b.kids k A).getD .zero).code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .prim r => primGen r A B []
   | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
-  | _, _, .call ks _ _ b | _, _, .callCv ks _ _ _ b _ => b.code (Code.args η ks [])
+  | _, _, .call ks _ _ _ b => b.code (Code.args η ks [])
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
@@ -211,7 +210,7 @@ def Tm.argGen (η : Code) {A B : Obj} (t : Tm A B) (xs : Codes) : Rel A B :=
   | A, B, .prim r => primGen r A B xs
   | _, _, .arg f x => f.argGen η (⟨_, _, x.code η⟩ :: xs)
   | _, _, .share _ R => R.argGen η.closed xs
-  | _, _, .call ks _ _ b | _, _, .callCv ks _ _ _ b _ => b.code (Code.args η ks xs)
+  | _, _, .call ks _ _ _ b => b.code (Code.args η ks xs)
   | _, _, _ => .tab (.error "Tm.gen: a spine headed by neither a row nor a call")
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
@@ -244,7 +243,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .mem
   | _, _, .inl | _, _, .inr
   | _, _, .var .. => true
-  | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .own R
+  | _, _, .top R | _, _, .conv R | _, _, .lam R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S
@@ -255,7 +254,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
     (b.kids k A).isSome && ((b.kids k A).getD .zero).hasCode && b.hasCode
   | A, B, .prim r => primHasCode r A B []
   | _, _, .arg (C := C) (D := D) f x => f.argHasCode [(C, D)] && x.hasCode
-  | _, _, .call _ _ _ b | _, _, .callCv _ _ _ _ b _ => b.hasCode
+  | _, _, .call _ _ _ _ b => b.hasCode
 termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
@@ -265,14 +264,14 @@ def Tm.argHasCode {A B : Obj} (t : Tm A B) (xs : List (Obj × Obj)) : Bool :=
   | A, B, .prim r => primHasCode r A B xs
   | _, _, .arg (C := C) (D := D) f x => f.argHasCode ((C, D) :: xs) && x.hasCode
   | _, _, .share _ R => R.argHasCode xs
-  | _, _, .call _ _ _ b | _, _, .callCv _ _ _ _ b _ => b.hasCode
+  | _, _, .call _ _ _ _ b => b.hasCode
   | _, _, _ => false
 termination_by t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 end
 
-#guard (Tm.comp (Tm.call (A := .long) (B := .long) [] `c [] .zero) .id).hasCode
-#guard !(Tm.call [] `c [] (Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long)))).hasCode
+#guard (Tm.comp (Tm.call (A := .long) (B := .long) [] `c none [] .zero) .id).hasCode
+#guard !(Tm.call [] `c none [] (Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long)))).hasCode
 #guard !(Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long))).hasCode
 #guard (Tm.ldiv (A := .long) (B := .long) (C := .long) .id .id .id .id).hasCode
 
@@ -318,16 +317,13 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .inl (A := A) (B := B) => return g ``Tm.inl #[oE A, oE B]
   | _, _, .inr (A := A) (B := B) => return g ``Tm.inr #[oE A, oE B]
   | _, _, .prim (A := A) (B := B) r => return g ``Tm.prim #[oE A, oE B, toExpr r]
-  | _, _, .own (A := A) R => return g ``Tm.own #[oE A, ← tmE sh R]
   | _, _, .foldr (E := E) (V := V) e S => return g ``Tm.foldr #[oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .fold (E := E) (V := V) e S => return g ``Tm.fold #[oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .share (A := A) (B := B) k R =>
     return g ``Tm.share #[oE A, oE B, toExpr k, ← match sh[k]? with | some c => pure c | none => tmE sh R]
   | _, _, .var (A := A) (B := B) d k => return g ``Tm.var #[oE A, oE B, toExpr d, toExpr k]
-  | _, _, .call (A := A) (B := B) ks c os b =>
-    return g ``Tm.call #[oE A, oE B, toExpr ks, toExpr c, toExpr os, ← tmE sh b]
-  | _, _, .callCv (A := A) (B := B) ks c c' os b u =>
-    return g ``Tm.callCv #[oE A, oE B, toExpr ks, toExpr c, toExpr c', toExpr os, ← tmE sh b, ← tmE sh u]
+  | _, _, .call (A := A) (B := B) ks c cv os b =>
+    return g ``Tm.call #[oE A, oE B, toExpr ks, toExpr c, toExpr cv, toExpr os, ← tmE sh b]
   | _, _, .arg (A := A) (B := B) (C := C) (D := D) f x =>
     return g ``Tm.arg #[oE A, oE B, oE C, oE D, ← tmE sh f, ← tmE sh x]
   | _, _, .nu (A := A) (B := B) k S b => return g ``Tm.nu #[oE A, oE B, toExpr k, ← tmE sh S, ← tmE sh b]
@@ -347,8 +343,7 @@ abbrev Shares := Array Res × Std.HashMap Lean.Expr Nat
 /-- `t` with each numbered part read as its slot: equal keys are equal terms, slot by slot. -/
 def Tm.numberKey {A B : Obj} (t : Tm A B) : Tm A B := match t with
   | .share k _ => .share k .zero
-  | .call ks c os b => .call ks c os b.numberKey
-  | .callCv ks c c' os b u => .callCv ks c c' os b.numberKey u
+  | .call ks c cv os b => .call ks c cv os b.numberKey
   | t => Id.run (t.mapMSz fun c _ => pure c.numberKey)
 termination_by t.size
 decreasing_by all_goals first | assumption | (simp only [Tm.size]; omega)
@@ -380,8 +375,7 @@ abbrev Tm.numberWrap (hd : Bool) {A B : Obj} (t : Tm A B) : StateM Shares (Tm A 
 def Tm.number {A B : Obj} (t : Tm A B) (hd : Bool := false) : StateM Shares (Tm A B) := match t with
   | .share _ R => R.number hd
   | .arg f x => (do return .arg (← f.number true) (← x.number)) >>= Tm.numberWrap hd
-  | .call ks c os b => (do return .call ks c os (← b.number)) >>= Tm.numberWrap hd
-  | .callCv ks c c' os b u => (do return .callCv ks c c' os (← b.number) u) >>= Tm.numberWrap hd
+  | .call ks c cv os b => (do return .call ks c cv os (← b.number)) >>= Tm.numberWrap hd
   | t => do (← t.mapMSz fun c _ => c.number).numberSlot
 termination_by t.size
 decreasing_by all_goals first | assumption | (simp only [Tm.size]; omega)
@@ -401,7 +395,7 @@ def Code.program (ds : List Res) : List Res × Array Res :=
 /-- Two call sites of one body `b`, which reads its parameter `0` beside the closed part `(𝟘)°`; each call given a
     free variable, so neither call is closed. -/
 private def twoCalls (b : Tm .long .long) : Tm .long .long :=
-  .join (.arg (.call [0] `f [] b) (.var (A := .long) (B := .long) false 5)) (.arg (.call [0] `g [] b) (.var (A := .long) (B := .long) false 6))
+  .join (.arg (.call [0] `f none [] b) (.var (A := .long) (B := .long) false 5)) (.arg (.call [0] `g none [] b) (.var (A := .long) (B := .long) false 6))
 
 -- the body's closed part is numbered inside both calls, to one slot (`𝟘` its own part, slot 0): two slots in all,
 -- each computed once (`Code.shares`), where `Tm.mapM`'s walk numbers none and one slot per site would be four

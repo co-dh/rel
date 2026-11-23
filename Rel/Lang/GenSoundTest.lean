@@ -110,7 +110,7 @@ run_cmd do
     [("a constant", has fun x => x.isAppOf ``Tm.val || x.isAppOf ``Tm.uni),
      ("a fold", has fun x => x.isAppOf ``Tm.fold || x.isAppOf ``Tm.foldr),
      ("a call to a generic definition", has fun x =>
-       (x.isAppOfArity ``Tm.call 6 && objs 4 x) || (x.isAppOfArity ``Tm.callCv 8 && objs 5 x))]
+       x.isAppOfArity ``Tm.call 7 && objs 5 x)]
   for (what, p) in wants do
     let some (k, nm, ⟨A, B, t⟩, ⟨A', B', c⟩, e) := built.find? (p ·.2.2.2.2)
       | throwError "GenSoundTest: no definition with code and a keyed ok table holds {what}"
@@ -129,18 +129,18 @@ run_cmd do
 def twice (k' : Tm .long .long) : Expand.Registry :=
   let o (k c : Name) (t : Tm .long .long) : Once :=
     { key := k, const := c, gen := [], ph := [], params := [], forms := [], res := ⟨_, _, t⟩, tst := false, kf := false }
-  [.call `j (o `j `a.j .id), .call `k (o `k `a.k (.call [] `a.j [] .id)),
+  [.call `j (o `j `a.j .id), .call `k (o `k `a.k (.call [] `a.j none [] .id)),
    .call `j (o `j `b.j .id), .call `k (o `k `b.k k')].foldl Expand.Registry.add {}
 
 -- the same body but for the name of the call's constant: one definition, read at its first constant
 #guard_msgs in
 run_meta do
-  let f ← (twice (.call [] `b.j [] .id)).call?
+  let f ← (twice (.call [] `b.j none [] .id)).call?
   unless (f `k).map (·.const) == some `a.k do throwError "not the first registered"
 
 /-- error: rel registry: the key `k` is held by `a.k` and by `b.k`, built by two modules neither importing the other, with different bodies: at call: its fields differ -/
 #guard_msgs in
-run_meta discard (twice (.call [] `b.k [] .id)).call?
+run_meta discard (twice (.call [] `b.k none [] .id)).call?
 
 -- a lifted fold (the row `foldI`) whose start and step both read the μ variable `0` is positive in it, so `monoOK`:
 -- `Tm.spinePol` reads the row's `mono`, as for a row of one relation

@@ -196,8 +196,7 @@ def rowsProved : List String :=
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
   | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .own R
-  | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
+  | _, _, .call _ _ _ _ R => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.GenHyp P ∧ S.GenHyp P ∧ U.GenHyp P ∧ V.GenHyp P
@@ -211,9 +210,9 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
 /-- `Tm.GenHyp` with nothing asked at a `share` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
-  | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
+  | _, _, .lam R | _, _, .top R | _, _, .conv R
   | _, _, .share _ R
-  | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
+  | _, _, .call _ _ _ _ R => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.monoOK && S.monoOK && U.monoOK && V.monoOK
@@ -1318,7 +1317,7 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
       · rename_i h; exact Codes.at_wf hη.2 h
       · exact c R (by omega) η.closed ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩
     · exact (H R (by omega)).2 η.closed xs ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩ hx
-  case call ks _ _ b | callCv ks _ _ _ b _ =>
+  case call ks _ _ _ b =>
     refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
     · exact c b (by omega) _ (Code.args_wf hη ks [] fun _ h => nomatch h)
     · exact c b (by omega) _ (Code.args_wf hη ks xs hx)
@@ -1345,7 +1344,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case mem => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX
   case inl => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.inl_wf h hX
   case inr => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.inr_wf h hX
-  case own => exact w _ (by omega)
   case comp => exact GenK.comp_wf (w _ (by omega)) (w _ (by omega))
   case conv R =>
     split
@@ -1420,7 +1418,7 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       · exact code_of ((ih (by omega)).1 η.closed Val.empty hl.2 he) K
     · exact (ih (by omega)).2 η.closed Val.empty xs ss hl.2 he hx hr
   -- the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`; same table
-  case call ks _ _ b ih | callCv ks _ _ _ b _ ih _ =>
+  case call ks _ _ _ b ih =>
     refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
       simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
     · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
@@ -1474,7 +1472,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case mem => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.mem_holds h hX
   case inl => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.inl_holds h hX
   case inr => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.inr_holds h hX
-  case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case var k => exact hs.1 k _ _
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs)) (code_wf (gen_wf S η hs.2))
@@ -1740,7 +1737,7 @@ local macro "nout" : tactic => `(tactic| (
 
 /-- The constructors `Tm.number` numbers through `Tm.mapMSz`: all but `share` and a spine's nodes. -/
 def Tm.numGeneric : {A B : Obj} → Tm A B → Bool
-  | _, _, .share .. | _, _, .arg .. | _, _, .call .. | _, _, .callCv .. => false
+  | _, _, .share .. | _, _, .arg .. | _, _, .call .. => false
   | _, _, _ => true
 
 theorem Tm.number_mapMSz {A B : Obj} (t : Tm A B) (h : t.numGeneric = true) (hd : Bool) :
@@ -1806,10 +1803,8 @@ theorem Tm.number_spec : ∀ (n : Nat) {A B : Obj} (t : Tm A B), t.size ≤ n �
         have hn : ∀ j, j ∉ ((R.number hd).run s).1.fv := fun j hj => by simpa [hg.1] using o.2.1 j hj
         exact ⟨i, e, o.1, fun j hj => absurd hj (hn j), fun b j _ => Tm.pol_of_fv _ b j (hn j),
           fun _ e => by cases e⟩
-      case call ks c os b =>
+      case call ks c cv os b =>
         exact NSpec.bindWrap (NSpec.map1 _ (ih b (by omega) hg false) (by nout)) hd
-      case callCv ks c c' os b u =>
-        exact NSpec.bindWrap (NSpec.map1 (fun a => .callCv ks c c' os a u) (ih b (by omega) hg false) (by nout)) hd
       case arg C D f x =>
         -- `cases` binds the function as `x` and the argument as `f`
         refine NSpec.bindWrap (NSpec.map2Q (Q := fun a => ∀ s k, x.spinePol s k = true → a.spinePol s k = true)
