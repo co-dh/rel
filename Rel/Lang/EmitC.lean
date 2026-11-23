@@ -2072,7 +2072,7 @@ def readLib (L : String) : Bld (List (String × QAtomicType × Nat)) := libCols.
 
 /-- The dictionary `D : ℕ ⟶ [C]` of the files `readLib` read, as `Table.libDict` reads them: its key the ids `0 …`. -/
 def libDictB (L : String) (cs : List (String × QAtomicType × Nat)) : Bld TabB := do
-  let (s, _) ← ownSideB s!"the dictionary of the library {L}" cs none
+  let (s, _) ← ownSideB s!"the dictionary of the library {L}" (.arr (.atom .char)) (cs.map fun (p, t, n) => (p, some t, n)) none
   let some n := (s.lookup ".lo").bind (·[Side.count]?) | throw s!"library {L}: its dictionary has no row count"
   pure ⟨n, [.atom "" .i64 (← posB)], ← colsOf (.arr (.atom .char)) s ""⟩
 
