@@ -1271,6 +1271,13 @@ def sumsOnB (K : Obj) (u : QAtomicType) (x : TabB) : Bld TabB := funT [x] fun
     keepB ⟨n, C.key, [.atom "" u W]⟩ (← mapB .not n badR badR)
   | _ => throw "sums: not one table"
 
+/-- **`Tab.length`** on the `n` cells `X`: a payload of `2^63` rows or more fails the run, past an `Int64` count; each
+    cell to its width `hi - lo` (one `kscan .sub`); then `canonT`. -/
+def lengthB (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, _) ← arrCol "length" X
+  guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) "length: a payload of m rows, past an Int64 count" #[m]
+  canonT ⟨n, X, [.atom "" .i64 (← mapB .sub n hi lo)]⟩
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp`, `cast`, `arithOp`, `succOp` and `cmpOp` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
@@ -1356,6 +1363,9 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.sum then match A with
     | .arr (.atom u) => do let (n, X) ← known r.sym D.dom; sumOnB u n X
     | _ => throw "sum: the elements are no atom"
+  else if c == ``Tab.length then match A with
+    | .arr _ => do let (n, X) ← known r.sym D.dom; lengthB n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
   -- `Tab.sums`' cases at the position object `P`, the value object `V`
   else if c == ``Tab.sums then match A, B, xs with
     | .prod K (.atom t), .atom u, [x] => match u with
