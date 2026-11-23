@@ -1373,8 +1373,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss _ _ _ _ => by unfold Tm.argGen; exact herr _ _⟩
   all_goals simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den]
-  case val R => exact GenK.val_sound _
-  case uni U => exact GenK.uni_sound _
+  case val R => exact GenK.val_sound _ fun h => by simp only [Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
+  case uni U => exact GenK.uni_sound _ Vals.cellsOk_wf
   case zero => exact GenK.zero_sound
   case id => exact GenK.id_sound
   case top V ih => exact GenK.top_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf V η hs.2))
@@ -1418,8 +1418,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case inl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
   case inr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
-  case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs))
-  case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs))
+  case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
+  case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
   case var k => exact hs.1 k _ _
   case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
