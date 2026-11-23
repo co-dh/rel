@@ -1458,7 +1458,7 @@ def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
 
 /-! ### A program's IO statements (IO step I10): what `n.io` reads, computes and writes, as a plan -/
 
-/-- Whether `A` holds a sum, whose CSV columns (`S+1`) `Table.ofCsv` regroups and checks, which no plan recipe does. -/
+/-- Whether `A` holds a sum, whose CSV columns (`1+S`) `Table.ofCsv` regroups and checks, which no plan recipe does. -/
 def hasSum : Obj → Bool
   | .atom _ => false
   | .prod a b => hasSum a || hasSum b

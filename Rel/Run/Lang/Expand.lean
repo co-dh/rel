@@ -530,9 +530,9 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
 
 /-- The CSV columns of a side written `o` (IO design D), each with the labels that name it, outermost first, the
     object as written and as resolved. A schema's columns are its fields; a product's are its factors' columns, a factor
-    that is a named object labelling its own (`Trade×(Quote+1)`: `Trade.sym` … `Quote.sym` …; `K×N`: `K`, `N`); a
-    sum `S+1` is one column `V+1` per column `V` of `S`, labelled as `S`'s, so the `1` is every one of them null
-    together; any other object is one column. `top`: `o` is the whole side, whose own name labels nothing. -/
+    that is a named object labelling its own (`Trade×(1+Quote)`: `Trade.sym` … `Quote.sym` …; `K×N`: `K`, `N`); a
+    sum `1+S` (`Obj.opt`) is one column `1+V` per column `V` of `S`, labelled as `S`'s, so the `1` is every one of
+    them null together; any other object is one column. `top`: `o` is the whole side, whose own name labels nothing. -/
 def csvLeaves (env : Env) (o : OExp) (top : Bool) : EM (List (List String × OExp × OTy)) := do
   let t ← (oty env [] o).run' {}
   match o with
@@ -543,8 +543,8 @@ def csvLeaves (env : Env) (o : OExp) (top : Bool) : EM (List (List String × OEx
     | none => pure [(pre, o, t)]
   | .prod a b => return (← csvLeaves env a false) ++ (← csvLeaves env b false)
   | .sum a b =>
-    let u ← (oty env [] b).run' {}
-    return (← csvLeaves env a top).map fun (ls, e, s) => (ls, .sum e b, .sum s u)
+    let u ← (oty env [] a).run' {}
+    return (← csvLeaves env b top).map fun (ls, e, s) => (ls, .sum a e, .sum u s)
   | _ => pure [([], o, t)]
 
 /-- The columns of an `input`'s or `output`'s type `A ⟶ B` (`what`: the statement), checked: the key's, none where
@@ -585,11 +585,11 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
         | .base n, .atom a => some (.atom, a, elems n)
         -- `1`: its one element's name, the code `0` of a long column (`Table.csvEncs`)
         | .base n, .one => some (.atom, .i64, elems n)
-        | .sum (.base n) _, .sum (.atom a) .one => some (.null, a, elems n)
+        | .sum _ (.base n), .opt (.atom a) => some (.null, a, elems n)
         | .arr (.base n), .arr (.atom a) => some (.text, a, elems n)
         | _, _ => none
       let some (s, a, ns) := col
-        | throw ⟨p, s!"{what}: column '{c}' is {e.show}; a CSV field holds an atom, a nullable atom `V+1` (`1` an \
+        | throw ⟨p, s!"{what}: column '{c}' is {e.show}; a CSV field holds an atom, a nullable atom `1+V` (`1` an \
             object of one element) or a text `[C]`; declare it a table directory (drop `csv`)"⟩
       hdr := hdr ++ [(c, s, a, ns)]
     if let .error m := Schema.check hdr then throw ⟨p, s!"{what}: {m}"⟩

@@ -36,8 +36,8 @@ abbrev El := Carrier
 
 /-- A vector of `n` elements of type `t`: the encoded column itself, `Enc.WF` saying it holds `n` elements of `t`
     (`t` and `n` live in the type, never in a header beside the payload); a general list is `.gen xs`. Its payload
-    holds no flagged block (`Kernel.hasNul`): an `Arr t n` is the atom object `t`, and only `t+1` holds the in-band
-    null (design card "atom+1", decision K). -/
+    holds no flagged block (`Kernel.hasNul`): an `Arr t n` is the atom object `t`, and only `1+t` holds the in-band
+    null (design card "1+atom", decision K). -/
 abbrev Arr (t : QAtomicType) (n : USize) := {e : Enc // Enc.WF t n e ∧ Kernel.hasNul e = false}
 
 namespace Arr
@@ -116,8 +116,8 @@ def of (t : QAtomicType) (n : USize) (e : Enc) (what : String) : Except String (
 
 end Arr
 
-/-- A nullable column of `n` elements of `t`: the side `t+1` (`Obj.sum (.atom t) .one`) as ONE column (design card
-    "atom+1", decision K), `Arr t n` without its no-null clause. A null row holds its block's top residual
+/-- A nullable column of `n` elements of `t`: the side `1+t` (`Obj.opt (.atom t)`) as ONE column (design card
+    "1+atom", decision K), `Arr t n` without its no-null clause. A null row holds its block's top residual
     (`Column.foRNul`), so a kernel moves and tests it on the encoding. -/
 abbrev Opt (t : QAtomicType) (n : USize) := {e : Enc // Enc.WF t n e}
 
@@ -409,6 +409,9 @@ instance : Coe QAtomicType Obj := ⟨.atom⟩
 /-- The atoms the verbs name, so `.long` reads the same at `Obj` as at `QAtomicType`. -/
 @[match_pattern, reducible] def Obj.long : Obj := .atom .i64
 @[match_pattern, reducible] def Obj.general : Obj := .atom .general
+/-- The nullable `1+X` (owner decision 2026-11-22): the null is `inl ()`, so the sum order `inl < inr` puts it first,
+    q's order, with no case of its own. Every site that builds or recognises a nullable side names it through this. -/
+@[match_pattern, reducible] def Obj.opt (x : Obj) : Obj := .sum .one x
 
 /-- An element of a side: a tuple of its atoms' elements. -/
 @[reducible] def Obj.El : Obj → Type

@@ -175,7 +175,7 @@ def spans : List (AscKey × Enc) :=
     wcol 3000 fun i => (i * 7919 % 200).toUInt64)]
 #guard pview (u 3000) (kasc (u 3000) spans) == grade 3000 spans
 
-/-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
+/-- `xs` with the rows `ns` null (`1+atom`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
 def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
   wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
 

@@ -204,7 +204,7 @@ def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 Ã
     (r.2.2, r.1)
   else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
-/-- Block `b`, of `B` elements, of a nullable column (`atom+1`, owner decision K) where it holds a null: `x` its `n`
+/-- Block `b`, of `B` elements, of a nullable column (`1+atom`, owner decision K) where it holds a null: `x` its `n`
 `w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its base, maximum and `blockOf`'s sum are taken over the
 rows that are not null (`0`, `0`, `0` where every row is); its width byte is the range's `widthFor`, one bit wider where
 a value sits at the top residual `2 ^ d - 1` (so no value reads as the null), plus `nulAt`'s bit 7. A block whose range
