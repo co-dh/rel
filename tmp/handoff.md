@@ -1,37 +1,28 @@
-nullband3g9 handoff
+# B9bc handoff (WIP, nothing built yet)
 
-Done: merged 66c394c and e5b16d6 (only tmp/handoff.md conflicted); every proof module of `Rel` builds
-(RepBits, RepTabDiv, RepWF, RepTabComp, RepStruct, GenKBits, TestNullband).
+Design as in the task: `Tm.own` and `Tm.callCv` deleted, `Tm.call ks c (cv : Option Name) os b`.
 
-Left (not done): 11 test modules still fail at their `#guard ...failures == []` / `.ok`:
-TestFrameSchema, TestGenericN(108,109), Test/Kern9(87,89), TestFrameCols(68,84), TestFrameScale(53), TestPivotDisk(137),
-TestFrameApp(101,149), TestFrameQuery(65,82), TestFrameStat(122,158), TestFrameUnbounded(189,203), TestFrameBench(58).
+## Done (edited, NOT yet compiled)
+- `Rel/Run/Lang/Tm.lean`: ctor, dem, size, mapMSz, inner, fv, subst, pol, linIn, kids.
+- `Rel/Run/Lang/TmGen.lean`: gen, argGen, hasCode, argHasCode, #guards, tmE (`toExpr cv`), numberKey, number, twoCalls.
+- `Rel/Run/Lang/Elab.lean`: instObj, `Pre.own` + traverse arm + build arm deleted, `Pre.call.cv : Option Name`, convTm
+  (own arm deleted; call arm = self theorem branch with `by obtain ⟨-, rfl⟩ := h; exact pure …`, derived branch
+  `convTm b`), callTm (`return .call ks c cv os (← inst t)`), callNode.
+- `Rel/Run/Lang/Expand.lean`: `useDef` perm arm deleted; `convOf o : Option Name` = guard then `some (o.const ++ `conv)`;
+  `callDef` has new param `cs : List (String × String)` before `d`; `cv := own <|> convOf o` where `own` = `some k`
+  iff `cs.lookup n = some n` (self theorem); `walk` passes `convs prog` at both callDef sites; `fieldsEq` compares `cv.map key`.
+  Choice: table taken from the walked program (`convs prog`, in `walk`) not threaded through `read`.
+  A theorem `c° = c'` with c' ≠ c falls to the derived converse (the name c' has no body here).
 
-Diagnosed for Kern9 (copy to Rel/Lang/Test/K9tmp.lean, replace `#guard kernT9.ok` by `#eval kernT9.failures`, run
-`lake -d <wt> lean Rel/Lang/Test/K9tmp.lean`): every failure of `sub`, `leaf`, `ch`, `dbl` reads
-  inr°: on a 1+t band column, whose values the law cannot yet read (Vals.WF carries no Enc.Valid); run the other
-  operand first: a leaf on demand ran with its domain unknown
-raised by `inrConv`, `.opt ..` arm, Rel/Run/Struct.lean:164 ("PLAN nullband3h"): a deliberate throw from line 3g8, not
-a concat-null error. TestFrameApp:149 prints the same text. The other 9 modules were not inspected (do the same eval
-with their failing program: frameSchemaT, paramNT, paramPT, frameDescribe, tradeApp, frameStatT, frameStatFloatT,
-query3, query4, frameUnboundedT, frameDescribeU, bench2, frameCols, frameScaleN3, pivotT).
-
-Not done: step 3 (TestGenericN 118 / TestPivotDisk 143 #guard_msgs at base), final build RelCore RelKernel RelRun.
-
-nullband3h4 handoff (tool budget reached)
-
-Branch worktree-agent-a1c248448af4d8d5e. GREEN commits: 0606ff2 (merges of 15b73ae, nullband-int, 8b84e97 + kscanCols_lock /
-raw_kscanChain generalised, nullOps lists .null; `lake build RelKernel RelRun` green), bf55cb0 (Tab.inrConvBand + inrConv
-`.opt` branch + 4 #guards, built green as Rel.Run.Struct).
-
-Step 1 conflict resolution: Rel/Kernel/ScanTest.lean had two `knul`; 3h3's is now `kflag` (sources as `(n, e)` pairs).
-Step 3 law, done: `raw_kscanChain` no longer takes `hnl`; its columns clause reads
-`∃ e₀ es₀ ws', es.map (·.2) = e₀ :: es₀ ∧ mapM … = .ok ws' ∧ c' :: cs' = if op = .null then foRNuls n e₀ :: ws'.drop 1 else ws'`.
-`kscanCols_lock` likewise (`ws = fl.map foRNuls ++ ws'.drop fl.length`). `raw_kscan` keeps `hnl`; `kscan_last` dropped it.
-
-Step 2: `Tab.inrConvBand h x` (Rel/Run/Struct.lean) = kscan .null false t .u1 n none [(n, x.enc)] [] [(.not,0)] -> whereCol ->
-Vals.gather m sel (Vals.ofOpt h x), Arr.of t m (Opt.gather m sel x).enc. `inrConv`'s `.opt h x` branch calls it.
-
-DONE (nullband3h5): inrConv_wf and inrConv_holds (.opt branch) proved; inrConvBand casts by two Eq (a rfl cast unfolds to the body).
-colMap_*/kscan_post_ok/colMap_ok/raw_kscan_rev/ordOp_ne/floatOps_ne take or give op ≠ .null. lake build Rel and RelCore RelKernel RelRun green.
-
+## Left (anchors are use_site rows of the index, lines of f10a505)
+1. `Rel/Lang/ConvSpec.lean`: ConvOK `:115-128` (own, callCv clauses -> the `call … (some c')` clause of the task),
+   `convTm_den` (own :185, call :203, callCv :208), `convTm_instObj_den` (:573, :596, :601), `callTm_convOK` (:903; delete if unused),
+   it may need `ρ` after the colon.
+2. `Rel/Lang/Den.lean`: den :490/497, argDen :509/512, den_congr :682/716, den_pol_spine :954/1027, den_linIn :1099/1100,
+   den_local :1233/1261/1263.
+3. `Rel/Lang/GenSound.lean`: GenHyp :199-200, monoOK :214-216, pol_of_fv :1499, numGeneric :1716, number_spine :1762, number_spec :1785.
+4. `Rel/Lang/EmitC.lean`: nodeB :1491/1515, argB :1541.  `Rel/Lang/GenSoundTest.lean` :113-143 (`call` has the new `cv` arg).
+5. `Rel/Programs/Prelude.lean:43-44` comment mentioning `Tm.own`; `Registry.call?` (`Expand.lean` ~1020) check that a name does not determine the body.
+6. Tests: `#guard` with a program using `perm°`; a program `(f° g)°` with a user definition `f` (derived converse).
+7. Docs: PLAN.md B9b/B9c -> one merged line; `doc/rel-architecture.zh.typ` ~187, ~189; `doc/tm-minimal-design.zh.typ` ~282-284; `typst compile` both.
+8. Build: `CAP_MEM_MB=20000 /home/dh/repo/freyd/scripts/cap lake build` of the edited modules, then `RelRun Rel`.
