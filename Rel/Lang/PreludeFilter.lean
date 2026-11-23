@@ -73,26 +73,4 @@ theorem Tm.filterDef_row (ρ : Val) {B : Obj} (P : Tm B B) (xs ys : Obj.El (.arr
       by_cases hx : ∃ y, P.den ρ x y <;> simp [hx, ih]
   rw [gen]; simp
 
-/-- **`filter`'s text means the row** (Q3 = H): the body the prelude elaborates, `prelude.filter.body` (its parameter
-    `P` the variable 1), at any objects `σ` (`Tm.instObj`), means the row. The body seeds `⦇ran(uni nil), …⦈` and
-    `Tm.filterDef` seeds `⦇nil, …⦈`: both seeds are `[]` (`∃ a, Te a v ↔ v = []`, `foldDen_start`), and the
-    rows `dom`, `snoc`, `nil`, `ran` its text names mean the terms `Tm.filterStep` builds. -/
-theorem Tm.filterDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
-    {t' : Tm ((Obj.atom .general).inst ph σ).arr ((Obj.atom .general).inst ph σ).arr}
-    (ht : Rel.Programs.prelude.filter.body.instObj ph σ = .ok t') (xs ys : Obj.El ((Obj.atom .general).inst ph σ).arr) :
-    t'.den ρ xs ys ↔ Prim.den (rowOf "filter") ((Obj.atom .general).inst ph σ).arr ((Obj.atom .general).inst ph σ).arr
-      [⟨_, _, (Tm.var 1 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)).den ρ⟩] xs ys := by
-  unfold Rel.Programs.prelude.filter.body at ht
-  have hu : Obj.inst ph σ Obj.one = Obj.one := rfl
-  simp only [Tm.instObj, Tm.instObj.fixed, hu, pure, Except.pure, and_self, dite_true, cast_eq] at ht
-  obtain rfl := Except.ok.inj ht
-  rw [← Tm.filterDef_row ρ (Tm.var 1)]
-  simp only [Tm.filterDef, Tm.filterStep, Tm.nil, Tm.den, Tm.argDen, Tm.dom_den, Prim.den_nilRow]
-  erw [Prim.den_ranRow, Prim.den_domRow, Prim.den_snoc, Prim.den_nilRow]
-  rw [foldDen_start, foldDen_start (Te := nilDen)]
-  refine exists_congr fun v => and_congr ?_ Iff.rfl
-  simp [nilDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip, Core.Rel.graph]
-  intro _
-  exact ⟨_, _, ⟨0, by simp [USize.toNat_ofNat]⟩, rfl, rfl⟩
-
 end Rel.Lang

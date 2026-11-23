@@ -131,20 +131,6 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
     obtain rfl := Option.some.inj hv
     exact UInt64.lt_iff_toNat_lt.1 (hu h1 i hi' (by simpa using hni))
 
-/-- **`wordsFoR_nul` at the atom type's own `least`** (the run path's encoder, `Db.csvEncs`): when every non-null word of
-`ws` is the `bitsOf` of an atom of type `t`, `hle` holds at `t.least` by `Column.least_le_bitsOf`, so the answer is
-valid, reads back and is `Ext.Enc.WF` as `wordsFoR_nul` says, with nothing assumed of `least` but the type. -/
-theorem wordsFoR_atoms (t : QAtomicType) (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size)
-    (ha : ∀ i (hi : i < ws.size), Column.bitAt nul i = false → ∃ a : QAtom, a.type = t ∧ ws[i] = Column.bitsOf a) :
-    Enc.Valid n (wordsFoR ws nul t.least) ∧ (raw .i64 n (wordsFoR ws nul t.least)).size = n.toNat ∧
-      (∀ md pk, wordsFoR ws nul t.least = .foR md pk → ∀ i (hi : i < ws.size),
-        Column.foROpt md pk (Column.blockStarts md) i = if Column.bitAt nul i then none else some ws[i]) ∧
-      ∀ {s : QAtomicType}, s.width.isSome → (s = .u1 → ∀ i (h : i < ws.size), Column.bitAt nul i = false → ws[i] < 2) →
-        Ext.Enc.WF s n (wordsFoR ws nul t.least) :=
-  wordsFoR_nul ws nul hn t.least fun i hi hb => by
-    obtain ⟨a, rfl, e⟩ := ha i hi hb
-    rw [e]; exact Column.least_le_bitsOf a
-
 /-- **A kernel's answer is a column**: `wordsFoR ws`, at the `ws.size` rows it holds, is valid (every kernel reads
 it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Ext.Enc.WF` at every fixed-width type,
 a boolean one where every word is `0` or `1`. -/

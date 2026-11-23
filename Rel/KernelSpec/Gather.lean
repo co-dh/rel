@@ -27,18 +27,6 @@ theorem elemsW_decode (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (M P 
     elemsW w.toNat (Coc.decode w M P n) = (Coc.elems M P n).map fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w.toNat)) :=
   elemsW_foldl_mod id w.toNat hw0 hw _
 
-/-- `Coc.alpDecode` is the one `alpElems` fold at every width: at 4 and 8 the C decoder it calls is
-specified as that fold. -/
-theorem alpDecode_eq (w : USize) (M P a : ByteArray) (n : USize) :
-    Coc.alpDecode w M P a n =
-      (Coc.alpElems M P a n).foldl (fun acc v => Column.pushBits acc (id v) w.toNat) .empty := by
-  unfold Coc.alpDecode
-  split
-  · rename_i h; rw [eq_of_beq h, show (4 : USize).toNat = 4 by simp]; rfl
-  · split
-    · rename_i h; rw [eq_of_beq h, show (8 : USize).toNat = 8 by simp]; rfl
-    · rfl
-
 
 
 /-- **`bytesOf` reads what `raw` reads**: the dense payload a fixed-width kernel is handed is the column's elements

@@ -89,23 +89,6 @@ theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
 theorem neg_add_word (a b : UInt64) : 0 - b + a = a - b := by
   rw [UInt64.sub_eq_add_neg, UInt64.sub_eq_add_neg, UInt64.zero_add, UInt64.add_comm]
 
-/-- **A constant operand is a post step** (perf11): `colMap op' n a (colConst n c)` and the one `kscan`
-`colMap .first n a a` with the post chain `[(op, c)]` write the same words wherever `op' x c = op c x`, so the
-`kscatter` that builds the constant column is not run. -/
-theorem colMap_const_eq {op op' : Op} {n : USize} {a k e e' : Enc} {c : UInt64}
-    (hop : ∀ x, op'.eval x c = op.eval c x) (hk : colConst n c = .ok k)
-    (h : colMap op' n a k = .ok e) (h' : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e')
-    (hl : kscanStream op' [(n, a), (n, k)] [] [] = false := by lockstep)
-    (hn : op' ≠ .null := by decide)
-    (hF : op'.nulFold = none ∨ ∀ p ∈ [(n, a), (n, k)], hasNul p.2 = false := by nulfree) : raw .i64 n e = raw .i64 n e' := by
-  obtain ⟨-, -, hs, hr⟩ := colMap_raw h hl hn hF
-  obtain ⟨hs', hr'⟩ := colMap_post h'
-  refine Array.ext (hs.trans hs'.symm) fun i hi hi' => ?_
-  have h1 := hr i (hs ▸ hi)
-  simp only [colConst_raw hk, Array.getElem?_replicate, if_pos (hs ▸ hi), Option.getD_some, hop,
-    hr' i (hs ▸ hi), Except.ok.injEq, Array.getElem?_eq_getElem hi, Array.getElem?_eq_getElem hi'] at h1
-  exact h1.symm
-
 /-- **An ordered element is its word read at its type**: element `i` of a column of an ordered atom `t` (`ordNum`: the
 number atoms, `char`, `date`, `datetime`) is `ofBits t` of word `i` of `Enc.raw t`, at every encoding `Enc.WF` admits
 (`Arr.get_i64` reads `i64`'s). -/
@@ -136,27 +119,6 @@ theorem shiftCol_raw {n : USize} {s : UInt64} {o : Enc} (h : shiftCol n s = .ok 
   rw [hp] at hr
   simp only [Op.eval, Except.ok.injEq] at hr
   rw [← hr, UInt64.add_comm]
-
-/-- The source column of a successful `kscatter` is one every kernel reads. -/
-theorem kscatter_valid {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64} (h : kscatter op m ix e n fill = .ok o) :
-    Kernel.Enc.Valid m e := by
-  unfold kscatter at h
-  split at h; · cases h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  split at h; · cases h
-  rename_i ws hws
-  exact (foRWords_valid _ _ _).2 _ hws
-
-/-- Two words that read alike: equal, or a boolean's word cut to its bit where both are below `2`. -/
-theorem atom_of_cut {t : QAtomicType} (hg : t ≠ .general) {p q : UInt64} (hp : p = if t = .u1 then q % 2 else q)
-    (hu : t = .u1 → p < 2 ∧ q < 2) : Column.atomOfBits t p hg = Column.atomOfBits t q hg := by
-  congr 1
-  by_cases tu : t = .u1
-  · rw [hp, if_pos tu]
-    have : q.toNat < 2 := UInt64.lt_iff_toNat_lt.1 (hu tu).2
-    exact UInt64.toNat_inj.mp (by rw [UInt64.toNat_mod]; exact Nat.mod_eq_of_lt this)
-  · rw [hp, if_neg tu]
 
 /-- **A source's word read at `t` is its `i64` word cut to `t`'s width** (a boolean's to its bit), in every column every
 kernel reads: `raw_foR` at `t` and at `i64`, or `pos`, an `i64` column, read at `i64` both times. -/
@@ -698,16 +660,6 @@ theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hN : hasNul P
       toInt64_toInt (by rw [toNat_toUInt64 (by omega)]; omega), toNat_toUInt64 (by omega)]
     simp
   · exact (h0 (by omega)).symm
-
-/-- Both columns of a successful `Arr.concat` are ones every kernel reads (the `foROk` guard of its stream). -/
-theorem Arr.concat_valid {t : QAtomicType} {n₁ n₂ n : USize} {x : Arr t n₁} {y : Arr t n₂} {z : Arr t n}
-    (h : Arr.concat n x y = .ok z) : Kernel.Enc.Valid n₁ x.enc ∧ Kernel.Enc.Valid n₂ y.enc := by
-  unfold Arr.concat at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i zo hzo
-  obtain ⟨-, -, -, hx, hy, -⟩ := Opt.concat_enc hzo
-  exact ⟨foROk_valid hx, foROk_valid hy⟩
 
 /-- **`Arr.pos n` holds the positions**: row `c` is `c`. -/
 theorem Arr.pos_get {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (c : Fin n.toNat) :

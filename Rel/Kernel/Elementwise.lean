@@ -22,8 +22,6 @@ def i32 : UInt8 := 2
 def i64 : UInt8 := 3
 def f32 : UInt8 := 4
 def f64 : UInt8 := 5
-def bits : UInt8 := 6
-
 
 /-- Comparisons, numbered apart from the value verbs because they are a separate engine with a
 separate result shape — a bitmap whatever the operands were. -/

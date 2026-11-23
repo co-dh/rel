@@ -148,28 +148,6 @@ theorem rank_wf {D : Dict} {R : Tab .long .long} (h : rank D = .ok R) (wD : D.WF
   rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
   exact Tab.comp_wf h wD (Tab.conv_wf hC (Tab.asc_wf hT (Tab.ran_wf hS wD)))
 
-/-- **`hf` for a dictionary built by `frame`** (`Dict.empty`, `intern`, `readDict`): its key is the positions
-`0 … n-1`, each id once, so an id has one text. `Dict` is an abbreviation of `Tab`, not a structure, so this is
-the invariant of how a dictionary is made and no `D.WF` states it. -/
-theorem frame_functional {B : Obj} {n : USize} {x : Vals B n} {D : Tab .long B} (h : frame x = .ok D) (i : Int64)
-    (t t' : B.El) (h₁ : D.Holds i t) (h₂ : D.Holds i t') : t = t' := by
-  unfold frame at h
-  cases hP : Arr.pos n with
-  | error e => rw [hP] at h; cases h
-  | ok P =>
-    rw [hP] at h; cases h
-    obtain ⟨j, hj, rfl⟩ := h₁
-    obtain ⟨j', hj', rfl⟩ := h₂
-    have e := congrArg (fun x : Int64 => x.toBitVec.toNat)
-      (((Arr.pos_get hP j).symm.trans hj).trans ((Arr.pos_get hP j').symm.trans hj').symm)
-    have h1 : j.1 < n.toNat := j.2
-    have h2 : j'.1 < n.toNat := j'.2
-    have h3 := n.toNat_lt_size
-    have h4 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> rw [h] <;> decide
-    simp [Nat.toUInt64, UInt64.toInt64, Int64.toBitVec] at e
-    obtain rfl : j = j' := Fin.ext (by omega)
-    rfl
-
 /-- **`asc` on `sym` numbers the set by rank**: `symAsc D P` holds `(j, a)` when `a` is in `dom P` and its rank
 `r` is the `j`-th smallest of the ranks of `dom P` (`ascDen` at `ℕ`), so by `rank_lt_iff` the `j`-th smallest text. -/
 theorem symAsc_holds {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.atom .sym)}
@@ -248,31 +226,6 @@ theorem rank_texts {D : Dict} {R : Tab .long .long} (h : rank D = .ok R) (wD : D
       · obtain ⟨b, hbm, w⟩ := hq z hz'
         exact ⟨b, List.mem_cons_of_mem _ hbm, w⟩
 
-/-- **`asc` on `sym` numbers by text**: for `T.Holds j a` and `T.Holds j' a'` with texts `t`, `t'` in `D`,
-`j < j'` iff `t` is before `t'` in `Obj.lt` (the order of `asc`), whatever order the ids were inserted in. The
-`2^63` bound of `ascDen_lt` is the number of texts of `D`: an ascending list of ranks maps to an ascending, so
-repeat-free, list of texts of `D`. -/
-theorem symAsc_lt_iff {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.atom .sym)}
-    {T : Tab .long (.atom .sym)} (h : symAsc D P = .ok T) (hR : rank D = .ok Rk) (wD : D.WF) (wP : Vals.WF P.key)
-    (hb : D.n.toNat < 2 ^ 63) (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') {j j' : Int64} {a a' : UInt64}
-    {t t' : (Obj.arr (.atom .char)).El} (hj : T.Holds j a) (hj' : T.Holds j' a') (ht : D.Holds a.toInt64 t)
-    (ht' : D.Holds a'.toInt64 t') : j < j' ↔ Obj.lt (.arr (.atom .char)) t t' := by
-  obtain ⟨-, r, hr, as⟩ := (symAsc_holds h hR wD wP j a).1 hj
-  obtain ⟨-, r', hr', as'⟩ := (symAsc_holds h hR wD wP j' a').1 hj'
-  have hbd : ∀ ys : List Obj.long.El, ys.Pairwise (Obj.lt .long) →
-      (∀ b, b ∈ ys ↔ ∃ x, (∃ y, P.Holds x y) ∧ Rk.Holds x.toInt64 b) → ys.length < 2 ^ 63 := fun ys hys hm => by
-    obtain ⟨zs, hl, hz, hq⟩ := rank_texts hR wD hb hf ys hys fun b hb' => by
-      obtain ⟨x, -, hx⟩ := (hm b).1 hb'
-      exact ⟨_, hx⟩
-    have hnd : zs.Nodup := hz.imp fun {a b} hab e => by subst e; exact Obj.lt_irrefl _ a hab
-    have hsub : zs ⊆ List.ofFn (fun j : Fin D.n.toNat => D.val.row j) := fun z hz' => by
-      obtain ⟨-, -, -, -, j, -, hj⟩ := hq z hz'
-      exact List.mem_ofFn.2 ⟨j, hj⟩
-    have := nodup_length_le zs _ hnd hsub
-    simp only [List.length_ofFn] at this
-    omega
-  exact (ascDen_lt hbd as as').trans ((Obj.lt_long r r').trans (rank_lt_iff hR wD hb hf ht ht' hr hr'))
-
 end Rel.Lang.Table
 
 namespace Rel.Lang
@@ -296,43 +249,5 @@ theorem Tm.dom_den' (ρ : Val) {A B : Obj} (R : Tm A B) (x v : Obj.El A) :
   constructor
   · rintro ⟨rfl, m, h, -⟩; exact ⟨rfl, m, h⟩
   · rintro ⟨rfl, m, h⟩; exact ⟨rfl, m, h, h⟩
-
-/-- **`<` on `sym` is the order of the texts**: with `r` the term `rank(D)` (`Elab.symOrd`), `r ≫ <(ran r) ≫ r°`
-holds `(a, b)` when both ids have a rank and the text of `a` is before the text of `b` (`Obj.lt`, the order of `asc`),
-whatever order the ids were inserted in. -/
-theorem Tm.symLt_den (ρ : Val) (r : Tm (.atom .sym) (.atom .i64)) {D : Dict} {Rk : Tab .long .long}
-    (h : rank D = .ok Rk) (wD : D.WF) (hb : D.n.toNat < 2 ^ 63)
-    (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') (hr : ∀ a q, r.den ρ a q ↔ Rk.Holds a.toInt64 q)
-    (a b : UInt64) :
-    (Tm.comp r (.comp (Tm.lt (t := .i64) (.ran r)) (.conv r))).den ρ a b ↔
-      (∃ q, Rk.Holds a.toInt64 q) ∧ (∃ s, Rk.Holds b.toInt64 s) ∧
-        ∃ t u, D.Holds a.toInt64 t ∧ D.Holds b.toInt64 u ∧ Obj.lt (.arr (.atom .char)) t u := by
-  simp only [Tm.den, Tm.lt, Tm.argDen, Prim.den_cmpRelRow_lt, Core.Rel.comp, Core.Rel.recip, ltDen, ltAt, Tm.ran_den', hr]
-  constructor
-  · rintro ⟨x, hx, y, ⟨-, -, hxy⟩, hy⟩
-    obtain ⟨t, ht, -⟩ := (rank_holds h wD _ _).1 hx
-    obtain ⟨u, hu, -⟩ := (rank_holds h wD _ _).1 hy
-    exact ⟨⟨x, hx⟩, ⟨y, hy⟩, t, u, ht, hu, (rank_lt_iff h wD hb hf ht hu hx hy).1 hxy⟩
-  · rintro ⟨⟨x, hx⟩, ⟨y, hy⟩, t, u, ht, hu, hlt⟩
-    exact ⟨x, hx, y, ⟨⟨x, rfl, a, hx⟩, ⟨y, rfl, b, hy⟩, (rank_lt_iff h wD hb hf ht hu hx hy).2 hlt⟩, hy⟩
-
-/-- **`asc` on `sym` numbers by text**: with `r` the term `rank(D)` and `Q = dom(S) r` for the set `S` (`Elab.symOrd`),
-`asc(ran Q) ≫ Q°` is the table `symAsc D P` gives for `P` the relation `S` means, so `symAsc_lt_iff` orders it by text. -/
-theorem Tm.symAsc_den (ρ : Val) (r : Tm (.atom .sym) (.atom .i64)) (S : Tm (.atom .sym) (.atom .sym)) {D : Dict}
-    {Rk : Tab .long .long} {P : Tab (.atom .sym) (.atom .sym)} {T : Tab .long (.atom .sym)}
-    (h : symAsc D P = .ok T) (hR : rank D = .ok Rk) (wD : D.WF) (wP : Vals.WF P.key)
-    (hr : ∀ a q, r.den ρ a q ↔ Rk.Holds a.toInt64 q) (hS : ∀ a b, S.den ρ a b ↔ P.Holds a b) (j : Int64) (a : UInt64) :
-    (Tm.comp (Tm.asc (.ran (.comp (.dom S) r))) (.conv (.comp (.dom S) r))).den ρ j a ↔ T.Holds j a := by
-  rw [symAsc_holds h hR wD wP]
-  have hset : (fun b => ∃ c, (Tm.ran (.comp (.dom S) r)).den ρ b c) =
-      fun b => ∃ x, (∃ y, P.Holds x y) ∧ Rk.Holds x.toInt64 b := funext fun b => propext <| by
-    simp only [Tm.ran_den', Tm.den, Core.Rel.comp, Tm.dom_den', hr, hS]
-    constructor
-    · rintro ⟨-, rfl, m, x, ⟨rfl, y, hy⟩, hx⟩; exact ⟨m, ⟨y, hy⟩, hx⟩
-    · rintro ⟨x, ⟨y, hy⟩, hx⟩; exact ⟨b, rfl, x, x, ⟨rfl, y, hy⟩, hx⟩
-  simp only [Tm.den, Tm.asc, Tm.argDen, Prim.den_ascRow, Core.Rel.comp, Core.Rel.recip, hset, Tm.dom_den', hr, hS]
-  constructor
-  · rintro ⟨q, hq, x, ⟨rfl, y, hy⟩, hx⟩; exact ⟨⟨y, hy⟩, q, hx, hq⟩
-  · rintro ⟨⟨y, hy⟩, q, hx, hq⟩; exact ⟨q, hq, a, ⟨rfl, y, hy⟩, hx⟩
 
 end Rel.Lang

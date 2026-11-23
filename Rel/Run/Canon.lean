@@ -17,14 +17,6 @@ the kernels do not read (any encoding but `foR`) is the error that names it: tho
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
-/-- A summand's columns at its sum side's `n` rows: `cols` of the summand `y` gathered at the positions `p`; a summand
-of no rows has no columns, and a position outside it is the error naming the `side`. -/
-def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : ValsB true B n → Except String (List (AscKey × Enc)))
-    (p : Enc) (y : ValsB true B m) : Except String (List (AscKey × Enc)) :=
-  if m.toNat = 0 then .ok [] else match ValsB.gather n p y with
-    | .ok g => cols g
-    | .error s => .error s!"cols: a sum side's {side} position: {s}"
-
 /-- The key columns of an atom column at ownership `o`: its payload, a nullable one coding its nulls first (`kasc`). -/
 def ColB.enc : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Enc
   | false, _, _, x => Arr.enc x

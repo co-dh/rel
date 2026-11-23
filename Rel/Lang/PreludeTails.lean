@@ -79,37 +79,5 @@ theorem Tm.tailsFold_row (ρ : Val) {B : Obj} (e : Tm (.arr (.arr B)) (.arr (.ar
     (f := fun x acc => (x :: acc.headD []) :: acc) (fun x a ha w => Tm.tailsStep_den ρ hd hhd x a ha w)
     (fun _ _ _ => List.cons_ne_nil _ _) xs [[]] (List.cons_ne_nil _ _) yss).trans (by rw [tails_foldr])
 
-/-- **The definition of `tails` means the row**: the suffixes of `xs`, longest first. -/
-theorem Tm.tailsDef_row (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (yss : Obj.El (.arr (.arr B))) :
-    (Tm.tailsDef B).den ρ xs yss ↔ Prim.den (rowOf "tails") (.arr B) (.arr (.arr B)) [] xs yss :=
-  Tm.tailsFold_row ρ _ Tm.at0 (fun v => by rw [Tm.tailsSeed_den]; exact ⟨fun ⟨_, h⟩ => h, fun h => ⟨[], h⟩⟩)
-    (fun a as w => by rw [Tm.at0_den]; simp [eq_comm]) xs yss
-
-
-theorem Tm.tailsDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
-    {t' : Tm ((Obj.arr (Obj.atom .general)).inst ph σ) ((Obj.arr (Obj.arr (Obj.atom .general))).inst ph σ)}
-    (ht : Rel.Programs.prelude.tails.body.instObj ph σ = .ok t') (xs yss) :
-    t'.den ρ xs yss ↔ Prim.den (rowOf "tails") _ _ [] xs yss := by
-  obtain rfl := Except.ok.inj ht
-  refine Tm.tailsFold_row ρ _ _ ?_ ?_ xs yss
-  · intro v
-    simp only [Tm.den, Tm.argDen, cast_eq]
-    erw [Prim.den_ranRow, Prim.den_nilRow, Prim.den_tau]
-    simp only [Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, nilDen]
-    have i : Fin (USize.ofNat 1).toNat := ⟨0, by simp [USize.toNat_ofNat]⟩
-    constructor
-    · rintro ⟨_, rfl, -, -, _, -, _, rfl, rfl⟩; rfl
-    · rintro rfl
-      exact ⟨_, rfl, _, ⟨_, ⟨i, rfl, rfl⟩, _, rfl, rfl⟩, _, ⟨i, rfl, rfl⟩, _, rfl, rfl⟩
-  · intro a as w
-    simp only [Gen.atom_zero, Tm.den, Tm.argDen, cast_eq]
-    have hu : Rep.rep (Gen.relV (.atom .i64) (.atom .i64) (USize.ofNat 1) (zeroCol .i64 rfl, true)
-        (zeroCol .i64 rfl, true)).fst = (Tm.uni (A := .atom .i64) (zeroCol .i64 rfl)).den ρ := by
-      funext x y; apply propext
-      refine (Tm.relV_den ρ (zeroCol .i64 rfl, true) (zeroCol .i64 rfl, true) x y).trans ?_
-      simp only [Tm.den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
-      exact ⟨fun ⟨i, h1, h2⟩ => ⟨i, h1.symm, h2.symm⟩, fun ⟨i, h1, h2⟩ => ⟨i, h1.symm, h2.symm⟩⟩
-    rw [hu]
-    exact (Tm.at0_den ρ (a :: as) w).trans (by simp)
 
 end Rel.Lang

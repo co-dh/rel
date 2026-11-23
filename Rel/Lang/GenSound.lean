@@ -1535,12 +1535,6 @@ theorem Tm.GenHyp.ext {ts ts' : Array Res} (he : Shares.Ext ts ts') {A B : Obj} 
     (h : t.GenHyp (Res.Slot ts)) : t.GenHyp (Res.Slot ts') :=
   Tm.GenHyp.mono (fun k _ hR => he k _ hR) h
 
-/-- What numbering `t` to `t'` keeps, the table at `ts`: `t'` reads it (`Res.Slot`), has no more free variables,
-    no worse a sign of any, and a row stays itself (a spine's head, `Tm.pol`). -/
-def NOut {A B : Obj} (t t' : Tm A B) (ts : Array Res) : Prop :=
-  t'.GenHyp (Res.Slot ts) ∧ (∀ k ∈ t'.fv, k ∈ t.fv) ∧ (∀ s k, t.pol s k = true → t'.pol s k = true) ∧
-    (∀ r, t = .prim r → t' = t)
-
 theorem NOut.ext {A B : Obj} {t t' : Tm A B} {ts ts' : Array Res} (h : NOut t t' ts) (he : Shares.Ext ts ts') :
     NOut t t' ts' := ⟨h.1.ext he, h.2⟩
 

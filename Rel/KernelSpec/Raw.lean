@@ -94,15 +94,6 @@ theorem extract_loop_getElem? {α : Type} (a bs : Array α) (i j k : Nat) :
         · rw [if_neg hi]
 
 
-theorem extract_getElem? {α : Type} (a : Array α) (s e k : Nat) :
-    (a.extract s e)[k]? = if k < min e a.size - s then a[s + k]? else none := by
-  unfold Array.extract
-  have h0 : ∀ c, (Array.emptyWithCapacity (α := α) c).size = 0 := fun _ => rfl
-  rw [extract_loop_getElem?, h0, if_neg (Nat.not_lt_zero _), Nat.sub_zero, Nat.sub_eq]
-  by_cases hk : k < min e a.size - s
-  · rw [if_pos hk, if_pos hk, if_pos (by rw [Nat.lt_sub_iff_add_lt, Nat.lt_min] at hk; omega)]
-  · rw [if_neg hk, if_neg hk]
-
 
 /-- **The foR round trip.** `Enc.raw` cannot tell `Coc.encodeAt` at any block size `2 ^ lg` the layout admits
 (`6 ≤ lg ≤ 16`) from the dense payload it encodes, read at that payload's width `w`, at any count up to `x`'s: element
@@ -118,29 +109,5 @@ theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t
   rw [foRBits_encode lg hlg w hw.1 hw.2 x i (by simp at h1; omega),
     show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from
       sext_bits w hw.1 hw.2 _ (bitsAt_lt _ _ _ hw.2), UInt64.ofNat_toNat]
-
-/-- **The foR round trip of a nullable column** (`1+atom`): row `i` of `Coc.encodeAt` with the null rows `nul`, read
-through `Column.foROpt` and cut to the payload's `8 * w` bits, is `none` at a null and `x`'s element elsewhere
-(`foROpt_encode`). `raw_encodeAt` is its null-free case. `hle` is `planBlock_nul`'s. `hbig` is `foROpt_encode`'s, at every row: only a column of
-`2 ^ 64` rows or more, which carries no patch list, needs it. -/
-theorem rawOpt_encodeAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x nul : ByteArray)
-    {patch : Bool} {least : Int64} (n : Nat) (hn : n ≤ x.size / w)
-    (hle : ∀ j < x.size / w, Column.bitAt nul j = false → least.toInt ≤ (Kernel.Coc.keyAt w x j).toInt)
-    (hbig : 2 ^ 64 ≤ x.size / w → ∀ i < n, Column.bitAt nul i = false → Kernel.Coc.lowKey least (Kernel.Coc.keyAt w x i) = true → ∀ j,
-      i / 2 ^ lg * 2 ^ lg ≤ j → j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
-    (Array.range n).map (fun i => (Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1
-      (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).2
-      (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1) i).map
-        fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w))) =
-      (Array.range n).map fun i => if Column.bitAt nul i then none else some (Column.bitsAt x (i * w) w) := by
-  refine Array.ext (by simp) fun i h1 _ => ?_
-  simp only [Array.size_map, Array.size_range] at h1
-  simp only [Array.getElem_map, Array.getElem_range]
-  rw [foROpt_encode lg hlg w hw0 hw x nul i (by omega) hle fun h => hbig h i h1]
-  cases Column.bitAt nul i
-  · simp only [Bool.false_eq_true, ↓reduceIte, Option.map_some]
-    rw [show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from
-      sext_bits w hw0 hw _ (bitsAt_lt _ _ _ hw), UInt64.ofNat_toNat]
-  · simp only [↓reduceIte, Option.map_none]
 
 end Rel.Verify

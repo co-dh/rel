@@ -430,26 +430,6 @@ def alpDat (f32 : Bool) (x : UInt64) (e : Nat) : Option UInt64 :=
   else none
 
 
-/-- Block `b`'s exponent and each of its elements' `d`, `none` at an exception. The exponent is the
-largest any of the block's elements needs and then **every** element is re-verified at it: raising
-it is not harmless, `x * 10 ^ e` running out of mantissa, so a value exact at its own exponent can
-still fall out here. -/
-def alpBlockOf (f32 : Bool) (B w n b : Nat) (x : ByteArray) (own : Array (Option Nat)) :
-    Nat × Array (Option UInt64) :=
-  let lo := b * B
-  let js := Array.range (min (lo + B) n - lo)
-  let e := js.foldl (init := 0) fun acc j => max acc ((own[lo + j]!).getD 0)
-  (e, js.map fun j =>
-    if (own[lo + j]!).isNone then none
-    else alpDat f32 (Rel.Column.bitsAt x ((lo + j) * w) w) e)
-
-/-- The alp blob: `excBlob` ending in each block's exponent, its flag word saying whether an element is four bytes.
-`Column.alpSects` reads this ladder back and `rust/src/coc.rs`'s `alp_layout` is the C's one copy of it. -/
-def alpBlob (f32 : Bool) (B w n : Nat) (x : ByteArray) (bs : Array (Nat × Array (Option UInt64))) :
-    ByteArray :=
-  excBlob (if f32 then 1 else 0) B w bs.size x ((Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone)
-    (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
-
 
 
 

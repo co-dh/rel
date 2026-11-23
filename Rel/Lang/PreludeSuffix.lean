@@ -32,14 +32,4 @@ theorem Tm.suffixDef_row (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
   · rintro ⟨p, hp, rfl⟩; exact ⟨p.1, hp.symm⟩
   · rintro ⟨t, ht⟩; exact ⟨(t, ys), ht.symm, rfl⟩
 
-/-- **`suffix`'s text means the row** (Q3 = H, as `Tm.domDef_den`): the body the prelude elaborates,
-    `prelude.suffix.body`, at any objects `σ` (`Tm.instObj`), means the row there. -/
-theorem Tm.suffixDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : Tm ((Obj.atom .general).arr.inst ph σ)
-    ((Obj.atom .general).arr.inst ph σ)} (ht : Rel.Programs.prelude.suffix.body.instObj ph σ = .ok t')
-    (xs ys : Obj.El ((Obj.atom .general).arr.inst ph σ)) :
-    t'.den ρ xs ys ↔ Prim.den (rowOf "suffix") ((Obj.atom .general).arr.inst ph σ) ((Obj.atom .general).arr.inst ph σ)
-      [] xs ys := by
-  obtain rfl : Tm.suffixDef ((Obj.atom .general).inst ph σ) = t' := Except.ok.inj ht
-  exact Tm.suffixDef_row ρ xs ys
-
 end Rel.Lang

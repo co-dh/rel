@@ -146,14 +146,6 @@ theorem Gen.atom_zero : Gen.atom .i64 (USize.ofNat 1)
 theorem Tm.relV_den (ρ : Val) {A B : Obj} {n : USize} (k : Vals A n × Bool) (v : Vals B n × Bool) (x : A.El)
     (y : B.El) : (Tm.val (Gen.relV A B n k v).1).den ρ x y ↔ ∃ i, k.1.row i = x ∧ v.1.row i = y := Iff.rfl
 
-/-- A universe on `1` (`Gen.oneV` builds one) is the identity of `1` where it has a row, else empty. -/
-theorem Tm.uniOne_den (ρ : Val) {m : USize} (U : Vals .one m) (x y : Obj.El .one) :
-    (Tm.uni U).den ρ x y ↔ 0 < m.toNat := by
-  simp only [Tm.den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
-  constructor
-  · rintro ⟨i, -⟩; exact Nat.lt_of_le_of_lt (Nat.zero_le _) i.2
-  · intro h; exact ⟨⟨0, h⟩, by simp⟩
-
 /-- The base `0`, `ran(u₀ {0})` of the literal zero `zeroCol`: its values are the word `0` of the atom, where it is in
     its universe. -/
 theorem ranZeroCol_den {t : QAtomicType} (h : t.ordNum.isSome) (u₀ : Tm (.atom t) (.atom t)) (ρ : Val)

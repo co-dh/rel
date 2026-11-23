@@ -136,8 +136,6 @@ end Firsts
 def ids (b : ByteArray) : List Nat := (List.range (b.size / 8)).map fun i => (Column.bitsAt b (i * 8) 8).toNat
 
 
-theorem usize_lt (n : USize) : n.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le n.toNat_lt_size USize.size_le
-
 
 
 
