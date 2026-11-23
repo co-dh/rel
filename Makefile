@@ -118,7 +118,7 @@ native:
 	REL_NATIVE='$(NATIVES)' $(LAKE) build rel-native
 	rm -rf $(NAT); mkdir -p $(NAT)
 	grep -v '^#' $(PROGS) > $(NAT)/progs
-	while read -r name mod plan run inp; do
+	while read -r name mod plan run inp out; do
 	  case " $(NATIVES) " in *" $$name "*) ;; *) continue ;; esac
 	  d=$(NAT)/$$name; mkdir -p $$d/lean $$d/native $$d/run
 	  # the inputs, read relative to each run's directory: a program's own writer, or the files of test/native/in
@@ -131,18 +131,18 @@ native:
 	  (cd $$d/native; $(CURDIR)/.lake/build/native/$$name)
 	  # the Lean meaning of the program (`run`, not the plan), whose out/ the native one must hold byte for byte
 	  (cd $$d/run; $(LAKE) env $(RELC) run $$mod $$run)
-	  find $$d/run/out -mindepth 1 -printf '%y %P\n' | sort > $$d/run.entries
-	  test -s $$d/run.entries || { echo "native $$name: relc run wrote nothing under $$d/run/out; it is written by: $(LAKE) env $(RELC) run $$mod $$run, run in $$d/run" >&2; exit 1; }
-	  test -d $$d/lean/out || { echo "native $$name: no $$d/lean/out; it is written by: $(LAKE) env $(RELC) plan $$d/lean $$pargs" >&2; exit 1; }
-	  test -d $$d/native/out || { echo "native $$name: no $$d/native/out; it is written by: $(CURDIR)/.lake/build/native/$$name, run in $$d/native" >&2; exit 1; }
-	  find $$d/lean/out -mindepth 1 -printf '%y %P\n' | sort > $$d/lean.entries
-	  find $$d/native/out -mindepth 1 -printf '%y %P\n' | sort > $$d/native.entries
-	  test -s $$d/lean.entries || { echo "native $$name: relc plan wrote nothing under $$d/lean/out" >&2; exit 1; }
+	  find $$d/run/$$out -mindepth 1 -printf '%y %P\n' | sort > $$d/run.entries
+	  test -s $$d/run.entries || { echo "native $$name: relc run wrote nothing under $$d/run/$$out; it is written by: $(LAKE) env $(RELC) run $$mod $$run, run in $$d/run" >&2; exit 1; }
+	  test -d $$d/lean/$$out || { echo "native $$name: no $$d/lean/$$out; it is written by: $(LAKE) env $(RELC) plan $$d/lean $$pargs" >&2; exit 1; }
+	  test -d $$d/native/$$out || { echo "native $$name: no $$d/native/$$out; it is written by: $(CURDIR)/.lake/build/native/$$name, run in $$d/native" >&2; exit 1; }
+	  find $$d/lean/$$out -mindepth 1 -printf '%y %P\n' | sort > $$d/lean.entries
+	  find $$d/native/$$out -mindepth 1 -printf '%y %P\n' | sort > $$d/native.entries
+	  test -s $$d/lean.entries || { echo "native $$name: relc plan wrote nothing under $$d/lean/$$out" >&2; exit 1; }
 	  cmp $$d/lean.entries $$d/native.entries || { echo "native $$name: the entries of out/ differ (< lean, > native):" >&2; comm -3 $$d/lean.entries $$d/native.entries >&2; exit 1; }
-	  find $$d/lean/out -type f -printf '%P\n' | sort | xargs -I{} cmp $$d/lean/out/{} $$d/native/out/{}
+	  find $$d/lean/$$out -type f -printf '%P\n' | sort | xargs -I{} cmp $$d/lean/$$out/{} $$d/native/$$out/{}
 	  comm -23 $$d/run.entries $$d/native.entries > $$d/run.missing
 	  if [ -s $$d/run.missing ]; then echo "native $$name: entries relc run wrote and the native run did not:" >&2; cat $$d/run.missing >&2; exit 1; fi
-	  find $$d/run/out -type f -printf '%P\n' | sort | xargs -I{} cmp $$d/run/out/{} $$d/native/out/{}
+	  find $$d/run/$$out -type f -printf '%P\n' | sort | xargs -I{} cmp $$d/run/$$out/{} $$d/native/$$out/{}
 	  # the gate plan's own Lean value of each term it outputs (`relc lean`, `writeRel`), not the plan: comparing the plan
 	  # only with itself let a converse that skipped `canon` pass; each file the Lean value writes, the native run writes alike
 	  if [ "$$plan" = - ]; then
@@ -150,7 +150,7 @@ native:
 	    $(LAKE) env $(RELC) lean $$d/sem
 	    find $$d/sem/out -type f -printf '%P\n' | sort > $$d/sem.files
 	    test -s $$d/sem.files || { echo "native $$name: relc lean wrote nothing under $$d/sem/out" >&2; exit 1; }
-	    xargs -I{} cmp $$d/sem/out/{} $$d/native/out/{} < $$d/sem.files
+	    xargs -I{} cmp $$d/sem/out/{} $$d/native/$$out/{} < $$d/sem.files
 	  fi
 	done < $(NAT)/progs
 
