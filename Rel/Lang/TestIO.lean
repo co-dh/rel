@@ -580,9 +580,36 @@ info: "val\n2\n0\n2\n"
   IO.FS.removeDirAll d
   return r
 
+-- `asc` at `sym` inside a generic definition: the numbering of `S` is by text order (`a b c` are 0 1 2), where the ids
+-- of `b a c` (0 1 2) would number them `b a c`
+open Rel.Programs.prelude in
+rel_program symAscGenIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-symascgen/a.csv"
+    dictionary D : S ⟶ [C]
+    numbering(R : α ⟶ β, D : β ⟶ γ) : δ ⟶ β ≜ asc(ran(R))
+    ns : N ⟶ S ≜ numbering(a, D)
+    output ns to csv "/data/tmp/rel-test-io-symascgen/n.csv"
+
+/--
+info: "val\na\nb\nc\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-symascgen"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
+  symAscGenIO.io
+  let r ← IO.FS.readFile (d ++ "/n.csv")
+  IO.FS.removeDirAll d
+  return r
+
 -- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
 /--
-error: line 594, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
+error: line 621, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
 -/
 #guard_msgs in
 rel_program dictFirstT where
