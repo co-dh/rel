@@ -728,9 +728,9 @@ theorem sumTailF_fold {α : Type} [DecidableEq α] {u : QAtomicType} (hu : u = .
   have hop : ∀ a x, Op.fadd.eval a x = .ok (Lang.faddW a x) := fun _ _ => rfl
   have hpost : ∀ a, chain [(.fto u, 0)] a = .ok (Op.ftoWord u a) := fun _ => rfl
   have hst : kscanStream .fadd [(n, z), (n, v)] (widen u) [(.fto u, 0)] = false := kscanStream_ne (by decide) _ _ _
-  have hU := (runScanChain_ok hop hw0 hruns (fun a => (hpw a).1) hpost hsu hz0 hst hk).2
+  have hU := (runScanChain_ok hop (by decide) hw0 hruns (fun a => (hpw a).1) hpost hsu hz0 hst hk).2
   obtain ⟨r3, hk64⟩ := kscan_i64 hw0 hu1 hk
-  have h64 := (runScanChain_ok (w := 8) hop rfl hruns (fun a => (hpw a).1) hpost hsu hz0 hst hk64).2
+  have h64 := (runScanChain_ok (w := 8) hop (by decide) rfl hruns (fun a => (hpw a).1) hpost hsu hz0 hst hk64).2
   simp only [if_neg hu1, if_neg (show QAtomicType.i64 ≠ .u1 by decide)] at hU h64
   have h64' : ∀ q < n.toNat, (Enc.raw .i64 n W0.enc)[q]?.getD 0 = Op.ftoWord u
       ((((List.range (q + 1)).filter fun p => Verify.groupOf Kk n.toNat p = Verify.groupOf Kk n.toNat q).map
@@ -786,7 +786,7 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
     rw [Except.bind_eq_ok'] at h; obtain ⟨Wa, hWa, h⟩ := h
     simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
     have hbw := badWord_spec hsv hd hsd hq1 hsw hq2 hovf heW hev ho1 hbad
-    have hW := (runScan_ok (op := .add) (fn := (· + ·)) (fun _ _ => rfl) hruns hsu hz (kscanStream_ne (by decide) _ _ _) hr).2
+    have hW := (runScan_ok (op := .add) (fn := (· + ·)) (fun _ _ => rfl) (by decide) hruns hsu hz (kscanStream_ne (by decide) _ _ _) hr).2
     have hF := Lang.sums_fold hruns (fun q => (Enc.raw .i64 n v)[q]?.getD 0) (fun q => (Enc.raw .i64 n Ws)[q]?.getD 0)
       (fun q => (Enc.raw .i64 n bad')[q]?.getD 0) hW (fun t ht => (hbw t ht).2)
     refine ⟨.inl rfl, fun t ht => ⟨(hbw t ht).1, fun w => ?_⟩⟩
@@ -850,7 +850,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
   -- the left fold per key up to each row, and the prefix `|` of the bad words
   have hsu := seenSeg_ok hk2 hseg
   obtain ⟨hu, hF⟩ := sumTail_fold (kseen_runs hk2) hsu hst
-  have hB := (runScan_ok (op := .or) (fn := (· ||| ·)) (fun _ _ => rfl) (kseen_runs hk2) hsu hz (kscanStream_ne (by decide) _ _ _) hr2).2
+  have hB := (runScan_ok (op := .or) (fn := (· ||| ·)) (fun _ _ => rfl) (by decide) (kseen_runs hk2) hsu hz (kscanStream_ne (by decide) _ _ _) hr2).2
   have hBR : ∀ t < C.n.toNat, ((Enc.raw .i64 C.n R)[t]?.getD 0 = 0 ∨ (Enc.raw .i64 C.n R)[t]?.getD 0 = 1) ∧
       ((Enc.raw .i64 C.n R)[t]?.getD 0 = 0 ↔ ∀ q ∈ (List.range (t + 1)).filter (fun q =>
         Verify.groupOf (seenKey C.n e2) C.n.toNat q = Verify.groupOf (seenKey C.n e2) C.n.toNat t),
