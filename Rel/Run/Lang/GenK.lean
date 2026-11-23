@@ -239,15 +239,6 @@ open Rel Gen
 def after (A B : Obj) (f : {K : Obj} → Tab K A → Except String (Tab K B)) : Rel A B :=
   ofVals A B fun X => do f (← Tab.idU X)
 
-/-- `succ`, a value verb on `U`'s universe: the keys' coreflexive `D`, then `D ≫ succDen U` (`Tab.succ`),
-    `D ≫ arithDen k U` (`Tab.arith`), `U` run knowing its domain is the values each step asks about, so an infinite
-    universe (`𝟙`) is as good as a table. -/
-def succ (U : Rel .long .long) : Rel .long .long :=
-  after _ _ fun D => Tab.succ D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
-def arith (t : QAtomicType) (k : UInt8) (U : Rel (.atom t) (.atom t)) :
-    Rel (.prod (.atom t) (.atom t)) (.atom t) :=
-  after _ _ fun D => Tab.arith t k D fun X => U.runE ⟨some ⟨_, X⟩, none, none⟩
-
 /-- One side of `cmp`: `U` run knowing its domain is the values `s` the context knows of that side, its `dom`, cut
     to `s` (`idU ≫ dom U`); `dom U` run closed where the context knows none, and where that fails (an infinite
     universe, `𝟙`) the message naming `op` and the side `w`. -/
@@ -386,7 +377,9 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
    ("foldI", ``GenK.foldI),
    ("star", ``Tab.star),
    ("dom", ``GenK.dom), ("ran", ``GenK.ran), ("nil", ``GenK.nil)].map fun (s, c) => (s, c, [])) ++
-  floatOps.map fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])
+  floatOps.map (fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])) ++
+  arithOps.map (fun (s, _) => (s, ``Tab.arithOp, [Lean.mkStrLit s])) ++ [("succ", ``Tab.succOp, [])] ++
+  cmpOps.map fun (s, _) => (s, ``Tab.cmpOp, [Lean.mkStrLit s])
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)

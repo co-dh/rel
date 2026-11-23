@@ -280,21 +280,6 @@ theorem Tab.foldRoundsR_holds {K E V : Obj} {step : Tab K V → Tab K E → Exce
 
 namespace GenK
 
-/-- `arith t k` on `U`'s universe: the keys' coreflexive `D`, then `D ≫ arithDen t k U` (`Tab.arith_holds`). -/
-theorem arith_sound {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)}
-    {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, K.WF → U.Reps K TU) :
-    ∀ K, K.WF → (GenK.arith t k U).Reps K (arithDen t k TU) := by
-  unfold GenK.arith after
-  exact ofVals_sound fun _ _ _ _ hK wX h x w hx _ _ => by
-    obtain ⟨D, hD, ht⟩ := bind_ok h
-    have hu : ∀ n (X : Vals (.atom t) n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
-        (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
-      (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none, none⟩ ⟨trivial, trivial, trivial⟩) t h a v ((side_some rfl a).2 ha) rfl
-        trivial
-    refine (Tab.arith_holds hu ht (Tab.idU_wf hD wX) x w).trans
-      ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
-    obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
-
 /-- A round's step `compT (r ≫ S)` on the pairs `r` of `P` and `el` (`⟨P, el⟩` or `⟨el, P⟩`): the pairs related by
 `S`'s meaning `TS`. -/
 theorem pairStep_holds {K C D B : Obj} {S : Rel (.prod C D) B} {TS : Core.Rel (Obj.El (.prod C D)) (Obj.El B)}

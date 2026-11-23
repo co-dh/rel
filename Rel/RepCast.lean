@@ -138,5 +138,58 @@ theorem cast_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.c
   | .prod .., _, _, _, h, _, _ | .arr _, _, _, _, h, _, _ | .sum .., _, _, _, h, _, _ =>
     simp [Tab.cast] at h
 
+/-- **A row `s` of `arithOps` on the pairs `X`** denotes `stepOn` of its verb there (`stepColsAt_spec`): no row at a
+    pair of two atoms or of non-atoms. -/
+theorem arithOp_den {B : Obj} {n : USize} {X : Vals (.prod B B) n} {T : Tab (.prod B B) B} {s : String} {k : UInt8}
+    (hs : arithOps.lookup s = some k) (h : Tab.arithOp s X = .ok T) (a : (Obj.prod B B).El) (b : B.El) :
+    T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.stepOn k B a b := by
+  cases B
+  case atom u =>
+    simp only [Tab.arithOp, hs, and_self, ↓reduceIte] at h
+    obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
+    exact keep_map_holds hU (fun i => stepColsAt_spec hm i) a b
+  all_goals simp [Tab.arithOp, hs] at h
+
+/-- **A row of `arithOps` keeps `Tab.WF`**: `X` keyed to the answer words, `keep`. -/
+theorem arithOp_wf {s : String} {B : Obj} {n : USize} {X : Vals (.prod B B) n} {T : Tab (.prod B B) B}
+    (h : Tab.arithOp s X = .ok T) (hX : Vals.WF X) : T.WF := by
+  rcases hl : arithOps.lookup s with _ | k <;> cases B <;> simp only [Tab.arithOp, hl, and_self, ↓reduceIte] at h
+  case some.atom u =>
+    obtain ⟨⟨w, f⟩, -, h⟩ := Except.bind_eq_ok'.1 h
+    exact keep_wf h ⟨hX, trivial⟩
+  all_goals cases h
+
+/-- **The row `succ` on the values `X`** denotes `succOn`: each `u` to `Ew.intStep`'s `u + 1` (the null to itself),
+    the step of `Tab.succ_holds`; no row at an object other than `i64`. -/
+theorem succOp_den {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.succOp X = .ok T) (x w : A.El) :
+    T.Holds x w ↔ (∃ i, X.row i = x) ∧ Lang.succOn A x w := by
+  cases A
+  case atom t =>
+    cases t
+    case i64 =>
+      simp only [Tab.succOp, bind, Except.bind_eq_ok'] at h
+      obtain ⟨s, hs, h⟩ := h
+      cases h
+      have hrow := Tab.succCol_row hs
+      simp only [Tab.Holds, Lang.succOn]
+      constructor
+      · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, hrow i⟩
+      · rintro ⟨⟨i, rfl⟩, rfl⟩; exact ⟨i, rfl, hrow i⟩
+    all_goals simp [Tab.succOp] at h
+  all_goals simp [Tab.succOp] at h
+
+/-- **The row `succ` keeps `Tab.WF`**: `X` keyed to the answer words. -/
+theorem succOp_wf {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.succOp X = .ok T) (hX : Vals.WF X) :
+    T.WF := by
+  cases A
+  case atom t =>
+    cases t
+    case i64 =>
+      simp only [Tab.succOp, bind, Except.bind_eq_ok'] at h
+      obtain ⟨_, -, h⟩ := h
+      cases h; exact ⟨hX, trivial⟩
+    all_goals simp [Tab.succOp] at h
+  all_goals simp [Tab.succOp] at h
+
 end Tab
 end Rel

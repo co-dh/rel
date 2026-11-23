@@ -198,6 +198,21 @@ theorem plus_iff {t : QAtomicType} {TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.a
       ⟨g, hg0, fun s hs' => (hA _ _ _).2 ⟨hP' s (by omega), hE _ (List.getElem_mem hs'), hs s hs', hP' (s + 1) (by omega)⟩,
         rfl⟩⟩
 
+/-- **`plus` cut to a coreflexive `U` is `arithDen`**: `(U×U) plus U` (`Tm.cut2`) keeps both operands and the sum
+    in `U`. -/
+theorem Tm.cut2_plus_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) (hU : ∀ x y, U.den ρ x y → x = y) :
+    (Tm.cut2 (arithRow "plus") U).den ρ = arithDen t Ew.add (U.den ρ) := by
+  funext p w; obtain ⟨a, b⟩ := p; apply propext; rw [arithDen_iff]
+  simp only [Tm.cut2, Tm.prod, Tm.den, Tm.argDen, Prim.den_plusRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph]
+  constructor
+  · rintro ⟨⟨qa, qb⟩, ⟨⟨a', e1, h1⟩, ⟨b', e2, h2⟩⟩, v, hs, hv⟩
+    subst e1 e2
+    obtain rfl := hU _ _ h1; obtain rfl := hU _ _ h2
+    exact ⟨⟨_, h1⟩, ⟨_, h2⟩, v, hs, hv⟩
+  · rintro ⟨⟨c1, h1⟩, ⟨c2, h2⟩, v, hs, hv⟩
+    obtain rfl := hU _ _ h1; obtain rfl := hU _ _ h2
+    exact ⟨(a, b), ⟨⟨a, rfl, h1⟩, ⟨b, rfl, h2⟩⟩, v, hs, hv⟩
+
 /-- `lengthRow` at `[E] ⟶ ℕ` is the count of its list. -/
 theorem Prim.den_lengthRow {E : Obj} :
     Prim.den lengthRow (.arr E) .long [] = fun (xs : List E.El) w => w = Int64.ofNat xs.length := by
@@ -335,7 +350,8 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
     have hd := count_iff (zeroTm_den (t := .i64) rfl u₀ ρ hU₀) hU x hx w
-    simp only [Tm.den, DfnCut.cut, DfnCut.fused, Prim.den_lengthRow]
+    simp only [Tm.den, DfnCut.cut, DfnCut.fused, Prim.den_lengthRow,
+      Tm.cut1_succ_den ρ u fun x y h => ((hU x y).1 h).1]
     rw [hd]
     have hx : x.length < 2 ^ 63 := hx
     have hc : (∀ t ≤ x.length, P (Int64.ofNat t)) ↔ P (Int64.ofNat x.length) :=
@@ -349,7 +365,8 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
   | sum h u₀ u =>
     -- `⦇[0, plus]⦈`: `plus_iff` reads the fold kept in the universe as the row cut to it
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
-    simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow]
+    simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow,
+      Tm.cut2_plus_den ρ u fun x y h => ((hU x y).1 h).1]
     rw [foldDen_start]
     simp only [zeroTm_den h u₀ ρ hU₀]
     rw [plus_iff hP hU]
