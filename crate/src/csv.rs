@@ -13,14 +13,19 @@ use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 /// constructor index, the names of a named-element object in declared order (empty for every other object).
 pub struct Col<'a> { pub name: &'a str, pub shape: u8, pub t: u8, pub names: Vec<&'a str> }
 
-/// `CsvShape`'s constructors: one atom; `V+1` (tag, idx, values, nulls); `[C]` (lo, hi, bytes).
+/// `CsvShape`'s constructors: one atom; `V+1` (tag, idx, values, nulls); `[C]` (lo, hi, bytes); `1+V` in band (values,
+/// null flags, one encoding). `SH_LAST` bounds them: `ffi::csv::cols` refuses any other index, so no reader here meets one.
 pub const SH_ATOM: u8 = 0;
 pub const SH_NULL: u8 = 1;
 pub const SH_TEXT: u8 = 2;
+pub const SH_OPT: u8 = 3;
+pub const SH_LAST: u8 = SH_OPT;
 
-/// The parts a column is stored as (`CsvShape.parts`), and how many of them hold a word per row (`rowParts`).
-pub fn nparts(shape: u8) -> usize { match shape { SH_NULL => 3, SH_TEXT => 3, _ => 1 } }
+/// The parts a column is stored as (`CsvShape.parts`), how many of them hold a word per row (`rowParts`), and how
+/// many encodings carry them (`CsvShape.encs`: the in-band nullable's two parts are one encoding).
+pub fn nparts(shape: u8) -> usize { match shape { SH_NULL | SH_TEXT => 3, SH_OPT => 2, _ => 1 } }
 fn row_parts(shape: u8) -> usize { match shape { SH_ATOM => 1, _ => 2 } }
+pub fn encs(shape: u8) -> usize { if shape == SH_OPT { 1 } else { nparts(shape) } }
 
 /// A field's byte count as the file means it: a quoted one's `""` counted once.
 fn clen(b: &[u8], x: &Field) -> usize {
@@ -115,13 +120,19 @@ fn record(b: &[u8], mut p: usize, sep: u8, mut f: impl FnMut(usize, &Field)) -> 
 /// column the payload count before each block (`base`) and in all (`tot`): values of a `null` column, bytes of a `text`
 /// one, so each block finds its positions and each payload block its first row without the blocks before it.
 pub struct Lexed { pub n: usize, sep: u8, lg: u32, starts: Vec<usize>, head: Vec<Vec<u8>>, short: Option<(usize, usize, usize)>,
-    base: Vec<Vec<usize>>, tot: Vec<usize> }
+    base: Vec<Vec<usize>>, tot: Vec<usize>, nul: Vec<Vec<u8>> }
+
+impl Lexed {
+    /// Column `c`'s null rows as `Sink::write_nul`'s bitmap (`nulMap` of `layout`'s flags): an in-band nullable's empty
+    /// fields, set in `lex`'s one pass; empty for every other shape.
+    pub fn nul(&self, c: usize) -> &[u8] { &self.nul[c] }
+}
 
 /// The one sequential pass (a quoted field may hold a newline, so no record can be found without the ones before it):
 /// every record split once, the structure of the whole file checked before anything else is (C.4's order).
 pub fn lex(b: &[u8], cols: &[Col], sep: u8, lg: u32) -> Result<Lexed, String> {
     let mut lx = Lexed { n: 0, sep, lg, starts: Vec::new(), head: Vec::new(), short: None,
-        base: cols.iter().map(|_| Vec::new()).collect(), tot: alloc::vec![0; cols.len()] };
+        base: cols.iter().map(|_| Vec::new()).collect(), tot: alloc::vec![0; cols.len()], nul: cols.iter().map(|_| Vec::new()).collect() };
     let (mut p, mut r) = (0, 0usize);
     while p < b.len() {
         let st = p;
@@ -134,12 +145,13 @@ pub fn lex(b: &[u8], cols: &[Col], sep: u8, lg: u32) -> Result<Lexed, String> {
                 lx.starts.push(st);
                 for (bs, &t) in lx.base.iter_mut().zip(&lx.tot) { bs.push(t) }
             }
-            let (mut k, tot) = (0, &mut lx.tot);
+            let (mut k, tot, nul, i) = (0, &mut lx.tot, &mut lx.nul, r - 1);
             p = record(b, p, sep, |j, x| {
                 k += 1;
                 match cols.get(j).map(|c| c.shape) {
                     Some(SH_NULL) if clen(b, x) > 0 => tot[j] += 1,
                     Some(SH_TEXT) => tot[j] += clen(b, x),
+                    Some(SH_OPT) if clen(b, x) == 0 => { let m = &mut nul[j]; m.resize(m.len().max((i >> 3) + 1), 0); m[i >> 3] |= 1 << (i & 7) }
                     _ => {}
                 }
             })?;
@@ -156,6 +168,17 @@ pub fn lex(b: &[u8], cols: &[Col], sep: u8, lg: u32) -> Result<Lexed, String> {
 pub fn counts(lx: &Lexed, c: usize, col: &Col) -> Vec<usize> {
     let (n, t) = (lx.n, lx.tot[c]);
     match col.shape { SH_NULL | SH_TEXT => alloc::vec![n, n, t], _ => alloc::vec![n] }
+}
+
+/// The parts of a column's encodings (`counts`' parts) the writer reads, each as `(its encoding, the flags)`: an
+/// encoding's raw words, or the in-band nullable's second part, the null flags of its one encoding (`Csv.raws`).
+pub fn parts(cols: &[Col]) -> Vec<(usize, bool)> {
+    let mut e = 0;
+    cols.iter().flat_map(|c| {
+        let f = e;
+        e += encs(c.shape);
+        if c.shape == SH_OPT { alloc::vec![(f, false), (f, true)] } else { (f..e).map(|x| (x, false)).collect() }
+    }).collect()
 }
 
 /// The schema's names as the errors list them (`names`).
@@ -179,7 +202,7 @@ pub fn schema(cols: &[Col]) -> Result<(), String> {
         if c.shape == SH_TEXT && (c.t != QT_CHAR || !c.names.is_empty()) {
             return Err(format!("column '{}' is a list of {}; a CSV field holds a list of char only (text)", c.name, form(c)));
         }
-        if c.shape == SH_NULL && cell(c, b"").is_some() {
+        if matches!(c.shape, SH_NULL | SH_OPT) && cell(c, b"").is_some() {
             return Err(format!("column '{}' is nullable, and the empty field, its null, is also a text of {}", c.name, form(c)));
         }
     }
@@ -246,7 +269,14 @@ pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, o
         _ => {
             let mut fails = None;
             rows(&mut |i, x| {
-                let w = if col.shape == SH_NULL && x.is_empty() { Some(1) } else if col.shape == SH_NULL { cell(col, x).map(|_| 0) } else { cell(col, x) };
+                let w = match (col.shape, x.is_empty()) {
+                    // the tag of the right side `1`
+                    (SH_NULL, true) => Some(1),
+                    (SH_NULL, false) => cell(col, x).map(|_| 0),
+                    // the null's word, unread under its bit of `Lexed::nul`
+                    (SH_OPT, true) => Some(0),
+                    _ => cell(col, x),
+                };
                 out[i] = w.unwrap_or(0) as i64;
                 if w.is_none() && fails.is_none() { fails = Some(lo + i) }
             });
@@ -257,7 +287,7 @@ pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, o
 
 /// What a column's field must be, at its shape (`formOf`).
 fn form_of(c: &Col) -> String {
-    match c.shape { SH_NULL => format!("{}, or the empty field (the null)", form(c)), SH_TEXT => "text: any bytes".into(), _ => form(c) }
+    match c.shape { SH_NULL | SH_OPT => format!("{}, or the empty field (the null)", form(c)), SH_TEXT => "text: any bytes".into(), _ => form(c) }
 }
 
 /// The first refusal of the data records in the model's order (`rows`): the first failing row, in it the field count,
@@ -275,9 +305,9 @@ pub fn refusal(b: &[u8], lx: &Lexed, cols: &[Col], bad: &[AtomicUsize]) -> Resul
     Err(format!("row {r} (line {}), column '{}': expected {}, found {}", line(b, p), cols[c].name, form_of(&cols[c]), shown(&f)))
 }
 
-/// The writer is given `k` parts, as many as the schema's columns are stored as (`arity`).
+/// The writer is given `k` encodings, as many as the schema's columns are stored in (`arity` at `CsvShape.encs`).
 pub fn arity(cols: &[Col], k: usize) -> Result<(), String> {
-    let m: usize = cols.iter().map(|c| nparts(c.shape)).sum();
+    let m: usize = cols.iter().map(|c| encs(c.shape)).sum();
     if k == m { Ok(()) } else { Err(format!("{k} word columns, the schema {} is stored as {m}", names(cols))) }
 }
 
@@ -310,8 +340,8 @@ fn at(col: &Col, rw: &[Vec<u64>], cnt: &[usize], i: usize) -> Result<(), String>
 fn field_text(c: &Col, ws: &[u64], s: &mut Vec<u8>) -> Option<()> {
     match (c.shape, ws) {
         (SH_TEXT, _) => { s.clear(); for &w in ws { s.push(u8::try_from(w).ok()?) } Some(()) }
-        (SH_NULL, []) => { s.clear(); Some(()) }
-        (_, [w]) => { text(c, *w, s)?; (c.shape != SH_NULL || !s.is_empty()).then_some(()) }
+        (SH_NULL | SH_OPT, []) => { s.clear(); Some(()) }
+        (_, [w]) => { text(c, *w, s)?; (!matches!(c.shape, SH_NULL | SH_OPT) || !s.is_empty()).then_some(()) }
         _ => None,
     }
 }
@@ -364,6 +394,8 @@ pub fn write(target: &CStr, cols: &[Col], sep: u8, n: usize, cnt: &[usize], lg: 
                     match col.shape {
                         SH_NULL if r[0][i] == 0 => ws.push(pay[c].get(p, r[1][i] as usize, cnt[p], blk, &mut load)),
                         SH_NULL => {}
+                        // a flag other than `0` is the null, as `Kernel.nulMap` reads it
+                        SH_OPT if r[1][i] != 0 => {}
                         SH_TEXT => for q in r[0][i] as usize..r[1][i] as usize { ws.push(pay[c].get(p, q, cnt[p], blk, &mut load)) },
                         _ => ws.push(r[0][i]),
                     }
@@ -645,6 +677,20 @@ mod tests {
         assert_eq!(ymd(b"2023.02.29"), None);
         assert_eq!(stamp(b"1969.12.31D23:59:59.999999999"), Some(-1));
         assert_eq!(stamp(b"2262.04.12D00:00:00"), None);
+    }
+    // the in-band nullable (`CsvShape.opt`): an empty field is a bit of the null bitmap over the word 0, one encoding of
+    // two parts; written, the null is the empty field and a value whose text is empty has none
+    #[test] fn opt_as_the_model() {
+        let cs = [col(QT_I64), Col { name: "y", shape: SH_OPT, t: QT_I64, names: Vec::new() }];
+        let lx = lex(b"x,y\n1,5\n2,\n3,-2\n", &cs, b',', 10).unwrap_or_else(|e| panic!("opt tests: {e}"));
+        assert_eq!((lx.nul(0), lx.nul(1)), (&[][..], &[0b010u8][..]));
+        let (mut out, bad) = ([7i64; 3], AtomicUsize::new(usize::MAX));
+        fill(b"x,y\n1,5\n2,\n3,-2\n", &lx, 1, &cs[1], 0, 0, &mut out, &bad);
+        assert_eq!((out, bad.load(Relaxed), counts(&lx, 1, &cs[1])), ([5, 0, -2], usize::MAX, alloc::vec![3]));
+        assert_eq!((arity(&cs, 2), arity(&cs, 3).is_err(), parts(&cs)), (Ok(()), true, alloc::vec![(0, false), (1, false), (1, true)]));
+        let mut s = Vec::new();
+        assert_eq!((field_text(&cs[1], &[], &mut s), s.clone()), (Some(()), Vec::new()));
+        assert_eq!((field_text(&cs[1], &[5], &mut s), s.clone()), (Some(()), b"5".to_vec()));
     }
     // the records' refusals at the model's lines, and the order: the quotes of the whole file before the header
     #[test] fn records_as_the_model() {

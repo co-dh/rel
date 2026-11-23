@@ -119,7 +119,7 @@ theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t
     show (Kernel.Coc.keyAt w x i).toUInt64.toNat % 2 ^ (8 * w) = (Column.bitsAt x (i * w) w).toNat from
       sext_bits w hw.1 hw.2 _ (bitsAt_lt _ _ _ hw.2), UInt64.ofNat_toNat]
 
-/-- **The foR round trip of a nullable column** (`atom+1`): row `i` of `Coc.encodeAt` with the null rows `nul`, read
+/-- **The foR round trip of a nullable column** (`1+atom`): row `i` of `Coc.encodeAt` with the null rows `nul`, read
 through `Column.foROpt` and cut to the payload's `8 * w` bits, is `none` at a null and `x`'s element elsewhere
 (`foROpt_encode`). `raw_encodeAt` is its null-free case. `hbig` is `foROpt_encode`'s, at every row: only a column of
 `2 ^ 64` rows or more, which carries no patch list, needs it. -/
