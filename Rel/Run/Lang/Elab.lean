@@ -691,7 +691,19 @@ partial def Pre.onDemand : Pre → Bool
   | .var _ _ _ _ (some false) => true
   | x => (x.traverse (m := StateM Bool) pure (fun _ y => do modify (· || y.onDemand); pure y) |>.run false).2
 
+/-- `Pre.demVars`, each node visited once per address: an expansion holds each argument once per use, so a walk of
+    the tree is exponential in the definitions' nesting (as `rewriteShared`), and `build` asks at every call. -/
+unsafe def Pre.demVarsShared (x : Pre) : List Nat :=
+  ((go x).run ({}, [])).2.2
+where go (y : Pre) : StateM (Std.HashSet USize × List Nat) Unit := do
+  unless (← get).1.contains (ptrAddrUnsafe y) do
+    modify fun (s, l) => (s.insert (ptrAddrUnsafe y), l)
+    match y with
+    | .var _ k _ _ (some _) => modify fun (s, l) => (s, k :: l)
+    | _ => y.parts.forM fun (c, _) => go c
+
 /-- The variables `x` reads in a form that needs keys (`Form` `some _`): the demand bits a build of `x` starts from. -/
+@[implemented_by Pre.demVarsShared]
 partial def Pre.demVars : Pre → List Nat
   | .var _ k _ _ (some _) => [k]
   | x => x.parts.flatMap (·.1.demVars)
