@@ -465,14 +465,19 @@ theorem ValsB.gather_row {m : USize} {ix : Enc} : {o : Bool} → {A : Obj} → {
     obtain ⟨i, e, -⟩ := Arr.gather_row (Arr.mk (t := .i64) (n := n) .pos trivial rfl) h1 j
     exact ⟨i, e, rfl⟩
 
+/-- What a row `Opt.fill` writes reads as: the null, or at `general`, which has no null, its `default`. -/
+def Opt.filler : (t : QAtomicType) → Option (El t)
+  | .general => some (default : QValue)
+  | _ => none
+
 /-- **A side whose every cell is a slice of its payload** (PLAN 8.5), over the rows `P` the side owns: at an `arr` side
 each owned row's `[lo, hi)` has `0 ≤ lo ≤ hi ≤ m` and the payload is `WFOn` all its rows; an `Opt` leaf (`o = true`) is
-null exactly where `¬P`; a generic sum has tag `false` off `P`, and each summand owns the rows of `P` its tag names.
+no null on `P` and the filler (`Opt.filler`) off `P`, so two unowned rows read alike; a generic sum has tag `false` off `P`, and each summand owns the rows of `P` its tag names.
 `readVals` checks the cells (`cellBad`) and each producer keeps it, so a reader may take `[lo, hi)` as it is, where
 `ValsB.row` clamps it. -/
 def ColB.OwnedOn : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → (Fin n.toNat → Prop) → Prop
   | false, _, _, _, _ => True
-  | true, _, _, x, P => ∀ i, Opt.get x i = none ↔ ¬P i
+  | true, t, _, x, P => ∀ i, (P i → Opt.get x i ≠ none) ∧ (¬P i → Opt.get x i = Opt.filler t)
 
 /-- The rows `P` of `x` are the rows `ValsB.WFOn` says it owns. -/
 def ValsB.WFOn : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → (Fin n.toNat → Prop) → Prop
@@ -526,13 +531,11 @@ theorem ColB.gather_wf {o : Bool} {t : QAtomicType} {m n : USize} {ix : Enc} {x 
   · trivial
   · intro j
     obtain ⟨i, e, r⟩ := Opt.gather_row x h j
-    have hx' : ∀ i, Opt.get x i = none ↔ ¬P i := hx
-    rw [r, hx' i]
-    constructor
-    · intro hn ⟨i', e', hp⟩
-      obtain rfl : i' = i := Fin.ext (e'.symm.trans e)
-      exact hn hp
-    · intro hn hp; exact hn ⟨i, e, hp⟩
+    have hx' : ∀ i, (P i → Opt.get x i ≠ none) ∧ (¬P i → Opt.get x i = Opt.filler t) := hx
+    rw [r]
+    refine ⟨fun ⟨i', e', hp⟩ => ?_, fun hn => (hx' i).2 fun hp => hn ⟨i, e, hp⟩⟩
+    obtain rfl : i' = i := Fin.ext (e'.symm.trans e)
+    exact (hx' i').1 hp
 
 /-- **`ValsB.gather` keeps `WFOn`**: a gathered row `j` is owned when the row `ix[j]` of `x` is. -/
 theorem ValsB.gather_wf {m : USize} {ix : Enc} : {o : Bool} → {A : Obj} → {n : USize} → {x : ValsB o A n} →
@@ -1384,7 +1387,7 @@ theorem ValsB.codes_of_unowned : {A : Obj} → {n : USize} → (x : ValsB true A
     ∀ i i' : Fin n.toNat, ¬P i → ¬P i' → seenKey n es i = seenKey n es i'
   | .atom t, n, x, P, hw, es, hes, cs, hc, i, i', hp, hp' => by
     simp only [ValsB.cols, Except.ok.injEq] at hes; subst hes
-    have hx : ∀ i, Opt.get x i = none ↔ ¬P i := hw
+    have hx : ∀ i, (P i → Opt.get x i ≠ none) ∧ (¬P i → Opt.get x i = Opt.filler t) := hw
     exact Opt.codes_of_eq x hc i i' (by rw [(hx i).2 hp, (hx i').2 hp'])
   | .prod _ _, n, x, P, hw, es, hes, cs, hc, i, i', hp, hp' => by
     simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at hes

@@ -217,7 +217,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {p q : Arr .i64 n} {w : Arr .i64 n
 
 /-- **`succCol` is `Ew.intStep`'s `u + 1`** at each row (the null to itself). -/
 theorem Tab.succCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : Tab.succCol n X.enc = .ok s)
-    (i : Fin n.toNat) : ValsB.row (A := .long) s i = Ew.intStep Ew.add Alg.nul (X.row i) 1 := by
+    (i : Fin n.toNat) : ValsB.row (o := false) (A := .long) s i = Ew.intStep Ew.add Alg.nul (X.row i) 1 := by
   simp only [Tab.succCol, bind, Except.bind_eq_ok'] at hs
   obtain ⟨ne, hne, hs⟩ := hs
   show s.get i = Ew.intStep Ew.add Alg.nul (Arr.get X i) 1
@@ -239,7 +239,7 @@ theorem Tab.succCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : Ta
 
 /-- **`colArr .mix` is `Op.mixWord`** at each row. -/
 theorem Tab.mixCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : colArr .mix n X.enc X.enc = .ok s)
-    (i : Fin n.toNat) : ValsB.row (A := .long) s i = (Op.mixWord (X.row i).toUInt64).toInt64 := by
+    (i : Fin n.toNat) : ValsB.row (o := false) (A := .long) s i = (Op.mixWord (X.row i).toUInt64).toInt64 := by
   show s.get i = (Op.mixWord (Arr.get X i).toUInt64).toInt64
   rw [Arr.get_i64, Arr.get_i64, UInt64.toUInt64_toInt64]
   have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2

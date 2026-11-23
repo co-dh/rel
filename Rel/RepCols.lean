@@ -467,8 +467,8 @@ theorem ColB.shift_get {o : Bool} {n : USize} {s : UInt64} {x y : ColB o .i64 n}
     (hs : (ColB.get x i).toInt + s.toNat < 2 ^ 63) : (ColB.get y i).toInt = (ColB.get x i).toInt + s.toNat := by
   cases o
   · exact Arr.shift_get h i h0 hs
-  · have hx' : ∀ i, Opt.get x i = none ↔ ¬P i := hx
-    obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.1 fun e => (hx' i).1 e hp
+  · have hx' : ∀ i, (P i → Opt.get x i ≠ none) ∧ (¬P i → Opt.get x i = Opt.filler .i64) := hx
+    obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.1 ((hx' i).1 hp)
     have := Opt.shift_get h i (fun v' hv' => by
       rw [hv] at hv'; cases hv'; simp only [ColB.get, hv, Option.getD_some] at h0 hs; exact ⟨h0, hs⟩)
     rw [hv] at this; simp only [Option.map_some] at this
@@ -483,13 +483,14 @@ theorem ColB.shift_owned {o : Bool} {n : USize} {s : UInt64} {x y : ColB o .i64 
     (hb : ∀ i, P i → 0 ≤ (ColB.get x i).toInt ∧ (ColB.get x i).toInt + s.toNat < 2 ^ 63) : ColB.OwnedOn y P := by
   cases o
   · trivial
-  · have hx' : ∀ i, Opt.get x i = none ↔ ¬P i := hx
+  · have hx' : ∀ i, (P i → Opt.get x i ≠ none) ∧ (¬P i → Opt.get x i = none) := hx
     intro i
     have e := Opt.shift_get h i fun v hv => by
       have hp : P i := Classical.byContradiction fun hp => by rw [(hx' i).2 hp] at hv; cases hv
       have := hb i hp; simp only [ColB.get, hv, Option.getD_some] at this; exact this
-    rw [← hx' i]
-    cases hy : Opt.get y i <;> cases hz : Opt.get x i <;> rw [hy, hz] at e <;> simp at e ⊢
+    have hyx : Opt.get y i = none ↔ Opt.get x i = none := by
+      cases hy : Opt.get y i <;> cases hz : Opt.get x i <;> rw [hy, hz] at e <;> simp at e ⊢
+    exact ⟨fun hp hn => (hx' i).1 hp (hyx.1 hn), fun hp => hyx.2 ((hx' i).2 hp)⟩
 
 /-- **`ColB.concat` owns the rows each side owns**, at their positions in the joined column (`Opt.concat_get`). -/
 theorem ColB.concat_wf {o : Bool} {t : QAtomicType} {n₁ n₂ n : USize} {x : ColB o t n₁} {y : ColB o t n₂}
@@ -498,8 +499,8 @@ theorem ColB.concat_wf {o : Bool} {t : QAtomicType} {n₁ n₂ n : USize} {x : C
     ColB.OwnedOn z fun c => if hc : c.1 < n₁.toNat then P₁ ⟨c.1, hc⟩ else P₂ ⟨c.1 - n₁.toNat, by omega⟩ := by
   cases o
   · trivial
-  · have hx' : ∀ i, Opt.get x i = none ↔ ¬P₁ i := hx
-    have hy' : ∀ i, Opt.get y i = none ↔ ¬P₂ i := hy
+  · have hx' : ∀ i, (P₁ i → Opt.get x i ≠ none) ∧ (¬P₁ i → Opt.get x i = Opt.filler t) := hx
+    have hy' : ∀ i, (P₂ i → Opt.get y i ≠ none) ∧ (¬P₂ i → Opt.get y i = Opt.filler t) := hy
     intro c
     rw [Opt.concat_get hn h c]
     by_cases hc : c.1 < n₁.toNat
