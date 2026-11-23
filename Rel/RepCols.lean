@@ -452,6 +452,34 @@ theorem Opt.shift_get {n : USize} {s : UInt64} {x y : Opt .i64 n} (h : Opt.shift
     · rw [Opt.get_ne y i (by decide), Opt.get_ne x i (by decide), hn, hx]; rfl
   · cases h
 
+/-- **Element `c` of `ColB.concat`** at either ownership: `Arr.concat_get`, or `Opt.concat_get` read through `getD`. -/
+theorem ColB.concat_get {o : Bool} {t : QAtomicType} {n₁ n₂ n : USize} {x : ColB o t n₁} {y : ColB o t n₂} {z : ColB o t n}
+    (hn : n.toNat = n₁.toNat + n₂.toNat) (h : ColB.concat n x y = .ok z) (c : Fin n.toNat) :
+    ColB.get z c = if hc : c.1 < n₁.toNat then ColB.get x ⟨c.1, hc⟩ else ColB.get y ⟨c.1 - n₁.toNat, by omega⟩ := by
+  cases o
+  · exact Arr.concat_get hn h c
+  · simp only [ColB.get, Opt.concat_get hn h c]; split <;> rfl
+
+/-- Row `i` of the column is one it owns: any row of an `Arr`, a non-null row of an `Opt`. -/
+def ColB.Own : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Fin n.toNat → Prop
+  | false, _, _, _, _ => True
+  | true, _, _, x, i => Opt.get x i ≠ none
+
+/-- **`ColB.shift s x` reads each long of `x` plus `s`** at a row the column owns (a null `Opt` row reads `default`, no
+long), where that long is in `[0, 2^63 - s)`: `Arr.shift_get`, or `Opt.shift_get` through `getD`. -/
+theorem ColB.shift_get {o : Bool} {n : USize} {s : UInt64} {x y : ColB o .i64 n} (h : ColB.shift s x = .ok y)
+    (i : Fin n.toNat) (hown : ColB.Own x i) (h0 : 0 ≤ (ColB.get x i).toInt)
+    (hs : (ColB.get x i).toInt + s.toNat < 2 ^ 63) : (ColB.get y i).toInt = (ColB.get x i).toInt + s.toNat := by
+  cases o
+  · exact Arr.shift_get h i h0 hs
+  · obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.1 hown
+    have := Opt.shift_get h i (fun v' hv' => by
+      rw [hv] at hv'; cases hv'; simp only [ColB.get, hv, Option.getD_some] at h0 hs; exact ⟨h0, hs⟩)
+    rw [hv] at this; simp only [Option.map_some] at this
+    obtain ⟨w, hw⟩ := Option.map_eq_some_iff.1 this
+    simp only [ColB.get, hv, hw.1, Option.getD_some] at h0 hs ⊢
+    exact hw.2
+
 /-- The pairs of `List.finRange (a + b)` that `G` keeps: those of the first `a` positions, then of the last `b`. -/
 theorem filterMap_finRange_add {α : Type} {M a b : Nat} (h : M = a + b) (G : Fin M → Option α) :
     (List.finRange M).filterMap G = (List.finRange a).filterMap (fun j => G ⟨j.1, by omega⟩) ++
