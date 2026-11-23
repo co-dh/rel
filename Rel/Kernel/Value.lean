@@ -995,6 +995,28 @@ def bitsOf : QAtom → UInt64
   | .f64 x => x
   | .sym x => x
 
+/-- **`QAtomicType.least` bounds every value a column of that type holds**: a column of atom type `t` holds the atoms of
+type `t`, each as its `bitsOf` word (what `wordsFoR` is given), whose key is that word read as an `Int64`; none is below
+`t.least`, the base a nullable block cannot go under (`Coc.lowKey`), so the encoder's `hle` is this at each non-null row.
+`general` has no atom, so none to bound. -/
+theorem least_le_bitsOf (a : QAtom) : a.type.least.toInt ≤ (bitsOf a).toInt64.toInt := by
+  have pos (v : UInt64) (h : v.toNat < 2 ^ 63) : 0 ≤ v.toInt64.toInt := by
+    show 0 ≤ (Int64.ofBitVec v.toBitVec).toInt
+    rw [Int64.toInt_ofBitVec, BitVec.toInt_eq_toNat_cond]
+    simp only [UInt64.toNat] at h
+    split <;> omega
+  -- a type whose `least` is not `Int64.minValue` has words below `2 ^ 32`, so non-negative keys, and its `least` is at most `0`
+  cases a <;> first | exact Int64.le_toInt _ | skip
+  all_goals
+    refine Int.le_trans (b := 0) ?_ (pos _ ?_)
+    · simp only [QAtom.type, QAtomicType.least]; decide
+    simp only [bitsOf, UInt8.toNat_toUInt64, UInt16.toNat_toUInt64, UInt32.toNat_toUInt64]
+    first
+    | (split <;> decide)
+    | exact Nat.lt_of_lt_of_le (UInt8.toNat_lt _) (by decide)
+    | exact Nat.lt_of_lt_of_le (UInt16.toNat_lt _) (by decide)
+    | exact Nat.lt_of_lt_of_le (UInt32.toNat_lt _) (by decide)
+
 /-- The atom of type `t` those raw bits denote. Total, and its type is `t` by construction, which is
 what `atoms_type` turns into the invariant `QLean/Verify/` used to assume. `symbol` is
 handled by `atoms` directly and answers its own null here. `general` has no atom. -/
