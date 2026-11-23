@@ -352,6 +352,9 @@ impl<F: Fn(&mut [i64], usize) + Sync> Producer for Moving<'_, F> {
     fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(&self.f, lo, nb, w, buf) }
     fn take(&self, b: usize) -> Option<(Coc<'_>, usize)> { (self.t)(b) }
 }
+/// The blocks `move_blk` moved: a test asserts its path moved some (the counter only grows, so a test reads a before and after).
+#[cfg(test)]
+pub static MOVED: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 /// coc.rs `move_meta` then `move_pack`: block `m.b` of the producer `mv`, its metadata into `m`, then its residuals and patches
 /// into `pack(whole)` (asked once, after `m` is written; `whole` for a taken block's full `blk * width / 8` residual region),
 /// so whatever the producer computes for the block it computes once. A moved block's metadata, residuals and patch list are its
@@ -360,7 +363,7 @@ impl<F: Fn(&mut [i64], usize) + Sync> Producer for Moving<'_, F> {
 /// `nul_meta`'s, any other `for_meta`'s.
 pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
                         nb: usize, width: usize, nul: &[u8], lo: usize) {
-    if let Some((c, pb)) = mv.take(m.b) { move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
+    if let Some((c, pb)) = mv.take(m.b) { #[cfg(test)] MOVED.fetch_add(1, core::sync::atomic::Ordering::Relaxed); move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
     let x = x();
     // only the rows `nul` has bits for: a column with no null (`nul` empty) tests no row, where testing each cost a
     // pass over every block of every written column

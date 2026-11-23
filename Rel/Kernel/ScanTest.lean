@@ -182,9 +182,9 @@ private def kconst (v : Nat) : Enc := kpermCol fun _ => v
   (fun r => (r.1.raw .u1 (USize.ofNat kperm.size)).toList) == some (kperm.toList.map fun p =>
     (op.eval (if sw then v else p).toUInt64 (if sw then p else v).toUInt64).toOption.getD 2)
 
--- Past a block, `#guard` only: 2500 rows, a segment starting at every thousandth row and at `i % 37 = 3`, the seed and
+-- Past a block, `#guard` only: 3000 rows, a segment starting at every thousandth row and at `i % 37 = 3`, the seed and
 -- the folded column with patches (every 97th word an outlier), each op's answer against `kscanRow`'s fold run compiled
-private def kn : Nat := 2500
+private def kn : Nat := 3000
 private def kstarts : Array UInt64 := (Array.range kn).map fun i => if i % 1000 = 0 || i % 37 = 3 then 1 else 0
 private def kpatched (k : Nat) : Array UInt64 :=
   (Array.range kn).map fun i => (if i % 97 = k then i * 2 ^ 33 else i * 7919 % 5000 + k).toUInt64
@@ -196,6 +196,13 @@ private def kfoR (ws : Array UInt64) : Enc :=
     (Coc.bools kn fun i => kstarts[i]? == some 1).2) [kfoR (kpatched 5), kfoR (kpatched 11)]).toOption.map
     (fun r => (r.1.raw .i64 (USize.ofNat kn)).toList) ==
   ((List.range kn).foldlM (kscanRow op kstarts (kpatched 5) [kpatched 11]) #[]).toOption.map (·.toList)
+-- a map (every row its own segment) against its op's unit, on either side, answers whole blocks of the other column as
+-- they stand (3 blocks and a tail, the other column with patches): the Rust moves them, the row fold computes them
+#guard [(Op.add, 0), (.sub, 0), (.mul, 1), (.first, 0), (.last, 0)].all fun (op, u) =>
+  [(Array.replicate kn u, kpatched 5), (kpatched 5, Array.replicate kn u)].all fun (a, b) =>
+  (kscan op false .i64 .i64 (USize.ofNat kn) none [kfoR a, kfoR b]).toOption.map
+    (fun r => (r.1.raw .i64 (USize.ofNat kn)).toList) ==
+  ((List.range kn).foldlM (kscanRow op (Array.replicate kn 1) a [b]) #[]).toOption.map (·.toList)
 
 end Rel.Kernel
 
