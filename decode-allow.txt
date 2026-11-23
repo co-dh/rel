@@ -1,6 +1,2 @@
-Rel.Alg.tagBits
 Rel.Arr.getWith
-Rel.Ew.bitBits
-Rel.Ew.cmpBits
 Rel.Opt.getWith
-Rel.Opt.ofAtoms

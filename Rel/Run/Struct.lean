@@ -212,16 +212,6 @@ def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) 
     let (m, sel) ← whereCol n tag.enc
     canon ⟨m, ← ValsB.gather m sel X, ← Vals.unlift "inr°" (← ValsB.gather m sel y)⟩
 
--- `inr°` on a `1 + long` column: the rows that are no null, each beside its value; none, some and all null
-private def inrBand (xs : List (Option QAtom)) : Option (List ((Unit ⊕ Int64) × Int64)) := do
-  let x ← Opt.ofAtoms .i64 xs.toArray
-  let T ← (inrConvBand (a := .one) (b := .long) rfl x).toOption
-  pure T.toList
-#guard inrBand [some (.i64 5), none, some (.i64 7)] == some [(.inr 5, 5), (.inr 7, 7)]
-#guard inrBand [some (.i64 5), some (.i64 6)] == some [(.inr 5, 5), (.inr 6, 6)]
-#guard inrBand [none, none, none] == some []
-#guard inrBand [] == some []
-
 /-- **`Rᴵ` on the pairs `X`**, `idU X ≫ Rᴵ` = `((π₁ ≫ R) ∩ (π₂ ≫ π₁°)) ≫ π₂` (`flatDen_eq`): the rows `(i, a)` of `X`
 beside `R`'s `(a', b)` at `i`, kept where the equality test `a = a'` holds (`∩` with `π₂ ≫ π₁°` on `R`'s values), then
 `b`. -/
