@@ -260,9 +260,10 @@ type Seg = [u64; BLK / 64];
 
 /// One column of `kscan` as `Enc.raw s n` reads it, a block of rows at a time: a dense payload of `w`-byte elements,
 /// or a block source of `w`-byte elements cut by the mask `m` (`!0`, or `1` for a boolean `foR`, which `raw` reads at
-/// its one bit). Each form reads 0 past what it holds, as `raw` does.
+/// its one bit). Each form reads 0 past what it holds, as `raw` does. `Cat` is sources read one after the other: rows
+/// `a .. e` of the stream are rows `0 ..` of its source, so a `kscan` stream is read a block at a time like one column.
 #[derive(Clone, Copy)]
-pub(crate) enum Col<'a> { Dense(&'a [u8], usize), Blk(Blocks<'a>, usize, u64) }
+pub(crate) enum Col<'a> { Dense(&'a [u8], usize), Blk(Blocks<'a>, usize, u64), Cat(&'a [(usize, usize, Col<'a>)]) }
 
 /// `rawAll t n e` (Rel/Kernel/Scan.lean): `e` read as `Enc.raw t n`, whose every arm holds `n` words but the `#[]` ones,
 /// which are the refusal unless `n = 0`. The CSV writer reads its columns through it too.
@@ -291,9 +292,14 @@ impl<'a> Col<'a> {
     pub(crate) fn load(&self, lo: usize, out: &mut [u64], tmp: &mut [u8]) {
         match *self {
             Col::Dense(p, w) => widen(p.get(lo * w..).unwrap_or(&[]), w, out),
+            Col::Cat(segs) => for &(a, e, c) in segs {
+                let (x, y) = (lo.max(a), (lo + out.len()).min(e));
+                if x < y { c.load(x - a, &mut out[x - lo..y - lo], tmp) }
+            },
             Col::Blk(bl, w, m) => {
                 let got = (lo + out.len()).min(bl.n).saturating_sub(lo);
-                let on_grid = bl.lg() == crate::DEFAULT_LG;
+                // a source's rows start mid-block in a stream, so only a block-aligned `lo` is on the grid
+                let on_grid = bl.lg() == crate::DEFAULT_LG && lo & (BLK - 1) == 0;
                 if on_grid && w == 8 {
                     bl.load_w(lo >> bl.lg(), got, 8, pod::bytes_mut(&mut out[..got]));
                     return out[got..].fill(0)
@@ -303,6 +309,42 @@ impl<'a> Col<'a> {
                 if m != !0 { for o in out.iter_mut() { *o &= m } }
             }
         }
+    }
+    /// Rows `lo .. lo + out.len()`'s null flags as words (`foRNuls`): `1` at a null (`Coc::is_nul`, tested on the block,
+    /// only a flagged block read), `0` elsewhere and in every column that is not a `foR`.
+    pub(crate) fn nuls(&self, lo: usize, out: &mut [u64]) {
+        out.fill(0);
+        match *self {
+            Col::Cat(segs) => for &(a, e, c) in segs {
+                let (x, y) = (lo.max(a), (lo + out.len()).min(e));
+                if x < y { c.nuls(x - a, &mut out[x - lo..y - lo]) }
+            },
+            Col::Blk(Blocks { src: Src::For(c), .. }, _, _) => {
+                let (lg, hi) = (c.meta.lg, (lo + out.len()).min(c.meta.n));
+                for b in (lo >> lg..hi.div_ceil(1 << lg)).filter(|&b| b < c.meta.mblk && c.meta.nul(b)) {
+                    for i in (b << lg).max(lo)..((b + 1) << lg).min(hi) { out[i - lo] = c.is_nul(i) as u64 }
+                }
+            }
+            _ => {}
+        }
+    }
+    /// Whether some block of the column is flagged as holding a null (`hasNul`): the metadata only, no row read.
+    fn has_nul(&self) -> bool {
+        match *self {
+            Col::Cat(segs) => segs.iter().any(|s| s.2.has_nul()),
+            Col::Blk(Blocks { src: Src::For(c), .. }, _, _) => (0..c.meta.mblk).any(|b| c.meta.nul(b)),
+            _ => false,
+        }
+    }
+    /// The first null row of the column's `n` rows (`noNul`'s `findIdx?` of `foRNuls`), read a block at a time.
+    fn first_nul(&self, n: usize) -> Option<usize> {
+        if !self.has_nul() { return None }
+        let mut v = pod::Scr::<u64>::new(n.min(BLK));
+        (0..n).step_by(BLK).find_map(|lo| {
+            let nb = (n - lo).min(BLK);
+            self.nuls(lo, &mut v[..nb]);
+            v[..nb].iter().position(|&x| x != 0).map(|k| lo + k)
+        })
     }
     /// The FoR column behind block `b` of the writer's grid where its metadata are its rows' words read as `i64`: 8
     /// bytes, or a block whose minimum is at least 0, where zero- and sign-extension agree. `[base, maxv]` bounds
@@ -369,6 +411,20 @@ impl Scan<'_> {
     fn seg_at(&self, i: usize) -> bool {
         let lo = i / BLK * BLK;
         self.seg(lo, (self.n - lo).min(BLK))[(i - lo) >> 6] >> ((i - lo) & 63) & 1 == 1
+    }
+    /// The answer's null bitmap (`Sink::write_nul`'s) of a stream: the seed's null flags carried exactly as its words are
+    /// (`kscan`'s `kscanRow .first` over the flags), a segment start taking the row's own flag, so a carried row keeps
+    /// the flag of the row it carries. The blocks are walked in the fold's order, each read once.
+    fn nul_bits(&self) -> Vec<u8> {
+        let mut bs: Vec<(usize, usize, usize)> = Grid { n: self.n, lg: crate::DEFAULT_LG }.walk().collect();
+        if self.rev { bs.reverse() }
+        let (mut bits, mut c, mut v) = (alloc::vec![0u8; self.n.div_ceil(8)], 0u64, pod::Scr::<u64>::new(self.n.min(BLK)));
+        for (_, lo, nb) in bs {
+            let g = self.seg(lo, nb);
+            self.seed.nuls(lo, &mut v[..nb]);
+            rows!(self.rev, 0..nb, i => { if g[i >> 6] >> (i & 63) & 1 == 1 { c = v[i] } if c != 0 { bits[(lo + i) >> 3] |= 1 << ((lo + i) & 7) } });
+        }
+        bits
     }
     /// Rows `lo .. lo + out.len()` into `out`, from `c`, row `lo - 1`'s answer.
     fn block(&self, lo: usize, c: u64, out: &mut [u64]) { let g = self.seg(lo, out.len()); by_op!(self.op, OP => self.fold::<OP>(&g, lo, c, out)) }
@@ -470,10 +526,10 @@ impl Scan<'_> {
         true
     }
     /// The column whose block `b` the map `seed op x` answers unchanged: `x` where the seed's block is the constant left
-    /// unit of `op` (or `op` is `last`), the seed where `x`'s is its right unit (or `op` is `first`).
+    /// unit of `op` (or `op` is `last`), the seed where `x`'s is its right unit. `first` over two sources is a stream, never a map.
     fn unit(&self, b: usize) -> Option<Coc<'_>> {
         let [x] = self.xs else { return None };
-        let (l, r) = match self.op { 0 | 16 => (Some(0), Some(0)), 1 => (None, Some(0)), 2 => (Some(1), Some(1)), 18 => return self.seed.words(),
+        let (l, r) = match self.op { 0 | 16 => (Some(0), Some(0)), 1 => (None, Some(0)), 2 => (Some(1), Some(1)),
                                      19 => return x.words(), _ => return None };
         if l.is_some() && self.seed.konst(b) == l { return x.words() }
         if r.is_some() && x.konst(b) == r { return self.seed.words() }
@@ -492,11 +548,24 @@ impl Scan<'_> {
 /// Under `rev` the blocks are walked backwards and each block's rows from its end: no column is reversed in memory.
 /// The fold result is the row the fold visits last (row `n - 1`, row 0 under `rev`), taken from the block the writer
 /// fills and cut to `t`'s width as `Enc.raw t` reads it back; `None` at `n = 0`, where no row is visited.
-pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, es: &[B<'a>], pre: &'a [(u8, u64)], post: &[(u8, u64)])
+pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, es: &[(usize, B<'a>)], pre: &'a [(u8, u64)], post: &[(u8, u64)])
     -> Result<(O, Option<u64>), String> {
     if n != 0 && (reads_divisor(op) && es.len() > 1 || pre.iter().chain(post).any(|&(o, c)| step_fails(o, c))) { return Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into()) }
     let g = seg.map(|e| raw_all(QT_BOOLEAN, n, e)).transpose()?;
-    let cols = es.iter().map(|&e| raw_all(s, n, e)).collect::<Result<Vec<_>, _>>()?;
+    let cols = es.iter().map(|&(m, e)| raw_all(s, m, e)).collect::<Result<Vec<_>, _>>()?;
+    // `kscanStream`: `first` over several sources and no chain reads them as one column, joined (`kscanCols`)
+    let stream = op == 18 && pre.is_empty() && post.is_empty() && es.len() > 1;
+    let mut a = 0;
+    let segs: Vec<(usize, usize, Col)> = if stream { es.iter().zip(&cols).map(|(&(m, _), &c)| { a += m; (a - m, a, c) }).collect() } else { Vec::new() };
+    let cols = if stream {
+        if a != n { return Err(format!("kscan: the sources do not hold n = {n} rows in all")) }
+        alloc::vec![Col::Cat(&segs)]
+    } else {
+        if es.iter().any(|e| e.0 != n) { return Err(format!("kscan: a source holds a row count other than n = {n}")) }
+        // no op but a stream's `first` has an answer at a null (`noNul`)
+        if let Some(k) = cols.iter().find_map(|c| c.first_nul(n)) { return Err(format!("kscan: row {k} is null, and a null names no row")) }
+        cols
+    };
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
     let mut r = Scan { op, rev, n, seg: g, seed, xs, pre, carry: Vec::new() };
     if let Err(m) = op_eval(op, 0, 0) && r.zero() { return Err(m.into()) }
@@ -511,7 +580,8 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
     // holding `last`, which the fill stores
     let t = |b: usize| (r.seg.is_none() && !rev && pre.is_empty() && post.is_empty() && low == !0 && b != last >> crate::DEFAULT_LG)
         .then(|| r.unit(b)).flatten().filter(|c| crate::enc::movable(c, b, b, n, 8)).map(|c| (c, b));
-    let e = Sink::new(n, 8).enc().answer(&crate::enc::Moving { t: &t, f: |buf: &mut [i64], lo: usize| {
+    let nul = if stream && seed.has_nul() { r.nul_bits() } else { Vec::new() };
+    let e = Sink::new(n, 8).enc().answer_nul(&crate::enc::Moving { t: &t, f: |buf: &mut [i64], lo: usize| {
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
         // a compare against a constant block: the compare kernel's bits, each a row's word
@@ -524,7 +594,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
         chain(post, o);
         if low != !0 { for v in o.iter_mut() { *v &= low } }
         if (lo..lo + nb).contains(&last) { fin.store(o[last - lo] & cut, core::sync::atomic::Ordering::Relaxed) }
-    }});
+    }}, &nul);
     // every row is written, so at `n > 0` the block holding `last` stored it
     Ok((e, (n > 0).then(|| fin.load(core::sync::atomic::Ordering::Relaxed))))
 }
@@ -577,14 +647,17 @@ mod kscan_tests {
     #[allow(clippy::too_many_arguments)]
     fn check1(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: &[u64], g: Option<&O>, es: &[(O, Vec<u64>)], pre: &'static [(u8, u64)], post: &[(u8, u64)]) {
         let xs: Vec<Vec<u64>> = es.iter().skip(1).map(|e| chained(pre, &e.1)).collect();
+        // `kscanStream`: `first` over several sources reads them as one column, whose rows must be the `n`
+        let stream = op == 18 && pre.is_empty() && post.is_empty() && es.len() > 1;
         let want = match es.first() {
             None => Err("kscan: es is empty; its first column is the seed".into()),
-            Some(sd) => rows(op, rev, seg, &chained(pre, &sd.1), &xs).map(|r| chained(post, &r)).map_err(String::from).and_then(|r| match qtype_width(t) {
+            Some(_) if stream && es.iter().map(|e| e.1.len()).sum::<usize>() != n => Err(format!("kscan: the sources do not hold n = {n} rows in all")),
+            Some(sd) => rows(op, rev, seg, &chained(pre, &if stream { es.iter().flat_map(|e| e.1.clone()).collect() } else { sd.1.clone() }), if stream { &[] } else { &xs }).map(|r| chained(post, &r)).map_err(String::from).and_then(|r| match qtype_width(t) {
                 None => Err("kscan: the answer type has no fixed width".into()),
                 Some(w) => { let ws: Vec<u64> = r.iter().map(|v| if t == QT_BOOLEAN { v & 1 } else { *v }).collect(); let fin = if rev { ws.first() } else { ws.last() }; Ok((parts(&enc_for(&ws, 8)), fin.map(|v| if w < 8 { v & ((1 << (8 * w)) - 1) } else { *v }))) }
             }),
         };
-        let bs: Vec<B> = es.iter().map(|e| e.0.borrow()).collect();
+        let bs: Vec<(usize, B)> = es.iter().map(|e| (e.1.len(), e.0.borrow())).collect();
         assert_eq!(kscan(op, rev, s, t, n, g.map(|g| g.borrow()), &bs, pre, post).map(|(o, v)| (parts(&o), v)), want, "op {op} rev {rev} s {s} t {t} n {n}");
     }
     // every shape (map, scan, segmented, fill) and op against the row model, over FoR columns with patches and nulls at
@@ -636,7 +709,7 @@ mod kscan_tests {
             let x = crate::testutil::column(n, patched);
             // the unit on blocks 0 and 2 only (the rest is `x` itself, so the map is not a copy there)
             let half: Vec<u64> = (0..n).map(|i| if (i >> 10) % 2 == 0 { 0 } else { x[i] }).collect();
-            for (op, u) in [(0u8, 0u64), (1, 0), (2, 1), (18, 0), (19, 0)] {
+            for (op, u) in [(0u8, 0u64), (1, 0), (2, 1), (19, 0)] {
                 let unit = vec![u; n];
                 for (k, (a, b)) in [(&unit, &x), (&x, &unit), (&half, &x), (&x, &half)].into_iter().enumerate() {
                     let es = [(enc_for(a, 8), a.clone()), (enc_for(b, 8), b.clone())];
@@ -649,22 +722,64 @@ mod kscan_tests {
             }
         }
     }
+    /// The bitmap `Sink::write_nul` takes of the flag words `f`.
+    fn nul_map(f: &[u64]) -> Vec<u8> {
+        let mut b = vec![0u8; f.len().div_ceil(8)];
+        for (i, &x) in f.iter().enumerate() { if x != 0 { b[i >> 3] |= 1 << (i & 7) } }
+        b
+    }
+    fn enc_nul(v: &[u64], f: &[u64]) -> O {
+        Sink::new(v.len(), 8).enc().write_nul(&Blocks::dense(&bytes(v, 8), 8), false, &nul_map(f)).expect("kscan test: no size test")
+    }
+    // `first` over two sources is one scan of x then y (`kscanStream`): the concatenated words and null flags, each carried
+    // as `kscanRow` carries them, written as `Coc.encode` of the words and the flag bitmap — with a null in neither
+    // source, in x only, in y only and in both, from block-aligned and mid-block joins, both directions, `seg` every row
+    // and some rows; a null source under any other op is refused
+    #[test] fn kscan_streams_its_sources() {
+        for (na, nb) in [(5usize, 0usize), (0, 5), (1000, 1500), (1024, 1024), (2500, 37)] {
+            let n = na + nb;
+            let flags = |m: usize, k: u64| (0..m as u64).map(|i| (i % k == 2) as u64).collect::<Vec<_>>();
+            let (zx, zy, fx, fy) = (vec![0u64; na], vec![0u64; nb], flags(na, 7), flags(nb, 13));
+            let word = |v: Vec<u64>, f: &[u64]| v.iter().zip(f).map(|(&w, &f)| if f != 0 { 0 } else { w }).collect::<Vec<_>>();
+            for (nx, ny) in [(&zx, &zy), (&fx, &zy), (&zx, &fy), (&fx, &fy)] {
+                let (x, y) = (word(column(na, 3), nx), word(column(nb, 5), ny));
+                let (a, b) = (enc_nul(&x, nx), enc_nul(&y, ny));
+                let (ws, fl) = ([x.clone(), y.clone()].concat(), [nx.clone(), ny.clone()].concat());
+                for rev in [false, true] {
+                    for sg in [vec![1u64; n], (0..n as u64).map(|i| (i % 1000 == 0 || i % 37 == 3) as u64).collect()] {
+                        let (w2, f2) = (rows(18, rev, &sg, &ws, &[]).expect("rows: first folds nothing"), rows(18, rev, &sg, &fl, &[]).expect("rows: first folds nothing"));
+                        // a carried null's word is what its flag hides, the encoder reading none
+                        let want = enc_nul(&w2, &f2);
+                        let g = enc_bits(&sg);
+                        let got = kscan(18, rev, 6, 6, n, Some(g.borrow()), &[(na, a.borrow()), (nb, b.borrow())], &[], &[]).expect("kscan stream");
+                        assert_eq!(parts(&got.0), parts(&want), "stream na {na} nb {nb} rev {rev}");
+                        assert_eq!(got.1, if rev { w2.first() } else { w2.last() }.copied(), "stream fold result na {na} nb {nb} rev {rev}");
+                    }
+                }
+            }
+        }
+        let (x, f) = (vec![5u64; 4], vec![0u64, 0, 1, 0]);
+        let a = enc_nul(&x, &f);
+        let e = Err("kscan: row 2 is null, and a null names no row".to_string());
+        assert_eq!(kscan(0, false, 6, 6, 4, None, &[(4, a.borrow()), (4, a.borrow())], &[], &[]).map(|_| ()), e);
+        assert_eq!(kscan(18, false, 6, 6, 4, None, &[(4, a.borrow())], &[], &[]).map(|_| ()), e);
+    }
     // a step that can fail (`div`, `mod`, `rdiv`/`rmod` by 0) and an op reading its divisor from the carry are refused
     // before any column is read
     #[test] fn kscan_refuses_a_failing_chain_step() {
         let x = enc_for(&[1, 2], 8);
         for c in [[(3u8, 1u64)], [(4, 1)], [(47, 0)], [(48, 0)]] {
             let e = Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into());
-            assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &c, &[]).map(|_| ()), e);
-            assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &[], &c).map(|_| ()), e);
+            assert_eq!(kscan(0, false, 6, 6, 2, None, &[(2, x.borrow())], &c, &[]).map(|_| ()), e);
+            assert_eq!(kscan(0, false, 6, 6, 2, None, &[(2, x.borrow())], &[], &c).map(|_| ()), e);
         }
         for op in [47u8, 48] {
             let e = Err("kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)".into());
-            assert_eq!(kscan(op, false, 6, 6, 2, None, &[x.borrow(), x.borrow()], &[], &[]).map(|_| ()), e);
-            assert_eq!(kscan(0, false, 6, 6, 2, None, &[x.borrow()], &[], &[(op, 2)]).map(|_| ()), Ok(()));
+            assert_eq!(kscan(op, false, 6, 6, 2, None, &[(2, x.borrow()), (2, x.borrow())], &[], &[]).map(|_| ()), e);
+            assert_eq!(kscan(0, false, 6, 6, 2, None, &[(2, x.borrow())], &[], &[(op, 2)]).map(|_| ()), Ok(()));
             // no column folded, or no row: nothing is evaluated, so nothing is refused (`kscanRefuses`)
-            assert!(kscan(op, false, 6, 6, 2, None, &[x.borrow()], &[], &[]).is_ok());
-            assert!(kscan(0, false, 6, 6, 0, None, &[enc_for(&[], 8).borrow()], &[], &[(op, 0)]).is_ok());
+            assert!(kscan(op, false, 6, 6, 2, None, &[(2, x.borrow())], &[], &[]).is_ok());
+            assert!(kscan(0, false, 6, 6, 0, None, &[(0, enc_for(&[], 8).borrow())], &[], &[(op, 0)]).is_ok());
         }
     }
     #[test] fn op_eval_floors_and_types_its_errors() {

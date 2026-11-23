@@ -58,7 +58,7 @@ rel_program frameSchemaT where
       (4,((B,18),fin)),(5,((C,9),tech)),(6,((A,11),tech))}
 
     -- leftJoin on sym: the missing `D` gets the sector `na`
-    sector(t : N ⟶ Trade, d : N ⟶ Dim) : N ⟶ SymSector ≜ leftJoin(col Trade "sym", col Dim "sym", t, d) ⟨π₁ col Trade "sym", π₂ [col Dim "sector", {(∗,na)}]⟩
+    sector(t : N ⟶ Trade, d : N ⟶ Dim) : N ⟶ SymSector ≜ leftJoin(col Trade "sym", col Dim "sym", t, d) ⟨π₁ col Trade "sym", π₂ [{(∗,na)}, col Dim "sector"]⟩
     check sector(tt, dd) = {(0,(A,tech)),(1,(B,fin)),(2,(A,tech)),(3,(C,tech)),(4,(D,na)),(5,(B,fin)),
       (6,(C,tech)),(7,(A,tech))}
 
