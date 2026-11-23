@@ -1,6 +1,7 @@
 module
 
 public import Rel.RepWF
+public import Rel.RepMerge
 public import Rel.Run.Cast
 public import Rel.Run.Where
 
@@ -434,6 +435,42 @@ theorem mu_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Except
   refine ⟨by rw [eXY]; exact sX, fun a b hF => (hY a b).2 (.inr ?_)⟩
   rw [eXY] at hF; exact hF
 
+theorem muLin_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
+    (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : muLin what cap f = .ok t) : t.WF := by
+  simp only [muLin, bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at h
+  obtain ⟨Z, hZ, r, hr, rfl⟩ := h
+  have aZ := zero_asc hZ
+  refine (fixOn_wf (fun s : Tab A B × Tab A B => s.1.WF ∧ s.2.WF ∧ s.1.Asc) (fun _ _ h w => Except.ok.inj h ▸ w)
+    (fun s t hs ⟨w1, w2, a1⟩ => ?_) hr ⟨zero_wf hZ, zero_wf hZ, aZ⟩).1
+  simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
+  obtain ⟨T, hT, T', hT', p, hp, D, hD, rfl⟩ := hs
+  have wT' := pack_wf hT' (hf _ _ hT w2)
+  obtain ⟨-, hD0, wV, wU, aV⟩ := unionDiffSel_holds w1 wT' a1 (show s.1.unionDiffSel T' = .ok (p.1, p.2) from hp)
+  exact ⟨wV, pack_wf hD wU, aV⟩
+
+/-- `P ≫ star(R)` on a `WF` `P`, `step` keeping `WF`: each round's `X` and `Δ` stay `WF`, `X` strictly ascending
+(`fixOn_wf` on the pair). -/
+theorem star_wf {K B : Obj} {step : Tab B B → Except String (Tab B B)} (hf : ∀ D t, step D = .ok t → D.WF → t.WF)
+    {P t : Tab K B} (h : star step P = .ok t) (hP : P.WF) : t.WF := by
+  simp only [star, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨P', hP', h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
+  obtain rfl : r.1 = t := Except.ok.inj h
+  refine (fixOn_wf (fun s : Tab K B × Tab K B => s.1.WF ∧ s.2.WF ∧ s.1.Asc) (fun s t hs ws => ?_) (fun s t hs ws => ?_) hr
+    ⟨canon_wf hP' hP, canon_wf hP' hP, fun i j hij => canon_lt hP' hP i j hij⟩).1
+  · simp only [bind] at hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
+    obtain rfl : (U, D) = t := Except.ok.inj hs
+    exact ⟨pack_wf hU ws.1, pack_wf hD ws.2.1, pack_asc hU ws.1 ws.2.2⟩
+  · simp only [bind] at hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨Dr, hDr, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨T, hT, hs⟩ := hs
+    rw [Except.bind_eq_ok'] at hs; obtain ⟨N, hN, hs⟩ := hs
+    have wN := comp_wf hN ws.2.1 (hf _ _ hT (ran_wf hDr ws.2.1))
+    obtain ⟨-, -, wV, wU, aV⟩ := unionDiffSel_holds ws.1 wN ws.2.2 hs
+    exact ⟨wV, wU, aV⟩
+
 /-- **The rounds of `Tab.muLin`**, `f` acting on relations as `F`, `F` additive (`hadd`): each round's `X` and `Δ`
 lie in any `M` that `F` keeps (`hM`), and `F(X) ⊑ X ∪ F(Δ)` (from `(𝟘, 𝟘)`; `X' = X ∪ Δ'` gives
 `F(X') ⊑ F(X) ∪ F(Δ') ⊑ X ∪ F(Δ) ∪ F(Δ') = X' ∪ F(Δ')`). The last round adds no row (`holds_of_n`), so `F(Δ) ⊑ X`
@@ -448,34 +485,33 @@ theorem muLin_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Exc
   simp only [Tab.muLin, bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at h
   obtain ⟨Z, hZ, r, hr, rfl⟩ := h
   -- a round: `T = f(Δ)` packed, `X' = X ∪ T`, `Δ' = T − X` packed (`unionDiff_ok`)
-  have round : ∀ s s' : Tab A B × Tab A B, s.1.WF → s.2.WF →
-      (do let p ← s.1.unionDiff (← (← f s.2).pack); pure (p.1, ← p.2.pack) : Except String (Tab A B × Tab A B)) =
+  have round : ∀ s s' : Tab A B × Tab A B, s.1.WF → s.2.WF → s.1.Asc →
+      (do let p ← s.1.unionDiffSel (← (← f s.2).pack); pure (p.1, ← p.2.pack) : Except String (Tab A B × Tab A B)) =
         .ok s' →
       s'.1.toList.Nodup ∧ s'.1.WF ∧ s'.2.WF ∧ (∀ a b, s'.2.Holds a b ↔ F s.2.Holds a b ∧ ¬s.1.Holds a b) ∧
-        s'.1.Holds = fun a b => s.1.Holds a b ∨ s'.2.Holds a b := by
-    intro s s' w1 w2 hs
+        s'.1.Holds = (fun a b => s.1.Holds a b ∨ s'.2.Holds a b) ∧ s'.1.Asc := by
+    intro s s' w1 w2 a1 hs
     simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
     obtain ⟨T, hT, T', hT', p, hp, D, hD, rfl⟩ := hs
     have wT := hfw _ _ hT w2
     have wT' := pack_wf hT' wT
-    obtain ⟨hU, hD0⟩ := unionDiff_ok (show s.1.unionDiff T' = .ok (p.1, p.2) from hp)
-    have w0 := select_wf hD0 w1 wT'
+    obtain ⟨hV, hD1, wV, w0, aV⟩ := unionDiffSel_holds w1 wT' a1 (show s.1.unionDiffSel T' = .ok (p.1, p.2) from hp)
     have eD : ∀ a b, D.Holds a b ↔ F s.2.Holds a b ∧ ¬s.1.Holds a b := fun a b => by
-      rw [pack_holds hD w0, rdiff_holds hD0 w1 wT', pack_holds hT' wT, hf _ _ w2 hT]
-    refine ⟨union_nodup hU w1 wT', union_wf hU w1 wT', pack_wf hD w0, eD, funext fun a => funext fun b => propext ?_⟩
+      rw [pack_holds hD w0, hD1, pack_holds hT' wT, hf _ _ w2 hT]
+    refine ⟨aV.nodup, wV, pack_wf hD w0, eD, funext fun a => funext fun b => propext ?_, aV⟩
     show p.1.Holds a b ↔ s.1.Holds a b ∨ D.Holds a b
-    rw [union_holds hU w1 wT', eD, pack_holds hT' wT, hf _ _ w2 hT]
+    rw [hV, eD, pack_holds hT' wT, hf _ _ w2 hT]
     by_cases e : s.1.Holds a b <;> simp [e]
-  let I : Tab A B × Tab A B → Prop := fun s => s.1.toList.Nodup ∧ s.1.WF ∧ s.2.WF ∧
+  let I : Tab A B × Tab A B → Prop := fun s => s.1.Asc ∧ s.1.WF ∧ s.2.WF ∧
     (∀ a b, s.1.Holds a b → M a b) ∧ (∀ a b, s.2.Holds a b → M a b) ∧
     ∀ a b, F s.1.Holds a b → s.1.Holds a b ∨ F s.2.Holds a b
   have keep : ∀ s s', I s →
-      (do let p ← s.1.unionDiff (← (← f s.2).pack); pure (p.1, ← p.2.pack) : Except String (Tab A B × Tab A B)) =
+      (do let p ← s.1.unionDiffSel (← (← f s.2).pack); pure (p.1, ← p.2.pack) : Except String (Tab A B × Tab A B)) =
         .ok s' → I s' := by
-    intro s s' ⟨_, w1, w2, m1, m2, c⟩ hs
-    obtain ⟨d, w1', w2', eD, eX⟩ := round s s' w1 w2 hs
+    intro s s' ⟨a1, w1, w2, m1, m2, c⟩ hs
+    obtain ⟨-, w1', w2', eD, eX, a1'⟩ := round s s' w1 w2 a1 hs
     have mD : ∀ a b, s'.2.Holds a b → M a b := fun a b hd => hM _ m2 a b ((eD a b).1 hd).1
-    refine ⟨d, w1', w2', fun a b hx => ?_, mD, fun a b hx => ?_⟩
+    refine ⟨a1', w1', w2', fun a b hx => ?_, mD, fun a b hx => ?_⟩
     · rw [eX] at hx; exact hx.elim (m1 a b) (mD a b)
     · rw [eX] at hx ⊢
       rcases hadd _ _ a b hx with hx | hx
@@ -487,15 +523,12 @@ theorem muLin_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Exc
       · exact .inr hx
   have eZ : ∀ a b, ¬Z.Holds a b := fun a b hz => (zero_holds hZ a b).1 hz
   obtain ⟨s, s', iS, hs, hp, hn⟩ := fixOn_inv I (fun s s' s'' iS hs hp => (Except.ok.inj hp : s' = s'') ▸ keep s s' iS hs)
-    _ _ _ ⟨by
-      rw [show Z.toList = [] from List.eq_nil_iff_forall_not_mem.2 fun p hp =>
-        eZ p.1 p.2 ((holds_iff_mem_toList Z p.1 p.2).2 hp)]
-      exact List.nodup_nil, zero_wf hZ, zero_wf hZ, fun a b hz => (eZ a b hz).elim,
+    _ _ _ ⟨zero_asc hZ, zero_wf hZ, zero_wf hZ, fun a b hz => (eZ a b hz).elim,
       fun a b hz => (eZ a b hz).elim, fun a b hz => .inr hz⟩ hr
   obtain rfl : s' = r := Except.ok.inj hp
   obtain ⟨dX, wX, wD, mX, -, cX⟩ := iS
-  obtain ⟨dY, -, -, eD, eX⟩ := round s s' wX wD hs
-  have hX := holds_of_n dX dY (fun a b hab => by rw [eX]; exact .inl hab) hn.symm
+  obtain ⟨dY, -, -, eD, eX, -⟩ := round s s' wX wD dX hs
+  have hX := holds_of_n dX.nodup dY (fun a b hab => by rw [eX]; exact .inl hab) hn.symm
   have eXY : s'.1.Holds = s.1.Holds :=
     funext fun a => funext fun b => propext ⟨hX a b, fun hx => by rw [eX]; exact .inl hx⟩
   refine ⟨fun a b hy => mX a b (hX a b hy), fun a b hF => ?_⟩
@@ -529,44 +562,41 @@ theorem star_holds {K B : Obj} {step : Tab B B → Except String (Tab B B)} {R :
   rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
   obtain rfl : r.1 = Y := Except.ok.inj h
   have hP : ∀ k a, P'.Holds k a ↔ P.Holds k a := canon_holds hP' hPw
-  -- a round from `s`: `X' = X ∪ Δ'`, `Δ' = Δ R − X`, both packed
-  have round : ∀ (s Z Z' : Tab K B × Tab K B), s.1.WF → s.2.WF →
-      (do let D ← (← s.2.comp (← step (← s.2.ran))).diff s.1; pure (← s.1.union D, D) :
-        Except String (Tab K B × Tab K B)) = .ok Z →
+  -- a round from `s`: `(X', Δ') = (X ∪ N, N − X)` for `N = Δ R`, both packed
+  have round : ∀ (s Z Z' : Tab K B × Tab K B), s.1.WF → s.2.WF → s.1.Asc →
+      (do s.1.unionDiffSel (← s.2.comp (← step (← s.2.ran))) : Except String (Tab K B × Tab K B)) = .ok Z →
       (do pure (← Z.1.pack, ← Z.2.pack) : Except String (Tab K B × Tab K B)) = .ok Z' →
       Z'.1.toList.Nodup ∧ (∀ k c, Z'.2.Holds k c ↔ (∃ b, s.2.Holds k b ∧ R b c) ∧ ¬s.1.Holds k c) ∧
-        (∀ k c, Z'.1.Holds k c ↔ s.1.Holds k c ∨ Z'.2.Holds k c) ∧ Z'.1.WF ∧ Z'.2.WF := by
-    intro s Z Z' w1 w2 hZ hp
+        (∀ k c, Z'.1.Holds k c ↔ s.1.Holds k c ∨ Z'.2.Holds k c) ∧ Z'.1.WF ∧ Z'.2.WF ∧ Z'.1.Asc := by
+    intro s Z Z' w1 w2 a1 hZ hp
     simp only [bind] at hZ hp
     rw [Except.bind_eq_ok'] at hZ; obtain ⟨Dr, hDr, hZ⟩ := hZ
     rw [Except.bind_eq_ok'] at hZ; obtain ⟨T, hT, hZ⟩ := hZ
     rw [Except.bind_eq_ok'] at hZ; obtain ⟨N, hN, hZ⟩ := hZ
-    rw [Except.bind_eq_ok'] at hZ; obtain ⟨D, hD, hZ⟩ := hZ
-    rw [Except.bind_eq_ok'] at hZ; obtain ⟨U, hU, hZ⟩ := hZ
-    obtain rfl : (U, D) = Z := Except.ok.inj hZ
     rw [Except.bind_eq_ok'] at hp; obtain ⟨U', hU', hp⟩ := hp
     rw [Except.bind_eq_ok'] at hp; obtain ⟨D', hD', hp⟩ := hp
     obtain rfl : (U', D') = Z' := Except.ok.inj hp
     have wN := comp_wf hN w2 (hsw _ _ hT (ran_wf hDr w2))
-    have wD := diff_wf hD wN w1
-    have wU := union_wf hU w1 wD
+    obtain ⟨hV, hD1, wU, wD, aV⟩ := unionDiffSel_holds w1 wN a1 hZ
     have eD : ∀ k c, D'.Holds k c ↔ (∃ b, s.2.Holds k b ∧ R b c) ∧ ¬s.1.Holds k c := fun k c => by
-      rw [pack_holds hD' wD, diff_holds hD wN w1, comp_holds hN w2 (hsw _ _ hT (ran_wf hDr w2))]
+      rw [pack_holds hD' wD, hD1, comp_holds hN w2 (hsw _ _ hT (ran_wf hDr w2))]
       refine and_congr_left fun _ => ⟨fun ⟨b, hb, hbc⟩ => ?_, fun ⟨b, hb, hbc⟩ => ⟨b, hb, ?_⟩⟩
       · obtain ⟨b', hb', hbc'⟩ := (hs _ _ hT (ran_wf hDr w2) b c).1 hbc
         obtain ⟨rfl, -⟩ := (ran_holds hDr w2.2 b b').1 hb'
         exact ⟨b, hb, hbc'⟩
       · exact (hs _ _ hT (ran_wf hDr w2) b c).2 ⟨b, (ran_holds hDr w2.2 b b).2 ⟨rfl, k, hb⟩, hbc⟩
-    refine ⟨(pack_toList hU' wU).2 ▸ union_nodup hU w1 wD, eD, fun k c => ?_, pack_wf hU' wU, pack_wf hD' wD⟩
-    rw [pack_holds hU' wU, union_holds hU w1 wD, ← pack_holds hD' wD]
-  let I : Tab K B × Tab K B → Prop := fun s => s.1.toList.Nodup ∧ (∀ k b, s.2.Holds k b → s.1.Holds k b) ∧
+    refine ⟨(pack_toList hU' wU).2 ▸ aV.nodup, eD, fun k c => ?_, pack_wf hU' wU, pack_wf hD' wD, pack_asc hU' wU aV⟩
+    show U'.Holds k c ↔ s.1.Holds k c ∨ D'.Holds k c
+    rw [pack_holds hU' wU, hV, pack_holds hD' wD, hD1]
+    by_cases e : s.1.Holds k c <;> simp [e]
+  let I : Tab K B × Tab K B → Prop := fun s => s.1.Asc ∧ (∀ k b, s.2.Holds k b → s.1.Holds k b) ∧
     (∀ k b, s.1.Holds k b → ∃ a, P'.Holds k a ∧ Core.Rel.mu (fun X => 𝟙 _ ∪ R ≫ X) a b) ∧
     (∀ k a, P'.Holds k a → s.1.Holds k a) ∧
     (∀ k b c, s.1.Holds k b → R b c → s.1.Holds k c ∨ s.2.Holds k b) ∧ s.1.WF ∧ s.2.WF
   obtain ⟨X, Z, ⟨dX, -, sX, pX, cX, wX1, wX2⟩, hZ, hp, hn⟩ := fixOn_inv I
-    (fun s Z Z' ⟨_, dsub, sX, pX, cX, w1, w2⟩ hZ hp => by
-      obtain ⟨d, eD, eX, w1', w2'⟩ := round s Z Z' w1 w2 hZ hp
-      refine ⟨d, fun k b hb => (eX k b).2 (.inr hb), fun k b hb => ((eX k b).1 hb).elim (sX k b) fun hD => ?_,
+    (fun s Z Z' ⟨a1, dsub, sX, pX, cX, w1, w2⟩ hZ hp => by
+      obtain ⟨-, eD, eX, w1', w2', a1'⟩ := round s Z Z' w1 w2 a1 hZ hp
+      refine ⟨a1', fun k b hb => (eX k b).2 (.inr hb), fun k b hb => ((eX k b).1 hb).elim (sX k b) fun hD => ?_,
         fun k a ha => (eX k a).2 (.inl (pX k a ha)), fun k b c hb hbc => ?_, w1', w2'⟩
       · obtain ⟨⟨b', hb', hbc⟩, -⟩ := (eD k b).1 hD
         obtain ⟨a, ha, hab⟩ := sX k b' (dsub k b' hb')
@@ -578,11 +608,11 @@ theorem star_holds {K B : Obj} {step : Tab B B → Except String (Tab B B)} {R :
             · exact .inl ((eX k c).2 (.inl hc))
             · exact .inl ((eX k c).2 (.inr ((eD k c).2 ⟨⟨b, hd, hbc⟩, hc⟩)))
         · exact .inr hb)
-    _ _ _ ⟨toList_nodup fun _ _ => canon_distinct hP' hPw, fun _ _ h => h,
+    _ _ _ ⟨fun i j hij => canon_lt hP' hPw i j hij, fun _ _ h => h,
       fun k b hb => ⟨b, hb, pre b b (.inl rfl)⟩, fun _ _ h => h, fun _ _ _ _ _ => .inr ‹_›, canon_wf hP' hPw, canon_wf hP' hPw⟩ hr
-  obtain ⟨dr, eD, eX, -, -⟩ := round X Z r wX1 wX2 hZ hp
+  obtain ⟨dr, eD, eX, -, -, -⟩ := round X Z r wX1 wX2 dX hZ hp
   -- the last round kept the row count, so it added nothing: `X` is closed under `R`
-  have hX := holds_of_n dX dr (fun k c h => (eX k c).2 (.inl h)) hn.symm
+  have hX := holds_of_n dX.nodup dr (fun k c h => (eX k c).2 (.inl h)) hn.symm
   have cl : ∀ k b c, X.1.Holds k b → R b c → X.1.Holds k c := fun k b c hb hbc =>
     (cX k b c hb hbc).elim id fun hd => by
       by_cases hc : X.1.Holds k c

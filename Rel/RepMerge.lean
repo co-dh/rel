@@ -971,4 +971,52 @@ theorem Tab.mergeDiff_holds {k v : Obj} {X T V U : Tab k v} (hX : X.WF) (hT : T.
   obtain rfl := Option.some.inj hy
   exact hl
 
+/-- **`X` strictly ascending in `Obj.lt`** (a `canon`ical table; the hypothesis `mergeDiff_holds` reads). -/
+def Tab.Asc {k v : Obj} (X : Tab k v) : Prop :=
+  ∀ i j : Fin X.n.toNat, i.1 < j.1 → (Obj.prod k v).lt (X.key.row i, X.val.row i) (X.key.row j, X.val.row j)
+
+/-- **`𝟘` is strictly ascending**: it has no rows. -/
+theorem Tab.zero_asc {k v : Obj} {t : Tab k v} (h : (Tab.zero : Except String (Tab k v)) = .ok t) : t.Asc := by
+  simp only [Tab.zero, bind, Except.bind, pure, Except.pure] at h
+  split at h; · cases h
+  split at h; · cases h
+  cases h
+  exact fun i => absurd i.2 (by simp)
+
+/-- **A strictly ascending table has distinct rows**: `Obj.lt` is irreflexive. -/
+theorem Tab.Asc.nodup {k v : Obj} {R : Tab k v} (hs : R.Asc) : R.toList.Nodup :=
+  toList_nodup fun j j' hne e => by
+    rcases Nat.lt_or_gt_of_ne (Fin.val_ne_of_ne hne) with h | h
+    · have := hs j j' h; rw [e] at this; exact Obj.lt_irrefl _ _ this
+    · have := hs j' j h; rw [← e] at this; exact Obj.lt_irrefl _ _ this
+
+/-- **`pack` keeps the order of the rows** (`pack_toList`: the same rows in the same positions). -/
+theorem Tab.pack_asc {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') (wR : R.WF) (hs : R.Asc) : R'.Asc := by
+  obtain ⟨hn, hl⟩ := pack_toList h wR
+  have hk : R'.n.toNat = R.n.toNat := congrArg USize.toNat hn
+  have e : ∀ i : Fin R'.n.toNat, (R'.key.row i, R'.val.row i) =
+      (R.key.row ⟨i, by have := i.2; omega⟩, R.val.row ⟨i, by have := i.2; omega⟩) := fun i => by
+    have := congrArg (fun l => l[i.1]?) hl
+    simp only [Tab.toList, List.getElem?_ofFn] at this
+    obtain ⟨h1, h2⟩ := by simpa [i.2, show i.1 < R.n.toNat by have := i.2; omega] using this
+    exact Prod.ext h1 h2
+  intro i j hij
+  rw [e i, e j]; exact hs _ _ hij
+
+/-- **`(X ∪ T, T − X)` by either path** (`Tab.unionDiffSel`): for a strictly ascending `X`, both tables `WF`, the
+answer holds `X ∪ T` and `T − X`, both `WF`, `X ∪ T` strictly ascending — `mergeDiff_holds` on the small-`T` branch,
+`unionDiff_ok` with `union_holds`, `rdiff_holds` and `canon_lt` on the other. -/
+theorem Tab.unionDiffSel_holds {k v : Obj} {X T V U : Tab k v} (hX : X.WF) (hT : T.WF) (hs : X.Asc)
+    (h : X.unionDiffSel T = .ok (V, U)) :
+    (∀ a b, V.Holds a b ↔ X.Holds a b ∨ T.Holds a b) ∧ (∀ a b, U.Holds a b ↔ T.Holds a b ∧ ¬ X.Holds a b) ∧
+      V.WF ∧ U.WF ∧ V.Asc := by
+  unfold Tab.unionDiffSel at h
+  split at h
+  · obtain ⟨hV, hU, wV, wU, aV, -⟩ := Tab.mergeDiff_holds hX hT hs h
+    exact ⟨hV, hU, wV, wU, aV⟩
+  · obtain ⟨hu, hd⟩ := Tab.unionDiff_ok h
+    obtain ⟨C, hC, hc⟩ := Tab.union_sorted hu
+    exact ⟨fun a b => Tab.union_holds hu hX hT a b, fun a b => Tab.rdiff_holds hd hX hT a b, Tab.union_wf hu hX hT,
+      Tab.select_wf hd hX hT, fun i j hij => Tab.canon_lt hc (Tab.concat_wf hC hX hT) i j hij⟩
+
 end Rel
