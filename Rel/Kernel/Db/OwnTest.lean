@@ -132,8 +132,8 @@ body:   byte 0: the magic `qleancol`
 #guard_msgs in #eval readBoth (mutate good [(0, 120)])
 
 /--
-info: extern: byte 8: format version 7, found 2; a file before version 7 is rewritten by `set` from the data it was made from: version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms
-body:   byte 8: format version 7, found 2; a file before version 7 is rewritten by `set` from the data it was made from: version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms
+info: extern: byte 8: format version 8, found 2; a file before version 8 is rewritten by `set` from the data it was made from: version 8 made null residual 0, 7 removed the attribute byte and the domain name, 6 widened the patch list's block offsets to u64, and 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms
+body:   byte 8: format version 8, found 2; a file before version 8 is rewritten by `set` from the data it was made from: version 8 made null residual 0, 7 removed the attribute byte and the domain name, 6 widened the patch list's block offsets to u64, and 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms
 -/
 #guard_msgs in #eval readBoth (mutate good [(8, 2)])
 

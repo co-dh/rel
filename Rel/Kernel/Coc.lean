@@ -146,10 +146,10 @@ read unsigned has a bit at `d` or above. A shift and not `2 ^ d`, which is a big
 def outside (f : Int64) (d : Nat) (k : Int64) : Bool := k < f || d < 64 && (k - f).toUInt64 >>> d.toUInt64 != 0
 
 /-- Whether the writer patches key `k` of a block of frame `f` and width byte `d`: it lies `outside` the frame, or the
-block holds a null (`d`'s bit 7) and `k` sits at the null's code, the top residual `ones (d % 128)`, which no value may
-read as. `lst` is whether the column can carry a patch list at all (below `2 ^ 64` rows). -/
+block holds a null (`d`'s bit 7) and `k` sits at the null's code, residual 0 (`k = f`), which no value may read as.
+`lst` is whether the column can carry a patch list at all (below `2 ^ 64` rows). -/
 def patched (lst : Bool) (f : Int64) (d : Nat) (k : Int64) : Bool :=
-  outside f d k || lst && decide (128 ≤ d) && (k - f).toUInt64 == Rel.Column.ones (d % 128)
+  outside f d k || lst && decide (128 ≤ d) && k == f
 
 /-- Sorted runs `xs` and `ys` merged by `le`, `f` the fuel (their lengths' sum suffices). -/
 def mergeBy {α : Type} (le : α → α → Bool) : Nat → List α → List α → List α
@@ -204,11 +204,17 @@ def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 �
     (r.2.2, r.1)
   else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
+/-- Whether key `k` of a `w`-byte column is the least a `w`-byte element (sign-extended) or an `Int64` can hold: the one
+key `k - 1` wraps or leaves the type at, so a block holding a null cannot put its base below it. -/
+def lowKey (w : Nat) (k : Int64) : Bool :=
+  k == Int64.minValue || k.toUInt64 == (Rel.Column.sext w ((1 : UInt64) <<< (8 * w - 1).toUInt64)).toUInt64
+
 /-- Block `b`, of `B` elements, of a nullable column (`1+atom`, owner decision K) where it holds a null: `x` its `n`
-`w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its base, maximum and `blockOf`'s sum are taken over the
-rows that are not null (`0`, `0`, `0` where every row is); its width byte is the range's `widthFor`, one bit wider where
-a value sits at the top residual `2 ^ d - 1` (so no value reads as the null), plus `nulAt`'s bit 7. A block whose range
-is all `2 ^ 64` keys cannot widen: there `encodeAt` patches the value at the top residual (`patched`). -/
+`w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its maximum and `blockOf`'s sum are taken over the
+rows that are not null (`0`, `0` where every row is). Its base is the least such key less one, so every value's residual
+is at least 1 and the null is residual 0; its width byte is `widthFor` of the maximum less the base, plus `nulAt`'s bit 7.
+Where the least key is the type's own least (`lowKey`, which the base cannot go below) or no row is a value, the base is
+that key and `encodeAt` patches the rows holding it (`patched`). -/
 def nulBlock (B w n b : Nat) (x nul : ByteArray) : Int64 × Int64 × UInt64 × Nat :=
   let lo := b * B
   let ks := ((Array.range (min (lo + B) n - lo)).filter fun j => !Rel.Column.bitAt nul (lo + j)).map
@@ -216,11 +222,12 @@ def nulBlock (B w n b : Nat) (x nul : ByteArray) : Int64 × Int64 × UInt64 × N
   let mn := ks.foldl min (ks.getD 0 0)
   let mx := ks.foldl max (ks.getD 0 0)
   let s := ks.foldl (init := (0 : UInt64)) fun acc k => if k.toUInt64 == sumNul w then acc else acc + k.toUInt64
-  let d := Rel.Column.widthFor (mx - mn).toUInt64.toNat
-  (mn, mx, s, 128 + if !ks.isEmpty && d < 64 && (mx - mn).toUInt64 == Rel.Column.ones d then d + 1 else d)
+  let f := if ks.isEmpty || lowKey w mn then mn else mn - 1
+  (f, mx, s, 128 + Rel.Column.widthFor (mx - f).toUInt64.toNat)
 
 /-- The writer's block step, block `b` of `n` `w`-byte elements at blocks of `2 ^ lg`, row `i` null where
-`Column.bitAt nul i`: `(base, max, sum, frame, width byte)`. A block holding a null is `nulBlock`'s, its frame its base;
+`Column.bitAt nul i`: `(base, max, sum, frame, width byte)`. A block holding a null is `nulBlock`'s, its frame its base
+(below its least value, not equal to it);
 any other is `blockOf`'s extremes and sum with `planOf`'s frame and width. Which blocks reserve the null's top residual
 is decided here and nowhere else. -/
 def planBlock (lg w n : Nat) (patch : Bool) (x nul : ByteArray) (b : Nat) : Int64 × Int64 × UInt64 × Int64 × Nat :=
@@ -239,7 +246,7 @@ columns: `nul` the bitmap of the null rows (a bit past it is `0`), empty for a c
 
 Block `b` is `planBlock`'s base, frame `f` and width byte `d` (its residual width `d % 128`): an element `patched`
 holds — outside the frame, or a value at the null's code in a block holding a null — is patched: its residual 0, its bits in the patch list `excBlob` lays after the residuals — a null row
-takes the top residual `2 ^ d - 1`, so the null is tested on the block (`Column.foRNul`) and never decoded, and every
+takes residual 0 too, so the null is tested on the block (`Column.foRNul`) and never decoded, and every
 other is its key less `f` at `d` bits. The patch list exists where a block patches, its frames (`f - mn` a block) where
 one is not its minimum; `rust/src/enc.rs`'s `for_blk`, `nul_meta` and `pack_exc_blk` write the same bytes. The list's
 count and block offsets are `u64`, so patching is off only past `2 ^ 64` elements, which no column in memory reaches;
@@ -256,7 +263,7 @@ def encodeAt (lg : Nat) (width : USize) (x : ByteArray) (patch : Bool := true) (
   let pack := (bs.foldl (init := (ByteArray.empty, 0)) fun (acc, b) (_, _, _, f, d) =>
     let lo := b * B
     (acc ++ packRes B (d % 128) fun j =>
-      if lo + j < n && Rel.Column.bitAt nul (lo + j) then Rel.Column.ones (d % 128) else
+      if lo + j < n && Rel.Column.bitAt nul (lo + j) then 0 else
       (if lo + j < n && !patched (decide (n < 2 ^ 64)) f d (keyAt w x (lo + j)) then keyAt w x (lo + j) - f else 0).toUInt64,
       b + 1)).1
   let exc := (Array.range n).filter fun i =>

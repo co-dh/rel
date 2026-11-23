@@ -491,14 +491,15 @@ theorem ones_eq (d : Nat) : ones d = (2 ^ d - 1).toUInt64 := by
 
 
 /-- Whether element `i` is the null of a nullable column (`1+atom`), tested on the encoding and never decoded: its
-block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is the block's top one, `2 ^ w - 1`.
-`starts` as in `foRBits`; the Rust test is `rust/src/cocops.rs`'s `in_band_null_is_the_flagged_top_residual`. -/
+block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is 0 whatever the width: a flagged block's
+base is its least value less one, so no value's residual is 0 (`Coc.nulBlock`).
+`starts` as in `foRBits`; the Rust test is `rust/src/cocops.rs`'s `in_band_null_is_the_flagged_residual_zero`. -/
 def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
   let b := i / blk metadata
   let e := match starts[nblk metadata]? with | some s => s | none => blockStart metadata (nblk metadata)
   nulAt metadata b && (foRExc metadata pack i e).isNone &&
     resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b) (widthAt metadata b)
-      (i % blk metadata) == ones (widthAt metadata b)
+      (i % blk metadata) == 0
 
 /-- Element `i` of a nullable column, the denotation of `1+atom` in one column: `none` (the `1`) at its null
 (`foRNul`), else the raw bits `foRBits` reads. A column with no flagged block reads `some` everywhere. -/
@@ -507,17 +508,15 @@ def foROpt (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Option U
 
 /-- Whether every value a `foR` payload holds is below 2, decided per block from its metadata and patch list alone,
 never per element (`Verify.u1Ok_bound`): an unpatched value is `baseAt + foRFrame + residual`, the residual at most
-`ones (widthAt)` and, in a block `nulAt` flags, one less (the top one is the null), and a patched value is its patch.
+`ones (widthAt)`, and a patched value is its patch.
 Every `u1` column the encoder writes passes, since it picks the minimal width (`widthFor` of the block's range), so a
 `0`/`1` block is base `0` width `1` or base `0`/`1` width `0`; a file whose `u1` block has a larger frame or width is
-rejected, even where each of its values happens to be `0` or `1`. So is a `u1` block flagged for a null: the encoder
-widens it to width 2 (residual 3 the null), whose metadata admits a residual 2; a nullable column (`Opt`) is
-decided by `Enc.WF` itself. -/
+rejected, even where each of its values happens to be `0` or `1`. So is a `u1` block flagged for a null: its base is
+`-1`, below every value; a nullable column (`Opt`) is decided by `Enc.WF` itself. -/
 def u1Ok (metadata pack : ByteArray) : Bool :=
   let e := blockStart metadata (nblk metadata)
   Nat.all (nblk metadata) fun b _ =>
-    (baseAt metadata b).toNat + (foRFrame metadata pack b e).toNat + (ones (widthAt metadata b)).toNat <
-      2 + (nulAt metadata b).toNat &&
+    (baseAt metadata b).toNat + (foRFrame metadata pack b e).toNat + (ones (widthAt metadata b)).toNat < 2 &&
     (pack.size ≤ e || (foRPatches metadata pack e b).all fun k => (foRPatch pack e k).toNat < 2)
 
 /-- Exceptions stored out of line. Read out of the alp blob's header rather than derived, `exc_off`
@@ -651,7 +650,7 @@ open Column
 elements. The conditions `count`, `admit` and `mismatch` used to encode between them, stated once;
 every reader trusts the header, so a vector that fails this is a bug where it was built. Booleans are
 a `u1` `foR` and never `bytes`; Frame of Reference takes every fixed-width type, a `boolean` one being `u1` (every
-element but a null 0 or 1, read through `foROpt`, since a null row holds its block's top residual and no value); a `foR` payload's blocks cover its `n`, and a block flagged `nulAt` holds a null row (`foRNul`). A `sym` column is
+element but a null 0 or 1, read through `foROpt`, since a null row holds residual 0 and no value does); a `foR` payload's blocks cover its `n`, and a block flagged `nulAt` holds a null row (`foRNul`). A `sym` column is
 its ids, positions in the sorted, distinct dictionary held beside it at the Rel level and never in the payload,
 so id order is symbol order and every integer kernel reads it unchanged (PLAN 8.3). -/
 def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=

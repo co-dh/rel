@@ -40,11 +40,10 @@ impl<'a> Coc<'a> {
         res_get_in(p, self.meta.w(b), j, p.len())
     }
     /// Lean `foRNul`: row `i` is the null of a nullable column, tested on the encoding and never decoded: its block
-    /// flagged (`Meta::nul`), no patch holding it, its residual the block's top one `2^w - 1`.
+    /// flagged (`Meta::nul`), no patch holding it, its residual 0.
     pub fn is_nul(&self, i: usize) -> bool {
         let (b, j) = (i >> self.meta.lg, i & (self.meta.blk() - 1));
-        let w = self.meta.w(b);
-        self.meta.nul(b) && self.patch(b, j).is_none() && self.res(b, j) == if w >= 64 { u64::MAX } else { (1u64 << w) - 1 }
+        self.meta.nul(b) && self.patch(b, j).is_none() && self.res(b, j) == 0
     }
     /// The null bitmap of rows `0 .. n`, bit `i` (LSB first) row `i`, the form `Sink::write_nul` takes; `None` where no
     /// block is flagged (Lean `hasNul`). Only flagged blocks are read, one width byte each for the rest.
@@ -115,22 +114,21 @@ mod tests {
         assert_eq!((c.std(3), c.std(1025), c.std(0)), (true, false, false));
         assert_eq!(c.one_width(), 0);
     }
-    // the architecture note's example: a 6-bit block, base 100, flagged; residual 63 (`111111`) is the null, the
-    // other residuals read as values, and the flag leaves the width, the offsets and `get` of a value unchanged
-    #[test] fn in_band_null_is_the_flagged_top_residual() {
-        let (z, base, off, width) = ([0i64], [100i64], [0u64], [6u8 | crate::coc::NUL_FLAG]);
+    // doc/null-zero.zh.typ's example: a 6-bit block, base 99, flagged; residual 0 is the null, the other residuals
+    // read as values, and the flag leaves the width, the offsets and `get` of a value unchanged
+    #[test] fn in_band_null_is_the_flagged_residual_zero() {
+        let (z, base, off, width) = ([0i64], [99i64], [0u64], [6u8 | crate::coc::NUL_FLAG]);
         let mut pack = [0u8; (1 << crate::DEFAULT_LG) * 6 / 8];
-        (pack[0], pack[1]) = (63 | 1 << 6, 1); // residuals 63, 5 (bits 6..12), 0
+        (pack[0], pack[1]) = (1, 6 << 4); // residuals 1, 0 (bits 6..12), 6 (bits 12..18)
         let meta = Meta { lg: crate::DEFAULT_LG, base: &base, maxv: &z, off: &off, bsum: &z, width: &width, n: 3, nblk: 1, mblk: 1 };
         let c = Coc { meta, pack: &pack, exc: None, fdelta: None };
         assert_eq!((c.meta.w(0), c.meta.nul(0), c.meta.res_end(), c.one_width()), (6, true, pack.len(), 6));
-        let top = |i| res_get_in(&pack, c.meta.w(0), i, pack.len()) == (1 << c.meta.w(0)) - 1;
-        assert_eq!((top(0), top(1), top(2), c.get(1)), (true, false, false, 105));
+        assert_eq!((c.is_nul(0), c.is_nul(1), c.is_nul(2), c.get(0), c.get(2)), (false, true, false, 100, 105));
         let plain = Coc { meta: Meta { width: &[6u8], ..meta }, ..c };
-        assert_eq!((plain.meta.nul(0), plain.get(0)), (false, 163));
+        assert_eq!((plain.meta.nul(0), plain.is_nul(1), plain.get(1)), (false, false, 99));
     }
     // the writer (`Sink::write_nul`) over three blocks — mixed, all null, no null — read back through `coc::view`: a
-    // flagged block's null rows hold its top residual, every other row `get`s its value, and an unflagged block is plain
+    // flagged block's null rows hold residual 0, every other row `get`s its value, and an unflagged block is plain
     #[test] fn encode_nul_puts_nulls_in_band() {
         let bk = 1usize << crate::DEFAULT_LG;
         let n = 2 * bk + 5;
@@ -147,10 +145,10 @@ mod tests {
         assert_eq!((c.meta.w(0), c.meta.w(1), c.meta.w(2)), (5, 0, 5));
         for i in (0..n).filter(|&i| !nulr(i)) { assert_eq!(c.get(i), val(i), "row {i}") }
         let w = c.meta.w(0);
-        for i in (0..bk).filter(|&i| nulr(i)) { assert_eq!(res_get_in(&p, w, i, p.len()), (1 << w) - 1, "row {i}") }
+        for i in (0..bk).filter(|&i| nulr(i)) { assert_eq!(res_get_in(&p, w, i, p.len()), 0, "row {i}") }
     }
-    // Lean `CocTest`'s pair: `i64::MIN`, `i64::MAX` and a null in one block span all `2 ^ 64` keys, so width 64, and
-    // `i64::MAX - i64::MIN` is the null's code: the writer patches that row, which reads as itself and not as the null
+    // Lean `CocTest`'s pair: `i64::MIN`, `i64::MAX` and a null in one block span all `2 ^ 64` keys, so width 64 and the
+    // base cannot go below `i64::MIN`: the writer patches that row (residual 0, the null's code), which reads as itself
     #[test] fn encode_nul_patches_a_value_at_the_null_code() {
         let x = [i64::MIN, i64::MAX, 0];
         let o = crate::ffi::Sink::new(3, 8).write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &[0b100])
