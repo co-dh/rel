@@ -73,5 +73,12 @@ rel_program frame where
     nullLift(f : γ ⟶ δ, c : β ⟶ γ+1) : β ⟶ δ+1 ≜ bind(f inl, c)
     nullLift2(f : γ×δ ⟶ ε, a : β ⟶ γ+1, b : β ⟶ δ+1) : β ⟶ ε+1 ≜ (lift2(f, a inl°, b inl°) inl) ∪ ((dom(⟨a, b⟩) − dom(⟨a inl°, b inl°⟩)) ⊤ inr)
     contains(s : [α] ⟶ [α]) : [α] ⟶ [α] ≜ dom(suffix prefix s)
+    -- q's `vs` at the separator `s` (a coreflexive, as `contains` takes it): a left fold appends each element to the
+    -- last piece and cuts that piece where it ends in `s`; a fold, not `where` of the matches, because q keeps the
+    -- leftmost non-overlapping ones, which only a left-to-right scan can pick (`"aba"` in `"ababa"` once)
+    splitOn(s : [α] ⟶ [α]) : [α] ⟶ [[α]] ≜ ⦇[nil τ, a (e ∪ ((𝟙 − dom(e)) snoc))]⦈ where a ≜ ⟨π₁ init, ⟨π₁ last, π₂⟩snoc⟩, e ≜ (𝟙 × (cat° (𝟙 × s))) ⟨⟨π₁, π₂ π₁⟩snoc, nil⟩snoc
+    -- a regex as its automaton, the cells some run from the start `q` ends in an accepting state of `A`: the fold's
+    -- step is the transition relation `T` (a relation, so `T` may be an NFA); compiling a regex to `T` is outside
+    match(T : σ×α ⟶ σ, q : 1 ⟶ σ, A : σ ⟶ σ) : [α] ⟶ [α] ≜ dom(⦇[q, T]⦈ A)
 
 end Rel.Programs
