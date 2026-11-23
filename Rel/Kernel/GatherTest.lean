@@ -81,7 +81,7 @@ def flat3 : Array UInt64 := (Array.range 3000).map fun i => (i * 7919 % 4096).to
   view (kgather (u 3000) (col (til 3000).toList) (u 3000) (col s.toList)) == want (gatherWords (til 3000) s) &&
   view (kgather (u 3000) (col swp.toList) (u 3000) (col s.toList)) == want (gatherWords swp s)
 
-/-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
+/-- `xs` with the rows `ns` null (`1+atom`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
 def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
   wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
 

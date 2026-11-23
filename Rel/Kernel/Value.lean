@@ -490,7 +490,7 @@ theorem ones_eq (d : Nat) : ones d = (2 ^ d - 1).toUInt64 := by
   rw [ones, pow2_eq]; exact (UInt64.ofNat_sub Nat.one_le_two_pow).symm
 
 
-/-- Whether element `i` is the null of a nullable column (`atom+1`), tested on the encoding and never decoded: its
+/-- Whether element `i` is the null of a nullable column (`1+atom`), tested on the encoding and never decoded: its
 block is flagged (`nulAt`), no patch holds it (`foRExc`), and its residual is the block's top one, `2 ^ w - 1`.
 `starts` as in `foRBits`; the Rust test is `rust/src/cocops.rs`'s `in_band_null_is_the_flagged_top_residual`. -/
 def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
@@ -500,7 +500,7 @@ def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
     resAt pack (match starts[b]? with | some s => s | none => blockStart metadata b) (widthAt metadata b)
       (i % blk metadata) == ones (widthAt metadata b)
 
-/-- Element `i` of a nullable column, the denotation of `atom+1` in one column: `none` (the `1`) at its null
+/-- Element `i` of a nullable column, the denotation of `1+atom` in one column: `none` (the `1`) at its null
 (`foRNul`), else the raw bits `foRBits` reads. A column with no flagged block reads `some` everywhere. -/
 def foROpt (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Option UInt64 :=
   if foRNul metadata pack starts i then none else some (foRBits metadata pack starts i)

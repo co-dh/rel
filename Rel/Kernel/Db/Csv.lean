@@ -22,8 +22,9 @@ open Rel
 
 /-- How a column's object holds its field (IO step I8), and so the parts it is stored as:
 - `atom`: the field is a text of the atom; one column of words.
-- `null`: `V+1`, `V` the atom and `1` the unit object (`Obj.one`): the empty field is the null (`inr ()`), any other
-  field a text of `V` (`inl`); `Obj.sum`'s parts `tag` (`1` at a null), `idx` (the row's position in its side), `V`'s
+- `null`: laid out as `V+1`, `V` the atom and `1` the unit object (`Obj.one`): the empty field is the null (`inr ()`),
+  any other field a text of `V` (`inl`); the language's nullable is `1+V` (`Obj.opt`), which `Table.swapTag` reads
+  this as; `Obj.sum`'s parts `tag` (`1` at a null), `idx` (the row's position in its side), `V`'s
   values; the side `1` stores nothing.
 - `text`: `[C]`, `C` the atom `char`: the field's bytes are the cell; `Obj.arr`'s parts `lo`, `hi` (the row's cell is
   `[lo, hi)` of the payload) and the payload, every cell's bytes in file order. -/
