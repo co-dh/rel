@@ -408,12 +408,13 @@ unsafe def planInImpl (mod : Lean.Name) (p : Lean.Meta.MetaM (Except String Plan
 /-- The native gate's plan, `gatePlan`. -/
 def planIO : IO Plan := planIn `Rel.Lang.TestNative gatePlan
 
--- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`), column for column:
--- each written `OwnFile` equal to the one `Db.ownFile` makes of the value's column
-#eval show Lean.Meta.MetaM Unit from do
-  let p ← match ← plan with | .ok p => pure p | .error e => throwError e
-  let (_, ws) ← match p.run abiOf with | .ok r => pure r | .error e => throwError e
-  let x ← match native1a.x with | .ok x => pure x | .error e => throwError e
+/-- The writes of the plan `p` of `output what to "out"` are those of the Lean value `v`, column for column: each
+    written `OwnFile` equal to the one `Db.ownFile` makes of the value's column (the `rel-native` gate's check). -/
+def writesAgree {A B : Obj} (what : String) (p : Except String Plan) (v : Except String (Tab A B)) :
+    Lean.Meta.MetaM Unit := do
+  let p ← match p with | .ok p => pure p | .error e => throwError "{what}: {e}"
+  let (_, ws) ← match p.run abiOf with | .ok r => pure r | .error e => throwError "{what}: {e}"
+  let x ← match v with | .ok x => pure x | .error e => throwError "{what}: {e}"
   let side (s : String) (cs : List (String × SideCol)) := cs.map fun (p, v) => ("out/" ++ s ++ p, v)
   let want ← match (side "key" (cols _ x.key "") ++ side "val" (cols _ x.val "")).filterMapM
       (fun (p, v) => do pure ((← ownFile p v).map fun f => (p, f))) with | .ok w => pure w | .error e => throwError e
@@ -423,7 +424,10 @@ def planIO : IO Plan := planIn `Rel.Lang.TestNative gatePlan
   let flat (pf : String × Db.OwnFile) :=
     (pf.1, pf.2.code, pf.2.kind, pf.2.count.toNat, pf.2.parts.toList.map (·.toList))
   unless got.length == ws.size && got.map flat == want.map flat do
-    throwError "the plan of `x` writes {got.length} of {ws.size} columns, not those of its Lean value"
+    throwError "the plan of `{what}` writes {got.length} of {ws.size} columns, not those of its Lean value"
+
+-- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`)
+#eval show Lean.Meta.MetaM Unit from do writesAgree "x" (← plan) native1a.x
 
 /-- `NAME.io` (IO design B) of the program `NAME` elaborated in the module `MOD`, both read by Lean's name parser,
     run in the environment of the modules on `LEAN_PATH` (as `planIO`); its error is the program's. -/
