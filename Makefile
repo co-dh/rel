@@ -21,7 +21,6 @@ CONF     = h=$$(find $(CURDIR)/Rel -name '*.lean' | sort | sha256sum | cut -c1-6
 DB      := $(CURDIR)/.lake/build/refactor-index.db
 T       := /data/tmp/rel-gates/$(notdir $(CURDIR))
 GATES   := $(CURDIR)/.lake/build/bin/gates
-NATIVE  := $(CURDIR)/.lake/build/native/rel-native
 RELC    := $(CURDIR)/.lake/build/bin/relc
 RELKA   := $(CURDIR)/.lake/build/lib/librelk.a
 QRT     := $(CURDIR)/.lake/build/native/cargo/qrt.o
@@ -106,44 +105,61 @@ tags:
 	$(LAKE) env $(GATES) tags Rel.Kernel.Value > $(T)/tag.rs
 	cmp $(T)/tag.rs $(CURDIR)/crate/src/tag.rs || { echo "tags: crate/src/tag.rs differs from Lean's Enc; regenerate: $(LAKE) env $(GATES) tags Rel.Kernel.Value > crate/src/tag.rs" >&2; diff $(T)/tag.rs $(CURDIR)/crate/src/tag.rs >&2; exit 1; }
 
-# out/ of the native executable equals the out/ `relc plan` writes from Lean (`Plan.exec`, the same plan): the same
-# entries, and each file byte for byte. The obligations are the Lean side's files, so a file the native run left out fails.
+# Each program of test/native/progs.txt (`NATIVES`, default all; `make native NATIVES=rel-native` leaves out the rest):
+# its out/ from the native executable equals the out/ `relc plan` writes from Lean (`Plan.exec`, the same plan) and the
+# out/ `relc run` writes from the program's Lean meaning: the same entries, and each file byte for byte. The obligations
+# are the Lean sides' files, so a file the native run left out fails.
 NAT     := $(T)/native
+PROGS   := $(CURDIR)/test/native/progs.txt
+NATIVES ?= $(shell grep -v '^\#' $(PROGS) | awk '{ print $$1 }')
 native:
 	$(GATE)
-	$(LAKE) build relc rel-native
-	rm -rf $(NAT); mkdir -p $(NAT)/lean $(NAT)/native $(NAT)/run
-	# the inputs of `TestNative.nativeIO`, read relative to the run's directory
-	cp -r $(CURDIR)/test/native/in $(NAT)/lean/; cp -r $(CURDIR)/test/native/in $(NAT)/native/; cp -r $(CURDIR)/test/native/in $(NAT)/run/
-	# `lake env`, not `lake exe`: relc is built above, and `planIO` imports the modules from the LEAN_PATH it sets
-	$(LAKE) env $(RELC) plan $(NAT)/lean
-	(cd $(NAT)/native; $(NATIVE))
-	# the Lean meaning of the IO program, `n.io` (not the plan), whose out/ the native one must hold byte for byte
-	(cd $(NAT)/run; $(LAKE) env $(RELC) run Rel.Lang.TestNative Rel.Lang.TestNative.nativeIO)
-	find $(NAT)/run/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/run.entries
-	test -s $(NAT)/run.entries || { echo "native: relc run wrote nothing under $(NAT)/run/out" >&2; exit 1; }
-	test -d $(NAT)/lean/out || { echo "native: no $(NAT)/lean/out; it is written by: $(LAKE) env $(RELC) plan $(NAT)/lean" >&2; exit 1; }
-	test -d $(NAT)/native/out || { echo "native: no $(NAT)/native/out; it is written by: $(NATIVE), run in $(NAT)/native" >&2; exit 1; }
-	find $(NAT)/lean/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/lean.entries
-	find $(NAT)/native/out -mindepth 1 -printf '%y %P\n' | sort > $(NAT)/native.entries
-	test -s $(NAT)/lean.entries || { echo "native: relc plan wrote nothing under $(NAT)/lean/out" >&2; exit 1; }
-	cmp $(NAT)/lean.entries $(NAT)/native.entries || { echo "native: the entries of out/ differ (< lean, > native):" >&2; comm -3 $(NAT)/lean.entries $(NAT)/native.entries >&2; exit 1; }
-	find $(NAT)/lean/out -type f -printf '%P\n' | sort | xargs -I{} cmp $(NAT)/lean/out/{} $(NAT)/native/out/{}
-	comm -23 $(NAT)/run.entries $(NAT)/native.entries > $(NAT)/run.missing
-	if [ -s $(NAT)/run.missing ]; then echo "native: entries relc run wrote and the native run did not:" >&2; cat $(NAT)/run.missing >&2; exit 1; fi
-	find $(NAT)/run/out -type f -printf '%P\n' | sort | xargs -I{} cmp $(NAT)/run/out/{} $(NAT)/native/out/{}
-	# the Lean value of each term the plan outputs (`relc lean`, `writeRel`), not the plan: comparing the plan only with
-	# itself let a converse that skipped `canon` pass; each file the Lean value writes, the native run writes alike
-	mkdir -p $(NAT)/sem/out
-	$(LAKE) env $(RELC) lean $(NAT)/sem
-	find $(NAT)/sem/out -type f -printf '%P\n' | sort > $(NAT)/sem.files
-	test -s $(NAT)/sem.files || { echo "native: relc lean wrote nothing under $(NAT)/sem/out" >&2; exit 1; }
-	xargs -I{} cmp $(NAT)/sem/out/{} $(NAT)/native/out/{} < $(NAT)/sem.files
+	$(LAKE) build relc
+	REL_NATIVE='$(NATIVES)' $(LAKE) build rel-native
+	rm -rf $(NAT); mkdir -p $(NAT)
+	grep -v '^#' $(PROGS) > $(NAT)/progs
+	while read -r name mod plan run inp out; do
+	  case " $(NATIVES) " in *" $$name "*) ;; *) continue ;; esac
+	  d=$(NAT)/$$name; mkdir -p $$d/lean $$d/native $$d/run
+	  # the inputs, read relative to each run's directory: a program's own writer, or the files of test/native/in
+	  for s in lean native run; do
+	    if [ "$$inp" = - ]; then cp -r $(CURDIR)/test/native/in $$d/$$s/; else (cd $$d/$$s; $(LAKE) env $(RELC) run $$mod $$inp); fi
+	  done
+	  if [ "$$plan" = - ]; then pargs=; else pargs="$$mod $$plan"; fi
+	  # `lake env`, not `lake exe`: relc is built above, and `planIO` imports the modules from the LEAN_PATH it sets
+	  $(LAKE) env $(RELC) plan $$d/lean $$pargs
+	  (cd $$d/native; $(CURDIR)/.lake/build/native/$$name)
+	  # the Lean meaning of the program (`run`, not the plan), whose out/ the native one must hold byte for byte
+	  (cd $$d/run; $(LAKE) env $(RELC) run $$mod $$run)
+	  find $$d/run/$$out -mindepth 1 -printf '%y %P\n' | sort > $$d/run.entries
+	  test -s $$d/run.entries || { echo "native $$name: relc run wrote nothing under $$d/run/$$out; it is written by: $(LAKE) env $(RELC) run $$mod $$run, run in $$d/run" >&2; exit 1; }
+	  test -d $$d/lean/$$out || { echo "native $$name: no $$d/lean/$$out; it is written by: $(LAKE) env $(RELC) plan $$d/lean $$pargs" >&2; exit 1; }
+	  test -d $$d/native/$$out || { echo "native $$name: no $$d/native/$$out; it is written by: $(CURDIR)/.lake/build/native/$$name, run in $$d/native" >&2; exit 1; }
+	  find $$d/lean/$$out -mindepth 1 -printf '%y %P\n' | sort > $$d/lean.entries
+	  find $$d/native/$$out -mindepth 1 -printf '%y %P\n' | sort > $$d/native.entries
+	  test -s $$d/lean.entries || { echo "native $$name: relc plan wrote nothing under $$d/lean/$$out" >&2; exit 1; }
+	  cmp $$d/lean.entries $$d/native.entries || { echo "native $$name: the entries of out/ differ (< lean, > native):" >&2; comm -3 $$d/lean.entries $$d/native.entries >&2; exit 1; }
+	  find $$d/lean/$$out -type f -printf '%P\n' | sort | xargs -I{} cmp $$d/lean/$$out/{} $$d/native/$$out/{}
+	  comm -23 $$d/run.entries $$d/native.entries > $$d/run.missing
+	  if [ -s $$d/run.missing ]; then echo "native $$name: entries relc run wrote and the native run did not:" >&2; cat $$d/run.missing >&2; exit 1; fi
+	  find $$d/run/$$out -type f -printf '%P\n' | sort | xargs -I{} cmp $$d/run/$$out/{} $$d/native/$$out/{}
+	  # the gate plan's own Lean value of each term it outputs (`relc lean`, `writeRel`), not the plan: comparing the plan
+	  # only with itself let a converse that skipped `canon` pass; each file the Lean value writes, the native run writes alike
+	  if [ "$$plan" = - ]; then
+	    mkdir -p $$d/sem/out
+	    $(LAKE) env $(RELC) lean $$d/sem
+	    find $$d/sem/out -type f -printf '%P\n' | sort > $$d/sem.files
+	    test -s $$d/sem.files || { echo "native $$name: relc lean wrote nothing under $$d/sem/out" >&2; exit 1; }
+	    xargs -I{} cmp $$d/sem/out/{} $$d/native/$$out/{} < $$d/sem.files
+	  fi
+	done < $(NAT)/progs
 
-# the native executable needs libc, libm and libpthread only (plus the loader and the vdso)
+# every native executable needs libc, libm and libpthread only (plus the loader and the vdso)
 ldd: native
 	$(GATE)
-	ldd $(NATIVE) | awk '$$1 !~ /^(linux-vdso\.so|\/lib64\/ld-linux|libc\.so|libm\.so|libpthread\.so)/ { print "ldd: unexpected " $$0; bad = 1 } END { exit bad }'
+	grep -v '^#' $(PROGS) | awk '{ print $$1 }' | grep -xF -f <(printf '%s\n' $(NATIVES)) | while read -r name; do
+	  ldd $(CURDIR)/.lake/build/native/$$name | awk '$$1 !~ /^(linux-vdso\.so|\/lib64\/ld-linux|libc\.so|libm\.so|libpthread\.so)/ { print "ldd '$$name': unexpected " $$0; bad = 1 } END { exit bad }'
+	done
 
 # the index is read from built modules and refuses a stale one, so it needs exactly the library targets built
 index:
@@ -286,8 +302,8 @@ $(NOGMP): $(CURDIR)/test/nogmp/nogmp.c
 	cc -O2 -Wall -Werror -shared -fPIC -o $@ $< -ldl -lpthread
 nogmp: main-only $(NOGMP) native
 	$(GATE)
-	nm $(NATIVE) > $(T)/nogmp.nm
-	if grep ' __gmp' $(T)/nogmp.nm >&2; then echo "nogmp: $(NATIVE) links GMP (above)" >&2; exit 1; fi
+	grep -v "^#" $(PROGS) | awk "{ print \$$1 }" | grep -xF -f <(printf "%s\n" $(NATIVES)) | sed "s,^,$(CURDIR)/.lake/build/native/," | xargs nm > $(T)/nogmp.nm
+	if grep ' __gmp' $(T)/nogmp.nm >&2; then echo "nogmp: a native executable links GMP (above)" >&2; exit 1; fi
 	find $(CURDIR)/Rel -path "*Test*" -name "*.lean" | sort > $(T)/nogmp.tests
 	test -s $(T)/nogmp.tests || { echo "nogmp: no *Test* module under $(CURDIR)/Rel" >&2; exit 1; }
 	xargs -I{} env REL_NOGMP=$(NOGMP_MODE) REL_NOGMP_OURS=$(CURDIR)/.lake/build/lib LD_PRELOAD=$(NOGMP) \

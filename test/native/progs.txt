@@ -1,0 +1,9 @@
+# One native program per line: NAME MODULE PLAN RUN INPUTS OUT; `-` is none. Read by `lakefile.lean` (the executable NAME) and
+# by `make native` (which runs and compares it). A new program is one line here.
+# MODULE holds the program; editing it regenerates the C. PLAN is the program `relc c FILE MODULE PLAN` and `relc plan DIR
+# MODULE PLAN` plan (`-`: the gate plan, `TestNative.gatePlan`). RUN is the program `relc run MODULE RUN` interprets, whose
+# out/ the native one must equal. INPUTS is the program that writes its input files into the current directory (`-`: the
+# copy of test/native/in). OUT is the directory each side writes its outputs to, relative to its run directory (`out`, or `.` for
+# a program that writes beside its inputs).
+rel-native Rel.Lang.TestNative - Rel.Lang.TestNative.nativeIO - out
+trade-native Rel.Lang.TestFrameApp Rel.Lang.TestFrameApp.tradeApp Rel.Lang.TestFrameApp.tradeApp Rel.Lang.TestFrameApp.tradeInputs .
