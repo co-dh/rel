@@ -112,6 +112,7 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
     split at h
     case isFalse => cases h
     rename_i hf
+    rw [Lang.floatDen_iff₁]
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
     refine keep_map_holds hU (fun i => ?_) a b
     obtain ⟨h2, hi⟩ := fmapCols_spec hf.2.1 hf.2.2 hm i (floatOps_ne hs).1 (floatOps_ne hs).2
@@ -126,6 +127,7 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
     case isFalse => cases h
     rename_i hf
     obtain ⟨ho, rfl, hf, hu⟩ := hf
+    rw [Lang.floatDen_iff₂]
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
     refine keep_map_holds hU (fun i => ?_) a b
     obtain ⟨h2, hi⟩ := fmapCols_spec hf hu hm i (floatOps_ne hs).1 (floatOps_ne hs).2

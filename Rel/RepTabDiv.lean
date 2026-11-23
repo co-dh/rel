@@ -2803,11 +2803,11 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
     rw [hkn, Int.toNat_natCast, hel i, Lang.atDen_iff]
     exact ⟨by omega, by simpa using c'.2, by simp⟩
   · rintro ⟨⟨i, rfl⟩, h0, hk⟩
-    obtain ⟨hk, rfl⟩ := (Lang.atDen_iff _ _ _).1 hk
+    obtain ⟨hl, rfl⟩ := (Lang.atDen_iff _ _ _).1 hk
     have h0' : 0 ≤ (ValsB.row (o := false) (A := .long) k i).toInt := h0
     rw [hkv i] at h0'
     obtain ⟨h63, hkn'⟩ := toInt64_nonneg h0'
-    have hk' : (ValsB.row (o := false) (A := .long) k i).toInt.toNat < (ValsB.row (o := false) (A := .arr B) ⟨m, lo, up, f⟩ i).length := hk
+    have hk' : (ValsB.row (o := false) (A := .long) k i).toInt.toNat < (ValsB.row (o := false) (A := .arr B) ⟨m, lo, up, f⟩ i).length := hl
     have hkn : (ValsB.row (o := false) (A := .long) k i).toInt.toNat = (kw i).toNat := by rw [hkv i, hkn']; simp
     have hP : (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i := by
       refine ⟨h63, ?_⟩; rw [hkn, hel i] at hk'; simpa using hk'
