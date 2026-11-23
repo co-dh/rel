@@ -20,7 +20,6 @@ Rel.Kernel.cellFns
 Rel.Kernel.chainAll
 Rel.Kernel.gatherRows
 Rel.Kernel.gatherWords
-Rel.Kernel.hasNul
 Rel.Kernel.packOf
 Rel.Kernel.scatterWords
 Rel.Kernel.tilLongs
