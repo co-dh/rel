@@ -25,8 +25,8 @@ def atomKey (a : QAtom) : List Nat := match ascOrd a.type with
     `atomKey` (a symbol at its id, ordered as `i64`). Each key is
     self-delimiting (`Obj.key_prefix`), so a pair's key is its components' keys side by side and orders
     them lexicographically; an array's elements each follow a `1` and the array ends in `0`, so a proper
-    prefix sorts first; a sum's tag leads, `inl` before `inr`. A general atom has no kernel order
-    (`orderKind .general = none`) and keys as `[]`: all general atoms tie. -/
+    prefix sorts first; a sum's tag leads, `inr` before `inl`, so q's null (`inr ∗` in `atom+1`) sorts before every
+    value. A general atom has no kernel order (`orderKind .general = none`) and keys as `[]`: all general atoms tie. -/
 def Obj.key : (A : Obj) → A.El → List Nat
   | .atom .u1, x => atomKey (.u1 (x : Bool))
   | .atom .u8, x => atomKey (.u8 (x : UInt8))
@@ -43,8 +43,8 @@ def Obj.key : (A : Obj) → A.El → List Nat
   | .atom .general, _ => []
   | .prod a b, (x, y) => a.key x ++ b.key y
   | .arr b, xs => (xs : List b.El).foldr (fun x k => 1 :: b.key x ++ k) [0]
-  | .sum a _, .inl x => 0 :: a.key x
-  | .sum _ b, .inr y => 1 :: b.key y
+  | .sum a _, .inl x => 1 :: a.key x
+  | .sum _ b, .inr y => 0 :: b.key y
   | .one, () => []
 
 /-- q's `asc` order on `A`: `x` before `y`, the lexicographic order of their keys (`Obj.key`). -/
@@ -143,16 +143,16 @@ theorem Obj.lt_prod (a b : Obj) (x x' : a.El) (y y' : b.El) :
     exact ⟨fun h => .inr ⟨rfl, h⟩, fun h => h.elim (fun h => by rw [Obj.lt, e] at h; exact absurd h (List.lt_irrefl _)) (·.2)⟩
   · rw [a.lt_append_iff e]; exact ⟨.inl, fun h => h.elim id fun h => absurd h.1 e⟩
 
-/-- **A sum**: `inl` before `inr`, each side by its own order. -/
-theorem Obj.lt_inl_inr (a b : Obj) (x : a.El) (y : b.El) : (Obj.sum a b).lt (.inl x) (.inr y) :=
+/-- **A sum**: `inr` before `inl`, each side by its own order; at `atom+1` the null `inr ∗` first, as in q. -/
+theorem Obj.lt_inr_inl (a b : Obj) (x : a.El) (y : b.El) : (Obj.sum a b).lt (.inr y) (.inl x) :=
   List.cons_lt_cons_iff.2 (.inl Nat.zero_lt_one)
 
 
 theorem Obj.lt_inl (a b : Obj) (x y : a.El) : (Obj.sum a b).lt (.inl x) (.inl y) ↔ a.lt x y := by
-  show 0 :: a.key x < 0 :: a.key y ↔ _; simp [Obj.lt]
+  show 1 :: a.key x < 1 :: a.key y ↔ _; simp [Obj.lt]
 
 theorem Obj.lt_inr (a b : Obj) (x y : b.El) : (Obj.sum a b).lt (.inr x) (.inr y) ↔ b.lt x y := by
-  show 1 :: b.key x < 1 :: b.key y ↔ _; simp [Obj.lt]
+  show 0 :: b.key x < 0 :: b.key y ↔ _; simp [Obj.lt]
 
 /-- **An array**, lexicographically: the empty array first, a proper prefix before what extends it. -/
 theorem Obj.lt_nil_cons (b : Obj) (y : b.El) (ys : List b.El) : (Obj.arr b).lt ([] : List b.El) (y :: ys) :=
@@ -194,6 +194,8 @@ theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {f s : Bool} (ht : ascLayout
 #guard (Obj.arr .long).key ([] : List Int64) < (Obj.arr .long).key ([1] : List Int64)
 #guard (Obj.arr .long).key ([1] : List Int64) < (Obj.arr .long).key ([1, 0] : List Int64)
 #guard (Obj.atom .i64).key (-1 : Int64) < (Obj.atom .i64).key (0 : Int64)
+-- q's `asc 3 0N`: the null `inr ∗` of `atom+1` before every value
+#guard (Obj.sum (.atom .i64) .one).key (.inr ()) < (Obj.sum (.atom .i64) .one).key (.inl (3 : Int64))
 #guard (Obj.atom .sym).key (0 : UInt64) < (Obj.atom .sym).key (1 : UInt64)
 -- a float by its bits: `-1.0 < -0.0 < 0.0 < 1.0`, the two zeros two keys
 #guard (Obj.atom .f64).key (0xbff0000000000000 : UInt64) < (Obj.atom .f64).key (0x8000000000000000 : UInt64)
