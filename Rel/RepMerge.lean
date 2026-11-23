@@ -124,7 +124,8 @@ and in `=`. The group numbers are below `2 * m ≤ 2^63`, so the signed `lt` wor
 theorem Vals.cmpRows_spec {A : Obj} {m : USize} {P T : Vals A m} (hP : Vals.WF P) (hT : Vals.WF T)
     (hm : 2 * m.toNat ≤ 2 ^ 63) {c e : Enc} (h : Vals.cmpRows P T = .ok (c, e)) (i : Fin m.toNat) :
     ((Enc.raw .i64 m c)[i.1]?.getD 0 = 1 ↔ A.lt (P.row i) (T.row i)) ∧ (Enc.raw .i64 m c)[i.1]?.getD 0 ≤ 1 ∧
-    ((Enc.raw .i64 m e)[i.1]?.getD 0 = 1 ↔ P.row i = T.row i) ∧ (Enc.raw .i64 m e)[i.1]?.getD 0 ≤ 1 := by
+    ((Enc.raw .i64 m e)[i.1]?.getD 0 = 1 ↔ P.row i = T.row i) ∧ (Enc.raw .i64 m e)[i.1]?.getD 0 ≤ 1 ∧
+    ((Enc.raw .i64 m c)[i.1]?.getD 0 = 0 → (Enc.raw .i64 m e)[i.1]?.getD 0 = 0 → A.lt (T.row i) (P.row i)) := by
   unfold Vals.cmpRows at h
   simp only [Bind.bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨n2, hn2, h⟩ := h
@@ -193,11 +194,16 @@ theorem Vals.cmpRows_spec {A : Obj} {m : USize} {P T : Vals A m} (hP : Vals.WF P
   rw [rw', Option.getD_some, hw']
   have hi : (cd i.1).toUInt64 = (cd (m.toNat + i.1)).toUInt64 ↔ cd i.1 = cd (m.toNat + i.1) :=
     ⟨fun h => by have := congrArg UInt64.toNat h; rwa [hc64 _ (by omega), hc64 _ (by omega)] at this, fun h => by rw [h]⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · rw [← key]; by_cases h : cd i.1 < cd (m.toNat + i.1) <;> simp [h]
   · by_cases h : cd i.1 < cd (m.toNat + i.1) <;> simp [h]
   · rw [← key2, ← hi]; by_cases h : (cd i.1).toUInt64 = (cd (m.toNat + i.1)).toUInt64 <;> simp [h]
   · by_cases h : (cd i.1).toUInt64 = (cd (m.toNat + i.1)).toUInt64 <;> simp [h]
+  · intro hc he
+    have h1 : ¬ cd i.1 < cd (m.toNat + i.1) := fun hh => by simp [hh] at hc
+    have h2 : cd i.1 ≠ cd (m.toNat + i.1) := fun hh => by simp [hh] at he
+    have := lt1 ⟨m.toNat + i.1, hjb⟩ ⟨i.1, hja⟩ (by simp only; omega)
+    rwa [rowA, rowB] at this
 
 private theorem w64 {x : Nat} (hx : x < 2 ^ 63) : x.toUInt64.toNat = x := by
   simpa using Nat.mod_eq_of_lt (show x < 2 ^ 64 by omega)
@@ -325,7 +331,9 @@ theorem Vals.rank_spec {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX
     (hk : Vals.rank X T = .ok (r, h)) (i : Fin m.toNat) :
     ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat =
       ((List.range n.toNat).filter fun j => if hj : j < n.toNat then decide (A.lt (X.row ⟨j, hj⟩) (T.row i)) else false).length ∧
-    ((Enc.raw .i64 m h)[i.1]?.getD 0 = 1 ↔ ∃ j, X.row j = T.row i) ∧ (Enc.raw .i64 m h)[i.1]?.getD 0 ≤ 1 := by
+    ((Enc.raw .i64 m h)[i.1]?.getD 0 = 1 ↔ ∃ j, X.row j = T.row i) ∧ (Enc.raw .i64 m h)[i.1]?.getD 0 ≤ 1 ∧
+    (∀ j : Fin n.toNat, ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat ≤ j.1 → (Enc.raw .i64 m h)[i.1]?.getD 0 = 0 →
+      A.lt (T.row i) (X.row j)) := by
   unfold Vals.rank at hk
   simp only [Bind.bind] at hk
   split at hk
@@ -345,7 +353,8 @@ theorem Vals.rank_spec {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX
     have hz0 : (Enc.raw .i64 m z)[i.1]?.getD 0 = 0 := by
       rw [colConst_raw hz, Array.getElem?_replicate]; simp [i.2]
     rw [hz0]
-    refine ⟨by simp [hn0'], ⟨fun e => absurd e (by decide), fun ⟨j, _⟩ => absurd j.2 (by omega)⟩, by decide⟩
+    exact ⟨by simp [hn0'], ⟨fun e => absurd e (by decide), fun ⟨j, _⟩ => absurd j.2 (by omega)⟩, by decide,
+      fun j => absurd j.2 (by omega)⟩
   rename_i hn0
   have hn1 : 1 ≤ n.toNat := by
     refine Nat.pos_of_ne_zero fun e => hn0 ?_
@@ -405,9 +414,9 @@ theorem Vals.rank_spec {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX
   have hpW2 : Vals.WF p2 := ValsB.pack_wf hp2 (P := fun _ => True) hgW2 (fun _ _ => trivial)
   obtain ⟨i2, hi2, hrow2⟩ := ValsB.gather_row X hg2 i
   have hrp2 := ValsB.pack_row g2 hp2 (P := fun _ => True) hgW2 (fun _ _ => trivial) i trivial
-  obtain ⟨-, -, f1, f2⟩ := Vals.cmpRows_spec hpW2 hT hm' hc2 i
-  rw [hrp2, hrow2] at f1
-  refine ⟨?_, ?_, f2⟩
+  obtain ⟨f0, f0', f1, f2, f3⟩ := Vals.cmpRows_spec hpW2 hT hm' hc2 i
+  rw [hrp2, hrow2] at f1 f0 f3
+  refine ⟨?_, ?_, f2, ?_⟩
   · rw [hrt, List.filter_congr (l := List.range n.toNat) (q := fun j => decide (j < t i)) (fun j hj => by
       have hj' := List.mem_range.1 hj
       rw [dif_pos hj']; exact decide_eq_decide.2 ((ht i).2 ⟨j, hj'⟩))]
@@ -423,5 +432,225 @@ theorem Vals.rank_spec {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX
         rw [hj] at this
         exact absurd (((ht i).2 ⟨t i, htn'⟩).1 this) (by simp)
     · exact absurd (by omega) hnl
+  · intro j hj h0
+    have hj' : t i ≤ j.1 := by rw [← hrt]; exact hj
+    have htn' : t i < n.toNat := by have := j.2; omega
+    have hi2' : i2.1 = t i := by rw [← hi2, hqn]; omega
+    have hnl : ¬ A.lt (X.row i2) (T.row i) := fun hl => by have := ((ht i).2 i2).1 hl; omega
+    have hc0 : (Enc.raw .i64 m c2)[i.1]?.getD 0 = 0 := by
+      have h1 := UInt64.le_iff_toNat_le.1 f0'
+      have h2 : ((Enc.raw .i64 m c2)[i.1]?.getD 0).toNat ≠ 1 := fun e => hnl (f0.1 (UInt64.toNat_inj.1 (by simpa using e)))
+      exact UInt64.toNat_inj.1 (by simp at h1 ⊢; omega)
+    have g0 := f3 hc0 h0
+    by_cases hij : i2 = j
+    · rw [hij] at g0; exact g0
+    · have := hs i2 j (by have : i2.1 ≠ j.1 := fun e => hij (Fin.ext e); omega)
+      exact List.lt_trans g0 this
+
+/-- `cmpRows` answers two columns that hold no null (`colMap_closed` of its last two `colMap`s). -/
+theorem Vals.cmpRows_plain {A : Obj} {m : USize} {P T : Vals A m} {c e : Enc} (h : Vals.cmpRows P T = .ok (c, e)) :
+    hasNul c = false ∧ hasNul e = false := by
+  unfold Vals.cmpRows at h
+  simp only [Bind.bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨n2, hn2, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, ha, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, g, f⟩, hs, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨code, hsc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha', h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, hsh, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c', hc', h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨e', he', h⟩ := h
+  simp only [Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  exact ⟨(colMap_closed (kscanStream_ne (by decide) _ _ _) hc').2.2, (colMap_closed (kscanStream_ne (by decide) _ _ _) he').2.2⟩
+
+/-- `rank` answers two columns that hold no null. -/
+theorem Vals.rank_plain {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} {r h : Enc}
+    (hk : Vals.rank X T = .ok (r, h)) : hasNul r = false ∧ hasNul h = false := by
+  unfold Vals.rank at hk
+  simp only [Bind.bind] at hk
+  split at hk
+  · rw [Except.bind_eq_ok'] at hk; obtain ⟨_, hth, _⟩ := hk; cases hth
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨-, -, hk⟩ := hk
+  split at hk
+  · rw [Except.bind_eq_ok'] at hk; obtain ⟨_, hth, _⟩ := hk; cases hth
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨-, -, hk⟩ := hk
+  split at hk
+  · rw [Except.bind_eq_ok'] at hk; obtain ⟨z, hz, hk⟩ := hk
+    simp only [Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hk
+    obtain ⟨rfl, rfl⟩ := hk
+    exact ⟨kscatter_plain hz rfl, kscatter_plain hz rfl⟩
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨-, -, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨z0, hz0, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨base, hbis, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨g1, hg1, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨p1, hp1, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨⟨c1, e1⟩, hc1, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨r', hr', hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨q, hq, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨g2, hg2, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨p2, hp2, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨⟨c2, e2⟩, hc2, hk⟩ := hk
+  simp only [Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hk
+  obtain ⟨rfl, rfl⟩ := hk
+  exact ⟨(colMap_closed (kscanStream_ne (by decide) _ _ _) hr').2.2, (Vals.cmpRows_plain hc2).2⟩
+
+/-- **`rank` as a cut**: `r[i] ≤ n`, and the rows of the strictly ascending `X` below `T.row i` are exactly the first
+`r[i]` (`Vals.cut` and the count `rank_spec` states). -/
+theorem Vals.rank_cut {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX : Vals.WF X) (hT : Vals.WF T)
+    (hs : ∀ i j : Fin n.toNat, i.1 < j.1 → A.lt (X.row i) (X.row j)) {r h : Enc}
+    (hk : Vals.rank X T = .ok (r, h)) (i : Fin m.toNat) :
+    ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat ≤ n.toNat ∧
+      ∀ j : Fin n.toNat, A.lt (X.row j) (T.row i) ↔ j.1 < ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat := by
+  obtain ⟨h1, -⟩ := Vals.rank_spec hX hT hs hk i
+  obtain ⟨t, ht, hj⟩ := Vals.cut hs (T.row i)
+  rw [h1, List.filter_congr (l := List.range n.toNat) (q := fun j => decide (j < t)) (fun j hj' => by
+    have hj'' := List.mem_range.1 hj'
+    rw [dif_pos hj'']; exact decide_eq_decide.2 (hj ⟨j, hj''⟩)), count_lt _ _ ht]
+  exact ⟨ht, hj⟩
+
+/-- **`canon` is strictly ascending in `Obj.lt`**: `canon_sorted`'s `lexLe` of two rows with different codes is `Obj.lt`
+(`ValsB.lt_of_codes`). -/
+theorem Tab.canon_lt {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) (hR : R.WF) (j j' : Fin U.n.toNat)
+    (hjj : j.1 < j'.1) :
+    (Obj.prod k v).lt (U.key.row j, U.val.row j) (U.key.row j', U.val.row j') := by
+  unfold Tab.canon at h
+  cases hn : Vals.nub (A := .prod k v) (R.key, R.val) with
+  | error s => simp [hn, Functor.map, Except.map] at h
+  | ok r =>
+    simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
+    subst h
+    obtain ⟨es, vs, p, -, -, -, -, -, hes, ha, -⟩ := Vals.nub_ok hn
+    obtain ⟨sel, hrow, hsel⟩ := Vals.nub_sorted hn hes
+    obtain ⟨cs, hcs, -⟩ := kasc_ok ha
+    obtain ⟨hl, hne⟩ := hsel j j' hjj
+    have := ValsB.lt_of_codes (A := .prod k v) (R.key, R.val) (fun _ => True) (show Vals.WF (A := .prod k v) (R.key, R.val) from ⟨hR.1, hR.2⟩) hes hcs
+      (sel j) (sel j') trivial trivial (lexLe_lt _ hl hne)
+    rw [← hrow j, ← hrow j'] at this
+    exact this
+
+/-- The number of rows of `U` ranked at or before row `i`: `U[j]` sits below `X[i]` iff `t j ≤ i`. -/
+def cntLe (d : Nat) (t : Nat → Nat) (i : Nat) : Nat := (List.range d).countP fun j => decide (t j ≤ i)
+
+theorem cntLe_mono {d : Nat} {t : Nat → Nat} {i i' : Nat} (h : i ≤ i') : cntLe d t i ≤ cntLe d t i' :=
+  List.countP_mono_left fun j _ hj => by simp at hj ⊢; omega
+
+theorem cntLe_le (d : Nat) (t : Nat → Nat) (i : Nat) : cntLe d t i ≤ d :=
+  by have := List.countP_le_length (p := fun j => decide (t j ≤ i)) (l := List.range d); simpa [cntLe] using this
+
+theorem countP_range_le {p : Nat → Bool} {j : Nat} (h : ∀ x, j ≤ x → p x = false) : ∀ d, (List.range d).countP p ≤ j
+  | 0 => by simp
+  | d + 1 => by
+    rw [List.range_succ, List.countP_append]
+    have ih := countP_range_le h d
+    by_cases hd : j ≤ d
+    · have : List.countP p [d] = 0 := by simp [List.countP_cons, h d hd]
+      omega
+    · have h1 : List.countP p [d] ≤ 1 := List.countP_le_length
+      have h2 : List.countP p (List.range d) ≤ d := by
+        have := List.countP_le_length (p := p) (l := List.range d); simpa using this
+      omega
+
+theorem le_countP_range {p : Nat → Bool} {j : Nat} (h : ∀ x, x ≤ j → p x = true) :
+    ∀ k, j + 1 ≤ (List.range (j + 1 + k)).countP p
+  | 0 => by rw [List.countP_eq_length.2 (fun x hx => h x (by simp at hx; omega))]; simp
+  | k + 1 => by
+    have ih := le_countP_range h k
+    rw [show j + 1 + (k + 1) = (j + 1 + k) + 1 by omega, List.range_succ, List.countP_append]
+    omega
+
+theorem cntLe_lt {d : Nat} {t : Nat → Nat} (hm : ∀ j j', j ≤ j' → t j ≤ t j') {i j : Nat} (hij : i < t j) :
+    cntLe d t i ≤ j :=
+  countP_range_le (fun x hx => by simp only [decide_eq_false_iff_not]; have := hm j x hx; omega) d
+
+theorem le_cntLe {d : Nat} {t : Nat → Nat} (hm : ∀ j j', j ≤ j' → t j ≤ t j') {i j : Nat} (hj : j < d)
+    (hle : t j ≤ i) : j + 1 ≤ cntLe d t i := by
+  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le (show j + 1 ≤ d by omega)
+  exact le_countP_range (fun x hx => by simp only [decide_eq_true_eq]; have := hm x j hx; omega) k
+
+/-- **The merge position map**: row `i` of `X` goes to `i + cntLe`, row `j` of `U` to `j + t j`. -/
+def mpos (n d : Nat) (t : Nat → Nat) (q : Nat) : Nat := if q < n then q + cntLe d t q else (q - n) + t (q - n)
+
+/-- `mpos` maps `[0, n + d)` into itself and is injective there, given `t` monotone and below `n`. -/
+theorem mpos_inj {n d : Nat} {t : Nat → Nat} (hm : ∀ j j', j ≤ j' → t j ≤ t j') (ht : ∀ j, j < d → t j ≤ n) :
+    (∀ q, q < n + d → mpos n d t q < n + d) ∧ ∀ q q', q < n + d → q' < n + d → mpos n d t q = mpos n d t q' → q = q' := by
+  have hb := cntLe_le d t
+  refine ⟨fun q hq => ?_, fun q q' hq hq' he => ?_⟩
+  · unfold mpos; split
+    · have := hb q; omega
+    · have := ht (q - n) (by omega); omega
+  · unfold mpos at he
+    split at he <;> split at he
+    · refine Classical.byContradiction fun hne => ?_
+      rcases Nat.lt_or_gt_of_ne hne with h | h
+      · have := cntLe_mono (d := d) (t := t) (Nat.le_of_lt h); omega
+      · have := cntLe_mono (d := d) (t := t) (Nat.le_of_lt h); omega
+    · rename_i h1 h2
+      rcases Nat.lt_or_ge q (t (q' - n)) with h | h
+      · have := cntLe_lt (d := d) hm h; omega
+      · have := le_cntLe hm (show q' - n < d by omega) h; omega
+    · rename_i h1 h2
+      rcases Nat.lt_or_ge q' (t (q - n)) with h | h
+      · have := cntLe_lt (d := d) hm h; omega
+      · have := le_cntLe hm (show q - n < d by omega) h; omega
+    · refine Classical.byContradiction fun hne => ?_
+      rcases Nat.lt_or_gt_of_ne (show q - n ≠ q' - n by omega) with h | h
+      · have := hm _ _ (Nat.le_of_lt h); omega
+      · have := hm _ _ (Nat.le_of_lt h); omega
+
+/-- **An injective self-map of `[0, N)` is onto** (pigeonhole). -/
+theorem surj_of_inj (N : Nat) (f : Nat → Nat) (hb : ∀ q < N, f q < N)
+    (hi : ∀ q q', q < N → q' < N → f q = f q' → q = q') : ∀ p < N, ∃ q < N, f q = p := by
+  intro p hp
+  refine Classical.byContradiction fun hne => ?_
+  have hnd : ((List.range N).map f).Nodup := by
+    unfold List.Nodup
+    rw [List.pairwise_map]
+    exact List.Pairwise.imp_of_mem (fun {a b} ha hb hab e =>
+      Nat.ne_of_lt hab (hi a b (List.mem_range.1 ha) (List.mem_range.1 hb) e)) List.pairwise_lt_range
+  have := nodup_length_le hnd fun x hx => by
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hx
+    have hq := List.mem_range.1 hq
+    exact (List.mem_erase_of_ne (fun e => hne ⟨q, hq, e⟩)).2 (List.mem_range.2 (hb q hq))
+  rw [List.length_erase_of_mem (List.mem_range.2 hp)] at this
+  simp at this; omega
+
+/-- **The merge is sorted**: rows `vr` placed by `mpos` from the ascending `xr` (`n` rows) and `ur` (`d` rows), where
+`xr i < ur j` iff `i < t j`, form an ascending row list. -/
+theorem merge_sorted {E : Type} (lt : E → E → Prop) {n d : Nat} {t : Nat → Nat} (hm : ∀ j j', j ≤ j' → t j ≤ t j')
+    (ht : ∀ j, j < d → t j ≤ n) (xr ur vr : Nat → E) (hxs : ∀ i i', i < i' → i' < n → lt (xr i) (xr i'))
+    (hus : ∀ j j', j < j' → j' < d → lt (ur j) (ur j'))
+    (hxu : ∀ i j, i < n → j < d → i < t j → lt (xr i) (ur j))
+    (hux : ∀ i j, i < n → j < d → t j ≤ i → lt (ur j) (xr i))
+    (hv : ∀ q, q < n + d → vr (mpos n d t q) = if q < n then xr q else ur (q - n)) :
+    ∀ p p', p < p' → p' < n + d → lt (vr p) (vr p') := by
+  intro p p' hpp hp'
+  obtain ⟨hb, hi⟩ := mpos_inj hm ht
+  have hsurj := surj_of_inj (n + d) (mpos n d t) hb hi
+  obtain ⟨q, hq, rfl⟩ := hsurj p (by omega)
+  obtain ⟨q', hq', rfl⟩ := hsurj p' hp'
+  rw [hv q hq, hv q' hq']
+  by_cases h1 : q < n <;> by_cases h2 : q' < n
+  · simp only [mpos, if_pos h1, if_pos h2] at hpp
+    rw [if_pos h1, if_pos h2]
+    have : q < q' := Classical.byContradiction fun hn => by
+      have := cntLe_mono (d := d) (t := t) (show q' ≤ q by omega); omega
+    exact hxs q q' this h2
+  · simp only [mpos, if_pos h1, if_neg h2] at hpp
+    rw [if_pos h1, if_neg h2]
+    refine hxu q (q' - n) h1 (by omega) (Classical.byContradiction fun hn => ?_)
+    have := le_cntLe hm (show q' - n < d by omega) (show t (q' - n) ≤ q by omega); omega
+  · simp only [mpos, if_neg h1, if_pos h2] at hpp
+    rw [if_neg h1, if_pos h2]
+    refine hux q' (q - n) h2 (by omega) (Classical.byContradiction fun hn => ?_)
+    have := cntLe_lt (d := d) hm (show q' < t (q - n) by omega); omega
+  · simp only [mpos, if_neg h1, if_neg h2] at hpp
+    rw [if_neg h1, if_neg h2]
+    have : q - n < q' - n := Classical.byContradiction fun hn => by
+      have := hm _ _ (show q' - n ≤ q - n by omega); omega
+    exact hus _ _ this (by omega)
 
 end Rel
