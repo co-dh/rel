@@ -233,11 +233,15 @@ abbrev upToDen {K V : Obj} {t : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.at
     (graph Prod.snd ≫ (leAt t : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t)))° ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
 
 /-- A value of the atom `t` to its `f64` word (`fval`): none at an atom holding no float. -/
-abbrev fwideDen (t : QAtomicType) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom .f64)) := fun x X => fval t x = some X
+abbrev fwideDen (t : QAtomicType) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom .f64)) := graph (fval t) ≫ (graph some)°
+theorem fwideDen_iff (t : QAtomicType) (x : Obj.El (.atom t)) (X : Obj.El (.atom .f64)) :
+    fwideDen t x X ↔ fval t x = some X := graph_recip_graph _ _ _ _
 
 /-- `Op.fadd` of two `f64` words, not rounded. -/
 abbrev faddDen : Core.Rel (Obj.El (.prod (.atom .f64) (.atom .f64))) (Obj.El (.atom .f64)) :=
-  fun p r => Rel.Kernel.Op.fadd.eval p.1 p.2 = .ok r
+  graph (fun p : Obj.El (.prod (.atom .f64) (.atom .f64)) => Rel.Kernel.Op.fadd.eval p.1 p.2) ≫ (graph Except.ok)°
+theorem faddDen_iff (p : Obj.El (.prod (.atom .f64) (.atom .f64))) (r : Obj.El (.atom .f64)) :
+    faddDen p r ↔ Rel.Kernel.Op.fadd.eval p.1 p.2 = .ok r := graph_recip_graph _ _ _ _
 
 /-- An `f64` word to the word of the atom `t` nearest it: `Op.fto t`, then the coreflexive `corefl` dropping `2^63` (a NaN),
     then the value `ofBits t` of the word. -/
@@ -251,9 +255,14 @@ abbrev froundDen (t : QAtomicType) : Core.Rel (Obj.El (.atom .f64)) (Obj.El (.at
     the value `π₂`. So a float sum accumulates in `f64` and rounds once to `u`, every prefix being checked for a NaN. -/
 abbrev fsumDen (u : QAtomicType) : Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.atom u)) :=
   foldDen (E := .atom u) (V := .prod (.atom .f64) (.atom u))
-      (fun _ b => b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1)
+      ((graph fun _ => QAtomicType.ofBits u 0) ≫ rpair (fwideDen u) (𝟙 _))
       (rpair (graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
           (graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ rpair (𝟙 _) (froundDen u)) ≫ graph Prod.snd
+
+theorem fsumDen_seed (u : QAtomicType) (a b : Obj.El (.prod (.atom .f64) (.atom u))) :
+    ((graph fun _ => QAtomicType.ofBits u 0) ≫ rpair (fwideDen u) (𝟙 _)) a b ↔
+      b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1 :=
+  ⟨fun ⟨_, rfl, h, e⟩ => ⟨e.symm, e ▸ h⟩, fun ⟨e, h⟩ => ⟨_, rfl, e ▸ h, e.symm⟩⟩
 
 /-- **`⦇[0, plus]⦈` at the atom `u`**, the one fold `sum` and `sums` read: `fsumDen` at a float atom (one rule for
     every float atom: added in `f64`, rounded once); at any other atom the left fold of `stepAt u add` from the word
@@ -364,14 +373,18 @@ end RowCode
 /-- `ymd` at `[char] ⟶ date`: the graph of `Db.Csv.ymd` on the text's chars (a partial function, the formula not
     copied), the day at `date`'s carrier; `𝟘` at any other objects. -/
 def ymdDen : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
-  | .arr (.atom .char), .atom .date => fun cs d => (Db.Csv.ymd cs).map Int32.ofInt = some d
-  | _, _ => fun _ _ => False
+  | .arr (.atom .char), .atom .date => graph (fun cs => (Db.Csv.ymd cs).map Int32.ofInt) ≫ (graph some)°
+  | _, _ => 𝟘
+theorem ymdDen_iff (cs : Obj.El (.arr (.atom .char))) (d : Obj.El (.atom .date)) :
+    ymdDen _ _ cs d ↔ (Db.Csv.ymd cs).map Int32.ofInt = some d := graph_recip_graph _ _ _ _
 
 /-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
     never rounds; `𝟘` where a side is no atom. -/
 def castDen : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
-  | .atom s, .atom t => fun x y => QAtomicType.embed s t x = some y
-  | _, _ => fun _ _ => False
+  | .atom s, .atom t => graph (QAtomicType.embed s t) ≫ (graph some)°
+  | _, _ => 𝟘
+theorem castDen_iff (s t : QAtomicType) (x : Obj.El (.atom s)) (y : Obj.El (.atom t)) :
+    castDen _ _ x y ↔ QAtomicType.embed s t x = some y := graph_recip_graph _ _ _ _
 
 /-- A float verb `o` of `floatOps`: at `F ⟶ D` for an `o` reading one operand, `o` on the value's `f64` word (`fval`);
     at `F×F ⟶ D` for one reading two, `o` on the two components' words; then the word of `D`'s atom for the answer
