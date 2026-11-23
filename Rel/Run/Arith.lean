@@ -112,6 +112,10 @@ def arithOps : List (String × UInt8) :=
     is a row, not `lt ∪ 𝟙`: at a float atom `-0.0 ≤ +0.0` holds, `-0.0 < +0.0` does not (`Rel.Lang.AtomOrderTest`). -/
 def cmpOps : List (String × Bool) := [("lt", true), ("le", false)]
 
+/-- The surface symbol of the order, strict or not: the row of an order's universe (`cmpRelRow`) is named by it, the
+    test row (`cmpRow`) by its `cmpOps` key. -/
+def ordSym (strict : Bool) : String := if strict then "<" else "≤"
+
 namespace Tab
 
 /-- The error `msg r` at the first row `r` of `X` flagged `1` in `f` (`Tab.keep` keeps row order), none if no row is. -/

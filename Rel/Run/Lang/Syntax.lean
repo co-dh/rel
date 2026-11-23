@@ -196,12 +196,15 @@ def floatAtoms : List QAtomicType := [.f32, .f64]
 
 /-- How a row runs on demand (§a, `Tm.dem`): `keys` always; `whole` its table made from its relations' whole tables
     (`GenK.ofRel`), so a closed `asc(P)` runs whole at a source with no universe; `arg` its relations run on the keys
-    in demand (`dom`). A row of `whole` or `arg` given its relations needs keys exactly where one of them does. -/
-inductive PrimDem | keys | whole | arg
+    in demand (`dom`). A row of `whole` or `arg` given its relations needs keys exactly where one of them does.
+    `bounds` is lazy on `Known` (both sides, or `pairs`) and never asks the elaborator for keys, so a row given its
+    relation is closed (`cmpRelRow`, `GenK.cmp`). -/
+inductive PrimDem | keys | whole | arg | bounds
   deriving Inhabited, BEq, DecidableEq, Repr
 
 instance : Lean.ToExpr PrimDem where
-  toExpr d := Lean.mkConst (match d with | .keys => ``PrimDem.keys | .whole => ``PrimDem.whole | .arg => ``PrimDem.arg)
+  toExpr d := Lean.mkConst (match d with
+    | .keys => ``PrimDem.keys | .whole => ``PrimDem.whole | .arg => ``PrimDem.arg | .bounds => ``PrimDem.bounds)
   toTypeExpr := Lean.mkConst ``PrimDem
 
 /-- A builtin run on the keys in demand: `sym` as written (`written`), or the prelude's definition, the constant
@@ -323,6 +326,12 @@ def indexRow : Prim :=
 def cmpRow (s : String) : Prim :=
   { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
     aop := .error "AOP declares no order on atoms" }
+/-- `≤`, `<` on a universe `U : N ⟶ N`, the row `cmpRow` given `U` as `⟨dom U, ⊤(dom U)⟩ cmpRow π₂`
+    (`Tm.cmpDef`), run fused by `GenK.cmpRel`: closed, or on the pairs a meet hands it. Its symbol is the surface one,
+    distinct from the test row's `lt`/`le`. -/
+def cmpRelRow (strict : Bool) : Prim :=
+  { sym := ordSym strict, sig := ([((.var {} "N", .var {} "N"), some false)], .var {} "N", .var {} "N"),
+    written := false, dem := .bounds, aop := .error "AOP declares no order on atoms" }
 
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
@@ -404,7 +413,7 @@ def prims : List Prim :=
       aop := .error "AOP declares no floating-point function" }) ++
   -- the value verbs (`arithOps`), `succ`, the order tests `lt` `le` (`cmpOps`): rows on atoms, no universe inside;
   -- `build` writes each, cut to a bounded object's universe `U` as `⟨π₁U, π₂U⟩ row U` (§3.5), so none is written
-  arithOps.map (arithRow ·.1) ++ [succRow, mixRow, indexRow] ++ cmpOps.map (cmpRow ·.1)
+  arithOps.map (arithRow ·.1) ++ [succRow, mixRow, indexRow] ++ cmpOps.map (cmpRow ·.1) ++ cmpOps.map (cmpRelRow ·.2)
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

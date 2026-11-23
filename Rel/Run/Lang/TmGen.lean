@@ -183,8 +183,6 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | A, .sum _ B, .inl => GenK.ofVals A _ (Tab.inl (B := B))
   | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
   | _, _, .own R => R.code η
-  | _, _, .leq t U => GenK.leq t (U.code η)
-  | _, _, .lt t U => GenK.lt t (U.code η)
   | .arr Y, V, .foldr e S => GenK.foldr Y V (e.code η) (S.code η)
   | .arr Y, V, .fold e S => GenK.fold Y V (e.code η) (S.code η)
   -- its slot, computed once per program; where the table has none, built here under no variable
@@ -246,7 +244,7 @@ def Tm.hasCode {A B : Obj} (t : Tm A B) : Bool :=
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .mem
   | _, _, .inl | _, _, .inr
   | _, _, .var .. => true
-  | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .own R | _, _, .leq _ R | _, _, .lt _ R
+  | _, _, .top R | _, _, .conv R | _, _, .lam R | _, _, .own R
   | _, _, .share _ R | _, _, .mu _ _ _ R => R.hasCode
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S
@@ -321,8 +319,6 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .inr (A := A) (B := B) => return g ``Tm.inr #[oE A, oE B]
   | _, _, .prim (A := A) (B := B) r => return g ``Tm.prim #[oE A, oE B, toExpr r]
   | _, _, .own (A := A) R => return g ``Tm.own #[oE A, ← tmE sh R]
-  | _, _, .leq t U => return g ``Tm.leq #[toExpr t, ← tmE sh U]
-  | _, _, .lt t U => return g ``Tm.lt #[toExpr t, ← tmE sh U]
   | _, _, .foldr (E := E) (V := V) e S => return g ``Tm.foldr #[oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .fold (E := E) (V := V) e S => return g ``Tm.fold #[oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .share (A := A) (B := B) k R =>

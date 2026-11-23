@@ -182,7 +182,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
   [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
-  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`leq` `lt`（带 universe `U`）今天仍是构造子，目标删除：行 `le` `lt`（`cmpRow`）已在。`lt` 在任意 object 上是定义 `Tm.ltDef`（含义 `Tm.lt_den`），行 `lt` 是它在整数存储 atom 上的 fused 形式（`Tm.lt_row_den`）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
+  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.ltDef_den`、`Tm.leqDef_den`）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
   [绑定 / 复用], [`var` `arg` `call`；`callCv` `own` `share` 今天仍是构造子，目标删除],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有定义 `Tm.ascDef`），在某个类型上实例化，参数由 `arg` 给出],
@@ -368,7 +368,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`dom` `ran`], [取一列 → `asc` → `seen`（`first` 取代表行）],
   [`R\S` `R/S` 对称除 `R ÷ S`], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
   [值动词 `plus` `minus` `times` `divide`（`%`，只在浮点 atom 上）`div` `mod` `max` `min`（`Tm.arith t`）], [两个操作数各与 `dom U` 复合（`≫`）→ 一次 `scan` 链：`i64` 上是整数 `Op` 加回绕/null 标记（`stepCols`）；浮点 atom 上先 `f32to64` 宽化，再 `fadd` `fsub` `fmul` `fdiv` `fmax` `fmin`，`div` 为 `ffloor(fdiv)`、`mod` 为 `x − y·ffloor(x/y)`（q 的定义），最后 `fto t` 写回 `t` 的规范字（`f32` 舍入、`−0` 写成 `+0`、NaN 写成 null）→ 非 null 的行 `keep` → `≫ U`；无新 kernel],
-  [`<` `≤`（`Tm.lt t`、`Tm.leq t`）], [两侧（`K` 的 `pairs`，或 `dom U` 的 CROSS）→ `scan` 一次比较：`i64` 用有符号 `lt` `le`，浮点 atom 宽化到 `f64` 后用 IEEE 的 `flt` `fle`（`Tab.ordOp`）→ `keep`],
+  [`<` `≤`（行 `cmpRelRow` 给定 `U`：`Tm.lt U`、`Tm.leq U`；定义 `Tm.cmpDef`）], [两侧（`K` 的 `pairs`，或 `dom U` 的 CROSS）→ `scan` 一次比较：`i64` 用有符号 `lt` `le`，浮点 atom 宽化到 `f64` 后用 IEEE 的 `flt` `fle`（`Tab.ordOp`）→ `keep`],
   [Λ（`arr` 侧）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停：整体迭代（`Tab.fixOn`）；线性递归走行 `star`（semi-naive）],
 )
