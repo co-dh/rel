@@ -415,8 +415,9 @@ inductive Pre
   | own (p : Pre)
   | succ (pos : Pos) (n : OTy)
   | arith (pos : Pos) (k : UInt8) (n : OTy)
-  | leq (pos : Pos) (n : OTy)
-  | lt (pos : Pos) (n : OTy)
+  /-- `≤` at the number object `n`; `rk` `rank(D)` for the program's dictionary `D`, which `n` = `sym` orders by (`symOrd`). -/
+  | leq (pos : Pos) (n : OTy) (rk : Option Pre)
+  | lt (pos : Pos) (n : OTy) (rk : Option Pre)
   | fold (right : Bool) (e s : Pre)
   /-- A literal; `gd` the generic definition whose body holds it (`Env.gdef`), where its numerals' objects are
       the call's, checked at each call. -/
@@ -621,8 +622,8 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
-  | .leq q n => return .leq (← fp q) n
-  | .lt q n => return .lt (← fp q) n
+  | .leq q n r => return .leq (← fp q) n (← r.mapM mo)
+  | .lt q n r => return .lt (← fp q) n (← r.mapM mo)
   | .fold d e s => return .fold d (← mo e) (← mo s)
   | .lit q a b ps gd => return .lit (← fp q) a b ps gd
   | .close q x a why => return .close (← fp q) (← mo x) a why
@@ -743,6 +744,8 @@ structure Env where
   /-- The definition generic over objects whose body this is: a numeral literal in it takes its object from the
       context, an object variable the call decides (`litTy`), not from the declared objects. -/
   gdef : Option String := none
+  /-- The program's `dictionary D` statement's name, once one precedes: `<` and `≤` at `sym` order by `rank(D)`. -/
+  dict : Option String := none
   /-- The object variables of the definition whose body this is, at this use's objects: a body may name them
       (`x $ φ`), as its parameters' types do. -/
   ovars : List (String × OTy) := []
@@ -1087,7 +1090,7 @@ def indexAt (p : Pos) (k : Nat) (b : OTy) : Pre :=
     (.prim indexRow [] (.prod (.arr b) n) b)
 
 /-- A constant: fresh objects for its type, the explicit ones `(A,B)` unified with source and target. -/
-def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
+def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre := none) : M Arg := do
   let a ← fresh; let b ← fresh
   let row ← match ← o.row p with
     | some r => do
@@ -1101,8 +1104,8 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) : M Arg := do
     | .top => (.top p a b none, a, b)
     | .outl => (.outl a b, .prod a b, a)
     | .outr => (.outr a b, .prod a b, b)
-    | .leq => (.leq p a, a, a)
-    | .lt => (.lt p a, a, a)
+    | .leq => (.leq p a rk, a, a)
+    | .lt => (.lt p a rk, a, a)
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
     | .nil => (.nil a b, a, .arr b)
@@ -1188,8 +1191,8 @@ def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAto
     ((r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s)).map (·, r.sym, ok.contains)
   | .succ _ n => [(n, "succ", (· == .i64))]
   | .arith _ k n => [(n, (Op.arith k).sym, arithOk k)]
-  | .leq _ n => [(n, "≤", (·.ordNum.isSome))]
-  | .lt _ n => [(n, "<", (·.ordNum.isSome))]
+  | .leq _ n _ => [(n, "≤", (·.ordNum.isSome))]
+  | .lt _ n _ => [(n, "<", (·.ordNum.isSome))]
   | _ => []
 
 /-- `numsAt` of `x` and of its parts, a definition's body at its use included. -/
@@ -1476,7 +1479,16 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     pure (.rel (.hylo c.pos k (.comp (.comp qc gx) qs) a b) a b)
   | .op p o objs args => do
     let as ← elabArgs env m args
-    if args.isEmpty then constant env p o objs
+    -- `<` and `≤` at `sym` are `rank(D) < rank(D)°` (`symOrd`): the rank is elaborated here, where `D` is a parameter
+    let rk : Option Pre ← match o, env.dict with
+      | .lt, some d | .leq, some d =>
+        match args.isEmpty, env.params.lookup d, env.def? "rank" with
+        | true, some a, some df => do
+          let a' := match a with | .rel (.var _ k s t x) u v => .rel (.var p k s t x) u v | a => a
+          let (q, _, _) := (← settle none p [a'] (← df.apply p [a'])).plain; pure (some q)
+        | _, _, _ => pure none
+      | _, _ => pure none
+    if args.isEmpty then constant env p o objs rk
       else match m with
         | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
         | none => applied env p o (as.map Arg.plain)
@@ -2326,8 +2338,26 @@ where
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
 
+/-- Whether the object `n` is the atom `sym`, whose ids are in insertion order and so have no order of their own. -/
+def symObj (n : OTy) : Bool :=
+  match zonk mc n with | .base nm => (objs.lookup nm).any (·.obj == .atom .sym) | _ => false
+
+/-- `<` or `≤` (`mk`) at `sym`: the order of the texts, `r ≫ mk(ran r) ≫ r°` with `r = rank(D)` (`rk`, built from the
+    program's `dictionary D`) numbering each id by its text's position, so the ranks are compared at `i64`. No
+    kernel orders `sym` (`Tab.ordOp`); this composition of relations is its order. -/
+def symOrd (p : Pos) (op : String)
+    (mk : (t : QAtomicType) → Tm (.atom t) (.atom t) → Tm (.atom t) (.atom t)) : Option Res → Except Err Res
+  | none => throw ⟨p, s!"{op} on sym needs the dictionary: declare `dictionary D : S ⟶ [C]` before this definition"⟩
+  | some ⟨A, B, r⟩ =>
+    if h : A = .atom .sym ∧ B = .atom .i64 then
+      match A, B, r, h with
+      | _, _, r, ⟨rfl, rfl⟩ => do
+        let rc ← (convTm r).mapError (⟨p, ·⟩)
+        pure ⟨.atom .sym, .atom .sym, .comp r (.comp (mk .i64 (.ran r)) rc)⟩
+    else internal dp s!"rank(D) is at {repr A} ⟶ {repr B}, not sym ⟶ i64"
+
 /-- A pair test at the objects `A×B`. -/
-def corAt (A B : Obj) : Cor → Except Err (Tm (.prod A B) (.prod A B))
+def corAt(A B : Obj) : Cor → Except Err (Tm (.prod A B) (.prod A B))
   | ⟨A', B', c⟩ => if h : A' = A ∧ B' = B then pure (h.1 ▸ h.2 ▸ c) else internal dp "pair-test objects disagree"
 
 /-- A built term read whole: closed as it is, or on demand run on the universe of its source `a`. -/
@@ -2541,8 +2571,12 @@ def build : Pre → Except Err Res
     let (hi, lo) : Tm (.prod (.atom t) (.atom t)) (.atom t) × Tm (.prod (.atom t) (.atom t)) (.atom t) :=
       if k == Rel.Kernel.Ew.greater then (.outr, .outl) else (.outl, .outr)
     return ⟨_, _, .join (.comp le hi) (.comp gt lo)⟩
-  | .leq p n => do let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, .leq t U⟩
-  | .lt p n => do let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, .lt t U⟩
+  | .leq p n rk => do
+    if symObj objs mc n then return ← symOrd dp p "≤" (fun t U => .leq t U) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+    let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, .leq t U⟩
+  | .lt p n rk => do
+    if symObj objs mc n then return ← symOrd dp p "<" (fun t U => .lt t U) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+    let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, .lt t U⟩
   | .fold true e s => do
     let r ← build e; let ⟨V, _, _⟩ := r
     match ← build s with

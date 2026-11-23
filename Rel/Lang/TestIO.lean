@@ -470,6 +470,45 @@ info: "val\nibm\naapl\nibm\n"
   IO.FS.removeDirAll d
   return r
 
+-- `<` at a symbol is the order of the texts, `rank(D) < rank(D)°` (`Elab.symOrd`): `b a c` interns as ids 0 1 2, whose
+-- ranks are 1 0 2, so the pairs of ids are (1,0) (1,2) (0,2), the texts (a,b) (a,c) (b,c)
+rel_program symLtIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-symlt/a.csv"
+    dictionary D : S ⟶ [C]
+    lt : S ⟶ S ≜ <
+    output lt to csv "/data/tmp/rel-test-io-symlt/t.csv"
+
+/--
+info: "key,val\na,b\na,c\nb,c\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-symlt"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
+  symLtIO.io
+  let r ← IO.FS.readFile (d ++ "/t.csv")
+  IO.FS.removeDirAll d
+  return r
+
+-- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
+/--
+error: rel_program expansion: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
+-/
+#guard_msgs in
+rel_program dictFirstT where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-dictfirst/a.csv"
+    dictionary D : S ⟶ [C]
+    input b : N ⟶ S from csv "/data/tmp/rel-test-io-dictfirst/b.csv"
+    output b to csv "/data/tmp/rel-test-io-dictfirst/t.csv"
+
 -- two own inputs with symbol columns in two libraries, met by `∩`: refused where the program is elaborated
 /--
 error: rel_program expansion: the symbol columns of `a` are ids in the library /data/tmp/rel-test-io-lib/one and those of `b` in the library /data/tmp/rel-test-io-lib/two, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)
