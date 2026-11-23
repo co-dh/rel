@@ -62,10 +62,11 @@ pub fn pack_block<T: Elt>(dst: &mut [u8], src: &[T], nb: usize, base: i64, w: u8
 /// coc.rs `encode_meta_blk`: block metadata with no patch list.
 pub fn encode_meta_blk<T: Elt>(m: &mut EncMeta, x: &[T], nb: usize) {
     let x = &x[..nb];
-    let (mn, mx) = x.iter().fold((x[0].i(), x[0].i()), |(a, b), v| (a.min(v.i()), b.max(v.i())));
-    let s = if mn == nul::<T>() { x.iter().map(|v| v.i()).filter(|&v| v != nul::<T>()).fold(0i64, i64::wrapping_add) }
-            else { x.iter().fold(0i64, |a, v| a.wrapping_add(v.i())) };
-    *m.base = mn; *m.maxv = mx; *m.bsum = s;
+    // one pass: the sum skipping nulls is the whole sum less `nul` once a null, in wrapping arithmetic, where a second
+    // pass re-read the block
+    let z = nul::<T>();
+    let (mn, mx, s, k) = x.iter().fold((x[0].i(), x[0].i(), 0i64, 0i64), |(a, b, s, k), v| { let v = v.i(); (a.min(v), b.max(v), s.wrapping_add(v), k + (v == z) as i64) });
+    *m.base = mn; *m.maxv = mx; *m.bsum = s.wrapping_sub(z.wrapping_mul(k));
     *m.width = crate::bits::width_for((mx as u64).wrapping_sub(mn as u64));
 }
 // ---- A8: coc.rs ----

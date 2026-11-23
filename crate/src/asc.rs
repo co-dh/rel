@@ -131,13 +131,21 @@ impl Cells<'_> {
         let mut o: Vec<usize> = (0..u.len()).collect();
         // stable sort: it merges runs already in order (a `∪` of canonical tables is two), where `sort_unstable_by`
         // compares O(n log n) cells whatever the input
-        o.sort_by(|&a, &b| cell(a).cmp(cell(b)));
+        o.sort_by(|&a, &b| lex(cell(a), cell(b)));
         let mut rk = vec![0u64; u.len()];
         for w in 1..o.len() { rk[o[w]] = rk[o[w - 1]] + (cell(o[w - 1]) != cell(o[w])) as u64 }
         // every span of `sp` is in `u` and every word of `ix` in `q`, so both searches find it
         let rq: Vec<u64> = sp.iter().map(|s| rk[u.binary_search(s).unwrap_or_else(|i| i)]).collect();
         ix.iter().map(|x| rq[q.binary_search(x).unwrap_or_else(|i| i)]).collect()
     }
+}
+
+/// `a.cmp(b)` (`lexLe`): the common prefix skipped 64 words at a time by slice `==`, a `memcmp`, where `Ord` on `[u64]`
+/// compares word by word (perf: long equal cells made the sort's compare most of `kasc`).
+fn lex(a: &[u64], b: &[u64]) -> core::cmp::Ordering {
+    let (n, mut i) = (a.len().min(b.len()), 0);
+    while i + 64 <= n && a[i..i + 64] == b[i..i + 64] { i += 64 }
+    a[i..].cmp(&b[i..])
 }
 
 /// A key column of `kasc` and `kseen`: an atom column, a `pos` atom column (word `i` is `i`), or a `cells` one.

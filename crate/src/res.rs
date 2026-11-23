@@ -25,11 +25,15 @@ pub fn res_get(p: &[u8], w: u8, j: usize) -> u64 {
     if nby > 8 { v |= (p[o + 8] as u64) << (64 - sh) }
     if w == 64 { v } else { v & ((1u64 << w) - 1) }
 }
-/// coc.rs `res_get_in`: as `res_get`, never reading at or past byte `end`.
+/// coc.rs `res_get_in`: as `res_get`, never reading at or past byte `end`. Inlined: a per-element read whose call
+/// costs more than its one load (perf: 5% of `sudokupc9`, called from `Coc::get_w` and the flat gather).
+/// The rare field (the pack's last 8 bytes, or over 56 bits) is read out of line, which keeps the inlined body one load.
+#[inline(always)]
 pub fn res_get_in(p: &[u8], w: u8, j: usize, end: usize) -> u64 {
+    #[cold] #[inline(never)] fn edge(p: &[u8], w: u8, j: usize) -> u64 { res_get(p, w, j) }
     let (bit, w) = (j * w as usize, w as usize);
     let (o, sh) = (bit >> 3, bit & 7);
-    if o + 8 > end || sh + w > 64 { return res_get(p, w as u8, j) }
+    if o + 8 > end || sh + w > 64 { return edge(p, w as u8, j) }
     let v = u64::from_le_bytes(p[o..o + 8].try_into().unwrap()) >> sh;
     if w >= 64 { v } else { v & ((1u64 << w) - 1) }
 }
