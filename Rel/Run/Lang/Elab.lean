@@ -1577,6 +1577,15 @@ def pairArg (m : Option OTy) (p : Pos) (x y : Arg) : M Arg :=
     unify p "the source of the pair's second part" s' s
     pure (.rel (.pair q r) s (.prod t t'))
 
+/-- `rank(D)` for the program's dictionary `D`, which an order at `sym` goes through (`symOrd`); none where the program
+    has no dictionary or no `rank`. -/
+def symRank (env : Env) (p : Pos) : M (Option Pre) := do
+  match env.dict.bind (env.params.lookup ·), env.def? "rank" with
+  | some a, some df =>
+    let a' := match a with | .rel (.var _ k s t x) u v => .rel (.var p k s t x) u v | a => a
+    let (q, _, _) := (← settle none p [a'] (← df.apply p [a'])).plain; pure (some q)
+  | _, _ => pure none
+
 mutual
 
 /-- Elaborate `e` in the mode `m`: plain, or the body of a definition lifted to the index `I`. -/
@@ -1605,14 +1614,9 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     -- `<` and `≤` at `sym` are `rank(D) < rank(D)°` (`symOrd`): the rank is elaborated here, where `D` is a parameter
     -- the same for the `asc` row, which takes its set as an argument where the two orders take none
     let asc := o == .prim "asc"
-    let rk : Option Pre ← match o, env.dict with
-      | .lt, some d | .leq, some d | .prim "asc", some d =>
-        match args.isEmpty != asc, env.params.lookup d, env.def? "rank" with
-        | true, some a, some df => do
-          let a' := match a with | .rel (.var _ k s t x) u v => .rel (.var p k s t x) u v | a => a
-          let (q, _, _) := (← settle none p [a'] (← df.apply p [a'])).plain; pure (some q)
-        | _, _, _ => pure none
-      | _, _ => pure none
+    let rk : Option Pre ← match o with
+      | .lt | .leq | .prim "asc" => if args.isEmpty != asc then symRank env p else pure none
+      | _ => pure none
     if args.isEmpty then constant env p o objs rk (cmpTest env p o)
       else match m with
         | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
@@ -1626,7 +1630,12 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match env.def? n with
     | some d =>
       if d.arity != as.length then throw ⟨p, s!"'{n}' takes {d.arity} arguments, found {as.length}"⟩
-      settle m p as (← d.apply p as)
+      let r ← settle m p as (← d.apply p as)
+      -- `asc` is the prelude's definition; at `sym` its set goes through the ranks as the row's did (`.ranked`)
+      match env.res n, r with
+      | .ext e, .rel q s t =>
+        if m.isNone && some e.const == ascRow.prelude then pure (.rel (.ranked q (← symRank env p)) s t) else pure r
+      | _, r => pure r
     | none => throw ⟨p, s!"unknown name '{n}'"⟩
   -- `R n S`: the definition declared `_n_`, given `R` and `S` (§c)
   | .inf p n a b => do
