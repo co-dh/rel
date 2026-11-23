@@ -524,6 +524,13 @@ def ColB.get : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n �
   | false, _, _, x, i => Arr.get x i
   | true, _, _, x, i => (Opt.get x i).getD default
 
+/-- An atom side's payload and rows by field notation: `x.enc`, `x.get i` on `x : Vals (.atom t) n` resolve to the `Arr`'s,
+    as before `ValsB` (whose `ColB.enc`/`ColB.get` take an ownership a unifier cannot guess from `Vals`). -/
+abbrev Vals.enc {t : QAtomicType} {n : USize} (x : Vals (.atom t) n) : Enc := Arr.enc (t := t) x
+
+/-- See `Vals.enc`. -/
+abbrev Vals.get {t : QAtomicType} {n : USize} (x : Vals (.atom t) n) (i : Fin n.toNat) : El t := Arr.get (t := t) x i
+
 /-- The position `k` clamped into `[0, m)`: the nearest position of a side of `m > 0` values. -/
 def clampFin (k : Int64) (m : Nat) (h : 0 < m) : Fin m :=
   ⟨min (max k.toInt 0).toNat (m - 1), Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (by omega)⟩

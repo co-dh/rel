@@ -48,8 +48,8 @@ def pairV (A B : Obj) (n : USize) (x : Vals A n × Bool) (y : Vals B n × Bool) 
   ((x.1, y.1), x.2 && y.2)
 def arrV (B : Obj) (n m : USize) (lo hi : Arr .i64 n × Bool) (p : Vals B m × Bool) : Vals (.arr B) n × Bool :=
   (⟨m, lo.1, hi.1, p.1⟩, lo.2 && hi.2 && p.2)
-def sumV (A B : Obj) (h : Obj.band A B = none) (n : USize) (tag : Arr .u1 n × Bool) (x : Vals A n × Bool)
-    (y : Vals B n × Bool) : Vals (.sum A B) n × Bool :=
+def sumV (A B : Obj) (h : Obj.band A B = none) (n : USize) (tag : Arr .u1 n × Bool) (x : ValsB true A n × Bool)
+    (y : ValsB true B n × Bool) : Vals (.sum A B) n × Bool :=
   (ValsB.ofGen h tag.1 x.1 y.1, tag.2 && x.2 && y.2)
 /-- A band sum's one nullable column (`Obj.band`), rebuilt as `atom` rebuilds a column but nulls allowed: `Enc.WF`
     decided, a payload that does not fit `n` a blank column with bit false. -/
