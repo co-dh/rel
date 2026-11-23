@@ -43,6 +43,25 @@ def Opt.fill (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
     | _ => wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
   if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"filler: {n} rows are not a well-formed column of {repr t}"
 
+/-- `X` with every row owned as the summand column of a dense sum: each atom column `Opt.ofArr`, which leaves the storage
+as it is. -/
+def Vals.lift : {A : Obj} → {n : USize} → Vals A n → ValsB true A n
+  | .atom _, _, x => Opt.ofArr x
+  | .prod _ _, _, x => (Vals.lift x.1, Vals.lift x.2)
+  | .arr _, _, ⟨m, lo, hi, f⟩ => ⟨m, Opt.ofArr lo, Opt.ofArr hi, f⟩
+  | .sum _ _, _, x => x
+  | .one, _, _ => ()
+
+/-- No row of `A`: no zero word per atom, an `arr` side of no cells, a sum of no rows (its summands `Vals.lift`ed). -/
+def Vals.none : (A : Obj) → Except String (Vals A 0)
+  | .atom t => Arr.zeros t 0
+  | .prod a b => do pure (← Vals.none a, ← Vals.none b)
+  | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← Vals.none b⟩
+  | .sum a b => match h : Obj.band a b with
+    | some t => do pure (ValsB.ofOpt h (← Opt.nuls t 0))
+    | .none => do pure (ValsB.ofGen h (← tagCol 0 false) (Vals.lift (← Vals.none a)) (Vals.lift (← Vals.none b)))
+  | .one => pure ()
+
 /-- `n` rows of `A` all in-band null, the filler of the rows a summand of a dense sum does not own (`ValsB true`): `Opt.fill`
 per atom column; an `arr` side of `n` null cells over no payload; a band sum `n` nulls; another `sum` side of tag `0` over
 two such summands. -/
@@ -54,28 +73,6 @@ def Vals.zeros : (A : Obj) → (n : USize) → Except String (ValsB true A n)
     | some t => do pure (ValsB.ofOpt h (← Opt.nuls t n))
     | .none => do pure (ValsB.ofGen h (← tagCol n false) (← Vals.zeros a n) (← Vals.zeros b n))
   | .one, _ => pure ()
-where
-  /-- No row of `A`: `n = 0` zero words per atom, an `arr` side of no cells, a sum of no rows. -/
-  none : (A : Obj) → Except String (Vals A 0)
-    | .atom t => Arr.zeros t 0
-    | .prod a b => do pure (← none a, ← none b)
-    | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← none b⟩
-    | .sum a b => match h : Obj.band a b with
-      | some t => do pure (ValsB.ofOpt h (← Opt.nuls t 0))
-      | .none => do pure (ValsB.ofGen h (← tagCol 0 false) (← Vals.zeros a 0) (← Vals.zeros b 0))
-    | .one => pure ()
-
-/-- No row of `A`. -/
-def Vals.none (A : Obj) : Except String (Vals A 0) := Vals.zeros.none A
-
-/-- `X` with every row owned as the summand column of a dense sum: each atom column `Opt.ofArr`, which leaves the storage
-as it is. -/
-def Vals.lift : {A : Obj} → {n : USize} → Vals A n → ValsB true A n
-  | .atom _, _, x => Opt.ofArr x
-  | .prod _ _, _, x => (Vals.lift x.1, Vals.lift x.2)
-  | .arr _, _, ⟨m, lo, hi, f⟩ => ⟨m, Opt.ofArr lo, Opt.ofArr hi, f⟩
-  | .sum _ _, _, x => x
-  | .one, _, _ => ()
 
 /-- A summand column whose rows are all owned (`inl°`, `inr°` after the gather), as an `Arr` per atom: `Arr.of` refuses a
 column holding a null, which no owned row is; `what` names the producer. -/
