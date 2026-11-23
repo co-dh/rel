@@ -54,24 +54,4 @@ theorem Tm.takewhileStep_den (ρ : Val) {B : Obj} (P : Tm B B) (x : B.El) (acc :
       · exact h₂
     · rintro rfl; exact Or.inr ⟨fun y hy => h ⟨y, hy⟩, rfl⟩
 
-/-- **The definition of `takewhile(P)` means the row**: the longest prefix of `xs` of elements in `dom P`. -/
-theorem Tm.takewhileDef_row (ρ : Val) {B : Obj} (P : Tm B B) (xs ys : Obj.El (.arr B)) :
-    (Tm.takewhileDef P).den ρ xs ys ↔
-      Prim.den (rowOf "takewhile") (.arr B) (.arr B) [⟨B, B, P.den ρ⟩] xs ys := by
-  rw [Prim.den_takewhile]
-  have hd : (Tm.takewhileDef P).den ρ = foldrDen nilDen ((Tm.takewhileStep P).den ρ) := by
-    simp only [Tm.takewhileDef, Tm.den, Tm.nil, Prim.den_nilRow]
-  rw [hd]
-  have h := foldrDen_foldr (TS := (Tm.takewhileStep P).den ρ) (I := fun _ => True)
-    (f := fun x acc => if ∃ y, P.den ρ x y then x :: acc else [])
-    (fun x a _ w => Tm.takewhileStep_den ρ P x a w) (fun _ _ _ => trivial) xs [] trivial ys
-  refine h.trans ?_
-  have gen : ∀ xs : List B.El, xs.foldr (fun x acc => if ∃ y, P.den ρ x y then x :: acc else []) [] =
-      xs.takeWhile fun x => decide (∃ y, P.den ρ x y) := by
-    intro xs
-    induction xs with
-    | nil => simp
-    | cons x xs ih => by_cases hx : ∃ y, P.den ρ x y <;> simp [hx, ih]
-  rw [gen]
-
 end Rel.Lang

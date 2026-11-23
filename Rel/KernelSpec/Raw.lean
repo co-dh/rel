@@ -66,33 +66,6 @@ theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
 
 
 
-/-- `Array.extract`'s loop: `bs`, then up to `i` elements of `a` from `j`. Core's `Array.getElem?_extract`
-carries `Classical.choice`, so the read is taken from the loop here. -/
-theorem extract_loop_getElem? {α : Type} (a bs : Array α) (i j k : Nat) :
-    (Array.extract.loop a i j bs)[k]? = if k < bs.size then bs[k]? else
-      if k - bs.size < i then if j + (k - bs.size) < a.size then a[j + (k - bs.size)]? else none else none := by
-  induction i generalizing j bs with
-  | zero =>
-    rw [show Array.extract.loop a 0 j bs = bs by unfold Array.extract.loop; split <;> rfl]
-    by_cases hk : k < bs.size
-    · rw [if_pos hk]
-    · rw [if_neg hk, if_neg (Nat.not_lt_zero _), Array.getElem?_eq_none (by omega)]
-  | succ i ih =>
-    unfold Array.extract.loop
-    split
-    · rename_i h
-      show (Array.extract.loop a i (j + 1) (bs.push a[j]))[k]? = _
-      rw [ih, Array.size_push, getElem?_push]
-      repeat' split
-      all_goals first | rfl | (exfalso; omega) | (congr 1; omega) | (simp only [show j + (k - bs.size) = j by omega, Array.getElem?_eq_getElem h])
-    · rename_i h
-      by_cases hk : k < bs.size
-      · rw [if_pos hk]
-      · rw [if_neg hk, Array.getElem?_eq_none (by omega)]
-        by_cases hi : k - bs.size < i + 1
-        · rw [if_pos hi, if_neg (by omega)]
-        · rw [if_neg hi]
-
 
 
 /-- **The foR round trip.** `Enc.raw` cannot tell `Coc.encodeAt` at any block size `2 ^ lg` the layout admits

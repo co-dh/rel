@@ -53,24 +53,4 @@ theorem Tm.filterStep_den (ρ : Val) {B : Obj} (P : Tm B B) (acc : List B.El) (x
       · exact h₁
     · rintro rfl; exact Or.inr ⟨x, ⟨rfl, rfl⟩, fun _ _ x₂ hx _ => (h ⟨x₂, hx⟩).elim⟩
 
-/-- **The definition of `filter(P)` means the row**: the elements of `xs` in `dom P`, in order. -/
-theorem Tm.filterDef_row (ρ : Val) {B : Obj} (P : Tm B B) (xs ys : Obj.El (.arr B)) :
-    (Tm.filterDef P).den ρ xs ys ↔ Prim.den (rowOf "filter") (.arr B) (.arr B) [⟨B, B, P.den ρ⟩] xs ys := by
-  rw [Prim.den_filter]
-  have hd : (Tm.filterDef P).den ρ = foldDen nilDen ((Tm.filterStep P).den ρ) := by
-    simp only [Tm.filterDef, Tm.den, Tm.nil, Prim.den_nilRow]
-  rw [hd]
-  have h := foldDen_foldl (TS := (Tm.filterStep P).den ρ)
-    (f := fun acc x => if ∃ y, P.den ρ x y then acc ++ [x] else acc) (Tm.filterStep_den ρ P) xs [] ys
-  refine h.trans ?_
-  have gen : ∀ (xs acc : List B.El), xs.foldl (fun acc x => if ∃ y, P.den ρ x y then acc ++ [x] else acc) acc =
-      acc ++ xs.filter fun x => decide (∃ y, P.den ρ x y) := by
-    intro xs
-    induction xs with
-    | nil => intro acc; simp
-    | cons x xs ih =>
-      intro acc
-      by_cases hx : ∃ y, P.den ρ x y <;> simp [hx, ih]
-  rw [gen]; simp
-
 end Rel.Lang

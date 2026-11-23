@@ -29,16 +29,4 @@ theorem Prim.den_star {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- **The definition of `star(P)` means the row**: the least fixed point of `X ↦ 𝟙 ∪ P X`, `P` not mentioning `X`. -/
-theorem Tm.starDef_row (ρ : Val) {B : Obj} (k : Nat) (what : String) (cap : Nat) (P : Tm B B)
-    (hk : P.fv.contains k = false) (xs ys : Obj.El B) :
-    (Tm.starDef k what cap P).den ρ xs ys ↔ Prim.den (rowOf "star") B B [⟨B, B, P.den ρ⟩] xs ys := by
-  have hP : ∀ X : Core.Rel (Obj.El B) (Obj.El B), P.den (ρ.bind k X) = P.den ρ := fun X =>
-    (P.den_congr _ _ fun i hi => Val.bind_ne (by rintro rfl; simp [hi] at hk)).1
-  rw [Prim.den_star]
-  have hb : (Tm.starDef k what cap P).den ρ = Core.Rel.mu fun X => 𝟙 _ ∪ P.den ρ ≫ X := by
-    simp only [Tm.starDef, Tm.den, hP, Val.bind, if_true]
-    rfl
-  rw [hb]
-
 end Rel.Lang

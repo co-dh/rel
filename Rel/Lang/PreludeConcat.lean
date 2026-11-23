@@ -37,21 +37,4 @@ theorem Prim.den_concat {B : Obj} :
   unfold Prim.den; simp only [List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
-/-- **The definition of `concat` means the row**: `ys` is the concatenation of the arrays of `xss`. -/
-theorem Tm.concatDef_row (ρ : Val) {B : Obj} (xss : Obj.El (.arr (.arr B))) (ys : Obj.El (.arr B)) :
-    (Tm.concatDef B).den ρ xss ys ↔ Prim.den (rowOf "concat") (.arr (.arr B)) (.arr B) [] xss ys := by
-  rw [Prim.den_concat]
-  have hd : (Tm.concatDef B).den ρ = foldDen nilDen (Prim.den (rowOf "cat") (.prod (.arr B) (.arr B)) (.arr B) []) := by
-    simp only [Tm.concatDef, Tm.den, Tm.nil, Prim.den_nilRow]
-  rw [hd]
-  have h := foldDen_foldl (TS := Prim.den (rowOf "cat") (.prod (.arr B) (.arr B)) (.arr B) [])
-    (f := fun acc x => acc ++ x) (fun a x w => by rw [Prim.den_cat]) xss [] ys
-  refine h.trans ?_
-  have gen : ∀ (xss : List (List B.El)) (acc : List B.El), xss.foldl (fun acc x => acc ++ x) acc = acc ++ xss.flatten := by
-    intro xss
-    induction xss with
-    | nil => intro acc; simp
-    | cons x xss ih => intro acc; simp [ih]
-  rw [gen]; simp
-
 end Rel.Lang

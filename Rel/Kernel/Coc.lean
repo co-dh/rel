@@ -416,19 +416,6 @@ payload — so an exception is copied as bits and only compared or added here. -
 def alpVal (f32 : Bool) (x : UInt64) : Float :=
   if f32 then (Float32.ofBits x.toUInt32).toFloat else Float.ofBits x
 
-/-- Is `x` the decimal `d * 10 ^ -e`, and if so which `d` (as `Int64` bits)? Decided by decoding `d`
-and comparing **bits**: comparing values would admit `-0.0`, which decodes as `+0.0`.
-
-`Float.round` breaks a tie away from zero where `rust/src/coc.rs`'s `nearbyint` breaks it to even. Nothing
-rests on that: the round trip is what accepts a `d`, so each side accepts only its own `d` and both
-satisfy the specification `alpDecode (alpEncode x) = x`. -/
-def alpDat (f32 : Bool) (x : UInt64) (e : Nat) : Option UInt64 :=
-  let s := alpVal f32 x * Rel.Column.pow10 e
-  if s.abs < alpP53 then
-    let d := s.round.toInt64.toUInt64
-    if Rel.Column.alpDec d e f32 == x then some d else none
-  else none
-
 
 
 
@@ -452,15 +439,6 @@ def alpDecode64 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
 def alpDecode32 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
   (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
     Rel.Column.pushBits acc v 4
-
-/-- `alpElems` as `w`-byte elements, the payload `Column.get` reads an ALP column as at any fixed
-width: the two C decoders at the widths ALP is the encoding for, the fold they implement otherwise.
-One reader, so `Column.bytesOf` never declines a column `Column.get` reads and `~`'s element
-fallback never sees one `Kernel.columnHash` cannot key. -/
-def alpDecode (w : USize) (metadata pack a : ByteArray) (n : USize) : ByteArray :=
-  if w == 4 then alpDecode32 metadata pack a n else if w == 8 then alpDecode64 metadata pack a n
-  else (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    Rel.Column.pushBits acc v w.toNat
 
 end Rel.Kernel.Coc
 

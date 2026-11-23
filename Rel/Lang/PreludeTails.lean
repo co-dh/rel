@@ -21,10 +21,6 @@ def Tm.tailsStep (B : Obj) (hd : Tm (.arr (.arr B)) (.arr B)) : Tm (.prod B (.ar
     (.pair (.comp (B := .prod B (.arr B)) (.pair .outl (.comp (B := .arr (.arr B)) .outr hd)) (.prim (rowOf "cons")))
       .outr) (.prim (rowOf "cons"))
 
-/-- `tails` at `[B] ⟶ [[B]]`: the right fold from `nil τ` of `Tm.tailsStep` reading the head by `Tm.at0`. -/
-def Tm.tailsDef (B : Obj) : Tm (.arr B) (.arr (.arr B)) :=
-  .foldr (.comp (B := .arr B) .nil (.prim (rowOf "τ"))) (Tm.tailsStep B Tm.at0)
-
 theorem Prim.den_tails {B : Obj} :
     Prim.den (rowOf "tails") (.arr B) (.arr (.arr B)) [] =
       fun xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.drop k := by
@@ -50,11 +46,6 @@ theorem Tm.tailsStep_den (ρ : Val) {B : Obj} (hd : Tm (.arr (.arr B)) (.arr B))
   · rintro rfl
     exact ⟨(x :: a, a :: as), ⟨⟨(x, a), ⟨rfl, a :: as, rfl, (hhd _ _ _).2 rfl⟩, rfl⟩, rfl⟩, rfl⟩
 
-theorem Tm.tailsSeed_den (ρ : Val) {B : Obj} :
-    (Tm.comp (B := .arr B) (A := .arr (.arr B)) Tm.nil (.prim (rowOf "τ"))).den ρ = (fun _ b => b = [[]] : Core.Rel (Obj.El (.arr (.arr B))) (Obj.El (.arr (.arr B)))) := by
-  funext a v
-  simp [Tm.den, Tm.nil, Prim.den_nilRow, Prim.den_tau, nilDen, Core.Rel.graph, Core.Rel.comp]
-
 /-- The fold of `tails`'s step from `[[]]` lists the suffixes, longest first. -/
 theorem tails_foldr {α : Type} (xs : List α) : xs.foldr (fun x acc => (x :: acc.headD []) :: acc) [[]] =
     (List.range (xs.length + 1)).map fun k => xs.drop k := by
@@ -63,21 +54,6 @@ theorem tails_foldr {α : Type} (xs : List α) : xs.foldr (fun x acc => (x :: ac
   | cons x xs ih =>
     rw [List.foldr_cons, ih, List.length_cons]
     simp [List.range_succ_eq_map, Function.comp_def]
-
-/-- **A fold of `tails`'s step means the row**, whatever its seed `e` whose values are `[[]]` alone and whatever its
-    head-reader `hd` that reads the head of a non-empty list: the step only meets the non-empty accumulators
-    (`foldrDen_foldr` with the invariant `≠ []`). -/
-theorem Tm.tailsFold_row (ρ : Val) {B : Obj} (e : Tm (.arr (.arr B)) (.arr (.arr B))) (hd : Tm (.arr (.arr B)) (.arr B))
-    (he : ∀ v, (∃ a, e.den ρ a v) ↔ v = [[]]) (hhd : ∀ a as w, hd.den ρ (a :: as) w ↔ w = a)
-    (xs : Obj.El (.arr B)) (yss : Obj.El (.arr (.arr B))) :
-    (Tm.foldr e (Tm.tailsStep B hd)).den ρ xs yss ↔ Prim.den (rowOf "tails") (.arr B) (.arr (.arr B)) [] xs yss := by
-  rw [Prim.den_tails]
-  simp only [Tm.den]
-  rw [foldrDen_start]
-  simp only [he, exists_eq_left]
-  exact (foldrDen_foldr (TS := (Tm.tailsStep B hd).den ρ) (I := fun a => a ≠ [])
-    (f := fun x acc => (x :: acc.headD []) :: acc) (fun x a ha w => Tm.tailsStep_den ρ hd hhd x a ha w)
-    (fun _ _ _ => List.cons_ne_nil _ _) xs [[]] (List.cons_ne_nil _ _) yss).trans (by rw [tails_foldr])
 
 
 end Rel.Lang
