@@ -67,7 +67,7 @@ private theorem iord_iff {s : Bool} {t r : QAtomicType} (hr : t.ordNum = some r)
   rwa [QAtomicType.castWord_ofBits hr hx, QAtomicType.castWord_ofBits hr hy] at h
 
 /-- The order `Op` of an atom is a comparison, never the stream `.first` (`colMap .first` is not a map). -/
-theorem ordOp_ne {s : Bool} {t : QAtomicType} {op : Op} (h : ordOp s t = .ok op) : op ≠ .first ∧ op ≠ .null := by
+theorem ordOp_ne {s : Bool} {t : QAtomicType} {op : Op} (h : ordOp s t = .ok op) : op ≠ .first ∧ op ≠ .null ∧ op.nulFold = none := by
   unfold ordOp at h
   repeat' split at h
   all_goals first | (cases h; decide) | cases h
@@ -113,7 +113,7 @@ theorem cmpPairs_holds {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t =
   rename_i kv hkv
   split at h; · cases h
   rename_i w hw
-  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop).1 _ _ _) (ordOp_ne hop).2
+  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop).1 _ _ _) (ordOp_ne hop).2.1 (Or.inl (ordOp_ne hop).2.2)
   have hwv : ∀ i : Fin X.n.toNat, (raw .i64 X.n w)[i.1]?.getD 0 < 2 ∧
       ((raw .i64 X.n w)[i.1]?.getD 0 ≠ 0 ↔ ordAt s t (X.key.row i) (X.val.row i)) := by
     intro i
@@ -142,7 +142,7 @@ theorem cmpAt_holds {lt : Bool} {t : QAtomicType} {n : USize} {X : Vals (.prod (
   rename_i op hop
   split at h; · cases h
   rename_i w hw
-  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop).1 _ _ _) (ordOp_ne hop).2
+  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop).1 _ _ _) (ordOp_ne hop).2.1 (Or.inl (ordOp_ne hop).2.2)
   have hwv : ∀ i : Fin n.toNat, (raw .i64 n w)[i.1]?.getD 0 < 2 ∧
       ((raw .i64 n w)[i.1]?.getD 0 ≠ 0 ↔ ordAt lt t (X.1.row i) (X.2.row i)) := by
     intro i
@@ -410,8 +410,9 @@ theorem cellSpan_start_le {n m : USize} {lo up : Arr .i64 n}
 
 /-- **`colArr` answers `colMap`'s column**, the converse of `colArr_ok`. -/
 theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o)
-    (hs : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep) :
-    colArr op n a b t .i64 [] [] hs = .ok (Arr.mk o (colMap_closed hs h).2 (colMap_plain hs h)) := by
+    (hs : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
+    colArr op n a b t .i64 [] [] hs hF = .ok (Arr.mk o (colMap_closed hs h hF).2 (colMap_plain hs h hF)) := by
   unfold colArr
   split
   · rename_i o' h'; have := h.symm.trans h'; cases this; rfl
@@ -714,7 +715,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
     rw [← es, toUInt64_sub (hb₂ i).1]
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = (E₁ i - S₁ i) + (E₂ i - S₂ i) := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    have es := (colMap_raw hw).2.2.2 i hi
+    have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
     rw [hw₁w i hi, hw₂w i hi] at es; simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, hwN, ← UInt64.ofNat_add]
   have hwm : ∀ i, wN i ≤ m₁.toNat + m₂.toNat := fun i => by have := hb₁ i; have := hb₂ i; rw [hwN]; omega
@@ -870,7 +871,7 @@ theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.a
     rw [← es, toUInt64_sub (hb₂ i).1]
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = min (E₁ i - S₁ i) (E₂ i - S₂ i) := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    have es := (colMap_raw hw).2.2.2 i hi
+    have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
     rw [hw₁w i hi, hw₂w i hi] at es
     have h1 := hb₁ i; have h2 := hb₂ i
     have e : Op.eval .min (E₁ i - S₁ i).toUInt64 (E₂ i - S₂ i).toUInt64 = .ok (wN i).toUInt64 := by
@@ -970,7 +971,7 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
     (Vals.gather_wf hg (Vals.concat_wf hNn hF hX.2 hY.2))
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
   obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
-  have es := (colMap_raw hw).2.2.2 i hi
+  have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
   rw [x₁, x₂] at es; simp only [Op.eval, Except.ok.injEq] at es
   rw [← es, ← UInt64.ofNat_add, toNat_toUInt64 (by omega)]; omega
 
@@ -1003,7 +1004,7 @@ theorem Vals.zip_wf {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.ar
     ⟨Vals.gather_wf hx hX.2, Vals.gather_wf hy hY.2⟩
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
   obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
-  have es := (colMap_raw hw).2.2.2 i hi
+  have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
   rw [x₁, x₂] at es; simp only [Op.eval, Except.ok.injEq] at es
   rw [← es]; split <;> rw [toNat_toUInt64 (by omega)] <;> omega
 
@@ -1113,13 +1114,13 @@ cut of `out[i]`, which is `op` folded over the columns after the first at row `i
 from the first column's row `i` where `seg` starts a segment there (the last row always). -/
 theorem raw_kscan_rev {op : Op} (hnl : op ≠ .null) {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize} {seg : Enc}
     {es : List (USize × Enc)} {r : Enc × Option UInt64} (hs : kscanStream op es [] [] = false)
-    (h : kscan op true s t n seg es = .ok r) :
+    (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false) (h : kscan op true s t n seg es = .ok r) :
     ∃ c cs, es.map (·.2) = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
       r.1.raw t n = out.map (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
       ∀ i (hi : i < out.size), (cs.map (·.raw s n)).foldlM (fun a x => op.eval a (x[i]?.getD 0))
         (if i + 1 < n.toNat ∧ (seg.raw .u1 n)[i]?.getD 0 = 0 then out[i + 1]?.getD 0 else (c.raw s n)[i]?.getD 0) =
           .ok out[i] := by
-  obtain ⟨hg, hxs, c, cs, hec, out, hos, he, -, hrow⟩ := raw_kscan op hnl true s t w ht n seg es r hs h
+  obtain ⟨hg, hxs, c, cs, hec, out, hos, he, -, hrow⟩ := raw_kscan op hnl true s t w ht n seg es r hs hF h
   simp only [if_true] at he hrow
   refine ⟨c, cs, hec, out.reverse, by simp [hos], by rw [he], fun i hi => ?_⟩
   simp only [Array.size_reverse] at hi

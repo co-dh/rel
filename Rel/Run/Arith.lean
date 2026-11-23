@@ -50,7 +50,7 @@ def stepCols (k : UInt8) (n : USize) (x y : Arr .i64 n) : Except String (Arr .i6
     let w ← colArr (if k == Ew.idiv then .div else .mod) n a (← colMap .or n b b0)
     pure (w, ← colMap .and n (← colMap .and n both (← colMap .not n b0 b0)) (← ne w.enc))
   else if k == Ew.greater || k == Ew.lesser then
-    let w ← colArr (if k == Ew.greater then .max else .min) n a b (hF := Or.inr (Arr.nulFree x y))
+    let w ← colArr (if k == Ew.greater then .max else .min) n a b (hF := Or.inr (nulFree₂ x.plain y.plain))
     pure (w, ← ne w.enc)
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
@@ -67,7 +67,7 @@ def nanFlag (n : USize) (w : Enc) : Except String Enc := colMap .first n w w .u1
     `Op.fto t`. -/
 def fstepArr (t : QAtomicType) (k : UInt8) (n : USize) (x y : Arr t n) : Except String (Arr t n) :=
   match fverbOne k with
-  | some (o, c) => colArr o n x.enc y.enc t t (widen t) (c ++ [(.fto t, 0)]) (hF := Or.inr (Arr.nulFree x y))
+  | some (o, c) => colArr o n x.enc y.enc t t (widen t) (c ++ [(.fto t, 0)]) (hF := Or.inr (nulFree₂ x.plain y.plain))
   | none => do
     let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n x.enc) (← wideCol t n y.enc)
     colArr (.fto t) n r r t
@@ -81,7 +81,7 @@ def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (x y : Arr t n) : Except
 /-- **The float `Op` `o` from the float atom `t` to the atom `u`** on the `n` operand rows `a`, `b` (`floatDen`): one
     pass, each word through `widen t`, `o` (a unary `Op` reads `b` alone) and `Op.ofF64 u`; then `nanFlag`. -/
 def fmapCols (t u : QAtomicType) (o : Op) (n : USize) (x y : Arr t n) : Except String (Arr u n × Enc) := do
-  let w ← colArr o n x.enc y.enc u t (widen t) [(.ofF64 u, 0)] (hF := Or.inr (Arr.nulFree x y))
+  let w ← colArr o n x.enc y.enc u t (widen t) [(.ofF64 u, 0)] (hF := Or.inr (nulFree₂ x.plain y.plain))
   pure (w, ← nanFlag n w.enc)
 
 /-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other

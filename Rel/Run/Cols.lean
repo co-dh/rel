@@ -42,12 +42,13 @@ def widen (t : QAtomicType) : List (Op × UInt64) :=
     | some r => [(.cast r .i64, 0)]
     | none => []
 
-/-- Two arrays hold no null: the sources of a lock-step `kscan` over them satisfy `kscan`'s `hF` (an `Arr` is null-free
-by its type, so `max`/`min` of arrays never meets an in-band null). -/
-theorem Arr.nulFree {t : QAtomicType} {n : USize} (x y : Arr t n) : ∀ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = false := by
+/-- Two columns hold no null: the sources of a lock-step `kscan` over them satisfy `kscan`'s `hF` (an `Arr` is null-free
+by its type, `x.plain`, so `max`/`min` of arrays never meets an in-band null). -/
+theorem nulFree₂ {n : USize} {a b : Enc} (ha : hasNul a = false) (hb : hasNul b = false) :
+    ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by
   simp only [List.mem_cons, List.not_mem_nil, or_false]; rintro p (rfl | rfl)
-  · exact x.plain
-  · exact y.plain
+  · exact ha
+  · exact hb
 
 /-- `kscan`'s answer as an `Arr t n`, well formed at `t` (`kscan_closed`). -/
 def scanArr (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : Option Enc) (es : List (USize × Enc))

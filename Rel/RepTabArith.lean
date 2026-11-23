@@ -118,13 +118,14 @@ private theorem nulWord_eq : nulWord = Alg.nul.toUInt64 := rfl
 
 /-- **`stepCols k` computes `stepDen k` row by row**: at each row `i` the keep flag is a bit, set exactly where some
 `v` is `stepDen k` of the row's operands, and then `v` is the answer word. -/
-theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep : Enc}
-    (h : stepCols k n a b = .ok (w, keep)) (i : Nat) (hi : i < n.toNat) :
+theorem stepCols_spec {k : UInt8} {n : USize} {p q : Arr .i64 n} {w : Arr .i64 n} {keep : Enc}
+    (h : stepCols k n p q = .ok (w, keep)) (i : Nat) (hi : i < n.toNat) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ v = (wd n w.enc i).toInt64) ↔
-      Lang.stepDen k ((wd n a i).toInt64, (wd n b i).toInt64) v := by
+      Lang.stepDen k ((wd n p.enc i).toInt64, (wd n q.enc i).toInt64) v := by
   have cm : ∀ {op x y e}, colMap op n x y = .ok e → ∀ {r}, op.eval (wd n x i) (wd n y i) = .ok r →
-      (hk : kscanStream op [(n, x), (n, y)] [] [] = false := by lockstep) → (hn : op ≠ .null := by decide) → wd n e i = r :=
-    fun hc _ he hk hn => (Except.ok.inj (he.symm.trans ((colMap_raw hc hk hn).2.2.2 i hi))).symm
+      (hk : kscanStream op [(n, x), (n, y)] [] [] = false := by lockstep) → (hn : op ≠ .null := by decide) →
+      (hF : op.nulFold = none ∨ ∀ p ∈ [(n, x), (n, y)], hasNul p.2 = false := by nulfree) → wd n e i = r :=
+    fun hc _ he hk hn hF => (Except.ok.inj (he.symm.trans ((colMap_raw hc hk hn hF).2.2.2 i hi))).symm
   have cp : ∀ {op op' : Op} {c x e}, (∀ y, op.eval c y = op'.eval y c) →
       colMap .first n x x .i64 .i64 [] [(op, c)] = .ok e → ∀ {r}, op'.eval (wd n x i) c = .ok r → wd n e i = r :=
     fun hop hc _ he => (Except.ok.inj (he.symm.trans ((hop _).symm.trans ((colMap_post hc).2 i hi)))).symm
@@ -145,7 +146,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
     simp only [bit_and, bit_eq]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
-    obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
+    obtain ⟨x, hx⟩ := ofA (wd n p.enc i); obtain ⟨y, hy⟩ := ofA (wd n q.enc i); rw [← hx, ← hy]
     simp only [nulWord_eq, ← Int64.toUInt64_add, ne_eq, toU_inj, Int64.toInt64_toUInt64,
       show UInt64.toInt64 0 = 0 from rfl]
     exact add_iff x y v
@@ -160,7 +161,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
     simp only [bit_and, bit_eq]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
-    obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
+    obtain ⟨x, hx⟩ := ofA (wd n p.enc i); obtain ⟨y, hy⟩ := ofA (wd n q.enc i); rw [← hx, ← hy]
     simp only [nulWord_eq, ← Int64.toUInt64_sub, ne_eq, toU_inj, Int64.toInt64_toUInt64,
       show UInt64.toInt64 0 = 0 from rfl]
     exact sub_iff x y v
@@ -177,7 +178,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
     simp only [bit_and, bit_or, or_zero]
     refine ⟨bit_lt _, fun v => ?_⟩
     rw [bit_ne]
-    obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
+    obtain ⟨x, hx⟩ := ofA (wd n p.enc i); obtain ⟨y, hy⟩ := ofA (wd n q.enc i); rw [← hx, ← hy]
     simp only [nulWord_eq, ← Int64.toUInt64_mul, toU_eq_zero, toU_ite1, ne_eq, toU_inj, Int64.toInt64_toUInt64]
     exact mul_iff x y v
   by_cases e4 : k = Ew.idiv ∨ k = Ew.imod
@@ -194,7 +195,7 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
       simp only [bit_and, bit_not, or_zero]
       refine ⟨bit_lt _, fun v => ?_⟩
       rw [bit_ne]
-      obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
+      obtain ⟨x, hx⟩ := ofA (wd n p.enc i); obtain ⟨y, hy⟩ := ofA (wd n q.enc i); rw [← hx, ← hy]
       simp only [nulWord_eq, toU_eq_zero, toU_ite1, ne_eq, toU_inj, Int64.toInt64_toUInt64]
       first | exact div_iff x y v | exact mod_iff x y v
   by_cases e5 : k = Ew.greater ∨ k = Ew.lesser
@@ -204,10 +205,10 @@ theorem stepCols_spec {k : UInt8} {n : USize} {a b : Enc} {w : Arr .i64 n} {keep
         Ew.lesser, if_true, if_false, Bool.false_or, Except.bind_eq_ok', pure, Except.pure,
         Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨w', hw', nw, hnw, rfl, rfl⟩ := h
-      rw [cp sne hnw (ev_ne _ _), cm (colArr_ok hw') (by first | exact ev_max _ _ | exact ev_min _ _)]
+      rw [cp sne hnw (ev_ne _ _), cm (colArr_ok hw') (by first | exact ev_max _ _ | exact ev_min _ _) (hF := Or.inr (nulFree₂ p.plain q.plain))]
       refine ⟨bit_lt _, fun v => ?_⟩
       rw [bit_ne]
-      obtain ⟨x, hx⟩ := ofA (wd n a i); obtain ⟨y, hy⟩ := ofA (wd n b i); rw [← hx, ← hy]
+      obtain ⟨x, hx⟩ := ofA (wd n p.enc i); obtain ⟨y, hy⟩ := ofA (wd n q.enc i); rw [← hx, ← hy]
       simp only [nulWord_eq, Int64.toInt64_toUInt64, toU_ite, ne_eq, toU_inj]
       first | exact max_iff x y v | exact min_iff x y v
   simp only [Bool.or_eq_true, beq_iff_eq, e1, e2, e3, false_or, if_false] at h
@@ -249,7 +250,7 @@ theorem Tab.mixCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : col
 
 /-- Every `Op` of a verb `fverbOne` names is a unary or float `Op`, none the stream `.first`. -/
 theorem fverbOne_ne {k : UInt8} {o : Op} {c : List (Op × UInt64)} (h : fverbOne k = some (o, c)) :
-    o ≠ .first ∧ o ≠ .null ∧ ∀ p ∈ c, p.1 ≠ .first ∧ p.1 ≠ .null := by
+    o ≠ .first ∧ o ≠ .null ∧ o.nulFold = none ∧ ∀ p ∈ c, p.1 ≠ .first ∧ p.1 ≠ .null ∧ p.1.nulFold = none := by
   unfold fverbOne at h
   repeat' split at h
   all_goals first | (cases h; decide) | cases h
@@ -258,29 +259,29 @@ theorem fverbOne_ne {k : UInt8} {o : Op} {c : List (Op × UInt64)} (h : fverbOne
 whole verb (`ap = colMap`, `ap' = Op.eval`, `f` reading row `i` is the column form agreeing with the word form). The
 steps `fverbBy` applies are none `.first` or `.null` (`fverbOne_ne`), and `hap` need hold only there (`colMap .first` is a stream). -/
 theorem fverbBy_map {α β : Type} {ap : Op → α → α → Except String α} {ap' : Op → β → β → Except String β}
-    (f : α → β) (hap : ∀ {o x y z}, o ≠ .first → o ≠ .null → ap o x y = .ok z → ap' o (f x) (f y) = .ok (f z)) {k : UInt8}
+    (f : α → β) (hap : ∀ {o x y z}, o ≠ .first → o ≠ .null → o.nulFold = none → ap o x y = .ok z → ap' o (f x) (f y) = .ok (f z)) {k : UInt8}
     {x y z : α} (h : fverbBy ap k x y = .ok z) : fverbBy ap' k (f x) (f y) = .ok (f z) := by
   unfold fverbBy at h ⊢
   cases hk : fverbOne k with
   | some oc =>
     obtain ⟨o, c⟩ := oc
-    obtain ⟨hon, hnn, hcn⟩ := fverbOne_ne hk
+    obtain ⟨hon, hnn, hof, hcn⟩ := fverbOne_ne hk
     simp only [hk, bind, Except.bind_eq_ok'] at h ⊢
     obtain ⟨q, hq, hz⟩ := h
-    refine ⟨_, hap hon hnn hq, ?_⟩
+    refine ⟨_, hap hon hnn hof hq, ?_⟩
     clear hq hk hon
     induction c generalizing q with
     | nil => simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hz ⊢; rw [hz]
     | cons p c ih =>
       simp only [List.foldlM_cons, bind, Except.bind_eq_ok'] at hz ⊢
       obtain ⟨q', hq', hz⟩ := hz
-      exact ⟨_, hap (hcn p (by simp)).1 (hcn p (by simp)).2 hq', ih (fun p' hp' => hcn p' (by simp [hp'])) _ hz⟩
+      exact ⟨_, hap (hcn p (by simp)).1 (hcn p (by simp)).2.1 (hcn p (by simp)).2.2 hq', ih (fun p' hp' => hcn p' (by simp [hp'])) _ hz⟩
   | none =>
   simp only [hk] at h ⊢
   by_cases c7 : (k == Ew.imod) = true <;> simp only [c7, ↓reduceIte, Bool.false_eq_true] at h ⊢
   · simp only [bind, Except.bind_eq_ok'] at h ⊢
     obtain ⟨q, hq, g, hg, m, hm, hz⟩ := h
-    exact ⟨_, hap (by decide) (by decide) hq, _, hap (by decide) (by decide) hg, _, hap (by decide) (by decide) hm, hap (by decide) (by decide) hz⟩
+    exact ⟨_, hap (by decide) (by decide) (by decide) hq, _, hap (by decide) (by decide) (by decide) hg, _, hap (by decide) (by decide) (by decide) hm, hap (by decide) (by decide) (by decide) hz⟩
   · cases h
 
 /-- **`widen` reads a float word as `fval`**: the word `W` of the float atom `t` through `chain (widen t)` is the `f64`
@@ -324,10 +325,11 @@ theorem colMap_widen {t u : QAtomicType} {op : Op} {n : USize} {x y : Arr t n} {
     {post : List (Op × UInt64)} (hf : t = .f32 ∨ t = .f64) (hu : u ≠ .u1)
     (h : colMap op n x.enc y.enc u t (widen t) post = .ok o) (i : Fin n.toNat)
     (hs : kscanStream op [(n, x.enc), (n, y.enc)] (widen t) post = false := by lockstep)
-    (hn : op ≠ .null := by decide) :
+    (hn : op ≠ .null := by decide)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = false := Or.inr (nulFree₂ x.plain y.plain)) :
     ∃ X Y v, fval t (x.get i) = some X ∧ fval t (y.get i) = some Y ∧ op.eval X Y = .ok v ∧
       chain post v = .ok (wd n o i) := by
-  obtain ⟨X, Y, v, W, hX, hY, hv, hW, ho⟩ := (colMap_chain h hs hn).2.2.2 i.1 i.2
+  obtain ⟨X, Y, v, W, hX, hY, hv, hW, ho⟩ := (colMap_chain h hs hn hF).2.2.2 i.1 i.2
   have ht : t.ordNum.isSome := by rcases hf with rfl | rfl <;> decide
   obtain ⟨X', hX', hfx⟩ := widen_fval hf ((raw t n x.enc)[i.1]?.getD 0)
   obtain ⟨Y', hY', hfy⟩ := widen_fval hf ((raw t n y.enc)[i.1]?.getD 0)
@@ -392,7 +394,7 @@ theorem nanFlag_spec {t : QAtomicType} {n : USize} {w : Arr t n} {keep : Enc} (h
 /-- **`fstepCols t k` computes `stepAt t k` row by row** at a float atom `t`: `ftoCols_spec` of the `fverb` answer on
 the operands' `f64` words (`wideCol_word`). -/
 theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t n} {keep : Enc}
-    (hf : t = .f32 ∨ t = .f64) (h : fstepCols t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
+    (hf : t = .f32 ∨ t = .f64) (h : fstepCols t k n x y = .ok (w, keep)) (i : Fin n.toNat) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X Y R, fval t (x.get i) = some X ∧
       fval t (y.get i) = some Y ∧ fstep t k X Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t R := by
   simp only [fstepCols, bind, Except.bind_eq_ok', pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
@@ -406,7 +408,7 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
       have hc := colArr_ok hw'
       have hs := kscanStream_ne (fverbOne_ne hk).1 [(n, x.enc), (n, y.enc)] (widen t) (c ++ [(.fto t, 0)])
       obtain ⟨X, Y, v, hX, hY, hv, hW⟩ := colMap_widen hf (by rcases hf with rfl | rfl <;> decide) hc i hs (fverbOne_ne hk).2.1
-      refine ⟨X, Y, hX, hY, ?_, (colMap_closed hs hc).1⟩
+      refine ⟨X, Y, hX, hY, ?_, (colMap_closed hs hc (Or.inr (nulFree₂ x.plain y.plain))).1⟩
       have e : chain (c ++ [(.fto t, 0)]) v = (chain c v >>= fun q => (Op.fto t).eval 0 q) := by
         simp [chain, List.foldlM_append]
       rw [e] at hW
@@ -415,7 +417,7 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
     · simp only [bind, Except.bind_eq_ok'] at hw'
       obtain ⟨a', ha, b', hb, r, hr, hw''⟩ := hw'
       have hr' := fverbBy_map (ap := fun o x y => colMap o n x y) (ap' := Op.eval) (fun e => wd n e i)
-        (fun hne hnn hc => (colMap_raw hc (kscanStream_ne hne _ _ _) hnn).2.2.2 i i.2) hr
+        (fun hne hnn hnf hc => (colMap_raw hc (kscanStream_ne hne _ _ _) hnn (Or.inl hnf)).2.2.2 i i.2) hr
       have hc := colArr_ok hw''
       obtain ⟨v0, hv0, hwi⟩ := (colMap_get hc (by lockstep) nofun).2 i i.2
       refine ⟨_, _, wideCol_word x ha hf i, wideCol_word y hb hf i, ?_, (colMap_closed (by lockstep) hc).1⟩
@@ -439,7 +441,7 @@ theorem Op.eval_acc {o : Op} (ho : o.readsAcc = false) (a x : UInt64) : o.eval a
 `y`: `o` on their `f64` words (`colMap_widen`), then `Op.ofF64 u`, kept where that is not `2^63` (`nanFlag_spec`). -/
 theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x y : Arr t n} {w : Arr u n} {keep : Enc}
     (hf : t = .f32 ∨ t = .f64) (hu : u.storeFmt?.isSome)
-    (h : fmapCols t u o n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) (ho : o ≠ .first := by decide)
+    (h : fmapCols t u o n x y = .ok (w, keep)) (i : Fin n.toNat) (ho : o ≠ .first := by decide)
     (hn : o ≠ .null := by decide) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ ∃ X X' Y R, fval t (x.get i) = some X ∧
       fval t (y.get i) = some X' ∧ o.eval X X' = .ok Y ∧ (Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧
@@ -451,7 +453,7 @@ theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x y : Arr t n} {
   obtain ⟨X, X', v, hX, hX', hv, hW⟩ := colMap_widen hf (Tab.storeFmt_ne hu).2.2 hc i hs hn
   have hW' : (Op.ofF64 u).eval 0 v = .ok (wd n w'.enc i) := by
     simpa only [chain, List.foldlM_cons, List.foldlM_nil, bind_pure] using hW
-  obtain ⟨h2, hn⟩ := nanFlag_spec hu (colMap_closed hs hc).1 hkp i
+  obtain ⟨h2, hn⟩ := nanFlag_spec hu (colMap_closed hs hc (Or.inr (nulFree₂ x.plain y.plain))).1 hkp i
   refine ⟨h2, fun v' => (hn v').trans ?_⟩
   constructor
   · rintro ⟨h1, rfl⟩; exact ⟨X, X', v, _, hX, hX', hv, hW', h1, rfl⟩
@@ -462,7 +464,7 @@ theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x y : Arr t n} {
 /-- **`stepColsAt t k` computes `stepAt t k` row by row**, at every atom: `stepCols_spec` at `i64`, `fstepCols_spec` at
 a float atom, and no answer at any other (`stepColsAt` refuses it). -/
 theorem stepColsAt_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t n} {keep : Enc}
-    (h : stepColsAt t k n x.enc y.enc = .ok (w, keep)) (i : Fin n.toNat) :
+    (h : stepColsAt t k n x y = .ok (w, keep)) (i : Fin n.toNat) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔ Lang.stepAt t k (x.get i, y.get i) v := by
   cases t <;> simp only [stepColsAt, throw, throwThe, MonadExceptOf.throw, reduceCtorEq] at h
   · obtain ⟨h2, hv⟩ := stepCols_spec h i.1 i.2

@@ -12,6 +12,7 @@ open Rel.Kernel
 /-- The longs `xs` as an `Arr .i64`: their words as `wordsFoR`, through `colArr` for its well-formedness. -/
 def arr (xs : List Int64) : Except String (Arr .i64 xs.length.toUSize) :=
   colArr .max _ (wordsFoR (xs.map (·.toUInt64)).toArray) (wordsFoR (xs.map (·.toUInt64)).toArray)
+    (hF := Or.inr (nulFree₂ (Rel.Verify.hasNul_wordsFoR _) (Rel.Verify.hasNul_wordsFoR _)))
 
 /-- A table of long pairs. -/
 def tab (ps : List (Int64 × Int64)) : Except String (Tab .long .long) := do

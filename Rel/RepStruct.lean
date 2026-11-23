@@ -427,7 +427,7 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
     subst ev; subst hv
     cases s <;> cases hg : t.get k <;> rw [hg] at he <;> revert he <;> decide
   · rw [Arr.get_i64]
-    obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok (hs := by lockstep) hi) k.1 hk
+    obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok (hs := by lockstep) (hF := by nulfree) hi) k.1 hk
     rw [raw_pos_word hk] at ev
     cases ev
     have hw : (raw .i64 n i.enc)[k.1]?.getD 0 = k.1.toUInt64 := by simp [hv]
