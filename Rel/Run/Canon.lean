@@ -34,7 +34,10 @@ def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (
   | .atom t, _, x => .ok [(.atom t, Arr.enc (t := t) x)]
   | .prod _ _, _, x => do pure ((← Vals.cols x.1) ++ (← Vals.cols x.2))
   | .arr _, n, ⟨c, lo, hi, f⟩ => do pure [(.cells n c lo.enc hi.enc (← Vals.cols f), .pos)]
-  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩ =>
+  -- a band column is its own key: `kasc` codes its nulls first (`Asc.nulCodes`), as `Obj.key` puts `inr` first
+  | .sum _ _, n, s => match s.view with
+    | .opt (t := t) _ x => .ok [(.atom t, x.enc)]
+    | .gen _ l r tag idx x y =>
     if 2 ^ 63 < l.toNat ∨ 2 ^ 63 < r.toNat then .error s!"cols: a sum side of {l} and {r} rows, past an Int64 position"
     -- `idx` is read here only by `colMap`, which takes more forms than `kgather` (`Vals.gather`); a side numbered
     -- here must be one every kernel reads; so must `tag`, which `kasc` no longer sees (it reads `¬tag`)
