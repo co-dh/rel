@@ -444,6 +444,32 @@ info: (["ibm", "aapl", "msft", "zz"], [[(0, 0), (1, 1)], [(0, 2), (1, 1)], [(0, 
   let ts : List String := D.toList.map fun (_, b) => String.ofList (b.map fun c => Char.ofNat c.toNat)
   return (ts, r)
 
+-- `dictionary D` is the program's one dictionary as the relation `S ⟶ [C]`: `unenum(a, D) = a D` writes each id of
+-- `a` as its text. By hand: `ibm aapl ibm` interns as ids 0 1 0, so the texts are the file's own words
+open Rel.Programs.prelude in
+rel_program unenumIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-unenum/a.csv"
+    dictionary D : S ⟶ [C]
+    texts : N ⟶ [C] ≜ unenum(a, D)
+    output texts to csv "/data/tmp/rel-test-io-unenum/t.csv"
+
+/--
+info: "val\nibm\naapl\nibm\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-unenum"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nibm\naapl\nibm\n"
+  unenumIO.io
+  let r ← IO.FS.readFile (d ++ "/t.csv")
+  IO.FS.removeDirAll d
+  return r
+
 -- two own inputs with symbol columns in two libraries, met by `∩`: refused where the program is elaborated
 /--
 error: rel_program expansion: the symbol columns of `a` are ids in the library /data/tmp/rel-test-io-lib/one and those of `b` in the library /data/tmp/rel-test-io-lib/two, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)

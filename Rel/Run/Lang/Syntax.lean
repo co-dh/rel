@@ -506,6 +506,9 @@ inductive Decl
   /-- `input n : A ⟶ B from p`: a relation with no body, a parameter of the statements after it that mention it
       (IO design A.2); read from the table directory `path`, or the CSV file `path` when `csv` is its separator (`,` CSV, `\t` TSV). -/
   | input (p : Pos) (n : String) (ty : OExp × OExp) (csv : Option UInt8) (path : String)
+  /-- `dictionary n : A ⟶ B`: the program's symbol dictionary `sym ⟶ text` as a run-time name, as an input is, bound
+      by `n.io` to the dictionary grown by the inputs before it (`Table.dictRel`); `A` a `sym` object, `B` a text. -/
+  | dict (p : Pos) (n : String) (ty : OExp × OExp)
   /-- `output n to path`: the table of the definition or input `n` written to `path` (`csv`: as one CSV file, its fields separated by that byte). -/
   | output (p : Pos) (n : String) (csv : Option UInt8) (path : String)
   /-- `theorem n(ps) on A : e = f := calc` (`⊑` when `eq` is false), each step `_ = x := why` with its line; no

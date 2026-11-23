@@ -231,7 +231,7 @@ def after (s : S) (prog : Program) : S := prog.foldl (init := s) fun s d => matc
       | _ => none
     { s with objs := n :: s.objs, taken := (n, at_ p) :: s.taken, fin := (ws.map fun w => (n, w) :: s.fin).getD s.fin }
   | .«theorem» p n .. => { s with thms := n :: s.thms, taken := (n, at_ p) :: s.taken }
-  | .input p n .. => { s with known := (n, 0) :: s.known, taken := (n, at_ p) :: s.taken }
+  | .input p n .. | .dict p n .. => { s with known := (n, 0) :: s.known, taken := (n, at_ p) :: s.taken }
   | _ => s
 
 /-- The operator `n` of an infix key `_n_`, read back by the reader that reads its declaration; none for a name. -/
