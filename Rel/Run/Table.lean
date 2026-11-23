@@ -107,6 +107,50 @@ def readCol : (o : Bool) → (t : QAtomicType) → (path : String) → IO ((n : 
   | false, t, path => readArr t path
   | true, t, path => readOpt t path
 
+/-- The summand leaf `x` (named by `path`) holds `Opt.filler t` on every row `own` does not own: the null of its block
+    (`Column.foRNul`, read per row off the flagged residual, never decoded); a general leaf's filler, its `default`, is
+    in no file. A summand's
+    unowned rows are `Opt.fill`'s, so two unowned rows read alike (`ColB.OwnedOn`). -/
+def leafFill {t : QAtomicType} {n : USize} (path : String) (own : Array Bool) (x : Opt t n) : IO Unit := do
+  let starts := match x.enc with | .foR md _ => Column.blockStarts md | _ => #[]
+  for i in [0:n.toNat] do
+    unless own.getD i true do
+      let bad : Option String := match x.enc with
+        | .foR md pk => if Column.foRNul md pk starts i then none
+            else some s!"the {repr t} word {(Ext.Enc.raw t n x.enc).getD i 0}"
+        -- `Opt.filler` of a general leaf is its `default`, which no own file holds (`readOpt` refuses the column), so a
+        -- `.gen` payload reaching here is no read
+        | .gen _ => some "a general payload, which the own format does not hold"
+        | .pos => some s!"the position {i}"
+      if let some v := bad then
+        throw (IO.userError s!"{path}: row {i} is a row the other summand owns and holds {v}, not null: a summand of a \
+          dense sum is `Opt.fill` where its tag names the other summand")
+
+/-- `leafFill` of the atom column `x` at ownership `o`: an `Arr` (`false`) has no unowned row. -/
+def colFill : {o : Bool} → {t : QAtomicType} → {n : USize} → String → Array Bool → ColB o t n → IO Unit
+  | false, _, _, _, _, _ => pure ()
+  | true, _, _, path, own, x => leafFill path own x
+
+/-- Every summand of the dense sum (or of one inside a summand) in `x`, over the rows `own` owns, holds the filler off
+    the rows it owns (`leafFill`; `ValsB.WFOn`'s `OwnedOn` clauses), the tag `false` off `own`, and a summand owns the
+    rows of `own` its tag names. `p` is the side's prefix, the paths as in `readValsB`. -/
+def fillBad (dir : String) : {o : Bool} → {A : Obj} → {n : USize} → String → Array Bool → ValsB o A n → IO Unit
+  | _, .atom _, _, p, own, x => colFill (file dir p) own x
+  | _, .prod _ _, _, p, own, x => do fillBad dir (p ++ ".1") own x.1; fillBad dir (p ++ ".2") own x.2
+  | _, .arr _, _, p, own, ⟨_, lo, hi, _⟩ => do
+    colFill (file dir (p ++ ".lo")) own lo; colFill (file dir (p ++ ".hi")) own hi
+  | _, .one, _, _, _, _ => pure ()
+  | _, .sum _ _, n, p, own, s => match ValsB.view s with
+    | .opt _ x => leafFill (file dir p) own x
+    | .gen _ tag x y => do
+      let raw := Ext.Enc.raw .u1 n tag.enc
+      for i in [0:n.toNat] do
+        if !own.getD i true && raw.getD i 0 != 0 then
+          throw (IO.userError s!"{file dir (p ++ ".tag")}: row {i} is not owned by the side and its tag is {raw.getD i 0}, \
+            not `false`: a dense sum's tag is `false` where its side owns no row")
+      let owns (v : UInt64) := (Array.range n.toNat).map fun i => own.getD i true && raw.getD i 0 == v
+      fillBad dir (p ++ ".l") (owns 0) x; fillBad dir (p ++ ".r") (owns 1) y
+
 /-- The inverse of `cols`: the side of object `A` at ownership `o` mapped from the files `cols` names under the prefix `p`
     in `dir`, with its count and the file the count was read from. The columns of one side have its count; a list's
     payload has its own (every row owned). A general sum is a tag and two summands of the sum's count, read at `o = true`
@@ -127,15 +171,18 @@ def readValsB : (o : Bool) → (A : Obj) → (dir p : String) → IO (String × 
       throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is the cell [{ColB.bound lo i}, {ColB.bound hi i}), not a slice of the {m} rows of \
         {file dir (p ++ ".e")}: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ {m}")
     return (file dir (p ++ ".lo"), ⟨n, m, lo, hi, e⟩)
-  | _, .sum a b, dir, p => match h : Obj.band a b with
+  -- the summands' filler is checked once, from the outermost sum (`fillBad` descends into the nested ones)
+  | o, .sum a b, dir, p => match h : Obj.band a b with
     | some t => do let ⟨n, x⟩ ← readOpt t (file dir p); return (file dir p, ⟨n, ValsB.ofOpt h x⟩)
     | none => do
     let ft := file dir (p ++ ".tag")
     let ⟨n, tag⟩ ← readArr .u1 ft
     let (_, x) ← readValsB true a dir (p ++ ".l")
     let (_, y) ← readValsB true b dir (p ++ ".r")
-    return (ft, ⟨n, ValsB.ofGen h tag (← same (F := ValsB true a) ft n (file dir (p ++ ".l")) x)
-      (← same (F := ValsB true b) ft n (file dir (p ++ ".r")) y)⟩)
+    let s : ValsB o (.sum a b) n := ValsB.ofGen h tag (← same (F := ValsB true a) ft n (file dir (p ++ ".l")) x)
+      (← same (F := ValsB true b) ft n (file dir (p ++ ".r")) y)
+    unless o do fillBad dir p (Array.replicate n.toNat true) s
+    return (ft, ⟨n, s⟩)
   -- a side of `1`: its file holds its count and no part (`Plan.oneKind`)
   | _, .one, dir, p => do
     let f ← Db.ownMap (file dir p)
