@@ -45,7 +45,7 @@ def atIx {n : USize} (X : Vals (.prod (.arr B) .long) n) : Except String (Tab (.
     let c ← colMap .and n (← colMap .lt n k.enc w) (← colMap .first n k.enc k.enc .i64 .i64 [] [(.le, 0)])
     let (M, sel) ← whereCol n c
     let ix ← kgather M sel n (← colMap .add n lo.enc k.enc)
-    Tab.canon ⟨M, ← Vals.gather (A := .prod (.arr B) .long) M sel (⟨m, lo, hi, f⟩, k), ← Vals.gather M ix f⟩
+    Tab.canon ⟨M, ← ValsB.gather (A := .prod (.arr B) .long) M sel (⟨m, lo, hi, f⟩, k), ← ValsB.gather M ix f⟩
 
 /-- **The row `at` on the pairs `X`** (`rowDens`: `atOn`): `atIx` where the index object is `i64`, no row elsewhere. -/
 def atRow {N : Obj} {n : USize} (X : Vals (.prod (.arr B) N) n) : Except String (Tab (.prod (.arr B) N) B) :=

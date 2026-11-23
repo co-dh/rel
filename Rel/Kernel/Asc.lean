@@ -129,8 +129,9 @@ mutual
 `atom` column carries its `m` words (`ascWords`) coded at its type (`ascOrd`, which cuts a word to the type's width):
 a type with no order, then `ascWords`' error. A `cells` column carries its `m` words, each below its `n` cells, and is
 coded by `cellFns` over `lo`, `hi` and its payload's codes (`ascCodes` at `c` rows): the column, a null in it (a
-null names no cell, `noNul`), a word naming no cell, `lo` and a null in it, `hi` and a null in it, then the payload's
-first error. -/
+null names no cell, `noNul`), a word naming no cell, `lo`, `hi`, then the payload's first error. A cell whose `lo` or
+`hi` is null is the empty cell (`nulWords` zeroes both there): a sum summand's `arr` side is null on the rows it does
+not own. -/
 def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (Array UInt64))
   | (.atom t, e) => match ascOrd t with
     | none => .error s!"asc: type {t.ctorIdx} has no fixed-width order"
@@ -142,11 +143,9 @@ def ascCol (m : USize) : AscKey × Enc → Except String (Array UInt64 × List (
     | some r => .error s!"asc: cells: row word {r} names no cell of {n}"
     | none => do
       let l ← foRWords "asc: cells lo" n lo
-      noNul "asc: cells lo" n lo
       let h ← foRWords "asc: cells hi" n hi
-      noNul "asc: cells hi" n hi
       let ks ← ascCodes c els
-      pure (ix, (cellFns c.toNat l h ks).map fun f => ix.map f)
+      pure (ix, (cellFns c.toNat (nulWords n lo l) (nulWords n lo (nulWords n hi h)) ks).map fun f => ix.map f)
 
 /-- The order code columns of the key columns `es` at `m` rows, `ascCol`'s in the order of `es`. -/
 def ascCodes (m : USize) : List (AscKey × Enc) → Except String (List (Array UInt64))

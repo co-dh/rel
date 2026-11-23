@@ -111,11 +111,13 @@ theorem ascWords_foR {m : USize} {c : QAtomicType × Enc} {x : Array UInt64} (hw
 mutual
 /-- The order codes of one key column at `m` rows, `ascCol`'s on the words `Enc.raw` reads: an `atom` column's words
 through its type's `ascOrd`, a `cells` column's words through `cellFns` over its payload's `ascKeys`. A null row's
-word is never read (`nulWords`): `ascCol` refuses a null in a `cells` column, but `AscKey × Enc` admits one. -/
+word is never read (`nulWords`): `ascCol` refuses a null in a `cells` column, but `AscKey × Enc` admits one. A cell
+whose `lo` or `hi` is null is the empty cell, as in `ascCol`. -/
 def ascKey (m : USize) : AscKey × Enc → List (Array UInt64)
   | (.atom t, e) => nulCodes m e ((raw .i64 m e).map ((ascOrd t).getD id))
   | (.cells n c lo hi els, e) =>
-    (cellFns c.toNat (raw .i64 n lo) (raw .i64 n hi) (ascKeys c els)).map fun f => (nulWords m e (raw .i64 m e)).map f
+    (cellFns c.toNat (nulWords n lo (raw .i64 n lo)) (nulWords n lo (nulWords n hi (raw .i64 n hi))) (ascKeys c els)).map
+      fun f => (nulWords m e (raw .i64 m e)).map f
 
 /-- The order codes `kasc` sorts by: each key column's `ascKey`, in the order of `es`. -/
 def ascKeys (m : USize) : List (AscKey × Enc) → List (Array UInt64)
@@ -218,19 +220,13 @@ theorem ascCol_ok : ∀ {m : USize} {c : AscKey × Enc} {x : Array UInt64} {k : 
         cases hl : foRWords "asc: cells lo" n lo with
         | error s => simp [hix, hn0, hf, hl, bind, Except.bind] at h
         | ok l =>
-          cases hn1 : noNul "asc: cells lo" n lo with
-          | error s => simp [hix, hn0, hf, hl, hn1, bind, Except.bind] at h
-          | ok u1 =>
           cases hh : foRWords "asc: cells hi" n hi with
-          | error s => simp [hix, hn0, hf, hl, hn1, hh, bind, Except.bind] at h
+          | error s => simp [hix, hn0, hf, hl, hh, bind, Except.bind] at h
           | ok hw =>
-            cases hn2 : noNul "asc: cells hi" n hi with
-            | error s => simp [hix, hn0, hf, hl, hn1, hh, hn2, bind, Except.bind] at h
-            | ok u2 =>
             cases hks : ascCodes c els with
-            | error s => simp [hix, hn0, hf, hl, hn1, hh, hn2, hks, bind, Except.bind] at h
+            | error s => simp [hix, hn0, hf, hl, hh, hks, bind, Except.bind] at h
             | ok ks =>
-              simp only [hix, hn0, hf, hl, hn1, hh, hn2, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
+              simp only [hix, hn0, hf, hl, hh, hks, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
                 Prod.mk.injEq] at h
               obtain ⟨rfl, rfl⟩ := h
               obtain ⟨rfl, hs⟩ := foRWords_raw _ _ _ _ hix

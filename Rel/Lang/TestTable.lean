@@ -89,6 +89,26 @@ info: /data/tmp/rel-test-table/badcell/a.lo: row 1 is the cell [2, 7), not a sli
   writeVals (A := .arr .long) dir "c" (⟨5, ← longs 1 [-1], ← longs 1 [2], e⟩ : Vals (.arr .long) 1)
   ["a", "b", "c"].forM fun p => do IO.println (say (← (readVals (.arr .long) dir p).toBaseIO))
 
+-- a dense sum `ℤ + ℤ` of three rows, every tag `false`: `.l` owns every row and `.r` is `Opt.fill`. Read back, so the
+-- filler passes (`ok`); then `.r` holding values on rows `.l` owns (`bad`), and every tag `true` over the same `.l`,
+-- now the unowned one (`two`), each refused naming the file, the row and the word
+/--
+info: ok
+/data/tmp/rel-test-table/fill/bad.r: row 0 is a row the other summand owns and holds the Rel.QAtomicType.i64 word 7, not null: a summand of a dense sum is `Opt.fill` where its tag names the other summand
+/data/tmp/rel-test-table/fill/two.l: row 0 is a row the other summand owns and holds the Rel.QAtomicType.i64 word 1, not null: a summand of a dense sum is `Opt.fill` where its tag names the other summand
+-/
+#guard_msgs in
+#eval show IO Unit from do
+  let dir ← fresh "fill"
+  let tg (s : Bool) : IO (Arr .u1 3) := IO.ofExcept (tagCol 3 s)
+  let l := Opt.ofArr (← longs 3 [1, 2, 3])
+  let r := Opt.ofArr (← longs 3 [7, 8, 9])
+  let f ← IO.ofExcept (Opt.fill .i64 3)
+  writeVals (A := .sum .long .long) dir "ok" (ValsB.ofGen (a := .long) (b := .long) rfl (← tg false) l f)
+  writeVals (A := .sum .long .long) dir "bad" (ValsB.ofGen (a := .long) (b := .long) rfl (← tg false) l r)
+  writeVals (A := .sum .long .long) dir "two" (ValsB.ofGen (a := .long) (b := .long) rfl (← tg true) l r)
+  ["ok", "bad", "two"].forM fun p => do IO.println (say (← (readVals (.sum .long .long) dir p).toBaseIO))
+
 /-! ## Schema-named tables: the two output forms -/
 
 /-- The value side of a trade: three long columns. -/

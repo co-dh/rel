@@ -70,7 +70,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hn63 : n.toNat < 2 ^ 63 := by omega
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
-  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec wX.1 hm63 f
+  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec (fun i => wX.2.2.1 i trivial) hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
     intro i hi
@@ -86,9 +86,9 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
   -- the element at row `Σ_{<g} w + d` is cell `g`'s element `d`
   have hvt : ∀ g < n.toNat, ∀ d < wN g, ∀ (ht : ((List.range g).map wN).sum + d < T.toNat)
-      (hd : SN g + d < m.toNat), Vals.row v ⟨_, ht⟩ = Vals.row f ⟨_, hd⟩ := by
+      (hd : SN g + d < m.toNat), ValsB.row v ⟨_, ht⟩ = ValsB.row f ⟨_, hd⟩ := by
     intro g hg d hdw ht hd
-    obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv ⟨_, ht⟩
+    obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv ⟨_, ht⟩
     rw [hvj]; congr 1; apply Fin.ext; rw [← hj]
     have hgS : ((List.range g).map wN).sum + wN g ≤ ((List.range n.toNat).map wN).sum := by
       rw [← sum_range_succ']; exact sum_range_mono wN hg
@@ -99,19 +99,19 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
     rw [← es, ← UInt64.ofNat_add, Nat.add_sub_cancel_left, toNat_toUInt64 (by omega)]
   -- the test word of row `t`: `1` where its element is a key of `D = dom P`
   have hbt : ∀ t (ht : t < T.toNat), (raw .i64 T b)[t]?.getD 0 =
-      if ∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y then 1 else 0 := by
+      if ∃ y, P.Holds (ValsB.row v ⟨t, ht⟩) y then 1 else 0 := by
     intro t ht
     have es : (Except.ok (if ((raw .i64 T ia)[t]?.getD 0 != D.n.toUInt64) = true then (1 : UInt64) else 0) :
         Except String UInt64) = .ok ((raw .i64 T b)[t]?.getD 0) := by
       rw [← (colMap_post hbm).2 t ht, bne_comm]; rfl
     rw [← Except.ok.inj es]
     have hDn := D.n.toNat_lt_size
-    rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
-    · have hk : ∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y := ((Tab.dom_holds hD wP.1 _ _).1 ⟨a, hra, rfl⟩).2
+    rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2.2.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
+    · have hk : ∃ y, P.Holds (ValsB.row v ⟨t, ht⟩) y := ((Tab.dom_holds hD wP.1 _ _).1 ⟨a, hra, rfl⟩).2
       have hne : (raw .i64 T ia)[t]?.getD 0 ≠ D.n.toUInt64 := fun c => by
         have := congrArg UInt64.toNat c; rw [ea, USize.toNat_toUInt64] at this; omega
       simp [hk, hne]
-    · have hk : ¬∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y := fun c => by
+    · have hk : ¬∃ y, P.Holds (ValsB.row v ⟨t, ht⟩) y := fun c => by
         obtain ⟨a, ha, -⟩ := (Tab.dom_holds hD wP.1 _ _).2 ⟨rfl, c⟩; exact hno a ha
       have heq : (raw .i64 T ia)[t]?.getD 0 = D.n.toUInt64 := by
         apply UInt64.toNat_inj.mp; rw [ea, USize.toNat_toUInt64]
@@ -157,14 +157,14 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hsel : ∀ j (hj : j < K.toNat), ((raw .i64 K sel).toList.map UInt64.toNat)[j]? =
       some (((raw .i64 K sel)[j]?.getD 0).toNat) := fun j hj => by
     rw [List.getElem?_map, Array.getElem?_toList, Array.getElem?_eq_getElem (by omega)]; rfl
-  have hpj : ∀ j (hj : j < K.toNat), Vals.row (A := .long) pay ⟨j, hj⟩ =
+  have hpj : ∀ j (hj : j < K.toNat), ValsB.row (o := false) (A := .long) pay ⟨j, hj⟩ =
       ((raw .i64 T u)[((raw .i64 K sel)[j]?.getD 0).toNat]?.getD 0).toInt64 := fun j hj => by
     have es := scanArr_first_word hpay j hj
     rw [(kgather_word hgs (expand_plain hex) j hj).2] at es
     rw [Vals.row_atom, Arr.get_i64, es, Option.getD_some]
   have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
-  suffices hY' : ∀ i : Fin n.toNat, Vals.row Y i =
-      positionsL (fun x => decide (∃ y, P.Holds x y)) (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) by
+  suffices hY' : ∀ i : Fin n.toNat, ValsB.row Y i =
+      positionsL (fun x => decide (∃ y, P.Holds x y)) (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i) by
     have wY := Vals.cells_wf hY cN hcn (by rw [hK]; exact Nat.le_refl _) (by omega) trivial
     refine ⟨fun xs ys => ?_, canon_wf h ⟨wX, wY⟩⟩
     rw [canon_holds h ⟨wX, wY⟩]
@@ -175,16 +175,16 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   intro i
   have hiS : off i.1 + wN i.1 ≤ T.toNat := by rw [hTn, hoff, hoff, ← sum_range_succ']; exact sum_range_mono wN i.2
   have hpos : ∀ d < wN i.1, keep (off i.1 + d) =
-      (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i)[d]?.any (fun x => decide (∃ y, P.Holds x y)) := fun d hd => by
+      (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i)[d]?.any (fun x => decide (∃ y, P.Holds x y)) := fun d hd => by
     have hd' : SN i.1 + d < m.toNat := by have := hb1 i.1; rw [hwN] at hd; omega
     have ht : off i.1 + d < T.toNat := by omega
-    have hdl : d < (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := by
+    have hdl : d < (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := by
       rw [hrow i, List.length_map, List.length_range', ← hwN]; exact hd
-    have hx : (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i)[d] = Vals.row f ⟨SN i.1 + d, hd'⟩ := by
+    have hx : (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i)[d] = ValsB.row f ⟨SN i.1 + d, hd'⟩ := by
       simp only [hrow i, List.getElem_map, List.getElem_range', Nat.one_mul, dif_pos hd']
     rw [List.getElem?_eq_getElem hdl, Option.any_some, hx, ← hvt i.1 i.2 d hd ht hd', hkeep, hbt _ ht]
-    by_cases c : ∃ y, P.Holds (Vals.row v ⟨off i.1 + d, ht⟩) y <;> simp [c]
-  have hxl : (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length = wN i.1 := by
+    by_cases c : ∃ y, P.Holds (ValsB.row v ⟨off i.1 + d, ht⟩) y <;> simp [c]
+  have hxl : (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i).length = wN i.1 := by
     rw [hrow i, List.length_map, List.length_range', hwN]
   have hF : ((List.range' (off i.1) (wN i.1)).filter keep).map (· - off i.1) =
       (List.range (wN i.1)).filter fun d => keep (off i.1 + d) := by

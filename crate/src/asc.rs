@@ -99,6 +99,8 @@ pub enum Ix<'a> { Pos, For(Coc<'a>, u8) }
 impl<'a> Ix<'a> {
     pub fn of(c: Option<Coc<'a>>) -> Self { c.map_or(Ix::Pos, |c| Ix::For(c, c.one_width())) }
     pub fn get(&self, i: usize) -> i64 { match self { Ix::Pos => i as i64, Ix::For(c, uw) => c.get_w(*uw, i) } }
+    /// Row `i` null (Lean `foRNuls`), tested on its block (`Coc::is_nul`); a `pos` column has none.
+    fn nul(&self, i: usize) -> bool { match self { Ix::Pos => false, Ix::For(c, _) => c.is_nul(i) } }
     /// Words `0 .. m`, a block at a time (`dense`).
     fn dense(&self, m: usize) -> Result<Vec<u64>, String> { match self { Ix::Pos => pod::collect_of("asc", "a pos column's words", m, 0..m as u64), Ix::For(c, _) => dense(c, m, |v| v) } }
 }
@@ -107,8 +109,10 @@ impl<'a> Ix<'a> {
 /// `lo .. hi`, inside `0 .. c` (`Vals.WF`, checked once by `readVals`), each payload row keyed by `els` (`Kernel.cellFns`).
 pub struct Cells<'a> { pub ix: Ix<'a>, pub c: usize, pub lo: Ix<'a>, pub hi: Ix<'a>, pub els: Vec<Col<'a>> }
 impl Cells<'_> {
-    /// Cell `q`'s payload rows (`Kernel.cellStart`, `cellLen`: a word below `0` reads as `0`, as `Int.toNat` does).
+    /// Cell `q`'s payload rows (`Kernel.cellStart`, `cellLen`: a word below `0` reads as `0`, as `Int.toNat` does);
+    /// none where its `lo` or `hi` is null (`Kernel.ascCol`'s `nulWords`: a sum summand's side off its own rows).
     fn span(&self, q: usize) -> Range<usize> {
+        if self.lo.nul(q) || self.hi.nul(q) { return 0..0 }
         let s = self.lo.get(q).max(0) as usize;
         s..(self.hi.get(q).max(0) as usize).max(s)
     }

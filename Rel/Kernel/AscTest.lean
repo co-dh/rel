@@ -194,18 +194,21 @@ example : bview (kasc (u 4) [(.atom .i64, ncol [3, 0, 1, 0] [1, 3])]) =
 /-- A `cells` key of 2 cells over 2 payload rows, its row words `e`, cell starts `lo` and ends `hi`. -/
 def cellsKey (e lo hi : Enc) : List (AscKey × Enc) := [(.cells (u 2) (u 2) lo hi [(.atom .i64, wordsFoR #[5, 4])], e)]
 
--- a null names no cell: in the row words, in `lo`, in `hi`, each refused with its row (Rust: `no_nul` in `ffi/asc.rs`)
+-- a null in the row words names no cell, refused with its row (Rust: `no_nul` in `ffi/asc.rs`)
 example : bview (kasc (u 3) (cellsKey (ncol [0, 1, 0] [1]) (wordsFoR #[0, 1]) (wordsFoR #[1, 2]))) =
     .inl "asc: cells: row 1 is null, and a null names no row" := by decide +kernel
 #guard bview (kasc (u 3) (cellsKey (ncol [0, 1, 0] [1]) (wordsFoR #[0, 1]) (wordsFoR #[1, 2]))) ==
     .inl "asc: cells: row 1 is null, and a null names no row"
+-- a cell whose `lo` or `hi` is null is the empty cell (a sum summand's `arr` side off the rows it owns), so it sorts
+-- first: `lo` null at cell 0 makes rows 0 and 2 empty, before row 1's `[4]`
 example : bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (ncol [0, 1] [0]) (wordsFoR #[1, 2]))) =
-    .inl "asc: cells lo: row 0 is null, and a null names no row" := by decide +kernel
+    bview (.ok ([wordsFoR #[0, 0, 1]], wordsFoR #[0, 2, 1])) := by decide +kernel
 #guard bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (ncol [0, 1] [0]) (wordsFoR #[1, 2]))) ==
-    .inl "asc: cells lo: row 0 is null, and a null names no row"
+    bview (.ok ([wordsFoR #[0, 0, 1]], wordsFoR #[0, 2, 1]))
+-- `hi` null at cell 1: row 1 empty, before rows 0 and 2's `[5]`
 example : bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (wordsFoR #[0, 1]) (ncol [1, 2] [1]))) =
-    .inl "asc: cells hi: row 1 is null, and a null names no row" := by decide +kernel
+    bview (.ok ([wordsFoR #[1, 0, 0]], wordsFoR #[1, 0, 2])) := by decide +kernel
 #guard bview (kasc (u 3) (cellsKey (wordsFoR #[0, 1, 0]) (wordsFoR #[0, 1]) (ncol [1, 2] [1]))) ==
-    .inl "asc: cells hi: row 1 is null, and a null names no row"
+    bview (.ok ([wordsFoR #[1, 0, 0]], wordsFoR #[1, 0, 2]))
 
 end Rel.Kernel.AscTest
