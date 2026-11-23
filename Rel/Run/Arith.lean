@@ -114,24 +114,47 @@ def cmpOps : List (String × Bool) := [("lt", true), ("le", false)]
 
 namespace Tab
 
+/-- The error `msg r` at the first row `r` of `X` flagged `1` in `f` (`Tab.keep` keeps row order), none if no row is. -/
+def failAt {A : Obj} {n : USize} (X : Vals A n) (f : Enc) (msg : A.El → String) : Except String Unit := do
+  let T ← Tab.keep (k := A) (v := A) ⟨n, X, X⟩ f
+  if h : 0 < T.n.toNat then throw (msg (T.key.row ⟨0, h⟩)) else pure ()
+
+/-- **An `i64` value verb never wraps** (owner decision): a row `stepCols` drops with both operands non-null and a
+    divisor `≠ 0` is a `+ - *` whose answer left `i64` (or is the null word), and the run fails naming the row, the
+    operands and the type; a null operand and a zero divisor still have no image. A float atom has no check (`±∞`). -/
+def arithOvf (s : String) {t t' : QAtomicType} {n : USize} (X : Vals (.prod (.atom t) (.atom t')) n) (keep : Enc) :
+    Except String Unit :=
+  match t, t', X with
+  | .i64, .i64, X => do
+    let nn (x : Enc) := colMap .first n x x .i64 .i64 [] [(.ne, nulWord)]
+    let z ← colMap .first n X.2.enc X.2.enc .i64 .i64 [] [(.eq, 0)]
+    let f ← colMap .and n (← colMap .and n (← nn X.1.enc) (← nn X.2.enc))
+      (← colMap .and n (← colMap .not n keep keep) (← colMap .not n z z))
+    failAt (A := .prod .long .long) X f fun (a, b) => s!"{s}: i64 overflow at {s}({a.toInt}, {b.toInt})"
+  | _, _, _ => pure ()
+
 /-- **The row `s` of `arithOps` on the pairs `X`** (`rowDens`: `stepOn`): `stepColsAt` of the two components, the
-    rows it keeps with their answers (`Tab.keep`, no `canon`). The row is the first argument so `kernRows` names one
-    constant for every name, as `Tab.floatOp`. -/
+    rows it keeps with their answers (`Tab.keep`, no `canon`), the run failing where an `i64` answer overflowed
+    (`arithOvf`). The row is the first argument so `kernRows` names one constant for every name, as `Tab.floatOp`. -/
 def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match arithOps.lookup s, A, B, X with
   | some k, .prod (.atom t) (.atom t'), .atom u, X =>
     if t = u ∧ t' = u then do
       let (w, b) ← stepColsAt u k n X.1.enc X.2.enc
+      arithOvf s X b
       Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ b
     else .error s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
   | some _, _, _, _ => .error s!"{s} runs from a pair of one number object to it"
   | none, _, _, _ => .error s!"{s}: no value verb"
 
-/-- **The row `succ` on the values `X`** (`rowDens`: `succOn`): `succCol`, `Tab.succ`'s step without its universe. -/
+/-- **The row `succ` on the values `X`** (`rowDens`: `succOn`): `succCol`, `Tab.succ`'s step without its universe;
+    the run fails at `Int64.maxValue`, whose `u + 1` would wrap to the null (owner decision, as `arithOvf`). -/
 def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .atom .i64, .atom .i64, X => do
     let s ← succCol n X.enc
+    failAt (A := .long) X (← colMap .first n X.enc X.enc .i64 .i64 [] [(.eq, 0x7FFFFFFFFFFFFFFF)])
+      fun u => s!"succ: i64 overflow at succ({u.toInt})"
     pure ⟨n, X, s⟩
   | _, _, _ => .error "succ runs from an object of i64 to it"
 
@@ -145,5 +168,27 @@ def mixOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   | _, _, _ => .error "mix runs from an object of i64 to it"
 
 end Tab
+
+/-! ### Checks: an `i64` overflow fails the run naming the row; a null operand and a zero divisor do not -/
+
+private def ovBig : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [1, 9223372036854775807, 5]) (by longs_lit)
+private def ovOne : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [1, 1, 1]) (by longs_lit)
+private def ovTwo : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [4, 2, 0]) (by longs_lit)
+private def err {A B : Obj} (e : Except String (Tab A B)) : String := match e with | .error m => m | .ok _ => ""
+private def rows {A B : Obj} (e : Except String (Tab A B)) : Option (List (A.El × B.El)) :=
+  match e with | .ok T => some T.toList | .error _ => none
+
+#guard err (Tab.arithOp "plus" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovOne)) ==
+  "plus: i64 overflow at plus(9223372036854775807, 1)"
+#guard err (Tab.arithOp "times" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovTwo)) ==
+  "times: i64 overflow at times(9223372036854775807, 2)"
+#guard err (Tab.arithOp "minus" (A := .prod .long .long) (B := .long) (n := 3) (ovOne, ovBig)) == ""
+#guard rows (Tab.arithOp "plus" (A := .prod .long .long) (B := .long) (n := 3) (ovOne, ovTwo)) ==
+  some [((1, 4), 5), ((1, 2), 3), ((1, 0), 1)]
+#guard rows (Tab.arithOp "div" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovTwo)) ==
+  some [((1, 4), 0), ((9223372036854775807, 2), 4611686018427387903)]
+#guard err (Tab.succOp (A := .long) (B := .long) (n := 3) ovBig) ==
+  "succ: i64 overflow at succ(9223372036854775807)"
+#guard rows (Tab.succOp (A := .long) (B := .long) (n := 3) ovTwo) == some [(4, 5), (2, 3), (0, 1)]
 
 end Rel
