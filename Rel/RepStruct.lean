@@ -22,14 +22,13 @@ theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z
   have e0 : (raw .i64 n z.enc)[i.1]?.getD 0 = 0 := by simp [es, ← hw]
   rw [Arr.get_i64, e0]; rfl
 
-/-- **Every row of `Opt.nuls t n` is the null** (`wordsFoR` of `n` zero words with every row flagged). -/
-theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
+/-- **Every row of `wordsFoR` of `n` zero words with every row flagged is the null**: what `Opt.nuls` and `Opt.fill`
+write. -/
+theorem Opt.get_nulWords {t : QAtomicType} {n : USize} (x : Opt t n)
+    (hx : x.enc = wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))) (i : Fin n.toNat) :
     x.get i = none := by
-  unfold Opt.nuls at h
-  dsimp only at h
-  split at h
-  rotate_left; · cases h
-  cases h
+  obtain ⟨e, hw⟩ := x
+  simp only [Opt.enc] at hx; subst hx
   have hf := foRNuls_wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)) (n := n) (by simp) i.1
     (by simpa using i.2)
   have hb : Column.bitAt (nulMap (Array.replicate n.toNat 1)) i.1 = true := by
@@ -41,6 +40,16 @@ theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t
     · exact absurd (Option.some.inj (((Opt.isNul_eq_false _ i).1 hc).symm.trans hf)) (by decide)
     · rfl
   simp only [Opt.get, hn, if_true]
+
+/-- **Every row of `Opt.nuls t n` is the null** (`Opt.get_nulWords`). -/
+theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
+    x.get i = none := by
+  unfold Opt.nuls at h
+  dsimp only at h
+  split at h
+  rotate_left; · cases h
+  cases h
+  exact Opt.get_nulWords _ rfl i
 
 /-- **Every row of `tagCol n s` is `s`**: the positions through `[(.and, 0), (.or, s)]`, cut to the bit. -/
 theorem tagCol_get {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCol n s = .ok tag) (k : Fin n.toNat) :
@@ -64,10 +73,14 @@ theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t
     split at h
     rotate_left; · cases h
     cases h
-    simp [Opt.get, Opt.isNul, Opt.enc, Arr.get, Arr.mk, Opt.filler]
-  · have e : Opt.fill t n = Opt.nuls t n := by
-      unfold Opt.fill Opt.nuls; cases t <;> first | exact absurd rfl hg | rfl
-    rw [e] at h; rw [Opt.nuls_get h i]
+    simp only [Opt.get, Opt.isNul, Opt.enc, Bool.false_eq_true, if_false, Opt.filler, Option.some.injEq]
+    simp [Arr.get, Arr.enc, Arr.mk]
+  · unfold Opt.fill at h
+    dsimp only at h
+    split at h
+    rotate_left; · cases h
+    cases h
+    rw [Opt.get_nulWords _ (by cases t <;> first | exact absurd rfl hg | rfl) i]
     cases t <;> first | exact absurd rfl hg | rfl
 
 /-- **`Vals.lift` reads as `x`**: each `Opt.ofArr` holds `some` of the `Arr`'s element (`Opt.get_ofArr`). -/
@@ -81,12 +94,14 @@ theorem Vals.lift_row : {A : Obj} → {n : USize} → (x : Vals A n) → (i : Fi
 
 /-- **`Vals.lift` of a `Vals.WF` side owns every row**: no `Opt.ofArr` row is null. -/
 theorem Vals.lift_wf : {A : Obj} → {n : USize} → (x : Vals A n) → Vals.WF x → ValsB.WFOn (Vals.lift x) fun _ => True
-  | .atom _, _, x, _ => fun i => ⟨fun _ => by rw [Opt.get_ofArr]; simp, fun h => (h trivial).elim⟩
+  | .atom _, _, x, _ => fun i => ⟨fun _ => by show Opt.get (Opt.ofArr x) i ≠ Option.none; rw [Opt.get_ofArr]; simp,
+      fun h => (h trivial).elim⟩
   | .prod _ _, _, x, hx => ⟨Vals.lift_wf x.1 hx.1, Vals.lift_wf x.2 hx.2⟩
   | .arr _, _, ⟨m, lo, hi, f⟩, hx => by
     obtain ⟨-, -, hb, hf⟩ := hx
-    refine ⟨fun i => ⟨fun _ => by rw [Opt.get_ofArr]; simp, fun h => (h trivial).elim⟩,
-      fun i => ⟨fun _ => by rw [Opt.get_ofArr]; simp, fun h => (h trivial).elim⟩, fun i hp => ?_, hf⟩
+    refine ⟨fun i => ⟨fun _ => by show Opt.get (Opt.ofArr lo) i ≠ Option.none; rw [Opt.get_ofArr]; simp,
+      fun h => (h trivial).elim⟩, fun i => ⟨fun _ => by show Opt.get (Opt.ofArr hi) i ≠ Option.none; rw [Opt.get_ofArr]; simp,
+      fun h => (h trivial).elim⟩, fun i hp => ?_, hf⟩
     have := hb i hp
     simp only [ColB.get, Opt.get_ofArr, Option.getD_some] at this ⊢
     exact this
@@ -162,16 +177,16 @@ theorem Vals.zeros_ok : (A : Obj) → (n : USize) → (x : ValsB true A n) → V
       rename_i p hp; split at h; · cases h
       rename_i q hq; cases h
       simp only [ValsB.WFOn, ValsB.view_ofGen]
-      exact ⟨fun i _ => tagCol_get htg i, (ValsB.WFOn_congr _ fun i => (false_and _).symm).1 (Vals.zeros_ok a n _ hp),
-        (ValsB.WFOn_congr _ fun i => (false_and _).symm).1 (Vals.zeros_ok b n _ hq)⟩
+      exact ⟨fun i _ => tagCol_get htg i, (ValsB.WFOn_congr _ fun i => iff_of_false id fun h => h.1).1
+        (Vals.zeros_ok a n _ hp), (ValsB.WFOn_congr _ fun i => iff_of_false id fun h => h.1).1 (Vals.zeros_ok b n _ hq)⟩
 
 /-- **`ValsB.ofGen` is `Vals.WF`** on summands owning the rows their tag names. -/
 theorem Vals.ofGen_wf {a b : Obj} {n : USize} {h : Obj.band a b = Option.none} {tag : Arr .u1 n} {x : ValsB true a n}
     {y : ValsB true b n} (hx : ValsB.WFOn x fun i => tag.get i = false) (hy : ValsB.WFOn y fun i => tag.get i = true) :
     Vals.WF (ValsB.ofGen (o := false) h tag x y) := by
   simp only [Vals.WF, ValsB.WFOn, ValsB.view_ofGen]
-  exact ⟨fun i hp => (hp trivial).elim, (ValsB.WFOn_congr x fun i => (true_and _).symm).1 hx,
-    (ValsB.WFOn_congr y fun i => (true_and _).symm).1 hy⟩
+  exact ⟨fun i hp => (hp trivial).elim, (ValsB.WFOn_congr x fun i => ⟨fun h => ⟨trivial, h⟩, fun h => h.2⟩).1 hx,
+    (ValsB.WFOn_congr y fun i => ⟨fun h => ⟨trivial, h⟩, fun h => h.2⟩).1 hy⟩
 
 /-- **The summands of `inl`/`inr`'s dense sum**: `Vals.lift` of a `Vals.WF` side owns the rows of tag `s`, which are all
 of them (`tagCol_get`); `Vals.zeros` owns none, which are the rows of tag `!s`. -/

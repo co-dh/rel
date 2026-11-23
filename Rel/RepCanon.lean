@@ -1431,8 +1431,8 @@ theorem ValsB.codes_of_row : {o : Bool} → {A : Obj} → {n : USize} → (x : V
     simp only [ValsB.cols, Except.ok.injEq] at hes; subst hes
     cases o
     · exact Arr.codes_of_eq x hc i i' hr
-    · have hx : ∀ i, Opt.get x i = none ↔ ¬P i := hw
-      exact Opt.codes_of_eq x hc i i' (Opt.get_eq_of_getD x i i' (fun h => (hx i).1 h hp) (fun h => (hx i').1 h hp') hr)
+    · have hx : ∀ i, (P i → Opt.get x i ≠ none) ∧ (¬P i → Opt.get x i = Opt.filler t) := hw
+      exact Opt.codes_of_eq x hc i i' (Opt.get_eq_of_getD x i i' ((hx i).1 hp) ((hx i').1 hp') hr)
   | _, .prod _ _, n, x, P, hw, es, hes, cs, hc, i, i', hp, hp', hr => by
     simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at hes
     split at hes; · cases hes
