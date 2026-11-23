@@ -532,11 +532,9 @@ def toCsv (path : String) : Obj → List (USize × Enc) → Except String (List 
   -- drops its left side's `1` part: a null is an empty field
   | .opt a, ps => match nullShape a, ps with
     | .opt, x :: ps => pure ([x], ps)
-    | .null, t :: i :: _ :: ps => match (atomTypes a).map List.length with
-      | some k => if k ≤ ps.length then do
-          let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
-        else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
-      | none => .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+    -- the parts are the dense sum's (`cols`: tag, the left `1`, `n`-row summands with a null at the other rows); the
+    -- extern's tag, positions and non-null values (`denseVals`' converse) are not built yet, so refuse, never reshuffle
+    | .null, _ => .error s!"{path}: a `1+S` not in band, whose dense sum has no CSV writer yet (PLAN 8.2i2)"
     | _, _ => .error s!"{path}: too few parts for a `1+S`"
   | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 

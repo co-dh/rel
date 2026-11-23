@@ -1657,12 +1657,13 @@ def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
 
 /-- The CSV columns of a side of `A` in file order, as `Table.ofCsv`/`Table.toCsv` lay them out: `part`, one atom column of
     `objCols` (one file part: an atom, an in-band `1+t`, a text's `lo`, `hi`, `e` each); `one`, a side of `1`, whose
-    file part holds no column; `null`, a `1+S` not in band, `S` atoms `vs`: the tag and position columns' paths and one
-    file column per atom of `S`, each of three parts (tag `1` at a null, position, the non-null rows' values). -/
+    file part holds no column; `null`, a `1+S` not in band, `S` atoms `vs`: the tag column's path and one file column per
+    atom of `S`, each of three parts (tag `1` at a null, position, the non-null rows' values) that the side holds as the
+    dense sum's tag and `n`-row summand columns (`vs` the paths of those, `csvSideB`). -/
 inductive CsvCol
   | part (p : String) (t : QAtomicType)
   | one
-  | null (tag idx : String) (vs : List (String × QAtomicType))
+  | null (tag : String) (vs : List (String × QAtomicType))
 
 /-- `CsvCol`s of the side of `A` at `p`, by the object alone (`Table.ofCsv`'s cases); refused where `Table.ofCsv` is: a
     `1+S` whose `S` is no product of atoms, a list of no atom, a sum of no `1+S`. -/
@@ -1673,7 +1674,7 @@ def csvCols : Obj → String → Except String (List CsvCol)
   | .one, _ => pure [.one]
   | .sum a b, p => match Obj.band a b, a with
     | some t, _ => pure [.part p t]
-    | none, .one => if (Table.atomTypes b).isSome then pure [.null (p ++ ".tag") (p ++ ".idx") (objCols b (p ++ ".r"))]
+    | none, .one => if (Table.atomTypes b).isSome then pure [.null (p ++ ".tag") (objCols b (p ++ ".r"))]
       else throw s!"column `{p}` is a `1+S` whose `S` ({repr b}) is no product of atoms, which has no CSV columns"
     | none, _ => throw s!"column `{p}` is a sum of no `1+S` ({repr (Obj.sum a b)}), which has no CSV columns"
   | A, p => throw s!"column `{p}` is {repr A}, which is no CSV column set"
@@ -1903,8 +1904,9 @@ def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
         s := s ++ [(q, (← encRegs u n e).push e)]
         l := l'
     | .one => l := (← csvCell l).2.2
-    | .null tag idx vs =>
-      let mut first : Option (Nat × Nat × String) := none
+    | .null tag vs =>
+      let mut first : Option (Nat × Nat × Nat × String) := none
+      let mut vals : List (QAtomicType × String × Nat × Nat) := []
       for (q, u) in vs do
         let (n, t, l₁) ← csvCell l
         let (_, i, l₂) ← csvCell l₁
@@ -1913,14 +1915,23 @@ def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
         match first with
         | none =>
           let nt ← mapB .first n t t .u1 .i64 [] [(.not, 0)]
-          s := s ++ [(tag, (← encRegs .u1 n nt).push nt), (idx, (← encRegs .i64 n i).push i)]
-          first := some (n, t, q)
-        | some (n₁, t₁, q₁) =>
+          s := s ++ [(tag, (← encRegs .u1 n nt).push nt)]
+          first := some (n, t, i, q)
+        | some (n₁, t₁, _, q₁) =>
           let (_, k) ← prefixB .add n₁ (← mapB .ne n₁ t₁ t .i64 .u1)
           guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
             s!"nullable columns `{q₁}` and `{q}` of one `1+S` are empty in different rows; they are empty together, \
               and all of them empty is the `1`" #[k]
-        s := s ++ [(q, (← encRegs u m v).push v)]
+        vals := vals ++ [(u, q, m, v)]
+      -- the dense summands (`Table.denseVals`): each atom's non-null values then as many nulls as the tag has, gathered at
+      -- the positions `i + m·tag`, so a null row reads one of the trailing nulls
+      let some (n, t, i, _) := first | throw s!"column `{tag}`: a `1+S` with no atom column"
+      let (_, nn) ← prefixB .add n t
+      for (u, q, m, v) in vals do
+        let tot ← call1 (kernel% USize.add) #[m, nn]
+        let ix ← mapB .add n i (← mapB .mul n t (← constB n (← u64B m)))
+        let d ← gatherB n ix tot (← catColB u tot m nn v (← nulsB nn))
+        s := s ++ [(q, (← encRegs u n d).push d)]
   pure (s, l)
 
 /-- The table an input's read answered, in `main`: its key side and value side (`csvSideB`, `ownSideB`); a keyed
@@ -1988,12 +1999,10 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
           | .part p _ => do pure [← reg p]
           -- a side of `1` stores no column; its CSV part is its one element's code `0` in each row (`Table.csvEncs`)
           | .one => do let m ← countOf (side, []); pure [(m, ← wordsB m 0)]
-          -- a `1+S` not in band: each file column of `S` the tag swapped to `1` at a null (`swapTag`), the position, its values
-          | .null tag idx vs => do
-            let (m, t) ← reg tag
-            let (_, i) ← reg idx
-            let nt ← mapB .first m t t .u1 .i64 [] [(.not, 0)]
-            pure (← vs.mapM fun (q, _) => do let (k, v) ← reg q; pure [(m, nt), (m, i), (k, v)]).flatten
+          -- a `1+S` not in band: the dense sum to the extern's tag, position and non-null values (`Table.denseVals`'s
+          -- converse: a prefix count for the positions, a `where` of the non-null rows for the values) is not built yet
+          | .null tag _ => throw s!"output `{x}` to csv \"{path}\": column `{tag}` is a `1+S` not in band, whose dense \
+              sum has no native CSV writer yet (PLAN 8.2i2: positions and the non-null rows from the tag)"
         -- the first column holds the rows: a later column may be an array's payload (`.e`), of its own count
         if rows.isNone then rows := ps.head?.map (·.1)
         for (m, e) in ps do es := es ++ [← ctorB 0 #[m, e] #[]]
