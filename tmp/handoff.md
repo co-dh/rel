@@ -14,7 +14,10 @@ therefore compare against the null word `QAtomicType.word t default`, not 0.
 Helpers in Tab block: `Vals.gather_tag_valid`, `selConv_holds` (whereCol-selected rows), used by the gen cases of
 `inlConv_holds` / `inrConv_holds` (mask via colMap_raw for `.not`, `Arr.get_u1` for the tag words).
 
-## Errors seen in the last build (Rel.RepStruct), to fix
+## UPDATE: Rel.RepStruct now BUILDS GREEN (all items of task 1 done, incl. inlConv/inrConv gen cases). The list below is
+## obsolete. Remaining: task items 2-5 only.
+
+## Errors seen in the last build (Rel.RepStruct), to fix (OBSOLETE, all fixed)
 - `Arr.dflts_get`: `ht : t ≠ .general` proof leaves `foR` goal (add `QAtomicType.width` to the simp set); `storeFmt?.isSome`
   is FALSE for `.u1`, `.sym` so `Tab.of_atomOfBits` (also in RepTabArith, not imported) cannot be used: prove
   `∀ a, (Dep.Carrier.of? t (.atom (Column.atomOfBits t a ht))).getD default = QAtomicType.ofBits t a` and
