@@ -1,22 +1,27 @@
-nullband3a2 handoff (PLAN.md: nullband3a2 entry under nullband3).
+nullband3b handoff (PLAN.md: nullband3b entry under nullband3). Rel.RepCanon does NOT build yet.
 
-Done, RelRun green (`cap lake build Rel.Run.Lang.Gen Rel.Run.Lang.Expand Rel.Run.Lang.Elab Rel.Run.Table Rel.Run.Struct
-Rel.ObjOrder` built RelRun:shared):
-- merged nullband3a (abc765f), null1x (worktree-agent-a1fe2f64515129f21: `Obj.opt X = .sum .one X`, CSV `swapTag`),
-  doc dataframe-design (worktree-agent-a4331af8e6924b5c3, PDF recompiled).
-- nullorder flip reverted (`git revert 19fd603`): Obj.key inl ↦ 0::, Vals.cols keys on `tag`, `colMap_not_u1`,
-  `Obj.lt_inr_inl`, tag foROk check gone; RepCanon/RepOrder/GenKBits proofs back to their pre-flip form (unbuilt).
-- Obj.band at `1+t` (`| .one, .atom t`), band_some `a = .one ∧ b = .atom t`, optEl/optOf null = `inl ()`.
-- Struct: `inl` on a band = `Opt.nuls`, `inr` = `Vals.optInr` (was optInl).
-- Frame library and TestFrame* at `1+X` (types, inl/inr swapped, case `[d, 𝟙]`, `𝟙 ⊕ y`), unbuilt.
-- Gen.optV, Gen.sumV takes `Obj.band A B = none`; Expand.bandRfl, valsE/valsEq via Vals.view; Elab empty sum
-  literal (line ~1822) via Vals.none.
+Done:
+- merged nullband3a2 (00c486d); conflicts: doc/dataframe-design.zh.pdf recompiled; Rel/Programs/FrameJoin.lean
+  resolved at `1+δ` (`pivotCol : κ ⟶ 1+δ`, `pivotWide` over `pivotOn`, `dummy` comment: `inr` = match, `inl` = rest);
+  line 20 comment now `x × (𝟙 ⊕ y)`.
+- RepCanon: `Vals.view_go_cast`, `@[simp] Vals.view_ofOpt`, `@[simp] Vals.view_ofGen` (before `Vals.gather_row`):
+  a producer's `(Vals.ofGen …).view` reduces to `.gen …`. The rule for every proof: `rcases hv : s.view with
+  ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [hv] at h` (use simp, not rw: rw leaves the match unreduced and
+  every later `split` count is off by one).
+- Converted and compiling: `Vals.WF` (opt ↦ True), `Vals.gather_wf`, `Vals.cols_sum` (now takes `s` and
+  `hv : s.view = .gen hb l r tag idx x y`), `gather_row` gen branch, `cols_wf` gen branch.
 
-Left:
-1. Build Rel lib modules in import order (ObjOrder done): RepCanon, RepCols, RepOrder, RepStruct, RepWF, GenKBits, ...
-   Each `.sum` match on `Vals` needs the `s.view` pattern (see nullband3a handoff pattern in PLAN).
-2. CSV 3 → 1: Rel/Run/Table.lean `toCsv`/`ofCsv` `.opt a` branch still expects tag/idx/1/v parts; a band `1+atom` side
-   is now one `Opt` part (encVals/readVals band branch). Needs Db.Csv `null` shape as one in-band-null column (Rust too).
-3. TestNullband round trips at 1+i64, 1+u1 (null first, gather, concat across blocks).
-4. Fix FrameJoin.lean line 20 comment `x × (y ⊕ 𝟙)` → `x × (𝟙 ⊕ y)`.
-Kernel stops (named errors, kept): Opt.concat with a null on either side; inl°/inr° on a band column.
+Left (check with `env LEAN_PATH=<wt>/.lake/build/lib/lean lean Rel/RepCanon.lean`):
+1. `Opt.gather_row` (missing; used at RepCanon `Vals.gather_row` opt branch): `Opt.gather m ix x = .ok y →
+   ∃ i, ix[j] = i ∧ y.get j = x.get i` — needs `kgather` moving the null flag (`raw_kgather`, `foRNuls`).
+2. `Vals.cols_wf` opt branch: its claim `hasNul c.2 = false` is FALSE for a band key column (`Opt.plain_key` is a
+   placeholder name, does not exist). Weaken the statement (drop `hasNul = false`, or `∨` the band case) and repair
+   the consumers (`sorted_key`, `nub_sel`, `nub_sorted`, `kasc_grade` callers) to accept a null key column
+   (`asc_col_row` already takes `h0 : hasNul e = false → nul = .empty`; `Verify.nulCodes_row` in KernelSpec/Asc).
+3. `Vals.row_of_codes` (~line 1024) and `Vals.codes_of_row` (~line 1117): sum case still destructures
+   `⟨l, r, tag, idx, x, y⟩`; convert to `s` + `rcases hv : s.view`, gen branch passes `hv` to `Vals.cols_sum`
+   (`simp only [Vals.row, hv]` where it had `simp only [Vals.row, …]`); opt branch needs an `Opt` version of
+   `Arr.eq_of_codes` / `Arr.codes_of_eq` (codes equal ↔ `Opt.get` equal, nulls included).
+4. `Tab.canon_holds` (~1290): `Vals.nub_rows hn hw` type mismatch `R.WF` vs `Vals.WF (R.key, R.val)` — likely
+   fallout of the `Vals.WF` def failing earlier; recheck after 1–3.
+Then RepCols, RepOrder, RepStruct, RepWF, GenKBits, rest, Frame programs, TestFrame*.
