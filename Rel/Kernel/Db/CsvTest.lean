@@ -35,7 +35,7 @@ def check (name : String) (cols : CsvCols) (s : String) (err : Option String := 
     let b ← IO.ofExcept (do csvText (UInt8.ofNat 44) cols m (← Csv.raws cols es) : Except String (List UInt8))
     let a ← IO.FS.readBinFile q
     unless a.data.toList == s.toUTF8.data.toList ∧ b == s.toUTF8.data.toList do
-      throw (IO.userError s!"{name}: written back as {String.fromUTF8! a} by the extern, {String.fromUTF8! ⟨b.toArray⟩} by the body")
+      throw (IO.userError s!"{name}: written back as bytes {a.data.toList} by the extern, {b} by the body")
   | _, _, _ => throw (IO.userError s!"{name}: the extern and the body disagree on refusing, or {err} was expected")
 
 /-- One record a row: `i`, then every third row's `i * 7 - 50` empty (the null) in an `opt` and a `null` column, then
