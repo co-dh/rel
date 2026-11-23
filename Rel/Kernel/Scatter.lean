@@ -38,8 +38,14 @@ def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64
 a block and no element (owner decision F: only a block holding a null is flagged), so a kernel moves null flags only
 for an argument that has them and a column with none costs what it did. -/
 def hasNul : Enc → Bool
-  | .foR md _ => (List.range (Column.nblk md)).any (Column.nulAt md)
+  | .foR md _ => (Array.range (Column.nblk md)).any (Column.nulAt md)
   | _ => false
+
+/-- `hasNul` of a `foR` column is false exactly when no block is flagged. -/
+theorem hasNul_foR_false {md pk : ByteArray} :
+    hasNul (.foR md pk) = false ↔ ∀ b < Column.nblk md, Column.nulAt md b = false := by
+  rw [← Bool.not_eq_true, hasNul, Array.any_eq_true]
+  simp only [Array.size_range, Array.getElem_range, not_exists, not_and, Bool.not_eq_true]
 
 /-- The null flag of each of `e`'s `m` rows as a word, `1` at a null (`Column.foRNul`, tested on the block) and `0`
 elsewhere: what a kernel moves, gathers and compares beside the row's word (`foRWords`), so the flag is part of the

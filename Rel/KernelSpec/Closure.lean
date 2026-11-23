@@ -152,7 +152,7 @@ theorem hasNul_flags {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t 
           Column.foRNul md pk (Column.blockStarts md) (b * Column.blk md + j) = true := by
       cases t <;> simp only [Ext.Enc.WF] at hw <;> exact ⟨hw.2.2.1, hw.2.2.2.2⟩
     obtain ⟨hle, hN⟩ := hw'
-    rw [Bool.eq_iff_iff, hasNul, foRNuls, List.any_eq_true, Array.any_eq_true]
+    rw [Bool.eq_iff_iff, hasNul, foRNuls, Array.any_eq_true, Array.any_eq_true]
     simp only [List.mem_range, Array.size_map, Array.size_range, Array.getElem_map, Array.getElem_range]
     constructor
     · rintro ⟨b, hb, hf⟩
@@ -188,13 +188,12 @@ theorem foRNuls_wordsFoR (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn :
 
 /-- A column with no flagged block holds no null: `hasNul` reads the flags alone. -/
 theorem hasNul_of_nulAt {md pk : ByteArray} (h : ∀ b < Column.nblk md, Column.nulAt md b = false) :
-    hasNul (.foR md pk) = false := by
-  simp only [hasNul, List.any_eq_false, List.mem_range]; intro b hb; rw [h b hb]; decide
+    hasNul (.foR md pk) = false := hasNul_foR_false.2 h
 
 /-- A column with no flagged block has no null row: `foRNul` needs the row's block flagged. -/
 theorem foRNul_of_plain {md pk : ByteArray} (h : hasNul (.foR md pk) = false) {i : Nat}
     (hi : i < Column.blk md * Column.nblk md) : Column.foRNul md pk (Column.blockStarts md) i = false := by
-  simp only [hasNul, List.any_eq_false, List.mem_range, Bool.not_eq_true] at h
+  rw [hasNul_foR_false] at h
   simp only [Column.foRNul, h _ (Nat.div_lt_of_lt_mul hi), Bool.false_and]
 
 /-- A kernel's answer written with no null bitmap holds no null (`nulAt_encodeAt_empty`). -/
@@ -202,9 +201,10 @@ theorem hasNul_wordsFoR (ws : Array UInt64) : hasNul (wordsFoR ws) = false := by
   have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp [h])
   unfold wordsFoR Coc.encode
-  simp only [h8, hasNul, List.any_eq_false, List.mem_range]
+  rw [hasNul_foR_false]
+  simp only [h8]
   intro b hb
-  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 8 (by decide) (by decide) _ b hb]; decide
+  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 8 (by decide) (by decide) _ b hb]
 
 /-- `raw_kgather` where the source holds no null: the answer is `wordsFoR` of the gathered words alone, so it reads
 back as them (`wordsFoR_closed`). -/

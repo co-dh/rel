@@ -154,8 +154,8 @@ theorem kbitrows_plain {all : Bool} {w na ni g : USize} {ends idx m o : Enc}
   split at h; · cases h
   split at h; · cases h
   cases h
-  simp only [h1, hasNul, List.any_eq_false, List.mem_range]
+  rw [hasNul_foR_false]; simp only [h1]
   intro b hb
-  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 1 (by decide) (by decide) _ b hb]; decide
+  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 1 (by decide) (by decide) _ b hb]
 
 end Rel.Verify

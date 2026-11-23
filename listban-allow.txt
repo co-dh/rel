@@ -7,6 +7,7 @@ Rel.Kernel.Coc.alpElems
 Rel.Kernel.Coc.elems
 Rel.Kernel.Coc.foRStd
 Rel.Kernel.Coc.packRes
+Rel.Kernel.Coc.packResImpl
 Rel.Kernel.Coc.planOf
 Rel.Kernel.Ew.bitBitmap
 Rel.Kernel.Ew.cmpBitmap
@@ -60,7 +61,6 @@ Rel.Lang.proj.go._unsafe_rec
 Rel.Lang.proj.pre
 Rel.Lang.rowObjs
 Rel.positionsL
-_private.Rel.Kernel.Coc.0.Rel.Kernel.Coc.packResImpl
 _private.Rel.Run.Core.0.Rel.Tab.toListImpl
 _private.Rel.Run.Core.0.Rel.Vals.rowsImpl
 _private.Rel.Run.Core.0.Rel.Vals.rowsImpl._sunfold
