@@ -457,6 +457,8 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Co
   | ρ, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
   | _, _, _, .share _ R, ss => R.argDen Val.empty ss
   | ρ, _, _, .own R, ss => R.argDen ρ ss
+  -- a spine's converse (`convTm` of a row with no converse row) means its meaning conversed
+  | ρ, _, _, .conv R, ss => (R.argDen ρ ss)°
   | _, _, _, _, _ => 𝟘
 end
 
@@ -628,7 +630,11 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
-  | conv R ih | leq _ R ih | lt _ R ih
+  | conv R ih =>
+    intro ρ ρ' h
+    have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
+    exact ⟨by simp only [Tm.den, e.1], fun ss => by simp only [Tm.argDen, e.2 ss]⟩
+  | leq _ R ih | lt _ R ih
   | lam R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>

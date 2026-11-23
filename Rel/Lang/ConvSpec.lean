@@ -193,7 +193,8 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
         rw [hc] at hr'
         have e := Prim.den_conv r hok s r' hc hr'
         exact ⟨e _ _ [], fun _ ss => e _ _ ss⟩
-    · cases hu
+    -- no converse row: the lazy `r°` itself
+    · cases hu; exact ⟨rfl, fun _ _ => rfl⟩
   | @call A B ks c os b _ =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩
     by_cases hd : (Tm.call ks c os b : Tm A B).dem = false
@@ -216,8 +217,9 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     cases hf : convTm f with
     | error l => simp only [hf] at hu; cases hu
     | ok f' =>
-      simp only [hf] at hu; cases hu
-      exact ⟨((ihf hok).1 _ hf).2 hd' _, fun _ _ => ((ihf hok).1 _ hf).2 hd' _⟩
+      simp only [hf] at hu; split at hu <;> cases hu
+      · exact ⟨rfl, fun _ _ => rfl⟩
+      · exact ⟨((ihf hok).1 _ hf).2 hd' _, fun _ _ => ((ihf hok).1 _ hf).2 hd' _⟩
   | share k R ih =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
     · by_cases hd : (Tm.share k R).dem = false
@@ -583,7 +585,8 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
         rw [hc] at hr'
         have e := Prim.den_conv r hok s r' hc hr'
         exact ⟨e _ _ [], fun _ ss => e _ _ ss⟩
-    · cases hu
+    · cases hu; simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at hu'; obtain ⟨_, rfl, rfl⟩ := hu'
+      exact ⟨rfl, fun _ _ => rfl⟩
   | @call A B ks c os b _ =>
     refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩
     by_cases hd : (Tm.call ks c os b : Tm A B).dem = false
@@ -610,7 +613,12 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     cases hf : convTm f with
     | error l => simp only [hf] at hu; cases hu
     | ok f₀ =>
-      simp only [hf] at hu; cases hu
+      simp only [hf] at hu; split at hu <;> cases hu
+      · simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
+        obtain ⟨F', hF, x', hx, rfl⟩ := ht
+        obtain ⟨_, ⟨f', hf', x'', hx', rfl⟩, rfl⟩ := hu'
+        rw [hF] at hf'; cases hf'; rw [hx] at hx'; cases hx'
+        exact ⟨rfl, fun _ _ => rfl⟩
       simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
       obtain ⟨F', hF, x', hx, rfl⟩ := ht
       obtain ⟨f', hf', x'', hx', rfl⟩ := hu'

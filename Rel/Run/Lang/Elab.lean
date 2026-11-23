@@ -2021,16 +2021,20 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
         | _, _ => throw l
       | _, _, _ => throw l
   | .share _ R => convTm R
-  -- a row by its converse's row (`cons° = uncons`)
+  -- a row by its converse's row (`cons° = uncons`); any other row's converse is lazy (§0): `(c, a) ∈ r°` is `a r c`,
+  -- run by `GenK.conv` on the side its context knows, as `<` is, so no row's converse is refused
   | .prim r => match r.conv.bind Prim.find? with
     | some r' => pure (.prim r')
-    | none => throw r.leaf
+    | none => pure (.conv (.prim r))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe
   | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
   | .call _ c .. => throw s!"`{c}`"
   -- a closed spine under a demand argument (a whole row, `Tm.whole`) has no converse spine: `convTm f` gives `f°`
-  | .arg f x => if f.dem then do let f ← convTm f; pure (.arg f x) else throw "a whole row's closed spine"
+  -- a spine whose row has no converse row is conversed lazily whole, `(r x)°`, as `GenK.conv` runs it
+  | .arg f x => if f.dem then do
+      match ← convTm f with | .conv _ => pure (.conv (.arg f x)) | f' => pure (.arg f' x)
+    else throw "a whole row's closed spine"
   | .top _ => throw "⊤"
   | .outl => throw "π₁"
   | .outr => throw "π₂"
@@ -2360,6 +2364,13 @@ def build : Pre → Except Err Res
   | .conv (.close pos q a _) => do
     let ⟨A, B, t⟩ ← build q
     match convPre q t with
+    -- the lazy converse of the whole `R` (a row with no converse row): nothing inside `R` bounds its source side,
+    -- so it is read on its source's universe, the context still bounding its target
+    | .ok (.conv t') =>
+      if t.dem && !(Tm.conv t').dem then
+        (fun U => ⟨B, A, .conv (.comp U t')⟩) <$>
+          uniTm objs mc dp pos a A "the lazy converse of a row, R° reads R on its source's universe"
+      else pure ⟨B, A, .conv t'⟩
     | .ok u => pure ⟨B, A, u⟩
     | .error leaf => do
       let U ← uniTm objs mc dp pos a A s!"the converse of {leaf} does not run on demand, so R° reads R whole"
