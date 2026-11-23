@@ -12,24 +12,28 @@ back as itself, header fields, domain name and each part byte for byte. -/
 
 namespace Rel.Db
 
-theorem leBytes_length (v w : Nat) : (leBytes v w).length = w := by simp [leBytes]
+theorem leBytes_size (v w : Nat) : (leBytes v w).size = w := by
+  rw [← ByteArray.size_data]; simp [leBytes]
 
 /-- `leAt` reads back the number `leBytes` lays down, below `256 ^ w`. -/
-theorem leAt_leBytes (P S : List UInt8) (v w : Nat) (hv : v < 256 ^ w) :
-    leAt ⟨(P ++ leBytes v w ++ S).toArray⟩ P.length w = v := by
-  suffices h : ∀ k ≤ w, leAt ⟨(P ++ leBytes v w ++ S).toArray⟩ P.length k = v % 256 ^ k by
+theorem leAt_leBytes (P S : ByteArray) (v w : Nat) (hv : v < 256 ^ w) :
+    leAt (P ++ leBytes v w ++ S) P.size w = v := by
+  suffices h : ∀ k ≤ w, leAt (P ++ leBytes v w ++ S) P.size k = v % 256 ^ k by
     rw [h w (Nat.le_refl w), Nat.mod_eq_of_lt hv]
   intro k hk
   induction k with
   | zero => simp [leAt, Nat.mod_one]
   | succ k ih =>
-    have hb : (P ++ (leBytes v w ++ S))[P.length + k]? = some (v / 256 ^ k).toUInt8 := by
-      rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
-        List.getElem?_append_left (by rw [leBytes_length]; omega)]
-      simp [leBytes, List.getElem?_range (by omega : k < w)]
+    have hl := leBytes_size v w
+    have hb : (P ++ leBytes v w ++ S).data[P.size + k]? = some (v / 256 ^ k).toUInt8 := by
+      rw [← ByteArray.size_data] at hl
+      simp only [ByteArray.data_append]
+      rw [Array.getElem?_append_left (by simp only [Array.size_append, ByteArray.size_data] at hl ⊢; omega),
+        Array.getElem?_append_right (by simp), ByteArray.size_data, Nat.add_sub_cancel_left]
+      simp [leBytes, show k < w by omega]
     simp only [leAt]
-    rw [ih (by omega), Nat.mod_pow_succ]
-    simp [hb, Nat.mul_comm]
+    rw [ih (by omega), hb, Nat.mod_pow_succ]
+    simp [Nat.mul_comm]
 
 /-- The bound a file's offsets and lengths stay under: `own.rs` writes them as `u64`. -/
 def u64Bound : Nat := 18446744073709551616
@@ -37,57 +41,60 @@ def u64Bound : Nat := 18446744073709551616
 theorem u64Bound_eq : (256 : Nat) ^ 8 = u64Bound := by unfold u64Bound; rfl
 
 /-- The bytes `M` between `P` and `S`, extracted. -/
-theorem extract_mid (P M S : List UInt8) :
-    (ByteArray.mk (P ++ M ++ S).toArray).extract P.length (P.length + M.length) = ⟨M.toArray⟩ := by
+theorem extract_mid (P M S : ByteArray) : (P ++ M ++ S).extract P.size (P.size + M.size) = M := by
   apply ByteArray.ext
-  simp
+  simp only [ByteArray.data_extract, ByteArray.data_append, Array.extract_append, ← ByteArray.size_data]
+  simp [-ByteArray.size_data]
 
-theorem ownLayout_fst_length (a : Nat) (ps : List ByteArray) : (ownLayout a ps).1.length = 16 * ps.length := by
-  induction ps generalizing a with
-  | nil => rfl
-  | cons p ps ih => simp only [ownLayout, List.length_append, leBytes_length, ih, List.length_cons]; omega
+theorem zeros_size (n : Nat) : (⟨Array.replicate n 0⟩ : ByteArray).size = n := Array.size_replicate
+
+theorem ownLayout_fst_size (ps : Array ByteArray) (a i k : Nat) : (ownLayout ps a i k).1.size = 16 * k := by
+  induction k generalizing a i with
+  | zero => rfl
+  | succ k ih => simp only [ownLayout, ByteArray.size_append, leBytes_size, ih]; omega
 
 theorem ownOff_le (a : Nat) : a + 32 ≤ ownOff a ∧ ownOff a % 8 = 0 := by unfold ownOff; omega
 
-/-- `ownSpans` reads back the parts `ownLayout` lays out from byte `a`, its table at entry `i` after `P` and the bytes
-`Q` up to `a` after the table. -/
-theorem ownSpans_layout (ps : List ByteArray) : ∀ (i a : Nat) (P Q : List UInt8),
-    P.length = 24 + 16 * i → P.length + (ownLayout a ps).1.length + Q.length = a →
-    (P ++ ((ownLayout a ps).1 ++ (Q ++ (ownLayout a ps).2))).length < u64Bound →
-    ownSpans ⟨(P ++ ((ownLayout a ps).1 ++ (Q ++ (ownLayout a ps).2))).toArray⟩ i a ps.length = .ok ps := by
-  induction ps with
-  | nil => intros; rfl
-  | cons p ps ih =>
-    intro i a P Q hP ha hb
+/-- `ownSpans` reads back the `k` parts from part `i` that `ownLayout` lays out from byte `a`, its table at entry `i`
+after `P` and the bytes `Q` up to `a` after the table. -/
+theorem ownSpans_layout (ps : Array ByteArray) : ∀ (k i a : Nat) (P Q : ByteArray), i + k = ps.size →
+    P.size = 24 + 16 * i → P.size + (ownLayout ps a i k).1.size + Q.size = a →
+    (P ++ (ownLayout ps a i k).1 ++ Q ++ (ownLayout ps a i k).2).size < u64Bound →
+    ownSpans (P ++ (ownLayout ps a i k).1 ++ Q ++ (ownLayout ps a i k).2) i a k = .ok (ps.toList.drop i) := by
+  intro k
+  induction k with
+  | zero => intro i a P Q hk; simp only [Nat.add_zero] at hk; subst hk; intros; simp [ownSpans]
+  | succ k ih =>
+    intro i a P Q hk hP ha hb
+    have hi : i < ps.size := by omega
     have ho := ownOff_le a
-    have h4 := ih (i + 1) (ownOff a + p.size) (P ++ (leBytes (ownOff a) 8 ++ leBytes p.size 8))
-      (Q ++ (List.replicate (ownOff a - a) 0 ++ p.data.toList))
-    simp only [ownLayout] at ha hb ⊢
-    generalize (ownLayout (ownOff a + p.size) ps) = r at ha hb h4 ⊢
-    have hs : p.data.toList.length = p.size := Array.length_toList
-    have hz : ∀ L : List UInt8, (ByteArray.mk L.toArray).size = L.length := fun _ => List.size_toArray
-    simp only [List.length_cons, List.length_append, leBytes_length, List.length_replicate,
-      List.append_assoc] at ha hb h4 ⊢
-    have h1 := leAt_leBytes P (leBytes p.size 8 ++ (r.1 ++ (Q ++ (List.replicate (ownOff a - a) 0 ++
-      (p.data.toList ++ r.2))))) (ownOff a) 8 (by rw [u64Bound_eq]; omega)
-    have h2 := leAt_leBytes (P ++ leBytes (ownOff a) 8) (r.1 ++ (Q ++ (List.replicate (ownOff a - a) 0 ++
-      (p.data.toList ++ r.2)))) p.size 8 (by rw [u64Bound_eq]; omega)
-    have h3 := extract_mid (P ++ (leBytes (ownOff a) 8 ++ (leBytes p.size 8 ++ (r.1 ++ (Q ++
-      List.replicate (ownOff a - a) 0))))) p.data.toList r.2
-    simp only [List.append_assoc, List.length_append, leBytes_length, List.length_replicate] at h1 h2 h3
-    rw [ownSpans]
+    have h4 := ih (i + 1) (ownOff a + ps[i].size) (P ++ leBytes (ownOff a) 8 ++ leBytes ps[i].size 8)
+      (Q ++ ⟨Array.replicate (ownOff a - a) 0⟩ ++ ps[i]) (by omega)
+    simp only [ownLayout, Array.getElem?_eq_getElem hi, Option.getD_some] at ha hb ⊢
+    generalize (ownLayout ps (ownOff a + ps[i].size) (i + 1) k) = r at ha hb h4 ⊢
+    simp only [ByteArray.size_append, leBytes_size, zeros_size, ByteArray.append_assoc] at ha hb h4 ⊢
+    have h1 := leAt_leBytes P (leBytes ps[i].size 8 ++ r.1 ++ Q ++ ⟨Array.replicate (ownOff a - a) 0⟩ ++ ps[i] ++
+      r.2) (ownOff a) 8 (by rw [u64Bound_eq]; omega)
+    have h2 := leAt_leBytes (P ++ leBytes (ownOff a) 8) (r.1 ++ Q ++ ⟨Array.replicate (ownOff a - a) 0⟩ ++ ps[i] ++
+      r.2) ps[i].size 8 (by rw [u64Bound_eq]; omega)
+    have h3 := extract_mid (P ++ leBytes (ownOff a) 8 ++ leBytes ps[i].size 8 ++ r.1 ++ Q ++
+      ⟨Array.replicate (ownOff a - a) 0⟩) ps[i] r.2
+    simp only [ByteArray.append_assoc, ByteArray.size_append, leBytes_size, zeros_size] at h1 h2 h3
+    rw [ownSpans, List.drop_eq_getElem_cons (by simpa using hi)]
     simp only [← hP]
-    rw [if_neg (by rw [h1]; simp [ho.2]), if_neg (by rw [h1]; omega), if_neg (by rw [h1, h2, hz]; simp only [List.length_append, leBytes_length, List.length_replicate, hs]; simp; omega), h1, h2]
-    have e : P.length + (8 + (8 + (r.1.length + (Q.length + (ownOff a - a))))) = ownOff a := by omega
-    rw [e, hs] at h3
-    rw [h3, h4 (by simp; omega) (by omega) (by simpa using hb)]
+    simp only [h1, h2]
+    simp only [ByteArray.size_append, leBytes_size, zeros_size]
+    rw [if_neg (by simp [ho.2]), if_neg (by omega), if_neg (by omega)]
+    have e : P.size + (8 + (8 + (r.1.size + (Q.size + (ownOff a - a))))) = ownOff a := by omega
+    rw [e] at h3
+    rw [h3, h4 (by omega) (by omega) (by omega)]
     rfl
 
-theorem leBytes_one (x : UInt8) : leBytes x.toNat 1 = [x] := by simp [leBytes, UInt8.ofNat_toNat]
+theorem leBytes_one (x : UInt8) : leBytes x.toNat 1 = ⟨#[x]⟩ := by
+  apply ByteArray.ext; simp [leBytes, Array.ofFn_succ, UInt8.ofNat_toNat]
 
-theorem ownMagic_prefix (S : List UInt8) :
-    (List.range 8).map (fun o => ((ownMagic ++ S).toArray[o]?).getD 0) = ownMagic := by
-  simp [ownMagic, List.range_succ]
+theorem ownMagic_prefix (S : ByteArray) : (ownMagic ++ S).extract 0 8 = ownMagic := by
+  simpa using extract_mid .empty ownMagic S
 
 /-- **Map after write is the identity**, on the bodies of `ownMap` and `ownWrite`: every column `ownImage` accepts is
 parsed back by `ownParse` as itself, field for field and each part byte for byte. The one hypothesis is the file's
@@ -103,55 +110,56 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   · cases h
   rename_i hz
   cases h
-  generalize hD : s.toUTF8.data.toList = D at hk hz hb ⊢
+  generalize hD : s.toUTF8 = D at hk hz hb ⊢
   simp only [Bool.or_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq, not_or, Decidable.not_not, gt_iff_lt,
     Nat.not_lt] at hk
   have hnp : ps.size ≤ 3 := by
     have h2 := hk.1
     generalize k.toNat = kk at h2
     rcases kk with _ | _ | _ | _ | _ | _ | kk <;> simp [ownNParts] at h2 <;> omega
-  have hL : ps.toList.length = ps.size := Array.length_toList
-  have hr1 := ownLayout_fst_length (24 + 16 * ps.size + D.length) ps.toList
-  have hsp := ownSpans_layout ps.toList 0 (24 + 16 * ps.size + D.length)
-    (ownMagic ++ [6, c, t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++ leBytes n.toNat 8) D rfl
+  have hm : ownMagic.size = 8 := rfl
+  have hh : (⟨#[6, c, t, k]⟩ : ByteArray) =
+      leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 := by
+    simp only [leBytes_one]; apply ByteArray.ext; simp [ByteArray.data_append]
+  rw [hh] at hb ⊢
+  have hr1 := ownLayout_fst_size ps (24 + 16 * ps.size + D.size) 0 ps.size
+  have hsp := ownSpans_layout ps ps.size 0 (24 + 16 * ps.size + D.size)
+    (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
+      leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8) D (by omega)
   have hn : n.toNat < 256 ^ 8 := Nat.lt_of_lt_of_le n.toNat_lt_size (by simpa using USize.size_le)
-  generalize ownLayout (24 + 16 * ps.size + D.length) ps.toList = r at hr1 hsp hb ⊢
-  have sz : ∀ L : List UInt8, (ByteArray.mk L.toArray).size = L.length := fun _ => List.size_toArray
-  simp only [sz, List.length_append, List.length_cons, List.length_nil, leBytes_length, hL, hr1] at hb hsp
-  have hsp := hsp (by simp [ownMagic]) (by omega)
-  have e8 := leAt_leBytes ownMagic ([c, t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++ leBytes n.toNat 8 ++
-    r.1 ++ D ++ r.2) (6 : UInt8).toNat 1 (by decide)
-  have e9 := leAt_leBytes (ownMagic ++ [6]) ([t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++
-    leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) c.toNat 1 (by have := c.toNat_lt; simpa using this)
-  have e10 := leAt_leBytes (ownMagic ++ [6, c]) ([k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++
-    leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) t.toNat 1 (by have := t.toNat_lt; simpa using this)
-  have e11 := leAt_leBytes (ownMagic ++ [6, c, t]) (leBytes ps.size 2 ++ leBytes D.length 2 ++
-    leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) k.toNat 1 (by have := k.toNat_lt; simpa using this)
-  have e12 := leAt_leBytes (ownMagic ++ [6, c, t, k]) (leBytes D.length 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2)
-    ps.size 2 (by simp; omega)
-  have e14 := leAt_leBytes (ownMagic ++ [6, c, t, k] ++ leBytes ps.size 2) (leBytes n.toNat 8 ++ r.1 ++ D ++ r.2)
-    D.length 2 (by simp; omega)
-  have e16 := leAt_leBytes (ownMagic ++ [6, c, t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2) (r.1 ++ D ++ r.2)
-    n.toNat 8 hn
-  have ed := extract_mid (ownMagic ++ [6, c, t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++ leBytes n.toNat 8 ++
-    r.1) D r.2
-  simp only [leBytes_one, List.length_append, List.length_cons, List.length_nil, leBytes_length,
-    List.append_assoc, List.cons_append, List.nil_append] at e8 e9 e10 e11 e12 e14 e16 hsp
-  have ownMagic_len : ownMagic.length = 8 := rfl
-  simp only [ownMagic_len] at e8 e9 e10 e11 e12 e14 e16 hsp
+  generalize ownLayout ps (24 + 16 * ps.size + D.size) 0 ps.size = r at hr1 hsp hb ⊢
+  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc, true_implies, forall_const] at hb hsp ⊢
+
+  have e8 := leAt_leBytes ownMagic (leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
+    leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) (6 : UInt8).toNat 1 (by decide)
+  have e9 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1) (leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
+    leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) c.toNat 1
+    (by have := c.toNat_lt; simpa using this)
+  have e10 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1) (leBytes k.toNat 1 ++
+    leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) t.toNat 1
+    (by have := t.toNat_lt; simpa using this)
+  have e11 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1)
+    (leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) k.toNat 1
+    (by have := k.toNat_lt; simpa using this)
+  have e12 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
+    leBytes k.toNat 1) (leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) ps.size 2 (by simp; omega)
+  have e14 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
+    leBytes k.toNat 1 ++ leBytes ps.size 2) (leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) D.size 2 (by simp; omega)
+  have e16 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
+    leBytes k.toNat 1 ++ leBytes ps.size 2 ++ leBytes D.size 2) (r.1 ++ D ++ r.2) n.toNat 8 hn
+  have ed := extract_mid (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
+    leBytes k.toNat 1 ++ leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1) D r.2
+  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc] at e8 e9 e10 e11 e12 e14 e16 ed
   have byte : ∀ (B : ByteArray) (o : Nat) (x : UInt8), leAt B o 1 = x.toNat → (B.data[o]?.getD 0) = x :=
     fun B o x e => UInt8.toNat_inj.mp (by simpa [leAt] using e)
-  simp only [ownParse, List.append_assoc, List.cons_append, List.nil_append, ownMagic_prefix]
+  simp only [ownParse, ownMagic_prefix]
   rw [e8, e11, e12, e14, e16, byte _ _ _ e9, byte _ _ _ e10]
-  simp only [sz, List.length_append, List.length_cons, leBytes_length, hr1, hL, ownMagic_len]
-  rw [if_neg (by omega), if_neg (by simp), if_neg (by decide), if_neg (by simp [hk.1]), if_neg (by omega)]
-  rw [show (ownMagic ++ [6, c, t, k] ++ leBytes ps.size 2 ++ leBytes D.length 2 ++ leBytes n.toNat 8 ++ r.1).length =
-    24 + 16 * ps.size by simp only [List.length_append, leBytes_length, hr1, hL, ownMagic_len]; simp] at ed
-  simp only [List.append_assoc, List.cons_append, List.nil_append] at ed
+  simp only [ByteArray.size_append, leBytes_size, hr1, hm]
+  rw [if_neg (by omega), if_neg (by decide), if_neg (by decide), if_neg (by simp [hk.1]), if_neg (by omega)]
+  rw [show 8 + (1 + (1 + (1 + (1 + (2 + (2 + (8 + 16 * ps.size))))))) = 24 + 16 * ps.size by omega] at ed
   rw [hsp, ed]
   subst hD
-  have hu : String.fromUTF8? ⟨s.toUTF8.data.toList.toArray⟩ = some s := by
-    simp only [Array.toArray_toList]
+  have hu : String.fromUTF8? s.toUTF8 = some s := by
     simp [String.fromUTF8?, s.isValidUTF8]
     rfl
   simp only [bind, Except.bind, hu]

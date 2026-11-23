@@ -38,13 +38,13 @@ def ownKinds : String :=
   | l :: ks => ", ".intercalate ks.reverse ++ " or " ++ l
 
 /-- The file's first 8 bytes, `qleancol`. -/
-def ownMagic : List UInt8 := [0x71, 0x6c, 0x65, 0x61, 0x6e, 0x63, 0x6f, 0x6c]
+def ownMagic : ByteArray := ⟨#[0x71, 0x6c, 0x65, 0x61, 0x6e, 0x63, 0x6f, 0x6c]⟩
 
 /-- Byte 8, the format version, `own.rs`'s `OWN_VERSION`: 6 since the patch list's block offsets are `u64`. -/
 def ownVersion : UInt8 := 6
 
 /-- The low `w` bytes of `v`, little-endian. -/
-def leBytes (v w : Nat) : List UInt8 := (List.range w).map fun k => (v / 256 ^ k).toUInt8
+def leBytes (v w : Nat) : ByteArray := ⟨.ofFn (n := w) fun k => (v / 256 ^ k.val).toUInt8⟩
 
 /-- The `w`-byte little-endian number at byte `o` of `b`, a byte past the end read as 0 (`own::le`). -/
 def leAt (b : ByteArray) (o : Nat) : Nat → Nat
@@ -55,27 +55,28 @@ def leAt (b : ByteArray) (o : Nat) : Nat → Nat
 goes), rounded up to a multiple of 8 (`write_head`). -/
 def ownOff (a : Nat) : Nat := (a + 32 + 7) / 8 * 8
 
-/-- The parts laid out from byte `a`: their part table entries (offset, length) and the bytes from `a` on, each part
-after zeros up to `ownOff`, then 32 zero bytes. -/
-def ownLayout (a : Nat) : List ByteArray → List UInt8 × List UInt8
-  | [] => ([], List.replicate 32 0)
-  | p :: ps =>
-    let r := ownLayout (ownOff a + p.size) ps
-    (leBytes (ownOff a) 8 ++ leBytes p.size 8 ++ r.1, List.replicate (ownOff a - a) 0 ++ p.data.toList ++ r.2)
+/-- The `k` parts of `ps` from part `i` laid out from byte `a`: their part table entries (offset, length) and the
+bytes from `a` on, each part after zeros up to `ownOff`, then 32 zero bytes. Counted like `ownSpans`, which reads it. -/
+def ownLayout (ps : Array ByteArray) (a i : Nat) : Nat → ByteArray × ByteArray
+  | 0 => (.empty, ⟨.replicate 32 0⟩)
+  | k + 1 =>
+    let p := ps[i]?.getD .empty
+    let r := ownLayout ps (ownOff a + p.size) (i + 1) k
+    (leBytes (ownOff a) 8 ++ leBytes p.size 8 ++ r.1, ⟨.replicate (ownOff a - a) 0⟩ ++ p ++ r.2)
 
 /-- The file `ownWrite` writes for `f`, or `own::write`'s refusal: bytes 0..8 `qleancol`, the version `ownVersion`, code,
 attribute, kind, the part count (2 bytes), the domain name's length (2 bytes), the element count (8 bytes), the part
 table, the domain name, then `ownLayout`. -/
 def ownImage (f : OwnFile) : Except String ByteArray :=
   let np := f.parts.size
-  let d := f.domain.toUTF8.data.toList
-  if ownNParts[f.kind.toNat]?.join != some np || d.length > 0xffff then
-    .error s!"a column of kind and part count {ownKinds} and a domain name under 65536 bytes, given kind {f.kind} with {np} parts and a {d.length}-byte name"
-  else if d.contains 0 then .error s!"a domain name with no NUL byte, found one at byte {d.idxOf 0}"
+  let d := f.domain.toUTF8
+  if ownNParts[f.kind.toNat]?.join != some np || d.size > 0xffff then
+    .error s!"a column of kind and part count {ownKinds} and a domain name under 65536 bytes, given kind {f.kind} with {np} parts and a {d.size}-byte name"
+  else if d.data.contains 0 then .error s!"a domain name with no NUL byte, found one at byte {d.data.idxOf 0}"
   else
-    let r := ownLayout (24 + 16 * np + d.length) f.parts.toList
-    .ok ⟨(ownMagic ++ [ownVersion, f.code, f.attr, f.kind] ++ leBytes np 2 ++ leBytes d.length 2 ++ leBytes f.count.toNat 8
-      ++ r.1 ++ d ++ r.2).toArray⟩
+    let r := ownLayout f.parts (24 + 16 * np + d.size) 0 np
+    .ok (ownMagic ++ ⟨#[ownVersion, f.code, f.attr, f.kind]⟩ ++ leBytes np 2 ++ leBytes d.size 2 ++
+      leBytes f.count.toNat 8 ++ r.1 ++ d ++ r.2)
 
 /-- The one column writer: `parts` are a `Column` constructor's `ByteArray`s, written as they lie (`ownImage`). The
 extern writes a temporary beside `path` and renames it over `path`, so a mapping of the old file keeps its pages. Missing parent directories are created. -/
@@ -109,7 +110,7 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   let nl := leAt b 14 2
   let v := leAt b 8 1
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
-  else if (List.range 8).map byte != ownMagic then .error "byte 0: the magic `qleancol`"
+  else if b.extract 0 8 != ownMagic then .error "byte 0: the magic `qleancol`"
   else if v != ownVersion.toNat then
     .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
   else if ownNParts[kind]?.join != some np then
