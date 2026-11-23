@@ -495,7 +495,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `2^24`；f64 上舍入是恒等，结果不变）。融合行只用在没有 universe 的对象上；target 有 universe
     （声明的有限对象，或泛型常量里的数变量）时 elaborator 展开 prelude 里的定义文本（行带 `prelude :=`，`Elab.dfns`：`sum` 是 `⦇[{(∗,0)}, plus]⦈`，
     `length` 是 `⦇[{(∗,0)}, π₁ succ]⦈`，定理 `Tm.sumDef_den`、`Tm.lengthDef_den`），所以每一步都留在对象内：`−3…3` 上 `[3,3,−3] sum` 无结果（中间和 6），`1…5` 上
-    `length` 为 `𝟘`（fold 从 0 起步）；float atom 上定义 `⦇[0, plus]⦈` 每步舍入，与 `sumDen` 不同，故
+    `length` 被拒（fold 的基是字面量 `0`，按字面量读在目标上，`0 ∉ 1…5`）；float atom 上定义 `⦇[0, plus]⦈` 每步舍入，与 `sumDen` 不同，故
     `Elab.dfns` 不在 float atom 上构建它（`DfnCut.sum` 要求 `t ∉ floatAtoms`），融合行照跑。造出新数的 row 必须带 `dfn`],
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，
     报错并给出该位置）→ `κ` 列 `seen` 得每个 key 的首行 → `scatter(last)` 得段标 `seg` → 分段 `scan(add)`（种子 0）得
