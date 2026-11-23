@@ -1606,13 +1606,23 @@ def ioOf (n : Lean.Name) :
   return do
     let (ds, _, _, _, os, io) ← r.mapError (s!"{repr ·}")
     let reach := Expand.ioReach io
-    let rd : Bld (List (String × InRead)) := io.filterMapM fun
-      | .input x _ _ k v c p => if reach.contains x then return some (x, ← readIn x k v c p) else pure none
-      | _ => pure none
+    -- every input's refusal, not the first's, as `wr` below
+    let rd : Bld (List (String × InRead)) := do
+      let (rs, errs) ← io.foldlM (init := ([], #[])) fun (rs, errs) s => match s with
+        | .input x _ _ k v c p =>
+          if reach.contains x then
+            tryCatch (do pure (rs ++ [(x, ← readIn x k v c p)], errs)) fun e => pure (rs, errs.push e)
+          else pure (rs, errs)
+        | _ => pure (rs, errs)
+      unless errs.isEmpty do throw ("\n".intercalate errs.toList)
+      pure rs
     let wr (ins : List (String × InRead)) : Bld Unit := do
       let mut σ : List (String × Side × Side) := []
       for (x, r) in ins do σ := σ ++ [(x, ← sideOf x r)]
+      -- every statement's refusal, not the first's: the list is the work a program needs of the plan
+      let mut errs : Array String := #[]
       for s in io do
+       try
         match s with
         | .defn x c deps =>
           if reach.contains x then
@@ -1632,6 +1642,8 @@ def ioOf (n : Lean.Name) :
               | none, none => throw s!"output `{x}`: not read or computed before it"
             writeOut x k v c p t
         | _ => pure ()
+       catch e => errs := errs.push e
+      unless errs.isEmpty do throw ("\n".intercalate errs.toList)
     pure (rd, wr)
 
 /-! ### The C -/

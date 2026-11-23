@@ -83,9 +83,11 @@ def encN (xs : List UInt64) (ns : List Nat) : List UInt8 × List UInt8 :=
   let r := Coc.encode (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
   (r.1.data.toList, r.2.data.toList)
 
-/-- Each row of `encN xs ns` read back by `Column.foROpt`: `none` at a null, tested on the block. -/
-def readN (xs : List UInt64) (ns : List Nat) : List (Option UInt64) :=
-  let r := Coc.encode (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+/-- Each row of `encN xs ns` read back by `Column.foROpt`: `none` at a null, tested on the block. `enc` is the writer,
+`Coc.encode` unless a `decide` passes `Coc.encodeAt` at a smaller block (see the `Int64.min` pair below). -/
+def readN (xs : List UInt64) (ns : List Nat)
+    (enc : ByteArray → ByteArray → ByteArray × ByteArray := fun x n => Coc.encode (u 8) x n) : List (Option UInt64) :=
+  let r := enc (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
   (List.range xs.length).map (Column.foROpt r.1 r.2 #[])
 
 -- values 3 4 6 at rows 0 2 3, nulls at 1 4: range 3 = `2 ^ 2 - 1` reaches the top residual, so width 3, flagged (131);
@@ -96,8 +98,11 @@ example : readN [3, 0, 4, 6, 0] [1, 4] = [some 3, none, some 4, some 6, none] :=
 #guard readN [3, 0, 4, 6, 0] [1, 4] == [some 3, none, some 4, some 6, none]
 
 -- `Int64.min`, `Int64.max` and a null in one block: the range is all `2 ^ 64` keys, width 64 cannot widen, and
--- `Int64.max - Int64.min = 2 ^ 64 - 1` is the null's code, so the `Int64.max` row is patched and reads as itself
-example : readN [0x8000000000000000, 0x7fffffffffffffff, 0] [2] =
+-- `Int64.max - Int64.min = 2 ^ 64 - 1` is the null's code, so the `Int64.max` row is patched and reads as itself.
+-- The Lean body runs at the least block the layout admits, `2 ^ 6`: the kernel walks the pack from byte 0 on every
+-- byte a reader takes, and the patch list sits after the block's `2 ^ lg * 8` residual bytes, 8192 at `lgEnc`
+-- (45 s, 16.7 GB) and 512 at 6; the answer is the same rows, which is all `lg` cannot change.
+example : readN [0x8000000000000000, 0x7fffffffffffffff, 0] [2] (fun x n => Coc.encodeAt 6 (u 8) x true n) =
     [some 0x8000000000000000, some 0x7fffffffffffffff, none] := by decide +kernel
 #guard readN [0x8000000000000000, 0x7fffffffffffffff, 0] [2] ==
     [some 0x8000000000000000, some 0x7fffffffffffffff, none]
