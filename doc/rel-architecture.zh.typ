@@ -480,6 +480,66 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `n·m + n + m ≥ 2^63` 拒绝],
 )
 
+== 已排序表上的 `rank` 与归并（草稿，待审）
+
+`X` 是 canonical 的表（`n` 行，按 `(key, val)` 升序、无重复），`T` 是任意表（`m` 行）；行看作 `k×v` 上的元素，序是
+`Obj.lt`（`asc` 的序）。先例后式，`X = 10 30 50`，`T = 30 40 60`，跟踪 `T` 的第 1 行 `40`：
+
+```
+40 {rank(X)} 2        // X 中小于 40 的行有 2 个（10、30）；X[2] = 50 ≠ 40，所以 40 ∉ X，是新行
+40 ↦ 输出位置 2 + 0     // rank + 它在新行 40 60 中的序号 0；50 让出一位到 3：X ∪ T = 10 30 40 50 60
+```
+
+规格都是关系的复合，没有新的语义：
+- `rank(X) ≜ Λ(> X) length : k×v ⟶ ℕ`　　`// t ↦ X 中小于 t 的行数`
+- 成员测试：`t ∈ X` ⇔ `r = rank(X)(t) < n` 且 `asc(X)` 的第 `r` 行等于 `t`；由它得 `T ∩ X` 与 `T − X`（`keep`）。
+- 归并：`X ∪ T`，`T` 也 canonical 时由 `rank` 直接给出每行的输出位置，不排序。
+
+#tbl(c-sem, (auto, 1fr), ([运算（草稿，待审）], [由哪些运算与 kernel 复合]),
+  [行比较 `P < T`、`P = T`（两表各 `m` 行，逐行）], [`P ++ T`（concat）→ `asc ≫ seen` 得 `2m` 行的组号 `g`（已排序的行上，
+    组号随序递增，相等 ⇔ 同组）→ `scatter(last)` 经 `asc` 的排列把 `g` 写回输入位置 → `gather` 出前后两半 →
+    `scan` map `lt`、`eq`。上例最后一轮 `P = 30 50 50`、`T = 30 40 60`：组号 `0 2 2 ┃ 0 1 3`，`lt = 0 0 1`，`eq = 1 0 0`。
+    比较用的就是 `asc` 自己的序，所以对每个 `Obj`（`prod`、`arr` 的 `cells` 键、`sum`、`1+atom`）是同一条路径],
+  [`rank(X)` on `T`（二分，`L = ⌈log₂ n⌉ + 2` 轮；`n = 0` 时 `r = 0`、无命中）], [状态 `base`（`m` 行，自 `0` 起）与标量
+    `len`（自 `n` 起，与数据无关）。`len > 1` 时一轮：`half = len / 2`，`q = base + half − 1`（`scan`）→ `P = X[q]`
+    （`gather`，`arr` 侧只取 `lo` `hi`，再 `pack`）→ 行比较 `c = P < T` → `base += c · half`（`scan`）→ `len −= half`。
+    末两轮：`r = base + (X[base] < T)`；命中 `h = (X[min(r, n − 1)] = T)`。
+    上例：`base = 0 0 0` → 探 `X[0] = 10`，`1 1 1` → 探 `X[1] = 30`，`1 2 2` → `X[base] = 30 50 50`，
+    `r = 1 2 3`，`h = 1 0 0`],
+  [`T − X`、`T ∩ X`（`X` canonical）], [`rank` → `keep`（`h = 0` 的行，或 `h = 1` 的行）；保持 `T` 的行序。上例 `T − X = 40 60`],
+  [`X ∪ T`（两者都 canonical）；`Δ' = T − X` 共 `d` 行，其 rank 为 `rΔ`], [新行的位置 `posΔ = rΔ + pos`（`scan`）；
+    `scatter(add)` 把 `1` 写到 `rΔ`（`n + 1` 格：每个 `X` 行之前落入的新行数）→ `scan(add)` 前缀和 `c` →
+    `posX = pos + c`（`scan`）；`ix = scatter(last)`（`posX ++ posΔ` ↦ `pos`，`N = n + d` 格）→
+    `gather`（`X ++ Δ'`，在 `ix`）。上例：`rΔ = 2 3`，`posΔ = 2 4`，计数 `0 0 1 1`，`c = 0 0 1`，`posX = 0 1 3`，
+    `ix = 0 1 3 2 4`，`X ++ Δ' = 10 30 50 40 60` ↦ `10 30 40 50 60`],
+  [`(X ∪ T, T − X)`（`Tab.mergeDiff`，`μ` 的 semi-naive 轮与 `star`）], [`T` 先 `canon`（`m` 行）→ `rank` 一次 → 上两行共用它。
+    选用规则：`m · L ≤ n` 时用它，否则用 `Tab.unionDiff`（一次 `asc` 排全部 `X ++ T`）；两者所表的关系相同，
+    所以选哪条不带证明义务（同 `Tab.bitsWin`）],
+)
+
+#tbl(c-run, (auto, 1fr, 1fr), ([每轮的代价], [`unionDiff`（现状）], [`mergeDiff`]),
+  [与 `n = |X|` 成正比], [concat、`asc`（`n + m` 行全部重排，`cells` 键读整个 payload）、`seen`、来源标记的
+    `gather` 与两次分段 `scan` + `scatter`、每列一次 `gather`],
+    [concat（`X` 在前，对齐的块原样搬移）、一列 `i64` 上的 `scatter(add)` + 两次 `scan` + `scatter(last)`、每列一次 `gather`；
+    `X` 不再排序、不再 `seen`],
+  [与 `m = |T|` 成正比], [同上各一遍], [`L` 轮，每轮：每列一次 `gather`、`2m` 行的 concat + `asc` + `seen`、
+    一次 `scatter`、两次 `gather`、三次 `scan`],
+  [kernel 调用数（`c` 列）], [约 `4c + 12`，与 `n` 无关], [约 `L · (3c + 8) + 2c + 8`：小调用多，线程交接（`pool` 自旋）
+    是要量的代价，所以有上面的选用规则],
+)
+
+- 定律（待证）：`Tab.rank_spec`——`X` 严格升序（`Obj.lt`）时 `r[i]` 是 `X` 中 `Obj.lt` 于 `T[i]` 的行数，`h[i] = 1` ⇔
+  `T[i]` 是 `X` 的行；`Tab.mergeDiff_holds`——`X` 严格升序、两表 `WF`、`X.mergeDiff T = .ok (V, U)` 时
+  `V.Holds = X.Holds ∪ T.Holds`、`U.Holds = T.Holds − X.Holds`，且 `V`、`U` 严格升序。这正是 `union_holds`、
+  `rdiff_holds`、`canon_sorted` 对 `unionDiff` 给出的结论，所以 `muLin_holds`、`star_holds` 只换这一步的引理。
+  行比较由 `kasc_grade`、`kseen_ok`、`kseen_runs`、`Vals.lt_of_codes`、`Obj.lt_trichotomy` 连到 `Obj.lt`。
+- 不新增 kernel、不新增导出：二分是 Lean 中的循环（同 `fixOn`），每轮调用已有的行。§4.1 移出的 `bin search` 是 q 的
+  verb；这里的 `rank` 是关系 `Λ(> X) length`，由已有 kernel 复合。
+- 没有解决的：`X ∪ T` 每轮仍写出整个 `X'`（一遍 concat + 每列一遍 `gather`），所以一轮仍与 `n` 成正比，只是不再排序。
+  要与 `|Δ|` 成正比，`μ` 的状态须是若干已排序段而不是一张 canonical 表；那是另一种表示，本节不提。
+- 融合 kernel（未提议）：一遍归并两段已排序的编码列（逐块推进两个游标）可把 `L` 轮合成一遍；它是优化，
+  定理为「= 上表的二分复合」，按 §4.8「融合 kernel」在量出需要之前不加。
+
 == Rust 侧
 
 #tbl(c-rs, (auto, 2.5fr, 1fr, 1fr), ([IO 导出（不是 kernel）], [形状], [Lean 模型], [定律]),
