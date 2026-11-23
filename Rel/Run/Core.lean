@@ -84,13 +84,29 @@ def toList (x : Arr t n) : List (El t) := List.ofFn x.get
 def Holds (x : Arr t n) (i : Int64) (y : El t) : Prop := ∃ j : Fin n.toNat, Int64.ofNat j = i ∧ x.get j = y
 
 
-/-- A payload as an `Arr`, the one way in: `Enc.WF` is decided, never assumed; `what` names the producer in the
-    error. -/
+/-- `Enc.WF` decided on the encoding, never per element: at `foR` its `u1` clause is read off the blocks
+    (`Column.u1Ok`, sound by `Verify.u1Ok_bound`), so `none` also where a `u1` block's frame or width admits a value
+    of 2, which no column the encoder writes has (`Column.u1Ok`'s comment). -/
+def _root_.Rel.Ext.Enc.wf? (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (PLift (Enc.WF t n e)) :=
+  match e with
+  | .foR md pk =>
+    if h : t.width.isSome ∧ (t = .u1 → Column.u1Ok md pk = true) ∧ n.toNat ≤ Column.blk md * Column.nblk md ∧
+        Column.lgOk md ∧ ∀ b < Column.nblk md, Column.nulAt md b = true → ∃ j < Column.blk md,
+          b * Column.blk md + j < n.toNat ∧ Column.foRNul md pk (Column.blockStarts md) (b * Column.blk md + j) = true
+    then some ⟨by
+      cases t <;> exact ⟨h.1, fun hu i hi v hv =>
+        Verify.u1Ok_bound md pk (h.2.1 hu) i (Nat.div_lt_of_lt_mul (by omega)) v hv, h.2.2⟩⟩
+    else none
+  | e => if h : Enc.WF t n e then some ⟨h⟩ else none
+
+/-- A payload as an `Arr`, the one way in: `Enc.WF` is decided (`Enc.wf?`), never assumed; `what` names the producer
+    in the error. -/
 def of (t : QAtomicType) (n : USize) (e : Enc) (what : String) : Except String (Arr t n) :=
-  if h : Enc.WF t n e then
+  match Enc.wf? t n e with
+  | some ⟨h⟩ =>
     if hN : Kernel.hasNul e = false then .ok ⟨e, h, hN⟩
     else .error s!"{what}: a column holding a null, and its type has none"
-  else .error s!"{what}: a payload that is not {n} well-formed elements of {repr t}"
+  | none => .error s!"{what}: a payload that is not {n} well-formed elements of {repr t} (a u1 block's frame or width admitting a value of 2 or more included)"
 
 end Arr
 
@@ -142,7 +158,7 @@ def ofAtoms (t : QAtomicType) (xs : Array (Option QAtom)) : Option (Opt t xs.siz
         Column.pushBits acc ((a.map Column.bitsOf).getD 0) w
       let nul := Column.packIds 1 xs.size fun i => (xs[i]?.any Option.isNone).toNat
       let e : Enc := .foR (Kernel.Coc.encode w.toUSize b nul).1 (Kernel.Coc.encode w.toUSize b nul).2
-      if h : Enc.WF t xs.size.toUSize e then some (mk e h) else none
+      (Enc.wf? t xs.size.toUSize e).map fun h => mk e h.down
     else none
 
 end Opt
