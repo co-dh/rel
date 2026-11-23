@@ -4,6 +4,7 @@ public import Rel.Lang.PreludePrefix
 public import Rel.Lang.PreludeSuffix
 public import Rel.Lang.PreludeFilter
 public import Rel.Lang.PreludeTakewhile
+public import Rel.Lang.PreludeConcat
 public import Rel.Lang.PreludeTails
 public import Rel.Lang.PreludeStar
 import Lean
@@ -18,9 +19,8 @@ meta import Rel.Run.Lang.Syntax
 
 namespace Rel.Lang
 
-/-- The rows with a `prelude` definition and no theorem `Tm.<sym>Def_den` yet. `concat`: its proof waits for the
-    `nullband` change of `RepStruct.lean`. -/
-meta def unproved : List String := ["concat"]
+/-- The rows with a `prelude` definition and no theorem `Tm.<sym>Def_den` yet. -/
+meta def unproved : List String := []
 
 /-- The name of the theorem that row `r`'s definition means the row. -/
 meta def Prim.defDenName (r : Prim) : Lean.Name := .str `Rel.Lang.Tm (r.sym ++ "Def_den")
