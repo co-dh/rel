@@ -64,6 +64,7 @@ import Rel.Lang.TestMss
 import Rel.Lang.TestNative
 import Rel.Lang.TestNativeL
 import Rel.Lang.TestNativeF
+import Rel.Lang.TestNativeS
 import Rel.Lang.TestPivotDisk
 import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
