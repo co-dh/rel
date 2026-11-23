@@ -1,5 +1,10 @@
-import Rel.Run.Struct
-import Rel.Run.Lang.Syntax
+module
+
+public import Rel.Run.Struct
+public import Rel.Run.Lang.Syntax
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The core term `Tm` of the Rel language, indexed by its source and target, and `Tm.dem`, whether it runs on
     demand; the elaborator (`Elab`) builds it and `Expand` reads it (`doc/rel-lang-design.md` §a, §e). -/

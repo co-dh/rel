@@ -1,4 +1,9 @@
-import Rel.Run.Gather
+module
+
+public import Rel.Run.Gather
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! A relation computed now (`tab`) or on what its context already knows of its two sides (`lazy`): the
     replacement for the demand bit of `Gen.Fn`. A `tab` holds its table or the message of the op that could not

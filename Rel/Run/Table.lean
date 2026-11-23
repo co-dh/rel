@@ -1,13 +1,18 @@
-import Rel.Run.Lang.Plan
-import Rel.Run.Lang.Schema
-import Rel.Kernel.Db.ObjectFile
-import Rel.Kernel.Db.Csv
-import Rel.Kernel.Cast
-import Rel.Run.Canon
-import Rel.Run.Comp
-import Rel.Run.Lang.Lazy
-import Rel.Run.List
-import Rel.Run.Asc
+module
+
+public import Rel.Run.Lang.Plan
+public import Rel.Run.Lang.Schema
+public import Rel.Kernel.Db.ObjectFile
+public import Rel.Kernel.Db.Csv
+public import Rel.Kernel.Cast
+public import Rel.Run.Canon
+public import Rel.Run.Comp
+public import Rel.Run.Lang.Lazy
+public import Rel.Run.List
+public import Rel.Run.Asc
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! # A table directory (PLAN D.9, `doc/dataframe-design.zh.typ` F6)
 

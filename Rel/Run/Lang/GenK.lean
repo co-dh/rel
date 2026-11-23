@@ -1,16 +1,21 @@
-import Rel.Run.Lang.Gen
-import Rel.Run.Lang.Tm
-import Rel.Run.SetOps
-import Rel.Run.Comp
-import Rel.Run.Struct
-import Rel.Run.Power
-import Rel.Run.List
-import Rel.Run.Div
-import Rel.Run.Bits
-import Rel.Run.Fix
-import Rel.Run.Where
-import Rel.Run.Asc
-import Rel.Run.Cast
+module
+
+public import Rel.Run.Lang.Gen
+public import Rel.Run.Lang.Tm
+public import Rel.Run.SetOps
+public import Rel.Run.Comp
+public import Rel.Run.Struct
+public import Rel.Run.Power
+public import Rel.Run.List
+public import Rel.Run.Div
+public import Rel.Run.Bits
+public import Rel.Run.Fix
+public import Rel.Run.Where
+public import Rel.Run.Asc
+public import Rel.Run.Cast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The code a program runs: one body per node of its terms (`Tm.gen`), each a composition of the `Tab`
     operators over the five kernels. A `tab` holds the message of the op that could not run, never a dropped

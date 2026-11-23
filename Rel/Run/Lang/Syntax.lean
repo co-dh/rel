@@ -1,8 +1,13 @@
-import Lean
-import Rel.Kernel.Op
-import Rel.Run.Core
-import Rel.Kernel.Cast
-import Rel.Run.Cast
+module
+
+public import Lean
+public import Rel.Kernel.Op
+public import Rel.Run.Core
+public import Rel.Kernel.Cast
+public import Rel.Run.Cast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
