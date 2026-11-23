@@ -590,7 +590,8 @@ def Prim.vars (r : Prim) : List String :=
   ((r.sig.1.flatMap fun ((x, y), _) => x.vars ++ y.vars) ++ r.sig.2.1.vars ++ r.sig.2.2.vars).eraseDups
 
 /-- The row's source is a variable nothing else in its signature names (`nil : A ⟶ [B]`): a use no context fixes
-    starts at the object `1` (`settleOpen`). -/
+    starts at the object `1` (`settleOpen`). Kernel rows (`$`, `sqrt`) have the same signature shape but their source is
+    fixed by the atoms they run at, so only a prelude definition (`nil`, a constant relation) is open. -/
 def Prim.openSrc (r : Prim) : Bool :=
   match r.sig.2.1 with
   | .var _ v => r.prelude.isSome && r.sig.1.isEmpty && !(r.sig.2.2.vars.contains v)

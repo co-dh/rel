@@ -1418,10 +1418,12 @@ where
     | .mv i, .mv j => if i != j then unify p "the source of ⦇R⦈'s base inl R" src env.one
     | .mv _, _ => unify p "the source of ⦇R⦈'s base inl R" src env.one
     | _, _ => pure ()
-    -- `ran(a)` is the prelude's definition, found by its row's constant, so a program that renames it still folds
-    match ranRow.prelude.bind env.defOf with
-    | some d => pure (← d.apply p [a], s)
-    | none => throw ⟨p, "⦇R⦈'s start is `ran(a)`, and the prelude's `ran` is not in scope"⟩
+    -- `ran(a)` is the prelude's definition, found by its row's constant, so a program that renames it still folds; a
+    -- family `a` takes `lRan`, as the definition's `𝟙` lifted would need `V`'s universe (`lDom` likewise)
+    match m, a, ranRow.prelude.bind env.defOf with
+    | some I, .fam .., _ => do let r := lRan (← famOf I p a); pure (.fam r.1 I r.2.1 r.2.2, s)
+    | _, _, some d => pure (← d.apply p [a], s)
+    | _, _, none => throw ⟨p, "⦇R⦈'s start is `ran(a)`, and the prelude's `ran` is not in scope"⟩
 
 /-- A binary operator on one relation each side. -/
 def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M Arg
@@ -1596,13 +1598,17 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .comp a b => do
     let x ← elabE env m a
     let p := b.pos
-    -- `Xest(Q)` with `Q` a family: `est` runs one `Q` on every array, so the rows of §e
-    -- work on `G ≜ X∋`, the values of each key; a closed `Q` takes the closed row below
-    let q? ← match m, b with
-      | some _, .op _ .est [] [qe] => do
-        let y ← elabE env m qe; pure (if y.isFam then some y else none)
-      | _, _ => pure none
+    -- `Xest(Q)`, `Xfront(Q)` with `Q` a family: they run one `Q` on every array, so the rows of §e work on
+    -- `G ≜ X∋`, the values of each key (a lifted `Λ` of `front`'s definition would need `[x]`'s universe, which it
+    -- has none); a closed `Q` takes the closed row below. `front` is the prelude's, found by its row's constant.
+    let front := match b with
+      | .app _ n [_] => match env.res n with | .ext e => some e.const == frontRow.prelude | _ => false
+      | _ => false
     let est := match b with | .op _ .est _ _ => true | _ => false
+    let q? ← match m, b with
+      | some _, .op _ .est [] [qe] | some _, .app _ _ [qe] => do
+        if front || est then do let y ← elabE env m qe; pure (if y.isFam then some y else none) else pure none
+      | _, _ => pure none
     -- `X⦇R⦈` with `R` a family: the fold keyed by the index, on the arrays `X` gives each key (§e)
     let fold? ← match m, b with
       | some _, .fold _ false r => do

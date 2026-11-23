@@ -10,7 +10,7 @@ rel_program floatG where
     sw(R : α ⟶ β) : β ⟶ α ≜ R°
     both(R : α ⟶ β, S : α ⟶ β) : α ⟶ β ≜ R ∩ S
 
-open floatG in
+open floatG Rel.Programs.prelude in
 rel_program floatT where
     obj F : f64
     a : F ⟶ F ≜ {(2.5,1),(-0.0,0.0),(1e-3,1.5e10),(-2.5,3)}
@@ -74,7 +74,7 @@ rel_program plusT where
     d : F ⟶ F ≜ x ⟨𝟙,𝟙⟩plus
 
 -- S3: `<` runs at f64; no message
-#guard_msgs in
+#guard_msgs in open Rel.Programs.prelude in
 rel_program ltT where
     obj F : f64
     x : F ⟶ F ≜ {(2.5,1)}

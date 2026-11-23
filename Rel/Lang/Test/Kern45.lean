@@ -8,6 +8,7 @@ open Tab Rel.Lang Rel.Alg Rel
     `∋ τ length setify sum snoc cons cat zip cons° snoc° cat°` with T2 operators, so it runs on the five kernels,
     on inputs with empty cells and duplicate rows. `es`, `th` are `est(≤)`, `front(≤)` on `x`, the pair test
     elaborated through `⟨π₁, π₂⟩`. -/
+open Rel.Programs.prelude in
 rel_program kernT45 where
     obj N = 0…5
     r : N ⟶ N ≜ {(1,2),(2,3),(3,3)}

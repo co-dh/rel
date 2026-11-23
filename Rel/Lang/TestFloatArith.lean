@@ -7,6 +7,7 @@ import Rel.Programs.Prelude
 
 namespace Rel.Lang.TestFloatArith
 
+open Rel.Programs.prelude in
 rel_program arithD where
     obj N
     obj F : f64
@@ -33,6 +34,7 @@ rel_program arithD where
 -- `7.5 mod 2 = 1.5`; `1e308·10` overflows to `∞`, a value
 #guard arithD.failures.map toString == []
 
+open Rel.Programs.prelude in
 rel_program arithS where
     obj N
     obj G : f32
@@ -74,6 +76,7 @@ rel_program orderT where
 
 -- `< ≤ max min` at every ordered atom with no value step (`ordNum`): the integer order of the stored values,
 -- `date` as its days, `datetime` as its nanoseconds; `max`/`min` pick an operand by `≤`
+open Rel.Programs.prelude in
 rel_program orderIntT where
     obj N
     obj B : u8
@@ -112,7 +115,7 @@ rel_program orderIntT where
 #guard orderIntT.failures.map toString == []
 
 -- an `i64` and an `f64` operand: refused naming both objects; the program casts one with `$` first
-/-- error: line 122, col 24: the source of the right factor of a composition: found N×N, expected N×F -/
+/-- error: line 125, col 24: the source of the right factor of a composition: found N×N, expected N×F -/
 #guard_msgs in
 rel_program mixedT where
     obj N
@@ -122,7 +125,7 @@ rel_program mixedT where
     c : N ⟶ F ≜ ⟨a, b⟩ plus
 
 -- an atom with no value step (`valueAtom`): refused, the error listing the atoms that have one
-/-- error: line 131, col 24: plus on I: I is an object of i32, and plus runs on objects of i64, f32, f64 only; cast first, `x $ F` with `F` an object of i64, f32, f64 -/
+/-- error: line 134, col 24: plus on I: I is an object of i32, and plus runs on objects of i64, f32, f64 only; cast first, `x $ F` with `F` an object of i64, f32, f64 -/
 #guard_msgs in
 rel_program narrowT where
     obj N
@@ -131,7 +134,7 @@ rel_program narrowT where
     c : N ⟶ I ≜ ⟨a, a⟩ plus
 
 -- `succ` stays on `i64`: a float has no successor
-/-- error: line 140, col 19: succ on F: F is an object of f64, and succ runs on objects of i64 only -/
+/-- error: line 143, col 19: succ on F: F is an object of f64, and succ runs on objects of i64 only -/
 #guard_msgs in
 rel_program succFT where
     obj N
@@ -140,6 +143,7 @@ rel_program succFT where
     c : N ⟶ F ≜ a succ
 
 -- `%` (q's `divide`): the quotient itself, `fdiv` then `fto`
+open Rel.Programs.prelude in
 rel_program divideT where
     obj N
     obj F : f64
@@ -169,7 +173,7 @@ rel_program divideT where
 #guard divideT.failures.map toString == []
 
 -- `%` at an integer object: refused, the quotient of two integers being no integer; the program casts with `$` first
-/-- error: line 177, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 181, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program divideIntT where
     obj N
@@ -264,7 +268,7 @@ rel_program xexpT where
 #guard xexpT.failures.map toString == []
 
 -- `sqrt` at an integer object: refused by name, with the cast the program writes first
-/-- error: line 272, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 276, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 rel_program sqrtIntT where
     obj N

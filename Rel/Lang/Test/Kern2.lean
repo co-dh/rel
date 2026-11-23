@@ -6,6 +6,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 /-! The kernel path (`GenK`, steps T2, T3): every node of `kernT2` has a kernel body, so the program runs on the
     five kernels. -/
+open Rel.Programs.prelude in
 rel_program kernT2 where
     obj N = 0…5
     r : N ⟶ N ≜ {(1,2),(2,3),(3,3)}
