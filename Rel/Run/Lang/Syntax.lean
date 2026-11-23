@@ -486,10 +486,10 @@ inductive Decl
   | print (p : Pos) (e : Expr) (binds : List (String × Expr))
   | check (p : Pos) (e f : Expr) (eq : Bool) (binds : List (String × Expr))
   /-- `input n : A ⟶ B from p`: a relation with no body, a parameter of the statements after it that mention it
-      (IO design A.2); read from the table directory `path`, or the CSV file `path` when `csv`. -/
-  | input (p : Pos) (n : String) (ty : OExp × OExp) (csv : Bool) (path : String)
-  /-- `output n to path`: the table of the definition or input `n` written to `path` (`csv`: as one CSV file). -/
-  | output (p : Pos) (n : String) (csv : Bool) (path : String)
+      (IO design A.2); read from the table directory `path`, or the CSV file `path` when `csv` is its separator (`,` CSV, `\t` TSV). -/
+  | input (p : Pos) (n : String) (ty : OExp × OExp) (csv : Option UInt8) (path : String)
+  /-- `output n to path`: the table of the definition or input `n` written to `path` (`csv`: as one CSV file, its fields separated by that byte). -/
+  | output (p : Pos) (n : String) (csv : Option UInt8) (path : String)
   /-- `theorem n(ps) on A : e = f := calc` (`⊑` when `eq` is false), each step `_ = x := why` with its line; no
       steps: the proof is owed to Lean. `on A`: each step is also evaluated as `check A x = A y` (§3). -/
   | «theorem» (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool) (on : Option Expr)

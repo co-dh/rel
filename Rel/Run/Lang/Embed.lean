@@ -73,6 +73,11 @@ def stmt (s : Syntax) : C Decl := do
   let path (t : Syntax) : C String := match t.isStrLit? with
     | some f => pure f
     | none => failAt t "expected the path as a string literal"
+  -- `csv` and its optional separator, a one-byte char literal (`,` when none is written)
+  let csvSep (o : Syntax) : C (Option UInt8) := if o.getNumArgs == 0 then pure none else
+    if o[1].getNumArgs == 0 then pure (some 44) else match o[1][0].isCharLit? with
+      | some c => if c.val < 128 then pure (some c.toNat.toUInt8) else failAt o[1] s!"the separator {repr c} is not one byte"
+      | none => failAt o[1] "expected the separator as a char literal"
   match s.getKind with
   | ``sElems => objDecl do pure (.elems (← s[4].getSepArgs.toList.mapM wordOf))
   | ``sRange => objDecl do
@@ -98,8 +103,8 @@ def stmt (s : Syntax) : C Decl := do
   | ``sInput => do
     let n ← wordOf s[1]
     Parse.fresh p n (← get).taken
-    pure (.input p n (← typeOf s[2]) (s[4].getNumArgs != 0) (← path s[5]))
-  | ``sOutput => do pure (.output p (← wordOf s[1]) (s[3].getNumArgs != 0) (← path s[4]))
+    pure (.input p n (← typeOf s[2]) (← csvSep s[4]) (← path s[5]))
+  | ``sOutput => do pure (.output p (← wordOf s[1]) (← csvSep s[3]) (← path s[4]))
   | ``sDefn =>
     -- `_on_` is one Lean identifier: its text read as a head, `_n_` the infix `n`
     let (w, key) ← if s[0].getKind == ``wNeg then (do let w ← wordOf s[0]; pure (w, w)) else onText s[0] (tokText s[0][0]) do

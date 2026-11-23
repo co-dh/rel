@@ -327,4 +327,22 @@ def u1Of (bs : List UInt8) : Except String (Arr .u1 bs.length.toUSize) :=
 #guard (u1Of [0, 1, 2, 1]).toOption.isNone
 #guard (u1Of [2, 2]).toOption.isNone
 
+-- TSV is the CSV reader and writer at the separator `\t` (df-F6b): a `,` is data and stays unquoted, a field holding
+-- `\t` is quoted; the file written is the file read, byte for byte, and the same file read at `,` is refused
+/--
+info: (2, true, "a\tb\n1,2\t\"x\ty\"\n3\tz\n", true)
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let dir ← fresh "tsv"
+  let S : Schema := [("a", .arr (.atom .char)), ("b", .arr (.atom .char))]
+  let cols : Db.CsvCols := [("a", .text, .char, []), ("b", .text, .char, [])]
+  let f := "a\tb\n1,2\t\"x\ty\"\n3\tz\n"
+  IO.FS.writeFile (dir ++ "/in.tsv") f
+  let (t, D) ← readCsvDict (← IO.ofExcept Dict.empty) [] S cols (dir ++ "/in.tsv") 9
+  writeCsv D [] S cols (dir ++ "/out.tsv") t 9
+  let g ← IO.FS.readFile (dir ++ "/out.tsv")
+  let refused ← try discard <| readCsvDict D [] S cols (dir ++ "/in.tsv"); pure false catch _ => pure true
+  pure (t.n, g == f, g, refused)
+
 end Rel.Lang.TestTable

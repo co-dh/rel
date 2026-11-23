@@ -487,13 +487,13 @@ def bindIO (inst m α : Lean.Expr) (x : String) (k : Lean.Expr → MetaM Lean.Ex
     table and the value table (`Table.writeKeyed`); a CSV output both forms in one file (`Table.writeCsv`), its symbol
     columns decoded through the program's dictionary `d`. -/
 def ioOut (inst done d : Lean.Expr) (σ : List (String × Obj × Obj × Lean.Expr)) :
-    List (String × Obj × Obj × Schema × Schema × Option Db.CsvCols × String × Option Lean.Name) → List Lean.Expr →
+    List (String × Obj × Obj × Schema × Schema × Option (UInt8 × Db.CsvCols) × String × Option Lean.Name) → List Lean.Expr →
       MetaM Lean.Expr
   | [], ws => ws.foldrM (fun w r => bindIO inst w (mkConst ``Unit) "_" fun _ => pure r) done
   | (x, A, B, k, v, c, p, cl) :: os, ws => do
     let write (t : Lean.Expr) : Lean.Expr := match c with
-      | some h => mkApp6 (mkConst ``Table.writeCsv) (mkApp2 (mkConst ``Option.some [.zero]) (mkConst ``Table.Dict) d)
-          (toExpr k) (toExpr v) (toExpr h) (toExpr p) t
+      | some (s, h) => mkApp7 (mkConst ``Table.writeCsv) (mkApp2 (mkConst ``Option.some [.zero]) (mkConst ``Table.Dict) d)
+          (toExpr k) (toExpr v) (toExpr h) (toExpr p) t (toExpr s)
       | none => mkApp5 (mkConst ``Table.writeOwn) d (toExpr k) (toExpr v) (toExpr p) <| if k.isEmpty
         then mkApp4 (mkConst ``Table.write) (mkApp3 (mkConst ``Tab.n) (oE A) (oE B) t) (toExpr v) (toExpr p)
           (mkApp3 (mkConst ``Tab.val) (oE A) (oE B) t)
@@ -519,8 +519,8 @@ def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr))
     let tT := mkApp2 (mkConst ``Tab) (oE A) (oE B)
     let dT := mkConst ``Table.Dict
     match c with
-    | some h =>
-      bindIO inst (mkApp5 (mkConst ``Table.readCsvDict) d (toExpr k) (toExpr v) (toExpr h) (toExpr p)) (pairT tT dT) x
+    | some (s, h) =>
+      bindIO inst (mkApp6 (mkConst ``Table.readCsvDict) d (toExpr k) (toExpr v) (toExpr h) (toExpr p) (toExpr s)) (pairT tT dT) x
         fun r => ioGo inst sh body reach fin ss ((x, A, B, mkApp3 (mkConst ``Prod.fst [0, 0]) tT dT r) :: σ)
           (mkApp3 (mkConst ``Prod.snd [0, 0]) tT dT r)
     | none =>

@@ -165,4 +165,31 @@ def expected : List (String × String) := [
     unless t == e do throw (IO.userError s!"output `{x}` wrote {d}/{p}:\n{t}expected:\n{e}")
   IO.FS.removeDirAll d
 
+/-! ## TSV (F6b): `csv '\t'` is the CSV reader and writer at the separator `\t`, the separator written once where the
+    program names its file -/
+
+rel_program tsvApp where
+    obj N
+    obj C : char
+    schema Row = {a : [C], b : [C]}
+    input rows : N ⟶ Row from csv '\t' "rows.tsv"
+    output rows to csv '\t' "rows.out.tsv"
+
+-- a `,` inside a TSV field is data, left unquoted; a `\t` inside one is quoted; the file written is the file read
+#eval show IO Unit from do
+  let d := "/data/tmp/rel-test-tsv-app"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  let f := "a\tb\n1,2\t\"x\ty\"\n3\tz\n"
+  IO.FS.writeFile (d ++ "/rows.tsv") f
+  let cwd ← IO.currentDir
+  try
+    IO.Process.setCurrentDir d
+    tsvApp.io
+  finally
+    IO.Process.setCurrentDir cwd
+  let t ← IO.FS.readFile (d ++ "/rows.out.tsv")
+  unless t == f do throw (IO.userError s!"tsvApp wrote {d}/rows.out.tsv:\n{t}expected:\n{f}")
+  IO.FS.removeDirAll d
+
 end Rel.Lang.TestFrameApp
