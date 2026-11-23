@@ -165,12 +165,12 @@ def atoms : List (AscKey × Enc) :=
       else (Float.ofInt ((i % 5 : Nat) - 2 : Int)).toBits)]
 #guard pview (u 3000) (kasc (u 3000) atoms) == grade 3000 atoms
 -- `cells` over a patched payload of 3000 rows (every 211th word an outlier) in a small alphabet, so cells share
--- prefixes: 200 cells across the blocks, empty ones, ones past the payload's end, and 3000 rows naming them, so equal
+-- prefixes: 200 cells across the blocks, empty ones, ones reaching the payload's end, and 3000 rows naming them, so equal
 -- cells tie in input order; an `i64` key before them
 def spans : List (AscKey × Enc) :=
   [(.atom .i64, wcol 3000 fun i => (i % 3).toUInt64),
    (.cells (u 200) (u 3000) (wcol 200 fun k => (k * 13 % 2900).toUInt64)
-      (wcol 200 fun k => if k % 50 = 7 then 3005 else (k * 13 % 2900 + k % 40).toUInt64)
+      (wcol 200 fun k => if k % 50 = 7 then 3000 else (k * 13 % 2900 + k % 40).toUInt64)
       [(.atom .i64, wcol 3000 fun i => if i % 211 = 0 then (2 ^ 62 + i).toUInt64 else (i * 7919 % 3).toUInt64)],
     wcol 3000 fun i => (i * 7919 % 200).toUInt64)]
 #guard pview (u 3000) (kasc (u 3000) spans) == grade 3000 spans
