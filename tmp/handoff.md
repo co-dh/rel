@@ -1,11 +1,19 @@
-nullband3g8 handoff (WIP, GenKBits not yet green)
+nullband3g9 handoff
 
-Done in Rel/Lang/GenKBits.lean: `(by lockstep)` added to every colMap_plain/closed at the listed lines; `kscan_post_ok`/`kscan_ok`
-restated on `(c :: cs).map (n, ·)` with new hyps `hpl : ∀ x ∈ c :: cs, hasNul x = false` and `hst : kscanStream … = false`
-(kscan now runs `noNul` on every non-stream source); `colMap_ok` takes `ha hb` (plain) + trailing `ho : op ≠ .first`;
-`whereCol_ok` takes `hbN : hasNul b = false` (after `sb`); `Tab.ofBits_ok` takes `hoN : hasNul o = false` (after `hos`);
-hf generalised to any op/xs (also proves the null-flag fold of kscan, `hnl`).
+Done: merged 66c394c and e5b16d6 (only tmp/handoff.md conflicted); every proof module of `Rel` builds
+(RepBits, RepTabDiv, RepWF, RepTabComp, RepStruct, GenKBits, TestNullband).
 
-Left: callers of `Tab.ofBits_ok` / `whereCol_ok` in later modules need the new plainness hyps; remaining errors from
-`lake build Rel.Lang.GenKBits` (see /data/tmp/nb3g8b.log style); modules after GenKBits not reached; then the temporary
-`#eval`s of the failing guards (Kern9 87/89 ... TestFrameApp 101) for the report.
+Left (not done): 11 test modules still fail at their `#guard ...failures == []` / `.ok`:
+TestFrameSchema, TestGenericN(108,109), Test/Kern9(87,89), TestFrameCols(68,84), TestFrameScale(53), TestPivotDisk(137),
+TestFrameApp(101,149), TestFrameQuery(65,82), TestFrameStat(122,158), TestFrameUnbounded(189,203), TestFrameBench(58).
+
+Diagnosed for Kern9 (copy to Rel/Lang/Test/K9tmp.lean, replace `#guard kernT9.ok` by `#eval kernT9.failures`, run
+`lake -d <wt> lean Rel/Lang/Test/K9tmp.lean`): every failure of `sub`, `leaf`, `ch`, `dbl` reads
+  inr°: on a 1+t band column, whose values the law cannot yet read (Vals.WF carries no Enc.Valid); run the other
+  operand first: a leaf on demand ran with its domain unknown
+raised by `inrConv`, `.opt ..` arm, Rel/Run/Struct.lean:164 ("PLAN nullband3h"): a deliberate throw from line 3g8, not
+a concat-null error. TestFrameApp:149 prints the same text. The other 9 modules were not inspected (do the same eval
+with their failing program: frameSchemaT, paramNT, paramPT, frameDescribe, tradeApp, frameStatT, frameStatFloatT,
+query3, query4, frameUnboundedT, frameDescribeU, bench2, frameCols, frameScaleN3, pivotT).
+
+Not done: step 3 (TestGenericN 118 / TestPivotDisk 143 #guard_msgs at base), final build RelCore RelKernel RelRun.
