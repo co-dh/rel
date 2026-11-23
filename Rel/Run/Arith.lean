@@ -49,8 +49,10 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
     let w ← colArr (if k == Ew.idiv then .div else .mod) n a (← colMap .or n b b0)
     pure (w, ← colMap .and n (← colMap .and n both (← colMap .not n b0 b0)) (← ne w.enc))
   else if k == Ew.greater || k == Ew.lesser then
-    let w ← colArr (if k == Ew.greater then .max else .min) n a b
-    pure (w, ← ne w.enc)
+    if hN : hasNul a = false ∧ hasNul b = false then
+      let w ← colArr (if k == Ew.greater then .max else .min) n a b (hF := Or.inr (by simp [hN.1, hN.2]))
+      pure (w, ← ne w.enc)
+    else throw "arith: max/min of a column holding an in-band null"
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
 /-- The `n` words of `a` read at `t` through `widen t`, as a column: `a` itself where the chain is empty. -/
@@ -66,7 +68,9 @@ def nanFlag (n : USize) (w : Enc) : Except String Enc := colMap .first n w w .u1
     `Op.fto t`. -/
 def fstepArr (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n) :=
   match fverbOne k with
-  | some (o, c) => colArr o n a b t t (widen t) (c ++ [(.fto t, 0)])
+  | some (o, c) =>
+    if hF : o.nulFold = none then colArr o n a b t t (widen t) (c ++ [(.fto t, 0)]) (hF := Or.inl hF)
+    else .error "fstep: the float op orders a null"
   | none => do
     let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b)
     colArr (.fto t) n r r t
@@ -80,8 +84,10 @@ def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except Str
 /-- **The float `Op` `o` from the float atom `t` to the atom `u`** on the `n` operand rows `a`, `b` (`floatDen`): one
     pass, each word through `widen t`, `o` (a unary `Op` reads `b` alone) and `Op.ofF64 u`; then `nanFlag`. -/
 def fmapCols (t u : QAtomicType) (o : Op) (n : USize) (a b : Enc) : Except String (Arr u n × Enc) := do
-  let w ← colArr o n a b u t (widen t) [(.ofF64 u, 0)]
-  pure (w, ← nanFlag n w.enc)
+  if hF : o.nulFold = none then
+    let w ← colArr o n a b u t (widen t) [(.ofF64 u, 0)] (hF := Or.inl hF)
+    pure (w, ← nanFlag n w.enc)
+  else throw "fmap: the float op orders a null"
 
 /-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
     (`stepAt` has no row there). -/

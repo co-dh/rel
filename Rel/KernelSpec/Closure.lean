@@ -241,6 +241,9 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
 and for a chain with a step: the autoParam of every caller that maps or scans in lock-step. -/
 macro "lockstep" : tactic => `(tactic| first | decide | (simp [kscanStream]; done) | (simp only [kscanStream]; split <;> (try (rename_i h; split at h)) <;> simp_all))
 
+/-- Discharges `op.nulFold = none ∨ …` for an `op` that is a concrete constructor other than `min`/`max`: the autoParam `hF` of every caller that scans in lock-step (`kscan_lock_closed`). -/
+macro "nulfree" : tactic => `(tactic| first | exact Or.inl rfl | (left; split <;> rfl))
+
 /-- Only `first` reads its sources as a stream, so any other op closes with no hypothesis on its sources. -/
 theorem kscanStream_ne {op : Op} (h : op ≠ .first) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) :
     kscanStream op es pre post = false := by
