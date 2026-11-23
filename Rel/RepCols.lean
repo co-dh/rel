@@ -64,10 +64,9 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType}
 /-- **A map of one column through a post chain** at any answer type `t`: word `i` of the answer is `chain post` of
 word `i` of `a`, a boolean answer's cut to its bit (`colMap_chain` at `.first` and no `pre`). -/
 theorem colMap_first_chain {t s : QAtomicType} {n : USize} {a o : Enc} {post : List (Op × UInt64)}
-    (h : colMap .first n a a t s [] post = .ok o) (hs : kscanStream .first [(n, a), (n, a)] [] post = false := by lockstep) :
-    ∀ i < n.toNat, ∃ w,
+    (h : colMap .first n a a t s [] post = .ok o) (i : Nat) (hi : i < n.toNat)
+    (hs : kscanStream .first [(n, a), (n, a)] [] post = false := by lockstep) : ∃ w,
       chain post ((raw s n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
-  intro i hi
   obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain h hs).2.2.2 i hi
   cases hx; cases hv
   exact ⟨w, hw, ho⟩
@@ -79,7 +78,7 @@ theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
       ∀ i < n.toNat, op.eval c ((raw .i64 n a)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
   have hs : kscanStream .first [(n, a), (n, a)] [] [(op, c)] = false := by simp [kscanStream]
   refine ⟨(colMap_chain h hs).2.2.1, fun i hi => ?_⟩
-  obtain ⟨w, hw, ho⟩ := colMap_first_chain h hs i hi
+  obtain ⟨w, hw, ho⟩ := colMap_first_chain h i hi hs
   simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
   simpa [chain] using hw
 

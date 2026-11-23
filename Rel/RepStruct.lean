@@ -419,7 +419,7 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
   obtain ⟨rfl, rfl⟩ := h
   have hk : k.1 < n.toNat := k.2
   refine ⟨?_, ?_⟩
-  · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (colArr_ok ht)).1 k
+  · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (by lockstep) (colArr_ok ht)).1 k
     obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok ht) k.1 hk
     rw [ha] at hv
     simp [chain, Op.eval, bind, Except.bind, pure, Except.pure] at ev
