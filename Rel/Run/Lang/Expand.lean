@@ -197,6 +197,8 @@ inductive Io
   /-- A run-time definition: the body of its constant `c` run with its variables bound to the tables of the run-time
       names `deps` (`Expand.ioGo`). -/
   | defn (n : String) (c : Lean.Name) (deps : List String)
+  /-- `dictionary n : A ⟶ B`: the program's dictionary as it is after the statements before it (`Expand.ioGo`). -/
+  | dict (n : String) (A B : Obj)
   /-- `output n to path`: the table of `n` written as `key ⟶ val`, to the table directory `path`, or to the CSV file
       `path` with the separator and header `csv`; `n` a run-time name or the closed definition whose constant is `closed`. -/
   | output (n : String) (A B : Obj) (key val : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String)
@@ -206,6 +208,7 @@ inductive Io
 def Io.rename (f : String → String) : Io → Io
   | .input n A B k v c p => .input (f n) A B k v c p
   | .defn n c ds => .defn (f n) c (ds.map f)
+  | .dict n A B => .dict (f n) A B
   | .output n A B k v c p cl => .output (f n) A B k v c p cl
 
 /-- The run-time names in scope (IO design A.2), in statement order: each input, and each definition whose body
@@ -684,6 +687,13 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (A, B, K, S, hdr) ← ioCols env p s!"input `{n}` from {if csv.isSome then "csv " else ""}\"{path}\"" ty csv.isSome
       rt := rt ++ [(n, ⟨n, some ty⟩, none)]
       io := io ++ [.input n A B K S (csv.map (·, hdr)) path]
+    | .dict p n ty =>
+      let (A, B, _, _, _) ← ioCols env p s!"dictionary `{n}`" ty false
+      unless A == .atom .sym && B == .arr (.atom .char) do
+        throw ⟨p, s!"dictionary `{n}`: its type {OExp.arrow ty} is the dictionary's `sym ⟶ text`; write an object of the \
+          atom sym `obj S : sym` and a text `[C]`"⟩
+      rt := rt ++ [(n, ⟨n, some ty⟩, none)]
+      io := io ++ [.dict n A B]
     | .output p n csv path =>
       let what := s!"output `{n}` to {if csv.isSome then "csv " else ""}\"{path}\""
       let n := rtName env rt n

@@ -528,6 +528,9 @@ def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr))
         then mkApp2 (mkConst ``Table.read) (toExpr v) (toExpr p)
         else mkApp3 (mkConst ``Table.readKeyed) (toExpr k) (toExpr v) (toExpr p)
       bindIO inst m tT x fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ) d
+  -- the dictionary the statements before it grew, as the relation `sym ⟶ text`; `d` itself is unchanged
+  | .dict x A B :: ss, σ, d => if !reach.contains x then ioGo inst sh body reach fin ss σ d else
+    ioGo inst sh body reach fin ss ((x, A, B, mkApp (mkConst ``Table.dictRel) d) :: σ) d
   | .defn x c ds :: ss, σ, d => if !reach.contains x then ioGo inst sh body reach fin ss σ d else do
     let some (o, e) := body c
       | throwError "rel_program expansion: internal: `{x}` reaches an output and its constant `{c}` has no body here"

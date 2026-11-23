@@ -1404,8 +1404,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`writeOwn`）。两库相遇：展开时报错 “the symbol columns of `a` are ids in the library L₁ and those of `b` in the
   library L₂, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)”——按程序判，
   不按 `∩`/join 的数据流判，因为一个程序只持一个字典。`Table.unenum (I : A ⟶ sym) = I ≫ D`（`Tab.comp`，无新
-  kernel），`decode` 是它在 frame 上的特例。未做：语言里的 `unenum` 行——字典 `D` 还不是 `Tm` 的项，须先给 `Tm`
-  一个字典项（请求）。测试：`TestTable`（两表同库共享 id、追加违例、`progLib` 报错、`unenum` 往返），`TestIO`
+  kernel），`decode` 是它在 frame 上的特例。已做（分支 `unenum-row`）：语言里的字典项不是新的 `Tm` 构造子——
+  `input` 本来就是程序层的 `var`（architecture §1），字典是一个运行时名字：语句 `dictionary D : S ⟶ [C]`（`Decl.dict`，
+  `Io.dict`），`n.io` 把它绑到此前各输入长成的 `d`（`Table.dictRel`：第 `i` 行是 id `i` 的文本，key 即 id 列 `0 … n-1` 作 `sym` 列），
+  所以 `Tm`、`Den`、`Compile`、`Rows`、`Elab` 都没有改动；prelude 定义 `unenum(I, D) ≜ I D`（点对点）。测试：`TestTable`（两表同库共享 id、追加违例、`progLib` 报错、`unenum` 往返），`TestIO`
   （`libAIO`/`libBIO`/`libMeetIO` 端到端、`twoLibT` 报错）。
   `symdict3` 的 gate：full build 399 jobs 0 error 0 `sorryAx`，GenSound 1594/1594；`make tags`（`Gates.lean` 改用
   `.str _ s`，`Name.lastComponentAsString` 在 v4.28 不存在）、`decode-allow`、`panic-allow`、`bang-allow`、

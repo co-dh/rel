@@ -118,6 +118,10 @@ def stmt (s : Syntax) : C Decl := do
     let n ← wordOf s[1]
     Parse.fresh p n (← get).taken
     pure (.input p n (← typeOf s[2]) (← csvSep s[4]) (← path s[5]))
+  | ``sDict => do
+    let n ← wordOf s[1]
+    Parse.fresh p n (← get).taken
+    pure (.dict p n (← typeOf s[2]))
   | ``sOutput => do pure (.output p (← wordOf s[1]) (← csvSep s[3]) (← path s[4]))
   | ``sDefn =>
     -- `_on_` is one Lean identifier: its text read as a head, `_n_` the infix `n`

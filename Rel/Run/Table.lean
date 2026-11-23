@@ -214,6 +214,11 @@ def symIds {A : Obj} (I : Tab A (.atom .sym)) : Tab A .long :=
     have h := I.val.wf; generalize I.val.enc = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])
     I.val.plain⟩
 
+/-- The dictionary `D : ℕ ⟶ [C]` as the relation `sym ⟶ [C]`: row `i` is the text of id `i` (`Dict`), so the ids `0 … n-1`
+    are the key as a `sym` column (a frame's `pos` key is no `sym` payload). The one term of the language for the
+    program's dictionary (`dictionary D : S ⟶ [C]`), so `unenum(I) = I ≫ D` composes language terms. -/
+def dictRel (D : Dict) : Tab (.atom .sym) (.arr (.atom .char)) := ⟨D.n, Arr.ofFn .sym D.n (·.val.toUInt64), D.val⟩
+
 /-- q's unenumerate: `unenum(I) = I ≫ D`, the symbol relation `I : A ⟶ sym` with each id replaced by its text in its
     library's dictionary `D`, a composition and no kernel of its own. A symbol column meets only columns of its own
     library (`progLib`); its texts meet any text and intern into any library. An id past `D` has no text, so the

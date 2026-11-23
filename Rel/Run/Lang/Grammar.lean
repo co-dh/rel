@@ -226,7 +226,10 @@ syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? : relStmt
 -- IO design A.1: no keyword a table directory, `csv` one CSV file, `csv '\t'` one whose fields a `\t` separates (TSV;
 -- any one-byte separator, `,` when none is written); `&`, so `input output csv` stay names
 syntax (name := sInput) &"input" relWord relType &" from " (&"csv" (char)?)? str : relStmt
-syntax (name := sOutput) &"output" relWord &" to " (&"csv" (char)?)? str : relStmt
+-- `dictionary D : S ⟶ [C]`: the program's one symbol dictionary (§0.2) as the relation `D : sym ⟶ text`, a run-time
+-- name as an `input` is, bound to the dictionary the inputs before it grew; `&`, so `dictionary` stays a name
+syntax (name := sDict) &"dictionary" relWord relType : relStmt
+syntax (name := sOutput)&"output" relWord &" to " (&"csv" (char)?)? str : relStmt
 syntax (name := sDefn) relWord ("(" relParam,+ ")")? (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? : relStmt
 syntax (name := sInfix) "_" relWord "_" "(" relParam,+ ")" (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? :
   relStmt
