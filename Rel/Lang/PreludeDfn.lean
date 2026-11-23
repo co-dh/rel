@@ -178,8 +178,7 @@ theorem Tm.ascDef_den (ρ : Val) {B : Obj} (Pa : Tm B B) (u₀ u : Tm .long .lon
     by `rfl` (i64 is not in `varAtoms`, so `instObj` leaves it; the universe is the variable, `.var 1` / `.var 0`,
     taken as `u₀ = u` of `Tm.lengthDef_row` / `Tm.sumDef_row`, with `P 0` as the one extra hypothesis, since the
     body's seed `ran V` carries no universe). What does not close: `V`'s column is `Gen.atom .i64 1 <hex> ""`, to be
-    shown `zeroCol .i64 rfl` (then `zeroTm_den`, `foldDen_start`). `Enc.foR (unhex <hex>) (unhex "") = wordsFoR #[0]`
-    holds by `with_unfolding_all rfl`; the step left is `Ext.Enc.wf? .i64 1 (wordsFoR #[0]) = some _`, whose
-    condition has an unbounded `∃ j` (no `Decidable`), so `decide` does not evaluate it. -/
+    shown `zeroCol .i64 rfl`: `Gen.atom_eq` (DfnLaw) reduces that to `Enc.foR (unhex <hex>) (unhex "") = wordsFoR #[0]`,
+    which holds by `with_unfolding_all rfl` in a non-module file only (`String.toUTF8`, `Std.Range.forIn'` unexposed). -/
 
 end Rel.Lang

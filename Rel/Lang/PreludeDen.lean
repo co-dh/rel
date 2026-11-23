@@ -21,9 +21,9 @@ meta import Rel.Run.Lang.Syntax
 namespace Rel.Lang
 
 /-- The rows with a `prelude` definition and no theorem `Tm.<sym>Def_den` yet. -/
--- tails: its body seeds `ran(uni ≫ nil ≫ τ)` and reads the head by `call head` over a `Tm.val` table literal
--- (`Gen.relV`); no lemma gives `Tm.den` of a generated `val`/`uni` literal, so body = `Tm.tailsDef` does not close.
--- length, sum: seed column `Gen.atom` ≠ `zeroCol` unshown (`Enc.wf?` returns some under `Enc.WF` is missing; PreludeDfn, end)
+-- tails, length, sum: each body reads the literal `0` as `Gen.atom .i64 1 <hex> ""`. `Gen.atom_eq` (DfnLaw) turns it
+-- into `wordsFoR #[0]` given `Enc.foR (unhex <hex>) (unhex "") = wordsFoR #[0]`, which a `module` cannot evaluate:
+-- `String.toUTF8` of a literal and `Std.Range.forIn'` are not exposed (a non-module file closes it by `rfl`).
 meta def unproved : List String := ["tails", "length", "sum"]
 
 /-- The name of the theorem that row `r`'s definition means the row. -/
