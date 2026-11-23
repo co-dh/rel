@@ -443,4 +443,73 @@ theorem Tm.den_keyedRow (ρ : Val) {r : Prim} (hr : r ∈ prims) (hk : r.keyLift
   rw [← e]
   simp only [Tm.den, Tm.argDen, Prim.den_flatRow]; rfl
 
+/-- `at(0) ≜ ⟨𝟙, ⊤{0}⟩ at : [B] ⟶ B`, the head of an array; the index `0` is the one-word column `zeroCol`, whose row
+    `zeroCol_row` states (a `col [0]` literal has no row lemma). -/
+def Tm.at0 {B : Obj} : Tm (.arr B) B :=
+  .comp (.pair .id (.top (.uni (A := .atom .i64) (zeroCol .i64 rfl)))) (.prim indexRow)
+
+/-- **`lt` on any object `B`, a definition (B5b3)**: `dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)`, the coreflexive on
+    the pairs `(x, y)` whose sorted two-element array `Λ(π₁ ∪ π₂)` starts with `x`, minus the pairs `x = y`
+    (`Tm.lt_den`). Its fused form is the row `lt` (`Tab.cmpPairs`) at an atom (`Tm.lt_row_den`). -/
+def Tm.ltDef (B : Obj) : Tm (.prod B B) (.prod B B) :=
+  .diff (.dom (.meet (.comp (.lam (.join .outl .outr)) Tm.at0) .outl)) (.dom (.meet .outl .outr))
+
+theorem Prim.den_indexRow {B : Obj} : Prim.den indexRow (.prod (.arr B) .long) B [] = atOn B .long := by
+  have ho : indexRow.objs (.prod (.arr B) .long) B [] = some [B, .long] := by
+    simp [Prim.objs, Option.orElse, indexRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == indexRow.sym) =
+      some ⟨⟨"at", fun σ => (.prod (.arr (σ₁ σ)) (σ₂ σ), σ₁ σ)⟩, fun σ _ => atOn (σ₁ σ) (σ₂ σ)⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
+    (Tm.at0 (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by
+  simp only [Tm.at0, Tm.den, Tm.argDen, Prim.den_indexRow, atOn]
+  simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.top, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+  have h0 : ∀ i, Vals.row (A := .atom .i64) (zeroCol .i64 rfl) i = (0 : Int64) := fun i => by rw [zeroCol_row]; rfl
+  simp only [h0, exists_eq_left, exists_const, and_true, true_and, exists_and_left]
+  constructor
+  · rintro ⟨⟨ys, k⟩, ⟨rfl, -, hk⟩, -, h⟩
+    obtain ⟨-, rfl⟩ := hk
+    exact h
+  · intro h
+    exact ⟨⟨xs, 0⟩, ⟨rfl, ⟨0, by simp⟩, rfl⟩, (by decide : (0 : Int) ≤ Int64.toInt (0 : Int64)), h⟩
+
+/-- `Λ(π₁ ∪ π₂) at(0)` reads `x` at the pair `(x, y)` of two different elements exactly where `x` is the smaller:
+    the one list ascending by `Obj.lt` holding both has the smaller first. -/
+theorem Tm.head_lt {B : Obj} {x y : B.El} (hxy : x ≠ y) :
+    (∃ ys : List B.El, (ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ b = x ∨ b = y) ∧ ∃ h : 0 < ys.length, x = ys[0]'h) ↔
+      B.lt x y := by
+  constructor
+  · rintro ⟨ys, ⟨hp, hm⟩, h0, hx⟩
+    obtain ⟨j, hj, hy⟩ := List.mem_iff_getElem.1 ((hm y).2 (Or.inr rfl))
+    have hj0 : j ≠ 0 := by rintro rfl; exact hxy (hx.trans hy)
+    rw [hx, ← hy]
+    exact List.pairwise_iff_getElem.1 hp 0 j h0 hj (Nat.pos_of_ne_zero hj0)
+  · intro hl
+    exact ⟨[x, y], ⟨List.pairwise_pair.2 hl, by simp⟩, by simp, rfl⟩
+
+/-- `lt` on any object: the coreflexive on the pairs `(x, y)` with `x` before `y` in `Obj.lt`. -/
+theorem Tm.lt_den (ρ : Val) (B : Obj) :
+    (Tm.ltDef B).den ρ = fun p q => q = p ∧ B.lt p.1 p.2 := by
+  funext p q; apply propext
+  simp only [Tm.ltDef, Tm.den, Tm.dom_den, diffDen, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id,
+    Core.Rel.graph, Core.Rel.union, Tm.at0_den, lamDen]
+  obtain ⟨x, y⟩ := p
+  obtain ⟨x', y'⟩ := q
+  simp only [Prod.mk.injEq]
+  constructor
+  · rintro ⟨⟨⟨rfl, rfl⟩, b, ⟨hA, rfl⟩, -⟩, hne⟩
+    exact ⟨⟨rfl, rfl⟩, (Tm.head_lt fun h => hne ⟨⟨rfl, rfl⟩, b, ⟨rfl, h⟩, rfl, h⟩).1 hA⟩
+  · rintro ⟨⟨rfl, rfl⟩, hl⟩
+    have hne : x' ≠ y' := by rintro rfl; exact B.lt_irrefl _ hl
+    have h := (Tm.head_lt hne).2 hl
+    exact ⟨⟨⟨rfl, rfl⟩, x', ⟨h, rfl⟩, h, rfl⟩, fun h => by obtain ⟨-, b, ⟨hb1, hb2⟩, -⟩ := h; exact hne (hb1.symm.trans hb2)⟩
+
+/-- **The row `lt` is the definition `Tm.ltDef`** at an atom `t` where `ltAt t` is `Obj.lt` (`ordDen` is the row's
+    meaning, `Tab.cmpPairs` its code, `Tab.cmpPairs_holds`). -/
+theorem Tm.lt_row_den (ρ : Val) (t : QAtomicType) (h : ∀ a b, ltAt t a b ↔ (Obj.atom t).lt a b) :
+    ordDen true (.atom t) = (Tm.ltDef (.atom t)).den ρ := by
+  rw [Tm.lt_den]; funext p q; simp only [ordDen, if_true, h]
+
 end Rel.Lang
