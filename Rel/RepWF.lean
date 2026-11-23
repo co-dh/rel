@@ -63,18 +63,6 @@ theorem ldivBits_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t
 
 
 
-/-- **`r \ s` keeps `Tab.WF`**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the vacuous part
-(`cross_wf` of `ran`s). -/
-theorem ldivOf_wf {r : Tab A B} {s : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
-    (h : ldivOf r s UB UC = .ok t) (hr : r.WF) (hs : s.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
-  simp only [Tab.ldivOf, bind, Except.bind, pure, Except.pure] at h
-  split at h; · cases h
-  rename_i Q hQ
-  have wQ := compOne_wf hQ ⟨hr.2, hr.1⟩ ⟨hs.1, hs.1, hs.2⟩
-  okSplit
-  exact union_wf h ⟨Vals.gather_wf ‹_› wQ.1, Vals.gather_wf ‹_› wQ.2.2⟩
-    (cross_wf ‹_› (diff_wf ‹_› (ran_wf ‹_› hB) (ran_wf ‹_› hr)).1 (ran_wf ‹_› hC).1)
-
 theorem ldiv_wf {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
     (h : ldiv R S UB UC = .ok t) (hR : R.WF) (hS : S.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
   simp only [Tab.ldiv, bind, Except.bind] at h
@@ -313,10 +301,8 @@ theorem nil_wf {n : USize} {D : Vals A n} {t : Tab A (.arr B)} (h : Tab.nil D = 
 /-- **`lamOf` keeps `Tab.WF`**: `nil` at an `r` of no rows, else `lamOf_canon`'s cells inside the `N` sorted rows. -/
 theorem lamOf_wf {n : USize} {D : Vals A n} {r : Tab A B} {t : Tab A (.arr B)} (h : Tab.lamOf D r = .ok t)
     (hD : Vals.WF D) (hr : r.WF) : t.WF := by
-  by_cases h0 : r.n.toNat = 0
-  · simp only [Tab.lamOf, if_pos h0] at h; exact nil_wf h hD
-  · obtain ⟨U, hU, wU, -⟩ := lamOf_canon h hD hr
-    exact canon_wf hU (wU h0 hD hr)
+  obtain ⟨U, hU, wU, -⟩ := lamOf_canon h hD hr
+  exact canon_wf hU wU
 
 theorem lam_wf {n : USize} {D : Vals A n} {R : Tab A B} {t : Tab A (.arr B)} (h : Tab.lam D R = .ok t)
     (hD : Vals.WF D) (hR : R.WF) : t.WF := by
@@ -335,81 +321,6 @@ end Tab
 
 A new cell is laid out by `Vals.cells` over the EXPAND of its own widths (`Vals.cells_expand_wf`, each width bounded
 by the payload sizes), or is a slice `[a, b)` of an input cell `[SN, EN)` with `SN ≤ a ≤ b ≤ EN ≤ m` (`cell_wf_nat`). -/
-
-/-- **`Vals.cat` keeps `Vals.WF`**: widths `w₁ + w₂ ≤ m₁ + m₂` over the joined payloads gathered. -/
-theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.cat X Y = .ok Z) (hX : Vals.WF X)
-    (hY : Vals.WF Y) : Vals.WF Z := by
-  obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
-  obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
-  simp only [Vals.cat] at h
-  split at h; · cases h
-  rename_i hb
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, off⟩, hpl, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨F, hF, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w₁, hw₁, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w₂, hw₂, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨ga, hga, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨sm, hsm, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨dd, hdd, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨gd, hgd, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨b, hbb, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨gw, hgw, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨ab, hab, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨cab, hcab, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨g, hg, h⟩ := h
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hpl
-  have hm₁ : m₁.toNat < 2 ^ 63 := by omega
-  have hm₂ : m₂.toNat < 2 ^ 63 := by omega
-  obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hX.1 hm₁ f₁
-  obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hY.1 hm₂ f₂
-  refine Vals.cells_expand_wf hex h (m₁.toNat + m₂.toNat) (fun i hi => ?_) (by omega) (by omega)
-    (Vals.gather_wf hg (Vals.concat_wf hNn hoff hF hX.2 hY.2))
-  obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
-  obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
-  have es := (colMap_raw hw).2.2.2 i hi
-  rw [x₁, x₂] at es; simp only [Op.eval, Except.ok.injEq] at es
-  rw [← es, ← UInt64.ofNat_add, toNat_toUInt64 (by omega)]; omega
-
-/-- **`Vals.zip` keeps `Vals.WF`**: widths `min w₁ w₂`, each one of `w₁ ≤ m₁`, `w₂ ≤ m₂`, over both payloads
-gathered. -/
-theorem Vals.zip_wf {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.arr B) n}
-    {Z : Vals (.arr (.prod A B)) n} (h : Vals.zip X Y = .ok Z) (hX : Vals.WF X) (hY : Vals.WF Y) : Vals.WF Z := by
-  obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
-  obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
-  simp only [Vals.zip] at h
-  split at h; · cases h
-  rename_i hb
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w₁, hw₁, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w₂, hw₂, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨g₁, hg₁, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨a₁, ha₁, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨g₂, hg₂, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨a₂, ha₂, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨y, hy, h⟩ := h
-  have hm₁ : m₁.toNat < 2 ^ 63 := by omega
-  have hm₂ : m₂.toNat < 2 ^ 63 := by omega
-  obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hX.1 hm₁ f₁
-  obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hY.1 hm₂ f₂
-  refine Vals.cells_expand_wf hex h (m₁.toNat + m₂.toNat) (fun i hi => ?_) (by omega) (by omega)
-    ⟨Vals.gather_wf hx hX.2, Vals.gather_wf hy hY.2⟩
-  obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
-  obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
-  have es := (colMap_raw hw).2.2.2 i hi
-  rw [x₁, x₂] at es; simp only [Op.eval, Except.ok.injEq] at es
-  rw [← es]; split <;> rw [toNat_toUInt64 (by omega)] <;> omega
-
 namespace Tab
 
 theorem cat_wf {K : Obj} {P : Tab K (.prod (.arr B) (.arr B))} {t : Tab K (.arr B)} (h : Tab.cat P = .ok t)
@@ -440,69 +351,6 @@ theorem zip_wf {K : Obj} {P : Tab K (.prod (.arr A) (.arr B))} {t : Tab K (.arr 
   simp only [Tab.zip, bind, Except.bind] at h
   split at h; · cases h
   exact canon_wf h ⟨hP.1, Vals.zip_wf ‹_› hP.2.1 hP.2.2⟩
-
-/-- **`uncat` keeps `Tab.WF`**: split `d ≤ EN - SN` of cell `[SN, EN)` (`expand_spec` of the counts `EN - SN + 1`) is
-`[SN, SN + d)` and `[SN + d, EN)`, inside `m` (`cellSpan_start_le` where the cell is empty). -/
-theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.arr B) (.arr B))}
-    (h : Tab.uncat X = .ok t) (hX : Vals.WF X) : t.WF := by
-  obtain ⟨m, lo, up, f⟩ := X
-  dsimp only [Tab.uncat] at h
-  split at h; · cases h
-  rename_i hb
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Tn, G, u⟩, hex, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨sG, hsG, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨mid, hmid, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨eG, heG, h⟩ := h
-  have hm63 : m.toNat < 2 ^ 63 := by omega
-  have hn63 : n.toNat < 2 ^ 63 := by omega
-  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
-  obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i + 1 := ⟨_, fun _ => rfl⟩
-  have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    -- one `kscan`: `hi - lo`, then `+ 1` (`colMap_chain`)
-    obtain ⟨-, -, -, hr⟩ := colMap_chain hw
-    obtain ⟨x', y', v, W, hx, hy, e1, e2, ho⟩ := hr i hi
-    cases hx; cases hy
-    rw [(hse' i hi).2, (hse' i hi).1] at e1; simp only [Op.eval, Except.ok.injEq] at e1
-    simp only [chain, List.foldlM, Op.eval, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at e2
-    rw [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1), ← e2, ← e1, hwN, ← toUInt64_sub (hb1 i).1,
-      UInt64.add_comm]
-    exact (UInt64.ofNat_add _ _).symm
-  have hsn : ((List.range n.toNat).map wN).sum < 2 ^ 63 := by
-    have := sum_range_le_mul (wN := wN) (k := n.toNat) (c := m.toNat + 1) fun i _ => by have := hb1 i; rw [hwN]; omega
-    omega
-  obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
-  -- row `t` is split `d` of its cell `g`: `sG = SN g`, `mid = SN g + d`, `eG = EN g`, `SN g + d ≤ EN g ≤ m`
-  have hJ : ∀ t : Fin Tn.toNat, ∃ a d b : Nat, (raw .i64 Tn sG.enc)[t.1]?.getD 0 = a.toUInt64 ∧
-      (raw .i64 Tn mid.enc)[t.1]?.getD 0 = (a + d).toUInt64 ∧ (raw .i64 Tn eG.enc)[t.1]?.getD 0 = b.toUInt64 ∧
-      a + d ≤ b ∧ b ≤ m.toNat := fun t => by
-    obtain ⟨g, hg, h1, h2⟩ := exists_group wN n.toNat t (by rw [← hTn]; exact t.2)
-    obtain ⟨hG, hu⟩ := hrun g hg t h1 h2
-    have hGg : ((raw .i64 Tn G)[t.1]?.getD 0).toNat = g := by rw [hG, toNat_toUInt64 (by omega)]
-    obtain ⟨i2, hi2, hs2⟩ := Arr.gather_raw lo hsG t
-    obtain ⟨i3, hi3, he3⟩ := Arr.gather_raw up heG t
-    obtain rfl : i2 = ⟨g, hg⟩ := Fin.ext (hi2.symm.trans hGg)
-    obtain rfl : i3 = ⟨g, hg⟩ := Fin.ext (hi3.symm.trans hGg)
-    rw [(hse' g hg).1] at hs2
-    rw [(hse' g hg).2] at he3
-    have hd : t.1 - ((List.range g).map wN).sum ≤ EN g - SN g := by rw [hwN] at h2; omega
-    have hmw : (raw .i64 Tn mid.enc)[t.1]?.getD 0 = (SN g + (t.1 - ((List.range g).map wN).sum)).toUInt64 := by
-      have es := (colMap_raw (colArr_ok hmid)).2.2.2 _ t.2
-      rw [hs2, hu] at es; simp only [Op.eval, Except.ok.injEq] at es
-      rw [← es, ← UInt64.ofNat_add]
-    have hSm := cellSpan_start_le hX.1 ⟨g, hg⟩
-    rw [(hse' g hg).1, toNat_toUInt64 (by have := hb1 g; omega)] at hSm
-    have hd' : SN g + (t.1 - ((List.range g).map wN).sum) ≤ EN g := by have := hb1 g; omega
-    refine ⟨SN g, _, EN g, hs2, hmw, he3, hd', ?_⟩
-    have := hb1 g; omega
-  refine canon_wf h ⟨Vals.gather_wf hK hX, ⟨fun t => ?_, hX.2⟩, ⟨fun t => ?_, hX.2⟩⟩
-  · obtain ⟨a, d, b, ha, hd, -, hab, hbm⟩ := hJ t
-    exact cell_wf_nat ha hd (by omega) (by omega) hm63
-  · obtain ⟨a, d, b, -, hd, hb', hab, hbm⟩ := hJ t
-    exact cell_wf_nat hd hb' hab hbm hm63
 
 theorem prefix_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr B)} (h : Tab.«prefix» X = .ok t)
     (hX : Vals.WF X) : t.WF := by

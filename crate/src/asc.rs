@@ -104,13 +104,13 @@ impl<'a> Ix<'a> {
 }
 
 /// A `cells` key column (`Kernel.AscKey.cells`): row `i` names the cell `ix[i]`, that cell the payload rows
-/// `lo .. hi` clamped to `0 .. c`, each payload row keyed by `els` (`Kernel.cellFns`).
+/// `lo .. hi`, inside `0 .. c` (`Vals.WF`, checked once by `readVals`), each payload row keyed by `els` (`Kernel.cellFns`).
 pub struct Cells<'a> { pub ix: Ix<'a>, pub c: usize, pub lo: Ix<'a>, pub hi: Ix<'a>, pub els: Vec<Col<'a>> }
 impl Cells<'_> {
-    /// Cell `q`'s payload rows, clamped to `0 .. c`.
+    /// Cell `q`'s payload rows (`Kernel.cellStart`, `cellLen`: a word below `0` reads as `0`, as `Int.toNat` does).
     fn span(&self, q: usize) -> Range<usize> {
-        let s = self.lo.get(q).clamp(0, self.c as i64) as usize;
-        s..(self.hi.get(q).clamp(0, self.c as i64) as usize).max(s)
+        let s = self.lo.get(q).max(0) as usize;
+        s..(self.hi.get(q).max(0) as usize).max(s)
     }
     /// The working key of rows `0 .. m`: the rank of each row's cell in `cellFns`' `lexLe` order (the first element
     /// that differs decides, else a proper prefix first). The payload rows are ranked once (`rank`), each cell named by

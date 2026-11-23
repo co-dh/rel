@@ -517,20 +517,6 @@ theorem Vals.catSide_row {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m}
     rw [hU] at e
     congr 1; apply Fin.ext; simp only [clampFin]; simp at e; omega
 
-/-- **A side whose every cell is a slice of its payload** (PLAN 8.5): at an `arr` side each row's `[lo, hi)` has
-`0 ≤ lo ≤ hi ≤ m`, and the payload is `WF`; a `sum` side asks it of both summands. `readVals` checks it (`cellBad`)
-and each producer keeps it, so a reader may take `[lo, hi)` as it is, where `Vals.row` clamps it. -/
-def Vals.WF : {A : Obj} → {n : USize} → Vals A n → Prop
-  | .atom _, _, _ => True
-  | .one, _, _ => True
-  | .prod _ _, _, x => Vals.WF x.1 ∧ Vals.WF x.2
-  | .arr _, _, ⟨m, lo, hi, f⟩ => (∀ i, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧
-      (hi.get i).toInt ≤ (m.toNat : Int)) ∧ Vals.WF f
-  | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.WF x ∧ Vals.WF y
-
-/-- Both sides of `R` `Vals.WF`. -/
-def Tab.WF {k v : Obj} (R : Tab k v) : Prop := Vals.WF R.key ∧ Vals.WF R.val
-
 /-- **`readVals` establishes `Vals.WF`**: its `arr` case refuses unless `cellBad` finds no cell, which is the cell
 clause; the payload is read by the same function. -/
 theorem cellBad_none {n m : USize} {lo hi : Arr .i64 n} : cellBad m lo hi = none ↔ ∀ i : Fin n.toNat,
@@ -547,32 +533,6 @@ theorem Vals.cellsOk_wf : {A : Obj} → {n : USize} → {x : Vals A n} → Vals.
     exact ⟨cellBad_none.1 h.1, Vals.cellsOk_wf h.2⟩
   | .sum _ _, _, ⟨_, _, _, _, _, _⟩, h => by
     simp only [Vals.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
-
-/-- **`Vals.gather` keeps `Vals.WF`**: a gathered cell is a cell of `x` (`Arr.gather_row`), over the same payload. -/
-theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x : Vals A n} → {y : Vals A m} →
-    Vals.gather m ix x = .ok y → Vals.WF x → Vals.WF y
-  | .atom _, _, _, _, _, _ => trivial
-  | .one, _, _, _, _, _ => trivial
-  | .prod _ _, _, x, y, h, hx => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    rename_i a ha; split at h; · cases h
-    rename_i b hb; cases h
-    exact ⟨Vals.gather_wf ha hx.1, Vals.gather_wf hb hx.2⟩
-  | .arr _, _, ⟨c, lo, hi, f⟩, y, h, hx => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    rename_i L hL; split at h; · cases h
-    rename_i H hH; cases h
-    refine ⟨fun j => ?_, hx.2⟩
-    obtain ⟨i, hi1, e1⟩ := Arr.gather_row lo hL j
-    obtain ⟨i', hi2, e2⟩ := Arr.gather_row hi hH j
-    rw [e1, e2, show i' = i from Fin.ext (hi2.symm.trans hi1)]; exact hx.1 i
-  | .sum _ _, _, ⟨l, r, tag, idx, a, b⟩, y, h, hx => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    split at h; · cases h
-    cases h; exact hx
 
 /-- **`Vals.nub` keeps `Vals.WF`**: its rows are `Vals.gather`ed from `x`. -/
 theorem Vals.nub_wf {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)

@@ -547,7 +547,7 @@ namespace Tab
 /-- **`canon` ascends in `ν` within a `κ`**: its rows are sorted by the codes of `κ`'s columns, then `ν`'s, then the
 value's (`canon_sorted`), so two distinct rows of one `κ` ascend strictly in `ν`. -/
 theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf : ascOrd t = some f)
-    {x C : Tab (.prod K (.atom t)) (.atom u)} (hC : x.canon = .ok C)
+    {x C : Tab (.prod K (.atom t)) (.atom u)} (hC : x.canon = .ok C) (hw : x.WF)
     (hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j) (i j : Fin C.n.toNat) (hij : i.1 < j.1)
     (hk : (C.key.row i).1 = (C.key.row j).1) : Obj.lt (.atom t) (C.key.row i).2 (C.key.row j).2 := by
   obtain ⟨es, cs, hes, hcs⟩ := canon_codes hC
@@ -563,7 +563,7 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   obtain ⟨cs1, -, hcs1, -, -⟩ := mapM_append_ok (l1 := [(AscKey.atom t, Arr.enc x.key.2)])
     (l2 := [(AscKey.atom u, Arr.enc (t := u) x.val)]) hcsP
   have hκ : x.key.1.row (sel i) = x.key.1.row (sel j) := by rw [hki, hki] at hk; exact hk
-  have hcode := Vals.codes_of_row x.key.1 heK hcsK (sel i) (sel j) hκ
+  have hcode := Vals.codes_of_row x.key.1 hw.1.1 heK hcsK (sel i) (sel j) hκ
   have hlex := (hord i j hij).1
   rw [hes', ascKeys_append, lexLe_append_of_eq _ _ hcode] at hlex
   have hg : t ≠ .general := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hf
@@ -730,7 +730,7 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
 holds each row's left fold over its `κ`'s rows ascending in `ν` (`sumTail_fold`), and the segmented `kscan .or` of the
 bad words keeps a row exactly when no step of its key up to it was bad. -/
 theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Tab (.prod K (.atom t)) (.atom u)}
-    (h : Tab.sumsOn x = .ok T) : rep T = Lang.sumsDen (rep x) := by
+    (h : Tab.sumsOn x = .ok T) (hw : x.WF) : rep T = Lang.sumsDen (rep x) := by
   obtain ⟨f, hf⟩ := hord.ascOrd
   dsimp only [Tab.sumsOn] at h
   simp only [bind] at h
@@ -756,7 +756,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
   have hall : firstsOf (seenKey C.n e1) C.n.toNat = List.range C.n.toNat :=
     List.filter_sublist.eq_of_length (by rw [List.length_range]; exact (kseen_ok hk1).1.symm.trans hmn)
   have hfirst : ∀ i j : Fin C.n.toNat, i.1 < j.1 → C.key.row i ≠ C.key.row j := fun i j h e =>
-    ((hfs1.2.1 j).1 (by rw [hall]; exact List.mem_range.2 j.2)).2 i h (Vals.codes_of_row C.key he1 hcs1 i j e)
+    ((hfs1.2.1 j).1 (by rw [hall]; exact List.mem_range.2 j.2)).2 i h (Vals.codes_of_row C.key (canon_wf hC hw).1 he1 hcs1 i j e)
   have hD : ∀ i j : Fin C.n.toNat, C.key.row i = C.key.row j → i = j := fun i j e => by
     rcases Nat.lt_trichotomy i.1 j.1 with h' | h' | h'
     · exact absurd e (hfirst i j h')
@@ -765,7 +765,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
   have hG : ∀ i j : Fin C.n.toNat, Verify.groupOf (seenKey C.n e2) C.n.toNat i =
       Verify.groupOf (seenKey C.n e2) C.n.toNat j ↔ (C.key.row i).1 = (C.key.row j).1 := fun i j =>
     ((firsts_spec (seenKey C.n e2) C.n.toNat).2.2.1 i i.2 j j.2).trans
-      ⟨Vals.row_of_codes C.key.1 he2 hcs2 i j, Vals.codes_of_row C.key.1 he2 hcs2 i j⟩
+      ⟨Vals.row_of_codes C.key.1 (canon_wf hC hw).1.1 he2 hcs2 i j, Vals.codes_of_row C.key.1 (canon_wf hC hw).1.1 he2 hcs2 i j⟩
   -- the left fold per key up to each row, and the prefix `|` of the bad words
   have hsu := seenSeg_ok hk2 hseg
   obtain ⟨hu, hF⟩ := sumTail_fold (kseen_runs hk2) hsu hst
@@ -786,11 +786,11 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
     fun t ht => by
       have := (colMap_raw hnb).2.2.2 t ht
       simp only [Op.eval, Except.ok.injEq] at this; exact this.symm
-  have hx : rep x = rep C := funext fun a => funext fun c => propext (canon_holds hC a c).symm
+  have hx : rep x = rep C := funext fun a => funext fun c => propext (canon_holds hC hw a c).symm
   rw [hx]
   funext a c
   apply propext
-  rw [sumsDen_rows hord C (Verify.groupOf (seenKey C.n e2) C.n.toNat) hD hG (canon_pos_lt hf hC hD) a c]
+  rw [sumsDen_rows hord C (Verify.groupOf (seenKey C.n e2) C.n.toNat) hD hG (canon_pos_lt hf hC hw hD) a c]
   show T.Holds a c ↔ _
   rw [keep_holds h (fun i hi => by
     rw [hNB i hi]; rcases (hBR i hi).1 with e | e <;> rw [e] <;> decide) a c]
@@ -815,7 +815,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
 
 /-- **`sums x` at any position object denotes `sumsAt`**: it runs only at an integer-stored atom (`intOrd`), where
 `ordAt_int` gives `sums_holds` its order. -/
-theorem sums_den {K P V : Obj} {x T : Tab (.prod K P) V} (h : Tab.sums x = .ok T) :
+theorem sums_den {K P V : Obj} {x T : Tab (.prod K P) V} (h : Tab.sums x = .ok T) (hx : x.WF) :
     rep T = Lang.sumsAt K P V (rep x) := by
   cases P with
   | atom t =>
@@ -824,7 +824,7 @@ theorem sums_den {K P V : Obj} {x T : Tab (.prod K P) V} (h : Tab.sums x = .ok T
       cases u <;> simp only [Tab.sums] at h <;> try cases h
       all_goals
         split at h
-        · exact sums_holds (Lang.ordAt_int ‹_›) h
+        · exact sums_holds (Lang.ordAt_int ‹_›) h hx
         · cases h
     | _ => cases h
   | _ => cases h
@@ -1058,7 +1058,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     rw [hkpg g hg]; rcases (hbadCg g hg).1 with h | h <;> rw [h] <;> decide
   have hgood : ∀ g < n.toNat, (Enc.raw .i64 n kp)[g]?.getD 0 ≠ 0 ↔ (Enc.raw .i64 n badC)[g]?.getD 0 = 0 := fun g hg => by
     rw [hkpg g hg]; rcases (hbadCg g hg).1 with h | h <;> rw [h] <;> decide
-  rw [canon_holds h, keep_holds hK hkp2]
+  rw [canon_holds h (keep_wf hK ⟨hX, trivial⟩), keep_holds hK hkp2]
   constructor
   · rintro ⟨⟨g, hg⟩, hk, rfl, rfl⟩
     exact ⟨⟨_, rfl⟩, (hcell g hg _).2 ⟨(hgood g hg).1 hk, by rw [Vals.row_atom]⟩⟩
