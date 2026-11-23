@@ -291,6 +291,24 @@ theorem cut_holds {k : (n : USize) × Vals A n} {l : (m : USize) × Vals B m} {r
   exact (comp_idU_holds hd' h hl (Tab.comp_wf hu (Tab.idU_wf hd hk) hr) x y).trans
     ((and_congr_left' (idU_comp_holds hd hu hk hr x y)).trans and_assoc)
 
+/-- **`cut` keeps `Tab.WF`** in a `WF` context: `idU` of a known side composed on (`Tab.idU_wf`, `Tab.comp_wf`). -/
+theorem cut_wf {K : Known A B} {r t : Tab A B} (hK : K.WF) (hr : r.WF) (h : cut K r = .ok t) : t.WF := by
+  obtain ⟨hd, hn, -⟩ := hK
+  -- the `do` block's continuation sits in each branch of `K.dom`'s match, so split on `K.dom` first
+  have tail : ∀ l : Tab A B, l.WF → (match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l) = .ok t →
+      t.WF := fun l wl h => by
+    cases hran : K.ran with
+    | none => simp only [hran] at h; cases h; exact wl
+    | some c => simp only [hran] at h hn; obtain ⟨u, hu, h⟩ := bind_ok h; exact Tab.comp_wf h wl (Tab.idU_wf hu hn)
+  simp only [cut] at h
+  cases hdom : K.dom with
+  | none => simp only [hdom] at h; exact tail r hr h
+  | some c =>
+    simp only [hdom] at h hd
+    obtain ⟨u, hu, h⟩ := bind_ok h
+    obtain ⟨l, hl, h⟩ := bind_ok h
+    exact tail l (Tab.comp_wf hl (Tab.idU_wf hu hd) hr) h
+
 /-- `bound K r` is `r` on `K`'s sides, and every pair of it is a pair the context it hands the other operand admits. -/
 theorem bound_spec {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (hK : K.WF) (hr : r.WF)
     (h : bound K r = .ok p) :
@@ -321,24 +339,6 @@ theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, K.WF → V
       ⟨fun ⟨_, c, _, h⟩ => ⟨c, trivial, ?_⟩, fun ⟨c, _, h⟩ => ⟨(side_some hK a).1 ha, c, trivial, ?_⟩⟩
     · exact (ev c b rfl hb trivial).1 ((ew c b rfl hb trivial).1 h)
     · exact (ew c b rfl hb trivial).2 ((ev c b rfl hb trivial).2 h)
-
-/-- **`cut` keeps `Tab.WF`** in a `WF` context: `idU` of a known side composed on (`Tab.idU_wf`, `Tab.comp_wf`). -/
-theorem cut_wf {K : Known A B} {r t : Tab A B} (hK : K.WF) (hr : r.WF) (h : cut K r = .ok t) : t.WF := by
-  obtain ⟨hd, hn, -⟩ := hK
-  -- the `do` block's continuation sits in each branch of `K.dom`'s match, so split on `K.dom` first
-  have tail : ∀ l : Tab A B, l.WF → (match K.ran with | some c => do l.comp (← Tab.idU c.2) | none => pure l) = .ok t →
-      t.WF := fun l wl h => by
-    cases hran : K.ran with
-    | none => simp only [hran] at h; cases h; exact wl
-    | some c => simp only [hran] at h hn; obtain ⟨u, hu, h⟩ := bind_ok h; exact Tab.comp_wf h wl (Tab.idU_wf hu hn)
-  simp only [cut] at h
-  cases hdom : K.dom with
-  | none => simp only [hdom] at h; exact tail r hr h
-  | some c =>
-    simp only [hdom] at h hd
-    obtain ⟨u, hu, h⟩ := bind_ok h
-    obtain ⟨l, hl, h⟩ := bind_ok h
-    exact tail l (Tab.comp_wf hl (Tab.idU_wf hu hd) hr) h
 
 /-- **`bound` keeps `Tab.WF`**: its table is `cut_wf`'s, its context that table's sides and the table. -/
 theorem bound_wf {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (hK : K.WF) (hr : r.WF)
@@ -455,8 +455,9 @@ theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X 
     have wa := wA.runE Known.wf_empty hua
     rw [agrees_empty hr, agrees_empty hs, agrees_empty ((reps_iff _ _ _).1 (hA {} Known.wf_empty) ua hua),
       agrees_empty ((reps_iff _ _ _).1 (hB {} Known.wf_empty) ub hub)]
+    have wq := Tab.ldivSel_wf (fun h => Tab.ldivOf_wf h w1 w2 wu wa) hq w1 w2 wu wa
     intro x y _ _ _
-    refine (Tab.conv_holds ht x y).trans ((Tab.ldivSel_holdsBy
+    refine (Tab.conv_holds ht wq x y).trans ((Tab.ldivSel_holdsBy
       (fun h => Tab.ldivOf_holds ⟨_, hsc, ws.2, ws.1⟩ ⟨_, hrc, wr.2, wr.1⟩ h w1 w2 wu wa) hq w1 w2 wu wa y x).trans ?_)
     simp only [ldivDen, rdivDen, rep_apply, Tab.conv_holds hsc ws, Tab.conv_holds hrc wr]
     exact and_congr Iff.rfl (or_congr Iff.rfl and_comm)
@@ -482,7 +483,7 @@ theorem cmp_side {op w : String} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
   have hu : U.runE ⟨o, none, none⟩ = .ok u := by
     cases e : U.runE ⟨o, none, none⟩ <;> rw [e] at hu' <;> cases hu' <;> rfl
   obtain ⟨d, hd, h⟩ := bind_ok h
-  have wu := wU.runE ⟨hoW, trivial, trivial⟩ hu
+  have wu := wU.runE (show (⟨o, none, none⟩ : Known (.atom t) (.atom t)).WF from ⟨hoW, trivial, trivial⟩) hu
   have agr := (reps_iff _ _ _).1 (hU ⟨o, none, none⟩ ⟨hoW, trivial, trivial⟩) u hu a
   have key : (∃ i, d.key.row i = a) ↔ ∃ v, TU a v := by
     rw [keyRowRep]
