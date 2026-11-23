@@ -63,6 +63,15 @@ theorem tagCol_get {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCol n s = .o
   subst ev; subst hv
   cases s <;> cases hg : tag.get k <;> rw [hg] at he <;> revert he <;> decide
 
+/-- **Off `general`, `Opt.fill` writes `Opt.nuls`'s flagged zero words.** `cases t` runs before `Opt.fill` unfolds:
+on a context holding the `Enc.WF` proof of the match, `cases t` hits Lean's missing `Enc.WF.match_1` splitter. -/
+theorem Opt.fill_enc {t : QAtomicType} {n : USize} {x : Opt t n} (hg : t ≠ .general) (h : Opt.fill t n = .ok x) :
+    x.enc = wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)) := by
+  cases t <;> first | exact absurd rfl hg | (unfold Opt.fill at h; dsimp only at h; split at h <;> cases h; rfl)
+
+theorem Opt.filler_ne {t : QAtomicType} (hg : t ≠ .general) : Opt.filler t = none := by
+  cases t <;> first | exact absurd rfl hg | rfl
+
 /-- **Every row of `Opt.fill t n` is `Opt.filler t`**: `Opt.nuls`'s nulls off `general`, `default` at `general`. -/
 theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t n = .ok x) (i : Fin n.toNat) :
     x.get i = Opt.filler t := by
@@ -75,13 +84,7 @@ theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t
     cases h
     simp only [Opt.get, Opt.isNul, Opt.enc, Bool.false_eq_true, if_false, Opt.filler, Option.some.injEq]
     simp [Arr.get, Arr.enc, Arr.mk]
-  · unfold Opt.fill at h
-    dsimp only at h
-    split at h
-    rotate_left; · cases h
-    cases h
-    rw [Opt.get_nulWords _ (by cases t <;> first | exact absurd rfl hg | rfl) i]
-    cases t <;> first | exact absurd rfl hg | rfl
+  · rw [Opt.get_nulWords _ (Opt.fill_enc hg h) i, Opt.filler_ne hg]
 
 /-- **`Vals.lift` reads as `x`**: each `Opt.ofArr` holds `some` of the `Arr`'s element (`Opt.get_ofArr`). -/
 theorem Vals.lift_row : {A : Obj} → {n : USize} → (x : Vals A n) → (i : Fin n.toNat) →
@@ -143,27 +146,33 @@ theorem Vals.none_wf : (A : Obj) → {x : Vals A 0} → Vals.none A = .ok x → 
       · exact (ValsB.WFOn_congr _ fun i => absurd i.2 (by simp)).1 (Vals.lift_wf _ (Vals.none_wf a hp))
       · exact (ValsB.WFOn_congr _ fun i => absurd i.2 (by simp)).1 (Vals.lift_wf _ (Vals.none_wf b hq))
 
-/-- **`Vals.zeros A n` owns no row**: every leaf the filler (`Opt.fill_get`), a band column's nulls (`Opt.nuls_get`),
-an `arr` side's payload `Vals.none`, a sum's tag `false` over two such summands. -/
-theorem Vals.zeros_ok : (A : Obj) → (n : USize) → (x : ValsB true A n) → Vals.zeros A n = .ok x →
-    ValsB.WFOn x fun _ => False
-  | .atom _, _, _, h => fun i => ⟨fun h => h.elim, fun _ => Opt.fill_get h i⟩
-  | .one, _, _, _ => trivial
-  | .prod a b, n, x, h => by
+/-- **`Opt.fill` owns no row**: every row the filler (`Opt.fill_get`). -/
+theorem Opt.fill_owned {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t n = .ok x) :
+    ColB.OwnedOn (o := true) x fun _ => False := fun i => ⟨fun h => h.elim, fun _ => Opt.fill_get h i⟩
+
+/-- **`Vals.zeros A n` owns no row**: every leaf the filler (`Opt.fill_owned`), a band column's nulls (`Opt.nuls_get`),
+an `arr` side's payload `Vals.none`, a sum's tag `false` over two such summands. By `induction`, not a match with `h`
+as a discriminant: that match's compilation reduces `Opt.fill`'s `Enc.WF` decision and hits Lean's missing splitter. -/
+theorem Vals.zeros_ok (A : Obj) (n : USize) (x : ValsB true A n) (h : Vals.zeros A n = .ok x) :
+    ValsB.WFOn x fun _ => False := by
+  induction A with
+  | atom t => simp only [Vals.zeros] at h; exact Opt.fill_owned h
+  | one => trivial
+  | prod a b iha ihb =>
     simp only [Vals.zeros, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i p hp; split at h; · cases h
     rename_i q hq; cases h
-    exact ⟨Vals.zeros_ok a n _ hp, Vals.zeros_ok b n _ hq⟩
-  | .arr b, n, x, h => by
+    exact ⟨iha _ hp, ihb _ hq⟩
+  | arr b _ =>
     simp only [Vals.zeros, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i lo hlo; split at h; · cases h
+    -- the second `Opt.fill .i64 n` splits as the first: `hhi : .ok lo = .ok hi`
     rename_i hi hhi; split at h; · cases h
-    rename_i f hf; cases h
-    exact ⟨fun i => ⟨fun h => h.elim, fun _ => Opt.fill_get hlo i⟩, fun i => ⟨fun h => h.elim, fun _ => Opt.fill_get hhi i⟩,
-      fun _ h => h.elim, Vals.none_wf b hf⟩
-  | .sum a b, n, x, h => by
+    rename_i f hf; cases h; cases hhi
+    exact ⟨Opt.fill_owned hlo, Opt.fill_owned hlo, fun _ h => h.elim, Vals.none_wf b hf⟩
+  | sum a b iha ihb =>
     unfold Vals.zeros at h
     split at h
     · simp only [bind, Except.bind, pure, Except.pure] at h
@@ -178,7 +187,7 @@ theorem Vals.zeros_ok : (A : Obj) → (n : USize) → (x : ValsB true A n) → V
       rename_i q hq; cases h
       simp only [ValsB.WFOn, ValsB.view_ofGen]
       exact ⟨fun i _ => tagCol_get htg i, (ValsB.WFOn_congr _ fun i => iff_of_false id fun h => h.1).1
-        (Vals.zeros_ok a n _ hp), (ValsB.WFOn_congr _ fun i => iff_of_false id fun h => h.1).1 (Vals.zeros_ok b n _ hq)⟩
+        (iha _ hp), (ValsB.WFOn_congr _ fun i => iff_of_false id fun h => h.1).1 (ihb _ hq)⟩
 
 /-- **`ValsB.ofGen` is `Vals.WF`** on summands owning the rows their tag names. -/
 theorem Vals.ofGen_wf {a b : Obj} {n : USize} {h : Obj.band a b = Option.none} {tag : Arr .u1 n} {x : ValsB true a n}
@@ -310,23 +319,23 @@ theorem inl_wf {n : USize} {X : Vals A n} {t : Tab A (.sum A B)} (h : Tab.inl (B
   split at h
   · simp only [bind, Except.bind] at h
     split at h; · cases h
-    exact canon_wf h ⟨hX, by simp only [Vals.WF, ValsB.view_ofOpt]⟩
+    exact canon_wf h ⟨hX, by simp only [Vals.WF, ValsB.WFOn, ValsB.view_ofOpt, not_true_eq_false, false_implies, implies_true]⟩
   · simp only [bind, Except.bind] at h
     split at h; · cases h
     rename_i tg htg; split at h; · cases h
     rename_i z hz
-    exact canon_wf h ⟨hX, Vals.ofGen_wf (Vals.inj_wf htg hX hz).1 (Vals.inj_wf htg hX hz).2⟩
+    exact canon_wf h ⟨hX, Vals.ofGen_wf (h := ‹_›) (Vals.inj_wf htg hX hz).1 (Vals.inj_wf htg hX hz).2⟩
 
 theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A := A) Y = .ok t)
     (hY : Vals.WF Y) : t.WF := by
   unfold Tab.inr at h
   split at h
-  · exact canon_wf h ⟨hY, by simp only [Vals.WF, ValsB.view_ofOpt]⟩
+  · exact canon_wf h ⟨hY, by simp only [Vals.WF, ValsB.WFOn, ValsB.view_ofOpt, not_true_eq_false, false_implies, implies_true]⟩
   · simp only [bind, Except.bind] at h
     split at h; · cases h
     rename_i tg htg; split at h; · cases h
     rename_i z hz
-    exact canon_wf h ⟨hY, Vals.ofGen_wf (Vals.inj_wf htg hY hz).2 (Vals.inj_wf htg hY hz).1⟩
+    exact canon_wf h ⟨hY, Vals.ofGen_wf (h := ‹_›) (Vals.inj_wf htg hY hz).2 (Vals.inj_wf htg hY hz).1⟩
 
 /-- **`compPairs` keeps `Tab.WF`**: `comp`, or `compFrom` within `crossMax`. -/
 theorem compPairs_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : Tab.compPairs R S = .ok t) (hR : R.WF)
@@ -572,7 +581,7 @@ private theorem holds_inr_of_row {n : USize} {Y : Vals B n} {V : Vals (.sum A B)
 
 /-- **A dense sum side's tag column is a valid column**: the gather of the sum side reads it (`kgather`). -/
 theorem Vals.gather_tag_valid {a b : Obj} {n m : USize} {ix : Enc} {X : Vals (.sum a b) n} {G : Vals (.sum a b) m}
-    {hb : Obj.band a b = none} {tag : Arr .u1 n} {x : Vals a n} {y : Vals b n} (hv : X.view = .gen hb tag x y)
+    {hb : Obj.band a b = none} {tag : Arr .u1 n} {x : ValsB true a n} {y : ValsB true b n} (hv : X.view = .gen hb tag x y)
     (hG : ValsB.gather m ix X = .ok G) : Kernel.Enc.Valid n tag.enc := by
   simp only [ValsB.gather, hv, bind, Except.bind, pure, Except.pure] at hG
   split at hG; · cases hG
@@ -629,7 +638,7 @@ theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl
     simp only [bind, Except.bind] at h
     split at h; · cases h
     rename_i z hz
-    rw [canon_holds h ⟨hX, by simp only [Vals.WF, ValsB.view_ofOpt]⟩]
+    rw [canon_holds h ⟨hX, by simp only [Vals.WF, ValsB.WFOn, ValsB.view_ofOpt, not_true_eq_false, false_implies, implies_true]⟩]
     refine holds_inl_of_row (fun k => ?_) a s
     obtain ⟨rfl, rfl⟩ := Obj.band_some ht
     simp only [ValsB.row, ValsB.view_ofOpt, Opt.nuls_get hz k]
@@ -639,10 +648,10 @@ theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl
     rename_i tg htg
     split at h; · cases h
     rename_i y hy
-    rw [canon_holds h ⟨hX, Vals.ofGen_wf (Vals.inj_wf htg hX hy).1 (Vals.inj_wf htg hX hy).2⟩]
+    rw [canon_holds h ⟨hX, Vals.ofGen_wf (h := ‹_›) (Vals.inj_wf htg hX hy).1 (Vals.inj_wf htg hX hy).2⟩]
     refine holds_inl_of_row (fun k => ?_) a s
     simp only [ValsB.row, ValsB.view_ofGen, tagCol_get htg k, Bool.false_eq_true, if_false, Vals.lift_row]
-    try rfl
+    all_goals first | rfl | assumption
 
 /-- **`Tab.inr Y` denotes `inr` on the values `Y`** (`idU Y ≫ Core.Rel.inr`). -/
 theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr Y = .ok T) (hY : Vals.WF Y)
@@ -650,7 +659,7 @@ theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr
   unfold Tab.inr at h
   split at h
   · rename_i t ht
-    rw [canon_holds h ⟨hY, by simp only [Vals.WF, ValsB.view_ofOpt]⟩]
+    rw [canon_holds h ⟨hY, by simp only [Vals.WF, ValsB.WFOn, ValsB.view_ofOpt, not_true_eq_false, false_implies, implies_true]⟩]
     refine holds_inr_of_row (fun k => ?_) b s
     simp only [ValsB.row, ValsB.view_ofOpt]
     exact Vals.optInr_get ht Y k
@@ -659,10 +668,10 @@ theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr
     rename_i tg htg
     split at h; · cases h
     rename_i x hx
-    rw [canon_holds h ⟨hY, Vals.ofGen_wf (Vals.inj_wf htg hY hx).2 (Vals.inj_wf htg hY hx).1⟩]
+    rw [canon_holds h ⟨hY, Vals.ofGen_wf (h := ‹_›) (Vals.inj_wf htg hY hx).2 (Vals.inj_wf htg hY hx).1⟩]
     refine holds_inr_of_row (fun k => ?_) b s
     simp only [ValsB.row, ValsB.view_ofGen, tagCol_get htg k, if_true, Vals.lift_row]
-    try rfl
+    all_goals first | rfl | assumption
 
 /-- **`Tab.inlConv X` denotes `inl°` on the values `X`** (`idU X ≫ Core.Rel.inl°`): a sum value of `X` beside its
 left summand, where it has one. -/
@@ -781,7 +790,7 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
     have optInl : Obj.optEl hb none = Sum.inl () := by
       unfold Obj.optEl; generalize Obj.band_some hb = p; obtain ⟨p1, p2⟩ := p; rfl
     have hGr : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, ((Enc.raw .i64 M sel)[j.1]?.getD 0).toNat = i.1 ∧
-        ValsB.row G j = Obj.optEl hb (x.get i) ∧ ValsB.row (A := .atom t) Y j = Y.get j ∧ x.get i = some (Y.get j) := fun j => by
+        ValsB.row G j = Obj.optEl hb (x.get i) ∧ ValsB.row (o := false) (A := .atom t) Y j = Y.get j ∧ x.get i = some (Y.get j) := fun j => by
       obtain ⟨i, hi, hr⟩ := ValsB.gather_row _ hG j
       obtain ⟨i', hi', hy⟩ := Opt.gather_row x hyo j
       obtain rfl : i' = i := Fin.ext (by rw [← hi', hi])
