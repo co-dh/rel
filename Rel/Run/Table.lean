@@ -454,44 +454,59 @@ def encArr (path : String) (t : QAtomicType) : List (USize × Enc) →
   | (k, e) :: es => do pure ⟨k, ← Arr.of t k e s!"{path}: a {repr t} column part of {k} rows", es⟩
   | [] => .error s!"{path}: no column part left for a {repr t} column"
 
-/-- A side of object `A` from its atom columns' encodings `es`, each with its count, in `cols`' order (a sum's tags,
-    positions and two payloads; a list's bounds and payload), the converse of `csvEncs`: each entered through `Arr.of`
-    as `readArr` enters a mapped one; the side's count, and the parts left over. -/
-def encVals (path : String) : (A : Obj) → List (USize × Enc) →
-    Except String ((n : USize) × Vals A n × List (USize × Enc))
-  | .atom t, es => encArr path t es
-  | .prod a b, es => do
-    let ⟨n, x, es⟩ ← encVals path a es
-    let ⟨m, y, es⟩ ← encVals path b es
+/-- The first part of `es` as a nullable column of type `t`, its blocks checked by `Ext.Enc.wf?` (the whole check: a writer
+    takes the block's least key from the atom, `QAtomicType.least`, so a part it refuses is malformed, never decoded
+    element by element to find out); its count, and the parts left over. -/
+def encOpt (path : String) (t : QAtomicType) : List (USize × Enc) →
+    Except String ((n : USize) × Opt t n × List (USize × Enc))
+  | (k, e) :: es => match Ext.Enc.wf? t k e with
+    | some ⟨h⟩ => pure ⟨k, Opt.mk e h, es⟩
+    | none => .error s!"{path}: a {repr t} column part of {k} rows whose blocks are not well-formed (`Ext.Enc.wf?` refuses it)"
+  | [] => .error s!"{path}: no column part left for a {repr t} column"
+
+/-- The first part of `es` as an atom column of type `t` at ownership `o`: `encArr` where every row is owned, `encOpt`
+    where a row may be the in-band null. -/
+def encCol : (o : Bool) → (t : QAtomicType) → (path : String) → List (USize × Enc) →
+    Except String ((n : USize) × ColB o t n × List (USize × Enc))
+  | false, t, path, es => encArr path t es
+  | true, t, path, es => encOpt path t es
+
+/-- A side of object `A` at ownership `o` from its atom columns' encodings `es`, each with its count, in `cols`' order (a
+    sum's tag and two summands of the sum's count, a band sum's one nullable column, a list's bounds and payload), the
+    converse of `csvEncs`: each entered as `readValsB` enters a mapped one; the side's count, and the parts left over. -/
+def encValsB (path : String) : (o : Bool) → (A : Obj) → List (USize × Enc) →
+    Except String ((n : USize) × ValsB o A n × List (USize × Enc))
+  | o, .atom t, es => encCol o t path es
+  | o, .prod a b, es => do
+    let ⟨n, x, es⟩ ← encValsB path o a es
+    let ⟨m, y, es⟩ ← encValsB path o b es
     if h : m = n then pure ⟨n, (x, h ▸ y), es⟩ else .error s!"{path}: columns of {n} and {m} rows on one side"
-  | .arr b, es => do
-    let ⟨n, lo, es⟩ ← encArr path .i64 es
-    let ⟨m, hi, es⟩ ← encArr path .i64 es
-    let ⟨k, f, es⟩ ← encVals path b es
+  | o, .arr b, es => do
+    let ⟨n, lo, es⟩ ← encCol o .i64 path es
+    let ⟨m, hi, es⟩ ← encCol o .i64 path es
+    let ⟨k, f, es⟩ ← encValsB path false b es
     if h : m = n then pure ⟨n, ⟨k, lo, h ▸ hi, f⟩, es⟩ else .error s!"{path}: list bounds of {n} and {m} rows"
-  | .sum a b, es => match hb : Obj.band a b, es with
-    | some t, (k, e) :: es => match Ext.Enc.wf? t k e with
-      | some ⟨h⟩ => pure ⟨k, ValsB.ofOpt hb (Opt.mk e h), es⟩
-      -- `wf?` reads the blocks only and is the whole check: a writer takes the block's least key from the atom
-      -- (`QAtomicType.least`), so a part it refuses is malformed, never decoded element by element to find out
-      | none => .error s!"{path}: a 1+{repr t} column part of {k} rows whose blocks are not well-formed for {repr t} (`Ext.Enc.wf?` refuses it)"
-    | some t, [] => .error s!"{path}: no column part left for a 1+{repr t} column"
+  | _, .sum a b, es => match hb : Obj.band a b, es with
+    | some t, es => do let ⟨k, x, es⟩ ← encOpt path t es; pure ⟨k, ValsB.ofOpt hb x, es⟩
     | none, es => do
     let ⟨n, tag, es⟩ ← encArr path .u1 es
-    let ⟨l, x, es⟩ ← encVals path a es
-    let ⟨r, y, es⟩ ← encVals path b es
+    let ⟨l, x, es⟩ ← encValsB path true a es
+    let ⟨r, y, es⟩ ← encValsB path true b es
     if h : l = n then
-      if h' : r = n then pure ⟨n, ValsB.ofGen hb tag (Vals.lift (h ▸ x)) (Vals.lift (h' ▸ y)), es⟩
+      if h' : r = n then pure ⟨n, ValsB.ofGen hb tag (h ▸ x) (h' ▸ y), es⟩
       else .error s!"{path}: sum tags of {n} and a right summand of {r} rows"
     else .error s!"{path}: sum tags of {n} and a left summand of {l} rows"
   -- a side of `1`: its part (a CSV column of its one element's code, or a sum's empty right side) gives the count
-  | .one, (n, _) :: es => pure ⟨n, (), es⟩
-  | .one, [] => .error s!"{path}: no column part left for a side of `1`"
+  | _, .one, (n, _) :: es => pure ⟨n, (), es⟩
+  | _, .one, [] => .error s!"{path}: no column part left for a side of `1`"
 
-/-- How many atom columns `A` has when it is a product of atoms (the `S` of a CSV `1+S`); none for any other object. -/
-def atomCount : Obj → Option Nat
-  | .atom _ => some 1
-  | .prod a b => return (← atomCount a) + (← atomCount b)
+/-- `encValsB` of a side every row of which is owned: the sides of a table. -/
+abbrev encVals (path : String) (A : Obj) (es : List (USize × Enc)) := encValsB path false A es
+
+/-- The atom types of `A` when it is a product of atoms (the `S` of a CSV `1+S`), in column order; none for any other object. -/
+def atomTypes : Obj → Option (List QAtomicType)
+  | .atom t => some [t]
+  | .prod a b => return (← atomTypes a) ++ (← atomTypes b)
   | _ => none
 
 /-- The tags of a sum's `n` rows swapped between its two sides (`A+B ≅ B+A`, positions and payloads unchanged): the
@@ -517,7 +532,7 @@ def toCsv (path : String) : Obj → List (USize × Enc) → Except String (List 
   -- drops its left side's `1` part: a null is an empty field
   | .opt a, ps => match nullShape a, ps with
     | .opt, x :: ps => pure ([x], ps)
-    | .null, t :: i :: _ :: ps => match atomCount a with
+    | .null, t :: i :: _ :: ps => match (atomTypes a).map List.length with
       | some k => if k ≤ ps.length then do
           let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
         else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
@@ -532,6 +547,19 @@ def triples {α : Type} : Nat → List α → Option (List (α × α × α) × L
   | k + 1, t :: i :: v :: cs => (triples k cs).map fun (g, cs) => ((t, i, v) :: g, cs)
   | _ + 1, _ => none
 
+/-- The values `(m, v)` of one CSV nullable atom column (`ofCsv`: the `m` non-null rows only) as the dense summand column of
+    `n` rows (`ValsB true`): row `j` holds the value at position `i j` of its side where the extern's tag `e` (`1` at a
+    null) is `0`, and the in-band null where it is `1`. One `kgather` at `i + m·e` over `v` followed by as many nulls as
+    `e` has: a null row's position is the count of nulls before it, so it lands in the nulls after the `m` values. -/
+def denseVals (path : String) (t : QAtomicType) {n : USize} (e : Arr .u1 n) (i : USize × Enc) (m : USize) (v : Enc) :
+    Except String (USize × Enc) := do
+  unless i.1 = n do .error s!"{path}: positions of {i.1} rows beside tags of {n}"
+  let ⟨_, x, _⟩ ← encOpt path t [(m, v)]
+  let nn := (← tagCount n true e).toUSize
+  let y ← Opt.concat (n := (← catRows m nn)) x (← Opt.nuls t nn)
+  let ix ← colMap .add n i.2 (← colMap .first n e.enc e.enc .i64 .i64 [] [(.mul, m.toUInt64)])
+  pure (n, (← Opt.gather n ix y).enc)
+
 /-- The converse of `toCsv`: the side `A`'s parts in `cols`' order from its CSV columns' parts `cs`, the header names
     of those columns `ns` in step, with what is left of both. The nullable columns of one `1+S` are null in the same
     rows (the `1` is every field of `S` empty): their tags must agree, else the first row where two differ is named. -/
@@ -545,8 +573,8 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
       | x :: cs, _ :: ns => pure ([x], cs, ns)
       | _, _ => .error s!"{path}: no column part or header name left for a nullable column"
     else do
-    let some k := atomCount a | .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
-    let some ((t, i, v) :: g, cs) := triples k cs | .error s!"{path}: too few column parts for {k} nullable columns"
+    let some ts := atomTypes a | .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+    let some ((t, i, v) :: g, cs) := triples ts.length cs | .error s!"{path}: too few column parts for {ts.length} nullable columns"
     let some c := ns.head? | .error s!"{path}: no header name left for a nullable column"
     let ⟨n, x, _⟩ ← encArr path .u1 [t]
     for ((t', _), c') in g.zip ns.tail do
@@ -559,9 +587,11 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
           unless a == b do
             .error s!"{path}: data row {j + 1}: column '{c}' is {s a} and column '{c'}' is {s b}; the columns of one \
               `1+S` are empty together, and all of them empty is the `1`"
-    -- the left side `1` holds the null rows, as `inl` builds it: their count, no column; the extern's tag is `1` at a
-    -- null (`V+1`), so it is swapped (`swapTag`)
-    pure ([← swapTag t, i, ((← tagCount n true x).toUSize, .pos), v] ++ g.map (·.2.2), cs, ns.drop k)
+    -- the dense sum's parts (`cols`): the tag, swapped as the extern's is `1` at a null (`V+1`, `swapTag`); the left `1` of
+    -- `n` rows, no column; each atom of `S` as `n` rows with a null where the tag is (`denseVals`), the extern's
+    -- positions `i` and non-null values dropped
+    let ds ← (ts.zip (v :: g.map (·.2.2))).mapM fun (ty, (m, ve)) => denseVals path ty x i m ve
+    pure ([← swapTag t, (n, .pos)] ++ ds, cs, ns.drop ts.length)
   | .one, x :: cs, _ :: ns => pure ([x], cs, ns)
   | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 

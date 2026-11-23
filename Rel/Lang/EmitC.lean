@@ -1673,7 +1673,7 @@ def csvCols : Obj → String → Except String (List CsvCol)
   | .one, _ => pure [.one]
   | .sum a b, p => match Obj.band a b, a with
     | some t, _ => pure [.part p t]
-    | none, .one => if (Table.atomCount b).isSome then pure [.null (p ++ ".tag") (p ++ ".idx") (objCols b (p ++ ".r"))]
+    | none, .one => if (Table.atomTypes b).isSome then pure [.null (p ++ ".tag") (p ++ ".idx") (objCols b (p ++ ".r"))]
       else throw s!"column `{p}` is a `1+S` whose `S` ({repr b}) is no product of atoms, which has no CSV columns"
     | none, _ => throw s!"column `{p}` is a sum of no `1+S` ({repr (Obj.sum a b)}), which has no CSV columns"
   | A, p => throw s!"column `{p}` is {repr A}, which is no CSV column set"
