@@ -54,7 +54,7 @@ fn kasc(m: usize, es: B) -> Result<O, String> {
     // law A1: a `pos` key (at most 2^63 rows, `pos_rows`) has no ties and is in row order, so it and every later key
     // decide nothing a stable sort by the keys before it does not
     let nk = ks.iter().position(|k| matches!(k, asc::Col::Pos)).unwrap_or(ks.len());
-    let p = if nk == 0 { None } else { asc::grade_cols(pool(), &ks[..nk], m) };
+    let p = if nk == 0 { None } else { asc::grade_cols(pool(), &ks[..nk], m)? };
     let sink = || Sink::new(m, 8).enc();
     // the permutation, which is also a `pos` column sorted
     let pe = || match &p {

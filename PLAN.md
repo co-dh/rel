@@ -962,8 +962,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       - 🔄 kernel 分配失败是 error 不是 abort（分支 `prodplan`）：`pod::vec_of` / `pod::try_uninit`（`try_reserve_exact`）
         给出 `"<kernel>: cannot allocate <bytes> bytes for <what> (<n> elements)"`，经 `except` 成为 `Except.error`；
         已接入：`gather` 的整列 `e`，`scatter` 的行偏移、行值、块计数，`seen` 的游程位、块计数，`bitrows` 的
-        `ends`/`idx`/结果位。未接入：`asc` 的工作数组（`asc.rs` `dense` `work` `codes` `lsd` `rank` `mixed` `grade`，
-        `sort.rs` 的 `cnt` `ba/bb` `ia/ib`：返回 `Option`/`()` 的函数链，要改成 `Result`）、`Sink` 的输出（经 Lean 的
+        `ends`/`idx`/结果位；`asc` 的工作数组也已接入（✅ `allocerr`：`asc.rs` `dense` `work` `codes` `lsd` `rank` `mixed`
+        `grade` 与 `sort.rs` 的 `cnt` `ba/bb` `ia/ib` `seen` 位图、块端点，整条函数链返回 `Result`，`pod::collect_of` 是带
+        错误的 `collect`）。未接入：`Sink` 的输出（经 Lean 的
         `lean_alloc_object`，失败在 Lean 运行时内）与 `coc_alloc`（`exit(1)`）、`Ext.Enc.encode`（签名无 `Except`，
         要改 extern 签名）。
       - 定律的缺口：`lam_den`/`E_den`（等于 `lamDen`/`EDen`）带前提 `hB`（序码的序与 `B.lt` 一致），未对任何

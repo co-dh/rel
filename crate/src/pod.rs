@@ -71,6 +71,12 @@ pub fn vec_of<T: Clone>(k: &str, what: &str, n: usize, x: T) -> Result<alloc::ve
     v.resize(n, x);
     Ok(v)
 }
+/// The `n` items of `it` (it must yield exactly `n`) reserved as `vec_of` reserves: `collect` with the error, not the abort.
+pub fn collect_of<T>(k: &str, what: &str, n: usize, it: impl Iterator<Item = T>) -> Result<alloc::vec::Vec<T>, alloc::string::String> {
+    let mut v = room(k, what, n)?;
+    v.extend(it);
+    Ok(v)
+}
 /// `uninit` reserved as `vec_of` reserves: no initialisation, the error where the allocator has not got the bytes.
 pub fn try_uninit<T: Pod>(k: &str, what: &str, n: usize) -> Result<alloc::vec::Vec<T>, alloc::string::String> {
     let mut v = room(k, what, n)?;
