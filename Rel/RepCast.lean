@@ -466,8 +466,9 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
                 Verify.Ew.intStep_mul, Verify.Ew.intStep_idiv, hX'] <;>
               first | done | exact (Classical.em _).symm | (intro h; exact hX' (by rw [h]; decide))
           · have hw1 := arithOvf_keep hov (fun j hj => (hspec j hj).1) i
-              (by rw [hfx]; intro h; exact hX' (by rw [h]; rfl)) (by rw [hfy]; intro h; exact hY' (by rw [h]; rfl))
-              (by rw [hfy]; exact hy0)
+              (by show wd n x'.enc i ≠ _; rw [hfx]; intro h; exact hX' (by rw [h]; rfl))
+              (by show wd n y'.enc i ≠ _; rw [hfy]; intro h; exact hY' (by rw [h]; rfl))
+              (by show wd n y'.enc i ≠ _; rw [hfy]; exact hy0)
             rw [hk0] at hw1; exact absurd hw1 (by decide)
         obtain ⟨hk', -⟩ := (hsp _).2 hsd
         exact hk' hk0
@@ -550,7 +551,7 @@ theorem arithOp_wf {s : String} {B : Obj} {n : USize} {X : Vals (.prod B B) n} {
   case sum c d =>
     cases c <;> cases d <;> first
       | (rename_i t; cases t <;> first
-          | (obtain ⟨-, -, -, -, -, -, -, rfl⟩ := arithOp_opt hl h; exact ⟨hX, trivial⟩)
+          | (obtain ⟨-, -, -, -, -, -, -, rfl⟩ := arithOp_opt hl h; exact ⟨hX, fun _ h => absurd trivial h⟩)
           | simp [Tab.arithOp, hl] at h)
       | simp [Tab.arithOp, hl] at h
   all_goals simp [Tab.arithOp, hl] at h
