@@ -249,9 +249,11 @@ def mapRow : Prim :=
 -- `plus` keep theirs
 def lengthRow : Prim :=
   { sym := "length", num := [("ℕ", intAtoms)], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
+    prelude := `Rel.Programs.prelude.length,
     aop := .ok `Freyd.Alg.RelSet.ListRel.length }
 def sumRow : Prim :=
   { sym := "sum", num := [("ℕ", sumAtoms)], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+    prelude := `Rel.Programs.prelude.sum,
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
     larger `P` renumbers. Its definition `(dom(P) Λ(> dom(P)) length)°` is `Tm.ascDef`, proved equal to the row's

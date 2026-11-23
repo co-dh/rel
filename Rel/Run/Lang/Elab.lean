@@ -1922,7 +1922,8 @@ def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
           else throw ⟨p, s!"the number {w} at {n}, an object variable its constant is generic over"⟩
         else throw ⟨p, s!"'{w}' is not an element of {n}"⟩
       | _, _, _ => throw ⟨p, s!"'{w}' is not an element of {n}"⟩
-    | none => throw ⟨p, s!"unknown object '{n}'"⟩
+    -- no `ObjInfo`: a variable `generalise` made (`n#i`), the number object `.long` as `objOf` reads it
+    | none => (wordAt p n .i64 w).map (·.toInt64)
   | o => throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
 
 /-- The column of a literal's side of object `o`, its `n` rows' sides `rows`: a long column of codes at a leaf,
