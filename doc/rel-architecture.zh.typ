@@ -71,7 +71,7 @@
 inductive Obj                           -- 类型的代码；A B 都是 Obj
   | atom (t : Atom)                     -- u1 char i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
   | prod (a b : Obj)                    -- 积：多列
-  | arr  (b : Obj)                      -- 每格一个数组：平铺 payload + lo/hi
+  | sum  (a b : Obj)                    -- 和：tag 列 + 两个 n 行可空的 summand 列（不拥有的行为 null）；1+atom 是一列，null 在带内（§4 foR）
   | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置；1+atom 是一列，null 在带内（§4 foR）
   | one                                 -- 终对象 1（决定 M）：只有一个值，不存任何列；`obj 1 = {∗}` 这类单元素对象都是它
 
