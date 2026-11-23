@@ -1216,11 +1216,17 @@ def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAto
   -- an order at `sym` is the order of the texts (`symOrd`), which `build` gives or refuses for want of the dictionary
   | .leq _ n _ => [(n, "≤", fun t => t.ordNum.isSome || t == .sym)]
   | .lt _ n _ => [(n, "<", fun t => t.ordNum.isSome || t == .sym)]
+  -- the ordered prim `build` ranks through `symObj` (`.ranked`): its own atoms, and `sym` by the same rule
+  | .ranked (.prim r a s t) _ => (Pre.prim r a s t).numsAt mc |>.map fun (n, op, ok) => (n, op, fun t => ok t || t == .sym)
   | _ => []
 
-/-- `numsAt` of `x` and of its parts, a definition's body at its use included. -/
+/-- `numsAt` of `x` and of its parts, a definition's body at its use included; a `.ranked` prim is read once, by
+    `numsAt` of the `.ranked`, not again by its own atoms. -/
 partial def Pre.nums (mc : Lean.MetavarContext) (x : Pre) : List (OTy × String × (QAtomicType → Bool)) :=
-  x.numsAt mc ++ x.parts.flatMap (·.1.nums mc)
+  let ps := match x with
+    | .ranked (.prim r a s t) _ => (Pre.prim r a s t).parts ++ x.parts.drop 1
+    | _ => x.parts
+  x.numsAt mc ++ ps.flatMap (·.1.nums mc)
 
 /-- Why the rows `ts` of a literal's position do not determine its object: they are none (an empty array's
     elements), or several declared objects hold their words. -/
@@ -2465,8 +2471,7 @@ partial def Tm.reads (k : Nat) : {A B : Obj} → Tm A B → List Res
     which is no order of the texts at `sym` (`symOrd`). -/
 partial def Tm.ordered : {A B : Obj} → Tm A B → Bool
   | _, _, .prim r => [ascRow, cmpRelRow false, cmpRelRow true].any (·.sym == r.sym)
-  | _, _, .call _ _ _ b => b.ordered
-  | _, _, .callCv _ _ _ _ b u => b.ordered || u.ordered
+  | _, _, .call _ _ _ _ b => b.ordered
   | _, _, t => t.parts.any fun ⟨_, _, c⟩ => c.ordered
 
 /-- The call node of `c` given the body `t` and its arguments `rs`, bound to `ks`, one for one. A call's body sees
