@@ -112,10 +112,13 @@ theorem Tm.nilDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : T
   obtain rfl : Tm.nilDef = t' := Except.ok.inj ht
   exact Tm.nilDef_row ρ x hx w
 
-/- unproved: `Tm.frontDef_den` on `prelude.front.body`. The prelude text `Λ(∋ − ∋ (Q − Q°))` parses (infix folds left
-   to right) as `Λ((∋ − ∋)(Q − Q°))`, i.e. body `.lam (.comp (.diff .mem .mem) (.diff (.var 1) (.conv (.var 1))))`, not
-   `Tm.frontDef`'s `.lam (.diff .mem (.comp .mem (.diff Q (.conv Q))))`; `∋ − ∋ = 𝟘`, so the body is not `front`. The text
-   needs `∋ − (∋ (Q − Q°))` (Programs/Prelude.lean); then the body is `frontDef (.var 1)` and the proof is `ranDef_den`'s. -/
+/-- `front`'s text means the row (Q3 = H), as `Tm.ranDef_den`: its body at `β = u1`, parameter `Q` the variable 1. -/
+theorem Tm.frontDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : Tm ((Obj.arr (Obj.atom .general)).inst ph σ)
+    ((Obj.arr (Obj.atom .general)).inst ph σ)} (ht : Rel.Programs.prelude.front.body.instObj ph σ = .ok t') (x)
+    (hx : Short _ x) (w) : t'.den ρ x w ↔
+      (Tm.front (pairTest (.var 1 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)))).den ρ x w := by
+  obtain rfl : Tm.frontDef (.var 1) = t' := Except.ok.inj ht
+  exact Tm.frontDef_row ρ _ x hx w
 
 /-- `length ≜ ⦇[0, π₁ succ]⦈`, the base `0` on the universe `u₀`, the step on `u`. -/
 def Tm.lengthDef {E : Obj} (u₀ u : Tm .long .long) : Tm (.arr E) .long :=
