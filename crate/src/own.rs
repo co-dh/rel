@@ -30,7 +30,7 @@ pub const OWN_MAXPARTS: usize = 3;
 
 pub const OWN_ROOM: u64 = 32;
 pub const OWN_HEAD: usize = 24;
-pub const OWN_VERSION: u8 = 7;
+pub const OWN_VERSION: u8 = 8;
 /// The part count of each constructor kind, `None` for a number that is no kind: 1 was the bitmap, gone since a boolean
 /// is a u1 foR (kind 2), 4 the symbol dictionary and ids, gone since a symbol column is its foR ids (PLAN 8.3); 2 and 5
 /// keep their numbers, so a file on disk keeps its meaning. `Own.lean`'s `ownNParts`.
@@ -175,7 +175,7 @@ pub fn write(target: &CStr, code: u8, kind: u8, count: u64, parts: &[&[u8]]) -> 
 
 pub struct OwnHead { pub n: u64, pub np: usize,
                      pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub code: u8, pub kind: u8 }
-pub const OWN_OLDEST: u8 = 7;
+pub const OWN_OLDEST: u8 = 8;
 pub fn le(m: &[u8], at: usize, w: usize) -> u64 {
     let mut b = [0u8; 8];
     b[..w].copy_from_slice(&m[at..at + w]);
@@ -191,7 +191,7 @@ pub fn head(m: &[u8], why: &mut Why) -> Option<OwnHead> {
     if &m[..8] != b"qleancol" { why.say(format_args!("byte 0: the magic `qleancol`")); return None; }
     if m[8] < OWN_OLDEST || m[8] > OWN_VERSION {
         why.say(format_args!("byte 8: format version {}, found {}; a file before version {} is rewritten by `set` from the data \
-it was made from: version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block \
+it was made from: version 8 moved the null of a flagged block from its top residual to residual 0, version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block \
 offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms", OWN_VERSION, m[8], OWN_VERSION));
         return None;
     }
@@ -367,7 +367,7 @@ mod tests {
         let mut m = good(); m[0] = b'x';
         assert_eq!(err(&m), "byte 0: the magic `qleancol`");
         let mut m = good(); m[8] = 4;
-        assert!(err(&m).starts_with("byte 8: format version 7, found 4; a file before version 7 is rewritten by `set`"));
+        assert!(err(&m).starts_with("byte 8: format version 8, found 4; a file before version 8 is rewritten by `set`"));
         let mut m = good(); m[10] = 5;
         assert_eq!(err(&m), "byte 10: a constructor kind and part count 2:2 or 5:0, found kind 5 with 2 parts");
         let mut m = good(); m[11] = 1;
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(&m.map[m.spans[0].0..m.spans[0].0 + 24], &md);
         assert_eq!((m.spans[0].0 % 8, m.spans[1].0 % 8), (0, 0));
         let f = std::fs::read(p.to_str().unwrap()).unwrap();
-        assert_eq!(&f[..12], b"qleancol\x07\x07\x02\x02");
+        assert_eq!(&f[..12], b"qleancol\x08\x07\x02\x02");
         assert_eq!(f.len(), m.spans[1].0 + OWN_ROOM as usize);
     }
     #[test] fn write_refuses_and_fails() {
