@@ -3,6 +3,7 @@ module
 public import Rel.Run.Struct
 public import Rel.Run.List
 public import Rel.Run.Div
+public import Rel.Run.Merge
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -48,24 +49,25 @@ def mu (what : String) (cap : Nat) (f : Tab A B → Except String (Tab A B)) : E
   fixOn Tab.n Tab.pack (capMsg what cap) (fun X => f X >>= X.union) (cap - 1) (← Tab.zero)
 
 /-- **`μX : f(X)`, `f` additive in `X`** (`f(X ∪ Y) ⊑ f(X) ∪ f(Y)`, `Tm.linIn`), semi-naive (architecture §4): the
-state `(X, Δ)` from `(𝟘, 𝟘)`, a round `T = f(Δ)` (packed), `X' = X ∪ T` and `Δ' = T − X` (packed) from one sort of
-`X ++ T` (`unionDiff`), so `f` reads only the rows the round before added; `X` first, so its blocks are moved whole. `X'` is `mu`'s round `X ∪ f(X)`
+state `(X, Δ)` from `(𝟘, 𝟘)`, a round `T = f(Δ)` (packed), `X' = X ∪ T` and `Δ' = T − X` (packed) from one
+`unionDiffSel` of `X` and `T` (`mergeDiff` when `T` is small against `X`, else one sort of `X ++ T`), so `f` reads only
+the rows the round before added. `X'` is `mu`'s round `X ∪ f(X)`
 (`f(X) ⊑ X ∪ f(Δ)` by additivity), hence the same rounds, cap and error; `T` is packed before the `∪`, so `X'`'s
 payload is `X`'s and `T`'s live elements, and `Δ'` after, since `−` keeps all of `T ++ X`'s payload. -/
 def muLin (what : String) (cap : Nat) (f : Tab A B → Except String (Tab A B)) : Except String (Tab A B) := do
   let Z ← Tab.zero
   let r ← fixOn (fun s => s.1.n) pure (capMsg what cap)
-    (fun s => do let p ← s.1.unionDiff (← (← f s.2).pack); pure (p.1, ← p.2.pack)) (cap - 1) (Z, Z)
+    (fun s => do let p ← s.1.unionDiffSel (← (← f s.2).pack); pure (p.1, ← p.2.pack)) (cap - 1) (Z, Z)
   pure r.1
 
 /-- **`P ≫ star(R)`** = `P ≫ μX : 𝟙 ∪ R X`, semi-naive (architecture §4.5): the state `(X, Δ)` from `(P, P)`, `P`
-made canonical; a round composes only the frontier, `N = Δ ≫ R` (`step` given `ran Δ`, as `loop`'s), `Δ' = N − X`,
-`X' = X ∪ Δ'`. `≫` distributes over `∪`, so this is exact for the linear body, where `mu` composes all of `X` each
+made canonical; a round composes only the frontier, `N = Δ ≫ R` (`step` given `ran Δ`, as `loop`'s), `(X', Δ') = (X ∪ N, N − X)` from one
+`unionDiffSel`. `≫` distributes over `∪`, so this is exact for the linear body, where `mu` composes all of `X` each
 round. It stops when `X` keeps its row count (`fixOn`), so `Δ'` is empty; each other round adds a row of `X`. -/
 def star {K B : Obj} (step : Tab B B → Except String (Tab B B)) (P : Tab K B) : Except String (Tab K B) := do
   let P ← P.canon
   let r ← fixOn (fun s => s.1.n) (fun s => do pure (← s.1.pack, ← s.2.pack)) (capMsg "star" roundsMax)
-    (fun s => do let D ← (← s.2.comp (← step (← s.2.ran))).diff s.1; pure (← s.1.union D, D)) roundsMax (P, P)
+    (fun s => do s.1.unionDiffSel (← s.2.comp (← step (← s.2.ran)))) roundsMax (P, P)
   pure r.1
 
 /-- **The rounds of a fold** (`fold`, `foldr`, `foldI`), at most `f`: `rest` holds at each key `k` the part of its
