@@ -356,13 +356,12 @@ theorem Prim.den_mapRow_corefl {V : Obj} {TU : Core.Rel (Obj.El V) (Obj.El V)} {
   have ho : ∀ ps, mapRow.objs (.arr V) (.arr V) ps = some [V, V] := by
     simp [Prim.objs, Option.orElse, mapRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
-      fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
-        ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')⟩ := rfl
+  have hf : rowDens.find? (·.1.sym == mapRow.sym) =
+      some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩ := rfl
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one, σ₁, σ₂, List.headD, List.getD, List.getElem?_cons_succ, List.getElem?_cons_zero,
     Option.getD_some, dite_true, and_self]
-  simp only [hU]
+  rw [Rel.Lang.mapDen_iff]; simp only [hU]
   constructor
   · rintro ⟨hl, h⟩
     refine ⟨List.ext_getElem hl fun t h1 h2 => (h t h2 h1).1.symm, fun x hx => ?_⟩
