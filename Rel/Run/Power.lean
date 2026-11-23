@@ -47,6 +47,25 @@ def atPos {n : USize} (k : Nat) (X : Vals (.arr B) n) : Except String (Tab (.arr
     let ix ← kgather M sel n (← colMap .first n lo.enc lo.enc .i64 .i64 [] [(.add, k.toUInt64)])
     Tab.canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩, ← Vals.gather M ix f⟩
 
+/-- **`at` on the pairs `X = (xs, k)`** (`atOnDen`), `atPos` with an index column for the constant `k`: the rows whose
+index is nonneg and below the cell's width (`colMap .and` of `k < hi - lo` and `0 ≤ k`, `whereCol`), each to the
+payload at `lo + k` (`kgather` there); then `canon`. -/
+def atIx {n : USize} (X : Vals (.prod (.arr B) .long) n) : Except String (Tab (.prod (.arr B) .long) B) :=
+  match X with
+  | (⟨m, lo, hi, f⟩, k) => do
+    if 2 ^ 63 ≤ m.toNat then throw s!"at: a payload of {m} rows, past 2^63"
+    let w ← colMap .sub n hi.enc lo.enc
+    let c ← colMap .and n (← colMap .lt n k.enc w) (← colMap .first n k.enc k.enc .i64 .i64 [] [(.le, 0)])
+    let (M, sel) ← whereCol n c
+    let ix ← kgather M sel n (← colMap .add n lo.enc k.enc)
+    Tab.canon ⟨M, ← Vals.gather (A := .prod (.arr B) .long) M sel (⟨m, lo, hi, f⟩, k), ← Vals.gather M ix f⟩
+
+/-- **The row `at` on the pairs `X`** (`rowDens`: `atOn`): `atIx` where the index object is `i64`, no row elsewhere. -/
+def atRow {N : Obj} {n : USize} (X : Vals (.prod (.arr B) N) n) : Except String (Tab (.prod (.arr B) N) B) :=
+  match N, X with
+  | .atom .i64, X => atIx X
+  | _, _ => .error "at runs from an array and an i64 index"
+
 /-- **`est(Q)` on the arrays `X`** (`estDen`), `Q` the test `q` run on the pairs `D = ran ⟨G, G⟩` of elements of one
 array (`G = ∋` on `X`): `Y = D − q(D)` the failing pairs, less the diagonal `ran ⟨V, V⟩` of `V = ran G`; `(xs, b)` of
 `G` dropped where `⟨G, G⟩ ≫ π₁` on `Y` reaches it. -/
