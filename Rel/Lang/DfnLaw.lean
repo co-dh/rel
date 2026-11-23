@@ -380,6 +380,12 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     obtain ⟨rfl, hE⟩ := (Prim.den_mapRow_corefl hU x y).1 hy
     obtain ⟨rfl, hPw⟩ := (hU _ _).1 hw
     exact ⟨hE, hPw, hf⟩
+  | fsum u =>
+    -- the definition is the cut itself; on the universe `𝟙` both `u` drop out
+    obtain ⟨-, hU⟩ := hUs u u rfl
+    refine ⟨Iff.rfl, fun hall => ?_⟩
+    simp only [Tm.den, Tm.argDen, DfnCut.fused, Core.Rel.comp, Prim.den_mapRow_corefl hU, hU]
+    exact ⟨fun ⟨_, ⟨_, ⟨rfl, _⟩, h⟩, rfl, _⟩ => h, fun h => ⟨w, ⟨x, ⟨rfl, fun _ _ => hall _⟩, h⟩, rfl, hall _⟩⟩
 
 
 /-! ### Keyed lifting (§e): the law `Prim.keyLift` claims -/

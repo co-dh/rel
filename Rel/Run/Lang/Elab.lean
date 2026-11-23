@@ -2115,6 +2115,11 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
     DfnCut (A := .arr E) (B := .long) (.fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (Tm.cut1 succRow u)))
   | sum {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ floatAtoms) (u₀ u : Tm (.atom t) (.atom t)) :
     DfnCut (A := .arr (.atom t)) (B := .atom t) (.fold (zeroTm h u₀) (Tm.cut2 (arithRow "plus") u))
+  -- at a float atom `sum` rounds once (`Lang.sumDen`), no fold of `plus` (rounding each step): its definition is
+  -- the row cut to the universe, `F(u) sum u`
+  | fsum {t : QAtomicType} (u : Tm (.atom t) (.atom t)) :
+    DfnCut (A := .arr (.atom t)) (B := .atom t) (.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t))
+      (.arr (.atom t))) u) (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u)
   | flat {I A B : Obj} (R : Tm I (.prod A B)) :
     DfnCut (A := .prod I A) (B := B)
       (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
@@ -2133,12 +2138,13 @@ inductive DfnCut : {A B : Obj} → Tm A B → Type
 /-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
 def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
   | .length u₀ u | .sum _ _ u₀ u => some (u₀, u)
+  | .fsum u => some (u, u)
   | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil | .est _ | .front _ => none
 
 /-- The row the definition is the fused form of. -/
 def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .length _ _ => .prim lengthRow
-  | .sum _ _ _ _ => .prim sumRow
+  | .sum _ _ _ _ | .fsum _ => .prim sumRow
   | .flat R => .arg (.prim flatRow) R
   | .foldI e S => .arg (.arg (.prim foldIRow) e) S
   | .dom R => .dom R
@@ -2152,6 +2158,8 @@ def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
 def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .length _ u => .comp (.prim lengthRow) u
   | @DfnCut.sum t _ _ _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
+    (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
+  | @DfnCut.fsum t u => .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
     (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
   | .flat R => .arg (.prim flatRow) R
   | .foldI e S => .arg (.arg (.prim foldIRow) e) S
@@ -2169,9 +2177,11 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
   [("length", fun A B _ u => match A, B, u with | .arr _, .long, u => some ⟨_, .length u u⟩ | _, _, _ => none),
    ("sum", fun A B _ u => match A, B, u with
      | .arr (.atom t), .atom t', u =>
-       -- at a float atom `sum` rounds once (`Lang.sumDen`) and the fold of `plus` each step: no law, the row runs
-       if h : t' = t ∧ t.ordNum.isSome ∧ t ∉ floatAtoms then by
-         obtain ⟨rfl, ho, hf⟩ := h; exact some ⟨_, .sum ho hf u u⟩ else none
+       if h : t' = t then by
+         obtain rfl := h
+         exact if hf : t' ∈ floatAtoms then some ⟨_, .fsum u⟩
+           else if ho : t'.ordNum.isSome then some ⟨_, .sum ho hf u u⟩ else none
+       else none
      | _, _, _ => none),
    ("flat", fun A B xs _ => match A, xs with
      | .prod I A, [⟨I', AB, R⟩] => if h : I' = I ∧ AB = .prod A B then some ⟨_, .flat (h.1 ▸ h.2 ▸ R)⟩ else none
