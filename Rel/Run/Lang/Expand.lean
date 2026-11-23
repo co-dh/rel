@@ -182,7 +182,7 @@ def sigOf (o : Once) : Sig :=
     on demand (`R : A ⟶ B`, whose converse is no parameter) has none. Whether the body has a converse is `convTm`'s
     answer at the call's node (`Tm.call`). -/
 def convOf (o : Once) : Option Lean.Name :=
-  let dem := o.res.2.2.dem && o.forms.zipIdx.any fun (f, i) => f == some false && o.res.2.2.fv.contains (o.gen.length + i)
+  let dem := o.res.2.2.dem o.dem [] && o.forms.zipIdx.any fun (f, i) => f == some false && o.res.2.2.fv.contains (o.gen.length + i)
   if o.tst || dem then none else some (o.const ++ `conv)
 
 /-- A statement `n.io` runs (IO design B), in statement order; a name is the spelling the program's statements reach
@@ -396,8 +396,9 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
         return .error ⟨p, s!"`{n}`: a row fits none of {primWrappers} at {oE A} → {oE B}"⟩
       pure x
     let mc ← Lean.getMCtx
-    let tst := (test objs mc p q).map fun ⟨A, B, t⟩ => (⟨.prod A B, .prod A B, t⟩ : Res)
-    match ← fits (build objs mc p q), ← (kq.map (build objs mc p)).mapM fits, ← fits tst with
+    let dv := q.demVars; let δ : Dem := (dv.contains ·)
+    let tst := (test objs mc p δ q).map fun ⟨A, B, t⟩ => (⟨.prod A B, .prod A B, t⟩ : Res)
+    match ← fits (build objs mc p δ q), ← (kq.map fun kx => let kδ : Dem := (kx.demVars.contains ·); build objs mc p kδ kx).mapM fits, ← fits tst with
     | .ok res, _, _ => pure (mk res false false)
     | .error _, some (.ok res), _ => pure (mk res false true)
     | .error _, _, .ok res => pure (mk res true false)
@@ -461,15 +462,16 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- the first form the argument (a family: its relation from the index) builds in: closed, run on demand,
         -- tested on pairs; else closed, whose build reports why
         let st ← get; let mc ← Lean.getMCtx
-        let bx := build st.objs mc p xe
+        let δ : Dem := (xe.demVars.contains ·)
+        let bx := build st.objs mc p δ xe
         let f : Option Bool :=
-          if (build st.objs mc p (Pre.close p xe a why)).toOption.isSome then none
+          if (build st.objs mc p δ (Pre.close p xe a why)).toOption.isSome then none
           else if bx.toOption.isSome then some false
-          else if (test st.objs mc p xe).toOption.isSome then some true else none
+          else if (test st.objs mc p δ xe).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
         -- closed, an argument that needs keys would be read on its source's whole universe (`closeRes`); on demand it
         -- runs bounded by what the body composes it with, as the inlined body runs it
-        let fl := match bx with | .ok ⟨_, _, t⟩ => if t.dem then some false else f | .error _ => f
+        let fl := match bx with | .ok ⟨_, _, t⟩ => if t.dem δ [] then some false else f | .error _ => f
         fsL := fsL ++ [(fl, k?)]; xsL := xsL ++ [(if fl.isNone then Pre.close p x a why else x, fl == some true)]
       let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
       -- the variables this call puts an unbounded number object at: the constant is built at them (`once`); an
@@ -526,8 +528,9 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
     keys, refused where that object has none. -/
 def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) : Except Err Top := do
   let (q, s, t) := r.plain
-  let ⟨A, B, tm⟩ ← build env.objs mc p (.close p q s noLeft)
-  if !tm.dem then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
+  let δ : Dem := (q.demVars.contains ·)
+  let ⟨A, B, tm⟩ ← build env.objs mc p δ (.close p q s noLeft)
+  if !tm.dem δ [] then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
 
 /-- `check e = f` at `p` (`⊑` when `eq` is false): the two sides
     elaborated together, one type, an object one side leaves open being the other's (§c); with the constants
@@ -784,12 +787,13 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         let each := wrap n (mkDef env n p [] (.rel e) ty)
         if s.poly || t.poly then env := { env with defs := (n, each) :: env.defs }; continue
         let q := if (uniOf env.objs s).isSome then Pre.close p q s noLeft else q
-        let res@⟨_, _, tm⟩ ← match build env.objs mc p q, test env.objs mc p q with
+        let δ : Dem := (q.demVars.contains ·)
+        let res@⟨_, _, tm⟩ ← match build env.objs mc p δ q, test env.objs mc p δ q with
           | .ok r, _ => pure r
           | .error _, .ok _ => env := { env with defs := (n, each) :: env.defs }; continue
           | .error e, .error _ => throw e
         env := { env with defs := (n, wrap n { arity := 0, apply := fun _ _ => pure (.rel (.tm res) s t) }) :: env.defs }
-        if !tm.dem then
+        if !tm.dem δ [] then
           ds := ds ++ [(n, res)]
           if let some ty := ty then whole := whole ++ [(n, ty)]
       | qs, b, ty, _ =>
@@ -892,7 +896,7 @@ open Lean Meta
 
 /-- A term that needs no keys and reads no fixed-point variable: computed once, its slot of the share table
     (`Tm.number`). -/
-def closed {A B : Obj} (t : Tm A B) : Bool := !t.dem && t.fv.isEmpty
+def closed {A B : Obj} (t : Tm A B) : Bool := !t.dem Dem.empty [] && t.fv.isEmpty
 
 /-- The constant `c : ty := v`, compiled, with the heartbeats a `def` command of its own would have: one
     `rel_program` command adds them all, and a program's count of constants is no measure of any one's cost.
@@ -969,7 +973,7 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
       r.prelude == r'.prelude && r.mono == r'.mono && r.dem == r'.dem && r.num == r'.num && r.ord == r'.ord &&
       match r.aop, r'.aop with | .ok a, .ok b => a == b | .error a, .error b => a == b | _, _ => false
     | _ => false
-  | .var d k => match u with | .var d' k' => d == d' && k == k' | _ => false
+  | .var k => match u with | .var k' => k == k' | _ => false
   | .call ks c cv os _ => match u with
     | .call ks' c' cv' os' _ => ks == ks' && key c == key c' && cv.map key == cv'.map key && os == os' | _ => false
   | .nu k .. => match u with | .nu k' .. => k == k' | _ => false

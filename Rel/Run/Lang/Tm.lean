@@ -51,9 +51,9 @@ inductive Tm : Obj → Obj → Type where
   /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
   | fold {E V : Obj} (e : Tm V V) (S : Tm (.prod V E) V) : Tm (.arr E) V
   /-- The variable `k` of the fixed point that binds it: its value in the round being run; or a constant's
-      parameter, on the keys in demand when its argument is a pair test (`Form`). `d`: its demand bit, which the
-      use site fixes, as `call` stores its own. -/
-  | var {A B : Obj} (d : Bool) (k : Nat) : Tm A B
+      parameter, on the keys in demand when its argument is a pair test (`Form`). Its demand bit is its binder's
+      (`Tm.dem`). -/
+  | var {A B : Obj} (k : Nat) : Tm A B
   /-- `let ks := args in b`: the definition elaborated once to the constant `c`, called before its arguments
       (`arg`). `b` its body at the call's objects (`Tm.instObj`), `ks` the variables of `b` its arguments bind, in
       the order `arg` gives them; `c` at `os`, the objects of the variables it is generic over, its shared code.
@@ -107,7 +107,7 @@ def Prim.objs (r : Prim) (A B : Obj) (ps : List (Obj × Obj)) : Option (List Obj
     let (x, y) := if fm == some true then (OExp.prod x y, OExp.prod x y) else (x, y)
     x.unify X τ >>= y.unify Y) σ) >>= List.lookup v
 
-instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var false 0⟩
+instance {A B : Obj} : Inhabited (Tm A B) := ⟨.var 0⟩
 
 /-- The spine `t` is headed by a row whose dem is read off its relations (`Prim.dem` `whole` or `arg`). -/
 def Tm.whole : {A B : Obj} → Tm A B → Bool
@@ -122,26 +122,44 @@ def Tm.bounds : {A B : Obj} → Tm A B → Bool
   | _, _, .arg f _ => f.bounds
   | _, _, _ => false
 
+/-- The demand bit of each variable, written by its binder: `Val`'s and `Code`'s twin for `Tm.dem`. -/
+abbrev Dem := Nat → Bool
+
+/-- No variable needs keys. -/
+def Dem.empty : Dem := fun _ => false
+
+/-- `δ` with `k` bound to `d`. -/
+def Dem.bind (δ : Dem) (k : Nat) (d : Bool) : Dem := fun j => if j = k then d else δ j
+
+/-- A call's `ks` bound to its arguments' bits `ds`, one for one, the first outermost, and no other variable
+    (`Code.args`'s twin); a variable with no bit is closed. -/
+def Dem.args (ks : List Nat) (ds : List Bool) : Dem := fun k => ((ks.zip ds).lookup k).getD false
+
 /-- `t` runs on demand (§a): read only at the keys its left context supplies. A function of the constructor and its
-    parts, except `var`, which stores its bit; a row made from its relations' whole tables (`Tm.whole`) given all of
-    them needs keys where one of them does, its head alone (`prim`) is no term that runs. -/
-def Tm.dem : {A B : Obj} → Tm A B → Bool
-  | _, _, .arg R x => if R.whole then (!(R matches .prim _) && R.dem) || x.dem else R.dem && !R.bounds
-  | _, _, .comp R _ | _, _, .call _ _ _ _ R => R.dem
-  | _, _, .join R S => R.dem || S.dem
+    parts, except `var`, which reads its binder's bit in `δ`; a row made from its relations' whole tables
+    (`Tm.whole`) given all of them needs keys where one of them does, its head alone (`prim`) is no term that runs.
+    `ds`: the bits of the arguments of the spine not yet bound, which `call` binds to its `ks`. -/
+def Tm.dem : {A B : Obj} → Tm A B → Dem → List Bool → Bool
+  | _, _, .arg R x, δ, ds =>
+    let d := x.dem δ []
+    if R.whole then (!(R matches .prim _) && R.dem δ (d :: ds)) || d else R.dem δ (d :: ds) && !R.bounds
+  -- the binder: the body sees its `ks` at its arguments' bits and no other variable
+  | _, _, .call ks _ _ _ b, _, ds => b.dem (Dem.args ks ds) []
+  | _, _, .comp R _, δ, _ => R.dem δ []
+  | _, _, .join R S, δ, _ => R.dem δ [] || S.dem δ []
   -- `⟨R,S⟩`'s domain is `dom R ∩ dom S`, `R ∩ S` within `R` and `S`, so one closed operand bounds the other
   -- (`GenK.pairK`, `GenK.meetK`); `R − S` within `R`, which bounds `S` (`GenK.diff`)
-  | _, _, .pair R S | _, _, .meet R S => R.dem && S.dem
-  | _, _, .diff R _ => R.dem
-  | _, _, .var d _ => d
+  | _, _, .pair R S, δ, _ | _, _, .meet R S, δ, _ => R.dem δ [] && S.dem δ []
+  | _, _, .diff R _, δ, _ => R.dem δ []
+  | _, _, .var k, δ, _ => δ k
   -- an injection's converse runs on the sum values in demand (`Tab.inlConv`); any other converse is read whole
-  | _, _, .conv R => (R matches .inl | .inr)
+  | _, _, .conv R, _, _ => (R matches .inl | .inr)
   -- every leaf listed, as in `Tm.fv`
-  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .ldiv .. | _, _, .rdiv ..
-  | _, _, .nu .. | _, _, .mu .. => false
-  | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _
-  | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
+  | _, _, .val _, _, _ | _, _, .uni _, _, _ | _, _, .zero, _, _ | _, _, .ldiv .., _, _ | _, _, .rdiv .., _, _
+  | _, _, .nu .., _, _ | _, _, .mu .., _, _ => false
+  | _, _, .id, _, _ | _, _, .top _, _, _ | _, _, .outl, _, _ | _, _, .outr, _, _ | _, _, .lam _, _, _
+  | _, _, .mem, _, _ | _, _, .inl, _, _ | _, _, .inr, _, _ | _, _, .prim _, _, _
+  | _, _, .foldr .., _, _ | _, _, .fold .., _, _ | _, _, .hylo .., _, _ => true
 
 /-- `R × S ≜ ⟨π₁R, π₂S⟩` (`Tm.prod_den`): on demand, each operand on its side of the pairs in demand; where none
     are, the product is closed by its source's universe (`closeRes`, `Tm.prodUni`). -/
@@ -242,7 +260,7 @@ def Tm.inner {A B : Obj} : Tm A B → List Res
 /-- The variables free in `t`: a binder (`μ`, `ν`, `hylo`) drops its own, and a `share` is closed. Structural,
     so `den_congr` can be stated with it. -/
 def Tm.fv : {A B : Obj} → Tm A B → List Nat
-  | _, _, .var _ k => [k]
+  | _, _, .var k => [k]
   | _, _, .top V => V.fv
   | _, _, .comp R S => R.fv ++ S.fv
   | _, _, .conv R => R.fv
@@ -262,61 +280,6 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .call .. => []
 
-/-! ### Substitution -/
-
-/-- A substitution: each entry `(k, ⟨A, B, s⟩)` puts the closed term `s : A ⟶ B` for the variable `k`, the first
-    entry for `k` winning, and a variable with no entry stays. The syntax side of `Val` (`Tm.Sub.den`). -/
-abbrev Tm.Sub := List (Nat × (A : Obj) × (B : Obj) × Tm A B)
-
-/-- What `σ` puts for the variable `i` used at `A' ⟶ B'` with demand bit `d`: its entry's term where the objects
-    match, `𝟘` where they do not, as `Val.bind` reads a variable at other objects; with no entry, the variable. -/
-def Tm.Sub.get (i : Nat) {A' B' : Obj} (d : Bool) : Tm.Sub → Tm A' B'
-  | [] => .var d i
-  | (k, ⟨A, B, s⟩) :: σ => if i = k then (if h : A = A' ∧ B = B' then h.1 ▸ h.2 ▸ s else .zero) else Sub.get i d σ
-
-/-- The variables free in the terms of `σ`. -/
-def Tm.Sub.fvs : Tm.Sub → List Nat
-  | [] => []
-  | (_, ⟨_, _, s⟩) :: σ => s.fv ++ fvs σ
-
-/-- A variable above every one of `l`. -/
-def Tm.fresh (l : List Nat) : Nat := l.foldr max 0 + 1
-
-/-- `t` with `σ` put for its free variables. A binder is renamed to a variable `fresh` for its body and `σ`, so no
-    variable of `σ` is captured, whatever `σ` holds. A `share` is closed, so it is kept. -/
-def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
-  | σ, _, _, .var d i => σ.get i d
-  | σ, _, _, .top V => .top (V.subst σ)
-  | σ, _, _, .comp R S => .comp (R.subst σ) (S.subst σ)
-  | σ, _, _, .conv R => .conv (R.subst σ)
-  | σ, _, _, .meet R S => .meet (R.subst σ) (S.subst σ)
-  | σ, _, _, .join R S => .join (R.subst σ) (S.subst σ)
-  | σ, _, _, .diff R S => .diff (R.subst σ) (S.subst σ)
-  | σ, _, _, .ldiv R S U V => .ldiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
-  | σ, _, _, .rdiv R S U V => .rdiv (R.subst σ) (S.subst σ) (U.subst σ) (V.subst σ)
-  | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
-  | σ, _, _, .lam R => .lam (R.subst σ)
-  | σ, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
-  | σ, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
-  | σ, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
-  | σ, A, B, .nu k S b =>
-    .nu (fresh (b.fv ++ σ.fvs)) (S.subst σ) (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
-  | σ, A, B, .mu k w n b =>
-    .mu (fresh (b.fv ++ σ.fvs)) w n (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
-  | σ, A, B, .hylo k w b =>
-    .hylo (fresh (b.fv ++ σ.fvs)) w (b.subst ((k, ⟨A, B, .var false (fresh (b.fv ++ σ.fvs))⟩) :: σ))
-  | _, _, _, .val R => .val R
-  | _, _, _, .uni U => .uni U
-  | _, _, _, .zero => .zero
-  | _, _, _, .id => .id
-  | _, _, _, .outl => .outl
-  | _, _, _, .outr => .outr
-  | _, _, _, .mem => .mem
-  | _, _, _, .inl => .inl
-  | _, _, _, .inr => .inr
-  | _, _, _, .prim r => .prim r
-  | _, _, _, .call ks c cv os b => .call ks c cv os b
-
 mutual
 /-- `X`, the variable `k`, occurs in `t` only with sign `s` (`true` positive): the one monotonicity check (D5 = J),
     `den_mono`/`den_anti`. A node with no rule below must not mention `k` at all. `ldiv`'s `R` and `rdiv`'s `S`
@@ -324,7 +287,7 @@ mutual
     whole (`lamDen`'s `↔`), so their part must be too. A row given any number of relations passes their sign where
     its `prims` entry is `mono` (`Tm.spinePol`, `rowDens_mono`), `F(X)` among them. -/
 def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
-  | _, _, .var _ j => if j == k then s else true
+  | _, _, .var j => if j == k then s else true
   | _, _, .top V => V.pol s k
   | _, _, .comp R S => R.pol s k && S.pol s k
   | _, _, .conv R => R.pol s k
@@ -357,7 +320,7 @@ end
     other node holding `k` fails: `−`, `Λ`, a division (`∀`), a fold or nested fixed point, a row's argument (`F(X ∪ Y)`
     relates lists mixing `X` and `Y` steps, which neither `F(X)` nor `F(Y)` holds). -/
 def Tm.linIn (k : Nat) : {A B : Obj} → Tm A B → Bool
-  | _, _, .var _ _ => true
+  | _, _, .var _ => true
   | _, _, .join R S => R.linIn k && S.linIn k
   | _, _, .comp R S | _, _, .meet R S | _, _, .pair R S =>
     R.linIn k && !S.fv.contains k || !R.fv.contains k && S.linIn k
@@ -388,7 +351,7 @@ def Tm.idAt (C E : Obj) : Tm C E := if h : C = E then h ▸ .id else .zero
 def Tm.kids (k : Nat) (A : Obj) {C D : Obj} (t : Tm C D) : Option (Tm C A) :=
   if t.fv.contains k then
     match C, D, t with
-    | C, _, .var _ _ => if h : C = A then some (h ▸ .id) else some .zero
+    | C, _, .var _ => if h : C = A then some (h ▸ .id) else some .zero
     | _, _, .comp R S =>
       if !S.fv.contains k then R.kids k A
       else if R.fv.contains k then none

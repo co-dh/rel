@@ -328,7 +328,7 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .prim r => pure (.prim r)
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
-  | _, _, .var d k => pure (.var d k)
+  | _, _, .var k => pure (.var k)
   | _, _, .call ks c cv os b => return .call ks c cv (os.map (·.inst ph σ)) (← b.instObj ph σ)
   | _, _, .arg f x => return .arg (← f.instObj ph σ) (← x.instObj ph σ)
   | _, _, .nu k S b => return .nu k (← S.instObj ph σ) (← b.instObj ph σ)
@@ -527,6 +527,9 @@ structure Once where
 def Once.binds (o : Once) : List Nat :=
   (List.range o.gen.length).filter o.res.2.2.fv.contains ++ (List.range o.params.length).map (o.gen.length + ·)
 
+/-- The bits `o`'s body was built under: parameter `i` is the variable `gen.length + i`, its bit `params`' third. -/
+def Once.dem (o : Once) : Dem := fun k => k ≥ o.gen.length && ((o.params[k - o.gen.length]?).map (·.2.2)).getD false
+
 /-- A use at `p` of the generic definition `n : sig` (`mkDef`): its object variables at the use, `us`, and its
     expansion's nodes `xs`, whose number checks run once the context has solved `us` (`settleUses`). -/
 structure Use where
@@ -683,10 +686,15 @@ partial def Pre.occ (k : Nat) : Pre → Option Pos
   | x => x.parts.findSome? (·.1.occ k)
 
 /-- Whether `x` reads a parameter run on demand (`Form` `some false`), its argument at a call or a definition's
-    expansion included. Its `Tm.var true k` is no converse of itself (`convTm` takes a variable for a pair test's). -/
+    expansion included. Its `Tm.var k` is no converse of itself (`convTm` takes a variable for a pair test's). -/
 partial def Pre.onDemand : Pre → Bool
   | .var _ _ _ _ (some false) => true
   | x => (x.traverse (m := StateM Bool) pure (fun _ y => do modify (· || y.onDemand); pure y) |>.run false).2
+
+/-- The variables `x` reads in a form that needs keys (`Form` `some _`): the demand bits a build of `x` starts from. -/
+partial def Pre.demVars : Pre → List Nat
+  | .var _ k _ _ (some _) => [k]
+  | x => x.parts.flatMap (·.1.demVars)
 
 /-- The first occurrence of `X`, the variable `k` of `fx` (`μX`, `νX`), where the body is not monotonic in it:
     under an operator that is not, or under an odd number of antitone places, `why` the last of them. -/
@@ -2073,12 +2081,12 @@ mutual
     a theorem; any other the converse of its body). A side that reads
     its source through one projection is met with one through the other (`convProj`), so `(R×S)° = R°×S°`. A
     closed part is conversed whole. The error is the leaf whose converse does not run on demand. -/
-def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
-  if t.dem = false then pure (.conv t) else
+def convTm {A B : Obj} (δ : Dem) (ds : List Bool) (t : Tm A B) : Except String (Tm B A) :=
+  if t.dem δ ds = false then pure (.conv t) else
   match t with
   | .val R => pure (.conv (.val R))
   -- a parameter tested on pairs is a coreflexive, its own converse
-  | .var _ k => pure (.var true k)
+  | .var k => pure (.var k)
   | .nu k S b => pure (.conv (.nu k S b))
   | .mu k w n b => pure (.conv (.mu k w n b))
   | .uni U => pure (.uni U)
@@ -2087,28 +2095,28 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
   | .id => pure .id
-  | .comp R S => do let s ← convTm S; let r ← convTm R; pure (.comp s r)
-  | .meet R S => match convTm R, convTm S with
+  | .comp R S => do let s ← convTm δ [] S; let r ← convTm δ [] R; pure (.comp s r)
+  | .meet R S => match convTm δ [] R, convTm δ [] S with
     | .ok r, .ok s => pure (.meet r s)
     | r, s => do
       let l := match r, s with | .error l, _ => l | _, .error l => l | _, _ => ""
       match A, R, S with
-      | .prod _ _, R, S => match convProj R, convProj S with
+      | .prod _ _, R, S => match convProj δ R, convProj δ S with
         | .ok x, .ok y => match Proj.meet x y with | .inl p => pure p | .inr _ => throw l
         | _, _ => throw l
       | _, _, _ => throw l
-  | .join R S => do let r ← convTm R; let s ← convTm S; pure (.join r s)
-  | .diff R S => do let r ← convTm R; let s ← convTm S; pure (.diff r s)
+  | .join R S => do let r ← convTm δ [] R; let s ← convTm δ [] S; pure (.join r s)
+  | .diff R S => do let r ← convTm δ [] R; let s ← convTm δ [] S; pure (.diff r s)
   -- `⟨R,S⟩° = π₁R° ∩ π₂S°`; with one side's converse only, the other is tested on the pairs it gives:
   -- `⟨π₁R°,π₂⟩τ(S)π₁`, `⟨π₁,π₂S°⟩τ(R°)π₂`
-  | .pair R S => match convTm R, convTm S with
+  | .pair R S => match convTm δ [] R, convTm δ [] S with
     | .ok r, .ok s => pure (.meet (.comp .outl r) (.comp .outr s))
     | .ok r, .error _ => pure (.comp (.pair (.comp .outl r) .outr) (.comp (pairTest S) .outl))
     | .error _, .ok s =>
       pure (.comp (.pair .outl (.comp .outr s)) (.comp swapTm (.comp (pairTest R) (.comp swapTm .outr))))
     -- neither runs: each side read through one projection, `⟨π₁P, π₂Q⟩° = ⟨π₁P°, π₂Q°⟩`, i.e. `(P×Q)° = P°×Q°`
     | .error l, .error _ => match A, R, S with
-      | .prod _ _, R, S => match convProj R, convProj S with
+      | .prod _ _, R, S => match convProj δ R, convProj δ S with
         | .ok x, .ok y => match Proj.meet (Proj.pre .outl x) (Proj.pre .outr y) with
           | .inl p => pure p
           | .inr _ => throw l
@@ -2124,12 +2132,12 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .call ks c (some c') os b =>
     -- a theorem `c° = c` at `B ≠ A` is ill-typed: an error, so `ConvOK`'s self clause is read only at `A = B`
     if c' = c then (if h : B = A then by obtain rfl := h; exact pure (.call ks c (some c) os b) else throw s!"`{c}`")
-    else do let u ← convTm b; pure (.call ks c' (some c) os u)
+    else do let u ← convTm (Dem.args ks ds) [] b; pure (.call ks c' (some c) os u)
   | .call _ c none .. => throw s!"`{c}`"
   -- a closed spine under a demand argument (a whole row, `Tm.whole`) has no converse spine: `convTm f` gives `f°`
   -- a spine whose row has no converse row is conversed lazily whole, `(r x)°`, as `GenK.conv` runs it
-  | .arg f x => if f.dem then do
-      match ← convTm f with | .conv _ => pure (.conv (.arg f x)) | f' => pure (.arg f' x)
+  | .arg f x => let d := x.dem δ []; if f.dem δ (d :: ds) then do
+      match ← convTm δ (d :: ds) f with | .conv _ => pure (.conv (.arg f x)) | f' => pure (.arg f' x)
     else throw "a whole row's closed spine"
   | .top _ => throw "⊤"
   | .outl => throw "π₁"
@@ -2144,15 +2152,15 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
 
 /-- `t° = Zπᵢ°` (`Proj`): `π₁° = 𝟙π₁°`, `(RS)° = S°(Zπᵢ°)`, and a meet or pair of two on one projection
     (`Proj.meet`). The error is only that `t` is not of that form: the caller reports its own leaf. -/
-def convProj {A₁ A₂ B : Obj} (t : Tm (.prod A₁ A₂) B) : Except String (Proj B A₁ A₂) :=
+def convProj {A₁ A₂ B : Obj} (δ : Dem) (t : Tm (.prod A₁ A₂) B) : Except String (Proj B A₁ A₂) :=
   match t with
   | .outl => pure (.inl .id)
   | .outr => pure (.inr .id)
-  | .comp R S => do let s ← convTm S; pure (Proj.pre s (← convProj R))
-  | .meet R S => do match Proj.meet (← convProj R) (← convProj S) with
+  | .comp R S => do let s ← convTm δ [] S; pure (Proj.pre s (← convProj δ R))
+  | .meet R S => do match Proj.meet (← convProj δ R) (← convProj δ S) with
     | .inr z => pure z
     | .inl _ => throw "a meet across both projections"
-  | .pair R S => do match Proj.meet (Proj.pre .outl (← convProj R)) (Proj.pre .outr (← convProj S)) with
+  | .pair R S => do match Proj.meet (Proj.pre .outl (← convProj δ R)) (Proj.pre .outr (← convProj δ S)) with
     | .inr z => pure z
     | .inl _ => throw "a pair across both projections"
   | _ => throw "not read through one projection"
@@ -2162,8 +2170,8 @@ end
 /-- `convTm t`, `t` built from `q`: a `t` on demand reading a parameter run on demand has none, since `convTm` takes
     a variable for a pair test's, its own converse, and such a parameter `R : A ⟶ B` is not (`Pre.onDemand`); a
     closed `t` is conversed whole. -/
-def convPre {A B : Obj} (q : Pre) (t : Tm A B) : Except String (Tm B A) :=
-  if t.dem && q.onDemand then throw "a parameter run on demand" else convTm t
+def convPre {A B : Obj} (δ : Dem) (q : Pre) (t : Tm A B) : Except String (Tm B A) :=
+  if t.dem δ [] && q.onDemand then throw "a parameter run on demand" else convTm δ [] t
 
 /-- A pair test: `τ(R) : A×B ⟶ A×B`, the coreflexive on the pairs `(a,b)` in demand with `a R b`. -/
 abbrev Cor := (A : Obj) × (B : Obj) × Tm (.prod A B) (.prod A B)
@@ -2318,14 +2326,14 @@ def at? {A B : Obj} (r : Res) : Except Err (Tm A B) :=
   | ⟨A', B', t⟩ => if h : A' = A ∧ B' = B then pure (h.1 ▸ h.2 ▸ t) else internal dp "objects disagree"
 
 /-- `r` at `A ⟶ B` as a closed term: the old index `false`, now `t.dem = false`, which the type no longer states. -/
-def closed? {A B : Obj} (r : Res) : Except Err (Tm A B) := do
+def closed? {A B : Obj} (δ : Dem) (r : Res) : Except Err (Tm A B) := do
   let t ← at? dp (A := A) (B := B) r
-  if t.dem then internal dp "a term that needs keys where none are supplied" else pure t
+  if t.dem δ [] then internal dp "a term that needs keys where none are supplied" else pure t
 
 /-- `𝟙` on the universe of `o`, or the error that `o` has none: a declared one's literal (`uniOf`), an unbounded
     number object's `𝟙` itself; else built from its parts, an object variable's being the universe its constant is
     given (`uniVar`). -/
-def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
+def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   if let some ⟨A', U⟩ := uniOf objs o then
     -- the one reader that forces the universe: a product past `crossMax` fails the definition that reads it
     let ⟨_, U⟩ ← U.get.mapError fun e => (⟨dp, e⟩ : Err)
@@ -2333,18 +2341,18 @@ def uniPart (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   match o, A with
   -- an object variable's universe is its constant's argument even where the call puts an unbounded object (`num`)
   | .base n, _ => match objs.lookup n with
-    | some { uniVar := some k, .. } => pure (some (.var false k))
+    | some { uniVar := some k, .. } => pure (some (.var k))
     | some { num := true, .. } => pure (some .id)
     | _ => pure none
   | .prod a b, .prod A B => do
-    let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
+    let (some u, some v) := (← uniPart δ a A, ← uniPart δ b B) | pure none
     -- `⊤(u)` reads `u` whole, so a part on demand (an unbounded `𝟙`) gives `u × v` on demand
-    pure (some (if u.dem || v.dem then u.prod v else u.prodUni v))
+    pure (some (if u.dem δ [] || v.dem δ [] then u.prod v else u.prodUni v))
   | .sum a b, .sum A B => do
-    let (some u, some v) := (← uniPart a A, ← uniPart b B) | pure none
+    let (some u, some v) := (← uniPart δ a A, ← uniPart δ b B) | pure none
     -- `ran(u inl)` hands the values in demand to `inl`'s range, where it cannot run; a part on demand (an unbounded
     -- `𝟙`) gives `dom(inl° u inl ∪ inr° v inr)`, which hands them to `inl°`'s domain, split by tag
-    if u.dem || v.dem then
+    if u.dem δ [] || v.dem δ [] then
       pure (some (.dom (B := .sum A B) (.join (.comp (B := A) (.conv .inl) (.comp (B := A) u .inl))
         (.comp (B := B) (.conv .inr) (.comp (B := B) v .inr)))))
     else pure (some (.join (.ran (.comp u .inl)) (.ran (.comp v .inr))))
@@ -2361,8 +2369,8 @@ def initSeg (objs : Objs) : OTy → Bool
   | _ => false
 
 /-- `uniPart`, or the error naming the whole object `o` that has no universe. -/
-def uniTm (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) := do
-  match ← uniPart objs dp (zonk mc o) A with
+def uniTm (δ : Dem) (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) := do
+  match ← uniPart objs dp δ (zonk mc o) A with
   | some t => pure t
   | none => throw ⟨p, s!"{what}: {zonk mc o} has no universe; compose a set of its elements before it (§a)"⟩
 
@@ -2378,7 +2386,7 @@ where
     | .i64 => match objs.lookup n with
       | some { uni := some ⟨_, U⟩, .. } => pure (.uni (A := .long) U)
       | some { num := true, .. } => pure .id
-      | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var false k)
+      | some { uniVar := some k, obj := .atom .i64, .. } => pure (.var k)
       | i => refuse n i
     | _ => match objs.lookup n with
       | some { num := true, .. } => pure .id
@@ -2395,7 +2403,7 @@ def symObj (n : OTy) : Bool :=
     numbering each id by its text's position and `Q = P r` (`P` the set `asc` numbers; none, `Q = r`), `mk Q Q°` is
     `Q ≫ <(ran Q) ≫ Q°` for `<` (`≤` likewise) and `asc(ran Q) ≫ Q°` for `asc`: the ranks are ordered at `i64`.
     No kernel orders `sym` (`Tab.ordOp`); this composition of relations is its order. -/
-def symOrd (p : Pos) (op : String) (P : Option Res)
+def symOrd (δ : Dem) (p : Pos) (op : String) (P : Option Res)
     (mk : (Q : Tm (.atom .sym) (.atom .i64)) → Tm (.atom .i64) (.atom .sym) → (X : Obj) × Tm X (.atom .sym)) :
     Option Res → Except Err Res
   | none => throw ⟨p, s!"{op} on sym needs the dictionary: declare `dictionary D : S ⟶ [C]` before this definition"⟩
@@ -2409,7 +2417,7 @@ def symOrd (p : Pos) (op : String) (P : Option Res)
             if h' : A' = .atom .sym ∧ B' = .atom .sym then
               match A', B', s, h' with | _, _, s, ⟨rfl, rfl⟩ => pure (Tm.comp s r)
             else internal dp s!"the set of {op} is at {repr A'} ⟶ {repr B'}, not sym ⟶ sym"
-        let ⟨X, t⟩ := mk Q (← (convTm Q).mapError (⟨p, ·⟩))
+        let ⟨X, t⟩ := mk Q (← (convTm δ [] Q).mapError (⟨p, ·⟩))
         pure ⟨X, .atom .sym, t⟩
     else internal dp s!"rank(D) is at {repr A} ⟶ {repr B}, not sym ⟶ i64"
 
@@ -2418,8 +2426,8 @@ def corAt(A B : Obj) : Cor → Except Err (Tm (.prod A B) (.prod A B))
   | ⟨A', B', c⟩ => if h : A' = A ∧ B' = B then pure (h.1 ▸ h.2 ▸ c) else internal dp "pair-test objects disagree"
 
 /-- A built term read whole: closed as it is, or on demand run on the universe of its source `a`. -/
-def closeRes (p : Pos) (a : OTy) (why : String) : Res → Except Err Res
-  | ⟨A, B, t⟩ => if t.dem then return ⟨A, B, .comp (← uniTm objs mc dp p a A why) t⟩ else pure ⟨A, B, t⟩
+def closeRes (δ : Dem) (p : Pos) (a : OTy) (why : String) : Res → Except Err Res
+  | ⟨A, B, t⟩ => if t.dem δ [] then return ⟨A, B, .comp (← uniTm objs mc dp δ p a A why) t⟩ else pure ⟨A, B, t⟩
 
 /-- The pair test of an order parameter at its object `B`,or the error naming the leaf that is not testable. -/
 def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.prod B B) (.prod B B))
@@ -2459,7 +2467,7 @@ def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) :
 /-- Each place `t` reads the variable `k` free, as that `var` node: a binder of `k` hides its scope, and a call's
     body is not entered (it reads only its own `ks`, `Code.args`), its arguments are. -/
 partial def Tm.reads (k : Nat) : {A B : Obj} → Tm A B → List Res
-  | A, B, t@(.var _ j) => if j == k then [⟨A, B, t⟩] else []
+  | A, B, t@(.var j) => if j == k then [⟨A, B, t⟩] else []
   | _, _, .mu j _ _ b | _, _, .hylo j _ b => if j == k then [] else b.reads k
   | _, _, .nu j S b => S.reads k ++ if j == k then [] else b.reads k
   | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => c.reads k
@@ -2488,86 +2496,86 @@ mutual
 
 /-- `Pre` to `Tm` at the solved objects. Every check here holds by `elabE`'s unification except the
     universes, whose absence is the error of §a. -/
-def build : Pre → Except Err Res
+def build (δ : Dem) : Pre → Except Err Res
   | .tm r => pure r
   | .zero a b => return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .zero⟩
   | .id a => return ⟨_, _, .id (A := ← toObj objs mc dp a)⟩
   | .top p a b tgt => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let V ← match tgt with
-      | none => uniTm objs mc dp p b B "⊤'s target"
-      | some q => do closed? dp (← build q)
+      | none => uniTm objs mc dp δ p b B "⊤'s target"
+      | some q => do closed? dp δ (← build δ q)
     pure ⟨A, B, .top V⟩
   | .outl a b => return ⟨_, _, .outl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .outr a b => return ⟨_, _, .outr (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .comp p q => do
-    let ⟨A, B, t⟩ ← build p; let ⟨B', C, u⟩ ← build q
+    let ⟨A, B, t⟩ ← build δ p; let ⟨B', C, u⟩ ← build δ q
     if h : B' = B then pure ⟨A, C, .comp t (h ▸ u)⟩ else internal dp "composition objects disagree"
   -- `R°`: closed, conversed whole; on demand, pushed to the leaves (`convTm`); a leaf whose converse does not
   -- run on demand reads `R` whole on its source's universe
-  | .conv (.close _ (.conv (.close _ q _ _)) _ _) => build q
+  | .conv (.close _ (.conv (.close _ q _ _)) _ _) => build δ q
   -- a call's converse is its expansion's, pushed to the leaves as below
-  | .conv (.close pos (.callE _ _ _ _ alt _ _ _ _) a w) => build (.conv (.close pos alt a w))
+  | .conv (.close pos (.callE _ _ _ _ alt _ _ _ _) a w) => build δ (.conv (.close pos alt a w))
   | .conv (.close pos q a _) => do
-    let ⟨A, B, t⟩ ← build q
-    match convPre q t with
+    let ⟨A, B, t⟩ ← build δ q
+    match convPre δ q t with
     -- the lazy converse of the whole `R` (a row with no converse row): nothing inside `R` bounds its source side,
     -- so it is read on its source's universe, the context still bounding its target
     | .ok (.conv t') =>
-      if t.dem && !(Tm.conv t').dem then
+      if t.dem δ [] && !(Tm.conv t').dem δ [] then
         (fun U => ⟨B, A, .conv (.comp U t')⟩) <$>
-          uniTm objs mc dp pos a A "the lazy converse of a row, R° reads R on its source's universe"
+          uniTm objs mc dp δ pos a A "the lazy converse of a row, R° reads R on its source's universe"
       else pure ⟨B, A, .conv t'⟩
     | .ok u => pure ⟨B, A, u⟩
     | .error leaf => do
-      let U ← uniTm objs mc dp pos a A s!"the converse of {leaf} does not run on demand, so R° reads R whole"
+      let U ← uniTm objs mc dp δ pos a A s!"the converse of {leaf} does not run on demand, so R° reads R whole"
       pure ⟨B, A, .conv (.comp U t)⟩
   -- closed, or a converse that runs on demand itself (`Tm.dem`: `inl°`, `inr°`)
   | .conv p => do
-    let r ← build p; let ⟨A, B, _⟩ := r; let t ← at? dp (A := A) (B := B) r
-    if (Tm.conv t).dem then pure ⟨B, A, .conv t⟩ else pure ⟨B, A, .conv (← closed? dp (A := A) (B := B) r)⟩
+    let r ← build δ p; let ⟨A, B, _⟩ := r; let t ← at? dp (A := A) (B := B) r
+    if (Tm.conv t).dem δ [] then pure ⟨B, A, .conv t⟩ else pure ⟨B, A, .conv (← closed? dp δ (A := A) (B := B) r)⟩
   -- a side that cannot run is tested on the pairs the other side gives (`test`)
-  | .meet p q => match build p, build q with
+  | .meet p q => match build δ p, build δ q with
     | .ok ⟨A, B, t⟩, .ok s => do let u ← at? dp (A := A) (B := B) s; pure ⟨A, B, .meet t u⟩
-    | .error err, .ok ⟨A, B, s⟩ => match test p with
+    | .error err, .ok ⟨A, B, s⟩ => match test δ p with
       | .ok c => do pure ⟨A, B, onPairs s (← corAt dp A B c)⟩
       | .error _ => throw err
-    | .ok ⟨A, B, s⟩, .error err => match test q with
+    | .ok ⟨A, B, s⟩, .error err => match test δ q with
       | .ok c => do pure ⟨A, B, onPairs s (← corAt dp A B c)⟩
       | .error _ => throw err
     | .error err, .error _ => throw err
-  | .join p q => do let ⟨A, B, t⟩ ← build p; let u ← at? dp (A := A) (B := B) (← build q); pure ⟨A, B, .join t u⟩
-  | .diff p q => match build p, build q with
+  | .join p q => do let ⟨A, B, t⟩ ← build δ p; let u ← at? dp (A := A) (B := B) (← build δ q); pure ⟨A, B, .join t u⟩
+  | .diff p q => match build δ p, build δ q with
     | .ok ⟨A, B, t⟩, .ok s => do let u ← at? dp (A := A) (B := B) s; pure ⟨A, B, .diff t u⟩
-    | .ok ⟨A, B, s⟩, .error err => match test q with
+    | .ok ⟨A, B, s⟩, .error err => match test δ q with
       | .ok c => do pure ⟨A, B, onPairs s (.diff .id (← corAt dp A B c))⟩
       | .error _ => throw err
     | .error err, _ => throw err
-  | .dom p => do let ⟨A, _, t⟩ ← build p; pure ⟨A, A, .dom t⟩
-  | .ran p => do let r ← build p; let ⟨A, B, _⟩ := r; pure ⟨B, B, .ran (← closed? dp (A := A) (B := B) r)⟩
+  | .dom p => do let ⟨A, _, t⟩ ← build δ p; pure ⟨A, A, .dom t⟩
+  | .ran p => do let r ← build δ p; let ⟨A, B, _⟩ := r; pure ⟨B, B, .ran (← closed? dp δ (A := A) (B := B) r)⟩
   | .ldiv pos p q b c => do
-    let r ← build p; let s ← build q; let ⟨A, B, _⟩ := r; let ⟨_, C, _⟩ := s
-    let R ← closed? dp (A := A) (B := B) r; let S ← closed? dp (A := A) (B := C) s
-    pure ⟨B, C, .ldiv R S (← uniTm objs mc dp pos b B "R\\S") (← uniTm objs mc dp pos c C "R\\S")⟩
+    let r ← build δ p; let s ← build δ q; let ⟨A, B, _⟩ := r; let ⟨_, C, _⟩ := s
+    let R ← closed? dp δ (A := A) (B := B) r; let S ← closed? dp δ (A := A) (B := C) s
+    pure ⟨B, C, .ldiv R S (← uniTm objs mc dp δ pos b B "R\\S") (← uniTm objs mc dp δ pos c C "R\\S")⟩
   | .rdiv pos p q a b => do
-    let r ← build p; let s ← build q; let ⟨A, C, _⟩ := r; let ⟨B, _, _⟩ := s
-    let R ← closed? dp (A := A) (B := C) r; let S ← closed? dp (A := B) (B := C) s
-    pure ⟨A, B, .rdiv R S (← uniTm objs mc dp pos a A "R/S") (← uniTm objs mc dp pos b B "R/S")⟩
+    let r ← build δ p; let s ← build δ q; let ⟨A, C, _⟩ := r; let ⟨B, _, _⟩ := s
+    let R ← closed? dp δ (A := A) (B := C) r; let S ← closed? dp δ (A := B) (B := C) s
+    pure ⟨A, B, .rdiv R S (← uniTm objs mc dp δ pos a A "R/S") (← uniTm objs mc dp δ pos b B "R/S")⟩
   | .pair p q => do
-    let ⟨A, _, t⟩ ← build p; let s ← build q; let ⟨_, C, _⟩ := s
+    let ⟨A, _, t⟩ ← build δ p; let s ← build δ q; let ⟨_, C, _⟩ := s
     let u ← at? dp (A := A) (B := C) s; pure ⟨A, _, .pair t u⟩
   -- `R×S ≜ ⟨π₁R,π₂S⟩` (`Tm.prod`); both operands closed on their sources, it runs closed on `dom R × dom S`, since
   -- the product object may have no universe of its own (`[A]×[A]`); otherwise on demand
   | .prod (.close pp p a w) (.close pq q b w') =>
     let onDemand : Except Err Res := do
-      let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
-    match build (.close pp p a w), build (.close pq q b w') with
+      let ⟨A, B, t⟩ ← build δ p; let ⟨C, D, u⟩ ← build δ q; pure ⟨.prod A C, .prod B D, t.prod u⟩
+    match build δ (.close pp p a w), build δ (.close pq q b w') with
     | .ok ⟨A, B, t⟩, .ok ⟨C, D, u⟩ =>
-      if t.dem || u.dem then onDemand else pure ⟨.prod A C, .prod B D, .comp ((Tm.dom t).prodUni (.dom u)) (t.prod u)⟩
+      if t.dem δ [] || u.dem δ [] then onDemand else pure ⟨.prod A C, .prod B D, .comp ((Tm.dom t).prodUni (.dom u)) (t.prod u)⟩
     | _, _ => onDemand
   | .prod p q => do
-    let ⟨A, B, t⟩ ← build p; let ⟨C, D, u⟩ ← build q; pure ⟨.prod A C, .prod B D, t.prod u⟩
-  | .lam p => do let ⟨_, _, t⟩ ← build p; pure ⟨_, _, .lam t⟩
+    let ⟨A, B, t⟩ ← build δ p; let ⟨C, D, u⟩ ← build δ q; pure ⟨.prod A C, .prod B D, t.prod u⟩
+  | .lam p => do let ⟨_, _, t⟩ ← build δ p; pure ⟨_, _, .lam t⟩
   | .nil a b => return ⟨_, _, .nil (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .mem b => return ⟨_, _, .mem (B := ← toObj objs mc dp b)⟩
   | .inl a b => return ⟨_, _, .inl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
@@ -2594,17 +2602,17 @@ def build : Pre → Except Err Res
     let row (_ : Unit) : Except Err Res :=
       (r.sig.1.zip xs.attach).foldlM (init := (⟨A, B, .prim r⟩ : Res)) fun ⟨A, B, f⟩ ((_, form), ⟨x, h⟩) => do
         have := List.sizeOf_lt_of_mem h
-        if form == some true then let ⟨_, c⟩ ← param x; pure ⟨A, B, .arg f c⟩
-        else let ⟨_, _, u⟩ ← build x; pure ⟨A, B, .arg f u⟩
+        if form == some true then let ⟨_, c⟩ ← param δ x; pure ⟨A, B, .arg f c⟩
+        else let ⟨_, _, u⟩ ← build δ x; pure ⟨A, B, .arg f u⟩
     let some dfn := dfns.lookup r.sym | row ()
-    -- relations that do not build alone give no definition: the row runs, a pair-test parameter tested on pairs
+    -- relations that do not build δ alone give no definition: the row runs, a pair-test δ parameter tested on pairs
     -- (`param`, as `length ≤ length°` on `[N]`), any other rebuilt by `row`, which reports its own error
-    let .ok args := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build x | row ()
+    let .ok args := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build δ x | row ()
     -- a definition that needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it) is its fused row at every
     -- object: the target's universe is not read, since `uniPart` forces a declared one and may fail on it
     if let some ⟨_, c⟩ := dfn A B args .id then if c.uni.isNone then return ⟨A, B, c.fused⟩
     let o := zonk mc t
-    let some u ← uniPart objs dp o B | do
+    let some u ← uniPart objs dp δ o B | do
       -- an object variable with no universe may be called at a bounded object, where the uncut row is not `d`
       if let .base n := o then if (objs.lookup n).any fun i => i.ovar && !i.num then
         if (dfn A B args .id).all (·.2.uni.isSome) then
@@ -2632,96 +2640,98 @@ def build : Pre → Except Err Res
     return ⟨_, _, .join (.comp le hi) (.comp gt lo)⟩
   | .leq p n rk => do
     if symObj objs mc n then
-      return ← symOrd dp p "≤" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.leq (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+      return ← symOrd dp δ p "≤" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.leq (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
     let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, Tm.leq U⟩
   | .lt p n rk => do
     if symObj objs mc n then
-      return ← symOrd dp p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.lt (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+      return ← symOrd dp δ p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.lt (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
     let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
   -- `asc(P)` at `sym`: `asc(ran(P r)) (P r)°`, the set `P` through the ranks, numbered, and back through them
   | .ranked (.prim r [x] s t) rk => do
     if symObj objs mc t then
       -- `asc` numbers `dom P`, so `P` enters as `dom(P)`, whatever relation it is
-      let ⟨A, _, P⟩ ← build x
-      return ← symOrd dp dp "asc" (some ⟨A, A, .dom P⟩) (fun Q Qc => ⟨_, .comp (Tm.asc (.ran Q)) Qc⟩)
-        (← (match rk with | none => pure none | some q => do pure (some (← build q))))
-    build (.prim r [x] s t)
-  | .ranked q _ => build q
+      let ⟨A, _, P⟩ ← build δ x
+      return ← symOrd dp δ dp "asc" (some ⟨A, A, .dom P⟩) (fun Q Qc => ⟨_, .comp (Tm.asc (.ran Q)) Qc⟩)
+        (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
+    build δ (.prim r [x] s t)
+  | .ranked q _ => build δ q
   | .fold true e s => do
-    let r ← build e; let ⟨V, _, _⟩ := r
-    match ← build s with
+    let r ← build δ e; let ⟨V, _, _⟩ := r
+    match ← build δ s with
     | ⟨.prod E V', V'', S⟩ =>
       if h : V' = V ∧ V'' = V then
-        pure ⟨.arr E, V, .foldr (← closed? dp (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod E V') V) : Tm (.prod E V) V)⟩
+        pure ⟨.arr E, V, .foldr (← closed? dp δ (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod E V') V) : Tm (.prod E V) V)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
   | .fold false e s => do
-    let r ← build e; let ⟨V, _, _⟩ := r
-    match ← build s with
+    let r ← build δ e; let ⟨V, _, _⟩ := r
+    match ← build δ s with
     | ⟨.prod V' E, V'', S⟩ =>
       if h : V' = V ∧ V'' = V then
-        pure ⟨.arr E, V, .fold (← closed? dp (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod V' E) V) : Tm (.prod V E) V)⟩
+        pure ⟨.arr E, V, .fold (← closed? dp δ (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod V' E) V) : Tm (.prod V E) V)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
   | .lit p a b ps gd => litRes objs mc dp p a b ps gd
-  | .close p q a why => do closeRes objs mc dp p a why (← build q)
+  | .close p q a why => do closeRes objs mc dp δ p a why (← build δ q)
   -- the children and the body run on the nodes in demand, no universe read
   | .hylo p k q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-    let t ← at? dp (A := A) (B := B) (← build q)
+    let t ← at? dp (A := A) (B := B) (← build (δ.bind k false) q)
     pure ⟨A, B, .hylo k s!"the coalgebra c at {p}" t⟩
-  | .var _ k a b none => return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var false k⟩
-  | .var _ k a b (some false) => return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
-  -- a parameter given a pair test runs nowhere; `test` reads it
+  -- the bit is the binder's, read from `δ` (`Tm.dem`): a variable built closed must not be on demand there
+  | .var _ k a b none =>
+    if δ k then internal dp s!"variable {k} is closed in its form and on demand in δ"
+    else return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var k⟩
+  | .var _ k a b (some false) => return ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var k⟩
+  -- a parameter given a pair test δ runs nowhere; `test` reads it
   | .var pos _ _ _ (some true) =>
-    throw ⟨pos, "this parameter is tested on the pairs it compares, not run: its argument is a pair test (§a)"⟩
-  -- a constant that is a pair test runs nowhere; `test` calls it
+    throw ⟨pos, "this parameter is tested on the pairs it compares, not run: its argument is a pair test δ (§a)"⟩
+  -- a constant that is a pair test δ runs nowhere; `test` calls it
   | .call pos c _ _ _ _ _ _ _ _ _ _ true =>
-    throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test (§a)"⟩
+    throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test δ (§a)"⟩
   | .call pos c us xs ts q a b ks ph t cv false => do
     -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
     -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
-    if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build q
+    if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build δ q
     -- a variable the constant is not generic over (built at `.long`) given another object: the constant does not
     -- serve this call, so the expansion runs at the call's objects, every number check at them (monomorphised)
-    if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build q
+    if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build δ q
     -- a body that orders, called at `sym`: the constant holds the number order (`Tm.instObj` refuses it there), so the
     -- expansion runs, where `symOrd` builds the order of the texts from the dictionary, or says it is missing
-    if t.2.2.ordered && us.any fun (u, _, _) => (toObj objs mc dp u).toOption == some (.atom .sym) then return ← build q
+    if t.2.2.ordered && us.any fun (u, _, _) => (toObj objs mc dp u).toOption == some (.atom .sym) then return ← build δ q
     -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
     q.lits.forM fun (p, a, b, ps, d) => if d.isSome then discard (litRes objs mc dp p a b ps d) else pure ()
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-    pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
+    pure ⟨A, B, ← callArgs δ pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
   -- each argument built once, the body with every parameter read on demand where an argument needs keys, else
-  -- closed; where that does not build (a body reading a parameter whole, an argument only tested), the expansion
+  -- closed; where that does not build δ (a body reading a parameter whole, an argument only tested), the expansion
   | .callE _ c ks xs alt cl od a b =>
     let viaCall : Except Err Res := do
       let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      -- a variable bound to itself in its pair-test form is passed as its pair test, as `callArgs` passes one
+      -- a variable bound to itself in its pair-test δ form is passed as its pair test, as `callArgs` passes one
       let rs ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h
         match x with
-        | .var _ _ _ _ (some true) => do let ⟨A, B, t⟩ ← test x; pure (⟨.prod A B, .prod A B, t⟩ : Res)
-        | _ => build x
+        | .var _ _ _ _ (some true) => do let ⟨A, B, t⟩ ← test δ x; pure (⟨.prod A B, .prod A B, t⟩ : Res)
+        | _ => build δ x
       -- only an argument given a variable of its own (`callOf`) takes the form chosen here
-      let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem
-      let ⟨A', B', t⟩ ← if dem then build od else build cl
-      -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given, so the
-      -- call needs keys only where its expansion does
-      let t := if !dem then t else t.subst (((ks.zip xs).zip rs).filterMap fun ((k, x), ⟨A, B, r⟩) =>
-        if !(x matches .var ..) && !r.dem then some (k, ⟨A, B, .var false k⟩) else none)
+      let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem δ []
+      -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given: the body
+      -- is built under the bit of each argument, so the call needs keys only where its expansion does
+      let δ' := (ks.zip rs).foldr (fun (k, r) δ' => δ'.bind k (r.2.2.dem δ [])) δ
+      let ⟨A', B', t⟩ ← if dem then build δ' od else build δ' cl
       let u ← callNode dp (.mkSimple c) ks rs t
-      -- `Tm.dem` counts an argument run on demand even where the body closes it: that call is the expansion's
-      if u.dem && !t.dem then internal dp s!"`{c}` closes an argument that needs keys"
+      if u.dem δ [] != t.dem δ' [] then internal dp s!"`{c}`'s call and its body differ in dem"
       if h : A' = A ∧ B' = B then pure ⟨A, B, h.1 ▸ h.2 ▸ u⟩
       else internal dp s!"`{c}`'s body is not at the objects of its call"
     match viaCall with
     | .ok r => pure r
-    | .error _ => build alt
+    | .error _ => build δ alt
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let why := s!"{if least then "μ" else "ν"}'s body is read whole each round"
-    let body ← closed? dp (A := A) (B := B) (← closeRes objs mc dp p a why (← build q))
+    let δ' := δ.bind k false
+    let body ← closed? dp δ' (A := A) (B := B) (← closeRes objs mc dp δ' p a why (← build δ' q))
     unless body.pol true k do
       -- `Tm.pol` answers a Bool and `Tm.var` holds no position, so the source term gives the first occurrence
       let some o := q.occ k | internal dp s!"{x} is not positive in {if least then "μ" else "ν"}{x} at {p} but does not occur"
@@ -2736,70 +2746,70 @@ def build : Pre → Except Err Res
       pure ⟨A, B, .mu k s!"the μ at {p}" cap body⟩
     else match S with
       | some s => do
-        let s ← closed? dp (A := A) (B := B) (← closeRes objs mc dp p a why (← build s))
+        let s ← closed? dp δ' (A := A) (B := B) (← closeRes objs mc dp δ' p a why (← build δ' s))
         pure ⟨A, B, .nu k s body⟩
       | none => internal dp "ν without its bound"
 termination_by x => (sizeOf x, 0)
 
 /-- The call `f` given, per object variable `u` of its constant, the universe of `u` where the constant reads it,
-    then the arguments `xs`, each built (closed or run on demand) or, where `ts` says so, its pair test (`Form`). A
+    then the arguments `xs`, each built (closed or run on demand) or, where `ts` says so, its pair test δ (`Form`). A
     variable the constant is not generic over is a number object (`.long`). -/
-def callArgs (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (xs : List Pre) (ts : List Bool) {A B : Obj}
+def callArgs (δ : Dem) (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (xs : List Pre) (ts : List Bool) {A B : Obj}
     (f : Tm A B) : Except Err (Tm A B) := do
   -- a variable it is not generic over is `.long` here (`callTm` refused any other)
   let f ← us.foldlM (init := f) fun f (u, _, reads) => do
     let U ← toObj objs mc dp u
-    if reads then return .arg f (← uniTm objs mc dp pos u U s!"`{c}`") else pure f
+    if reads then return .arg f (← uniTm objs mc dp δ pos u U s!"`{c}`") else pure f
   xs.attach.zipIdx.foldlM (init := f) fun f (⟨x, h⟩, i) => do
     have : sizeOf x < sizeOf xs := List.sizeOf_lt_of_mem h
-    if ts.getD i false then let ⟨_, _, t⟩ ← test x; return .arg f t
-    let ⟨_, _, t⟩ ← build x; pure (.arg f t)
+    if ts.getD i false then let ⟨_, _, t⟩ ← test δ x; return .arg f t
+    let ⟨_, _, t⟩ ← build δ x; pure (.arg f t)
 termination_by (sizeOf xs, 3)
 
-/-- `τ(R)`, the pair test of `R : A ⟶ B` (`Cor`), for `R` that cannot enumerate its targets: a term that
+/-- `τ(R)`, the pair test δ of `R : A ⟶ B` (`Cor`), for `R` that cannot enumerate its targets: a term that
     builds is tested as `dom(π₂ ∩ π₁R)`; otherwise by its form — `R/S`, `R\S`, `frac`, `∼`, `−`, `∩`, `∪`, `°`,
-    and a composite with a side that runs. The error is `p`'s own build error. -/
-def test (p : Pre) : Except Err Cor :=
-  match build p with
+    and a composite with a side that runs. The error is `p`'s own build δ error. -/
+def test (δ : Dem) (p : Pre) : Except Err Cor :=
+  match build δ p with
   | .ok ⟨A, B, t⟩ => pure ⟨A, B, pairTest t⟩
   | .error err => match p with
-    | .close _ q _ _ => test q
-    | .callE _ _ _ _ alt _ _ _ _ => test alt
+    | .close _ q _ _ => test δ q
+    | .callE _ _ _ _ alt _ _ _ _ => test δ alt
     -- a constant that is a pair test, `τ(c(…)) : A×B ⟶ A×B` (`once`)
-    -- a parameter given a pair test (`Form`)
-    | .var _ k a b (some true) => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var true k⟩
+    -- a parameter given a pair test δ (`Form`)
+    | .var _ k a b (some true) => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .var k⟩
     | .call pos c us xs ts _ a b ks ph t _ true => do
       let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      pure ⟨A, B, ← callArgs pos c us xs ts (← callTm objs mc dp pos c us ks ph t none (.prod A B) (.prod A B))⟩
-    | .conv q => do let ⟨A, B, c⟩ ← test q; pure ⟨B, A, .comp swapTm (.comp c swapTm)⟩
+      pure ⟨A, B, ← callArgs δ pos c us xs ts (← callTm objs mc dp pos c us ks ph t none (.prod A B) (.prod A B))⟩
+    | .conv q => do let ⟨A, B, c⟩ ← test δ q; pure ⟨B, A, .comp swapTm (.comp c swapTm)⟩
     | .top _ a b none => do pure ⟨← toObj objs mc dp a, ← toObj objs mc dp b, .id⟩
-    | .meet q r => do let c ← test q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .meet c₁ (← corAt dp A B (← test r))⟩
-    | .join q r => do let c ← test q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .join c₁ (← corAt dp A B (← test r))⟩
-    | .diff q r => do let c ← test q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .diff c₁ (← corAt dp A B (← test r))⟩
+    | .meet q r => do let c ← test δ q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .meet c₁ (← corAt dp A B (← test δ r))⟩
+    | .join q r => do let c ← test δ q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .join c₁ (← corAt dp A B (← test δ r))⟩
+    | .diff q r => do let c ← test δ q; let ⟨A, B, c₁⟩ := c; pure ⟨A, B, .diff c₁ (← corAt dp A B (← test δ r))⟩
     -- `τ(PT) = dom(⟨π₁P,π₂⟩τ(T))` with `P` run; `τ(TQ) = dom(⟨π₁,π₂Q°⟩τ(T))` with `Q°` run on demand
-    | .comp q r => match build q with
+    | .comp q r => match build δ q with
       | .ok ⟨A, M, t⟩ => do
-        let c ← test r; let ⟨_, B, _⟩ := c
+        let c ← test δ r; let ⟨_, B, _⟩ := c
         pure ⟨A, B, .dom (.comp (.pair (.comp .outl t) .outr) (← corAt dp M B c))⟩
-      | .error _ => match build r with
-        | .ok ⟨M, B, u⟩ => match convPre r u with
+      | .error _ => match build δ r with
+        | .ok ⟨M, B, u⟩ => match convPre δ r u with
           | .ok v => do
-            let c ← test q; let ⟨A, _, _⟩ := c
+            let c ← test δ q; let ⟨A, _, _⟩ := c
             pure ⟨A, B, .dom (.comp (.pair .outl (.comp .outr v)) (← corAt dp A M c))⟩
           | .error _ => throw err
         | .error _ => throw err
     -- `R/S`, `R : A ⟶ C` tested, `S : B ⟶ C` run on the `b`s
     | .rdiv _ (.close _ q _ _) (.close _ r _ _) _ _ => do
-      let c ← test q; let ⟨A, C, _⟩ := c
-      let ⟨B, _, s⟩ ← build r
+      let c ← test δ q; let ⟨A, C, _⟩ := c
+      let ⟨B, _, s⟩ ← build δ r
       let s ← at? dp (A := B) (B := C) ⟨B, _, s⟩
       pure ⟨A, B, divTest (← corAt dp A C c) s⟩
     -- `R\S`, `R : A ⟶ B` with `R°` run on the `b`s, `S : A ⟶ C` tested: `τ = 𝟙 − dom(⟨π₁R°,π₂⟩(𝟙 − τ(S)))`
     | .ldiv _ (.close _ q _ _) (.close _ r _ _) _ _ => do
-      let ⟨A, B, t⟩ ← build q
-      match convPre q t with
+      let ⟨A, B, t⟩ ← build δ q
+      match convPre δ q t with
       | .ok v => do
-        let c ← test r; let ⟨_, C, _⟩ := c
+        let c ← test δ r; let ⟨_, C, _⟩ := c
         pure ⟨B, C, .diff .id (.dom (.comp (.pair (.comp .outl v) .outr) (.diff .id (← corAt dp A C c))))⟩
       | .error _ => throw err
     | _ => throw err
@@ -2808,9 +2818,9 @@ termination_by (sizeOf p, 1)
 /-- The order (or coreflexive) parameter `Q : B ⟶ B` of `est front filter takewhile thinL merge`
     as its pair test `τ(Q)` (§a), which the operator runs on the pairs it compares: a closed `Q` and a `Q` that
     runs on demand alike, and any `Q` testable on pairs. `why` names the operator; the error names the leaf. -/
-def param : Pre → Except Err ((B : Obj) × Tm (.prod B B) (.prod B B))
-  | .close _ q _ why => paramOf dp why (test q)
-  | q => paramOf dp "an operator" (test q)
+def param (δ : Dem) : Pre → Except Err ((B : Obj) × Tm (.prod B B) (.prod B B))
+  | .close _ q _ why => paramOf dp why (test δ q)
+  | q => paramOf dp "an operator" (test δ q)
 termination_by p => (sizeOf p, 2)
 
 end
