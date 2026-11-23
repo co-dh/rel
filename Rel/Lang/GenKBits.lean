@@ -1349,15 +1349,17 @@ theorem Vals.gather_ok_of_ok {M M' : USize} {ix ix' : Enc} (hi : Enc.Valid M' ix
     obtain ⟨b', hb'⟩ := Arr.gather_ok hi' (Arr.valid_of_gather hb) hi hiN hr
     simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .sum _ _, _, s, _, h, hr => by
-    rcases hv : s.view with ⟨hbd, x⟩ | ⟨hbd, l, r, tag, idx, x, y⟩ <;> simp only [Vals.gather, hv, bind] at h
+    rcases hv : s.view with ⟨hbd, x⟩ | ⟨hbd, tag, x, y⟩ <;> simp only [Vals.gather, hv, bind] at h
     · rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, -⟩ := h
       obtain ⟨a', ha'⟩ := Opt.gather_ok x (Opt.valid_of_gather ha) hi hiN hr
       simp only [Vals.gather, hv, ha', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
     rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, -⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, -⟩ := h
     obtain ⟨a', ha'⟩ := Arr.gather_ok tag (Arr.valid_of_gather ha) hi hiN hr
-    obtain ⟨b', hb'⟩ := Arr.gather_ok idx (Arr.valid_of_gather hb) hi hiN hr
-    simp only [Vals.gather, hv, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+    obtain ⟨b', hb'⟩ := Vals.gather_ok_of_ok hi hiN x hb hr
+    obtain ⟨c', hc'⟩ := Vals.gather_ok_of_ok hi hiN y hc hr
+    simp only [Vals.gather, hv, ha', hb', hc', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .one, n, _, _, _, hr => by
     obtain ⟨p, hp⟩ := Arr.gather_ok (Arr.mk (t := .i64) (n := n) .pos trivial rfl) trivial hi hiN hr
     simp only [Vals.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨(), trivial⟩
@@ -1413,23 +1415,19 @@ theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) (hiN
     obtain ⟨b', hb'⟩ := Arr.gather_ok hi' vh hi hiN hr
     simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .sum _ _, n, s, es, hes, hc, hr => by
-    rcases hv : s.view with ⟨hbd, x⟩ | ⟨hbd, l, r, tag, idx, x, y⟩
+    rcases hv : s.view with ⟨hbd, x⟩ | ⟨hbd, tag, x, y⟩
     · simp only [Vals.cols, hv, Except.ok.injEq] at hes; subst hes
       obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
       obtain ⟨a', ha'⟩ := Opt.gather_ok x (ascCol_valid hk) hi hiN hr
       simp only [Vals.gather, hv, ha', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-    have hidx : Enc.Valid n idx.enc := by
-      unfold Vals.cols at hes
-      simp only [hv] at hes
-      split at hes; · cases hes
-      split at hes; · cases hes
-      rename_i h
-      exact (foRWords_valid "" _ _).2 _ (by unfold foRWords; rw [if_pos (by simpa using h)])
-    obtain ⟨xs, ys, rfl, -⟩ := Vals.cols_sum hv hes
+    obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv hes
     obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
     obtain ⟨a', ha'⟩ := Arr.gather_ok tag (ascCol_valid hk) hi hiN hr
-    obtain ⟨b', hb'⟩ := Arr.gather_ok idx hidx hi hiN hr
-    simp only [Vals.gather, hv, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
+    obtain ⟨b', hb'⟩ := Vals.gather_ok_of_cols hi hiN x hxs
+      (fun e he => hc e (List.mem_cons_of_mem _ (List.mem_append_left _ he))) hr
+    obtain ⟨c', hc'⟩ := Vals.gather_ok_of_cols hi hiN y hys
+      (fun e he => hc e (List.mem_cons_of_mem _ (List.mem_append_right _ he))) hr
+    simp only [Vals.gather, hv, ha', hb', hc', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .one, n, _, _, _, _, hr => by
     obtain ⟨p, hp⟩ := Arr.gather_ok (Arr.mk (t := .i64) (n := n) .pos trivial rfl) trivial hi hiN hr
     simp only [Vals.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨(), trivial⟩
