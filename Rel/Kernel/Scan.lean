@@ -1,5 +1,10 @@
-import Rel.Kernel.Coc
-import Rel.Kernel.Op
+module
+
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Op
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Kernel.Scan` the Rel kernels reach; `Rel.Kernel.Scan` imports it. -/
 

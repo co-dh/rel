@@ -1,6 +1,11 @@
-import Rel.Kernel.Value
-import Rel.Kernel.Scatter
-import Rel.Kernel.Scan
+module
+
+public import Rel.Kernel.Value
+public import Rel.Kernel.Scatter
+public import Rel.Kernel.Scan
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! CSV both ways, the model of the IO exports `qlean_csv_read` and `qlean_csv_write` (IO design C): `csvWords` reads
 a file's bytes into each declared column's raw words, `csvText` writes them. One dialect, RFC 4180 and strict (C.2);
@@ -269,12 +274,12 @@ def frac : List UInt8 → Option Nat
   | c :: fr => if c = 46 ∧ fr ≠ [] ∧ fr.length ≤ 9 ∧ fr.all isDig then some (natOf fr * 10 ^ (9 - fr.length)) else none
 
 /-- What `frac` runs as: the power of ten as a word power (`Column.toNat_pow`), `Nat`'s `^` being GMP's. -/
-private def fracImpl : List UInt8 → Option Nat
+def fracImpl : List UInt8 → Option Nat
   | [] => some 0
   | c :: fr => if c = 46 ∧ fr ≠ [] ∧ fr.length ≤ 9 ∧ fr.all isDig then
       some (natOf fr * ((10 : UInt64) ^ (9 - fr.length)).toNat) else none
 
-@[csimp] private theorem frac_eq_impl : @frac = @fracImpl := by
+@[csimp] theorem frac_eq_impl : @frac = @fracImpl := by
   funext f; cases f with
   | nil => rfl
   | cons c fr =>

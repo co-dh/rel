@@ -1,4 +1,9 @@
-import Rel.Kernel.Scatter
+module
+
+public import Rel.Kernel.Scatter
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `bitrows`, the one fused kernel beside the five (owner decision 2026-11-19, `doc/rel-architecture.zh.typ` §4): over
 a bit matrix, row `r` of the answer folds a segment of its rows, by `∨` for `R ≫ S` and by `∧` for `R \ S`. A bit

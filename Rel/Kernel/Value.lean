@@ -1,4 +1,9 @@
-import Rel.Kernel.Need
+module
+
+public import Rel.Kernel.Need
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Value` the Rel kernels reach; `Rel.Value` imports it. -/
 
@@ -254,7 +259,7 @@ take the general fold, which is the body's equation with the recursion turned in
 
 The element width is the parameter and the switch on it is hoisted out of the loop, which is
 `rust/src/coc.rs`'s own shape for the same reason: each width becomes its own straight-line read. -/
-private def bitsAtImpl (b : ByteArray) (o w : Nat) : UInt64 :=
+def bitsAtImpl (b : ByteArray) (o w : Nat) : UInt64 :=
   let g := fun k => (if h : o + k < b.size then b[o + k] else 0).toUInt64
   match w with
   | 1 => g 0
@@ -288,7 +293,7 @@ call, and the first `ByteArray.push` therefore sees a shared buffer and copies t
 One full copy per element, which is what made `Column.ofAtoms` quadratic -- `-8!til 1000000` was
 46 seconds, 96% of it in `memcpy`. Here the accumulator reaches `ByteArray.push` directly, which
 owns it, so the pushes are in place. -/
-private def pushBitsImpl (out : ByteArray) (v : UInt64) (w : Nat) : ByteArray :=
+def pushBitsImpl (out : ByteArray) (v : UInt64) (w : Nat) : ByteArray :=
   Nat.fold w (init := out) fun k _ acc => acc.push (v >>> (8 * k).toUInt64).toUInt8
 
 /-- The low `w` bytes of `v`, little-endian. Recursion on `w` for the reason `bitsAt` gives. -/
@@ -348,9 +353,9 @@ theorem pow2_eq (d : Nat) : pow2 d = (2 ^ d : Nat).toUInt64 := by
     rw [Nat.toUInt64_eq, UInt64.toNat_ofNat', hm, Nat.mul_mod_right]; rfl
 
 /-- What `blk` runs as: `pow2`, since `foRBits` takes `blk` on every element it reads. -/
-private def blkImpl (metadata : ByteArray) : Nat := (pow2 (lgOf metadata)).toNat
+def blkImpl (metadata : ByteArray) : Nat := (pow2 (lgOf metadata)).toNat
 
-@[csimp] private theorem blk_eq_blkImpl : @blk = @blkImpl := by
+@[csimp] theorem blk_eq_blkImpl : @blk = @blkImpl := by
   funext m; rw [blk, blkImpl, pow2_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat']
   exact (Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by decide) (by unfold lgOf; omega))).symm
 
@@ -398,7 +403,7 @@ def blockStart (metadata : @& ByteArray) (b : @& Nat) : Nat :=
 
 /-- What `resAt` runs as: one eight-byte read at the field's first byte, shifted down, and the ninth
 byte only when the field straddles it. `rust/src/coc.rs`'s `res_get` is the same reading. -/
-private def resAtImpl (pack : ByteArray) (s w j : Nat) : UInt64 :=
+def resAtImpl (pack : ByteArray) (s w j : Nat) : UInt64 :=
   if w = 0 then 0 else
   let o := j * w
   let lo := bitsAt pack (s + o / 8) 8 >>> (o % 8).toUInt64
@@ -533,12 +538,12 @@ def pow10 (e : Nat) : Float := Float.ofNat (10 ^ e)
 
 /-- What `pow10` runs as: `e` multiplications of a small `Nat`, where `10 ^ e` runs as `lean_nat_pow` through GMP on
 every `alp` element read. -/
-private def pow10Impl (e : Nat) : Float := Float.ofNat (Nat.fold e (init := 1) fun _ _ a => a * 10)
+def pow10Impl (e : Nat) : Float := Float.ofNat (Nat.fold e (init := 1) fun _ _ a => a * 10)
 
-@[csimp] private theorem pow10_eq_pow10Impl : @pow10 = @pow10Impl := by
+@[csimp] theorem pow10_eq_pow10Impl : @pow10 = @pow10Impl := by
   funext e; unfold pow10 pow10Impl; congr 1; symm
   induction e with
-  | zero => rfl
+  | zero => simp [Nat.fold_zero]
   | succ e ih => simp only [Nat.fold_succ, ih, Nat.pow_succ]
 
 /-- The value `d` denotes at exponent `e`, as raw bits: `d / 10 ^ e`, narrowed to four bytes for a

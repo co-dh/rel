@@ -1,6 +1,11 @@
-import Std.Data.HashMap
-import Rel.Kernel.Value
-import Rel.Kernel.Search
+module
+
+public import Std.Data.HashMap
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Eval.Val` the Rel kernels reach; `Rel.Eval.Val` imports it. -/
 

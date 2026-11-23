@@ -1,4 +1,9 @@
-import Rel.Kernel.Dep.Val
+module
+
+public import Rel.Kernel.Dep.Val
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! # The cast `$` between number atoms (typed base S6, owner ruling J)
 
@@ -84,7 +89,7 @@ private theorem two_pow_le_one {x : Nat} : 2 ^ x ≤ 1 ↔ x = 0 := by
 
 /-- What `exact` runs as: the bounds compared by their exponents. `lo`, `hi` of a 64-bit format are `∓2^63`, past
 `Int`'s small values (`±2^31`), so comparing them builds GMP numbers. -/
-private def NumFmt.exactImpl : NumFmt → NumFmt → Bool
+def NumFmt.exactImpl : NumFmt → NumFmt → Bool
   | .int s b, .int s' b' =>
     (if s' then !s || b - 1 ≤ b' - 1 else !s || b ≤ 1) &&
     (match s, s' with | true, true => b - 1 ≤ b' - 1 | true, false => b - 1 ≤ b' | false, true => b ≤ b' - 1
@@ -93,7 +98,7 @@ private def NumFmt.exactImpl : NumFmt → NumFmt → Bool
   | .float e p, .float e' p' => e ≤ e' && p ≤ p'
   | .float .., .int .. => false
 
-@[csimp] private theorem NumFmt.exact_eq_impl : @NumFmt.exact = @NumFmt.exactImpl := by
+@[csimp] theorem NumFmt.exact_eq_impl : @NumFmt.exact = @NumFmt.exactImpl := by
   funext f g
   have P (x y : Nat) : ((2 : Int) ^ x ≤ 2 ^ y) ↔ x ≤ y := by
     rw [show (2 : Int) = ((2 : Nat) : Int) from rfl, ← Int.natCast_pow, ← Int.natCast_pow, Int.ofNat_le]

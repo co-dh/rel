@@ -1,5 +1,10 @@
-import Rel.Kernel.Db.ObjectFile
-import Rel.Kernel.Value
+module
+
+public import Rel.Kernel.Db.ObjectFile
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Db.Own` the Rel kernels reach; `Rel.Db.Own` imports it. -/
 

@@ -1,5 +1,10 @@
-import Rel.Kernel.Coc
-import Rel.Kernel.Value
+module
+
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Kernel.Search` the Rel kernels reach; `Rel.Kernel.Search` imports it. -/
 
@@ -29,7 +34,7 @@ def normalise (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
   else v
 
 /-- What `normalise` runs as: the mask by `Column.ones`, the `Nat` `2 ^ 63` being GMP's. -/
-private def normaliseImpl (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
+def normaliseImpl (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
   if !float then v else
   let abs := v &&& Column.ones (8 * w - 1)
   let inf : UInt64 := if w == 8 then 0x7ff0000000000000 else 0x7f800000
@@ -37,7 +42,7 @@ private def normaliseImpl (w : Nat) (float : Bool) (v : UInt64) : UInt64 :=
   else if inf < abs then (if w == 8 then 0xfff8000000000000 else 0xffc00000)
   else v
 
-@[csimp] private theorem normalise_eq_impl : @normalise = @normaliseImpl := by
+@[csimp] theorem normalise_eq_impl : @normalise = @normaliseImpl := by
   funext w f v; simp only [normalise, normaliseImpl, Column.ones_eq]
 
 
@@ -76,7 +81,7 @@ def ordKey (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
   else v &&& mask
 
 /-- What `ordKey` runs as: its masks as word powers, as `ordCode`'s. -/
-private def ordKeyImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
+def ordKeyImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
   let mask : UInt64 := if w == 8 then 0xffffffffffffffff else Column.ones (8 * w)
   let top : UInt64 := Column.pow2 (8 * w - 1)
   if float then
@@ -85,7 +90,7 @@ private def ordKeyImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
   else if signed then (v &&& mask) ^^^ top
   else v &&& mask
 
-@[csimp] private theorem ordKey_eq_impl : @ordKey = @ordKeyImpl := by
+@[csimp] theorem ordKey_eq_impl : @ordKey = @ordKeyImpl := by
   funext w f s v
   simp only [ordKey, ordKeyImpl, Column.ones_eq, Column.pow2_eq,
     show Nat.toUInt64 2 = 2 from rfl]

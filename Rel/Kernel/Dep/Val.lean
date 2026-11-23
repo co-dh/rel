@@ -1,4 +1,9 @@
-import Rel.Kernel.Value
+module
+
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Dep.Val` the Rel kernels reach; `Rel.Dep.Val` imports it. -/
 

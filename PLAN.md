@@ -1703,6 +1703,15 @@ relk 线程池空转 2 526（与前三项重叠）。
   `Db.Csv.fmtAtom`/`readAtom`（`print`、`check`、错误信息经 `Elab.wordText` 同源，CSV 与 `crate/src/csv.rs` 同步改为 `.`）；`sep` 参数去掉。
 - ✅ W.12 compile-diff 的 pin（`test/compile-diff.json`、`compile-diff-write`、`REL_COMPILE_DIFF_OUT`）删除，只留差分测试
   （生成的代码对 `rel_program` 常量）；compile-diff 只在 master gate 跑（`main-only`）。
+- ▶ perf9b 证明层迁到 `module`（23bf589）：`Rel.Kernel.*`（`Dep.Monadic` 除外）与 `KernelSpec.{Csv,Own}` 已是 module；
+  头部 `module` / `public import` / `@[expose] public section`（脚本 `/data/tmp/perf9b/mod.awk`）。exposed body 只能引用
+  public 声明，所以这些文件里的 `private def` 与 `@[csimp]` 定理及其 `*Impl` 改为 public。测量：改 `Kernel.Value` 的一个
+  证明，重建 95 个模块、280 s，module 的 importer（其余 `Kernel.*`）不重建，非 module 的 importer（`KernelSpec.*`、
+  `Rep*`）照旧重建。所以收益要等 KernelSpec 层迁完。阻碍：(a) `#print axioms` 在 module 里不允许，21 个文件约 60 处
+  （`KernelSpec.{Asc,Assign,Elementwise,Encoding,EwEnc,Gather,Group,…}`、`Rep*`、`Lang.Den`、`Run.Core`），要移到一个
+  非 module 的检查文件；(b) 证明 `unfold`/`rfl` 用到 core 未 expose 的定义（`Array.range`、`Nat.fold`：
+  `KernelSpec.Encoding` 52、1141、1580 行），要改用 core 的引理；(c) `Kernel.Dep.Monadic` import `KernelSpec.Elementwise`；
+  (d) `RepSums`、`Lang.DfnLaw` 依赖 `Run.Lang.Elab`（meta 代码），不在本项范围。
 
 ## Baseline
 
