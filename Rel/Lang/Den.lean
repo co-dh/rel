@@ -222,9 +222,11 @@ abbrev fwideDen (t : QAtomicType) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom .
 abbrev faddDen : Core.Rel (Obj.El (.prod (.atom .f64) (.atom .f64))) (Obj.El (.atom .f64)) :=
   fun p r => Rel.Kernel.Op.fadd.eval p.1 p.2 = .ok r
 
-/-- An `f64` word to the word of the atom `t` nearest it (`Op.fto t`), none where that is `2^63` (a NaN). -/
+/-- An `f64` word to the word of the atom `t` nearest it: `Op.fto t`, then the coreflexive `corefl` dropping `2^63` (a NaN),
+    then the value `ofBits t` of the word. -/
 abbrev froundDen (t : QAtomicType) : Core.Rel (Obj.El (.atom .f64)) (Obj.El (.atom t)) :=
-  fun r w => ∃ R, (Rel.Kernel.Op.fto t).eval 0 r = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t R
+  (fun r R => (Rel.Kernel.Op.fto t).eval 0 r = .ok R : Core.Rel (Obj.El (.atom .f64)) UInt64) ≫
+    corefl (· ≠ 0x8000000000000000) ≫ (graph (QAtomicType.ofBits t) : Core.Rel UInt64 (Obj.El (.atom t)))
 
 /-- **`⦇[0, plus]⦈` at the float atom `u`**: the left fold over pairs (carry, value) from `u`'s `0` paired with
     its `f64` word (`fwideDen`, as the kernel widens its seed), each element widened likewise, added to the carry in

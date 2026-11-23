@@ -256,15 +256,15 @@ theorem fsum_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
         fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩
     · have hfa : ∀ a b, Op.fadd.eval a b = .ok (faddW a b) := fun _ _ => rfl
       obtain ⟨y1, y2⟩ := y
-      simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, faddDen, froundDen, fwideDen, hfa, Except.ok.injEq,
+      simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, Core.Rel.corefl, faddDen, froundDen, fwideDen, hfa, Except.ok.injEq,
         Prod.mk.injEq]
       constructor
-      · rintro ⟨⟨p1, p2⟩, ⟨rfl, _, rfl, h2⟩, s, rfl, rfl, R', hR', hn, rfl⟩
+      · rintro ⟨⟨p1, p2⟩, ⟨rfl, _, rfl, h2⟩, s, rfl, rfl, R', hR', _, ⟨rfl, hn⟩, rfl⟩
         rw [hx] at h2; cases h2
         cases hR'
         exact ⟨hn, rfl, rfl⟩
       · rintro ⟨hn, rfl, rfl⟩
-        exact ⟨(A, Xx), ⟨rfl, x, rfl, hx⟩, _, rfl, rfl, _, rfl, hn, rfl⟩
+        exact ⟨(A, Xx), ⟨rfl, x, rfl, hx⟩, _, rfl, rfl, _, rfl, _, ⟨rfl, hn⟩, rfl⟩
   -- the fold over pairs: the carry `C t` and its rounding
   have hC : ∀ t < m, ∀ y, foldDen Te TS
       (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v) y ↔
