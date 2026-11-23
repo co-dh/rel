@@ -567,24 +567,21 @@ theorem Prim.den_ascRow {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- `<` as a relation `B ⟶ B` on any object: `x` to each `y` after it, `π₁° lt π₂` (`lt` the coreflexive `Tm.ltDef`). -/
-def Tm.ltRel (B : Obj) : Tm B B := .comp (.comp (.conv .outl) (Tm.ltDef B)) .outr
+/-- **`asc(P)` as a definition (B5b5)**: `(dom(P) Λ(G dom(P)) L)°`, `a` of `dom P` to the count `L` of the list
+    (`Λ`, ascending) of the elements of `dom P` that `G` relates `a` to; `G` is `>` on `dom P` (`Tm.ascDef_of_len`'s
+    `hG`), the row's `(Tm.lt U)°` at an integer-stored atom, `(Tm.cmpDef c U)°` elsewhere (`Tm.gt_of_lt`). -/
+def Tm.ascDef {B : Obj} (P G : Tm B B) (L : Tm (.arr B) .long) : Tm .long B :=
+  .conv (.comp (.comp (.dom P) (.lam (.comp G (.dom P)))) L)
 
-/-- `>`, the converse of `<` (`Tm.ltRel`). -/
-def Tm.gtRel (B : Obj) : Tm B B := .conv (Tm.ltRel B)
-
-/-- **`asc(P)` as a definition (B5b5)**: `(dom(P) Λ(> dom(P)) length)°`, `a` of `dom P` to the length of the list
-    (`Λ`, ascending) of the elements of `dom P` below it, `L` the list count (`Tm.ascDef_den`). -/
-def Tm.ascDef {B : Obj} (P : Tm B B) (L : Tm (.arr B) .long) : Tm .long B :=
-  .conv (.comp (.comp (.dom P) (.lam (.comp (Tm.gtRel B) (.dom P)))) L)
-
-theorem Tm.ltRel_den (ρ : Val) (B : Obj) (x y : B.El) : (Tm.ltRel B).den ρ x y ↔ B.lt x y := by
-  simp only [Tm.ltRel, Tm.den, Tm.lt_den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
-  constructor
-  · rintro ⟨_, ⟨⟨x', y'⟩, rfl, rfl, h⟩, rfl⟩
-    exact h
-  · intro h
-    exact ⟨(x, y), ⟨(x, y), rfl, rfl, h⟩, rfl⟩
+/-- `(Tm.cmpDef c U)°` is `>` on `dom U` where the test `c` means `Tm.ltDef` (`Tm.lt_den`; the prelude's `lt`,
+    `Tm.ltDef_den`): an instance of `Tm.ascDef_of_len`'s `hG` at any object. -/
+theorem Tm.gt_of_lt (ρ : Val) {B : Obj} (c : Tm (.prod B B) (.prod B B)) (U : Tm B B)
+    (hc : c.den ρ = (Tm.ltDef B).den ρ) (x y : B.El) (hx : ∃ v, U.den ρ x v) (hy : ∃ v, U.den ρ y v) :
+    (Tm.conv (Tm.cmpDef c U)).den ρ x y ↔ B.lt y x := by
+  have hl := Tm.lt_den ρ B
+  show (Tm.cmpDef c U).den ρ y x ↔ _
+  rw [Tm.cmpDef_den ρ c U (fun p q h => by rw [hc, hl] at h; exact h.1) y x, hc, hl]
+  exact ⟨fun h => h.2.2.2, fun h => ⟨hy, hx, rfl, h⟩⟩
 
 /-- Among the elements of a list ascending by `Obj.lt`, those before its `k`-th are exactly the first `k`. -/
 theorem lt_take_iff {B : Obj} {ys : List B.El} (hp : ys.Pairwise B.lt) {k : Nat} {a : B.El} (hk : ys[k]? = some a)
@@ -608,18 +605,19 @@ theorem lt_take_iff {B : Obj} {ys : List B.El} (hp : ys.Pairwise B.lt) {k : Nat}
 /-- **`Tm.ascDef` is the row `asc` cut to `Q`** where `dom P` has a short list ascending by `Obj.lt` (`Tm.dom P`
     finite at an object whose keys separate its elements) and `L` counts a short list as `length` does, its results in
     `Q`: the row's meaning `ascDen` (`Prim.den_ascRow`, `Tab.asc_holds`) numbers `dom P` by the elements below, which
-    `Λ(> dom P) L` counts. -/
-theorem Tm.ascDef_of_len (ρ : Val) {B : Obj} (P : Tm B B) (L : Tm (.arr B) .long) (Q : Int64 → Prop)
+    `Λ(G dom P) L` counts, `G` being `>` on `dom P` (`hG`). -/
+theorem Tm.ascDef_of_len (ρ : Val) {B : Obj} (P G : Tm B B) (L : Tm (.arr B) .long) (Q : Int64 → Prop)
+    (hG : ∀ x y, (∃ c, P.den ρ x c) → (∃ c, P.den ρ y c) → (G.den ρ x y ↔ B.lt y x))
     (hL : ∀ zs : List B.El, zs.length < 2 ^ 63 → ∀ w, L.den ρ zs w ↔ w = Int64.ofNat zs.length ∧ Q w)
     (hp : ∃ ys : List B.El, ys.Pairwise B.lt ∧ (∀ b, b ∈ ys ↔ ∃ c, P.den ρ b c) ∧ ys.length < 2 ^ 63) (j : Int64)
     (a : B.El) :
-    (Tm.ascDef P L).den ρ j a ↔ Q j ∧ ascDen B (fun b => ∃ c, P.den ρ b c) j a := by
+    (Tm.ascDef P G L).den ρ j a ↔ Q j ∧ ascDen B (fun b => ∃ c, P.den ρ b c) j a := by
   have hd : ∀ x y, (Tm.dom P).den ρ x y ↔ y = x ∧ ∃ c, P.den ρ x c := fun x y => by
     simp only [Tm.dom_den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id]
     constructor
     · rintro ⟨rfl, c, h, -⟩; exact ⟨rfl, c, h⟩
     · rintro ⟨rfl, c, h⟩; exact ⟨rfl, c, h, h⟩
-  simp only [Tm.ascDef, Tm.den, Tm.gtRel, lamDen, Core.Rel.comp, Core.Rel.recip, hd, Tm.ltRel_den]
+  simp only [Tm.ascDef, Tm.den, lamDen, Core.Rel.comp, Core.Rel.recip, hd]
   unfold ascDen
   constructor
   · rintro ⟨zs, ⟨a1, ⟨rfl, ha⟩, hzp, hzm⟩, hl⟩
@@ -628,7 +626,7 @@ theorem Tm.ascDef_of_len (ρ : Val) {B : Obj} (P : Tm B B) (L : Tm (.arr B) .lon
     have hkl : k < ys.length := (List.getElem?_eq_some_iff.1 hk).1
     have hz : zs = ys.take k := lt_sorted_unique hzp (hyp.sublist (List.take_sublist _ _)) fun b => by
       rw [hzm, lt_take_iff hyp hk, hym]
-      exact ⟨fun ⟨b1, hl, e, hc⟩ => by subst e; exact ⟨hc, hl⟩, fun ⟨hc, hl⟩ => ⟨b, hl, rfl, hc⟩⟩
+      exact ⟨fun ⟨b1, hl, e, hc⟩ => by subst e; exact ⟨hc, (hG _ _ ha hc).1 hl⟩, fun ⟨hc, hl⟩ => ⟨b, (hG _ _ ha hc).2 hl, rfl, hc⟩⟩
     obtain ⟨rfl, hQ⟩ := (hL zs (by rw [hz, List.length_take]; omega) _).1 hl
     refine ⟨hQ, ys, hyp, hym, k, hk, ?_⟩
     rw [hz, List.length_take, Nat.min_eq_left (Nat.le_of_lt hkl)]
@@ -640,7 +638,7 @@ theorem Tm.ascDef_of_len (ρ : Val) {B : Obj} (P : Tm B B) (L : Tm (.arr B) .lon
     have hkl : k < ys.length := (List.getElem?_eq_some_iff.1 hk).1
     refine ⟨ys.take k, ⟨a, ⟨rfl, ha⟩, hyp.sublist (List.take_sublist _ _), fun b => ?_⟩, ?_⟩
     · rw [lt_take_iff hyp hk, hym]
-      exact ⟨fun ⟨hc, hl⟩ => ⟨b, hl, rfl, hc⟩, fun ⟨b1, hl, e, hc⟩ => by subst e; exact ⟨hc, hl⟩⟩
+      exact ⟨fun ⟨hc, hl⟩ => ⟨b, (hG _ _ ha hc).2 hl, rfl, hc⟩, fun ⟨b1, hl, e, hc⟩ => by subst e; exact ⟨hc, (hG _ _ ha hc).1 hl⟩⟩
     · exact (hL _ (by rw [List.length_take]; omega) _).2 ⟨by rw [List.length_take, Nat.min_eq_left (Nat.le_of_lt hkl)], hQ⟩
 
 end Rel.Lang

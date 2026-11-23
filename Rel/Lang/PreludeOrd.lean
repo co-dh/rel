@@ -85,4 +85,49 @@ theorem Tm.leDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
   show _ = Prim.den (cmpRow "le") (.prod (.atom .i64) (.atom .i64)) (.prod (.atom .i64) (.atom .i64)) []
   rw [Prim.den_cmpRow_le, Tm.le_row_den ρ rfl]
 
+/-- `(Tm.lt U)°` is `>` on `dom U` at an atom the row `lt` fuses (`num` outside `native`, the integer-stored ones):
+    the row is `Tm.cmpDef` of the test `lt` (`Tm.cmpDef_lt_den`), which is `Tm.ltDef` there (`Tm.lt_row_den`). A float
+    atom has no such instance of `Tm.ascDef_of_len`'s `hG`: its `ltAt` is IEEE's `<`, not `Obj.lt`. -/
+theorem Tm.gt_of_ltRow (ρ : Val) {t : QAtomicType} (ho : t.ordNum.isSome) (hf : t ∉ (cmpRow "lt").native)
+    (U : Tm (.atom t) (.atom t)) (x y : (Obj.atom t).El) (hx : ∃ v, U.den ρ x v) (hy : ∃ v, U.den ρ y v) :
+    (Tm.conv (Tm.lt U)).den ρ x y ↔ (Obj.atom t).lt y x := by
+  have hi : t.intOrd = true := by revert ho hf; cases t <;> decide
+  have hc : (Tm.prim (cmpRow "lt") : Tm (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))).den ρ =
+      (Tm.ltDef (.atom t)).den ρ := by
+    show Prim.den (cmpRow "lt") _ _ [] = _
+    rw [Prim.den_cmpRow_lt, Tm.lt_row_den ρ hi]
+  show (Tm.lt U).den ρ y x ↔ _
+  rw [← Tm.cmpDef_lt_den]
+  exact Tm.gt_of_lt ρ _ U hc x y hx hy
+
+/-- **`asc`'s text means the row** (Q3 = H): `prelude.asc.body` is built at `β = i64` (its `>` is the row `<`
+    conversed, given the universe variable 0, which fixes `β` to a number atom; `i64` is no placeholder, so every `σ`
+    keeps it) and is `Tm.ascDef` there: `G` the call of `>` (`Tm.gt_of_ltRow`, `dom P ⊆ dom U` by `hPU`), `L` the call
+    of `length` with the universe `P` the variable 1 (`Tm.lengthDef_den`), `P` the variable 2. -/
+theorem Tm.ascDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {Q : Obj.long.El → Prop}
+    (hQ : (∀ x, Q x) ∨ Seg .long Q) (hU : ∀ x y, ρ 1 .long .long x y ↔ x = y ∧ Q x) (h0 : Q 0)
+    (hPU : ∀ b c, ρ 2 .long .long b c → ∃ v, ρ 0 .long .long b v)
+    (hp : ∃ ys : List Int64, ys.Pairwise (Obj.lt .long) ∧ (∀ b, b ∈ ys ↔ ∃ c, ρ 2 .long .long b c) ∧
+      ys.length < 2 ^ 63)
+    {t' : Tm ((Obj.atom .i64).inst ph σ) ((Obj.atom .i64).inst ph σ)}
+    (ht : Rel.Programs.prelude.asc.body.instObj ph σ = .ok t') (j a : Int64) :
+    t'.den ρ j a ↔ Q j ∧ ascDen .long (fun b => ∃ c, ρ 2 .long .long b c) j a := by
+  obtain rfl := Except.ok.inj ht
+  refine Tm.ascDef_of_len (B := .long) ρ (.var 2) _ _ Q ?_ ?_ hp j a
+  · intro x y ⟨c, hx⟩ ⟨d, hy⟩
+    rw [Tm.den, Tm.argDen]
+    refine Tm.gt_of_ltRow _ rfl (by decide) (.var 0) x y ?_ ?_
+    · simp only [Tm.den, Val.args, Val.bind, if_true, and_self]; exact hPU x c hx
+    · simp only [Tm.den, Val.args, Val.bind, if_true, and_self]; exact hPU y d hy
+  · intro zs hs w
+    -- `i64` is no placeholder: `σ` keeps it
+    have hU' : ∀ x y, ρ 1 ((Obj.atom .i64).inst ph σ) ((Obj.atom .i64).inst ph σ) x y ↔ x = y ∧ Q x := hU
+    rw [Tm.den, Tm.argDen]
+    refine ((Tm.lengthDef_den [.general] [.atom .i64] _ hQ ?_ h0 rfl zs hs w).1).trans ?_
+    · intro x y; simp only [Tm.den, Val.args, Val.bind, if_true, and_self]; exact hU' x y
+    simp only [Tm.den, Core.Rel.comp, Val.args, Val.bind, if_true, and_self]
+    constructor
+    · rintro ⟨b, rfl, h⟩; obtain ⟨rfl, hb⟩ := (hU' _ _).1 h; exact ⟨rfl, hb⟩
+    · rintro ⟨rfl, hb⟩; exact ⟨_, rfl, (hU' _ _).2 ⟨rfl, hb⟩⟩
+
 end Rel.Lang
