@@ -68,6 +68,11 @@ abbrev nilDen : Core.Rel (Obj.El A) (Obj.El (.arr B)) := fun _ Y => Y = []
 /-- `at(k)`: the element at position `k`. -/
 abbrev atDen (k : Nat) : Core.Rel (Obj.El (.arr B)) (Obj.El B) := fun xs x => ∃ h : k < xs.length, x = xs[k]'h
 
+/-- The row `at` at `A×N ⟶ A`'s arrays: at `i64` the pair `(xs, k)` to `xs[k]` for a nonneg `k` (`atDen`), `𝟘` elsewhere. -/
+def atOn (B : Obj) : (N : Obj) → Core.Rel (Obj.El (.prod (.arr B) N)) (Obj.El B)
+  | .atom .i64 => fun p x => 0 ≤ p.2.toInt ∧ atDen p.2.toInt.toNat p.1 x
+  | _ => fun _ _ => False
+
 /-- `succ` on the universe `TU`: `u` and its successor both in it. -/
 abbrev succDen (TU : Core.Rel (Obj.El .long) (Obj.El .long)) : Core.Rel (Obj.El .long) (Obj.El .long) :=
   fun u w => (∃ v, TU u v) ∧ w = Ew.intStep Ew.add Alg.nul u 1 ∧ ∃ v, TU w v
@@ -443,7 +448,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
     ⟨⟨s, fun σ => (if o.readsAcc then .prod (σ₁ σ) (σ₁ σ) else σ₁ σ, σ₂ σ)⟩, fun _ _ => floatDen o _ _⟩) ++
   arithOps.map (fun (s, k) => ⟨⟨s, fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₁ σ)⟩, fun σ _ => stepOn k (σ₁ σ)⟩) ++
   [⟨⟨"succ", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => succOn (σ₁ σ)⟩,
-   ⟨⟨"mix", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => mixOn (σ₁ σ)⟩] ++
+   ⟨⟨"mix", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => mixOn (σ₁ σ)⟩,
+   ⟨⟨"at", fun σ => (.prod (.arr (σ₁ σ)) (σ₂ σ), σ₁ σ)⟩, fun σ _ => atOn (σ₁ σ) (σ₂ σ)⟩] ++
   cmpOps.map fun (s, b) => ⟨⟨s, fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen b (σ₁ σ)⟩
 
 
@@ -860,11 +866,11 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     ∀ σ {ss ss' : List Sem}, Sems.le ss ss' → e.2 σ ss ⊑ e.2 σ ss' := by
   intro e he hm σ ss ss' h
   simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
-  -- a `floatOps`, `arithOps`, `succ`, `mix` or `cmpOps` row takes no relation; then one case per row whatever their number,
+  -- a `floatOps`, `arithOps`, `succ`, `mix`, `at` or `cmpOps` row takes no relation; then one case per row whatever their number,
   -- in `rowDens` order
-  rcases he with (((he | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩) | (rfl | rfl)) | ⟨_, -, rfl⟩
+  rcases he with (((he | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩) | (rfl | rfl | rfl)) | ⟨_, -, rfl⟩
   rotate_left
-  iterate 5 exact Core.Rel.le_refl _
+  iterate 6 exact Core.Rel.le_refl _
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h

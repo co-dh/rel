@@ -298,6 +298,11 @@ def succRow : Prim :=
 def mixRow : Prim :=
   { sym := "mix", sig := ([], .var {} "N", .var {} "N"), num := [("N", [.i64])],
     aop := .error "AOP declares no hash on atoms" }
+/-- `at : [B]×ν ⟶ B`, q's index `xs[k]` on `i64`: the pair `(xs, k)` to the element at a nonneg `k` below the length (`atOn`).
+    Not written yet: the op table's `at(k)` (`Tm.atPos`) owns the name until it is replaced by `at(k) ≜ ⟨𝟙, ⊤ k⟩ at` (B5b2). -/
+def indexRow : Prim :=
+  { sym := "at", sig := ([], .prod (.list (.var {} "B")) (.var {} "N"), .var {} "B"), num := [("N", [.i64])],
+    written := false, aop := .error "AOP declares no indexing of a list by a number" }
 /-- The order test `s` of `cmpOps`, the coreflexive `N×N ⟶ N×N` on the pairs in order, no universe inside. -/
 def cmpRow (s : String) : Prim :=
   { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
@@ -387,7 +392,7 @@ def prims : List Prim :=
       aop := .error "AOP declares no floating-point function" }) ++
   -- the value verbs (`arithOps`), `succ`, the order tests `lt` `le` (`cmpOps`): rows on atoms, no universe inside;
   -- `build` writes each, cut to a bounded object's universe `U` as `⟨π₁U, π₂U⟩ row U` (§3.5), so none is written
-  arithOps.map (arithRow ·.1) ++ [succRow, mixRow] ++ cmpOps.map (cmpRow ·.1)
+  arithOps.map (arithRow ·.1) ++ [succRow, mixRow, indexRow] ++ cmpOps.map (cmpRow ·.1)
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

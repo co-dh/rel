@@ -139,6 +139,20 @@ theorem atPos_wf {n : USize} {k : Nat} {X : Vals (.arr B) n} {t : Tab (.arr B) B
   okSplit
   exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.2⟩
 
+theorem atIx_wf {n : USize} {X : Vals (.prod (.arr B) .long) n} {t : Tab (.prod (.arr B) .long) B}
+    (h : Tab.atIx X = .ok t) (hX : Vals.WF X) : t.WF := by
+  obtain ⟨⟨m, lo, hi, f⟩, k⟩ := X
+  simp only [Tab.atIx, bind, Except.bind] at h
+  okSplit
+  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.1.2⟩
+
+/-- **The row `at` keeps `Tab.WF`**: `atIx` at the `i64` index, no table elsewhere. -/
+theorem atRow_wf {N : Obj} {n : USize} {X : Vals (.prod (.arr B) N) n} {t : Tab (.prod (.arr B) N) B}
+    (h : Tab.atRow X = .ok t) (hX : Vals.WF X) : t.WF := by
+  cases N
+  case atom a => cases a <;> first | exact atIx_wf h hX | simp [Tab.atRow] at h
+  all_goals simp [Tab.atRow] at h
+
 /-- **`asc` keeps `Tab.WF`**: the value side of a `canon` of `P.key`. -/
 theorem asc_wf {P : Tab B B} {t : Tab .long B} (h : Tab.asc P = .ok t) (hP : P.WF) : t.WF := by
   simp only [Tab.asc, bind, Except.bind, pure, Except.pure] at h

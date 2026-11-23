@@ -383,7 +383,7 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
    ("star", ``Tab.star),
    ("dom", ``GenK.dom), ("ran", ``GenK.ran), ("nil", ``GenK.nil)].map fun (s, c) => (s, c, [])) ++
   floatOps.map (fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])) ++
-  arithOps.map (fun (s, _) => (s, ``Tab.arithOp, [Lean.mkStrLit s])) ++ [("succ", ``Tab.succOp, []), ("mix", ``Tab.mixOp, [])] ++
+  arithOps.map (fun (s, _) => (s, ``Tab.arithOp, [Lean.mkStrLit s])) ++ [("succ", ``Tab.succOp, []), ("mix", ``Tab.mixOp, []), ("at", ``Tab.atRow, [])] ++
   cmpOps.map fun (s, _) => (s, ``Tab.cmpOp, [Lean.mkStrLit s])
 
 -- every kernel row is a row of `prims`
