@@ -172,9 +172,9 @@ def Expr.pos : Expr → Pos
 
 /-- The atom the counting rows (`length`, `succ`, the positions of `positions`, `asc`) run on. -/
 def intAtoms : List QAtomicType := [.i64]
-/-- The atoms a sum (`sum`, `sums`) runs at: `i64` added exactly, `f64` added left to right, q's order; `f32` is
-    refused by name with the `$` hint (`Elab.numObj`), as q widens it before adding. -/
-def sumAtoms : List QAtomicType := [.i64, .f64]
+/-- The atoms a sum (`sum`, `sums`) runs at (`Lang.sumDen`): `i64` added exactly; a float atom added left to right
+    (q's order) in `f64` and rounded once to the atom. -/
+def sumAtoms : List QAtomicType := [.i64, .f32, .f64]
 /-- The float atoms, whose verbs run on `f64` words: those `fval` reads. -/
 def floatAtoms : List QAtomicType := [.f32, .f64]
 

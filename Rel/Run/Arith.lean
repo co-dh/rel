@@ -53,17 +53,6 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
     pure (w, ← ne w.enc)
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
-/-- The `kscan` chain taking a word of the atom `t` to the word its verbs and orders compute on: an `f32` word widened to
-    `f64` (`Op.f32to64`, `fval`); `i64` and `f64` as stored; any other ordered atom to the `i64` word of its value
-    (`Op.cast r .i64`, `r` its `ordNum`: `iordAt`); any other as stored. -/
-def widen (t : QAtomicType) : List (Op × UInt64) :=
-  match t with
-  | .f32 => [(.f32to64, 0)]
-  | .i64 | .f64 => []
-  | t => match t.ordNum with
-    | some r => [(.cast r .i64, 0)]
-    | none => []
-
 /-- The `n` words of `a` read at `t` through `widen t`, as a column: `a` itself where the chain is empty. -/
 def wideCol (t : QAtomicType) (n : USize) (a : Enc) : Except String Enc :=
   if widen t = [] then pure a else colMap .first n a a .i64 t (widen t)

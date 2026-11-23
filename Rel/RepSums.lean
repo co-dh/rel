@@ -458,7 +458,7 @@ theorem sumsDen_rows {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) (C : Ta
     (hO : ∀ i j : Fin C.n.toNat, i.1 < j.1 → (C.key.row i).1 = (C.key.row j).1 →
       Obj.lt (.atom t) (C.key.row i).2 (C.key.row j).2) (a : (Obj.prod K (.atom t)).El) (w : (Obj.atom u).El) :
     Lang.sumsDen (rep C) a w ↔ ∃ t : Fin C.n.toNat, C.key.row t = a ∧
-      Lang.foldDen (E := .atom u) (V := .atom u) (fun _ b => b = QAtomicType.ofBits u 0) (Lang.stepAt u Ew.add)
+      Lang.sumDen u
         (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map fun q =>
           if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else default) w := by
   have hR : ∀ b v, rep C b v ↔ ∃ i, C.key.row i = b ∧ C.val.row i = v := fun _ _ => Iff.rfl
@@ -603,7 +603,7 @@ theorem _root_.Rel.Arr.get_ofBits {u : QAtomicType} (hu : u = .i64 ∨ u = .f64)
 /-- **`sumTail`'s bad column holds no null**: at either type it is a `colMap .or` (`colMap_plain`). -/
 theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad : Enc} {W : Arr u n}
     (h : Tab.sumTail what u n seg v = .ok (W, bad)) : hasNul bad = false := by
-  cases u <;> simp only [Tab.sumTail, bind, Except.bind] at h
+  cases u <;> simp only [Tab.sumTail, Tab.sumTailF, bind, Except.bind] at h
   all_goals (repeat' split at h)
   all_goals try cases h
   all_goals rename_i hb; exact colMap_plain hb
@@ -616,9 +616,9 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
     (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a) {seg v bad : Enc} {W : Arr u n}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
     (h : Tab.sumTail what u n seg v = .ok (W, bad)) :
-    (u = .i64 ∨ u = .f64) ∧ ∀ t (ht : t < n.toNat),
+    (u = .i64 ∨ u = .f32 ∨ u = .f64) ∧ ∀ t (ht : t < n.toNat),
       ((Enc.raw .i64 n bad)[t]?.getD 0 = 0 ∨ (Enc.raw .i64 n bad)[t]?.getD 0 = 1) ∧ ∀ w : (Obj.atom u).El,
-        Lang.foldDen (E := .atom u) (V := .atom u) (fun _ b => b = QAtomicType.ofBits u 0) (Lang.stepAt u Ew.add)
+        Lang.sumDen u
           (((List.range (t + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t).map
             fun q => QAtomicType.ofBits u ((Enc.raw .i64 n v)[q]?.getD 0)) w ↔
         (∀ q ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t),
