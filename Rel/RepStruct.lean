@@ -604,7 +604,100 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
 theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B} (h : Tab.inrConv X = .ok T)
     (hX : Vals.WF X) (s : (Obj.sum A B).El) (b : B.El) : T.Holds s b ↔ (∃ i, X.row i = s) ∧ Core.Rel.inr b s := by
   rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
-  · cases h
+  · -- a band column: the rows `kscan .null`, `not` and `whereCol` keep are the non-null ones (`Opt.isNul_eq_false`)
+    rename_i t
+    have hXr : ∀ i, X.row i = Obj.optEl hb (x.get i) := fun i => by simp only [Vals.row, hv]
+    obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+    -- `inrConvBand`'s own `obtain ⟨rfl, rfl⟩` is a cast by `rfl` proofs at `.one`, `.atom t`: its body, by `rfl`
+    replace h : (do
+        let Fb ← kscan .null false t .u1 n none [(n, x.enc)] [] [(.not, 0)]
+        let Ms ← whereCol n Fb.1
+        let G ← Vals.gather Ms.1 Ms.2 (Vals.ofOpt hb x)
+        let yo ← Opt.gather Ms.1 Ms.2 x
+        let Y ← Arr.of t Ms.1 yo.enc "inr°"
+        pure (⟨Ms.1, G, Y⟩ : Tab (.sum .one (.atom t)) (.atom t))) = .ok T := h
+    simp only [bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i Fb hFb
+    split at h; · cases h
+    rename_i Ms hMs; obtain ⟨M, sel⟩ := Ms
+    split at h; · cases h
+    rename_i G hG
+    split at h; · cases h
+    rename_i yo hyo
+    split at h; · cases h
+    rename_i Y hY
+    cases h
+    obtain ⟨-, hFw⟩ := kscan_null_chain (by simp [kscanStream]) hFb
+    -- the kept word is `1` exactly at a flag `0`, the flags being bits
+    have hword : ∀ i < n.toNat, (Enc.raw .i64 n Fb.1)[i]?.getD 0 = if (foRNuls n x.enc)[i]?.getD 0 = 0 then 1 else 0 := by
+      intro i hi
+      obtain ⟨w, hw, hr⟩ := hFw i hi
+      have e := foRNuls_bit n x.enc hi
+      rcases hq : (foRNuls n x.enc)[i]? with _ | v
+      · rw [hq] at e; cases e
+      · rw [hq] at e
+        simp only [Option.some.injEq, Option.getD_some] at e
+        simp only [hq, chain, Op.eval, List.foldlM_cons, List.foldlM_nil, bind, Except.bind, pure, Except.pure,
+          Option.getD_some, Except.ok.injEq, ↓reduceIte] at hw hr
+        subst hw
+        rw [hr]; simp only [Option.getD_some]
+        by_cases hv0 : v = 0
+        · subst hv0; decide
+        · have h1 : v = 1 := by simpa [hv0] using e
+          subst h1; decide
+    have hsel := whereCol_spec hMs (fun i hi => by rw [hword i hi]; split <;> decide)
+    have hsz := whereCol_size hMs
+    have hnul : ∀ i : Fin n.toNat, x.isNul i = false ↔ (foRNuls n x.enc)[i.1]?.getD 0 = 0 := fun i => by
+      rw [Opt.isNul_eq_false, Array.getElem?_eq_getElem (by rw [foRNuls_size]; exact i.2)]; simp
+    have hYe : Opt.ofArr Y = yo := by
+      apply Subtype.ext
+      unfold Arr.of at hY
+      split at hY; · split at hY; · cases hY; rfl
+                     · cases hY
+      cases hY
+    have optInr : ∀ v, Obj.optEl hb (some v) = Sum.inr v := fun v => by
+      unfold Obj.optEl; generalize Obj.band_some hb = p; obtain ⟨p1, p2⟩ := p; rfl
+    have optInl : Obj.optEl hb none = Sum.inl () := by
+      unfold Obj.optEl; generalize Obj.band_some hb = p; obtain ⟨p1, p2⟩ := p; rfl
+    have hGr : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, ((Enc.raw .i64 M sel)[j.1]?.getD 0).toNat = i.1 ∧
+        Vals.row G j = Obj.optEl hb (x.get i) ∧ Vals.row (A := .atom t) Y j = Y.get j ∧ x.get i = some (Y.get j) := fun j => by
+      obtain ⟨i, hi, hr⟩ := Vals.gather_row _ hG j
+      obtain ⟨i', hi', hy⟩ := Opt.gather_row x hyo j
+      obtain rfl : i' = i := Fin.ext (by rw [← hi', hi])
+      refine ⟨i', hi, by rw [hr]; simp only [Vals.row, Vals.view_ofOpt], rfl, ?_⟩
+      rw [← hy, ← hYe, Opt.get_ofArr]
+    simp only [Tab.Holds, Core.Rel.inr, Core.Rel.graph]
+    constructor
+    · rintro ⟨j, rfl, rfl⟩
+      obtain ⟨i, -, hg, -, hx⟩ := hGr j
+      rw [hg, hx, optInr]
+      exact ⟨⟨i, by rw [hXr, hx, optInr]⟩, rfl⟩
+    · rintro ⟨⟨i, rfl⟩, hs⟩
+      rw [hXr] at hs
+      cases hxi : x.get i with
+      | none => rw [hxi, optInl] at hs; cases hs
+      | some v =>
+        rw [hxi, optInr] at hs; cases hs
+        have hnn : x.isNul i = false := by
+          cases hc : x.isNul i
+          · rfl
+          · simp [Opt.get, hc] at hxi
+        have hi0 : (Enc.raw .i64 n Fb.1)[i.1]?.getD 0 ≠ 0 := by
+          rw [hword i.1 i.2, if_pos ((hnul i).1 hnn)]; decide
+        have hm : i.1 ∈ (Enc.raw .i64 M sel).toList.map UInt64.toNat := by
+          rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq]; exact ⟨i.2, hi0⟩
+        obtain ⟨w, hw, hwi⟩ := List.mem_map.1 hm
+        obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hw
+        have hj' : j < (Enc.raw .i64 M sel).size := by simpa using hj
+        have hjM : j < M.toNat := by rw [← hsz]; exact hj'
+        simp only [Array.getElem_toList] at hwi
+        obtain ⟨i2, hi2, hg, hy, hx2⟩ := hGr ⟨j, hjM⟩
+        have e2 : i2 = i := Fin.ext (by
+          rw [← hi2]; simp only [Array.getElem?_eq_getElem hj', Option.getD_some, hwi])
+        subst e2
+        refine ⟨⟨j, hjM⟩, by rw [hXr]; exact hg, ?_⟩
+        rw [hy]; rw [hxi] at hx2; exact (Option.some.inj hx2).symm
   have hXw := hX
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h

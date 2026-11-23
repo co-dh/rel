@@ -162,7 +162,9 @@ numbers the kept rows, and the key `X` and the value `x` are gathered there; `Ar
 kept rows is. -/
 def inrConvBand {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (x : Opt t n) :
     Except String (Tab (.sum a b) b) := by
-  obtain ⟨rfl, rfl⟩ := Obj.band_some h
+  -- two `Eq` casts, not one `And.rec`: a `rfl` cast reduces, so a proof about a band column unfolds this to the body
+  obtain rfl := (Obj.band_some h).1
+  obtain rfl := (Obj.band_some h).2
   exact do
     let (m, sel) ← whereCol n (← kscan .null false t .u1 n none [(n, x.enc)] [] [(.not, 0)]).1
     pure ⟨m, ← Vals.gather m sel (Vals.ofOpt h x), ← Arr.of t m (← Opt.gather m sel x).enc "inr°"⟩
