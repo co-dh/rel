@@ -144,7 +144,7 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
 theorem cast_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.cast X = .ok T) (a : A.El) (b : B.El) :
     T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.castDen A B a b := by
   match A, B, X, T, h, a, b with
-  | .atom _, .atom _, _, _, h, a, b => exact cast_holds h a b
+  | .atom _, .atom _, _, _, h, a, b => exact (cast_holds h a b).trans (and_congr_right fun _ => (Lang.castDen_iff _ _ a b).symm)
   | .atom _, .prod .., _, _, h, _, _ | .atom _, .arr _, _, _, h, _, _ | .atom _, .sum .., _, _, h, _, _
   | .prod .., _, _, _, h, _, _ | .arr _, _, _, _, h, _, _ | .sum .., _, _, _, h, _, _ =>
     simp [Tab.cast] at h
@@ -655,7 +655,7 @@ theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ym
   unfold Tab.ymd at h
   split at h
   case h_2 => cases h
-  show _ ↔ _ ∧ (Db.Csv.ymd a).map Int32.ofInt = some b
+  rw [Lang.ymdDen_iff]
   rename_i X
   have hr : ∀ i : Fin n.toNat,
       ((Tab.toArray (k := .arr (.atom .char)) (v := .one) ⟨n, X, ()⟩)[i.1]?.map (·.1)).getD [] = X.row i := by

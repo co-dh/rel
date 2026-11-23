@@ -86,6 +86,9 @@ theorem le_iff {R S : Rel α β} : R ⊑ S ↔ ∀ a b, R a b → S a b :=
 
 @[simp] theorem recip_apply (R : Rel α β) (b : β) (a : α) : R° b a = R a b := rfl
 
+theorem graph_recip_graph (f : α → γ) (g : β → γ) (a : α) (b : β) : (graph f ≫ (graph g)°) a b ↔ f a = g b :=
+  ⟨fun ⟨_, h, h'⟩ => h.symm.trans h', fun h => ⟨_, rfl, h⟩⟩
+
 @[simp] theorem inter_apply (R S : Rel α β) (a : α) (b : β) : (R ∩ S) a b = (R a b ∧ S a b) := rfl
 
 @[simp] theorem union_apply (R S : Rel α β) (a : α) (b : β) : (R ∪ S) a b = (R a b ∨ S a b) := rfl
