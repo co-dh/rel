@@ -450,7 +450,7 @@ def Tm.at0 {B : Obj} : Tm (.arr B) B :=
 
 /-- **`lt` on any object `B`, a definition (B5b3)**: `dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)`, the coreflexive on
     the pairs `(x, y)` whose sorted two-element array `Λ(π₁ ∪ π₂)` starts with `x`, minus the pairs `x = y`
-    (`Tm.lt_den`). Its fused form is the row `lt` (`Tab.cmpPairs`) at an atom (`Tm.lt_row_den`). -/
+    (`Tm.lt_den`). Its fused form is the row `lt` (`Tab.cmpPairs`) at an integer-stored atom (`Tm.lt_row_den`, `RepSums`). -/
 def Tm.ltDef (B : Obj) : Tm (.prod B B) (.prod B B) :=
   .diff (.dom (.meet (.comp (.lam (.join .outl .outr)) Tm.at0) .outl)) (.dom (.meet .outl .outr))
 
@@ -505,11 +505,5 @@ theorem Tm.lt_den (ρ : Val) (B : Obj) :
     have hne : x' ≠ y' := by rintro rfl; exact B.lt_irrefl _ hl
     have h := (Tm.head_lt hne).2 hl
     exact ⟨⟨⟨rfl, rfl⟩, x', ⟨h, rfl⟩, h, rfl⟩, fun h => by obtain ⟨-, b, ⟨hb1, hb2⟩, -⟩ := h; exact hne (hb1.symm.trans hb2)⟩
-
-/-- **The row `lt` is the definition `Tm.ltDef`** at an atom `t` where `ltAt t` is `Obj.lt` (`ordDen` is the row's
-    meaning, `Tab.cmpPairs` its code, `Tab.cmpPairs_holds`). -/
-theorem Tm.lt_row_den (ρ : Val) (t : QAtomicType) (h : ∀ a b, ltAt t a b ↔ (Obj.atom t).lt a b) :
-    ordDen true (.atom t) = (Tm.ltDef (.atom t)).den ρ := by
-  rw [Tm.lt_den]; funext p q; simp only [ordDen, if_true, h]
 
 end Rel.Lang
