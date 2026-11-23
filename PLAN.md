@@ -96,8 +96,8 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 |----|--------------------------------|---------------------------------------|-----------------------------------------|------|------------|
 | 1  | `Rel` = `tab` 或 `lazy`        | `Rel.Rel`, `Run/Core.lean:485`        | 没有 `lazy`、`Known`；2420 个依赖者     | L    | ✅ 3.8      |
 | 2  | `Known = {dom, ran}`           | `Gen.Dem`, `Gen.lean:25`, 只有 dom    | `ran` 一侧没有对应物                    | M    | ✅ 3.3      |
-| 3  | CRel 删除，ok → Option         | `CRel`, `Run/CRelDef.lean:8`          | 2297 个 decl；`.rel` 在 ok=false 时被读 | L    | 🔄 3.12     |
-| 4  | `Fn`、`Dem` 删除               | `Gen.lean:48`, `:25`; `Pl` `:51`      | 7 个 module 中 224 + 182 个 decl        | L    | 🔄 3.12b    |
+| 3  | CRel 删除，ok → Option         | `CRel`, `Run/CRelDef.lean:8`          | 2297 个 decl；`.rel` 在 ok=false 时被读 | L    | ✅ 3.12 18224ec    |
+| 4  | `Fn`、`Dem` 删除               | `Gen.lean:48`, `:25`; `Pl` `:51`      | 7 个 module 中 224 + 182 个 decl        | L    | ✅ 3.12c 96f0426   |
 | 5  | `Den` 被 inline                | `abbrev Den`, `Lang/Den.lean:20`      | 206 处用在 12 个 module；`LR notate`     | M    | ✅ 3.13     |
 | 6  | `Tm` 没有 `Bool` 下标          | `Tm`, `Run/Lang/Tm.lean:15`           | `Res`、Elab、Expand、Bits、Plan         | L    | ✅ 3.9      |
 | 7  | `compile` 返回 subtype         | `compile`, `Compile.lean:235`         | 先关闭所有 gap；R2                      | L    | ✅ 7.2      |
@@ -105,24 +105,24 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | 9  | `Tm.Ax` 写成等式               | `Syn.lean:21-42`, `:131-148`          | 12 个 constructor，12 条等式            | S    | ✅ 1.1      |
 | 10 | refold 改名 hylo               | `Tm.lean:91`, `Gen.lean:267`          | 120 个名字含 "refold"                   | S    | ✅ 2.1      |
 | 11 | foldI 成为 definition          | `Tm.lean:68`, `Den.lean:98`           | owner 选 D：留 ctor，证 `foldI_sound`   | M    | ✅ 4.3      |
-| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | dfnR6：flat 融合，primFit 每实例拟合一次；绿，待合并 | M    | 🔄 4.2      |
+| 12 | flat 成为 definition           | `Pre.flat`, `Elab.lean:262`（p44）     | dfnR6：flat 融合，primFit 每实例拟合一次；绿，待合并 | M    | ✅ 4.2 1d1e875     |
 | 13 | inl、inr 是叶子                | `inlRow`…`inrConvRow`, `Syntax:176`   | 无：prim 行带 code、den、RowOK；R9      | S    | ✅ 4.1      |
 | 14 | junc 是 definition，没有 juncD | `Pre.junc`, `Elab.lean:256`           | 无：`inl°R ∪ inr°S`；不放 prelude       | M    | ✅ 4.1      |
 | 15 | 对称除法是 definition          | `Pre.symDiv`, `Elab.lean:264`         | 无：`R/S ∩ (S/R)°`；表层语法 `R ÷ S`    | M    | ✅ 4.4      |
 | 16 | 拒绝非正的 μ/ν                 | `Tm.pol`, `Tm.lean:254`               | Elab `.fix`（1655-1670）：没有检查      | S    | ✅ 2.4      |
 | 17 | gap：open share                | `Rows.lean:125`, `Expand.lean:530`    | 无：share 读 `Val.empty`，情形已证      | M    | ✅ 5.1      |
-| 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | 无 gap；`LamLaw` 是定理（S5）          | M    | 🔄 5.2      |
+| 18 | gap：setify、asc               | `rowGaps`, `Rows.lean:107`            | 无 gap；`LamLaw` 是定理（S5）          | M    | ✅ 5.2 3006856     |
 | 19 | gap：hylo                      | `rep_refold`, `RefoldSpec.lean:124`   | `onNodes` 修复、`hylo_sound`；去 `ch`   | M    | ✅ 5.3      |
 | 20 | gap：lam、E、thin              | `lamDen` `Den.lean:111`; `Canon`      | 三条已证；残留缺口：f32/f64 元素        | L    | ✅ 5.4c     |
 | 21 | gap：call                      | `Tm.lean:79`; den 读 body             | 无：`Tm.den` 读 body，情形已证          | L    | ✅ 5.5      |
 | 22 | prim row 写成 fold/hylo        | 28 行, `Compile.lean:77-112`          | 没有逐行检查                            | M    | ✅ 2.6      |
-| 23 | scan、scatter primitive        | driver, `Kernel/Driver.lean:25-38`    | 有定律，无 caller（见 W2–W3）           | L    | 🔄 W2–W3    |
-| 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 W2）    | L    | 🔄 W2       |
+| 23 | scan、scatter primitive        | driver, `Kernel/Driver.lean:25-38`    | 有定律，无 caller（见 W2–W3）           | L    | ✅ W2–W3 fb78052 f24cf81   |
+| 24 | gather、asc、distinct          | `gatherPacked`, `Order.grade`, `nubC` | 无 caller；无 "= 复合" 定理（见 W2）    | L    | ✅ W2 fb78052      |
 | 25 | 一种编码 `foR`              | `Ext.Enc`, 7 个 ctor, `Value.lean`    | 460 个 decl 依赖 `Enc`                  | L    | 🔄 W1b      |
-| 26 | 九个 atom                      | `QAtomicType`, 18 个 ctor, `Value:13` | 1718 个 decl；boolean、general；R5      | L    | 🔄 6.9      |
-| 27 | RELK.txt 84 → 5 + 保留的（现 9；IO 2 个在 RELIO.txt） | `crate/RELK.txt`, `crate/RELIO.txt`, `crate/src/ffi/` | native gate 需要更多；R4                | L    | 🔄 W5       |
-| 28 | q-only kernel 删除             | 84 个 extern（`RELK.txt`）            | q 专用 kernel 仍导出（W0）              | S    | 🔄 W0       |
-| 29 | seen-set scan `kseen`          | `kdistinct`, `Order.groupIds`         | foR 上的 `g` 与 `first`；agent 在做     | L    | 🔄 D.12     |
+| 26 | 九个 atom                      | `QAtomicType`, 18 个 ctor, `Value:13` | 1718 个 decl；boolean、general；R5      | L    | ✅ 6.9 2db73aa     |
+| 27 | RELK.txt 84 → 5 + 保留的（现 9；IO 2 个在 RELIO.txt） | `crate/RELK.txt`, `crate/RELIO.txt`, `crate/src/ffi/` | native gate 需要更多；R4                | L    | ✅ W5 97bc98b      |
+| 28 | q-only kernel 删除             | 84 个 extern（`RELK.txt`）            | q 专用 kernel 仍导出（W0）              | S    | ✅ W0 33f5cb7 97bc98b      |
+| 29 | seen-set scan `kseen`          | `kdistinct`, `Order.groupIds`         | foR 上的 `g` 与 `first`；agent 在做     | L    | ✅ D.12 2141ae7    |
 
 ## 2. Phases
 
@@ -138,9 +138,9 @@ Size：S = 一步，少于 20 次 tool call；M = 一到三步；L = 多于三�
 | P0 baseline          | 1 / 1       | 100% |                                                             |
 | P1 删除 `Syn`        | 3 / 3       | 100% |                                                             |
 | P2 不依赖 `Rel` 类型 | 6 / 6       | 100% |                                                             |
-| P3 `Rel` 类型        | 11 / 13     | 85%  | 3.12（3.12b 未开始）                                        |
+| P3 `Rel` 类型        | 11 / 13     | 85%  | —（3.12 ✅ 18224ec）                                        |
 | P4 `Tm` constructor  | 2 / 5       | 40%  |                                                             |
-| P5 关闭 gap          | 7 / 8       | 88%  | 5.2（浮点 key 的 `LamLaw`）                                 |
+| P5 关闭 gap          | 7 / 8       | 88%  | —（5.2 ✅ 3006856）                                 |
 | P6 kernels           | 9 / 15      | 60%  | 6.9、6.10、6.11（`d56c`）、6.13（`d4pos2`、`d4pos3`）、6.14 |
 | P7 Plan A            | 2 / 4       | 50%  |                                                             |
 
@@ -161,7 +161,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `stratifiedSample(s, n, a, x)` = `shuffle` 后按组内计数（`sumsBy` 的 1）`≤ n` 保留，一组时即 `sample`；
   `TestFrameRand` 钉住两者在种子 0 与 42 的手算值。`EmitC` 的 `mixOpB`（e647519）已把 `mix` 编成 `kscan`，
   native gate 加 `mx`（计数 0、42、`2^63−1`），`make native` 逐字节一致。
-- 🔄 D.3 6.9 atom（含 `date`、`datetime`、`u8`）：Rust tag 表 WIP，Lean rename 排在 3.8 之后（见 6.9）。
+- ✅ D.3 6.9 atom（2db73aa：Lean rename 与 Rust tag 表已落地，下文为合并前的记录）（含 `date`、`datetime`、`u8`）：Rust tag 表 WIP，Lean rename 排在 3.8 之后（见 6.9）。
   执行约束：机器 30 GB，`cap` 的 20000 MB 是每个进程的虚拟地址上限（`ulimit -v`），不是占用；限不住多个 build 的总 RSS，所以重的命令（全量 build、`lean-refactor`）前加 `cc-guard/bin/admit`：只在可用内存够时启动，不加锁，CPU 让调度器分。合并后把 sha 告诉 dataframe 会话，stage 1 rebase 到它上面。
 - ✅ D.4 6.13a 虚拟行号 `Enc.pos`：已合并，以下为合并前的记录。`d4pos2` 32b83cf，`RelKernel`、`RelRun` 与所有用到 `Enc` 的 `Rel` module build
   通过，0 sorryAx，cargo test 154，syms 一致；定律 G1、G2、S1、D1 已证。未合并：`kasc` 的 `pos` 捷径在 m > 2^63 时与
@@ -188,7 +188,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   答 `foR`。在 6.10 的 `scan` agent 合并之后（同一个 kernel）。
 - ✅ D.6（已合并）`scan` 的方向参数（反向扫描，van Herk）：`kscan` 的扩展，不是新 kernel。
   与 D.5 同一个 agent，在 `scan` 合并之后。
-- 🔄 D.7 第一部分 F-e 已合并（ca8f45c，master 78b01ed）：`Rel.Db.pushPart`、`Rel.Kernel.enlistLong`，native gate 比较
+- ✅ D.7（75a2d45） 第一部分 F-e 已合并（ca8f45c，master 78b01ed）：`Rel.Db.pushPart`、`Rel.Kernel.enlistLong`，native gate 比较
   整个 `out` 目录。第二部分（列的 mmap reader）也已合并：`d7map` fbb31f7 与 `d7store` d3926fd 都经 75a2d45 进了
   master；reader 叫 `Rel.Db.ownMap`（`@[extern "qlean_own_map"]`，body `ownParse`，不是 `fileMap`），定律
   `ownParse_ownImage`（`Rel/KernelSpec/Own.lean`）。qlean HEAD 仍在 `rust/qrs/src/ffi/own.rs` 定义一份 `qlean_own_map`，
@@ -199,7 +199,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   共享 sym 字典文件；`pos` 一侧不落盘，按 6.13）。只动 `crate/rt` 与 `Rel.Kernel`，6.9 合并后与 D.4 并行。
   同一 agent 补 dataframe F-e：`relc`/`rel-native` 跑不了算出来的程序，缺两条 plan 指令：把算出的 buffer 交给
   `qlean_own_write` 的 `parts : Array ByteArray`；把一个 size 寄存器变成单元素 buffer（`.hi` 列）。D.9 依赖它。
-- 🔄 D.8 F2 `Λ` 的 canonical 形式（5.2 setify/asc 行、5.4a `lam_sound`）、`foldI`（4.3）、`hylo`（5.3）：在 `rel-lazy` 上紧接
+- ✅ D.8（d72cf71 0ac4f13 e172821 5b50784 e7c40ee） F2 `Λ` 的 canonical 形式（5.2 setify/asc 行、5.4a `lam_sound`）、`foldI`（4.3）、`hylo`（5.3）：在 `rel-lazy` 上紧接
   3.8 做，排在 3.9-3.13 之前。不在 master 上先做：这些步骤改的 `Gen`/`Compile` 组合子正被 P3 重写，先做就要写两遍。
   dataframe 的输入：F-a `groups(k)` 写不出（`strₗ` 不在 `prims`，带键的 `foldI` 缺），只能按 K 的整个 universe 逐元素
   播种左 fold，代价 |K|×n；F-b `filter(p)` 进入 `Tm` 时是 prelude 的 fold 展开，recipe 只能匹配 fold 的结构。
@@ -266,7 +266,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （`output s to csv`、`g.csv`），也可进 recipe（`sk ≜ s ∪ s`）；float 列 `canonFloatB`（`fto t` 后 `ne` 求和，非零即
     `fail`，同 `Table.readArr`）；keyed input（目录 `key/` `val/`，或 CSV 的 key 列在前）读后 `canonT`。测试：
     `nativeIO` 加 `k` `kc` `f` `g` `sk`，`make native` 逐字节相等；`canonFloatB` 的 `#eval`（`-0`、NaN，两种 float）。
-    尚未做（plan 拒绝并指名）：可空 CSV 列 `S+1`（`ofCsv` 重组与检查，等 rq17）。
+    已做（5590457、5945791，df-M8c7；原：尚未做，plan 拒绝并指名）：可空 CSV 列 `S+1`（`ofCsv` 重组与检查，等 rq17）。
   - ✅ I11 native 的 `Tm`（分支 `nativetm`）：`Plan.tabB` 按每个节点的 `GenK` 配方（§4 的 kernel 复合）建表：
     `val` `uni` `𝟘` `𝟙` `⊤` `π₁` `π₂` `≫`（`compOne`）`°` `∩` `−`（`select`）`∪` `dom` `ran` `⟨,⟩` `×`（CROSS）
     `own` `share` `var`；按需节点读上下文已知的值（`compT` 的 `ran`、`∩` `−` `⟨,⟩` 的 `bound`）。`abi` 加
@@ -300,8 +300,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （`Rel/Run/Arith.lean`）在 `stepColsAt`/`succCol` 之后用 `arithOvf`/`failAt` 找出第一个溢出行（两操作数非 null、
     除数 ≠ 0、被 `stepCols` 丢掉；`succ` 为 `Int64.maxValue`），报 `plus: i64 overflow at plus(9223372036854775807, 1)`；
     null 操作数与零除数仍无像，float 不查（±∞）。`stepCols_spec`/`arithOp_den` 不变（成功分支无溢出行）；`#guard`
-    覆盖溢出与不溢出各例。未做：C 发射器（`arithOpB`/`succOpB`）仍按旧语义丢行，native 与 Lean 在溢出行上不一致，
-    待 EmitC 同改；`succ ≜ ⟨𝟙,⊤1⟩ ≫ plus` 与 `Tm.succ_den`：PLAN 无此文字，未做。
+    覆盖溢出与不溢出各例。已做（34e7c53 B5c2：C 发射器停在溢出行）；原未做：C 发射器（`arithOpB`/`succOpB`）仍按旧语义丢行，native 与 Lean 在溢出行上不一致，
+    待 EmitC 同改；`succ ≜ ⟨𝟙,⊤1⟩ ≫ plus` 与 `Tm.succ_den`：PLAN 无此文字；✖ `Tm.succ` 已由 B5 删除（见 Tm28 批次状态 B5）。
     分支 `nativetm4`（合并 3a、3b）：σ 是 3a 的 `Vars`（`ν` `μ` `hylo` 的一轮绑定为 `fun _ _ _ => pure X`），
     `ldivSelB` 的 `iteT` 按 `regsOf`/`withRegs` 读回 `Col` 树，`groupsB` 与 `expandB` 共用于 `compB`。
     仍拒绝并指名：`est` `thin` 与三种 fold（`foldRounds` 未接 `Instr.loop`）、行 `F` 及其余数组/求和行、
@@ -410,7 +410,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   已做（df-F1）：对象 `⟨θ ↦ A⟩`（`OExp.each`）是 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，元素在每次使用处由调用解出的对象读（`Elab.eachWords`）。体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义没有常量，每次使用在调用处展开（`Expand.once`）；库定义 `getDummies(c, x) : ν ⟶ ⟨θ ↦ 1+1⟩ ≜ ⟨e ∈ θ ↦ dummy(c, e, x)⟩` 对 `θ` 泛型（`TestPivotDisk` 的 `dummiesT` 与 `dummy` 逐元素的结果相同）。未做：导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`。已做（df-F1c）：`readSide` 经 `Table.checkDisk` 核对 `.d` 与声明的 schema（缺列、多列、atom 不同都报
   `<dir>/.d: column c is …, declared …`；`read`、`readKeyed` 都经 `readSide`；无 `.d` 的旧数据照旧读）；`oexpOf` 移到 `Elab`；
   `objOf?` 按步数结构递归，必终止（fix-objOf）。
-- 🔄 D.12 `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即
+- ✅ D.12（2141ae7；下列各项均已落地） `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即
   组 id 与首次出现的位置；相等按 `kasc` 的序码（`-0.0 = 0.0`，所有 NaN 是同一个 key）。引擎：直接寻址（范围来自块元数据）
   与有序输入上的 run 检测；宽的无序 key 报可操作的错误（现在没有 hash，只做编码列；非编码 key 是向 owner 的新请求；
   `part` 引擎是解码，不批准）。
@@ -426,14 +426,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   rq17f5（部分）：`nub_cover`/`nub_sel` 的 `hkey` 改为 `Vals.sorted_key`（`kasc_grade` + `asc_perm_grade`）；新引理
   `Vals.cols_wf`（`Vals.cols` 的每列 `Ext.Enc.WF`，由 `Arr.wf` 与 `.pos` 得）；`hN : n.toNat < 2 ^ 32` 加到
   `Vals.nub_*` 与 `Tab.canon_holds`/`ran_holds`/`dom_holds`；`kscatter_words` 加前提 `hasNul e = false`。
-  ⬜ 阻塞（待决定）：`Vals.row` 在原子上读 `Arr.get`，null 行读到的是块的 top residual，`kgather` 之后是新块的，
+  ✅ 已解除（rq17f6，9199fbf；原阻塞）：`Vals.row` 在原子上读 `Arr.get`，null 行读到的是块的 top residual，`kgather` 之后是新块的，
   所以 `Arr.gather_row`、`Arr.eq_of_codes`、`Arr.codes_of_eq`、`Arr.get_raw_atom` 的 u1 界在有 null 的列上为假。
   ✅ `RepSeen` 引用 `kasc_grade`（rq17f7）、`lexLe_congr_right` 折叠（4e2420e）。
   rq17f6（部分）：阻塞按设计卡 "atom+1"（决定 K）解除：`Arr t n` 的类型带 `hasNul = false`（`Arr.plain`），`Arr.mk` 要它、
   `Arr.of` 判定它；`Arr.opt` 删除（无调用者）。新引理 `Verify.hasNul_of_nulAt`、`foRNul_of_plain`、`ofBytes_plain`、
   `bools_plain`、`Ext.Enc.blank_plain`、`colMap_plain`、`colPrefix_plain`；`kscan_closed` 多一项 `hasNul = false`。
   `Rel.Run.*` 与 `RepCanon` 全绿（`gather_row` 经 `kgather_plain`，u1 界经 `foRNul_of_plain`，`eq_of_codes`/`codes_of_eq`
-  经 `nulCodes`/`nulWords` 在无 null 处化简）。⬜ 剩：`RepCols` 起的下游模块未建；`kscatter_words` 调用者传 `x.plain`；
+  经 `nulCodes`/`nulWords` 在无 null 处化简）。✅ 已绿（rq17f9–f12，6f58d7f；原剩）：`RepCols` 起的下游模块未建；`kscatter_words` 调用者传 `x.plain`；
   `hN` 调用者；✅ `RepSeen`/`lexLe_congr_right` 折叠（4e2420e）。in-band `V+1` 今天没有 `Obj` 情形，待设计。
   rq17f7（部分）：合并 9199fbf（`scatter.rs` 冲突：`ordered` 快路只在 `nul = None` 时走，因它不写 null 位）。绿：
   `RepCols`（`raw_scatter` 取 `x.plain`、`lastCount_eq` 取 `hN`、`wordsArr` 取 `hasNul_wordsFoR`）、`RepOrder`、
@@ -449,7 +449,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Vals.cols`，都无 null，所以 `hN` 从 `Vals.sorted_key`/`nub_*`/`canon_*`/`ran_holds`/`dom_holds`/`union_holds`/
   `kasc_kseen` 删去（`R.comp S` 内部的 union 无从给出行数界）；`select_ok` 直接引 `kasc_grade`。`scatter_add_count`、
   `scatter_last_at`、`kgather_word` 取 `hasNul e = false`。`lexLe_congr_right` 折叠完成。绿：Closure、RepCanon、
-  RepSeen、RepSetOps、RepTabComp。⬜ 剩：`RepTabDiv`（`kgather_word`/`scatter_last_at` 的源列无 null 证明，见
+  RepSeen、RepSetOps、RepTabComp。✅ 已绿（rq17f9–f12，6f58d7f；原剩）：`RepTabDiv`（`kgather_word`/`scatter_last_at` 的源列无 null 证明，见
   /data/tmp/rq17f8-handoff.md），其后 GenKBits、GenKFix、RepBits、RepSums、RepWhere、RepStruct、RepTabArith、DfnLaw、
   GenKFold、RepAsc、RepWFOps、GenKSpec、GenKHylo 未建；`colMap_plain`/`colPrefix_plain` 折入 `_closed` 未做。
   ✓ 其后各模块已绿（rq17f9–f12，6f58d7f）：RepTabDiv、GenKSpec（`BitsWf` 加 `hasNul o = false`）、GenKBits
@@ -459,7 +459,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `expand_plain`（RepTabComp，EXPAND 的偏移列无 null）、`Tab.sumTail_plain`（RepSums，bad 列无 null）。
   决定 F 已落地（5617318，2026-11-19）：上面的 "引擎" 一句作废。`kseen` 在乱序行上报固定错误（指出第一处乱序的行），
   `seenEngine`/`keySpan`/`foRBounds` 与 Rust 的 `seen::direct` 删除（`Seen.lean` 74 → 32 行）；新引理 `kseen_sorted`。
-  未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
+  ✅ 关闭（决定 S，见下）；原未做：1024 行块边界只有 Rust 测试，Lean 例子因 `decide +kernel` 归约不动而缺（与决定 C 有出入）。
   已诊断（seen1024，2026-11-22）：不是 `Sum` 的可判定实例，是答案的编码器。每个 kernel 的答案经 `wordsFoR` →
   `Coc.encode`，kernel 归约的是 `encodeAt 10` 的 Lean 体：`planOf`/`frameAt` 对每个候选 frame 在整块上算 `npatch`
   （每个宽度块内平方），`keyAt` 读 `pushBits` 建的 `ByteArray`（kernel 里是 list）。实测 `wordsFoR` 往返全零列：
@@ -483,7 +483,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
   ✅ decode 门（决定 G）：`decode-allow.txt` 中的名字是 `irReach` 的叶子（到达但不展开），只有一条不经任何白名单名字的路径
   通向 `foRBits`/`alpBits` 才被标出；白名单里不再自己到达解码器的条目（或已不是 RelRun 编译定义）算 stale 并使门失败。179→9 个。
-- 🔄 D.13 `sums`（dataframe 请求，q 的 `sums`，分支 `sums`）：prim 行 `sums : κ×ν ⟶ γ ↦ κ×ν ⟶ γ`，key 在源对象里，
+- ✅ D.13（649d3b0） `sums`（dataframe 请求，q 的 `sums`，分支 `sums`）：prim 行 `sums : κ×ν ⟶ γ ↦ κ×ν ⟶ γ`，key 在源对象里，
   每个 key 内按位置升序的左 fold 前缀和，溢出或 null 之后该 key 余下的行无像。含义（`rowDens`）是
   `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（`Den.lean` 的 `sumsDen`）。
   ✅ 已落地：`Tab.sums`（`Rel/Run/SetOps.lean`）只用 `kseen`、`kscatter`、`kscan .add`、`colMap`，无新 kernel，不解码；
@@ -497,7 +497,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   γ = ν，无需改。γ 是 `plus` 所接受的数对象（存为 i64，`Prim.num`、`Elab.numObj` 与 `plus` 同一检查）；
   i32、f64 等对象被拒："sums on I: I is an object of i32, and sums runs on objects of i64 only"
   （`TestSums.sumsPN`、`sumsI`、`sumsF`）。窄整数 γ 要等值算子支持窄整数。
-  ⬜ 未做：`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
+  ✖ 取消（`Prim.dfn` 字段已删 4f8bb1d，由 `Elab.dfns` 表 9c12838 取代，见 4.2）：`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
   recipe，不需要加。
 - ✅ df-F7 宿主函数（`dataframe-design` F7）：任意 Haskell/Lean 函数不进入程序（那是原语之外的不透明 kernel）；
   元素函数是程序里的 Rel 定义，作为关系参数传给 `frame` 的库定义 `lift(f, c) ≜ c f`、`lift2(f, a, b) ≜ ⟨a, b⟩f`、
@@ -536,11 +536,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   经 `Op.cast r .i64` 加宽后的 `Int64` 序（`wideCol`、`ordOp`，定律 `iord_iff`、`castWord_ofBits`）；`max`/`min` 在没有
   值算子的有序 atom 上是组合 `τ(≤)π₂ ∪ τ(>)π₁`（`Elab.build`），在 i64/f32/f64 上仍是融合的 `arith`。以 `.long` 读对象
   变量的行在 `Prim.num` 中声明它（`length`、`sum`、`positions`、`asc` 的 `ℕ`，`sums` 的 `ℕ` 与 `V`），在其它 atom 上按名
-  报错；常量不泛化的对象变量在 `callTm` 中先检查，`cumSum(f)`（f64）不再报 internal。未做：float 上的 `sum`/`sums`
+  报错；常量不泛化的对象变量在 `callTm` 中先检查，`cumSum(f)`（f64）不再报 internal。✅ 已做（df-f32sum，649d3b0）：float 上的 `sum`/`sums`
   （右折叠与逐块扫描在 float 上结果不同，需裁定求和顺序）、`sums` 的位置对象为任意有序 atom、行 `sqrt`。
   S4c/S4d（分支 `tb-s4d`）：`sums` 的位置在每个以整数存储的有序 atom 上运行（`QAtomicType.intOrd`、`Prim.ord`、
   `leAt t`、`Tab.sums_den`），f32/f64/sym 位置按名报错；`aj` 在 `date` 时间列上运行（`TestFrameTyped.ajDateT`、
-  `sumsTimeT` 钉住手算的行）。float 的 `sum`/`sums`（owner 裁定：自左向右）未做：f64 可由一次 `kscan .fadd` 精确算出，
+  `sumsTimeT` 钉住手算的行）。float 的 `sum`/`sums`（owner 裁定：自左向右）✅ 已做（df-f32sum，649d3b0）；原：f64 可由一次 `kscan .fadd` 精确算出，
   f32 不能——`stepAt .f32` 每步舍入到 f32，而 `kscan` 每行只折一个 `Op`，在 f64 上累加再舍入一次结果不同
   （2^24 + 1 + 1）；需 owner 裁定：加 `Op`、改 f32 的含义、或 f32 仍报错。库调用 `cumSum(f)`、`sumsBy(g, f)` 在 f64 上
   已是具名报错，不再是 internal。（f64 的 `sum`/`sums` 已由下面 S4e–S4g 做完；f32 见 fsum。）
@@ -709,7 +709,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   类型不再检查的：闭合字段的 `dem = false`、`est`/`thin` 的 `Q`、`mapM` 与 `subst` 保持 `dem`。
 - ✅ 3.10 没有 demand bit 的 `Elab`。
 - ✅ 3.11 没有 demand bit 的 `Expand`。
-- 🔄 3.12 删除临时物（`CRel.ok/rel/mk`、`Gen.Dem`、…）：
+- ✅ 3.12（18224ec，96f0426） 删除临时物（`CRel.ok/rel/mk`、`Gen.Dem`、…）：
   3.12a ✅ 已合并（`Pl` 去掉 `Dem`）；
   3.12b ✅（`dem312b`，无代码改动）：`Out.Sound.memo`、`Dem`、`Dem.of` 在 000ce33 已不存在；`Cor` 保留，
   它是 `Elab.test` 的结果类型（用户 `corAt`、`paramOf`、`test`），与 prelude 的 `cor(S) = dom(π₁S ∩ π₂)` 是同一个
@@ -732,7 +732,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - fold `⦇[e,S]⦈` 直接取两部分，不经过 junc。
   - 性能（`perf stat` 用户态指令数，626c084 → 1888ee2）：Quicksort 130.4G → 132.4G（+1.6%），
     Chess 483.8G → 483.7G，Edit 676.7G → 675.9G，Knapsack 15.72G → 15.74G。无回退，不需要融合 kernel。
-- 🔄 4.2 `flat` 成为 definition：`flat` 留作融合行，由 `dfns` 与定义相连（分支 dfnR6，全量构建绿，待合并）。
+- ✅ 4.2（1d1e875，b31f87e） `flat` 成为 definition：`flat` 留作融合行，由 `dfns` 与定义相连（分支 dfnR6，全量构建绿，待合并）。
   - `Rᴵ` 由 `Pre.flat`（`Elab.lean`，`Pre.junc` 之后）展开为 `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂`（pair、投影加相等测试，
     没有 converse）；`Tm.flat_den` 证明它的 `Den` 等于 `flatDen`。
   - `Tm.flat`、`GenK.flat`、`Pre.flat` 构造子、`flat_sound`、`flat_le` 及 `Den`、`GenSound`、`ConvSpec` 中的 flat
@@ -781,7 +781,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 
 - ✅ 5.1 share：`Tm.den` 在 `Val.empty` 下读 share，`Tm.gen` 在 `Code.empty` 下建它，`gen_sound` 的 share 情形已证；
   没有 gap 留给它（p56）。
-- 🔄 5.2 Λ/thin/setify/asc 的 soundness：`Gen.thin_sound`、`Gen.setify_sound`、`Gen.asc_sound` 已证并接入（3006856）；
+- ✅ 5.2（3006856） Λ/thin/setify/asc 的 soundness：`Gen.thin_sound`、`Gen.setify_sound`、`Gen.asc_sound` 已证并接入（3006856）；
   `thin` 仍有缺口：元素对象不 canonical 或 pair test 不是 `Tm.cor`；浮点 key 的缺口已由 S5 关闭。
 - ✅ 5.3 hylo：owner 选 H（删 `ch` 字段，`Tm.kids` 是唯一来源）再选 A
   （`Tm.size`，`Tm.gen` 用 `termination_by t.size`，
@@ -813,7 +813,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ 6.6 / 6.7 / 6.8 `gather`、`asc`、`distinct`；写入是 `wordsFoR`。6.7 剩余：`arr` key 的 MSD；浮点用 `ordKey`
   直到 6.9。
 - ✅ 计划外：foR 含 patch 与 frame，Lean `Coc.encode` 为规格，Rust 逐字节相同（owner 选 B）；30f7b34，合并进 master f0f9171。`≥2^32` 个元素的列不写 patch list。
-- 🔄 6.9 atom 和保序编码（Rust tag 表 WIP c4e3fb0，Lean 未改，不能单独合并；constructor 顺序
+- ✅ 6.9（2db73aa） atom 和保序编码（Rust tag 表 WIP c4e3fb0，Lean 未改，不能单独合并；constructor 顺序
   `u1 u8 i16 i32 i64 f32 f64 char i8 sym date datetime general`，前 8 个 = 今天的 `SK_*`，G 时不改编号；
   q 类型码 `date` 14、`datetime` 12、`i8` 3（q 未用）。两次 LR rename 因内存被杀，排在 3.8 build 之后）：`QAtomicType` → `u1 char u8 i8 i16 i32 i64 f32 f64 sym date datetime`，用 `LR rename`，全仓串行。
   owner 定：`QAtom` 的 constructor 同名改（`.i64 x`、`.i32 x`，不再用 `long`、`int`）；`i8` 有符号（排序翻符号位 `0x80`，
@@ -826,7 +826,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `date`（自 1970-01-01 的天数，存为 i32）与 `datetime`（自 1970-01-01 的纳秒，存为 i64；q 的 epoch 是 2000-01-01，
   差 10957 天，不同；owner 2026-11-20 选 N），都不带时区；存为 foR
   码，按整数比较和排序（owner 经 dataframe 会话提出）。
-- 🔄 6.10 已合并（master 2b042fd，make check 绿 241/25）：`gather` `scatter` `distinct` `asc` `scan` 直接在 foR 块上计算，
+- ✅ 6.10（2b042fd） 已合并（master 2b042fd，make check 绿 241/25）：`gather` `scatter` `distinct` `asc` `scan` 直接在 foR 块上计算，
   共用一个 `for_view`（8196e68）；编码器选宽度提速，同一 plan（e340c19，`for_meta` 70% → 7–11%，`kgatherp` 4–8×）；
   Sink 每块只调一次 producer（2b042fd，约 2%）。之后合并、待 make check：`kgather` 在 #idx ≥ #src 且源列非 flat 时整列
   解码一次（860961e，ts −16–20%，xn −27–29%，sz 不变；owner 交我决定）；scan 浮点 NaN 规则（131f437，release 向量化交换
@@ -859,7 +859,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     对 FastLanes 慢 1.4-10×，改为整字掩码写出；`take` 1% 的逐元素块查找改为按块分组。
   - 每个 kernel 合并后用 vortex 的 harness 在 100M 上复测一次，记进 `doc/vortex.md`；带 patch 的列（`sz` + outlier）
     在 foR B 合并（f0f9171）后重测。
-- 🔄 6.11 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数；删 `Enc.bits`：
+- ✅ 6.11（a9812af，97bc98b） 删除旧 extern 与旧 constructor；保留 SIMD 编解码函数；删 `Enc.bits`：
   Rust 与 `RelKernel` 在分支 `nobits` 完成，Run/Rel 一侧在 `nobits2` 收尾。6.11c 见 D.5；之后删 `Enc.bits`，在分支 `nobits3`，已合并（a9812af：`Enc.bits` 删除）。
   决定 M（owner，2026-11-18）使本步成为 W2 的前提（即 W1b）：编码集缩到 foR + `pos`，`sym` 是字典之上的 id 列，
   字面量在进入处编码成 foR，`general` 列只作为 `arr` 存在；`.bytes`、`.syms`、`.gen`、enum 编码删除。
@@ -894,12 +894,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       六个共享函数连着，在算子改写之前删不掉。
     - ✅ W1 闭包定律（af61a75，`Rel/KernelSpec/Closure.lean`）：`Enc.Valid`、`foRWords_valid`、`wordsFoR_closed`、
       五条 `k*_closed`；桥 `Arr.get_raw_foR`。缺口：`pos` 不是 `Enc.WF`；`u1` 列带前提 `t ≠ u1`。
-    - 🔄 W1a 每个原子列在产生处就是 foR 或 `pos`（ad5b0d7，`mig-for`）：`col longCol setIdCol colFn`、`Gen.atom`
+    - ✅ W1a（18224ec 删旧层） 每个原子列在产生处就是 foR 或 `pos`（ad5b0d7，`mig-for`）：`col longCol setIdCol colFn`、`Gen.atom`
       经 `longArr` 产生 foR（`longCol`、`setIdCol` 是旧 kernel 稠密输出在出口处编码一次，随 W5 删除）。仍稠密：
       `tilCol valCol`、`pick`/`gatherColumn`、`Enc.answer`、`sortByC`——卡在旧层只对 `.bytes` 陈述的 raze/pick
       定律上，不再逐点改，由 W3 把这些算子直接改写到五个 kernel 上。`Expand.atomE` 对 sym/general/ALP 列报错。
     - W1b 删除 foR + `pos` 之外的编码（决定 M）：在 W1a 之后（`.bytes` 没有构造点时删 constructor）。
-    - 🔄 W2 第一个算子端到端（04acf52）：`Tab.canon`/`ran`/`dom` = `kasc` → `kseen` → `kgather`
+    - ✅ W2（fb78052，f24cf81，18224ec） 第一个算子端到端（04acf52）：`Tab.canon`/`ran`/`dom` = `kasc` → `kseen` → `kgather`
       （`Rel/Run/Canon.lean`，定律 `Rel/RepCanon.lean`），kernel 之间无转换。未做：替换旧的 `canonC`/`nubC`/
       `CRel.ran`/`CRel.dom`（等 W3 的 `pick` 替换，以及 `sym`、`general`、`arr`、`sum` 列）。前提 `hK` 已去掉
       （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
@@ -988,7 +988,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       状态（2026-11-19 13:42，master `f90f42e`，`make check` 绿，compile-diff 427 / 33）：新 kernel 上仍 3 / 15；RELK 80。
       已合入：`kbitrows` + `Tab.compBits` / `Tab.ldivBits` + 定理 `Tab.compBits_comp` / `Tab.ldivBits_ldiv`（同样的行，`Canon` 未证）；
       `Tab.comp` 展开分块（`blockRows = 2^24`，`comp_holds` 不变）；`kasc` 的 `cmp_rows` 每元素读一次整列宽度的问题已修
-      （基准 64 s → 0.39 s）；`own_write` 创建缺失的父目录。未做：编译器选用 `compBits`、去掉 `sudokupc9` 与 `muGrow` 的固定
+      （基准 64 s → 0.39 s）；`own_write` 创建缺失的父目录。原未做（✅ cd3523e 已做）：编译器选用 `compBits`、去掉 `sudokupc9` 与 `muGrow` 的固定
       （✅ 2026-11-22 核对 `cd3523e`：`GenK.compR` / `ldiv` / `rdiv` / `ldivM` 经 `Tab.compSelM` / `Tab.ldivSel` 按 `Tab.bitsWin`
       选，`66384ef`；`sudokupc9` 的 `rel.kernel false` 随 `9907da6` 删去；`muGrow` 走 kernel 路径，`3d7d677`）、
       T6 / T8（`t68c`，闭项只算一次的规则见 architecture §0 草稿）。
@@ -1376,7 +1376,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `diff`）、`ldiv`（`GenK.ldiv`、`GenK.ldivM` 任意 `r`；`ldivM` 回退的 `s` 是 `ofBits` 读回）、`keepBits`
     （`meetV` 任意表）、`nu`（`GenK.nu` 任意 `S`；`hylo` 的 `N` 是 `mu` 答案，即 `pack` 过的 `union` 答案，
     `pack` 重写列，所以不是 `canon` 答案）、`star`、`sumsOn`（行参数任意）、`showRel`（打印）。
-- ⬜ 8.2 稠密 sum。例：`long+sym` 三行 `inl 7, inr x, inl 9`，现在存 `tag=[0,1,0] idx=[0,0,1] l=[7,9] r=[x]`，
+- 🔄 8.2（8.2h、8.2i 在跑） 稠密 sum。例：`long+sym` 三行 `inl 7, inr x, inl 9`，现在存 `tag=[0,1,0] idx=[0,0,1] l=[7,9] r=[x]`，
   改为 `tag=[0,1,0] a=[7,0,9] b=[0,x,0]`：每边一列 n 行，不属于该边的位置填 0（全 0 的块宽度 0，只占块头）。
   去掉 `idx`、`Vals.cols` 里把两边 gather 回 n 行、concat 时平移 `idx`、`Obj.dflt`；`inl°` 是按 tag 选行再 gather，
   不排序（今天 5 次排序）。`(A+B)+C` 按层递归：每层一列 `u1` tag，k 元 sum 有 k−1 列 tag，不另定三元存法。
@@ -1387,7 +1387,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.3 一种编码（分支 `foronly`）：`Ext.Enc` 只留 `foR`、`pos` 与 `gen`。已做：删 `bytes`、`alp`（Lean 类型与
   `WF`/`raw`/`get`；`Enc.ofBytes` 是每个定宽列进入 foR 的唯一入口；`answer`/`encode`/`alpOf` 删除；own 格式 v5，
   拒读 v4 及 kind 0/3；Rust `blocks::tag` 重编号 `FOR=1 ENUM=2 POS=4`）。
-  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，进行中。
+  留下：Rust ALP 内部（`alp.rs`、`enc.rs`、kwin、ffi `CCocf`）删除，已做（9edc100）。
   已做（分支 `symdict`）：删 `Enc.syms`/`Enc.enum`（Lean `WF`/`raw`/`get`、`SymsWF`、`symKey`/`symCmp`、`idWidth`、
   `symsOf`；Rust `tag::ENUM`、`Src::Ids`、own kind 4）。`Enc` 现在是 `foR`=0、`gen`=1、`pos`=2，Rust `FOR=0 POS=2`；
   `QAtom.sym : UInt64` 是编号，`width .sym = 8`，`orderKind .sym = i64`，所以 `asc`/比较/`seen` 在编号上原样跑；
@@ -1427,14 +1427,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Table.intern D x`：`N = ran R − ran D`，`F = Λ((R ≫ N)°) ≫ uncons ≫ π₁`（新串到首行），`D'` = `D` 接 `F°`；id =
   `R ≫ D'°`。own：`writeDict`/`readDict` 写库目录的 `sym` 与 `sym.rank`（拒绝重复的串、与字典不符的 rank），
   `writeSym`/`readSym D` 只写读 id（拒绝无文本的 id）。CSV：`readCsvDict D`、`writeCsv (Option Dict)` 共用一个字典。
-  序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。未做：`<`/`asc`
+  序：`Obj.ascBad` 拒绝 sym（`asc`/`iasc` 经 `rank`）；`<`/`≤` 本来就拒绝 sym（`ordNum .sym = none`）。原未做（已做 136f7c3、f338490、bc4836c）：`<`/`asc`
   行要接 `rank`；程序读库目录（own 格式）的 sym 列时从 `readDict` 起字典。
   `symdict4` 的 gate：full build 399 jobs 0 error 0 `sorryAx`；`make decode-allow panic-allow bang-allow pointfree
   tags native`、`build.sh syms` 通过；`cargo test --features std` 82 passed；compile-diff 与 `test/compile-diff.json`
   无差异（`TestCompile` 要 `CAP_MEM_MB=20000`，默认 12288 MB 时 qlean kernel 分配失败）。
   `gen`（`general`）随 8.4 与 `QValue` 盒子一起删。未定：float 今天存原始 IEEE 位的 foR（无损、已 WF）；改成
   保序位映射会改变每个 float kernel（比较、`asc`、`min`/`max`）的语义，单独做。
-  - 🔄 `nullband2`：`Obj.one`（`El = Unit`，不存列）已加，单元素对象 elaborate 成它；CSV 可空列 4 部分 → 3（去掉 null
+  - ✅ `nullband2`（68c94b8）：`Obj.one`（`El = Unit`，不存列）已加，单元素对象 elaborate 成它；CSV 可空列 4 部分 → 3（去掉 null
     payload）。`1` 的一边与其他边一样有 own 文件（kind 5：头里的行数，0 个 part；`Plan.cols` 给出 `.inl n`），
     顶层 `.one` 或 `A×1` 从 own 文件读回时过 `same`。`nullband4`：生成代码里 `1` 的一边是 `Gen.oneV n`；
     `Vals.gather` 在 `.one` 上 gather 位置列 `.pos` 再丢掉，越界的下标照样报错；CSV 里 `1` 的一列是它唯一元素的名字
@@ -1455,10 +1455,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     “每块都留 null 码”只改 `planBlock` 这一处。Rust：`Sink::write_nul`、`enc::move_blk` 按块分 `nul_meta`/`nul_pack`
     与 `for_meta`/`for_pack`。`Encoding.foRBits_encode`、`planBlock_bounds` 以空位图陈述（`bitAt_empty`）。
     剩：第 2–5 步（`Vals (.sum (.atom t) .one) := Arr t n` 及其各用处、kernel 在块上判 null、CSV 3 → 1、decode-allow）。
-    🔄 nullband 第 2 步，列类型已做：`Opt t n`（`Run/Core.lean`，`Arr t n` 去掉无 null 条款）：`Opt.get` 经
+    ✅ nullband 第 2 步（bc8ea3f；其余并入 nullband3），列类型已做：`Opt t n`（`Run/Core.lean`，`Arr t n` 去掉无 null 条款）：`Opt.get` 经
     `isNul`（`foRNul`，不解码）读成 `Option`，`Opt.ofAtoms` 经 `Coc.encode … nul` 写，`Opt.gather` 经 `kgather`（null 随行
     搬运），`Opt.ofArr` 即 `inl`。`TestNullband`：i64、u1 列三块都有 null 往返；无 null 不置标志；gather 保 null。
-    未做：`Vals (.sum (.atom t) .one) := Opt t n` 本身——`Vals` 的 `.sum` 分支与 `.sum (.atom t) .one` 重叠，`Vals`、
+    原未做（nullband3 已做）：`Vals (.sum (.atom t) .one) := Opt t n` 本身——`Vals` 的 `.sum` 分支与 `.sum (.atom t) .one` 重叠，`Vals`、
     `row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`、CSV 与 `RepCanon`/`RepCols`/`RepStruct`/`RepWF`/
     `ObjOrder`/`GenKBits` 里约 90 处 `.sum a b` 匹配都要先分出这一支；`general` 无块，`general+1` 不能带内。
     ✅ nullband2：`Opt.kgather_wf`（`Gather.lean`，取代 `Arr.kgather_wf`，`Arr.gather` 经 `Opt.ofArr` 用它）证明带 null 的源
@@ -1474,11 +1474,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Vals.cols_sum` 给出 `nt` 与 `Valid tag`，`lt_of_codes`/`row_of_codes`/`codes_of_row`/`cols_wf`/
     `gather_ok_of_cols` 随之改。`ObjOrder` 加 `#guard`：`i64+1` 上 `inr ∗` 的键小于 `inl 3`。所建测试模块无钉住的
     sum 次序要改。`Vals` 换 `Opt` 之后 `atom+1` 的键是 `nulCodes`，已是 null 在前，与之一致。
-    ⬜ nullband3（下一步，不再被挡）：`Vals (.sum (.atom t) .one) := Opt t n`。`.sum a b` 对变量 `a b` 不再归约，约 90
+    ✅ nullband3（68c94b8）（下一步，不再被挡）：`Vals (.sum (.atom t) .one) := Opt t n`。`.sum a b` 对变量 `a b` 不再归约，约 90
     处匹配各加一支。分部分做，每部分一个 agent、各自建绿：
     - nullband3a：`Run/Core`（`Vals`、`row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`）+ `Gather` +
       `TestNullband`。
-    - 🔄 nullband3a（部分）：`Vals (.sum a b) n := SumCols … (Obj.band a b)`。一个谓词 `Obj.band a b`：`t+1` 且
+    - ✅ nullband3a（68c94b8）：`Vals (.sum a b) n := SumCols … (Obj.band a b)`。一个谓词 `Obj.band a b`：`t+1` 且
       `t.width` 有值（有块）时 `some t`，存成一列 `Opt t n`；其余 sum（含 `general+1`）照旧 tag/idx/两边。入口只有
       `Vals.view : Vals (.sum a b) n → SumV a b n`（`.opt h x` / `.gen h l r tag idx x y`），出口 `Vals.ofOpt`/`ofGen`；
       `Obj.band_some`、`Obj.optEl`/`optOf`（`Option (El t)` ↔ `a+b` 的元素，null = `inr ()`）。已绿（worktree 建）：
@@ -1489,25 +1489,25 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       缺 kernel（报错而非解码，待主人定）：`Opt.concat` 两边任一含 null 时报错——没有一个 kernel 把两列连同 null 位
       合并（`kscan` 不写 null、`kscatter` 只读一个源、其余格填常数）；`inl°`/`inr°` 在 band 列上报错（需把值与 null
       分开的 kernel）。
-      未做：`Run.Lang.Gen`（`sumV` 第 53 行 `⟨l, r, …⟩`：生成代码要为 band side 发 `optV`），之后的 `Rel.Run.*`
+      原未做（3a2 至 3h5 已做）：`Run.Lang.Gen`（`sumV` 第 53 行 `⟨l, r, …⟩`：生成代码要为 band side 发 `optV`），之后的 `Rel.Run.*`
       未建；CSV `S+1` 仍按 3 部分写（`csvEncs`），`encVals` 的 band 支读 1 部分——CSV 3 → 1 未做；`TestNullband` 往返
       （`i64+1`、`u1+1` 经 row/gather/concat/cols/pack/readVals/encVals/CSV、null 在前、跨块）未加。Rep*/GenK* 未建。
-    - 🔄 nullband3a2：合入 null1x（`Obj.opt X = .sum .one X`，null = `inl ()`）。撤回 nullorder 翻转（`git revert 19fd603`：`Obj.key` `inl ↦ 0::`，`cols` 键列是 `tag`，删 `colMap_not_u1`、`lt_inr_inl` 与 tag 的 `foROk` 检查）。`Obj.band` 认 `1+t`（`.one, .atom t`），`optEl`/`optOf` null = `inl ()`；`Struct.inl` = `Opt.nuls`、`inr` = `Vals.optInr`。frame 库（`Frame`/`FrameJoin`/`FrameGroup`）与 `TestFrame*` 全改 `1+X`：`tot = R inr ∪ (…) ⊤ inl`，`bind = c [inl, f]`，`[𝟙, d]` → `[d, 𝟙]`，`y ⊕ 𝟙` → `𝟙 ⊕ y`。`Gen.optV`（band 列按 hex 重建）、`sumV` 带 `Obj.band = none` 证据（`Expand.bandRfl`），`valsE`/`valsEq` 经 `Vals.view`；`Elab` 空 sum 字面量经 `Vals.none`。RelRun 全绿（worktree 建）。
-      未做：CSV 3 → 1（`Table.toCsv`/`ofCsv` 的 `.opt a` 仍按 tag/idx/1/v 部分，band 侧只有 1 部分 `Opt`，运行时会报 "too few parts"；需 `Db.Csv` 的 `null` 形状改为一列带内 null，Rust 端同改）；`TestNullband` 往返（`1+i64`、`1+u1`）；Rel 库（Rep*/GenK*/测试）未建。缺 kernel 的两处仍报错：`Opt.concat` 两边任一含 null；band 列上的 `inl°`/`inr°`。
-    - 🔄 nullband3b（部分，`RepCanon` 未绿）：合入 nullband3a2；`FrameJoin` 冲突按 `1+δ` 解（`pivotCol : κ ⟶ 1+δ`，
+    - ✅ nullband3a2（68c94b8）：合入 null1x（`Obj.opt X = .sum .one X`，null = `inl ()`）。撤回 nullorder 翻转（`git revert 19fd603`：`Obj.key` `inl ↦ 0::`，`cols` 键列是 `tag`，删 `colMap_not_u1`、`lt_inr_inl` 与 tag 的 `foROk` 检查）。`Obj.band` 认 `1+t`（`.one, .atom t`），`optEl`/`optOf` null = `inl ()`；`Struct.inl` = `Opt.nuls`、`inr` = `Vals.optInr`。frame 库（`Frame`/`FrameJoin`/`FrameGroup`）与 `TestFrame*` 全改 `1+X`：`tot = R inr ∪ (…) ⊤ inl`，`bind = c [inl, f]`，`[𝟙, d]` → `[d, 𝟙]`，`y ⊕ 𝟙` → `𝟙 ⊕ y`。`Gen.optV`（band 列按 hex 重建）、`sumV` 带 `Obj.band = none` 证据（`Expand.bandRfl`），`valsE`/`valsEq` 经 `Vals.view`；`Elab` 空 sum 字面量经 `Vals.none`。RelRun 全绿（worktree 建）。
+      原未做（3b 至 3h5 已做）：CSV 3 → 1（`Table.toCsv`/`ofCsv` 的 `.opt a` 仍按 tag/idx/1/v 部分，band 侧只有 1 部分 `Opt`，运行时会报 "too few parts"；需 `Db.Csv` 的 `null` 形状改为一列带内 null，Rust 端同改）；`TestNullband` 往返（`1+i64`、`1+u1`）；Rel 库（Rep*/GenK*/测试）未建。缺 kernel 的两处仍报错：`Opt.concat` 两边任一含 null；band 列上的 `inl°`/`inr°`。
+    - ✅ nullband3b（68c94b8）：合入 nullband3a2；`FrameJoin` 冲突按 `1+δ` 解（`pivotCol : κ ⟶ 1+δ`，
       `dummy` 的 `inr` 是命中、`inl` 是其余），第 20 行注释改 `x × (𝟙 ⊕ y)`。`RepCanon`：`Vals.view_go_cast`、
       `view_ofOpt`、`view_ofGen`（构造后 `view` 直接归约）；`Vals.WF`、`gather_wf`、`gather_row` 的 gen 支、`cols_sum`
       （改取 `s` 与 `hv : s.view = .gen …`）已改成 `match s.view`。缺口（证明设计，不是机械活）：band 列作键带 null，
       `Vals.cols_wf` 的 `hasNul c.2 = false` 在 `.opt` 支为假，需弱化并让 `sorted_key`/`nub_*` 链接受带 null 的键列；
       缺 `Opt.gather_row`（`kgather` 搬 null 位）、`Opt` 版 `Arr.eq_of_codes`/`codes_of_eq`（`nulCodes_row`）；
       `row_of_codes`/`codes_of_row` 的 sum 支尚未改成 `s.view` 形。
-    - 🔄 nullband3c（部分）：CSV 3 → 1 的 Lean 一侧。`Db.CsvShape` 加 `opt`：`1+V` 整个 side 是 band（`Obj.band`）时，
+    - ✅ nullband3c（3c2、3c3 见下）：CSV 3 → 1 的 Lean 一侧。`Db.CsvShape` 加 `opt`：`1+V` 整个 side 是 band（`Obj.band`）时，
       CSV 列就是那一个 `Opt` 列（一个编码，空字段 = 块内 null 码）；模型里它是两个字部分（值、`foRNuls` 形式的 null
       标志），`csvRead` 用 `wordsFoR v (nulMap f)` 合成一个编码，`raws` 把一个编码读成 `rawAll` + `foRNuls`；
       `CsvShape.encs`（编码数）与 `parts`（字部分数）分开，`arity` 带计数函数。`.null`（tag/idx/值）只留给 `S` 有多列的
       `1+S`。`Table.toCsv`/`ofCsv` 的 band 支原样传一个部分，`internCsv`/`decodeCsv` 按 `encs` 切；`Expand.csvLeaves`
       每个叶子带 `whole`（叶子就是 `b` 本身），`ioCols` 在 `whole` 且 `Obj.band` 有值时选 `opt`。`csvWords_csvText`
-      陈述不变（`Rel.KernelSpec.Csv` 已建）。未做：Rust `crate/src/csv.rs` 的 `SH_OPT = 3`（读：值按 null 位图写进一个
+      陈述不变（`Rel.KernelSpec.Csv` 已建）。原未做（3c2、3c3 已做）：Rust `crate/src/csv.rs` 的 `SH_OPT = 3`（读：值按 null 位图写进一个
       编码，`Sink::write_nul`；写：每块读值与 null 标志）及 FFI——在此之前 extern 把 `opt` 当 atom；`CsvTest` 的 `opt`
       用例；`TestNullband` 往返（`1+i64`、`1+u1`、跨块 gather/concat、CSV 写读）。
     - ✅ nullband3c2/3c3：Rust `csv.rs` `SH_OPT = 3`（读：lex 时记 null 位图，`Sink::answer_nul` 写成一个编码；写：每块读值与
@@ -1524,7 +1524,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序
     `inl < inr` 本身即 null 在前，`Obj.key`/`cols`/`RepOrder` 不改。一般规则 `Obj.opt X = .sum .one X`（`@[match_pattern]`，
     `Run/Core`）：CSV 的 `ioCols`/`csvLeaves`/`Table.toCsv`/`ofCsv` 只经它认可空列；extern 仍按 `V+1` 布局（tag 1 = null），
-    `Table.swapTag`（`colMap` 取反 tag）在读写两端换边。null 码仍是顶残差（`foRNul`、Rust 不改）。⬜ dataframe 库翻转 `X+1`。
+    `Table.swapTag`（`colMap` 取反 tag）在读写两端换边。null 码仍是顶残差（`foRNul`、Rust 不改）。✅ 234739e dataframe 库翻转 `X+1`。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`
@@ -1543,13 +1543,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `exports::scatter::no_nul`、`gather::enc`/`scatter::blocks`/`ffi::asc::kasc` 经 `Sink::write_nul` 写出，`asc::Col::Nul`
     与 `asc::work` 返回多列。`cargo test --features std` 通过。剩：`KernelSpec` 的定理对含 null 的输入不再成立（例：
     `raw_scatter` 的结论 `o = wordsFoR ws`；`ascKeys_row` 说行码只依赖原始字），已给 `raw_scatter`/`kscatter_pos_ix`
-    加 `hasNul e = false`；其余（`KernelSpec.Asc`、`KGather`、`KSeen`、`Closure` 及 Rel 下约 50 处用法）待做，见
+    加 `hasNul e = false`；其余（`KernelSpec.Asc`、`KGather`、`KSeen`、`Closure` 及 Rel 下约 50 处用法）原待做（rq17f9–f12，6f58d7f 已做），见
     `tmp/handoff.md`。
     ✅ rq17h 主人定 B（29e12ef）：补丁表 `exc_off` 改 u64，`2^32` 行以上的列照常打补丁；`encodeAt` 的门槛成 `n < 2^64`
     （u64 计数自身的上限），`excBlob_*` 前提 `< 2^32` → `< 2^64`；own 格式版本 5 → 6，旧文件按名拒读。每块 +4 字节。
     rq17merge：rq17f12 的 null 位图与 u64 补丁表合并后，`USize` 行数 `< 2^64`，`wordsFoR_nul`/`foRNuls_wordsFoR`
     不再带 `hbig`，`asc_col_row`/`kasc_grade` 不再要 `< 2^32` 行。
-- 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
+- ✖ 8.3（被 1387 行的 8.3 取代，剩 `Enc.gen` 见 8.4）。原：今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
 - 🔄 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。原来 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
@@ -1574,17 +1574,17 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     递归经 `prod`/`sum`）；`readVals` 的检查抽成 `cellBad`（`Run/Cols`），`cellBad_none` 即 `WF` 的格子条款；保持引理
     `Vals.gather_wf`、`nub_wf`、`Tab.canon_wf`、`catSide_wf`、`catSummand_wf`、`concat_wf`（`RepCols`），
     `Vals.cells_wf`、`tau_wf`（`RepTabDiv`，由拆出的 `cells_spec`、`tau_spec` 给出，`cells_row`/`tau_row` 也改读它们）。
-  - ⬜ 删 clamp（未做，阻塞）：删任一 clamp，其定律（`concat_row`、`mem_holds`、`pack_row`、`cellSpan_spec`）要输入
+  - ✅ 删 clamp（50f6fa1、86a1805、9e74ca6、a6b41cc、73a8853、07ab767；原：未做，阻塞）：删任一 clamp，其定律（`concat_row`、`mem_holds`、`pack_row`、`cellSpan_spec`）要输入
     的 `WF`，传递依赖 183 个定理（GenSound 41、RepTabDiv 35、GenKFold 26、GenKBits 22、GenKSpec 18 …）。输入来自程序
     算出的任一 `Tab`：`rowOK_mem` 的 `X` 取自任意 `Known` 的 `K.dom`，`Rel.Reps` 对一切 `K` 量化。已有的槽是
     `Rel.Wf`（`GenKBits`，`.tab _ => True`，经 `Code.Wf`/`Sound` 进 `gen_sound`，91 个 `_wf` 引理）：改成
     `.tab (.ok t) => Tab.WF t`，加 `Known.WF`，`Reps` 只在 `Known.WF` 的 `K` 上要求；然后 91 个 `_wf` 各证其 op 保持
     `Tab.WF`（上面的保持引理是底），`Tab.lam` 要 `kseen`/`kscatter .add` 计数规格，`Vals.cells` 的调用处要 `expand`
     的前缀和 `≤ T`。
-  - 🔄 各 op 的保持引理（分支 `lohi3a`，`Rel/RepWF.lean`）：结构、集合、`comp`、bits、除法、比较、`inl°/inr°`、
+  - ✅ 各 op 的保持引理（lohi4a、4b、5 补完）（分支 `lohi3a`，`Rel/RepWF.lean`）：结构、集合、`comp`、bits、除法、比较、`inl°/inr°`、
     `length`/`atPos`/`asc`/`est`、`nil`/`lamOf`/`lam`/`E`/`tau`/`setify` 已证；`fixOn`/`mu`/`nu` 以 `Tab.pack` 保持
     为前提（`Vals.pack` 经 `Vals.cells`）。修了 `lamOf` 的错：`r` 无行时格子 `[f+c, f+c)` 指向 `m = 0` 的 payload 之外
-    （例：`D` 3 行、`r` 空，组 0 是 `[1,1)`，`hi = 1 > 0`），改为 `nil D`；`lamOf_canon` 多给 `U.WF`。未做：`List`
+    （例：`D` 3 行、`r` 空，组 0 是 `[1,1)`，`hi = 1 > 0`），改为 `nil D`；`lamOf_canon` 多给 `U.WF`。原未做（lohi4a、4b、5 已做）：`List`
     （`cells` 调用处，用 lohi3b 的 `expand_spec`）、`thin`/`thinL`/`merge`/`loop`/`foldRounds`、`Arith`、`Cast`、
     `Where`，以及 `Rel.Wf` 的切换本身。
   - ✅ `List` 与 `pack` 的保持引理（分支 `lohi4a`）：`Vals.pack_wf`/`Tab.pack_wf` 已证，`fixOn`/`mu`/`nu` 去掉
@@ -1601,14 +1601,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `cells_expand_wf` 要长 `T` 的，拆开 `C` 后 `subst`）；`ldivOf_wf`（`r`、`s` 已 canonical），`ldiv_wf` 经 `canon`
     调它，`ldivSel_wf` 对其除法 `d` 参数化（`hd : d R S UB UC = .ok t → t.WF`），`rdiv_wf` 用 `ldivOf_wf`，
     `inits_wf` 用 `lamOf_wf`。全量构建 0 error、0 sorry；TestCompile 982/982 相等，与 pin 无差。
-  - ⬜ 切换本身（未开始）：直接依赖 `Rel.Wf`/`Rel.Reps` 的声明 136 个（GenSound 62、GenKBits 30、GenKSpec 25、
+  - ✅ 切换本身（0cddb58；原：未开始）：直接依赖 `Rel.Wf`/`Rel.Reps` 的声明 136 个（GenSound 62、GenKBits 30、GenKSpec 25、
     GenKFold 10、GenKEst 3、GenKHylo 2、GenKFix 2）。步骤：(1) `Known.WF`（`dom`/`ran`/`pairs` 各 `Vals.WF`/`Tab.WF`）；
     `Rel.Wf` 改 `.tab (.ok t) => t.WF`、`.tab (.error _) => True`、`.lazy f => ∀ K, K.WF → (f K).Wf`，`bits` 加
     `ofBits` 结果 `WF`；`Rel.Wf.force`/`runE` 要 `K.WF`。(2) `lift1_wf`/`lift2_wf` 取 `f` 的保持引理与参数的 `Wf`，
     `ofVals_wf` 取 `f` 的（`K.WF` 给 `K.dom` 的 `Vals.WF`）；`compT` 在 `⟨some (ran r), K.ran, none⟩` 上 force，要
     `ran_wf`。(3) `gen_wf_spine` 每个构造子一行 `GenK.*_wf` + `RepWF`/`RepWFOps` 的 `_wf`；`primGen_ok` 的每个 row
     要其 op 的 `_wf`。(4) `Reps` 只在 `K.WF` 上要求，`Sound`/各 `_sound` 的 `∀ K` 加 `K.WF`。(5) 然后删 clamp。
-  - 🔄 切换进行中（分支 `lohi6`）：
+  - ✅ 切换完成（0cddb58）；原：切换进行中（分支 `lohi6`）：
     - ✅ import 调整：`Arr.zeros_get` 从 `RepAsc` 移到 `RepWF`，`RepWF` 不再 import `RepAsc`（原来经它依赖
       `GenKFold`），`GenKSpec` import `RepWFOps`。于是所有 `Tab` 层 `_wf` 在 `Rel.Wf` 之上可见，`GenK.*_wf` 留在原处直接用。
     - ✅ `GenKSpec`（绿）：`Known.WF`、`BitsWf`、`Rel.Wf` 及 `force`（要 `K.WF`）、`retried`、`runE`（`Wf` 的值在
@@ -1617,7 +1617,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       其 context 函数保持 `WF`（`hk`/`hkl`/`hkr`）；`ofVals_sound` 的 `hf` 多得 `Vals.WF X`；新 `cut_wf`、`bound_wf`；
       `pairOn`/`pairK`/`pair`/`diff` 的 sound 多取操作数的 `Wf`（它们在操作数算出的表的 `bound` 上运行另一操作数）；
       `cmp_side` 多取该侧的 `WF`；`succ` 的原子侧 `Vals.WF` 为 `True`。
-    - ⬜ `GenKBits` 1683 起（`meetV_law` 之后的 meet/comp/ldiv 段）不通过：`meetOn_sound`/`meetK_sound`/`compT_sound`
+    - ✅ 0cddb58 `GenKBits` 1683 起（`meetV_law` 之后的 meet/comp/ldiv 段）不通过：`meetOn_sound`/`meetK_sound`/`compT_sound`
       等要 `K.WF` 与 `bound_wf`、`Tab.ran_wf`；`_wf` 引理要真证明（`Tab.inter_wf`、`keepBits_wf`、`compSel_wf`、
       `compSelM_inl_wf`、`compTabMat_key_wf`、`ldivTabMat_sides_wf`）。之后 `GenKFold`、`GenKEst`、`GenKHylo`、
       `GenKFix`、`GenSound`（`Sound` 加 `K.WF`、`gen_wf_spine`、`primGen_ok` 每行 `_wf`），最后删 clamp。
@@ -1653,7 +1653,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `seenKey_iff_row`、`lamOf_*`、`group_rows`、`compOne_canon` 一族、`inter_distinct`、`lamLaw` 与 `Tab.canon` 的
     读者多取 `Vals.WF`/`Tab.WF`，调用处由 `*_wf` 给出；无结论弱化。`AscTest.spans` 的 `hi = 3005` 改为 `3000`，
     `#guard` 与 Rust 一致。全量构建 0 error、0 sorry；`build.sh syms`、`pointfree`、`listban`、`bang` 绿。
-  - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
+  - ✖ （旧方案，弃；由 1573 行的谓词 `Vals.WF` 取代，448d113）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
     难的产生者 `Tab.lam`（`f + cD ≤ f + c ≤ N` 要 `kseen`/`kscatter .add` 的计数规格）、`Vals.cells`
@@ -1662,7 +1662,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   - 之后删的 clamp 与 kernel 次数（数 Lean body）：`∋`（`Tab.mem`）边界 2 `colConst` + 3 `colMap` + 宽度 1 `colMap`
     = 6 → 1（`colMap .sub hi lo`）；concat 的 `arr` 分支 4 次 `clampShift` × 6 = 24 → 3（1 `colConst` + 2
     `colArr .add`，只移第二段）；`cellSpan`（`pack`、`List.lean`）5 → 0（以上均已做）。Rust 侧 `asc.rs`
-    `Cells::span` 的 `clamp(0, c)` 与 `Kernel.AscKey.cells` 的 Lean body 同一 commit 去掉（第三步，未做）。
+    `Cells::span` 的 `clamp(0, c)` 与 `Kernel.AscKey.cells` 的 Lean body 同一 commit 去掉（第三步，✅ 已做 73a8853、07ab767）。
 - ✅ Tm28 B7（`doc/tm-minimal-design.zh.typ` §4）`star`：prelude 定义 `star(R) ≜ μX : 𝟙 ∪ R X`，`R*` 是它的记号
   （parser 不再造变量名）；fused 行 `star` → `Tab.star`（semi-naive：`(X, Δ)` 从 `(P, P)`，每轮只算 `Δ R − X`），
   `Tab.fixOn` 改为任意状态（`nu` `mu` 传 `Tab.n Tab.pack`，`star` 带前沿），定理 `Tab.star_holds`、`GenK.star_sound`、
@@ -1892,14 +1892,14 @@ relk 线程池空转 2 526（与前三项重叠）。
     `Tab.star_holds`（`RepWFOps.lean:512`）、`rowOK_star`（`GenSound.lean:1108`）；index 无 `Chess.L`。2e3e84d、e22ecbb、
     b6b962a。批次表之外仍未做：`starLinear` 的 `rel_aop` 陈述（要 freyd `relaop/RelAop/Prelude.lean` 的证明）。
   - ✓ B8：`Tm.mem/inl/inr` 是构造子（`Tm.lean:42-46`），`Tm.dem` 的 `conv inl|inr` 子句（`Tm.lean:130`）。1ab20ac。
-  - partial B5：`succ` `arith` `atPos` 已删（`Tm.cut1/cut2`，行 `at`），`Tm.ltDef` `Tm.lt_den` `Tm.asc_den` 已证。未做：
+  - ✓ B5（B5d 已做 66ca7d9、c0f68ea）；原 partial：`succ` `arith` `atPos` 已删（`Tm.cut1/cut2`，行 `at`），`Tm.ltDef` `Tm.lt_den` `Tm.asc_den` 已证。原未做：
     删构造子 `leq` `lt`（步骤 B5d）。未证：f32/f64 上 `ltAt` 对 `Obj.lt`（上面未验证项 (1)），不挡 B5d：行 `cmpRow`
     的意义 `ordDen`（`Den.lean:392`）读的就是 `ltAt`/`leAt`。`Tm.ltDef` `Tm.ascDef` 是 Lean 里构造的项，不是 prelude
     文本：归 B10c。
-  - ⬜ B9：`Expand.convOf`（`Expand.lean:186`）是旧机制（`Once → Option (Name × Res)`，给 `callCv` 造逆体），不是设计的
+  - 🔄 B9（B9a 94525bb、B9bc 52aa2f5 已做；B9d、B9e 未做；以下为开工前的状态）：`Expand.convOf`（`Expand.lean:186`）是旧机制（`Once → Option (Name × Res)`，给 `callCv` 造逆体），不是设计的
     `convOf : 名字 → Option 名字`；index 无 `convs` `permConv`；`Tm.share` 仍是构造子（`own` `callCv` 已由 B9bc 删），`var` 仍带 `d`
     （`Tm.lean:66`、`:128`），`Tm.dem` 无 `δ`。
-  - ⬜ B10：`dfns` 仍在（`Elab.lean:2201`，`build` 用于 `:2496`）；index 无 `prelude.length/sum/flat`、无 `unproved`；
+  - 🔄 B10（B10a 077fa2b、B10b b6887db 已做；B10c、B10d 未做；以下为开工前的状态）：`dfns` 仍在（`Elab.lean:2201`，`build` 用于 `:2496`）；index 无 `prelude.length/sum/flat`、无 `unproved`；
     六行 `filter takewhile tails prefix suffix concat` 仍只有 `prelude :=`（`Syntax.lean:324/327/345/347/349/351`）与
     `useDef`（`Expand.lean:41-74`），各有 `rowOK_*`（kernel 对 `rowDens`），没有「行 = 定义」的定理。
   - B5d 删 `Tm.leq` `Tm.lt`（一个 agent，opus；证明小，改动面是各遍历的子句）：
