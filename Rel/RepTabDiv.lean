@@ -329,9 +329,12 @@ theorem Vals.row_cell {B : Obj} {n m : USize} (lo hi : Arr .i64 n) (f : Vals B m
     (hab : a ≤ b) (hbm : b ≤ m.toNat) (hm : m.toNat < 2 ^ 63) :
     Vals.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
       (List.range' a (b - a)).map fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
+  have hc : 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
+    simp only [Arr.get_i64, ha, hb, toInt64_toInt_nat (show a < 2 ^ 63 by omega),
+      toInt64_toInt_nat (show b < 2 ^ 63 by omega)]; omega
   have hi : (i.1.toUInt64).toNat = i.1 := by
     have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
-  rw [Vals.row_arr]
+  rw [Vals.row_arr i hc]
   simp only [cellStart, cellLen, hi, ha, hb, toInt64_toInt_nat (show a < 2 ^ 63 by omega),
     toInt64_toInt_nat (show b < 2 ^ 63 by omega)]
   congr 2 <;> omega
@@ -345,11 +348,7 @@ theorem Vals.row_span {B : Obj} {n m : USize} (lo hi : Arr .i64 n) (f : Vals B m
       (List.range' a (b - a)).map fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
   rcases hbm with hbm | rfl
   · exact Vals.row_cell lo hi f i ha hb hab hbm hm
-  have hi : (i.1.toUInt64).toNat = i.1 := by
-    have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
-  rw [Vals.row_arr, Nat.sub_self, List.range'_zero, List.map_nil, List.map_eq_nil_iff, List.range'_eq_nil_iff]
-  simp only [cellStart, cellLen, hi, ha, hb, toInt64_toInt_nat h63]
-  omega
+  rw [Vals.row_empty i (by rw [Arr.get_i64, Arr.get_i64, ha, hb]), Nat.sub_self, List.range'_zero, List.map_nil]
 
 /-- **A cell `Vals.WF` admits reads as `[SN, EN)`** (`0 ≤ lo ≤ hi ≤ m`, so no clamp): `lo = SN`, `hi = EN` as
 words, and the row is the payload rows `[SN, EN)`, so `SN ≤ EN`, and `EN ≤ m` or the cell is empty. -/
@@ -381,15 +380,10 @@ theorem cellSpan_spec {B : Obj} {n m : USize} {lo up : Arr .i64 n}
     by rw [hSN]; have := hL63 i; omega, by rw [hEN]; omega⟩, fun i => ?_⟩
   have hi : (i.1.toUInt64).toNat = i.1 := by
     have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
-  rw [Vals.row_arr]
+  rw [Vals.row_arr i (hc i)]
   simp only [cellStart, cellLen, hi, ← hLf, ← hHf]
-  by_cases hs : SN i ≤ m.toNat
-  · rw [hSN] at hs
-    rw [show min (max (Lf i) 0).toNat m.toNat = SN i by rw [hSN]; omega,
-      show (min (Hf i) (m.toNat : Int)).toNat - SN i = EN i - SN i by rw [hEN, hSN]; omega]
-  · rw [hSN] at hs
-    rw [show (min (Hf i) (m.toNat : Int)).toNat - min (max (Lf i) 0).toNat m.toNat = 0 by omega,
-      show EN i - SN i = 0 by rw [hEN, hSN]; omega]; rfl
+  have := hcw i i.2
+  rw [show (Lf i).toNat = SN i by rw [hSN], show (Hf i).toNat - SN i = EN i - SN i by rw [hEN, hSN]; omega]
 
 /-- **The start of a cell `Vals.WF` admits is at most `m`**: `0 ≤ lo ≤ hi ≤ m`. -/
 theorem cellSpan_start_le {n m : USize} {lo up : Arr .i64 n}
@@ -2481,25 +2475,28 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       generalize ((raw .i64 M sel)[j]?.getD 0).toNat = G at hG hc wl wh ⊢
       have hjU : (j.toUInt64).toNat = j := toNat_toUInt64 (by have := M.toNat_lt_size; omega)
       have hcN' := hcN G hG; have hle' := hle G
-      have e1 : cellStart m.toNat (raw .i64 M alo.enc) j.toUInt64 = min (Fs G + cDN G) m.toNat := by
-        unfold cellStart; rw [hjU, wl, toInt64_toInt_nat (by omega)]; omega
-      have e2 : cellLen m.toNat (raw .i64 M alo.enc) (raw .i64 M ahi.enc) j.toUInt64 =
-          min (Fs G + cntN G) m.toNat - min (Fs G + cDN G) m.toNat := by
-        unfold cellLen; rw [e1, hjU, wh, toInt64_toInt_nat (by omega)]; omega
-      rw [Vals.row_arr]; rw [e1, e2]
       by_cases hne : cDN G < cntN G
       · obtain ⟨hqN, -, hnq⟩ := hLin G hG (Fs G + cntN G - 1) (by omega) (by omega)
         obtain ⟨hm, -, -⟩ := hy _ hqN hnq
-        rw [show min (Fs G + cDN G) m.toNat = Fs G + cDN G by omega,
-          show min (Fs G + cntN G) m.toNat = Fs G + cntN G by omega,
+        have e1 : cellStart (raw .i64 M alo.enc) j.toUInt64 = Fs G + cDN G := by
+          unfold cellStart; rw [hjU, wl, toInt64_toInt_nat (by omega)]; omega
+        have e2 : cellLen (raw .i64 M alo.enc) (raw .i64 M ahi.enc) j.toUInt64 =
+            Fs G + cntN G - (Fs G + cDN G) := by
+          unfold cellLen; rw [e1, hjU, wh, toInt64_toInt_nat (by omega)]; omega
+        have hc : 0 ≤ (alo.get ⟨j, hj⟩).toInt ∧ (alo.get ⟨j, hj⟩).toInt ≤ (ahi.get ⟨j, hj⟩).toInt ∧
+            (ahi.get ⟨j, hj⟩).toInt ≤ (m.toNat : Int) := by
+          simp only [Arr.get_i64, wl, wh, toInt64_toInt_nat (show Fs G + cDN G < 2 ^ 63 by omega),
+            toInt64_toInt_nat (show Fs G + cntN G < 2 ^ 63 by omega)]; omega
+        rw [Vals.row_arr ⟨j, hj⟩ hc, e1, e2,
           show Fs G + cntN G - (Fs G + cDN G) = cntN G - cDN G by omega, hLn, List.map_map]
         refine List.map_congr_left fun q hq => ?_
         rw [List.mem_range'_1] at hq
         obtain ⟨hqN, -, hnq⟩ := hLin G hG q hq.1 (by omega)
         obtain ⟨hm, hj', e⟩ := hy q hqN hnq
         simp only [Function.comp, dif_pos hm, dif_pos hj', e]
-      · rw [show min (Fs G + cntN G) m.toNat - min (Fs G + cDN G) m.toNat = 0 by omega, hLn,
-          show cntN G - cDN G = 0 by omega]
+      · have e : alo.get ⟨j, hj⟩ = ahi.get ⟨j, hj⟩ := by
+          simp only [Arr.get_i64, wl, wh, show cntN G = cDN G by omega]
+        rw [Vals.row_empty ⟨j, hj⟩ e, hLn, show cntN G - cDN G = 0 by omega]
         rfl
     have hxj : ∀ j (hj : j < M.toNat), ∃ hi0 : ps[Fs ((raw .i64 M sel)[j]?.getD 0).toNat]?.getD 0 < n.toNat,
         xk.row ⟨j, hj⟩ = D.row ⟨_, hi0⟩ := by

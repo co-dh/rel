@@ -138,10 +138,10 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
       have := Vals.cell_le hw q; omega
     have get : ∀ (q : Fin n.toNat) k (hk : k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
         q.1.toUInt64), (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ q)[k]? = some (f.row ⟨_, bound q k hk⟩) :=
-      fun q k hk => by rw [Vals.row_arr hw]; simp [hk, bound q k hk]
+      fun q k hk => by rw [Vals.row_arr q (hw.1 q)]; simp [hk, bound q k hk]
     have len : ∀ q : Fin n.toNat, (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ q).length =
         cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 := fun q => by
-      rw [Vals.row_arr hw]; simp
+      rw [Vals.row_arr q (hw.1 q)]; simp
     -- below `p` the blocks agree: one reach flag, and where both reach, one element
     have flag : ∀ q < p, (q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 ↔
         q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64) := fun q hqp => by

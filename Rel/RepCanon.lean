@@ -874,7 +874,8 @@ theorem Vals.cell_le {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
 `lo` and `hi` at the row's own word), read through `f`; `Vals.row`'s clamp to `[0, c)` is the identity on a `WF`
 cell. -/
 theorem Vals.row_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
-    (hw : Vals.WF (A := .arr B) ⟨c, lo, hi, f⟩) (i : Fin n.toNat) :
+    (i : Fin n.toNat)
+    (hc : 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (c.toNat : Int)) :
     Vals.row (A := .arr B) ⟨c, lo, hi, f⟩ i =
       (List.range' (cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64)
         (cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)).map
@@ -882,7 +883,7 @@ theorem Vals.row_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
   have hu : (i.1.toUInt64).toNat = i.1 := by
     have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
   have hfr : (List.finRange c.toNat).map Fin.val = List.range c.toNat := List.ext_getElem (by simp) (by simp)
-  obtain ⟨h1, h2, h3⟩ := hw.1 i
+  obtain ⟨h1, h2, h3⟩ := hc
   have hs : cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64 = min (max (lo.get i).toInt 0).toNat c.toNat := by
     simp only [cellStart, hu, ← Arr.get_i64]; omega
   have hl : cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 =
@@ -892,6 +893,12 @@ theorem Vals.row_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
   simp only [Vals.row]
   rw [← filter_range_window, ← filterMap_ite, ← hfr, List.filterMap_map]
   exact congrArg (fun F => List.filterMap F _) (funext fun j => by simp [j.2])
+
+/-- **A cell whose `lo` is its `hi` reads empty**, wherever it lies: no payload row is in `[lo, lo)`. -/
+theorem Vals.row_empty {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c} (i : Fin n.toNat)
+    (h : lo.get i = hi.get i) : Vals.row (A := .arr B) ⟨c, lo, hi, f⟩ i = [] := by
+  simp only [Vals.row, h]
+  exact List.filterMap_eq_nil_iff.2 fun j _ => if_neg fun ⟨h1, h2⟩ => by omega
 
 theorem Verify.ascCodes_mapM : ∀ {m : USize} {es : List (AscKey × Enc)} {ks},
     ascCodes m es = .ok ks → ∃ cs, es.mapM (ascCol m) = .ok cs
@@ -970,7 +977,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
   | .arr _, n, ⟨c, lo, hi, f⟩, hw, es, hes, cs, hc, i, i', hk => by
     obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hw hes hc
     obtain ⟨hl, hk⟩ := (hkey i i').1 hk
-    rw [Vals.row_arr hw, Vals.row_arr hw, map_range'_eq_iff]
+    rw [Vals.row_arr i (hw.1 i), Vals.row_arr i' (hw.1 i'), map_range'_eq_iff]
     refine ⟨hl, fun k hkl => ?_⟩
     have b1 := hkl; have b2 := hl ▸ hkl
     have c1 := Vals.cell_le hw i; have c2 := Vals.cell_le hw i'
@@ -1062,7 +1069,7 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     rw [hs, hs, Vals.codes_of_row x.1 hw.1 h1 hc1 i i' r1, Vals.codes_of_row x.2 hw.2 h2 hc2 i i' r2]
   | .arr _, n, ⟨c, lo, hi, f⟩, hw, es, hes, cs, hc, i, i', hr => by
     obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hw hes hc
-    rw [Vals.row_arr hw, Vals.row_arr hw, map_range'_eq_iff] at hr
+    rw [Vals.row_arr i (hw.1 i), Vals.row_arr i' (hw.1 i'), map_range'_eq_iff] at hr
     refine (hkey i i').2 ⟨hr.1, fun k hkl => ?_⟩
     have b1 := hkl; have b2 := hr.1 ▸ hkl
     have c1 := Vals.cell_le hw i; have c2 := Vals.cell_le hw i'
