@@ -1,5 +1,9 @@
-import Rel.Run.Lang.Parse
-import Lean
+module
+
+public meta import Rel.Run.Lang.Parse
+public meta import Lean
+
+public meta section
 
 /-! The Rel language as a closed Lean syntax category, its one grammar: `rel_program n where` and the program's
     lines define `n : Program`; `Expand.emit` defines what it reads. The grammar has relation constructs only, and no

@@ -1,6 +1,11 @@
-import Rel.Run.Lang.Grammar
-import Rel.Run.Lang.TmGen
-import Lean
+module
+
+public meta import Rel.Run.Lang.Grammar
+public meta import Rel.Run.Lang.TmGen
+public meta import Rel.Run.Lang.TmEmit
+public meta import Lean
+
+public meta section
 
 /-! The command `rel_program n where`: it reads the grammar (`Grammar`) into the AST and defines `n : Program`;
     `Expand.emit` defines what it reads. -/
