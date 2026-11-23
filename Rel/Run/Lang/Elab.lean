@@ -2447,6 +2447,25 @@ def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.pr
   | .error e => throw ⟨e.pos,
     e.msg.map (s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): " ++ ·)⟩
 
+/-- `t` with each `Tm.cmpDef c U` at an atom `t` the row orders (`ordNum`), `c` a call of the prelude's `lt`/`le`
+    (`cmpRow`'s constant), the row `Tm.lt U`/`Tm.leq U` run fused (`GenK.cmpRel`), call bodies included: a generic
+    constant's order put at a number object (`callTm`). At an integer-stored atom the two mean the same
+    (`Tm.cmpDef_lt_den` with `Tm.ltDef_den`, the `le` pair). -/
+partial def Tm.cmpRows {A B : Obj} (r : Tm A B) : Tm A B :=
+  match r with
+  | .comp (.pair (@Tm.arg _ _ C D (.prim d) U) (.top _)) (.comp (.call _ n _ _ _) .outr) =>
+    match A, (cmpOps.find? fun (o, _) => (cmpRow o).prelude == some n) with
+    -- at f32/f64 this is the IEEE row, as a number object's `<` is today: whether it is `Obj.lt` there is open (Q2),
+    -- so the float semantics stays the row's
+    | .atom t, some (_, s) =>
+      if h : t.ordNum.isSome ∧ d.sym == domRow.sym ∧ B = .atom t ∧ C = .atom t ∧ D = .atom t then
+        let U' : Tm (.atom t) (.atom t) := cast (by rw [h.2.2.2.1, h.2.2.2.2]) U.cmpRows
+        cast (by rw [h.2.2.1]) (if s then Tm.lt U' else Tm.leq U')
+      else r.mapM (m := Id) (·.cmpRows)
+    | _, _ => r.mapM (m := Id) (·.cmpRows)
+  | .call ks c cv os b => .call ks c cv os b.cmpRows
+  | _ => r.mapM (m := Id) (·.cmpRows)
+
 /-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` and its converse's
     constant `cv` at their objects (`Tm.instObj` at its placeholders `ph`), `os` those of the variables it is generic over. A
     variable it is not generic over keeps its placeholder, so `σ` is the identity there. -/
@@ -2463,7 +2482,7 @@ def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : L
   let inst {X Y : Obj} : Res → Except Err (Tm X Y)
     | ⟨X₀, Y₀, b⟩ => do
       let b ← (b.instObj ph σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
-      if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b)
+      if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b.cmpRows)
       else internal dp s!"`{c}`'s body is not at the objects of its call"
   return .call ks c cv os (← inst t)
 
