@@ -196,7 +196,7 @@ def rowsProved : List String :=
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
   | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .own R
+  | _, _, .own R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
@@ -212,7 +212,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
-  | _, _, .share _ R
+  | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
@@ -1327,6 +1327,8 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case rdiv => exact GenK.rdiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
   case lam => exact GenK.lam_wf (w _ (by omega))
+  case leq => exact GenK.cmp_wf
+  case lt => exact GenK.cmp_wf
   case fold => exact GenK.fold_wf (w _ (by omega)) (w _ (by omega))
   case foldr => exact GenK.foldr_wf (w _ (by omega)) (w _ (by omega))
   case nu => exact GenK.nu_wf (w _ (by omega)) fun X wX => c _ (by omega) _ (hη.bind _ (GenK.const_wf wX))
@@ -1444,6 +1446,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case inl => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.inl_holds h hX
   case inr => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.inr_holds h hX
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
+  case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
+  case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
   case var k => exact hs.1 k _ _
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs)) (code_wf (gen_wf S η hs.2))

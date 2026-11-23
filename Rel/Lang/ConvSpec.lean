@@ -154,7 +154,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
   intro A B t
   induction t with
   | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
-  | nu _ _ _ _ _ | mu _ _ _ _ _ =>
+  | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
   | top _ _ | lam _ _ | mem | foldr _ _ _ _ | fold _ _ _ _
   | hylo _ _ _ _ => exact fun _ => ⟨by noconv, by noproj⟩
@@ -532,7 +532,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
   intro A B t
   induction t with
   | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
-  | nu _ _ _ _ _ | mu _ _ _ _ _ =>
+  | leq _ _ _ | lt _ _ _ | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
   | top _ _ | lam _ _ | mem | foldr _ _ _ _ | fold _ _ _ _
   | hylo _ _ _ _ => exact fun _ _ _ => ⟨by noconv', by noproj'⟩

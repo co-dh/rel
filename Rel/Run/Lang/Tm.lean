@@ -49,6 +49,10 @@ inductive Tm : Obj → Obj → Type where
   /-- The prelude's `perm`, kept as its own converse (`convTm`): the one converse rule the language has for a
       definition, because `perm° = perm` is a theorem it cannot derive from the fold `perm` is. -/
   | own {A : Obj} (R : Tm A A) : Tm A A
+  /-- `≤`, `<` on the number universe `U`: a declared object's (`uni`), or the one a constant is given for an object
+      variable (`var`), indexed by the atom `t` the object is stored at (`ltAt`). -/
+  | leq (t : QAtomicType) (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t)
+  | lt (t : QAtomicType) (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t)
   /-- `⦇e,S⦈ʳ`, the right fold, on the arrays in demand: each read from its end, `S` on `(x, acc)`. -/
   | foldr {E V : Obj} (e : Tm V V) (S : Tm (.prod E V) V) : Tm (.arr E) V
   /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
@@ -126,7 +130,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .conv R => (R matches .inl | .inr)
   -- every leaf listed, as in `Tm.fv`
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .ldiv .. | _, _, .rdiv ..
-  | _, _, .nu .. | _, _, .mu .. => false
+  | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
   | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _
   | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
@@ -141,16 +145,6 @@ def Tm.dom {A B : Obj} (R : Tm A B) : Tm A A := .arg (.prim domRow) R
 
 /-- `ran(R) = 𝟙 ∩ R° R`, the row `ranRow` given `R` (`Tm.ran_den`). -/
 def Tm.ran {A B : Obj} (R : Tm A B) : Tm B B := .arg (.prim ranRow) R
-
-/-- `≤`, `<` on the number universe `U` of the atom `t` (`ltAt`), `⟨dom U, ⊤(dom U)⟩ cmp π₂`: each `a` in `U` to the
-    `b` in `U` with `a` before `b`, the row `cmpRow` of `cmpOps` testing the pair (`Tm.lt_den`, `Tm.leq_den`). -/
-def Tm.cmp (s : String) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) :=
-  .comp (A := .atom t) (B := .prod (.atom t) (.atom t)) (.pair (.dom U) (.top (.dom U)))
-    (.comp (B := .prod (.atom t) (.atom t)) (.prim (cmpRow s)) .outr)
-
-def Tm.leq {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) := Tm.cmp "le" U
-
-def Tm.lt {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) := Tm.cmp "lt" U
 
 /-- `[] : A ⟶ [B]`, the row `nilRow` (`Tm.nil_den`). -/
 def Tm.nil {A B : Obj} : Tm A (.arr B) := .prim nilRow
@@ -178,7 +172,7 @@ def Tm.cut2 {A : Obj} (r : Prim) (U : Tm A A) : Tm (.prod A A) A := .comp (U.pro
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .top R | _, _, .conv R | _, _, .lam R
-  | _, _, .own R
+  | _, _, .own R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
@@ -206,6 +200,8 @@ def Tm.mapMSz {m : Type → Type} [Monad m] : {A B : Obj} → (t : Tm A B) →
   | _, _, .pair R S, f => return .pair (← f R lt_size) (← f S lt_size)
   | _, _, .lam R, f => return .lam (← f R lt_size)
   | _, _, .own R, f => return .own (← f R lt_size)
+  | _, _, .leq t U, f => return .leq t (← f U lt_size)
+  | _, _, .lt t U, f => return .lt t (← f U lt_size)
   | _, _, .foldr e S, f => return .foldr (← f e lt_size) (← f S lt_size)
   | _, _, .fold e S, f => return .fold (← f e lt_size) (← f S lt_size)
   | _, _, .arg g x, f => return .arg (← f g lt_size) (← f x lt_size)
@@ -246,6 +242,8 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .pair R S => R.fv ++ S.fv
   | _, _, .lam R => R.fv
   | _, _, .own R => R.fv
+  | _, _, .leq _ U => U.fv
+  | _, _, .lt _ U => U.fv
   | _, _, .foldr e S | _, _, .fold e S => e.fv ++ S.fv
   | _, _, .arg g x => g.fv ++ x.fv
   | _, _, .nu k S b => S.fv ++ b.fv.filter (· != k)
@@ -291,6 +289,8 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | σ, _, _, .pair R S => .pair (R.subst σ) (S.subst σ)
   | σ, _, _, .lam R => .lam (R.subst σ)
   | σ, _, _, .own R => .own (R.subst σ)
+  | σ, _, _, .leq t U => .leq t (U.subst σ)
+  | σ, _, _, .lt t U => .lt t (U.subst σ)
   | σ, _, _, .foldr e S => .foldr (e.subst σ) (S.subst σ)
   | σ, _, _, .fold e S => .fold (e.subst σ) (S.subst σ)
   | σ, _, _, .arg g x => .arg (g.subst σ) (x.subst σ)
@@ -335,6 +335,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, .nu j S b => S.pol s k && (j == k || b.pol s k)
   | _, _, .mu j _ _ b => j == k || b.pol s k
   | _, _, .hylo j _ b => j == k || b.pol s k
+  | _, _, .leq _ U | _, _, .lt _ U => U.pol s k
   | _, _, .foldr e S | _, _, .fold e S => e.pol s k && S.pol s k
   | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) => !t.fv.contains k

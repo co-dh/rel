@@ -488,6 +488,8 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, _, _, .inr => Core.Rel.inr
   | _, A, B, .prim r => Prim.den r A B []
   | ρ, _, _, .own R => R.den ρ
+  | ρ, _, _, .leq t U => leqDen t (U.den ρ)
+  | ρ, _, _, .lt t U => ltDen t (U.den ρ)
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
@@ -685,6 +687,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun ss => by simp only [Tm.argDen, e.2 ss]⟩
+  | leq _ R ih | lt _ R ih
   | lam R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
@@ -998,6 +1001,8 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
       simp only [hb]; exact sle.refl _
     · simp only [Tm.pol, Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
       exact sle.lfp fun X => ih.1 s _ _ hp (g.bind e X)
+  | leq _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 leq_le (ih.1 s ρ ρ' hp g)
+  | lt _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 lt_le (ih.1 s ρ ρ' hp g)
   | foldr e S ihe ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldr_le (ihe.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)

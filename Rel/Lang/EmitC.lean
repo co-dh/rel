@@ -1510,6 +1510,8 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
       (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
       (fun Y => compTB N (tabB ((k, fun _ _ _ => pure Y) :: σ) · b) b.dem) (← tabB σ {} (.zero : Tm A B)))
+  | _, _, .leq t U => cmpB (tabB σ · U) "≤" (Tab.ordOp false t) t D
+  | _, _, .lt t U => cmpB (tabB σ · U) "<" (Tab.ordOp true t) t D
   | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) | A, B, t@(.callCv ..) => argB σ D A B t []
   -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
   | _, _, .ldiv R S UB UC => do

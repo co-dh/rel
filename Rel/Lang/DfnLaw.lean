@@ -478,10 +478,18 @@ theorem Prim.den_cmpRow_le {A : Obj} : Prim.den (cmpRow "le") (.prod A A) (.prod
       some ⟨⟨"le", fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen false (σ₁ σ)⟩ := rfl
   unfold Prim.den; simp only [List.map_nil]; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
-/-- `<` on the universe `U` of the atom `t`: `ltDen`. -/
-theorem Tm.lt_ltDen (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : (Tm.lt U).den ρ = ltDen t (U.den ρ) := by
+/-- `≤`, `<` on the universe `U` of the atom `t` as a composition of relations, `⟨dom U, ⊤(dom U)⟩ cmp π₂`, `cmp` the
+    row `le` or `lt` of `cmpOps` testing the pair. `Tm.lt`/`Tm.leq` run fused (`GenK.cmp`: closed, or on the pairs a
+    meet hands it); this composition runs on demand only (`Tm.dem`: `⊤` and `dom` do), which the frame tests refuse
+    (`<°`, `quantile`), so the constructors stay and the two are tied here. -/
+def Tm.cmpDef (s : String) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) :=
+  .comp (A := .atom t) (B := .prod (.atom t) (.atom t)) (.pair (.dom U) (.top (.dom U)))
+    (.comp (B := .prod (.atom t) (.atom t)) (.prim (cmpRow s)) .outr)
+
+theorem Tm.lt_cmpDef (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
+    (Tm.cmpDef "lt" U).den ρ = (Tm.lt t U).den ρ := by
   funext a b; apply propext
-  simp only [Tm.lt, Tm.cmp, Tm.den, Tm.dom_den, Prim.den_cmpRow_lt, ordDen, Core.Rel.comp, Core.Rel.rpair,
+  simp only [Tm.cmpDef, Tm.den, Tm.dom_den, Prim.den_cmpRow_lt, ordDen, Core.Rel.comp, Core.Rel.rpair,
     Core.Rel.top, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph, ltDen]
   simp only [if_true]
   constructor
@@ -490,10 +498,10 @@ theorem Tm.lt_ltDen (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : 
   · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
     exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), ⟨rfl, hl⟩, rfl⟩
 
-/-- `≤` on the universe `U` of the atom `t`: `leqDen`. -/
-theorem Tm.leq_leqDen (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : (Tm.leq U).den ρ = leqDen t (U.den ρ) := by
+theorem Tm.leq_cmpDef (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
+    (Tm.cmpDef "le" U).den ρ = (Tm.leq t U).den ρ := by
   funext a b; apply propext
-  simp only [Tm.leq, Tm.cmp, Tm.den, Tm.dom_den, Prim.den_cmpRow_le, ordDen, Core.Rel.comp, Core.Rel.rpair,
+  simp only [Tm.cmpDef, Tm.den, Tm.dom_den, Prim.den_cmpRow_le, ordDen, Core.Rel.comp, Core.Rel.rpair,
     Core.Rel.top, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph, leqDen]
   simp only [Bool.false_eq_true, if_false]
   constructor
