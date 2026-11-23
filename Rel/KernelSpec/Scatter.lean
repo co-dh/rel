@@ -1,5 +1,10 @@
-import Rel.Kernel.Scatter
-import Rel.KernelSpec.Raw
+module
+
+public import Rel.Kernel.Scatter
+public import Rel.KernelSpec.Raw
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `scatter`'s law (design §4: `out[ix[k]] = e[k]`), on the words `Enc.raw` reads from its arguments. -/
 
@@ -54,7 +59,7 @@ private theorem scatterFold (I : Nat → Nat) (X : Nat → UInt64) (n : Nat) (er
         exact ⟨⟨fun ⟨_, h⟩ => (by cases h), fun h => absurd (h m (by omega)) hm⟩, fun _ h => (by cases h)⟩
 
 /-- A row's index as `scatterWords` reads it. -/
-private abbrev ixAt (is : Array UInt64) (k : Nat) : Nat := (is[k]?.getD 0).toNat
+abbrev ixAt (is : Array UInt64) (k : Nat) : Nat := (is[k]?.getD 0).toNat
 
 /-- `scatterWords` answers exactly when every index is below `n`; its `n` cells are `fill` where no row names them,
 and `es[k]` at `is[k]` where no later row names the same cell. -/

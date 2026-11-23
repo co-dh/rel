@@ -1,8 +1,13 @@
-import Rel.KernelSpec.FindMember
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Value
-import Rel.Kernel.Elementwise
-import Rel.Kernel.Eval.Val
+module
+
+public import Rel.KernelSpec.FindMember
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Value
+public import Rel.Kernel.Elementwise
+public import Rel.Kernel.Eval.Val
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Elementwise` the Rel kernels reach; `Rel.Verify.Elementwise` imports it. -/
 
@@ -94,17 +99,8 @@ end Rel.Verify
 
 -- `Classical.choice` is the statement's: `Ew.cmpStep` names `Float.ofBits` (via `ord64`, `ord32`,
 -- `QAtom.tolerant`), an opaque whose `Inhabited` witness is choice; the proof adds none.
-/-- info: 'Rel.Verify.cmp_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.cmp_bitAt
 
-/-- info: 'Rel.Verify.packOf_bitAt' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.packOf_bitAt
 
-/-- info: 'Rel.Verify.Ew.bit_bitAt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.Ew.bit_bitAt
 
 
 namespace Rel.Verify

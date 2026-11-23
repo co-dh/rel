@@ -1,6 +1,11 @@
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Value
-import Rel.Kernel.Search
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.FindMember` the Rel kernels reach; `Rel.Verify.FindMember` imports it. -/
 

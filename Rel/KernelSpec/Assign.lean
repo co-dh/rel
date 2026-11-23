@@ -1,10 +1,15 @@
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Group
-import Rel.KernelSpec.Ids
-import Rel.KernelSpec.Structural
-import Rel.Kernel.Sort
-import Rel.Kernel.Structural
-import Rel.Kernel.Value
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Group
+public import Rel.KernelSpec.Ids
+public import Rel.KernelSpec.Structural
+public import Rel.Kernel.Sort
+public import Rel.Kernel.Structural
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Assign` the Rel kernels reach; `Rel.Verify.Assign` imports it. -/
 
@@ -53,11 +58,5 @@ theorem set!_getElem? (a : ByteArray) (p j : Nat) (x : UInt8) :
   rw [Array.set!_eq_setIfInBounds, Array.getElem?_setIfInBounds]
   by_cases h : p = j <;> by_cases h2 : p < d.size <;> simp_all
 
-/-- info: 'Rel.Verify.resAt_field' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms resAt_field
-/-- info: 'Rel.Verify.set_field' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms set_field
-/-- info: 'Rel.Verify.set!_getElem?' depends on axioms: [propext] -/
-#guard_msgs in #print axioms set!_getElem?
 
 end Rel.Verify

@@ -1,6 +1,11 @@
-import Rel.Kernel.Seen
-import Rel.KernelSpec.Asc
-import Rel.KernelSpec.Codes
+module
+
+public import Rel.Kernel.Seen
+public import Rel.KernelSpec.Asc
+public import Rel.KernelSpec.Codes
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `seen`'s laws (PLAN D.12): `kseen_ok` reads its answer as `firstsOf`/`groupOf` of the rows' order codes
 (`seenKey`), `kseen_sorted` says it answers only rows in `kasc` order, and the first-occurrence laws hold over any key (`firsts_spec`, `firsts_runs`, `firsts_all`). That `kasc ≫ kseen` takes neither error

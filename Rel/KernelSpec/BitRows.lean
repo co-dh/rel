@@ -1,8 +1,13 @@
-import Rel.Kernel.BitRows
-import Rel.KernelSpec.Scatter
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Chain
-import Rel.KernelSpec.Alp
+module
+
+public import Rel.Kernel.BitRows
+public import Rel.KernelSpec.Scatter
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Chain
+public import Rel.KernelSpec.Alp
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `kbitrows`' law (`doc/rel-architecture.zh.typ` §4, the bit-row kernel), on the words `Enc.raw` reads from its
 arguments, from the body `bitRowsOf`. -/

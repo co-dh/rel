@@ -1,8 +1,15 @@
-import Rel.KernelSpec.Group
-import Rel.Kernel.Sort
-import Rel.Kernel.Coc
-import Rel.Kernel.Scan
-import Rel.Kernel.Value
+module
+
+public import Rel.KernelSpec.Group
+public import Rel.Kernel.Sort
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Scan
+public import Rel.Kernel.Value
+-- `merge`, `mergeSort` and `zipIdxLE` are unfolded below and core exports no equation lemma for them
+import all Init.Data.List.Sort.Basic
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Grade` the Rel kernels reach; `Rel.Verify.Grade` imports it. -/
 
@@ -69,6 +76,3 @@ theorem range_mergeSort {le : Nat → Nat → Bool} (trans : ∀ a b c, le a b �
 
 end Rel.Verify
 
-#print axioms Rel.Verify.merge_congr
-#print axioms Rel.Verify.pairwise_lex_mergeSort
-#print axioms Rel.Verify.range_mergeSort

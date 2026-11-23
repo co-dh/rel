@@ -1,9 +1,14 @@
-import Rel.KernelSpec.FindMember
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Group
-import Rel.KernelSpec.Distinct
-import Rel.Kernel.Structural
-import Rel.Kernel.Value
+module
+
+public import Rel.KernelSpec.FindMember
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Group
+public import Rel.KernelSpec.Distinct
+public import Rel.Kernel.Structural
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Structural` the Rel kernels reach; `Rel.Verify.Structural` imports it. -/
 
@@ -30,4 +35,3 @@ theorem tilLongs_spec (n : USize) : (elemsW 8 (tilLongs n)).map UInt64.toNat = L
 
 end Rel.Verify
 
-#print axioms Rel.Verify.tilLongs_spec
