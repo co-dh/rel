@@ -52,23 +52,20 @@ private def arrPay₂ : List Int64 := [9, 5, 1, 5]
     arrOn [(0, 0, 1)] (arrTab [] arrPay).key]
   As.all fun R => As.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
 
-/-- Sum rows `(tag, position, value)`: left payload positions holding one value, a clamped position `5`. -/
+/-- Sum rows `(tag, position, value)`: left positions holding one value, a position `5` past every list. -/
 private def sumRows₁ : List (Bool × Int64 × Int64) :=
   [(false, 0, 1), (true, 1, 2), (false, 2, 1), (false, 1, 1), (true, 0, 2), (true, 1, 2), (false, 5, 3)]
 private def sumRows₂ : List (Bool × Int64 × Int64) := [(true, 0, 2), (false, 1, 1), (false, 0, 9), (true, 1, 3)]
 
 -- `sum` sides as the key and as the value, with long and with `arr` summands
-#guard let Ss := [sumTab sumRows₁ [5, 7, 5] [9, 4], sumTab sumRows₂ [7, 5] [9, 8]]
+#guard let Ss := [sumPos sumRows₁ [5, 7, 5] [9, 4], sumPos sumRows₂ [7, 5] [9, 8]]
   Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
-#guard let Ss := [sumOn sumRows₁ (arrTab arrCells arrPay).key (b := .long) (Alg.col [9, 4]),
-    sumOn sumRows₂ (arrTab arrCells₂ arrPay₂).key (b := .long) (Alg.col [9, 8])]
+#guard let Ss := [sumArr sumRows₁ arrCells arrPay [9, 4], sumArr sumRows₂ arrCells₂ arrPay₂ [9, 8]]
   Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
--- an all-`inl` and an all-`inr` side: each summand is empty on one side, where no row is tagged into it
-#guard let Ss := [sumTab [(false, 0, 1), (false, 1, 2), (false, 0, 1)] [5, 7] [], sumTab [(true, 1, 3), (true, 0, 1)] [] [9, 4],
-    sumTab [(true, 0, 1)] [] [5]]
+-- an all-`inl` and an all-`inr` side: no row is tagged into one summand
+#guard let Ss := [sumTab [(false, 5, 1), (false, 7, 2), (false, 5, 1)], sumTab [(true, 4, 3), (true, 9, 1)],
+    sumTab [(true, 5, 1)]]
   Ss.all fun R => Ss.all fun S => setOk R S && setOk (Tab.mk R.n R.val R.key) (Tab.mk S.n S.val S.key)
--- a row tagged into a summand empty on its side reads `Obj.dflt`, which no payload row holds: the error
-#guard (sumTab [(false, 0, 1)] [] [9]).union (sumTab [(false, 0, 1)] [5] []) matches .error _
 
 end Checks
 

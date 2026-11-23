@@ -111,13 +111,11 @@ private def typeOk (t : QAtomicType) [BEq (Obj.atom t).El] (ws : List UInt64) (h
     arrOn [(0, 2, 1), (1, 3, 7)] (arrTab arrCells arrPay).key]
   As.all fun R => As.all fun S => compOk (Tab.mk R.n R.val R.key) S
 -- a `sum` middle column, with long and with `arr` summands
-#guard let Ss := [sumTab [(false, 0, 1), (true, 1, 2), (false, 2, 1), (true, 0, 2), (false, 5, 3)] [5, 7, 5] [9, 4],
-    sumTab [(true, 0, 2), (false, 1, 1), (false, 0, 9), (true, 1, 3)] [7, 5] [9, 8]]
+#guard let Ss := [sumPos [(false, 0, 1), (true, 1, 2), (false, 2, 1), (true, 0, 2), (false, 5, 3)] [5, 7, 5] [9, 4],
+    sumPos [(true, 0, 2), (false, 1, 1), (false, 0, 9), (true, 1, 3)] [7, 5] [9, 8]]
   Ss.all fun R => Ss.all fun S => compOk (Tab.mk R.n R.val R.key) S
-#guard let Ss := [sumOn [(false, 0, 1), (true, 1, 2), (false, 2, 1)] (arrTab arrCells arrPay).key (b := .long)
-      (Alg.col [9, 4]),
-    sumOn [(true, 0, 2), (false, 7, 1), (false, 0, 9)] (arrTab [(1, 3, 7), (0, 0, 2)] [9, 5, 1, 5]).key (b := .long)
-      (Alg.col [9])]
+#guard let Ss := [sumArr [(false, 0, 1), (true, 1, 2), (false, 2, 1)] arrCells arrPay [9, 4],
+    sumArr [(true, 0, 2), (false, 7, 1), (false, 0, 9)] [(1, 3, 7), (0, 0, 2)] [9, 5, 1, 5] [9]]
   Ss.all fun R => Ss.all fun S => compOk (Tab.mk R.n R.val R.key) S
 
 end Checks
