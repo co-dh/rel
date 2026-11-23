@@ -30,7 +30,7 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
     // far, 1 greater, 2 less, decided by the first column where the two differ
     // a `cells` or `Nul` column's working keys (`asc::work`: a cell's rank a row; a null's flag, then its code), built
     // once and then read as an atom's codes; `src` every code column in `ascCol`'s order, `None` a `pos` one
-    let cc: Vec<Vec<Vec<u64>>> = ks.iter().map(|k| match k { Col::Atom(_) | Col::Pos => Vec::new(), k => asc::work(k, n) }).collect();
+    let cc: Vec<Vec<Vec<u64>>> = ks.iter().map(|k| match k { Col::Atom(_) | Col::Pos => Ok(Vec::new()), k => asc::work(k, n) }).collect::<Result<_, String>>()?;
     let src: Vec<Option<Result<&asc::Key, &[u64]>>> = ks.iter().zip(&cc).flat_map(|(k, c)| match k {
         Col::Atom(k) => vec![Some(Ok(k))],
         Col::Pos => vec![None],

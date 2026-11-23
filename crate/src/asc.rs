@@ -86,11 +86,11 @@ fn words(c: &Coc, at: usize, out: &mut [u64], buf: &mut [u64], f: impl Fn(u64) -
 }
 
 /// `f` of every word of `c`, read a block at a time (S) into the sort's dense working array (X).
-fn dense(c: &Coc, m: usize, f: impl Fn(u64) -> u64) -> Vec<u64> {
+fn dense(c: &Coc, m: usize, f: impl Fn(u64) -> u64) -> Result<Vec<u64>, String> {
     let g = Blocks::from(*c).g;
-    let (mut o, mut buf) = (vec![0u64; m], vec![0u64; 2 * g.blk()]);
+    let (mut o, mut buf) = (pod::vec_of("asc", "a key column's working codes", m, 0u64)?, vec![0u64; 2 * g.blk()]);
     for (_, at, cnt) in g.walk() { words(c, at, &mut o[at..at + cnt], &mut buf, &f) }
-    o
+    Ok(o)
 }
 
 /// A column of words read at its address: a `pos` column (word `i` is `i`) or a `foR` one (`Coc::get_w`).
@@ -100,7 +100,7 @@ impl<'a> Ix<'a> {
     pub fn of(c: Option<Coc<'a>>) -> Self { c.map_or(Ix::Pos, |c| Ix::For(c, c.one_width())) }
     pub fn get(&self, i: usize) -> i64 { match self { Ix::Pos => i as i64, Ix::For(c, uw) => c.get_w(*uw, i) } }
     /// Words `0 .. m`, a block at a time (`dense`).
-    fn dense(&self, m: usize) -> Vec<u64> { match self { Ix::Pos => (0..m as u64).collect(), Ix::For(c, _) => dense(c, m, |v| v) } }
+    fn dense(&self, m: usize) -> Result<Vec<u64>, String> { match self { Ix::Pos => pod::collect_of("asc", "a pos column's words", m, 0..m as u64), Ix::For(c, _) => dense(c, m, |v| v) } }
 }
 
 /// A `cells` key column (`Kernel.AscKey.cells`): row `i` names the cell `ix[i]`, that cell the payload rows
@@ -116,27 +116,27 @@ impl Cells<'_> {
     /// that differs decides, else a proper prefix first). The payload rows are ranked once (`rank`), each cell named by
     /// some row reads its `lo`/`hi` once, and only the distinct spans are sorted, as slices of the payload ranks: a row
     /// never compares, so rows that share a span cost nothing past their one rank.
-    pub fn codes(&self, m: usize) -> Vec<u64> {
-        let (r, ix) = (rank(&self.els, self.c), self.ix.dense(m));
-        let mut q = ix.clone();
+    pub fn codes(&self, m: usize) -> Result<Vec<u64>, String> {
+        let (r, ix) = (rank(&self.els, self.c)?, self.ix.dense(m)?);
+        let mut q = pod::collect_of("asc", "a cells column's distinct cells", m, ix.iter().copied())?;
         q.sort_unstable();
         q.dedup();
         // one span is one list however many cells copy it (a gathered side copies `lo`/`hi` per row): sorting the
         // copies would compare equal slices element by element
-        let sp: Vec<(usize, usize)> = q.iter().map(|&x| { let s = self.span(x as usize); (s.start, s.end) }).collect();
-        let mut u = sp.clone();
+        let sp: Vec<(usize, usize)> = pod::collect_of("asc", "a cells column's spans", q.len(), q.iter().map(|&x| { let s = self.span(x as usize); (s.start, s.end) }))?;
+        let mut u = pod::collect_of("asc", "a cells column's distinct spans", sp.len(), sp.iter().copied())?;
         u.sort_unstable();
         u.dedup();
         let cell = |k: usize| &r[u[k].0..u[k].1];
-        let mut o: Vec<usize> = (0..u.len()).collect();
+        let mut o: Vec<usize> = pod::collect_of("asc", "a cells column's span order", u.len(), 0..u.len())?;
         // stable sort: it merges runs already in order (a `∪` of canonical tables is two), where `sort_unstable_by`
         // compares O(n log n) cells whatever the input
         o.sort_by(|&a, &b| lex(cell(a), cell(b)));
-        let mut rk = vec![0u64; u.len()];
+        let mut rk = pod::vec_of("asc", "a cells column's span ranks", u.len(), 0u64)?;
         for w in 1..o.len() { rk[o[w]] = rk[o[w - 1]] + (cell(o[w - 1]) != cell(o[w])) as u64 }
         // every span of `sp` is in `u` and every word of `ix` in `q`, so both searches find it
-        let rq: Vec<u64> = sp.iter().map(|s| rk[u.binary_search(s).unwrap_or_else(|i| i)]).collect();
-        ix.iter().map(|x| rq[q.binary_search(x).unwrap_or_else(|i| i)]).collect()
+        let rq = pod::collect_of("asc", "a cells column's cell ranks", sp.len(), sp.iter().map(|s| rk[u.binary_search(s).unwrap_or_else(|i| i)]))?;
+        pod::collect_of("asc", "a cells column's codes", ix.len(), ix.iter().map(|x| rq[q.binary_search(x).unwrap_or_else(|i| i)]))
     }
 }
 
@@ -158,49 +158,61 @@ pub fn atoms<'a>(cs: &[Col<'a>]) -> Option<Vec<Key<'a>>> { cs.iter().map(|c| mat
 /// Column `c`'s working keys at rows `0 .. m`, Lean `ascCol`'s code columns, read a block at a time: one code a row
 /// whose order is `c`'s order; a `Nul` atom two (`Kernel.nulCodes`): `0` at a null and `1` elsewhere, so a null sorts
 /// first as in q, then its code with `0` at a null, so all nulls are one value.
-pub fn work(c: &Col, m: usize) -> Vec<Vec<u64>> {
-    match c {
-        Col::Atom(k) => vec![dense(&k.c, m, |v| k.code(v))],
-        Col::Pos => vec![(0..m as u64).collect()],
-        Col::Cells(a) => vec![a.codes(m)],
+pub fn work(c: &Col, m: usize) -> Result<Vec<Vec<u64>>, String> {
+    Ok(match c {
+        Col::Atom(k) => vec![dense(&k.c, m, |v| k.code(v))?],
+        Col::Pos => vec![pod::collect_of("asc", "a pos column's codes", m, 0..m as u64)?],
+        Col::Cells(a) => vec![a.codes(m)?],
         Col::Nul(k, b) => {
             let nul = |i: usize| crate::enc::is_nul(b, i);
-            let c = dense(&k.c, m, |v| k.code(v));
-            vec![(0..m).map(|i| !nul(i) as u64).collect(), c.into_iter().enumerate().map(|(i, x)| if nul(i) { 0 } else { x }).collect()]
+            let c = dense(&k.c, m, |v| k.code(v))?;
+            vec![pod::collect_of("asc", "a null column's flags", m, (0..m).map(|i| !nul(i) as u64))?,
+                 pod::collect_of("asc", "a null column's codes", m, c.into_iter().enumerate().map(|(i, x)| if nul(i) { 0 } else { x }))?]
         }
-    }
+    })
+}
+
+/// `work` of every column, flattened: the working keys of `cs` in `lexLe` order.
+fn works(cs: &[Col], m: usize) -> Result<Vec<Vec<u64>>, String> {
+    Ok(cs.iter().map(|c| work(c, m)).collect::<Result<Vec<_>, String>>()?.into_iter().flatten().collect())
 }
 
 /// The stable grade of `0 .. m` by the working keys `vs` in `lexLe` order: `None` where every row is no later than
 /// the next, else LSD, the last key first, each a stable grade (`sort::grade_keys`) of its keys read through the
 /// permutation so far.
-fn lsd(vs: &[Vec<u64>], m: usize) -> Option<Vec<i64>> {
+fn lsd(vs: &[Vec<u64>], m: usize) -> Result<Option<Vec<i64>>, String> {
     let le = |i: usize, j: usize| vs.iter().map(|v| v[i].cmp(&v[j])).find(|o| o.is_ne()).is_none_or(|o| o.is_lt());
-    if (1..m).all(|i| le(i - 1, i)) { return None }
+    if (1..m).all(|i| le(i - 1, i)) { return Ok(None) }
     let mut p: Option<Vec<i64>> = None;
     for v in vs.iter().rev() {
-        let k: Vec<u64> = match &p { None => v.clone(), Some(p) => p.iter().map(|&i| v[i as usize]).collect() };
-        let ((mn, mx), mut o) = (sort::keys_range(&k), vec![0i64; m]);
-        sort::grade_keys(&k, false, mn, mx, &mut o);
-        p = Some(match p { None => o, Some(p) => o.iter().map(|&j| p[j as usize]).collect() });
+        let k: Vec<u64> = match &p {
+            None => pod::collect_of("asc", "a key's codes", m, v.iter().copied())?,
+            Some(p) => pod::collect_of("asc", "a key's codes", m, p.iter().map(|&i| v[i as usize]))?,
+        };
+        let ((mn, mx), mut o) = (sort::keys_range(&k), pod::vec_of("asc", "a grade", m, 0i64)?);
+        sort::grade_keys(&k, false, mn, mx, &mut o)?;
+        p = Some(match p { None => o, Some(p) => pod::collect_of("asc", "a grade", m, o.iter().map(|&j| p[j as usize]))? });
     }
-    p
+    Ok(p)
 }
 
 /// The dense rank of each of rows `0 .. m` under `cs`' `lexLe` order: equal rows one rank, the least 0.
-pub fn rank(cs: &[Col], m: usize) -> Vec<u64> {
-    let mut vs: Vec<Vec<u64>> = cs.iter().flat_map(|c| work(c, m)).collect();
-    if vs.len() == 1 { return vs.swap_remove(0) }
-    let p: Vec<usize> = lsd(&vs, m).map_or_else(|| (0..m).collect(), |p| p.into_iter().map(|i| i as usize).collect());
-    let mut r = vec![0u64; m];
+pub fn rank(cs: &[Col], m: usize) -> Result<Vec<u64>, String> {
+    let mut vs = works(cs, m)?;
+    if vs.len() == 1 { return Ok(vs.swap_remove(0)) }
+    let p: Vec<usize> = match lsd(&vs, m)? {
+        None => pod::collect_of("asc", "a rank's grade", m, 0..m)?,
+        Some(p) => pod::collect_of("asc", "a rank's grade", m, p.into_iter().map(|i| i as usize))?,
+    };
+    let mut r = pod::vec_of("asc", "a rank", m, 0u64)?;
     for w in 1..m { let (a, b) = (p[w - 1], p[w]); r[b] = r[a] + vs.iter().any(|v| v[a] != v[b]) as u64 }
-    r
+    Ok(r)
 }
 
 /// `grade` over any key columns: all `foR` atoms go to `grade`; else `lsd` over every column's working key (`work`).
-pub fn grade_cols(run: Runner, cs: &[Col], m: usize) -> Option<Vec<i64>> {
+pub fn grade_cols(run: Runner, cs: &[Col], m: usize) -> Result<Option<Vec<i64>>, String> {
     if let Some(ks) = atoms(cs) { return grade(run, &ks, m) }
-    lsd(&cs.iter().flat_map(|c| work(c, m)).collect::<Vec<_>>(), m)
+    lsd(&works(cs, m)?, m)
 }
 
 /// The rows of `ks` a block at a time on the first column's grid: `f(at, codes)` with column `c`'s codes of rows
@@ -218,12 +230,12 @@ fn blocks(ks: &[Key], mut f: impl FnMut(usize, usize, &[u64]) -> bool) {
 /// The rows already in `lexLe` order: for a first column in code order (`Key::linear`) first `sort::ascending_enc`, off
 /// the metadata and the residuals, which decides one key alone; else one pass a block at a time over every key's codes,
 /// each row against the one before it.
-pub fn sorted(run: Runner, ks: &[Key], m: usize) -> bool {
-    let Some(k0) = ks.first() else { return true };
-    if m < 2 { return true }
+pub fn sorted(run: Runner, ks: &[Key], m: usize) -> Result<bool, String> {
+    let Some(k0) = ks.first() else { return Ok(true) };
+    if m < 2 { return Ok(true) }
     if k0.linear() {
-        if !sort::ascending_enc(run, SK_I64, false, false, &k0.c) { return false }
-        if ks.len() == 1 { return true }
+        if !sort::ascending_enc(run, SK_I64, false, false, &k0.c)? { return Ok(false) }
+        if ks.len() == 1 { return Ok(true) }
     }
     let (blk, nk) = (Blocks::from(k0.c).g.blk(), ks.len());
     let (mut prev, mut ok) = (vec![0u64; nk], true);
@@ -234,7 +246,7 @@ pub fn sorted(run: Runner, ks: &[Key], m: usize) -> bool {
         for (c, p) in prev.iter_mut().enumerate() { *p = t[c * blk + cnt - 1] }
         ok
     });
-    ok
+    Ok(ok)
 }
 
 /// `ks` cut left to right into runs whose code spans multiply into 64 bits: each run is one mixed-radix code a row
@@ -252,37 +264,37 @@ fn groups(ks: &[Key]) -> Vec<Range<usize>> {
 
 /// The mixed-radix code of the run `ks` (its first column the most significant) at each row `i`, a block at a time, or
 /// at row `p[i]` under a permutation (the row-order codes read through it), with the least and greatest of them.
-fn mixed(ks: &[Key], m: usize, p: Option<&[i64]>) -> (Vec<u64>, u64, u64) {
+fn mixed(ks: &[Key], m: usize, p: Option<&[i64]>) -> Result<(Vec<u64>, u64, u64), String> {
     let sp: Vec<(u64, u64)> = ks.iter().map(Key::span).collect();
     // a span of every 64-bit code is a run of its own (`groups`), so its radix `2^64` wraps to 0 against an `acc` of 0
     let mix = |acc: u64, (a, b): (u64, u64), x: u64| acc.wrapping_mul((b - a).wrapping_add(1)).wrapping_add(x - a);
-    let mut c = vec![0u64; m];
+    let mut c = pod::vec_of("asc", "a run's mixed-radix codes", m, 0u64)?;
     blocks(ks, |at, cnt, t| {
         let blk = t.len() / ks.len();
         for (j, x) in c[at..at + cnt].iter_mut().enumerate() { *x = sp.iter().enumerate().fold(0, |acc, (k, &s)| mix(acc, s, t[k * blk + j])) }
         true
     });
-    if let Some(p) = p { c = p.iter().map(|&i| c[i as usize]).collect() }
+    if let Some(p) = p { c = pod::collect_of("asc", "a run's permuted codes", m, p.iter().map(|&i| c[i as usize]))? }
     let (mn, mx) = sort::keys_range(&c);
-    (c, mn, mx)
+    Ok((c, mn, mx))
 }
 
 /// `Kernel.ascGrade` over the key columns `ks` of `m` rows each: `None` where the rows are already in order (`sorted`),
 /// else the permutation. LSD over the runs of `groups`, the least significant first, each a stable grade of its codes
 /// read through the permutation so far; a lone column in code order with no permutation yet is graded straight off
 /// its blocks (`sort::order_enc`), every other run through its dense codes (`sort::grade_keys`).
-pub fn grade(run: Runner, ks: &[Key], m: usize) -> Option<Vec<i64>> {
-    if sorted(run, ks, m) { return None }
+pub fn grade(run: Runner, ks: &[Key], m: usize) -> Result<Option<Vec<i64>>, String> {
+    if sorted(run, ks, m)? { return Ok(None) }
     let mut p: Option<Vec<i64>> = None;
     for g in groups(ks).into_iter().rev() {
-        let mut o = vec![0i64; m];
+        let mut o = pod::vec_of("asc", "a grade", m, 0i64)?;
         match (&p, &ks[g.clone()]) {
-            (None, [k]) if k.linear() => sort::order_enc(run, SK_I64, false, false, &k.c, &mut o),
-            (_, ks) => { let (c, mn, mx) = mixed(ks, m, p.as_deref()); sort::grade_keys(&c, false, mn, mx, &mut o) }
+            (None, [k]) if k.linear() => sort::order_enc(run, SK_I64, false, false, &k.c, &mut o)?,
+            (_, ks) => { let (c, mn, mx) = mixed(ks, m, p.as_deref())?; sort::grade_keys(&c, false, mn, mx, &mut o)? }
         }
-        p = Some(match p { None => o, Some(p) => o.iter().map(|&j| p[j as usize]).collect() });
+        p = Some(match p { None => o, Some(p) => pod::collect_of("asc", "a grade", m, o.iter().map(|&j| p[j as usize]))? });
     }
-    p
+    Ok(p)
 }
 
 #[cfg(test)]
