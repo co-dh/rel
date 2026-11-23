@@ -1626,7 +1626,7 @@ theorem Tab.compSelM_reads {r : Tab A B} {s : Tab B C} {g w : USize} {o ra rc : 
 theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' ra ra' rc : Enc}
     {x : Vals B n} {key : Vals A M} {y : Vals C m} (hw : BitsWf g w o x ra y rc)
     (h : Tab.compTabMat r g w o x ra = .ok (ka, o', ⟨M, key⟩, ra')) (hB : ka.toNat * w.toNat ≤ Tab.bitsMax)
-    (hr : r.WF) :
+    (wr : r.WF) :
     ∀ e, Tab.ofBits ka w o' key ra' y rc ≠ .error e := by
   have hU : 2 ^ 32 ≤ USize.size := by rcases USize.size_eq with h | h <;> omega
   have hbm : Tab.bitsMax = 2 ^ 27 := rfl
