@@ -7,6 +7,7 @@ Rel.Core.Rel.inter
 Rel.Core.Rel.keyOf
 Rel.Core.Rel.mu
 Rel.Core.Rel.nu
+Rel.Core.Rel.rdiv
 Rel.Core.Rel.recip
 Rel.Core.Rel.rpair
 Rel.Core.Rel.rprodMap
@@ -15,15 +16,11 @@ Rel.Core.Rel.union
 Rel.Core.Rel.zero
 Rel.Hylo.rounds
 Rel.Lang.atDen
-Rel.Lang.castDen
 Rel.Lang.estDen
-Rel.Lang.faddDen
 Rel.Lang.floatDen
 Rel.Lang.foldDen
 Rel.Lang.foldrDen
 Rel.Lang.frontDen
-Rel.Lang.fsumDen
-Rel.Lang.fwideDen
 Rel.Lang.leqDen
 Rel.Lang.ltDen
 Rel.Lang.memDen
@@ -31,4 +28,3 @@ Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.stepDen
 Rel.Lang.succDen
-Rel.Lang.ymdDen
