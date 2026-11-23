@@ -150,7 +150,7 @@ theorem cmpAt_holds {lt : Bool} {t : QAtomicType} {n : USize} {X : Vals (.prod (
     rw [Vals.row_atom, Vals.row_atom, hP, he, ← Except.ok.inj (he.symm.trans (hev i.1 i.2))]
     cases e <;> simp
   rw [keep_holds h (fun i hi => (hwv ⟨i, hi⟩).1)]
-  simp only [Tab.Holds, Lang.ordDen]
+  simp only [Tab.Holds, Lang.ordDen_iff]
   constructor
   · rintro ⟨i, hi, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, rfl, (hwv i).2.1 hi⟩
   · rintro ⟨⟨i, rfl⟩, rfl, ho⟩; exact ⟨i, (hwv i).2.2 ho, rfl, rfl⟩
@@ -2787,7 +2787,7 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
     simp only [g, dif_pos hS]; congr 1; exact Fin.ext hi'.symm
   have hel : ∀ i : Fin n.toNat, ValsB.row (o := false) (A := .arr B) ⟨m, lo, up, f⟩ i =
       (List.range' (SN i) (EN i - SN i)).map g := hrow
-  simp only [Tab.Holds, Lang.atOn]
+  simp only [Tab.Holds, Lang.atOn_iff]
   constructor
   · rintro ⟨j, rfl, rfl⟩
     obtain ⟨i, c', -, hKi, hVi⟩ := hJ j

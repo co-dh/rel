@@ -419,7 +419,11 @@ theorem Tm.den_keyedRow (ρ : Val) {r : Prim} (hr : r ∈ prims) (hk : r.keyLift
   have e := Prim.keyLifts_ok r hr hk I C D [⟨A, B, fun i a b => R.den ρ i (a, b)⟩]
   simp only [List.map_cons, List.map_nil] at e
   rw [← e]
-  simp only [Tm.den, Tm.argDen, Prim.den_flatRow]; rfl
+  have hf : (graph Prod.fst).rpair (flatDen (R.den ρ)) = keyOf fun i a b => R.den ρ i (a, b) :=
+    Core.Rel.ext fun x y => by
+      simp only [Core.Rel.rpair, Core.Rel.graph, Core.Rel.keyOf]
+      exact and_congr_right fun _ => flatDen_iff _ _ _
+  simp only [Tm.den, Tm.argDen, Prim.den_flatRow]; rw [hf]
 
 /-- `at(0) ≜ ⟨𝟙, ⊤{0}⟩ at : [B] ⟶ B`, the head of an array; the index `0` is the one-word column `zeroCol`, whose row
     `zeroCol_row` states (a `col [0]` literal has no row lemma). -/
@@ -496,7 +500,7 @@ theorem Tm.cmpDef_lt_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t
     (Tm.cmpDef (.prim (cmpRow "lt")) U).den ρ = (Tm.lt U).den ρ := by
   have hd : ∀ p q, (Tm.prim (cmpRow "lt") : Tm (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))).den ρ p q ↔
       q = p ∧ ltAt t p.1 p.2 := fun p q => by
-    simp only [Tm.den, Prim.den_cmpRow_lt, ordDen, if_true]
+    simp only [Tm.den, Prim.den_cmpRow_lt, ordDen_iff, if_true]
   funext a b; apply propext
   rw [Tm.cmpDef_den ρ _ U fun p q h => ((hd p q).1 h).1, hd]
   simp only [Tm.lt, Tm.den, Tm.argDen, Prim.den_cmpRelRow_lt, ltDen, true_and]
@@ -505,15 +509,15 @@ theorem Tm.cmpDef_le_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t
     (Tm.cmpDef (.prim (cmpRow "le")) U).den ρ = (Tm.leq U).den ρ := by
   have hd : ∀ p q, (Tm.prim (cmpRow "le") : Tm (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))).den ρ p q ↔
       q = p ∧ leAt t p.1 p.2 := fun p q => by
-    simp only [Tm.den, Prim.den_cmpRow_le, ordDen, Bool.false_eq_true, if_false]
+    simp only [Tm.den, Prim.den_cmpRow_le, ordDen_iff, Bool.false_eq_true, if_false]
   funext a b; apply propext
   rw [Tm.cmpDef_den ρ _ U fun p q h => ((hd p q).1 h).1, hd]
   simp only [Tm.leq, Tm.den, Tm.argDen, Prim.den_cmpRelRow_le, leqDen, true_and]
 
 theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
     (Tm.at0 (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by
-  simp only [Tm.at0, Tm.den, Tm.argDen, Prim.den_indexRow, atOn]
-  simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.top, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+  simp only [Tm.at0, Tm.den, Tm.argDen, Prim.den_indexRow]
+  simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.top, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, atOn_iff]
   have h0 : ∀ i, ValsB.row (o := false) (A := .atom .i64) (zeroCol .i64 rfl) i = (0 : Int64) := fun i => by rw [zeroCol_row]; rfl
   simp only [h0, exists_eq_left, exists_const, and_true, true_and, exists_and_left]
   constructor
