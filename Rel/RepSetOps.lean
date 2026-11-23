@@ -80,17 +80,17 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
     rw [kscan_last (w := 8) rfl (by lockstep) hsk]
     simp only [Bool.false_eq_true, if_false]
     rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
-    · rw [h0, hC]; simp [(colPrefix_raw (by decide) hP).2.1, h0]
+    · rw [h0, hC]; simp [(colPrefix_raw hP).2.1, h0]
     · have := hs (m.toNat - 1) (by omega)
       rw [Nat.sub_add_cancel h0] at this
-      rw [← this, Array.getElem?_eq_getElem (by rw [(colPrefix_raw (by decide) hP).2.1]; omega)]
+      rw [← this, Array.getElem?_eq_getElem (by rw [(colPrefix_raw hP).2.1]; omega)]
   have hKn : K.toNat = C m.toNat := by
     rw [← hK, hk, hc64 _ (by have := hCle m.toNat; omega)]
     exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
   -- the destination: `d[i] = s[i] − b[i] = C i`
   have hdv : ∀ i < m.toNat, (Enc.raw .i64 m d)[i]?.getD 0 = (C i).toUInt64 := by
     intro i hi
-    have := (colMap_raw (by lockstep) hd).2.2.2 i hi
+    have := (colMap_raw hd).2.2.2 i hi
     rw [hs i hi, hbit i hi, hstep] at this
     simp only [Op.eval, Except.ok.injEq] at this
     rw [← this]
@@ -977,7 +977,7 @@ theorem inter_keep (M : USize) (mn mx o : Enc) (ho : colMap .lt M mn mx = .ok o)
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ∧ ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)) := by
-  obtain ⟨-, -, hs, hrow⟩ := colMap_raw (by lockstep) ho
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
   refine ⟨hs, fun G hG h1 h2 => ?_⟩
   have e := hrow G hG
   generalize (Enc.raw .i64 M mn)[G]?.getD 0 = x at h1 e ⊢
@@ -1007,7 +1007,7 @@ theorem diff_keep (M : USize) (mn mx o : Enc) (ho : colMap .not M mx mx = .ok o)
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         ¬((Enc.raw .i64 M mx)[G]?.getD 0 = 1)) := by
-  obtain ⟨-, -, hs, hrow⟩ := colMap_raw (by lockstep) ho
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
   refine ⟨hs, fun G hG _ h2 => ?_⟩
   have e := hrow G hG
   generalize (Enc.raw .i64 M mx)[G]?.getD 0 = y at h2 e ⊢
@@ -1036,7 +1036,7 @@ theorem rdiff_keep (M : USize) (mn mx o : Enc) (ho : colMap .last M mn mn = .ok 
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         ¬((Enc.raw .i64 M mn)[G]?.getD 0 = 0)) := by
-  obtain ⟨-, -, hs, hrow⟩ := colMap_raw (by lockstep) ho
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
   refine ⟨hs, fun G hG h1 _ => ?_⟩
   have e := hrow G hG
   generalize (Enc.raw .i64 M mn)[G]?.getD 0 = x at h1 e ⊢

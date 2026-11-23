@@ -186,7 +186,8 @@ theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e
 of the answer is `chain post` of `op` of `a`'s and `b`'s words `i` through `chain pre`, a boolean answer's cut to its
 bit. -/
 theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pre post : List (Op × UInt64)}
-    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o) :
+    (h : colMap op n a b t s pre post = .ok o)
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) :
     (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat,
       ∃ x y v w, chain pre ((raw s n a)[i]?.getD 0) = .ok x ∧ chain pre ((raw s n b)[i]?.getD 0) = .ok y ∧
         op.eval x y = .ok v ∧ chain post v = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
@@ -242,11 +243,11 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
 /-- **`colMap op n a b t` at any answer type `t`**: word `i` is `op` of `a`'s and `b`'s words `i`, a boolean answer's
 cut to its bit (`colMap_chain` at no chain; `colMap_raw` is the `i64` case with the argument sizes). -/
 theorem colMap_get {op : Op} {t : QAtomicType} {n : USize} {a b o : Enc}
-    (hs : kscanStream op [(n, a), (n, b)] [] [] = false) (h : colMap op n a b t = .ok o) :
+    (h : colMap op n a b t = .ok o) (hs : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep) :
     (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat, ∃ v,
       op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok v ∧
       (raw .i64 n o)[i]? = some (if t = .u1 then v % 2 else v) := by
-  obtain ⟨-, -, hso, hr⟩ := colMap_chain hs h
+  obtain ⟨-, -, hso, hr⟩ := colMap_chain h hs
   refine ⟨hso, fun i hi => ?_⟩
   obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
   cases hx; cases hy; cases hw
@@ -557,9 +558,9 @@ theorem Vals.cols_sum {a b : Obj} {n l r : USize} {s : Vals (.sum a b) n} {hb : 
   rename_i ys hys
   cases hes
   refine ⟨xs, ys, rfl, fun hv => ?_⟩
-  obtain ⟨-, hnt'⟩ := colMap_get (by lockstep) hnt
-  obtain ⟨-, hpx'⟩ := colMap_get (by lockstep) hpx
-  obtain ⟨-, hpy'⟩ := colMap_get (by lockstep) hpy
+  obtain ⟨-, hnt'⟩ := colMap_get hnt
+  obtain ⟨-, hpx'⟩ := colMap_get hpx
+  obtain ⟨-, hpy'⟩ := colMap_get hpy
   have hi64 : ¬ (QAtomicType.i64 = .u1) := by decide
   -- `px` is `idx` on the left summand's rows and `0` on the right's, `py` the other way round
   have wx : ∀ q : Fin n.toNat, (Enc.raw .i64 n px)[q.1]?.getD 0 =

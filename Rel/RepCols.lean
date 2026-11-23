@@ -19,7 +19,7 @@ private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicTy
 
 /-- **`colPrefix op n a` is the running fold of `op` from `0`**: row `i` is `op` of row `i - 1` (`0` at row `0`) and
 `a[i]`. -/
-theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (ho : op ≠ .first) (h : colPrefix op n a = .ok e) :
+theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = .ok e) (ho : op ≠ .first := by decide) :
     (raw .i64 n a).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧ ∀ i < n.toNat,
       op.eval (if i = 0 then 0 else (raw .i64 n e)[i - 1]?.getD 0) ((raw .i64 n a)[i]?.getD 0) =
         .ok ((raw .i64 n e)[i]?.getD 0) := by
@@ -52,10 +52,10 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (ho : op ≠ .first) (h 
 /-- **`colMap op n a b` is `op` row by row**: both arguments hold `n` words, and row `i` of the answer is
 `op.eval a[i] b[i]`. -/
 theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType}
-    (hk : kscanStream op [(n, a), (n, b)] [] [] = false) (h : colMap op n a b .i64 s = .ok e) :
+    (h : colMap op n a b .i64 s = .ok e) (hk : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep) :
     (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
       ∀ i < n.toNat, op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain hk h
+  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain h hk
   refine ⟨ha, hb, hs, fun i hi => ?_⟩
   obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
   cases hx; cases hy; cases hw
@@ -64,11 +64,11 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType}
 /-- **A map of one column through a post chain** at any answer type `t`: word `i` of the answer is `chain post` of
 word `i` of `a`, a boolean answer's cut to its bit (`colMap_chain` at `.first` and no `pre`). -/
 theorem colMap_first_chain {t s : QAtomicType} {n : USize} {a o : Enc} {post : List (Op × UInt64)}
-    (hs : kscanStream .first [(n, a), (n, a)] [] post = false) (h : colMap .first n a a t s [] post = .ok o) :
+    (h : colMap .first n a a t s [] post = .ok o) (hs : kscanStream .first [(n, a), (n, a)] [] post = false := by lockstep) :
     ∀ i < n.toNat, ∃ w,
       chain post ((raw s n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
   intro i hi
-  obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain hs h).2.2.2 i hi
+  obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain h hs).2.2.2 i hi
   cases hx; cases hv
   exact ⟨w, hw, ho⟩
 
@@ -78,8 +78,8 @@ theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
     (h : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e) : (raw .i64 n e).size = n.toNat ∧
       ∀ i < n.toNat, op.eval c ((raw .i64 n a)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
   have hs : kscanStream .first [(n, a), (n, a)] [] [(op, c)] = false := by simp [kscanStream]
-  refine ⟨(colMap_chain hs h).2.2.1, fun i hi => ?_⟩
-  obtain ⟨w, hw, ho⟩ := colMap_first_chain hs h i hi
+  refine ⟨(colMap_chain h hs).2.2.1, fun i hi => ?_⟩
+  obtain ⟨w, hw, ho⟩ := colMap_first_chain h hs i hi
   simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
   simpa [chain] using hw
 
@@ -92,9 +92,9 @@ theorem neg_add_word (a b : UInt64) : 0 - b + a = a - b := by
 `kscatter` that builds the constant column is not run. -/
 theorem colMap_const_eq {op op' : Op} {n : USize} {a k e e' : Enc} {c : UInt64}
     (hop : ∀ x, op'.eval x c = op.eval c x) (hk : colConst n c = .ok k)
-    (hl : kscanStream op' [(n, a), (n, k)] [] [] = false) (h : colMap op' n a k = .ok e)
-    (h' : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e') : raw .i64 n e = raw .i64 n e' := by
-  obtain ⟨-, -, hs, hr⟩ := colMap_raw hl h
+    (h : colMap op' n a k = .ok e) (h' : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e')
+    (hl : kscanStream op' [(n, a), (n, k)] [] [] = false := by lockstep) : raw .i64 n e = raw .i64 n e' := by
+  obtain ⟨-, -, hs, hr⟩ := colMap_raw h hl
   obtain ⟨hs', hr'⟩ := colMap_post h'
   refine Array.ext (hs.trans hs'.symm) fun i hi hi' => ?_
   have h1 := hr i (hs ▸ hi)
@@ -170,7 +170,7 @@ theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : 
   split at h
   · rename_i o ho
     cases h
-    obtain ⟨-, hrow⟩ := colMap_get (by lockstep) ho
+    obtain ⟨-, hrow⟩ := colMap_get ho
     have hU : ∀ m : USize, m.toNat < 2 ^ 64 := fun m => Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
     obtain ⟨-, -, -, -, -, hfixA, hlastA⟩ := raw_scatter n₁ .pos x.enc n 0 a x.plain ha
     obtain ⟨-, -, -, -, -, hfixB, hlastB⟩ := raw_scatter n₂ off y.enc n 0 b y.plain hb
@@ -266,7 +266,7 @@ theorem Arr.clampShift_get {n : USize} {c s : UInt64} {x y : Arr .i64 n} (hcs : 
   split at h
   · rename_i o ho
     cases h
-    obtain ⟨-, -, -, hr⟩ := colMap_chain (by simp [kscanStream]) ho
+    obtain ⟨-, -, -, hr⟩ := colMap_chain ho
     obtain ⟨x', y', v, W, hx, hy, hv, hw, ho'⟩ := hr i.1 i.2
     cases hx; cases hy; cases hv
     rw [Arr.get_i64, Arr.get_i64]
@@ -371,7 +371,7 @@ theorem toNat_toUInt64 {x : Nat} (h : x < 2 ^ 64) : x.toUInt64.toNat = x := by s
 theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok P) (wN : Nat → Nat)
     (hw : ∀ G < K.toNat, (raw .i64 K w)[G]?.getD 0 = (wN G).toUInt64) :
     ∀ G < K.toNat, (raw .i64 K P)[G]?.getD 0 = ((List.range (G + 1)).map wN).sum.toUInt64 := by
-  obtain ⟨-, -, hr⟩ := colPrefix_raw (by decide) h
+  obtain ⟨-, -, hr⟩ := colPrefix_raw h
   intro G hG
   induction G with
   | zero =>
@@ -476,14 +476,14 @@ theorem summandPos_raw {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Enc} {p :
   · simp only [Bool.false_eq_true, ↓reduceIte, bind, Except.bind] at h
     split at h; · cases h
     rename_i nt hnt
-    obtain ⟨v1, e1, h1⟩ := (colMap_get (by lockstep) hnt).2 q q.2
-    obtain ⟨v2, e2, h2⟩ := (colMap_get (by lockstep) h).2 q q.2
+    obtain ⟨v1, e1, h1⟩ := (colMap_get hnt).2 q q.2
+    obtain ⟨v2, e2, h2⟩ := (colMap_get h).2 q q.2
     simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e1; subst e1
     simp only [h1, if_neg hi64, Option.getD_some, Op.eval, Except.ok.injEq] at e2; subst e2
     simp only [h2, if_neg hi64, Option.getD_some]
     rw [et]; cases tag.get q <;> simp
   · simp only [↓reduceIte] at h
-    obtain ⟨v2, e2, h2⟩ := (colMap_get (by lockstep) h).2 q q.2
+    obtain ⟨v2, e2, h2⟩ := (colMap_get h).2 q q.2
     simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e2; subst e2
     simp only [h2, if_neg hi64, Option.getD_some]
     rw [et]; cases tag.get q <;> simp
