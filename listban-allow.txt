@@ -25,6 +25,7 @@ Rel.Kernel.scatterWords
 Rel.Kernel.tilLongs
 Rel.Lang.Embed.atomOf._unsafe_rec
 Rel.Lang.Embed.define
+Rel.Lang.Embed.diskOf
 Rel.Lang.Embed.homesOf
 Rel.Lang.Embed.litItem._unsafe_rec
 Rel.Lang.Embed.params
@@ -39,6 +40,7 @@ Rel.Lang.Expand.emit
 Rel.Lang.Expand.once
 Rel.Lang.Expand.sigOf
 Rel.Lang.Once.binds
+Rel.Lang.Parse.after
 Rel.Lang.Plan.Bld.plan
 Rel.Lang.Plan.Bld.planIO
 Rel.Lang.Plan.Plan.exec
@@ -51,6 +53,7 @@ Rel.Lang.Plan.runI
 Rel.Lang.Plan.runI._sunfold
 Rel.Lang.Plan.runI._unsafe_rec
 Rel.Lang.Plan.«_aux_Rel_Run_Lang_Plan___elabRules_Rel_Lang_Plan_termKernel%__1»
+Rel.Lang.Tup.char?
 Rel.Lang.Tup.ofText
 Rel.Lang.mkDef
 Rel.Lang.objInfo

@@ -127,12 +127,12 @@ def readCols (dir : String) : (R : Schema) → IO (String × (n : USize) × Vals
 
 /-- The texts `ts` as a column of `[C]` (`writeDict`'s form), each a cell of its UTF-8 bytes. -/
 def textCol (ts : List String) : (n : USize) × Vals (.arr (.atom .char)) n :=
-  let bs := ts.map (·.toUTF8.toList)
+  let bs := ts.toArray.map String.toUTF8
   -- the cells' bounds: `ends[i]` the bytes before cell `i`
-  let ends : List Nat := bs.foldl (fun e b => e ++ [e.getLast?.getD 0 + b.length]) [0]
-  let cs := bs.flatten
-  ⟨bs.length.toUSize, cs.length.toUSize, Arr.ofFn .i64 _ (fun i => (ends.getD i.val 0).toUInt64),
-    Arr.ofFn .i64 _ (fun i => (ends.getD (i.val + 1) 0).toUInt64), Arr.ofFn .char _ (fun i => (cs.getD i.val 0).toUInt64)⟩
+  let ends : Array Nat := bs.foldl (fun e b => e.push (e.back?.getD 0 + b.size)) #[0]
+  let cs := bs.foldl (· ++ ·) ByteArray.empty
+  ⟨bs.size.toUSize, cs.size.toUSize, Arr.ofFn .i64 _ (fun i => (ends[i.val]?.getD 0).toUInt64),
+    Arr.ofFn .i64 _ (fun i => (ends[i.val + 1]?.getD 0).toUInt64), Arr.ofFn .char _ (fun i => (cs[i.val]?.getD 0).toUInt64)⟩
 
 /-- The name of a side's column order in its directory, q's `.d`: the schema's names as a text column (`textCol`). -/
 def dName : String := ".d"
@@ -230,13 +230,11 @@ def read (S : Schema) (dir : String) : IO (Tab .long S.obj) := do
     the names from its `.d`, each column's object from its files (`objOf?`). -/
 def readSchema (dir : String) : IO Schema := do
   let (fd, ⟨_, x⟩) ← readVals (.arr (.atom .char)) dir dName
-  let ns ← (← IO.ofExcept (frame x)).toList.mapM fun (_, b) =>
-    match String.fromUTF8? ⟨(b.map fun c => c.toNat.toUInt8).toArray⟩ with
-    | some n => pure n
-    | none => throw (IO.userError s!"{fd}: a column name that is no UTF-8 text")
-  let S ← ns.mapM fun n => do
+  let S ← (← IO.ofExcept (frame x)).toArray.foldrM (init := []) fun (_, b) S => do
+    let some n := String.fromUTF8? ⟨(b.map fun c => c.toNat.toUInt8).toArray⟩
+      | throw (IO.userError s!"{fd}: a column name that is no UTF-8 text")
     let some o ← objOf? dir n | throw (IO.userError s!"{dir}: no file of the column '{n}' that {fd} names")
-    pure (n, o)
+    pure ((n, o) :: S)
   IO.ofExcept ((Schema.check S).mapError (s!"{fd}: " ++ ·)); pure S
 
 /-- A keyed table, q's dictionary from a key table to a value table: the key side's columns in `dir/key`, the value

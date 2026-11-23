@@ -262,8 +262,8 @@ theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ym
   show _ ↔ _ ∧ (Db.Csv.ymd a).map Int32.ofInt = some b
   rename_i X
   have hr : ∀ i : Fin n.toNat,
-      ((Tab.toList (k := .arr (.atom .char)) (v := .one) ⟨n, X, ()⟩).toArray[i.1]?.map (·.1)).getD [] = X.row i := by
-    intro i; simp [Tab.toList, i.2]
+      ((Tab.toArray (k := .arr (.atom .char)) (v := .one) ⟨n, X, ()⟩)[i.1]?.map (·.1)).getD [] = X.row i := by
+    intro i; simp [Tab.toArray, i.2]
   simp only [Tab.ymd, hr] at h
   have hf : ∀ i : Fin n.toNat, (Enc.raw .i64 n (Arr.ofFn .i64 n fun j =>
       if (Db.Csv.ymd (X.row j)).isSome then 1 else 0).enc)[i.1]?.getD 0 =
