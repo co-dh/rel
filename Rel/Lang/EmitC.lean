@@ -1345,6 +1345,13 @@ def arithOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match a
       if u == .i64 then failAtB n (← arithOvfB n a b f) s!"{s}: i64 overflow at {s}(\x02, \x02)" [a, b]
       keepB ⟨n, X, [.atom "" u w]⟩ f
     else throw s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
+  -- `1+i64`: the same one `kscan` as `Tab.arithOp`, the op `nulVerb` gives, null read in band
+  | some k, .prod (.opt (.atom .i64)) (.opt (.atom .i64)), .opt (.atom .i64) =>
+    match nulVerb k with
+    | some (o, _, _) => do
+      let (a, b) ← pairCols s X
+      pure ⟨n, X, [.atom "" .i64 (← mapB o n a b)]⟩
+    | none => throw s!"{s} on 1+i64: the verb has no order on null (`Op.nulFold`)"
   | some _, _, _ => throw s!"{s} runs from a pair of one number object to it"
   | none, _, _ => throw s!"{s}: no value verb"
 

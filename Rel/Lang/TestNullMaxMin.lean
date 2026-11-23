@@ -1,3 +1,4 @@
+import Rel.Lang.Test.Common
 import Rel.Lang.TestFrameCols
 import Rel.Programs.FrameJoin
 
@@ -19,8 +20,17 @@ rel_program nmm where
     -- the constant 5 beside a column, the fold of the set of values, null among them
     check ⟨nc, k5⟩ maxO [{(∗,40)}, 𝟙] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,5)}
     check ⟨nc, k5⟩ minO [{(∗,40)}, 𝟙] = {(0,5),(1,40),(2,5),(3,40),(4,5),(5,40),(6,40),(7,3)}
+    -- the verbs themselves at `1+N`: one `kscan` of `nulVerb`'s op, equal to the compositions `maxO`/`minO`
+    check ⟨nc, nd⟩ max [{(∗,40)}, 𝟙] = {(0,5),(1,9),(2,5),(3,40),(4,7),(5,40),(6,6),(7,3)}
+    check ⟨nc, nd⟩ min [{(∗,40)}, 𝟙] = {(0,2),(1,40),(2,40),(3,40),(4,1),(5,40),(6,40),(7,40)}
+    check ⟨nc, k5⟩ max [{(∗,40)}, 𝟙] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,5)}
+    check ⟨nc, k5⟩ min [{(∗,40)}, 𝟙] = {(0,5),(1,40),(2,5),(3,40),(4,5),(5,40),(6,40),(7,3)}
     ls : 1 ⟶ [1+N] ≜ Λ(⊤(1,P) nc)
     check ls ⦇[{(∗,∗)} inl, maxO]⦈ [{(∗,40)}, 𝟙] = {(∗,7)}
 #guard nmm.ok
+
+-- a verb with no order on null (`Op.nulFold`) is refused at `1+N` by name, not run on the in-band words
+open Rel.Lang.Test in
+#eval errAt "obj N = 0…3\nf : (1+N)×(1+N) ⟶ 1+N ≜ plus\n" 2 "plus on 1+N: a nullable `1+N` has an order on null"
 
 end Rel.Lang.TestNullMaxMin
