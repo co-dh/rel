@@ -79,6 +79,11 @@ rel_program native1a where
     gi : N ⟶ N+N ≜ ed inl
     gj : N ⟶ N+N ≜ ed inr
     gk : N ⟶ 1+N ≜ ed inr
+    -- `∪` of the two on a general sum (both tags in one column, `catSummandB`), `inl ()` into the nullable column (`nulsB`)
+    -- and `∪` of the two on the nullable column (in-band concat, a null beside values)
+    gu : N ⟶ N+N ≜ gi ∪ gj
+    gn : N ⟶ 1+N ≜ {(1,∗),(2,∗)} inl
+    gv : N ⟶ 1+N ≜ gn ∪ gk
     -- `sum` and `sums` at `i64` with a wrapping row (cell 1, key 1 from position 1 on: dropped), and `sum` at `f64`
     obj I
     obj F : f64
@@ -273,7 +278,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
    ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi), ("sb", semOut native1a.sb),
    ("sf", semOut native1a.sf), ("ss", semOut native1a.ss), ("gb", semOut native1a.gb), ("tk", semOut native1a.tk), ("ln", semOut native1a.ln),
-   ("mx", semOut native1a.mx), ("gi", semOut native1a.gi), ("gj", semOut native1a.gj), ("gk", semOut native1a.gk)]
+   ("mx", semOut native1a.mx), ("gi", semOut native1a.gi), ("gj", semOut native1a.gj), ("gk", semOut native1a.gk),
+   ("gu", semOut native1a.gu), ("gn", semOut native1a.gn), ("gv", semOut native1a.gv)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
