@@ -35,8 +35,14 @@ rel_program frameJoin where
     -- pivot long: each row once per value column `a`, `b`, as (id, column name, value); `melt` drops the id
     pivotLong(i : β ⟶ η, s : 1 ⟶ θ, a : β ⟶ ω, t : 1 ⟶ θ, b : β ⟶ ω, x : ν ⟶ β) : ν ⟶ η×(θ×ω) ≜ append(x ⟨i, ⟨⊤ s, a⟩⟩, x ⟨i, ⟨⊤ t, b⟩⟩)
     melt(s : 1 ⟶ θ, a : β ⟶ ω, t : 1 ⟶ θ, b : β ⟶ ω, x : ν ⟶ β) : ν ⟶ θ×ω ≜ pivotLong(𝟙, s, a, t, b, x) π₂
-    -- pivot wide: one row per key `k`, one column per declared value `s`, `t` of `q`: `f` of the rows with that
-    -- (key, value), null where there are none (doc F1: the columns are the declared ones)
-    pivotWide(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, t : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ κ×((δ+1)×(δ+1)) ≜ firstOcc(x k) x k ⟨𝟙, ⟨tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f)), tot(⟨𝟙, ⊤ t⟩ agg((x ⟨k, q⟩)°, f))⟩⟩
+    -- pivot wide: one row per key `k` of `x`, in first-occurrence order, its columns `w`; over a finite object `V`
+    -- every value is a column, `w = ⟨v ∈ V ↦ pivotCol(k, q, v, f, x)⟩` (doc F1)
+    pivotOn(k : β ⟶ κ, w : κ ⟶ ω, x : ν ⟶ β) : ν ⟶ κ×ω ≜ firstOcc(x k) x k ⟨𝟙, w⟩
+    -- the column of the value `s` of `q`: `f` of the rows with that (key, value), null at a key with none
+    pivotCol(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : κ ⟶ δ+1 ≜ ran(x k) tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f))
+    pivotWide(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, t : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ κ×((δ+1)×(δ+1)) ≜ pivotOn(k, ⟨pivotCol(k, q, s, f, x), pivotCol(k, q, t, f, x)⟩, x)
+    -- get_dummies' column of the value `s` of `c`: `inl` where a row's `c` is `s` (`c s° s`, the coreflexive `c ≫ (= s)`),
+    -- `inr` elsewhere; over a finite object `V`, `⟨v ∈ V ↦ dummy(c, v, x)⟩` is every column (doc F1)
+    dummy(c : β ⟶ θ, s : 1 ⟶ θ, x : ν ⟶ β) : ν ⟶ 1+1 ≜ dom(x) tot(x c s°)
 
 end Rel.Programs

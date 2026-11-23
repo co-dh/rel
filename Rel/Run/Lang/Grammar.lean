@@ -176,6 +176,8 @@ syntax:max (name := rObjs) relHead noWs "(" relObj,+ ")" : rel
 syntax:max (name := rAppPair) relHead noWs "⟨" rel "," rel "⟩" : rel
 syntax (name := rParen) "(" rel ")" : rel
 syntax (name := rPair) "⟨" rel "," rel "⟩" : rel
+-- `⟨v ∈ V ↦ e⟩`: the pair of `e` at each element `v` of the finite object `V`, left-nested as a schema is (F1)
+syntax (name := rEach) "⟨" relWord "∈" relWord "↦" rel "⟩" : rel
 syntax (name := rJunc) "[" rel "," rel "]" : rel
 -- the left fold `⦇R⦈`, `R : 1 + V×E ⟶ V`, index 0 first: on arrays a program reads it from `inl R`, `inr R` (`elabE`)
 syntax (name := rFold1) "⦇" rel "⦈" : rel
@@ -214,6 +216,10 @@ syntax relField := relWord ":" relObj
 syntax (name := sSchema) &"schema" relWord "=" "{" relField,+ "}" : relStmt
 -- `schema S from "dir"`: the schema of the table directory `dir`, read from its `.d` at elaboration (F1)
 syntax (name := sSchemaFrom) &"schema" relWord &" from " str : relStmt
+-- `schema D = {c ∈ V : A}`: a column `c_v : A` per element `v` of the finite object `V`, in `V`'s order (F1)
+syntax (name := sSchemaEach) &"schema" relWord "=" "{" relWord "∈" relWord ":" relObj "}" : relStmt
+-- `obj V from "dir" c`: the distinct values of the column `c` of the table directory `dir`, read at elaboration (F1)
+syntax (name := sObjFrom) &"obj" relWord &" from " str relWord : relStmt
 -- `where t ≜ L`: the table `L` for the input `t` (IO design A.4)
 syntax (name := sPrint) &"print" rel ("where" relItem,+)? : relStmt
 syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? : relStmt
@@ -376,6 +382,19 @@ partial def prim (s : Syntax) : C (List Lang.Expr) := do
     modify fun st => { st with known := k }
     pure [.fix p (c == 'μ') x b]
   | ``rPair => pure [.pair p (← expr s[1]) (← expr s[3])]
+  -- `v` in scope in the body only, then each element's literal `{(∗,w)} : 1 ⟶ V` put for it
+  | ``rEach => do
+    let v ← wordOf s[1]; let o ← wordOf s[3]
+    let some ws := (← get).fin.lookup o
+      | failAt s[3] s!"`{o}` is no finite object of this program: a product over an object needs its elements"
+    Parse.fresh (← posOf s[1]) v (← get).taken
+    let k := (← get).known
+    modify fun st => { st with known := (v, 0) :: k }
+    let b ← expr s[5]
+    modify fun st => { st with known := k }
+    match ws.map fun w => b.subst [(v, .lit p [(.leaf "∗", .leaf w)] (some (.name p "1", .name p o)))] with
+    | e :: es => pure [es.foldl (.pair p) e]
+    | [] => failAt s[3] s!"`{o}` has no element: a product over it has no component"
   | ``rJunc => pure [.junc p (← expr s[1]) (← expr s[3])]
   | ``rFold1 => pure [.fold p false (← expr s[1])]
   | ``rFoldR => pure [.fold p true (← expr s[1])]

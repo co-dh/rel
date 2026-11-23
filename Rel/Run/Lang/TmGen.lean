@@ -470,7 +470,7 @@ def sigE (F : Name) (A B : Obj) (x : Lean.Expr) : Lean.Expr :=
 def objsE (objs : Objs) : MetaM Lean.Expr := do
   let ty := pairT (mkConst ``String) (mkConst ``ObjInfo)
   mkListLit ty (objs.map fun (x, i) => mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkConst ``ObjInfo)
-    (toExpr x) (g ``infoOf #[toExpr i.ty, toExpr i.elems, toExpr i.range]))
+    (toExpr x) (g ``infoOf #[toExpr i.ty, toExpr i.elems, toExpr i.codes, toExpr i.range]))
 
 /-- `t : Tab A B` as a relation computed now (`Rel.tab`), the form a run-time definition's variable is bound to. -/
 def tabRel (A B t : Lean.Expr) : Lean.Expr :=

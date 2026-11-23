@@ -390,9 +390,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   顺序：`Schema` 层及其函数与 P3 无依赖，现在在 master 上做；D.7 的 `.d` 文件是同一个 `Schema` 的磁盘形式（一个来源）。
 - 🔄 df-F1 依赖数据的 schema（`dataframe-design` F1）：第 1 部分已做——`schema S from "dir"` 在 elaboration 时读表目录的
   `.d`（`Embed.diskOf`、`Embed.schemaFrom`、`Table.readSchema`、`Table.objOf?`），`Table.write` 写 `.d`（`textCol`），
-  每列在以其 atom 命名的无界对象上；测试 `Rel/Lang/TestSchemaDisk.lean`。未做：第 2 部分（以列的不同值为元素的对象、
-  按它生成 `pivotWide`/`getDummies` 的 schema）要设计变更，例见 F1；EmitC/native 的输出路径不写 `.d`；`readSide` 不核对
-  `.d` 与声明的 schema。
+  每列在以其 atom 命名的无界对象上；测试 `Rel/Lang/TestSchemaDisk.lean`。第 2 部分已做（df-F1b）：`obj V from "dir" c`
+  （`ObjDef.coded`，元素保持存储的值，`ObjInfo.codes`）；有限对象上的积 `⟨v ∈ V ↦ e⟩` 与 `schema D = {c ∈ V : A}`（在
+  `Grammar.expr`/`Embed.stmt` 里展开，无新 `Tm`）；库定义 `dummy`、`pivotCol`、`pivotOn`（`pivotWide` 改写为它们）；测试
+  `Rel/Lang/TestPivotDisk.lean`。未做：对象变量上的生成（`getDummies(c, x)` 本身对 `V` 泛型，要定义逐使用处展开）；
+  `obj V from` 只读 `i64` 列（`sym` 要字面量对象）；导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`；`readSide`
+  不核对 `.d` 与声明的 schema。
 - 🔄 D.12 `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即
   组 id 与首次出现的位置；相等按 `kasc` 的序码（`-0.0 = 0.0`，所有 NaN 是同一个 key）。引擎：直接寻址（范围来自块元数据）
   与有序输入上的 run 检测；宽的无序 key 报可操作的错误（现在没有 hash，只做编码列；非编码 key 是向 owner 的新请求；
