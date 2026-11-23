@@ -598,14 +598,17 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     rename_i y2 h2
     cases h
     simp only [Vals.row, Vals.pack_row x.1 h1 wx.1, Vals.pack_row x.2 h2 wx.2]
-  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩, _, h, wx, i => by
-    simp only [Vals.pack, bind, Except.bind, pure, Except.pure] at h
+  | .sum _ _, _, s, _, h, wx, i => by
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [Vals.pack, hv] at h
+    · simp only [pure, Except.pure, Except.ok.injEq] at h; cases h; rfl
+    simp only [bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i x' h1
     split at h; · cases h
     rename_i y' h2
     cases h
-    simp only [Vals.row, Vals.pack_row x h1 wx.1, Vals.pack_row y h2 wx.2]
+    simp only [Vals.WF, hv] at wx
+    simp only [Vals.row, Vals.view_ofGen, hv, Vals.pack_row x h1 wx.1, Vals.pack_row y h2 wx.2]
   | .arr B, n, ⟨m, lo, up, f⟩, y, h, wx, i => by
     simp only [Vals.pack] at h
     split at h; · cases h
