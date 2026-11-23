@@ -41,12 +41,12 @@ rel_program frameScaleN4 where
     r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
     check summarize(F(r) sum, r) = {(∗,149955004)}
     check cumSum(x π₂) = ran(d4) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
-    c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
-    check fills(c) [𝟙, {(∗,0)}] = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    c : N ⟶ 1+N ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
+    check fills(c) [{(∗,0)}, 𝟙] = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
     -- Σ (i − 99) over i ≥ 100: (n−100)(n−99)/2
     q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
-    a : N ⟶ (N×N)×((N×N)+1) ≜ aj(π₁, π₂, π₁, π₂, x, q)
-    check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,49009950)}
+    a : N ⟶ (N×N)×(1+(N×N)) ≜ aj(π₁, π₂, π₁, π₂, x, q)
+    check summarize(F(a π₂ [{(∗,0)}, π₂]) sum, a) = {(∗,49009950)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,9999)),(1,(98,9998)),(2,(97,9997))}
     check sortBy(π₁, x) = ran(d4) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,100)}⟩div⟩plus⟩
 
@@ -71,8 +71,8 @@ rel_program frameScaleN5 where
     r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
     check summarize(F(r) sum, r) = {(∗,14999550004)}
     check cumSum(x π₂) = ran(d5) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
-    c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
-    check fills(c) [𝟙, {(∗,0)}] = ran(d5) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    c : N ⟶ 1+N ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
+    check fills(c) [{(∗,0)}, 𝟙] = ran(d5) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
     check topK({(∗,3)}, π₂, x) = {(0,(99,99999)),(1,(98,99998)),(2,(97,99997))}
     check sortBy(π₁, x) = ran(d5) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,1000)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,1000)}⟩div⟩plus⟩
 
