@@ -84,10 +84,11 @@ theorem ownSpans_layout (ps : Array ByteArray) : ∀ (k i a : Nat) (P Q : ByteAr
     simp only [← hP]
     simp only [h1, h2]
     simp only [ByteArray.size_append, leBytes_size, zeros_size]
-    rw [if_neg (by simp [ho.2]), if_neg (by omega), if_neg (by omega)]
+    rw [if_neg (by simp [ho.2]), if_neg (by omega)]
+    rw [if_neg (by simp only [Bool.or_eq_true, decide_eq_true_eq, not_or]; omega)]
     have e : P.size + (8 + (8 + (r.1.size + (Q.size + (ownOff a - a))))) = ownOff a := by omega
     rw [e] at h3
-    rw [h3, h4 (by omega) (by omega) (by omega)]
+    rw [h3, h4 (by omega) (by omega) (by omega), Array.getElem_toList]
     rfl
 
 theorem leBytes_one (x : UInt8) : leBytes x.toNat 1 = ⟨#[x]⟩ := by
@@ -128,7 +129,8 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
       leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8) D (by omega)
   have hn : n.toNat < 256 ^ 8 := Nat.lt_of_lt_of_le n.toNat_lt_size (by simpa using USize.size_le)
   generalize ownLayout ps (24 + 16 * ps.size + D.size) 0 ps.size = r at hr1 hsp hb ⊢
-  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc, true_implies, forall_const] at hb hsp ⊢
+  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc] at hb hsp ⊢
+  have hsp := hsp trivial trivial hb
 
   have e8 := leAt_leBytes ownMagic (leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
     leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) (6 : UInt8).toNat 1 (by decide)
@@ -155,7 +157,7 @@ theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b)
   simp only [ownParse, ownMagic_prefix]
   rw [e8, e11, e12, e14, e16, byte _ _ _ e9, byte _ _ _ e10]
   simp only [ByteArray.size_append, leBytes_size, hr1, hm]
-  rw [if_neg (by omega), if_neg (by decide), if_neg (by decide), if_neg (by simp [hk.1]), if_neg (by omega)]
+  rw [if_neg (by omega), if_neg (by simp), if_neg (by decide), if_neg (by simp [hk.1]), if_neg (by omega)]
   rw [show 8 + (1 + (1 + (1 + (1 + (2 + (2 + (8 + 16 * ps.size))))))) = 24 + 16 * ps.size by omega] at ed
   rw [hsp, ed]
   subst hD

@@ -2,12 +2,6 @@ Rel.Db.Csv.bytes
 Rel.Db.Csv.fieldAt
 Rel.Db.Csv.fieldsOf
 Rel.Db.Csv.fmtFloat
-Rel.Db.leBytes
-Rel.Db.ownImage
-Rel.Db.ownLayout
-Rel.Db.ownLayout._sunfold
-Rel.Db.ownLayout._unsafe_rec
-Rel.Db.ownParse
 Rel.Ext.Enc.bytesOf
 Rel.Kernel.Coc.alpElems
 Rel.Kernel.Coc.elems

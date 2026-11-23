@@ -110,7 +110,7 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   let nl := leAt b 14 2
   let v := leAt b 8 1
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
-  else if b.extract 0 8 != ownMagic then .error "byte 0: the magic `qleancol`"
+  else if b.extract 0 8 ≠ ownMagic then .error "byte 0: the magic `qleancol`"
   else if v != ownVersion.toNat then
     .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
   else if ownNParts[kind]?.join != some np then
