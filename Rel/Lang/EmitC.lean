@@ -28,7 +28,7 @@ instance : Reg Db.OwnFile := ⟨.obj, fun
   | _ => none, fun f => .ctor 0 #[.parts f.parts] #[.u8 f.code, .u8 f.kind, .size f.count]⟩
 
 /-- A CSV column's shape is an enum: its constructor index in a byte. -/
-instance : Reg Db.CsvShape := ⟨.u8, fun | .u8 0 => some .atom | .u8 1 => some .null | .u8 2 => some .text | _ => none,
+instance : Reg Db.CsvShape := ⟨.u8, fun | .u8 0 => some .atom | .u8 1 => some .null | .u8 2 => some .text | .u8 3 => some .opt | _ => none,
   fun s => .u8 s.ctorIdx.toUInt8⟩
 
 /-- The kernels a plan may call, each read off its `@[extern]` declaration: the five of design §4, the IO exports of
