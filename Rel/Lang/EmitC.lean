@@ -1213,6 +1213,18 @@ def mixOpB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
   | .atom .i64, .atom .i64 => do let e ← col1 X; pure ⟨n, X, [.atom "" .i64 (← mapB .mix n e e)]⟩
   | _, _ => throw "mix runs from an object of i64 to it"
 
+/-- **`Tab.atIx`** on the pairs `X = (xs, k)` (`n` rows): the rows whose index `k` is nonneg (`first` with the post step
+    `0 ≤ k`) and below the cell's width (`lt`), `and`ed to one `0`/`1` word, each to the payload at `s + k`; then `canonT`. -/
+def atIxB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, f) ← arrCol "at" (X.take 1)
+  let k ← col1 (X.drop 1)
+  guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) s!"at: a payload of m rows, past 2^63" #[m]
+  let (s, e) ← spanB n m lo hi
+  let c ← mapB .and n (← mapB .lt n k (← mapB .sub n e s)) (← mapB .first n k k .i64 .i64 [] [(.le, 0)])
+  let (M, sel) ← whereB n c
+  let ix ← gatherB M sel n (← mapB .add n s k)
+  canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
+
 /-- **`Tab.cmpOp s`** on the pairs `X` of `A` (`cmpAt`): the rows whose two words, through `wideB`, pass the row's
     order `Tab.ordOp`, kept as the coreflexive on the pairs. -/
 def cmpOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match cmpOps.lookup s, A, B with
@@ -1300,6 +1312,9 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.arithOp then let (n, X) ← known r.sym D.dom; arithOpB r.sym A B n X
   else if c == ``Tab.succOp then let (n, X) ← known r.sym D.dom; succOpB A B n X
   else if c == ``Tab.mixOp then let (n, X) ← known r.sym D.dom; mixOpB A B n X
+  else if c == ``Tab.atRow then match A with
+    | .prod (.arr b) (.atom .i64) => do let (n, X) ← known r.sym D.dom; atIxB b n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array with an i64 index"
   else if c == ``Tab.cmpOp then let (n, X) ← known r.sym D.dom; cmpOpB r.sym A B n X
   else if c == ``Tab.map then match A, B, xs with
     -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand

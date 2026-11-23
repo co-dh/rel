@@ -188,7 +188,7 @@ def rowsProved : List String :=
   ["τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc",
    "tails", "takewhile", "sums", "flat", "$", "ymd", "foldI", "star", "dom", "ran", "nil", "est", "front"] ++
-  floatOps.map (·.1) ++ arithOps.map (·.1) ++ ["succ", "mix"] ++ cmpOps.map (·.1)
+  floatOps.map (·.1) ++ arithOps.map (·.1) ++ ["succ", "mix", "at"] ++ cmpOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
@@ -736,6 +736,14 @@ theorem rowOK_succ : RowOK "succ" := rowOK_of (c := ⟨"succ", fun σ => (σ₁ 
   rcases σ with _ | ⟨_, _⟩ <;>
     exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.succOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.succOp_den h⟩⟩
 
+/-- `at` at the array and index objects `σ` names: `atOn` (`Tab.atRow_den`). -/
+theorem rowOK_at : RowOK "at" :=
+  rowOK_of (c := ⟨"at", fun σ => (.prod (.arr (σ₁ σ)) (σ₂ σ), σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+    cases hv
+    rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
+      exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.atRow_wf h hX,
+        ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.atRow_den h hX⟩⟩
+
 /-- `mix` at the atom `σ` names: `mixOn` (`Tab.mixOp_den`). -/
 theorem rowOK_mix : RowOK "mix" := rowOK_of (c := ⟨"mix", fun σ => (σ₁ σ, σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
@@ -1206,9 +1214,10 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases ha : r.sym ∈ arithOps.map (·.1); · exact rowOK_arith ha
   by_cases h40 : r.sym = "succ"; · rw [h40]; exact rowOK_succ
   by_cases h42 : r.sym = "mix"; · rw [h42]; exact rowOK_mix
+  by_cases h43 : r.sym = "at"; · rw [h43]; exact rowOK_at
   by_cases hc : r.sym ∈ cmpOps.map (·.1); · exact rowOK_cmp hc
   simp [rowsProved, hu, ha, hc, h40, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
-    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37, h38, h39, h41, h42] at h
+    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37, h38, h39, h41, h42, h43] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}
