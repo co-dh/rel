@@ -39,4 +39,30 @@ def agrees {t : QAtomicType} {n : USize} [BEq (El t)] (x : Opt t n) (f : Nat →
     | .error _ => false
   | none => false
 
+-- q's `asc 3 0N 1` is `0N 1 3`: null is below every value, so `kasc` grades it first (`iasc` = `1 2 0`)
+#guard match Opt.ofAtoms .i64 #[some (.i64 3), none, some (.i64 1)] with
+  | some x => match Kernel.kasc 3 [(.atom .i64, x.enc)] with
+    | .ok (_, p) => Ext.Enc.raw .i64 3 p == #[1, 2, 0] && match Opt.gather 3 p x with
+      | .ok s => (List.finRange _).map s.get == [none, some 1, some 3]
+      | .error _ => false
+    | .error _ => false
+  | none => false
+
+/-- The pairs `(l, r)` of a join on a nullable key: left keys `ls`, right keys `rs`, one column of both sides' keys
+sorted (`kasc`) and grouped (`kseen`); left row `l` joins right row `r` where their rows fall in one group. -/
+def joinPairs (ls rs : Array (Option QAtom)) : Option (List (Nat × Nat)) := do
+  let x ← Opt.ofAtoms .i64 (ls ++ rs)
+  let N := (ls ++ rs).size
+  let (vs, p) ← (Kernel.kasc N.toUSize [(.atom .i64, x.enc)]).toOption
+  let (_, g, _) ← (Kernel.kseen N.toUSize [(.atom .i64, vs.headD .pos)]).toOption
+  let ps := Ext.Enc.raw .i64 N.toUSize p
+  let gs := Ext.Enc.raw .i64 N.toUSize g
+  -- input row `j`'s group: the group of the sorted row holding it
+  let grp := fun j => ((List.range N).find? (ps[·]? == some j.toUInt64)).bind (gs[·]?)
+  pure ((List.range ls.size).flatMap fun l => (List.range rs.size).filterMap fun r =>
+    if grp l == grp (ls.size + r) then some (l, r) else none)
+
+-- left `0N 2 5`, right `5 0N 7`: the null joins the null (every null is one value, as in q) and no value
+#guard joinPairs #[none, some (.i64 2), some (.i64 5)] #[some (.i64 5), none, some (.i64 7)] == some [(0, 1), (2, 0)]
+
 end Rel.TestNullband
