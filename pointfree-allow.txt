@@ -1,5 +1,6 @@
 Rel.Core.Rel.comp
 Rel.Core.Rel.corefl
+Rel.Core.Rel.diff
 Rel.Core.Rel.graph
 Rel.Core.Rel.id
 Rel.Core.Rel.inter
@@ -15,7 +16,6 @@ Rel.Core.Rel.zero
 Rel.Hylo.rounds
 Rel.Lang.atDen
 Rel.Lang.castDen
-Rel.Lang.diffDen
 Rel.Lang.EDen
 Rel.Lang.estDen
 Rel.Lang.faddDen
@@ -23,7 +23,6 @@ Rel.Lang.floatDen
 Rel.Lang.foldDen
 Rel.Lang.foldrDen
 Rel.Lang.frontDen
-Rel.Lang.froundDen
 Rel.Lang.fsumDen
 Rel.Lang.fwideDen
 Rel.Lang.lamDen

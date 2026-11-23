@@ -90,10 +90,8 @@ theorem Tm.flatDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : 
 theorem Tm.foldIDef_row (ρ : Val) {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V))
     (x : (Obj.prod I (.arr E)).El) (hx : Short _ x) (w : V.El) :
     (Tm.foldIDef e S).den ρ x w ↔ (Tm.arg (.arg (.prim foldIRow) e) S).den ρ x w := by
-  -- `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` is `foldIDen` (`foldIDen_eq`), the row's meaning at every object
-  have hd := congrFun (congrFun (foldIDen_eq (e.den ρ) (S.den ρ)).symm x) w
-  simp only [Tm.foldIDef, ↓Tm.ran_den, Tm.ran_den, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
-  exact hd.to_iff
+  -- `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` is `foldIDen` by definition, the row's meaning at every object
+  simp only [Tm.foldIDef, ↓Tm.ran_den, Tm.ran_den, Tm.den, Tm.argDen, Prim.den_foldIRow]
 
 /-- **`foldI`'s text means the row** (Q3 = H): `prelude.foldI.body` (placeholders `general`, `u1`, `u8` of `ι`, `β`, `α`;
     `e`, `S` the variables 3, 4) at any objects `σ` means `foldI(e, S)` there, where its universe variables 0, 1 (of `ι`,
@@ -171,7 +169,7 @@ theorem Tm.frontDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (x : (Obj.arr B).El) (
   have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
     simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
   rw [Tm.front_den]
-  simp only [Tm.frontDef, Tm.den, frontDen, lamDen, diffDen, hτ, Core.Rel.comp, Core.Rel.recip]
+  simp only [Tm.frontDef, Tm.den, frontDen, lamDen, Core.Rel.diff, hτ, Core.Rel.comp, Core.Rel.recip]
 
 /-- `ran`'s text means the row (Q3 = H), as `Tm.domDef_den`: its body at `α = general`, `β = u1`, parameter `R` the
     variable 2. -/

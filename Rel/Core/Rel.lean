@@ -34,6 +34,9 @@ def inter (R S : Rel α β) : Rel α β := fun a b => R a b ∧ S a b
 
 def union (R S : Rel α β) : Rel α β := fun a b => R a b ∨ S a b
 
+/-- `R − S`: the pairs of `R` not in `S` (the hom-lattices of `Rel(Set)` are Boolean). -/
+def diff (R S : Rel α β) : Rel α β := fun a b => R a b ∧ ¬ S a b
+
 def zero : Rel α β := fun _ _ => False
 
 /-- The allegory order, as freyd states it (§2.11): `R ⊑ S` iff `R ∩ S = R`. -/
@@ -88,6 +91,8 @@ theorem le_iff {R S : Rel α β} : R ⊑ S ↔ ∀ a b, R a b → S a b :=
 
 theorem graph_recip_graph (f : α → γ) (g : β → γ) (a : α) (b : β) : (graph f ≫ (graph g)°) a b ↔ f a = g b :=
   ⟨fun ⟨_, h, h'⟩ => h.symm.trans h', fun h => ⟨_, rfl, h⟩⟩
+
+@[simp] theorem diff_apply (R S : Rel α β) (a : α) (b : β) : diff R S a b = (R a b ∧ ¬ S a b) := rfl
 
 @[simp] theorem inter_apply (R S : Rel α β) (a : α) (b : β) : (R ∩ S) a b = (R a b ∧ S a b) := rfl
 
