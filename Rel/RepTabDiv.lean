@@ -562,7 +562,7 @@ theorem Vals.cells_expand_wf {B : Obj} {n T : USize} {w G u : Enc} {pay : Vals B
   have hT := (expand_spec hex _ hw (by omega) hn).1
   exact Vals.cells_wf hY _ hw (by omega) (by omega) hp
 
-/-- **A payload laid out by the EXPANDed widths of `X`'s cells** (`Vals.pack`, `Tab.map`): the cells `n w pay` over a
+/-- **A payload laid out by the EXPANDed widths of `X`'s cells** (`ValsB.pack`, `Tab.map`): the cells `n w pay` over a
 payload whose row `t` is `g` of `X`'s payload row at the gathered position `ix[t]` are `X`'s cells mapped by `g`; the
 output element `d` of cell `i` is payload row `Σ_{<i} w + d` (`expand_spec`, `colPrefix_add_sum`), there `SN i + d`. -/
 theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : ColB false .i64 n} {f : Vals A m}
