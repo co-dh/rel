@@ -217,7 +217,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     cases hf : convTm f with
     | error l => simp only [hf] at hu; cases hu
     | ok f' =>
-      simp only [hf] at hu; split at hu <;> cases hu
+      simp only [hf, bind, Except.bind] at hu; split at hu <;> cases hu
       · exact ⟨rfl, fun _ _ => rfl⟩
       · exact ⟨((ihf hok).1 _ hf).2 hd' _, fun _ _ => ((ihf hok).1 _ hf).2 hd' _⟩
   | share k R ih =>
@@ -613,7 +613,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     cases hf : convTm f with
     | error l => simp only [hf] at hu; cases hu
     | ok f₀ =>
-      simp only [hf] at hu; split at hu <;> cases hu
+      simp only [hf, bind, Except.bind] at hu; split at hu <;> cases hu
       · simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht hu'
         obtain ⟨F', hF, x', hx, rfl⟩ := ht
         obtain ⟨_, ⟨f', hf', x'', hx', rfl⟩, rfl⟩ := hu'
