@@ -1429,18 +1429,6 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
     | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
-/-- **`Tab.atPos k`** on the arrays `X` (`n` rows): the cells wider than `k` (`whereB` of `k < e - s`), each to the
-    payload at `s + k`; then `canonT`. `s + k` is read signed, so `m + k` stays below `2^63`. -/
-def atB (B : Obj) (k n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
-  let (m, lo, hi, f) ← arrCol "at" X
-  guard (← call1 (kernel% USize.decLt) #[← call1 (kernel% USize.add) #[m, ← lit (.size k.toUSize)],
-    ← lit (.size (2 ^ 63))]) s!"at: position {k} in a payload of m rows, past 2^63" #[m]
-  let (s, e) ← spanB n m lo hi
-  let kc ← constB n (← lit (.u64 k.toUInt64))
-  let (M, sel) ← whereB n (← mapB .lt n kc (← mapB .sub n e s))
-  let ix ← gatherB M sel n (← mapB .add n s kc)
-  canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
-
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
 abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
 
@@ -1532,7 +1520,6 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .lam (B := B) R => do
     let (n, X) ← known "Λ" D.dom
     lamB B n X (← tabB σ { dom := some (n, X) } R)
-  | _, _, .atPos (B := B) k => do let (n, X) ← known "at" D.dom; atB B k n X
   -- `GenK.fold`, `GenK.foldr`: `Tab.foldRounds` from `idU X` and `X × ran e`, `S` on `⟨P, el⟩` (`⟨el, P⟩`)
   | _, _, .fold (E := E) (V := V) e S => do
     let (n, X) ← known "fold" D.dom

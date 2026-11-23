@@ -5,8 +5,8 @@ public import Rel.Lang.GenKBits
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! The `GenK` ops of the power operators `est` and `atPos`, each representing its constructor's case of `Tm.den`
-    from the op's `Tab` law (`Tab.est_holds`, `Tab.atPos_holds`), in `GenKSpec`'s style (`ofVals_row_sound`). -/
+/-! The `GenK` ops of the power operators `est` and `front`, each representing its constructor's case of `Tm.den`
+    from the op's `Tab` law (`Tab.est_holds`, `Tab.front_den`), in `GenKSpec`'s style (`ofVals_row_sound`). -/
 
 namespace Rel.Lang
 
@@ -31,9 +31,6 @@ theorem front_sound {B : Obj} {Q : Rel (.prod B B) (.prod B B)} {TQ : Core.Rel (
     (hQ _ ⟨wD.2, trivial, trivial⟩) _ hT p _ ((side_some rfl p).2 hp) rfl trivial)
     (fun D _ hT wD => wQ.runE (show (⟨some ⟨D.n, D.val⟩, none, none⟩ : Known _ _).WF from ⟨wD.2, trivial, trivial⟩) hT)
     h hX
-
-theorem atPos_sound {B : Obj} (k : Nat) : ∀ K, K.WF → (GenK.atPos B k).Reps K (atDen k) :=
-  ofVals_row_sound fun _ _ _ hX h => Tab.atPos_holds h hX
 
 end GenK
 

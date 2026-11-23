@@ -487,7 +487,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, _, _, .inl => Core.Rel.inl
   | _, _, _, .inr => Core.Rel.inr
   | _, A, B, .prim r => Prim.den r A B []
-  | _, _, _, .atPos k => atDen k
   | ρ, _, _, .own R => R.den ρ
   | ρ, _, _, .leq t U => leqDen t (U.den ρ)
   | ρ, _, _, .lt t U => ltDen t (U.den ρ)

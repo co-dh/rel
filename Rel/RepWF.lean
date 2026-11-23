@@ -132,13 +132,6 @@ theorem length_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) .long} (h 
   okSplit
   exact canon_wf h ⟨hX, trivial⟩
 
-theorem atPos_wf {n : USize} {k : Nat} {X : Vals (.arr B) n} {t : Tab (.arr B) B} (h : Tab.atPos k X = .ok t)
-    (hX : Vals.WF X) : t.WF := by
-  obtain ⟨m, lo, hi, f⟩ := X
-  simp only [Tab.atPos, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.2⟩
-
 theorem atIx_wf {n : USize} {X : Vals (.prod (.arr B) .long) n} {t : Tab (.prod (.arr B) .long) B}
     (h : Tab.atIx X = .ok t) (hX : Vals.WF X) : t.WF := by
   obtain ⟨⟨m, lo, hi, f⟩, k⟩ := X

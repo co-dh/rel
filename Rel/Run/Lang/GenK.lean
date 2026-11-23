@@ -287,8 +287,6 @@ def onKeys (I A B C : Obj) (R : Rel I C)
     (f : {n : USize} → Vals (.prod I A) n → Tab I C → Except String (Tab (.prod I A) B)) : Rel (.prod I A) B :=
   ofVals _ _ fun X => do f X (← R.runE ⟨some ⟨_, X.1⟩, none, none⟩)
 
-def atPos (B : Obj) (k : Nat) : Rel (.arr B) B := ofVals _ _ fun X => Tab.atPos k X
-
 /-! ### T8: `⦇e,S⦈`, `⦇e,S⦈ʳ`, `⦇e,S⦈` given a family, `Rᴵ` -/
 
 /-- `⦇e,S⦈` on the arrays `X` in demand (§4 `fold`: a Lean loop of rounds, `Tab.foldRounds`): each array from every

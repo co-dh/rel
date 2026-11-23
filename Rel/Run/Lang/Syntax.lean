@@ -299,7 +299,7 @@ def mixRow : Prim :=
   { sym := "mix", sig := ([], .var {} "N", .var {} "N"), num := [("N", [.i64])],
     aop := .error "AOP declares no hash on atoms" }
 /-- `at : [B]×ν ⟶ B`, q's index `xs[k]` on `i64`: the pair `(xs, k)` to the element at a nonneg `k` below the length (`atOn`).
-    Not written yet: the op table's `at(k)` (`Tm.atPos`) owns the name until it is replaced by `at(k) ≜ ⟨𝟙, ⊤ k⟩ at` (B5b2). -/
+    Not written: the surface `at(k)` (op table `.index k`) elaborates to `⟨𝟙, ⊤ {k}⟩ at` (`indexAt`). -/
 def indexRow : Prim :=
   { sym := "at", sig := ([], .prod (.list (.var {} "B")) (.var {} "N"), .var {} "B"), num := [("N", [.i64])],
     written := false, aop := .error "AOP declares no indexing of a list by a number" }

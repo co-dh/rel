@@ -71,6 +71,18 @@ rel_program ats where
     check x at(3) = 𝟘
 #guard ats.ok && ats.prints == ["x at(0) = {(a, 3), (b, 1)}", "x at(1) = {(a, 1), (b, 5)}", "x at(2) = {(a, 2)}",
   "x at(3) = {}"]
+-- `at(k)` is `⟨𝟙, ⊤ {k}⟩ at` on an i64 index: the first, the third and an out-of-range position of a list column, and
+-- `head` of an empty list has no row
+open Rel.Programs.prelude in
+rel_program atsE where
+    obj N = 0…9
+    obj K = {a,b}
+    e : K ⟶ [N] ≜ {(a, 3 1 2), (b, [])}
+    print e at(0)
+    print e at(2)
+    print e at(12)
+    print e head
+#guard atsE.ok && atsE.prints == ["e at(0) = {(a, 3)}", "e at(2) = {(a, 2)}", "e at(12) = {}", "e head = {(a, 3)}"]
 #eval errAt "obj N = 0…9\nf : [N] ⟶ N ≜ at(x)\n" 2 "at( ) takes a position, a number from 0, found 'x'"
 #eval errAt "obj N = 0…9\nf : [N] ⟶ N ≜ at(-1)\n" 2 "at( ) takes a position from 0 that fits a long, found -1"
 

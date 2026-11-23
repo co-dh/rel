@@ -929,7 +929,6 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
       r.prelude == r'.prelude && r.mono == r'.mono && r.dem == r'.dem && r.num == r'.num && r.ord == r'.ord &&
       match r.aop, r'.aop with | .ok a, .ok b => a == b | .error a, .error b => a == b | _, _ => false
     | _ => false
-  | .atPos k => match u with | .atPos k' => k == k' | _ => false
   | .share k _ => match u with | .share k' _ => k == k' | _ => false
   | .var d k => match u with | .var d' k' => d == d' && k == k' | _ => false
   | .call ks c os _ => match u with | .call ks' c' os' _ => ks == ks' && key c == key c' && os == os' | _ => false
