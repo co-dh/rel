@@ -155,6 +155,9 @@ def Tm.leq {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom 
 
 def Tm.lt {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) := .arg (.prim (cmpRelRow true)) U
 
+/-- `asc(P) : ℕ ⟶ B`, the row `ascRow` given `P` (`Prim.den_ascRow`): the set `dom P` numbered by `Obj.lt` order. -/
+def Tm.asc {B : Obj} (P : Tm B B) : Tm .long B := .arg (.prim ascRow) P
+
 /-- `[] : A ⟶ [B]`, the row `nilRow` (`Tm.nil_den`). -/
 def Tm.nil {A B : Obj} : Tm A (.arr B) := .prim nilRow
 

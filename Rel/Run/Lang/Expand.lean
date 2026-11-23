@@ -693,6 +693,12 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     | .input p n ty csv path =>
       -- an imported program's input is the importer's (IO design A.2), read by the importer's `n.io`
       let (A, B, K, S, hdr) ← ioCols env p s!"input `{n}` from {if csv.isSome then "csv " else ""}\"{path}\"" ty csv.isSome
+      -- a dictionary statement is bound to the dictionary the inputs before it grew: a CSV input after it interns
+      -- texts it never sees, and an id of this column would have no rank
+      if csv.isSome && hdr.any (fun (_, _, a, _) => a == .sym) then
+        if let some d := io.findSome? fun | .dict d .. => some d | _ => none then
+          throw ⟨p, s!"input `{n}` has a symbol column and comes after `dictionary {d}`, which is bound to the texts of " ++
+            s!"the inputs before it; move `dictionary {d}` after `input {n}`"⟩
       rt := rt ++ [(n, ⟨n, some ty⟩, none)]
       io := io ++ [.input n A B K S (csv.map (·, hdr)) path]
     | .dict p n ty =>
@@ -702,6 +708,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
           atom sym `obj S : sym` and a text `[C]`"⟩
       rt := rt ++ [(n, ⟨n, some ty⟩, none)]
       io := io ++ [.dict n A B]
+      env := { env with dict := some n }
     | .output p n csv path =>
       let what := s!"output `{n}` to {if csv.isSome then "csv " else ""}\"{path}\""
       let n := rtName env rt n
@@ -733,8 +740,11 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         | .test e f => .test (rtNamesE env rt e) (rtNamesE env rt f)
       -- the run-time names the body mentions, not its own parameters: the parameters of a definition written with
       -- none, the existing parametric definition (IO design A.2)
+      -- and the dictionary, where an order in the body may be at `sym` (`Elab.symOrd` reads `rank(D)`)
+      let ordered := match b with | .rel e => e.ordered | .test e f => e.ordered || f.ordered
       let ys := rt.filter fun (y, _) =>
-        (match b with | .rel e => e.names | .test e f => e.names ++ f.names).contains y && !ps.any (·.name == y)
+        ((match b with | .rel e => e.names | .test e f => e.names ++ f.names).contains y ||
+          (env.dict == some y && ps.isEmpty && ordered)) && !ps.any (·.name == y)
       let ps ← match ys, ps, b with
         | [], _, _ => pure ps
         | _, [], .rel _ =>
