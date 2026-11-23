@@ -1,37 +1,36 @@
-nullband3g9 handoff
+# 8.2b handoff (agent a7284d04)
 
-Done: merged 66c394c and e5b16d6 (only tmp/handoff.md conflicted); every proof module of `Rel` builds
-(RepBits, RepTabDiv, RepWF, RepTabComp, RepStruct, GenKBits, TestNullband).
+Base: merged 8b3487e (8.2 wip) clean. Edited: Rel/Run/Struct.lean, Rel/RepStruct.lean. NOT yet built green.
 
-Left (not done): 11 test modules still fail at their `#guard ...failures == []` / `.ok`:
-TestFrameSchema, TestGenericN(108,109), Test/Kern9(87,89), TestFrameCols(68,84), TestFrameScale(53), TestPivotDisk(137),
-TestFrameApp(101,149), TestFrameQuery(65,82), TestFrameStat(122,158), TestFrameUnbounded(189,203), TestFrameBench(58).
+## Key finding
+`Vals.zeros` rows were word 0, but `Obj.dflt (.atom t)` is `Carrier.null t` (q null; i64: -2^63), so "zeros rows = dflt"
+was false for atoms. Fixed in Struct.lean: `Arr.dflts t n` (post chain `[(.and,0),(.or, word t null)]`), `Vals.zeros .atom`
+uses it; `tagCol` moved before `Vals.zeros`, the sum filler tag is `tagCol n false`. Filler-on-read (task item 3) must
+therefore compare against the null word `QAtomicType.word t default`, not 0.
 
-Diagnosed for Kern9 (copy to Rel/Lang/Test/K9tmp.lean, replace `#guard kernT9.ok` by `#eval kernT9.failures`, run
-`lake -d <wt> lean Rel/Lang/Test/K9tmp.lean`): every failure of `sub`, `leaf`, `ch`, `dbl` reads
-  inr°: on a 1+t band column, whose values the law cannot yet read (Vals.WF carries no Enc.Valid); run the other
-  operand first: a leaf on demand ran with its domain unknown
-raised by `inrConv`, `.opt ..` arm, Rel/Run/Struct.lean:164 ("PLAN nullband3h"): a deliberate throw from line 3g8, not
-a concat-null error. TestFrameApp:149 prints the same text. The other 9 modules were not inspected (do the same eval
-with their failing program: frameSchemaT, paramNT, paramPT, frameDescribe, tradeApp, frameStatT, frameStatFloatT,
-query3, query4, frameUnboundedT, frameDescribeU, bench2, frameCols, frameScaleN3, pivotT).
+## RepStruct.lean state (new, first block before `namespace Tab`)
+`Opt.nuls_get` (moved up), `tagCol_get`, `Arr.dflts_get`, `Vals.zeros_ok` (WF and rows = dflt, induction on A),
+`Vals.ofGen_wf`, `Vals.none_wf` (= zeros_ok at 0). `injCols_ok` deleted. inl/inr_wf, inl/inr_holds use zeros_ok.
+Helpers in Tab block: `Vals.gather_tag_valid`, `selConv_holds` (whereCol-selected rows), used by the gen cases of
+`inlConv_holds` / `inrConv_holds` (mask via colMap_raw for `.not`, `Arr.get_u1` for the tag words).
 
-Not done: step 3 (TestGenericN 118 / TestPivotDisk 143 #guard_msgs at base), final build RelCore RelKernel RelRun.
+## UPDATE: Rel.RepStruct now BUILDS GREEN (all items of task 1 done, incl. inlConv/inrConv gen cases). The list below is
+## obsolete. Remaining: task items 2-5 only.
 
-nullband3h4 handoff (tool budget reached)
+## Errors seen in the last build (Rel.RepStruct), to fix (OBSOLETE, all fixed)
+- `Arr.dflts_get`: `ht : t ≠ .general` proof leaves `foR` goal (add `QAtomicType.width` to the simp set); `storeFmt?.isSome`
+  is FALSE for `.u1`, `.sym` so `Tab.of_atomOfBits` (also in RepTabArith, not imported) cannot be used: prove
+  `∀ a, (Dep.Carrier.of? t (.atom (Column.atomOfBits t a ht))).getD default = QAtomicType.ofBits t a` and
+  `ofBits t (word t default) = default` by `cases t <;> first | exact absurd rfl ht | rfl/decide`; then for u1 the word is `c % 2`.
+- `Vals.zeros_ok` `.arr` case: `split at h` names shifted (`hhi : Except.ok lo = Except.ok hi`); use
+  `cases hlo : Arr.zeros .i64 n` (both lo, hi are the same term) then `cases hf : Vals.zeros b 0`.
+- `Vals.ofGen_wf` statement: `none` resolves to `Vals.none` inside `theorem Vals.…`; write `Option.none`.
+- `inl_wf`/`inr_wf`: `Vals.ofGen_wf`'s implicit `h` not synthesised; use `refine canon_wf h ⟨hX, ?_⟩; exact Vals.ofGen_wf …`.
+- `Vals.gather_tag_valid`: `Arr.valid_of_gather` is in Rel.Lang.GenKBits (not imported by RepStruct); `Tab.gather_valid` is in
+  RepCast. Prove from `kgather` success (`kgather_valid`, find its module) or move.
+- inl_holds/inr_holds gen branch: `simp only [Vals.row, Vals.view_ofGen, tagCol_get htg k, …]` leaves goals; add `rfl`/`Obj.dflt` as needed.
 
-Branch worktree-agent-a1c248448af4d8d5e. GREEN commits: 0606ff2 (merges of 15b73ae, nullband-int, 8b84e97 + kscanCols_lock /
-raw_kscanChain generalised, nullOps lists .null; `lake build RelKernel RelRun` green), bf55cb0 (Tab.inrConvBand + inrConv
-`.opt` branch + 4 #guards, built green as Rel.Run.Struct).
-
-Step 1 conflict resolution: Rel/Kernel/ScanTest.lean had two `knul`; 3h3's is now `kflag` (sources as `(n, e)` pairs).
-Step 3 law, done: `raw_kscanChain` no longer takes `hnl`; its columns clause reads
-`∃ e₀ es₀ ws', es.map (·.2) = e₀ :: es₀ ∧ mapM … = .ok ws' ∧ c' :: cs' = if op = .null then foRNuls n e₀ :: ws'.drop 1 else ws'`.
-`kscanCols_lock` likewise (`ws = fl.map foRNuls ++ ws'.drop fl.length`). `raw_kscan` keeps `hnl`; `kscan_last` dropped it.
-
-Step 2: `Tab.inrConvBand h x` (Rel/Run/Struct.lean) = kscan .null false t .u1 n none [(n, x.enc)] [] [(.not,0)] -> whereCol ->
-Vals.gather m sel (Vals.ofOpt h x), Arr.of t m (Opt.gather m sel x).enc. `inrConv`'s `.opt h x` branch calls it.
-
-DONE (nullband3h5): inrConv_wf and inrConv_holds (.opt branch) proved; inrConvBand casts by two Eq (a rfl cast unfolds to the body).
-colMap_*/kscan_post_ok/colMap_ok/raw_kscan_rev/ordOp_ne/floatOps_ne take or give op ≠ .null. lake build Rel and RelCore RelKernel RelRun green.
-
+## Not started
+Task items 2 (port RepWF, RepTabDiv, GenKBits, GenSound, tests TestTable/TestIO/TestNullband), 3 (filler on read: readVals /
+encVals / cellsOk in Rel/Run/Table.lean; per-block check `foR` frame = null word, width 0, no patch), 4 (dead code deletion once
+the index shows no callers), 5 (PLAN.md 8.2 line).

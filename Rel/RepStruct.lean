@@ -22,37 +22,124 @@ theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z
   have e0 : (raw .i64 n z.enc)[i.1]?.getD 0 = 0 := by simp [es, ← hw]
   rw [Arr.get_i64, e0]; rfl
 
-/-- **A side of no rows is `Vals.WF`**: an `arr` side of it has no cell. -/
-theorem Vals.none_wf : {A : Obj} → {x : Vals A 0} → Vals.none A = .ok x → Vals.WF x
-  | .atom _, _, _ => trivial
-  | .one, _, _ => trivial
-  | .prod _ _, _, h => by
-    simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
+/-- **Every row of `Opt.nuls t n` is the null** (`wordsFoR` of `n` zero words with every row flagged). -/
+theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
+    x.get i = none := by
+  unfold Opt.nuls at h
+  dsimp only at h
+  split at h
+  rotate_left; · cases h
+  cases h
+  have hf := foRNuls_wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)) (n := n) (by simp) i.1
+    (by simpa using i.2)
+  have hb : Column.bitAt (nulMap (Array.replicate n.toNat 1)) i.1 = true := by
+    simp only [nulMap, Array.size_replicate]
+    rw [bitAt_packOf _ _ _ i.2]; simp
+  rw [hb, if_pos rfl] at hf
+  have hn : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i = true := by
+    cases hc : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i
+    · exact absurd (Option.some.inj (((Opt.isNul_eq_false _ i).1 hc).symm.trans hf)) (by decide)
+    · rfl
+  simp only [Opt.get, hn, if_true]
+
+/-- **Every row of `tagCol n s` is `s`**: the positions through `[(.and, 0), (.or, s)]`, cut to the bit. -/
+theorem tagCol_get {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCol n s = .ok tag) (k : Fin n.toNat) :
+    tag.get k = s := by
+  have hc := colArr_ok h
+  obtain ⟨a, ha, he⟩ := Arr.get_u1 tag (colMap_closed (by lockstep) hc).1 k
+  obtain ⟨v, ev, hv⟩ := colMap_first_chain hc k.1 k.2
+  rw [ha] at hv
+  simp [chain, Op.eval, bind, Except.bind, pure, Except.pure] at ev
+  simp only [if_true, Option.some.injEq] at hv
+  subst ev; subst hv
+  cases s <;> cases hg : tag.get k <;> rw [hg] at he <;> revert he <;> decide
+
+/-- **Every row of `Arr.dflts t n` is `t`'s `default`**: the stored word of the null read back at `t` (`ofBits_word`); a
+`general` payload is no column of words (`Enc.WF`), so `Arr.dflts` never answers there. -/
+theorem Arr.dflts_get {t : QAtomicType} {n : USize} {z : Arr t n} (h : Arr.dflts t n = .ok z) (i : Fin n.toNat) :
+    z.get i = @default (Dep.Carrier t) Dep.instInhabitedCarrier := by
+  have hc := colArr_ok h
+  have hcl := colMap_closed (by lockstep) hc
+  have ht : t ≠ .general := by
+    rintro rfl
+    obtain ⟨hv, hw⟩ := hcl
+    revert hv hw; cases z.enc <;> simp [Kernel.Enc.Valid, Ext.Enc.WF, QAtomicType.width]
+  have hgo : ∀ a, (Dep.Carrier.of? t (.atom (Column.atomOfBits t a ht))).getD default = QAtomicType.ofBits t a := by
+    cases t <;> first | exact absurd rfl ht | (intro a; rfl)
+  have hdw : QAtomicType.ofBits t (QAtomicType.word t (@default (Dep.Carrier t) Dep.instInhabitedCarrier)) =
+      @default (Dep.Carrier t) Dep.instInhabitedCarrier := by
+    cases t <;> first | exact absurd rfl ht | decide
+  obtain ⟨a, ha, -, hg⟩ := Arr.get_raw_atom z hcl.1 ht i
+  obtain ⟨v, ev, hv⟩ := colMap_first_chain hc i.1 i.2
+  rw [ha] at hv
+  simp only [chain, Op.eval, List.foldlM_cons, List.foldlM_nil, bind, Except.bind, pure, Except.pure,
+    Except.ok.injEq] at ev
+  rw [hg, hgo]
+  have hv' := Option.some.inj hv
+  subst ev
+  try simp only [UInt64.zero_and, UInt64.zero_or, UInt64.and_zero, UInt64.or_zero] at hv'
+  by_cases hu : t = .u1
+  · subst hu; simp only [if_true] at hv'; subst hv'; decide
+  · simp only [hu, if_false] at hv'; subst hv'; exact hdw
+
+/-- **`Vals.zeros A n` is `Vals.WF` and every row is `A.dflt`**, by induction on `A`: `Arr.dflts_get` at an atom, an
+`arr` side's empty cells, a band column's nulls (`Opt.nuls_get`), a dense sum's tag `false` over two such summands. -/
+theorem Vals.zeros_ok : (A : Obj) → (n : USize) → (x : Vals A n) → Vals.zeros A n = .ok x →
+    Vals.WF x ∧ ∀ i, Vals.row x i = A.dflt
+  | .atom _, _, _, h => ⟨trivial, fun i => Arr.dflts_get h i⟩
+  | .one, _, _, _ => ⟨trivial, fun _ => rfl⟩
+  | .prod a b, n, x, h => by
+    simp only [Vals.zeros, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i p hp; split at h; · cases h
     rename_i q hq; cases h
-    exact ⟨Vals.none_wf hp, Vals.none_wf hq⟩
-  | .arr _, _, h => by
-    simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    split at h; · cases h
-    split at h; · cases h
-    rename_i f hf; cases h
-    exact ⟨fun i => absurd i.2 (by simp), Vals.none_wf hf⟩
-  | .sum _ _, _, h => by
-    unfold Vals.none at h
+    obtain ⟨wp, rp⟩ := Vals.zeros_ok a n _ hp
+    obtain ⟨wq, rq⟩ := Vals.zeros_ok b n _ hq
+    exact ⟨⟨wp, wq⟩, fun i => by simp only [Vals.row, rp, rq, Obj.dflt]⟩
+  | .arr b, n, x, h => by
+    simp only [Vals.zeros, bind, Except.bind, pure, Except.pure] at h
+    cases hlo : Arr.zeros .i64 n with
+    | error e => simp [hlo] at h
+    | ok lo =>
+    cases hf : Vals.zeros b 0 with
+    | error e => simp [hlo, hf] at h
+    | ok f =>
+    simp only [hlo, hf] at h
+    cases h
+    refine ⟨⟨fun i => ?_, (Vals.zeros_ok b 0 _ hf).1⟩, fun i => ?_⟩
+    · simp [Arr.zeros_get hlo]
+    · simp [Vals.row, Obj.dflt]
+  | .sum a b, n, x, h => by
+    unfold Vals.zeros at h
     split at h
+    · rename_i t ht
+      simp only [bind, Except.bind, pure, Except.pure] at h
+      split at h; · cases h
+      rename_i z hz; cases h
+      refine ⟨by simp only [Vals.WF, Vals.view_ofOpt], fun i => ?_⟩
+      simp only [Vals.row, Vals.view_ofOpt, Opt.nuls_get hz i]
+      obtain ⟨rfl, rfl⟩ := Obj.band_some ht
+      unfold Obj.optEl; generalize Obj.band_some ht = p; obtain ⟨p1, p2⟩ := p; rfl
     · simp only [bind, Except.bind, pure, Except.pure] at h
       split at h; · cases h
-      cases h; simp only [Vals.WF, Vals.view_ofOpt]
-    · simp only [bind, Except.bind, pure, Except.pure] at h
-      split at h; · cases h
-      split at h; · cases h
-      split at h; · cases h
+      rename_i tg htg; split at h; · cases h
       rename_i p hp; split at h; · cases h
       rename_i q hq; cases h
-      simp only [Vals.WF, Vals.view_ofGen]
-      exact ⟨Vals.none_wf hp, Vals.none_wf hq⟩
+      obtain ⟨wp, rp⟩ := Vals.zeros_ok a n _ hp
+      obtain ⟨wq, rq⟩ := Vals.zeros_ok b n _ hq
+      refine ⟨?_, fun i => ?_⟩
+      · simp only [Vals.WF, Vals.view_ofGen]
+        exact ⟨wp, wq, fun i _ => rq i, fun i hi => by rw [tagCol_get htg i] at hi; cases hi⟩
+      · simp only [Vals.row, Vals.view_ofGen, tagCol_get htg i, Bool.false_eq_true, if_false, rp, Obj.dflt]
+
+/-- **`Vals.ofGen` is `Vals.WF`** on `WF` summands holding `dflt` in the summand the tag does not name. -/
+theorem Vals.ofGen_wf {a b : Obj} {n : USize} {h : Obj.band a b = Option.none} {tag : Arr .u1 n} {x : Vals a n}
+    {y : Vals b n} (hx : Vals.WF x) (hy : Vals.WF y) (h0 : ∀ i, tag.get i = false → Vals.row y i = b.dflt)
+    (h1 : ∀ i, tag.get i = true → Vals.row x i = a.dflt) : Vals.WF (Vals.ofGen h tag x y) := by
+  simp only [Vals.WF, Vals.view_ofGen]; exact ⟨hx, hy, h0, h1⟩
+
+/-- **A side of no rows is `Vals.WF`**: an `arr` side of it has no cell. -/
+theorem Vals.none_wf {A : Obj} {x : Vals A 0} (h : Vals.none A = .ok x) : Vals.WF x := (Vals.zeros_ok A 0 x h).1
 
 namespace Tab
 variable {A B C D I : Obj}
@@ -169,8 +256,11 @@ theorem inl_wf {n : USize} {X : Vals A n} {t : Tab A (.sum A B)} (h : Tab.inl (B
     split at h; · cases h
     exact canon_wf h ⟨hX, by simp only [Vals.WF, Vals.view_ofOpt]⟩
   · simp only [bind, Except.bind] at h
-    okSplit
-    exact canon_wf h ⟨hX, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨hX, Vals.none_wf ‹_›⟩⟩
+    split at h; · cases h
+    rename_i tg htg; split at h; · cases h
+    rename_i z hz
+    refine canon_wf h ⟨hX, ?_⟩; exact Vals.ofGen_wf (h := by assumption) hX (Vals.zeros_ok _ _ _ hz).1 (fun i _ => (Vals.zeros_ok _ _ _ hz).2 i)
+      (fun i hi => by rw [tagCol_get htg i] at hi; cases hi)
 
 theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A := A) Y = .ok t)
     (hY : Vals.WF Y) : t.WF := by
@@ -178,8 +268,11 @@ theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A
   split at h
   · exact canon_wf h ⟨hY, by simp only [Vals.WF, Vals.view_ofOpt]⟩
   · simp only [bind, Except.bind] at h
-    okSplit
-    exact canon_wf h ⟨hY, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨Vals.none_wf ‹_›, hY⟩⟩
+    split at h; · cases h
+    rename_i tg htg; split at h; · cases h
+    rename_i z hz
+    refine canon_wf h ⟨hY, ?_⟩; exact Vals.ofGen_wf (h := by assumption) (Vals.zeros_ok _ _ _ hz).1 hY (fun i hi => by rw [tagCol_get htg i] at hi; cases hi)
+      (fun i _ => (Vals.zeros_ok _ _ _ hz).2 i)
 
 /-- **`compPairs` keeps `Tab.WF`**: `comp`, or `compFrom` within `crossMax`. -/
 theorem compPairs_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : Tab.compPairs R S = .ok t) (hR : R.WF)
@@ -401,59 +494,6 @@ theorem flat_holds {n : USize} {X : Vals (.prod I A) n} {R : Tab I (.prod A B)} 
     have hy : ∃ j, R.val.row j = (a, b) := let ⟨j, _, hj⟩ := hR; ⟨j, hj⟩
     exact ⟨(a, b), ⟨⟨i, ⟨hx, rfl⟩, hR⟩, ⟨a, ⟨hx, rfl⟩, ⟨hy, rfl⟩⟩⟩, ⟨hy, rfl⟩⟩
 
-end Tab
-
-/-- **`injCols`'s columns**: every tag is `s`, and row `k`'s position reads back as `k`. -/
-theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (h : injCols n s = .ok (tag, idx))
-    (k : Fin n.toNat) :
-    tag.get k = s ∧ clampFin (idx.get k) n.toNat (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2) = k := by
-  unfold injCols at h
-  by_cases hb : 2 ^ 63 < n.toNat
-  · simp [hb, bind, Except.bind] at h
-  simp only [hb, if_false, bind, Except.bind, pure, Except.pure] at h
-  split at h; · cases h
-  rename_i t ht
-  split at h; · cases h
-  rename_i i hi
-  simp only [Except.ok.injEq, Prod.mk.injEq] at h
-  obtain ⟨rfl, rfl⟩ := h
-  have hk : k.1 < n.toNat := k.2
-  refine ⟨?_, ?_⟩
-  · obtain ⟨a, ha, he⟩ := Arr.get_u1 t (colMap_closed (by lockstep) (colArr_ok ht)).1 k
-    obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok ht) k.1 hk
-    rw [ha] at hv
-    simp [chain, Op.eval, bind, Except.bind, pure, Except.pure] at ev
-    simp only [if_true, Option.some.injEq] at hv
-    subst ev; subst hv
-    cases s <;> cases hg : t.get k <;> rw [hg] at he <;> revert he <;> decide
-  · rw [Arr.get_i64]
-    obtain ⟨v, ev, hv⟩ := colMap_first_chain (colArr_ok (hs := by lockstep) hi) k.1 hk
-    rw [raw_pos_word hk] at ev
-    cases ev
-    have hw : (raw .i64 n i.enc)[k.1]?.getD 0 = k.1.toUInt64 := by simp [hv]
-    rw [hw, clampFin_word _ (by rw [toNat_toUInt64 (by omega)]; exact hk) (by omega)]
-    exact Fin.ext (toNat_toUInt64 (by omega))
-
-namespace Tab
-
-/-- **Every row of `Opt.nuls t n` is the null** (`wordsFoR` of `n` zero words with every row flagged). -/
-theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
-    x.get i = none := by
-  unfold Opt.nuls at h
-  split at h
-  rotate_left; · cases h
-  cases h
-  have hf := foRNuls_wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)) (n := n) (by simp) i.1
-    (by simpa using i.2)
-  have hb : Column.bitAt (nulMap (Array.replicate n.toNat 1)) i.1 = true := by
-    simp only [nulMap, Array.size_replicate]
-    rw [bitAt_packOf _ _ _ i.2]; simp
-  rw [hb, if_pos rfl] at hf
-  have hn : ∀ pf, Opt.isNul (⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), pf⟩ : Opt t n) i = true := fun pf => by
-    cases hc : Opt.isNul (⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), pf⟩ : Opt t n) i
-    · exact absurd (Option.some.inj (((Opt.isNul_eq_false _ i).1 hc).symm.trans hf)) (by decide)
-    · rfl
-  simp only [Opt.get, hn _, if_true]
 
 /-- **Every row of `Vals.optInr h Y` is `inr` of `Y`'s row**, the band column's element read as `a + b`. -/
 theorem Vals.optInr_get {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n)
@@ -476,6 +516,56 @@ private theorem holds_inr_of_row {n : USize} {Y : Vals B n} {V : Vals (.sum A B)
   simp only [Tab.Holds, hrow, Core.Rel.inr, Core.Rel.graph]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
 
+/-- **A dense sum side's tag column is a valid column**: the gather of the sum side reads it (`kgather`). -/
+theorem Vals.gather_tag_valid {a b : Obj} {n m : USize} {ix : Enc} {X : Vals (.sum a b) n} {G : Vals (.sum a b) m}
+    {hb : Obj.band a b = none} {tag : Arr .u1 n} {x : Vals a n} {y : Vals b n} (hv : X.view = .gen hb tag x y)
+    (hG : Vals.gather m ix X = .ok G) : Kernel.Enc.Valid n tag.enc := by
+  simp only [Vals.gather, hv, bind, Except.bind, pure, Except.pure] at hG
+  split at hG; · cases hG
+  rename_i t' ht'
+  unfold Arr.gather at ht'
+  split at ht'
+  · rename_i o ho; exact kgather_valid ho
+  · cases ht'
+
+/-- **The rows `whereCol` selects, gathered from `X` and `g`**: where `b` holds `1` exactly at the rows with `p`, the
+canonical table of `X` beside `g` has the pairs `(X.row i, g.row i)` of the rows `i` with `p i`. -/
+theorem selConv_holds {S C : Obj} {n m : USize} {sel b : Enc} {X : Vals S n} {g : Vals C n} {G : Vals S m}
+    {g' : Vals C m} {T : Tab S C} {p : Fin n.toNat → Bool}
+    (hb : ∀ i : Fin n.toNat, (Enc.raw .i64 n b)[i.1]?.getD 0 = if p i then 1 else 0)
+    (hw : whereCol n b = .ok (m, sel)) (hG : Vals.gather m sel X = .ok G) (hg' : Vals.gather m sel g = .ok g')
+    (hc : Tab.canon ⟨m, G, g'⟩ = .ok T) (hX : Vals.WF X) (hg : Vals.WF g) (s : S.El) (c : C.El) :
+    T.Holds s c ↔ ∃ i, p i = true ∧ X.row i = s ∧ g.row i = c := by
+  rw [Tab.canon_holds hc ⟨Vals.gather_wf hG hX, Vals.gather_wf hg' hg⟩]
+  have hb2 : ∀ i < n.toNat, (Enc.raw .i64 n b)[i]?.getD 0 < 2 := fun i hi => by
+    rw [hb ⟨i, hi⟩]; split <;> decide
+  have hsel := whereCol_spec hw hb2
+  have hsz := whereCol_size hw
+  have hp : ∀ i : Fin n.toNat, i.1 ∈ (Enc.raw .i64 m sel).toList.map UInt64.toNat ↔ p i = true := fun i => by
+    rw [hsel, List.mem_filter, List.mem_range, hb i]
+    cases p i <;> simp [i.2]
+  constructor
+  · rintro ⟨j, rfl, rfl⟩
+    obtain ⟨i, hi, hr⟩ := Vals.gather_row X hG j
+    obtain ⟨i', hi', hr'⟩ := Vals.gather_row g hg' j
+    obtain rfl : i' = i := Fin.ext (hi'.symm.trans hi)
+    have hj : j.1 < (Enc.raw .i64 m sel).size := by rw [hsz]; exact j.2
+    refine ⟨i', (hp i').1 (List.mem_map.2 ⟨(Enc.raw .i64 m sel)[j.1], ?_, ?_⟩), hr.symm, hr'.symm⟩
+    · simp
+    · rw [Array.getElem?_eq_getElem hj, Option.getD_some] at hi; exact hi
+  · rintro ⟨i, hpi, rfl, rfl⟩
+    obtain ⟨w, hw', hwi⟩ := List.mem_map.1 ((hp i).2 hpi)
+    obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hw'
+    have hj' : j < (Enc.raw .i64 m sel).size := by simpa using hj
+    have hjM : j < m.toNat := by rw [← hsz]; exact hj'
+    simp only [Array.getElem_toList] at hwi
+    obtain ⟨i2, hi2, hr⟩ := Vals.gather_row X hG ⟨j, hjM⟩
+    obtain ⟨i3, hi3, hr3⟩ := Vals.gather_row g hg' ⟨j, hjM⟩
+    have e2 : i2 = i := Fin.ext (by rw [← hi2]; simp only [Array.getElem?_eq_getElem hj', Option.getD_some, hwi])
+    have e3 : i3 = i := Fin.ext (by rw [← hi3]; simp only [Array.getElem?_eq_getElem hj', Option.getD_some, hwi])
+    subst e2; subst e3
+    exact ⟨⟨j, hjM⟩, hr, hr3⟩
+
 /-- **`Tab.inl X` denotes `inl` on the values `X`** (`idU X ≫ Core.Rel.inl`, the injection `junc` is defined by). -/
 theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl X = .ok T) (hX : Vals.WF X)
     (a : A.El) (s : (Obj.sum A B).El) : T.Holds a s ↔ (∃ i, X.row i = a) ∧ Core.Rel.inl a s := by
@@ -492,15 +582,14 @@ theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl
     unfold Obj.optEl; generalize Obj.band_some ht = p; obtain ⟨p1, p2⟩ := p; rfl
   · simp only [bind, Except.bind] at h
     split at h; · cases h
-    rename_i ti hti
-    obtain ⟨tag, idx⟩ := ti
+    rename_i tg htg
     split at h; · cases h
     rename_i y hy
-    rw [canon_holds h ⟨hX, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨hX, Vals.none_wf hy⟩⟩]
+    rw [canon_holds h ⟨hX, Vals.ofGen_wf (h := by assumption) hX (Vals.zeros_ok _ _ _ hy).1 (fun i _ => (Vals.zeros_ok _ _ _ hy).2 i)
+      (fun i hi => by rw [tagCol_get htg i] at hi; cases hi)⟩]
     refine holds_inl_of_row (fun k => ?_) a s
-    obtain ⟨ht, hc⟩ := injCols_ok hti k
-    simp only [Vals.row, Vals.view_ofGen, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
-    rfl
+    simp only [Vals.row, Vals.view_ofGen, tagCol_get htg k, Bool.false_eq_true, if_false]
+    try rfl
 
 /-- **`Tab.inr Y` denotes `inr` on the values `Y`** (`idU Y ≫ Core.Rel.inr`). -/
 theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr Y = .ok T) (hY : Vals.WF Y)
@@ -514,21 +603,20 @@ theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr
     exact Vals.optInr_get ht Y k
   · simp only [bind, Except.bind] at h
     split at h; · cases h
-    rename_i ti hti
-    obtain ⟨tag, idx⟩ := ti
+    rename_i tg htg
     split at h; · cases h
     rename_i x hx
-    rw [canon_holds h ⟨hY, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨Vals.none_wf hx, hY⟩⟩]
+    rw [canon_holds h ⟨hY, Vals.ofGen_wf (h := by assumption) (Vals.zeros_ok _ _ _ hx).1 hY (fun i hi => by rw [tagCol_get htg i] at hi; cases hi)
+      (fun i _ => (Vals.zeros_ok _ _ _ hx).2 i)⟩]
     refine holds_inr_of_row (fun k => ?_) b s
-    obtain ⟨ht, hc⟩ := injCols_ok hti k
-    simp only [Vals.row, Vals.view_ofGen, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
-    rfl
+    simp only [Vals.row, Vals.view_ofGen, tagCol_get htg k, if_true]
+    try rfl
 
 /-- **`Tab.inlConv X` denotes `inl°` on the values `X`** (`idU X ≫ Core.Rel.inl°`): a sum value of `X` beside its
 left summand, where it has one. -/
 theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A} (h : Tab.inlConv X = .ok T)
     (hX : Vals.WF X) (s : (Obj.sum A B).El) (a : A.El) : T.Holds s a ↔ (∃ i, X.row i = s) ∧ Core.Rel.inl a s := by
-  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
   · -- a band column: `inl`'s one null row, whose left payload is the unit `1`, which every `a` is
     obtain ⟨rfl, rfl⟩ := Obj.band_some hb
     simp only [bind, Except.bind] at h
@@ -551,58 +639,39 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i D hD
-  split at h
-  · split at h; · cases h
-    rename_i I hI
-    split at h; · cases h
-    rename_i C hC
-    split at h; · cases h
-    rename_i E hE
-    split at h; · cases h
-    rename_i F hF
-    split at h; · cases h
-    rename_i M hM
-    have wD := idU_wf hD hXw
-    have wF := dom_wf hF (comp_wf hE wD (conv_wf hC (inr_wf hI hX.2)))
-    split at h
-    · rename_i hM0
-      rw [zero_holds h, false_iff]
-      rintro ⟨⟨i, hi⟩, hs⟩
-      simp only [Core.Rel.inl, Core.Rel.graph] at hs
-      have hd : D.Holds s s := (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩
-      have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
-      have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM wD wF _ _).2 ⟨hd, hf⟩)
-      obtain ⟨-, b, hb⟩ := (dom_holds hF (comp_wf hE wD (conv_wf hC (inr_wf hI hX.2))).1 _ _).1 hf
-      obtain ⟨s', hs', hc⟩ := (comp_holds hE wD (conv_wf hC (inr_wf hI hX.2)) _ _).1 hb
-      obtain ⟨rfl, -⟩ := (idU_holds hD hXw _ _).1 hs'
-      have he := ((inr_holds hI hX.2 _ _).1 ((conv_holds hC (inr_wf hI hX.2) _ _).1 hc)).2
-      simp only [Core.Rel.inr, Core.Rel.graph] at he
-      exact absurd (hs.symm.trans he) (by simp)
-    · cases h
-  · rename_i hl
-    split at h; · cases h
-    rename_i I hI
-    split at h; · cases h
-    rename_i C hC
-    rw [comp_holds h (idU_wf hD hXw) (conv_wf hC (inl_wf hI hX.1))]
-    constructor
-    · rintro ⟨s', hd, hc⟩
-      obtain ⟨rfl, hs⟩ := (idU_holds hD hXw _ _).1 hd
-      exact ⟨hs, ((inl_holds hI hX.1 _ _).1 ((conv_holds hC (inl_wf hI hX.1) _ _).1 hc)).2⟩
-    · rintro ⟨⟨i, hi⟩, hs⟩
-      refine ⟨s, (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inl_wf hI hX.1) _ _).2 ((inl_holds hI hX.1 _ _).2 ⟨?_, hs⟩)⟩
-      simp only [Core.Rel.inl, Core.Rel.graph] at hs
-      subst hs
-      simp only [Vals.row, hv] at hi
-      split at hi
-      · cases hi
-      · rw [dif_pos (by omega)] at hi; exact ⟨_, Sum.inl.inj hi⟩
+  rename_i b hbm
+  split at h; · cases h
+  rename_i ws hws; obtain ⟨M, sel⟩ := ws
+  split at h; · cases h
+  rename_i G hG
+  split at h; · cases h
+  rename_i g hg
+  have hvt := Vals.gather_tag_valid hv hG
+  have hmask : ∀ i : Fin n.toNat, (Enc.raw .i64 n b)[i.1]?.getD 0 = if (!tag.get i) = true then 1 else 0 := fun i => by
+    obtain ⟨-, -, -, hr⟩ := colMap_raw hbm
+    obtain ⟨a, ha, he⟩ := Arr.get_u1 tag hvt i
+    have := hr i.1 i.2
+    rw [ha] at this
+    simp only [Option.getD_some, Op.eval, Except.ok.injEq] at this
+    rw [← this, he]; cases tag.get i <;> decide
+  have hrow : ∀ i, X.row i = if tag.get i then .inr (y.row i) else .inl (x.row i) := fun i => by simp only [Vals.row, hv]
+  rw [selConv_holds (p := fun i => !tag.get i) hmask hws hG hg h hXw hX.1]
+  simp only [Core.Rel.inl, Core.Rel.graph]
+  constructor
+  · rintro ⟨i, hp, rfl, rfl⟩
+    have ht : tag.get i = false := by simpa using hp
+    exact ⟨⟨i, rfl⟩, by rw [hrow, ht]; rfl⟩
+  · rintro ⟨⟨i, hi⟩, hs⟩
+    subst hs
+    rcases ht : tag.get i with _ | _
+    · refine ⟨i, by simp [ht], hi, ?_⟩
+      simpa [hrow, ht] using hi
+    · simp [hrow, ht] at hi
 
 /-- **`Tab.inrConv X` denotes `inr°` on the values `X`** (`idU X ≫ Core.Rel.inr°`): the mirror of `inlConv_holds`. -/
 theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B} (h : Tab.inrConv X = .ok T)
     (hX : Vals.WF X) (s : (Obj.sum A B).El) (b : B.El) : T.Holds s b ↔ (∃ i, X.row i = s) ∧ Core.Rel.inr b s := by
-  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
   · -- a band column: the rows `kscan .null`, `not` and `whereCol` keep are the non-null ones (`Opt.isNul_eq_false`)
     rename_i t
     have hXr : ∀ i, X.row i = Obj.optEl hb (x.get i) := fun i => by simp only [Vals.row, hv]
@@ -701,53 +770,28 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i D hD
-  split at h
-  · split at h; · cases h
-    rename_i I hI
-    split at h; · cases h
-    rename_i C hC
-    split at h; · cases h
-    rename_i E hE
-    split at h; · cases h
-    rename_i F hF
-    split at h; · cases h
-    rename_i M hM
-    have wD := idU_wf hD hXw
-    have wF := dom_wf hF (comp_wf hE wD (conv_wf hC (inl_wf hI hX.1)))
-    split at h
-    · rename_i hM0
-      rw [zero_holds h, false_iff]
-      rintro ⟨⟨i, hi⟩, hs⟩
-      simp only [Core.Rel.inr, Core.Rel.graph] at hs
-      have hd : D.Holds s s := (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩
-      have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
-      have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM wD wF _ _).2 ⟨hd, hf⟩)
-      obtain ⟨-, a, ha⟩ := (dom_holds hF (comp_wf hE wD (conv_wf hC (inl_wf hI hX.1))).1 _ _).1 hf
-      obtain ⟨s', hs', hc⟩ := (comp_holds hE wD (conv_wf hC (inl_wf hI hX.1)) _ _).1 ha
-      obtain ⟨rfl, -⟩ := (idU_holds hD hXw _ _).1 hs'
-      have he := ((inl_holds hI hX.1 _ _).1 ((conv_holds hC (inl_wf hI hX.1) _ _).1 hc)).2
-      simp only [Core.Rel.inl, Core.Rel.graph] at he
-      exact absurd (hs.symm.trans he) (by simp)
-    · cases h
-  · rename_i hr
-    split at h; · cases h
-    rename_i I hI
-    split at h; · cases h
-    rename_i C hC
-    rw [comp_holds h (idU_wf hD hXw) (conv_wf hC (inr_wf hI hX.2))]
-    constructor
-    · rintro ⟨s', hd, hc⟩
-      obtain ⟨rfl, hs⟩ := (idU_holds hD hXw _ _).1 hd
-      exact ⟨hs, ((inr_holds hI hX.2 _ _).1 ((conv_holds hC (inr_wf hI hX.2) _ _).1 hc)).2⟩
-    · rintro ⟨⟨i, hi⟩, hs⟩
-      refine ⟨s, (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inr_wf hI hX.2) _ _).2 ((inr_holds hI hX.2 _ _).2 ⟨?_, hs⟩)⟩
-      simp only [Core.Rel.inr, Core.Rel.graph] at hs
-      subst hs
-      simp only [Vals.row, hv] at hi
-      split at hi
-      · rw [dif_pos (by omega)] at hi; exact ⟨_, Sum.inr.inj hi⟩
-      · cases hi
+  rename_i ws hws; obtain ⟨M, sel⟩ := ws
+  split at h; · cases h
+  rename_i G hG
+  split at h; · cases h
+  rename_i g hg
+  have hvt := Vals.gather_tag_valid hv hG
+  have hmask : ∀ i : Fin n.toNat, (Enc.raw .i64 n tag.enc)[i.1]?.getD 0 = if tag.get i = true then 1 else 0 := fun i => by
+    obtain ⟨a, ha, he⟩ := Arr.get_u1 tag hvt i
+    rw [ha, Option.getD_some, he]
+  have hrow : ∀ i, X.row i = if tag.get i then .inr (y.row i) else .inl (x.row i) := fun i => by simp only [Vals.row, hv]
+  rw [selConv_holds (p := fun i => tag.get i) hmask hws hG hg h hXw hX.2.1]
+  simp only [Core.Rel.inr, Core.Rel.graph]
+  constructor
+  · rintro ⟨i, hp, rfl, rfl⟩
+    have ht : tag.get i = true := hp
+    exact ⟨⟨i, rfl⟩, by rw [hrow, ht]; rfl⟩
+  · rintro ⟨⟨i, hi⟩, hs⟩
+    subst hs
+    rcases ht : tag.get i with _ | _
+    · simp [hrow, ht] at hi
+    · refine ⟨i, ht, hi, ?_⟩
+      simpa [hrow, ht] using hi
 
 end Tab
 

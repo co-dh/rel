@@ -47,7 +47,7 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
       else pure ⟨m, lo, hi, ← Vals.pack f⟩
   | .sum _ _, _, s => match s.view with
     | .opt .. => pure s
-    | .gen h l r tag idx x y => do pure (Vals.ofGen h l r tag idx (← Vals.pack x) (← Vals.pack y))
+    | .gen h tag x y => do pure (Vals.ofGen h tag (← Vals.pack x) (← Vals.pack y))
   | .one, _, _ => pure ()
 
 /-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/

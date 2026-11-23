@@ -457,17 +457,18 @@ def Obj.optEl {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : Opt
 def Obj.optOf {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : (Obj.sum a b).El) : Option (El t) := by
   obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact v.elim (fun _ => none) some
 
-/-- How a sum side of `n` rows is stored, by `Obj.band`: the band's one `Opt` column, or a tag, a position and the two
-    summand sides (`va`, `vb` their columns at a count). -/
+/-- How a sum side of `n` rows is stored, by `Obj.band`: the band's one `Opt` column, or a tag and the two summand
+    sides, each `n` rows (`va`, `vb` their columns at a count): dense, a row holds its value in its own side's column and
+    `0` (`Vals.zeros`) in the other's. -/
 @[reducible] def SumCols (va vb : USize → Type) (n : USize) : Option QAtomicType → Type
   | some t => Opt t n
-  | none => (l : USize) × (r : USize) × Arr .u1 n × Arr .i64 n × va l × vb r
+  | none => Arr .u1 n × va n × vb n
 
 /-- `n` values of `A`, one column per atom, side by side (struct of arrays): nothing boxed. A `arr b`
     column is one flat payload of `m` values of `b` and two long columns `lo`, `hi`: row `i` is the slice
     `[lo i, hi i)` of the payload, so picking rows gathers `lo` and `hi` and copies no flat value. A `sum a b`
-    column is a tag and a position per row into one of two payloads, `l` values of `a` (tag `false`) and `r`
-    of `b` (tag `true`): picking rows gathers the tag and the position and copies no value. -/
+    column is a tag and two columns of `n` rows, `a`'s (tag `false`) and `b`'s (tag `true`), the side the tag does not
+    name holding `0`: picking rows gathers all three. -/
 @[reducible] def Vals : Obj → USize → Type
   | .atom t, n => Arr t n
   | .prod a b, n => Vals a n × Vals b n
@@ -475,11 +476,10 @@ def Obj.optOf {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : (Ob
   | .sum a b, n => SumCols (fun l => Vals a l) (fun r => Vals b r) n (Obj.band a b)
   | .one, _ => Unit
 
-/-- A sum side's columns, split by `Obj.band`: the band's one `Opt` column, or a tag and a position per row into two
-    payloads (the summand sides given by `va`, `vb`). -/
+/-- A sum side's columns, split by `Obj.band`: the band's one `Opt` column, or a tag and the two summand columns. -/
 inductive SumV (a b : Obj) (n : USize) where
   | opt {t : QAtomicType} (h : Obj.band a b = some t) (x : Opt t n)
-  | gen (h : Obj.band a b = none) (l r : USize) (tag : Arr .u1 n) (idx : Arr .i64 n) (x : Vals a l) (y : Vals b r)
+  | gen (h : Obj.band a b = none) (tag : Arr .u1 n) (x : Vals a n) (y : Vals b n)
 
 /-- `Vals (.sum a b)` taken apart by `Obj.band`: the one entry to a sum side's columns. -/
 def Vals.view {a b : Obj} {n : USize} (x : Vals (.sum a b) n) : SumV a b n :=
@@ -487,7 +487,7 @@ def Vals.view {a b : Obj} {n : USize} (x : Vals (.sum a b) n) : SumV a b n :=
 where
   go : (o : Option QAtomicType) → Obj.band a b = o → SumCols (fun l => Vals a l) (fun r => Vals b r) n o → SumV a b n
     | some _, hb, x => .opt hb x
-    | none, hb, ⟨l, r, tag, idx, x, y⟩ => .gen hb l r tag idx x y
+    | none, hb, ⟨tag, x, y⟩ => .gen hb tag x y
 
 /-- The sum side of the band column `x` (`Obj.band a b = some t`). -/
 def Vals.ofOpt {a b : Obj} {n : USize} {t : QAtomicType} (h : Obj.band a b = some t) (x : Opt t n) :
@@ -495,25 +495,23 @@ def Vals.ofOpt {a b : Obj} {n : USize} {t : QAtomicType} (h : Obj.band a b = som
   show SumCols (fun l => Vals a l) (fun r => Vals b r) n (Obj.band a b) from
     h ▸ (x : SumCols (fun l => Vals a l) (fun r => Vals b r) n (some t))
 
-/-- The sum side of a tag, positions and two summands (`Obj.band a b = none`). -/
-def Vals.ofGen {a b : Obj} {n : USize} (h : Obj.band a b = none) (l r : USize) (tag : Arr .u1 n) (idx : Arr .i64 n)
-    (x : Vals a l) (y : Vals b r) : Vals (.sum a b) n :=
+/-- The sum side of a tag and two summand columns (`Obj.band a b = none`). -/
+def Vals.ofGen {a b : Obj} {n : USize} (h : Obj.band a b = none) (tag : Arr .u1 n) (x : Vals a n) (y : Vals b n) :
+    Vals (.sum a b) n :=
   show SumCols (fun l => Vals a l) (fun r => Vals b r) n (Obj.band a b) from
-    h ▸ (⟨l, r, tag, idx, x, y⟩ : SumCols (fun l => Vals a l) (fun r => Vals b r) n none)
+    h ▸ (⟨tag, x, y⟩ : SumCols (fun l => Vals a l) (fun r => Vals b r) n none)
 
 /-- `SumV` put back: `Vals.view`'s inverse. -/
 def SumV.vals {a b : Obj} {n : USize} : SumV a b n → Vals (.sum a b) n
   | .opt h x => Vals.ofOpt h x
-  | .gen h l r tag idx x y => Vals.ofGen h l r tag idx x y
+  | .gen h tag x y => Vals.ofGen h tag x y
 
 /-- The position `k` clamped into `[0, m)`: the nearest position of a side of `m > 0` values. -/
 def clampFin (k : Int64) (m : Nat) (h : 0 < m) : Fin m :=
   ⟨min (max k.toInt 0).toNat (m - 1), Nat.lt_of_le_of_lt (Nat.min_le_right _ _) (by omega)⟩
 
 /-- The value at row `i`, read across the columns. An array row is its slice clamped to `[0, m)`, so every
-    `lo`, `hi` reads as an array. A sum row is its side's value at its position clamped into the side, so
-    every position reads as a value of its side; a side of no values reads that side's `Obj.dflt`, the null a
-    gather past the side reads, so the row keeps its tag. -/
+    `lo`, `hi` reads as an array. A sum row is the value of the side its tag names, at the row itself. -/
 def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
   | .atom _, _, x, i => Arr.get x i
   | .prod _ _, _, x, i => (Vals.row x.1 i, Vals.row x.2 i)
@@ -521,9 +519,7 @@ def Vals.row : {A : Obj} → {n : USize} → Vals A n → Fin n.toNat → A.El
       if (lo.get i).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi.get i).toInt then some (Vals.row f j) else none
   | .sum a b, _, s, i => match s.view with
     | .opt h x => Obj.optEl h (x.get i)
-    | .gen _ l r tag idx x y =>
-    if tag.get i then .inr (if h : 0 < r.toNat then Vals.row y (clampFin (idx.get i) r.toNat h) else b.dflt)
-    else .inl (if h : 0 < l.toNat then Vals.row x (clampFin (idx.get i) l.toNat h) else a.dflt)
+    | .gen _ tag x y => if tag.get i then .inr (Vals.row y i) else .inl (Vals.row x i)
   | .one, _, _, _ => ()
 
 -- Kept with no caller: an atom side's row is the `Arr`'s element, the `List` reading of a side.
@@ -553,12 +549,10 @@ private def Vals.rowsImpl : {A : Obj} → {n : USize} → Vals A n → Array A.E
       (fs.extract (los[i]?.getD 0).toInt.toNat (his[i]?.getD 0).toInt.toNat).toList
   | .sum a b, n, s => match s.view with
     | .opt h x => Array.ofFn (n := n.toNat) fun i => Obj.optEl h (x.get i)
-    | .gen _ l r tag idx x y =>
-    let xs := Vals.rowsImpl x; let ys := Vals.rowsImpl y
-    let tags := Arr.rowsImpl tag; let idxs := Arr.rowsImpl idx
+    | .gen _ tag x y =>
+    let xs := Vals.rowsImpl x; let ys := Vals.rowsImpl y; let tags := Arr.rowsImpl tag
     Array.ofFn (n := n.toNat) fun i =>
-      if tags[i]?.getD false then .inr (ys[min (idxs[i]?.getD 0).toInt.toNat (r.toNat - 1)]?.getD b.dflt)
-      else .inl (xs[min (idxs[i]?.getD 0).toInt.toNat (l.toNat - 1)]?.getD a.dflt)
+      if tags[i]?.getD false then .inr (ys[i]?.getD b.dflt) else .inl (xs[i]?.getD a.dflt)
   | .one, n, _ => Array.replicate n.toNat ()
 
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
@@ -648,12 +642,12 @@ private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.g
 #guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.i64 1), .general #[] _ _ => true | _, _ => false
 
 -- `Tab.toList` runs as `toListImpl`; the spec `List.ofFn` of the rows is computed beside it. An `arr` side whose
--- slices are in range, past the payload and negative, and a `sum` side whose positions clamp at both ends.
+-- slices are in range, past the payload and negative, and a dense `sum` side.
 private def ta : Tab .long (.arr .long) := ⟨3, l3, ⟨4, Arr.ofBytes .i64 (packLongs [0, 2, -5]) (by longs_lit),
   Arr.ofBytes .i64 (packLongs [2, 9, 0]) (by longs_lit), Arr.ofBytes .i64 (packLongs [10, 20, 30, 40]) (by longs_lit)⟩⟩
 private def tsum : Tab .long (.sum .long .long) :=
-  ⟨3, l3, ⟨2, 1, bs, Arr.ofBytes .i64 (packLongs [0, 7, -3]) (by longs_lit),
-  Arr.ofBytes .i64 (packLongs [5, 6]) (by longs_lit), Arr.ofBytes .i64 (packLongs [9]) (by longs_lit)⟩⟩
+  ⟨3, l3, ⟨bs, Arr.ofBytes .i64 (packLongs [0, 6, 0]) (by longs_lit),
+  Arr.ofBytes .i64 (packLongs [9, 0, 9]) (by longs_lit)⟩⟩
 #guard (ta.toList : List (Int64 × List Int64)) == [(7, [10, 20]), (-1, [30, 40]), (42, [])]
 #guard (ta.toList : List (Int64 × List Int64)) == List.ofFn fun i => (ta.key.row i, ta.val.row i)
 #guard (tsum.toList : List (Int64 × Sum Int64 Int64)) == [(7, .inr 9), (-1, .inl 6), (42, .inr 9)]
