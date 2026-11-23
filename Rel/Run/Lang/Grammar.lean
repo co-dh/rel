@@ -212,6 +212,8 @@ syntax (name := sNumAt) &"obj" relWord ":" ident : relStmt
 -- a schema's column `k : K`
 syntax relField := relWord ":" relObj
 syntax (name := sSchema) &"schema" relWord "=" "{" relField,+ "}" : relStmt
+-- `schema S from "dir"`: the schema of the table directory `dir`, read from its `.d` at elaboration (F1)
+syntax (name := sSchemaFrom) &"schema" relWord &" from " str : relStmt
 -- `where t ≜ L`: the table `L` for the input `t` (IO design A.4)
 syntax (name := sPrint) &"print" rel ("where" relItem,+)? : relStmt
 syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? : relStmt

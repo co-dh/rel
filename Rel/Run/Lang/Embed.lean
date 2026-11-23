@@ -2,6 +2,7 @@ module
 
 public meta import Rel.Run.Lang.Grammar
 public meta import Rel.Run.Lang.TmGen
+public meta import Rel.Run.Table
 public meta import Lean
 
 public meta section
@@ -160,10 +161,51 @@ def stmt (s : Syntax) : C Decl := do
     pure (.«theorem» p n ps e f eq on hyps steps)
   | _ => failAt s "expected a declaration"
 
+/-- `A` as a program writes it, each atom `t` the object named by it (`atomName`), and the atoms it names: where
+    `schema S from` puts a column. -/
+def oexpOf : Obj → OExp × List Rel.QAtomicType
+  | .atom t => (.name {} (atomName t), [t])
+  | .prod a b => let (x, s) := oexpOf a; let (y, u) := oexpOf b; (.prod x y, s ++ u)
+  | .sum a b => let (x, s) := oexpOf a; let (y, u) := oexpOf b; (.sum x y, s ++ u)
+  | .arr a => let (x, s) := oexpOf a; (.list x, s)
+  | .one => (.name {} "1", [])
+
+/-- `schema S from "dir"` (F1): the schema `diskOf` read from `dir`, each column at the unbounded object of its atom,
+    named by the atom (`obj f64 : f64`), declared here unless `ds`, the declarations before, declare it so. -/
+def schemaFrom (s : Syntax) (ds : List Decl) : C (List Decl) := do
+  let p ← posOf s
+  let n ← wordOf s[1]
+  if let some r := (← get).taken.lookup n then failAt s[1] s!"`{n}` is already defined {r}"
+  let some f := s[3].isStrLit? | failAt s[3] "expected the path as a string literal"
+  let some (_, cs, ts) := (← get).disk.find? (·.1 == f)
+    | failAt s[3] s!"the schema of {f} was not read before the program (`Embed.diskOf`)"
+  let objs ← ts.filterMapM fun t => do
+    let a := atomName t
+    if ds.any fun | .obj _ m (.num u) => m == a && u == t | _ => false then return none
+    if let some r := (← get).taken.lookup a then
+      failAt s[3] s!"a column of {f} is at the atom {a}, so at the object `obj {a} : {a}`; `{a}` is already defined {r} as another object"
+    if (litLayout t).isNone then
+      failAt s[3] s!"a column of {f} is at the atom {a}, and no object of {a} is declared: no literal of {a} is stored"
+    return some (Decl.obj p a (.num t))
+  if let .error m := Schema.check cs then failAt s[3] m
+  return objs ++ [.obj p n (.schema cs)]
+
 /-- The program of the statements `ss`, read in the scope `s₀`, each statement in the scope those before it leave
     (`Parse.after`); and the scope it leaves. -/
 def program (fm : FileMap) (s₀ : Parse.S) (ss : Array Syntax) : Except Err (Program × Parse.S) :=
-  (ss.toList.mapM (fun x => do let d ← stmt x; modify (Parse.after · [d]); pure d) |>.run fm).run s₀
+  (ss.toList.foldlM (init := []) (fun ds (x : Syntax) => do
+    let es ← if x.getKind == ``sSchemaFrom then schemaFrom x ds else do pure [← stmt x]
+    modify (Parse.after · es); pure (ds ++ es)) |>.run fm).run s₀
+
+/-- The schemas the statements `ss` read (`schema S from "dir"`, F1), each read here, at elaboration, from its `.d`
+    and files (`Table.readSchema`): the program is fixed by the data as it is now, and is elaborated again when the
+    data changes. A path that is no literal is left to `schemaFrom`, which refuses it at its position. -/
+def diskOf (ss : Array Syntax) : CommandElabM (List (String × List (String × OExp) × List Rel.QAtomicType)) :=
+  ss.toList.filterMapM fun s => do
+    let some f := (if s.getKind == ``sSchemaFrom then s[3].isStrLit? else none) | return none
+    match ← (Table.readSchema f).toBaseIO with
+    | .error e => throwErrorAt s[3] "{e}"
+    | .ok S => return some (f, S.map (fun (c, o) => (c, (oexpOf o).1)), (S.flatMap fun c => (oexpOf c.2).2).eraseDups)
 
 unsafe def programOfUnsafe (n : Name) : CommandElabM Program := do
   match (← getEnv).evalConstCheck Program (← getOptions) ``Program n with
@@ -256,7 +298,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
 /-- `rel_program n where …`, read in the current namespace and `open`s (module design §2.3): no program is in
     scope that is not `open`ed or written qualified. -/
 @[command_elab relProgram] def elabRelProgram : CommandElab := fun stx => do
-  match program (← getFileMap) (← scopeHere) stx[4].getArgs with
+  match program (← getFileMap) { (← scopeHere) with disk := ← diskOf stx[4].getArgs } stx[4].getArgs with
   | .error e => throwErrorAt stx "{e}"
   | .ok (prog, s) => define stx stx[2] prog s.used
 
@@ -269,7 +311,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
   let (res, ns) := resolverAt (← getEnv) (← getOptions) reg bns bos
   let s := Parse.after { cs := #[], res, ns } (base.filter fun | .obj .. => true | _ => false)
   let named : Decl → Option String := fun | .defn _ x .. => some x | _ => none
-  match program (← getFileMap) s stx[7].getArgs with
+  match program (← getFileMap) { s with disk := ← diskOf stx[7].getArgs } stx[7].getArgs with
   | .error e => throwErrorAt stx "{e}"
   | .ok (news, s') => do
     for d in news do

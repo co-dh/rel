@@ -39,6 +39,9 @@ structure S where
   vars : Bool := false
   /-- The object variables of the definition whose body is being read: an object there may name one (`x $ φ`, §e). -/
   ovars : List String := []
+  /-- The schemas `schema S from "dir"` reads, read from disk before the program is (`Embed.diskOf`, F1): each
+      directory, its columns as the program writes them, and the atoms whose objects they are at. -/
+  disk : List (String × List (String × OExp) × List Rel.QAtomicType) := []
 
 abbrev P := StateT S (Except Err)
 

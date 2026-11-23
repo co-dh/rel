@@ -125,10 +125,44 @@ def readCols (dir : String) : (R : Schema) → IO (String × (n : USize) × Vals
     let (fy, y) ← readVals f.2 dir f.1
     return (fx, ⟨n, x, ← same (F := Vals f.2) fx n fy y⟩)
 
+/-- The texts `ts` as a column of `[C]` (`writeDict`'s form), each a cell of its UTF-8 bytes. -/
+def textCol (ts : List String) : (n : USize) × Vals (.arr (.atom .char)) n :=
+  let bs := ts.map (·.toUTF8.toList)
+  -- the cells' bounds: `ends[i]` the bytes before cell `i`
+  let ends : List Nat := bs.foldl (fun e b => e ++ [e.getLast?.getD 0 + b.length]) [0]
+  let cs := bs.flatten
+  ⟨bs.length.toUSize, cs.length.toUSize, Arr.ofFn .i64 _ (fun i => (ends.getD i.val 0).toUInt64),
+    Arr.ofFn .i64 _ (fun i => (ends.getD (i.val + 1) 0).toUInt64), Arr.ofFn .char _ (fun i => (cs.getD i.val 0).toUInt64)⟩
+
+/-- The name of a side's column order in its directory, q's `.d`: the schema's names as a text column (`textCol`). -/
+def dName : String := ".d"
+
 /-- The side of schema `S` in the directory `dir`, one file per column (an atom column) or per atom of it (`cols`),
-    named by the column. -/
+    named by the column; the names in order as `.d` (`dName`), from which `readSchema` reads `S` back. -/
 def write {n : USize} (S : Schema) (dir : String) (x : Vals S.obj n) : IO Unit := do
-  IO.ofExcept S.check; IO.FS.createDirAll dir; writeCols dir S.reverse x
+  IO.ofExcept S.check; IO.FS.createDirAll dir
+  writeVals (A := .arr (.atom .char)) dir dName (textCol S.names).2; writeCols dir S.reverse x
+
+/-- The object of the side stored under `p` in `dir`, read back from its files, the converse of `cols`'s paths: a file
+    at `p` is an atom (its header's type code) or a side of `1` (`oneKind`); `p.lo` a list, `p.tag` a sum, `p.1` a
+    pair; `none` when nothing is stored under `p`. -/
+partial def objOf? (dir p : String) : IO (Option Obj) := do
+  let has (q : String) : IO Bool := System.FilePath.pathExists (file dir q)
+  let need (q : String) : IO Obj := do
+    let some a ← objOf? dir q | throw (IO.userError s!"{file dir q}: no column file, a part of the side {file dir p}")
+    pure a
+  if ← has p then
+    let f ← Db.ownMap (file dir p)
+    if f.kind == oneKind then return some .one
+    let some (_, t) := atomNames.find? (·.2.code.toUInt8 == f.code)
+      | throw (IO.userError s!"{file dir p}: atom type code {f.code}, the code of no atom")
+    return some (.atom t)
+  if ← has (p ++ ".lo") then return some (.arr (← need (p ++ ".e")))
+  if ← has (p ++ ".tag") then return some (.sum (← need (p ++ ".l")) (← need (p ++ ".r")))
+  match ← objOf? dir (p ++ ".1") with
+  | some a => return some (.prod a (← need (p ++ ".2")))
+  | none => return none
+
 
 /-- The side of schema `S` read from `dir`: the columns `S` names, each at its declared object, all of one count; a
     missing file, another atom type or another count is the error naming the file. -/
@@ -191,6 +225,19 @@ def decode {n : USize} (what : String) (D : Dict) (y : Arr .sym n) : Except Stri
 /-- The positional table of schema `S` in `dir`: its rows' key the positions. -/
 def read (S : Schema) (dir : String) : IO (Tab .long S.obj) := do
   let (_, ⟨_, x⟩) ← readSide S dir; IO.ofExcept (frame x)
+
+/-- The schema of the side in `dir`, for a program that declares none (`schema S from "dir"`, `dataframe-design` F1):
+    the names from its `.d`, each column's object from its files (`objOf?`). -/
+def readSchema (dir : String) : IO Schema := do
+  let (fd, ⟨_, x⟩) ← readVals (.arr (.atom .char)) dir dName
+  let ns ← (← IO.ofExcept (frame x)).toList.mapM fun (_, b) =>
+    match String.fromUTF8? ⟨(b.map fun c => c.toNat.toUInt8).toArray⟩ with
+    | some n => pure n
+    | none => throw (IO.userError s!"{fd}: a column name that is no UTF-8 text")
+  let S ← ns.mapM fun n => do
+    let some o ← objOf? dir n | throw (IO.userError s!"{dir}: no file of the column '{n}' that {fd} names")
+    pure (n, o)
+  IO.ofExcept ((Schema.check S).mapError (s!"{fd}: " ++ ·)); pure S
 
 /-- A keyed table, q's dictionary from a key table to a value table: the key side's columns in `dir/key`, the value
     side's in `dir/val`, row `i` of each the pair `i` of `t`. -/
