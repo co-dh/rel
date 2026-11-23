@@ -359,7 +359,7 @@ end GenK
     itself (`foldI`); a row not here has no code (`Tm.hasCode`). The operator is a constant given its leading
     arguments first: the `floatOps` rows share `Tab.floatOp`, given the row. After `GenK`, which `foldI` names. -/
 def kernRows : List (String × Lean.Name × List Lean.Expr) :=
-  ([("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify),
+  ([("τ", ``Tab.tau), ("length", ``Tab.length), ("setify", ``Tab.setify), ("ymd", ``Tab.ymd),
    ("snoc", ``Tab.snoc), ("cons", ``Tab.cons), ("cat", ``Tab.cat), ("zip", ``Tab.zip), ("sum", ``Tab.sum),
    ("uncons", ``Tab.uncons), ("unsnoc", ``Tab.unsnoc), ("uncat", ``Tab.uncat),
    ("prefix", ``Tab.«prefix»), ("suffix", ``Tab.suffix),

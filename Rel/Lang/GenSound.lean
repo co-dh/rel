@@ -187,7 +187,7 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc",
-   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil", "est", "front"] ++
+   "tails", "takewhile", "sums", "flat", "$", "ymd", "foldI", "star", "dom", "ran", "nil", "est", "front"] ++
   floatOps.map (·.1) ++ arithOps.map (·.1) ++ ["succ"] ++ cmpOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
@@ -697,6 +697,12 @@ theorem rowOK_cast : RowOK "$" := rowOK_of (c := RowCode.cast) rfl rfl fun _ σ 
   rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
     exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.cast_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.cast_den h⟩⟩
 
+/-- `ymd` at the objects `σ` names: the graph `ymdDen`, no ordering hypothesis. -/
+theorem rowOK_ymd : RowOK "ymd" := rowOK_of (c := RowCode.ymd) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
+    exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.ymd_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.ymd_den h⟩⟩
+
 /-- A `floatOps` row at the object `σ` names: the graph `floatDen` of its `Op`, one case per row. -/
 theorem rowOK_float {s : String} (hs : s ∈ floatOps.map (·.1)) : RowOK s := by
   simp only [floatOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
@@ -1182,6 +1188,7 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h30 : r.sym = "sums"; · rw [h30]; exact rowOK_sums
   by_cases h31 : r.sym = "flat"; · rw [h31]; exact rowOK_flat
   by_cases h32 : r.sym = "$"; · rw [h32]; exact rowOK_cast
+  by_cases h41 : r.sym = "ymd"; · rw [h41]; exact rowOK_ymd
   by_cases h33 : r.sym = "foldI"; · rw [h33]; exact rowOK_foldI
   by_cases h34 : r.sym = "star"; · rw [h34]; exact rowOK_star
   by_cases h35 : r.sym = "dom"; · rw [h35]; exact rowOK_dom
@@ -1194,7 +1201,7 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h40 : r.sym = "succ"; · rw [h40]; exact rowOK_succ
   by_cases hc : r.sym ∈ cmpOps.map (·.1); · exact rowOK_cmp hc
   simp [rowsProved, hu, ha, hc, h40, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
-    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37, h38, h39] at h
+    h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37, h38, h39, h41] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
 theorem rowGens_proved {s : String} {f : List Obj → Codes → Option ((A : Obj) × (B : Obj) × Rel A B)}

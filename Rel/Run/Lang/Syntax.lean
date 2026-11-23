@@ -363,6 +363,10 @@ def prims : List Prim :=
    -- as its own infix form, which names the target object
    { sym := "$", sig := ([], .var {} "N", .var {} "F"), written := false,
      aop := .error "AOP declares no change of a number's representation" },
+   -- `ymd`: a text `[C]` to the day it spells (`Db.Csv.ymd`: `yyyy.mm.dd` or `yyyy-mm-dd`) at a date object `D`;
+   -- no row where it spells none (`Tab.ymd`)
+   { sym := "ymd", num := [("C", [.char]), ("D", [.date])], sig := ([], .list (.var {} "C"), .var {} "D"),
+     aop := .error "AOP declares no reading of a text as a day" },
    foldIRow, starRow, domRow, ranRow, nilRow, estRow, frontRow] ++
   -- `sqrt`, `neg`, …, `xexp`: each a relation `F ⟶ D` (`F×F ⟶ D` where its `Op` reads two operands) from a float
   -- object `F` (`num` its float atoms) to an object `D` of the row's answer atom (`floatOps`), one row per name

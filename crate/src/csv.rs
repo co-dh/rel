@@ -602,9 +602,11 @@ fn mdays(y: i64, m: i64) -> i64 {
 
 fn num(d: &[u8]) -> Option<i64> { digits(d).map(|v| v as i64) }
 
-/// `yyyy.mm.dd`, a valid day of years 0001-9999, as days since 1970-01-01 (`ymd`).
+/// `yyyy.mm.dd` or `yyyy-mm-dd` (one separator, written twice), a valid day of years 0001-9999, as days since
+/// 1970-01-01 (`ymd`).
 fn ymd(f: &[u8]) -> Option<i64> {
-    let [a, b, c, d, b'.', e, g, b'.', h, i] = *f else { return None };
+    let [a, b, c, d, s, e, g, s2, h, i] = *f else { return None };
+    if !(s == b'.' || s == b'-') || s2 != s { return None }
     let (y, m, dd) = (num(&[a, b, c, d])?, num(&[e, g])?, num(&[h, i])?);
     if y >= 1 && (1..=12).contains(&m) && dd >= 1 && dd <= mdays(y, m) { Some(days_from(y, m, dd)) } else { None }
 }
