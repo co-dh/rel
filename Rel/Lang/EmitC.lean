@@ -1120,6 +1120,27 @@ def unconsB (B : Obj) (left : Bool) (n : Nat) (X : Cols) : Bld TabB := funV n X 
     let l ← mapB .sub M (← gatherB M sel n e) (← wordsB M 1)
     canonT ⟨M, key, [.arr ".1" m (← gatherB M sel n s) l (← repath B ".1.e" f)] ++ (← repath B ".2" (← gatherCols M l m f))⟩
 
+/-- The check `Tab.uncat` makes on `n` cells over `m` elements, `n · (m + 1) + n + m + 1 < 2^63`, i.e. `(n + 1) · (m + 2) ≤ 2^63`,
+    on size registers as `n, m < 2^63` and `¬ 2^63 / (m + 2) < n + 1` (no sum or product wraps); else `fail`. -/
+def uncatBoundB (n m : Nat) : Bld Unit := do
+  let c ← lit (.size (2 ^ 63))
+  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
+    let q ← call1 (kernel% USize.div) #[c, ← call1 (kernel% USize.add) #[m, ← lit (.size 2)]]
+    ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, ← lit (.size 1)]]) (lit (.bit false)) (lit (.bit true))
+  guard ok "uncat: n cells over m elements past 2^63, n · (m + 1) + n + m + 1" #[n, m]
+
+/-- **`Tab.uncat`** (`cat°`) on the cells `X` (`n` rows) of `B`: each cell `[s, e)` to its `e - s + 1` splits (`expandB`),
+    split `u` of cell `G` the slices `[s, s + u)` and `[s + u, e)`; then `canonT`. No payload is built: both answer
+    cells are slices of `X`'s own. -/
+def uncatB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, f) ← arrCol "uncat" X
+  uncatBoundB n m
+  let (s, e) ← spanB n m lo hi
+  let (T, G, u) ← expandB n (← mapB .add n (← mapB .sub n e s) (← wordsB n 1))
+  let sG ← gatherB T G n s
+  let mid ← mapB .add T sG u
+  canonT ⟨T, ← gatherCols T G n X, [.arr ".1" m sG mid (← repath B ".1.e" f), .arr ".2" m mid (← gatherB T G n e) (← repath B ".2.e" f)]⟩
+
 /-- **`Vals.cat`** of the `n` cells `x`, `y` of `B` (`arrCol`s): row `i` the cell `x[i] ++ y[i]`, the payloads joined
     (`concatB`), EXPAND of the summed widths, element `u` of cell `G` read at `s₁[G] + u` where `u < w₁`, else at
     `m₁ + s₂[G] + u - w₁` (`b + c · (a - b)`), laid out one cell after another (`Vals.cells`). -/
@@ -1524,6 +1545,9 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``GenK.nil then match B with
     | .arr b => do let (n, X) ← known r.sym D.dom; nilB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
+  else if c == ``Tab.uncat then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; uncatB b n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
