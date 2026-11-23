@@ -1128,7 +1128,6 @@ def Op.row (p : Pos) : Op → M (Option Prim)
     | none => throw ⟨p, s!"internal: no row `{s}` in `prims`"⟩
   | .map => pure (some mapRow)
   | .est => pure (some estRow)
-  | .front => pure (some frontRow)
   | _ => pure none
 
 /-- `at(k) : [b] ⟶ b` is its definition `⟨𝟙, ⊤ {k}⟩ at` (`indexRow`): the pair of the array and the constant index `k`,
@@ -1159,7 +1158,6 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre 
     | .lt => (.lt p a rk, a, a)
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
-    | .nil => (.nil a b, a, .arr b)
     | .mem => (.mem a, .arr a, a)
     | .inl => (.inl a b, a, .sum a b)
     | .inr => (.inr b a, a, .sum b a)
@@ -1360,8 +1358,6 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
   match as with
   | [(q, s, t)] => do
     match o with
-    | .dom => pure (.rel (.dom q) s s)
-    | .ran => pure (.rel (.ran (.close p q s "ran( ) reads its argument whole")) t t)
     | .lam => pure (.rel (.lam q) s (.arr t))
     | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
@@ -1385,8 +1381,6 @@ def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
   if let some x ← o.row p then return ← appliedRowL I p x as
   let fs ← as.mapM (famOf I p)
   let r ← match o, fs with
-    | .dom, [R] => pure (lDom R)
-    | .ran, [R] => pure (lRan R)
     | .lam, [R] => pure (lLam I (some (.top p I R.2.1 none)) R)
     | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.mem b) (.arr b) b) R))
     | o, _ => notLiftable p s!"{o.sym}( )"
@@ -1418,9 +1412,10 @@ where
     | .mv i, .mv j => if i != j then unify p "the source of ⦇R⦈'s base inl R" src env.one
     | .mv _, _ => unify p "the source of ⦇R⦈'s base inl R" src env.one
     | _, _ => pure ()
-    match m, a with
-    | some I, .fam .. => pure (← appliedL I p .ran [a], s)
-    | _, _ => pure (← applied env p .ran [a.plain], s)
+    -- `ran(a)` is the prelude's definition, found by its row's constant, so a program that renames it still folds
+    match ranRow.prelude.bind fun c => env.ext.lookup c with
+    | some d => pure (← d.apply p [a], s)
+    | none => throw ⟨p, "⦇R⦈'s start is `ran(a)`, and the prelude's `ran` is not in scope"⟩
 
 /-- A binary operator on one relation each side. -/
 def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M Arg
@@ -1595,10 +1590,10 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .comp a b => do
     let x ← elabE env m a
     let p := b.pos
-    -- `Xest(Q)`, `Xfront(Q)` with `Q` a family: `est`, `front` run one `Q` on every array, so the rows of §e
+    -- `Xest(Q)` with `Q` a family: `est` runs one `Q` on every array, so the rows of §e
     -- work on `G ≜ X∋`, the values of each key; a closed `Q` takes the closed row below
     let q? ← match m, b with
-      | some _, .op _ .est [] [qe] | some _, .op _ .front [] [qe] => do
+      | some _, .op _ .est [] [qe] => do
         let y ← elabE env m qe; pure (if y.isFam then some y else none)
       | _, _ => pure none
     let est := match b with | .op _ .est _ _ => true | _ => false
