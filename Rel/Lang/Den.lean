@@ -222,8 +222,39 @@ abbrev estDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.R
 abbrev lamDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El (.arr B)) := fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b
 
 /-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
-abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := fun xs ys => ys.length = xs.length ∧
-  ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')
+abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) :=
+  foldDen (E := A) (V := .arr B) ((graph fun _ : Unit => ([] : Obj.El (.arr B)))° ≫ graph fun _ : Unit => [])
+    (rpair (graph Prod.fst) (graph Prod.snd ≫ T) ≫ graph fun p : Obj.El (.prod (.arr B) B) => p.1 ++ [p.2])
+
+theorem mapDen_iff {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) (xs : Obj.El (.arr A)) (ys : Obj.El (.arr B)) :
+    mapDen T xs ys ↔ ys.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht') := by
+  simp only [mapDen, foldDen, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair]
+  constructor
+  · rintro ⟨zs, hz, ⟨_, _, rfl, h0⟩, hs, rfl⟩
+    -- the chain's `t`-th value is the first `t` answers
+    have key : ∀ t (h : t ≤ xs.length), (zs[t]'(by omega)).length = t ∧
+        ∀ i (hi : i < t) (hi' : i < (zs[t]'(by omega)).length), T (xs[i]'(by omega)) ((zs[t]'(by omega))[i]'hi') := by
+      intro t
+      induction t with
+      | zero => intro _; simp [h0]
+      | succ t ih =>
+        intro h
+        obtain ⟨⟨a, y⟩, ⟨rfl, x, rfl, hT⟩, he⟩ := hs t (by omega)
+        obtain ⟨hl, hT'⟩ := ih (by omega)
+        simp only [he, List.length_append, List.length_singleton, hl, true_and]
+        intro i hi hi'
+        by_cases hit : i < t
+        · rw [List.getElem_append_left (by omega)]; exact hT' i hit _
+        · have : i = t := by omega
+          subst this
+          rw [List.getElem_concat_length hl.symm]
+          exact hT
+    obtain ⟨hl, hT⟩ := key xs.length (Nat.le_refl _)
+    exact ⟨hl, fun t ht ht' => hT t ht ht'⟩
+  · rintro ⟨hl, hT⟩
+    refine ⟨(List.range (xs.length + 1)).map ys.take, by simp, ⟨[], (), rfl, by simp⟩, fun t ht => ?_, by simp [← hl]⟩
+    refine ⟨(ys.take t, ys[t]'(by omega)), ⟨by simp, xs[t], rfl, hT t ht _⟩, ?_⟩
+    simp only [List.getElem_map, List.getElem_range, List.take_succ_eq_append_getElem (by omega : t < ys.length)]
 
 /-- `dom(T) (𝟙 × ≥) dom(T)`: `(k, i)` to `(k, j)`, both in `dom(T)`, `j ≤ i` in the order `leAt t` of the position
     atom `t`; `𝟙 × ≥` is `π₁ π₁° ∩ π₂ ≥ π₂°`. -/
@@ -401,11 +432,31 @@ def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B
     value, so two values give `Ew.intStep k` of them, and a null beside a value gives the value where `b` is `and`
     (`max`) and the null where it is `or` (`min`); two nulls give the null. As `maxO`/`minO` of
     `Rel/Lang/TestNullMaxMin.lean`, which compose the same cases from `inl°`, `inr°` and the atom verb. -/
-def nulStep (k : UInt8) : Core.Rel (Obj.El (.prod (.opt .long) (.opt .long))) (Obj.El (.opt .long)) := fun p w =>
-  ∃ o b f, nulVerb k = some (o, b, f) ∧ match p.1, p.2 with
-    | .inr x, .inr y => w = .inr (Ew.intStep k Alg.nul x y)
-    | .inr x, .inl _ | .inl _, .inr x => b = Op.and ∧ w = .inr x ∨ b ≠ Op.and ∧ w = .inl ()
-    | .inl _, .inl _ => w = .inl ()
+def nulStep (k : UInt8) : Core.Rel (Obj.El (.prod (.opt .long) (.opt .long))) (Obj.El (.opt .long)) :=
+  match nulVerb k with
+  | some (_, b, _) =>
+    (rprodMap Core.Rel.inr° Core.Rel.inr° ≫ graph (fun p : Int64 × Int64 => Ew.intStep k Alg.nul p.1 p.2) ≫
+      Core.Rel.inr) ∪
+    (if b = Op.and then (rprodMap Core.Rel.inr° Core.Rel.inl° ≫ graph Prod.fst ≫ Core.Rel.inr) ∪
+        (rprodMap Core.Rel.inl° Core.Rel.inr° ≫ graph Prod.snd ≫ Core.Rel.inr) ∪
+        (rprodMap Core.Rel.inl° Core.Rel.inl° ≫ graph Prod.fst ≫ Core.Rel.inl)
+     else (graph Prod.fst ≫ Core.Rel.inl° ≫ Core.Rel.inl) ∪ (graph Prod.snd ≫ Core.Rel.inl° ≫ Core.Rel.inl))
+  | none => 𝟘
+
+theorem nulStep_iff (k : UInt8) (p : Obj.El (.prod (.opt .long) (.opt .long))) (w : Obj.El (.opt .long)) :
+    nulStep k p w ↔ ∃ o b f, nulVerb k = some (o, b, f) ∧ match p.1, p.2 with
+      | .inr x, .inr y => w = .inr (Ew.intStep k Alg.nul x y)
+      | .inr x, .inl _ | .inl _, .inr x => b = Op.and ∧ w = .inr x ∨ b ≠ Op.and ∧ w = .inl ()
+      | .inl _, .inl _ => w = .inl () := by
+  obtain ⟨p1, p2⟩ := p
+  unfold nulStep
+  cases hv : nulVerb k with
+  | none => simp [Core.Rel.zero]
+  | some v =>
+    obtain ⟨o, b, f⟩ := v
+    by_cases hb : b = Op.and <;> rcases p1 with ⟨⟩ | x <;> rcases p2 with ⟨⟩ | y <;> rcases w with ⟨⟩ | z <;>
+      simp [hb, Core.Rel.comp, Core.Rel.union, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr, Core.Rel.graph,
+        Core.Rel.rprodMap, and_assoc]
 
 /-- A value verb `k` of `arithOps` at `A`: `stepAt` at an atom (`arithDen` with no universe), `𝟘` elsewhere. -/
 def stepOn (k : UInt8) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El A)
@@ -916,7 +967,8 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
-    exact ⟨hm.1, fun t ht ht' => le_iff.1 hT _ _ (hm.2 t ht ht')⟩
+    obtain ⟨hl, hs⟩ := (mapDen_iff _ _ _).1 hm
+    exact (mapDen_iff _ _ _).2 ⟨hl, fun t ht ht' => le_iff.1 hT _ _ (hs t ht ht')⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     obtain ⟨g, h0, hs, hc⟩ := hm
     exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
@@ -1154,9 +1206,8 @@ theorem Tm.E_den (ρ : Val) {A B : Obj} (R : Tm A B) :
 theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C D : Obj} {T T' : Core.Rel (Obj.El C) (Obj.El D)}
     {ρ : Val} {a : A.El} (h : ∀ m, (Tm.memAt A C).den ρ a m → ∀ e, (T m e ↔ T' m e)) (d : B.El) :
     r.den A B [⟨C, D, T⟩] a d ↔ r.den A B [⟨C, D, T'⟩] a d := by
-  have hf : rowDens.find? (·.1.sym == mapRow.sym) = some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ)
-      fun T (xs : List (σ₁ σ).El) (ys : List (σ₂ σ).El) => ys.length = xs.length ∧
-        ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht')⟩ := rfl
+  have hf : rowDens.find? (·.1.sym == mapRow.sym) =
+      some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩ := rfl
   unfold Prim.den; rw [eq_of_beq hr, hf]; simp only [List.map_cons, List.map_nil]
   cases r.objs A B [(C, D)] with
   | none => exact Iff.rfl
@@ -1168,7 +1219,7 @@ theorem Prim.den_map_congr {r : Prim} (hr : (r.sym == mapRow.sym) = true) {A B C
       simp only [Sem.one]
       by_cases hc : C = σ₁ σ ∧ D = σ₂ σ
       · obtain ⟨rfl, rfl⟩ := hc
-        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩]
+        rw [dif_pos ⟨rfl, rfl⟩, dif_pos ⟨rfl, rfl⟩, mapDen_iff, mapDen_iff]
         exact and_congr_right fun _ => forall_congr' fun t => forall_congr' fun ht => forall_congr' fun ht' =>
           h _ (Tm.den_memAt ▸ List.getElem_mem ht) _
       · rw [dif_neg hc, dif_neg hc]

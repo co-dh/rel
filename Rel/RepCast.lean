@@ -213,7 +213,7 @@ theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some
     (hz : o.eval (if NX != 0 then f else X) (if NY != 0 then f else Y) = .ok Z) (hn : b.eval NX NY = .ok NZ)
     (hW : NW = if NZ != 0 then 1 else 0) (hZ : NZ = 0 → W = Z) :
     Lang.nulStep k (optWord NX X, optWord NY Y) (optWord NW W) := by
-  refine ⟨o, b, f, hv, ?_⟩
+  refine (Lang.nulStep_iff _ _ _).2 ⟨o, b, f, hv, ?_⟩
   have hc : (o = .max ∧ b = .and ∧ f = 0x8000000000000000 ∧ k = Ew.greater) ∨
       (o = .min ∧ b = .or ∧ f = 0x7fffffffffffffff ∧ k = Ew.lesser) := by
     rcases nulVerb_cases hv with h | h | ⟨-, -, h, -⟩
@@ -234,8 +234,8 @@ theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some
 /-- `nulStep k` is a partial function: one `nulVerb k`, one answer at each pair. -/
 theorem nulStep_fun {k : UInt8} {p : (Obj.prod (.opt .long) (.opt .long)).El} {w w' : (Obj.opt .long).El}
     (h : Lang.nulStep k p w) (h' : Lang.nulStep k p w') : w = w' := by
-  obtain ⟨o, b, f, hv, h⟩ := h
-  obtain ⟨o', b', f', hv', h'⟩ := h'
+  obtain ⟨o, b, f, hv, h⟩ := (Lang.nulStep_iff _ _ _).1 h
+  obtain ⟨o', b', f', hv', h'⟩ := (Lang.nulStep_iff _ _ _).1 h'
   rw [hv] at hv'; cases hv'
   obtain ⟨_ | x, _ | y⟩ := p <;> simp only at h h'
   · rw [h, h']
@@ -412,7 +412,7 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
       (ValsB.row (o := false) (A := .opt .long) (Opt.mk q.1 hz : Opt .i64 n) i) := fun i => by
     show Lang.nulStep k (ValsB.row (o := false) (A := .opt .long) x i, ValsB.row (o := false) (A := .opt .long) y i) _
     rw [row_opt_i64, row_opt_i64, row_opt_i64]
-    refine ⟨o, .or, nulWord, hv, ?_⟩
+    refine (Lang.nulStep_iff _ _ _).2 ⟨o, .or, nulWord, hv, ?_⟩
     obtain ⟨NP, ZP, hp1, hp2, hp3, hp4⟩ := hpi i
     obtain ⟨NQ, ZQ, hq1, hq2, hq3, hq4⟩ := hqi i
     have hd0 : rdNul n d i = 0 := by simp [rdNul, Verify.foRNuls_plain hdw hdn i.2]

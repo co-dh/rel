@@ -32,8 +32,6 @@ Rel.Lang.fwideDen
 Rel.Lang.lamDen
 Rel.Lang.leqDen
 Rel.Lang.ltDen
-Rel.Lang.mapDen
-Rel.Lang.nulStep
 Rel.Lang.ordDen
 Rel.Lang.rowDens
 Rel.Lang.stepAt

@@ -558,7 +558,7 @@ theorem sumsDen_rows {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) (C : Ta
       Lang.mapDen (rep C) (((List.range (t.1 + 1)).filter fun q => grp q = grp t).map (kAt t)) vs ↔
       vs = ((List.range (t.1 + 1)).filter fun q => grp q = grp t).map fun q =>
         if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else default := by
-    intro t vs
+    intro t vs; rw [Lang.mapDen_iff]
     have hval : ∀ q ∈ (List.range (t.1 + 1)).filter (fun q => grp q = grp t), ∀ v,
         rep C (kAt t q) v ↔ v = if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else default := fun q hq v => by
       have hqn := (hP t q hq).1
