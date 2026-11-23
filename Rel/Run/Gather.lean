@@ -68,27 +68,29 @@ def colConst (n : USize) (w : UInt64) : Except String Enc := kscatter .last 0 .p
 
 /-- `op` row by row over the `n` words of `a` and `b` read at `s`, each through `chain pre`, the answer through
 `chain post`: `out[i] = post(op(pre(a[i]), pre(b[i])))` written at `t`, in one `kscan` pass with every row starting a
-segment (`seg = none`: no column is written for it). A map of one column is `colMap .first n a a`. -/
+segment (`seg = none`: no column is written for it). `.first` over the two columns is a stream (`kscanStream`), not a map. -/
 def colMap (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
     (pre post : List (Op × UInt64) := []) : Except String Enc := do
-  let r ← kscan op false s t n none [a, b] pre post
+  let r ← kscan op false s t n none [(n, a), (n, b)] pre post
   pure r.1
 
 /-- `colMap`'s answer is a column every kernel reads, `Enc.WF` at `t` (`kscan_closed`). -/
 theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
-    (h : colMap op n a b t s pre post = .ok o) : Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o) :
+    Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
   unfold colMap at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact ⟨(kscan_closed hr).1, (kscan_closed hr).2.1⟩
+  exact ⟨(kscan_lock_closed hs hr).1, (kscan_lock_closed hs hr).2.1⟩
 
 /-- `colMap`'s answer holds no null (`kscan_closed`). -/
 theorem colMap_plain {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
-    (h : colMap op n a b t s pre post = .ok o) : hasNul o = false := by
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o) :
+    hasNul o = false := by
   unfold colMap at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact (kscan_closed hr).2.2
+  exact (kscan_lock_closed hs hr).2.2
 
 /-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Opt.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=
@@ -128,7 +130,7 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
   let B := min (USize.size - 1) (2 ^ 63)
   if m.toNat < B then do
     let z ← colConst m 0
-    let sk ← kscan .add false .i64 .i64 m z [z, b]
+    let sk ← kscan .add false .i64 .i64 m z [(m, z), (m, b)]
     let K := (sk.2.getD 0).toNat.toUSize
     let d ← colMap .sub m sk.1 b
     let e ← kscatter .last m d .pos (K.toNat + 1).toUSize 0

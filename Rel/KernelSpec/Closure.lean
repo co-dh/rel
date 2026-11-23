@@ -236,14 +236,20 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
       · cases h
     · cases h
 
+/-- Only `first` reads its sources as a stream, so any other op closes with no hypothesis on its sources. -/
+theorem kscanStream_ne {op : Op} (h : op ≠ .first) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) :
+    kscanStream op es pre post = false := by
+  unfold kscanStream; split <;> simp_all
+
 /-- **`kscanCols` flags no null row** where every source holds none: a lock-step call carries no flags, and a stream's are
 the sources' `foRNuls`, all `0` (`hasNul_flags`). -/
 theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize × Enc)} {pre post : List (Op × UInt64)}
-    {ws : List (Array UInt64)} {ns : Array UInt64} (hN : ∀ p ∈ es, hasNul p.2 = false)
-    (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (h : kscanCols op s n es pre post = .ok (ws, ns)) :
-    ns.any (· != 0) = false := by
+    {ws : List (Array UInt64)} {ns : Array UInt64}
+    (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (h : kscanCols op s n es pre post = .ok (ws, ns)) : ns.any (· != 0) = false := by
   by_cases hs : kscanStream op es pre post = true
-  · unfold kscanCols at h
+  · obtain ⟨hN, hW⟩ := hS hs
+    unfold kscanCols at h
     simp only [hs, if_true] at h
     cases hm : es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll pre) with
     | error m => rw [hm] at h; simp [bind, Except.bind] at h
@@ -271,10 +277,11 @@ theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize 
     simp
 
 /-- **`kscan` closes**: its answer is valid at its `n` rows, `Ext.Enc.WF` at its answer type `t`, and holds no null
-(written with no null bitmap) where no source holds a null: a stream's flags are then all `0`. -/
+(written with no null bitmap). Only a stream (`kscanStream`) reads its sources' null flags, so only there must they hold
+no null and be `Ext.Enc.WF` at `s`. -/
 theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc}
     {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
-    (hN : ∀ p ∈ es, hasNul p.2 = false) (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
     (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false := by
   unfold kscan at h
@@ -286,7 +293,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   rename_i cs hc
   split at h; · cases h
   rename_i c cs' ns
-  have hns := kscanCols_nul hN hW hc
+  have hns := kscanCols_nul hS hc
   split at h; · cases h
   rename_i out₀ hf
   split at h; · cases h
@@ -306,6 +313,13 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   refine ⟨hc.1, hc.2.2 (by simp [ht]) fun hu i hi => ?_, hasNul_wordsFoR _⟩
   simp only [Array.getElem_map, hu, ↓reduceIte]
   exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
+
+/-- **`kscan` closes** where it is no stream (`kscanStream`): no hypothesis on its sources. -/
+theorem kscan_lock_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc}
+    {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hs : kscanStream op es pre post = false) (h : kscan op rev s t n seg es pre post = .ok r) :
+    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false :=
+  kscan_closed (fun h => absurd h (by rw [hs]; decide)) h
 
 /-- **`kscatter` closes**: its answer holds `n` words, read back by `raw .i64`, valid and `Ext.Enc.WF` at every fixed-width
 type but the boolean. -/
