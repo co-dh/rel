@@ -28,15 +28,17 @@ def Vals.code {n : USize} (x : Vals A n) : Except String (USize × Enc × Enc) :
 
 /-- The words `a` (`n₁`) then `b` (`n₂`), CONCAT as `Arr.concat` on bare columns: the count and the column. -/
 def colCat (n₁ n₂ : USize) (a b : Enc) : Except String (USize × Enc) := do
-  let (N, sh) ← catPlan n₁ n₂
+  let N ← catRows n₁ n₂
+  let sh ← shiftCol n₂ n₁.toUInt64
   pure (N, ← colMap .add N (← kscatter .last n₁ .pos a N 0) (← kscatter .last n₂ sh b N 0))
 
 /-- `x` and `y` numbered by value in one order (`Vals.code` of their CONCAT `z`): the count, `x`'s numbers, `y`'s, and
 `z` with each number's first row in it. -/
 def Vals.code2 {n₁ n₂ : USize} (x : Vals A n₁) (y : Vals A n₂) :
     Except String (USize × Enc × Enc × ((N : USize) × Vals A N × Enc)) := do
-  let (N, sh) ← catPlan n₁ n₂
-  let z ← Vals.concat N sh x y
+  let N ← catRows n₁ n₂
+  let sh ← shiftCol n₂ n₁.toUInt64
+  let z ← Vals.concat N x y
   let (k, c, rep) ← Vals.code z
   pure (k, ← kgather n₁ .pos N c, ← kgather n₂ sh N c, ⟨N, z, rep⟩)
 
