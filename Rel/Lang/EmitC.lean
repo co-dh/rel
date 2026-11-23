@@ -565,7 +565,7 @@ partial def flatB (n : Nat) (cs : Cols) : Bld Side := return (← cs.mapM fun
       ++ (← flatB m f)
   | .sum .. => sumB "output").flatten
 
-/-- A `TabB`'s sides as `output` takes them: each column's six registers (`encRegs`), then its `Enc`. -/
+/-- A `TabB`'s sides as `output` takes them: each column's registers (`encRegs`), then its `Enc`. -/
 def sidesOf (T : TabB) : Bld (Side × Side) := do pure (← flatB T.n T.key, ← flatB T.n T.val)
 
 /-- What a node's context knows of its sides (design §0 `Known`): the values of its domain and of its range, each a
