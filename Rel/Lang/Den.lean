@@ -822,11 +822,25 @@ theorem splitDen_iff (s : Bool) {A : Type} (xs ys : List A) : splitDen s A xs ys
   · exact ⟨fun ⟨p, h, e⟩ => ⟨p.1, by subst e; exact h.symm⟩, fun ⟨t, h⟩ => ⟨(t, ys), h.symm, rfl⟩⟩
   · exact ⟨fun ⟨p, h, e⟩ => ⟨p.2, by subst e; exact h.symm⟩, fun ⟨t, h⟩ => ⟨(ys, t), h.symm, rfl⟩⟩
 
-/-- The row `loop` given the step `T`: the left fold `foldDen` of `T` over the list whose start is the pair's own first
-    component (`foldDen_iter`). Pointwise until `foldDen` has a start read from the input (PF-FOLD), which this row
-    needs and no relation `Rel (V × List E) V` built from `foldDen`'s constant-start form gives. -/
-def loopDen {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) : Core.Rel (Obj.El (.prod X (.arr Y))) (Obj.El X) :=
-  fun p c => ∃ g : Nat → X.El, g 0 = p.1 ∧ (∀ t (ht : t < p.2.length), T (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length
+/-- The row `loop` given the step `T`: the left fold of `T` over the list whose start is the pair's own first
+    component, as `foldIDen` with the key as the start and the step keeping the key; `loopDen_iff` reads it pointwise. -/
+abbrev loopDen {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) : Core.Rel (Obj.El (.prod X (.arr Y))) (Obj.El X) :=
+  foldIDen (graph fun x => (x, x))
+    (rpair (graph fun q : (X.El × X.El) × Y.El => q.1.1) (rprodMap (graph fun q : X.El × X.El => q.2) (𝟙 _) ≫ T))
+
+theorem loopDen_iff {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) (p : Obj.El (.prod X (.arr Y))) (c : X.El) :
+    loopDen T p c ↔ ∃ g : Nat → X.El, g 0 = p.1 ∧ (∀ t (ht : t < p.2.length), T (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length := by
+  rw [loopDen, foldIDen_iff, foldDen_iff]
+  simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.graph]
+  constructor
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩
+    refine ⟨fun t => ys[t]?.getD p.1, by simpa [List.getElem?_eq_getElem (show 0 < ys.length by omega)] using (Prod.mk.inj ha).2, fun t ht => ?_, by simp [hy]⟩
+    obtain ⟨-, b, ⟨hb, hb'⟩, hT⟩ := hs t ht
+    obtain rfl : b = (ys[t], p.2[t]) := Prod.ext hb (hb'.symm)
+    simpa [show t < ys.length by omega, show t + 1 < ys.length by omega] using hT
+  · rintro ⟨g, hg0, hg, rfl⟩
+    refine ⟨(List.range (p.2.length + 1)).map g, by simp, ⟨p.1, by simp [hg0]⟩, fun t ht => ⟨trivial, (g t, p.2[t]), ⟨by simp, rfl⟩, ?_⟩, by simp⟩
+    simpa using hg t ht
 
 open Classical RowCode in
 /-- Every row of `prims` with its meaning. `setify` is `Λ(∋)`. -/
@@ -1317,8 +1331,8 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     obtain ⟨hl, hs⟩ := (mapDen_iff _ _ _).1 hm
     exact (mapDen_iff _ _ _).2 ⟨hl, fun t ht ht' => le_iff.1 hT _ _ (hs t ht ht')⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
-    obtain ⟨g, h0, hs, hc⟩ := hm
-    exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
+    obtain ⟨g, h0, hs, hc⟩ := (loopDen_iff _ _ _).1 hm
+    exact (loopDen_iff _ _ _).2 ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
     exact (flatDen_iff _ _ _).2 (le_iff.1 hT _ _ ((flatDen_iff _ _ _).1 hm))
   · exact Sem.two_mono foldI_le h

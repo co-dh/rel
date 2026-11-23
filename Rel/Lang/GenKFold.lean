@@ -1659,8 +1659,7 @@ of `rowDens`' `loop` iteration of `F`'s meaning `TF`, `F` run on the pairs each 
 theorem loop_sound {X Y : Obj} {F : Rel (.prod X Y) X} {TF : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)}
     (hF : ∀ K, K.WF → F.Reps K TF) (wF : F.Wf) :
     ∀ K, K.WF → (GenK.stepAfter (.prod X Y) X (.prod X (.arr Y)) X F fun F P => Tab.loop F P).Reps K
-      (fun p c => ∃ g : Nat → X.El, g 0 = p.1 ∧
-        (∀ t (ht : t < p.2.length), TF (g t, p.2[t]'ht) (g (t + 1))) ∧ c = g p.2.length) := by
+      (loopDen TF) := by
   have hF' : ∀ (D : Tab (.prod X Y) (.prod X Y)) T, (compT (.ok D) F).runE {} = .ok T → D.WF →
       ∀ q x, T.Holds q x ↔ ∃ q', D.Holds q q' ∧ TF q' x := fun D T hT wD q x =>
     (reps_iff _ _ _).1 (compT_sound (r' := .ok D) (K := {}) (X := rep D)
@@ -1672,7 +1671,7 @@ theorem loop_sound {X Y : Obj} {F : Rel (.prod X Y) X} {TF : Core.Rel (Obj.El (.
   exact ofVals_sound fun _ _ V t hK wV h p c hx _ _ => by
     obtain ⟨D, hD, h⟩ := bind_ok h
     refine (Tab.loop_holds hFw hF' h (Tab.idU_wf hD wV) p c).trans ?_
-    rw [← foldDen_iter]
+    rw [loopDen_iff, ← foldDen_iter]
     constructor
     · rintro ⟨p', hp', hW⟩; obtain ⟨rfl, -⟩ := (Tab.idU_holds hD wV p p').1 hp'; exact hW
     · exact fun hW => ⟨p, (Tab.idU_holds hD wV p p).2 ⟨rfl, (side_some hK p).1 hx⟩, hW⟩

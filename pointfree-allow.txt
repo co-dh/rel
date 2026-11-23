@@ -15,6 +15,5 @@ Rel.Core.Rel.top
 Rel.Core.Rel.union
 Rel.Core.Rel.zero
 Rel.Hylo.rounds
-Rel.Lang.loopDen
 Rel.Lang.memDen
 Rel.Lang.stepDen
