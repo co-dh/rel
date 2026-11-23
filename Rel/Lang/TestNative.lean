@@ -362,8 +362,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("cu", semOut native1a.cu), ("pre", semOut native1a.pre), ("suf", semOut native1a.suf),
     ("jl", semOut native1a.jl), ("jr", semOut native1a.jr), ("kl", semOut native1a.kl), ("br", semOut native1a.br),
     ("bl", semOut native1a.bl), ("bc", semOut native1a.bc),
-   ("pfx", semOut native1a.pfx), ("sfx", semOut native1a.sfx), ("la", semOut native1a.la), ("ini", semOut native1a.ini),
-   ("tl", semOut native1a.tl), ("tw", semOut native1a.tw)]
+    ("pfx", semOut native1a.pfx), ("sfx", semOut native1a.sfx), ("la", semOut native1a.la), ("ini", semOut native1a.ini),
+    ("tl", semOut native1a.tl), ("tw", semOut native1a.tw)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
@@ -376,8 +376,10 @@ def semOuts : List (String × (String → IO Unit)) :=
 /-- The native gate's plan: `nativeIO`'s IO statements (its input edge first), each of `semOuts` to `out/NAME`, then
     the computed relation's to `out/arith` and the group ids to `out/gid`. -/
 def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
-  let bs ← semOuts.mapM fun (x, _) => outputOf ``native1a x ("out/" ++ x)
-  let io ← ioOf ``nativeIO
+  -- one heartbeat budget per output: the run's single budget is spent by the sum of the outputs, so each new case
+  -- would shrink what the others may use
+  let bs ← semOuts.mapM fun (x, _) => Lean.withCurrHeartbeats (outputOf ``native1a x ("out/" ++ x))
+  let io ← Lean.withCurrHeartbeats (ioOf ``nativeIO)
   return do
     let (bs, (rd, wr)) := (← bs.mapM id, ← io)
     Bld.planIO rd fun ins => do
