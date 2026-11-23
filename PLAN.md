@@ -965,14 +965,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         `K` 的对交给它；pair 写法 `dem = true`，从不冻结。现在 product 节点不 memo（其两个操作数照旧 memo），已知定义域时
         `GenK.prod` 就是 pair 写法，没有边界时才 CROSS。`TestFrameBench.joinBig`（1500 × 55001 对，1500 个匹配）：
         3.84 s / 4.7 GB → 0.34 s，与 pair 写法相同；`TestFrameJoin` 比较两种写法的行。
-      - 🔄 kernel 分配失败是 error 不是 abort（分支 `prodplan`）：`pod::vec_of` / `pod::try_uninit`（`try_reserve_exact`）
+      - ✅ kernel 分配失败是 error 不是 abort（分支 `prodplan`；allocerr2 由 f774836 T1、c4e7e96 T13 完成）：`pod::vec_of` / `pod::try_uninit`（`try_reserve_exact`）
         给出 `"<kernel>: cannot allocate <bytes> bytes for <what> (<n> elements)"`，经 `except` 成为 `Except.error`；
         已接入：`gather` 的整列 `e`，`scatter` 的行偏移、行值、块计数，`seen` 的游程位、块计数，`bitrows` 的
         `ends`/`idx`/结果位；`asc` 的工作数组也已接入（✅ `allocerr`：`asc.rs` `dense` `work` `codes` `lsd` `rank` `mixed`
         `grade` 与 `sort.rs` 的 `cnt` `ba/bb` `ia/ib` `seen` 位图、块端点，整条函数链返回 `Result`，`pod::collect_of` 是带
-        错误的 `collect`）。未接入：`Sink` 的输出（经 Lean 的
-        `lean_alloc_object`，失败在 Lean 运行时内）与 `coc_alloc`（`exit(1)`）、`Ext.Enc.encode`（签名无 `Except`，
-        要改 extern 签名）。
+        错误的 `collect`）。`coc_alloc`、`Sink` 与 `Ext.Enc.encode` 的分配（O1-C）：失败只在 Rust 内是 `Err`；
+        `Except` 类型的导出答 `.error`，纯类型的导出以该消息 `die`；Lean 签名不变，`Coc.encode` 保持纯类型。
+        答案数组仍是 Lean 分配（O2），其失败在 Lean 运行时内（`lean_alloc_object`）。边界只在
+        `doc/rel-architecture.zh.typ` 的卡片「Lean 证明不到的边界」中写一次（O3）。
       - 定律的缺口：`lam_den`/`E_den`（等于 `lamDen`/`EDen`）带前提 `hB`（序码的序与 `B.lt` 一致），未对任何
         `Obj` 证掉；float 上本来不成立（`±0.0`、NaN）。
       - 合并记录：w3arrcat fe67914，w3arith 0f77c2f，w3struct+w3sumcat 4b6f121，w3div+w3divlaw+w3lam 803cd89，
