@@ -135,6 +135,15 @@ def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
     pure ⟨n, X, s⟩
   | _, _, _ => .error "succ runs from an object of i64 to it"
 
+/-- **The row `mix` on the values `X`** (`rowDens`: `mixOn`): one `kscan` map of `Op.mix`, each word to splitmix64 at
+    that counter (`Op.mixWord`); every value has an image, so nothing is dropped. -/
+def mixOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match A, B, X with
+  | .atom .i64, .atom .i64, X => do
+    let s ← colArr .mix n X.enc X.enc
+    pure ⟨n, X, s⟩
+  | _, _, _ => .error "mix runs from an object of i64 to it"
+
 end Tab
 
 end Rel

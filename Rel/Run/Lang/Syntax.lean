@@ -287,6 +287,11 @@ def arithRow (s : String) : Prim :=
 def succRow : Prim :=
   { sym := "succ", sig := ([], .var {} "N", .var {} "N"), num := [("N", intAtoms)], written := false,
     aop := .error "AOP declares no successor on atoms" }
+/-- `mix : N ⟶ N` on `i64`: each counter to splitmix64's output there (`Op.mixWord`), the random source of the
+    frame library (dataframe F8); a pure hash, so a program reading it is a relation like any other. -/
+def mixRow : Prim :=
+  { sym := "mix", sig := ([], .var {} "N", .var {} "N"), num := [("N", [.i64])],
+    aop := .error "AOP declares no hash on atoms" }
 /-- The order test `s` of `cmpOps`, the coreflexive `N×N ⟶ N×N` on the pairs in order, no universe inside. -/
 def cmpRow (s : String) : Prim :=
   { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
@@ -372,7 +377,7 @@ def prims : List Prim :=
       aop := .error "AOP declares no floating-point function" }) ++
   -- the value verbs (`arithOps`), `succ`, the order tests `lt` `le` (`cmpOps`): rows on atoms, no universe inside;
   -- `build` writes each, cut to a bounded object's universe `U` as `⟨π₁U, π₂U⟩ row U` (§3.5), so none is written
-  arithOps.map (arithRow ·.1) ++ [succRow] ++ cmpOps.map (cmpRow ·.1)
+  arithOps.map (arithRow ·.1) ++ [succRow, mixRow] ++ cmpOps.map (cmpRow ·.1)
 
 def Prim.find?(s : String) : Option Prim := prims.find? (·.sym == s)
 

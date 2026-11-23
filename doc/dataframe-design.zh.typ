@@ -291,7 +291,11 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`contains` `length` `splitOn` `match` `matchAll`], [`contains(s) ≜ dom(suffix prefix s)`；`length` 是 prim], [`splitOn` `match`：F3], "part"),
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
     [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate`：F3], "part"),
-  ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [无], [F8], "no"),
+  ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`],
+    [`rand(s, x) ≜ ⟨dom(x) $ R, ⊤ s⟩plus mix`；`shuffle(s, x) ≜ dom(x) iasc(rand(s, x)) x`；`sample(s, n, x) ≜ take(n, shuffle(s, x))`；
+    `randomSplit(s, p, x)`：抽签 `div 2^10` 小于 `p·2^53` 的行，`randomRest` 是其余行；`kFolds(s, k, x) ≜ ⟨rand(s, x), ⊤ k⟩mod`],
+    [随机源是纯哈希 `mix`（splitmix64 在计数 `i + s` 处，`Op.mixWord`，值在 `[0, 2^63)`），同一种子同一答案，程序仍是关系（F8）；
+    `stratifiedSample` `mkRandom` 未做], "part"),
   ([`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [], "full"),
   ([`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`summarize(F(x c), x)`], [位置顺序的数组], "full"),
   ([`dimensions` `nRows` `nColumns` `columnNames`], [`count(x)`；`nColumns` `columnNames` 读 `Schema`], [列名只在 schema 里，frame 是位置的], "full"),
@@ -368,5 +372,9 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
 - *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。
   这也是 polars 表达式（不含 `map_elements`）同样的限制。
 - *F8 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现选其中一个，是规格的 refinement，不是相等。
+  Rel 的做法：随机源是计数器哈希，不是状态。`mix : R ⟶ R`（`i64`）是 splitmix64 在计数 `u` 处的输出
+  （`(u + 1)·γ` 的 finaliser 右移一位），一个 `scan` map 的 `Op`（`Op.mix`），无新 kernel、无新导出；
+  `rand(s, x)` 在位置 `i` 上取 `mix(i + s)`。种子 `s` 是参数，同一种子同一答案，`shuffle` `sample` `randomSplit`
+  `kFolds` 都是 `frameRand` 中的定义（`TestFrameRand` 以手算的 splitmix64 值钉住）。
 - *F9 位置模型之外的两处。* 单元格里的 list（`Obj.arr`：字符串、`collect` 的结果）是一个值，`N` 只给 frame 的行编号。
   `⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；`hstack` 另加行数相等的检查，不等长时是 `𝟘`。

@@ -235,6 +235,15 @@ theorem Tab.succCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : Ta
     show (a + 1).toUInt64.toInt64 = _
     simp [ha]
 
+/-- **`colArr .mix` is `Op.mixWord`** at each row. -/
+theorem Tab.mixCol_row {n : USize} {X : Vals .long n} {s : Arr .i64 n} (hs : colArr .mix n X.enc X.enc = .ok s)
+    (i : Fin n.toNat) : Vals.row (A := .long) s i = (Op.mixWord (X.row i).toUInt64).toInt64 := by
+  show s.get i = (Op.mixWord (Arr.get X i).toUInt64).toInt64
+  rw [Arr.get_i64, Arr.get_i64, UInt64.toUInt64_toInt64]
+  have r1 := (colMap_raw (colArr_ok hs)).2.2.2 i i.2
+  simp only [Op.eval] at r1
+  rw [← Except.ok.inj r1]
+
 /-! ### The value verbs at a float atom: `fstepCols` computes `stepAt` -/
 
 /-- **`fverbBy` commutes with a reading of its operands**: a map `f` taking each step `ap` to the step `ap'` takes the

@@ -426,6 +426,10 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     （`keep_canon_holds`），末两步与值动词共用（`ftoCols`）。无新 kernel、无新导出。`Tab.floatOp_den`：结果是 `floatDen o`
     在需求值上的图，无前提；`√−1`、`log −1` 无行。`floor` 与 `round`（就近取整、平局取偶，IEEE roundTiesToEven，
     `Op.roundEven`；q 无 `round`）回 `i64`（末步 `Op.ofF64 .i64`），NaN 与 `i64` 外的值无行。整数对象上按名报错，提示先 `$`],
+  [`mix`（`R ⟶ R`，`R` 为 i64；dataframe F8 的随机源）], [`scan` map（`Op.mix`：splitmix64 在计数 `u` 处，`(u + 1)·γ`
+    的 finaliser 右移一位，值在 `[0, 2^63)`，`Op.mixWord`）；每个值都有像，不 `keep`。无新 kernel、无新导出：Rust 是
+    `op_word` 的一个分支。`Tab.mixOp_den`：结果是 `mixOn` 在需求值上的图。`rand(s, x) ≜ ⟨dom(x) $ R, ⊤ s⟩plus mix`
+    等是库定义（`frameRand`）],
   [二元浮点动词 `xexp`（q 的 `x xexp y` = `x^y`；`⟨x, y⟩ : A ⟶ F×F` ↦ `A ⟶ D`，`F` 为 f32/f64，`D` 为 f64；
     `floatOps` 中 `Op` 读两个操作数（`Op.readsAcc`）的行）], [同一元浮点动词，一次 `scan` map 读两列：两操作数经
     `f32to64` 宽化 → `fpow`（libm `pow`）→ `Op.ofF64` → `Op.ne` 标志 → where（`keep`）。无新 kernel、无新导出。

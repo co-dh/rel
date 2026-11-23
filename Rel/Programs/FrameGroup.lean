@@ -70,4 +70,22 @@ rel_program frameStat where
     -- the days from `b` to `a`, at any date object `δ`: each date read as its day count
     daysBetween(a : ν ⟶ δ, b : ν ⟶ δ) : ν ⟶ Z ≜ ⟨a $ Z, b $ Z⟩minus
 
+/-! The random source (`doc/dataframe-design.zh.typ` F8): `rand(s, x)` is splitmix64 (`mix`, `Op.mixWord`) at the
+    counter `i + s` of each position `i`, a pure hash, so every definition here is a relation that answers the same
+    for the same seed `s`. `R` holds the draws, `[0, 2^63)`; `Q` the fraction `p` of `randomSplit`. -/
+open Rel.Programs.prelude Rel.Programs.frame in
+rel_program frameRand where
+    obj R : i64
+    obj Q : f64
+    rand(s : 1 ⟶ R, x : ν ⟶ β) : ν ⟶ R ≜ ⟨dom(x) $ R, ⊤ s⟩plus mix
+    -- the rows in the order of their draws (`iasc` is stable, so equal draws keep position order)
+    shuffle(s : 1 ⟶ R, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) iasc(rand(s, x)) x
+    sample(s : 1 ⟶ R, n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ take(n, shuffle(s, x))
+    -- the rows whose draw is below `p·2^63`, read as `draw div 2^10 < p·2^53` so the draw is an exact `f64`;
+    -- `randomRest` is the other rows, so the two split `x`
+    randomSplit(s : 1 ⟶ R, p : 1 ⟶ Q, x : ν ⟶ β) : ν ⟶ β ≜ dom(⟨⟨rand(s, x), ⊤ k⟩div $ Q, ⊤ ⟨p, m⟩times⟩ cor(<)) x where k ≜ {(∗,1024)}, m ≜ {(∗,9007199254740992.0)}
+    randomRest(s : 1 ⟶ R, p : 1 ⟶ Q, x : ν ⟶ β) : ν ⟶ β ≜ (dom(x) − dom(randomSplit(s, p, x))) x
+    -- the fold of each row, `0 … k − 1`
+    kFolds(s : 1 ⟶ R, k : 1 ⟶ R, x : ν ⟶ β) : ν ⟶ R ≜ ⟨rand(s, x), ⊤ k⟩mod
+
 end Rel.Programs
