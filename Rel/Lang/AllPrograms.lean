@@ -73,6 +73,8 @@ import Rel.Lang.TestLiftDiv
 import Rel.Lang.TestSymDiv
 import Rel.Lang.TestUnbounded
 import Rel.Lang.TestWumpus
+import Rel.Lang.TestNullMaxMin
+import Rel.Lang.Test.FoldBase
 
 /-! The one list of the modules holding a `rel_program`, imported by the two gates that visit every registered
     program (`GenSoundTest`, `test/TestCompile.lean`): a registry read from an environment holds only the programs of
