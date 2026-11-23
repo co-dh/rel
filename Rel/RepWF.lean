@@ -125,7 +125,14 @@ theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h
 theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h : Tab.inrConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
   rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
-  · cases h
+  · -- a band column: both sides are gathers, whose `Vals.WF` is `Vals.gather_wf`'s, and a band side's is `True`
+    unfold Tab.inrConvBand at h
+    obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+    simp only [bind, Except.bind, pure, Except.pure, cast_eq, eq_mpr_eq_cast] at h
+    -- UNBUILT: the splits are kscan, whereCol, Vals.gather, Opt.gather, Arr.of; adjust to the goal state
+    repeat (split at h; · cases h)
+    cases h
+    exact ⟨Vals.gather_wf ‹_› (by simp only [Vals.WF, Vals.view_ofOpt]), trivial⟩
   have hXw := hX
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h

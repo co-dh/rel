@@ -1,28 +1,30 @@
-nullband3g2 handoff
+nullband3h4 handoff (tool budget reached)
 
-GREEN and committed (branch worktree-agent-a676a6321cbdd9688): RelKernel (with ScanTest incl. stream pairs), RelRun.
+Branch worktree-agent-a1c248448af4d8d5e. GREEN commits: 0606ff2 (merges of 15b73ae, nullband-int, 8b84e97 + kscanCols_lock /
+raw_kscanChain generalised, nullOps lists .null; `lake build RelKernel RelRun` green), bf55cb0 (Tab.inrConvBand + inrConv
+`.opt` branch + 4 #guards, built green as Rel.Run.Struct).
 
-Design changes beyond the brief:
-- `kscan_closed` takes `hS : kscanStream .. = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2`
-  (only a stream reads its sources' null flags); `kscan_lock_closed (hs : kscanStream .. = false)` is the no-hypothesis form;
-  `kscanStream_ne (h : op ≠ .first)`; macro `lockstep` (Closure.lean) = the autoParam tactic proving `kscanStream .. = false`.
-- `colMap_closed/plain`, `colArr`, `scanArr` take `hs : kscanStream .. = false` (autoParam `by lockstep` on colArr/scanArr);
-  `colPrefix_closed/plain` take `ho : op ≠ .first := by decide`.
-- `.first` over two sources with no chain is now a STREAM, so `colMap/colArr .first n a a [] []` (identity map) no longer
-  works: replaced by one-source `scanArr .first false .i64 .i64 n Option.none [(n, a)]` (Run/List `Vals.cells`, Run/Where
-  `positions`), `Arr.pos n` (Run/Struct `injCols`), `kscan .first .. [(n, tag.enc)]` (Run/Cols `tagCount`).
-- Plan.srcB n x = `ctorB 0 #[n, x] #[]`; scanB and EmitC.mapB use it.
+Step 1 conflict resolution: Rel/Kernel/ScanTest.lean had two `knul`; 3h3's is now `kflag` (sources as `(n, e)` pairs).
+Step 3 law, done: `raw_kscanChain` no longer takes `hnl`; its columns clause reads
+`∃ e₀ es₀ ws', es.map (·.2) = e₀ :: es₀ ∧ mapM … = .ok ws' ∧ c' :: cs' = if op = .null then foRNuls n e₀ :: ws'.drop 1 else ws'`.
+`kscanCols_lock` likewise (`ws = fl.map foRNuls ++ ws'.drop fl.length`). `raw_kscan` keeps `hnl`; `kscan_last` dropped it.
 
-RED (`lake build Rel`, log /data/tmp/nb3g3.log):
-1. Rel/RepCanon.lean:192-204 (`raw_kscan`-style lemma over `kscan ... [a, b]`, now `[(n, a), (n, b)]`; the proof uses `mapM_chain`
-   that must become `mapM_pairs`/`kscanCols_lock`, as in KernelSpec/Scan `raw_kscanChain`); 7 errors, all from the es type.
-2. Runtime `#guard` failures (value false, no message): Lang/Test/Kern9 (kernT9.ok), TestFrameCols (frameCols.ok,
-   frameDescribe.failures), TestFrameSchema, TestGenericN (paramNT/paramPT), TestFrameStat (frameStatT, frameStatFloatT),
-   TestPivotDisk (datesT floatsT symsT ...), TestFrameApp, TestFrameBench, TestFrameQuery, TestFrameScale, TestFrameUnbounded.
-   Likely one cause: lock-step `kscan` now REFUSES a null source row (`noNul "kscan"` in `kscanCols`) where it used to read
-   the null word, e.g. `stepCols` `ne a` / `colMap .ne n x x` over a nullable column (Run/Arith), or a count mismatch
-   (`es.any (·.1 != n)`). Next step: run one failing test's pipeline and print the `Except` error text (the first message
-   names it: "kscan: row k is null, and a null names no row" or "a source holds a row count other than n"), then fix the
-   caller to read the column through the null-aware path, not the kernel.
-3. Not done: Concat (`Arr.concat/Opt.concat` as one stream `kscan .first`, deleting scatter+add, `shiftCol`, null refusal);
-   Rel/KernelSpec/KGather had no kscan use in this tree (module builds).
+Step 2: `Tab.inrConvBand h x` (Rel/Run/Struct.lean) = kscan .null false t .u1 n none [(n, x.enc)] [] [(.not,0)] -> whereCol ->
+Vals.gather m sel (Vals.ofOpt h x), Arr.of t m (Opt.gather m sel x).enc. `inrConv`'s `.opt h x` branch calls it.
+
+NOT DONE (module Rel.RepWF, Rel.RepStruct; nothing there is built, RepStruct's `.opt` branch of inrConv_holds still says `cases h`,
+which no longer closes):
+1. `inrConv_wf` (Rel/RepWF.lean, first bullet): proof written, UNBUILT. Shape: unfold Tab.inrConvBand at h; obtain ⟨rfl, rfl⟩ :=
+   Obj.band_some hb; simp only [bind, Except.bind, pure, Except.pure, cast_eq, eq_mpr_eq_cast] at h; split off the 5 binds; then
+   ⟨Vals.gather_wf _ (WF of a band side is True), trivial⟩ (Vals.WF of an atom/band side is True, RepCanon ~443).
+2. `inrConv_holds` `.opt` branch (Rel/RepStruct.lean ~606). Plan, all lemmas exist:
+   - kscan: `raw_kscanChain .null false t .u1 w n none [(n,x.enc)] [] [(.not,0)]` (w from `QAtomicType.u1.width`); `segAll n none`
+     gives all-ones marks, so out₀[i] = (foRNuls n x.enc)[i]; chainAll_ok gives out[i] = out₀[i] ^^^ 1; raw word = that % 2.
+     Flags are 0/1 (`foRNuls_bit`, RepCanon ~311), so word ≠ 0 ⟺ flag = 0 ⟺ `Opt.isNul x i = false` (`Opt.isNul_eq_false`, RepCanon 62).
+   - whereCol: `whereCol_spec` (RepSetOps 34) needs `∀ i < n, word < 2` (same fact) and lists the kept positions ascending.
+   - key side: `Vals.gather_row` (RepCanon) gives G.row j = X.row sel[j]; value side: `Opt.gather_row` (RepCanon ~330) gives
+     y.get j = x.get sel[j]; `Arr.of` success gives a.enc = y.enc, so y = Opt.ofArr a and `Opt.get_ofArr` gives y.get j = some (a.get j).
+   - the `keep_holds` proof (RepSetOps 194) is the template for the (→)/(←) split via `whereCol_spec` membership.
+   - X.row i = Obj.optEl hb (x.get i) (`Vals.row`, `Vals.view_ofOpt`); `Core.Rel.inr b s` unfolds as in `inr_holds`/`holds_inr_of_row`.
+   - Enc.Valid n x.enc: from `kgather_valid` on the successful `Opt.gather`.
+Index note: /home/dh/repo/rel/.lake/build/refactor-index.db is older than this worktree (line numbers and new decls differ); read files by awk NR.
