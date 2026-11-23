@@ -1446,7 +1446,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ✅ 盒子已去（分支 arr84）：`Arr t n := {e : Enc // Enc.WF t n e ∧ Kernel.hasNul e = false}`；`Arr.mk` 无 attribute
   参数，`Arr.of t n (e : Enc)`；`Plan.cols` 给 `SideCol = USize ⊕ Σ t k, Arr t k`（`checkSyms` 直接拿到
   `Arr .sym k`，不再经 `Arr.of` 重查）；`Db.ownFile t n e`（enum 分支删，头里 `attr`/`domain` 写空）；
-  `Expand.valsEq` 比 `t`、`n` 与 `encEq`；`Table.encOf` 删。`general` 不需要盒子：它的列是 `Enc.gen xs`，
+  `Expand.valsEq` 比 `t`、`n` 与 `encEq`；`Table.encOf` 删；`QValue.marking` 删（无使用者，8.4b）。`general` 不需要盒子：它的列是 `Enc.gen xs`，
   仍是 `Arr .general n`。剩：删 `general`/`Enc.gen` 与 `QValue`（`Carrier .general`、`ValEq`），own 文件头去掉
   `attr`/`domain` 并升版本（Rust `own.rs` 同改）。
 - 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
