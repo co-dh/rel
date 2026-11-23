@@ -178,6 +178,13 @@ def Tm.leq {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom 
 
 def Tm.lt {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) := .arg (.prim (cmpRelRow true)) U
 
+/-- `≤`, `<` on the universe `U` of an object `B` as a composition of relations, `⟨dom U, ⊤(dom U)⟩ c π₂`, `c` the
+    test of the pair (the row `le`/`lt` of `cmpOps` at an atom, the prelude's `le`/`lt` elsewhere). `Tm.lt`/`Tm.leq` are
+    the row `cmpRelRow` given `U`, run fused (`GenK.cmpRel`: closed, or on the pairs a meet hands it); this composition
+    runs on demand only (`Tm.dem`: `⊤` and `dom` do), which the frame tests refuse (`<°`, `quantile`). -/
+def Tm.cmpDef {B : Obj} (c : Tm (.prod B B) (.prod B B)) (U : Tm B B) : Tm B B :=
+  .comp (.pair (.dom U) (.top (.dom U))) (.comp c .outr)
+
 /-- `asc(P) : ℕ ⟶ B`, the row `ascRow` given `P` (`Prim.den_ascRow`): the set `dom P` numbered by `Obj.lt` order. -/
 def Tm.asc {B : Obj} (P : Tm B B) : Tm .long B := .arg (.prim ascRow) P
 

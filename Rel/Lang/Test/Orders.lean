@@ -55,4 +55,29 @@ rel_program ltObjs where
 
 #guard ltObjs.ok && ltObjs.failures.map toString == []
 
+/-! The operators `<`, `≤`, `>` at an object that is no atom (`Tm.cmpDef`): the pairs of `dom U` the prelude's test
+    holds at, `Obj.lt` of the object. `(0,2) < (1,0)` at `N×N` (first component first), null below every value at
+    `1+N`, no universe at `[C]` (reported). -/
+
+open Rel.Programs.prelude in
+rel_program cmpObjs where
+    obj N = 0…2
+    obj C : char
+    lo : N ⟶ N×N ≜ {(0,(0,2))}
+    hi : N ⟶ N×N ≜ {(0,(1,0))}
+    check lo < ∩ hi = hi
+    check hi < ∩ lo = 𝟘
+    check lo ≤ ∩ lo = lo
+    check hi > ∩ lo = lo
+    nl : N ⟶ 1+N ≜ ⊤(N,1) inl
+    check nl < ∩ inr = inr
+    check inr < ∩ nl = 𝟘
+    check nl ≤ ∩ nl = nl
+
+#guard cmpObjs.ok && cmpObjs.failures.map toString == []
+
+-- an object with no universe, and an atom with no order code
+#eval errAt "obj N = 0…2\nobj C : char\ng : [C] ⟶ [C] ≜ <\n" 3 "has no universe"
+#eval errAt "obj N = 0…2\nobj S : sym\ng : S×N ⟶ S×N ≜ <\n" 3 "has no order code"
+
 end Rel.Lang.Test

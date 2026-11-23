@@ -162,7 +162,7 @@
 #tbl(c-rs, (auto, 1fr, 1fr), ([运算], [归属], [说明]),
   [`plus minus times div mod divide`], [native 行，各 atom `t` 一个实例], [→ `Tab.arith`（`Arith.lean:104`），§4.5 的 `scan` 链不变。`den`：`arithDen`（`Den.lean:127`）去掉 `U`],
   [`lt`（pair 上的 test）], [prelude 定义 `lt`（§3.1）的 fused 行 `lt : t×t ⟶ t×t`，`a < b` 的 pair 上的 coreflexive；`num` 为有序 atom，浮点 atom 是 `native`（IEEE 的 `<` 不是 `Obj.lt`）；整数存储的 atom 上 `Tm.ltDef_den`，其余 object 上运行文本], [→ `Tab.cmpPairs`（`Div.lean:114`）],
-  [`<`（关系）], [定义 `< ≜ U ⟨𝟙, ⊤(U)⟩ lt π₂`], [即 `GenK.cmp`（`GenK.lean:295-305`）的两条分支：已知 `K.pairs` 时只运行 `lt`；否则是 `dom U` 的 CROSS 再 `lt`。`pairTest` 对它化简为 `(U×U) lt`，定理 `τ(<) = (U×U) lt` 新增],
+  [`<`（关系）], [定义 `< ≜ U ⟨𝟙, ⊤(U)⟩ lt π₂`，即 `Tm.cmpDef c U`；有序 atom 上 `c` 是行 `lt`，其它 object 上是 prelude `lt` 的文本], [即 `GenK.cmp`（`GenK.lean:295-305`）的两条分支：已知 `K.pairs` 时只运行 `lt`；否则是 `dom U` 的 CROSS 再 `lt`。`pairTest` 对它化简为 `(U×U) lt`，定理 `τ(<) = (U×U) lt` 新增],
   [`≤`], [prelude 定义 `le ≜ lt ∪ dom(π₁ ∩ π₂)`；前提 `leAt t a b ↔ ltAt t a b ∨ a = b` 只在整数存储的 atom 上需要（浮点与 `lt` 同为 native），已证：`Tm.le_row_den`（`OrdAt`，`ordAt_int`）], [fused 行 `le`（一次 `scan`，`Tab.ordOp`，`Div.lean:106`）；`Tm.leDef_den` 把 prelude 的体接到行上],
   [`succ` `max` `min`], [定义 + fused 行（§3.1）], [],
   [`$`、浮点运算], [native 行，不变], [`Tab.cast`、`Tab.floatOp`（`Cast.lean:15,43`）],
