@@ -232,7 +232,7 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
     have hEm : EN g ≤ m.toNat ∨ wN g = 0 := by rw [hwN, hEN]; omega
     refine ⟨by rw [hG, toNat_toUInt64 (by omega)], ?_⟩
     have es := (colMap_raw hix).2.2.2 t htT
-    rw [(kgather_word hsg t htT).2, hG, toNat_toUInt64 (by omega), hsw g hg, hu] at es
+    rw [(kgather_word hsg lo.plain t htT).2, hG, toNat_toUInt64 (by omega), hsw g hg, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add, toNat_toUInt64 (by rw [hSN]; have := hL63 g; omega)]
   simp only [Tab.Holds]
@@ -351,7 +351,7 @@ theorem cellSpan_start_le {n m : USize} {lo up : Arr .i64 n}
 
 /-- **`colArr` answers `colMap`'s column**, the converse of `colArr_ok`. -/
 theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o) :
-    colArr op n a b t = .ok (Arr.mk o (colMap_closed h).2) := by
+    colArr op n a b t = .ok (Arr.mk o (colMap_closed h).2 (colMap_plain h)) := by
   unfold colArr
   split
   · rename_i o' h'; have := h.symm.trans h'; cases this; rfl
@@ -525,7 +525,7 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
   rw [hgj]; congr 2; apply Fin.ext; rw [← hj]; dsimp only
   obtain ⟨hG, hu⟩ := hrun i.1 i.2 (((List.range i.1).map wN).sum + d) (by omega) (by omega)
   have es := (colMap_raw hix).2.2.2 _ ht
-  rw [(kgather_word hsg _ ht).2, hG, toNat_toUInt64 (by omega), (hse' i.1 i.2).1, hu] at es
+  rw [(kgather_word hsg lo.plain _ ht).2, hG, toNat_toUInt64 (by omega), (hse' i.1 i.2).1, hu] at es
   simp only [Op.eval, Except.ok.injEq] at es
   rw [← es, ← UInt64.ofNat_add, Nat.add_sub_cancel_left,
     toNat_toUInt64 (by have := (hb1 i.1).2.1; have := hwm i.1; omega)]
@@ -679,7 +679,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   -- the words at output row `t`: `a = S₁ + d`, `b = S₂ + m₁ - w₁ + d`, `c = [d < w₁]`
   have hat : (raw .i64 T a)[((List.range i.1).map wN).sum + d]?.getD 0 = (S₁ i.1 + d).toUInt64 := by
     have es := (colMap_raw ha).2.2.2 _ ht
-    rw [(kgather_word hga _ ht).2, hGi, (hse₁' i.1 i.2).1, hu] at es
+    rw [(kgather_word hga lo₁.plain _ ht).2, hGi, (hse₁' i.1 i.2).1, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add]
   have hddw : (raw .i64 n dd)[i.1]?.getD 0 = (S₂ i.1 + m₁.toNat - (E₁ i.1 - S₁ i.1)).toUInt64 := by
@@ -692,13 +692,13 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   have hbt : (raw .i64 T b)[((List.range i.1).map wN).sum + d]?.getD 0 =
       (S₂ i.1 + m₁.toNat - (E₁ i.1 - S₁ i.1) + d).toUInt64 := by
     have es := (colMap_raw hbb).2.2.2 _ ht
-    rw [(kgather_word hgd _ ht).2, hGi, hddw, hu] at es
+    rw [(kgather_word hgd (colMap_plain hdd) _ ht).2, hGi, hddw, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add]
   have hct : (raw .i64 T c)[((List.range i.1).map wN).sum + d]?.getD 0 =
       if d < E₁ i.1 - S₁ i.1 then 1 else 0 := by
     have es := (colMap_raw hc).2.2.2 _ ht
-    rw [(kgather_word hgw _ ht).2, hGi, hw₁w i.1 i.2, hu, eval_lt_nat hd63 hwl] at es
+    rw [(kgather_word hgw (colMap_plain hw₁) _ ht).2, hGi, hw₁w i.1 i.2, hu, eval_lt_nat hd63 hwl] at es
     exact (Except.ok.inj es).symm
   have hixt : (raw .i64 T ix)[((List.range i.1).map wN).sum + d]?.getD 0 =
       if d < E₁ i.1 - S₁ i.1 then (S₁ i.1 + d).toUInt64 else (S₂ i.1 + m₁.toNat - (E₁ i.1 - S₁ i.1) + d).toUInt64 := by
@@ -846,12 +846,12 @@ theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.a
     rw [hG, toNat_toUInt64 (by omega)]
   have ha₁t : (raw .i64 T a₁)[((List.range i.1).map wN).sum + d]?.getD 0 = (S₁ i.1 + d).toUInt64 := by
     have es := (colMap_raw ha₁).2.2.2 _ ht
-    rw [(kgather_word hg₁ _ ht).2, hGi, (hse₁' i.1 i.2).1, hu] at es
+    rw [(kgather_word hg₁ lo₁.plain _ ht).2, hGi, (hse₁' i.1 i.2).1, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add]
   have ha₂t : (raw .i64 T a₂)[((List.range i.1).map wN).sum + d]?.getD 0 = (S₂ i.1 + d).toUInt64 := by
     have es := (colMap_raw ha₂).2.2.2 _ ht
-    rw [(kgather_word hg₂ _ ht).2, hGi, (hse₂' i.1 i.2).1, hu] at es
+    rw [(kgather_word hg₂ lo₂.plain _ ht).2, hGi, (hse₂' i.1 i.2).1, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add]
   obtain ⟨j₁, hj₁, hxj⟩ := Vals.gather_row f₁ hx ⟨_, ht⟩
@@ -1571,6 +1571,12 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
     have hbK : bk.toUSize.toNat = bk := USize.toNat_ofNat_of_lt' (by omega)
     have hnU : r.n.toUInt64 = r.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
+    -- the gathered columns hold no null: a grade, a kseen group column, a fold, a gather of a grade
+    have hpN := kasc_plain hasc
+    have hqN : hasNul q = false := by rw [kgather_plain hq hpN]; exact hasNul_wordsFoR _
+    have hbgN := (kseen_plain hbseen).1
+    have hcodeN := kscatter_plain hcode hbgN
+    have hcRN : hasNul cR = false := Tab.groupFold_plain hcR
     ------------------------------------------------------------------ `Q`'s rows, `r`'s rows
     have hQh : ∀ a, Q.Holds b (a, c) ↔ R.Holds a b ∧ S.Holds a c := fun a => by
       obtain ⟨U₀, hU₀, hH₀⟩ := compOne_canon hQ hw.1 hw.2; rw [canon_holds hU₀, hH₀]
@@ -1678,7 +1684,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
         rw [← e]; simp
     have hqw : ∀ G < k, (raw .i64 k.toUSize q)[G]?.getD 0 = (π1 (fs1 G)).toUInt64 := fun G hG => by
       obtain ⟨hfw, hfn, -⟩ := hf1 G hG
-      rw [(kgather_word hq G (by omega)).2, hfw, toNat_toUInt64 (by omega), (hp1 _ hfn).1]
+      rw [(kgather_word hq hpN G (by omega)).2, hfw, toNat_toUInt64 (by omega), (hp1 _ hfn).1]
     have hdG : ∀ G < k, ∀ h : π1 (fs1 G) < Q.n.toNat, Q.key.row ⟨_, h⟩ = b →
         (raw .i64 k.toUSize d)[G]?.getD 0 = ((List.range N.toNat).countP P2).toUInt64 := by
       intro G hG h hb
@@ -1689,11 +1695,11 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
         rw [← e, hnU, ← UInt64.ofNat_add]
       obtain ⟨q2, hq2, hpq2⟩ := hsur2 (r.n.toNat + π1 (fs1 G)) (by omega)
       have hcqw : (raw .i64 k.toUSize cq)[G]?.getD 0 = (gr2 q2).toUInt64 := by
-        rw [(kgather_word hcq G (by omega)).2, hqaw, toNat_toUInt64 (by omega), ← hpq2,
-          scatter_last_at hcode π2 (fun q hq => (hp2 q hq).1) (fun q hq => (hp2 q hq).2) hinj2 q2 hq2,
+        rw [(kgather_word hcq hcodeN G (by omega)).2, hqaw, toNat_toUInt64 (by omega), ← hpq2,
+          scatter_last_at hcode hbgN π2 (fun q hq => (hp2 q hq).1) (fun q hq => (hp2 q hq).2) hinj2 q2 hq2,
           (hg2 q2 hq2).1]
       have hgq := (hg2 q2 hq2).2
-      rw [(kgather_word hd G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
+      rw [(kgather_word hd hcRN G (by omega)).2, hcqw, toNat_toUInt64 (by omega),
         fold_add_count (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hsg2 hcR).1
           (Tab.groupFold_ok (fn := (· + ·)) (fun _ _ => rfl) hbseen hsg2 hcR).2.2 gr2 (fun q => decide (π2 q < r.n.toNat))
           (fun q hq => (hg2 q hq).1)
@@ -1752,7 +1758,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
       rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hG
       obtain ⟨hGk, hGne⟩ := hG
       rw [hK] at hGk
-      have hixw := (kgather_word hix j.1 j.2).2
+      have hixw := (kgather_word hix hqN j.1 j.2).2
       rw [Array.getElem?_eq_getElem hjM, Option.getD_some, hqw _ hGk] at hixw
       generalize ((raw .i64 M sel)[j.1]'hjM).toNat = G at hGk hGne hixw
       obtain ⟨-, hfn, -⟩ := hf1 G hGk
@@ -1786,7 +1792,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
       have hj' : j < (raw .i64 M sel).size := by simpa using hj
       have hjM : j < M.toNat := by rw [← hsz]; exact hj'
       simp only [Array.getElem_toList] at hwi
-      have hixw := (kgather_word hix j hjM).2
+      have hixw := (kgather_word hix hqN j hjM).2
       rw [Array.getElem?_eq_getElem hj', Option.getD_some, hwi, hqw _ hG] at hixw
       obtain ⟨i1, hi1, hx1⟩ := Vals.gather_row _ hX1 ⟨j, hjM⟩
       obtain ⟨i2, hi2, hy2⟩ := Vals.gather_row _ hY1 ⟨j, hjM⟩
@@ -2153,7 +2159,7 @@ private def sumSp (xs : List (List Int64)) : List (List Int64 × Int64) :=
 private def bigCell : Except String (Vals (.arr .long) 1) := do
   pure ⟨9223372036854775808, ← colArr .add 1 (← colConst 1 0) (← colConst 1 0),
     ← colArr .add 1 (← colConst 1 1) (← colConst 1 0),
-    (⟨.vector .i64 9223372036854775808 .pos none, by simp [Ext.QValue.WFAt, Ext.Enc.WF]⟩ : Arr .i64 9223372036854775808)⟩
+    (⟨.vector .i64 9223372036854775808 .pos none, by simp [Ext.QValue.WFAt, Ext.Enc.WF], fun _ _ _ _ h => by cases h; rfl⟩ : Arr .i64 9223372036854775808)⟩
 
 -- `Vals.pack` past `2^63` elements is the error: `cellSpan` would read the size as the signed word `-2^63`, every
 -- width `0`, and answer a payload of no rows
@@ -2215,7 +2221,8 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
-  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (fun c hc => (Vals.cols_wf _ hes c hc).1)
+  have hpN := kasc_plain hasc
   obtain ⟨hperm, hsort⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
   generalize ascGrade N.toNat (ascKeys N es) = ps at hp hkq hperm hsort
@@ -2254,10 +2261,10 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   obtain ⟨cntN, hcntN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
       fun q => Verify.groupOf Kk N.toNat q == G && true := ⟨_, rfl⟩
   have hcDw : ∀ G < k, (raw .i64 k.toUSize cD)[G]?.getD 0 = (cDN G).toUInt64 := fun G hG => by
-    rw [scatter_add_count hcD (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < n.toNat)) hgw
+    rw [scatter_add_count hcD (colMap_plain hlt) (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < n.toNat)) hgw
       (fun q hq => by have := hgr q hq; omega) hltw G (by omega), hcDN]
   have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 = (cntN G).toUInt64 := fun G hG => by
-    rw [scatter_add_count hcnt (Verify.groupOf Kk N.toNat) (fun _ => true) hgw
+    rw [scatter_add_count hcnt (kscatter_plain hc1 rfl) (Verify.groupOf Kk N.toNat) (fun _ => true) hgw
       (fun q hq => by have := hgr q hq; omega) (fun q hq => by rw [colConst_raw hc1]; simp [hq]) G (by omega), hcntN]
   have hle : ∀ G, cDN G ≤ cntN G := fun G => by
     rw [hcDN, hcntN]; exact List.countP_mono_left fun x _ hx => by simp at hx ⊢; exact hx.1
@@ -2394,7 +2401,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       (ps[Fs ((raw .i64 M sel)[j]?.getD 0).toNat]?.getD 0).toUInt64 := fun j hj => by
     obtain ⟨hG, -⟩ := hselj j hj
     obtain ⟨hF, -⟩ := hFsG _ hG
-    rw [(kgather_word hiD j hj).2, (kgather_word hfs j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
+    rw [(kgather_word hiD hpN j hj).2, (kgather_word hfs (kseen_plain hseen).2 j hj).2, hfw _ hG, ← hFs, toNat_toUInt64 (by omega), hpw _ hF]
   have hgat : ∀ {x : Arr .i64 k.toUSize} {y : Arr .i64 M} {w : Nat → Nat}, Arr.gather M sel x = .ok y →
       (∀ G < k, (raw .i64 k.toUSize x.enc)[G]?.getD 0 = (w G).toUInt64) →
       ∀ j < M.toNat, (raw .i64 M y.enc)[j]?.getD 0 = (w ((raw .i64 M sel)[j]?.getD 0).toNat).toUInt64 := by
@@ -2778,7 +2785,7 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
     obtain ⟨hin, hx⟩ := (hmem i).1 ⟨j.1, j.2, hi⟩
     have c : k < EN i - SN i := by rw [hltw i hin] at hx; split at hx <;> first | assumption | exact absurd rfl hx
     obtain ⟨i', hi', hVi⟩ := Vals.gather_row _ hV j
-    rw [(kgather_word hix j.1 j.2).2, hi, haw i i.2, toNat_toUInt64 (by have := hb1 i; omega)] at hi'
+    rw [(kgather_word hix (colMap_plain ha) j.1 j.2).2, hi, haw i i.2, toNat_toUInt64 (by have := hb1 i; omega)] at hi'
     refine ⟨i, c, hi, hKi, hVi.trans ?_⟩
     have hS : SN i + k < m.toNat := by have := hb1 i; omega
     simp only [g, dif_pos hS]; congr 1; exact Fin.ext hi'.symm

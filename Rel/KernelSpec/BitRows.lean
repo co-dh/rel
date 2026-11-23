@@ -2,6 +2,7 @@ import Rel.Kernel.BitRows
 import Rel.KernelSpec.Scatter
 import Rel.KernelSpec.Encoding
 import Rel.KernelSpec.Chain
+import Rel.KernelSpec.Alp
 
 /-! `kbitrows`' law (`doc/rel-architecture.zh.typ` §4, the bit-row kernel), on the words `Enc.raw` reads from its
 arguments, from the body `bitRowsOf`. -/
@@ -129,5 +130,27 @@ theorem raw_kbitrows {all : Bool} {w na ni g : USize} {ends idx m o : Enc}
     List.mem_range'_1, beq_iff_eq]
   · exact ⟨fun ⟨k, ⟨h1, h2⟩, h3⟩ => ⟨k, h1, by omega, h3⟩, fun ⟨k, h1, h2, h3⟩ => ⟨k, ⟨h1, by omega⟩, h3⟩⟩
   · exact ⟨fun H k h1 h2 => H k ⟨h1, by omega⟩, fun H k ⟨h1, h2⟩ => H k h1 (by omega)⟩
+
+/-- **A bit matrix holds no null**: `kbitrows` writes it with no null bitmap (`nulAt_encodeAt_empty`). -/
+theorem kbitrows_plain {all : Bool} {w na ni g : USize} {ends idx m o : Enc}
+    (h : kbitrows all w na ni g ends idx m = .ok o) : hasNul o = false := by
+  have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
+    rcases System.Platform.numBits_eq with h | h <;> simp)
+  unfold kbitrows at h
+  split at h
+  case isFalse => cases h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  split at h; · cases h
+  unfold bitRowsOf at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  split at h; · cases h
+  cases h
+  simp only [h1, hasNul, List.any_eq_false, List.mem_range]
+  intro b hb
+  rw [nulAt_encodeAt_empty Column.lgEnc ⟨by decide, by decide⟩ 1 (by decide) (by decide) _ b hb]; decide
 
 end Rel.Verify

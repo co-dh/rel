@@ -139,14 +139,26 @@ impl Cells<'_> {
 }
 
 /// A key column of `kasc` and `kseen`: an atom column, a `pos` atom column (word `i` is `i`), or a `cells` one.
-pub enum Col<'a> { Atom(Key<'a>), Pos, Cells(Cells<'a>) }
+/// `Nul`: an atom column holding a null (`Coc::nuls`, its bitmap beside it), keyed by Lean `nulCodes`' two columns.
+pub enum Col<'a> { Atom(Key<'a>), Pos, Cells(Cells<'a>), Nul(Key<'a>, Vec<u8>) }
 
 /// The atom keys of `cs`, where every column is a `foR` atom.
 pub fn atoms<'a>(cs: &[Col<'a>]) -> Option<Vec<Key<'a>>> { cs.iter().map(|c| match c { Col::Atom(k) => Some(*k), _ => None }).collect() }
 
-/// Column `c`'s working key at rows `0 .. m`: one code a row whose order is `c`'s order, read a block at a time.
-pub fn work(c: &Col, m: usize) -> Vec<u64> {
-    match c { Col::Atom(k) => dense(&k.c, m, |v| k.code(v)), Col::Pos => (0..m as u64).collect(), Col::Cells(a) => a.codes(m) }
+/// Column `c`'s working keys at rows `0 .. m`, Lean `ascCol`'s code columns, read a block at a time: one code a row
+/// whose order is `c`'s order; a `Nul` atom two (`Kernel.nulCodes`): `0` at a null and `1` elsewhere, so a null sorts
+/// first as in q, then its code with `0` at a null, so all nulls are one value.
+pub fn work(c: &Col, m: usize) -> Vec<Vec<u64>> {
+    match c {
+        Col::Atom(k) => vec![dense(&k.c, m, |v| k.code(v))],
+        Col::Pos => vec![(0..m as u64).collect()],
+        Col::Cells(a) => vec![a.codes(m)],
+        Col::Nul(k, b) => {
+            let nul = |i: usize| crate::enc::is_nul(b, i);
+            let c = dense(&k.c, m, |v| k.code(v));
+            vec![(0..m).map(|i| !nul(i) as u64).collect(), c.into_iter().enumerate().map(|(i, x)| if nul(i) { 0 } else { x }).collect()]
+        }
+    }
 }
 
 /// The stable grade of `0 .. m` by the working keys `vs` in `lexLe` order: `None` where every row is no later than
@@ -167,8 +179,8 @@ fn lsd(vs: &[Vec<u64>], m: usize) -> Option<Vec<i64>> {
 
 /// The dense rank of each of rows `0 .. m` under `cs`' `lexLe` order: equal rows one rank, the least 0.
 pub fn rank(cs: &[Col], m: usize) -> Vec<u64> {
-    if let [c] = cs { return work(c, m) }
-    let vs: Vec<Vec<u64>> = cs.iter().map(|c| work(c, m)).collect();
+    let mut vs: Vec<Vec<u64>> = cs.iter().flat_map(|c| work(c, m)).collect();
+    if vs.len() == 1 { return vs.swap_remove(0) }
     let p: Vec<usize> = lsd(&vs, m).map_or_else(|| (0..m).collect(), |p| p.into_iter().map(|i| i as usize).collect());
     let mut r = vec![0u64; m];
     for w in 1..m { let (a, b) = (p[w - 1], p[w]); r[b] = r[a] + vs.iter().any(|v| v[a] != v[b]) as u64 }
@@ -178,7 +190,7 @@ pub fn rank(cs: &[Col], m: usize) -> Vec<u64> {
 /// `grade` over any key columns: all `foR` atoms go to `grade`; else `lsd` over every column's working key (`work`).
 pub fn grade_cols(run: Runner, cs: &[Col], m: usize) -> Option<Vec<i64>> {
     if let Some(ks) = atoms(cs) { return grade(run, &ks, m) }
-    lsd(&cs.iter().map(|c| work(c, m)).collect::<Vec<_>>(), m)
+    lsd(&cs.iter().flat_map(|c| work(c, m)).collect::<Vec<_>>(), m)
 }
 
 /// The rows of `ks` a block at a time on the first column's grid: `f(at, codes)` with column `c`'s codes of rows

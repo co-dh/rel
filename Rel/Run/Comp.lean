@@ -23,7 +23,7 @@ def expand (K : USize) (w : Enc) : Except String (USize × Enc × Enc) := do
   match hP : colPrefix .add K w with
   | .error s => throw s
   | .ok P =>
-    let T := lastCount K P (colPrefix_closed hP).2
+    let T := lastCount K P (colPrefix_closed hP).2 (colPrefix_plain hP)
     if USize.size ≤ T + 1 then throw s!"expand: {T} output rows past USize"
     let T := T.toUSize
     expandNote s!"the {K} groups of a composition (expand)" T.toNat fun _ => do
@@ -90,7 +90,7 @@ def compCuts (bound : Nat) (n : USize) :
   | (N, p, g, _, K, _, _, w) =>
     match hP : colPrefix .add K w with
     | .error s => throw s
-    | .ok P => if lastCount K P (colPrefix_closed hP).2 ≤ bound then pure none else do
+    | .ok P => if lastCount K P (colPrefix_closed hP).2 (colPrefix_plain hP) ≤ bound then pure none else do
       -- each constant operand a post step (`colMap_const_eq`): `max (x - 1) 0` as `[(.add, 0 - 1), (.max, 0)]`, then
       -- `/ max bound 1` as `(.rdiv, max bound 1)`
       let dec : List (Op × UInt64) := [(.add, 0 - 1), (.max, 0)]
@@ -104,7 +104,7 @@ def compCuts (bound : Nat) (n : USize) :
       | .error s => throw s
       | .ok I =>
         let rowG ← kgather n .pos N (← kscatter .last N p g N 0)
-        pure (some (lastCount K I (colPrefix_closed hI).2 + 1, ← Arr.gather n rowG (Arr.mk I (colPrefix_closed hI).2)))
+        pure (some (lastCount K I (colPrefix_closed hI).2 (colPrefix_plain hI) + 1, ← Arr.gather n rowG (Arr.mk I (colPrefix_closed hI).2 (colPrefix_plain hI))))
 
 /-- Block `j` of `R ≫ S`: the rows of `R` whose block word in `c` is `j` (`keep`), composed with `S` by `compOne`. -/
 def compBlock (R : Tab A B) (S : Tab B C) (c : Enc) (j : Nat) : Except String (Tab A C) := do
@@ -123,7 +123,7 @@ def compBlocks (R : Tab A B) (S : Tab B C) (nb : Nat) (bid : Arr .i64 R.n) : Exc
 def compRows : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc → Except String Nat
   | (_, _, _, _, K, _, _, w) => match hP : colPrefix .add K w with
     | .error s => throw s
-    | .ok P => pure (lastCount K P (colPrefix_closed hP).2)
+    | .ok P => pure (lastCount K P (colPrefix_closed hP).2 (colPrefix_plain hP))
 
 /-- `R ≫ S` from `compGroups`' answer `x`: `compExpand` where the expansion is within `bound`, else `compBlocks` over
 `compCuts`' blocks. -/
