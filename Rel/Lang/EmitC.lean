@@ -151,6 +151,19 @@ partial def withRegs (cs : Cols) (rs : List Nat) : Bld (Cols × List Nat) :=
       let (x, rs) ← withRegs x rs; let (y, rs) ← withRegs y rs; pure (acc ++ [.sum p tag x y], rs)
     | _, _ => throw "a loop's state: fewer registers than its columns read"
 
+/-- The registers of the tables `Ts`, a plan function's or a loop's state: each one's count, then `regsOf` its columns. -/
+def tabsRegs (Ts : List TabB) : Bld (List Nat) :=
+  return (← Ts.mapM fun T => return T.n :: (← regsOf (T.key ++ T.val))).flatten
+
+/-- The tables of the shapes `Ts` with their registers taken in order from `rs` (`tabsRegs`' inverse, `withRegs`),
+    and the registers left. -/
+def tabsAt (Ts : List TabB) (rs : List Nat) : Bld (List TabB × List Nat) :=
+  Ts.foldlM (init := (([] : List TabB), rs)) fun (Us, rs) T => match rs with
+    | n :: rs => do
+      let (cs, rs) ← withRegs (T.key ++ T.val) rs
+      pure (Us ++ [⟨n, cs.take T.key.length, cs.drop T.key.length⟩], rs)
+    | [] => throw "a loop's state: fewer registers than its tables read"
+
 /-- The types of `regsOf cs`: an `Enc` an object, an array's count a size. -/
 partial def tysOf (cs : Cols) : Bld (List Ty) := return (← cs.mapM fun
   | .atom .. => pure [Ty.obj]
@@ -259,18 +272,10 @@ def funB {α : Type} (tys : List Ty) (args : List Nat) (b : List Nat → Bld (Ar
 
 /-- `funB` on tables: each `T` of `Ts` passed as its count, then `regsOf`, and the answer a table likewise. -/
 def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
-  let regs (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
   let tysT (T : TabB) : Bld (List Ty) := return Ty.size :: (← tysOf (T.key ++ T.val))
-  let shape (Ts : List TabB) (rs : List Nat) : Bld (List TabB) := do
-    let (Us, _) ← Ts.foldlM (init := (([] : List TabB), rs)) fun (Us, rs) T => match rs with
-      | n :: rs => do
-        let (cs, rs) ← withRegs (T.key ++ T.val) rs
-        pure (Us ++ [⟨n, cs.take T.key.length, cs.drop T.key.length⟩], rs)
-      | [] => throw "a function's parameters: fewer registers than its tables read"
-    pure Us
-  let (rs, U) ← funB (← Ts.mapM tysT).flatten (← Ts.mapM regs).flatten fun ps => do
-    let U ← b (← shape Ts ps); pure ((← regs U).toArray, ← tysT U, U)
-  match ← shape [U] rs.toList with
+  let (rs, U) ← funB (← Ts.mapM tysT).flatten (← tabsRegs Ts) fun ps => do
+    let U ← b (← tabsAt Ts ps).1; pure ((← tabsRegs [U]).toArray, ← tysT U, U)
+  match (← tabsAt [U] rs.toList).1 with
   | [V] => pure V
   | _ => throw "a function's answer: not one table"
 
@@ -755,31 +760,28 @@ def packT (T : TabB) : Bld TabB := funT [T] fun
   | [T] => return ⟨T.n, ← packB T.n T.key, ← packB T.n T.val⟩
   | _ => throw "pack: not one table"
 
-/-- **`Tab.fixOn`**: rounds of `step` from `X` (`Plan.loop`, the state its count and columns), at most the register
-    `k` of them, until a round leaves the row count as it was; that round's table. `k` rounds with the count still
-    moving fail with `msg`. Each round's table has its payloads cut (`packT`). One plan function (`funT`), `step`'s
-    reads of the scope its parameters. -/
-def fixB (msg : String) (step : TabB → Bld TabB) (k : Nat) (X : TabB) : Bld TabB := funT [X] fun
-  | [X] => do
-    let st (T : TabB) : Bld (Array Nat) := return #[T.n] ++ (← regsOf (T.key ++ T.val)).toArray
-    let shape (rs : Array Nat) : Bld TabB := do
-      let (cs, _) ← withRegs (X.key ++ X.val) (rs.toList.drop 1)
-      pure ⟨← nth rs 0 "loop", cs.take X.key.length, cs.drop X.key.length⟩
-    shape (← loop k (← st X) msg fun rs => do
-      let X ← shape rs
-      let Y ← packT (← step X)
-      pure (← st Y, ← call1 (kernel% USize.decEq) #[Y.n, X.n]))
-  | _ => throw "a fixed point: not one table"
+/-- **`Tab.fixOn`**: rounds of `step` from the tables `Xs` (`Plan.loop`, the state each one's count and columns), at
+    most the register `k` of them, until a round leaves the first table's row count as it was; that round's first
+    table. `k` rounds with the count still moving fail with `msg`. Each round's tables have their payloads cut
+    (`packT`). One plan function (`funT`), `step`'s reads of the scope its parameters. -/
+def fixB (msg : String) (step : List TabB → Bld (List TabB)) (k : Nat) (Xs : List TabB) : Bld TabB := funT Xs fun Xs => do
+  let first : List TabB → Bld TabB | T :: _ => pure T | [] => throw "a fixed point of no table"
+  let shape (rs : Array Nat) : Bld (List TabB) := return (← tabsAt Xs rs.toList).1
+  first (← shape (← loop k (← tabsRegs Xs).toArray msg fun rs => do
+    let Ts ← shape rs
+    let Ys ← (← step Ts).mapM packT
+    pure ((← tabsRegs Ys).toArray, ← call1 (kernel% USize.decEq) #[(← first Ys).n, (← first Ts).n])))
 
 /-- **`Tab.nu`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical, its row count plus two of them. -/
 def nuB (f : TabB → Bld TabB) (top : TabB) : Bld TabB := do
   let T ← canonT top
-  fixB "Tab.nu: the row count still moved at the rows of top + 2 rounds" (fun X => do interB X (← f X))
-    (← call1 (kernel% USize.add) #[T.n, ← lit (.size 2)]) T
+  fixB "Tab.nu: the row count still moved at the rows of top + 2 rounds"
+    (fun | [X] => return [← interB X (← f X)] | Ts => throw s!"ν: a state of {Ts.length} tables, not one")
+    (← call1 (kernel% USize.add) #[T.n, ← lit (.size 2)]) [T]
 
 /-- **`Tab.mu`**: rounds `X ↦ X ∪ f(X)` from `Z` (`𝟘`), at most the register `k` of them. -/
 def muB (msg : String) (k : Nat) (f : TabB → Bld TabB) (Z : TabB) : Bld TabB :=
-  fixB msg (fun X => do unionB X (← f X)) k Z
+  fixB msg (fun | [X] => return [← unionB X (← f X)] | Ts => throw s!"μ: a state of {Ts.length} tables, not one") k [Z]
 
 /-- A round count `c` as a `size` literal; past a `size`, refused rather than wrapped. -/
 def sizeB (c : Nat) : Bld Nat := do
@@ -1211,25 +1213,18 @@ def peelB (E : Obj) (left : Bool) (rest : TabB) : Bld (TabB × TabB) := do
     `P − dom(el) P` (the rows whose key has no element left), both cut (`packT`). The answer is the last `out`. -/
 def foldRoundsB (peel : TabB → Bld (TabB × TabB)) (step : TabB → TabB → Bld TabB) (k : Nat) (rest P out : TabB) :
     Bld TabB := do
-  let st (T : TabB) : Bld (List Nat) := return T.n :: (← regsOf (T.key ++ T.val))
-  let shape (X : TabB) : List Nat → Bld (TabB × List Nat)
-    | n :: rs => do
-      let (cs, rs) ← withRegs (X.key ++ X.val) rs
-      pure (⟨n, cs.take X.key.length, cs.drop X.key.length⟩, rs)
-    | [] => throw "a fold's state: fewer registers than its tables read"
   let three (rs : List Nat) : Bld (TabB × TabB × TabB) := do
-    let (R, rs) ← shape rest rs
-    let (Q, rs) ← shape P rs
-    pure (R, Q, (← shape out rs).1)
-  let init := ((← st rest) ++ (← st P) ++ (← st out)).toArray
-  let s ← loop k init "Tab.foldRounds: rows still folding when the rounds ran out" fun rs => do
+    match (← tabsAt [rest, P, out] rs).1 with
+    | [R, Q, O] => pure (R, Q, O)
+    | Ts => throw s!"a fold's state: {Ts.length} tables, not three"
+  let s ← loop k (← tabsRegs [rest, P, out]).toArray "Tab.foldRounds: rows still folding when the rounds ran out" fun rs => do
     let (R, Q, O) ← three rs.toList
     let e ← call1 (kernel% USize.decEq) #[Q.n, ← lit (.size 0)]
     let nx ← ite e (pure rs) do
       let (el, R') ← peel R
       let Q' ← packT (← step Q el)
       let O' ← packT (← unionB O (← diffB Q (← compB (← coreflB el.n el.key) Q)))
-      return ((← st R') ++ (← st Q') ++ (← st O')).toArray
+      return (← tabsRegs [R', Q', O']).toArray
     pure (nx, e)
   return (← three s.toList).2.2
 
@@ -1260,6 +1255,28 @@ def foldB (E V : Obj) (left : Bool) (n : Nat) (X : Cols) (ev : TabB) (step : Tab
     foldRoundsB (peelB E left) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB I.n I.key)
       (← canonT ⟨T, x, y⟩) (← zeroB (.arr E) V)
   | _ => throw "fold: not two tables"
+
+/-- **`Tab.star`** on the keys `X` (`n` rows), `x` its step `F`: the state `(Y, Δ)` from `(P, P)`, `P = idU X`
+    (`GenK.after`); a round's frontier `N = Δ ≫ F`, `F` read at `ran Δ` (`compTB`; `Tab.star`'s `Δ ≫ (ran Δ ≫ F)`),
+    then `(Y ∪ N, N − Y)`, until `Y` keeps its row count (`fixB`). Where `Tab.unionDiffSel` picks `mergeDiff` the plan
+    takes `unionDiff`'s pair (`unionB`, `diffB`): `Tab.unionDiffSel_holds` gives both the same canonical tables. -/
+def starB (n : Nat) (X : Cols) (x : Dom → Bld TabB) : Bld TabB := do
+  let P ← coreflB n X
+  fixB (Tab.capMsg "star" Tab.roundsMax) (fun
+    | [Y, Δ] => do let N ← compTB Δ x true; return [← unionB Y N, ← diffB N Y]
+    | Ts => throw s!"star: a state of {Ts.length} tables, not two") (← sizeB Tab.roundsMax) [P, P]
+
+/-- **`Tab.loop`** on the keys `Z` (`n` rows) of `X × [Y]`, `x` its step `F`: `P = idU Z` (`GenK.after`), so `ran P`
+    is `P` and `P ≫` the fold's answer is that answer; the left fold of `F` along each `ys` from `c` (`foldRoundsB`,
+    `peelB`), a round's step `p ≫ F` read at `ran p` (`compTB`), `p = ⟨S, el⟩`, the payload's row count plus two
+    rounds. One plan function (`funV`). -/
+def loopB (X Y : Obj) (n : Nat) (Z : Cols) (x : Dom → Bld TabB) : Bld TabB := funV n Z [] fun n Z _ => do
+  let K := Obj.prod X (.arr Y)
+  let P ← coreflB n Z
+  let (m, _, _, _) ← arrCol "loop" (P.val.drop (objWidth X))
+  foldRoundsB (peelB Y true) (fun S el => do compTB (← pairB K X Y S el) x true)
+    (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← projT X (.arr Y) false P) (← projT X (.arr Y) true P)
+    (← zeroB K X)
 
 /-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows) of `A`, `R` the table of the relation on elements: the elements
     EXPANDed (`v`, `T` rows), `⟨pos, v⟩ ≫ R`; where each position has exactly one image, those images in position
@@ -1496,6 +1513,13 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.asc then match xs with
     | [x] => ascB B (← x {})
     | _ => throw s!"asc given {xs.length} relations, not one"
+  -- `GenK.stepAfter`: `idU X ≫ star(F)`, `idU X ≫ loop(F)`, `F` read at the pairs a round meets (`compTB`)
+  else if c == ``Tab.star then match xs with
+    | [x] => do let (n, X) ← known r.sym D.dom; starB n X x
+    | _ => throw s!"row `{r.sym}` (`{c}`) given {xs.length} relations, not one"
+  else if c == ``Tab.loop then match A, xs with
+    | .prod X (.arr Y), [x] => do let (n, Z) ← known r.sym D.dom; loopB X Y n Z x
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair of a state and an array, or given {xs.length} relations, not one"
   else if c == ``Tab.uncons || c == ``Tab.unsnoc then match A with
     | .arr b => do let (n, X) ← known r.sym D.dom; unconsB b (c == ``Tab.uncons) n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
