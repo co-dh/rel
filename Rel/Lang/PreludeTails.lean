@@ -53,7 +53,7 @@ theorem Tm.tailsStep_den (ρ : Val) {B : Obj} (hd : Tm (.arr (.arr B)) (.arr B))
 theorem Tm.tailsSeed_den (ρ : Val) {B : Obj} :
     (Tm.comp (B := .arr B) (A := .arr (.arr B)) Tm.nil (.prim (rowOf "τ"))).den ρ = (fun _ b => b = [[]] : Core.Rel (Obj.El (.arr (.arr B))) (Obj.El (.arr (.arr B)))) := by
   funext a v
-  simp [Tm.den, Tm.nil, Prim.den_nilRow, Prim.den_tau, nilDen, Core.Rel.comp]
+  simp [Tm.den, Tm.nil, Prim.den_nilRow, Prim.den_tau, nilDen, Core.Rel.graph, Core.Rel.comp]
 
 /-- The fold of `tails`'s step from `[[]]` lists the suffixes, longest first. -/
 theorem tails_foldr {α : Type} (xs : List α) : xs.foldr (fun x acc => (x :: acc.headD []) :: acc) [[]] =

@@ -75,7 +75,7 @@ abbrev symDivDen (TA : Core.Rel (Obj.El A) (Obj.El A)) (TB : Core.Rel (Obj.El B)
   rdivDen TR TS TA TB ∩ (rdivDen TS TR TB TA)°
 
 /-- `nil`: every source to the empty array. -/
-abbrev nilDen : Core.Rel (Obj.El A) (Obj.El (.arr B)) := fun _ Y => Y = []
+abbrev nilDen : Core.Rel (Obj.El A) (Obj.El (.arr B)) := graph fun _ => []
 
 /-- `at(k)`: the element at position `k`. -/
 abbrev atDen (k : Nat) : Core.Rel (Obj.El (.arr B)) (Obj.El B) := fun xs x => ∃ h : k < xs.length, x = xs[k]'h
@@ -230,7 +230,7 @@ abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.E
 abbrev upToDen {K V : Obj} {t : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El V)) :
     Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El (.prod K (.atom t))) :=
   (𝟙 _ ∩ T ≫ T°) ≫ ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
-    (graph Prod.snd ≫ (fun a b => leAt t b a : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
+    (graph Prod.snd ≫ (leAt t : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t)))° ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
 
 /-- A value of the atom `t` to its `f64` word (`fval`): none at an atom holding no float. -/
 abbrev fwideDen (t : QAtomicType) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom .f64)) := fun x X => fval t x = some X
@@ -261,7 +261,7 @@ abbrev fsumDen (u : QAtomicType) : Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.
 def sumDen : (u : QAtomicType) → Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.atom u))
   | .f32 => fsumDen .f32
   | .f64 => fsumDen .f64
-  | u => foldDen (fun _ b => b = QAtomicType.ofBits u 0) (stepAt u Ew.add)
+  | u => foldDen (graph fun _ => QAtomicType.ofBits u 0) (stepAt u Ew.add)
 
 /-- q's `sums` per key, `agg(dom(x) (𝟙 × ≥) dom(x), F(x) sumDen)` with `agg(R, f) = dom(R) Λ(R) f`: `(k, i)` to
     `sumDen u` of `x`'s values at `(k, j)`, `j ≤ i` ascending: none at or after a step `plus` refuses (a wrap, the
@@ -398,28 +398,28 @@ def nulStep (k : UInt8) : Core.Rel (Obj.El (.prod (.opt .long) (.opt .long))) (O
 def stepOn (k : UInt8) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El A)
   | .atom t => stepAt t k
   | .opt .long => nulStep k
-  | _ => fun _ _ => False
+  | _ => 𝟘
 
 /-- The row `succ` at `A`: at `i64` each value to `Ew.intStep`'s `u + 1` (`succDen` with no universe), `𝟘` elsewhere. -/
 def succOn : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A)
-  | .atom .i64 => fun u w => w = Ew.intStep Ew.add Alg.nul u 1
-  | _ => fun _ _ => False
+  | .atom .i64 => graph fun u => Ew.intStep Ew.add Alg.nul u 1
+  | _ => 𝟘
 
 /-- The row `mix` at `A`: at `i64` each counter `u` to `Op.mixWord u`, splitmix64 there; `𝟘` elsewhere. -/
 def mixOn : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A)
-  | .atom .i64 => fun u w => w = (Rel.Kernel.Op.mixWord u.toUInt64).toInt64
-  | _ => fun _ _ => False
+  | .atom .i64 => graph fun u => (Rel.Kernel.Op.mixWord u.toUInt64).toInt64
+  | _ => 𝟘
 
 /-- An order test of `cmpOps` at `A`: at an atom the coreflexive on the pairs `(a, b)` with `ltAt t a b` (`s`) or
     `leAt t a b`, `𝟘` elsewhere. -/
 def ordDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El (.prod A A))
   | .atom t => fun p q => q = p ∧ if s then ltAt t p.1 p.2 else leAt t p.1 p.2
-  | _ => fun _ _ => False
+  | _ => 𝟘
 
 /-- The row `cmpRelRow` at `A` given the universe `U`: `ltDen`/`leqDen` at an atom, `𝟘` elsewhere. -/
 def ordRelDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A) → Core.Rel (Obj.El A) (Obj.El A)
   | .atom t => fun U => if s then ltDen t U else leqDen t U
-  | _ => fun _ _ _ => False
+  | _ => fun _ => 𝟘
 
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Core.Rel (Obj.El (c.ty σ).1) (Obj.El (c.ty σ).2)
