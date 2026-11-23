@@ -17,17 +17,17 @@ rel_program frameJoin where
     semiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(J(a, b, x, y))) x
     antiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x
     -- every row of `x` with each match in `y`, or once with the null when it has none
-    -- `x × (y ⊕ 𝟙)` as its pair: `×` with a table on the left does not hand its right operand a domain at `N`
-    leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(δ+1) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩
-    rightJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ (β+1)×δ ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩
+    -- `x × (𝟙 ⊕ y)` as its pair: `×` with a table on the left does not hand its right operand a domain at `N`
+    leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(1+δ) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (𝟙 ⊕ y)⟩
+    rightJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ (1+β)×δ ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩
     -- q's aj, linear: `r` counts `y`'s rows of a key up to a time (`sums` along `τ`, in `μ`), so `m` meets the latest
     -- `u ≤ t`; `agg(m, last)` is q's tie-break; `dom(x)` before `tot`: its `𝟙 − dom(R)` has no universe at unbounded `ν`
-    aj(k : β ⟶ κ, t : β ⟶ τ, h : δ ⟶ κ, u : δ ⟶ τ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β×(δ+1) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°
+    aj(k : β ⟶ κ, t : β ⟶ τ, h : δ ⟶ κ, u : δ ⟶ τ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β×(1+δ) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°
 
     -- `<>`: `y`'s positions shifted past `x`'s, written as `(dom(y) (+n))°` since `(+n)°` reads its whole universe
     append(x : ν ⟶ β, y : ν ⟶ β) : ν ⟶ β ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)
     -- the left join, then `y`'s rows with no match, null on the left
-    fullOuterJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : μ ⟶ (β+1)×(δ+1) ≜ append(leftJoin(a, b, x, y) ⟨π₁ inl, π₂⟩, antiJoin(b, a, y, x) ⟨⊤ inr, inl⟩)
+    fullOuterJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : μ ⟶ (1+β)×(1+δ) ≜ append(leftJoin(a, b, x, y) ⟨π₁ inr, π₂⟩, antiJoin(b, a, y, x) ⟨⊤ inl, inr⟩)
     union(x : ν ⟶ β, y : ν ⟶ β) : ν ⟶ β ≜ distinct(append(x, y))
     intersect(x : ν ⟶ β, y : μ ⟶ β) : ν ⟶ β ≜ distinct(semiJoin(𝟙, 𝟙, x, y))
     difference(x : ν ⟶ β, y : μ ⟶ β) : ν ⟶ β ≜ distinct(antiJoin(𝟙, 𝟙, x, y))
@@ -39,10 +39,10 @@ rel_program frameJoin where
     -- every value is a column, `w = ⟨v ∈ V ↦ pivotCol(k, q, v, f, x)⟩` (doc F1)
     pivotOn(k : β ⟶ κ, w : κ ⟶ ω, x : ν ⟶ β) : ν ⟶ κ×ω ≜ firstOcc(x k) x k ⟨𝟙, w⟩
     -- the column of the value `s` of `q`: `f` of the rows with that (key, value), null at a key with none
-    pivotCol(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : κ ⟶ δ+1 ≜ ran(x k) tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f))
-    pivotWide(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, t : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ κ×((δ+1)×(δ+1)) ≜ pivotOn(k, ⟨pivotCol(k, q, s, f, x), pivotCol(k, q, t, f, x)⟩, x)
-    -- get_dummies' column of the value `s` of `c`: `inl` where a row's `c` is `s` (`c s° s`, the coreflexive `c ≫ (= s)`),
-    -- `inr` elsewhere; over a finite object `V`, `⟨v ∈ V ↦ dummy(c, v, x)⟩` is every column (doc F1)
+    pivotCol(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : κ ⟶ 1+δ ≜ ran(x k) tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f))
+    pivotWide(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, t : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ κ×((1+δ)×(1+δ)) ≜ pivotOn(k, ⟨pivotCol(k, q, s, f, x), pivotCol(k, q, t, f, x)⟩, x)
+    -- get_dummies' column of the value `s` of `c`: `inr` where a row's `c` is `s` (`c s° s`, the coreflexive `c ≫ (= s)`),
+    -- `inl` elsewhere; over a finite object `V`, `⟨v ∈ V ↦ dummy(c, v, x)⟩` is every column (doc F1)
     dummy(c : β ⟶ θ, s : 1 ⟶ θ, x : ν ⟶ β) : ν ⟶ 1+1 ≜ dom(x) tot(x c s°)
 
 end Rel.Programs
