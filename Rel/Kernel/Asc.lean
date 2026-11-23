@@ -1,6 +1,11 @@
-import Rel.Kernel.Scatter
-import Rel.Kernel.Search
-import Rel.Kernel.Sort
+module
+
+public import Rel.Kernel.Scatter
+public import Rel.Kernel.Search
+public import Rel.Kernel.Sort
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `asc`, the stable sort (`doc/rel-architecture.zh.typ` §4): `m` rows of several `foR` key columns, ordered
 lexicographically, the first column the most significant and equal rows kept in input order. It answers every column
@@ -38,13 +43,13 @@ def ordCode (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
 
 /-- What `ordCode` runs as: its masks by `Column.ones` and `Column.pow2`; the `Nat` `2 ^ 63` at `w = 8` is a
 GMP number. -/
-private def ordCodeImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
+def ordCodeImpl (w : Nat) (float signed : Bool) (v : UInt64) : UInt64 :=
   let mask : UInt64 := if w == 8 then 0xffffffffffffffff else Column.ones (8 * w)
   let top : UInt64 := Column.pow2 (8 * w - 1)
   let u := v &&& mask
   if float then (if u &&& top != 0 then u ^^^ mask else u ||| top) else if signed then u ^^^ top else u
 
-@[csimp] private theorem ordCode_eq_impl : @ordCode = @ordCodeImpl := by
+@[csimp] theorem ordCode_eq_impl : @ordCode = @ordCodeImpl := by
   funext w f s v
   simp only [ordCode, ordCodeImpl, Column.ones_eq, Column.pow2_eq,
     show Nat.toUInt64 2 = 2 from rfl]

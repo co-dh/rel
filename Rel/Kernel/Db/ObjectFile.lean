@@ -1,3 +1,8 @@
+module
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
+
 /-! The part of `Rel.Db.ObjectFile` the Rel kernels reach; `Rel.Db.ObjectFile` imports it.
 
 The own-format column file both ways: `ownWrite` writes a column's parts under a header, `ownMap` maps the file and

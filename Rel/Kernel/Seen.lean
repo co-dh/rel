@@ -1,4 +1,9 @@
-import Rel.Kernel.Asc
+module
+
+public import Rel.Kernel.Asc
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `seen` (PLAN D.12): over rows already in `kasc` order, each row's group and each group's first row. Its callers
 compose `kasc ≫ kseen`, so the kernel needs no hash and no direct-addressing table: on sorted rows a group is a run of

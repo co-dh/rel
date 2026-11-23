@@ -1,8 +1,13 @@
-import Rel.Kernel.Need
-import Rel.Kernel.Coc
-import Rel.Kernel.Scan
-import Rel.Kernel.Value
-import Rel.Kernel.Search
+module
+
+public import Rel.Kernel.Need
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Scan
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Kernel.Sort` the Rel kernels reach; `Rel.Kernel.Sort` imports it. -/
 

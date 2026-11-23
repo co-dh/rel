@@ -1,4 +1,9 @@
-import Rel.Kernel.Db.Csv
+module
+
+public import Rel.Kernel.Db.Csv
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The CSV round trip (IO design C.6): whatever `csvText` accepts, `csvWords` reads back word for word. It holds with
 no exception because the writer refuses what text cannot hold: `cell` writes a word only if its text reads back as

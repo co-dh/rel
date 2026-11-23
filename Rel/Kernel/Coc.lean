@@ -1,4 +1,9 @@
-import Rel.Kernel.Value
+module
+
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Kernel.Coc` the Rel kernels reach; `Rel.Kernel.Coc` imports it. -/
 
@@ -54,7 +59,7 @@ def packRes (B w : Nat) (res : Nat → UInt64) : ByteArray :=
 
 /-- What `packRes` runs as: field `j`'s bits `m` (cut by `Column.ones`) moved into byte `k` by one word shift, where the
 spec's `2 ^ (j * w)` and `2 ^ (8 * k)` are GMP numbers from the eighth byte on. -/
-private def packResImpl (B w : Nat) (res : Nat → UInt64) : ByteArray :=
+def packResImpl (B w : Nat) (res : Nat → UInt64) : ByteArray :=
   if w = 0 then ByteArray.empty else
   ⟨((List.range (B * w / 8)).map fun k =>
     (List.range' (8 * k / w) ((8 * k + 7) / w + 1 - 8 * k / w)).foldl (init := (0 : UInt8)) fun b j =>
@@ -97,7 +102,7 @@ private theorem fieldByte_eq (w s k : Nat) (v : UInt64) :
       rw [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight, hs, Nat.shiftRight_eq_div_pow]
     · rw [Nat.div_eq_of_lt (Nat.lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by decide) (by omega)))]; rfl
 
-@[csimp] private theorem packRes_eq_packResImpl : @packRes = @packResImpl := by
+@[csimp] theorem packRes_eq_packResImpl : @packRes = @packResImpl := by
   funext B w res; unfold packRes packResImpl; simp only [fieldByte_eq]
 
 /-- The metadata of the blocks `(base, maxv, bsum, width)` describe, in the five sections and the
@@ -119,7 +124,7 @@ def foRMeta (lg : Nat) (nul : UInt64) (sumn : Nat) (bs : Array (UInt64 × UInt64
     ++ bs.foldl (init := ByteArray.empty) fun acc b => acc.push b.2.2.2.toUInt8
 
 /-- A section padded up to the multiple of eight the next one starts on. -/
-private def alpPad (b : ByteArray) : ByteArray :=
+def alpPad (b : ByteArray) : ByteArray :=
   b ++ ⟨Array.replicate ((8 - b.size % 8) % 8) 0⟩
 
 /-- The exception ladder `Column.alpSects` reads back, `rust/src/layout.rs`'s `exc_layout`: the header (the count of

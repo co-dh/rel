@@ -1,4 +1,9 @@
-import Rel.Kernel.Cast
+module
+
+public import Rel.Kernel.Cast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The finite set of operations `scan` runs (design §4): a closed enumeration rather than a Lean closure, because the
 Rust side can only execute a fixed set, and the Lean body of a kernel interprets it with `Op.eval`.
@@ -42,12 +47,12 @@ def readsAcc : Op → Bool
   | _ => true
 
 
-private def i (x : UInt64) : Int64 := x.toInt64
-private def f (x : UInt64) : Float := Float.ofBits x
-private def w (b : Bool) : UInt64 := if b then 1 else 0
-private def fw (x : Float) : UInt64 := x.toBits
+def i (x : UInt64) : Int64 := x.toInt64
+def f (x : UInt64) : Float := Float.ofBits x
+def w (b : Bool) : UInt64 := if b then 1 else 0
+def fw (x : Float) : UInt64 := x.toBits
 /-- A NaN is the least value, as `Ew.ord64` orders the floats; so the `fmin`/`fmax` choice is total. -/
-private def fle' (x y : UInt64) : Bool := (f x).isNaN || (!(f y).isNaN && (f x ≤ f y))
+def fle' (x y : UInt64) : Bool := (f x).isNaN || (!(f y).isNaN && (f x ≤ f y))
 
 /-- `fround`'s word: `x` rounded to the nearest integer, a tie to the even one (IEEE roundTiesToEven, C `rint`), from
     `floor` and the gap `d = x − ⌊x⌋` (exact below `2^52`, `0` above, where `x` is its own floor); a zero answer keeps
@@ -155,8 +160,8 @@ def readsDivisor : Op → Bool
 reading its divisor from `c` at `c = 0`. `kscan` refuses such a step up front, so a chain never fails part way. -/
 def stepFails (o : Op) (c : UInt64) : Bool := o == .div || o == .mod || (o.readsDivisor && c == 0)
 
-private def one (n : Float) : UInt64 := n.toBits
-private def neg1 : UInt64 := 0xffffffffffffffff
+def one (n : Float) : UInt64 := n.toBits
+def neg1 : UInt64 := 0xffffffffffffffff
 
 #guard Op.add.eval 3 4 matches .ok 7
 #guard Op.sub.eval 3 4 matches .ok 0xffffffffffffffff
@@ -292,7 +297,7 @@ abbrev fverb : UInt8 → UInt64 → UInt64 → Except String UInt64 := fverbBy O
 def fstep (t : QAtomicType) (k : UInt8) (x y : UInt64) : Except String UInt64 := do
   (Op.fto t).eval 0 (← fverb k x y)
 
-private def bits (n : Float) : UInt64 := n.toBits
+def bits (n : Float) : UInt64 := n.toBits
 #guard fstep .f64 Ew.add (bits 1.5) (bits 2.0) matches .ok 0x400c000000000000
 #guard fstep .f64 Ew.idiv (bits 7.5) (bits 2.0) matches .ok 0x4008000000000000
 #guard fstep .f64 Ew.imod (bits 7.5) (bits 2.0) matches .ok 0x3ff8000000000000

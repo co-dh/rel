@@ -1,6 +1,11 @@
-import Rel.Kernel.Coc
-import Rel.Kernel.Op
-import Rel.Kernel.Value
+module
+
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Op
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Kernel.Elementwise` the Rel kernels reach; `Rel.Kernel.Elementwise` imports it. -/
 
@@ -123,13 +128,13 @@ private theorem fdiv_word (x y : Int64) (hy : y ≠ 0) :
 
 /-- What `intStep` runs as: `idiv` and `imod` by `fdiv_word`, where `Int.fdiv`, `Int.fmod` of `toInt` run in GMP once an
 operand is past a small `Int`; every other verb is `intStep` itself. -/
-private def intStepImpl (op : UInt8) (nul x y : Int64) : Int64 :=
+def intStepImpl (op : UInt8) (nul x y : Int64) : Int64 :=
   if (op == idiv || op == imod) && !(x == nul || y == nul || y == 0) then
     let c := x % y != 0 && (x < 0) != (y < 0)
     if op == idiv then (if c then x / y - 1 else x / y) else (if c then x % y + y else x % y)
   else intStep op nul x y
 
-@[csimp] private theorem intStep_eq_intStepImpl : @intStep = @intStepImpl := by
+@[csimp] theorem intStep_eq_intStepImpl : @intStep = @intStepImpl := by
   funext op nul x y; unfold intStepImpl; split
   · rename_i h
     simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, Bool.not_eq_true', Bool.or_eq_false_iff,

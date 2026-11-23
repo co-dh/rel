@@ -1,5 +1,10 @@
-import Rel.Kernel.Coc
-import Rel.Kernel.Op
+module
+
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Op
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `scatter`, the primitive that writes data to computed positions (`doc/rel-architecture.zh.typ` §4):
 `out[ix[k]] := op(out[ix[k]], e[k])` in row order over `n` cells that start as `fill`; `op = .last` is the plain write

@@ -1,5 +1,10 @@
-import Rel.Kernel.Asc
-import Rel.Kernel.Scan
+module
+
+public import Rel.Kernel.Asc
+public import Rel.Kernel.Scan
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `gather`, the kernel that reads data at computed positions (`doc/rel-architecture.zh.typ` §4): `out[i] = e[ix[i]]`.
 It is an optimisation, not a primitive: its Lean body is the design's composition of the primitives — concatenate

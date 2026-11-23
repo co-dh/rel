@@ -1,5 +1,10 @@
-import Rel.Kernel.Db.ObjectFile
-import Rel.Kernel.Db.Own
+module
+
+public import Rel.Kernel.Db.ObjectFile
+public import Rel.Kernel.Db.Own
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The own-format column file read back. `ownWrite` writes `ownImage`'s bytes and `ownMap` answers `ownParse` of the
 file's bytes; both are `IO`, so the law is stated on those two pure bodies: every column the writer accepts is parsed
