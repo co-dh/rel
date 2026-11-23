@@ -416,7 +416,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `part` 引擎是解码，不批准）。
   ✅ 已落地：`kseen` kernel（212c171）；它的定律 `kseen_ok firsts_spec firsts_runs firsts_all kseen_pos`（e130504）；
   `kscatter` 接受 `Op`，覆盖是 `.last`，`last` 是位置的 scatter（23059eb）。
-  ⬜ 未做：宽的无序 key 上 Lean body 有答案而 Rust 报错，且组 id 规则写了两次（`kseen` 的 body 与 `Order.idsBy`），
+  ✅ 已做（0957f87 之后核对：Rust 与 body 同一错误，SeenTest 有无序宽 key 的 guard，`Order.idsBy` 已无）：宽的无序 key 上 Lean body 有答案而 Rust 报错，且组 id 规则写了两次（`kseen` 的 body 与 `Order.idsBy`），
   修复 `seenfix` 已合并（0957f87：`kseen` 的 body 返回 Rust 的 hash 错误；`Order.groupIn` 是组 id 的唯一来源）；
   ✅ 余下各项（seen-rest）：composite 定理 `kasc_kseen`（`Rel/RepSeen.lean`：`kasc` 答出时，`kseen` 在其排好的列上
   不报错；所答由 `kseen_ok`、`kasc_grade` 给出）；runs 引理已有（`kseen_runs`，`RepSetOps`）；`Order.groupIds*` 已在
