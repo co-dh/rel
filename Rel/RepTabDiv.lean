@@ -2735,6 +2735,140 @@ theorem atPos_holds {B : Obj} {k : Nat} {n : USize} {X : Vals (.arr B) n} {T : T
     refine ⟨⟨j, hj⟩, hKi, hVi.trans ?_⟩
     rw [List.getElem_of_eq (hel i') hk, List.getElem_map, List.getElem_range', Nat.one_mul]
 
+/-- **`atIx X` denotes `atOn B i64`** (`Tab.atIx`): the cells `[SN, EN)` of the rows whose index word `kw` is a nonneg
+`Int64` below `EN - SN` (`colMap .and` of the two tests, `whereCol`), each to the payload row `SN + kw`. -/
+theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T : Tab (.prod (.arr B) .long) B}
+    (h : Tab.atIx X = .ok T) (hX : Vals.WF X) (p : (Obj.prod (.arr B) .long).El) (x : B.El) :
+    T.Holds p x ↔ (∃ i, X.row i = p) ∧ Lang.atOn B (.atom .i64) p x := by
+  obtain ⟨⟨m, lo, up, f⟩, k⟩ := X
+  dsimp only [Tab.atIx] at h
+  split at h; · cases h
+  rename_i hb
+  simp only [bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨lt, hl, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ge, hg, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hwh, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨V, hV, h⟩ := h
+  rw [canon_holds h ⟨Vals.gather_wf hK hX, Vals.gather_wf hV hX.1.2⟩]
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hX.1.1 hm63 f
+  have hwl : ∀ i, EN i - SN i < 2 ^ 63 := fun i => by have := hb1 i; omega
+  have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (EN i - SN i).toUInt64 := fun i hi => by
+    have es := (colMap_raw hw).2.2.2 i hi
+    rw [(hw1 i hi).2, (hw1 i hi).1] at es; simp only [Op.eval, Except.ok.injEq] at es
+    rw [← es, toUInt64_sub (hb1 i).1]
+  -- row `i` is kept exactly when its index word is a nonneg `Int64` below the cell's width
+  have hcw : ∀ i < n.toNat, (raw .i64 n c)[i]?.getD 0 =
+      if ((raw .i64 n k.enc)[i]?.getD 0).toNat < 2 ^ 63 ∧ ((raw .i64 n k.enc)[i]?.getD 0).toNat < EN i - SN i
+      then 1 else 0 := fun i hi => by
+    have e1 := (colMap_raw hl).2.2.2 i hi
+    have e2 := (colMap_post hg).2 i hi
+    have e3 := (colMap_raw hc).2.2.2 i hi
+    rw [hww i hi] at e1
+    generalize (raw .i64 n k.enc)[i]?.getD 0 = a0 at e1 e2 ⊢
+    have el : Op.eval .lt a0 (EN i - SN i).toUInt64 =
+        .ok (if decide (a0.toInt64 < (EN i - SN i).toUInt64.toInt64) = true then 1 else 0) := rfl
+    have eg : Op.eval .le 0 a0 = .ok (if decide ((0 : UInt64).toInt64 ≤ a0.toInt64) = true then 1 else 0) := rfl
+    have ea : ∀ u v : UInt64, Op.eval .and u v = .ok (u &&& v) := fun _ _ => rfl
+    rw [el, Except.ok.injEq] at e1
+    rw [eg, Except.ok.injEq] at e2
+    rw [ea, Except.ok.injEq] at e3
+    rw [← e3, ← e1, ← e2]
+    have hA := toInt64_toInt_cond a0
+    have hE := toInt64_toInt_nat (hwl i)
+    have h0 : (0 : UInt64).toInt64.toInt = 0 := rfl
+    simp only [decide_eq_true_eq, Int64.lt_iff_toInt_lt, Int64.le_iff_toInt_le, hE, h0]
+    have h64 : a0.toNat < 2 ^ 64 := a0.toBitVec.isLt
+    by_cases h1 : a0.toNat < 2 ^ 63
+    all_goals simp only [h1, if_true, if_false] at hA
+    all_goals repeat' split
+    all_goals first | rfl | (exfalso; omega) | (trace_state; sorry)
+  obtain ⟨kw, hkw⟩ : ∃ kw : Nat → UInt64, ∀ i, kw i = (raw .i64 n k.enc)[i]?.getD 0 := ⟨_, fun _ => rfl⟩
+  have hcw' : ∀ i < n.toNat, (raw .i64 n c)[i]?.getD 0 =
+      if (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i then 1 else 0 := fun i hi => by rw [hkw, hcw i hi]
+  have h2 : ∀ i < n.toNat, (raw .i64 n c)[i]?.getD 0 < 2 := fun i hi => by rw [hcw' i hi]; split <;> decide
+  have hsz := whereCol_size hwh
+  have hmem : ∀ y, (∃ j < M.toNat, ((raw .i64 M sel)[j]?.getD 0).toNat = y) ↔
+      y < n.toNat ∧ (raw .i64 n c)[y]?.getD 0 ≠ 0 := fun y => by
+    have hs : y ∈ ((raw .i64 M sel).toList.map UInt64.toNat) ↔
+        y ∈ (List.range n.toNat).filter fun i => (raw .i64 n c)[i]?.getD 0 ≠ 0 := by rw [whereCol_spec hwh h2]
+    rw [List.mem_iff_getElem] at hs
+    simp only [List.mem_filter, List.mem_range, decide_eq_true_eq, List.length_map,
+      Array.length_toList, hsz, List.getElem_map, Array.getElem_toList] at hs
+    rw [← hs]
+    constructor
+    · rintro ⟨j, hj, rfl⟩; exact ⟨j, hj, by rw [Array.getElem?_eq_getElem (by omega)]; rfl⟩
+    · rintro ⟨j, hj, rfl⟩; exact ⟨j, hj, by rw [Array.getElem?_eq_getElem (by omega)]; rfl⟩
+  have haw : ∀ i < n.toNat, (raw .i64 n a)[i]?.getD 0 = (SN i).toUInt64 + kw i := fun i hi => by
+    have es := (colMap_raw ha).2.2.2 i hi
+    rw [(hw1 i hi).1, ← hkw] at es; simp only [Op.eval, Except.ok.injEq] at es
+    exact es.symm
+  let g : Nat → B.El := fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt
+  have hkv : ∀ i : Fin n.toNat, (Vals.row (A := .long) k i) = (kw i).toInt64 := fun i => by
+    show (Arr.get k i) = _
+    rw [Arr.get_i64, hkw]
+  have hJ : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, ((kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i) ∧
+      ((raw .i64 M sel)[j.1]?.getD 0).toNat = i ∧
+      K.row j = Vals.row (A := .prod (.arr B) .long) (⟨m, lo, up, f⟩, k) i ∧ V.row j = g (SN i + (kw i).toNat) := by
+    intro j
+    obtain ⟨i, hi, hKi⟩ := Vals.gather_row _ hK j
+    obtain ⟨hin, hx⟩ := (hmem i).1 ⟨j.1, j.2, hi⟩
+    have c' : (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i := by
+      rw [hcw' i hin] at hx; split at hx <;> first | assumption | exact absurd rfl hx
+    obtain ⟨i', hi', hVi⟩ := Vals.gather_row _ hV j
+    rw [(kgather_word hix (colMap_plain ha) j.1 j.2).2, hi, haw i i.2] at hi'
+    have hb := hb1 i
+    refine ⟨i, c', hi, hKi, hVi.trans ?_⟩
+    have hS : SN i + (kw i).toNat < m.toNat := by omega
+    have hsum : ((SN i).toUInt64 + kw i).toNat = SN i + (kw i).toNat := by
+      rw [UInt64.toNat_add, toNat_toUInt64 (by omega)]; exact Nat.mod_eq_of_lt (by omega)
+    rw [hsum] at hi'
+    simp only [g, dif_pos hS]; congr 1; exact Fin.ext hi'.symm
+  have hel : ∀ i : Fin n.toNat, Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i =
+      (List.range' (SN i) (EN i - SN i)).map g := hrow
+  simp only [Tab.Holds, Lang.atOn]
+  constructor
+  · rintro ⟨j, rfl, rfl⟩
+    obtain ⟨i, c', -, hKi, hVi⟩ := hJ j
+    rw [hKi, hVi]
+    have hkn : (Vals.row (A := .long) k i).toInt = (kw i).toNat := by
+      rw [hkv i]; exact toInt64_toInt c'.1
+    refine ⟨⟨i, rfl⟩, ?_⟩
+    show 0 ≤ (Vals.row (A := .long) k i).toInt ∧ Lang.atDen (Vals.row (A := .long) k i).toInt.toNat
+      (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) (g (SN i + (kw i).toNat))
+    rw [hkn, Int.toNat_natCast, hel i]
+    exact ⟨by omega, by simpa using c'.2, by simp⟩
+  · rintro ⟨⟨i, rfl⟩, h0, hk, rfl⟩
+    have h0' : 0 ≤ (Vals.row (A := .long) k i).toInt := h0
+    rw [hkv i] at h0'
+    obtain ⟨h63, hkn'⟩ := toInt64_nonneg h0'
+    have hk' : (Vals.row (A := .long) k i).toInt.toNat < (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := hk
+    have hkn : (Vals.row (A := .long) k i).toInt.toNat = (kw i).toNat := by rw [hkv i, hkn']; simp
+    have hP : (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i := by
+      refine ⟨h63, ?_⟩; rw [hkn, hel i] at hk'; simpa using hk'
+    obtain ⟨j, hj, hji⟩ := (hmem i).2 ⟨i.2, by rw [hcw' i i.2, if_pos hP]; decide⟩
+    obtain ⟨i', hP', hi', hKi, hVi⟩ := hJ ⟨j, hj⟩
+    have e' : i' = i := Fin.ext (by rw [← hi', hji])
+    subst e'
+    refine ⟨⟨j, hj⟩, hKi, hVi.trans ?_⟩
+    change g (SN i' + (kw i').toNat) =
+      (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i')[(Vals.row (A := .long) k i').toInt.toNat]'hk'
+    rw [List.getElem_of_eq (hel i') hk', List.getElem_map, List.getElem_range', Nat.one_mul, hkn]
+
+/-- **The row `at` on the pairs `X`** denotes `atOn`: `atIx_holds` at the `i64` index, no row at another object. -/
+theorem atRow_den {B N : Obj} {n : USize} {X : Vals (.prod (.arr B) N) n} {T : Tab (.prod (.arr B) N) B}
+    (h : Tab.atRow X = .ok T) (hX : Vals.WF X) (p : (Obj.prod (.arr B) N).El) (x : B.El) :
+    T.Holds p x ↔ (∃ i, X.row i = p) ∧ Lang.atOn B N p x := by
+  cases N
+  case atom a => cases a <;> first | exact atIx_holds h hX p x | simp [Tab.atRow] at h
+  all_goals simp [Tab.atRow] at h
+
 end Tab
 
 end Rel
