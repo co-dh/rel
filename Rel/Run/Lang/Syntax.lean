@@ -401,7 +401,7 @@ def prims : List Prim :=
      conv := "cons", written := false },
    lengthRow, sumRow,
    { sym := "inits", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
+     prelude := `Rel.Programs.prelude.inits, aop := .ok `Freyd.Alg.RelSet.ListRel.initsR },
    -- the prelude's folds run as their slice forms (`rep_tailsC`, `rep_prefixC`, `rep_suffixC`, `rep_concatC`)
    { sym := "tails", sig := ([], .list (.var {} "B"), .list (.list (.var {} "B"))),
      prelude := `Rel.Programs.prelude.tails },
@@ -423,7 +423,7 @@ def prims : List Prim :=
    { sym := "unsnoc", sig := ([], .list (.var {} "B"), .prod (.list (.var {} "B")) (.var {} "B")),
      conv := "snoc", written := false },
    { sym := "setify", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
-     aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
+     prelude := `Rel.Programs.prelude.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
    -- `positions(p)`: dataframe §3.1's `where(dom(xs ≫ p))`, named so because `where` is a keyword (§c); it makes
    -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
    { sym := "positions", num := [("ℕ", intAtoms)],
