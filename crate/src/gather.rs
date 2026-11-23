@@ -92,6 +92,28 @@ impl Producer for Take<'_> {
         self.fill(b, lo, nb, w, i, o);
         o
     }
+    /// An index block reading one whole block of `e` in order, `i0 .. i0 + nb` from a block start: that block. A `foR`
+    /// index block is decoded only where its metadata already say so (bounds `nb - 1` apart, the sum of a run).
+    fn take(&self, b: usize) -> Option<(Coc<'_>, usize)> {
+        let (lo, nb) = self.ix.span(b);
+        let lg = crate::DEFAULT_LG;
+        if self.ix.lg() != lg { return None }
+        let i0 = match self.ix.src {
+            crate::blocks::Src::Pos => lo,
+            crate::blocks::Src::For(c) => {
+                let (base, maxv, s) = (c.meta.base[b], c.meta.maxv[b], c.meta.bsum[b]);
+                let run = (nb as i64).wrapping_mul(base).wrapping_add((nb as i64) * (nb as i64 - 1) / 2);
+                if c.meta.nul(b) || base < 0 || maxv.wrapping_sub(base) != nb as i64 - 1 || s != run || base as usize & ((1 << lg) - 1) != 0 { return None }
+                let mut buf = pod::Scr::<u64>::new(nb);
+                let x = pod::cast::<i64>(self.ix.block(b, lo, nb, 8, pod::bytes_mut(&mut buf))).expect("qlean gather: an index block buffer is misaligned for i64");
+                if !x.iter().enumerate().all(|(k, &u)| u == base + k as i64) { return None }
+                base as usize
+            }
+            crate::blocks::Src::Dense(_) => return None,
+        };
+        let pb = i0 >> lg;
+        (i0 & ((1 << lg) - 1) == 0 && crate::enc::movable(&self.e, pb, b, self.ix.n, 8)).then_some((self.e, pb))
+    }
 }
 
 #[cfg(test)]

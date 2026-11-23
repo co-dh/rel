@@ -336,6 +336,21 @@ impl Producer for crate::blocks::Blocks<'_> {
         if self.span(b) == (lo, nb) { self.view(b, w, buf) } else { self.range(lo, nb, w, buf) }
     }
 }
+/// Whether block `pb` of `c` stands as answer block `b` of a column of `n` elements of `w` bytes: the writer's grid, the
+/// same element count, 8-byte elements and no null (the writer's null bits are its own `nul`'s). An `Enc.foR` is
+/// `Coc.encode 8`'s output, so such a block's metadata is what `for_meta` chooses for its elements.
+pub fn movable(c: &Coc, pb: usize, b: usize, n: usize, w: usize) -> bool {
+    let (g, cg) = (crate::blocks::Grid { n, lg: crate::DEFAULT_LG }, crate::blocks::Grid { n: c.meta.n, lg: c.meta.lg });
+    w == 8 && c.meta.lg == crate::DEFAULT_LG && b < g.nblk() && pb < cg.nblk() && cg.span(pb).1 == g.span(b).1 && !c.meta.nul(pb)
+        && c.exc.is_none_or(|e| e.esz == 8)
+}
+/// A kernel's fill `f` and the blocks it knows from metadata to equal a column block, `t(b)` (`take`): the blocks a plain
+/// write of one row per cell or a map against its op's unit answers unchanged, moved instead of decoded and re-encoded.
+pub struct Moving<'a, F> { pub f: F, pub t: &'a (dyn Fn(usize) -> Option<(Coc<'a>, usize)> + Sync) }
+impl<F: Fn(&mut [i64], usize) + Sync> Producer for Moving<'_, F> {
+    fn block<'s>(&'s self, _: usize, lo: usize, nb: usize, w: usize, buf: &'s mut [u8]) -> &'s [u8] { filled(&self.f, lo, nb, w, buf) }
+    fn take(&self, b: usize) -> Option<(Coc<'_>, usize)> { (self.t)(b) }
+}
 /// coc.rs `move_meta` then `move_pack`: block `m.b` of the producer `mv`, its metadata into `m`, then its residuals and patches
 /// into `pack(whole)` (asked once, after `m` is written; `whole` for a taken block's full `blk * width / 8` residual region),
 /// so whatever the producer computes for the block it computes once. A moved block's metadata, residuals and patch list are its

@@ -308,6 +308,10 @@ impl<'a> Col<'a> {
     }
     /// Block `b`'s one word where its metadata say every row holds it.
     fn konst(&self, b: usize) -> Option<u64> { self.coc(b).filter(|c| c.meta.base[b] == c.meta.maxv[b]).map(|c| c.meta.base[b] as u64) }
+    /// The column of 8-byte words on the writer's grid, whose blocks a map may move whole.
+    fn words(&self) -> Option<Coc<'a>> {
+        match *self { Col::Blk(Blocks { src: Src::For(c), g }, 8, _) if g.lg == crate::DEFAULT_LG => Some(c), _ => None }
+    }
 }
 /// The `w`-byte elements of `x` zero-extended into `out`, 0 past `x`; an element `x` cuts short reads its low bytes, as
 /// `raw`'s `rd` does.
@@ -457,6 +461,16 @@ impl Scan<'_> {
         crate::codec::mask_blk(&c, b, nb, op, v as i64, w64, scratch);
         true
     }
+    /// The column whose block `b` the map `seed op x` answers unchanged: `x` where the seed's block is the constant left
+    /// unit of `op` (or `op` is `last`), the seed where `x`'s is its right unit (or `op` is `first`).
+    fn unit(&self, b: usize) -> Option<Coc<'_>> {
+        let [x] = self.xs else { return None };
+        let (l, r) = match self.op { 0 | 16 => (Some(0), Some(0)), 1 => (None, Some(0)), 2 => (Some(1), Some(1)), 18 => return self.seed.words(),
+                                     19 => return x.words(), _ => return None };
+        if l.is_some() && self.seed.konst(b) == l { return x.words() }
+        if r.is_some() && x.konst(b) == r { return self.seed.words() }
+        None
+    }
 }
 
 /// `Kernel.kscan op s t n seg es` (Rel/Kernel/Scan.lean) on the columns' blocks, in its order of failure: `seg`, each of
@@ -485,7 +499,11 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
     let cut = if t == QT_BOOLEAN { 1 } else if tw < 8 { (1u64 << (8 * tw)) - 1 } else { !0u64 };
     // the writer may fill blocks on several threads, so the one block holding `last` stores it atomically
     let (fin, last) = (core::sync::atomic::AtomicU64::new(0), if rev { 0 } else { n.wrapping_sub(1) });
-    let e = Sink::new(n, 8).enc().answer(&|buf: &mut [i64], lo: usize| {
+    // a map whose other side is its op's unit on block `b` answers this side's block as it stands; never the block
+    // holding `last`, which the fill stores
+    let t = |b: usize| (r.seg.is_none() && !rev && pre.is_empty() && post.is_empty() && low == !0 && b != last >> crate::DEFAULT_LG)
+        .then(|| r.unit(b)).flatten().filter(|c| crate::enc::movable(c, b, b, n, 8)).map(|c| (c, b));
+    let e = Sink::new(n, 8).enc().answer(&crate::enc::Moving { t: &t, f: |buf: &mut [i64], lo: usize| {
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
         // a compare against a constant block: the compare kernel's bits, each a row's word
@@ -498,7 +516,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
         chain(post, o);
         if low != !0 { for v in o.iter_mut() { *v &= low } }
         if (lo..lo + nb).contains(&last) { fin.store(o[last - lo] & cut, core::sync::atomic::Ordering::Relaxed) }
-    });
+    }});
     // every row is written, so at `n > 0` the block holding `last` stored it
     Ok((e, (n > 0).then(|| fin.load(core::sync::atomic::Ordering::Relaxed))))
 }

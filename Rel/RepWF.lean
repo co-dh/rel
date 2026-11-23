@@ -264,8 +264,8 @@ theorem muLin_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab
   simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
   obtain ⟨T, hT, T', hT', p, hp, D, hD, rfl⟩ := hs
   have wT' := pack_wf hT' (hf _ _ hT w2)
-  obtain ⟨hU, hD0⟩ := unionDiff_ok (show T'.unionDiff s.1 = .ok (p.1, p.2) from hp)
-  exact ⟨union_wf hU wT' w1, pack_wf hD (diff_wf hD0 wT' w1)⟩
+  obtain ⟨hU, hD0⟩ := unionDiff_ok (show s.1.unionDiff T' = .ok (p.1, p.2) from hp)
+  exact ⟨union_wf hU w1 wT', pack_wf hD (select_wf hD0 w1 wT')⟩
 
 theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
     (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
