@@ -57,16 +57,69 @@ theorem Tm.estDef_den (ρ : Val) {B : Obj} (Q : Tm B B) : (Tm.estDef Q).den ρ =
     · subst e; simp
     · exact ⟨rfl, Or.inl (h c hc (Ne.symm e)), fun hn => absurd (h c hc (Ne.symm e)) hn⟩
 
-theorem Tm.flatDef_den(ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) (x : (Obj.prod I A).El) (hx : Short _ x) (w : B.El) :
+theorem Tm.flatDef_row (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) (x : (Obj.prod I A).El) (hx : Short _ x) (w : B.El) :
     (Tm.flatDef R).den ρ x w ↔ (Tm.arg (.prim flatRow) R).den ρ x w :=
   (Tm.dfnCut_den (.flat R) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
     (fun _ => trivial)
 
-theorem Tm.foldIDef_den (ρ : Val) {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V))
+/-- **`flat`'s text means the row** (Q3 = H): `prelude.flat.body` (placeholders `general`, `u1`, `u8` of `ι`, `α`, `β`;
+    `R` the variable 3) at any objects `σ` means `flat(R)` there. The body groups `flatDef`'s composition the other way
+    (`Core.Rel` composition is associative). -/
+theorem Tm.flatDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : Tm (((Obj.atom .general).prod
+    (Obj.atom .u1)).inst ph σ) ((Obj.atom .u8).inst ph σ)} (ht : Rel.Programs.prelude.flat.body.instObj ph σ = .ok t')
+    (x) (hx : Short _ x) (w) : t'.den ρ x w ↔ (Tm.arg (.prim flatRow) (.var 3 : Tm ((Obj.atom .general).inst ph σ)
+      (.prod ((Obj.atom .u1).inst ph σ) ((Obj.atom .u8).inst ph σ)))).den ρ x w := by
+  obtain rfl := Except.ok.inj ht
+  rw [← Tm.flatDef_row ρ (.var 3) x hx w]
+  show Tm.den ρ (.comp (.comp (.comp _ (Tm.dom _)) .outl) .outr) x w ↔ Tm.den ρ (.comp _ (.comp (Tm.dom _) (.comp .outl .outr))) x w
+  generalize Tm.dom _ = D
+  simp only [Tm.den, Core.Rel.comp_assoc]
+  exact Iff.rfl
+
+theorem Tm.foldIDef_row (ρ : Val) {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V))
     (x : (Obj.prod I (.arr E)).El) (hx : Short _ x) (w : V.El) :
     (Tm.foldIDef e S).den ρ x w ↔ (Tm.arg (.arg (.prim foldIRow) e) S).den ρ x w :=
   (Tm.dfnCut_den (.foldI e S) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
     (fun _ => trivial)
+
+/-- **`foldI`'s text means the row** (Q3 = H): `prelude.foldI.body` (placeholders `general`, `u1`, `u8` of `ι`, `β`, `α`;
+    `e`, `S` the variables 3, 4) at any objects `σ` means `foldI(e, S)` there, where its universe variables 0, 1 (of `ι`,
+    `β`) are the full universes `𝟙`: the body restricts `π₁π₁°` and the step to them, and seeds the fold with `⊤`
+    through `Tm.uni` of one value, which `foldDen` reads only as the set `∃ a, Te a v` (`foldDen_start`). -/
+theorem Tm.foldIDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
+    (hU0 : ∀ x y, ρ 0 ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ) x y ↔ x = y)
+    (hU1 : ∀ x y, ρ 1 ((Obj.atom .u1).inst ph σ) ((Obj.atom .u1).inst ph σ) x y ↔ x = y)
+    {t' : Tm (((Obj.atom .general).prod (Obj.atom .u8).arr).inst ph σ) ((Obj.atom .u1).inst ph σ)}
+    (ht : Rel.Programs.prelude.foldI.body.instObj ph σ = .ok t')
+    (x) (hx : Short _ x) (w) : t'.den ρ x w ↔ (Tm.arg (.arg (.prim foldIRow)
+      (.var 3 : Tm ((Obj.atom .general).inst ph σ) (.prod ((Obj.atom .u1).inst ph σ) ((Obj.atom .u1).inst ph σ))))
+      (.var 4 : Tm (.prod (.prod ((Obj.atom .general).inst ph σ) ((Obj.atom .u1).inst ph σ)) ((Obj.atom .u8).inst ph σ))
+        (.prod ((Obj.atom .general).inst ph σ) ((Obj.atom .u1).inst ph σ)))).den ρ x w := by
+  obtain rfl := Except.ok.inj ht
+  rw [← Tm.foldIDef_row ρ (.var 3) (.var 4) x hx w]
+  have hran := @Prim.den_ranRow
+  simp only [ranRow] at hran
+  have hRU : (Core.Rel.id (Obj.inst ph σ ((Obj.atom .general).prod (Obj.atom .u1))).El).inter
+      ((((ρ 0 ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)).rpair
+        (Core.Rel.top.comp (ρ 1 ((Obj.atom .u1).inst ph σ) ((Obj.atom .u1).inst ph σ)))).recip).comp
+      ((ρ 0 ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)).rpair
+        (Core.Rel.top.comp (ρ 1 ((Obj.atom .u1).inst ph σ) ((Obj.atom .u1).inst ph σ)))).recip.recip) =
+      Core.Rel.id (Obj.inst ph σ ((Obj.atom .general).prod (Obj.atom .u1))).El := by
+    funext p q
+    apply propext
+    simp [Core.Rel.id, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.rpair, Core.Rel.top, hU0, hU1]
+    rintro rfl; rfl
+  have key : ∀ {E V : Obj} (Te Te' : Core.Rel V.El V.El) (TS : Core.Rel (Obj.prod V E).El V.El),
+      (∀ v, (∃ a, Te a v) ↔ ∃ a, Te' a v) → foldDen Te TS = foldDen Te' TS := fun Te Te' TS h => by
+    funext xs w; apply propext; rw [foldDen_start, foldDen_start]; simp only [h]
+  simp only [Tm.foldIDef, Tm.den, Tm.argDen, hran, hRU, cast_eq, Core.Rel.comp_id, Core.Rel.id_comp, Core.Rel.comp_assoc]
+  rw [key (E := Obj.inst ph σ (Obj.atom .u8)) (V := Obj.inst ph σ ((Obj.atom .general).prod (Obj.atom .u1))) _ (Tm.den ρ (Tm.ran (Tm.pair Tm.id (Tm.comp (Tm.var 3 : Tm (Obj.inst ph σ (Obj.atom .general)) (.prod (Obj.inst ph σ (Obj.atom .u1)) (Obj.inst ph σ (Obj.atom .u1)))) Tm.outr) : Tm (Obj.inst ph σ (Obj.atom .general)) (Obj.inst ph σ ((Obj.atom .general).prod (Obj.atom .u1)))) : Tm (Obj.inst ph σ ((Obj.atom .general).prod (Obj.atom .u1))) (Obj.inst ph σ ((Obj.atom .general).prod (Obj.atom .u1))))) _ ?hseed]
+  · exact Iff.rfl
+  case hseed =>
+    intro v
+    simp only [Tm.ran_den, Tm.den, Core.Rel.id, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.top, Core.Rel.graph, Core.Rel.rpair]
+    simp only [exists_eq_left, true_and]
+    exact ⟨fun ⟨_, ⟨_, _, hq⟩, _⟩ => hq, fun hq => ⟨_, ⟨⟨0, by simp [USize.toNat_ofNat]⟩, rfl, hq⟩, ⟨0, by simp [USize.toNat_ofNat]⟩, rfl, hq⟩⟩
 
 theorem Tm.domDef_row (ρ : Val) {A B : Obj} (R : Tm A B) (x : A.El) (hx : Short A x) (w : A.El) :
     (Tm.domDef R).den ρ x w ↔ (Tm.dom R).den ρ x w :=
