@@ -250,13 +250,12 @@ comm -23 $(T)/kernels.txt $(T)/tested.txt > $(T)/kernel-tested.txt
 echo "kernel-tested: $$(wc -l < $(T)/kernel-tested.txt) of $$(wc -l < $(T)/kernels.txt) kernels have no use in a *Test* module"
 endef
 
-# no List on the run path: a declaration of Rel.Run.*, Rel.Kernel.* (not *Test*) or Rel.Lang.GenK*, theorems exempt,
-# that mentions a reader turning an array into a List (`Array.toList`, `ByteArray.toList`, `Arr.toList`, `Tab.toList`)
-# or `List.range`; an @[extern] declaration is exempt, its Lean body being the kernel's specification, never run
+# no List on the run path: a compiled declaration of Rel.Run.*, Rel.Kernel.* (not *Test*) or Rel.Lang.GenK* whose code, followed
+# through the IR as `decode` does, reaches a reader turning an array into a List or `List.range` (gates/Gates.lean `listBan`);
+# an @[extern] declaration's Lean body is a specification, never compiled, so it is not walked
 define listban_NOW
 $(LAKE) build gates
-$(LAKE) query RelKernel:modules | xargs $(LAKE) env $(GATES) externs | cut -f2 | sort -u > $(T)/listban.extern
-$(SQL) "select distinct d.src from dep d join decl_info i on i.name = d.src and i.module = d.module where i.internal = 0 and i.kind <> 'thm' and (d.module glob 'Rel.Run.*' or (d.module glob 'Rel.Kernel.*' and d.module not glob '*Test*') or d.module glob 'Rel.Lang.GenK*') and d.dst in ('Array.toList', 'ByteArray.toList', 'List.range', 'Rel.Arr.toList', 'Rel.Tab.toList')" | sort -u | comm -23 - $(T)/listban.extern > $(T)/listban.txt
+$(LAKE) query RelKernel:modules RelRun:modules Rel:modules | tr ' ' '\n' | grep -E '^Rel\.(Run|Kernel|Lang\.GenK)' | grep -v Test | xargs $(LAKE) env $(GATES) listban 2> $(T)/listban.chains | sort -u > $(T)/listban.txt
 endef
 
 bang: index
