@@ -46,4 +46,32 @@ rel_program noSchema where
     obj P
     input x : P ⟶ U from "/data/tmp/rel-test-schema-disk/none"
 
+/-! A declared table is read against its `.d` (`checkDisk`, by `readSide`): the error of a read of `d` as `S`, if any. -/
+
+def readErr (S : Schema) (d : String) : IO String := do
+  match ← (read S d).toBaseIO with | .ok _ => return "ok" | .error e => return s!"{e}"
+
+/-- info: "ok" -/
+#guard_msgs in
+#eval do fixture "/data/tmp/rel-test-schema-disk/trade"; readErr trade "/data/tmp/rel-test-schema-disk/trade"
+
+/-- info: "/data/tmp/rel-test-schema-disk/trade/.d: column qty is i32, declared i64" -/
+#guard_msgs in
+#eval readErr [("id", .long), ("qty", .long), ("name", .arr (.atom .char))] "/data/tmp/rel-test-schema-disk/trade"
+
+/-- info: "/data/tmp/rel-test-schema-disk/trade/.d: column price is not on disk, declared f64" -/
+#guard_msgs in
+#eval readErr (trade ++ [("price", .atom .f64)]) "/data/tmp/rel-test-schema-disk/trade"
+
+/-- info: "/data/tmp/rel-test-schema-disk/trade/.d: column name is [char] on disk, not declared" -/
+#guard_msgs in
+#eval readErr (trade.take 2) "/data/tmp/rel-test-schema-disk/trade"
+
+-- a directory without `.d` (older data) is read as before: `.d` removed, the same declared schema reads
+/-- info: "ok" -/
+#guard_msgs in
+#eval do
+  IO.FS.removeFile "/data/tmp/rel-test-schema-disk/trade/.d.lo"
+  readErr [("id", .long), ("qty", .atom .i32)] "/data/tmp/rel-test-schema-disk/trade"
+
 end Rel.Lang.TestSchemaDisk

@@ -186,14 +186,13 @@ info: [(0, 4609434218613702656), (1, 0)]
   write S dir (floats 1 [0x7ff8000000000000])
   IO.println (say (← (read S dir).toBaseIO))
 
--- read by a schema, each refusal names the file and what was expected or found: a column missing, a column at
--- another atom type, two columns of another count, a symbol column, a schema with a name twice
+-- read by a declared schema, a `.d` that differs names the column (`checkDisk`): a column missing, a column at another
+-- atom type, a column on disk and not declared, a symbol column, a schema with a name twice
 /--
-info: no such file or directory (error code: 2)
-  file: /data/tmp/rel-test-table/schemabad/qty
-/data/tmp/rel-test-table/schemabad/px: atom type code 7, the column is Rel.QAtomicType.i32 (code 6)
-/data/tmp/rel-test-table/schemabad/px has 2 rows and /data/tmp/rel-test-table/schemabad/id has 3: the columns of one side have one count
-/data/tmp/rel-test-table/schemabad/id: atom type code 7, the column is Rel.QAtomicType.sym (code 11)
+info: /data/tmp/rel-test-table/schemabad/.d: column qty is not on disk, declared i64
+/data/tmp/rel-test-table/schemabad/.d: column px is i64, declared i32
+/data/tmp/rel-test-table/schemabad/.d: column id is not on disk, declared i64
+/data/tmp/rel-test-table/schemabad/.d: column id is not on disk, declared sym
 column 'id' appears twice in schema [id, id]
 -/
 #guard_msgs in
@@ -206,6 +205,26 @@ column 'id' appears twice in schema [id, id]
   IO.println (say (← (read [("id", .long), ("px", .long)] dir).toBaseIO))
   IO.println (say (← (read [("id", .atom .sym)] dir).toBaseIO))
   IO.println (say (← (read [("id", .long), ("id", .long)] dir).toBaseIO))
+
+-- the same reads of a directory with no `.d` (data written before `write` wrote one): `readCols`' own refusals, each
+-- naming the file and what was expected or found
+/--
+info: no such file or directory (error code: 2)
+  file: /data/tmp/rel-test-table/schemabad/qty
+/data/tmp/rel-test-table/schemabad/px: atom type code 7, the column is Rel.QAtomicType.i32 (code 6)
+/data/tmp/rel-test-table/schemabad/px has 2 rows and /data/tmp/rel-test-table/schemabad/id has 3: the columns of one side have one count
+/data/tmp/rel-test-table/schemabad/id: atom type code 7, the column is Rel.QAtomicType.sym (code 11)
+-/
+#guard_msgs in
+#eval show IO Unit from do
+  let dir ← fresh "schemabad"
+  let noD : IO Unit := IO.FS.removeFile (file dir (dName ++ ".lo"))
+  write [("id", .long), ("px", .long)] dir ((← longs 3 [1, 2, 3], ← longs 3 [4, 5, 6]) : Vals (Obj.prod .long .long) 3); noD
+  IO.println (say (← (read Trade dir).toBaseIO))
+  IO.println (say (← (read [("id", .long), ("px", .atom .i32)] dir).toBaseIO))
+  write [("px", .long)] dir (← longs 2 [4, 5]); noD
+  IO.println (say (← (read [("id", .long), ("px", .long)] dir).toBaseIO))
+  IO.println (say (← (read [("id", .atom .sym)] dir).toBaseIO))
 
 /-! ## Symbol columns: ids into the database's one append-only dictionary (PLAN 8.3) -/
 

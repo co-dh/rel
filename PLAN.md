@@ -401,8 +401,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`ObjDef.coded`，元素保持存储的值，`ObjInfo.codes`）；有限对象上的积 `⟨v ∈ V ↦ e⟩` 与 `schema D = {c ∈ V : A}`（在
   `Grammar.expr`/`Embed.stmt` 里展开，无新 `Tm`）；库定义 `dummy`、`pivotCol`、`pivotOn`（`pivotWide` 改写为它们）；测试
   `Rel/Lang/TestPivotDisk.lean`。未做：对象变量上的生成（`getDummies(c, x)` 本身对 `V` 泛型，要定义逐使用处展开）；
-  `obj V from` 只读 `i64` 列（`sym` 要字面量对象）；导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`；`readSide`
-  不核对 `.d` 与声明的 schema。
+  `obj V from` 只读 `i64` 列（`sym` 要字面量对象）；导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`。已做（df-F1c）：`readSide`
+  经 `Table.checkDisk` 核对 `.d` 与声明的 schema（缺列、多列、atom 不同都报 `<dir>/.d: column c is …, declared …`；`read`、
+  `readKeyed` 都经 `readSide`；无 `.d` 的旧数据照旧读）；`oexpOf` 移到 `Elab`。已知：`objOf?` 对不存在的名字不终止（无基例）。
 - 🔄 D.12 `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即
   组 id 与首次出现的位置；相等按 `kasc` 的序码（`-0.0 = 0.0`，所有 NaN 是同一个 key）。引擎：直接寻址（范围来自块元数据）
   与有序输入上的 run 检测；宽的无序 key 报可操作的错误（现在没有 hash，只做编码列；非编码 key 是向 owner 的新请求；

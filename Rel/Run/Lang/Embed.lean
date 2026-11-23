@@ -179,15 +179,6 @@ def stmt (s : Syntax) : C Decl := do
     pure (.«theorem» p n ps e f eq on hyps steps)
   | _ => failAt s "expected a declaration"
 
-/-- `A` as a program writes it, each atom `t` the object named by it (`atomName`), and the atoms it names: where
-    `schema S from` puts a column. -/
-def oexpOf : Obj → OExp × List Rel.QAtomicType
-  | .atom t => (.name {} (atomName t), [t])
-  | .prod a b => let (x, s) := oexpOf a; let (y, u) := oexpOf b; (.prod x y, s ++ u)
-  | .sum a b => let (x, s) := oexpOf a; let (y, u) := oexpOf b; (.sum x y, s ++ u)
-  | .arr a => let (x, s) := oexpOf a; (.list x, s)
-  | .one => (.name {} "1", [])
-
 /-- `schema S from "dir"` (F1): the schema `diskOf` read from `dir`, each column at the unbounded object of its atom,
     named by the atom (`obj f64 : f64`), declared here unless `ds`, the declarations before, declare it so. -/
 def schemaFrom (s : Syntax) (ds : List Decl) : C (List Decl) := do

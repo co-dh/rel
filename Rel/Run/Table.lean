@@ -2,6 +2,7 @@ module
 
 public import Rel.Run.Lang.Plan
 public import Rel.Run.Lang.Schema
+public import Rel.Run.Lang.Elab
 public import Rel.Kernel.Db.ObjectFile
 public import Rel.Kernel.Db.Csv
 public import Rel.Kernel.Cast
@@ -164,11 +165,6 @@ partial def objOf? (dir p : String) : IO (Option Obj) := do
   | none => return none
 
 
-/-- The side of schema `S` read from `dir`: the columns `S` names, each at its declared object, all of one count; a
-    missing file, another atom type or another count is the error naming the file. -/
-def readSide (S : Schema) (dir : String) : IO (String × (n : USize) × Vals S.obj n) := do
-  IO.ofExcept S.check; readCols dir S.reverse
-
 /-- The frame of the value side `x`: its key the positions `0 … n-1`, which are on no file. -/
 def frame {B : Obj} {n : USize} (x : Vals B n) : Except String (Tab .long B) := (Arr.pos n).map fun P => ⟨n, P, x⟩
 
@@ -222,10 +218,6 @@ def decode {n : USize} (what : String) (D : Dict) (y : Arr .sym n) : Except Stri
   let T ← unenum what D (← frame y)
   if h : T.n = n then pure (h ▸ T.val) else .error s!"{what}: internal: `unenum` answered {T.n} rows for {n} ids"
 
-/-- The positional table of schema `S` in `dir`: its rows' key the positions. -/
-def read (S : Schema) (dir : String) : IO (Tab .long S.obj) := do
-  let (_, ⟨_, x⟩) ← readSide S dir; IO.ofExcept (frame x)
-
 /-- The schema of the side in `dir`, for a program that declares none (`schema S from "dir"`, `dataframe-design` F1):
     the names from its `.d`, each column's object from its files (`objOf?`). -/
 def readSchema (dir : String) : IO Schema := do
@@ -236,6 +228,32 @@ def readSchema (dir : String) : IO Schema := do
     let some o ← objOf? dir n | throw (IO.userError s!"{dir}: no file of the column '{n}' that {fd} names")
     pure ((n, o) :: S)
   IO.ofExcept ((Schema.check S).mapError (s!"{fd}: " ++ ·)); pure S
+
+/-- The declared schema `S` against the `.d` of `dir` (`readSchema`): a column declared and not on disk, on disk and
+    not declared, or at another object is the error naming the column and both objects. The columns are compared by
+    name, never by position, as `readCols` finds each by its name. A directory with no `.d` (data written before
+    `Table.write` wrote one) is not checked and reads as it always did. -/
+def checkDisk (S : Schema) (dir : String) : IO Unit := do
+  -- `.d` is a `[C]` column, whose list file is `.lo` (`objOf?`); `objOf?` itself never ends on a missing name
+  unless ← System.FilePath.pathExists (file dir (dName ++ ".lo")) do return
+  let fd := file dir dName
+  let D ← readSchema dir
+  for (c, o) in S do
+    match D.lookup c with
+    | none => throw (IO.userError s!"{fd}: column {c} is not on disk, declared {(oexpOf o).1.show}")
+    | some d => unless d == o do throw (IO.userError s!"{fd}: column {c} is {(oexpOf d).1.show}, declared {(oexpOf o).1.show}")
+  for (c, d) in D do
+    unless S.any (·.1 == c) do throw (IO.userError s!"{fd}: column {c} is {(oexpOf d).1.show} on disk, not declared")
+
+/-- The side of schema `S` read from `dir`: the columns `S` names, each at its declared object, all of one count; a
+    missing file, another atom type or another count is the error naming the file, and a `.d` that differs from `S`
+    the error `checkDisk` names. Every reader of a declared table (`read`, `readKeyed`) comes through here. -/
+def readSide (S : Schema) (dir : String) : IO (String × (n : USize) × Vals S.obj n) := do
+  IO.ofExcept S.check; checkDisk S dir; readCols dir S.reverse
+
+/-- The positional table of schema `S` in `dir`: its rows' key the positions. -/
+def read (S : Schema) (dir : String) : IO (Tab .long S.obj) := do
+  let (_, ⟨_, x⟩) ← readSide S dir; IO.ofExcept (frame x)
 
 /-- A keyed table, q's dictionary from a key table to a value table: the key side's columns in `dir/key`, the value
     side's in `dir/val`, row `i` of each the pair `i` of `t`. -/
