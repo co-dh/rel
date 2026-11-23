@@ -1080,16 +1080,17 @@ theorem Opt.get_i64 {n : USize} (x : Opt .i64 n) (i : Fin n.toNat) (h : x.isNul 
   cases hc : x.enc <;> rw [hc] at hw <;>
     simp_all [Enc.WF, Enc.get, Enc.raw, QAtomicType.width, Column.atomOfBits, Dep.Carrier.of?, foRBits_starts]
 
-/-- No row of the atom column `x` is flagged null (`foRNuls`): what `noNul` of a `cells` key's `lo` and `hi` answers. -/
+/-- No row of the atom column `x` is flagged null (`foRNuls`). -/
 def ColB.Flat {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) : Prop :=
   ∀ i : Fin n.toNat, (foRNuls n (ColB.enc x))[i.1]? = some 0
 
-/-- **An `i64` column's row, `ColB.get`, with no row flagged null**: its raw word read as an `Int64`. -/
-theorem ColB.get_i64 {o : Bool} {n : USize} (x : ColB o .i64 n) (hn : ColB.Flat x) (i : Fin n.toNat) :
+/-- **An `i64` column's row `i`, `ColB.get`, where it is not flagged null**: its raw word read as an `Int64`. -/
+theorem ColB.get_i64 {o : Bool} {n : USize} (x : ColB o .i64 n) {i : Fin n.toNat}
+    (hn : (foRNuls n (ColB.enc x))[i.1]? = some 0) :
     ColB.get x i = ((Enc.raw .i64 n (ColB.enc x))[i.1]?.getD 0).toInt64 := by
   cases o
   · exact Arr.get_i64 x i
-  · have h := Opt.get_i64 x i ((Opt.isNul_eq_false x i).2 (hn i))
+  · have h := Opt.get_i64 x i ((Opt.isNul_eq_false x i).2 hn)
     simp only [ColB.get, h, Option.getD_some]
     try rfl
 
@@ -1097,13 +1098,66 @@ theorem ColB.get_i64 {o : Bool} {n : USize} (x : ColB o .i64 n) (hn : ColB.Flat 
 theorem Arr.flat {t : QAtomicType} {n : USize} (x : Arr t n) : ColB.Flat (o := false) x :=
   fun i => foRNuls_plain x.2.1 x.2.2 i.2
 
-/-- A column with no row flagged null owns every row it is `OwnedOn`. -/
-theorem ColB.owned_of_flat {n : USize} {P : Fin n.toNat → Prop} (x : ColB true .i64 n) (hn : ColB.Flat x)
-    (hx : ColB.OwnedOn x P) (i : Fin n.toNat) : P i := by
-  refine Classical.byContradiction fun hp => ?_
-  have h0 : Opt.get x i = none := (hx i).2 hp
-  rw [Opt.get_i64 x i ((Opt.isNul_eq_false x i).2 (hn i))] at h0
-  cases h0
+/-- A row the column `x` owns (`ColB.OwnedOn`) is not flagged null. -/
+theorem ColB.flag_of_owned {o : Bool} {n : USize} {P : Fin n.toNat → Prop} (x : ColB o .i64 n)
+    (hx : ColB.OwnedOn x P) (i : Fin n.toNat) (hp : P i) : (foRNuls n (ColB.enc x))[i.1]? = some 0 := by
+  cases o
+  · exact Arr.flat x i
+  · refine Classical.byContradiction fun hf => (hx i).1 hp ?_
+    have hN : x.isNul i = true := by
+      cases h : x.isNul i
+      · exact absurd ((Opt.isNul_eq_false x i).1 h) hf
+      · rfl
+    rw [Opt.get_ne x i (by decide), hN, if_pos rfl]
+
+/-- A row an `Opt` `i64` column does not own (`ColB.OwnedOn`) is flagged null: its filler is the null. -/
+theorem ColB.flag_of_unowned {n : USize} {P : Fin n.toNat → Prop} (x : ColB true .i64 n)
+    (hx : ColB.OwnedOn x P) (i : Fin n.toNat) (hp : ¬P i) : (foRNuls n (ColB.enc x))[i.1]? ≠ some 0 := fun hf => by
+  have h := Opt.get_i64 x i ((Opt.isNul_eq_false x i).2 hf)
+  rw [(hx i).2 hp] at h
+  cases h
+
+/-- `nulWords` at a row not flagged null is the word there. -/
+theorem nulWords_get {m : USize} {e : Enc} {c : Array UInt64} {i : Nat} (h : (foRNuls m e)[i]? = some 0) :
+    (nulWords m e c)[i]? = c[i]? := by
+  unfold nulWords; split
+  · simp only [Array.getElem?_mapIdx, h, Option.getD_some]; cases c[i]? <;> rfl
+  · rfl
+
+/-- `nulWords` at a row flagged null is `0`. -/
+theorem nulWords_nul {t : QAtomicType} {m : USize} {e : Enc} (hw : Ext.Enc.WF t m e) (c : Array UInt64) {i : Nat}
+    (hi : i < m.toNat) (h : (foRNuls m e)[i]? ≠ some 0) : (nulWords m e c)[i]?.getD 0 = 0 := by
+  unfold nulWords; split
+  · have hlt : i < (foRNuls m e).size := by rw [foRNuls_size]; exact hi
+    have h0 : (foRNuls m e)[i]? = some (foRNuls m e)[i] := Array.getElem?_eq_getElem hlt
+    have hne : (foRNuls m e)[i] ≠ 0 := fun h' => h (by rw [h0, h'])
+    simp only [Array.getElem?_mapIdx, h0, Option.getD_some]
+    cases c[i]? <;> simp [hne]
+  · rename_i hN; exact absurd (foRNuls_plain hw (Bool.eq_false_iff.2 hN) hi) h
+
+/-- A `cells` key over the rows `.pos`, at row `q`: `cellFns` over `lo` and `hi` with each row null in either zeroed,
+`ascCol`'s reading. -/
+theorem seenKey_cells {n c : USize} {lo hi : Enc} {fs : List (AscKey × Enc)} (q : Fin n.toNat) :
+    seenKey n [(AscKey.cells n c lo hi fs, .pos)] q = (cellFns c.toNat (nulWords n lo (Enc.raw .i64 n lo))
+      (nulWords n lo (nulWords n hi (Enc.raw .i64 n hi))) (ascKeys c fs)).map (· q.1.toUInt64) := by
+  have hp : ∀ x, nulWords n .pos x = x := fun x => by simp [nulWords, hasNul]
+  simp [seenKey, ascKeys, ascKey, hp, List.map_map, Function.comp_def, Enc.raw, q.2]
+
+/-- `cellFns` at the word `r` reads only cell `r`'s start and length. -/
+theorem cellFns_congr (c : Nat) {lo hi lo' hi' : Array UInt64} (ks : List (Array UInt64)) {r : UInt64}
+    (hs : cellStart lo r = cellStart lo' r) (hl : cellLen lo hi r = cellLen lo' hi' r) :
+    (cellFns c lo hi ks).map (· r) = (cellFns c lo' hi' ks).map (· r) := by
+  simp only [cellFns, List.map_flatMap, List.map_cons, List.map_map, Function.comp_def, hs, hl]
+
+/-- A `cells` key at a row null in neither `lo` nor `hi`: `cellFns` over their raw words. -/
+theorem seenKey_cells_raw {n c : USize} {lo hi : Enc} {fs : List (AscKey × Enc)} (q : Fin n.toNat)
+    (hl : (foRNuls n lo)[q.1]? = some 0) (hh : (foRNuls n hi)[q.1]? = some 0) :
+    seenKey n [(AscKey.cells n c lo hi fs, .pos)] q =
+      (cellFns c.toNat (Enc.raw .i64 n lo) (Enc.raw .i64 n hi) (ascKeys c fs)).map (· q.1.toUInt64) := by
+  have hu : (q.1.toUInt64).toNat = q.1 := by
+    have := q.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
+  rw [seenKey_cells]
+  apply cellFns_congr <;> simp only [cellStart, cellLen, hu, nulWords_get hl, nulWords_get hh]
 
 /-- A row of an `Opt` read as its element, where it is not null. -/
 theorem Opt.get_eq_of_getD {t : QAtomicType} {n : USize} (x : Opt t n) (i i' : Fin n.toNat) (hi : x.get i ≠ none)
@@ -1115,38 +1169,10 @@ theorem Opt.get_eq_of_getD {t : QAtomicType} {n : USize} (x : Opt t n) (i i' : F
     | none => exact absurd h2 hi'
     | some b => rw [h1, h2] at h; exact congrArg some h
 
-/-- `noNul` answering leaves no row flagged null. -/
-theorem noNul_flags {w : String} {t : QAtomicType} {m : USize} {e : Enc} (hw : Ext.Enc.WF t m e)
-    (h : noNul w m e = .ok ()) {i : Nat} (hi : i < m.toNat) : (foRNuls m e)[i]? = some 0 := by
-  unfold noNul at h
-  by_cases hN : hasNul e = true
-  · rw [if_pos hN] at h
-    split at h
-    · cases h
-    · rename_i hn
-      have hlt : i < (foRNuls m e).size := by rw [foRNuls_size]; exact hi
-      have := Array.findIdx?_eq_none_iff.1 hn _ (Array.getElem_mem hlt)
-      simp at this
-      rw [Array.getElem?_eq_getElem hlt, this]
-  · exact foRNuls_plain hw (Bool.eq_false_iff.2 hN) hi
-
-/-- A `cells` column `kasc` reads has `lo` and `hi` without a null row: `ascCol` answers only past `noNul` of each. -/
-theorem Verify.ascCol_cells_flags {m n c : USize} {lo hi e : Enc} {els : List (AscKey × Enc)} {xk}
-    (h : ascCol m (.cells n c lo hi els, e) = .ok xk) :
-    noNul "asc: cells lo" n lo = .ok () ∧ noNul "asc: cells hi" n hi = .ok () := by
-  rw [ascCol] at h
-  constructor
-  · cases hl : noNul "asc: cells lo" n lo with
-    | ok u => rfl
-    | error s => exfalso; revert h; simp only [bind, Except.bind, hl]; repeat' (split <;> try simp_all)
-  · cases hl : noNul "asc: cells hi" n hi with
-    | ok u => rfl
-    | error s => exfalso; revert h; simp only [bind, Except.bind, hl]; repeat' (split <;> try simp_all)
-
 /-- **A cell of a `WF` side lies in its payload**: `cellStart` and `cellLen` read `0 ≤ lo ≤ hi ≤ c` as they are. -/
 theorem ValsB.cell_le {o : Bool} {B : Obj} {n c : USize} {lo hi : ColB o .i64 n} {f : Vals B c} {P : Fin n.toNat → Prop}
-    (hlo : ColB.Flat lo) (hhi : ColB.Flat hi) (hw : ValsB.WFOn (o := o) (A := .arr B) ⟨c, lo, hi, f⟩ P)
-    (i : Fin n.toNat) (hp : P i) :
+    {i : Fin n.toNat} (hlo : (foRNuls n (ColB.enc lo))[i.1]? = some 0) (hhi : (foRNuls n (ColB.enc hi))[i.1]? = some 0)
+    (hw : ValsB.WFOn (o := o) (A := .arr B) ⟨c, lo, hi, f⟩ P) (hp : P i) :
     cellStart (Enc.raw .i64 n (ColB.enc lo)) i.1.toUInt64 +
       cellLen (Enc.raw .i64 n (ColB.enc lo)) (Enc.raw .i64 n (ColB.enc hi)) i.1.toUInt64 ≤ c.toNat := by
   have hu : (i.1.toUInt64).toNat = i.1 := by
@@ -1157,8 +1183,8 @@ theorem ValsB.cell_le {o : Bool} {B : Obj} {n c : USize} {lo hi : ColB o .i64 n}
 /-- **An `arr` side's row is its cell**: the payload rows from `cellStart` for `cellLen` rows (`cellFns`' reading of
 `lo` and `hi` at the row's own word), read through `f`; `ValsB.row`'s clamp to `[0, c)` is the identity on a `WF`
 cell. -/
-theorem ValsB.row_arr {o : Bool} {B : Obj} {n c : USize} {lo hi : ColB o .i64 n} {f : Vals B c} (hlo : ColB.Flat lo)
-    (hhi : ColB.Flat hi) (i : Fin n.toNat)
+theorem ValsB.row_arr {o : Bool} {B : Obj} {n c : USize} {lo hi : ColB o .i64 n} {f : Vals B c} (i : Fin n.toNat)
+    (hlo : (foRNuls n (ColB.enc lo))[i.1]? = some 0) (hhi : (foRNuls n (ColB.enc hi))[i.1]? = some 0)
     (hc : 0 ≤ (ColB.get lo i).toInt ∧ (ColB.get lo i).toInt ≤ (ColB.get hi i).toInt ∧
       (ColB.get hi i).toInt ≤ (c.toNat : Int)) :
     ValsB.row (o := o) (A := .arr B) ⟨c, lo, hi, f⟩ i =
@@ -1215,7 +1241,8 @@ theorem ValsB.cols_arr {o : Bool} {B : Obj} {n c : USize} {lo hi : ColB o .i64 n
     {P : Fin n.toNat → Prop} {es : List (AscKey × Enc)} {cs}
     (hw : ValsB.WFOn (o := o) (A := .arr B) ⟨c, lo, hi, f⟩ P)
     (hes : ValsB.cols (o := o) (A := .arr B) ⟨c, lo, hi, f⟩ = .ok es) (hc : es.mapM (ascCol n) = .ok cs) :
-    ColB.Flat lo ∧ ColB.Flat hi ∧ ∃ fs, ValsB.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧
+    (∀ i, P i → (foRNuls n (ColB.enc lo))[i.1]? = some 0 ∧ (foRNuls n (ColB.enc hi))[i.1]? = some 0) ∧
+      ∃ fs, ValsB.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧
       ∀ i i' : Fin n.toNat, P i → P i' →
       (seenKey n es i = seenKey n es i' ↔
         cellLen (Enc.raw .i64 n (ColB.enc lo)) (Enc.raw .i64 n (ColB.enc hi)) i.1.toUInt64 =
@@ -1230,16 +1257,12 @@ theorem ValsB.cols_arr {o : Bool} {B : Obj} {n c : USize} {lo hi : ColB o .i64 n
   obtain ⟨hlen, hf⟩ := mapM_ok hc
   have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
   obtain ⟨ks, hks⟩ := ascCodes_of_cells hac
-  obtain ⟨hnl, hnh⟩ := Verify.ascCol_cells_flags hac
-  have hlo : ColB.Flat lo := fun i => noNul_flags (ColB.enc_wf lo) hnl i.2
-  have hhi : ColB.Flat hi := fun i => noNul_flags (ColB.enc_wf hi) hnh i.2
-  refine ⟨hlo, hhi, fs, hfs, ascCodes_mapM hks, fun i i' hp hp' => ?_⟩
-  have hr : ∀ q : Fin n.toNat, seenKey n [(AscKey.cells n c (ColB.enc lo) (ColB.enc hi) fs, .pos)] q =
-      (cellFns c.toNat (Enc.raw .i64 n (ColB.enc lo)) (Enc.raw .i64 n (ColB.enc hi)) (ascKeys c fs)).map
-        (· q.1.toUInt64) :=
-    fun q => by simp [seenKey, ascKeys, ascKey, nulCodes, nulWords, hasNul, List.map_map, Function.comp_def, Enc.raw, q.2]
-  have h1 := ValsB.cell_le hlo hhi hw i hp; have h2 := ValsB.cell_le hlo hhi hw i' hp'
-  rw [hr, hr, cellFns_eq_iff _ _ _ _ _ _ (by omega) (by omega)]
+  have hfl := fun i hp => And.intro (ColB.flag_of_owned lo hw.1 i hp) (ColB.flag_of_owned hi hw.2.1 i hp)
+  refine ⟨hfl, fs, hfs, ascCodes_mapM hks, fun i i' hp hp' => ?_⟩
+  have h1 := ValsB.cell_le (hfl i hp).1 (hfl i hp).2 hw hp
+  have h2 := ValsB.cell_le (hfl i' hp').1 (hfl i' hp').2 hw hp'
+  rw [seenKey_cells_raw i (hfl i hp).1 (hfl i hp).2, seenKey_cells_raw i' (hfl i' hp').1 (hfl i' hp').2,
+    cellFns_eq_iff _ _ _ _ _ _ (by omega) (by omega)]
   rfl
 
 /-- **Equal order codes, equal rows**, over any side whose columns `kasc` reads (`ascCol` answers on each): the codes
@@ -1268,13 +1291,15 @@ theorem ValsB.row_of_codes : {o : Bool} → {A : Obj} → {n : USize} → (x : V
     show (ValsB.row x.1 i, ValsB.row x.2 i) = (ValsB.row x.1 i', ValsB.row x.2 i')
     rw [ValsB.row_of_codes x.1 P hw.1 h1 hc1 i i' hp hp' k1, ValsB.row_of_codes x.2 P hw.2 h2 hc2 i i' hp hp' k2]
   | _, .arr _, n, ⟨c, lo, hi, f⟩, P, hw, es, hes, cs, hc, i, i', hp, hp', hk => by
-    obtain ⟨hlo, hhi, fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := ValsB.cols_arr hw hes hc
+    obtain ⟨hfl, fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := ValsB.cols_arr hw hes hc
     obtain ⟨hl, hk⟩ := (hkey i i' hp hp').1 hk
     have b := hw.2.2.1
-    rw [ValsB.row_arr hlo hhi i (b i hp), ValsB.row_arr hlo hhi i' (b i' hp'), map_range'_eq_iff]
+    rw [ValsB.row_arr i (hfl i hp).1 (hfl i hp).2 (b i hp), ValsB.row_arr i' (hfl i' hp').1 (hfl i' hp').2 (b i' hp'),
+      map_range'_eq_iff]
     refine ⟨hl, fun k hkl => ?_⟩
     have b1 := hkl; have b2 := hl ▸ hkl
-    have c1 := ValsB.cell_le hlo hhi hw i hp; have c2 := ValsB.cell_le hlo hhi hw i' hp'
+    have c1 := ValsB.cell_le (hfl i hp).1 (hfl i hp).2 hw hp
+    have c2 := ValsB.cell_le (hfl i' hp').1 (hfl i' hp').2 hw hp'
     rw [dif_pos (by omega), dif_pos (by omega)]
     exact ValsB.row_of_codes f (fun _ => True) hw.2.2.2 hfs hcs' _ _ trivial trivial (hk k hkl)
   | _, .sum _ _, n, s, P, hw, es, hes, cs, hc, i, i', hp, hp', hk => by
@@ -1384,8 +1409,8 @@ theorem Opt.codes_of_eq {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
     simp only [Array.getElem?_map, hw, hw', Option.map_some,
       key.2 (foRNuls_plain x.wf (Bool.eq_false_iff.2 hN) i.2)]
 
-/-- **Two rows a summand does not own have equal order codes**: each leaf there is the in-band null, and an `arr` summand
-has no unowned row `kasc` reads (its `lo` has no null row, `ColB.owned_of_flat`). -/
+/-- **Two rows a summand does not own have equal order codes**: each leaf there is the in-band null, and an `arr`
+summand's cell there is empty, its `lo` null (`ascCol` reads a null `lo` or `hi` as the empty cell). -/
 theorem ValsB.codes_of_unowned : {A : Obj} → {n : USize} → (x : ValsB true A n) → (P : Fin n.toNat → Prop) →
     ValsB.WFOn x P → {es : List (AscKey × Enc)} → ValsB.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs →
     ∀ i i' : Fin n.toNat, ¬P i → ¬P i' → seenKey n es i = seenKey n es i'
@@ -1405,8 +1430,18 @@ theorem ValsB.codes_of_unowned : {A : Obj} → {n : USize} → (x : ValsB true A
       simp [seenKey, ascKeys_append]
     rw [hs, hs, ValsB.codes_of_unowned x.1 P hw.1 h1 hc1 i i' hp hp', ValsB.codes_of_unowned x.2 P hw.2 h2 hc2 i i' hp hp']
   | .arr _, n, ⟨c, lo, hi, f⟩, P, hw, es, hes, cs, hc, i, i', hp, hp' => by
-    obtain ⟨hlo, -⟩ := ValsB.cols_arr hw hes hc
-    exact absurd (ColB.owned_of_flat lo hlo hw.1 i) hp
+    obtain ⟨-, fs, hfs, -⟩ := ValsB.cols_arr hw hes hc
+    obtain rfl : es = [(.cells n c lo.enc hi.enc fs, .pos)] := by
+      simp only [ValsB.cols, hfs, bind, Except.bind, pure, Except.pure] at hes; exact (Except.ok.inj hes).symm
+    -- at an unowned row `lo` is null, so `nulWords` zeroes its end: the empty cell
+    have z : ∀ q : Fin n.toNat, ¬P q → cellLen (nulWords n lo.enc (Enc.raw .i64 n lo.enc))
+        (nulWords n lo.enc (nulWords n hi.enc (Enc.raw .i64 n hi.enc))) q.1.toUInt64 = 0 := fun q hq => by
+      have hu : (q.1.toUInt64).toNat = q.1 := by
+        have := q.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
+      simp [cellLen, hu, nulWords_nul (ColB.enc_wf lo) _ q.2 (ColB.flag_of_unowned lo hw.1 q hq)]
+    rw [seenKey_cells, seenKey_cells, cellFns_eq_iff _ _ _ _ _ _ (by rw [z i hp]; omega) (by rw [z i' hp']; omega),
+      z i hp, z i' hp']
+    exact ⟨rfl, fun k hk => absurd hk (Nat.not_lt_zero k)⟩
   | .sum _ _, n, s, P, hw, es, hes, cs, hc, i, i', hp, hp' => by
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
     · simp only [ValsB.cols, hv, Except.ok.injEq] at hes; subst hes
@@ -1450,12 +1485,14 @@ theorem ValsB.codes_of_row : {o : Bool} → {A : Obj} → {n : USize} → (x : V
       simp [seenKey, ascKeys_append]
     rw [hs, hs, ValsB.codes_of_row x.1 P hw.1 h1 hc1 i i' hp hp' r1, ValsB.codes_of_row x.2 P hw.2 h2 hc2 i i' hp hp' r2]
   | _, .arr _, n, ⟨c, lo, hi, f⟩, P, hw, es, hes, cs, hc, i, i', hp, hp', hr => by
-    obtain ⟨hlo, hhi, fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := ValsB.cols_arr hw hes hc
+    obtain ⟨hfl, fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := ValsB.cols_arr hw hes hc
     have b := hw.2.2.1
-    rw [ValsB.row_arr hlo hhi i (b i hp), ValsB.row_arr hlo hhi i' (b i' hp'), map_range'_eq_iff] at hr
+    rw [ValsB.row_arr i (hfl i hp).1 (hfl i hp).2 (b i hp), ValsB.row_arr i' (hfl i' hp').1 (hfl i' hp').2 (b i' hp'),
+      map_range'_eq_iff] at hr
     refine (hkey i i' hp hp').2 ⟨hr.1, fun k hkl => ?_⟩
     have b1 := hkl; have b2 := hr.1 ▸ hkl
-    have c1 := ValsB.cell_le hlo hhi hw i hp; have c2 := ValsB.cell_le hlo hhi hw i' hp'
+    have c1 := ValsB.cell_le (hfl i hp).1 (hfl i hp).2 hw hp
+    have c2 := ValsB.cell_le (hfl i' hp').1 (hfl i' hp').2 hw hp'
     have e := hr.2 k hkl
     rw [dif_pos (by omega), dif_pos (by omega)] at e
     exact ValsB.codes_of_row f (fun _ => True) hw.2.2.2 hfs hcs' _ _ trivial trivial e
