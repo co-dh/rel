@@ -1188,13 +1188,36 @@ def pairCols (s : String) (X : Cols) : Bld (Nat × Nat) := do
     | throw s!"{s}: a pair side of {X.length} columns, not of two atoms"
   pure (x, y)
 
+/-- **`Tab.failAt`**: where a row of the `n` rows is flagged `1` in `flag`, fail the run with `msg`, its placeholders
+    (`failSegs`, `\x02`) the words of the columns `ws` at the FIRST flagged row (`Tab.keep` keeps row order). That row is
+    `flag ∧ (prefix count = 1)`; a column's word there is the fold of the `kscan add` of the column times that mask. -/
+def failAtB (n flag : Nat) (msg : String) (ws : List Nat) : Bld Unit := do
+  let (r, _) ← whereB n flag
+  discard <| ite (← call1 (kernel% USize.decEq) #[r, ← lit (.size 0)]) (pure #[]) (do
+    let z ← wordsB n 0
+    let P ← nth (← scanB .add .i64 n (some z) [z, flag]) 0 "kscan"
+    let first ← mapB .and n flag (← mapB .eq n P (← wordsB n 1))
+    let xs ← ws.mapM fun w => do
+      let fold ← nth (← scanB .add .i64 n (some z) [z, ← mapB .mul n w first]) 1 "kscan"
+      projB fold 1 0 .u64
+    discard <| emit (.fail msg xs.toArray) 0
+    pure #[])
+
+/-- The flag of `Tab.arithOvf`: the row has both operands non-null and a divisor `≠ 0`, and `keep` (`stepB`'s) is `0`. -/
+def arithOvfB (n a b keep : Nat) : Bld Nat := do
+  let nn (x : Nat) : Bld Nat := mapB .first n x x .i64 .i64 [] [(.ne, nulWord)]
+  let z ← mapB .first n b b .i64 .i64 [] [(.eq, 0)]
+  mapB .and n (← mapB .and n (← nn a) (← nn b)) (← mapB .and n (← mapB .not n keep keep) (← mapB .not n z z))
+
 /-- **`Tab.arithOp s`** on the pairs `X` of `A` (`stepOn`): `stepB` of the row's verb at `B`'s atom on the two
-    components, the rows it keeps with their answers; `Tab.arithOp`'s errors at the objects it refuses. -/
+    components, the rows it keeps with their answers, the run failing where an `i64` answer overflowed
+    (`Tab.arithOvf`, the same message); `Tab.arithOp`'s errors at the objects it refuses. -/
 def arithOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match arithOps.lookup s, A, B with
   | some k, .prod (.atom t) (.atom t'), .atom u =>
     if t = u ∧ t' = u then do
       let (a, b) ← pairCols s X
       let (w, f) ← stepB u k n a b
+      if u == .i64 then failAtB n (← arithOvfB n a b f) s!"{s}: i64 overflow at {s}(\x02, \x02)" [a, b]
       keepB ⟨n, X, [.atom "" u w]⟩ f
     else throw s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
   | some _, _, _ => throw s!"{s} runs from a pair of one number object to it"
@@ -1205,6 +1228,7 @@ def arithOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match a
 def succOpB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
   | .atom .i64, .atom .i64 => do
     let e ← col1 X
+    failAtB n (← mapB .first n e e .i64 .i64 [] [(.eq, 0x7FFFFFFFFFFFFFFF)]) "succ: i64 overflow at succ(\x02)" [e]
     pure ⟨n, X, [.atom "" .i64 (← mapB .add n e (← mapB .first n e e .i64 .i64 [] [(.ne, nulWord)]))]⟩
   | _, _ => throw "succ runs from an object of i64 to it"
 
@@ -2013,10 +2037,29 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
         c := c ++ s!"{ind}lean_dec({p});\n"
       live := live ++ ((List.range k.res.size).map (rs.size - k.res.size + ·))
     | .fail msg as =>
-      let shows ← as.toList.zipIdx.mapM fun (a, j) => do
-        let (x, t, _) ← creg rs a
-        pure ((if j == 0 then "fputs(\": \", stderr); " else "fputs(\", \", stderr); ") ++ cShow x t)
-      c := c ++ s!"{ind}fputs({cStr msg}, stderr); " ++ " ".intercalate shows ++ " fputc('\\n', stderr); exit(1);\n"
+      -- as `failText`: placeholders take the registers in order, else `: ` and the registers after the message
+      let segs := failSegs msg
+      let regs ← as.toList.mapM (creg rs ·)
+      let body ← if segs.all (·.isLeft) then
+          pure (s!"fputs({cStr msg}, stderr); " ++ " ".intercalate (regs.zipIdx.map fun ((x, t, _), j) =>
+            (if j == 0 then "fputs(\": \", stderr); " else "fputs(\", \", stderr); ") ++ cShow x t))
+        else do
+          unless (segs.filter (·.isRight)).length == regs.length do
+            throw s!"fail `{msg}` has {(segs.filter (·.isRight)).length} placeholders for {regs.length} registers"
+          let mut out := ""
+          let mut rest := regs
+          for s in segs do
+            match s with
+            | .inl t => out := out ++ s!"fputs({cStr t}, stderr); "
+            | .inr signed =>
+              let (x, t, _) :: r := rest | throw "fail: no register left for a placeholder"
+              rest := r
+              if signed then
+                unless t == .u64 do throw s!"fail `{msg}`: a signed placeholder reads a {repr t}, not a u64 word"
+                out := out ++ s!"fprintf(stderr, \"%lld\", (long long)(int64_t){x}); "
+              else out := out ++ cShow x t ++ " "
+          pure out
+      c := c ++ s!"{ind}" ++ body ++ " fputc('\\n', stderr); exit(1);\n"
     | .apply f as =>
       let some ts := fres[f]? | throw s!"apply f{f}: no earlier function"
       let xs ← as.toList.mapM fun a => return (← creg rs a).1

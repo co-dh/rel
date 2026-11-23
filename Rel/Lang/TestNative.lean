@@ -134,6 +134,25 @@ def arithOut (dir : String) : Bld Unit := do
   unless col 1 == [5, 7, (-3 : Int64).toUInt64] && col 3 == [6, 9, 1] do
     throw (IO.userError s!"arithB keeps u = {col 1}, s = {col 3}")
 
+-- an `i64` overflow fails the run as `Tab.arithOp` / `Tab.succOp` do (`Rel.Run.Arith`), the same text, at the first
+-- such row; a null operand and a zero divisor have no image and no error. `fail`'s C prints the same text (`failSegs`).
+#eval show IO Unit from do
+  let lits (xs : List Int64) : Bld Nat := lit (Reg.put (longs xs))
+  let go (b : Bld Unit) : Except String Unit := do discard <| (← Bld.plan b).run abiOf
+  let ar (s : String) (as bs : List Int64) : Except String Unit := go do
+    let n ← lit (.size as.length.toUSize)
+    discard <| arithOpB s (.prod (.atom .i64) (.atom .i64)) (.atom .i64) n [.atom "" .i64 (← lits as), .atom "" .i64 (← lits bs)]
+  let su (xs : List Int64) : Except String Unit := go do
+    discard <| succOpB (.atom .i64) (.atom .i64) (← lit (.size xs.length.toUSize)) [.atom "" .i64 (← lits xs)]
+  let cases : List (String × Except String Unit × String) :=
+    [("plus", ar "plus" [1, Int64.maxValue, Int64.maxValue] [1, 1, 2], "plus: i64 overflow at plus(9223372036854775807, 1)"),
+     ("minus", ar "minus" [3, -9223372036854775807] [1, 3], "minus: i64 overflow at minus(-9223372036854775807, 3)"),
+     ("times", ar "times" [4, Int64.maxValue] [5, 2], "times: i64 overflow at times(9223372036854775807, 2)"),
+     ("succ", su [1, Int64.maxValue, Int64.maxValue], "succ: i64 overflow at succ(9223372036854775807)"),
+     ("none", ar "div" [7, 7, Alg.nul, 9] [0, 2, 3, 3], ""), ("succ none", su [1, Alg.nul, -4], "")]
+  for (w, r, e) in cases do
+    unless (match r with | .error m => m | .ok _ => "") == e do throw (IO.userError s!"{w}: the run answers {repr (match r with | .error m => m | .ok _ => "")}, not {repr e}")
+
 /-! Group ids (`groupIdsB`, design §4 group-by `kasc ≫ kseen`), as a plan function, so a function's C is printed. -/
 
 /-- The plan function of `groupIdsB` on its parameters: the type's byte, the row count, the column. -/
