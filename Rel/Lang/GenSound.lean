@@ -191,12 +191,11 @@ def rowsProved : List String :=
   floatOps.map (·.1) ++ arithOps.map (·.1) ++ ["succ", "mix", "at"] ++ cmpOps.map (·.1) ++ cmpOps.map (ordSym ·.2)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
-    `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
+    `Tm.den_mono` reads), and `P k R` at each slot call `Tm.slot k R` (`Codes.Shares`). `Λ`'s order law asks nothing,
     since it is a theorem (`Vals.lamLaw`). -/
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
-  | _, _, .share k R => P k R ∧ R.GenHyp P
-  | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .call _ _ _ _ R => R.GenHyp P
+  | _, _, .call _ c _ _ R => (∀ k, c.slot? = some k → P k R) ∧ R.GenHyp P
+  | _, _, .lam R | _, _, .top R | _, _, .conv R => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.GenHyp P ∧ S.GenHyp P ∧ U.GenHyp P ∧ V.GenHyp P
@@ -207,11 +206,10 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => True
 
-/-- `Tm.GenHyp` with nothing asked at a `share` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
+/-- `Tm.GenHyp` with nothing asked at a slot (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .share _ R
   | _, _, .call _ _ _ _ R => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
@@ -1311,15 +1309,11 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
       rcases List.mem_cons.1 hy with rfl | hy
     any_goals exact c f (by omega) η hη
     all_goals first | exact hx y hy | simp at hy
-  case share _ R =>
-    refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
-    · split
-      · rename_i h; exact Codes.at_wf hη.2 h
-      · exact c R (by omega) η.closed ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩
-    · exact (H R (by omega)).2 η.closed xs ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩ hx
   case call ks _ _ _ b =>
     refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
-    · exact c b (by omega) _ (Code.args_wf hη ks [] fun _ h => nomatch h)
+    · split
+      · rename_i h; obtain ⟨_, _, h⟩ := Option.bind_eq_some_iff.1 h; exact Codes.at_wf hη.2 h
+      · exact c b (by omega) _ (Code.args_wf hη ks [] fun _ h => nomatch h)
     · exact c b (by omega) _ (Code.args_wf hη ks xs hx)
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η hη => ?_, fun η xs _ _ => by unfold Tm.argGen; exact trivial⟩
@@ -1408,22 +1402,16 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
     · exact step η ρ [] [] hl hs (fun _ h => nomatch h) trivial
     · exact step η ρ xs ss hl hs hx hr
-  -- its slot where the table has one (`Codes.Shares`), else built under `η`'s table and no variable
-  case share _ R ih =>
-    refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
-      simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;>
-      have he : Sound η.closed Val.empty := ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => GenK.zero_wf, hs.2.2⟩
-    · intro K; split
-      · rename_i r h; exact hl.1 r h K
-      · exact code_of ((ih (by omega)).1 η.closed Val.empty hl.2 he) K
-    · exact (ih (by omega)).2 η.closed Val.empty xs ss hl.2 he hx hr
-  -- the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`; same table
+  -- a slot where the table has one (`Codes.Shares`; its meaning is the body's under no variable, `Val.args ks []`),
+  -- else the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`; same table
   case call ks _ _ _ b ih =>
     refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
       simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
-        (Sound.args hs ks [] [] (fun _ h => nomatch h) trivial))
-    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
+    · intro K; split
+      · rename_i r h; obtain ⟨k, hk, h⟩ := Option.bind_eq_some_iff.1 h; exact hl.1 k hk r h K
+      · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl.2)
+          (Sound.args hs ks [] [] (fun _ h => nomatch h) trivial)) K
+    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl.2)
         (Sound.args hs ks xs ss hx hr))
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss _ _ _ _ => by unfold Tm.argGen; exact herr _ _⟩
