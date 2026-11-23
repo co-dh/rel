@@ -97,11 +97,11 @@ rel_program native1a where
     -- `inl°`, `inr°` on the sum values in demand: a dense sum with a summand `1` (`jl`, `jr`), a list summand (`kl`), the
     -- nullable column in band with rows and a null (`bn`; `br` the non-null rows, `bl` the null), and a case `[R, S]`
     bn : N ⟶ 1+N ≜ gk ∪ ({(9,∗)} inl)
-    jl : N ⟶ N ≜ gx inl° {(∗,7)}
+    jl : N ⟶ 1 ≜ gx inl°
     jr : N ⟶ N×N ≜ gx inr°
     kl : N ⟶ [N] ≜ gm inl°
     br : N ⟶ N ≜ bn inr°
-    bl : N ⟶ N ≜ bn inl° {(∗,7)}
+    bl : N ⟶ 1 ≜ bn inl°
     bc : N ⟶ N ≜ bn [{(∗,0)}, 𝟙]
     -- `sum` and `sums` at `i64` with a wrapping row (cell 1, key 1 from position 1 on: dropped), and `sum` at `f64`
     obj I
@@ -158,7 +158,7 @@ def arithIn : Bld (Array Nat) := do
 /-- `arithIn`'s relation, written to `dir`. -/
 def arithOut (dir : String) : Bld Unit := do
   let rs ← arithIn
-  output dir (.arr (.atom .i64)) (.arr (.atom .i64)) (← listSide (← nth rs 0 "arithB") (← nth rs 1 "arithB"), ← listSide (← nth rs 0 "arithB") (← nth rs 3 "arithB"))
+  output dir (.arr (.atom .i64)) (.arr (.atom .i64)) ⟨← lit (.size 1), ← listSide (← nth rs 0 "arithB") (← nth rs 1 "arithB"), ← listSide (← nth rs 0 "arithB") (← nth rs 3 "arithB")⟩
 
 -- six columns, each one `qlean_own_write`
 #eval show IO Unit from do
@@ -224,7 +224,7 @@ def agrees (c : QAtomicType × Nat × Enc × List UInt64) : IO Bool := do
 /-- The ids of `codes`' first column, written to `dir/key`. -/
 def gidOut (dir : String) : Bld Unit := do
   let some c := codes.head? | throw "codes is empty"
-  output dir (.atom .i64) (.atom .i64) ([("", ← encRegs .i64 (← lit (.size c.2.1.toUSize)) (← gapply c (← gfun)))], [])
+  output dir (.atom .i64) (.atom .i64) ⟨← lit (.size c.2.1.toUSize), [("", ← encRegs .i64 (← lit (.size c.2.1.toUSize)) (← gapply c (← gfun)))], []⟩
 
 /-! IO step I10: a program's `input`s read and its `output`s written by the plan as `n.io` reads and writes them. The
     native gate runs `nativeIO.io` (`relc run`) beside the native executable on `test/native/in` (a CSV file and a

@@ -664,7 +664,14 @@ partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A
       let some tag := reg (p ++ ".tag") Side.enc | throw s!"sum `{p}`: its tag column has no `Enc` register"
       return [.sum p tag (← colsOf a s (p ++ ".l")) (← colsOf b s (p ++ ".r"))]
 
-/-- The row count of a table's sides: a column's `count` register. -/
+/-- A table's registers: its row count `n` (the key column `N`'s, held even when every column is positions and none has
+    a `count` register), then its key side and value side. -/
+structure Sides where
+  n : Nat
+  key : Side
+  val : Side
+
+/-- The row count of a table read from files: a column's `count` register, as `sideOf` has no `TabB` yet. -/
 def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[Side.count]?) with
   | some n => pure n
   | none => throw "a table whose every column is positions, so no register holds its row count"
@@ -678,7 +685,7 @@ partial def flatB (n : Nat) (cs : Cols) : Bld Side := return (← cs.mapM fun
   | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x) ++ (← flatB n y))).flatten
 
 /-- A `TabB`'s sides as `output` takes them: each column's registers (`encRegs`), then its `Enc`. -/
-def sidesOf (T : TabB) : Bld (Side × Side) := do pure (← flatB T.n T.key, ← flatB T.n T.val)
+def sidesOf (T : TabB) : Bld Sides := do pure ⟨T.n, ← flatB T.n T.key, ← flatB T.n T.val⟩
 
 /-- What a node's context knows of its sides (design §0 `Known`): the values of its domain and of its range, each a
     count and columns, and the pairs a meet hands it (`GenK.bound`). -/
@@ -1584,8 +1591,8 @@ abbrev Vars := List (Nat × Bool × ((A B : Obj) → Dom → Bld TabB))
 def Vars.dem (σ : Vars) : Dem := fun k => ((σ.lookup k).map (·.1)).getD false
 
 /-- A variable bound to the registers `s` of a table (an input, a run-time definition): `s` in every context. -/
-def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
-  fun A B _ => return ⟨← countOf s, ← colsOf A s.1, ← colsOf B s.2⟩
+def sideArg (s : Sides) : (A B : Obj) → Dom → Bld TabB :=
+  fun A B _ => return ⟨s.n, ← colsOf A s.key, ← colsOf B s.val⟩
 
 mutual
 /-- **A term's table**: its node's recipe (`nodeB`) as one plan function (`funT`), closing over the tables of its
@@ -1703,7 +1710,7 @@ end
 
 /-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
     to them (a run-time definition's inputs, `Once.binds`): a variable's own registers, else `tabB`'s table. -/
-def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Side × Side)
+def ofTm (σ : List (Nat × Sides)) : {A B : Obj} → Tm A B → Bld Sides
   | _, _, .var k => match σ.lookup k with
     | some s => pure s
     | none => throw s!"variable {k}, which no input table is bound to"
@@ -1781,9 +1788,9 @@ partial def onesOf (n : Bld Nat) : (A : Obj) → Cols → String → Bld (List (
 
 /-- Each side of `1` of the side `side` of `A`, written to the file `files` names by its path: kind `oneKind`, its count
     (`onesOf`), no part (`ownFile`). -/
-def writeOnes (A : Obj) (side : Side) (files : List (String × String)) : Bld Unit := do
+def writeOnes (n : Nat) (A : Obj) (side : Side) (files : List (String × String)) : Bld Unit := do
   if files.isEmpty then return
-  let ones ← onesOf (countOf (side, [])) A (← colsOf A side) ""
+  let ones ← onesOf (pure n) A (← colsOf A side) ""
   for (p, f) in files do
     let some m := ones.lookup p | throw s!"the side of `1` at `{p}` (file {f}) has no row count"
     discard <| call "qlean_own_write" #[← lit (.str f), ← lit (.u8 0), ← lit (.u8 oneKind), m, ← lit (.parts #[])] 0
@@ -1791,12 +1798,12 @@ def writeOnes (A : Obj) (side : Side) (files : List (String × String)) : Bld Un
 /-- `output R to dir`, `R : A ⟶ B`: each column of `R`'s registers written by `qlean_own_write` to `dir/key<path>` and
     `dir/val<path>`, each side of `1` as `writeOnes`. The directory must exist; the kernel's error names the path when it
     does not. -/
-def output (dir : String) (A B : Obj) (rs : Side × Side) : Bld Unit := do
-  for (side, O, cs) in [("key", A, rs.1), ("val", B, rs.2)] do
+def output (dir : String) (A B : Obj) (rs : Sides) : Bld Unit := do
+  for (side, O, cs) in [("key", A, rs.key), ("val", B, rs.val)] do
     let file (p : String) := (System.FilePath.mk dir / (side ++ p)).toString
     for (p, r) in cs do
       discard <| call "qlean_own_write" (#[← lit (.str (file p))] ++ r.extract 0 Side.enc) 0
-    writeOnes O cs ((objLeaves O "").filterMap fun (p, t) => if t.isNone then some (p, file p) else none)
+    writeOnes rs.n O cs ((objLeaves O "").filterMap fun (p, t) => if t.isNone then some (p, file p) else none)
 
 /-- The plan's steps of `output x to dir` in the program `n`, read after its homes (`progOf`, `Expand.read`). -/
 def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
@@ -2013,7 +2020,7 @@ def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
     one's rows sorted with equal rows merged (`canonT`, `Table.canon`), as `Table.readKeyed`/`readCsvDict` read it. A CSV
     file's symbol columns are interned into the program's dictionary `D` (`internSide`, key columns first), which the
     answer carries grown. -/
-def sideOf (x : String) (D : TabB) (r : InRead) : Bld ((Side × Side) × TabB) := do
+def sideOf (x : String) (D : TabB) (r : InRead) : Bld (Sides × TabB) := do
   let (k, v, s, D) ← match r with
     | .csv k v kc vc l => do
       let (ks, l) ← csvSideB kc l
@@ -2023,7 +2030,7 @@ def sideOf (x : String) (D : TabB) (r : InRead) : Bld ((Side × Side) × TabB) :
     | .own k v kc vc => do
       let (ks, n₀) ← ownSideB x k.obj kc none
       pure (k, v, (ks, (← ownSideB x v.obj vc n₀).1), D)
-  if k.isEmpty then return (s, D)
+  if k.isEmpty then return (⟨← countOf s, s.1, s.2⟩, D)
   return (← sidesOf (← canonT ⟨← countOf s, ← colsOf k.obj s.1, ← colsOf v.obj s.2⟩), D)
 
 /-- `output x to [csv] path` of the table `s` (`n.io`'s `Table.write`, `writeKeyed`, `writeCsv`): key `k = []`, the
@@ -2032,9 +2039,9 @@ def sideOf (x : String) (D : TabB) (r : InRead) : Bld ((Side × Side) × TabB) :
     side with its `.d` (`Table.dName`) as `Table.write` writes it. A positions
     column has no file and no CSV part: it is refused, naming the column. A CSV file's symbol column is its texts, its
     ids decoded through the program's dictionary `D` (`Table.decodeCsv`: `unenum`, `I ≫ D`, then the text's three parts). -/
-def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) (s : Side × Side)
+def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) (s : Sides)
     (D : TabB) : Bld Unit := do
-  let sides := if k.isEmpty then [(v, s.2, path)] else [(k, s.1, Table.file path "key"), (v, s.2, Table.file path "val")]
+  let sides := if k.isEmpty then [(v, s.val, path)] else [(k, s.key, Table.file path "key"), (v, s.val, Table.file path "val")]
   let col (S : Schema) (side : Side) (p : String) : Bld (Array Nat) := match side.lookup p with
     | some r => pure r
     | none => throw s!"output `{x}` to \"{path}\": column `{p}` of {Schema.names S} is positions, which have no file"
@@ -2049,7 +2056,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
       for (p, q, _) in schemaCols S do
         discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 Side.enc) 0
       -- a side of `1` is a file of kind `oneKind`: its count (`ownFile`) and no part
-      writeOnes S.obj side ((schemaLeaves S).filterMap fun (p, q, t) => if t.isNone then some (p, Table.file dir q) else none)
+      writeOnes s.n S.obj side ((schemaLeaves S).filterMap fun (p, q, t) => if t.isNone then some (p, Table.file dir q) else none)
   | some (sep, cs) =>
     let ts ← ofExc ((Db.Csv.symText cs).mapError (s!"{path}: " ++ ·))
     let mut es : List Nat := []
@@ -2073,7 +2080,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
             pure [(m, lo), (m, hi), (m', pe)]
           | .part p _ => do pure [← reg p]
           -- a side of `1` stores no column; its CSV part is its one element's code `0` in each row (`Table.csvEncs`)
-          | .one => do let m ← countOf (side, []); pure [(m, ← wordsB m 0)]
+          | .one => pure [(s.n, ← wordsB s.n 0)]
           -- a `1+S` not in band: each atom as the extern's tag (swapped), position (the count of own-side rows before
           -- the row) and non-null values, as `Table.toCsv`'s `.null` case: a prefix count per side, a `where` of the tag
           | .null tag vs => do
@@ -2162,7 +2169,7 @@ def ioOf (n : Lean.Name) :
       unless errs.isEmpty do throw ("\n".intercalate errs.toList)
       pure (rs, ← lib.mapM fun L => return (L, ← readLib L))
     let wr (ins : IoIn) : Bld Unit := do
-      let mut σ : List (String × Side × Side) := []
+      let mut σ : List (String × Sides) := []
       -- the program's dictionary (§0.2): grown by each CSV input's symbols in statement order (`Expand.ioE`), from the
       -- library's (`libDictB`) where an own table has a symbol column, else from the empty one
       let old ← match ins.2 with
