@@ -865,7 +865,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   字面量在进入处编码成 foR，`general` 列只作为 `arr` 存在；`.bytes`、`.syms`、`.gen`、enum 编码删除。
 - ✅ 6.12 native gate：`make native`（`check` 的前提）跑 `TestNative.gatePlan`（`native1a`、`arithB`、`groupIdsB`），
   C 调到 scan/scatter/gather/asc/seen 五个 kernel；`relc plan` 与 `rel-native` 的 `out/` 逐项、逐文件 `cmp` 相等，3 s（7c98fda）。
-- 🔄 6.13 虚拟行号（6.13a 见 D.4；6.13b、6.13c 未开始；owner 经 dataframe 会话决定）：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；每个 kernel 把它
+- 🔄 6.13 虚拟行号（6.13a 见 D.4；✅ 6.13b：`WF .i64 .pos` 已是 `True`，`longsOf`/`tilCol` 已无，本次删 `tilLongs`、`tilLongs_spec`
+  与其 axioms 检查，def 中 0 个 `tilLongs`，Rust 各 kernel 经 `Blocks::pos` 读 `pos` 不分配；6.13c 未开始；owner 经 dataframe 会话决定）：frame 的行号对象 `I` 只存 `n`，磁盘与内存都不物化；每个 kernel 把它
   当恒等（位置即循环下标）。不是 `Enc.gen`，也不退回 `til n` 数组。设计 `/data/tmp/p613-design.md`，按规则定：
   - 放在列上：`Enc.pos`，无 payload 的 constructor，`Enc.get .long n .pos i = some (.long i)`（DRY：列已有编码的概念；
     放在 `Tab.key` 上则第一次取逆 `R°` 就要物化）。`Tab`、`rep`、`Reps` 不变，`Rel.Tab.key` 的 562 处使用不改。

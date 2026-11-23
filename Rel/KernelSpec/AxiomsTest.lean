@@ -97,8 +97,5 @@ modules they check. -/
 /-- info: 'Rel.Kernel.raw_kscan' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms Rel.Kernel.raw_kscan
 
-/-- info: 'Rel.Verify.tilLongs_spec' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms Rel.Verify.tilLongs_spec
-
 /-- info: 'Rel.Verify.idAt_packIds_idWidthOf' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms Rel.Verify.idAt_packIds_idWidthOf
