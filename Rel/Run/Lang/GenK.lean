@@ -180,7 +180,12 @@ def ran (A B : Obj) (R : Rel A B) : Rel B B :=
     between two bounded neighbours `P ⊤ Q` reads only `P`'s and `Q`'s values, never `B`'s whole universe. -/
 def top (A B : Obj) (V : Rel B B) : Rel A B := .lazy fun K => match K.dom with
   | none => .tab (.error "⊤ ran with its domain unknown")
-  | some c => .tab do Tab.top c.2 (← cut ⟨none, K.ran, none⟩ (← V.runE ⟨none, K.ran, none⟩)).val
+  | some c => .tab do
+    let w ← cut ⟨none, K.ran, none⟩ (← V.runE ⟨none, K.ran, none⟩)
+    -- on the pairs `P` a meet hands it: `P`'s rows whose value `V` holds, `n` rows read, never `|K|·|L|`
+    match K.pairs with
+    | some p => cut ⟨some c, some ⟨_, w.val⟩, none⟩ p
+    | none => Tab.top c.2 w.val
 def outl (A B : Obj) : Rel (.prod A B) A := ofVals _ _ fun X => Tab.outl X
 def outr (A B : Obj) : Rel (.prod A B) B := ofVals _ _ fun X => Tab.outr X
 /-- `⟨T, S⟩`'s two tables on the domain `D`, `T` run first: `⟨T,S⟩ a (b,c)` needs `T a b`, so `T`'s table cut to `D`
