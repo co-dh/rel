@@ -337,6 +337,17 @@ theorem Arr.clampShift_get {n : USize} {c s : UInt64} {x y : Arr .i64 n} (hcs : 
       · simp only [h2, ↓reduceIte]; rw [key c (Nat.le_refl _)]; split at hW <;> omega
   · cases h
 
+/-- A word `w` below `2^63 - s` as a long, shifted by `s`: the addition does not wrap. -/
+theorem Int64.toInt_add_shift (w s : UInt64) (h0 : 0 ≤ w.toInt64.toInt) (hs : w.toInt64.toInt + s.toNat < 2 ^ 63) :
+    (w + s).toInt64.toInt = w.toInt64.toInt + s.toNat := by
+  have hw := UInt64.toNat_lt w
+  have hsl := UInt64.toNat_lt s
+  have hW := Verify.toInt_toInt64 w
+  split at hW
+  · rw [hW] at h0 hs ⊢
+    rw [Verify.toInt_toInt64, UInt64.toNat_add, if_pos (by omega)]; omega
+  · omega
+
 /-- **`Arr.shift s x`** reads each long of `x` plus `s`, where that long is in `[0, 2^63 - s)`. -/
 theorem Arr.shift_get {n : USize} {s : UInt64} {x y : Arr .i64 n} (h : x.shift s = .ok y) (i : Fin n.toNat)
     (h0 : 0 ≤ (x.get i).toInt) (hs : (x.get i).toInt + s.toNat < 2 ^ 63) :
@@ -354,13 +365,91 @@ theorem Arr.shift_get {n : USize} {s : UInt64} {x y : Arr .i64 n} (h : x.shift s
     generalize (raw .i64 n o)[i.1]?.getD 0 = O at r3 ⊢
     have e3 : w + s = O := Except.ok.inj r3
     subst e3
-    have hw := UInt64.toNat_lt w
-    have hsl := UInt64.toNat_lt s
-    have hW := Verify.toInt_toInt64 w
-    split at hW
-    · rw [hW] at h0 hs ⊢
-      rw [Verify.toInt_toInt64, UInt64.toNat_add, if_pos (by omega)]; omega
-    · omega
+    exact Int64.toInt_add_shift w s h0 hs
+  · cases h
+
+/-- **`colMap .max n a a` with the post step `add s` flags and shifts as `Opt.shift` says**: row `i` of the answer has
+`a`'s own flag (`foRNuls`: `kscan_nul_row` flags `and` of the sources' flags, `a` twice) and, off a null, the word `s + a[i]`
+(`max` of a word with itself is the word, `fill` read at a null being no word of the answer). -/
+theorem colMap_max_self {n : USize} {a o : Enc} {s : UInt64} (hW : Enc.WF .i64 n a)
+    (h : colMap .max n a a .i64 .i64 [] [(.add, s)] = .ok o) : ∀ i < n.toNat,
+      (foRNuls n o)[i]? = (foRNuls n a)[i]? ∧
+        ((foRNuls n a)[i]? = some 0 → (raw .i64 n o)[i]? = some (s + (raw .i64 n a)[i]?.getD 0)) := by
+  have hs : kscanStream .max [(n, a), (n, a)] [] [(.add, s)] = false := by simp [kscanStream]
+  have hWs : ∀ p ∈ [(n, a), (n, a)], Ext.Enc.WF .i64 p.1 p.2 := fun p hp => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hW
+  by_cases hN : hasNul a = true
+  · unfold colMap at h; simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+    obtain ⟨out, nl, hos, hnl, hr1, hV, hF, p, ps, hes, hrow⟩ := kscan_nul_row (b := .and)
+      (fill := 0x8000000000000000) rfl (by decide : (QAtomicType.i64).width = some 8) (by decide) hs hWs ⟨(n, a), by simp, hN⟩ hr
+    simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl, -⟩ := hes
+    intro i hi
+    obtain ⟨⟨v, hv1, hv2⟩, hn1, hn2⟩ := hrow i hi
+    simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure,
+      Except.pure, UInt64.and_self, Except.ok.injEq] at hn1
+    have hf := foRNuls_bit n a hi
+    have e1 : (foRNuls n r.1)[i]? = (foRNuls n a)[i]? := by
+      rw [hn2, hf]; show (some (if nl[i]?.getD 0 != 0 then 1 else 0) : Option UInt64) = _
+      rw [← hn1]; rfl
+    refine ⟨e1, fun h0 => ?_⟩
+    have hsz : n.toNat = (out.map (cutBit .i64)).size := by simp [hos]
+    have hb : Column.bitAt (nulMap nl) i = false := by
+      have h1 := foRNuls_wordsFoR (out.map (cutBit .i64)) (nulMap nl) hsz i (by simpa [hos] using hi)
+      rw [← hr1, e1, h0] at h1
+      cases hb : Column.bitAt (nulMap nl) i <;> simp_all
+    have h2 := raw_wordsFoR_of_bit (out.map (cutBit .i64)) (nulMap nl) (m := n) (by simp [hos]) i
+      (by simpa [hos] using hi) hb
+    rw [← hr1] at h2
+    have hr0 : rdNul n a i = 0 := by simp only [rdNul, h0]; rfl
+    simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure,
+      Except.pure, rdFill, hr0, bne_self_eq_false, Bool.false_eq_true, if_false] at hv1 hv2
+    simp only [Op.eval, ite_self, Except.ok.injEq] at hv1
+    simp only [chain, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
+      Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some] at hv2
+    subst hv1
+    rw [h2]; simp only [Array.getElem_map, cutBit, if_neg (by decide : QAtomicType.i64 ≠ .u1), ← hv2]
+  · have hN' : hasNul a = false := by simpa using hN
+    have hF : (Op.max).nulFold = none ∨ ∀ p ∈ [(n, a), (n, a)], hasNul p.2 = false := Or.inr fun p hp => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hN'
+    have hP := colMap_plain hs h hF
+    have hC := colMap_closed hs h hF
+    obtain ⟨-, -, -, hrow⟩ := colMap_chain h hs (by decide) hF
+    intro i hi
+    refine ⟨by rw [foRNuls_plain hC.2 hP hi, foRNuls_plain hW hN' hi], fun _ => ?_⟩
+    obtain ⟨x', y', v, w, hx, hy, hv, hw, ho⟩ := hrow i hi
+    simp only [chain, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hx hy
+    subst hx hy
+    simp only [Op.eval, ite_self, Except.ok.injEq] at hv
+    simp only [chain, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure, Except.pure,
+      Except.ok.injEq] at hw
+    subst hv hw
+    rw [ho, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
+
+/-- **`Opt.shift s x` reads each long of `x` plus `s`, a null staying null**: where every owned long is in
+`[0, 2^63 - s)` (so no word wraps), `y.get i` is `none` at a null of `x` and `x`'s long plus `s` else. -/
+theorem Opt.shift_get {n : USize} {s : UInt64} {x y : Opt .i64 n} (h : Opt.shift s x = .ok y) (i : Fin n.toNat)
+    (hv : ∀ v, x.get i = some v → 0 ≤ v.toInt ∧ v.toInt + s.toNat < 2 ^ 63) :
+    (y.get i).map Int64.toInt = (x.get i).map fun v => v.toInt + (s.toNat : Int) := by
+  unfold Opt.shift at h
+  split at h
+  · rename_i o ho
+    have hy : y.enc = o := (congrArg Opt.enc (Except.ok.inj h)).symm
+    obtain ⟨hf, hw⟩ := colMap_max_self x.wf ho i.1 i.2
+    rw [← hy] at hf hw
+    have hn : y.isNul i = x.isNul i := by
+      have := (Opt.isNul_eq_false y i).trans ((by rw [hf] : _ ↔ _).trans (Opt.isNul_eq_false x i).symm)
+      cases hx : x.isNul i <;> cases hy' : y.isNul i <;> simp_all
+    cases hx : x.isNul i
+    · have e1 := Opt.get_i64 x i hx
+      have e2 := Opt.get_i64 y i (hn.trans hx)
+      have hr := hw ((Opt.isNul_eq_false x i).1 hx)
+      rw [e1] at hv ⊢; rw [e2, hr]
+      obtain ⟨h0, hs⟩ := hv _ rfl
+      simp only [Option.getD_some, Option.map_some, Option.some.injEq]
+      rw [UInt64.add_comm s]; exact Int64.toInt_add_shift _ s h0 hs
+    · rw [Opt.get_ne y i (by decide), Opt.get_ne x i (by decide), hn, hx]; rfl
   · cases h
 
 /-- The pairs of `List.finRange (a + b)` that `G` keeps: those of the first `a` positions, then of the last `b`. -/

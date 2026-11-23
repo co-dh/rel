@@ -236,10 +236,12 @@ def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (s : Boo
   else if 2 ^ 63 < l₁.toNat ∨ 2 ^ 63 < l₂.toNat then .error s!"concat: a sum summand of {l₁} or {l₂} rows, past 2^63"
   else do pure ⟨n, ← cat n (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
 
-/-- The words of the nullable `x` with `s` added: `Arr.shift` over `Opt`, a null staying null (`colMap_closed`). -/
+/-- The words of the nullable `x` with `s` added: `Arr.shift` over `Opt`, a null staying null (`colMap_closed_nul`). The
+op is `max` of `x` with itself, the identity on a word, not `first`: `first` refuses a null row (`noNul`), `max` orders it. -/
 def Opt.shift {n : USize} (s : UInt64) (x : Opt .i64 n) : Except String (Opt .i64 n) :=
-  match h : colMap .first n x.enc x.enc .i64 .i64 [] [(.add, s)] with
-  | .ok o => .ok (Opt.mk o (colMap_closed (by lockstep) h).2)
+  match h : colMap .max n x.enc x.enc .i64 .i64 [] [(.add, s)] with
+  | .ok o => .ok (Opt.mk o (colMap_closed_nul (b := .and) (fill := 0x8000000000000000) rfl (by decide) (by decide)
+      x.wf (by lockstep) h).2)
   | .error e => .error e
 
 /-- CONCAT of two atom columns at ownership `o`: `Arr.concat`, or `Opt.concat` where a row may be null. -/

@@ -94,6 +94,24 @@ theorem colMap_plain {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pr
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   exact (kscan_lock_closed hs hF hr).2.2
 
+/-- `colMap` of one column with itself under an op that orders null (`Op.nulFold`), a null row of it included, answers a
+column every kernel reads, `Enc.WF` at `t` (`kscan_nul_row` where `a` holds a null, `colMap_closed` where not). -/
+theorem colMap_closed_nul {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, fill)) {n : USize} {a o : Enc}
+    {t s : QAtomicType} {post : List (Op × UInt64)} (ht : t.width.isSome) (hsw : s.width.isSome)
+    (hW : Ext.Enc.WF s n a) (hs : kscanStream op [(n, a), (n, a)] [] post = false)
+    (h : colMap op n a a t s [] post = .ok o) : Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
+  have hWs : ∀ p ∈ [(n, a), (n, a)], Ext.Enc.WF s p.1 p.2 := fun p hp => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hW
+  by_cases hN : hasNul a = true
+  · unfold colMap at h; simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+    obtain ⟨w, hw⟩ := Option.isSome_iff_exists.1 ht
+    obtain ⟨out, nl, -, -, -, hV, hF, -⟩ := kscan_nul_row hnf hw hsw hs hWs ⟨(n, a), by simp, hN⟩ hr
+    exact ⟨hV, hF⟩
+  · exact colMap_closed hs h (Or.inr fun p hp => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> simpa using hN)
+
 /-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Opt.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=
   match h : kgather m ix n x.enc with
