@@ -173,7 +173,7 @@ pub fn write(target: &CStr, code: u8, kind: u8, count: u64, parts: &[&[u8]]) -> 
 
 
 
-pub struct OwnHead { pub n: u64, pub hdr: usize, pub np: usize,
+pub struct OwnHead { pub n: u64, pub np: usize,
                      pub off: [usize; OWN_MAXPARTS], pub len: [usize; OWN_MAXPARTS], pub code: u8, pub kind: u8 }
 pub const OWN_OLDEST: u8 = 7;
 pub fn le(m: &[u8], at: usize, w: usize) -> u64 {
@@ -203,7 +203,7 @@ offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind
         why.say(format_args!("byte {}: a part table ending at byte {}, the file is {} bytes", OWN_HEAD, hdr, size));
         return None;
     }
-    let mut h = OwnHead { n, hdr, np, off: [0; OWN_MAXPARTS], len: [0; OWN_MAXPARTS], code: m[9], kind };
+    let mut h = OwnHead { n, np, off: [0; OWN_MAXPARTS], len: [0; OWN_MAXPARTS], code: m[9], kind };
     let mut end = hdr as u64;
     for k in 0..np {
         let at = OWN_HEAD + 16 * k;
@@ -343,7 +343,7 @@ mod tests {
         let mut m = good(); m[16] = 7;
         let mut buf = [0u8; 64];
         let h = head(&m, &mut Why::new(&mut buf)).unwrap();
-        assert_eq!((h.n, h.hdr, h.np, h.off[0], h.len[0], h.off[1], h.kind), (7, 56, 2, 88, 16, 136, 2));
+        assert_eq!((h.n, h.np, h.off[0], h.len[0], h.off[1], h.kind), (7, 2, 88, 16, 136, 2));
         m[16] = 0;
     }
 

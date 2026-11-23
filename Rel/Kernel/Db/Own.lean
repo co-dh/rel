@@ -29,11 +29,11 @@ def ownEnc (kind : UInt8) (parts : Array ByteArray) : Option (Ext.Enc X) :=
   | _, _ => none
 
 /-- The file the column `e` of `n` elements of `t` is written as; `none` for positions, which have no file
-(`ownParts`). A general list is refused. The header's `attr` and `domain` are written empty (PLAN 8.4: no reader). -/
+(`ownParts`). A general list is refused. -/
 def ownFile (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Except String (Option OwnFile) := do
   if t == .general then throw "a general list, which qlean's own column format does not hold"
   return (← ownParts e).map fun (kind, parts) =>
-    { code := t.code.toUInt8, attr := 0, kind, count := n, domain := "", parts }
+    { code := t.code.toUInt8, kind, count := n, parts }
 
 
 end Rel.Db

@@ -18,11 +18,8 @@ open Rel
 /-- A column as `ownWrite` takes it and `ownMap` answers it: the header's fields and the constructor's parts. -/
 structure OwnFile where
   code : UInt8
-  attr : UInt8
   kind : UInt8
   count : USize
-  /-- Enumeration domain, empty when the column is not a q enumeration. -/
-  domain : String
   parts : Array ByteArray
 
 /-- `own.rs`'s `OWN_NPARTS`: the part count of each constructor kind (2 foR, 5 a side of `1`: its count and no part),
@@ -40,8 +37,8 @@ def ownKinds : String :=
 /-- The file's first 8 bytes, `qleancol`. -/
 def ownMagic : List UInt8 := [0x71, 0x6c, 0x65, 0x61, 0x6e, 0x63, 0x6f, 0x6c]
 
-/-- Byte 8, the format version, `own.rs`'s `OWN_VERSION`: 6 since the patch list's block offsets are `u64`. -/
-def ownVersion : UInt8 := 6
+/-- Byte 8, the format version, `own.rs`'s `OWN_VERSION`: 7 since the header holds no attribute and no domain name. -/
+def ownVersion : UInt8 := 7
 
 /-- The low `w` bytes of `v`, little-endian. -/
 def leBytes (v w : Nat) : List UInt8 := (List.range w).map fun k => (v / 256 ^ k).toUInt8
@@ -64,26 +61,22 @@ def ownLayout (a : Nat) : List ByteArray → List UInt8 × List UInt8
     (leBytes (ownOff a) 8 ++ leBytes p.size 8 ++ r.1, List.replicate (ownOff a - a) 0 ++ p.data.toList ++ r.2)
 
 /-- The file `ownWrite` writes for `f`, or `own::write`'s refusal: bytes 0..8 `qleancol`, the version `ownVersion`, code,
-attribute, kind, the part count (2 bytes), the domain name's length (2 bytes), the element count (8 bytes), the part
-table, the domain name, then `ownLayout`. -/
+kind, the part count (1 byte), 4 zero bytes, the element count (8 bytes), the part table, then `ownLayout`. -/
 def ownImage (f : OwnFile) : Except String ByteArray :=
   let np := f.parts.size
-  let d := f.domain.toUTF8.data.toList
-  if ownNParts[f.kind.toNat]?.join != some np || d.length > 0xffff then
-    .error s!"a column of kind and part count {ownKinds} and a domain name under 65536 bytes, given kind {f.kind} with {np} parts and a {d.length}-byte name"
-  else if d.contains 0 then .error s!"a domain name with no NUL byte, found one at byte {d.idxOf 0}"
+  if ownNParts[f.kind.toNat]?.join != some np then
+    .error s!"a column of kind and part count {ownKinds}, given kind {f.kind} with {np} parts"
   else
-    let r := ownLayout (24 + 16 * np + d.length) f.parts.toList
-    .ok ⟨(ownMagic ++ [ownVersion, f.code, f.attr, f.kind] ++ leBytes np 2 ++ leBytes d.length 2 ++ leBytes f.count.toNat 8
-      ++ r.1 ++ d ++ r.2).toArray⟩
+    let r := ownLayout (24 + 16 * np) f.parts.toList
+    .ok ⟨(ownMagic ++ [ownVersion, f.code, f.kind] ++ leBytes np 1 ++ leBytes 0 4 ++ leBytes f.count.toNat 8
+      ++ r.1 ++ r.2).toArray⟩
 
 /-- The one column writer: `parts` are a `Column` constructor's `ByteArray`s, written as they lie (`ownImage`). The
 extern writes a temporary beside `path` and renames it over `path`, so a mapping of the old file keeps its pages. Missing parent directories are created. -/
 @[extern "qlean_own_write"]
-def ownWrite (path : @& String) (code attr kind : UInt8) (count : USize) (domain : @& String)
-    (parts : @& Array ByteArray) : IO Unit := do
+def ownWrite (path : @& String) (code kind : UInt8) (count : USize) (parts : @& Array ByteArray) : IO Unit := do
   if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
-  IO.FS.writeBinFile path (← IO.ofExcept (ownImage ⟨code, attr, kind, count, domain, parts⟩))
+  IO.FS.writeBinFile path (← IO.ofExcept (ownImage ⟨code, kind, count, parts⟩))
 
 /-- `own::head`'s loop: the `k` parts from part `i`, whose table entry is at `24 + 16 * i`, the bytes before it ending
 at `e`. -/
@@ -101,33 +94,26 @@ def ownSpans (b : ByteArray) (i e : Nat) : Nat → Except String (List ByteArray
     else (b.extract off (off + l) :: ·) <$> ownSpans b (i + 1) (off + l) k
 
 /-- The column file `b` holds, or `own::map`'s refusal, test for test and word for word: the header, the part table,
-each part inside the file after its reserved bytes, the domain name. -/
+each part inside the file after its reserved bytes. -/
 def ownParse (b : ByteArray) : Except String OwnFile :=
   let byte (o : Nat) : UInt8 := b.data[o]?.getD 0
-  let kind := leAt b 11 1
-  let np := leAt b 12 2
-  let nl := leAt b 14 2
+  let kind := leAt b 10 1
+  let np := leAt b 11 1
   let v := leAt b 8 1
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
   else if (List.range 8).map byte != ownMagic then .error "byte 0: the magic `qleancol`"
   else if v != ownVersion.toNat then
-    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
+    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
   else if ownNParts[kind]?.join != some np then
-    .error s!"byte 11: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
-  else if 24 + 16 * np + nl > b.size then
-    .error s!"byte 24: a part table and domain name ending at byte {24 + 16 * np + nl}, the file is {b.size} bytes"
+    .error s!"byte 10: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
+  else if 24 + 16 * np > b.size then
+    .error s!"byte 24: a part table ending at byte {24 + 16 * np}, the file is {b.size} bytes"
   else do
-    let parts ← ownSpans b 0 (24 + 16 * np + nl) np
-    let d := b.extract (24 + 16 * np) (24 + 16 * np + nl)
-    match String.fromUTF8? d with
-    | some domain =>
-      if d.data.contains 0 then .error s!"byte {24 + 16 * np}: a domain name of {nl} bytes in UTF-8 with no NUL"
-      else .ok ⟨byte 9, byte 10, kind.toUInt8, (leAt b 16 8).toUSize, domain, parts.toArray⟩
-    | none => .error s!"byte {24 + 16 * np}: a domain name of {nl} bytes in UTF-8 with no NUL"
+    let parts ← ownSpans b 0 (24 + 16 * np) np
+    .ok ⟨byte 9, kind.toUInt8, (leAt b 16 8).toUSize, parts.toArray⟩
 
 /-- An own-format column file **mapped**, not read: `ownParse` of its bytes, each part a `ByteArray` lying in the
-mapping (`crate/src/own.rs`), so no byte of a part is copied or decoded; the domain name is copied into its
-`String`. The parts are persistent objects (rc 0): an update copies first, and the mapping is `MAP_PRIVATE`, so the
+mapping (`crate/src/own.rs`), so no byte of a part is copied or decoded. The parts are persistent objects (rc 0): an update copies first, and the mapping is `MAP_PRIVATE`, so the
 file is never written through them. The extern also refuses a part the Rust kernels could read outside of
 (`own::check`: Frame of Reference block widths and offsets, patch lists, ALP sections, symbol ids),
 which this body does not model. -/

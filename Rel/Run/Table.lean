@@ -41,7 +41,7 @@ def file (dir q : String) : String := (System.FilePath.mk dir / q).toString
 def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
   for (q, c) in cols A x p do
     if let some f ← IO.ofExcept (ownFile q c) then
-      Db.ownWrite (file dir q) f.code f.attr f.kind f.count f.domain f.parts
+      Db.ownWrite (file dir q) f.code f.kind f.count f.parts
 
 /-- The bit pattern of a word of type `t` that is not in the canonical form `Obj.key` and the kernels assume (typed
     base design, R7 and decision D: a NaN has no row, `-0` is `+0`), `none` for a canonical word: the stored word
@@ -58,9 +58,6 @@ def readArr (t : QAtomicType) (path : String) : IO ((n : USize) × Arr t n) := d
   let f ← Db.ownMap path
   unless f.code == t.code.toUInt8 do
     throw (IO.userError s!"{path}: atom type code {f.code}, the column is {repr t} (code {t.code})")
-  unless f.domain.isEmpty do
-    throw (IO.userError s!"{path}: an enumeration over `{f.domain}`, which waits for the own-format sym writer \
-      (D.9 step 6)")
   let some e := Db.ownEnc f.kind f.parts
     | throw (IO.userError s!"{path}: constructor kind {f.kind}, which `Db.ownEnc` does not rebuild")
   let x ← IO.ofExcept (Arr.of t f.count e path)

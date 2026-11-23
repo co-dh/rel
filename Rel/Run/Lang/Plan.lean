@@ -515,13 +515,13 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
 /-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/
 def oneKind : UInt8 := 5
 
-/-- A `cols` entry as qlean's column writer takes it (`Db.ownFile`): `code`, `attr`, `kind`, `count`, `domain`,
+/-- A `cols` entry as qlean's column writer takes it (`Db.ownFile`): `code`, `kind`, `count`,
     `parts`; a side of `1` is kind `oneKind`, its count and no part; `none` for positions, which have no file. -/
 def ownFile (p : String) : SideCol → Except String (Option Db.OwnFile)
-  | .inl n => pure (some { code := 0, attr := 0, kind := oneKind, count := n, domain := "", parts := #[] })
+  | .inl n => pure (some { code := 0, kind := oneKind, count := n, parts := #[] })
   | .inr ⟨t, k, x⟩ => (Db.ownFile t k x.enc).mapError fun e => s!"column `{p}`: {e}"
 
-/-- A side's registers: each column's path and its six `ownFile` registers, then its `Enc` register where the plan
+/-- A side's registers: each column's path and its four `ownFile` registers, then its `Enc` register where the plan
     holds one (a literal or computed vector, a CSV read; not a column mapped from its file, which is its parts). -/
 abbrev Side := List (String × Array Nat)
 
@@ -530,7 +530,7 @@ def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
   (cols A x "").filterMapM fun (p, c) => do
     let .inr ⟨_, _, x⟩ := c | return none
     let some f ← ownFile p c | return none
-    let rs ← #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count, .str f.domain, .parts f.parts].mapM lit
+    let rs ← #[.u8 f.code, .u8 f.kind, .size f.count, .parts f.parts].mapM lit
     return some (p, rs.push (← lit (Reg.put x.enc)))
 
 /-! ### Recipes on the five kernels (design §4) -/

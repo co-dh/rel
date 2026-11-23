@@ -15,12 +15,12 @@ namespace Rel.Lang.Plan
 
 open Tab
 
-/-- An `ownMap` answer: constructor `0`, its objects `domain`, `parts`, its scalars `code`, `attr`, `kind`, `count` in
+/-- An `ownMap` answer: constructor `0`, its object `parts`, its scalars `code`, `kind`, `count` in
     declaration order, which `Instr.sproj` reads. -/
 instance : Reg Db.OwnFile := ⟨.obj, fun
-  | .ctor 0 #[d, ps] #[c, a, k, n] => do
-    pure ⟨← Reg.get? c, ← Reg.get? a, ← Reg.get? k, ← Reg.get? n, ← Reg.get? d, ← Reg.get? ps⟩
-  | _ => none, fun f => .ctor 0 #[.str f.domain, .parts f.parts] #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count]⟩
+  | .ctor 0 #[ps] #[c, k, n] => do
+    pure ⟨← Reg.get? c, ← Reg.get? k, ← Reg.get? n, ← Reg.get? ps⟩
+  | _ => none, fun f => .ctor 0 #[.parts f.parts] #[.u8 f.code, .u8 f.kind, .size f.count]⟩
 
 /-- A CSV column's shape is an enum: its constructor index in a byte. -/
 instance : Reg Db.CsvShape := ⟨.u8, fun | .u8 0 => some .atom | .u8 1 => some .null | .u8 2 => some .text | _ => none,
