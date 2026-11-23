@@ -1467,7 +1467,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `attr` 与 domain 名去掉（`OwnFile {code kind count parts}`，Rust `own.rs` 同改，`test/native/in` 重写）；
   `ownParse_ownImage` 在 `ByteArray` 形式上重证；plan 的列寄存器按名读（`Side.regs`/`Side.count`/`Side.enc`）。
   剩：删 `general`/`Enc.gen` 与 `QValue`（`Carrier .general`、`ValEq`）。
-- 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
+- ✅ 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
   一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
   一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。
   - ✅ 入口检查（分支 `lohi`）：`readVals` 的 `arr` 分支拒收 `lo<0`、`lo>hi`、`hi>m`，报 `.lo` 文件、行号、`[lo, hi)`
@@ -1546,14 +1546,15 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `lo`/`hi` 原样、第二段 `shiftB`（1 `constB` + 1 `mapB .add`）。每格 `lo`、`hi` 各 2 次 `clampShiftB`（每次 2 `constB`
     + 1 `wordsB` + 3 `mapB`）→ 第二段 2 kernel、第一段 0。剩下的 `sum` 位置 `clampFin`、`catSide`/`compBlocks` 的
     `clampShift` 是求和位置与块号，不是 `lo`/`hi`，不属 8.5。
-  - ⬜ 删 clamp 第三步（未做）：`kasc`/`kseen` 的 `cells` 键（`Kernel.cellStart`/`cellLen` 的 `min … c`、Rust
-    `asc.rs` `Cells::span` 的 `clamp(0, c)`，同一 commit）。阻塞在定理：`Vals.row_arr`（`Vals.row` 的 `filterMap`
-    即 `[0, c)` 截断）与 `cellFns_eq_iff`（要 `cellStart + cellLen ≤ c`）今天无前提，去掉 `min` 后要格子的 `WF`；
-    经 `cols_arr` → `codes_of_row`/`row_of_codes`/`lt_of_codes`（对一切 `Vals x` 量化，要加 `Vals.WF x`）→
-    `select_ok`、`canon_pos_lt`、`sums_holds`、`seenKey_iff_row`（→ `row_of_seenKey`/`seenKey_of_row`）、`lamOf_*`、
-    `group_rows`、`compOne_canon`（→ `comp_canon`/`compBlocks_canon`/`compFrom_canon`/`ldivOf_holds`）、
-    `inter_distinct`、`lamLaw`，再到 `Tab.canon` 的每个读者。`AscTest.spans` 有 `hi = 3005 > c = 3000` 的格子，
-    改为 `3000`。
+  - ✅ 删 clamp 第三步（8.5s2k–s2p，内核改动 73a8853，下游 daa14c0…2ba4528、eb0d571；8.5s3 复核）：`kasc`/`kseen`
+    的 `cells` 键按格子原样读：`Kernel.cellStart` = `lo` 的 `Int64.toNat`、`cellLen` = `hi.toNat - cellStart`，无
+    `min … c`；Rust `Cells::span` 只 `max(0)`（对应 `Int.toNat`），无 `clamp(0, c)`。例：`c = 3000`、格子
+    `[2990, 3005)`，原读 10 行，现在是非 WF 输入，`readVals`/`Vals.cellsOk` 拒收。`Vals.row_arr` 取该行格子的
+    `0 ≤ lo ≤ hi ≤ c`，`cellFns_eq_iff` 取两格的 `cellLen ≤ c`（由 `Vals.cell_le` 从 `Vals.WF` 给出）；
+    `cols_arr`、`codes_of_row`/`row_of_codes`/`lt_of_codes`、`select_ok`、`canon_pos_lt`、`sums_holds`、
+    `seenKey_iff_row`、`lamOf_*`、`group_rows`、`compOne_canon` 一族、`inter_distinct`、`lamLaw` 与 `Tab.canon` 的
+    读者多取 `Vals.WF`/`Tab.WF`，调用处由 `*_wf` 给出；无结论弱化。`AscTest.spans` 的 `hi = 3005` 改为 `3000`，
+    `#guard` 与 Rust 一致。全量构建 0 error、0 sorry；`build.sh syms`、`pointfree`、`listban`、`bang` 绿。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
