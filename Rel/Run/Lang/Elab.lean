@@ -183,7 +183,7 @@ def floatText (w : Nat) (b : UInt64) : String :=
       ((2 * a + c) / (2 * c), k)
     let mx := if w == 4 then 9 else 17
     -- the `mx`-digit one is not read back: it always reads back, and has no exact `floatBits` fast path
-    let (D, k) := (((List.range (mx - 1)).map (near ∘ (· + 1))).find? fun (D, k) => floatBits w neg D (k < 0) k.natAbs == b).getD (near mx)
+    let (D, k) := (((Array.range (mx - 1)).map (near ∘ (· + 1))).find? fun (D, k) => floatBits w neg D (k < 0) k.natAbs == b).getD (near mx)
     let (D, k) := stripZeros 20 D k
     let s := toString D
     let P : Int := (s.length : Int) - 1 + k
