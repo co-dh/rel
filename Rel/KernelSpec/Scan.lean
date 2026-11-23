@@ -317,6 +317,58 @@ theorem raw_kscan (op : Op) (hnl : op ≠ .null) (rev : Bool) (s t : QAtomicType
     simp only [List.map_cons, List.cons.injEq] at hl'; obtain ⟨rfl, rfl⟩ := hl'
     exact ⟨hgs, fun q hq => ⟨hl q hq, hsz q.2 (List.mem_map_of_mem hq)⟩, p.2, ps.map (·.2), rfl, _, hos, he, hv, hrow⟩
 
+/-- Row `i` of a source's null flag, as `foRNuls` holds it. -/
+def rdNul (n : USize) (e : Enc) (i : Nat) : UInt64 := (foRNuls n e)[i]?.getD 0
+
+/-- Row `i` of a source's word where a null reads as `fill` (`nulFillOf`): what `kscan` folds of a `min`/`max` call. -/
+def rdFill (fill : UInt64) (s : QAtomicType) (n : USize) (e : Enc) (i : Nat) : UInt64 :=
+  if rdNul n e i != 0 then fill else (e.raw s n)[i]?.getD 0
+
+theorem fillNul_get {k : UInt64} {fl w : Array UInt64} {i : Nat} (hi : i < w.size) :
+    (fillNul k fl w)[i]?.getD 0 = if fl[i]?.getD 0 != 0 then k else w[i]?.getD 0 := by
+  simp [fillNul, hi]
+
+/-- **`kscanCols` of a call with a null source and an op that orders null** (`Op.nulFold = some (b, fill)`): every
+source held `n` rows, the columns are the sources' words with `fill` at each null row, and the flag columns are the
+sources' own (`foRNuls`). -/
+theorem kscanCols_fill {op b : Op} {fill : UInt64} {s : QAtomicType} {n : USize} {es : List (USize × Enc)}
+    {ws ns : List (Array UInt64)} (hs : kscanStream op es [] [] = false) (hnf : op.nulFold = some (b, fill))
+    (hn : ∃ p ∈ es, hasNul p.2 = true) (h : kscanCols op s n es [] [] = .ok (ws, ns)) :
+    (∀ p ∈ es, p.1 = n) ∧ (∀ p ∈ es, (p.2.raw s n).size = n.toNat) ∧
+      ws = es.map (fun p => fillNul fill (foRNuls n p.2) (p.2.raw s n)) ∧ ns = es.map fun p => foRNuls n p.2 := by
+  unfold kscanCols at h
+  simp only [hs, Bool.false_eq_true, if_false] at h
+  cases hm : es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll []) with
+  | error m => rw [hm] at h; simp [bind, Except.bind] at h
+  | ok ws' =>
+    rw [hm] at h; simp only [bind, Except.bind] at h
+    by_cases hn' : es.any (·.1 != n) = true
+    · simp [hn'] at h
+    · have hl : ∀ p ∈ es, p.1 = n := fun p hp =>
+        Classical.byContradiction fun hp' => hn' (List.any_eq_true.mpr ⟨p, hp, by simpa using hp'⟩)
+      have hf : nulFillOf op es = some fill := by
+        obtain ⟨p, hp, hp'⟩ := hn
+        simp [nulFillOf, hnf, Option.filter]
+        exact ⟨p.1, p.2, hp, hp'⟩
+      simp only [hn', Bool.false_eq_true, if_false, hf, pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+      rw [mapM_pairs hl, chainAll_nil] at hm
+      simp only [bind_pure] at hm
+      obtain ⟨hr, hsz⟩ := mapM_rawAll hm
+      subst hr
+      obtain ⟨rfl, rfl⟩ := h
+      refine ⟨hl, fun p hp => hsz p.2 (List.mem_map_of_mem hp), ?_, ?_⟩
+      · have : ∀ l : List (USize × Enc), (∀ p ∈ l, p.1 = n) →
+            (l.zip ((l.map (·.2)).map (·.raw s n))).map (fun q => fillNul fill (foRNuls q.1.1 q.1.2) q.2) =
+              l.map (fun p => fillNul fill (foRNuls n p.2) (p.2.raw s n)) := by
+          intro l; induction l with
+          | nil => simp
+          | cons p l ih =>
+            intro hl'
+            simp only [List.map_cons, List.zip_cons_cons, hl' p (List.mem_cons_self ..)]
+            rw [ih fun q hq => hl' q (List.mem_cons_of_mem _ hq)]
+        exact this es hl
+      · exact List.map_congr_left fun p hp => by rw [hl p hp]
+
 /-- **The fold result is the answer's last-visited row**: `kscan`'s second component is word `n − 1` of its answer read
 at `t` (word 0 under `rev`), and `none` exactly at `n = 0`. -/
 theorem kscan_last {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize}

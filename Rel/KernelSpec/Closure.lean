@@ -517,6 +517,106 @@ theorem kscan_stream_closed {s t : QAtomicType} {w : Nat} (ht : t.width = some w
   simp only [Array.getElem_map, cutBit, hu, ↓reduceIte]
   exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
 
+/-- A fold of `op` over the row `i` of columns `F q` is the fold over `r q`, where each column reads `r q` there. -/
+theorem foldlM_row {α : Type} (op : Op) {i : Nat} {F : α → Array UInt64} {r : α → UInt64} (ps : List α)
+    (hr : ∀ q ∈ ps, (F q)[i]?.getD 0 = r q) (c : UInt64) :
+    (ps.map F).foldlM (fun a x => op.eval a (x[i]?.getD 0)) c = ps.foldlM (fun a q => op.eval a (r q)) c := by
+  induction ps generalizing c with
+  | nil => rfl
+  | cons q ps ih =>
+    simp only [List.map_cons, List.foldlM_cons, hr q (by simp)]
+    cases op.eval c (r q) with
+    | error m => rfl
+    | ok c' => exact ih (fun q' hq' => hr q' (by simp [hq'])) c'
+
+/-- **`kscan` of a map whose op orders null** (`Op.nulFold = some (b, fill)`) over sources one of which holds a null: the
+answer is `wordsFoR` of the words `out` cut to `t` under the flag words `nl`, valid and `Ext.Enc.WF` at `t` (an `Opt t n`),
+and row `i` is, with `p :: ps` the sources,
+- word: `op` folded over the sources' words with a null read as `fill` (`rdFill`), `out[i]`;
+- flag: `b` (`and`/`or`) folded over the sources' flags (`rdNul`), `nl[i]`, the answer's own flag (`foRNuls`) being
+  whether it is set. -/
+theorem kscan_nul_row {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, fill)) {s t : QAtomicType} {w : Nat}
+    (ht : t.width = some w) (hs : s.width.isSome) {n : USize} {es : List (USize × Enc)} {r : Enc × Option UInt64}
+    (hst : kscanStream op es [] [] = false) (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (hn : ∃ p ∈ es, hasNul p.2 = true)
+    (h : kscan op false s t n none es = .ok r) :
+    ∃ out nl : Array UInt64, out.size = n.toNat ∧ nl.size = n.toNat ∧ r.1 = wordsFoR (out.map (cutBit t)) (nulMap nl) ∧
+      Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ ∃ p ps, es = p :: ps ∧ ∀ i < n.toNat,
+        (ps.map (·.2)).foldlM (fun a e => op.eval a (rdFill fill s n e i)) (rdFill fill s n p.2 i) = .ok (out[i]?.getD 0) ∧
+        (ps.map (·.2)).foldlM (fun a e => b.eval a (rdNul n e i)) (rdNul n p.2 i) = .ok (nl[i]?.getD 0) ∧
+        (foRNuls n r.1)[i]? = some (if nl[i]?.getD 0 != 0 then 1 else 0) := by
+  obtain ⟨e, v⟩ := r
+  dsimp only
+  unfold kscan at h
+  by_cases hd : kscanRefuses op n es [] [] = true
+  · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
+  have hg : segAll n none = .ok (Array.replicate n.toNat 1) := rfl
+  have hgg : ∀ i < n.toNat, (Array.replicate n.toNat (1 : UInt64))[i]?.getD 0 ≠ 0 := fun i hi => by simp [hi]
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, hg] at h
+  split at h; · cases h
+  rename_i cs hc
+  obtain ⟨ws, ns⟩ := cs
+  obtain ⟨hl, hsz, hcs, hns⟩ := kscanCols_fill hst hnf hn hc
+  subst hcs hns
+  cases es with
+  | nil => simp at hn
+  | cons p ps =>
+  simp only [List.map_cons] at h
+  split at h; · cases h
+  rename_i out₀ hf
+  split at h; · cases h
+  rename_i out hp
+  split at h; · cases h
+  rename_i w' hw
+  rw [ht] at hw; cases hw
+  split at h; · cases h
+  rename_i nl hnl
+  have hp' : out = out₀ := by rw [chainAll_nil] at hp; simpa [pure, Except.pure] using hp.symm
+  subst hp'
+  have hany : ((p :: ps).map fun p => foRNuls n p.2).any (fun x => x.any fun x => x != 0) = true := by
+    obtain ⟨q, hq, hq'⟩ := hn
+    have hqn := hl q hq
+    have := hasNul_flags (hW q hq)
+    rw [hqn, hq'] at this
+    rw [List.any_eq_true]
+    exact ⟨foRNuls n q.2, List.mem_map.2 ⟨q, hq, rfl⟩, by simpa [hqn] using this.symm⟩
+  simp only [List.map_cons] at hany
+  simp only [hany, if_true, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -⟩ := h
+  simp only [hnf, Option.elim, List.headD_cons, List.drop_succ_cons, List.drop_zero, List.map_id'] at hnl
+  simp only [List.map_id'] at hf
+  obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+  obtain ⟨hns, hnrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hnl
+  have hsz' : n.toNat = (out.map (cutBit t)).size := by simp [hos]
+  obtain ⟨hV, -, -, hwf⟩ := wordsFoR_nul (out.map (cutBit t)) (nulMap nl) hsz'
+  have he : (Enc.foR (Coc.encode (USize.ofNat32 8 (by decide))
+      (Array.foldl (fun acc w => Column.pushBits acc w 8) ByteArray.empty
+        (Array.map (fun v => if t = QAtomicType.u1 then v % 2 else v) out)) (nulMap nl)).1
+      (Coc.encode (USize.ofNat32 8 (by decide))
+      (Array.foldl (fun acc w => Column.pushBits acc w 8) ByteArray.empty
+        (Array.map (fun v => if t = QAtomicType.u1 then v % 2 else v) out)) (nulMap nl)).2) =
+      wordsFoR (out.map (cutBit t)) (nulMap nl) := by
+    simp only [wordsFoR]
+    rfl
+  rw [he]
+  refine ⟨out, nl, hos, hns, rfl, hV, hwf (by simp [ht]) fun hu i hi _ => ?_, p, ps, rfl, fun i hi => ?_⟩
+  · simp only [Array.getElem_map, cutBit, hu, ↓reduceIte]
+    exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
+  have hgi : ¬(0 < i ∧ (Array.replicate n.toNat (1 : UInt64))[i]?.getD 0 = 0) := fun h => hgg i hi h.2
+  have hpo : (p.2.raw s n).size = n.toNat := hsz p (by simp)
+  have hrd : ∀ q ∈ p :: ps, (fillNul fill (foRNuls n q.2) (q.2.raw s n))[i]?.getD 0 = rdFill fill s n q.2 i := fun q hq => by
+    rw [fillNul_get (by rw [hsz q hq]; exact hi)]; rfl
+  refine ⟨?_, ?_, ?_⟩
+  · have := hrow i (by omega)
+    simp only [hgi, if_false, Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some] at this ⊢
+    rw [hrd p (by simp), foldlM_row op (r := fun q => rdFill fill s n q.2 i) ps (fun q hq => hrd q (by simp [hq]))] at this
+    rw [List.foldlM_map]; exact this
+  · have := hnrow i (by omega)
+    simp only [hgi, if_false, Array.getElem?_eq_getElem (show i < nl.size by omega), Option.getD_some] at this ⊢
+    rw [foldlM_row b (r := fun q => rdNul n q.2 i) ps (fun q _ => rfl)] at this
+    rw [List.foldlM_map]; exact this
+  · have hi' : i < nl.size := by omega
+    rw [foRNuls_wordsFoR _ _ hsz' i (by simpa [hos] using hi), nulMap, bitAt_packOf _ _ _ hi']
+
 /-- **A stream's answer reads each source's rows, null included**: row `k` of source `j` is row `(rows before j) + k` of the
 answer, read through `foROpt` as `none` where the source's flag (`foRNuls`) is set and as its raw word cut to `t` else. -/
 theorem kscan_stream_get {s t : QAtomicType} (hs : s.width.isSome) {n : USize}
