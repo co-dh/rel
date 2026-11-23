@@ -464,9 +464,9 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
             rw [h]; rcases hk with rfl | rfl | rfl <;> simp [Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
               Verify.Ew.intStep_mul, hnul])
           by_cases hy0 : wd n y.enc i = 0
-          · rw [hy0]
+          · rw [hy0, Lang.stepDen_iff]
             rcases hk with rfl | rfl | rfl <;>
-              simp (config := {decide := true}) [Lang.stepDen, Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+              simp (config := {decide := true}) [Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
                 Verify.Ew.intStep_mul, Verify.Ew.intStep_idiv, hX'] <;>
               first | done | exact (Classical.em _).symm | (intro h; exact hX' (by rw [h]; decide))
           · have hw1 := arithOvf_keep hov (fun j hj => (hspec j hj).1) i
@@ -477,7 +477,7 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
         obtain ⟨hk', -⟩ := (hsp _).2 hsd
         exact hk' hk0
       · rw [hdv, hk1, s1]
-        exact ((hsp _).1 ⟨by rw [hk1]; decide, rfl⟩).1
+        exact ((Lang.stepDen_iff _ _ _).1 ((hsp _).1 ⟨by rw [hk1]; decide, rfl⟩)).1
     have hqe : (Opt.mk q.1 hz : Opt .i64 n).enc = q.1 := rfl
     rcases rdNul_bit n x.enc i with hX | hX <;> rcases rdNul_bit n y.enc i with hY | hY <;>
       simp only [hX, hY, Op.eval, Except.ok.injEq] at hp2 <;> subst hp2 <;>

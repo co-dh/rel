@@ -169,7 +169,8 @@ theorem stepDen_add_iff (x v w : Int64) : stepDen Ew.add (x, v) w ↔
   have hs := Int64.toInt_add x v
   have hne : ∀ y : Int64, y ≠ Alg.nul ↔ y.toInt ≠ -2 ^ 63 := fun y =>
     ⟨fun h e => h (Int64.toInt_inj.1 (by rw [e, hnul])), fun h e => h (by rw [e, hnul])⟩
-  simp only [stepDen, Rel.Verify.Ew.intStep_add, show (Ew.add == Ew.add) = true from rfl, if_true]
+  rw [stepDen_iff]
+  simp only [Rel.Verify.Ew.intStep_add, show (Ew.add == Ew.add) = true from rfl, if_true]
   constructor
   · rintro ⟨hw, hn, ho⟩
     by_cases hxn : x = Alg.nul ∨ v = Alg.nul

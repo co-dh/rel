@@ -174,11 +174,29 @@ theorem ltDen_iff (t : QAtomicType) (TU : Core.Rel (Obj.El (.atom t)) (Obj.El (.
   · rintro ⟨_, ⟨rfl, ha⟩, _, h, rfl, hb⟩; exact ⟨ha, hb, h⟩
   · rintro ⟨ha, hb, h⟩; exact ⟨a, ⟨rfl, ha⟩, b, h, rfl, hb⟩
 
+/-- The word `Int64`'s verb `k` answers on `p`: `some` of the step when it is not the null and, for `+ - *`, not wrapped. -/
+def stepOpt (k : UInt8) (p : Int64 × Int64) : Option Int64 :=
+  if Ew.intStep k Alg.nul p.1 p.2 ≠ Alg.nul ∧
+    (if k == Ew.add then (0 ≤ p.2 ↔ p.1 ≤ Ew.intStep k Alg.nul p.1 p.2)
+     else if k == Ew.sub then (0 ≤ p.2 ↔ Ew.intStep k Alg.nul p.1 p.2 ≤ p.1)
+     else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul (Ew.intStep k Alg.nul p.1 p.2) p.1 = p.2 ∨ p.1 = 0)
+     else True)
+  then some (Ew.intStep k Alg.nul p.1 p.2) else none
+
 /-- The value verb `k` itself (`Alg.arith`): `Int64`'s step, not the null and, for `+ - *`, not wrapped. -/
 abbrev stepDen (k : UInt8) : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long) :=
-  fun p w => w = Ew.intStep k Alg.nul p.1 p.2 ∧ w ≠ Alg.nul ∧
-    (if k == Ew.add then (0 ≤ p.2 ↔ p.1 ≤ w) else if k == Ew.sub then (0 ≤ p.2 ↔ w ≤ p.1)
-     else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w p.1 = p.2 ∨ p.1 = 0) else True)
+  graph (stepOpt k) ≫ (graph some)°
+
+theorem stepDen_iff (k : UInt8) (p : Int64 × Int64) (w : Int64) :
+    stepDen k p w ↔ w = Ew.intStep k Alg.nul p.1 p.2 ∧ w ≠ Alg.nul ∧
+      (if k == Ew.add then (0 ≤ p.2 ↔ p.1 ≤ w) else if k == Ew.sub then (0 ≤ p.2 ↔ w ≤ p.1)
+       else if k == Ew.mul then (Ew.intStep Ew.idiv Alg.nul w p.1 = p.2 ∨ p.1 = 0) else True) := by
+  refine (graph_recip_graph _ _ _ _).trans ?_
+  unfold stepOpt
+  rw [Option.ite_none_right_eq_some]
+  constructor
+  · rintro ⟨hc, h⟩; obtain rfl := (Option.some.inj h); exact ⟨rfl, hc⟩
+  · rintro ⟨rfl, h⟩; exact ⟨h, rfl⟩
 
 /-- The value verb `k` at the atom `t`: `stepDen k` at `i64`; at a float atom `fstep` on the operands' `f64` words
     (`fval`), the word of `t` it answers, no row where that is `2^63` (the IEEE answer is NaN); none elsewhere. -/
