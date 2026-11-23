@@ -1,6 +1,2 @@
 Rel.Kernel.Coc.alpBlob
 Rel.Kernel.Coc.alpBlockOf
-Rel.Lang.Expand.emit
-Rel.Lang.Expand.fitConst
-Rel.Lang.Expand.hex
-Rel.Verify.overStep

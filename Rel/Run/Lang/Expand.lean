@@ -294,7 +294,8 @@ def fitConst (c : Lean.Name) (sel : Lean.Expr → MetaM Bool) (hs : Array (Lean.
   unless ps.size == hs.size do return none
   for (m, x, t) in ps.zip hs do
     unless ← isDefEq (← inferType m) t do return none
-    m.mvarId!.assign x
+    let .mvar id := m | throwError "fitConst: a binder of `{c}` is no metavariable: {m}"
+    id.assign x
   unless ← ok ms ty do return none
   let v ← instantiateMVars (mkAppN k ms)
   return if v.hasMVar then none else some v
@@ -912,16 +913,18 @@ def addConst (c : Name) (ty v : Lean.Expr) : MetaM Unit := withCurrHeartbeats do
 
 
 /-- The bytes `b` as hex text, two lowercase digits a byte (`Gen.unhex` reads it back). -/
-def hex (b : ByteArray) : String :=
+def hex (b : ByteArray) : Except String String :=
   -- ASCII bytes then one UTF-8 check: `String.push` per digit dominated the expansion's profile
   let d (x : UInt8) : UInt8 := if x < 10 then 48 + x else 87 + x
-  String.fromUTF8! (b.foldl (fun o x => (o.push (d (x / 16))).push (d (x % 16))) (.emptyWithCapacity (2 * b.size)))
+  match String.fromUTF8? (b.foldl (fun o x => (o.push (d (x / 16))).push (d (x % 16))) (.emptyWithCapacity (2 * b.size))) with
+  | some s => pure s
+  | none => throw "hex: the digit bytes are not UTF-8 (internal)"
 
 /-- An atom column rebuilt from its `foR` payload as it is (`Gen.atom`), a boolean one included; a symbol, general or
     `pos` payload is not rebuilt, and says so. -/
 def atomE (t : Rel.QAtomicType) (n : USize) (x : Arr t n) : Except String Lean.Expr :=
   match x.enc with
-  | .foR m p => pure (g ``Gen.atom #[toExpr t, uE n, mkStrLit (hex m), mkStrLit (hex p)])
+  | .foR m p => do pure (g ``Gen.atom #[toExpr t, uE n, mkStrLit (← hex m), mkStrLit (← hex p)])
   | _ => throw s!"a column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
 
 /-- `rfl : Obj.band A B = o`, the proof `Gen.optV`/`Gen.sumV` take. -/
@@ -932,7 +935,7 @@ def bandRfl (o : Option Rel.QAtomicType) : Lean.Expr :=
 def colE : (o : Bool) → (t : Rel.QAtomicType) → (n : USize) → ColB o t n → Except String Lean.Expr
   | false, t, n, x => atomE t n x
   | true, t, n, x => match Opt.enc x with
-    | .foR m p => pure (g ``Gen.colB #[toExpr true, toExpr t, uE n, mkStrLit (hex m), mkStrLit (hex p)])
+    | .foR m p => do pure (g ``Gen.colB #[toExpr true, toExpr t, uE n, mkStrLit (← hex m), mkStrLit (← hex p)])
     | _ => throw s!"a column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
 
 /-- A column of ownership `o` rebuilt from its parts (the summand columns of a dense sum are `o = true`). -/
@@ -946,7 +949,7 @@ def valsE : (o : Bool) → (A : Obj) → (n : USize) → ValsB o A n → Except 
   | o, .sum a b, n, s => match s.view with
     | .opt (t := t) _ x => match x.1 with
       | .foR m p =>
-        pure (g ``Gen.optV #[toExpr o, oE a, oE b, toExpr t, bandRfl (some t), uE n, mkStrLit (hex m), mkStrLit (hex p)])
+        do pure (g ``Gen.optV #[toExpr o, oE a, oE b, toExpr t, bandRfl (some t), uE n, mkStrLit (← hex m), mkStrLit (← hex p)])
       | _ => throw s!"a nullable column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
     | .gen _ tag x y => do
       pure (g ``Gen.sumV #[toExpr o, oE a, oE b, bandRfl none, uE n, ← atomE .u1 n tag, ← valsE true a n x,

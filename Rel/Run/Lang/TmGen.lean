@@ -646,7 +646,10 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   -- a closed term's table: its code run in the empty context `{}`, which knows neither side; each side a `none`
   -- at its field's type, read off the field's default (which has no executable code of its own)
   let app (A B : Obj) (t : Lean.Expr) : MetaM Lean.Expr := do
-    let none' (f : Name) := return mkApp (mkConst ``Option.none [0]) (← inferType (g f #[oE A, oE B])).appArg!
+    let none' (f : Name) := do
+      let ty ← inferType (g f #[oE A, oE B])
+      let .app _ a := ty | throwError "rel_program expansion: internal: the default `{f}` has type {ty}, no application"
+      return mkApp (mkConst ``Option.none [0]) a
     pure (g ``Rel.Rel.runE #[oE A, oE B, t,
       g ``Rel.Known.mk #[oE A, oE B, ← none' ``Rel.Known.dom._default, ← none' ``Rel.Known.ran._default,
         ← none' ``Rel.Known.pairs._default]])

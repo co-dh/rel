@@ -153,7 +153,7 @@ def overStep : Array Int64 × Array Int64 → Nat → Array Int64 × Array Int64
   let g := Column.idAt gid w.toNat i
   let x := Ew.signed cls (Ew.elem cls b i)
   if g ≥ ng.toNat || (!op.boolCast && x == nul) then (fold, live)
-  else (fold.set! g (op.step fold[g]! x), live.set! g (live[g]! + 1))
+  else (fold.modify g (op.step · x), live.modify g (· + 1))
 
 
 
