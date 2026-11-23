@@ -17,11 +17,11 @@ rel_program tradeApp where
     schema Trade = {sym : K, day : D, time : N, price : Pr, size : N}
     schema Quote = {sym : K, time : N, bid : N}
     schema Agg = {size : N, n : N}
-    schema TradeBid = {sym : K, time : N, price : Pr, bid : N+1}
+    schema TradeBid = {sym : K, time : N, price : Pr, bid : 1+N}
     schema SymCum = {sym : K, cum : N}
     schema Venue = {sym : K, venue : [C]}
     schema TradeVenue = {sym : K, time : N, venue : [C]}
-    schema Mark = {sym : K, px : N+1}
+    schema Mark = {sym : K, px : 1+N}
     input trades : N ⟶ Trade from csv "trades.csv"
     input quotes : N ⟶ Quote from csv "quotes.csv"
     input venues : N ⟶ Venue from csv "venues.csv"
@@ -36,11 +36,11 @@ rel_program tradeApp where
     late : N ⟶ Trade ≜ filterBy(dom(col Trade "day" dom(<°{(2024.01.15,∗)})), trades)
     perDay : D ⟶ N ≜ agg((trades col Trade "day")°, F(trades col Trade "size") sum)
     -- each trade with the bid of its sym's latest quote at or before its time, null when there is none
-    withBid : N ⟶ TradeBid ≜ aj(col Trade "sym", col Trade "time", col Quote "sym", col Quote "time", trades, quotes) ⟨π₁ ⟨⟨col Trade "sym", col Trade "time"⟩, col Trade "price"⟩, π₂ (col Quote "bid" ⊕ 𝟙)⟩
+    withBid : N ⟶ TradeBid ≜ aj(col Trade "sym", col Trade "time", col Quote "sym", col Quote "time", trades, quotes) ⟨π₁ ⟨⟨col Trade "sym", col Trade "time"⟩, col Trade "price"⟩, π₂ (𝟙 ⊕ col Quote "bid")⟩
     -- running size within each sym, in position order
     cumSize : N ⟶ SymCum ≜ ⟨trades col Trade "sym", sumsBy(trades col Trade "sym", trades col Trade "size")⟩
     -- every trade with each quote of its sym, or once with the null; the nulls are the trades of an unquoted sym
-    lj : N ⟶ Trade×(Quote+1) ≜ leftJoin(col Trade "sym", col Quote "sym", trades, quotes)
+    lj : N ⟶ Trade×(1+Quote) ≜ leftJoin(col Trade "sym", col Quote "sym", trades, quotes)
     unquoted : 1 ⟶ N ≜ nulls(π₂, lj)
     -- a text column carried through a join: each trade with its sym's venue (C has none)
     tradeVenue : N ⟶ TradeVenue ≜ innerJoin(col Trade "sym", col Venue "sym", trades, venues) ⟨⟨π₁ col Trade "sym", π₁ col Trade "time"⟩, π₂ col Venue "venue"⟩
@@ -85,12 +85,12 @@ rel_program tradeApp where
       (4,((A,5),"NY"))} where trades ≜ tt, venues ≜ vv
     -- A at 1 → q0 (9); B at 2 → q1 (19); A at 3 → q2, q3 tie, the later q3 (11); C none (null, read as 0);
     -- B at 5 → q4 (20); A at 5 → q3 (11)
-    check withBid ⟨π₁, π₂ [𝟙, {(∗,0)}]⟩ = {(0,(((A,1),10.5),9)),(1,(((B,2),20.25),19)),(2,(((A,3),11.5),11)),
+    check withBid ⟨π₁, π₂ [{(∗,0)}, 𝟙]⟩ = {(0,(((A,1),10.5),9)),(1,(((B,2),20.25),19)),(2,(((A,3),11.5),11)),
       (3,(((C,3),7.75),0)),(4,(((B,5),21.5),20)),(5,(((A,5),12.5),11)),(6,(((C,6),8.25),0))} where trades ≜ tt, quotes ≜ qq
     check nulls(col TradeBid "bid", withBid) = {(∗,2)} where trades ≜ tt, quotes ≜ qq
     -- px · 5 · 7 ·: 3 nulls; fills 5 at row 2, 7 at row 4, the leading null stays (read as 0)
     check markNulls = {(∗,3)} where marks ≜ mm
-    check filled ⟨π₁, π₂ [𝟙, {(∗,0)}]⟩ = {(0,(A,0)),(1,(B,5)),(2,(C,5)),(3,(A,7)),(4,(B,7))} where marks ≜ mm
+    check filled ⟨π₁, π₂ [{(∗,0)}, 𝟙]⟩ = {(0,(A,0)),(1,(B,5)),(2,(C,5)),(3,(A,7)),(4,(B,7))} where marks ≜ mm
     -- A rows 0 2 5: 100 300 350; B rows 1 4: 50 200; C rows 3 6: 300 400
     check cumSize = {(0,(A,100)),(1,(B,50)),(2,(A,300)),(3,(C,300)),(4,(B,200)),(5,(A,350)),(6,(C,400))} where trades ≜ tt
     -- A 3 trades × 4 quotes, B 2 × 2, C 2 once each: 18 rows, 2 of them null (C's rows 3, 6)

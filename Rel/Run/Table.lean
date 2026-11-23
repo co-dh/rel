@@ -392,8 +392,8 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
   | .sum a b, es => match hb : Obj.band a b, es with
     | some t, (k, e) :: es => match Ext.Enc.wf? t k e with
       | some ⟨h⟩ => pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
-      | none => .error s!"{path}: a {repr t}+1 column part of {k} rows that is not well-formed"
-    | some t, [] => .error s!"{path}: no column part left for a {repr t}+1 column"
+      | none => .error s!"{path}: a 1+{repr t} column part of {k} rows that is not well-formed"
+    | some t, [] => .error s!"{path}: no column part left for a 1+{repr t} column"
     | none, es => do
     let ⟨n, tag, es⟩ ← encArr path .u1 es
     let ⟨m, idx, es⟩ ← encArr path .i64 es

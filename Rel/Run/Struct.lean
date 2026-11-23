@@ -61,16 +61,16 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
     let (T, iR, iS) ← crossIx n m
     pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
 
-/-- `X`'s rows as the band column of `a + b`, each `inl`: the storage as it is (`Opt.ofArr`). -/
-def Vals.optInl {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (X : Vals a n) : Opt t n := by
-  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact Opt.ofArr X
+/-- `Y`'s rows as the band column of `a + b`, each `inr`: the storage as it is (`Opt.ofArr`). -/
+def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n) : Opt t n := by
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact Opt.ofArr Y
 
-/-- `n` nulls of `t+1` (each `inr ()`): every row flagged in its block, through the one writer (`Opt.ofAtoms`). -/
+/-- `n` nulls of `1+t` (each `inl ()`): every row flagged in its block, through the one writer (`Opt.ofAtoms`). -/
 def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
   match Opt.ofAtoms t (Array.replicate n.toNat none) with
   | some x => if h : (Array.replicate n.toNat (none : Option QAtom)).size.toUSize = n then .ok (h ▸ x)
-    else .error s!"inr: {n} nulls of {repr t} do not fit a USize count"
-  | none => .error s!"inr: {repr t} has no block to hold a null"
+    else .error s!"inl: {n} nulls of {repr t} do not fit a USize count"
+  | none => .error s!"inl: {repr t} has no block to hold a null"
 
 /-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
 through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one
@@ -127,7 +127,7 @@ def pair (R : Tab A B) (S : Tab A C) : Except String (Tab A (.prod B C)) :=
 side over `X` itself and no right row (`injCols` with tag `0`), canonical. -/
 def inl {n : USize} (X : Vals A n) : Except String (Tab A (.sum A B)) := do
   match h : Obj.band A B with
-  | some _ => canon ⟨n, X, Vals.ofOpt h (Vals.optInl h X)⟩
+  | some t => canon ⟨n, X, Vals.ofOpt h (← Opt.nuls t n)⟩
   | none => do
     let (tag, idx) ← injCols n false
     canon ⟨n, X, Vals.ofGen h n 0 tag idx X (← Vals.none B)⟩
@@ -135,7 +135,7 @@ def inl {n : USize} (X : Vals A n) : Except String (Tab A (.sum A B)) := do
 /-- **`inr` on the values `Y`**, `idU Y ≫ inr`: the mirror of `inl`, tag `1`. -/
 def inr {n : USize} (Y : Vals B n) : Except String (Tab B (.sum A B)) := do
   match h : Obj.band A B with
-  | some t => canon ⟨n, Y, Vals.ofOpt h (← Opt.nuls t n)⟩
+  | some _ => canon ⟨n, Y, Vals.ofOpt h (Vals.optInr h Y)⟩
   | none => do
     let (tag, idx) ← injCols n true
     canon ⟨n, Y, Vals.ofGen h 0 n tag idx (← Vals.none A) Y⟩
@@ -145,7 +145,7 @@ left row reads. A left payload of no value reads `A.dflt` at a left row (`Vals.r
 the answer is none where `X` has only right rows (`idU X − dom(idU X ≫ (inr y)°)` empty), else the error. -/
 def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) A) := do
   match X.view with
-  | .opt .. => throw "inl°: on a t+1 band column, which no kernel yet splits into its values and its nulls"
+  | .opt .. => throw "inl°: on a 1+t band column, which no kernel yet splits into its values and its nulls"
   | .gen _ l _ _ _ x y =>
   let D ← idU X
   if l.toNat = 0 then
@@ -156,7 +156,7 @@ def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) 
 /-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`. -/
 def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
   match X.view with
-  | .opt .. => throw "inr°: on a t+1 band column, which no kernel yet splits into its values and its nulls"
+  | .opt .. => throw "inr°: on a 1+t band column, which no kernel yet splits into its values and its nulls"
   | .gen _ _ r _ _ x y =>
   let D ← idU X
   if r.toNat = 0 then

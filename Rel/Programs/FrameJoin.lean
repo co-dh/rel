@@ -18,16 +18,16 @@ rel_program frameJoin where
     antiJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β ≜ dom(x) asc(dom(x) − dom(J(a, b, x, y))) x
     -- every row of `x` with each match in `y`, or once with the null when it has none
     -- `x × (y ⊕ 𝟙)` as its pair: `×` with a table on the left does not hand its right operand a domain at `N`
-    leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(δ+1) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (y ⊕ 𝟙)⟩
-    rightJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ (β+1)×δ ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩
+    leftJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ β×(1+δ) ≜ asc(ran(⟨𝟙, dom(x) tot(J(a, b, x, y))⟩)) ⟨π₁ x, π₂ (𝟙 ⊕ y)⟩
+    rightJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : ρ ⟶ (1+β)×δ ≜ leftJoin(b, a, y, x) ⟨π₂, π₁⟩
     -- q's aj, linear: `r` counts `y`'s rows of a key up to a time (`sums` along `τ`, in `μ`), so `m` meets the latest
     -- `u ≤ t`; `agg(m, last)` is q's tie-break; `dom(x)` before `tot`: its `𝟙 − dom(R)` has no universe at unbounded `ν`
-    aj(k : β ⟶ κ, t : β ⟶ τ, h : δ ⟶ κ, u : δ ⟶ τ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β×(δ+1) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°
+    aj(k : β ⟶ κ, t : β ⟶ τ, h : δ ⟶ κ, u : δ ⟶ τ, x : ν ⟶ β, y : μ ⟶ δ) : ν ⟶ β×(1+δ) ≜ ⟨x, dom(x) tot(agg(m, last) y)⟩ where r ≜ ⟨π₁, sums(counts(ran(x ⟨k, t⟩), (y ⟨h, u⟩)°))⟩, m ≜ x ⟨k, t⟩ r (y ⟨h, u⟩ r)°
 
     -- `<>`: `y`'s positions shifted past `x`'s, written as `(dom(y) (+n))°` since `(+n)°` reads its whole universe
     append(x : ν ⟶ β, y : ν ⟶ β) : ν ⟶ β ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)
     -- the left join, then `y`'s rows with no match, null on the left
-    fullOuterJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : μ ⟶ (β+1)×(δ+1) ≜ append(leftJoin(a, b, x, y) ⟨π₁ inl, π₂⟩, antiJoin(b, a, y, x) ⟨⊤ inr, inl⟩)
+    fullOuterJoin(a : β ⟶ κ, b : δ ⟶ κ, x : ν ⟶ β, y : μ ⟶ δ) : μ ⟶ (1+β)×(1+δ) ≜ append(leftJoin(a, b, x, y) ⟨π₁ inr, π₂⟩, antiJoin(b, a, y, x) ⟨⊤ inl, inr⟩)
     union(x : ν ⟶ β, y : ν ⟶ β) : ν ⟶ β ≜ distinct(append(x, y))
     intersect(x : ν ⟶ β, y : μ ⟶ β) : ν ⟶ β ≜ distinct(semiJoin(𝟙, 𝟙, x, y))
     difference(x : ν ⟶ β, y : μ ⟶ β) : ν ⟶ β ≜ distinct(antiJoin(𝟙, 𝟙, x, y))
@@ -37,6 +37,6 @@ rel_program frameJoin where
     melt(s : 1 ⟶ θ, a : β ⟶ ω, t : 1 ⟶ θ, b : β ⟶ ω, x : ν ⟶ β) : ν ⟶ θ×ω ≜ pivotLong(𝟙, s, a, t, b, x) π₂
     -- pivot wide: one row per key `k`, one column per declared value `s`, `t` of `q`: `f` of the rows with that
     -- (key, value), null where there are none (doc F1: the columns are the declared ones)
-    pivotWide(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, t : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ κ×((δ+1)×(δ+1)) ≜ firstOcc(x k) x k ⟨𝟙, ⟨tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f)), tot(⟨𝟙, ⊤ t⟩ agg((x ⟨k, q⟩)°, f))⟩⟩
+    pivotWide(k : β ⟶ κ, q : β ⟶ θ, s : 1 ⟶ θ, t : 1 ⟶ θ, f : [ν] ⟶ δ, x : ν ⟶ β) : ν ⟶ κ×((1+δ)×(1+δ)) ≜ firstOcc(x k) x k ⟨𝟙, ⟨tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f)), tot(⟨𝟙, ⊤ t⟩ agg((x ⟨k, q⟩)°, f))⟩⟩
 
 end Rel.Programs

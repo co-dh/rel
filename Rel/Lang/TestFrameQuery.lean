@@ -40,9 +40,9 @@ rel_program queryN where
 
     -- dimension keys 0…49 only: (p, p+1)
     dim50 : N ⟶ N×N ≜ k50 ⟨𝟙, succ⟩
-    lj5(x : N ⟶ N×N) : N ⟶ (N×N)×((N×N)+1) ≜ leftJoin(π₁, π₁, x, dim50)
+    lj5(x : N ⟶ N×N) : N ⟶ (N×N)×(1+(N×N)) ≜ leftJoin(π₁, π₁, x, dim50)
     -- Q5: on `l` = `lj5`'s frame, (unmatched rows, sum of the dimension value over the matched rows)
-    q5(l : N ⟶ (N×N)×((N×N)+1)) : 1 ⟶ N×N ≜ ⟨nulls(π₂, l), summarize(F(m π₂ inl° π₂) sum, m)⟩ where m ≜ filterJust(π₂, l)
+    q5(l : N ⟶ (N×N)×(1+(N×N))) : 1 ⟶ N×N ≜ ⟨nulls(π₂, l), summarize(F(m π₂ inr° π₂) sum, m)⟩ where m ≜ filterJust(π₂, l)
 
 -- n = 10³
 open Rel.Programs.prelude queryN in
@@ -59,7 +59,7 @@ rel_program query3 where
     r4 : N ⟶ N×N ≜ q4(ticks(P))
     check q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,4950)}⟩
     -- keys ≥ 50 unmatched: 50T rows; matched rows sum T(1+…+50)
-    l5 : N ⟶ (N×N)×((N×N)+1) ≜ lj5(sales(P))
+    l5 : N ⟶ (N×N)×(1+(N×N)) ≜ lj5(sales(P))
     check q5(l5) = {(∗,(500,12750))}
 
 #guard query3.failures.map toString == []
@@ -76,7 +76,7 @@ rel_program query4 where
     -- T = 1000: each key's total 0+…+999
     r4 : N ⟶ N×N ≜ q4(ticks(P))
     check q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,499500)}⟩
-    l5 : N ⟶ (N×N)×((N×N)+1) ≜ lj5(sales(P))
+    l5 : N ⟶ (N×N)×(1+(N×N)) ≜ lj5(sales(P))
     check q5(l5) = {(∗,(5000,127500))}
 
 #guard query4.failures.map toString == []

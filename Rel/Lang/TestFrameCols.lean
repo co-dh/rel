@@ -18,7 +18,7 @@ open Rel.Programs.prelude Rel.Programs.frame frameData in
 rel_program frameCols where
     z : P ⟶ N ≜ {(0,1),(1,2),(2,3)}
     -- a sum literal does not parse, so the null column is built with `tot`: null at position 1
-    w : P ⟶ N+1 ≜ dom(z) tot({(0,5),(2,3)})
+    w : P ⟶ 1+N ≜ dom(z) tot({(0,5),(2,3)})
     c : P ⟶ [K] ≜ {(0,A B C),(1,B A),(2,C A B)}
     code : K ⟶ N ≜ {(A,1),(B,2)}
     -- select, apply (double `v`), derive (append `v+v`)
@@ -44,9 +44,9 @@ rel_program frameCols where
     check hstack(x, z) = 𝟘
     check hstack(take({(∗,3)}, x), z) = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
     -- impute, recode, recode with default
-    check w [𝟙, {(∗,0)}] = {(0,5),(1,0),(2,3)}
+    check w [{(∗,0)}, 𝟙] = {(0,5),(1,0),(2,3)}
     check x π₁ code = {(0,2),(1,1),(2,2),(4,1),(6,2),(7,1)}
-    check x π₁ tot(code) [𝟙, {(∗,0)}] = {(0,2),(1,1),(2,2),(3,0),(4,1),(5,0),(6,2),(7,1)}
+    check x π₁ tot(code) [{(∗,0)}, 𝟙] = {(0,2),(1,1),(2,2),(3,0),(4,1),(5,0),(6,2),(7,1)}
     -- over: each row with its key's sum, B 5+5+1, A 3+7+3, C 1+2
     check over(π₁, F(x π₂) sum, x) = {(0,((B,5),11)),(1,((A,3),13)),(2,((B,5),11)),(3,((C,1),3)),(4,((A,7),13)),
       (5,((C,2),3)),(6,((B,1),11)),(7,((A,3),13))}
@@ -74,8 +74,8 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameStat frameData in
 rel_program frameDescribe where
     obj F : f64
     check describe(x π₂) ⟨π₁, ⟨π₂ π₁, π₂ π₂ π₂⟩⟩ = {(∗,(8,(3.375,(1,7))))}
-    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] <° {(2.125,∗)} = {(∗,∗)}
-    check describe(x π₂) π₂ π₂ π₁ [𝟙, {(∗,-1.0)}] < {(2.25,∗)} = {(∗,∗)}
+    check describe(x π₂) π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙] <° {(2.125,∗)} = {(∗,∗)}
+    check describe(x π₂) π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙] < {(2.25,∗)} = {(∗,∗)}
     -- squares up to 49 and products v·2v up to 98 leave `N = 0…40`: mean square 123/8, var 123/8 − 3.375² = 255/64;
     -- cov(v, 2v) = 246/8 − 3.375·6.75 = 255/32
     check summarize(F(x π₂) var, x) = {(∗,3.984375)}

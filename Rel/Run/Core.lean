@@ -433,25 +433,26 @@ def Obj.dflt : (A : Obj) → A.El
   | .sum a _ => .inl a.dflt
   | .one => ()
 
-/-- The atom a sum side `a + b` stores in band, if any: `t+1` with `t` a type whose column has blocks
-    (`QAtomicType.width`) is ONE nullable column `Opt t` (design card "atom+1", decision K); every other sum, `general+1`
-    included (its payload has no block to flag), a tag and a position per row into two payloads. -/
+/-- The atom a sum side `a + b` stores in band, if any: `1+t` with `t` a type whose column has blocks
+    (`QAtomicType.width`) is ONE nullable column `Opt t` (design card "atom+1", decision K), the null `inl ()` first in
+    the standard sum order as in q; every other sum, `1+general` included (its payload has no block to flag), a tag and
+    a position per row into two payloads. -/
 def Obj.band : Obj → Obj → Option QAtomicType
-  | .atom t, .one => t.width.map fun _ => t
+  | .one, .atom t => t.width.map fun _ => t
   | _, _ => none
 
-theorem Obj.band_some {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) : a = .atom t ∧ b = .one := by
+theorem Obj.band_some {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) : a = .one ∧ b = .atom t := by
   unfold Obj.band at h; split at h
   · rename_i t'; cases hw : t'.width <;> simp [hw] at h; subst h; exact ⟨rfl, rfl⟩
   · cases h
 
-/-- The row of a band column read as `a + b`: the null `inr ()`, a value `inl`. -/
+/-- The row of a band column read as `a + b`: the null `inl ()`, a value `inr`. -/
 def Obj.optEl {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : Option (El t)) : (Obj.sum a b).El := by
-  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact v.elim (.inr ()) .inl
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact v.elim (.inl ()) .inr
 
 /-- A row of `a + b` as the band column's element: `Obj.optEl`'s inverse. -/
 def Obj.optOf {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : (Obj.sum a b).El) : Option (El t) := by
-  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact v.elim some fun _ => none
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact v.elim (fun _ => none) some
 
 /-- How a sum side of `n` rows is stored, by `Obj.band`: the band's one `Opt` column, or a tag, a position and the two
     summand sides (`va`, `vb` their columns at a count). -/

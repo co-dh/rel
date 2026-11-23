@@ -71,8 +71,8 @@ def Opt.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x 
     Except String (Opt t n) :=
   if hx : hasNul x.enc = false then
     if hy : hasNul y.enc = false then Opt.ofArr <$> Arr.concat n off (Arr.mk x.enc x.wf hx) (Arr.mk y.enc y.wf hy)
-    else .error s!"concat: the second {repr t}+1 column holds a null, and no kernel yet merges two columns' null bits"
-  else .error s!"concat: the first {repr t}+1 column holds a null, and no kernel yet merges two columns' null bits"
+    else .error s!"concat: the second 1+{repr t} column holds a null, and no kernel yet merges two columns' null bits"
+  else .error s!"concat: the first 1+{repr t} column holds a null, and no kernel yet merges two columns' null bits"
 
 /-- The layout of `n₁` rows followed by `n₂`: the summed count `n` and the destinations `off` of the second part
 (`shiftCol n₂ n₁`); the error where `n` does not fit a `USize`. -/
