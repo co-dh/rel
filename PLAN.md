@@ -592,8 +592,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
 - 🔄 df-F3 字符串（dataframe F3）：`Rel/Programs/Frame.lean` 加库定义 `splitOn(s)`（q 的 `vs`，左 fold，最后一段以 `s`
   结尾时切开，多字符分隔符同一条定义、取最左不重叠的匹配）与 `match(T, q, A) ≜ dom(⦇[q, T]⦈ A)`（`T` 是转移关系，
-  DFA 或 NFA）；无新行、无新 kernel；测试 `TestFrameText`。⬜ `parseDate` 停：`(y, m, d) ↦ 天数` 只在 Lean 的
-  `Db.Csv.daysFrom`，Rel 无此行，待 owner 选行 `ymd : [C] ⟶ D` 或 Rel 中的公式副本；⬜ `matchAll`；
+  DFA 或 NFA）；无新行、无新 kernel；测试 `TestFrameText`。✅ df-F3c `parseDate` 即行 `ymd : [C] ⟶ D`（owner
+  2026-11-23）：`Tab.ymd` 读字节后调 `Db.Csv.ymd`（现也读 `yyyy-mm-dd`，Rust `csv.rs` 同改），`ymdDen`、
+  `ymd_wf`/`ymd_den`（RepCast）、`rowOK_ymd`；relc 按名拒绝；⬜ `matchAll`；
   ⬜ 字面量中单字符 `"0"` 在 `char` 位置读成文本 `[C]`（Elab 的字面量读法）。
 - ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
   （dataframe 会话）。前提：

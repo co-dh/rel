@@ -300,7 +300,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     `match` 的 `T : σ×α ⟶ σ` 是转移关系（关系，所以也可以是 NFA），`q` 起始态，`A` 接受态的 coreflexive；把正则编成 `T`
     在语言之外（`TestFrameText`，`[0-9]+` 的手写表）。`matchAll`：未做], "part"),
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
-    [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate`：F3，停在「日数」一步], "part"),
+    [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate` 即行 `ymd : [C] ⟶ D`（F3）], "full"),
   ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`], [无], [F8], "no"),
   ([`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [], "full"),
   ([`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`summarize(F(x c), x)`], [位置顺序的数组], "full"),
@@ -371,10 +371,10 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     有限 `obj P` 可写；long 形式是忠实的那个。
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   `splitOn`、`match` 是库定义（上表），无新行、无新 kernel；正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
-  仍缺：(1) `parseDate`：数字是 `$` 与 `minus` 的算术、`⦇[0, ⟨π₁ ×10, π₂⟩plus]⦈`，但 `(2024, 1, 15) ↦ 19737` 这条规则只在
-  Lean 的 `Db.Csv.daysFrom`（CSV 读法与日期字面量共用），没有行；在 Rel 里写一遍 Hinnant 公式是同一知识的第二份，
-  所以待定：加行 `ymd : [C] ⟶ D`（含义 `Db.Csv.ymd`，非 kernel），或写一份公式并由测试钉住；
-  (2) 字面量里只有一个字符的 `"0"` 在 `Q×C` 上读作文本 `[C]`，不读作 `char`（`TestFrameText` 用码 48…57 写数字）。
+  `parseDate` 是行 `ymd : [C] ⟶ D`（owner 2026-11-23 决定）：含义是 `Db.Csv.ymd` 的图（`yyyy.mm.dd` 或 `yyyy-mm-dd`），
+  非 kernel：`Tab.ymd` 在 Lean 里读单元格的字节，日数规则只此一份，CSV 读法、日期字面量与该行共用；读不成日期的
+  文本没有像。仍缺：
+  字面量里只有一个字符的 `"0"` 在 `Q×C` 上读作文本 `[C]`，不读作 `char`（`TestFrameText` 用码 48…57 写数字）。
 - *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
   在 `f64` `f32` 上（`TestFloatArith`）；prim `sum` 在 `i64` `f64` 上，按位置从左加（`TestFrameTyped.sumFloatT`）。

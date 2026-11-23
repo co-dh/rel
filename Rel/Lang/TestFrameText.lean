@@ -27,4 +27,19 @@ rel_program frameText where
 
 #guard frameText.failures.map toString == []
 
+-- `ymd` (q's `"D"$`): a text to the day it spells, both separators, no row for a text that spells none
+#guard Db.Csv.daysFrom 2024 1 15 = 19737
+#guard ["2024.01.15", "2024-01-15", "2024.01-15", "2024.02.30", "24.01.15", "2024/01/15"].map
+  (Db.Csv.ymd ·.toUTF8.toList) == [some 19737, some 19737, none, none, none, none]
+
+rel_program frameDate where
+    obj C : char
+    obj D : date
+    obj N = 0…5
+    txt : N ⟶ [C] ≜ {(0,"2024.01.15"),(1,"2024-01-15"),(2,"2024.02.30"),(3,"2024.01-15"),(4,"15/01/2024"),
+      (5,"2000.02.29")}
+    check txt ymd = {(0,2024.01.15),(1,2024.01.15),(5,2000.02.29)}
+
+#guard frameDate.failures.map toString == []
+
 end Rel.Lang.TestFrameText
