@@ -257,7 +257,7 @@ def sumRow : Prim :=
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
     larger `P` renumbers. Its definition `(dom(P) Λ(> dom(P)) length)°` is `Tm.ascDef`, proved equal to the row's
-    meaning where `dom P` has a sorted list (`Tm.asc_den`); it is no `Elab.dfns` row, since `build` runs the row. -/
+    meaning where `dom P` has a sorted list (`Tm.ascDef_den`); it is no `Elab.dfns` row, since `build` runs the row. -/
 def ascRow : Prim :=
   { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
     mono := false, aop := .error "AOP declares no numbering of a set by its order", dem := .whole }

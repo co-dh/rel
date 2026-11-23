@@ -97,4 +97,21 @@ theorem Tm.sumDef_den (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t
     obtain ⟨rfl, rfl⟩ := Option.some.inj h
     exact ⟨hU₀, hU⟩) x hx w
 
+/-- At the universes `u₀`, `u` of `length` (`P` every number, or an initial segment), `asc(P)`'s definition, with the
+    count `Tm.lengthDef u₀ u`, means the row cut to `P` where `dom P` has a short list ascending by `Obj.lt`; at every
+    number, the row (`ascDen`, `Prim.den_ascRow`). -/
+theorem Tm.ascDef_den (ρ : Val) {B : Obj} (Pa : Tm B B) (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
+    (hP : (∀ x, P x) ∨ Seg .long P) (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
+    (hp : ∃ ys : List B.El, ys.Pairwise B.lt ∧ (∀ b, b ∈ ys ↔ ∃ c, Pa.den ρ b c) ∧ ys.length < 2 ^ 63) (j : Int64)
+    (a : B.El) :
+    ((Tm.ascDef Pa (Tm.lengthDef u₀ u)).den ρ j a ↔ P j ∧ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a) ∧
+      ((∀ x, P x) → ((Tm.ascDef Pa (Tm.lengthDef u₀ u)).den ρ j a ↔ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a)) := by
+  have h := Tm.ascDef_of_len ρ Pa (Tm.lengthDef u₀ u) P (fun zs hs w => by
+    rw [(Tm.lengthDef_den ρ u₀ u hP hU₀ hU zs hs w).1]
+    simp only [Tm.den, Prim.den_lengthRow, Core.Rel.comp, hU]
+    constructor
+    · rintro ⟨b, rfl, rfl, hb⟩; exact ⟨rfl, hb⟩
+    · rintro ⟨rfl, hb⟩; exact ⟨_, rfl, rfl, hb⟩) hp j a
+  exact ⟨h, fun hall => by rw [h]; exact ⟨fun h => h.2, fun h => ⟨hall j, h⟩⟩⟩
+
 end Rel.Lang
