@@ -1485,7 +1485,8 @@ def settle (m : Option OTy) (p : Pos) (as : List Arg) : Arg → M Arg
 def cmpTest (env : Env) (p : Pos) (o : Op) (a : OTy) : M (Option Pre) := do
   let strict := o == .lt
   let some (n, _) := (if o == .lt || o == .leq then cmpOps.find? (·.2 == strict) else none) | return none
-  let some d := env.def? n | return none
+  -- by the row's constant, not the name in scope: a program's own `lt`/`le` must not stand for the prelude's
+  let some d := (cmpRow n).prelude.bind env.defOf | return none
   let (q, s, t) := (← settle none p [] (← d.apply p [])).plain
   unify p s!"the source of the order test `{n}`" s (.prod a a); unify p s!"the target of the order test `{n}`" t (.prod a a)
   pure (some q)
