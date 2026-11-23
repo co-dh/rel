@@ -111,6 +111,12 @@ def quotesCsv := "sym,time,bid\nA,0,9\nB,1,19\nA,3,10\nA,3,11\nB,4,20\nA,6,13\n"
 def venuesCsv := "sym,venue\nA,NY\nB,\"LN, main\"\n"
 def marksCsv := "sym,px\nA,\nB,5\nC,\nA,7\nB,\n"
 
+/-- The four inputs of `tradeApp` written to the current directory: the `#eval` below and `make native` (`relc run`
+    names `tradeInputs`, runs its `io`) read the one copy of the texts. -/
+def tradeInputs.io : IO Unit := do
+  for (p, t) in [("trades.csv", tradesCsv), ("quotes.csv", quotesCsv), ("venues.csv", venuesCsv),
+      ("marks.csv", marksCsv)] do IO.FS.writeFile p t
+
 -- each declared output's text, by hand from the checks above: a positional output its value columns only, rows
 -- renumbered; a keyed one the key column `key` first, rows in key order
 def expected : List (String × String) := [
@@ -144,13 +150,10 @@ def expected : List (String × String) := [
   let d := "/data/tmp/rel-test-frame-app"
   if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
   IO.FS.createDirAll d
-  IO.FS.writeFile (d ++ "/trades.csv") tradesCsv
-  IO.FS.writeFile (d ++ "/quotes.csv") quotesCsv
-  IO.FS.writeFile (d ++ "/venues.csv") venuesCsv
-  IO.FS.writeFile (d ++ "/marks.csv") marksCsv
   let cwd ← IO.currentDir
   try
     IO.Process.setCurrentDir d
+    tradeInputs.io
     tradeApp.io
   finally
     IO.Process.setCurrentDir cwd

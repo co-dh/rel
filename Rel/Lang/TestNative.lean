@@ -242,18 +242,26 @@ def gatePlan : Lean.Meta.MetaM (Except String Plan) := do
       for b in bs do b
       mainStepB (arithOut "out/arith"); mainStepB (gidOut "out/gid")
 
-/-- `gatePlan` run outside Lean, in the environment of the modules on `LEAN_PATH` (as `lake env` sets it), where
-    the elaborator's unifier finds the objects' constants (`Obj.named`). -/
-unsafe def planIOImpl : IO Plan := do
+/-- The plan of the IO statements of the program `n` (`ioOf`): its input edge, then its computations and writes. -/
+def progPlan (n : Lean.Name) : Lean.Meta.MetaM (Except String Plan) := do
+  let io ← ioOf n
+  return do let (rd, wr) ← io; Bld.planIO rd wr
+
+/-- The plan `p` computes, run outside Lean in the environment of the module `mod` and the modules on `LEAN_PATH`
+    (as `lake env` sets it), where the elaborator's unifier finds the objects' constants (`Obj.named`). -/
+unsafe def planInImpl (mod : Lean.Name) (p : Lean.Meta.MetaM (Except String Plan)) : IO Plan := do
   Lean.initSearchPath (← Lean.findSysroot)
   -- `loadExts`: the registry (`Expand.relRegistry`, each program's homes) is an extension; unloaded, a program
   -- reads no home, and a name of the prelude (`⊤(1,L)`'s `1`) resolves to nothing
   Lean.enableInitializersExecution
-  let env ← Lean.importModules (loadExts := true) #[{ module := `Rel.Lang.TestNative }] {}
-  let (r, _) ← gatePlan.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
+  let env ← Lean.importModules (loadExts := true) #[{ module := mod }] {}
+  let (r, _) ← p.run'.toIO { fileName := "relc-1a", fileMap := default } { env }
   IO.ofExcept r
 
-@[implemented_by planIOImpl] opaque planIO : IO Plan
+@[implemented_by planInImpl] opaque planIn (mod : Lean.Name) (p : Lean.Meta.MetaM (Except String Plan)) : IO Plan
+
+/-- The native gate's plan, `gatePlan`. -/
+def planIO : IO Plan := planIn `Rel.Lang.TestNative gatePlan
 
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`), column for column:
 -- each written `OwnFile` equal to the one `Db.ownFile` makes of the value's column
@@ -286,15 +294,21 @@ end Rel.Lang.TestNative
 
 open Rel.Lang.Plan Rel.Lang.TestNative in
 /-- The `relc-1a` exe (`lakefile.lean`): `c FILE`, `lean DIR`, `plan DIR`, as the module doc says; `run MOD NAME`
-    runs the reads, computations and writes of the program `NAME` (`runIO`). -/
+    runs the reads, computations and writes of the program `NAME` (`runIO`); `c FILE MOD NAME` and
+    `plan DIR MOD NAME` print and run the plan of that program's IO statements (`progPlan`) instead of the gate's. -/
 def main (args : List String) : IO UInt32 := do
   try
     match args with
     | ["run", mod, name] => runIO mod name
     | ["c", file] => IO.FS.writeFile file (← IO.ofExcept (relc abiOf (← planIO)))
+    | ["c", file, mod, name] =>
+      IO.FS.writeFile file (← IO.ofExcept (relc abiOf (← planIn mod.toName (progPlan name.toName))))
     | ["lean", dir] => for (x, w) in semOuts do w (System.FilePath.mk dir / "out" / x).toString
     | ["plan", dir] => IO.Process.setCurrentDir dir; discard <| (← planIO).exec abiOf
+    | ["plan", dir, mod, name] =>
+      let p ← planIn mod.toName (progPlan name.toName); IO.Process.setCurrentDir dir; discard <| p.exec abiOf
     | ["g", file] => IO.FS.writeFile file (← IO.ofExcept (gplan codes >>= relc abiOf))
-    | _ => throw (IO.userError "usage: relc-1a c FILE | lean DIR | plan DIR | g FILE | run MOD NAME")
+    | _ => throw (IO.userError
+      "usage: relc-1a c FILE [MOD NAME] | lean DIR | plan DIR [MOD NAME] | g FILE | run MOD NAME")
     pure 0
   catch e => IO.eprintln e; pure 1
