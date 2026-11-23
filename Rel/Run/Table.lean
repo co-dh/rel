@@ -168,12 +168,20 @@ def intern {n : USize} (what : String) (D : Dict) (x : Vals (.arr (.atom .char))
     `rank = D ≫ asc(ran D)°`. It reads `D` alone: when `D` grows only `rank` is recomputed, never a data column. -/
 def rank (D : Dict) : Except String (Tab .long .long) := do D.comp (← (← Tab.asc (← D.ran)).conv)
 
-/-- The texts of the ids `y` through the dictionary `D`, `I ≫ D` with `I : ℕ ⟶ ℕ` row `i`'s id; an id past `D` has
-    no text, so the answer is short and refused. -/
+/-- q's unenumerate: `unenum(I) = I ≫ D`, the symbol relation `I : A ⟶ sym` with each id replaced by its text in its
+    library's dictionary `D`, a composition and no kernel of its own. A symbol column meets only columns of its own
+    library (`progLib`); its texts meet any text and intern into any library. An id past `D` has no text, so the
+    answer is short and refused. -/
+def unenum {A : Obj} (what : String) (D : Dict) (I : Tab A (.atom .sym)) :
+    Except String (Tab A (.arr (.atom .char))) := do
+  let T ← (⟨I.n, I.key, ← Arr.of .i64 I.n (.vector .i64 I.n (← encOf what I.val.1) none) what⟩ : Tab A .long).comp D
+  if T.n = I.n then pure T
+  else .error s!"{what}: {I.n.toNat - T.n.toNat} of {I.n} ids are past the dictionary of {D.n} texts"
+
+/-- The texts of the ids `y` through the dictionary `D`: `unenum` of the frame of `y`, row `i` its id. -/
 def decode {n : USize} (what : String) (D : Dict) (y : Arr .sym n) : Except String (Vals (.arr (.atom .char)) n) := do
-  let T ← (← frame (← Arr.of .i64 n (.vector .i64 n (← encOf what y.1) none) what)).comp D
-  if h : T.n = n then pure (h ▸ T.val)
-  else .error s!"{what}: {n.toNat - T.n.toNat} of {n} ids are past the dictionary of {D.n} texts"
+  let T ← unenum what D (← frame y)
+  if h : T.n = n then pure (h ▸ T.val) else .error s!"{what}: internal: `unenum` answered {T.n} rows for {n} ids"
 
 /-- The positional table of schema `S` in `dir`: its rows' key the positions. -/
 def read (S : Schema) (dir : String) : IO (Tab .long S.obj) := do
@@ -216,11 +224,82 @@ def readDict (db : String) : IO (Dict × Tab .long .long) := do
     (`writeDict`). -/
 def writeSym {n : USize} (dir p : String) (y : Arr .sym n) : IO Unit := writeVals (A := .atom .sym) dir p y
 
-/-- The converse of `writeSym`: the ids at `p`, refused unless each has a text in `D` (`decode`). -/
+/-- The symbol columns of the side `x` (`cols` under `p`), each refused unless every id has a text in `D` (`decode`),
+    the column named as its file in `dir`. -/
+def checkSyms {A : Obj} {n : USize} (dir p : String) (D : Dict) (x : Vals A n) : Except String Unit := do
+  for (q, c) in cols A x p do
+    if let .inr (.vector .sym k e _) := c then
+      let _ ← decode (file dir q) D (← Arr.of .sym k (.vector .sym k e none) (file dir q))
+
+/-- The converse of `writeSym`: the ids at `p`, refused unless each has a text in `D` (`checkSyms`). -/
 def readSym (D : Dict) (dir p : String) : IO ((n : USize) × Arr .sym n) := do
   let (_, ⟨n, y⟩) ← readVals (.atom .sym) dir p
-  let _ ← IO.ofExcept (decode (file dir p) D y)
+  IO.ofExcept (checkSyms (A := .atom .sym) dir p D y)
   return ⟨n, y⟩
+
+/-- Whether `A` has a symbol atom: a side of it then holds ids into a library's dictionary. -/
+def symIn : Obj → Bool
+  | .atom t => decide (t = .sym)
+  | .prod a b | .sum a b => symIn a || symIn b
+  | .arr a => symIn a
+  | .one => false
+
+/-- The library of the table directory `dir` (§0.2, q's database root): the directory holding it, where the one
+    dictionary of every table in it lies (`writeDict`, the files `sym` and `sym.rank`). Where a table lies is the one
+    record of its library. -/
+def lib (dir : String) : String :=
+  match ((System.FilePath.mk dir).components.reverse.dropWhile (·.isEmpty)).drop 1 with
+  | [] => "."
+  | [""] => "/"
+  | cs =>(System.mkFilePath cs.reverse).toString
+
+/-- The dictionary of the library `L` (`readDict`), empty in a library with none yet; a dictionary with some of its
+    files missing is refused, naming them. -/
+def libDict (L : String) : IO Dict := do
+  let E ← IO.ofExcept Dict.empty
+  let ps := (cols (.arr (.atom .char)) E.val "sym").filterMap fun | (q, .inr _) => some (file L q) | _ => none
+  let gone ← ps.filterM fun f => return !(← System.FilePath.pathExists f)
+  if gone.length == ps.length then return E
+  unless gone.isEmpty do throw (IO.userError s!"{L}: the library's dictionary lacks the files {gone}")
+  return (← readDict L).1
+
+/-- `D` as the dictionary of the library `L`, append-only (§0.2, q's sym file): `L`'s dictionary must be the first
+    rows of `D`, so no id stored in `L` changes and `D`'s texts past them are appended; else the first id where the two
+    differ is named. -/
+def writeLib (L : String) (D : Dict) : IO Unit := do
+  let (old, new) := ((← libDict L).toList, D.toList)
+  let i := ((old.zip new).takeWhile fun (a, b) => a == b).length
+  unless i == old.length do
+    throw (IO.userError s!"{L}: the library's dictionary of {old.length} texts and the program's of {new.length} \
+      differ at id {i}; a dictionary is append-only, so these ids are not of this library")
+  unless old.length == new.length do IO.FS.createDirAll L; writeDict L D
+
+/-- An own table a program reads, `r` reading it from `dir`: its symbol columns' ids taken as they lie, the program's
+    dictionary `D` being its library's (`progLib`), and refused unless each has a text in `D` (`checkSyms`). -/
+def readOwn {A B : Obj} (D : Dict) (dir : String) (r : IO (Tab A B)) : IO (Tab A B) := do
+  let t ← r
+  IO.ofExcept (do checkSyms dir "key" D t.key; checkSyms dir "val" D t.val)
+  return t
+
+/-- An own table a program writes to `dir` with the schemas `K` and `S`, `w` writing it: when a column is a symbol
+    column, the program's dictionary `D` first appended to the library's (`writeLib`), so no stored id is ever without
+    its text; the ids then written as they lie. -/
+def writeOwn (D : Dict) (K S : Schema) (dir : String) (w : IO Unit) : IO Unit := do
+  if (K ++ S).any (symIn ·.2) then writeLib (lib dir) D
+  w
+
+/-- The library of a program (§0.2): the one library (`lib`) of every own table it reads or writes with a symbol
+    column, `ts` each table's name, directory and schemas; `none` when no own table has one. Two of them in two
+    libraries are refused, naming both: their ids are of two dictionaries and the program holds one, so their symbol
+    columns cannot meet. -/
+def progLib (ts : List (String × String × Schema × Schema)) : Except String (Option String) := do
+  let r ← ts.foldlM (init := (none : Option (String × String))) fun acc (x, p, K, S) =>
+    if !(K ++ S).any (symIn ·.2) then pure acc else match acc with
+      | none => pure (some (x, lib p))
+      | some (y, L) => if L == lib p then pure acc else .error s!"the symbol columns of `{y}` are ids in the \
+          library {L} and those of `{x}` in the library {lib p}, two dictionaries, so they cannot meet; convert one \
+          to its texts with `unenum` (`I ≫ D`)"
+  pure (r.map (·.2))
 
 /-- The first part of `es` as an atom column of type `t`, entered through `Arr.of` as `readArr` enters a mapped one;
     its count, and the parts left over. -/
