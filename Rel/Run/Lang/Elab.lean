@@ -2374,6 +2374,19 @@ where
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
 
+/-- Whether `n` is an object variable at the placeholder of a generic constant (`varObj`): it stands for the object of
+    every use, so a node that would fix it to a number object is built so as to keep it a variable, or refused. -/
+def phVar (n : OTy) : Bool :=
+  match zonk mc n with
+  | .base m => (objs.lookup m).any fun i => i.ovar && match i.obj with | .atom a => varAtoms.contains a | _ => false
+  | _ => false
+
+/-- Whether `<`, `≤` at `n` run the row on `n`'s universe (`Tm.lt`, `Tm.leq`): at a base object, but not at a
+    placeholder when the prelude's test is in scope (`test`), which keeps the constant generic over it (`Tm.cmpDef`
+    instantiated at each use's object, `Tm.instObj`) where the row would fix it to a number object. -/
+def rowOrd (n : OTy) (test : Bool) : Bool :=
+  (match zonk mc n with | .base _ => true | _ => false) && !(test && phVar objs mc n)
+
 /-- Whether the object `n` is the atom `sym`, whose ids are in insertion order and so have no order of their own. -/
 def symObj (n : OTy) : Bool :=
   match zonk mc n with | .base nm => (objs.lookup nm).any (·.obj == .atom .sym) | _ => false
@@ -2385,7 +2398,8 @@ def ordObj (p : Pos) (op : String) (n : OTy) (df : Bool) : Except Err Obj := do
     let nm := ((cmpOps.find? (·.2 == (op == "<"))).map (·.1)).getD op
     throw ⟨p, s!"{op} at {zonk mc n}: the order of an object that is no atom is the prelude's `{nm}`, which is not defined above this line"⟩
   let B ← toObj objs mc dp n
-  if let some t := B.ascBad then throw ⟨p, s!"{op} at {zonk mc n}: the atom {atomName t} has no order code"⟩
+  -- a placeholder stands for the object of each use, whose atoms it does not name
+  if let some t := B.ascBad then unless phVar objs mc n do throw ⟨p, s!"{op} at {zonk mc n}: the atom {atomName t} has no order code"⟩
   pure B
 
 /-- An order at `sym` is the order of the texts: with `r = rank(D)` (`rk`, built from the program's `dictionary D`)
@@ -2607,9 +2621,7 @@ def build (δ : Dem) : Pre → Except Err Res
     -- a variable at the placeholder of a generic constant (`varObj`) whose universe is read: neither the cut nor the
     -- definition is known before the call fixes its object, so the row is refused here, cheaply, and `once` keeps
     -- that variable a number object, each use building the row at its own object
-    if let some (o, _) := us.find? fun (o, u, _) => u.isSome && match o with
-        | .base n => (objs.lookup n).any fun i => i.ovar && match i.obj with | .atom a => varAtoms.contains a | _ => false
-        | _ => false then
+    if let some (o, _) := us.find? fun (o, u, _) => u.isSome && phVar objs mc o then
       throw ⟨dp, s!"{r.sym} at {o}: its universe is read, so it is built at the object of a use, not a placeholder (§4)"⟩
     -- with no universe the row runs (its definition would need keys none supply)
     let some cut := us.filter (!unbounded objs ·.1) |>.mapM fun (_, u, cuts) => if cuts then u else none
@@ -2643,7 +2655,7 @@ def build (δ : Dem) : Pre → Except Err Res
   | .leq p n rk df => do
     if symObj objs mc n then
       return ← symOrd dp δ p "≤" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.leq (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    if let .base _ := zonk mc n then
+    if rowOrd objs mc n df.isSome then
       let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, Tm.leq U⟩
     let B ← ordObj objs mc dp p "≤" n df.isSome
     let some d := df | internal dp "≤: the order test"
@@ -2655,7 +2667,7 @@ def build (δ : Dem) : Pre → Except Err Res
   | .lt p n rk df => do
     if symObj objs mc n then
       return ← symOrd dp δ p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.lt (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    if let .base _ := zonk mc n then
+    if rowOrd objs mc n df.isSome then
       let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
     let B ← ordObj objs mc dp p "<" n df.isSome
     let some d := df | internal dp "<: the order test"
