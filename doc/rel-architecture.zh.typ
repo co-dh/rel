@@ -240,12 +240,32 @@ lt : α×α ⟶ α×α ≜ dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π�
 asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
 ```
 
+已定（B10c-q，按原则决定，无需 owner 输入）：
+
+#tbl(c-syn, (auto, 1.2fr, 1.6fr), ([决定], [规则], [理由]),
+  [5 不含 `0` 的对象上的初值（Q1 = A）], [字面量只有一条规则：`obj Q = 1…5`、`w : N ⟶ [Q]` 上 `w length`、`w sum` 在该使用处报错
+    `` `length` at this call, where α is Q, β is Q: 0 is not in Q = 1…5 ``，不再是 `𝟘`。`zeroTm` 随 `dfns` 删除。
+    `length` 的签名不变（`[α] ⟶ β`），不把目标固定为 ℕ],
+    [调用的含义是定义在调用处对象上的展开（上文单态化）：展开 `⦇[{(∗,0)}, π₁ succ]⦈ : [α] ⟶ Q` 由用户直接写出时就报这个错。
+    把泛型体里的字面量切到变量的 universe，是同一段文本在泛型体内为 `𝟘`、体外报错：第二条字面量规则，并把错误换成一张看似合理的空表。
+    留 `zeroTm` 是只为两行保留的并行机制。目标固定为 ℕ 不能消去这个问题：`sum : [β] ⟶ β` 的初值在元素对象上，不可能是 ℕ，
+    规则仍然要有，有了它 `length` 无需另改；`length` 的目标本来就是自己的变量而不是参数的 universe（`asc` 里是 `ν`，
+    没有使用确定它时是 `.long`，`Elab.generalise`）],
+  [6 绑定定理的主语（Q3 = H）], [B10d 之后 `Tm.<sym>Def_den` 陈述在文本 elaborate 出的项上：行的 `Prim.prelude` 常量在 registry 里的体
+    （`Once.res`），即 `callTm` 复制进 `call` 节点的体；形状同 `callTm_convOK`。B10d 为此把每个被行指名的定义的体写成一个 Lean 常量
+    （`tmE` + `addConst`，与 `n.c.t<k>` 一样由 `Tm.diffAt` 检查）。手写的 `Tm.<sym>Def` 不再是主语：它只在定理
+    `⟦call⟧ = ⟦Tm.<sym>Def⟧` 把它接到 `call` 上时留作证明的中间项，没有接上的行进 `unproved`],
+    [B10d 之后没有程序构造 `Tm.<sym>Def`，陈述在它上面的定理说的是一个只为定理存在的项；文本是唯一的来源，主语就是文本 elaborate 出的项。
+    「手写项 + `#guard`」不成立：两个项今天已经不同，`filter` 在 registry 里的体是 `fold(ran(uni nil), …)`，`Tm.filterDef` 是
+    `fold(nil, …)`（步骤相同、初值不同），语法相等的检查在第一行就失败，让它通过等于照 elaborator 的输出改副本，即用 gate 维持副本。
+    已核实：`Expand.read` 给出 elaborate 出的项（`Read` 的第五项 `List Once`，`emit` 把它登记进 `relRegistry`），但只在 elaboration
+    时可达，没有类型为 `Tm` 的 Lean 常量（`prelude.filter` 是 `Decl`）；`Tm.den` 已把 `call` 读成它的体在实参绑定下的 `den`
+    （`Den.lean` 的两条 `.call`），所以不需要新的语义],
+)
+
 待 owner 决定（选项与推荐在 `/data/tmp/hb10c/brief.md`，决定前相关步骤不发）：
-- Q1 不含 `0` 的对象上的初值：今天 `zeroTm` 把 `0` 切到 universe，`1…5` 上 `length` 为 `𝟘`；字面量规则在该使用处报错
-  `0 is not in Q = 1…5`。二者只在这类对象上不同。
 - Q2 `est` 的文本：`∋ ∩ (∈ \ (Q ∪ 𝟙)°)` 在数组对象上建不成常量（`\` 要 universe），prelude 拒绝它；
   无除法的 `∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)` 建得成，就是 §4 `est(Q)` 行写的复合 `G − ⟨G,G⟩ ≫ Y ≫ π₁`，但定理要重证。
-- Q3 B10d 之后绑定定理陈述在哪个项上：Lean 里构造的项（今天，B10b 的做法，文本与它之间没有检查），还是 `callTm` 给出的 `call` 节点。
 
 // ───────────────────────────── 2
 = 语义映射 `⟦−⟧`：`Tm.den ρ : Core.Rel A.El B.El`
