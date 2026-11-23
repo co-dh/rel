@@ -35,6 +35,93 @@ rel_program dummiesT where
 
 #guard dummiesT.ok
 
+-- `obj V from` at the atom the `.d` names: a `date` column, its distinct days in date order, each named as a date
+-- literal writes it; `5` rows `(d, v)` with two on 2024.01.15 (day 19737 of the epoch 1970.01.01)
+/-- Four rows `(d, v)` of a `date` column `d`: days 19737, 19000, 19737, 19800, written afresh to `p`. -/
+def fixtureDate (p : String) : IO Unit := do
+  if ← System.FilePath.pathExists p then IO.FS.removeDirAll p
+  let days := [19737, 19000, 19737, 19800]
+  write [("d", .atom .date), ("v", .long)] p
+    (Arr.ofFn .date 4 fun i => (days.getD i.val 0).toUInt64, Arr.ofFn .i64 4 fun i => (10 * (i.val + 1)).toUInt64)
+
+#eval fixtureDate "/data/tmp/rel-test-pivot-disk/dates"
+
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
+rel_program datesT where
+    obj V from "/data/tmp/rel-test-pivot-disk/dates" d
+    obj P
+    obj N
+    obj Y = {no, yes}
+    schema T = {d : V, v : N}
+    input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/dates"
+    schema D = {c ∈ V : 1+1}
+    d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "d", e, x)⟩
+    check d col D "c_2024.01.15" [{(∗,yes)}, {(∗,no)}] = {(0,yes),(1,no),(2,yes),(3,no)} where x ≜ {(0,(2024.01.15,10)),(1,(2022.01.08,20)),(2,(2024.01.15,30)),(3,(2024.03.18,40))}
+
+#guard datesT.ok
+
+-- a `f64` column: the floats in totalOrder (`-2.5` before `1.5`), each named as a float literal writes it
+/-- Three rows `(f, v)`: `f` is `1.5`, `-2.5`, `1.5`; written afresh to `p`. -/
+def fixtureF64 (p : String) : IO Unit := do
+  if ← System.FilePath.pathExists p then IO.FS.removeDirAll p
+  let fs : List Float := [1.5, -2.5, 1.5]
+  write [("f", .atom .f64), ("v", .long)] p
+    (Arr.ofFn .f64 3 fun i => (fs.getD i.val 0).toBits, Arr.ofFn .i64 3 fun i => (10 * (i.val + 1)).toUInt64)
+
+#eval fixtureF64 "/data/tmp/rel-test-pivot-disk/floats"
+
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
+rel_program floatsT where
+    obj V from "/data/tmp/rel-test-pivot-disk/floats" f
+    obj P
+    obj N
+    obj Y = {no, yes}
+    schema T = {f : V, v : N}
+    input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/floats"
+    schema D = {c ∈ V : 1+1}
+    d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "f", e, x)⟩
+    check d col D "c_-2.5" [{(∗,yes)}, {(∗,no)}] = {(0,no),(1,yes),(2,no)} where x ≜ {(0,(1.5,10)),(1,(-2.5,20)),(2,(1.5,30))}
+
+#guard floatsT.ok
+
+-- a `sym` column: the ids as stored (a symbol is its 8-byte id), ascending
+/-- Three rows `(s, v)`: `s` is the symbol id `5`, `2`, `5`; written afresh to `p`. -/
+def fixtureSym (p : String) : IO Unit := do
+  if ← System.FilePath.pathExists p then IO.FS.removeDirAll p
+  let ids := [5, 2, 5]
+  write [("s", .atom .sym), ("v", .long)] p
+    (Arr.ofFn .sym 3 fun i => (ids.getD i.val 0).toUInt64, Arr.ofFn .i64 3 fun i => (10 * (i.val + 1)).toUInt64)
+
+#eval fixtureSym "/data/tmp/rel-test-pivot-disk/syms"
+
+open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
+rel_program symsT where
+    obj V from "/data/tmp/rel-test-pivot-disk/syms" s
+    obj P
+    obj N
+    obj Y = {no, yes}
+    schema T = {s : V, v : N}
+    input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/syms"
+    schema D = {c ∈ V : 1+1}
+    d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "s", e, x)⟩
+    check d col D "c_5" [{(∗,yes)}, {(∗,no)}] = {(0,yes),(1,no),(2,yes)} where x ≜ {(0,(5,10)),(1,(2,20)),(2,(5,30))}
+
+#guard symsT.ok
+
+-- a `u1` column has no literal to name an element by (`litLayout`), as `schema S from` and `obj F : u1` refuse it
+/-- Three rows of a `u1` column `b`, written afresh to `p`. -/
+def fixtureBit (p : String) : IO Unit := do
+  if ← System.FilePath.pathExists p then IO.FS.removeDirAll p
+  write [("b", .atom .u1)] p
+    (Arr.mk (Ext.Enc.blank .u1 3) (Ext.Enc.blank_WF .u1 3) (Ext.Enc.blank_plain .u1 3))
+
+#eval fixtureBit "/data/tmp/rel-test-pivot-disk/bits"
+
+/-- error: obj V from /data/tmp/rel-test-pivot-disk/bits b: the column is at the atom u1, and no object of u1 is declared: no literal of u1 is stored -/
+#guard_msgs in
+rel_program bitsT where
+    obj V from "/data/tmp/rel-test-pivot-disk/bits" b
+
 -- the wide pivot over the declared `S = {a,b}`, the rows of `TestFrameNull`'s `pw`: (A,a) 1+4, (B,a) 2, (A,b) 3,
 -- (C,b) 5; keys in first-occurrence order A B C, null as 0
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
@@ -50,7 +137,7 @@ rel_program pivotT where
 #guard pivotT.ok
 
 -- an unbounded object has no elements to generate over
-/-- error: line 57, col 21: `N` is no finite object of this program: a schema over an object needs its elements -/
+/-- error: line 144, col 21: `N` is no finite object of this program: a schema over an object needs its elements -/
 #guard_msgs in
 rel_program unboundedT where
     obj N

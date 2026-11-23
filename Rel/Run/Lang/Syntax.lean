@@ -475,9 +475,9 @@ open Lean in deriving instance ToExpr for Rel.QAtomicType
 /-- An object declaration's right side: named elements, a signed number range `lo ≤ hi`, or a derived object. -/
 inductive ObjDef
   | elems (ws : List String)
-  /-- Named elements with an explicit universe, `ws[i]` stored as `codes[i]`: `obj V from "dir" c`, the distinct
-      values of a column on disk kept as stored (F1), not re-encoded `0…n−1` as `elems` is. -/
-  | coded (ws : List String) (codes : List Int)
+  /-- Named elements at the atom `t`, `ws[i]` the text of the word stored as `codes[i]` (as an `Int64`): `obj V from
+      "dir" c`, the distinct values of a column on disk kept as stored (F1), not re-encoded `0…n−1` as `elems` is. -/
+  | coded (t : Rel.QAtomicType) (ws : List String) (codes : List Int)
   | range (lo hi : Int)
   | alias (o : OExp)
   /-- `schema S = {k : K, v : N}`: the `Schema` of these columns, the object `Schema.obj` of it (`Expand.objInfo`). -/

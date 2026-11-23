@@ -34,8 +34,9 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
       uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩,
       seg := ws.length != 1, obj := if ws.length = 1 then .one else .long }
   -- stored as read: no segment, and one element stays a long, its code the value on disk
-  | .coded ws cs => let cs := cs.map Int64.ofInt
-    pure { ty := .base n, elems := ws, codes := cs, uni := some ⟨_, col cs⟩ }
+  -- stored at its atom as `obj F : t` is; a universe is a long column (`uniOf`), so only at `i64`
+  | .coded t ws cs => let cs := cs.map Int64.ofInt
+    pure { ty := .base n, elems := ws, codes := cs, obj := .atom t, uni := if t == .i64 then some ⟨_, col cs⟩ else none }
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
