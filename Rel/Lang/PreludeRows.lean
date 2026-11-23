@@ -1,6 +1,6 @@
 module
 
-public import Rel.Lang.Den
+public import Rel.Lang.GenKFold
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -18,6 +18,18 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 def rowOf (s : String) : Prim := (prims.find? (·.sym == s)).getD default
 
 private abbrev B1 : OExp := .var {} "B"
+
+/-- A left fold whose step relation is the function `f` is `List.foldl f`. -/
+theorem foldDen_foldl {E V : Obj} {TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)} {f : V.El → E.El → V.El}
+    (hS : ∀ a x w, TS (a, x) w ↔ w = f a x) :
+    ∀ (xs : List E.El) (v w : V.El), foldDen (fun _ b => b = v) TS xs w ↔ w = xs.foldl f v
+  | [], v, w => foldDen_nil TS v w
+  | x :: xs, v, w => by
+    rw [foldDen_cons, List.foldl_cons, ← foldDen_foldl hS xs (f v x) w]
+    constructor
+    · rintro ⟨v₁, v', ⟨_, rfl⟩, hs, h⟩
+      rw [(hS _ _ _).1 hs] at h; exact h
+    · intro h; exact ⟨v, f v x, ⟨v, rfl⟩, (hS v x _).2 rfl, h⟩
 
 theorem Prim.den_tau {B : Obj} : Prim.den (rowOf "τ") B (.arr B) [] = fun a Y => Y = [a] := by
   have hs : (rowOf "τ").sig = ([], .var {} "A", .list (.var {} "A")) := rfl
