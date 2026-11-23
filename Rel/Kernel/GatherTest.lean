@@ -12,10 +12,11 @@ def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h
 /-- `xs` as the `foR` column the kernels answer (`wordsFoR`). -/
 def col (xs : List UInt64) : Enc := wordsFoR xs.toArray
 
-/-- An answer as its error, or its metadata and pack bytes: equal to `col`'s of the expected words, caches included. -/
+/-- An answer as its error, or its metadata and pack bytes (equal to `col`'s of the expected words, caches included),
+through `.data.toList`, a projection: `ByteArray.toList` is well-founded recursion the kernel unfolds a byte at a time. -/
 def view : Except String Enc → String ⊕ (List UInt8 × List UInt8)
   | .error s => .inl s
-  | .ok (.foR md pk) => .inr (md.toList, pk.toList)
+  | .ok (.foR md pk) => .inr (md.data.toList, pk.data.toList)
   | .ok _ => .inl "not foR"
 
 -- rows read `e` at 2, 0, 2, 3
