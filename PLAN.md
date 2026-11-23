@@ -1428,6 +1428,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Arr.lt_of_codes tag` 证它。改法（一般的，不特判 `.one`）：每个 sum `inr` 在前——`Obj.key` 换成 `inl ↦ 1 ::`、
     `inr ↦ 0 ::`，`cols` 的键列用 `colMap .not` 的 `¬tag`（已算出），`RepOrder`/`RepCanon` 的 sum 支随之改；
     `Vals` 换 `Opt` 之后 `atom+1` 的键是 `nulCodes`，已是 null 在前，与之一致。
+    nullband3（未开工，被上一步挡住）：`Vals (.sum (.atom t) .one) := Opt t n` 要先做"随 q 次序"这一步。今天
+    `Obj.key` 是 `inl` 在前，而 `Opt` 列的 `seenKey`（`nulWords`）把 null 排前，`Vals.lt_of_codes` 的 `atom+1` 支是假命题：
+    `i64+1` 列 `3 0N`，码说行 1 < 行 0，要证 `Obj.lt (inr ∗) (inl 3)` 即 `[1] < [0, ord 3]`。该步还缺 `colMap .not` 在
+    `u1` 列上的读法引理（结果 `Enc.WF .u1`、元素 = `!tag.get`）；`Vals.cols_sum`、`lt_of_codes`、`row_of_codes`、
+    `codes_of_row` 的 sum 支随之改。之后才是 `Vals` 换 `Opt`：`.sum a b` 对变量 `a b` 不再归约，约 90 处匹配各加一支。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`
