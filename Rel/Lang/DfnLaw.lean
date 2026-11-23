@@ -509,7 +509,7 @@ def Tm.cmpDef (s : String) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (
   .comp (A := .atom t) (B := .prod (.atom t) (.atom t)) (.pair (.dom U) (.top (.dom U)))
     (.comp (B := .prod (.atom t) (.atom t)) (.prim (cmpRow s)) .outr)
 
-theorem Tm.ltDef_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
+theorem Tm.cmpDef_lt_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
     (Tm.cmpDef "lt" U).den ρ = (Tm.lt U).den ρ := by
   funext a b; apply propext
   simp only [Tm.cmpDef, Tm.lt, Tm.den, Tm.argDen, Prim.den_cmpRelRow_lt, Tm.dom_den, Prim.den_cmpRow_lt, ordDen, Core.Rel.comp, Core.Rel.rpair,
@@ -521,7 +521,7 @@ theorem Tm.ltDef_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
   · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
     exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), ⟨rfl, hl⟩, rfl⟩
 
-theorem Tm.leqDef_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
+theorem Tm.cmpDef_le_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
     (Tm.cmpDef "le" U).den ρ = (Tm.leq U).den ρ := by
   funext a b; apply propext
   simp only [Tm.cmpDef, Tm.leq, Tm.den, Tm.argDen, Prim.den_cmpRelRow_le, Tm.dom_den, Prim.den_cmpRow_le, ordDen, Core.Rel.comp, Core.Rel.rpair,
