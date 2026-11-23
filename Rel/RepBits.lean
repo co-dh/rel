@@ -638,6 +638,7 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
       rcases h0 with h0 | h0 <;> simp [USize.toNat_mul, h0]
     rw [hX (fun _ _ => False) hgw (by rcases h0 with h0 | h0 <;> simp [h0])
       (fun G hG j hj => (by rcases h0 with h0 | h0 <;> omega : False).elim)]
+    rw [Lang.ldivDen_iff]
     refine ⟨fun ⟨_, _, _, _, hP, _⟩ => hP.elim, fun ⟨h1, h2⟩ => ?_⟩
     rcases h2 with ⟨a, t, ht1, ht2⟩ | ⟨⟨b', u, hu1, hu2⟩, c', u', hu1', hu2'⟩
     · obtain ⟨s, -, -⟩ := h1 a ⟨t, ht1, ht2⟩
@@ -836,7 +837,7 @@ theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab 
       · rename_i hh; rw [if_neg hh] at hgt
         exact P2 fun i hi e => (heb1 _ (by omega)).2 i hi (e.trans hgt.symm)
   rw [hX P hgw hb63 ho]
-  show _ ↔ (∀ a, R.Holds a b → S.Holds a c) ∧ ((∃ a, R.Holds a b) ∨ ((∃ b', UB.Holds b' b) ∧ ∃ c', UC.Holds c' c))
+  rw [Lang.ldivDen_iff]
   constructor
   · rintro ⟨G, hG, j, hj, ⟨P1, P2⟩, ⟨i0, h0, r0⟩, ⟨i1, h1, r1⟩⟩
     obtain ⟨t, ht, hexb, hxb, hub⟩ := hrb G hG

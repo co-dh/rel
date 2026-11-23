@@ -5,10 +5,8 @@ Rel.Lang.estDen
 Rel.Lang.floatDen
 Rel.Lang.foldDen
 Rel.Lang.foldrDen
-Rel.Lang.ldivDen
 Rel.Lang.leqDen
 Rel.Lang.ltDen
-Rel.Lang.rdivDen
 Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.succDen
