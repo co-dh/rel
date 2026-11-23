@@ -97,7 +97,13 @@ def _root_.Rel.Ext.Enc.wf? (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Optio
       cases t <;> exact ⟨h.1, fun hu i hi v hv =>
         Verify.u1Ok_bound md pk (h.2.1 hu) i (Nat.div_lt_of_lt_mul (by omega)) v hv, h.2.2⟩⟩
     else none
-  | e => if h : Enc.WF t n e then some ⟨h⟩ else none
+  -- by constructor, not `WF`'s own instance, whose code holds the per-element `foR` clause
+  | .gen xs => match t with
+    | .general => if h : xs.size = n.toNat then some ⟨h⟩ else none
+    | _ => none
+  | .pos => match t with
+    | .i64 => some ⟨trivial⟩
+    | _ => none
 
 /-- A payload as an `Arr`, the one way in: `Enc.WF` is decided (`Enc.wf?`), never assumed; `what` names the producer
     in the error. -/
