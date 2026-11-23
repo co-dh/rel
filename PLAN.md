@@ -665,7 +665,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `output x to csv '\t' "f"`，不写为 `,`（`Decl.input/output` 的 `csv : Option UInt8`，`Io` 的 `csv : Option (UInt8 ×
   CsvCols)`）。测试：`TestTable` TSV 往返（含 `,` 的字段不加引号、含 `\t` 的加引号），`TestFrameApp.tsvApp` 程序往返，
   crate `records_as_the_model` 的 `\t` 用例。parquet、JSON 不做（owner 决定）。`test/disabled/CsvTest.lean` 已停用，未改。
-- ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
+- ✅ S9 文档：architecture §1（构造子 33 个，核对 `Tm` 的 index；`dom` `ran` `nil` `est` `front` 定义 + 行，`at` 二元行，
+  `lt` `asc` 定义 + fused 行）、§4.2 null 卡与 §4.3 原子表（`u8` `date` `datetime` `general`、null 残差 0），dataframe F4
+  （`sum` `sums` 含 `f32`、`lt` `asc` 定义、`sums` 位置须整数存储）；PLAN 随各步。
 
 ### P0 baseline — 1/1
 

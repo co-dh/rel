@@ -235,7 +235,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`aggregate`], [`aggregate(a, f, x) ≜ ⟨firstOcc(x a) x a, agg(group(x a), f)⟩`], [], "full"),
   ([`sum` `mean` `count` `countAll` `minimum` `maximum` `reduce`], [`summarize(f, x)`，`f` 见 3.1；`count(x)`；
     `mean` 是 `summarize(F(c) avg, c)`，`avg : [γ] ⟶ φ ≜ F(𝟙 $ φ) ⟨sum, length $ φ⟩%`],
-    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；prim `sum` 在 `i64` `f64` 上，从左加；`avg` 在整数列与 `f64` 列上，和在 `φ` 中], "full"),
+    [`minimum` `maximum` 在 `f64`、`date` 列上按值的序；prim `sum` 在 `i64` `f32` `f64` 上，从左加；`avg` 在整数列与 `f64` 列上，和在 `φ` 中], "full"),
   ([`variance` `stddev` `skewness` `correlation` `zScore`],
     [`cov : [γ×γ] ⟶ φ ≜ F(⟨π₁ $ φ, π₂ $ φ⟩) ⟨F(times 𝟙(φ)) avg 𝟙(φ), ⟨F(π₁) avg 𝟙(φ), F(π₂) avg 𝟙(φ)⟩times⟩minus`；
     `scov : [γ×γ] ⟶ φ ≜ ⟨cov 𝟙(φ), ⟨length $ φ, tail length $ φ⟩%⟩times`；
@@ -389,16 +389,17 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   文本没有像。
 - *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
-  在 `f64` `f32` 上（`TestFloatArith`）；prim `sum` 在 `i64` `f64` 上，按位置从左加（`TestFrameTyped.sumFloatT`）。
+  在 `f64` `f32` 上（`TestFloatArith`）；prim `sum` 在 `i64` `f32` `f64` 上，按位置从左加（`TestFrameTyped.sumFloatT`）。`lt` 在任意 object 上是定义 `Tm.ltDef`
+  （`Tm.lt_den`），`asc` 是定义 `Tm.ascDef`（`Tm.asc_den`），行 `lt` `asc` 是它们的 fused 形式。
   真商 `%` 与 `sqrt` 给出 `avg` `var` `cov` `corr` `quantile` `skewness` `zScore` `valueProportions` 与 `describe` 的
   均值、标准差；值先 `$ φ`，和在 `φ` 中，所以整数列与 `f64` 列都可用（`TestFrameStat.frameStatFloatT`）。仍缺：
-  (1) `sums` 在 `i64` `f64` 上，`cumSum` `sumsBy` 在 `f64` 列上运行（`TestFrameStat`），`f32` 列被拒、先 `$` 到 `f64`；
+  (1) `sums` 在 `i64` `f32` `f64` 上（`sumAtoms`：整数精确加，浮点在 `f64` 中从左加、取整一次到该 atom），`cumSum` `sumsBy` 在 `f64` 列上运行（`TestFrameStat`）；
   (2) 已解决（请求 10/11）：统计对结果的 float 对象 `φ` 泛型，由用处的期望类型确定（`TestGenericNum.avgGT`），库不再声明
-  `F`；数的运算（`sqrt` `times` …）不把结果对象连到操作数，作操作数的统计写 `𝟙(φ)`。`f32` 的结果被 prim `sum` 拒
-  （`TestFrameStat.frameStatF32T`）；泛型定义中的数字字面量在每处使用的对象上构造（请求 12、13），故 `quantile` 直接写 `0.0`、`1.0`；(3) 浮点 → 整数是一元的 `floor`（`f32` `f64` 到 `i64`），`genericPercentile` 用它取 ⌊h⌋；`pow x i` 是 prim `xexp` 的
+  `F`；数的运算（`sqrt` `times` …）不把结果对象连到操作数，作操作数的统计写 `𝟙(φ)`。`f32` 的结果也可：prim `sum` 在 `f64` 中加、
+  只取整一次到该 atom（`TestFrameStat.frameStatF32T`）；泛型定义中的数字字面量在每处使用的对象上构造（请求 12、13），故 `quantile` 直接写 `0.0`、`1.0`；(3) 浮点 → 整数是一元的 `floor`（`f32` `f64` 到 `i64`），`genericPercentile` 用它取 ⌊h⌋；`pow x i` 是 prim `xexp` 的
   `⟨x $ F, i $ F⟩xexp`（`TestFrameCols.framePow`）；`fround` 是一元的 `round`，半数取偶（`TestFrameCols.frameRound`）；
   (4) `aj` 的时间沿 `sums` 扫描：`date` `datetime` 的时间列运行（`TestFrameTyped.ajDateT` `sumsTimeT`），`f64` 的
-  时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
+  时间列被拒：`sums` 的位置对象须存成整数（`Prim.ord`、`QAtomicType.intOrd`），float 的 canon 序是位的序，不是值的整数序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
   分隔符是这个读写器的参数（F6b）：`csv` 后可写一个单字节的 char 字面量，`csv '\t'` 即 TSV，不写为 `,`；没有第二个读写器。
