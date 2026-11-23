@@ -97,20 +97,19 @@ end Arr
 /-- A nullable column of `n` elements of `t`: the side `t+1` (`Obj.sum (.atom t) .one`) as ONE column (design card
     "atom+1", decision K), `Arr t n` without its no-null clause. A null row holds its block's top residual
     (`Column.foRNul`), so a kernel moves and tests it on the encoding. -/
-abbrev Opt (t : QAtomicType) (n : USize) := {v : QValue // v.WFAt t n}
+abbrev Opt (t : QAtomicType) (n : USize) := {e : Enc // Enc.WF t n e}
 
 namespace Opt
 
 variable {t : QAtomicType} {n : USize}
 
 /-- The payload, as `Arr.enc`. -/
-def enc (x : Opt t n) : Enc := match x.1 with | .vector _ _ e _ => e | _ => .gen #[]
+def enc (x : Opt t n) : Enc := x.1
 
-theorem wf (x : Opt t n) : Enc.WF t n x.enc := by
-  obtain ⟨v, h⟩ := x; cases v <;> first | exact h.2.2 | exact h.elim
+theorem wf (x : Opt t n) : Enc.WF t n x.enc := x.2
 
 /-- `e` under the header `t`, `n`. -/
-def mk (e : Enc) (h : Enc.WF t n e) : Opt t n := ⟨.vector t n e none, ⟨rfl, rfl, h⟩⟩
+def mk (e : Enc) (h : Enc.WF t n e) : Opt t n := ⟨e, h⟩
 
 /-- A column with no null as a nullable one: `inl`, which leaves the storage as it is. -/
 def ofArr (x : Arr t n) : Opt t n := ⟨x.1, x.2.1⟩
