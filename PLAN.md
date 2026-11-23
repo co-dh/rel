@@ -516,15 +516,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   f32 不能——`stepAt .f32` 每步舍入到 f32，而 `kscan` 每行只折一个 `Op`，在 f64 上累加再舍入一次结果不同
   （2^24 + 1 + 1）；需 owner 裁定：加 `Op`、改 f32 的含义、或 f32 仍报错。库调用 `cumSum(f)`、`sumsBy(g, f)` 在 f64 上
   已是具名报错，不再是 internal。（f64 的 `sum`/`sums` 已由下面 S4e–S4g 做完；f32 见 fsum。）
-  fsum：f64 已完成（`sumTail` 的 `.f64` 分支，一次分段 `kscan .fadd`；`Tab.sum_holds`、`Tab.sums_holds`、
-  `sumsF_fold` 对左折叠 `foldDen … (stepAt t add)`；`TestFrameTyped.sumFloatT`/`sumsFloatT` 钉住左右结合不同的
-  `1, 1e16, −1e16`）。f32 仍按名报错（`sumsF32T`、新增 `sumF32T` 钉住 `sum` 的报错），因为一次 `kscan` 做不到：
-  `kscanRow` 的进位是 `post` 之前的答案，`pre`/`post` 链不作用在进位上，故 `pre [f32to64]` + `.fadd` + `post
-  [fto .f32]` 是在 f64 上累加、每行只舍入一次，`2^24 + 1 + 1` 得 `2^24+2`，而 `stepAt .f32 add` 的左折叠得 `2^24`。
-  所需 kernel 改动（需 owner 批准 kscan 签名）：`kscan` 加一条进位链 `carry : List (Op × UInt64)`，`kscanRow` 在
-  `op` 之后、写入 `out` 与作下一行进位之前作用（f32 为 `[(fto .f32, 0), (f32to64, 0)]`：每步舍入到 f32 再加宽），
-  Rust `qlean_k_scan` 同改；NaN 时 `fto` 给 `2^63`，加宽后不再是 NaN，故坏步须从 `fto` 的 `2^63` 判（同 f64 分支）。
-  之后 `sumAtoms` 加 `.f32`，`sumTail` 加 `.f32` 分支，`sumTail_fold` 的 f32 情形用 `ftoWord` 与 `fstep .f32` 一致。
+  fsum（owner 裁定 2026-11-22，选项 B）：float atom 一条规则——每个元素加宽到 f64，在 f64 上左折叠 `⦇0, fadd⦈`，
+  结果舍入一次到值 atom `V`，结果对象仍是 `V`（`Lang.fsumDen`/`sumDen`，`sumAt`、`sumsDen` 都读它）；`sums` 的每个
+  前缀值同样是 f64 累加值舍入一次到 `V`。f64 上舍入是恒等，结果不变；i64 不变。运行：`sumTailF`，一次分段
+  `kscan .fadd`，`pre (widen V)`、`post [fto V]`（进位是 `post` 之前的 f64 和），该行值为 `2^63`（NaN）即坏步；
+  旧 f64 的 `−0` 报错去掉（`fto` 已把 `−0` 写成 `+0`，与 `froundDen` 一致）。`sumAtoms = [i64, f32, f64]`。
+  universe 路径：定义 `⦇[0, plus]⦈` 每步舍入，与 `sumDen` 在 float atom 上不同，`DfnCut.sum` 要求 `t ∉ floatAtoms`
+  （`DfnLaw.sumDen_fold`）。测试 `TestFrameTyped.sumF32T`（f32 `[2^24, 1, 1] → 2^24+2`）、`sumF32T2`
+  （`0.1 + 0.2 → 0x3e99999a`）、`sumsF32T`（前缀 `2^24, 2^24, 2^24+2`）。
   S4e/S4f（分支 `tb-s4e`、`tb-s4f`，owner 裁定：float 求和自左向右，q 的顺序；f32 按名报错并给出 `$` 到 f64 的提示）：
   `sums` 的值对象为 i64 或 f64（`sumAtoms`）。`Tab.sumsOn` 对值 atom 泛型：f64 上一次分段 `kscan .fadd`（种子 `+0`），
   `W' = fto W`，`W' ≠ W` 或 NaN 为坏步，`−0` 报错，分段 `kscan .or` 传播后 `keep`。`sumsDen`/`sumsAt K P V` 泛型；

@@ -105,12 +105,19 @@ def diag (q : Tab k k → Except String (Tab k k)) (D : Tab k k) : Except String
 /-- **`R ⊑ S`**: `R − S` has no row. -/
 def le (R S : Tab k v) : Except String Bool := (fun D => D.n == 0) <$> diff R S
 
+/-- **The float sum within segments** (`Lang.sumDen` at the float atom `u`): one segmented `kscan .fadd` from the
+seed `z` (`+0`), each word of `v` widened to `f64` on load (`widen u`) and each answer rounded to `u` on store
+(`Op.fto u`), so the carry is the unrounded `f64` prefix sum and each row holds it rounded once; a row is bad (`1`)
+where that rounding is `2^63` (a NaN). -/
+def sumTailF (u : QAtomicType) (n : USize) (seg z v : Enc) : Except String (Arr u n × Enc) := do
+  let W ← scanArr .fadd false u u n seg [z, v] (widen u) [(.fto u, 0)]
+  pure (W, ← colMap .first n W.enc W.enc .i64 .i64 [] [(.eq, 0x8000000000000000)])
+
 /-- **The left-to-right sum within segments, and its bad rows** (`sumsOn` per key, `sum` per cell): one `kscan` from `0`
 over `v` within the segments `seg` (`1` opens one) is each row's prefix sum `W`, a column of `u`. A row is bad (`1`)
 where its step is not `stepAt u add`: at `i64` it wrapped (`v` and `W − v` of one sign, `W` of the other) or reads or
-makes the null `-2^63`; at `f64` the `fto` `W'` of the IEEE sum `W` is not `W` or is `2^63` (a NaN). A `W'` that is
-neither (a `-0`, which no sum from `+0` of canonical words makes) is the error, never a bad row: `stepAt` would hold
-it. Other atoms have no sum here: the error names the cast. -/
+makes the null `-2^63`; at a float atom (`sumTailF`) its value rounded once from the `f64` sum is `2^63` (a NaN).
+Other atoms have no sum here: the error names the cast. -/
 def sumTail (what : String) (u : QAtomicType) (n : USize) (seg v : Enc) : Except String (Arr u n × Enc) := do
   let z ← colConst n 0
   match u with
@@ -124,15 +131,9 @@ def sumTail (what : String) (u : QAtomicType) (n : USize) (seg v : Enc) : Except
     let bad ← colMap .or n ovf (← colMap .or n (← colMap .first n W W .i64 .i64 [] [(.eq, 0x8000000000000000)])
       (← colMap .first n v v .i64 .i64 [] [(.eq, 0x8000000000000000)]))
     pure (← colArr .add n W z, bad)
-  | .f64 =>
-    let W := (← kscan .fadd false .i64 .i64 n seg [z, v]).1
-    let W' ← colArr (.fto .f64) n W W .f64
-    let ne ← colMap .ne n W'.enc W
-    let nan ← colMap .first n W'.enc W'.enc .i64 .i64 [] [(.eq, 0x8000000000000000)]
-    let (k, _) ← whereCol n (← colMap .and n ne (← colMap .not n nan nan))
-    if k ≠ 0 then throw s!"{what}: an f64 prefix sum is -0, which no sum of canonical words from +0 makes"
-    pure (W', ← colMap .or n ne nan)
-  | u => throw s!"{what}: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+  | .f32 => sumTailF .f32 n seg z v
+  | .f64 => sumTailF .f64 n seg z v
+  | u => throw s!"{what}: values of {repr u} have no sum here; cast them to f32, f64 or i64 first (x $ F)"
 
 /-- **q's `sums` per key** (`rowDens`: `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`): `canon` sorts `x` by
 `(κ, ν)`, so each key `κ` is one run; `kseen` on the whole key checks `x` simple (one value per `(κ, ν)`, else the
@@ -160,9 +161,9 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
 /-- **`sums` at the position object `P`, the value object `V`**: `sumsOn` where `P` is an integer-stored atom
 (`intOrd`), whose canon order is its value order, and `V` an atom; the error at any other object. -/
 def sums {K : Obj} : {P V : Obj} → Tab (.prod K P) V → Except String (Tab (.prod K P) V)
-  | .atom t, .atom .i64, x | .atom t, .atom .f64, x =>
+  | .atom t, .atom .i64, x | .atom t, .atom .f32, x | .atom t, .atom .f64, x =>
     if t.intOrd then sumsOn x else throw s!"sums: positions of {repr t} are not ordered by value"
-  | .atom _, .atom u, _ => throw s!"sums: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+  | .atom _, .atom u, _ => throw s!"sums: values of {repr u} have no sum here; cast them to f32, f64 or i64 first (x $ F)"
   | .atom _, .prod .., _ | .atom _, .sum .., _ | .atom _, .arr _, _ | .atom _, .one, _ =>
     throw "sums: the values are no atom"
   | .prod .., _, _ | .sum .., _, _ | .arr _, _, _ | .one, _, _ => throw "sums: the positions are no atom"

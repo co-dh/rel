@@ -24,6 +24,24 @@ def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAto
   | .ok o => .ok (Arr.mk o (colMap_closed h).2 (colMap_plain h))
   | .error s => .error s
 
+/-- The `kscan` chain taking a word of the atom `t` to the word its verbs and orders compute on: an `f32` word widened to
+    `f64` (`Op.f32to64`, `fval`); `i64` and `f64` as stored; any other ordered atom to the `i64` word of its value
+    (`Op.cast r .i64`, `r` its `ordNum`: `iordAt`); any other as stored. -/
+def widen (t : QAtomicType) : List (Op × UInt64) :=
+  match t with
+  | .f32 => [(.f32to64, 0)]
+  | .i64 | .f64 => []
+  | t => match t.ordNum with
+    | some r => [(.cast r .i64, 0)]
+    | none => []
+
+/-- `kscan`'s answer as an `Arr t n`, well formed at `t` (`kscan_closed`). -/
+def scanArr (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : Option Enc) (es : List Enc)
+    (pre post : List (Op × UInt64) := []) : Except String (Arr t n) :=
+  match h : kscan op rev s t n seg es pre post with
+  | .ok r => .ok (Arr.mk r.1 (kscan_closed h).2.1 (kscan_closed h).2.2)
+  | .error s => .error s
+
 /-- **`colArr` is `colMap`** on the array's column. -/
 theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
     {w : Arr t n} (h : colArr op n a b t s pre post = .ok w) : colMap op n a b t s pre post = .ok w.enc := by
