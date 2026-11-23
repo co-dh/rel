@@ -282,8 +282,9 @@ at `s`. Each source is a count `nⱼ` of rows and a column (`kscanCols`: all `n`
 `es` is the seed a segment starts from and the others are folded into each row. So a map is every row a segment
 (`out[i] = op(a[i], b[i])`), a scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e`
 forward from the marked rows. A stream (`kscanStream`) is the one scan of the sources in order, the concatenation of
-the columns: a null row of a source is a null row of the answer, its flag carried as `seg` carries the word, and every
-other call refuses a null source row.
+the columns: a null row of a source is a null row of the answer, its flag carried as `seg` carries the word. `min`/`max`
+(`Op.nulFold`) read a null row as the identity of their order (`nulFillOf`) and flag the answer's row as `min`/`max` of
+nulls: `max(0N,5) = 5`, `min(0N,5) = 0N`, `max(0N,0N) = 0N`. Every other call refuses a null source row.
 **Owner approval A, 2026-11-20: per-row Op chain.** Each word read from `es` first goes through `chain pre` and each
 answer word through `chain post`; the fold's carry is the answer before `post`. So an element-wise computation of several
 `Op`s — widen on load, the verb, `fto`, a compare against a constant — is one pass writing one encoded column, never an

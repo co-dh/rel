@@ -54,12 +54,12 @@ def floatOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String 
   match floatOps.lookup s, A, B, X with
   | some (o, _), .atom t, .atom u, X =>
     if o.readsAcc = false ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
-      let (w, flag) ← fmapCols t u o n X.enc X.enc
+      let (w, flag) ← fmapCols t u o n X X
       Tab.keep (k := .atom t) (v := .atom u) ⟨n, X, w⟩ flag
     else .error s!"{s} runs from a float object to a number object, found {repr t} to {repr u}"
   | some (o, _), .prod (.atom t) (.atom t'), .atom u, X =>
-    if o.readsAcc = true ∧ t = t' ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
-      let (w, flag) ← fmapCols t u o n X.1.enc X.2.enc
+    if h : o.readsAcc = true ∧ t = t' ∧ (t = .f32 ∨ t = .f64) ∧ u.storeFmt?.isSome then do
+      let (w, flag) ← fmapCols t u o n X.1 (h.2.1 ▸ (X.2 : Arr t' n))
       Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ flag
     else .error s!"{s} runs from a pair of one float object to a number object, found {repr t}×{repr t'} to {repr u}"
   | some _, _, _, _ => .error s!"{s} runs from a float object, or a pair of one, to a number object"
