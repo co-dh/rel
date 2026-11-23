@@ -408,7 +408,10 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
   | .sum a b, es => match hb : Obj.band a b, es with
     | some t, (k, e) :: es => match Ext.Enc.wf? t k e with
       | some ⟨h⟩ => pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
-      | none => .error s!"{path}: a 1+{repr t} column part of {k} rows that is not well-formed"
+      -- `wf?` reads the blocks only, and a `u1` block holding a null is widened to width 2, whose residual `2` only
+      -- the elements rule out (`Opt.ofAtoms`): `Enc.WF` itself is decided there
+      | none => if h : Ext.Enc.WF t k e then pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
+        else .error s!"{path}: a 1+{repr t} column part of {k} rows that is not well-formed"
     | some t, [] => .error s!"{path}: no column part left for a 1+{repr t} column"
     | none, es => do
     let ⟨n, tag, es⟩ ← encArr path .u1 es
@@ -431,6 +434,11 @@ def atomCount : Obj → Option Nat
 def swapTag : USize × Enc → Except String (USize × Enc)
   | (n, t) => return (n, ← colMap .first n t t .u1 .i64 [] [(.not, 0)])
 
+/-- The CSV shape of each nullable column of a `1+S` (`Obj.opt S`): the one column `opt` where `1+S` is in-band
+    (`Obj.band`), else one `null` column per atom of `S`. The one decision every CSV reader and writer reads
+    (`Expand.ioCols`, `toCsv`, `ofCsv`), so the header and the parts cannot disagree. -/
+def nullShape (S : Obj) : Db.CsvShape := if (Obj.band .one S).isSome then .opt else .null
+
 /-- The parts of a side of object `A`, `ps` in `cols`' order, as its CSV columns' parts (`Db.CsvShape.atoms`), with
     the parts left over. A nullable `1+S` (`Obj.opt`, `Expand.csvLeaves`) is one nullable column per atom of `S`, each
     with its own copy of the sum's tags (`swapTag`), positions and null values; every other part as it lies. -/
@@ -440,12 +448,16 @@ def toCsv (path : String) : Obj → List (USize × Enc) → Except String (List 
   | .arr (.atom _), lo :: hi :: e :: ps => pure ([lo, hi, e], ps)
   -- the column of a `1` is its one element's name in every row
   | .one, x :: ps => pure ([x], ps)
-  -- the left side's `1` part is dropped: a null is an empty field
-  | .opt a, t :: i :: _ :: ps => match atomCount a with
-    | some k => if k ≤ ps.length then do
-        let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
-      else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
-    | none => .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+  -- the in-band `1+V` (`Obj.band`) is its one `Opt` part, the CSV column of shape `opt` as it lies; any other `1+S`
+  -- drops its left side's `1` part: a null is an empty field
+  | .opt a, ps => match nullShape a, ps with
+    | .opt, x :: ps => pure ([x], ps)
+    | .null, t :: i :: _ :: ps => match atomCount a with
+      | some k => if k ≤ ps.length then do
+          let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
+        else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
+      | none => .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+    | _, _ => .error s!"{path}: too few parts for a `1+S`"
   | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 
 /-- `k` groups of three parts from the front of `cs` (one CSV nullable column's tags, positions, values), and the
@@ -464,7 +476,10 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
   | .prod a b, cs, ns => do
     let (x, cs, ns) ← ofCsv path a cs ns; let (y, cs, ns) ← ofCsv path b cs ns; pure (x ++ y, cs, ns)
   | .arr (.atom _), lo :: hi :: e :: cs, _ :: ns => pure ([lo, hi, e], cs, ns)
-  | .opt a, cs, ns => do
+  | .opt a, cs, ns => if nullShape a = .opt then match cs, ns with
+      | x :: cs, _ :: ns => pure ([x], cs, ns)
+      | _, _ => .error s!"{path}: no column part or header name left for a nullable column"
+    else do
     let some k := atomCount a | .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
     let some ((t, i, v) :: g, cs) := triples k cs | .error s!"{path}: too few column parts for {k} nullable columns"
     let some c := ns.head? | .error s!"{path}: no header name left for a nullable column"
@@ -496,8 +511,8 @@ def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) �
       let (es, D) ← internCsv path D cols es
       pure ((n, y.enc) :: es, D)
     else do
-      let (rest, D) ← internCsv path D cols (es.drop s.parts)
-      pure (es.take s.parts ++ rest, D)
+      let (rest, D) ← internCsv path D cols (es.drop s.encs)
+      pure (es.take s.encs ++ rest, D)
 
 /-- The CSV file `path` as the table `K ⟶ S`, its symbol columns interned into the database's dictionary `D`, its
     header `cols` (the key's columns then the value's, `Db.CsvCols`), its fields split at `sep` (`,` CSV, `\t` TSV), each column read straight into its encoding
@@ -546,7 +561,7 @@ def decodeCsv (path : String) (ds : Option Dict) : Db.CsvCols → List (USize ×
       let some D := ds | .error s!"{path}: the symbol column '{c}' and no dictionary"
       let x ← decode s!"{path}: column '{c}'" D (← Arr.of .sym k e s!"{path}: column '{c}'")
       pure ((← csvEncs path x) ++ (← decodeCsv path ds cols es))
-    else do pure (es.take s.parts ++ (← decodeCsv path ds cols (es.drop s.parts)))
+    else do pure (es.take s.encs ++ (← decodeCsv path ds cols (es.drop s.encs)))
 
 /-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsvDict`: its header `cols`, then each row's
     key columns and value columns, written from their encodings (`Db.csvWrite`), a symbol column as its texts through

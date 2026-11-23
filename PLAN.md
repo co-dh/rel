@@ -1491,6 +1491,24 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `Vals.cols_wf` 的 `hasNul c.2 = false` 在 `.opt` 支为假，需弱化并让 `sorted_key`/`nub_*` 链接受带 null 的键列；
       缺 `Opt.gather_row`（`kgather` 搬 null 位）、`Opt` 版 `Arr.eq_of_codes`/`codes_of_eq`（`nulCodes_row`）；
       `row_of_codes`/`codes_of_row` 的 sum 支尚未改成 `s.view` 形。
+    - 🔄 nullband3c（部分）：CSV 3 → 1 的 Lean 一侧。`Db.CsvShape` 加 `opt`：`1+V` 整个 side 是 band（`Obj.band`）时，
+      CSV 列就是那一个 `Opt` 列（一个编码，空字段 = 块内 null 码）；模型里它是两个字部分（值、`foRNuls` 形式的 null
+      标志），`csvRead` 用 `wordsFoR v (nulMap f)` 合成一个编码，`raws` 把一个编码读成 `rawAll` + `foRNuls`；
+      `CsvShape.encs`（编码数）与 `parts`（字部分数）分开，`arity` 带计数函数。`.null`（tag/idx/值）只留给 `S` 有多列的
+      `1+S`。`Table.toCsv`/`ofCsv` 的 band 支原样传一个部分，`internCsv`/`decodeCsv` 按 `encs` 切；`Expand.csvLeaves`
+      每个叶子带 `whole`（叶子就是 `b` 本身），`ioCols` 在 `whole` 且 `Obj.band` 有值时选 `opt`。`csvWords_csvText`
+      陈述不变（`Rel.KernelSpec.Csv` 已建）。未做：Rust `crate/src/csv.rs` 的 `SH_OPT = 3`（读：值按 null 位图写进一个
+      编码，`Sink::write_nul`；写：每块读值与 null 标志）及 FFI——在此之前 extern 把 `opt` 当 atom；`CsvTest` 的 `opt`
+      用例；`TestNullband` 往返（`1+i64`、`1+u1`、跨块 gather/concat、CSV 写读）。
+    - ✅ nullband3c2/3c3：Rust `csv.rs` `SH_OPT = 3`（读：lex 时记 null 位图，`Sink::answer_nul` 写成一个编码；写：每块读值与
+      `foRNuls`），FFI 拒绝未知 shape；`Rel.Kernel.Db.CsvTest` 把 extern 与 `csvEncs`/`csvText` 并排（`1+i64`、`1+u1`，
+      7 行与 5000 行、全 null、无 null、拒绝）。可空列的 CSV shape 只在一处决定：`Table.nullShape S`（`1+S` 是 band 时
+      `opt`，否则 `null`），`Expand.ioCols`（表头）、`toCsv`、`ofCsv` 都读它；`csvLeaves` 的叶子带所属 `1+S` 的 `S`（取代
+      `whole`，它对 schema 字段恒为 false，`px : 1+N` 因此表头是 `.null`、部分是 `.opt`，即 TestIO 的 "2 column parts past
+      the schema"）。TestIO 读回改用 `Table.nullShape .long`（`.null` → `opt`，读回值不变）。`encVals` band 支：`Enc.wf?`
+      只看块元数据，带 null 的 `u1` 块宽度为 2，被拒，此时如 `Opt.ofAtoms` 判定 `Enc.WF` 本身。`TestNullband`：`1+N` 程序
+      往返；`1+u1`（语言里无 `u1` 对象，直接调 `readCsvDict`/`writeCsv`）往返；键 `1+N` 的 5000 行读入后 null 键在前、值经
+      gather 跨块；两个 5000 行无 null 列 concat 成 10000 行，两边都有 null 时报 `Opt.concat` 的错。已入 `AllPrograms`。
     - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
       3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
     ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序

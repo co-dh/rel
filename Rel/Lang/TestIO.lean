@@ -292,7 +292,7 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
   csvNullIO.io
   let out ← IO.FS.readFile (d ++ "/out.csv")
   let (back, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] [("name", .arr (.atom .char)), ("px", .opt .long)]
-    [("name", .text, .char, []), ("px", .null, .i64, [])] (d ++ "/out.csv")
+    [("name", .text, .char, []), ("px", Table.nullShape .long, .i64, [])] (d ++ "/out.csv")
   IO.FS.removeDirAll d
   return (out, back.toList)
 
