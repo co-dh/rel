@@ -39,7 +39,7 @@ theorem Opt.get_nulWords {t : QAtomicType} {n : USize} (x : Opt t n)
     cases hc : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i
     · exact absurd (Option.some.inj (((Opt.isNul_eq_false _ i).1 hc).symm.trans hf)) (by decide)
     · rfl
-  simp only [Opt.get, hn, if_true]
+  simp only [Opt.get_eq, hn, if_true]
 
 /-- **Every row of `Opt.nuls t n` is the null** (`Opt.get_nulWords`). -/
 theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
@@ -79,8 +79,8 @@ theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t
   · subst hg
     unfold Opt.fill at h
     cases h
-    simp only [Opt.get, Opt.isNul, Opt.enc, Bool.false_eq_true, if_false, Opt.filler, Option.some.injEq]
-    simp [Arr.get, Arr.enc, Arr.mk]
+    simp only [Opt.get_eq, Opt.isNul, Opt.isNulWith, Opt.enc, Bool.false_eq_true, if_false, Opt.filler, Option.some.injEq]
+    simp [Arr.get, Arr.getWith, Arr.enc, Arr.mk]
   · rw [Opt.get_nulWords _ (Opt.fill_enc hg h) i, Opt.filler_ne hg]
 
 /-- **`Vals.lift` reads as `x`**: each `Opt.ofArr` holds `some` of the `Arr`'s element (`Opt.get_ofArr`). -/
@@ -871,7 +871,7 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
         have hnn : x.isNul i = false := by
           cases hc : x.isNul i
           · rfl
-          · simp [Opt.get, hc] at hxi
+          · simp [Opt.get_eq, hc] at hxi
         have hi0 : (Enc.raw .i64 n Fb.1)[i.1]?.getD 0 ≠ 0 := by
           rw [hword i.1 i.2, if_pos ((hnul i).1 hnn)]; decide
         have hm : i.1 ∈ (Enc.raw .i64 M sel).toList.map UInt64.toNat := by

@@ -179,6 +179,11 @@ def getWith (starts : Array Nat) (x : Opt t n) (i : Fin n.toNat) : Option (El t)
 /-- Row `i` of a single read: no hoisted block starts. -/
 def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) := x.getWith #[] i
 
+/-- `get`'s body at the single-read `#[]`: the null test, else the element read back at `t`. -/
+theorem get_eq (x : Opt t n) (i : Fin n.toNat) : x.get i = if x.isNul i then none else some (match t, x with
+    | .general, x => Arr.get (Arr.mk x.enc x.wf x.plain_general) i
+    | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default) := rfl
+
 /-- The nullable column of `xs`, `none` the null: the values' dense bytes (a null's `0`, never read) and the bitmap of
     the null rows through the one writer `Coc.encode`. `Enc.WF` is decided, never assumed; `none` where an atom is not
     at `t`, or at `general`, whose payload has no block to hold a null. -/
