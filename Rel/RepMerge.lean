@@ -601,4 +601,56 @@ theorem mpos_inj {n d : Nat} {t : Nat → Nat} (hm : ∀ j j', j ≤ j' → t j 
       · have := hm _ _ (Nat.le_of_lt h); omega
       · have := hm _ _ (Nat.le_of_lt h); omega
 
+/-- **An injective self-map of `[0, N)` is onto** (pigeonhole). -/
+theorem surj_of_inj (N : Nat) (f : Nat → Nat) (hb : ∀ q < N, f q < N)
+    (hi : ∀ q q', q < N → q' < N → f q = f q' → q = q') : ∀ p < N, ∃ q < N, f q = p := by
+  intro p hp
+  refine Classical.byContradiction fun hne => ?_
+  have hnd : ((List.range N).map f).Nodup := by
+    unfold List.Nodup
+    rw [List.pairwise_map]
+    exact List.Pairwise.imp_of_mem (fun {a b} ha hb hab e =>
+      Nat.ne_of_lt hab (hi a b (List.mem_range.1 ha) (List.mem_range.1 hb) e)) List.pairwise_lt_range
+  have := nodup_length_le hnd fun x hx => by
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hx
+    have hq := List.mem_range.1 hq
+    exact (List.mem_erase_of_ne (fun e => hne ⟨q, hq, e⟩)).2 (List.mem_range.2 (hb q hq))
+  rw [List.length_erase_of_mem (List.mem_range.2 hp)] at this
+  simp at this; omega
+
+/-- **The merge is sorted**: rows `vr` placed by `mpos` from the ascending `xr` (`n` rows) and `ur` (`d` rows), where
+`xr i < ur j` iff `i < t j`, form an ascending row list. -/
+theorem merge_sorted {E : Type} (lt : E → E → Prop) {n d : Nat} {t : Nat → Nat} (hm : ∀ j j', j ≤ j' → t j ≤ t j')
+    (ht : ∀ j, j < d → t j ≤ n) (xr ur vr : Nat → E) (hxs : ∀ i i', i < i' → i' < n → lt (xr i) (xr i'))
+    (hus : ∀ j j', j < j' → j' < d → lt (ur j) (ur j'))
+    (hxu : ∀ i j, i < n → j < d → i < t j → lt (xr i) (ur j))
+    (hux : ∀ i j, i < n → j < d → t j ≤ i → lt (ur j) (xr i))
+    (hv : ∀ q, q < n + d → vr (mpos n d t q) = if q < n then xr q else ur (q - n)) :
+    ∀ p p', p < p' → p' < n + d → lt (vr p) (vr p') := by
+  intro p p' hpp hp'
+  obtain ⟨hb, hi⟩ := mpos_inj hm ht
+  have hsurj := surj_of_inj (n + d) (mpos n d t) hb hi
+  obtain ⟨q, hq, rfl⟩ := hsurj p (by omega)
+  obtain ⟨q', hq', rfl⟩ := hsurj p' hp'
+  rw [hv q hq, hv q' hq']
+  by_cases h1 : q < n <;> by_cases h2 : q' < n
+  · simp only [mpos, if_pos h1, if_pos h2] at hpp
+    rw [if_pos h1, if_pos h2]
+    have : q < q' := Classical.byContradiction fun hn => by
+      have := cntLe_mono (d := d) (t := t) (show q' ≤ q by omega); omega
+    exact hxs q q' this h2
+  · simp only [mpos, if_pos h1, if_neg h2] at hpp
+    rw [if_pos h1, if_neg h2]
+    refine hxu q (q' - n) h1 (by omega) (Classical.byContradiction fun hn => ?_)
+    have := le_cntLe hm (show q' - n < d by omega) (show t (q' - n) ≤ q by omega); omega
+  · simp only [mpos, if_neg h1, if_pos h2] at hpp
+    rw [if_neg h1, if_pos h2]
+    refine hux q' (q - n) h2 (by omega) (Classical.byContradiction fun hn => ?_)
+    have := cntLe_lt (d := d) hm (show q' < t (q - n) by omega); omega
+  · simp only [mpos, if_neg h1, if_neg h2] at hpp
+    rw [if_neg h1, if_neg h2]
+    have : q - n < q' - n := Classical.byContradiction fun hn => by
+      have := hm _ _ (show q' - n ≤ q - n by omega); omega
+    exact hus _ _ this (by omega)
+
 end Rel
