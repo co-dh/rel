@@ -194,6 +194,8 @@ theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {f s : Bool} (ht : ascLayout
 #guard (Obj.arr .long).key ([] : List Int64) < (Obj.arr .long).key ([1] : List Int64)
 #guard (Obj.arr .long).key ([1] : List Int64) < (Obj.arr .long).key ([1, 0] : List Int64)
 #guard (Obj.atom .i64).key (-1 : Int64) < (Obj.atom .i64).key (0 : Int64)
+-- q's `asc 3 0N`: the null `inr ∗` of `atom+1` before every value
+#guard (Obj.sum (.atom .i64) .one).key (.inr ()) < (Obj.sum (.atom .i64) .one).key (.inl (3 : Int64))
 #guard (Obj.atom .sym).key (0 : UInt64) < (Obj.atom .sym).key (1 : UInt64)
 -- a float by its bits: `-1.0 < -0.0 < 0.0 < 1.0`, the two zeros two keys
 #guard (Obj.atom .f64).key (0xbff0000000000000 : UInt64) < (Obj.atom .f64).key (0x8000000000000000 : UInt64)

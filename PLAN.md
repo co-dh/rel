@@ -1423,16 +1423,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     主人定（null 次序，随 q）：null 小于每个值，`atom+1` 上 `inr ∗ < inl a`（q 的 `asc 3 0N 1` 是 `0N 1 3`），doc §4
     "atom+1" 卡片已改。主人定 O：null 码从块的顶残差移到残差 0（带标志块里值存成残差 + 1），块内比码即 null 在前；
     `nullbot` 改 `foRNul` 与 Rust，其他证明与 `#guard` 只经 `foRNul`/`Opt.isNul`。
-    剩（随 q 次序）：`Obj.key` 的 `.sum` 今天是 `inl ↦ 0 ::`、`inr ↦ 1 ::`（`Obj.lt_inl_inr`），对 `A+1` 是 null 在后；
-    `Vals.cols` 的 sum 键列是 `tag`（`inl` = false 在前），`Vals.lt_of_codes` 的 sum 支（`RepOrder` ~197–242）经
-    `Arr.lt_of_codes tag` 证它。改法（一般的，不特判 `.one`）：每个 sum `inr` 在前——`Obj.key` 换成 `inl ↦ 1 ::`、
-    `inr ↦ 0 ::`，`cols` 的键列用 `colMap .not` 的 `¬tag`（已算出），`RepOrder`/`RepCanon` 的 sum 支随之改；
-    `Vals` 换 `Opt` 之后 `atom+1` 的键是 `nulCodes`，已是 null 在前，与之一致。
-    nullband3（未开工，被上一步挡住）：`Vals (.sum (.atom t) .one) := Opt t n` 要先做"随 q 次序"这一步。今天
-    `Obj.key` 是 `inl` 在前，而 `Opt` 列的 `seenKey`（`nulWords`）把 null 排前，`Vals.lt_of_codes` 的 `atom+1` 支是假命题：
-    `i64+1` 列 `3 0N`，码说行 1 < 行 0，要证 `Obj.lt (inr ∗) (inl 3)` 即 `[1] < [0, ord 3]`。该步还缺 `colMap .not` 在
-    `u1` 列上的读法引理（结果 `Enc.WF .u1`、元素 = `!tag.get`）；`Vals.cols_sum`、`lt_of_codes`、`row_of_codes`、
-    `codes_of_row` 的 sum 支随之改。之后才是 `Vals` 换 `Opt`：`.sum a b` 对变量 `a b` 不再归约，约 90 处匹配各加一支。
+    ✅ nullorder（随 q 次序，一般的，不特判 `.one`）：每个 sum `inr` 在前。`Obj.key` 是 `inl ↦ 1 ::`、`inr ↦ 0 ::`
+    （`Obj.lt_inr_inl` 取代 `lt_inl_inr`）；`Vals.cols` 的 sum 键列是 `colMap .not … .u1` 的 `¬tag`，`tag` 本身由
+    `foROk` 查（`kasc` 不再读它）；新引理 `colMap_not_u1`（`RepCanon`：结果是 `Arr .u1 n`、元素 = `!tag.get`）；
+    `Vals.cols_sum` 给出 `nt` 与 `Valid tag`，`lt_of_codes`/`row_of_codes`/`codes_of_row`/`cols_wf`/
+    `gather_ok_of_cols` 随之改。`ObjOrder` 加 `#guard`：`i64+1` 上 `inr ∗` 的键小于 `inl 3`。所建测试模块无钉住的
+    sum 次序要改。`Vals` 换 `Opt` 之后 `atom+1` 的键是 `nulCodes`，已是 null 在前，与之一致。
+    ⬜ nullband3（下一步，不再被挡）：`Vals (.sum (.atom t) .one) := Opt t n`。`.sum a b` 对变量 `a b` 不再归约，约 90
+    处匹配各加一支。分部分做，每部分一个 agent、各自建绿：
+    - nullband3a：`Run/Core`（`Vals`、`row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`）+ `Gather` +
+      `TestNullband`。
+    - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
+      3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`
