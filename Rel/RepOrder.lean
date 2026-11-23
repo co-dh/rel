@@ -73,26 +73,65 @@ theorem Obj.lt_arr_of (b : Obj) : ∀ (p : Nat) (xs ys : List b.El), (∀ q < p,
     exact (Obj.lt_cons b x x xs ys).2 (.inr ⟨rfl, Obj.lt_arr_of b p xs ys
       (fun q hq => by simpa using he (q + 1) (by omega)) (by simpa using h)⟩)
 
-/-- **One column's codes order its elements**: where `kasc` reads `x`, row `i`'s code below row `i'`'s is `x`'s
-element at `i` below its element at `i'`, since an atom's key is its code (`Obj.key_ordCode`). -/
+/-- **A nullable column's codes order its rows as `1+t`**: row `q`'s codes (`nulCodes`) are `[0, 0]` at a null and
+`(if hasNul then [1] else []) ++ [code]` elsewhere, while `Obj.key` of `1+t` is `[0]` at the null (`inl ()`) and
+`1 :: [code]` at a value (`inr`, `Obj.key_ordCode`): so code order is key order, the null least. -/
+theorem Opt.lt_of_codes {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
+    (hc : [(.atom t, x.enc)].mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat)
+    (h : (seenKey n [(.atom t, x.enc)] i).map UInt64.toNat < (seenKey n [(.atom t, x.enc)] i').map UInt64.toNat) :
+    (Obj.opt (.atom t)).lt ((x.get i).elim (.inl ()) .inr) ((x.get i').elim (.inl ()) .inr) := by
+  obtain ⟨hlen, hf⟩ := mapM_ok hc
+  have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
+  obtain ⟨hraw, hsz, -, hat⟩ := ascCol_ok hac
+  obtain ⟨f, hof⟩ := hat t rfl
+  have hv := ascCol_valid hac
+  dsimp only at hv hraw
+  have hs : (Enc.raw .i64 n x.enc).size = n.toNat := by rw [← hraw]; exact hsz
+  obtain ⟨⟨w, fl, s⟩, hl, rfl⟩ := Option.map_eq_some_iff.1 hof
+  have hg : t ≠ .general := by rintro rfl; simp [ascLayout, orderKind] at hl
+  -- each row: the null, codes `[0, 0]` and key `[0]`; or a value, its codes ending in its code `c`, key `[1, c]`
+  have row : ∀ q : Fin n.toNat,
+      (hasNul x.enc = true ∧ (seenKey n [(.atom t, x.enc)] q).map UInt64.toNat = [0, 0] ∧
+        (Obj.opt (.atom t)).key ((x.get q).elim (.inl ()) .inr) = [0]) ∨
+      ∃ c, (seenKey n [(.atom t, x.enc)] q).map UInt64.toNat = (if hasNul x.enc then [1] else []) ++ [c] ∧
+        (Obj.opt (.atom t)).key ((x.get q).elim (.inl ()) .inr) = [1, c] := fun q => by
+    have hw := Array.getElem?_eq_getElem (show q.1 < _ by rw [hs]; exact q.2)
+    rw [Opt.get_ne x q hg]
+    simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, hof, Option.getD_some, List.append_nil]
+    cases hn : x.isNul q
+    · have h0 := (Opt.isNul_eq_false x q).1 hn
+      obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hv hg q h0
+      rw [hw] at ha; cases ha
+      refine .inr ⟨(ordCode w fl s (Enc.raw .i64 n x.enc)[q.1]).toNat, ?_, ?_⟩
+      · cases hasNul x.enc <;> simp [Array.getElem?_mapIdx, hw, h0]
+      · simp only [Bool.false_eq_true, if_false, Option.elim, ex]
+        show 1 :: _ = _; rw [Obj.key_ordCode hl hg _ hua]
+    · have h1 : (foRNuls n x.enc)[q.1]? = some 1 := by
+        have e1 := foRNuls_bit n x.enc q.2
+        have e2 : (foRNuls n x.enc)[q.1]? ≠ some 0 := fun e => absurd ((Opt.isNul_eq_false x q).2 e) (by simp [hn])
+        rw [e1] at e2 ⊢; split at e2 <;> simp_all
+      have hN : hasNul x.enc = true := by
+        cases hN : hasNul x.enc; · rw [foRNuls_plain x.wf hN q.2] at h1; cases h1
+        rfl
+      refine .inl ⟨hN, ?_, rfl⟩
+      simp [hN, Array.getElem?_mapIdx, hw, h1]
+  show Obj.key _ _ < Obj.key _ _
+  rcases row i with ⟨-, ci, ki⟩ | ⟨c, ci, ki⟩ <;> rcases row i' with ⟨hN', ci', ki'⟩ | ⟨c', ci', ki'⟩ <;>
+    rw [ci, ci'] at h <;> rw [ki, ki']
+  · exact absurd h (List.lt_irrefl _)
+  · exact List.cons_lt_cons_iff.2 (.inl Nat.zero_lt_one)
+  · rw [hN'] at h; rcases List.cons_lt_cons_iff.1 h with h | ⟨h, -⟩ <;> omega
+  · refine List.cons_lt_cons_iff.2 (.inr ⟨rfl, ?_⟩)
+    split at h <;> simpa using h
+
+/-- **One column's codes order its elements**: `Opt.lt_of_codes` at a column with no null, every row `inr`. -/
 theorem Arr.lt_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
     (hc : [(.atom t, x.enc)].mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat)
     (h : (seenKey n [(.atom t, x.enc)] i).map UInt64.toNat < (seenKey n [(.atom t, x.enc)] i').map UInt64.toNat) :
     (Obj.atom t).lt (x.get i) (x.get i') := by
-  obtain ⟨hlen, hf⟩ := mapM_ok hc
-  have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
-  obtain ⟨-, -, -, hat⟩ := ascCol_ok hac
-  obtain ⟨f, hof⟩ := hat t rfl
-  have hv := ascCol_valid hac
-  obtain ⟨⟨w, fl, s⟩, hl, rfl⟩ := Option.map_eq_some_iff.1 hof
-  have hg : t ≠ .general := by rintro rfl; simp [ascLayout, orderKind] at hl
-  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hv hg i
-  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom x hv hg i'
-  simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, Arr.plain, Bool.false_eq_true, if_false, List.nil_append,
-    List.append_nil, List.map_cons, List.map_nil, hof, Option.getD_some,
-    Array.getElem?_map, ha, hb, Option.map_some] at h
-  show Obj.key _ _ < Obj.key _ _
-  rw [ex, ey, Obj.key_ordCode hl hg a hua, Obj.key_ordCode hl hg b hub]; exact h
+  have hl := Opt.lt_of_codes (Opt.ofArr x) hc i i' h
+  rw [Opt.get_ofArr, Opt.get_ofArr] at hl
+  exact (Obj.lt_inr _ _ _ _).1 hl
 
 /-- **Codes below, element below**, over any side whose columns `kasc` reads: row `i`'s codes (`seenKey`) below row
 `i'`'s in the lexicographic order make `x`'s row `i` below its row `i'` in `Obj.lt`. -/
@@ -189,19 +228,25 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
       · exact elem q hqp h1 ((flag q hqp).1 h1)
       · have h2 := mt (flag q hqp).2 h1
         rw [List.getElem?_eq_none (by rw [len]; omega), List.getElem?_eq_none (by rw [len]; omega)]
-  | .sum a b, n, ⟨l, r, tag, idx, x, y⟩, hw, es, hes, cs, hc, i, i', h => by
-    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
+  | .sum a b, n, s, hw, es, hes, cs, hc, i, i', h => by
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩
+    · simp only [Vals.cols, hv, Except.ok.injEq] at hes; subst hes
+      obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+      have e : ∀ v, Obj.optEl hb v = v.elim (.inl ()) .inr := fun v => by
+        unfold Obj.optEl; generalize Obj.band_some hb = p; obtain ⟨p1, p2⟩ := p; cases v <;> rfl
+      simp only [Vals.row, hv, e]
+      exact Opt.lt_of_codes x hc i i' h
+    simp only [Vals.WF, hv] at hw
+    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
-    obtain ⟨hv, heq⟩ := Arr.eq_of_codes tag hc0
-    obtain ⟨xl0, xg, yl0, yg⟩ := hrest hv
+    obtain ⟨hvt, heq⟩ := Arr.eq_of_codes tag hc0
+    obtain ⟨xl0, xg, yl0, yg⟩ := hrest hvt
     have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
       fun _ _ q => by simp [seenKey, ascKeys_append]
     rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs, List.map_append, List.map_append, List.map_append, List.map_append] at h
-    show (Obj.sum a b).lt (Vals.row (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ i)
-      (Vals.row (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ i')
-    simp only [Vals.row]
+    simp only [Vals.row, hv]
     by_cases et : (seenKey n [(.atom .u1, tag.enc)] i).map UInt64.toNat =
         (seenKey n [(.atom .u1, tag.enc)] i').map UInt64.toNat
     · have ht := heq i i' (map_toNat_inj et)

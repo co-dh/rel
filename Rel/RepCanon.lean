@@ -89,6 +89,14 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg j
   rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
 
+/-- A column with no null read as nullable (`Opt.ofArr`) holds `some` of its element at every row. -/
+theorem Opt.get_ofArr {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin n.toNat) :
+    (Opt.ofArr x).get i = some (x.get i) := by
+  have hn : (Opt.ofArr x).isNul i = false := (Opt.isNul_eq_false _ i).2 (foRNuls_plain x.wf x.plain i.2)
+  by_cases hg : t = .general
+  · subst hg; simp only [Opt.get, hn, Bool.false_eq_true, if_false]; rfl
+  · rw [Opt.get_ne _ i hg, hn, Arr.get_ne x i hg]; rfl
+
 /-- **`Arr.get_eq_of_raw` with nulls**: two `Opt`s whose rows `i`, `j` carry one null flag (`foRNuls`) and, off a null,
 words that read as one atom hold one element there, `none` at a null. -/
 theorem Opt.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Opt t n) (y : Opt t m) (hx : Kernel.Enc.Valid n x.enc)
@@ -646,16 +654,6 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
       simp [hz]
     · obtain ⟨nf, rfl, hnf, hnk⟩ := h1 hN
       unfold nulMap; rw [bitAt_packOf _ _ k (by omega), hnk k hk]
-  -- a row that is no null reads back its word
-  have hraw : ∀ k (hk : k < ws.size), Column.bitAt nul k = false → (Enc.raw .i64 m (wordsFoR ws nul))[k]? = some ws[k] := by
-    intro k hk hnk
-    obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws nul = .foR md pk := ⟨_, _, rfl⟩
-    have h := (wordsFoR_nul ws nul hws.symm).2.2.1 md pk hE k hk
-    rw [hnk, if_neg Bool.false_ne_true] at h
-    unfold Column.foROpt at h; split at h; · cases h
-    rw [hE, raw_foR .i64 8 rfl (by decide)]
-    simp only [Array.getElem?_map, Array.getElem?_range, show k < m.toNat by omega, if_true, Option.map_some,
-      Nat.reduceMul, Option.some.inj h, ofNat_toNat_mod64]
   have hwv : Ext.Enc.WF .i64 m (wordsFoR ws nul) := (wordsFoR_nul ws nul hws.symm).2.2.2 rfl fun h => by cases h
   have hsz : (foRNuls m (wordsFoR ws nul)).size = m.toNat := foRNuls_size m _
   have hse : (foRNuls m e).size = m.toNat := foRNuls_size m e
@@ -681,7 +679,7 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
   cases hN : hasNul e
   · obtain rfl := h0 hN
     simp only [Bool.false_eq_true, ↓reduceIte]
-    rw [hraw q (by omega) (bitAt_empty q), hrq, Array.getElem?_eq_getElem (by omega)]
+    rw [raw_wordsFoR_of_bit ws _ hws q (by omega) (bitAt_empty q), hrq, Array.getElem?_eq_getElem (by omega)]
   · simp only [↓reduceIte, Array.getElem?_mapIdx, hfv q hq, hrq, Array.getElem?_eq_getElem (show q < ws.size by omega),
       Array.getElem?_eq_getElem (show q < (Enc.raw .i64 m (wordsFoR ws nul)).size by omega), Option.map_some]
     cases hf : (foRNuls m e)[ps[q]]?.getD 0 == 0
@@ -692,7 +690,7 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
         cases hb : Column.bitAt nul q
         · rfl
         · rw [hb] at h; rw [← h] at hf; simp at hf
-      have h := hraw q (by omega) hnq
+      have h := raw_wordsFoR_of_bit ws nul hws q (by omega) hnq
       rw [Array.getElem?_eq_getElem (show q < (Enc.raw .i64 m (wordsFoR ws nul)).size by omega)] at h
       simp [Option.some.inj h]
 
