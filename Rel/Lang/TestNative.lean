@@ -426,6 +426,10 @@ def writesAgree {A B : Obj} (what : String) (p : Except String Plan) (v : Except
   unless got.length == ws.size && got.map flat == want.map flat do
     throwError "the plan of `{what}` writes {got.length} of {ws.size} columns, not those of its Lean value"
 
+/-- The plan of `output x to "out"` for the definition `x` of the program `m` (`rel_program m`). -/
+def planOfIn (m : Lean.Name) (x : String) : Lean.Meta.MetaM (Except String Plan) :=
+  return (← outputOf m x "out") >>= Bld.plan
+
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`)
 #eval show Lean.Meta.MetaM Unit from do writesAgree "x" (← plan) native1a.x
 

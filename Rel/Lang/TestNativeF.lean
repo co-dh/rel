@@ -32,21 +32,19 @@ rel_program nativeF where
     tx : N ⟶ [C] ≜ {(1,"2024.01.15"),(2,"2024.02.30")}
     dy : N ⟶ D ≜ tx ymd
 
-/-- The plan of `output x to "out"` in `nativeF`. -/
-def planOf (x : String) : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``nativeF x "out") >>= Bld.plan
 
 #eval show Lean.Meta.MetaM Unit from do
-  writesAgree "sd" (← planOf "sd") nativeF.sd
-  writesAgree "se" (← planOf "se") nativeF.se
-  writesAgree "lp" (← planOf "lp") nativeF.lp
-  writesAgree "lq" (← planOf "lq") nativeF.lq
+  writesAgree "sd" (← planOfIn ``nativeF "sd") nativeF.sd
+  writesAgree "se" (← planOfIn ``nativeF "se") nativeF.se
+  writesAgree "lp" (← planOfIn ``nativeF "lp") nativeF.lp
+  writesAgree "lq" (← planOfIn ``nativeF "lq") nativeF.lq
 
 -- the Lean values the plans match (the `check` lines), so an agreeing plan of a wrong value is caught here
 #guard nativeF.failures.map toString == []
 
 -- `ymd`'s plan is refused naming the row, never a wrong table
 #eval show Lean.Meta.MetaM Unit from do
-  match ← planOf "dy" with
+  match ← planOfIn ``nativeF "dy" with
   | .error e => unless (e.splitOn "row `ymd`").length == 2 do throwError "ymd's plan fails with {e}"
   | .ok _ => throwError "ymd has a plan, but no recipe computes it"
 

@@ -1315,6 +1315,38 @@ def loopB (X Y : Obj) (n : Nat) (Z : Cols) (x : Dom → Bld TabB) : Bld TabB := 
     (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← projT X (.arr Y) false P) (← projT X (.arr Y) true P)
     (← zeroB K X)
 
+/-- `Tab.dom`'s table: the coreflexive of `T`'s distinct keys. -/
+def domT (T : TabB) : Bld TabB := do let (n, X) ← domOf T; coreflB n X
+
+/-- **`Tab.filter(p)`** on the cells `X` of `b`, `P` the table of `p` (run on the elements): the left fold of `Tab.filter`,
+    `acc` plus `x` where `x ≫ dom P` has a row, else `acc` kept (`(dom el − dom k) acc`); one plan function (`funT`). -/
+def filterB (b : Obj) (n : Nat) (X : Cols) (P : TabB) : Bld TabB := funT [⟨n, X, []⟩, P] fun
+  | [I, P] => do
+    let (m, _, _, _) ← arrCol "filter" I.key
+    let D ← domT P
+    let K := Obj.arr b
+    let step (acc el : TabB) : Bld TabB := do
+      let k ← compB el D
+      unionB (← snocB b (← pairB K K b acc k)) (← compB (← diffB (← domT el) (← domT k)) acc)
+    foldRoundsB (peelB b true) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB I.n I.key)
+      (← nilB b I.n I.key) (← zeroB K K)
+  | _ => throw "filter: not two tables"
+
+/-- **`Tab.takewhile(p)`** on the cells `X` of `b`, `P` the table of `p`: the right fold of `Tab.takewhile`, `x :: acc`
+    where `x ≫ dom P` has a row, else `[]` on `dom el − dom k`; one plan function (`funT`). -/
+def takewhileB (b : Obj) (n : Nat) (X : Cols) (P : TabB) : Bld TabB := funT [⟨n, X, []⟩, P] fun
+  | [I, P] => do
+    let (m, _, _, _) ← arrCol "takewhile" I.key
+    let D ← domT P
+    let K := Obj.arr b
+    let step (acc el : TabB) : Bld TabB := do
+      let k ← compB el D
+      unionB (← consB b (← pairB K b K k acc))
+        (← compB (← compB (← diffB (← domT el) (← domT k)) acc) (← nilB b acc.n acc.val))
+    foldRoundsB (peelB b false) step (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB I.n I.key)
+      (← nilB b I.n I.key) (← zeroB K K)
+  | _ => throw "takewhile: not two tables"
+
 /-- **`Tab.map`** (`F(R)`) on the arrays `X` (`n` rows) of `A`, `R` the table of the relation on elements: the elements
     EXPANDed (`v`, `T` rows), `⟨pos, v⟩ ≫ R`; where each position has exactly one image, those images in position
     order under the same widths (`Vals.cells`), then `canonT`; else the left fold (`mapFoldB`), as `Tab.map` chooses. -/
@@ -1377,19 +1409,6 @@ def positionsB (n : Nat) (X : Cols) (P : TabB) : Bld TabB := funV n X [P] fun n 
   let (Q, _) ← prefixB .add n c
   canonT ⟨n, X, [.arr "" C.n (← mapB .sub n Q c) (← mapB .add n Q (← wordsB n 0)) [.atom ".e" .i64 (← gatherB C.n sel T u)]]⟩
 
-/-- **`Tab.cons`** (`P ≫ cons`), the mirror of `snocB`: `(a, xs)` to `[a] ++ xs`, `Vals.cat` after `τ × 𝟙`; then `canonT`.
-    Named for the `bump` step of `thinL`, its one caller. -/
-def bumpConsB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
-  let [P] := Ps | throw "cons: not one table"
-  let w := objWidth B
-  let tau := (P.n, ← posB, ← mapB .add P.n (← posB) (← wordsB P.n 1), ← repath B ".e" (P.val.take w))
-  canonT ⟨P.n, P.key, [← cellCatB B P.n tau (← arrCol "cons" (P.val.drop w))]⟩
-
-/-- **`Tab.cat`** (`P ≫ cat`): `(xs, ys)` to `xs ++ ys` (`Vals.cat`); then `canonT`. Named for `merge`'s clock. -/
-def mergeCatB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
-  let [P] := Ps | throw "cat: not one table"
-  canonT ⟨P.n, P.key, [← cellCatB B P.n (← arrCol "cat" (P.val.take 1)) (← arrCol "cat" (P.val.drop 1))]⟩
-
 /-- **`dom (T ≫ diag q (ran T))`** (`Tab.diag`): the rows of `T` whose pair value `p` has `q` relate `p` to `p`, `q` run
     knowing its domain is the pairs `D = ran T`; `diag q D = q(D) ∩ D`. The one reading of a test in `front`, `thinL`,
     `merge`. -/
@@ -1413,7 +1432,7 @@ def bumpB (B : Obj) (q : Dom → Bld TabB) (p : TabB) : Bld TabB := do
   let du ← coreflB u.n u.key
   let lone ← unionB (← diffB E du) (← diffB (← diffB du up) down)
   let bs ← projT B (.arr B) false u
-  let r ← unionB (← unionB (← bumpConsB B lone) (← compB up (← bumpConsB B (← pairB EO B (.arr B) x bs))))
+  let r ← unionB (← unionB (← consB B lone) (← compB up (← consB B (← pairB EO B (.arr B) x bs))))
     (← compB down ys)
   compB p r
 
@@ -1460,10 +1479,21 @@ def mergeB (B : Obj) (q : Dom → Bld TabB) (n : Nat) (X : Cols) : Bld TabB := f
     let (m₁, _, _, _) ← arrCol "merge" (D.val.take 1)
     let (m₂, _, _, _) ← arrCol "merge" (D.val.drop 1)
     let k ← call1 (kernel% USize.add) #[← call1 (kernel% USize.add) #[m₁, m₂], ← lit (.size 2)]
-    let out ← foldRoundsB (peelB B true) (fun S _ => mergeRoundB B q S) k (← mergeCatB B D)
+    let out ← foldRoundsB (peelB B true) (fun S _ => mergeRoundB B q S) k (← catTabB B D)
       (← pairB AA AA (.arr B) D (← nilB B D.n D.key)) (← zeroB AA (.prod AA (.arr B)))
     compB D (← projT AA (.arr B) false out)
   | _ => throw "merge: not one table"
+
+/-- **`Tab.inits`** = `Λ(prefix)` on the cells `X` (`n` rows) of `b`: `uncatB`'s first side (`projT`) is `Tab.prefix`, a
+    `comp` answer, so canonical; `lamB` collects each cell's prefixes into one cell, as `lamOf`. -/
+def initsB (b : Obj) (n : Nat) (X : Cols) : Bld TabB := do lamB (.arr b) n X (← projT (.arr b) (.arr b) true (← uncatB b n X))
+
+/-- **`Tab.tails`** = `Λ(cat°) ≫ F(π₂)` on the cells `X` of `b`: `lamB` of the splits (`uncatB`), then each cell's second
+    split column kept (`f.2`), the bounds as they are; one row per key, so no `canonT`. -/
+def tailsB (b : Obj) (n : Nat) (X : Cols) : Bld TabB := do
+  let L ← lamB (.prod (.arr b) (.arr b)) n X (← uncatB b n X)
+  let [Col.arr _ m lo hi f] := L.val | throw s!"tails: a value side of {L.val.length} columns where one array side is read"
+  pure ⟨L.n, L.key, [Col.arr "" m lo hi (← repath (.arr b) ".e" (f.drop 1))]⟩
 
 /-- The two atom columns of a pair side `X`, the error naming the verb `s` otherwise. -/
 def pairCols (s : String) (X : Cols) : Bld (Nat × Nat) := do
@@ -1781,7 +1811,19 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.prefix || c == ``Tab.suffix then match A with
     | .arr b => do let (n, X) ← known r.sym D.dom; projT (.arr b) (.arr b) (c == ``Tab.prefix) (← uncatB b n X)
     | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
-  -- `Tab.tau` = `Λ(𝟙)`: `lam X (idU X)`, `idU X` the coreflexive of the keys
+  -- `Tab.inits`, `Tab.tails`: `Λ` of the prefixes (the splits, their second column)
+  else if c == ``Tab.inits || c == ``Tab.tails then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; if c == ``Tab.inits then initsB b n X else tailsB b n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  -- `Tab.filter`, `Tab.takewhile`: `p` run knowing its domain is `ran(∋)` at the arrays in demand (`GenK.elems`)
+  else if c == ``Tab.filter || c == ``Tab.takewhile then match A, xs with
+    | .arr b, [x] => do
+      let (n, X) ← known r.sym D.dom
+      let M ← memB b n X
+      let P ← x { dom := some (← nubB M.n M.val) }
+      if c == ``Tab.filter then filterB b n X P else takewhileB b n X P
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
+  -- `Tab.tau` = `Λ(𝟙)`:`lam X (idU X)`, `idU X` the coreflexive of the keys
   else if c == ``Tab.tau then do let (n, X) ← known r.sym D.dom; lamB A n X (← coreflB n X)
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
