@@ -112,6 +112,11 @@ rel_program native1a where
     obj M
     gb : M ⟶ M ≜ {(0,5),(1,100),(2,200)} dom(<°{(99,∗)})
     tk : M ⟶ M ≜ dom(< {(∗,2)}°) {(0,7),(1,8),(2,9),(3,4)}
+    -- `cat°` on cells of three, none, two and two elements (each cell's `e - s + 1` splits), and each split's side (the
+    -- bodies of `prefix`, `suffix`, whose rows are of their own; `last`, `init` also need `τ`, with no plan recipe yet)
+    cu : N ⟶ [N]×[N] ≜ xs cat°
+    pre : N ⟶ [N] ≜ xs cat° π₁
+    suf : N ⟶ [N] ≜ xs cat° π₂
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``native1a "x" "out") >>= Bld.plan
@@ -337,7 +342,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("sf", semOut native1a.sf), ("ss", semOut native1a.ss), ("gb", semOut native1a.gb), ("tk", semOut native1a.tk), ("ln", semOut native1a.ln),
    ("mx", semOut native1a.mx), ("gi", semOut native1a.gi), ("gj", semOut native1a.gj), ("gk", semOut native1a.gk),
    ("gu", semOut native1a.gu), ("gn", semOut native1a.gn), ("gv", semOut native1a.gv),
-   ("gx", semOut native1a.gx), ("gy", semOut native1a.gy), ("gz", semOut native1a.gz), ("gw", semOut native1a.gw),("gm", semOut native1a.gm), ("gp", semOut native1a.gp)]
+   ("gx", semOut native1a.gx), ("gy", semOut native1a.gy), ("gz", semOut native1a.gz), ("gw", semOut native1a.gw),("gm", semOut native1a.gm), ("gp", semOut native1a.gp),
+   ("cu", semOut native1a.cu), ("pre", semOut native1a.pre), ("suf", semOut native1a.suf)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
