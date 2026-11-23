@@ -37,9 +37,9 @@ fn bitrows(all: bool, w: usize, na: usize, ni: usize, g: usize, ends: B, idx: B,
     let offs: Vec<i64> = core::iter::once(0).chain(es.iter().copied()).collect();
     let mut out = crate::pod::vec_of("bitrows", "the answer's bits", no.div_ceil(8), 0u8)?;
     reduce::bit_rows(c::pool(), all, w, &offs, &is, &reduce::col_bits(&c, nm), &mut out);
-    Ok(Sink::new(no, 1).enc().bools(crate::QLEAN_COST_COPY, &|lo, hi, o| {
+    Sink::new(no, 1)?.enc().bools(crate::QLEAN_COST_COPY, &|lo, hi, o| {
         o[..(hi - lo).div_ceil(8)].copy_from_slice(&out[lo / 8..hi.div_ceil(8)])
-    }))
+    })
 }
 
 export! {

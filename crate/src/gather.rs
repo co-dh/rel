@@ -42,7 +42,7 @@ pub fn enc(ix: &Blocks, e: &Coc) -> Result<lean::O, String> {
             Some(o)
         }
     };
-    let o = Sink::new(ix.n, 8).enc().write_nul(&t, false, nul.as_deref().unwrap_or(&[])).expect("qlean gather: a write with no size test has an answer");
+    let o = Sink::new(ix.n, 8)?.enc().write_nul(&t, false, nul.as_deref().unwrap_or(&[]))?.expect("qlean gather: a write with no size test has an answer");
     match t.bad.into_inner() {
         usize::MAX => Ok(o),
         k => Err(format!("gather: index {} at row {k} is not below n = {}", row(ix, k), e.meta.n)),
@@ -62,7 +62,7 @@ pub fn of_pos(ix: &Blocks, n: usize) -> Result<lean::O, String> {
             return Err(format!("gather: index {} at row {} is not below n = {n}", x[k] as u64, lo + k))
         }
     }
-    Ok(Sink::new(ix.n, 8).enc().answer(ix))
+    Sink::new(ix.n, 8)?.enc().answer(ix)
 }
 /// `enc`'s producer: answer block `lo .. lo + nb` is `e` at index rows `lo .. lo + nb`; `d` the decoded `e` when there
 /// is one; `bad` the first row past `e`.

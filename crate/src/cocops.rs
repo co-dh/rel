@@ -137,7 +137,7 @@ mod tests {
         let x: alloc::vec::Vec<i64> = (0..n).map(val).collect();
         let mut nul = alloc::vec![0u8; n.div_ceil(8)];
         for i in (0..n).filter(|&i| nulr(i)) { nul[i >> 3] |= 1 << (i & 7) }
-        let o = crate::ffi::Sink::new(n, 8).write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &nul)
+        let o = crate::ffi::Sink::new(n, 8).expect("test: Sink allocation").write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &nul).expect("test: Sink allocation")
             .expect("encode_nul: a write with no size test has an answer");
         let [m, p] = [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
         let c = crate::coc::view(&m, &p, n).unwrap_or_else(|e| panic!("encode_nul: {e}"));
@@ -151,7 +151,7 @@ mod tests {
     // base cannot go below `i64::MIN`: the writer patches that row (residual 0, the null's code), which reads as itself
     #[test] fn encode_nul_patches_a_value_at_the_null_code() {
         let x = [i64::MIN, i64::MAX, 0];
-        let o = crate::ffi::Sink::new(3, 8).write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &[0b100])
+        let o = crate::ffi::Sink::new(3, 8).expect("test: Sink allocation").write_nul(&crate::blocks::Blocks::dense(crate::pod::bytes(&x), 8), false, &[0b100]).expect("test: Sink allocation")
             .expect("encode_nul: a write with no size test has an answer");
         let [m, p] = [0, 1].map(|i| o.borrow().field(i).bytes().to_vec());
         let c = crate::coc::view(&m, &p, 3).unwrap_or_else(|e| panic!("encode_nul: {e}"));

@@ -286,8 +286,9 @@ choice of representation and owes nothing else, which is why the C comment on `q
 states the round trip and not the bytes.
 
 `width` is `QAtomicType.width`, and only 1, 2, 4 and 8 are legal: the kernels are instantiated at
-those four element types, `Column.encode` below refuses everything else, and the C aborts rather than
-answering an empty pair, which would drop a column's contents silently. `nul` is `encodeAt`'s: the bitmap of the
+those four element types, `Column.encode` below refuses everything else, and the Rust stops rather than
+answering an empty pair, which would drop a column's contents silently; an allocation that fails stops the same
+way, naming the bytes, because this type has no error to answer. `nul` is `encodeAt`'s: the bitmap of the
 null rows, empty for a column with none; `least` its `QAtomicType.least`, the default the `Int64`'s. -/
 @[extern "qlean_coc_encode"]
 def encode (width : USize) (x : @& ByteArray) (nul : @& ByteArray := .empty) (least : Int64 := Int64.minValue) :

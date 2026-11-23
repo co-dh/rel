@@ -326,7 +326,7 @@ mod tests {
     }
     /// The words `x` as a `foR` column's metadata and pack, `Coc::view`ed by `col`.
     fn enc(x: &[i64]) -> [Vec<u8>; 2] {
-        let o = Sink::new(x.len(), 8).answer(&Blocks::dense(pod::bytes(x), 8));
+        let o = Sink::new(x.len(), 8).expect("test: Sink allocation").answer(&Blocks::dense(pod::bytes(x), 8)).expect("test: Sink allocation");
         [0, 1].map(|i| o.borrow().field(i).bytes().to_vec())
     }
     fn col(e: &[Vec<u8>; 2], m: usize) -> Coc<'_> { crate::coc::view(&e[0], &e[1], m).ok().expect("asc test: view") }

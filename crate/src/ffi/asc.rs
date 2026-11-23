@@ -54,14 +54,14 @@ fn kasc(m: usize, es: B) -> Result<O, String> {
     // decide nothing a stable sort by the keys before it does not
     let nk = ks.iter().position(|k| matches!(k, asc::Col::Pos)).unwrap_or(ks.len());
     let p = if nk == 0 { None } else { asc::grade_cols(pool(), &ks[..nk], m)? };
-    let sink = || Sink::new(m, 8).enc();
+    let sink = || Sink::new(m, 8).map(Sink::enc);
     // the permutation, which is also a `pos` column sorted
     let pe = || match &p {
-        None => sink().answer(&Blocks::pos(m)),
-        Some(p) => sink().answer(&Blocks::dense(pod::bytes(p), 8)),
+        None => sink()?.answer(&Blocks::pos(m)),
+        Some(p) => sink()?.answer(&Blocks::dense(pod::bytes(p), 8)),
     };
     // `nb`: the column's null bits where it holds a null, which move with its words (answer row `i` is input row `p[i]`)
-    let col = |c: &asc::Ix, nb: Option<&[u8]>| {
+    let col = |c: &asc::Ix, nb: Option<&[u8]>| -> Result<O, String> {
         let on: Option<Vec<u8>> = nb.map(|b| match &p {
             None => b.to_vec(),
             Some(p) => { let mut o = vec![0u8; m.div_ceil(8)]; for (i, &r) in p.iter().enumerate() { if is_nul(b, r as usize) { o[i >> 3] |= 1 << (i & 7) } } o }
@@ -70,13 +70,13 @@ fn kasc(m: usize, es: B) -> Result<O, String> {
         let put = "qlean asc: a write with no size test has an answer";
         match (c, &p) {
             (asc::Ix::Pos, _) => pe(),
-            (asc::Ix::For(c, _), None) => sink().write_nul(&Blocks::from(*c), false, nul).expect(put),
-            (asc::Ix::For(c, uw), Some(p)) => sink().write_nul(&|buf: &mut [i64], i0: usize| for (o, &i) in buf.iter_mut().zip(&p[i0..]) { *o = c.get_w(*uw, i as usize) }, false, nul).expect(put),
+            (asc::Ix::For(c, _), None) => Ok(sink()?.write_nul(&Blocks::from(*c), false, nul)?.expect(put)),
+            (asc::Ix::For(c, uw), Some(p)) => Ok(sink()?.write_nul(&|buf: &mut [i64], i0: usize| for (o, &i) in buf.iter_mut().zip(&p[i0..]) { *o = c.get_w(*uw, i as usize) }, false, nul)?.expect(put)),
         }
     };
     // the `List Enc` of sorted columns, built from its end
-    let vs = cs.iter().zip(&ks).rev().fold(boxed(0), |vs, (c, k)| ctor(1, [col(c, match k { asc::Col::Nul(_, b) => Some(&b[..]), _ => None }), vs], &[]));
-    Ok(ctor(0, [vs, pe()], &[]))
+    let vs = cs.iter().zip(&ks).rev().try_fold(boxed(0), |vs, (c, k)| Ok::<_, String>(ctor(1, [col(c, match k { asc::Col::Nul(_, b) => Some(&b[..]), _ => None })?, vs], &[])))?;
+    Ok(ctor(0, [vs, pe()?], &[]))
 }
 
 export! {

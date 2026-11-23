@@ -58,20 +58,20 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
         for (j, &s) in st[..nb].iter().enumerate() { w[j >> 6] |= ((s == 1) as u64) << (j & 63) }
     }
     if pos {
-        let til = || Sink::new(n, 8).enc().answer(&Blocks::pos(n));
-        return Ok((n, til(), til()))
+        let til = || Sink::new(n, 8)?.enc().answer(&Blocks::pos(n));
+        return Ok((n, til()?, til()?))
     }
     let bit = |i: usize| bits[i >> 6] >> (i & 63) & 1 == 1;
     // `at[b]`: the starts before block `b`
     let mut at = pod::vec_of("seen", "the blocks' start counts", g.nblk() + 1, 0usize)?;
     for b in 0..g.nblk() { at[b + 1] = at[b] + bits[b * wb..(b * wb + wb).min(bits.len())].iter().map(|w| w.count_ones() as usize).sum::<usize>() }
     let k = at[g.nblk()];
-    let go = Sink::new(n, 8).enc().answer(&|o: &mut [i64], i0: usize| {
+    let go = Sink::new(n, 8)?.enc().answer(&|o: &mut [i64], i0: usize| {
         let mut c = at[i0 / blk] + (i0 / blk * blk..i0).filter(|&i| bit(i)).count();
         for (j, x) in o.iter_mut().enumerate() { c += bit(i0 + j) as usize; *x = c as i64 - 1 }
     });
     // answer position `p` lies in the first row block whose `at` passes it
-    let fo = Sink::new(k, 8).enc().answer(&|o: &mut [i64], p0: usize| {
+    let fo = Sink::new(k, 8)?.enc().answer(&|o: &mut [i64], p0: usize| {
         let (mut b, mut i) = (at.partition_point(|&a| a <= p0) - 1, 0usize);
         let mut skip = p0 - at[b];
         'out: loop {
@@ -85,5 +85,5 @@ pub fn blocks(ks: &[Col], n: usize, pos: bool) -> Result<(usize, lean::O, lean::
             b += 1;
         }
     });
-    Ok((k, go, fo))
+    Ok((k, go?, fo?))
 }
