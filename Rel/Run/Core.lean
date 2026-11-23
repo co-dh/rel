@@ -173,14 +173,6 @@ theorem Arr.get_raw_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x
   rw [Arr.get_long_foR x hc, hc, Verify.raw_foR .i64 8 rfl (by decide)]
   simp [i.2]
 
-/-- A long payload's `n` words in position order: a `foR` payload's `foRBits` decode, a `pos` payload's positions;
-    `none` at the non-long constructors. -/
-def longWords (n : USize) (e : Enc) : Option (List UInt64) :=
-  match e with
-  | .foR md pk => some ((List.range n.toNat).map (Column.foRBits md pk (Column.blockStarts md)))
-  | .pos => some ((List.range n.toNat).map Nat.toUInt64)
-  | _ => none
-
 /-- A column of `n` rows of the fixed-width type `t` from the dense payload `b`, `w` bytes a row: `Coc.encode` at `w`,
     so the column is `foR` where it is produced (decision M), a float's stored bits included. Every type with a width
     but `u1`, whose bits `Arr.bools` lays out. A literal is packed and encoded here once; an old kernel's dense answer is
@@ -413,8 +405,16 @@ variable {k v : Obj}
 /-- The relation `R` denotes: `R x y ↔ ∃ i, key.row i = x ∧ val.row i = y`. -/
 def Holds (R : Tab k v) (x : k.El) (y : v.El) : Prop := ∃ i, R.key.row i = x ∧ R.val.row i = y
 
-/-- What `toList` runs as: `Vals.rowsImpl` of each side, zipped. -/
-private def toListImpl (R : Tab k v) : List (k.El × v.El) := ((Vals.rowsImpl R.key).zip (Vals.rowsImpl R.val)).toList
+/-- What `toArray` runs as: `Vals.rowsImpl` of each side, zipped. -/
+private def toArrayImpl (R : Tab k v) : Array (k.El × v.El) := (Vals.rowsImpl R.key).zip (Vals.rowsImpl R.val)
+
+/-- The pairs in position order as an array, what the run path reads. The body is the specification; it runs as
+    `toArrayImpl`, which `toList` runs through too, so the `#guard`s under `Checks` check this code. -/
+@[implemented_by toArrayImpl]
+def toArray (R : Tab k v) : Array (k.El × v.El) := Array.ofFn fun i => (R.key.row i, R.val.row i)
+
+/-- What `toList` runs as: `toArrayImpl`. -/
+private def toListImpl (R : Tab k v) : List (k.El × v.El) := (toArrayImpl R).toList
 
 /-- The pairs, in position order. The body is the specification; it runs as `toListImpl` (not proved equal: the
     `#guard`s under `Checks` compare the two on an `arr` and a `sum` side). -/

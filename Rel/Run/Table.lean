@@ -65,9 +65,10 @@ def readArr (t : QAtomicType) (path : String) : IO ((n : USize) × Arr t n) := d
     | throw (IO.userError s!"{path}: constructor kind {f.kind}, which `Db.ownEnc` does not rebuild")
   let x ← IO.ofExcept (Arr.of t f.count (.vector t f.count e none) path)
   if t matches .f32 | .f64 then
-    if let some (b, i) := x.toList.zipIdx.findSome? fun (v, i) => (nonCanonical t v).map (·, i) then
-      throw (IO.userError s!"{path}: row {i} holds the {repr t} bit pattern 0x{String.mk (Nat.toDigits 16 b)}, \
-        which is not canonical (a NaN or -0)")
+    for h : i in [0:f.count.toNat] do
+      if let some b := nonCanonical t (x.get ⟨i, h.upper⟩) then
+        throw (IO.userError s!"{path}: row {i} holds the {repr t} bit pattern 0x{String.mk (Nat.toDigits 16 b)}, \
+          which is not canonical (a NaN or -0)")
   return ⟨f.count, x⟩
 
 /-- `y`, read from `fy`, as a column of the side whose count `n` was read from `fx`: the two counts are equal. -/
@@ -216,8 +217,8 @@ def readDict (db : String) : IO (Dict × Tab .long .long) := do
   let u ← IO.ofExcept D.ran
   unless u.n = d do throw (IO.userError s!"{fd}: {d.toNat - u.n.toNat} of {d} texts repeat one before them")
   let K ← IO.ofExcept (rank D)
-  let (fr, ⟨_, r⟩) ← readVals .long db "sym.rank"
-  unless r.toList == K.val.toList do throw (IO.userError s!"{fr}: not the rank of the dictionary {fd}")
+  let (fr, ⟨m, r⟩) ← readVals .long db "sym.rank"
+  unless if h : m = K.n then Nat.all K.n.toNat fun i hi => r.get ⟨i, h ▸ hi⟩ == K.val.get ⟨i, hi⟩ else false do throw (IO.userError s!"{fr}: not the rank of the dictionary {fd}")
   return (D, K)
 
 /-- A symbol column in `dir` under `p`: its ids, the column `p`; the texts are the database's one dictionary
@@ -267,12 +268,12 @@ def libDict (L : String) : IO Dict := do
     rows of `D`, so no id stored in `L` changes and `D`'s texts past them are appended; else the first id where the two
     differ is named. -/
 def writeLib (L : String) (D : Dict) : IO Unit := do
-  let (old, new) := ((← libDict L).toList, D.toList)
-  let i := ((old.zip new).takeWhile fun (a, b) => a == b).length
-  unless i == old.length do
-    throw (IO.userError s!"{L}: the library's dictionary of {old.length} texts and the program's of {new.length} \
+  let (old, new) := ((← libDict L).toArray, D.toArray)
+  let i := ((old.zip new).findIdx? fun (a, b) => a != b).getD (min old.size new.size)
+  unless i == old.size do
+    throw (IO.userError s!"{L}: the library's dictionary of {old.size} texts and the program's of {new.size} \
       differ at id {i}; a dictionary is append-only, so these ids are not of this library")
-  unless old.length == new.length do IO.FS.createDirAll L; writeDict L D
+  unless old.size == new.size do IO.FS.createDirAll L; writeDict L D
 
 /-- An own table a program reads, `r` reading it from `dir`: its symbol columns' ids taken as they lie, the program's
     dictionary `D` being its library's (`progLib`), and refused unless each has a text in `D` (`checkSyms`). -/

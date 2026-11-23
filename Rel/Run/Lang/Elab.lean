@@ -176,7 +176,7 @@ def floatText (w : Nat) (b : UInt64) : String :=
     let (num, den) : Nat × Nat := if E ≥ 0 then (M * 2 ^ E.toNat, 1) else (M, 2 ^ (-E).toNat)
     -- the place of the leading digit: `10^L ≤ num/den < 10^(L+1)`
     let L : Int := if num ≥ den then ((Nat.toDigits 10 (num / den)).length : Int) - 1
-      else -((((List.range 400).find? fun j => num * 10 ^ (j + 1) ≥ den).getD 400 : Nat) + 1 : Int)
+      else -((((Array.range 400).find? fun j => num * 10 ^ (j + 1) ≥ den).getD 400 : Nat) + 1 : Int)
     let near (d : Nat) : Nat × Int :=
       let k := L - d + 1
       let (a, c) := if k ≥ 0 then (num, den * 10 ^ k.toNat) else (num * 10 ^ (-k).toNat, den)
@@ -1755,9 +1755,10 @@ def inferSig (env : Env) (n : String) (ps : List Param) (b : Body) : M String :=
     by it, so the call lines up with the definition. -/
 def idxClass (ix : Array OTy) : Option OTy → M (Array OTy × Option Nat)
   | none => pure (ix, none)
-  | some j => do match ← ix.toList.zipIdx.findM? (fun (i, _) => defEq j i) with
-    | some (_, k) => pure (ix, some k)
-    | none => pure (ix.push j, some ix.size)
+  | some j => do
+    for h : k in [0:ix.size] do
+      if ← defEq j (ix[k]'h.upper) then return (ix, some k)
+    pure (ix.push j, some ix.size)
 
 section Num
 
