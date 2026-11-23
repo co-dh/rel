@@ -83,6 +83,11 @@ rel_program native1a where
     sf : N ⟶ F ≜ fl sum
     sx : N×N ⟶ I ≜ {((1,0),5),((1,1),9223372036854775807),((1,2),1),((2,0),3),((2,1),4),((2,2),9)}
     ss : N×N ⟶ I ≜ sums(sx)
+    -- `<` on an unbounded object, bounded only by the literal composed after it: run with its range that literal's
+    -- domain (`S` first) and read at the range of the table before it (a closed node that cannot run closed)
+    obj M
+    gb : M ⟶ M ≜ {(0,5),(1,100),(2,200)} dom(<°{(99,∗)})
+    tk : M ⟶ M ≜ dom(< {(∗,2)}°) {(0,7),(1,8),(2,9),(3,4)}
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``native1a "x" "out") >>= Bld.plan
@@ -230,7 +235,7 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
    ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
    ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi), ("sb", semOut native1a.sb),
-   ("sf", semOut native1a.sf), ("ss", semOut native1a.ss)]
+   ("sf", semOut native1a.sf), ("ss", semOut native1a.ss), ("gb", semOut native1a.gb), ("tk", semOut native1a.tk)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
