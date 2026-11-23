@@ -340,8 +340,11 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`melt` / `unpivot`], [`pivotLong(i, s, a, t, b, x) ≜ append(x ⟨i, ⟨⊤ s, a⟩⟩, x ⟨i, ⟨⊤ t, b⟩⟩)`；`melt(s, a, t, b, x) ≜ pivotLong(𝟙, s, a, t, b, x) π₂`],
     [每行对每个值列一次，得 `(id, 列名, 值)`；各列要同类型], "full"),
   ([pivot（long）], [`aggregate(⟨k, q⟩, f, x)`], [long 形式就是 key 为 `K×P` 的 frame], "full"),
-  ([pivot（wide）], [`pivotWide(k, q, s, t, f, x) ≜ firstOcc(x k) x k ⟨𝟙, ⟨tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f)), tot(⟨𝟙, ⊤ t⟩ agg((x ⟨k, q⟩)°, f))⟩⟩`],
-    [每个声明的值 `s`、`t` 一列，没有的为 null；按磁盘上列的不同值生成列要设计变更：F1], "part"),
+  ([pivot（wide）], [`pivotOn(k, ⟨v ∈ V ↦ pivotCol(k, q, v, f, x)⟩, x)`；`pivotOn(k, w, x) ≜ firstOcc(x k) x k ⟨𝟙, w⟩`，
+    `pivotCol(k, q, s, f, x) ≜ ran(x k) tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f))`],
+    [有限对象 `V` 的每个元素一列，没有的为 null；`V` 是声明的 `obj S = {…}`，或 `obj V from "dir" c` 读磁盘上列的不同值（F1）], "full"),
+  ([`get_dummies`], [`⟨v ∈ V ↦ dummy(c, v, x)⟩ : P ⟶ D`，`schema D = {c ∈ V : 1+1}`；`dummy(c, s, x) ≜ dom(x) tot(x c s°)`],
+    [每个元素 `v` 一列 `c_v`，`inl` 当行的 `c` 是 `v`（`c s° s` 即余自反 `c ≫ (= s)`），否则 `inr`（F1）], "full"),
 )
 
 == DataHaskell `dataframe` 的导出函数
@@ -370,12 +373,15 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     得到与 `schema S = {…}` 相同的 `ObjDef.schema`，没有第二种 schema 类型。磁盘只记 atom，不记程序的对象名，所以每列
     在它的 atom 的无界对象上，以 atom 命名（`qty : i32` 即 `obj i32 : i32`），语句替程序声明它；程序已把这个名字声明成
     别的对象时报错。`sym` 列被拒（没有 `sym` 的字面量对象）。测试 `Rel/Lang/TestSchemaDisk.lean`。
-  - wide pivot、`get_dummies`（未做，要设计变更）：例 `get_dummies(c)`，磁盘上 `c` 的不同值是 `A` `B`，结果 schema 是
-    `{c_A : u1, c_B : u1}`，列名就是数据的值。缺两样：(a) 以列的不同值为元素的对象：`obj V = {A,B}` 把元素编码为
-    `0…n−1`，而磁盘上 `sym` 列存字典 id、`i64` 列存值本身（`{3,7,9}`），编码对不上，要一种带显式 universe 的对象声明；
-    (b) `.rel` 定义不能对一个对象的元素逐个生成积的分量：`⟨c ≫ (=A), c ≫ (=B)⟩` 的形状随 `|V|` 变，要在
-    elaborator 里按 `V` 的元素展开成 schema 的生成式。两者都超出现有 elaboration 机制。在此之前 wide pivot 只对声明的
-    有限 `obj P` 可写；long 形式是忠实的那个。
+  - wide pivot、`get_dummies`（已做）：例 `get_dummies(c)`，磁盘上 `c` 的不同值是 `3` `7` `9`，结果 schema 是
+    `{c_3 : 1+1, c_7 : 1+1, c_9 : 1+1}`，列名来自数据的值。两样机制，都在 elaboration 时，没有新的 `Tm` 构造子：
+    (a) `obj V from "dir" c` 读列 `c` 的不同值（升序，`asc distinct`），元素保持存储的值（`ObjDef.coded`：元素 `w` 的
+    code 是磁盘上的值本身，不是 `0…n−1`；`ObjInfo.codes` 是两种声明共用的 code 表）；
+    (b) 在有限对象上生成积：`⟨v ∈ V ↦ e⟩` 把 `e` 在每个元素 `w` 处（`v` 换成字面量 `{(∗,w)} : 1 ⟶ V`）的项左嵌套成对，
+    与 `Schema.obj` 同形；`schema D = {c ∈ V : A}` 每个元素一列 `c_w : A`。`V` 可以是任何有限对象（声明的 `{…}`、
+    范围、磁盘的）。`dummy`、`pivotCol` 是逐元素的库定义，积在使用处由 (b) 生成。测试 `Rel/Lang/TestPivotDisk.lean`。
+  - 未做：对象变量上的生成（库定义 `getDummies(c, x)` 本身对 `V` 泛型）要求定义在每个使用处展开，现在定义只 elaborate
+    一次、对象变量是刚性的；`obj V from` 只读 `i64` 列（`sym` 列要 `sym` 的字面量对象）；导入的有限对象不能生成。
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   `splitOn`、`match` 是库定义（上表），无新行、无新 kernel；正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
   仍缺：(1) `parseDate`：数字是 `$` 与 `minus` 的算术、`⦇[0, ⟨π₁ ×10, π₂⟩plus]⦈`，但 `(2024, 1, 15) ↦ 19737` 这条规则只在

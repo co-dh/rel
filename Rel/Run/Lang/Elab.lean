@@ -230,6 +230,8 @@ def wordText (t : Rel.QAtomicType) (x : UInt64) : String :=
 structure ObjInfo where
   ty : OTy
   elems : List String := []
+  /-- The code each of `elems` is stored as, in order: `0…n−1` for `obj V = {…}`, the stored values for a disk one. -/
+  codes : List Int64 := []
   range : Option (Int × Int) := none
   uni : Option ((m : USize) × Arr .i64 m) := none
   /-- An unbounded number object (`ObjDef.num`): every `Int64` an element, `𝟙` its universe. -/
@@ -1787,10 +1789,10 @@ def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
       if i.num then match i.obj with
         | .long => (wordAt p n .i64 w).map (·.toInt64)
         | o => throw ⟨p, s!"{w} at {n}, an object of {repr o}: no long"⟩
-      else match i.range, i.elems.idxOf? w, w.toInt? with
+      else match i.range, (i.elems.idxOf? w).bind (i.codes[·]?), w.toInt? with
       | some (lo, hi), _, some k => if lo ≤ k ∧ k ≤ hi then pure (Int64.ofInt k)
           else throw ⟨p, s!"{w} is not in {n} = {lo}…{hi}"⟩
-      | none, some k, _ => pure (Int64.ofNat k)
+      | none, some k, _ => pure k
       | none, none, some k =>
         -- each call checks its object holds the number (`build`'s `.call`)
         if i.ovar then

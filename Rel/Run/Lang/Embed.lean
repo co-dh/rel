@@ -99,6 +99,19 @@ def stmt (s : Syntax) : C Decl := do
     -- a column twice is refused where it is written, by the check every `Schema` function makes
     if let .error m := Schema.check cs then failAt s[4] m
     pure (.schema cs)
+  | ``sSchemaEach => objDecl do
+    let c ← wordOf s[4]; let v ← wordOf s[6]; let o ← obj s[8]
+    let some ws := (← get).fin.lookup v
+      | failAt s[6] s!"`{v}` is no finite object of this program: a schema over an object needs its elements"
+    let cs := ws.map fun w => (s!"{c}_{w}", o)
+    if let .error m := Schema.check cs then failAt s[6] m
+    pure (.schema cs)
+  -- each value named as a literal writes it at `i64` (`toString`), its code the value itself
+  | ``sObjFrom => objDecl do
+    let f ← path s[3]; let c ← wordOf s[4]
+    let some xs := (← get).diskVals.lookup (f, c)
+      | failAt s[3] s!"the column {c} of {f} was not read before the program (`Embed.diskOf`)"
+    pure (.coded (xs.map toString) xs)
   | ``sPrint => pure (.print p (← expr s[1]) (← binds s[2]))
   | ``sCheck => pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]))
   | ``sInput => do
@@ -205,12 +218,20 @@ def program (fm : FileMap) (s₀ : Parse.S) (ss : Array Syntax) : Except Err (Pr
 /-- The schemas the statements `ss` read (`schema S from "dir"`, F1), each read here, at elaboration, from its `.d`
     and files (`Table.readSchema`): the program is fixed by the data as it is now, and is elaborated again when the
     data changes. A path that is no literal is left to `schemaFrom`, which refuses it at its position. -/
-def diskOf (ss : Array Syntax) : CommandElabM (List (String × List (String × OExp) × List Rel.QAtomicType)) :=
-  ss.toList.filterMapM fun s => do
+def diskOf (ss : Array Syntax) (s₀ : Parse.S) : CommandElabM Parse.S := do
+  let disk ← ss.toList.filterMapM fun s => do
     let some f := (if s.getKind == ``sSchemaFrom then s[3].isStrLit? else none) | return none
     match ← (Table.readSchema f).toBaseIO with
     | .error e => throwErrorAt s[3] "{e}"
     | .ok S => return some (f, S.map (fun (c, o) => (c, (oexpOf o).1)), (S.flatMap fun c => (oexpOf c.2).2).eraseDups)
+  -- `obj V from "dir" c`: the column's distinct values in ascending order, as `asc distinct` gives them
+  let diskVals ← ss.toList.filterMapM fun s => do
+    let some f := (if s.getKind == ``sObjFrom then s[3].isStrLit? else none) | return none
+    let c := s[4][0].getId.toString (escape := false)
+    match ← (do let (_, ⟨_, x⟩) ← Table.readVals (.atom .i64) f c; IO.ofExcept (Table.frame x)).toBaseIO with
+    | .error e => throwErrorAt s[3] "{e}"
+    | .ok t => return some ((f, c), ((t.toList.map fun (_, v) => (v : Int64).toInt).eraseDups.toArray.qsort (· < ·)).toList)
+  return { s₀ with disk, diskVals }
 
 unsafe def programOfUnsafe (n : Name) : CommandElabM Program := do
   match (← getEnv).evalConstCheck Program (← getOptions) ``Program n with
@@ -303,7 +324,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
 /-- `rel_program n where …`, read in the current namespace and `open`s (module design §2.3): no program is in
     scope that is not `open`ed or written qualified. -/
 @[command_elab relProgram] def elabRelProgram : CommandElab := fun stx => do
-  match program (← getFileMap) { (← scopeHere) with disk := ← diskOf stx[4].getArgs } stx[4].getArgs with
+  match program (← getFileMap) (← diskOf stx[4].getArgs (← scopeHere)) stx[4].getArgs with
   | .error e => throwErrorAt stx "{e}"
   | .ok (prog, s) => define stx stx[2] prog s.used
 
@@ -316,7 +337,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
   let (res, ns) := resolverAt (← getEnv) (← getOptions) reg bns bos
   let s := Parse.after { cs := #[], res, ns } (base.filter fun | .obj .. => true | _ => false)
   let named : Decl → Option String := fun | .defn _ x .. => some x | _ => none
-  match program (← getFileMap) { s with disk := ← diskOf stx[7].getArgs } stx[7].getArgs with
+  match program (← getFileMap) (← diskOf stx[7].getArgs s) stx[7].getArgs with
   | .error e => throwErrorAt stx "{e}"
   | .ok (news, s') => do
     for d in news do

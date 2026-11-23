@@ -30,8 +30,12 @@ def OTy.poly : OTy → Bool
 def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
   -- one element is the terminal object: stored at `1`, no column (`Obj.one`)
   | .elems ws => pure {
-      ty := .base n, elems := ws, uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩,
+      ty := .base n, elems := ws, codes := (List.range ws.length).map Int64.ofNat,
+      uni := some ⟨_, col ((List.range ws.length).map Int64.ofNat)⟩,
       seg := ws.length != 1, obj := if ws.length = 1 then .one else .long }
+  -- stored as read: no segment, and one element stays a long, its code the value on disk
+  | .coded ws cs => let cs := cs.map Int64.ofInt
+    pure { ty := .base n, elems := ws, codes := cs, uni := some ⟨_, col cs⟩ }
   | .range lo hi =>
     pure { ty := .base n, range := some (lo, hi), uni := some ⟨_, col ((List.range (hi + 1 - lo).toNat).map fun k : Nat => Int64.ofInt (lo + k))⟩, seg := lo == 0 }
   | .alias o => do let (t, _) ← (oty env [] o).run {}; pure { ty := t }
@@ -83,7 +87,7 @@ def showEl (objs : Objs) (item : Bool) : OTy → (A : Obj) → A.El → String
   | .base n, .atom .i64, x =>
     let v : Int64 := x
     match objs.lookup n with
-    | some i => if i.range.isSome then toString v else (i.elems[v.toInt.toNat]?).getD (toString v)
+    | some i => if i.range.isSome then toString v else ((i.codes.idxOf? v).bind (i.elems[·]?)).getD (toString v)
     | none => toString v
   -- an object declared at another atom: its word as a literal writes it (`wordText`)
   | .base _, .atom t, x => match elWord t x with | some w => wordText t w | none => "?"
@@ -124,7 +128,8 @@ def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Tab A B) : Except String 
     s!"{if i = 0 then "" else ", "}({showEl objs false s A x}, {showEl objs false t B y})").foldl (· ++ ·) "" ++ "}")
 
 /-- A declared object as a print reads it: its names and range, no universe. -/
-def infoOf (ty : OTy) (elems : List String) (range : Option (Int × Int)) : ObjInfo := { ty, elems, range }
+def infoOf (ty : OTy) (elems : List String) (codes : List Int64) (range : Option (Int × Int)) : ObjInfo :=
+  { ty, elems, codes, range }
 
 /-- A `print`'s line, the term's text `x` and its value; and the value's ok bit. -/
 def printText (A B : Obj) (objs : Objs) (x : String) (s t : OTy) (c : Except String (Tab A B)) : String × Bool :=

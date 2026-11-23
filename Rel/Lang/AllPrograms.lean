@@ -60,6 +60,7 @@ import Rel.Lang.TestHylo
 import Rel.Lang.TestKnapsack
 import Rel.Lang.TestMss
 import Rel.Lang.TestNative
+import Rel.Lang.TestPivotDisk
 import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
 import Rel.Lang.TestSchemaDisk
