@@ -164,7 +164,9 @@ def ofAtoms (t : QAtomicType) (xs : Array (Option QAtom)) : Option (Opt t xs.siz
         Column.pushBits acc ((a.map Column.bitsOf).getD 0) w
       let nul := Column.packIds 1 xs.size fun i => (xs[i]?.any Option.isNone).toNat
       let e : Enc := .foR (Kernel.Coc.encode w.toUSize b nul).1 (Kernel.Coc.encode w.toUSize b nul).2
-      (Enc.wf? t xs.size.toUSize e).map fun h => mk e h.down
+      -- `WF` itself, not `Enc.wf?`: a flagged `u1` block is widened to width 2 for its null, and its metadata then
+      -- admits a residual 2 that only the elements rule out (`Column.u1Ok`)
+      if h : Enc.WF t xs.size.toUSize e then some (mk e h) else none
     else none
 
 end Opt

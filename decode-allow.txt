@@ -1,7 +1,5 @@
 Rel.Alg.tagBits
 Rel.Arr.get
-Rel.Arr.of
-Rel.Arr.opt
 Rel.Arr.toList
 Rel.Ew.bitBits
 Rel.Ew.cmpBits
@@ -16,7 +14,6 @@ Rel.Lang.Expand.once
 Rel.Lang.Expand.read
 Rel.Lang.Expand.top
 Rel.Lang.Expand.walk
-Rel.Lang.Gen.atom
 Rel.Lang.GenK.arith
 Rel.Lang.GenK.bound
 Rel.Lang.GenK.cmp
@@ -54,8 +51,6 @@ Rel.Lang.GenK.succ
 Rel.Lang.GenK.top
 Rel.Lang.Table.decode
 Rel.Lang.Table.decodeCsv
-Rel.Lang.Table.encArr
-Rel.Lang.Table.encVals
 Rel.Lang.Table.intern
 Rel.Lang.Table.internCsv
 Rel.Lang.Table.ofCsv
@@ -175,5 +170,4 @@ Rel.Vals.zip
 Rel.cellBad
 Rel.expand
 Rel.lastCount
-Rel.longWords
 Rel.tagCount

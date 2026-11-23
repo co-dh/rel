@@ -510,7 +510,9 @@ never per element (`Verify.u1Ok_bound`): an unpatched value is `baseAt + foRFram
 `ones (widthAt)` and, in a block `nulAt` flags, one less (the top one is the null), and a patched value is its patch.
 Every `u1` column the encoder writes passes, since it picks the minimal width (`widthFor` of the block's range), so a
 `0`/`1` block is base `0` width `1` or base `0`/`1` width `0`; a file whose `u1` block has a larger frame or width is
-rejected, even where each of its values happens to be `0` or `1`. -/
+rejected, even where each of its values happens to be `0` or `1`. So is a `u1` block flagged for a null: the encoder
+widens it to width 2 (residual 3 the null), whose metadata admits a residual 2; a nullable column (`Opt`) is
+decided by `Enc.WF` itself. -/
 def u1Ok (metadata pack : ByteArray) : Bool :=
   let e := blockStart metadata (nblk metadata)
   Nat.all (nblk metadata) fun b _ =>
