@@ -168,13 +168,18 @@ def intern {n : USize} (what : String) (D : Dict) (x : Vals (.arr (.atom .char))
     `rank = D ≫ asc(ran D)°`. It reads `D` alone: when `D` grows only `rank` is recomputed, never a data column. -/
 def rank (D : Dict) : Except String (Tab .long .long) := do D.comp (← (← Tab.asc (← D.ran)).conv)
 
+/-- The symbol relation `I : A ⟶ sym` as its ids `A ⟶ ℕ`: a `sym` column is its ids (`Enc.WF`), so the payload is
+    taken as it lies and its well-formedness carried over by proof, never re-decided (`Arr.of`) or read. -/
+def symIds {A : Obj} (I : Tab A (.atom .sym)) : Tab A .long :=
+  ⟨I.n, I.key, Arr.mk I.val.enc (by
+    have h := I.val.wf; generalize I.val.enc = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])⟩
+
 /-- q's unenumerate: `unenum(I) = I ≫ D`, the symbol relation `I : A ⟶ sym` with each id replaced by its text in its
     library's dictionary `D`, a composition and no kernel of its own. A symbol column meets only columns of its own
     library (`progLib`); its texts meet any text and intern into any library. An id past `D` has no text, so the
     answer is short and refused. -/
-def unenum {A : Obj} (what : String) (D : Dict) (I : Tab A (.atom .sym)) :
-    Except String (Tab A (.arr (.atom .char))) := do
-  let T ← (⟨I.n, I.key, ← Arr.of .i64 I.n (.vector .i64 I.n (← encOf what I.val.1) none) what⟩ : Tab A .long).comp D
+def unenum {A V : Obj} (what : String) (D : Tab .long V) (I : Tab A (.atom .sym)) : Except String (Tab A V) := do
+  let T ← (symIds I).comp D
   if T.n = I.n then pure T
   else .error s!"{what}: {I.n.toNat - T.n.toNat} of {I.n} ids are past the dictionary of {D.n} texts"
 
@@ -216,20 +221,23 @@ def readDict (db : String) : IO (Dict × Tab .long .long) := do
   let u ← IO.ofExcept D.ran
   unless u.n = d do throw (IO.userError s!"{fd}: {d.toNat - u.n.toNat} of {d} texts repeat one before them")
   let K ← IO.ofExcept (rank D)
-  let (fr, ⟨_, r⟩) ← readVals .long db "sym.rank"
-  unless r.toList == K.val.toList do throw (IO.userError s!"{fr}: not the rank of the dictionary {fd}")
+  let (fr, ⟨m, r⟩) ← readVals .long db "sym.rank"
+  -- both keyed by the ids `0 …`, so equal iff of one count and `frame r ∩ K` keeps all of `K`, met encoded
+  unless m == K.n && (← IO.ofExcept ((← IO.ofExcept (frame r)).inter K)).n == K.n do
+    throw (IO.userError s!"{fr}: not the rank of the dictionary {fd}")
   return (D, K)
 
 /-- A symbol column in `dir` under `p`: its ids, the column `p`; the texts are the database's one dictionary
     (`writeDict`). -/
 def writeSym {n : USize} (dir p : String) (y : Arr .sym n) : IO Unit := writeVals (A := .atom .sym) dir p y
 
-/-- The symbol columns of the side `x` (`cols` under `p`), each refused unless every id has a text in `D` (`decode`),
-    the column named as its file in `dir`. -/
+/-- The symbol columns of the side `x` (`cols` under `p`), each refused unless every id has a text in `D`: its ids
+    `unenum` through `dom D` (the ids alone, no text gathered), the column named as its file in `dir`. -/
 def checkSyms {A : Obj} {n : USize} (dir p : String) (D : Dict) (x : Vals A n) : Except String Unit := do
+  let E ← D.dom
   for (q, c) in cols A x p do
     if let .inr (.vector .sym k e _) := c then
-      let _ ← decode (file dir q) D (← Arr.of .sym k (.vector .sym k e none) (file dir q))
+      let _ ← unenum (file dir q) E (← frame (← Arr.of .sym k (.vector .sym k e none) (file dir q)))
 
 /-- The converse of `writeSym`: the ids at `p`, refused unless each has a text in `D` (`checkSyms`). -/
 def readSym (D : Dict) (dir p : String) : IO ((n : USize) × Arr .sym n) := do
@@ -267,12 +275,13 @@ def libDict (L : String) : IO Dict := do
     rows of `D`, so no id stored in `L` changes and `D`'s texts past them are appended; else the first id where the two
     differ is named. -/
 def writeLib (L : String) (D : Dict) : IO Unit := do
-  let (old, new) := ((← libDict L).toList, D.toList)
-  let i := ((old.zip new).takeWhile fun (a, b) => a == b).length
-  unless i == old.length do
-    throw (IO.userError s!"{L}: the library's dictionary of {old.length} texts and the program's of {new.length} \
-      differ at id {i}; a dictionary is append-only, so these ids are not of this library")
-  unless old.length == new.length do IO.FS.createDirAll L; writeDict L D
+  let old ← libDict L
+  -- the first rows of `D` iff `old ⊑ D` (both keyed by the ids `0 …`), met on the encoded tables
+  let X ← IO.ofExcept (old.diff D)
+  if h : 0 < X.n.toNat then
+    throw (IO.userError s!"{L}: the library's dictionary of {old.n} texts and the program's of {D.n} \
+      differ at id {X.key.get ⟨0, h⟩}; a dictionary is append-only, so these ids are not of this library")
+  unless old.n == D.n do IO.FS.createDirAll L; writeDict L D
 
 /-- An own table a program reads, `r` reading it from `dir`: its symbol columns' ids taken as they lie, the program's
     dictionary `D` being its library's (`progLib`), and refused unless each has a text in `D` (`checkSyms`). -/
