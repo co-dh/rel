@@ -260,16 +260,6 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
       · rw [rk, dif_neg (by simp)]; simpa using ha
       · rw [rv, dif_neg (by simp)]; simpa using hb
 
-/-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
-theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
-    U.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
-  unfold Tab.union at h
-  cases hc : R.concat S with
-  | error s => simp [hc, bind, Except.bind] at h
-  | ok C =>
-    simp only [hc, bind, Except.bind] at h
-    rw [canon_holds h, concat_holds hc hR hS]
-
 end Tab
 
 set_option hygiene false in
@@ -295,6 +285,16 @@ theorem concat_wf {R S t : Tab k v} (h : R.concat S = .ok t) (hR : R.WF) (hS : S
   rename_i y hy; cases h
   exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
 
+/-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
+theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ R.Holds a b ∨ S.Holds a b := by
+  unfold Tab.union at h
+  cases hc : R.concat S with
+  | error s => simp [hc, bind, Except.bind] at h
+  | ok C =>
+    simp only [hc, bind, Except.bind] at h
+    rw [canon_holds h (concat_wf hc hR hS), concat_holds hc hR hS]
+
 /-- **`∪` keeps `Tab.WF`**: `canon` of the concatenation. -/
 theorem union_wf {R S t : Tab k v} (h : R.union S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
   simp only [Tab.union, bind, Except.bind] at h
@@ -318,7 +318,7 @@ theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey ×
     exact Vals.nub_sorted hn hes
 
 /-- **`R.canon`'s rows are distinct** (`Vals.nub_distinct` of its pair side). -/
-theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U)
+theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) (hR : R.WF)
     {j j' : Fin U.n.toNat} (hjj : j ≠ j') :
     (U.key.row j, U.val.row j) ≠ (U.key.row j', U.val.row j') := by
   unfold Tab.canon at h
@@ -327,7 +327,7 @@ theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U)
   | ok r =>
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
-    exact Vals.nub_distinct hn hjj
+    exact Vals.nub_distinct hn hR hjj
 
 /-- **A canonical table's columns have codes**: `canon`
 ran `Vals.cols` and `kasc` on `(R.key, R.val)`. -/
@@ -744,7 +744,8 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
         Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ := by
     intro q hq G hG
     rw [(hsp.2.2.2.2.1 q (by omega) G), exists_prop_of_true hG, hkey _ (by have := hFlt G hG; omega), hkey q hq]
-    exact ⟨fun e => Vals.row_of_codes _ hes hc _ _ e.symm, fun e => (Vals.codes_of_row _ hes hc _ _ e).symm⟩
+    exact ⟨fun e => Vals.row_of_codes (A := .prod k v) (C.key, C.val) (concat_wf hcat hR hS) hes hc _ _ e.symm,
+      fun e => (Vals.codes_of_row (A := .prod k v) (C.key, C.val) (concat_wf hcat hR hS) hes hc _ _ e).symm⟩
   -- the tags in sorted order, and their `and`/`or` per group
   have hts' := kgather_plain hts hTN
   have hrp : Enc.raw .i64 C.n p = (ps.map Nat.toUInt64).toArray := by

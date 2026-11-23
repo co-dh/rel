@@ -263,14 +263,14 @@ namespace Tab
 variable {A B C D I : Obj}
 
 /-- **`cross X Y` denotes `X × Y`**: every pair of a row of `X` and a row of `Y` (`Vals.cross_rows`). -/
-theorem cross_holds {n m : USize} {X : Vals A n} {Y : Vals B m} {T : Tab A B} (h : cross X Y = .ok T) (a : A.El)
-    (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ ∃ j, Y.row j = b := by
+theorem cross_holds {n m : USize} {X : Vals A n} {Y : Vals B m} {T : Tab A B} (h : cross X Y = .ok T) (hX : Vals.WF X)
+    (hY : Vals.WF Y) (a : A.El) (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ ∃ j, Y.row j = b := by
   unfold cross at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr
   obtain ⟨T', x, y⟩ := r
-  rw [canon_holds h]
+  rw [canon_holds h (Vals.cross_wf hr hX hY)]
   exact Vals.cross_rows hr a b
 
 /-- **`Tab.zero` denotes `𝟘`** (`Tm.den` at `zero`). -/
@@ -284,32 +284,32 @@ theorem zero_holds {T : Tab A B} (h : (Tab.zero : Except String (Tab A B)) = .ok
   exact ⟨fun ⟨i, _⟩ => absurd i.2 (by simp), False.elim⟩
 
 /-- **`Tab.idU X` denotes `𝟙` on the values of `X`** (`Tm.den` at `id`, `uni`: `idU X ≫ 𝟙`). -/
-theorem idU_holds {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.idU X = .ok T) (a b : A.El) :
+theorem idU_holds {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.idU X = .ok T) (hX : Vals.WF X) (a b : A.El) :
     T.Holds a b ↔ a = b ∧ ∃ i, X.row i = a := by
-  rw [dom_holds h]
+  rw [dom_holds h hX]
   exact ⟨fun ⟨e, _, i, h1, _⟩ => ⟨e, i, h1⟩, fun ⟨e, i, h1⟩ => ⟨e, _, i, h1, rfl⟩⟩
 
 /-- **`Tab.top K L` denotes `K ≫ ⊤ ≫ L`**: every value of `K` beside every value of `L`. -/
-theorem top_holds {n m : USize} {K : Vals A n} {L : Vals B m} {T : Tab A B} (h : Tab.top K L = .ok T) (a : A.El)
-    (b : B.El) : T.Holds a b ↔ (∃ i, K.row i = a) ∧ ∃ j, L.row j = b := cross_holds h a b
+theorem top_holds {n m : USize} {K : Vals A n} {L : Vals B m} {T : Tab A B} (h : Tab.top K L = .ok T) (hK : Vals.WF K)
+    (hL : Vals.WF L) (a : A.El) (b : B.El) : T.Holds a b ↔ (∃ i, K.row i = a) ∧ ∃ j, L.row j = b := cross_holds h hK hL a b
 
 /-- **`Tab.top X V.val` denotes `⊤ ≫ V` on the values of `X`** (`Tm.den` at `top`: `idU X ≫ ⊤ ≫ ⟦V⟧`), `top_holds`
 with `L` the values of `V`. -/
-theorem top_val_holds {n : USize} {X : Vals A n} {V : Tab B B} {T : Tab A B} (h : Tab.top X V.val = .ok T)
+theorem top_val_holds {n : USize} {X : Vals A n} {V : Tab B B} {T : Tab A B} (h : Tab.top X V.val = .ok T) (hX : Vals.WF X) (hV : V.WF)
     (a : A.El) (b : B.El) : T.Holds a b ↔ (∃ i, X.row i = a) ∧ (Core.Rel.top ≫ V.Holds) a b := by
-  rw [top_holds h]
+  rw [top_holds h hX hV.2]
   exact and_congr_right fun _ => ⟨fun ⟨j, hj⟩ => ⟨_, trivial, j, rfl, hj⟩, fun ⟨_, _, j, _, hj⟩ => ⟨j, hj⟩⟩
 
 /-- **`Tab.outl X` denotes `π₁` on the pairs `X`** (`Tm.den` at `outl`: `idU X ≫ graph Prod.fst`). -/
-theorem outl_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) A} (h : Tab.outl X = .ok T)
+theorem outl_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) A} (h : Tab.outl X = .ok T) (hX : Vals.WF X)
     (p : (Obj.prod A B).El) (a : A.El) : T.Holds p a ↔ (∃ i, X.row i = p) ∧ Core.Rel.graph Prod.fst p a := by
-  rw [canon_holds h]
+  rw [canon_holds h ⟨hX, hX.1⟩]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by subst h1 h2; rfl⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by subst h1 h2; rfl⟩⟩
 
 /-- **`Tab.outr X` denotes `π₂` on the pairs `X`** (`Tm.den` at `outr`: `idU X ≫ graph Prod.snd`). -/
-theorem outr_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) B} (h : Tab.outr X = .ok T)
+theorem outr_holds {n : USize} {X : Vals (.prod A B) n} {T : Tab (.prod A B) B} (h : Tab.outr X = .ok T) (hX : Vals.WF X)
     (p : (Obj.prod A B).El) (b : B.El) : T.Holds p b ↔ (∃ i, X.row i = p) ∧ Core.Rel.graph Prod.snd p b := by
-  rw [canon_holds h]
+  rw [canon_holds h ⟨hX, hX.2⟩]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by subst h1 h2; rfl⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by subst h1 h2; rfl⟩⟩
 
 /-- **`compPairs` denotes `R ≫ S`**: `comp`, or `compFrom` of `compGroups` within `crossMax` (`compFrom_canon`). -/
@@ -322,8 +322,8 @@ theorem compPairs_holds {R : Tab A B} {S : Tab B C} {T : Tab A C} (h : compPairs
     rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨k, -, h⟩ := h
     split at h; · cases h
-    obtain ⟨U, hU, hH⟩ := compFrom_canon hx h hR hS
-    rw [canon_holds hU]; exact hH a c
+    obtain ⟨U, hU, hUw, hH⟩ := compFrom_canon hx h hR hS
+    rw [canon_holds hU hUw]; exact hH a c
 
 /-- **`R.pair S` denotes `⟨R, S⟩`** (`Tm.den` at `pair`: `rpair`). -/
 theorem pair_holds {R : Tab A B} {S : Tab A C} {T : Tab A (.prod B C)} (h : R.pair S = .ok T) (hR : R.WF)
@@ -372,8 +372,8 @@ theorem flat_holds {n : USize} {X : Vals (.prod I A) n} {R : Tab I (.prod A B)} 
   have w3 := conv_wf hO3c (outl_wf hO3 hRv)
   have wM := comp_wf hM w2 w3
   rw [comp_holds h (inter_wf hJ wL wM) (outr_wf hO4 hRv)]
-  simp only [inter_holds hJ wL wM, comp_holds hL w1 hR, comp_holds hM w2 w3, conv_holds hO3c, outl_holds hO1,
-    outr_holds hO2, outl_holds hO3, outr_holds hO4, Core.Rel.graph]
+  simp only [inter_holds hJ wL wM, comp_holds hL w1 hR, comp_holds hM w2 w3, conv_holds hO3c (outl_wf hO3 hRv), outl_holds hO1 hX,
+    outr_holds hO2 hX, outl_holds hO3 hRv, outr_holds hO4 hRv, Core.Rel.graph]
   obtain ⟨i, a⟩ := p
   constructor
   · rintro ⟨⟨a', b'⟩, ⟨⟨i', ⟨hx, rfl⟩, hR⟩, ⟨a'', ⟨-, rfl⟩, ⟨-, rfl⟩⟩⟩, ⟨-, rfl⟩⟩
@@ -418,8 +418,8 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
 namespace Tab
 
 /-- **`Tab.inl X` denotes `inl` on the values `X`** (`idU X ≫ Core.Rel.inl`, the injection `junc` is defined by). -/
-theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl X = .ok T) (a : A.El)
-    (s : (Obj.sum A B).El) : T.Holds a s ↔ (∃ i, X.row i = a) ∧ Core.Rel.inl a s := by
+theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl X = .ok T) (hX : Vals.WF X)
+    (a : A.El) (s : (Obj.sum A B).El) : T.Holds a s ↔ (∃ i, X.row i = a) ∧ Core.Rel.inl a s := by
   unfold Tab.inl at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
@@ -427,7 +427,7 @@ theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl
   obtain ⟨tag, idx⟩ := ti
   split at h; · cases h
   rename_i y hy
-  rw [canon_holds h]
+  rw [canon_holds h ⟨hX, hX, Vals.none_wf hy⟩]
   have hrow : ∀ k : Fin n.toNat, Vals.row (A := .sum A B) ⟨n, 0, tag, idx, X, y⟩ k = .inl (X.row k) := fun k => by
     obtain ⟨ht, hc⟩ := injCols_ok hti k
     simp only [Vals.row, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
@@ -436,8 +436,8 @@ theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
 
 /-- **`Tab.inr Y` denotes `inr` on the values `Y`** (`idU Y ≫ Core.Rel.inr`). -/
-theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr Y = .ok T) (b : B.El)
-    (s : (Obj.sum A B).El) : T.Holds b s ↔ (∃ i, Y.row i = b) ∧ Core.Rel.inr b s := by
+theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr Y = .ok T) (hY : Vals.WF Y)
+    (b : B.El) (s : (Obj.sum A B).El) : T.Holds b s ↔ (∃ i, Y.row i = b) ∧ Core.Rel.inr b s := by
   unfold Tab.inr at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
@@ -445,7 +445,7 @@ theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr
   obtain ⟨tag, idx⟩ := ti
   split at h; · cases h
   rename_i x hx
-  rw [canon_holds h]
+  rw [canon_holds h ⟨hY, Vals.none_wf hx, hY⟩]
   have hrow : ∀ k : Fin n.toNat, Vals.row (A := .sum A B) ⟨0, n, tag, idx, x, Y⟩ k = .inr (Y.row k) := fun k => by
     obtain ⟨ht, hc⟩ := injCols_ok hti k
     simp only [Vals.row, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
@@ -480,13 +480,13 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
       rw [zero_holds h, false_iff]
       rintro ⟨⟨i, hi⟩, hs⟩
       simp only [Core.Rel.inl, Core.Rel.graph] at hs
-      have hd : D.Holds s s := (idU_holds hD _ _).2 ⟨rfl, i, hi⟩
+      have hd : D.Holds s s := (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩
       have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
       have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM wD wF _ _).2 ⟨hd, hf⟩)
-      obtain ⟨-, b, hb⟩ := (dom_holds hF _ _).1 hf
+      obtain ⟨-, b, hb⟩ := (dom_holds hF (comp_wf hE wD (conv_wf hC (inr_wf hI hX.2))).1 _ _).1 hf
       obtain ⟨s', hs', hc⟩ := (comp_holds hE wD (conv_wf hC (inr_wf hI hX.2)) _ _).1 hb
-      obtain ⟨rfl, -⟩ := (idU_holds hD _ _).1 hs'
-      have he := ((inr_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2
+      obtain ⟨rfl, -⟩ := (idU_holds hD hX _ _).1 hs'
+      have he := ((inr_holds hI hX.2 _ _).1 ((conv_holds hC (inr_wf hI hX.2) _ _).1 hc)).2
       simp only [Core.Rel.inr, Core.Rel.graph] at he
       exact absurd (hs.symm.trans he) (by simp)
     · cases h
@@ -498,10 +498,10 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
     rw [comp_holds h (idU_wf hD hX) (conv_wf hC (inl_wf hI hX.1))]
     constructor
     · rintro ⟨s', hd, hc⟩
-      obtain ⟨rfl, hs⟩ := (idU_holds hD _ _).1 hd
-      exact ⟨hs, ((inl_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2⟩
+      obtain ⟨rfl, hs⟩ := (idU_holds hD hX _ _).1 hd
+      exact ⟨hs, ((inl_holds hI hX.1 _ _).1 ((conv_holds hC (inl_wf hI hX.1) _ _).1 hc)).2⟩
     · rintro ⟨⟨i, hi⟩, hs⟩
-      refine ⟨s, (idU_holds hD _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC _ _).2 ((inl_holds hI _ _).2 ⟨?_, hs⟩)⟩
+      refine ⟨s, (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inl_wf hI hX.1) _ _).2 ((inl_holds hI hX.1 _ _).2 ⟨?_, hs⟩)⟩
       simp only [Core.Rel.inl, Core.Rel.graph] at hs
       subst hs
       simp only [Vals.row] at hi
@@ -535,13 +535,13 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
       rw [zero_holds h, false_iff]
       rintro ⟨⟨i, hi⟩, hs⟩
       simp only [Core.Rel.inr, Core.Rel.graph] at hs
-      have hd : D.Holds s s := (idU_holds hD _ _).2 ⟨rfl, i, hi⟩
+      have hd : D.Holds s s := (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩
       have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
       have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM wD wF _ _).2 ⟨hd, hf⟩)
-      obtain ⟨-, a, ha⟩ := (dom_holds hF _ _).1 hf
+      obtain ⟨-, a, ha⟩ := (dom_holds hF (comp_wf hE wD (conv_wf hC (inl_wf hI hX.1))).1 _ _).1 hf
       obtain ⟨s', hs', hc⟩ := (comp_holds hE wD (conv_wf hC (inl_wf hI hX.1)) _ _).1 ha
-      obtain ⟨rfl, -⟩ := (idU_holds hD _ _).1 hs'
-      have he := ((inl_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2
+      obtain ⟨rfl, -⟩ := (idU_holds hD hX _ _).1 hs'
+      have he := ((inl_holds hI hX.1 _ _).1 ((conv_holds hC (inl_wf hI hX.1) _ _).1 hc)).2
       simp only [Core.Rel.inl, Core.Rel.graph] at he
       exact absurd (hs.symm.trans he) (by simp)
     · cases h
@@ -553,10 +553,10 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
     rw [comp_holds h (idU_wf hD hX) (conv_wf hC (inr_wf hI hX.2))]
     constructor
     · rintro ⟨s', hd, hc⟩
-      obtain ⟨rfl, hs⟩ := (idU_holds hD _ _).1 hd
-      exact ⟨hs, ((inr_holds hI _ _).1 ((conv_holds hC _ _).1 hc)).2⟩
+      obtain ⟨rfl, hs⟩ := (idU_holds hD hX _ _).1 hd
+      exact ⟨hs, ((inr_holds hI hX.2 _ _).1 ((conv_holds hC (inr_wf hI hX.2) _ _).1 hc)).2⟩
     · rintro ⟨⟨i, hi⟩, hs⟩
-      refine ⟨s, (idU_holds hD _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC _ _).2 ((inr_holds hI _ _).2 ⟨?_, hs⟩)⟩
+      refine ⟨s, (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inr_wf hI hX.2) _ _).2 ((inr_holds hI hX.2 _ _).2 ⟨?_, hs⟩)⟩
       simp only [Core.Rel.inr, Core.Rel.graph] at hs
       subst hs
       simp only [Vals.row] at hi

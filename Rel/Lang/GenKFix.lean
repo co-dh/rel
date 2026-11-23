@@ -33,8 +33,8 @@ theorem inter_distinct {R S U : Tab k v} (h : R.inter S = .ok U) (wR : R.WF) (wS
   intro e
   rw [hs, hs] at e
   rcases Nat.lt_or_gt_of_ne (Fin.val_ne_of_ne hjj) with l | l
-  · exact (hlt j j' l).2 (Vals.codes_of_row (A := .prod k v) (C.key, C.val) hes hc _ _ e)
-  · exact (hlt j' j l).2 (Vals.codes_of_row (A := .prod k v) (C.key, C.val) hes hc _ _ e.symm)
+  · exact (hlt j j' l).2 (Vals.codes_of_row (A := .prod k v) (C.key, C.val) ⟨(Tab.concat_wf hC wR wS).1, (Tab.concat_wf hC wR wS).2⟩ hes hc _ _ e)
+  · exact (hlt j' j l).2 (Vals.codes_of_row (A := .prod k v) (C.key, C.val) ⟨(Tab.concat_wf hC wR wS).1, (Tab.concat_wf hC wR wS).2⟩ hes hc _ _ e.symm)
 
 end Tab
 
@@ -74,9 +74,9 @@ theorem nu_sound {A B : Obj} {S : Rel A B} {φ : Tab A B → Rel A B} {TS : Core
         le_iff.2 fun a b hab => le_iff.1 sX a b ((hY' a b).1 hab).1, w⟩
       rw [← hfix, inter_apply] at hab
       exact le_iff.1 (hm _ _ nX) a b hab.2)
-    _ _ _ ⟨Tab.toList_nodup fun _ _ => Tab.canon_distinct hT,
-      le_iff.2 fun a b ⟨Z, hZ, hz⟩ => (Tab.canon_holds hT a b).2 (Eq.mp (inter_apply _ _ _ _) (le_iff.1 hZ a b hz)).1,
-      le_iff.2 fun a b hab => (Tab.canon_holds hT a b).1 hab, Tab.canon_wf hT (wS.runE Known.wf_empty hs)⟩ h
+    _ _ _ ⟨Tab.toList_nodup fun _ _ => Tab.canon_distinct hT (wS.runE Known.wf_empty hs),
+      le_iff.2 fun a b ⟨Z, hZ, hz⟩ => (Tab.canon_holds hT (wS.runE Known.wf_empty hs) a b).2 (Eq.mp (inter_apply _ _ _ _) (le_iff.1 hZ a b hz)).1,
+      le_iff.2 fun a b hab => (Tab.canon_holds hT (wS.runE Known.wf_empty hs) a b).1 hab, Tab.canon_wf hT (wS.runE Known.wf_empty hs)⟩ h
   obtain ⟨dt, ht, -⟩ := round X Y t wX hY hp
   have hX := Tab.holds_of_n dt dX (fun a b hab => ((ht a b).1 hab).1) hn
   have hXt : rep X = rep t := Core.Rel.ext fun a b => ⟨hX a b, fun h => ((ht a b).1 h).1⟩

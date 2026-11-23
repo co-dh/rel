@@ -13,7 +13,7 @@ open Rel.Ext Rel.Kernel Rel.Verify Rel.Rep
 namespace Tab
 
 /-- **`asc P` denotes `asc(P)`** (`ascDen` of `dom P`): `kasc`'s order is `Obj.lt` (`Vals.lamLaw` at `ℕ ⟶ B`). -/
-theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok T) :
+theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok T) (wP : P.WF) :
     rep T = ascDen B fun b => ∃ c, P.Holds b c := by
   unfold Tab.asc at h
   split at h; · cases h
@@ -29,11 +29,11 @@ theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok
     obtain ⟨hl, hs⟩ := hsort j j' hj
     have e : ∀ j, U.val.row j = P.key.row (sel j) := fun j => congrArg Prod.snd (hrow j)
     rw [e j, e j']
-    exact Vals.lamLaw ((z, P.key) : Vals (.prod .long B) P.n) hes hcs (sel j) (sel j')
+    exact Vals.lamLaw ((z, P.key) : Vals (.prod .long B) P.n) ⟨trivial, wP.1⟩ hes hcs (sel j) (sel j')
       (by show Vals.row (A := .long) z _ = Vals.row (A := .long) z _; rw [Vals.row_atom, Vals.row_atom,
         Arr.zeros_get hz, Arr.zeros_get hz]) hl hs
   have hH : ∀ k b, (∃ i, U.key.row i = k ∧ U.val.row i = b) ↔
-      ∃ i, Vals.row (A := .long) z i = k ∧ P.key.row i = b := canon_holds hU
+      ∃ i, Vals.row (A := .long) z i = k ∧ P.key.row i = b := canon_holds hU ⟨trivial, wP.1⟩
   let ys := List.ofFn fun j => U.val.row j
   have hys : ys.Pairwise B.lt := List.pairwise_iff_getElem.2 fun i i' hi hi' h => by
     simp only [ys, List.getElem_ofFn]; exact hlt ⟨i, by simpa [ys] using hi⟩ ⟨i', by simpa [ys] using hi'⟩ h
@@ -70,9 +70,9 @@ namespace Lang.GenK
 meaning `Y` from one of meaning `X`. -/
 theorem ofRel_sound {A B C D : Obj} {R : Rel A B} {X : Core.Rel A.El B.El}
     {f : Tab A B → Except String (Tab C D)} {Y : Core.Rel C.El D.El} (hR : ∀ K, K.WF → R.Reps K X) (wR : R.Wf)
-    (hf : ∀ r t, f r = .ok t → rep r = X → rep t = Y) : ∀ K, K.WF → (GenK.ofRel A B C D R f).Reps K Y :=
-  lift1_sound (fun _ _ => Known.wf_empty) hR wR fun _ r t ht _ hr => by
-    rw [hf r t ht (agrees_empty hr).symm]; exact fun _ _ _ _ _ => Iff.rfl
+    (hf : ∀ r t, f r = .ok t → r.WF → rep r = X → rep t = Y) : ∀ K, K.WF → (GenK.ofRel A B C D R f).Reps K Y :=
+  lift1_sound (fun _ _ => Known.wf_empty) hR wR fun _ r t ht wr hr => by
+    rw [hf r t ht wr (agrees_empty hr).symm]; exact fun _ _ _ _ _ => Iff.rfl
 
 end Lang.GenK
 
