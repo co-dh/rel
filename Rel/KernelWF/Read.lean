@@ -20,7 +20,7 @@ import Rel.ObjOrder
 import Rel.Run.Core
 import Rel.Rep
 
-/-! Read lemmas of the run path's own definitions (`Enc.get`, `Enc.raw`, `Vals.row`, the foR block layout, the
+/-! Read lemmas of the run path's own definitions (`Enc.get`, `Enc.raw`, `ValsB.row`, the foR block layout, the
     symbol id widths), kept from the deleted `Rel.KernelWF.*` modules whose other contents were about the old layer.
     Each section names the module it came from. -/
 

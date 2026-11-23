@@ -10,7 +10,7 @@ public import Rel.Run.SetOps
 encoded columns as they are, in the style of `Rel/Run/Canon.lean`.
 
 `R ≫ S` ranks the middle values of both sides in one order: the middle columns of `R.val` and `S.key` concatenated
-(`Vals.concat`, CONCAT of `doc/rel-kernels.md`), `kasc` → `kseen` numbers the groups of equal middle values; `kasc`
+(`ValsB.concat`, CONCAT of `doc/rel-kernels.md`), `kasc` → `kseen` numbers the groups of equal middle values; `kasc`
 being stable, a group's sorted rows are its `R` rows, then its `S` rows. Per group `kscatter (.add)` counts both runs,
 their product is the group's output width, `expand` places the groups, and output row `t` of group `G` at offset `u` within it
 pairs `R` row `p[f[G] + u / cS[G]]` with `S` row `p[f[G] + cR[G] + u % cS[G]] - n`. Both sides are `kgather`ed there
@@ -43,7 +43,7 @@ variable {A B C : Obj}
 def conv (R : Tab A B) : Except String (Tab B A) := Tab.canon ⟨R.n, R.val, R.key⟩
 
 /-- The groups of `R ≫ S` (first `R`, then `S`): the groups of equal middle values (`kasc` → `kseen` over
-`Vals.concat` of `R.val` and `S.key`; `N` rows, permutation `p`, group `g` of each sorted row, first sorted row `f`
+`ValsB.concat` of `R.val` and `S.key`; `N` rows, permutation `p`, group `g` of each sorted row, first sorted row `f`
 of each of the `K` groups), per group the run of `R` rows (`cR`, those whose input row `p[q]` is below `n`) and of
 `S` rows (`cS`), and the output rows of each group (`w = cR * cS`). -/
 def compGroups (R : Tab A B) (S : Tab B C) :
@@ -52,7 +52,7 @@ def compGroups (R : Tab A B) (S : Tab B C) :
   -- `.lt`, `.max`, `.div`, `.mod` read counts, row numbers and offsets signed: every one is below `n * m + n + m`
   if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"comp: {n} × {m} rows past 2^63"
   let N ← catRows n m
-  let es ← Vals.cols (← Vals.concat N R.val S.key)
+  let es ← ValsB.cols (← ValsB.concat N R.val S.key)
   let (vs, p) ← kasc N es
   let (k, g, f) ← kseen N ((es.map (·.1)).zip vs)
   let K := k.toUSize
@@ -76,7 +76,7 @@ def compExpand (R : Tab A B) (S : Tab B C) :
     let pq ← kgather T qS N p
     -- `pq - n` as `pq + (0 - n)` in one `kscan`'s post chain, no `colConst` (`colMap_const_eq`)
     let iS ← colMap .first T pq pq .i64 .i64 [] [(.add, 0 - n.toUInt64)]
-    Tab.canon ⟨T, ← Vals.gather T iR R.key, ← Vals.gather T iS S.val⟩
+    Tab.canon ⟨T, ← ValsB.gather T iR R.key, ← ValsB.gather T iS S.val⟩
 
 /-- **`R ≫ S` in one expansion**: `compGroups`, then `compExpand` of all its groups at once; its peak is the
 expansion `Σ cR·cS`, before `canon` removes duplicates. -/

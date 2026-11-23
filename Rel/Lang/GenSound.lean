@@ -62,7 +62,7 @@ theorem GenK.zero_wf {A B : Obj} : (GenK.zero A B).Wf := GenK.tab_wf fun _ h => 
 /-- A fixed point's round `GenK.const` of a `WF` table is `Wf`. -/
 theorem GenK.const_wf {A B : Obj} {X : Tab A B} (h : X.WF) : (GenK.const A B (.ok X)).Wf := h
 
-/-- A literal is `Wf` where its flag says its cells passed (`Tm.gen` sets it by `Vals.cellsOk`). -/
+/-- A literal is `Wf` where its flag says its cells passed (`Tm.gen` sets it by `ValsB.cellsOk`). -/
 theorem GenK.val_wf {A B : Obj} {R : Tab A B × Bool} (h : R.2 = true → R.1.WF) : (GenK.val A B R).Wf := by
   unfold GenK.val GenK.const; split
   · exact GenK.tab_wf fun _ ht => Tab.canon_wf ht (h ‹_›)
@@ -437,8 +437,8 @@ theorem Tab.tails_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
   subst h
   have wL := Tab.lamOf_wf hL wX (Tab.uncat_wf hU wX)
   -- the cells of `⟨m, lo, hi, f.2⟩` are those of `⟨m, lo, hi, f⟩` mapped by `Prod.snd`
-  have hrow : ∀ i, Vals.row (A := .arr (.arr B)) ⟨m, lo, hi, f.2⟩ i =
-      (Vals.row (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
+  have hrow : ∀ i, ValsB.row (A := .arr (.arr B)) ⟨m, lo, hi, f.2⟩ i =
+      (ValsB.row (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
     rw [Vals.row_arr i (wL.2.1 i), Vals.row_arr i (wL.2.1 i), List.map_map]
     congr 1; funext k; simp only [Function.comp_apply, apply_dite Prod.snd]; rfl
   obtain ⟨C, hC, wC⟩ := Tab.uncat_canonical hU wX
