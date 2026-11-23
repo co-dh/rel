@@ -35,7 +35,7 @@ private def setOk {k v : Obj} [BEq k.El] [BEq v.El] (R S : Tab k v) : Bool :=
 -- both orders of every pair of tables
 #guard [T₁, T₂, T₃, []].all fun ps => [T₁, T₂, T₃, []].all fun qs => setOk (tab ps) (tab qs)
 
-/-- Cells over the payload `9 5 1 5`, the second part of each pair being shifted past `arrPay` by `Vals.concat`:
+/-- Cells over the payload `9 5 1 5`, the second part of each pair being shifted past `arrPay` by `ValsB.concat`:
 `[5]` and `[5,1]` (in `arrCells` too, from other ranges), the empty cell, `[1,5]`, and `[9,5]`. -/
 private def arrCells₂ : List (Int64 × Int64 × Int64) := [(1, 2, 1), (1, 3, 7), (0, 0, 2), (2, 4, 1), (3, 4, 5), (0, 2, 9)]
 private def arrPay₂ : List Int64 := [9, 5, 1, 5]

@@ -13,7 +13,7 @@ W3, step T7), in the style of `Rel/Run/Comp.lean`: `snoc`, `cat`, `cons`, `zip` 
 `sum`, `uncons`, `unsnoc`, `uncat` on the cells `X` a context gives (as the old `RowCode.*` run them).
 
 One composition builds every new cell: `Vals.cat`, the cell `X[i] ++ Y[i]` of two `arr` sides — the payloads joined
-(`Vals.concat`), EXPAND (`expand`) of the summed widths, and each output element `kgather`ed from the first slice or
+(`ValsB.concat`), EXPAND (`expand`) of the summed widths, and each output element `kgather`ed from the first slice or
 the second. `snoc` is `cat` after `𝟙 × τ` (`Vals.tau`, the one-element cells over a side's own rows), `cons` after
 `τ × 𝟙`, as the old `snocC`; `zip` reads both slices at one offset. The converses build no payload: each answer cell
 is a slice `[lo, hi)` of the input's own payload. No column is decoded or re-encoded. -/
@@ -29,7 +29,7 @@ def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Ex
 
 /-- `x` with every array payload cut to the elements its cells read, where at most half of it is read (`2 · T ≤ m`,
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads
-the same. A payload joined to a copy of itself (`Vals.concat` in `∪`, `cat`) doubles while its cells read one copy;
+the same. A payload joined to a copy of itself (`ValsB.concat` in `∪`, `cat`) doubles while its cells read one copy;
 the cut is paid by the dead half, so a round's slices (`uncons`) are not copied each round. -/
 def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A n)
   | .atom _, _, x => pure x
@@ -43,11 +43,11 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
     | .ok P =>
       if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2 (colPrefix_plain hP) ≤ m.toNat then do
         let (T, G, u) ← expand n w
-        Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
+        Vals.cells n w (← Vals.pack (← ValsB.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
       else pure ⟨m, lo, hi, ← Vals.pack f⟩
   | .sum _ _, _, s => match s.view with
     | .opt .. => pure s
-    | .gen h l r tag idx x y => do pure (Vals.ofGen h l r tag idx (← Vals.pack x) (← Vals.pack y))
+    | .gen h tag x y => do pure (ValsB.ofGen h tag (← Vals.pack x) (← Vals.pack y))
   | .one, _, _ => pure ()
 
 /-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/
@@ -58,7 +58,7 @@ def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do
 def Vals.tau {B : Obj} {n : USize} (x : Vals B n) : Except String (Vals (.arr B) n) := do
   pure ⟨n, ← Arr.pos n, ← colArr .first n .pos .pos .i64 .i64 [] [(.add, 1)], x⟩
 
-/-- **Row `i` the cell `X[i] ++ Y[i]`**: the payloads `f₁`, `f₂` joined (`Vals.concat`, `f₂` from `m₁` on), the
+/-- **Row `i` the cell `X[i] ++ Y[i]`**: the payloads `f₁`, `f₂` joined (`ValsB.concat`, `f₂` from `m₁` on), the
 widths `w₁ + w₂` EXPANDed into `(G, u)`, and output element `u` of cell `G` read at `s₁[G] + u` where `u < w₁`, else
 at `m₁ + s₂[G] + u - w₁` (`b + c · (a - b)`, `c` the `0`/`1` test `u < w₁`). -/
 def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals (.arr B) n) :=
@@ -68,7 +68,7 @@ def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals
     if 2 ^ 63 ≤ n.toNat * (m₁.toNat + m₂.toNat) + n.toNat + m₁.toNat + m₂.toNat then
       throw s!"cat: {n} cells over {m₁} + {m₂} elements past 2^63"
     let N ← catRows m₁ m₂
-    let F ← Vals.concat N f₁ f₂
+    let F ← ValsB.concat N f₁ f₂
     let w₁ ← colMap .sub n hi₁.enc lo₁.enc
     let w ← colMap .add n w₁ (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w
@@ -76,7 +76,7 @@ def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals
     let d ← colMap .sub n (← colMap .first n lo₂.enc lo₂.enc .i64 .i64 [] [(.add, m₁.toUInt64)]) w₁
     let b ← colMap .add T (← kgather T G n d) u
     let c ← colMap .lt T u (← kgather T G n w₁)
-    Vals.cells n w (← Vals.gather T (← colMap .add T b (← colMap .mul T c (← colMap .sub T a b))) F)
+    Vals.cells n w (← ValsB.gather T (← colMap .add T b (← colMap .mul T c (← colMap .sub T a b))) F)
 
 /-- **Row `i` the cell `zip X[i] Y[i]`**: the widths `min w₁ w₂` EXPANDed into `(G, u)`, output element `u` of cell
 `G` the pair of `X`'s payload at `s₁[G] + u` and `Y`'s at `s₂[G] + u`. -/
@@ -88,8 +88,8 @@ def Vals.zip {A B : Obj} {n : USize} (X : Vals (.arr A) n) (Y : Vals (.arr B) n)
       throw s!"zip: {n} cells over {m₁} + {m₂} elements past 2^63"
     let w ← colMap .min n (← colMap .sub n hi₁.enc lo₁.enc) (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w
-    let x ← Vals.gather T (← colMap .add T (← kgather T G n lo₁.enc) u) f₁
-    let y ← Vals.gather T (← colMap .add T (← kgather T G n lo₂.enc) u) f₂
+    let x ← ValsB.gather T (← colMap .add T (← kgather T G n lo₁.enc) u) f₁
+    let y ← ValsB.gather T (← colMap .add T (← kgather T G n lo₂.enc) u) f₂
     Vals.cells n w ((x, y) : Vals (.prod A B) T)
 
 namespace Tab
@@ -119,8 +119,8 @@ def uncons {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.pro
     if 2 ^ 63 ≤ n.toNat + m.toNat + 1 then throw s!"uncons: {n} cells over {m} elements past 2^63"
     let (M, sel) ← whereCol n (← colMap .lt n lo.enc hi.enc)
     let sM ← Arr.gather M sel lo
-    canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
-      (← Vals.gather M sM.enc f, ⟨m, ← colArr .first M sM.enc sM.enc .i64 .i64 [] [(.add, 1)], ← Arr.gather M sel hi, f⟩)⟩
+    canon ⟨M, ← ValsB.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
+      (← ValsB.gather M sM.enc f, ⟨m, ← colArr .first M sM.enc sM.enc .i64 .i64 [] [(.add, 1)], ← Arr.gather M sel hi, f⟩)⟩
 
 /-- **`snoc°` on the cells `X`**: each non-empty cell `[s, e)` to the slice `[s, e - 1)` and its last element (the
 payload at `e - 1`). -/
@@ -131,8 +131,8 @@ def unsnoc {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.pro
     let (M, sel) ← whereCol n (← colMap .lt n lo.enc hi.enc)
     let hM ← Arr.gather M sel hi
     let l ← colArr .first M hM.enc hM.enc .i64 .i64 [] [(.add, 0 - 1)]
-    canon ⟨M, ← Vals.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
-      (⟨m, ← Arr.gather M sel lo, l, f⟩, ← Vals.gather M l.enc f)⟩
+    canon ⟨M, ← ValsB.gather (A := .arr B) M sel ⟨m, lo, hi, f⟩,
+      (⟨m, ← Arr.gather M sel lo, l, f⟩, ← ValsB.gather M l.enc f)⟩
 
 /-- **`cat°` on the cells `X`**: each cell `[s, e)` to its `e - s + 1` splits, EXPAND of those counts into `(G, u)`,
 split `u` of cell `G` the slices `[s, s + u)` and `[s + u, e)`. -/
@@ -144,7 +144,7 @@ def uncat {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.prod
     let (T, G, u) ← expand n (← colMap .sub n hi.enc lo.enc .i64 .i64 [] [(.add, 1)])
     let sG ← Arr.gather T G lo
     let mid ← colArr .add T sG.enc u
-    canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, (⟨m, sG, mid, f⟩, ⟨m, mid, ← Arr.gather T G hi, f⟩)⟩
+    canon ⟨T, ← ValsB.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, (⟨m, sG, mid, f⟩, ⟨m, mid, ← Arr.gather T G hi, f⟩)⟩
 
 /-- **`prefix` on the cells `X`**: the prelude's `cat° π₁`, `uncat` then `outl` on its splits. -/
 def «prefix» {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) := do

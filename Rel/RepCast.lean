@@ -281,7 +281,7 @@ theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ym
       if (Db.Csv.ymd (X.row j)).isSome then 1 else 0).enc)[i.1]?.getD 0 =
       if (Db.Csv.ymd (X.row i)).isSome then 1 else 0 := by
     intro i; rw [Arr.raw_ofFn rfl]; simp only [Option.getD_some]; split <;> decide
-  have hd : ∀ i : Fin n.toNat, Vals.row (A := .atom .date) (Arr.ofFn .date n fun j =>
+  have hd : ∀ i : Fin n.toNat, ValsB.row (A := .atom .date) (Arr.ofFn .date n fun j =>
       (Int32.ofInt ((Db.Csv.ymd (X.row j)).getD 0)).toUInt32.toUInt64) i =
       Int32.ofInt ((Db.Csv.ymd (X.row i)).getD 0) := by
     intro i
@@ -295,12 +295,12 @@ theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ym
   · rintro ⟨i, hi, rfl, rfl⟩
     refine ⟨⟨i, rfl⟩, ?_⟩
     have hi' := hf i ▸ hi
-    show _ = some (Vals.row (A := .atom .date) _ i)
+    show _ = some (ValsB.row (A := .atom .date) _ i)
     rw [hd i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
   · rintro ⟨⟨i, rfl⟩, hb⟩
     refine ⟨i, ?_, rfl, ?_⟩
     · rw [hf i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
-    · show Vals.row (A := .atom .date) _ i = _
+    · show ValsB.row (A := .atom .date) _ i = _
       rw [hd i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
 
 end Tab

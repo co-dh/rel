@@ -81,7 +81,7 @@ def objCols (A : Obj) (p : String) : List (String × QAtomicType) := (objLeaves 
     atom, its `Enc` register); an `arr` side (its path; its payload's row count `m`, a `size` register; `lo`, `hi`,
     `Enc` registers of `i64`; its payload's columns, `m` rows); a `sum` side `A+B` not in band (`Obj.band`): its two
     payloads' row counts `l`, `r` (size registers), the tag (`u1`) and position (`i64`) `Enc` registers, the payloads'
-    columns. A sum in band (`1+t`) is the atom column `Opt t n`, its null inside the encoding: an `atom`, as `Vals.cols`
+    columns. A sum in band (`1+t`) is the atom column `Opt t n`, its null inside the encoding: an `atom`, as `ValsB.cols`
     keys it. A product side is its two sides' columns one after the other (`Cols`), in `objCols` order. -/
 inductive Col where
   | atom (p : String) (t : QAtomicType) (e : Nat)
@@ -312,7 +312,7 @@ def prefixB (op : Kernel.Op) (n a : Nat) : Bld (Nat × Nat) := do
     | throw "prefix: not one column"
   pure (P, l)
 
-/-- The `n`-row columns `cs` at the `m` rows `ix` (`Vals.gather`): an array's `lo` and `hi` gathered, its payload
+/-- The `n`-row columns `cs` at the `m` rows `ix` (`ValsB.gather`): an array's `lo` and `hi` gathered, its payload
     kept; a sum's tags and positions gathered, its two payloads kept. -/
 def gatherCols (m ix n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun c => funC [(n, c)] fun
   | [(n, .atom p t e)] => return (m, .atom p t (← gatherB m ix n e))
@@ -337,7 +337,7 @@ partial def zeroCols (z c : Nat) (cs : Cols) : Bld Cols := cs.mapM fun col => do
   | .sum p _ _ _ _ x y => pure (.sum p z z (← at_ .u1) (← at_ .i64) (← zeroCols z z x) (← zeroCols z z y))
 
 mutual
-/-- The `kasc` key of the `n`-row column `c` (`Vals.cols`), an `AscKey` register and its column: an atom column its
+/-- The `kasc` key of the `n`-row column `c` (`ValsB.cols`), an `AscKey` register and its column: an atom column its
     words at its atom; an `arr` side one `cells` key over its `lo`, `hi` and its payload's keys, its column the
     positions, row `i` naming cell `i`. A sum has several keys (`keysB`), so no one. -/
 partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
@@ -347,7 +347,7 @@ partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
     return (← ctorB 1 #[lo, hi, ← listB els] #[n, m], ← posB)
   | .sum .. => sumB "a list's cell key of"
 
-/-- The keys of the column `c` (`Vals.cols`' list): one, or for a sum its tag, then the left summand's keys gathered at
+/-- The keys of the column `c` (`ValsB.cols`' list): one, or for a sum its tag, then the left summand's keys gathered at
     `idx · ¬tag`, then the right's at `idx · tag` (`Vals.summandCols`). A summand of no rows has no keys there; its
     positions would read outside it, so there the keys are zeros, which ties every row as no key does. -/
 partial def keysB (n : Nat) : Col → Bld (List (Nat × Nat))
@@ -431,7 +431,7 @@ def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← 
 /-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
 def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
 
-/-- **`Vals.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
+/-- **`ValsB.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
     atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` as they are
     (`0 ≤ lo ≤ hi ≤ m`, `Vals.WF`), the second's shifted past the first (`shiftB`); a sum's tags joined, its positions
     `0 … n-1`, each summand by `catSummandB`. -/
