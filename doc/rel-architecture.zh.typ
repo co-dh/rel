@@ -184,9 +184,9 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
   [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.ltDef_den`、`Tm.leqDef_den`）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
-  [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删）；`share` 今天仍是构造子，目标删除],
+  [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删；闭部分的共享槽是零元 `call`，`share` 已删）],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有定义 `Tm.ascDef`），在某个类型上实例化，参数由 `arg` 给出],
-  [三层], [上面只列 `Tm` 的构造子（今天 31 个，目标 28 个：再删 `leq` `lt` `share`）。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
+  [三层], [上面只列 `Tm` 的构造子（今天 30 个，目标 28 个：再删 `leq` `lt`）。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
 )
 
 #card(c-syn, [改写引理（原 `Tm.Ax`）])[category 律、`°°`、`(RS)° = S°R°`、分配律、`𝟘`、`μ`/`ν` 展开（`ν = S ∩ b[ν]`）：每条写成 `⟦lhs⟧ρ = ⟦rhs⟧ρ`，由 `Rel/Core/` 中 `Core.Rel` 的定理证明；改写 `t₁` 为 `t₂` 只需 `⟦t₁⟧ρ = ⟦t₂⟧ρ`。Rel 只在 `Rel(Set)` 上运行，所以 `Tm.Le`、`Syn`、`Hom.den` 去掉。]
