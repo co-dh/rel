@@ -138,7 +138,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 - 语句 `input x : A ⟶ B from "路径"` / `output x to "路径"`（后接 `csv` 为 CSV，否则为 mmap 表目录；路径就是语句里的字面量）
   不是 `Tm` 的构造子：`input` 声明一个只有类型的名字，是后续语句里程序层的 `var`；`output` 指名一个定义或 `input`。下表「绑定 / 复用」一行不变。
   key 是位置（不落盘）当且仅当 key 对象是存为 `.long` 的数对象；其它 key 对象都是 key 列。CSV 的列按对象结构展开，
-  `S+1` 是 `S` 每列一个可空列（`dataframe-design` F6 的落盘一条）；内存里 `atom+1` 是一列，null 是块内保留的顶残差（§4 foR）。
+  `S+1` 是 `S` 每列一个可空列（`dataframe-design` F6 的落盘一条）；内存里 `atom+1` 是一列，null 是带标志块内的残差 0（块基 = min−1，§4 foR）。
 - 字面量 `{(a,b),…}` 里的一个词按它所在对象的 atom 读成存储字（`Elab.wordAt`）：整数 `3` `-3`；浮点 `2.5` `1e-3`
   （按 Lean 的浮点字面量读）；`date` 上也可写 q 的日期 `2024.01.15`，`datetime` 上写 q 的时间
   `2024.01.15D12:30:00.5`（小数 1–9 位）。日期、时间是一个词（中间无空格），值是 1970-01-01 起的天数、纳秒数（公历外推，
@@ -173,16 +173,16 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   `call`，建不成（体要整读某参数、实参只能按对测试）时退回展开；分析（`numCheck`、`settleOpen`、极性）读展开。
 
 #tbl(c-syn, (auto, 1fr), ([组], [构造子]),
-  [allegory], [`id` `comp` `conv` `meet` `join` `zero` `top`；`dom` `ran` → 定义 + fused 行],
+  [allegory], [`id` `comp` `conv` `meet` `join` `zero` `top`；`dom` `ran` 是定义（`Tm.dom` `Tm.ran`，造 `.arg (.prim r) R`，含义 `Tm.dom_den` `Tm.ran_den`），行 `dom` `ran`（`domRow` `ranRow`，互为 `conv`）是它们的 fused 行],
   [division allegory], [`ldiv` `rdiv`；symmetric division 不是构造子，是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`，含义 `Tm.symDiv_den`），表层写作中缀 `R ÷ S`（`Bin.table`，与 `/` 同一优先级、左结合）],
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
-  [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` → 定义 + fused 行；`at` → native 行],
-  [数据], [`val R` `uni U`；`succ` `arith` `leq` `lt` 等 atom 运算全部是行],
+  [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
+  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`leq` `lt`（带 universe `U`）今天仍是构造子，目标删除：行 `le` `lt`（`cmpRow`）已在。`lt` 在任意 object 上是定义 `Tm.ltDef`（含义 `Tm.lt_den`），行 `lt` 是它在整数存储 atom 上的 fused 形式（`Tm.lt_row_den`）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
-  [绑定 / 复用], [`var` `arg` `call`；`callCv` `own` `share` 删除],
-  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 改为 kernel），在某个类型上实例化，参数由 `arg` 给出],
-  [三层], [上面只列 `Tm` 的构造子（今天 41 个，目标 28 个）。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
+  [绑定 / 复用], [`var` `arg` `call`；`callCv` `own` `share` 今天仍是构造子，目标删除],
+  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有定义 `Tm.ascDef`），在某个类型上实例化，参数由 `arg` 给出],
+  [三层], [上面只列 `Tm` 的构造子（今天 33 个，目标 28 个：再删 `own` `leq` `lt` `share` `callCv`）。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
 )
 
 #card(c-syn, [改写引理（原 `Tm.Ax`）])[category 律、`°°`、`(RS)° = S°R°`、分配律、`𝟘`、`μ`/`ν` 展开（`ν = S ∩ b[ν]`）：每条写成 `⟦lhs⟧ρ = ⟦rhs⟧ρ`，由 `Rel/Core/` 中 `Core.Rel` 的定理证明；改写 `t₁` 为 `t₂` 只需 `⟦t₁⟧ρ = ⟦t₂⟧ρ`。Rel 只在 `Rel(Set)` 上运行，所以 `Tm.Le`、`Syn`、`Hom.den` 去掉。]
@@ -254,19 +254,22 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 
 #card(c-run, [`atom+1`：null 在带内（决定 K）])[
   可空原子 `V+1` 存成*一列*，含义仍是 `V+1`（null = `inr ∗`）。宽度字节只用到 64，第 7 位空出来作 null 标志：
-  `widthAt` 读低 7 位，`nulAt` 读第 7 位（Rust `NUL_FLAG`、`Meta::w`、`Meta::nul`）。带标志的块里残差 $2^w − 1$ 是 null；
-  不带标志的块没有任何代价，现有列的含义不变。\
-  例：一块 $w = 6$、base $= 100$、带标志：残差 `000101` 是 $105$，`111111` 是 null（不是 $163$）。
-  若该块非 null 值的跨度 $max − min$ 恰为 $2^6 − 1 = 63$，编码器把 $w$ 加宽到 7；全 null 的块是 $w = 0$ 加标志。
-  base、`maxv` 是非 null 值的极值，`bsum` 不计 null。
+  `widthAt` 读低 7 位，`nulAt` 读第 7 位（Rust `NUL_FLAG`、`Meta::w`、`Meta::nul`）。带标志的块里残差 0 是 null，块基是 min−1，所以每个值的残差 ≥ 1；
+  不带标志的块没有任何代价，现有列的含义不变，解码与宽度也不变。\
+  例：一块 $w = 6$、base $= 99$（min $= 100$）、带标志：残差 `000110` 是 $105$，`000000` 是 null。
+  若该块非 null 值的跨度 $max − min$ 恰为 $2^6 − 1 = 63$（最大残差 64），编码器把 $w$ 加宽到 7；全 null 的块是 $w = 0$ 加标志。
+  `maxv` 是非 null 值的极大值，带标志块的 base 是 min−1，`bsum` 不计 null（kernel 算 $"base"·k + Σ r$，$k$ 是非 null 行数）。
   - 次序随 q（主人定）：null 小于每个值，`inr ∗ < inl a`。例：q 的 `asc 3 0N 1` 是 `0N 1 3`，`iasc` 是 `1 2 0`
     （q 把 long 的 null 存成最小整数）。kernel：`nulCodes` 先排一列"null 0 / 值 1"，`kasc` 因此把 null 排最前
     （`TestNullband` 的 `#guard`）；`seen` 中所有 null 相等，所以 join 时 null 与 null 相配、与任何值不配。
-  - null 码移到残差 0（主人定 O）：带标志的块里值存成残差 + 1，块内比码即 null 在前；读者只经 `foRNul`/`Opt.isNul`
-    判 null，不依赖 null 是哪个残差（`nullbot` 改 `foRNul` 与 Rust kernel，上面的"顶残差"随之改写）。
-  - 没有 null 字：规格把可空列的元素读成 `Option`（`foROpt`；`foROpt_top`：带标志块的顶残差读成 `none`；
+  - null 码是残差 0（主人定 O）：块内比码即 null 在前；读者只经 `foRNul`/`Opt.isNul` 判 null（残差 0 只在 `Column.foRNul`
+    与 `Coc.nulBlock`，即 Rust `is_nul`）；旧的全 1 残差写成的 own 文件要重写。
+  - 没有 null 字：规格把可空列的元素读成 `Option`（`foROpt`：带标志块的 null 读成 `none`；
     `foROpt_plain`：不带标志的块读成原值）。普通的 `Arr t n` 只在没有带标志的块时成立。
-  - kernel 不解码，只在编码上判 null（`foRNul`：标志 ∧ 无 patch ∧ 残差 $= 2^w − 1$）：`inl` 不动存储；`inl°` 留非 null 行
+  - 逐点运算传播 null（q 的 `1+0N = 0N`）：列 × 正常数、标量加减不用判；两列运算与 `div` 以 `[r≠0]` 掩码。折叠跳过 null
+    （`sum 100 0N 105 = 205`，`sum ≜ inr° ≫ ⦇0,+⦈`，null 是折叠的单位而不是零）。二元 `max` `min` 把 null 排在每个值之下：
+    `max(0N,5) = 5`，`min(0N,5) = 0N`。拼接是同一个 `kscan .first` 流，null 留在带内。
+  - kernel 不解码，只在编码上判 null（`foRNul`：标志 ∧ 无 patch ∧ 残差 $= 0$）：`inl` 不动存储；`inl°` 留非 null 行
     （不带标志的块整块留下）；`inr°` 留 null 行；`tot(R)` 是 scatter 到全 null 列；`sum` 经 `bsum` 跳过 null。
     gather、scatter、seen 带着标志走（gather 出的块可能变成带标志）。
   - 浮点：ALP 的每块整数也是 foR（`alpBits` 读 `foRBits`），同一标志适用。
@@ -277,13 +280,17 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 
 #tbl(c-syn, (auto, 1.2fr, 1fr), ([原子], [存成什么 code], [比较 / 运算]),
   [`u1`], [宽度 1 的无符号 code（0 或 1），真假值就是 `u1`，不另设 `bool`；sum 的 tag 列也是 `u1` 列], [`asc`、`scan(and/or/not)` 直接在 code 上],
-  [`char`], [8 位无符号 code（字节值，保序）；字符串 = `arr char`], [`asc` 按字节序；`arr char` 按字典序],
+  [`u8` `char`], [8 位无符号 code（字节值，保序）；字符串 = `arr char`], [`asc` 按字节序；`arr char` 按字典序],
   [`i8` `i16` `i32` `i64`], [翻转符号位，得到同宽的无符号数（保序）；再按块 foR], [`asc`、`scan(lt)` 直接在 code 上；算术按声明宽度回绕],
+  [`date` `datetime`], [整数 code，没有时区：`date` 是 1970-01-01 起的天数（`Int32`，同 `i32`），`datetime` 是纳秒数（`Int64`，同 `i64`）], [同 `i32` `i64`；日期字面量与 CSV 经 `Db.Csv.ymd` `Db.Csv.stamp` 读成这个词],
   [`f32` `f64`], [保序位映射：正数翻转符号位，负数翻转全部位，得到 `UInt32` / `UInt64`], [code 的序 = 浮点的全序（NaN 也有位置）；`fadd` `fmul` `flt` 等先还原再算],
   [`sym`], [字典 id：整个数据库一个字典 `D : ℕ ⟶ [C]`，无重复、只追加（q 的 sym 文件），列存 id], [`D` 无重复，所以 id 相等 = 字符串相等：`=`、join、`∩`、`group`、`distinct` 只看 id；序经 `rank ≜ iasc(D)°`：`<` 在 sym 上 = `rank ≫ < ≫ rank°`，`asc` = `rank ≫ asc`],
 )
 
 - 原子的宽度只决定 code 的值域上限（`i8` ≤ 8 位 …）；块的宽度 $w$ 仍按数据选，常常比声明宽度窄。
+- `general`（q 的类型 0，每个元素装箱）是列类型，不是原子：没有 code、没有 kernel 序（`Obj.key` 给 `[]`，所有 general 值相等），
+  所以 `asc` 与 `sym` 一样拒绝它（`Obj.ascBad`）。语言不持有的字：`f32` `f64` 的 NaN 与负零（`QAtomicType.nonCanonical`），
+  产生浮点字的地方把零规范成一个。`atom+1` 仍是一列，null 是带标志块里的残差 0（§4.2）。
 
 - data frame = `Rel A B` 的 `tab`，`B` 是若干原子列的 `prod`：struct of arrays，每列一个 foR `Enc`。
 - `alp`（浮点小数压缩）不再是一种形式；需要时作为 float 列的 fast path，配一条定理说明 decode 后等于保序位映射。
