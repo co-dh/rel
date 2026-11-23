@@ -554,6 +554,32 @@ info: "val\n2\n0\n2\n"
   IO.FS.removeDirAll d
   return r
 
+-- the same `lessThan` generic over its object (`α ⟶ α`), instantiated at `S` by its call `a lessThan a°`
+open Rel.Programs.prelude in
+rel_program symPolyGenIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-sympolygen/a.csv"
+    dictionary D : S ⟶ [C]
+    lessThan : α ⟶ α ≜ <
+    lts : N ⟶ N ≜ a lessThan a°
+    output lts to csv "/data/tmp/rel-test-io-sympolygen/l.csv"
+
+/--
+info: "val\n2\n0\n2\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-sympolygen"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
+  symPolyGenIO.io
+  let r ← IO.FS.readFile (d ++ "/l.csv")
+  IO.FS.removeDirAll d
+  return r
+
 -- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
 /--
 error: line 568, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
