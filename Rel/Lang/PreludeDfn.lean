@@ -33,7 +33,28 @@ def Tm.nilDef {A B : Obj} : Tm A (.arr B) := .lam .zero
 /-- `front(Q) ≜ Λ(∋ − ∋ (Q − Q°))`. -/
 def Tm.frontDef {B : Obj} (Q : Tm B B) : Tm (.arr B) (.arr B) := .lam (.diff .mem (.comp .mem (.diff Q (.conv Q))))
 
-theorem Tm.flatDef_den (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) (x : (Obj.prod I A).El) (hx : Short _ x) (w : B.El) :
+/-- `est(Q) ≜ ∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)`, with `cor(S) = dom(π₁S ∩ π₂)`. -/
+def Tm.estDef {B : Obj} (Q : Tm B B) : Tm (.arr B) B :=
+  .diff .mem (.comp (.pair .mem .mem) (.comp (.diff .id (.dom (.meet (.comp .outl (.join Q .id)) .outr))) .outl))
+
+/-- Pointwise `estDen`: `b` of `xs` unless some `c` of `xs` is outside `Q ∪ 𝟙` at `(b, c)`; from `Tm.est_den`. -/
+theorem Tm.estDef_den (ρ : Val) {B : Obj} (Q : Tm B B) : (Tm.estDef Q).den ρ = (Tm.est (pairTest Q)).den ρ := by
+  rw [Tm.est_den]
+  funext xs b
+  apply propext
+  simp [Tm.estDef, pairTest, Tm.den, estDen, Tm.dom_den, Core.Rel.id, Core.Rel.graph, Core.Rel.rpair]
+  intro hb
+  constructor
+  · intro h c hc hne
+    rcases (h b c hb hc rfl).2.1 with h | h
+    · exact h
+    · exact absurd h.symm hne
+  · rintro h x c hx hc rfl
+    by_cases e : x = c
+    · subst e; simp
+    · exact ⟨rfl, Or.inl (h c hc (Ne.symm e)), fun hn => absurd (h c hc (Ne.symm e)) hn⟩
+
+theorem Tm.flatDef_den(ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) (x : (Obj.prod I A).El) (hx : Short _ x) (w : B.El) :
     (Tm.flatDef R).den ρ x w ↔ (Tm.arg (.prim flatRow) R).den ρ x w :=
   (Tm.dfnCut_den (.flat R) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
     (fun _ => trivial)

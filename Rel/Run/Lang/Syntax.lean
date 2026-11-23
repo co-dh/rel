@@ -78,7 +78,7 @@ inductive OExp
 inductive Op
   | id | zero | top | outl | outr | inl | inr | mem | leq | lt | succ | arith (k : UInt8)
   | alpha | prim (s : String)
-  | lam | E | est | map
+  | lam | E | map
   /-- `hylo(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
       name programs define (Party), so the builtin is `hylo`. -/
   | hylo
@@ -297,10 +297,11 @@ def ranRow : Prim :=
 def nilRow : Prim :=
   { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
     prelude := `Rel.Programs.prelude.nil, written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
-/-- `est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)` given `Q` as its pair test (`Tab.est`): written as its `Op`, which
-    `Calc.toTerm` reads (`Op.row`). The array object has no universe for `\`, so the row always runs. -/
+/-- `est(Q) ≜ ∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)` (`Tm.estDef`, division-free) given `Q` as its pair test
+    (`Tab.est`): the row runs it fused. -/
 def estRow : Prim :=
   { sym := "est", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .var {} "B"),
+    prelude := `Rel.Programs.prelude.est,
     written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `front(Q) ≜ Λ(∋ − ∋ (Q − Q°))` given `Q` as its pair test (`Tab.front`); not `mono`: a larger `Q` drops
     more elements. -/
@@ -434,7 +435,7 @@ def Op.table : List (String × Op × Nat) :=
    -- q's `%` by its word and its glyph; `Op.sym` prints the first
    ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("α", .alpha, 0),
    ("Λ", .lam, 1), ("E", .E, 1),
-   ("est", .est, 1), ("F", .map, 1),
+   ("F", .map, 1),
    ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++
   (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.1.length)
