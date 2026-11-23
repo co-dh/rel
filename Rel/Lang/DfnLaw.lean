@@ -542,8 +542,9 @@ theorem Tm.head_lt {B : Obj} {x y : B.El} (hxy : x ≠ y) :
 theorem Tm.lt_den (ρ : Val) (B : Obj) :
     (Tm.ltDef B).den ρ = fun p q => q = p ∧ B.lt p.1 p.2 := by
   funext p q; apply propext
-  simp only [Tm.ltDef, Tm.den, Tm.dom_den, diffDen, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id,
-    Core.Rel.graph, Core.Rel.union, Tm.at0_den, lamDen]
+  simp only [Tm.ltDef, Tm.den, Tm.dom_den, diffDen, lamDen_fun]
+  simp only [Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id,
+    Core.Rel.graph, Core.Rel.union, Tm.at0_den]
   obtain ⟨x, y⟩ := p
   obtain ⟨x', y'⟩ := q
   simp only [Prod.mk.injEq]
@@ -617,7 +618,8 @@ theorem Tm.ascDef_of_len (ρ : Val) {B : Obj} (P G : Tm B B) (L : Tm (.arr B) .l
     constructor
     · rintro ⟨rfl, c, h, -⟩; exact ⟨rfl, c, h⟩
     · rintro ⟨rfl, c, h⟩; exact ⟨rfl, c, h, h⟩
-  simp only [Tm.ascDef, Tm.den, lamDen, Core.Rel.comp, Core.Rel.recip, hd]
+  simp only [Tm.ascDef, Tm.den, lamDen_fun]
+  simp only [Core.Rel.comp, Core.Rel.recip, hd]
   unfold ascDen
   constructor
   · rintro ⟨zs, ⟨a1, ⟨rfl, ha⟩, hzp, hzm⟩, hl⟩

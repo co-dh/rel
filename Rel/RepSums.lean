@@ -573,7 +573,7 @@ theorem sumsDen_rows {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) (C : Ta
       refine ⟨by simp, fun i hi hi' => ?_⟩
       simp only [List.getElem_map]
       exact (hval _ (List.getElem_mem _) _).2 rfl
-  simp only [Lang.sumsDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip]
+  simp only [Lang.sumsDen, Lang.lamDen_fun, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip]
   constructor
   · rintro ⟨a', ⟨rfl, b, hb, -⟩, ys, ⟨hys, hmem⟩, vs, hmap, hf⟩
     obtain ⟨⟨c, hc⟩, -⟩ := (hU _ _).1 hb

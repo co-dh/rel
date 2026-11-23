@@ -395,8 +395,8 @@ theorem arr_lt_take (B : Obj) (xs : List B.El) {i j : Nat} (hij : i < j) (hj : j
 /-- **`Λ(T)` at `a` is `L`** when `L` ascends strictly in `Obj.lt` and its members are the image of `a` under `T`. -/
 theorem lamDen_eq {A B : Obj} {T : Core.Rel (Obj.El A) (Obj.El B)} {a : A.El} {L : List B.El} (hL : L.Pairwise B.lt)
     (hm : ∀ b, b ∈ L ↔ T a b) (zs : List B.El) : lamDen T a zs ↔ zs = L :=
-  ⟨fun ⟨hp, hz⟩ => pairwise_eq_of_mem (Obj.lt_irrefl _) (fun _ _ => Obj.lt_asymm _) hp hL
-    fun b => (hz b).trans (hm b).symm, fun h => h ▸ ⟨hL, hm⟩⟩
+  ⟨fun h => let ⟨hp, hz⟩ := (lamDen_iff _ _ _).1 h; pairwise_eq_of_mem (Obj.lt_irrefl _) (fun _ _ => Obj.lt_asymm _) hp hL
+    fun b => (hz b).trans (hm b).symm, fun h => (lamDen_iff _ _ _).2 (by subst h; exact ⟨hL, hm⟩)⟩
 
 /-- **`Λ(cat°)` at `xs`**: the one list strictly ascending in `Obj.lt` of the splits `(p₁, p₂)` of `xs` is the splits by
 increasing split point, since a shorter first part is a proper prefix of a longer one. -/

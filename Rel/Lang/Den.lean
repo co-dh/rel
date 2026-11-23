@@ -217,9 +217,21 @@ abbrev flatDen {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B))) : Co
 abbrev estDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El B) :=
   fun xs b => b ∈ xs ∧ ¬ ∃ c, c ∈ xs ∧ c ≠ b ∧ ¬ TQ (b, c) (b, c)
 
+/-- `∋`: an array to each of its elements. The leaf every power operation composes. -/
+abbrev memDen : Core.Rel (Obj.El (.arr A)) (Obj.El A) := fun xs a => a ∈ xs
+
 /-- `Λ(T)` with `𝒫B` held as `[B]` (D2 = C): `a` to the one list of its image strictly ascending by `Obj.lt`, the
     order `Rel.Canon` puts a table's rows in; no list where that image has no such list. -/
-abbrev lamDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El (.arr B)) := fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b
+def lamDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El (.arr B)) :=
+  (rdiv T memDen ∩ (rdiv memDen T)°) ≫ corefl (List.Pairwise B.lt)
+
+theorem lamDen_iff (T : Core.Rel (Obj.El A) (Obj.El B)) (a : Obj.El A) (ys : Obj.El (.arr B)) :
+    lamDen T a ys ↔ ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b :=
+  ⟨fun ⟨_, ⟨h1, h2⟩, rfl, hp⟩ => ⟨hp, fun b => ⟨h1 b, h2 b⟩⟩,
+   fun ⟨hp, h⟩ => ⟨_, ⟨fun b => (h b).1, fun b => (h b).2⟩, rfl, hp⟩⟩
+
+theorem lamDen_fun (T : Core.Rel (Obj.El A) (Obj.El B)) :
+    lamDen T = fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b := funext fun a => funext fun ys => propext (lamDen_iff T a ys)
 
 /-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
 abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := fun xs ys => ys.length = xs.length ∧
@@ -283,7 +295,7 @@ def sumAt : (V : Obj) → Core.Rel (Obj.El (.arr V)) (Obj.El V)
   | _ => 𝟘
 
 /-- `E(T) = Λ(∋ T)`: an array to the canonical list of the images of its elements. -/
-abbrev EDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := lamDen ((fun xs a => a ∈ xs : Core.Rel (Obj.El (.arr A)) (Obj.El A)) ≫ T)
+abbrev EDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) := lamDen (memDen ≫ T)
 
 /-- `front(Q)`: the canonical list of the `c` of `xs` that no `b` of `xs` beats
     strictly, `Q` read as its pair test as in `estDen`. -/
@@ -452,7 +464,7 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨zip, fun _ _ p zs => zs = p.1.zip p.2⟩,
    ⟨snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩,
    ⟨unsnoc, fun _ _ xs p => xs = p.1 ++ [p.2]⟩,
-   ⟨setify, fun σ _ => lamDen (fun xs a => a ∈ xs : Core.Rel (Obj.El (.arr (σ₁ σ))) (Obj.El (σ₁ σ)))⟩,
+   ⟨setify, fun σ _ => lamDen (memDen (A := σ₁ σ))⟩,
    -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
    ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T xs ys =>
       ys = positionsL (fun x => decide (∃ y, T x y)) xs⟩,
@@ -513,7 +525,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
   | ρ, _, _, .lam R => lamDen (R.den ρ)
-  | _, _, _, .mem => fun xs x => x ∈ xs
+  | _, _, _, .mem => memDen
   | _, _, _, .inl => Core.Rel.inl
   | _, _, _, .inr => Core.Rel.inr
   | _, A, B, .prim r => Prim.den r A B []
