@@ -2,6 +2,7 @@ module
 
 public import Rel.KernelSpec.Alp
 public import Rel.KernelSpec.Scan
+public import Rel.KernelSpec.Gather
 public import Rel.KernelSpec.Scatter
 public import Rel.KernelSpec.KGather
 public import Rel.KernelSpec.KSeen
@@ -324,6 +325,196 @@ theorem kscan_lock_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize}
     (hs : kscanStream op es pre post = false) (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false :=
   kscan_closed (fun h => absurd h (by rw [hs]; decide)) h
+
+/-! A stream (`kscanStream`, no segment marks) over sources that may hold nulls: the answer is the sources' words joined
+and their flags joined (`streamEnc`), and reads back each source's rows, null included. -/
+
+/-- `e`'s `n` raw words at a fixed-width `s` are `n` of them where `Ext.Enc.WF` holds. -/
+theorem raw_size_wf {s : QAtomicType} {n : USize} {e : Enc} (hs : s.width.isSome) (h : Ext.Enc.WF s n e) :
+    (e.raw s n).size = n.toNat := by
+  cases e with
+  | foR md pk => cases s <;> simp_all [Ext.Enc.raw, QAtomicType.width]
+  | pos => cases s <;> simp_all [Ext.Enc.WF, Ext.Enc.raw]
+  | _ => cases s <;> simp_all [Ext.Enc.WF, QAtomicType.width]
+
+/-- A source list of `Ext.Enc.WF` columns, read one after the other: each source's raw words, `chainAll []` being `pure`. -/
+theorem mapM_raw_pairs {s : QAtomicType} (hs : s.width.isSome) :
+    ∀ {es : List (USize × Enc)}, (∀ p ∈ es, Ext.Enc.WF s p.1 p.2) →
+      es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll []) = .ok (es.map fun p => p.2.raw s p.1)
+  | [], _ => rfl
+  | p :: es, h => by
+    rw [List.mapM_cons, mapM_raw_pairs hs fun q hq => h q (by simp [hq])]
+    have hr : rawAll s p.1 p.2 = .ok (p.2.raw s p.1) := by
+      unfold rawAll; rw [if_pos (raw_size_wf hs (h p (by simp)))]
+    simp [hr, chainAll_nil, bind, Except.bind, pure, Except.pure]
+
+/-- `kscanRow .first` with no other column never fails. -/
+theorem foldlM_first_ok (g seed : Array UInt64) (m : Nat) :
+    ∃ out, (List.range m).foldlM (kscanRow .first g seed []) #[] = .ok out := by
+  induction m with
+  | zero => exact ⟨#[], rfl⟩
+  | succ m ih =>
+    obtain ⟨o, ho⟩ := ih
+    refine ⟨o.push (if 0 < m ∧ g[m]?.getD 0 = 0 then o[m - 1]?.getD 0 else seed[m]?.getD 0), ?_⟩
+    rw [List.range_succ, List.foldlM_append, ho]
+    simp [kscanRow, bind, Except.bind, Functor.map, Except.map, pure, Except.pure]
+
+/-- Where every row starts a segment (`g` nonzero) and no column is folded in, `kscan`'s row fold is the seed itself. -/
+theorem foldlM_first {g seed : Array UInt64} {m : Nat} (hg : ∀ i < m, g[i]?.getD 0 ≠ 0) (hs : seed.size = m) :
+    (List.range m).foldlM (kscanRow .first g seed []) #[] = .ok seed := by
+  obtain ⟨o, ho⟩ := foldlM_first_ok g seed m
+  obtain ⟨hos, hr⟩ := foldlM_kscanRow .first g seed [] m o ho
+  rw [ho]; congr 1
+  refine Array.ext (by omega) fun i h1 h2 => ?_
+  have h := hr i h1
+  simp only [List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at h
+  rw [if_neg (fun h' => hg i (by omega) h'.2)] at h
+  rw [← h]; simp [Array.getElem?_eq_getElem h2]
+
+theorem foldl_append_start {α : Type} (L : List (Array α)) (a : Array α) :
+    L.foldl (· ++ ·) a = a ++ L.foldl (· ++ ·) #[] := by
+  induction L generalizing a with
+  | nil => simp
+  | cons x L ih => simp only [List.foldl_cons, Array.empty_append]; rw [ih (a ++ x), ih x, Array.append_assoc]
+
+theorem foldl_append_size {α : Type} (L : List (Array α)) : (L.foldl (· ++ ·) #[]).size = (L.map (·.size)).sum := by
+  induction L with
+  | nil => rfl
+  | cons x L ih =>
+    simp only [List.foldl_cons, Array.empty_append, List.map_cons, List.sum_cons]; rw [foldl_append_start]; simp [ih]
+
+/-- Row `k` of source `j` is row `(sizes before j) + k` of the sources joined. -/
+theorem foldl_append_get {α : Type} : ∀ (L : List (Array α)) (j k : Nat) (hj : j < L.length), k < L[j].size →
+    (L.foldl (· ++ ·) #[])[((L.take j).map (·.size)).sum + k]? = L[j][k]?
+  | x :: L, 0, k, _, hk => by
+    simp only [List.foldl_cons, Array.empty_append]; rw [foldl_append_start]
+    simp [Array.getElem?_append_left (show k < x.size from hk)]
+  | x :: L, j+1, k, hj, hk => by
+    simp only [List.foldl_cons, Array.empty_append]; rw [foldl_append_start]
+    simp only [List.take_succ_cons, List.map_cons, List.sum_cons, List.getElem_cons_succ]
+    rw [Nat.add_assoc, Array.getElem?_append_right (by omega), Nat.add_sub_cancel_left]
+    exact foldl_append_get L j k (by simpa using hj) hk
+
+/-- A stream's sources' raw words, one after the other. -/
+def streamRaw (s : QAtomicType) (es : List (USize × Enc)) : Array UInt64 :=
+  (es.map fun p => p.2.raw s p.1).foldl (· ++ ·) #[]
+
+/-- A stream's sources' null flags, one after the other (`kscanCols`' second component). -/
+def streamNul (es : List (USize × Enc)) : Array UInt64 := es.foldl (fun a p => a ++ foRNuls p.1 p.2) #[]
+
+/-- A stream's answer type's reading of a word: a boolean's low bit. -/
+def cutBit (t : QAtomicType) (v : UInt64) : UInt64 := if t = .u1 then v % 2 else v
+
+/-- The column `kscan` writes for a stream: the words cut to `t`, the flags as `nulMap` where any is set. -/
+def streamEnc (s t : QAtomicType) (es : List (USize × Enc)) : Enc :=
+  wordsFoR ((streamRaw s es).map (cutBit t)) (if (streamNul es).any (· != 0) then nulMap (streamNul es) else .empty)
+
+theorem streamRaw_size {s : QAtomicType} (hs : s.width.isSome) {es : List (USize × Enc)}
+    (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) : (streamRaw s es).size = (es.map (·.1.toNat)).sum := by
+  unfold streamRaw
+  rw [foldl_append_size, List.map_map]
+  congr 1
+  exact List.map_congr_left fun p hp => raw_size_wf hs (hW p hp)
+
+theorem streamNul_eq (es : List (USize × Enc)) :
+    streamNul es = (es.map fun p => foRNuls p.1 p.2).foldl (· ++ ·) #[] := by
+  unfold streamNul; rw [List.foldl_map]
+
+theorem streamNul_size (es : List (USize × Enc)) : (streamNul es).size = (es.map (·.1.toNat)).sum := by
+  rw [streamNul_eq, foldl_append_size, List.map_map]
+  congr 1
+  exact List.map_congr_left fun p _ => foRNuls_size p.1 p.2
+
+/-- **`kscan` of a stream** (`kscanStream`, no segment marks) is `streamEnc`: the sources' words joined and cut to `t`,
+their flags joined. Its fold result is the last joined word. -/
+theorem kscan_stream {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hs : s.width.isSome) {n : USize}
+    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (hl : 1 < es.length)
+    (hn : (es.map (·.1.toNat)).sum = n.toNat) :
+    kscan .first false s t n none es = .ok (streamEnc s t es,
+      (streamRaw s es).back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) := by
+  have hst : kscanStream .first es [] [] = true := by simp [kscanStream, hl]
+  have hrf : kscanRefuses .first n es [] [] = false := by simp [kscanRefuses, Op.readsDivisor]
+  have hcols : kscanCols .first s n es [] [] = .ok ([streamRaw s es], streamNul es) := by
+    unfold kscanCols
+    rw [mapM_raw_pairs hs hW]
+    simp [hst, hn, streamRaw, streamNul, bind, Except.bind, pure, Except.pure]
+  have hg : segAll n none = .ok (Array.replicate n.toNat 1) := rfl
+  have hRs := streamRaw_size hs hW
+  have hNs := streamNul_size es
+  have hgg : ∀ i < n.toNat, (Array.replicate n.toNat (1 : UInt64))[i]?.getD 0 ≠ 0 := fun i hi => by simp [hi]
+  unfold kscan
+  simp only [hrf, Bool.false_eq_true, bind, Except.bind, hg, hcols, ↓reduceIte,
+    foldlM_first (seed := streamRaw s es) hgg (hRs.trans hn), foldlM_first (seed := streamNul es) hgg (hNs.trans hn),
+    chainAll_nil, pure, Except.pure, ht, List.map_nil]
+  rfl
+
+/-- Row `k` of source `j` of a stream, one array per source (`f`) of `p.1` rows, is row `(rows before j) + k` of the
+sources joined. -/
+theorem joined_get {β : Type} (f : USize × Enc → Array β) {es : List (USize × Enc)}
+    (hf : ∀ p ∈ es, (f p).size = p.1.toNat) {j k : Nat} (hj : j < es.length) (hk : k < es[j].1.toNat) :
+    ((es.map f).foldl (· ++ ·) #[])[((es.take j).map (·.1.toNat)).sum + k]? = (f es[j])[k]? := by
+  have h := foldl_append_get (es.map f) j k (by simpa using hj) (by simpa [hf _ (List.getElem_mem hj)] using hk)
+  rw [List.map_take, List.map_map] at h
+  rw [show ((es.take j).map (·.1.toNat)) = (List.map ((·.size) ∘ f) (List.take j es)) from
+    List.map_congr_left fun p hp => (hf p (List.mem_of_mem_take hp)).symm]
+  simpa using h
+
+/-- A stream's null map reads the flag it was built from: row `i` is null in `nulMap`, or in none at all, exactly where
+the flag word is set. -/
+theorem bitAt_stream {ns : Array UInt64} {i : Nat} (hi : i < ns.size) :
+    Column.bitAt (if ns.any (· != 0) then nulMap ns else .empty) i = (ns[i]?.getD 0 != 0) := by
+  split
+  · rw [nulMap, bitAt_packOf _ _ _ hi]
+  · rename_i h
+    rw [Bool.not_eq_true] at h
+    rw [Array.any_eq_false] at h
+    simp [bitAt_empty, Array.getElem?_eq_getElem hi, h i hi]
+
+/-- **`kscan` of a stream closes**, nulls and all: its answer is `streamEnc`, valid and `Ext.Enc.WF` at `t`, wherever every
+source is `Ext.Enc.WF` at `s` and their rows sum to `n`. -/
+theorem kscan_stream_closed {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hs : s.width.isSome) {n : USize}
+    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (hl : 1 < es.length)
+    (hn : (es.map (·.1.toNat)).sum = n.toNat) :
+    kscan .first false s t n none es = .ok (streamEnc s t es,
+      (streamRaw s es).back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
+    Enc.Valid n (streamEnc s t es) ∧ Ext.Enc.WF t n (streamEnc s t es) := by
+  have hsz : n.toNat = ((streamRaw s es).map (cutBit t)).size := by
+    rw [Array.size_map, streamRaw_size hs hW, hn]
+  obtain ⟨hV, -, -, hwf⟩ := wordsFoR_nul ((streamRaw s es).map (cutBit t)) (if (streamNul es).any (· != 0) then
+    nulMap (streamNul es) else .empty) hsz
+  refine ⟨kscan_stream ht hs hW hl hn, hV, hwf (by simp [ht]) fun hu i hi _ => ?_⟩
+  simp only [Array.getElem_map, cutBit, hu, ↓reduceIte]
+  exact UInt64.lt_iff_toNat_lt.2 (by rw [UInt64.toNat_mod]; exact Nat.mod_lt _ (by decide))
+
+/-- **A stream's answer reads each source's rows, null included**: row `k` of source `j` is row `(rows before j) + k` of the
+answer, read through `foROpt` as `none` where the source's flag (`foRNuls`) is set and as its raw word cut to `t` else. -/
+theorem kscan_stream_get {s t : QAtomicType} (hs : s.width.isSome) {n : USize}
+    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (hn : (es.map (·.1.toNat)).sum = n.toNat) {j k : Nat} (hj : j < es.length) (hk : k < es[j].1.toNat)
+    {md pk : ByteArray} (he : streamEnc s t es = .foR md pk) :
+    Column.foROpt md pk (Column.blockStarts md) (((es.take j).map (·.1.toNat)).sum + k) =
+      if (foRNuls es[j].1 es[j].2)[k]?.getD 0 != 0 then none
+      else some (cutBit t ((es[j].2.raw s es[j].1)[k]?.getD 0)) := by
+  have hsz : n.toNat = ((streamRaw s es).map (cutBit t)).size := by
+    rw [Array.size_map, streamRaw_size hs hW, hn]
+  have hi : ((es.take j).map (·.1.toNat)).sum + k < n.toNat := by
+    have h1 : ((es.map (·.1.toNat)).take j).sum + ((es.map (·.1.toNat)).drop j).sum = (es.map (·.1.toNat)).sum := by
+      rw [← List.sum_append_nat, List.take_append_drop]
+    rw [List.drop_eq_getElem_cons (by simpa using hj), List.sum_cons, List.getElem_map, ← List.map_take] at h1
+    omega
+  have hi' : ((es.take j).map (·.1.toNat)).sum + k < ((streamRaw s es).map (cutBit t)).size := hsz ▸ hi
+  have h := (wordsFoR_nul ((streamRaw s es).map (cutBit t)) (if (streamNul es).any (· != 0) then
+    nulMap (streamNul es) else .empty) hsz).2.2.1 md pk he _ hi'
+  have e1 : (streamNul es)[((es.take j).map (·.1.toNat)).sum + k]? = (foRNuls es[j].1 es[j].2)[k]? := by
+    rw [streamNul_eq]; exact joined_get (fun p => foRNuls p.1 p.2) (fun p _ => foRNuls_size _ _) hj hk
+  have e2 : (streamRaw s es)[((es.take j).map (·.1.toNat)).sum + k]? = (es[j].2.raw s es[j].1)[k]? :=
+    joined_get (fun p => p.2.raw s p.1) (fun p hp => raw_size_wf hs (hW p hp)) hj hk
+  have hr : ((es.take j).map (·.1.toNat)).sum + k < (streamRaw s es).size := by simpa using hi'
+  have hnn : ((es.take j).map (·.1.toNat)).sum + k < (streamNul es).size := by rw [streamNul_size, hn]; exact hi
+  rw [h, bitAt_stream hnn, e1]
+  have e3 : (streamRaw s es)[((es.take j).map (·.1.toNat)).sum + k] = (es[j].2.raw s es[j].1)[k]?.getD 0 := by
+    rw [← e2, Array.getElem?_eq_getElem hr]; rfl
+  simp only [Array.getElem_map, e3]
 
 /-- **`kscatter` closes**: its answer holds `n` words, read back by `raw .i64`, valid and `Ext.Enc.WF` at every fixed-width
 type but the boolean. -/
