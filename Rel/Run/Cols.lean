@@ -1,4 +1,9 @@
-import Rel.Run.Canon
+module
+
+public import Rel.Run.Canon
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! Column helpers shared by the set operators (`Rel/Run/SetOps.lean`) and composition (`Rel/Run/Comp.lean`), each a
 composition of the five kernels on encoded columns: a constant column, a pointwise map, a running fold, and CONCAT

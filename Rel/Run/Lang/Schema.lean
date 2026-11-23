@@ -1,4 +1,9 @@
-import Rel.Run.Lang.Tm
+module
+
+public import Rel.Run.Lang.Tm
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! A frame's schema in its type (PLAN D.11, `doc/dataframe-design.zh.typ` §1.2): `Schema` names the columns of a row
     object, and every term on a frame is a `Tm S.obj …`. No new `Obj` constructor: `S.obj` is a definition, so kernels,
@@ -65,12 +70,12 @@ def errOf {α : Type} : Except String α → Option String
   | .ok _ => none
 
 open Lean Meta in
-unsafe def errOfExprImpl (e : Lean.Expr) : MetaM (Option String) := do
+meta unsafe def errOfExprImpl (e : Lean.Expr) : MetaM (Option String) := do
   evalExpr (Option String) (mkApp (mkConst ``Option [levelZero]) (mkConst ``String)) (← mkAppM ``errOf #[e])
 
 open Lean Meta in
 /-- `errOf e`, `e` a closed `Except String α` run at elaboration. -/
-@[implemented_by errOfExprImpl] opaque errOfExpr (e : Lean.Expr) : MetaM (Option String)
+@[implemented_by errOfExprImpl] meta opaque errOfExpr (e : Lean.Expr) : MetaM (Option String)
 
 open Lean Meta Elab Tactic in
 /-- Proves `e.isOk = true` for a closed `e : Except String α` by running `e` at elaboration: its error is this

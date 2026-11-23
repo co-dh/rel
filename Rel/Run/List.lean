@@ -1,7 +1,12 @@
-import Rel.Run.SetOps
-import Rel.Run.Comp
-import Rel.Run.Struct
-import Rel.Run.Div
+module
+
+public import Rel.Run.SetOps
+public import Rel.Run.Comp
+public import Rel.Run.Struct
+public import Rel.Run.Div
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The list rows of `prims` (`Rel/Lang/Den.lean`, `rowDens`) on `Tab`, as compositions of the five kernels (PLAN 6.14
 W3, step T7), in the style of `Rel/Run/Comp.lean`: `snoc`, `cat`, `cons`, `zip` after a table of pairs of cells, and

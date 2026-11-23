@@ -1,9 +1,14 @@
-import Lean
-import Rel.Run.Lang.GenK
-import Rel.Run.Lang.Elab
-import Rel.Run.Lang.Parse
-import Rel.Run.ValEq
-import Rel.Run.Table
+module
+
+public import Lean
+public import Rel.Run.Lang.GenK
+public import Rel.Run.Lang.Elab
+public import Rel.Run.Lang.Parse
+public import Rel.Run.ValEq
+public import Rel.Run.Table
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The expander of `rel_program n`: each closed definition `x ≜ …` becomes the Lean definition
     `n.x : Except String (Tab A B)`, its term's code (`Tm.gen`) run in the empty context (`Rel.runE`), or the

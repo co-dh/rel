@@ -1,4 +1,9 @@
-import Rel.Run.Lang.Syntax
+module
+
+public import Rel.Run.Lang.Syntax
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The scope and the words of the Rel language, read by `Embed` from the tokens of a `rel_program` (§c).
 

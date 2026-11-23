@@ -1,8 +1,13 @@
-import Lean
-import Rel.Kernel.Op
-import Rel.Run.Core
-import Rel.Kernel.Cast
-import Rel.Run.Cast
+module
+
+public import Lean
+public import Rel.Kernel.Op
+public import Rel.Run.Core
+public import Rel.Kernel.Cast
+public import Rel.Run.Cast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The Rel language's surface syntax (`doc/rel-lang-design.md` §c, §h): objects, terms, declarations, each node
     with its source line and column. The builtin operators are one table, `Op.table`, read by the parser (symbol,
@@ -564,5 +569,17 @@ partial def Expr.render (l : Nat) (full : Bool := false) : Expr → String
   | .whr _ x e b => (b.subst [(x, e)]).render l full
 
 def Expr.show (e : Expr) : String := e.render 0
+
+-- here, not in `Grammar` (meta): `Tm.number`'s proofs in `GenSound` run `Expand.tmE`, which reads these instances
+deriving instance Lean.ToExpr for OExp
+deriving instance Lean.ToExpr for Op
+deriving instance Lean.ToExpr for Bin
+deriving instance Lean.ToExpr for Tup
+deriving instance Lean.ToExpr for Expr
+deriving instance Lean.ToExpr for Body
+deriving instance Lean.ToExpr for Param
+deriving instance Lean.ToExpr for ObjDef
+deriving instance Lean.ToExpr for Why
+deriving instance Lean.ToExpr for Decl
 
 end Rel.Lang

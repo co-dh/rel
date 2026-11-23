@@ -1,5 +1,10 @@
-import Rel.Run.SetOps
-import Rel.Run.Comp
+module
+
+public import Rel.Run.SetOps
+public import Rel.Run.Comp
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The structural operators of the core term `Tm` (`Rel/Run/Lang/Tm.lean`) on `Tab`, as compositions of the five
 kernels (PLAN 6.14 W3), in the style of `Rel/Run/Comp.lean`: `zero`, `id` (on the values `X` its context gives),

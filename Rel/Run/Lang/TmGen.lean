@@ -1,5 +1,10 @@
-import Rel.Run.Lang.Expand
-import Rel.Run.Lang.Grammar
+module
+
+public import Rel.Run.Lang.Expand
+public import Rel.Run.Lang.Grammar
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `Tm.gen`, the compiler: a term to its `GenK` code, one op per constructor in `Expand.node`'s argument order;
     `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`); `rowGens`, each row's code;
@@ -266,6 +271,7 @@ end
 #guard !(Tm.call [] `c [] (Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long)))).hasCode
 #guard !(Tm.arg (Tm.zero (A := .long) (B := .long)) (Tm.id (A := .long))).hasCode
 #guard (Tm.ldiv (A := .long) (B := .long) (C := .long) .id .id .id .id).hasCode
+
 
 /-! ### A term as the `Expr` that builds it: what `rel_program` emits `Tm.gen` of -/
 

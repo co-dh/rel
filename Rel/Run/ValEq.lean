@@ -1,10 +1,15 @@
+module
+
 /-
   Equality of general-list elements as Rel reads it: `=` on `QValue`, decided structurally. `QValue` has no
   `DecidableEq`: an attribute (`vector`, `slices`) and a keyed table hold an `IndexCell`, an opaque type with
   no equality. `valEq` compares everything but those cells; it is reflexive everywhere and is `=` on a value
   that holds no cell (`cellFree`).
 -/
-import Rel.Kernel.Value
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 namespace Rel
 
@@ -176,6 +181,5 @@ end
 theorem valEq_iff {a b : QValue} (hc : cellFree a = true) : valEq a b = true ↔ a = b :=
   ⟨valEq_sound a b hc, fun h => h ▸ valEq_refl a⟩
 
-#print axioms valEq_iff
 
 end Rel

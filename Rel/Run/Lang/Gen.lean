@@ -1,4 +1,9 @@
-import Rel.Run.Lang.Lazy
+module
+
+public import Rel.Run.Lang.Lazy
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! What the code a `rel_program` definition expands into names besides `GenK`: a definition's listed value
     (`Gv`, `entry`), and the literal columns rebuilt from their payloads. -/

@@ -1,4 +1,9 @@
-import Rel.Run.Gather
+module
+
+public import Rel.Run.Gather
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! Duplicate removal and canonical form as a composition of the five kernels (PLAN 6.14 W2), at the `Tab → Tab`
 boundary, on the encoded columns as they are: `kasc` sorts a side's atom columns and answers the permutation `p`,

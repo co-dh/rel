@@ -1,6 +1,11 @@
-import Rel.Run.Core
-import Rel.Kernel.Seen
-import Rel.KernelSpec.Closure
+module
+
+public import Rel.Run.Core
+public import Rel.Kernel.Seen
+public import Rel.KernelSpec.Closure
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The column helpers below `Canon`: a constant column, a pointwise map, a side gathered at positions, WHERE, and a bit
 matrix read back as rows (`Tab.ofBits`). Apart from `Canon` because `Rel.bits` (`Lazy.lean`) reads with `Tab.ofBits`,

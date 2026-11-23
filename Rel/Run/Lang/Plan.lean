@@ -1,8 +1,13 @@
-import Rel.Run.Lang.Tm
-import Rel.Kernel.Db.Own
-import Rel.Kernel.Scan
-import Rel.Kernel.Gather
-import Rel.Kernel.Seen
+module
+
+public import Rel.Run.Lang.Tm
+public import Rel.Kernel.Db.Own
+public import Rel.Kernel.Scan
+public import Rel.Kernel.Gather
+public import Rel.Kernel.Seen
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! # A program as kernel calls (`doc/rel-native-design.md` §6), stage 1a: `lit`, `call`, `fail`
 
@@ -18,7 +23,12 @@ open Lean Elab Term Meta Tab Rel.Kernel
     (C `size_t`, below `2^63`, where `lean_box` holds it); `obj` a constructor object, `lean_ctor_object`. -/
 inductive Ty
   | bytes | size | bit | u8 | str | parts | u64 | i64 | nat | obj
-  deriving BEq, Repr, Inhabited, ToExpr
+  deriving BEq, Repr, Inhabited
+
+-- `kernel%` runs at elaboration, so its `toExpr` instance is meta
+meta section
+deriving instance Lean.ToExpr for Ty
+end
 
 /-- What a register holds: a buffer, a size, a bit, a byte, a string, an array of buffers (a column's parts), a
     64-bit word, unsigned or signed (a kernel's fill or null), a `Nat`, or a constructor object as the runtime lays it
@@ -197,7 +207,7 @@ instance {p : Prop} : Out (Decidable p) := ⟨fun d => pure #[.bit (@decide p d)
 instance (priority := high) {α : Type} [Out α] : Out (Except String α) := ⟨fun r => r >>= Out.out⟩
 
 /-- The `Ty` that `Reg t` answers, read off the instance. -/
-def tyOf (t : Lean.Expr) : MetaM Ty := do
+meta def tyOf (t : Lean.Expr) : MetaM Ty := do
   let some inst ← synthInstance? (mkApp (mkConst ``Reg) t)
     | throwError "kernel%: `{t}` is not a register type (`Plan.Reg`)"
   match (← whnfD (mkApp2 (mkConst ``Reg.ty) t inst)).constName? with
@@ -209,7 +219,7 @@ def tyOf (t : Lean.Expr) : MetaM Ty := do
 
 /-- A result's registers' types, as `Out` lays them, each with its path of field indices into the answer: none for
     `Unit`, a product's components' (field `0`, then `1`), a decision's bit, an `Except`'s `ok` value's. -/
-partial def resTys (r : Lean.Expr) : MetaM (Array (Ty × List Nat)) := do
+meta partial def resTys (r : Lean.Expr) : MetaM (Array (Ty × List Nat)) := do
   if r.isConstOf ``Unit then return #[]
   if r.isAppOfArity ``Decidable 1 then return #[(.bit, [])]
   if r.isAppOfArity ``Except 2 then return ← resTys r.appArg!

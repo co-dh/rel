@@ -1,6 +1,11 @@
-import Rel.Run.SetOps
-import Rel.Run.Div
-import Rel.Kernel.BitRows
+module
+
+public import Rel.Run.SetOps
+public import Rel.Run.Div
+public import Rel.Kernel.BitRows
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `R ≫ S` and `R \ S` on a bit matrix (`kbitrows`, the fused kernel of `doc/rel-architecture.zh.typ` §4), with the
 types and answers of `Tab.comp` (`Rel/Run/Comp.lean`) and `Tab.ldiv` (`Rel/Run/Div.lean`). One file for both because
@@ -97,10 +102,10 @@ def bitsWin (bits T na g w : Nat) : Bool :=
 
 /-- What `bitsWin` runs as: `< 2 ^ 32` as a shift, since a `Nat` literal past `2^32` is built from its digits by GMP
 (`lean_cstr_to_nat`) on every call. -/
-private def bitsWinImpl (bits T na g w : Nat) : Bool :=
+def bitsWinImpl (bits T na g w : Nat) : Bool :=
   na * w ≤ bits && g * w ≤ bits && (na * w) >>> 32 == 0 && (g * w) >>> 32 == 0 && na * w + g * w < rowBits * T
 
-@[csimp] private theorem bitsWin_eq_impl : @bitsWin = @bitsWinImpl := by
+@[csimp] theorem bitsWin_eq_impl : @bitsWin = @bitsWinImpl := by
   have e (x : Nat) : (x >>> 32 == 0) = decide (x < 2 ^ 32) := by
     cases h : decide (x < 2 ^ 32) <;> simp_all [Nat.shiftRight_eq_div_pow, Nat.div_eq_zero_iff]
   funext bits T na g w; simp only [bitsWin, bitsWinImpl, e]

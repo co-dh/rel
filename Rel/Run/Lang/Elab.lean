@@ -1,9 +1,14 @@
-import Rel.Run.Struct
-import Rel.Run.SetOps
-import Rel.Run.Lang.Syntax
-import Rel.Run.Lang.Tm
-import Rel.Run.Lang.Schema
-import Rel.Kernel.Db.Csv
+module
+
+public import Rel.Run.Struct
+public import Rel.Run.SetOps
+public import Rel.Run.Lang.Syntax
+public import Rel.Run.Lang.Tm
+public import Rel.Run.Lang.Schema
+public import Rel.Kernel.Db.Csv
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The elaborator of the Rel language (`doc/rel-lang-design.md` §a, §e): names resolved, every term typed
     `A ⟶ B` over the declared objects, definitions expanded, a body whose declared parameter is given a family
