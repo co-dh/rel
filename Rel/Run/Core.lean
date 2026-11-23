@@ -561,7 +561,7 @@ def ValsB.row : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Fin
     front to back. `ValsB.row` at an `arr` side scans all `m` payload values per row, reading `lo i` and `hi i` at
     each, which over all rows is `n * m` reads; here a row is the payload's slice `[lo i, hi i)`, the clamp
     `ValsB.row` applies, and a sum row indexes its side's rows by the clamped position. -/
-private def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) :=
+def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) :=
   match t, x with
   | .general, x => Array.ofFn x.get
   -- `Arr.get`'s atom with the block starts hoisted (`Enc.get`'s `starts`): `x.get` per element sums every block
@@ -570,11 +570,11 @@ private def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El
     let s := match x.enc with | .foR m _ => Column.blockStarts m | _ => #[]
     Array.ofFn (n := n.toNat) fun i => ((Enc.get t n x.enc i s).bind fun a => Carrier.of? t (.atom a)).getD default
 
-private def ColB.rowsImpl : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Array (El t)
+def ColB.rowsImpl : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Array (El t)
   | false, _, _, x => Arr.rowsImpl x
   | true, _, n, x => Array.ofFn (n := n.toNat) fun i => (Opt.get x i).getD default
 
-private def ValsB.rowsImpl : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Array A.El
+def ValsB.rowsImpl : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Array A.El
   | _, .atom _, _, x => ColB.rowsImpl x
   | _, .prod _ _, _, x => (ValsB.rowsImpl x.1).zip (ValsB.rowsImpl x.2)
   | _, .arr _, n, ⟨_, lo, hi, f⟩ =>
@@ -589,6 +589,68 @@ private def ValsB.rowsImpl : {o : Bool} → {A : Obj} → {n : USize} → ValsB 
     Array.ofFn (n := n.toNat) fun i =>
       if tags[i]?.getD false then .inr (ys[i]?.getD b.dflt) else .inl (xs[i]?.getD a.dflt)
   | _, .one, n, _ => Array.replicate n.toNat ()
+
+private theorem slice_aux {α : Type} (n : Nat) (g : Fin n → α) (a b : Nat) :
+    (List.finRange n).filterMap (fun j => if a ≤ j.1 ∧ j.1 < b then some (g j) else none) =
+      ((List.ofFn g).take b).drop a := by
+  induction n generalizing a b with
+  | zero => simp
+  | succ n ih =>
+    rw [List.finRange_succ, List.filterMap_cons, List.filterMap_map, List.ofFn_succ]
+    have h := ih (fun i => g i.succ)
+    cases a with
+    | zero =>
+      cases b with
+      | zero => simp [Function.comp_def]
+      | succ b =>
+        have := h 0 b
+        simp only [Function.comp_def, Fin.val_succ, Fin.val_zero] at this ⊢
+        simp [Nat.succ_lt_succ_iff] at this ⊢
+        exact this
+    | succ a => cases b <;> simp [Function.comp_def] <;> exact h _ _
+
+theorem Arr.rowsImpl_eq {t : QAtomicType} {n : USize} (x : Arr t n) : Arr.rowsImpl x = Array.ofFn x.get := by
+  cases t <;> first | rfl | (
+    unfold Arr.rowsImpl
+    refine congrArg Array.ofFn (funext fun i => ?_)
+    rw [Arr.get_ne x i (by decide)]
+    generalize x.enc = e
+    cases e <;> simp only [Ext.Enc.get] <;> first | rfl | simp only [← foRBits_starts])
+
+theorem ColB.rowsImpl_eq {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) :
+    ColB.rowsImpl x = Array.ofFn (ColB.get x) := by
+  cases o
+  · exact Arr.rowsImpl_eq x
+  · rfl
+
+/-- `ValsB.rowsImpl` is `Array.ofFn ValsB.row`, with no well-formedness: each of `ValsB.row`'s clamps (a slice's `lo`
+    below `0`, its `hi` above `m`, `hi ≤ lo`) is what `Array.extract` does at the same bounds. -/
+theorem ValsB.rowsImpl_eq : {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) →
+    ValsB.rowsImpl x = Array.ofFn (ValsB.row x)
+  | _, .atom _, _, x => ColB.rowsImpl_eq x
+  | _, .prod _ _, _, x => by
+    rw [ValsB.rowsImpl, ValsB.rowsImpl_eq x.1, ValsB.rowsImpl_eq x.2]
+    ext i <;> simp [ValsB.row]
+  | _, .arr _, _, ⟨m, lo, hi, f⟩ => by
+    rw [ValsB.rowsImpl, ValsB.rowsImpl_eq f, ColB.rowsImpl_eq lo, ColB.rowsImpl_eq hi]
+    refine congrArg Array.ofFn (funext fun i => ?_)
+    simp only [ValsB.row, Array.toList_extract, Array.toList_ofFn, List.extract, ← List.drop_take]
+    have e1 : (Array.ofFn (ColB.get lo))[i]?.getD 0 = ColB.get lo i := by simp
+    have e2 : (Array.ofFn (ColB.get hi))[i]?.getD 0 = ColB.get hi i := by simp
+    rw [e1, e2, ← slice_aux]
+    congr 1; funext j
+    simp only [Int.toNat_le, Int.lt_toNat]
+  | _, .sum a b, n, s => by
+    unfold ValsB.rowsImpl
+    simp only [ValsB.row]
+    generalize ValsB.view s = v
+    cases v with
+    | opt h x => rfl
+    | gen h tag x y =>
+      simp only [ValsB.rowsImpl_eq x, ValsB.rowsImpl_eq y, Arr.rowsImpl_eq tag]
+      refine congrArg Array.ofFn (funext fun i => ?_)
+      simp [i.2]
+  | _, .one, _, _ => by ext i <;> simp [ValsB.rowsImpl, ValsB.row]
 
 /-- A relation from `k` to `v`: `n` positions, a key and a value at each — q's dict, two arrays at atoms,
     one column per atom of a product side, so `B×C` stored as two columns IS one side of pairs. -/
@@ -605,20 +667,31 @@ variable {k v : Obj}
 def Holds (R : Tab k v) (x : k.El) (y : v.El) : Prop := ∃ i, R.key.row i = x ∧ R.val.row i = y
 
 /-- What `toArray` runs as: `ValsB.rowsImpl` of each side, zipped. -/
-private def toArrayImpl (R : Tab k v) : Array (k.El × v.El) := (ValsB.rowsImpl R.key).zip (ValsB.rowsImpl R.val)
+def toArrayImpl (R : Tab k v) : Array (k.El × v.El) := (ValsB.rowsImpl R.key).zip (ValsB.rowsImpl R.val)
 
-/-- The pairs in position order as an array, what the run path reads. The body is the specification; it runs as
-    `toArrayImpl`, which `toList` runs through too, so the `#guard`s under `Checks` check this code. -/
-@[implemented_by toArrayImpl]
+/-- The pairs in position order as an array, what the run path reads. The body is the specification; the compiler
+    replaces it by `toArrayImpl` (`toArray_eq_impl`). -/
 def toArray (R : Tab k v) : Array (k.El × v.El) := Array.ofFn fun i => (R.key.row i, R.val.row i)
 
-/-- What `toList` runs as: `toArrayImpl`. -/
-private def toListImpl (R : Tab k v) : List (k.El × v.El) := (toArrayImpl R).toList
+/-- `toArray` is `toArrayImpl` for every table, well-formed or not (`ValsB.rowsImpl_eq`), so the compiler may swap them. -/
+@[csimp] theorem toArray_eq_impl : @toArray = @toArrayImpl := by
+  funext k v R
+  unfold toArray toArrayImpl
+  rw [ValsB.rowsImpl_eq, ValsB.rowsImpl_eq]
+  ext i <;> simp
 
-/-- The pairs, in position order. The body is the specification; it runs as `toListImpl` (not proved equal: the
-    `#guard`s under `Checks` compare the two on an `arr` and a `sum` side). -/
-@[implemented_by toListImpl]
+/-- What `toList` runs as: `toArrayImpl`. -/
+def toListImpl (R : Tab k v) : List (k.El × v.El) := (toArrayImpl R).toList
+
+/-- The pairs, in position order. The body is the specification; the compiler replaces it by `toListImpl`
+    (`toList_eq_impl`). -/
 def toList (R : Tab k v) : List (k.El × v.El) := List.ofFn fun i => (R.key.row i, R.val.row i)
+
+@[csimp] theorem toList_eq_impl : @toList = @toListImpl := by
+  funext k v R
+  unfold toList toListImpl
+  rw [← toArray_eq_impl]
+  simp [toArray]
 
 -- Kept with no caller: what a `Rel` holds, read off its `List` of pairs.
 theorem holds_iff_mem_toList (R : Tab k v) (x : k.El) (y : v.El) : R.Holds x y ↔ (x, y) ∈ R.toList := by
