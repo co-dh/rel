@@ -1038,29 +1038,4 @@ namespace QTable
 
 end QTable
 
-namespace Ext.QValue
-
-/-- The attribute a value carries, `0` for none, and the value under it. Every reader but
-`attr`, `meta` and the encoder wants the second half alone. -/
-def marking : Ext.QValue X → UInt8 × Ext.QValue X
-  | vector t n e (some (a, _)) => (a, vector t n e none)
-  | enum d (vector t n e (some (a, _))) => (a, enum d (vector t n e none))
-  -- a table holds q's whole byte (`62 0N`); a dictionary or a keyed table carries only `` `s ``,
-  -- type 127
-  | table (.mk ns cs a) => (a, table (.mk ns cs 0))
-  | dict k v true => (1, dict k v false)
-  | @keyed _ k v true ix => (1, @keyed _ k v false ix)
-  | v => (0, v)
-
-end Ext.QValue
-
-namespace Ext.QValue
-
-
-end Ext.QValue
-
-namespace QValue
-
-end QValue
-
 end Rel

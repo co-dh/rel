@@ -8,7 +8,7 @@ public import Rel.Kernel.Db.Own
 
 /-! The own-format column file read back. `ownWrite` writes `ownImage`'s bytes and `ownMap` answers `ownParse` of the
 file's bytes; both are `IO`, so the law is stated on those two pure bodies: every column the writer accepts is parsed
-back as itself, header fields, domain name and each part byte for byte. -/
+back as itself, header fields and each part byte for byte. -/
 
 namespace Rel.Db
 
@@ -102,71 +102,50 @@ parsed back by `ownParse` as itself, field for field and each part byte for byte
 `u64` offsets and lengths: a file under `2 ^ 64` bytes. -/
 theorem ownParse_ownImage (f : OwnFile) (b : ByteArray) (h : ownImage f = .ok b) (hb : b.size < u64Bound) :
     ownParse b = .ok f := by
-  obtain ⟨c, t, k, n, s, ps⟩ := f
+  obtain ⟨c, k, n, ps⟩ := f
   simp only [ownImage, ownVersion] at h
   split at h
   · cases h
   rename_i hk
-  split at h
-  · cases h
-  rename_i hz
   cases h
-  generalize hD : s.toUTF8 = D at hk hz hb ⊢
-  simp only [Bool.or_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq, not_or, Decidable.not_not, gt_iff_lt,
-    Nat.not_lt] at hk
+  simp only [bne_iff_ne, ne_eq, Decidable.not_not] at hk
   have hnp : ps.size ≤ 3 := by
-    have h2 := hk.1
+    have h2 := hk
     generalize k.toNat = kk at h2
     rcases kk with _ | _ | _ | _ | _ | _ | kk <;> simp [ownNParts] at h2 <;> omega
   have hm : ownMagic.size = 8 := rfl
-  have hh : (⟨#[6, c, t, k]⟩ : ByteArray) =
-      leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 := by
+  have hh : (⟨#[7, c, k]⟩ : ByteArray) = leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 := by
     simp only [leBytes_one]; apply ByteArray.ext; simp [ByteArray.data_append]
   rw [hh] at hb ⊢
-  have hr1 := ownLayout_fst_size ps (24 + 16 * ps.size + D.size) 0 ps.size
-  have hsp := ownSpans_layout ps ps.size 0 (24 + 16 * ps.size + D.size)
-    (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
-      leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8) D (by omega)
+  have he : ∀ B : ByteArray, B ++ .empty = B := fun B => by apply ByteArray.ext; simp
+  have hr1 := ownLayout_fst_size ps (24 + 16 * ps.size) 0 ps.size
+  have hsp := ownSpans_layout ps ps.size 0 (24 + 16 * ps.size)
+    (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 ++ leBytes ps.size 1 ++
+      leBytes 0 4 ++ leBytes n.toNat 8) .empty (by omega)
+  rw [he] at hsp
   have hn : n.toNat < 256 ^ 8 := Nat.lt_of_lt_of_le n.toNat_lt_size (by simpa using USize.size_le)
-  generalize ownLayout ps (24 + 16 * ps.size + D.size) 0 ps.size = r at hr1 hsp hb ⊢
-  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc] at hb hsp ⊢
-  have hsp := hsp trivial trivial hb
-
-  have e8 := leAt_leBytes ownMagic (leBytes c.toNat 1 ++ leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
-    leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) (6 : UInt8).toNat 1 (by decide)
-  have e9 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1) (leBytes t.toNat 1 ++ leBytes k.toNat 1 ++
-    leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) c.toNat 1
-    (by have := c.toNat_lt; simpa using this)
-  have e10 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1) (leBytes k.toNat 1 ++
-    leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) t.toNat 1
-    (by have := t.toNat_lt; simpa using this)
-  have e11 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1)
-    (leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) k.toNat 1
-    (by have := k.toNat_lt; simpa using this)
-  have e12 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
-    leBytes k.toNat 1) (leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) ps.size 2 (by simp; omega)
-  have e14 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
-    leBytes k.toNat 1 ++ leBytes ps.size 2) (leBytes n.toNat 8 ++ r.1 ++ D ++ r.2) D.size 2 (by simp; omega)
-  have e16 := leAt_leBytes (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
-    leBytes k.toNat 1 ++ leBytes ps.size 2 ++ leBytes D.size 2) (r.1 ++ D ++ r.2) n.toNat 8 hn
-  have ed := extract_mid (ownMagic ++ leBytes (6 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes t.toNat 1 ++
-    leBytes k.toNat 1 ++ leBytes ps.size 2 ++ leBytes D.size 2 ++ leBytes n.toNat 8 ++ r.1) D r.2
-  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc] at e8 e9 e10 e11 e12 e14 e16 ed
+  generalize ownLayout ps (24 + 16 * ps.size) 0 ps.size = r at hr1 hsp hb ⊢
+  simp only [ByteArray.size_append, leBytes_size, hr1, hm, ByteArray.append_assoc, ByteArray.size_empty] at hb hsp ⊢
+  have hsp := hsp trivial (by omega) hb
+  have e8 := leAt_leBytes ownMagic (leBytes c.toNat 1 ++ leBytes k.toNat 1 ++ leBytes ps.size 1 ++ leBytes 0 4 ++
+    leBytes n.toNat 8 ++ r.1 ++ r.2) (7 : UInt8).toNat 1 (by decide)
+  have e9 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1) (leBytes k.toNat 1 ++ leBytes ps.size 1 ++
+    leBytes 0 4 ++ leBytes n.toNat 8 ++ r.1 ++ r.2) c.toNat 1 (by have := c.toNat_lt; simpa using this)
+  have e10 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1) (leBytes ps.size 1 ++
+    leBytes 0 4 ++ leBytes n.toNat 8 ++ r.1 ++ r.2) k.toNat 1 (by have := k.toNat_lt; simpa using this)
+  have e11 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1)
+    (leBytes 0 4 ++ leBytes n.toNat 8 ++ r.1 ++ r.2) ps.size 1 (by simp; omega)
+  have e16 := leAt_leBytes (ownMagic ++ leBytes (7 : UInt8).toNat 1 ++ leBytes c.toNat 1 ++ leBytes k.toNat 1 ++
+    leBytes ps.size 1 ++ leBytes 0 4) (r.1 ++ r.2) n.toNat 8 hn
+  simp only [ByteArray.size_append, leBytes_size, hm, ByteArray.append_assoc] at e8 e9 e10 e11 e16
   have byte : ∀ (B : ByteArray) (o : Nat) (x : UInt8), leAt B o 1 = x.toNat → (B.data[o]?.getD 0) = x :=
     fun B o x e => UInt8.toNat_inj.mp (by simpa [leAt] using e)
   simp only [ownParse, ownMagic_prefix]
-  rw [e8, e11, e12, e14, e16, byte _ _ _ e9, byte _ _ _ e10]
+  rw [e8, e10, e11, e16, byte _ _ _ e9]
   simp only [ByteArray.size_append, leBytes_size, hr1, hm]
-  rw [if_neg (by omega), if_neg (by simp), if_neg (by decide), if_neg (by simp [hk.1]), if_neg (by omega)]
-  rw [show 8 + (1 + (1 + (1 + (1 + (2 + (2 + (8 + 16 * ps.size))))))) = 24 + 16 * ps.size by omega] at ed
-  rw [hsp, ed]
-  subst hD
-  have hu : String.fromUTF8? s.toUTF8 = some s := by
-    simp [String.fromUTF8?, s.isValidUTF8]
-    rfl
-  simp only [bind, Except.bind, hu]
-  rw [if_neg (by simpa using hz)]
+  rw [if_neg (by omega), if_neg (by simp), if_neg (by decide), if_neg (by simp [hk]), if_neg (by omega)]
+  rw [hsp]
   simp [UInt8.ofNat_toNat, USize.ofNat_toNat]
-
+  rfl
 
 end Rel.Db

@@ -265,10 +265,10 @@ unsafe def planIOImpl : IO Plan := do
   let want ← match (side "key" (cols _ x.key "") ++ side "val" (cols _ x.val "")).filterMapM
       (fun (p, v) => do pure ((← ownFile p v).map fun f => (p, f))) with | .ok w => pure w | .error e => throwError e
   let got := ws.toList.filterMap fun (_, vs) => match vs.toList with
-    | .str p :: c :: a :: k :: n :: d :: ps :: _ => (p, ·) <$> Reg.get? (α := Db.OwnFile) (.ctor 0 #[d, ps] #[c, a, k, n])
+    | .str p :: c :: k :: n :: ps :: _ => (p, ·) <$> Reg.get? (α := Db.OwnFile) (.ctor 0 #[ps] #[c, k, n])
     | _ => none
   let flat (pf : String × Db.OwnFile) :=
-    (pf.1, pf.2.code, pf.2.attr, pf.2.kind, pf.2.count.toNat, pf.2.domain, pf.2.parts.toList.map (·.toList))
+    (pf.1, pf.2.code, pf.2.kind, pf.2.count.toNat, pf.2.parts.toList.map (·.toList))
   unless got.length == ws.size && got.map flat == want.map flat do
     throwError "the plan of `x` writes {got.length} of {ws.size} columns, not those of its Lean value"
 

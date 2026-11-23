@@ -15,12 +15,12 @@ namespace Rel.Lang.Plan
 
 open Tab
 
-/-- An `ownMap` answer: constructor `0`, its objects `domain`, `parts`, its scalars `code`, `attr`, `kind`, `count` in
+/-- An `ownMap` answer: constructor `0`, its object `parts`, its scalars `code`, `kind`, `count` in
     declaration order, which `Instr.sproj` reads. -/
 instance : Reg Db.OwnFile := ⟨.obj, fun
-  | .ctor 0 #[d, ps] #[c, a, k, n] => do
-    pure ⟨← Reg.get? c, ← Reg.get? a, ← Reg.get? k, ← Reg.get? n, ← Reg.get? d, ← Reg.get? ps⟩
-  | _ => none, fun f => .ctor 0 #[.str f.domain, .parts f.parts] #[.u8 f.code, .u8 f.attr, .u8 f.kind, .size f.count]⟩
+  | .ctor 0 #[ps] #[c, k, n] => do
+    pure ⟨← Reg.get? c, ← Reg.get? k, ← Reg.get? n, ← Reg.get? ps⟩
+  | _ => none, fun f => .ctor 0 #[.parts f.parts] #[.u8 f.code, .u8 f.kind, .size f.count]⟩
 
 /-- A CSV column's shape is an enum: its constructor index in a byte. -/
 instance : Reg Db.CsvShape := ⟨.u8, fun | .u8 0 => some .atom | .u8 1 => some .null | .u8 2 => some .text | _ => none,
@@ -45,15 +45,15 @@ def output (dir : String) (rs : Side × Side) : Bld Unit := do
   for (side, cs) in [("key", rs.1), ("val", rs.2)] do
     for (p, r) in cs do
       let path ← lit (.str (System.FilePath.mk dir / (side ++ p)).toString)
-      discard <| call "qlean_own_write" (#[path] ++ r.extract 0 6) 0
+      discard <| call "qlean_own_write" (#[path] ++ r.extract 0 Side.enc) 0
 
-/-- A computed atom column's six `output` registers: type `t`, `count` rows (a register), constructor `kind`
+/-- A computed atom column's `output` registers (`Side.regs`): type `t`, `count` rows (a register), constructor `kind`
     (`Db.ownParts`'s numbering) whose parts are the registers `bs`, gathered by `pushPart` from the empty literal. -/
 def colRegs (t : QAtomicType) (kind : UInt8) (count : Nat) (bs : Array Nat) : Bld (Array Nat) := do
   let ps ← bs.foldlM (fun ps b => call1 (kernel% Rel.Db.pushPart) #[ps, b]) (← lit (.parts #[]))
-  return #[← lit (.u8 t.code.toUInt8), ← lit (.u8 0), ← lit (.u8 kind), count, ← lit (.str ""), ps]
+  return Side.regs (← lit (.u8 t.code.toUInt8)) (← lit (.u8 kind)) count ps
 
-/-- The `Enc` register `e` of `count` rows of type `t` as `output`'s six registers: a `foR` (what every kernel answers,
+/-- The `Enc` register `e` of `count` rows of type `t` as `output`'s registers: a `foR` (what every kernel answers,
     design §4) handed over as the kind `Db.ownParts` gives it, its parts its two fields, so it is written as it is
     encoded. The tag and the kind are read off the constructor, so a renumbering of either reaches the plan. -/
 def encRegs (t : QAtomicType) (count e : Nat) : Bld (Array Nat) := do
@@ -538,22 +538,22 @@ partial def noneB (z : Nat) (A : Obj) (p : String := "") : Bld Cols := match A w
 partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A with
   | .atom t => match s.lookup p with
     | none => return [.atom p t (← posB)]
-    | some rs => match rs[6]? with
+    | some rs => match rs[Side.enc]? with
       | some e => pure [.atom p t e]
       | none => throw s!"column `{p}` has no `Enc` register (a literal that is no vector)"
   | .prod a b => return (← colsOf a s (p ++ ".1")) ++ (← colsOf b s (p ++ ".2"))
   | .arr b => do
     let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
-    let some m := (objCols b (p ++ ".e")).findSome? (reg ·.1 3)
+    let some m := (objCols b (p ++ ".e")).findSome? (reg ·.1 Side.count)
       | throw s!"array `{p}`: no payload column holds a row count register"
-    let (some lo, some hi) := (reg (p ++ ".lo") 6, reg (p ++ ".hi") 6)
+    let (some lo, some hi) := (reg (p ++ ".lo") Side.enc, reg (p ++ ".hi") Side.enc)
       | throw s!"array `{p}`: its bounds have no `Enc` register"
     return [.arr p m lo hi (← colsOf b s (p ++ ".e"))]
   | .one => return []
   | .sum .. => sumB "a side's registers"
 
 /-- The row count of a table's sides: a column's `count` register. -/
-def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[3]?) with
+def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[Side.count]?) with
   | some n => pure n
   | none => throw "a table whose every column is positions, so no register holds its row count"
 
@@ -565,7 +565,7 @@ partial def flatB (n : Nat) (cs : Cols) : Bld Side := return (← cs.mapM fun
       ++ (← flatB m f)
   | .sum .. => sumB "output").flatten
 
-/-- A `TabB`'s sides as `output` takes them: each column's six registers (`encRegs`), then its `Enc`. -/
+/-- A `TabB`'s sides as `output` takes them: each column's registers (`encRegs`), then its `Enc`. -/
 def sidesOf (T : TabB) : Bld (Side × Side) := do pure (← flatB T.n T.key, ← flatB T.n T.val)
 
 /-- What a node's context knows of its sides (design §0 `Known`): the values of its domain and of its range, each a
@@ -1477,8 +1477,7 @@ def canonFloatB (what : String) (t : QAtomicType) (n e : Nat) : Bld Unit := do
     s!"{what}: a {repr t} column of rows whose bit pattern is not canonical (a NaN or -0)" #[k]
 
 /-- The side an input's mapped files answer (`Table.readArr`): each column's type code, constructor kind and count
-    checked as `Table.readArr`/`Table.same` check them (the attribute not taken over, the domain the empty one a
-    vector has), its `Enc` rebuilt from its parts as `Db.ownEnc` rebuilds it, a float column checked canonical
+    checked as `Table.readArr`/`Table.same` check them, its `Enc` rebuilt from its parts as `Db.ownEnc` rebuilds it, a float column checked canonical
     (`canonFloatB`); `n₀` the count of the side read before, the one every column has. -/
 def ownSideB (x : String) (cs : List (String × QAtomicType × Nat)) (n₀ : Option Nat) : Bld (Side × Option Nat) := do
   let fe : Enc := .foR .empty .empty
@@ -1486,20 +1485,20 @@ def ownSideB (x : String) (cs : List (String × QAtomicType × Nat)) (n₀ : Opt
   let mut s : Side := []
   let mut n₀ := n₀
   for (p, t, f) in cs do
-    let sc (i : Nat) := emit1 (.sproj f 0 2 #[.u8, .u8, .u8, .size] i)
+    let sc (i : Nat) := emit1 (.sproj f 0 1 #[.u8, .u8, .size] i)
     let code ← lit (.u8 t.code.toUInt8)
     guard (← call1 (kernel% UInt8.decEq) #[← sc 0, code]) s!"input `{x}`: column `{p}` has another atom type code than {repr t}" #[]
-    let k ← sc 2
+    let k ← sc 1
     guard (← call1 (kernel% UInt8.decEq) #[k, ← lit (.u8 kind)])
       s!"input `{x}`: column `{p}` has another constructor kind than {kind}, the one `Db.ownEnc` rebuilds" #[k]
-    let n ← sc 3
+    let n ← sc 2
     if let some m := n₀ then
       guard (← call1 (kernel% USize.decEq) #[n, m]) s!"input `{x}`: column `{p}` of another row count than the first" #[n, m]
     n₀ := some n
-    let ps ← projB f 0 1 .parts
+    let ps ← projB f 0 0 .parts
     let e ← ctorB fe.ctorIdx #[← partB ps 0, ← partB ps 1] #[]
     if t matches .f32 | .f64 then canonFloatB s!"input `{x}`: column `{p}`" t n e
-    s := s ++ [(p, #[code, ← lit (.u8 0), k, n, ← lit (.str ""), ps, e])]
+    s := s ++ [(p, (Side.regs code k n ps).push e)]
   pure (s, n₀)
 
 /-- The CSV columns `cs` of a side, each count and `Enc` taken off `csvRead`'s list `l`; the rest of the list. -/
@@ -1538,7 +1537,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
   match csv with
   | none => for (S, side, dir) in sides do
       for (p, q, _) in schemaCols S do
-        discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 6) 0
+        discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 Side.enc) 0
   | some cs =>
     if cs.any (fun (_, _, t, _) => t == .sym) then
       throw s!"output `{x}` to csv \"{path}\": a symbol column, whose ids the write decodes through the program's \
@@ -1549,7 +1548,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
       if hasSum S.obj then throw s!"output `{x}` to csv \"{path}\": a nullable CSV column, which no plan recipe writes yet"
       for (p, _, _) in schemaCols S do
         let r ← col S side p
-        let (some m, some e) := (r[3]?, r[6]?)
+        let (some m, some e) := (r[Side.count]?, r[Side.enc]?)
           | throw s!"output `{x}` to csv \"{path}\": column `{p}` has no `Enc` register, which `csvWrite` takes"
         rows := some m
         es := es ++ [← ctorB 0 #[m, e] #[]]
