@@ -494,12 +494,11 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, _, _, .inl => Core.Rel.inl
   | _, _, _, .inr => Core.Rel.inr
   | _, A, B, .prim r => Prim.den r A B []
-  | ρ, _, _, .own R => R.den ρ
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
   | ρ, A, B, .var _ k => ρ k A B
-  | _, _, _, .call ks _ _ b | _, _, _, .callCv ks _ _ _ b _ => b.den (Val.args ks [])
+  | _, _, _, .call ks _ _ _ b => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
   -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
   | ρ, _, _, .nu k S b => Core.Rel.nu fun X => S.den ρ ∩ b.den (ρ.bind k X)
@@ -508,13 +507,12 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
 
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
     the order `compile` passes their codes; a call's body with them bound at its `ks`; `𝟘` where `f` is neither
-    a row nor a call under `arg`s. `share` and `own` are seen through, as `Tm.gen` passes their part's row on. -/
+    a row nor a call under `arg`s. `share` is seen through, as `Tm.gen` passes its part's row on. -/
 noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Core.Rel (Obj.El A) (Obj.El B)
   | _, A, B, .prim r, ss => Prim.den r A B ss
-  | _, _, _, .call ks _ _ b, ss | _, _, _, .callCv ks _ _ _ b _, ss => b.den (Val.args ks ss)
+  | _, _, _, .call ks _ _ _ b, ss => b.den (Val.args ks ss)
   | ρ, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
   | _, _, _, .share _ R, ss => R.argDen Val.empty ss
-  | ρ, _, _, .own R, ss => R.argDen ρ ss
   -- a spine's converse (`convTm` of a row with no converse row) means its meaning conversed
   | ρ, _, _, .conv R, ss => (R.argDen ρ ss)°
   | _, _, _, _, _ => 𝟘
@@ -684,10 +682,6 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     have hx := (ihx ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1
     have hf := (ihf ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).2
     exact ⟨by simp only [Tm.den, hx, hf], fun _ => by simp only [Tm.argDen, hx, hf]⟩
-  | own R ih =>
-    intro ρ ρ' h
-    have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
-    exact ⟨by simp only [Tm.den, e.1], fun _ => by simp only [Tm.argDen, e.2]⟩
   | conv R ih =>
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
@@ -964,7 +958,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
     · rw [g.2 j e]; exact sle.refl _
   | top V ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 (comp_le' (Core.Rel.le_refl _)) (ih.1 s ρ ρ' hp g)
   | conv R ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 conv_le' (ih.1 s ρ ρ' hp g)
-  | own R ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact ih.1 s ρ ρ' hp g
   | comp R S ihR ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 comp_le' (ihR.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)
@@ -1107,7 +1100,6 @@ theorem Tm.den_linIn {k : Nat} {A' B' : Obj} {t : Tm A' B'} (h : t.linIn k = tru
   | conv R ih =>
     intro h; simp only [Tm.linIn] at h; simp only [Tm.den]
     exact le_iff.2 fun b a hab => le_iff.1 (ih h) a b hab
-  | own R ih => intro h; simp only [Tm.linIn] at h; simp only [Tm.den]; exact ih h
   | _ => intro h; exact free _ (by simpa [Tm.linIn] using h)
 
 
@@ -1240,11 +1232,6 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Core.Rel (Obj.El A)
       subst hc
       exact and_congr (ihR _ hr a (fun a' h => hX a' (Or.inl h)) d.1)
         (ihS _ hs a (fun a' h => hX a' (Or.inr h)) d.2)
-    · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
-  | own R ih =>
-    intro c hc a hX d
-    unfold Tm.kids at hc; split at hc
-    · dsimp only at hc; exact ih c hc a hX d
     · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
   | arg f x _ ihx =>
     intro c hc a hX d
