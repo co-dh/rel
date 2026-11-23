@@ -29,7 +29,7 @@ def mem {n : USize} (X : Vals (.arr B) n) : Except String (Tab (.arr B) B) :=
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"mem: {n} cells × {m} elements past 2^63"
     let (T, G, u) ← expand n (← colMap .sub n hi.enc lo.enc)
     let ix ← colMap .add T (← kgather T G n lo.enc) u
-    Tab.canon ⟨T, ← Vals.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, ← Vals.gather T ix f⟩
+    Tab.canon ⟨T, ← ValsB.gather (A := .arr B) T G ⟨m, lo, hi, f⟩, ← ValsB.gather T ix f⟩
 
 /-- **`nil` on the keys `D`** (`nilDen`): each to the empty cell, `lo = hi = 0` over a payload of no rows; then
 `canon`. -/
@@ -38,7 +38,7 @@ def nil {n : USize} (D : Vals A n) : Except String (Tab A (.arr B)) := do
   Tab.canon ⟨n, D, ⟨0, z, z, ← Vals.none B⟩⟩
 
 /-- **`Λ(r)` on the keys `D`, `r` canonical** (`Tab.Canonical`; `lamDen`): each `a` of `D` to the cell of its values
-in `r`, ascending and each once, `[]` where `r` has none. One GROUP over the keys of `D` then `r` (`Vals.concat`): `kasc` being stable, a
+in `r`, ascending and each once, `[]` where `r` has none. One GROUP over the keys of `D` then `r` (`ValsB.concat`): `kasc` being stable, a
 group's sorted rows are its `D` rows (`cD`, input row below `n`), then its `r` rows, which `canon` put in ascending
 value order. The cell of group `G` is the sorted rows `[f + cD, f + c)` of the payload `r.val` gathered in sorted
 order (a `D` row reads `r`'s row `0`, inside no cell); the groups with `0 < cD` are kept (`whereCol`), keyed by their
@@ -49,7 +49,7 @@ def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr 
   let N ← catRows n r.n
   -- `.lt`, `.sub`, `.max` read positions and counts signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"lam: {N} rows past 2^63"
-  let es ← Vals.cols (← Vals.concat N D r.key)
+  let es ← ValsB.cols (← ValsB.concat N D r.key)
   let (vs, p) ← kasc N es
   let (k, g, f) ← kseen N ((es.map (·.1)).zip vs)
   let K := k.toUSize
@@ -58,8 +58,8 @@ def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr 
   let hi ← colArr .add K f (← kscatter .add N g (← colConst N 1) K 0)
   let (M, sel) ← whereCol K (← colMap .first K cD cD .i64 .i64 [] [(.lt, 0)])
   let iD ← kgather M (← kgather M sel K f) N p
-  let pay ← Vals.gather N (← colMap .first N p p .i64 .i64 [] [(.add, 0 - n.toUInt64), (.max, 0)]) r.val
-  Tab.canon ⟨M, ← Vals.gather M iD D, ⟨N, ← Arr.gather M sel lo, ← Arr.gather M sel hi, pay⟩⟩
+  let pay ← ValsB.gather N (← colMap .first N p p .i64 .i64 [] [(.add, 0 - n.toUInt64), (.max, 0)]) r.val
+  Tab.canon ⟨M, ← ValsB.gather M iD D, ⟨N, ← Arr.gather M sel lo, ← Arr.gather M sel hi, pay⟩⟩
 
 /-- **`Λ(R)` on the keys `D`**: `lamOf` of `canon R`; a caller whose `R` is `Tab.Canonical` already calls `lamOf`. -/
 def lam {n : USize} (D : Vals A n) (R : Tab A B) : Except String (Tab A (.arr B)) := R.canon >>= lamOf D
@@ -75,7 +75,7 @@ and the two are met by `∪`. -/
 def ldivOf (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except String (Tab B C) := do
   let Q ← (Tab.mk r.n r.val r.key).compOne (Tab.mk s.n s.key (s.key, s.val) : Tab A (.prod A C))
   let x : Vals (.prod B C) Q.n := (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)
-  let es ← Vals.cols x
+  let es ← ValsB.cols x
   let (vs, p) ← kasc Q.n es
   let (k, g, f) ← kseen Q.n ((es.map (·.1)).zip vs)
   let K := k.toUSize
@@ -83,7 +83,7 @@ def ldivOf (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except St
   let N ← catRows r.n Q.n
   -- `.lt` reads positions signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"ldiv: {N} rows past 2^63"
-  let bs ← Vals.cols (← Vals.concat N r.val Q.key)
+  let bs ← ValsB.cols (← ValsB.concat N r.val Q.key)
   let (bv, bp) ← kasc N bs
   let (bk, bg, bf) ← kseen N ((bs.map (·.1)).zip bv)
   let cR ← groupFold .add N bg (← seenSeg N bf bk.toUSize) bk.toUSize 0 (← colMap .first N bp bp .i64 .i64 [] [(.gt, r.n.toUInt64)])
@@ -92,7 +92,7 @@ def ldivOf (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except St
   let d ← kgather K (← kgather K (← colMap .first K q q .i64 .i64 [] [(.add, r.n.toUInt64)]) N code) bk.toUSize cR
   let (M, sel) ← whereCol K (← colMap .eq K cnt d)
   let ix ← kgather M sel K q
-  let P : Tab B C := ⟨M, ← Vals.gather M ix Q.key, ← Vals.gather M ix (Q.val : Vals A Q.n × Vals C Q.n).2⟩
+  let P : Tab B C := ⟨M, ← ValsB.gather M ix Q.key, ← ValsB.gather M ix (Q.val : Vals A Q.n × Vals C Q.n).2⟩
   P.union (← cross (← (← UB.ran).diff (← r.ran)).key (← UC.ran).key)
 
 /-- **`R \ S` within `UB`, `UC`**: `ldivOf` of `canon R`, `canon S`; a caller whose `R`, `S` are `Tab.Canonical`
