@@ -1462,6 +1462,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       未做：`Run.Lang.Gen`（`sumV` 第 53 行 `⟨l, r, …⟩`：生成代码要为 band side 发 `optV`），之后的 `Rel.Run.*`
       未建；CSV `S+1` 仍按 3 部分写（`csvEncs`），`encVals` 的 band 支读 1 部分——CSV 3 → 1 未做；`TestNullband` 往返
       （`i64+1`、`u1+1` 经 row/gather/concat/cols/pack/readVals/encVals/CSV、null 在前、跨块）未加。Rep*/GenK* 未建。
+    - 🔄 nullband3a2：合入 null1x（`Obj.opt X = .sum .one X`，null = `inl ()`）。撤回 nullorder 翻转（`git revert 19fd603`：`Obj.key` `inl ↦ 0::`，`cols` 键列是 `tag`，删 `colMap_not_u1`、`lt_inr_inl` 与 tag 的 `foROk` 检查）。`Obj.band` 认 `1+t`（`.one, .atom t`），`optEl`/`optOf` null = `inl ()`；`Struct.inl` = `Opt.nuls`、`inr` = `Vals.optInr`。frame 库（`Frame`/`FrameJoin`/`FrameGroup`）与 `TestFrame*` 全改 `1+X`：`tot = R inr ∪ (…) ⊤ inl`，`bind = c [inl, f]`，`[𝟙, d]` → `[d, 𝟙]`，`y ⊕ 𝟙` → `𝟙 ⊕ y`。`Gen.optV`（band 列按 hex 重建）、`sumV` 带 `Obj.band = none` 证据（`Expand.bandRfl`），`valsE`/`valsEq` 经 `Vals.view`；`Elab` 空 sum 字面量经 `Vals.none`。RelRun 全绿（worktree 建）。
+      未做：CSV 3 → 1（`Table.toCsv`/`ofCsv` 的 `.opt a` 仍按 tag/idx/1/v 部分，band 侧只有 1 部分 `Opt`，运行时会报 "too few parts"；需 `Db.Csv` 的 `null` 形状改为一列带内 null，Rust 端同改）；`TestNullband` 往返（`1+i64`、`1+u1`）；Rel 库（Rep*/GenK*/测试）未建。缺 kernel 的两处仍报错：`Opt.concat` 两边任一含 null；band 列上的 `inl°`/`inr°`。
     - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
       3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
     ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序
