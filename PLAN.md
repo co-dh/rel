@@ -1415,10 +1415,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 8.3 `Enc` 只留 foR（分支 `foronly`）。今天 7 种：`bytes`（字面量、`ofAtoms`、`blank` 仍产生，进 kernel 前再转
   foR）、`alp`（`alpOf` 仍产生）、`syms`/`enum`/`gen`（运行路径上没有产生者）、`foR`、`pos`。float 存保序位映射的
   foR 字，`sym` = foR 编号 + 排好序的字典（§4.2），own 文件升版本。`pos` 去留待 owner（O/P）。
-- ⬜ 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。今天 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
+- 🔄 8.4 `Arr t n := {e : Enc // Enc.WF t n e}`。原来 `{v : QValue // v.WFAt t n}`：每列一个 `.vector t n enc attr`
   盒子，`t`、`n` 在类型参数里已有又存一遍；`attr` 只有 2 处读；`QValue` 的 `dict table keyed slices func err enum`
   只在 `Kernel.Value`、`Run.ValEq` 用；own 文件头的 `attr`、`domain` 写了没人读。去掉 `QValue` 盒子与 `general`
   （`Carrier .general = QValue`），文件格式升版本。在 8.3 合并之后做（同改 `Enc`/`QValue`/`general`）。
+  ✅ 盒子已去（分支 arr84）：`Arr t n := {e : Enc // Enc.WF t n e ∧ Kernel.hasNul e = false}`；`Arr.mk` 无 attribute
+  参数，`Arr.of t n (e : Enc)`；`Plan.cols` 给 `SideCol = USize ⊕ Σ t k, Arr t k`（`checkSyms` 直接拿到
+  `Arr .sym k`，不再经 `Arr.of` 重查）；`Db.ownFile t n e`（enum 分支删，头里 `attr`/`domain` 写空）；
+  `Expand.valsEq` 比 `t`、`n` 与 `encEq`；`Table.encOf` 删。`general` 不需要盒子：它的列是 `Enc.gen xs`，
+  仍是 `Arr .general n`。剩：删 `general`/`Enc.gen` 与 `QValue`（`Carrier .general`、`ValEq`），own 文件头去掉
+  `attr`/`domain` 并升版本（Rust `own.rs` 同改）。
 - 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
   一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
   一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。

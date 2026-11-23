@@ -23,19 +23,12 @@ def ownEnc (kind : UInt8) (parts : Array ByteArray) : Option (Ext.Enc X) :=
   | 2, [metadata, pack] => some (.foR metadata pack)
   | _, _ => none
 
-/-- The file a value is written as when it is a column: a vector, or an enumeration's indices under their domain's
-name, either wearing an attribute; `none` for positions, which have no file (`ownParts`). Every other value is refused,
-naming what it is. -/
-def ownFile (v : Ext.QValue X) : Except String (Option OwnFile) :=
-  let (attr, w) := v.marking
-  let column (t : QAtomicType) (n : USize) (e : Ext.Enc X) (domain : String) : Except String (Option OwnFile) :=
-    return (← ownParts e).map fun (kind, parts) => { code := t.code.toUInt8, attr, kind, count := n, domain, parts }
-  match w with
-  | .enum d (.vector .i64 n e _) =>
-    if d.isEmpty then throw "an enumeration with an empty domain name" else column .i64 n e d
-  | .vector t n e _ =>
-    if t == .general then throw "a general list, which qlean's own column format does not hold" else column t n e ""
-  | _ => throw "not a column: neither a vector nor an enumeration of longs"
+/-- The file the column `e` of `n` elements of `t` is written as; `none` for positions, which have no file
+(`ownParts`). A general list is refused. The header's `attr` and `domain` are written empty (PLAN 8.4: no reader). -/
+def ownFile (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Except String (Option OwnFile) := do
+  if t == .general then throw "a general list, which qlean's own column format does not hold"
+  return (← ownParts e).map fun (kind, parts) =>
+    { code := t.code.toUInt8, attr := 0, kind, count := n, domain := "", parts }
 
 
 end Rel.Db

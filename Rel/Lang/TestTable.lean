@@ -17,7 +17,7 @@ def fresh (d : String) : IO String := do
 
 /-- The `i64` column of `xs`, encoded as the kernels encode their answers (`wordsFoR`). -/
 def longs (n : USize) (xs : List Int64) : IO (Vals .long n) :=
-  IO.ofExcept (Arr.of .i64 n (.vector .i64 n (wordsFoR (xs.map Int64.toUInt64).toArray) none) "literal")
+  IO.ofExcept (Arr.of .i64 n (wordsFoR (xs.map Int64.toUInt64).toArray) "literal")
 
 /-- The names in the directory `dir`, sorted. -/
 def names (dir : String) : IO (List String) :=

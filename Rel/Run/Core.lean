@@ -34,33 +34,27 @@ def expandNote {α : Type u} (what : String) (rows : Nat) (k : Unit → α) : α
 /-- An element of a column of type `t`: qlean's `Carrier`, a `QValue` in a general list. -/
 abbrev El := Carrier
 
-/-- A vector of `n` elements of type `t`: qlean's typed vector, `QValue.WFAt` saying the header is `t`, `n`
-    and `Enc.WF` that the payload agrees with it; a general list is `.gen xs`. q's attribute is the vector's
-    own (codes 1 sorted, 2 unique, 3 parted, 4 grouped, with the `IndexCell` of its index), set by producers
-    and read by consumers (§2.4). Its payload holds no flagged block (`Kernel.hasNul`): an `Arr t n` is the atom
-    object `t`, and only `t+1` holds the in-band null (design card "atom+1", decision K). -/
-abbrev Arr (t : QAtomicType) (n : USize) :=
-  {v : QValue // v.WFAt t n ∧ ∀ t' n' e a, v = .vector t' n' e a → Kernel.hasNul e = false}
+/-- A vector of `n` elements of type `t`: the encoded column itself, `Enc.WF` saying it holds `n` elements of `t`
+    (`t` and `n` live in the type, never in a header beside the payload); a general list is `.gen xs`. Its payload
+    holds no flagged block (`Kernel.hasNul`): an `Arr t n` is the atom object `t`, and only `t+1` holds the in-band
+    null (design card "atom+1", decision K). -/
+abbrev Arr (t : QAtomicType) (n : USize) := {e : Enc // Enc.WF t n e ∧ Kernel.hasNul e = false}
 
 namespace Arr
 
 variable {t : QAtomicType} {n : USize}
 
-/-- The payload. The fallback is unreachable: `WFAt` holds only of a `vector`. -/
-def enc (x : Arr t n) : Enc := match x.1 with | .vector _ _ e _ => e | _ => .gen #[]
+/-- The payload. -/
+def enc (x : Arr t n) : Enc := x.1
 
-
-/-- The payload agrees with the header. -/
-theorem wf (x : Arr t n) : Enc.WF t n x.enc := by
-  obtain ⟨v, h, -⟩ := x; cases v <;> first | exact h.2.2 | exact h.elim
+/-- The payload agrees with the type. -/
+theorem wf (x : Arr t n) : Enc.WF t n x.enc := x.2.1
 
 /-- The payload holds no null: no block is flagged. -/
-theorem plain (x : Arr t n) : Kernel.hasNul x.enc = false := by
-  obtain ⟨v, h, hN⟩ := x; cases v <;> first | exact hN _ _ _ _ rfl | exact h.elim
+theorem plain (x : Arr t n) : Kernel.hasNul x.enc = false := x.2.2
 
-/-- `e` under the header `t`, `n` and the attribute `a`. -/
-def mk (e : Enc) (h : Enc.WF t n e) (hN : Kernel.hasNul e = false) (a : Option (UInt8 × IndexCell) := none) :
-    Arr t n := ⟨.vector t n e a, ⟨rfl, rfl, h⟩, fun _ _ _ _ he => by cases he; exact hN⟩
+/-- `e` as a column of `n` elements of `t`. -/
+def mk (e : Enc) (h : Enc.WF t n e) (hN : Kernel.hasNul e = false) : Arr t n := ⟨e, h, hN⟩
 
 /-- A general list's payload is `gen` and holds its `n` elements. -/
 theorem gen_size (x : Arr .general n) {xs : Array QValue} (hc : x.enc = .gen xs) : xs.size = n.toNat := by
@@ -90,16 +84,13 @@ def toList (x : Arr t n) : List (El t) := List.ofFn x.get
 def Holds (x : Arr t n) (i : Int64) (y : El t) : Prop := ∃ j : Fin n.toNat, Int64.ofNat j = i ∧ x.get j = y
 
 
-/-- A kernel's answer as an `Arr`, the one way in: `WFAt` is decided (the header's two fields and
-    `Enc.WF`), never assumed; `what` names the producer in the error. The vector is the kernel's, mark
-    and all; a producer that knows an attribute applies it after. -/
-def of (t : QAtomicType) (n : USize) (v : QValue) (what : String) : Except String (Arr t n) :=
-  match v with
-  | .vector t' n' e a => if h : t' = t ∧ n' = n ∧ Enc.WF t n e then
-      if hN : Kernel.hasNul e = false then .ok ⟨.vector t' n' e a, h, fun _ _ _ _ he => by cases he; exact hN⟩
-      else .error s!"{what}: the kernel answered a column holding a null, and its type has none"
-    else .error s!"{what}: the kernel answered a payload that is not {n} well-formed elements of its type"
-  | _ => .error s!"{what}: the kernel answered a value that is not a vector"
+/-- A payload as an `Arr`, the one way in: `Enc.WF` is decided, never assumed; `what` names the producer in the
+    error. -/
+def of (t : QAtomicType) (n : USize) (e : Enc) (what : String) : Except String (Arr t n) :=
+  if h : Enc.WF t n e then
+    if hN : Kernel.hasNul e = false then .ok ⟨e, h, hN⟩
+    else .error s!"{what}: a column holding a null, and its type has none"
+  else .error s!"{what}: a payload that is not {n} well-formed elements of {repr t}"
 
 end Arr
 

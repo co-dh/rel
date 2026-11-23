@@ -44,9 +44,9 @@ def roundTrip (f : OwnFile) : IO OwnFile := do
   IO.ofExcept m
 
 /-- The column `v` is written as (`ownFile`), round-tripped, and its `Enc` rebuilt from the mapped parts. -/
-def column (v : QValue) : IO Unit := do
-  let some f ← IO.ofExcept (ownFile v) | throw (IO.userError "positions, which have no file")
-  let g ← roundTrip f
+def column (t : QAtomicType) (n : USize) (e : Enc) (domain := "") : IO Unit := do
+  let some f ← IO.ofExcept (ownFile t n e) | throw (IO.userError "positions, which have no file")
+  let g ← roundTrip { f with domain }
   match ownEnc (X := Empty) g.kind g.parts with
   | some (.foR m p) => IO.println s!"foR: metadata {m.size} bytes, pack {p.size} bytes"
   | some _ => IO.println "another constructor"
@@ -59,27 +59,27 @@ info: ok kind 2 count 64 domain `` part sizes [57, 816]
 foR: metadata 57 bytes, pack 816 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000]))) none)
+#eval column .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000])))
 
 /--
 info: ok kind 2 count 0 domain `` part sizes [24, 0]
 foR: metadata 24 bytes, pack 0 bytes
 -/
 #guard_msgs in
-#eval column (.vector .i64 0 (Ext.Enc.ofBytes 8 .empty) none)
+#eval column .i64 0 (Ext.Enc.ofBytes 8 .empty)
 
 /--
 info: ok kind 2 count 3 domain `dom` part sizes [57, 256]
 foR: metadata 57 bytes, pack 256 bytes
 -/
 #guard_msgs in
-#eval column (.enum "dom" (.vector .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1])) none))
+#eval column .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1])) "dom"
 
 -- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is its `foR` ids (PLAN 8.3) and
 -- is written as any other column; and the writer refuses kind 6, a number that is no kind
 /-- info: Except.ok none -/
 #guard_msgs in
-#eval (ownFile (X := Empty) (.vector .i64 5 .pos none)).map (·.map key)
+#eval (ownFile (X := Empty) .i64 5 .pos).map (·.map key)
 /--
 info: ("error: a column of kind and part count 2:2 or 5:0 and a domain name under 65536 bytes, given kind 6 with 0 parts and a 0-byte name",
  "error: a column of kind and part count 2:2 or 5:0 and a domain name under 65536 bytes, given kind 6 with 0 parts and a 0-byte name")

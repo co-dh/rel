@@ -2159,7 +2159,7 @@ private def sumSp (xs : List (List Int64)) : List (List Int64 × Int64) :=
 private def bigCell : Except String (Vals (.arr .long) 1) := do
   pure ⟨9223372036854775808, ← colArr .add 1 (← colConst 1 0) (← colConst 1 0),
     ← colArr .add 1 (← colConst 1 1) (← colConst 1 0),
-    (⟨.vector .i64 9223372036854775808 .pos none, by simp [Ext.QValue.WFAt, Ext.Enc.WF], fun _ _ _ _ h => by cases h; rfl⟩ : Arr .i64 9223372036854775808)⟩
+    (⟨.pos, by simp [Ext.Enc.WF], rfl⟩ : Arr .i64 9223372036854775808)⟩
 
 -- `Vals.pack` past `2^63` elements is the error: `cellSpan` would read the size as the signed word `-2^63`, every
 -- width `0`, and answer a payload of no rows
