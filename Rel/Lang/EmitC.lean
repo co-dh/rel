@@ -1911,10 +1911,10 @@ def ioOf (n : Lean.Name) :
               | none => throw s!"`{x}` reads `{d}`, which is not read or computed before it"
             let ⟨_, _, t⟩ := o.res
             σ := σ ++ [(x, ← ofTm env t)]
-        -- `dictionary x : S ⟶ [C]`: `Table.dictRel`, the ids `0 … n-1` as symbols, each beside its text, as the
-        -- statements before it grew `D`
+        -- `dictionary x : S ⟶ [C]` (`Table.dictRel`) as a table of the plan: its first attempt failed `csvWrite`'s count
+        -- check on the ids column of a written dictionary, not yet explained, so it is refused rather than guessed
         | .dict x _ _ =>
-          if reach.contains x then σ := σ ++ [(x, ← sidesOf ⟨D.n, [.atom "" .sym (← posB)], D.val⟩)]
+          if reach.contains x then throw s!"`dictionary {x}`: the dictionary as a relation, which no plan recipe builds yet"
         | .output x _ _ k v c p cl =>
           mainStepB do
             let t ← match cl, σ.lookup x with
