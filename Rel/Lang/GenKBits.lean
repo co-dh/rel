@@ -121,24 +121,6 @@ theorem Tab.ofBits_set {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Val
   Tab.ofBits_holds h hra hrc _ hgw (hgw ▸ Tab.ofBits_lt h) (fun a ha j hj => by
     obtain ⟨v, hv, hv2⟩ := ho a ha j hj; exact ⟨v, hv, hv2, by simp only [hv, Option.getD_some]⟩) u v
 
-/-- **`whereCol` lists the positions of the `1` words**: some answer row holds `i` exactly when `b[i]` is set. -/
-theorem whereCol_mem {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
-    (hb : ∀ i < m.toNat, (raw .i64 m b)[i]?.getD 0 < 2) (i : Nat) :
-    (∃ k < K.toNat, ((raw .i64 K o)[k]?.getD 0).toNat = i) ↔ i < m.toNat ∧ (raw .i64 m b)[i]?.getD 0 ≠ 0 := by
-  have hsz := whereCol_size h
-  have hmem : i ∈ (raw .i64 K o).toList.map UInt64.toNat ↔ i < m.toNat ∧ (raw .i64 m b)[i]?.getD 0 ≠ 0 := by
-    rw [whereCol_spec h hb, List.mem_filter, List.mem_range, decide_eq_true_eq]
-  rw [← hmem, List.mem_map]
-  constructor
-  · rintro ⟨k, hk, rfl⟩
-    refine ⟨_, Array.getElem_mem_toList (by rw [hsz]; exact hk : k < (raw .i64 K o).size), ?_⟩
-    rw [getElem?_pos (raw .i64 K o) k (by omega), Option.getD_some]
-  · rintro ⟨v, hv, rfl⟩
-    obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hv
-    rw [Array.length_toList] at hk
-    refine ⟨k, hsz ▸ hk, ?_⟩
-    rw [Array.getElem_toList, getElem?_pos (raw .i64 K o) k hk, Option.getD_some]
-
 /-- **`Tab.keepBits` is `T ∩ M`** for a matrix `M` as `compMat` and `compTabMat` build it: `0`/`1` words, `g · w` not
     wrapping, and the rows `x[ra[·]]` distinct, as `y[rc[·]]` (else `index` finds one of two equal rows and its bit). -/
 theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x : Vals A n} {ra : Enc}
