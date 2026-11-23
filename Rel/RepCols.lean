@@ -20,7 +20,7 @@ private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicTy
 /-- **`colPrefix op n a` is the running fold of `op` from `0`**: row `i` is `op` of row `i - 1` (`0` at row `0`) and
 `a[i]`. -/
 theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = .ok e) (ho : op ≠ .first := by decide)
-    (hn : op ≠ .null := by decide) :
+    (hn : op ≠ .null := by decide) (hF : op.nulFold = none := by rfl) :
     (raw .i64 n a).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧ ∀ i < n.toNat,
       op.eval (if i = 0 then 0 else (raw .i64 n e)[i - 1]?.getD 0) ((raw .i64 n a)[i]?.getD 0) =
         .ok ((raw .i64 n e)[i]?.getD 0) := by
@@ -31,7 +31,7 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   obtain ⟨-, hxs, c, cs, hc, out, hout, he, -, hrow⟩ :=
-    raw_kscan op hn false .i64 .i64 8 rfl n z [(n, z), (n, a)] r (kscanStream_ne ho _ _ _) hr
+    raw_kscan op hn false .i64 .i64 8 rfl n z [(n, z), (n, a)] r (kscanStream_ne ho _ _ _) (Or.inl hF) hr
   simp only [List.map_cons, List.map_nil, List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
   simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
   have hz0 := colConst_raw hz
@@ -54,10 +54,11 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
 `op.eval a[i] b[i]`. -/
 theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType}
     (h : colMap op n a b .i64 s = .ok e) (hk : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep)
-    (hn : op ≠ .null := by decide) :
+    (hn : op ≠ .null := by decide)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
       ∀ i < n.toNat, op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain h hk hn
+  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain h hk hn hF
   refine ⟨ha, hb, hs, fun i hi => ?_⟩
   obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
   cases hx; cases hy; cases hw
@@ -95,8 +96,9 @@ theorem colMap_const_eq {op op' : Op} {n : USize} {a k e e' : Enc} {c : UInt64}
     (hop : ∀ x, op'.eval x c = op.eval c x) (hk : colConst n c = .ok k)
     (h : colMap op' n a k = .ok e) (h' : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e')
     (hl : kscanStream op' [(n, a), (n, k)] [] [] = false := by lockstep)
-    (hn : op' ≠ .null := by decide) : raw .i64 n e = raw .i64 n e' := by
-  obtain ⟨-, -, hs, hr⟩ := colMap_raw h hl hn
+    (hn : op' ≠ .null := by decide)
+    (hF : op'.nulFold = none ∨ ∀ p ∈ [(n, a), (n, k)], hasNul p.2 = false := by nulfree) : raw .i64 n e = raw .i64 n e' := by
+  obtain ⟨-, -, hs, hr⟩ := colMap_raw h hl hn hF
   obtain ⟨hs', hr'⟩ := colMap_post h'
   refine Array.ext (hs.trans hs'.symm) fun i hi hi' => ?_
   have h1 := hr i (hs ▸ hi)
@@ -457,7 +459,7 @@ theorem kscan_first_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List
   rename_i cs hc
   split at hr; · cases hr
   rename_i ca cs' ns
-  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hc
+  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs (Or.inl rfl) hc
   simp only [if_neg (by decide : Op.first ≠ Op.null), List.take_zero, List.map_nil, List.length_nil, List.drop_zero,
     List.nil_append] at hcs
   cases hcs
@@ -508,7 +510,7 @@ theorem kscan_null_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List 
   rename_i cs hc
   split at hr; · cases hr
   rename_i ca cs' ns
-  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hc
+  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs (Or.inl rfl) hc
   obtain ⟨hl, -⟩ := mapM_chain (es := [a]) hcc
   rcases ws' with _ | ⟨w0, _ | ⟨_, _⟩⟩ <;> try simp at hl
   simp only [if_pos rfl, List.take_succ_cons, List.take_zero, List.map_cons, List.map_nil, List.length_cons,
