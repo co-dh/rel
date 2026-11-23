@@ -20,9 +20,9 @@ Rel.Lang.floatDen
 Rel.Lang.foldDen
 Rel.Lang.foldrDen
 Rel.Lang.leqDen
+Rel.Lang.loopDen
 Rel.Lang.ltDen
 Rel.Lang.memDen
-Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.stepDen
 Rel.Lang.succDen

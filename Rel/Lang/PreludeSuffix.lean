@@ -22,10 +22,10 @@ theorem Tm.suffixDef_row (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
   have ho : (rowOf "suffix").objs (.arr B) (.arr B) [] = some [B] := by
     simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == (rowOf "suffix").sym) = some ⟨RowCode.suffix, fun _ _ xs ys => ys <:+ xs⟩ := rfl
-  have hr : Prim.den (rowOf "suffix") (.arr B) (.arr B) [] xs ys = (ys <:+ xs) := by
+  have hf : rowDens.find? (·.1.sym == (rowOf "suffix").sym) = some ⟨RowCode.suffix, fun σ _ => splitDen false (σ₁ σ).El⟩ := rfl
+  have hr : Prim.den (rowOf "suffix") (.arr B) (.arr B) [] xs ys ↔ (ys <:+ xs) := by
     unfold Prim.den; simp only [List.map_nil]
-    rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+    rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; exact splitDen_iff _ xs ys
   rw [hr]
   simp only [Tm.suffixDef, Tm.den, Prim.den_uncat, Core.Rel.comp, Core.Rel.graph]
   constructor
