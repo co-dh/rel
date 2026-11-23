@@ -96,6 +96,11 @@ def cellBadB {o : Bool} {n : USize} (m : USize) (lo hi : ColB o .i64 n) : Option
       let l := (Opt.get lo i).getD 0; let h := (Opt.get hi i).getD 0
       !decide (0 ≤ l.toInt ∧ l.toInt ≤ h.toInt ∧ h.toInt ≤ (m.toNat : Int))
 
+/-- The bound of row `i` of a cell column at ownership `o`, a null row's `0` (as `cellBadB` reads it). -/
+def ColB.bound : {o : Bool} → {n : USize} → ColB o .i64 n → Fin n.toNat → Int64
+  | false, _, x, i => x.get i
+  | true, _, x, i => (Opt.get x i).getD 0
+
 /-- The atom column of type `t` at ownership `o` from `path`: `readArr` where every row is owned, `readOpt` where a row
     may be the in-band null. -/
 def readCol : (o : Bool) → (t : QAtomicType) → (path : String) → IO ((n : USize) × ColB o t n)
@@ -119,7 +124,7 @@ def readValsB : (o : Bool) → (A : Obj) → (dir p : String) → IO (String × 
     let (_, ⟨m, e⟩) ← readValsB false b dir (p ++ ".e")
     -- the one place a cell's bounds are checked (PLAN 8.5): past here every cell is a slice of its payload
     if let some i := cellBadB m lo hi then
-      throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is not a slice of the {m} rows of \
+      throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is the cell [{ColB.bound lo i}, {ColB.bound hi i}), not a slice of the {m} rows of \
         {file dir (p ++ ".e")}: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ {m}")
     return (file dir (p ++ ".lo"), ⟨n, m, lo, hi, e⟩)
   | _, .sum a b, dir, p => match h : Obj.band a b with
