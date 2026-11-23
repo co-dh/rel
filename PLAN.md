@@ -1004,6 +1004,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `enc::movable`）由 `kscatter .last` 经 `pos`、`kscan` 的单位元 map（`+0`、`|0`、`-0`、`×1`、`first`、`last`）与
       `kgather` 的连续整块索引实现，对齐的块原样搬移（`write_nul` 9.5% → 1.8%，`for_meta` 10.8% → 5.4%）。余下：
       `pool::worker` 自旋 27% + `run_c` 5.5%（小任务的线程交接），`asc` 排序 8.7%（仍读整个 `X`），与 `|X|` 成正比。
+      mugrow4：搬移块的测试（3 块以上，有补丁与无补丁；搬移输出与不搬移路径逐字节相等，无一错）：Rust `scatter`、
+      `gather`、`kscan` 各一（`enc::MOVED` 计数断言确有搬移），Lean 每个 kernel 一条 3000 行 `#guard`（该规模 `decide`
+      归约不了）。`SPIN` 1024 → 256：`muGrow` 墙钟 1.71 s → 1.91 s（cpu 2.99 s → 2.64 s）、`Pc9Time` 2.80 s，墙钟变慢，
+      已撤回；`SPLIT` 未试。
       `muGrow` 32 s → 5.0 s（其中 import 0.7 s）。余下每轮仍与 `|X|` 成正比：`∪` 是 concat + `canon`（重排全部 `X`），
       `−` 是 `select`（`kasc` 全部 `X ++ F(Δ)`）；perf：`write_nul` 21%、pool 空转 17%、排序 15%、`for_meta` 10%。
       再省需要已排序表的归并 / 对已排序 `X` 的成员测试（新 kernel 组合），未做。
