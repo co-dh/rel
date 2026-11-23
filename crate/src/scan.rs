@@ -612,7 +612,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
     let t = |b: usize| (r.seg.is_none() && !rev && pre.is_empty() && post.is_empty() && low == !0 && b != last >> crate::DEFAULT_LG)
         .then(|| r.unit(b)).flatten().filter(|c| crate::enc::movable(c, b, b, n, 8)).map(|c| (c, b));
     let nul = if (stream && seed.has_nul()) || r.fill.is_some() { r.nul_bits() } else { Vec::new() };
-    let e = Sink::new(n, 8).enc().answer_nul(&crate::enc::Moving { t: &t, f: |buf: &mut [i64], lo: usize| {
+    let e = Sink::new(n, 8)?.enc().answer_nul(&crate::enc::Moving { t: &t, f: |buf: &mut [i64], lo: usize| {
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
         // a compare against a constant block: the compare kernel's bits, each a row's word
@@ -625,7 +625,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
         chain(post, o);
         if low != !0 { for v in o.iter_mut() { *v &= low } }
         if (lo..lo + nb).contains(&last) { fin.store(o[last - lo] & cut, core::sync::atomic::Ordering::Relaxed) }
-    }}, &nul);
+    }}, &nul)?;
     // every row is written, so at `n > 0` the block holding `last` stored it
     Ok((e, (n > 0).then(|| fin.load(core::sync::atomic::Ordering::Relaxed))))
 }
@@ -650,7 +650,7 @@ mod kscan_tests {
         Ok(out)
     }
     fn bytes(v: &[u64], w: usize) -> Vec<u8> { v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect() }
-    fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w).enc().answer(&Blocks::dense(&bytes(v, w), w)) }
+    fn enc_for(v: &[u64], w: usize) -> O { Sink::new(v.len(), w).expect("test: Sink allocation").enc().answer(&Blocks::dense(&bytes(v, w), w)).expect("test: Sink allocation") }
     fn enc_bits(v: &[u64]) -> O { enc_for(&v.iter().map(|b| b & 1).collect::<Vec<_>>(), 1) }
     fn parts(o: &O) -> Vec<Vec<u8>> {
         let b = o.borrow();
@@ -760,7 +760,7 @@ mod kscan_tests {
         b
     }
     fn enc_nul(v: &[u64], f: &[u64]) -> O {
-        Sink::new(v.len(), 8).enc().write_nul(&Blocks::dense(&bytes(v, 8), 8), false, &nul_map(f)).expect("kscan test: no size test")
+        Sink::new(v.len(), 8).expect("test: Sink allocation").enc().write_nul(&Blocks::dense(&bytes(v, 8), 8), false, &nul_map(f)).expect("test: Sink allocation").expect("kscan test: no size test")
     }
     // `first` over two sources is one scan of x then y (`kscanStream`): the concatenated words and null flags, each carried
     // as `kscanRow` carries them, written as `Coc.encode` of the words and the flag bitmap — with a null in neither

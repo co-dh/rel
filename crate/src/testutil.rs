@@ -20,7 +20,7 @@ pub fn id_put(p: &mut [u8], w: u32, i: usize, v: u64) { by_width!(w, lane_put(p,
 
 /// `Coc.encode 8` of `ws` as the `(meta, pack)` field bytes of its `foR`, the form a kernel's answer holds.
 pub fn enc_words(ws: &[u64]) -> [alloc::vec::Vec<u8>; 2] {
-    parts(&crate::ffi::Sink::new(ws.len(), 8).answer(&crate::blocks::Blocks::dense(crate::pod::bytes(ws), 8)))
+    parts(&crate::ffi::Sink::new(ws.len(), 8).expect("test: Sink allocation").answer(&crate::blocks::Blocks::dense(crate::pod::bytes(ws), 8)).expect("test: Sink allocation"))
 }
 /// The `(meta, pack)` field bytes of a kernel's answer.
 pub fn parts(o: &crate::lean::O) -> [alloc::vec::Vec<u8>; 2] { [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) }

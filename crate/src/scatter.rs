@@ -50,7 +50,7 @@ fn ordered(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Option<Resul
             && ix.span(b) == Grid { n, lg: crate::DEFAULT_LG }.span(b) && crate::enc::movable(&c, b, b, n, 8) => Some((c, b)),
         _ => None,
     };
-    let o = Sink::new(n, 8).enc().answer(&crate::enc::Moving { t: &t, f: |o: &mut [i64], i0: usize| {
+    let o = match Sink::new(n, 8).and_then(|s| s.enc().answer(&crate::enc::Moving { t: &t, f: |o: &mut [i64], i0: usize| {
         o.fill(fill as i64);
         let (c0, c1) = (i0 as u64, (i0 + o.len()) as u64);
         let (mut bi, mut be) = (pod::uninit::<u64>(sc), pod::uninit::<u64>(sc));
@@ -67,7 +67,7 @@ fn ordered(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Option<Resul
                 let c = &mut o[(i - c0) as usize]; *c = op_word(op, *c as u64, x) as i64
             }
         }
-    }});
+    }})) { Ok(o) => o, Err(m) => return Some(Err(m)) };
     if bad.load(Relaxed) { return None }
     // the first index `>= n`: in the first block reaching `n` (every earlier block was cut and seen below `n`), found by
     // position, since a block whose least index is `>= n` was cut by no answer block and nothing saw it ascend
@@ -130,7 +130,7 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64, nul: Option<
         }
     }
     for b in 0..g.nblk() { at[b + 1] += at[b] }
-    let s = Sink::new(n, 8).enc();
+    let s = Sink::new(n, 8)?.enc();
     if asc {
         // an ascending index hands answer block `b` the contiguous rows `at[b] .. at[b + 1]`, cut on `ix`'s own grid
         return Ok(s.write_nul(&|o: &mut [i64], i0: usize| {
@@ -140,7 +140,7 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64, nul: Option<
                 let (is, es) = (rows(ix, r0, r1 - r0, pod::bytes_mut(&mut bi)), rows(e, r0, r1 - r0, pod::bytes_mut(&mut be)));
                 for (&i, &x) in is.iter().zip(es) { let c = &mut o[i as usize - i0]; *c = op_word(op, *c as u64, x) as i64 }
             }
-        }, false, on.as_deref().unwrap_or(&[])).expect("qlean scatter: a write with no size test has an answer"))
+        }, false, on.as_deref().unwrap_or(&[]))?.expect("qlean scatter: a write with no size test has an answer"))
     }
     // V: each row's offset in its answer block and its value, grouped by answer block in row order
     let (mut pos, mut val) = (pod::try_uninit::<u16>("scatter", "the rows' offsets", ix.n)?, pod::try_uninit::<u64>("scatter", "the rows' values", ix.n)?);
@@ -158,7 +158,7 @@ pub fn blocks(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64, nul: Option<
         o.fill(fill as i64);
         let b = i0 >> lg;
         for j in at[b]..at[b + 1] { let c = &mut o[pos[j] as usize]; *c = op_word(op, *c as u64, val[j]) as i64 }
-    }, false, on.as_deref().unwrap_or(&[])).expect("qlean scatter: a write with no size test has an answer"))
+    }, false, on.as_deref().unwrap_or(&[]))?.expect("qlean scatter: a write with no size test has an answer"))
 }
 
 #[cfg(test)]
@@ -189,7 +189,7 @@ mod tests {
     }
     /// `Coc.encode 8` of `ws` as `(meta, pack)`, the form a `foR` argument holds
     fn enc(ws: &[u64]) -> [Vec<u8>; 2] {
-        let o = Sink::new(ws.len(), 8).answer(&Blocks::dense(pod::bytes(ws), 8));
+        let o = Sink::new(ws.len(), 8).expect("test: Sink allocation").answer(&Blocks::dense(pod::bytes(ws), 8)).expect("test: Sink allocation");
         [0, 1].map(|i| o.borrow().field(i).bytes().to_vec())
     }
     fn answer(o: &lean::O) -> [Vec<u8>; 2] { [0, 1].map(|i| o.borrow().field(i).bytes().to_vec()) }

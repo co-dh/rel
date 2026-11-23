@@ -362,15 +362,15 @@ pub static MOVED: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUs
 /// column's (the positions are the block's own), which the writer's own step would choose for the same elements. Else the
 /// writer's own steps, reading `x`, rows `lo ..` null where `nul` says (Lean `Coc.planBlock`): a block holding a null is
 /// `nul_meta`'s, any other `for_meta`'s.
-pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
+pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> Option<EncPack<'b>>, x: impl FnOnce() -> &'a [u8],
                         nb: usize, width: usize, nul: &[u8], lo: usize, least: i64) {
-    if let Some((c, pb)) = mv.take(m.b) { #[cfg(test)] MOVED.fetch_add(1, core::sync::atomic::Ordering::Relaxed); move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
+    if let Some((c, pb)) = mv.take(m.b) { #[cfg(test)] MOVED.fetch_add(1, core::sync::atomic::Ordering::Relaxed); move_meta(m, &c, pb); let Some(mut k) = pack(true) else { return }; return move_pack(&mut k, &c, pb, width) }
     let x = x();
     // only the rows `nul` has bits for: a column with no null (`nul` empty) tests no row, where testing each cost a
     // pass over every block of every written column
-    if (lo..(lo + nb).min(nul.len() * 8)).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo, least); return nul_pack(&mut pack(false), x, width, nul, lo) }
+    if (lo..(lo + nb).min(nul.len() * 8)).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo, least); let Some(mut k) = pack(false) else { return }; return nul_pack(&mut k, x, width, nul, lo) }
     for_meta(m, x, width, nb);
-    for_pack(&mut pack(false), x, width)
+    let Some(mut k) = pack(false) else { return }; for_pack(&mut k, x, width)
 }
 
 #[cfg(test)]

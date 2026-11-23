@@ -1,5 +1,6 @@
 //! The `#[repr(C)]` column and encoder structs the block encoder and the pool workers share, and the helpers the
 //! `ffi/*.rs` exports call. No symbol leaves the object from here: the Lean externs are in `ffi/*.rs`.
+use alloc::{format, string::String};
 use core::alloc::Layout;
 use core::ffi::{c_int, c_void};
 use core::ptr::null_mut;
@@ -111,11 +112,16 @@ impl CEnc {
     /// `coc_enc_layout` zeroes a short last block's) and its patches.
     /// The answer is the `pack` of `move_blk` and `Scatter::write`, which reads the block's width and patch count when it is
     /// called, so it is called after block `b`'s meta step.
-    unsafe fn stage<'a>(&'a self, b: usize, nb: usize, st: &'a mut Staged) -> impl FnOnce(bool) -> EncPack<'a> + 'a {
+    /// `None` where the allocator has not got the block's room: the error is left in `st.err` and the block writes nothing.
+    unsafe fn stage<'a>(&'a self, b: usize, nb: usize, st: &'a mut Staged) -> impl FnOnce(bool) -> Option<EncPack<'a>> + 'a {
         move |whole| unsafe {
             let (w, ne) = (*self.c.width.add(b) & crate::coc::WIDTH_MASK, *self.exc_off.add(b + 1) as usize);
-            *st = Staged { res: alloc::vec![0; (1usize << self.c.lg()) * w as usize / 8], pos: alloc::vec![0; ne], raw: alloc::vec![0; (ne * self.width).div_ceil(8)] };
-            self.pack_at(b, nb, whole, st.res.as_mut_ptr(), st.pos.as_mut_ptr(), st.raw.as_mut_ptr().cast(), ne)
+            let mk = || Ok(Staged { res: crate::pod::vec_of("Sink", "a staged block's residuals", (1usize << self.c.lg()) * w as usize / 8, 0)?,
+                                    pos: crate::pod::vec_of("Sink", "a staged block's patch positions", ne, 0)?,
+                                    raw: crate::pod::vec_of("Sink", "a staged block's patch elements", (ne * self.width).div_ceil(8), 0)?, err: None });
+            *st = mk().unwrap_or_else(|e| Staged { err: Some(e), ..Staged::default() });
+            if st.err.is_some() { return None }
+            Some(self.pack_at(b, nb, whole, st.res.as_mut_ptr(), st.pos.as_mut_ptr(), st.raw.as_mut_ptr().cast(), ne))
         }
     }
     /// A `Staged` block copied to where `coc_enc_layout` put block `b`. Safety: after `coc_enc_layout`, `st` block `b`'s.
@@ -134,7 +140,8 @@ impl CEnc {
 /// A block a `Sink`'s meta pass packed, kept until the layout says where it goes, so its producer runs once: its residuals
 /// and its patch positions and raw elements (in words, so a float patch list is aligned for its floats).
 #[derive(Default)]
-pub struct Staged { res: alloc::vec::Vec<u8>, pos: alloc::vec::Vec<u16>, raw: alloc::vec::Vec<u64> }
+/// `err`: the allocation the block's step could not make, which fails the pass.
+pub struct Staged { res: alloc::vec::Vec<u8>, pos: alloc::vec::Vec<u16>, raw: alloc::vec::Vec<u64>, err: Option<String> }
 /// A symbol: its bytes and length.
 #[repr(C)]
 pub struct CSym { pub p: *const u8, pub len: usize }
@@ -164,17 +171,15 @@ impl CCoc {
 // ---- K24: coc.rs, 764-816, the one writer of an answer column: `Sink` (coc plan §3) ----
 // A sink writes its column a block of its grid at a time on the pool, in the form it was opened in. Its blocks come from
 // an `enc::Producer` (a `Blocks` source, a kernel's fill, whole blocks it `take`s) or from a step that writes the block
-// itself (`each`). Allocation of the scratch aborts like coc.rs's `coc_alloc`.
+// itself (`each`). Allocation of the scratch is fallible: the error names the bytes, and reaches Lean as `Except.error`
+// (or stops the run, at an export whose Lean type has no error).
 
-/// coc.rs `coc_alloc`: 64-byte aligned, never size 0, abort on failure.
-pub unsafe fn coc_alloc(bytes: usize) -> *mut u8 {
-    let want = bytes.next_multiple_of(64).max(64);
-    let p = unsafe { alloc::alloc::alloc(Layout::from_size_align_unchecked(want, 64)) };
-    if p.is_null() {
-        crate::os::eprint(format_args!("aligned_alloc {bytes} bytes failed\n")).expect("qlean: stderr");
-        crate::os::exit(1)
-    }
-    p
+/// coc.rs `coc_alloc`: 64-byte aligned, never size 0; the error where the allocator has not got the bytes for `what`.
+pub unsafe fn coc_alloc(what: &str, bytes: usize) -> Result<*mut u8, String> {
+    let no = || format!("coc_alloc: cannot allocate {bytes} bytes for {what}");
+    let want = bytes.checked_next_multiple_of(64).ok_or_else(no)?.max(64);
+    let p = unsafe { alloc::alloc::alloc(Layout::from_size_align(want, 64).map_err(|_| no())?) };
+    if p.is_null() { Err(no()) } else { Ok(p) }
 }
 /// Frees what `coc_alloc` or C's `aligned_alloc` gave (the allocator's `dealloc` is `free`, whatever the layout says).
 pub unsafe fn coc_free(p: *mut u8) { if !p.is_null() { unsafe { alloc::alloc::dealloc(p, Layout::from_size_align_unchecked(64, 64)) } } }
@@ -193,21 +198,24 @@ pub unsafe fn meta_view(m: *mut u8, metabytes: usize, n: usize) -> CCoc {
 }
 
 /// coc.rs `coc_enc_open`: the metadata sarray and the heap copies the meta pass fills.
-pub unsafe extern "C" fn qrs_coc_enc_open(s: *mut CEnc, n: usize, width: usize) {
+/// A failure leaves the encoder for `enc_free`, which frees every non-null part.
+pub unsafe fn qrs_coc_enc_open(s: *mut CEnc, n: usize, width: usize) -> Result<(), String> {
     unsafe {
         let (nblk, msz) = (n.div_ceil(1 << DEFAULT_LG), 33 * n.div_ceil(1 << DEFAULT_LG) + 24);
         core::ptr::write_bytes(s, 0, 1);
         (*s).n = n;
         (*s).width = width;
+        // the fallible Rust allocations first: a size the allocator refuses is an `Err` before the Lean allocation, which aborts
+        (*s).frm_heap = coc_alloc("the encoder's frame deltas", nblk * 8)?.cast();
+        (*s).exc_heap = coc_alloc("the encoder's patch offsets", (nblk + 1) * 8)?.cast();
         let meta = lean::alloc_sarray(1, msz, msz);
         // the trailer's block size, which every reader of this metadata (the encoder's own view first) takes its grid from
         lean::sarray_cptr(meta).add(32 * nblk + 16).cast::<u64>().write(DEFAULT_LG as u64);
         (*s).meta = meta.cast();
         (*s).c = meta_view(lean::sarray_cptr(meta), msz, n);
-        (*s).frm_heap = coc_alloc(nblk * 8).cast();
         (*s).c.fdelta = (*s).frm_heap;
-        (*s).exc_heap = coc_alloc((nblk + 1) * 8).cast();
         (*s).exc_off = (*s).exc_heap;
+        Ok(())
     }
 }
 /// coc.rs `coc_enc_plan`: between the two passes, the offsets, the exception prefix sums and the tail's size; answers the
@@ -281,10 +289,11 @@ pub unsafe fn enc_free(s: *mut CEnc) {
 
 /// The writer of one answer column (coc plan §3): its grid and the encoder state its passes fill. Dropped
 /// unfinished (a size test failed), it frees what it allocated.
-pub struct Sink { pub e: CEnc, g: Grid, enc: bool, least: i64 }
+pub struct Sink { pub e: CEnc, g: Grid, enc: bool, least: i64, fail: AtomicUsize }
 /// A pass's step: block `b` (elements `lo .. lo + nb`) of the sink `e`, with the worker's block buffer (`16 << lg` bytes).
 pub type Step<'a> = &'a (dyn Fn(*mut CEnc, usize, usize, usize, &mut [u8]) + Sync);
-struct Pass<'a> { step: Step<'a>, g: Grid, sized: bool }
+/// `fail`: the most bytes a worker's buffer asked for and did not get (0: none).
+struct Pass<'a> { step: Step<'a>, g: Grid, sized: bool, fail: &'a AtomicUsize }
 /// coc.rs `src_run`: the blocks `[b0, b1)` through the step; a worker writes only what its block owns (its metadata
 /// entries, its bytes at off[b], its exceptions at exc_off[b]), so any pass may be split.
 unsafe extern "C" fn sink_run(b0: usize, b1: usize, p: *const CPass) {
@@ -292,7 +301,10 @@ unsafe extern "C" fn sink_run(b0: usize, b1: usize, p: *const CPass) {
     unsafe {
         let (s, job) = ((*p).o.cast::<CEnc>(), &*(*p).a.cast::<Pass>());
         let (width, lg) = ((*s).width, job.g.lg);
-        let mut buf = crate::pod::uninit::<i64>(2 << lg);
+        let Ok(mut buf) = crate::pod::try_uninit::<i64>("Sink", "a worker's block buffer", 2 << lg) else {
+            job.fail.fetch_max(16 << lg, SeqCst);
+            return;
+        };
         let (lb, over) = (AtomicUsize::from_ptr(&raw mut (*s).lb), AtomicI32::from_ptr(&raw mut (*s).over));
         // the meta pass under a size test stops once the blocks it has sized already reach it: each block's residuals and its
         // exceptions' bytes are a part of the total `qrs_coc_enc_plan` would answer, so their sum is a lower bound
@@ -314,67 +326,72 @@ unsafe extern "C" fn sink_run(b0: usize, b1: usize, p: *const CPass) {
 impl Drop for Sink { fn drop(&mut self) { unsafe { enc_free(&mut self.e) } } }
 impl Sink {
     /// `n` elements of `width` bytes: coc.rs `coc_enc_open`.
-    pub fn new(n: usize, width: usize) -> Sink {
-        let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, enc: false, least: i64::MIN };
-        unsafe { qrs_coc_enc_open(&mut s.e, n, width) }
-        s
+    pub fn new(n: usize, width: usize) -> Result<Sink, String> {
+        let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, enc: false, least: i64::MIN, fail: AtomicUsize::new(0) };
+        unsafe { qrs_coc_enc_open(&mut s.e, n, width)? }
+        Ok(s)
     }
-    /// `step` over every block on the pool; `sized` makes it the sizing pass of the size test.
-    pub fn each(&mut self, sized: bool, cost: u32, step: Step) {
-        let job = Pass { step, g: self.g, sized: sized && self.e.below != 0 };
+    /// `step` over every block on the pool; `sized` makes it the sizing pass of the size test. The error where a worker's
+    /// buffer could not be allocated.
+    pub fn each(&mut self, sized: bool, cost: u32, step: Step) -> Result<(), String> {
+        let job = Pass { step, g: self.g, sized: sized && self.e.below != 0, fail: &self.fail };
         let p = CPass { a: (&raw const job).cast(), b: core::ptr::null(), c: core::ptr::null(), o: (&raw mut self.e).cast(), n: self.g.n, at: 0,
                         r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
         unsafe { c::pool()(sink_run, self.g.nblk(), cost, self.e.width << self.g.lg, &p) };
+        match self.fail.load(core::sync::atomic::Ordering::SeqCst) { 0 => Ok(()), k => Err(format!("Sink: cannot allocate {k} bytes for a worker's block buffer")) }
     }
     /// The column `p` denotes, as the Lean answer (`(meta, pack)`), its null rows the set bits of `nul` (Lean
     /// `Coc.encodeAt`'s `nul`; empty: none); with `shrinks`, `None` where the encoded form is not smaller than the
     /// `n * width` dense bytes it replaces (`Enc.shrinks`, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink").
-    pub fn write_nul<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool, nul: &[u8]) -> Option<lean::O> {
+    pub fn write_nul<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool, nul: &[u8]) -> Result<Option<lean::O>, String> {
         let (w, n, least) = (self.e.width, self.g.n, self.least);
         let below = if shrinks { n * w } else { usize::MAX };
         // what the residuals and exceptions may come to before the size test is already failed, the metadata being fixed
         let msz = unsafe { lean::sarray_size(self.e.meta.cast()) };
-        if below != usize::MAX { if below <= msz { return None } self.e.below = below - msz }
-        self.staged(crate::QLEAN_COST_ARITH, below, &|s, b, lo, nb, buf, st| unsafe {
+        if below != usize::MAX { if below <= msz { return Ok(None) } self.e.below = below - msz }
+        if self.staged(crate::QLEAN_COST_ARITH, below, &|s, b, lo, nb, buf, st| unsafe {
             enc::move_blk(p, &mut (*s).meta_blk(b), (*s).stage(b, nb, st), || p.block(b, lo, nb, w, buf), nb, w, nul, lo, least)
-        })?;
-        Some(self.finish())
+        })?.is_none() { return Ok(None) }
+        Ok(Some(self.finish()))
     }
     /// One `Staged` a block of the grid.
-    fn staging(&self) -> alloc::vec::Vec<Staged> { (0..self.g.nblk()).map(|_| Staged::default()).collect() }
+    fn staging(&self) -> Result<alloc::vec::Vec<Staged>, String> {
+        crate::pod::collect_of("Sink", "the staging table", self.g.nblk(), (0..self.g.nblk()).map(|_| Staged::default()))
+    }
     /// The one pass of an encoded form: `step` writes block `b`'s metadata and packs it into the `Staged` it is handed, then
     /// `lay`. A block's pack goes at the prefix sum of every earlier block's widths and patch counts, known only after every
     /// meta step, so staging it while its elements are at hand is what spares a second pass computing them again.
-    pub fn staged(&mut self, cost: u32, below: usize, step: &(dyn Fn(*mut CEnc, usize, usize, usize, &mut [u8], &mut Staged) + Sync)) -> Option<()> {
-        let mut st = self.staging();
+    pub fn staged(&mut self, cost: u32, below: usize, step: &(dyn Fn(*mut CEnc, usize, usize, usize, &mut [u8], &mut Staged) + Sync)) -> Result<Option<()>, String> {
+        let mut st = self.staging()?;
         let sp = st.as_mut_ptr() as usize;
         // each block's `Staged` is that block's alone, as its metadata entries are
-        self.each(true, cost, &|s, b, lo, nb, buf| step(s, b, lo, nb, buf, unsafe { &mut *(sp as *mut Staged).add(b) }));
+        self.each(true, cost, &|s, b, lo, nb, buf| step(s, b, lo, nb, buf, unsafe { &mut *(sp as *mut Staged).add(b) }))?;
+        if let Some(e) = st.iter_mut().find_map(|t| t.err.take()) { return Err(e) }
         self.lay(&st, below)
     }
     /// The layout of a column whose blocks are staged in `st`, each copied to its place; `None`, and nothing laid out, where
     /// the size test fails (`over`, or a size at or past `below`).
-    fn lay(&mut self, st: &[Staged], below: usize) -> Option<()> {
-        if self.e.over != 0 || unsafe { qrs_coc_enc_plan(&mut self.e) } >= below { return None }
+    fn lay(&mut self, st: &[Staged], below: usize) -> Result<Option<()>, String> {
+        if self.e.over != 0 || unsafe { qrs_coc_enc_plan(&mut self.e) } >= below { return Ok(None) }
         unsafe { qrs_coc_enc_layout(&mut self.e) };
         let sp = st.as_ptr() as usize;
-        self.each(false, crate::QLEAN_COST_COPY, &|s, b, _, _, _| unsafe { (*s).place(b, &*(sp as *const Staged).add(b)) });
-        Some(())
+        self.each(false, crate::QLEAN_COST_COPY, &|s, b, _, _, _| unsafe { (*s).place(b, &*(sp as *const Staged).add(b)) })?;
+        Ok(Some(()))
     }
     /// `write_nul` with no size test and no null: the answer of a kernel whose form is decided.
-    pub fn answer<P: Producer + ?Sized>(self, p: &P) -> lean::O { self.answer_nul(p, &[]) }
+    pub fn answer<P: Producer + ?Sized>(self, p: &P) -> Result<lean::O, String> { self.answer_nul(p, &[]) }
     /// `answer` of a column whose null rows are the set bits of `nul` (`write_nul`).
-    pub fn answer_nul<P: Producer + ?Sized>(self, p: &P, nul: &[u8]) -> lean::O {
-        self.write_nul(p, false, nul).expect("qlean Sink: a write with no size test has an answer")
+    pub fn answer_nul<P: Producer + ?Sized>(self, p: &P, nul: &[u8]) -> Result<lean::O, String> {
+        Ok(self.write_nul(p, false, nul)?.expect("qlean Sink: a write with no size test has an answer"))
     }
     /// The `u1` Frame of Reference column of `n` booleans, Lean `Coc.encodeAt lgEnc 1 _ false` of their 0/1 bytes, a block
     /// at a time: `f(lo, hi, o)` sets in the zeroed `o` the bits of elements `lo .. hi` that hold. A mixed block's
     /// residuals are its bitmap at width 1; an all-0 or all-1 block is width 0 at base 0 or 1 and stores no residual.
-    pub fn bools(mut self, cost: u32, f: &(dyn Fn(usize, usize, &mut [u8]) + Sync)) -> lean::O {
+    pub fn bools(mut self, cost: u32, f: &(dyn Fn(usize, usize, &mut [u8]) + Sync)) -> Result<lean::O, String> {
         assert!(self.e.width == 1, "qlean Sink::bools: a sink of {}-byte elements is not a u1 Frame of Reference", self.e.width);
         let blk = self.g.blk();
         self.staged(cost, usize::MAX, &|s, b, lo, nb, _, st| {
-            let mut res = alloc::vec![0u8; blk / 8];
+            let Ok(mut res) = crate::pod::vec_of("Sink", "a boolean block's bitmap", blk / 8, 0u8).map_err(|e| *st = Staged { err: Some(e), ..Staged::default() }) else { return };
             f(lo, lo + nb, &mut res[..nb.div_ceil(8)]);
             if nb & 7 != 0 { res[nb >> 3] &= (1u8 << (nb & 7)) - 1 }
             let pc = res.iter().map(|x| x.count_ones() as usize).sum::<usize>();
@@ -383,8 +400,8 @@ impl Sink {
             (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = ((pc == nb) as i64, (pc != 0) as i64, pc as i64, mixed as u8, 0);
             if let Some(fr) = m.frm { *fr = 0 }
             *st = Staged { res: if mixed { res } else { alloc::vec::Vec::new() }, ..Staged::default() };
-        }).expect("qlean Sink::bools: a write with no size test has an answer");
-        self.finish()
+        })?.expect("qlean Sink::bools: a write with no size test has an answer");
+        Ok(self.finish())
     }
     /// The finished parts as the form's Lean answer, handed over: the writer's scratch freed, nothing left for `drop`.
     fn finish(mut self) -> lean::O {
@@ -427,26 +444,31 @@ mod sink_tests {
             let x = col(n);
             let dense = |v: &[i64], w: usize| {
                 let b: alloc::vec::Vec<u8> = v.iter().flat_map(|e| e.to_le_bytes()[..w].to_vec()).collect();
-                pair(&Sink::new(n, w).answer(&Blocks::dense(&b, w)))
+                pair(&Sink::new(n, w).expect("test: Sink allocation").answer(&Blocks::dense(&b, w)).expect("test: Sink allocation"))
             };
-            let e = Sink::new(n, 8).answer(&Blocks::dense(pod::bytes(&x), 8));
+            let e = Sink::new(n, 8).expect("test: Sink allocation").answer(&Blocks::dense(pod::bytes(&x), 8)).expect("test: Sink allocation");
             let [m, p] = pair(&e);
             let c = coc::view(&m, &p, n).unwrap_or_else(|e| panic!("sink_tests: the sink's own column does not view: {e}"));
             for w in [2, 4, 8] {
                 let fill = |buf: &mut [i64], i0: usize| buf.copy_from_slice(&x[i0..i0 + buf.len()]);
-                assert_eq!(pair(&Sink::new(n, w).answer(&fill)), dense(&x, w), "fill at width {w}, n {n}");
+                assert_eq!(pair(&Sink::new(n, w).expect("test: Sink allocation").answer(&fill).expect("test: Sink allocation")), dense(&x, w), "fill at width {w}, n {n}");
             }
-            assert_eq!(pair(&Sink::new(n, 8).answer(&Blocks::from(c))), [m.clone(), p.clone()], "transcode, n {n}");
+            assert_eq!(pair(&Sink::new(n, 8).expect("test: Sink allocation").answer(&Blocks::from(c)).expect("test: Sink allocation")), [m.clone(), p.clone()], "transcode, n {n}");
         }
+    }
+    // an encoder whose frame deltas the allocator cannot give is `Err` naming the bytes, and the process lives on
+    #[test] fn new_at_a_refused_size_is_err() {
+        let e = Sink::new(usize::MAX / 64, 8).err().expect("sink_tests: a size no allocator has must be refused");
+        assert!(e.contains("bytes for the encoder's"), "{e}");
     }
     // the size test answers exactly where the full encoding is not below the dense bytes
     #[test] fn shrinks() {
         let n = 3000;
         let wide: alloc::vec::Vec<i64> = (0..n as i64).map(|i| i.wrapping_mul(0x1E37_79B9_7F4A_7C15)).collect();
-        assert!(Sink::new(n, 8).write_nul(&Blocks::dense(pod::bytes(&wide), 8), true, &[]).is_none());
+        assert!(Sink::new(n, 8).expect("test: Sink allocation").write_nul(&Blocks::dense(pod::bytes(&wide), 8), true, &[]).expect("test: Sink allocation").is_none());
         let x = col(n);
-        let s = Sink::new(n, 8).write_nul(&Blocks::dense(pod::bytes(&x), 8), true, &[]).expect("sink_tests: a narrow column shrinks");
-        assert_eq!(pair(&s), pair(&Sink::new(n, 8).answer(&Blocks::dense(pod::bytes(&x), 8))));
+        let s = Sink::new(n, 8).expect("test: Sink allocation").write_nul(&Blocks::dense(pod::bytes(&x), 8), true, &[]).expect("test: Sink allocation").expect("sink_tests: a narrow column shrinks");
+        assert_eq!(pair(&s), pair(&Sink::new(n, 8).expect("test: Sink allocation").answer(&Blocks::dense(pod::bytes(&x), 8)).expect("test: Sink allocation")));
     }
     // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
     // and no residual, the elements decoding back; uniform runs crossing block edges, a short last block, no element
@@ -454,7 +476,7 @@ mod sink_tests {
         for n in [0usize, 5, 1024, 1025, 3000, 5000] {
             let pats: [&(dyn Fn(usize) -> bool + Sync); 4] = [&|_| false, &|_| true, &|i| i % 3 == 0, &|i| (i / 1500) % 2 == 1 || i == 2100];
             for (k, p) in pats.iter().enumerate() {
-                let o = Sink::new(n, 1).bools(crate::QLEAN_COST_COPY, &|lo, hi, out| for i in lo..hi { if p(i) { out[(i - lo) >> 3] |= 1 << (i & 7) } });
+                let o = Sink::new(n, 1).expect("test: Sink allocation").bools(crate::QLEAN_COST_COPY, &|lo, hi, out| for i in lo..hi { if p(i) { out[(i - lo) >> 3] |= 1 << (i & 7) } }).expect("test: Sink allocation");
                 let (mv, pv) = (o.borrow().field(0).bytes().to_vec(), o.borrow().field(1).bytes().to_vec());
                 let c = crate::coc::view(&mv, &pv, n).unwrap_or_else(|e| panic!("n {n} pattern {k}: {e}"));
                 let s = Blocks::from(c);

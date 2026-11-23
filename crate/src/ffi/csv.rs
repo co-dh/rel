@@ -44,7 +44,7 @@ fn read(path: B, cs: B, sep: u8) -> Result<O, Fail> {
         // an in-band nullable's one encoding: its values under its null bitmap (`wordsFoR v (nulMap f)`)
         let ts = csv::atoms(col);
         for (part, k) in csv::counts(&lx, c, col).into_iter().enumerate() {
-            let e = Sink::new(k, 8).enc().least(csv::least(ts[part])).answer_nul(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad), lx.nul(c));
+            let e = Sink::new(k, 8).map_err(at)?.enc().least(csv::least(ts[part])).answer_nul(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad), lx.nul(c)).map_err(at)?;
             es.push(ctor(0, [box_usize_o(k), e], &[]));
         }
     }
