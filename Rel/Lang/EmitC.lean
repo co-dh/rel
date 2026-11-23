@@ -986,7 +986,9 @@ def compSelB (bits : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
 /-- **`compT`**: `R ≫ S` (`compSelB`, as `GenK.compV`), `S` (the table `s` in a context, on demand where `ds`) read at
     `ran R`, its range the values `ran` the composition's context knows. -/
 def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
-  compSelB Tab.bitsMax R (← s (← if ds then (return { dom := some (← nubB R.n R.val), ran }) else pure {}))
+  let bound : Bld TabB := do s { dom := some (← nubB R.n R.val), ran }
+  -- a closed `S` that cannot run closed (`<` on an infinite universe; `GenK.memo` keeps it lazy) is read at `ran R`
+  compSelB Tab.bitsMax R (← if ds then bound else tryCatch (s {}) fun e => tryCatch bound fun _ => throw e)
 
 /-! #### The rounds of a fold (`Tab.foldRounds`) and the list rows its steps read -/
 
@@ -1269,6 +1271,13 @@ def sumsOnB (K : Obj) (u : QAtomicType) (x : TabB) : Bld TabB := funT [x] fun
     keepB ⟨n, C.key, [.atom "" u W]⟩ (← mapB .not n badR badR)
   | _ => throw "sums: not one table"
 
+/-- **`Tab.length`** on the `n` cells `X`: a payload of `2^63` rows or more fails the run, past an `Int64` count; each
+    cell to its width `hi - lo` (one `kscan .sub`); then `canonT`. -/
+def lengthB (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, _) ← arrCol "length" X
+  guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) "length: a payload of m rows, past an Int64 count" #[m]
+  canonT ⟨n, X, [.atom "" .i64 (← mapB .sub n hi lo)]⟩
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp`, `cast`, `arithOp`, `succOp` and `cmpOp` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
@@ -1354,6 +1363,9 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.sum then match A with
     | .arr (.atom u) => do let (n, X) ← known r.sym D.dom; sumOnB u n X
     | _ => throw "sum: the elements are no atom"
+  else if c == ``Tab.length then match A with
+    | .arr _ => do let (n, X) ← known r.sym D.dom; lengthB n X
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
   -- `Tab.sums`' cases at the position object `P`, the value object `V`
   else if c == ``Tab.sums then match A, B, xs with
     | .prod K (.atom t), .atom u, [x] => match u with
@@ -1416,7 +1428,15 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (n, X) ← known "π₁" D.dom; canonT ⟨n, X, ← repath A "" (X.take (objWidth A))⟩
   | _, _, .outr (A := A) (B := B) => do
     let (n, X) ← known "π₂" D.dom; canonT ⟨n, X, ← repath B "" (X.drop (objWidth A))⟩
-  | _, _, .comp R S => do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) S.dem D.ran
+  -- `GenK.comp`: `R` first, handing `S` its range; where `R` cannot run so (`<` bounded only by `S`) or the context
+  -- bounds only the range, `S` first, `R` run knowing its range is `S`'s domain (`compS`); where neither runs, `R`'s error
+  | _, _, .comp R S => do
+    let rFirst := do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) S.dem D.ran
+    let sFirst := do
+      let s ← tabB σ { ran := D.ran } S
+      compSelB Tab.bitsMax (← tabB σ { dom := D.dom, ran := some (← domOf s) } R) s
+    if R.dem && D.dom.isNone && D.ran.isSome then tryCatch sFirst fun e => tryCatch rFirst fun _ => throw e
+    else tryCatch rFirst fun e => tryCatch sFirst fun _ => throw e
   | _, _, .conv R => do
     let r ← tabB σ ⟨D.ran, D.dom, D.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ R; canonT ⟨r.n, r.val, r.key⟩
   | _, _, .meet R S => do
