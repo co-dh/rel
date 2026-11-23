@@ -5,6 +5,13 @@ namespace Rel.Programs
 rel_program prelude where
     obj 1 = {∗}                                   -- the terminal object: its one value
 
+    dom(R : α ⟶ β) : α ⟶ α ≜ ⟨𝟙,R⟩π₁              -- the domain of R as a subset of 𝟙
+    ran(R : α ⟶ β) : β ⟶ β ≜ dom(R°)              -- the range of R as a subset of 𝟙
+    nil : α ⟶ [β] ≜ Λ(𝟘)                          -- every source to the empty list
+    front(Q : β ⟶ β) : [β] ⟶ [β] ≜ Λ(∋ − ∋ (Q − Q°))   -- the list's elements with no Q-predecessor in it
+    flat(R : ι ⟶ α×β) : ι×α ⟶ β ≜ ⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂   -- the family R as one relation of key and source
+    foldI(e : ι ⟶ β×β, S : (ι×β)×α ⟶ ι×β) : ι×[α] ⟶ β ≜ (π₁π₁° ∩ (π₂⦇[⊤ ran(⟨𝟙,e π₂⟩), S ∩ (π₁π₁π₁°)]⦈))π₂   -- the fold of a family: one fold per (key, list)
+
     ∈ : α ⟶ [α] ≜ ∋°                              -- membership, the converse of ∋
     ≥ : α ⟶ α ≜ ≤°                                -- the named converse of ≤
     > : α ⟶ α ≜ <°                                -- the named converse of <

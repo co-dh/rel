@@ -7,6 +7,7 @@ public import Rel.Lang.PreludeTakewhile
 public import Rel.Lang.PreludeConcat
 public import Rel.Lang.PreludeTails
 public import Rel.Lang.PreludeStar
+public import Rel.Lang.PreludeDfn
 import Lean
 meta import Rel.Run.Lang.Syntax
 

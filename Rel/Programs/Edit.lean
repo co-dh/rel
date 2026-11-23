@@ -19,8 +19,8 @@ rel_program edit where
 
     r₂ : 1 ⟶ [N] ≜ Λ(⊤{(0,0)})                    -- the array 0, one fold round
     r₄ : 1 ⟶ [N] ≜ Λ(⊤{(0,0),(1,1)})              -- the array 0…1
-    Ss : [A] ⟶ [A] ≜ ran(r₂⦇[nil(1), π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)    -- the strings
-    Es : [A+(A+A)] ⟶ [A+(A+A)] ≜ ran(r₄⦇[nil(1), π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)   -- the edit sequences
+    Ss : [A] ⟶ [A] ≜ ran(r₂⦇[nil, π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)    -- the strings
+    Es : [A+(A+A)] ⟶ [A+(A+A)] ≜ ran(r₄⦇[nil, π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)   -- the edit sequences
     D : [A]×[A] ⟶ [A]×[A] ≜ Ss×Ss                 -- the pairs of strings
 
     /- The specification (09:485, edit-defn). -/
