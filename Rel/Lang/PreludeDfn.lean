@@ -45,8 +45,8 @@ def Tm.estDef {B : Obj} (Q : Tm B B) : Tm (.arr B) B :=
 theorem Tm.estDef_row (ρ : Val) {B : Obj} (Q : Tm B B) : (Tm.estDef Q).den ρ = (Tm.est (pairTest Q)).den ρ := by
   rw [Tm.est_den]
   funext xs b
-  apply propext
-  simp [Tm.estDef, pairTest, Tm.den, Tm.argDen, Val.args, Val.bind, estDen, Tm.dom_den, Core.Rel.id, Core.Rel.graph, Core.Rel.rpair]
+  apply propext; rw [estDen_iff]
+  simp [Tm.estDef, pairTest, Tm.den, Tm.argDen, Val.args, Val.bind, Tm.dom_den, Core.Rel.id, Core.Rel.graph, Core.Rel.rpair]
   intro hb
   constructor
   · intro h c hc hne
@@ -169,11 +169,11 @@ theorem Tm.frontDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (x : (Obj.arr B).El) (
   -- `∋ − ∋ (Q − Q°)` keeps `c` of `x` that no `b` of `x` beats strictly, `frontDen` of `τ(Q)` on its diagonal
   have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
     simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
-  rw [Tm.front_den]
-  simp only [Tm.frontDef, Tm.den, frontDen]
-  rw [lamDen_iff, lamDen_iff]
+  rw [Tm.front_den, frontDen_iff]
+  simp only [Tm.frontDef, Tm.den]
+  rw [lamDen_iff]
   refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl ?_
-  simp only [Core.Rel.diff, Core.Rel.comp, Core.Rel.recip, memDen, hτ]
+  simp only [Core.Rel.diff, Core.Rel.comp, Core.Rel.recip, Core.Rel.ldiv_apply, memDen, hτ]
 
 /-- `ran`'s text means the row (Q3 = H), as `Tm.domDef_den`: its body at `α = general`, `β = u1`, parameter `R` the
     variable 2. -/
