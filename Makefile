@@ -216,7 +216,8 @@ $(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt
 endef
 # no element decode in Lean on the run path: a compiled declaration of RelRun whose code, followed through the IR (an
 # @[extern] a call, an @[implemented_by] its implementation), reaches a per-element reader (gates/Gates.lean `decoders`);
-# the chain from each to the reader is in $(T)/decode.chains
+# the chain from each to the reader is in $(T)/decode.chains. A name of decode-allow.txt is a leaf of the walk, so only
+# a path through no listed name flags a declaration; a listed one that no longer reaches a reader itself is stale
 define decode_NOW
 $(LAKE) build RelRun gates
 $(LAKE) query RelRun:modules | xargs $(LAKE) env $(GATES) decode 2> $(T)/decode.chains | sort -u > $(T)/decode.txt
