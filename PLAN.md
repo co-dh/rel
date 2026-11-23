@@ -1509,6 +1509,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `pack_toList`、`foldRounds_holds` 的 `hpack` 多取输入的 `WF`，经 `peelL/peelR_holds`、`mu/star_holds`、
     `nu_sound`、`comp_uncons`、`rowOK_*`（`ofVals_row_sound`/`after_row_sound` 已给的 `WF`）传入。只加 WF 前提，
     无语句弱化。`Vals.row` 的 `clampFin`（全函数模型）保留。
+  - ✅ 删 clamp 第二步之三（8.5s2j）：C 发射器 `concatB`（`Lang/EmitC`）跟上 `Vals.concat`：`clampShiftB` 删去，第一段
+    `lo`/`hi` 原样、第二段 `shiftB`（1 `constB` + 1 `mapB .add`）。每格 `lo`、`hi` 各 2 次 `clampShiftB`（每次 2 `constB`
+    + 1 `wordsB` + 3 `mapB`）→ 第二段 2 kernel、第一段 0。剩下的 `sum` 位置 `clampFin`、`catSide`/`compBlocks` 的
+    `clampShift` 是求和位置与块号，不是 `lo`/`hi`，不属 8.5。
+  - ⬜ 删 clamp 第三步（未做）：`kasc`/`kseen` 的 `cells` 键（`Kernel.cellStart`/`cellLen` 的 `min … c`、Rust
+    `asc.rs` `Cells::span` 的 `clamp(0, c)`，同一 commit）。阻塞在定理：`Vals.row_arr`（`Vals.row` 的 `filterMap`
+    即 `[0, c)` 截断）与 `cellFns_eq_iff`（要 `cellStart + cellLen ≤ c`）今天无前提，去掉 `min` 后要格子的 `WF`；
+    经 `cols_arr` → `codes_of_row`/`row_of_codes`/`lt_of_codes`（对一切 `Vals x` 量化，要加 `Vals.WF x`）→
+    `select_ok`、`canon_pos_lt`、`sums_holds`、`seenKey_iff_row`（→ `row_of_seenKey`/`seenKey_of_row`）、`lamOf_*`、
+    `group_rows`、`compOne_canon`（→ `comp_canon`/`compBlocks_canon`/`compFrom_canon`/`ldivOf_holds`）、
+    `inter_distinct`、`lamLaw`，再到 `Tab.canon` 的每个读者。`AscTest.spans` 有 `hi = 3005 > c = 3000` 的格子，
+    改为 `3000`。
   - ⬜ （旧方案，弃）类型不变式：`Vals (.arr b) n` 加证明字段 `∀ i, 0 ≤ lo i ≤ hi i ≤ m`。`Vals` 今天没有 WF 谓词（只有 `Arr` 的
     `Enc.WF`；`Rel.Wf` 是 `bits` 的），所以是新字段。阻塞：产生者的证明要 `colMap_get`、`Arr.gather_row`、
     `Arr.concat_get`、`Arr.zeros_get`（在 `RepCanon`/`RepCols`/`RepAsc`，`Run` 的下游），先把它们移进 `Run`；
@@ -1517,8 +1529,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     （`Run/*`、`GenKFold`、`GenKBits`、`GenSound`、`KernelWF.Read`、测试的字面量）都多一个分量。
   - 之后删的 clamp 与 kernel 次数（数 Lean body）：`∋`（`Tab.mem`）边界 2 `colConst` + 3 `colMap` + 宽度 1 `colMap`
     = 6 → 1（`colMap .sub hi lo`）；concat 的 `arr` 分支 4 次 `clampShift` × 6 = 24 → 3（1 `colConst` + 2
-    `colArr .add`，只移第二段）；`cellSpan`（`pack`、`List.lean`）5 → 0。Rust 侧 `asc.rs` `Cells::span` 的
-    `clamp(0, c)` 与 `Kernel.AscKey.cells` 的 Lean body 同一 commit 去掉。
+    `colArr .add`，只移第二段）；`cellSpan`（`pack`、`List.lean`）5 → 0（以上均已做）。Rust 侧 `asc.rs`
+    `Cells::span` 的 `clamp(0, c)` 与 `Kernel.AscKey.cells` 的 Lean body 同一 commit 去掉（第三步，未做）。
 - ✅ Tm28 B7（`doc/tm-minimal-design.zh.typ` §4）`star`：prelude 定义 `star(R) ≜ μX : 𝟙 ∪ R X`，`R*` 是它的记号
   （parser 不再造变量名）；fused 行 `star` → `Tab.star`（semi-naive：`(X, Δ)` 从 `(P, P)`，每轮只算 `Δ R − X`），
   `Tab.fixOn` 改为任意状态（`nu` `mu` 传 `Tab.n Tab.pack`，`star` 带前沿），定理 `Tab.star_holds`、`GenK.star_sound`、

@@ -369,14 +369,12 @@ def u64B (s : Nat) : Bld Nat := call1 (kernel% USize.toUInt64) #[s]
 def catColB (t : QAtomicType) (n n₁ n₂ off x y : Nat) : Bld Nat := do
   mapB .add n (← scatterB .last n₁ (← posB) x n) (← scatterB .last n₂ off y n) t
 
-/-- **`Arr.clampShift`**: the `n` words `x` clamped into `[0, c]`, then `s` added (`c`, `s` `size` registers). -/
-def clampShiftB (n x c s : Nat) : Bld Nat := do
-  let a ← mapB .max n x (← wordsB n 0)
-  mapB .add n (← mapB .min n a (← constB n (← u64B c))) (← constB n (← u64B s))
+/-- **`Arr.shift`**: the `n` words `x`, `s` added (`s` a `size` register). -/
+def shiftB (n x s : Nat) : Bld Nat := do mapB .add n x (← constB n (← u64B s))
 
 /-- **`Vals.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
-    atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` each clamped
-    into its own payload, the second's shifted past the first (`clampShiftB`). -/
+    atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` as they are
+    (`0 ≤ lo ≤ hi ≤ m`, `Vals.WF`), the second's shifted past the first (`shiftB`). -/
 partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
   (xs.zip ys).mapM fun (x, y) => funC [(n₁, x), (n₂, y)] fun
     | [(n₁, x), (n₂, y)] => return (n, ← concatColB n n₁ n₂ off x y)
@@ -387,9 +385,7 @@ where concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
       let (m, o) ← catB m₁ m₂
       guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) "concat: payload rows m₁ + m₂ past an Int64 bound"
         #[m₁, m₂]
-      let z ← lit (.size 0)
-      let b (x₁ x₂ : Nat) : Bld Nat := do
-        catColB .i64 n n₁ n₂ off (← clampShiftB n₁ x₁ m₁ z) (← clampShiftB n₂ x₂ m₂ m₁)
+      let b (x₁ x₂ : Nat) : Bld Nat := do catColB .i64 n n₁ n₂ off x₁ (← shiftB n₂ x₂ m₁)
       return .arr p m (← b lo₁ lo₂) (← b hi₁ hi₂) (← concatB m m₁ m₂ o f₁ f₂)
     | .sum .., _ | _, .sum .. => sumB "∪"
     | _, _ => throw "concat: two sides of one object with columns of different shapes"
