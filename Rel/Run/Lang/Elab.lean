@@ -666,47 +666,57 @@ partial def Pre.rewrite (fp : Pos → Pos) (g : Pre → Option Pre) (x : Pre) : 
 /-- `x` with every position `p`: a prelude body at its use, so an error `build` raises in it is at the use (§c). -/
 def Pre.at (p : Pos) (x : Pre) : Pre := x.rewrite (fun _ => p) fun _ => none
 
+/-- Every part of `x`, whatever `x` reads it as: a call's arguments too, which `parts` leaves out. -/
+def Pre.kids (x : Pre) : List Pre :=
+  Id.run ((x.traverse (m := StateM (List Pre)) pure fun _ y => do modify (· ++ [y]); pure y).run []).2
+
+/-- What `g` emits at each node, then at the nodes it names under it, depth first: `g y = (emitted, nodes to go on
+    at)`. A walk whose result at a node depends on the node alone is an instance (`nilSrcs`, `lits`, `nodes`, `occ`,
+    `onDemand`, `demVars`, `nums`); one that reads the path to the node (`polarity`) is not. -/
+unsafe def Pre.foldSharedU {α : Type} (g : Pre → List α × List Pre) (x : Pre) : List α :=
+  (go x).run' {}
+where go (y : Pre) : StateM (Std.HashSet USize) (List α) := do
+  if (← get).contains (ptrAddrUnsafe y) then return []
+  modify (·.insert (ptrAddrUnsafe y))
+  let (r, cs) := g y
+  return r ++ (← cs.mapM go).flatten
+
+/-- `Pre.foldSharedU` in the spec: each node once per address, as `rewriteShared`: an expansion holds each argument
+    once per use (`callOf`'s `alt`), so a walk of the tree is exponential in the definitions' nesting. A node reached
+    twice emits once; every reader (a `forM`, a membership or `any` test, `findSome?`) is the same either way. -/
+@[implemented_by Pre.foldSharedU]
+partial def Pre.foldShared {α : Type} (g : Pre → List α × List Pre) (x : Pre) : List α :=
+  let (r, cs) := g x
+  r ++ cs.flatMap (·.foldShared g)
+
+/-- The parts `parts` names, without their polarity: where a walk goes on unless it says otherwise. -/
+def Pre.subs (x : Pre) : List Pre := x.parts.map (·.1)
+
 /-- The source of each `nil` in `x`, a definition's body at its use included. -/
-partial def Pre.nilSrcs : Pre → List OTy
-  | .nil a _ => [a]
-  | x => x.parts.flatMap (·.1.nilSrcs)
+def Pre.nilSrcs (x : Pre) : List OTy :=
+  x.foldShared fun | .nil a _ => ([a], []) | y => ([], y.subs)
 
 /-- `x` and every node under it, a call's expansion included. -/
-partial def Pre.nodes (x : Pre) : List Pre := x :: x.parts.flatMap (·.1.nodes)
+def Pre.nodes (x : Pre) : List Pre := x.foldShared fun y => ([y], y.subs)
 
 /-- Each literal in `x`, a generic definition's body's (`Env.gdef`) with the definition's name last; its expansion
     at a use included. -/
-partial def Pre.lits : Pre → List (Pos × OTy × OTy × List (Tup × Tup) × Option String)
-  | .lit p a b ps d => [(p, a, b, ps, d)]
-  | x => x.parts.flatMap (·.1.lits)
+def Pre.lits (x : Pre) : List (Pos × OTy × OTy × List (Tup × Tup) × Option String) :=
+  x.foldShared fun | .lit p a b ps d => ([(p, a, b, ps, d)], []) | y => ([], y.subs)
 
 /-- Where the variable `k` first occurs in `x`. -/
-partial def Pre.occ (k : Nat) : Pre → Option Pos
-  | .var p j _ _ _ => if j == k then some p else none
-  | x => x.parts.findSome? (·.1.occ k)
+def Pre.occ (k : Nat) (x : Pre) : Option Pos :=
+  (x.foldShared fun | .var p j _ _ _ => (if j == k then [p] else [], []) | y => ([], y.subs)).head?
 
 /-- Whether `x` reads a parameter run on demand (`Form` `some false`), its argument at a call or a definition's
     expansion included. Its `Tm.var k` is no converse of itself (`convTm` takes a variable for a pair test's). -/
-partial def Pre.onDemand : Pre → Bool
-  | .var _ _ _ _ (some false) => true
-  | x => (x.traverse (m := StateM Bool) pure (fun _ y => do modify (· || y.onDemand); pure y) |>.run false).2
-
-/-- `Pre.demVars`, each node visited once per address: an expansion holds each argument once per use, so a walk of
-    the tree is exponential in the definitions' nesting (as `rewriteShared`), and `build` asks at every call. -/
-unsafe def Pre.demVarsShared (x : Pre) : List Nat :=
-  ((go x).run ({}, [])).2.2
-where go (y : Pre) : StateM (Std.HashSet USize × List Nat) Unit := do
-  unless (← get).1.contains (ptrAddrUnsafe y) do
-    modify fun (s, l) => (s.insert (ptrAddrUnsafe y), l)
-    match y with
-    | .var _ k _ _ (some _) => modify fun (s, l) => (s, k :: l)
-    | _ => y.parts.forM fun (c, _) => go c
+def Pre.onDemand (x : Pre) : Bool :=
+  !(x.foldShared fun | .var _ _ _ _ (some false) => ([()], []) | y => ([], y.kids)).isEmpty
 
 /-- The variables `x` reads in a form that needs keys (`Form` `some _`): the demand bits a build of `x` starts from. -/
-@[implemented_by Pre.demVarsShared]
-partial def Pre.demVars : Pre → List Nat
-  | .var _ k _ _ (some _) => [k]
-  | x => x.parts.flatMap (·.1.demVars)
+def Pre.demVars (x : Pre) : List Nat :=
+  x.foldShared fun | .var _ k _ _ (some _) => ([k], []) | y => ([], y.subs)
+
 
 /-- The first occurrence of `X`, the variable `k` of `fx` (`μX`, `νX`), where the body is not monotonic in it:
     under an operator that is not, or under an odd number of antitone places, `why` the last of them. -/
@@ -1249,11 +1259,10 @@ def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAto
 
 /-- `numsAt` of `x` and of its parts, a definition's body at its use included; a `.ranked` prim is read once, by
     `numsAt` of the `.ranked`, not again by its own atoms. -/
-partial def Pre.nums (mc : Lean.MetavarContext) (x : Pre) : List (OTy × String × (QAtomicType → Bool)) :=
-  let ps := match x with
-    | .ranked (.prim r a s t) _ => (Pre.prim r a s t).parts ++ x.parts.drop 1
-    | _ => x.parts
-  x.numsAt mc ++ ps.flatMap (·.1.nums mc)
+def Pre.nums (mc : Lean.MetavarContext) (x : Pre) : List (OTy × String × (QAtomicType → Bool)) :=
+  x.foldShared fun y => (y.numsAt mc, match y with
+    | .ranked (.prim r a s t) _ => (Pre.prim r a s t).subs ++ y.subs.drop 1
+    | _ => y.subs)
 
 /-- Why the rows `ts` of a literal's position do not determine its object: they are none (an empty array's
     elements), or several declared objects hold their words. -/
