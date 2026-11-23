@@ -913,38 +913,46 @@ def bandRfl (o : Option Rel.QAtomicType) : Lean.Expr :=
   mkApp2 (mkConst ``Eq.refl [1]) (toTypeExpr (Option Rel.QAtomicType)) (toExpr o)
 
 /-- A column rebuilt from its parts: each atom column from its payload (`atomE`), the rest by `Vals`'s shape. -/
-def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
-  | .atom t, n, x => atomE t n x
-  | .prod a b, n, x => do
-    pure (g ``Gen.pairV #[oE a, oE b, uE n, ← valsE a n x.1, ← valsE b n x.2])
-  | .arr b, n, ⟨m, lo, hi, p⟩ => do
-    pure (g ``Gen.arrV #[oE b, uE n, uE m, ← atomE .i64 n lo, ← atomE .i64 n hi, ← valsE b m p])
+def colE : (o : Bool) → (t : Rel.QAtomicType) → (n : USize) → ColB o t n → Except String Lean.Expr
+  | false, t, n, x => atomE t n x
+  | true, t, n, x => match Opt.enc x with
+    | .foR m p => pure (g ``Gen.colB #[toExpr true, toExpr t, uE n, mkStrLit (hex m), mkStrLit (hex p)])
+    | _ => throw s!"a column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
+
+/-- A column of ownership `o` rebuilt from its parts (the summand columns of a dense sum are `o = true`). -/
+def valsE : (o : Bool) → (A : Obj) → (n : USize) → ValsB o A n → Except String Lean.Expr
+  | o, .atom t, n, x => colE o t n x
+  | o, .prod a b, n, x => do
+    pure (g ``Gen.pairV #[toExpr o, oE a, oE b, uE n, ← valsE o a n x.1, ← valsE o b n x.2])
+  | o, .arr b, n, ⟨m, lo, hi, p⟩ => do
+    pure (g ``Gen.arrV #[toExpr o, oE b, uE n, uE m, ← colE o .i64 n lo, ← colE o .i64 n hi, ← valsE false b m p])
   -- the `Obj.band` fact is `rfl` at the closed objects the term names, checked when the term is added
-  | .sum a b, n, s => match s.view with
+  | o, .sum a b, n, s => match s.view with
     | .opt (t := t) _ x => match x.1 with
-      | .foR m p => pure (g ``Gen.optV #[oE a, oE b, toExpr t, bandRfl (some t), uE n, mkStrLit (hex m), mkStrLit (hex p)])
+      | .foR m p =>
+        pure (g ``Gen.optV #[toExpr o, oE a, oE b, toExpr t, bandRfl (some t), uE n, mkStrLit (hex m), mkStrLit (hex p)])
       | _ => throw s!"a nullable column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
-    | .gen _ l r tag idx x y => do
-      pure (g ``Gen.sumV #[oE a, oE b, bandRfl none, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
-        ← valsE a l x, ← valsE b r y])
-  | .one, n, _ => pure (g ``Gen.oneV #[uE n])
+    | .gen _ tag x y => do
+      pure (g ``Gen.sumV #[toExpr o, oE a, oE b, bandRfl none, uE n, ← atomE .u1 n tag, ← valsE true a n x,
+        ← valsE true b n y])
+  | o, .one, n, _ => pure (g ``Gen.oneV #[toExpr o, uE n])
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
-  pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE A R.n R.key, ← valsE B R.n R.val])
+  pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE false A R.n R.key, ← valsE false B R.n R.val])
 
 /-- `x` and `y` are the same columns: of one object and one length, column by column the same payload (`encEq`). -/
-def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize} → Vals C m → Bool
-  | .atom t, n, x, .atom u, m, y => decide (t = u) && decide (n = m) && encEq x.enc y.enc
-  | .prod a b, _, x, .prod c d, _, y => valsEq a x.1 c y.1 && valsEq b x.2 d y.2
-  | .arr b, n, ⟨_, lo, hi, p⟩, .arr d, m, ⟨_, lo', hi', q⟩ =>
-    decide (n = m) && encEq lo.enc lo'.enc && encEq hi.enc hi'.enc && valsEq b p d q
-  | .sum a b, n, s, .sum c d, m, s' => match s.view, s'.view with
+def valsEq : {o : Bool} → (A : Obj) → {n : USize} → ValsB o A n → (C : Obj) → {m : USize} → ValsB o C m → Bool
+  | _, .atom t, n, x, .atom u, m, y => decide (t = u) && decide (n = m) && encEq (ColB.enc x) (ColB.enc y)
+  | _, .prod a b, _, x, .prod c d, _, y => valsEq a x.1 c y.1 && valsEq b x.2 d y.2
+  | _, .arr b, n, ⟨_, lo, hi, p⟩, .arr d, m, ⟨_, lo', hi', q⟩ =>
+    decide (n = m) && encEq (ColB.enc lo) (ColB.enc lo') && encEq (ColB.enc hi) (ColB.enc hi') && valsEq b p d q
+  | _, .sum a b, n, s, .sum c d, m, s' => match s.view, s'.view with
     | .opt (t := t) _ x, .opt (t := u) _ y => decide (t = u) && decide (n = m) && encEq x.1 y.1
-    | .gen _ _ _ tag idx x y, .gen _ _ _ tag' idx' x' y' =>
-      decide (n = m) && encEq tag.enc tag'.enc && encEq idx.enc idx'.enc && valsEq a x c x' && valsEq b y d y'
+    | .gen _ tag x y, .gen _ tag' x' y' =>
+      decide (n = m) && encEq tag.enc tag'.enc && valsEq a x c x' && valsEq b y d y'
     | _, _ => false
-  | .one, _, _, .one, _, _ => true
-  | _, _, _, _, _, _ => false
+  | _, .one, _, _, .one, _, _ => true
+  | _, _, _, _, _, _, _ => false
 
 /-- `t` and `u`, of one constructor, agree in their fields that are not terms; a call's constant compared by its
     registry key (`key`), since each module names the constant it built `emitter ++ key`; so is its converse

@@ -129,13 +129,14 @@ def cellBad {n : USize} (m : USize) (lo hi : Arr .i64 n) : Option (Fin n.toNat) 
 
 /-- No `arr` side of `x` has a `cellBad` cell: `Vals.WF` decided (`Vals.cellsOk_wf`), for a table no `readVals`
 read (a literal, a universe). -/
-def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
+def ValsB.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .atom _, _, _ | .one, _, _ => true
-  | .prod _ _, _, x => Vals.cellsOk x.1 && Vals.cellsOk x.2
-  | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
+  | .prod _ _, _, x => ValsB.cellsOk x.1 && ValsB.cellsOk x.2
+  | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && ValsB.cellsOk f
   | .sum _ _, _, s => match s.view with
     | .opt .. => true
-    | .gen _ _ _ _ _ x y => Vals.cellsOk x && Vals.cellsOk y
+    -- the filler clause of `Vals.WF` is not decided here: a literal dense sum is refused until it is (PLAN 8.2)
+    | .gen .. => false
 
 /-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
@@ -167,7 +168,7 @@ def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) (hN : hasNul e = false
   if hn : 0 < n.toNat then (Arr.get (Arr.mk e h hN) ⟨n.toNat - 1, by omega⟩).toNatClampNeg else 0
 
 /-- The positions of a sum side's summand `s` (`false` left, `true` right): `idx` on the rows `tag` gives to it, `0` on
-the others (`colMap .mul` by `tag` or by its `.not`), as `Vals.cols` gathers a summand. -/
+the others (`colMap .mul` by `tag` or by its `.not`), as `ValsB.cols` gathers a summand. -/
 def summandPos (n : USize) (s : Bool) (tag : Arr .u1 n) (idx : Enc) : Except String Enc :=
   if s then colMap .mul n idx tag.enc else do colMap .mul n idx (← colMap .not n tag.enc tag.enc)
 
@@ -186,53 +187,66 @@ def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
   | .ok o => .ok (Arr.mk o (colMap_closed (by simp [kscanStream]) h).2 (colMap_plain (by simp [kscanStream]) h))
   | .error e => .error e
 
-/-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its
+/-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `ValsB.row` reads them: its
 rows `x` gathered at `summandPos` of the positions clamped into `x`. Where `x` has no rows, a row tagged into it reads
 `Obj.dflt`, which no payload row holds: with no such row (`tagCount` is `0`) the rows are never read, and the other
 side's summand `o` gathered at row `0` stands in; with some, the error naming the summand and the count. -/
-def Vals.catSide {B : Obj} {m l l' : USize} (s : Bool) (tag : Arr .u1 m) (idx : Arr .i64 m) (x : Vals B l)
-    (o : Vals B l') : Except String (Vals B m) :=
+def Vals.catSide {B : Obj} {m l l' : USize} (s : Bool) (tag : Arr .u1 m) (idx : Arr .i64 m) (x : ValsB true B l)
+    (o : ValsB true B l') : Except String (ValsB true B m) :=
   if l.toNat = 0 then do
     let c ← tagCount m s tag
-    if c = 0 then Vals.gather m (← colConst m 0) o
+    if c = 0 then ValsB.gather m (← colConst m 0) o
     else .error s!"concat: {c} rows tagged into the {if s then "right" else "left"} summand, which has no rows"
-  else do Vals.gather m (← summandPos m s tag (← idx.clampShift (l.toUInt64 - 1) 0).enc) x
+  else do ValsB.gather m (← summandPos m s tag (← idx.clampShift (l.toUInt64 - 1) 0).enc) x
 
 /-- Summand `s` of the concat of two sum sides of `n₁` and `n₂` rows, its rows `x₁` and `x₂` on each: their concat
 `cat` where both are empty (every row of the summand reads `Obj.dflt`), else each side's `Vals.catSide` (the other
 side's summand standing in for an empty one) concatenated, `n` rows read at the positions `Arr.pos`. -/
 def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (s : Bool) (tag₁ : Arr .u1 n₁)
-    (idx₁ : Arr .i64 n₁) (x₁ : Vals B l₁) (tag₂ : Arr .u1 n₂) (idx₂ : Arr .i64 n₂) (x₂ : Vals B l₂)
-    (cat : {m₁ m₂ : USize} → (m : USize) → Vals B m₁ → Vals B m₂ → Except String (Vals B m)) :
-    Except String ((m : USize) × Vals B m) :=
+    (idx₁ : Arr .i64 n₁) (x₁ : ValsB true B l₁) (tag₂ : Arr .u1 n₂) (idx₂ : Arr .i64 n₂) (x₂ : ValsB true B l₂)
+    (cat : {m₁ m₂ : USize} → (m : USize) → ValsB true B m₁ → ValsB true B m₂ → Except String (ValsB true B m)) :
+    Except String ((m : USize) × ValsB true B m) :=
   if l₁.toNat = 0 ∧ l₂.toNat = 0 then do let m ← catRows l₁ l₂; pure ⟨m, ← cat m x₁ x₂⟩
   else if 2 ^ 63 < l₁.toNat ∨ 2 ^ 63 < l₂.toNat then .error s!"concat: a sum summand of {l₁} or {l₂} rows, past 2^63"
   else do pure ⟨n, ← cat n (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
 
-/-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column. An `arr` side
+/-- The words of the nullable `x` with `s` added: `Arr.shift` over `Opt`, a null staying null (`colMap_closed`). -/
+def Opt.shift {n : USize} (s : UInt64) (x : Opt .i64 n) : Except String (Opt .i64 n) :=
+  match h : colMap .first n x.enc x.enc .i64 .i64 [] [(.add, s)] with
+  | .ok o => .ok (Opt.mk o (colMap_closed (by lockstep) h).2)
+  | .error e => .error e
+
+/-- CONCAT of two atom columns at ownership `o`: `Arr.concat`, or `Opt.concat` where a row may be null. -/
+def ColB.concat : {o : Bool} → {t : QAtomicType} → {n₁ n₂ : USize} → (n : USize) → ColB o t n₁ → ColB o t n₂ →
+    Except String (ColB o t n)
+  | false, _, _, _, n, x, y => Arr.concat n x y
+  | true, _, _, _, n, x, y => Opt.concat n x y
+
+/-- A long column's words with `s` added, at ownership `o`. -/
+def ColB.shift : {o : Bool} → {n : USize} → UInt64 → ColB o .i64 n → Except String (ColB o .i64 n)
+  | false, _, s, x => Arr.shift s x
+  | true, _, s, x => Opt.shift s x
+
+/-- The rows of `x`, then those of `y`, as `n` rows: `ColB.concat` of each atom column. An `arr` side
 concatenates its payloads (`catRows`, the recursive call) and its `lo`, `hi` columns, the second's shifted past the
 first payload (`Vals.WF`: each cell already inside its own payload, so none reads the other's); a payload past `2^63` rows,
-which an `Int64` bound cannot reach, is the error. A `sum` side concatenates its tags and each summand
-(`Vals.catSummand`), its positions `Arr.pos`; past `2^63` rows, which an `Int64` position cannot reach, the error. -/
-def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Vals A n₁ → Vals A n₂ → Except String (Vals A n)
-  | .atom _, _, _, n, x, y => Arr.concat n x y
-  | .prod _ _, _, _, n, x, y => do pure (← Vals.concat n x.1 y.1, ← Vals.concat n x.2 y.2)
-  | .arr _, _, _, n, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ =>
+which an `Int64` bound cannot reach, is the error. A `sum` side concatenates its tags and each summand column. -/
+def ValsB.concat : {o : Bool} → {A : Obj} → {n₁ n₂ : USize} → (n : USize) → ValsB o A n₁ → ValsB o A n₂ →
+    Except String (ValsB o A n)
+  | _, .atom _, _, _, n, x, y => ColB.concat n x y
+  | _, .prod _ _, _, _, n, x, y => do pure (← ValsB.concat n x.1 y.1, ← ValsB.concat n x.2 y.2)
+  | _, .arr _, _, _, n, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ =>
     if m₁.toNat + m₂.toNat < 2 ^ 63 then do
       let p ← catRows m₁ m₂
-      let lo ← Arr.concat n lo₁ (← lo₂.shift m₁.toUInt64)
-      let hi ← Arr.concat n hi₁ (← hi₂.shift m₁.toUInt64)
-      pure ⟨p, lo, hi, ← Vals.concat p f₁ f₂⟩
+      let lo ← ColB.concat n lo₁ (← ColB.shift m₁.toUInt64 lo₂)
+      let hi ← ColB.concat n hi₁ (← ColB.shift m₁.toUInt64 hi₂)
+      pure ⟨p, lo, hi, ← ValsB.concat p f₁ f₂⟩
     else .error s!"concat: {m₁} + {m₂} payload rows, past an Int64 bound"
-  | .sum _ _, _, _, n, s₁, s₂ => match s₁.view, s₂.view with
-    | .opt h x₁, .opt h' x₂ => Vals.ofOpt h <$> Opt.concat n x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
+  | _, .sum _ _, _, _, n, s₁, s₂ => match ValsB.view s₁, ValsB.view s₂ with
+    | .opt h x₁, .opt h' x₂ => ValsB.ofOpt h <$> Opt.concat n x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
     | .opt h _, .gen h' .. | .gen h' .., .opt h _ => absurd (h.symm.trans h') nofun
-    | .gen h _ _ tag₁ idx₁ x₁ y₁, .gen _ _ _ tag₂ idx₂ x₂ y₂ =>
-    if n.toNat ≤ 2 ^ 63 then do
-      let L ← Vals.catSummand n false tag₁ idx₁ x₁ tag₂ idx₂ x₂ fun m x y => Vals.concat m x y
-      let R ← Vals.catSummand n true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m x y => Vals.concat m x y
-      pure (Vals.ofGen h L.1 R.1 (← Arr.concat n tag₁ tag₂) (← Arr.pos n) L.2 R.2)
-    else .error s!"concat: a sum side of {n} rows, past an Int64 position"
-  | .one, _, _, _, _, _ => pure ()
+    | .gen h tag₁ x₁ y₁, .gen _ tag₂ x₂ y₂ =>
+      do pure (ValsB.ofGen h (← Arr.concat n tag₁ tag₂) (← ValsB.concat n x₁ x₂) (← ValsB.concat n y₁ y₂))
+  | _, .one, _, _, _, _, _ => pure ()
 
 end Rel

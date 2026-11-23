@@ -308,7 +308,7 @@ theorem union_wf {R S t : Tab k v} (h : R.union S = .ok t) (hR : R.WF) (hS : S.W
 /-- **`R.canon` is sorted and duplicate-free**: `Vals.nub_sorted` of its pair side, the rows of `U` being rows `sel j`
 of `R`, ascending in `kasc`'s order of their codes, no two with equal codes. -/
 theorem canon_sorted {R U : Tab k v} (h : R.canon = .ok U) {es : List (AscKey × Enc)}
-    (hes : Vals.cols (A := .prod k v) (R.key, R.val) = .ok es) :
+    (hes : ValsB.cols (A := .prod k v) (R.key, R.val) = .ok es) :
     ∃ sel : Fin U.n.toNat → Fin R.n.toNat,
       (∀ j, (U.key.row j, U.val.row j) = (R.key.row (sel j), R.val.row (sel j))) ∧
       ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys R.n es) (sel j) (sel j') = true ∧
@@ -334,9 +334,9 @@ theorem canon_distinct {k v : Obj} {R U : Tab k v} (h : R.canon = .ok U) (hR : R
     exact Vals.nub_distinct hn hR hjj
 
 /-- **A canonical table's columns have codes**: `canon`
-ran `Vals.cols` and `kasc` on `(R.key, R.val)`. -/
+ran `ValsB.cols` and `kasc` on `(R.key, R.val)`. -/
 theorem canon_codes {k v : Obj} {R r : Tab k v} (h : R.canon = .ok r) :
-    ∃ es cs, Vals.cols (A := .prod k v) (R.key, R.val) = .ok es ∧ es.mapM (ascCol R.n) = .ok cs := by
+    ∃ es cs, ValsB.cols (A := .prod k v) (R.key, R.val) = .ok es ∧ es.mapM (ascCol R.n) = .ok cs := by
   simp only [Tab.canon, Functor.map, Except.map] at h
   split at h; · cases h
   rename_i y hy
@@ -725,7 +725,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
         κ ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)))
     {R S U : Tab k v} (h : select keep R S = .ok U) (hR : R.WF) (hS : S.WF) :
     (∀ a b, U.Holds a b ↔ (R.Holds a b ∨ S.Holds a b) ∧ κ (R.Holds a b) (S.Holds a b)) ∧
-    ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
+    ∃ C es, R.concat S = .ok C ∧ ValsB.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
       ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
         (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
         ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
@@ -760,8 +760,8 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   have hmU : mm.toUSize.toNat = mm := USize.toNat_ofNat_of_lt' (by omega)
   -- rows in one group are equal rows
   have hgrp : ∀ q (hq : q < ps.length) G (hG : G < F.length),
-      Verify.groupOf Kf C.n.toNat q = G ↔ Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[q], hpsl q hq⟩ =
-        Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ := by
+      Verify.groupOf Kf C.n.toNat q = G ↔ ValsB.row (A := .prod k v) (C.key, C.val) ⟨ps[q], hpsl q hq⟩ =
+        ValsB.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ := by
     intro q hq G hG
     rw [(hsp.2.2.2.2.1 q (by omega) G), exists_prop_of_true hG, hkey _ (by have := hFlt G hG; omega), hkey q hq]
     exact ⟨fun e => Vals.row_of_codes (A := .prod k v) (C.key, C.val) (concat_wf hcat hR hS) hes hc _ _ e.symm,
@@ -848,7 +848,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     exact exists_congr fun q => exists_congr fun hq => and_congr_right fun _ => by split <;> simp <;> omega
   -- a group's flags say whether `R` and `S` hold its row
   have hgrpR : ∀ G (hG : G < F.length) (w : (Obj.prod k v).El),
-      Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ = w →
+      ValsB.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hG; omega), hpsl _ _⟩ = w →
       ((∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ ps[q] < R.n.toNat) ↔ R.Holds w.1 w.2) ∧
       ((∃ q, ∃ hq : q < ps.length, Verify.groupOf Kf C.n.toNat q = G ∧ R.n.toNat ≤ ps[q]) ↔ S.Holds w.1 w.2) := by
     intro G hG w hw
@@ -903,7 +903,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   refine ⟨fun a b => ?_, ?_⟩
   rotate_left
   · -- answer row `j` is input row `ps[F[G]]`, `G = sel[j]` ascending (`whereCol_spec`)
-    have hrow : ∀ j : Fin K.toNat, ∃ i : Fin C.n.toNat, Vals.row y j = Vals.row (A := .prod k v) (C.key, C.val) i ∧
+    have hrow : ∀ j : Fin K.toNat, ∃ i : Fin C.n.toNat, ValsB.row y j = ValsB.row (A := .prod k v) (C.key, C.val) i ∧
         F[((Enc.raw .i64 K sel)[j.1]'(by rw [his1]; exact j.2)).toNat]?.bind (ps[·]?) = some i.1 := by
       intro j
       obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy j
@@ -939,9 +939,9 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     have hGF : ((Enc.raw .i64 K sel)[j.1]).toNat < F.length := by omega
     have hiv := hixv j j.2 _ hGF (by rw [Array.getElem?_eq_getElem hj, Option.getD_some])
     rw [hi] at hiv
-    have hxi : Vals.row (A := .prod k v) (C.key, C.val) i = (a, b) := by
-      rw [← hyi]; show (Vals.row _ j, Vals.row _ j) = (a, b); rw [ha, hb]
-    have hw : Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[((Enc.raw .i64 K sel)[j.1]).toNat]]'(by
+    have hxi : ValsB.row (A := .prod k v) (C.key, C.val) i = (a, b) := by
+      rw [← hyi]; show (ValsB.row _ j, ValsB.row _ j) = (a, b); rw [ha, hb]
+    have hw : ValsB.row (A := .prod k v) (C.key, C.val) ⟨ps[F[((Enc.raw .i64 K sel)[j.1]).toNat]]'(by
         have := hFlt _ hGF; omega), hpsl _ _⟩ = (a, b) := by
       rw [← hxi]; exact congrArg _ (Fin.ext hiv.symm)
     have hκ := ((hbit _ hGlt).1).1 hGbit
@@ -952,7 +952,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     obtain ⟨q, hq, hqc⟩ := List.getElem_of_mem (hperm.mem_iff.2 (List.mem_range.2 c.2))
     obtain ⟨hGF, -, -, -⟩ := hsp.2.2.2.2.2 q (by omega)
     generalize hG : Verify.groupOf Kf C.n.toNat q = G at hGF
-    have hw : Vals.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hGF; omega), hpsl _ _⟩ =
+    have hw : ValsB.row (A := .prod k v) (C.key, C.val) ⟨ps[F[G]]'(by have := hFlt G hGF; omega), hpsl _ _⟩ =
         (a, b) := by
       rw [← (hgrp q hq G hGF).1 hG]
       have : (⟨ps[q], hpsl q hq⟩ : Fin C.n.toNat) = c := Fin.ext hqc
@@ -1003,7 +1003,7 @@ theorem inter_holds {R S U : Tab k v} (h : R.inter S = .ok U) (hR : R.WF) (hS : 
 
 /-- **`R.inter S` is sorted and duplicate-free**, in `Tab.canon_sorted`'s form over `R.concat S` (`select_ok`). -/
 theorem inter_sorted {R S U : Tab k v} (h : R.inter S = .ok U) (hR : R.WF) (hS : S.WF) :
-    ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
+    ∃ C es, R.concat S = .ok C ∧ ValsB.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
       ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
         (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
         ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧
@@ -1032,7 +1032,7 @@ theorem diff_holds {R S U : Tab k v} (h : R.diff S = .ok U) (hR : R.WF) (hS : S.
 
 /-- **`R.diff S` is sorted and duplicate-free**, in `Tab.canon_sorted`'s form over `R.concat S` (`select_ok`). -/
 theorem diff_sorted {R S U : Tab k v} (h : R.diff S = .ok U) (hR : R.WF) (hS : S.WF) :
-    ∃ C es, R.concat S = .ok C ∧ Vals.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
+    ∃ C es, R.concat S = .ok C ∧ ValsB.cols (A := .prod k v) (C.key, C.val) = .ok es ∧
       ∃ sel : Fin U.n.toNat → Fin C.n.toNat,
         (∀ j, (U.key.row j, U.val.row j) = (C.key.row (sel j), C.val.row (sel j))) ∧
         ∀ j j' : Fin U.n.toNat, j.1 < j'.1 → lexLe (ascKeys C.n es) (sel j) (sel j') = true ∧

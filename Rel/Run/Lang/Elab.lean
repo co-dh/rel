@@ -2464,8 +2464,7 @@ partial def Tm.reads (k : Nat) : {A B : Obj} → Tm A B → List Res
     which is no order of the texts at `sym` (`symOrd`). -/
 partial def Tm.ordered : {A B : Obj} → Tm A B → Bool
   | _, _, .prim r => [ascRow, cmpRelRow false, cmpRelRow true].any (·.sym == r.sym)
-  | _, _, .call _ _ _ b => b.ordered
-  | _, _, .callCv _ _ _ _ b u => b.ordered || u.ordered
+  | _, _, .call _ _ _ _ b => b.ordered
   | _, _, t => t.parts.any fun ⟨_, _, c⟩ => c.ordered
 
 /-- The call node of `c` given the body `t` and its arguments `rs`, bound to `ks`, one for one. A call's body sees
