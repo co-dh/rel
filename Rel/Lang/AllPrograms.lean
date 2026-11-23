@@ -43,6 +43,7 @@ import Rel.Lang.TestFrameJoin
 import Rel.Lang.TestFrameLift
 import Rel.Lang.TestFrameNull
 import Rel.Lang.TestFramePos
+import Rel.Lang.TestFrameRand
 import Rel.Lang.TestFrameQuery
 import Rel.Lang.TestCmpMeet
 import Rel.Lang.TestFrameScale
