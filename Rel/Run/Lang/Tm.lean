@@ -46,8 +46,6 @@ inductive Tm : Obj → Obj → Type where
   | inr {A B : Obj} : Tm B (.sum A B)
   /-- The row `r` of `prims` at `A ⟶ B`, an instance of its constant's type; its relations given by `arg`. -/
   | prim {A B : Obj} (r : Prim) : Tm A B
-  /-- `at(k)`, the element at position `k` from `0`, on the arrays in demand. -/
-  | atPos {B : Obj} (k : Nat) : Tm (.arr B) B
   /-- The prelude's `perm`, kept as its own converse (`convTm`): the one converse rule the language has for a
       definition, because `perm° = perm` is a theorem it cannot derive from the fold `perm` is. -/
   | own {A : Obj} (R : Tm A A) : Tm A A
@@ -134,7 +132,7 @@ def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .ldiv .. | _, _, .rdiv ..
   | _, _, .leq .. | _, _, .lt .. | _, _, .nu .. | _, _, .mu .. => false
   | _, _, .id | _, _, .top _ | _, _, .outl | _, _, .outr | _, _, .lam _
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _
   | _, _, .foldr .. | _, _, .fold .. | _, _, .hylo .. => true
 
 /-- `R × S ≜ ⟨π₁R, π₂S⟩` (`Tm.prod_den`): on demand, each operand on its side of the pairs in demand; where none
@@ -182,7 +180,7 @@ def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .nu _ R S => R.size + S.size + 1
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.size + S.size + U.size + V.size + 1
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr | _, _, .mem
-  | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .var .. => 1
+  | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .var .. => 1
 
 local macro "lt_size" : term => `(by simp only [Tm.size]; omega)
 
@@ -253,7 +251,7 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .hylo k _ b => b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call ..
   | _, _, .callCv .. => []
 
 /-! ### Substitution -/
@@ -312,7 +310,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .inl => .inl
   | _, _, _, .inr => .inr
   | _, _, _, .prim r => .prim r
-  | _, _, _, .atPos k => .atPos k
   | _, _, _, .share k R => .share k R
   | _, _, _, .call ks c os b => .call ks c os b
   | _, _, _, .callCv ks c c' os b u => .callCv ks c c' os b u
@@ -343,7 +340,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .atPos _ | _, _, .share .. | _, _, .call ..
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call ..
   | _, _, .callCv .. => true
 
 /-- `t` a `mono` row (`prims`) given relations, each occurring with sign `s` in `k` (`Tm.pol`): the spine

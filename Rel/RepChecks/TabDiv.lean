@@ -212,16 +212,13 @@ private def ordLs : List (Tab .long .long) :=
 private def ordPs : Tab (.prod .long .long) (.prod .long .long) :=
   ⟨6, (Alg.col [1, 1, 1, 2, 2, 3], Alg.col [5, 5, 5, 5, 5, 6]), (Alg.col [1, 2, 3, 2, 3, 3], Alg.col [5, 5, 6, 5, 6, 6])⟩
 
--- `setify`, `length`, `at(k)` against `Λ(∋)`, the length and `atDen` on arrays of longs and of pairs
+-- `setify`, `length` against `Λ(∋)` and the length on arrays of longs and of pairs (`at`: `rel_program` guards, Lang/Test/Lists)
 #guard arrXs.all fun T => let X := T.key; let xs : List (List Int64) := Vals.rows X
   canonOk (Tab.setify X) && cellsOk (Tab.setify X) (xs.map fun x => (x, x.eraseDups)) &&
-  canonOk (Tab.length X) && specOk (Tab.length X) (xs.map fun x => (x, Int64.ofNat x.length)) &&
-  [0, 1, 2, 5].all fun k => canonOk (Tab.atPos k X) && specOk (Tab.atPos k X) (xs.filterMap fun x => x[k]?.map (x, ·))
+  canonOk (Tab.length X) && specOk (Tab.length X) (xs.map fun x => (x, Int64.ofNat x.length))
 #guard let xs : List (List (Int64 × Int64)) := Vals.rows pairXs
   canonOk (Tab.setify pairXs) && cellsOk (Tab.setify pairXs) (xs.map fun x => (x, x.eraseDups)) &&
-  canonOk (Tab.length pairXs) && specOk (Tab.length pairXs) (xs.map fun x => (x, Int64.ofNat x.length)) &&
-  [0, 1, 3].all fun k => canonOk (Tab.atPos k pairXs) &&
-    specOk (Tab.atPos k pairXs) (xs.filterMap fun x => x[k]?.map (x, ·))
+  canonOk (Tab.length pairXs) && specOk (Tab.length pairXs) (xs.map fun x => (x, Int64.ofNat x.length))
 
 -- `τ` against `a ↦ [a]` on longs (a value twice), on no values, and on pairs
 #guard [tab [(3, 0), (1, 0), (3, 0), (-2, 0)], tab []].all fun T => let X := T.key

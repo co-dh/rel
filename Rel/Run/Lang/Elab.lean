@@ -320,7 +320,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .inl => pure .inl
   | _, _, .inr => pure .inr
   | _, _, .prim r => pure (.prim r)
-  | _, _, .atPos k => pure (.atPos k)
   | _, _, .own R => return .own (← R.instObj ph σ)
   | _, _, .leq t U => do fixed (.leq t (← back (← U.instObj ph σ)))
   | _, _, .lt t U => do fixed (.lt t (← back (← U.instObj ph σ)))
@@ -413,7 +412,6 @@ inductive Pre
   /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`); a row
       of `dfns` is the fused form of its definition, which `build` cuts to `t`'s universe. -/
   | prim (r : Prim) (args : List Pre) (s t : OTy)
-  | atPos (k : Nat) (b : OTy)
   | own (p : Pre)
   | succ (pos : Pos) (n : OTy)
   | arith (pos : Pos) (k : UInt8) (n : OTy)
@@ -2078,7 +2076,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .inl => pure (.conv .inl)
   | .inr => pure (.conv .inr)
   | .hylo .. => throw "hylo( )"
-  | .atPos k => throw s!"at({k})"
   | .foldr .. => throw "⦇e,S⦈ʳ"
   | .fold .. => throw "⦇e,S⦈"
 
@@ -2518,7 +2515,6 @@ def build : Pre → Except Err Res
   | .own p => do
     let ⟨A, B, t⟩ ← build p
     if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"
-  | .atPos k b => return ⟨_, _, .atPos k (B := ← toObj objs mc dp b)⟩
   | .succ p n => do
     let (m, _) ← numObj objs mc p n "succ" (· == .i64)
     return ⟨_, _, Tm.cut1 succRow (← numU.declared objs p "succ" m .i64)⟩

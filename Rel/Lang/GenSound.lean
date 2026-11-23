@@ -206,7 +206,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k = true ∧ b.GenHyp P
   -- every other constructor spelled out: a catch-all's equation lemmas time `simp` out
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => True
+  | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => True
 
 /-- `Tm.GenHyp` with nothing asked at a `share` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
     `Tm.hasCode`. -/
@@ -220,7 +220,7 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .nu k S b => b.pol true k && S.monoOK && b.monoOK
   | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.monoOK
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .atPos _ | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => true
+  | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => true
 
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.GenHyp fun _ _ => True := by
   induction t <;> simp [Tm.monoOK, Tm.GenHyp, and_assoc, *]
@@ -1314,7 +1314,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case mem => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.mem_wf h hX
   case inl => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.inl_wf h hX
   case inr => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.inr_wf h hX
-  case atPos => exact GenK.ofVals_wf fun _ _ _ hX h => Tab.atPos_wf h hX
   case own => exact w _ (by omega)
   case comp => exact GenK.comp_wf (w _ (by omega)) (w _ (by omega))
   case conv R =>
@@ -1450,7 +1449,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
   case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
   case var k => exact hs.1 k _ _
-  case atPos k => exact GenK.atPos_sound k
   case nu k S b ihS ihb =>
     exact GenK.nu_sound (code_of ((ihS (by omega)).1 η ρ hl.2.1 hs)) (code_wf (gen_wf S η hs.2))
       (fun X wX => code_of ((ihb (by omega)).1 _ _ hl.2.2 (hs.bind k (hconst X) wX)))
