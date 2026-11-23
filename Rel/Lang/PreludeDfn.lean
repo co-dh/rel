@@ -158,7 +158,8 @@ theorem Tm.ranDef_row (ρ : Val) {A B : Obj} (R : Tm A B) (x : B.El) (hx : Short
 theorem Tm.nilDef_row (ρ : Val) {A B : Obj} (x : A.El) (hx : Short A x) (w : (Obj.arr B).El) :
     (Tm.nilDef (A := A) (B := B)).den ρ x w ↔ (Tm.nil (A := A) (B := B)).den ρ x w := by
   -- `Λ(𝟘)` maps every source to the list of no elements, `[]` (`Prim.den_nilRow`)
-  simp only [Tm.nilDef, Tm.nil, Tm.den, Prim.den_nilRow, lamDen, nilDen]
+  simp only [Tm.nilDef, Tm.nil, Tm.den, Prim.den_nilRow, nilDen]
+  rw [lamDen_iff]
   constructor
   · rintro ⟨-, h⟩; exact List.eq_nil_iff_forall_not_mem.2 fun b hb => (h b).1 hb
   · rintro rfl; exact ⟨List.Pairwise.nil, fun b => iff_of_false (List.not_mem_nil) fun h => h⟩
@@ -169,7 +170,10 @@ theorem Tm.frontDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (x : (Obj.arr B).El) (
   have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
     simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
   rw [Tm.front_den]
-  simp only [Tm.frontDef, Tm.den, frontDen, lamDen, Core.Rel.diff, hτ, Core.Rel.comp, Core.Rel.recip]
+  simp only [Tm.frontDef, Tm.den, frontDen]
+  rw [lamDen_iff, lamDen_iff]
+  refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl ?_
+  simp only [Core.Rel.diff, Core.Rel.comp, Core.Rel.recip, memDen, hτ]
 
 /-- `ran`'s text means the row (Q3 = H), as `Tm.domDef_den`: its body at `α = general`, `β = u1`, parameter `R` the
     variable 2. -/
