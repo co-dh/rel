@@ -1438,7 +1438,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     主人定（null 次序，随 q）：null 小于每个值，`atom+1` 上 `inr ∗ < inl a`（q 的 `asc 3 0N 1` 是 `0N 1 3`），doc §4
     "atom+1" 卡片已改。主人定 O：null 码从块的顶残差移到残差 0（带标志块里值存成残差 + 1），块内比码即 null 在前；
     `nullbot` 改 `foRNul` 与 Rust，其他证明与 `#guard` 只经 `foRNul`/`Opt.isNul`。
-    ✅ nullorder（随 q 次序，一般的，不特判 `.one`）：每个 sum `inr` 在前。`Obj.key` 是 `inl ↦ 1 ::`、`inr ↦ 0 ::`
+    ↩ nullorder（nullband3a2 已撤回：可空是 `1+A`，标准和次序本身 null 在前，此翻转是要删的特例）。原做法：每个 sum `inr` 在前。`Obj.key` 是 `inl ↦ 1 ::`、`inr ↦ 0 ::`
     （`Obj.lt_inr_inl` 取代 `lt_inl_inr`）；`Vals.cols` 的 sum 键列是 `colMap .not … .u1` 的 `¬tag`，`tag` 本身由
     `foROk` 查（`kasc` 不再读它）；新引理 `colMap_not_u1`（`RepCanon`：结果是 `Arr .u1 n`、元素 = `!tag.get`）；
     `Vals.cols_sum` 给出 `nt` 与 `Valid tag`，`lt_of_codes`/`row_of_codes`/`codes_of_row`/`cols_wf`/
@@ -1464,6 +1464,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       （`i64+1`、`u1+1` 经 row/gather/concat/cols/pack/readVals/encVals/CSV、null 在前、跨块）未加。Rep*/GenK* 未建。
     - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
       3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
+    ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序
+    `inl < inr` 本身即 null 在前，`Obj.key`/`cols`/`RepOrder` 不改。一般规则 `Obj.opt X = .sum .one X`（`@[match_pattern]`，
+    `Run/Core`）：CSV 的 `ioCols`/`csvLeaves`/`Table.toCsv`/`ofCsv` 只经它认可空列；extern 仍按 `V+1` 布局（tag 1 = null），
+    `Table.swapTag`（`colMap` 取反 tag）在读写两端换边。null 码仍是顶残差（`foRNul`、Rust 不改）。⬜ dataframe 库翻转 `X+1`。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`

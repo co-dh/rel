@@ -404,27 +404,33 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
   | .one, (n, _) :: es => pure ⟨n, (), es⟩
   | .one, [] => .error s!"{path}: no column part left for a side of `1`"
 
-/-- How many atom columns `A` has when it is a product of atoms (the `S` of a CSV `S+1`); none for any other object. -/
+/-- How many atom columns `A` has when it is a product of atoms (the `S` of a CSV `1+S`); none for any other object. -/
 def atomCount : Obj → Option Nat
   | .atom _ => some 1
   | .prod a b => return (← atomCount a) + (← atomCount b)
   | _ => none
 
+/-- The tags of a sum's `n` rows swapped between its two sides (`A+B ≅ B+A`, positions and payloads unchanged): the
+    CSV extern lays a nullable field out as `V+1` (tag `1` at a null), the language's nullable is `1+V` (`Obj.opt`). -/
+def swapTag : USize × Enc → Except String (USize × Enc)
+  | (n, t) => return (n, ← colMap .first n t t .u1 .i64 [] [(.not, 0)])
+
 /-- The parts of a side of object `A`, `ps` in `cols`' order, as its CSV columns' parts (`Db.CsvShape.atoms`), with
-    the parts left over. A sum is the CSV `S+1` (`Expand.csvLeaves`): one nullable column per atom of `S`, each with
-    its own copy of the sum's tags, positions and null values; every other part as it lies. -/
-def toCsv {α : Type} (path : String) : Obj → List α → Except String (List α × List α)
+    the parts left over. A nullable `1+S` (`Obj.opt`, `Expand.csvLeaves`) is one nullable column per atom of `S`, each
+    with its own copy of the sum's tags (`swapTag`), positions and null values; every other part as it lies. -/
+def toCsv (path : String) : Obj → List (USize × Enc) → Except String (List (USize × Enc) × List (USize × Enc))
   | .atom _, x :: ps => pure ([x], ps)
   | .prod a b, ps => do let (x, ps) ← toCsv path a ps; let (y, ps) ← toCsv path b ps; pure (x ++ y, ps)
   | .arr (.atom _), lo :: hi :: e :: ps => pure ([lo, hi, e], ps)
   -- the column of a `1` is its one element's name in every row
   | .one, x :: ps => pure ([x], ps)
-  -- the right side's `1` part is dropped: a null is an empty field
-  | .sum a .one, t :: i :: ps => match atomCount a with
-    | some k => if k + 1 ≤ ps.length then pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop (k + 1))
-      else .error s!"{path}: {ps.length} parts for the {k} nullable columns and the `1` of a sum"
-    | none => .error s!"{path}: a sum whose left is no product of atoms has no CSV columns"
-  | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
+  -- the left side's `1` part is dropped: a null is an empty field
+  | .opt a, t :: i :: _ :: ps => match atomCount a with
+    | some k => if k ≤ ps.length then do
+        let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
+      else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
+    | none => .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+  | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 
 /-- `k` groups of three parts from the front of `cs` (one CSV nullable column's tags, positions, values), and the
     parts left. -/
@@ -434,7 +440,7 @@ def triples {α : Type} : Nat → List α → Option (List (α × α × α) × L
   | _ + 1, _ => none
 
 /-- The converse of `toCsv`: the side `A`'s parts in `cols`' order from its CSV columns' parts `cs`, the header names
-    of those columns `ns` in step, with what is left of both. The nullable columns of one `S+1` are null in the same
+    of those columns `ns` in step, with what is left of both. The nullable columns of one `1+S` are null in the same
     rows (the `1` is every field of `S` empty): their tags must agree, else the first row where two differ is named. -/
 def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
     Except String (List (USize × Enc) × List (USize × Enc) × List String)
@@ -442,8 +448,8 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
   | .prod a b, cs, ns => do
     let (x, cs, ns) ← ofCsv path a cs ns; let (y, cs, ns) ← ofCsv path b cs ns; pure (x ++ y, cs, ns)
   | .arr (.atom _), lo :: hi :: e :: cs, _ :: ns => pure ([lo, hi, e], cs, ns)
-  | .sum a .one, cs, ns => do
-    let some k := atomCount a | .error s!"{path}: a sum whose left is no product of atoms has no CSV columns"
+  | .opt a, cs, ns => do
+    let some k := atomCount a | .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
     let some ((t, i, v) :: g, cs) := triples k cs | .error s!"{path}: too few column parts for {k} nullable columns"
     let some c := ns.head? | .error s!"{path}: no header name left for a nullable column"
     let ⟨n, x, _⟩ ← encArr path .u1 [t]
@@ -456,11 +462,12 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
           let s (z : Bool) := if z then "empty (null)" else "not empty"
           unless a == b do
             .error s!"{path}: data row {j + 1}: column '{c}' is {s a} and column '{c'}' is {s b}; the columns of one \
-              `S+1` are empty together, and all of them empty is the `1`"
-    -- the right side `1` holds the null rows, as `inr` builds it: their count, no column
-    pure ([t, i, v] ++ g.map (·.2.2) ++ [((← tagCount n true x).toUSize, .pos)], cs, ns.drop k)
+              `1+S` are empty together, and all of them empty is the `1`"
+    -- the left side `1` holds the null rows, as `inl` builds it: their count, no column; the extern's tag is `1` at a
+    -- null (`V+1`), so it is swapped (`swapTag`)
+    pure ([← swapTag t, i, ((← tagCount n true x).toUSize, .pos), v] ++ g.map (·.2.2), cs, ns.drop k)
   | .one, x :: cs, _ :: ns => pure ([x], cs, ns)
-  | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `S+1`), or too few parts"
+  | _, _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 
 /-- The parts `es` read under `Db.Csv.symText cols`, each symbol column's three text parts replaced by its ids' one part
     (`intern`) into the one dictionary `D`, left to right; the grown dictionary. -/
