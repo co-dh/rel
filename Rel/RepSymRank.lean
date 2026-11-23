@@ -134,4 +134,121 @@ theorem rank_lt_iff {D : Dict} {R : Tab .long .long} (h : rank D = .ok R) (wD : 
   simp only [List.length_ofFn] at this
   omega
 
+/-- A table of atoms on both sides is well formed (`Vals.WF` holds of an atom column). -/
+theorem atom_wf {t u : QAtomicType} (T : Tab (.atom t) (.atom u)) : T.WF := ⟨trivial, trivial⟩
+
+/-- **`rank` is well formed** when `D` is. -/
+theorem rank_wf {D : Dict} {R : Tab .long .long} (h : rank D = .ok R) (wD : D.WF) : R.WF := by
+  unfold rank at h
+  simp only [Bind.bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨S, hS, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨T, hT, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
+  exact Tab.comp_wf h wD (Tab.conv_wf hC (Tab.asc_wf hT (Tab.ran_wf hS wD)))
+
+/-- **`hf` for a dictionary built by `frame`** (`Dict.empty`, `intern`, `readDict`): its key is the positions
+`0 … n-1`, each id once, so an id has one text. `Dict` is an abbreviation of `Tab`, not a structure, so this is
+the invariant of how a dictionary is made and no `D.WF` states it. -/
+theorem frame_functional {B : Obj} {n : USize} {x : Vals B n} {D : Tab .long B} (h : frame x = .ok D) (i : Int64)
+    (t t' : B.El) (h₁ : D.Holds i t) (h₂ : D.Holds i t') : t = t' := by
+  unfold frame at h
+  cases hP : Arr.pos n with
+  | error e => rw [hP] at h; cases h
+  | ok P =>
+    rw [hP] at h; cases h
+    obtain ⟨j, hj, rfl⟩ := h₁
+    obtain ⟨j', hj', rfl⟩ := h₂
+    have e := congrArg (fun x : Int64 => x.toBitVec.toNat)
+      (((Arr.pos_get hP j).symm.trans hj).trans ((Arr.pos_get hP j').symm.trans hj').symm)
+    have h1 : j.1 < n.toNat := j.2
+    have h2 : j'.1 < n.toNat := j'.2
+    have h3 := n.toNat_lt_size
+    have h4 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> rw [h] <;> decide
+    simp [Nat.toUInt64, UInt64.toInt64, Int64.toBitVec] at e
+    obtain rfl : j = j' := Fin.ext (by omega)
+    rfl
+
+/-- **`<` on `sym` follows text order**: `K ≫ < ≫ L` holds `(a, c)` when `a ∈ K`, `c ∈ L`, both ids have a rank,
+and the text of `a` is before the text of `c` (`Obj.lt`, the order of `asc`), whatever order the ids were inserted in. -/
+theorem symLt_holds {D : Dict} {R : Tab .long .long} {n m : USize} {K : Vals (.atom .sym) n}
+    {L : Vals (.atom .sym) m} {T : Tab (.atom .sym) (.atom .sym)} (h : symLt D K L = .ok T) (hR : rank D = .ok R)
+    (wD : D.WF) (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') (a c : UInt64) :
+    T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ (∃ r, R.Holds a.toInt64 r) ∧ (∃ s, R.Holds c.toInt64 s) ∧
+      ∃ t u, D.Holds a.toInt64 t ∧ D.Holds c.toInt64 u ∧ Obj.lt (.arr (.atom .char)) t u := by
+  unfold symLt at h
+  simp only [Bind.bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Lt, hLt, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨PL, hPL, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨QC, hQC, h⟩ := h
+  have wR := rank_wf hR wD
+  have hb := (symRanked_holds hP hR wR 0 0).1
+  have hPh := fun a r => (symRanked_holds hP hR wR a r).2
+  have hQh := fun a r => (symRanked_holds hQ hR wR a r).2
+  have wP := atom_wf P
+  have wQ := atom_wf Q
+  have wLt := atom_wf Lt
+  have wPL := Tab.comp_wf hPL wP wLt
+  have wQC := Tab.conv_wf hQC wQ
+  rw [Tab.comp_holds h wPL wQC]
+  constructor
+  · rintro ⟨y, hPLy, hQCy⟩
+    obtain ⟨z, hz, hl⟩ := (Tab.comp_holds hPL wP wLt a y).1 hPLy
+    obtain ⟨-, -, hzy⟩ := (Tab.lt_holds hLt trivial trivial z y).1 hl
+    obtain ⟨ha, hRa⟩ := (hPh a z).1 hz
+    obtain ⟨hc, hRc⟩ := (hQh c y).1 ((Tab.conv_holds hQC wQ y c).1 hQCy)
+    obtain ⟨t, ht, -⟩ := (rank_holds hR wD _ _).1 hRa
+    obtain ⟨u, hu, -⟩ := (rank_holds hR wD _ _).1 hRc
+    exact ⟨ha, hc, ⟨z, hRa⟩, ⟨y, hRc⟩, t, u, ht, hu, (rank_lt_iff hR wD hb hf ht hu hRa hRc).1 hzy⟩
+  · rintro ⟨ha, hc, ⟨r, hRa⟩, ⟨s, hRc⟩, t, u, ht, hu, hlt⟩
+    have hzy : r < s := (rank_lt_iff hR wD hb hf ht hu hRa hRc).2 hlt
+    obtain ⟨i, -, hi⟩ := (hPh a r).2 ⟨ha, hRa⟩
+    have hQcs := (hQh c s).2 ⟨hc, hRc⟩
+    have hQcs2 := hQcs
+    obtain ⟨j, -, hj⟩ := hQcs2
+    exact ⟨s, (Tab.comp_holds hPL wP wLt a s).2 ⟨r, (hPh a r).2 ⟨ha, hRa⟩,
+      (Tab.lt_holds hLt trivial trivial r s).2 ⟨⟨i, hi⟩, ⟨j, hj⟩, hzy⟩⟩,
+      (Tab.conv_holds hQC wQ s c).2 hQcs⟩
+
+/-- **`asc` on `sym` numbers the set by rank**: `symAsc D P` holds `(j, a)` when `a` is in `dom P` and its rank
+`r` is the `j`-th smallest of the ranks of `dom P` (`ascDen` at `ℕ`), so by `rank_lt_iff` the `j`-th smallest text. -/
+theorem symAsc_holds {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.atom .sym)}
+    {T : Tab .long (.atom .sym)} (h : symAsc D P = .ok T) (hR : rank D = .ok Rk) (wD : D.WF) (wP : Vals.WF P.key)
+    (j : Int64) (a : UInt64) :
+    T.Holds j a ↔ (∃ y, P.Holds a y) ∧ ∃ r, Rk.Holds a.toInt64 r ∧
+      ascDen .long (fun b => ∃ x, (∃ y, P.Holds x y) ∧ Rk.Holds x.toInt64 b) j r := by
+  unfold symAsc at h
+  simp only [Bind.bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨S, hS, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨R', hR', h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨C, hC, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨CR, hCR, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨A, hA, h⟩ := h
+  have wRk := rank_wf hR wD
+  have hRh := fun a r => (symRanked_holds hR' hR wRk a r).2
+  have wR' := atom_wf R'
+  have wC := Tab.conv_wf hC wR'
+  have wCR := Tab.comp_wf hCR wC wR'
+  have wA := Tab.asc_wf hA wCR
+  have hAh : A.Holds = ascDen .long fun b => ∃ c, CR.Holds b c := Tab.asc_holds hA wCR
+  have hp : (fun b => ∃ c, CR.Holds b c) = fun b => ∃ x, (∃ y, P.Holds x y) ∧ Rk.Holds x.toInt64 b :=
+    funext fun b => propext
+      ⟨fun ⟨c, hbc⟩ => by
+        obtain ⟨x, hCx, hxc⟩ := (Tab.comp_holds hCR wC wR' b c).1 hbc
+        obtain ⟨hd, hk⟩ := (hRh x b).1 ((Tab.conv_holds hC wR' b x).1 hCx)
+        exact ⟨x, (Tab.dom_key hS wP x).1 hd, hk⟩,
+       fun ⟨x, hy, hk⟩ => by
+        have hxb := (hRh x b).2 ⟨(Tab.dom_key hS wP x).2 hy, hk⟩
+        exact ⟨b, (Tab.comp_holds hCR wC wR' b b).2 ⟨x, (Tab.conv_holds hC wR' b x).2 hxb, hxb⟩⟩⟩
+  rw [hp] at hAh
+  rw [Tab.comp_holds h wA wC]
+  constructor
+  · rintro ⟨r, hAj, hCr⟩
+    obtain ⟨hd, hk⟩ := (hRh a r).1 ((Tab.conv_holds hC wR' r a).1 hCr)
+    exact ⟨(Tab.dom_key hS wP a).1 hd, r, hk, by rw [← hAh]; exact hAj⟩
+  · rintro ⟨hd, r, hk, hasc⟩
+    exact ⟨r, by rw [hAh]; exact hasc,
+      (Tab.conv_holds hC wR' r a).2 ((hRh a r).2 ⟨(Tab.dom_key hS wP a).2 hd, hk⟩)⟩
+
 end Rel.Lang.Table
