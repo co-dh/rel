@@ -63,14 +63,20 @@ partial def relational (t : Expr) : MetaM Bool := withReducible do
 /-- Whether the term `e` is written over points: a `fun` whose body is a proposition (the relation's `fun a b => …`, an
     `∃ x, …` or `∀`-quantified predicate, `¬`/`∧` of applied relations) or a `∀`/`→` that is itself a proposition.
     A point-free body composes relations (`R ≫ S`, `R ∩ S`, `ν (fun X => …)`): its lambdas return relations or
-    terms, never a `Prop`. Nothing is unfolded; proofs and types are not part of the program and are skipped. -/
+    terms, never a `Prop`. Nothing is unfolded; proofs, types and implicit or instance arguments are not part of the program and are skipped. -/
 partial def pointwise (e : Expr) : MetaM Bool := do
   if e.isSort || e.isFVar || e.isConst || e.isLit || e.isBVar || e.isMVar then return false
   if ← isProof e then return false
   match e with
   | .forallE .. => if ← isProp e then return true else return false
   | .lam .. => lambdaTelescope e fun _ b => do if ← isProp b then return true else pointwise b
-  | .app f a => return (← pointwise f) || (← pointwise a)
+  | .app .. =>
+    -- an implicit or instance argument is filled in by the elaborator, not written (`xs[k]?` passes the validity
+    -- predicate `fun xs i => i < xs.length` as an implicit argument of `getElem?`)
+    let args := e.getAppArgs
+    let info ← getFunInfoNArgs e.getAppFn args.size
+    if ← pointwise e.getAppFn then return true
+    args.zipIdx.anyM fun (a, i) => if (info.paramInfo[i]?).any (·.binderInfo.isExplicit == false) then pure false else pointwise a
   | .letE _ _ v b _ => return (← pointwise v) || (← pointwise (b.instantiate1 v))
   | .mdata _ b => pointwise b
   | .proj _ _ b => pointwise b
