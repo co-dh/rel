@@ -48,7 +48,8 @@ theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kerne
 /-- `Obj.optOf` undoes `Obj.optEl`: a band row read as `a + b` and back is the row. -/
 theorem Obj.optOf_optEl {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : Option (El t)) :
     Obj.optOf h (Obj.optEl h v) = v := by
-  obtain ⟨rfl, rfl⟩ := Obj.band_some h; cases v <;> rfl
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h
+  unfold Obj.optOf Obj.optEl; generalize Obj.band_some h = p; obtain ⟨p1, p2⟩ := p; cases v <;> rfl
 
 /-- `Opt.get` at an atom type: `none` at a null, else `Arr.get`'s reading of the payload. -/
 theorem Opt.get_ne {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) (h : t ≠ .general) :
@@ -346,15 +347,17 @@ theorem Opt.gather_row {t : QAtomicType} {m n : USize} {ix : Enc} (x : Opt t n) 
         simp [Array.getElem?_eq_getElem hj]
     refine ⟨⟨_, hi⟩, rfl, Opt.get_eq_of_raw _ x (show Kernel.Enc.Valid m o by rw [ho']; exact hc.1) hv j ⟨_, hi⟩ hf
       fun h0 _ a b ha hb _ => ?_⟩
+    have h0' : (foRNuls m o)[j.1]? = some 0 := h0
+    have ha' : (Enc.raw .i64 m o)[j.1]? = some a := ha
     have hbit : Column.bitAt nul j = false := by
-      have := (foRNuls_wordsFoR ws nul hwsz.symm j hjw).symm.trans (ho' ▸ h0)
+      have h1 := foRNuls_wordsFoR ws nul hwsz.symm j hjw
+      rw [← ho', h0'] at h1
       cases hb' : Column.bitAt nul j <;> simp_all
-    have e := raw_wordsFoR_of_bit ws nul hwsz j hjw hbit
-    rw [← ho'] at e
-    rw [e, ← hws] at ha
-    simp only [Array.getElem_map, Option.some.injEq] at ha
-    rw [Array.getElem?_eq_getElem hj, Option.getD_some] at hb
-    rw [← ha, hb]; rfl
+    rw [ho', raw_wordsFoR_of_bit ws nul hwsz j hjw hbit] at ha'
+    obtain rfl := Option.some.inj ha'
+    subst hws
+    simp only [Array.getElem?_eq_getElem hj, Option.getD_some] at hb
+    simp only [Array.getElem_map, hb, Option.getD_some]
   · cases h
 
 end
@@ -888,8 +891,7 @@ theorem Opt.eq_of_codes {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
   obtain ⟨u', hu', hu2'⟩ := hbit i'
   have hw := Array.getElem?_eq_getElem (show i.1 < _ by rw [hs]; exact i.2)
   have hw' := Array.getElem?_eq_getElem (show i'.1 < _ by rw [hs]; exact i'.2)
-  simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, hof, Option.getD_some, List.append_nil, List.map_cons,
-    List.map_nil] at hk
+  simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, hof, Option.getD_some, List.append_nil] at hk
   cases hN : hasNul x.enc
   · have h0 := foRNuls_plain x.wf hN i.2
     have h0' := foRNuls_plain x.wf hN i'.2
@@ -1178,8 +1180,8 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
-    obtain ⟨hv, heq⟩ := Arr.eq_of_codes tag hc0
-    obtain ⟨xl0, xg, yl0, yg⟩ := hrest hv
+    obtain ⟨hvt, heq⟩ := Arr.eq_of_codes tag hc0
+    obtain ⟨xl0, xg, yl0, yg⟩ := hrest hvt
     have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
       fun _ _ q => by simp [seenKey, ascKeys_append]
     rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
@@ -1279,9 +1281,9 @@ theorem Opt.codes_of_eq {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
   refine nulCodes_row rfl key.1 ?_
   unfold nulWords; split
   · simp only [Array.getElem?_mapIdx, Array.getElem?_map, hw, hw', Option.map_some, ← key.1]
-    cases hq : (foRNuls n x.enc)[i.1]?.getD 0 == 0 <;> simp only [hq, if_true, Bool.false_eq_true, if_false]
-    · rfl
-    · rw [key.2 (by cases h : (foRNuls n x.enc)[i.1]? <;> simp_all)]
+    cases hq : (foRNuls n x.enc)[i.1]?.getD 0 == 0 <;> simp only [if_true, Bool.false_eq_true, if_false]
+    have hz : (foRNuls n x.enc)[i.1]?.getD 0 = 0 := by simpa using hq
+    rw [key.2 (by rw [foRNuls_bit n x.enc i.2, hz]; rfl)]
   · rename_i hN
     simp only [Array.getElem?_map, hw, hw', Option.map_some,
       key.2 (foRNuls_plain x.wf (Bool.eq_false_iff.2 hN) i.2)]
