@@ -20,7 +20,7 @@ private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicTy
 /-- **`colPrefix op n a` is the running fold of `op` from `0`**: row `i` is `op` of row `i - 1` (`0` at row `0`) and
 `a[i]`. -/
 theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = .ok e) (ho : op ≠ .first := by decide)
-    (hn : op ≠ .null := by decide) (hF : op.nulFold = none := by rfl) :
+    (hn : op ≠ .null := by decide) (hF : op.nulFold = none ∨ hasNul a = false := by nulfree) :
     (raw .i64 n a).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧ ∀ i < n.toNat,
       op.eval (if i = 0 then 0 else (raw .i64 n e)[i - 1]?.getD 0) ((raw .i64 n a)[i]?.getD 0) =
         .ok ((raw .i64 n e)[i]?.getD 0) := by
@@ -31,7 +31,7 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   obtain ⟨-, hxs, c, cs, hc, out, hout, he, -, hrow⟩ :=
-    raw_kscan op hn false .i64 .i64 8 rfl n z [(n, z), (n, a)] r (kscanStream_ne ho _ _ _) (Or.inl hF) hr
+    raw_kscan op hn false .i64 .i64 8 rfl n z [(n, z), (n, a)] r (kscanStream_ne ho _ _ _) (colPrefix_hF hz hF) hr
   simp only [List.map_cons, List.map_nil, List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
   simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
   have hz0 := colConst_raw hz

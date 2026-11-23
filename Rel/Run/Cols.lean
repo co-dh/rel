@@ -28,7 +28,7 @@ def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAto
     (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     Except String (Arr t n) :=
   match h : colMap op n a b t s pre post with
-  | .ok o => .ok (Arr.mk o (colMap_closed hs hF h).2 (colMap_plain hs hF h))
+  | .ok o => .ok (Arr.mk o (colMap_closed hs h hF).2 (colMap_plain hs h hF))
   | .error s => .error s
 
 /-- The `kscan` chain taking a word of the atom `t` to the word its verbs and orders compute on: an `f32` word widened to
@@ -41,6 +41,13 @@ def widen (t : QAtomicType) : List (Op × UInt64) :=
   | t => match t.ordNum with
     | some r => [(.cast r .i64, 0)]
     | none => []
+
+/-- Two arrays hold no null: the sources of a lock-step `kscan` over them satisfy `kscan`'s `hF` (an `Arr` is null-free
+by its type, so `max`/`min` of arrays never meets an in-band null). -/
+theorem Arr.nulFree {t : QAtomicType} {n : USize} (x y : Arr t n) : ∀ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = false := by
+  simp only [List.mem_cons, List.not_mem_nil, or_false]; rintro p (rfl | rfl)
+  · exact x.plain
+  · exact y.plain
 
 /-- `kscan`'s answer as an `Arr t n`, well formed at `t` (`kscan_closed`). -/
 def scanArr (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : Option Enc) (es : List (USize × Enc))
@@ -149,23 +156,36 @@ chain holds the three constants (`colMap_const_eq`). -/
 def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
   colArr .first n x.enc x.enc .i64 .i64 [] [(.max, 0), (.min, c), (.add, s)]
 
+/-- The sources of `colPrefix`'s `kscan` (the zero column and `a`) hold no null where `a` holds none: `hF` for `kscan`. -/
+theorem colPrefix_hF {op : Op} {n : USize} {a z : Enc} (hz : colConst n 0 = .ok z)
+    (hF : op.nulFold = none ∨ hasNul a = false) :
+    op.nulFold = none ∨ ∀ p ∈ [(n, z), (n, a)], hasNul p.2 = false :=
+  hF.imp_right fun ha p hp => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
+    rcases hp with rfl | rfl
+    · exact Verify.kscatter_plain hz rfl
+    · exact ha
+
 /-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
 theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide)
-    (hF : op.nulFold = none := by rfl) :
+    (hF : op.nulFold = none ∨ hasNul a = false := by nulfree) :
     Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
+  rename_i z hz
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact ⟨(kscan_lock_closed (kscanStream_ne ho _ _ _) (Or.inl hF) hr).1, (kscan_lock_closed (kscanStream_ne ho _ _ _) (Or.inl hF) hr).2.1⟩
+  have hF' := colPrefix_hF hz hF
+  exact ⟨(kscan_lock_closed (kscanStream_ne ho _ _ _) hF' hr).1, (kscan_lock_closed (kscanStream_ne ho _ _ _) hF' hr).2.1⟩
 
 /-- `colPrefix`'s answer holds no null (`kscan_closed`). -/
 theorem colPrefix_plain {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide)
-    (hF : op.nulFold = none := by rfl) :
+    (hF : op.nulFold = none ∨ hasNul a = false := by nulfree) :
     hasNul o = false := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
+  rename_i z hz
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact (kscan_lock_closed (kscanStream_ne ho _ _ _) (Or.inl hF) hr).2.2
+  exact (kscan_lock_closed (kscanStream_ne ho _ _ _) (colPrefix_hF hz hF) hr).2.2
 
 /-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
 def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) (hN : hasNul e = false) : Nat :=
@@ -188,7 +208,7 @@ def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/
 def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
   match h : shiftCol n 0 with
-  | .ok o => .ok (Arr.mk o (colMap_closed (by simp [kscanStream]) (Or.inl rfl) h).2 (colMap_plain (by simp [kscanStream]) (Or.inl rfl) h))
+  | .ok o => .ok (Arr.mk o (colMap_closed (by simp [kscanStream]) h).2 (colMap_plain (by simp [kscanStream]) h))
   | .error e => .error e
 
 /-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its

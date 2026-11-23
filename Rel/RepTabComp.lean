@@ -426,7 +426,7 @@ theorem expand_groups {K M : USize} {o sc pm : Enc} (hsc : kscatter .max K o .po
   obtain ⟨hgs, -, hw⟩ := kscatter_words hsc rfl
   obtain ⟨-, hcell⟩ := scatterWords_fold (f := fun a x => if a.toInt64 < x.toInt64 then x else a)
     (fun _ _ => rfl) hw
-  obtain ⟨-, -, hpre⟩ := colPrefix_raw hpm
+  obtain ⟨-, -, hpre⟩ := colPrefix_raw hpm (hF := Or.inr (Verify.kscatter_plain hsc rfl))
   -- each cell holds the largest group whose offset is exactly that cell
   have cell : ∀ x < M.toNat, ((raw .i64 M sc)[x]?.getD 0).toNat < 2 ^ 63 ∧
       (∀ G < K.toNat, oN G = x → G ≤ ((raw .i64 M sc)[x]?.getD 0).toNat) ∧
@@ -568,7 +568,7 @@ theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u))
   have := hSwm g K.toNat hg
   have htT : t < Tn.toUSize.toNat := by omega
   have hGw : (raw .i64 Tn.toUSize Gc)[t]?.getD 0 = g.toUInt64 := by
-    obtain ⟨-, e⟩ := kgather_word hGc (colPrefix_plain hpm) t htT
+    obtain ⟨-, e⟩ := kgather_word hGc (colPrefix_plain hpm (hF := Or.inr (Verify.kscatter_plain hsc rfl))) t htT
     rw [raw_pos_word htT, toNat_toUInt64 (by omega)] at e
     rw [e]
     obtain ⟨-, lo, alt⟩ := expand_groups hsc hpm (fun g => ((List.range g).map wN).sum) how
