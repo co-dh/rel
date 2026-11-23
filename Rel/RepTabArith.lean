@@ -471,7 +471,8 @@ theorem stepColsAt_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t
     refine ⟨h2, fun v => ?_⟩
     rw [Arr.get_i64, Arr.get_i64, Arr.get_i64]
     exact (and_congr Iff.rfl eq_comm).trans (hv v)
-  all_goals first | cases h | exact fstepCols_spec (by decide) h i
+  all_goals first | cases h | (obtain ⟨h2, hv⟩ := fstepCols_spec (by decide) h i
+                               exact ⟨h2, fun v => (hv v).trans (Lang.fstepDen_iff _ k (x.get i, y.get i) v).symm⟩)
 
 /-- `arithDen t k TU` pointwise: both operands in `dom TU`, then `stepAt t k ≫ TU`. -/
 theorem Lang.arithDen_iff (t : QAtomicType) (k : UInt8) (TU : Core.Rel (Obj.atom t).El (Obj.atom t).El)
