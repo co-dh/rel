@@ -224,8 +224,9 @@ define bang_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) bang | sort -u > $(T)/bang.txt
 endef
-# no ∃ in the body of a relation: a written def whose result type, unfolding reducible abbreviations only, is headed by
-# a relation type (gates/Gates.lean `relTypes`) or built from one, and whose code mentions `Exists`; theorems are exempt
+# no points in the body of a relation: a written def whose result type, unfolding reducible abbreviations only, is headed by
+# a relation type (gates/Gates.lean `relTypes`) or built from one, and whose body is written over points (a `fun` returning a
+# proposition or a `∀`/`→` proposition: gates/Gates.lean `pointwise`, so `∃`, `∀`, `¬`, `∧` of points); theorems are exempt
 define pointfree_NOW
 $(LAKE) build gates
 $(MODS) | xargs $(LAKE) env $(GATES) pointfree | sort -u > $(T)/pointfree.txt

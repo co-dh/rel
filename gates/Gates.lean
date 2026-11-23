@@ -60,6 +60,22 @@ partial def relational (t : Expr) : MetaM Bool := withReducible do
   if let some u ← unfoldDefinition? t then return ← relational u
   t.getAppArgs.anyM fun a => lambdaTelescope a fun _ e => do if ← isType e then relational e else pure false
 
+/-- Whether the term `e` is written over points: a `fun` whose body is a proposition (the relation's `fun a b => …`, an
+    `∃ x, …` or `∀`-quantified predicate, `¬`/`∧` of applied relations) or a `∀`/`→` that is itself a proposition.
+    A point-free body composes relations (`R ≫ S`, `R ∩ S`, `ν (fun X => …)`): its lambdas return relations or
+    terms, never a `Prop`. Nothing is unfolded; proofs and types are not part of the program and are skipped. -/
+partial def pointwise (e : Expr) : MetaM Bool := do
+  if e.isSort || e.isFVar || e.isConst || e.isLit || e.isBVar || e.isMVar then return false
+  if ← isProof e then return false
+  match e with
+  | .forallE .. => if ← isProp e then return true else return false
+  | .lam .. => lambdaTelescope e fun _ b => do if ← isProp b then return true else pointwise b
+  | .app f a => return (← pointwise f) || (← pointwise a)
+  | .letE _ _ v b _ => return (← pointwise v) || (← pointwise (b.instantiate1 v))
+  | .mdata _ b => pointwise b
+  | .proj _ _ b => pointwise b
+  | _ => return false
+
 /-- The per-element readers of an encoded column, the denotation every whole-column Lean decode maps over a range
     (`Ext.Enc.raw`, `Coc.elems`). A kernel reads the encoded blocks itself; on the run path these run in Lean. -/
 def decoders : List Name := [`Rel.Column.foRBits, `Rel.Column.alpBits]
@@ -131,13 +147,18 @@ def main : List String → IO UInt32
         IO.println s!"pub const {s.toUpper}: u32 = {v.cidx};"
       return 0
     | "pointfree" =>
-      -- every written def whose type is a relation and whose code mentions `Exists`
+      -- every written def whose type is a relation and whose value, or that of an auxiliary it owns, is written over points
       let cand := ds.filter fun n => written env n && match env.find? n with
-        | some (.defnInfo _) => (bodyConsts env n).contains ``Exists
+        | some (.defnInfo _) => true
         | _ => false
-      let bad ← cand.filterM fun n => runMeta env do relational (← getConstInfo n).type
+      let bad ← cand.filterM fun n => runMeta env do
+        unless ← relational (← getConstInfo n).type do return false
+        (n :: ((bodyConsts env n).toList.filter n.isPrefixOf)).anyM fun c => do
+          match (← getConstInfo c).value? with
+          | some v => pointwise v
+          | none => pure false
       for n in bad do IO.println n
-      IO.eprintln s!"gates pointfree: {bad.size} relation-valued of {cand.size} defs with ∃ among {ds.size} declarations"
+      IO.eprintln s!"gates pointfree: {bad.size} relation-valued of {cand.size} defs written over points among {ds.size} declarations"
       return 0
     | "decode" =>
       -- every declaration of the modules with compiled code that reaches a per-element decoder (`decoders`), with
