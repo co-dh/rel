@@ -2,7 +2,5 @@ Rel.Alg.tagBits
 Rel.Arr.getWith
 Rel.Ew.bitBits
 Rel.Ew.cmpBits
-Rel.Lang.Embed.diskOf
-Rel.Lang.Table.readSchema
 Rel.Opt.getWith
 Rel.Opt.ofAtoms
