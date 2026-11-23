@@ -281,7 +281,7 @@ pub unsafe fn enc_free(s: *mut CEnc) {
 
 /// The writer of one answer column (coc plan §3): its grid and the encoder state its passes fill. Dropped
 /// unfinished (a size test failed), it frees what it allocated.
-pub struct Sink { pub e: CEnc, g: Grid, enc: bool }
+pub struct Sink { pub e: CEnc, g: Grid, enc: bool, least: i64 }
 /// A pass's step: block `b` (elements `lo .. lo + nb`) of the sink `e`, with the worker's block buffer (`16 << lg` bytes).
 pub type Step<'a> = &'a (dyn Fn(*mut CEnc, usize, usize, usize, &mut [u8]) + Sync);
 struct Pass<'a> { step: Step<'a>, g: Grid, sized: bool }
@@ -315,7 +315,7 @@ impl Drop for Sink { fn drop(&mut self) { unsafe { enc_free(&mut self.e) } } }
 impl Sink {
     /// `n` elements of `width` bytes: coc.rs `coc_enc_open`.
     pub fn new(n: usize, width: usize) -> Sink {
-        let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, enc: false };
+        let mut s = Sink { e: unsafe { core::mem::zeroed() }, g: Grid { n, lg: DEFAULT_LG }, enc: false, least: i64::MIN };
         unsafe { qrs_coc_enc_open(&mut s.e, n, width) }
         s
     }
@@ -330,13 +330,13 @@ impl Sink {
     /// `Coc.encodeAt`'s `nul`; empty: none); with `shrinks`, `None` where the encoded form is not smaller than the
     /// `n * width` dense bytes it replaces (`Enc.shrinks`, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink").
     pub fn write_nul<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool, nul: &[u8]) -> Option<lean::O> {
-        let (w, n) = (self.e.width, self.g.n);
+        let (w, n, least) = (self.e.width, self.g.n, self.least);
         let below = if shrinks { n * w } else { usize::MAX };
         // what the residuals and exceptions may come to before the size test is already failed, the metadata being fixed
         let msz = unsafe { lean::sarray_size(self.e.meta.cast()) };
         if below != usize::MAX { if below <= msz { return None } self.e.below = below - msz }
         self.staged(crate::QLEAN_COST_ARITH, below, &|s, b, lo, nb, buf, st| unsafe {
-            enc::move_blk(p, &mut (*s).meta_blk(b), (*s).stage(b, nb, st), || p.block(b, lo, nb, w, buf), nb, w, nul, lo)
+            enc::move_blk(p, &mut (*s).meta_blk(b), (*s).stage(b, nb, st), || p.block(b, lo, nb, w, buf), nb, w, nul, lo, least)
         })?;
         Some(self.finish())
     }
@@ -395,6 +395,9 @@ impl Sink {
         let o = |p: *mut c_void| unsafe { lean::O::from_raw(p.cast()) };
         lean::ctor(if self.enc { crate::blocks::tag::FOR as u8 } else { 0 }, [o(m), o(b)], &[])
     }
+    /// The column's atom type's least key (`QAtomicType.least`, Lean `Coc.lowKey`), which a null block's base cannot go below;
+    /// `i64::MIN` unless set, the least of the 8-byte types.
+    pub fn least(mut self, k: i64) -> Sink { self.least = k; self }
     /// The sink answering the `Enc` object rather than its `(meta, pack)` parts.
     pub fn enc(mut self) -> Sink { self.enc = true; self }
 }

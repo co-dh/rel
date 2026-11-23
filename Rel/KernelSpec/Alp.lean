@@ -24,18 +24,18 @@ open Rel
 
 /-- `Coc.encode`'s block count, the one `Column.alpSects` is laid out by. -/
 theorem nblk_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x : ByteArray)
-    {patch : Bool} {nul : ByteArray} :
-    Column.nblk (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 = (x.size / w + 2 ^ lg - 1) / 2 ^ lg ∧
-      Column.blk (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 = 2 ^ lg ∧
-      Column.lgAt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 = lg := by
+    {patch : Bool} {nul : ByteArray} {least : Int64} :
+    Column.nblk (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1 = (x.size / w + 2 ^ lg - 1) / 2 ^ lg ∧
+      Column.blk (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1 = 2 ^ lg ∧
+      Column.lgAt (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1 = lg := by
   have hwt : w.toUSize.toNat = w := by
     rcases System.Platform.numBits_eq with h | h <;> simp [Nat.toUSize, h] <;> omega
   unfold Kernel.Coc.encodeAt
   simp only [hwt, Nat.one_shiftLeft]
   generalize x.size / w = n
-  have hd := fun b => planBlock_byte lg w n (patch && decide (n < 2 ^ 64)) x nul b
+  have hd := fun b => planBlock_byte least lg w n (patch && decide (n < 2 ^ 64)) x nul b
   generalize (patch && decide (n < 2 ^ 64)) = pl at hd ⊢
-  generalize Kernel.Coc.planBlock lg w n pl x nul = blk at hd ⊢
+  generalize Kernel.Coc.planBlock least lg w n pl x nul = blk at hd ⊢
   have hMr := foRMeta_reads lg (Nat.lt_of_le_of_lt hlg.2 (by decide)) (Kernel.Coc.sumNul w) n
     ((Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg))).map fun x =>
       (x.1.toUInt64, x.2.1.toUInt64, x.2.2.1, x.2.2.2.2)) (fun b h => by
@@ -81,8 +81,8 @@ theorem foRStd_iff {n : USize} {md pk : ByteArray} : Kernel.Coc.foRStd n md pk =
 block size the layout admits, patched or not: the codec's half of the closure law, a column the codec answers is one
 every kernel that reads `foR` through `Coc.foRStd` accepts. -/
 theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
-    (x : ByteArray) {patch : Bool} {nul : ByteArray} :
-    FoRWF (x.size / w) (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 (Kernel.Coc.encodeAt lg w.toUSize x patch nul).2 := by
+    (x : ByteArray) {patch : Bool} {nul : ByteArray} {least : Int64} :
+    FoRWF (x.size / w) (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1 (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).2 := by
   have hw0 : 0 < w := by omega
   have hw8 : w ≤ 8 := by omega
   have hwt : w.toUSize.toNat = w := by
@@ -92,12 +92,12 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   unfold Kernel.Coc.encodeAt
   simp only [hwt, Nat.one_shiftLeft]
   generalize x.size / w = n
-  have hd := fun b => planBlock_byte lg w n (patch && decide (n < 2 ^ 64)) x nul b
-  have hin := fun j => planBlock_inside lg w n (patch && decide (n < 2 ^ 64)) x nul j
+  have hd := fun b => planBlock_byte least lg w n (patch && decide (n < 2 ^ 64)) x nul b
+  have hin := fun j => planBlock_inside least lg w n (patch && decide (n < 2 ^ 64)) x nul j
   have h64 : (patch && decide (n < 2 ^ 64)) = true → n < 2 ^ 64 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 64)) = pl at hd hin h64 ⊢
   generalize hlst : decide (n < 2 ^ 64) = lst
-  generalize Kernel.Coc.planBlock lg w n pl x nul = blk at hd hin ⊢
+  generalize Kernel.Coc.planBlock least lg w n pl x nul = blk at hd hin ⊢
   generalize hbs : Array.map blk (Array.range ((n + 2 ^ lg - 1) / 2 ^ lg)) = bs
   have hbsz : bs.size = (n + 2 ^ lg - 1) / 2 ^ lg := by rw [← hbs]; simp
   have hbget : ∀ b (h : b < bs.size), bs[b] = blk b := by

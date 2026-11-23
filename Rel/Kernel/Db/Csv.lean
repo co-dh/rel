@@ -566,10 +566,12 @@ def csvWords (sep : UInt8) (cols : CsvCols) (b : List UInt8) : Except String (Na
     `csvWords`' parts with its count as a `foR` of 8-byte words, the in-band nullable's two parts as one encoding. -/
 def csvEncs (sep : UInt8) (cols : CsvCols) (b : List UInt8) : Except String (Nat × List (USize × Enc)) := do
   let (n, ws) ← csvWords sep cols b
-  return (n, (cols.zip (Csv.groups cols ws)).flatMap fun ((_, s, _), ps) => match s, ps with
+  -- each encoding's `least` is its atom's (`CsvShape.atoms`), though its words are 8 bytes wide: a `u1` part's is `0`
+  let lt := fun (t : QAtomicType) (s : CsvShape) (i : Nat) => ((s.atoms t)[i]?.bind id).elim Int64.minValue QAtomicType.least
+  return (n, (cols.zip (Csv.groups cols ws)).flatMap fun ((_, s, t, _), ps) => match s, ps with
     -- the in-band nullable: its values under its flags' bitmap, one encoding
-    | .opt, [v, f] => [(v.size.toUSize, Kernel.wordsFoR v (Kernel.nulMap f))]
-    | _, ps => ps.map fun a => (a.size.toUSize, Kernel.wordsFoR a))
+    | .opt, [v, f] => [(v.size.toUSize, Kernel.wordsFoR v (Kernel.nulMap f) (lt t s 0))]
+    | _, ps => (ps.zipIdx.map fun (a, i) => (a.size.toUSize, Kernel.wordsFoR a .empty (lt t s i))))
 
 /-- **The CSV reader**, IO export `qlean_csv_read` (IO design C.1): the file at `path` read under the schema `cols`, its
 fields split at `sep` (`,` CSV, `\t` TSV: one reader, `Csv.dialect`), as the row count and each column's parts (`CsvShape`), each with its count, as a `foR` of 8-byte words (`Kernel.wordsFoR`,
