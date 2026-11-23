@@ -11,6 +11,7 @@ public import Rel.AscOrder
 public import Rel.Rep
 public import Rel.ObjOrder
 public import Rel.Core.Fix
+public import Rel.Core.Div
 public import Rel.Kernel.Cast
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
@@ -49,14 +50,25 @@ variable {A B C : Obj} {Φ Ψ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj
 /-- `R − S`, pointwise. -/
 abbrev diffDen (TR TS : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El B) := fun x y => TR x y ∧ ¬ TS x y
 
-/-- `R\S` within the universes `UB`, `UC`: the book's left division where `R` has a column, every pair of the
-    universes where it has none. -/
+/-- `R\S` within the universes `UB`, `UC`: the book's left division where `R` has a column (`R° ≫ ⊤`), every pair
+    of the universes where it has none (`UB° ≫ ⊤ ≫ UC`). -/
 abbrev ldivDen (TR : Core.Rel (Obj.El A) (Obj.El B)) (TS : Core.Rel (Obj.El A) (Obj.El C)) (TB : Core.Rel (Obj.El B) (Obj.El B)) (TC : Core.Rel (Obj.El C) (Obj.El C)) : Core.Rel (Obj.El B) (Obj.El C) :=
-  fun b c => (∀ a, TR a b → TS a c) ∧ ((∃ a, TR a b) ∨ ((∃ b', TB b' b) ∧ ∃ c', TC c' c))
+  ldiv TR TS ∩ ((TR° ≫ top) ∪ (TB° ≫ top ≫ TC))
 
-/-- `R/S` within the universes `UA`, `UB`, the mirror of `ldivDen`. -/
+/-- `R/S = (S° \ R°)°` within the universes `UA`, `UB`. -/
 abbrev rdivDen (TR : Core.Rel (Obj.El A) (Obj.El C)) (TS : Core.Rel (Obj.El B) (Obj.El C)) (TA : Core.Rel (Obj.El A) (Obj.El A)) (TB : Core.Rel (Obj.El B) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El B) :=
-  fun x y => (∀ c, TS y c → TR x c) ∧ ((∃ c, TS y c) ∨ ((∃ a, TA a x) ∧ ∃ b, TB b y))
+  (ldivDen TS° TR° TB TA)°
+
+/-- `ldivDen` at a pair: `c` is in `S` at every `a` of `R`'s column `b`, and `b` has a column or both are in the universes. -/
+theorem ldivDen_iff {TR : Core.Rel (Obj.El A) (Obj.El B)} {TS : Core.Rel (Obj.El A) (Obj.El C)} {TB : Core.Rel (Obj.El B) (Obj.El B)} {TC : Core.Rel (Obj.El C) (Obj.El C)} {b : Obj.El B} {c : Obj.El C} :
+    ldivDen TR TS TB TC b c ↔ (∀ a, TR a b → TS a c) ∧ ((∃ a, TR a b) ∨ ((∃ b', TB b' b) ∧ ∃ c', TC c' c)) :=
+  and_congr Iff.rfl (or_congr ⟨fun ⟨a, h, _⟩ => ⟨a, h⟩, fun ⟨a, h⟩ => ⟨a, h, trivial⟩⟩
+    ⟨fun ⟨b', hb, c', _, hc⟩ => ⟨⟨b', hb⟩, c', hc⟩, fun ⟨⟨b', hb⟩, c', hc⟩ => ⟨b', hb, c', trivial, hc⟩⟩)
+
+/-- `rdivDen` at a pair, the mirror of `ldivDen_iff`. -/
+theorem rdivDen_iff {TR : Core.Rel (Obj.El A) (Obj.El C)} {TS : Core.Rel (Obj.El B) (Obj.El C)} {TA : Core.Rel (Obj.El A) (Obj.El A)} {TB : Core.Rel (Obj.El B) (Obj.El B)} {x : Obj.El A} {y : Obj.El B} :
+    rdivDen TR TS TA TB x y ↔ (∀ c, TS y c → TR x c) ∧ ((∃ c, TS y c) ∨ ((∃ a, TA a x) ∧ ∃ b, TB b y)) :=
+  ldivDen_iff.trans (and_congr Iff.rfl (or_congr Iff.rfl and_comm))
 
 /-- `R÷S = R/S ∩ (S/R)°` within the universes `UA`, `UB`: `x` to `y` when `R x` and `S y` are one image. -/
 abbrev symDivDen (TA : Core.Rel (Obj.El A) (Obj.El A)) (TB : Core.Rel (Obj.El B) (Obj.El B)) (TR : Core.Rel (Obj.El A) (Obj.El C)) (TS : Core.Rel (Obj.El B) (Obj.El C)) : Core.Rel (Obj.El A) (Obj.El B) :=
@@ -781,13 +793,15 @@ theorem diff_le {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY
 
 theorem ldiv_le {R : Core.Rel (Obj.El A) (Obj.El B)} {S S' : Core.Rel (Obj.El A) (Obj.El C)} {U U' : Core.Rel (Obj.El B) (Obj.El B)} {V V' : Core.Rel (Obj.El C) (Obj.El C)} (hS : S ⊑ S') (hU : U ⊑ U')
     (hV : V ⊑ V') : ldivDen R S U V ⊑ ldivDen R S' U' V' :=
-  le_iff.2 fun _ _ h => ⟨fun a ha => le_iff.1 hS _ _ (h.1 a ha),
-    h.2.imp id fun ⟨⟨b', hb⟩, c', hc⟩ => ⟨⟨b', le_iff.1 hU _ _ hb⟩, c', le_iff.1 hV _ _ hc⟩⟩
+  le_iff.2 fun _ _ h => have h := ldivDen_iff.1 h
+    ldivDen_iff.2 ⟨fun a ha => le_iff.1 hS _ _ (h.1 a ha),
+      h.2.imp id fun ⟨⟨b', hb⟩, c', hc⟩ => ⟨⟨b', le_iff.1 hU _ _ hb⟩, c', le_iff.1 hV _ _ hc⟩⟩
 
 theorem rdiv_le {R R' : Core.Rel (Obj.El A) (Obj.El C)} {S : Core.Rel (Obj.El B) (Obj.El C)} {U U' : Core.Rel (Obj.El A) (Obj.El A)} {V V' : Core.Rel (Obj.El B) (Obj.El B)} (hR : R ⊑ R') (hU : U ⊑ U')
     (hV : V ⊑ V') : rdivDen R S U V ⊑ rdivDen R' S U' V' :=
-  le_iff.2 fun _ _ h => ⟨fun c hc => le_iff.1 hR _ _ (h.1 c hc),
-    h.2.imp id fun ⟨⟨a, ha⟩, b, hb⟩ => ⟨⟨a, le_iff.1 hU _ _ ha⟩, b, le_iff.1 hV _ _ hb⟩⟩
+  le_iff.2 fun _ _ h => have h := rdivDen_iff.1 h
+    rdivDen_iff.2 ⟨fun c hc => le_iff.1 hR _ _ (h.1 c hc),
+      h.2.imp id fun ⟨⟨a, ha⟩, b, hb⟩ => ⟨⟨a, le_iff.1 hU _ _ ha⟩, b, le_iff.1 hV _ _ hb⟩⟩
 
 theorem pair_le {X X' : Core.Rel (Obj.El A) (Obj.El B)} {Y Y' : Core.Rel (Obj.El A) (Obj.El C)} (hX : X ⊑ X') (hY : Y ⊑ Y') : rpair X Y ⊑ rpair X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, le_iff.1 hY _ _ h.2⟩

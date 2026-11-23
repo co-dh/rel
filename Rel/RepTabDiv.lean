@@ -2077,7 +2077,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     · intro hc
       obtain ⟨j, h1, -⟩ := (ran_holds huc hUC.2 c c).2 ⟨rfl, hc⟩
       exact ⟨j, h1⟩
-  show _ ↔ (∀ a, R.Holds a b → S.Holds a c) ∧ ((∃ a, R.Holds a b) ∨ ((∃ b', UB.Holds b' b) ∧ ∃ c', UC.Holds c' c))
+  rw [Lang.ldivDen_iff]
   rw [show (⟨M, X1, Y1⟩ : Tab B C).Holds b c ↔ _ from hP, hD, hU]
   by_cases hb : ∃ a, R.Holds a b
   · constructor
@@ -2121,7 +2121,7 @@ theorem Tab.rdiv_holds {A B C : Obj} {R : Tab A C} {S : Tab B C} {UA : Tab A A} 
   rw [Except.bind_eq_ok'] at h; obtain ⟨L, hL, h⟩ := h
   rw [conv_holds h (ldivOf_wf hL (conv_wf hS hSw) (conv_wf hR hRw) hUB hUA),
     ldivOf_holds ⟨_, hS, hSw.2, hSw.1⟩ ⟨_, hR, hRw.2, hRw.1⟩ hL (conv_wf hS hSw) (conv_wf hR hRw) hUB hUA]
-  simp only [Lang.ldivDen, Lang.rdivDen, conv_holds hS hSw, conv_holds hR hRw, and_comm (a := ∃ b', UB.Holds b' b)]
+  simp only [Lang.ldivDen_iff, Lang.rdivDen_iff, conv_holds hS hSw, conv_holds hR hRw, and_comm (a := ∃ b', UB.Holds b' b)]
 
 /-! ## Checks on `foR` tables -/
 

@@ -30,7 +30,6 @@ Rel.Lang.froundDen
 Rel.Lang.fsumDen
 Rel.Lang.fwideDen
 Rel.Lang.lamDen
-Rel.Lang.ldivDen
 Rel.Lang.leqDen
 Rel.Lang.ltDen
 Rel.Lang.mapDen
@@ -39,7 +38,6 @@ Rel.Lang.nilDen
 Rel.Lang.nulStep
 Rel.Lang.ordDen
 Rel.Lang.ordRelDen
-Rel.Lang.rdivDen
 Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.stepDen

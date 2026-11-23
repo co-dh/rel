@@ -483,7 +483,7 @@ theorem rdiv_sound {R : Rel A C} {S : Rel B C} {UA : Rel A A} {UB : Rel B B} {X 
     intro x y _ _ _
     refine (Tab.conv_holds ht wq x y).trans ((Tab.ldivSel_holdsBy
       (fun h => Tab.ldivOf_holds ⟨_, hsc, ws.2, ws.1⟩ ⟨_, hrc, wr.2, wr.1⟩ h w1 w2 wu wa) hq w1 w2 wu wa y x).trans ?_)
-    simp only [ldivDen, rdivDen, rep_apply, Tab.conv_holds hsc ws, Tab.conv_holds hrc wr]
+    simp only [ldivDen_iff, rdivDen_iff, rep_apply, Tab.conv_holds hsc ws, Tab.conv_holds hrc wr]
     exact and_congr Iff.rfl (or_congr Iff.rfl and_comm)
 
 theorem lam_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X) (wR : R.Wf) :

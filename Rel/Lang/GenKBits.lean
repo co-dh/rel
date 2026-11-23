@@ -913,8 +913,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   have hb63 : kb.toNat * kc.toNat < 2 ^ 63 := by omega
   refine ⟨hkbc, hb63, PP, hout', fun b c => ?_, Vals.code2_rep_inj hb2 hr.2 hub.2, Vals.code2_rep_inj hc2 wyM huc.2,
     (Vals.code2_plain hb2).2.2, (Vals.code2_plain hc2).2.2, (colMap_closed (by lockstep) hout).2.2⟩
-  show _ ↔ (∀ a, r.Holds a b → s.Holds a c) ∧
-    ((∃ a, r.Holds a b) ∨ ((∃ b', ub.Holds b' b) ∧ ∃ c', uc.Holds c' c))
+  rw [Lang.ldivDen_iff]
   constructor
   · rintro ⟨G, hG, jj, hjj, hPP, ⟨i0, h0, r0⟩, ⟨i1, h1, r1⟩⟩
     obtain ⟨t0, ht0, hexb, hxb, hub⟩ := hrb G hG
