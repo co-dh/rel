@@ -1248,7 +1248,7 @@ private theorem uncons_pre_wf {n m M : USize} {lo up : Arr .i64 n} {f : Vals B m
     {sM l eM : Arr .i64 M} {gX : Vals (.arr B) M} {gf : Vals B M}
     (hX : Vals.WF (⟨m, (lo, up, f)⟩ : Vals (.arr B) n)) (hm63 : m.toNat < 2 ^ 63)
     (hlt : colMap Op.lt n lo.enc up.enc = .ok lt) (hwh : whereCol n lt = .ok (M, sel))
-    (hsM : Arr.gather M sel lo = .ok sM) (hgX : Vals.gather M sel ⟨m, (lo, up, f)⟩ = .ok gX)
+    (hsM : Arr.gather M sel lo = .ok sM) (hgX : Vals.gather M sel (⟨m, (lo, up, f)⟩ : Vals (.arr B) n) = .ok gX)
     (hgf : Vals.gather M sM.enc f = .ok gf)
     (hl : colArr Op.first M sM.enc sM.enc .i64 .i64 [] [(Op.add, 1)] = .ok l)
     (heM : Arr.gather M sel up = .ok eM) :
@@ -1293,7 +1293,7 @@ private theorem unsnoc_pre_wf {n m M : USize} {lo up : Arr .i64 n} {f : Vals B m
     (hlt : colMap Op.lt n lo.enc up.enc = .ok lt) (hwh : whereCol n lt = .ok (M, sel))
     (heM : Arr.gather M sel up = .ok eM)
     (hl : colArr Op.first M eM.enc eM.enc .i64 .i64 [] [(Op.add, 0 - 1)] = .ok l)
-    (hgX : Vals.gather M sel ⟨m, (lo, up, f)⟩ = .ok gX) (hsM : Arr.gather M sel lo = .ok sM)
+    (hgX : Vals.gather M sel (⟨m, (lo, up, f)⟩ : Vals (.arr B) n) = .ok gX) (hsM : Arr.gather M sel lo = .ok sM)
     (hgf : Vals.gather M l.enc f = .ok gf) :
     Tab.WF (⟨M, gX, (⟨m, (sM, l, f)⟩, gf)⟩ : Tab (.arr B) (.prod (.arr B) B)) := by
   obtain ⟨SN, EN, hw1, hb1, -, hsel, -⟩ := cellSpan_where hX.1 hlt hwh hm63 f
@@ -1491,7 +1491,7 @@ private theorem uncat_pre_wf {n m Tn : USize} {lo up : Arr .i64 n} {f : Vals B m
     (hX : Vals.WF (⟨m, (lo, up, f)⟩ : Vals (.arr B) n)) (hm63 : m.toNat < 2 ^ 63) (hn63 : n.toNat < 2 ^ 63)
     (hw : colMap Op.sub n up.enc lo.enc .i64 .i64 [] [(Op.add, 1)] = .ok w)
     (hex : expand n w = .ok (Tn, G, u)) (hsG : Arr.gather Tn G lo = .ok sG)
-    (hmid : colArr Op.add Tn sG.enc u = .ok mid) (hK : Vals.gather Tn G ⟨m, (lo, up, f)⟩ = .ok K)
+    (hmid : colArr Op.add Tn sG.enc u = .ok mid) (hK : Vals.gather Tn G (⟨m, (lo, up, f)⟩ : Vals (.arr B) n) = .ok K)
     (heG : Arr.gather Tn G up = .ok eG) :
     Tab.WF (⟨Tn, K, (⟨m, (sG, mid, f)⟩, ⟨m, (mid, eG, f)⟩)⟩ : Tab (.arr B) (.prod (.arr B) (.arr B))) := by
   obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
@@ -1794,7 +1794,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
     have hzr := Vals.concat_row hNn hoff r.val Q.key hz hrw.2 (compOne_wf hQ hw.1 hw.2).1
     have hNU := N.toNat_lt_size
-    obtain ⟨π1, gr1, fs1, hkN, hp1, -, hsur1, hcnt1, hg1, hf1, hrow1⟩ := group_rows hes hasc hseen
+    obtain ⟨π1, gr1, fs1, hkN, hp1, -, hsur1, hcnt1, hg1, hf1, hrow1⟩ := group_rows (x := (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)) ⟨wQ.1, wQ.2.2⟩ hes hasc hseen
     obtain ⟨π2, gr2, fs2, hbkN, hp2, hinj2, hsur2, hcnt2, hg2, -, hrow2⟩ := group_rows (Vals.concat_wf hNn hoff hz hrw.2 (compOne_wf hQ hw.1 hw.2).1) hbs hbasc hbseen
     have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
     have hbK : bk.toUSize.toNat = bk := USize.toNat_ofNat_of_lt' (by omega)
@@ -2032,20 +2032,20 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
     constructor
     · rintro ⟨i, rfl⟩
       have h1 := (diff_holds hdf (ran_wf hub hUB) (ran_wf hrr hrw) _ _).1 ⟨i, rfl, rfl⟩
-      obtain ⟨e, hb⟩ := (ran_holds hub _ _).1 h1.1
+      obtain ⟨e, hb⟩ := (ran_holds hub hUB.2 _ _).1 h1.1
       rw [← e] at h1
-      exact ⟨hb, fun ⟨a, ha⟩ => h1.2 ((ran_holds hrr _ _).2 ⟨rfl, a, (canon_holds hr hRw _ _).2 ha⟩)⟩
+      exact ⟨hb, fun ⟨a, ha⟩ => h1.2 ((ran_holds hrr hrw.2 _ _).2 ⟨rfl, a, (canon_holds hr hRw _ _).2 ha⟩)⟩
     · rintro ⟨hb, hn⟩
-      obtain ⟨i, h1, -⟩ := (diff_holds hdf (ran_wf hub hUB) (ran_wf hrr hrw) b b).2 ⟨(ran_holds hub b b).2 ⟨rfl, hb⟩, fun h' =>
-        hn (((ran_holds hrr b b).1 h').2.imp fun a ha => (canon_holds hr hRw a b).1 ha)⟩
+      obtain ⟨i, h1, -⟩ := (diff_holds hdf (ran_wf hub hUB) (ran_wf hrr hrw) b b).2 ⟨(ran_holds hub hUB.2 b b).2 ⟨rfl, hb⟩, fun h' =>
+        hn (((ran_holds hrr hrw.2 b b).1 h').2.imp fun a ha => (canon_holds hr hRw a b).1 ha)⟩
       exact ⟨i, h1⟩
   have hU : (∃ j, uc.key.row j = c) ↔ ∃ c', UC.Holds c' c := by
     constructor
     · rintro ⟨j, rfl⟩
-      obtain ⟨e, hc⟩ := (ran_holds huc _ _).1 ⟨j, rfl, rfl⟩
+      obtain ⟨e, hc⟩ := (ran_holds huc hUC.2 _ _).1 ⟨j, rfl, rfl⟩
       exact hc
     · intro hc
-      obtain ⟨j, h1, -⟩ := (ran_holds huc c c).2 ⟨rfl, hc⟩
+      obtain ⟨j, h1, -⟩ := (ran_holds huc hUC.2 c c).2 ⟨rfl, hc⟩
       exact ⟨j, h1⟩
   show _ ↔ (∀ a, R.Holds a b → S.Holds a c) ∧ ((∃ a, R.Holds a b) ∨ ((∃ b', UB.Holds b' b) ∧ ∃ c', UC.Holds c' c))
   rw [show (⟨M, X1, Y1⟩ : Tab B C).Holds b c ↔ _ from hP, hD, hU]
@@ -2802,7 +2802,7 @@ theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr 
             seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
     intro L hLp hLm ys
     refine ⟨fun b => ?_, fun es hes => ?_⟩
-    · rw [← canon_holds hr, List.mem_map]
+    · rw [← canon_holds hr wR, List.mem_map]
       constructor
       · rintro ⟨j, hj, rfl⟩
         obtain ⟨hj', e⟩ := (hLm j).1 hj
