@@ -834,7 +834,7 @@ theorem Tab.comp_pos_rows {A B : Obj} {T : USize} {P : Arr .i64 T} {v : Vals A T
       simp only [f, dif_pos hd', dif_pos (Nat.lt_trans hdd hd')]
       have hl := Arr.lexLe_i64 C.key [] (hlt ⟨d, by omega⟩ ⟨d', by omega⟩ hdd).1
       rw [hcode, hcode] at hl
-      have hne := Vals.nub_distinct hnb (j := ⟨d, by omega⟩) (j' := ⟨d', by omega⟩) (by simp; omega)
+      have hne := Vals.nub_distinct hnb (Tab.comp_wf hC wPv wR).1 (j := ⟨d, by omega⟩) (j' := ⟨d', by omega⟩) (by simp; omega)
       rw [hs, hs] at hne
       have := mt (hinj _ _).2 hne
       have := Fin.val_ne_of_ne this; omega)
@@ -938,17 +938,17 @@ theorem Tab.mapFold_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr 
       · rintro ⟨v, x, h1, h2, y, hR, rfl⟩
         exact ⟨(v, y), (Tab.pair_holds hp wS wc k (v, y)).2 ⟨h1, (Tab.comp_holds hc wel wR k y).2 ⟨x, h2, hR⟩⟩, rfl⟩)
     _ _ _ _ _ h (Tab.idU_wf hrest wX) (Tab.nil_wf hP0 wX) (Tab.zero_wf hz)
-    (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
-    (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
+    (fun k a b ha hb => ((Tab.idU_holds hrest wX k a).1 ha).1.symm.trans ((Tab.idU_holds hrest wX k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest wX k k).2 ⟨rfl, ((Tab.nil_holds hP0 wX k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
   constructor
   · rintro ⟨r, v, hr, hv, hW⟩
-    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest xs r).1 hr
-    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 xs v).1 hv
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest wX xs r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 wX xs v).1 hv
     obtain ⟨zs, rfl, hl, hz⟩ := (hfold _ _ _).1 hW
     exact ⟨hi, by simpa using hl, by simpa using hz⟩
   · rintro ⟨hi, hl, hz⟩
-    exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
+    exact ⟨xs, [], (Tab.idU_holds hrest wX xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 wX xs []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 ⟨ys, by simp, hl, hz⟩⟩
 
 /-- **`Vals.cells` places any payload under one layout**: its `lo` and `hi` read only the widths `w`. -/
@@ -1077,16 +1077,16 @@ theorem Tab.flatten_holds {B : Obj} {n : USize} {X : Vals (.arr (.arr B)) n} {re
       · rintro ⟨q, hq, rfl⟩; obtain ⟨h1, h2⟩ := (Tab.pair_holds hp wS wel k q).1 hq; exact ⟨q.1, q.2, h1, h2, rfl⟩
       · rintro ⟨v, x, h1, h2, rfl⟩; exact ⟨(v, x), (Tab.pair_holds hp wS wel k (v, x)).2 ⟨h1, h2⟩, rfl⟩)
     _ _ _ _ _ h (Tab.idU_wf hrest wX) (Tab.nil_wf hP0 wX) (Tab.zero_wf hz)
-    (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
-    (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
+    (fun k a b ha hb => ((Tab.idU_holds hrest wX k a).1 ha).1.symm.trans ((Tab.idU_holds hrest wX k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest wX k k).2 ⟨rfl, ((Tab.nil_holds hP0 wX k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
   constructor
   · rintro ⟨r, v, hr, hv, hW⟩
-    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest xss r).1 hr
-    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 xss v).1 hv
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest wX xss r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 wX xss v).1 hv
     exact ⟨hi, by simpa using (hfold _ _ _).1 hW⟩
   · rintro ⟨hi, rfl⟩
-    exact ⟨xss, [], (Tab.idU_holds hrest xss xss).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xss []).2 ⟨hi, rfl⟩,
+    exact ⟨xss, [], (Tab.idU_holds hrest wX xss xss).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 wX xss []).2 ⟨hi, rfl⟩,
       (hfold _ _ _).2 (by simp)⟩
 
 /-- **`R ≫ outl`, `R ≫ outr`, `R ≫ cons°`** on the values of `R` (`outl R.val`, `outr R.val`, `uncons R.val`). -/
@@ -1094,17 +1094,17 @@ theorem Tab.comp_outl {K A C : Obj} {R : Tab K (.prod A C)} {o : Tab (.prod A C)
     (ho : Tab.outl R.val = .ok o) (h : R.comp o = .ok T) (wR : R.WF) (k : K.El) (a : A.El) :
     T.Holds k a ↔ ∃ v, R.Holds k v ∧ a = v.1 := by
   rw [Tab.comp_holds h wR (Tab.outl_wf ho wR.2)]
-  refine ⟨fun ⟨v, hv, h2⟩ => ⟨v, hv, ((Tab.outl_holds ho v a).1 h2).2⟩, fun ⟨v, hv, e⟩ => ⟨v, hv, ?_⟩⟩
+  refine ⟨fun ⟨v, hv, h2⟩ => ⟨v, hv, ((Tab.outl_holds ho wR.2 v a).1 h2).2⟩, fun ⟨v, hv, e⟩ => ⟨v, hv, ?_⟩⟩
   obtain ⟨i, _, hi⟩ := hv
-  exact (Tab.outl_holds ho v a).2 ⟨⟨i, hi⟩, e⟩
+  exact (Tab.outl_holds ho wR.2 v a).2 ⟨⟨i, hi⟩, e⟩
 
 theorem Tab.comp_outr {K A C : Obj} {R : Tab K (.prod A C)} {o : Tab (.prod A C) C} {T : Tab K C}
     (ho : Tab.outr R.val = .ok o) (h : R.comp o = .ok T) (wR : R.WF) (k : K.El) (c : C.El) :
     T.Holds k c ↔ ∃ v, R.Holds k v ∧ c = v.2 := by
   rw [Tab.comp_holds h wR (Tab.outr_wf ho wR.2)]
-  refine ⟨fun ⟨v, hv, h2⟩ => ⟨v, hv, ((Tab.outr_holds ho v c).1 h2).2⟩, fun ⟨v, hv, e⟩ => ⟨v, hv, ?_⟩⟩
+  refine ⟨fun ⟨v, hv, h2⟩ => ⟨v, hv, ((Tab.outr_holds ho wR.2 v c).1 h2).2⟩, fun ⟨v, hv, e⟩ => ⟨v, hv, ?_⟩⟩
   obtain ⟨i, _, hi⟩ := hv
-  exact (Tab.outr_holds ho v c).2 ⟨⟨i, hi⟩, e⟩
+  exact (Tab.outr_holds ho wR.2 v c).2 ⟨⟨i, hi⟩, e⟩
 
 theorem Tab.comp_uncons {K C : Obj} {R : Tab K (.arr C)} {u : Tab (.arr C) (.prod C (.arr C))}
     {T : Tab K (.prod C (.arr C))} (hu : Tab.uncons R.val = .ok u) (h : R.comp u = .ok T) (wR : R.WF) (k : K.El)
@@ -1179,16 +1179,16 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
   have hrest' : ∀ p r, rest.Holds p r ↔ (∃ x, P.Holds x p) ∧ r = p.1 ++ p.2 := fun p r => by
     rw [Tab.cat_holds hrest wD]
     constructor
-    · rintro ⟨p', hp', rfl⟩; obtain ⟨rfl, hx⟩ := (Tab.ran_holds hD p p').1 hp'; exact ⟨hx, rfl⟩
-    · rintro ⟨hx, rfl⟩; exact ⟨p, (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩, rfl⟩
+    · rintro ⟨p', hp', rfl⟩; obtain ⟨rfl, hx⟩ := (Tab.ran_holds hD wP.2 p p').1 hp'; exact ⟨hx, rfl⟩
+    · rintro ⟨hx, rfl⟩; exact ⟨p, (Tab.ran_holds hD wP.2 p p).2 ⟨rfl, hx⟩, rfl⟩
   have hP0' : ∀ p v, P0.Holds p v ↔ (∃ x, P.Holds x p) ∧ v = (p, []) := fun p v => by
     rw [Tab.pair_holds hP0 wD (Tab.nil_wf hn0 wD.1)]
     constructor
     · rintro ⟨h1, h2⟩
-      obtain ⟨e, hx⟩ := (Tab.ran_holds hD p v.1).1 h1
+      obtain ⟨e, hx⟩ := (Tab.ran_holds hD wP.2 p v.1).1 h1
       exact ⟨hx, Prod.ext e.symm ((Tab.nil_holds hn0 p v.2).1 h2).2⟩
     · rintro ⟨hx, rfl⟩
-      have h1 := (Tab.ran_holds hD p p).2 ⟨rfl, hx⟩
+      have h1 := (Tab.ran_holds hD wP.2 p p).2 ⟨rfl, hx⟩
       obtain ⟨i, hi, -⟩ := id h1
       exact ⟨h1, (Tab.nil_holds hn0 p []).2 ⟨⟨i, hi⟩, rfl⟩⟩
   have hfold : ∀ (c : List B.El) (v : (Obj.prod (.prod (.arr B) (.arr B)) (.arr B)).El) w,
@@ -1302,16 +1302,16 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
       -- `l`: the keys whose heads `(a, b)` `Q` takes on the diagonal (`diag_holds`)
       have hl' : ∀ k k', l.Holds k k' ↔ k = k' ∧ ∃ e : (Obj.prod B B).El,
           (a.Holds k e.1 ∧ b.Holds k e.2) ∧ TQ e e := fun k k' => by
-        simp only [Tab.dom_holds hl, Tab.comp_holds hhc wh wqt]
+        simp only [Tab.dom_holds hl (Tab.comp_wf hhc wh wqt).1, Tab.comp_holds hhc wh wqt]
         refine and_congr_right fun _ => ?_
-        have hd := Tab.diag_holds hq hqw (fun e e' h => ((Tab.ran_holds hhr e e').1 h).1) whr hqt
+        have hd := Tab.diag_holds hq hqw (fun e e' h => ((Tab.ran_holds hhr wh.2 e e').1 h).1) whr hqt
         constructor
         · rintro ⟨c, e, he, hqc⟩
           obtain ⟨-, -, t⟩ := (hd e c).1 hqc
           exact ⟨e, (Tab.pair_holds hhp wa wb k e).1 he, t⟩
         · rintro ⟨e, he, t⟩
           have he' := (Tab.pair_holds hhp wa wb k e).2 he
-          exact ⟨e, e, he', (hd e e).2 ⟨rfl, (Tab.ran_holds hhr e e).2 ⟨rfl, k, he'⟩, t⟩⟩
+          exact ⟨e, e, he', (hd e e).2 ⟨rfl, (Tab.ran_holds hhr wh.2 e e).2 ⟨rfl, k, he'⟩, t⟩⟩
       -- `tx`, `ty` are coreflexive: a row of `tx ≫ sx` at `k` is a row of `sx` at `k`
       have hc1' : ∀ s, c1.Holds k s ↔ tx.Holds k k ∧ sx.Holds k s := fun s => by
         rw [Tab.comp_holds hc1 wtx wsx]
@@ -1319,15 +1319,15 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
         obtain rfl : k = k' := by
           rcases (Tab.union_holds htx wl wdd k k').1 h1 with h3 | h3
           · exact ((hl' k k').1 h3).1
-          · exact ((Tab.dom_holds hdux k k').1 ((Tab.diff_holds hdd wdux wdy k k').1 h3).1).1
+          · exact ((Tab.dom_holds hdux wux.1 k k').1 ((Tab.diff_holds hdd wdux wdy k k').1 h3).1).1
         exact ⟨h1, h2⟩
       have hc2' : ∀ s, c2.Holds k s ↔ ty.Holds k k ∧ sy.Holds k s := fun s => by
         rw [Tab.comp_holds hc2 wty wsy]
         refine ⟨fun ⟨k', h1, h2⟩ => ?_, fun ⟨h1, h2⟩ => ⟨k, h1, h2⟩⟩
-        obtain rfl : k = k' := ((Tab.dom_holds hdy k k').1 ((Tab.diff_holds hty wdy wl k k').1 h1).1).1
+        obtain rfl : k = k' := ((Tab.dom_holds hdy wuy.1 k k').1 ((Tab.diff_holds hty wdy wl k k').1 h1).1).1
         exact ⟨h1, h2⟩
       simp only [Tab.union_holds hT (Tab.comp_wf hc1 wtx wsx) (Tab.comp_wf hc2 wty wsy), hc1', hc2',
-        Tab.union_holds htx wl wdd, Tab.diff_holds hdd wdux wdy, Tab.diff_holds hty wdy wl, Tab.dom_holds hdy,
+        Tab.union_holds htx wl wdd, Tab.diff_holds hdd wdux wdy, Tab.diff_holds hty wdy wl, Tab.dom_holds hdy wuy.1,
         Tab.dom_holds hdux, hl', Tab.pair_holds hsx wp1 (Tab.snoc_wf hsa wpa), Tab.pair_holds hp1 wxr wy,
         Tab.snoc_holds hsa wpa, Tab.pair_holds hpa wac wa, Tab.pair_holds hsy wp2 (Tab.snoc_wf hsb wpb),
         Tab.pair_holds hp2 wx wyr, Tab.snoc_holds hsb wpb, Tab.pair_holds hpb wac wb, Tab.comp_outr ho7 hxr wux,
@@ -1476,12 +1476,12 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
       have wun1 := Tab.union_wf hun1 wcl wuc
       have hx': ∀ e a, x.Holds e a ↔ (∃ k, p.Holds k e) ∧ a = e.1 := fun e a => by
         rw [Tab.comp_outl ho1 hx wE]
-        exact ⟨fun ⟨v, hv, ha⟩ => by obtain ⟨rfl, hk⟩ := (Tab.ran_holds hE e v).1 hv; exact ⟨hk, ha⟩,
-          fun ⟨hk, ha⟩ => ⟨e, (Tab.ran_holds hE e e).2 ⟨rfl, hk⟩, ha⟩⟩
+        exact ⟨fun ⟨v, hv, ha⟩ => by obtain ⟨rfl, hk⟩ := (Tab.ran_holds hE wp.2 e v).1 hv; exact ⟨hk, ha⟩,
+          fun ⟨hk, ha⟩ => ⟨e, (Tab.ran_holds hE wp.2 e e).2 ⟨rfl, hk⟩, ha⟩⟩
       have hys' : ∀ e l, ys.Holds e l ↔ (∃ k, p.Holds k e) ∧ l = e.2 := fun e l => by
         rw [Tab.comp_outr ho2 hys wE]
-        exact ⟨fun ⟨v, hv, ha⟩ => by obtain ⟨rfl, hk⟩ := (Tab.ran_holds hE e v).1 hv; exact ⟨hk, ha⟩,
-          fun ⟨hk, ha⟩ => ⟨e, (Tab.ran_holds hE e e).2 ⟨rfl, hk⟩, ha⟩⟩
+        exact ⟨fun ⟨v, hv, ha⟩ => by obtain ⟨rfl, hk⟩ := (Tab.ran_holds hE wp.2 e v).1 hv; exact ⟨hk, ha⟩,
+          fun ⟨hk, ha⟩ => ⟨e, (Tab.ran_holds hE wp.2 e e).2 ⟨rfl, hk⟩, ha⟩⟩
       have hu' : ∀ e (c : (Obj.prod B (.arr B)).El), u.Holds e c ↔ (∃ k, p.Holds k e) ∧ e.2 = c.1 :: c.2 :=
         fun e c => by
           rw [Tab.comp_uncons ho3 hu wys]
@@ -1496,31 +1496,31 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
         exact ⟨fun ⟨c, hc, ha⟩ => by obtain ⟨hk, he⟩ := (hu' e c).1 hc; subst ha; exact ⟨hk, c.1, he⟩,
           fun ⟨hk, a, he⟩ => ⟨(a, l), (hu' e _).2 ⟨hk, he⟩, rfl⟩⟩
       have hdu' : ∀ e e', du.Holds e e' ↔ e = e' ∧ (∃ k, p.Holds k e) ∧ e.2 ≠ [] := fun e e' => by
-        rw [Tab.dom_holds hdu]
+        rw [Tab.dom_holds hdu wu.1]
         refine and_congr_right fun _ => ⟨fun ⟨c, hc⟩ => ?_, fun ⟨hk, hne⟩ => ?_⟩
         · obtain ⟨hk, he⟩ := (hu' e c).1 hc; exact ⟨hk, by rw [he]; exact List.cons_ne_nil _ _⟩
         · obtain ⟨a, l, he⟩ := List.exists_cons_of_ne_nil hne; exact ⟨(a, l), (hu' e _).2 ⟨hk, he⟩⟩
       -- `up`, `down`: the pairs whose `(x, b)`, `(b, x)` `Q` takes on the diagonal (`diag_holds`)
       have hup' : ∀ e e', up.Holds e e' ↔ e = e' ∧ ∃ c, b.Holds e c ∧ (∃ k, p.Holds k e) ∧ le e.1 c = true :=
         fun e e' => by
-          simp only [Tab.dom_holds hup, Tab.comp_holds hca wab wqa]
-          have hd := Tab.diag_holds hq hqw (fun c c' h => ((Tab.ran_holds habr c c').1 h).1) wabr hqa
+          simp only [Tab.dom_holds hup (Tab.comp_wf hca wab wqa).1, Tab.comp_holds hca wab wqa]
+          have hd := Tab.diag_holds hq hqw (fun c c' h => ((Tab.ran_holds habr wab.2 c c').1 h).1) wabr hqa
           refine and_congr_right fun _ => ⟨fun ⟨y, c, hc, hy⟩ => ?_, fun ⟨c, hc, hk, hl⟩ => ?_⟩
           · obtain ⟨h1, h2⟩ := (Tab.pair_holds hab wx wb e c).1 hc
             obtain ⟨hk, he1⟩ := (hx' e _).1 h1
             exact ⟨c.2, h2, hk, decide_eq_true (by rw [← he1]; exact ((hd c y).1 hy).2.2)⟩
           · have hc' := (Tab.pair_holds hab wx wb e (e.1, c)).2 ⟨(hx' e _).2 ⟨hk, rfl⟩, hc⟩
-            exact ⟨_, _, hc', (hd _ _).2 ⟨rfl, (Tab.ran_holds habr _ _).2 ⟨rfl, e, hc'⟩, of_decide_eq_true hl⟩⟩
+            exact ⟨_, _, hc', (hd _ _).2 ⟨rfl, (Tab.ran_holds habr wab.2 _ _).2 ⟨rfl, e, hc'⟩, of_decide_eq_true hl⟩⟩
       have hdown' : ∀ e e', down.Holds e e' ↔ e = e' ∧ ∃ c, b.Holds e c ∧ (∃ k, p.Holds k e) ∧ le c e.1 = true :=
         fun e e' => by
-          simp only [Tab.dom_holds hdown, Tab.comp_holds hcb wba wqb]
-          have hd := Tab.diag_holds hq hqw (fun c c' h => ((Tab.ran_holds hbar c c').1 h).1) wbar hqb
+          simp only [Tab.dom_holds hdown (Tab.comp_wf hcb wba wqb).1, Tab.comp_holds hcb wba wqb]
+          have hd := Tab.diag_holds hq hqw (fun c c' h => ((Tab.ran_holds hbar wba.2 c c').1 h).1) wbar hqb
           refine and_congr_right fun _ => ⟨fun ⟨y, c, hc, hy⟩ => ?_, fun ⟨c, hc, hk, hl⟩ => ?_⟩
           · obtain ⟨h1, h2⟩ := (Tab.pair_holds hba wb wx e c).1 hc
             obtain ⟨hk, he1⟩ := (hx' e _).1 h2
             exact ⟨c.1, h1, hk, decide_eq_true (by rw [← he1]; exact ((hd c y).1 hy).2.2)⟩
           · have hc' := (Tab.pair_holds hba wb wx e (c, e.1)).2 ⟨hc, (hx' e _).2 ⟨hk, rfl⟩⟩
-            exact ⟨_, _, hc', (hd _ _).2 ⟨rfl, (Tab.ran_holds hbar _ _).2 ⟨rfl, e, hc'⟩, of_decide_eq_true hl⟩⟩
+            exact ⟨_, _, hc', (hd _ _).2 ⟨rfl, (Tab.ran_holds hbar wba.2 _ _).2 ⟨rfl, e, hc'⟩, of_decide_eq_true hl⟩⟩
       -- `lone`, `up`, `down` are coreflexive: a row of `C ≫ S` at `e` is a row of `S` at `e`
       have hco : ∀ {Z : Obj} {C : Tab (Obj.prod B (.arr B)) (Obj.prod B (.arr B))} {S T : Tab (Obj.prod B (.arr B)) Z},
           (∀ e e', C.Holds e e' → e = e') → C.WF → S.WF → C.comp S = .ok T →
@@ -1530,7 +1530,7 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
           exact ⟨fun ⟨e', h1, h2⟩ => by obtain rfl := hc _ _ h1; exact ⟨h1, h2⟩, fun ⟨h1, h2⟩ => ⟨e, h1, h2⟩⟩
       have hlc : ∀ e e', lone.Holds e e' → e = e' := fun e e' h => by
         rcases (Tab.union_holds hlone wed wd2 e e').1 h with h | h
-        · exact ((Tab.ran_holds hE e e').1 ((Tab.diff_holds hed wE wdu e e').1 h).1).1
+        · exact ((Tab.ran_holds hE wp.2 e e').1 ((Tab.diff_holds hed wE wdu e e').1 h).1).1
         · exact ((hdu' e e').1 ((Tab.diff_holds hd1 wdu wup e e').1 ((Tab.diff_holds hd2 wd1 wdown e e').1 h).1).1).1
       have hcl' : ∀ e v, cl.Holds e v ↔ lone.Holds e e ∧ v = e.1 :: e.2 := fun e v => by
         rw [Tab.cons_holds hcl wlone]
@@ -1555,16 +1555,16 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
         have he := (Tab.pair_holds hp wel wS k (a, v)).2 ⟨ha, hv⟩
         exact ⟨(a, v), he, (hr _ v').2 ⟨⟨k, he⟩, hs⟩⟩)
     _ _ _ _ _ h (Tab.idU_wf hrest hX) (Tab.nil_wf hP0 hX) (Tab.zero_wf hz)
-    (fun k a b ha hb => ((Tab.idU_holds hrest k a).1 ha).1.symm.trans ((Tab.idU_holds hrest k b).1 hb).1)
-    (fun k v hv => ⟨k, (Tab.idU_holds hrest k k).2 ⟨rfl, ((Tab.nil_holds hP0 k v).1 hv).1⟩, trivial⟩)
+    (fun k a b ha hb => ((Tab.idU_holds hrest wX k a).1 ha).1.symm.trans ((Tab.idU_holds hrest wX k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest wX k k).2 ⟨rfl, ((Tab.nil_holds hP0 wX k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
   constructor
   · rintro ⟨r, v, hr, hv, ⟨ys, hy, ⟨_, h0⟩, hS, hw⟩⟩
-    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest xs r).1 hr
-    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 xs v).1 hv
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest wX xs r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 wX xs v).1 hv
     exact ⟨hi, ys, hy, h0, hS, hw⟩
   · rintro ⟨hi, ys, hy, h0, hS, hw⟩
-    exact ⟨xs, [], (Tab.idU_holds hrest xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 xs []).2 ⟨hi, rfl⟩,
+    exact ⟨xs, [], (Tab.idU_holds hrest wX xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 wX xs []).2 ⟨hi, rfl⟩,
       ys, hy, ⟨[], h0⟩, hS, hw⟩
 
 namespace GenK
@@ -1590,7 +1590,7 @@ theorem elemsTest_sound {B C : Obj} {R : Rel B B} {T : Core.Rel (Obj.El B) (Obj.
       ⟨(Tab.ran_wf hk (Tab.mem_wf hM wX)).1, trivial, trivial⟩
     have ha := (reps_iff _ _ _).1 (hR _ kP) P hP
     have hPT : ∀ x ∈ xs, (∃ y, P.Holds x y) ↔ ∃ y, T x y := fun x hm => by
-      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM wX xs x).2 ⟨hi, hm⟩⟩
+      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk (Tab.mem_wf hM wX).2 x x).2 ⟨rfl, xs, (Tab.mem_holds hM wX xs x).2 ⟨hi, hm⟩⟩
       exact exists_congr fun y => ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl trivial
     show t.Holds xs ys ↔ _
     rw [hf h (wR.runE kP hP) wX, and_iff_right hi, hF _ _ xs fun x hm => decide_eq_decide.2 (hPT x hm)]
@@ -1632,7 +1632,7 @@ theorem map_sound {A B : Obj} {R : Rel A B} {T : Core.Rel (Obj.El A) (Obj.El B)}
       ⟨(Tab.ran_wf hk (Tab.mem_wf hM wX)).1, trivial, trivial⟩
     have ha := (reps_iff _ _ _).1 (hR _ kP) P hP
     have hPT : ∀ x ∈ xs, ∀ y, P.Holds x y ↔ T x y := fun x hm y => by
-      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk x x).2 ⟨rfl, xs, (Tab.mem_holds hM wX xs x).2 ⟨hi, hm⟩⟩
+      obtain ⟨j, hj, -⟩ := (Tab.ran_holds hk (Tab.mem_wf hM wX).2 x x).2 ⟨rfl, xs, (Tab.mem_holds hM wX xs x).2 ⟨hi, hm⟩⟩
       exact ha x y ((side_some rfl x).2 ⟨j, hj⟩) rfl trivial
     show t.Holds xs ys ↔ _
     rw [Tab.map_holds h (wR.runE kP hP) wX, and_iff_right hi]
@@ -1659,8 +1659,8 @@ theorem loop_sound {X Y : Obj} {F : Rel (.prod X Y) X} {TF : Core.Rel (Obj.El (.
     refine (Tab.loop_holds hFw hF' h (Tab.idU_wf hD wV) p c).trans ?_
     rw [← foldDen_iter]
     constructor
-    · rintro ⟨p', hp', hW⟩; obtain ⟨rfl, -⟩ := (Tab.idU_holds hD p p').1 hp'; exact hW
-    · exact fun hW => ⟨p, (Tab.idU_holds hD p p).2 ⟨rfl, (side_some hK p).1 hx⟩, hW⟩
+    · rintro ⟨p', hp', hW⟩; obtain ⟨rfl, -⟩ := (Tab.idU_holds hD wV p p').1 hp'; exact hW
+    · exact fun hW => ⟨p, (Tab.idU_holds hD wV p p).2 ⟨rfl, (side_some hK p).1 hx⟩, hW⟩
 
 end GenK
 
