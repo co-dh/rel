@@ -483,7 +483,7 @@ theorem ordAt_int {t : QAtomicType} (h : t.intOrd = true) : OrdAt t :=
     `Tab.cmpPairs` its code, `Tab.cmpPairs_holds`): `ltAt t` is `Obj.lt` there (`ordAt_int`). -/
 theorem Tm.lt_row_den (ρ : Val) {t : QAtomicType} (h : t.intOrd = true) :
     ordDen true (.atom t) = (Tm.ltDef (.atom t)).den ρ := by
-  rw [Tm.lt_den]; funext p q; simp only [ordDen, if_true, (ordAt_int h).1]
+  rw [Tm.lt_den]; funext p q; apply propext; rw [ordDen_iff]; simp only [if_true, (ordAt_int h).1]
 
 /-- Only an atom with an order code (`ascOrd`) can have canon's order be `ltAt`: `u1`'s `false < true` has
 no `ltAt`, and a `general` value is not `leAt` itself. -/

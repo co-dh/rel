@@ -14,16 +14,13 @@ Rel.Core.Rel.union
 Rel.Core.Rel.zero
 Rel.Hylo.rounds
 Rel.Lang.atDen
-Rel.Lang.atOn
 Rel.Lang.castDen
 Rel.Lang.diffDen
 Rel.Lang.EDen
 Rel.Lang.estDen
 Rel.Lang.faddDen
-Rel.Lang.flatDen
 Rel.Lang.floatDen
 Rel.Lang.foldDen
-Rel.Lang.foldIDen
 Rel.Lang.foldrDen
 Rel.Lang.frontDen
 Rel.Lang.froundDen
@@ -36,7 +33,6 @@ Rel.Lang.mapDen
 Rel.Lang.mixOn
 Rel.Lang.nilDen
 Rel.Lang.nulStep
-Rel.Lang.ordDen
 Rel.Lang.ordRelDen
 Rel.Lang.rowDens
 Rel.Lang.stepAt

@@ -82,8 +82,20 @@ abbrev atDen (k : Nat) : Core.Rel (Obj.El (.arr B)) (Obj.El B) := fun xs x => �
 
 /-- The row `at` at `A×N ⟶ A`'s arrays: at `i64` the pair `(xs, k)` to `xs[k]` for a nonneg `k` (`atDen`), `𝟘` elsewhere. -/
 def atOn (B : Obj) : (N : Obj) → Core.Rel (Obj.El (.prod (.arr B) N)) (Obj.El B)
-  | .atom .i64 => fun p x => 0 ≤ p.2.toInt ∧ atDen p.2.toInt.toNat p.1 x
-  | _ => fun _ _ => False
+  | .atom .i64 => rpair (graph Prod.snd ≫ graph Int64.toInt ≫ (graph Int.ofNat)°) (graph Prod.fst) ≫
+      keyOf atDen ≫ graph Prod.snd
+  | _ => 𝟘
+
+theorem atOn_iff (p : Obj.El (.prod (.arr B) (.atom .i64))) (x : Obj.El B) :
+    atOn B (.atom .i64) p x ↔ 0 ≤ p.2.toInt ∧ atDen p.2.toInt.toNat p.1 x := by
+  constructor
+  · rintro ⟨q, ⟨⟨_, rfl, _, rfl, hk⟩, hq⟩, r, ⟨hr, hat⟩, rfl⟩
+    have hk : p.2.toInt = Int.ofNat q.1 := hk
+    have hq : q.2 = p.1 := hq
+    refine ⟨by rw [hk]; exact Int.natCast_nonneg _, ?_⟩
+    rw [hk, ← hq]; exact hat
+  · rintro ⟨h0, hat⟩
+    exact ⟨(p.2.toInt.toNat, p.1), ⟨⟨_, rfl, _, rfl, (Int.toNat_of_nonneg h0).symm⟩, rfl⟩, (_, x), ⟨rfl, hat⟩, rfl⟩
 
 /-- `succ` on the universe `TU`: `u` and its successor both in it. -/
 abbrev succDen (TU : Core.Rel (Obj.El .long) (Obj.El .long)) : Core.Rel (Obj.El .long) (Obj.El .long) :=
@@ -166,25 +178,19 @@ abbrev foldDen {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel 
     is `S` at `i`, keeping the key. -/
 abbrev foldIDen {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) :
     Core.Rel (Obj.El (.prod I (.arr E))) (Obj.El V) :=
-  fun p w => foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS ((p.1, q.1), q.2) (p.1, v)) p.2 w
+  ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
+    (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
+      (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
+      (TS ∩ (graph Prod.fst ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd
 
 /-- `foldIDen` is one `foldDen` on the carrier `I×V`: start `ran⟨𝟙, Te ≫ π₂⟩`, step `TS` met with
-    `π₁ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`. -/
-theorem foldIDen_eq {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) :
-    foldIDen Te TS =
-      ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
-        (graph Prod.snd ≫ foldDen (E := E) (V := .prod I V)
-          (𝟙 _ ∩ (rpair (𝟙 _) (Te ≫ graph Prod.snd))° ≫ (rpair (𝟙 _) (Te ≫ graph Prod.snd))°°)
-          (TS ∩ (graph Prod.fst ≫ graph Prod.fst ≫ (graph Prod.fst)°)))) ≫ graph Prod.snd := by
-  refine Core.Rel.ext fun p w => ?_
+    `π₁ ≫ π₁ ≫ π₁°` (the step keeps the index), its result's index met with the key's, then `π₂`; at a pair it is the
+    `foldDen` of the family at the key. -/
+theorem foldIDen_iff {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) (p : Obj.El (.prod I (.arr E))) (w : Obj.El V) :
+    foldIDen Te TS p w ↔ foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS ((p.1, q.1), q.2) (p.1, v)) p.2 w := by
   simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
     Core.Rel.id]
   constructor
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    refine ⟨(p.1, ys[p.2.length]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
-      ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
-    all_goals simp
-    simpa using hS t (by simpa using ht)
   · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩, rfl⟩
     -- the step keeps the index, so every value of the chain carries the seed's, which the result's is the key's
     have hz0 : ∀ t (ht : t < zs.length), zs[t].1 = zs[0].1 := by
@@ -207,10 +213,21 @@ theorem foldIDen_eq {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))
       simp only [List.getElem_map]
       rw [h1, h0]
       exact h
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
+    refine ⟨(p.1, ys[p.2.length]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
+      ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
+    all_goals simp
+    simpa using hS t (by simpa using ht)
 
 
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation of the key and the source. -/
-abbrev flatDen {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B))) : Core.Rel (Obj.El (.prod I A)) (Obj.El B) := fun x b => T x.1 (x.2, b)
+abbrev flatDen {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B))) : Core.Rel (Obj.El (.prod I A)) (Obj.El B) :=
+  ((graph Prod.fst ≫ T) ∩ (graph Prod.snd ≫ (graph Prod.fst)°)) ≫ graph Prod.snd
+
+theorem flatDen_iff {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B))) (x : Obj.El (.prod I A)) (b : Obj.El B) :
+    flatDen T x b ↔ T x.1 (x.2, b) :=
+  ⟨fun ⟨p, ⟨⟨_, rfl, hT⟩, _, rfl, hp⟩, hb⟩ => by obtain ⟨a, c⟩ := p; cases hp; cases hb; exact hT,
+   fun h => ⟨(x.2, b), ⟨⟨_, rfl, h⟩, _, rfl, rfl⟩, rfl⟩⟩
 
 
 /-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
@@ -413,8 +430,13 @@ def mixOn : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A)
 /-- An order test of `cmpOps` at `A`: at an atom the coreflexive on the pairs `(a, b)` with `ltAt t a b` (`s`) or
     `leAt t a b`, `𝟘` elsewhere. -/
 def ordDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El (.prod A A))
-  | .atom t => fun p q => q = p ∧ if s then ltAt t p.1 p.2 else leAt t p.1 p.2
-  | _ => fun _ _ => False
+  | .atom t => 𝟙 _ ∩ (graph Prod.fst ≫ (if s then (ltAt t : Core.Rel _ _) else leAt t) ≫ (graph Prod.snd)°)
+  | _ => 𝟘
+
+theorem ordDen_iff (s : Bool) (t : QAtomicType) (p q : Obj.El (.prod (.atom t) (.atom t))) :
+    ordDen s (.atom t) p q ↔ q = p ∧ if s then ltAt t p.1 p.2 else leAt t p.1 p.2 := by
+  cases s <;> exact ⟨fun ⟨h, _, rfl, _, hR, hq⟩ => ⟨h.symm, by cases h; cases hq; exact hR⟩,
+    fun ⟨h, hR⟩ => ⟨h.symm, _, rfl, _, hR, by cases h; rfl⟩⟩
 
 /-- The row `cmpRelRow` at `A` given the universe `U`: `ltDen`/`leqDen` at an atom, `𝟘` elsewhere. -/
 def ordRelDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A) → Core.Rel (Obj.El A) (Obj.El A)
@@ -836,8 +858,8 @@ theorem fold_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El
 
 theorem foldI_le {e e' : Core.Rel (Obj.El C) (Obj.El (.prod B B))} {S S' : Core.Rel (Obj.El (.prod (.prod C B) A)) (Obj.El (.prod C B))} (he : e ⊑ e')
     (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=
-  le_iff.2 fun _ _ h => le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
-    (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ h
+  le_iff.2 fun _ _ h => (foldIDen_iff _ _ _ _).2 (le_iff.1 (fold_le (le_iff.2 fun _ _ h => le_iff.1 he _ _ h)
+    (le_iff.2 fun _ _ h => le_iff.1 hS _ _ h)) _ _ ((foldIDen_iff _ _ _ _).1 h))
 
 end ops
 
@@ -908,7 +930,7 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
     obtain ⟨g, h0, hs, hc⟩ := hm
     exact ⟨g, h0, fun t ht => le_iff.1 hT _ _ (hs t ht), hc⟩
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
-    exact le_iff.1 hT _ _ hm
+    exact (flatDen_iff _ _ _).2 (le_iff.1 hT _ _ ((flatDen_iff _ _ _).1 hm))
   · exact Sem.two_mono foldI_le h
   · dsimp only; refine Sem.one_mono (fun hT => Core.Rel.mu_mono fun _ => le_iff.2 fun _ _ hm => ?_) h
     exact hm.elim .inl fun ⟨b, hb, hx⟩ => .inr ⟨b, le_iff.1 hT _ _ hb, hx⟩

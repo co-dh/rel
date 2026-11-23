@@ -417,7 +417,7 @@ theorem foldI_sound {I E V : Obj} {e : Rel I (.prod V V)} {S : Rel (.prod (.prod
       (fun k q hq => ⟨k.2, (Tab.outr_holds hrest wX k k.2).2
         ⟨((hip k q.1).1 ((Tab.pair_holds hP wi wc1 k q).1 hq).1).1, rfl⟩, trivial⟩)
     have hQ : ∀ a, i.Holds p a ↔ a = p.1 := fun a => (hip p a).trans (and_iff_right hX)
-    refine (Tab.comp_holds h wout (Tab.outr_wf ho2 wout.2) p v).trans (Iff.trans ?_ (foldDen_start _ _ p.2 v).symm)
+    refine (Tab.comp_holds h wout (Tab.outr_wf ho2 wout.2) p v).trans (Iff.trans ?_ ((foldDen_start _ _ p.2 v).symm.trans (foldIDen_iff _ _ p v).symm))
     constructor
     · rintro ⟨w, hw, ho⟩
       obtain ⟨-, rfl⟩ := (Tab.outr_holds ho2 wout.2 w v).1 ho
