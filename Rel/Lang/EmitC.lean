@@ -1198,6 +1198,36 @@ def snocB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
   let tau := (P.n, ← posB, ← mapB .add P.n (← posB) (← wordsB P.n 1), ← repath B ".e" (P.val.drop 1))
   canonT ⟨P.n, P.key, [← cellCatB B P.n x tau]⟩
 
+/-- **`Tab.cat`** (`P ≫ cat`) on the pairs of arrays `P` of `B`: `Vals.cat` of the two array columns, then `canonT`. -/
+def catTabB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
+  let [P] := Ps | throw "cat: not one table"
+  canonT ⟨P.n, P.key, [← cellCatB B P.n (← arrCol "cat" (P.val.take 1)) (← arrCol "cat" (P.val.drop 1))]⟩
+
+/-- **`Tab.cons`**: `(a, xs)` to `[a] ++ xs`, `Vals.cat` after `τ × 𝟙` (`Vals.tau`, as `snocB`'s); then `canonT`. -/
+def consB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
+  let [P] := Ps | throw "cons: not one table"
+  let w := objWidth B
+  let tau := (P.n, ← posB, ← mapB .add P.n (← posB) (← wordsB P.n 1), ← repath B ".e" (P.val.take w))
+  canonT ⟨P.n, P.key, [← cellCatB B P.n tau (← arrCol "cons" (P.val.drop w))]⟩
+
+/-- **`Tab.zip`**: `(xs, ys)` to `xs.zip ys` (`Vals.zip`): the widths `min w₁ w₂` EXPANDed into `(G, u)`, element `u` of
+    cell `G` the pair of `xs`'s payload at `s₁[G] + u` and `ys`'s at `s₂[G] + u`, laid out one cell after another
+    (`Vals.cells`); then `canonT`. -/
+def zipB (A B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
+  let [P] := Ps | throw "zip: not one table"
+  let (m₁, lo₁, hi₁, f₁) ← arrCol "zip" (P.val.take 1)
+  let (m₂, lo₂, hi₂, f₂) ← arrCol "zip" (P.val.drop 1)
+  cellsBoundB "zip" P.n (← call1 (kernel% USize.add) #[m₁, m₂])
+  let (s₁, e₁) ← spanB P.n m₁ lo₁ hi₁
+  let (s₂, e₂) ← spanB P.n m₂ lo₂ hi₂
+  let w ← mapB .min P.n (← mapB .sub P.n e₁ s₁) (← mapB .sub P.n e₂ s₂)
+  let (T, G, u) ← expandB P.n w
+  let x ← gatherCols T (← mapB .add T (← gatherB T G P.n s₁) u) m₁ f₁
+  let y ← gatherCols T (← mapB .add T (← gatherB T G P.n s₂) u) m₂ f₂
+  let (S, _) ← prefixB .add P.n w
+  canonT ⟨P.n, P.key, [.arr "" T (← mapB .sub P.n S w) (← mapB .add P.n S (← wordsB P.n 0))
+    ((← repath A ".e.1" x) ++ (← repath B ".e.2" y))]⟩
+
 /-- **`Tab.peelL`** (`left`) or **`Tab.peelR`** on `rest`, cells of `E`: `rest ≫ cons°` (`snoc°`), its first (last)
     element read now and the rest (`projT`). -/
 def peelB (E : Obj) (left : Bool) (rest : TabB) : Bld (TabB × TabB) := do
@@ -1232,6 +1262,13 @@ def foldRoundsB (peel : TabB → Bld (TabB × TabB)) (step : TabB → TabB → B
       return ((← st R') ++ (← st Q') ++ (← st O')).toArray
     pure (nx, e)
   return (← three s.toList).2.2
+
+/-- **`Tab.flatten`** (`concat`) on the arrays of arrays `X` (`n` rows) of `B`: `foldRoundsB` from `idU X` and `nil X`,
+    each round `(acc, xs) ↦ acc ++ xs` (`catTabB`), their payload's row count plus two rounds; one plan function. -/
+def flattenB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, _, _, _) ← arrCol "flatten" X
+  foldRoundsB (peelB (.arr B) true) (fun acc el => do catTabB B (← pairB (.arr (.arr B)) (.arr B) (.arr B) acc el))
+    (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB n X) (← nilB B n X) (← zeroB (.arr (.arr B)) (.arr B))
 
 /-- **`Tab.map`'s left fold** `⦇nil, ⟨π₁, π₂ ≫ R⟩ ≫ snoc⦈` on the arrays `I = idU X` of `A` (`foldRoundsB`, `peelB`),
     their payload's row count plus two rounds; one plan function per table shape (`funT`). -/
@@ -1503,6 +1540,22 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.snoc then match B with
     | .arr b => do let (n, X) ← known r.sym D.dom; snocB b (← coreflB n X)
     | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
+  else if c == ``Tab.cat then match B with
+    | .arr b => do let (n, X) ← known r.sym D.dom; catTabB b (← coreflB n X)
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
+  else if c == ``Tab.cons then match B with
+    | .arr b => do let (n, X) ← known r.sym D.dom; consB b (← coreflB n X)
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"
+  else if c == ``Tab.zip then match A, B with
+    | .prod (.arr a) (.arr b), .arr (.prod a' b') => do
+      unless a == a' && b == b' do throw s!"row `{r.sym}` (`{c}`) at arrays of {repr a}, {repr b} answering pairs of {repr a'}, {repr b'}"
+      let (n, X) ← known r.sym D.dom; zipB a b (← coreflB n X)
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair of arrays"
+  else if c == ``Tab.flatten then match A, B with
+    | .arr (.arr a), .arr b => do
+      unless a == b do throw s!"row `{r.sym}` (`{c}`) at arrays of arrays of {repr a} answering arrays of {repr b}"
+      let (n, X) ← known r.sym D.dom; flattenB b n X
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array of arrays"
   -- `GenK.onKeys`: `R` run knowing its domain is the keys `i` of the pairs `X` in demand; then `Tab.flat`'s
   -- composition `((outl X ≫ R) ∩ (outr X ≫ (outl R.val)°)) ≫ outr R.val`
   else if c == ``Tab.flat then match A, xs with
