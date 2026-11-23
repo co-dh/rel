@@ -468,18 +468,6 @@ theorem lam_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R
 
 example : ∀ K, K.WF → (GenK.nil A B).Reps K nilDen := ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h
 
-theorem succ_sound {U : Rel .long .long} {TU : Core.Rel Int64 Int64} (hU : ∀ K, K.WF → U.Reps K TU) :
-    ∀ K, K.WF → (GenK.succ U).Reps K (succDen TU) := by
-  unfold GenK.succ after
-  exact ofVals_sound fun _ _ _ _ hK hX h x w hx _ _ => by
-    obtain ⟨D, hD, ht⟩ := bind_ok h
-    have hu : ∀ n (X : Vals .long n) t, U.runE ⟨some ⟨n, X⟩, none, none⟩ = .ok t → ∀ a v, (∃ i, X.row i = a) →
-        (t.Holds a v ↔ TU a v) := fun n X t h a v ha =>
-      (reps_iff _ _ _).1 (hU ⟨some ⟨n, X⟩, none, none⟩ ⟨trivial, trivial, trivial⟩) t h a v ((side_some rfl a).2 ha) rfl trivial
-    refine (Tab.succ_holds hu ht (Tab.idU_wf hD hX) x w).trans
-      ⟨fun ⟨v, hv, h⟩ => ?_, fun h => ⟨x, (Tab.idU_holds hD x x).2 ⟨rfl, (side_some hK x).1 hx⟩, h⟩⟩
-    obtain ⟨rfl, -⟩ := (Tab.idU_holds hD x v).1 hv; exact h
-
 theorem cmp_side {op w : String} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
     {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, K.WF → U.Reps K TU)
     {o : Option ((n : USize) × Vals (.atom t) n)} {k : (n : USize) × Vals (.atom t) n}

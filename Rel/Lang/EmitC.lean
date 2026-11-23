@@ -1371,8 +1371,6 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
       (fun Y => compTB N (tabB ((k, fun _ _ _ => pure Y) :: σ) · b) b.dem) (← tabB σ {} (.zero : Tm A B)))
   | _, _, .leq t U => cmpB (tabB σ · U) "≤" (Tab.ordOp false t) t D
   | _, _, .lt t U => cmpB (tabB σ · U) "<" (Tab.ordOp true t) t D
-  | _, _, .succ U => do let (n, X) ← known "succ" D.dom; succB (tabB σ · U) n X
-  | _, _, .arith t k U => do let (n, X) ← known "arith" D.dom; arithT (tabB σ · U) t k n X
   | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) | A, B, t@(.callCv ..) => argB σ D A B t []
   -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
   | _, _, .ldiv R S UB UC => do
