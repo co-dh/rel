@@ -117,6 +117,13 @@ rel_program native1a where
     cu : N ⟶ [N]×[N] ≜ xs cat°
     pre : N ⟶ [N] ≜ xs cat° π₁
     suf : N ⟶ [N] ≜ xs cat° π₂
+    -- the rows `prefix`, `suffix`, `τ` and the prelude's `last`, `init`, `tail` (`at(0)τ ∩ 𝟙`, `cat°`), on the same cells
+    pfx : N ⟶ [N] ≜ xs prefix
+    sfx : N ⟶ [N] ≜ xs suffix
+    la : N ⟶ N ≜ xs last
+    ini : N ⟶ [N] ≜ xs init
+    tl : N ⟶ [N] ≜ xs tail
+    tw : N ⟶ [[N]] ≜ xs τ
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``native1a "x" "out") >>= Bld.plan
@@ -343,7 +350,9 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("mx", semOut native1a.mx), ("gi", semOut native1a.gi), ("gj", semOut native1a.gj), ("gk", semOut native1a.gk),
    ("gu", semOut native1a.gu), ("gn", semOut native1a.gn), ("gv", semOut native1a.gv),
    ("gx", semOut native1a.gx), ("gy", semOut native1a.gy), ("gz", semOut native1a.gz), ("gw", semOut native1a.gw),("gm", semOut native1a.gm), ("gp", semOut native1a.gp),
-   ("cu", semOut native1a.cu), ("pre", semOut native1a.pre), ("suf", semOut native1a.suf)]
+   ("cu", semOut native1a.cu), ("pre", semOut native1a.pre), ("suf", semOut native1a.suf),
+   ("pfx", semOut native1a.pfx), ("sfx", semOut native1a.sfx), ("la", semOut native1a.la), ("ini", semOut native1a.ini),
+   ("tl", semOut native1a.tl), ("tw", semOut native1a.tw)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
