@@ -77,20 +77,20 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
       hsum]
   -- the count: the fold result is `C m`, `0` with no rows
   have hk : sk.2.getD 0 = (C m.toNat).toUInt64 := by
-    rw [kscan_last (w := 8) rfl hsk]
+    rw [kscan_last (w := 8) rfl (by lockstep) hsk]
     simp only [Bool.false_eq_true, if_false]
     rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
-    · rw [h0, hC]; simp [(colPrefix_raw hP).2.1, h0]
+    · rw [h0, hC]; simp [(colPrefix_raw (by decide) hP).2.1, h0]
     · have := hs (m.toNat - 1) (by omega)
       rw [Nat.sub_add_cancel h0] at this
-      rw [← this, Array.getElem?_eq_getElem (by rw [(colPrefix_raw hP).2.1]; omega)]
+      rw [← this, Array.getElem?_eq_getElem (by rw [(colPrefix_raw (by decide) hP).2.1]; omega)]
   have hKn : K.toNat = C m.toNat := by
     rw [← hK, hk, hc64 _ (by have := hCle m.toNat; omega)]
     exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
   -- the destination: `d[i] = s[i] − b[i] = C i`
   have hdv : ∀ i < m.toNat, (Enc.raw .i64 m d)[i]?.getD 0 = (C i).toUInt64 := by
     intro i hi
-    have := (colMap_raw hd).2.2.2 i hi
+    have := (colMap_raw (by lockstep) hd).2.2.2 i hi
     rw [hs i hi, hbit i hi, hstep] at this
     simp only [Op.eval, Except.ok.injEq] at this
     rw [← this]
@@ -432,7 +432,7 @@ theorem _root_.Rel.raw_foR_cut {t : QAtomicType} {w : Nat} (ht : t.width = some 
 /-- **`kscan`'s answer does not depend on its type `t` but through the `u1` cut**: at a `t` of a width that is not
 `u1` it is the answer at `i64`, whose read keeps every word whole. -/
 theorem _root_.Rel.kscan_i64 {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1)
-    {n : USize} {seg : Option Enc} {es : List Enc} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    {n : USize} {seg : Option Enc} {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
     (h : kscan op rev s t n seg es pre post = .ok r) : ∃ v, kscan op rev s .i64 n seg es pre post = .ok (r.1, v) := by
   unfold kscan at h ⊢
   by_cases hd : kscanRefuses op n es pre post = true
@@ -449,9 +449,12 @@ theorem _root_.Rel.kscan_i64 {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat
   split at h; · cases h
   rename_i out hp
   rw [ht] at h
+  dsimp only at h
+  split at h; · cases h
+  rename_i nl hnl
   simp only [hb, ↓reduceIte, Except.ok.injEq] at h
   subst h
-  exact ⟨_, by simp only [QAtomicType.width, show QAtomicType.i64 ≠ .u1 by decide, ↓reduceIte]; rfl⟩
+  exact ⟨_, by simp only [hnl, QAtomicType.width, show QAtomicType.i64 ≠ .u1 by decide, ↓reduceIte]; rfl⟩
 
 /-- **A segmented `kscan` over runs is a prefix fold per run, at any read type and chains**: `Kk` names each row's run
 (`hruns`) and the segment marks are `0` exactly off the runs' first rows; every word read at `s` goes through
@@ -465,14 +468,15 @@ theorem runScanChain_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀
     (hpost : ∀ a, chain post a = .ok (pf a)) {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
     (hz : ∀ i < n.toNat, pw ((Enc.raw s n zc)[i]?.getD 0) = z)
-    (h4 : kscan op false s t n seg [zc, x] pre post = .ok (sc, v)) :
+    (hs : kscanStream op [(n, zc), (n, x)] pre post = false)
+    (h4 : kscan op false s t n seg [(n, zc), (n, x)] pre post = .ok (sc, v)) :
     (Enc.raw t n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw t n sc)[i]?.getD 0 = UInt64.ofNat ((pf
       ((((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat i).map
         fun q => pw ((Enc.raw s n x)[q]?.getD 0)).foldl fn z)).toNat % 2 ^ (if t = .u1 then 1 else 8 * w)) := by
   have fs := firsts_spec Kk n.toNat
   -- the scan: each row folds its own word into the previous row's, or into `z` on a first row
-  obtain ⟨g, hg, c, cs, hc, out₀, out, hos, hp, he, -, hrow⟩ :=
-    raw_kscanChain op false s t w ht n seg [zc, x] pre post _ h4
+  obtain ⟨g, hg, -, c, cs, hc, out₀, out, hos, hp, he, -, hrow⟩ :=
+    raw_kscanChain op false s t w ht n seg [(n, zc), (n, x)] pre post _ hs h4
   obtain ⟨rfl, -⟩ := rawAll_ok (show rawAll .u1 n seg = .ok g from hg)
   obtain ⟨hl, hP⟩ := mapM_chain hc
   obtain ⟨c1, rfl⟩ : ∃ c1, cs = [c1] := by
@@ -533,12 +537,13 @@ theorem runScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x,
     (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a)
     {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
-    (h3 : colConst n z = .ok zc) (h4 : kscan op false .i64 .i64 n seg [zc, x] = .ok (sc, v)) :
+    (h3 : colConst n z = .ok zc) (hs : kscanStream op [(n, zc), (n, x)] [] [] = false)
+    (h4 : kscan op false .i64 .i64 n seg [(n, zc), (n, x)] = .ok (sc, v)) :
     (Enc.raw .i64 n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw .i64 n sc)[i]?.getD 0 =
       (((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q =
         Verify.groupOf Kk n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
   obtain ⟨hs, hr⟩ := runScanChain_ok (w := 8) hop rfl hruns (pw := id) (pf := id) (fun _ => rfl) (fun _ => rfl) hsu
-    (fun i hi => by rw [colConst_raw h3, Array.getElem?_replicate, if_pos hi]) h4
+    (fun i hi => by rw [colConst_raw h3, Array.getElem?_replicate, if_pos hi]) hs h4
   exact ⟨hs, fun i hi => by rw [hr i hi]; exact ofNat_toNat_mod64 _⟩
 
 /-- **The segment marks of `kseen`'s groups** (`groupFold`'s and `Tab.sums`'s): ones `kscatter`ed to the first rows `f`,
@@ -623,7 +628,8 @@ the total `fn`, group `j`'s word is `fn` folded from `z` over `x` at the rows of
 (`segScan_ok`), so the group's last row is all of it. -/
 theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
     {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
-    {z : UInt64} {seg x o : Enc} (hs : seenSeg n f m.toUSize = .ok seg) (h : groupFold op n g seg m.toUSize z x = .ok o) :
+    {z : UInt64} {seg x o : Enc} (hs : seenSeg n f m.toUSize = .ok seg) (h : groupFold op n g seg m.toUSize z x = .ok o)
+    (ho : op ≠ .first := by decide) :
     (Enc.raw .i64 n g).size = n.toNat ∧ (Enc.raw .i64 m.toUSize o).size = m.toUSize.toNat ∧
       ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
         (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
@@ -634,7 +640,7 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
   rename_i _ zc h3 _ r h4
   obtain ⟨sc, v⟩ := r
   dsimp only at h
-  obtain ⟨-, claim⟩ := runScan_ok hop (kseen_runs hr) (seenSeg_ok hr hs) h3 h4
+  obtain ⟨-, claim⟩ := runScan_ok hop (kseen_runs hr) (seenSeg_ok hr hs) h3 (kscanStream_ne ho _ _ _) h4
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
   have hn := n.toNat_lt_size
   have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
@@ -650,7 +656,7 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
     obtain ⟨hgl, -⟩ := fs.2.2.2.2.2 q hq
     rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kk n.toNat q) (by omega)
   -- the last scatter keeps each group's last row
-  obtain ⟨-, -, hw⟩ := kscatter_words h (kscan_closed h4).2.2
+  obtain ⟨-, -, hw⟩ := kscatter_words h (kscan_lock_closed (kscanStream_ne ho _ _ _) h4).2.2
   obtain ⟨hos', hfin⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw
   have last : ∀ j N', N' ≤ n.toNat →
       (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map ((Enc.raw .i64 n sc)[·]?.getD 0)).foldl (fun _ y => y) z =
@@ -679,12 +685,12 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
 
 /-- A `groupFold` answer holds no null: it scatters a `kscan` answer, which holds none (`kscan_closed`). -/
 theorem groupFold_plain {op : Op} {n : USize} {g seg : Enc} {m : USize} {z : UInt64} {x o : Enc}
-    (h : groupFold op n g seg m z x = .ok o) : hasNul o = false := by
+    (h : groupFold op n g seg m z x = .ok o) (ho : op ≠ .first := by decide) : hasNul o = false := by
   unfold groupFold at h
   simp only [bind, Except.bind] at h
   repeat (split at h; · cases h)
   rename_i _ _ _ _ r h4
-  exact kscatter_plain h (kscan_closed h4).2.2
+  exact kscatter_plain h (kscan_lock_closed (kscanStream_ne ho _ _ _) h4).2.2
 
 /-- A `whereCol` answer holds no null: a gather of a scatter of `pos`, which holds none. -/
 theorem whereCol_plain {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) : hasNul o = false := by
@@ -971,7 +977,7 @@ theorem inter_keep (M : USize) (mn mx o : Enc) (ho : colMap .lt M mn mx = .ok o)
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         ((Enc.raw .i64 M mn)[G]?.getD 0 = 0) ∧ ((Enc.raw .i64 M mx)[G]?.getD 0 = 1)) := by
-  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw (by lockstep) ho
   refine ⟨hs, fun G hG h1 h2 => ?_⟩
   have e := hrow G hG
   generalize (Enc.raw .i64 M mn)[G]?.getD 0 = x at h1 e ⊢
@@ -1001,7 +1007,7 @@ theorem diff_keep (M : USize) (mn mx o : Enc) (ho : colMap .not M mx mx = .ok o)
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         ¬((Enc.raw .i64 M mx)[G]?.getD 0 = 1)) := by
-  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw (by lockstep) ho
   refine ⟨hs, fun G hG _ h2 => ?_⟩
   have e := hrow G hG
   generalize (Enc.raw .i64 M mx)[G]?.getD 0 = y at h2 e ⊢
@@ -1030,7 +1036,7 @@ theorem rdiff_keep (M : USize) (mn mx o : Enc) (ho : colMap .last M mn mn = .ok 
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
       (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
         ¬((Enc.raw .i64 M mn)[G]?.getD 0 = 0)) := by
-  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw (by lockstep) ho
   refine ⟨hs, fun G hG h1 _ => ?_⟩
   have e := hrow G hG
   generalize (Enc.raw .i64 M mn)[G]?.getD 0 = x at h1 e ⊢
