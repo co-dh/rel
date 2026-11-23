@@ -169,7 +169,8 @@ def rank (D : Dict) : Except String (Tab .long .long) := do D.comp (← (← Tab
     taken as it lies and its well-formedness carried over by proof, never re-decided (`Arr.of`) or read. -/
 def symIds {A : Obj} (I : Tab A (.atom .sym)) : Tab A .long :=
   ⟨I.n, I.key, Arr.mk I.val.enc (by
-    have h := I.val.wf; generalize I.val.enc = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])⟩
+    have h := I.val.wf; generalize I.val.enc = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])
+    I.val.plain⟩
 
 /-- q's unenumerate: `unenum(I) = I ≫ D`, the symbol relation `I : A ⟶ sym` with each id replaced by its text in its
     library's dictionary `D`, a composition and no kernel of its own. A symbol column meets only columns of its own
