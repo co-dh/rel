@@ -2,6 +2,7 @@ module
 
 public import Rel.Lang.PreludeRows
 public import Rel.RepSums
+public import Rel.Programs.Prelude
 
 @[expose] public section
 
@@ -54,7 +55,7 @@ theorem Tm.takewhileStep_den (ρ : Val) {B : Obj} (P : Tm B B) (x : B.El) (acc :
     · rintro rfl; exact Or.inr ⟨fun y hy => h ⟨y, hy⟩, rfl⟩
 
 /-- **The definition of `takewhile(P)` means the row**: the longest prefix of `xs` of elements in `dom P`. -/
-theorem Tm.takewhileDef_den (ρ : Val) {B : Obj} (P : Tm B B) (xs ys : Obj.El (.arr B)) :
+theorem Tm.takewhileDef_row (ρ : Val) {B : Obj} (P : Tm B B) (xs ys : Obj.El (.arr B)) :
     (Tm.takewhileDef P).den ρ xs ys ↔
       Prim.den (rowOf "takewhile") (.arr B) (.arr B) [⟨B, B, P.den ρ⟩] xs ys := by
   rw [Prim.den_takewhile]
@@ -72,5 +73,28 @@ theorem Tm.takewhileDef_den (ρ : Val) {B : Obj} (P : Tm B B) (xs ys : Obj.El (.
     | nil => simp
     | cons x xs ih => by_cases hx : ∃ y, P.den ρ x y <;> simp [hx, ih]
   rw [gen]
+
+/-- **`takewhile`'s text means the row** (Q3 = H): the body the prelude elaborates, `prelude.takewhile.body` (its
+    parameter `P` the variable 1), at any objects `σ` (`Tm.instObj`), means the row. As `Tm.filterDef_den`: the seed
+    `ran(uni nil)` and `nil` are both `[]` (`foldrDen_start`), and its rows mean the terms `Tm.takewhileStep` builds. -/
+theorem Tm.takewhileDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
+    {t' : Tm ((Obj.atom .general).inst ph σ).arr ((Obj.atom .general).inst ph σ).arr}
+    (ht : Rel.Programs.prelude.takewhile.body.instObj ph σ = .ok t')
+    (xs ys : Obj.El ((Obj.atom .general).inst ph σ).arr) :
+    t'.den ρ xs ys ↔
+      Prim.den (rowOf "takewhile") ((Obj.atom .general).inst ph σ).arr ((Obj.atom .general).inst ph σ).arr
+        [⟨_, _, (Tm.var 1 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)).den ρ⟩] xs ys := by
+  unfold Rel.Programs.prelude.takewhile.body at ht
+  have hu : Obj.inst ph σ Obj.one = Obj.one := rfl
+  simp only [Tm.instObj, Tm.instObj.fixed, hu, pure, Except.pure, and_self, dite_true, cast_eq] at ht
+  obtain rfl := Except.ok.inj ht
+  rw [← Tm.takewhileDef_row ρ (Tm.var 1)]
+  simp only [Tm.takewhileDef, Tm.takewhileStep, Tm.nil, Tm.den, Tm.argDen, Tm.dom_den, Prim.den_nilRow]
+  erw [Prim.den_ranRow, Prim.den_domRow, Prim.den_cons, Prim.den_nilRow, Prim.den_nilRow]
+  rw [foldrDen_start, foldrDen_start (Te := nilDen)]
+  refine exists_congr fun v => and_congr ?_ Iff.rfl
+  simp [nilDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip, Core.Rel.graph]
+  intro _
+  exact ⟨_, _, ⟨0, by simp [USize.toNat_ofNat]⟩, rfl, rfl⟩
 
 end Rel.Lang
