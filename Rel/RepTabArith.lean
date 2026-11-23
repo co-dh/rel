@@ -378,7 +378,7 @@ theorem nanFlag_spec {t : QAtomicType} {n : USize} {w : Arr t n} {keep : Enc} (h
   subst hW
   rw [if_pos rfl] at hk
   obtain ⟨hg, -, -⟩ := Tab.storeFmt_ne hf
-  obtain ⟨a, ha, -, ew⟩ := Arr.get_raw_atom w hv hg i
+  obtain ⟨a, ha, -, ew⟩ := Arr.get_raw_atom w hg i
   have ew' : w.get i = QAtomicType.ofBits t a := by rw [ew, Tab.of_atomOfBits a hg hf]
   rw [ha, Option.getD_some] at hk
   have hka : wd n keep i = if nulWord ≠ a then 1 else 0 := by
