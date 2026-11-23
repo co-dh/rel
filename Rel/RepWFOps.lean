@@ -460,26 +460,30 @@ theorem muLin_holds {A B : Obj} {what : String} {cap : Nat} {f : Tab A B → Exc
     (∀ a b, Y.Holds a b → M a b) ∧ ∀ a b, F Y.Holds a b → Y.Holds a b := by
   simp only [Tab.muLin, bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at h
   obtain ⟨Z, hZ, r, hr, rfl⟩ := h
-  -- a round: `Δ' = f(Δ) − X` packed, `X' = X ∪ Δ'`
+  -- a round: `T = f(Δ)` packed, `X' = T ∪ X`, `Δ' = T − X` packed (`unionDiff_ok`)
   have round : ∀ s s' : Tab A B × Tab A B, s.1.WF → s.2.WF →
-      (do let D ← (← (← f s.2).diff s.1).pack; pure (← s.1.union D, D) : Except String (Tab A B × Tab A B)) =
+      (do let p ← (← (← f s.2).pack).unionDiff s.1; pure (p.1, ← p.2.pack) : Except String (Tab A B × Tab A B)) =
         .ok s' →
       s'.1.toList.Nodup ∧ s'.1.WF ∧ s'.2.WF ∧ (∀ a b, s'.2.Holds a b ↔ F s.2.Holds a b ∧ ¬s.1.Holds a b) ∧
         s'.1.Holds = fun a b => s.1.Holds a b ∨ s'.2.Holds a b := by
     intro s s' w1 w2 hs
     simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
-    obtain ⟨T, hT, D0, hD0, D, hD, U, hU, rfl⟩ := hs
+    obtain ⟨T, hT, T', hT', p, hp, D, hD, rfl⟩ := hs
     have wT := hfw _ _ hT w2
-    have w0 := diff_wf hD0 wT w1
-    have wD := pack_wf hD w0
-    refine ⟨union_nodup hU, union_wf hU w1 wD, wD, fun a b => ?_,
-      funext fun a => funext fun b => propext (union_holds hU w1 wD a b)⟩
-    rw [pack_holds hD w0, diff_holds hD0 wT w1, hf _ _ w2 hT]
+    have wT' := pack_wf hT' wT
+    obtain ⟨hU, hD0⟩ := unionDiff_ok (show T'.unionDiff s.1 = .ok (p.1, p.2) from hp)
+    have w0 := diff_wf hD0 wT' w1
+    have eD : ∀ a b, D.Holds a b ↔ F s.2.Holds a b ∧ ¬s.1.Holds a b := fun a b => by
+      rw [pack_holds hD w0, diff_holds hD0 wT' w1, pack_holds hT' wT, hf _ _ w2 hT]
+    refine ⟨union_nodup hU, union_wf hU wT' w1, pack_wf hD w0, eD, funext fun a => funext fun b => propext ?_⟩
+    show p.1.Holds a b ↔ s.1.Holds a b ∨ D.Holds a b
+    rw [union_holds hU wT' w1, eD, pack_holds hT' wT, hf _ _ w2 hT]
+    by_cases e : s.1.Holds a b <;> simp [e]
   let I : Tab A B × Tab A B → Prop := fun s => s.1.toList.Nodup ∧ s.1.WF ∧ s.2.WF ∧
     (∀ a b, s.1.Holds a b → M a b) ∧ (∀ a b, s.2.Holds a b → M a b) ∧
     ∀ a b, F s.1.Holds a b → s.1.Holds a b ∨ F s.2.Holds a b
   have keep : ∀ s s', I s →
-      (do let D ← (← (← f s.2).diff s.1).pack; pure (← s.1.union D, D) : Except String (Tab A B × Tab A B)) =
+      (do let p ← (← (← f s.2).pack).unionDiff s.1; pure (p.1, ← p.2.pack) : Except String (Tab A B × Tab A B)) =
         .ok s' → I s' := by
     intro s s' ⟨_, w1, w2, m1, m2, c⟩ hs
     obtain ⟨d, w1', w2', eD, eX⟩ := round s s' w1 w2 hs
