@@ -1607,7 +1607,7 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
     pairB A B C r s
-  | _, _, .own R | _, _, .share _ R => tabB σ D R
+  | _, _, .share _ R => tabB σ D R
   | A, B, .var _ k => match σ.lookup k with
     | some b => b A B D
     | none => throw s!"variable {k}, which no input table or call argument is bound to"
@@ -1629,7 +1629,7 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
       (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
       (fun Y => compTB N (tabB ((k, fun _ _ _ => pure Y) :: σ) · b) b.dem) (← tabB σ {} (.zero : Tm A B)))
-  | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) | A, B, t@(.callCv ..) => argB σ D A B t []
+  | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) => argB σ D A B t []
   -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
   | _, _, .ldiv R S UB UC => do
     ldivSelB ldivB Tab.bitsMax (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UB) (← tabB σ {} UC)
@@ -1655,7 +1655,7 @@ partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
     Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
   | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
   | .share _ R, xs => argB σ D A B R xs
-  | .call ks _ _ b, xs | .callCv ks _ _ _ b _, xs => do
+  | .call ks _ _ _ b, xs => do
     let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
       let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
         fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
