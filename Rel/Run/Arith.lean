@@ -117,6 +117,12 @@ def cmpOps : List (String × Bool) := [("lt", true), ("le", false)]
     test row (`cmpRow`) by its `cmpOps` key. -/
 def ordSym (strict : Bool) : String := if strict then "<" else "≤"
 
+/-- The kernel `Op` of the value verb `k` where `kscan` orders null (`Op.nulFold = some (b, fill)`), with that order:
+    `max` and `min` of `stepCols`. The rule `arithOp` runs on `1+i64` reads this, not the verbs' names. -/
+def nulVerb (k : UInt8) : Option (Op × Op × UInt64) :=
+  (if k == Ew.greater then some Op.max else if k == Ew.lesser then some Op.min else none).bind fun o =>
+    o.nulFold.map fun (b, f) => (o, b, f)
+
 namespace Tab
 
 /-- The error `msg r` at the first row `r` of `X` flagged `1` in `f` (`Tab.keep` keeps row order), none if no row is. -/

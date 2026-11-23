@@ -372,9 +372,20 @@ def floatDen (o : Rel.Kernel.Op) : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B
       (Rel.Kernel.Op.ofF64 u).eval 0 Y = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits u R
   | _, _ => fun _ _ => False
 
+/-- A value verb `k` at `1+i64` where it orders null (`nulVerb k = some (o, b, _)`, `Op.nulFold`): null is below every
+    value, so two values give `Ew.intStep k` of them, and a null beside a value gives the value where `b` is `and`
+    (`max`) and the null where it is `or` (`min`); two nulls give the null. As `maxO`/`minO` of
+    `Rel/Lang/TestNullMaxMin.lean`, which compose the same cases from `inl°`, `inr°` and the atom verb. -/
+def nulStep (k : UInt8) : Core.Rel (Obj.El (.prod (.opt .long) (.opt .long))) (Obj.El (.opt .long)) := fun p w =>
+  ∃ o b f, nulVerb k = some (o, b, f) ∧ match p.1, p.2 with
+    | .inr x, .inr y => w = .inr (Ew.intStep k Alg.nul x y)
+    | .inr x, .inl _ | .inl _, .inr x => b = Op.and ∧ w = .inr x ∨ b ≠ Op.and ∧ w = .inl ()
+    | .inl _, .inl _ => w = .inl ()
+
 /-- A value verb `k` of `arithOps` at `A`: `stepAt` at an atom (`arithDen` with no universe), `𝟘` elsewhere. -/
 def stepOn (k : UInt8) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El A)
   | .atom t => stepAt t k
+  | .opt .long => nulStep k
   | _ => fun _ _ => False
 
 /-- The row `succ` at `A`: at `i64` each value to `Ew.intStep`'s `u + 1` (`succDen` with no universe), `𝟘` elsewhere. -/
