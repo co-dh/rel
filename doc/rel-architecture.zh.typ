@@ -191,6 +191,62 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
 
 #card(c-syn, [改写引理（原 `Tm.Ax`）])[category 律、`°°`、`(RS)° = S°R°`、分配律、`𝟘`、`μ`/`ν` 展开（`ν = S ∩ b[ν]`）：每条写成 `⟦lhs⟧ρ = ⟦rhs⟧ρ`，由 `Rel/Core/` 中 `Core.Rel` 的定理证明；改写 `t₁` 为 `t₂` 只需 `⟦t₁⟧ρ = ⟦t₂⟧ρ`。Rel 只在 `Rel(Set)` 上运行，所以 `Tm.Le`、`Syn`、`Hom.den` 去掉。]
 
+== fused 行的定义文本在 prelude（B10c 设计）
+
+一条规则：行的定义是 prelude 里的一条 `≜`，用语言已有的形式写出，行以 `Prim.prelude` 指名它；不为它加语法、不加类型标注、不加构造子。
+先例后式，`[5 7]` 经 `length` 的定义走一遍：
+
+```
+length : [α] ⟶ β ≜ ⦇[{(∗,0)}, π₁ succ]⦈
+∗ {{(∗,0)}} 0      (0,5) {π₁ succ} 1      (1,7) {π₁ succ} 2      所以 [5 7] {length} 2     // 行 length 读 hi − lo = 2
+```
+
+#tbl(c-syn, (auto, 1.2fr, 1.2fr, 1fr), ([决定], [规则], [理由], [例]),
+  [1 fold 的初值], [初值是关系 `1 ⟶ V`；数就是已有的关系字面量 `{(∗,0)}`。不加语法。它在泛型定义体里先是开放对象、由上下文定在对象变量上，
+    每次使用按该对象的 atom 读词（上文「泛型定义体里的数字面量」，`Elab.litTy`、`litCol`）],
+    [一切皆关系：`⦇[a, S]⦈` 的 `a` 本来就是 `1 ⟶ V`（`concat` 的 `nil`）。读数词的只有 `relLit` 一处（DRY）；`0`、`{0}` 这类新形式是第二个读者],
+    [`sum : [β] ⟶ β ≜ ⦇[{(∗,0)}, plus]⦈`：在 `N`、`0…5`、`−3…3`、f64 上与行 `sum` 同值（已用 probe 验证）],
+  [2 数对象变量], [类型里不写 `num`：`β` 是普通对象变量，体里的数动词（`succ`、`plus`、字面量）作用在它上面，它就是数变量，检查留给每次使用
+    （上文 `ObjInfo.deferred`、`numCheck`）。universe 只有一条规则：对象变量的 universe 是常量的实参（`uniVar`），由调用处按调用的对象给出。
+    行能跑的 atom 仍写在行上（`Prim.num`），由 `useDef` 换上的 `.prim` 节点检查。`build` 在调用处读 universe 只为选 fused / cut / 定义，不再用来造定义项],
+    [文本定义与用户的泛型定义是同一种东西，不能有第二套 universe 读法；`DfnCut` 每次调用读 `uniPart`、`numU` 造项，就是那第二套],
+    [`z : N ⟶ [P]`，`P = 0…5`：`z length` 的 `β` 解为 `P`，常量得到 `𝟙(P)` 为实参；`P` 是初始段，`build` 选 cut `length 𝟙(P)`],
+  [3 float atom 上的 `sum`], [行按 atom 限定它的定义：`sumRow` 的定义文本只在 `t ∉ floatAtoms` 上是它的定义（定理 `Tm.sumDef_den` 的前提）；
+    在 float atom 上 `sum` 是 native 行，含义 `sumDen`，有界对象上按 atom 运算的统一写法切到 universe：`F(u) sum u`。
+    限定写在行上（`Prim.native : List QAtomicType`，B10d 删 `dfns` 时由它接手 `dfns` 里的 float 分支），定理的前提读同一个字段],
+    [§4「power 与 list」的 `sum` 行已定：float 上 `⦇[0, plus]⦈` 每步舍入、`sumDen` 只舍入一次，二者不等。不用两行：q 只有一个 `sum`，
+    `sumDen` 是 `sumAtoms` 上的一个含义。不进 `unproved`：名单只能变短，而这条定理在 f32 上为假],
+    [f32 `[2^24, 1, 1]`：`sumDen` 得 `2^24+2`，fold 得 `2^24`；所以 f32 上运行的是行，不是文本],
+  [4 `dom` `ran` `nil` `est` `front` `foldI`], [六个都不是 `Tm` 的构造子，都是「定义 + fused 行」：文本进 prelude，行指名它；表层 `Op` 的
+    `dom` `ran` `nil` `est` `front` 五个构造子与 `Op.table` 里它们的项删除，名字解析到 prelude 常量。elaborator 内部继续造行项
+    （`Tm.dom` 等，已是 `.arg (.prim r) R`）。`flat` `foldI` 随之成为可写的名字],
+    [`tm-minimal-design` §1.2：构造子须「没有其余构造子组成的项与它同 `den`」，六个都有（下方文本）；「elaborator 内部到处用它」不是留作构造子的理由。
+    §7 的归属表已把它们列在「定义 + fused 行」；同文 §6：用户写的永远是定义名],
+    [`dom(R : α ⟶ β) : α ⟶ α ≜ ⟨𝟙,R⟩π₁`：`{(1,7),(1,8)}` 上 `1 {⟨𝟙,R⟩} (1,7) {π₁} 1`，即 `dom(R) = {(1,1)}`],
+)
+
+移入 prelude 的文本（都已在 master 上 elaborate 通过；`dom` `ran` `nil` 写在用到它们的定义之前）：
+
+```
+dom(R : α ⟶ β) : α ⟶ α ≜ ⟨𝟙,R⟩π₁
+ran(R : α ⟶ β) : β ⟶ β ≜ dom(R°)
+nil : α ⟶ [β] ≜ Λ(𝟘)
+front(Q : β ⟶ β) : [β] ⟶ [β] ≜ Λ(∋ − ∋ (Q − Q°))
+flat(R : ι ⟶ α×β) : ι×α ⟶ β ≜ ⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂
+foldI(e : ι ⟶ β×β, S : (ι×β)×α ⟶ ι×β) : ι×[α] ⟶ β ≜ (π₁π₁° ∩ (π₂⦇[⊤ ran(⟨𝟙,e π₂⟩), S ∩ (π₁π₁π₁°)]⦈))π₂
+length : [α] ⟶ β ≜ ⦇[{(∗,0)}, π₁ succ]⦈
+sum : [β] ⟶ β ≜ ⦇[{(∗,0)}, plus]⦈
+lt : α×α ⟶ α×α ≜ dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)
+asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
+```
+
+待 owner 决定（选项与推荐在 `/data/tmp/hb10c/brief.md`，决定前相关步骤不发）：
+- Q1 不含 `0` 的对象上的初值：今天 `zeroTm` 把 `0` 切到 universe，`1…5` 上 `length` 为 `𝟘`；字面量规则在该使用处报错
+  `0 is not in Q = 1…5`。二者只在这类对象上不同。
+- Q2 `est` 的文本：`∋ ∩ (∈ \ (Q ∪ 𝟙)°)` 在数组对象上建不成常量（`\` 要 universe），prelude 拒绝它；
+  无除法的 `∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)` 建得成，就是 §4 `est(Q)` 行写的复合 `G − ⟨G,G⟩ ≫ Y ≫ π₁`，但定理要重证。
+- Q3 B10d 之后绑定定理陈述在哪个项上：Lean 里构造的项（今天，B10b 的做法，文本与它之间没有检查），还是 `callTm` 给出的 `call` 节点。
+
 // ───────────────────────────── 2
 = 语义映射 `⟦−⟧`：`Tm.den ρ : Core.Rel A.El B.El`
 
