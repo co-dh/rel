@@ -24,18 +24,18 @@ variable {k v : Obj}
 kept, so a canonical `T` stays canonical. -/
 def keep (T : Tab k v) (b : Enc) : Except String (Tab k v) := do
   let (M, sel) ← whereCol T.n b
-  pure ⟨M, ← Vals.gather M sel T.key, ← Vals.gather M sel T.val⟩
+  pure ⟨M, ← ValsB.gather M sel T.key, ← ValsB.gather M sel T.val⟩
 
-/-- **`R` then `S`**: the rows of both, `R`'s first (`Vals.concat` of each side, `n` the summed count `catRows`). -/
+/-- **`R` then `S`**: the rows of both, `R`'s first (`ValsB.concat` of each side, `n` the summed count `catRows`). -/
 def concat (R S : Tab k v) : Except String (Tab k v) := do
   let n ← catRows R.n S.n
-  pure ⟨n, ← Vals.concat n R.key S.key, ← Vals.concat n R.val S.val⟩
+  pure ⟨n, ← ValsB.concat n R.key S.key, ← ValsB.concat n R.val S.val⟩
 
 /-- `R.concat S` and its source tag: `0` at `R`'s rows and `1` at `S`'s (`n₂` ones `kscatter`ed to the rows
 `R.n + k`, `shiftCol`). -/
 def tagged (R S : Tab k v) : Except String (Tab k v × Enc) := do
   let n ← catRows R.n S.n
-  pure (⟨n, ← Vals.concat n R.key S.key, ← Vals.concat n R.val S.val⟩,
+  pure (⟨n, ← ValsB.concat n R.key S.key, ← ValsB.concat n R.val S.val⟩,
     ← kscatter .last S.n (← shiftCol S.n R.n.toUInt64) (← colConst S.n 1) n 0)
 
 /-- **`R ∪ S`**: `Tab.canon` of the concatenation. -/
@@ -60,7 +60,7 @@ the two (one `0`/`1` word per group), `whereCol` of that, and each kept group's 
 def select (keep : USize → Enc → Enc → Except String Enc) (R S : Tab k v) : Except String (Tab k v) := do
   let (C, tag) ← R.tagged S
   let x : Vals (.prod k v) C.n := (C.key, C.val)
-  let es ← Vals.cols x
+  let es ← ValsB.cols x
   let (vs, p) ← kasc C.n es
   let (m, g, f) ← kseen C.n ((es.map (·.1)).zip vs)
   let ts ← kgather C.n p C.n tag
@@ -69,7 +69,7 @@ def select (keep : USize → Enc → Enc → Except String Enc) (R S : Tab k v) 
   let mx ← groupFold .or C.n g seg m.toUSize 0 ts
   let (K, sel) ← whereCol m.toUSize (← keep m.toUSize mn mx)
   let ix ← kgather K (← kgather K sel m.toUSize f) C.n p
-  (fun y => ⟨K, y.1, y.2⟩) <$> Vals.gather K ix x
+  (fun y => ⟨K, y.1, y.2⟩) <$> ValsB.gather K ix x
 
 /-- **`R ∩ S`**: the groups holding a row of each, `and < or` (a `kscan` map of `lt`). -/
 def inter (R S : Tab k v) : Except String (Tab k v) :=
@@ -90,18 +90,18 @@ first row (`Vals.nub`'s tail), `−` is `rdiff`'s tail. `R` first, so the concat
 def unionDiff (R S : Tab k v) : Except String (Tab k v × Tab k v) := do
   let (C, tag) ← R.tagged S
   let x : Vals (.prod k v) C.n := (C.key, C.val)
-  let es ← Vals.cols x
+  let es ← ValsB.cols x
   let (vs, p) ← kasc C.n es
   let (m, g, f) ← kseen C.n ((es.map (·.1)).zip vs)
   let iu ← kgather m.toUSize f C.n p
-  let u ← Vals.gather m.toUSize iu x
+  let u ← ValsB.gather m.toUSize iu x
   let ts ← kgather C.n p C.n tag
   let seg ← seenSeg C.n f m.toUSize
   let mn ← groupFold .and C.n g seg m.toUSize 1 ts
   let mx ← groupFold .or C.n g seg m.toUSize 0 ts
   let (K, sel) ← whereCol m.toUSize (← colMap .last m.toUSize mn mn)
   let ix ← kgather K (← kgather K sel m.toUSize f) C.n p
-  let d ← Vals.gather K ix x
+  let d ← ValsB.gather K ix x
   pure (⟨m.toUSize, u.1, u.2⟩, ⟨K, d.1, d.2⟩)
 
 /-- **The pairs of `D` that the test `q` holds on the diagonal**: `q(D) ∩ D`, `D` coreflexive (a `ran`), so a row `p`
@@ -150,15 +150,15 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
     Except String (Tab (.prod K (.atom t)) (.atom u)) := do
   let C ← canon x
   let n := C.n
-  let (m, _, f) ← kseen n (← Vals.cols (A := .prod K (.atom t)) C.key)
+  let (m, _, f) ← kseen n (← ValsB.cols (A := .prod K (.atom t)) C.key)
   if m ≠ n.toNat then
     let firsts ← seenSeg n f m.toUSize
     let (d, sel) ← whereCol n (← colMap .first n firsts firsts .i64 .i64 [] [(.eq, 0)])
-    let p ← Vals.gather (A := .atom t) d sel C.key.2
-    let at0 := if h : 0 < d.toNat then s!"{t.num (Vals.row (A := .atom t) p ⟨0, h⟩)}" else "?"
+    let p ← ValsB.gather (A := .atom t) d sel C.key.2
+    let at0 := if h : 0 < d.toNat then s!"{t.num (ValsB.row (A := .atom t) p ⟨0, h⟩)}" else "?"
     throw s!"sums: x is not simple: two values at the position {at0} of one key ({n.toNat - m} doubled in all); \
       sums folds one value per (key, position)"
-  let (gk, _, fk) ← kseen n (← Vals.cols C.key.1)
+  let (gk, _, fk) ← kseen n (← ValsB.cols C.key.1)
   let seg ← seenSeg n fk gk.toUSize
   let (W, bad) ← sumTail "sums" u n seg (Arr.enc (t := u) C.val)
   let badR := (← kscan .or false .i64 .i64 n seg [(n, ← colConst n 0), (n, bad)]).1
