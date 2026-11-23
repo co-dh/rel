@@ -109,10 +109,10 @@ def readVals : (A : Obj) → (dir p : String) → IO (String × (n : USize) × V
     | some t => do let ⟨n, x⟩ ← readOpt t (file dir p); return (file dir p, ⟨n, Vals.ofOpt h x⟩)
     | none => do
     let ⟨n, tag⟩ ← readArr .u1 (file dir (p ++ ".tag"))
-    let idx ← same (file dir (p ++ ".tag")) n (file dir (p ++ ".idx")) (← readArr .i64 (file dir (p ++ ".idx")))
-    let (_, ⟨l, x⟩) ← readVals a dir (p ++ ".l")
-    let (_, ⟨r, y⟩) ← readVals b dir (p ++ ".r")
-    return (file dir (p ++ ".tag"), ⟨n, Vals.ofGen h l r tag idx x y⟩)
+    let (_, x) ← readVals a dir (p ++ ".l")
+    let (_, y) ← readVals b dir (p ++ ".r")
+    return (file dir (p ++ ".tag"), ⟨n, Vals.ofGen h tag (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".l")) x)
+      (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".r")) y)⟩)
   -- a side of `1`: its file holds its count and no part (`Plan.oneKind`)
   | .one, dir, p => do
     let f ← Db.ownMap (file dir p)
@@ -456,10 +456,12 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
     | some t, [] => .error s!"{path}: no column part left for a 1+{repr t} column"
     | none, es => do
     let ⟨n, tag, es⟩ ← encArr path .u1 es
-    let ⟨m, idx, es⟩ ← encArr path .i64 es
     let ⟨l, x, es⟩ ← encVals path a es
     let ⟨r, y, es⟩ ← encVals path b es
-    if h : m = n then pure ⟨n, Vals.ofGen hb l r tag (h ▸ idx) x y, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"
+    if h : l = n then
+      if h' : r = n then pure ⟨n, Vals.ofGen hb tag (h ▸ x) (h' ▸ y), es⟩
+      else .error s!"{path}: sum tags of {n} and a right summand of {r} rows"
+    else .error s!"{path}: sum tags of {n} and a left summand of {l} rows"
   -- a side of `1`: its part (a CSV column of its one element's code, or a sum's empty right side) gives the count
   | .one, (n, _) :: es => pure ⟨n, (), es⟩
   | .one, [] => .error s!"{path}: no column part left for a side of `1`"

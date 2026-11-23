@@ -135,7 +135,8 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
   | .sum _ _, _, s => match s.view with
     | .opt .. => true
-    | .gen _ _ _ _ _ x y => Vals.cellsOk x && Vals.cellsOk y
+    -- the filler clause of `Vals.WF` is not decided here: a literal dense sum is refused until it is (PLAN 8.2)
+    | .gen .. => false
 
 /-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
@@ -212,8 +213,7 @@ def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (s : Boo
 /-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column. An `arr` side
 concatenates its payloads (`catRows`, the recursive call) and its `lo`, `hi` columns, the second's shifted past the
 first payload (`Vals.WF`: each cell already inside its own payload, so none reads the other's); a payload past `2^63` rows,
-which an `Int64` bound cannot reach, is the error. A `sum` side concatenates its tags and each summand
-(`Vals.catSummand`), its positions `Arr.pos`; past `2^63` rows, which an `Int64` position cannot reach, the error. -/
+which an `Int64` bound cannot reach, is the error. A `sum` side concatenates its tags and each summand column. -/
 def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Vals A n₁ → Vals A n₂ → Except String (Vals A n)
   | .atom _, _, _, n, x, y => Arr.concat n x y
   | .prod _ _, _, _, n, x, y => do pure (← Vals.concat n x.1 y.1, ← Vals.concat n x.2 y.2)
@@ -227,12 +227,8 @@ def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Vals A n
   | .sum _ _, _, _, n, s₁, s₂ => match s₁.view, s₂.view with
     | .opt h x₁, .opt h' x₂ => Vals.ofOpt h <$> Opt.concat n x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
     | .opt h _, .gen h' .. | .gen h' .., .opt h _ => absurd (h.symm.trans h') nofun
-    | .gen h _ _ tag₁ idx₁ x₁ y₁, .gen _ _ _ tag₂ idx₂ x₂ y₂ =>
-    if n.toNat ≤ 2 ^ 63 then do
-      let L ← Vals.catSummand n false tag₁ idx₁ x₁ tag₂ idx₂ x₂ fun m x y => Vals.concat m x y
-      let R ← Vals.catSummand n true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m x y => Vals.concat m x y
-      pure (Vals.ofGen h L.1 R.1 (← Arr.concat n tag₁ tag₂) (← Arr.pos n) L.2 R.2)
-    else .error s!"concat: a sum side of {n} rows, past an Int64 position"
+    | .gen h tag₁ x₁ y₁, .gen _ tag₂ x₂ y₂ =>
+      do pure (Vals.ofGen h (← Arr.concat n tag₁ tag₂) (← Vals.concat n x₁ x₂) (← Vals.concat n y₁ y₂))
   | .one, _, _, _, _, _ => pure ()
 
 end Rel
