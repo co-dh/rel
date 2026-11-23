@@ -101,7 +101,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     `dom` 与 `ran` 都已知才返回 `tab (K ≫ leq ≫ L)`。`⊤`：`K × L`。],
   card(c-run, [对的需求 `pairs`])[`T ∩ R`、`T − R` 把 `T` 自己作为 `pairs` 交给 `R`：`rep (f ⟨K, L, P⟩) ∩ P = (K ≫ R ≫ L) ∩ P`。
     `≤ <`（经 `°` 得 `≥ >`，经 `∪` 往下传）用它：只在 `P` 的 n 对上逐对比较再选行，不做 `K × L` 的 cross。
-    `𝟙`、`succ`、`arith`、`π₁ π₂`、`Λ` 是函数或 coreflexive，结果行数已是 `|K|`，不看 `pairs`；`⊤` 可以用（`P` 切到 `V`），尚未用。
+    `𝟙`、`succ`、`arith`、`π₁ π₂`、`Λ` 是函数或 coreflexive，结果行数已是 `|K|`，不看 `pairs`；`⊤` 可以用（`P` 切到 `V`）✅ 588a4cd（原：尚未用）。
     没有表可求交的比较（`P ≤ P`）仍做 cross，超过 `crossMax` 对时 `Vals.cross` 返回 error 而不是 abort。],
 )
 
@@ -122,7 +122,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   `rep (tab (some t))` = 表读成的谓词；`rep (lazy f) = R` ⇔ 对任意 `K`、`L`，`rep (f ⟨K, L⟩) = K ≫ R ≫ L`（缺的一侧取 `𝟙`）。\
   `compile : (t : Tm A B) → η.Sound ρ → {r : Rel A B // rep r = ⟦t⟧ρ}` —— 返回值带着自己的证明，没有单独的
   `compile_sound`；每个节点的 `Gen.*_sound` 引理是 `compile` 定义的一部分，证明在编译时被擦掉。
-  前提是 gap 全部清零（见 §7 TODO）；在此之前，现有的 `Tm.gen` + `Tm.gen_sound`（假设 `Tm.GenHyp`）保留。]
+  `Tm.gap` 已删 ✅ f30d670（原：前提是 gap 全部清零（见 §7 TODO））；现有的 `Tm.gen` + `Tm.gen_sound`（假设 `Tm.GenHyp`）保留。]
 
 #card(c-rs, [Lean 证明不到的边界])[
   证明连到 Lean 定义为止。`@[extern]` kernel 的 Rust 实现只由 `decide`（kernel 中用 Lean body 算）与 `#guard`
@@ -189,7 +189,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
   [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删；闭部分的共享槽是零元 `call`，`share` 已删）],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有 prelude 定义 `asc`（`Tm.ascDef`）），在某个类型上实例化，参数由 `arg` 给出],
-  [三层], [上面只列 `Tm` 的构造子（今天 30 个，目标 28 个：再删 `leq` `lt`）。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
+  [三层], [上面只列 `Tm` 的构造子（今天 28 个 ✅ 66ca7d9 c0f68ea（原：今天 30 个，目标 28 个：再删 `leq` `lt`））。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
 )
 
 #card(c-syn, [改写引理（原 `Tm.Ax`）])[category 律、`°°`、`(RS)° = S°R°`、分配律、`𝟘`、`μ`/`ν` 展开（`ν = S ∩ b[ν]`）：每条写成 `⟦lhs⟧ρ = ⟦rhs⟧ρ`，由 `Rel/Core/` 中 `Core.Rel` 的定理证明；改写 `t₁` 为 `t₂` 只需 `⟦t₁⟧ρ = ⟦t₂⟧ρ`。Rel 只在 `Rel(Set)` 上运行，所以 `Tm.Le`、`Syn`、`Hom.den` 去掉。]
@@ -681,11 +681,11 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 
 #tbl(c-run, (auto, auto, 1fr, auto), ([序], [gap], [缺什么], [能否证明]),
   [1], [`foldI`], [由 `fold` 定义，运行时是 fused 行 `foldIRow`（B6）；行与定义由 `Prim.den_foldIRow` 与 `GenK.foldI_sound` 相连], [已证],
-  [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [能：改 `Expand` 不共享开项，无需新证明],
+  [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [✅ de83595 04d6115 2c5fd08 32ff518（原：能：改 `Expand` 不共享开项，无需新证明）],
   [3], [`setify` / `asc` 行], [`asc`、`seen` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
-  [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [多半能（positive body）；可能要加 locality 前提],
-  [5], [`lam` `E` `front`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1）],
-  [6], [`call`], [泛型定义还没有语义（stage 5）], [能：语义 = 展开成定义的项],
+  [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [✅ 06a7c56（原：多半能（positive body）；可能要加 locality 前提）],
+  [5], [`lam` `E` `front`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [✅ ad4299f（原：能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1））],
+  [6], [`call`], [泛型定义还没有语义（stage 5）], [✅ f57f461（原：能：语义 = 展开成定义的项）],
   [—], [body 非 positive 的 `μ` / `ν`], [非单调函数的不动点，Knaster–Tarski 不适用，迭代可能振荡], [不能；改为 elaboration 时报错，不再是 gap],
 )
 
@@ -696,7 +696,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 #block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
   [构造子], [`mem`（`∋`） `inl` `inr`；`fold` `foldr` `hylo`（AOP 的标准递归组合子）],
   [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）],
-  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理待 D3e-asc，原：定理未证）],
+  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理 ✅ e96e272（原：待 D3e-asc，定理未证））],
   [native 行], [`cons` `snoc` `cat` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
 )]
 
@@ -704,4 +704,4 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 - 去掉 `Syn`、`Tm.Le`、`Tm.Eqv`、`Hom.den`（`Rel/Lang/Syn.lean`）与 #9；`Tm.Ax` 改为改写引理 `⟦lhs⟧ρ = ⟦rhs⟧ρ`；freyd 需要的范畴在 `relaop` 自建。
 - symmetric division 不加构造子：它是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`），由 `rdiv` `meet` `conv` 组成，表层语法 `R ÷ S`（已完成）。
 - 改名：去掉 `Den` `Dem` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`：做法是 `d` 移入环境 `δ`（tm-minimal-design §5）；`Fn d A B` 仍在 `GenK` 里使用，本文不处理。
-- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `seen`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选）、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
+- kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `seen`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选 ✅ a2dca9e（原：未做））、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。

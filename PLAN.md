@@ -1069,8 +1069,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       强制内联（边缘读取放冷路径）+ `encode_meta_blk` 一遍算 min/max/sum：`sudokupc9` 3.08–3.20 s → 2.77–2.80 s。
       余下：`for_meta` 8–10% 是 `plan` 的直方图（标量计数），`write_nul` 闭包是各 producer 内联进来的块步，未动。
       ✅ a2e3e95 `Tab.keepBits_holds`、`Tab.compTabMat_holds`（`Tab.keepBits_law` `GenKBits:144`，`Tab.compTabMat_law` `:285`；原：未证，命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）。
-      未证：
-      `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
+      已证 ✅ 264a8da `Tab.pack_holds`，✅ 06a7c56 `GenK.hylo_sound`，✅ 077fa2b 新行（`unproved = []`），✅ 027a7fe `Tab.map`（`Tab.mapFold_holds` b93fde9，`GenK.map_sound`）（原：未证：`Tab.pack`、`Tab.map`、新行、`GenK.hylo`。）
       状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`
       走 kernel 路径）、`w6`（W6 完成：plan 路径只调用五个 kernel 与 `own_write`；寄存器以 `Val.ctor` / `Val.nat`、
       `Instr.ctor` / `Instr.proj` 承载 Lean 构造子对象，owner 2026-11-19 批准；recipe `whereB` = scan → scan → scatter →
@@ -1131,10 +1130,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       **T10 剩余**（迁移收尾，按顺序）：
       - T10j（在跑，分支 `t10j`，基于 `t10i`）：补回 Rust 里被测对象仍在的测试，核实 `build.sh` 那一步原本检查什么。
         通过后把 `t10i` + `t10j` 合入，`make check`。
-      - Rust own 格式的 kind 4（`enum`）读取：Lean 侧已不写；等 `sym` 的写入器（foR id + 排好序的字典，
-        `kasc ≫ kseen` + `kgather`）存在时一并改格式。现在没有程序用 `sym`。
-      - `Rel/KernelWF/Read.lean` 约 60 条、`KernelSpec` 里若干条引理无使用者但对象还在：留到 T11 的归纳定理写完，
-        仍无使用者的再删。
+      - Rust own 格式的 kind 4（`enum`）读取：✅ c2cfe46 已删（原：Lean 侧已不写；等 `sym` 的写入器（foR id + 排好序的字典，
+        `kasc ≫ kseen` + `kgather`）存在时一并改格式。现在没有程序用 `sym`。）
+      - `Rel/KernelWF/Read.lean` 无使用者的引理：item DEAD（原：约 60 条、`KernelSpec` 里若干条引理无使用者但对象还在：留到 T11 的归纳定理写完，
+        仍无使用者的再删。）
       - 性能与 `Tab.toList` csimp 等见上面"未做"。
     - **T11 生成代码的正确性**（分析：`/data/tmp/oracle/design.md`；依据 architecture `:117-119` "`compile` 返回自己的证明，
       每个节点的 `Gen.*_sound` 是其定义的一部分"、`:352` "compile-diff = `compile` 对 `rel_program` 差分"、`:123-125`
