@@ -1377,8 +1377,9 @@ theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) (hiN
       split at hes; · cases hes
       rename_i h
       exact (foRWords_valid "" _ _).2 _ (by unfold foRWords; rw [if_pos (by simpa using h)])
-    obtain ⟨-, xs, ys, rfl, hv, -⟩ := Vals.cols_sum hes
-    obtain ⟨a', ha'⟩ := Arr.gather_ok tag hv hi hiN hr
+    obtain ⟨xs, ys, rfl, -⟩ := Vals.cols_sum hes
+    obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
+    obtain ⟨a', ha'⟩ := Arr.gather_ok tag (ascCol_valid hk) hi hiN hr
     obtain ⟨b', hb'⟩ := Arr.gather_ok idx hidx hi hiN hr
     simp only [Vals.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
   | .one, n, _, _, _, _, hr => by
