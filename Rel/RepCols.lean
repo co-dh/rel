@@ -828,18 +828,18 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
       · rw [if_neg hA, if_neg (by dsimp only; omega)]
   | .sum _ _, n₁, _, _, _, hn, hoff, s₁, s₂, z, h, hx, hy, c => by
     simp only [Vals.concat] at h
-    rcases hv₁ : s₁.view with ⟨hb₁, x₁⟩ | ⟨hb₁, _, _, tag₁, idx₁, x₁, y₁⟩ <;>
-      rcases hv₂ : s₂.view with ⟨hb₂, x₂⟩ | ⟨hb₂, _, _, tag₂, idx₂, x₂, y₂⟩ <;> simp only [hv₁, hv₂] at h
+    rcases hs₁ : s₁.view with ⟨hb₁, x₁⟩ | ⟨hb₁, _, _, tag₁, idx₁, x₁, y₁⟩ <;>
+      rcases hs₂ : s₂.view with ⟨hb₂, x₂⟩ | ⟨hb₂, _, _, tag₂, idx₂, x₂, y₂⟩ <;> simp only [hs₁, hs₂] at h
     · obtain rfl := Option.some.inj (hb₂.symm.trans hb₁)
       simp only [Functor.map, Except.map] at h
       split at h; · cases h
       rename_i w hw
       cases h
-      simp only [Vals.row, hv₁, hv₂, Vals.view_ofOpt, Opt.concat_get hn hoff hw c]
+      simp only [Vals.row, hs₁, hs₂, Vals.view_ofOpt, Opt.concat_get hn hoff hw c]
       split <;> rfl
     · exact absurd (hb₁.symm.trans hb₂) nofun
     · exact absurd (hb₂.symm.trans hb₁) nofun
-    simp only [Vals.WF, hv₁, hv₂] at hx hy
+    simp only [Vals.WF, hs₁, hs₂] at hx hy
     split at h
     case isFalse => cases h
     rename_i hn63
@@ -859,14 +859,14 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
     cases hb : tag.get c
     · have e := Vals.catSummand_row hn hoff (fun x y hm ho hz => Vals.concat_row hm ho x y hz) hv₁ hv₂ hx.1 hy.1 hL hpos c
         (by rw [← gt, hb])
-      simp only [Vals.row, Vals.view_ofGen, hv₁, hv₂, hb, Bool.false_eq_true, ↓reduceIte]
+      simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, Bool.false_eq_true, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
       · rename_i hc; rw [dif_neg hc] at gt; rw [← gt, hb]; rfl
     · have e := Vals.catSummand_row hn hoff (fun x y hm ho hz => Vals.concat_row hm ho x y hz) hv₁ hv₂ hx.2 hy.2 hR hpos c
         (by rw [← gt, hb])
-      simp only [Vals.row, Vals.view_ofGen, hv₁, hv₂, hb, ↓reduceIte]
+      simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
