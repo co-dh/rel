@@ -178,10 +178,30 @@ theorem rdNul_bit (n : USize) (e : Enc) (i : Fin n.toNat) : rdNul n e i = 0 ∨ 
   have hb := foRNuls_bit n e i.2
   simp only [rdNul] at hb ⊢; rw [hb]; split <;> simp
 
+/-- **The rows of `nulVerb`**: `max`/`min`, which `kscan` orders null by (`Op.nulFold`), or a verb that propagates
+    null (`b = or`, `f = nulWord`) whose `Op` orders none. -/
+theorem nulVerb_cases {k : UInt8} {o b : Op} {f : UInt64} (h : nulVerb k = some (o, b, f)) :
+    (o = .max ∧ b = .and ∧ f = 0x8000000000000000 ∧ k = Ew.greater) ∨
+    (o = .min ∧ b = .or ∧ f = 0x7fffffffffffffff ∧ k = Ew.lesser) ∨ (b = .or ∧ f = nulWord ∧ o.nulFold = none) := by
+  unfold nulVerb at h
+  by_cases h1 : k = Ew.greater
+  · simp [h1, Op.nulFold] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact .inl ⟨rfl, rfl, rfl, h1⟩
+  by_cases h2 : k = Ew.lesser
+  · simp [h2, Op.nulFold] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact .inr (.inl ⟨rfl, rfl, rfl, h2⟩)
+  refine .inr (.inr ?_)
+  by_cases h3 : k = Ew.add
+  · subst h3; simp (config := {decide := true}) [List.lookup] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
+  by_cases h4 : k = Ew.sub
+  · subst h4; simp (config := {decide := true}) [List.lookup] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
+  by_cases h5 : k = Ew.mul
+  · subst h5; simp (config := {decide := true}) [List.lookup] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
+  simp [h1, h2, h3, h4, h5, List.lookup] at h
+
 /-- **The word step of `nulStep`**: `max`/`min` (`nulVerb`) of the operands' words `X`, `Y`, a null (flag `NX`, `NY`)
     read as the order's identity `f`, is the answer's word `W` where the flags' `b` (`and`/`or`) is `0`, the answer's
     flag `NW` being whether it is set; read back by `optWord`, a pair `nulStep k` relates. -/
-theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some (o, b, f)) {X Y Z NX NY NZ NW W : UInt64}
+theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some (o, b, f))
+    (hnf : o.nulFold = some (b, f)) {X Y Z NX NY NZ NW W : UInt64}
     (hX : NX = 0 ∨ NX = 1) (hY : NY = 0 ∨ NY = 1)
     (hz : o.eval (if NX != 0 then f else X) (if NY != 0 then f else Y) = .ok Z) (hn : b.eval NX NY = .ok NZ)
     (hW : NW = if NZ != 0 then 1 else 0) (hZ : NZ = 0 → W = Z) :
@@ -189,12 +209,10 @@ theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some
   refine ⟨o, b, f, hv, ?_⟩
   have hc : (o = .max ∧ b = .and ∧ f = 0x8000000000000000 ∧ k = Ew.greater) ∨
       (o = .min ∧ b = .or ∧ f = 0x7fffffffffffffff ∧ k = Ew.lesser) := by
-    unfold nulVerb at hv
-    by_cases h1 : k = Ew.greater
-    · simp [h1, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact .inl ⟨rfl, rfl, rfl, h1⟩
-    · by_cases h2 : k = Ew.lesser
-      · simp [h2, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact .inr ⟨rfl, rfl, rfl, h2⟩
-      · simp [h1, h2] at hv
+    rcases nulVerb_cases hv with h | h | ⟨-, -, h⟩
+    · exact .inl h
+    · exact .inr h
+    · rw [h] at hnf; cases hnf
   rcases hc with ⟨rfl, rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl, rfl⟩ <;> rcases hX with rfl | rfl <;>
     rcases hY with rfl | rfl <;> simp only [Op.eval, Except.ok.injEq] at hz hn <;> subst hn <;> subst hW <;>
     simp (config := {decide := true}) [optWord, Op.i] at hz hZ ⊢ <;> (try subst hZ) <;> (try subst hz) <;>
@@ -218,18 +236,21 @@ theorem nulStep_fun {k : UInt8} {p : (Obj.prod (.opt .long) (.opt .long)).El} {w
     (rcases h with ⟨hb, rfl⟩ | ⟨hb, rfl⟩ <;> rcases h' with ⟨hb', rfl⟩ | ⟨hb', rfl⟩ <;>
       first | rfl | exact absurd hb hb' | exact absurd hb' hb)
 
-/-- `Tab.arithOp` at `1+i64`: one `kscan` of the verb's `Op` (`nulVerb`) over the two columns, its answer the column. -/
+/-- `Tab.arithOp` at `1+i64`: one `kscan` of the verb's `Op` (`nulVerb`) over the two columns where it orders null,
+    else `nulStepCol`; its answer the column. -/
 theorem arithOp_opt {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) n}
     {T : Tab (.prod (.opt .long) (.opt .long)) (.opt .long)} {s : String} {k : UInt8}
     (hs : arithOps.lookup s = some k) (h : Tab.arithOp s X = .ok T) :
     ∃ o b f r hz, nulVerb k = some (o, b, f) ∧
-      kscan o false .i64 .i64 n none [(n, (X.1 : Opt .i64 n).enc), (n, (X.2 : Opt .i64 n).enc)] = .ok r ∧
-      T = ⟨n, X, (Opt.mk r.1 hz : Opt .i64 n)⟩ := by
+      (if o.nulFold = some (b, f) then
+        (·.1) <$> kscan o false .i64 .i64 n none [(n, (X.1 : Opt .i64 n).enc), (n, (X.2 : Opt .i64 n).enc)]
+       else Tab.nulStepCol s k n (X.1 : Opt .i64 n).enc (X.2 : Opt .i64 n).enc) = .ok r ∧
+      T = ⟨n, X, (Opt.mk r hz : Opt .i64 n)⟩ := by
   simp only [Tab.arithOp, hs] at h
   rcases hv : nulVerb k with _ | ⟨o, b, f⟩ <;> simp only [hv] at h
   · cases h
   obtain ⟨r, hr, h⟩ := Except.bind_eq_ok'.1 h
-  rcases hw : Enc.wf? .i64 n r.1 with _ | ⟨⟨hz⟩⟩ <;> simp only [hw] at h
+  rcases hw : Enc.wf? .i64 n r with _ | ⟨⟨hz⟩⟩ <;> simp only [hw] at h
   · cases h
   exact ⟨o, b, f, r, hz, rfl, hr, (Except.ok.inj h).symm⟩
 
@@ -242,13 +263,20 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
   obtain ⟨o, b, f, r, hz, hv, hr, rfl⟩ := arithOp_opt hs h
   obtain ⟨x, y⟩ := X
   change Opt .i64 n at x y
+  by_cases hnf : o.nulFold = some (b, f)
+  case neg =>
+    rw [if_neg hnf] at hr
+    exact nulStepCol_den hv hnf hr hz a w
+  rw [if_pos hnf] at hr
+  obtain ⟨r, hr, rfl⟩ : ∃ r', kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] = .ok r' ∧ r'.1 = r := by
+    revert hr; cases kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] <;>
+      simp [Functor.map, Except.map]
   have ho : (o = .max ∨ o = .min) ∧ o.nulFold = some (b, f) := by
-    unfold nulVerb at hv
-    by_cases h1 : k = Ew.greater
-    · simp [h1, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact ⟨.inl rfl, rfl⟩
-    · by_cases h2 : k = Ew.lesser
-      · simp [h1, h2, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact ⟨.inr rfl, rfl⟩
-      · simp [h1, h2] at hv
+    refine ⟨?_, hnf⟩
+    rcases nulVerb_cases hv with ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨-, -, h⟩
+    · exact .inl rfl
+    · exact .inr rfl
+    · rw [h] at hnf; cases hnf
   have hk : kscanStream o [(n, x.enc), (n, y.enc)] [] [] = false := by rcases ho.1 with rfl | rfl <;> rfl
   -- row `i`: the verb on the words a null reads as `f`, the flags' `b`, and the answer's word off its null
   have row : ∀ i : Fin n.toNat, ∃ NZ Z, o.eval (rdFill f .i64 n x.enc i) (rdFill f .i64 n y.enc i) = .ok Z ∧
@@ -281,7 +309,7 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
     obtain ⟨NZ, Z, h1, h2, h3, h4⟩ := row i
     show Lang.nulStep k (Vals.row (A := .opt .long) x i, Vals.row (A := .opt .long) y i) _
     rw [row_opt_i64, row_opt_i64, row_opt_i64]
-    exact nulStep_words hv (rdNul_bit n _ i) (rdNul_bit n _ i) h1 h2 h3 h4
+    exact nulStep_words hv hnf (rdNul_bit n _ i) (rdNul_bit n _ i) h1 h2 h3 h4
   constructor
   · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, rz i⟩
   · rintro ⟨⟨i, rfl⟩, hw⟩; exact ⟨i, rfl, nulStep_fun (rz i) hw⟩

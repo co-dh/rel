@@ -25,12 +25,16 @@ rel_program nmm where
     check ⟨nc, nd⟩ min [{(∗,40)}, 𝟙] = {(0,2),(1,40),(2,40),(3,40),(4,1),(5,40),(6,40),(7,40)}
     check ⟨nc, k5⟩ max [{(∗,40)}, 𝟙] = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,5),(6,5),(7,5)}
     check ⟨nc, k5⟩ min [{(∗,40)}, 𝟙] = {(0,5),(1,40),(2,5),(3,40),(4,5),(5,40),(6,40),(7,3)}
+    -- `+ - *` propagate null (`nulVerb`'s `or`), as q's `1+0N = 0N`
+    check ⟨nc, nd⟩ plus [{(∗,40)}, 𝟙] = {(0,7),(1,40),(2,40),(3,40),(4,8),(5,40),(6,40),(7,40)}
+    check ⟨nc, nd⟩ minus [{(∗,40)}, 𝟙] = {(0,3),(1,40),(2,40),(3,40),(4,6),(5,40),(6,40),(7,40)}
+    check ⟨nc, nd⟩ times [{(∗,40)}, 𝟙] = {(0,10),(1,40),(2,40),(3,40),(4,7),(5,40),(6,40),(7,40)}
     ls : 1 ⟶ [1+N] ≜ Λ(⊤(1,P) nc)
     check ls ⦇[{(∗,∗)} inl, maxO]⦈ [{(∗,40)}, 𝟙] = {(∗,7)}
 #guard nmm.ok
 
--- a verb with no order on null (`Op.nulFold`) is refused at `1+N` by name, not run on the in-band words
+-- a verb with no row at `1+i64` (`nulVerb`: a zero divisor drops a non-null row) is refused by name
 open Rel.Lang.Test in
-#eval errAt "obj N = 0…3\nf : (1+N)×(1+N) ⟶ 1+N ≜ plus\n" 2 "plus on 1+N: a nullable `1+N` has an order on null"
+#eval errAt "obj N = 0…3\nf : (1+N)×(1+N) ⟶ 1+N ≜ div\n" 2 "div on 1+N: a nullable `1+N` runs the verbs `nulVerb` names"
 
 end Rel.Lang.TestNullMaxMin

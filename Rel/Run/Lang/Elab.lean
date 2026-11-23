@@ -1190,10 +1190,10 @@ def numObj (objs : Objs) (mc : Lean.MetavarContext) (p : Pos) (o : OTy) (op : St
       let tos := (atomNames.filter fun a => ok a.2 && t.castOK a.2).map (atomName ·.2)
       let cast := if tos.isEmpty then "" else s!"; cast first, `x $ F` with `F` an object of {", ".intercalate tos}"
       throw ⟨p, s!"{op} on {n}: {n} is an object of {atomName t}, and {op} runs on objects of {ats} only{cast}"⟩
-  | .sum a b => throw ⟨p, s!"{op} on {OTy.sum a b}: a nullable `1+N` has an order on null for the verbs `Op.nulFold` names (`max`, `min`) only"⟩
+  | .sum a b => throw ⟨p, s!"{op} on {OTy.sum a b}: a nullable `1+N` runs the verbs `nulVerb` names (`plus`, `minus`, `times`, `max`, `min`) only"⟩
   | o => throw ⟨p, s!"{op} runs on a declared object, found {o}"⟩
 
-/-- The object `m` of a sum operand `u+m` of the verb `k`, where `k` orders null (`nulVerb`): `arithOk` and `numObj` then
+/-- The object `m` of a sum operand `u+m` of the verb `k`, where `k` runs at `1+i64` (`nulVerb`): `arithOk` and `numObj` then
     check `m`, and `build` that `u` is the unit; none for any other operand, which they check whole. -/
 def nulPayload (mc : Lean.MetavarContext) (k : UInt8) (n : OTy) : Option OTy :=
   match zonk mc n with
@@ -2629,14 +2629,14 @@ def build : Pre → Except Err Res
   -- `max`/`min` need no arithmetic: at an ordered atom with no value step they are `τ(≤)π₂ ∪ τ(>)π₁` (`min` the
   -- projections swapped), the order picking an operand; at a value atom the fused verb runs
   | .arith p k n => do
-    -- `1+N` where `k` orders null: the row at `1+i64` (`Tab.arithOp`, one `kscan` of `nulVerb`'s op) cut to the universe of `1+N`
+    -- `1+N` where `k` runs at `1+i64` (`nulVerb`): the row at `1+i64` (`Tab.arithOp`) cut to the universe of `1+N`
     if let some m := nulPayload mc k n then
       let (_, t) ← numObj objs mc p m (Op.arith k).sym (arithOk k)
       let some (s, _) := arithOps.find? (·.2 == k) | internal dp s!"no row of arithOps has the verb {k}"
       let .sum u _ := zonk mc n | internal dp "nulPayload: not a sum"
       unless (match ← objOf objs dp u with | .one => true | _ => false) do
         throw ⟨p, s!"{(Op.arith k).sym} on {zonk mc n}: the left summand {u} is not the unit, so the sum is no nullable `1+N`"⟩
-      unless t == .i64 do throw ⟨p, s!"{(Op.arith k).sym} on {zonk mc n}: only `1+i64` has a null order, found {repr t}"⟩
+      unless t == .i64 do throw ⟨p, s!"{(Op.arith k).sym} on {zonk mc n}: only `1+i64` runs a verb on null, found {repr t}"⟩
       return ⟨_, _, Tm.cut2 (arithRow s) (← uniTm objs mc dp p n (.opt .long) (Op.arith k).sym)⟩
     let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym (arithOk k)
     if valueAtom t then

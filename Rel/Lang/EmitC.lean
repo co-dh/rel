@@ -1345,13 +1345,25 @@ def arithOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match a
       if u == .i64 then failAtB n (← arithOvfB n a b f) s!"{s}: i64 overflow at {s}(\x02, \x02)" [a, b]
       keepB ⟨n, X, [.atom "" u w]⟩ f
     else throw s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
-  -- `1+i64`: the same one `kscan` as `Tab.arithOp`, the op `nulVerb` gives, null read in band
+  -- `1+i64`: `Tab.arithOp`'s composition, null read in band: one `kscan` of an op that orders null, else `nulStepCol`
   | some k, .prod (.opt (.atom .i64)) (.opt (.atom .i64)), .opt (.atom .i64) =>
     match nulVerb k with
-    | some (o, _, _) => do
+    | some (o, nb, nf) => do
       let (a, b) ← pairCols s X
-      pure ⟨n, X, [.atom "" .i64 (← mapB o n a b)]⟩
-    | none => throw s!"{s} on 1+i64: the verb has no order on null (`Op.nulFold`)"
+      if o.nulFold = some (nb, nf) then return ⟨n, X, [.atom "" .i64 (← mapB o n a b)]⟩
+      let p ← mapB .min n a b .i64 .i64 [] [(.first, 0x7fffffffffffffff)]
+      -- `fillNulCol`: `max` against `nulWord`, the row count from `kscan .null`
+      let fill (e : Nat) : Bld Nat := do
+        let z ← nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put Kernel.Op.null), ← lit (.bit false),
+          ← lit (Reg.put QAtomicType.i64), ← lit (Reg.put QAtomicType.i64), n, ← ctorB 0 #[] #[], ← listB [← srcB n e],
+          ← lit (Reg.put ([] : List (Kernel.Op × UInt64))), ← lit (Reg.put [(Kernel.Op.first, nulWord)])]) 0 "kscan"
+        mapB .max n e z
+      let a' ← fill a; let b' ← fill b
+      let (w, keep) ← stepB .i64 k n a' b'
+      failAtB n (← arithOvfB n a' b' keep) s!"{s}: i64 overflow at {s}(\x02, \x02)" [a', b']
+      let d ← mapB .mul n (← mapB .first n w w .i64 .i64 [] [(.sub, nulWord)]) keep .i64 .i64 [] [(.sub, nulWord)]
+      return ⟨n, X, [.atom "" .i64 (← mapB .min n d p)]⟩
+    | none => throw s!"{s} on 1+i64: a zero divisor drops a non-null row, which a `1+i64` answer cannot"
   | some _, _, _ => throw s!"{s} runs from a pair of one number object to it"
   | none, _, _ => throw s!"{s}: no value verb"
 
