@@ -38,13 +38,16 @@ private def W : Array UInt64 := #[0x8000000000000000, 0, 0x7ff0000000000001, 0xf
   concatKeeps t W W.reverse && concatKeeps t W #[] && concatKeeps t #[] W
 #guard concatKeeps .u1 #[0, 1, 1, 0] #[1, 0, 1]
 
-/-- `Opt.concat` of the `i64` columns `xs`, `ys` (`none` a null), read back: the stored words joined and the null flags
-joined, bit for bit (`foRNuls`), with nulls in the first column, the second, both or neither. -/
+/-- `Opt.concat` of the `i64` columns `xs`, `ys` (`none` a null), read back: the null flags joined, bit for bit
+(`foRNuls`), and the stored words joined off the nulls (a null's word is its block's top residual, which the new
+blocks set anew), with nulls in the first column, the second, both or neither. -/
 private def concatNulKeeps (xs ys : Array (Option Int64)) : Bool :=
   match Opt.ofAtoms .i64 (xs.map (·.map QAtom.i64)), Opt.ofAtoms .i64 (ys.map (·.map QAtom.i64)) with
   | some x, some y => match catRows xs.size.toUSize ys.size.toUSize with
     | .ok n => match Opt.concat n x y with
-      | .ok z => raw .i64 n z.enc == raw .i64 xs.size.toUSize x.enc ++ raw .i64 ys.size.toUSize y.enc &&
+      | .ok z =>
+        (Array.range n.toNat).all (fun i => (foRNuls xs.size.toUSize x.enc ++ foRNuls ys.size.toUSize y.enc)[i]? != some 0 ||
+          (raw .i64 n z.enc)[i]? == (raw .i64 xs.size.toUSize x.enc ++ raw .i64 ys.size.toUSize y.enc)[i]?) &&
         foRNuls n z.enc == foRNuls xs.size.toUSize x.enc ++ foRNuls ys.size.toUSize y.enc &&
         hasNul z.enc == (hasNul x.enc || hasNul y.enc)
       | .error _ => false
