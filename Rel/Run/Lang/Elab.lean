@@ -2618,11 +2618,10 @@ def build (δ : Dem) : Pre → Except Err Res
           throw ⟨dp, s!"{r.sym} at the object variable {n} needs its universe: its definition is cut to it (§4)"⟩
         pure (o, (⟨v, X, ·⟩ : Tm X X → String × (X : Obj) × Tm X X) <$> u,
           initSeg objs o || match X with | .atom a => r.native.contains a | _ => false)
-    -- a variable at the placeholder of a generic constant (`varObj`) whose universe is read: neither the cut nor the
-    -- definition is known before the call fixes its object, so the row is refused here, cheaply, and `once` keeps
-    -- that variable a number object, each use building the row at its own object
-    if let some (o, _) := us.find? fun (o, u, _) => u.isSome && phVar objs mc o then
-      throw ⟨dp, s!"{r.sym} at {o}: its universe is read, so it is built at the object of a use, not a placeholder (§4)"⟩
+    -- a variable at the placeholder of a generic constant (`varObj`) whose universe is read: the cut is not known
+    -- before the call fixes its object, so the definition is built, generic over it (`Tm.instObj`); a node of it that
+    -- fixes the object refuses there, and `once` keeps that variable a number object
+    if us.any fun (o, u, _) => u.isSome && phVar objs mc o then return ← build δ q
     -- with no universe the row runs (its definition would need keys none supply)
     let some cut := us.filter (!unbounded objs ·.1) |>.mapM fun (_, u, cuts) => if cuts then u else none
       | if us.all (·.2.1.isSome) then build δ q else row ()
