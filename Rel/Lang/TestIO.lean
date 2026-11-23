@@ -470,6 +470,50 @@ info: "val\nibm\naapl\nibm\n"
   IO.FS.removeDirAll d
   return r
 
+-- `<` at a symbol is the order of the texts, `rank(D) < rank(D)°` (`Elab.symOrd`): `b a c` interns as ids 0 1 2, whose
+-- ranks are 1 0 2: `a < a°` on positions is (1,0) (1,2) (0,2), its values by position key 0 1 1 are 2 0 2 (a positional key is
+-- not written), and `rank(D)` is b↦1 a↦0 c↦2 (the guard of `asc` at sym)
+open Rel.Programs.prelude in
+rel_program symLtIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-symlt/a.csv"
+    dictionary D : S ⟶ [C]
+    lts : N ⟶ N ≜ a < a°
+    output lts to csv "/data/tmp/rel-test-io-symlt/t.csv"
+    rk : S ⟶ N ≜ rank(D)
+    output rk to csv "/data/tmp/rel-test-io-symlt/r.csv"
+
+/--
+info: "val\n2\n0\n2\n|key,val\nb,1\na,0\nc,2\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-symlt"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
+  symLtIO.io
+  let r ← IO.FS.readFile (d ++ "/t.csv")
+  let r2 ← IO.FS.readFile (d ++ "/r.csv")
+  IO.FS.removeDirAll d
+  return r ++ "|" ++ r2
+
+-- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
+/--
+error: line 514, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
+-/
+#guard_msgs in
+rel_program dictFirstT where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-dictfirst/a.csv"
+    dictionary D : S ⟶ [C]
+    input b : N ⟶ S from csv "/data/tmp/rel-test-io-dictfirst/b.csv"
+    output b to csv "/data/tmp/rel-test-io-dictfirst/t.csv"
+
 -- two own inputs with symbol columns in two libraries, met by `∩`: refused where the program is elaborated
 /--
 error: rel_program expansion: the symbol columns of `a` are ids in the library /data/tmp/rel-test-io-lib/one and those of `b` in the library /data/tmp/rel-test-io-lib/two, two dictionaries, so they cannot meet; convert one to its texts with `unenum` (`I ≫ D`)

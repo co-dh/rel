@@ -466,6 +466,19 @@ partial def Expr.names : Expr → List String
   | .whr _ x e b => x :: (e.names ++ b.names)
   | .each _ v _ b => v :: b.names
 
+/-- Whether `e` compares by an order, `<` or `≤` or the prelude's converses `>`, `≥`: at `sym` such a term reads the
+    program's dictionary (`Elab.symOrd`), so a definition of one mentions it where it is declared (`Expand.walk`). -/
+partial def Expr.ordered : Expr → Bool
+  | .name _ n => n == ">" || n == "≥"
+  | .op _ o _ as => (match o with | .lt | .leq => true | _ => false) || as.any (·.ordered)
+  | .app _ n as => n == ">" || n == "≥" || as.any (·.ordered)
+  | .comp a b | .bin _ _ a b | .pair _ a b | .junc _ a b | .inf _ _ a b => a.ordered || b.ordered
+  | .fold _ _ r => r.ordered
+  | .conv _ a | .compl _ a => a.ordered
+  | .lit .. | .col .. => false
+  | .fix _ _ _ b => b.ordered
+  | .whr _ _ e b => e.ordered || b.ordered
+
 /-- A body: a relation, or a test `e ⊑ f` (§e). -/
 inductive Body
   | rel (e : Expr)
