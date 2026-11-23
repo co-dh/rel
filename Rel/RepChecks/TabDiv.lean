@@ -84,6 +84,14 @@ private def sidesOk {A : Obj} [BEq A.El] (f : ∀ {n m : USize}, Vals A n → Va
   newL (whole (Tab.lt .i64) (tab [])) == some [] &&
   newL (whole (Tab.leq .i64) (tab [(4, 0), (2, 0)])) == some [(2, 2), (2, 4), (4, 4)]
 
+-- `K ≫ < ≫ L` at `i64` keeps the pair in order (3 < 5) only, not the equal (3, 3) nor the greater (3, 1)
+#guard newL (Tab.lt .i64 (Alg.col [3]) (Alg.col [3, 5, 1])) == some [(3, 5)]
+#guard newL (Tab.lt .i64 (Alg.col [5, 3]) (Alg.col [3])) == some []
+-- `date` is ordered as its stored integer (`ordNum`); `sym` has no order, and the refusal keeps its text
+#guard (match Tab.ordOp true .date with | .ok op => op == Op.lt | .error _ => false)
+#guard (match Tab.ordOp true .sym with
+  | .error e => e == "< on objects of Rel.QAtomicType.sym: no order" | .ok _ => false)
+
 /-- Known sides inside `U`: none, a value twice, and two that differ. -/
 private def sides : List ((n : USize) × Vals .long n) :=
   [⟨_, Alg.col []⟩, ⟨_, Alg.col [2, 9, -3, 2]⟩, ⟨_, Alg.col [5, 1, 7]⟩, ⟨_, Alg.col [1, 2, 5, 7, 9, -3]⟩]
