@@ -206,7 +206,7 @@ theorem leq_holds {t : QAtomicType} {n m : USize} {K : Vals (.atom t) n} {L : Va
   exact cmpOn_holds (s := false) (by assumption) h hK hL a c
 
 /-- The keys of `dom U` are the keys of `U`. -/
-private theorem dom_key {k v : Obj} {U : Tab k v} {d : Tab k k} (hd : U.dom = .ok d) (hU : Vals.WF U.key)
+theorem dom_key {k v : Obj} {U : Tab k v} {d : Tab k k} (hd : U.dom = .ok d) (hU : Vals.WF U.key)
     (x : k.El) : (∃ i, d.key.row i = x) ↔ ∃ y, U.Holds x y := by
   constructor
   · rintro ⟨i, rfl⟩; exact ((dom_holds hd hU _ _).1 ⟨i, rfl, rfl⟩).2
