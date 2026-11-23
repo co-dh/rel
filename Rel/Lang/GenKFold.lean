@@ -847,13 +847,13 @@ theorem Tab.comp_pos_rows {A B : Obj} {T : USize} {P : Arr .i64 T} {v : Vals A T
   -- the keys of `C` ascend, so the row of key `p` is row `p`
   obtain ⟨U, hU, -⟩ := Tab.comp_canon hC wPv wR
   obtain ⟨es, -, hes, -⟩ := Tab.canon_codes hU
-  cases h2 : Vals.cols U.val with
-  | error s => simp [Vals.cols, h2, bind, Except.bind] at hes
+  cases h2 : ValsB.cols U.val with
+  | error s => simp [ValsB.cols, h2, bind, Except.bind] at hes
   | ok es₂ =>
-  simp only [Vals.cols, h2, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes
+  simp only [ValsB.cols, h2, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes
   subst hes
   obtain ⟨selC, hsC, hltC⟩ := Tab.canon_sorted hU (es := (.atom .i64, U.key.enc) :: es₂) (by
-    simp [Vals.cols, h2, bind, Except.bind, pure, Except.pure])
+    simp [ValsB.cols, h2, bind, Except.bind, pure, Except.pure])
   have hmono : ∀ j j' : Fin C.n.toNat, j.1 < j'.1 → (a j).1 ≤ (a j').1 := fun j j' hjj => by
     have hl := Arr.lexLe_i64 U.key es₂ (hltC j j' hjj).1
     have e1 := (Prod.mk.inj (hsC j)).1; have e2 := (Prod.mk.inj (hsC j')).1
@@ -1021,16 +1021,16 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
       have hx : ∃ y, R.Holds (v.row t) y := ⟨_, (himg t _).2 rfl⟩
       simp only [g, dif_pos hx]; exact (himg t _).1 (Classical.choose_spec hx)
     have hrow := Vals.cells_expand_row hb wX.1 hw hex hsg hix g (fun t => by
-      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv t
       exact ⟨j, hj, by rw [← hvj, hg]⟩) hY
     obtain ⟨lo', hi', -, hY'⟩ := Vals.cells_pay hY v
     have hrow' := Vals.cells_expand_row hb wX.1 hw hex hsg hix id (fun t => by
-      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv t
       exact ⟨j, hj, hvj⟩) hY'
     -- every element of a cell is a payload row, so `R` maps it to `g` of it and nothing else
-    have hfun : ∀ i x, x ∈ Vals.row (A := .arr A) ⟨m, lo, hi, f⟩ i → ∀ y, R.Holds x y ↔ y = g x := fun i x hx y => by
+    have hfun : ∀ i x, x ∈ ValsB.row (A := .arr A) ⟨m, lo, hi, f⟩ i → ∀ y, R.Holds x y ↔ y = g x := fun i x hx y => by
       have e := hrow' i; rw [List.map_id] at e; rw [← e] at hx
-      simp only [Vals.row, List.mem_filterMap] at hx
+      simp only [ValsB.row, List.mem_filterMap] at hx
       obtain ⟨j, -, hj⟩ := hx
       split at hj
       · cases hj; rw [hg]; exact himg j y

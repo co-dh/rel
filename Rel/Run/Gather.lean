@@ -84,6 +84,24 @@ theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {p
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   exact kscan_lock_closed hs hF hr
 
+/-- `colMap` of one column with itself under an op that orders null (`Op.nulFold`), a null row of it included, answers a
+column every kernel reads, `Enc.WF` at `t` (`kscan_nul_row` where `a` holds a null, `colMap_closed` where not). -/
+theorem colMap_closed_nul {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, fill)) {n : USize} {a o : Enc}
+    {t s : QAtomicType} {post : List (Op × UInt64)} (ht : t.width.isSome) (hsw : s.width.isSome)
+    (hW : Ext.Enc.WF s n a) (hs : kscanStream op [(n, a), (n, a)] [] post = false)
+    (h : colMap op n a a t s [] post = .ok o) : Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
+  have hWs : ∀ p ∈ [(n, a), (n, a)], Ext.Enc.WF s p.1 p.2 := fun p hp => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hW
+  by_cases hN : hasNul a = true
+  · unfold colMap at h; simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+    obtain ⟨w, hw⟩ := Option.isSome_iff_exists.1 ht
+    obtain ⟨out, nl, -, -, -, hV, hF, -⟩ := kscan_nul_row hnf hw hsw hs hWs ⟨(n, a), by simp, hN⟩ hr
+    exact ⟨hV, hF⟩
+  · exact (colMap_closed hs h (Or.inr fun p hp => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> simpa using hN)).imp_right And.left
+
 /-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Opt.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=
   match h : kgather m ix n x.enc with
@@ -98,17 +116,24 @@ def Opt.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Opt t n
   | .ok o => .ok (Opt.mk o (Opt.kgather_wf x h))
   | .error s => .error s
 
-/-- The rows `ix` (`m` positions) of the side `x`: each atom column `Arr.gather`ed at `ix`; a `sum` side gathers its tag
-and position columns and keeps both summands, an `arr` side its `lo` and `hi` columns and keeps the payload. -/
-def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A m)
-  | .atom _, _, x => Arr.gather m ix x
-  | .prod _ _, _, x => do pure (← Vals.gather m ix x.1, ← Vals.gather m ix x.2)
-  | .arr _, _, ⟨c, lo, hi, f⟩ => do pure ⟨c, ← Arr.gather m ix lo, ← Arr.gather m ix hi, f⟩
-  | .sum _ _, _, s => match s.view with
-    | .opt h x => do pure (Vals.ofOpt h (← Opt.gather m ix x))
-    | .gen h l r tag idx x y => do pure (Vals.ofGen h l r (← Arr.gather m ix tag) (← Arr.gather m ix idx) x y)
+/-- The rows `ix` (`m` positions) of an atom column at ownership `o`: `Arr.gather`, or `Opt.gather` where a row may be null. -/
+def ColB.gather : {o : Bool} → {t : QAtomicType} → {n : USize} → (m : USize) → Enc → ColB o t n →
+    Except String (ColB o t m)
+  | false, _, _, m, ix, x => Arr.gather m ix x
+  | true, _, _, m, ix, x => Opt.gather m ix x
+
+/-- The rows `ix` of `x`, at either ownership `o`: a summand's null rows gather to null rows (`Opt.gather`). -/
+def ValsB.gather (m : USize) (ix : Enc) : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n →
+    Except String (ValsB o A m)
+  | _, .atom _, _, x => ColB.gather m ix x
+  | _, .prod _ _, _, x => do pure (← ValsB.gather m ix x.1, ← ValsB.gather m ix x.2)
+  | _, .arr _, _, ⟨c, lo, hi, f⟩ => do pure ⟨c, ← ColB.gather m ix lo, ← ColB.gather m ix hi, f⟩
+  | _, .sum _ _, _, s => match ValsB.view s with
+    | .opt h x => do pure (ValsB.ofOpt h (← Opt.gather m ix x))
+    | .gen h tag x y =>
+      do pure (ValsB.ofGen h (← Arr.gather m ix tag) (← ValsB.gather m ix x) (← ValsB.gather m ix y))
   -- no column, but `ix` is checked as every side's is: gathering the positions `0 … n-1` refuses an index past `n`
-  | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial rfl); pure ()
+  | _, .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial rfl); pure ()
 
 /-- The positions of the `1` words among the `m` words `b` (each `0` or `1`), ascending, and their count `K`. WHERE
 as `scan → scatter`, O(m) and no sort: the prefix sum `s` of `b` (`kscan .add`, one segment) returns the count `K` as
@@ -145,6 +170,6 @@ def Tab.ofBits {A C : Obj} {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) 
   expandNote s!"a {g}×{w} bit matrix read back as rows (Tab.ofBits)" M.toNat fun _ => do
     let ix ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rdiv, w.toUInt64)]) g ra
     let iy ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rmod, w.toUInt64)]) w rc
-    pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
+    pure ⟨M, ← ValsB.gather M ix x, ← ValsB.gather M iy y⟩
 
 end Rel
