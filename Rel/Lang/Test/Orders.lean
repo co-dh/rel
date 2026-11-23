@@ -76,6 +76,17 @@ rel_program cmpObjs where
 
 #guard cmpObjs.ok && cmpObjs.failures.map toString == []
 
+/-! `asc(P)` at an object that is no atom runs its prelude text `(dom(P) Λ(> dom(P)) length)°`: number `j` is the `j`-th
+    smallest pair of `dom P` in `Obj.lt` order. -/
+
+open Rel.Programs.prelude in
+rel_program ascObjs where
+    obj N = 0…2
+    P : N×N ⟶ N×N ≜ {((1,0),(1,0)), ((0,2),(0,2))}
+    check asc(P) = {(0,(0,2)), (1,(1,0))}
+
+#guard ascObjs.ok && ascObjs.failures.map toString == []
+
 -- an object with no universe, and an atom with no order code
 #eval errAt "obj N = 0…2\nobj C : char\ng : [C] ⟶ [C] ≜ <\n" 3 "has no universe"
 #eval errAt "obj N = 0…2\nobj S : sym\ng : S×N ⟶ S×N ≜ <\n" 3 "has no order code"

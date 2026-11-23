@@ -270,10 +270,10 @@ def sumRow : Prim :=
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
     larger `P` renumbers. Its definition `(dom(P) Λ(> dom(P)) length)°` is `Tm.ascDef`, proved equal to the row's
-    meaning where `dom P` has a sorted list (`Tm.ascDef_den`); it has no text-run case, since `build` runs the row. -/
+    meaning where `dom P` has a sorted list (`Tm.ascDef_den`). -/
 def ascRow : Prim :=
   { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
-    mono := false, aop := .error "AOP declares no numbering of a set by its order", dem := .whole }
+    mono := false, prelude := `Rel.Programs.prelude.asc, aop := .error "AOP declares no numbering of a set by its order", dem := .whole }
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
     `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`prelude`), `R` run on the keys in demand (`Tab.flat`). -/
 def flatRow : Prim :=
