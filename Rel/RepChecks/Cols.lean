@@ -1,5 +1,6 @@
 import Rel.RepChecks.Canon
 import Rel.RepCols
+import Rel.OptAtoms
 
 /-! The `#guard` checks of `Rel.RepCols`, kept outside the module: a `#guard` runs compiled code, whose IR a `module` does not export (PLAN perf9e). -/
 

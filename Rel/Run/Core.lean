@@ -184,23 +184,6 @@ theorem get_eq (x : Opt t n) (i : Fin n.toNat) : x.get i = if x.isNul i then non
     | .general, x => Arr.get (Arr.mk x.enc x.wf x.plain_general) i
     | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default) := rfl
 
-/-- The nullable column of `xs`, `none` the null: the values' dense bytes (a null's `0`, never read) and the bitmap of
-    the null rows through the one writer `Coc.encode`. `Enc.WF` is decided, never assumed; `none` where an atom is not
-    at `t`, or at `general`, whose payload has no block to hold a null. -/
-def ofAtoms (t : QAtomicType) (xs : Array (Option QAtom)) : Option (Opt t xs.size.toUSize) :=
-  match t.width with
-  | none => none
-  | some w =>
-    if xs.all (·.all (·.type == t)) then
-      let b := xs.foldl (init := ByteArray.emptyWithCapacity (xs.size * w)) fun acc a =>
-        Column.pushBits acc ((a.map Column.bitsOf).getD 0) w
-      let nul := Column.packIds 1 xs.size fun i => (xs[i]?.any Option.isNone).toNat
-      let e : Enc := .foR (Kernel.Coc.encode w.toUSize b nul).1 (Kernel.Coc.encode w.toUSize b nul).2
-      -- `WF` itself, not `Enc.wf?`: a flagged `u1` block is widened to width 2 for its null, and its metadata then
-      -- admits a residual 2 that only the elements rule out (`Column.u1Ok`)
-      if h : Enc.WF t xs.size.toUSize e then some (mk e h) else none
-    else none
-
 end Opt
 
 
@@ -335,12 +318,6 @@ def Arr.ofFn (t : QAtomicType) (n : USize) (f : Fin n.toNat → UInt64) (hu : t 
 /-- Reading a word as a long loses nothing. -/
 theorem toInt64_inj {x y : UInt64} (h : x.toInt64 = y.toInt64) : x = y := by
   simpa using congrArg Int64.toUInt64 h
-
-/-- A boolean column's bitmap: `boolBits` reads one off the one form `Enc.WF .u1` admits, a `u1` `foR`. -/
-def Alg.tagBits {n : USize} (x : Arr .u1 n) : ByteArray :=
-  (Kernel.boolBits .u1 n x.enc).get (by
-    have hw := x.wf; revert hw; cases x.enc <;> simp [Enc.WF, Kernel.boolBits])
-
 
 /-- Under `Enc.WF`, a boolean payload's element `j` that is no null is bit `j` of the bitmap `boolBits` reads: such a
     `u1` `foR` element is `0` or `1`, so its low bit, which `bitsOfFoR` keeps, is whether it is nonzero. -/
@@ -748,20 +725,6 @@ open Rel.Kernel
 /-- One long as an eight-byte payload: the atom operand of an `av`/`va` kernel call. -/
 def one (v : UInt64) : ByteArray := Column.pushBits .empty v 8
 
-
-/-- `Ew.cmp`'s `u1` `foR` read through `boolBits` (its `foR` branch, `bitsOfFoR`): the bitmap a bitmap consumer
-    (`Ew.notBits`) takes, one name for the read so no consumer restates it. -/
-def Ew.cmpBits (op cls shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
-  let c := Ew.cmp op cls shape a b n; bitsOfFoR c.1 c.2 n
-
-/-- `Ew.bit`'s `u1` `foR` read through `boolBits`, as `Ew.cmpBits` reads `Ew.cmp`'s. -/
-def Ew.bitBits (op shape : UInt8) (a b : ByteArray) (n : USize) : ByteArray :=
-  let c := Ew.bit op shape a b n; bitsOfFoR c.1 c.2 n
-
-
-
-/-- `~` on `m` bits: `Ew.bit` xor a ones mask, the mask a one-bit atom in shape `av` (xor is `≠` on bits). -/
-def Ew.notBits (m : USize) (b : ByteArray) : ByteArray := Ew.bitBits (Ew.bitCmp + Ew.ne) Ew.av ⟨#[1]⟩ b m
 
 end Payload
 

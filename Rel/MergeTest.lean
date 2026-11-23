@@ -3,6 +3,7 @@ import Rel.BitsTest
 import Rel.Run.Div
 import Rel.Run.List
 import Rel.Run.Struct
+import Rel.OptAtoms
 
 /-! `Tab.mergeDiff` (bisection `rank`, then the merge by `scatter`/`scan`/`gather`) against `Tab.unionDiff` (one `asc`
 over `X ++ T`), both run on the same input and compared as lists of rows (the `arr` payload layout differs, so not byte

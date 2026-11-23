@@ -1,4 +1,5 @@
 import Rel.Run.Gather
+import Rel.OptAtoms
 
 /-! `t+1` as one column with in-band nulls (decision K, `Opt`): a written column reads back row for row, nulls in
 several blocks of `2 ^ Column.lgEnc`, and `Opt.gather` moves a null with its row. -/
