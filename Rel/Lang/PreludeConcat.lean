@@ -66,7 +66,7 @@ theorem Tm.concatDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
   rw [← Tm.concatDef_row ρ xss ys]
   simp only [Tm.concatDef, Tm.den, Tm.nil, Prim.den_nilRow]
   change foldDen _ (Prim.den (rowOf "cat") _ _ []) xss ys ↔ _
-  simp only [foldDen]
+  rw [foldDen_iff]
   refine exists_congr fun l => exists_congr fun hl => and_congr_left' ?_
   change (∃ a, Prim.den ranRow _ _ [⟨Obj.one, .arr ((Obj.atom .general).inst ph σ), Tm.den ρ (Tm.uni (Gen.oneV false 1).fst) ≫
     Prim.den nilRow Obj.one (.arr ((Obj.atom .general).inst ph σ)) []⟩] a _) ↔ _
