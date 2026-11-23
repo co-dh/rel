@@ -67,7 +67,7 @@ private theorem iord_iff {s : Bool} {t r : QAtomicType} (hr : t.ordNum = some r)
   rwa [QAtomicType.castWord_ofBits hr hx, QAtomicType.castWord_ofBits hr hy] at h
 
 /-- The order `Op` of an atom is a comparison, never the stream `.first` (`colMap .first` is not a map). -/
-theorem ordOp_ne {s : Bool} {t : QAtomicType} {op : Op} (h : ordOp s t = .ok op) : op ≠ .first := by
+theorem ordOp_ne {s : Bool} {t : QAtomicType} {op : Op} (h : ordOp s t = .ok op) : op ≠ .first ∧ op ≠ .null := by
   unfold ordOp at h
   repeat' split at h
   all_goals first | (cases h; decide) | cases h
@@ -113,7 +113,7 @@ theorem cmpPairs_holds {s : Bool} {t : QAtomicType} {op : Op} (hop : ordOp s t =
   rename_i kv hkv
   split at h; · cases h
   rename_i w hw
-  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop) _ _ _)
+  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop).1 _ _ _) (ordOp_ne hop).2
   have hwv : ∀ i : Fin X.n.toNat, (raw .i64 X.n w)[i.1]?.getD 0 < 2 ∧
       ((raw .i64 X.n w)[i.1]?.getD 0 ≠ 0 ↔ ordAt s t (X.key.row i) (X.val.row i)) := by
     intro i
@@ -142,7 +142,7 @@ theorem cmpAt_holds {lt : Bool} {t : QAtomicType} {n : USize} {X : Vals (.prod (
   rename_i op hop
   split at h; · cases h
   rename_i w hw
-  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop) _ _ _)
+  obtain ⟨-, -, -, hev⟩ := colMap_raw hw (kscanStream_ne (ordOp_ne hop).1 _ _ _) (ordOp_ne hop).2
   have hwv : ∀ i : Fin n.toNat, (raw .i64 n w)[i.1]?.getD 0 < 2 ∧
       ((raw .i64 n w)[i.1]?.getD 0 ≠ 0 ↔ ordAt lt t (X.1.row i) (X.2.row i)) := by
     intro i
@@ -1111,7 +1111,7 @@ theorem foldlM_reverse_row {op : Op} {n i : Nat} (hi : i < n) : ∀ (l : List (A
 /-- **The backward `kscan`** (`rev`, `raw_kscan` read in forward row order): row `i` of the answer, read at `t`, is the
 cut of `out[i]`, which is `op` folded over the columns after the first at row `i`, from the next row's `out[i + 1]`, or
 from the first column's row `i` where `seg` starts a segment there (the last row always). -/
-theorem raw_kscan_rev {op : Op} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize} {seg : Enc}
+theorem raw_kscan_rev {op : Op} (hnl : op ≠ .null) {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize} {seg : Enc}
     {es : List (USize × Enc)} {r : Enc × Option UInt64} (hs : kscanStream op es [] [] = false)
     (h : kscan op true s t n seg es = .ok r) :
     ∃ c cs, es.map (·.2) = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
@@ -1119,7 +1119,7 @@ theorem raw_kscan_rev {op : Op} {s t : QAtomicType} {w : Nat} (ht : t.width = so
       ∀ i (hi : i < out.size), (cs.map (·.raw s n)).foldlM (fun a x => op.eval a (x[i]?.getD 0))
         (if i + 1 < n.toNat ∧ (seg.raw .u1 n)[i]?.getD 0 = 0 then out[i + 1]?.getD 0 else (c.raw s n)[i]?.getD 0) =
           .ok out[i] := by
-  obtain ⟨hg, hxs, c, cs, hec, out, hos, he, -, hrow⟩ := raw_kscan op true s t w ht n seg es r hs h
+  obtain ⟨hg, hxs, c, cs, hec, out, hos, he, -, hrow⟩ := raw_kscan op hnl true s t w ht n seg es r hs h
   simp only [if_true] at he hrow
   refine ⟨c, cs, hec, out.reverse, by simp [hos], by rw [he], fun i hi => ?_⟩
   simp only [Array.size_reverse] at hi
