@@ -4,8 +4,8 @@
 #![deny(unsafe_code)]
 use crate::lean::export;
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
-use {crate::{asc, blocks::Blocks, c::pool, exports::scatter::{POS, for_view, except}, ffi::Sink, lean::{B, O, boxed, ctor}, pod},
-    alloc::{format, string::String, vec::Vec}};
+use {crate::{asc, blocks::Blocks, c::pool, enc::is_nul, exports::scatter::{POS, for_view, except, no_nul}, ffi::Sink, lean::{B, O, boxed, ctor}, pod},
+    alloc::{format, string::String, vec, vec::Vec}};
 
 /// `foRWords`: `m` words of a `pos` (word `i` is `i`, at any row count) or `foR` column.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
@@ -15,22 +15,30 @@ fn ix<'a>(what: &str, m: usize, e: B<'a>) -> Result<asc::Ix<'a>, String> {
 
 /// `ascCol`, one `(AscKey, Enc)` at `m` rows, in its order of failure: the key column and the column it carries.
 /// `atom t` (ctor 0, `t` its one byte): the type's order, then `ascWords` (`pos` only at `i64`, code 4, and at most
-/// `2^63` rows). `cells n c lo hi els` (ctor 1, objects `lo hi els`, then `n c`): the column's words, each below `n`,
-/// `lo`, `hi`, then each of `els` at `c` rows.
+/// `2^63` rows). `cells n c lo hi els` (ctor 1, objects `lo hi els`, then `n c`): the column's words, none null, each
+/// below `n`, `lo` and `hi`, each with no null, then each of `els` at `c` rows.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub(crate) fn key<'a>(m: usize, el: B<'a>) -> Result<(asc::Col<'a>, asc::Ix<'a>), String> {
     let (k, e) = (el.field(0), el.field(1));
     if k.tag() == 0 {
         let t = k.u8_field(0);
         let o = asc::order(t).ok_or_else(|| format!("asc: type {t} has no fixed-width order"))?;
-        if e.tag() != POS { let c = for_view("asc", m, e)?; return Ok((asc::Col::Atom(asc::Key::new(c, o)), asc::Ix::of(Some(c)))) }
+        if e.tag() != POS {
+            let c = for_view("asc", m, e)?;
+            // a column holding a null keys by `nulCodes`' two columns (`asc::Col::Nul`)
+            let k = match c.nuls() { None => asc::Col::Atom(asc::Key::new(c, o)), Some(b) => asc::Col::Nul(asc::Key::new(c, o), b) };
+            return Ok((k, asc::Ix::of(Some(c))))
+        }
         if t != 4 { return Err(format!("asc: a pos column is type 4, not {t}")) }
         return asc::pos_rows(m).map(|_| (asc::Col::Pos, asc::Ix::Pos))
     }
     let (n, c) = (k.usize_field(3), k.usize_field(4));
     let x = ix("asc: cells", m, e)?;
+    no_nul("asc: cells", m, e)?;
     if let Some(r) = (0..m).map(|i| x.get(i) as u64).find(|&r| r >= n as u64) { return Err(format!("asc: cells: row word {r} names no cell of {n}")) }
-    let (lo, hi) = (ix("asc: cells lo", n, k.field(0))?, ix("asc: cells hi", n, k.field(1))?);
+    // a word of `lo` or `hi` is a payload row, so a null there is refused as `noNul` refuses one of `ix`
+    let lo = ix("asc: cells lo", n, k.field(0))?; no_nul("asc: cells lo", n, k.field(0))?;
+    let hi = ix("asc: cells hi", n, k.field(1))?; no_nul("asc: cells hi", n, k.field(1))?;
     let (mut els, mut l) = (Vec::new(), k.field(2));
     while !l.is_scalar() { els.push(key(c, l.field(0))?.0); l = l.field(1) }
     Ok((asc::Col::Cells(asc::Cells { ix: x, c, lo, hi, els }), x))
@@ -53,13 +61,22 @@ fn kasc(m: usize, es: B) -> Result<O, String> {
         None => sink().answer(&Blocks::pos(m)),
         Some(p) => sink().answer(&Blocks::dense(pod::bytes(p), 8)),
     };
-    let col = |c: &asc::Ix| match (c, &p) {
-        (asc::Ix::Pos, _) => pe(),
-        (asc::Ix::For(c, _), None) => sink().answer(&Blocks::from(*c)),
-        (asc::Ix::For(c, uw), Some(p)) => sink().answer(&|buf: &mut [i64], i0: usize| for (o, &i) in buf.iter_mut().zip(&p[i0..]) { *o = c.get_w(*uw, i as usize) }),
+    // `nb`: the column's null bits where it holds a null, which move with its words (answer row `i` is input row `p[i]`)
+    let col = |c: &asc::Ix, nb: Option<&[u8]>| {
+        let on: Option<Vec<u8>> = nb.map(|b| match &p {
+            None => b.to_vec(),
+            Some(p) => { let mut o = vec![0u8; m.div_ceil(8)]; for (i, &r) in p.iter().enumerate() { if is_nul(b, r as usize) { o[i >> 3] |= 1 << (i & 7) } } o }
+        });
+        let nul = on.as_deref().unwrap_or(&[]);
+        let put = "qlean asc: a write with no size test has an answer";
+        match (c, &p) {
+            (asc::Ix::Pos, _) => pe(),
+            (asc::Ix::For(c, _), None) => sink().write_nul(&Blocks::from(*c), false, nul).expect(put),
+            (asc::Ix::For(c, uw), Some(p)) => sink().write_nul(&|buf: &mut [i64], i0: usize| for (o, &i) in buf.iter_mut().zip(&p[i0..]) { *o = c.get_w(*uw, i as usize) }, false, nul).expect(put),
+        }
     };
     // the `List Enc` of sorted columns, built from its end
-    let vs = cs.iter().rev().fold(boxed(0), |vs, c| ctor(1, [col(c), vs], &[]));
+    let vs = cs.iter().zip(&ks).rev().fold(boxed(0), |vs, (c, k)| ctor(1, [col(c, match k { asc::Col::Nul(_, b) => Some(&b[..]), _ => None }), vs], &[]));
     Ok(ctor(0, [vs, pe()], &[]))
 }
 

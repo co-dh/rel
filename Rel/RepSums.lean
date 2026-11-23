@@ -570,7 +570,8 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   have hv := (Arr.eq_of_codes x.key.2 hcs1).1
   obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hv hg (sel i)
   obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hv hg (sel j)
-  simp only [ascKeys, ascKey, List.cons_append, lexLe, Array.getElem?_map, ha, hb,
+  simp only [ascKeys, ascKey, nulCodes, nulWords, Arr.plain, Bool.false_eq_true, ↓reduceIte, List.nil_append,
+    List.cons_append, lexLe, Array.getElem?_map, ha, hb,
     Option.map_some, Option.getD_some, hf, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true,
     beq_iff_eq] at hlex
   obtain ⟨⟨w, fl, sg⟩, hL⟩ : ∃ L, ascLayout t = some L := by
@@ -598,6 +599,14 @@ theorem _root_.Rel.Arr.get_ofBits {u : QAtomicType} (hu : u = .i64 ∨ u = .f64)
   rcases hu with rfl | rfl
   · exact Arr.get_i64 y i
   · have := wideCol_word y rfl (Or.inr rfl) i; simpa [fval] using this
+
+/-- **`sumTail`'s bad column holds no null**: at either type it is a `colMap .or` (`colMap_plain`). -/
+theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad : Enc} {W : Arr u n}
+    (h : Tab.sumTail what u n seg v = .ok (W, bad)) : hasNul bad = false := by
+  cases u <;> simp only [Tab.sumTail, bind, Except.bind] at h
+  all_goals (repeat' split at h)
+  all_goals try cases h
+  all_goals rename_i hb; exact colMap_plain hb
 
 /-- **`sumTail` is the left fold `⦇[0, plus]⦈` of each run up to each row** (`sums` per key, `sum` per cell): `Kk`
 names the runs and `seg` marks their first rows (`runScan_ok`); row `t` of `W` is the fold of `stepAt u add` from `0`
@@ -901,9 +910,9 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     have := sum_range_mono (fun g => EN g - SN g) (show g + 1 ≤ n.toNat by omega)
     rw [List.range_succ, List.map_append] at this; simp at this
     rw [hT, hoff, hoff]; omega
-  have hGt := kgather_word hg1
+  have hGt := kgather_word hg1 lo.plain
   have hA := (colMap_raw ha1).2.2.2
-  have hVt := kgather_word hv
+  have hVt := kgather_word hv (Arr.plain (t := u) f)
   have hG2 : ∀ g < n.toNat, ∀ k < EN g - SN g, (Enc.raw .i64 T' G)[off g + k]?.getD 0 = g.toUInt64 ∧
       (Enc.raw .i64 T' i)[off g + k]?.getD 0 = k.toUInt64 := fun g hg k hk => by
     have := hrun g hg (off g + k) (by omega) (by omega); simpa using this
@@ -979,9 +988,9 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     simp only [hrow ⟨g, hg⟩, List.getElem_map, List.getElem_range', Nat.one_mul, hkm, dif_pos, Vals.row_atom,
       Arr.get_ofBits hu]
   -- per cell: its bad words `|`-ed, its run's last scanned word, the total
-  obtain ⟨hGs, -, hbw⟩ := kscatter_words hbadC
+  obtain ⟨hGs, -, hbw⟩ := kscatter_words hbadC (sumTail_plain hst)
   obtain ⟨-, hbadCf⟩ := scatterWords_fold (f := (· ||| ·)) (fun _ _ => rfl) hbw
-  obtain ⟨-, -, hLw⟩ := kscatter_words hL
+  obtain ⟨-, -, hLw⟩ := kscatter_words hL (Arr.plain W)
   obtain ⟨-, hLf⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hLw
   rw [hGs] at hbadCf hLf
   have hbadCg : ∀ g (hg : g < n.toNat), ((Enc.raw .i64 n badC)[g]?.getD 0 = 0 ∨ (Enc.raw .i64 n badC)[g]?.getD 0 = 1) ∧

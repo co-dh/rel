@@ -51,18 +51,27 @@ end Rel.Verify
 namespace Rel
 
 /-- `Coc.bools n p` reads back as `p`: at width 1 a key is zero-extended, so element `i` is the 0/1 byte `i` it encodes
-    (`foRBits_encode`). Here, beside `packIds_bytes`, so the driver law (`raw_ofRaw`) reads a boolean answer too. -/
+    (`foROpt_encode` with no null rows), through the null-aware read and so through the raw one. Here, beside
+    `packIds_bytes`, so the driver law (`raw_ofRaw`) reads a boolean answer too. -/
 theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
+    Column.foROpt (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
+      some (p i).toNat.toUInt64 ∧
     Column.foRBits (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2 (Column.blockStarts (Kernel.Coc.bools n p).1) i =
       (p i).toNat.toUInt64 := by
   have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp)
   obtain ⟨hs, hb⟩ := Verify.packIds_bytes 1 n (fun i => (p i).toNat) (by decide) (by decide)
   simp only [Nat.mul_one] at hs hb
-  simp only [Kernel.Coc.bools, h1]
-  rw [Verify.foRBits_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ i (by rw [hs]; simpa using hi)]
-  simp only [Kernel.Coc.keyAt, Column.sext, beq_self_eq_true, if_true, Nat.mul_one,
-    hb i hi (by cases p i <;> decide)]
-  cases p i <;> rfl
+  have ho : Column.foROpt (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2
+      (Column.blockStarts (Kernel.Coc.bools n p).1) i = some (p i).toNat.toUInt64 := by
+    simp only [Kernel.Coc.bools, h1]
+    rw [Verify.foROpt_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ .empty i (by rw [hs]; simpa using hi)
+      fun _ _ _ j _ _ _ => Verify.bitAt_empty j]
+    simp only [Verify.bitAt_empty, Bool.false_eq_true, ↓reduceIte, Kernel.Coc.keyAt, Column.sext, beq_self_eq_true,
+      if_true, Nat.mul_one, hb i hi (by cases p i <;> decide)]
+    cases p i <;> rfl
+  refine ⟨ho, ?_⟩
+  unfold Column.foROpt at ho; split at ho; · cases ho
+  exact Option.some.inj ho
 
 end Rel

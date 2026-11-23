@@ -89,7 +89,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
       rw [← sum_range_succ']; exact sum_range_mono wN hg
     obtain ⟨hG, hu⟩ := hrun g hg (((List.range g).map wN).sum + d) (by omega) (by omega)
     have es := (colMap_raw hix).2.2.2 _ ht
-    rw [(kgather_word hsg _ ht).2, hG, toNat_toUInt64 (by omega), (hse' g hg).1, hu] at es
+    rw [(kgather_word hsg lo.plain _ ht).2, hG, toNat_toUInt64 (by omega), (hse' g hg).1, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add, Nat.add_sub_cancel_left, toNat_toUInt64 (by omega)]
   -- the test word of row `t`: `1` where its element is a key of `D = dom P`
@@ -130,7 +130,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
       List.range' (off g) (wN g) := fun g hg => by
     rw [hoff]; exact expand_group_run hex wN hww hsn hn63 g hg
   -- each cell's width is its count of kept rows
-  obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt
+  obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt (colMap_plain hbm)
   obtain ⟨-, hcf⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) hcw
   rw [hGs] at hcf
   have hcn : ∀ g < n.toNat, (raw .i64 n cnt)[g]?.getD 0 = (cN g).toUInt64 := fun g hg => by
@@ -155,7 +155,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hpj : ∀ j (hj : j < K.toNat), Vals.row (A := .long) pay ⟨j, hj⟩ =
       ((raw .i64 T u)[((raw .i64 K sel)[j]?.getD 0).toNat]?.getD 0).toInt64 := fun j hj => by
     have es := (colMap_raw (colArr_ok hpay)).2.2.2 j hj
-    rw [(kgather_word hgs j hj).2] at es
+    rw [(kgather_word hgs (expand_plain hex) j hj).2] at es
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
     rw [Vals.row_atom, Arr.get_i64, ← es]
   have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
