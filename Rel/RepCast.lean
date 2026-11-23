@@ -295,7 +295,8 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
         Verify.kscan_nul_row ho.2 rfl rfl hk (by simp [x.wf, y.wf]) hN hkr
       simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl⟩ := hes
       obtain ⟨h1, h2, h3⟩ := hrow i i.2
-      simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind_pure] at h1 h2
+      simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind_pure,
+        show chain ([] : List (Op × UInt64)) = (pure : UInt64 → Except String UInt64) from rfl] at h1 h2
       refine ⟨_, _, h1, h2, by simp [rdNul, h3], fun h0 => ?_⟩
       have hbit : Column.bitAt (nulMap nl) i = false := by
         rw [nulMap, Verify.bitAt_packOf _ _ _ (by rw [hns]; exact i.2)]; simp [h0]

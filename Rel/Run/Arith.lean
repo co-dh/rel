@@ -165,7 +165,9 @@ def nulStepCol (s : String) (k : UInt8) (n : USize) (x y : Enc) : Except String 
   let x' ← fillNulCol n x; let y' ← fillNulCol n y
   let (w, keep) ← stepCols k n x' y'
   arithOvf s (t := .i64) (t' := .i64) (x', y') keep
-  -- `nulWord - (nulWord - w)·keep`: `w` where kept, else `nulWord`
+  -- a non-null `1+i64` can hold the word `2^63`, which `Ew.intStep` answers as null: so `d` selects `nulWord` by
+  -- `keep`, `nulWord - (nulWord - w)·keep`, not by the operands' flags
+
   let d ← colMap .mul n (← colMap .first n w.enc w.enc .i64 .i64 [] [(.sub, nulWord)]) keep .i64 .i64 []
     [(.sub, nulWord)]
   return (← kscan .min false .i64 .i64 n none [(n, d), (n, p.1)]).1
