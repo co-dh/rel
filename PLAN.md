@@ -1751,6 +1751,14 @@ relk 线程池空转 2 526（与前三项重叠）。
   import `RepBits`/`RepTabArith`/`RepWFOps`，所以要等 `Rel/Lang/*` 迁完。测量：改 `RepCanon` 一个证明（证明内加注释），
   只重建 `RepCanon` 1 个模块（2.5 s），其余 module 的 importer 与非 module 的 importer 都只是 replay（公开接口不变），
   整个命令 3 s；perf9d 是 125 个模块、106 s。
+- ▶ perf9f `Rel/Lang/{GenKSpec,GenKBits,GenKFold,GenKEst,GenKFix,GenKHylo,DfnLaw,GenSound,ConvSpec,Table,EmitC,PlanSpec}` 与
+  `RepAsc`、`RepWhere`、`RepSums` 已是 module（这些文件里没有 `#guard`/`#print axioms`，无需搬检查；`Run.Lang.Elab` 已是
+  module，perf9b 的 (d) 已不成立）。两处改动：(a) `GenKFold` 的 `simp [List.merge]` 改为 `simp`（`List.merge` 在 core 中没有
+  expose）；(b) `Run/Lang/TmGen.lean` 里 `addAndCompile` 生成的 `rowGens`、`rowLongs` 在 `@[expose]` 段之外，body 不 expose，
+  导致 `GenSound` 的 `rfl`/`cases` 失败（`Dependent elimination failed … ?m.3 σ []`）；改为 `addDecl d (forceExpose := true)`
+  再 `compileDecl`。仍非 module：`Rel/Lang/Test*`、`*Test.lean`、`AllPrograms`（import 非 module 的 `Programs.*`）。
+  测量：`GenSound` 的一个证明内加注释，只重建 `GenSound` 1 个模块（18 s），整个命令约 27 s；`RepSums` 同样只重建自身
+  （2.5 s，命令约 5 s）。perf9e 之前 `Lang.*` 都是 non-module，改任何证明会重建整个下游。
 
 ## Baseline
 
