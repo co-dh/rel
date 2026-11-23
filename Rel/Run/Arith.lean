@@ -100,33 +100,10 @@ def stepColsAt : (t : QAtomicType) → UInt8 → (n : USize) → Enc → Enc →
 namespace Tab
 variable {K : Obj}
 
-/-- **`D ≫ arithDen k U`**: `D`'s rows whose first operand is in `dom U` (`Tab.comp` of the rows keyed by
-themselves with `dom U`), of those the ones whose second is, `stepCols` on their operands, the kept rows with their
-answers (`Tab.keep`), `≫ U` (`Tab.comp`). `U X` is the universe at the values `X`: an infinite one (`𝟙`) is run
-only where its values are known, so each test asks `U` at the column it tests. -/
-def arith (t : QAtomicType) (k : UInt8) (D : Tab K (.prod (.atom t) (.atom t)))
-    (U : {n : USize} → Vals (.atom t) n → Except String (Tab (.atom t) (.atom t))) :
-    Except String (Tab K (.atom t)) := do
-  let E₁ : Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t) ←
-    Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod (.atom t) (.atom t)) D.n), D.val.1⟩
-      (← (← U D.val.1).dom)
-  let E : Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t) ←
-    Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ (← (← U E₁.key.2.2).dom)
-  let (w, b) ← stepColsAt t k E.n E.key.2.1.enc E.key.2.2.enc
-  let P ← Tab.keep ⟨E.n, E.key.1, w⟩ b
-  Tab.comp P (← U P.val)
-
 /-- Each word `u` of the `i64` column `e` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the null to itself) by
-    two `colMap`s: the step of `succ` and `succOp`. -/
+    two `colMap`s: the step of `succOp`. -/
 def succCol (n : USize) (e : Enc) : Except String (Arr .i64 n) := do
   colArr .add n e (← colMap .first n e e .i64 .i64 [] [(.ne, nulWord)])
-
-/-- **`D ≫ succDen U`**: `D ≫ dom U`, `succCol`, `≫ dom U`; `U X` the universe at the values `X`, as in `arith`. -/
-def succ (D : Tab K .long) (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) :
-    Except String (Tab K .long) := do
-  let E ← D.comp (← (← U D.val).dom)
-  let s ← succCol E.n E.val.enc
-  Tab.comp ⟨E.n, E.key, s⟩ (← (← U s).dom)
 
 end Tab
 

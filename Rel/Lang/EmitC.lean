@@ -752,34 +752,6 @@ def cmpB (u : Dom → Bld TabB) (op : String) (o : Except String Kernel.Op) (t :
     | none => do let (T, x, y) ← crossB k.1 l.1 k.2 l.2; canonT ⟨T, x, y⟩
   keepB T (← mapB o T.n (← wideB t T.n (← col1 T.key)) (← wideB t T.n (← col1 T.val)))
 
-/-- `dom U` at the values `c`, `u` the table of `U` in a context. -/
-def domAt (u : Dom → Bld TabB) (c : Nat × Cols) : Bld TabB := do let t ← u { dom := some c }; coreflB t.n t.key
-
-/-- **`D ≫ succDen U`** (`Tab.succ`) on the values `X`: `D = idU X`, `≫ dom U`, each value `v` to `v + [v ≠ null]`,
-    `≫ dom U`. -/
-def succB (u : Dom → Bld TabB) (n : Nat) (X : Cols) : Bld TabB := do
-  let D ← coreflB n X
-  let E ← compB D (← domAt u (D.n, D.val))
-  let v ← col1 E.val
-  let s := [.atom "" .i64 (← mapB .add E.n v (← mapB .ne E.n v (← wordsB E.n nulWord)))]
-  compB ⟨E.n, E.key, s⟩ (← domAt u (E.n, s))
-
-/-- **`D ≫ arithDen k U`** (`Tab.arith`) on the pairs `X`: `D = idU X`; the rows whose first operand is in `dom U`,
-    of those the ones whose second is (two `compB`s, each row keyed by `D`'s key and its operands); `stepB` on the
-    operands; the kept rows with their answers (`keepB`); `≫ U`. -/
-def arithT (u : Dom → Bld TabB) (t : QAtomicType) (k : UInt8) (n : Nat) (X : Cols) : Bld TabB := do
-  let D ← coreflB n X
-  let opnd (cs : Cols) (i : Nat) : Bld Cols := match cs[i]? with
-    | some (.atom _ t e) => pure [.atom "" t e]
-    | _ => throw s!"arith: a pair side of {cs.length} columns, not of two atoms"
-  let a ← opnd D.val 0
-  let E₁ ← compB ⟨D.n, D.key ++ D.val, a⟩ (← domAt u (D.n, a))
-  let b ← opnd E₁.key (D.key.length + 1)
-  let E ← compB ⟨E₁.n, E₁.key, b⟩ (← domAt u (E₁.n, b))
-  let (w, f) ← stepB t k E.n (← col1 (← opnd E.key D.key.length)) (← col1 (← opnd E.key (D.key.length + 1)))
-  let P ← keepB ⟨E.n, E.key.take D.key.length, [.atom "" t w]⟩ f
-  compB P (← u { dom := some (P.n, P.val) })
-
 /-- **`Tab.floatOp s`** on the values `X` of `A` (`floatDen`): `fmapCols` of the row's `Op` from `A`'s float atom (each
     component's, for a row reading two) to `B`'s number atom, each value to its answer, kept where it is a word of
     `B`'s atom; `Tab.floatOp`'s errors at the objects it refuses. -/
