@@ -39,8 +39,8 @@ rel_program fusedG where
     sumG(x : 1 ⟶ [ν]) : 1 ⟶ ν ≜ x sum
 
 /-! The same rows inside constants generic over their target `ν`, called at `M` (the constant built with `ν` an
-    initial segment, `formKey`'s `seg`), and at `Q = 1…5`, not one: there the definition runs, and its fold's base
-    `0` is not in `Q`, so it has no value. -/
+    initial segment, `formKey`'s `seg`), and at `Q = 1…5`, not one: there the definition's fold base `0` is a literal
+    outside `Q`, which is refused. -/
 open Rel.Programs.prelude fusedG in
 rel_program fusedGT where
     obj M = 0…19999
@@ -49,20 +49,31 @@ rel_program fusedGT where
     x2 : 1 ⟶ [M] ≜ ⟨xs, xs⟩ cat
     x4 : 1 ⟶ [M] ≜ ⟨x2, x2⟩ cat
     zs : 1 ⟶ [M] ≜ {(∗,19999 1)}
-    qs : 1 ⟶ [Q] ≜ {(∗,1 2)}
     gn : 1 ⟶ M ≜ lenG(x4)
     gs : 1 ⟶ M ≜ sumG(x4)
     gz : 1 ⟶ M ≜ sumG(zs)
-    qn : 1 ⟶ Q ≜ qs length
-    qsm : 1 ⟶ Q ≜ qs sum
     check gn = {(∗,40)}
     check gs = {(∗,220)}
     check gz = 𝟘
-    check qn = 𝟘
-    check qsm = 𝟘
 
--- by hand: `x4` is `1 2 … 10` four times: 40 elements, sum 4 × 55 = 220; `zs` sums to 20000, not in `M`; at `Q` the
--- definitions' folds start at `0 ∉ Q`, so `length` and `sum` of `1 2` have no value.
+-- by hand: `x4` is `1 2 … 10` four times: 40 elements, sum 4 × 55 = 220; `zs` sums to 20000, not in `M`.
 #guard fusedGT.failures.map toString == []
+
+-- at `Q` the definitions' fold base is the literal `0 ∉ Q`, read at the target like any literal: refused there
+/-- error: line 15, col 24: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program fusedQ where
+    obj Q = 1…5
+    qs : 1 ⟶ [Q] ≜ {(∗,1 2)}
+    qn : 1 ⟶ Q ≜ qs length
+
+/-- error: line 16, col 21: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program fusedQs where
+    obj Q = 1…5
+    qs : 1 ⟶ [Q] ≜ {(∗,1 2)}
+    qsm : 1 ⟶ Q ≜ qs sum
 
 end Rel.Lang.TestFusedM

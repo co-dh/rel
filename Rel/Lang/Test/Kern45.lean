@@ -92,21 +92,27 @@ rel_program kernT45 where
 /-! `sum = ⦇[0, plus]⦈` and `length = ⦇[0, π₁ succ]⦈` at an object with a universe run as their folds, so every
     step, not only the result, is in the object: `3 3 -3` has the partial sum `3+3 = 6 ∉ M`; `length` starts at
     `0 ∉ P`. `g` the same inside a constant generic over its number variable. -/
+open Rel.Programs.prelude in
 rel_program sumFold where
     obj M = -3…3
-    obj P = 1…5
     a : M ⟶ [M] ≜ {(1,3 3 -3),(2,3 -3 3),(3,[])}
     s : M ⟶ M ≜ a sum
     g(R : α ⟶ [β]) : α ⟶ β ≜ R sum
     t : M ⟶ M ≜ g(a)
-    b : P ⟶ [P] ≜ {(1,[]),(2,1 2),(3,[5])}
-    l : P ⟶ P ≜ b length
     -- the rows worked by hand: from the start, `3 3 -3` gives 3, 6 (dropped); `3 -3 3` gives 3, 0, 3; `[]` gives 0
     check s = {(2,3),(3,0)}
     check t = {(2,3),(3,0)}
-    check l = 𝟘
 
 #guard sumFold.ok
+
+-- the fold's base is the literal `0`, read at the target like any literal: `0 ∉ P`, so the text is refused there
+/-- error: line 15, col 24: `ran` at this call, where α is 1, β is P: 0 is not in P = 1…5 -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program lenFoldP where
+    obj P = 1…5
+    b : P ⟶ [P] ≜ {(1,[]),(2,1 2),(3,[5])}
+    l : P ⟶ P ≜ b length
 -- not vacuous: the kernel tables have rows
 #guard ["le", "a1", "ms", "sm", "es"].all fun d => ((get kernT45.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ((get kernT45.expanded "th" .long (.arr .long)).map (·.n.toNat != 0)) == some true
