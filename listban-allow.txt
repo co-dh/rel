@@ -7,6 +7,7 @@ Rel.Kernel.Coc.alpElems
 Rel.Kernel.Coc.elems
 Rel.Kernel.Coc.foRStd
 Rel.Kernel.Coc.packRes
+Rel.Kernel.Coc.packResImpl
 Rel.Kernel.Coc.planOf
 Rel.Kernel.Ew.bitBitmap
 Rel.Kernel.Ew.cmpBitmap
@@ -19,6 +20,7 @@ Rel.Kernel.cellFns
 Rel.Kernel.chainAll
 Rel.Kernel.gatherRows
 Rel.Kernel.gatherWords
+Rel.Kernel.hasNul
 Rel.Kernel.packOf
 Rel.Kernel.scatterWords
 Rel.Kernel.tilLongs
@@ -26,7 +28,6 @@ Rel.Lang.Embed.atomOf._unsafe_rec
 Rel.Lang.Embed.define
 Rel.Lang.Embed.homesOf
 Rel.Lang.Embed.litItem._unsafe_rec
-Rel.Lang.Embed.litItem.tup._unsafe_rec
 Rel.Lang.Embed.params
 Rel.Lang.Embed.prim._unsafe_rec
 Rel.Lang.Embed.program
@@ -60,8 +61,8 @@ Rel.Lang.proj.go._unsafe_rec
 Rel.Lang.proj.pre
 Rel.Lang.rowObjs
 Rel.positionsL
-_private.Rel.Kernel.Coc.0.Rel.Kernel.Coc.packResImpl
 _private.Rel.Run.Core.0.Rel.Tab.toListImpl
 _private.Rel.Run.Core.0.Rel.Vals.rowsImpl
 _private.Rel.Run.Core.0.Rel.Vals.rowsImpl._sunfold
 _private.Rel.Run.Core.0.Rel.Vals.rowsImpl._unsafe_rec
+_private.Rel.Run.Lang.Grammar.0.Rel.Lang.Embed.litItem.tup._unsafe_rec
