@@ -785,8 +785,8 @@ theorem map_range'_eq_iff {β : Type} (g : Nat → β) (s l s' l' : Nat) :
 
 /-- `cellFns`' codes at two words, for any start `s` and length `len ≤ c`: equal exactly where the lengths are and the
 payload codes `ks` agree element by element. -/
-theorem cellBlocks_eq_iff (c : Nat) (s len : UInt64 → Nat) (hc : ∀ r, len r ≤ c) (ks : List (Array UInt64))
-    (r r' : UInt64) :
+theorem cellBlocks_eq_iff (c : Nat) (s len : UInt64 → Nat) (ks : List (Array UInt64))
+    (r r' : UInt64) (hr : len r ≤ c) (hr' : len r' ≤ c) :
     (List.range c).flatMap (fun j => (if j < len r then 1 else 0) ::
         ks.map (fun x => if j < len r then x[s r + j]?.getD 0 else 0)) =
       (List.range c).flatMap (fun j => (if j < len r' then 1 else 0) ::
@@ -799,11 +799,11 @@ theorem cellBlocks_eq_iff (c : Nat) (s len : UInt64 → Nat) (hc : ∀ r, len r 
     have hl : len r = len r' := by
       have h1 := fun j (hj : j < c) => (h j hj).1
       rcases Nat.lt_trichotomy (len r) (len r') with hlt | heq | hlt
-      · have := h1 (len r) (by have := hc r'; omega); simp [hlt] at this
+      · have := h1 (len r) (by have := hr'; omega); simp [hlt] at this
       · exact heq
-      · have := h1 (len r') (by have := hc r; omega); simp [hlt] at this
+      · have := h1 (len r') (by have := hr; omega); simp [hlt] at this
     refine ⟨hl, fun k hk => ?_⟩
-    have := (h k (by have := hc r; omega)).2
+    have := (h k (by have := hr; omega)).2
     simpa [hk, show k < len r' by omega] using this
   · rintro ⟨hl, h⟩ j hj
     by_cases hk : j < len r
@@ -812,24 +812,44 @@ theorem cellBlocks_eq_iff (c : Nat) (s len : UInt64 → Nat) (hc : ∀ r, len r 
 
 /-- **Equal codes of two cells** (`cellFns`): the cells the words `r` and `r'` name have one length and equal payload
 codes `ks` element by element. -/
-theorem cellFns_eq_iff (c : Nat) (lo hi : Array UInt64) (ks : List (Array UInt64)) (r r' : UInt64) :
+theorem cellFns_eq_iff (c : Nat) (lo hi : Array UInt64) (ks : List (Array UInt64)) (r r' : UInt64)
+    (hr : cellLen lo hi r ≤ c) (hr' : cellLen lo hi r' ≤ c) :
     (cellFns c lo hi ks).map (· r) = (cellFns c lo hi ks).map (· r') ↔
-      cellLen c lo hi r = cellLen c lo hi r' ∧ ∀ k < cellLen c lo hi r,
-        ks.map (·[cellStart c lo r + k]?.getD 0) = ks.map (·[cellStart c lo r' + k]?.getD 0) := by
+      cellLen lo hi r = cellLen lo hi r' ∧ ∀ k < cellLen lo hi r,
+        ks.map (·[cellStart lo r + k]?.getD 0) = ks.map (·[cellStart lo r' + k]?.getD 0) := by
   simp only [cellFns, List.map_flatMap, List.map_cons, List.map_map, Function.comp_def]
-  exact cellBlocks_eq_iff c (cellStart c lo) (cellLen c lo hi) (fun r => by simp only [cellLen]; omega) ks r r'
+  exact cellBlocks_eq_iff c (cellStart lo) (cellLen lo hi) ks r r' hr hr'
+
+/-- **A cell of a `WF` side lies in its payload**: `cellStart` and `cellLen` read `0 ≤ lo ≤ hi ≤ c` as they are. -/
+theorem Vals.cell_le {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
+    (hw : Vals.WF (A := .arr B) ⟨c, lo, hi, f⟩) (i : Fin n.toNat) :
+    cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64 +
+      cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 ≤ c.toNat := by
+  have hi : (i.1.toUInt64).toNat = i.1 := by
+    have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
+  obtain ⟨h1, h2, h3⟩ := hw.1 i
+  simp only [cellLen, cellStart, hi, ← Arr.get_i64]; omega
 
 /-- **An `arr` side's row is its cell**: the payload rows from `cellStart` for `cellLen` rows (`cellFns`' reading of
-`lo` and `hi` at the row's own word), read through `f`. -/
-theorem Vals.row_arr {B : Obj} {n c : USize} (lo hi : Arr .i64 n) (f : Vals B c) (i : Fin n.toNat) :
+`lo` and `hi` at the row's own word), read through `f`; `Vals.row`'s clamp to `[0, c)` is the identity on a `WF`
+cell. -/
+theorem Vals.row_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
+    (hw : Vals.WF (A := .arr B) ⟨c, lo, hi, f⟩) (i : Fin n.toNat) :
     Vals.row (A := .arr B) ⟨c, lo, hi, f⟩ i =
-      (List.range' (cellStart c.toNat (Enc.raw .i64 n lo.enc) i.1.toUInt64)
-        (cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)).map
+      (List.range' (cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64)
+        (cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)).map
         fun k => if h : k < c.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
   have hi : (i.1.toUInt64).toNat = i.1 := by
     have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
   have hfr : (List.finRange c.toNat).map Fin.val = List.range c.toNat := List.ext_getElem (by simp) (by simp)
-  simp only [Vals.row, cellLen, cellStart, hi, ← Arr.get_i64]
+  obtain ⟨h1, h2, h3⟩ := hw.1 i
+  have hs : cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64 = min (max (lo.get i).toInt 0).toNat c.toNat := by
+    simp only [cellStart, hi, ← Arr.get_i64]; omega
+  have hl : cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 =
+      (min (hi.get i).toInt (c.toNat : Int)).toNat - min (max (lo.get i).toInt 0).toNat c.toNat := by
+    simp only [cellLen, cellStart, hi, ← Arr.get_i64]; omega
+  rw [hs, hl]
+  simp only [Vals.row]
   rw [← filter_range_window, ← filterMap_ite, ← hfr, List.filterMap_map]
   exact congrArg (fun F => List.filterMap F _) (funext fun j => by simp [j.2])
 
@@ -863,11 +883,11 @@ theorem Vals.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c
     (hes : Vals.cols (A := .arr B) ⟨c, lo, hi, f⟩ = .ok es) (hc : es.mapM (ascCol n) = .ok cs) :
     ∃ fs, Vals.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧ ∀ i i' : Fin n.toNat,
       (seenKey n es i = seenKey n es i' ↔
-        cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 =
-          cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 ∧
-        ∀ k < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64,
-          seenKey c fs (cellStart c.toNat (Enc.raw .i64 n lo.enc) i.1.toUInt64 + k) =
-            seenKey c fs (cellStart c.toNat (Enc.raw .i64 n lo.enc) i'.1.toUInt64 + k)) := by
+        cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 =
+          cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 ∧
+        ∀ k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64,
+          seenKey c fs (cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64 + k) =
+            seenKey c fs (cellStart (Enc.raw .i64 n lo.enc) i'.1.toUInt64 + k)) := by
   simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
   split at hes; · cases hes
   rename_i fs hfs

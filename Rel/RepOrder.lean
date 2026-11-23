@@ -120,9 +120,9 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es 
       simp only [Vals.cols, hfs, bind, Except.bind, pure, Except.pure] at hes; exact (Except.ok.inj hes).symm
     have hr : ∀ q : Fin n.toNat, (seenKey n [(AscKey.cells n c lo.enc hi.enc fs, .pos)] q).map UInt64.toNat =
         (List.range c.toNat).flatMap fun p =>
-          (if p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 then 1 else 0) ::
-          (ascKeys c fs).map fun z => if p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
-            q.1.toUInt64 then (z[cellStart c.toNat (Enc.raw .i64 n lo.enc) q.1.toUInt64 + p]?.getD 0).toNat else 0 :=
+          (if p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 then 1 else 0) ::
+          (ascKeys c fs).map fun z => if p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
+            q.1.toUInt64 then (z[cellStart (Enc.raw .i64 n lo.enc) q.1.toUInt64 + p]?.getD 0).toNat else 0 :=
       fun q => by
         have e : seenKey n [(AscKey.cells n c lo.enc hi.enc fs, .pos)] q = (cellFns c.toNat (Enc.raw .i64 n lo.enc)
             (Enc.raw .i64 n hi.enc) (ascKeys c fs)).map (· q.1.toUInt64) := by
@@ -130,27 +130,27 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es 
         rw [e]
         simp only [cellFns, List.map_flatMap, List.map_cons, List.map_map, Function.comp_def]
         congr 1; funext p
-        by_cases hp : p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 <;> simp [hp]
+        by_cases hp : p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 <;> simp [hp]
     rw [hr, hr] at h
     obtain ⟨p, -, hq, hp⟩ := flatMap_range_lt (k := (ascKeys c fs).length + 1) (by simp) (by simp) _ h
-    have bound : ∀ (q : Fin n.toNat) k, k < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
-        q.1.toUInt64 → cellStart c.toNat (Enc.raw .i64 n lo.enc) q.1.toUInt64 + k < c.toNat := fun q k hk => by
+    have bound : ∀ (q : Fin n.toNat) k, k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
+        q.1.toUInt64 → cellStart (Enc.raw .i64 n lo.enc) q.1.toUInt64 + k < c.toNat := fun q k hk => by
       simp only [cellLen] at hk; omega
-    have get : ∀ (q : Fin n.toNat) k (hk : k < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
+    have get : ∀ (q : Fin n.toNat) k (hk : k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
         q.1.toUInt64), (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ q)[k]? = some (f.row ⟨_, bound q k hk⟩) :=
       fun q k hk => by rw [Vals.row_arr]; simp [hk, bound q k hk]
     have len : ∀ q : Fin n.toNat, (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ q).length =
-        cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 := fun q => by
+        cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 := fun q => by
       rw [Vals.row_arr]; simp
     -- below `p` the blocks agree: one reach flag, and where both reach, one element
-    have flag : ∀ q < p, (q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 ↔
-        q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64) := fun q hqp => by
+    have flag : ∀ q < p, (q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 ↔
+        q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64) := fun q hqp => by
       have := (List.cons.inj (hq q hqp)).1
-      by_cases a1 : q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 <;>
-        by_cases a2 : q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 <;>
+      by_cases a1 : q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 <;>
+        by_cases a2 : q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 <;>
         simp [a1, a2] at this ⊢
-    have elem : ∀ q < p, ∀ (h1 : q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)
-        (h2 : q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64),
+    have elem : ∀ q < p, ∀ (h1 : q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)
+        (h2 : q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64),
         (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ i)[q]? = (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ i')[q]? :=
       fun q hqp h1 h2 => by
         have e := (List.cons.inj (hq q hqp)).2
@@ -161,26 +161,26 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → {es 
     apply Obj.lt_arr_of b p _ _ fun q hqp => ?_
     · simp only [List.cons_lt_cons_iff] at hp
       rcases hp with hlt | ⟨hfl, hlt⟩
-      · by_cases a1 : p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 <;>
-          by_cases a2 : p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 <;>
+      · by_cases a1 : p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 <;>
+          by_cases a2 : p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 <;>
           simp [a1, a2] at hlt
         refine .inl ⟨?_, by rw [len]; exact a2⟩
         rw [len]
         rcases Nat.eq_zero_or_pos p with h0 | h0
         · omega
         · have := (flag (p - 1) (by omega)).2 (by omega); omega
-      · by_cases a1 : p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64
-        · have a2 : p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 := by
+      · by_cases a1 : p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64
+        · have a2 : p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 := by
             refine Classical.byContradiction fun a2 => ?_; simp [a1, a2] at hfl
           simp only [if_pos a1, if_pos a2] at hlt
           exact .inr ⟨_, _, get i p a1, get i' p a2, Vals.lt_of_codes f hfs hcs' _ _ (by
             simpa only [seenKey, List.map_map, Function.comp_def] using hlt)⟩
-        · have a2 : ¬ p < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 := by
+        · have a2 : ¬ p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 := by
             intro a2; simp [a1, a2] at hfl
           simp only [if_neg a1, if_neg a2] at hlt
           exact absurd hlt (List.lt_irrefl _)
     · -- below `p` both cells reach `q`, or neither does and both rows end before `q`
-      by_cases h1 : q < cellLen c.toNat (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64
+      by_cases h1 : q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64
       · exact elem q hqp h1 ((flag q hqp).1 h1)
       · have h2 := mt (flag q hqp).2 h1
         rw [List.getElem?_eq_none (by rw [len]; omega), List.getElem?_eq_none (by rw [len]; omega)]
