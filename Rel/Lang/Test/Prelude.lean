@@ -118,7 +118,7 @@ def afterErr (pre src : String) : CM Err := do
   unless toString e == "in the program `pre`, line 1, col 29: unknown name 'g'" do throwError "{e}"
 #eval do
   let e ← afterErr "    f(R : α ⟶ β) : α ⟶ β ≜ R g\n" "obj X = {A}\nx : X ⟶ X ≜ {(A,A)}\ny : X ⟶ X ≜ f(x)\n"
-  unless e.pos.line == 3 && e.msg == "in `pre.f` (its line 1): unknown name 'g'" do throwError "{e}"
+  unless e.pos.line == 3 && toString e.msg == "in `pre.f` (its line 1): unknown name 'g'" do throwError "{e}"
 
 
 end Rel.Lang.Test

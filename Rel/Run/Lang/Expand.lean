@@ -52,7 +52,7 @@ def objInfo (env : Env) (n : String) : ObjDef → EM ObjInfo
 def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
   { d with apply := fun p as => do
       let reword (e : Err) : M Arg :=
-        throw (if e.pos == p then e else ⟨p, s!"in `{c}` (its line {e.pos.line}): {e.msg}"⟩)
+        throw (if e.pos == p then e else ⟨p, e.msg.map (s!"in `{c}` (its line {e.pos.line}): " ++ ·)⟩)
       let row := prims.find? (·.prelude == some c)
       -- given a family, a row whose meaning commutes with keying (`keyLift`) runs once on the keyed families, as
       -- any row applied to one does
@@ -395,6 +395,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
       ({ key := k, const := c, gen, ph, params := os, forms := fs.map (·.1), res, tst, kf }, st.specs)
     -- a term whose rows do not fit their objects (`primsFit`) does not build
     let fits (x : Except Err Res) : EM (Except Err Res) := do
+      if let .error e := x then e.user (pure ())
       if let .ok ⟨A, B, t⟩ := x then unless ← primsFit t do
         return .error ⟨p, s!"`{n}`: a row fits none of {primWrappers} at {oE A} → {oE B}"⟩
       pure x
@@ -410,8 +411,8 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- a body that does not build with every variable `.long` but builds with the number checks on its variables left
   -- to each use (`ObjInfo.deferred`) is well formed and has no constant: each use builds its expansion at the call's
   -- objects, where those checks run (monomorphised, `Pre.call`'s `alt`); a body that fails both is refused with `err`
-  let some first ← tryCatch (some <$> run fl) fun err => do
-      discard <| tryCatch (run fl (deferred := true)) fun _ => throw err
+  let some first ← tryCatch (some <$> run fl) fun err => err.user do
+      discard <| tryCatch (run fl (deferred := true)) fun e => e.user (throw err)
       pure none
     | return (none, specs)
   let mut out := first
@@ -421,7 +422,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   for i in List.range vs.length do
     for b in [(true, false), (true, true)] do
       -- a body that built stays built: a pair test runs nowhere (`build`'s `.call`)
-      if let some o := (← tryCatch (some <$> run (fl.set i b)) fun _ => pure none) then if o.1.tst ≤ out.1.tst then fl := fl.set i b; out := o; break
+      if let some o := (← tryCatch (some <$> run (fl.set i b)) fun e => e.user (pure none)) then if o.1.tst ≤ out.1.tst then fl := fl.set i b; out := o; break
   pure (some out.1, out.2)
 
 /-- `n(qs) ≜ e : ty`, defined at `dp` in `env`, `c` its constant, `vs` its object variables, `d` its expansion:
@@ -476,7 +477,7 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- runs bounded by what the body composes it with, as the inlined body runs it
         let fl := match bx with | .ok ⟨_, _, t⟩ => if t.dem δ [] then some false else f | .error _ => f
         fsL := fsL ++ [(fl, k?)]; xsL := xsL ++ [(if fl.isNone then Pre.close p x a why else x, fl == some true)]
-      let some us := vs.mapM (m.lookup ·) | throw ⟨p, s!"internal: `{c}` has an object variable no type names"⟩
+      let some us := vs.mapM (m.lookup ·) | throw ⟨p, .internal s!"`{c}` has an object variable no type names"⟩
       -- the variables this call puts an unbounded number object at: the constant is built at them (`once`); an
       -- object still open here stays open in the call, so `build` knows the constant did not see it (`.call`)
       let mc ← Lean.getMCtx; let objs := (← get).objs
@@ -506,7 +507,7 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       -- checked here, where the fallback to the expansion cannot swallow it
       let free := o.res.2.2.fv.eraseDups.filter (!o.binds.contains ·)
       unless free.isEmpty do
-        throw ⟨p, s!"internal: `{o.const}`'s body reads the variables {free}, which its call binds not ({o.binds})"⟩
+        throw ⟨p, .internal s!"`{o.const}`'s body reads the variables {free}, which its call binds not ({o.binds})"⟩
       xs := ys
       let { const := k, vars := fl, tst, kf } := sigOf o
       -- `n° = n` a theorem of its program (`convs cs`): its own converse, the constant `k` itself; any other
@@ -515,7 +516,7 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       let (ks, ph, t, cv) := (o.binds, o.ph, o.res, own <|> convOf o)
       let us := us ++ ix.toList
       unless us.length == fl.length do
-        throw ⟨p, s!"internal: `{k}` has {fl.length} object variables in the registry, {us.length} here"⟩
+        throw ⟨p, .internal s!"`{k}` has {fl.length} object variables in the registry, {us.length} here"⟩
       let (q, a, b) := r.plain
       let call := Pre.call p k (us.zip fl) (xs.map (·.1)) (xs.map (·.2)) q a b ks ph t cv tst
       match r, kf with
@@ -589,7 +590,7 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
   if let some v := (ty.1.vars ++ ty.2.vars).head? then
     throw ⟨p, s!"{what}: its type {OExp.arrow ty} has the object variable '{v}'; write a declared object there"⟩
   let side (o : OExp) (one : String) (key : Bool) : EM (Obj × Schema OTy) := do
-    let t ← try (oty env [] o).run' {} catch e => throw ⟨e.pos, s!"{what}: {e.msg}"⟩
+    let t ← try (oty env [] o).run' {} catch e => throw ⟨e.pos, e.msg.map (s!"{what}: " ++ ·)⟩
     let i := match o with | .name _ n => env.obj? n | _ => none
     pure (← liftExcept (objOf env.objs p t), match i with
       -- positions: the number object whose element is the row number (stored `.long`); any other key object is a
@@ -655,7 +656,7 @@ def bindIns (rt : List (String × Param × Option (List String))) (p : Pos) (wha
     if (rt.lookup y).isSome && (σ.lookup y).isNone then
       let x := (((reach.lookup y).getD []).find? (bs.lookup · |>.isNone)).getD y
       let ty := match rt.lookup x with | some (P, _) => P.ty.map OExp.arrow | none => none
-      throw ⟨p, s!"{what} reaches the input `{x}`{if x == y then "" else s!" (through `{y}`)"}, which has no " ++
+      throw ⟨p, .user <| s!"{what} reaches the input `{x}`{if x == y then "" else s!" (through `{y}`)"}, which has no " ++
         s!"table at elaboration; give one: `{what} … where {x} ≜ " ++ "{…}`" ++
         (ty.map (s!", a table {·}")).getD ""⟩
   pure σ

@@ -135,7 +135,7 @@ rel_program wrongCheck where
     obj N = 0…9
     x : 1 ⟶ [N] ≜ {(∗,1 2)}
     check x = {(∗,[])}
-#guard wrongCheck.failures.any fun e => (e.msg.splitOn "check failed").length > 1
+#guard wrongCheck.failures.any fun e => ((toString e.msg).splitOn "check failed").length > 1
 #eval errAt (arrE ++ "e ≜ {(∗,1 12)}\n") 2 "no declared object has the elements [1, 12]"
 #eval errAt (arrE ++ "e ≜ {(∗,1 2),(∗,3)}\n") 2
   "the rows of a literal nest alike: found 3, expected the form of 1 2"

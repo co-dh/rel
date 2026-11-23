@@ -467,7 +467,7 @@ partial def atomOf (s : Syntax) (p : Lang.Pos) (n : String) (app objs pair : Opt
     -- the parenthesis is the builtin's objects, and nothing else
     | some os => do
       try pure [.op p o (← os[2].getSepArgs.toList.mapM obj) []]
-      catch e => throw ⟨e.pos, s!"{e.msg}: `{n}(…)` gives `{n}` its objects; {compose}"⟩
+      catch e => throw ⟨e.pos, e.msg.map (· ++ s!": `{n}(…)` gives `{n}` its objects; {compose}")⟩
     | none => match app with
       | some _ => failAt s s!"`{n}` takes objects, not terms; {compose}"
       | none => do pure (.op p o [] [] :: (← after))
