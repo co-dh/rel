@@ -135,13 +135,13 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
     obtain ⟨p, -, hq, hp⟩ := flatMap_range_lt (k := (ascKeys c fs).length + 1) (by simp) (by simp) _ h
     have bound : ∀ (q : Fin n.toNat) k, k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
         q.1.toUInt64 → cellStart (Enc.raw .i64 n lo.enc) q.1.toUInt64 + k < c.toNat := fun q k hk => by
-      simp only [cellLen] at hk; omega
+      have := Vals.cell_le hw q; omega
     have get : ∀ (q : Fin n.toNat) k (hk : k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc)
         q.1.toUInt64), (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ q)[k]? = some (f.row ⟨_, bound q k hk⟩) :=
-      fun q k hk => by rw [Vals.row_arr]; simp [hk, bound q k hk]
+      fun q k hk => by rw [Vals.row_arr hw]; simp [hk, bound q k hk]
     have len : ∀ q : Fin n.toNat, (Vals.row (A := .arr b) ⟨c, lo, hi, f⟩ q).length =
         cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) q.1.toUInt64 := fun q => by
-      rw [Vals.row_arr]; simp
+      rw [Vals.row_arr hw]; simp
     -- below `p` the blocks agree: one reach flag, and where both reach, one element
     have flag : ∀ q < p, (q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 ↔
         q < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64) := fun q hqp => by
@@ -173,7 +173,7 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
         · have a2 : p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 := by
             refine Classical.byContradiction fun a2 => ?_; simp [a1, a2] at hfl
           simp only [if_pos a1, if_pos a2] at hlt
-          exact .inr ⟨_, _, get i p a1, get i' p a2, Vals.lt_of_codes f hfs hcs' _ _ (by
+          exact .inr ⟨_, _, get i p a1, get i' p a2, Vals.lt_of_codes f hw.2 hfs hcs' _ _ (by
             simpa only [seenKey, List.map_map, Function.comp_def] using hlt)⟩
         · have a2 : ¬ p < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 := by
             intro a2; simp [a1, a2] at hfl
@@ -184,7 +184,7 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
       · exact elem q hqp h1 ((flag q hqp).1 h1)
       · have h2 := mt (flag q hqp).2 h1
         rw [List.getElem?_eq_none (by rw [len]; omega), List.getElem?_eq_none (by rw [len]; omega)]
-  | .sum a b, n, ⟨l, r, tag, idx, x, y⟩, es, hes, cs, hc, i, i', h => by
+  | .sum a b, n, ⟨l, r, tag, idx, x, y⟩, hw, es, hes, cs, hc, i, i', h => by
     obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
@@ -215,7 +215,7 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
           · exact lt_of_append_lt (by simp [seenKey]) e h
         by_cases h0 : 0 < l.toNat
         · obtain ⟨g, hgw, hg, hrow⟩ := xg h0
-          have := Vals.lt_of_codes g hg hc1 i i' hx
+          have := Vals.lt_of_codes g (hgw hw.1) hg hc1 i i' hx
           rw [hrow, hrow, ht, htt] at this
           simp only [Bool.false_eq_true, ↓reduceIte, dif_pos h0]
           exact (Obj.lt_inl a b _ _).2 (by simpa using this)
@@ -228,7 +228,7 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
         rw [kx, lt_append_left_iff] at h
         by_cases h0 : 0 < r.toNat
         · obtain ⟨g, hgw, hg, hrow⟩ := yg h0
-          have := Vals.lt_of_codes g hg hc2 i i' h
+          have := Vals.lt_of_codes g (hgw hw.2) hg hc2 i i' h
           rw [hrow, hrow, ht, htt] at this
           simp only [↓reduceIte, dif_pos h0]
           exact (Obj.lt_inr a b _ _).2 (by simpa using this)
@@ -240,16 +240,16 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
       · exact Obj.lt_inl_inr a b _ _
       · exact absurd hT (by decide)
       · exact absurd hT (Obj.lt_irrefl _ _)
-  | .one, _, _, es, hes, _, _, _, _, h => by
+  | .one, _, _, _, es, hes, _, _, _, _, h => by
     simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys] at h
 
 /-- **`Λ`'s order law**: on a side of pairs whose columns `kasc` reads, two rows of one key whose codes
 ascend strictly hold values ascending in `Obj.lt`. -/
-theorem Vals.lamLaw {A B : Obj} {m : USize} (x : Vals (.prod A B) m) {es : List (AscKey × Enc)}
+theorem Vals.lamLaw {A B : Obj} {m : USize} (x : Vals (.prod A B) m) (hw : Vals.WF x) {es : List (AscKey × Enc)}
     (hes : Vals.cols x = .ok es) {cs} (hc : es.mapM (ascCol m) = .ok cs) (i i' : Fin m.toNat)
     (h1 : (x.row i).1 = (x.row i').1) (hl : lexLe (ascKeys m es) i i' = true) (hne : seenKey m es i ≠ seenKey m es i') :
     B.lt (x.row i).2 (x.row i').2 := by
-  have h := Vals.lt_of_codes x hes hc i i' (lexLe_lt _ hl hne)
+  have h := Vals.lt_of_codes x hw hes hc i i' (lexLe_lt _ hl hne)
   change (Obj.prod A B).lt ((x.row i).1, (x.row i).2) ((x.row i').1, (x.row i').2) at h
   rw [Obj.lt_prod, h1] at h
   exact h.resolve_left (Obj.lt_irrefl _ _) |>.2
