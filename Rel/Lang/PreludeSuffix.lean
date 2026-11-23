@@ -1,6 +1,7 @@
 module
 
 public import Rel.Lang.PreludeRows
+public import Rel.Programs.Prelude
 
 @[expose] public section
 
@@ -15,7 +16,7 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 def Tm.suffixDef (B : Obj) : Tm (.arr B) (.arr B) := .comp (B := .prod (.arr B) (.arr B)) (.prim (rowOf "uncat")) .outr
 
 /-- **The definition of `suffix` means the row**: `ys` is the second half of a split of `xs`. -/
-theorem Tm.suffixDef_den (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
+theorem Tm.suffixDef_row (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
     (Tm.suffixDef B).den ρ xs ys ↔ Prim.den (rowOf "suffix") (.arr B) (.arr B) [] xs ys := by
   have hs : (rowOf "suffix").sig = ([], .list (.var {} "B"), .list (.var {} "B")) := rfl
   have ho : (rowOf "suffix").objs (.arr B) (.arr B) [] = some [B] := by
@@ -30,5 +31,15 @@ theorem Tm.suffixDef_den (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
   constructor
   · rintro ⟨p, hp, rfl⟩; exact ⟨p.1, hp.symm⟩
   · rintro ⟨t, ht⟩; exact ⟨(t, ys), ht.symm, rfl⟩
+
+/-- **`suffix`'s text means the row** (Q3 = H, as `Tm.domDef_den`): the body the prelude elaborates,
+    `prelude.suffix.body`, at any objects `σ` (`Tm.instObj`), means the row there. -/
+theorem Tm.suffixDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : Tm ((Obj.atom .general).arr.inst ph σ)
+    ((Obj.atom .general).arr.inst ph σ)} (ht : Rel.Programs.prelude.suffix.body.instObj ph σ = .ok t')
+    (xs ys : Obj.El ((Obj.atom .general).arr.inst ph σ)) :
+    t'.den ρ xs ys ↔ Prim.den (rowOf "suffix") ((Obj.atom .general).arr.inst ph σ) ((Obj.atom .general).arr.inst ph σ)
+      [] xs ys := by
+  obtain rfl : Tm.suffixDef ((Obj.atom .general).inst ph σ) = t' := Except.ok.inj ht
+  exact Tm.suffixDef_row ρ xs ys
 
 end Rel.Lang
