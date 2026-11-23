@@ -135,7 +135,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
       List.range' (off g) (wN g) := fun g hg => by
     rw [hoff]; exact expand_group_run hex wN hww hsn hn63 g hg
   -- each cell's width is its count of kept rows
-  obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt (colMap_plain (by lockstep) hbm)
+  obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt ((colMap_closed (by lockstep) hbm).2.2)
   obtain ⟨-, hcf⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) hcw
   rw [hGs] at hcf
   have hcn : ∀ g < n.toNat, (raw .i64 n cnt)[g]?.getD 0 = (cN g).toUInt64 := fun g hg => by

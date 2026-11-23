@@ -41,7 +41,7 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
     match hP : colPrefix .add n w with
     | .error err => throw err
     | .ok P =>
-      if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2 (colPrefix_plain hP) ≤ m.toNat then do
+      if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2.1 (colPrefix_closed hP).2.2 ≤ m.toNat then do
         let (T, G, u) ← expand n w
         Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
       else pure ⟨m, lo, hi, ← Vals.pack f⟩

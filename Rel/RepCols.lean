@@ -650,7 +650,7 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
         by_cases e : q.1 = k
         · rw [e]; omega
         · have := ih.2 (by omega); omega
-    have hc := lastCount_eq (colPrefix_closed hP).2 (colPrefix_plain hP) hf (x := ((List.range n.toNat).map wN).sum)
+    have hc := lastCount_eq (colPrefix_closed hP).2.1 (colPrefix_closed hP).2.2 hf (x := ((List.range n.toNat).map wN).sum)
       (by have := (key n.toNat).1; omega)
       (fun hn => by rw [colPrefix_add_sum hP wN hw _ (by omega), Nat.sub_add_cancel hn])
       (fun hn => by rw [hn]; rfl)

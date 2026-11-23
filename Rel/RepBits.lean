@@ -587,7 +587,7 @@ theorem colCat_raw {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b
   · rw [if_pos ⟨Nat.zero_le _, by omega⟩, if_neg (by omega), if_pos hq1, Nat.sub_zero, UInt64.add_zero]
   · rw [if_neg (by omega), if_pos ⟨by omega, by omega⟩, if_neg hq1, UInt64.zero_add]
 
-/-- `colCat`'s answer is a plain `i64` column: a `colMap` (`colMap_plain`, `colMap_closed`). -/
+/-- `colCat`'s answer is a plain `i64` column: a `colMap` (`colMap_closed`). -/
 theorem colCat_plain {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b = .ok (N, o)) :
     hasNul o = false ∧ Ext.Enc.WF .i64 N o := by
   simp only [colCat, bind] at h
@@ -598,7 +598,7 @@ theorem colCat_plain {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a
   rw [Except.bind_eq_ok'] at h; obtain ⟨o', ho, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
-  exact ⟨colMap_plain (by lockstep) ho, (colMap_closed (by lockstep) ho).2⟩
+  exact ⟨(colMap_closed (by lockstep) ho).2.2, (colMap_closed (by lockstep) ho).2.1⟩
 
 /-- **`R.ldivBits S UB UC` denotes `R\S` within `UB`, `UC`** (`Tab.ldiv_holds`' statement). -/
 theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}

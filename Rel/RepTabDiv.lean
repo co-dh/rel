@@ -412,7 +412,7 @@ theorem cellSpan_start_le {n m : USize} {lo up : Arr .i64 n}
 theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o)
     (hs : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep)
     (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
-    colArr op n a b t .i64 [] [] hs hF = .ok (Arr.mk o (colMap_closed hs h hF).2 (colMap_plain hs h hF)) := by
+    colArr op n a b t .i64 [] [] hs hF = .ok (Arr.mk o (colMap_closed hs h hF).2.1 (colMap_closed hs h hF).2.2) := by
   unfold colArr
   split
   · rename_i o' h'; have := h.symm.trans h'; cases this; rfl
@@ -715,7 +715,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
     rw [← es, toUInt64_sub (hb₂ i).1]
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = (E₁ i - S₁ i) + (E₂ i - S₂ i) := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
+    have es := (colMap_raw hw (hF := Or.inr (nulFree₂ ((colMap_closed (by lockstep) hw₁).2.2) ((colMap_closed (by lockstep) hw₂).2.2)))).2.2.2 i hi
     rw [hw₁w i hi, hw₂w i hi] at es; simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, hwN, ← UInt64.ofNat_add]
   have hwm : ∀ i, wN i ≤ m₁.toNat + m₂.toNat := fun i => by have := hb₁ i; have := hb₂ i; rw [hwN]; omega
@@ -765,13 +765,13 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   have hbt : (raw .i64 T b)[((List.range i.1).map wN).sum + d]?.getD 0 =
       (S₂ i.1 + m₁.toNat - (E₁ i.1 - S₁ i.1) + d).toUInt64 := by
     have es := (colMap_raw hbb).2.2.2 _ ht
-    rw [(kgather_word hgd (colMap_plain (by lockstep) hdd) _ ht).2, hGi, hddw, hu] at es
+    rw [(kgather_word hgd ((colMap_closed (by lockstep) hdd).2.2) _ ht).2, hGi, hddw, hu] at es
     simp only [Op.eval, Except.ok.injEq] at es
     rw [← es, ← UInt64.ofNat_add]
   have hct : (raw .i64 T c)[((List.range i.1).map wN).sum + d]?.getD 0 =
       if d < E₁ i.1 - S₁ i.1 then 1 else 0 := by
     have es := (colMap_raw hc).2.2.2 _ ht
-    rw [(kgather_word hgw (colMap_plain (by lockstep) hw₁) _ ht).2, hGi, hw₁w i.1 i.2, hu, eval_lt_nat hd63 hwl] at es
+    rw [(kgather_word hgw ((colMap_closed (by lockstep) hw₁).2.2) _ ht).2, hGi, hw₁w i.1 i.2, hu, eval_lt_nat hd63 hwl] at es
     exact (Except.ok.inj es).symm
   have hixt : (raw .i64 T ix)[((List.range i.1).map wN).sum + d]?.getD 0 =
       if d < E₁ i.1 - S₁ i.1 then (S₁ i.1 + d).toUInt64 else (S₂ i.1 + m₁.toNat - (E₁ i.1 - S₁ i.1) + d).toUInt64 := by
@@ -871,7 +871,7 @@ theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.a
     rw [← es, toUInt64_sub (hb₂ i).1]
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = min (E₁ i - S₁ i) (E₂ i - S₂ i) := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
-    have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
+    have es := (colMap_raw hw (hF := Or.inr (nulFree₂ ((colMap_closed (by lockstep) hw₁).2.2) ((colMap_closed (by lockstep) hw₂).2.2)))).2.2.2 i hi
     rw [hw₁w i hi, hw₂w i hi] at es
     have h1 := hb₁ i; have h2 := hb₂ i
     have e : Op.eval .min (E₁ i - S₁ i).toUInt64 (E₂ i - S₂ i).toUInt64 = .ok (wN i).toUInt64 := by
@@ -971,7 +971,7 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
     (Vals.gather_wf hg (Vals.concat_wf hNn hF hX.2 hY.2))
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
   obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
-  have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
+  have es := (colMap_raw hw (hF := Or.inr (nulFree₂ ((colMap_closed (by lockstep) hw₁).2.2) ((colMap_closed (by lockstep) hw₂).2.2)))).2.2.2 i hi
   rw [x₁, x₂] at es; simp only [Op.eval, Except.ok.injEq] at es
   rw [← es, ← UInt64.ofNat_add, toNat_toUInt64 (by omega)]; omega
 
@@ -1004,7 +1004,7 @@ theorem Vals.zip_wf {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.ar
     ⟨Vals.gather_wf hx hX.2, Vals.gather_wf hy hY.2⟩
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
   obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
-  have es := (colMap_raw hw (hF := Or.inr (nulFree₂ (colMap_plain (by lockstep) hw₁) (colMap_plain (by lockstep) hw₂)))).2.2.2 i hi
+  have es := (colMap_raw hw (hF := Or.inr (nulFree₂ ((colMap_closed (by lockstep) hw₁).2.2) ((colMap_closed (by lockstep) hw₂).2.2)))).2.2.2 i hi
   rw [x₁, x₂] at es; simp only [Op.eval, Except.ok.injEq] at es
   rw [← es]; split <;> rw [toNat_toUInt64 (by omega)] <;> omega
 
@@ -2204,7 +2204,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   obtain ⟨cntN, hcntN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
       fun q => Verify.groupOf Kk N.toNat q == G && true := ⟨_, rfl⟩
   have hcDw : ∀ G < k, (raw .i64 k.toUSize cD)[G]?.getD 0 = (cDN G).toUInt64 := fun G hG => by
-    rw [scatter_add_count hcD (colMap_plain (by lockstep) hlt) (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < n.toNat)) hgw
+    rw [scatter_add_count hcD ((colMap_closed (by lockstep) hlt).2.2) (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < n.toNat)) hgw
       (fun q hq => by have := hgr q hq; omega) hltw G (by omega), hcDN]
   have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 = (cntN G).toUInt64 := fun G hG => by
     rw [scatter_add_count hcnt (kscatter_plain hc1 rfl) (Verify.groupOf Kk N.toNat) (fun _ => true) hgw
@@ -2762,7 +2762,7 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
     have c' : (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i := by
       rw [hcw' i hin] at hx; split at hx <;> first | assumption | exact absurd rfl hx
     obtain ⟨i', hi', hVi⟩ := Vals.gather_row _ hV j
-    rw [(kgather_word hix (colMap_plain (by lockstep) ha) j.1 j.2).2, hi, haw i i.2] at hi'
+    rw [(kgather_word hix ((colMap_closed (by lockstep) ha).2.2) j.1 j.2).2, hi, haw i i.2] at hi'
     have hb := hb1 i
     refine ⟨i, c', hi, hKi, hVi.trans ?_⟩
     have hS : SN i + (kw i).toNat < m.toNat := by omega

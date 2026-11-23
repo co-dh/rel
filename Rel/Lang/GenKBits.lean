@@ -22,7 +22,7 @@ theorem Tab.index_plain {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, cx, cv, Z⟩, -, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨io, hio, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sc, hsc, h⟩ := h
-  exact kgather_noNul h (kscatter_plain hsc (colMap_plain (by lockstep) hio))
+  exact kgather_noNul h (kscatter_plain hsc ((colMap_closed (by lockstep) hio).2.2))
 
 /-- **`index xr v` finds each row of `v` among the `g` rows of `xr`**: row `j`'s word is a position `a` of `xr` holding
     `v`'s row `j`, or `g` where no row of `xr` holds it. -/
@@ -38,11 +38,11 @@ theorem Tab.index_spec {g n : USize} {xr : Vals A g} {v : Vals A n} {e : Enc} (h
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hGU := g.toNat_lt_size
   have hkU := k.toNat_lt_size
-  obtain ⟨hs, -, hw⟩ := kscatter_words hsc (colMap_plain (by lockstep) hio)
+  obtain ⟨hs, -, hw⟩ := kscatter_words hsc ((colMap_closed (by lockstep) hio).2.2)
   obtain ⟨-, hfill, hlast⟩ := (scatterWords_spec _ _ _ _).2 _ hw
   have hix : ∀ q < g.toNat, ((raw .i64 g cx)[q]?.getD 0).toNat = fx q := fun q hq => by
     rw [(hfx q hq).1, toNat_toUInt64 (by have := (hfx q hq).2; omega)]
-  have gj := (kgather_word h (kscatter_plain hsc (colMap_plain (by lockstep) hio)) j.1 j.2).2
+  have gj := (kgather_word h (kscatter_plain hsc ((colMap_closed (by lockstep) hio).2.2)) j.1 j.2).2
   rw [(hfv j.1 j.2).1, toNat_toUInt64 (by have := (hfv j.1 j.2).2; omega)] at gj
   rw [gj]
   by_cases hex : ∃ q < g.toNat, fx q = fv j.1
@@ -756,7 +756,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   have hs1w : ∀ G < kb.toNat, ∀ jj < kc.toNat, (raw .i64 (kb * kc) s1)[G * kc.toNat + jj]?.getD 0 =
       if ¬Vac G ∧ Kp G ∧ ∃ j < w.toNat, cm j = jj ∧ Al G j then 1 else 0 := by
     intro G hG jj hjj
-    obtain ⟨hsz, -, hsw⟩ := kscatter_words hs1 (colMap_plain (by lockstep) hv1)
+    obtain ⟨hsz, -, hsw⟩ := kscatter_words hs1 ((colMap_closed (by lockstep) hv1).2.2)
     obtain ⟨-, hfill, hlast⟩ := (scatterWords_spec _ _ _ _).2 _ hsw
     have hT : G * kc.toNat + jj < (kb * kc).toNat := by rw [hkbc]; exact bit_lt hG hjj
     rcases Nat.eq_zero_or_pos w.toNat with hw0 | hw1
@@ -792,7 +792,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       · intro H q hq hgq
         obtain ⟨hi, hlt⟩ := (hsel _).1 ⟨q, hq, rfl⟩
         rw [(kgather_word hgi (Tab.index_plain hix) q hq).2, hselN, hixN, H _ hi hgq hlt]; decide
-    have hcnt2w := scatter_add_count hcnt2 (colMap_plain (by lockstep) hon) bx (fun q => decide (ixN q < g.toNat)) (fun q hq => (hbx q hq).1)
+    have hcnt2w := scatter_add_count hcnt2 ((colMap_closed (by lockstep) hon).2.2) bx (fun q => decide (ixN q < g.toNat)) (fun q hq => (hbx q hq).1)
       (fun q hq => by have := (hbx q hq).2; have := kb.toNat_lt_size; omega) (fun q hq => by rw [honw q hq]; simp)
     have hkeepw : (raw .i64 kb keep)[G]?.getD 0 = if ¬Vac G ∧ Kp G then 1 else 0 := by
       have e := (colMap_raw hkeep).2.2.2 G hG
@@ -846,7 +846,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       · rw [← ep, ← erm, egm, UInt64.toNat_add, UInt64.toNat_mul, toNat_toUInt64 (by omega), USize.toNat_toUInt64,
           toNat_toUInt64 (by omega), Nat.mod_eq_of_lt (show k / w.toNat * kc.toNat < 2 ^ 64 by omega)]
         exact Nat.mod_eq_of_lt (by omega : k / w.toNat * kc.toNat + cm (k % w.toNat) < 2 ^ 64)
-      · have eg := (kgather_word hgk (colMap_plain (by lockstep) hkeep) k hk).2; rw [erd, toNat_toUInt64 (by omega)] at eg; exact eg
+      · have eg := (kgather_word hgk ((colMap_closed (by lockstep) hkeep).2.2) k hk).2; rw [erd, toNat_toUInt64 (by omega)] at eg; exact eg
     have hcmk : ∀ k < (kb * w).toNat, cm (k % w.toNat) < kc.toNat := fun k _ => (hcm _ (Nat.mod_lt _ hw1)).2
     by_cases hex : ∃ j < w.toNat, cm j = jj
     · obtain ⟨j, hj, hcj⟩ := hex
@@ -912,7 +912,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
       · rw [if_neg hq]; exact ⟨by decide, iff_of_false (by decide) fun h => h.elim (fun h => hv h.1) hq⟩
   have hb63 : kb.toNat * kc.toNat < 2 ^ 63 := by omega
   refine ⟨hkbc, hb63, PP, hout', fun b c => ?_, Vals.code2_rep_inj hb2 hr.2 hub.2, Vals.code2_rep_inj hc2 wyM huc.2,
-    (Vals.code2_plain hb2).2.2, (Vals.code2_plain hc2).2.2, colMap_plain (by lockstep) hout⟩
+    (Vals.code2_plain hb2).2.2, (Vals.code2_plain hc2).2.2, (colMap_closed (by lockstep) hout).2.2⟩
   show _ ↔ (∀ a, r.Holds a b → s.Holds a c) ∧
     ((∃ a, r.Holds a b) ∨ ((∃ b', ub.Holds b' b) ∧ ∃ c', uc.Holds c' c))
   constructor
@@ -1285,7 +1285,7 @@ theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (
   have hK1 : ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize.toNat = C m.toNat + 1 := by
     rw [hKn]; exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
   obtain ⟨e, he⟩ := kscatter_ok (op := .last) (m := m) (ix := d) (e := .pos)
-    (n := ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize) (fill := 0) (colMap_closed (by lockstep) hd).1 trivial (colMap_plain (by lockstep) hd) rfl
+    (n := ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize) (fill := 0) (colMap_closed (by lockstep) hd).1 trivial ((colMap_closed (by lockstep) hd).2.2) rfl
     (fun _ _ _ => ⟨_, rfl⟩) (fun k hk => by
       rw [hdv k hk, hc64 _ (by have := hCle k; omega), hK1]; have := hmono k m.toNat (by omega); omega)
   obtain ⟨o, ho⟩ := kgather_ok (m := (sk.2.getD 0).toNat.toUSize) (ix := .pos) (e := e) trivial (kscatter_closed he).1 rfl
@@ -1577,8 +1577,8 @@ theorem Tab.ofBits_ok {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals
     have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
     rw [hdw hdv k hk, hmw hmv k hk, toNat_toUInt64 (by omega), toNat_toUInt64 (by omega), h3]
     exact ⟨h1, h2', (hp k hk).2⟩
-  obtain ⟨ix, hix⟩ := kgather_ok (colMap_closed (by lockstep) hdv).1 hra (colMap_plain (by lockstep) hdv) fun k hk => (hd k hk).1
-  obtain ⟨iy, hiy⟩ := kgather_ok (colMap_closed (by lockstep) hmv).1 hrc (colMap_plain (by lockstep) hmv) fun k hk => (hd k hk).2.1
+  obtain ⟨ix, hix⟩ := kgather_ok (colMap_closed (by lockstep) hdv).1 hra ((colMap_closed (by lockstep) hdv).2.2) fun k hk => (hd k hk).1
+  obtain ⟨iy, hiy⟩ := kgather_ok (colMap_closed (by lockstep) hmv).1 hrc ((colMap_closed (by lockstep) hmv).2.2) fun k hk => (hd k hk).2.1
   obtain ⟨vx, hvx⟩ := hx M ix (kgather_closed hix).1 (kgather_noNul hix hraN) fun k hk => by
     rw [(kgather_word hix hraN k hk).2]; exact (hin _ (hd k hk).1 _ (hd k hk).2.1 (hd k hk).2.2).1
   obtain ⟨vy, hvy⟩ := hy M iy (kgather_closed hiy).1 (kgather_noNul hiy hrcN) fun k hk => by

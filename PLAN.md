@@ -451,7 +451,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `scatter_last_at`、`kgather_word` 取 `hasNul e = false`。`lexLe_congr_right` 折叠完成。绿：Closure、RepCanon、
   RepSeen、RepSetOps、RepTabComp。✅ 已绿（rq17f9–f12，6f58d7f；原剩）：`RepTabDiv`（`kgather_word`/`scatter_last_at` 的源列无 null 证明，见
   /data/tmp/rq17f8-handoff.md），其后 GenKBits、GenKFix、RepBits、RepSums、RepWhere、RepStruct、RepTabArith、DfnLaw、
-  GenKFold、RepAsc、RepWFOps、GenKSpec、GenKHylo 未建；`colMap_plain`/`colPrefix_plain` 折入 `_closed` 未做。
+  GenKFold、RepAsc、RepWFOps、GenKSpec、GenKHylo 未建；`colMap_plain`/`colPrefix_plain` 已折入 `_closed`（结论 `Valid ∧ WF ∧ hasNul = false`，colplain ✓）。
   ✓ 其后各模块已绿（rq17f9–f12，6f58d7f）：RepTabDiv、GenKSpec（`BitsWf` 加 `hasNul o = false`）、GenKBits
   （`kbitrows_plain`，gather 链取无 null 的 index）、GenKFix、GenKFold、RepSums、RepWhere、RepStruct、RepTabArith、
   DfnLaw、RepAsc、RepWFOps、GenKHylo。`Arr.lexLe_i64` 不需要改述：决定 K 下 `Arr t n` 的类型自带
