@@ -1,36 +1,29 @@
-nullband3g3 handoff (branch worktree-agent-ae07c0452b66d3bf2)
+nullband3g4 handoff
 
-DONE and committed (9c40b6c): step 1 Rel/RepCanon.lean green (`colMap_chain`/`colMap_get` now take
-`hs : kscanStream op [(n,a),(n,b)] pre post = false`; proof uses `kscanCols_lock`, `mapM_chain`).
-Index: not built in this worktree (lean-refactor index fails: CsvTest olean mismatch until `lake build Rel.Kernel.Db.CsvTest`).
+GREEN and committed: RepCanon, RepCols (new `kscan_first_chain`: one-source `kscan .first` chain law, used by `tagCount_zero`),
+RepSetOps, RepTabComp, RepChecks/Canon, and everything they build.
+Convention adopted: `hs`/`ho` of `colMap_chain`, `colMap_get`, `colMap_raw`, `colMap_const_eq`, `colPrefix_raw`,
+`colMap_first_chain` is a TRAILING autoParam (`:= by lockstep` / `by decide`), so callers pass nothing; where a
+`∀ i` follows, `i hi` precede it (`colMap_first_chain h i hi`). `colMap_closed`/`colMap_plain` (Run/Gather) keep `hs`
+FIRST: write `colMap_closed (by lockstep) h`. `sumOn` (RepChecks/Canon) takes the `Obj.band` proof as a trailing autoParam.
+`groupFold_ok`/`groupFold_plain` take `(ho : op ≠ .first := by decide)`; `runScan_ok`/`runScanChain_ok` take `hs`.
 
-IN PROGRESS (uncommitted/WIP commit): Rel/RepCols.lean ripple of the `hs` hypothesis.
- Done: colPrefix_raw (takes `ho : op ≠ .first`), colMap_raw (`hk`), colMap_first_chain (`hs`), colMap_post, colMap_const_eq (`hl`),
-       clampShift, summandPos_raw, kscan_foR splits (one more `split`, untested).
- Still red (build log /data/tmp/job/nb3g3-b6.log):
-  173 Arr.concat_get  — to be replaced by the concat rewrite (step 3).
-  374 colPrefix_add_sum calls `colPrefix_raw hP` -> pass `(by decide)`/the op ≠ .first proof.
-  402 kscan_foR `simp made no progress` (now fixed by adding a 7th split; re-run).
-  491-496,514 tagCount_zero: tagCount is now `kscan .first .. [(n, tag.enc)]`/colPrefix; `unfold colPrefix` block (485-488) and
-      `colMap_first_chain` use need re-reading against Run/Cols `tagCount`.
- Callers of colMap_raw / colMap_const_eq / colPrefix_raw / colMap_first_chain outside RepCols (RepSetOps, RepTabDiv, Lang/*) not yet
- built: each needs the new hs/ho argument (`(by lockstep)` / `(by decide)` for a concrete op).
-
-DIAGNOSIS step 2 (from the `lake build Rel` log /data/tmp/job/nb3g3-b5.log, no #eval run):
- Only TestFrameApp:149 prints a message: "withBid: concat: the first 1+i64 column holds a null, and no kernel yet merges two
- columns' null bits" = class (a), fixed by step 3. The other failing `#guard`s (Kern9 87/89, TestFrameCols 68/84, TestFrameSchema 69,
- TestGenericN 108/109, TestFrameStat 122/158, TestPivotDisk 137, TestFrameScale 53, TestFrameApp 101, TestFrameBench 58,
- TestFrameQuery 65/82, TestFrameUnbounded 189/203) are plain false: class (a) presumed (they are Frame programs that union
- nullable columns) but NOT confirmed; class (b) not found. Next: after step 3 rebuild and `#eval` the failures text of any that remain.
-
-NOT DONE step 3 (concat). Design anchors:
- - Rel/Run/Cols.lean 61 `Arr.concat`, 69 `Opt.concat`, 23 `shiftCol`, `catPlan` (~79): replace by
-   `kscan .first false t t n none [(n₁, x.enc), (n₂, y.enc)]` (a stream: `kscanStream`, Rel/Kernel/Scan.lean ~230; `kscanCols` joins the
-   words and `foRNuls` flags; `n = n₁+n₂` checked inside kscanCols).
- - Missing spec: `kscan_closed` (KernelSpec/Closure.lean ~241) assumes a stream's sources hold NO null (`hasNul = false`) and answers
-   `hasNul r.1 = false`; the Opt.concat needs the version with nulls: `Enc.WF t n r.1` of `Coc.encode w words (nulMap flags)` when some
-   source holds a null, plus the read law `Opt.isNul`/`Opt.get` of the answer = source row (words: raw_kscanChain at seg = none gives
-   out = seed = x.raw ++ y.raw; flags: `nl` fold with `.first`, all rows segment starts, so nl = ns = foRNuls x ++ foRNuls y).
- - Read law to prove: `Opt.get (Opt.concat x y) i = if i < n₁ then x.get i else y.get (i - n₁)`; then fix Arr.concat_valid,
-   Vals.concat_wf/row (RepCols 664/728), Tab.concat_wf (RepSetOps 283); delete `Arr.concat_get`, `catPlan_ok`, `shiftCol_raw`.
- - `Opt.concat`/`Vals.concat` callers pass `off` (catPlan's second component): drop the parameter everywhere (Tab.concat in Run/SetOps 30).
+STILL RED (elaboration), after the last full `lake build Rel` (/data/tmp/nb3g4.log; RepStruct edit not rebuilt):
+ - Rel/RepStruct.lean 20, 423, 430: `colMap_first_chain (colArr_ok h) i.1 i.2` — fixed by the reorder, not rebuilt.
+ - Rel/RepTabArith.lean:
+   * 126 `cm`: `(colMap_raw hc)` for a generic `op` — "could not synthesize default value for parameter 'hk'":
+     op may be `.first` (a stream); needs `op ≠ .first`/kscanStream hypothesis threaded into `cm`'s uses.
+   * 302, 313 (`colMap_chain h` inside `colMap_widen`-style lemmas, generic op/post): pass `hs` explicitly; give
+     `colMap_widen` (line ~308) a trailing `(hs : kscanStream op [(n, x.enc), (n, y.enc)] (widen t) post = false := by lockstep)`
+     AFTER `(i : Fin n.toNat)` and use `colMap_chain h hs`.
+   * 391, 403, 434 `colMap_closed hc` -> `colMap_closed (by lockstep) hc`.
+   * 400 `fverbBy_map (ap := fun o x y => colMap o n x y) … (fun hc => (colMap_raw hc).2.2.2 i i.2)`: `hap` quantifies over
+     every `o`, but `colMap .first` is a stream, so the claim is false at `.first`. Fix: `fverbBy_map` (RepTabArith 251) takes
+     `hap : ∀ {o x y z}, o ≠ .first → …` and its proof shows every op `fverbBy` applies (from `fverbOne`, as in
+     `fverb_one` 323: `repeat' split at h`) is not `.first`.
+ - Modules after RepTabArith in build order not yet reached (RepTabDiv, RepSums, RepBits, RepWhere, RepCast, Lang/GenKBits,
+   …): expect `colMap_closed`/`colMap_plain` sites needing `(by lockstep)` first, and `colMap_ok`/`colPrefix_raw` in
+   GenKBits 1237-1248.
+ - Runtime `#guard`s: not reached by the build for the same reason; TestFrameApp:149 still prints the concat-null error
+   ("withBid: concat: the first 1+Rel.QAtomicType.i64 column holds a null, and no kernel yet merges two columns' null bits")
+   = the other agent's concat. No `#eval` text per module recorded yet.
