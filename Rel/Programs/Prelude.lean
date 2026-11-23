@@ -12,7 +12,10 @@ rel_program prelude where
     flat(R : ι ⟶ α×β) : ι×α ⟶ β ≜ ⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂   -- the family R as one relation of key and source
     foldI(e : ι ⟶ β×β, S : (ι×β)×α ⟶ ι×β) : ι×[α] ⟶ β ≜ (π₁π₁° ∩ (π₂⦇[⊤ ran(⟨𝟙,e π₂⟩), S ∩ (π₁π₁π₁°)]⦈))π₂   -- the fold of a family: one fold per (key, list)
 
-    ∈ : α ⟶ [α] ≜ ∋°                              -- membership, the converse of ∋
+    length : [α] ⟶ β ≜ ⦇[{(∗,0)}, π₁ succ]⦈               -- the count of a list: the fold from 0 adding 1 per element
+    sum : [β] ⟶ β ≜ ⦇[{(∗,0)}, plus]⦈                       -- the sum of a list: the fold from 0 adding each element
+
+    ∈ : α ⟶ [α] ≜ ∋°                            -- membership, the converse of ∋
     ≥ : α ⟶ α ≜ ≤°                                -- the named converse of ≤
     > : α ⟶ α ≜ <°                                -- the named converse of <
     ≠ : α ⟶ α ≜ ∼𝟙                                -- inequality: the complement of equality, 𝟙
