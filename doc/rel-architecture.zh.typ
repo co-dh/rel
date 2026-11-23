@@ -625,11 +625,11 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     是要量的代价，所以有上面的选用规则],
 )
 
-- 定律（待证）：`Tab.rank_spec`——`X` 严格升序（`Obj.lt`）时 `r[i]` 是 `X` 中 `Obj.lt` 于 `T[i]` 的行数，`h[i] = 1` ⇔
-  `T[i]` 是 `X` 的行；`Tab.mergeDiff_holds`——`X` 严格升序、两表 `WF`、`X.mergeDiff T = .ok (V, U)` 时
+- 定律：`Vals.rank_spec`（已证，`Rel/RepMerge.lean`；同文件的 `Vals.cmpRows_spec`、`Vals.bisect_spec`）——`X` 严格升序（`Obj.lt`）时 `r[i]` 是 `X` 中 `Obj.lt` 于 `T[i]` 的行数，`h[i] = 1` ⇔
+  `T[i]` 是 `X` 的行；`Tab.mergeDiff_holds`（待证）——`X` 严格升序、两表 `WF`、`X.mergeDiff T = .ok (V, U)` 时
   `V.Holds = X.Holds ∪ T.Holds`、`U.Holds = T.Holds − X.Holds`，且 `V`、`U` 严格升序。这正是 `union_holds`、
   `rdiff_holds`、`canon_sorted` 对 `unionDiff` 给出的结论，所以 `muLin_holds`、`star_holds` 只换这一步的引理。
-  行比较由 `kasc_grade`、`kseen_ok`、`kseen_runs`、`Vals.lt_of_codes`、`Obj.lt_trichotomy` 连到 `Obj.lt`。
+  行比较由 `kasc_grade`、`kseen_ok`、`kseen_runs`、`ValsB.lt_of_codes`、`Obj.lt_trichotomy` 连到 `Obj.lt`。
 - 不新增 kernel、不新增导出：二分是 Lean 中的循环（同 `fixOn`），每轮调用已有的行。§4.1 移出的 `bin search` 是 q 的
   verb；这里的 `rank` 是关系 `Λ(> X) length`，由已有 kernel 复合。
 - 没有解决的：`X ∪ T` 每轮仍写出整个 `X'`（一遍 concat + 每列一遍 `gather`），所以一轮仍与 `n` 成正比，只是不再排序。

@@ -318,4 +318,110 @@ private theorem count_lt : ∀ (n t : Nat), t ≤ n → ((List.range n).filter f
       rw [List.filter_eq_self.2 (fun j hj => by simp at hj ⊢; omega)]
       simp
 
+/-- **`rank(X)` on `T`** (architecture §4.7, `Tab.rank_spec`): for a strictly ascending `X` and both sides `WF`, `r[i]` is
+the number of rows of `X` below `T.row i`, and `h[i] = 1` iff `T.row i` is a row of `X` (else `0`). -/
+theorem Vals.rank_spec {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX : Vals.WF X) (hT : Vals.WF T)
+    (hs : ∀ i j : Fin n.toNat, i.1 < j.1 → A.lt (X.row i) (X.row j)) {r h : Enc}
+    (hk : Vals.rank X T = .ok (r, h)) (i : Fin m.toNat) :
+    ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat =
+      ((List.range n.toNat).filter fun j => if hj : j < n.toNat then decide (A.lt (X.row ⟨j, hj⟩) (T.row i)) else false).length ∧
+    ((Enc.raw .i64 m h)[i.1]?.getD 0 = 1 ↔ ∃ j, X.row j = T.row i) ∧ (Enc.raw .i64 m h)[i.1]?.getD 0 ≤ 1 := by
+  unfold Vals.rank at hk
+  simp only [Bind.bind] at hk
+  split at hk
+  · rw [Except.bind_eq_ok'] at hk; obtain ⟨_, hth, _⟩ := hk; cases hth
+  rename_i hn63
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨-, -, hk⟩ := hk
+  split at hk
+  · rw [Except.bind_eq_ok'] at hk; obtain ⟨_, hth, _⟩ := hk; cases hth
+  rename_i hm62
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨-, -, hk⟩ := hk
+  split at hk
+  · rename_i hn0
+    rw [Except.bind_eq_ok'] at hk; obtain ⟨z, hz, hk⟩ := hk
+    simp only [Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hk
+    obtain ⟨rfl, rfl⟩ := hk
+    have hn0' : n.toNat = 0 := by rw [hn0]; rfl
+    have hz0 : (Enc.raw .i64 m z)[i.1]?.getD 0 = 0 := by
+      rw [colConst_raw hz, Array.getElem?_replicate]; simp [i.2]
+    rw [hz0]
+    refine ⟨by simp [hn0'], ⟨fun e => absurd e (by decide), fun ⟨j, _⟩ => absurd j.2 (by omega)⟩, by decide⟩
+  rename_i hn0
+  have hn1 : 1 ≤ n.toNat := by
+    refine Nat.pos_of_ne_zero fun e => hn0 ?_
+    apply USize.toNat_inj.1; simpa using e
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨-, -, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨z0, hz0, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨base, hbis, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨g1, hg1, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨p1, hp1, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨⟨c1, e1⟩, hc1, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨r', hr', hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨q, hq, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨g2, hg2, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨p2, hp2, hk⟩ := hk
+  rw [Except.bind_eq_ok'] at hk; obtain ⟨⟨c2, e2⟩, hc2, hk⟩ := hk
+  simp only [Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hk
+  obtain ⟨rfl, rfl⟩ := hk
+  have hn63' : n.toNat < 2 ^ 63 := by omega
+  have hm' : 2 * m.toNat ≤ 2 ^ 63 := by omega
+  obtain ⟨t, ht⟩ := Classical.axiomOfChoice (fun i : Fin m.toNat => Vals.cut hs (T.row i))
+  have hbs := Vals.bisect_spec hX hT hm' hn63' t (fun i => (ht i).2) _ _ z0 base hbis hn1
+    (Nat.le_of_lt (Nat.lt_log2_self (n := n.toNat))) (fun i => by
+      rw [colConst_raw hz0, Array.getElem?_replicate]; simp [i.2]; exact (ht i).1) i
+  obtain ⟨hb1, hb2, hb3⟩ := hbs
+  have hgW1 := Vals.gather_wf hg1 hX
+  have hpW1 : Vals.WF p1 := ValsB.pack_wf hp1 (P := fun _ => True) hgW1 (fun _ _ => trivial)
+  obtain ⟨i1, hi1, hrow1⟩ := ValsB.gather_row X hg1 i
+  have hrp1 := ValsB.pack_row g1 hp1 (P := fun _ => True) hgW1 (fun _ _ => trivial) i trivial
+  obtain ⟨d1, d2, -, -⟩ := Vals.cmpRows_spec hpW1 hT hm' hc1 i
+  rw [hrp1, hrow1] at d1
+  have hlt1 := (ht i).2 i1
+  obtain ⟨-, hr1⟩ := colMap_get hr'
+  obtain ⟨v, hv, rv⟩ := hr1 i.1 i.2
+  simp only [Op.eval, Except.ok.injEq] at hv
+  simp only [if_neg (show ¬ QAtomicType.i64 = .u1 by decide)] at rv
+  have htn := (ht i).1
+  have hrt : ((Enc.raw .i64 m r')[i.1]?.getD 0).toNat = t i := by
+    rw [rv, Option.getD_some, ← hv]
+    by_cases hc : ((Enc.raw .i64 m c1)[i.1]?.getD 0) = 1
+    · have hl := hlt1.1 (d1.1 hc)
+      rw [hc, UInt64.toNat_add]; simp only [UInt64.toNat_one]; rw [Nat.mod_eq_of_lt (by omega)]; omega
+    · have h0 : ((Enc.raw .i64 m c1)[i.1]?.getD 0) = 0 := by
+        have h1 := UInt64.le_iff_toNat_le.1 d2
+        have h2 : ((Enc.raw .i64 m c1)[i.1]?.getD 0).toNat ≠ 1 := fun e => hc (UInt64.toNat_inj.1 (by simpa using e))
+        exact UInt64.toNat_inj.1 (by simp at h1 ⊢; omega)
+      have hnl : ¬ (i1.1 < t i) := fun h => hc (d1.2 (hlt1.2 h))
+      rw [h0, UInt64.add_zero]; omega
+  have hq1 := (colMap_post hq).2 i.1 i.2
+  rw [eval_min_nat (by rw [w64 (by omega)]; omega) (by omega)] at hq1
+  have e := Except.ok.inj hq1
+  have hqn : ((Enc.raw .i64 m q)[i.1]?.getD 0).toNat = min (t i) (n.toNat - 1) := by
+    rw [← e]
+    by_cases hc : ((Enc.raw .i64 m r')[i.1]?.getD 0).toNat < ((n.toNat - 1).toUInt64).toNat
+    · rw [if_pos hc, hrt]; rw [w64 (by omega)] at hc; omega
+    · rw [if_neg hc, w64 (by omega)]; rw [w64 (by omega), hrt] at hc; omega
+  have hgW2 := Vals.gather_wf hg2 hX
+  have hpW2 : Vals.WF p2 := ValsB.pack_wf hp2 (P := fun _ => True) hgW2 (fun _ _ => trivial)
+  obtain ⟨i2, hi2, hrow2⟩ := ValsB.gather_row X hg2 i
+  have hrp2 := ValsB.pack_row g2 hp2 (P := fun _ => True) hgW2 (fun _ _ => trivial) i trivial
+  obtain ⟨-, -, f1, f2⟩ := Vals.cmpRows_spec hpW2 hT hm' hc2 i
+  rw [hrp2, hrow2] at f1
+  refine ⟨?_, ?_, f2⟩
+  · rw [hrt, List.filter_congr (l := List.range n.toNat) (q := fun j => decide (j < t i)) (fun j hj => by
+      have hj' := List.mem_range.1 hj
+      rw [dif_pos hj']; exact decide_eq_decide.2 ((ht i).2 ⟨j, hj'⟩))]
+    exact (count_lt _ _ (ht i).1).symm
+  · refine ⟨fun hc => ⟨i2, f1.1 hc⟩, fun ⟨j, hj⟩ => f1.2 ?_⟩
+    have hnl : ¬ (j.1 < t i) := fun hjt => Obj.lt_irrefl A _ (by have := ((ht i).2 j).2 hjt; rwa [hj] at this)
+    rcases Nat.lt_or_ge (t i) n.toNat with htn' | htn'
+    · have hi2' : i2.1 = t i := by rw [← hi2, hqn]; omega
+      by_cases hjt : j.1 = t i
+      · have : i2 = j := Fin.ext (by omega)
+        rw [this]; exact hj
+      · have := hs ⟨t i, htn'⟩ j (by simp only; omega)
+        rw [hj] at this
+        exact absurd (((ht i).2 ⟨t i, htn'⟩).1 this) (by simp)
+    · exact absurd (by omega) hnl
+
 end Rel
