@@ -532,9 +532,23 @@ def toCsv (path : String) : Obj → List (USize × Enc) → Except String (List 
   -- drops its left side's `1` part: a null is an empty field
   | .opt a, ps => match nullShape a, ps with
     | .opt, x :: ps => pure ([x], ps)
-    -- the parts are the dense sum's (`cols`: tag, the left `1`, `n`-row summands with a null at the other rows); the
-    -- extern's tag, positions and non-null values (`denseVals`' converse) are not built yet, so refuse, never reshuffle
-    | .null, _ => .error s!"{path}: a `1+S` not in band, whose dense sum has no CSV writer yet (PLAN 8.2i2)"
+    -- the parts are the dense sum's (`cols`: tag, the left `1`, `n`-row summands with a null at the other rows); each atom
+    -- becomes the extern's (tag swapped, position, non-null values), `denseVals`' converse: the position is the count
+    -- of rows of the row's own side before it, the values are the summand at the `where` of the tag's `1` rows
+    | .null, tg :: _ :: ps => do
+      let some ts := atomTypes a | .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+      unless ts.length ≤ ps.length do .error s!"{path}: too few parts for a `1+S`"
+      let n := tg.1
+      let e ← swapTag tg
+      let own ← colPrefix .add n tg.2
+      let oth ← colPrefix .add n e.2
+      let own ← colMap .sub n own tg.2
+      let oth ← colMap .sub n oth e.2
+      let i ← colMap .add n (← colMap .mul n e.2 oth) (← colMap .mul n tg.2 own)
+      let (m, w) ← whereCol n tg.2
+      let vs ← (ps.take ts.length).mapM fun (_, y) => do pure (m, ← Kernel.kgather m w n y)
+      pure (vs.flatMap fun v => [e, (n, i), v], ps.drop ts.length)
+    | .null, _ => .error s!"{path}: too few parts for a `1+S`"
     | _, _ => .error s!"{path}: too few parts for a `1+S`"
   | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 

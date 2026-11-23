@@ -2009,10 +2009,18 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
           | .part p _ => do pure [← reg p]
           -- a side of `1` stores no column; its CSV part is its one element's code `0` in each row (`Table.csvEncs`)
           | .one => do let m ← countOf (side, []); pure [(m, ← wordsB m 0)]
-          -- a `1+S` not in band: the dense sum to the extern's tag, position and non-null values (`Table.denseVals`'s
-          -- converse: a prefix count for the positions, a `where` of the non-null rows for the values) is not built yet
-          | .null tag _ => throw s!"output `{x}` to csv \"{path}\": column `{tag}` is a `1+S` not in band, whose dense \
-              sum has no native CSV writer yet (PLAN 8.2i2: positions and the non-null rows from the tag)"
+          -- a `1+S` not in band: each atom as the extern's tag (swapped), position (the count of own-side rows before
+          -- the row) and non-null values, as `Table.toCsv`'s `.null` case: a prefix count per side, a `where` of the tag
+          | .null tag vs => do
+            let (n, t) ← reg tag
+            let e ← mapB .first n t t .u1 .i64 [] [(.not, 0)]
+            let ex (a : Nat) : Bld Nat := do mapB .sub n (← prefixB .add n a).1 a
+            let i ← mapB .add n (← mapB .mul n e (← ex e)) (← mapB .mul n t (← ex t))
+            let (m, w) ← whereB n t
+            let mut ps := []
+            for (q, _) in vs do
+              ps := ps ++ [(n, e), (n, i), (m, ← gatherB m w n (← reg q).2)]
+            pure ps
         -- the first column holds the rows: a later column may be an array's payload (`.e`), of its own count
         if rows.isNone then rows := ps.head?.map (·.1)
         for (m, e) in ps do es := es ++ [← ctorB 0 #[m, e] #[]]
