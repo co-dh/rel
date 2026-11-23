@@ -153,11 +153,13 @@ theorem Tm.uniOne_den (ρ : Val) {m : USize} (U : Vals .one m) (x y : Obj.El .on
   · rintro ⟨i, -⟩; exact Nat.lt_of_le_of_lt (Nat.zero_le _) i.2
   · intro h; exact ⟨⟨0, h⟩, by simp⟩
 
-/-- The base `0` (`zeroTm`): its values are the word `0` of the atom, where it is in its universe. -/
-theorem zeroTm_den {t : QAtomicType} (h : t.ordNum.isSome) (u₀ : Tm (.atom t) (.atom t)) (ρ : Val)
+/-- The base `0`, `ran(u₀ {0})` of the literal zero `zeroCol`: its values are the word `0` of the atom, where it is in
+    its universe. -/
+theorem ranZeroCol_den {t : QAtomicType} (h : t.ordNum.isSome) (u₀ : Tm (.atom t) (.atom t)) (ρ : Val)
     {P : (Obj.atom t).El → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (v : (Obj.atom t).El) :
-    (∃ a, (zeroTm h u₀).den ρ a v) ↔ v = QAtomicType.ofBits t 0 ∧ P (QAtomicType.ofBits t 0) := by
-  simp only [zeroTm, ↓Tm.ran_den, Tm.ran_den, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, hU,
+    (∃ a, (Tm.ran (.comp u₀ (.uni (A := .atom t) (zeroCol t h)))).den ρ a v) ↔
+      v = QAtomicType.ofBits t 0 ∧ P (QAtomicType.ofBits t 0) := by
+  simp only [↓Tm.ran_den, Tm.ran_den, Tm.den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.id, hU,
     zeroCol_row]
   constructor
   · rintro ⟨a, rfl, b, ⟨_, ⟨rfl, hb⟩, _, rfl, -⟩, _, -, _, -, hv⟩
@@ -367,117 +369,6 @@ theorem Prim.den_mapRow_corefl {V : Obj} {TU : Core.Rel (Obj.El V) (Obj.El V)} {
     exact (h t ht (by omega)).2
   · rintro ⟨rfl, h⟩
     exact ⟨rfl, fun t ht _ => ⟨rfl, h _ (List.getElem_mem ht)⟩⟩
-
-/-- **The definition built is its read-back cut**: where `c` reads `d` back (`Tm.dfnCut?`), and the universes
-    `c.u₀`, `c.u` are the coreflexive on `P` — every number (an unbounded object's `𝟙`) or an initial segment
-    `0…k` — `d` means `c.cut`, the fused row cut to the universe; at `𝟙` it means `c.fused`, the fused row. On every
-    source a run holds (`Short`): the count of a list of `2^63` elements or more wraps in the fused row, not in
-    the definition. -/
-theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
-    {P : B.El → Prop} (hP : (∀ x, P x) ∨ Seg B P)
-    (hUs : ∀ u₀ u, c.uni = some (u₀, u) → (∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) ∧ ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
-    (x : A.El) (hx : Short A x) (w : B.El) :
-    (d.den ρ x w ↔ c.cut.den ρ x w) ∧ ((∀ x, P x) → (d.den ρ x w ↔ c.fused.den ρ x w)) := by
-  cases c with
-  | flat R =>
-    -- `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` is `flatDen` (`Tm.flat_den`), the row's meaning at every object
-    have hd := congrFun (congrFun (Tm.flat_den ρ R) x) w
-    simp only [DfnCut.cut, DfnCut.fused, ↓Tm.dom_den, Tm.dom_den, Tm.den, Tm.argDen, Prim.den_flatRow] at hd ⊢
-    exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
-  | foldI e S =>
-    -- `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` is `foldIDen` (`foldIDen_eq`), the row's meaning at every object
-    have hd := congrFun (congrFun (foldIDen_eq (e.den ρ) (S.den ρ)).symm x) w
-    simp only [DfnCut.cut, DfnCut.fused, ↓Tm.ran_den, Tm.ran_den, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
-    exact ⟨hd.to_iff, fun _ => hd.to_iff⟩
-  | dom R =>
-    -- `⟨𝟙,R⟩π₁` keeps `a` with some `b` of `R`: `𝟙 ∩ R R°` (`Prim.den_domRow`), the row's meaning at every object
-    have hd : (Tm.comp (.pair .id R) .outl).den ρ x w ↔ (Tm.dom R).den ρ x w := by
-      simp only [Tm.dom, Tm.den, Tm.argDen, Prim.den_domRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter,
-        Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
-      constructor
-      · rintro ⟨⟨a, b⟩, ⟨rfl, hb⟩, rfl⟩; exact ⟨rfl, b, hb, hb⟩
-      · rintro ⟨rfl, b, hb, -⟩; exact ⟨(x, b), ⟨rfl, hb⟩, rfl⟩
-    exact ⟨hd, fun _ => hd⟩
-  | ran R =>
-    -- `dom(R°)` is `𝟙 ∩ R° R°°` (`Prim.den_domRow` at `R°`), `ranRow`'s meaning (`Prim.den_ranRow`)
-    have hd : (Tm.dom (.conv R)).den ρ x w ↔ (Tm.ran R).den ρ x w := by
-      simp only [Tm.dom, Tm.ran, Tm.den, Tm.argDen, Prim.den_domRow, Prim.den_ranRow]
-    exact ⟨hd, fun _ => hd⟩
-  | @nil _ E =>
-    -- `Λ(𝟘)` maps every source to the list of no elements, `[]` (`Prim.den_nilRow`)
-    have hd : (Tm.lam .zero : Tm A (.arr E)).den ρ x w ↔ (Tm.nil : Tm A (.arr E)).den ρ x w := by
-      simp only [Tm.nil, Tm.den, Prim.den_nilRow, lamDen, nilDen]
-      constructor
-      · rintro ⟨-, h⟩; exact List.eq_nil_iff_forall_not_mem.2 fun b hb => (h b).1 hb
-      · rintro rfl; exact ⟨List.Pairwise.nil, fun b => iff_of_false (List.not_mem_nil) fun h => h⟩
-    exact ⟨hd, fun _ => hd⟩
-  | est Q =>
-    -- `∈ \ (Q ∪ 𝟙)°` at `w` under `w ∈ x`: every `c` of `x` has `w Q c` or is `w`, `estDen` of `τ(Q)` read on its
-    -- diagonal; the universes `𝟙` drop out since `x` has the column `w`
-    have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
-      simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
-    have hd : (Tm.meet .mem (.ldiv (.conv .mem) (.conv (.join Q .id)) .id .id) : Tm (.arr B) B).den ρ x w ↔
-        (Tm.est (pairTest Q)).den ρ x w := by
-      rw [Tm.est_den]
-      simp only [Tm.den, ldivDen, estDen, hτ, Core.Rel.inter, Core.Rel.recip, Core.Rel.union, Core.Rel.id]
-      constructor
-      · rintro ⟨hw, hall, -⟩
-        exact ⟨hw, fun ⟨c, hc, hne, hq⟩ => (hall c hc).elim hq fun h => hne h.symm⟩
-      · rintro ⟨hw, hn⟩
-        refine ⟨hw, fun c hc => (Classical.em (Q.den ρ w c)).elim Or.inl fun hq =>
-          Or.inr (Classical.byContradiction fun hne => hn ⟨c, hc, fun h => hne h.symm, hq⟩), Or.inl ⟨w, hw⟩⟩
-    exact ⟨hd, fun _ => hd⟩
-  | @front E Q =>
-    -- `∋ − ∋ (Q − Q°)` keeps `c` of `x` that no `b` of `x` beats strictly, `frontDen` of `τ(Q)` on its diagonal
-    have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
-      simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
-    have hd : (Tm.lam (.diff .mem (.comp .mem (.diff Q (.conv Q)))) : Tm (.arr E) (.arr E)).den ρ x w ↔
-        (Tm.front (pairTest Q)).den ρ x w := by
-      rw [Tm.front_den]
-      simp only [Tm.den, frontDen, lamDen, diffDen, hτ, Core.Rel.comp, Core.Rel.recip]
-    exact ⟨hd, fun _ => hd⟩
-  | @length E u₀ u =>
-    -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
-    obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
-    have hcut : (DfnCut.length (E := E) u₀ u).cut = .comp (.prim lengthRow) u := rfl
-    have hd := count_iff (zeroTm_den (t := .i64) rfl u₀ ρ hU₀) hU x hx w
-    simp only [Tm.den, hcut, DfnCut.fused, Prim.den_lengthRow,
-      Tm.cut1_succ_den ρ u fun x y h => ((hU x y).1 h).1]
-    rw [hd]
-    have hx : x.length < 2 ^ 63 := hx
-    have hc : (∀ t ≤ x.length, P (Int64.ofNat t)) ↔ P (Int64.ofNat x.length) :=
-      chain_in hP Int64.ofNat x.length fun _ => ⟨by decide, fun t ht => by
-        rw [Int64.toInt_ofNat_of_lt (by omega), Int64.toInt_ofNat_of_lt (by omega)]; omega⟩
-    refine ⟨⟨fun ⟨hp, hw⟩ => Exists.intro _ ⟨rfl, (hU _ _).2 ⟨hw.symm, hc.1 hp⟩⟩, ?_⟩,
-      fun hall => ⟨fun h => h.2, fun h => ⟨fun _ _ => hall _, h⟩⟩⟩
-    rintro ⟨b, rfl, hbw⟩
-    obtain ⟨hw, hp⟩ := (hU _ _).1 hbw
-    exact ⟨hc.2 hp, hw.symm⟩
-  | @sum t h hf u₀ u =>
-    -- `⦇[0, plus]⦈`: `plus_iff` reads the fold kept in the universe as the row cut to it
-    obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
-    have hcut : (DfnCut.sum h hf u₀ u).cut = .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
-      (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u := by
-      simp [DfnCut.cut, Prim.cut, Prim.cutUni, sumRow]
-    simp only [Tm.den, Tm.argDen, hcut, DfnCut.fused, Prim.den_sumRow, sumDen_fold hf,
-      Tm.cut2_plus_den ρ u fun x y h => ((hU x y).1 h).1]
-    rw [foldDen_start]
-    simp only [zeroTm_den h u₀ ρ hU₀]
-    rw [plus_iff hP hU]
-    refine ⟨⟨fun ⟨hE, hw, hf⟩ => ⟨w, ⟨x, (Prim.den_mapRow_corefl hU x x).2 ⟨rfl, hE⟩, hf⟩, (hU _ _).2 ⟨rfl, hw⟩⟩,
-      fun ⟨w', ⟨y, hy, hf⟩, hw⟩ => ?_⟩, fun hall => ⟨fun h => h.2.2, fun h => ⟨fun _ _ => hall _, hall _, h⟩⟩⟩
-    obtain ⟨rfl, hE⟩ := (Prim.den_mapRow_corefl hU x y).1 hy
-    obtain ⟨rfl, hPw⟩ := (hU _ _).1 hw
-    exact ⟨hE, hPw, hf⟩
-  | @fsum t u =>
-    -- the definition is the cut itself; on the universe `𝟙` both `u` drop out
-    obtain ⟨-, hU⟩ := hUs u u rfl
-    have hcut : (DfnCut.fsum u).cut = .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
-      (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u := by
-      simp [DfnCut.cut, Prim.cut, Prim.cutUni, sumRow]
-    refine ⟨by rw [hcut], fun hall => ?_⟩
-    simp only [Tm.den, Tm.argDen, DfnCut.fused, Core.Rel.comp, Prim.den_mapRow_corefl hU, hU]
-    exact ⟨fun ⟨_, ⟨_, ⟨rfl, _⟩, h⟩, rfl, _⟩ => h, fun h => ⟨w, ⟨x, ⟨rfl, fun _ _ => hall _⟩, h⟩, rfl, hall _⟩⟩
 
 
 /-! ### Keyed lifting (§e): the law `Prim.keyLift` claims -/

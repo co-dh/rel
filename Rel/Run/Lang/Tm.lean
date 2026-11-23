@@ -211,15 +211,15 @@ def Prim.cutUni (us : List (String × (X : Obj) × Tm X X)) : OExp → (X : Obj)
     if h : Y = X then some (.arg (.prim mapRow : Tm (.arr X) (.arr X)) (h ▸ u)) else none
   | _, _ => none
 
-/-- A row cut to the universes `us` of its `num` variables, read off its signature `S ⟶ T` (§3.5, `Tm.cut1`/`Tm.cut2`
-    give the atom rows the same form): `u` before it where `S` is a `num` variable (`F(u)` under a list), `u` after it
-    where `T` is one; the row itself where neither is. -/
-def Prim.cut (r : Prim) (A B : Obj) (us : List (String × (X : Obj) × Tm X X)) : Tm A B :=
+/-- The row `r` built as `f` (its parameters applied), cut to the universes `us` of its `num` variables, read off its
+    signature `S ⟶ T` (§3.5, `Tm.cut1`/`Tm.cut2` give the atom rows the same form): `u` before it where `S` is a `num`
+    variable (`F(u)` under a list), `u` after it where `T` is one; `f` itself where neither is. -/
+def Prim.cut (r : Prim) {A B : Obj} (f : Tm A B) (us : List (String × (X : Obj) × Tm X X)) : Tm A B :=
   match Prim.cutUni us r.sig.2.1 A, Prim.cutUni us r.sig.2.2 B with
-  | none, none => .prim r
-  | some s, none => .comp s (.prim r)
-  | none, some t => .comp (.prim r) t
-  | some s, some t => .comp (.comp s (.prim r)) t
+  | none, none => f
+  | some s, none => .comp s f
+  | none, some t => .comp f t
+  | some s, some t => .comp (.comp s f) t
 
 /-- One per node, a `prim` one whatever its row: `kids` puts `mem` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/

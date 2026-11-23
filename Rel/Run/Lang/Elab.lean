@@ -410,9 +410,10 @@ inductive Pre
   | mem (b : OTy)
   | inl (a b : OTy)
   | inr (a b : OTy)
-  /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`); a row
-      of `dfns` is the fused form of its definition, which `build` cuts to `t`'s universe. -/
-  | prim (r : Prim) (args : List Pre) (s t : OTy)
+  /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`); `q` the
+      call of the definition whose constant is `r`'s (`Prim.prelude`, `Expand.useDef`), which `build` runs where the
+      row is not its meaning (tm-minimal §6); `none` for a row no definition names. -/
+  | prim (r : Prim) (args : List Pre) (s t : OTy) (q : Option Pre)
   | succ (pos : Pos) (n : OTy)
   | arith (pos : Pos) (k : UInt8) (n : OTy)
   /-- `≤` at the number object `n`; `rk` `rank(D)` for the program's dictionary `D`, which `n` = `sym` orders by (`symOrd`). -/
@@ -623,7 +624,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
   | .lam x => return .lam (← f (some (.not "Λ")) x)
-  | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
+  | .prim r xs s t q => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t (← q.mapM (f none))
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
   | .leq q n r => return .leq (← fp q) n (← r.mapM mo)
@@ -695,7 +696,7 @@ def Pre.subs (x : Pre) : List Pre := x.parts.map (·.1)
 /-- The source of each `nil` in `x` (a node, or a row with an open source, `Prim.openSrc`), a definition's body at its
     use included. -/
 def Pre.nilSrcs (x : Pre) : List OTy :=
-  x.foldShared fun | .nil a _ => ([a], []) | y@(.prim r _ s _) => ((if r.openSrc then [s] else []), y.subs) | y => ([], y.subs)
+  x.foldShared fun | .nil a _ => ([a], []) | y@(.prim r _ s _ _) => ((if r.openSrc then [s] else []), y.subs) | y => ([], y.subs)
 
 /-- `x` and every node under it, a call's expansion included. -/
 def Pre.nodes (x : Pre) : List Pre := x.foldShared fun y => ([y], y.subs)
@@ -1030,7 +1031,7 @@ def liftRows : List LiftRow := [
     runs on the keys in demand, so `I` needs no universe (a converse or `ran` here would close over all of `I`). -/
 partial def keyed (R : Pre) (a b : OTy) : Pre :=
   ((liftRows I).findSome? fun r => r.match? R >>= r.keyed (keyed · · ·) a b).getD
-    (.prim flatRow [R] (.prod I a) b)
+    (.prim flatRow [R] (.prod I a) b none)
 
 def lComp : Pre × OTy × OTy → Pre × OTy × OTy → M (Pre × OTy × OTy)
   | (R, a, b), (S, b', c) => do
@@ -1102,7 +1103,7 @@ def lFold : Pre × OTy × OTy → Pre × OTy × OTy → Pre × OTy × OTy → M 
     let iv := OTy.prod I v; let vx := OTy.prod v x
     let S' := comp (pair (comp (outl iv x) (outl I v)) (pair (comp (outl iv x) (outr I v)) (outr iv x)))
       (pair (outl I vx) (keyed I S vx v))
-    pure (compSh I a (.arr x) X (.prim foldIRow [e, S'] (.prod I (.arr x)) v), a, v)
+    pure (compSh I a (.arr x) X (.prim foldIRow [e, S'] (.prod I (.arr x)) v none), a, v)
 
 end Rows
 
@@ -1142,7 +1143,7 @@ def indexAt (p : Pos) (k : Nat) (b : OTy) : Pre :=
   let n : OTy := .base "at(k)"
   let v := Int64.ofNat k
   .comp (.pair (.id (.arr b)) (.top p (.arr b) n (some (.tm ⟨.long, .long, .val ⟨1, col [v], col [v]⟩⟩))))
-    (.prim indexRow [] (.prod (.arr b) n) b)
+    (.prim indexRow [] (.prod (.arr b) n) b none)
 
 /-- A constant: fresh objects for its type, the explicit ones `(A,B)` unified with source and target. -/
 def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre := none) : M Arg := do
@@ -1151,7 +1152,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre 
     | some r => do
       let (ps, s, t, _) ← r.inst env
       unless ps.isEmpty do throw ⟨p, s!"{r.sym} takes {ps.length} arguments, found 0"⟩
-      pure (some (.prim r [] s t, s, t))
+      pure (some (.prim r [] s t none, s, t))
     | none => pure none
   let (q, s, t) : Pre × OTy × OTy := row.getD <| match o with
     | .id => (.id a, a, a)
@@ -1166,7 +1167,7 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre 
     | .mem => (.mem a, .arr a, a)
     | .inl => (.inl a b, a, .sum a b)
     | .inr => (.inr b a, a, .sum b a)
-    | .alpha => (.junc (.nil a b) (.prim consRow [] (.prod b (.arr b)) (.arr b)) a (.prod b (.arr b)),
+    | .alpha => (.junc (.nil a b) (.prim consRow [] (.prod b (.arr b)) (.arr b) none) a (.prod b (.arr b)),
         .sum a (.prod b (.arr b)), .arr b)
     | .index k => (indexAt p k b, .arr b, b)
     | _ => (.id a, a, a)
@@ -1249,7 +1250,7 @@ def arithOk (k : UInt8) (t : QAtomicType) : Bool :=
 /-- The number objects the node `x` itself computes on, each with its operator and the atoms it admits: `build`
     refuses any other (`numObj`), and `settleLit` settles a literal's open object by them. -/
 def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAtomicType → Bool))
-  | .prim r _ s t => r.num.filterMap fun (v, ok) =>
+  | .prim r _ s t _ => r.num.filterMap fun (v, ok) =>
     ((r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s)).map (·, r.sym, ok.contains)
   | .succ _ n => [(n, "succ", (· == .i64))]
   | .arith _ k n => [((nulPayload mc k n).getD n, (Op.arith k).sym, arithOk k)]
@@ -1257,14 +1258,14 @@ def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAto
   | .leq _ n _ => [(n, "≤", fun t => t.ordNum.isSome || t == .sym)]
   | .lt _ n _ => [(n, "<", fun t => t.ordNum.isSome || t == .sym)]
   -- the ordered prim `build` ranks through `symObj` (`.ranked`): its own atoms, and `sym` by the same rule
-  | .ranked (.prim r a s t) _ => (Pre.prim r a s t).numsAt mc |>.map fun (n, op, ok) => (n, op, fun t => ok t || t == .sym)
+  | .ranked (.prim r a s t q) _ => (Pre.prim r a s t q).numsAt mc |>.map fun (n, op, ok) => (n, op, fun t => ok t || t == .sym)
   | _ => []
 
 /-- `numsAt` of `x` and of its parts, a definition's body at its use included; a `.ranked` prim is read once, by
     `numsAt` of the `.ranked`, not again by its own atoms. -/
 def Pre.nums (mc : Lean.MetavarContext) (x : Pre) : List (OTy × String × (QAtomicType → Bool)) :=
   x.foldShared fun y => (y.numsAt mc, match y with
-    | .ranked (.prim r a s t) _ => (Pre.prim r a s t).subs ++ y.subs.drop 1
+    | .ranked (.prim r a s t q) _ => (Pre.prim r a s t q).subs ++ y.subs.drop 1
     | _ => y.subs)
 
 /-- Why the rows `ts` of a literal's position do not determine its object: they are none (an empty array's
@@ -1355,7 +1356,7 @@ def appliedRow (env : Env) (p : Pos) (r : Prim) (qs : List (Pre × OTy × OTy)) 
   let xs ← (ps.zip qs).mapM fun (((x, y), f), (q, s', t')) => do
     unify p s!"the source of {r.sym}'s argument" s' x; unify p s!"the target of {r.sym}'s argument" t' y
     pure (r.pass p f q s')
-  pure (.rel (.prim r xs s t) s t)
+  pure (.rel (.prim r xs s t none) s t)
 
 /-- A builtin applied to relations, every argument one relation. -/
 def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M Arg := do
@@ -1492,7 +1493,7 @@ partial def hyloG (p : Pos) (k : Nat) (a b : OTy) (t s : OTy) : M (Pre × OTy ×
   | .arr t₁, .arr s₁ | .arr t₁, s₁@(.mv _) =>
     let (g₁, u₁, m₁) ← hyloG p k a b t₁ s₁
     if !m₁ then return (.id t, t, false)
-    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁), .arr u₁, true)
+    return (.prim mapRow [g₁] (.arr t₁) (.arr u₁) none, .arr u₁, true)
   | _, _ =>
     if t == s || any then return (.id t, t, false)
     throw ⟨p, s!"hylo(c, S): c's target and S's source differ at {t} against {s}, which is neither {a} against {b} \
@@ -1985,7 +1986,7 @@ def numCheck (x : Pre) : Except Err Unit := do
   x.numsAt mc |>.forM fun (o, op, ok) =>
     if (zonk mc o).mvs.isEmpty then discard (numObj objs mc dp o op ok) else pure ()
   match x with
-  | .prim r _ s t => do
+  | .prim r _ s t _ => do
     -- `$` is typed by unification at any two objects; which atoms it joins is `castOK`'s, read off their formats
     if r.sym == "$" && (zonk mc s).mvs.isEmpty && (zonk mc t).mvs.isEmpty then
       let A ← objOf objs dp (zonk mc s); let B ← objOf objs dp (zonk mc t)
@@ -2229,114 +2230,6 @@ def zeroCol (t : QAtomicType) (h : t.ordNum.isSome) : Arr t 1 :=
     (by cases t <;> first | rfl | exact absurd h (by decide)) fun _ i hi => by
       obtain rfl : i = 0 := by simp at hi; omega
       decide +revert) (Rel.Verify.hasNul_wordsFoR #[0])
-
-/-- The fold base `0`: the literal zero of the atom `t` (`zeroCol`) where it is in the universe `u`, `ran(u {0})`,
-    closed, since the fold reads its start whole. A word, not `⟨𝟙,𝟙⟩ minus ∩ 𝟙`: one base at every atom, a float's too. -/
-def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) :=
-  .ran (.comp u (.uni (A := .atom t) (zeroCol t h)))
-
-/-- A row's definition (§4): `⦇[0, π₁ succ]⦈` (`lengthRow`'s) and `⦇[0, plus]⦈` (`sumRow`'s, at its atom `t`), the
-    base `0` on the universe `u₀`, the step on `u`; `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`flatRow`'s, of the family `R`);
-    `⟨𝟙,R⟩π₁` (`domRow`'s, not `𝟙 ∩ R R°`, whose `R°` an on-demand `R` often cannot run), `dom(R°)` (`ranRow`'s),
-    `Λ(𝟘)` (`nilRow`'s), `∋ ∩ (∈ \ (Q ∪ 𝟙)°)` (`estRow`'s) and `Λ(∋ − ∋ (Q − Q°))` (`frontRow`'s), of the order `Q`,
-    whose fused rows read it as its pair test `τ(Q)` (`pairTest`).
-    Indexed by the term, so the law takes it apart by `cases`; `dfns` builds it from the row's own relations and
-    target universe. -/
-inductive DfnCut : {A B : Obj} → Tm A B → Type
-  | length {E : Obj} (u₀ u : Tm .long .long) :
-    DfnCut (A := .arr E) (B := .long) (.fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (Tm.cut1 succRow u)))
-  | sum {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ sumRow.native) (u₀ u : Tm (.atom t) (.atom t)) :
-    DfnCut (A := .arr (.atom t)) (B := .atom t) (.fold (zeroTm h u₀) (Tm.cut2 (arithRow "plus") u))
-  -- at a float atom `sum` rounds once (`Lang.sumDen`), no fold of `plus` (rounding each step): its definition is
-  -- the row cut to the universe, `F(u) sum u`
-  | fsum {t : QAtomicType} (u : Tm (.atom t) (.atom t)) :
-    DfnCut (A := .arr (.atom t)) (B := .atom t) (.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t))
-      (.arr (.atom t))) u) (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u)
-  | flat {I A B : Obj} (R : Tm I (.prod A B)) :
-    DfnCut (A := .prod I A) (B := B)
-      (.comp (.pair (.comp .outl R) .outr) (.comp (.dom (.meet (.comp .outl .outl) .outr)) (.comp .outl .outr)))
-  | foldI {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V)) :
-    DfnCut (A := .prod I (.arr E)) (B := V)
-      (.comp (.meet (.comp .outl (.conv .outl)) (.comp .outr (.fold (.ran (.pair .id (.comp e .outr)))
-        (.meet S (.comp .outl (.comp .outl (.conv .outl))))))) .outr)
-  | dom {A B : Obj} (R : Tm A B) : DfnCut (A := A) (B := A) (.comp (.pair .id R) .outl)
-  | ran {A B : Obj} (R : Tm A B) : DfnCut (A := B) (B := B) (.dom (.conv R))
-  | nil {A B : Obj} : DfnCut (A := A) (B := .arr B) (.lam .zero)
-  -- `∈ \ (Q ∪ 𝟙)°` read under `∋ ∩`, where an array has a column, so the universes `𝟙` are never read
-  | est {B : Obj} (Q : Tm B B) :
-    DfnCut (A := .arr B) (B := B) (.meet .mem (.ldiv (.conv .mem) (.conv (.join Q .id)) .id .id))
-  | front {B : Obj} (Q : Tm B B) : DfnCut (A := .arr B) (B := .arr B) (.lam (.diff .mem (.comp .mem (.diff Q (.conv Q)))))
-
-/-- The universes of the base and of the step, where the law needs them; none where it holds on every object. -/
-def DfnCut.uni {A B : Obj} {d : Tm A B} : DfnCut d → Option (Tm B B × Tm B B)
-  | .length u₀ u | .sum _ _ u₀ u => some (u₀, u)
-  | .fsum u => some (u, u)
-  | .flat _ | .foldI _ _ | .dom _ | .ran _ | .nil | .est _ | .front _ => none
-
-/-- The row the definition is the fused form of. -/
-def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
-  | .length _ _ => .prim lengthRow
-  | .sum _ _ _ _ | .fsum _ => .prim sumRow
-  | .flat R => .arg (.prim flatRow) R
-  | .foldI e S => .arg (.arg (.prim foldIRow) e) S
-  | .dom R => .dom R
-  | .ran R => .ran R
-  | .nil => .nil
-  | .est Q => .est (pairTest Q)
-  | .front Q => .front (pairTest Q)
-
-/-- The row cut to its universe, read off its signature (`Prim.cut`): `sum`'s tests its elements in it first
-    (`F(u)`), as `plus` does; a row whose law needs no universe, itself. -/
-def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
-  | .length _ u => Prim.cut lengthRow _ _ [("ℕ", ⟨_, u⟩)]
-  | .sum _ _ _ u | .fsum u => Prim.cut sumRow _ _ [("ℕ", ⟨_, u⟩)]
-  | .flat R => .arg (.prim flatRow) R
-  | .foldI e S => .arg (.arg (.prim foldIRow) e) S
-  | .dom R => .dom R
-  | .ran R => .ran R
-  | .nil => .nil
-  | .est Q => .est (pairTest Q)
-  | .front Q => .front (pairTest Q)
-
-/-- The rows that are the fused form of a definition (§4), keyed by `sym`: each builds the `DfnCut` of its
-    definition from the row's built relations and the universe `u` of its target (base and step both on it), at
-    the row's objects `A ⟶ B`; none at other objects. `build` runs `c.fused` or `c.cut`, never the definition, and
-    `Tm.dfnCut_den` proves each equal to it: no read-back of a built term decides which runs. -/
-def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d : Tm A B) × DfnCut d))) :=
-  [("length", fun A B _ u => match A, B, u with | .arr _, .long, u => some ⟨_, .length u u⟩ | _, _, _ => none),
-   ("sum", fun A B _ u => match A, B, u with
-     | .arr (.atom t), .atom t', u =>
-       if h : t' = t then by
-         obtain rfl := h
-         exact if hf : t' ∈ sumRow.native then some ⟨_, .fsum u⟩
-           else if ho : t'.ordNum.isSome then some ⟨_, .sum ho hf u u⟩ else none
-       else none
-     | _, _, _ => none),
-   ("flat", fun A B xs _ => match A, xs with
-     | .prod I A, [⟨I', AB, R⟩] => if h : I' = I ∧ AB = .prod A B then some ⟨_, .flat (h.1 ▸ h.2 ▸ R)⟩ else none
-     | _, _ => none),
-   ("foldI", fun A B xs _ => match A, xs with
-     | .prod I (.arr E), [⟨I', VV, e⟩, ⟨IVE, IV, S⟩] =>
-       if h : I' = I ∧ VV = .prod B B ∧ IVE = .prod (.prod I B) E ∧ IV = .prod I B then
-         some ⟨_, .foldI (h.1 ▸ h.2.1 ▸ e) (h.2.2.1 ▸ h.2.2.2 ▸ S)⟩ else none
-     | _, _ => none),
-   ("dom", fun A B xs _ => match xs with
-     | [⟨A', _, R⟩] => if h : A' = A ∧ B = A then by obtain ⟨rfl, rfl⟩ := h; exact some ⟨_, .dom R⟩ else none
-     | _ => none),
-   ("ran", fun A B xs _ => match xs with
-     | [⟨_, B', R⟩] => if h : A = B' ∧ B = B' then by obtain ⟨rfl, rfl⟩ := h; exact some ⟨_, .ran R⟩ else none
-     | _ => none),
-   ("nil", fun A B _ _ => match B with
-     | .arr E => some ⟨_, DfnCut.nil (A := A) (B := E)⟩
-     | _ => none),
-   ("est", fun A B xs _ => match A, xs with
-     | .arr E, [⟨E', E'', Q⟩] => if h : E' = E ∧ E'' = E ∧ B = E then by
-         obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .est Q⟩ else none
-     | _, _ => none),
-   ("front", fun A B xs _ => match A, xs with
-     | .arr E, [⟨E', E'', Q⟩] => if h : E' = E ∧ E'' = E ∧ B = .arr E then by
-         obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .front Q⟩ else none
-     | _, _ => none)]
 
 /-- The converses a program states as theorems `c° = c'` (no parameters, no hypotheses), `(c, c')` in order: the
     definitions' source of `convOf`, read off the declarations, never kept as a second list. -/
@@ -2614,14 +2507,12 @@ def build (δ : Dem) : Pre → Except Err Res
   | .mem b => return ⟨_, _, .mem (B := ← toObj objs mc dp b)⟩
   | .inl a b => return ⟨_, _, .inl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .inr a b => return ⟨_, _, .inr (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
-  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`). A row of
-  -- `dfns` means its definition `d` (§4: every step stays in the target object). `Tm.dfnCut_den` proves `d` equal to
-  -- the row followed by `𝟙` of the target (`c.cut`) where the universe is every number or `0…k`, and to the row
-  -- itself at `𝟙` or where no universe enters (`DfnCut.uni`); at any other universe (one with negatives or not from
-  -- `0`, or an object variable no call fixed to one of those) the two differ — `[−3,3,3] sum` on `−3…3` is `𝟘` by
-  -- `d`, `3` by the cut — so `d` runs. With no universe, the row runs (the base `0` would need keys none supply).
-  | .prim r xs s t => do
-    numCheck objs mc dp (.prim r xs s t)
+  -- the row's objects are checked where `Expand.primE` fits its constant at them (`primsFit`, `node`). The one rule
+  -- (tm-minimal §6, O3): a row needs a universe iff it has `num` variables; it runs as itself where each is unbounded,
+  -- cut to the universes (`Prim.cut`) where each bounded one is `0…k` or an atom of `r.native`, and as its
+  -- definition `q` elsewhere — `[−3,3,3] sum` on `−3…3` is `𝟘` by the definition, `3` by the cut (§4)
+  | .prim r xs s t q => do
+    numCheck objs mc dp (.prim r xs s t q)
     -- an object whose canon order is not its value order (a float's bits, a symbol's bytes) is refused by name
     r.ord.forM fun v => do
       if let some o := (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) then
@@ -2638,25 +2529,29 @@ def build (δ : Dem) : Pre → Except Err Res
         have := List.sizeOf_lt_of_mem h
         if form == some true then let ⟨_, c⟩ ← param δ x; pure ⟨A, B, .arg f c⟩
         else let ⟨_, _, u⟩ ← build δ x; pure ⟨A, B, .arg f u⟩
-    let some dfn := dfns.lookup r.sym | row ()
-    -- relations that do not build δ alone give no definition: the row runs, a pair-test δ parameter tested on pairs
-    -- (`param`, as `length ≤ length°` on `[N]`), any other rebuilt by `row`, which reports its own error
-    let .ok args := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h; build δ x | row ()
-    -- a definition that needs no universe (`DfnCut.uni`, asked with `𝟙` standing for it) is its fused row at every
-    -- object: the target's universe is not read, since `uniPart` forces a declared one and may fail on it
-    if let some ⟨_, c⟩ := dfn A B args .id then if c.uni.isNone then return ⟨A, B, c.fused⟩
-    let o := zonk mc t
-    let some u ← uniPart objs dp δ o B | do
-      -- an object variable with no universe may be called at a bounded object, where the uncut row is not `d`
-      if let .base n := o then if (objs.lookup n).any fun i => i.ovar && !i.num then
-        if (dfn A B args .id).all (·.2.uni.isSome) then
+    let some q := q | row ()
+    -- each `num` variable at the object it stands for, read on either side of the signature (as `numsAt`)
+    let us ← (r.num.filterMap fun (v, _) => ((r.sig.2.2.varAt v (zonk mc t)).orElse fun _ =>
+      r.sig.2.1.varAt v (zonk mc s)).map (v, zonk mc ·)).mapM fun (v, o) => do
+        let X ← toObj objs mc dp o
+        let u ← uniPart objs dp δ o X
+        -- an object variable with no universe may be called at a bounded object, where the uncut row is not `q`
+        if u.isNone then if let .base n := o then if (objs.lookup n).any fun i => i.ovar && !i.num then
           throw ⟨dp, s!"{r.sym} at the object variable {n} needs its universe: its definition is cut to it (§4)"⟩
-      row ()
-    -- none at an atom with no literal `0` (`zeroCol`): a placeholder, so the constant stays at `.long` (`Expand.once`)
-    let some ⟨d, c⟩ := dfn A B args u | throw ⟨dp, s!"{r.sym}'s definition (dfns) has no form at {repr A} ⟶ {repr B}"⟩
-    if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩
-    else if initSeg objs o then pure ⟨A, B, c.cut⟩
-    else pure ⟨A, B, d⟩
+        pure (o, (⟨v, X, ·⟩ : Tm X X → String × (X : Obj) × Tm X X) <$> u,
+          initSeg objs o || match X with | .atom a => r.native.contains a | _ => false)
+    -- a variable at the placeholder of a generic constant (`varObj`) whose universe is read: neither the cut nor the
+    -- definition is known before the call fixes its object, so the row is refused here, cheaply, and `once` keeps
+    -- that variable a number object, each use building the row at its own object
+    if let some (o, _) := us.find? fun (o, u, _) => u.isSome && match o with
+        | .base n => (objs.lookup n).any fun i => i.ovar && match i.obj with | .atom a => varAtoms.contains a | _ => false
+        | _ => false then
+      throw ⟨dp, s!"{r.sym} at {o}: its universe is read, so it is built at the object of a use, not a placeholder (§4)"⟩
+    -- with no universe the row runs (its definition would need keys none supply)
+    let some cut := us.filter (!unbounded objs ·.1) |>.mapM fun (_, u, cuts) => if cuts then u else none
+      | if us.all (·.2.1.isSome) then build δ q else row ()
+    let ⟨A, B, f⟩ ← row ()
+    pure ⟨A, B, r.cut f cut⟩
   | .succ p n => do
     let (m, _) ← numObj objs mc p n "succ" (· == .i64)
     return ⟨_, _, Tm.cut1 succRow (← numU.declared objs p "succ" m .i64)⟩
@@ -2690,13 +2585,13 @@ def build (δ : Dem) : Pre → Except Err Res
       return ← symOrd dp δ p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.lt (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
     let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
   -- `asc(P)` at `sym`: `asc(ran(P r)) (P r)°`, the set `P` through the ranks, numbered, and back through them
-  | .ranked (.prim r [x] s t) rk => do
+  | .ranked (.prim r [x] s t q) rk => do
     if symObj objs mc t then
       -- `asc` numbers `dom P`, so `P` enters as `dom(P)`, whatever relation it is
       let ⟨A, _, P⟩ ← build δ x
       return ← symOrd dp δ dp "asc" (some ⟨A, A, .dom P⟩) (fun Q Qc => ⟨_, .comp (Tm.asc (.ran Q)) Qc⟩)
         (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    build δ (.prim r [x] s t)
+    build δ (.prim r [x] s t q)
   | .ranked q _ => build δ q
   | .fold true e s => do
     let r ← build δ e; let ⟨V, _, _⟩ := r

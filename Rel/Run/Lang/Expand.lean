@@ -67,7 +67,9 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
       match c, r, row with
       | _, .rel q s t, some x =>
         if rels.length == as.length && as.length == x.sig.1.length then
-          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t) s t)
+          pure (.rel (.prim x ((x.sig.1.zip rels).map fun ((_, f), (a, s')) => x.pass p f a s') s t
+            -- `build` reads the definition only for a row with `num` variables (O3), so no other keeps (and re-positions) it
+            (if x.num.isEmpty then none else some (if imported then q.at p else q))) s t)
         else pure (.rel (if imported then q.at p else q) s t)
       | _, .rel q s t, _ => pure (.rel (if imported then q.at p else q) s t)
       | _, .fam q i a b, _ => pure (.fam (if imported then q.at p else q) i a b) }

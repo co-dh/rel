@@ -6,9 +6,9 @@ public import Rel.Programs.Prelude
 @[expose] public section
 
 /-! The definitions of `flat`, `foldI`, `dom`, `ran`, `nil`, `front` (`Programs/Prelude.lean`) mean their rows (B10c2):
-    each term is the index of the matching `DfnCut` constructor, and the theorem specialises `Tm.dfnCut_den`
-    at the trivial universe (these constructors have `uni = none`, so `hUs` is vacuous). `length` and `sum` (C3)
-    carry the universes of their base and step, so their theorems take the universe hypotheses themselves.
+    `Tm.<sym>Def_row` proves each term equal to the row at every object (these rows have no `num` variable, so need
+    no universe). `length` and `sum` (C3) carry the universes of their base and step, so their theorems take the
+    universe hypotheses themselves.
     Q3 = H (B10d): `Tm.<sym>Def_den` is about the body the prelude elaborates, `prelude.<sym>.body` (`Expand.emit`),
     at any objects (`Tm.instObj`); the Lean-built term's theorem, renamed `Tm.<sym>Def_row`, is its middle step. -/
 
@@ -58,9 +58,11 @@ theorem Tm.estDef_den (ρ : Val) {B : Obj} (Q : Tm B B) : (Tm.estDef Q).den ρ =
     · exact ⟨rfl, Or.inl (h c hc (Ne.symm e)), fun hn => absurd (h c hc (Ne.symm e)) hn⟩
 
 theorem Tm.flatDef_row (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) (x : (Obj.prod I A).El) (hx : Short _ x) (w : B.El) :
-    (Tm.flatDef R).den ρ x w ↔ (Tm.arg (.prim flatRow) R).den ρ x w :=
-  (Tm.dfnCut_den (.flat R) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
-    (fun _ => trivial)
+    (Tm.flatDef R).den ρ x w ↔ (Tm.arg (.prim flatRow) R).den ρ x w := by
+  -- `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` is `flatDen` (`Tm.flat_den`), the row's meaning at every object
+  have hd := congrFun (congrFun (Tm.flat_den ρ R) x) w
+  simp only [Tm.flatDef, ↓Tm.dom_den, Tm.dom_den, Tm.den, Tm.argDen, Prim.den_flatRow] at hd ⊢
+  exact hd.to_iff
 
 /-- **`flat`'s text means the row** (Q3 = H): `prelude.flat.body` (placeholders `general`, `u1`, `u8` of `ι`, `α`, `β`;
     `R` the variable 3) at any objects `σ` means `flat(R)` there. The body groups `flatDef`'s composition the other way
@@ -78,9 +80,11 @@ theorem Tm.flatDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : 
 
 theorem Tm.foldIDef_row (ρ : Val) {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm (.prod (.prod I V) E) (.prod I V))
     (x : (Obj.prod I (.arr E)).El) (hx : Short _ x) (w : V.El) :
-    (Tm.foldIDef e S).den ρ x w ↔ (Tm.arg (.arg (.prim foldIRow) e) S).den ρ x w :=
-  (Tm.dfnCut_den (.foldI e S) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
-    (fun _ => trivial)
+    (Tm.foldIDef e S).den ρ x w ↔ (Tm.arg (.arg (.prim foldIRow) e) S).den ρ x w := by
+  -- `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` is `foldIDen` (`foldIDen_eq`), the row's meaning at every object
+  have hd := congrFun (congrFun (foldIDen_eq (e.den ρ) (S.den ρ)).symm x) w
+  simp only [Tm.foldIDef, ↓Tm.ran_den, Tm.ran_den, Tm.den, Tm.argDen, Prim.den_foldIRow] at hd ⊢
+  exact hd.to_iff
 
 /-- **`foldI`'s text means the row** (Q3 = H): `prelude.foldI.body` (placeholders `general`, `u1`, `u8` of `ι`, `β`, `α`;
     `e`, `S` the variables 3, 4) at any objects `σ` means `foldI(e, S)` there, where its universe variables 0, 1 (of `ι`,
@@ -122,9 +126,13 @@ theorem Tm.foldIDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
     exact ⟨fun ⟨_, ⟨_, _, hq⟩, _⟩ => hq, fun hq => ⟨_, ⟨⟨0, by simp [USize.toNat_ofNat]⟩, rfl, hq⟩, ⟨0, by simp [USize.toNat_ofNat]⟩, rfl, hq⟩⟩
 
 theorem Tm.domDef_row (ρ : Val) {A B : Obj} (R : Tm A B) (x : A.El) (hx : Short A x) (w : A.El) :
-    (Tm.domDef R).den ρ x w ↔ (Tm.dom R).den ρ x w :=
-  (Tm.dfnCut_den (.dom R) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
-    (fun _ => trivial)
+    (Tm.domDef R).den ρ x w ↔ (Tm.dom R).den ρ x w := by
+  -- `⟨𝟙,R⟩π₁` keeps `a` with some `b` of `R`: `𝟙 ∩ R R°` (`Prim.den_domRow`), the row's meaning at every object
+  simp only [Tm.domDef, Tm.dom, Tm.den, Tm.argDen, Prim.den_domRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.inter,
+    Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+  constructor
+  · rintro ⟨⟨a, b⟩, ⟨rfl, hb⟩, rfl⟩; exact ⟨rfl, b, hb, hb⟩
+  · rintro ⟨rfl, b, hb, -⟩; exact ⟨(x, b), ⟨rfl, hb⟩, rfl⟩
 
 /-- **`dom`'s text means the row** (Q3 = H): the body the prelude elaborates, `prelude.dom.body` (built at the
     placeholders `general`, `u1` of `α`, `β`; its parameter `R` the variable 2), at any objects `σ` (`Tm.instObj`,
@@ -136,19 +144,25 @@ theorem Tm.domDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : T
   exact Tm.domDef_row ρ _ x hx w
 
 theorem Tm.ranDef_row (ρ : Val) {A B : Obj} (R : Tm A B) (x : B.El) (hx : Short B x) (w : B.El) :
-    (Tm.ranDef R).den ρ x w ↔ (Tm.ran R).den ρ x w :=
-  (Tm.dfnCut_den (.ran R) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
-    (fun _ => trivial)
+    (Tm.ranDef R).den ρ x w ↔ (Tm.ran R).den ρ x w := by
+  -- `dom(R°)` is `𝟙 ∩ R° R°°` (`Prim.den_domRow` at `R°`), `ranRow`'s meaning (`Prim.den_ranRow`)
+  simp only [Tm.ranDef, Tm.dom, Tm.ran, Tm.den, Tm.argDen, Prim.den_domRow, Prim.den_ranRow]
 
 theorem Tm.nilDef_row (ρ : Val) {A B : Obj} (x : A.El) (hx : Short A x) (w : (Obj.arr B).El) :
-    (Tm.nilDef (A := A) (B := B)).den ρ x w ↔ (Tm.nil (A := A) (B := B)).den ρ x w :=
-  (Tm.dfnCut_den (.nil (A := A) (B := B)) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx
-    w).2 (fun _ => trivial)
+    (Tm.nilDef (A := A) (B := B)).den ρ x w ↔ (Tm.nil (A := A) (B := B)).den ρ x w := by
+  -- `Λ(𝟘)` maps every source to the list of no elements, `[]` (`Prim.den_nilRow`)
+  simp only [Tm.nilDef, Tm.nil, Tm.den, Prim.den_nilRow, lamDen, nilDen]
+  constructor
+  · rintro ⟨-, h⟩; exact List.eq_nil_iff_forall_not_mem.2 fun b hb => (h b).1 hb
+  · rintro rfl; exact ⟨List.Pairwise.nil, fun b => iff_of_false (List.not_mem_nil) fun h => h⟩
 
 theorem Tm.frontDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (x : (Obj.arr B).El) (hx : Short _ x) (w : (Obj.arr B).El) :
-    (Tm.frontDef Q).den ρ x w ↔ (Tm.front (pairTest Q)).den ρ x w :=
-  (Tm.dfnCut_den (.front Q) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
-    (fun _ => trivial)
+    (Tm.frontDef Q).den ρ x w ↔ (Tm.front (pairTest Q)).den ρ x w := by
+  -- `∋ − ∋ (Q − Q°)` keeps `c` of `x` that no `b` of `x` beats strictly, `frontDen` of `τ(Q)` on its diagonal
+  have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
+    simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+  rw [Tm.front_den]
+  simp only [Tm.frontDef, Tm.den, frontDen, lamDen, diffDen, hτ, Core.Rel.comp, Core.Rel.recip]
 
 /-- `ran`'s text means the row (Q3 = H), as `Tm.domDef_den`: its body at `α = general`, `β = u1`, parameter `R` the
     variable 2. -/
@@ -175,12 +189,12 @@ theorem Tm.frontDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' :
 
 /-- `length ≜ ⦇[0, π₁ succ]⦈`, the base `0` on the universe `u₀`, the step on `u`. -/
 def Tm.lengthDef {E : Obj} (u₀ u : Tm .long .long) : Tm (.arr E) .long :=
-  .fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (Tm.cut1 succRow u))
+  .fold (.ran (.comp u₀ (.uni (A := .atom .i64) (zeroCol .i64 rfl)))) (.comp .outl (Tm.cut1 succRow u))
 
 /-- `sum ≜ ⦇[0, plus]⦈` at the atom `t`. -/
 def Tm.sumDef {t : QAtomicType} (h : t.ordNum.isSome) (u₀ u : Tm (.atom t) (.atom t)) :
     Tm (.arr (.atom t)) (.atom t) :=
-  .fold (zeroTm h u₀) (Tm.cut2 (arithRow "plus") u)
+  .fold (.ran (.comp u₀ (.uni (A := .atom t) (zeroCol t h)))) (Tm.cut2 (arithRow "plus") u)
 
 /-- At the universes `u₀`, `u` the coreflexive on `P` (every number, or an initial segment), `length` means the row
     cut to `u`; at every number, the row. -/
@@ -188,10 +202,20 @@ theorem Tm.lengthDef_row (ρ : Val) {E : Obj} (u₀ u : Tm .long .long) {P : Obj
     (hP : (∀ x, P x) ∨ Seg .long P) (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
     (x : (Obj.arr E).El) (hx : Short _ x) (w : Obj.long.El) :
     ((Tm.lengthDef u₀ u).den ρ x w ↔ (Tm.comp (.prim lengthRow) u).den ρ x w) ∧
-      ((∀ x, P x) → ((Tm.lengthDef u₀ u).den ρ x w ↔ (Tm.prim lengthRow : Tm (.arr E) .long).den ρ x w)) :=
-  Tm.dfnCut_den (.length u₀ u) ρ hP (fun a b h => by
-    obtain ⟨rfl, rfl⟩ := Option.some.inj h
-    exact ⟨hU₀, hU⟩) x hx w
+      ((∀ x, P x) → ((Tm.lengthDef u₀ u).den ρ x w ↔ (Tm.prim lengthRow : Tm (.arr E) .long).den ρ x w)) := by
+  -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
+  have hd := count_iff (ranZeroCol_den (t := .i64) rfl u₀ ρ hU₀) hU x hx w
+  simp only [Tm.lengthDef, Tm.den, Prim.den_lengthRow, Tm.cut1_succ_den ρ u fun x y h => ((hU x y).1 h).1]
+  rw [hd]
+  have hx : x.length < 2 ^ 63 := hx
+  have hc : (∀ t ≤ x.length, P (Int64.ofNat t)) ↔ P (Int64.ofNat x.length) :=
+    chain_in hP Int64.ofNat x.length fun _ => ⟨by decide, fun t ht => by
+      rw [Int64.toInt_ofNat_of_lt (by omega), Int64.toInt_ofNat_of_lt (by omega)]; omega⟩
+  refine ⟨⟨fun ⟨hp, hw⟩ => Exists.intro _ ⟨rfl, (hU _ _).2 ⟨hw.symm, hc.1 hp⟩⟩, ?_⟩,
+    fun hall => ⟨fun h => h.2, fun h => ⟨fun _ _ => hall _, h⟩⟩⟩
+  rintro ⟨b, rfl, hbw⟩
+  obtain ⟨hw, hp⟩ := (hU _ _).1 hbw
+  exact ⟨hc.2 hp, hw.symm⟩
 
 /-- As `Tm.lengthDef_row`, for `sum` at an atom `t` that is not a float (`hf`, the row's `native` atoms: a float's
     `sum` rounds once and has no fold of `plus`). -/
@@ -201,13 +225,18 @@ theorem Tm.sumDef_row (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t
     (x : (Obj.arr (.atom t)).El) (hx : Short _ x) (w : (Obj.atom t).El) :
     ((Tm.sumDef h u₀ u).den ρ x w ↔ (Tm.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
       (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u).den ρ x w) ∧
-      ((∀ x, P x) → ((Tm.sumDef h u₀ u).den ρ x w ↔ (Tm.prim sumRow : Tm (.arr (.atom t)) (.atom t)).den ρ x w)) :=
-  have hcut : (DfnCut.sum h hf u₀ u).cut = Tm.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
-      (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u := by
-    simp [DfnCut.cut, Prim.cut, Prim.cutUni, sumRow]
-  hcut ▸ Tm.dfnCut_den (.sum h hf u₀ u) ρ hP (fun a b h => by
-    obtain ⟨rfl, rfl⟩ := Option.some.inj h
-    exact ⟨hU₀, hU⟩) x hx w
+      ((∀ x, P x) → ((Tm.sumDef h u₀ u).den ρ x w ↔ (Tm.prim sumRow : Tm (.arr (.atom t)) (.atom t)).den ρ x w)) := by
+  -- `⦇[0, plus]⦈`: `plus_iff` reads the fold kept in the universe as the row cut to it
+  simp only [Tm.sumDef, Tm.den, Tm.argDen, Prim.den_sumRow, sumDen_fold hf,
+    Tm.cut2_plus_den ρ u fun x y h => ((hU x y).1 h).1]
+  rw [foldDen_start]
+  simp only [ranZeroCol_den h u₀ ρ hU₀]
+  rw [plus_iff hP hU]
+  refine ⟨⟨fun ⟨hE, hw, hf⟩ => ⟨w, ⟨x, (Prim.den_mapRow_corefl hU x x).2 ⟨rfl, hE⟩, hf⟩, (hU _ _).2 ⟨rfl, hw⟩⟩,
+    fun ⟨w', ⟨y, hy, hf⟩, hw⟩ => ?_⟩, fun hall => ⟨fun h => h.2.2, fun h => ⟨fun _ _ => hall _, hall _, h⟩⟩⟩
+  obtain ⟨rfl, hE⟩ := (Prim.den_mapRow_corefl hU x y).1 hy
+  obtain ⟨rfl, hPw⟩ := (hU _ _).1 hw
+  exact ⟨hE, hPw, hf⟩
 
 /-- At the universes `u₀`, `u` of `length` (`P` every number, or an initial segment), `asc(P)`'s definition, with the
     count `Tm.lengthDef u₀ u`, means the row cut to `P` where `dom P` has a short list ascending by `Obj.lt`; at every
@@ -246,7 +275,7 @@ theorem Tm.lengthDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {P :
         (t'.den ρ x w ↔ (Tm.prim lengthRow : Tm ((Obj.arr (Obj.atom .general)).inst ph σ) .long).den ρ x w)) := by
   obtain rfl := Except.ok.inj ht
   have hl := Tm.lengthDef_row ρ (E := (Obj.atom .general).inst ph σ) (.var 1) (.var 1) hP hU hU x hx w
-  have hz := zeroTm_den (t := .i64) rfl (.var 1) ρ (P := P) hU
+  have hz := ranZeroCol_den (t := .i64) rfl (.var 1) ρ (P := P) hU
   have hb : QAtomicType.ofBits .i64 0 = (0 : Int64) := rfl
   haveI : Nonempty (Obj.inst ph σ Obj.one).El := ⟨()⟩
   simp only [Tm.lengthDef, Tm.den, Tm.argDen, Gen.atom_zero, cast_eq] at hl hz ⊢
@@ -267,7 +296,7 @@ theorem Tm.sumDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {P : (O
       ((∀ x, P x) → (t'.den ρ x w ↔ (Tm.prim sumRow : Tm (.arr (.atom .i64)) (.atom .i64)).den ρ x w)) := by
   obtain rfl := Except.ok.inj ht
   have hl := Tm.sumDef_row ρ (t := .i64) rfl (by decide) (.var 0) (.var 0) hP hU hU x hx w
-  have hz := zeroTm_den (t := .i64) rfl (.var 0) ρ (P := P) hU
+  have hz := ranZeroCol_den (t := .i64) rfl (.var 0) ρ (P := P) hU
   have hb : QAtomicType.ofBits .i64 0 = (0 : Int64) := rfl
   haveI : Nonempty (Obj.inst ph σ Obj.one).El := ⟨()⟩
   simp only [Tm.sumDef, Tm.den, Tm.argDen, Gen.atom_zero, cast_eq] at hl hz ⊢
