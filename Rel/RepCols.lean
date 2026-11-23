@@ -212,6 +212,29 @@ theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : 
           rw [hz, hq, Option.getD_some] at hp; exact (Option.some.inj hp).symm) hu
   · cases h
 
+/-- **Element `c` of `Opt.concat`**: `Arr.concat_get` read through `Opt.ofArr` (`Opt.get_ofArr`), the only case
+`Opt.concat` answers (neither column holds a null). -/
+theorem Opt.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : Opt t n₁} {y : Opt t n₂} {z : Opt t n}
+    (hn : n.toNat = n₁.toNat + n₂.toNat)
+    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) (h : Opt.concat n off x y = .ok z)
+    (c : Fin n.toNat) :
+    z.get c = if hc : c.1 < n₁.toNat then x.get ⟨c.1, hc⟩ else y.get ⟨c.1 - n₁.toNat, by omega⟩ := by
+  unfold Opt.concat at h
+  split at h
+  · rename_i hx
+    split at h
+    · rename_i hy
+      simp only [Functor.map, Except.map] at h
+      split at h; · cases h
+      rename_i w hw
+      cases h
+      rw [Opt.get_ofArr, Arr.concat_get hn hoff hw c]
+      split
+      · exact (Opt.get_ofArr (Arr.mk x.enc x.wf hx) _).symm
+      · exact (Opt.get_ofArr (Arr.mk y.enc y.wf hy) _).symm
+    · cases h
+  · cases h
+
 /-- What `catPlan` answers: the summed count and `off` the destinations `n₁ + k`. -/
 theorem catPlan_ok {n₁ n₂ n : USize} {off : Enc} (h : catPlan n₁ n₂ = .ok (n, off)) :
     n.toNat = n₁.toNat + n₂.toNat ∧ ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k := by
@@ -536,8 +559,10 @@ theorem Vals.cellsOk_wf : {A : Obj} → {n : USize} → {x : Vals A n} → Vals.
   | .arr _, _, ⟨_, _, _, _⟩, h => by
     simp only [Vals.cellsOk, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
     exact ⟨cellBad_none.1 h.1, Vals.cellsOk_wf h.2⟩
-  | .sum _ _, _, ⟨_, _, _, _, _, _⟩, h => by
-    simp only [Vals.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
+  | .sum _ _, _, s, h => by
+    simp only [Vals.cellsOk] at h; simp only [Vals.WF]
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [hv, Bool.and_eq_true] at h ⊢
+    exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
 
 /-- **`Vals.nub` keeps `Vals.WF`**: its rows are `Vals.gather`ed from `x`. -/
 theorem Vals.nub_wf {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
@@ -709,8 +734,16 @@ theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} →
       have h2 := Arr.shift_get hH₂ ⟨_, hc'⟩ (by omega) (by rw [hU]; omega)
       rw [hU] at l2 h2
       rw [l2, h2]; omega
-  | .sum _ _, _, _, _, _, hn, hoff, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩, z, h, hx, hy => by
+  | .sum _ _, _, _, _, _, hn, hoff, s₁, s₂, z, h, hx, hy => by
     simp only [Vals.concat] at h
+    rcases hv₁ : s₁.view with ⟨hb₁, x₁⟩ | ⟨hb₁, _, _, tag₁, idx₁, x₁, y₁⟩ <;>
+      rcases hv₂ : s₂.view with ⟨hb₂, x₂⟩ | ⟨hb₂, _, _, tag₂, idx₂, x₂, y₂⟩ <;> simp only [hv₁, hv₂] at h
+    · simp only [Functor.map, Except.map] at h
+      split at h; · cases h
+      cases h; simp only [Vals.WF, Vals.view_ofOpt]
+    · exact absurd (hb₁.symm.trans hb₂) nofun
+    · exact absurd (hb₂.symm.trans hb₁) nofun
+    simp only [Vals.WF, hv₁, hv₂] at hx hy
     split at h
     case isFalse => cases h
     simp only [bind, Except.bind, pure, Except.pure] at h
@@ -721,6 +754,7 @@ theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} →
     split at h; · cases h
     split at h; · cases h
     cases h
+    simp only [Vals.WF, Vals.view_ofGen]
     exact ⟨Vals.catSummand_wf (fun hm ho hc a b => Vals.concat_wf hm ho hc a b) hn hoff hL hx.1 hy.1,
       Vals.catSummand_wf (fun hm ho hc a b => Vals.concat_wf hm ho hc a b) hn hoff hR hx.2 hy.2⟩
 
@@ -792,8 +826,20 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
       by_cases hA : (lo₂.get ⟨_, hc'⟩).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi₂.get ⟨_, hc'⟩).toInt
       · rw [if_pos hA, if_pos (by dsimp only; omega)]
       · rw [if_neg hA, if_neg (by dsimp only; omega)]
-  | .sum _ _, n₁, _, _, _, hn, hoff, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩, z, h, hx, hy, c => by
+  | .sum _ _, n₁, _, _, _, hn, hoff, s₁, s₂, z, h, hx, hy, c => by
     simp only [Vals.concat] at h
+    rcases hs₁ : s₁.view with ⟨hb₁, x₁⟩ | ⟨hb₁, _, _, tag₁, idx₁, x₁, y₁⟩ <;>
+      rcases hs₂ : s₂.view with ⟨hb₂, x₂⟩ | ⟨hb₂, _, _, tag₂, idx₂, x₂, y₂⟩ <;> simp only [hs₁, hs₂] at h
+    · obtain rfl := Option.some.inj (hb₂.symm.trans hb₁)
+      simp only [Functor.map, Except.map] at h
+      split at h; · cases h
+      rename_i w hw
+      cases h
+      simp only [Vals.row, hs₁, hs₂, Vals.view_ofOpt, Opt.concat_get hn hoff hw c]
+      split <;> rfl
+    · exact absurd (hb₁.symm.trans hb₂) nofun
+    · exact absurd (hb₂.symm.trans hb₁) nofun
+    simp only [Vals.WF, hs₁, hs₂] at hx hy
     split at h
     case isFalse => cases h
     rename_i hn63
@@ -813,14 +859,14 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
     cases hb : tag.get c
     · have e := Vals.catSummand_row hn hoff (fun x y hm ho hz => Vals.concat_row hm ho x y hz) hv₁ hv₂ hx.1 hy.1 hL hpos c
         (by rw [← gt, hb])
-      simp only [Vals.row, hb, Bool.false_eq_true, ↓reduceIte]
+      simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, Bool.false_eq_true, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
       · rename_i hc; rw [dif_neg hc] at gt; rw [← gt, hb]; rfl
     · have e := Vals.catSummand_row hn hoff (fun x y hm ho hz => Vals.concat_row hm ho x y hz) hv₁ hv₂ hx.2 hy.2 hR hpos c
         (by rw [← gt, hb])
-      simp only [Vals.row, hb, ↓reduceIte]
+      simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl

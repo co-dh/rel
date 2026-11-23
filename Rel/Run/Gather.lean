@@ -110,7 +110,9 @@ def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n 
   | .atom _, _, x => Arr.gather m ix x
   | .prod _ _, _, x => do pure (← Vals.gather m ix x.1, ← Vals.gather m ix x.2)
   | .arr _, _, ⟨c, lo, hi, f⟩ => do pure ⟨c, ← Arr.gather m ix lo, ← Arr.gather m ix hi, f⟩
-  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, ← Arr.gather m ix tag, ← Arr.gather m ix idx, x, y⟩
+  | .sum _ _, _, s => match s.view with
+    | .opt h x => do pure (Vals.ofOpt h (← Opt.gather m ix x))
+    | .gen h l r tag idx x y => do pure (Vals.ofGen h l r (← Arr.gather m ix tag) (← Arr.gather m ix idx) x y)
   -- no column, but `ix` is checked as every side's is: gathering the positions `0 … n-1` refuses an index past `n`
   | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial rfl); pure ()
 
