@@ -219,6 +219,16 @@ rel_program nativeIO where
     output nu to csv "out/io/nu.csv"
     output nu to "out/io/nu"
     output cn to "out/io/cn"
+    -- symbol columns: two CSV files interned into one dictionary (ids in insertion order, not text order: `pear`, `apple`,
+    -- `fig`, then `kiwi`), read, written back as texts, and met on ids by `∪`
+    obj S : sym
+    schema SRow = {nm : S, qty : N}
+    input sy : N ⟶ SRow from csv "in/sy.csv"
+    input sz : N ⟶ SRow from csv "in/sz.csv"
+    su : N ⟶ SRow ≜ sy ∪ sz
+    output sy to csv "out/io/sy.csv"
+    output sz to csv "out/io/sz.csv"
+    output su to csv "out/io/su.csv"
     cp : N ⟶ Row ≜ t
     un : N ⟶ Row ≜ t ∪ t
     cm : N ⟶ N ≜ t t°
