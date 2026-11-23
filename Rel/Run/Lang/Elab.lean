@@ -2096,7 +2096,8 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
   -- source's universe. `c° = c` is a theorem (`perm`); any other converse is the body's, `c'` its constant
   | .call ks c (some c') os b =>
-    if h : c' = c ∧ B = A then by obtain ⟨-, rfl⟩ := h; exact pure (.call ks c (some c) os b)
+    -- a theorem `c° = c` at `B ≠ A` is ill-typed: an error, so `ConvOK`'s self clause is read only at `A = B`
+    if c' = c then (if h : B = A then by obtain rfl := h; exact pure (.call ks c (some c) os b) else throw s!"`{c}`")
     else do let u ← convTm b; pure (.call ks c' (some c) os u)
   | .call _ c none .. => throw s!"`{c}`"
   -- a closed spine under a demand argument (a whole row, `Tm.whole`) has no converse spine: `convTm f` gives `f°`
