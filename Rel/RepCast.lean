@@ -190,12 +190,18 @@ theorem nulVerb_cases {k : UInt8} {o b : Op} {f : UInt64} (h : nulVerb k = some 
   · simp [h2, Op.nulFold] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact .inr (.inl ⟨rfl, rfl, rfl, h2⟩)
   refine .inr (.inr ?_)
   by_cases h3 : k = Ew.add
-  · subst h3; simp (config := {decide := true}) [List.lookup] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
+  · subst h3; simp (config := {decide := true}) [List.lookup, beq_iff_eq, Ew.add, Ew.sub, Ew.mul] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
   by_cases h4 : k = Ew.sub
-  · subst h4; simp (config := {decide := true}) [List.lookup] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
+  · subst h4; simp (config := {decide := true}) [List.lookup, beq_iff_eq, Ew.add, Ew.sub, Ew.mul] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
   by_cases h5 : k = Ew.mul
-  · subst h5; simp (config := {decide := true}) [List.lookup] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
-  simp [h1, h2, h3, h4, h5, List.lookup] at h
+  · subst h5; simp (config := {decide := true}) [List.lookup, beq_iff_eq, Ew.add, Ew.sub, Ew.mul] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl⟩
+  have e3 : (k == Ew.add) = false := by simp [h3]
+  have e4 : (k == Ew.sub) = false := by simp [h4]
+  have e5 : (k == Ew.mul) = false := by simp [h5]
+  simp [h1, h2, e3, e4, e5, List.lookup] at h
 
 /-- **The word step of `nulStep`**: `max`/`min` (`nulVerb`) of the operands' words `X`, `Y`, a null (flag `NX`, `NY`)
     read as the order's identity `f`, is the answer's word `W` where the flags' `b` (`and`/`or`) is `0`, the answer's
@@ -249,10 +255,12 @@ theorem arithOp_opt {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) n}
   simp only [Tab.arithOp, hs] at h
   rcases hv : nulVerb k with _ | ⟨o, b, f⟩ <;> simp only [hv] at h
   · cases h
-  obtain ⟨r, hr, h⟩ := Except.bind_eq_ok'.1 h
-  rcases hw : Enc.wf? .i64 n r with _ | ⟨⟨hz⟩⟩ <;> simp only [hw] at h
-  · cases h
-  exact ⟨o, b, f, r, hz, rfl, hr, (Except.ok.inj h).symm⟩
+  refine ⟨o, b, f, ?_⟩
+  by_cases hnf : o.nulFold = some (b, f) <;> simp only [hnf, ↓reduceIte] at h ⊢ <;>
+  · obtain ⟨r, hr, h⟩ := Except.bind_eq_ok'.1 h
+    rcases hw : Enc.wf? .i64 n r with _ | ⟨⟨hz⟩⟩ <;> simp only [hw] at h
+    · cases h
+    exact ⟨r, hz, by first | rfl | trivial, hr, (Except.ok.inj h).symm⟩
 
 /-- **`Tab.arithOp` at `1+i64` denotes `nulStep`**: a source holding a null is read through `kscan_nul_row`, none
     through `colMap_raw` (the answer then holds none, `kscan_lock_closed`), both giving `nulStep_words` row by row. -/
@@ -268,7 +276,7 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
     rw [if_neg hnf] at hr
     exact nulStepCol_den hv hnf hr hz a w
   rw [if_pos hnf] at hr
-  obtain ⟨r, hr, rfl⟩ : ∃ r', kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] = .ok r' ∧ r'.1 = r := by
+  obtain ⟨r, hkr, rfl⟩ : ∃ r', kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] = .ok r' ∧ r'.1 = r := by
     revert hr; cases kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] <;>
       simp [Functor.map, Except.map]
   have ho : (o = .max ∨ o = .min) ∧ o.nulFold = some (b, f) := by
@@ -284,7 +292,7 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
       (NZ = 0 → (Enc.raw .i64 n r.1)[i.1]?.getD 0 = Z) := fun i => by
     by_cases hN : ∃ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = true
     · obtain ⟨out, nl, hos, hns, hre, -, -, p, ps, hes, hrow⟩ :=
-        Verify.kscan_nul_row ho.2 rfl rfl hk (by simp [x.wf, y.wf]) hN hr
+        Verify.kscan_nul_row ho.2 rfl rfl hk (by simp [x.wf, y.wf]) hN hkr
       simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl⟩ := hes
       obtain ⟨h1, h2, h3⟩ := hrow i i.2
       simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind_pure] at h1 h2
@@ -296,13 +304,13 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
     · simp only [not_exists, not_and, Bool.not_eq_true] at hN
       have hF : o.nulFold = none ∨ ∀ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = false := .inr hN
       have hc : colMap o n x.enc y.enc .i64 .i64 = .ok r.1 := by
-        simp only [colMap, hr, bind, Except.bind, pure, Except.pure]
+        simp only [colMap, hkr, bind, Except.bind, pure, Except.pure]
       obtain ⟨-, -, -, hcr⟩ := colMap_raw hc hk (by rcases ho.1 with rfl | rfl <;> decide) hF
       have h0 : ∀ e : Enc, Enc.WF .i64 n e → hasNul e = false → rdNul n e i = 0 := fun e hw he => by
         simp [rdNul, Verify.foRNuls_plain hw he i.2]
       have hx0 := h0 _ x.wf (hN (n, x.enc) (by simp)); have hy0 := h0 _ y.wf (hN (n, y.enc) (by simp))
       refine ⟨0, _, by simp only [rdFill, hx0, hy0]; exact hcr i i.2, ?_,
-        by simp [h0 _ hz (Verify.kscan_lock_closed hk hF hr).2.2], fun _ => rfl⟩
+        by simp [h0 _ hz (Verify.kscan_lock_closed hk hF hkr).2.2], fun _ => rfl⟩
       rw [hx0, hy0]; rcases ho with ⟨rfl | rfl, hnf⟩ <;> simp [Op.nulFold] at hnf <;> obtain ⟨rfl, rfl⟩ := hnf <;> rfl
   have rz : ∀ i : Fin n.toNat, Lang.nulStep k (Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i)
       (Vals.row (A := .opt .long) (Opt.mk r.1 hz : Opt .i64 n) i) := fun i => by
