@@ -2145,7 +2145,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   have wz := Vals.concat_wf hNn hoff hz wD wr.1
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
-  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (fun c hc => (Vals.cols_wf _ hes c hc).1)
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
   have hpN := kasc_plain hasc
   obtain ⟨hperm, hsort⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen

@@ -736,13 +736,13 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
   · simp only [List.getElem_zip]; exact (hc c h h').2
 
 /-- **Every key column of a side is a column**, `Ext.Enc.WF` at some type and the side's `n`: an atom's and a sum's
-tag are their `Arr`'s, a `cells` key is `.pos`, a summand's are those of the side gathered from it; none holds a
-null (`Arr.plain`). -/
+tag are their `Arr`'s, a `cells` key is `.pos`, a summand's are those of the side gathered from it, and a `1+atom t`
+band is its own `Opt` column, which holds its nulls in band (`kasc` codes them first, `nulCodes`). -/
 theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (AscKey × Enc)} →
-    Vals.cols x = .ok es → ∀ c ∈ es, (∃ t, Ext.Enc.WF t n c.2) ∧ hasNul c.2 = false
+    Vals.cols x = .ok es → ∀ c ∈ es, ∃ t, Ext.Enc.WF t n c.2
   | .atom t, _, x, _, h, c, hc => by
     simp only [Vals.cols, Except.ok.injEq] at h; subst h
-    rw [List.mem_singleton.1 hc]; exact ⟨⟨t, x.wf⟩, x.plain⟩
+    rw [List.mem_singleton.1 hc]; exact ⟨t, x.wf⟩
   | .prod _ _, _, x, _, h, c, hc => by
     simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
@@ -756,13 +756,12 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
   | .arr _, _, ⟨_, _, _, _⟩, _, h, c, hc => by
     simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
-    cases h; rw [List.mem_singleton.1 hc]; exact ⟨⟨.i64, trivial⟩, rfl⟩
+    cases h; rw [List.mem_singleton.1 hc]; exact ⟨.i64, trivial⟩
   | .sum _ _, _, s, _, h, c, hc => by
     simp only [Vals.cols] at h
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [hv] at h
-    · -- nullband3b gap: a band column is a key that holds its nulls, so `hasNul c.2 = false` is false here
-      simp only [Except.ok.injEq] at h; subst h
-      rw [List.mem_singleton.1 hc]; exact ⟨⟨_, x.wf⟩, Opt.plain_key x⟩
+    · simp only [Except.ok.injEq] at h; subst h
+      rw [List.mem_singleton.1 hc]; exact ⟨_, x.wf⟩
     split at h; · cases h
     split at h; · cases h
     simp only [bind, Except.bind, pure, Except.pure] at h
@@ -775,7 +774,7 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
     rename_i ys hys
     cases h
     rcases List.mem_cons.1 hc with rfl | hc
-    · exact ⟨⟨.u1, tag.wf⟩, tag.plain⟩
+    · exact ⟨.u1, tag.wf⟩
     rcases List.mem_append.1 hc with hc | hc
     · unfold Vals.summandCols at hxs
       split at hxs; · cases hxs; cases hc
@@ -796,7 +795,7 @@ theorem Vals.sorted_key {A : Obj} {n : USize} {x : Vals A n} {es : List (AscKey 
     {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p)) {ps : List Nat}
     (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray) (hperm : ps.Perm (List.range n.toNat)) :
     ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
-  obtain ⟨-, -, -, hk⟩ := kasc_grade ha (fun c hc => (Vals.cols_wf x hes c hc).1)
+  obtain ⟨-, -, -, hk⟩ := kasc_grade ha (Vals.cols_wf x hes)
   rw [asc_perm_grade ha hp hperm]; exact hk
 
 /-- **Every row of `x` has a row of `Vals.nub x` equal to it in the kernels' order codes** (`seenKey` over the side's
