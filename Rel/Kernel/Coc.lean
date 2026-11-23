@@ -402,19 +402,6 @@ def over (op : Over) (nul : Int64) (metadata : @& ByteArray) (pack : @& ByteArra
     let x := v.toInt64
     if !op.boolCast && x == nul then acc else op.step acc x
 
-/-- `2 ^ 53`, the one bound in the float layer. Past it an integer is no longer exact as a double,
-so "the value is the integer `d`" stops being true; it is also what keeps a block's integer sum
-inside an `Int64` at `Column.blk` elements, and what leaves room to shift a whole block by a
-constant. `rust/src/coc.rs`'s `ALP_P53`. -/
-def alpP53 : Float := 9007199254740992.0
-
-
-/-- The element as a `Float`. A four-byte element widens exactly and order-preservingly, which is
-why the whole layer is type-erased into `Float` for the reason the integral one is type-erased into
-`Int64`. This is never the path a value takes back to the user — it may canonicalise a NaN
-payload — so an exception is copied as bits and only compared or added here. -/
-def alpVal (f32 : Bool) (x : UInt64) : Float :=
-  if f32 then (Float32.ofBits x.toUInt32).toFloat else Float.ofBits x
 
 
 
@@ -428,17 +415,6 @@ starts are hoisted out of the loop. Every specification below is a fold over it.
 def alpElems (metadata pack a : ByteArray) (n : USize) : List UInt64 :=
   let starts := Rel.Column.blockStarts metadata
   (List.range n.toNat).map (Rel.Column.alpBits metadata pack a starts)
-
-/-- The dense payload an ALP column denotes: `n` little-endian elements. This is the inverse of
-`alpEncode64` and the entry every kernel family written over dense floats reaches an ALP column
-through — `Column.bytesOf` is that call. -/
-def alpDecode64 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
-  (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    Rel.Column.pushBits acc v 8
-
-def alpDecode32 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
-  (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    Rel.Column.pushBits acc v 4
 
 end Rel.Kernel.Coc
 

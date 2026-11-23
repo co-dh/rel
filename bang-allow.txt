@@ -1,2 +1,0 @@
-Rel.Kernel.Coc.alpBlob
-Rel.Kernel.Coc.alpBlockOf
