@@ -52,9 +52,9 @@ pub fn shown(f: &[u8]) -> String {
 pub struct Field { lo: usize, hi: usize, quoted: bool, next: usize, end: bool }
 
 /// The field starting at byte `p` (`lex`, one field of it): quoted when it starts with `"`, where `""` is `"` and the
-/// closing `"` is followed by `,` or a record end; an unquoted one ends at `,` or `\n`, its last `\r` before `\n` being the
+/// closing `"` is followed by the separator `sep` (`,` CSV, `\t` TSV) or a record end; an unquoted one ends at `sep` or `\n`, its last `\r` before `\n` being the
 /// `\r\n` record end. A refusal is `lex`'s, at the byte `lex` names.
-fn field(b: &[u8], p: usize) -> Result<Field, String> {
+fn field(b: &[u8], p: usize, sep: u8) -> Result<Field, String> {
     if b.get(p) == Some(&b'"') {
         let mut q = p + 1;
         loop {
@@ -69,18 +69,18 @@ fn field(b: &[u8], p: usize) -> Result<Field, String> {
         let c = q + 1;
         match b.get(c) {
             None => f(c, true),
-            Some(b',') => f(c + 1, false),
+            Some(&x) if x == sep => f(c + 1, false),
             Some(b'\n') => f(c + 1, true),
             Some(b'\r') if b.get(c + 1) == Some(&b'\n') => f(c + 2, true),
             Some(b'\r') => Err(format!("line {}: after a closing '\"' comes '\\x0d' with no '\\x0a' after it", line(b, c + 1))),
-            Some(&x) => Err(format!("line {}: after a closing '\"' comes {}, not ',' or a record end", line(b, c), shown(&[x]))),
+            Some(&x) => Err(format!("line {}: after a closing '\"' comes {}, not {} or a record end", line(b, c), shown(&[x]), shown(&[sep]))),
         }
     } else {
         let mut q = p;
         loop {
             match b.get(q) {
                 None => return Ok(Field { lo: p, hi: q, quoted: false, next: q, end: true }),
-                Some(b',') => return Ok(Field { lo: p, hi: q, quoted: false, next: q + 1, end: false }),
+                Some(&x) if x == sep => return Ok(Field { lo: p, hi: q, quoted: false, next: q + 1, end: false }),
                 Some(b'\n') => return Ok(Field { lo: p, hi: if q > p && b[q - 1] == b'\r' { q - 1 } else { q }, quoted: false, next: q + 1, end: true }),
                 Some(b'"') => return Err(format!("line {}: a '\"' inside an unquoted field", line(b, q))),
                 Some(_) => q += 1,
@@ -100,10 +100,10 @@ fn content<'b>(b: &'b [u8], x: &Field) -> Cow<'b, [u8]> {
 }
 
 /// The record starting at byte `p` (`p < b.len()`): `f(k, field)` for each of its fields, then the byte after it.
-fn record(b: &[u8], mut p: usize, mut f: impl FnMut(usize, &Field)) -> Result<usize, String> {
+fn record(b: &[u8], mut p: usize, sep: u8, mut f: impl FnMut(usize, &Field)) -> Result<usize, String> {
     let mut k = 0;
     loop {
-        let x = field(b, p)?;
+        let x = field(b, p, sep)?;
         f(k, &x);
         (k, p) = (k + 1, x.next);
         if x.end { return Ok(p) }
@@ -114,20 +114,20 @@ fn record(b: &[u8], mut p: usize, mut f: impl FnMut(usize, &Field)) -> Result<us
 /// records starts at, the first data record whose field count is not the schema's (row, count, first byte), and per
 /// column the payload count before each block (`base`) and in all (`tot`): values of a `null` column, bytes of a `text`
 /// one, so each block finds its positions and each payload block its first row without the blocks before it.
-pub struct Lexed { pub n: usize, lg: u32, starts: Vec<usize>, head: Vec<Vec<u8>>, short: Option<(usize, usize, usize)>,
+pub struct Lexed { pub n: usize, sep: u8, lg: u32, starts: Vec<usize>, head: Vec<Vec<u8>>, short: Option<(usize, usize, usize)>,
     base: Vec<Vec<usize>>, tot: Vec<usize> }
 
 /// The one sequential pass (a quoted field may hold a newline, so no record can be found without the ones before it):
 /// every record split once, the structure of the whole file checked before anything else is (C.4's order).
-pub fn lex(b: &[u8], cols: &[Col], lg: u32) -> Result<Lexed, String> {
-    let mut lx = Lexed { n: 0, lg, starts: Vec::new(), head: Vec::new(), short: None,
+pub fn lex(b: &[u8], cols: &[Col], sep: u8, lg: u32) -> Result<Lexed, String> {
+    let mut lx = Lexed { n: 0, sep, lg, starts: Vec::new(), head: Vec::new(), short: None,
         base: cols.iter().map(|_| Vec::new()).collect(), tot: alloc::vec![0; cols.len()] };
     let (mut p, mut r) = (0, 0usize);
     while p < b.len() {
         let st = p;
         if r == 0 {
             let mut h = Vec::new();
-            p = record(b, p, |_, x| h.push(content(b, x).into_owned()))?;
+            p = record(b, p, sep, |_, x| h.push(content(b, x).into_owned()))?;
             lx.head = h;
         } else {
             if (r - 1) & ((1 << lg) - 1) == 0 {
@@ -135,7 +135,7 @@ pub fn lex(b: &[u8], cols: &[Col], lg: u32) -> Result<Lexed, String> {
                 for (bs, &t) in lx.base.iter_mut().zip(&lx.tot) { bs.push(t) }
             }
             let (mut k, tot) = (0, &mut lx.tot);
-            p = record(b, p, |j, x| {
+            p = record(b, p, sep, |j, x| {
                 k += 1;
                 match cols.get(j).map(|c| c.shape) {
                     Some(SH_NULL) if clen(b, x) > 0 => tot[j] += 1,
@@ -160,6 +160,12 @@ pub fn counts(lx: &Lexed, c: usize, col: &Col) -> Vec<usize> {
 
 /// The schema's names as the errors list them (`names`).
 fn names(cols: &[Col]) -> String { format!("[{}]", cols.iter().map(|c| c.name).collect::<Vec<_>>().join(", ")) }
+
+/// The separator, refused when it is `"`, `\r` or `\n` (`dialect`): those quote a field or end a record.
+pub fn dialect(sep: u8) -> Result<(), String> {
+    if matches!(sep, b'"' | b'\r' | b'\n') { return Err(format!("the separator {} quotes a field or ends a record", shown(&[sep]))) }
+    Ok(())
+}
 
 /// The refusals of a schema before any byte (`schema`): no column, a symbol or a general column.
 pub fn schema(cols: &[Col]) -> Result<(), String> {
@@ -193,10 +199,10 @@ pub fn header(cols: &[Col], lx: &Lexed) -> Result<(), String> {
 
 /// The data records from the one starting at byte `p`, `f(field c's bytes)` for each (empty where the record is short,
 /// which `refusal` refuses), until `f` answers false.
-fn walk(b: &[u8], mut p: usize, c: usize, mut f: impl FnMut(&[u8]) -> bool) -> Result<(), String> {
+fn walk(b: &[u8], mut p: usize, sep: u8, c: usize, mut f: impl FnMut(&[u8]) -> bool) -> Result<(), String> {
     loop {
         let mut x = Cow::Borrowed(&[][..]);
-        p = record(b, p, |k, fl| if k == c { x = content(b, fl) })?;
+        p = record(b, p, sep, |k, fl| if k == c { x = content(b, fl) })?;
         if !f(&x) || p >= b.len() { return Ok(()) }
     }
 }
@@ -210,7 +216,7 @@ pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, o
     let rows = |f: &mut dyn FnMut(usize, &[u8])| {
         let mut i = 0;
         // `lex` split every record, so `walk` never fails; were it, `refusal` walks to this row and answers the text
-        if walk(b, lx.starts[lo >> lx.lg], c, |x| { f(i, x); i += 1; i < len }).is_err() { bad.fetch_min(lo, Relaxed); }
+        if walk(b, lx.starts[lo >> lx.lg], lx.sep, c, |x| { f(i, x); i += 1; i < len }).is_err() { bad.fetch_min(lo, Relaxed); }
     };
     let base = lx.base[c].get(lo >> lx.lg).copied().unwrap_or(0);
     match (col.shape, part) {
@@ -218,7 +224,7 @@ pub fn fill(b: &[u8], lx: &Lexed, c: usize, col: &Col, part: usize, lo: usize, o
             let blk = lx.base[c].partition_point(|&x| x <= lo).saturating_sub(1);
             let (mut j, end) = (lx.base[c].get(blk).copied().unwrap_or(0), lo + out.len());
             let st = match lx.starts.get(blk) { Some(&s) => s, None => return };
-            let r = walk(b, st, c, |x| {
+            let r = walk(b, st, lx.sep, c, |x| {
                 if col.shape == SH_NULL {
                     if !x.is_empty() { if j >= lo { out[j - lo] = cell(col, x).unwrap_or(0) as i64 } j += 1 }
                 } else {
@@ -263,9 +269,9 @@ pub fn refusal(b: &[u8], lx: &Lexed, cols: &[Col], bad: &[AtomicUsize]) -> Resul
     }
     let Some(c) = bad.iter().position(|x| x.load(Relaxed) == r).filter(|_| r != usize::MAX) else { return Ok(()) };
     let mut p = lx.starts[r >> lx.lg];
-    for _ in 0..r & ((1 << lx.lg) - 1) { p = record(b, p, |_, _| ())? }
+    for _ in 0..r & ((1 << lx.lg) - 1) { p = record(b, p, lx.sep, |_, _| ())? }
     let mut f = Vec::new();
-    record(b, p, |k, x| if k == c { f = content(b, x).into_owned() })?;
+    record(b, p, lx.sep, |k, x| if k == c { f = content(b, x).into_owned() })?;
     Err(format!("row {r} (line {}), column '{}': expected {}, found {}", line(b, p), cols[c].name, form_of(&cols[c]), shown(&f)))
 }
 
@@ -322,7 +328,7 @@ fn words_shown(ws: &[u64]) -> String {
 /// taken from its payload block (`Cache`) and formatted (`field_text`) into the chunk's bytes, the chunk appended to the
 /// temporary `own::replace_by` renames over `target`. The first refusal, row by row and column by column, is the
 /// answer, and `target` keeps what it held.
-pub fn write(target: &CStr, cols: &[Col], n: usize, cnt: &[usize], lg: u32, mut load: impl FnMut(usize, usize, &mut [u64])) -> Result<(), Fail> {
+pub fn write(target: &CStr, cols: &[Col], sep: u8, n: usize, cnt: &[usize], lg: u32, mut load: impl FnMut(usize, usize, &mut [u64])) -> Result<(), Fail> {
     let first: Vec<usize> = cols.iter().scan(0, |a, c| { let f = *a; *a += nparts(c.shape); Some(f) }).collect();
     for (col, &f) in cols.iter().zip(&first) {
         if let Some(&m) = cnt[f..f + row_parts(col.shape)].iter().find(|&&m| m != n) {
@@ -346,13 +352,13 @@ pub fn write(target: &CStr, cols: &[Col], n: usize, cnt: &[usize], lg: u32, mut 
     crate::own::replace_by(target, |f| {
         let (mut out, mut s, mut ws) = (Vec::new(), Vec::new(), Vec::new());
         let mut pay: Vec<Cache> = cols.iter().map(|_| Cache { at: usize::MAX, ws: Vec::new() }).collect();
-        for (k, c) in cols.iter().enumerate() { if k > 0 { out.push(b',') } field_out(c.name.as_bytes(), &mut out) }
+        for (k, c) in cols.iter().enumerate() { if k > 0 { out.push(sep) } field_out(c.name.as_bytes(), sep, &mut out) }
         out.push(b'\n');
         for lo in (0..n).step_by(blk) {
             rows(lo, &mut rw, &mut load);
             for i in 0..blk.min(n - lo) {
                 for (c, col) in cols.iter().enumerate() {
-                    if c > 0 { out.push(b',') }
+                    if c > 0 { out.push(sep) }
                     let (r, p) = (&rw[c], first[c] + 2);
                     ws.clear();
                     match col.shape {
@@ -364,7 +370,7 @@ pub fn write(target: &CStr, cols: &[Col], n: usize, cnt: &[usize], lg: u32, mut 
                     if field_text(col, &ws, &mut s).is_none() {
                         return Err(Fail::User(format!("row {}, column '{}': {} has no text as {}", lo + i, col.name, words_shown(&ws), form_of(col))));
                     }
-                    field_out(&s, &mut out);
+                    field_out(&s, sep, &mut out);
                 }
                 out.push(b'\n');
             }
@@ -375,9 +381,9 @@ pub fn write(target: &CStr, cols: &[Col], n: usize, cnt: &[usize], lg: u32, mut 
     })
 }
 
-/// A field as written (`field`): quoted iff it holds `,` `"` `\r` `\n`, a `"` inside doubled.
-fn field_out(f: &[u8], out: &mut Vec<u8>) {
-    if !f.iter().any(|c| matches!(c, b',' | b'"' | b'\r' | b'\n')) { return out.extend_from_slice(f) }
+/// A field as written (`field`): quoted iff it holds the separator `sep`, `"` `\r` `\n`, a `"` inside doubled.
+fn field_out(f: &[u8], sep: u8, out: &mut Vec<u8>) {
+    if !f.iter().any(|&c| c == sep || matches!(c, b'"' | b'\r' | b'\n')) { return out.extend_from_slice(f) }
     out.push(b'"');
     for &c in f { out.push(c); if c == b'"' { out.push(b'"') } }
     out.push(b'"');
@@ -643,13 +649,22 @@ mod tests {
     // the records' refusals at the model's lines, and the order: the quotes of the whole file before the header
     #[test] fn records_as_the_model() {
         let two = [col(QT_U1), col(QT_U1)];
-        let err = |s: &str| lex(s.as_bytes(), &two, 10).err();
+        let err = |s: &str| lex(s.as_bytes(), &two, b',', 10).err();
         assert_eq!(err("a,b\n1,x\"y\n").as_deref(), Some("line 2: a '\"' inside an unquoted field"));
         assert_eq!(err("a,b\n1,\"x\n").as_deref(), Some("a quoted field opened at line 2 is not closed"));
         assert_eq!(err("a,b\n1,\"x\"y\n").as_deref(), Some("line 2: after a closing '\"' comes 'y', not ',' or a record end"));
         assert_eq!(err("a,b\n1,\"x\"\rx\n").as_deref(), Some("line 2: after a closing '\"' comes '\\x0d' with no '\\x0a' after it"));
-        let lx = lex(b"a,\"b\"\r\n\"1\",\"\n\"\n2,\"\r\"\n", &two, 10).unwrap_or_else(|e| panic!("csv tests: {e}"));
+        let lx = lex(b"a,\"b\"\r\n\"1\",\"\n\"\n2,\"\r\"\n", &two, b',', 10).unwrap_or_else(|e| panic!("csv tests: {e}"));
         assert_eq!((lx.n, lx.head.clone(), lx.short), (2, alloc::vec![b"a".to_vec(), b"b".to_vec()], None));
         assert_eq!(shown(&[0xef, b'a']), "'\\xefa'");
+        // TSV is the same reader at `\t`: a `,` is data there, and a closing quote must be followed by `\t`
+        let lx = lex(b"a\tb\n1,2\t\"x\ty\"\n", &two, b'\t', 10).unwrap_or_else(|e| panic!("tsv tests: {e}"));
+        assert_eq!((lx.n, lx.head.clone(), lx.short), (1, alloc::vec![b"a".to_vec(), b"b".to_vec()], None));
+        assert_eq!(lex(b"a\tb\n\"1\",2\n", &two, b'\t', 10).err().as_deref(),
+            Some("line 2: after a closing '\"' comes ',', not '\\x09' or a record end"));
+        let mut o = Vec::new();
+        field_out(b"1,2", b'\t', &mut o); field_out(b"x\ty", b'\t', &mut o);
+        assert_eq!(o, b"1,2\"x\ty\"".to_vec());
+        assert_eq!(dialect(b'"').err().as_deref(), Some("the separator '\"' quotes a field or ends a record"));
     }
 }

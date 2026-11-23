@@ -15,25 +15,25 @@ theorem ok_bind {ε α β : Type} {x : Except ε α} {f : α → Except ε β} {
     x >>= f = .ok b ↔ ∃ a, x = .ok a ∧ f a = .ok b := by
   cases x <;> simp [bind, Except.bind]
 
-theorem lex_plain (all r : List UInt8) (c : UInt8) (p : Nat) (fld row st acc) (h : special c = false) :
-    lex all (c :: r) .plain p fld row st acc = lex all r .plain (p + 1) (fld ++ [c]) row st acc := by
+theorem lex_plain (all r : List UInt8) (sep c : UInt8) (p : Nat) (fld row st acc) (h : special sep c = false) :
+    lex all sep (c :: r) .plain p fld row st acc = lex all sep r .plain (p + 1) (fld ++ [c]) row st acc := by
   simp only [special, Bool.or_eq_false_iff, decide_eq_false_iff_not] at h
   obtain ⟨⟨⟨h1, h2⟩, _⟩, h4⟩ := h
   simp [lex, h1, h2, h4]
 
 /-- An unquoted field is lexed byte by byte. -/
-theorem lex_unquoted (all rest : List UInt8) : ∀ (f : List UInt8) (p : Nat) fld row st acc, f.any special = false →
-    ∃ p', lex all (f ++ rest) .plain p fld row st acc = lex all rest .plain p' (fld ++ f) row st acc
+theorem lex_unquoted (all : List UInt8) (sep : UInt8) (rest : List UInt8) : ∀ (f : List UInt8) (p : Nat) fld row st acc, f.any (special sep) = false →
+    ∃ p', lex all sep (f ++ rest) .plain p fld row st acc = lex all sep rest .plain p' (fld ++ f) row st acc
   | [], p, fld, row, st, acc, _ => ⟨p, by simp⟩
   | c :: f, p, fld, row, st, acc, h => by
     simp only [List.any_cons, Bool.or_eq_false_iff] at h
-    obtain ⟨p', hp⟩ := lex_unquoted all rest f (p + 1) (fld ++ [c]) row st acc h.2
-    exact ⟨p', by rw [List.cons_append, lex_plain _ _ _ _ _ _ _ _ h.1, hp]; simp⟩
+    obtain ⟨p', hp⟩ := lex_unquoted all sep rest f (p + 1) (fld ++ [c]) row st acc h.2
+    exact ⟨p', by rw [List.cons_append, lex_plain _ _ _ _ _ _ _ _ _ h.1, hp]; simp⟩
 
 /-- A quoted field's inside, `"` doubled, and its closing `"`. -/
-theorem lex_quoted (all rest : List UInt8) (o : Nat) (hr : rest.head? ≠ some 34) :
+theorem lex_quoted (all : List UInt8) (sep : UInt8) (rest : List UInt8) (o : Nat) (hr : rest.head? ≠ some 34) :
     ∀ (f : List UInt8) (p : Nat) fld row st acc,
-    ∃ p', lex all (f.flatMap quote ++ 34 :: rest) (.quoted o) p fld row st acc = lex all rest .closed p' (fld ++ f) row st acc
+    ∃ p', lex all sep (f.flatMap quote ++ 34 :: rest) (.quoted o) p fld row st acc = lex all sep rest .closed p' (fld ++ f) row st acc
   | [], p, fld, row, st, acc => by
     cases rest with
     | nil => exact ⟨p + 1, by simp [lex]⟩
@@ -43,65 +43,65 @@ theorem lex_quoted (all rest : List UInt8) (o : Nat) (hr : rest.head? ≠ some 3
   | c :: f, p, fld, row, st, acc => by
     by_cases hc : c = 34
     · subst hc
-      obtain ⟨p', hp⟩ := lex_quoted all rest o hr f (p + 2) (fld ++ [34]) row st acc
+      obtain ⟨p', hp⟩ := lex_quoted all sep rest o hr f (p + 2) (fld ++ [34]) row st acc
       exact ⟨p', by simp [quote, lex, hp]⟩
-    · obtain ⟨p', hp⟩ := lex_quoted all rest o hr f (p + 1) (fld ++ [c]) row st acc
+    · obtain ⟨p', hp⟩ := lex_quoted all sep rest o hr f (p + 1) (fld ++ [c]) row st acc
       refine ⟨p', ?_⟩
       simp only [List.flatMap_cons, quote, if_neg hc, List.cons_append, List.nil_append]
       rw [lex.eq_def]
       simp [hc, hp]
 
 /-- A written field is lexed back as itself; after it the lexer is in a field's end state. -/
-theorem lex_field (all rest : List UInt8) (hr : rest.head? ≠ some 34) (f : List UInt8) (p : Nat) (row st acc) :
-    ∃ p', lex all (field f ++ rest) .plain p [] row st acc =
-      lex all rest (if f.any special then .closed else .plain) p' f row st acc := by
+theorem lex_field (all : List UInt8) (sep : UInt8) (h34 : sep ≠ 34) (rest : List UInt8) (hr : rest.head? ≠ some 34) (f : List UInt8) (p : Nat) (row st acc) :
+    ∃ p', lex all sep (field sep f ++ rest) .plain p [] row st acc =
+      lex all sep rest (if f.any (special sep) then .closed else .plain) p' f row st acc := by
   unfold field
-  by_cases hs : f.any special = true
-  · obtain ⟨p', hp⟩ := lex_quoted all rest p hr f (p + 1) [] row st acc
+  by_cases hs : f.any (special sep) = true
+  · obtain ⟨p', hp⟩ := lex_quoted all sep rest p hr f (p + 1) [] row st acc
     refine ⟨p', ?_⟩
     simp only [hs, if_true, List.cons_append, List.append_assoc]
-    simpa [lex] using hp
+    simpa [lex, Ne.symm h34] using hp
   · simp only [Bool.not_eq_true] at hs
-    obtain ⟨p', hp⟩ := lex_unquoted all rest f p [] row st acc hs
+    obtain ⟨p', hp⟩ := lex_unquoted all sep rest f p [] row st acc hs
     exact ⟨p', by simpa [hs] using hp⟩
 
-theorem lex_comma (all r f : List UInt8) (p : Nat) (row st acc) :
-    lex all (44 :: r) (if f.any special then .closed else .plain) p f row st acc =
-      lex all r .plain (p + 1) [] (row ++ [f]) st acc := by
+theorem lex_comma (all r f : List UInt8) (sep : UInt8) (p : Nat) (row st acc) :
+    lex all sep (sep :: r) (if f.any (special sep) then .closed else .plain) p f row st acc =
+      lex all sep r .plain (p + 1) [] (row ++ [f]) st acc := by
   split <;> simp [lex]
 
-theorem lex_newline (all r f : List UInt8) (p : Nat) (row st acc) :
-    lex all (10 :: r) (if f.any special then .closed else .plain) p f row st acc =
-      lex all r .plain (p + 1) [] [] (p + 1) (acc ++ [(st, row ++ [f])]) := by
+theorem lex_newline (all r f : List UInt8) (sep : UInt8) (h10 : (10 : UInt8) ≠ sep) (p : Nat) (row st acc) :
+    lex all sep (10 :: r) (if f.any (special sep) then .closed else .plain) p f row st acc =
+      lex all sep r .plain (p + 1) [] [] (p + 1) (acc ++ [(st, row ++ [f])]) := by
   split
-  · simp [lex]
+  · simp [lex, h10]
   · rename_i h
     have : f.getLast? ≠ some 13 := fun h13 => by
       have := List.any_eq_false.mp (Bool.not_eq_true _ ▸ h) 13 (List.mem_of_getLast? h13)
       simp [special] at this
-    simp [lex, this]
+    simp [lex, h10, this]
 
 /-- A written record and its `\n` are lexed back as its fields. -/
-theorem lex_record (all rest : List UInt8) : ∀ (fs : List (List UInt8)), fs ≠ [] → ∀ (p : Nat) row st acc,
-    ∃ p', lex all (record fs ++ 10 :: rest) .plain p [] row st acc =
-      lex all rest .plain p' [] [] p' (acc ++ [(st, row ++ fs)])
+theorem lex_record (all : List UInt8) (sep : UInt8) (h10 : (10 : UInt8) ≠ sep) (h34 : sep ≠ 34) (rest : List UInt8) : ∀ (fs : List (List UInt8)), fs ≠ [] → ∀ (p : Nat) row st acc,
+    ∃ p', lex all sep (record sep fs ++ 10 :: rest) .plain p [] row st acc =
+      lex all sep rest .plain p' [] [] p' (acc ++ [(st, row ++ fs)])
   | [], h, _, _, _, _ => absurd rfl h
   | [f], _, p, row, st, acc => by
-    obtain ⟨p1, h1⟩ := lex_field all (10 :: rest) (by simp) f p row st acc
-    exact ⟨p1 + 1, by simp only [record]; rw [h1, lex_newline]⟩
+    obtain ⟨p1, h1⟩ := lex_field all sep h34 (10 :: rest) (by simp) f p row st acc
+    exact ⟨p1 + 1, by simp only [record]; rw [h1, lex_newline (h10 := h10)]⟩
   | f :: g :: fs, _, p, row, st, acc => by
-    obtain ⟨p1, h1⟩ := lex_field all (44 :: (record (g :: fs) ++ 10 :: rest)) (by simp) f p row st acc
-    obtain ⟨p2, h2⟩ := lex_record all rest (g :: fs) (by simp) (p1 + 1) (row ++ [f]) st acc
+    obtain ⟨p1, h1⟩ := lex_field all sep h34 (sep :: (record sep (g :: fs) ++ 10 :: rest)) (by simpa using h34) f p row st acc
+    obtain ⟨p2, h2⟩ := lex_record all sep h10 h34 rest (g :: fs) (by simp) (p1 + 1) (row ++ [f]) st acc
     exact ⟨p2, by simp only [record, List.append_assoc, List.cons_append]; rw [h1, lex_comma, h2]; simp⟩
 
 /-- Written records are lexed back as their fields. -/
-theorem lex_records (all : List UInt8) : ∀ (rs : List (List (List UInt8))), (∀ r ∈ rs, r ≠ []) → ∀ (p : Nat) acc,
-    ∃ out, lex all (records rs) .plain p [] [] p acc = .ok out ∧ out.map (·.2) = acc.map (·.2) ++ rs
+theorem lex_records (all : List UInt8) (sep : UInt8) (h10 : (10 : UInt8) ≠ sep) (h34 : sep ≠ 34) : ∀ (rs : List (List (List UInt8))), (∀ r ∈ rs, r ≠ []) → ∀ (p : Nat) acc,
+    ∃ out, lex all sep (records sep rs) .plain p [] [] p acc = .ok out ∧ out.map (·.2) = acc.map (·.2) ++ rs
   | [], _, p, acc => ⟨acc, by simp [records, lex], by simp⟩
   | r :: rs, h, p, acc => by
-    obtain ⟨p', h1⟩ := lex_record all (records rs) r (h r (by simp)) p [] p acc
-    obtain ⟨out, h2, h3⟩ := lex_records all rs (fun x hx => h x (by simp [hx])) p' (acc ++ [(p, [] ++ r)])
-    have : records (r :: rs) = record r ++ 10 :: records rs := by simp [records]
+    obtain ⟨p', h1⟩ := lex_record all sep h10 h34 (records sep rs) r (h r (by simp)) p [] p acc
+    obtain ⟨out, h2, h3⟩ := lex_records all sep h10 h34 rs (fun x hx => h x (by simp [hx])) p' (acc ++ [(p, [] ++ r)])
+    have : records sep (r :: rs) = record sep r ++ 10 :: records sep rs := by simp [records]
     exact ⟨out, by rw [this, h1, h2], by simp [h3]⟩
 
 /-- A written field reads back as its words. -/
@@ -202,19 +202,21 @@ open Rel.Db.Csv in
 /-- **Read after write gives back the rows** (IO design C.6), on the models of `qlean_csv_read` and `qlean_csv_write`:
 whatever the writer accepts, the reader gives back the row count and every row's fields word for word, laid out as
 `layout` lays them (`wordsOf`). The parts are not given back word for word where they are laid out otherwise (a sum's
-positions in another order, a payload value no row reaches): the rows are the table, the layout is not. No hypothesis:
-the writer refuses what text cannot hold (`fieldText`). -/
-theorem Rel.Db.csvWords_csvText {cols : Rel.Db.CsvCols} {n : Nat} {ws : List (Array UInt64)} {b : List UInt8}
-    (h : Rel.Db.csvText cols n ws = .ok b) :
-    ∃ fs, Rel.Db.Csv.fieldsOf cols n ws = .ok fs ∧ Rel.Db.csvWords cols b = .ok (n, Rel.Db.Csv.wordsOf cols fs) := by
+positions in another order, a payload value no row reaches): the rows are the table, the layout is not. No hypothesis, at every separator:
+the writer refuses what text cannot hold (`fieldText`) and a separator that quotes or ends (`dialect`). -/
+theorem Rel.Db.csvWords_csvText {sep : UInt8} {cols : Rel.Db.CsvCols} {n : Nat} {ws : List (Array UInt64)} {b : List UInt8}
+    (h : Rel.Db.csvText sep cols n ws = .ok b) :
+    ∃ fs, Rel.Db.Csv.fieldsOf cols n ws = .ok fs ∧ Rel.Db.csvWords sep cols b = .ok (n, Rel.Db.Csv.wordsOf cols fs) := by
   simp only [Rel.Db.csvText, ok_bind] at h
-  obtain ⟨u, hs, u2, _, u3, _, fs, hfs, rs, hrs, h⟩ := h
+  obtain ⟨u0, hd, u, hs, u2, _, u3, _, fs, hfs, rs, hrs, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   have hne : cols ≠ [] := by intro h0; simp [schema, h0] at hs
+  have h34 : sep ≠ 34 := fun e => by simp [dialect, e] at hd
+  have h10 : (10 : UInt8) ≠ sep := fun e => by simp [dialect, ← e] at hd
   obtain ⟨hn, hrow⟩ := fieldsOf_shape hfs
   refine ⟨fs, hfs, ?_⟩
-  obtain ⟨hlen, hall, hrows⟩ := rows_back cols (records (cols.map (bytes ·.1) :: rs)) fs 0 rs hrow hrs
-  obtain ⟨out, hlex, hout⟩ := lex_records (records (cols.map (bytes ·.1) :: rs)) (cols.map (bytes ·.1) :: rs)
+  obtain ⟨hlen, hall, hrows⟩ := rows_back cols (records sep (cols.map (bytes ·.1) :: rs)) fs 0 rs hrow hrs
+  obtain ⟨out, hlex, hout⟩ := lex_records (records sep (cols.map (bytes ·.1) :: rs)) sep h10 h34 (cols.map (bytes ·.1) :: rs)
     (by
       intro r hr
       simp only [List.mem_cons] at hr
@@ -228,5 +230,5 @@ theorem Rel.Db.csvWords_csvText {cols : Rel.Db.CsvCols} {n : Nat} {ws : List (Ar
     simp only [List.map_nil, List.nil_append, List.map_cons, List.cons.injEq] at hout
     obtain ⟨hh, ht⟩ := hout
     have hlt : tail.length = n := by rw [← List.length_map (f := (·.2)), ht, hlen, hn]
-    simp only [Rel.Db.csvWords, hs, hlex, bind, Except.bind, List.head?_cons, Option.map_some, Option.getD_some,
+    simp only [Rel.Db.csvWords, hd, hs, hlex, bind, Except.bind, List.head?_cons, Option.map_some, Option.getD_some,
       List.tail_cons, hrows tail 0 ht, pure, Except.pure, hh, header, if_true, hlt]
