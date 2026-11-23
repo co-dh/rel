@@ -295,9 +295,9 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [], "full"),
   ([`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`summarize(F(x c), x)`], [位置顺序的数组], "full"),
   ([`dimensions` `nRows` `nColumns` `columnNames`], [`count(x)`；`nColumns` `columnNames` 读 `Schema`], [列名只在 schema 里，frame 是位置的], "full"),
-  ([`readTsv` `readParquet` `readJSON` `writeParquet`], [无], [F6], "no"),
-  ([`readCsv` `writeCsv` `scanCsv`], [`input x : N ⟶ S from csv "f"` / `output x to csv "f"`],
-    [schema 在语句里声明（F1 不变）；CSV 解析是 crate 的 IO 导出（F6）], "full"),
+  ([`readParquet` `readJSON` `writeParquet`], [无], [F6：不做（owner 决定，F6b）], "no"),
+  ([`readCsv` `readTsv` `writeCsv` `scanCsv`], [`input x : N ⟶ S from csv "f"`（TSV：`from csv '\t' "f"`）/ `output x to csv "f"`],
+    [schema 在语句里声明（F1 不变）；CSV 解析是 crate 的 IO 导出（F6）；TSV 是同一个读写器换分隔符（F6b）], "full"),
   ([`scanParquet` `fromDataFrame` `run`（Lazy）], [`rel_program` 中的定义],
     [`rel_program` 本身就是 plan：`rel-architecture` §1], "full"),
   ([`fold`、`display`、Plot、`DecisionTree`、`KMeans` 等], [不在本设计范围], [宿主层的工具与模型库], "out"),
@@ -365,6 +365,9 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
+  分隔符是这个读写器的参数（F6b）：`csv` 后可写一个单字节的 char 字面量，`csv '\t'` 即 TSV，不写为 `,`；没有第二个读写器。
+  分隔符不能是 `"`、`\r`、`\n`（`Csv.dialect` 拒绝：它们开引号或结束记录），读后写回的定理 `csvWords_csvText` 对每个分隔符成立。
+  parquet 与 JSON 不做（owner 决定）：它们不是 CSV 的方言，要各自的解析器与列编码，没有程序需要。
 - *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。
   这也是 polars 表达式（不含 `map_elements`）同样的限制。
 - *F8 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现选其中一个，是规格的 refinement，不是相等。
