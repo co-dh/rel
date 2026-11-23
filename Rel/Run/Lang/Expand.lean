@@ -542,22 +542,24 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     object as written and as resolved. A schema's columns are its fields; a product's are its factors' columns, a factor
     that is a named object labelling its own (`Trade×(1+Quote)`: `Trade.sym` … `Quote.sym` …; `K×N`: `K`, `N`); a
     sum `1+S` (`Obj.opt`) is one column `1+V` per column `V` of `S`, labelled as `S`'s, so the `1` is every one of
-    them null together; any other object is one column. `top`: `o` is the whole side, whose own name labels nothing. -/
-def csvLeaves (env : Env) (o : OExp) (top : Bool) : EM (List (List String × OExp × OTy × Bool)) := do
+    them null together; any other object is one column. `top`: `o` is the whole side, whose own name labels nothing.
+    Each leaf also carries the `S` of the `1+S` it is a column of (a leaf that is itself a sum: its own right side),
+    from which `Table.nullShape` decides its CSV shape. -/
+def csvLeaves (env : Env) (o : OExp) (top : Bool) : EM (List (List String × OExp × OTy × OTy)) := do
   let t ← (oty env [] o).run' {}
+  let own (t : OTy) : OTy := match t with | .sum _ s => s | t => t
   match o with
   | .name _ n =>
     let pre := if top then [] else [n]
     match env.obj? n with
-    | some i => if i.cols.isEmpty then pure [(pre, o, t, false)] else pure (i.cols.map fun (c, f) => (pre ++ [c], f.exp, f, false))
-    | none => pure [(pre, o, t, false)]
+    | some i => if i.cols.isEmpty then pure [(pre, o, t, own t)] else pure (i.cols.map fun (c, f) => (pre ++ [c], f.exp, f, own f))
+    | none => pure [(pre, o, t, own t)]
   | .prod a b => return (← csvLeaves env a false) ++ (← csvLeaves env b false)
   | .sum a b =>
     let u ← (oty env [] a).run' {}
     let ub ← (oty env [] b).run' {}
-    -- `whole`: the leaf is `b` itself, so the leaf `1+V` is the whole sum, stored as one column when `Obj.band` says
-    return (← csvLeaves env b top).map fun (ls, e, s, _) => (ls, .sum a e, .sum u s, s == ub)
-  | _ => pure [([], o, t, false)]
+    return (← csvLeaves env b top).map fun (ls, e, s, _) => (ls, .sum a e, .sum u s, ub)
+  | _ => pure [([], o, t, own t)]
 
 /-- The columns of an `input`'s or `output`'s type `A ⟶ B` (`what`: the statement), checked: the key's, none where
     `A` is the positions (a number object stored `.long`), then the value's; a schema object its columns, any other
@@ -590,14 +592,15 @@ def ioCols (env : Env) (p : Pos) (what : String) (ty : OExp × OExp) (csv : Bool
     let elems (n : String) := ((env.obj? n).map (·.elems)).getD []
     let kl ← if ks.isEmpty then pure [] else csvLeaves env ty.1 true
     let leaves := kl.map ("key", ·) ++ (← csvLeaves env ty.2 true).map ("val", ·)
-    for (one, ls, e, t, whole) in leaves do
+    for (one, ls, e, t, S) in leaves do
       let c := if ls.isEmpty then one else ".".intercalate ls
+      let sh := Table.nullShape (← liftExcept (objOf env.objs p S))
       -- the column's shape by its declared type and its stored object together; which atoms each takes is `schema`'s
       let col : Option (Db.CsvShape × QAtomicType × List String) := match t, ← liftExcept (objOf env.objs p t) with
         | .base n, .atom a => some (.atom, a, elems n)
         -- `1`: its one element's name, the code `0` of a long column (`Table.csvEncs`)
         | .base n, .one => some (.atom, .i64, elems n)
-        | .sum _ (.base n), .opt (.atom a) => some (if whole && (Obj.band .one (.atom a)).isSome then .opt else .null, a, elems n)
+        | .sum _ (.base n), .opt (.atom a) => some (sh, a, elems n)
         | .arr (.base n), .arr (.atom a) => some (.text, a, elems n)
         | _, _ => none
       let some (s, a, ns) := col

@@ -32,4 +32,62 @@ def row (i : Nat) : String :=
   IO.FS.removeDirAll d
   unless out == s do throw (IO.userError s!"1+N, 1+B: written back as {out.take 200}…")
 
+-- a key of `1+N`: the rows are put in key order on reading (`canon`, its permutation applied by gather to the `1+N`
+-- values), and the null key, `inl ()`, sorts before every value
+open Rel.Programs.prelude in
+rel_program csvOptKeyIO where
+    obj N
+    input t : 1+N ⟶ 1+N from csv "/data/tmp/rel-test-nullband-key/in.csv"
+    output t to csv "/data/tmp/rel-test-nullband-key/out.csv"
+
+/-- Row `i` of the keyed file: key `5000 - i`, but null at `i = 2500`; value as `row`'s `v`. -/
+def keyRow (i : Nat) : String :=
+  s!"{if i = 2500 then "" else toString (5000 - i)},{if i % 3 = 1 then "" else toString (7 * i)}\n"
+
+-- 5000 rows in descending key order: written back with the null key first, then the rest in ascending key order,
+-- each value gathered with its key across the block boundaries
+#eval show IO Unit from do
+  let d := "/data/tmp/rel-test-nullband-key"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/in.csv") ("key,val\n" ++ String.join ((List.range 5000).map keyRow))
+  csvOptKeyIO.io
+  let out ← IO.FS.readFile (d ++ "/out.csv")
+  IO.FS.removeDirAll d
+  let want := "key,val\n" ++ keyRow 2500 ++ String.join (((List.range 5000).reverse.filter (· ≠ 2500)).map keyRow)
+  unless out == want do throw (IO.userError s!"1+N key: written back as {out.take 200}…")
+
+/-- The one `1+N` column `v` of a CSV file whose row `i` is `f i`. -/
+def vS : Schema := [("v", .opt .long)]
+def vCols : Db.CsvCols := [("v", Table.nullShape .long, .i64, [])]
+def vText (f : Nat → String) (k : Nat) : String := "v\n" ++ String.join ((List.range k).map fun i => f i ++ "\n")
+
+-- concat of two 5000-row `1+N` columns (each past a block) as one of 10000: the rows of the first then the second
+-- where neither holds a null; where both do, the error naming the first side (`Opt.concat`)
+#eval show IO Unit from do
+  let d := "/data/tmp/rel-test-nullband-cat"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  let rd (f : Nat → String) (p : String) := do
+    IO.FS.writeFile (d ++ p) (vText f 5000)
+    let (t, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] vS vCols (d ++ p)
+    pure t
+  let cat (x y : Nat → String) := do
+    let (a, b) := (← rd x "/a.csv", ← rd y "/b.csv")
+    let off := (← IO.ofExcept ((← IO.ofExcept (Arr.pos b.n)).shift a.n.toUInt64)).enc
+    pure (Vals.concat (a.n + b.n) off a.val b.val)
+  let full (i : Nat) := toString (7 * i)
+  match ← cat full (fun i => full (5000 + i)) with
+  | .ok v =>
+    Table.writeCsv none [] vS vCols (d ++ "/c.csv") (← IO.ofExcept (Table.frame v))
+    let out ← IO.FS.readFile (d ++ "/c.csv")
+    unless out == vText full 10000 do throw (IO.userError s!"concat 1+N: written as {out.take 200}…")
+  | .error m => throw (IO.userError s!"concat 1+N with no null: {m}")
+  let holed (i : Nat) := if i % 3 = 1 then "" else full i
+  let want := s!"concat: the first {repr QAtomicType.i64}+1 column holds a null, and no kernel yet merges two columns' null bits"
+  match ← cat holed holed with
+  | .ok _ => throw (IO.userError "concat 1+N with nulls on both sides: an answer, not the error")
+  | .error m => unless m == want do throw (IO.userError s!"concat 1+N with nulls on both sides: {m}")
+  IO.FS.removeDirAll d
+
 end Rel.Lang.TestNullband

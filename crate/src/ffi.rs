@@ -361,7 +361,7 @@ impl Sink {
         self.each(false, crate::QLEAN_COST_COPY, &|s, b, _, _, _| unsafe { (*s).place(b, &*(sp as *const Staged).add(b)) });
         Some(())
     }
-    /// `write` with no size test: the answer of a kernel whose form is decided.
+    /// `write_nul` with no size test and no null: the answer of a kernel whose form is decided.
     pub fn answer<P: Producer + ?Sized>(self, p: &P) -> lean::O { self.answer_nul(p, &[]) }
     /// `answer` of a column whose null rows are the set bits of `nul` (`write_nul`).
     pub fn answer_nul<P: Producer + ?Sized>(self, p: &P, nul: &[u8]) -> lean::O {
@@ -440,9 +440,9 @@ mod sink_tests {
     #[test] fn shrinks() {
         let n = 3000;
         let wide: alloc::vec::Vec<i64> = (0..n as i64).map(|i| i.wrapping_mul(0x1E37_79B9_7F4A_7C15)).collect();
-        assert!(Sink::new(n, 8).write(&Blocks::dense(pod::bytes(&wide), 8), true).is_none());
+        assert!(Sink::new(n, 8).write_nul(&Blocks::dense(pod::bytes(&wide), 8), true, &[]).is_none());
         let x = col(n);
-        let s = Sink::new(n, 8).write(&Blocks::dense(pod::bytes(&x), 8), true).expect("sink_tests: a narrow column shrinks");
+        let s = Sink::new(n, 8).write_nul(&Blocks::dense(pod::bytes(&x), 8), true, &[]).expect("sink_tests: a narrow column shrinks");
         assert_eq!(pair(&s), pair(&Sink::new(n, 8).answer(&Blocks::dense(pod::bytes(&x), 8))));
     }
     // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
