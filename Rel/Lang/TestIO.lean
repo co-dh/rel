@@ -582,7 +582,7 @@ info: "val\n2\n0\n2\n"
 
 -- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
 /--
-error: line 568, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
+error: line 594, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
 -/
 #guard_msgs in
 rel_program dictFirstT where
