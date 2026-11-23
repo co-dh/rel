@@ -78,29 +78,6 @@ theorem lexLe_append_of_eq : ∀ (ks ks2 : List (Array UInt64)) {i j : Nat},
 
 namespace Lang
 
-/-- The left fold of `xs ++ [x]` is one step from the left fold of `xs`. -/
-theorem foldDen_snoc {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (x : E.El) (w : V.El) :
-    foldDen Te TS (xs ++ [x]) w ↔ ∃ u, foldDen Te TS xs u ∧ TS (u, x) w := by
-  constructor
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩
-    simp only [List.length_append, List.length_singleton] at hy
-    refine ⟨ys[xs.length]'(by omega), ⟨ys.take (xs.length + 1), by simp; omega, ⟨a, by simpa using ha⟩,
-      fun t ht => ?_, by simp⟩, ?_⟩
-    · have := hs t (by simp; omega)
-      simpa [List.getElem_append_left ht, List.getElem_take] using this
-    · have := hs xs.length (by simp)
-      simpa using this
-  · rintro ⟨u, ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩, hS⟩
-    refine ⟨ys ++ [w], by simp [hy], ⟨a, by rw [List.getElem_append_left (by omega)]; exact ha⟩, fun t ht => ?_,
-      by simp [hy]⟩
-    simp only [List.length_append, List.length_singleton] at ht
-    by_cases ht' : t < xs.length
-    · have := hs t ht'
-      simpa [List.getElem_append_left ht', List.getElem_append_left (show t < ys.length by omega),
-        List.getElem_append_left (show t + 1 < ys.length by omega)] using this
-    · obtain rfl : t = xs.length := by omega
-      simpa [List.getElem_append_left (show xs.length < ys.length by omega), hy] using hS
-
 /-- `dom(T) (𝟙 × ≥) dom(T)` pointwise. -/
 theorem upToDen_iff {K V : Obj} {t : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El V)) (a b : (Obj.prod K (.atom t)).El) :
     upToDen T a b ↔ (∃ c, T a c) ∧ (∃ c, T b c) ∧ a.1 = b.1 ∧ leAt t b.2 a.2 := by
@@ -253,13 +230,14 @@ theorem fsum_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
       Core.Rel.rpair (Core.Rel.graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
         (Core.Rel.graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ Core.Rel.rpair (𝟙 _) (froundDen u),
       fun _ _ => Iff.rfl, fun y => ⟨?_, ?_⟩, fun A r x Xx hx y => ?_⟩
-    · rintro ⟨ys, hy, ⟨_, hs⟩, -, rfl⟩
+    · intro h
+      obtain ⟨_, hs⟩ := (Lang.foldDen_empty _ _ _).1 h
       obtain ⟨h1, h2⟩ := (Lang.fsumDen_seed u _ _).1 hs
       rw [h1] at h2; replace h2 := (Lang.fwideDen_iff _ _ _).1 h2; have h3 : some Z = some _ := hZ.symm.trans h2
       exact Prod.ext (Option.some.inj h3).symm h1
     · rintro rfl
-      exact ⟨[(Z, QAtomicType.ofBits u 0)], rfl, ⟨(Z, QAtomicType.ofBits u 0), (Lang.fsumDen_seed u _ _).2 ⟨rfl, (Lang.fwideDen_iff _ _ _).2 hZ⟩⟩,
-        fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩
+      exact (Lang.foldDen_empty _ _ _).2
+        ⟨(Z, QAtomicType.ofBits u 0), (Lang.fsumDen_seed u _ _).2 ⟨rfl, (Lang.fwideDen_iff _ _ _).2 hZ⟩⟩
     · have hfa : ∀ a b, Op.fadd.eval a b = .ok (faddW a b) := fun _ _ => rfl
       have hfo : ∀ s, (Op.fto u).eval 0 s = .ok (Op.ftoWord u s) := fun _ => rfl
       obtain ⟨y1, y2⟩ := y
@@ -679,10 +657,12 @@ theorem _root_.Rel.Lang.sumDen_nil {u : QAtomicType} (hu : u = .i64 ∨ u = .f32
   have hsd : Lang.sumDen u = Lang.fsumDen u := by rcases hu with rfl | rfl <;> rfl
   rw [hsd]
   constructor
-  · rintro ⟨y, ⟨ys, hy, ⟨_, hs⟩, -, rfl⟩, rfl⟩; exact ((Lang.fsumDen_seed u _ _).1 hs).1
+  · rintro ⟨y, hF, rfl⟩
+    obtain ⟨_, hs⟩ := (Lang.foldDen_empty _ _ _).1 hF
+    exact ((Lang.fsumDen_seed u _ _).1 hs).1
   · rintro rfl
-    exact ⟨(X, _), ⟨[(X, QAtomicType.ofBits u 0)], rfl, ⟨(X, QAtomicType.ofBits u 0), (Lang.fsumDen_seed u _ _).2 ⟨rfl, (Lang.fwideDen_iff _ _ _).2 hX⟩⟩,
-      fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩, rfl⟩
+    exact ⟨(X, _), (Lang.foldDen_empty _ _ _).2
+      ⟨(X, QAtomicType.ofBits u 0), (Lang.fsumDen_seed u _ _).2 ⟨rfl, (Lang.fwideDen_iff _ _ _).2 hX⟩⟩, rfl⟩
 
 /-- **`sumTail`'s bad column holds no null**: at either type it is a `colMap .or` (`colMap_plain`). -/
 theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad : Enc} {W : Arr u n}
