@@ -240,16 +240,15 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
   unfold Tab.concat at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i p hp
-  obtain ⟨n, off⟩ := p
+  rename_i n hp
   split at h; · cases h
   rename_i K hK
   split at h; · cases h
   rename_i V hV
   cases h
-  obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
-  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
+  have hn := catRows_ok hp
+  have rk := Vals.concat_row hn R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨c, ha, hb⟩
@@ -279,16 +278,16 @@ theorem keep_wf {T t : Tab k v} {b : Enc} (h : T.keep b = .ok t) (hT : T.WF) : t
   okSplit
   cases h; exact ⟨Vals.gather_wf ‹_› hT.1, Vals.gather_wf ‹_› hT.2⟩
 
-/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catPlan`'s count and offsets). -/
+/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catRows`' count). -/
 theorem concat_wf {R S t : Tab k v} (h : R.concat S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
   simp only [Tab.concat, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i p hp
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (p.1, p.2) from hp)
+  have hn := catRows_ok hp
   split at h; · cases h
   rename_i x hx; split at h; · cases h
   rename_i y hy; cases h
-  exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
+  exact ⟨Vals.concat_wf hn hx hR.1 hS.1, Vals.concat_wf hn hy hR.2 hS.2⟩
 
 /-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
 theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
@@ -362,18 +361,25 @@ theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) 
   unfold Tab.tagged at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i p hp
-  obtain ⟨n, off⟩ := p
+  rename_i n hp
   split at h; · cases h
   rename_i K hK
   split at h; · cases h
   rename_i V hV
   split at h; · cases h
+  rename_i off ho
+  split at h; · cases h
   rename_i one h1
   split at h; · cases h
   rename_i t ht
   cases h
-  obtain ⟨hn, hoff⟩ := catPlan_ok hp
+  have hn := catRows_ok hp
+  -- `shiftCol` puts word `k` of `S` at `R.n + k`, a count below `n < USize.size ≤ 2^64`
+  have hoff : ∀ k < S.n.toNat, ((Enc.raw .i64 S.n off)[k]?.getD 0).toNat = R.n.toNat + k := fun k hk => by
+    have := n.toNat_lt_size; have := USize.size_le
+    rw [shiftCol_raw ho k hk]
+    simp [UInt64.toNat_add]
+    omega
   refine ⟨by unfold Tab.concat; simp only [hp, hK, hV, bind, Except.bind, pure, Except.pure], hn, ?_⟩
   obtain ⟨-, -, -, hws, -, hfix, hlast⟩ := raw_scatter S.n off one n 0 _ (kscatter_plain h1 rfl) ht
   refine ⟨hws, fun c hc => ?_, kscatter_plain ht (kscatter_plain h1 rfl)⟩
@@ -396,16 +402,15 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
   unfold Tab.concat at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i p hp
-  obtain ⟨n, off⟩ := p
+  rename_i n hp
   split at h; · cases h
   rename_i K hK
   split at h; · cases h
   rename_i V hV
   cases h
-  obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
-  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
+  have hn := catRows_ok hp
+  have rk := Vals.concat_row hn R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩⟩
   · rintro ⟨c, hl, ha, hb⟩

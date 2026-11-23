@@ -46,10 +46,10 @@ first row, a row of `D`. Then `canon`. An `r` of no rows is `nil D`: a cell's bo
 and over no rows the only cell is `[0, 0)`, where `[f + cD, f + c)` would point past it. -/
 def lamOf {n : USize} (D : Vals A n) (r : Tab A B) : Except String (Tab A (.arr B)) :=
   if r.n.toNat = 0 then nil D else do
-  let (N, sh) ← catPlan n r.n
+  let N ← catRows n r.n
   -- `.lt`, `.sub`, `.max` read positions and counts signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"lam: {N} rows past 2^63"
-  let es ← Vals.cols (← Vals.concat N sh D r.key)
+  let es ← Vals.cols (← Vals.concat N D r.key)
   let (vs, p) ← kasc N es
   let (k, g, f) ← kseen N ((es.map (·.1)).zip vs)
   let K := k.toUSize
@@ -80,10 +80,10 @@ def ldivOf (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) : Except St
   let (k, g, f) ← kseen Q.n ((es.map (·.1)).zip vs)
   let K := k.toUSize
   let cnt ← groupFold .add Q.n g (← seenSeg Q.n f K) K 0 (← colConst Q.n 1)
-  let (N, sh) ← catPlan r.n Q.n
+  let N ← catRows r.n Q.n
   -- `.lt` reads positions signed: every one is below `N`
   if 2 ^ 63 ≤ N.toNat then throw s!"ldiv: {N} rows past 2^63"
-  let bs ← Vals.cols (← Vals.concat N sh r.val Q.key)
+  let bs ← Vals.cols (← Vals.concat N r.val Q.key)
   let (bv, bp) ← kasc N bs
   let (bk, bg, bf) ← kseen N ((bs.map (·.1)).zip bv)
   let cR ← groupFold .add N bg (← seenSeg N bf bk.toUSize) bk.toUSize 0 (← colMap .first N bp bp .i64 .i64 [] [(.gt, r.n.toUInt64)])

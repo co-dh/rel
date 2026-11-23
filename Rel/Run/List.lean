@@ -67,8 +67,8 @@ def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals
     -- `.lt`, `.sub` and the prefix sums read positions and widths signed: each is below `n * (m₁ + m₂) + n + m₁ + m₂`
     if 2 ^ 63 ≤ n.toNat * (m₁.toNat + m₂.toNat) + n.toNat + m₁.toNat + m₂.toNat then
       throw s!"cat: {n} cells over {m₁} + {m₂} elements past 2^63"
-    let (N, off) ← catPlan m₁ m₂
-    let F ← Vals.concat N off f₁ f₂
+    let N ← catRows m₁ m₂
+    let F ← Vals.concat N f₁ f₂
     let w₁ ← colMap .sub n hi₁.enc lo₁.enc
     let w ← colMap .add n w₁ (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w

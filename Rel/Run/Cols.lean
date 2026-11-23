@@ -57,31 +57,68 @@ theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t s : QAtomicType} {pre pos
   · cases h; rename_i o hc; exact hc
   · cases h
 
-/-- **CONCAT of two columns of one type**: `x` `kscatter`ed to the cells `0 … n₁-1` of `n`, `y` to `off` (`n₁ + k`),
-the rest `0`, and the two added by `colMap .add` at `t` (each cell is `0` in one of the two). `.add` is the wrapping
-add of raw words at every type (`Op.eval`), so `x + 0` is `x`'s stored word, a float's sign and NaN payload included;
-the answer is `Enc.WF` at `t` by `kscan_closed`. -/
-def Arr.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x : Arr t n₁) (y : Arr t n₂) :
-    Except String (Arr t n) := do
-  let a ← kscatter .last n₁ .pos x.enc n 0
-  let b ← kscatter .last n₂ off y.enc n 0
-  colArr .add n a b t
+/-- A column of `foROk` rows is one every kernel reads (`Enc.Valid`). -/
+theorem foROk_valid {n : USize} {e : Enc} (h : foROk n e = true) : Enc.Valid n e := by cases e <;> simpa [Enc.Valid] using h
 
-/-- CONCAT of two nullable columns: `Arr.concat` where neither holds a null. A null row needs one kernel call that
-merges two sources with their null bits, and none does yet (`kscan` writes no null, `kscatter` reads one source and
-fills the rest with a constant): there the error, naming the side. -/
-def Opt.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x : Opt t n₁) (y : Opt t n₂) :
+/-- A stream over columns holding no null writes no flag: `streamEnc` holds no null. -/
+theorem streamEnc_plain {s t : QAtomicType} {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (hN : ∀ p ∈ es, hasNul p.2 = false) : hasNul (streamEnc s t es) = false := by
+  have key : ∀ (L : List (Array UInt64)) (acc : Array UInt64), (∀ x ∈ acc, x = 0) → (∀ a ∈ L, ∀ x ∈ a, x = 0) →
+      ∀ x ∈ L.foldl (· ++ ·) acc, x = 0 := by
+    intro L; induction L with
+    | nil => intro acc h _; exact h
+    | cons a L ih =>
+      intro acc h hL
+      exact ih _ (fun x hx => by
+        rcases Array.mem_append.1 hx with hx | hx
+        · exact h x hx
+        · exact hL a (by simp) x hx) (fun b hb => hL b (by simp [hb]))
+  have hz : (streamNul es).any (· != 0) = false := by
+    rw [Bool.eq_false_iff]; intro h
+    obtain ⟨i, hi, hp⟩ := Array.any_eq_true.1 h
+    obtain ⟨v, hv⟩ : ∃ v, v = (streamNul es)[i] := ⟨_, rfl⟩
+    have hmem : v ∈ streamNul es := hv ▸ Array.getElem_mem hi
+    rw [streamNul_eq] at hmem
+    have := key (es.map fun p => foRNuls p.1 p.2) #[] (fun x hx => by simp at hx) (fun a ha x hx => by
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
+      obtain ⟨j, hj, rfl⟩ := Array.mem_iff_getElem.1 hx
+      have := foRNuls_plain (hW p hp) (hN p hp) (i := j) (by simpa [foRNuls_size] using hj)
+      rw [Array.getElem?_eq_getElem hj] at this
+      exact Option.some.inj this) v hmem
+    rw [← hv] at hp
+    simp [this] at hp
+  unfold streamEnc; rw [hz]; exact hasNul_wordsFoR _
+
+/-- **CONCAT of two nullable columns of one type**: ONE `kscan` stream of `x` then `y` (`kscanStream`, `.first` with no
+chain), which re-encodes the `n₁ + n₂` words block by block and carries each row's null flag, so a null stays a null
+in-band. Where `t` has no width, the sources do not hold `n` rows between them or a source is no `foR`/`pos` column
+of its row count (the check each kernel's reader makes), the error. -/
+def Opt.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (x : Opt t n₁) (y : Opt t n₂) :
     Except String (Opt t n) :=
-  if hx : hasNul x.enc = false then
-    if hy : hasNul y.enc = false then Opt.ofArr <$> Arr.concat n off (Arr.mk x.enc x.wf hx) (Arr.mk y.enc y.wf hy)
-    else .error s!"concat: the second 1+{repr t} column holds a null, and no kernel yet merges two columns' null bits"
-  else .error s!"concat: the first 1+{repr t} column holds a null, and no kernel yet merges two columns' null bits"
+  if hn : n₁.toNat + n₂.toNat = n.toNat then
+    if hv : foROk n₁ x.enc = true ∧ foROk n₂ y.enc = true then
+      match hw : t.width with
+      | some _ =>
+        match h : kscan .first false t t n none [(n₁, x.enc), (n₂, y.enc)] with
+        | .ok r => .ok (Opt.mk r.1 (by
+            obtain ⟨h1, -, hwf⟩ := kscan_stream_closed (s := t) hw (by rw [hw]; rfl) (n := n) (es := [(n₁, x.enc), (n₂, y.enc)])
+              (by simp; exact ⟨x.wf, y.wf⟩) (by simp) (by simpa using hn)
+            rw [h] at h1; cases h1; exact hwf))
+        | .error e => .error e
+      | none => .error s!"concat: {repr t} has no fixed width"
+    else .error s!"concat: a column of {n₁} or {n₂} rows is no foR or pos column of its row count"
+  else .error s!"concat: {n₁} + {n₂} rows are not n = {n}"
 
-/-- The layout of `n₁` rows followed by `n₂`: the summed count `n` and the destinations `off` of the second part
-(`shiftCol n₂ n₁`); the error where `n` does not fit a `USize`. -/
-def catPlan (n₁ n₂ : USize) : Except String (USize × Enc) :=
-  if n₁.toNat + n₂.toNat < USize.size then do
-    pure ((n₁.toNat + n₂.toNat).toUSize, ← shiftCol n₂ n₁.toUInt64)
+/-- CONCAT of two columns holding no null: `Opt.concat` of them, read back as an `Arr` (the stream writes no flag,
+`streamEnc_plain`, so the `hasNul` test never fails). -/
+def Arr.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (x : Arr t n₁) (y : Arr t n₂) : Except String (Arr t n) := do
+  let z ← Opt.concat n (Opt.ofArr x) (Opt.ofArr y)
+  if hz : hasNul z.enc = false then pure (Arr.mk z.enc z.wf hz)
+  else .error s!"concat: the stream of two columns with no null holds one"
+
+/-- The count of `n₁` rows then `n₂`, the error where it does not fit a `USize`. -/
+def catRows (n₁ n₂ : USize) : Except String USize :=
+  if n₁.toNat + n₂.toNat < USize.size then pure (n₁.toNat + n₂.toNat).toUSize
   else .error s!"concat: {n₁} + {n₂} rows do not fit a USize"
 
 /-- The first of the `n` cells `[lo, hi)` that is no slice of a payload of `m` rows (`0 ≤ lo ≤ hi ≤ m` fails), the
@@ -164,38 +201,38 @@ def Vals.catSide {B : Obj} {m l l' : USize} (s : Bool) (tag : Arr .u1 m) (idx : 
 /-- Summand `s` of the concat of two sum sides of `n₁` and `n₂` rows, its rows `x₁` and `x₂` on each: their concat
 `cat` where both are empty (every row of the summand reads `Obj.dflt`), else each side's `Vals.catSide` (the other
 side's summand standing in for an empty one) concatenated, `n` rows read at the positions `Arr.pos`. -/
-def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (off : Enc) (s : Bool) (tag₁ : Arr .u1 n₁)
+def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (s : Bool) (tag₁ : Arr .u1 n₁)
     (idx₁ : Arr .i64 n₁) (x₁ : Vals B l₁) (tag₂ : Arr .u1 n₂) (idx₂ : Arr .i64 n₂) (x₂ : Vals B l₂)
-    (cat : {m₁ m₂ : USize} → (m : USize) → Enc → Vals B m₁ → Vals B m₂ → Except String (Vals B m)) :
+    (cat : {m₁ m₂ : USize} → (m : USize) → Vals B m₁ → Vals B m₂ → Except String (Vals B m)) :
     Except String ((m : USize) × Vals B m) :=
-  if l₁.toNat = 0 ∧ l₂.toNat = 0 then do let p ← catPlan l₁ l₂; pure ⟨p.1, ← cat p.1 p.2 x₁ x₂⟩
+  if l₁.toNat = 0 ∧ l₂.toNat = 0 then do let m ← catRows l₁ l₂; pure ⟨m, ← cat m x₁ x₂⟩
   else if 2 ^ 63 < l₁.toNat ∨ 2 ^ 63 < l₂.toNat then .error s!"concat: a sum summand of {l₁} or {l₂} rows, past 2^63"
-  else do pure ⟨n, ← cat n off (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
+  else do pure ⟨n, ← cat n (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
 
-/-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column (`off` as there). An `arr` side
-concatenates its payloads (`catPlan`, the recursive call) and its `lo`, `hi` columns, the second's shifted past the
+/-- The rows of `x`, then those of `y`, as `n` rows: `Arr.concat` of each atom column. An `arr` side
+concatenates its payloads (`catRows`, the recursive call) and its `lo`, `hi` columns, the second's shifted past the
 first payload (`Vals.WF`: each cell already inside its own payload, so none reads the other's); a payload past `2^63` rows,
 which an `Int64` bound cannot reach, is the error. A `sum` side concatenates its tags and each summand
 (`Vals.catSummand`), its positions `Arr.pos`; past `2^63` rows, which an `Int64` position cannot reach, the error. -/
-def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → Vals A n₁ → Vals A n₂ → Except String (Vals A n)
-  | .atom _, _, _, n, off, x, y => Arr.concat n off x y
-  | .prod _ _, _, _, n, off, x, y => do pure (← Vals.concat n off x.1 y.1, ← Vals.concat n off x.2 y.2)
-  | .arr _, _, _, n, off, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ =>
+def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Vals A n₁ → Vals A n₂ → Except String (Vals A n)
+  | .atom _, _, _, n, x, y => Arr.concat n x y
+  | .prod _ _, _, _, n, x, y => do pure (← Vals.concat n x.1 y.1, ← Vals.concat n x.2 y.2)
+  | .arr _, _, _, n, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩ =>
     if m₁.toNat + m₂.toNat < 2 ^ 63 then do
-      let p ← catPlan m₁ m₂
-      let lo ← Arr.concat n off lo₁ (← lo₂.shift m₁.toUInt64)
-      let hi ← Arr.concat n off hi₁ (← hi₂.shift m₁.toUInt64)
-      pure ⟨p.1, lo, hi, ← Vals.concat p.1 p.2 f₁ f₂⟩
+      let p ← catRows m₁ m₂
+      let lo ← Arr.concat n lo₁ (← lo₂.shift m₁.toUInt64)
+      let hi ← Arr.concat n hi₁ (← hi₂.shift m₁.toUInt64)
+      pure ⟨p, lo, hi, ← Vals.concat p f₁ f₂⟩
     else .error s!"concat: {m₁} + {m₂} payload rows, past an Int64 bound"
-  | .sum _ _, _, _, n, off, s₁, s₂ => match s₁.view, s₂.view with
-    | .opt h x₁, .opt h' x₂ => Vals.ofOpt h <$> Opt.concat n off x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
+  | .sum _ _, _, _, n, s₁, s₂ => match s₁.view, s₂.view with
+    | .opt h x₁, .opt h' x₂ => Vals.ofOpt h <$> Opt.concat n x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
     | .opt h _, .gen h' .. | .gen h' .., .opt h _ => absurd (h.symm.trans h') nofun
     | .gen h _ _ tag₁ idx₁ x₁ y₁, .gen _ _ _ tag₂ idx₂ x₂ y₂ =>
     if n.toNat ≤ 2 ^ 63 then do
-      let L ← Vals.catSummand n off false tag₁ idx₁ x₁ tag₂ idx₂ x₂ fun m o x y => Vals.concat m o x y
-      let R ← Vals.catSummand n off true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m o x y => Vals.concat m o x y
-      pure (Vals.ofGen h L.1 R.1 (← Arr.concat n off tag₁ tag₂) (← Arr.pos n) L.2 R.2)
+      let L ← Vals.catSummand n false tag₁ idx₁ x₁ tag₂ idx₂ x₂ fun m x y => Vals.concat m x y
+      let R ← Vals.catSummand n true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m x y => Vals.concat m x y
+      pure (Vals.ofGen h L.1 R.1 (← Arr.concat n tag₁ tag₂) (← Arr.pos n) L.2 R.2)
     else .error s!"concat: a sum side of {n} rows, past an Int64 position"
-  | .one, _, _, _, _, _, _ => pure ()
+  | .one, _, _, _, _, _ => pure ()
 
 end Rel

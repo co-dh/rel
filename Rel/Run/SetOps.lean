@@ -26,16 +26,17 @@ def keep (T : Tab k v) (b : Enc) : Except String (Tab k v) := do
   let (M, sel) ← whereCol T.n b
   pure ⟨M, ← Vals.gather M sel T.key, ← Vals.gather M sel T.val⟩
 
-/-- **`R` then `S`**: the rows of both, `R`'s first (`Vals.concat` of each side on `catPlan`). -/
+/-- **`R` then `S`**: the rows of both, `R`'s first (`Vals.concat` of each side, `n` the summed count `catRows`). -/
 def concat (R S : Tab k v) : Except String (Tab k v) := do
-  let (n, off) ← catPlan R.n S.n
-  pure ⟨n, ← Vals.concat n off R.key S.key, ← Vals.concat n off R.val S.val⟩
+  let n ← catRows R.n S.n
+  pure ⟨n, ← Vals.concat n R.key S.key, ← Vals.concat n R.val S.val⟩
 
-/-- `R.concat S` and its source tag: `0` at `R`'s rows and `1` at `S`'s (`n₂` ones `kscatter`ed to `off`). -/
+/-- `R.concat S` and its source tag: `0` at `R`'s rows and `1` at `S`'s (`n₂` ones `kscatter`ed to the rows
+`R.n + k`, `shiftCol`). -/
 def tagged (R S : Tab k v) : Except String (Tab k v × Enc) := do
-  let (n, off) ← catPlan R.n S.n
-  pure (⟨n, ← Vals.concat n off R.key S.key, ← Vals.concat n off R.val S.val⟩,
-    ← kscatter .last S.n off (← colConst S.n 1) n 0)
+  let n ← catRows R.n S.n
+  pure (⟨n, ← Vals.concat n R.key S.key, ← Vals.concat n R.val S.val⟩,
+    ← kscatter .last S.n (← shiftCol S.n R.n.toUInt64) (← colConst S.n 1) n 0)
 
 /-- **`R ∪ S`**: `Tab.canon` of the concatenation. -/
 def union (R S : Tab k v) : Except String (Tab k v) := R.concat S >>= canon
