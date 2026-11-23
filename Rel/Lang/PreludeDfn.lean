@@ -36,26 +36,35 @@ def Tm.nilDef {A B : Obj} : Tm A (.arr B) := .lam .zero
 /-- `front(Q) ≜ Λ(∋ − ∋ (Q − Q°))`. -/
 def Tm.frontDef {B : Obj} (Q : Tm B B) : Tm (.arr B) (.arr B) := .lam (.diff .mem (.comp .mem (.diff Q (.conv Q))))
 
-/-- `est(Q) ≜ ∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)`, with `cor(S) = dom(π₁S ∩ π₂)`. -/
+/-- `est(Q) ≜ ∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)`, with the call `cor(S) = dom(π₁S ∩ π₂)` as the prelude elaborates it (`S` the variable 2). -/
 def Tm.estDef {B : Obj} (Q : Tm B B) : Tm (.arr B) B :=
-  .diff .mem (.comp (.pair .mem .mem) (.comp (.diff .id (.dom (.meet (.comp .outl (.join Q .id)) .outr))) .outl))
+  .diff .mem (.comp (.comp (.pair .mem .mem) (.diff .id (.arg (.call [2] (.num `Rel.Programs.prelude.cor.form 1) none [B, B]
+    (.dom (.meet (.comp .outl (.var 2)) .outr))) (.join Q .id)))) .outl)
 
 /-- Pointwise `estDen`: `b` of `xs` unless some `c` of `xs` is outside `Q ∪ 𝟙` at `(b, c)`; from `Tm.est_den`. -/
-theorem Tm.estDef_den (ρ : Val) {B : Obj} (Q : Tm B B) : (Tm.estDef Q).den ρ = (Tm.est (pairTest Q)).den ρ := by
+theorem Tm.estDef_row (ρ : Val) {B : Obj} (Q : Tm B B) : (Tm.estDef Q).den ρ = (Tm.est (pairTest Q)).den ρ := by
   rw [Tm.est_den]
   funext xs b
   apply propext
-  simp [Tm.estDef, pairTest, Tm.den, estDen, Tm.dom_den, Core.Rel.id, Core.Rel.graph, Core.Rel.rpair]
+  simp [Tm.estDef, pairTest, Tm.den, Tm.argDen, Val.args, Val.bind, estDen, Tm.dom_den, Core.Rel.id, Core.Rel.graph, Core.Rel.rpair]
   intro hb
   constructor
   · intro h c hc hne
-    rcases (h b c hb hc rfl).2.1 with h | h
+    rcases (h c b c hb hc rfl rfl).2.2.1 with h | h
     · exact h
     · exact absurd h.symm hne
-  · rintro h x c hx hc rfl
-    by_cases e : x = c
+  · rintro h x a c ha hc rfl rfl
+    by_cases e : c = a
     · subst e; simp
-    · exact ⟨rfl, Or.inl (h c hc (Ne.symm e)), fun hn => absurd (h c hc (Ne.symm e)) hn⟩
+    · exact ⟨rfl, rfl, Or.inl (h c hc e), rfl, fun hn => absurd (h c hc e) hn⟩
+
+/-- `est`'s text means the row (Q3 = H), as `Tm.frontDef_den`: `prelude.est.body` at `β = general`, parameter `Q` the
+    variable 1, means `est(τ(Q))` at any objects `σ`. -/
+theorem Tm.estDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : Tm (Obj.arr ((Obj.atom .general).inst ph σ))
+    ((Obj.atom .general).inst ph σ)} (ht : Rel.Programs.prelude.est.body.instObj ph σ = .ok t') :
+    t'.den ρ = (Tm.est (pairTest (.var 1 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)))).den ρ := by
+  obtain rfl : Tm.estDef (.var 1) = t' := Except.ok.inj ht
+  exact Tm.estDef_row ρ _
 
 theorem Tm.flatDef_row (ρ : Val) {I A B : Obj} (R : Tm I (.prod A B)) (x : (Obj.prod I A).El) (hx : Short _ x) (w : B.El) :
     (Tm.flatDef R).den ρ x w ↔ (Tm.arg (.prim flatRow) R).den ρ x w := by

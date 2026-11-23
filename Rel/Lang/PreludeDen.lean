@@ -17,7 +17,8 @@ meta import Rel.Run.Lang.Syntax
 /-! Every row of `prims` that carries a `prelude` definition has a theorem `Tm.<sym>Def_den`, "the definition's
     `Tm.den` is the row's `rowDens` term" (B10b), or is listed in `unproved`. The check enumerates the rows of
     `prims`, the obligations, and not the theorems: a row with neither fails, and so does an `unproved` name that
-    is no such row or already has its theorem (delete it from the list). -/
+    is no such row or already has its theorem (delete it from the list). The theorem's type must also mention the
+    row's body constant `<prelude>.body`, so a theorem of the right name about another term fails. -/
 
 namespace Rel.Lang
 
@@ -34,6 +35,13 @@ run_cmd do
   let bare := rows.filter fun r => !unproved.contains r.sym && !env.contains r.defDenName
   unless bare.isEmpty do
     throwError "prelude rows with neither a theorem `Tm.<sym>Def_den` nor an entry in `unproved`: {bare.map (·.sym)}"
+  -- A theorem of that name that never mentions the row's body is about something else: the type must use `<prelude>.body`.
+  let off := rows.filterMap fun r => do
+    let ci ← env.find? r.defDenName
+    let body := (← r.prelude).str "body"
+    if ci.type.getUsedConstants.contains body then none else some s!"{r.sym}: `{r.defDenName}` does not mention `{body}`"
+  unless off.isEmpty do
+    throwError "prelude rows whose theorem `Tm.<sym>Def_den` is not about the row's body: {off}"
   let stale := unproved.filter fun s => !rows.any (·.sym == s) || env.contains (Prim.defDenName { sym := s, sig := ([], .var {} "A", .var {} "A") })
   unless stale.isEmpty do
     throwError "`unproved` names that are no prelude row or already have their theorem: {stale}"
