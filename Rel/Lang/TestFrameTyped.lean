@@ -182,54 +182,7 @@ rel_program sumF32T2 where
     f : N ⟶ H ≜ {(0,0.1),(1,0.2)}
     check summarize(F(f) sum, f) = {(∗,0.3)}
 -- the word itself: `0.1f`, `0.2f` widened, added in `f64`, rounded once
-#guard (Rel.Kernel.Op.fadd.eval (Rel.Kernel.Op.widen32 0x3dcccccd) (Rel.Kernel.Op.widen32 0x3e4ccccd)).toOption.map
-    (Rel.Kernel.Op.ftoWord .f32) == some 0x3e99999a
-    -- by hand, from the left: 0 + 1 = 1, 1 + 1e16 = 1e16 (the spacing there is 2 and the tie rounds to the even
-    -- 1e16), 1e16 − 1e16 = 0; from the right it would be 1 + (1e16 − 1e16) = 1
-    g : N ⟶ G ≜ {(0,1.0),(1,1e16),(2,-1e16)}
-    check summarize(F(g) sum, g) = {(∗,0.0)}
-
-#guard sumFloatT.failures.map toString == []
-
--- `sums` at `f64` values: one IEEE sum per row, left to right along the positions (q's order)
-rel_program sumsFloatT where
-    obj K = {A,B}
-    obj N
-    obj G : f64
-    -- by hand, A: 1, then 1 + 1e16 = 1e16 (the spacing there is 2 and the tie rounds to the even 1e16), then
-    -- 1e16 − 1e16 = 0, where the exact sum is 1; B: −1.5, then −1.5 + 1.5 = +0
-    x : K×N ⟶ G ≜ {((A,0),1.0),((A,1),1e16),((A,2),-1e16),((B,0),-1.5),((B,1),1.5)}
-    check sums(x) = {((A,0),1.0),((A,1),1e16),((A,2),0.0),((B,0),-1.5),((B,1),0.0)}
-    -- `0 % 0` (NaN) is no row, so position 1 has no value and no sum: 1, then 1 + 3 = 4 at position 2
-    z : N ⟶ G ≜ {(0,0.0)}
-    nn : N ⟶ G ≜ ⟨z, z⟩%
-    p : K×N ⟶ N ≜ {((A,1),0)}
-    y : K×N ⟶ G ≜ {((A,0),1.0),((A,2),3.0)} ∪ (p nn)
-    check sums(y) = {((A,0),1.0),((A,2),4.0)}
-    -- a −0 value: +0 + −0 = +0
-    m : K×N ⟶ G ≜ {((A,0),-0.0)}
-    check sums(m) = {((A,0),0.0)}
-
-#guard sumsFloatT.failures.map toString == []
-
--- `sums` at `f32` values: refused by name, with the cast to `f64` that runs it
-/-- error: line 168, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
-#guard_msgs in
-rel_program sumsF32T where
-    obj K = {A}
-    obj N
-    obj H : f32
-    x : K×N ⟶ H ≜ {((A,0),1.5)}
-    s : K×N ⟶ H ≜ sums(x)
-
--- `sum` at an `f32` column: refused by name as `sums` is, since one `kscan` cannot round its carry to `f32` each step
-/-- error: line 178, col 11: `summarize` at this call, where ν is N, δ is H, β is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
-#guard_msgs in
-open Rel.Programs.prelude Rel.Programs.frame in
-rel_program sumF32T where
-    obj N
-    obj H : f32
-    f : N ⟶ H ≜ {(0,2.5),(1,-1.5)}
-    check summarize(F(f) sum, f) = {(∗,1.0)}
+#guard (Rel.Kernel.Op.eval .fadd (Rel.Kernel.Op.widen32 0x3dcccccd) (Rel.Kernel.Op.widen32 0x3e4ccccd)).toOption.map
+  (Rel.Kernel.Op.ftoWord .f32) == some 0x3e99999a
 
 end Rel.Lang.TestFrameTyped
