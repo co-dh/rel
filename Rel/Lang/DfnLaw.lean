@@ -545,7 +545,7 @@ theorem Tm.head_lt {B : Obj} {x y : B.El} (hxy : x ≠ y) :
 theorem Tm.lt_den (ρ : Val) (B : Obj) :
     (Tm.ltDef B).den ρ = fun p q => q = p ∧ B.lt p.1 p.2 := by
   funext p q; apply propext
-  simp only [Tm.ltDef, Tm.den, Tm.dom_den, diffDen, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id,
+  simp only [Tm.ltDef, Tm.den, Tm.dom_den, Core.Rel.diff, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id,
     Core.Rel.graph, Core.Rel.union, Tm.at0_den, lamDen]
   obtain ⟨x, y⟩ := p
   obtain ⟨x', y'⟩ := q

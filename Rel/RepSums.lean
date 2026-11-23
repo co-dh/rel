@@ -261,16 +261,18 @@ theorem fsum_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
       exact ⟨[(Z, QAtomicType.ofBits u 0)], rfl, ⟨(Z, QAtomicType.ofBits u 0), (Lang.fsumDen_seed u _ _).2 ⟨rfl, (Lang.fwideDen_iff _ _ _).2 hZ⟩⟩,
         fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩
     · have hfa : ∀ a b, Op.fadd.eval a b = .ok (faddW a b) := fun _ _ => rfl
+      have hfo : ∀ s, (Op.fto u).eval 0 s = .ok (Op.ftoWord u s) := fun _ => rfl
       obtain ⟨y1, y2⟩ := y
-      simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, Core.Rel.corefl, froundDen, Core.Rel.recip_apply, exists_eq_left, hfa, Except.ok.injEq,
-        Prod.mk.injEq]
       constructor
-      · rintro ⟨⟨p1, p2⟩, ⟨rfl, h2⟩, s, rfl, rfl, R', hR', _, ⟨rfl, hn⟩, rfl⟩
-        have h2 := (Option.some.inj (h2.symm.trans hx)); simp only at h2; subst h2
-        cases hR'
-        exact ⟨hn, rfl, rfl⟩
-      · rintro ⟨hn, rfl, rfl⟩
-        exact ⟨(A, Xx), ⟨rfl, hx⟩, _, rfl, rfl, _, rfl, _, ⟨rfl, hn⟩, rfl⟩
+      · rintro ⟨⟨p1, p2⟩, ⟨rfl, _, rfl, h2⟩, t, hadd, hid, hF⟩
+        obtain rfl : p2 = Xx := Option.some.inj (((Lang.fwideDen_iff _ _ _).1 h2).symm.trans hx)
+        obtain rfl : t = faddW _ _ := (Except.ok.inj (((hfa _ _).symm.trans ((Lang.faddDen_iff _ _).1 hadd)))).symm
+        obtain ⟨R, hR, hn, hy⟩ := (Lang.froundDen_iff u _ _).1 hF
+        obtain rfl : R = Op.ftoWord u (faddW _ _) := (Except.ok.inj ((hfo _).symm.trans hR)).symm
+        subst hid; subst hy; exact ⟨hn, rfl⟩
+      · rintro ⟨hn, he⟩
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj he
+        exact ⟨(A, Xx), ⟨rfl, x, rfl, (Lang.fwideDen_iff _ _ _).2 hx⟩, _, (Lang.faddDen_iff _ _).2 (hfa _ _), rfl, (Lang.froundDen_iff u _ _).2 ⟨_, hfo _, hn, rfl⟩⟩
   -- the fold over pairs: the carry `C t` and its rounding
   have hC : ∀ t < m, ∀ y, foldDen Te TS
       (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v) y ↔

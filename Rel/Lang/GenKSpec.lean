@@ -445,7 +445,7 @@ example : ∀ K, K.WF → (GenK.outr A B).Reps K (graph Prod.snd) := ofVals_row_
 
 theorem diff_sound {R S : Rel A B} {X Y : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R.Reps K X)
     (hS : ∀ K, K.WF → S.Reps K Y) (wR : R.Wf) (wS : S.Wf) :
-    ∀ K, K.WF → (GenK.diff A B R S).Reps K (diffDen X Y) := by
+    ∀ K, K.WF → (GenK.diff A B R S).Reps K (Core.Rel.diff X Y) := by
   unfold GenK.diff; split
   · intro K hW; rw [reps_iff]; intro t h
     obtain ⟨r, hr, h⟩ := bind_ok h

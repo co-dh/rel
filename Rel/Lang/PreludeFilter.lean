@@ -38,7 +38,7 @@ theorem Prim.den_filter {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
 
 theorem Tm.filterStep_den (ρ : Val) {B : Obj} (P : Tm B B) (acc : List B.El) (x : B.El) (w : List B.El) :
     (Tm.filterStep P).den ρ (acc, x) w ↔ w = if ∃ y, P.den ρ x y then acc ++ [x] else acc := by
-  simp only [Tm.filterStep, Tm.den, Tm.dom_den, Prim.den_snoc, diffDen, Core.Rel.comp, Core.Rel.graph,
+  simp only [Tm.filterStep, Tm.den, Tm.dom_den, Prim.den_snoc, Core.Rel.diff, Core.Rel.comp, Core.Rel.graph,
     Core.Rel.union, Core.Rel.inter, Core.Rel.id, Core.Rel.recip]
   by_cases h : ∃ y, den ρ P x y <;> simp [h, eq_comm]
   · obtain ⟨y, hy⟩ := h

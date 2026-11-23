@@ -39,7 +39,7 @@ theorem Prim.den_takewhile {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
 
 theorem Tm.takewhileStep_den (ρ : Val) {B : Obj} (P : Tm B B) (x : B.El) (acc : List B.El) (w : List B.El) :
     (Tm.takewhileStep P).den ρ (x, acc) w ↔ w = if ∃ y, P.den ρ x y then x :: acc else [] := by
-  simp only [Tm.takewhileStep, Tm.den, Tm.dom_den, Prim.den_cons, Tm.nil, Prim.den_nilRow, diffDen, Core.Rel.comp,
+  simp only [Tm.takewhileStep, Tm.den, Tm.dom_den, Prim.den_cons, Tm.nil, Prim.den_nilRow, Core.Rel.diff, Core.Rel.comp,
     Core.Rel.graph, Core.Rel.union, Core.Rel.inter, Core.Rel.id, Core.Rel.recip]
   by_cases h : ∃ y, den ρ P x y <;> simp [h, eq_comm]
   · obtain ⟨y, hy⟩ := h
