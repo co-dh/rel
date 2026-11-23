@@ -129,11 +129,11 @@ def Tm.ConvOK (ρ : Val) : {A B : Obj} → Tm A B → Prop
     else ∀ ss, b.ConvOK (Val.args ks ss)
   | _, _, _ => True
 
-theorem convTm_of_false {A B : Obj} {t : Tm A B} (h : t.dem = false) : convTm t = .ok (.conv t) := by
+theorem convTm_of_false {A B : Obj} {t : Tm A B} {δ ds} (h : t.dem δ ds = false) : convTm δ ds t = .ok (.conv t) := by
   rw [convTm.eq_def, if_pos h]; rfl
 
-theorem conv_false_den (ρ : Val) {A B : Obj} {t : Tm A B} (u : Tm B A) (hu : convTm t = .ok u) (h : t.dem = false) :
-    u.den ρ = (t.den ρ)° ∧ (t.dem = true → ∀ ss, u.argDen ρ ss = (t.argDen ρ ss)°) := by
+theorem conv_false_den (ρ : Val) {A B : Obj} {t : Tm A B} {δ ds} (u : Tm B A) (hu : convTm δ ds t = .ok u) (h : t.dem δ ds = false) :
+    u.den ρ = (t.den ρ)° ∧ (t.dem δ ds = true → ∀ ss, u.argDen ρ ss = (t.argDen ρ ss)°) := by
   rw [convTm_of_false h] at hu; cases hu
   exact ⟨rfl, fun h' => absurd (h.symm.trans h') Bool.false_ne_true⟩
 
@@ -149,11 +149,11 @@ theorem recip_rpair {α β γ : Type} (X : Core.Rel γ α) (Y : Core.Rel γ β) 
 macro "noproj" : tactic => `(tactic| (intro A₁ A₂ h p hp; cases h <;> (dsimp only at hp; unfold convProj at hp; cases hp)))
 macro "noconv" : tactic => `(tactic| (intro u hu; rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu))
 
-theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
-    (∀ u, convTm t = .ok u → u.den ρ = (t.den ρ)° ∧ (t.dem = true → ∀ ss, u.argDen ρ ss = (t.argDen ρ ss)°)) ∧
-    (∀ A₁ A₂ (h : A = .prod A₁ A₂) p, convProj (h ▸ t) = .ok p → p.den ρ = ((h ▸ t).den ρ)°) := by
-  intro A B t
-  induction t generalizing ρ with
+theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B) (δ : Dem) (ds : List Bool), t.ConvOK ρ →
+    (∀ u, convTm δ ds t = .ok u → u.den ρ = (t.den ρ)° ∧ (t.dem δ ds = true → ∀ ss, u.argDen ρ ss = (t.argDen ρ ss)°)) ∧
+    (∀ A₁ A₂ (h : A = .prod A₁ A₂) p, convProj δ (h ▸ t) = .ok p → p.den ρ = ((h ▸ t).den ρ)°) := by
+  intro A B t δ ds
+  induction t generalizing ρ δ ds with
   | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun _ => ⟨fun u hu => conv_false_den ρ u hu rfl, by noproj⟩
@@ -164,7 +164,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
       rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu; exact ⟨rfl, fun _ _ => rfl⟩, by noproj⟩
   | conv R _ =>
     refine fun _ => ⟨fun u hu => ?_, by noproj⟩
-    by_cases h : (Tm.conv R).dem = false
+    by_cases h : (Tm.conv R).dem δ ds = false
     · exact conv_false_den ρ u hu h
     · cases R <;> simp [Tm.dem] at h <;>
         (rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu; exact ⟨rfl, fun _ _ => rfl⟩)
@@ -178,9 +178,9 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
   | outr =>
     refine fun _ => ⟨by noconv, fun A₁ A₂ h p hp => ?_⟩
     cases h; dsimp only at hp ⊢; unfold convProj at hp; cases hp; exact Core.Rel.id_comp _
-  | @var A B d k =>
+  | @var A B k =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
-    by_cases hd : (Tm.var d k : Tm A B).dem = false
+    by_cases hd : (Tm.var k : Tm A B).dem δ ds = false
     · exact conv_false_den ρ u hu hd
     rw [convTm.eq_def, if_neg hd] at hu; cases hu; exact ⟨hok, fun _ _ => rfl⟩
   | prim r =>
@@ -198,7 +198,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
     · cases hu; exact ⟨rfl, fun _ _ => rfl⟩
   | @call A B ks c cv os b ih =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
-    by_cases hd : (Tm.call ks c cv os b : Tm A B).dem = false
+    by_cases hd : (Tm.call ks c cv os b : Tm A B).dem δ ds = false
     · exact conv_false_den ρ u hu hd
     rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
     cases cv with
@@ -218,87 +218,88 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
       · rw [if_neg e] at hu
         have hok' : ∀ ss, b.ConvOK (Val.args ks ss) := by
           unfold Tm.ConvOK at hok; rwa [if_neg e] at hok
-        cases hb : convTm b with
+        cases hb : convTm (Dem.args ks ds) [] b with
         | error l => simp only [hb] at hu; cases hu
         | ok u₁ =>
           simp only [hb] at hu; cases hu
-          exact ⟨((ih (Val.args ks []) (hok' [])).1 u₁ hb).1, fun _ ss => ((ih (Val.args ks ss) (hok' ss)).1 u₁ hb).1⟩
+          exact ⟨((ih (Val.args ks []) (Dem.args ks ds) [] (hok' [])).1 u₁ hb).1,
+            fun _ ss => ((ih (Val.args ks ss) (Dem.args ks ds) [] (hok' ss)).1 u₁ hb).1⟩
   | arg f x ihf _ =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
-    by_cases hd : (Tm.arg f x).dem = false
+    by_cases hd : (Tm.arg f x).dem δ ds = false
     · exact conv_false_den ρ u hu hd
     rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
-    by_cases hd' : f.dem = true
+    by_cases hd' : f.dem δ (x.dem δ [] :: ds) = true
     case neg => rw [if_neg hd'] at hu; cases hu
     rw [if_pos hd'] at hu
-    cases hf : convTm f with
+    cases hf : convTm δ (x.dem δ [] :: ds) f with
     | error l => simp only [hf] at hu; cases hu
     | ok f' =>
       -- `convTm`'s match on `f'` is dependent, so `split` cannot see it: case on `f'`, each branch's bind reduced
       simp only [hf] at hu
       cases f' <;> (have hu := Except.ok.inj hu; subst hu) <;>
-        first | exact ⟨rfl, fun _ _ => rfl⟩ | exact ⟨((ihf ρ hok).1 _ hf).2 hd' _, fun _ _ => ((ihf ρ hok).1 _ hf).2 hd' _⟩
+        first | exact ⟨rfl, fun _ _ => rfl⟩ | exact ⟨((ihf ρ δ (x.dem δ [] :: ds) hok).1 _ hf).2 hd' _, fun _ _ => ((ihf ρ δ (x.dem δ [] :: ds) hok).1 _ hf).2 hd' _⟩
   | comp R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
-    · by_cases hd : (Tm.comp R S).dem = false
+    · by_cases hd : (Tm.comp R S).dem δ ds = false
       · exact conv_false_den ρ u hu hd
       rw [convTm.eq_def, if_neg hd] at hu
-      cases hS : convTm S with
+      cases hS : convTm δ [] S with
       | error l => simp only [hS] at hu; cases hu
       | ok s =>
-        cases hR : convTm R with
+        cases hR : convTm δ [] R with
         | error l => simp only [hS, hR] at hu; cases hu
         | ok r =>
           simp only [hS, hR] at hu; cases hu
-          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ hok.2).1 _ hS).1
-          have hr : r.den ρ = (R.den ρ)° := ((ihR ρ hok.1).1 _ hR).1
+          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ δ [] hok.2).1 _ hS).1
+          have hr : r.den ρ = (R.den ρ)° := ((ihR ρ δ [] hok.1).1 _ hR).1
           refine ⟨?_, fun _ _ => rfl⟩
           show s.den ρ ≫ r.den ρ = _; rw [hs, hr]; exact (recip_comp' _ _).symm
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      cases hS : convTm S with
+      cases hS : convTm δ [] S with
       | error l => simp only [hS] at hp; cases hp
       | ok s =>
-        cases hR : convProj R with
+        cases hR : convProj δ R with
         | error l => simp only [hS, hR] at hp; cases hp
         | ok x =>
           simp only [hS, hR] at hp; cases hp
-          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ hok.2).1 _ hS).1
-          rw [Proj.den_pre, hs, (ihR ρ hok.1).2 _ _ rfl x hR]; exact (recip_comp' _ _).symm
+          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ δ [] hok.2).1 _ hS).1
+          rw [Proj.den_pre, hs, (ihR ρ δ [] hok.1).2 _ _ rfl x hR]; exact (recip_comp' _ _).symm
   | join R S ihR ihS | diff R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, by noproj⟩
     -- `join` needs keys where either operand does, `diff` where `R` does (`Tm.dem`): the alternative of `hu`'s term
     first
-      | (by_cases hd : (Tm.join R S).dem = false
+      | (by_cases hd : (Tm.join R S).dem δ ds = false
          · exact conv_false_den ρ u hu hd
          rw [convTm.eq_def, if_neg hd] at hu)
-      | (by_cases hd : (Tm.diff R S).dem = false
+      | (by_cases hd : (Tm.diff R S).dem δ ds = false
          · exact conv_false_den ρ u hu hd
          rw [convTm.eq_def, if_neg hd] at hu)
-    cases hR : convTm R with
+    cases hR : convTm δ [] R with
     | error l => simp only [hR] at hu; cases hu
     | ok r =>
-      cases hS : convTm S with
+      cases hS : convTm δ [] S with
       | error l => simp only [hS, hR] at hu; cases hu
       | ok s =>
         simp only [hS, hR] at hu; cases hu
-        have hs : s.den ρ = (S.den ρ)° := ((ihS ρ hok.2).1 _ hS).1
-        have hr : r.den ρ = (R.den ρ)° := ((ihR ρ hok.1).1 _ hR).1
+        have hs : s.den ρ = (S.den ρ)° := ((ihS ρ δ [] hok.2).1 _ hS).1
+        have hr : r.den ρ = (R.den ρ)° := ((ihR ρ δ [] hok.1).1 _ hR).1
         refine ⟨?_, fun _ _ => rfl⟩
         first
           | (show r.den ρ ∪ s.den ρ = _; rw [hs, hr]; rfl)
           | (show diffDen (r.den ρ) (s.den ρ) = _; rw [hs, hr]; rfl)
   | @meet A' _ R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
-    · by_cases hd : (Tm.meet R S).dem = false
+    · by_cases hd : (Tm.meet R S).dem δ ds = false
       · exact conv_false_den ρ u hu hd
       rw [convTm.eq_def, if_neg hd] at hu
-      cases hR : convTm R with
+      cases hR : convTm δ [] R with
       | ok r =>
-        cases hS : convTm S with
+        cases hS : convTm δ [] S with
         | ok s =>
           simp only [hR, hS] at hu; cases hu
-          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ hok.2).1 _ hS).1
-          have hr : r.den ρ = (R.den ρ)° := ((ihR ρ hok.1).1 _ hR).1
+          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ δ [] hok.2).1 _ hS).1
+          have hr : r.den ρ = (R.den ρ)° := ((ihR ρ δ [] hok.1).1 _ hR).1
           refine ⟨?_, fun _ _ => rfl⟩
           show r.den ρ ∩ s.den ρ = _; rw [hs, hr]; rfl
         | error l =>
@@ -307,10 +308,10 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
           cases A' with
           | prod A₁ A₂ =>
             dsimp only at hu
-            cases hx : convProj R with
+            cases hx : convProj δ R with
             | error _ => simp [hx] at hu
             | ok x =>
-              cases hy : convProj S with
+              cases hy : convProj δ S with
               | error _ => simp [hx, hy] at hu
               | ok y =>
                 cases hm : Proj.meet x y with
@@ -318,7 +319,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
                 | inl t =>
                   simp only [hx, hy, hm] at hu; cases hu
                   refine ⟨?_, fun _ => Proj.meet_argDen _ _ _ hm ρ⟩
-                  rw [(Proj.den_meet ρ x y).1 _ hm, (ihR ρ hok.1).2 _ _ rfl x hx, (ihS ρ hok.2).2 _ _ rfl y hy]; rfl
+                  rw [(Proj.den_meet ρ x y).1 _ hm, (ihR ρ δ [] hok.1).2 _ _ rfl x hx, (ihS ρ δ [] hok.2).2 _ _ rfl y hy]; rfl
           | _ => simp at hu
       | error l =>
         simp only [hR] at hu
@@ -326,10 +327,10 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
         cases A' with
         | prod A₁ A₂ =>
           dsimp only at hu
-          cases hx : convProj R with
+          cases hx : convProj δ R with
           | error _ => simp [hx] at hu
           | ok x =>
-            cases hy : convProj S with
+            cases hy : convProj δ S with
             | error _ => simp [hx, hy] at hu
             | ok y =>
               cases hm : Proj.meet x y with
@@ -337,31 +338,31 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
               | inl t =>
                 simp only [hx, hy, hm] at hu; cases hu
                 refine ⟨?_, fun _ => Proj.meet_argDen _ _ _ hm ρ⟩
-                rw [(Proj.den_meet ρ x y).1 _ hm, (ihR ρ hok.1).2 _ _ rfl x hx, (ihS ρ hok.2).2 _ _ rfl y hy]; rfl
+                rw [(Proj.den_meet ρ x y).1 _ hm, (ihR ρ δ [] hok.1).2 _ _ rfl x hx, (ihS ρ δ [] hok.2).2 _ _ rfl y hy]; rfl
         | _ => simp at hu
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      cases hx : convProj R with
+      cases hx : convProj δ R with
       | error l => simp only [hx] at hp; cases hp
       | ok x =>
-        cases hy : convProj S with
+        cases hy : convProj δ S with
         | error l => simp only [hx, hy] at hp; cases hp
         | ok y =>
           cases hm : Proj.meet x y with
           | inl _ => rw [hx, hy] at hp; dsimp only [Bind.bind, Except.bind] at hp; rw [hm] at hp; cases hp
           | inr z =>
             rw [hx, hy] at hp; dsimp only [Bind.bind, Except.bind] at hp; rw [hm] at hp; cases hp
-            rw [(Proj.den_meet ρ x y).2 _ hm, (ihR ρ hok.1).2 _ _ rfl x hx, (ihS ρ hok.2).2 _ _ rfl y hy]; rfl
+            rw [(Proj.den_meet ρ x y).2 _ hm, (ihR ρ δ [] hok.1).2 _ _ rfl x hx, (ihS ρ δ [] hok.2).2 _ _ rfl y hy]; rfl
   | @pair A' _ _ R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
-    · by_cases hd : (Tm.pair R S).dem = false
+    · by_cases hd : (Tm.pair R S).dem δ ds = false
       · exact conv_false_den ρ u hu hd
       rw [convTm.eq_def, if_neg hd] at hu
-      cases hR : convTm R with
+      cases hR : convTm δ [] R with
       | ok r =>
-        have hr := ((ihR ρ hok.1).1 _ hR).1
-        cases hS : convTm S with
+        have hr := ((ihR ρ δ [] hok.1).1 _ hR).1
+        cases hS : convTm δ [] S with
         | ok s =>
-          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ hok.2).1 _ hS).1
+          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ δ [] hok.2).1 _ hS).1
           simp only [hR, hS] at hu; cases hu
           refine ⟨?_, fun _ _ => rfl⟩
           show graph Prod.fst ≫ r.den ρ ∩ graph Prod.snd ≫ s.den ρ = _; rw [hr, hs]; exact recip_rpair _ _
@@ -382,9 +383,9 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
           · rintro ⟨h1, h2⟩
             exact ⟨a, q.2, ⟨⟨q.1, rfl, h1⟩, rfl⟩, a, q.2, ⟨⟨rfl, rfl⟩, q.2, ⟨rfl, a, rfl, h2⟩, rfl, a, rfl, h2⟩, rfl⟩
       | error l =>
-        cases hS : convTm S with
+        cases hS : convTm δ [] S with
         | ok s =>
-          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ hok.2).1 _ hS).1
+          have hs : s.den ρ = (S.den ρ)° := ((ihS ρ δ [] hok.2).1 _ hS).1
           simp only [hR, hS] at hu; cases hu
           refine ⟨?_, fun _ _ => rfl⟩
           -- `⟨π₁,π₂S°⟩ swap τ(R) swap π₂`: `(b,c) ↦ (b,a) ↦ (a,b) ↦ (b,a) ↦ a` with `a S c` and `a R b`
@@ -409,10 +410,10 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
           cases A' with
           | prod A₁ A₂ =>
             dsimp only at hu
-            cases hx : convProj R with
+            cases hx : convProj δ R with
             | error _ => simp [hx] at hu
             | ok x =>
-              cases hy : convProj S with
+              cases hy : convProj δ S with
               | error _ => simp [hx, hy] at hu
               | ok y =>
                 cases hm : Proj.meet (Proj.pre .outl x) (Proj.pre .outr y) with
@@ -420,23 +421,23 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
                 | inl t =>
                   simp only [hx, hy, hm] at hu; cases hu
                   refine ⟨?_, fun _ => Proj.meet_argDen _ _ _ hm ρ⟩
-                  rw [(Proj.den_meet ρ _ _).1 _ hm, Proj.den_pre, Proj.den_pre, (ihR ρ hok.1).2 _ _ rfl x hx,
-                    (ihS ρ hok.2).2 _ _ rfl y hy]
+                  rw [(Proj.den_meet ρ _ _).1 _ hm, Proj.den_pre, Proj.den_pre, (ihR ρ δ [] hok.1).2 _ _ rfl x hx,
+                    (ihS ρ δ [] hok.2).2 _ _ rfl y hy]
                   exact recip_rpair _ _
           | _ => simp at hu
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      cases hx : convProj R with
+      cases hx : convProj δ R with
       | error l => simp only [hx] at hp; cases hp
       | ok x =>
-        cases hy : convProj S with
+        cases hy : convProj δ S with
         | error l => simp only [hx, hy] at hp; cases hp
         | ok y =>
           cases hm : Proj.meet (Proj.pre .outl x) (Proj.pre .outr y) with
           | inl _ => rw [hx, hy] at hp; dsimp only [Bind.bind, Except.bind] at hp; rw [hm] at hp; cases hp
           | inr z =>
             rw [hx, hy] at hp; dsimp only [Bind.bind, Except.bind] at hp; rw [hm] at hp; cases hp
-            rw [(Proj.den_meet ρ _ _).2 _ hm, Proj.den_pre, Proj.den_pre, (ihR ρ hok.1).2 _ _ rfl x hx,
-              (ihS ρ hok.2).2 _ _ rfl y hy]
+            rw [(Proj.den_meet ρ _ _).2 _ hm, Proj.den_pre, Proj.den_pre, (ihR ρ δ [] hok.1).2 _ _ rfl x hx,
+              (ihS ρ δ [] hok.2).2 _ _ rfl y hy]
             exact recip_rpair _ _
 
 /-! ### `convTm` through `Tm.instObj`: a call's converse body means the converse of its body
@@ -509,9 +510,9 @@ theorem Proj.instObj_meet_inr (ph : List Rel.QAtomicType) (σ : List Obj) {B A�
 
 /-- `conv_false_den` through `Tm.instObj`: a term that needs no keys is conversed whole. -/
 theorem inst_false_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val) {A B : Obj} {t : Tm A B} {t' : Tm (A.inst ph σ) (B.inst ph σ)} {u : Tm B A}
-    {u' : Tm (B.inst ph σ) (A.inst ph σ)} (h : t.dem = false) (hu : convTm t = .ok u) (hu' : u.instObj ph σ = .ok u')
+    {u' : Tm (B.inst ph σ) (A.inst ph σ)} {δ ds} (h : t.dem δ ds = false) (hu : convTm δ ds t = .ok u) (hu' : u.instObj ph σ = .ok u')
     (ht : t.instObj ph σ = .ok t') :
-    u'.den ρ = (t'.den ρ)° ∧ (t.dem = true → ∀ ss, u'.argDen ρ ss = (t'.argDen ρ ss)°) := by
+    u'.den ρ = (t'.den ρ)° ∧ (t.dem δ ds = true → ∀ ss, u'.argDen ρ ss = (t'.argDen ρ ss)°) := by
   rw [convTm_of_false h] at hu; cases hu
   simp only [Tm.instObj, bind_ok_iff, pure_ok_iff, ht, Except.ok.injEq, exists_eq_left'] at hu'
   subst hu'; exact ⟨rfl, fun h' => absurd (h.symm.trans h') Bool.false_ne_true⟩
@@ -524,14 +525,14 @@ macro "noconv'" : tactic =>
 /-- **`convTm_den` at the objects `σ`**: `u = convTm t`, both instantiated (`Tm.instObj ph σ`), `u` means the converse
     of `t` wherever the instantiated `t` is `ConvOK`; and the same of `convProj`. Every constructor `instObj`
     handles, by the case of `convTm` the term at the placeholders took. -/
-theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val) : ∀ {A B : Obj} (t : Tm A B) (t' : Tm (A.inst ph σ) (B.inst ph σ)),
+theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val) : ∀ {A B : Obj} (t : Tm A B) (δ : Dem) (ds : List Bool) (t' : Tm (A.inst ph σ) (B.inst ph σ)),
     t.instObj ph σ = .ok t' → t'.ConvOK ρ →
-    (∀ u u', convTm t = .ok u → u.instObj ph σ = .ok u' →
-      u'.den ρ = (t'.den ρ)° ∧ (t.dem = true → ∀ ss, u'.argDen ρ ss = (t'.argDen ρ ss)°)) ∧
-    (∀ A₁ A₂ (h : A = .prod A₁ A₂) p p', convProj (h ▸ t) = .ok p → p.instObj ph σ = .ok p' →
+    (∀ u u', convTm δ ds t = .ok u → u.instObj ph σ = .ok u' →
+      u'.den ρ = (t'.den ρ)° ∧ (t.dem δ ds = true → ∀ ss, u'.argDen ρ ss = (t'.argDen ρ ss)°)) ∧
+    (∀ A₁ A₂ (h : A = .prod A₁ A₂) p p', convProj δ (h ▸ t) = .ok p → p.instObj ph σ = .ok p' →
       p'.den ρ = ((h ▸ t' : Tm ((Obj.prod A₁ A₂).inst ph σ) (B.inst ph σ)).den ρ)°) := by
-  intro A B t
-  induction t generalizing ρ with
+  intro A B t δ ds
+  induction t generalizing ρ δ ds with
   | val _ | uni _ | zero | ldiv _ _ _ _ _ _ _ _ | rdiv _ _ _ _ _ _ _ _
   | nu _ _ _ _ _ | mu _ _ _ _ _ =>
     exact fun t' ht _ => ⟨fun u u' hu hu' => inst_false_den ph σ ρ rfl hu hu' ht, by noproj'⟩
@@ -549,7 +550,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     exact ⟨rfl, fun _ _ => rfl⟩
   | conv R _ =>
     refine fun t' ht _ => ⟨fun u u' hu hu' => ?_, by noproj'⟩
-    by_cases hd : (Tm.conv R).dem = false
+    by_cases hd : (Tm.conv R).dem δ ds = false
     · exact inst_false_den ph σ ρ hd hu hu' ht
     cases R <;> simp [Tm.dem] at hd <;>
       (rw [convTm.eq_def, if_neg (by simp [Tm.dem])] at hu; cases hu
@@ -565,9 +566,9 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     cases h; dsimp only at hp ⊢; unfold convProj at hp; cases hp
     simp only [Tm.instObj, Proj.instObj, bind_ok_iff, pure_ok_iff] at ht hp'
     obtain ⟨_, rfl, rfl⟩ := hp'; subst ht; exact Core.Rel.id_comp _
-  | @var A B d k =>
+  | @var A B k =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
-    by_cases hd : (Tm.var d k : Tm A B).dem = false
+    by_cases hd : (Tm.var k : Tm A B).dem δ ds = false
     · exact inst_false_den ph σ ρ hd hu hu' ht
     rw [convTm.eq_def, if_neg hd] at hu; cases hu
     simp only [Tm.instObj, pure_ok_iff] at ht hu'; subst ht hu'; exact ⟨hok, fun _ _ => rfl⟩
@@ -588,7 +589,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       exact ⟨rfl, fun _ _ => rfl⟩
   | @call A B ks c cv os b ih =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
-    by_cases hd : (Tm.call ks c cv os b : Tm A B).dem = false
+    by_cases hd : (Tm.call ks c cv os b : Tm A B).dem δ ds = false
     · exact inst_false_den ph σ ρ hd hu hu' ht
     rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht
@@ -613,23 +614,23 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       · rw [if_neg e] at hu
         have hok' : ∀ ss, b'.ConvOK (Val.args ks ss) := by
           unfold Tm.ConvOK at hok; rwa [if_neg e] at hok
-        cases hc : convTm b with
+        cases hc : convTm (Dem.args ks ds) [] b with
         | error l => simp only [hc] at hu; cases hu
         | ok u₁ =>
           simp only [hc] at hu; cases hu
           simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨u₁', hu₁', rfl⟩ := hu'
-          exact ⟨((ih (Val.args ks []) _ hb (hok' [])).1 u₁ u₁' hc hu₁').1,
-            fun _ ss => ((ih (Val.args ks ss) _ hb (hok' ss)).1 u₁ u₁' hc hu₁').1⟩
+          exact ⟨((ih (Val.args ks []) (Dem.args ks ds) [] _ hb (hok' [])).1 u₁ u₁' hc hu₁').1,
+            fun _ ss => ((ih (Val.args ks ss) (Dem.args ks ds) [] _ hb (hok' ss)).1 u₁ u₁' hc hu₁').1⟩
   | arg f x ihf _ =>
     refine fun t' ht hok => ⟨fun u u' hu hu' => ?_, by noproj'⟩
-    by_cases hd : (Tm.arg f x).dem = false
+    by_cases hd : (Tm.arg f x).dem δ ds = false
     · exact inst_false_den ph σ ρ hd hu hu' ht
     rw [convTm.eq_def, if_neg hd] at hu; dsimp only at hu
-    by_cases hd' : f.dem = true
+    by_cases hd' : f.dem δ (x.dem δ [] :: ds) = true
     case neg => rw [if_neg hd'] at hu; cases hu
     rw [if_pos hd'] at hu
-    cases hf : convTm f with
+    cases hf : convTm δ (x.dem δ [] :: ds) f with
     | error l => simp only [hf] at hu; cases hu
     | ok f₀ =>
       simp only [hf, bind_ok_iff] at hu; obtain ⟨_, ⟨⟩, hu⟩ := hu; split at hu <;> cases hu
@@ -642,7 +643,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       obtain ⟨F', hF, x', hx, rfl⟩ := ht
       obtain ⟨f', hf', x'', hx', rfl⟩ := hu'
       rw [hx] at hx'; cases hx'
-      have e := ((ihf ρ F' hF hok).1 f₀ f' hf hf').2 hd'
+      have e := ((ihf ρ δ (x.dem δ [] :: ds) F' hF hok).1 f₀ f' hf hf').2 hd'
       exact ⟨e _, fun _ _ => e _⟩
   | comp R S ihR ihS =>
     refine fun t' ht hok => ?_
@@ -650,33 +651,33 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht
     obtain ⟨R', hR', S', hS', rfl⟩ := ht
     refine ⟨fun u u' hu hu' => ?_, fun A₁ A₂ h p p' hp hp' => ?_⟩
-    · by_cases hd : (Tm.comp R S).dem = false
+    · by_cases hd : (Tm.comp R S).dem δ ds = false
       · exact inst_false_den ph σ ρ hd hu hu' ht0
       rw [convTm.eq_def, if_neg hd] at hu
-      cases hS : convTm S with
+      cases hS : convTm δ [] S with
       | error l => simp only [hS] at hu; cases hu
       | ok s =>
-        cases hR : convTm R with
+        cases hR : convTm δ [] R with
         | error l => simp only [hS, hR] at hu; cases hu
         | ok r =>
           simp only [hS, hR] at hu; cases hu
           simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨s', hs', r', hr', rfl⟩ := hu'
-          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ S' hS' hok.2).1 _ _ hS hs').1
-          have hr : r'.den ρ = (R'.den ρ)° := ((ihR ρ R' hR' hok.1).1 _ _ hR hr').1
+          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ δ [] S' hS' hok.2).1 _ _ hS hs').1
+          have hr : r'.den ρ = (R'.den ρ)° := ((ihR ρ δ [] R' hR' hok.1).1 _ _ hR hr').1
           refine ⟨?_, fun _ _ => rfl⟩
           show s'.den ρ ≫ r'.den ρ = _; rw [hs, hr]; exact (recip_comp' _ _).symm
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      cases hS : convTm S with
+      cases hS : convTm δ [] S with
       | error l => simp only [hS] at hp; cases hp
       | ok s =>
-        cases hR : convProj R with
+        cases hR : convProj δ R with
         | error l => simp only [hS, hR] at hp; cases hp
         | ok x =>
           simp only [hS, hR] at hp; cases hp
           obtain ⟨s', x', hs', hx', rfl⟩ := Proj.instObj_pre ph σ s x hp'
-          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ S' hS' hok.2).1 _ _ hS hs').1
-          rw [Proj.den_pre, hs, (ihR ρ R' hR' hok.1).2 _ _ rfl x x' hR hx']; exact (recip_comp' _ _).symm
+          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ δ [] S' hS' hok.2).1 _ _ hS hs').1
+          rw [Proj.den_pre, hs, (ihR ρ δ [] R' hR' hok.1).2 _ _ rfl x x' hR hx']; exact (recip_comp' _ _).symm
   | join R S ihR ihS | diff R S ihR ihS =>
     refine fun t' ht hok => ?_
     have ht0 := ht
@@ -684,23 +685,23 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     obtain ⟨R', hR', S', hS', rfl⟩ := ht
     refine ⟨fun u u' hu hu' => ?_, by noproj'⟩
     first
-      | (by_cases hd : (Tm.join R S).dem = false
+      | (by_cases hd : (Tm.join R S).dem δ ds = false
          · exact inst_false_den ph σ ρ hd hu hu' ht0
          rw [convTm.eq_def, if_neg hd] at hu)
-      | (by_cases hd : (Tm.diff R S).dem = false
+      | (by_cases hd : (Tm.diff R S).dem δ ds = false
          · exact inst_false_den ph σ ρ hd hu hu' ht0
          rw [convTm.eq_def, if_neg hd] at hu)
-    cases hR : convTm R with
+    cases hR : convTm δ [] R with
     | error l => simp only [hR] at hu; cases hu
     | ok r =>
-      cases hS : convTm S with
+      cases hS : convTm δ [] S with
       | error l => simp only [hS, hR] at hu; cases hu
       | ok s =>
         simp only [hS, hR] at hu; cases hu
         simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at hu'
         obtain ⟨r', hr', s', hs', rfl⟩ := hu'
-        have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ S' hS' hok.2).1 _ _ hS hs').1
-        have hr : r'.den ρ = (R'.den ρ)° := ((ihR ρ R' hR' hok.1).1 _ _ hR hr').1
+        have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ δ [] S' hS' hok.2).1 _ _ hS hs').1
+        have hr : r'.den ρ = (R'.den ρ)° := ((ihR ρ δ [] R' hR' hok.1).1 _ _ hR hr').1
         refine ⟨?_, fun _ _ => rfl⟩
         first
           | (show r'.den ρ ∪ s'.den ρ = _; rw [hs, hr]; rfl)
@@ -711,18 +712,18 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht
     obtain ⟨R', hR', S', hS', rfl⟩ := ht
     refine ⟨fun u u' hu hu' => ?_, fun A₁ A₂ h p p' hp hp' => ?_⟩
-    · by_cases hd : (Tm.meet R S).dem = false
+    · by_cases hd : (Tm.meet R S).dem δ ds = false
       · exact inst_false_den ph σ ρ hd hu hu' ht0
       rw [convTm.eq_def, if_neg hd] at hu
-      cases hR : convTm R with
+      cases hR : convTm δ [] R with
       | ok r =>
-        cases hS : convTm S with
+        cases hS : convTm δ [] S with
         | ok s =>
           simp only [hR, hS] at hu; cases hu
           simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨r', hr', s', hs', rfl⟩ := hu'
-          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ S' hS' hok.2).1 _ _ hS hs').1
-          have hr : r'.den ρ = (R'.den ρ)° := ((ihR ρ R' hR' hok.1).1 _ _ hR hr').1
+          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ δ [] S' hS' hok.2).1 _ _ hS hs').1
+          have hr : r'.den ρ = (R'.den ρ)° := ((ihR ρ δ [] R' hR' hok.1).1 _ _ hR hr').1
           refine ⟨?_, fun _ _ => rfl⟩
           show r'.den ρ ∩ s'.den ρ = _; rw [hs, hr]; rfl
         | error l =>
@@ -731,10 +732,10 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
           cases A' with
           | prod A₁ A₂ =>
             dsimp only at hu
-            cases hx : convProj R with
+            cases hx : convProj δ R with
             | error _ => simp [hx] at hu
             | ok x =>
-              cases hy : convProj S with
+              cases hy : convProj δ S with
               | error _ => simp [hx, hy] at hu
               | ok y =>
                 cases hm : Proj.meet x y with
@@ -744,7 +745,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
                   obtain ⟨x', y', hx', hy', hm'⟩ := Proj.instObj_meet_inl ph σ x y hm hu'
                   refine ⟨?_, fun _ => Proj.meet_argDen _ _ _ hm' ρ⟩
                   exact ((Proj.den_meet ρ x' y').1 _ hm').trans (by
-                    rw [(ihR ρ R' hR' hok.1).2 _ _ rfl x x' hx hx', (ihS ρ S' hS' hok.2).2 _ _ rfl y y' hy hy']; rfl)
+                    rw [(ihR ρ δ [] R' hR' hok.1).2 _ _ rfl x x' hx hx', (ihS ρ δ [] S' hS' hok.2).2 _ _ rfl y y' hy hy']; rfl)
           | _ => simp at hu
       | error l =>
         simp only [hR] at hu
@@ -752,10 +753,10 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
         cases A' with
         | prod A₁ A₂ =>
           dsimp only at hu
-          cases hx : convProj R with
+          cases hx : convProj δ R with
           | error _ => simp [hx] at hu
           | ok x =>
-            cases hy : convProj S with
+            cases hy : convProj δ S with
             | error _ => simp [hx, hy] at hu
             | ok y =>
               cases hm : Proj.meet x y with
@@ -765,13 +766,13 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
                 obtain ⟨x', y', hx', hy', hm'⟩ := Proj.instObj_meet_inl ph σ x y hm hu'
                 refine ⟨?_, fun _ => Proj.meet_argDen _ _ _ hm' ρ⟩
                 exact ((Proj.den_meet ρ x' y').1 _ hm').trans (by
-                  rw [(ihR ρ R' hR' hok.1).2 _ _ rfl x x' hx hx', (ihS ρ S' hS' hok.2).2 _ _ rfl y y' hy hy']; rfl)
+                  rw [(ihR ρ δ [] R' hR' hok.1).2 _ _ rfl x x' hx hx', (ihS ρ δ [] S' hS' hok.2).2 _ _ rfl y y' hy hy']; rfl)
         | _ => simp at hu
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      cases hx : convProj R with
+      cases hx : convProj δ R with
       | error l => simp only [hx] at hp; cases hp
       | ok x =>
-        cases hy : convProj S with
+        cases hy : convProj δ S with
         | error l => simp only [hx, hy] at hp; cases hp
         | ok y =>
           cases hm : Proj.meet x y with
@@ -779,26 +780,26 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
           | inr z =>
             rw [hx, hy] at hp; dsimp only [Bind.bind, Except.bind] at hp; rw [hm] at hp; cases hp
             obtain ⟨x', y', hx', hy', hm'⟩ := Proj.instObj_meet_inr ph σ x y hm hp'
-            rw [(Proj.den_meet ρ x' y').2 _ hm', (ihR ρ R' hR' hok.1).2 _ _ rfl x x' hx hx',
-              (ihS ρ S' hS' hok.2).2 _ _ rfl y y' hy hy']; rfl
+            rw [(Proj.den_meet ρ x' y').2 _ hm', (ihR ρ δ [] R' hR' hok.1).2 _ _ rfl x x' hx hx',
+              (ihS ρ δ [] S' hS' hok.2).2 _ _ rfl y y' hy hy']; rfl
   | @pair A' _ _ R S ihR ihS =>
     refine fun t' ht hok => ?_
     have ht0 := ht
     simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht
     obtain ⟨R', hR', S', hS', rfl⟩ := ht
     refine ⟨fun u u' hu hu' => ?_, fun A₁ A₂ h p p' hp hp' => ?_⟩
-    · by_cases hd : (Tm.pair R S).dem = false
+    · by_cases hd : (Tm.pair R S).dem δ ds = false
       · exact inst_false_den ph σ ρ hd hu hu' ht0
       rw [convTm.eq_def, if_neg hd] at hu
-      cases hR : convTm R with
+      cases hR : convTm δ [] R with
       | ok r =>
-        have hr' := fun r' (h : r.instObj ph σ = .ok r') => ((ihR ρ R' hR' hok.1).1 _ r' hR h).1
-        cases hS : convTm S with
+        have hr' := fun r' (h : r.instObj ph σ = .ok r') => ((ihR ρ δ [] R' hR' hok.1).1 _ r' hR h).1
+        cases hS : convTm δ [] S with
         | ok s =>
           simp only [hR, hS] at hu; cases hu
           simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨_, ⟨_, rfl, r', hr, rfl⟩, _, ⟨_, rfl, s', hs', rfl⟩, rfl⟩ := hu'
-          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ S' hS' hok.2).1 _ _ hS hs').1
+          have hs : s'.den ρ = (S'.den ρ)° := ((ihS ρ δ [] S' hS' hok.2).1 _ _ hS hs').1
           refine ⟨?_, fun _ _ => rfl⟩
           show graph Prod.fst ≫ r'.den ρ ∩ graph Prod.snd ≫ s'.den ρ = _; rw [hr' r' hr, hs]; exact recip_rpair _ _
         | error l =>
@@ -822,9 +823,9 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
           · rintro ⟨h1, h2⟩
             exact ⟨a, q.2, ⟨⟨q.1, rfl, h1⟩, rfl⟩, a, q.2, ⟨⟨rfl, rfl⟩, q.2, ⟨rfl, a, rfl, h2⟩, rfl, a, rfl, h2⟩, rfl⟩
       | error l =>
-        cases hS : convTm S with
+        cases hS : convTm δ [] S with
         | ok s =>
-          have hs := fun s' (h : s.instObj ph σ = .ok s') => ((ihS ρ S' hS' hok.2).1 _ s' hS h).1
+          have hs := fun s' (h : s.instObj ph σ = .ok s') => ((ihS ρ δ [] S' hS' hok.2).1 _ s' hS h).1
           simp only [hR, hS] at hu; cases hu
           simp only [Tm.instObj, ↓Tm.instObj_dom, pairTest, swapTm, bind_ok_iff, pure_ok_iff] at hu'
           obtain ⟨_, ⟨_, rfl, _, ⟨_, rfl, s', hs', rfl⟩, rfl⟩, _, ⟨_, ⟨_, rfl, _, rfl, rfl⟩, _,
@@ -854,10 +855,10 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
           cases A' with
           | prod A₁ A₂ =>
             dsimp only at hu
-            cases hx : convProj R with
+            cases hx : convProj δ R with
             | error _ => simp [hx] at hu
             | ok x =>
-              cases hy : convProj S with
+              cases hy : convProj δ S with
               | error _ => simp [hx, hy] at hu
               | ok y =>
                 cases hm : Proj.meet (Proj.pre .outl x) (Proj.pre .outr y) with
@@ -870,15 +871,15 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
                   simp only [Tm.instObj, pure_ok_iff] at ho₁ ho₂; subst ho₁ ho₂
                   refine ⟨?_, fun _ => Proj.meet_argDen _ _ _ hm' ρ⟩
                   exact ((Proj.den_meet ρ _ _).1 _ hm').trans (by
-                    rw [Proj.den_pre, Proj.den_pre, (ihR ρ R' hR' hok.1).2 _ _ rfl x x' hx hx',
-                      (ihS ρ S' hS' hok.2).2 _ _ rfl y y' hy hy']
+                    rw [Proj.den_pre, Proj.den_pre, (ihR ρ δ [] R' hR' hok.1).2 _ _ rfl x x' hx hx',
+                      (ihS ρ δ [] S' hS' hok.2).2 _ _ rfl y y' hy hy']
                     exact recip_rpair _ _)
           | _ => simp at hu
     · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      cases hx : convProj R with
+      cases hx : convProj δ R with
       | error l => simp only [hx] at hp; cases hp
       | ok x =>
-        cases hy : convProj S with
+        cases hy : convProj δ S with
         | error l => simp only [hx, hy] at hp; cases hp
         | ok y =>
           cases hm : Proj.meet (Proj.pre .outl x) (Proj.pre .outr y) with
@@ -889,8 +890,8 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
             obtain ⟨o₁, x', ho₁, hx', rfl⟩ := Proj.instObj_pre ph σ _ _ ha'
             obtain ⟨o₂, y', ho₂, hy', rfl⟩ := Proj.instObj_pre ph σ _ _ hb'
             simp only [Tm.instObj, pure_ok_iff] at ho₁ ho₂; subst ho₁ ho₂
-            rw [(Proj.den_meet ρ _ _).2 _ hm', Proj.den_pre, Proj.den_pre, (ihR ρ R' hR' hok.1).2 _ _ rfl x x' hx hx',
-              (ihS ρ S' hS' hok.2).2 _ _ rfl y y' hy hy']
+            rw [(Proj.den_meet ρ _ _).2 _ hm', Proj.den_pre, Proj.den_pre, (ihR ρ δ [] R' hR' hok.1).2 _ _ rfl x x' hx hx',
+              (ihS ρ δ [] S' hS' hok.2).2 _ _ rfl y y' hy hy']
             exact recip_rpair _ _
 
 
