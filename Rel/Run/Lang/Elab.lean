@@ -2760,6 +2760,10 @@ def build (δ : Dem) : Pre → Except Err Res
     -- to another (unbounded, `0…k`), the constant chose its rows' forms (`.prim`) for another object, so the expansion runs
     if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && numSeg objs (zonk mc u) != (false, false) then
       return ← build δ q
+    -- a variable whose universe the constant reads (`callArgs`) at an object with none (an array `[C]`): the constant
+    -- does not serve this call, so the expansion runs, each row there choosing its form at the call's objects
+    for (u, _, reads) in us do
+      if reads then if (← uniPart objs dp δ (zonk mc u) (← toObj objs mc dp u)).isNone then return ← build δ q
     -- a variable the constant is not generic over (built at `.long`) given another object: the constant does not
     -- serve this call, so the expansion runs at the call's objects, every number check at them (monomorphised)
     if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build δ q
