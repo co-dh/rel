@@ -601,10 +601,12 @@ theorem Vals.cellsOk_wf : {A : Obj} → {n : USize} → {x : Vals A n} → ValsB
     simp only [ValsB.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
   | .arr _, _, ⟨_, _, _, _⟩, h => by
     simp only [ValsB.cellsOk, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
-    exact ⟨cellBad_none.1 h.1, Vals.cellsOk_wf h.2⟩
+    exact ⟨trivial, trivial, fun i _ => cellBad_none.1 h.1 i,Vals.cellsOk_wf h.2⟩
   | .sum _ _, _, s, h => by
-    simp only [ValsB.cellsOk] at h; simp only [Vals.WF]
-    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> simp only [hv, Bool.false_eq_true] at h ⊢
+    simp only [ValsB.cellsOk] at h; simp only [Vals.WF, ValsB.WFOn]
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
+    · simp only [hv]; exact fun i hn => absurd trivial hn
+    · simp only [hv, Bool.false_eq_true] at h
 
 /-- **`Vals.nub` keeps `Vals.WF`**: its rows are `ValsB.gather`ed from `x`. -/
 theorem Vals.nub_wf {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
