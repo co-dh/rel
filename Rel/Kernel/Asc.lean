@@ -86,19 +86,20 @@ def ascWords (m : USize) : QAtomicType × Enc → Except String (Array UInt64)
 /-- What a key column of `kasc` and `kseen` holds, the column itself (an `Enc` of the key's rows) beside it. `atom t`:
 the column is words of type `t`, row `i` its word `i`. `cells n c lo hi els`: an `arr` side (`Obj.arr`) of `n` cells,
 `lo` and `hi` its two `i64` columns of `n` words and `els` the key columns of its payload of `c` rows; the column is
-words below `n`, row `i` the cell its word names, that cell the payload rows `j` with `lo ≤ j < hi`, clamped to
-`[0, c)` (`Vals.row`). The column is the only part `kasc` carries, so after a sort the cells stay where they were
+words below `n`, row `i` the cell its word names, that cell the payload rows `j` with `lo ≤ j < hi`, inside
+`[0, c)` (`Vals.WF`). The column is the only part `kasc` carries, so after a sort the cells stay where they were
 and the column names them in the new order: the sorted column is again a key of the same `cells`. -/
 inductive AscKey where
   | atom (t : QAtomicType)
   | cells (n c : USize) (lo hi : Enc) (els : List (AscKey × Enc))
 
-/-- The first payload row of cell `r`: its `lo` word as an `Int64`, clamped to `[0, c]`. -/
-def cellStart (c : Nat) (lo : Array UInt64) (r : UInt64) : Nat := min (max (lo[r.toNat]?.getD 0).toInt64.toInt 0).toNat c
+/-- The first payload row of cell `r`: its `lo` word as an `Int64`, unclamped, since a side's cells lie in its payload
+(`Vals.WF`, which `readVals` checks once). -/
+def cellStart (lo : Array UInt64) (r : UInt64) : Nat := (lo[r.toNat]?.getD 0).toInt64.toInt.toNat
 
-/-- The length of cell `r`: its `hi` word clamped to `c`, less `cellStart`; `0` where `hi` is not past `lo`. -/
-def cellLen (c : Nat) (lo hi : Array UInt64) (r : UInt64) : Nat :=
-  (min (hi[r.toNat]?.getD 0).toInt64.toInt (c : Int)).toNat - cellStart c lo r
+/-- The length of cell `r`: its `hi` word less `cellStart`; `0` where `hi` is not past `lo`. -/
+def cellLen (lo hi : Array UInt64) (r : UInt64) : Nat :=
+  (hi[r.toNat]?.getD 0).toInt64.toInt.toNat - cellStart lo r
 
 /-- The order codes of a `cells` key over `c` payload rows, each a function of a row's word `r` (the cell it names),
 the payload rows coded by the columns `xs`: per element position `j < c`, whether cell `r` reaches `j` (`1`, else `0`)
@@ -107,8 +108,8 @@ lexicographically by their elements' codes, a proper prefix first, and two rows 
 their cells have one length and equal codes element by element. Functions of the word alone, so a permuted column
 has the permuted codes; every cell lies in `[0, c)`, so `c` positions cover the longest. -/
 def cellFns (c : Nat) (lo hi : Array UInt64) (xs : List (Array UInt64)) : List (UInt64 → UInt64) :=
-  let s := cellStart c lo
-  let len := cellLen c lo hi
+  let s := cellStart lo
+  let len := cellLen lo hi
   (List.range c).flatMap fun j =>
     (fun r => if j < len r then 1 else 0) :: xs.map fun x r => if j < len r then x[s r + j]?.getD 0 else 0
 
