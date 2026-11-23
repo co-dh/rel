@@ -42,8 +42,9 @@ structure S where
   /-- The schemas `schema S from "dir"` reads, read from disk before the program is (`Embed.diskOf`, F1): each
       directory, its columns as the program writes them, and the atoms whose objects they are at. -/
   disk : List (String × List (String × OExp) × List Rel.QAtomicType) := []
-  /-- The columns `obj V from "dir" c` reads, read with `disk`: each `(dir, c)`, its distinct values in order. -/
-  diskVals : List ((String × String) × List Int) := []
+  /-- The columns `obj V from "dir" c` reads, read with `disk`: each `(dir, c)`, its atom and the stored words, distinct,
+      in the atom's order. -/
+  diskVals : List ((String × String) × (Rel.QAtomicType × List UInt64)) := []
   /-- The program's finite objects, each with its elements as a literal writes them, in order: what a product or
       schema generated over an object (`⟨v ∈ V ↦ e⟩`, `schema D = {c ∈ V : A}`, F1) ranges over. -/
   fin : List (String × List String) := []
@@ -225,7 +226,7 @@ def after (s : S) (prog : Program) : S := prog.foldl (init := s) fun s d => matc
   | .defn p k ps _ _ => { s with known := (k, ps.length) :: s.known, taken := (k, at_ p) :: s.taken }
   | .obj p n d =>
     let ws : Option (List String) := match d with
-      | .elems ws | .coded ws _ => some ws
+      | .elems ws | .coded _ ws _ => some ws
       | .range lo hi => some ((List.range (hi + 1 - lo).toNat).map fun k : Nat => toString (lo + k))
       | _ => none
     { s with objs := n :: s.objs, taken := (n, at_ p) :: s.taken, fin := (ws.map fun w => (n, w) :: s.fin).getD s.fin }

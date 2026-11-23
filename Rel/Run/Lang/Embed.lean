@@ -106,12 +106,12 @@ def stmt (s : Syntax) : C Decl := do
     let cs := ws.map fun w => (s!"{c}_{w}", o)
     if let .error m := Schema.check cs then failAt s[6] m
     pure (.schema cs)
-  -- each value named as a literal writes it at `i64` (`toString`), its code the value itself
+  -- each word named as a literal of its atom writes it (`wordText`), its code the word itself
   | ``sObjFrom => objDecl do
     let f ← path s[3]; let c ← wordOf s[4]
-    let some xs := (← get).diskVals.lookup (f, c)
+    let some (t, xs) := (← get).diskVals.lookup (f, c)
       | failAt s[3] s!"the column {c} of {f} was not read before the program (`Embed.diskOf`)"
-    pure (.coded (xs.map toString) xs)
+    pure (.coded t (xs.map (wordText t)) (xs.map (·.toInt64.toInt)))
   | ``sPrint => pure (.print p (← expr s[1]) (← binds s[2]))
   | ``sCheck => pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]))
   | ``sInput => do
@@ -224,13 +224,25 @@ def diskOf (ss : Array Syntax) (s₀ : Parse.S) : CommandElabM Parse.S := do
     match ← (Table.readSchema f).toBaseIO with
     | .error e => throwErrorAt s[3] "{e}"
     | .ok S => return some (f, S.map (fun (c, o) => (c, (oexpOf o).1)), (S.flatMap fun c => (oexpOf c.2).2).eraseDups)
-  -- `obj V from "dir" c`: the column's distinct values in ascending order, as `asc distinct` gives them
+  -- `obj V from "dir" c`: the column at the atom its `.d` names, its distinct words in the atom's order
+  -- (`Kernel.ascOrd`, as `asc distinct` gives them); an atom with no literal has no element to name (`litLayout`)
   let diskVals ← ss.toList.filterMapM fun s => do
     let some f := (if s.getKind == ``sObjFrom then s[3].isStrLit? else none) | return none
     let c := s[4][0].getId.toString (escape := false)
-    match ← (do let (_, ⟨_, x⟩) ← Table.readVals (.atom .i64) f c; IO.ofExcept (Table.frame x)).toBaseIO with
+    match ← (do
+      let some (.atom t) ← Table.objOf? f c
+        | throw (IO.userError s!"{f}: the column '{c}' is no atom column, and `obj V from` names the elements of one")
+      let some ord := if (litLayout t).isSome then Kernel.ascOrd t else none
+        | throw (IO.userError s!"obj V from {f} {c}: the column is at the atom {atomName t}, and no object of {atomName t} \
+            is declared: no literal of {atomName t} is stored")
+      let r ← Table.readVals (.atom t) f c
+      let tb : Tab .long (.atom t) ← IO.ofExcept (Table.frame (B := .atom t) r.2.2)
+      let ws ← tb.toList.mapM fun (kv : Obj.long.El × (Obj.atom t).El) => do
+        let some w := elWord t kv.2 | throw (IO.userError s!"{f}: {c} holds an element of {atomName t} with no stored word")
+        pure w
+      pure (t, (ws.eraseDups.toArray.qsort (ord · < ord ·)).toList)).toBaseIO with
     | .error e => throwErrorAt s[3] "{e}"
-    | .ok t => return some ((f, c), ((t.toList.map fun (_, v) => (v : Int64).toInt).eraseDups.toArray.qsort (· < ·)).toList)
+    | .ok r => return some ((f, c), r)
   return { s₀ with disk, diskVals }
 
 unsafe def programOfUnsafe (n : Name) : CommandElabM Program := do

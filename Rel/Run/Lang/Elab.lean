@@ -201,7 +201,7 @@ def floatText (w : Nat) (b : UInt64) : String :=
       else (if s.length == 1 then s else String.ofList (s.toList.take 1) ++ "." ++ String.ofList (s.toList.drop 1)) ++ s!"e{P}"
     (if neg then "-" else "") ++ body
 
-/-- The stored word of an element of the atom `t`, as `Arr.ofFn` takes it; none at `sym`, `general`, which have none. -/
+/-- The stored word of an element of the atom `t`, as `Arr.ofFn` takes it (a symbol is its 8-byte id); none at `general`, which has none. -/
 def elWord : (t : Rel.QAtomicType) → (Obj.atom t).El → Option UInt64
   | .u1, x => some (if (x : Bool) then 1 else 0)
   | .u8, x | .char, x => some (x : UInt8).toUInt64
@@ -210,8 +210,8 @@ def elWord : (t : Rel.QAtomicType) → (Obj.atom t).El → Option UInt64
   | .i8, x => some (x : Int8).toUInt8.toUInt64
   | .i64, x | .datetime, x => some (x : Int64).toUInt64
   | .f32, x => some (x : UInt32).toUInt64
-  | .f64, x => some (x : UInt64)
-  | .sym, _ | .general, _ => none
+  | .f64, x | .sym, x => some (x : UInt64)
+  | .general, _ => none
 
 /-- The word `x` of the atom `t` printed as `wordAt` reads it back: a float by `floatText`, a temporal atom as q
     shows it (`Db.Csv.cell`, the CSV's one text of the atom; an out-of-range one as its integer), an integer by its
@@ -1837,7 +1837,7 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
     -- a one-character string at a word's object is its `char` (`Tup.char?`)
     let rows := rows.map fun r => r.char?.elim r .leaf
     -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
-    if let .base m := o then if let some { num := true, ovar := false, obj := .atom t, .. } := objs.lookup m then
+    if let .base m := o then if let some { ovar := false, obj := .atom t, .. } := objs.lookup m then
       if t != .i64 then
         let ws ← rows.mapM fun
           | .leaf w => wordAt p m t w

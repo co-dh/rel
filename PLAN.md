@@ -400,8 +400,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   每列在以其 atom 命名的无界对象上；测试 `Rel/Lang/TestSchemaDisk.lean`。第 2 部分已做（df-F1b）：`obj V from "dir" c`
   （`ObjDef.coded`，元素保持存储的值，`ObjInfo.codes`）；有限对象上的积 `⟨v ∈ V ↦ e⟩` 与 `schema D = {c ∈ V : A}`（在
   `Grammar.expr`/`Embed.stmt` 里展开，无新 `Tm`）；库定义 `dummy`、`pivotCol`、`pivotOn`（`pivotWide` 改写为它们）；测试
-  `Rel/Lang/TestPivotDisk.lean`。未做：对象变量上的生成（`getDummies(c, x)` 本身对 `V` 泛型，要定义逐使用处展开）；
-  `obj V from` 只读 `i64` 列（`sym` 要字面量对象）；导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`；`readSide`
+  `Rel/Lang/TestPivotDisk.lean`。df-F1d 已做：`obj V from "dir" c` 读 `.d` 所命名 atom 的列（`ObjDef.coded` 带 atom，`ObjInfo.obj := .atom t`；元素是该列的不同存储字，按 `Kernel.ascOrd` 排序，名字是 `wordText`，与字面量同一读法；`elWord` 现包含 `sym`，其 id 即元素）；`u1`/`general` 无字面量，报 `no literal of u1 is stored`；非 `i64` 的有限对象无 universe；测试 date、f64、sym 的 `dummy`。未做：对象变量上的生成（`getDummies(c, x)` 本身对 `V` 泛型，要定义逐使用处展开）；
+  导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`；`readSide`
   不核对 `.d` 与声明的 schema。
 - 🔄 D.12 `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即
   组 id 与首次出现的位置；相等按 `kasc` 的序码（`-0.0 = 0.0`，所有 NaN 是同一个 key）。引擎：直接寻址（范围来自块元数据）
