@@ -616,6 +616,31 @@ mod kscan_tests {
             }
         }
     }
+    // a map against its op's unit (`+`/`-`/`*` with a seed of 0/0/1 or an `x` of 0/0/1, `first`, `last`) answers whole blocks
+    // of the other column by moving them: 3 blocks and a tail, `x` smooth and with patches, the unit on either side and
+    // on some blocks only; the bytes are the row model's
+    #[test] fn kscan_moves_blocks_of_the_other_side() {
+        use crate::enc::MOVED;
+        use core::sync::atomic::Ordering::Relaxed;
+        let n = 3500usize;
+        let ones = vec![1u64; n];
+        for patched in [false, true] {
+            let x = crate::testutil::column(n, patched);
+            // the unit on blocks 0 and 2 only (the rest is `x` itself, so the map is not a copy there)
+            let half: Vec<u64> = (0..n).map(|i| if (i >> 10) % 2 == 0 { 0 } else { x[i] }).collect();
+            for (op, u) in [(0u8, 0u64), (1, 0), (2, 1), (18, 0), (19, 0)] {
+                let unit = vec![u; n];
+                for (k, (a, b)) in [(&unit, &x), (&x, &unit), (&half, &x), (&x, &half)].into_iter().enumerate() {
+                    let es = [(enc_for(a, 8), a.clone()), (enc_for(b, 8), b.clone())];
+                    let before = MOVED.load(Relaxed);
+                    check(op, 6, 6, n, &ones, &es);
+                    // `sub` has a right unit only, and `half` is 0 where it is no unit of `mul`
+                    let moves = op >= 18 || k == 1 || (k == 0 && op != 1) || (k == 3 && op != 2);
+                    assert!(!moves || MOVED.load(Relaxed) > before, "op {op} case {k} patched {patched}: no block moved")
+                }
+            }
+        }
+    }
     // a step that can fail (`div`, `mod`, `rdiv`/`rmod` by 0) and an op reading its divisor from the carry are refused
     // before any column is read
     #[test] fn kscan_refuses_a_failing_chain_step() {

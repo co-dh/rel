@@ -69,6 +69,17 @@ def want (r : Except String (Array UInt64)) : String ⊕ (List UInt8 × List UIn
     want (gatherWords (idx.setIfInBounds 1050 1504) s)
 #guard view (kgather (u 1100) (col idx.toList) (u 1500) .pos) == want (gatherWords idx (til 1500))
 
+-- an index reading whole blocks of `e` in order (3000 rows: the positions, `.pos`, and the first two blocks swapped)
+-- answers them by moving, patched `e` or flat: the Rust against `gatherWords`, compiled
+def swp : Array UInt64 := (Array.range 3000).map fun k => (if k < 1024 then k + 1024 else if k < 2048 then k - 1024 else k).toUInt64
+def patched3 : Array UInt64 :=
+  (Array.range 3000).map fun i => (if i % 97 = 5 then i * 1000003 else 1000 + i * 7919 % 8000).toUInt64
+def flat3 : Array UInt64 := (Array.range 3000).map fun i => (i * 7919 % 4096).toUInt64
+#guard [patched3, flat3].all fun s =>
+  view (kgather (u 3000) .pos (u 3000) (col s.toList)) == want (gatherWords (til 3000) s) &&
+  view (kgather (u 3000) (col (til 3000).toList) (u 3000) (col s.toList)) == want (gatherWords (til 3000) s) &&
+  view (kgather (u 3000) (col swp.toList) (u 3000) (col s.toList)) == want (gatherWords swp s)
+
 /-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
 def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
   wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
