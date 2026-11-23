@@ -560,6 +560,15 @@ def csvWords (sep : UInt8) (cols : CsvCols) (b : List UInt8) : Except String (Na
   let rs ← rows cols b 0 recs.tail
   pure (recs.tail.length, wordsOf cols rs)
 
+/-- `csvRead`'s answer from the file's bytes `b`, which `Rel.Kernel.Db.CsvTest` sets beside the extern's: each of
+    `csvWords`' parts with its count as a `foR` of 8-byte words, the in-band nullable's two parts as one encoding. -/
+def csvEncs (sep : UInt8) (cols : CsvCols) (b : List UInt8) : Except String (Nat × List (USize × Enc)) := do
+  let (n, ws) ← csvWords sep cols b
+  return (n, (cols.zip (Csv.groups cols ws)).flatMap fun ((_, s, _), ps) => match s, ps with
+    -- the in-band nullable: its values under its flags' bitmap, one encoding
+    | .opt, [v, f] => [(v.size.toUSize, Kernel.wordsFoR v (Kernel.nulMap f))]
+    | _, ps => ps.map fun a => (a.size.toUSize, Kernel.wordsFoR a))
+
 /-- **The CSV reader**, IO export `qlean_csv_read` (IO design C.1): the file at `path` read under the schema `cols`, its
 fields split at `sep` (`,` CSV, `\t` TSV: one reader, `Csv.dialect`), as the row count and each column's parts (`CsvShape`), each with its count, as a `foR` of 8-byte words (`Kernel.wordsFoR`,
 `kscan`'s answer form), or the first refusal of `csvWords` after `{path}: `. The extern maps the file and reads it a
@@ -567,11 +576,8 @@ block at a time straight into each part's encoder (`crate/src/csv.rs`), never ho
 `Rel.Kernel.Db.CsvTest` runs it beside this body on every case of the table. -/
 @[extern "qlean_csv_read"]
 def csvRead (path : @& String) (cols : @& CsvCols) (sep : UInt8) : IO (USize × List (USize × Enc)) := do
-  let (n, ws) ← IO.ofExcept ((csvWords sep cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
-  return (n.toUSize, (cols.zip (Csv.groups cols ws)).flatMap fun ((_, s, _), ps) => match s, ps with
-    -- the in-band nullable: its values under its flags' bitmap, one encoding
-    | .opt, [v, f] => [(v.size.toUSize, Kernel.wordsFoR v (Kernel.nulMap f))]
-    | _, ps => ps.map fun a => (a.size.toUSize, Kernel.wordsFoR a))
+  let (n, es) ← IO.ofExcept ((csvEncs sep cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
+  return (n.toUSize, es)
 
 /-- The writer is given `k` parts, as many as the schema's columns are stored as (`CsvShape.parts`). -/
 def Csv.arity (cols : CsvCols) (k : Nat) (count : CsvShape → Nat := CsvShape.parts) : Except String Unit :=
