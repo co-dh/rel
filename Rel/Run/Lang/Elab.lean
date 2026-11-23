@@ -326,13 +326,11 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .inl => pure .inl
   | _, _, .inr => pure .inr
   | _, _, .prim r => pure (.prim r)
-  | _, _, .own R => return .own (← R.instObj ph σ)
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .share k R => return .share k (← R.instObj ph σ)
   | _, _, .var d k => pure (.var d k)
-  | _, _, .call ks c os b => return .call ks c (os.map (·.inst ph σ)) (← b.instObj ph σ)
-  | _, _, .callCv ks c c' os b u => return .callCv ks c c' (os.map (·.inst ph σ)) (← b.instObj ph σ) (← u.instObj ph σ)
+  | _, _, .call ks c cv os b => return .call ks c cv (os.map (·.inst ph σ)) (← b.instObj ph σ)
   | _, _, .arg f x => return .arg (← f.instObj ph σ) (← x.instObj ph σ)
   | _, _, .nu k S b => return .nu k (← S.instObj ph σ) (← b.instObj ph σ)
   | _, _, .mu k w n b => return .mu k w n (← b.instObj ph σ)
@@ -416,7 +414,6 @@ inductive Pre
   /-- The row `r` of `prims` at `s ⟶ t`, an instance of its type, given the relations `args` (`Prim.inst`); a row
       of `dfns` is the fused form of its definition, which `build` cuts to `t`'s universe. -/
   | prim (r : Prim) (args : List Pre) (s t : OTy)
-  | own (p : Pre)
   | succ (pos : Pos) (n : OTy)
   | arith (pos : Pos) (k : UInt8) (n : OTy)
   | leq (pos : Pos) (n : OTy)
@@ -439,12 +436,12 @@ inductive Pre
   /-- The constant `c` at `pos`, at the objects `us` of its object variables, each with whether `c` is generic
       over it and whether `c` reads its universe, and the arguments `args`, each passed as its pair test where
       `ts` says so (`Form`); `body` the constant's body at its placeholders `ph` (`Once.ph`), `ks` the variables the
-      arguments bind (`Once.binds`), `cv` its converse's constant and body (`Tm.callCv`); `tst`: `c` is the pair test
+      arguments bind (`Once.binds`), `cv` its converse's constant (`Tm.call`); `tst`: `c` is the pair test
       of a body that only tests (§a). `alt` the definition's body expanded at the use, which every analysis reads and
       `build` does not. -/
   | call (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (args : List Pre) (ts : List Bool) (alt : Pre)
       (a b : OTy)
-      (ks : List Nat) (ph : List Rel.QAtomicType) (body : Res) (cv : Option (Lean.Name × Res)) (tst : Bool)
+      (ks : List Nat) (ph : List Rel.QAtomicType) (body : Res) (cv : Option Lean.Name) (tst : Bool)
   /-- The definition `c`'s body elaborated at the use once, each parameter the variable of `ks` (`Tm.call`), applied to
       `args`, each built once (`Code.args`): `cl` with every parameter read closed, `od` with every one run on
       demand. `alt` the expansion, the arguments put in place of the variables, which every analysis reads and
@@ -621,7 +618,6 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
   | .lam x => return .lam (← f (some (.not "Λ")) x)
-  | .own x => return .own (← mo x)
   | .prim r xs s t => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
@@ -2046,7 +2042,8 @@ mutual
 
 /-- `R°` for `R` run on demand (§a), itself run on demand: pushed to the leaves by `(RS)° = S°R°`,
     `(R∩S)° = R°∩S°` (and `∪`, `−`), `⟨R,S⟩° = π₁R° ∩ π₂S°`, a coreflexive is its own converse, and a builtin
-    by its named converse (`cons° = uncons`), and the prelude's `perm` as its own (`Tm.own`). A side that reads
+    by its named converse (`cons° = uncons`), and a call by its converse constant (`Tm.call`'s `cv`: `perm` its own,
+    a theorem; any other the converse of its body). A side that reads
     its source through one projection is met with one through the other (`convProj`), so `(R×S)° = R°×S°`. A
     closed part is conversed whole. The error is the leaf whose converse does not run on demand. -/
 def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
@@ -2063,7 +2060,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
   | .id => pure .id
-  | .own R => pure (.own R)
   | .comp R S => do let s ← convTm S; let r ← convTm R; pure (.comp s r)
   | .meet R S => match convTm R, convTm S with
     | .ok r, .ok s => pure (.meet r s)
@@ -2098,9 +2094,11 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
     | some r' => pure (.prim r')
     | none => pure (.conv (.prim r))
   -- a constant's plan on demand: its converse constant at the same arguments; with none, read whole on its
-  -- source's universe
-  | .callCv ks c c' os b u => pure (.callCv ks c' c os u b)
-  | .call _ c .. => throw s!"`{c}`"
+  -- source's universe. `c° = c` is a theorem (`perm`); any other converse is the body's, `c'` its constant
+  | .call ks c (some c') os b =>
+    if h : c' = c ∧ B = A then by obtain ⟨-, rfl⟩ := h; exact pure (.call ks c (some c) os b)
+    else do let u ← convTm b; pure (.call ks c' (some c) os u)
+  | .call _ c none .. => throw s!"`{c}`"
   -- a closed spine under a demand argument (a whole row, `Tm.whole`) has no converse spine: `convTm f` gives `f°`
   -- a spine whose row has no converse row is conversed lazily whole, `(r x)°`, as `GenK.conv` runs it
   | .arg f x => if f.dem then do
@@ -2377,11 +2375,11 @@ def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.pr
   | .error e => throw ⟨e.pos,
     s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): {e.msg}"⟩
 
-/-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` (and its converse's)
-    at their objects (`Tm.instObj` at its placeholders `ph`), `os` those of the variables it is generic over. A
+/-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` and its converse's
+    constant `cv` at their objects (`Tm.instObj` at its placeholders `ph`), `os` those of the variables it is generic over. A
     variable it is not generic over keeps its placeholder, so `σ` is the identity there. -/
 def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : List Nat) (ph : List Rel.QAtomicType)
-    (t : Res) (cv : Option (Lean.Name × Res)) (A B : Obj) : Except Err (Tm A B) := do
+    (t : Res) (cv : Option Lean.Name) (A B : Obj) : Except Err (Tm A B) := do
   -- a variable the constant is not generic over was built at `.long`: any other object is refused here, before the
   -- body is put at the call's objects, where it would not fit
   let σ ← us.zipIdx.mapM fun ((u, gen, _), k) => do
@@ -2395,9 +2393,7 @@ def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : L
       let b ← (b.instObj ph σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
       if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b)
       else internal dp s!"`{c}`'s body is not at the objects of its call"
-  match cv with
-  | some (c', u) => return .callCv ks c c' os (← inst t) (← inst u)
-  | none => return .call ks c os (← inst t)
+  return .call ks c cv os (← inst t)
 
 /-- The literal `ps` at `a ⟶ b`, a table; in the body of the generic definition `gd` an error is that use's. -/
 def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) : Except Err Res :=
@@ -2427,7 +2423,7 @@ def callNode (c : Lean.Name) (ks : List Nat) (rs : List Res) {A B : Obj} (t : Tm
     | r@⟨X, Y, _⟩ :: rest => if rest.all fun ⟨X', Y', _⟩ => X' == X && Y' == Y then pure r
       else internal dp s!"`{c}`'s body reads the variable {k} at two objects"
     | [] => internal dp s!"`{c}`'s body has {k} free but reads it nowhere"
-  pure <| (rs ++ more).foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call (ks ++ free) c [] t)
+  pure <| (rs ++ more).foldl (fun f ⟨_, _, x⟩ => .arg f x) (Tm.call (ks ++ free) c none [] t)
 
 mutual
 
@@ -2560,9 +2556,6 @@ def build : Pre → Except Err Res
     if unbounded objs o || c.uni.isNone then pure ⟨A, B, c.fused⟩
     else if initSeg objs o then pure ⟨A, B, c.cut⟩
     else pure ⟨A, B, d⟩
-  | .own p => do
-    let ⟨A, B, t⟩ ← build p
-    if h : B = A then pure ⟨A, A, .own (h ▸ t)⟩ else internal dp "perm's objects"
   | .succ p n => do
     let (m, _) ← numObj objs mc p n "succ" (· == .i64)
     return ⟨_, _, Tm.cut1 succRow (← numU.declared objs p "succ" m .i64)⟩
