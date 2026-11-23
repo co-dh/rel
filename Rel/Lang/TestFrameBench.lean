@@ -38,7 +38,7 @@ rel_program benchN where
     -- B6 (Q6): 20 ≤ shipdate < 60, 5 ≤ discount ≤ 7, quantity < 24; Σ price·discount
     b6(x : N ⟶ LI) : 1 ⟶ N ≜ summarize(F(f ⟨col LI "price", col LI "discount"⟩times) sum, f) where f ≜ filterBy(dom(col LI "shipdate" ≥ {(20,∗)}) dom(col LI "shipdate" < {(60,∗)}) dom(col LI "discount" ≥ {(5,∗)}) dom(col LI "discount" ≤ {(7,∗)}) dom(col LI "quantity" < {(24,∗)}), x)
     -- B13 (Q13): orders per customer, 0 for none (the null side counts 0), then customers per order count
-    b13(c : N ⟶ Cust, o : N ⟶ Ord) : N ⟶ N×N ≜ sortByDesc(π₂, valueCounts(π₂, aggregate(π₁ col Cust "custkey", F(lj π₂ [⊤ {(∗,1)}, {(∗,0)}]) sum, lj))) where lj ≜ leftJoin(col Cust "custkey", col Ord "custkey", c, o)
+    b13(c : N ⟶ Cust, o : N ⟶ Ord) : N ⟶ N×N ≜ sortByDesc(π₂, valueCounts(π₂, aggregate(π₁ col Cust "custkey", F(lj π₂ [{(∗,0)}, ⊤ {(∗,1)}]) sum, lj))) where lj ≜ leftJoin(col Cust "custkey", col Ord "custkey", c, o)
 
 -- n = 10² lineitem rows, 10 orders, 5 customers: below one block of 1000 (d2 = 0), so the values are the run's, and
 -- B3, B4, B6 select no row (shipdate ≤ 10, orderdate 0); the closed forms run at 10³ and over in `Bench/FrameBench.lean`
