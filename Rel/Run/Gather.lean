@@ -83,6 +83,13 @@ def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n
   | .ok o => .ok (Arr.mk o (Arr.kgather_wf x h) (by rw [Verify.kgather_plain h x.plain]; exact Verify.hasNul_wordsFoR _))
   | .error s => .error s
 
+/-- The rows `ix` (`m` positions) of the nullable column `x`: `kgather`, which moves each row's null flag with its word
+(`raw_kgather`), so a null row gathers to a null row. `Enc.WF` of the answer is decided: `Arr.kgather_wf` reads the
+source's `plain` at `u1`. -/
+def Opt.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Opt t n) : Except String (Opt t m) := do
+  let o ← kgather m ix n x.enc
+  if h : Enc.WF t m o then pure (Opt.mk o h) else .error s!"gather: the answer is not {m} elements of {repr t}"
+
 /-- The rows `ix` (`m` positions) of the side `x`: each atom column `Arr.gather`ed at `ix`; a `sum` side gathers its tag
 and position columns and keeps both summands, an `arr` side its `lo` and `hi` columns and keeps the payload. -/
 def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A m)

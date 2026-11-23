@@ -1397,6 +1397,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     “每块都留 null 码”只改 `planBlock` 这一处。Rust：`Sink::write_nul`、`enc::move_blk` 按块分 `nul_meta`/`nul_pack`
     与 `for_meta`/`for_pack`。`Encoding.foRBits_encode`、`planBlock_bounds` 以空位图陈述（`bitAt_empty`）。
     剩：第 2–5 步（`Vals (.sum (.atom t) .one) := Arr t n` 及其各用处、kernel 在块上判 null、CSV 3 → 1、decode-allow）。
+    🔄 nullband 第 2 步，列类型已做：`Opt t n`（`Run/Core.lean`，`Arr t n` 去掉无 null 条款）：`Opt.get` 经
+    `isNul`（`foRNul`，不解码）读成 `Option`，`Opt.ofAtoms` 经 `Coc.encode … nul` 写，`Opt.gather` 经 `kgather`（null 随行
+    搬运），`Opt.ofArr` 即 `inl`。`TestNullband`：i64、u1 列三块都有 null 往返；无 null 不置标志；gather 保 null。
+    未做：`Vals (.sum (.atom t) .one) := Opt t n` 本身——`Vals` 的 `.sum` 分支与 `.sum (.atom t) .one` 重叠，`Vals`、
+    `row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`、CSV 与 `RepCanon`/`RepCols`/`RepStruct`/`RepWF`/
+    `ObjOrder`/`GenKBits` 里约 90 处 `.sum a b` 匹配都要先分出这一支；`Opt.gather` 的 `Enc.WF` 现为运行时判定，待把
+    `Arr.kgather_wf` 推广到带 null 的源（`u1` 情形需 `raw_kgather` 的 null 位）；`general` 无块，`general+1` 不能带内。
+    null 次序：`doc/rel-architecture.zh.typ` 第 254 行写 null 排最后（`inl < inr`），PLAN 上文写 `asc` 中 null 最前——待主人定。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`
