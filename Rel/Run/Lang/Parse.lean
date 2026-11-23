@@ -227,7 +227,7 @@ def after (s : S) (prog : Program) : S := prog.foldl (init := s) fun s d => matc
   | .obj p n d =>
     let ws : Option (List String) := match d with
       | .elems ws | .coded _ ws _ => some ws
-      | .range lo hi => some ((List.range (hi + 1 - lo).toNat).map fun k : Nat => toString (lo + k))
+      | .range lo hi => some (rangeWords lo hi)
       | _ => none
     { s with objs := n :: s.objs, taken := (n, at_ p) :: s.taken, fin := (ws.map fun w => (n, w) :: s.fin).getD s.fin }
   | .«theorem» p n .. => { s with thms := n :: s.thms, taken := (n, at_ p) :: s.taken }
