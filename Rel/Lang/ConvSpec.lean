@@ -114,7 +114,7 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
     body, a number verb's universe is a coreflexive, a row is one of `prims` (whose `conv`
     `Prim.den_conv` checks). -/
 def Tm.ConvOK (ρ : Val) : {A B : Obj} → Tm A B → Prop
-  | A, B, .var _ k => ρ k B A = (ρ k A B)°
+  | A, B, .var k => ρ k B A = (ρ k A B)°
   | _, _, .prim r => r ∈ prims
   | _, _, .comp R S => R.ConvOK ρ ∧ S.ConvOK ρ
   | _, _, .meet R S => R.ConvOK ρ ∧ S.ConvOK ρ

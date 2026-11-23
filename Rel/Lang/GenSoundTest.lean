@@ -145,7 +145,7 @@ run_meta discard (twice (.call [] `b.k none [] .id)).call?
 -- a lifted fold (the row `foldI`) whose start and step both read the μ variable `0` is positive in it, so `monoOK`:
 -- `Tm.spinePol` reads the row's `mono`, as for a row of one relation
 #guard
-  let x : Tm (.prod .long (.arr .long)) .long := .var false 0
+  let x : Tm (.prod .long (.arr .long)) .long := .var 0
   let e : Tm .long (.prod .long .long) := .comp (.conv .outl) (.pair x x)
   let S : Tm (.prod (.prod .long .long) .long) (.prod .long .long) :=
     .comp (.comp .outl .outl) (.comp (.conv .outl) (.pair .outl x))

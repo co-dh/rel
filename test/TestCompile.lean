@@ -37,7 +37,7 @@ def few (rs : List (List Nat)) : String := s!"{rs.take 3}{if rs.length > 3 then 
 
 /-- One more than every variable `t` reads or binds outside a call's body: a number no binder of `t` shadows. -/
 partial def fresh {A B : Obj} (t : Tm A B) : Nat :=
-  let own := match t with | .var _ k | .nu k .. | .mu k .. | .hylo k .. => k + 1 | _ => 0
+  let own := match t with | .var k | .nu k .. | .mu k .. | .hylo k .. => k + 1 | _ => 0
   t.parts.foldl (fun m ⟨_, _, u⟩ => max m (fresh u)) own
 
 /-- `t` with each sub-term equal (`Tm.diffAt`) to an earlier definition of `prev` replaced by that definition's
@@ -48,7 +48,7 @@ partial def fresh {A B : Obj} (t : Tm A B) : Nat :=
 partial def reuse (prev : List (Nat × Res)) {A B : Obj} (t : Tm A B) : Tm A B :=
   match prev.findSome? fun (k, ⟨C, D, u⟩) =>
       if C == A && D == B && (Tm.diffAt id (fun _ => "") [] ⟨A, B, t⟩ ⟨C, D, u⟩).isNone then some k else none with
-  | some k => .var false k
+  | some k => .var k
   | none => Id.run (t.mapM fun c => pure (reuse prev c))
 
 /-- `t` with each numbered part read as slot `f k` of another numbering, `k` its own (`Tm.numberKey` at `f = id`):
