@@ -482,7 +482,7 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
       -- object still open here stays open in the call, so `build` knows the constant did not see it (`.call`)
       let mc ← Lean.getMCtx; let objs := (← get).objs
       let us := us.map (zonk mc)
-      let nb := us.map fun u => (unbounded objs u, initSeg objs u)
+      let nb := us.map (numSeg objs)
       let get? (fs : List Form) : M (Option Once) := do
         let key := formKey c fs nb
         match calls key, (← get).specs.find? (·.key == key) with
