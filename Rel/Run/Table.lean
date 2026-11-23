@@ -63,7 +63,7 @@ def readArr (t : QAtomicType) (path : String) : IO ((n : USize) × Arr t n) := d
       (D.9 step 6)")
   let some e := Db.ownEnc f.kind f.parts
     | throw (IO.userError s!"{path}: constructor kind {f.kind}, which `Db.ownEnc` does not rebuild")
-  let x ← IO.ofExcept (Arr.of t f.count (.vector t f.count e none) path)
+  let x ← IO.ofExcept (Arr.of t f.count e path)
   if t matches .f32 | .f64 then
     if let some (b, i) := x.toList.zipIdx.findSome? fun (v, i) => (nonCanonical t v).map (·, i) then
       throw (IO.userError s!"{path}: row {i} holds the {repr t} bit pattern 0x{String.mk (Nat.toDigits 16 b)}, \
@@ -145,10 +145,6 @@ def Dict.empty : Except String Dict :=
   frame (⟨0, Arr.ofFn .i64 0 (·.elim0), Arr.ofFn .i64 0 (·.elim0), Arr.ofFn .char 0 (·.elim0)⟩ :
     Vals (.arr (.atom .char)) 0)
 
-/-- The encoding of the atom column `v`; `what` names it in the error. -/
-def encOf (what : String) : QValue → Except String Enc
-  | .vector _ _ e _ => pure e
-  | _ => .error s!"{what}: not a vector"
 
 /-- intern the texts `x` into `D` (design §0.2), no kernel of its own: `R : ℕ ⟶ [C]` the texts by row, the new texts
     `N = ran R − ran D`, each to its first row `F = Λ((R ≫ N)°) ≫ uncons ≫ π₁ : [C] ⟶ ℕ`; `D'` is `D` then the texts of
@@ -162,7 +158,7 @@ def intern {n : USize} (what : String) (D : Dict) (x : Vals (.arr (.atom .char))
   let D' ← frame (← D.concat (← (⟨F.n, F.key, F.val.1⟩ : Tab (.arr (.atom .char)) .long).conv)).val
   let I ← R.comp (← D'.conv)
   unless I.n = n do .error s!"{what}: {I.n} ids for {n} texts"
-  pure (D', ← Arr.of .sym n (.vector .sym n (← encOf what I.val.1) none) what)
+  pure (D', ← Arr.of .sym n I.val.1 what)
 
 /-- `rank = iasc(D)° : ℕ ⟶ ℕ`, an id to its text's position in text order: `iasc(D) = asc(ran D) ≫ D°`, so
     `rank = D ≫ asc(ran D)°`. It reads `D` alone: when `D` grows only `rank` is recomputed, never a data column. -/
@@ -236,8 +232,8 @@ def writeSym {n : USize} (dir p : String) (y : Arr .sym n) : IO Unit := writeVal
 def checkSyms {A : Obj} {n : USize} (dir p : String) (D : Dict) (x : Vals A n) : Except String Unit := do
   let E ← D.dom
   for (q, c) in cols A x p do
-    if let .inr (.vector .sym k e _) := c then
-      let _ ← unenum (file dir q) E (← frame (← Arr.of .sym k (.vector .sym k e none) (file dir q)))
+    if let .inr ⟨.sym, _, y⟩ := c then
+      let _ ← unenum (file dir q) E (← frame y)
 
 /-- The converse of `writeSym`: the ids at `p`, refused unless each has a text in `D` (`checkSyms`). -/
 def readSym (D : Dict) (dir p : String) : IO ((n : USize) × Arr .sym n) := do
@@ -314,7 +310,7 @@ def progLib (ts : List (String × String × Schema × Schema)) : Except String (
     its count, and the parts left over. -/
 def encArr (path : String) (t : QAtomicType) : List (USize × Enc) →
     Except String ((n : USize) × Arr t n × List (USize × Enc))
-  | (k, e) :: es => do pure ⟨k, ← Arr.of t k (.vector t k e none) s!"{path}: a {repr t} column part of {k} rows", es⟩
+  | (k, e) :: es => do pure ⟨k, ← Arr.of t k e s!"{path}: a {repr t} column part of {k} rows", es⟩
   | [] => .error s!"{path}: no column part left for a {repr t} column"
 
 /-- A side of object `A` from its atom columns' encodings `es`, each with its count, in `cols`' order (a sum's tags,
@@ -409,7 +405,7 @@ def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) �
       let ⟨n, x, es⟩ ← encVals path (.arr (.atom .char)) es
       let (D, y) ← intern s!"{path}: column '{c}'" D x
       let (es, D) ← internCsv path D cols es
-      pure ((n, ← encOf path y.1) :: es, D)
+      pure ((n, y.enc) :: es, D)
     else do
       let (rest, D) ← internCsv path D cols (es.drop s.parts)
       pure (es.take s.parts ++ rest, D)
@@ -445,8 +441,7 @@ def csvEncs {A : Obj} {n : USize} (path : String) (x : Vals A n) : Except String
   -- a side of `1` stores no column; its CSV part is its one element's code `0` in each of its rows
   let ps ← (cols A x "").mapM fun
     | (_, .inl k) => return (k, ← colConst k 0)
-    | (p, .inr v@(.vector _ k _ _)) => return (k, ← encOf s!"{path}: column part `{p}`" v)
-    | (p, _) => .error s!"{path}: column part `{p}` is not a vector"
+    | (_, .inr ⟨_, k, y⟩) => return (k, y.enc)
   let (cs, rest) ← toCsv path A ps
   unless rest.isEmpty do .error s!"{path}: {rest.length} column parts past a side"
   pure cs
@@ -459,7 +454,7 @@ def decodeCsv (path : String) (ds : Option Dict) : Db.CsvCols → List (USize ×
     if t = .sym then do
       let (k, e) :: es := es | .error s!"{path}: no part left for the symbol column '{c}'"
       let some D := ds | .error s!"{path}: the symbol column '{c}' and no dictionary"
-      let x ← decode s!"{path}: column '{c}'" D (← Arr.of .sym k (.vector .sym k e none) s!"{path}: column '{c}'")
+      let x ← decode s!"{path}: column '{c}'" D (← Arr.of .sym k e s!"{path}: column '{c}'")
       pure ((← csvEncs path x) ++ (← decodeCsv path ds cols es))
     else do pure (es.take s.parts ++ (← decodeCsv path ds cols (es.drop s.parts)))
 

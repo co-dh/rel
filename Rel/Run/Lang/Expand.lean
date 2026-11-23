@@ -883,14 +883,14 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
   pure (g ``Gen.relV #[oE A, oE B, uE R.n, ← valsE A R.n R.key, ← valsE B R.n R.val])
 
-/-- `x` and `y` are the same columns: of one object, column by column the same vector (`valEq`). -/
+/-- `x` and `y` are the same columns: of one object and one length, column by column the same payload (`encEq`). -/
 def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize} → Vals C m → Bool
-  | .atom _, _, x, .atom _, _, y => valEq x.1 y.1
+  | .atom t, n, x, .atom u, m, y => decide (t = u) && decide (n = m) && encEq x.enc y.enc
   | .prod a b, _, x, .prod c d, _, y => valsEq a x.1 c y.1 && valsEq b x.2 d y.2
-  | .arr b, _, ⟨_, lo, hi, p⟩, .arr d, _, ⟨_, lo', hi', q⟩ =>
-    valEq lo.1 lo'.1 && valEq hi.1 hi'.1 && valsEq b p d q
-  | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, .sum c d, _, ⟨_, _, tag', idx', x', y'⟩ =>
-    valEq tag.1 tag'.1 && valEq idx.1 idx'.1 && valsEq a x c x' && valsEq b y d y'
+  | .arr b, n, ⟨_, lo, hi, p⟩, .arr d, m, ⟨_, lo', hi', q⟩ =>
+    decide (n = m) && encEq lo.enc lo'.enc && encEq hi.enc hi'.enc && valsEq b p d q
+  | .sum a b, n, ⟨_, _, tag, idx, x, y⟩, .sum c d, m, ⟨_, _, tag', idx', x', y'⟩ =>
+    decide (n = m) && encEq tag.enc tag'.enc && encEq idx.enc idx'.enc && valsEq a x c x' && valsEq b y d y'
   | .one, _, _, .one, _, _ => true
   | _, _, _, _, _, _ => false
 
