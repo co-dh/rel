@@ -230,7 +230,7 @@ theorem Prim.den_lengthRow {E : Obj} :
 
 /-- At an atom no float, `sumDen` is the fold of `stepAt t add` from the word `0`, the definition `⦇[0, plus]⦈`'s
     step; at a float atom it adds in `f64` and rounds once, which no fold of `plus` (rounding each step) is. -/
-theorem sumDen_fold {t : QAtomicType} (hf : t ∉ floatAtoms) :
+theorem sumDen_fold {t : QAtomicType} (hf : t ∉ sumRow.native) :
     sumDen t = foldDen (E := .atom t) (V := .atom t) (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add) := by
   cases t <;> first | rfl | exact absurd (by decide) hf
 
@@ -356,11 +356,12 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
       rw [Tm.front_den]
       simp only [Tm.den, frontDen, lamDen, diffDen, hτ, Core.Rel.comp, Core.Rel.recip]
     exact ⟨hd, fun _ => hd⟩
-  | length u₀ u =>
+  | @length E u₀ u =>
     -- `⦇[0, π₁ succ]⦈`: the counts `0…n` rise from `0`, so all are in `P` iff `n` is
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
+    have hcut : (DfnCut.length (E := E) u₀ u).cut = .comp (.prim lengthRow) u := rfl
     have hd := count_iff (zeroTm_den (t := .i64) rfl u₀ ρ hU₀) hU x hx w
-    simp only [Tm.den, DfnCut.cut, DfnCut.fused, Prim.den_lengthRow,
+    simp only [Tm.den, hcut, DfnCut.fused, Prim.den_lengthRow,
       Tm.cut1_succ_den ρ u fun x y h => ((hU x y).1 h).1]
     rw [hd]
     have hx : x.length < 2 ^ 63 := hx
@@ -372,10 +373,13 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     rintro ⟨b, rfl, hbw⟩
     obtain ⟨hw, hp⟩ := (hU _ _).1 hbw
     exact ⟨hc.2 hp, hw.symm⟩
-  | sum h hf u₀ u =>
+  | @sum t h hf u₀ u =>
     -- `⦇[0, plus]⦈`: `plus_iff` reads the fold kept in the universe as the row cut to it
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
-    simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow, sumDen_fold hf,
+    have hcut : (DfnCut.sum h hf u₀ u).cut = .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
+      (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u := by
+      simp [DfnCut.cut, Prim.cut, Prim.cutUni, sumRow]
+    simp only [Tm.den, Tm.argDen, hcut, DfnCut.fused, Prim.den_sumRow, sumDen_fold hf,
       Tm.cut2_plus_den ρ u fun x y h => ((hU x y).1 h).1]
     rw [foldDen_start]
     simp only [zeroTm_den h u₀ ρ hU₀]
@@ -385,10 +389,13 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     obtain ⟨rfl, hE⟩ := (Prim.den_mapRow_corefl hU x y).1 hy
     obtain ⟨rfl, hPw⟩ := (hU _ _).1 hw
     exact ⟨hE, hPw, hf⟩
-  | fsum u =>
+  | @fsum t u =>
     -- the definition is the cut itself; on the universe `𝟙` both `u` drop out
     obtain ⟨-, hU⟩ := hUs u u rfl
-    refine ⟨Iff.rfl, fun hall => ?_⟩
+    have hcut : (DfnCut.fsum u).cut = .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
+      (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u := by
+      simp [DfnCut.cut, Prim.cut, Prim.cutUni, sumRow]
+    refine ⟨by rw [hcut], fun hall => ?_⟩
     simp only [Tm.den, Tm.argDen, DfnCut.fused, Core.Rel.comp, Prim.den_mapRow_corefl hU, hU]
     exact ⟨fun ⟨_, ⟨_, ⟨rfl, _⟩, h⟩, rfl, _⟩ => h, fun h => ⟨w, ⟨x, ⟨rfl, fun _ _ => hall _⟩, h⟩, rfl, hall _⟩⟩
 

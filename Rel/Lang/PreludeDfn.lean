@@ -119,14 +119,17 @@ theorem Tm.lengthDef_den (ρ : Val) {E : Obj} (u₀ u : Tm .long .long) {P : Obj
 
 /-- As `Tm.lengthDef_den`, for `sum` at an atom `t` that is not a float (`hf`, the row's `native` atoms: a float's
     `sum` rounds once and has no fold of `plus`). -/
-theorem Tm.sumDef_den (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ floatAtoms)
+theorem Tm.sumDef_den (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ sumRow.native)
     (u₀ u : Tm (.atom t) (.atom t)) {P : (Obj.atom t).El → Prop} (hP : (∀ x, P x) ∨ Seg (.atom t) P)
     (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
     (x : (Obj.arr (.atom t)).El) (hx : Short _ x) (w : (Obj.atom t).El) :
     ((Tm.sumDef h u₀ u).den ρ x w ↔ (Tm.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
       (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u).den ρ x w) ∧
       ((∀ x, P x) → ((Tm.sumDef h u₀ u).den ρ x w ↔ (Tm.prim sumRow : Tm (.arr (.atom t)) (.atom t)).den ρ x w)) :=
-  Tm.dfnCut_den (.sum h hf u₀ u) ρ hP (fun a b h => by
+  have hcut : (DfnCut.sum h hf u₀ u).cut = Tm.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
+      (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u := by
+    simp [DfnCut.cut, Prim.cut, Prim.cutUni, sumRow]
+  hcut ▸ Tm.dfnCut_den (.sum h hf u₀ u) ρ hP (fun a b h => by
     obtain ⟨rfl, rfl⟩ := Option.some.inj h
     exact ⟨hU₀, hU⟩) x hx w
 

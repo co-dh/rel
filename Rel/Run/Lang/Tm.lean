@@ -203,6 +203,24 @@ def Tm.cut1 {A : Obj} (r : Prim) (U : Tm A A) : Tm A A := .comp U (.comp (.prim 
     `Tm.cut2_den`). -/
 def Tm.cut2 {A : Obj} (r : Prim) (U : Tm A A) : Tm (.prod A A) A := .comp (U.prod U) (.comp (.prim r) U)
 
+/-- The universe `us` gives the `num` variable `ν` of a row's signature `o`, at the object `X` the variable stands for:
+    `u` for a bare variable, `F(u)` under a list; none where `o` has no such variable. -/
+def Prim.cutUni (us : List (String × (X : Obj) × Tm X X)) : OExp → (X : Obj) → Option (Tm X X)
+  | .var _ ν, X => (us.find? (·.1 == ν)).bind fun ⟨_, Y, u⟩ => if h : Y = X then some (h ▸ u) else none
+  | .list (.var _ ν), .arr X => (us.find? (·.1 == ν)).bind fun ⟨_, Y, u⟩ =>
+    if h : Y = X then some (.arg (.prim mapRow : Tm (.arr X) (.arr X)) (h ▸ u)) else none
+  | _, _ => none
+
+/-- A row cut to the universes `us` of its `num` variables, read off its signature `S ⟶ T` (§3.5, `Tm.cut1`/`Tm.cut2`
+    give the atom rows the same form): `u` before it where `S` is a `num` variable (`F(u)` under a list), `u` after it
+    where `T` is one; the row itself where neither is. -/
+def Prim.cut (r : Prim) (A B : Obj) (us : List (String × (X : Obj) × Tm X X)) : Tm A B :=
+  match Prim.cutUni us r.sig.2.1 A, Prim.cutUni us r.sig.2.2 B with
+  | none, none => .prim r
+  | some s, none => .comp s (.prim r)
+  | none, some t => .comp (.prim r) t
+  | some s, some t => .comp (.comp s (.prim r)) t
+
 /-- One per node, a `prim` one whatever its row: `kids` puts `mem` for `mapRow`, and must not grow a term
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat

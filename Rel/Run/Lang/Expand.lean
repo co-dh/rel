@@ -978,7 +978,7 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
   | .uni (A := A) U => match u with | .uni (A := C) V => valsEq A U C V | _ => false
   | .prim r => match u with
     | .prim r' => r.sym == r'.sym && r.sig == r'.sig && r.conv == r'.conv && r.written == r'.written &&
-      r.prelude == r'.prelude && r.mono == r'.mono && r.dem == r'.dem && r.num == r'.num && r.ord == r'.ord &&
+      r.prelude == r'.prelude && r.mono == r'.mono && r.dem == r'.dem && r.num == r'.num && r.native == r'.native && r.ord == r'.ord &&
       match r.aop, r'.aop with | .ok a, .ok b => a == b | .error a, .error b => a == b | _, _ => false
     | _ => false
   | .var k => match u with | .var k' => k == k' | _ => false
