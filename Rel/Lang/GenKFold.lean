@@ -853,15 +853,15 @@ theorem Tab.comp_pos_rows {A B : Obj} {T : USize} {P : Arr .i64 T} {v : Vals A T
   simp only [ValsB.cols, h2, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes
   subst hes
   obtain ⟨selC, hsC, hltC⟩ := Tab.canon_sorted hU (es := (.atom .i64, U.key.enc) :: es₂) (by
-    simp [ValsB.cols, h2, bind, Except.bind, pure, Except.pure])
+    simp [ValsB.cols, h2, bind, Except.bind, pure, Except.pure]; rfl)
   have hmono : ∀ j j' : Fin C.n.toNat, j.1 < j'.1 → (a j).1 ≤ (a j').1 := fun j j' hjj => by
     have hl := Arr.lexLe_i64 U.key es₂ (hltC j j' hjj).1
     have e1 := (Prod.mk.inj (hsC j)).1; have e2 := (Prod.mk.inj (hsC j')).1
     have c1 := hcode j; have c2 := hcode j'
     rw [show C.key.get j = C.key.row j from rfl, e1] at c1
     rw [show C.key.get j' = C.key.row j' from rfl, e2] at c2
-    change (ordCode 8 false true (U.key.get (selC j)).toUInt64).toNat = _ at c1
-    change (ordCode 8 false true (U.key.get (selC j')).toUInt64).toNat = _ at c2
+    change (ordCode 8 false true (Arr.get U.key (selC j)).toUInt64).toNat = _ at c1
+    change (ordCode 8 false true (Arr.get U.key (selC j')).toUInt64).toNat = _ at c2
     omega
   let g : Nat → Nat := fun p => if h : p < C.n.toNat then (sel ⟨p, by omega⟩).1 else 0
   have hfp : ∀ p (hp : p < C.n.toNat), (a (sel ⟨p, by omega⟩)).1 = p := fun p hp => by
@@ -998,12 +998,12 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
     obtain ⟨Y, hY, hc⟩ := GenK.bind_ok h
     -- the `T` EXPANDed rows are the summed widths of `n` cells, each at most `m` (`cellSpan_width`, `expand_spec`)
     have hT : T.toNat ≤ 2 ^ 63 := by
-      obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec wX.1 (by omega) f
+      obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec (fun i => wX.2.2.1 i trivial) (by omega) f
       have hwd := cellSpan_width hse' hb1 hw
       have hs := sum_range_le_mul (wN := fun i => EN i - SN i) (k := n.toNat) fun i hi => (hwd i hi).2
       have := (expand_spec hex _ (fun i hi => (hwd i hi).1) (by omega) (by omega)).1
       omega
-    have wPv : (⟨T, P, v⟩ : Tab .long A).WF := ⟨trivial, Vals.gather_wf hv wX.2⟩
+    have wPv : (⟨T, P, v⟩ : Tab .long A).WF := ⟨trivial, Vals.gather_wf hv wX.2.2.2⟩
     have rows := Tab.comp_pos_rows hP hT hC hD hn hd wPv wR
     subst hn
     -- `R`'s only image of payload row `t` is `C`'s row `t`
@@ -1020,11 +1020,11 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
     have hg : ∀ t, g (v.row t) = C.val.row t := fun t => by
       have hx : ∃ y, R.Holds (v.row t) y := ⟨_, (himg t _).2 rfl⟩
       simp only [g, dif_pos hx]; exact (himg t _).1 (Classical.choose_spec hx)
-    have hrow := Vals.cells_expand_row hb wX.1 hw hex hsg hix g (fun t => by
+    have hrow := Vals.cells_expand_row hb (fun i => wX.2.2.1 i trivial) hw hex hsg hix g (fun t => by
       obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv t
       exact ⟨j, hj, by rw [← hvj, hg]⟩) hY
     obtain ⟨lo', hi', -, hY'⟩ := Vals.cells_pay hY v
-    have hrow' := Vals.cells_expand_row hb wX.1 hw hex hsg hix id (fun t => by
+    have hrow' := Vals.cells_expand_row hb (fun i => wX.2.2.1 i trivial) hw hex hsg hix id (fun t => by
       obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv t
       exact ⟨j, hj, hvj⟩) hY'
     -- every element of a cell is a payload row, so `R` maps it to `g` of it and nothing else
@@ -1037,7 +1037,7 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
       · cases hj
     -- the cells of `C.val` over `X`'s spans, each span at most `m` wide (`map_wf`'s argument)
     have wY : Vals.WF Y := by
-      obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec wX.1 (by omega) f
+      obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec (fun i => wX.2.2.1 i trivial) (by omega) f
       refine Vals.cells_expand_wf hex hY m.toNat (fun i hi => ?_) (by omega) (by omega)
         (Tab.comp_wf hC wPv wR).2
       obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
