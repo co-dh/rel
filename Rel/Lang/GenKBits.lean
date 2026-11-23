@@ -1105,7 +1105,7 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
     (hseg : ∀ e, seg = some e → (e.raw .u1 n).size = n.toNat) (hes : ∀ x ∈ c :: cs, (x.raw s n).size = n.toNat)
     (hpl : ∀ x ∈ c :: cs, hasNul x = false) (hst : kscanStream op ((c :: cs).map (n, ·)) [] post = false)
     (ht : t.width.isSome) (hop : ∀ x ∈ cs, ∀ i < n.toNat, ∀ a, ∃ v, op.eval a ((x.raw s n)[i]?.getD 0) = .ok v)
-    (hpost : n.toNat ≠ 0 → ∀ p ∈ post, p.1.stepFails p.2 = false) :
+    (hpost : n.toNat ≠ 0 → ∀ p ∈ post, p.1.stepFails p.2 = false) (hnl : op ≠ .null := by decide) :
     ∃ r, kscan op rev s t n seg ((c :: cs).map (n, ·)) [] post = .ok r := by
   have hm : ∀ l : List Enc, (∀ x ∈ l, (x.raw s n).size = n.toNat) →
       (l.map (n, ·)).mapM (fun p => rawAll s p.1 p.2 >>= chainAll []) = .ok (l.map (·.raw s n)) := by
@@ -1161,7 +1161,7 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
   have hcols : kscanCols op s n ((c :: cs).map (n, ·)) [] post = .ok ((c :: cs).map (·.raw s n), #[]) := by
     unfold kscanCols
     rw [hm _ hes]
-    simp only [hst, hnn _ hpl, hany, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure]
+    simp only [hst, hnl, hnn _ hpl, hany, Bool.false_eq_true, if_false, ↓reduceIte, List.length_nil, List.drop_zero, List.map_nil, List.nil_append, bind, Except.bind, pure, Except.pure]
   -- `hop` at a row and the carry 0 rules out a folded op reading its divisor from the carry
   have hd : kscanRefuses op n ((c :: cs).map (n, ·)) [] post = false := by
     unfold kscanRefuses
@@ -1196,20 +1196,21 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
 theorem kscan_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {c : Enc} {cs : List Enc}
     (hseg : ∀ e, seg = some e → (e.raw .u1 n).size = n.toNat) (hes : ∀ x ∈ c :: cs, (x.raw s n).size = n.toNat)
     (hpl : ∀ x ∈ c :: cs, hasNul x = false) (hst : kscanStream op ((c :: cs).map (n, ·)) [] [] = false)
-    (ht : t.width.isSome) (hop : ∀ x ∈ cs, ∀ i < n.toNat, ∀ a, ∃ v, op.eval a ((x.raw s n)[i]?.getD 0) = .ok v) :
+    (ht : t.width.isSome) (hop : ∀ x ∈ cs, ∀ i < n.toNat, ∀ a, ∃ v, op.eval a ((x.raw s n)[i]?.getD 0) = .ok v)
+    (hnl : op ≠ .null := by decide) :
     ∃ r, kscan op rev s t n seg ((c :: cs).map (n, ·)) = .ok r :=
-  kscan_post_ok (post := []) hseg hes hpl hst ht hop fun _ _ h => by cases h
+  kscan_post_ok (post := []) hseg hes hpl hst ht hop (fun _ _ h => by cases h) hnl
 
 /-- **`colMap` answers** on columns of `n` raw words where `op` answers on every word of `b` (`kscan` reads raw words,
     not a layout). -/
 theorem colMap_ok {op : Op} {n : USize} {a b : Enc} {t : QAtomicType} (ht : t.width.isSome)
     (sa : (raw .i64 n a).size = n.toNat) (sb : (raw .i64 n b).size = n.toNat)
     (ha : hasNul a = false) (hb : hasNul b = false)
-    (hop : ∀ i < n.toNat, ∀ c, ∃ v, op.eval c ((raw .i64 n b)[i]?.getD 0) = .ok v) (ho : op ≠ .first := by decide) :
+    (hop : ∀ i < n.toNat, ∀ c, ∃ v, op.eval c ((raw .i64 n b)[i]?.getD 0) = .ok v) (ho : op ≠ .first := by decide) (hn : op ≠ .null := by decide) :
     ∃ o, colMap op n a b t = .ok o := by
   obtain ⟨r, hr⟩ := kscan_ok (op := op) (rev := false) (s := .i64) (t := t) (n := n) (seg := none) (c := a)
     (cs := [b]) (fun _ h => by cases h) (by simp [sa, sb]) (by simp [ha, hb]) (kscanStream_ne ho _ _ _) ht
-    (by simpa using hop)
+    (by simpa using hop) hn
   have hr' : kscan op false .i64 t n none [(n, a), (n, b)] [] [] = .ok r := hr
   unfold colMap; simp only [hr', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
 
