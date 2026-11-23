@@ -221,13 +221,13 @@ abbrev faddDen : Core.Rel (Obj.El (.prod (.atom .f64) (.atom .f64))) (Obj.El (.a
 abbrev froundDen (t : QAtomicType) : Core.Rel (Obj.El (.atom .f64)) (Obj.El (.atom t)) :=
   fun r w => ∃ R, (Rel.Kernel.Op.fto t).eval 0 r = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t R
 
-/-- **`⦇[0, plus]⦈` at the float atom `u`**: the left fold over pairs (carry, value) from `(0, 0)`, each element widened
-    to its `f64` word (`fwideDen`), added to the carry in `f64` unrounded (`faddDen`), the new carry paired with its
-    one rounding to `u` (`froundDen`, none at a NaN); then the value `π₂`. So a float sum accumulates in `f64` and
-    rounds once to `u`, every prefix being checked for a NaN. -/
+/-- **`⦇[0, plus]⦈` at the float atom `u`**: the left fold over pairs (carry, value) from `u`'s `0` paired with
+    its `f64` word (`fwideDen`, as the kernel widens its seed), each element widened likewise, added to the carry in
+    `f64` unrounded (`faddDen`), the new carry paired with its one rounding to `u` (`froundDen`, none at a NaN); then
+    the value `π₂`. So a float sum accumulates in `f64` and rounds once to `u`, every prefix being checked for a NaN. -/
 abbrev fsumDen (u : QAtomicType) : Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.atom u)) :=
   foldDen (E := .atom u) (V := .prod (.atom .f64) (.atom u))
-      (fun _ b => b = (QAtomicType.ofBits .f64 0, QAtomicType.ofBits u 0))
+      (fun _ b => b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1)
       (rpair (graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
           (graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ rpair (𝟙 _) (froundDen u)) ≫ graph Prod.snd
 
