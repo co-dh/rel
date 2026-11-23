@@ -394,7 +394,7 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
       | some ⟨h⟩ => pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
       -- `wf?` reads the blocks only, and a `u1` block holding a null is widened to width 2, whose residual `2` only
       -- the elements rule out (`Opt.ofAtoms`): `Enc.WF` itself is decided there
-      | none => if h : Enc.WF t k e then pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
+      | none => if h : Ext.Enc.WF t k e then pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
         else .error s!"{path}: a 1+{repr t} column part of {k} rows that is not well-formed"
     | some t, [] => .error s!"{path}: no column part left for a 1+{repr t} column"
     | none, es => do
