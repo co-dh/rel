@@ -170,7 +170,7 @@ theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : 
   split at h
   · rename_i o ho
     cases h
-    obtain ⟨-, hrow⟩ := colMap_get ho
+    obtain ⟨-, hrow⟩ := colMap_get (by lockstep) ho
     have hU : ∀ m : USize, m.toNat < 2 ^ 64 := fun m => Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
     obtain ⟨-, -, -, -, -, hfixA, hlastA⟩ := raw_scatter n₁ .pos x.enc n 0 a x.plain ha
     obtain ⟨-, -, -, -, -, hfixB, hlastB⟩ := raw_scatter n₂ off y.enc n 0 b y.plain hb
@@ -198,7 +198,7 @@ theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : 
         rw [hoff _ (by omega), show n₁.toNat + (j - n₁.toNat) = j by omega] at e; simp [e]
     obtain ⟨v, hv, hz⟩ := hrow c.1 c.2
     rw [wA c.1 c.2, wB c.1 c.2] at hv
-    have hcl := (colMap_closed ho).1
+    have hcl := (colMap_closed (by lockstep) ho).1
     split
     · rename_i hl
       simp only [hl, if_true, Op.eval, UInt64.add_zero, Except.ok.injEq] at hv
@@ -371,7 +371,7 @@ theorem toNat_toUInt64 {x : Nat} (h : x < 2 ^ 64) : x.toUInt64.toNat = x := by s
 theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok P) (wN : Nat → Nat)
     (hw : ∀ G < K.toNat, (raw .i64 K w)[G]?.getD 0 = (wN G).toUInt64) :
     ∀ G < K.toNat, (raw .i64 K P)[G]?.getD 0 = ((List.range (G + 1)).map wN).sum.toUInt64 := by
-  obtain ⟨-, -, hr⟩ := colPrefix_raw h
+  obtain ⟨-, -, hr⟩ := colPrefix_raw (by decide) h
   intro G hG
   induction G with
   | zero =>
@@ -402,6 +402,54 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
   split at h; · cases h
   simp only [Except.ok.injEq] at h
   subst h; exact ⟨_, _, rfl⟩
+
+/-- **A one-source `kscan .first` at no `seg` writes `chain post` of each word** (`colMap_chain` with one source): word `i`
+of the answer is `chain post` of word `i` of `a`, a boolean answer's cut to its bit. -/
+theorem kscan_first_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hs : kscanStream .first [(n, a)] [] post = false) (h : kscan .first false s t n none [(n, a)] [] post = .ok r) :
+    (raw s n a).size = n.toNat ∧ (raw .i64 n r.1).size = n.toNat ∧ ∀ i < n.toNat, ∃ w,
+      chain post ((raw s n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n r.1)[i]? = some (if t = .u1 then w % 2 else w) := by
+  have hr := h
+  unfold kscan at hr
+  by_cases hd : kscanRefuses .first n [(n, a)] [] post = true
+  · simp only [hd, ↓reduceIte] at hr; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
+  split at hr; · cases hr
+  rename_i cs hc
+  split at hr; · cases hr
+  rename_i ca cs' ns
+  obtain ⟨-, hns, hcc⟩ := kscanCols_lock hs hc
+  obtain ⟨hl, hP⟩ := mapM_chain hcc
+  rcases cs' with _ | ⟨_, _⟩ <;> try simp at hl
+  obtain ⟨ha, -, hra⟩ := hP (a, ca) (by simp)
+  split at hr; · cases hr
+  rename_i out₀ hf
+  split at hr; · cases hr
+  rename_i out hp
+  split at hr; · cases hr
+  rename_i w' ht
+  split at hr; · cases hr
+  rename_i nl hnl
+  simp only [Except.ok.injEq] at hr
+  subst hns
+  have ho : r.1 = wordsFoR (out.map fun v => if t = .u1 then v % 2 else v) := by
+    rw [← hr]; first | rfl | simp [wordsFoR]
+  rw [ho]; clear ho hr
+  obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+  obtain ⟨hps, hpr⟩ := chainAll_ok hp
+  have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hps, hos]
+  refine ⟨ha, ?_, fun i hi => ?_⟩
+  · rw [(wordsFoR_closed _ hW.symm).2.1]; exact hW
+  rw [(wordsFoR_closed _ hW.symm).2.1]
+  have hr := hrow i (by omega)
+  rw [if_neg (fun hh => by simp [hi] at hh)] at hr
+  simp only [List.map_nil, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hr
+  have hq := hpr i (by omega)
+  have e : (raw s n a)[i]?.getD 0 = ca[i]?.getD 0 :=
+    Except.ok.inj (by have := hra i hi; simpa only [chain, List.foldlM_nil] using this)
+  refine ⟨out[i]?.getD 0, ?_, ?_⟩
+  · rw [e, hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq
+  · simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
 
 /-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
 theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hN : hasNul P = false)
@@ -489,10 +537,10 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
       exact kscan_foR hr
     -- `wN G`: row `G` is tagged into `s`
     obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
-    have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
-      -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`colMap_first_chain`)
+    have hw : ∀ G < n.toNat, (raw .i64 n p.1)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
+      -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`kscan_first_chain`)
       obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv ⟨G, hG⟩
-      obtain ⟨w, hc, ho⟩ := colMap_first_chain (by simp [kscanStream]) hp G hG
+      obtain ⟨w, hc, ho⟩ := (kscan_first_chain (by cases s <;> simp [kscanStream]) hp).2.2 G hG
       rw [ho, hwN]; simp only [dif_pos hG, if_neg (by decide : ¬ (QAtomicType.i64 = .u1)), Option.getD_some]
       simp only [ht, Option.getD_some] at hc
       rw [et] at hc
