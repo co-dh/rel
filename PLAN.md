@@ -1413,9 +1413,19 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     搬运），`Opt.ofArr` 即 `inl`。`TestNullband`：i64、u1 列三块都有 null 往返；无 null 不置标志；gather 保 null。
     未做：`Vals (.sum (.atom t) .one) := Opt t n` 本身——`Vals` 的 `.sum` 分支与 `.sum (.atom t) .one` 重叠，`Vals`、
     `row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`、CSV 与 `RepCanon`/`RepCols`/`RepStruct`/`RepWF`/
-    `ObjOrder`/`GenKBits` 里约 90 处 `.sum a b` 匹配都要先分出这一支；`Opt.gather` 的 `Enc.WF` 现为运行时判定，待把
-    `Arr.kgather_wf` 推广到带 null 的源（`u1` 情形需 `raw_kgather` 的 null 位）；`general` 无块，`general+1` 不能带内。
-    null 次序：`doc/rel-architecture.zh.typ` 第 254 行写 null 排最后（`inl < inr`），PLAN 上文写 `asc` 中 null 最前——待主人定。
+    `ObjOrder`/`GenKBits` 里约 90 处 `.sum a b` 匹配都要先分出这一支；`general` 无块，`general+1` 不能带内。
+    ✅ nullband2：`Opt.kgather_wf`（`Gather.lean`，取代 `Arr.kgather_wf`，`Arr.gather` 经 `Opt.ofArr` 用它）证明带 null 的源
+    gather 后仍 `Enc.WF`（非 null 的行读源的非 null 行，`raw_kgather` 的 null 位），`Opt.gather` 的运行时判定删除。
+    `TestNullband` 加 `#guard`：`kasc` 把 `3 0N 1` 排成 `iasc = 1 2 0`、gather 出 `0N 1 3`；可空键 join（`kasc ≫ kseen`
+    分组）`0N 2 5` × `5 0N 7` 得 `(0,1) (2,0)`——null 配 null。两者只经 `Opt.get`/`isNul`，不依赖 null 的残差。
+    主人定（null 次序，随 q）：null 小于每个值，`atom+1` 上 `inr ∗ < inl a`（q 的 `asc 3 0N 1` 是 `0N 1 3`），doc §4
+    "atom+1" 卡片已改。主人定 O：null 码从块的顶残差移到残差 0（带标志块里值存成残差 + 1），块内比码即 null 在前；
+    `nullbot` 改 `foRNul` 与 Rust，其他证明与 `#guard` 只经 `foRNul`/`Opt.isNul`。
+    剩（随 q 次序）：`Obj.key` 的 `.sum` 今天是 `inl ↦ 0 ::`、`inr ↦ 1 ::`（`Obj.lt_inl_inr`），对 `A+1` 是 null 在后；
+    `Vals.cols` 的 sum 键列是 `tag`（`inl` = false 在前），`Vals.lt_of_codes` 的 sum 支（`RepOrder` ~197–242）经
+    `Arr.lt_of_codes tag` 证它。改法（一般的，不特判 `.one`）：每个 sum `inr` 在前——`Obj.key` 换成 `inl ↦ 1 ::`、
+    `inr ↦ 0 ::`，`cols` 的键列用 `colMap .not` 的 `¬tag`（已算出），`RepOrder`/`RepCanon` 的 sum 支随之改；
+    `Vals` 换 `Opt` 之后 `atom+1` 的键是 `nulCodes`，已是 null 在前，与之一致。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`

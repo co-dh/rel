@@ -258,7 +258,12 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   不带标志的块没有任何代价，现有列的含义不变。\
   例：一块 $w = 6$、base $= 100$、带标志：残差 `000101` 是 $105$，`111111` 是 null（不是 $163$）。
   若该块非 null 值的跨度 $max − min$ 恰为 $2^6 − 1 = 63$，编码器把 $w$ 加宽到 7；全 null 的块是 $w = 0$ 加标志。
-  base、`maxv` 是非 null 值的极值，`bsum` 不计 null；null 排在列的最后（与 tag 在前的现有次序一致）。
+  base、`maxv` 是非 null 值的极值，`bsum` 不计 null。
+  - 次序随 q（主人定）：null 小于每个值，`inr ∗ < inl a`。例：q 的 `asc 3 0N 1` 是 `0N 1 3`，`iasc` 是 `1 2 0`
+    （q 把 long 的 null 存成最小整数）。kernel：`nulCodes` 先排一列"null 0 / 值 1"，`kasc` 因此把 null 排最前
+    （`TestNullband` 的 `#guard`）；`seen` 中所有 null 相等，所以 join 时 null 与 null 相配、与任何值不配。
+  - null 码移到残差 0（主人定 O）：带标志的块里值存成残差 + 1，块内比码即 null 在前；读者只经 `foRNul`/`Opt.isNul`
+    判 null，不依赖 null 是哪个残差（`nullbot` 改 `foRNul` 与 Rust kernel，上面的"顶残差"随之改写）。
   - 没有 null 字：规格把可空列的元素读成 `Option`（`foROpt`；`foROpt_top`：带标志块的顶残差读成 `none`；
     `foROpt_plain`：不带标志的块读成原值）。普通的 `Arr t n` 只在没有带标志的块时成立。
   - kernel 不解码，只在编码上判 null（`foRNul`：标志 ∧ 无 patch ∧ 残差 $= 2^w − 1$）：`inl` 不动存储；`inl°` 留非 null 行

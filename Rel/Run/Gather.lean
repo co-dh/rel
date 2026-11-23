@@ -18,16 +18,16 @@ theorem kgather_valid {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o
   rename_i ws hws
   exact (foRWords_valid _ _ _).2 _ hws
 
-/-- **A gathered `Arr` is an `Arr` of its type**: the source is a valid column under `Enc.WF`, so a `foR` one at a type
-with a width, whose words at `u1` but a null's are below `2`; a gathered row that is no null reads a source row that is
-no null (its flag moves with it, `raw_kgather`), so its word is one of them. -/
-theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n) (h : kgather m ix n x.enc = .ok o) :
+/-- **A gathered column is a column of its type**, nulls included (`Opt`, so `Arr` by `Opt.ofArr`): the source is a
+valid column under `Enc.WF`, so a `foR` one at a type with a width, whose words at `u1` but a null's are below `2`; a
+gathered row that is no null reads a source row that is no null (its flag moves with it, `raw_kgather`), so its word
+is one of them. -/
+theorem Opt.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Opt t n) (h : kgather m ix n x.enc = .ok o) :
     Enc.WF t m o := by
   have hv := kgather_valid h
   obtain ⟨his, -, hlt, rfl⟩ := raw_kgather m ix n x.enc o h
   have hw := x.wf
-  have hN := x.plain
-  generalize x.enc = e at hv hw hlt hN ⊢
+  generalize x.enc = e at hv hw hlt ⊢
   cases e with
   | foR md pk =>
     have hw' : t.width.isSome = true ∧ (t = .u1 → ∀ i < n.toNat, ∀ v,
@@ -35,11 +35,19 @@ theorem Arr.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Arr t n
         n.toNat ≤ Column.blk md * Column.nblk md := by
       cases t <;> simp only [Enc.WF] at hw <;>
         first | exact ⟨hw.1, hw.2.1, hw.2.2.1⟩ | exact ⟨hw.1, fun _ => hw.2.1 trivial, hw.2.2.1⟩ | exact ⟨hw.1, fun h => absurd h (by decide), hw.2.1⟩
-    refine (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.2.2 hw'.1 fun hu k hk _ => ?_
+    refine (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.2.2 hw'.1 fun hu k hk hk0 => ?_
     rw [Array.size_map] at hk
     have hi := hlt k (by omega)
     rw [Array.getElem?_eq_getElem hk, Option.getD_some] at hi
-    have hnn := foRNul_of_plain hN (Nat.lt_of_lt_of_le hi hw'.2.2)
+    -- the gathered row is no null (`hk0`), so neither is the source row it reads
+    have hnn : Column.foRNul md pk (Column.blockStarts md) (Enc.raw .i64 m ix)[k].toNat = false := by
+      by_cases hN : hasNul (.foR md pk) = true
+      · rw [if_pos hN, nulMap] at hk0
+        rw [Verify.bitAt_packOf _ _ _ (by rw [Array.size_map]; exact hk)] at hk0
+        simp only [Array.getElem?_map, Array.getElem?_eq_getElem hk, Option.map_some, Option.getD_some, foRNuls,
+          Array.getElem?_range, hi, if_true] at hk0
+        revert hk0; cases Column.foRNul md pk (Column.blockStarts md) (Enc.raw .i64 m ix)[k].toNat <;> decide
+      · exact foRNul_of_plain (Bool.eq_false_iff.2 hN) (Nat.lt_of_lt_of_le hi hw'.2.2)
     simp only [Array.getElem_map, raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map,
       Array.getElem?_range, hi, if_true, Option.map_some, Option.getD_some, Nat.reduceMul, ofNat_toNat_mod64]
     exact UInt64.lt_iff_toNat_lt.2 (hw'.2.1 hu _ hi _ (by simp [Column.foROpt, hnn]))
@@ -77,18 +85,19 @@ theorem colMap_plain {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pr
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   exact (kscan_closed hr).2.2
 
-/-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Arr.kgather_wf`. -/
+/-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Opt.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=
   match h : kgather m ix n x.enc with
-  | .ok o => .ok (Arr.mk o (Arr.kgather_wf x h) (by rw [Verify.kgather_plain h x.plain]; exact Verify.hasNul_wordsFoR _))
+  | .ok o => .ok (Arr.mk o (Opt.kgather_wf (Opt.ofArr x) h)
+      (by rw [Verify.kgather_plain h x.plain]; exact Verify.hasNul_wordsFoR _))
   | .error s => .error s
 
 /-- The rows `ix` (`m` positions) of the nullable column `x`: `kgather`, which moves each row's null flag with its word
-(`raw_kgather`), so a null row gathers to a null row. `Enc.WF` of the answer is decided: `Arr.kgather_wf` reads the
-source's `plain` at `u1`. -/
-def Opt.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Opt t n) : Except String (Opt t m) := do
-  let o ← kgather m ix n x.enc
-  if h : Enc.WF t m o then pure (Opt.mk o h) else .error s!"gather: the answer is not {m} elements of {repr t}"
+(`raw_kgather`), so a null row gathers to a null row; an `Opt` again by `Opt.kgather_wf`. -/
+def Opt.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Opt t n) : Except String (Opt t m) :=
+  match h : kgather m ix n x.enc with
+  | .ok o => .ok (Opt.mk o (Opt.kgather_wf x h))
+  | .error s => .error s
 
 /-- The rows `ix` (`m` positions) of the side `x`: each atom column `Arr.gather`ed at `ix`; a `sum` side gathers its tag
 and position columns and keeps both summands, an `arr` side its `lo` and `hi` columns and keeps the payload. -/
