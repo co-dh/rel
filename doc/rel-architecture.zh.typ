@@ -163,7 +163,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
     `` `avg` at this call, where φ is N: divide on N: … ``（`Rel/Lang/TestGenericNum.lean`）。
 - 定义的体留下的、类型与参数都够不到的开放对象（`length $ F` 里 `length` 的 ℕ），按 let 泛化成该定义的隐式对象变量
   `n#i`（`Elab.generalise`，`mkDef` 的每次使用与无参定义都经过它）：没有使用能确定它，所以每次使用都取常量建变量时的
-  对象 `.long`（未声明名字的 `objOf`），数检查照常在它上面跑（`numObj`、`numCheck`）。字面量与 `nil` 的开放对象仍归
+  对象 `.long`（未声明名字的 `objOf`），数检查照常在它上面跑（`numObj`、`numCheck`）；prelude 文本（`length`、`sum`）里的字面量 `0` 在 `n#i` 上同样按 `.long` 读（`code` 与 `objOf` 同一条规则）。字面量与 `nil` 的开放对象仍归
   `settleOpen`；`check` 不是定义，其中仍开放的对象照旧报错。
 - 对象 `⟨θ ↦ A⟩`（`OExp.each`）是对象 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，
   它的元素在每次使用处读（`Elab.eachWords`，经 `ObjInfo.words`），所以体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义
@@ -493,8 +493,8 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     （`sumAtoms`），含义是 `sumDen`（`Tab.sum_holds`）：i64 上是 `stepAt add` 的左折叠；float atom 上每个元素
     加宽到 f64、在 f64 上左折叠 `⦇0, fadd⦈`、结果舍入一次到 `t`（f32 `[2^24, 1, 1]` 得 `2^24+2`，逐步舍入会得
     `2^24`；f64 上舍入是恒等，结果不变）。融合行只用在没有 universe 的对象上；target 有 universe
-    （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（`Elab.dfns`：`sum` 是 `⦇[0, plus]⦈`，
-    `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[3,3,−3] sum` 无结果（中间和 6），`1…5` 上
+    （声明的有限对象，或泛型常量里的数变量）时 elaborator 展开 prelude 里的定义文本（行带 `prelude :=`，`Elab.dfns`：`sum` 是 `⦇[{(∗,0)}, plus]⦈`，
+    `length` 是 `⦇[{(∗,0)}, π₁ succ]⦈`，定理 `Tm.sumDef_den`、`Tm.lengthDef_den`），所以每一步都留在对象内：`−3…3` 上 `[3,3,−3] sum` 无结果（中间和 6），`1…5` 上
     `length` 为 `𝟘`（fold 从 0 起步）；float atom 上定义 `⦇[0, plus]⦈` 每步舍入，与 `sumDen` 不同，故
     `Elab.dfns` 不在 float atom 上构建它（`DfnCut.sum` 要求 `t ∉ floatAtoms`），融合行照跑。造出新数的 row 必须带 `dfn`],
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，

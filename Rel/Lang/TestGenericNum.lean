@@ -87,7 +87,7 @@ rel_program wsumT where
 #guard wsumT.failures.map toString == []
 
 -- a `check` is no definition: an object open in it is still refused
-/-- error: line 97, col 5: an object is not determined; write the constant's objects, as in ⊤(A,B) or 𝟙(A) -/
+/-- error: line 9, col 30: `dom` at this use: nothing here fixes its object variable 'α' (`dom` : α ⟶ α); give the use an expected type: a typed definition, a check against a typed term, or a composition that fixes α -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program openCheckT where
