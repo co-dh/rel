@@ -73,6 +73,26 @@ def inter (R S : Tab k v) : Except String (Tab k v) :=
 def diff (R S : Tab k v) : Except String (Tab k v) :=
   select (fun m _ mx => colMap .not m mx mx) R S
 
+/-- **`(R ∪ S, R − S)` from one grouping** (`unionDiff_ok`): `R.union S` is `canon` of `R.concat S`, whose `kasc ≫
+kseen` is the one `select` runs on the tagged concatenation, so both answers read one sort: `∪` gathers each group's
+first row (`Vals.nub`'s tail), `−` is `diff`'s tail. -/
+def unionDiff (R S : Tab k v) : Except String (Tab k v × Tab k v) := do
+  let (C, tag) ← R.tagged S
+  let x : Vals (.prod k v) C.n := (C.key, C.val)
+  let es ← Vals.cols x
+  let (vs, p) ← kasc C.n es
+  let (m, g, f) ← kseen C.n ((es.map (·.1)).zip vs)
+  let iu ← kgather m.toUSize f C.n p
+  let u ← Vals.gather m.toUSize iu x
+  let ts ← kgather C.n p C.n tag
+  let seg ← seenSeg C.n f m.toUSize
+  let mn ← groupFold .and C.n g seg m.toUSize 1 ts
+  let mx ← groupFold .or C.n g seg m.toUSize 0 ts
+  let (K, sel) ← whereCol m.toUSize (← colMap .not m.toUSize mx mx)
+  let ix ← kgather K (← kgather K sel m.toUSize f) C.n p
+  let d ← Vals.gather K ix x
+  pure (⟨m.toUSize, u.1, u.2⟩, ⟨K, d.1, d.2⟩)
+
 /-- **The pairs of `D` that the test `q` holds on the diagonal**: `q(D) ∩ D`, `D` coreflexive (a `ran`), so a row `p`
 stays where `q` relates `p` to `p`. The one reading of a test `Q` in `front`, `thinL`, `merge`. -/
 def diag (q : Tab k k → Except String (Tab k k)) (D : Tab k k) : Except String (Tab k k) := do (← q D).inter D

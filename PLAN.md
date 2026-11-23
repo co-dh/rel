@@ -992,9 +992,13 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       运行时间可忽略。出现受益的程序时再议。
       ✅ 2026-11-22 owner 定 D：μ 体对 `X` 线性（`Tm.linIn`）时走 semi-naive `Tab.muLin`（`Δ' = F(Δ) − X`，只算新行），
       `Tm.den_linIn`（`⟦t⟧(X ∪ Y) ⊑ ⟦t⟧X ∪ ⟦t⟧Y`）+ `Tab.muLin_holds` 证与 `Tab.mu` 同解（`GenK.mu_sound`）。
-      `muGrow` 32 s → 5.0 s（其中 import 0.7 s）。余下每轮仍与 `|X|` 成正比：`∪` 是 concat + `canon`（重排全部 `X`），
-      `−` 是 `select`（`kasc` 全部 `X ++ F(Δ)`）；perf：`write_nul` 21%、pool 空转 17%、排序 15%、`for_meta` 10%。
-      再省需要已排序表的归并 / 对已排序 `X` 的成员测试（新 kernel 组合），未做。
+      `muGrow` 32 s → 5.0 s（其中 import 0.7 s）→ 3.2 s（mugrow2，perf 采样时长 5.25 s → 3.20 s）：
+      (1) `enc::move_blk` 的 null 测试只看 `nul` 有位的行——原先 `nul` 为空时也逐元素循环（perf 里的 `write_nul` 21%，
+      不是清零缓冲区）；(2) `Cells::codes` 的 span 排序改稳定排序（合并已有序的段），排序 15% → 9%；(3) 每轮的 `∪`
+      与 `−` 合为 `Tab.unionDiff`，共用 `T ++ X` 的一次 `asc` + `seen`（`unionDiff_ok`）。余下仍与 `|X|`（含 payload）
+      成正比：concat 是两次全长 `kscatter` 加一次 `add`，每次重编码 `X` 的整个 payload（`for_meta` 11%、`write_nul`
+      9%），`asc` 的 `Cells::codes` 读整个 payload。与 `|Δ|` 成正比需要：对已排序 `X` 的成员测试（无 search kernel，
+      五个 kernel 组不出）与不重编码的追加（kernel 的 `Producer::take` 整块搬移，目前没有 producer 实现它）。
       未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
       `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
       状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`

@@ -955,6 +955,24 @@ theorem diff_sorted {R S U : Tab k v} (h : R.diff S = .ok U) (hR : R.WF) (hS : S
           seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') :=
   (select_ok (κ := fun _ s => ¬s) diff_keep h hR hS).2
 
+/-- **`R.unionDiff S` is `(R.union S, R.diff S)`**: every kernel call of the two is one of its calls on the same
+arguments (`tagged_ok`: the tagged concatenation is `R.concat S`). -/
+theorem unionDiff_ok {R S V U : Tab k v} (h : R.unionDiff S = .ok (V, U)) : R.union S = .ok V ∧ R.diff S = .ok U := by
+  unfold unionDiff at h
+  simp only [bind, Except.bind] at h
+  repeat (split at h; · cases h)
+  rename_i _ Ct hCt _ es hes _ vp hvp _ r hr _ iu hiu _ u hu _ ts hts _ sg hsg _ mn hmn _ mx hmx _ kb hkb _ Ks hKs _ ix1 hix1
+    _ ix hix _ d hd
+  obtain ⟨C, tag⟩ := Ct; obtain ⟨vs, p⟩ := vp; obtain ⟨mm, g, f⟩ := r; obtain ⟨K, sel⟩ := Ks
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl⟩ := h
+  dsimp only at *
+  refine ⟨?_, ?_⟩
+  · simp only [Tab.union, (tagged_ok hCt).1, Tab.canon, Vals.nub, bind, Except.bind, hes, hvp, hr, hiu, hu,
+      Functor.map, Except.map]
+  · simp only [Tab.diff, Tab.select, hCt, hes, hvp, hr, hts, hsg, hmn, hmx, hkb, hKs, hix1, hix, hd, bind, Except.bind,
+      Functor.map, Except.map]
+
 /-- **`R.le S` answers `R ⊑ S`**: `R.diff S` has no row iff every pair of `R` is one of `S` (`diff_holds`). -/
 theorem le_holds {R S : Tab k v} {r : Bool} (h : R.le S = .ok r) (hR : R.WF) (hS : S.WF) : r = true ↔ ∀ a b, R.Holds a b → S.Holds a b := by
   unfold Tab.le at h

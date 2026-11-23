@@ -262,9 +262,10 @@ theorem muLin_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab
   refine (fixOn_wf (fun s : Tab A B × Tab A B => s.1.WF ∧ s.2.WF) (fun _ _ h w => Except.ok.inj h ▸ w)
     (fun s t hs ⟨w1, w2⟩ => ?_) hr ⟨zero_wf hZ, zero_wf hZ⟩).1
   simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
-  obtain ⟨T, hT, D0, hD0, D, hD, U, hU, rfl⟩ := hs
-  have wD := pack_wf hD (diff_wf hD0 (hf _ _ hT w2) w1)
-  exact ⟨union_wf hU w1 wD, wD⟩
+  obtain ⟨T, hT, T', hT', p, hp, D, hD, rfl⟩ := hs
+  have wT' := pack_wf hT' (hf _ _ hT w2)
+  obtain ⟨hU, hD0⟩ := unionDiff_ok (show T'.unionDiff s.1 = .ok (p.1, p.2) from hp)
+  exact ⟨union_wf hU wT' w1, pack_wf hD (diff_wf hD0 wT' w1)⟩
 
 theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
     (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
