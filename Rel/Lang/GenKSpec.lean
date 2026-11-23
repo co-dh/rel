@@ -493,8 +493,8 @@ theorem lam_sound {R : Rel A B} {X : Core.Rel A.El B.El} (hR : ∀ K, K.WF → R
     have hW : (⟨some ⟨_, _⟩, none, none⟩ : Known A B).WF := ⟨hX, trivial, trivial⟩
     have er := (reps_iff _ _ _).1 (hR _ hW) r hr
     have ha' := (side_some hK a).1 ha
-    exact (Tab.lam_den ht hX (wR.runE hW hr) a ys).trans ((and_iff_right ha').trans (and_congr Iff.rfl
-      (forall_congr' fun b => iff_congr Iff.rfl (er a b ((side_some rfl a).2 ha') rfl trivial))))
+    exact (Tab.lam_den ht hX (wR.runE hW hr) a ys).trans ((and_iff_right ha').trans ((lamDen_iff _ _ _).trans ((and_congr Iff.rfl
+      (forall_congr' fun b => iff_congr Iff.rfl (er a b ((side_some rfl a).2 ha') rfl trivial))).trans (lamDen_iff _ _ _).symm)))
 
 example : ∀ K, K.WF → (GenK.nil A B).Reps K nilDen := ofVals_row_sound fun _ _ _ hX h => Tab.nil_holds h hX
 

@@ -2582,6 +2582,7 @@ theorem lamOf_den {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)
     simp only [Fin.getElem_fin] at h2 h4
     rw [← h2, ← h4]; exact this
   rw [lamOf_holds hr h wD wr wR]
+  rw [Lang.lamDen_iff]
   constructor
   · rintro ⟨hD, hm, ho⟩; exact ⟨hD, up ys ho, hm⟩
   · rintro ⟨hD, hp, hm⟩
@@ -2630,6 +2631,7 @@ theorem setify_den {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
   rw [Except.bind_eq_ok'] at h; obtain ⟨G, hG, h⟩ := h
   obtain ⟨U, hU, wU⟩ := mem_canonical hG hw
   rw [lamOf_den hU h hw (mem_wf hG hw) wU]
+  rw [Lang.lamDen_iff, Lang.lamDen_iff]
   have hm' : (∃ i, X.row i = xs) → ∀ b, U.Holds xs b ↔ b ∈ xs := fun hX b =>
     (canon_holds hU wU xs b).symm.trans ((mem_holds hG hw xs b).trans (and_iff_right hX))
   constructor
@@ -2645,6 +2647,7 @@ theorem tau_den {A : Obj} {n : USize} {X : Vals A n} {T : Tab A (.arr A)} (h : T
   unfold Tab.tau at h; simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨I, hI, h⟩ := h
   rw [lam_den h wX (idU_wf hI wX)]
+  rw [Lang.lamDen_iff]
   have lirr : ∀ x, ¬A.lt x x := fun x => List.lt_irrefl _
   have lasym : ∀ x y, A.lt x y → ¬A.lt y x := fun _ _ => List.lt_asymm
   constructor

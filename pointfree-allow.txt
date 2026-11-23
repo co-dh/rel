@@ -16,7 +16,6 @@ Rel.Core.Rel.zero
 Rel.Hylo.rounds
 Rel.Lang.atDen
 Rel.Lang.castDen
-Rel.Lang.EDen
 Rel.Lang.estDen
 Rel.Lang.faddDen
 Rel.Lang.floatDen
@@ -25,13 +24,11 @@ Rel.Lang.foldrDen
 Rel.Lang.frontDen
 Rel.Lang.fsumDen
 Rel.Lang.fwideDen
-Rel.Lang.lamDen
 Rel.Lang.leqDen
 Rel.Lang.ltDen
+Rel.Lang.memDen
 Rel.Lang.rowDens
 Rel.Lang.stepAt
 Rel.Lang.stepDen
 Rel.Lang.succDen
-Rel.Lang.Tm.argDen
-Rel.Lang.Tm.den
 Rel.Lang.ymdDen
