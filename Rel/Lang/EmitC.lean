@@ -1748,9 +1748,9 @@ def readIn (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (pat
   | some (sep, cs) =>
     if hasSum k.obj || hasSum v.obj then
       return ← no "a nullable CSV column, whose parts the read regroups and checks (`Table.ofCsv`)"
-    if cs.any (fun (_, _, t, _) => t == .sym) then
-      return ← no "a symbol column, whose texts the read interns into the program's dictionary (`Table.intern`)"
-    let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put cs), ← lit (.u8 sep)]
+    -- a symbol column is read as its texts (`Db.Csv.symText`), interned by `sideOf` (`internB`)
+    let ts ← ofExc ((Db.Csv.symText cs).mapError (s!"{path}: " ++ ·))
+    let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put ts), ← lit (.u8 sep)]
     let kc := if k.isEmpty then [] else objCols k.obj ""
     return .csv k v kc (objCols v.obj "") (← nth rs 1 "csvRead")
   | none =>
@@ -1797,11 +1797,48 @@ def ownSideB (x : String) (cs : List (String × QAtomicType × Nat)) (n₀ : Opt
     s := s ++ [(p, (Side.regs code k n ps).push e)]
   pure (s, n₀)
 
+/-- The parts `csvRead` answers for the columns `cs`: a symbol column's are its texts' (`Db.Csv.symText`: a list of `char`,
+    `objCols`' `lo`, `hi`, payload), any other's its own. -/
+def csvParts (cs : List (String × QAtomicType)) : List (String × QAtomicType) :=
+  cs.flatMap fun (p, t) => if t == .sym then objCols (.arr (.atom .char)) p else [(p, t)]
+
+/-- `Table.intern` of the `n` texts `x` (cells of `char`) into the dictionary `D : ℕ ⟶ [C]` as plan nodes, the recipe
+    as the Lean states it: `R` the texts by row, the new texts `N = ran R − ran D`, each to its first row
+    `F = Λ((R ≫ N)°) ≫ uncons ≫ π₁`, `D'` is `D` then the texts of `F°` (`concatB`), each row's id `R ≫ D'°`. `D`'s rows
+    are kept, so no stored id changes. Answers `D'` and the register of the `n` ids. -/
+def internB (D : TabB) (n : Nat) (x : Col) : Bld (TabB × Nat) := do
+  let R : TabB := ⟨n, [.atom "" .i64 (← posB)], [x]⟩
+  let N ← diffB (← coreflB R.n R.val) (← coreflB D.n D.val)
+  let L ← lamB .long N.n N.key (← convB (← compB R N))
+  let F ← compB L (← unconsB .long true L.n L.val)
+  let Fc ← convB ⟨F.n, F.key, F.val.take 1⟩
+  let (m, off) ← catB D.n Fc.n
+  let D' : TabB := ⟨m, [.atom "" .i64 (← posB)], ← concatB m D.n Fc.n off D.val Fc.val⟩
+  let I ← compB R (← convB D')
+  let [.atom _ _ ids] := I.val | throw "intern: the ids are not one column"
+  pure (D', ids)
+
+/-- The symbol columns `cs` (paths, atoms) of a side `s` read by `csvSideB`, each one's three text parts replaced by
+    its ids (`internB`, `Table.internCsv`) into `D`, left to right; the side and the grown dictionary. -/
+def internSide (cs : List (String × QAtomicType)) (D : TabB) (s : Side) : Bld (Side × TabB) := do
+  let mut s := s
+  let mut D := D
+  for (p, _) in cs.filter (·.2 == .sym) do
+    let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
+    let (some lo, some hi, some e, some m, some n) :=
+        (reg (p ++ ".lo") Side.enc, reg (p ++ ".hi") Side.enc, reg (p ++ ".e") Side.enc, reg (p ++ ".e") Side.count,
+          reg (p ++ ".lo") Side.count)
+      | throw s!"symbol column `{p}`: its text parts have no registers"
+    let (D', ids) ← internB D n (.arr "" m lo hi [.atom ".e" .char e])
+    s := s.filter (fun (q, _) => ![p ++ ".lo", p ++ ".hi", p ++ ".e"].contains q) ++ [(p, (← encRegs .sym n ids).push ids)]
+    D := D'
+  pure (s, D)
+
 /-- The CSV columns `cs` of a side, each count and `Enc` taken off `csvRead`'s list `l`; the rest of the list. -/
 def csvSideB (cs : List (String × QAtomicType)) (l : Nat) : Bld (Side × Nat) := do
   let mut l := l
   let mut s : Side := []
-  for (p, t) in cs do
+  for (p, t) in csvParts cs do
     let cell ← projB l 1 0 .obj
     let (n, e) := (← projB cell 0 0 .size, ← projB cell 0 1 .obj)
     s := s ++ [(p, (← encRegs t n e).push e)]
@@ -1809,31 +1846,40 @@ def csvSideB (cs : List (String × QAtomicType)) (l : Nat) : Bld (Side × Nat) :
   pure (s, l)
 
 /-- The table an input's read answered, in `main`: its key side and value side (`csvSideB`, `ownSideB`); a keyed
-    one's rows sorted with equal rows merged (`canonT`, `Table.canon`), as `Table.readKeyed`/`readCsvDict` read it. -/
-def sideOf (x : String) (r : InRead) : Bld (Side × Side) := do
-  let (k, v, s) ← match r with
+    one's rows sorted with equal rows merged (`canonT`, `Table.canon`), as `Table.readKeyed`/`readCsvDict` read it. A CSV
+    file's symbol columns are interned into the program's dictionary `D` (`internSide`, key columns first), which the
+    answer carries grown. -/
+def sideOf (x : String) (D : TabB) (r : InRead) : Bld ((Side × Side) × TabB) := do
+  let (k, v, s, D) ← match r with
     | .csv k v kc vc l => do
       let (ks, l) ← csvSideB kc l
-      pure (k, v, ks, (← csvSideB vc l).1)
+      let (ks, D) ← internSide kc D ks
+      let (vs, D) ← internSide vc D (← csvSideB vc l).1
+      pure (k, v, (ks, vs), D)
     | .own k v kc vc => do
       let (ks, n₀) ← ownSideB x kc none
-      pure (k, v, ks, (← ownSideB x vc n₀).1)
-  if k.isEmpty then return s
-  sidesOf (← canonT ⟨← countOf s, ← colsOf k.obj s.1, ← colsOf v.obj s.2⟩)
+      pure (k, v, (ks, (← ownSideB x vc n₀).1), D)
+  if k.isEmpty then return (s, D)
+  return (← sidesOf (← canonT ⟨← countOf s, ← colsOf k.obj s.1, ← colsOf v.obj s.2⟩), D)
 
 /-- `output x to [csv] path` of the table `s` (`n.io`'s `Table.write`, `writeKeyed`, `writeCsv`): key `k = []`, the
     value side only, its rows renumbered by their order; else `key/` and `val/` (a CSV file: the key's columns, then
     the value's), each column from its `Enc` register (a column mapped from its file too, `ownSideB`), a directory's
     side with its `.d` (`Table.dName`) as `Table.write` writes it. A positions
-    column has no file and no CSV part: it is refused, naming the column. -/
-def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) (s : Side × Side) :
-    Bld Unit := do
+    column has no file and no CSV part: it is refused, naming the column. A CSV file's symbol column is its texts, its
+    ids decoded through the program's dictionary `D` (`Table.decodeCsv`: `unenum`, `I ≫ D`, then the text's three parts). -/
+def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) (s : Side × Side)
+    (D : TabB) : Bld Unit := do
   let sides := if k.isEmpty then [(v, s.2, path)] else [(k, s.1, Table.file path "key"), (v, s.2, Table.file path "val")]
   let col (S : Schema) (side : Side) (p : String) : Bld (Array Nat) := match side.lookup p with
     | some r => pure r
     | none => throw s!"output `{x}` to \"{path}\": column `{p}` of {Schema.names S} is positions, which have no file"
   match csv with
   | none => for (S, side, dir) in sides do
+      -- `Table.writeOwn`'s `writeLib` compares the library's dictionary files already on disk, read at run time
+      if Table.symIn S.obj then
+        throw s!"output `{x}` to \"{path}\": a symbol column, whose library dictionary (`Table.writeLib`) is checked \
+          against the files already on disk, which no plan recipe reads yet"
       -- the side's `.d` as `Table.write` writes it: the same column (`textCol S.names`) through `writeVals`' own
       -- steps (`cols`, `ownFile`), known when the plan is built, so its parts are literals
       for (q, c) in cols _ (Table.textCol S.names).2 Table.dName do
@@ -1843,21 +1889,26 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
       for (p, q, _) in schemaCols S do
         discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 Side.enc) 0
   | some (sep, cs) =>
-    if cs.any (fun (_, _, t, _) => t == .sym) then
-      throw s!"output `{x}` to csv \"{path}\": a symbol column, whose ids the write decodes through the program's \
-        dictionary (`Table.decode`), which no plan recipe does yet"
+    let ts ← ofExc ((Db.Csv.symText cs).mapError (s!"{path}: " ++ ·))
     let mut es : List Nat := []
     let mut rows : Option Nat := none
     for (S, side, _) in sides do
       if hasSum S.obj then throw s!"output `{x}` to csv \"{path}\": a nullable CSV column, which no plan recipe writes yet"
-      for (p, _, _) in schemaCols S do
+      for (p, _, t) in schemaCols S do
         let r ← col S side p
         let (some m, some e) := (r[Side.count]?, r[Side.enc]?)
           | throw s!"output `{x}` to csv \"{path}\": column `{p}` has no `Enc` register, which `csvWrite` takes"
         rows := some m
-        es := es ++ [← ctorB 0 #[m, e] #[]]
+        if t == .sym then
+          -- `unenum`: the ids `I ≫ D` as texts, refused unless every id has one (`Table.decode`)
+          let T ← compB ⟨m, [.atom "" .i64 (← posB)], [.atom "" .i64 e]⟩ D
+          guard (← call1 (kernel% USize.decEq) #[T.n, m])
+            s!"output `{x}` to csv \"{path}\": column `{p}` has ids past the dictionary of texts, ids and texts matched" #[m, T.n]
+          let [.arr _ m' lo hi [.atom _ _ pe]] := T.val | throw s!"output `{x}`: the texts of column `{p}` are not one text column"
+          es := es ++ [← ctorB 0 #[m, lo] #[], ← ctorB 0 #[m, hi] #[], ← ctorB 0 #[m', pe] #[]]
+        else es := es ++ [← ctorB 0 #[m, e] #[]]
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
-    discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put cs), ← lit (.u8 sep), n, ← listB es] 0
+    discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put ts), ← lit (.u8 sep), n, ← listB es] 0
 
 /-- The plan of the IO statements of the program `n`, read after its homes (`progOf`, `Expand.read`), as `n.io`
     runs them: the input edge reads the inputs the outputs reach (`Expand.ioReach`, `readIn`); `main` builds each
@@ -1882,12 +1933,19 @@ def ioOf (n : Lean.Name) :
       pure rs
     let wr (ins : List (String × InRead)) : Bld Unit := do
       let mut σ : List (String × Side × Side) := []
-      for (x, r) in ins do σ := σ ++ [(x, ← sideOf x r)]
+      -- the program's dictionary (§0.2): empty, grown by each CSV input's symbols in statement order (`Expand.ioE`);
+      -- an own table with a symbol column starts it from its library's, which `readIn` and `writeOut` refuse
+      let mut D ← zeroB .long (.arr (.atom .char))
       -- every statement's refusal, not the first's: the list is the work a program needs of the plan
       let mut errs : Array String := #[]
       for s in io do
        try
         match s with
+        -- an input's table in statement order, so a `dictionary` after it holds its symbols and none of a later input's
+        | .input x .. =>
+          if let some r := ins.lookup x then
+            let (t, D') ← sideOf x D r
+            σ := σ ++ [(x, t)]; D := D'
         | .defn x c deps =>
           if reach.contains x then
             let some o := os.find? (·.const == c) | throw s!"`{x}`: its constant `{c}` has no body here"
@@ -1896,6 +1954,10 @@ def ioOf (n : Lean.Name) :
               | none => throw s!"`{x}` reads `{d}`, which is not read or computed before it"
             let ⟨_, _, t⟩ := o.res
             σ := σ ++ [(x, ← ofTm env t)]
+        -- `dictionary x : S ⟶ [C]` (`Table.dictRel`) as a table of the plan: its first attempt failed `csvWrite`'s count
+        -- check on the ids column of a written dictionary, not yet explained, so it is refused rather than guessed
+        | .dict x _ _ =>
+          if reach.contains x then throw s!"`dictionary {x}`: the dictionary as a relation, which no plan recipe builds yet"
         | .output x _ _ k v c p cl =>
           mainStepB do
             let t ← match cl, σ.lookup x with
@@ -1904,8 +1966,7 @@ def ioOf (n : Lean.Name) :
                 | some ⟨_, _, t⟩ => ofTm [] t
                 | none => throw s!"output `{x}`: no closed definition `{x}`"
               | none, none => throw s!"output `{x}`: not read or computed before it"
-            writeOut x k v c p t
-        | _ => pure ()
+            writeOut x k v c p t D
        catch e => errs := errs.push e
       unless errs.isEmpty do throw ("\n".intercalate errs.toList)
     pure (rd, wr)
