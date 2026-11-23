@@ -43,24 +43,35 @@ def atom (t : QAtomicType) (n : USize) (m p : String) : Arr t n × Bool :=
   | none => blank
 where blank := (Arr.mk (Enc.blank t n) (Enc.blank_WF t n) (Enc.blank_plain t n), false)
 
-/-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs. -/
-def pairV (A B : Obj) (n : USize) (x : Vals A n × Bool) (y : Vals B n × Bool) : Vals (.prod A B) n × Bool :=
-  ((x.1, y.1), x.2 && y.2)
-def arrV (B : Obj) (n m : USize) (lo hi : Arr .i64 n × Bool) (p : Vals B m × Bool) : Vals (.arr B) n × Bool :=
-  (⟨m, lo.1, hi.1, p.1⟩, lo.2 && hi.2 && p.2)
-def sumV (A B : Obj) (h : Obj.band A B = none) (n l r : USize) (tag : Arr .u1 n × Bool) (idx : Arr .i64 n × Bool)
-    (x : Vals A l × Bool) (y : Vals B r × Bool) : Vals (.sum A B) n × Bool :=
-  (Vals.ofGen h l r tag.1 idx.1 x.1 y.1, tag.2 && idx.2 && x.2 && y.2)
-/-- A band sum's one nullable column (`Obj.band`), rebuilt as `atom` rebuilds a column but nulls allowed: `Enc.WF`
-    decided, a payload that does not fit `n` a blank column with bit false. -/
-def optV (A B : Obj) (t : QAtomicType) (h : Obj.band A B = some t) (n : USize) (m p : String) :
-    Vals (.sum A B) n × Bool :=
+/-- A nullable column's payload `m`, `p` rebuilt as `atom` rebuilds a column but nulls allowed: `Enc.WF` decided, a
+    payload that does not fit `n` a blank column with bit false. -/
+def opt (t : QAtomicType) (n : USize) (m p : String) : Opt t n × Bool :=
   let e := Enc.foR (unhex m) (unhex p)
   match Enc.wf? t n e with
-  | some ⟨w⟩ => (Vals.ofOpt h ⟨e, w⟩, true)
-  | none => (Vals.ofOpt h ⟨Enc.blank t n, Enc.blank_WF t n⟩, false)
+  | some ⟨w⟩ => (⟨e, w⟩, true)
+  | none => (⟨Enc.blank t n, Enc.blank_WF t n⟩, false)
+/-- An atom column at ownership `o` rebuilt from its payload: `atom`, or `opt` where a row may be null. -/
+def colB (o : Bool) (t : QAtomicType) (n : USize) (m p : String) : ColB o t n × Bool :=
+  match o with
+  | false => atom t n m p
+  | true => opt t n m p
+
+/-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs; at ownership `o`, as `ValsB`. -/
+def pairV (o : Bool) (A B : Obj) (n : USize) (x : ValsB o A n × Bool) (y : ValsB o B n × Bool) :
+    ValsB o (.prod A B) n × Bool :=
+  ((x.1, y.1), x.2 && y.2)
+def arrV (o : Bool) (B : Obj) (n m : USize) (lo hi : ColB o .i64 n × Bool) (p : Vals B m × Bool) :
+    ValsB o (.arr B) n × Bool :=
+  (⟨m, lo.1, hi.1, p.1⟩, lo.2 && hi.2 && p.2)
+def sumV (o : Bool) (A B : Obj) (h : Obj.band A B = none) (n : USize) (tag : Arr .u1 n × Bool)
+    (x : ValsB true A n × Bool) (y : ValsB true B n × Bool) : ValsB o (.sum A B) n × Bool :=
+  (ValsB.ofGen h tag.1 x.1 y.1, tag.2 && x.2 && y.2)
+/-- A band sum's one nullable column (`Obj.band`), rebuilt by `opt`. -/
+def optV (o : Bool) (A B : Obj) (t : QAtomicType) (h : Obj.band A B = some t) (n : USize) (m p : String) :
+    ValsB o (.sum A B) n × Bool :=
+  ((ValsB.ofOpt h (opt t n m p).1, (opt t n m p).2))
 /-- A side of `1`: no column, so nothing to rebuild and nothing to misfit. -/
-def oneV (n : USize) : Vals .one n × Bool := ((), true)
+def oneV (o : Bool) (n : USize) : ValsB o .one n × Bool := ((), true)
 def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) : Tab A B × Bool :=
   (⟨n, k.1, v.1⟩, k.2 && v.2)
 end Gen

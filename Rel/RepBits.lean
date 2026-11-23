@@ -297,8 +297,8 @@ theorem Tab.ofBits_holds {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : V
     rw [← e1, toNat_toUInt64 hdl] at gx
     have gy := (kgather_word hiy hrc t ht).2
     rw [← e2, toNat_toUInt64 hml] at gy
-    obtain ⟨i0, h0, r0⟩ := Vals.gather_row x hX1 ⟨t, ht⟩
-    obtain ⟨i1, h1, r1⟩ := Vals.gather_row y hY1 ⟨t, ht⟩
+    obtain ⟨i0, h0, r0⟩ := ValsB.gather_row x hX1 ⟨t, ht⟩
+    obtain ⟨i1, h1, r1⟩ := ValsB.gather_row y hY1 ⟨t, ht⟩
     exact ⟨⟨i0, by rw [← gx]; exact h0, r0⟩, ⟨i1, by rw [← gy]; exact h1, r1⟩⟩
   show (∃ t, X1.row t = u ∧ Y1.row t = v) ↔ _
   constructor
