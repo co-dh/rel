@@ -500,6 +500,37 @@ info: "val\n2\n0\n2\n|key,val\nb,1\na,0\nc,2\n"
   IO.FS.removeDirAll d
   return r ++ "|" ++ r2
 
+-- `asc` at a symbol is `asc(ran(P r)) (P r)°` with `r = rank(D)` (`Elab.symOrd`): the texts `b a c` (ids 0 1 2) come out as
+-- `a b c`, though the ids are in insertion order; `lessThan` is a definition generic over its object, called at `sym`
+open Rel.Programs.prelude in
+rel_program symAscIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-symasc/a.csv"
+    dictionary D : S ⟶ [C]
+    srt : N ⟶ S ≜ asc(ran(a))
+    sorted : N ⟶ [C] ≜ srt D
+    output sorted to csv "/data/tmp/rel-test-io-symasc/t.csv"
+    lessThan : α ⟶ α ≜ <
+    lts : N ⟶ N ≜ a lessThan a°
+    output lts to csv "/data/tmp/rel-test-io-symasc/l.csv"
+
+/--
+info: "val\na\nb\nc\n|val\n2\n0\n2\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-symasc"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
+  symAscIO.io
+  let r ← IO.FS.readFile (d ++ "/t.csv")
+  let r2 ← IO.FS.readFile (d ++ "/l.csv")
+  IO.FS.removeDirAll d
+  return r ++ "|" ++ r2
+
 -- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
 /--
 error: line 514, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`

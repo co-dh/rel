@@ -424,6 +424,8 @@ inductive Pre
   /-- `≤` at the number object `n`; `rk` `rank(D)` for the program's dictionary `D`, which `n` = `sym` orders by (`symOrd`). -/
   | leq (pos : Pos) (n : OTy) (rk : Option Pre)
   | lt (pos : Pos) (n : OTy) (rk : Option Pre)
+  /-- The `asc` row `q` (`.prim`), `rk` as in `leq`: at `sym` its set is numbered by text order (`symOrd`). -/
+  | ranked (q : Pre) (rk : Option Pre)
   | fold (right : Bool) (e s : Pre)
   /-- A literal; `gd` the generic definition whose body holds it (`Env.gdef`), where its numerals' objects are
       the call's, checked at each call. -/
@@ -630,6 +632,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .arith q k n => return .arith (← fp q) k n
   | .leq q n r => return .leq (← fp q) n (← r.mapM mo)
   | .lt q n r => return .lt (← fp q) n (← r.mapM mo)
+  | .ranked q r => return .ranked (← mo q) (← r.mapM mo)
   | .fold d e s => return .fold d (← mo e) (← mo s)
   | .lit q a b ps gd => return .lit (← fp q) a b ps gd
   | .close q x a why => return .close (← fp q) (← mo x) a why
@@ -1521,9 +1524,11 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   | .op p o objs args => do
     let as ← elabArgs env m args
     -- `<` and `≤` at `sym` are `rank(D) < rank(D)°` (`symOrd`): the rank is elaborated here, where `D` is a parameter
+    -- the same for the `asc` row, which takes its set as an argument where the two orders take none
+    let asc := o == .prim "asc"
     let rk : Option Pre ← match o, env.dict with
-      | .lt, some d | .leq, some d =>
-        match args.isEmpty, env.params.lookup d, env.def? "rank" with
+      | .lt, some d | .leq, some d | .prim "asc", some d =>
+        match args.isEmpty != asc, env.params.lookup d, env.def? "rank" with
         | true, some a, some df => do
           let a' := match a with | .rel (.var _ k s t x) u v => .rel (.var p k s t x) u v | a => a
           let (q, _, _) := (← settle none p [a'] (← df.apply p [a'])).plain; pure (some q)
@@ -1532,7 +1537,11 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     if args.isEmpty then constant env p o objs rk
       else match m with
         | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
-        | none => applied env p o (as.map Arg.plain)
+        | none => do
+          let r ← applied env p o (as.map Arg.plain)
+          match r with
+          | .rel q s t => pure (if asc then .rel (.ranked q rk) s t else r)
+          | r => pure r
   | .app p n args => do
     let as ← elabArgs env m args
     match env.def? n with
@@ -2383,18 +2392,26 @@ where
 def symObj (n : OTy) : Bool :=
   match zonk mc n with | .base nm => (objs.lookup nm).any (·.obj == .atom .sym) | _ => false
 
-/-- `<` or `≤` (`mk`) at `sym`: the order of the texts, `r ≫ mk(ran r) ≫ r°` with `r = rank(D)` (`rk`, built from the
-    program's `dictionary D`) numbering each id by its text's position, so the ranks are compared at `i64`. No
-    kernel orders `sym` (`Tab.ordOp`); this composition of relations is its order. -/
-def symOrd (p : Pos) (op : String)
-    (mk : (t : QAtomicType) → Tm (.atom t) (.atom t) → Tm (.atom t) (.atom t)) : Option Res → Except Err Res
+/-- An order at `sym` is the order of the texts: with `r = rank(D)` (`rk`, built from the program's `dictionary D`)
+    numbering each id by its text's position and `Q = P r` (`P` the set `asc` numbers; none, `Q = r`), `mk Q Q°` is
+    `Q ≫ <(ran Q) ≫ Q°` for `<` (`≤` likewise) and `asc(ran Q) ≫ Q°` for `asc`: the ranks are ordered at `i64`.
+    No kernel orders `sym` (`Tab.ordOp`); this composition of relations is its order. -/
+def symOrd (p : Pos) (op : String) (P : Option Res)
+    (mk : (Q : Tm (.atom .sym) (.atom .i64)) → Tm (.atom .i64) (.atom .sym) → (X : Obj) × Tm X (.atom .sym)) :
+    Option Res → Except Err Res
   | none => throw ⟨p, s!"{op} on sym needs the dictionary: declare `dictionary D : S ⟶ [C]` before this definition"⟩
   | some ⟨A, B, r⟩ =>
     if h : A = .atom .sym ∧ B = .atom .i64 then
       match A, B, r, h with
       | _, _, r, ⟨rfl, rfl⟩ => do
-        let rc ← (convTm r).mapError (⟨p, ·⟩)
-        pure ⟨.atom .sym, .atom .sym, .comp r (.comp (mk .i64 (.ran r)) rc)⟩
+        let Q ← match P with
+          | none => pure r
+          | some ⟨A', B', s⟩ =>
+            if h' : A' = .atom .sym ∧ B' = .atom .sym then
+              match A', B', s, h' with | _, _, s, ⟨rfl, rfl⟩ => pure (Tm.comp s r)
+            else internal dp s!"the set of {op} is at {repr A'} ⟶ {repr B'}, not sym ⟶ sym"
+        let ⟨X, t⟩ := mk Q (← (convTm Q).mapError (⟨p, ·⟩))
+        pure ⟨X, .atom .sym, t⟩
     else internal dp s!"rank(D) is at {repr A} ⟶ {repr B}, not sym ⟶ i64"
 
 /-- A pair test at the objects `A×B`. -/
@@ -2449,6 +2466,15 @@ partial def Tm.reads (k : Nat) : {A B : Obj} → Tm A B → List Res
   | _, _, .mu j _ _ b | _, _, .hylo j _ b => if j == k then [] else b.reads k
   | _, _, .nu j S b => S.reads k ++ if j == k then [] else b.reads k
   | _, _, t => t.parts.flatMap fun ⟨_, _, c⟩ => c.reads k
+
+/-- Whether `t` orders by `<`, `≤` or `asc`, a call's body included: built at placeholders it holds the number order,
+    which is no order of the texts at `sym` (`symOrd`). -/
+partial def Tm.ordered : {A B : Obj} → Tm A B → Bool
+  | _, _, .leq .. | _, _, .lt .. => true
+  | _, _, .prim r => r.sym == ascRow.sym
+  | _, _, .call _ _ _ b => b.ordered
+  | _, _, .callCv _ _ _ _ b u => b.ordered || u.ordered
+  | _, _, t => t.parts.any fun ⟨_, _, c⟩ => c.ordered
 
 /-- The call node of `c` given the body `t` and its arguments `rs`, bound to `ks`, one for one. A call's body sees
     only its `ks` (`Code.args`, `Tm.fv`), so each variable `t` reads beyond them (a universe of the enclosing
@@ -2613,11 +2639,20 @@ def build : Pre → Except Err Res
       if k == Rel.Kernel.Ew.greater then (.outr, .outl) else (.outl, .outr)
     return ⟨_, _, .join (.comp le hi) (.comp gt lo)⟩
   | .leq p n rk => do
-    if symObj objs mc n then return ← symOrd dp p "≤" (fun t U => .leq t U) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+    if symObj objs mc n then
+      return ← symOrd dp p "≤" none (fun Q Qc => ⟨_, .comp Q (.comp (.leq .i64 (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
     let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, .leq t U⟩
   | .lt p n rk => do
-    if symObj objs mc n then return ← symOrd dp p "<" (fun t U => .lt t U) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+    if symObj objs mc n then
+      return ← symOrd dp p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (.lt .i64 (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build q))))
     let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, .lt t U⟩
+  -- `asc(P)` at `sym`: `asc(ran(P r)) (P r)°`, the set `P` through the ranks, numbered, and back through them
+  | .ranked (.prim r [x] s t) rk => do
+    if symObj objs mc t then
+      return ← symOrd dp dp "asc" (some (← build x)) (fun Q Qc => ⟨_, .comp (Tm.asc (.ran Q)) Qc⟩)
+        (← (match rk with | none => pure none | some q => do pure (some (← build q))))
+    build (.prim r [x] s t)
+  | .ranked q _ => build q
   | .fold true e s => do
     let r ← build e; let ⟨V, _, _⟩ := r
     match ← build s with
@@ -2656,6 +2691,9 @@ def build : Pre → Except Err Res
     -- a variable the constant is not generic over (built at `.long`) given another object: the constant does not
     -- serve this call, so the expansion runs at the call's objects, every number check at them (monomorphised)
     if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build q
+    -- a body that orders, called at `sym`: the constant holds the number order (`Tm.instObj` refuses it there), so the
+    -- expansion runs, where `symOrd` builds the order of the texts from the dictionary, or says it is missing
+    if t.2.2.ordered && us.any fun (u, _, _) => (toObj objs mc dp u).toOption == some (.atom .sym) then return ← build q
     -- the constant took a numeral at an object variable as the number; the expansion has it at the call's object
     q.lits.forM fun (p, a, b, ps, d) => if d.isSome then discard (litRes objs mc dp p a b ps d) else pure ()
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b

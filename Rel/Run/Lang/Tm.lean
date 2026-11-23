@@ -146,6 +146,9 @@ def Tm.dom {A B : Obj} (R : Tm A B) : Tm A A := .arg (.prim domRow) R
 /-- `ran(R) = 𝟙 ∩ R° R`, the row `ranRow` given `R` (`Tm.ran_den`). -/
 def Tm.ran {A B : Obj} (R : Tm A B) : Tm B B := .arg (.prim ranRow) R
 
+/-- `asc(P) : ℕ ⟶ B`, the row `ascRow` given `P` (`Prim.den_ascRow`): the set `dom P` numbered by `Obj.lt` order. -/
+def Tm.asc {B : Obj} (P : Tm B B) : Tm .long B := .arg (.prim ascRow) P
+
 /-- `[] : A ⟶ [B]`, the row `nilRow` (`Tm.nil_den`). -/
 def Tm.nil {A B : Obj} : Tm A (.arr B) := .prim nilRow
 
