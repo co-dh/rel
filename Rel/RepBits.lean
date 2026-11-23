@@ -584,7 +584,7 @@ theorem colCat_plain {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a
   rw [Except.bind_eq_ok'] at h; obtain ⟨o', ho, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
-  exact ⟨colMap_plain ho, (colMap_closed ho).2⟩
+  exact ⟨colMap_plain (by lockstep) ho, (colMap_closed (by lockstep) ho).2⟩
 
 /-- **`R.ldivBits S UB UC` denotes `R\S` within `UB`, `UC`** (`Tab.ldiv_holds`' statement). -/
 theorem Tab.ldivBits_holds {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T : Tab B C}
