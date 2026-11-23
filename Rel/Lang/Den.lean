@@ -228,12 +228,30 @@ theorem flatDen_iff {I A B : Obj} (T : Core.Rel (Obj.El I) (Obj.El (.prod A B)))
    fun h => ⟨(x.2, b), ⟨⟨_, rfl, h⟩, _, rfl, rfl⟩, rfl⟩⟩
 
 
-/-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`. -/
-abbrev estDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El B) :=
-  fun xs b => b ∈ xs ∧ ¬ ∃ c, c ∈ xs ∧ c ≠ b ∧ ¬ TQ (b, c) (b, c)
-
 /-- `∋`: an array to each of its elements. The leaf every power operation composes. -/
 abbrev memDen : Core.Rel (Obj.El (.arr A)) (Obj.El A) := fun xs a => a ∈ xs
+
+/-- The pair test `TQ` read at `(b, c)` as a relation `B ⟶ B`: `qtDen TQ b c ↔ TQ (b, c) (b, c)`. -/
+abbrev qtDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El B) (Obj.El B) :=
+  (graph Prod.fst)° ≫ (𝟙 _ ∩ TQ) ≫ graph Prod.snd
+
+theorem qtDen_iff (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) (b c : Obj.El B) :
+    qtDen TQ b c ↔ TQ (b, c) (b, c) :=
+  ⟨fun ⟨p, hp, q, ⟨hpq, hT⟩, hc⟩ => by obtain ⟨b', c'⟩ := p; cases hp; cases hpq; cases hc; exact hT,
+   fun h => ⟨(b, c), rfl, _, ⟨rfl, h⟩, rfl⟩⟩
+
+/-- `est(Q)` keeps `b` of `xs` unless some other `c` of `xs` fails `Q` at `(b, c)`: `∋ ∩ (∋° \ (𝟙 ∪ Qt°))`. -/
+abbrev estDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El B) :=
+  memDen ∩ (ldiv memDen° (𝟙 _ ∪ (qtDen TQ)°))
+
+theorem estDen_iff (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) (xs : Obj.El (.arr B)) (b : Obj.El B) :
+    estDen TQ xs b ↔ b ∈ xs ∧ ¬ ∃ c, c ∈ xs ∧ c ≠ b ∧ ¬ TQ (b, c) (b, c) :=
+  and_congr_right fun _ => by
+    simp only [ldiv_apply, Core.Rel.union, Core.Rel.id, Core.Rel.recip, qtDen_iff]
+    exact ⟨fun h ⟨c, hc, hne, hq⟩ => (h c hc).elim hne hq, fun h c hc => by
+      by_cases e : c = b
+      · exact .inl e
+      · exact .inr (Classical.byContradiction fun hq => h ⟨c, hc, e, hq⟩)⟩
 
 /-- `Λ(T)` with `𝒫B` held as `[B]` (D2 = C): `a` to the one list of its image strictly ascending by `Obj.lt`, the
     order `Rel.Canon` puts a table's rows in; no list where that image has no such list. -/
@@ -361,7 +379,13 @@ abbrev EDen (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (O
 /-- `front(Q)`: the canonical list of the `c` of `xs` that no `b` of `xs` beats
     strictly, `Q` read as its pair test as in `estDen`. -/
 abbrev frontDen (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) : Core.Rel (Obj.El (.arr B)) (Obj.El (.arr B)) :=
-  lamDen fun xs c => c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b)
+  lamDen (memDen ∩ ldiv memDen° (diff top (diff (qtDen TQ) (qtDen TQ)°)))
+
+theorem frontDen_iff (TQ : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) (xs ys : Obj.El (.arr B)) :
+    frontDen TQ xs ys ↔ ys.Pairwise B.lt ∧ ∀ c, c ∈ ys ↔ c ∈ xs ∧ ¬ ∃ b, b ∈ xs ∧ TQ (b, c) (b, c) ∧ ¬ TQ (c, b) (c, b) := by
+  simp only [frontDen, lamDen_iff, Core.Rel.inter, ldiv_apply, Core.Rel.diff, Core.Rel.top, Core.Rel.recip, qtDen_iff]
+  refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl (and_congr_right fun _ => ?_)
+  exact ⟨fun h ⟨b, hb, h1, h2⟩ => (h b hb).2 ⟨h1, h2⟩, fun h b hb => ⟨trivial, fun h' => h ⟨b, hb, h'⟩⟩⟩
 
 /-! ### The rows of `prims` -/
 
@@ -910,7 +934,7 @@ theorem pair_le {X X' : Core.Rel (Obj.El A) (Obj.El B)} {Y Y' : Core.Rel (Obj.El
 
 -- `est` drops `b` only where `Q` fails, so a larger `Q` drops fewer
 theorem est_le {Q Q' : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))} (hQ : Q ⊑ Q') : estDen Q ⊑ estDen Q' :=
-  le_iff.2 fun _ _ h => ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩
+  le_iff.2 fun _ _ h => (estDen_iff ..).2 (let h := (estDen_iff ..).1 h; ⟨h.1, fun ⟨c, hc, hne, hq⟩ => h.2 ⟨c, hc, hne, fun h' => hq (le_iff.1 hQ _ _ h')⟩⟩)
 
 theorem leq_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : leqDen t U ⊑ leqDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩

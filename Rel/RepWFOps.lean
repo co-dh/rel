@@ -204,7 +204,7 @@ theorem est_holds {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
       rintro ⟨-, a, hw⟩
       obtain ⟨h1, h2⟩ := (pair_holds hW wV wV a p).1 hw
       exact hne (((ran_holds hV wG.2 _ _).1 h1).1.symm.trans ((ran_holds hV wG.2 _ _).1 h2).1)
-  rw [diff_holds h wG wPO, mem_holds hG hX, comp_holds hPO wP (outl_wf hO wY.1)]
+  rw [Lang.estDen_iff, diff_holds h wG wPO, mem_holds hG hX, comp_holds hPO wP (outl_wf hO wY.1)]
   constructor
   · rintro ⟨⟨hx, hb⟩, hno⟩
     refine ⟨hx, hb, fun ⟨c, hc, hne, hq'⟩ => hno ⟨(b, c), (eP xs (b, c)).2 ⟨⟨hx, hb⟩, hx, hc⟩, ?_⟩⟩
@@ -276,8 +276,7 @@ theorem front_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
         exact ((eD _ _).1 hd).2.2
   rw [lam_den h hX wGd]
   refine and_congr_right fun hx => ?_
-  simp only [Lang.frontDen]
-  rw [Lang.lamDen_iff, Lang.lamDen_iff]
+  rw [Lang.frontDen_iff, Lang.lamDen_iff]
   refine and_congr_right fun _ => forall_congr' fun c => iff_congr Iff.rfl ?_
   rw [diff_holds hGd wG wPO, mem_holds hG hX xs c, comp_holds hPO wP (outr_wf hO wY.1), and_iff_right hx]
   refine and_congr_right fun hc => not_congr ⟨fun ⟨p, hp, ho⟩ => ?_, fun ⟨b, hb, hbt, hn⟩ => ?_⟩
