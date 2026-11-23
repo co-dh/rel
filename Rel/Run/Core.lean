@@ -103,6 +103,60 @@ def of (t : QAtomicType) (n : USize) (v : QValue) (what : String) : Except Strin
 
 end Arr
 
+/-- A nullable column of `n` elements of `t`: the side `t+1` (`Obj.sum (.atom t) .one`) as ONE column (design card
+    "atom+1", decision K), `Arr t n` without its no-null clause. A null row holds its block's top residual
+    (`Column.foRNul`), so a kernel moves and tests it on the encoding. -/
+abbrev Opt (t : QAtomicType) (n : USize) := {v : QValue // v.WFAt t n}
+
+namespace Opt
+
+variable {t : QAtomicType} {n : USize}
+
+/-- The payload, as `Arr.enc`. -/
+def enc (x : Opt t n) : Enc := match x.1 with | .vector _ _ e _ => e | _ => .gen #[]
+
+theorem wf (x : Opt t n) : Enc.WF t n x.enc := by
+  obtain ⟨v, h⟩ := x; cases v <;> first | exact h.2.2 | exact h.elim
+
+/-- `e` under the header `t`, `n`. -/
+def mk (e : Enc) (h : Enc.WF t n e) : Opt t n := ⟨.vector t n e none, ⟨rfl, rfl, h⟩⟩
+
+/-- A column with no null as a nullable one: `inl`, which leaves the storage as it is. -/
+def ofArr (x : Arr t n) : Opt t n := ⟨x.1, x.2.1⟩
+
+/-- A general list holds no null: its payload is `gen`, which has no block to flag. -/
+theorem plain_general (x : Opt .general n) : Kernel.hasNul x.enc = false := by
+  have hw := x.wf; generalize x.enc = e at hw ⊢; cases e <;> first | rfl | exact absurd hw.1 (by decide) | exact hw.elim
+
+/-- Whether row `i` is the null: tested on the block (`Column.foRNul`: flagged, unpatched, top residual), never
+    decoded. Only a `foR` payload holds one. -/
+def isNul (x : Opt t n) (i : Nat) : Bool := match x.enc with
+  | .foR md pk => Column.foRNul md pk #[] i
+  | _ => false
+
+/-- Row `i` as `t+1`: `none` at the null, else `Arr.get`'s element (`foROpt` read back at `t`). -/
+def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) :=
+  if x.isNul i then none else some (match t, x with
+    | .general, x => Arr.get (Arr.mk x.enc x.wf x.plain_general) i
+    | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default)
+
+/-- The nullable column of `xs`, `none` the null: the values' dense bytes (a null's `0`, never read) and the bitmap of
+    the null rows through the one writer `Coc.encode`. `Enc.WF` is decided, never assumed; `none` where an atom is not
+    at `t`, or at `general`, whose payload has no block to hold a null. -/
+def ofAtoms (t : QAtomicType) (xs : Array (Option QAtom)) : Option (Opt t xs.size.toUSize) :=
+  match t.width with
+  | none => none
+  | some w =>
+    if xs.all (·.all (·.type == t)) then
+      let b := xs.foldl (init := ByteArray.emptyWithCapacity (xs.size * w)) fun acc a =>
+        Column.pushBits acc ((a.map Column.bitsOf).getD 0) w
+      let nul := Column.packIds 1 xs.size fun i => (xs[i]?.any Option.isNone).toNat
+      let e : Enc := .foR (Kernel.Coc.encode w.toUSize b nul).1 (Kernel.Coc.encode w.toUSize b nul).2
+      if h : Enc.WF t xs.size.toUSize e then some (mk e h) else none
+    else none
+
+end Opt
+
 
 /-- `xs` as a dense long payload, eight bytes each: the literal columns of every module's checks. -/
 def packLongs (xs : List Int64) : ByteArray := xs.foldl (fun b x => Column.pushBits b x.toUInt64 8) .empty
