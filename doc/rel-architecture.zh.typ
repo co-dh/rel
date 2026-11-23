@@ -396,21 +396,24 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`zip`], [两侧格界 → `scan(min)` 宽 → EXPAND → `gather` 两 payload 各在 `s₁[G] + u`、`s₂[G] + u` →
     `scan` 前缀和得新格；拒绝条件同 `cat`],
   [`sum`（`⦇0, +⦈`）], [格界 → EXPAND → `gather` 元素 `v` → 每格首元素（偏移 0）标段 → 自左向右分段
-    `scan(add)`（i64）或 `scan(fadd)`（f64）从 0 得前缀和 `W`，测坏步（i64：溢出或 null `−2^63`；f64：`fto` 后
-    `W' ≠ W` 或 NaN）（`sumTail`，与 `sums` 共用）→ `scatter(or)` 得坏格、`scatter(last)` 取每格末行的和（空格为 0）
-    → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。值对象为 i64 或 f64
-    （`sumAtoms`），含义是左折叠 `sumAt`（`Tab.sum_holds`）。融合行只用在没有 universe 的对象上；target 有 universe
+    `scan(add)`（i64）从 0 得前缀和 `W`，测坏步（溢出或 null `−2^63`）；float atom（f32、f64 同一条规则）是一次
+    分段 `scan(fadd)`，`pre` 链把元素加宽到 f64（`widen t`），进位是不舍入的 f64 和，`post` 链 `fto t` 把每行舍入
+    一次到 `t`，该值为 `2^63`（NaN）即坏步（`sumTail`/`sumTailF`，与 `sums` 共用）→ `scatter(or)` 得坏格、`scatter(last)` 取每格末行的和（空格为 0）
+    → where 留无坏元素的格（坏格不出现在结果中，不报错）；`n·m + n + m ≥ 2^63` 拒绝。值对象为 i64、f32 或 f64
+    （`sumAtoms`），含义是 `sumDen`（`Tab.sum_holds`）：i64 上是 `stepAt add` 的左折叠；float atom 上每个元素
+    加宽到 f64、在 f64 上左折叠 `⦇0, fadd⦈`、结果舍入一次到 `t`（f32 `[2^24, 1, 1]` 得 `2^24+2`，逐步舍入会得
+    `2^24`；f64 上舍入是恒等，结果不变）。融合行只用在没有 universe 的对象上；target 有 universe
     （声明的有限对象，或泛型常量里的数变量）时 elaborator 构建定义本身（`Elab.dfns`：`sum` 是 `⦇[0, plus]⦈`，
     `length` 是 `⦇[0, π₁ succ]⦈`），所以每一步都留在对象内：`−3…3` 上 `[3,3,−3] sum` 无结果（中间和 6），`1…5` 上
-    `length` 为 `𝟘`（fold 从 0 起步）。造出新数的 row 必须带 `dfn`],
+    `length` 为 `𝟘`（fold 从 0 起步）；float atom 上定义 `⦇[0, plus]⦈` 每步舍入，与 `sumDen` 不同，故
+    `Elab.dfns` 不在 float atom 上构建它（`DfnCut.sum` 要求 `t ∉ floatAtoms`），融合行照跑。造出新数的 row 必须带 `dfn`],
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，
     报错并给出该位置）→ `κ` 列 `seen` 得每个 key 的首行 → `scatter(last)` 得段标 `seg` → 分段 `scan(add)`（种子 0）得
     前缀和 `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → 分段 `scan(or)` 把坏步传到该 key
-    之后各行 → where 留无坏步的行（同 `sum`，不报错）。值对象为 i64 或 f64（`sumAtoms`）：f64 上同一段标做分段
-    `scan(fadd)`（种子 `+0`，自左向右，q 的顺序）得 `W`，`scan(fto)` 得 `W'`，`W' ≠ W` 或 `W' = 2^63`（NaN）为坏步，
-    同样分段 `scan(or)` 传播；`W'` 既非 `W` 也非 `2^63`（`−0`）报错。f32 按名报错并提示先 `$` 到 f64
-    （`stepAt .f32` 每步舍入到 f32，一次 `kscan` 不能算）。不排序 `canon` 之外的东西、不回置换。含义是组合
-    `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（左折叠，`rowDens` 即此组合），本行是它的融合形式（定理
+    之后各行 → where 留无坏步的行（同 `sum`，不报错）。值对象为 i64、f32 或 f64（`sumAtoms`）：float atom 上同一段标
+    做一次分段 `scan(fadd)`（种子 `+0`，自左向右，q 的顺序；`pre` 加宽到 f64，`post` `fto t`），每个前缀值是 f64
+    累加值舍入一次到 `t`，该值为 `2^63`（NaN）为坏步，同样分段 `scan(or)` 传播。不排序 `canon` 之外的东西、不回置换。
+    含义是组合 `agg(dom(x) (𝟙 × ≥) dom(x), F(x) sumDen)`（`rowDens` 即此组合），本行是它的融合形式（定理
     `Tab.sums_holds`，无前提）。`Elab.dfns` 同 `asc`：待 `Elab.dfns` 能读行的关系参数],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：
     每个值换成 `t` 中表示同一个数的字（`QAtomicType.embed`，不舍入），无像时写 null 字 `2^63`（任何像都不是它：

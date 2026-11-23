@@ -223,9 +223,14 @@ theorem Prim.den_lengthRow {E : Obj} :
       some ⟨RowCode.length, fun _ _ xs w => w = Int64.ofNat xs.length⟩ := rfl
   unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
-/-- `sumRow` at `[t] ⟶ t` is `sumAt`'s fold of `stepAt t add` from the word `0`. -/
-theorem Prim.den_sumRow {t : QAtomicType} : Prim.den sumRow (.arr (.atom t)) (.atom t) [] =
-    foldDen (E := .atom t) (V := .atom t) (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add) := by
+/-- At an atom no float, `sumDen` is the fold of `stepAt t add` from the word `0`, the definition `⦇[0, plus]⦈`'s
+    step; at a float atom it adds in `f64` and rounds once, which no fold of `plus` (rounding each step) is. -/
+theorem sumDen_fold {t : QAtomicType} (hf : t ∉ floatAtoms) :
+    sumDen t = foldDen (E := .atom t) (V := .atom t) (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add) := by
+  cases t <;> first | rfl | exact absurd (by decide) hf
+
+/-- `sumRow` at `[t] ⟶ t` is `sumDen t`. -/
+theorem Prim.den_sumRow {t : QAtomicType} : Prim.den sumRow (.arr (.atom t)) (.atom t) [] = sumDen t := by
   have ho : ∀ ps, sumRow.objs (.arr (.atom t)) (.atom t) ps = some [.atom t] := by
     simp [Prim.objs, Option.orElse, sumRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
       List.eraseDupsBy.loop, List.lookup]
@@ -362,10 +367,10 @@ theorem Tm.dfnCut_den {A B : Obj} {d : Tm A B} (c : DfnCut d) (ρ : Val)
     rintro ⟨b, rfl, hbw⟩
     obtain ⟨hw, hp⟩ := (hU _ _).1 hbw
     exact ⟨hc.2 hp, hw.symm⟩
-  | sum h u₀ u =>
+  | sum h hf u₀ u =>
     -- `⦇[0, plus]⦈`: `plus_iff` reads the fold kept in the universe as the row cut to it
     obtain ⟨hU₀, hU⟩ := hUs u₀ u rfl
-    simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow,
+    simp only [Tm.den, Tm.argDen, DfnCut.cut, DfnCut.fused, Prim.den_sumRow, sumDen_fold hf,
       Tm.cut2_plus_den ρ u fun x y h => ((hU x y).1 h).1]
     rw [foldDen_start]
     simp only [zeroTm_den h u₀ ρ hU₀]

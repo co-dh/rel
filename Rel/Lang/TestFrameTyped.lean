@@ -157,24 +157,32 @@ rel_program sumsFloatT where
 
 #guard sumsFloatT.failures.map toString == []
 
--- `sums` at `f32` values: refused by name, with the cast to `f64` that runs it
-/-- error: line 168, col 5: sums on H: H is an object of f32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
-#guard_msgs in
+-- `sums` at `f32` values (`Lang.sumDen`): each prefix the `f64` sum rounded once to `f32`; `2^24 + 1` is a tie and
+-- rounds to the even `2^24`, `2^24 + 2` is exact, where rounding each step would stay at `2^24`
 rel_program sumsF32T where
     obj K = {A}
     obj N
     obj H : f32
-    x : K×N ⟶ H ≜ {((A,0),1.5)}
-    s : K×N ⟶ H ≜ sums(x)
+    x : K×N ⟶ H ≜ {((A,0),16777216.0),((A,1),1.0),((A,2),1.0)}
+    check sums(x) = {((A,0),16777216.0),((A,1),16777216.0),((A,2),16777218.0)}
 
--- `sum` at an `f32` column: refused by name as `sums` is, since one `kscan` cannot round its carry to `f32` each step
-/-- error: line 178, col 11: `summarize` at this call, where ν is N, δ is H, β is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
-#guard_msgs in
+-- `sum` at an `f32` column: added in `f64`, rounded once: `2^24 + 1 + 1` is `2^24 + 2`
 open Rel.Programs.prelude Rel.Programs.frame in
 rel_program sumF32T where
     obj N
     obj H : f32
-    f : N ⟶ H ≜ {(0,2.5),(1,-1.5)}
-    check summarize(F(f) sum, f) = {(∗,1.0)}
+    f : N ⟶ H ≜ {(0,16777216.0),(1,1.0),(2,1.0)}
+    check summarize(F(f) sum, f) = {(∗,16777218.0)}
+
+-- `0.1 + 0.2` at `f32`: the word `0x3e99999a`, the `f32` nearest `0.3`
+open Rel.Programs.prelude Rel.Programs.frame in
+rel_program sumF32T2 where
+    obj N
+    obj H : f32
+    f : N ⟶ H ≜ {(0,0.1),(1,0.2)}
+    check summarize(F(f) sum, f) = {(∗,0.3)}
+-- the word itself: `0.1f`, `0.2f` widened, added in `f64`, rounded once
+#guard (Rel.Kernel.Op.eval .fadd (Rel.Kernel.Op.widen32 0x3dcccccd) (Rel.Kernel.Op.widen32 0x3e4ccccd)).toOption.map
+  (Rel.Kernel.Op.ftoWord .f32) == some 0x3e99999a
 
 end Rel.Lang.TestFrameTyped

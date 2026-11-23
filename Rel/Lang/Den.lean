@@ -210,14 +210,41 @@ abbrev upToDen {K V : Obj} {t : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.at
   (𝟙 _ ∩ T ≫ T°) ≫ ((graph Prod.fst ≫ (graph Prod.fst)°) ∩
     (graph Prod.snd ≫ (fun a b => leAt t b a : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))) ≫ (graph Prod.snd)°)) ≫ (𝟙 _ ∩ T ≫ T°)
 
-/-- q's `sums` per key, `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` with `agg(R, f) = dom(R) Λ(R) f`: `(k, i)` to
-    the left fold of `plus` from `0` over `x`'s values at `(k, j)`, `j ≤ i` ascending; none at or after a step that
-    `plus` refuses (a wrap, the null, a NaN). The values are
-    those of the atom `u`, the fold `stepAt u` from the word `0`: left to right at a float atom, q's order. -/
+/-- A value of the atom `t` to its `f64` word (`fval`): none at an atom holding no float. -/
+abbrev fwideDen (t : QAtomicType) : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom .f64)) := fun x X => fval t x = some X
+
+/-- `Op.fadd` of two `f64` words, not rounded. -/
+abbrev faddDen : Core.Rel (Obj.El (.prod (.atom .f64) (.atom .f64))) (Obj.El (.atom .f64)) :=
+  fun p r => Rel.Kernel.Op.fadd.eval p.1 p.2 = .ok r
+
+/-- An `f64` word to the word of the atom `t` nearest it (`Op.fto t`), none where that is `2^63` (a NaN). -/
+abbrev froundDen (t : QAtomicType) : Core.Rel (Obj.El (.atom .f64)) (Obj.El (.atom t)) :=
+  fun r w => ∃ R, (Rel.Kernel.Op.fto t).eval 0 r = .ok R ∧ R ≠ 0x8000000000000000 ∧ w = QAtomicType.ofBits t R
+
+/-- **`⦇[0, plus]⦈` at the float atom `u`**: the left fold over pairs (carry, value) from `(0, 0)`, each element widened
+    to its `f64` word (`fwideDen`), added to the carry in `f64` unrounded (`faddDen`), the new carry paired with its
+    one rounding to `u` (`froundDen`, none at a NaN); then the value `π₂`. So a float sum accumulates in `f64` and
+    rounds once to `u`, every prefix being checked for a NaN. -/
+abbrev fsumDen (u : QAtomicType) : Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.atom u)) :=
+  foldDen (E := .atom u) (V := .prod (.atom .f64) (.atom u))
+      (fun _ b => b = (QAtomicType.ofBits .f64 0, QAtomicType.ofBits u 0))
+      (rpair (graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
+          (graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ rpair (𝟙 _) (froundDen u)) ≫ graph Prod.snd
+
+/-- **`⦇[0, plus]⦈` at the atom `u`**, the one fold `sum` and `sums` read: `fsumDen` at a float atom (one rule for
+    every float atom: added in `f64`, rounded once); at any other atom the left fold of `stepAt u add` from the word
+    `0` (exact at `i64`, none past a wrap or the null). -/
+def sumDen : (u : QAtomicType) → Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.atom u))
+  | .f32 => fsumDen .f32
+  | .f64 => fsumDen .f64
+  | u => foldDen (fun _ b => b = QAtomicType.ofBits u 0) (stepAt u Ew.add)
+
+/-- q's `sums` per key, `agg(dom(x) (𝟙 × ≥) dom(x), F(x) sumDen)` with `agg(R, f) = dom(R) Λ(R) f`: `(k, i)` to
+    `sumDen u` of `x`'s values at `(k, j)`, `j ≤ i` ascending: none at or after a step `plus` refuses (a wrap, the
+    null, a NaN); at a float atom each prefix the `f64` sum rounded once to `u`. -/
 abbrev sumsDen {K : Obj} {t u : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El (.atom u))) :
     Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El (.atom u)) :=
-  (𝟙 _ ∩ upToDen T ≫ (upToDen T)°) ≫ lamDen (upToDen T) ≫ mapDen T ≫
-    foldDen (fun _ b => b = QAtomicType.ofBits u 0 : Core.Rel (Obj.El (.atom u)) (Obj.El (.atom u))) (stepAt u Ew.add)
+  (𝟙 _ ∩ upToDen T ≫ (upToDen T)°) ≫ lamDen (upToDen T) ≫ mapDen T ≫ sumDen u
 
 /-- `sums` at the position object `P` and the value object `V`: `sumsDen` where both are atoms, `𝟘` elsewhere (no
     `≤`, no `plus`). -/
@@ -225,11 +252,10 @@ def sumsAt (K : Obj) : (P V : Obj) → Core.Rel (Obj.El (.prod K P)) (Obj.El V) 
   | .atom _, .atom _, T => sumsDen T
   | _, _, _ => 𝟘
 
-/-- `sum` at the element object `V`: the left fold `⦇[0, plus]⦈` of `stepAt t add` from the word `0`, from index `0`
-    up (q's order), where `V` is an atom; none at or after a step `plus` refuses (a wrap, the null, a NaN). `𝟘` where
-    `V` is no atom (no `plus`). -/
+/-- `sum` at the element object `V`: `sumDen t` where `V` is the atom `t` (q's order, index `0` up), `𝟘` where `V`
+    is no atom (no `plus`). -/
 def sumAt : (V : Obj) → Core.Rel (Obj.El (.arr V)) (Obj.El V)
-  | .atom t => foldDen (fun _ b => b = QAtomicType.ofBits t 0) (stepAt t Ew.add)
+  | .atom t => sumDen t
   | _ => 𝟘
 
 /-- `E(T) = Λ(∋ T)`: an array to the canonical list of the images of its elements. -/

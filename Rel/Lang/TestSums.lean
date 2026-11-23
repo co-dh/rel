@@ -73,7 +73,7 @@ rel_program sumsPN where
 
 -- The values are summed, so they are a number object of i64 or f64 (`sumAtoms`; f64 runs in `TestFrameTyped`): an
 -- object of i32 is refused, naming it, its atom, the ones accepted and the cast to them.
-/-- error: line 82, col 5: sums on I: I is an object of i32, and sums runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of i64, f64 -/
+/-- error: line 82, col 5: sums on I: I is an object of i32, and sums runs on objects of i64, f32, f64 only; cast first, `x $ F` with `F` an object of i64, f32, f64 -/
 #guard_msgs in
 rel_program sumsI where
     obj N
