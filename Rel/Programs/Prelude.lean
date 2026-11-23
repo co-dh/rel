@@ -53,6 +53,7 @@ rel_program prelude where
     theorem Eunion(R : α ⟶ β) : E(R) = E(Λ(R))E(∋)                 -- E(R) is the union of the images of Λ(R)
     theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) : E(R S) = E(R)E(S)        -- E is a functor
     theorem estMap(f : α ⟶ β, R : β ⟶ β) if dom(f) = 𝟙, simple(f), 𝟙 ⊑ R : Λ(f)est(R) = f  -- a singleton's R-extreme is itself
+    theorem permConv : perm° = perm                                -- perm is its own converse (`Elab.convs`)
     theorem starLinear(R : α ⟶ α, S : α ⟶ β) : μX : S ∪ (R X) = star(R) S  -- a linear recursion is star(R) on S
 
 end Rel.Programs
@@ -65,5 +66,11 @@ def typesOf (src : Option Program) : EM (List String) := do
   let prog := src.getD Programs.prelude
   let _ ← Expand.read (fun _ => none) (if src.isSome then [(`prelude, Programs.prelude)] else []) prog
   pure (prog.filterMap fun | .defn _ n ps _ ty => some (sigOf n ps ty) | _ => none)
+
+-- the prelude's converse table is its one `c° = c'` theorem; rows answer from `Prim.conv`, a name with neither has none
+#guard convs Programs.prelude == [("perm", "perm")]
+#guard convOf (convs Programs.prelude) "perm" == some "perm"
+#guard convOf (convs Programs.prelude) "cons" == some "uncons"
+#guard convOf (convs Programs.prelude) "length" == none
 
 end Rel.Lang
