@@ -175,20 +175,18 @@ private def ovBig : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [1, 92233720368547
 private def ovOne : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [1, 1, 1]) (by longs_lit)
 private def ovTwo : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [4, 2, 0]) (by longs_lit)
 private def err {A B : Obj} (e : Except String (Tab A B)) : String := match e with | .error m => m | .ok _ => ""
-private def rows {A B : Obj} (e : Except String (Tab A B)) : Option (List (A.El × B.El)) :=
-  match e with | .ok T => some T.toList | .error _ => none
 
 #guard err (Tab.arithOp "plus" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovOne)) ==
   "plus: i64 overflow at plus(9223372036854775807, 1)"
 #guard err (Tab.arithOp "times" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovTwo)) ==
   "times: i64 overflow at times(9223372036854775807, 2)"
 #guard err (Tab.arithOp "minus" (A := .prod .long .long) (B := .long) (n := 3) (ovOne, ovBig)) == ""
-#guard rows (Tab.arithOp "plus" (A := .prod .long .long) (B := .long) (n := 3) (ovOne, ovTwo)) ==
+#guard (Tab.arithOp "plus" (A := .prod .long .long) (B := .long) (n := 3) (ovOne, ovTwo)).toOption.map Tab.toList ==
   some [((1, 4), 5), ((1, 2), 3), ((1, 0), 1)]
-#guard rows (Tab.arithOp "div" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovTwo)) ==
+#guard (Tab.arithOp "div" (A := .prod .long .long) (B := .long) (n := 3) (ovBig, ovTwo)).toOption.map Tab.toList ==
   some [((1, 4), 0), ((9223372036854775807, 2), 4611686018427387903)]
 #guard err (Tab.succOp (A := .long) (B := .long) (n := 3) ovBig) ==
   "succ: i64 overflow at succ(9223372036854775807)"
-#guard rows (Tab.succOp (A := .long) (B := .long) (n := 3) ovTwo) == some [(4, 5), (2, 3), (0, 1)]
+#guard (Tab.succOp (A := .long) (B := .long) (n := 3) ovTwo).toOption.map Tab.toList == some [(4, 5), (2, 3), (0, 1)]
 
 end Rel
