@@ -435,9 +435,10 @@ theorem Tab.tails_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
   subst h
   have wL := Tab.lamOf_wf hL wX (Tab.uncat_wf hU wX)
   -- the cells of `⟨m, lo, hi, f.2⟩` are those of `⟨m, lo, hi, f⟩` mapped by `Prod.snd`
-  have hrow : ∀ i, ValsB.row (A := .arr (.arr B)) ⟨m, lo, hi, f.2⟩ i =
-      (ValsB.row (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
-    rw [Vals.row_arr i (wL.2.1 i), Vals.row_arr i (wL.2.1 i), List.map_map]
+  have hrow : ∀ i, ValsB.row (o := false) (A := .arr (.arr B)) ⟨m, lo, hi, f.2⟩ i =
+      (ValsB.row (o := false) (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
+    have hc := wL.2.2.2.1 i trivial
+    rw [ValsB.row_arr (Arr.flat lo) (Arr.flat hi) i hc, ValsB.row_arr (Arr.flat lo) (Arr.flat hi) i hc, List.map_map]
     congr 1; funext k; simp only [Function.comp_apply, apply_dite Prod.snd]; rfl
   obtain ⟨C, hC, wC⟩ := Tab.uncat_canonical hU wX
   have hs : ∀ (hx : ∃ i, X.row i = xs) zs, lamDen C.Holds xs zs ↔

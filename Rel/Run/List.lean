@@ -53,7 +53,7 @@ def ValsB.pack : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Ex
     | .gen h tag x y => do pure (ValsB.ofGen h tag (← ValsB.pack x) (← ValsB.pack y))
   | _, .one, _, _ => pure ()
 
-/-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/
+/-- **`R` with its payloads cut** (`ValsB.pack` of both sides): the same rows in the same order. -/
 def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do
   pure ⟨R.n, ← ValsB.pack R.key, ← ValsB.pack R.val⟩
 
