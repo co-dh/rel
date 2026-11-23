@@ -21,22 +21,22 @@ open Rel.Ext Rel.Kernel Rel.Verify
 of no rows has no columns, and a position outside it is the error naming the `side`. -/
 def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n → Except String (List (AscKey × Enc)))
     (p : Enc) (y : Vals B m) : Except String (List (AscKey × Enc)) :=
-  if m.toNat = 0 then .ok [] else match Vals.gather n p y with
+  if m.toNat = 0 then .ok [] else match ValsB.gather n p y with
     | .ok g => cols g
     | .error s => .error s!"cols: a sum side's {side} position: {s}"
 
-/-- The key columns of a side (`AscKey`), in the order of `Vals.row`'s tuple. An `arr` side is one `cells` key over its
+/-- The key columns of a side (`AscKey`), in the order of `ValsB.row`'s tuple. An `arr` side is one `cells` key over its
 `lo`, `hi` and its payload's columns, row `i` naming cell `i` (`.pos`), so equal codes are equal cells as lists. A
 `sum` side is its tag, then the left summand's columns, then the right's: a row holds `0` in the summand its tag does
 not name (`Vals.zeros`, kept by every operator), a constant, so equal codes are equal rows. -/
-def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (AscKey × Enc))
+def ValsB.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (AscKey × Enc))
   | .atom t, _, x => .ok [(.atom t, Arr.enc (t := t) x)]
-  | .prod _ _, _, x => do pure ((← Vals.cols x.1) ++ (← Vals.cols x.2))
-  | .arr _, n, ⟨c, lo, hi, f⟩ => do pure [(.cells n c lo.enc hi.enc (← Vals.cols f), .pos)]
+  | .prod _ _, _, x => do pure ((← ValsB.cols x.1) ++ (← ValsB.cols x.2))
+  | .arr _, n, ⟨c, lo, hi, f⟩ => do pure [(.cells n c lo.enc hi.enc (← ValsB.cols f), .pos)]
   -- a band column is its own key: `kasc` codes its nulls first (`Asc.nulCodes`), as `Obj.key` puts `inl` first
   | .sum _ _, n, s => match s.view with
     | .opt (t := t) _ x => .ok [(.atom t, x.enc)]
-    | .gen _ tag x y => do pure ((.atom .u1, tag.enc) :: ((← Vals.cols x) ++ (← Vals.cols y)))
+    | .gen _ tag x y => do pure ((.atom .u1, tag.enc) :: ((← ValsB.cols x) ++ (← ValsB.cols y)))
   -- no column: every row of `1` is its one value
   | .one, _, _ => .ok []
 
@@ -45,11 +45,11 @@ def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (
 `p` at those rows (each run's first input row), and `x` gathered there. Rows are equal where their order codes are
 (`kasc`'s equality). -/
 def Vals.nub {A : Obj} {n : USize} (x : Vals A n) : Except String ((m : USize) × Vals A m) := do
-  let es ← Vals.cols x
+  let es ← ValsB.cols x
   let (vs, p) ← kasc n es
   let (k, _, f) ← kseen n ((es.map (·.1)).zip vs)
   let ix ← kgather k.toUSize f n p
-  (⟨k.toUSize, ·⟩) <$> Vals.gather k.toUSize ix x
+  (⟨k.toUSize, ·⟩) <$> ValsB.gather k.toUSize ix x
 
 namespace Tab
 variable {k v : Obj}

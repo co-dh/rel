@@ -10,7 +10,7 @@ public import Rel.RepTabDiv
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
+/-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `ValsB.gather`ed, `ValsB.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
 (`Vals.none_wf`), so a cell of its output is a cell of an input. These are the base the switch of `Rel.Wf`'s `tab`
 case to `Tab.WF` stands on: each op's `_wf` lemma there is one of these. -/
@@ -131,7 +131,7 @@ theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h
     unfold Tab.inrConvBand at h
     obtain ⟨rfl, rfl⟩ := Obj.band_some hb
     simp only [bind, Except.bind, pure, Except.pure, cast_eq, eq_mpr_eq_cast] at h
-    -- UNBUILT: the splits are kscan, whereCol, Vals.gather, Opt.gather, Arr.of; adjust to the goal state
+    -- UNBUILT: the splits are kscan, whereCol, ValsB.gather, Opt.gather, Arr.of; adjust to the goal state
     repeat (split at h; · cases h)
     cases h
     exact ⟨Vals.gather_wf ‹_› (by simp only [Vals.WF, Vals.view_ofOpt]), trivial⟩

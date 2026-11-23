@@ -48,8 +48,8 @@ def Vals.zeros : (A : Obj) → (n : USize) → Except String (Vals A n)
   | .prod a b, n => do pure (← Vals.zeros a n, ← Vals.zeros b n)
   | .arr b, n => do pure ⟨0, ← Arr.zeros .i64 n, ← Arr.zeros .i64 n, ← Vals.zeros b 0⟩
   | .sum a b, n => match h : Obj.band a b with
-    | some t => do pure (Vals.ofOpt h (← Opt.nuls t n))
-    | .none => do pure (Vals.ofGen h (← tagCol n false) (← Vals.zeros a n) (← Vals.zeros b n))
+    | some t => do pure (ValsB.ofOpt h (← Opt.nuls t n))
+    | .none => do pure (ValsB.ofGen h (← tagCol n false) (← Vals.zeros a n) (← Vals.zeros b n))
   | .one, _ => pure ()
 
 /-- No row of `A`: `Vals.zeros` at `0` rows. -/
@@ -79,7 +79,7 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
       meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`)"
   expandNote s!"a product of {n} × {m} values (Vals.cross)" (n.toNat * m.toNat) fun _ => do
     let (T, iR, iS) ← crossIx n m
-    pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
+    pure ⟨T, ← ValsB.gather T iR x, ← ValsB.gather T iS y⟩
 
 /-- `Y`'s rows as the band column of `a + b`, each `inr`: the storage as it is (`Opt.ofArr`). -/
 def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n) : Opt t n := by
@@ -136,14 +136,14 @@ def pair (R : Tab A B) (S : Tab A C) : Except String (Tab A (.prod B C)) :=
 side of tag `0` over `X` itself and a zero right column (`Vals.zeros`), canonical. -/
 def inl {n : USize} (X : Vals A n) : Except String (Tab A (.sum A B)) := do
   match h : Obj.band A B with
-  | some t => canon ⟨n, X, Vals.ofOpt h (← Opt.nuls t n)⟩
-  | none => do canon ⟨n, X, Vals.ofGen h (← tagCol n false) X (← Vals.zeros B n)⟩
+  | some t => canon ⟨n, X, ValsB.ofOpt h (← Opt.nuls t n)⟩
+  | none => do canon ⟨n, X, ValsB.ofGen h (← tagCol n false) X (← Vals.zeros B n)⟩
 
 /-- **`inr` on the values `Y`**, `idU Y ≫ inr`: the mirror of `inl`, tag `1`. -/
 def inr {n : USize} (Y : Vals B n) : Except String (Tab B (.sum A B)) := do
   match h : Obj.band A B with
-  | some _ => canon ⟨n, Y, Vals.ofOpt h (Vals.optInr h Y)⟩
-  | none => do canon ⟨n, Y, Vals.ofGen h (← tagCol n true) (← Vals.zeros A n) Y⟩
+  | some _ => canon ⟨n, Y, ValsB.ofOpt h (Vals.optInr h Y)⟩
+  | none => do canon ⟨n, Y, ValsB.ofGen h (← tagCol n true) (← Vals.zeros A n) Y⟩
 
 /-- **`inl°` on the sum values `X`**, `idU X ≫ inl°`: the rows of tag `0` (`whereCol` of the negated tags), each `X` row
 beside its left column's row there, canonical: one `canon` of the selected rows, no `comp`. -/
@@ -153,7 +153,7 @@ def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) 
   | .opt h _ => do (← idU X).comp (← (← inl (B := B) (Vals.unit (Obj.band_some h).1)).conv)
   | .gen _ tag x _ =>
     let (m, sel) ← whereCol n (← colMap .not n tag.enc tag.enc)
-    canon ⟨m, ← Vals.gather m sel X, ← Vals.gather m sel x⟩
+    canon ⟨m, ← ValsB.gather m sel X, ← ValsB.gather m sel x⟩
 
 /-- **`inr°` on a band column `x`** (`1 + t`, a null row the all-ones residual): `X ≫ inr°` keeps the rows that are no
 null, each beside its value. The null test is a scan comparing with the residual (`kscan .null`, then `not`), `whereCol`
@@ -166,7 +166,7 @@ def inrConvBand {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = so
   obtain rfl := (Obj.band_some h).2
   exact do
     let (m, sel) ← whereCol n (← kscan .null false t .u1 n none [(n, x.enc)] [] [(.not, 0)]).1
-    pure ⟨m, ← Vals.gather m sel (Vals.ofOpt h x), ← Arr.of t m (← Opt.gather m sel x).enc "inr°"⟩
+    pure ⟨m, ← ValsB.gather m sel (ValsB.ofOpt h x), ← Arr.of t m (← Opt.gather m sel x).enc "inr°"⟩
 
 /-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`, the rows of tag `1`. -/
 def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
@@ -174,7 +174,7 @@ def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) 
   | .opt h x => inrConvBand h x
   | .gen _ tag _ y =>
     let (m, sel) ← whereCol n tag.enc
-    canon ⟨m, ← Vals.gather m sel X, ← Vals.gather m sel y⟩
+    canon ⟨m, ← ValsB.gather m sel X, ← ValsB.gather m sel y⟩
 
 -- `inr°` on a `1 + long` column: the rows that are no null, each beside its value; none, some and all null
 private def inrBand (xs : List (Option QAtom)) : Option (List ((Unit ⊕ Int64) × Int64)) := do

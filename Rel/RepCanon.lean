@@ -382,28 +382,28 @@ theorem Opt.gather_row {t : QAtomicType} {m n : USize} {ix : Enc} (x : Opt t n) 
 
 end
 
-/-- `Vals.view` of a `SumCols` at `o` cast to `Obj.band a b` (the `▸` that `Vals.ofOpt` and `Vals.ofGen` write): the
+/-- `ValsB.view` of a `SumCols` at `o` cast to `Obj.band a b` (the `▸` that `ValsB.ofOpt` and `ValsB.ofGen` write): the
 `SumV` that `view.go` builds at `o`. -/
 theorem Vals.view_go_cast {a b : Obj} {n : USize} : ∀ {o : Option QAtomicType} (e : Obj.band a b = o)
     (y : SumCols (fun l => Vals a l) (fun r => Vals b r) n o),
-    Vals.view.go (Obj.band a b) rfl
-      (show SumCols (fun l => Vals a l) (fun r => Vals b r) n (Obj.band a b) from e ▸ y) = Vals.view.go o e y
+    ValsB.view.go (Obj.band a b) rfl
+      (show SumCols (fun l => Vals a l) (fun r => Vals b r) n (Obj.band a b) from e ▸ y) = ValsB.view.go o e y
   | _, rfl, _ => rfl
 
 @[simp] theorem Vals.view_ofOpt {a b : Obj} {n : USize} {t : QAtomicType} (h : Obj.band a b = some t) (x : Opt t n) :
-    (Vals.ofOpt h x).view = .opt h x := Vals.view_go_cast h x
+    (ValsB.ofOpt h x).view = .opt h x := Vals.view_go_cast h x
 
 @[simp] theorem Vals.view_ofGen {a b : Obj} {n : USize} (h : Obj.band a b = none) (tag : Arr .u1 n) (x : Vals a n)
-    (y : Vals b n) : (Vals.ofGen h tag x y).view = .gen h tag x y :=
+    (y : Vals b n) : (ValsB.ofGen h tag x y).view = .gen h tag x y :=
   Vals.view_go_cast h _
 
-/-- **The row form of the bridge**: row `j` of `Vals.gather m ix x` is row `ix[j]` of `x`, the index being below `n`. -/
+/-- **The row form of the bridge**: row `j` of `ValsB.gather m ix x` is row `ix[j]` of `x`, the index being below `n`. -/
 theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Vals A m} →
-    Vals.gather m ix x = .ok y → ∀ j : Fin m.toNat, ∃ i : Fin n.toNat,
-      ((Enc.raw .i64 m ix)[j.1]?.getD 0).toNat = i.1 ∧ Vals.row y j = Vals.row x i
+    ValsB.gather m ix x = .ok y → ∀ j : Fin m.toNat, ∃ i : Fin n.toNat,
+      ((Enc.raw .i64 m ix)[j.1]?.getD 0).toNat = i.1 ∧ ValsB.row y j = ValsB.row x i
   | .atom _, _, x, _, h, j => Arr.gather_row x h j
   | .prod a b, n, x, y, h, j => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i y1 h1
     split at h; · cases h
@@ -412,9 +412,9 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
     obtain ⟨i1, e1, r1⟩ := Vals.gather_row x.1 h1 j
     obtain ⟨i2, e2, r2⟩ := Vals.gather_row x.2 h2 j
     obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
-    exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
+    exact ⟨i1, e1, by simp only [ValsB.row, r1, r2]⟩
   | .arr _, _, ⟨c, lo, hi, f⟩, _, h, j => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i lo' h1
     split at h; · cases h
@@ -423,16 +423,16 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
     obtain ⟨i1, e1, r1⟩ := Arr.gather_row lo h1 j
     obtain ⟨i2, e2, r2⟩ := Arr.gather_row hi h2 j
     obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
-    exact ⟨i1, e1, by simp only [Vals.row, r1, r2]⟩
+    exact ⟨i1, e1, by simp only [ValsB.row, r1, r2]⟩
   | .sum a b, _, s, _, h, j => by
-    simp only [Vals.gather] at h
+    simp only [ValsB.gather] at h
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> rw [hv] at h <;>
       simp only [bind, Except.bind, pure, Except.pure] at h
     · split at h; · cases h
       rename_i x' h1
       cases h
       obtain ⟨i, e, r⟩ := Opt.gather_row x h1 j
-      exact ⟨i, e, by simp only [Vals.row, hv, Vals.view_ofOpt, r]⟩
+      exact ⟨i, e, by simp only [ValsB.row, hv, Vals.view_ofOpt, r]⟩
     · split at h; · cases h
       rename_i tag' h1
       split at h; · cases h
@@ -445,9 +445,9 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
       obtain ⟨i3, e3, r3⟩ := Vals.gather_row y h3 j
       obtain rfl : i1 = i2 := Fin.ext (e1.symm.trans e2)
       obtain rfl : i1 = i3 := Fin.ext (e1.symm.trans e3)
-      exact ⟨i1, e1, by simp only [Vals.row, hv, Vals.view_ofGen, r1, r2, r3]⟩
+      exact ⟨i1, e1, by simp only [ValsB.row, hv, Vals.view_ofGen, r1, r2, r3]⟩
   | .one, n, _, _, h, j => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i p h1
     obtain ⟨i, e, -⟩ := Arr.gather_row (Arr.mk (t := .i64) (n := n) .pos trivial rfl) h1 j
@@ -456,7 +456,7 @@ theorem Vals.gather_row {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → (
 /-- **A side whose every cell is a slice of its payload** (PLAN 8.5): at an `arr` side each row's `[lo, hi)` has
 `0 ≤ lo ≤ hi ≤ m`, and the payload is `WF`; a `sum` side asks it of both summands, and that a row holds `Obj.dflt` in the
 summand its tag does not name (`Vals.zeros`), so equal rows have equal columns. `readVals` checks the cells (`cellBad`)
-and each producer keeps it, so a reader may take `[lo, hi)` as it is, where `Vals.row` clamps it. -/
+and each producer keeps it, so a reader may take `[lo, hi)` as it is, where `ValsB.row` clamps it. -/
 def Vals.WF : {A : Obj} → {n : USize} → Vals A n → Prop
   | .atom _, _, _ => True
   | .one, _, _ => True
@@ -465,25 +465,25 @@ def Vals.WF : {A : Obj} → {n : USize} → Vals A n → Prop
       (hi.get i).toInt ≤ (m.toNat : Int)) ∧ Vals.WF f
   | .sum a b, _, s => match s.view with
     | .opt .. => True
-    | .gen _ tag x y => Vals.WF x ∧ Vals.WF y ∧ (∀ i, tag.get i = false → Vals.row y i = b.dflt) ∧
-      (∀ i, tag.get i = true → Vals.row x i = a.dflt)
+    | .gen _ tag x y => Vals.WF x ∧ Vals.WF y ∧ (∀ i, tag.get i = false → ValsB.row y i = b.dflt) ∧
+      (∀ i, tag.get i = true → ValsB.row x i = a.dflt)
 
 /-- Both sides of `R` `Vals.WF`. -/
 def Tab.WF {k v : Obj} (R : Tab k v) : Prop := Vals.WF R.key ∧ Vals.WF R.val
 
-/-- **`Vals.gather` keeps `Vals.WF`**: a gathered cell is a cell of `x` (`Arr.gather_row`), over the same payload. -/
+/-- **`ValsB.gather` keeps `Vals.WF`**: a gathered cell is a cell of `x` (`Arr.gather_row`), over the same payload. -/
 theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x : Vals A n} → {y : Vals A m} →
-    Vals.gather m ix x = .ok y → Vals.WF x → Vals.WF y
+    ValsB.gather m ix x = .ok y → Vals.WF x → Vals.WF y
   | .atom _, _, _, _, _, _ => trivial
   | .one, _, _, _, _, _ => trivial
   | .prod _ _, _, x, y, h, hx => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i a ha; split at h; · cases h
     rename_i b hb; cases h
     exact ⟨Vals.gather_wf ha hx.1, Vals.gather_wf hb hx.2⟩
   | .arr _, _, ⟨c, lo, hi, f⟩, y, h, hx => by
-    simp only [Vals.gather, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.gather, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i L hL; split at h; · cases h
     rename_i H hH; cases h
@@ -492,7 +492,7 @@ theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x
     obtain ⟨i', hi2, e2⟩ := Arr.gather_row hi hH j
     rw [e1, e2, show i' = i from Fin.ext (hi2.symm.trans hi1)]; exact hx.1 i
   | .sum _ _, _, s, y, h, hx => by
-    simp only [Vals.gather] at h
+    simp only [ValsB.gather] at h
     simp only [Vals.WF] at hx
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> rw [hv] at h hx <;>
       simp only [bind, Except.bind, pure, Except.pure] at h
@@ -516,12 +516,12 @@ theorem Vals.gather_wf {m : USize} {ix : Enc} : {A : Obj} → {n : USize} → {x
         obtain rfl : i = i1 := Fin.ext (e.symm.trans e1)
         rw [r]; exact hx.2.2.2 i (r1.symm.trans hj)
 
-/-- What `Vals.cols` answers at a `sum` side, unfolded: the tag's column, then each summand's columns. -/
+/-- What `ValsB.cols` answers at a `sum` side, unfolded: the tag's column, then each summand's columns. -/
 theorem Vals.cols_sum {a b : Obj} {n : USize} {s : Vals (.sum a b) n} {hb : Obj.band a b = none}
     {tag : Arr .u1 n} {x : Vals a n} {y : Vals b n} (hv : s.view = .gen hb tag x y)
-    {es : List (AscKey × Enc)} (hes : Vals.cols s = .ok es) :
-    ∃ xs ys, es = (.atom .u1, tag.enc) :: (xs ++ ys) ∧ Vals.cols x = .ok xs ∧ Vals.cols y = .ok ys := by
-  simp only [Vals.cols, hv, bind, Except.bind, pure, Except.pure] at hes
+    {es : List (AscKey × Enc)} (hes : ValsB.cols s = .ok es) :
+    ∃ xs ys, es = (.atom .u1, tag.enc) :: (xs ++ ys) ∧ ValsB.cols x = .ok xs ∧ ValsB.cols y = .ok ys := by
+  simp only [ValsB.cols, hv, bind, Except.bind, pure, Except.pure] at hes
   split at hes; · cases hes
   rename_i xs hxs
   split at hes; · cases hes
@@ -531,13 +531,13 @@ theorem Vals.cols_sum {a b : Obj} {n : USize} {s : Vals (.sum a b) n} {hb : Obj.
 
 /-- What `Vals.nub` answers, unfolded: each kernel's answer named, in the order of the composition. -/
 theorem Vals.nub_ok {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r) :
-    ∃ es vs p k g f ix y, Vals.cols x = .ok es ∧ kasc n es = .ok (vs, p) ∧
+    ∃ es vs p k g f ix y, ValsB.cols x = .ok es ∧ kasc n es = .ok (vs, p) ∧
       kseen n ((es.map (·.1)).zip vs) = .ok (k, g, f) ∧ kgather k.toUSize f n p = .ok ix ∧
-      Vals.gather k.toUSize ix x = .ok y ∧ r = ⟨k.toUSize, y⟩ := by
+      ValsB.gather k.toUSize ix x = .ok y ∧ r = ⟨k.toUSize, y⟩ := by
   simp only [Vals.nub, bind, Except.bind] at h
   repeat (split at h; · cases h)
   rename_i _ es hes _ vp hvp _ kgf hkgf _ ix hix
-  cases hg : Vals.gather kgf.1.toUSize ix x with
+  cases hg : ValsB.gather kgf.1.toUSize ix x with
   | error s => simp [hg, Functor.map, Except.map] at h
   | ok y =>
     simp only [hg, Functor.map, Except.map, Except.ok.injEq] at h
@@ -545,7 +545,7 @@ theorem Vals.nub_ok {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Val
 
 /-- **Every row of `Vals.nub x` is a row of `x`.** -/
 theorem Vals.nub_sub {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r) :
-    ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, Vals.row r.2 j = Vals.row x i := by
+    ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, ValsB.row r.2 j = ValsB.row x i := by
   obtain ⟨_, _, _, _, _, _, _, y, _, _, _, _, hy, rfl⟩ := Vals.nub_ok h
   exact fun j => (Vals.gather_row x hy j).imp fun _ h => h.2
 
@@ -689,12 +689,12 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
 tag are their `Arr`'s, a `cells` key is `.pos`, a summand's are those of the side gathered from it, and a `1+atom t`
 band is its own `Opt` column, which holds its nulls in band (`kasc` codes them first, `nulCodes`). -/
 theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (AscKey × Enc)} →
-    Vals.cols x = .ok es → ∀ c ∈ es, ∃ t, Ext.Enc.WF t n c.2
+    ValsB.cols x = .ok es → ∀ c ∈ es, ∃ t, Ext.Enc.WF t n c.2
   | .atom t, _, x, _, h, c, hc => by
-    simp only [Vals.cols, Except.ok.injEq] at h; subst h
+    simp only [ValsB.cols, Except.ok.injEq] at h; subst h
     rw [List.mem_singleton.1 hc]; exact ⟨t, x.wf⟩
   | .prod _ _, _, x, _, h, c, hc => by
-    simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i h1
     split at h; · cases h
@@ -704,12 +704,12 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
     · exact Vals.cols_wf _ h1 c hc
     · exact Vals.cols_wf _ h2 c hc
   | .arr _, _, ⟨_, _, _, _⟩, _, h, c, hc => by
-    simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at h
+    simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     cases h; rw [List.mem_singleton.1 hc]; exact ⟨.i64, trivial⟩
   | .sum _ _, _, s, _, h, c, hc => by
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
-    · simp only [Vals.cols, hv, Except.ok.injEq] at h; subst h
+    · simp only [ValsB.cols, hv, Except.ok.injEq] at h; subst h
       rw [List.mem_singleton.1 hc]; exact ⟨_, x.wf⟩
     obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv h
     rcases List.mem_cons.1 hc with rfl | hc
@@ -718,11 +718,11 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
     · exact Vals.cols_wf _ hxs c hc
     · exact Vals.cols_wf _ hys c hc
   | .one, _, _, _, h, c, hc => by
-    simp only [Vals.cols, Except.ok.injEq] at h; subst h; cases hc
+    simp only [ValsB.cols, Except.ok.injEq] at h; subst h; cases hc
 
 /-- **The sorted rows' key at `q` is input row `ps[q]`'s**, `ps` the permutation `asc_perm` reads `p` as: `kasc_grade`
 on a side's columns (`Vals.cols_wf`). -/
-theorem Vals.sorted_key {A : Obj} {n : USize} {x : Vals A n} {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es)
+theorem Vals.sorted_key {A : Obj} {n : USize} {x : Vals A n} {es : List (AscKey × Enc)} (hes : ValsB.cols x = .ok es)
     {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p)) {ps : List Nat}
     (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray) (hperm : ps.Perm (List.range n.toNat)) :
     ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
@@ -733,8 +733,8 @@ theorem Vals.sorted_key {A : Obj} {n : USize} {x : Vals A n} {es : List (AscKey 
 columns `es`): the first input row of its run among the sorted rows. Where equal codes mean equal rows, the two sides
 hold the same rows (`Vals.nub_rows`). -/
 theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (i : Fin n.toNat) :
-    ∃ j : Fin r.1.toNat, ∃ i' : Fin n.toNat, Vals.row r.2 j = Vals.row x i' ∧ seenKey n es i' = seenKey n es i := by
+    {es : List (AscKey × Enc)} (hes : ValsB.cols x = .ok es) (i : Fin n.toNat) :
+    ∃ j : Fin r.1.toNat, ∃ i' : Fin n.toNat, ValsB.row r.2 j = ValsB.row x i' ∧ seenKey n es i' = seenKey n es i := by
   obtain ⟨es', vs, p, k, g, f, ix, y, hes', ha, hs, hix, hy, rfl⟩ := Vals.nub_ok h
   have hee : es = es' := Except.ok.inj (hes.symm.trans hes'); subst hee
   obtain ⟨ps, hp, hperm, -, -⟩ := asc_perm n es vs p ha
@@ -990,15 +990,15 @@ theorem Vals.cell_le {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
   simp only [cellLen, cellStart, hu, ← Arr.get_i64]; omega
 
 /-- **An `arr` side's row is its cell**: the payload rows from `cellStart` for `cellLen` rows (`cellFns`' reading of
-`lo` and `hi` at the row's own word), read through `f`; `Vals.row`'s clamp to `[0, c)` is the identity on a `WF`
+`lo` and `hi` at the row's own word), read through `f`; `ValsB.row`'s clamp to `[0, c)` is the identity on a `WF`
 cell. -/
 theorem Vals.row_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
     (i : Fin n.toNat)
     (hc : 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (c.toNat : Int)) :
-    Vals.row (A := .arr B) ⟨c, lo, hi, f⟩ i =
+    ValsB.row (A := .arr B) ⟨c, lo, hi, f⟩ i =
       (List.range' (cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64)
         (cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64)).map
-        fun k => if h : k < c.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
+        fun k => if h : k < c.toNat then ValsB.row f ⟨k, h⟩ else B.dflt := by
   have hu : (i.1.toUInt64).toNat = i.1 := by
     have := i.2; have := n.toNat_lt_size; have := USize.size_le; simp; omega
   have hfr : (List.finRange c.toNat).map Fin.val = List.range c.toNat := List.ext_getElem (by simp) (by simp)
@@ -1009,14 +1009,14 @@ theorem Vals.row_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c}
       (min (hi.get i).toInt (c.toNat : Int)).toNat - min (max (lo.get i).toInt 0).toNat c.toNat := by
     simp only [cellLen, cellStart, hu, ← Arr.get_i64]; omega
   rw [hs, hl]
-  simp only [Vals.row]
+  simp only [ValsB.row]
   rw [← filter_range_window, ← filterMap_ite, ← hfr, List.filterMap_map]
   exact congrArg (fun F => List.filterMap F _) (funext fun j => by simp [j.2])
 
 /-- **A cell whose `lo` is its `hi` reads empty**, wherever it lies: no payload row is in `[lo, lo)`. -/
 theorem Vals.row_empty {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c} (i : Fin n.toNat)
-    (h : lo.get i = hi.get i) : Vals.row (A := .arr B) ⟨c, lo, hi, f⟩ i = [] := by
-  simp only [Vals.row, h]
+    (h : lo.get i = hi.get i) : ValsB.row (A := .arr B) ⟨c, lo, hi, f⟩ i = [] := by
+  simp only [ValsB.row, h]
   exact List.filterMap_eq_nil_iff.2 fun j _ => if_neg fun ⟨h1, h2⟩ => by omega
 
 theorem Verify.ascCodes_mapM : ∀ {m : USize} {es : List (AscKey × Enc)} {ks},
@@ -1042,20 +1042,20 @@ theorem Verify.ascCodes_of_cells {m n c : USize} {lo hi e : Enc} {els : List (As
     exfalso; revert h; simp only [bind, Except.bind]
     repeat' (split <;> try simp_all)
 
-/-- What `Vals.cols` answers at an `arr` side, unfolded: one `cells` key over the payload's columns `fs`, which `kasc`
+/-- What `ValsB.cols` answers at an `arr` side, unfolded: one `cells` key over the payload's columns `fs`, which `kasc`
 reads; two rows have equal codes exactly where their cells have one length and equal payload codes element by
 element (`cellFns_eq_iff`). -/
 theorem Vals.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c} {es : List (AscKey × Enc)} {cs}
-    (hw : Vals.WF (A := .arr B) ⟨c, lo, hi, f⟩) (hes : Vals.cols (A := .arr B) ⟨c, lo, hi, f⟩ = .ok es)
+    (hw : Vals.WF (A := .arr B) ⟨c, lo, hi, f⟩) (hes : ValsB.cols (A := .arr B) ⟨c, lo, hi, f⟩ = .ok es)
     (hc : es.mapM (ascCol n) = .ok cs) :
-    ∃ fs, Vals.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧ ∀ i i' : Fin n.toNat,
+    ∃ fs, ValsB.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧ ∀ i i' : Fin n.toNat,
       (seenKey n es i = seenKey n es i' ↔
         cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64 =
           cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i'.1.toUInt64 ∧
         ∀ k < cellLen (Enc.raw .i64 n lo.enc) (Enc.raw .i64 n hi.enc) i.1.toUInt64,
           seenKey c fs (cellStart (Enc.raw .i64 n lo.enc) i.1.toUInt64 + k) =
             seenKey c fs (cellStart (Enc.raw .i64 n lo.enc) i'.1.toUInt64 + k)) := by
-  simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
+  simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at hes
   split at hes; · cases hes
   rename_i fs hfs
   cases hes
@@ -1074,13 +1074,13 @@ theorem Vals.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c
 of row `i` and row `i'` agree in every column (`seenKey`), so their atoms do (`ascOrd_atom`), so their elements do
 (`Arr.get_eq_of_raw`). -/
 theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals.WF x → {es : List (AscKey × Enc)} →
-    Vals.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
+    ValsB.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
       seenKey n es i = seenKey n es i' → x.row i = x.row i'
   | .atom t, n, x, _, es, hes, cs, hc, i, i', hk => by
-    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes
+    simp only [ValsB.cols, Except.ok.injEq] at hes; subst hes
     exact (Arr.eq_of_codes x hc).2 i i' hk
   | .prod _ _, n, x, hw, es, hes, cs, hc, i, i', hk => by
-    simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
+    simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at hes
     split at hes; · cases hes
     rename_i es1 h1
     split at hes; · cases hes
@@ -1091,7 +1091,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
       simp [seenKey, ascKeys_append]
     rw [hs, hs] at hk
     obtain ⟨k1, k2⟩ := List.append_inj hk (by simp [seenKey])
-    show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i')
+    show (ValsB.row x.1 i, ValsB.row x.2 i) = (ValsB.row x.1 i', ValsB.row x.2 i')
     rw [Vals.row_of_codes x.1 hw.1 h1 hc1 i i' k1, Vals.row_of_codes x.2 hw.2 h2 hc2 i i' k2]
   | .arr _, n, ⟨c, lo, hi, f⟩, hw, es, hes, cs, hc, i, i', hk => by
     obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hw hes hc
@@ -1104,8 +1104,8 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     exact Vals.row_of_codes f hw.2 hfs hcs' _ _ (hk k hkl)
   | .sum _ _, n, s, hw, es, hes, cs, hc, i, i', hk => by
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
-    · simp only [Vals.cols, hv, Except.ok.injEq] at hes; subst hes
-      simp only [Vals.row, hv, (Opt.eq_of_codes x hc).2 i i' hk]
+    · simp only [ValsB.cols, hv, Except.ok.injEq] at hes; subst hes
+      simp only [ValsB.row, hv, (Opt.eq_of_codes x hc).2 i i' hk]
     simp only [Vals.WF, hv] at hw
     obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
@@ -1118,7 +1118,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     obtain ⟨k0, k12⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
     obtain ⟨k1, k2⟩ := List.append_inj k12 (by simp [seenKey])
     have ht := heq i i' k0
-    simp only [Vals.row, hv, ht]
+    simp only [ValsB.row, hv, ht]
     cases htt : tag.get i'
     · simp only [Bool.false_eq_true, ↓reduceIte]
       rw [Vals.row_of_codes x hw.1 hxs hc1 i i' k1]
@@ -1211,19 +1211,19 @@ theorem Opt.codes_of_eq {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
 
 /-- **Equal rows, equal order codes**, `Vals.row_of_codes`' converse, column by column (`Arr.codes_of_eq`). -/
 theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Vals.WF x → {es : List (AscKey × Enc)} →
-    Vals.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
+    ValsB.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
       x.row i = x.row i' → seenKey n es i = seenKey n es i'
   | .atom t, n, x, _, es, hes, cs, hc, i, i', hr => by
-    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; exact Arr.codes_of_eq x hc i i' hr
+    simp only [ValsB.cols, Except.ok.injEq] at hes; subst hes; exact Arr.codes_of_eq x hc i i' hr
   | .prod _ _, n, x, hw, es, hes, cs, hc, i, i', hr => by
-    simp only [Vals.cols, bind, Except.bind, pure, Except.pure] at hes
+    simp only [ValsB.cols, bind, Except.bind, pure, Except.pure] at hes
     split at hes; · cases hes
     rename_i es1 h1
     split at hes; · cases hes
     rename_i es2 h2
     cases hes
     obtain ⟨cs1, cs2, hc1, hc2, -⟩ := mapM_append_ok hc
-    obtain ⟨r1, r2⟩ := Prod.mk.inj (show (Vals.row x.1 i, Vals.row x.2 i) = (Vals.row x.1 i', Vals.row x.2 i') from hr)
+    obtain ⟨r1, r2⟩ := Prod.mk.inj (show (ValsB.row x.1 i, ValsB.row x.2 i) = (ValsB.row x.1 i', ValsB.row x.2 i') from hr)
     have hs : ∀ q, seenKey n (es1 ++ es2) q = seenKey n es1 q ++ seenKey n es2 q := fun q => by
       simp [seenKey, ascKeys_append]
     rw [hs, hs, Vals.codes_of_row x.1 hw.1 h1 hc1 i i' r1, Vals.codes_of_row x.2 hw.2 h2 hc2 i i' r2]
@@ -1238,8 +1238,8 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     exact Vals.codes_of_row f hw.2 hfs hcs' _ _ e
   | .sum _ _, n, s, hw, es, hes, cs, hc, i, i', hr => by
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
-    · simp only [Vals.cols, hv, Except.ok.injEq] at hes; subst hes
-      simp only [Vals.row, hv] at hr
+    · simp only [ValsB.cols, hv, Except.ok.injEq] at hes; subst hes
+      simp only [ValsB.row, hv] at hr
       exact Opt.codes_of_eq x hc i i' (by simpa only [Obj.optOf_optEl] using congrArg (Obj.optOf hb) hr)
     simp only [Vals.WF, hv] at hw
     obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv hes
@@ -1247,7 +1247,7 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
       fun _ _ q => by simp [seenKey, ascKeys_append]
-    simp only [Vals.row, hv] at hr
+    simp only [ValsB.row, hv] at hr
     -- equal rows sit in one summand; the other summand's rows are both `dflt`
     have ht : tag.get i = tag.get i' := by revert hr; cases tag.get i <;> cases tag.get i' <;> simp
     have k1 : seenKey n xs i = seenKey n xs i' := by
@@ -1263,12 +1263,12 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs, Arr.codes_of_eq tag hc0 i i' ht, k1, k2]
   | .one, n, _, _, es, hes, _, _, _, _, _ => by
-    simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys]
+    simp only [ValsB.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys]
 
 /-- **Rows of `x` are equal iff their order codes are** where `Vals.nub x` answers: `kasc` read every column
 (`Vals.row_of_codes`, `Vals.codes_of_row`). -/
 theorem Vals.seenKey_iff_row {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m}
-    (h : Vals.nub x = .ok r) (hw : Vals.WF x) {es} (hes : Vals.cols x = .ok es) (i i' : Fin n.toNat) :
+    (h : Vals.nub x = .ok r) (hw : Vals.WF x) {es} (hes : ValsB.cols x = .ok es) (i i' : Fin n.toNat) :
     seenKey n es i = seenKey n es i' ↔ x.row i = x.row i' := by
   obtain ⟨es', _, _, _, _, _, _, _, hes', ha, -⟩ := Vals.nub_ok h
   obtain rfl : es = es' := Except.ok.inj (hes.symm.trans hes')
@@ -1277,18 +1277,18 @@ theorem Vals.seenKey_iff_row {A : Obj} {n : USize} {x : Vals A n} {r : (m : USiz
 
 /-- **Rows of `x` with equal order codes are equal** where `Vals.nub x` answers. -/
 theorem Vals.row_of_seenKey {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m}
-    (h : Vals.nub x = .ok r) (hw : Vals.WF x) {es} (hes : Vals.cols x = .ok es) (i i' : Fin n.toNat)
+    (h : Vals.nub x = .ok r) (hw : Vals.WF x) {es} (hes : ValsB.cols x = .ok es) (i i' : Fin n.toNat)
     (hk : seenKey n es i = seenKey n es i') : x.row i = x.row i' := (Vals.seenKey_iff_row h hw hes i i').1 hk
 
 /-- **Equal rows of `x` have equal order codes** where `Vals.nub x` answers. -/
 theorem Vals.seenKey_of_row {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m}
-    (h : Vals.nub x = .ok r) (hw : Vals.WF x) {es} (hes : Vals.cols x = .ok es) (i i' : Fin n.toNat)
+    (h : Vals.nub x = .ok r) (hw : Vals.WF x) {es} (hes : ValsB.cols x = .ok es) (i i' : Fin n.toNat)
     (hr : x.row i = x.row i') : seenKey n es i = seenKey n es i' := (Vals.seenKey_iff_row h hw hes i i').2 hr
 
 /-- **`Vals.nub x` holds exactly `x`'s rows**: `Vals.nub_sub` one way, `Vals.nub_cover` with `Vals.row_of_seenKey`
 the other. -/
 theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    (hw : Vals.WF x) (a : A.El) : (∃ j, Vals.row r.2 j = a) ↔ ∃ i, Vals.row x i = a := by
+    (hw : Vals.WF x) (a : A.El) : (∃ j, ValsB.row r.2 j = a) ↔ ∃ i, ValsB.row x i = a := by
   obtain ⟨es, _, _, _, _, _, _, _, hes, _⟩ := Vals.nub_ok h
   constructor
   · rintro ⟨j, rfl⟩; obtain ⟨i, hi⟩ := Vals.nub_sub h j; exact ⟨i, hi.symm⟩
@@ -1299,10 +1299,10 @@ theorem Vals.nub_rows {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × V
 `K` the sorted rows' keys (`K q` the key of input row `ps[q]`), and row `j` of the answer input row `ps[F[j]]`, `F` the
 first rows of `K` (`firstsOf`, `k` of them). -/
 theorem Vals.nub_sel {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) :
+    {es : List (AscKey × Enc)} (hes : ValsB.cols x = .ok es) :
     ∃ (ps : List Nat) (K : Nat → List UInt64), ps = ascGrade n.toNat (ascKeys n es) ∧
       (∀ q (hq : q < ps.length), K q = seenKey n es ps[q]) ∧ r.1.toNat = (firstsOf K n.toNat).length ∧
-      ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, Vals.row r.2 j = Vals.row x i ∧
+      ∀ j : Fin r.1.toNat, ∃ i : Fin n.toNat, ValsB.row r.2 j = ValsB.row x i ∧
         ((firstsOf K n.toNat)[j.1]?.bind (ps[·]?)) = some i.1 := by
   obtain ⟨es', vs, p, k, g, f, ix, y, hes', ha, hs, hix, hy, rfl⟩ := Vals.nub_ok h
   have hee : es = es' := Except.ok.inj (hes.symm.trans hes'); subst hee
@@ -1373,8 +1373,8 @@ theorem Verify.firsts_sorted {n : USize} {es : List (AscKey × Enc)} {K : Nat �
 /-- **`Vals.nub x` is sorted and has no two rows with one key**: its rows are input rows `sel j`, ascending in `kasc`'s
 order of their codes (`lexLe` over `ascKeys`), no two with equal codes (`seenKey`). -/
 theorem Vals.nub_sorted {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) :
-    ∃ sel : Fin r.1.toNat → Fin n.toNat, (∀ j, Vals.row r.2 j = Vals.row x (sel j)) ∧
+    {es : List (AscKey × Enc)} (hes : ValsB.cols x = .ok es) :
+    ∃ sel : Fin r.1.toNat → Fin n.toNat, (∀ j, ValsB.row r.2 j = ValsB.row x (sel j)) ∧
       ∀ j j' : Fin r.1.toNat, j.1 < j'.1 → lexLe (ascKeys n es) (sel j) (sel j') = true ∧
         seenKey n es (sel j) ≠ seenKey n es (sel j') := by
   obtain ⟨ps, K, hps, hkey, -, hsel⟩ := Vals.nub_sel h hes
@@ -1385,7 +1385,7 @@ theorem Vals.nub_sorted {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) ×
 /-- **The rows of `Vals.nub x` are pairwise distinct**: two of them are input rows with unequal codes
 (`Vals.nub_sorted`), so unequal rows (`Vals.seenKey_of_row`). -/
 theorem Vals.nub_distinct {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
-    (hw : Vals.WF x) {j j' : Fin r.1.toNat} (hjj : j ≠ j') : Vals.row r.2 j ≠ Vals.row r.2 j' := by
+    (hw : Vals.WF x) {j j' : Fin r.1.toNat} (hjj : j ≠ j') : ValsB.row r.2 j ≠ ValsB.row r.2 j' := by
   obtain ⟨es, _, _, _, _, _, _, _, hes, _⟩ := Vals.nub_ok h
   obtain ⟨sel, hs, hlt⟩ := Vals.nub_sorted h hes
   intro e
@@ -1406,7 +1406,7 @@ theorem canon_holds {R S : Tab k v} (h : R.canon = .ok S) (hw : R.WF) (a : k.El)
     simp only [hn, Functor.map, Except.map, Except.ok.injEq] at h
     subst h
     have := Vals.nub_rows hn hw (a, b)
-    simp only [Tab.Holds, Vals.row, Prod.mk.injEq] at this ⊢
+    simp only [Tab.Holds, ValsB.row, Prod.mk.injEq] at this ⊢
     exact this
 
 /-- **`R.ran` denotes `𝟙 ∩ R° ≫ R°°`** (`CRel.rep_ran`'s statement, pointwise). -/
@@ -1420,7 +1420,7 @@ theorem ran_holds {R : Tab k v} {S : Tab v v} (h : R.ran = .ok S) (hw : Vals.WF 
     have := Vals.nub_rows hn hw a
     simp only [Tab.Holds]
     constructor
-    · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, Vals.row R.key i, i, rfl, hi⟩
+    · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, ValsB.row R.key i, i, rfl, hi⟩
     · rintro ⟨rfl, x, i, -, hi⟩; obtain ⟨j, hj⟩ := this.2 ⟨i, hi⟩; exact ⟨j, hj, hj⟩
 
 /-- **`R.dom` denotes `𝟙 ∩ R ≫ R°`** (`CRel.rep_dom`'s statement, pointwise). -/
@@ -1434,7 +1434,7 @@ theorem dom_holds {R : Tab k v} {S : Tab k k} (h : R.dom = .ok S) (hw : Vals.WF 
     have := Vals.nub_rows hn hw a
     simp only [Tab.Holds]
     constructor
-    · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, Vals.row R.val i, i, hi, rfl⟩
+    · rintro ⟨j, rfl, rfl⟩; obtain ⟨i, hi⟩ := this.1 ⟨j, rfl⟩; exact ⟨rfl, ValsB.row R.val i, i, hi, rfl⟩
     · rintro ⟨rfl, y, i, hi, -⟩; obtain ⟨j, hj⟩ := this.2 ⟨i, hi⟩; exact ⟨j, hj, hj⟩
 
 end Tab

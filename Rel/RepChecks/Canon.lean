@@ -20,7 +20,7 @@ def specOk {A B : Obj} [BEq A.El] [BEq B.El] (r : Except String (Tab A B)) (sp :
   | .error _ => false
 
 /-- The rows of a side, in position order. -/
-def Vals.rows {A : Obj} {n : USize} (X : Vals A n) : List A.El := List.ofFn (Vals.row X)
+def Vals.rows {A : Obj} {n : USize} (X : Vals A n) : List A.El := List.ofFn (ValsB.row X)
 
 #guard ((tab [(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7)]).canon.toOption.map Tab.toList) ==
   some [(-1, 2), (1, 2), (2, 7), (3, 1)]
@@ -39,7 +39,7 @@ def canonAgrees {k v : Obj} [BEq k.El] [BEq v.El] (R : Tab k v) : Bool :=
 the tag does not name): the left column holds the payload where the tag is `false`, the right where it is `true`, `0`
 elsewhere, every column `foR` (`Alg.col`). -/
 def sumTab (ts : List (Bool × Int64 × Int64)) : Tab (.sum .long .long) .long :=
-  ⟨ts.length.toUSize, Vals.ofGen rfl (Arr.bools _ fun i => (ts.getD i (false, 0, 0)).1)
+  ⟨ts.length.toUSize, ValsB.ofGen rfl (Arr.bools _ fun i => (ts.getD i (false, 0, 0)).1)
     (List.length_map _ ▸ Alg.col (ts.map fun t => if t.1 then 0 else t.2.1))
     (List.length_map _ ▸ Alg.col (ts.map fun t => if t.1 then t.2.1 else 0)), List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
 

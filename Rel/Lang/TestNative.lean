@@ -75,7 +75,7 @@ rel_program native1a where
     fa : N ⟶ X×X ≜ {(0,0)}⊤(N,X)⟨𝟙,bo⟩ ∪ ({(1,1)}⊤(N,X)⟨𝟙,q1⟩)
     fi : N ⟶ (X×X)×(X×X) ≜ pf(fa)
     -- `inl`, `inr` into a general sum `N+N` (tag, position, two payloads, one of them of no row) and `inr` into the in-band
-    -- `1+N` (one nullable column); their key is the sum's `Vals.cols` (tag, then each summand gathered at its position)
+    -- `1+N` (one nullable column); their key is the sum's `ValsB.cols` (tag, then each summand gathered at its position)
     gi : N ⟶ N+N ≜ ed inl
     gj : N ⟶ N+N ≜ ed inr
     gk : N ⟶ 1+N ≜ ed inr

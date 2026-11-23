@@ -108,14 +108,14 @@ def Opt.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Opt t n
 
 /-- The rows `ix` (`m` positions) of the side `x`: each atom column `Arr.gather`ed at `ix`; a `sum` side gathers its tag
 and both summand columns, an `arr` side its `lo` and `hi` columns and keeps the payload. -/
-def Vals.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A m)
+def ValsB.gather (m : USize) (ix : Enc) : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A m)
   | .atom _, _, x => Arr.gather m ix x
-  | .prod _ _, _, x => do pure (← Vals.gather m ix x.1, ← Vals.gather m ix x.2)
+  | .prod _ _, _, x => do pure (← ValsB.gather m ix x.1, ← ValsB.gather m ix x.2)
   | .arr _, _, ⟨c, lo, hi, f⟩ => do pure ⟨c, ← Arr.gather m ix lo, ← Arr.gather m ix hi, f⟩
   | .sum _ _, _, s => match s.view with
-    | .opt h x => do pure (Vals.ofOpt h (← Opt.gather m ix x))
+    | .opt h x => do pure (ValsB.ofOpt h (← Opt.gather m ix x))
     | .gen h tag x y =>
-      do pure (Vals.ofGen h (← Arr.gather m ix tag) (← Vals.gather m ix x) (← Vals.gather m ix y))
+      do pure (ValsB.ofGen h (← Arr.gather m ix tag) (← ValsB.gather m ix x) (← ValsB.gather m ix y))
   -- no column, but `ix` is checked as every side's is: gathering the positions `0 … n-1` refuses an index past `n`
   | .one, n, _ => do let _ ← Arr.gather m ix (Arr.mk (t := .i64) (n := n) .pos trivial rfl); pure ()
 
@@ -154,6 +154,6 @@ def Tab.ofBits {A C : Obj} {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) 
   expandNote s!"a {g}×{w} bit matrix read back as rows (Tab.ofBits)" M.toNat fun _ => do
     let ix ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rdiv, w.toUInt64)]) g ra
     let iy ← kgather M (← colMap .first M sel sel .i64 .i64 [] [(.rmod, w.toUInt64)]) w rc
-    pure ⟨M, ← Vals.gather M ix x, ← Vals.gather M iy y⟩
+    pure ⟨M, ← ValsB.gather M ix x, ← ValsB.gather M iy y⟩
 
 end Rel

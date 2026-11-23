@@ -32,7 +32,7 @@ theorem nil_holds {n : USize} {D : Vals A n} {T : Tab A (.arr B)} (h : Tab.nil D
   split at h; · cases h
   rename_i z hz; split at h; · cases h
   rw [canon_holds h ⟨hD, fun i => by rw [Arr.zeros_get hz]; simp, Vals.none_wf ‹_›⟩]
-  simp only [Tab.Holds, Vals.row]
+  simp only [Tab.Holds, ValsB.row]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, h2.symm⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, h2.symm⟩⟩
 
 /-- The order of the atom `t` (`<` at `s`, else `≤`): `ltAt` or `leAt`. -/
@@ -225,7 +225,7 @@ theorem leq_dom_holds {t : QAtomicType} {U d T : Tab (.atom t) (.atom t)} (hd : 
   rw [leq_holds h wd.1 wd.1, dom_key hd hU.1, dom_key hd hU.1]
 
 /-- **`mem X` denotes `∋` on the arrays `X`**: each cell of `X` to each of its elements. Cell `i` is `[lo, hi)`,
-`0 ≤ lo ≤ hi ≤ m` (`Vals.WF`; `Vals.row` of an `arr` side reads `lo ≤ j < hi` over `j < m`, the same `j`); EXPAND
+`0 ≤ lo ≤ hi ≤ m` (`Vals.WF`; `ValsB.row` of an `arr` side reads `lo ≤ j < hi` over `j < m`, the same `j`); EXPAND
 of the widths `hi - lo` (`expand_spec`) puts output row `Σ_{<i} w + (j - lo)` at cell `i`, element `j`. -/
 theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Tab.mem X = .ok T) (hX : Vals.WF X)
     (xs : List B.El) (b : B.El) : T.Holds xs b ↔ (∃ i, X.row i = xs) ∧ b ∈ xs := by
@@ -311,11 +311,11 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
     subst ei
     refine ⟨⟨_, hxi.symm⟩, ?_⟩
     rw [hxi, hyj]
-    simp only [Vals.row, List.mem_filterMap, List.mem_finRange, true_and]
+    simp only [ValsB.row, List.mem_filterMap, List.mem_finRange, true_and]
     refine ⟨j, ?_⟩
     rw [if_pos ((hcell _ j.1 j.2).2 (by have := hwN g; rw [hI] at hj; simp only; omega))]
   · rintro ⟨⟨i, rfl⟩, hb⟩
-    simp only [Vals.row, List.mem_filterMap, List.mem_finRange, true_and] at hb
+    simp only [ValsB.row, List.mem_filterMap, List.mem_finRange, true_and] at hb
     obtain ⟨j, hj⟩ := hb
     split at hj
     case isFalse => cases hj
@@ -341,8 +341,8 @@ end Tab
 theorem Vals.row_cell {B : Obj} {n m : USize} (lo hi : Arr .i64 n) (f : Vals B m) (i : Fin n.toNat) {a b : Nat}
     (ha : (raw .i64 n lo.enc)[i.1]?.getD 0 = a.toUInt64) (hb : (raw .i64 n hi.enc)[i.1]?.getD 0 = b.toUInt64)
     (hab : a ≤ b) (hbm : b ≤ m.toNat) (hm : m.toNat < 2 ^ 63) :
-    Vals.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
-      (List.range' a (b - a)).map fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
+    ValsB.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
+      (List.range' a (b - a)).map fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt := by
   have hc : 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
     simp only [Arr.get_i64, ha, hb, toInt64_toInt_nat (show a < 2 ^ 63 by omega),
       toInt64_toInt_nat (show b < 2 ^ 63 by omega)]; omega
@@ -358,8 +358,8 @@ being read empty wherever it lies (`uncat`'s split of a cell `cellSpan` clamped)
 theorem Vals.row_span {B : Obj} {n m : USize} (lo hi : Arr .i64 n) (f : Vals B m) (i : Fin n.toNat) {a b : Nat}
     (ha : (raw .i64 n lo.enc)[i.1]?.getD 0 = a.toUInt64) (hb : (raw .i64 n hi.enc)[i.1]?.getD 0 = b.toUInt64)
     (hab : a ≤ b) (hbm : b ≤ m.toNat ∨ a = b) (h63 : a < 2 ^ 63) (hm : m.toNat < 2 ^ 63) :
-    Vals.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
-      (List.range' a (b - a)).map fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
+    ValsB.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
+      (List.range' a (b - a)).map fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt := by
   rcases hbm with hbm | rfl
   · exact Vals.row_cell lo hi f i ha hb hab hbm hm
   rw [Vals.row_empty i (by rw [Arr.get_i64, Arr.get_i64, ha, hb]), Nat.sub_self, List.range'_zero, List.map_nil]
@@ -373,8 +373,8 @@ theorem cellSpan_spec {B : Obj} {n m : USize} {lo up : Arr .i64 n}
     ∃ SN EN : Nat → Nat, (∀ i < n.toNat, (raw .i64 n lo.enc)[i]?.getD 0 = (SN i).toUInt64 ∧
       (raw .i64 n up.enc)[i]?.getD 0 = (EN i).toUInt64) ∧
       (∀ i, SN i ≤ EN i ∧ SN i < 2 ^ 63 ∧ (EN i ≤ m.toNat ∨ EN i = SN i)) ∧
-      ∀ i : Fin n.toNat, Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i =
-        (List.range' (SN i) (EN i - SN i)).map fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt := by
+      ∀ i : Fin n.toNat, ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i =
+        (List.range' (SN i) (EN i - SN i)).map fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt := by
   obtain ⟨Lf, hLf⟩ : ∃ F : Nat → Int, ∀ i, F i = ((raw .i64 n lo.enc)[i]?.getD 0).toInt64.toInt := ⟨_, fun _ => rfl⟩
   obtain ⟨Hf, hHf⟩ : ∃ F : Nat → Int, ∀ i, F i = ((raw .i64 n up.enc)[i]?.getD 0).toInt64.toInt := ⟨_, fun _ => rfl⟩
   obtain ⟨SN, hSN⟩ : ∃ F : Nat → Nat, ∀ i, F i = (Lf i).toNat := ⟨_, fun _ => rfl⟩
@@ -427,8 +427,8 @@ theorem cellSpan_where {B : Obj} {n m M : USize} {lo up : Arr .i64 n} {lt sel : 
     ∃ SN EN : Nat → Nat, (∀ i < n.toNat, (raw .i64 n lo.enc)[i]?.getD 0 = (SN i).toUInt64 ∧
       (raw .i64 n up.enc)[i]?.getD 0 = (EN i).toUInt64) ∧
       (∀ i, SN i ≤ EN i ∧ SN i < 2 ^ 63 ∧ (EN i ≤ m.toNat ∨ EN i = SN i)) ∧
-      (∀ i : Fin n.toNat, Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i =
-        (List.range' (SN i) (EN i - SN i)).map fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt) ∧
+      (∀ i : Fin n.toNat, ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i =
+        (List.range' (SN i) (EN i - SN i)).map fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt) ∧
       (∀ k < M.toNat, ((raw .i64 M sel)[k]?.getD 0).toNat < n.toNat ∧
         SN ((raw .i64 M sel)[k]?.getD 0).toNat < EN ((raw .i64 M sel)[k]?.getD 0).toNat) ∧
       ∀ i < n.toNat, SN i < EN i → ∃ k < M.toNat, ((raw .i64 M sel)[k]?.getD 0).toNat = i := by
@@ -515,8 +515,8 @@ theorem Vals.cells_spec {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : 
 theorem Vals.cells_row {B : Obj} {n T : USize} {w : Enc} {pay : Vals B T} {Y : Vals (.arr B) n}
     (hY : Vals.cells n w pay = .ok Y) (wN : Nat → Nat) (hw : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64)
     (hT : ((List.range n.toNat).map wN).sum ≤ T.toNat) (hT63 : T.toNat < 2 ^ 63) (i : Fin n.toNat) :
-    Vals.row Y i = (List.range' ((List.range i.1).map wN).sum (wN i.1)).map
-      fun k => if h : k < T.toNat then Vals.row pay ⟨k, h⟩ else B.dflt := by
+    ValsB.row Y i = (List.range' ((List.range i.1).map wN).sum (wN i.1)).map
+      fun k => if h : k < T.toNat then ValsB.row pay ⟨k, h⟩ else B.dflt := by
   obtain ⟨lo', hi', rfl, hb⟩ := Vals.cells_spec hY wN hw hT hT63
   obtain ⟨hgT, hlo, hhi⟩ := hb i
   rw [Vals.row_cell lo' hi' pay i hlo hhi (by omega) hgT hT63, Nat.add_sub_cancel_left]
@@ -571,9 +571,9 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
     (hw : colMap .sub n up.enc lo.enc = .ok w) (hex : expand n w = .ok (T, G, u))
     (hsg : kgather T G n lo.enc = .ok sg) (hix : colMap .add T sg u = .ok ix) (g : A.El → B.El) {pay : Vals B T}
     (hp : ∀ t : Fin T.toNat, ∃ j : Fin m.toNat, ((raw .i64 T ix)[t.1]?.getD 0).toNat = j.1 ∧
-      Vals.row pay t = g (Vals.row f j))
+      ValsB.row pay t = g (ValsB.row f j))
     {Y : Vals (.arr B) n} (hY : Vals.cells n w pay = .ok Y) (i : Fin n.toNat) :
-    Vals.row Y i = (Vals.row (A := .arr A) ⟨m, lo, up, f⟩ i).map g := by
+    ValsB.row Y i = (ValsB.row (A := .arr A) ⟨m, lo, up, f⟩ i).map g := by
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
@@ -606,7 +606,7 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : Arr .i64 n} {f 
 `[Σ_{<i} w, Σ_{≤i} w)` (`Vals.cells`), whose row `Σ_{<i} w + d` is gathered from payload row `SN + d`
 (`Vals.cells_expand_row` at `g = id`). -/
 theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Vals A n} → Vals.pack x = .ok y →
-    Vals.WF x → ∀ i, Vals.row y i = Vals.row x i
+    Vals.WF x → ∀ i, ValsB.row y i = ValsB.row x i
   | .atom _, _, x, _, h, _, i => by
     simp only [Vals.pack, pure, Except.pure, Except.ok.injEq] at h; cases h; rfl
   | .prod _ _, _, x, _, h, wx, i => by
@@ -616,7 +616,7 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     split at h; · cases h
     rename_i y2 h2
     cases h
-    simp only [Vals.row, Vals.pack_row x.1 h1 wx.1, Vals.pack_row x.2 h2 wx.2]
+    simp only [ValsB.row, Vals.pack_row x.1 h1 wx.1, Vals.pack_row x.2 h2 wx.2]
   | .sum _ _, _, s, _, h, wx, i => by
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> simp only [Vals.pack, hv] at h
     · simp only [pure, Except.pure, Except.ok.injEq] at h; cases h; rfl
@@ -627,7 +627,7 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     rename_i y' h2
     cases h
     simp only [Vals.WF, hv] at wx
-    simp only [Vals.row, Vals.view_ofGen, hv, Vals.pack_row x h1 wx.1, Vals.pack_row y h2 wx.2.1]
+    simp only [ValsB.row, Vals.view_ofGen, hv, Vals.pack_row x h1 wx.1, Vals.pack_row y h2 wx.2.1]
   | .arr B, n, ⟨m, lo, up, f⟩, y, h, wx, i => by
     simp only [Vals.pack] at h
     split at h; · cases h
@@ -641,7 +641,7 @@ theorem Vals.pack_row : {A : Obj} → {n : USize} → (x : Vals A n) → {y : Va
     case isFalse =>
       rw [Except.bind_eq_ok'] at h; obtain ⟨f', hf', h⟩ := h
       cases h
-      simp only [Vals.row, Vals.pack_row f hf' wx.2]
+      simp only [ValsB.row, Vals.pack_row f hf' wx.2]
     rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨sg, hsg, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
@@ -665,7 +665,7 @@ theorem Vals.cat_lt {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
 reads the joined payload (`Vals.concat_row`) at `SN₁ + d` where `d < w₁`, else at `m₁ + SN₂ + (d - w₁)`. -/
 theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.cat X Y = .ok Z)
     (hX : Vals.WF X) (hY : Vals.WF Y) :
-    n.toNat < 2 ^ 63 ∧ ∀ i, Vals.row Z i = Vals.row X i ++ Vals.row Y i := by
+    n.toNat < 2 ^ 63 ∧ ∀ i, ValsB.row Z i = ValsB.row X i ++ ValsB.row Y i := by
   obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
   obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
   simp only [Vals.cat] at h
@@ -822,7 +822,7 @@ theorem Vals.tau_wf {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (
 
 /-- **`Vals.tau` reads each row as its one-element cell** `[i, i + 1)` over `x`, `n` below `2^63`. -/
 theorem Vals.tau_row {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} (h : Vals.tau x = .ok y)
-    (hn : n.toNat < 2 ^ 63) (i : Fin n.toNat) : Vals.row y i = [Vals.row x i] := by
+    (hn : n.toNat < 2 ^ 63) (i : Fin n.toNat) : ValsB.row y i = [ValsB.row x i] := by
   obtain ⟨P, hi, rfl, hb⟩ := Vals.tau_spec h
   rw [Vals.row_cell P hi x i (hb i).1 (hb i).2 (by omega) (by omega) hn, Nat.add_sub_cancel_left]
   simp
@@ -831,7 +831,7 @@ theorem Vals.tau_row {B : Obj} {n : USize} {x : Vals B n} {y : Vals (.arr B) n} 
 reads `X`'s payload at `SN₁ + d` and `Y`'s at `SN₂ + d`. -/
 theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.arr B) n}
     {Z : Vals (.arr (.prod A B)) n} (h : Vals.zip X Y = .ok Z) (hX : Vals.WF X) (hY : Vals.WF Y) :
-    ∀ i, Vals.row Z i = (Vals.row X i).zip (Vals.row Y i) := by
+    ∀ i, ValsB.row Z i = (ValsB.row X i).zip (ValsB.row Y i) := by
   obtain ⟨m₁, lo₁, up₁, f₁⟩ := X
   obtain ⟨m₂, lo₂, up₂, f₂⟩ := Y
   simp only [Vals.zip] at h
@@ -927,7 +927,7 @@ theorem Vals.zip_row {A B : Obj} {n : USize} {X : Vals (.arr A) n} {Y : Vals (.a
   obtain ⟨j₂, hj₂, hyj⟩ := Vals.gather_row f₂ hy ⟨_, ht⟩
   rw [ha₁t, toNat_toUInt64 (by omega)] at hj₁
   rw [ha₂t, toNat_toUInt64 (by omega)] at hj₂
-  show (Vals.row x ⟨_, ht⟩, Vals.row y ⟨_, ht⟩) = _
+  show (ValsB.row x ⟨_, ht⟩, ValsB.row y ⟨_, ht⟩) = _
   have e1 : j₁ = ⟨S₁ i.1 + d, hS₁⟩ := Fin.ext hj₁.symm
   have e2 : j₂ = ⟨S₂ i.1 + d, hS₂⟩ := Fin.ext hj₂.symm
   rw [hxj, hyj, e1, e2]
@@ -1076,7 +1076,7 @@ theorem length_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) .long} 
   have hm63 : m.toNat < 2 ^ 63 := by omega
   obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
   have hv : ∀ i : Fin n.toNat,
-      Vals.row (A := .long) wd i = Int64.ofNat (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := by
+      ValsB.row (A := .long) wd i = Int64.ofNat (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := by
     intro i
     have es := (colMap_raw (colArr_ok hwd)).2.2.2 i.1 i.2
     rw [(hw1 i.1 i.2).2, (hw1 i.1 i.2).1] at es; simp only [Op.eval, Except.ok.injEq] at es
@@ -1271,8 +1271,8 @@ private theorem uncons_pre_wf {n m M : USize} {lo up : Arr .i64 n} {f : Vals B m
     {sM l eM : Arr .i64 M} {gX : Vals (.arr B) M} {gf : Vals B M}
     (hX : Vals.WF (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩) (hm63 : m.toNat < 2 ^ 63)
     (hlt : colMap Op.lt n lo.enc up.enc = .ok lt) (hwh : whereCol n lt = .ok (M, sel))
-    (hsM : Arr.gather M sel lo = .ok sM) (hgX : Vals.gather M sel (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok gX)
-    (hgf : Vals.gather M sM.enc f = .ok gf)
+    (hsM : Arr.gather M sel lo = .ok sM) (hgX : ValsB.gather M sel (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok gX)
+    (hgf : ValsB.gather M sM.enc f = .ok gf)
     (hl : colArr Op.first M sM.enc sM.enc .i64 .i64 [] [(Op.add, 1)] = .ok l)
     (heM : Arr.gather M sel up = .ok eM) :
     Tab.WF (⟨M, gX, (gf, ⟨m, (l, eM, f)⟩)⟩ : Tab (.arr B) (.prod B (.arr B))) := by
@@ -1316,8 +1316,8 @@ private theorem unsnoc_pre_wf {n m M : USize} {lo up : Arr .i64 n} {f : Vals B m
     (hlt : colMap Op.lt n lo.enc up.enc = .ok lt) (hwh : whereCol n lt = .ok (M, sel))
     (heM : Arr.gather M sel up = .ok eM)
     (hl : colArr Op.first M eM.enc eM.enc .i64 .i64 [] [(Op.add, 0 - 1)] = .ok l)
-    (hgX : Vals.gather M sel (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok gX) (hsM : Arr.gather M sel lo = .ok sM)
-    (hgf : Vals.gather M l.enc f = .ok gf) :
+    (hgX : ValsB.gather M sel (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok gX) (hsM : Arr.gather M sel lo = .ok sM)
+    (hgf : ValsB.gather M l.enc f = .ok gf) :
     Tab.WF (⟨M, gX, (⟨m, (sM, l, f)⟩, gf)⟩ : Tab (.arr B) (.prod (.arr B) B)) := by
   obtain ⟨SN, EN, hw1, hb1, -, hsel, -⟩ := cellSpan_where hX.1 hlt hwh hm63 f
   refine ⟨Vals.gather_wf hgX hX, ⟨fun j => ?_, hX.2⟩, Vals.gather_wf hgf hX.2⟩
@@ -1371,13 +1371,13 @@ theorem uncons_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
   have hm63 : m.toNat < 2 ^ 63 := by omega
   rw [canon_holds h (uncons_pre_wf hX hm63 hlt hw hsM hK hhd hlo' heM)]
   obtain ⟨SN, EN, hw1, hb1, hrow, hsel, hall⟩ := cellSpan_where hX.1 hlt hw hm63 f
-  let g : Nat → B.El := fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt
+  let g : Nat → B.El := fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt
   have hcons : ∀ i : Fin n.toNat, SN i < EN i →
-      Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i = g (SN i) :: (List.range' (SN i + 1) (EN i - SN i - 1)).map g := by
+      ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i = g (SN i) :: (List.range' (SN i + 1) (EN i - SN i - 1)).map g := by
     intro i c; rw [hrow i, show EN i - SN i = (EN i - SN i - 1) + 1 by omega, List.range'_succ]; rfl
   have hJ : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, SN i < EN i ∧ ((raw .i64 M sel)[j.1]?.getD 0).toNat = i ∧
-      K.row j = Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i ∧
-      Vals.row (A := .prod B (.arr B)) (hd, ⟨m, lo', eM, f⟩) j =
+      K.row j = ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i ∧
+      ValsB.row (A := .prod B (.arr B)) (hd, ⟨m, lo', eM, f⟩) j =
         (g (SN i), (List.range' (SN i + 1) (EN i - SN i - 1)).map g) := by
     intro j
     obtain ⟨i, hi, hKi⟩ := Vals.gather_row _ hK j
@@ -1399,7 +1399,7 @@ theorem uncons_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
       simp only [Op.eval, Except.ok.injEq] at es
       have := (hb1 i).2.1; rw [← es]; apply UInt64.toNat_inj.mp; simp <;> omega
     refine ⟨i, c, hi, hKi, ?_⟩
-    show (hd.row j, Vals.row (A := .arr B) ⟨m, lo', eM, f⟩ j) = _
+    show (hd.row j, ValsB.row (A := .arr B) ⟨m, lo', eM, f⟩ j) = _
     rw [hd4, Vals.row_cell lo' eM f j hlo he3 (by omega) hEm hm63,
       show EN i - (SN i + 1) = EN i - SN i - 1 by omega]
     simp only [g]; rw [dif_pos (by omega)]
@@ -1439,17 +1439,17 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
   have hm63 : m.toNat < 2 ^ 63 := by omega
   rw [canon_holds h (unsnoc_pre_wf hX hm63 hlt hw heM hl hK hsM htl)]
   obtain ⟨SN, EN, hw1, hb1, hrow, hsel, hall⟩ := cellSpan_where hX.1 hlt hw hm63 f
-  let g : Nat → B.El := fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt
+  let g : Nat → B.El := fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt
   have hsnoc : ∀ i : Fin n.toNat, SN i < EN i →
-      Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i = (List.range' (SN i) (EN i - SN i - 1)).map g ++ [g (EN i - 1)] := by
+      ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i = (List.range' (SN i) (EN i - SN i - 1)).map g ++ [g (EN i - 1)] := by
     intro i c
     obtain ⟨L, hL⟩ : ∃ L, EN i - SN i = L + 1 := ⟨EN i - SN i - 1, by omega⟩
     rw [hrow i, hL, List.range'_concat, List.map_append, Nat.add_sub_cancel, Nat.one_mul,
       show SN i + L = EN i - 1 by omega]
     rfl
   have hJ : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, SN i < EN i ∧ ((raw .i64 M sel)[j.1]?.getD 0).toNat = i ∧
-      K.row j = Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i ∧
-      Vals.row (A := .prod (.arr B) B) (⟨m, sM, l, f⟩, tl) j =
+      K.row j = ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i ∧
+      ValsB.row (A := .prod (.arr B) B) (⟨m, sM, l, f⟩, tl) j =
         ((List.range' (SN i) (EN i - SN i - 1)).map g, g (EN i - 1)) := by
     intro j
     obtain ⟨i, hi, hKi⟩ := Vals.gather_row _ hK j
@@ -1471,7 +1471,7 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
     obtain ⟨i4, hi4, ht4⟩ := Vals.gather_row _ htl j
     have e4 : i4.1 = EN i - 1 := by rw [← hi4, hlw, toNat_toUInt64 (by have := hb1 i; omega)]
     refine ⟨i, c, hi, hKi, ?_⟩
-    show (Vals.row (A := .arr B) ⟨m, sM, l, f⟩ j, tl.row j) = _
+    show (ValsB.row (A := .arr B) ⟨m, sM, l, f⟩ j, tl.row j) = _
     rw [ht4, Vals.row_cell sM l f j hs2 hlw (by omega) (by omega) hm63, show EN i - 1 - SN i = EN i - SN i - 1 by omega]
     simp only [g]; rw [dif_pos (by omega)]
     exact congrArg (fun r => (_, f.row r)) (Fin.ext e4)
@@ -1498,7 +1498,7 @@ private theorem uncat_pre_wf {n m Tn : USize} {lo up : Arr .i64 n} {f : Vals B m
     (hX : Vals.WF (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩) (hb : ¬2 ^ 63 ≤ n.toNat * (m.toNat + 1) + n.toNat + m.toNat + 1)
     (hw : colMap Op.sub n up.enc lo.enc .i64 .i64 [] [(Op.add, 1)] = .ok w)
     (hex : expand n w = .ok (Tn, G, u)) (hsG : Arr.gather Tn G lo = .ok sG)
-    (hmid : colArr Op.add Tn sG.enc u = .ok mid) (hK : Vals.gather Tn G (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok K)
+    (hmid : colArr Op.add Tn sG.enc u = .ok mid) (hK : ValsB.gather Tn G (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok K)
     (heG : Arr.gather Tn G up = .ok eG) :
     Tab.WF (⟨Tn, K, (⟨m, (sG, mid, f)⟩, ⟨m, (mid, eG, f)⟩)⟩ : Tab (.arr B) (.prod (.arr B) (.arr B))) := by
   have hm63 : m.toNat < 2 ^ 63 := by omega
@@ -1612,11 +1612,11 @@ theorem uncat_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (
   obtain ⟨hTn, hrun⟩ := expand_spec hex wN hww hsn hn63
   -- split `d` of cell `g`: its row's key is cell `g`, its two slices join to cell `g`, the first of length `d`
   have hJ : ∀ g (hg : g < n.toNat) d, d ≤ EN g - SN g → ∃ ht : ((List.range g).map wN).sum + d < Tn.toNat,
-      K.row ⟨_, ht⟩ = Vals.row (A := .arr B) ⟨m, lo, up, f⟩ ⟨g, hg⟩ ∧
-      (Vals.row (A := .prod (.arr B) (.arr B)) (⟨m, sG, mid, f⟩, ⟨m, mid, eG, f⟩) ⟨_, ht⟩).1 ++
-        (Vals.row (A := .prod (.arr B) (.arr B)) (⟨m, sG, mid, f⟩, ⟨m, mid, eG, f⟩) ⟨_, ht⟩).2 =
-          Vals.row (A := .arr B) ⟨m, lo, up, f⟩ ⟨g, hg⟩ ∧
-      (Vals.row (A := .prod (.arr B) (.arr B)) (⟨m, sG, mid, f⟩, ⟨m, mid, eG, f⟩) ⟨_, ht⟩).1.length = d := by
+      K.row ⟨_, ht⟩ = ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ ⟨g, hg⟩ ∧
+      (ValsB.row (A := .prod (.arr B) (.arr B)) (⟨m, sG, mid, f⟩, ⟨m, mid, eG, f⟩) ⟨_, ht⟩).1 ++
+        (ValsB.row (A := .prod (.arr B) (.arr B)) (⟨m, sG, mid, f⟩, ⟨m, mid, eG, f⟩) ⟨_, ht⟩).2 =
+          ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ ⟨g, hg⟩ ∧
+      (ValsB.row (A := .prod (.arr B) (.arr B)) (⟨m, sG, mid, f⟩, ⟨m, mid, eG, f⟩) ⟨_, ht⟩).1.length = d := by
     intro g hg d hd
     have hgS : ((List.range g).map wN).sum + wN g ≤ ((List.range n.toNat).map wN).sum := by
       rw [← sum_range_succ']; exact sum_range_mono wN hg
@@ -1641,8 +1641,8 @@ theorem uncat_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (
       rw [hs2, hu] at es; simp only [Op.eval, Except.ok.injEq] at es
       rw [← es, ← UInt64.ofNat_add]
     have hb := hb1 g
-    show K.row ⟨_, ht⟩ = _ ∧ Vals.row (A := .arr B) ⟨m, sG, mid, f⟩ ⟨_, ht⟩ ++
-      Vals.row (A := .arr B) ⟨m, mid, eG, f⟩ ⟨_, ht⟩ = _ ∧ (Vals.row (A := .arr B) ⟨m, sG, mid, f⟩ ⟨_, ht⟩).length = d
+    show K.row ⟨_, ht⟩ = _ ∧ ValsB.row (A := .arr B) ⟨m, sG, mid, f⟩ ⟨_, ht⟩ ++
+      ValsB.row (A := .arr B) ⟨m, mid, eG, f⟩ ⟨_, ht⟩ = _ ∧ (ValsB.row (A := .arr B) ⟨m, sG, mid, f⟩ ⟨_, ht⟩).length = d
     rw [Vals.row_span sG mid f _ hs2 hmw (by omega) (by omega) (by omega) hm63,
       Vals.row_span mid eG f _ hmw he3 (by omega) (by omega) (by omega) hm63, hrow ⟨g, hg⟩,
       Nat.add_sub_cancel_left, ← List.map_append, List.range'_append_1,
@@ -2132,7 +2132,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
     split at h; · cases h
     rename_i z hz; split at h; · cases h
     refine ⟨_, h, ⟨wD, fun i => by rw [Arr.zeros_get hz]; simp, Vals.none_wf ‹_›⟩, fun a ys => ?_⟩
-    simp only [Tab.Holds, Vals.row]
+    simp only [Tab.Holds, ValsB.row]
     constructor
     · rintro ⟨i, h1, h2⟩
       exact ⟨⟨i, h1⟩, [], List.Pairwise.nil, fun j => ⟨nofun, fun ⟨hj, _⟩ => absurd hj (by omega)⟩, h2.symm⟩
@@ -2355,7 +2355,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   ------------------------------------------------------------------ the rows of the table before `canon`
   have key : ∀ {m : USize} (y : Vals B m), (∀ q (hq : q < N.toNat), n.toNat ≤ ps[q]?.getD 0 →
         ∃ hm : q < m.toNat, ∃ hj : ps[q]?.getD 0 - n.toNat < r.n.toNat, y.row ⟨q, hm⟩ = r.val.row ⟨_, hj⟩) →
-      ∀ {xk : Vals A M} {alo ahi : Arr .i64 M}, Vals.gather M iD D = .ok xk → Arr.gather M sel lo = .ok alo →
+      ∀ {xk : Vals A M} {alo ahi : Arr .i64 M}, ValsB.gather M iD D = .ok xk → Arr.gather M sel lo = .ok alo →
         Arr.gather M sel hi = .ok ahi → ∀ a ys,
         (Tab.mk M xk ⟨m, alo, ahi, y⟩ : Tab A (.arr B)).Holds a ys ↔ (∃ i, D.row i = a) ∧
           ∃ L : List Nat, L.Pairwise (· < ·) ∧ (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) ∧
@@ -2363,7 +2363,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
     intro m y hy xk alo ahi hxk halo hahi a ys
     have walo := hgat halo hlow
     have wahi := hgat hahi hhiw
-    have hcell : ∀ j (hj : j < M.toNat), Vals.row (A := .arr B) ⟨m, alo, ahi, y⟩ ⟨j, hj⟩ =
+    have hcell : ∀ j (hj : j < M.toNat), ValsB.row (A := .arr B) ⟨m, alo, ahi, y⟩ ⟨j, hj⟩ =
         (Ln ((raw .i64 M sel)[j]?.getD 0).toNat).map
           fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt := by
       intro j hj
@@ -2477,7 +2477,7 @@ lists are one (`pairwise_eq_of_mem`), and `lam_canon`'s cell is one (`canon_sort
 theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)} (hr : R.canon = .ok r)
     (h : Tab.lamOf D r = .ok T) (wD : Vals.WF D) (wr : r.WF) (wR : R.WF) (a : A.El) (ys : List B.El) :
     T.Holds a ys ↔ (∃ i, D.row i = a) ∧ (∀ b, b ∈ ys ↔ R.Holds a b) ∧
-      ∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+      ∀ es, ValsB.cols (A := .prod A B) (R.key, R.val) = .ok es →
         ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
           ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
             seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
@@ -2507,7 +2507,7 @@ theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr 
   -- a cell in canonical order satisfies the right-hand side, and every such list is ascending in `lc`
   have fwd : ∀ L : List Nat, L.Pairwise (· < ·) → (∀ j, j ∈ L ↔ ∃ hj : j < r.n.toNat, r.key.row ⟨j, hj⟩ = a) →
       let ys := L.map fun j => if hj : j < r.n.toNat then r.val.row ⟨j, hj⟩ else B.dflt
-      (∀ b, b ∈ ys ↔ R.Holds a b) ∧ ∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+      (∀ b, b ∈ ys ↔ R.Holds a b) ∧ ∀ es, ValsB.cols (A := .prod A B) (R.key, R.val) = .ok es →
         ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
           ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
             seenKey R.n es (s u) ≠ seenKey R.n es (s u') := by
@@ -2528,7 +2528,7 @@ theorem lamOf_holds {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr 
         refine ⟨e1 ▸ ((hLm _).1 (List.getElem_mem _)).2, ?_⟩
         rw [← e2]; simp only [ys, Fin.getElem_fin, List.getElem_map, dif_pos (hLr u.1 (by omega))]
       · exact hord _ _ (List.pairwise_iff_getElem.1 hLp _ _ (by omega) (by omega) hu)
-  have pw : ∀ ys : List B.El, (∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+  have pw : ∀ ys : List B.El, (∀ es, ValsB.cols (A := .prod A B) (R.key, R.val) = .ok es →
       ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
         ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
           seenKey R.n es (s u) ≠ seenKey R.n es (s u')) → ys.Pairwise lc := fun ys hy => by
@@ -2554,7 +2554,7 @@ theorem lamOf_den {n : USize} {D : Vals A n} {R r : Tab A B} {T : Tab A (.arr B)
   obtain ⟨es0, cs0, hes0, hcs0⟩ := canon_codes hr
   have lirr : ∀ x, ¬B.lt x x := fun x => List.lt_irrefl _
   have lasym : ∀ x y, B.lt x y → ¬B.lt y x := fun _ _ => List.lt_asymm
-  have up : ∀ ys : List B.El, (∀ es, Vals.cols (A := .prod A B) (R.key, R.val) = .ok es →
+  have up : ∀ ys : List B.El, (∀ es, ValsB.cols (A := .prod A B) (R.key, R.val) = .ok es →
       ∃ s : Fin ys.length → Fin R.n.toNat, (∀ u, R.key.row (s u) = a ∧ R.val.row (s u) = ys[u]) ∧
         ∀ u u' : Fin ys.length, u.1 < u'.1 → lexLe (ascKeys R.n es) (s u) (s u') = true ∧
           seenKey R.n es (s u) ≠ seenKey R.n es (s u')) → ys.Pairwise B.lt := fun ys ho => by
@@ -2748,13 +2748,13 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
     have es := (colMap_raw ha).2.2.2 i hi
     rw [(hw1 i hi).1, ← hkw] at es; simp only [Op.eval, Except.ok.injEq] at es
     exact es.symm
-  let g : Nat → B.El := fun k => if h : k < m.toNat then Vals.row f ⟨k, h⟩ else B.dflt
-  have hkv : ∀ i : Fin n.toNat, (Vals.row (A := .long) k i) = (kw i).toInt64 := fun i => by
+  let g : Nat → B.El := fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt
+  have hkv : ∀ i : Fin n.toNat, (ValsB.row (A := .long) k i) = (kw i).toInt64 := fun i => by
     show (Arr.get k i) = _
     rw [Arr.get_i64, hkw]
   have hJ : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, ((kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i) ∧
       ((raw .i64 M sel)[j.1]?.getD 0).toNat = i ∧
-      K.row j = Vals.row (A := .prod (.arr B) .long) (⟨m, lo, up, f⟩, k) i ∧ V.row j = g (SN i + (kw i).toNat) := by
+      K.row j = ValsB.row (A := .prod (.arr B) .long) (⟨m, lo, up, f⟩, k) i ∧ V.row j = g (SN i + (kw i).toNat) := by
     intro j
     obtain ⟨i, hi, hKi⟩ := Vals.gather_row _ hK j
     obtain ⟨hin, hx⟩ := (hmem i).1 ⟨j.1, j.2, hi⟩
@@ -2769,26 +2769,26 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
       rw [UInt64.toNat_add, toNat_toUInt64 (by omega)]; exact Nat.mod_eq_of_lt (by omega)
     rw [hsum] at hi'
     simp only [g, dif_pos hS]; congr 1; exact Fin.ext hi'.symm
-  have hel : ∀ i : Fin n.toNat, Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i =
+  have hel : ∀ i : Fin n.toNat, ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i =
       (List.range' (SN i) (EN i - SN i)).map g := hrow
   simp only [Tab.Holds, Lang.atOn]
   constructor
   · rintro ⟨j, rfl, rfl⟩
     obtain ⟨i, c', -, hKi, hVi⟩ := hJ j
     rw [hKi, hVi]
-    have hkn : (Vals.row (A := .long) k i).toInt = (kw i).toNat := by
+    have hkn : (ValsB.row (A := .long) k i).toInt = (kw i).toNat := by
       rw [hkv i]; exact toInt64_toInt c'.1
     refine ⟨⟨i, rfl⟩, ?_⟩
-    show 0 ≤ (Vals.row (A := .long) k i).toInt ∧ Lang.atDen (Vals.row (A := .long) k i).toInt.toNat
-      (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) (g (SN i + (kw i).toNat))
+    show 0 ≤ (ValsB.row (A := .long) k i).toInt ∧ Lang.atDen (ValsB.row (A := .long) k i).toInt.toNat
+      (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i) (g (SN i + (kw i).toNat))
     rw [hkn, Int.toNat_natCast, hel i]
     exact ⟨by omega, by simpa using c'.2, by simp⟩
   · rintro ⟨⟨i, rfl⟩, h0, hk, rfl⟩
-    have h0' : 0 ≤ (Vals.row (A := .long) k i).toInt := h0
+    have h0' : 0 ≤ (ValsB.row (A := .long) k i).toInt := h0
     rw [hkv i] at h0'
     obtain ⟨h63, hkn'⟩ := toInt64_nonneg h0'
-    have hk' : (Vals.row (A := .long) k i).toInt.toNat < (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := hk
-    have hkn : (Vals.row (A := .long) k i).toInt.toNat = (kw i).toNat := by rw [hkv i, hkn']; simp
+    have hk' : (ValsB.row (A := .long) k i).toInt.toNat < (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i).length := hk
+    have hkn : (ValsB.row (A := .long) k i).toInt.toNat = (kw i).toNat := by rw [hkv i, hkn']; simp
     have hP : (kw i).toNat < 2 ^ 63 ∧ (kw i).toNat < EN i - SN i := by
       refine ⟨h63, ?_⟩; rw [hkn, hel i] at hk'; simpa using hk'
     obtain ⟨j, hj, hji⟩ := (hmem i).2 ⟨i.2, by rw [hcw' i i.2, if_pos hP]; decide⟩
@@ -2797,7 +2797,7 @@ theorem atIx_holds {B : Obj} {n : USize} {X : Vals (.prod (.arr B) .long) n} {T 
     subst e'
     refine ⟨⟨j, hj⟩, hKi, hVi.trans ?_⟩
     change g (SN i' + (kw i').toNat) =
-      (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i')[(Vals.row (A := .long) k i').toInt.toNat]'hk'
+      (ValsB.row (A := .arr B) ⟨m, lo, up, f⟩ i')[(ValsB.row (A := .long) k i').toInt.toNat]'hk'
     rw [List.getElem_of_eq (hel i') hk', List.getElem_map, List.getElem_range', Nat.one_mul, hkn]
 
 /-- **The row `at` on the pairs `X`** denotes `atOn`: `atIx_holds` at the `i64` index, no row at another object. -/
