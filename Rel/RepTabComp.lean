@@ -912,10 +912,9 @@ theorem compBlock_wf {R : Tab A B} {S : Tab B C} {c : Enc} {j : Nat} {t : Tab A 
 /-- **`compBlocks` keeps `Tab.WF`**: each block by `compBlock_wf`, met by `∪` (`union_wf`). -/
 theorem compBlocks_wf {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 R.n} {t : Tab A C}
     (h : compBlocks R S nb bid = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
-  simp only [Tab.compBlocks, bind, Except.bind] at h
+  simp only [Tab.compBlocks, bind, Except.bind, ← Array.foldlM_toList, Array.toList_range] at h
   okSplit
   refine foldlM_keeps (P := Tab.WF) (fun b a b' hb hw => ?_) _ h (compBlock_wf ‹_› hR hS)
-  simp only [bind, Except.bind] at hb
   split at hb; · cases hb
   exact union_wf hb hw (compBlock_wf ‹_› hR hS)
 
@@ -1000,6 +999,7 @@ theorem compBlocks_canon {R : Tab A B} {S : Tab B C} {nb : Nat} {bid : Arr .i64 
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c, hc, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨T0, h0, h⟩ := h
+  rw [← Array.foldlM_toList, Array.toList_range] at h
   obtain ⟨hL, hnil, hcan, hH⟩ := foldlM_union (f := fun j => compBlock R S c.enc (j + 1))
     (fun _ _ hX => compBlock_wf hX hR hS) _ _ _ h (compBlock_wf h0 hR hS)
   -- each row's clamped word is a block `j ≤ nb - 1`

@@ -44,7 +44,7 @@ def peek : P (Option Char) := do let s ← get; pure s.cs[s.i]?
 -- the text is one Lean token, so no newline: Lean's tokenizer has read the lines, spaces and comments
 def adv : P Unit := modify fun s => { s with i := s.i + 1, col := s.col + 1 }
 
-def advN (k : Nat) : P Unit := for _ in List.range k do adv
+def advN (k : Nat) : P Unit := for _ in [0:k] do adv
 
 def found : P String := do
   match ← peek with
@@ -105,9 +105,12 @@ def S.inScope (s : S) (n : String) : Bool :=
     match s.res n with | .ext _ => true | .bad b _ => b | .none => false
 
 /-- The length of the run of identifier characters at `i`. -/
-def S.runLen (s : S) (i : Nat) : Nat := (List.range (s.cs.size - i)).takeWhile (fun k => s.cs[i + k]?.any isIdCont) |>.length
+def S.runLen (s : S) (i : Nat) : Nat := Id.run do
+  let mut k := 0
+  while s.cs[i + k]?.any isIdCont do k := k + 1
+  return k
 
-def S.text (s : S) (a b : Nat) : String := String.ofList (s.cs.extract a b).toList
+def S.text (s : S) (a b : Nat) : String := (s.cs.extract a b).foldl String.push ""
 
 /-- The name `n` read at `p`: in scope, or one the resolver refuses with a reason (ambiguous, no Rel definition),
     which is the error. -/
@@ -123,7 +126,7 @@ def resolved (p : Pos) (n : String) : P String := do
 /-- The longest prefix `k` of the `r` characters at the cursor that `ok` holds of and that ends where a letter
     starts; the whole run when none. -/
 def cutAt (s : S) (r : Nat) (ok : String → Bool) : Nat :=
-  let cut := (List.range r).reverse.find? fun k => ok (s.text s.i (s.i + k + 1)) && (k + 1 == r || s.cs[s.i + k + 1]?.any isLetter)
+  let cut := (Array.range r).findRev? fun k => ok (s.text s.i (s.i + k + 1)) && (k + 1 == r || s.cs[s.i + k + 1]?.any isLetter)
   (cut.map (· + 1)).getD r
 
 /-- After the namespace `m` and its `.`: the member, a one-character name or the longest prefix of the run the

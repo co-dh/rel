@@ -65,9 +65,10 @@ def readArr (t : QAtomicType) (path : String) : IO ((n : USize) × Arr t n) := d
     | throw (IO.userError s!"{path}: constructor kind {f.kind}, which `Db.ownEnc` does not rebuild")
   let x ← IO.ofExcept (Arr.of t f.count e path)
   if t matches .f32 | .f64 then
-    if let some (b, i) := x.toList.zipIdx.findSome? fun (v, i) => (nonCanonical t v).map (·, i) then
-      throw (IO.userError s!"{path}: row {i} holds the {repr t} bit pattern 0x{String.mk (Nat.toDigits 16 b)}, \
-        which is not canonical (a NaN or -0)")
+    for h : i in [0:f.count.toNat] do
+      if let some b := nonCanonical t (x.get ⟨i, h.upper⟩) then
+        throw (IO.userError s!"{path}: row {i} holds the {repr t} bit pattern 0x{String.mk (Nat.toDigits 16 b)}, \
+          which is not canonical (a NaN or -0)")
   return ⟨f.count, x⟩
 
 /-- `y`, read from `fy`, as a column of the side whose count `n` was read from `fx`: the two counts are equal. -/

@@ -19,8 +19,8 @@ def ownParts : Ext.Enc X → Except String (Option (UInt8 × Array ByteArray))
 /-- The constructor `ownParts` took apart, from the kind and the parts `ownMap` answers: each `ByteArray` is taken as
 it is, so a mapped part stays in the mapping. -/
 def ownEnc (kind : UInt8) (parts : Array ByteArray) : Option (Ext.Enc X) :=
-  match kind, parts.toList with
-  | 2, [metadata, pack] => some (.foR metadata pack)
+  match kind, parts with
+  | 2, #[metadata, pack] => some (.foR metadata pack)
   | _, _ => none
 
 /-- The file the column `e` of `n` elements of `t` is written as; `none` for positions, which have no file

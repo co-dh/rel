@@ -114,8 +114,9 @@ def cmpEl (objs : Objs) : OTy → (A : Obj) → A.El → A.El → Ordering
 /-- A relation printed as its set of pairs: each pair once (`Tab.canon`, `kasc` then `kseen`), sorted by `cmpEl`; the
     message of a kernel that could not run. -/
 def showRel (objs : Objs) (s t : OTy) {A B : Obj} (R : Tab A B) : Except String String := do
-  let ps := (← R.canon).toList.mergeSort fun (x, y) (x', y') => ((cmpEl objs s A x x').then (cmpEl objs t B y y')) != .gt
-  pure ("{" ++ ", ".intercalate (ps.map fun (x, y) => s!"({showEl objs false s A x}, {showEl objs false t B y})") ++ "}")
+  let ps := (← R.canon).toArray.qsort fun (x, y) (x', y') => ((cmpEl objs s A x x').then (cmpEl objs t B y y')) == .lt
+  pure ("{" ++ (ps.mapIdx fun i (x, y) =>
+    s!"{if i = 0 then "" else ", "}({showEl objs false s A x}, {showEl objs false t B y})").foldl (· ++ ·) "" ++ "}")
 
 /-- A declared object as a print reads it: its names and range, no universe. -/
 def infoOf (ty : OTy) (elems : List String) (range : Option (Int × Int)) : ObjInfo := { ty, elems, range }

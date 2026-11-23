@@ -3,7 +3,6 @@ Rel.Db.Csv.fieldAt
 Rel.Db.Csv.fieldsOf
 Rel.Db.Csv.fmtFloat
 Rel.Db.leBytes
-Rel.Db.ownEnc
 Rel.Db.ownImage
 Rel.Db.ownLayout
 Rel.Db.ownLayout._sunfold
@@ -46,10 +45,6 @@ Rel.Lang.Expand.emit
 Rel.Lang.Expand.once
 Rel.Lang.Expand.sigOf
 Rel.Lang.Once.binds
-Rel.Lang.Parse.S.runLen
-Rel.Lang.Parse.S.text
-Rel.Lang.Parse.advN
-Rel.Lang.Parse.cutAt
 Rel.Lang.Plan.Bld.plan
 Rel.Lang.Plan.Bld.planIO
 Rel.Lang.Plan.Plan.exec
@@ -62,11 +57,7 @@ Rel.Lang.Plan.runI
 Rel.Lang.Plan.runI._sunfold
 Rel.Lang.Plan.runI._unsafe_rec
 Rel.Lang.Plan.«_aux_Rel_Run_Lang_Plan___elabRules_Rel_Lang_Plan_termKernel%__1»
-Rel.Lang.Table.readArr
-Rel.Lang.Table.readDict
 Rel.Lang.Tup.ofText
-Rel.Lang.floatText
-Rel.Lang.idxClass
 Rel.Lang.mkDef
 Rel.Lang.objInfo
 Rel.Lang.proj.go
@@ -74,9 +65,6 @@ Rel.Lang.proj.go._sunfold
 Rel.Lang.proj.go._unsafe_rec
 Rel.Lang.proj.pre
 Rel.Lang.rowObjs
-Rel.Lang.showRel
-Rel.Tab.compBlocks
-Rel.longWords
 Rel.positionsL
 _private.Rel.Kernel.Coc.0.Rel.Kernel.Coc.packResImpl
 _private.Rel.Run.Core.0.Rel.Tab.toListImpl

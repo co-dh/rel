@@ -117,7 +117,7 @@ middle value. -/
 def compBlocks (R : Tab A B) (S : Tab B C) (nb : Nat) (bid : Arr .i64 R.n) : Except String (Tab A C) := do
   if 2 ^ 63 ≤ nb then throw s!"comp: {nb} blocks past 2^63"
   let c ← bid.clampShift (nb - 1).toUInt64 0
-  (List.range (nb - 1)).foldlM (fun acc j => do acc.union (← compBlock R S c.enc (j + 1))) (← compBlock R S c.enc 0)
+  (Array.range (nb - 1)).foldlM (fun acc j => do acc.union (← compBlock R S c.enc (j + 1))) (← compBlock R S c.enc 0)
 
 /-- The output rows of `compGroups`' answer before `canon`: the last word of the prefix sum of `w` (`compCuts`' `P`). -/
 def compRows : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc → Except String Nat
