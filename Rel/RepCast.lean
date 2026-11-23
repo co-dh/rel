@@ -68,7 +68,7 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
   have row : ∀ i : Fin n.toNat,
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 1 ∧ QAtomicType.embed s t (X.get i) = some (w.get i)) ∨
       ((Enc.raw .i64 n flag)[i.1]?.getD 0 = 0 ∧ QAtomicType.embed s t (X.get i) = none) := by
-    intro i
+    intro i; dsimp only [Vals.get]
     obtain ⟨a, ha, -, hxa⟩ := Arr.get_raw_atom X hgs i
     obtain ⟨v, hev, hwv⟩ := hcm.2 i.1 i.2
     obtain ⟨b, hb, -, hwb⟩ := Arr.get_raw_atom w hgt i
@@ -159,7 +159,7 @@ theorem optEl_long (v : Option Int64) : Obj.optEl (a := .one) (b := .long) (t :=
 
 /-- **Row `i` of a `1+i64` column is read off its words** (`optWord`): its flag `rdNul` and its raw word. -/
 theorem row_opt_i64 {n : USize} (x : Opt .i64 n) (i : Fin n.toNat) :
-    Vals.row (A := .opt .long) x i = optWord (rdNul n x.enc i) ((Enc.raw .i64 n x.enc)[i.1]?.getD 0) := by
+    ValsB.row (o := false) (A := .opt .long) x i = optWord (rdNul n x.enc i) ((Enc.raw .i64 n x.enc)[i.1]?.getD 0) := by
   change Obj.optEl (a := .one) (b := .long) (t := .i64) rfl (x.get i) = _
   rw [optEl_long, Opt.get_ne x i (by decide)]
   cases hn : x.isNul i
@@ -383,7 +383,7 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
     (hr : Tab.nulStepCol s k n x.enc y.enc = .ok r) (hz : Enc.WF .i64 n r)
     (a : (Obj.prod (.opt .long) (.opt .long)).El) (w : (Obj.opt .long).El) :
     (⟨n, (x, y), (Opt.mk r hz : Opt .i64 n)⟩ : Tab (.prod (.opt .long) (.opt .long)) (.opt .long)).Holds a w ↔
-      (∃ i, Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i = a) ∧ Lang.nulStep k a w := by
+      (∃ i, ValsB.row (o := false) (A := .prod (.opt .long) (.opt .long)) (x, y) i = a) ∧ Lang.nulStep k a w := by
   obtain ⟨rfl, rfl, -, hk⟩ : b = .or ∧ f = nulWord ∧ o.nulFold = none ∧ (k = Ew.add ∨ k = Ew.sub ∨ k = Ew.mul) := by
     rcases nulVerb_cases hv with ⟨rfl, rfl, rfl, -⟩ | ⟨rfl, rfl, rfl, -⟩ | h
     · exact absurd rfl hnf
@@ -408,9 +408,9 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
   have imax : ∀ v : UInt64, Op.min.eval v 0x7fffffffffffffff = .ok v := fun v => by
     simp only [Op.eval, Except.ok.injEq, Op.i]
     rw [if_neg]; intro h; rw [Int64.lt_iff_toInt_lt] at h; have := Int64.toInt_lt v.toInt64; simp at h this; omega
-  have rz : ∀ i : Fin n.toNat, Lang.nulStep k (Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i)
-      (Vals.row (A := .opt .long) (Opt.mk q.1 hz : Opt .i64 n) i) := fun i => by
-    show Lang.nulStep k (Vals.row (A := .opt .long) x i, Vals.row (A := .opt .long) y i) _
+  have rz : ∀ i : Fin n.toNat, Lang.nulStep k (ValsB.row (o := false) (A := .prod (.opt .long) (.opt .long)) (x, y) i)
+      (ValsB.row (o := false) (A := .opt .long) (Opt.mk q.1 hz : Opt .i64 n) i) := fun i => by
+    show Lang.nulStep k (ValsB.row (o := false) (A := .opt .long) x i, ValsB.row (o := false) (A := .opt .long) y i) _
     rw [row_opt_i64, row_opt_i64, row_opt_i64]
     refine ⟨o, .or, nulWord, hv, ?_⟩
     obtain ⟨NP, ZP, hp1, hp2, hp3, hp4⟩ := hpi i
@@ -508,11 +508,11 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
     · exact .inr rfl
     · rw [h] at hnf; cases hnf
   obtain ⟨-, row⟩ := kscan_nul_map (post := []) ho.2 x.wf y.wf hkr
-  have rz : ∀ i : Fin n.toNat, Lang.nulStep k (Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i)
-      (Vals.row (A := .opt .long) (Opt.mk r.1 hz : Opt .i64 n) i) := fun i => by
+  have rz : ∀ i : Fin n.toNat, Lang.nulStep k (ValsB.row (o := false) (A := .prod (.opt .long) (.opt .long)) (x, y) i)
+      (ValsB.row (o := false) (A := .opt .long) (Opt.mk r.1 hz : Opt .i64 n) i) := fun i => by
     obtain ⟨NZ, Z, h1, h2, h3, h4⟩ := row i
     rw [show chain ([] : List (Op × UInt64)) = (pure : UInt64 → Except String UInt64) from rfl, bind_pure] at h1
-    show Lang.nulStep k (Vals.row (A := .opt .long) x i, Vals.row (A := .opt .long) y i) _
+    show Lang.nulStep k (ValsB.row (o := false) (A := .opt .long) x i, ValsB.row (o := false) (A := .opt .long) y i) _
     rw [row_opt_i64, row_opt_i64, row_opt_i64]
     exact nulStep_words hv hnf (rdNul_bit n _ i) (rdNul_bit n _ i) h1 h2 h3 h4
   constructor
@@ -664,7 +664,7 @@ theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ym
       if (Db.Csv.ymd (X.row j)).isSome then 1 else 0).enc)[i.1]?.getD 0 =
       if (Db.Csv.ymd (X.row i)).isSome then 1 else 0 := by
     intro i; rw [Arr.raw_ofFn rfl]; simp only [Option.getD_some]; split <;> decide
-  have hd : ∀ i : Fin n.toNat, ValsB.row (A := .atom .date) (Arr.ofFn .date n fun j =>
+  have hd : ∀ i : Fin n.toNat, ValsB.row (o := false) (A := .atom .date) (Arr.ofFn .date n fun j =>
       (Int32.ofInt ((Db.Csv.ymd (X.row j)).getD 0)).toUInt32.toUInt64) i =
       Int32.ofInt ((Db.Csv.ymd (X.row i)).getD 0) := by
     intro i
@@ -678,12 +678,12 @@ theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ym
   · rintro ⟨i, hi, rfl, rfl⟩
     refine ⟨⟨i, rfl⟩, ?_⟩
     have hi' := hf i ▸ hi
-    show _ = some (ValsB.row (A := .atom .date) _ i)
+    show _ = some (ValsB.row (o := false) (A := .atom .date) _ i)
     rw [hd i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
   · rintro ⟨⟨i, rfl⟩, hb⟩
     refine ⟨i, ?_, rfl, ?_⟩
     · rw [hf i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
-    · show ValsB.row (A := .atom .date) _ i = _
+    · show ValsB.row (o := false) (A := .atom .date) _ i = _
       rw [hd i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
 
 end Tab
