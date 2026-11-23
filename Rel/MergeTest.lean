@@ -38,7 +38,7 @@ def sameMerge {k v : Obj} [BEq k.El] [BEq v.El] (X T : Except String (Tab k v)) 
 -- `prod` on both sides, as `BitsTest`'s tuple-valued middle
 #guard sameMerge (do let R ← tab [(1, 10), (2, 20), (1, 20)]; pure (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod .long .long) .long))
   (do let R ← tab [(1, 10), (3, 30), (2, 20)]; pure (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod .long .long) .long))
--- 200 rows against 37, and against 5: the sizes where the selection rule picks `mergeDiff`
+-- 200 rows against 37, and against 5 (`sameMerge` runs `mergeDiff` itself, whatever `unionDiffSel` would pick)
 #guard sameMerge (tab (rnd 1 200 50)) (tab (rnd 2 37 50))
 #guard sameMerge (tab (rnd 3 400 100)) (tab (rnd 4 5 100))
 -- `n = 0`, `m = 0`, both empty: `rank` (no row below, no hit) and the merge
