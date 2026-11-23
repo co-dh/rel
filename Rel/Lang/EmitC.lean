@@ -618,6 +618,27 @@ def injB (A B : Obj) (s : Bool) (n : Nat) (X : Cols) : Bld TabB := do
     if s then canonT ⟨n, X, [.sum "" tag (← zerosB n A ".l") (← repath B ".r" X)]⟩
     else canonT ⟨n, X, [.sum "" tag (← repath A ".l" X) (← zerosB n B ".r")]⟩
 
+/-- **`inl°`/`inr°` on the `n` sum values `X`** (`Tab.inlConv`, `Tab.inrConv`, `s` the right one): the rows of `X` that
+    are on the summand's side, each beside its value, canonical. In band the side is read on the encoded column (`kscan
+    .null`: `inl°` keeps the nulls, `inr°` the others after `.not`, never a decode), the `inl ()` value no column. Else
+    the side is the tag (`.not` of it for `inl°`), the value the summand's columns gathered with the key. -/
+def injConvB (A B : Obj) (s : Bool) (n : Nat) (X : Cols) : Bld TabB := do
+  match Obj.band A B, X with
+  | some t, [.atom _ _ e] =>
+    let z ← nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put Kernel.Op.null), ← lit (.bit false),
+      ← lit (Reg.put t), ← lit (Reg.put QAtomicType.u1), n, ← ctorB 0 #[] #[], ← listB [← srcB n e],
+      ← lit (Reg.put ([] : List (Kernel.Op × UInt64))),
+      ← lit (Reg.put (if s then [(Kernel.Op.not, (0 : UInt64))] else []))]) 0 "kscan"
+    let (m, sel) ← whereB n z
+    let K ← gatherCols m sel n X
+    canonT ⟨m, K, ← if s then repath B "" K else pure []⟩
+  | some _, _ => throw "inl°/inr°: a band sum is not one atom column"
+  | none, [.sum _ tag x y] =>
+    let (m, sel) ← whereB n (← if s then pure tag else mapB .first n tag tag .u1 .i64 [] [(.not, 0)])
+    let V ← gatherCols m sel n (if s then y else x)
+    canonT ⟨m, ← gatherCols m sel n X, ← repath (if s then B else A) "" V⟩
+  | none, _ => throw "inl°/inr°: a sum is not one tag column with its two summands"
+
 /-- A side's columns of the object `A` at the path `p`: each atom column's `Enc` register; a positions column, which
     has no registers (`litSide`), the positions; an array's `lo`, `hi` and payload, its row count a payload column's
     `count`. A column mapped from its file (no `Enc`) is refused, naming it. -/
@@ -1600,6 +1621,8 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
       compSelB Tab.bitsMax (← tabB σ { dom := D.dom, ran := some (← domOf s) } R) s
     if (R.dem σ.dem []) && D.dom.isNone && D.ran.isSome then tryCatch sFirst fun e => tryCatch rFirst fun _ => throw e
     else tryCatch rFirst fun e => tryCatch sFirst fun _ => throw e
+  | _, _, .conv (.inl (A := A) (B := B)) => do let (n, X) ← known "inl°" D.dom; injConvB A B false n X
+  | _, _, .conv (.inr (A := A) (B := B)) => do let (n, X) ← known "inr°" D.dom; injConvB A B true n X
   | _, _, .conv R => do
     let r ← tabB σ ⟨D.ran, D.dom, D.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ R; canonT ⟨r.n, r.val, r.key⟩
   | _, _, .meet R S => do

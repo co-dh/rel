@@ -94,6 +94,15 @@ rel_program native1a where
     -- the key of a sum whose summand holds a list or a sum (`zeroCols`: the other summand has no row)
     gm : N ⟶ [N]+N ≜ xs inl
     gp : N ⟶ (N+N)+N ≜ gi inl
+    -- `inl°`, `inr°` on the sum values in demand: a dense sum with a summand `1` (`jl`, `jr`), a list summand (`kl`), the
+    -- nullable column in band with rows and a null (`bn`; `br` the non-null rows, `bl` the null), and a case `[R, S]`
+    bn : N ⟶ 1+N ≜ gk ∪ ({(9,∗)} inl)
+    jl : N ⟶ N ≜ gx inl° {(∗,7)}
+    jr : N ⟶ N×N ≜ gx inr°
+    kl : N ⟶ [N] ≜ gm inl°
+    br : N ⟶ N ≜ bn inr°
+    bl : N ⟶ N ≜ bn inl° {(∗,7)}
+    bc : N ⟶ N ≜ bn [{(∗,0)}, 𝟙]
     -- `sum` and `sums` at `i64` with a wrapping row (cell 1, key 1 from position 1 on: dropped), and `sum` at `f64`
     obj I
     obj F : f64
@@ -343,7 +352,9 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("mx", semOut native1a.mx), ("gi", semOut native1a.gi), ("gj", semOut native1a.gj), ("gk", semOut native1a.gk),
    ("gu", semOut native1a.gu), ("gn", semOut native1a.gn), ("gv", semOut native1a.gv),
    ("gx", semOut native1a.gx), ("gy", semOut native1a.gy), ("gz", semOut native1a.gz), ("gw", semOut native1a.gw),("gm", semOut native1a.gm), ("gp", semOut native1a.gp),
-   ("cu", semOut native1a.cu), ("pre", semOut native1a.pre), ("suf", semOut native1a.suf)]
+   ("cu", semOut native1a.cu), ("pre", semOut native1a.pre), ("suf", semOut native1a.suf),
+    ("jl", semOut native1a.jl), ("jr", semOut native1a.jr), ("kl", semOut native1a.kl), ("br", semOut native1a.br),
+    ("bl", semOut native1a.bl), ("bc", semOut native1a.bc)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
