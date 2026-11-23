@@ -251,4 +251,62 @@ theorem symAsc_holds {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.a
     exact ⟨r, by rw [hAh]; exact hasc,
       (Tab.conv_holds hC wR' r a).2 ((hRh a r).2 ⟨(Tab.dom_key hS wP a).2 hd, hk⟩)⟩
 
+/-- **`Obj.lt` at `long` is `Int64`'s `<`**: the key of `x` is its order code `x ^^^ 2^63` (a signed word's sign bit
+flipped), and a one-element key list orders as its element. -/
+theorem Obj.lt_long (x y : Int64) : Obj.lt .long x y ↔ x < y := by
+  have key : ∀ x : Int64, Obj.key .long x = [(Kernel.ordCode 8 false true x.toUInt64).toNat] := fun _ => rfl
+  have c : ∀ u : UInt64, Kernel.ordCode 8 false true u = u ^^^ 9223372036854775808 := fun u => by
+    simp [Kernel.ordCode]; bv_decide
+  unfold Obj.lt; rw [key, key, c, c]
+  simp only [List.cons_lt_cons_iff, List.not_lt_nil, and_false, or_false]
+  rw [← UInt64.lt_iff_toNat_lt, UInt64.lt_iff_toBitVec_lt, Int64.lt_iff_toBitVec_slt]
+  simp only [UInt64.toBitVec_xor, Int64.toBitVec_toUInt64]
+  bv_decide
+
+/-- **Each ascending list of ranks has an ascending list of texts of its length**: the rank `b` of `ys` is the rank
+of an id `i` of `D`, whose text `z` is the one `rank_lt_iff` orders as `b` is. -/
+theorem rank_texts {D : Dict} {R : Tab .long .long} (h : rank D = .ok R) (wD : D.WF) (hb : D.n.toNat < 2 ^ 63)
+    (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') :
+    ∀ ys : List Int64, ys.Pairwise (Obj.lt .long) → (∀ b ∈ ys, ∃ i, R.Holds i b) →
+      ∃ zs : List (Obj.arr (.atom .char)).El, zs.length = ys.length ∧ zs.Pairwise (Obj.lt (.arr (.atom .char))) ∧
+        ∀ z ∈ zs, ∃ b ∈ ys, ∃ i, R.Holds i b ∧ D.Holds i z
+  | [], _, _ => ⟨[], rfl, List.Pairwise.nil, fun _ hz => nomatch hz⟩
+  | a :: ys, hp, hm => by
+    obtain ⟨hlt, hp'⟩ := List.pairwise_cons.1 hp
+    obtain ⟨zs, hl, hz, hq⟩ := rank_texts h wD hb hf ys hp' fun b hb' => hm b (List.mem_cons_of_mem _ hb')
+    obtain ⟨i, hi⟩ := hm a (List.mem_cons_self ..)
+    obtain ⟨t, ht, -⟩ := (rank_holds h wD _ _).1 hi
+    refine ⟨t :: zs, by simp [hl], List.pairwise_cons.2 ⟨fun z hz' => ?_, hz⟩, fun z hz' => ?_⟩
+    · obtain ⟨b, hbm, i', hi', hd⟩ := hq z hz'
+      exact (rank_lt_iff h wD hb hf ht hd hi hi').1 ((Obj.lt_long _ _).1 (hlt b hbm))
+    · rcases List.mem_cons.1 hz' with rfl | hz'
+      · exact ⟨a, List.mem_cons_self .., i, hi, ht⟩
+      · obtain ⟨b, hbm, w⟩ := hq z hz'
+        exact ⟨b, List.mem_cons_of_mem _ hbm, w⟩
+
+/-- **`asc` on `sym` numbers by text**: for `T.Holds j a` and `T.Holds j' a'` with texts `t`, `t'` in `D`,
+`j < j'` iff `t` is before `t'` in `Obj.lt` (the order of `asc`), whatever order the ids were inserted in. The
+`2^63` bound of `ascDen_lt` is the number of texts of `D`: an ascending list of ranks maps to an ascending, so
+repeat-free, list of texts of `D`. -/
+theorem symAsc_lt_iff {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.atom .sym)}
+    {T : Tab .long (.atom .sym)} (h : symAsc D P = .ok T) (hR : rank D = .ok Rk) (wD : D.WF) (wP : Vals.WF P.key)
+    (hb : D.n.toNat < 2 ^ 63) (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') {j j' : Int64} {a a' : UInt64}
+    {t t' : (Obj.arr (.atom .char)).El} (hj : T.Holds j a) (hj' : T.Holds j' a') (ht : D.Holds a.toInt64 t)
+    (ht' : D.Holds a'.toInt64 t') : j < j' ↔ Obj.lt (.arr (.atom .char)) t t' := by
+  obtain ⟨-, r, hr, as⟩ := (symAsc_holds h hR wD wP j a).1 hj
+  obtain ⟨-, r', hr', as'⟩ := (symAsc_holds h hR wD wP j' a').1 hj'
+  have hbd : ∀ ys : List Obj.long.El, ys.Pairwise (Obj.lt .long) →
+      (∀ b, b ∈ ys ↔ ∃ x, (∃ y, P.Holds x y) ∧ Rk.Holds x.toInt64 b) → ys.length < 2 ^ 63 := fun ys hys hm => by
+    obtain ⟨zs, hl, hz, hq⟩ := rank_texts hR wD hb hf ys hys fun b hb' => by
+      obtain ⟨x, -, hx⟩ := (hm b).1 hb'
+      exact ⟨_, hx⟩
+    have hnd : zs.Nodup := hz.imp fun {a b} hab e => by subst e; exact Obj.lt_irrefl _ a hab
+    have hsub : zs ⊆ List.ofFn (fun j : Fin D.n.toNat => D.val.row j) := fun z hz' => by
+      obtain ⟨-, -, -, -, j, -, hj⟩ := hq z hz'
+      exact List.mem_ofFn.2 ⟨j, hj⟩
+    have := nodup_length_le zs _ hnd hsub
+    simp only [List.length_ofFn] at this
+    omega
+  exact (ascDen_lt hbd as as').trans ((Obj.lt_long r r').trans (rank_lt_iff hR wD hb hf ht ht' hr hr'))
+
 end Rel.Lang.Table
