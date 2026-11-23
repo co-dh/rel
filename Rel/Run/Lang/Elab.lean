@@ -2356,6 +2356,10 @@ def initSeg (objs : Objs) : OTy → Bool
   | .base n => (objs.lookup n).any (·.seg)
   | _ => false
 
+/-- What a constant is built at per object variable (`Expand.once`'s `nb`): whether the call's object `o` is
+    unbounded (`ObjInfo.num`) and whether its universe is an initial segment (`ObjInfo.seg`). -/
+def numSeg (objs : Objs) (o : OTy) : Bool × Bool := (unbounded objs o, initSeg objs o)
+
 /-- `uniPart`, or the error naming the whole object `o` that has no universe. -/
 def uniTm (δ : Dem) (p : Pos) (o : OTy) (A : Obj) (what : String) : Except Err (Tm A A) := do
   match ← uniPart objs dp δ (zonk mc o) A with
@@ -2717,9 +2721,10 @@ def build (δ : Dem) : Pre → Except Err Res
   | .call pos c _ _ _ _ _ _ _ _ _ _ true =>
     throw ⟨pos, s!"`{c}` is tested on the pairs it compares, not run: its constant is its pair test δ (§a)"⟩
   | .call pos c us xs ts q a b ks ph t cv false => do
-    -- a variable whose object was open when the call was made (`callDef`) and is unbounded: the constant chose its
-    -- rows' forms (`.prim`) without it, so the expansion, built at the call's objects, runs instead
-    if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && unbounded objs (zonk mc u) then return ← build δ q
+    -- a variable whose object was open when the call was made (`callDef`) was built at `numSeg` (false, false); solved
+    -- to another (unbounded, `0…k`), the constant chose its rows' forms (`.prim`) for another object, so the expansion runs
+    if us.any fun (u, _, reads) => reads && !u.mvs.isEmpty && numSeg objs (zonk mc u) != (false, false) then
+      return ← build δ q
     -- a variable the constant is not generic over (built at `.long`) given another object: the constant does not
     -- serve this call, so the expansion runs at the call's objects, every number check at them (monomorphised)
     if us.any fun (u, gen, _) => !gen && (toObj objs mc dp u).toOption != some .long then return ← build δ q
