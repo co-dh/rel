@@ -157,15 +157,16 @@ rel_program frameStatFloatT where
 
 #guard frameStatFloatT.failures.map toString == []
 
--- the result at an `f32` object: the typed definition fixes `φ` at `H`, and prim `sum` has no `f32` row
-/-- error: line 168, col 32: `avg` at this call, where γ is N, φ is H: sum on H: H is an object of f32, and sum runs on objects of i64, f64 only; cast first, `x $ F` with `F` an object of f64 -/
-#guard_msgs in
+-- the result at an `f32` object: the typed definition fixes `φ` at `H`, whose `sum` adds in `f64` and rounds once
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
 rel_program frameStatF32T where
     obj N
     obj H : f32
     t : N ⟶ N ≜ {(0,1),(1,4),(2,7)}
     m : 1 ⟶ H ≜ summarize(F(t) avg, t)
+    check m = {(∗,4.0)}
+
+#guard frameStatF32T.failures.map toString == []
 
 -- a bounded object: 7³ = 343 and 40³ lie outside `N`, so the cubes, deviations and weights are computed in `F`
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
