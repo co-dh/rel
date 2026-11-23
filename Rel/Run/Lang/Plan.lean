@@ -590,6 +590,9 @@ def partB (x i : Nat) : Bld Nat := emit1 (.part x i)
 /-- The list of the registers `rs`, laid out as `Reg (List α)` lays it. -/
 def listB (rs : List Nat) : Bld Nat := do rs.foldrM (fun x l => ctorB 1 #[x, l] #[]) (← ctorB 0 #[] #[])
 
+/-- A source of `kscan`: the row count `n` and the column `x`, as the pair `(USize × Enc)` lays out. -/
+def srcB (n x : Nat) : Bld Nat := ctorB 0 #[n, x] #[]
+
 /-- `kscatter` of no row into `n` cells: the column of `n` rows, each the word in register `fill`. -/
 def constB (n fill : Nat) : Bld Nat := do
   let e ← lit (Reg.put (wordsFoR #[]))
@@ -600,7 +603,7 @@ def constB (n fill : Nat) : Bld Nat := do
 def scanB (op : Kernel.Op) (t : QAtomicType) (n : Nat) (seg : Option Nat) (es : List Nat) : Bld (Array Nat) := do
   let g ← match seg with | some s => ctorB 1 #[s] #[] | none => ctorB 0 #[] #[]
   callK (kernel% kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put t), ← lit (Reg.put t), n, g,
-    ← listB es, ← listB [], ← listB []]
+    ← listB (← es.mapM (srcB n)), ← listB [], ← listB []]
 
 /-- `where` (design §4: scan → scatter, no sort): the count `r` (a `size`) and the positions, in order, of the rows the
     `n`-row mask `keep` sets. The inclusive prefix sum `P` (`kscan add`, one segment) numbers the kept rows `1 … r`

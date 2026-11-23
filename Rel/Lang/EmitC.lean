@@ -112,7 +112,7 @@ structure TabB where
 def mapB (op : Kernel.Op) (n a b : Nat) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
     (pre post : List (Kernel.Op × UInt64) := []) : Bld Nat := do
   nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put s), ← lit (Reg.put t),
-    n, ← ctorB 0 #[] #[], ← listB [a, b], ← lit (Reg.put pre), ← lit (Reg.put post)]) 0 "kscan"
+    n, ← ctorB 0 #[] #[], ← listB [← srcB n a, ← srcB n b], ← lit (Reg.put pre), ← lit (Reg.put post)]) 0 "kscan"
 
 /-- `colConst n w`: `n` cells of the word `w`. -/
 def wordsB (n : Nat) (w : UInt64) : Bld Nat := do constB n (← lit (.u64 w))
