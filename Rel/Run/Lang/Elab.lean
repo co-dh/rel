@@ -654,20 +654,23 @@ def Pre.parts (x : Pre) : List (Pre × Pol) :=
 
 /-- `Pre.rewrite`, each node visited once per address: an expansion holds each argument once per use (`callOf`'s
     `alt`), so nested definitions share subterms and a walk of the tree is exponential in the nesting. -/
-unsafe def Pre.rewriteShared (fp : Pos → Pos) (g : Pre → Option Pre) (x : Pre) : Pre :=
+unsafe def Pre.rewriteShared (fp : Pos → Pos) (g : Pre → Option Pre) (post : Pre → Pre → Pre) (x : Pre) : Pre :=
   (go x).run' {}
 where go (y : Pre) : StateM (Std.HashMap USize Pre) Pre := do
   if let some z := (← get)[ptrAddrUnsafe y]? then return z
-  let z ← match g y with | some z => pure z | none => y.traverse (pure ∘ fp) fun _ c => go c
+  let z ← match g y with | some z => pure z | none => post y <$> y.traverse (pure ∘ fp) fun _ c => go c
   modifyGet fun m => (z, m.insert (ptrAddrUnsafe y) z)
 
-/-- `x` with each node `g` names replaced, every other rebuilt from its parts with its positions through `fp`. -/
+/-- `x` with each node `g` names replaced, every other rebuilt from its parts with its positions through `fp`, then
+    `post` given the node and its rebuilt copy. -/
 @[implemented_by Pre.rewriteShared]
-partial def Pre.rewrite (fp : Pos → Pos) (g : Pre → Option Pre) (x : Pre) : Pre :=
-  match g x with | some z => z | none => Id.run (x.traverse (pure ∘ fp) fun _ y => pure (y.rewrite fp g))
+partial def Pre.rewrite (fp : Pos → Pos) (g : Pre → Option Pre) (post : Pre → Pre → Pre) (x : Pre) : Pre :=
+  match g x with
+  | some z => z
+  | none => post x (Id.run (x.traverse (pure ∘ fp) fun _ y => pure (y.rewrite fp g post)))
 
 /-- `x` with every position `p`: a prelude body at its use, so an error `build` raises in it is at the use (§c). -/
-def Pre.at (p : Pos) (x : Pre) : Pre := x.rewrite (fun _ => p) fun _ => none
+def Pre.at (p : Pos) (x : Pre) : Pre := x.rewrite (fun _ => p) (fun _ => none) fun _ z => z
 
 /-- Every part of `x`, whatever `x` reads it as: a call's arguments too, which `parts` leaves out. -/
 def Pre.kids (x : Pre) : List Pre :=
@@ -746,9 +749,24 @@ def Pre.bound (k : Nat) (x : Pre) : Option Pre :=
   | [] => none
   | c :: cs => some (cs.foldl .meet c)
 
-/-- `x` with each variable `.var p k a b t` replaced by `g p k a b t`. -/
-def Pre.mapVar (g : Pos → Nat → OTy → OTy → Option Bool → Pre) : Pre → Pre :=
-  Pre.rewrite (fun q => q) fun | .var p k a b t => some (g p k a b t) | _ => none
+/-- `x` with each variable `.var p k a b t` replaced by `g p k a b t`. A call's parameter bound to a variable of the
+    context (`callOf`) is that variable in its `cl` and `od` too, which a walk does not enter: there it takes the form
+    of what replaces it, a variable's own, any other argument the body's (closed in `cl`, on demand in `od`). -/
+partial def Pre.mapVar (g : Pos → Nat → OTy → OTy → Option Bool → Pre) : Pre → Pre :=
+  Pre.rewrite (fun q => q) (fun | .var p k a b t => some (g p k a b t) | _ => none) fun
+    | .callE _ _ _ xs₀ .., .callE q c ks xs alt cl od a b =>
+      -- the parameters whose variable `g` changed, each with what now stands for it
+      let ch : List (Nat × Pre) := ((ks.zip xs₀).zip xs).filterMap fun
+        | ((k, .var _ j _ _ t), x) => if j != k then none else match x with
+          | .var _ j' _ _ t' => if j' == k && t' == t then none else some (k, x)
+          | _ => some (k, x)
+        | _ => none
+      let tag (f : Option Bool) (y : Pre) : Pre := y.mapVar fun p k a b t => match ch.lookup k with
+        | some (Pre.var _ j _ _ t') => .var p k a b (if j == k then t' else f)
+        | some _ => .var p k a b f
+        | none => .var p k a b t
+      if ch.isEmpty then .callE q c ks xs alt cl od a b else .callE q c ks xs alt (tag none cl) (tag (some false) od) a b
+    | _, z => z
 
 /-- `x` with each variable of a call's body (`St.args`) the argument it stands for: what `x` computes. -/
 def St.expand (st : St) (x : Pre) : Pre := x.mapVar fun p k a b t => (st.args.lookup k).getD (.var p k a b t)
@@ -2703,15 +2721,22 @@ def build (δ : Dem) : Pre → Except Err Res
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs δ pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
   -- each argument built once, the body with every parameter read on demand where an argument needs keys, else
-  -- closed; where that does not build δ (a body reading a parameter whole, an argument only tested), the expansion
-  | .callE _ c ks xs alt cl od a b =>
-    let viaCall : Except Err Res := do
-      let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      -- a variable bound to itself in its pair-test δ form is passed as its pair test, as `callArgs` passes one
-      let rs ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h
-        match x with
-        | .var _ _ _ _ (some true) => do let ⟨A, B, t⟩ ← test δ x; pure (⟨.prod A B, .prod A B, t⟩ : Res)
-        | _ => build δ x
+  -- closed. The one refusal is an argument that does not build but tests (`R/S` outside a meet): the expansion puts
+  -- it where the body tests it, so that use runs as the expansion; every other error is the call's, and propagates
+  | .callE _ c ks xs alt cl od a b => do
+    let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
+    -- a variable bound to itself in its pair-test δ form is passed as its pair test, as `callArgs` passes one; an
+    -- argument's failure carries whether it is that refusal
+    let args : Except (Err × Bool) (List Res) := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h
+      match x with
+      | .var _ _ _ _ (some true) => match test δ x with
+        | .ok ⟨A, B, t⟩ => pure (⟨.prod A B, .prod A B, t⟩ : Res)
+        | .error e => throw (e, false)
+      | _ => (build δ x).mapError fun e => (e, (test δ x).toBool)
+    match args with
+    | .error (_, true) => build δ alt
+    | .error (e, false) => throw e
+    | .ok rs => do
       -- only an argument given a variable of its own (`callOf`) takes the form chosen here
       let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem δ []
       -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given: the body
@@ -2722,9 +2747,6 @@ def build (δ : Dem) : Pre → Except Err Res
       if u.dem δ [] != t.dem δ' [] then internal dp s!"`{c}`'s call and its body differ in dem"
       if h : A' = A ∧ B' = B then pure ⟨A, B, h.1 ▸ h.2 ▸ u⟩
       else internal dp s!"`{c}`'s body is not at the objects of its call"
-    match viaCall with
-    | .ok r => pure r
-    | .error _ => build δ alt
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
