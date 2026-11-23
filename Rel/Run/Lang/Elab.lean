@@ -1213,8 +1213,9 @@ def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAto
     ((r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s)).map (·, r.sym, ok.contains)
   | .succ _ n => [(n, "succ", (· == .i64))]
   | .arith _ k n => [(n, (Op.arith k).sym, arithOk k)]
-  | .leq _ n _ => [(n, "≤", (·.ordNum.isSome))]
-  | .lt _ n _ => [(n, "<", (·.ordNum.isSome))]
+  -- an order at `sym` is the order of the texts (`symOrd`), which `build` gives or refuses for want of the dictionary
+  | .leq _ n _ => [(n, "≤", fun t => t.ordNum.isSome || t == .sym)]
+  | .lt _ n _ => [(n, "<", fun t => t.ordNum.isSome || t == .sym)]
   | _ => []
 
 /-- `numsAt` of `x` and of its parts, a definition's body at its use included. -/

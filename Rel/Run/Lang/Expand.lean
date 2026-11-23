@@ -372,6 +372,9 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- a `⟨θ ↦ …⟩` over a variable of `vs` has no object until a use solves it (`eachWords`): no constant, each use
   -- builds its expansion at the call's objects
   if (e.eachVars ++ ty.1.eachVars ++ ty.2.eachVars).any (· ∈ vs) then return (none, specs)
+  -- a body that reads the dictionary orders by its objects (`symOrd`), which a constant built at the variables' placeholders
+  -- does not know: each use builds its expansion at the call's objects
+  if !vs.isEmpty && env.dict.any fun d => qs.any (·.name == d) then return (none, specs)
   let ph ← liftExcept (placeholdersFor env p n vs.length)
   let run (fl : List (Bool × Bool)) (deferred := false) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>
@@ -675,6 +678,9 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut env := env
   let mut specs := specs
   let mut pend : List (Env × Pos × String × List Param × Expr × (OExp × OExp) × List String × Def) := []
+  -- the definitions whose type has object variables and that read run-time names: not a table of their own (its type
+  -- would be rigid), but a definition with those names as parameters, each use passing them (`n` ↦ `n(ys)`)
+  let mut gen : List (String × List String) := []
   let mut ds : List (String × Res) := []
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
@@ -735,9 +741,11 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         env := { env with objs := (n, i) :: (c, i) :: env.objs }
       else env := { env with objs := (n, ← objInfo env n od) :: env.objs }
     | .defn p n ps b ty =>
+      let sg (e : Expr) := let e := rtNamesE env rt e
+        e.subst (e.names.filterMap fun y => (gen.lookup y).map fun xs => (y, .app e.pos y (xs.map (.name e.pos))))
       let b := match b with
-        | .rel e => .rel (rtNamesE env rt e)
-        | .test e f => .test (rtNamesE env rt e) (rtNamesE env rt f)
+        | .rel e => .rel (sg e)
+        | .test e f => .test (sg e) (sg f)
       -- the run-time names the body mentions, not its own parameters: the parameters of a definition written with
       -- none, the existing parametric definition (IO design A.2)
       -- and the dictionary, where an order in the body may be at `sym` (`Elab.symOrd` reads `rank(D)`)
@@ -748,8 +756,10 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let ps ← match ys, ps, b with
         | [], _, _ => pure ps
         | _, [], .rel _ =>
-          rt := rt ++ [(n, ⟨n, ty⟩, some (ys.map (·.1)))]
-          io := io ++ [.defn n (Parse.constOf own n) (ys.map (·.1))]
+          if ty.any fun (a, b) => !(a.vars ++ b.vars).isEmpty then gen := gen ++ [(n, ys.map (·.1))]
+          else
+            rt := rt ++ [(n, ⟨n, ty⟩, some (ys.map (·.1)))]
+            io := io ++ [.defn n (Parse.constOf own n) (ys.map (·.1))]
           pure (ys.map (·.2.1))
         | (y, Y, _) :: _, _, _ => throw ⟨p, s!"`{n}` has parameters and mentions `{y}`, which has no table at " ++
             s!"elaboration; add the parameter `{y}{(Y.ty.map (s!" : {OExp.arrow ·}")).getD ""}` to `{n}` and pass " ++
