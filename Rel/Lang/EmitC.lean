@@ -1718,14 +1718,6 @@ def hasSum : Obj → Bool
   | .sum a b => (Obj.band a b).isNone
   | .one => false
 
-/-- Whether `A` holds a sum at all: a table directory's tag, position and null columns are not read by `ownSideB`. -/
-def hasAnySum : Obj → Bool
-  | .atom _ => false
-  | .prod a b => hasAnySum a || hasAnySum b
-  | .arr b => hasAnySum b
-  | .sum .. => true
-  | .one => false
-
 /-- `Table.writeCols`' order of the columns of a schema reversed: the rest's, then the first. -/
 def fieldsR : Schema → List (String × Obj)
   | [] => []
@@ -1783,7 +1775,7 @@ def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Exce
     `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
     atom columns of the key and of the value and `csvRead`'s list register (a CSV file). -/
 inductive InRead
-  | own (k v : Schema) (kc vc : List (String × QAtomicType × Nat))
+  | own (k v : Schema) (kc vc : List (String × Option QAtomicType × Nat))
   | csv (k v : Schema) (kc vc : List (String × QAtomicType)) (l : Nat)
 
 /-- The input edge's reads of `input x : k ⟶ v from [csv] path` (`n.io`'s `Table.read`, `Table.readKeyed`,
@@ -1802,11 +1794,10 @@ def readIn (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (pat
     let kc := if k.isEmpty then [] else objCols k.obj ""
     return .csv k v kc (objCols v.obj "") (← nth rs 1 "csvRead")
   | none =>
-    let own (S : Schema) (dir : String) := (schemaCols S).mapM fun (p, q, t) => do
-      if [QAtomicType.sym, .general].contains t then
-        discard <| no s!"column `{q}` of type {repr t}, refused by `Table.readArr`"
-      if hasAnySum S.obj then
-        discard <| no s!"column `{q}` of a sum, whose tags, positions and null flags `Table.readVals` reads by its object"
+    let own (S : Schema) (dir : String) := (schemaLeaves S).mapM fun (p, q, t) => do
+      if let some t := t then
+        if [QAtomicType.sym, .general].contains t then
+          discard <| no s!"column `{q}` of type {repr t}, refused by `Table.readArr`"
       return (p, t, ← call1 (kernel% Rel.Db.ownMap) #[← lit (.str (Table.file dir q))])
     if k.isEmpty then return .own k v [] (← own v path)
     return .own k v (← own k (Table.file path "key")) (← own v (Table.file path "val"))
@@ -1820,29 +1811,84 @@ def canonFloatB (what : String) (t : QAtomicType) (n e : Nat) : Bld Unit := do
   guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
     s!"{what}: a {repr t} column of rows whose bit pattern is not canonical (a NaN or -0)" #[k]
 
-/-- The side an input's mapped files answer (`Table.readArr`): each column's type code, constructor kind and count
-    checked as `Table.readArr`/`Table.same` check them, its `Enc` rebuilt from its parts as `Db.ownEnc` rebuilds it, a float column checked canonical
-    (`canonFloatB`); `n₀` the count of the side read before, the one every column has. -/
-def ownSideB (x : String) (cs : List (String × QAtomicType × Nat)) (n₀ : Option Nat) : Bld (Side × Option Nat) := do
+/-- `Table.readVals`' check of a list's cells (`cellBad`): none of the `n` cells `[lo, hi)` of the column `p` is past
+    its payload of `m` rows (`0 ≤ lo ≤ hi ≤ m` fails), counted by one pass over `lo < 0 ∨ hi < lo ∨ m < hi`. -/
+def cellsB (x p : String) (n m lo hi : Nat) : Bld Unit := do
+  let bad ← mapB .or n (← mapB .or n (← mapB .lt n lo (← wordsB n 0)) (← mapB .lt n hi lo))
+    (← mapB .lt n (← constB n (← u64B m)) hi)
+  let (_, k) ← prefixB .add n bad
+  guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
+    s!"input `{x}`: column `{p}.lo`: cells that are no slice of the payload rows, `0 ≤ lo ≤ hi ≤ m` fails" #[k, m]
+
+/-- `Table.same`: the column file `p`, read with row count register `c` among `cnt` (path, count), has `n` rows. -/
+def sameCount (x : String) (cnt : List (String × Nat)) (p : String) (n : Nat) : Bld Unit := do
+  let some c := cnt.lookup p | throw s!"input `{x}`: column `{p}` has no file read"
+  if c != n then
+    guard (← call1 (kernel% USize.decEq) #[c, n]) s!"input `{x}`: column `{p}` of another row count than the rows it lies in" #[c, n]
+
+/-- The row count a side of `A` at `p` has of its own (`Table.readVals`: a list's payload, a sum's summand): the count of
+    its first atom column, as `colsOf` takes it, else of its first file (a side of `1`). -/
+def ownCount (x : String) (cnt : List (String × Nat)) (A : Obj) (p : String) : Bld Nat :=
+  match (objCols A p).findSome? (cnt.lookup ·.1) <|> (objLeaves A p).findSome? (cnt.lookup ·.1) with
+  | some m => pure m
+  | none => throw s!"input `{x}`: side at `{p}` has no file read"
+
+/-- `Table.readVals`' row counts of a side of `A` read at `p`: each depth's files have the count of the rows they lie in
+    (`n`; a list's payload and a sum's summand have their own, `ownCount`), a list's cells are slices of its payload
+    (`cellsB`). A summand with no atom column (a side of `1`) has no count of its own that `colsOf` could take: it is the
+    rows the tag gives it, the tag's sum `k` right, `n - k` left (`tagCount`), so its files must have it. -/
+partial def ownCountsB (x : String) (s : Side) (cnt : List (String × Nat)) : (A : Obj) → String → Nat → Bld Unit
+  | .atom _, p, n | .one, p, n => sameCount x cnt p n
+  | .prod a b, p, n => do ownCountsB x s cnt a (p ++ ".1") n; ownCountsB x s cnt b (p ++ ".2") n
+  | .arr b, p, n => do
+    sameCount x cnt (p ++ ".lo") n; sameCount x cnt (p ++ ".hi") n
+    let m ← ownCount x cnt b (p ++ ".e")
+    let enc (q : String) := (s.lookup (p ++ q)).bind (·[Side.enc]?)
+    let (some lo, some hi) := (enc ".lo", enc ".hi") | throw s!"input `{x}`: array `{p}`: its bounds have no `Enc` register"
+    cellsB x p n m lo hi
+    ownCountsB x s cnt b (p ++ ".e") m
+  | .sum a b, p, n => match Obj.band a b with
+    | some _ => sameCount x cnt p n
+    | none => do
+      sameCount x cnt (p ++ ".tag") n; sameCount x cnt (p ++ ".idx") n
+      let some tag := (s.lookup (p ++ ".tag")).bind (·[Side.enc]?)
+        | throw s!"input `{x}`: sum `{p}`: its tag has no `Enc` register"
+      let k := (← prefixB .add n tag).2
+      let side (A : Obj) (q : String) (c : Nat) : Bld Unit := do
+        ownCountsB x s cnt A q (← if (objCols A q).isEmpty then pure c else ownCount x cnt A q)
+      side a (p ++ ".l") (← call1 (kernel% USize.sub) #[n, k]); side b (p ++ ".r") k
+
+/-- The side an input's mapped files answer (`Table.readVals`): each atom column's type code, constructor kind
+    checked as `Table.readArr` checks them, its `Enc` rebuilt from its parts as `Db.ownEnc` rebuilds it, a float column
+    checked canonical (`canonFloatB`); each side of `1` a file of kind `oneKind` (`Plan.oneKind`); the row counts of every
+    depth as `ownCountsB`. `n₀` the count of the side read before, else the first file's: the one the side `A` has. -/
+def ownSideB (x : String) (A : Obj) (cs : List (String × Option QAtomicType × Nat)) (n₀ : Option Nat) :
+    Bld (Side × Option Nat) := do
   let fe : Enc := .foR .empty .empty
   let .ok (some (kind, _)) := Db.ownParts fe | throw "ownSideB: `Db.ownParts` holds no `foR`"
   let mut s : Side := []
+  let mut cnt : List (String × Nat) := []
   let mut n₀ := n₀
   for (p, t, f) in cs do
     let sc (i : Nat) := emit1 (.sproj f 0 1 #[.u8, .u8, .size] i)
-    let code ← lit (.u8 t.code.toUInt8)
-    guard (← call1 (kernel% UInt8.decEq) #[← sc 0, code]) s!"input `{x}`: column `{p}` has another atom type code than {repr t}" #[]
     let k ← sc 1
-    guard (← call1 (kernel% UInt8.decEq) #[k, ← lit (.u8 kind)])
-      s!"input `{x}`: column `{p}` has another constructor kind than {kind}, the one `Db.ownEnc` rebuilds" #[k]
     let n ← sc 2
-    if let some m := n₀ then
-      guard (← call1 (kernel% USize.decEq) #[n, m]) s!"input `{x}`: column `{p}` of another row count than the first" #[n, m]
-    n₀ := some n
-    let ps ← projB f 0 0 .parts
-    let e ← ctorB fe.ctorIdx #[← partB ps 0, ← partB ps 1] #[]
-    if t matches .f32 | .f64 then canonFloatB s!"input `{x}`: column `{p}`" t n e
-    s := s ++ [(p, (Side.regs code k n ps).push e)]
+    cnt := cnt ++ [(p, n)]
+    if n₀.isNone then n₀ := some n
+    match t with
+    | none =>
+      guard (← call1 (kernel% UInt8.decEq) #[k, ← lit (.u8 oneKind)])
+        s!"input `{x}`: column `{p}` has another constructor kind than {oneKind}, a side of `1`" #[k]
+    | some t =>
+      let code ← lit (.u8 t.code.toUInt8)
+      guard (← call1 (kernel% UInt8.decEq) #[← sc 0, code]) s!"input `{x}`: column `{p}` has another atom type code than {repr t}" #[]
+      guard (← call1 (kernel% UInt8.decEq) #[k, ← lit (.u8 kind)])
+        s!"input `{x}`: column `{p}` has another constructor kind than {kind}, the one `Db.ownEnc` rebuilds" #[k]
+      let ps ← projB f 0 0 .parts
+      let e ← ctorB fe.ctorIdx #[← partB ps 0, ← partB ps 1] #[]
+      if t matches .f32 | .f64 then canonFloatB s!"input `{x}`: column `{p}`" t n e
+      s := s ++ [(p, (Side.regs code k n ps).push e)]
+  if let some n := n₀ then if !cs.isEmpty then ownCountsB x s cnt A "" n
   pure (s, n₀)
 
 /-- The parts `csvRead` answers for the columns `cs`: a symbol column's are its texts' (`Db.Csv.symText`: a list of `char`,
@@ -1905,8 +1951,8 @@ def sideOf (x : String) (D : TabB) (r : InRead) : Bld ((Side × Side) × TabB) :
       let (vs, D) ← internSide vc D (← csvSideB vc l).1
       pure (k, v, (ks, vs), D)
     | .own k v kc vc => do
-      let (ks, n₀) ← ownSideB x kc none
-      pure (k, v, (ks, (← ownSideB x vc n₀).1), D)
+      let (ks, n₀) ← ownSideB x k.obj kc none
+      pure (k, v, (ks, (← ownSideB x v.obj vc n₀).1), D)
   if k.isEmpty then return (s, D)
   return (← sidesOf (← canonT ⟨← countOf s, ← colsOf k.obj s.1, ← colsOf v.obj s.2⟩), D)
 
