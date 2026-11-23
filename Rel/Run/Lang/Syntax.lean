@@ -137,6 +137,12 @@ def charOf : List UInt8 → Option Int
     a text `[C]` is an array of `C`s, so `"NY"` is the literal `["N" "Y"]` of the object of `char`s it is used at. -/
 def Tup.ofText (s : String) : Tup := .arr (s.toUTF8.toList.map (.leaf ∘ charText))
 
+/-- The char word of a one-character string literal `"0"` (`.arr` of one `charText` word): as q reads it, a `char`
+    where the literal's object is one, and the text `[C]` where the context fixes nothing else (`Elab.litTy`). -/
+def Tup.char? : Tup → Option String
+  | .arr [.leaf w] => if (charOf w.toUTF8.toList).isSome then some w else none
+  | _ => none
+
 /-- A term of §c. `name` is a program's definition or parameter; `op` a builtin with its objects and arguments;
     `app` a program's operator applied. Composition is juxtaposition. -/
 inductive Expr
