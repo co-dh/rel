@@ -1,6 +1,7 @@
 module
 
 public import Rel.Kernel.Coc
+public import Rel.Kernel.Need
 public import Rel.Kernel.Op
 public import Rel.Kernel.Value
 
@@ -101,7 +102,7 @@ def intStep (op : UInt8) (nul x y : Int64) : Int64 :=
   else if op == idiv || op == imod then
     (if x == nul || y == nul || y == 0 then nul
      else Int64.ofInt (if op == idiv then Int.fdiv x.toInt y.toInt else Int.fmod x.toInt y.toInt))
-  else panic! s!"intStep: verb {op} has no integral case; `%` answers a float at every operand type"
+  else Kernel.stop (fun _ => s!"intStep: verb {op} has no integral case; `%` answers a float at every operand type") (fun _ => default)
 
 /-- `Int.fdiv`, `Int.fmod` of two words in words: the machine's truncating `/`, `%`, moved one step toward minus
 infinity when the division is inexact and the signs differ (`Int.fdiv_eq_tdiv`, `Int.fmod_eq_tmod`). -/
@@ -176,7 +177,7 @@ def bitStep (op : UInt8) (x y : Bool) : Bool :=
   else if op == lesser then x && y
   else if op == greater then x || y
   else if op == fill then y
-  else panic! s!"bitStep: verb {op} has no boolean case; `+ - * %` widen a boolean pair first"
+  else Kernel.stop (fun _ => s!"bitStep: verb {op} has no boolean case; `+ - * %` widen a boolean pair first") (fun _ => default)
 
 
 
