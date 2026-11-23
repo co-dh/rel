@@ -556,6 +556,9 @@ structure St where
   /-- The argument each variable of a call's body (`callOf`) stands for, outer calls' variables put in place: a
       call in that body picks its arguments' forms by what they compute (`Expand.callDef`), as its expansion does. -/
   args : List (Nat × Pre) := []
+  /-- The object metavariables `fresh` made, newest first: `generalise` reads the ones a body made, a prefix, where
+      listing the whole metavariable context at each definition cost the square of the program's size. -/
+  made : List Lean.MVarId := []
 
 /-- Elaboration outside a term: the program's error, over Lean's metavariables. -/
 abbrev EM := ExceptT Err Lean.Meta.MetaM
@@ -570,6 +573,7 @@ instance (priority := high) : MonadExcept Err M := { throw := throwThe Err, tryC
 def fresh : M OTy := do
   let m ← Lean.mkFreshMVarId
   discard <| Lean.Meta.mkFreshExprMVarWithId m (some (.const ``Obj []))
+  modify fun st => { st with made := m :: st.made }
   pure (.mv m)
 
 /-- `o` with every solved variable replaced, as the metavariable context `mc` has them. -/
@@ -1870,8 +1874,9 @@ def OTy.bases : OTy → List String
 def generalise (n : String) (p : Pos) (k : Nat) (keep : List OTy) (x : Pre) : M Unit := do
   let mc ← Lean.getMCtx
   let held := (keep ++ x.nilSrcs ++ x.lits.flatMap fun (_, a, b, _) => [a, b]).flatMap fun o => (zonk mc o).mvs
-  let own := mc.decls.toList.filter fun (m, d) =>
-    d.index ≥ k && !mc.eAssignment.contains m && d.type == .const ``Obj [] && !held.contains m
+  let made := ((← get).made.takeWhile fun m => (mc.findDecl? m).all (·.index ≥ k)).filterMap fun m =>
+    (mc.findDecl? m).map (m, ·)
+  let own := made.filter fun (m, d) => !mc.eAssignment.contains m && d.type == .const ``Obj [] && !held.contains m
   (own.mergeSort (·.2.index ≤ ·.2.index)).zipIdx.forM fun ((m, _), i) => unify p "" (.mv m) (.base s!"{n}#{i}")
 
 /-- The letters an inferred type names its open objects by: `α`…`ω` without `ο` and `π`, which read as `o`, `π₁`. -/
