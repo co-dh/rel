@@ -30,7 +30,8 @@ null at a null operand, `div`/`mod` also at a zero divisor, which is replaced by
 (they fail the whole scan at `0`) and the row dropped. A `+`/`-` wrapped where `0 ≤ b` disagrees with `a ≤ w`
 (`w ≤ a`); a `*` where `w div a ≠ b` and `a ≠ 0` (`a = 0` replaced by `1` for the divide). `max`/`min` never wrap and
 read no null. Any other code is the error naming it. -/
-def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × Enc) := do
+def stepCols (k : UInt8) (n : USize) (x y : Arr .i64 n) : Except String (Arr .i64 n × Enc) := do
+  let a := x.enc; let b := y.enc
   let ne (x : Enc) : Except String Enc := colMap .first n x x .i64 .i64 [] [(.ne, nulWord)]
   let isZ (x : Enc) : Except String Enc := colMap .first n x x .i64 .i64 [] [(.eq, 0)]
   let both ← colMap .and n (← ne a) (← ne b)
@@ -49,7 +50,7 @@ def stepCols (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr .i64 n × 
     let w ← colArr (if k == Ew.idiv then .div else .mod) n a (← colMap .or n b b0)
     pure (w, ← colMap .and n (← colMap .and n both (← colMap .not n b0 b0)) (← ne w.enc))
   else if k == Ew.greater || k == Ew.lesser then
-    let w ← colArr (if k == Ew.greater then .max else .min) n a b
+    let w ← colArr (if k == Ew.greater then .max else .min) n a b (hF := Or.inr (nulFree₂ x.plain y.plain))
     pure (w, ← ne w.enc)
   else throw s!"arith: verb code {k} is none of + - * div mod max min"
 
@@ -64,28 +65,28 @@ def nanFlag (n : USize) (w : Enc) : Except String Enc := colMap .first n w w .u1
     verb's `fverbOne`, the operands through `widen t` and the answer through the verb's chain and `Op.fto t`; a verb
     with no `fverbOne` (`mod`, which reads `x` twice) by `fverbBy` with `colMap` on the widened columns, then
     `Op.fto t`. -/
-def fstepArr (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n) :=
+def fstepArr (t : QAtomicType) (k : UInt8) (n : USize) (x y : Arr t n) : Except String (Arr t n) :=
   match fverbOne k with
-  | some (o, c) => colArr o n a b t t (widen t) (c ++ [(.fto t, 0)])
+  | some (o, c) => colArr o n x.enc y.enc t t (widen t) (c ++ [(.fto t, 0)]) (hF := Or.inr (nulFree₂ x.plain y.plain))
   | none => do
-    let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n a) (← wideCol t n b)
+    let r ← fverbBy (fun o x y => colMap o n x y) k (← wideCol t n x.enc) (← wideCol t n y.enc)
     colArr (.fto t) n r r t
 
 /-- **The value verb `k` at the float atom `t`** on the `n` operand rows `a`, `b` (`stepAt`): `fstepArr`, then
     `nanFlag`. -/
-def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (a b : Enc) : Except String (Arr t n × Enc) := do
-  let w ← fstepArr t k n a b
+def fstepCols (t : QAtomicType) (k : UInt8) (n : USize) (x y : Arr t n) : Except String (Arr t n × Enc) := do
+  let w ← fstepArr t k n x y
   pure (w, ← nanFlag n w.enc)
 
 /-- **The float `Op` `o` from the float atom `t` to the atom `u`** on the `n` operand rows `a`, `b` (`floatDen`): one
     pass, each word through `widen t`, `o` (a unary `Op` reads `b` alone) and `Op.ofF64 u`; then `nanFlag`. -/
-def fmapCols (t u : QAtomicType) (o : Op) (n : USize) (a b : Enc) : Except String (Arr u n × Enc) := do
-  let w ← colArr o n a b u t (widen t) [(.ofF64 u, 0)]
+def fmapCols (t u : QAtomicType) (o : Op) (n : USize) (x y : Arr t n) : Except String (Arr u n × Enc) := do
+  let w ← colArr o n x.enc y.enc u t (widen t) [(.ofF64 u, 0)] (hF := Or.inr (nulFree₂ x.plain y.plain))
   pure (w, ← nanFlag n w.enc)
 
 /-- The value verb `k` at the atom `t`: `stepCols` at `i64`, `fstepCols` at a float atom, the error naming any other
     (`stepAt` has no row there). -/
-def stepColsAt : (t : QAtomicType) → UInt8 → (n : USize) → Enc → Enc → Except String (Arr t n × Enc)
+def stepColsAt : (t : QAtomicType) → UInt8 → (n : USize) → Arr t n → Arr t n → Except String (Arr t n × Enc)
   | .i64, k, n, a, b => stepCols k n a b
   | .f32, k, n, a, b => fstepCols .f32 k n a b
   | .f64, k, n, a, b => fstepCols .f64 k n a b
@@ -143,8 +144,8 @@ def arithOvf (s : String) {t t' : QAtomicType} {n : USize} (X : Vals (.prod (.at
 def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match arithOps.lookup s, A, B, X with
   | some k, .prod (.atom t) (.atom t'), .atom u, X =>
-    if t = u ∧ t' = u then do
-      let (w, b) ← stepColsAt u k n X.1.enc X.2.enc
+    if h : t = u ∧ t' = u then do
+      let (w, b) ← stepColsAt u k n (h.1 ▸ (X.1 : Arr t n)) (h.2 ▸ (X.2 : Arr t' n))
       arithOvf s X b
       Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ b
     else .error s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"

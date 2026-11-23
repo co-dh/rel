@@ -211,9 +211,9 @@ private def kfoR (ws : Array UInt64) : Enc :=
 -- `wordsFoR ws nul` is a column of words `ws` with the rows of `nul` null
 private def kstream (n₁ n₂ : USize) (a b : Enc) : Except String (Enc × Option UInt64) :=
   kscan .first false .i64 .i64 (n₁ + n₂) none [(n₁, a), (n₂, b)]
-private def knul (r : Except String (Enc × Option UInt64)) : List (Option UInt64) := match r with
+private def knul (r : Except String (Enc × Option UInt64)) (n : Nat := 5) : List (Option UInt64) := match r with
   | .ok (e, _) => (Column.foROpt (match e with | .foR m _ => m | _ => .empty) (match e with | .foR _ p => p | _ => .empty)
-      (Column.blockStarts (match e with | .foR m _ => m | _ => .empty)) · ) |> fun f => (List.range 5).map f
+      (Column.blockStarts (match e with | .foR m _ => m | _ => .empty)) · ) |> fun f => (List.range n).map f
   | .error _ => []
 private def kx (nul : Array Nat) : Enc := wordsFoR #[1, 2, 3] (packOf 3 (nul.contains ·))
 private def ky (nul : Array Nat) : Enc := wordsFoR #[4, 5] (packOf 2 (nul.contains ·))
@@ -225,6 +225,26 @@ private def ky (nul : Array Nat) : Enc := wordsFoR #[4, 5] (packOf 2 (nul.contai
 -- the counts must sum to `n`, and a lock-step call refuses a null source row
 #guard (kscan .first false .i64 .i64 4 none [(3, kx #[]), (2, ky #[])]).toBool = false
 #guard (kscan .add false .i64 .i64 3 none [(3, kx #[1]), (3, kx #[])]).toBool = false
+
+-- `min`/`max` order null below every value (`Op.nulFold`): a null row reads as `i64` max (`min`) or `i64` min (`max`) and
+-- its flag folds with `or` or `and`, so `max(0N,5) = 5`, `min(0N,5) = 0N`, `max(0N,0N) = 0N`. `decide` runs the row fold
+-- on the words and the flags of the one row, `#guard` the Rust on `wordsFoR` columns (`none` a null row)
+example : kwords ((List.range 1).foldlM (kscanRow .max #[1] #[0x8000000000000000] [#[5]]) #[]) = [5] := by decide
+example : kwords ((List.range 1).foldlM (kscanRow .and #[1] #[1] [#[0]]) #[]) = [0] := by decide
+example : kwords ((List.range 1).foldlM (kscanRow .or #[1] #[1] [#[0]]) #[]) = [1] := by decide
+example : kwords ((List.range 1).foldlM (kscanRow .and #[1] #[1] [#[1]]) #[]) = [1] := by decide
+private def kno (op : Op) (a b : List (Option UInt64)) : List (Option UInt64) :=
+  let n := a.length
+  let col (l : List (Option UInt64)) : Enc := wordsFoR (l.map (·.getD 0)).toArray (packOf n fun i => (l[i]?.getD (some 0)).isNone)
+  knul (kscan op false .i64 .i64 (USize.ofNat n) none [(USize.ofNat n, col a), (USize.ofNat n, col b)]) n
+#guard kno .max [none] [some 5] = [some 5]
+#guard kno .min [none] [some 5] = [none]
+#guard kno .max [none] [none] = [none]
+#guard kno .min [none] [none] = [none]
+#guard kno .min [some 3] [some 8] = [some 3]
+-- a null on the seed side, the other side, both and neither, in one call
+#guard kno .max [none, some 5, none, some 3] [some 5, none, none, some 8] = [some 5, some 5, none, some 8]
+#guard kno .min [none, some 5, none, some 3] [some 5, none, none, some 8] = [none, none, none, some 3]
 
 -- `null` (owner decision: a null is the flagged block's all-ones residual, scanned and compared): `[5, null, 7]` is one
 -- block, frame 5, width 2, residuals `[0, 3, 2]`, flag set, and the answer is `[0, 1, 0]`; the null's residual would

@@ -76,21 +76,23 @@ def colMap (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAto
 
 /-- `colMap`'s answer is a column every kernel reads, `Enc.WF` at `t` (`kscan_closed`). -/
 theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
-    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o) :
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
   unfold colMap at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact ⟨(kscan_lock_closed hs hr).1, (kscan_lock_closed hs hr).2.1⟩
+  exact ⟨(kscan_lock_closed hs hF hr).1, (kscan_lock_closed hs hF hr).2.1⟩
 
 /-- `colMap`'s answer holds no null (`kscan_closed`). -/
 theorem colMap_plain {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
-    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o) :
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false) (h : colMap op n a b t s pre post = .ok o)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     hasNul o = false := by
   unfold colMap at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact (kscan_lock_closed hs hr).2.2
+  exact (kscan_lock_closed hs hF hr).2.2
 
 /-- The rows `ix` (`m` positions) of the column `x`: `kgather` at `ix`, an `Arr` again by `Opt.kgather_wf`. -/
 def Arr.gather {t : QAtomicType} {n : USize} (m : USize) (ix : Enc) (x : Arr t n) : Except String (Arr t m) :=

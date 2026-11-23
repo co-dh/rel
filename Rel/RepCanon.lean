@@ -187,7 +187,8 @@ of the answer is `chain post` of `op` of `a`'s and `b`'s words `i` through `chai
 bit. -/
 theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pre post : List (Op × UInt64)}
     (h : colMap op n a b t s pre post = .ok o)
-    (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) (hn : op ≠ .null := by decide) :
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) (hn : op ≠ .null := by decide)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat,
       ∃ x y v w, chain pre ((raw s n a)[i]?.getD 0) = .ok x ∧ chain pre ((raw s n b)[i]?.getD 0) = .ok y ∧
         op.eval x y = .ok v ∧ chain post v = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
@@ -203,7 +204,7 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   rename_i cs hc
   split at hr; · cases hr
   rename_i ca cs' ns
-  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hc
+  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hF hc
   rw [if_neg hn] at hcs; simp only [List.take_zero, List.map_nil, List.length_nil, List.drop_zero, List.nil_append] at hcs
   cases hcs
   obtain ⟨hl, hP⟩ := mapM_chain (es := [a, b]) hcc
@@ -246,11 +247,12 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
 cut to its bit (`colMap_chain` at no chain; `colMap_raw` is the `i64` case with the argument sizes). -/
 theorem colMap_get {op : Op} {t : QAtomicType} {n : USize} {a b o : Enc}
     (h : colMap op n a b t = .ok o) (hs : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep)
-    (hn : op ≠ .null := by decide) :
+    (hn : op ≠ .null := by decide)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat, ∃ v,
       op.eval ((raw .i64 n a)[i]?.getD 0) ((raw .i64 n b)[i]?.getD 0) = .ok v ∧
       (raw .i64 n o)[i]? = some (if t = .u1 then v % 2 else v) := by
-  obtain ⟨-, -, hso, hr⟩ := colMap_chain h hs hn
+  obtain ⟨-, -, hso, hr⟩ := colMap_chain h hs hn hF
   refine ⟨hso, fun i hi => ?_⟩
   obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
   cases hx; cases hy; cases hw

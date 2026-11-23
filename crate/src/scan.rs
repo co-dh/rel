@@ -383,7 +383,12 @@ macro_rules! rows { ($rev:expr, $it:expr, $p:pat => $body:block) => { if $rev { 
 
 /// `kscan`'s columns, read a block of rows at a time, and the carry into each block (`carry[b]`, the answer of the row
 /// the fold reaches the block from: `lo - 1`, or `lo + nb` under `rev`).
-struct Scan<'a> { op: u8, rev: bool, n: usize, seg: Option<Col<'a>>, seed: Col<'a>, xs: &'a [Col<'a>], pre: &'a [(u8, u64)], carry: Vec<u64> }
+/// `fill` is `nulFillOf`: the word standing for a null row of any column.
+struct Scan<'a> { op: u8, rev: bool, n: usize, seg: Option<Col<'a>>, seed: Col<'a>, xs: &'a [Col<'a>], pre: &'a [(u8, u64)], fill: Option<u64>, carry: Vec<u64> }
+
+/// `Op.nulFold` (Rel/Kernel/Op.lean): how `min` (5) and `max` (6) order null, as the op folding the null flags (`or` 16,
+/// `and` 15) and the identity word a null row is read as (`i64` max, `i64` min); `None` where the op refuses a null row.
+fn nul_fold(op: u8) -> Option<(u8, u64)> { match op { 5 => Some((16, i64::MAX as u64)), 6 => Some((15, i64::MIN as u64)), _ => None } }
 
 /// `chainAll c` (Rel/Kernel/Scan.lean) on a block in place: each step `(o, k)` maps every word `x` to `o.eval k x`, the
 /// steps being pure, step by step over the block rather than word by word, each step's loop compiled for its op.
@@ -392,6 +397,16 @@ fn chain(c: &[(u8, u64)], v: &mut [u64]) {
 }
 
 impl Scan<'_> {
+    /// `Col::load` of a folded column through `chain pre`, a null row then the word `fill` (`fillNul` after `chainAll pre`).
+    fn col(&self, c: &Col, lo: usize, out: &mut [u64], tmp: &mut [u8]) {
+        c.load(lo, out, tmp);
+        chain(self.pre, out);
+        if let Some(k) = self.fill && c.has_nul() {
+            let mut f = pod::Scr::<u64>::new(out.len());
+            c.nuls(lo, &mut f);
+            for (o, &x) in out.iter_mut().zip(f.iter()) { if x != 0 { *o = k } }
+        }
+    }
     /// The `seg` bits of the `nb` rows from `lo` (a block of the writer's grid), the first row the fold reaches always a
     /// segment start (`kscanRow`'s `0 < i`): row 0, or row `n - 1` under `rev`.
     fn seg(&self, lo: usize, nb: usize) -> Seg {
@@ -415,19 +430,28 @@ impl Scan<'_> {
         let lo = i / BLK * BLK;
         self.seg(lo, (self.n - lo).min(BLK))[(i - lo) >> 6] >> ((i - lo) & 63) & 1 == 1
     }
-    /// The answer's null bitmap (`Sink::write_nul`'s) of a stream: the seed's null flags carried exactly as its words are
-    /// (`kscan`'s `kscanRow .first` over the flags), a segment start taking the row's own flag, so a carried row keeps
-    /// the flag of the row it carries. The blocks are walked in the fold's order, each read once.
+    /// The answer's null bitmap (`Sink::write_nul`'s): every column's null flags folded exactly as its words are
+    /// (`kscan`'s `kscanRow` over the flags, with `Op.nulFold`'s op, `first` where the op has none), a segment start
+    /// taking the row's own flag, so a carried row keeps the flag of the row it carries. Empty where no column holds
+    /// a flag. The blocks are walked in the fold's order, each read once.
     fn nul_bits(&self) -> Vec<u8> {
         let mut bs: Vec<(usize, usize, usize)> = Grid { n: self.n, lg: crate::DEFAULT_LG }.walk().collect();
         if self.rev { bs.reverse() }
-        let (mut bits, mut c, mut v) = (alloc::vec![0u8; self.n.div_ceil(8)], 0u64, pod::Scr::<u64>::new(self.n.min(BLK)));
+        let fo = nul_fold(self.op).map_or(18, |f| f.0);
+        let (mut bits, mut c, mut v, mut any) = (alloc::vec![0u8; self.n.div_ceil(8)], 0u64, pod::Scr::<u64>::new(self.n.min(BLK)), false);
         for (_, lo, nb) in bs {
             let g = self.seg(lo, nb);
             self.seed.nuls(lo, &mut v[..nb]);
-            rows!(self.rev, 0..nb, i => { if g[i >> 6] >> (i & 63) & 1 == 1 { c = v[i] } if c != 0 { bits[(lo + i) >> 3] |= 1 << ((lo + i) & 7) } });
+            let xf: Vec<pod::Scr<u64>> = self.xs.iter().map(|x| { let mut u = pod::Scr::<u64>::new(nb); x.nuls(lo, &mut u); u }).collect();
+            any |= v[..nb].iter().chain(xf.iter().flat_map(|u| u.iter())).any(|&f| f != 0);
+            rows!(self.rev, 0..nb, i => {
+                let mut a = if g[i >> 6] >> (i & 63) & 1 == 1 { v[i] } else { c };
+                for u in &xf { a = op_word(fo, a, u[i]) }
+                c = a;
+                if c != 0 { bits[(lo + i) >> 3] |= 1 << ((lo + i) & 7) }
+            });
         }
-        bits
+        if any { bits } else { Vec::new() }
     }
     /// Rows `lo .. lo + out.len()` into `out`, from `c`, row `lo - 1`'s answer.
     fn block(&self, lo: usize, c: u64, out: &mut [u64]) { let g = self.seg(lo, out.len()); by_op!(self.op, OP => self.fold::<OP>(&g, lo, c, out)) }
@@ -444,20 +468,19 @@ impl Scan<'_> {
         // the seed is read only at a segment start
         let mut sd = pod::Scr::<u64>::new(if none { 0 } else { nb });
         // `null`: the seed is its null flags, read off the block's flag and residual 0, not the words
-        if !none { if self.op == NULL { self.seed.nuls(lo, &mut sd) } else { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut sd) } }
+        if !none { if self.op == NULL { self.seed.nuls(lo, &mut sd) } else { self.col(&self.seed, lo, &mut sd, pod::bytes_mut(&mut tmp)) } }
         let Some((x0, rest)) = self.xs.split_first() else {
             rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { if at(i) { c = sd[i] } *o = c });
             return
         };
-        x0.load(lo, out, pod::bytes_mut(&mut tmp));
-        chain(self.pre, out);
+        self.col(x0, lo, out, pod::bytes_mut(&mut tmp));
         if rest.is_empty() {
             if all { for (o, &a) in out.iter_mut().zip(sd.iter()) { *o = f(a, *o) } }
             else if none { rows!(self.rev, out.iter_mut(), o => { c = f(c, *o); *o = c }) }
             else { rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { c = f(if at(i) { sd[i] } else { c }, *o); *o = c }) }
             return
         }
-        let xr: Vec<pod::Scr<u64>> = rest.iter().map(|x| { let mut v = pod::Scr::<u64>::new(nb); x.load(lo, &mut v, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut v); v }).collect();
+        let xr: Vec<pod::Scr<u64>> = rest.iter().map(|x| { let mut v = pod::Scr::<u64>::new(nb); self.col(x, lo, &mut v, pod::bytes_mut(&mut tmp)); v }).collect();
         rows!(self.rev, out.iter_mut().enumerate(), (i, o) => {
             let mut a = f(if at(i) { sd[i] } else { c }, *o);
             for x in &xr { a = f(a, x[i]) }
@@ -474,8 +497,9 @@ impl Scan<'_> {
             // the metadata describe the stored words, not the words `pre` maps them to
             _ if !self.pre.is_empty() => None,
             0 | 1 => m(&|a, k| (k.meta.base[b] != i64::MIN).then(|| op_word(self.op, a, k.meta.bsum[b] as u64))),
-            5 => m(&|a, k| Some(op_word(5, a, k.meta.base[b] as u64))),
-            6 => m(&|a, k| Some(op_word(6, a, k.meta.maxv[b] as u64))),
+            // a flagged block's `[base, maxv]` bound the residual-0 null word, not the identity it is read as
+            5 => m(&|a, k| (!k.meta.nul(b)).then(|| op_word(5, a, k.meta.base[b] as u64))),
+            6 => m(&|a, k| (!k.meta.nul(b)).then(|| op_word(6, a, k.meta.maxv[b] as u64))),
             18 => Some(c),
             _ => None,
         }
@@ -567,11 +591,14 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
     } else {
         if es.iter().any(|e| e.0 != n) { return Err(format!("kscan: a source holds a row count other than n = {n}")) }
         // no op but a stream's `first` has an answer at a null (`noNul`), `null` being the one that reads the first column's
-        if let Some(k) = cols.iter().skip((op == NULL) as usize).find_map(|c| c.first_nul(n)) { return Err(format!("kscan: row {k} is null, and a null names no row")) }
+        // and `min`/`max` (`nul_fold`) ordering it
+        if let Some(k) = cols.iter().skip((op == NULL) as usize).filter(|_| nul_fold(op).is_none()).find_map(|c| c.first_nul(n)) { return Err(format!("kscan: row {k} is null, and a null names no row")) }
         cols
     };
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
-    let mut r = Scan { op, rev, n, seg: g, seed, xs, pre, carry: Vec::new() };
+    // `nulFillOf`: only where some source holds a null; a stream's op is `first`, which has no `nul_fold`
+    let fill = nul_fold(op).map(|f| f.1).filter(|_| cols.iter().any(|c| c.has_nul()));
+    let mut r = Scan { op, rev, n, seg: g, seed, xs, pre, fill, carry: Vec::new() };
     if let Err(m) = op_eval(op, 0, 0) && r.zero() { return Err(m.into()) }
     let tw = qtype_width(t).ok_or("kscan: the answer type has no fixed width")?;
     r.carries();
@@ -584,7 +611,7 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
     // holding `last`, which the fill stores
     let t = |b: usize| (r.seg.is_none() && !rev && pre.is_empty() && post.is_empty() && low == !0 && b != last >> crate::DEFAULT_LG)
         .then(|| r.unit(b)).flatten().filter(|c| crate::enc::movable(c, b, b, n, 8)).map(|c| (c, b));
-    let nul = if stream && seed.has_nul() { r.nul_bits() } else { Vec::new() };
+    let nul = if (stream && seed.has_nul()) || r.fill.is_some() { r.nul_bits() } else { Vec::new() };
     let e = Sink::new(n, 8).enc().answer_nul(&crate::enc::Moving { t: &t, f: |buf: &mut [i64], lo: usize| {
         let o = pod::cast_mut::<u64>(pod::bytes_mut(buf)).expect("kscan: an i64 block is a u64 block");
         let (b, nb, mut w64) = (lo >> crate::DEFAULT_LG, o.len(), [0u64; BLK / 64]);
@@ -767,6 +794,41 @@ mod kscan_tests {
         let e = Err("kscan: row 2 is null, and a null names no row".to_string());
         assert_eq!(kscan(0, false, 6, 6, 4, None, &[(4, a.borrow()), (4, a.borrow())], &[], &[]).map(|_| ()), e);
         assert_eq!(kscan(18, false, 6, 6, 4, None, &[(4, a.borrow())], &[], &[]).map(|_| ()), e);
+    }
+    // `min`/`max` order null below every value (`Op.nulFold`): a null row reads as `i64` max (`min`) or `i64` min (`max`)
+    // after `pre`, its flag folding with `or` (`min(0N,5) = 0N`) or `and` (`max(0N,5) = 5`, `max(0N,0N) = 0N`); a null
+    // on the seed side, the other side, both, all rows, one block and across the boundary, both directions, `seg` every
+    // row and some rows, with and without a `pre` step
+    #[test] fn kscan_orders_null_in_min_max() {
+        let run = |op: u8, a: &[u64], fa: &[u64], b: &[u64], fb: &[u64]| {
+            let (n, (k, fo)) = (a.len(), (nul_fold(op).expect("min or max").1, nul_fold(op).expect("min or max").0));
+            let any = fa.iter().chain(fb).any(|&f| f != 0);
+            let fill = |w: &[u64], f: &[u64]| w.iter().zip(f).map(|(&w, &f)| if f != 0 { k } else { w }).collect::<Vec<_>>();
+            let zero = |w: &[u64], f: &[u64]| w.iter().zip(f).map(|(&w, &f)| if f != 0 { 0 } else { w }).collect::<Vec<_>>();
+            let (ea, eb) = (enc_nul(&zero(a, fa), fa), enc_nul(&zero(b, fb), fb));
+            for pre in [&[][..], &[(0u8, 3u64)][..]] {
+                for rev in [false, true] {
+                    for sg in [vec![1u64; n], (0..n as u64).map(|i| (i % 1000 == 0 || i % 37 == 3) as u64).collect()] {
+                        let (wa, wb) = (fill(&chained(pre, &zero(a, fa)), fa), fill(&chained(pre, &zero(b, fb)), fb));
+                        let w = rows(op, rev, &sg, &wa, &[wb]).expect("rows: min and max fail nowhere");
+                        let f = rows(fo, rev, &sg, fa, &[fb.to_vec()]).expect("rows: and, or fail nowhere");
+                        let want = if any { enc_nul(&w, &f) } else { enc_for(&w, 8) };
+                        let got = kscan(op, rev, 6, 6, n, Some(enc_bits(&sg).borrow()), &[(n, ea.borrow()), (n, eb.borrow())], pre, &[]).expect("kscan min/max");
+                        assert_eq!(parts(&got.0), parts(&want), "op {op} rev {rev} n {n} pre {}", pre.len());
+                        assert_eq!(got.1, if rev { w.first() } else { w.last() }.copied(), "op {op} rev {rev} n {n} fold result");
+                    }
+                }
+            }
+        };
+        for op in [5u8, 6] {
+            for (fa, fb) in [([0u64], [1u64]), ([1], [0]), ([1], [1]), ([0], [0])] { run(op, &[7], &fa, &[5], &fb) }
+            for n in [3usize, 1000, 1025, 2500] {
+                let small = |k: u64| (0..n as u64).map(|i| ((i * 7919 * k) % 8000).wrapping_sub(3000)).collect::<Vec<_>>();
+                let fl = |k: u64| (0..n as u64).map(|i| (i % k == 2) as u64).collect::<Vec<_>>();
+                let (none, all) = (vec![0u64; n], vec![1u64; n]);
+                for (fa, fb) in [(&none, &fl(7)), (&fl(7), &none), (&fl(7), &fl(5)), (&all, &fl(5)), (&fl(7), &all), (&none, &none)] { run(op, &small(3), fa, &small(5), fb) }
+            }
+        }
     }
     // `null` answers 1 at a null row and 0 elsewhere (`foRNuls`), from the flagged block's residual 0 and not the
     // decoded word (`[5, null, 7]` is `[0, 1, 0]`: the null's residual is 3, which with the frame 5 reads 8, a value);

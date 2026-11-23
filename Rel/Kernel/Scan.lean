@@ -247,30 +247,44 @@ def kscanStream (op : Op) (es : List (USize × Enc)) (pre post : List (Op × UIn
 def kscanRefuses (op : Op) (n : USize) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) : Bool :=
   n != 0 && (op.readsDivisor && 1 < es.length || (pre ++ post).any fun p => p.1.stepFails p.2)
 
-/-- The columns `kscan` folds, each source's `nⱼ` words through `chain pre`, and the null flag of each row of the first
-(`foRNuls`). A stream is one column, the sources joined (their flags joined likewise), and their `nⱼ` must sum to `n`.
-Otherwise every source holds `n` rows and none a null (`noNul`): no op but a stream's `first` has an answer at one, except `null`, whose
-seed is the first source's flags (the answer holds none). -/
+/-- The word that stands for a null row of a call's sources: `Op.nulFold`'s identity, for an op with one, and only where
+some source holds a null (`hasNul`); `none` otherwise, the call then refusing a null row as every other op does. -/
+def nulFillOf (op : Op) (es : List (USize × Enc)) : Option UInt64 :=
+  (op.nulFold.map (·.2)).filter fun _ => es.any fun p => hasNul p.2
+
+/-- The words `w` with `k` at each row whose flag `fl` is set. -/
+def fillNul (k : UInt64) (fl w : Array UInt64) : Array UInt64 :=
+  Array.ofFn fun i : Fin w.size => if fl[i.1]?.getD 0 != 0 then k else w[i]
+
+/-- The columns `kscan` folds, each source's `nⱼ` words through `chain pre`, and the null flags: one array of the sources'
+joined flags for a stream, the flags of every column where `nulFillOf` has a word (a null row's word is then that word),
+none else. A stream is one column, the sources joined, and their `nⱼ` must sum to `n`.
+Otherwise every source holds `n` rows and none a null (`noNul`): no op but a stream's `first` has an answer at one, except
+`null`, whose seed is the first source's flags (the answer holds none), and `min`/`max` (`Op.nulFold`). -/
 def kscanCols (op : Op) (s : QAtomicType) (n : USize) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) :
-    Except String (List (Array UInt64) × Array UInt64) := do
+    Except String (List (Array UInt64) × List (Array UInt64)) := do
   let ws ← es.mapM fun p => rawAll s p.1 p.2 >>= chainAll pre
   if kscanStream op es pre post then
     if (es.map (·.1.toNat)).sum != n.toNat then throw s!"kscan: the sources do not hold n = {n} rows in all"
-    pure ([ws.foldl (· ++ ·) #[]], es.foldl (fun a p => a ++ foRNuls p.1 p.2) #[])
+    pure ([ws.foldl (· ++ ·) #[]], [es.foldl (fun a p => a ++ foRNuls p.1 p.2) #[]])
   else
     if es.any (·.1 != n) then throw s!"kscan: a source holds a row count other than n = {n}"
-    -- `null` reads the first source's flags as its words; every other column, and every other op, refuses a null row
-    let fl := if op = .null then es.take 1 else []
-    (es.drop fl.length).forM fun p => noNul "kscan" p.1 p.2
-    pure (fl.map (fun p => foRNuls p.1 p.2) ++ ws.drop fl.length, #[])
+    match nulFillOf op es with
+    | some k => pure ((es.zip ws).map fun q => fillNul k (foRNuls q.1.1 q.1.2) q.2, es.map fun p => foRNuls p.1 p.2)
+    | none =>
+      -- `null` reads the first source's flags as its words; every other column, and every other op, refuses a null row
+      let fl := if op = .null then es.take 1 else []
+      (es.drop fl.length).forM fun p => noNul "kscan" p.1 p.2
+      pure (fl.map (fun p => foRNuls p.1 p.2) ++ ws.drop fl.length, [])
 
 /-- **The scan primitive** (design §4, `raw_kscan`): the segmented prefix fold of `op` over the `n` rows of `es`, read
 at `s`. Each source is a count `nⱼ` of rows and a column (`kscanCols`: all `n` but in a stream). `seg`, read as booleans, marks the rows that start a segment (`none`: every row does); the first column of
 `es` is the seed a segment starts from and the others are folded into each row. So a map is every row a segment
 (`out[i] = op(a[i], b[i])`), a scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e`
 forward from the marked rows. A stream (`kscanStream`) is the one scan of the sources in order, the concatenation of
-the columns: a null row of a source is a null row of the answer, its flag carried as `seg` carries the word, and every
-other call refuses a null source row.
+the columns: a null row of a source is a null row of the answer, its flag carried as `seg` carries the word. `min`/`max`
+(`Op.nulFold`) read a null row as the identity of their order (`nulFillOf`) and flag the answer's row as `min`/`max` of
+nulls: `max(0N,5) = 5`, `min(0N,5) = 0N`, `max(0N,0N) = 0N`. Every other call refuses a null source row.
 **Owner approval A, 2026-11-20: per-row Op chain.** Each word read from `es` first goes through `chain pre` and each
 answer word through `chain post`; the fold's carry is the answer before `post`. So an element-wise computation of several
 `Op`s — widen on load, the verb, `fto`, a compare against a constant — is one pass writing one encoded column, never an
@@ -301,8 +315,10 @@ def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Op
     | some w =>
       let ws := (rv out).map fun v => if t = .u1 then v % 2 else v
       -- the flags go through the fold as the seed's words do, a carried row keeping its flag
-      let nl ← (List.range n.toNat).foldlM (kscanRow .first (rv g) (rv ns) []) #[]
-      let nul := if ns.any (· != 0) then nulMap (rv nl) else .empty
+      -- and fold as the op orders null (`Op.nulFold`: `and`/`or`), `first` where the op has no order
+      let nl ← (List.range n.toNat).foldlM (kscanRow (op.nulFold.elim .first (·.1)) (rv g) (rv (ns.headD #[]))
+        ((ns.drop 1).map rv)) #[]
+      let nul := if ns.any (·.any (· != 0)) then nulMap (rv nl) else .empty
       -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
       let r := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul
       -- `out` is in fold order, so its last word is the row visited last
