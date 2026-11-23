@@ -68,13 +68,13 @@ def floatOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String 
 /-- **`ymd` on the texts `X`** (`rowDens`: the graph of `Db.Csv.ymd`): each cell's chars read as a day
     (`yyyy.mm.dd` or `yyyy-mm-dd`, `Db.Csv.ymd`), written at `date` (`Arr.ofFn`), kept where the cell reads as one
     (`Tab.keep`, which keeps a canonical table canonical: no `canon`). The cells are read once, front to back
-    (`Tab.toList`).
+    (`Tab.toArray`).
     Owner decision 2026-11-23: this decodes each char cell to its bytes in Lean, approved because the day count
     (H. Hinnant's `days_from_civil`) must have one source, `Db.Csv.ymd`, shared with the CSV reader and literals. -/
 def ymd {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .arr (.atom .char), .atom .date, X =>
-    let rs := (Tab.toList (k := .arr (.atom .char)) (v := .one) ⟨n, X, ()⟩).toArray
+    let rs := Tab.toArray (k := .arr (.atom .char)) (v := .one) ⟨n, X, ()⟩
     let d (i : Fin n.toNat) : Option Int := Db.Csv.ymd ((rs[i.1]?.map (·.1)).getD [])
     Tab.keep ⟨n, X, Arr.ofFn .date n fun i => (Int32.ofInt ((d i).getD 0)).toUInt32.toUInt64⟩
       (Arr.ofFn .i64 n fun i => if (d i).isSome then 1 else 0).enc
