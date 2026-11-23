@@ -560,15 +560,9 @@ def ValsB.row : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Fin
 /-- Every row of `x` in position order, `Array.ofFn (ValsB.row x)`, as `Tab.toList` runs it: each column read once
     front to back. `ValsB.row` at an `arr` side scans all `m` payload values per row, reading `lo i` and `hi i` at
     each, which over all rows is `n * m` reads; here a row is the payload's slice `[lo i, hi i)`, the clamp
-    `ValsB.row` applies, and a sum row indexes its side's rows by the clamped position. -/
-def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) :=
-  match t, x with
-  | .general, x => Array.ofFn x.get
-  -- `Arr.get`'s atom with the block starts hoisted (`Enc.get`'s `starts`): `x.get` per element sums every block
-  -- before it, so a whole `.foR` column read that way is quadratic in its block count
-  | t, x =>
-    let s := match x.enc with | .foR m _ => Column.blockStarts m | _ => #[]
-    Array.ofFn (n := n.toNat) fun i => ((Enc.get t n x.enc i s).bind fun a => Carrier.of? t (.atom a)).getD default
+    `ValsB.row` applies, and a sum row indexes its side's rows by the clamped position. An atom column is read through
+    `Arr.get`, the one reader, so a gate that walks compiled code stops at it. -/
+def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) := Array.ofFn x.get
 
 def ColB.rowsImpl : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Array (El t)
   | false, _, _, x => Arr.rowsImpl x
@@ -609,13 +603,7 @@ private theorem slice_aux {α : Type} (n : Nat) (g : Fin n → α) (a b : Nat) :
         exact this
     | succ a => cases b <;> simp [Function.comp_def] <;> exact h _ _
 
-theorem Arr.rowsImpl_eq {t : QAtomicType} {n : USize} (x : Arr t n) : Arr.rowsImpl x = Array.ofFn x.get := by
-  cases t <;> first | rfl | (
-    unfold Arr.rowsImpl
-    refine congrArg Array.ofFn (funext fun i => ?_)
-    rw [Arr.get_ne x i (by decide)]
-    generalize x.enc = e
-    cases e <;> simp only [Ext.Enc.get] <;> first | rfl | simp only [← foRBits_starts])
+theorem Arr.rowsImpl_eq {t : QAtomicType} {n : USize} (x : Arr t n) : Arr.rowsImpl x = Array.ofFn x.get := rfl
 
 theorem ColB.rowsImpl_eq {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) :
     ColB.rowsImpl x = Array.ofFn (ColB.get x) := by

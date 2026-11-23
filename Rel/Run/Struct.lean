@@ -24,11 +24,20 @@ open Rel.Ext Rel.Kernel Rel.Verify
 def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) :=
   colArr .first n .pos .pos t .i64 [] [(.and, 0)]
 
+/-- `wordsFoR` of `n` zero words with every row flagged is `Enc.WF` at every type with a width: the `u1` clause is vacuous,
+every row being null (`bitAt_packOf`). Proved here so the writers below run no `Decidable (Enc.WF …)` instance, which
+decodes the column. -/
+theorem nulWords_wf {t : QAtomicType} {n : USize} (ht : t.width.isSome) :
+    Ext.Enc.WF t n (wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))) :=
+  (wordsFoR_nul _ _ (by simp)).2.2.2 ht fun _ i hi hb => by
+    simp only [nulMap, Array.size_replicate] at hb hi
+    rw [bitAt_packOf _ _ _ hi] at hb; simp [hi] at hb
+
 /-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
-writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
+writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. Only a
+type with no width (`general`) has no such column, and is refused. -/
 def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
-  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
+  if h : t.width.isSome then .ok ⟨_, nulWords_wf h⟩ else .error s!"inl: {repr t} has no width, so no flagged null column"
 
 /-- The tag column of a sum side whose `n` rows are all in one summand: every tag `s` (the positions through the post
 chain `[(.and, 0), (.or, s)]`, written at `u1`). -/
@@ -36,12 +45,11 @@ def tagCol (n : USize) (s : Bool) : Except String (Arr .u1 n) :=
   colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)]
 
 /-- `n` fillers of `1+t`, each null (`Opt.nuls`); a `general` payload has no block to flag, so its filler is `n` of its
-`default` (`Enc.WF` decided, never assumed), which no row ever reads. -/
+`default`, which no row ever reads. -/
 def Opt.fill (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  let e : Enc := match t with
-    | .general => .gen (Array.replicate n.toNat default)
-    | _ => wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
-  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"filler: {n} rows are not a well-formed column of {repr t}"
+  match t with
+  | .general => .ok ⟨.gen (Array.replicate n.toNat default), by simp [Ext.Enc.WF]⟩
+  | t => Opt.nuls t n
 
 /-- `X` with every row owned as the summand column of a dense sum: each atom column `Opt.ofArr`, which leaves the storage
 as it is. -/

@@ -45,7 +45,6 @@ theorem Opt.get_nulWords {t : QAtomicType} {n : USize} (x : Opt t n)
 theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
     x.get i = none := by
   unfold Opt.nuls at h
-  dsimp only at h
   split at h
   rotate_left; · cases h
   cases h
@@ -67,7 +66,8 @@ theorem tagCol_get {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCol n s = .o
 on a context holding the `Enc.WF` proof of the match, `cases t` hits Lean's missing `Enc.WF.match_1` splitter. -/
 theorem Opt.fill_enc {t : QAtomicType} {n : USize} {x : Opt t n} (hg : t ≠ .general) (h : Opt.fill t n = .ok x) :
     x.enc = wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)) := by
-  cases t <;> first | exact absurd rfl hg | (unfold Opt.fill at h; dsimp only at h; split at h <;> cases h; rfl)
+  have hn : Opt.fill t n = Opt.nuls t n := by cases t <;> first | exact absurd rfl hg | rfl
+  rw [hn] at h; unfold Opt.nuls at h; split at h <;> cases h; rfl
 
 theorem Opt.filler_ne {t : QAtomicType} (hg : t ≠ .general) : Opt.filler t = none := by
   cases t <;> first | exact absurd rfl hg | rfl
@@ -78,9 +78,6 @@ theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t
   by_cases hg : t = .general
   · subst hg
     unfold Opt.fill at h
-    dsimp only at h
-    split at h
-    rotate_left; · cases h
     cases h
     simp only [Opt.get, Opt.isNul, Opt.enc, Bool.false_eq_true, if_false, Opt.filler, Option.some.injEq]
     simp [Arr.get, Arr.enc, Arr.mk]
