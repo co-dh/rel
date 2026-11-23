@@ -1454,6 +1454,10 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
     | .prod (.arr b) (.atom .i64) => do let (n, X) ← known r.sym D.dom; atIxB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array with an i64 index"
   else if c == ``Tab.cmpOp then let (n, X) ← known r.sym D.dom; cmpOpB r.sym A B n X
+  -- `GenK.cmpRel strict`: `U` run in the context, `strict` read from the row's `cmpOps` entry
+  else if c == ``GenK.cmpRel then match cmpOps.find? (ordSym ·.2 == r.sym), A, xs with
+    | some (_, b), .atom t, [x] => cmpB x (ordSym b) (Tab.ordOp b t) t D
+    | _, _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no atom, or given {xs.length} relations, not one"
   else if c == ``Tab.map then match A, B, xs with
     -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand
     | .arr a, .arr b, [x] => do
