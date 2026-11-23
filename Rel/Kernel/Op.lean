@@ -32,6 +32,10 @@ inductive Op
   /-- The random source (dataframe F8): `x` to splitmix64's output at the counter `x` (`mixWord`), a pure hash, so a
       program reading it stays a relation that answers the same at the same counter. -/
   | mix
+  /-- q's `null` on a `1+atom` column (in band): `kscan` reads the seed's null flag of each row (`foRNuls`, the flagged
+      block's all-ones residual) as the word, so a map is `1` at a null and `0` elsewhere; as a step it keeps the
+      accumulator, like `first`. Placed after `mix` so `cast` and `fto` move up one tag (`crate/src/scan.rs` `CAST`). -/
+  | null
   /-- `$` (S6/S7): the word of `t` holding the value of the word read at `s` (`QAtomicType.castWord`), `2^63` where
       none; one constructor for every pair, so `Op` reaches Rust as an object (`op_code`), not a byte. -/
   | cast (s t : QAtomicType)
@@ -159,6 +163,7 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | fge, a, x => .ok (w (f x ≤ f a))
   | f32to64, _, x => .ok (widen32 x)
   | mix, _, x => .ok (mixWord x)
+  | null, a, _ => .ok a
   | cast s t, _, x => .ok (QAtomicType.castWord s t x)
   | fto t, _, x => .ok (ftoWord t x)
 
@@ -202,6 +207,7 @@ def neg1 : UInt64 := 0xffffffffffffffff
 #guard Op.not.eval 0 1 matches .ok 0
 #guard Op.first.eval 5 9 matches .ok 5
 #guard Op.last.eval 5 9 matches .ok 9
+#guard Op.null.eval 5 9 matches .ok 5
 #guard Op.fadd.eval (one 1.5) (one 2.0) matches .ok 0x400c000000000000
 #guard Op.fsub.eval (one 1.5) (one 2.0) matches .ok 0xbfe0000000000000
 #guard Op.fmul.eval (one 1.5) (one 2.0) matches .ok 0x4008000000000000

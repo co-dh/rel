@@ -249,7 +249,8 @@ def kscanRefuses (op : Op) (n : USize) (es : List (USize × Enc)) (pre post : Li
 
 /-- The columns `kscan` folds, each source's `nⱼ` words through `chain pre`, and the null flag of each row of the first
 (`foRNuls`). A stream is one column, the sources joined (their flags joined likewise), and their `nⱼ` must sum to `n`.
-Otherwise every source holds `n` rows and none a null (`noNul`): no op but a stream's `first` has an answer at one. -/
+Otherwise every source holds `n` rows and none a null (`noNul`): no op but a stream's `first` has an answer at one, except `null`, whose
+seed is the first source's flags (the answer holds none). -/
 def kscanCols (op : Op) (s : QAtomicType) (n : USize) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) :
     Except String (List (Array UInt64) × Array UInt64) := do
   let ws ← es.mapM fun p => rawAll s p.1 p.2 >>= chainAll pre
@@ -258,8 +259,10 @@ def kscanCols (op : Op) (s : QAtomicType) (n : USize) (es : List (USize × Enc))
     pure ([ws.foldl (· ++ ·) #[]], es.foldl (fun a p => a ++ foRNuls p.1 p.2) #[])
   else
     if es.any (·.1 != n) then throw s!"kscan: a source holds a row count other than n = {n}"
-    es.forM fun p => noNul "kscan" p.1 p.2
-    pure (ws, #[])
+    -- `null` reads the first source's flags as its words; every other column, and every other op, refuses a null row
+    let fl := if op = .null then es.take 1 else []
+    (es.drop fl.length).forM fun p => noNul "kscan" p.1 p.2
+    pure (fl.map (fun p => foRNuls p.1 p.2) ++ ws.drop fl.length, #[])
 
 /-- **The scan primitive** (design §4, `raw_kscan`): the segmented prefix fold of `op` over the `n` rows of `es`, read
 at `s`. Each source is a count `nⱼ` of rows and a column (`kscanCols`: all `n` but in a stream). `seg`, read as booleans, marks the rows that start a segment (`none`: every row does); the first column of

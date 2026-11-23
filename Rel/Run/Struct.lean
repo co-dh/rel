@@ -156,18 +156,37 @@ def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) 
     else throw "inl°: a left row over a left payload of no value"
   else D.comp (← (← inl (B := B) x).conv)
 
+/-- **`inr°` on a band column `x`** (`1 + t`, a null row the all-ones residual): `X ≫ inr°` keeps the rows that are no
+null, each beside its value. The null test is a scan comparing with the residual (`kscan .null`, then `not`), `whereCol`
+numbers the kept rows, and the key `X` and the value `x` are gathered there; `Arr.of` refuses a null, which none of the
+kept rows is. -/
+def inrConvBand {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (x : Opt t n) :
+    Except String (Tab (.sum a b) b) := by
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h
+  exact do
+    let (m, sel) ← whereCol n (← kscan .null false t .u1 n none [(n, x.enc)] [] [(.not, 0)]).1
+    pure ⟨m, ← Vals.gather m sel (Vals.ofOpt h x), ← Arr.of t m (← Opt.gather m sel x).enc "inr°"⟩
+
 /-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`. -/
 def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
   match X.view with
-  -- `D ≫ (inr V)°` with `V` the band's words, null flags dropped (a `kscan` map), would keep `X`'s `inr` rows; its law
-  -- needs `Enc.Valid n x.enc`, which `Vals.WF` of a band column does not carry (PLAN nullband3h)
-  | .opt .. => throw "inr°: on a 1+t band column, whose values the law cannot yet read (Vals.WF carries no Enc.Valid)"
+  | .opt h x => inrConvBand h x
   | .gen _ _ r _ _ x y =>
   let D ← idU X
   if r.toNat = 0 then
     if (← D.diff (← (← D.comp (← (← inl (B := B) x).conv)).dom)).n = 0 then zero
     else throw "inr°: a right row over a right payload of no value"
   else D.comp (← (← inr (A := A) y).conv)
+
+-- `inr°` on a `1 + long` column: the rows that are no null, each beside its value; none, some and all null
+private def inrBand (xs : List (Option QAtom)) : Option (List ((Unit ⊕ Int64) × Int64)) := do
+  let x ← Opt.ofAtoms .i64 xs.toArray
+  let T ← (inrConvBand (a := .one) (b := .long) rfl x).toOption
+  pure T.toList
+#guard inrBand [some (.i64 5), none, some (.i64 7)] == some [(.inr 5, 5), (.inr 7, 7)]
+#guard inrBand [some (.i64 5), some (.i64 6)] == some [(.inr 5, 5), (.inr 6, 6)]
+#guard inrBand [none, none, none] == some []
+#guard inrBand [] == some []
 
 /-- **`Rᴵ` on the pairs `X`**, `idU X ≫ Rᴵ` = `((π₁ ≫ R) ∩ (π₂ ≫ π₁°)) ≫ π₂` (`flatDen_eq`): the rows `(i, a)` of `X`
 beside `R`'s `(a', b)` at `i`, kept where the equality test `a = a'` holds (`∩` with `π₂ ≫ π₁°` on `R`'s values), then
