@@ -1661,4 +1661,16 @@ end Tab
 
 
 
+/-- **Equal codes, equal rows** of a side owning every row (`Vals.WF`): `ValsB.row_of_codes` at `P = True`. -/
+theorem Vals.row_of_codes {A : Obj} {n : USize} (x : Vals A n) (hw : Vals.WF x) {es : List (AscKey × Enc)}
+    (hes : ValsB.cols x = .ok es) {cs} (hc : es.mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat)
+    (hk : seenKey n es i = seenKey n es i') : ValsB.row x i = ValsB.row x i' :=
+  ValsB.row_of_codes x _ hw hes hc i i' trivial trivial hk
+
+/-- **Equal rows, equal codes** of a side owning every row (`Vals.WF`): `ValsB.codes_of_row` at `P = True`. -/
+theorem Vals.codes_of_row {A : Obj} {n : USize} (x : Vals A n) (hw : Vals.WF x) {es : List (AscKey × Enc)}
+    (hes : ValsB.cols x = .ok es) {cs} (hc : es.mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat)
+    (hr : ValsB.row x i = ValsB.row x i') : seenKey n es i = seenKey n es i' :=
+  ValsB.codes_of_row x _ hw hes hc i i' trivial trivial hr
+
 end Rel

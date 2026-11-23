@@ -357,16 +357,16 @@ theorem Vals.cross_rows {A B : Obj} {n m : USize} {x : Vals A n} {y : Vals B m}
   obtain ⟨hT, hw⟩ := crossIx_ok hc
   constructor
   · rintro ⟨t, ha, hb⟩
-    obtain ⟨i, -, hi⟩ := Vals.gather_row x hx t
-    obtain ⟨j, -, hj⟩ := Vals.gather_row y hy t
+    obtain ⟨i, -, hi⟩ := ValsB.gather_row x hx t
+    obtain ⟨j, -, hj⟩ := ValsB.gather_row y hy t
     exact ⟨⟨i, hi.symm.trans ha⟩, ⟨j, hj.symm.trans hb⟩⟩
   · rintro ⟨⟨i, rfl⟩, ⟨j, rfl⟩⟩
     have hm0 : 0 < m.toNat := by have := j.2; omega
     have hle := Nat.mul_le_mul_left m.toNat (show i.1 + 1 ≤ n.toNat by have := i.2; omega)
     have ht : m.toNat * i.1 + j.1 < T.toNat := by
       rw [hT, Nat.mul_comm n.toNat m.toNat]; rw [Nat.mul_add, Nat.mul_one] at hle; have := j.2; omega
-    obtain ⟨i', e1, hi⟩ := Vals.gather_row x hx ⟨_, ht⟩
-    obtain ⟨j', e2, hj⟩ := Vals.gather_row y hy ⟨_, ht⟩
+    obtain ⟨i', e1, hi⟩ := ValsB.gather_row x hx ⟨_, ht⟩
+    obtain ⟨j', e2, hj⟩ := ValsB.gather_row y hy ⟨_, ht⟩
     rw [(hw _ ht).1, Nat.mul_add_div hm0, Nat.div_eq_of_lt j.2, Nat.add_zero] at e1
     rw [(hw _ ht).2, Nat.mul_add_mod, Nat.mod_eq_of_lt j.2] at e2
     exact ⟨⟨_, ht⟩, by rw [hi, Fin.ext e1], by rw [hj, Fin.ext e2]⟩
@@ -546,8 +546,8 @@ theorem selConv_holds {S C : Obj} {n m : USize} {sel b : Enc} {X : Vals S n} {g 
     cases p i <;> simp [i.2]
   constructor
   · rintro ⟨j, rfl, rfl⟩
-    obtain ⟨i, hi, hr⟩ := Vals.gather_row X hG j
-    obtain ⟨i', hi', hr'⟩ := Vals.gather_row g hg' j
+    obtain ⟨i, hi, hr⟩ := ValsB.gather_row X hG j
+    obtain ⟨i', hi', hr'⟩ := ValsB.gather_row g hg' j
     obtain rfl : i' = i := Fin.ext (hi'.symm.trans hi)
     have hj : j.1 < (Enc.raw .i64 m sel).size := by rw [hsz]; exact j.2
     refine ⟨i', (hp i').1 (List.mem_map.2 ⟨(Enc.raw .i64 m sel)[j.1], ?_, ?_⟩), hr.symm, hr'.symm⟩
@@ -559,8 +559,8 @@ theorem selConv_holds {S C : Obj} {n m : USize} {sel b : Enc} {X : Vals S n} {g 
     have hj' : j < (Enc.raw .i64 m sel).size := by simpa using hj
     have hjM : j < m.toNat := by rw [← hsz]; exact hj'
     simp only [Array.getElem_toList] at hwi
-    obtain ⟨i2, hi2, hr⟩ := Vals.gather_row X hG ⟨j, hjM⟩
-    obtain ⟨i3, hi3, hr3⟩ := Vals.gather_row g hg' ⟨j, hjM⟩
+    obtain ⟨i2, hi2, hr⟩ := ValsB.gather_row X hG ⟨j, hjM⟩
+    obtain ⟨i3, hi3, hr3⟩ := ValsB.gather_row g hg' ⟨j, hjM⟩
     have e2 : i2 = i := Fin.ext (by rw [← hi2]; simp only [Array.getElem?_eq_getElem hj', Option.getD_some, hwi])
     have e3 : i3 = i := Fin.ext (by rw [← hi3]; simp only [Array.getElem?_eq_getElem hj', Option.getD_some, hwi])
     subst e2; subst e3
@@ -730,7 +730,7 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
       unfold Obj.optEl; generalize Obj.band_some hb = p; obtain ⟨p1, p2⟩ := p; rfl
     have hGr : ∀ j : Fin M.toNat, ∃ i : Fin n.toNat, ((Enc.raw .i64 M sel)[j.1]?.getD 0).toNat = i.1 ∧
         ValsB.row G j = Obj.optEl hb (x.get i) ∧ ValsB.row (A := .atom t) Y j = Y.get j ∧ x.get i = some (Y.get j) := fun j => by
-      obtain ⟨i, hi, hr⟩ := Vals.gather_row _ hG j
+      obtain ⟨i, hi, hr⟩ := ValsB.gather_row _ hG j
       obtain ⟨i', hi', hy⟩ := Opt.gather_row x hyo j
       obtain rfl : i' = i := Fin.ext (by rw [← hi', hi])
       refine ⟨i', hi, by rw [hr]; simp only [ValsB.row, Vals.view_ofOpt], rfl, ?_⟩

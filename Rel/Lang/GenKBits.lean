@@ -216,8 +216,8 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
         ((raw .i64 t.n ia)[i.1]?.getD 0).toNat * w.toNat + ((raw .i64 t.n ic)[i.1]?.getD 0).toNat ∧
       ((raw .i64 t.n ia)[i.1]?.getD 0).toNat < g.toNat ∧ ((raw .i64 t.n ic)[i.1]?.getD 0).toNat < w.toNat := by
     intro k hk
-    obtain ⟨i, hi, rk⟩ := Vals.gather_row _ hK0 ⟨k, hk⟩
-    obtain ⟨i', hi', rv⟩ := Vals.gather_row _ hV0 ⟨k, hk⟩
+    obtain ⟨i, hi, rk⟩ := ValsB.gather_row _ hK0 ⟨k, hk⟩
+    obtain ⟨i', hi', rv⟩ := ValsB.gather_row _ hV0 ⟨k, hk⟩
     have e : i' = i := Fin.ext (hi'.symm.trans hi)
     rw [e] at rv
     have hin := (whereCol_mem hM (fun i hi => (hokw i hi).1) i.1).1 ⟨k, hk, hi⟩
@@ -249,26 +249,26 @@ theorem Tab.keepBits_law {n m : USize} {T : Tab A C} {g w : USize} {o : Enc} {x 
     refine ⟨⟨i, rk.symm, rv.symm⟩, _, hA, _, hC, ?_, ?_, ?_⟩
     · dsimp only; rw [← ep, ← hbw k hk]; exact (one _ (hbw2 k hk)).1 hb1
     · rcases Tab.index_spec hia wX' wt.1 i with ⟨a', ea, ra'⟩ | ⟨ea, -⟩
-      · obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hX' a'
+      · obtain ⟨i0, h0, r0⟩ := ValsB.gather_row _ hX' a'
         exact ⟨i0, by rw [ea]; exact h0, by rw [← r0, ra', ← rk]⟩
       · omega
     · rcases Tab.index_spec hic wY' wt.2 i with ⟨c', ec, rc'⟩ | ⟨ec, -⟩
-      · obtain ⟨i1, h1, r1⟩ := Vals.gather_row _ hY' c'
+      · obtain ⟨i1, h1, r1⟩ := ValsB.gather_row _ hY' c'
         exact ⟨i1, by rw [ec]; exact h1, by rw [← r1, rc', ← rv]⟩
       · omega
   · rintro ⟨⟨i, rfl, rfl⟩, a0, ha0, j, hj, hP, ⟨i0, h0, r0⟩, ⟨i1, h1, r1⟩⟩
     have hA : ((raw .i64 t.n ia)[i.1]?.getD 0).toNat = a0 := by
-      obtain ⟨i0', h0', r0'⟩ := Vals.gather_row _ hX' ⟨a0, ha0⟩
+      obtain ⟨i0', h0', r0'⟩ := ValsB.gather_row _ hX' ⟨a0, ha0⟩
       have e : i0' = i0 := Fin.ext (h0'.symm.trans h0)
       rcases Tab.index_spec hia wX' wt.1 i with ⟨a', ea, ra'⟩ | ⟨-, hn⟩
-      · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hX' a'
+      · obtain ⟨i2, h2, r2⟩ := ValsB.gather_row _ hX' a'
         rw [ea]; exact congrArg Fin.val (hx a' ⟨a0, ha0⟩ i2 i0 h2 h0 (by rw [← r2, ra', ← r0]))
       · exact (hn ⟨a0, ha0⟩ (by rw [r0', e, r0])).elim
     have hC : ((raw .i64 t.n ic)[i.1]?.getD 0).toNat = j := by
-      obtain ⟨i1', h1', r1'⟩ := Vals.gather_row _ hY' ⟨j, hj⟩
+      obtain ⟨i1', h1', r1'⟩ := ValsB.gather_row _ hY' ⟨j, hj⟩
       have e : i1' = i1 := Fin.ext (h1'.symm.trans h1)
       rcases Tab.index_spec hic wY' wt.2 i with ⟨c', ec, rc'⟩ | ⟨-, hn⟩
-      · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hY' c'
+      · obtain ⟨i2, h2, r2⟩ := ValsB.gather_row _ hY' c'
         rw [ec]; exact congrArg Fin.val (hy c' ⟨j, hj⟩ i2 i1 h2 h1 (by rw [← r2, rc', ← r1]))
       · exact (hn ⟨j, hj⟩ (by rw [r1', e, r1])).elim
     obtain ⟨k, hk, hki⟩ := (whereCol_mem hM (fun i hi => (hokw i hi).1) i.1).2
@@ -334,7 +334,7 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
   have hr63 := whereCol_lt hwc
   have hselp : ∀ p (hp : p < M.toNat), ∃ q : Fin r.n.toNat, ((raw .i64 M sel)[p]?.getD 0).toNat = q.1 ∧
       key.row ⟨p, hp⟩ = r.key.row q ∧ ((raw .i64 r.n ix)[q.1]?.getD 0).toNat < g.toNat := fun p hp => by
-    obtain ⟨q, hq, rk⟩ := Vals.gather_row _ hkey ⟨p, hp⟩
+    obtain ⟨q, hq, rk⟩ := ValsB.gather_row _ hkey ⟨p, hp⟩
     refine ⟨q, hq, rk, ?_⟩
     have hne := ((whereCol_mem hwc hltb q.1).1 ⟨p, hp, hq⟩).2
     rw [hlt q q.2] at hne
@@ -371,7 +371,7 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
     have hpk := (hπ k hk).1
     obtain ⟨q, hq, rkey, hqg⟩ := hselp (π k) hpk
     rcases Tab.index_spec hix wX' hr.2 q with ⟨a, ea, ra⟩ | ⟨ea, -⟩
-    · obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hX' a
+    · obtain ⟨i0, h0, r0⟩ := ValsB.gather_row _ hX' a
       refine ⟨r.val.row q, ⟨q, ?_, rfl⟩, (hS _ v).2 ⟨a.1, a.2, j, hj, ?_, ⟨i0, h0, by rw [← r0, ra]⟩, hv⟩⟩
       · rw [← rkey, ← keyrow a' ha' i hi ⟨π k, hpk⟩ hgk, ru]
       · rw [hidx k hk, hq, ea] at hon
@@ -382,10 +382,10 @@ theorem Tab.compTabMat_law {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' 
   · rintro ⟨b, ⟨q, rfl, rfl⟩, hsb⟩
     obtain ⟨a, ha, j, hj, hP, ⟨i0, h0, r0⟩, hv⟩ := (hS _ v).1 hsb
     have hA : ((raw .i64 r.n ix)[q.1]?.getD 0).toNat = a := by
-      obtain ⟨i0', h0', r0'⟩ := Vals.gather_row _ hX' ⟨a, ha⟩
+      obtain ⟨i0', h0', r0'⟩ := ValsB.gather_row _ hX' ⟨a, ha⟩
       have e : i0' = i0 := Fin.ext (h0'.symm.trans h0)
       rcases Tab.index_spec hix wX' hr.2 q with ⟨a2, ea, ra2⟩ | ⟨-, hn⟩
-      · obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hX' a2
+      · obtain ⟨i2, h2, r2⟩ := ValsB.gather_row _ hX' a2
         rw [ea]; exact congrArg Fin.val (hx a2 ⟨a, ha⟩ i2 i0 h2 h0 (by rw [← r2, ra2, ← r0]))
       · exact (hn ⟨a, ha⟩ (by rw [r0', e, r0])).elim
     have hqlt : (raw .i64 r.n lt)[q.1]?.getD 0 ≠ 0 := by
@@ -653,8 +653,8 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
   have hS := Tab.ofBits_set hs hraN hrcN hgw ho
   -- `cm` is one-to-one: the columns `y[rc[·]]` are distinct
   have cminj : ∀ j j', j < w.toNat → j' < w.toNat → cm j = cm j' → j = j' := fun j j' hj hj' e => by
-    obtain ⟨i, hi, ri⟩ := Vals.gather_row _ hyM ⟨j, hj⟩
-    obtain ⟨i', hi', ri'⟩ := Vals.gather_row _ hyM ⟨j', hj'⟩
+    obtain ⟨i, hi, ri⟩ := ValsB.gather_row _ hyM ⟨j, hj⟩
+    obtain ⟨i', hi', ri'⟩ := ValsB.gather_row _ hyM ⟨j', hj'⟩
     have := (hcmi ⟨j, hj⟩ ⟨j', hj'⟩).1 e
     rw [ri, ri'] at this
     exact congrArg Fin.val (hy ⟨j, hj⟩ ⟨j', hj'⟩ i i' hi hi' this)
@@ -664,7 +664,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
     fun j hj jj hjj t' ht' => by
       obtain ⟨t2, ht2, -, hxc, -⟩ := hrc jj hjj
       obtain rfl : t2 = t' := Fin.ext (ht2.symm.trans ht')
-      obtain ⟨i, hi, ri⟩ := Vals.gather_row _ hyM ⟨j, hj⟩
+      obtain ⟨i, hi, ri⟩ := ValsB.gather_row _ hyM ⟨j, hj⟩
       refine Iff.trans ?_ (hxc ⟨j, hj⟩).symm
       rw [ri]
       exact ⟨fun ⟨i', hi', e⟩ => by rw [show i = i' from Fin.ext (hi.symm.trans hi')]; exact e,
@@ -676,7 +676,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
     rw [hS]
     rcases Tab.index_spec hix wXg hr.1 i with ⟨a, ea, ra⟩ | ⟨ea, hn⟩
     · rw [hixN] at ea
-      obtain ⟨i0, h0, r0⟩ := Vals.gather_row _ hXg a
+      obtain ⟨i0, h0, r0⟩ := ValsB.gather_row _ hXg a
       constructor
       · rintro ⟨a', ha', j, hj, hb, ⟨i1, h1, r1⟩, hc⟩
         have e := hx ⟨a', ha'⟩ a i1 i0 h1 h0 (by rw [r1, ← ra, r0])
@@ -688,7 +688,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
     · rw [hixN] at ea
       constructor
       · rintro ⟨a', ha', j, hj, -, ⟨i1, h1, r1⟩, -⟩
-        obtain ⟨i2, h2, r2⟩ := Vals.gather_row _ hXg ⟨a', ha'⟩
+        obtain ⟨i2, h2, r2⟩ := ValsB.gather_row _ hXg ⟨a', ha'⟩
         obtain rfl : i2 = i1 := Fin.ext (h2.symm.trans h1)
         exact (hn ⟨a', ha'⟩ (by rw [r2, r1])).elim
       · rintro ⟨hlt, -⟩; omega
@@ -949,7 +949,7 @@ theorem Tab.ldivTabMat_spec {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc 
         ∃ u : Fin uc.n.toNat, cu u = jj ∧ uc.val.row u = c := by
       rcases H2 with ⟨_, i, rfl, hi2⟩ | ⟨-, c', u, -, hu⟩
       · obtain ⟨-, j, hj, -, i', hi', ri'⟩ := (hSrow i c).1 (H1 _ ⟨i, rfl, hi2⟩)
-        obtain ⟨i'', hi'', ri''⟩ := Vals.gather_row _ hyM ⟨j, hj⟩
+        obtain ⟨i'', hi'', ri''⟩ := ValsB.gather_row _ hyM ⟨j, hj⟩
         obtain rfl : i'' = i' := Fin.ext (hi''.symm.trans hi')
         exact ⟨cm j, (hcm j hj).2, .inl ⟨⟨j, hj⟩, rfl, ri''.trans ri'⟩⟩
       · exact ⟨cu u, (hcu u u.2).2, .inr ⟨u, rfl, hu⟩⟩
@@ -1618,8 +1618,8 @@ theorem Tab.ofBits_in {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals
   have e2 : ((raw .i64 M mv)[k]?.getD 0).toNat = j := by
     rw [hmw hmv k hk, hkp, Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hj]
     exact toNat_toUInt64 (x := j) (by omega)
-  obtain ⟨i, hi, -⟩ := Vals.gather_row x hvx ⟨k, hk⟩
-  obtain ⟨i', hi', -⟩ := Vals.gather_row y hvy ⟨k, hk⟩
+  obtain ⟨i, hi, -⟩ := ValsB.gather_row x hvx ⟨k, hk⟩
+  obtain ⟨i', hi', -⟩ := ValsB.gather_row y hvy ⟨k, hk⟩
   rw [(kgather_word hix hraN k hk).2, e1] at hi
   rw [(kgather_word hiy hrcN k hk).2, e2] at hi'
   exact ⟨hi ▸ i.2, hi' ▸ i'.2⟩

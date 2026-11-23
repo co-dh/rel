@@ -207,8 +207,8 @@ theorem keep_holds {A B : Obj} {T U : Tab A B} {b : Enc} (h : T.keep b = .ok U)
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, rfl, rfl⟩
-    obtain ⟨i, hi, hxi⟩ := Vals.gather_row _ hx j
-    obtain ⟨i', hi', hyi⟩ := Vals.gather_row _ hy j
+    obtain ⟨i, hi, hxi⟩ := ValsB.gather_row _ hx j
+    obtain ⟨i', hi', hyi⟩ := ValsB.gather_row _ hy j
     have e : i' = i := Fin.ext (by rw [← hi', hi])
     subst e
     have hj : j.1 < (Enc.raw .i64 M sel).size := by rw [hsz]; exact j.2
@@ -227,8 +227,8 @@ theorem keep_holds {A B : Obj} {T U : Tab A B} {b : Enc} (h : T.keep b = .ok U)
     simp only [Array.getElem_toList] at hwi
     have hsj : ((Enc.raw .i64 M sel)[j]?.getD 0).toNat = i.1 := by
       rw [Array.getElem?_eq_getElem hj', Option.getD_some, hwi]
-    obtain ⟨i1, hi1, hx1⟩ := Vals.gather_row _ hx ⟨j, hjM⟩
-    obtain ⟨i2, hi2, hy2⟩ := Vals.gather_row _ hy ⟨j, hjM⟩
+    obtain ⟨i1, hi1, hx1⟩ := ValsB.gather_row _ hx ⟨j, hjM⟩
+    obtain ⟨i2, hi2, hy2⟩ := ValsB.gather_row _ hy ⟨j, hjM⟩
     have e1 : i1 = i := Fin.ext (by rw [← hi1, hsj])
     have e2 : i2 = i := Fin.ext (by rw [← hi2, hsj])
     subst e1 e2
@@ -717,7 +717,7 @@ theorem whereCol_plain {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
 `C = R.concat S`, its rows ascending with unequal codes. A group is a run of equal rows (`Vals.row_of_codes`,
 `Vals.codes_of_row`), its `and` of the tags is `0` iff it holds a row of `R` and its `or` is `1` iff one of `S`
 (`scatterWords_fold`), the kept groups are `whereCol_spec`'s positions, ascending, and answer row `j` is the first input
-row `ps[F[sel[j]]]` of its group (`Vals.gather_row`), which ascend with `sel` (`Verify.firsts_sorted`). -/
+row `ps[F[sel[j]]]` of its group (`ValsB.gather_row`), which ascend with `sel` (`Verify.firsts_sorted`). -/
 theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Prop → Prop → Prop}
     (hk : ∀ M mn mx o, keep M mn mx = .ok o → (Enc.raw .i64 M o).size = M.toNat ∧ ∀ G < M.toNat,
       (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
@@ -749,7 +749,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hq))
   have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
-    obtain ⟨-, -, -, hk⟩ := kasc_grade hvp (Vals.cols_wf _ hes)
+    obtain ⟨-, -, -, hk⟩ := kasc_grade hvp (ValsB.cols_wf _ hes)
     rw [asc_perm_grade hvp hp hperm]; exact hk
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey
@@ -906,7 +906,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     have hrow : ∀ j : Fin K.toNat, ∃ i : Fin C.n.toNat, ValsB.row y j = ValsB.row (A := .prod k v) (C.key, C.val) i ∧
         F[((Enc.raw .i64 K sel)[j.1]'(by rw [his1]; exact j.2)).toNat]?.bind (ps[·]?) = some i.1 := by
       intro j
-      obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy j
+      obtain ⟨i, hi, hyi⟩ := ValsB.gather_row _ hy j
       have hj : j.1 < (Enc.raw .i64 K sel).size := by rw [his1]; exact j.2
       have hGm := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hj)
       rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hGm
@@ -930,7 +930,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   simp only [Tab.Holds]
   constructor
   · rintro ⟨j, ha, hb⟩
-    obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy j
+    obtain ⟨i, hi, hyi⟩ := ValsB.gather_row _ hy j
     have hj : j.1 < (Enc.raw .i64 K sel).size := by rw [his1]; exact j.2
     have hGm := List.mem_map_of_mem (f := UInt64.toNat) (Array.getElem_mem_toList hj)
     rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq] at hGm
@@ -964,7 +964,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
       rw [hsel, List.mem_filter, List.mem_range, decide_eq_true_eq, hmU]; exact ⟨hGm, hbG⟩
     obtain ⟨j, hj, hjG⟩ := List.mem_iff_getElem.1 hmemG
     have hjK : j < K.toNat := by simp at hj; omega
-    obtain ⟨i, hi, hyi⟩ := Vals.gather_row _ hy ⟨j, hjK⟩
+    obtain ⟨i, hi, hyi⟩ := ValsB.gather_row _ hy ⟨j, hjK⟩
     have hiv := hixv j hjK G hGF (by
       rw [← hjG, List.getElem_map, Array.getElem_toList, Array.getElem?_eq_getElem (by rw [his1]; exact hjK),
         Option.getD_some])

@@ -1021,11 +1021,11 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
       have hx : ∃ y, R.Holds (v.row t) y := ⟨_, (himg t _).2 rfl⟩
       simp only [g, dif_pos hx]; exact (himg t _).1 (Classical.choose_spec hx)
     have hrow := Vals.cells_expand_row hb wX.1 hw hex hsg hix g (fun t => by
-      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv t
       exact ⟨j, hj, by rw [← hvj, hg]⟩) hY
     obtain ⟨lo', hi', -, hY'⟩ := Vals.cells_pay hY v
     have hrow' := Vals.cells_expand_row hb wX.1 hw hex hsg hix id (fun t => by
-      obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv t
+      obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv t
       exact ⟨j, hj, hvj⟩) hY'
     -- every element of a cell is a payload row, so `R` maps it to `g` of it and nothing else
     have hfun : ∀ i x, x ∈ ValsB.row (A := .arr A) ⟨m, lo, hi, f⟩ i → ∀ y, R.Holds x y ↔ y = g x := fun i x hx y => by

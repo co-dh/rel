@@ -88,7 +88,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hvt : ∀ g < n.toNat, ∀ d < wN g, ∀ (ht : ((List.range g).map wN).sum + d < T.toNat)
       (hd : SN g + d < m.toNat), ValsB.row v ⟨_, ht⟩ = ValsB.row f ⟨_, hd⟩ := by
     intro g hg d hdw ht hd
-    obtain ⟨j, hj, hvj⟩ := Vals.gather_row f hv ⟨_, ht⟩
+    obtain ⟨j, hj, hvj⟩ := ValsB.gather_row f hv ⟨_, ht⟩
     rw [hvj]; congr 1; apply Fin.ext; rw [← hj]
     have hgS : ((List.range g).map wN).sum + wN g ≤ ((List.range n.toNat).map wN).sum := by
       rw [← sum_range_succ']; exact sum_range_mono wN hg
