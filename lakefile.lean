@@ -107,20 +107,32 @@ lean_exe relc where
   -- `relc run` interprets a program's `io`, which calls compiled code (`Init`, the externs): the symbols exported
   supportInterpreter := true
 
-/-- The C `relc` prints, linked with `librelk.a` and `qrt.o` and nothing of Lean's: the archive contributes the kernels
-    the program calls, and `qrt.o` (`crate/build.sh rt`, from `crate/rt`) the runtime symbols those reach. -/
-target «rel-native» pkg : System.FilePath := do
+/-- A native program, a line of `test/native/progs.txt`: the executable `name`, built from the C that
+    `relc c FILE mod plan` prints (`relc c FILE` when `plan` is `-`). `mod` holds the program, so that editing it regenerates
+    the C (`relc` reads its `.olean` from `LEAN_PATH`, which is not an input of the job). -/
+structure NativeProg where
+  name : String
+  mod  : Lean.Name
+  plan : Option String
+
+/-- The lines of `progs.txt` that `REL_NATIVE` (space-separated names; the Makefile's `NATIVES`) keeps, all when unset. -/
+def nativeProgs (dir : System.FilePath) : IO (Array NativeProg) := do
+  let want := (← IO.getEnv "REL_NATIVE").map (·.splitOn " " |>.filter (· ≠ ""))
+  let rows := ((← IO.FS.readFile (dir / "test" / "native" / "progs.txt")).splitOn "\n").filterMap fun l =>
+    if l.startsWith "#" then none else match l.splitOn " " |>.filter (· ≠ "") with
+      | n :: m :: p :: _ => some (⟨n, m.toName, if p == "-" then none else some p⟩ : NativeProg)
+      | _ => none
+  return rows.toArray.filter fun p => want.all (·.contains p.name)
+
+/-- The C each program of `progs.txt` prints, linked with `librelk.a` and `qrt.o` and nothing of Lean's: the archive
+    contributes the kernels the program calls, and `qrt.o` (`crate/build.sh rt`, from `crate/rt`) the runtime symbols
+    those reach. The result is the executables' paths, `.lake/build/native/<name>`. -/
+target «rel-native» pkg : Array System.FilePath := do
   let dir := pkg.buildDir / "native"
   let inc := (← getLeanIncludeDir).toString
   let relc ← relc.fetch
   -- `relc` elaborates the program, which reads the modules `lake env` puts on `LEAN_PATH` (`TestNative.planIO`)
   let env ← getAugmentedEnv
-  let cJob ← relc.mapM fun exe => do
-    let c := dir / "rel-native.c"
-    IO.FS.createDirAll dir
-    let out ← IO.Process.output { cmd := exe.toString, args := #["c", c.toString], env }
-    unless out.exitCode == 0 do error s!"{exe} c {c}: exit {out.exitCode}: {out.stderr}"
-    return c
   let crate := pkg.dir / "crate"
   let cargo := dir / "cargo"
   let src ← inputDir (crate / "rt" / "src") (text := true) (·.extension == some "rs")
@@ -128,12 +140,24 @@ target «rel-native» pkg : System.FilePath := do
     fun (f : String) => inputTextFile (crate / f)
   let rtO ← buildFileAfterDep (cargo / "qrt.o") (cfg.foldl (fun j f => j.zipWith (fun s _ => s) f) src) fun _ =>
     proc { cmd := "sh", args := #[(crate / "build.sh").toString, "rt"], env := #[("CARGO_TARGET_DIR", cargo.toString)] }
-  let mainO ← buildO (dir / "rel-native.o") cJob #["-I", inc] #["-O2"]
   let kern ← relkLib pkg
-  mainO.bindM fun m => rtO.bindM fun r => kern.mapM fun k => do
-    let exe := dir / "rel-native"
-    proc { cmd := "cc", args := #["-o", exe.toString, m.toString, r.toString, k.toString, "-lm"] }
-    return exe
+  let exes ← (← nativeProgs pkg.dir).mapM fun p => do
+    let some m ← findModule? p.mod | error s!"native program {p.name}: no module {p.mod} in the workspace"
+    let olean ← m.olean.fetch
+    let c := dir / s!"{p.name}.c"
+    let args := #["c", c.toString] ++ (p.plan.map (#[p.mod.toString, ·])).getD #[]
+    let cJob ← relc.bindM fun exe => olean.mapM fun _ => do
+      IO.FS.createDirAll dir
+      let out ← IO.Process.output { cmd := exe.toString, args, env }
+      unless out.exitCode == 0 do error s!"{exe} {args}: exit {out.exitCode}: {out.stderr}"
+      return c
+    let mainO ← buildO (dir / s!"{p.name}.o") cJob #["-I", inc] #["-O2"]
+    mainO.bindM fun m => rtO.bindM fun r => kern.mapM fun k => do
+      let exe := dir / p.name
+      proc { cmd := "cc", args := #["-o", exe.toString, m.toString, r.toString, k.toString, "-lm"] }
+      return exe
+  return Job.collectArray exes
+
 
 /-- `make axioms` and `make externs`: enumerate the declarations of named modules. Outside the `Rel` glob, so
     `lake build Rel` neither builds nor runs it. -/
