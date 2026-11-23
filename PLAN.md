@@ -1447,8 +1447,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   参数，`Arr.of t n (e : Enc)`；`Plan.cols` 给 `SideCol = USize ⊕ Σ t k, Arr t k`（`checkSyms` 直接拿到
   `Arr .sym k`，不再经 `Arr.of` 重查）；`Db.ownFile t n e`（enum 分支删，头里 `attr`/`domain` 写空）；
   `Expand.valsEq` 比 `t`、`n` 与 `encEq`；`Table.encOf` 删；`QValue.marking` 删（无使用者，8.4b）。`general` 不需要盒子：它的列是 `Enc.gen xs`，
-  仍是 `Arr .general n`。剩：删 `general`/`Enc.gen` 与 `QValue`（`Carrier .general`、`ValEq`），own 文件头去掉
-  `attr`/`domain` 并升版本（Rust `own.rs` 同改）。
+  仍是 `Arr .general n`。
+  ✅ own 文件头 v7（8.4b/8.4c）：字节 8 版本 7、9 类型码、10 kind、11 part 数（u8）、12..16 零、16..24 count，
+  `attr` 与 domain 名去掉（`OwnFile {code kind count parts}`，Rust `own.rs` 同改，`test/native/in` 重写）；
+  `ownParse_ownImage` 在 `ByteArray` 形式上重证；plan 的列寄存器按名读（`Side.regs`/`Side.count`/`Side.enc`）。
+  剩：删 `general`/`Enc.gen` 与 `QValue`（`Carrier .general`、`ValEq`）。
 - 🔄 8.5 `Obj.arr` 的 `0 ≤ lo ≤ hi ≤ m` 作为不变式，只在 `readVals` 查一次（分支 `lohi`）。例：payload `m = 5`，
   一格 `lo=2 hi=7`，今天每个读者都算 `min(hi,m)=5`：一次 `∋` 3 次 `colMap` + 2 次 `colConst`（Div.lean:20-30），
   一次 concat 4 次 `clampShift`。改后 `readVals` 拒收 `hi>m`，产生者（`cons°/snoc°/cat°` 等）给出证明，不再 clamp。
