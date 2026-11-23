@@ -480,37 +480,36 @@ theorem Prim.den_cmpRelRow_le {t : QAtomicType} (T : Core.Rel (Obj.El (.atom t))
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact (dif_pos ⟨rfl, rfl⟩).trans rfl
 
-/-- `≤`, `<` on the universe `U` of the atom `t` as a composition of relations, `⟨dom U, ⊤(dom U)⟩ cmp π₂`, `cmp` the
-    row `le` or `lt` of `cmpOps` testing the pair. `Tm.lt`/`Tm.leq` are the row `cmpRelRow` given `U`, run fused
-    (`GenK.cmpRel`: closed, or on the pairs a meet hands it); this composition runs on demand only (`Tm.dem`: `⊤` and
-    `dom` do), which the frame tests refuse (`<°`, `quantile`), so the row stays and the two are tied here. -/
-def Tm.cmpDef (s : String) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : Tm (.atom t) (.atom t) :=
-  .comp (A := .atom t) (B := .prod (.atom t) (.atom t)) (.pair (.dom U) (.top (.dom U)))
-    (.comp (B := .prod (.atom t) (.atom t)) (.prim (cmpRow s)) .outr)
+/-- `Tm.cmpDef c U` for a coreflexive test `c` of the pairs: `(a, b)` with `a` and `b` in `dom U` that `c` holds at. -/
+theorem Tm.cmpDef_den (ρ : Val) {B : Obj} (c : Tm (.prod B B) (.prod B B)) (U : Tm B B)
+    (hc : ∀ p q, c.den ρ p q → q = p) (a b : Obj.El B) :
+    (Tm.cmpDef c U).den ρ a b ↔ (∃ v, U.den ρ a v) ∧ (∃ w, U.den ρ b w) ∧ c.den ρ (a, b) (a, b) := by
+  simp only [Tm.cmpDef, Tm.den, Tm.dom_den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.top, Core.Rel.inter,
+    Core.Rel.recip, Core.Rel.id, Core.Rel.graph]
+  constructor
+  · rintro ⟨⟨x, y⟩, ⟨⟨rfl, v, h1, -⟩, w, -, rfl, w2, -, hw⟩, p, hcp, rfl⟩
+    obtain rfl := hc _ _ hcp
+    exact ⟨⟨v, h1⟩, ⟨w2, hw⟩, hcp⟩
+  · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
+    exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), hl, rfl⟩
 
 theorem Tm.cmpDef_lt_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
-    (Tm.cmpDef "lt" U).den ρ = (Tm.lt U).den ρ := by
+    (Tm.cmpDef (.prim (cmpRow "lt")) U).den ρ = (Tm.lt U).den ρ := by
+  have hd : ∀ p q, (Tm.prim (cmpRow "lt") : Tm (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))).den ρ p q ↔
+      q = p ∧ ltAt t p.1 p.2 := fun p q => by
+    simp only [Tm.den, Prim.den_cmpRow_lt, ordDen, if_true]
   funext a b; apply propext
-  simp only [Tm.cmpDef, Tm.lt, Tm.den, Tm.argDen, Prim.den_cmpRelRow_lt, Tm.dom_den, Prim.den_cmpRow_lt, ordDen, Core.Rel.comp, Core.Rel.rpair,
-    Core.Rel.top, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph, ltDen]
-  simp only [if_true]
-  constructor
-  · rintro ⟨⟨x, y⟩, ⟨⟨rfl, v, h1, -⟩, w, -, rfl, w2, -, hw⟩, p, ⟨rfl, hl⟩, rfl⟩
-    exact ⟨⟨v, h1⟩, ⟨w2, hw⟩, hl⟩
-  · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
-    exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), ⟨rfl, hl⟩, rfl⟩
+  rw [Tm.cmpDef_den ρ _ U fun p q h => ((hd p q).1 h).1, hd]
+  simp only [Tm.lt, Tm.den, Tm.argDen, Prim.den_cmpRelRow_lt, ltDen, true_and]
 
 theorem Tm.cmpDef_le_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
-    (Tm.cmpDef "le" U).den ρ = (Tm.leq U).den ρ := by
+    (Tm.cmpDef (.prim (cmpRow "le")) U).den ρ = (Tm.leq U).den ρ := by
+  have hd : ∀ p q, (Tm.prim (cmpRow "le") : Tm (.prod (.atom t) (.atom t)) (.prod (.atom t) (.atom t))).den ρ p q ↔
+      q = p ∧ leAt t p.1 p.2 := fun p q => by
+    simp only [Tm.den, Prim.den_cmpRow_le, ordDen, Bool.false_eq_true, if_false]
   funext a b; apply propext
-  simp only [Tm.cmpDef, Tm.leq, Tm.den, Tm.argDen, Prim.den_cmpRelRow_le, Tm.dom_den, Prim.den_cmpRow_le, ordDen, Core.Rel.comp, Core.Rel.rpair,
-    Core.Rel.top, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph, leqDen]
-  simp only [Bool.false_eq_true, if_false]
-  constructor
-  · rintro ⟨⟨x, y⟩, ⟨⟨rfl, v, h1, -⟩, w, -, rfl, w2, -, hw⟩, p, ⟨rfl, hl⟩, rfl⟩
-    exact ⟨⟨v, h1⟩, ⟨w2, hw⟩, hl⟩
-  · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
-    exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), ⟨rfl, hl⟩, rfl⟩
+  rw [Tm.cmpDef_den ρ _ U fun p q h => ((hd p q).1 h).1, hd]
+  simp only [Tm.leq, Tm.den, Tm.argDen, Prim.den_cmpRelRow_le, leqDen, true_and]
 
 theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
     (Tm.at0 (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by

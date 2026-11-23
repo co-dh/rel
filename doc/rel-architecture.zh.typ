@@ -185,7 +185,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
   [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
-  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
+  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）在有序 atom 上是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），在其它 object 上是 `Tm.cmpDef c U`（`Tm.cmpDef_den`；`c` 是 prelude 的 `lt` `le`，`Pre.lt` 的 `df` 字段，已定 9），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
   [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删；闭部分的共享槽是零元 `call`，`share` 已删）],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有定义 `Tm.ascDef`），在某个类型上实例化，参数由 `arg` 给出],
@@ -273,6 +273,15 @@ asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
     （位的 totalOrder）不同，所以浮点是 native。决定 F：`lt` 是任意 object 上的序，`num` 之外拒绝就去掉了这个序。Q1 = A：调用的含义是
     定义在调用处对象上的展开，行只在定理或 `native` 允许处代替展开。`length` `sum` 的文本恰在 `num` 之外的 atom 上失败，所以只改错误措辞、
     不改值。`N×N`、`1+N`、`[char]` 上的 `lt` 运行文本（`Test/Orders.lean` 的 `ltObjs`）],
+  [9 `<` `≤` 在 object `o` 上是什么（O5，C7）], [`build` 在 `o` 解出之后按 `o` 选：`sym`：`rank(D) < rank(D)°`（`symOrd`，不变）；
+    基础 object：行 `cmpRelRow` 给定 `U`（`Tm.lt U`，不变）；其它 object（积、和、数组、`1`）：`Tm.cmpDef c U = ⟨dom U, ⊤(dom U)⟩ c π₂`，
+    `c` 是 prelude `lt`（`≤` 为 `le`）在 `o×o` 上的节点，`U` 是 `o` 的 `uniTm`。`c` 由 `cmpTest` 在 `.op` 处取得（名字取自 `cmpOps`，
+    `env.def?`，类型合一为 `o×o ⟶ o×o`）；`lt` 之前的 prelude 行里没有它，`df = none`，此时在非 atom 上报错。`o` 里有 `Obj.ascBad` 的 atom 时报错
+    （没有序码的 atom 不得进入 `lt` 的文本）。`Pre.numsAt` 只在 `o` 是基础 object 时给出 `<` 的数 object],
+    [`lt` 的文本给积的序就是字典序（`Obj.lt_prod`），数组 `Obj.lt_cons`，和 `Obj.lt_inl_inr`，不为每种形状写一个序。定义 `Tm.cmpDef` 的
+    `c` 是参数，所以同一个定义覆盖行（`.prim (cmpRow …)`）和文本；`Tm.cmpDef_den` 对任何 coreflexive 的 `c` 成立，`Tm.cmpDef_lt_den`
+    `Tm.cmpDef_le_den` 是它在 atom 上的特例。`>` `≥` 是 prelude 里 `<°` `≤°` 的定义，所以 `lt` `le` 写在它们之上，否则它们的 `<` 看不到 `lt`。
+    已知缺口：`[char]` 等无界分量没有 universe，`<` 在其上报 `has no universe`，没有绕过的写法（`Test/Orders.lean` 的 `errAt`）],
 )
 
 待 owner 决定（选项与推荐在 `/data/tmp/hb10c/brief.md`，决定前相关步骤不发）：
@@ -456,7 +465,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`dom` `ran`], [取一列 → `asc` → `seen`（`first` 取代表行）],
   [`R\S` `R/S` 对称除 `R ÷ S`], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
   [值动词 `plus` `minus` `times` `divide`（`%`，只在浮点 atom 上）`div` `mod` `max` `min`（`Tm.arith t`）], [两个操作数各与 `dom U` 复合（`≫`）→ 一次 `scan` 链：`i64` 上是整数 `Op` 加回绕/null 标记（`stepCols`）；浮点 atom 上先 `f32to64` 宽化，再 `fadd` `fsub` `fmul` `fdiv` `fmax` `fmin`，`div` 为 `ffloor(fdiv)`、`mod` 为 `x − y·ffloor(x/y)`（q 的定义），最后 `fto t` 写回 `t` 的规范字（`f32` 舍入、`−0` 写成 `+0`、NaN 写成 null）→ 非 null 的行 `keep` → `≫ U`；无新 kernel],
-  [`<` `≤`（行 `cmpRelRow` 给定 `U`：`Tm.lt U`、`Tm.leq U`；定义 `Tm.cmpDef`）], [两侧（`K` 的 `pairs`，或 `dom U` 的 CROSS）→ `scan` 一次比较：`i64` 用有符号 `lt` `le`，浮点 atom 宽化到 `f64` 后用 IEEE 的 `flt` `fle`（`Tab.ordOp`）→ `keep`],
+  [`<` `≤`（行 `cmpRelRow` 给定 `U`：`Tm.lt U`、`Tm.leq U`；定义 `Tm.cmpDef`）], [两侧（`K` 的 `pairs`，或 `dom U` 的 CROSS）→ `scan` 一次比较：`i64` 用有符号 `lt` `le`，浮点 atom 宽化到 `f64` 后用 IEEE 的 `flt` `fle`（`Tab.ordOp`）→ `keep`；非 atom 的 object 上是 `Tm.cmpDef c U`，`c` 是 prelude `lt` `le` 的文本，各步按文本里的 kernel 运行（已定 9）],
   [Λ（`arr` 侧）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停：整体迭代（`Tab.fixOn`）；线性递归走行 `star`（semi-naive）],
 )

@@ -1,6 +1,7 @@
 module
 
 public import Rel.Run.Struct
+public import Rel.Run.Asc
 public import Rel.Run.SetOps
 public import Rel.Run.Lang.Syntax
 public import Rel.Run.Lang.Tm
@@ -416,9 +417,10 @@ inductive Pre
   | prim (r : Prim) (args : List Pre) (s t : OTy) (q : Option Pre)
   | succ (pos : Pos) (n : OTy)
   | arith (pos : Pos) (k : UInt8) (n : OTy)
-  /-- `≤` at the number object `n`; `rk` `rank(D)` for the program's dictionary `D`, which `n` = `sym` orders by (`symOrd`). -/
-  | leq (pos : Pos) (n : OTy) (rk : Option Pre)
-  | lt (pos : Pos) (n : OTy) (rk : Option Pre)
+  /-- `≤` at the object `n`; `rk` `rank(D)` for the program's dictionary `D`, which `n` = `sym` orders by (`symOrd`);
+      `df` the prelude's order test at `n×n`, the definition `<` runs through at an object that is no atom. -/
+  | leq (pos : Pos) (n : OTy) (rk : Option Pre) (df : Option Pre)
+  | lt (pos : Pos) (n : OTy) (rk : Option Pre) (df : Option Pre)
   /-- The `asc` row `q` (`.prim`), `rk` as in `leq`: at `sym` its set is numbered by text order (`symOrd`). -/
   | ranked (q : Pre) (rk : Option Pre)
   | fold (right : Bool) (e s : Pre)
@@ -627,8 +629,8 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .prim r xs s t q => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t (← q.mapM (f none))
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
-  | .leq q n r => return .leq (← fp q) n (← r.mapM mo)
-  | .lt q n r => return .lt (← fp q) n (← r.mapM mo)
+  | .leq q n r d => return .leq (← fp q) n (← r.mapM mo) (← d.mapM mo)
+  | .lt q n r d => return .lt (← fp q) n (← r.mapM mo) (← d.mapM mo)
   | .ranked q r => return .ranked (← mo q) (← r.mapM mo)
   | .fold d e s => return .fold d (← mo e) (← mo s)
   | .lit q a b ps gd => return .lit (← fp q) a b ps gd
@@ -1145,9 +1147,12 @@ def indexAt (p : Pos) (k : Nat) (b : OTy) : Pre :=
   .comp (.pair (.id (.arr b)) (.top p (.arr b) n (some (.tm ⟨.long, .long, .val ⟨1, col [v], col [v]⟩⟩))))
     (.prim indexRow [] (.prod (.arr b) n) b none)
 
-/-- A constant: fresh objects for its type, the explicit ones `(A,B)` unified with source and target. -/
-def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre := none) : M Arg := do
+/-- A constant: fresh objects for its type, the explicit ones `(A,B)` unified with source and target; `df` the
+    prelude's order test of an order at its object (`cmpTest`). -/
+def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre := none)
+    (cmp : OTy → M (Option Pre) := fun _ => pure none) : M Arg := do
   let a ← fresh; let b ← fresh
+  let df ← cmp a
   let row ← match ← o.row p with
     | some r => do
       let (ps, s, t, _) ← r.inst env
@@ -1160,8 +1165,8 @@ def constant (env : Env) (p : Pos) (o : Op) (objs : List OExp) (rk : Option Pre 
     | .top => (.top p a b none, a, b)
     | .outl => (.outl a b, .prod a b, a)
     | .outr => (.outr a b, .prod a b, b)
-    | .leq => (.leq p a rk, a, a)
-    | .lt => (.lt p a rk, a, a)
+    | .leq => (.leq p a rk df, a, a)
+    | .lt => (.lt p a rk df, a, a)
     | .succ => (.succ p a, a, a)
     | .arith k => (.arith p k a, .prod a a, a)
     | .mem => (.mem a, .arr a, a)
@@ -1259,8 +1264,9 @@ def Pre.numsAt (mc : Lean.MetavarContext) : Pre → List (OTy × String × (QAto
   | .succ _ n => [(n, "succ", (· == .i64))]
   | .arith _ k n => [((nulPayload mc k n).getD n, (Op.arith k).sym, arithOk k)]
   -- an order at `sym` is the order of the texts (`symOrd`), which `build` gives or refuses for want of the dictionary
-  | .leq _ n _ => [(n, "≤", fun t => t.ordNum.isSome || t == .sym)]
-  | .lt _ n _ => [(n, "<", fun t => t.ordNum.isSome || t == .sym)]
+  -- at any other object `<` computes on no number object of its own: its definition's nodes carry theirs
+  | .leq _ n _ _ => match zonk mc n with | .base _ => [(n, "≤", fun t => t.ordNum.isSome || t == .sym)] | _ => []
+  | .lt _ n _ _ => match zonk mc n with | .base _ => [(n, "<", fun t => t.ordNum.isSome || t == .sym)] | _ => []
   -- the ordered prim `build` ranks through `symObj` (`.ranked`): its own atoms, and `sym` by the same rule
   | .ranked (.prim r a s t q) _ => (Pre.prim r a s t q).numsAt mc |>.map fun (n, op, ok) => (n, op, fun t => ok t || t == .sym)
   | _ => []
@@ -1474,6 +1480,16 @@ def settle (m : Option OTy) (p : Pos) (as : List Arg) : Arg → M Arg
     | _, _ => pure (.rel q i (.prod a b))
   | r => pure r
 
+/-- The prelude's order test of the strictness of `o` (`cmpOps` names it) at `a×a ⟶ a×a`, as `rk` reads `rank`; none
+    when it is not in scope (the prelude's lines above it), and for an operator that is no order. -/
+def cmpTest (env : Env) (p : Pos) (o : Op) (a : OTy) : M (Option Pre) := do
+  let strict := o == .lt
+  let some (n, _) := (if o == .lt || o == .leq then cmpOps.find? (·.2 == strict) else none) | return none
+  let some d := env.def? n | return none
+  let (q, s, t) := (← settle none p [] (← d.apply p [])).plain
+  unify p s!"the source of the order test `{n}`" s (.prod a a); unify p s!"the target of the order test `{n}`" t (.prod a a)
+  pure (some q)
+
 /-- `hylo(c, S)`'s functor `G`, read off `c : a ⟶ t` (`t = G(a)`) and `S : s ⟶ b` (`s = G(b)`) along `×`, `+`,
     `[ ]`: a place where `t` is `a` and `s` is `b` (or not known yet) is `G`'s argument, one where they are one object
     a constant. Its terms: `G(X) : t ⟶ G(b)`, `X` the variable `k` (`F` on `[ ]`, `⟨π₁·,π₂·⟩` on `×`, `[· inl,· inr]`
@@ -1578,7 +1594,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
           let (q, _, _) := (← settle none p [a'] (← df.apply p [a'])).plain; pure (some q)
         | _, _, _ => pure none
       | _, _ => pure none
-    if args.isEmpty then constant env p o objs rk
+    if args.isEmpty then constant env p o objs rk (cmpTest env p o)
       else match m with
         | some I => if as.any Arg.isFam then appliedL I p o as else applied env p o (as.map Arg.plain)
         | none => do
@@ -2343,6 +2359,16 @@ where
 def symObj (n : OTy) : Bool :=
   match zonk mc n with | .base nm => (objs.lookup nm).any (·.obj == .atom .sym) | _ => false
 
+/-- `<`, `≤` (`op`) at the object `n` that is no atom: its object `B` and the prelude's order test `df` (`cmpTest`),
+    refused when that is not in scope or an atom of `B` has no order code (`Obj.ascBad`, the one reader of it). -/
+def ordObj (p : Pos) (op : String) (n : OTy) (df : Bool) : Except Err Obj := do
+  unless df do
+    let nm := ((cmpOps.find? (·.2 == (op == "<"))).map (·.1)).getD op
+    throw ⟨p, s!"{op} at {zonk mc n}: the order of an object that is no atom is the prelude's `{nm}`, which is not defined above this line"⟩
+  let B ← toObj objs mc dp n
+  if let some t := B.ascBad then throw ⟨p, s!"{op} at {zonk mc n}: the atom {atomName t} has no order code"⟩
+  pure B
+
 /-- An order at `sym` is the order of the texts: with `r = rank(D)` (`rk`, built from the program's `dictionary D`)
     numbering each id by its text's position and `Q = P r` (`P` the set `asc` numbers; none, `Q = r`), `mk Q Q°` is
     `Q ≫ <(ran Q) ≫ Q°` for `<` (`≤` likewise) and `asc(ran Q) ≫ Q°` for `asc`: the ranks are ordered at `i64`.
@@ -2419,7 +2445,7 @@ partial def Tm.reads (k : Nat) : {A B : Obj} → Tm A B → List Res
 /-- Whether `t` orders by `<`, `≤` or `asc`, a call's body included: built at placeholders it holds the number order,
     which is no order of the texts at `sym` (`symOrd`). -/
 partial def Tm.ordered : {A B : Obj} → Tm A B → Bool
-  | _, _, .prim r => [ascRow, cmpRelRow false, cmpRelRow true].any (·.sym == r.sym)
+  | _, _, .prim r => ([ascRow] ++ cmpOps.map (cmpRow ·.1) ++ [cmpRelRow false, cmpRelRow true]).any (·.sym == r.sym)
   | _, _, .call _ _ _ _ b => b.ordered
   | _, _, t => t.parts.any fun ⟨_, _, c⟩ => c.ordered
 
@@ -2595,14 +2621,30 @@ def build (δ : Dem) : Pre → Except Err Res
     let (hi, lo) : Tm (.prod (.atom t) (.atom t)) (.atom t) × Tm (.prod (.atom t) (.atom t)) (.atom t) :=
       if k == Rel.Kernel.Ew.greater then (.outr, .outl) else (.outl, .outr)
     return ⟨_, _, .join (.comp le hi) (.comp gt lo)⟩
-  | .leq p n rk => do
+  | .leq p n rk df => do
     if symObj objs mc n then
       return ← symOrd dp δ p "≤" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.leq (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, Tm.leq U⟩
-  | .lt p n rk => do
+    if let .base _ := zonk mc n then
+      let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, Tm.leq U⟩
+    let B ← ordObj objs mc dp p "≤" n df.isSome
+    let some d := df | internal dp "≤: the order test"
+    let U ← uniTm objs mc dp δ p n B "≤"
+    let ⟨X, Y, c⟩ ← build δ d
+    if h : X = .prod B B ∧ Y = .prod B B then
+      match X, Y, c, h with | _, _, c, ⟨rfl, rfl⟩ => pure ⟨_, _, Tm.cmpDef c U⟩
+    else internal dp "the order test's objects"
+  | .lt p n rk df => do
     if symObj objs mc n then
       return ← symOrd dp δ p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.lt (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
+    if let .base _ := zonk mc n then
+      let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
+    let B ← ordObj objs mc dp p "<" n df.isSome
+    let some d := df | internal dp "<: the order test"
+    let U ← uniTm objs mc dp δ p n B "<"
+    let ⟨X, Y, c⟩ ← build δ d
+    if h : X = .prod B B ∧ Y = .prod B B then
+      match X, Y, c, h with | _, _, c, ⟨rfl, rfl⟩ => pure ⟨_, _, Tm.cmpDef c U⟩
+    else internal dp "the order test's objects"
   -- `asc(P)` at `sym`: `asc(ran(P r)) (P r)°`, the set `P` through the ranks, numbered, and back through them
   | .ranked (.prim r [x] s t q) rk => do
     if symObj objs mc t then
