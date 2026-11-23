@@ -76,7 +76,7 @@ through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at pos
 `kscan`). A summand past `2^63` rows, which an `Int64` position cannot reach, is the error. -/
 def injCols (n : USize) (s : Bool) : Except String (Arr .u1 n × Arr .i64 n) := do
   if 2 ^ 63 < n.toNat then throw s!"inj: {n} rows, past an Int64 position"
-  pure (← colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)], ← colArr .first n .pos .pos .i64)
+  pure (← colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)], ← Arr.pos n)
 
 namespace Tab
 variable {A B C D I : Obj}

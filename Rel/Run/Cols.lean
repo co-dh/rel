@@ -24,7 +24,7 @@ def shiftCol (n : USize) (s : UInt64) : Except String Enc := colMap .first n .po
 
 /-- `colMap`'s answer as an `Arr t n`, the map's output well formed at `t` (`colMap_closed`). -/
 def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
-    (pre post : List (Op × UInt64) := []) (hs : kscanStream op [(n, a), (n, b)] pre post = false := by simp [kscanStream]) :
+    (pre post : List (Op × UInt64) := []) (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) :
     Except String (Arr t n) :=
   match h : colMap op n a b t s pre post with
   | .ok o => .ok (Arr.mk o (colMap_closed hs h).2 (colMap_plain hs h))
@@ -43,7 +43,7 @@ def widen (t : QAtomicType) : List (Op × UInt64) :=
 
 /-- `kscan`'s answer as an `Arr t n`, well formed at `t` (`kscan_closed`). -/
 def scanArr (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : Option Enc) (es : List (USize × Enc))
-    (pre post : List (Op × UInt64) := []) (hs : kscanStream op es pre post = false := by simp [kscanStream]) :
+    (pre post : List (Op × UInt64) := []) (hs : kscanStream op es pre post = false := by lockstep) :
     Except String (Arr t n) :=
   match h : kscan op rev s t n seg es pre post with
   | .ok r =>
@@ -110,7 +110,7 @@ def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (
   colArr .first n x.enc x.enc .i64 .i64 [] [(.max, 0), (.min, c), (.add, s)]
 
 /-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
-theorem colPrefix_closed {op : Op} (ho : op ≠ .first) {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :
+theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide) :
     Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
   split at h; · cases h
@@ -118,7 +118,8 @@ theorem colPrefix_closed {op : Op} (ho : op ≠ .first) {n : USize} {a o : Enc} 
   exact ⟨(kscan_lock_closed (kscanStream_ne ho _ _ _) hr).1, (kscan_lock_closed (kscanStream_ne ho _ _ _) hr).2.1⟩
 
 /-- `colPrefix`'s answer holds no null (`kscan_closed`). -/
-theorem colPrefix_plain {op : Op} (ho : op ≠ .first) {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) : hasNul o = false := by
+theorem colPrefix_plain {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide) :
+    hasNul o = false := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
@@ -139,7 +140,7 @@ def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
   if 2 ^ 63 ≤ n.toNat then .error s!"count: {n} rows, past an Int64 count" else do
     let p := (← kscan .first false .i64 .i64 n none [(n, tag.enc)] [] (if s then [] else [(.not, 0)])).1
     match h : colPrefix .add n p with
-    | .ok P => .ok (lastCount n P (colPrefix_closed (by decide) h).2 (colPrefix_plain (by decide) h))
+    | .ok P => .ok (lastCount n P (colPrefix_closed h).2 (colPrefix_plain h))
     | .error e => .error e
 
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/

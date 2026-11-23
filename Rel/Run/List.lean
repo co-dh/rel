@@ -25,7 +25,7 @@ open Rel.Ext Rel.Kernel Rel.Verify
 (`colPrefix .add`, the layout `expand` places its groups by), `lo = hi - w`. -/
 def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Except String (Vals (.arr B) n) := do
   let P ← colPrefix .add n w
-  pure ⟨T, ← colArr .sub n P w, ← colArr .first n P P, pay⟩
+  pure ⟨T, ← colArr .sub n P w, ← scanArr .first false .i64 .i64 n Option.none [(n, P)], pay⟩
 
 /-- `x` with every array payload cut to the elements its cells read, where at most half of it is read (`2 · T ≤ m`,
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads

@@ -236,6 +236,10 @@ theorem scatterWords_size {op : Op} {is es : Array UInt64} {n : Nat} {fill : UIn
       · cases h
     · cases h
 
+/-- Discharges `kscanStream op es pre post = false` for an `op` that is a concrete constructor, or a conditional of two,
+and for a chain with a step: the autoParam of every caller that maps or scans in lock-step. -/
+macro "lockstep" : tactic => `(tactic| first | decide | (simp [kscanStream]; done) | (simp only [kscanStream]; split <;> (try (rename_i h; split at h)) <;> simp_all))
+
 /-- Only `first` reads its sources as a stream, so any other op closes with no hypothesis on its sources. -/
 theorem kscanStream_ne {op : Op} (h : op ≠ .first) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) :
     kscanStream op es pre post = false := by
