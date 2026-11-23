@@ -62,7 +62,7 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
     obtain ⟨K, hK, hU⟩ := Except.bind_eq_ok'.1 hU
     obtain ⟨V, hV, -⟩ := Except.bind_eq_ok'.1 hU
     exact ⟨gather_valid (x := X) hK, gather_valid (x := w) hV⟩
-  have hcm := colMap_get (colArr_ok hw)
+  have hcm := colMap_get (colArr_ok hw) (hn := nofun)
   have hfl := colMap_post hf
   -- each row: the flag `1` and the image read back, or the flag `0` and no image
   have row : ∀ i : Fin n.toNat,
@@ -95,6 +95,12 @@ theorem cast_holds {s t : QAtomicType} {n : USize} {X : Vals (.atom s) n} {T : T
   refine keep_map_holds (P := fun x y => QAtomicType.embed s t x = some y) hU (fun i => ?_) a b
   rcases row i with h | h <;> simp only [wd, Vals.row_atom, h.1, h.2] <;> simp
 
+/-- No `floatOps` row is the stream `.first` (`fmapCols_spec` reads `colMap`, which `.first` makes a stream). -/
+theorem floatOps_ne {s : String} {o : Op} {u : QAtomicType} (hs : floatOps.lookup s = some (o, u)) : o ≠ .first ∧ o ≠ .null := by
+  simp only [floatOps, List.lookup] at hs
+  repeat' split at hs
+  all_goals first | (cases hs; decide) | cases hs
+
 /-- **A `floatOps` row `s` on the values `X`** denotes `floatDen o` of its `Op` there: no row at an object holding no
 float or a target holding no number, nor where the answer has no word at the target. -/
 theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : String} {o : Op} {u : QAtomicType}
@@ -108,7 +114,7 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
     rename_i hf
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
     refine keep_map_holds hU (fun i => ?_) a b
-    obtain ⟨h2, hi⟩ := fmapCols_spec hf.2.1 hf.2.2 hm i
+    obtain ⟨h2, hi⟩ := fmapCols_spec hf.2.1 hf.2.2 hm i (floatOps_ne hs).1 (floatOps_ne hs).2
     -- a unary `Op` reads its second operand alone (`Op.eval_acc`), so `X X` is `0 X`
     refine ⟨h2, fun v => (hi v).trans ⟨fun ⟨X, X', Y, R, hX, hX', hY, hR⟩ => ?_,
       fun ⟨_, X, Y, R, hX, hY, hR⟩ => ⟨X, X, Y, R, hX, hX, by rw [Op.eval_acc hf.1]; exact hY, hR⟩⟩⟩
@@ -122,7 +128,7 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
     obtain ⟨ho, rfl, hf, hu⟩ := hf
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
     refine keep_map_holds hU (fun i => ?_) a b
-    obtain ⟨h2, hi⟩ := fmapCols_spec hf hu hm i
+    obtain ⟨h2, hi⟩ := fmapCols_spec hf hu hm i (floatOps_ne hs).1 (floatOps_ne hs).2
     exact ⟨h2, fun v => (hi v).trans ⟨fun hr => ⟨ho, rfl, hr⟩, fun ⟨_, _, hr⟩ => hr⟩⟩
   | .atom _, .prod .., _, _, h, _, _ | .atom _, .arr _, _, _, h, _, _ | .atom _, .sum .., _, _, h, _, _
   | .prod (.atom _) (.atom _), .prod .., _, _, h, _, _ | .prod (.atom _) (.atom _), .arr _, _, _, h, _, _

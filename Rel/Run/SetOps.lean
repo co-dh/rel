@@ -26,16 +26,17 @@ def keep (T : Tab k v) (b : Enc) : Except String (Tab k v) := do
   let (M, sel) ← whereCol T.n b
   pure ⟨M, ← Vals.gather M sel T.key, ← Vals.gather M sel T.val⟩
 
-/-- **`R` then `S`**: the rows of both, `R`'s first (`Vals.concat` of each side on `catPlan`). -/
+/-- **`R` then `S`**: the rows of both, `R`'s first (`Vals.concat` of each side, `n` the summed count `catRows`). -/
 def concat (R S : Tab k v) : Except String (Tab k v) := do
-  let (n, off) ← catPlan R.n S.n
-  pure ⟨n, ← Vals.concat n off R.key S.key, ← Vals.concat n off R.val S.val⟩
+  let n ← catRows R.n S.n
+  pure ⟨n, ← Vals.concat n R.key S.key, ← Vals.concat n R.val S.val⟩
 
-/-- `R.concat S` and its source tag: `0` at `R`'s rows and `1` at `S`'s (`n₂` ones `kscatter`ed to `off`). -/
+/-- `R.concat S` and its source tag: `0` at `R`'s rows and `1` at `S`'s (`n₂` ones `kscatter`ed to the rows
+`R.n + k`, `shiftCol`). -/
 def tagged (R S : Tab k v) : Except String (Tab k v × Enc) := do
-  let (n, off) ← catPlan R.n S.n
-  pure (⟨n, ← Vals.concat n off R.key S.key, ← Vals.concat n off R.val S.val⟩,
-    ← kscatter .last S.n off (← colConst S.n 1) n 0)
+  let n ← catRows R.n S.n
+  pure (⟨n, ← Vals.concat n R.key S.key, ← Vals.concat n R.val S.val⟩,
+    ← kscatter .last S.n (← shiftCol S.n R.n.toUInt64) (← colConst S.n 1) n 0)
 
 /-- **`R ∪ S`**: `Tab.canon` of the concatenation. -/
 def union (R S : Tab k v) : Except String (Tab k v) := R.concat S >>= canon
@@ -49,7 +50,7 @@ def seenSeg (n : USize) (f : Enc) (m : USize) : Except String Enc := do
 whose `m` groups `g` are runs marked by `seg` (`seenSeg`), a segmented `kscan` folds `op` over `x` from `z` within each
 run, and a group's answer is its run's last row (`kscatter .last` through `g`, the later row overwriting). -/
 def groupFold (op : Op) (n : USize) (g seg : Enc) (m : USize) (z : UInt64) (x : Enc) : Except String Enc := do
-  let (o, _) ← kscan op false .i64 .i64 n seg [← colConst n z, x]
+  let (o, _) ← kscan op false .i64 .i64 n seg [(n, ← colConst n z), (n, x)]
   kscatter .last n g o m z
 
 /-- The groups of equal rows of `R.concat S` whose source flags pass `keep`, canonical: `kasc ≫ kseen` over the pair
@@ -115,7 +116,7 @@ seed `z` (`+0`), each word of `v` widened to `f64` on load (`widen u`) and each 
 (`Op.fto u`), so the carry is the unrounded `f64` prefix sum and each row holds it rounded once; a row is bad (`1`)
 where that rounding is `2^63` (a NaN). -/
 def sumTailF (u : QAtomicType) (n : USize) (seg z v : Enc) : Except String (Arr u n × Enc) := do
-  let W ← scanArr .fadd false u u n seg [z, v] (widen u) [(.fto u, 0)]
+  let W ← scanArr .fadd false u u n seg [(n, z), (n, v)] (widen u) [(.fto u, 0)]
   pure (W, ← colMap .first n W.enc W.enc .i64 .i64 [] [(.eq, 0x8000000000000000)])
 
 /-- **The left-to-right sum within segments, and its bad rows** (`sumsOn` per key, `sum` per cell): one `kscan` from `0`
@@ -127,7 +128,7 @@ def sumTail (what : String) (u : QAtomicType) (n : USize) (seg v : Enc) : Except
   let z ← colConst n 0
   match u with
   | .i64 =>
-    let W := (← kscan .add false .i64 .i64 n seg [z, v]).1
+    let W := (← kscan .add false .i64 .i64 n seg [(n, z), (n, v)]).1
     -- each compare with a constant is one `kscan` post step (`colMap_post`); `x < 0` is `(.gt, 0)`
     let sv ← colMap .first n v v .i64 .i64 [] [(.gt, 0)]
     let d ← colMap .sub n W v
@@ -160,7 +161,7 @@ def sumsOn {K : Obj} {t u : QAtomicType} (x : Tab (.prod K (.atom t)) (.atom u))
   let (gk, _, fk) ← kseen n (← Vals.cols C.key.1)
   let seg ← seenSeg n fk gk.toUSize
   let (W, bad) ← sumTail "sums" u n seg (Arr.enc (t := u) C.val)
-  let badR := (← kscan .or false .i64 .i64 n seg [← colConst n 0, bad]).1
+  let badR := (← kscan .or false .i64 .i64 n seg [(n, ← colConst n 0), (n, bad)]).1
   keep ⟨n, C.key, W⟩ (← colMap .not n badR badR)
 
 /-- **`sums` at the position object `P`, the value object `V`**: `sumsOn` where `P` is an integer-stored atom

@@ -51,8 +51,8 @@ def compGroups (R : Tab A B) (S : Tab B C) :
   let n := R.n; let m := S.n
   -- `.lt`, `.max`, `.div`, `.mod` read counts, row numbers and offsets signed: every one is below `n * m + n + m`
   if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"comp: {n} × {m} rows past 2^63"
-  let (N, sh) ← catPlan n m
-  let es ← Vals.cols (← Vals.concat N sh R.val S.key)
+  let N ← catRows n m
+  let es ← Vals.cols (← Vals.concat N R.val S.key)
   let (vs, p) ← kasc N es
   let (k, g, f) ← kseen N ((es.map (·.1)).zip vs)
   let K := k.toUSize

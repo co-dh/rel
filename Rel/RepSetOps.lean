@@ -77,7 +77,7 @@ theorem whereCol_spec {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
       hsum]
   -- the count: the fold result is `C m`, `0` with no rows
   have hk : sk.2.getD 0 = (C m.toNat).toUInt64 := by
-    rw [kscan_last (w := 8) rfl hsk]
+    rw [kscan_last (w := 8) rfl (by lockstep) hsk]
     simp only [Bool.false_eq_true, if_false]
     rcases Nat.eq_zero_or_pos m.toNat with h0 | h0
     · rw [h0, hC]; simp [(colPrefix_raw hP).2.1, h0]
@@ -240,16 +240,15 @@ theorem concat_holds {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
   unfold Tab.concat at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i p hp
-  obtain ⟨n, off⟩ := p
+  rename_i n hp
   split at h; · cases h
   rename_i K hK
   split at h; · cases h
   rename_i V hV
   cases h
-  obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
-  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
+  have hn := catRows_ok hp
+  have rk := Vals.concat_row hn R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   constructor
   · rintro ⟨c, ha, hb⟩
@@ -279,16 +278,16 @@ theorem keep_wf {T t : Tab k v} {b : Enc} (h : T.keep b = .ok t) (hT : T.WF) : t
   okSplit
   cases h; exact ⟨Vals.gather_wf ‹_› hT.1, Vals.gather_wf ‹_› hT.2⟩
 
-/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catPlan`'s count and offsets). -/
+/-- **`concat` keeps `Tab.WF`** (`Vals.concat_wf` on `catRows`' count). -/
 theorem concat_wf {R S t : Tab k v} (h : R.concat S = .ok t) (hR : R.WF) (hS : S.WF) : t.WF := by
   simp only [Tab.concat, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i p hp
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (p.1, p.2) from hp)
+  have hn := catRows_ok hp
   split at h; · cases h
   rename_i x hx; split at h; · cases h
   rename_i y hy; cases h
-  exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
+  exact ⟨Vals.concat_wf hn hx hR.1 hS.1, Vals.concat_wf hn hy hR.2 hS.2⟩
 
 /-- **`R.union S` denotes `R ∪ S`** (`Rep.rep_unionC`'s statement, pointwise). -/
 theorem union_holds {R S U : Tab k v} (h : R.union S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
@@ -362,18 +361,25 @@ theorem tagged_ok {R S C : Tab k v} {tag : Enc} (h : R.tagged S = .ok (C, tag)) 
   unfold Tab.tagged at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i p hp
-  obtain ⟨n, off⟩ := p
+  rename_i n hp
   split at h; · cases h
   rename_i K hK
   split at h; · cases h
   rename_i V hV
   split at h; · cases h
+  rename_i off ho
+  split at h; · cases h
   rename_i one h1
   split at h; · cases h
   rename_i t ht
   cases h
-  obtain ⟨hn, hoff⟩ := catPlan_ok hp
+  have hn := catRows_ok hp
+  -- `shiftCol` puts word `k` of `S` at `R.n + k`, a count below `n < USize.size ≤ 2^64`
+  have hoff : ∀ k < S.n.toNat, ((Enc.raw .i64 S.n off)[k]?.getD 0).toNat = R.n.toNat + k := fun k hk => by
+    have := n.toNat_lt_size; have := USize.size_le
+    rw [shiftCol_raw ho k hk]
+    simp [UInt64.toNat_add]
+    omega
   refine ⟨by unfold Tab.concat; simp only [hp, hK, hV, bind, Except.bind, pure, Except.pure], hn, ?_⟩
   obtain ⟨-, -, -, hws, -, hfix, hlast⟩ := raw_scatter S.n off one n 0 _ (kscatter_plain h1 rfl) ht
   refine ⟨hws, fun c hc => ?_, kscatter_plain ht (kscatter_plain h1 rfl)⟩
@@ -396,16 +402,15 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
   unfold Tab.concat at h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
-  rename_i p hp
-  obtain ⟨n, off⟩ := p
+  rename_i n hp
   split at h; · cases h
   rename_i K hK
   split at h; · cases h
   rename_i V hV
   cases h
-  obtain ⟨hn, hoff⟩ := catPlan_ok hp
-  have rk := Vals.concat_row hn hoff R.key S.key hK hR.1 hS.1
-  have rv := Vals.concat_row hn hoff R.val S.val hV hR.2 hS.2
+  have hn := catRows_ok hp
+  have rk := Vals.concat_row hn R.key S.key hK hR.1 hS.1
+  have rv := Vals.concat_row hn R.val S.val hV hR.2 hS.2
   simp only [Tab.Holds]
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩⟩
   · rintro ⟨c, hl, ha, hb⟩
@@ -432,7 +437,7 @@ theorem _root_.Rel.raw_foR_cut {t : QAtomicType} {w : Nat} (ht : t.width = some 
 /-- **`kscan`'s answer does not depend on its type `t` but through the `u1` cut**: at a `t` of a width that is not
 `u1` it is the answer at `i64`, whose read keeps every word whole. -/
 theorem _root_.Rel.kscan_i64 {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1)
-    {n : USize} {seg : Option Enc} {es : List Enc} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    {n : USize} {seg : Option Enc} {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
     (h : kscan op rev s t n seg es pre post = .ok r) : ∃ v, kscan op rev s .i64 n seg es pre post = .ok (r.1, v) := by
   unfold kscan at h ⊢
   by_cases hd : kscanRefuses op n es pre post = true
@@ -449,9 +454,12 @@ theorem _root_.Rel.kscan_i64 {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat
   split at h; · cases h
   rename_i out hp
   rw [ht] at h
+  dsimp only at h
+  split at h; · cases h
+  rename_i nl hnl
   simp only [hb, ↓reduceIte, Except.ok.injEq] at h
   subst h
-  exact ⟨_, by simp only [QAtomicType.width, show QAtomicType.i64 ≠ .u1 by decide, ↓reduceIte]; rfl⟩
+  exact ⟨_, by simp only [hnl, QAtomicType.width, show QAtomicType.i64 ≠ .u1 by decide, ↓reduceIte]; rfl⟩
 
 /-- **A segmented `kscan` over runs is a prefix fold per run, at any read type and chains**: `Kk` names each row's run
 (`hruns`) and the segment marks are `0` exactly off the runs' first rows; every word read at `s` goes through
@@ -459,22 +467,26 @@ theorem _root_.Rel.kscan_i64 {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat
 at `t` is `pf` of `fn` (the total `op`) folded from `z` over the `pw` words of `x` at the rows `≤ i` of `i`'s run, in
 row order, cut to `t`'s width (`raw_kscanChain`). -/
 theorem runScanChain_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+    (hnl : op ≠ .null)
     {α : Type} [DecidableEq α] {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize} {Kk : Nat → α}
     (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a)
     {pre post : List (Op × UInt64)} {pw pf : UInt64 → UInt64} (hpre : ∀ a, chain pre a = .ok (pw a))
     (hpost : ∀ a, chain post a = .ok (pf a)) {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
     (hz : ∀ i < n.toNat, pw ((Enc.raw s n zc)[i]?.getD 0) = z)
-    (h4 : kscan op false s t n seg [zc, x] pre post = .ok (sc, v)) :
+    (hs : kscanStream op [(n, zc), (n, x)] pre post = false)
+    (h4 : kscan op false s t n seg [(n, zc), (n, x)] pre post = .ok (sc, v)) :
     (Enc.raw t n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw t n sc)[i]?.getD 0 = UInt64.ofNat ((pf
       ((((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat i).map
         fun q => pw ((Enc.raw s n x)[q]?.getD 0)).foldl fn z)).toNat % 2 ^ (if t = .u1 then 1 else 8 * w)) := by
   have fs := firsts_spec Kk n.toNat
   -- the scan: each row folds its own word into the previous row's, or into `z` on a first row
-  obtain ⟨g, hg, c, cs, hc, out₀, out, hos, hp, he, -, hrow⟩ :=
-    raw_kscanChain op false s t w ht n seg [zc, x] pre post _ h4
+  obtain ⟨g, hg, -, c, cs, hc, out₀, out, hos, hp, he, -, hrow⟩ :=
+    raw_kscanChain op false s t w ht n seg [(n, zc), (n, x)] pre post _ hs h4
   obtain ⟨rfl, -⟩ := rawAll_ok (show rawAll .u1 n seg = .ok g from hg)
-  obtain ⟨hl, hP⟩ := mapM_chain hc
+  obtain ⟨e₀, es₀, ws', -, hm, hcs⟩ := hc
+  rw [if_neg hnl] at hcs; cases hcs
+  obtain ⟨hl, hP⟩ := mapM_chain (es := [zc, x]) hm
   obtain ⟨c1, rfl⟩ : ∃ c1, cs = [c1] := by
     match cs, hl with
     | [c1], _ => exact ⟨c1, rfl⟩
@@ -529,16 +541,18 @@ theorem runScanChain_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀
 /-- **A segmented `kscan` over runs is a prefix fold per run** (`runScanChain_ok` at `i64`, no chains, the seed
 `colConst n z`): row `i` of the scan holds `fn` folded from `z` over `x` at the rows `≤ i` of `i`'s run. -/
 theorem runScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+    (hnl : op ≠ .null)
     {α : Type} [DecidableEq α] {n : USize} {Kk : Nat → α}
     (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a)
     {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
-    (h3 : colConst n z = .ok zc) (h4 : kscan op false .i64 .i64 n seg [zc, x] = .ok (sc, v)) :
+    (h3 : colConst n z = .ok zc) (hs : kscanStream op [(n, zc), (n, x)] [] [] = false)
+    (h4 : kscan op false .i64 .i64 n seg [(n, zc), (n, x)] = .ok (sc, v)) :
     (Enc.raw .i64 n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw .i64 n sc)[i]?.getD 0 =
       (((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q =
         Verify.groupOf Kk n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
-  obtain ⟨hs, hr⟩ := runScanChain_ok (w := 8) hop rfl hruns (pw := id) (pf := id) (fun _ => rfl) (fun _ => rfl) hsu
-    (fun i hi => by rw [colConst_raw h3, Array.getElem?_replicate, if_pos hi]) h4
+  obtain ⟨hs, hr⟩ := runScanChain_ok (w := 8) hop hnl rfl hruns (pw := id) (pf := id) (fun _ => rfl) (fun _ => rfl) hsu
+    (fun i hi => by rw [colConst_raw h3, Array.getElem?_replicate, if_pos hi]) hs h4
   exact ⟨hs, fun i hi => by rw [hr i hi]; exact ofNat_toNat_mod64 _⟩
 
 /-- **The segment marks of `kseen`'s groups** (`groupFold`'s and `Tab.sums`'s): ones `kscatter`ed to the first rows `f`,
@@ -623,7 +637,8 @@ the total `fn`, group `j`'s word is `fn` folded from `z` over `x` at the rows of
 (`segScan_ok`), so the group's last row is all of it. -/
 theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
     {n : USize} {es : List (AscKey × Enc)} {m : Nat} {g f : Enc} (hr : kseen n es = .ok (m, g, f))
-    {z : UInt64} {seg x o : Enc} (hs : seenSeg n f m.toUSize = .ok seg) (h : groupFold op n g seg m.toUSize z x = .ok o) :
+    {z : UInt64} {seg x o : Enc} (hs : seenSeg n f m.toUSize = .ok seg) (h : groupFold op n g seg m.toUSize z x = .ok o)
+    (ho : op ≠ .first := by decide) (hn : op ≠ .null := by decide) :
     (Enc.raw .i64 n g).size = n.toNat ∧ (Enc.raw .i64 m.toUSize o).size = m.toUSize.toNat ∧
       ∀ j < m.toUSize.toNat, (Enc.raw .i64 m.toUSize o)[j]?.getD 0 =
         (((List.range (Enc.raw .i64 n g).size).filter fun k => ((Enc.raw .i64 n g)[k]?.getD 0).toNat = j).map
@@ -634,7 +649,7 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
   rename_i _ zc h3 _ r h4
   obtain ⟨sc, v⟩ := r
   dsimp only at h
-  obtain ⟨-, claim⟩ := runScan_ok hop (kseen_runs hr) (seenSeg_ok hr hs) h3 h4
+  obtain ⟨-, claim⟩ := runScan_ok hop hn (kseen_runs hr) (seenSeg_ok hr hs) h3 (kscanStream_ne ho _ _ _) h4
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with e | e <;> omega
   have hn := n.toNat_lt_size
   have hc64 : ∀ a, a < n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
@@ -650,7 +665,7 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
     obtain ⟨hgl, -⟩ := fs.2.2.2.2.2 q hq
     rw [hgr, Array.getElem?_ofFn, dif_pos hq, Option.getD_some]; exact hc64 (Verify.groupOf Kk n.toNat q) (by omega)
   -- the last scatter keeps each group's last row
-  obtain ⟨-, -, hw⟩ := kscatter_words h (kscan_closed h4).2.2
+  obtain ⟨-, -, hw⟩ := kscatter_words h (kscan_lock_closed (kscanStream_ne ho _ _ _) h4).2.2
   obtain ⟨hos', hfin⟩ := scatterWords_fold (f := fun _ y => y) (fun _ _ => rfl) hw
   have last : ∀ j N', N' ≤ n.toNat →
       (((List.range N').filter fun k => Verify.groupOf Kk n.toNat k = j).map ((Enc.raw .i64 n sc)[·]?.getD 0)).foldl (fun _ y => y) z =
@@ -679,12 +694,12 @@ theorem groupFold_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a 
 
 /-- A `groupFold` answer holds no null: it scatters a `kscan` answer, which holds none (`kscan_closed`). -/
 theorem groupFold_plain {op : Op} {n : USize} {g seg : Enc} {m : USize} {z : UInt64} {x o : Enc}
-    (h : groupFold op n g seg m z x = .ok o) : hasNul o = false := by
+    (h : groupFold op n g seg m z x = .ok o) (ho : op ≠ .first := by decide) : hasNul o = false := by
   unfold groupFold at h
   simp only [bind, Except.bind] at h
   repeat (split at h; · cases h)
   rename_i _ _ _ _ r h4
-  exact kscatter_plain h (kscan_closed h4).2.2
+  exact kscatter_plain h (kscan_lock_closed (kscanStream_ne ho _ _ _) h4).2.2
 
 /-- A `whereCol` answer holds no null: a gather of a scatter of `pos`, which holds none. -/
 theorem whereCol_plain {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) : hasNul o = false := by
@@ -734,7 +749,7 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
     List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hq))
   have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
-    obtain ⟨-, -, -, hk⟩ := kasc_grade hvp (fun x hx => (Vals.cols_wf _ hes x hx).1)
+    obtain ⟨-, -, -, hk⟩ := kasc_grade hvp (Vals.cols_wf _ hes)
     rw [asc_perm_grade hvp hp hperm]; exact hk
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey

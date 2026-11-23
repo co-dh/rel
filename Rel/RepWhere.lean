@@ -135,7 +135,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
       List.range' (off g) (wN g) := fun g hg => by
     rw [hoff]; exact expand_group_run hex wN hww hsn hn63 g hg
   -- each cell's width is its count of kept rows
-  obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt (colMap_plain hbm)
+  obtain ⟨hGs, -, hcw⟩ := kscatter_words hcnt (colMap_plain (by lockstep) hbm)
   obtain ⟨-, hcf⟩ := scatterWords_fold (f := (· + ·)) (fun _ _ => rfl) hcw
   rw [hGs] at hcf
   have hcn : ∀ g < n.toNat, (raw .i64 n cnt)[g]?.getD 0 = (cN g).toUInt64 := fun g hg => by
@@ -159,10 +159,9 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
     rw [List.getElem?_map, Array.getElem?_toList, Array.getElem?_eq_getElem (by omega)]; rfl
   have hpj : ∀ j (hj : j < K.toNat), Vals.row (A := .long) pay ⟨j, hj⟩ =
       ((raw .i64 T u)[((raw .i64 K sel)[j]?.getD 0).toNat]?.getD 0).toInt64 := fun j hj => by
-    have es := (colMap_raw (colArr_ok hpay)).2.2.2 j hj
+    have es := scanArr_first_word hpay j hj
     rw [(kgather_word hgs (expand_plain hex) j hj).2] at es
-    simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at es
-    rw [Vals.row_atom, Arr.get_i64, ← es]
+    rw [Vals.row_atom, Arr.get_i64, es, Option.getD_some]
   have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
   suffices hY' : ∀ i : Fin n.toNat, Vals.row Y i =
       positionsL (fun x => decide (∃ y, P.Holds x y)) (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) by

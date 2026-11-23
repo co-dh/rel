@@ -25,7 +25,7 @@ open Rel.Ext Rel.Kernel Rel.Verify
 (`colPrefix .add`, the layout `expand` places its groups by), `lo = hi - w`. -/
 def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Except String (Vals (.arr B) n) := do
   let P ← colPrefix .add n w
-  pure ⟨T, ← colArr .sub n P w, ← colArr .first n P P, pay⟩
+  pure ⟨T, ← colArr .sub n P w, ← scanArr .first false .i64 .i64 n Option.none [(n, P)], pay⟩
 
 /-- `x` with every array payload cut to the elements its cells read, where at most half of it is read (`2 · T ≤ m`,
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads
@@ -45,7 +45,9 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
         let (T, G, u) ← expand n w
         Vals.cells n w (← Vals.pack (← Vals.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
       else pure ⟨m, lo, hi, ← Vals.pack f⟩
-  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩ => do pure ⟨l, r, tag, idx, ← Vals.pack x, ← Vals.pack y⟩
+  | .sum _ _, _, s => match s.view with
+    | .opt .. => pure s
+    | .gen h l r tag idx x y => do pure (Vals.ofGen h l r tag idx (← Vals.pack x) (← Vals.pack y))
   | .one, _, _ => pure ()
 
 /-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/
@@ -65,8 +67,8 @@ def Vals.cat {B : Obj} {n : USize} (X Y : Vals (.arr B) n) : Except String (Vals
     -- `.lt`, `.sub` and the prefix sums read positions and widths signed: each is below `n * (m₁ + m₂) + n + m₁ + m₂`
     if 2 ^ 63 ≤ n.toNat * (m₁.toNat + m₂.toNat) + n.toNat + m₁.toNat + m₂.toNat then
       throw s!"cat: {n} cells over {m₁} + {m₂} elements past 2^63"
-    let (N, off) ← catPlan m₁ m₂
-    let F ← Vals.concat N off f₁ f₂
+    let N ← catRows m₁ m₂
+    let F ← Vals.concat N f₁ f₂
     let w₁ ← colMap .sub n hi₁.enc lo₁.enc
     let w ← colMap .add n w₁ (← colMap .sub n hi₂.enc lo₂.enc)
     let (T, G, u) ← expand n w

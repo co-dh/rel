@@ -94,7 +94,7 @@ instance : Reg QAtomicType := Reg.enum QAtomicType.ofNat QAtomicType.ctorIdx
 def nullOps : List Kernel.Op :=
   [.add, .sub, .mul, .div, .mod, .min, .max, .neg, .abs, .eq, .ne, .lt, .le, .gt, .ge, .and, .or, .not, .first, .last,
    .fadd, .fsub, .fmul, .fdiv, .fpow, .fmin, .fmax, .fneg, .fabs, .fsqrt, .fexp, .flog, .fsin, .fcos, .ftan, .fasin,
-   .facos, .fatan, .ffloor, .fround, .feq, .fne, .flt, .fle, .fgt, .fge, .f32to64, .rdiv, .rmod, .mix]
+   .facos, .fatan, .ffloor, .fround, .feq, .fne, .flt, .fle, .fgt, .fge, .f32to64, .rdiv, .rmod, .mix, .null]
 -- every index below `cast`'s, the last constructor, holds its own `Op`
 #guard nullOps.zipIdx.all (fun (o, i) => o.ctorIdx == i) && nullOps.length == (Kernel.Op.cast .i64 .i64).ctorIdx
 
@@ -534,17 +534,22 @@ def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String P
   pure { funs := fs, globals := gs, main := ms.toList, input := is.toList }
 
 /-- One column of a side (`cols`): a side of `1`'s count, or an atom column with its type and length. -/
-abbrev SideCol := USize ⊕ (t : QAtomicType) × (k : USize) × Arr t k
+abbrev SideCol := USize ⊕ (t : QAtomicType) × (k : USize) × Opt t k
 
 /-- A side's atom columns, each with its path in the side: `""` an atom; `.1`/`.2` a product's; `.lo`/`.hi`/`.e`
-    an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads. A side of `1`
+    an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads, a band sum
+    (`Obj.band`) its one nullable column at the side's own path. A side of `1`
     is `.inl` its count: it has a file like any side (`Db.ownNParts` kind 5), holding the count and no part. -/
 def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String × SideCol)
-  | .atom _, _, x, p => [(p, .inr ⟨_, _, x⟩)]
+  | .atom _, _, x, p => [(p, .inr ⟨_, _, Opt.ofArr x⟩)]
   | .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
-  | .arr b, _, ⟨_, lo, hi, f⟩, p => [(p ++ ".lo", .inr ⟨_, _, lo⟩), (p ++ ".hi", .inr ⟨_, _, hi⟩)] ++ cols b f (p ++ ".e")
-  | .sum a b, _, ⟨_, _, tag, idx, x, y⟩, p =>
-    [(p ++ ".tag", .inr ⟨_, _, tag⟩), (p ++ ".idx", .inr ⟨_, _, idx⟩)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
+  | .arr b, _, ⟨_, lo, hi, f⟩, p =>
+    [(p ++ ".lo", .inr ⟨_, _, Opt.ofArr lo⟩), (p ++ ".hi", .inr ⟨_, _, Opt.ofArr hi⟩)] ++ cols b f (p ++ ".e")
+  | .sum a b, _, s, p => match s.view with
+    | .opt _ x => [(p, .inr ⟨_, _, x⟩)]
+    | .gen _ _ _ tag idx x y =>
+    [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩), (p ++ ".idx", .inr ⟨_, _, Opt.ofArr idx⟩)] ++ cols a x (p ++ ".l") ++
+      cols b y (p ++ ".r")
   | .one, n, _, p => [(p, .inl n)]
 
 /-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/
@@ -610,6 +615,9 @@ def partB (x i : Nat) : Bld Nat := emit1 (.part x i)
 /-- The list of the registers `rs`, laid out as `Reg (List α)` lays it. -/
 def listB (rs : List Nat) : Bld Nat := do rs.foldrM (fun x l => ctorB 1 #[x, l] #[]) (← ctorB 0 #[] #[])
 
+/-- A source of `kscan`: the row count `n` and the column `x`, as the pair `(USize × Enc)` lays out. -/
+def srcB (n x : Nat) : Bld Nat := ctorB 0 #[n, x] #[]
+
 /-- `kscatter` of no row into `n` cells: the column of `n` rows, each the word in register `fill`. -/
 def constB (n fill : Nat) : Bld Nat := do
   let e ← lit (Reg.put (wordsFoR #[]))
@@ -620,7 +628,7 @@ def constB (n fill : Nat) : Bld Nat := do
 def scanB (op : Kernel.Op) (t : QAtomicType) (n : Nat) (seg : Option Nat) (es : List Nat) : Bld (Array Nat) := do
   let g ← match seg with | some s => ctorB 1 #[s] #[] | none => ctorB 0 #[] #[]
   callK (kernel% kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put t), ← lit (Reg.put t), n, g,
-    ← listB es, ← listB [], ← listB []]
+    ← listB (← es.mapM (srcB n)), ← listB [], ← listB []]
 
 /-- `where` (design §4: scan → scatter, no sort): the count `r` (a `size`) and the positions, in order, of the rows the
     `n`-row mask `keep` sets. The inclusive prefix sum `P` (`kscan add`, one segment) numbers the kept rows `1 … r`

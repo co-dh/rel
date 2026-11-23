@@ -146,17 +146,56 @@ theorem chainAll_nil : chainAll [] = pure := by
     | cons x l ih => simp only [List.mapM_cons, ih]; rfl
   simp [chainAll, this, Functor.map, Except.map, pure, Except.pure]
 
+
+/-- A lock-step source list, every source holding `n` rows, is read as its columns alone. -/
+theorem mapM_pairs {s : QAtomicType} {n : USize} {pre : List (Op × UInt64)} :
+    ∀ {es : List (USize × Enc)}, (∀ p ∈ es, p.1 = n) →
+      es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll pre) = (es.map (·.2)).mapM (fun e => rawAll s n e >>= chainAll pre)
+  | [], _ => rfl
+  | p :: es, h => by
+    rw [List.mapM_cons, List.map_cons, List.mapM_cons, h p (by simp), mapM_pairs fun q hq => h q (by simp [hq])]
+
+/-- **`kscanCols` of a call that is no stream**: every source held `n` rows, and the columns are the sources' own, but
+that `null` reads the first source's flags (`foRNuls`) in place of its words. -/
+theorem kscanCols_lock {op : Op} {s : QAtomicType} {n : USize} {es : List (USize × Enc)} {pre post : List (Op × UInt64)}
+    {ws : List (Array UInt64)} {ns : Array UInt64} (hs : kscanStream op es pre post = false)
+    (h : kscanCols op s n es pre post = .ok (ws, ns)) :
+    (∀ p ∈ es, p.1 = n) ∧ ns = #[] ∧ ∃ ws', (es.map (·.2)).mapM (fun e => rawAll s n e >>= chainAll pre) = .ok ws' ∧
+      ws = (if op = .null then es.take 1 else []).map (fun p => foRNuls p.1 p.2) ++
+        ws'.drop (if op = .null then es.take 1 else []).length := by
+  unfold kscanCols at h
+  simp only [hs, Bool.false_eq_true, if_false] at h
+  cases hm : es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll pre) with
+  | error m => rw [hm] at h; simp [bind, Except.bind] at h
+  | ok ws' =>
+    rw [hm] at h; simp only [bind, Except.bind] at h
+    by_cases hn : es.any (·.1 != n) = true
+    · simp [hn] at h
+    · have hl : ∀ p ∈ es, p.1 = n := fun p hp =>
+        Classical.byContradiction fun hp' => hn (List.any_eq_true.mpr ⟨p, hp, by simpa using hp'⟩)
+      simp only [hn, Bool.false_eq_true, if_false] at h
+      cases hf : (es.drop (if op = .null then es.take 1 else []).length).forM fun p => noNul "kscan" p.1 p.2 with
+      | error m => simp [hf, pure, Except.pure] at h
+      | ok u =>
+        simp only [hf, pure, Except.pure] at h
+        cases h
+        exact ⟨hl, rfl, ws', by rw [← mapM_pairs hl]; exact hm, rfl⟩
+
 /-- **`raw_scan`** (design §4), at any segment marks and chains: an answer of `kscan` read back at its type `t` of `w`
 bytes is the word sequence `out` of one word a row, each cut to `t`'s width (a boolean's to its low bit). `out` is
 `chain post` of `out₀`, whose row `i` is `op` folded over the columns after the first at row `i` (each word through
 `chain pre`: the columns `cs'`), from `out₀`'s previous row, or from the first column's row `i` (`c'`) where the marks
 `g` (`segAll`) start a segment there (row 0 always); every column held `n` raw words. With `rev` every column, `g`
 included, is reversed before the fold and `out` after it. The fold result `r.2` is `out`'s last word (the row visited
-last) cut the same way, `none` where `out` is empty. -/
+last) cut the same way, `none` where `out` is empty. The columns `c' :: cs'` are the sources' words `ws'`, but that for
+`null` the first is the first source's flags `foRNuls n e₀` (a null row is the all-ones residual). -/
 theorem raw_kscanChain (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize)
-    (seg : Option Enc) (es : List Enc) (pre post : List (Op × UInt64)) (r : Enc × Option UInt64)
-    (h : kscan op rev s t n seg es pre post = .ok r) :
-    ∃ g, segAll n seg = .ok g ∧ ∃ c' cs', es.mapM (fun e => rawAll s n e >>= chainAll pre) = .ok (c' :: cs') ∧
+    (seg : Option Enc) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) (r : Enc × Option UInt64)
+    (hs : kscanStream op es pre post = false) (h : kscan op rev s t n seg es pre post = .ok r) :
+    ∃ g, segAll n seg = .ok g ∧ (∀ p ∈ es, p.1 = n) ∧
+    ∃ c' cs', (∃ e₀ es₀ ws', es.map (·.2) = e₀ :: es₀ ∧
+        (es.map (·.2)).mapM (fun e => rawAll s n e >>= chainAll pre) = .ok ws' ∧
+        c' :: cs' = if op = .null then foRNuls n e₀ :: ws'.drop 1 else ws') ∧
     ∃ out₀ out : Array UInt64, out₀.size = n.toNat ∧ chainAll post out₀ = .ok out ∧
       r.1.raw t n = (if rev then out.reverse else out).map
         (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
@@ -176,7 +215,8 @@ theorem raw_kscanChain (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht 
   split at h; · cases h
   rename_i cs hc
   split at h; · cases h
-  rename_i c cs'
+  rename_i c cs' ns
+  obtain ⟨hl, hns, ws', hm, hcs⟩ := kscanCols_lock hs hc
   split at h; · cases h
   rename_i out₀ hf
   split at h; · cases h
@@ -184,10 +224,21 @@ theorem raw_kscanChain (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht 
   split at h; · cases h
   rename_i w' hw
   rw [ht] at hw; cases hw
+  split at h; · cases h
+  rename_i nl hnl
   obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
   have hps := (chainAll_ok hp).1
+  subst hns
   cases h
-  refine ⟨g, hg, c, cs', hc, out₀, out, hos, hp, ?_, rfl, hrow⟩
+  refine ⟨g, hg, hl, c, cs', ?_, out₀, out, hos, hp, ?_, rfl, hrow⟩
+  · cases es with
+    | nil =>
+      simp only [List.map_nil, List.mapM_nil, pure, Except.pure, Except.ok.injEq] at hm
+      subst hm; simp at hcs
+    | cons p ps =>
+      refine ⟨p.2, ps.map (·.2), ws', by simp, hm, ?_⟩
+      have hp1 := hl p (by simp)
+      by_cases hn0 : op = .null <;> simp [hn0, hp1] at hcs ⊢ <;> exact hcs
   replace hos : out.size = n.toNat := hps.trans hos
   -- every `foR` is read cut to `t`'s width, a boolean's being one bit
   have hraw : ∀ M P : ByteArray, (Enc.foR M P : Enc).raw t n = (Array.range n.toNat).map fun i =>
@@ -217,17 +268,19 @@ theorem raw_kscanChain (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht 
     rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi),
       Verify.ofNat_toNat_mod64, Array.getElem_toList] at h1
     exact UInt64.toNat_inj.mp h1
-  simp only [Array.getElem_map, Array.getElem_range, h8, Coc.encode]
+  simp only [Array.getElem_map, Array.getElem_range, h8, Coc.encode,
+    show ((#[] : Array UInt64).any fun x : UInt64 => x != 0) = false by simp, Bool.false_eq_true, if_false]
   rw [Verify.foRBits_encode Column.lgEnc (by decide) 8 (by decide) (by decide) X i (by rw [hxs]; omega), hu]
   subst hW
   by_cases hb : t = .u1 <;> simp [hb]
 
 /-- **`raw_scan` at a column of segment marks and no chain** (`raw_kscanChain`): every column, `seg` included, held `n`
 raw words, and they are the columns the fold reads. -/
-theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize)
-    (seg : Enc) (es : List Enc) (r : Enc × Option UInt64) (h : kscan op rev s t n seg es = .ok r) :
-    (seg.raw .u1 n).size = n.toNat ∧ (∀ x ∈ es, (x.raw s n).size = n.toNat) ∧
-    ∃ c cs, es = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
+theorem raw_kscan (op : Op) (hnl : op ≠ .null) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.width = some w) (n : USize)
+    (seg : Enc) (es : List (USize × Enc)) (r : Enc × Option UInt64) (hs : kscanStream op es [] [] = false)
+    (h : kscan op rev s t n seg es = .ok r) :
+    (seg.raw .u1 n).size = n.toNat ∧ (∀ p ∈ es, p.1 = n ∧ (p.2.raw s n).size = n.toNat) ∧
+    ∃ c cs, es.map (·.2) = c :: cs ∧ ∃ out : Array UInt64, out.size = n.toNat ∧
       r.1.raw t n = (if rev then out.reverse else out).map
         (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
       r.2 = out.back?.map (fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
@@ -235,25 +288,28 @@ theorem raw_kscan (op : Op) (rev : Bool) (s t : QAtomicType) (w : Nat) (ht : t.w
         ((cs.map (·.raw s n)).map fun a => if rev then a.reverse else a).foldlM (fun a x => op.eval a (x[i]?.getD 0))
           (if 0 < i ∧ (if rev then (seg.raw .u1 n).reverse else seg.raw .u1 n)[i]?.getD 0 = 0
            then out[i - 1]?.getD 0 else (if rev then (c.raw s n).reverse else c.raw s n)[i]?.getD 0) = .ok out[i] := by
-  obtain ⟨g, hg, c', cs', hc, out₀, out, hos, hp, he, hv, hrow⟩ := raw_kscanChain op rev s t w ht n seg es [] [] r h
+  obtain ⟨g, hg, hl, c', cs', ⟨e₀, es₀, ws', -, hc, hcs⟩, out₀, out, hos, hp, he, hv, hrow⟩ :=
+    raw_kscanChain op rev s t w ht n seg es [] [] r hs h
+  rw [if_neg hnl] at hcs
+  rw [← hcs] at hc
   simp only [segAll] at hg
   obtain ⟨rfl, hgs⟩ := rawAll_ok hg
   rw [chainAll_nil] at hp hc; cases hp
   simp only [bind_pure] at hc
-  obtain ⟨hl, hsz⟩ := mapM_rawAll hc
+  obtain ⟨hl', hsz⟩ := mapM_rawAll hc
   cases es with
-  | nil => cases hl
-  | cons c cs =>
-    simp only [List.map_cons, List.cons.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
-    exact ⟨hgs, hsz, c, cs, rfl, _, hos, he, hv, hrow⟩
+  | nil => cases hl'
+  | cons p ps =>
+    simp only [List.map_cons, List.cons.injEq] at hl'; obtain ⟨rfl, rfl⟩ := hl'
+    exact ⟨hgs, fun q hq => ⟨hl q hq, hsz q.2 (List.mem_map_of_mem hq)⟩, p.2, ps.map (·.2), rfl, _, hos, he, hv, hrow⟩
 
 /-- **The fold result is the answer's last-visited row**: `kscan`'s second component is word `n − 1` of its answer read
 at `t` (word 0 under `rev`), and `none` exactly at `n = 0`. -/
 theorem kscan_last {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize}
-    {seg : Option Enc} {es : List Enc} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
-    (h : kscan op rev s t n seg es pre post = .ok r) :
+    {seg : Option Enc} {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hs : kscanStream op es pre post = false) (h : kscan op rev s t n seg es pre post = .ok r) :
     r.2 = (r.1.raw t n)[if rev then 0 else n.toNat - 1]? := by
-  obtain ⟨-, -, -, -, -, out₀, out, hos₀, hp, he, hv, -⟩ := raw_kscanChain op rev s t w ht n seg es pre post r h
+  obtain ⟨-, -, -, -, -, -, out₀, out, hos₀, hp, he, hv, -⟩ := raw_kscanChain op rev s t w ht n seg es pre post r hs h
   have hos : out.size = n.toNat := (chainAll_ok hp).1.trans hos₀
   rw [he, hv, Array.back?_eq_getElem?]
   rcases Nat.eq_zero_or_pos out.size with h0 | h0

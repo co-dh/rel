@@ -308,7 +308,7 @@ theorem group_rows {A : Obj} {N : USize} {x : Vals A N} {es : List (AscKey × En
       (∀ G < k, (raw .i64 k.toUSize f)[G]?.getD 0 = (fs G).toUInt64 ∧ fs G < N.toNat ∧ gr (fs G) = G) ∧
       ∀ q < N.toNat, ∀ q' < N.toNat, gr q = gr q' ↔
         ∀ (h : π q < N.toNat) (h' : π q' < N.toNat), x.row ⟨π q, h⟩ = x.row ⟨π q', h'⟩ := by
-  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (fun c hc => (Vals.cols_wf _ hes c hc).1)
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
   obtain ⟨hperm, -⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
   generalize ascGrade N.toNat (ascKeys N es) = ps at hp hkq hperm
@@ -515,7 +515,7 @@ theorem expand_plain {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u)
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨u', hu, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-  obtain ⟨-, -, rfl⟩ := h; exact colMap_plain hu
+  obtain ⟨-, -, rfl⟩ := h; exact colMap_plain (by lockstep) hu
 
 /-- **EXPAND places each group's run**: where word `g` of the `K` widths is `wN g`, below
 `2^63` in total, there are `T = Σ wN` rows, and row `t` of group `g`'s run `[Σ_{<g} wN, Σ_{≤g} wN)` has group `g`
@@ -583,7 +583,7 @@ theorem expand_spec {K T : USize} {w G u : Enc} (h : expand K w = .ok (T, G, u))
     rw [← hx]; simp
   refine ⟨hGw, ?_⟩
   have e := (colMap_raw hu).2.2.2 t htT
-  rw [raw_pos_word htT, (kgather_word hog (colMap_plain ho) t htT).2, hGw, toNat_toUInt64 (by omega), how g hg] at e
+  rw [raw_pos_word htT, (kgather_word hog (colMap_plain (by lockstep) ho) t htT).2, hGw, toNat_toUInt64 (by omega), how g hg] at e
   simp only [Op.eval, Except.ok.injEq] at e
   rw [← e, toUInt64_sub h1]
 
@@ -597,7 +597,7 @@ theorem Tab.compOne_canon {A B C : Obj}
   split at hx; · cases hx
   rename_i hnm
   simp only [bind] at hx; rw [Except.bind_eq_ok'] at hx; obtain ⟨_, -, hx⟩ := hx
-  rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨N, sh⟩, hcat, hx⟩ := hx; try dsimp only at hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨N, hcat, hx⟩ := hx; try dsimp only at hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨z, hz, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨es, hes, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨vs, p⟩, hasc, hx⟩ := hx; try dsimp only at hx
@@ -627,11 +627,11 @@ theorem Tab.compOne_canon {A B C : Obj}
   rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
   refine ⟨_, h, ⟨Vals.gather_wf hX hR.1, Vals.gather_wf hY hS.2⟩, fun a c => ?_⟩
   ------------------------------------------------------------------ the sorted rows and their groups
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
-  have hzw := Vals.concat_wf hNn hoff hz hR.2 hS.1
+  have hNn := catRows_ok hcat
+  have hzw := Vals.concat_wf hNn hz hR.2 hS.1
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
-  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (fun c hc => (Vals.cols_wf _ hes c hc).1)
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
   have hpN := kasc_plain hasc
   obtain ⟨hperm, hsort⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
@@ -668,7 +668,7 @@ theorem Tab.compOne_canon {A B C : Obj}
   obtain ⟨cntN, hcntN⟩ : ∃ F : Nat → Nat, F = fun G => (List.range N.toNat).countP
       fun q => Verify.groupOf Kk N.toNat q == G && true := ⟨_, rfl⟩
   have hcRw : ∀ G < k, (raw .i64 k.toUSize cR)[G]?.getD 0 = (cRN G).toUInt64 := fun G hG => by
-    rw [scatter_add_count hcR (colMap_plain hlt) (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < R.n.toNat)) hgw
+    rw [scatter_add_count hcR (colMap_plain (by lockstep) hlt) (Verify.groupOf Kk N.toNat) (fun q => decide (ps[q]?.getD 0 < R.n.toNat)) hgw
       (fun q hq => by have := hgr q hq; omega) hltw G (by omega), hcRN]
   have hcntw : ∀ G < k, (raw .i64 k.toUSize cnt)[G]?.getD 0 = (cntN G).toUInt64 := fun G hG => by
     rw [scatter_add_count hcnt (kscatter_plain hc1 rfl) (Verify.groupOf Kk N.toNat) (fun _ => true) hgw
@@ -778,8 +778,8 @@ theorem Tab.compOne_canon {A B C : Obj}
     have hcN : Fs G + cntN G ≤ N.toNat := by have := (sgA (Fs G + cntN G - 1)).2 ⟨by omega, by omega⟩; omega
     have htT : t < Tn.toUSize.toNat := by omega
     have wft := hgath Fs hft (by rw [hf]; exact hasNul_wordsFoR _) (fun G hG => by rw [hFs]; exact hfw G hG) t G hG h1 h2
-    have wct := hgath bN hct (colMap_plain hcS) (fun G hG => by rw [hbN]; exact hcSw G hG) t G hG h1 h2
-    have wcr := hgath cRN hcr (kscatter_plain hcR (colMap_plain hlt)) hcRw t G hG h1 h2
+    have wct := hgath bN hct (colMap_plain (by lockstep) hcS) (fun G hG => by rw [hbN]; exact hcSw G hG) t G hG h1 h2
+    have wcr := hgath cRN hcr (kscatter_plain hcR (colMap_plain (by lockstep) hlt)) hcRw t G hG h1 h2
     have wu := (hGu t G hG h1 h2).2
     have wdv : (raw .i64 Tn.toUSize dv)[t]?.getD 0 = ((t - Sw G) / bN G).toUInt64 := by
       have e := (colMap_raw hdv).2.2.2 t htT
@@ -815,9 +815,9 @@ theorem Tab.compOne_canon {A B C : Obj}
   ------------------------------------------------------------------ the rows of `U` are the pairs of `R ≫ S`
   have fs := firsts_spec Kk N.toNat
   have zR : ∀ i (hi : i < R.n.toNat), z.row ⟨i, by omega⟩ = R.val.row ⟨i, hi⟩ := fun i hi => by
-    rw [Vals.concat_row hNn hoff R.val S.key hz hR.2 hS.1, dif_pos hi]
+    rw [Vals.concat_row hNn R.val S.key hz hR.2 hS.1, dif_pos hi]
   have zS : ∀ j (hj : j < S.n.toNat), z.row ⟨R.n.toNat + j, by omega⟩ = S.key.row ⟨j, hj⟩ := fun j hj => by
-    rw [Vals.concat_row hNn hoff R.val S.key hz hR.2 hS.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
+    rw [Vals.concat_row hNn R.val S.key hz hR.2 hS.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
   unfold Tab.Holds
   constructor
   · rintro ⟨t, ha, hc⟩

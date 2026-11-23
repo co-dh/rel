@@ -19,7 +19,8 @@ private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicTy
 
 /-- **`colPrefix op n a` is the running fold of `op` from `0`**: row `i` is `op` of row `i - 1` (`0` at row `0`) and
 `a[i]`. -/
-theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = .ok e) :
+theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = .ok e) (ho : op ≠ .first := by decide)
+    (hn : op ≠ .null := by decide) :
     (raw .i64 n a).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧ ∀ i < n.toNat,
       op.eval (if i = 0 then 0 else (raw .i64 n e)[i - 1]?.getD 0) ((raw .i64 n a)[i]?.getD 0) =
         .ok ((raw .i64 n e)[i]?.getD 0) := by
@@ -29,12 +30,13 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
   rename_i z hz
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  obtain ⟨-, hxs, c, cs, hc, out, hout, he, -, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n z [z, a] r hr
-  simp only [List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
+  obtain ⟨-, hxs, c, cs, hc, out, hout, he, -, hrow⟩ :=
+    raw_kscan op hn false .i64 .i64 8 rfl n z [(n, z), (n, a)] r (kscanStream_ne ho _ _ _) hr
+  simp only [List.map_cons, List.map_nil, List.cons.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
   simp only [Bool.false_eq_true, ↓reduceIte, mod_i64, Array.map_id'] at he hrow
   have hz0 := colConst_raw hz
   have hzs := colConst_u1 hz
-  refine ⟨hxs a (by simp), by rw [he, hout], fun i hi => ?_⟩
+  refine ⟨(hxs (n, a) (by simp)).2, by rw [he, hout], fun i hi => ?_⟩
   have := hrow i (by rw [hout]; exact hi)
   simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, hzs i hi, hz0,
     Array.getElem?_replicate, if_pos hi, Option.getD_some] at this
@@ -50,10 +52,12 @@ theorem colPrefix_raw {op : Op} {n : USize} {a e : Enc} (h : colPrefix op n a = 
 
 /-- **`colMap op n a b` is `op` row by row**: both arguments hold `n` words, and row `i` of the answer is
 `op.eval a[i] b[i]`. -/
-theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType} (h : colMap op n a b .i64 s = .ok e) :
+theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType}
+    (h : colMap op n a b .i64 s = .ok e) (hk : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep)
+    (hn : op ≠ .null := by decide) :
     (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n e).size = n.toNat ∧
       ∀ i < n.toNat, op.eval ((raw s n a)[i]?.getD 0) ((raw s n b)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain h
+  obtain ⟨ha, hb, hs, hr⟩ := colMap_chain h hk hn
   refine ⟨ha, hb, hs, fun i hi => ?_⟩
   obtain ⟨x, y, v, w, hx, hy, hv, hw, ho⟩ := hr i hi
   cases hx; cases hy; cases hw
@@ -62,10 +66,10 @@ theorem colMap_raw {op : Op} {n : USize} {a b e : Enc} {s : QAtomicType} (h : co
 /-- **A map of one column through a post chain** at any answer type `t`: word `i` of the answer is `chain post` of
 word `i` of `a`, a boolean answer's cut to its bit (`colMap_chain` at `.first` and no `pre`). -/
 theorem colMap_first_chain {t s : QAtomicType} {n : USize} {a o : Enc} {post : List (Op × UInt64)}
-    (h : colMap .first n a a t s [] post = .ok o) : ∀ i < n.toNat, ∃ w,
+    (h : colMap .first n a a t s [] post = .ok o) (i : Nat) (hi : i < n.toNat)
+    (hs : kscanStream .first [(n, a), (n, a)] [] post = false := by lockstep) : ∃ w,
       chain post ((raw s n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
-  intro i hi
-  obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain h).2.2.2 i hi
+  obtain ⟨x, y, v, w, hx, -, hv, hw, ho⟩ := (colMap_chain h hs).2.2.2 i hi
   cases hx; cases hv
   exact ⟨w, hw, ho⟩
 
@@ -74,8 +78,9 @@ with a constant operand is one `kscan` (`colMap_const_eq`); `colMap_first_chain`
 theorem colMap_post {op : Op} {n : USize} {a e : Enc} {c : UInt64}
     (h : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e) : (raw .i64 n e).size = n.toNat ∧
       ∀ i < n.toNat, op.eval c ((raw .i64 n a)[i]?.getD 0) = .ok ((raw .i64 n e)[i]?.getD 0) := by
-  refine ⟨(colMap_chain h).2.2.1, fun i hi => ?_⟩
-  obtain ⟨w, hw, ho⟩ := colMap_first_chain h i hi
+  have hs : kscanStream .first [(n, a), (n, a)] [] [(op, c)] = false := by simp [kscanStream]
+  refine ⟨(colMap_chain h hs).2.2.1, fun i hi => ?_⟩
+  obtain ⟨w, hw, ho⟩ := colMap_first_chain h i hi hs
   simp only [ho, Option.getD_some, if_neg (by decide : QAtomicType.i64 ≠ .u1)]
   simpa [chain] using hw
 
@@ -87,9 +92,11 @@ theorem neg_add_word (a b : UInt64) : 0 - b + a = a - b := by
 `colMap .first n a a` with the post chain `[(op, c)]` write the same words wherever `op' x c = op c x`, so the
 `kscatter` that builds the constant column is not run. -/
 theorem colMap_const_eq {op op' : Op} {n : USize} {a k e e' : Enc} {c : UInt64}
-    (hop : ∀ x, op'.eval x c = op.eval c x) (hk : colConst n c = .ok k) (h : colMap op' n a k = .ok e)
-    (h' : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e') : raw .i64 n e = raw .i64 n e' := by
-  obtain ⟨-, -, hs, hr⟩ := colMap_raw h
+    (hop : ∀ x, op'.eval x c = op.eval c x) (hk : colConst n c = .ok k)
+    (h : colMap op' n a k = .ok e) (h' : colMap .first n a a .i64 .i64 [] [(op, c)] = .ok e')
+    (hl : kscanStream op' [(n, a), (n, k)] [] [] = false := by lockstep)
+    (hn : op' ≠ .null := by decide) : raw .i64 n e = raw .i64 n e' := by
+  obtain ⟨-, -, hs, hr⟩ := colMap_raw h hl hn
   obtain ⟨hs', hr'⟩ := colMap_post h'
   refine Array.ext (hs.trans hs'.symm) fun i hi hi' => ?_
   have h1 := hr i (hs ▸ hi)
@@ -149,85 +156,145 @@ theorem atom_of_cut {t : QAtomicType} (hg : t ≠ .general) {p q : UInt64} (hp :
     exact UInt64.toNat_inj.mp (by rw [UInt64.toNat_mod]; exact Nat.mod_eq_of_lt this)
   · rw [hp, if_neg tu]
 
-/-- **Element `c` of `Arr.concat`** is element `c` of `x` below `n₁`, element `c - n₁` of `y` from there: `x`'s word
-plus the `0` `y`'s scatter left there, or the converse (`raw_scatter`, `colMap_get`), read by `Arr.get_eq_of_raw`. -/
-theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : Arr t n₁} {y : Arr t n₂} {z : Arr t n}
-    (hn : n.toNat = n₁.toNat + n₂.toNat)
-    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) (h : Arr.concat n off x y = .ok z)
-    (c : Fin n.toNat) :
-    z.get c = if hc : c.1 < n₁.toNat then x.get ⟨c.1, hc⟩ else y.get ⟨c.1 - n₁.toNat, by omega⟩ := by
-  unfold Arr.concat colArr at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i a ha
-  split at h; · cases h
-  rename_i b hb
+/-- **A source's word read at `t` is its `i64` word cut to `t`'s width** (a boolean's to its bit), in every column every
+kernel reads: `raw_foR` at `t` and at `i64`, or `pos`, an `i64` column, read at `i64` both times. -/
+theorem raw_cut {t : QAtomicType} {w : Nat} (ht : t.width = some w) {m : USize} {e : Enc} (hw : Enc.WF t m e)
+    (hV : Kernel.Enc.Valid m e) {k : Nat} (hk : k < m.toNat) :
+    (raw t m e)[k]? = some (UInt64.ofNat (((raw .i64 m e)[k]?.getD 0).toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) := by
+  cases e with
+  | foR md pk =>
+    have hr : (raw .i64 m (.foR md pk : Enc))[k]?.getD 0 = Column.foRBits md pk (Column.blockStarts md) k := by
+      simp only [raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, hk,
+        if_true, Option.map_some, Option.getD_some, Nat.reduceMul, ofNat_toNat_mod64]
+    rw [hr]
+    by_cases hb : t = .u1
+    · subst hb; simp [Enc.raw, hk]
+    · rw [raw_foR t w ht hb]; simp [hb, hk]
+  | pos =>
+    cases t <;> simp only [Enc.WF] at hw
+    obtain rfl : w = 8 := (Option.some.inj (ht : some 8 = some w)).symm
+    simp only [Enc.raw, Array.getElem?_map, Array.getElem?_range, hk, if_true, Option.map_some, Option.getD_some,
+      Option.some.injEq]
+    exact (mod_i64 _).symm
+  | _ => all_goals simp only [Kernel.Enc.Valid] at hV
+
+/-- **A stream's answer reads each source's rows, null included**, as `Opt.get_eq_of_raw` asks: row `S + k` of the answer
+`z` (`streamEnc`), `S` the rows of the sources before source `j`, is row `k` of that source `src`. The flags are
+`kscan_stream_get`'s (`foRNuls_wordsFoR`, `bitAt_stream`, `joined_get`), the words `raw_cut` and `atomOfBits_mod`
+(`atom_of_cut` at a boolean). -/
+theorem Opt.stream_get {t : QAtomicType} {n : USize} {es : List (USize × Enc)} (hwid : t.width.isSome)
+    (hW : ∀ p ∈ es, Enc.WF t p.1 p.2) (hn : (es.map (·.1.toNat)).sum = n.toNat) {j k : Nat} (hj : j < es.length)
+    (hk : k < es[j].1.toNat) (z : Opt t n) (hz : z.enc = streamEnc t t es) (hV : Kernel.Enc.Valid n z.enc)
+    (src : Opt t es[j].1) (hs : src.enc = es[j].2) (hVs : Kernel.Enc.Valid es[j].1 src.enc) (i : Fin n.toNat)
+    (hi : i.1 = ((es.take j).map (·.1.toNat)).sum + k) : z.get i = src.get ⟨k, hk⟩ := by
+  obtain ⟨w, ht⟩ := Option.isSome_iff_exists.1 hwid
+  obtain ⟨i, hlt⟩ := i
+  dsimp only at hi; subst hi
+  have hsz : n.toNat = ((streamRaw t es).map (cutBit t)).size := by
+    rw [Array.size_map, streamRaw_size hwid hW, hn]
+  have hnn : ((es.take j).map (·.1.toNat)).sum + k < (streamNul es).size := by rw [streamNul_size, hn]; exact hlt
+  have e1 : (streamNul es)[((es.take j).map (·.1.toNat)).sum + k]? = (foRNuls es[j].1 es[j].2)[k]? := by
+    rw [streamNul_eq]; exact joined_get (fun p => foRNuls p.1 p.2) (fun p _ => foRNuls_size _ _) hj hk
+  have hf : (foRNuls n z.enc)[((es.take j).map (·.1.toNat)).sum + k]? = (foRNuls es[j].1 src.enc)[k]? := by
+    rw [hz, hs]; unfold streamEnc
+    rw [foRNuls_wordsFoR _ _ hsz _ (by rw [Array.size_map, streamRaw_size hwid hW, hn]; exact hlt), bitAt_stream hnn, e1]
+    exact (foRNuls_bit _ _ hk).symm
+  refine Opt.get_eq_of_raw z src hV hVs ⟨_, hlt⟩ ⟨k, hk⟩ hf fun h0 hg a b ha hb hu => ?_
+  have h0' : (foRNuls es[j].1 es[j].2)[k]? = some 0 := by rw [← hs, ← hf]; exact h0
+  obtain ⟨md, pk, hE⟩ : ∃ md pk, z.enc = .foR md pk := ⟨_, _, by rw [hz]; rfl⟩
+  have hg' := kscan_stream_get (s := t) (t := t) hwid hW hn hj hk (md := md) (pk := pk) (hz.symm.trans hE)
+  simp only [h0', Option.getD_some, bne_self_eq_false, Bool.false_eq_true, if_false] at hg'
+  rw [hs] at hb
+  have hb' := raw_cut ht (hW _ (List.getElem_mem hj)) (hs ▸ hVs) hk
+  rw [hb, Option.getD_some] at hb'
+  rw [hb', Option.getD_some] at hg'
+  rw [hE, raw_foR .i64 8 rfl (by decide : QAtomicType.i64 ≠ .u1)] at ha
+  simp only [Array.getElem?_map, Array.getElem?_range, hlt, if_true, Option.map_some, Nat.reduceMul,
+    ofNat_toNat_mod64, Option.some.injEq] at ha
+  unfold Column.foROpt at hg'
+  split at hg'; · cases hg'
+  have hae : a = cutBit t (UInt64.ofNat (b.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) := by
+    rw [← ha]; exact Option.some.inj hg'
+  by_cases tu : t = .u1
+  · subst tu
+    have hb3 : b.toNat < 2 := by simpa using UInt64.lt_iff_toNat_lt.1 (hu rfl).2
+    have : a = b := by
+      rw [hae]; simp only [cutBit, if_true]
+      apply UInt64.toNat_inj.mp
+      simp [UInt64.toNat_mod, UInt64.toNat_ofNat]; omega
+    rw [this]
+  · rw [hae]; simp only [cutBit, tu, if_false]; exact atomOfBits_mod ht tu b
+
+/-- **What a successful `Opt.concat` is**: its answer is the stream `streamEnc` of the two sources, a column every kernel
+reads, and the sources are `foROk` and sum to `n` rows at a type with a width. -/
+theorem Opt.concat_enc {t : QAtomicType} {n₁ n₂ n : USize} {x : Opt t n₁} {y : Opt t n₂} {z : Opt t n}
+    (h : Opt.concat n x y = .ok z) : z.enc = streamEnc t t [(n₁, x.enc), (n₂, y.enc)] ∧ Kernel.Enc.Valid n z.enc ∧
+      n₁.toNat + n₂.toNat = n.toNat ∧ foROk n₁ x.enc = true ∧ foROk n₂ y.enc = true ∧ t.width.isSome := by
+  unfold Opt.concat at h
   split at h
-  · rename_i o ho
-    cases h
-    obtain ⟨-, hrow⟩ := colMap_get ho
-    have hU : ∀ m : USize, m.toNat < 2 ^ 64 := fun m => Nat.lt_of_lt_of_le m.toNat_lt_size USize.size_le
-    obtain ⟨-, -, -, -, -, hfixA, hlastA⟩ := raw_scatter n₁ .pos x.enc n 0 a x.plain ha
-    obtain ⟨-, -, -, -, -, hfixB, hlastB⟩ := raw_scatter n₂ off y.enc n 0 b y.plain hb
-    have hpos : ∀ k < n₁.toNat, ((raw .i64 n₁ (.pos : Enc))[k]?.getD 0).toNat = k := fun k hk => by
-      simp [raw, hk, Nat.mod_eq_of_lt (Nat.lt_trans hk (hU n₁))]
-    have wA : ∀ j < n.toNat, (raw .i64 n a)[j]?.getD 0 =
-        if j < n₁.toNat then (raw .i64 n₁ x.enc)[j]?.getD 0 else 0 := fun j hj => by
-      split
-      · rename_i hl
-        have e := hlastA j hl fun k' h1 h2 e => by
-          have := congrArg UInt64.toNat e; rw [hpos k' h2, hpos j hl] at this; omega
-        rw [hpos j hl] at e; simp [e]
-      · rename_i hl
-        have e := hfixA j hj fun k hk e => by rw [hpos k hk] at e; omega
-        simp [e]
-    have wB : ∀ j < n.toNat, (raw .i64 n b)[j]?.getD 0 =
-        if j < n₁.toNat then 0 else (raw .i64 n₂ y.enc)[j - n₁.toNat]?.getD 0 := fun j hj => by
-      split
-      · rename_i hl
-        have e := hfixB j hj fun k hk e => by rw [hoff k hk] at e; omega
-        simp [e]
-      · rename_i hl
-        have e := hlastB (j - n₁.toNat) (by omega) fun k' h1 h2 e => by
-          have := congrArg UInt64.toNat e; rw [hoff k' h2, hoff _ (by omega)] at this; omega
-        rw [hoff _ (by omega), show n₁.toNat + (j - n₁.toNat) = j by omega] at e; simp [e]
-    obtain ⟨v, hv, hz⟩ := hrow c.1 c.2
-    rw [wA c.1 c.2, wB c.1 c.2] at hv
-    have hcl := (colMap_closed ho).1
-    split
-    · rename_i hl
-      simp only [hl, if_true, Op.eval, UInt64.add_zero, Except.ok.injEq] at hv
-      subst hv
-      exact Arr.get_eq_of_raw _ x hcl (kscatter_valid ha) c ⟨c.1, hl⟩ fun hg p q hp hq hu =>
-        atom_of_cut hg (by
-          change (raw .i64 n o)[c.1]? = some p at hp; change (raw .i64 n₁ x.enc)[c.1]? = some q at hq
-          rw [hz, hq, Option.getD_some] at hp; exact (Option.some.inj hp).symm) hu
-    · rename_i hl
-      simp only [hl, if_false, Op.eval, UInt64.zero_add, Except.ok.injEq] at hv
-      subst hv
-      exact Arr.get_eq_of_raw _ y hcl (kscatter_valid hb) c ⟨c.1 - n₁.toNat, by omega⟩
-        fun hg p q hp hq hu => atom_of_cut hg (by
-          change (raw .i64 n o)[c.1]? = some p at hp
-          change (raw .i64 n₂ y.enc)[c.1 - n₁.toNat]? = some q at hq
-          rw [hz, hq, Option.getD_some] at hp; exact (Option.some.inj hp).symm) hu
+  · rename_i hn
+    split at h
+    · rename_i hv
+      split at h
+      · rename_i w hw
+        split at h
+        · rename_i r hr
+          cases h
+          obtain ⟨h1, h2, -⟩ := kscan_stream_closed (s := t) hw (by rw [hw]; rfl) (n := n)
+            (es := [(n₁, x.enc), (n₂, y.enc)]) (by simp; exact ⟨x.wf, y.wf⟩) (by simp) (by simpa using hn)
+          rw [hr] at h1
+          have e : r.1 = streamEnc t t [(n₁, x.enc), (n₂, y.enc)] := congrArg Prod.fst (Except.ok.inj h1)
+          exact ⟨e, by show Kernel.Enc.Valid n r.1; rw [e]; exact h2, hn, hv.1, hv.2, by rw [hw]; rfl⟩
+        · cases h
+      · cases h
+    · cases h
   · cases h
 
-/-- What `catPlan` answers: the summed count and `off` the destinations `n₁ + k`. -/
-theorem catPlan_ok {n₁ n₂ n : USize} {off : Enc} (h : catPlan n₁ n₂ = .ok (n, off)) :
-    n.toNat = n₁.toNat + n₂.toNat ∧ ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k := by
-  unfold catPlan at h
+/-- **Element `c` of `Opt.concat`** is element `c` of `x` below `n₁`, element `c - n₁` of `y` from there, a null
+included: the one `kscan` stream reads each source's rows back (`Opt.stream_get`). -/
+theorem Opt.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {x : Opt t n₁} {y : Opt t n₂} {z : Opt t n}
+    (hn : n.toNat = n₁.toNat + n₂.toNat) (h : Opt.concat n x y = .ok z) (c : Fin n.toNat) :
+    z.get c = if hc : c.1 < n₁.toNat then x.get ⟨c.1, hc⟩ else y.get ⟨c.1 - n₁.toNat, by omega⟩ := by
+  obtain ⟨hz, hV, -, hx, hy, hwid⟩ := Opt.concat_enc h
+  have hW : ∀ p ∈ [(n₁, x.enc), (n₂, y.enc)], Enc.WF t p.1 p.2 := by simp; exact ⟨x.wf, y.wf⟩
+  have hs : (([(n₁, x.enc), (n₂, y.enc)] : List (USize × Enc)).map (·.1.toNat)).sum = n.toNat := by simp; omega
+  split
+  · rename_i hc
+    exact Opt.stream_get hwid hW hs (j := 0) (k := c.1) (by simp) (by simpa using hc) z hz hV x rfl
+      (foROk_valid hx) c (by simp)
+  · rename_i hc
+    exact Opt.stream_get hwid hW hs (j := 1) (k := c.1 - n₁.toNat) (by simp) (by simp; omega) z hz hV y rfl
+      (foROk_valid hy) c (by simp; omega)
+
+/-- **Element `c` of `Arr.concat`**: `Opt.concat_get` read through `Opt.ofArr` (`Opt.get_ofArr`). -/
+theorem Arr.concat_get {t : QAtomicType} {n₁ n₂ n : USize} {x : Arr t n₁} {y : Arr t n₂} {z : Arr t n}
+    (hn : n.toNat = n₁.toNat + n₂.toNat) (h : Arr.concat n x y = .ok z) (c : Fin n.toNat) :
+    z.get c = if hc : c.1 < n₁.toNat then x.get ⟨c.1, hc⟩ else y.get ⟨c.1 - n₁.toNat, by omega⟩ := by
+  unfold Arr.concat at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i zo hzo
+  split at h
+  · rename_i hz
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    have e0 : zo.get c = some ((Arr.mk zo.enc zo.wf hz).get c) := Opt.get_ofArr (Arr.mk zo.enc zo.wf hz) c
+    rw [Opt.concat_get hn hzo c] at e0
+    by_cases hc : c.1 < n₁.toNat
+    · rw [dif_pos hc, Opt.get_ofArr] at e0
+      rw [dif_pos hc]; exact (Option.some.inj e0).symm
+    · rw [dif_neg hc, Opt.get_ofArr] at e0
+      rw [dif_neg hc]; exact (Option.some.inj e0).symm
+  · cases h
+
+/-- What `catRows` answers: the summed count. -/
+theorem catRows_ok {n₁ n₂ n : USize} (h : catRows n₁ n₂ = .ok n) : n.toNat = n₁.toNat + n₂.toNat := by
+  unfold catRows at h
   split at h
   · rename_i hlt
-    simp only [bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    rename_i o ho
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl⟩ := h
-    have hU : USize.size ≤ 2 ^ 64 := USize.size_le
-    refine ⟨USize.toNat_ofNat_of_lt' hlt, fun k hk => ?_⟩
-    rw [shiftCol_raw ho k hk]
-    simp [UInt64.toNat_add]
-    omega
+    simp only [pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    exact USize.toNat_ofNat_of_lt' hlt
   · cases h
 
 /-- **`Arr.clampShift c s x`** reads each long of `x` clamped into `[0, c]`, plus `s`, where `c + s` is below `2^63`. -/
@@ -358,7 +425,7 @@ theorem colPrefix_add_sum {K : USize} {w P : Enc} (h : colPrefix .add K w = .ok 
       List.sum_cons, List.sum_nil, Nat.add_zero]; exact (UInt64.ofNat_add _ _).symm
 
 /-- `kscan`'s answer is a `foR` column. -/
-theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List Enc}
+theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc} {es : List (USize × Enc)}
     {pre post : List (Op × UInt64)} {r : Enc × Option UInt64} (h : kscan op rev s t n seg es pre post = .ok r) :
     ∃ md pk, r.1 = .foR md pk := by
   unfold kscan at h
@@ -371,8 +438,109 @@ theorem kscan_foR {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : 
   split at h; · cases h
   split at h; · cases h
   split at h; · cases h
+  split at h; · cases h
   simp only [Except.ok.injEq] at h
   subst h; exact ⟨_, _, rfl⟩
+
+/-- **A one-source `kscan .first` at no `seg` writes `chain post` of each word** (`colMap_chain` with one source): word `i`
+of the answer is `chain post` of word `i` of `a`, a boolean answer's cut to its bit. -/
+theorem kscan_first_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hs : kscanStream .first [(n, a)] [] post = false) (h : kscan .first false s t n none [(n, a)] [] post = .ok r) :
+    (raw s n a).size = n.toNat ∧ (raw .i64 n r.1).size = n.toNat ∧ ∀ i < n.toNat, ∃ w,
+      chain post ((raw s n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n r.1)[i]? = some (if t = .u1 then w % 2 else w) := by
+  have hr := h
+  unfold kscan at hr
+  by_cases hd : kscanRefuses .first n [(n, a)] [] post = true
+  · simp only [hd, ↓reduceIte] at hr; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
+  split at hr; · cases hr
+  rename_i cs hc
+  split at hr; · cases hr
+  rename_i ca cs' ns
+  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hc
+  simp only [if_neg (by decide : Op.first ≠ Op.null), List.take_zero, List.map_nil, List.length_nil, List.drop_zero,
+    List.nil_append] at hcs
+  cases hcs
+  obtain ⟨hl, hP⟩ := mapM_chain (es := [a]) hcc
+  rcases cs' with _ | ⟨_, _⟩ <;> try simp at hl
+  obtain ⟨ha, -, hra⟩ := hP (a, ca) (by simp)
+  split at hr; · cases hr
+  rename_i out₀ hf
+  split at hr; · cases hr
+  rename_i out hp
+  split at hr; · cases hr
+  rename_i w' ht
+  split at hr; · cases hr
+  rename_i nl hnl
+  simp only [Except.ok.injEq] at hr
+  subst hns
+  have ho : r.1 = wordsFoR (out.map fun v => if t = .u1 then v % 2 else v) := by
+    rw [← hr]; first | rfl | simp [wordsFoR]
+  rw [ho]; clear ho hr
+  obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+  obtain ⟨hps, hpr⟩ := chainAll_ok hp
+  have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hps, hos]
+  refine ⟨ha, ?_, fun i hi => ?_⟩
+  · rw [(wordsFoR_closed _ hW.symm).2.1]; exact hW
+  rw [(wordsFoR_closed _ hW.symm).2.1]
+  have hr := hrow i (by omega)
+  rw [if_neg (fun hh => by simp [hi] at hh)] at hr
+  simp only [List.map_nil, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hr
+  have hq := hpr i (by omega)
+  have e : (raw s n a)[i]?.getD 0 = ca[i]?.getD 0 :=
+    Except.ok.inj (by have := hra i hi; simpa only [chain, List.foldlM_nil] using this)
+  refine ⟨out[i]?.getD 0, ?_, ?_⟩
+  · rw [e, hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq
+  · simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
+
+/-- **A one-source `kscan .null` at no `seg` writes `chain post` of each null flag** (`kscan_first_chain` with `null`'s
+first column the source's flags `foRNuls`): word `i` of the answer is `chain post` of row `i`'s flag. -/
+theorem kscan_null_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hs : kscanStream .null [(n, a)] [] post = false) (h : kscan .null false s t n none [(n, a)] [] post = .ok r) :
+    (raw .i64 n r.1).size = n.toNat ∧ ∀ i < n.toNat, ∃ w,
+      chain post ((foRNuls n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n r.1)[i]? = some (if t = .u1 then w % 2 else w) := by
+  have hr := h
+  unfold kscan at hr
+  by_cases hd : kscanRefuses .null n [(n, a)] [] post = true
+  · simp only [hd, ↓reduceIte] at hr; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
+  split at hr; · cases hr
+  rename_i cs hc
+  split at hr; · cases hr
+  rename_i ca cs' ns
+  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hc
+  obtain ⟨hl, -⟩ := mapM_chain (es := [a]) hcc
+  rcases ws' with _ | ⟨w0, _ | ⟨_, _⟩⟩ <;> try simp at hl
+  simp only [if_pos rfl, List.take_succ_cons, List.take_zero, List.map_cons, List.map_nil, List.length_cons,
+    List.length_nil, List.drop_succ_cons, List.drop_zero, List.singleton_append, List.cons.injEq] at hcs
+  obtain ⟨rfl, rfl⟩ := hcs
+  split at hr; · cases hr
+  rename_i out₀ hf
+  split at hr; · cases hr
+  rename_i out hp
+  split at hr; · cases hr
+  rename_i w' ht
+  split at hr; · cases hr
+  rename_i nl hnl
+  simp only [Except.ok.injEq] at hr
+  subst hns
+  have ho : r.1 = wordsFoR (out.map fun v => if t = .u1 then v % 2 else v) := by
+    rw [← hr]; first | rfl | simp [wordsFoR]
+  rw [ho]; clear ho hr
+  obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+  obtain ⟨hps, hpr⟩ := chainAll_ok hp
+  have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hps, hos]
+  refine ⟨?_, fun i hi => ?_⟩
+  · rw [(wordsFoR_closed _ hW.symm).2.1]; exact hW
+  rw [(wordsFoR_closed _ hW.symm).2.1]
+  have hr := hrow i (by omega)
+  rw [if_neg (fun hh => by simp [hi] at hh)] at hr
+  simp only [↓reduceIte, List.length_cons, List.length_nil, List.drop_succ_cons, List.drop_zero, List.nil_append, List.append_eq, List.map_id', List.map_id,
+    List.map_nil, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hr
+  have hq := hpr i (by omega)
+  refine ⟨out[i]?.getD 0, ?_, ?_⟩
+  · rw [hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq
+  · simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
 
 /-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
 theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hN : hasNul P = false)
@@ -411,16 +579,15 @@ theorem summandPos_raw {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Enc} {p :
     simp only [h2, if_neg hi64, Option.getD_some]
     rw [et]; cases tag.get q <;> simp
 
-/-- Both columns of a successful `Arr.concat` are ones every kernel reads (`kscatter_valid`). -/
-theorem Arr.concat_valid {t : QAtomicType} {n₁ n₂ n : USize} {off : Enc} {x : Arr t n₁} {y : Arr t n₂} {z : Arr t n}
-    (h : Arr.concat n off x y = .ok z) : Kernel.Enc.Valid n₁ x.enc ∧ Kernel.Enc.Valid n₂ y.enc := by
+/-- Both columns of a successful `Arr.concat` are ones every kernel reads (the `foROk` guard of its stream). -/
+theorem Arr.concat_valid {t : QAtomicType} {n₁ n₂ n : USize} {x : Arr t n₁} {y : Arr t n₂} {z : Arr t n}
+    (h : Arr.concat n x y = .ok z) : Kernel.Enc.Valid n₁ x.enc ∧ Kernel.Enc.Valid n₂ y.enc := by
   unfold Arr.concat at h
   simp only [bind, Except.bind] at h
   split at h; · cases h
-  rename_i a ha
-  split at h; · cases h
-  rename_i b hb
-  exact ⟨kscatter_valid ha, kscatter_valid hb⟩
+  rename_i zo hzo
+  obtain ⟨-, -, -, hx, hy, -⟩ := Opt.concat_enc hzo
+  exact ⟨foROk_valid hx, foROk_valid hy⟩
 
 /-- **`Arr.pos n` holds the positions**: row `c` is `c`. -/
 theorem Arr.pos_get {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (c : Fin n.toNat) :
@@ -460,10 +627,10 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
       exact kscan_foR hr
     -- `wN G`: row `G` is tagged into `s`
     obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
-    have hw : ∀ G < n.toNat, (raw .i64 n p)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
-      -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`colMap_first_chain`)
+    have hw : ∀ G < n.toNat, (raw .i64 n p.1)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
+      -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`kscan_first_chain`)
       obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv ⟨G, hG⟩
-      obtain ⟨w, hc, ho⟩ := colMap_first_chain hp G hG
+      obtain ⟨w, hc, ho⟩ := (kscan_first_chain (by cases s <;> simp [kscanStream]) hp).2.2 G hG
       rw [ho, hwN]; simp only [dif_pos hG, if_neg (by decide : ¬ (QAtomicType.i64 = .u1)), Option.getD_some]
       simp only [ht, Option.getD_some] at hc
       rw [et] at hc
@@ -536,8 +703,10 @@ theorem Vals.cellsOk_wf : {A : Obj} → {n : USize} → {x : Vals A n} → Vals.
   | .arr _, _, ⟨_, _, _, _⟩, h => by
     simp only [Vals.cellsOk, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
     exact ⟨cellBad_none.1 h.1, Vals.cellsOk_wf h.2⟩
-  | .sum _ _, _, ⟨_, _, _, _, _, _⟩, h => by
-    simp only [Vals.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
+  | .sum _ _, _, s, h => by
+    simp only [Vals.cellsOk] at h; simp only [Vals.WF]
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [hv, Bool.and_eq_true] at h ⊢
+    exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
 
 /-- **`Vals.nub` keeps `Vals.WF`**: its rows are `Vals.gather`ed from `x`. -/
 theorem Vals.nub_wf {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
@@ -578,17 +747,16 @@ theorem Vals.catSide_wf {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m} 
 /-- **A summand of `Vals.catSummand`** read at row `c`, which the tags give to it, through positions `P` that clamp to
 themselves: the summand's value of row `c` of the first side below `n₁`, of row `c - n₁` of the second from there,
 given `cat` concatenates (`Vals.concat_row`). -/
-theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc} {s : Bool} {tag₁ : Arr .u1 n₁}
+theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {s : Bool} {tag₁ : Arr .u1 n₁}
     {idx₁ : Arr .i64 n₁} {x₁ : Vals B l₁} {tag₂ : Arr .u1 n₂} {idx₂ : Arr .i64 n₂} {x₂ : Vals B l₂}
-    {cat : {m₁ m₂ : USize} → (m : USize) → Enc → Vals B m₁ → Vals B m₂ → Except String (Vals B m)}
+    {cat : {m₁ m₂ : USize} → (m : USize) → Vals B m₁ → Vals B m₂ → Except String (Vals B m)}
     {L : (m : USize) × Vals B m} (hn : n.toNat = n₁.toNat + n₂.toNat)
-    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k)
-    (hcat : ∀ {m₁ m₂ m : USize} {o : Enc} {z : Vals B m} (x : Vals B m₁) (y : Vals B m₂),
-      (hm : m.toNat = m₁.toNat + m₂.toNat) → (∀ k < m₂.toNat, ((raw .i64 m₂ o)[k]?.getD 0).toNat = m₁.toNat + k) →
-      cat m o x y = .ok z → Vals.WF x → Vals.WF y → ∀ c : Fin m.toNat, Vals.row z c =
+    (hcat : ∀ {m₁ m₂ m : USize} {z : Vals B m} (x : Vals B m₁) (y : Vals B m₂),
+      (hm : m.toNat = m₁.toNat + m₂.toNat) →
+      cat m x y = .ok z → Vals.WF x → Vals.WF y → ∀ c : Fin m.toNat, Vals.row z c =
         if hc : c.1 < m₁.toNat then Vals.row x ⟨c.1, hc⟩ else Vals.row y ⟨c.1 - m₁.toNat, by omega⟩)
     (hv₁ : Kernel.Enc.Valid n₁ tag₁.enc) (hv₂ : Kernel.Enc.Valid n₂ tag₂.enc) (hx₁ : Vals.WF x₁) (hx₂ : Vals.WF x₂)
-    (h : Vals.catSummand n off s tag₁ idx₁ x₁ tag₂ idx₂ x₂ cat = .ok L)
+    (h : Vals.catSummand n s tag₁ idx₁ x₁ tag₂ idx₂ x₂ cat = .ok L)
     {P : Arr .i64 n} (hP : ∀ c h0, clampFin (P.get c) n.toNat h0 = c) (c : Fin n.toNat)
     (ht : (if hc : c.1 < n₁.toNat then tag₁.get ⟨c.1, hc⟩ else tag₂.get ⟨c.1 - n₁.toNat, by omega⟩) = s) :
     (if h0 : 0 < L.1.toNat then Vals.row L.2 (clampFin (P.get c) L.1.toNat h0) else B.dflt) =
@@ -603,7 +771,7 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc
     rename_i p hp
     split at h; · cases h
     cases h
-    obtain ⟨hpn, -⟩ := catPlan_ok (show catPlan l₁ l₂ = .ok (p.1, p.2) from hp)
+    have hpn := catRows_ok hp
     rw [dif_neg (by dsimp only; omega)]
     split <;> rw [dif_neg (by omega)]
   · split at h; · cases h
@@ -618,7 +786,7 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc
     have hc0 : 0 < n.toNat := by have := c.2; omega
     show (if h0 : 0 < n.toNat then Vals.row G (clampFin (P.get c) n.toNat h0) else B.dflt) = _
     rw [dif_pos hc0, hP c hc0,
-      hcat g₁ g₂ hn hoff hG (Vals.catSide_wf hg₁ hx₁ hx₂) (Vals.catSide_wf hg₂ hx₂ hx₁) c]
+      hcat g₁ g₂ hn hG (Vals.catSide_wf hg₁ hx₁ hx₂) (Vals.catSide_wf hg₂ hx₂ hx₁) c]
     split
     · rename_i hc
       rw [dif_pos hc] at ht
@@ -630,15 +798,13 @@ theorem Vals.catSummand_row {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc
       rw [dif_pos hl, e]
 
 /-- **`Vals.catSummand` keeps `Vals.WF`** where `cat` does. -/
-theorem Vals.catSummand_wf {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc} {s : Bool} {tag₁ : Arr .u1 n₁}
+theorem Vals.catSummand_wf {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {s : Bool} {tag₁ : Arr .u1 n₁}
     {idx₁ : Arr .i64 n₁} {x₁ : Vals B l₁} {tag₂ : Arr .u1 n₂} {idx₂ : Arr .i64 n₂} {x₂ : Vals B l₂}
-    {cat : {m₁ m₂ : USize} → (m : USize) → Enc → Vals B m₁ → Vals B m₂ → Except String (Vals B m)}
-    (hcat : ∀ {m₁ m₂ m : USize} {o : Enc} {a : Vals B m₁} {b : Vals B m₂} {z : Vals B m},
-      m.toNat = m₁.toNat + m₂.toNat → (∀ k < m₂.toNat, ((raw .i64 m₂ o)[k]?.getD 0).toNat = m₁.toNat + k) →
-      cat m o a b = .ok z → Vals.WF a → Vals.WF b → Vals.WF z)
+    {cat : {m₁ m₂ : USize} → (m : USize) → Vals B m₁ → Vals B m₂ → Except String (Vals B m)}
+    (hcat : ∀ {m₁ m₂ m : USize} {a : Vals B m₁} {b : Vals B m₂} {z : Vals B m},
+      m.toNat = m₁.toNat + m₂.toNat → cat m a b = .ok z → Vals.WF a → Vals.WF b → Vals.WF z)
     (hn : n.toNat = n₁.toNat + n₂.toNat)
-    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k)
-    {z : (m : USize) × Vals B m} (h : Vals.catSummand n off s tag₁ idx₁ x₁ tag₂ idx₂ x₂ cat = .ok z)
+    {z : (m : USize) × Vals B m} (h : Vals.catSummand n s tag₁ idx₁ x₁ tag₂ idx₂ x₂ cat = .ok z)
     (h₁ : Vals.WF x₁) (h₂ : Vals.WF x₂) : Vals.WF z.2 := by
   unfold Vals.catSummand at h
   split at h
@@ -647,8 +813,7 @@ theorem Vals.catSummand_wf {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc}
     rename_i p hp
     split at h; · cases h
     rename_i hc; cases h
-    obtain ⟨hpn, hpo⟩ := catPlan_ok (show catPlan l₁ l₂ = .ok (p.1, p.2) from hp)
-    exact hcat hpn hpo hc h₁ h₂
+    exact hcat (catRows_ok hp) hc h₁ h₂
   split at h; · cases h
   simp only [bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
@@ -657,25 +822,24 @@ theorem Vals.catSummand_wf {B : Obj} {n₁ n₂ n l₁ l₂ : USize} {off : Enc}
   rename_i b hb
   split at h; · cases h
   rename_i hc; cases h
-  exact hcat hn hoff hc (Vals.catSide_wf ha h₁ h₂) (Vals.catSide_wf hb h₂ h₁)
+  exact hcat hn hc (Vals.catSide_wf ha h₁ h₂) (Vals.catSide_wf hb h₂ h₁)
 
 /-- **`Vals.concat` keeps `Vals.WF`**: a cell of `x` stays inside the first `m₁` payload rows, one of `y` moves
 past them by `m₁`, inside the `m₁ + m₂` rows of the joined payload. -/
-theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
-    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) →
-    {x : Vals A n₁} → {y : Vals A n₂} → {z : Vals A n} → Vals.concat n off x y = .ok z →
+theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
+    {x : Vals A n₁} → {y : Vals A n₂} → {z : Vals A n} → Vals.concat n x y = .ok z →
       Vals.WF x → Vals.WF y → Vals.WF z
-  | .atom _, _, _, _, _, _, _, _, _, _, _, _, _ => trivial
-  | .one, _, _, _, _, _, _, _, _, _, _, _, _ => trivial
-  | .prod _ _, _, _, _, _, hn, hoff, x, y, z, h, hx, hy => by
+  | .atom _, _, _, _, _, _, _, _, _, _, _ => trivial
+  | .one, _, _, _, _, _, _, _, _, _, _ => trivial
+  | .prod _ _, _, _, _, hn, x, y, z, h, hx, hy => by
     simp only [Vals.concat, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i z1 h1
     split at h; · cases h
     rename_i z2 h2
     cases h
-    exact ⟨Vals.concat_wf hn hoff h1 hx.1 hy.1, Vals.concat_wf hn hoff h2 hx.2 hy.2⟩
-  | .arr _, n₁, n₂, _, _, hn, hoff, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, hx, hy => by
+    exact ⟨Vals.concat_wf hn h1 hx.1 hy.1, Vals.concat_wf hn h2 hx.2 hy.2⟩
+  | .arr _, n₁, n₂, _, hn, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, hx, hy => by
     simp only [Vals.concat] at h
     split at h
     case isFalse => cases h
@@ -693,11 +857,11 @@ theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} →
     split at h; · cases h
     rename_i F hF
     cases h
-    obtain ⟨hpn, hpo⟩ := catPlan_ok (show catPlan m₁ m₂ = .ok (p.1, p.2) from hp)
-    refine ⟨fun c => ?_, Vals.concat_wf hpn hpo hF hx.2 hy.2⟩
+    have hpn := catRows_ok hp
+    refine ⟨fun c => ?_, Vals.concat_wf hpn hF hx.2 hy.2⟩
     have hU : ∀ m : USize, m.toUInt64.toNat = m.toNat := fun m => by
       have := m.toNat_lt_size; have := USize.size_le; simp
-    rw [Arr.concat_get hn hoff hlo c, Arr.concat_get hn hoff hhi c]
+    rw [Arr.concat_get hn hlo c, Arr.concat_get hn hhi c]
     split
     · rename_i hc
       have := hx.1 ⟨c.1, hc⟩
@@ -709,8 +873,16 @@ theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} →
       have h2 := Arr.shift_get hH₂ ⟨_, hc'⟩ (by omega) (by rw [hU]; omega)
       rw [hU] at l2 h2
       rw [l2, h2]; omega
-  | .sum _ _, _, _, _, _, hn, hoff, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩, z, h, hx, hy => by
+  | .sum _ _, _, _, _, hn, s₁, s₂, z, h, hx, hy => by
     simp only [Vals.concat] at h
+    rcases hv₁ : s₁.view with ⟨hb₁, x₁⟩ | ⟨hb₁, _, _, tag₁, idx₁, x₁, y₁⟩ <;>
+      rcases hv₂ : s₂.view with ⟨hb₂, x₂⟩ | ⟨hb₂, _, _, tag₂, idx₂, x₂, y₂⟩ <;> simp only [hv₁, hv₂] at h
+    · simp only [Functor.map, Except.map] at h
+      split at h; · cases h
+      cases h; simp only [Vals.WF, Vals.view_ofOpt]
+    · exact absurd (hb₁.symm.trans hb₂) nofun
+    · exact absurd (hb₂.symm.trans hb₁) nofun
+    simp only [Vals.WF, hv₁, hv₂] at hx hy
     split at h
     case isFalse => cases h
     simp only [bind, Except.bind, pure, Except.pure] at h
@@ -721,17 +893,17 @@ theorem Vals.concat_wf : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} →
     split at h; · cases h
     split at h; · cases h
     cases h
-    exact ⟨Vals.catSummand_wf (fun hm ho hc a b => Vals.concat_wf hm ho hc a b) hn hoff hL hx.1 hy.1,
-      Vals.catSummand_wf (fun hm ho hc a b => Vals.concat_wf hm ho hc a b) hn hoff hR hx.2 hy.2⟩
+    simp only [Vals.WF, Vals.view_ofGen]
+    exact ⟨Vals.catSummand_wf (fun hm hc a b => Vals.concat_wf hm hc a b) hn hL hx.1 hy.1,
+      Vals.catSummand_wf (fun hm hc a b => Vals.concat_wf hm hc a b) hn hR hx.2 hy.2⟩
 
 /-- **Row `c` of `Vals.concat`** is row `c` of `x` below `n₁`, row `c - n₁` of `y` from there. -/
-theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
-    (hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ off)[k]?.getD 0).toNat = n₁.toNat + k) →
-    (x : Vals A n₁) → (y : Vals A n₂) → {z : Vals A n} → Vals.concat n off x y = .ok z → Vals.WF x → Vals.WF y →
+theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → (hn : n.toNat = n₁.toNat + n₂.toNat) →
+    (x : Vals A n₁) → (y : Vals A n₂) → {z : Vals A n} → Vals.concat n x y = .ok z → Vals.WF x → Vals.WF y →
       ∀ c : Fin n.toNat, Vals.row z c =
         if hc : c.1 < n₁.toNat then Vals.row x ⟨c.1, hc⟩ else Vals.row y ⟨c.1 - n₁.toNat, by omega⟩
-  | .atom _, _, _, _, _, hn, hoff, x, y, z, h, _, _, c => Arr.concat_get hn hoff h c
-  | .prod _ _, _, _, _, _, hn, hoff, x, y, z, h, hx, hy, c => by
+  | .atom _, _, _, _, hn, x, y, z, h, _, _, c => Arr.concat_get hn h c
+  | .prod _ _, _, _, _, hn, x, y, z, h, hx, hy, c => by
     simp only [Vals.concat, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i z1 h1
@@ -739,9 +911,9 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
     rename_i z2 h2
     cases h
     show (Vals.row z1 c, Vals.row z2 c) = _
-    rw [Vals.concat_row hn hoff x.1 y.1 h1 hx.1 hy.1 c, Vals.concat_row hn hoff x.2 y.2 h2 hx.2 hy.2 c]
+    rw [Vals.concat_row hn x.1 y.1 h1 hx.1 hy.1 c, Vals.concat_row hn x.2 y.2 h2 hx.2 hy.2 c]
     split <;> rfl
-  | .arr _, n₁, n₂, _, _, hn, hoff, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, hx, hy, c => by
+  | .arr _, n₁, n₂, _, hn, ⟨m₁, lo₁, hi₁, f₁⟩, ⟨m₂, lo₂, hi₂, f₂⟩, z, h, hx, hy, c => by
     simp only [Vals.concat] at h
     split at h
     case isFalse => cases h
@@ -759,12 +931,12 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
     split at h; · cases h
     rename_i F hF
     cases h
-    obtain ⟨hpn, hpo⟩ := catPlan_ok (show catPlan m₁ m₂ = .ok (p.1, p.2) from hp)
-    have hrow := Vals.concat_row hpn hpo f₁ f₂ hF hx.2 hy.2
+    have hpn := catRows_ok hp
+    have hrow := Vals.concat_row hpn f₁ f₂ hF hx.2 hy.2
     have hU : ∀ m : USize, m.toUInt64.toNat = m.toNat := fun m => by
       have := m.toNat_lt_size; have := USize.size_le; simp
-    have gl := Arr.concat_get hn hoff hlo c
-    have gh := Arr.concat_get hn hoff hhi c
+    have gl := Arr.concat_get hn hlo c
+    have gh := Arr.concat_get hn hhi c
     simp only [Vals.row]
     rw [filterMap_finRange_add hpn]
     split
@@ -792,8 +964,20 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
       by_cases hA : (lo₂.get ⟨_, hc'⟩).toInt ≤ (j.1 : Int) ∧ (j.1 : Int) < (hi₂.get ⟨_, hc'⟩).toInt
       · rw [if_pos hA, if_pos (by dsimp only; omega)]
       · rw [if_neg hA, if_neg (by dsimp only; omega)]
-  | .sum _ _, n₁, _, _, _, hn, hoff, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩, z, h, hx, hy, c => by
+  | .sum _ _, n₁, _, _, hn, s₁, s₂, z, h, hx, hy, c => by
     simp only [Vals.concat] at h
+    rcases hs₁ : s₁.view with ⟨hb₁, x₁⟩ | ⟨hb₁, _, _, tag₁, idx₁, x₁, y₁⟩ <;>
+      rcases hs₂ : s₂.view with ⟨hb₂, x₂⟩ | ⟨hb₂, _, _, tag₂, idx₂, x₂, y₂⟩ <;> simp only [hs₁, hs₂] at h
+    · obtain rfl := Option.some.inj (hb₂.symm.trans hb₁)
+      simp only [Functor.map, Except.map] at h
+      split at h; · cases h
+      rename_i w hw
+      cases h
+      simp only [Vals.row, hs₁, hs₂, Vals.view_ofOpt, Opt.concat_get hn hw c]
+      split <;> rfl
+    · exact absurd (hb₁.symm.trans hb₂) nofun
+    · exact absurd (hb₂.symm.trans hb₁) nofun
+    simp only [Vals.WF, hs₁, hs₂] at hx hy
     split at h
     case isFalse => cases h
     rename_i hn63
@@ -809,23 +993,23 @@ theorem Vals.concat_row : {A : Obj} → {n₁ n₂ n : USize} → {off : Enc} �
     cases h
     obtain ⟨hv₁, hv₂⟩ := Arr.concat_valid htag
     have hpos := fun c h0 => Arr.pos_clamp hP hn63 c h0
-    have gt := Arr.concat_get hn hoff htag c
+    have gt := Arr.concat_get hn htag c
     cases hb : tag.get c
-    · have e := Vals.catSummand_row hn hoff (fun x y hm ho hz => Vals.concat_row hm ho x y hz) hv₁ hv₂ hx.1 hy.1 hL hpos c
+    · have e := Vals.catSummand_row hn (fun x y hm hz => Vals.concat_row hm x y hz) hv₁ hv₂ hx.1 hy.1 hL hpos c
         (by rw [← gt, hb])
-      simp only [Vals.row, hb, Bool.false_eq_true, ↓reduceIte]
+      simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, Bool.false_eq_true, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
       · rename_i hc; rw [dif_neg hc] at gt; rw [← gt, hb]; rfl
-    · have e := Vals.catSummand_row hn hoff (fun x y hm ho hz => Vals.concat_row hm ho x y hz) hv₁ hv₂ hx.2 hy.2 hR hpos c
+    · have e := Vals.catSummand_row hn (fun x y hm hz => Vals.concat_row hm x y hz) hv₁ hv₂ hx.2 hy.2 hR hpos c
         (by rw [← gt, hb])
-      simp only [Vals.row, hb, ↓reduceIte]
+      simp only [Vals.row, Vals.view_ofGen, hs₁, hs₂, hb, ↓reduceIte]
       rw [e]
       split
       · rename_i hc; rw [dif_pos hc] at gt; rw [← gt, hb]; rfl
       · rename_i hc; rw [dif_neg hc] at gt; rw [← gt, hb]; rfl
-  | .one, _, _, _, _, _, _, _, _, _, _, _, _, c => by split <;> rfl
+  | .one, _, _, _, _, _, _, _, _, _, _, c => by split <;> rfl
 
 /-! ## Checks: CONCAT keeps every stored word -/
 

@@ -1468,7 +1468,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     主人定（null 次序，随 q）：null 小于每个值，`atom+1` 上 `inr ∗ < inl a`（q 的 `asc 3 0N 1` 是 `0N 1 3`），doc §4
     "atom+1" 卡片已改。主人定 O：null 码从块的顶残差移到残差 0（带标志块里值存成残差 + 1），块内比码即 null 在前；
     `nullbot` 改 `foRNul` 与 Rust，其他证明与 `#guard` 只经 `foRNul`/`Opt.isNul`。
-    ✅ nullorder（随 q 次序，一般的，不特判 `.one`）：每个 sum `inr` 在前。`Obj.key` 是 `inl ↦ 1 ::`、`inr ↦ 0 ::`
+    ↩ nullorder（nullband3a2 已撤回：可空是 `1+A`，标准和次序本身 null 在前，此翻转是要删的特例）。原做法：每个 sum `inr` 在前。`Obj.key` 是 `inl ↦ 1 ::`、`inr ↦ 0 ::`
     （`Obj.lt_inr_inl` 取代 `lt_inl_inr`）；`Vals.cols` 的 sum 键列是 `colMap .not … .u1` 的 `¬tag`，`tag` 本身由
     `foROk` 查（`kasc` 不再读它）；新引理 `colMap_not_u1`（`RepCanon`：结果是 `Arr .u1 n`、元素 = `!tag.get`）；
     `Vals.cols_sum` 给出 `nt` 与 `Valid tag`，`lt_of_codes`/`row_of_codes`/`codes_of_row`/`cols_wf`/
@@ -1478,8 +1478,53 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     处匹配各加一支。分部分做，每部分一个 agent、各自建绿：
     - nullband3a：`Run/Core`（`Vals`、`row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`）+ `Gather` +
       `TestNullband`。
+    - 🔄 nullband3a（部分）：`Vals (.sum a b) n := SumCols … (Obj.band a b)`。一个谓词 `Obj.band a b`：`t+1` 且
+      `t.width` 有值（有块）时 `some t`，存成一列 `Opt t n`；其余 sum（含 `general+1`）照旧 tag/idx/两边。入口只有
+      `Vals.view : Vals (.sum a b) n → SumV a b n`（`.opt h x` / `.gen h l r tag idx x y`），出口 `Vals.ofOpt`/`ofGen`；
+      `Obj.band_some`、`Obj.optEl`/`optOf`（`Option (El t)` ↔ `a+b` 的元素，null = `inr ()`）。已绿（worktree 建）：
+      `Run.Core`（`row`、`rowsImpl`）、`Gather`（`Opt.gather`）、`Cols`（`cellsOk`；`concat` 经新 `Opt.concat`）、`Canon`
+      （`cols`：band 列自身是键，`kasc` 的 `nulCodes` 给 null 在前）、`List`（`pack`）、`Struct`（`none`、`inl` =
+      `Opt.ofArr`、`inr` = `Opt.nuls`）、`Table`（`readOpt`，`readArr` 建在其上；`readVals`/`encVals` band 支）、
+      `Lang.Plan`（`SideCol` 带 `Opt`，band 列在 side 自己的路径）。
+      缺 kernel（报错而非解码，待主人定）：`Opt.concat` 两边任一含 null 时报错——没有一个 kernel 把两列连同 null 位
+      合并（`kscan` 不写 null、`kscatter` 只读一个源、其余格填常数）；`inl°`/`inr°` 在 band 列上报错（需把值与 null
+      分开的 kernel）。
+      未做：`Run.Lang.Gen`（`sumV` 第 53 行 `⟨l, r, …⟩`：生成代码要为 band side 发 `optV`），之后的 `Rel.Run.*`
+      未建；CSV `S+1` 仍按 3 部分写（`csvEncs`），`encVals` 的 band 支读 1 部分——CSV 3 → 1 未做；`TestNullband` 往返
+      （`i64+1`、`u1+1` 经 row/gather/concat/cols/pack/readVals/encVals/CSV、null 在前、跨块）未加。Rep*/GenK* 未建。
+    - 🔄 nullband3a2：合入 null1x（`Obj.opt X = .sum .one X`，null = `inl ()`）。撤回 nullorder 翻转（`git revert 19fd603`：`Obj.key` `inl ↦ 0::`，`cols` 键列是 `tag`，删 `colMap_not_u1`、`lt_inr_inl` 与 tag 的 `foROk` 检查）。`Obj.band` 认 `1+t`（`.one, .atom t`），`optEl`/`optOf` null = `inl ()`；`Struct.inl` = `Opt.nuls`、`inr` = `Vals.optInr`。frame 库（`Frame`/`FrameJoin`/`FrameGroup`）与 `TestFrame*` 全改 `1+X`：`tot = R inr ∪ (…) ⊤ inl`，`bind = c [inl, f]`，`[𝟙, d]` → `[d, 𝟙]`，`y ⊕ 𝟙` → `𝟙 ⊕ y`。`Gen.optV`（band 列按 hex 重建）、`sumV` 带 `Obj.band = none` 证据（`Expand.bandRfl`），`valsE`/`valsEq` 经 `Vals.view`；`Elab` 空 sum 字面量经 `Vals.none`。RelRun 全绿（worktree 建）。
+      未做：CSV 3 → 1（`Table.toCsv`/`ofCsv` 的 `.opt a` 仍按 tag/idx/1/v 部分，band 侧只有 1 部分 `Opt`，运行时会报 "too few parts"；需 `Db.Csv` 的 `null` 形状改为一列带内 null，Rust 端同改）；`TestNullband` 往返（`1+i64`、`1+u1`）；Rel 库（Rep*/GenK*/测试）未建。缺 kernel 的两处仍报错：`Opt.concat` 两边任一含 null；band 列上的 `inl°`/`inr°`。
+    - 🔄 nullband3b（部分，`RepCanon` 未绿）：合入 nullband3a2；`FrameJoin` 冲突按 `1+δ` 解（`pivotCol : κ ⟶ 1+δ`，
+      `dummy` 的 `inr` 是命中、`inl` 是其余），第 20 行注释改 `x × (𝟙 ⊕ y)`。`RepCanon`：`Vals.view_go_cast`、
+      `view_ofOpt`、`view_ofGen`（构造后 `view` 直接归约）；`Vals.WF`、`gather_wf`、`gather_row` 的 gen 支、`cols_sum`
+      （改取 `s` 与 `hv : s.view = .gen …`）已改成 `match s.view`。缺口（证明设计，不是机械活）：band 列作键带 null，
+      `Vals.cols_wf` 的 `hasNul c.2 = false` 在 `.opt` 支为假，需弱化并让 `sorted_key`/`nub_*` 链接受带 null 的键列；
+      缺 `Opt.gather_row`（`kgather` 搬 null 位）、`Opt` 版 `Arr.eq_of_codes`/`codes_of_eq`（`nulCodes_row`）；
+      `row_of_codes`/`codes_of_row` 的 sum 支尚未改成 `s.view` 形。
+    - 🔄 nullband3c（部分）：CSV 3 → 1 的 Lean 一侧。`Db.CsvShape` 加 `opt`：`1+V` 整个 side 是 band（`Obj.band`）时，
+      CSV 列就是那一个 `Opt` 列（一个编码，空字段 = 块内 null 码）；模型里它是两个字部分（值、`foRNuls` 形式的 null
+      标志），`csvRead` 用 `wordsFoR v (nulMap f)` 合成一个编码，`raws` 把一个编码读成 `rawAll` + `foRNuls`；
+      `CsvShape.encs`（编码数）与 `parts`（字部分数）分开，`arity` 带计数函数。`.null`（tag/idx/值）只留给 `S` 有多列的
+      `1+S`。`Table.toCsv`/`ofCsv` 的 band 支原样传一个部分，`internCsv`/`decodeCsv` 按 `encs` 切；`Expand.csvLeaves`
+      每个叶子带 `whole`（叶子就是 `b` 本身），`ioCols` 在 `whole` 且 `Obj.band` 有值时选 `opt`。`csvWords_csvText`
+      陈述不变（`Rel.KernelSpec.Csv` 已建）。未做：Rust `crate/src/csv.rs` 的 `SH_OPT = 3`（读：值按 null 位图写进一个
+      编码，`Sink::write_nul`；写：每块读值与 null 标志）及 FFI——在此之前 extern 把 `opt` 当 atom；`CsvTest` 的 `opt`
+      用例；`TestNullband` 往返（`1+i64`、`1+u1`、跨块 gather/concat、CSV 写读）。
+    - ✅ nullband3c2/3c3：Rust `csv.rs` `SH_OPT = 3`（读：lex 时记 null 位图，`Sink::answer_nul` 写成一个编码；写：每块读值与
+      `foRNuls`），FFI 拒绝未知 shape；`Rel.Kernel.Db.CsvTest` 把 extern 与 `csvEncs`/`csvText` 并排（`1+i64`、`1+u1`，
+      7 行与 5000 行、全 null、无 null、拒绝）。可空列的 CSV shape 只在一处决定：`Table.nullShape S`（`1+S` 是 band 时
+      `opt`，否则 `null`），`Expand.ioCols`（表头）、`toCsv`、`ofCsv` 都读它；`csvLeaves` 的叶子带所属 `1+S` 的 `S`（取代
+      `whole`，它对 schema 字段恒为 false，`px : 1+N` 因此表头是 `.null`、部分是 `.opt`，即 TestIO 的 "2 column parts past
+      the schema"）。TestIO 读回改用 `Table.nullShape .long`（`.null` → `opt`，读回值不变）。`encVals` band 支：`Enc.wf?`
+      只看块元数据，带 null 的 `u1` 块宽度为 2，被拒，此时如 `Opt.ofAtoms` 判定 `Enc.WF` 本身。`TestNullband`：`1+N` 程序
+      往返；`1+u1`（语言里无 `u1` 对象，直接调 `readCsvDict`/`writeCsv`）往返；键 `1+N` 的 5000 行读入后 null 键在前、值经
+      gather 跨块；两个 5000 行无 null 列 concat 成 10000 行，两边都有 null 时报 `Opt.concat` 的错。已入 `AllPrograms`。
     - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
       3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
+    ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序
+    `inl < inr` 本身即 null 在前，`Obj.key`/`cols`/`RepOrder` 不改。一般规则 `Obj.opt X = .sum .one X`（`@[match_pattern]`，
+    `Run/Core`）：CSV 的 `ioCols`/`csvLeaves`/`Table.toCsv`/`ofCsv` 只经它认可空列；extern 仍按 `V+1` 布局（tag 1 = null），
+    `Table.swapTag`（`colMap` 取反 tag）在读写两端换边。null 码仍是顶残差（`foRNul`、Rust 不改）。⬜ dataframe 库翻转 `X+1`。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`

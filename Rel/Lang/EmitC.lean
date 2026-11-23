@@ -112,7 +112,7 @@ structure TabB where
 def mapB (op : Kernel.Op) (n a b : Nat) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
     (pre post : List (Kernel.Op × UInt64) := []) : Bld Nat := do
   nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put s), ← lit (Reg.put t),
-    n, ← ctorB 0 #[] #[], ← listB [a, b], ← lit (Reg.put pre), ← lit (Reg.put post)]) 0 "kscan"
+    n, ← ctorB 0 #[] #[], ← listB [← srcB n a, ← srcB n b], ← lit (Reg.put pre), ← lit (Reg.put post)]) 0 "kscan"
 
 /-- `colConst n w`: `n` cells of the word `w`. -/
 def wordsB (n : Nat) (w : UInt64) : Bld Nat := do constB n (← lit (.u64 w))
@@ -1590,7 +1590,7 @@ def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
 
 /-! ### A program's IO statements (IO step I10): what `n.io` reads, computes and writes, as a plan -/
 
-/-- Whether `A` holds a sum, whose CSV columns (`S+1`) `Table.ofCsv` regroups and checks, which no plan recipe does. -/
+/-- Whether `A` holds a sum, whose CSV columns (`1+S`) `Table.ofCsv` regroups and checks, which no plan recipe does. -/
 def hasSum : Obj → Bool
   | .atom _ => false
   | .prod a b => hasSum a || hasSum b

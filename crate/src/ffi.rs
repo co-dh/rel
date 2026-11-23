@@ -326,11 +326,9 @@ impl Sink {
                         r#priv: 0, nul: 0, op: 0, cls: 0, shape: 0 };
         unsafe { c::pool()(sink_run, self.g.nblk(), cost, self.e.width << self.g.lg, &p) };
     }
-    /// The column `p` denotes, as the Lean answer (`(meta, pack)`);
-    /// with `shrinks`, `None` where the encoded form is not smaller than the `n * width` dense bytes it replaces
-    /// (`Enc.shrinks`, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink").
-    pub fn write<P: Producer + ?Sized>(self, p: &P, shrinks: bool) -> Option<lean::O> { self.write_nul(p, shrinks, &[]) }
-    /// `write` of a column whose null rows are the set bits of `nul` (Lean `Coc.encodeAt`'s `nul`; empty: none).
+    /// The column `p` denotes, as the Lean answer (`(meta, pack)`), its null rows the set bits of `nul` (Lean
+    /// `Coc.encodeAt`'s `nul`; empty: none); with `shrinks`, `None` where the encoded form is not smaller than the
+    /// `n * width` dense bytes it replaces (`Enc.shrinks`, `CLAUDE.md`'s "nothing is encoded that the encoding does not shrink").
     pub fn write_nul<P: Producer + ?Sized>(mut self, p: &P, shrinks: bool, nul: &[u8]) -> Option<lean::O> {
         let (w, n) = (self.e.width, self.g.n);
         let below = if shrinks { n * w } else { usize::MAX };
@@ -363,8 +361,12 @@ impl Sink {
         self.each(false, crate::QLEAN_COST_COPY, &|s, b, _, _, _| unsafe { (*s).place(b, &*(sp as *const Staged).add(b)) });
         Some(())
     }
-    /// `write` with no size test: the answer of a kernel whose form is decided.
-    pub fn answer<P: Producer + ?Sized>(self, p: &P) -> lean::O { self.write(p, false).expect("qlean Sink: a write with no size test has an answer") }
+    /// `write_nul` with no size test and no null: the answer of a kernel whose form is decided.
+    pub fn answer<P: Producer + ?Sized>(self, p: &P) -> lean::O { self.answer_nul(p, &[]) }
+    /// `answer` of a column whose null rows are the set bits of `nul` (`write_nul`).
+    pub fn answer_nul<P: Producer + ?Sized>(self, p: &P, nul: &[u8]) -> lean::O {
+        self.write_nul(p, false, nul).expect("qlean Sink: a write with no size test has an answer")
+    }
     /// The `u1` Frame of Reference column of `n` booleans, Lean `Coc.encodeAt lgEnc 1 _ false` of their 0/1 bytes, a block
     /// at a time: `f(lo, hi, o)` sets in the zeroed `o` the bits of elements `lo .. hi` that hold. A mixed block's
     /// residuals are its bitmap at width 1; an all-0 or all-1 block is width 0 at base 0 or 1 and stores no residual.
@@ -438,9 +440,9 @@ mod sink_tests {
     #[test] fn shrinks() {
         let n = 3000;
         let wide: alloc::vec::Vec<i64> = (0..n as i64).map(|i| i.wrapping_mul(0x1E37_79B9_7F4A_7C15)).collect();
-        assert!(Sink::new(n, 8).write(&Blocks::dense(pod::bytes(&wide), 8), true).is_none());
+        assert!(Sink::new(n, 8).write_nul(&Blocks::dense(pod::bytes(&wide), 8), true, &[]).is_none());
         let x = col(n);
-        let s = Sink::new(n, 8).write(&Blocks::dense(pod::bytes(&x), 8), true).expect("sink_tests: a narrow column shrinks");
+        let s = Sink::new(n, 8).write_nul(&Blocks::dense(pod::bytes(&x), 8), true, &[]).expect("sink_tests: a narrow column shrinks");
         assert_eq!(pair(&s), pair(&Sink::new(n, 8).answer(&Blocks::dense(pod::bytes(&x), 8))));
     }
     // `bools` against its rule: a mixed block width 1 with the bitmap as residuals, a uniform block width 0 at base 0 or 1
