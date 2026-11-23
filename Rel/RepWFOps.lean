@@ -283,26 +283,7 @@ theorem front_den {B : Obj} {q : Tab (.prod B B) (.prod B B) → Except String (
   · have hp := (eP xs (b, c)).2 ⟨⟨hx, hb⟩, hx, hc⟩
     exact ⟨(b, c), hp, (outr_holds hO _ c).2 ⟨(Rep.keyRowRep Y _).2 ⟨(b, c), (eY _ _).2 ⟨rfl, ⟨xs, hp⟩, hbt, hn⟩⟩, rfl⟩⟩
 
-/-! ### The value verbs and `$`: their tables are atoms keyed by the input, `Tab.keep` and `≫` -/
-
-/-- **`D ≫ arithDen k U` keeps `Tab.WF`** where `U` does: `≫ dom U` twice, `keep`, `≫ U`. -/
-theorem arith_wf {K : Obj} {t : QAtomicType} {k : UInt8} {D : Tab K (.prod (.atom t) (.atom t))}
-    {U : {n : USize} → Vals (.atom t) n → Except String (Tab (.atom t) (.atom t))}
-    (hU : ∀ {n : USize} (X : Vals (.atom t) n) T, U X = .ok T → Vals.WF X → T.WF) {T : Tab K (.atom t)}
-    (h : arith t k D U = .ok T) (hD : D.WF) : T.WF := by
-  simp only [arith, bind, Except.bind_eq_ok'] at h
-  obtain ⟨u1, hu1, d1, hd1, E₁, hE₁, u2, hu2, d2, hd2, E, hE, ⟨w, b⟩, -, P, hP, u3, hu3, h⟩ := h
-  have wE₁ := comp_wf hE₁ ⟨⟨hD.1, hD.2⟩, trivial⟩ (dom_wf hd1 (hU _ _ hu1 trivial))
-  have wE := comp_wf hE ⟨wE₁.1, trivial⟩ (dom_wf hd2 (hU _ _ hu2 trivial))
-  exact comp_wf h (keep_wf hP ⟨wE.1.1, trivial⟩) (hU _ _ hu3 trivial)
-
-/-- **`D ≫ succDen U` keeps `Tab.WF`** where `U` does: `≫ dom U` on both sides of the step. -/
-theorem succ_wf {K : Obj} {D : Tab K .long} {U : {n : USize} → Vals .long n → Except String (Tab .long .long)}
-    (hU : ∀ {n : USize} (X : Vals .long n) T, U X = .ok T → Vals.WF X → T.WF) {T : Tab K .long}
-    (h : succ D U = .ok T) (hD : D.WF) : T.WF := by
-  simp only [succ, bind, Except.bind_eq_ok'] at h
-  obtain ⟨u1, hu1, d1, hd1, E, hE, ne, -, s, -, u2, hu2, d2, hd2, h⟩ := h
-  exact comp_wf h ⟨(comp_wf hE hD (dom_wf hd1 (hU _ _ hu1 trivial))).1, trivial⟩ (dom_wf hd2 (hU _ _ hu2 trivial))
+/-! ### `$`: its table is atoms keyed by the input, `Tab.keep` -/
 
 /-- **`$` keeps `Tab.WF`**: `X` keyed to the cast words, `keep`. -/
 theorem cast_wf {A B : Obj} {n : USize} {X : Vals A n} {t : Tab A B} (h : Tab.cast X = .ok t) (hX : Vals.WF X) :

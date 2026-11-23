@@ -100,29 +100,46 @@ def stepColsAt : (t : QAtomicType) → UInt8 → (n : USize) → Enc → Enc →
 namespace Tab
 variable {K : Obj}
 
-/-- **`D ≫ arithDen k U`**: `D`'s rows whose first operand is in `dom U` (`Tab.comp` of the rows keyed by
-themselves with `dom U`), of those the ones whose second is, `stepCols` on their operands, the kept rows with their
-answers (`Tab.keep`), `≫ U` (`Tab.comp`). `U X` is the universe at the values `X`: an infinite one (`𝟙`) is run
-only where its values are known, so each test asks `U` at the column it tests. -/
-def arith (t : QAtomicType) (k : UInt8) (D : Tab K (.prod (.atom t) (.atom t)))
-    (U : {n : USize} → Vals (.atom t) n → Except String (Tab (.atom t) (.atom t))) :
-    Except String (Tab K (.atom t)) := do
-  let E₁ : Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t) ←
-    Tab.comp ⟨D.n, ((D.key, D.val) : Vals K D.n × Vals (.prod (.atom t) (.atom t)) D.n), D.val.1⟩
-      (← (← U D.val.1).dom)
-  let E : Tab (.prod K (.prod (.atom t) (.atom t))) (.atom t) ←
-    Tab.comp ⟨E₁.n, E₁.key, E₁.key.2.2⟩ (← (← U E₁.key.2.2).dom)
-  let (w, b) ← stepColsAt t k E.n E.key.2.1.enc E.key.2.2.enc
-  let P ← Tab.keep ⟨E.n, E.key.1, w⟩ b
-  Tab.comp P (← U P.val)
+/-- Each word `u` of the `i64` column `e` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the null to itself) by
+    two `colMap`s: the step of `succOp`. -/
+def succCol (n : USize) (e : Enc) : Except String (Arr .i64 n) := do
+  colArr .add n e (← colMap .first n e e .i64 .i64 [] [(.ne, nulWord)])
 
-/-- **`D ≫ succDen U`**: `D ≫ dom U`, each value `u` to `u + [u ≠ null]` (`Ew.intStep`'s wrapping `u + 1`, the
-null to itself) by two `colMap`s, `≫ dom U`; `U X` the universe at the values `X`, as in `arith`. -/
-def succ (D : Tab K .long) (U : {n : USize} → Vals .long n → Except String (Tab .long .long)) :
-    Except String (Tab K .long) := do
-  let E ← D.comp (← (← U D.val).dom)
-  let s ← colArr .add E.n E.val.enc (← colMap .first E.n E.val.enc E.val.enc .i64 .i64 [] [(.ne, nulWord)])
-  Tab.comp ⟨E.n, E.key, s⟩ (← (← U s).dom)
+end Tab
+
+/-- The value verbs, each a row of `prims` under its q name with its `Ew` code (`Tab.arithOp`), on pairs of one
+    number atom and no universe (§3.5); `max` `min` are the fused rows of their definition `τ(≤)π₂ ∪ τ(>)π₁` at a
+    value atom. -/
+def arithOps : List (String × UInt8) :=
+  [("plus", Kernel.Ew.add), ("minus", Kernel.Ew.sub), ("times", Kernel.Ew.mul), ("div", Kernel.Ew.idiv),
+   ("mod", Kernel.Ew.imod), ("divide", Kernel.Ew.divide), ("max", Kernel.Ew.greater), ("min", Kernel.Ew.lesser)]
+
+/-- The orders as tests on pairs, each a row of `prims` (`Tab.cmpOp`): `lt` is `<` (`ordOp true`), `le` is `≤`. `le`
+    is a row, not `lt ∪ 𝟙`: at a float atom `-0.0 ≤ +0.0` holds, `-0.0 < +0.0` does not (`Rel.Lang.AtomOrderTest`). -/
+def cmpOps : List (String × Bool) := [("lt", true), ("le", false)]
+
+namespace Tab
+
+/-- **The row `s` of `arithOps` on the pairs `X`** (`rowDens`: `stepOn`): `stepColsAt` of the two components, the
+    rows it keeps with their answers (`Tab.keep`, no `canon`). The row is the first argument so `kernRows` names one
+    constant for every name, as `Tab.floatOp`. -/
+def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match arithOps.lookup s, A, B, X with
+  | some k, .prod (.atom t) (.atom t'), .atom u, X =>
+    if t = u ∧ t' = u then do
+      let (w, b) ← stepColsAt u k n X.1.enc X.2.enc
+      Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ b
+    else .error s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
+  | some _, _, _, _ => .error s!"{s} runs from a pair of one number object to it"
+  | none, _, _, _ => .error s!"{s}: no value verb"
+
+/-- **The row `succ` on the values `X`** (`rowDens`: `succOn`): `succCol`, `Tab.succ`'s step without its universe. -/
+def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
+  match A, B, X with
+  | .atom .i64, .atom .i64, X => do
+    let s ← succCol n X.enc
+    pure ⟨n, X, s⟩
+  | _, _, _ => .error "succ runs from an object of i64 to it"
 
 end Tab
 

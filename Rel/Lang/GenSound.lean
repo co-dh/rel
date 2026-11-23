@@ -182,7 +182,8 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
 def rowsProved : List String :=
   ["τ", "setify", "snoc", "cons", "cat", "uncat", "prefix", "suffix", "uncons", "unsnoc", "inits",
    "zip", "length", "sum", "loop", "filter", "concat", "merge", "thinL", "F", "positions", "asc",
-   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil", "est", "front"] ++ floatOps.map (·.1)
+   "tails", "takewhile", "sums", "flat", "$", "foldI", "star", "dom", "ran", "nil", "est", "front"] ++
+  floatOps.map (·.1) ++ arithOps.map (·.1) ++ ["succ"] ++ cmpOps.map (·.1)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
     `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
@@ -190,7 +191,7 @@ def rowsProved : List String :=
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
   | _, _, .share k R => P k R ∧ R.GenHyp P
   | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .own R | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R
+  | _, _, .own R | _, _, .leq _ R | _, _, .lt _ R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
@@ -206,7 +207,7 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R | _, _, .own R
-  | _, _, .succ R | _, _, .arith _ _ R | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
+  | _, _, .leq _ R | _, _, .lt _ R | _, _, .share _ R
   | _, _, .call _ _ _ R | _, _, .callCv _ _ _ _ R _ => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
@@ -528,17 +529,6 @@ theorem GenK.lam_wf {A B : Obj} {R : Rel A B} (wR : R.Wf) : (GenK.lam A B R).Wf 
   exact GenK.ofVals_wf fun _ X _ hX h => let ⟨_, hr, h⟩ := GenK.bind_ok h
     Tab.lam_wf h hX (wR.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hr)
 
-/-- A value verb on `U`'s universe, `U` run knowing the values asked about (`Tab.succ_wf`, `Tab.arith_wf`). -/
-theorem GenK.succ_wf {U : Rel .long .long} (wU : U.Wf) : (GenK.succ U).Wf := by
-  unfold GenK.succ
-  exact GenK.after_wf fun _ _ h wD => Tab.succ_wf (fun X _ hT hX =>
-    wU.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hT) h wD
-theorem GenK.arith_wf {t : QAtomicType} {k : UInt8} {U : Rel (.atom t) (.atom t)} (wU : U.Wf) :
-    (GenK.arith t k U).Wf := by
-  unfold GenK.arith
-  exact GenK.after_wf fun _ _ h wD => Tab.arith_wf (fun X _ hT hX =>
-    wU.runE (K := ⟨some ⟨_, X⟩, none, none⟩) ⟨hX, trivial, trivial⟩ hT) h wD
-
 /-- A comparison answers a table of atoms, `WF` with no cell to check. -/
 theorem GenK.cmp_wf {op : String} {t : QAtomicType} {o : Except String Kernel.Op} {U : Rel (.atom t) (.atom t)} :
     (GenK.cmp op o U).Wf :=
@@ -716,6 +706,34 @@ theorem rowOK_float {s : String} (hs : s ∈ floatOps.map (·.1)) : RowOK s := b
         cases hv
         rcases σ with _ | ⟨_, _ | ⟨_, _⟩⟩ <;>
           exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.floatOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.floatOp_den rfl h⟩⟩
+
+/-- An `arithOps` row at the atom `σ` names: `stepOn` of its verb (`Tab.arithOp_den`), one case per row. -/
+theorem rowOK_arith {s : String} (hs : s ∈ arithOps.map (·.1)) : RowOK s := by
+  simp only [arithOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
+  repeat' (rcases hs with rfl | hs)
+  all_goals first | (subst hs) | skip
+  all_goals
+    exact rowOK_of (c := ⟨_, fun σ => (.prod (σ₁ σ) (σ₁ σ), σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+      cases hv
+      rcases σ with _ | ⟨_, _⟩ <;>
+        exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.arithOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.arithOp_den rfl h⟩⟩
+
+/-- `succ` at the atom `σ` names: `succOn` (`Tab.succOp_den`). -/
+theorem rowOK_succ : RowOK "succ" := rowOK_of (c := ⟨"succ", fun σ => (σ₁ σ, σ₁ σ)⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+  cases hv
+  rcases σ with _ | ⟨_, _⟩ <;>
+    exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.succOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.succOp_den h⟩⟩
+
+/-- A `cmpOps` row at the atom `σ` names: the coreflexive `ordDen` of its order (`Tab.cmpOp_den`), one case per row. -/
+theorem rowOK_cmp {s : String} (hs : s ∈ cmpOps.map (·.1)) : RowOK s := by
+  simp only [cmpOps, List.map, List.mem_cons, List.not_mem_nil, or_false] at hs
+  repeat' (rcases hs with rfl | hs)
+  all_goals first | (subst hs) | skip
+  all_goals
+    exact rowOK_of (c := ⟨_, fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩) rfl rfl fun _ σ _ _ _ _ hv => by
+      cases hv
+      rcases σ with _ | ⟨_, _⟩ <;>
+        exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.cmpOp_wf h hX, ⟨⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.cmpOp_den rfl h⟩⟩
 
 theorem rowOK_sum : RowOK "sum" := rowOK_of (c := RowCode.sum) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
@@ -1166,7 +1184,10 @@ theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
   by_cases h38 : r.sym = "est"; · rw [h38]; exact rowOK_est
   by_cases h39 : r.sym = "front"; · rw [h39]; exact rowOK_front
   by_cases hu : r.sym ∈ floatOps.map (·.1); · exact rowOK_float hu
-  simp [rowsProved, hu, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
+  by_cases ha : r.sym ∈ arithOps.map (·.1); · exact rowOK_arith ha
+  by_cases h40 : r.sym = "succ"; · rw [h40]; exact rowOK_succ
+  by_cases hc : r.sym ∈ cmpOps.map (·.1); · exact rowOK_cmp hc
+  simp [rowsProved, hu, ha, hc, h40, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19, h20,
     h21, h24, h25, h26, h27, h28, h29, h30, h31, h32, h33, h34, h35, h36, h37, h38, h39] at h
 
 /-- Every row `rowGens` has a code for is in `rowsProved`. -/
@@ -1278,8 +1299,6 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
   case rdiv => exact GenK.rdiv_wf (w _ (by omega)) (w _ (by omega)) (w _ (by omega)) (w _ (by omega))
   case pair => exact GenK.pair_wf (w _ (by omega)) (w _ (by omega))
   case lam => exact GenK.lam_wf (w _ (by omega))
-  case succ => exact GenK.succ_wf (w _ (by omega))
-  case arith => exact GenK.arith_wf (w _ (by omega))
   case leq => exact GenK.cmp_wf
   case lt => exact GenK.cmp_wf
   case fold => exact GenK.fold_wf (w _ (by omega)) (w _ (by omega))
@@ -1399,8 +1418,6 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case inl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
   case inr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
-  case succ U ih => exact GenK.succ_sound (code_of ((ih (by omega)).1 η ρ hl hs))
-  case arith U ih => exact GenK.arith_sound (code_of ((ih (by omega)).1 η ρ hl hs))
   case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs))
   case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs))
   case var k => exact hs.1 k _ _

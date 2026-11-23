@@ -914,7 +914,6 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
   | .call ks c os _ => match u with | .call ks' c' os' _ => ks == ks' && key c == key c' && os == os' | _ => false
   | .callCv ks c _ os .. => match u with
     | .callCv ks' c' _ os' .. => ks == ks' && key c == key c' && os == os' | _ => false
-  | .arith t k _ => match u with | .arith t' k' _ => t == t' && k == k' | _ => false
   | .nu k .. => match u with | .nu k' .. => k == k' | _ => false
   | .mu k w n _ => match u with | .mu k' w' n' _ => k == k' && w == w' && n == n' | _ => false
   | .hylo k w _ => match u with | .hylo k' w' _ => k == k' && w == w' | _ => false
