@@ -144,12 +144,12 @@ theorem foldDen_cons {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Cor
 /-- The left fold of no elements from the value `v` is `v`. -/
 theorem foldDen_nil {E V : Obj} (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (v w : V.El) :
     foldDen (fun _ b => b = v) TS [] w ↔ w = v :=
-  (foldDen_empty _ _ _).trans ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨v, h.symm⟩⟩
+  (foldDen_empty _ _ _).trans ⟨fun ⟨_, h⟩ => h, fun h => ⟨v, h⟩⟩
 
 /-- The right fold of no elements from the value `v` is `v`. -/
 theorem foldrDen_nil {E V : Obj} (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (v w : V.El) :
     foldrDen (fun _ b => b = v) TS [] w ↔ w = v :=
-  (foldrDen_empty _ _ _).trans ⟨fun ⟨_, h⟩ => h.symm, fun h => ⟨v, h.symm⟩⟩
+  (foldrDen_empty _ _ _).trans ⟨fun ⟨_, h⟩ => h, fun h => ⟨v, h⟩⟩
 
 /-- A left fold from `Te` is one from a value `v` of `Te`'s range. -/
 theorem foldDen_start {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (w : V.El) :
@@ -1573,13 +1573,14 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
     (fun k v hv => ⟨k, (Tab.idU_holds hrest hX k k).2 ⟨rfl, ((Tab.nil_holds hP0 hX k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
   constructor
-  · rintro ⟨r, v, hr, hv, ⟨ys, hy, ⟨_, h0⟩, hS, hw⟩⟩
+  · rintro ⟨r, v, hr, hv, hF⟩
     obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest hX xs r).1 hr
     obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 hX xs v).1 hv
+    obtain ⟨ys, hy, ⟨_, h0⟩, hS, hw⟩ := (foldrDen_iff _ _ _ _).1 hF
     exact ⟨hi, ys, hy, h0, hS, hw⟩
   · rintro ⟨hi, ys, hy, h0, hS, hw⟩
     exact ⟨xs, [], (Tab.idU_holds hrest hX xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 hX xs []).2 ⟨hi, rfl⟩,
-      ys, hy, ⟨[], h0⟩, hS, hw⟩
+      (foldrDen_iff _ _ _ _).2 ⟨ys, hy, ⟨[], h0⟩, hS, hw⟩⟩
 
 namespace GenK
 
