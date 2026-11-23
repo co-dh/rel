@@ -279,9 +279,9 @@ sort(≤)     今天：arg (call … prelude.sort …)   // 定义，体内联
 
 == 逆表
 
-- 今天逆的来源有三处：行的 `Prim.conv`（`Syntax.lean:184-202`）；`callCv` 的 `c'`；`own`。
+- 已实现（B9bc）：`Tm.own` 与 `callCv` 已删，`call ks c cv os b` 的 `cv : Option Name` 是 `c` 的逆常量。逆的来源有两处：行的 `Prim.conv`（`Syntax.lean:184-202`）；定义的 `cv`（下面两条）。
 - 在 J 之下：一个查找函数 `convOf : 名字 → Option 名字`，两个来源。行：`Prim.conv` 照旧（`cons ↦ uncons`）。定义：新表 `Elab.convs`，由 prelude 里形如 `c° = c'` 的定理生成；新增 `theorem permConv : perm° = perm`（由 `rel_aop prelude` 证，如 `absorption`）。
-- `convTm`（`Elab.lean:1928-2001`）对 `prim` 与 `call` 各一条规则，都是查 `convOf`：`call … c …` 的逆是对 `c'` 再做一次 `callTm`（`Elab.lean:2192`），所以 `callCv` 里内联的逆体 `u` 不再需要；`perm` 查到自己，所以 `own` 不再需要。`succ arith` 的专门规则随它们成行而消失。`convTm_den`（`ConvSpec.lean:128`）的相应情形改为引用 `c° = c'` 这条定理。
+- `convTm`（`Elab.lean:1928-2001`）对 `prim` 与 `call` 各一条规则，都是查 `convOf`：`call … c …` 的逆是对 `c'` 再做一次 `callTm`（`Elab.lean:2192`），所以 `callCv` 里内联的逆体 `u` 不再需要；`perm` 查到自己（`cv = some perm`），所以 `own` 不再需要。没有 `c° = c'` 定理的定义，其逆是派生逆：常量 `c ++ conv`，体为 `convTm` 作用于 `c` 的体；`Registry.call?` 比较两个模块各自建的同一 key 时，把派生逆常量映到 `key ++ conv`。`succ arith` 的专门规则随它们成行而消失。`convTm_den`（`ConvSpec.lean:128`）的相应情形改为引用 `c° = c'` 这条定理。
 
 == 去掉 `var` 的方案（已决定 T：不采用）
 

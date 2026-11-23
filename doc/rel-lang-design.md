@@ -287,7 +287,7 @@ they lift, run on demand and converse as their bodies do. The `LeetQ` library `n
   - `inits`: B&dM p.127 `⦇[wrap nil, cat ⟨wrap nil, list cons cpr⟩]⦈` needs `cpr`, not in the language.
   - `snoc`: as `(𝟙×τ)cat` its converse `snoc°` (which `init` uses) would need `τ°`, which does not run on demand.
   - `cat cons nil α τ union F zip setify bagify tic thinL merge loop`: primitives, or run by a demand rule.
-- The one converse rule for a definition: `perm° = perm` (`Tm.own`, applied by `preludeDef` to the name `perm`).
+- The one converse rule for a definition: `perm° = perm` (the prelude theorem `permConv`, read from `Elab.convs`: the call of `perm` has `cv = some perm`).
   It is a theorem the language cannot derive from the fold `perm` is, and the fold's converse does not run on
   demand ("the converse of ⦇e,S⦈ does not run on demand"); with it `sort(Q)° = ordered(Q) perm` runs. Each prelude
   definition is wrapped as it is defined, so `sort`'s body already sees the wrapped `perm`.
@@ -440,8 +440,8 @@ Equal sub-terms are evaluated once (`Lang/Eval.lean`, `hoist`, `ev`):
 | on demand, inside one evaluation          | once per demand (equal as a set): a lifted body, one fold step |
 
 An identity is structural: the core constructor, its objects, the identities of its parts, and for a value its
-rows as a set; nothing printed. A node whose value is its part's (`Tm.own`, `perm`'s converse rule) has its
-part's identity, so `perm` is one memo entry per demand, not two. Chess's pinned squares repeat `L(De)` per direction and `dom(on{(R,R),(Q,Q)})`
+rows as a set; nothing printed. A call whose converse is itself (`perm°`, `cv = some perm`) has the identity of `perm`, so `perm` is one memo
+entry per demand, not two. Chess's pinned squares repeat `L(De)` per direction and `dom(on{(R,R),(Q,Q)})`
 eight times: `rel chess.rel.md` 3.6 s → 0.7 s.
 
 ## e. Definitions, and lifting a formula to a family

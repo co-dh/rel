@@ -159,5 +159,19 @@ rel_program concats where
   "d concat = {(a, 1 1), (b, [1])}",
   "e concat = {(a, 3 1), (b, [])}"]
 
+/-! A converse of a call: `perm°` is the call `perm` (the prelude theorem `perm° = perm`, `Elab.convs`), and `f°`
+    of a user definition `f` is the call of `f ++ conv`, the converse of `f`'s body. -/
+open Rel.Programs.prelude in
+rel_program convs where
+    obj N = 0…9
+    obj K = {a,b}
+    y : K ⟶ [N] ≜ Λ({(a,7),(b,8),(b,9)})
+    f : K ⟶ [N] ≜ y
+    print y perm°
+    print y (f° y)°
+
+#guard convs.ok && convs.prints == [
+  "y perm° = {(a, [7]), (b, 8 9), (b, 9 8)}",
+  "y (f° y)° = {(a, [7]), (b, 8 9)}"]
 
 end Rel.Lang.Test
