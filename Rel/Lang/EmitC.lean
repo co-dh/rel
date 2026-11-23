@@ -44,14 +44,6 @@ def abiOf (sym : String) : Option Kernel := abi.find? (·.sym == sym)
 
 /-! ### Writing a relation as a column directory -/
 
-/-- `output R to dir`: each column of `R`'s registers written by `qlean_own_write` to `dir/key<path>` and
-    `dir/val<path>`. The directory must exist; the kernel's error names the path when it does not. -/
-def output (dir : String) (rs : Side × Side) : Bld Unit := do
-  for (side, cs) in [("key", rs.1), ("val", rs.2)] do
-    for (p, r) in cs do
-      let path ← lit (.str (System.FilePath.mk dir / (side ++ p)).toString)
-      discard <| call "qlean_own_write" (#[path] ++ r.extract 0 Side.enc) 0
-
 /-- A computed atom column's `output` registers (`Side.regs`): type `t`, `count` rows (a register), constructor `kind`
     (`Db.ownParts`'s numbering) whose parts are the registers `bs`, gathered by `pushPart` from the empty literal. -/
 def colRegs (t : QAtomicType) (kind : UInt8) (count : Nat) (bs : Array Nat) : Bld (Array Nat) := do
@@ -66,16 +58,21 @@ def encRegs (t : QAtomicType) (count e : Nat) : Bld (Array Nat) := do
   let .ok (some (k, _)) := Db.ownParts f | throw "encRegs: `Db.ownParts` holds no `foR`"
   colRegs t k count #[← projB e f.ctorIdx 0 .bytes, ← projB e f.ctorIdx 1 .bytes]
 
-/-- The atom columns of the object `A`, each with its path as `cols` names it under `p`, from the object alone. -/
-def objCols : Obj → String → List (String × QAtomicType)
-  | .atom t, p => [(p, t)]
-  | .prod a b, p => objCols a (p ++ ".1") ++ objCols b (p ++ ".2")
-  | .arr b, p => [(p ++ ".lo", .i64), (p ++ ".hi", .i64)] ++ objCols b (p ++ ".e")
+/-- The files of the object `A`, each with its path as `cols` names it under `p`, from the object alone: an atom column
+    with its atom (`some`), a side of `1` (`none`). -/
+def objLeaves : Obj → String → List (String × Option QAtomicType)
+  | .atom t, p => [(p, some t)]
+  | .prod a b, p => objLeaves a (p ++ ".1") ++ objLeaves b (p ++ ".2")
+  | .arr b, p => [(p ++ ".lo", some .i64), (p ++ ".hi", some .i64)] ++ objLeaves b (p ++ ".e")
   -- the one representation function of a sum side, chosen by the object: in-band (`Obj.band`) it is one nullable column
   | .sum a b, p => match Obj.band a b with
-    | some t => [(p, t)]
-    | none => [(p ++ ".tag", .u1), (p ++ ".idx", .i64)] ++ objCols a (p ++ ".l") ++ objCols b (p ++ ".r")
-  | .one, _ => []
+    | some t => [(p, some t)]
+    | none => [(p ++ ".tag", some .u1), (p ++ ".idx", some .i64)] ++ objLeaves a (p ++ ".l") ++ objLeaves b (p ++ ".r")
+  -- a side of `1` has a file of its own (kind `oneKind`: its count, no part), and no atom
+  | .one, p => [(p, none)]
+
+/-- The atom columns of `objLeaves`. -/
+def objCols (A : Obj) (p : String) : List (String × QAtomicType) := (objLeaves A p).filterMap fun (q, t) => t.map (q, ·)
 
 
 /-! ### A term's table as a plan: the `GenK` recipe of each `Tm` node on the five kernels (design §4) -/
@@ -328,6 +325,17 @@ def pairsOf : List Nat → List (Nat × Nat)
   | k :: e :: r => (k, e) :: pairsOf r
   | _ => []
 
+/-- The columns `cs` shaped as they are but holding only zero words, `c` rows each (a list's payload and a sum's two
+    payloads none, `z` the size register `0`): the keys of a summand of no rows, read at `n` rows, tie every row as no
+    key does, whatever the summand holds (a list, a sum), because `keysB` reads this shape as it reads any. -/
+partial def zeroCols (z c : Nat) (cs : Cols) : Bld Cols := cs.mapM fun col => do
+  let zs ← wordsB c 0
+  let at_ (t : QAtomicType) : Bld Nat := mapB .add c zs zs t
+  match col with
+  | .atom p t _ => pure (.atom p t (← at_ t))
+  | .arr p _ _ _ f => pure (.arr p z (← at_ .i64) (← at_ .i64) (← zeroCols z z f))
+  | .sum p _ _ _ _ x y => pure (.sum p z z (← at_ .u1) (← at_ .i64) (← zeroCols z z x) (← zeroCols z z y))
+
 mutual
 /-- The `kasc` key of the `n`-row column `c` (`Vals.cols`), an `AscKey` register and its column: an atom column its
     words at its atom; an `arr` side one `cells` key over its `lo`, `hi` and its payload's keys, its column the
@@ -346,9 +354,7 @@ partial def keysB (n : Nat) : Col → Bld (List (Nat × Nat))
   | .sum _ l r tag idx x y => do
     let nt ← mapB .not n tag tag
     let side (m pos : Nat) (cs : Cols) : Bld (List (Nat × Nat)) := do
-      let zero ← cs.mapM fun
-        | .atom p t _ => do let z ← wordsB n 0; pure (Col.atom p t (← mapB .add n z z t))
-        | _ => sumB "asc of a summand holding a list or a sum:"
+      let zero ← zeroCols (← lit (.size 0)) n cs
       let ks (c : Cols) : Bld (Array Nat) := do
         let l := (← c.mapM (keysB n)).flatten
         pure (l.foldl (fun a (k, e) => (a.push k).push e) #[])
@@ -674,13 +680,16 @@ partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A
     | some t => colsOf (.atom t) s p
     | none => do
       let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
-      -- a summand `1` has no column (`objCols`), so no register holds its count, and `output` would not write its file
-      let cnt (A : Obj) (q : String) : Bld Nat := match (objCols A q).findSome? (reg ·.1 Side.count) with
+      let (some tag, some idx, some n) := (reg (p ++ ".tag") Side.enc, reg (p ++ ".idx") Side.enc, reg (p ++ ".tag") Side.count)
+        | throw s!"sum `{p}`: its tag or position column has no `Enc` register or count"
+      -- a summand with no atom column (`1`) has no register holding its count: it is the rows the tag gives it
+      -- (`tagCount`: right, the tag's sum `k`; left, `n - k`)
+      let cnt (A : Obj) (q : String) (right : Bool) : Bld Nat := match (objCols A q).findSome? (reg ·.1 Side.count) with
         | some m => pure m
-        | none => throw s!"sum `{p}`: its summand at `{q}` has no column holding a row count register (a summand `1`)"
-      let (some tag, some idx) := (reg (p ++ ".tag") Side.enc, reg (p ++ ".idx") Side.enc)
-        | throw s!"sum `{p}`: its tag or position column has no `Enc` register"
-      return [.sum p (← cnt a (p ++ ".l")) (← cnt b (p ++ ".r")) tag idx (← colsOf a s (p ++ ".l")) (← colsOf b s (p ++ ".r"))]
+        | none => do
+          let k := (← prefixB .add n tag).2
+          if right then pure k else call1 (kernel% USize.sub) #[n, k]
+      return [.sum p (← cnt a (p ++ ".l") false) (← cnt b (p ++ ".r") true) tag idx (← colsOf a s (p ++ ".l")) (← colsOf b s (p ++ ".r"))]
 
 /-- The row count of a table's sides: a column's `count` register. -/
 def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[Side.count]?) with
@@ -1691,15 +1700,6 @@ unsafe def progOfUnsafe (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Pr
     (`RegEntry.chain`), each with its value: what `Expand.read` reads it after, so a name of the prelude resolves. -/
 @[implemented_by progOfUnsafe] opaque progOf (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Program) × Program)
 
-/-- The plan's steps of `output x to dir` in the program `n`, read after its homes (`progOf`, `Expand.read`). -/
-def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
-  let (chain, prog) ← progOf n
-  let r ← (Expand.read (fun _ => none) chain prog).run
-  return do
-    let (ds, _) ← r.mapError (s!"{repr ·}")
-    let some ⟨_, _, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
-    pure (mainStepB do output dir (← ofTm [] t))
-
 /-- The Lean side of the same output: `R`'s two sides written by the table writer under the names `output` gives
     them, from the value Lean computed, not from a plan. -/
 def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
@@ -1732,8 +1732,50 @@ def fieldsR : Schema → List (String × Obj)
 
 /-- Each atom column of a side of schema `S`, as `Table.write` names its file: its path in `S.obj` (`cols`), its file
     name (the column's name, then its path in the column's object), its atom. -/
+def schemaLeaves (S : Schema) : List (String × String × Option QAtomicType) :=
+  ((objLeaves S.obj "").zip ((fieldsR S.reverse).flatMap fun (n, A) => objLeaves A n)).map fun ((p, t), (q, _)) => (p, q, t)
+
+/-- The atom columns of `schemaLeaves`. -/
 def schemaCols (S : Schema) : List (String × String × QAtomicType) :=
-  ((objCols S.obj "").zip ((fieldsR S.reverse).flatMap fun (n, A) => objCols A n)).map fun ((p, t), (q, _)) => (p, q, t)
+  (schemaLeaves S).filterMap fun (p, q, t) => t.map (p, q, ·)
+
+/-- The row count of each side of `1` of the side `cs` of `A` (`objLeaves`' `none`), by its path under `p`: the count `n` of
+    the rows of the side it lies in, a list's payload's `m`, a sum's summand's `l` or `r`. -/
+partial def onesOf (n : Bld Nat) : (A : Obj) → Cols → String → Bld (List (String × Nat))
+  | .one, _, p => return [(p, ← n)]
+  | .prod a b, cs, p => return (← onesOf n a (cs.take (objWidth a)) (p ++ ".1")) ++
+      (← onesOf n b (cs.drop (objWidth a)) (p ++ ".2"))
+  | .arr b, [.arr _ m _ _ f], p => onesOf (pure m) b f (p ++ ".e")
+  | .sum a b, [.sum _ l r _ _ x y], p => return (← onesOf (pure l) a x (p ++ ".l")) ++ (← onesOf (pure r) b y (p ++ ".r"))
+  | _, _, _ => pure []
+
+/-- Each side of `1` of the side `side` of `A`, written to the file `files` names by its path: kind `oneKind`, its count
+    (`onesOf`), no part (`ownFile`). -/
+def writeOnes (A : Obj) (side : Side) (files : List (String × String)) : Bld Unit := do
+  if files.isEmpty then return
+  let ones ← onesOf (countOf (side, [])) A (← colsOf A side) ""
+  for (p, f) in files do
+    let some m := ones.lookup p | throw s!"the side of `1` at `{p}` (file {f}) has no row count"
+    discard <| call "qlean_own_write" #[← lit (.str f), ← lit (.u8 0), ← lit (.u8 oneKind), m, ← lit (.parts #[])] 0
+
+/-- `output R to dir`, `R : A ⟶ B`: each column of `R`'s registers written by `qlean_own_write` to `dir/key<path>` and
+    `dir/val<path>`, each side of `1` as `writeOnes`. The directory must exist; the kernel's error names the path when it
+    does not. -/
+def output (dir : String) (A B : Obj) (rs : Side × Side) : Bld Unit := do
+  for (side, O, cs) in [("key", A, rs.1), ("val", B, rs.2)] do
+    let file (p : String) := (System.FilePath.mk dir / (side ++ p)).toString
+    for (p, r) in cs do
+      discard <| call "qlean_own_write" (#[← lit (.str (file p))] ++ r.extract 0 Side.enc) 0
+    writeOnes O cs ((objLeaves O "").filterMap fun (p, t) => if t.isNone then some (p, file p) else none)
+
+/-- The plan's steps of `output x to dir` in the program `n`, read after its homes (`progOf`, `Expand.read`). -/
+def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
+  let (chain, prog) ← progOf n
+  let r ← (Expand.read (fun _ => none) chain prog).run
+  return do
+    let (ds, _) ← r.mapError (s!"{repr ·}")
+    let some ⟨A, B, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
+    pure (mainStepB do output dir A B (← ofTm [] t))
 
 /-- An input as its read at the input edge answers it, with its key schema `k` (`[]`: positions) and value schema
     `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
@@ -1892,6 +1934,8 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
             ← lit (Reg.put f.kind), ← lit (Reg.put f.count), ← lit (.parts f.parts)] 0
       for (p, q, _) in schemaCols S do
         discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 Side.enc) 0
+      -- a side of `1` is a file of kind `oneKind`: its count (`ownFile`) and no part
+      writeOnes S.obj side ((schemaLeaves S).filterMap fun (p, q, t) => if t.isNone then some (p, Table.file dir q) else none)
   | some (sep, cs) =>
     let ts ← ofExc ((Db.Csv.symText cs).mapError (s!"{path}: " ++ ·))
     let mut es : List Nat := []
