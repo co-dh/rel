@@ -160,9 +160,9 @@ termination_by 2 * t.size + 1
     kernel twin computes, the two bound by the differential test (`test/TestCompile.lean`). -/
 def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   match A, B, t with
-  -- a literal enters no `readVals`, so its cells are checked here (`Vals.cellsOk`, PLAN 8.5)
-  | A, B, .val R => GenK.val A B (R, Vals.cellsOk R.key && Vals.cellsOk R.val)
-  | A, _, .uni (m := m) U => GenK.uni A m (U, Vals.cellsOk U)
+  -- a literal enters no `readVals`, so its cells are checked here (`ValsB.cellsOk`, PLAN 8.5)
+  | A, B, .val R => GenK.val A B (R, ValsB.cellsOk R.key && ValsB.cellsOk R.val)
+  | A, _, .uni (m := m) U => GenK.uni A m (U, ValsB.cellsOk U)
   | A, B, .zero => GenK.zero A B
   | A, _, .id => GenK.id A
   | A, B, .top V => GenK.top A B (V.code η)
@@ -293,7 +293,7 @@ instance : ToExpr Prim where
     again. Not a `ToExpr`: it fails where those do (a symbol, general or ALP payload is not rebuilt). -/
 def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.Expr
   | _, _, .val (A := A) (B := B) R => return g ``Tm.val #[oE A, oE B, fst (g ``Tab #[oE A, oE B]) (← relE R)]
-  | _, _, .uni (A := A) (m := m) U => return g ``Tm.uni #[oE A, uE m, fst (g ``Vals #[oE A, uE m]) (← valsE A m U)]
+  | _, _, .uni (A := A) (m := m) U => return g ``Tm.uni #[oE A, uE m, fst (g ``Vals #[oE A, uE m]) (← valsE false A m U)]
   | _, _, .zero (A := A) (B := B) => return g ``Tm.zero #[oE A, oE B]
   | _, _, .id (A := A) => return g ``Tm.id #[oE A]
   | _, _, .top (A := A) (B := B) V => return g ``Tm.top #[oE A, oE B, ← tmE sh V]

@@ -600,11 +600,11 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   obtain ⟨es, cs, hes, hcs⟩ := canon_codes hC
   obtain ⟨sel, hsel, hord⟩ := canon_sorted hC hes
   have hki : ∀ j, C.key.row j = x.key.row (sel j) := fun j => congrArg Prod.fst (hsel j)
-  cases heK : Vals.cols x.key.1 with
-  | error s => simp [Vals.cols, heK, bind, Except.bind] at hes
+  cases heK : ValsB.cols x.key.1 with
+  | error s => simp [ValsB.cols, heK, bind, Except.bind] at hes
   | ok eK =>
   have hes' : es = eK ++ [(.atom t, Arr.enc x.key.2), (.atom u, Arr.enc (t := u) x.val)] := by
-    simp only [Vals.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp
+    simp only [ValsB.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp
   rw [hes'] at hcs
   obtain ⟨csK, csP, hcsK, hcsP, -⟩ := mapM_append_ok hcs
   obtain ⟨cs1, -, hcs1, -, -⟩ := mapM_append_ok (l1 := [(AscKey.atom t, Arr.enc x.key.2)])
@@ -625,7 +625,7 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
     cases hL : ascLayout t <;> simp [ascOrd, hL] at hf ⊢
   have hfL : f = ordCode w fl sg := by simp [ascOrd, hL] at hf; exact hf.symm
   rw [hki, hki]
-  show Obj.lt (.atom t) (Vals.row (A := .atom t) x.key.2 (sel i)) (Vals.row (A := .atom t) x.key.2 (sel j))
+  show Obj.lt (.atom t) (ValsB.row (A := .atom t) x.key.2 (sel i)) (ValsB.row (A := .atom t) x.key.2 (sel j))
   rw [Vals.row_atom, Vals.row_atom, hga, hgb]
   unfold Obj.lt
   rw [Obj.key_ordCode hL hg a hua, Obj.key_ordCode hL hg b hub, ← hfL]
@@ -637,7 +637,7 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
     have hne : C.key.row i ≠ C.key.row j := fun e => absurd (hD i j e) (fun h => by rw [h] at hij; exact Nat.lt_irrefl _ hij)
     refine absurd (Prod.ext hk ?_) hne
     rw [hki, hki]
-    show Vals.row (A := .atom t) x.key.2 (sel i) = Vals.row (A := .atom t) x.key.2 (sel j)
+    show ValsB.row (A := .atom t) x.key.2 (sel i) = ValsB.row (A := .atom t) x.key.2 (sel j)
     rw [Vals.row_atom, Vals.row_atom, hga, hgb, e]
 
 /-- **A word cut to the width of an atom of a sum reads as the word** (`ofBits` keeps the low `8w` bits). -/
@@ -890,7 +890,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
   have hx1 : (Enc.raw .i64 C.n R)[t.1]?.getD 0 ^^^ 1 ≠ 0 ↔ (Enc.raw .i64 C.n R)[t.1]?.getD 0 = 0 := by
     rcases hb.1 with e | e <;> rw [e] <;> decide
   rw [hx1, hb.2]
-  show _ ∧ _ ∧ Vals.row (A := .atom u) Wa t = c ↔ _
+  show _ ∧ _ ∧ ValsB.row (A := .atom u) Wa t = c ↔ _
   rw [Vals.row_atom]
   constructor <;> rintro ⟨h1, h2, h3⟩ <;> exact ⟨h2, h1, h3.symm⟩
 
@@ -1059,10 +1059,10 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     cases (Enc.raw .i64 T' v)[j]? with
     | none => rfl
     | some x => exact QAtomicType.ofBits_cut hu hw0 x
-  have hxl : ∀ g (hg : g < n.toNat), (Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩).length = EN g - SN g :=
+  have hxl : ∀ g (hg : g < n.toNat), (ValsB.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩).length = EN g - SN g :=
     fun g hg => by rw [hrow]; simp
   have hvx : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g), QAtomicType.ofBits u ((Enc.raw u T' v)[off g + k]?.getD 0) =
-      (Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩)[k]'(by rw [hxl]; exact hk) := by
+      (ValsB.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩)[k]'(by rw [hxl]; exact hk) := by
     intro g hg k hk
     rw [hvr]
     have ht : off g + k < T'.toNat := by have := hle g hg; omega
@@ -1101,7 +1101,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     rw [Arr.get_ofBits hu, hwi, if_neg (by rcases hu with rfl | rfl | rfl <;> decide), Option.getD_some, ← hv0, hLf g hg,
       hfilt g hg]
   -- the cell's elements are its run's values, and its run is the last row's prefix
-  have hcell : ∀ g (hg : g < n.toNat) c, Lang.sumAt (.atom u) (Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩) c ↔
+  have hcell : ∀ g (hg : g < n.toNat) c, Lang.sumAt (.atom u) (ValsB.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩) c ↔
       (Enc.raw .i64 n badC)[g]?.getD 0 = 0 ∧ c = tot.get ⟨g, hg⟩ := by
     intro g hg c
     rw [(hbadCg g hg).2, htot g hg]
@@ -1128,7 +1128,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
           obtain ⟨-, h1, -⟩ := hpos q (by omega)
           rw [e, hlg] at h1; omega
       have hmap : (List.range' (off g) (EN g - SN g)).map (fun q => QAtomicType.ofBits u ((Enc.raw u T' v)[q]?.getD 0)) =
-          Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩ := by
+          ValsB.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩ := by
         apply List.ext_getElem (by simp [hxl])
         intro k h1 h2
         simp only [List.getElem_map, List.getElem_range', Nat.one_mul]

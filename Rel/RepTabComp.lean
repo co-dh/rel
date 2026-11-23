@@ -293,11 +293,11 @@ theorem scatter_last_at {N K : USize} {ix e o : Enc} (h : kscatter .last N ix e 
   have h' : (raw .i64 K o)[π q]? = some ((raw .i64 N e)[q]?.getD 0) := by rw [← hat q hq]; exact this
   rw [h']; rfl
 
-/-- **GROUP over the rows of `x`** (`Vals.cols`, `kasc`, `kseen` over the sorted columns): sorted row `q` is input
+/-- **GROUP over the rows of `x`** (`ValsB.cols`, `kasc`, `kseen` over the sorted columns): sorted row `q` is input
 row `π q`, `π` a permutation of the rows; sorted row `q` is in group `gr q`, whose first sorted row is `fs G`; two
 sorted rows share a group exactly when their input rows are equal. -/
 theorem group_rows {A : Obj} {N : USize} {x : Vals A N} {es : List (AscKey × Enc)} {vs : List Enc} {p g f : Enc}
-    {k : Nat} (hw : Vals.WF x) (hes : Vals.cols x = .ok es) (hasc : kasc N es = .ok (vs, p))
+    {k : Nat} (hw : Vals.WF x) (hes : ValsB.cols x = .ok es) (hasc : kasc N es = .ok (vs, p))
     (hseen : kseen N ((es.map (·.1)).zip vs) = .ok (k, g, f)) :
     ∃ π gr fs : Nat → Nat, k ≤ N.toNat ∧
       (∀ q < N.toNat, (raw .i64 N p)[q]?.getD 0 = (π q).toUInt64 ∧ π q < N.toNat) ∧
