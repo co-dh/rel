@@ -69,10 +69,13 @@ def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = so
 def Vals.unit {A : Obj} (h : A = .one) : Vals A 1 := by subst h; exact ()
 
 /-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
-writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
+writer. Its `Enc.WF` is `Verify.wordsFoR_nul`'s clause (the `u1` one vacuous, every word `0`), so no element is read to
+decide it; a `t` with no width (`general`) has no block to flag and is the error. -/
 def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
-  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
+  if hw : t.width.isSome then
+    .ok ⟨_, (Verify.wordsFoR_nul (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
+      (n := n) (by simp)).2.2.2 hw fun _ i hi _ => by simp⟩
+  else .error s!"inl: nulls of {repr t}, which has no block to flag"
 
 /-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
 through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one
