@@ -523,7 +523,7 @@ partial def Expr.names : Expr → List String
 partial def Expr.ordered : Expr → Bool
   | .name _ n => n == ">" || n == "≥"
   | .op _ o _ as => (match o with | .lt | .leq | .prim "asc" => true | _ => false) || as.any (·.ordered)
-  | .app _ n as => n == ">" || n == "≥" || as.any (·.ordered)
+  | .app _ n as => n == ">" || n == "≥" || n == ascRow.sym || as.any (·.ordered)
   | .comp a b | .bin _ _ a b | .pair _ a b | .junc _ a b | .inf _ _ a b => a.ordered || b.ordered
   | .fold _ _ r => r.ordered
   | .conv _ a | .compl _ a => a.ordered
