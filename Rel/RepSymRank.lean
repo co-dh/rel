@@ -101,4 +101,37 @@ theorem ascDen_lt {B : Obj} {p : B.El → Prop} {j₁ j₂ : Int64} {t₁ t₂ :
     · exact B.lt_asymm h (List.pairwise_iff_getElem.1 hys' k₂ k₁ l₂ l₁ hk')
     · exact B.lt_irrefl _ h
 
+/-- A list without repeats inside `L` is no longer than `L`. -/
+theorem nodup_length_le {α : Type} [DecidableEq α] : ∀ (ys L : List α), ys.Nodup → ys ⊆ L → ys.length ≤ L.length
+  | [], _, _, _ => Nat.zero_le _
+  | a :: ys, L, hn, hs => by
+    have ha : a ∈ L := hs (List.mem_cons_self ..)
+    have hsub : ys ⊆ L.erase a := fun b hb =>
+      (List.mem_erase_of_ne fun e => (List.nodup_cons.1 hn).1 (by subst e; exact hb)).2
+        (hs (List.mem_cons_of_mem _ hb))
+    have h1 := nodup_length_le ys (L.erase a) (List.nodup_cons.1 hn).2 hsub
+    rw [List.length_erase_of_mem ha] at h1
+    have h2 : 0 < L.length := List.length_pos_of_mem ha
+    simp only [List.length_cons]; omega
+
+/-- **`rank` orders ids by their texts**: for ids `i₁`, `i₂` of a dictionary `D` (one text per id, fewer than `2^63`
+texts) with texts `t₁`, `t₂` and ranks `r₁`, `r₂`, `r₁ < r₂` iff `t₁` is before `t₂` in `Obj.lt` (the order of the
+texts, `asc`'s), whatever the order the ids were inserted in. -/
+theorem rank_lt_iff {D : Dict} {R : Tab .long .long} (h : rank D = .ok R) (wD : D.WF) (hb : D.n.toNat < 2 ^ 63)
+    (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') {i₁ i₂ r₁ r₂ : Int64} {t₁ t₂ : (Obj.arr (.atom .char)).El}
+    (h₁ : D.Holds i₁ t₁) (h₂ : D.Holds i₂ t₂) (hr₁ : R.Holds i₁ r₁) (hr₂ : R.Holds i₂ r₂) :
+    r₁ < r₂ ↔ Obj.lt (.arr (.atom .char)) t₁ t₂ := by
+  obtain ⟨u₁, hu₁, a₁⟩ := (rank_holds h wD _ _).1 hr₁
+  obtain ⟨u₂, hu₂, a₂⟩ := (rank_holds h wD _ _).1 hr₂
+  obtain rfl := hf _ _ _ h₁ hu₁
+  obtain rfl := hf _ _ _ h₂ hu₂
+  refine ascDen_lt (fun ys hys hm => ?_) a₁ a₂
+  have hnd : ys.Nodup := hys.imp fun {a b} hab e => by subst e; exact Obj.lt_irrefl _ a hab
+  have hsub : ys ⊆ List.ofFn (fun j : Fin D.n.toNat => D.val.row j) := fun b hb' => by
+    obtain ⟨i', j, -, hj⟩ := (hm b).1 hb'
+    exact List.mem_ofFn.2 ⟨j, hj⟩
+  have := nodup_length_le ys _ hnd hsub
+  simp only [List.length_ofFn] at this
+  omega
+
 end Rel.Lang.Table
