@@ -1030,7 +1030,14 @@ theorem Tab.map_holds {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n
       split at hj
       · cases hj; rw [hg]; exact himg j y
       · cases hj
-    rw [Tab.canon_holds hc]
+    -- the cells of `C.val` over `X`'s spans, each span at most `m` wide (`map_wf`'s argument)
+    have wY : Vals.WF Y := by
+      obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec wX.1 (by omega) f
+      refine Vals.cells_expand_wf hex hY m.toNat (fun i hi => ?_) (by omega) (by omega)
+        (Tab.comp_wf hC wPv wR).2
+      obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
+      rw [e1, toNat_toUInt64 (by omega)]; exact b1
+    rw [Tab.canon_holds hc ⟨wX, wY⟩]
     constructor
     · rintro ⟨i, rfl, rfl⟩
       rw [hrow i]
@@ -1186,11 +1193,11 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
     constructor
     · rintro ⟨h1, h2⟩
       obtain ⟨e, hx⟩ := (Tab.ran_holds hD wP.2 p v.1).1 h1
-      exact ⟨hx, Prod.ext e.symm ((Tab.nil_holds hn0 p v.2).1 h2).2⟩
+      exact ⟨hx, Prod.ext e.symm ((Tab.nil_holds hn0 wD.1 p v.2).1 h2).2⟩
     · rintro ⟨hx, rfl⟩
       have h1 := (Tab.ran_holds hD wP.2 p p).2 ⟨rfl, hx⟩
       obtain ⟨i, hi, -⟩ := id h1
-      exact ⟨h1, (Tab.nil_holds hn0 p []).2 ⟨⟨i, hi⟩, rfl⟩⟩
+      exact ⟨h1, (Tab.nil_holds hn0 wD.1 p []).2 ⟨⟨i, hi⟩, rfl⟩⟩
   have hfold : ∀ (c : List B.El) (v : (Obj.prod (.prod (.arr B) (.arr B)) (.arr B)).El) w,
       v.1.1.length + v.1.2.length = c.length →
       (foldDen (E := B) (fun _ b => b = v) (fun q v' => mergeStep le q.1 = some v') c w ↔
@@ -1328,7 +1335,7 @@ theorem Tab.merge_holds {K B : Obj} {q : Tab (.prod B B) (.prod B B) → Except 
         exact ⟨h1, h2⟩
       simp only [Tab.union_holds hT (Tab.comp_wf hc1 wtx wsx) (Tab.comp_wf hc2 wty wsy), hc1', hc2',
         Tab.union_holds htx wl wdd, Tab.diff_holds hdd wdux wdy, Tab.diff_holds hty wdy wl, Tab.dom_holds hdy wuy.1,
-        Tab.dom_holds hdux, hl', Tab.pair_holds hsx wp1 (Tab.snoc_wf hsa wpa), Tab.pair_holds hp1 wxr wy,
+        Tab.dom_holds hdux wux.1, hl', Tab.pair_holds hsx wp1 (Tab.snoc_wf hsa wpa), Tab.pair_holds hp1 wxr wy,
         Tab.snoc_holds hsa wpa, Tab.pair_holds hpa wac wa, Tab.pair_holds hsy wp2 (Tab.snoc_wf hsb wpb),
         Tab.pair_holds hp2 wx wyr, Tab.snoc_holds hsb wpb, Tab.pair_holds hpb wac wb, Tab.comp_outr ho7 hxr wux,
         Tab.comp_outr ho8 hyr wuy, Tab.comp_outl ho5 ha wux, Tab.comp_outl ho6 hb wuy, Tab.comp_uncons hu1 hux wx,
@@ -1540,7 +1547,7 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
         rw [Tab.union_holds hrr wun1 wdc, Tab.union_holds hun1 wcl wuc, hcl',
           hco (fun e e' h => ((hup' e e').1 h).1) wup wcx huc, hco (fun e e' h => ((hdown' e e').1 h).1) wdown wys hdc]
         simp only [Tab.union_holds hlone wed wd2, Tab.diff_holds hed wE wdu, Tab.diff_holds hd2 wd1 wdown,
-          Tab.diff_holds hd1 wdu wup, Tab.ran_holds hE, hdu', hup', hdown', Tab.cons_holds hcx wxb,
+          Tab.diff_holds hd1 wdu wup, Tab.ran_holds hE wp.2, hdu', hup', hdown', Tab.cons_holds hcx wxb,
           Tab.pair_holds hxb wx wbs, Core.Rel.rpair, hx', hbs', hys', hb', St, true_and]
         obtain ⟨x0, _ | ⟨b0, l⟩⟩ := e
         · simp
@@ -1555,16 +1562,16 @@ theorem Tab.thinL_holds {B : Obj} {n : USize}
         have he := (Tab.pair_holds hp wel wS k (a, v)).2 ⟨ha, hv⟩
         exact ⟨(a, v), he, (hr _ v').2 ⟨⟨k, he⟩, hs⟩⟩)
     _ _ _ _ _ h (Tab.idU_wf hrest hX) (Tab.nil_wf hP0 hX) (Tab.zero_wf hz)
-    (fun k a b ha hb => ((Tab.idU_holds hrest wX k a).1 ha).1.symm.trans ((Tab.idU_holds hrest wX k b).1 hb).1)
-    (fun k v hv => ⟨k, (Tab.idU_holds hrest wX k k).2 ⟨rfl, ((Tab.nil_holds hP0 wX k v).1 hv).1⟩, trivial⟩)
+    (fun k a b ha hb => ((Tab.idU_holds hrest hX k a).1 ha).1.symm.trans ((Tab.idU_holds hrest hX k b).1 hb).1)
+    (fun k v hv => ⟨k, (Tab.idU_holds hrest hX k k).2 ⟨rfl, ((Tab.nil_holds hP0 hX k v).1 hv).1⟩, trivial⟩)
   rw [hfr, Tab.zero_holds hz, false_or]
   constructor
   · rintro ⟨r, v, hr, hv, ⟨ys, hy, ⟨_, h0⟩, hS, hw⟩⟩
-    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest wX xs r).1 hr
-    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 wX xs v).1 hv
+    obtain ⟨rfl, hi⟩ := (Tab.idU_holds hrest hX xs r).1 hr
+    obtain ⟨-, rfl⟩ := (Tab.nil_holds hP0 hX xs v).1 hv
     exact ⟨hi, ys, hy, h0, hS, hw⟩
   · rintro ⟨hi, ys, hy, h0, hS, hw⟩
-    exact ⟨xs, [], (Tab.idU_holds hrest wX xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 wX xs []).2 ⟨hi, rfl⟩,
+    exact ⟨xs, [], (Tab.idU_holds hrest hX xs xs).2 ⟨rfl, hi⟩, (Tab.nil_holds hP0 hX xs []).2 ⟨hi, rfl⟩,
       ys, hy, ⟨[], h0⟩, hS, hw⟩
 
 namespace GenK
