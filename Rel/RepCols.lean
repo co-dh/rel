@@ -560,9 +560,9 @@ theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hN : hasNul P
 
 /-- **`summandPos n s tag idx`** is `idx` on the rows `tag` gives to the summand `s`, `0` on the others. -/
 theorem summandPos_raw {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Enc} {p : Enc}
-    (h : summandPos n s tag idx = .ok p) (hv : Kernel.Enc.Valid n tag.enc) (q : Fin n.toNat) :
+    (h : summandPos n s tag idx = .ok p) (q : Fin n.toNat) :
     (raw .i64 n p)[q.1]?.getD 0 = if tag.get q = s then (raw .i64 n idx)[q.1]?.getD 0 else 0 := by
-  obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+  obtain ⟨t, ht, et⟩ := Arr.get_u1 tag q
   have hi64 : ¬ (QAtomicType.i64 = .u1) := by decide
   unfold summandPos at h
   cases s
@@ -613,7 +613,7 @@ theorem Arr.pos_clamp {n : USize} {P : Arr .i64 n} (h : Arr.pos n = .ok P) (hn :
 
 /-- **A `tagCount` of `0`**: no row is tagged into the summand `s`. -/
 theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s tag = .ok 0)
-    (hv : Kernel.Enc.Valid n tag.enc) (q : Fin n.toNat) : tag.get q ≠ s := by
+    (q : Fin n.toNat) : tag.get q ≠ s := by
   unfold tagCount at h
   split at h; · cases h
   simp only [bind, Except.bind] at h
@@ -631,7 +631,7 @@ theorem tagCount_zero {n : USize} {s : Bool} {tag : Arr .u1 n} (h : tagCount n s
     obtain ⟨wN, hwN⟩ : ∃ f : Nat → Nat, f = fun G => if hG : G < n.toNat then (if tag.get ⟨G, hG⟩ = s then 1 else 0) else 0 := ⟨_, rfl⟩
     have hw : ∀ G < n.toNat, (raw .i64 n p.1)[G]?.getD 0 = (wN G).toUInt64 := fun G hG => by
       -- word `G` of `p` is `tag`'s bit, or its `.not` at `s = false` (`kscan_first_chain`)
-      obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv ⟨G, hG⟩
+      obtain ⟨t, ht, et⟩ := Arr.get_u1 tag ⟨G, hG⟩
       obtain ⟨w, hc, ho⟩ := (kscan_first_chain (by cases s <;> simp [kscanStream]) hp).2.2 G hG
       rw [ho, hwN]; simp only [dif_pos hG, if_neg (by decide : ¬ (QAtomicType.i64 = .u1)), Option.getD_some]
       simp only [ht, Option.getD_some] at hc
@@ -672,7 +672,7 @@ theorem Vals.catSide_row {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m}
     split at h; · cases h
     rename_i c hc
     split at h
-    · rename_i hc0; subst hc0; exact absurd ht (tagCount_zero hc hv q)
+    · rename_i hc0; subst hc0; exact absurd ht (tagCount_zero hc q)
     · cases h
   · rename_i hl0
     have hl : 0 < l.toNat := by omega
@@ -682,7 +682,7 @@ theorem Vals.catSide_row {B : Obj} {m l l' : USize} {s : Bool} {tag : Arr .u1 m}
     rename_i k hk
     split at h; · cases h
     rename_i p hp
-    rw [Vals.summand_row tag k s x h h63 hl (summandPos_raw hp hv) q, if_pos ht]
+    rw [Vals.summand_row tag k s x h h63 hl (summandPos_raw hp) q, if_pos ht]
     -- the clamped positions clamp as the stored ones (`Arr.clampShift_get`)
     have hU : (l.toUInt64 - 1).toNat = l.toNat - 1 := by
       have := l.toNat_lt_size; have := USize.size_le

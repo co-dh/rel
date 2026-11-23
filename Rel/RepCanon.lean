@@ -279,7 +279,7 @@ theorem clampFin_word {w : UInt64} {m : Nat} (h : 0 < m) (hw : w.toNat < m) (hm 
   apply Fin.ext; simp only [clampFin, e]; omega
 
 /-- A boolean element is `true` exactly where its word is `1`. -/
-theorem Arr.get_u1 {n : USize} (x : Arr .u1 n) (hx : Kernel.Enc.Valid n x.enc) (i : Fin n.toNat) :
+theorem Arr.get_u1 {n : USize} (x : Arr .u1 n) (i : Fin n.toNat) :
     ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ a = (if x.get i then 1 else 0) := by
   obtain ⟨a, ha, hu, e⟩ := Arr.get_raw_atom x (by decide) i
   refine ⟨a, ha, ?_⟩
@@ -570,7 +570,7 @@ theorem Vals.cols_sum {a b : Obj} {n l r : USize} {s : Vals (.sum a b) n} {hb : 
   -- `px` is `idx` on the left summand's rows and `0` on the right's, `py` the other way round
   have wx : ∀ q : Fin n.toNat, (Enc.raw .i64 n px)[q.1]?.getD 0 =
       if tag.get q = false then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := fun q => by
-    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag q
     obtain ⟨v1, e1, h1⟩ := hnt' q q.2
     obtain ⟨v2, e2, h2⟩ := hpx' q q.2
     simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e1; subst e1
@@ -579,7 +579,7 @@ theorem Vals.cols_sum {a b : Obj} {n l r : USize} {s : Vals (.sum a b) n} {hb : 
     rw [et]; cases tag.get q <;> simp
   have wy : ∀ q : Fin n.toNat, (Enc.raw .i64 n py)[q.1]?.getD 0 =
       if tag.get q = true then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := fun q => by
-    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag q
     obtain ⟨v2, e2, h2⟩ := hpy' q q.2
     simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e2; subst e2
     simp only [h2, if_neg hi64, Option.getD_some]
