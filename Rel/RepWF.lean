@@ -119,10 +119,20 @@ theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h
     okSplit
     exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inl_wf ‹_› trivial))
   have hXw := hX
-  simp only [Vals.WF, hv] at hX
+  simp only [Vals.WF, ValsB.WFOn, hv] at hX
   simp only [bind, Except.bind] at h
-  okSplit
-  all_goals exact canon_wf h ⟨Vals.gather_wf ‹_› hXw, Vals.gather_wf ‹_› hX.1⟩
+  split at h; · cases h
+  rename_i b hbm
+  split at h; · cases h
+  rename_i ws hws; obtain ⟨M, sel⟩ := ws
+  split at h; · cases h
+  rename_i G hG
+  split at h; · cases h
+  rename_i g hg
+  split at h; · cases h
+  rename_i u hu
+  exact canon_wf h (selConv_holds (p := fun i => !tag.get i) (Arr.not_mask hbm) hws hG hg hu h hXw
+    ((ValsB.WFOn_congr x fun i => by simp).1 hX.2.1)).1
 
 theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h : Tab.inrConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
@@ -134,12 +144,20 @@ theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h
     -- UNBUILT: the splits are kscan, whereCol, ValsB.gather, Opt.gather, Arr.of; adjust to the goal state
     repeat (split at h; · cases h)
     cases h
-    exact ⟨Vals.gather_wf ‹_› (by simp only [Vals.WF, Vals.view_ofOpt]), trivial⟩
+    exact ⟨Vals.gather_wf ‹_› (by simp only [ValsB.WFOn, ValsB.view_ofOpt]; exact fun _ h => absurd trivial h), trivial⟩
   have hXw := hX
-  simp only [Vals.WF, hv] at hX
+  simp only [Vals.WF, ValsB.WFOn, hv] at hX
   simp only [bind, Except.bind] at h
-  okSplit
-  all_goals exact canon_wf h ⟨Vals.gather_wf ‹_› hXw, Vals.gather_wf ‹_› hX.2.1⟩
+  split at h; · cases h
+  rename_i ws hws; obtain ⟨M, sel⟩ := ws
+  split at h; · cases h
+  rename_i G hG
+  split at h; · cases h
+  rename_i g hg
+  split at h; · cases h
+  rename_i u hu
+  exact canon_wf h (selConv_holds (p := fun i => tag.get i) (Arr.u1_mask tag) hws hG hg hu h hXw
+    ((ValsB.WFOn_congr y fun i => by simp).1 hX.2.2)).1
 
 /-! ### The power operators that build no cell -/
 
@@ -155,7 +173,7 @@ theorem atIx_wf {n : USize} {X : Vals (.prod (.arr B) .long) n} {t : Tab (.prod 
   obtain ⟨⟨m, lo, hi, f⟩, k⟩ := X
   simp only [Tab.atIx, bind, Except.bind] at h
   okSplit
-  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.1.2⟩
+  exact canon_wf h ⟨Vals.gather_wf ‹_› hX, Vals.gather_wf ‹_› hX.1.2.2.2⟩
 
 /-- **The row `at` keeps `Tab.WF`**: `atIx` at the `i64` index, no table elsewhere. -/
 theorem atRow_wf {N : Obj} {n : USize} {X : Vals (.prod (.arr B) N) n} {t : Tab (.prod (.arr B) N) B}
@@ -202,20 +220,23 @@ end Tab
 
 /-! ### `pack` and the fixed points -/
 
-/-- **`Vals.pack` keeps `Vals.WF`**: a cut payload is the input's gathered and packed, laid out by `Vals.cells` over
-the EXPAND of the cells' own widths, each at most `m` (`cellSpan_width`, `Vals.cells_expand_wf`). -/
-theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.pack x = .ok y → Vals.WF x → Vals.WF y
-  | .atom _, _, _, _, _, _ => trivial
-  | .one, _, _, _, _, _ => trivial
-  | .prod _ _, _, x, _, h, hx => by
-    simp only [Vals.pack, bind, Except.bind, pure, Except.pure] at h
+/-- **`ValsB.pack` keeps `ValsB.WFOn`**: a cut payload (`o = false`, every row owned) is the input's gathered and
+packed, laid out by `Vals.cells` over the EXPAND of the cells' own widths, each at most `m` (`cellSpan_width`,
+`Vals.cells_expand_wf`); a summand keeps its tag and cells and packs its payload. -/
+theorem ValsB.pack_wf : {o : Bool} → {A : Obj} → {n : USize} → {x y : ValsB o A n} → ValsB.pack x = .ok y →
+    {P : Fin n.toNat → Prop} → ValsB.WFOn x P → (o = false → ∀ i, P i) → ValsB.WFOn y P
+  | _, .atom _, _, _, _, h, _, hx, _ => by
+    simp only [ValsB.pack, pure, Except.pure, Except.ok.injEq] at h; cases h; exact hx
+  | _, .one, _, _, _, _, _, _, _ => trivial
+  | _, .prod _ _, _, x, _, h, _, hx, hall => by
+    simp only [ValsB.pack, bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i y1 h1
     split at h; · cases h
     rename_i y2 h2
-    cases h; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
-  | .sum _ _, _, s, _, h, hx => by
-    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> simp only [Vals.pack, hv] at h
+    cases h; exact ⟨ValsB.pack_wf h1 hx.1 hall, ValsB.pack_wf h2 hx.2 hall⟩
+  | _, .sum _ _, _, s, _, h, _, hx, _ => by
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> simp only [ValsB.pack, hv] at h
     · simp only [pure, Except.pure, Except.ok.injEq] at h; cases h; exact hx
     simp only [bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
@@ -223,12 +244,17 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     split at h; · cases h
     rename_i y' h2
     cases h
-    simp only [Vals.WF, hv] at hx
-    simp only [Vals.WF, Vals.view_ofGen]
-    exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2.1, fun i hi => by rw [Vals.pack_row y h2 hx.2.1]; exact hx.2.2.1 i hi,
-      fun i hi => by rw [Vals.pack_row x h1 hx.1]; exact hx.2.2.2 i hi⟩
-  | .arr B, n, ⟨m, lo, up, f⟩, y, h, hx => by
-    simp only [Vals.pack] at h
+    simp only [ValsB.WFOn, hv] at hx
+    simp only [ValsB.WFOn, ValsB.view_ofGen]
+    exact ⟨hx.1, ValsB.pack_wf h1 hx.2.1 (fun h => nomatch h), ValsB.pack_wf h2 hx.2.2 (fun h => nomatch h)⟩
+  | true, .arr B, n, ⟨m, lo, up, f⟩, y, h, _, hx, _ => by
+    simp only [ValsB.pack, bind, Except.bind, pure, Except.pure] at h
+    split at h; · cases h
+    rename_i f' hf'
+    cases h; exact ⟨hx.1, hx.2.1, hx.2.2.1, ValsB.pack_wf hf' hx.2.2.2 fun _ _ => trivial⟩
+  | false, .arr B, n, ⟨m, lo, up, f⟩, y, h, P, hx, hall => by
+    have hse := fun i => hx.2.2.1 i (hall rfl i)
+    simp only [ValsB.pack] at h
     split at h; · cases h
     rename_i hb
     simp only [bind] at h
@@ -238,26 +264,27 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     split at h
     case isFalse =>
       rw [Except.bind_eq_ok'] at h; obtain ⟨f', hf', h⟩ := h
-      cases h; exact ⟨hx.1, Vals.pack_wf hf' hx.2⟩
+      cases h; exact ⟨hx.1, hx.2.1, hx.2.2.1, ValsB.pack_wf hf' hx.2.2.2 fun _ _ => trivial⟩
     rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨sg, hsg, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨g', hg', h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨p, hp, h⟩ := h
     have hm63 : m.toNat < 2 ^ 63 := by omega
-    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hx.1 hm63 f
-    refine Vals.cells_expand_wf hex h m.toNat (fun i hi => ?_) (by omega) (by omega)
-      (Vals.pack_wf hp (Vals.gather_wf hg' hx.2))
+    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+    refine (ValsB.WFOn_congr y fun i => ⟨fun _ => hall rfl i, fun _ => trivial⟩).1
+      (Vals.cells_expand_wf hex h m.toNat (fun i hi => ?_) (by omega) (by omega)
+        (ValsB.pack_wf hp (Vals.gather_wf hg' hx.2.2.2) fun _ _ => trivial))
     obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
     rw [e1, toNat_toUInt64 (by omega)]; exact b1
 
-/-- **`Tab.pack` keeps `Tab.WF`** (`Vals.pack_wf` on both sides). -/
+/-- **`Tab.pack` keeps `Tab.WF`** (`ValsB.pack_wf` on both sides). -/
 theorem Tab.pack_wf {R t : Tab A B} (h : R.pack = .ok t) (hR : R.WF) : t.WF := by
   simp only [Tab.pack, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i x hx; split at h; · cases h
   rename_i y hy; cases h
-  exact ⟨Vals.pack_wf hx hR.1, Vals.pack_wf hy hR.2⟩
+  exact ⟨ValsB.pack_wf hx hR.1 fun _ _ => trivial, ValsB.pack_wf hy hR.2 fun _ _ => trivial⟩
 
 namespace Tab
 
@@ -331,8 +358,8 @@ theorem nil_wf {n : USize} {D : Vals A n} {t : Tab A (.arr B)} (h : Tab.nil D = 
   unfold Tab.nil at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i z hz; split at h; · cases h
-  refine canon_wf h ⟨hD, fun i => ?_, Vals.none_wf ‹_›⟩
-  rw [Arr.zeros_get hz]; simp
+  refine canon_wf h ⟨hD, trivial, trivial, fun i _ => ?_, Vals.none_wf _ ‹_›⟩
+  simp [ColB.get, Arr.zeros_get hz]
 
 /-- **`lamOf` keeps `Tab.WF`**: `nil` at an `r` of no rows, else `lamOf_canon`'s cells inside the `N` sorted rows. -/
 theorem lamOf_wf {n : USize} {D : Vals A n} {r : Tab A B} {t : Tab A (.arr B)} (h : Tab.lamOf D r = .ok t)
@@ -420,7 +447,7 @@ theorem tails_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.arr (.arr
   have wL := lamOf_wf hL hX (uncat_wf hU hX)
   obtain ⟨Ln, Lk, m, lo, hi, f⟩ := L
   simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact ⟨wL.1, wL.2.1, wL.2.2.2⟩
+  exact ⟨wL.1, wL.2.1, wL.2.2.1, wL.2.2.2.1, wL.2.2.2.2.2⟩
 
 theorem sumOn_wf {u : QAtomicType} {n : USize} {X : Vals (.arr (.atom u)) n} {t : Tab (.arr (.atom u)) (.atom u)}
     (h : Tab.sumOn X = .ok t) (hX : Vals.WF X) : t.WF := by

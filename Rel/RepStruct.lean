@@ -637,15 +637,32 @@ theorem Vals.gather_tag_valid {a b : Obj} {n m : USize} {ix : Enc} {X : Vals (.s
   · rename_i o ho; exact kgather_valid ho
   · cases ht'
 
+/-- `not` of a boolean column holds `1` exactly at its `false` rows. -/
+theorem Arr.not_mask {n : USize} {tag : Arr .u1 n} {b : Enc} (hbm : colMap .not n tag.enc tag.enc = .ok b)
+    (i : Fin n.toNat) : (Enc.raw .i64 n b)[i.1]?.getD 0 = if (!tag.get i) = true then 1 else 0 := by
+  obtain ⟨-, -, -, hr⟩ := colMap_raw hbm
+  obtain ⟨a, ha, he⟩ := Arr.get_u1 tag i
+  have := hr i.1 i.2
+  rw [ha] at this
+  simp only [Option.getD_some, Op.eval, Except.ok.injEq] at this
+  rw [← this, he]; cases tag.get i <;> decide
+
+/-- A boolean column holds `1` exactly at its `true` rows. -/
+theorem Arr.u1_mask {n : USize} (tag : Arr .u1 n) (i : Fin n.toNat) :
+    (Enc.raw .i64 n tag.enc)[i.1]?.getD 0 = if tag.get i = true then 1 else 0 := by
+  obtain ⟨a, ha, he⟩ := Arr.get_u1 tag i
+  rw [ha, Option.getD_some, he]
+
 /-- **The rows `whereCol` selects, gathered from `X` and `g`**: where `b` holds `1` exactly at the rows with `p`, the
-canonical table of `X` beside `g` has the pairs `(X.row i, g.row i)` of the rows `i` with `p i`. -/
+table of `X` beside `g` is `Tab.WF`, and its canonical table has the pairs `(X.row i, g.row i)` of the rows `i` with
+`p i`. -/
 theorem selConv_holds {S C : Obj} {n m : USize} {sel b : Enc} {w : String} {X : Vals S n} {g : ValsB true C n}
     {G : Vals S m} {g' : ValsB true C m} {u : Vals C m} {T : Tab S C} {p : Fin n.toNat → Bool}
     (hb : ∀ i : Fin n.toNat, (Enc.raw .i64 n b)[i.1]?.getD 0 = if p i then 1 else 0)
     (hw : whereCol n b = .ok (m, sel)) (hG : ValsB.gather m sel X = .ok G) (hg' : ValsB.gather m sel g = .ok g')
     (hu : Vals.unlift w g' = .ok u) (hc : Tab.canon ⟨m, G, u⟩ = .ok T) (hX : Vals.WF X)
-    (hg : ValsB.WFOn g fun i => p i = true) (s : S.El) (c : C.El) :
-    T.Holds s c ↔ ∃ i, p i = true ∧ X.row i = s ∧ g.row i = c := by
+    (hg : ValsB.WFOn g fun i => p i = true) :
+    Tab.WF (⟨m, G, u⟩ : Tab S C) ∧ ∀ s c, (T.Holds s c ↔ ∃ i, p i = true ∧ X.row i = s ∧ g.row i = c) := by
   have hb2 : ∀ i < n.toNat, (Enc.raw .i64 n b)[i]?.getD 0 < 2 := fun i hi => by
     rw [hb ⟨i, hi⟩]; split <;> decide
   have hsel := whereCol_spec hw hb2
@@ -662,7 +679,10 @@ theorem selConv_holds {S C : Obj} {n m : USize} {sel b : Enc} {w : String} {X : 
   have hgw : ValsB.WFOn g' fun _ => True := (ValsB.WFOn_congr _ fun j => ⟨fun _ => trivial, fun _ =>
     (ValsB.gather_row g hg' j).imp fun i e => ⟨e.1, hpj j i e.1⟩⟩).1 (ValsB.gather_wf hg' _ hg)
   have hur : ∀ j, ValsB.row u j = ValsB.row g' j := fun j => by rw [← Vals.lift_row u j, Vals.unlift_lift g' u hu]
-  rw [Tab.canon_holds hc ⟨Vals.gather_wf hG hX, Vals.wf_of_lift u (by rw [Vals.unlift_lift g' u hu]; exact hgw)⟩]
+  have wT : Tab.WF (⟨m, G, u⟩ : Tab S C) :=
+    ⟨Vals.gather_wf hG hX, Vals.wf_of_lift u (by rw [Vals.unlift_lift g' u hu]; exact hgw)⟩
+  refine ⟨wT, fun s c => ?_⟩
+  rw [Tab.canon_holds hc wT]
   constructor
   · rintro ⟨j, rfl, rfl⟩
     obtain ⟨i, hi, hr⟩ := ValsB.gather_row X hG j
@@ -762,16 +782,9 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
   rename_i g hg
   split at h; · cases h
   rename_i u hu
-  have hmask : ∀ i : Fin n.toNat, (Enc.raw .i64 n b)[i.1]?.getD 0 = if (!tag.get i) = true then 1 else 0 := fun i => by
-    obtain ⟨-, -, -, hr⟩ := colMap_raw hbm
-    obtain ⟨a, ha, he⟩ := Arr.get_u1 tag i
-    have := hr i.1 i.2
-    rw [ha] at this
-    simp only [Option.getD_some, Op.eval, Except.ok.injEq] at this
-    rw [← this, he]; cases tag.get i <;> decide
   have hrow : ∀ i, X.row i = if tag.get i then .inr (y.row i) else .inl (x.row i) := fun i => by simp only [ValsB.row, hv]
-  rw [selConv_holds (p := fun i => !tag.get i) hmask hws hG hg hu h hXw
-    ((ValsB.WFOn_congr x fun i => by simp).1 hX.2.1)]
+  rw [(selConv_holds (p := fun i => !tag.get i) (Arr.not_mask hbm) hws hG hg hu h hXw
+    ((ValsB.WFOn_congr x fun i => by simp).1 hX.2.1)).2]
   simp only [Core.Rel.inl, Core.Rel.graph]
   constructor
   · rintro ⟨i, hp, rfl, rfl⟩
@@ -888,12 +901,9 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
   rename_i g hg
   split at h; · cases h
   rename_i u hu
-  have hmask : ∀ i : Fin n.toNat, (Enc.raw .i64 n tag.enc)[i.1]?.getD 0 = if tag.get i = true then 1 else 0 := fun i => by
-    obtain ⟨a, ha, he⟩ := Arr.get_u1 tag i
-    rw [ha, Option.getD_some, he]
   have hrow : ∀ i, X.row i = if tag.get i then .inr (y.row i) else .inl (x.row i) := fun i => by simp only [ValsB.row, hv]
-  rw [selConv_holds (p := fun i => tag.get i) hmask hws hG hg hu h hXw
-    ((ValsB.WFOn_congr y fun i => by simp).1 hX.2.2)]
+  rw [(selConv_holds (p := fun i => tag.get i) (Arr.u1_mask tag) hws hG hg hu h hXw
+    ((ValsB.WFOn_congr y fun i => by simp).1 hX.2.2)).2]
   simp only [Core.Rel.inr, Core.Rel.graph]
   constructor
   · rintro ⟨i, hp, rfl, rfl⟩
