@@ -65,12 +65,11 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
 def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n) : Opt t n := by
   obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact Opt.ofArr Y
 
-/-- `n` nulls of `1+t` (each `inl ()`): every row flagged in its block, through the one writer (`Opt.ofAtoms`). -/
+/-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
+writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
 def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  match Opt.ofAtoms t (Array.replicate n.toNat none) with
-  | some x => if h : (Array.replicate n.toNat (none : Option QAtom)).size.toUSize = n then .ok (h ▸ x)
-    else .error s!"inl: {n} nulls of {repr t} do not fit a USize count"
-  | none => .error s!"inl: {repr t} has no block to hold a null"
+  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
+  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
 
 /-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
 through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one
