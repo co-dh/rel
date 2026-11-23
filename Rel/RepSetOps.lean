@@ -955,9 +955,29 @@ theorem diff_sorted {R S U : Tab k v} (h : R.diff S = .ok U) (hR : R.WF) (hS : S
           seenKey C.n es (sel j) ≠ seenKey C.n es (sel j') :=
   (select_ok (κ := fun _ s => ¬s) diff_keep h hR hS).2
 
-/-- **`R.unionDiff S` is `(R.union S, R.diff S)`**: every kernel call of the two is one of its calls on the same
+/-- `rdiff`'s `keep`, the `and` itself (`colMap .last`), is `1` exactly where a group holds no row of `R`. -/
+theorem rdiff_keep (M : USize) (mn mx o : Enc) (ho : colMap .last M mn mn = .ok o) :
+    (Enc.raw .i64 M o).size = M.toNat ∧ ∀ G < M.toNat,
+      (Enc.raw .i64 M mn)[G]?.getD 0 < 2 → (Enc.raw .i64 M mx)[G]?.getD 0 < 2 →
+      (Enc.raw .i64 M o)[G]?.getD 0 < 2 ∧ ((Enc.raw .i64 M o)[G]?.getD 0 ≠ 0 ↔
+        ¬((Enc.raw .i64 M mn)[G]?.getD 0 = 0)) := by
+  obtain ⟨-, -, hs, hrow⟩ := colMap_raw ho
+  refine ⟨hs, fun G hG h1 _ => ?_⟩
+  have e := hrow G hG
+  generalize (Enc.raw .i64 M mn)[G]?.getD 0 = x at h1 e ⊢
+  generalize (Enc.raw .i64 M o)[G]?.getD 0 = z at e ⊢
+  rcases bit01 h1 with rfl | rfl <;>
+    (simp only [Op.eval, Except.ok.injEq] at e; subst e; (try dsimp only); decide)
+
+/-- **`R.rdiff S` denotes `S − R`**: `select` keeping the groups with `and ≠ 0`, no row of `R`. -/
+theorem rdiff_holds {R S U : Tab k v} (h : R.rdiff S = .ok U) (hR : R.WF) (hS : S.WF) (a : k.El) (b : v.El) :
+    U.Holds a b ↔ S.Holds a b ∧ ¬R.Holds a b := by
+  rw [(select_ok (κ := fun r _ => ¬r) rdiff_keep h hR hS).1 a b]
+  exact ⟨fun h => ⟨h.1.resolve_left h.2, h.2⟩, fun h => ⟨.inr h.1, h.2⟩⟩
+
+/-- **`R.unionDiff S` is `(R.union S, R.rdiff S)`**: every kernel call of the two is one of its calls on the same
 arguments (`tagged_ok`: the tagged concatenation is `R.concat S`). -/
-theorem unionDiff_ok {R S V U : Tab k v} (h : R.unionDiff S = .ok (V, U)) : R.union S = .ok V ∧ R.diff S = .ok U := by
+theorem unionDiff_ok {R S V U : Tab k v} (h : R.unionDiff S = .ok (V, U)) : R.union S = .ok V ∧ R.rdiff S = .ok U := by
   unfold unionDiff at h
   simp only [bind, Except.bind] at h
   repeat (split at h; · cases h)
@@ -970,7 +990,7 @@ theorem unionDiff_ok {R S V U : Tab k v} (h : R.unionDiff S = .ok (V, U)) : R.un
   refine ⟨?_, ?_⟩
   · simp only [Tab.union, (tagged_ok hCt).1, Tab.canon, Vals.nub, bind, Except.bind, hes, hvp, hr, hiu, hu,
       Functor.map, Except.map]
-  · simp only [Tab.diff, Tab.select, hCt, hes, hvp, hr, hts, hsg, hmn, hmx, hkb, hKs, hix1, hix, hd, bind, Except.bind,
+  · simp only [Tab.rdiff, Tab.select, hCt, hes, hvp, hr, hts, hsg, hmn, hmx, hkb, hKs, hix1, hix, hd, bind, Except.bind,
       Functor.map, Except.map]
 
 /-- **`R.le S` answers `R ⊑ S`**: `R.diff S` has no row iff every pair of `R` is one of `S` (`diff_holds`). -/

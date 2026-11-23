@@ -998,7 +998,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       与 `−` 合为 `Tab.unionDiff`，共用 `T ++ X` 的一次 `asc` + `seen`（`unionDiff_ok`）。余下仍与 `|X|`（含 payload）
       成正比：concat 是两次全长 `kscatter` 加一次 `add`，每次重编码 `X` 的整个 payload（`for_meta` 11%、`write_nul`
       9%），`asc` 的 `Cells::codes` 读整个 payload。与 `|Δ|` 成正比需要：对已排序 `X` 的成员测试（无 search kernel，
-      五个 kernel 组不出）与不重编码的追加（kernel 的 `Producer::take` 整块搬移，目前没有 producer 实现它）。
+      五个 kernel 组不出）与不重编码的追加。
+      mugrow3（3.2 s → 2.4 s，perf cycles 24.3G → 16.6G）：`X` 放在 concat 前面（`X.unionDiff T` 答 `(X ∪ T, T − X)`，
+      `−` 是 `Tab.rdiff`：不含 `X` 行的组，`rdiff_holds`），`X` 的块与输出块对齐；`Producer::take`（`enc::Moving`、
+      `enc::movable`）由 `kscatter .last` 经 `pos`、`kscan` 的单位元 map（`+0`、`|0`、`-0`、`×1`、`first`、`last`）与
+      `kgather` 的连续整块索引实现，对齐的块原样搬移（`write_nul` 9.5% → 1.8%，`for_meta` 10.8% → 5.4%）。余下：
+      `pool::worker` 自旋 27% + `run_c` 5.5%（小任务的线程交接），`asc` 排序 8.7%（仍读整个 `X`），与 `|X|` 成正比。
       未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
       `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
       状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`

@@ -73,9 +73,14 @@ def inter (R S : Tab k v) : Except String (Tab k v) :=
 def diff (R S : Tab k v) : Except String (Tab k v) :=
   select (fun m _ mx => colMap .not m mx mx) R S
 
-/-- **`(R ∪ S, R − S)` from one grouping** (`unionDiff_ok`): `R.union S` is `canon` of `R.concat S`, whose `kasc ≫
+/-- **`S − R`**: the groups holding no row of `R`, read off the `and` itself (a `kscan` map of `last`). `S − R` from
+the concatenation `R ++ S`, so a caller whose `R` is the large side keeps it first, where its blocks stay aligned. -/
+def rdiff (R S : Tab k v) : Except String (Tab k v) :=
+  select (fun m mn _ => colMap .last m mn mn) R S
+
+/-- **`(R ∪ S, S − R)` from one grouping** (`unionDiff_ok`): `R.union S` is `canon` of `R.concat S`, whose `kasc ≫
 kseen` is the one `select` runs on the tagged concatenation, so both answers read one sort: `∪` gathers each group's
-first row (`Vals.nub`'s tail), `−` is `diff`'s tail. -/
+first row (`Vals.nub`'s tail), `−` is `rdiff`'s tail. `R` first, so the concatenation moves `R`'s blocks whole. -/
 def unionDiff (R S : Tab k v) : Except String (Tab k v × Tab k v) := do
   let (C, tag) ← R.tagged S
   let x : Vals (.prod k v) C.n := (C.key, C.val)
@@ -88,7 +93,7 @@ def unionDiff (R S : Tab k v) : Except String (Tab k v × Tab k v) := do
   let seg ← seenSeg C.n f m.toUSize
   let mn ← groupFold .and C.n g seg m.toUSize 1 ts
   let mx ← groupFold .or C.n g seg m.toUSize 0 ts
-  let (K, sel) ← whereCol m.toUSize (← colMap .not m.toUSize mx mx)
+  let (K, sel) ← whereCol m.toUSize (← colMap .last m.toUSize mn mn)
   let ix ← kgather K (← kgather K sel m.toUSize f) C.n p
   let d ← Vals.gather K ix x
   pure (⟨m.toUSize, u.1, u.2⟩, ⟨K, d.1, d.2⟩)

@@ -44,7 +44,13 @@ fn ordered(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Option<Resul
     if sp.iter().any(|s| s.0 > s.1) || sp.windows(2).any(|w| w[0].1 > w[1].0) { return None }
     let (sc, fails) = (ix.blk().max(e.blk()), op_eval(op, 0, 0).is_err());
     let (bad, err) = (AtomicBool::new(false), AtomicUsize::new(usize::MAX));
-    let o = Sink::new(n, 8).enc().answer(&|o: &mut [i64], i0: usize| {
+    // a plain write through the positions `0 ..` puts block `b` of `e` at answer block `b` as it stands
+    let t = |b: usize| match (ix.src, e.src) {
+        (Src::Pos, Src::For(c)) if op == LAST && ix.lg() == crate::DEFAULT_LG && b < ix.nblk()
+            && ix.span(b) == Grid { n, lg: crate::DEFAULT_LG }.span(b) && crate::enc::movable(&c, b, b, n, 8) => Some((c, b)),
+        _ => None,
+    };
+    let o = Sink::new(n, 8).enc().answer(&crate::enc::Moving { t: &t, f: |o: &mut [i64], i0: usize| {
         o.fill(fill as i64);
         let (c0, c1) = (i0 as u64, (i0 + o.len()) as u64);
         let (mut bi, mut be) = (pod::uninit::<u64>(sc), pod::uninit::<u64>(sc));
@@ -61,7 +67,7 @@ fn ordered(op: u8, ix: &Blocks, e: &Blocks, n: usize, fill: u64) -> Option<Resul
                 let c = &mut o[(i - c0) as usize]; *c = op_word(op, *c as u64, x) as i64
             }
         }
-    });
+    }});
     if bad.load(Relaxed) { return None }
     // the first index `>= n`: in the first block reaching `n` (every earlier block was cut and seen below `n`), found by
     // position, since a block whose least index is `>= n` was cut by no answer block and nothing saw it ascend
