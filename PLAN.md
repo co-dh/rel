@@ -1825,8 +1825,10 @@ relk 线程池空转 2 526（与前三项重叠）。
   - 未验证项 (1)：`ltAt` 对 `Obj.lt`。已证（B5b4）：所有整数存储的 atom（`intOrd`：u8 i8 i16 i32 i64 char date
     datetime），`ordAt_int` 给出，`Tm.lt_row_den`（`RepSums`，无 `h`）。未证：f32/f64——`Obj.lt` 是位的 totalOrder，
     `ltAt` 是 IEEE：`-0.0` 对 `0.0`（`Obj.lt` 真、`ltAt` 假），NaN 对 `1.0`（`Obj.lt 1.0 NaN` 真、`ltAt` 两向皆假）。
-  - 未验证项 (2)：`ascDen`（`Rel/AscOrder.lean:41`）= `⟦(dom(P) Λ(> P) length)°⟧` 无证明；证出前 `asc` 留在
-    `unproved`（`Prim` 的 `asc` 行注释同）。证明依赖 `lt`（`>` 是任意 object 上的序）。
+  - 未验证项 (2)：已证（B5b5）：`Tm.asc_den`（`Lang/DfnLaw`）：`ascDen` = `⟦Tm.ascDef P⟧`，`ascDef P` =
+    `(dom(P) Λ(> dom(P)) length)°`，`>` 是 `Tm.ltDef` 的 `Tm.gtRel`；`Prim.den_ascRow` 连行与 `ascDen`。对任意 object
+    成立（`ascDen` 读 `Obj.lt` 本身，无 `intOrd`，float 无问题），条件是 `dom P` 有按 `Obj.lt` 升序的 list（否则
+    `ascDen` 为空）。`ascRow` 从 `prims` 内联项拆出；`asc` 已在 `rowsProved`（`rowOK_asc`），行本身不进 `Elab.dfns`。
   - 次序：`at` 行 → 迁 `atPos` 用户 → `lt` 定义与 fused 行定理 → `asc` 定义与 `ascDen` 定理。每步一个 agent，opus 做证明。
 
 ## Baseline

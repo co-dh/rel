@@ -240,6 +240,12 @@ def lengthRow : Prim :=
 def sumRow : Prim :=
   { sym := "sum", num := [("ℕ", sumAtoms)], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
+/-- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
+    larger `P` renumbers. Its definition `(dom(P) Λ(> dom(P)) length)°` is `Tm.ascDef`, proved equal to the row's
+    meaning where `dom P` has a sorted list (`Tm.asc_den`); it is no `Elab.dfns` row, since `build` runs the row. -/
+def ascRow : Prim :=
+  { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
+    mono := false, aop := .error "AOP declares no numbering of a set by its order", dem := .whole }
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
     `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Elab.dfns`), `R` run on the keys in demand (`Tab.flat`). -/
 def flatRow : Prim :=
@@ -361,11 +367,7 @@ def prims : List Prim :=
    { sym := "positions", num := [("ℕ", intAtoms)],
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
      mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
-   -- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
-   -- larger `P` renumbers. Its definition `(dom(P) Λ(> P) length)°` is no `Elab.dfns` row: `>` on any object
-   -- (`Obj.lt`) has no term (`lt` is on ℕ's universe only), and no law proves `ascDen` equal to it
-   { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
-     mono := false, aop := .error "AOP declares no numbering of a set by its order", dem := .whole },
+   ascRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
    -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only

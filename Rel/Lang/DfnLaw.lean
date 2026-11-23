@@ -506,4 +506,86 @@ theorem Tm.lt_den (ρ : Val) (B : Obj) :
     have h := (Tm.head_lt hne).2 hl
     exact ⟨⟨⟨rfl, rfl⟩, x', ⟨h, rfl⟩, h, rfl⟩, fun h => by obtain ⟨-, b, ⟨hb1, hb2⟩, -⟩ := h; exact hne (hb1.symm.trans hb2)⟩
 
+/-- `ascRow` at `ℕ ⟶ B` given `T : B ⟶ C` means `ascDen` of the set `dom T`. -/
+theorem Prim.den_ascRow {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
+    Prim.den ascRow .long B [⟨B, B, T⟩] = ascDen B fun b => ∃ c, T b c := by
+  have ho : ascRow.objs .long B [(B, B)] = some [B, .long] := by
+    simp [Prim.objs, Option.orElse, ascRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == ascRow.sym) = some ⟨RowCode.asc, fun σ =>
+      Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩ := rfl
+  unfold Prim.den; simp only [List.map_cons, List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
+  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
+
+/-- `<` as a relation `B ⟶ B` on any object: `x` to each `y` after it, `π₁° lt π₂` (`lt` the coreflexive `Tm.ltDef`). -/
+def Tm.ltRel (B : Obj) : Tm B B := .comp (.comp (.conv .outl) (Tm.ltDef B)) .outr
+
+/-- `>`, the converse of `<` (`Tm.ltRel`). -/
+def Tm.gtRel (B : Obj) : Tm B B := .conv (Tm.ltRel B)
+
+/-- **`asc(P)` as a definition (B5b5)**: `(dom(P) Λ(> dom(P)) length)°`, `a` of `dom P` to the length of the list
+    (`Λ`, ascending) of the elements of `dom P` below it (`Tm.asc_den`). -/
+def Tm.ascDef {B : Obj} (P : Tm B B) : Tm .long B :=
+  .conv (.comp (.comp (.dom P) (.lam (.comp (Tm.gtRel B) (.dom P)))) (.prim lengthRow))
+
+theorem Tm.ltRel_den (ρ : Val) (B : Obj) (x y : B.El) : (Tm.ltRel B).den ρ x y ↔ B.lt x y := by
+  simp only [Tm.ltRel, Tm.den, Tm.lt_den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨_, ⟨⟨x', y'⟩, rfl, rfl, h⟩, rfl⟩
+    exact h
+  · intro h
+    exact ⟨(x, y), ⟨(x, y), rfl, rfl, h⟩, rfl⟩
+
+/-- Among the elements of a list ascending by `Obj.lt`, those before its `k`-th are exactly the first `k`. -/
+theorem lt_take_iff {B : Obj} {ys : List B.El} (hp : ys.Pairwise B.lt) {k : Nat} {a : B.El} (hk : ys[k]? = some a)
+    (b : B.El) : b ∈ ys.take k ↔ b ∈ ys ∧ B.lt b a := by
+  obtain ⟨hk', rfl⟩ := List.getElem?_eq_some_iff.1 hk
+  constructor
+  · intro hb
+    obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.1 hb
+    rw [List.length_take] at hi
+    simp only [List.getElem_take]
+    exact ⟨List.getElem_mem _, List.pairwise_iff_getElem.1 hp i k _ hk' (by omega)⟩
+  · rintro ⟨hb, hl⟩
+    obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.1 hb
+    rcases Nat.lt_trichotomy i k with h | rfl | h
+    · exact List.mem_iff_getElem.2 ⟨i, by rw [List.length_take]; omega, by simp⟩
+    · exact absurd hl (Obj.lt_irrefl _ _)
+    · exact absurd (List.pairwise_iff_getElem.1 hp k i hk' hi h) (Obj.lt_asymm B hl)
+
+-- no `intOrd` hypothesis as `lt_row_den` has: `ascDen` reads `Obj.lt` itself, so the float split (totalOrder vs IEEE) is
+-- only in the row `lt`, not here
+/-- **The row `asc` is the definition `Tm.ascDef`** where `dom P` has a list ascending by `Obj.lt` (`Tm.dom P` finite
+    at an object whose keys separate its elements): the row's meaning `ascDen` (`Prim.den_ascRow`, `Tab.asc_holds`)
+    numbers `dom P` by the elements below, which `Λ(> dom P) length` counts. -/
+theorem Tm.asc_den (ρ : Val) {B : Obj} (P : Tm B B)
+    (hp : ∃ ys : List B.El, ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ ∃ c, P.den ρ b c) :
+    (Tm.ascDef P).den ρ = ascDen B fun b => ∃ c, P.den ρ b c := by
+  have hd : ∀ x y, (Tm.dom P).den ρ x y ↔ y = x ∧ ∃ c, P.den ρ x c := fun x y => by
+    simp only [Tm.dom_den, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.id]
+    constructor
+    · rintro ⟨rfl, c, h, -⟩; exact ⟨rfl, c, h⟩
+    · rintro ⟨rfl, c, h⟩; exact ⟨rfl, c, h, h⟩
+  funext j a; apply propext
+  simp only [Tm.ascDef, Tm.den, Prim.den_lengthRow, Tm.gtRel, lamDen, Core.Rel.comp, Core.Rel.recip, hd, Tm.ltRel_den]
+  unfold ascDen
+  constructor
+  · rintro ⟨zs, ⟨a1, ⟨rfl, ha⟩, hzp, hzm⟩, rfl⟩
+    obtain ⟨ys, hyp, hym⟩ := hp
+    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 ((hym a1).2 ha)
+    have hkl : k < ys.length := (List.getElem?_eq_some_iff.1 hk).1
+    have hz : zs = ys.take k := lt_sorted_unique hzp (hyp.sublist (List.take_sublist _ _)) fun b => by
+      rw [hzm, lt_take_iff hyp hk, hym]
+      exact ⟨fun ⟨b1, hl, e, hc⟩ => by subst e; exact ⟨hc, hl⟩, fun ⟨hc, hl⟩ => ⟨b, hl, rfl, hc⟩⟩
+    refine ⟨ys, hyp, hym, k, hk, ?_⟩
+    rw [hz, List.length_take, Nat.min_eq_left (Nat.le_of_lt hkl)]
+  · rintro ⟨ys, hyp, hym, k, hk, rfl⟩
+    have ha : ∃ c, P.den ρ a c := (hym a).1 (List.mem_of_getElem? hk)
+    have hkl : k < ys.length := (List.getElem?_eq_some_iff.1 hk).1
+    refine ⟨ys.take k, ⟨a, ⟨rfl, ha⟩, hyp.sublist (List.take_sublist _ _), fun b => ?_⟩, ?_⟩
+    · rw [lt_take_iff hyp hk, hym]
+      exact ⟨fun ⟨hc, hl⟩ => ⟨b, hl, rfl, hc⟩, fun ⟨b1, hl, e, hc⟩ => by subst e; exact ⟨hc, hl⟩⟩
+    · rw [List.length_take, Nat.min_eq_left (Nat.le_of_lt hkl)]
+
 end Rel.Lang
