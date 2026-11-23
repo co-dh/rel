@@ -102,12 +102,12 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
     rw [← Except.ok.inj es]
     have hDn := D.n.toNat_lt_size
     rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
-    · have hk : ∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y := ((Tab.dom_holds hD _ _).1 ⟨a, hra, rfl⟩).2
+    · have hk : ∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y := ((Tab.dom_holds hD wP.1 _ _).1 ⟨a, hra, rfl⟩).2
       have hne : (raw .i64 T ia)[t]?.getD 0 ≠ D.n.toUInt64 := fun c => by
         have := congrArg UInt64.toNat c; rw [ea, USize.toNat_toUInt64] at this; omega
       simp [hk, hne]
     · have hk : ¬∃ y, P.Holds (Vals.row v ⟨t, ht⟩) y := fun c => by
-        obtain ⟨a, ha, -⟩ := (Tab.dom_holds hD _ _).2 ⟨rfl, c⟩; exact hno a ha
+        obtain ⟨a, ha, -⟩ := (Tab.dom_holds hD wP.1 _ _).2 ⟨rfl, c⟩; exact hno a ha
       have heq : (raw .i64 T ia)[t]?.getD 0 = D.n.toUInt64 := by
         apply UInt64.toNat_inj.mp; rw [ea, USize.toNat_toUInt64]
       simp [hk, heq]
@@ -161,9 +161,9 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hTo : T.toNat < 2 ^ 63 := by rw [hTn, hoff]; exact hsn
   suffices hY' : ∀ i : Fin n.toNat, Vals.row Y i =
       positionsL (fun x => decide (∃ y, P.Holds x y)) (Vals.row (A := .arr B) ⟨m, lo, up, f⟩ i) by
-    refine ⟨fun xs ys => ?_,
-      canon_wf h ⟨wX, Vals.cells_wf hY cN hcn (by rw [hK]; exact Nat.le_refl _) (by omega) trivial⟩⟩
-    rw [canon_holds h]
+    have wY := Vals.cells_wf hY cN hcn (by rw [hK]; exact Nat.le_refl _) (by omega) trivial
+    refine ⟨fun xs ys => ?_, canon_wf h ⟨wX, wY⟩⟩
+    rw [canon_holds h ⟨wX, wY⟩]
     simp only [Tab.Holds]
     constructor
     · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, hY' i⟩
