@@ -24,15 +24,21 @@ open Rel.Ext Rel.Kernel Rel.Verify
 def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) :=
   colArr .first n .pos .pos t .i64 [] [(.and, 0)]
 
-/-- `n` rows of `A` all zero, the filler of the side of a dense sum that a row does not hold: `Arr.zeros` per atom
-column; an `arr` side of `n` empty cells `[0, 0)` over no payload; a `sum` side of tag `0` (`inl`) over two zero
-summands. -/
+/-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
+writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
+def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
+  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
+  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
+
+/-- `n` rows of `A` all `A.dflt`, the filler of the side of a dense sum that a row does not hold: `Arr.zeros` per atom
+column; an `arr` side of `n` empty cells `[0, 0)` over no payload; a band sum `n` nulls (`inl ()`); another `sum` side of
+tag `0` (`inl`) over two such summands. -/
 def Vals.zeros : (A : Obj) → (n : USize) → Except String (Vals A n)
   | .atom t, n => Arr.zeros t n
   | .prod a b, n => do pure (← Vals.zeros a n, ← Vals.zeros b n)
   | .arr b, n => do pure ⟨0, ← Arr.zeros .i64 n, ← Arr.zeros .i64 n, ← Vals.zeros b 0⟩
   | .sum a b, n => match h : Obj.band a b with
-    | some t => do pure (Vals.ofOpt h (Opt.ofArr (← Arr.zeros t n)))
+    | some t => do pure (Vals.ofOpt h (← Opt.nuls t n))
     | .none => do pure (Vals.ofGen h (← Arr.zeros .u1 n) (← Vals.zeros a n) (← Vals.zeros b n))
   | .one, _ => pure ()
 
@@ -71,12 +77,6 @@ def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = so
 
 /-- The one row of the unit side `1`, as a side `A` known to be `1`. -/
 def Vals.unit {A : Obj} (h : A = .one) : Vals A 1 := by subst h; exact ()
-
-/-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
-writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
-def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
-  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
 
 /-- The tag column of a sum side whose `n` rows are all in one summand: every tag `s` (the positions through the post
 chain `[(.and, 0), (.or, s)]`, written at `u1`). -/
