@@ -1,5 +1,7 @@
 module
 
+public import Rel.Run.Lang.Parse
+public import Lean
 public meta import Rel.Run.Lang.Parse
 public meta import Lean
 
@@ -239,16 +241,6 @@ syntax (name := relProgram) (docComment)? "rel_program " ident " where" relStmts
 syntax (name := relVariant) (docComment)? "rel_program " ident &" from " ident (&" upto " relWord)? " where" relStmts :
   command
 
-deriving instance ToExpr for OExp
-deriving instance ToExpr for Op
-deriving instance ToExpr for Bin
-deriving instance ToExpr for Tup
-deriving instance ToExpr for Lang.Expr
-deriving instance ToExpr for Body
-deriving instance ToExpr for Param
-deriving instance ToExpr for ObjDef
-deriving instance ToExpr for Why
-deriving instance ToExpr for Decl
 
 /-! ### From syntax to the AST, in the state of `Parse` -/
 

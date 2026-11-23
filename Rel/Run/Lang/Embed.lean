@@ -2,7 +2,6 @@ module
 
 public meta import Rel.Run.Lang.Grammar
 public meta import Rel.Run.Lang.TmGen
-public meta import Rel.Run.Lang.TmEmit
 public meta import Lean
 
 public meta section

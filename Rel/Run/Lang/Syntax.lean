@@ -570,4 +570,16 @@ partial def Expr.render (l : Nat) (full : Bool := false) : Expr → String
 
 def Expr.show (e : Expr) : String := e.render 0
 
+-- here, not in `Grammar` (meta): `Tm.number`'s proofs in `GenSound` run `Expand.tmE`, which reads these instances
+deriving instance Lean.ToExpr for OExp
+deriving instance Lean.ToExpr for Op
+deriving instance Lean.ToExpr for Bin
+deriving instance Lean.ToExpr for Tup
+deriving instance Lean.ToExpr for Expr
+deriving instance Lean.ToExpr for Body
+deriving instance Lean.ToExpr for Param
+deriving instance Lean.ToExpr for ObjDef
+deriving instance Lean.ToExpr for Why
+deriving instance Lean.ToExpr for Decl
+
 end Rel.Lang
