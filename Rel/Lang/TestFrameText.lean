@@ -16,14 +16,17 @@ rel_program frameText where
     -- a two-element separator, leftmost non-overlapping: "ababa" at "aba" is "" then "ba"; "abab" at "aba" "" "b"
     t : N ⟶ [C] ≜ {(0,"ababa"),(1,"abab"),(2,"xabay")}
     check t splitOn({("aba","aba")}) = {(0,"" "ba"),(1,"" "b"),(2,"x" "y")}
-    -- `[0-9]+`: state 0 the start, 1 after a digit, 1 accepting; any other element has no step, so no run. The digits
-    -- are their codes 48…57: a one-element `"0"` in a literal at `Q×C` reads as a text `[C]`, not a `char`
-    dfa : Q×C ⟶ Q ≜ {((0,48),1),((0,49),1),((0,50),1),((0,51),1),((0,52),1),((0,53),1),((0,54),1),((0,55),1),
-      ((0,56),1),((0,57),1),((1,48),1),((1,49),1),((1,50),1),((1,51),1),((1,52),1),((1,53),1),((1,54),1),
-      ((1,55),1),((1,56),1),((1,57),1)}
+    -- `[0-9]+`: state 0 the start, 1 after a digit, 1 accepting; any other element has no step, so no run. A
+    -- one-character `"0"` at `Q×C` is a `char` (`Tup.char?`); at `N ⟶ [C]` below, `"7"` is a text
+    dfa : Q×C ⟶ Q ≜ {((0,"0"),1),((0,"1"),1),((0,"2"),1),((0,"3"),1),((0,"4"),1),((0,"5"),1),((0,"6"),1),
+      ((0,"7"),1),((0,"8"),1),((0,"9"),1),((1,"0"),1),((1,"1"),1),((1,"2"),1),((1,"3"),1),((1,"4"),1),((1,"5"),1),
+      ((1,"6"),1),((1,"7"),1),((1,"8"),1),((1,"9"),1)}
     nums : N ⟶ [C] ≜ {(0,"2024"),(1,"12a"),(2,""),(3,"7"),(4,"a1")}
     -- "2024" and "7" are digits only; "" ends in the start state 0, not accepting
     check dom(nums match(dfa, {(∗,0)}, {(1,1)})) = {(0,0),(3,3)}
+    -- every digit run, every piece of one included: "12a" has "1" "2" "12", "a1" has "1"
+    check nums matchAll(dfa, {(∗,0)}, {(1,1)}) = {(0,"2"),(0,"0"),(0,"4"),(0,"20"),(0,"02"),(0,"24"),(0,"202"),
+      (0,"024"),(0,"2024"),(1,"1"),(1,"2"),(1,"12"),(3,"7"),(4,"1")}
 
 #guard frameText.failures.map toString == []
 

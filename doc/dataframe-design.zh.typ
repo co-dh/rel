@@ -294,11 +294,14 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`over`], [`over(a, f, x)`], [], "full"),
   ([`contains` `length` `splitOn` `match` `matchAll`],
     [`contains(s) ≜ dom(suffix prefix s)`；`length` 是 prim；`splitOn(s) ≜ ⦇[nil τ, a (e ∪ ((𝟙 − dom(e)) snoc))]⦈`，
-    `a ≜ ⟨π₁ init, ⟨π₁ last, π₂⟩snoc⟩`，`e ≜ (𝟙 × (cat° (𝟙 × s))) ⟨⟨π₁, π₂ π₁⟩snoc, nil⟩snoc`；`match(T, q, A) ≜ dom(⦇[q, T]⦈ A)`],
+    `a ≜ ⟨π₁ init, ⟨π₁ last, π₂⟩snoc⟩`，`e ≜ (𝟙 × (cat° (𝟙 × s))) ⟨⟨π₁, π₂ π₁⟩snoc, nil⟩snoc`；`match(T, q, A) ≜ dom(⦇[q, T]⦈ A)`；
+    `matchAll(T, q, A) ≜ suffix prefix match(T, q, A)`],
     [`splitOn` 是 q 的 `vs`：左 fold 把每个元素接到最后一段，该段以 `s` 结尾时切开；多字符分隔符同一条定义，取最左、
     不重叠的匹配（`"ababa"` 按 `"aba"` 切成 `"" "ba"`），这只有从左到右的扫描能选，所以不是匹配位置的 `where`。
     `match` 的 `T : σ×α ⟶ σ` 是转移关系（关系，所以也可以是 NFA），`q` 起始态，`A` 接受态的 coreflexive；把正则编成 `T`
-    在语言之外（`TestFrameText`，`[0-9]+` 的手写表）。`matchAll`：未做], "part"),
+    在语言之外（`TestFrameText`，`[0-9]+` 的手写表，数字写作 `"0"`…`"9"`）。`matchAll` 把每个单元格连到它被 `match`
+    接受的每个连续片段（`suffix prefix`，与 `contains` 同样形成片段）。字面量里只有一个字符的字符串在 `char` 位置是
+    `char`（q 的读法），在其余位置是文本 `[C]`，由上下文决定（`Tup.char?`）], "part"),
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
     [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate`：F3，停在「日数」一步], "part"),
   ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`],
@@ -378,7 +381,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   仍缺：(1) `parseDate`：数字是 `$` 与 `minus` 的算术、`⦇[0, ⟨π₁ ×10, π₂⟩plus]⦈`，但 `(2024, 1, 15) ↦ 19737` 这条规则只在
   Lean 的 `Db.Csv.daysFrom`（CSV 读法与日期字面量共用），没有行；在 Rel 里写一遍 Hinnant 公式是同一知识的第二份，
   所以待定：加行 `ymd : [C] ⟶ D`（含义 `Db.Csv.ymd`，非 kernel），或写一份公式并由测试钉住；
-  (2) 字面量里只有一个字符的 `"0"` 在 `Q×C` 上读作文本 `[C]`，不读作 `char`（`TestFrameText` 用码 48…57 写数字）。
+  owner 已选行 `ymd : [C] ⟶ D`（含义即 `Db.Csv.ymd`，非 kernel），未做。
 - *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
   在 `f64` `f32` 上（`TestFloatArith`）；prim `sum` 在 `i64` `f64` 上，按位置从左加（`TestFrameTyped.sumFloatT`）。

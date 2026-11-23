@@ -1207,7 +1207,9 @@ partial def litTy (objs : Objs) (gd : Option String) (p : Pos) (ts : List Tup) :
   | _, .pair .. =>
     pure (.prod (← litTy objs gd p (ts.map fun | .pair a _ => a | r => r))
       (← litTy objs gd p (ts.map fun | .pair _ b => b | r => r)))
-  | _, .arr _ => pure (.arr (← litTy objs gd p (ts.flatMap fun | .arr es => es | _ => [])))
+  -- one-character strings only: a `char` or a text, which the context decides (`Tup.char?`, `settleLit`)
+  | _, .arr _ => if ts.all (·.char?.isSome) then fresh else
+    pure (.arr (← litTy objs gd p (ts.flatMap fun | .arr es => es | _ => [])))
 
 /-- The object `o` of a literal's position `ts` that the context left open: of the declared objects holding its
     words (`litTy`'s rule), the one every number verb `ns` at `o` runs on (`Pre.nums`, `numObj`): `{(2024.01.15,1)}`
@@ -1233,6 +1235,10 @@ partial def settleLit (objs : Objs) (ns : List (OTy × String × (QAtomicType �
     settleLit objs ns p d (ts.map fun | .pair a _ => a | r => r) x
     settleLit objs ns p d (ts.map fun | .pair _ b => b | r => r) y
   | .arr x, .arr _ :: _ => settleLit objs ns p d (ts.flatMap fun | .arr es => es | _ => []) x
+  -- one-character strings no context read as `char`s (`litTy`): texts, as every other string
+  | .mv _, .arr _ :: _ => do
+    unify p "the literal's object" o (.arr (← litTy objs d p (ts.flatMap fun | .arr es => es | _ => [])))
+    settleLit objs ns p d ts o
   | _, _ => pure ()
 
 /-- What no context fixed once the terms `xs`, which share their objects (a check's two sides), are elaborated: a
@@ -1826,6 +1832,8 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
         (Rel.Ext.Enc.blank_WF .i64 0) (Rel.Ext.Enc.blank_plain .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
+    -- a one-character string at a word's object is its `char` (`Tup.char?`)
+    let rows := rows.map fun r => r.char?.elim r .leaf
     -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)
     if let .base m := o then if let some { num := true, ovar := false, obj := .atom t, .. } := objs.lookup m then
       if t != .i64 then

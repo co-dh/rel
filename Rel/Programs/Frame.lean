@@ -80,5 +80,7 @@ rel_program frame where
     -- a regex as its automaton, the cells some run from the start `q` ends in an accepting state of `A`: the fold's
     -- step is the transition relation `T` (a relation, so `T` may be an NFA); compiling a regex to `T` is outside
     match(T : σ×α ⟶ σ, q : 1 ⟶ σ, A : σ ⟶ σ) : [α] ⟶ [α] ≜ dom(⦇[q, T]⦈ A)
+    -- each cell to each of its contiguous pieces (`suffix prefix`, as `contains` forms them) that `match` accepts
+    matchAll(T : σ×α ⟶ σ, q : 1 ⟶ σ, A : σ ⟶ σ) : [α] ⟶ [α] ≜ suffix prefix match(T, q, A)
 
 end Rel.Programs
