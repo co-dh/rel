@@ -44,8 +44,8 @@ theorem Vals.code2_plain {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂}
 
 /-- **`Vals.code` numbers the rows of `x` by value**: `k ≤ n` numbers, row `i`'s number `c[i]` below `k`, two rows
 numbered alike exactly when equal, and number `G`'s row `rep[G]` a row numbered `G`. -/
-theorem Vals.code_spec {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h : Vals.code x = .ok (k, c, rep)) :
-    k.toNat ≤ n.toNat ∧ (∀ i < n.toNat, ((raw .i64 n c)[i]?.getD 0).toNat < k.toNat) ∧
+theorem Vals.code_spec {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h : Vals.code x = .ok (k, c, rep))
+    (hw : Vals.WF x) : k.toNat ≤ n.toNat ∧ (∀ i < n.toNat, ((raw .i64 n c)[i]?.getD 0).toNat < k.toNat) ∧
     (∀ G < k.toNat, ∃ i : Fin n.toNat, ((raw .i64 k rep)[G]?.getD 0).toNat = i.1 ∧
       ((raw .i64 n c)[i.1]?.getD 0).toNat = G) ∧
     ∀ i i' : Fin n.toNat, (raw .i64 n c)[i.1]?.getD 0 = (raw .i64 n c)[i'.1]?.getD 0 ↔ x.row i = x.row i' := by
@@ -57,7 +57,7 @@ theorem Vals.code_spec {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h :
   rw [Except.bind_eq_ok'] at h; obtain ⟨rep', hrep, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl, rfl⟩ := h
-  obtain ⟨π, gr, fs, hkN, hp, hinj, hsur, -, hg, hf, hrow⟩ := group_rows hes hasc hseen
+  obtain ⟨π, gr, fs, hkN, hp, hinj, hsur, -, hg, hf, hrow⟩ := group_rows hw hes hasc hseen
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := n.toNat_lt_size
   have hK : k'.toUSize.toNat = k' := USize.toNat_ofNat_of_lt' (by omega)
@@ -110,7 +110,7 @@ theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} 
   obtain ⟨rfl, rfl, rfl, rfl⟩ := h
   obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
   have hzr := Vals.concat_row hNn hoff x y hz hx hy
-  obtain ⟨hkN, hck, hrep, hceq⟩ := Vals.code_spec hcode
+  obtain ⟨hkN, hck, hrep, hceq⟩ := Vals.code_spec hcode (Vals.concat_wf hNn hoff hz hx hy)
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
   let cd := fun t : Nat => ((raw .i64 N c)[t]?.getD 0).toNat
@@ -451,8 +451,8 @@ theorem Tab.compBits_holds {R : Tab A B} {S : Tab B C} {X : Tab A C} (h : Tab.co
   obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := h
   have h := hX
   obtain ⟨cx, cy, -, hcx, hcy, -, -, hxy, -⟩ := Vals.code2_spec hb2 hR.2 hS.1
-  obtain ⟨-, haR, hra, haeq⟩ := Vals.code_spec ha
-  obtain ⟨-, hcS, hrc, hceq⟩ := Vals.code_spec hc
+  obtain ⟨-, haR, hra, haeq⟩ := Vals.code_spec ha hR.1
+  obtain ⟨-, hcS, hrc, hceq⟩ := Vals.code_spec hc hS.2
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNb := kb.toNat_lt_size
   have hw : ∀ (w : UInt64), (w.toNat).toUInt64 = w := fun w => UInt64.toNat_inj.mp (by simp)
