@@ -2125,7 +2125,7 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
     -- a theorem `c° = c` at `B ≠ A` is ill-typed: an error, so `ConvOK`'s self clause is read only at `A = B`
     if c' = c then (if h : B = A then by obtain rfl := h; exact pure (.call ks c (some c) os b) else throw s!"`{c}`")
     else do let u ← convTm b; pure (.call ks c' (some c) os u)
-  | .call _ c none _ b => if c.slot?.isSome then convTm b else throw s!"`{c}`"
+  | .call _ c none .. => throw s!"`{c}`"
   -- a closed spine under a demand argument (a whole row, `Tm.whole`) has no converse spine: `convTm f` gives `f°`
   -- a spine whose row has no converse row is conversed lazily whole, `(r x)°`, as `GenK.conv` runs it
   | .arg f x => if f.dem then do
@@ -2149,7 +2149,6 @@ def convProj {A₁ A₂ B : Obj} (t : Tm (.prod A₁ A₂) B) : Except String (P
   | .outl => pure (.inl .id)
   | .outr => pure (.inr .id)
   | .comp R S => do let s ← convTm S; pure (Proj.pre s (← convProj R))
-  | .call _ c none _ R => if c.slot?.isSome then convProj R else throw "not read through one projection"
   | .meet R S => do match Proj.meet (← convProj R) (← convProj S) with
     | .inr z => pure z
     | .inl _ => throw "a meet across both projections"

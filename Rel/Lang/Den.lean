@@ -26,7 +26,7 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
     elements of the two objects. -/
 abbrev Val := Nat → (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
 
-/-- No variable bound: what a closed term (`share`) is read under. -/
+/-- No variable bound: what a closed term (a call's body) is read under. -/
 def Val.empty : Val := fun _ _ _ => 𝟘
 
 open Classical in
@@ -496,7 +496,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, A, B, .prim r => Prim.den r A B []
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
-  | _, _, _, .share _ R => R.den Val.empty
   | ρ, A, B, .var _ k => ρ k A B
   | _, _, _, .call ks _ _ _ b => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
@@ -507,12 +506,11 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
 
 /-- The spine `f` of a row given the meanings `ss` of its later arguments: the row's meaning of all of them, in
     the order `compile` passes their codes; a call's body with them bound at its `ks`; `𝟘` where `f` is neither
-    a row nor a call under `arg`s. `share` is seen through, as `Tm.gen` passes its part's row on. -/
+    a row nor a call under `arg`s. -/
 noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Core.Rel (Obj.El A) (Obj.El B)
   | _, A, B, .prim r, ss => Prim.den r A B ss
   | _, _, _, .call ks _ _ _ b, ss => b.den (Val.args ks ss)
   | ρ, _, _, .arg f x, ss => f.argDen ρ (⟨_, _, x.den ρ⟩ :: ss)
-  | _, _, _, .share _ R, ss => R.argDen Val.empty ss
   -- a spine's converse (`convTm` of a row with no converse row) means its meaning conversed
   | ρ, _, _, .conv R, ss => (R.argDen ρ ss)°
   | _, _, _, _, _ => 𝟘

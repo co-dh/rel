@@ -111,12 +111,11 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
 
 /-- What `convTm_den` needs of `t` under `ρ` at the nodes whose converse `convTm` takes as given: a variable is
     its own converse, a call naming its own converse (`c° = c`) has a self-converse body, any other call a `ConvOK`
-    body, a number verb's universe is a coreflexive, a shared term is closed, a row is one of `prims` (whose `conv`
+    body, a number verb's universe is a coreflexive, a row is one of `prims` (whose `conv`
     `Prim.den_conv` checks). -/
 def Tm.ConvOK (ρ : Val) : {A B : Obj} → Tm A B → Prop
   | A, B, .var _ k => ρ k B A = (ρ k A B)°
   | _, _, .prim r => r ∈ prims
-  | _, _, .share _ R => R.fv = [] ∧ R.ConvOK ρ
   | _, _, .comp R S => R.ConvOK ρ ∧ S.ConvOK ρ
   | _, _, .meet R S => R.ConvOK ρ ∧ S.ConvOK ρ
   | _, _, .join R S => R.ConvOK ρ ∧ S.ConvOK ρ
@@ -239,17 +238,6 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B), t.ConvOK ρ →
       simp only [hf] at hu
       cases f' <;> (have hu := Except.ok.inj hu; subst hu) <;>
         first | exact ⟨rfl, fun _ _ => rfl⟩ | exact ⟨((ihf ρ hok).1 _ hf).2 hd' _, fun _ _ => ((ihf ρ hok).1 _ hf).2 hd' _⟩
-  | share k R ih =>
-    refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
-    · by_cases hd : (Tm.share k R).dem = false
-      · exact conv_false_den ρ u hu hd
-      rw [convTm.eq_def, if_neg hd] at hu
-      have e := R.den_congr ρ Val.empty fun i hi => by simp [hok.1] at hi
-      have ih' := (ih ρ hok.2).1 u hu
-      exact ⟨ih'.1.trans (congrArg (·°) e.1), fun h ss => (ih'.2 h ss).trans (congrArg (·°) (e.2 ss))⟩
-    · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      have e : R.den ρ = R.den Val.empty := (R.den_congr _ _ fun i hi => by simp [hok.1] at hi).1
-      exact ((ih ρ hok.2).2 _ _ rfl p hp).trans (congrArg (·°) e)
   | comp R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
     · by_cases hd : (Tm.comp R S).dem = false
@@ -656,20 +644,6 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
       rw [hx] at hx'; cases hx'
       have e := ((ihf ρ F' hF hok).1 f₀ f' hf hf').2 hd'
       exact ⟨e _, fun _ _ => e _⟩
-  | share k R ih =>
-    refine fun t' ht hok => ?_
-    have ht0 := ht
-    simp only [Tm.instObj, bind_ok_iff, pure_ok_iff] at ht
-    obtain ⟨R', hR, rfl⟩ := ht
-    have e := R'.den_congr ρ Val.empty fun i hi => by simp [hok.1] at hi
-    refine ⟨fun u u' hu hu' => ?_, fun A₁ A₂ h p p' hp hp' => ?_⟩
-    · by_cases hd : (Tm.share k R).dem = false
-      · exact inst_false_den ph σ ρ hd hu hu' ht0
-      rw [convTm.eq_def, if_neg hd] at hu
-      have ih' := (ih ρ R' hR hok.2).1 u u' hu hu'
-      exact ⟨ih'.1.trans (congrArg (·°) e.1), fun h ss => (ih'.2 h ss).trans (congrArg (·°) (e.2 ss))⟩
-    · cases h; dsimp only at hp ⊢; unfold convProj at hp
-      exact ((ih ρ R' hR hok.2).2 _ _ rfl p p' hp hp').trans (congrArg (·°) e.1)
   | comp R S ihR ihS =>
     refine fun t' ht hok => ?_
     have ht0 := ht
