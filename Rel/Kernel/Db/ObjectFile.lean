@@ -37,8 +37,8 @@ def ownKinds : String :=
 /-- The file's first 8 bytes, `qleancol`. -/
 def ownMagic : ByteArray := ⟨#[0x71, 0x6c, 0x65, 0x61, 0x6e, 0x63, 0x6f, 0x6c]⟩
 
-/-- Byte 8, the format version, `own.rs`'s `OWN_VERSION`: 7 since the header holds no attribute and no domain name. -/
-def ownVersion : UInt8 := 7
+/-- Byte 8, the format version, `own.rs`'s `OWN_VERSION`: 8 since a flagged block's null is residual 0 (`Column.foRNul`), no longer the top residual; no byte of a file tells the two codes apart, so a file of an older version is refused. -/
+def ownVersion : UInt8 := 8
 
 /-- The low `w` bytes of `v`, little-endian. -/
 def leBytes (v w : Nat) : ByteArray := ⟨.ofFn (n := w) fun k => (v / 256 ^ k.val).toUInt8⟩
@@ -104,7 +104,7 @@ def ownParse (b : ByteArray) : Except String OwnFile :=
   if b.size < 24 then .error s!"a 24-byte own-format header, the file is {b.size} bytes"
   else if b.extract 0 8 ≠ ownMagic then .error "byte 0: the magic `qleancol`"
   else if v != ownVersion.toNat then
-    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 7 removed the attribute byte and the domain name, version 6 widened the patch list's block offsets to u64, and version 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
+    .error s!"byte 8: format version {ownVersion}, found {v}; a file before version {ownVersion} is rewritten by `set` from the data it was made from: version 8 made null residual 0, 7 removed the attribute byte and the domain name, 6 widened the patch list's block offsets to u64, and 5 removed the dense `bytes` (kind 0) and `alp` (kind 3) forms"
   else if ownNParts[kind]?.join != some np then
     .error s!"byte 10: a constructor kind and part count {ownKinds}, found kind {kind} with {np} parts"
   else if 24 + 16 * np > b.size then

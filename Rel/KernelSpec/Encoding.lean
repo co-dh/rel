@@ -423,6 +423,12 @@ theorem sub_toNat (a b : Int64) (h : a.toInt ≤ b.toInt) : (b - a).toUInt64.toN
   simp only [Int64.toInt] at h ⊢
   split at ha <;> split at hb <;> omega
 
+/-- A key at or above `a` whose distance from `a` reads as 0 is `a`: a residual 0 is the base itself. -/
+theorem eq_of_sub_zero (a b : Int64) (h : a.toInt ≤ b.toInt) (h0 : (b - a).toUInt64 = 0) : b = a := by
+  have := sub_toNat a b h
+  rw [h0] at this
+  exact Int64.toInt_inj.1 (by simp at this; omega)
+
 /-- A key `Coc.outside` keeps is at or above the frame and less than `2 ^ d` from it. -/
 theorem outside_false (f k : Int64) (d : Nat) :
     Kernel.Coc.outside f d k = false ↔ f.toInt ≤ k.toInt ∧ (k - f).toUInt64.toNat < 2 ^ d := by
@@ -584,12 +590,8 @@ theorem u1Ok_bound (M P : ByteArray) (h : Column.u1Ok M P = true) (i : Nat)
     cases hv
     generalize Column.resAt P (Column.blockStart M (i / Column.blk M)) (Column.widthAt M (i / Column.blk M))
       (i % Column.blk M) = r at hn hr1 ⊢
-    generalize Column.ones (Column.widthAt M (i / Column.blk M)) = o at hn hr1 hr
-    have hrn : r.toNat + (Column.nulAt M (i / Column.blk M)).toNat ≤ o.toNat := by
-      cases hN : Column.nulAt M (i / Column.blk M)
-      · simpa using hr1
-      · have hne : r.toNat ≠ o.toNat := fun e => hn (by simp [hN, UInt64.toNat_inj.1 e])
-        simp only [Bool.toNat_true]; omega
+    generalize Column.ones (Column.widthAt M (i / Column.blk M)) = o at hr1 hr
+    have hrn : r.toNat ≤ o.toNat := hr1
     generalize (Column.foRFrame M P (i / Column.blk M) (Column.blockStart M (Column.nblk M))) = f at hr ⊢
     rw [UInt64.toNat_add, UInt64.toNat_add]
     have := Nat.mod_le ((Column.baseAt M (i / Column.blk M)).toNat + f.toNat) (2 ^ 64)
@@ -852,7 +854,7 @@ theorem planBlock_plain (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
 
 /-- Block `b`'s plan where it holds a null (`nulBlock`): its frame is its base, its width byte carries `nulAt`'s bit
 over a residual width of at most 64, and a row that is not null lies at or above the base, fits the width, and sits at
-the null's top residual only as the key `2 ^ 63 - 1` of a block whose keys span all `2 ^ 64`. -/
+residual 0 (the null's code) only as a `lowKey`, the one key the base cannot go below. -/
 theorem planBlock_nul (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
     (h : (Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).any
       (fun j => Column.bitAt nul (b * 2 ^ lg + j)) = true) :
@@ -862,9 +864,8 @@ theorem planBlock_nul (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
       (Kernel.Coc.planBlock lg w n pl x nul b).1.toInt ≤ (Kernel.Coc.keyAt w x i).toInt ∧
       (Kernel.Coc.keyAt w x i - (Kernel.Coc.planBlock lg w n pl x nul b).1).toUInt64.toNat <
         2 ^ ((Kernel.Coc.planBlock lg w n pl x nul b).2.2.2.2 % 128) ∧
-      ((Kernel.Coc.keyAt w x i - (Kernel.Coc.planBlock lg w n pl x nul b).1).toUInt64 =
-        Column.ones ((Kernel.Coc.planBlock lg w n pl x nul b).2.2.2.2 % 128) →
-        (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1) := by
+      ((Kernel.Coc.keyAt w x i - (Kernel.Coc.planBlock lg w n pl x nul b).1).toUInt64 = 0 →
+        Kernel.Coc.lowKey w (Kernel.Coc.keyAt w x i) = true) := by
   have e : Kernel.Coc.planBlock lg w n pl x nul b = ((Kernel.Coc.nulBlock (2 ^ lg) w n b x nul).1,
       (Kernel.Coc.nulBlock (2 ^ lg) w n b x nul).2.1, (Kernel.Coc.nulBlock (2 ^ lg) w n b x nul).2.2.1,
       (Kernel.Coc.nulBlock (2 ^ lg) w n b x nul).1, (Kernel.Coc.nulBlock (2 ^ lg) w n b x nul).2.2.2) := by
@@ -885,19 +886,31 @@ theorem planBlock_nul (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
   have hmx := (le_foldl_max ks.toList a0).2
   generalize List.foldl min a0 ks.toList = mn at hmn ⊢
   generalize List.foldl max a0 ks.toList = mx at hmx ⊢
-  have hR := lt_widthFor (mx - mn).toUInt64.toNat
-  have hd64 := widthFor_le (mx - mn).toUInt64.toNat (UInt64.toNat_lt _)
-  generalize Column.widthFor (mx - mn).toUInt64.toNat = d at hR hd64 ⊢
-  have hP : 2 ^ d ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) hd64
-  have hP1 : 0 < 2 ^ d := Nat.two_pow_pos d
-  have hones : ∀ t, t ≤ 64 → (Column.ones t).toNat = 2 ^ t - 1 := fun t ht => by
-    have : 2 ^ t ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) ht
-    have := Nat.two_pow_pos t
-    rw [Column.ones_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat']; exact Nat.mod_eq_of_lt (by omega)
-  refine ⟨by split <;> omega, ?_, fun i h1 h2 h3 h4 => ?_⟩
-  · split
-    · next hc => simp only [Bool.and_eq_true, decide_eq_true_eq] at hc; have := hc.1.2; omega
-    · omega
+  generalize hf : (if ks.isEmpty || Kernel.Coc.lowKey w mn then mn else mn - 1) = f
+  -- the base is the least key or one below it, and the latter only where that key is no `lowKey`
+  have hfa : f.toInt ≤ mn.toInt ∧ ((f = mn ∧ (ks.isEmpty = true ∨ Kernel.Coc.lowKey w mn = true)) ∨
+      (Kernel.Coc.lowKey w mn = false ∧ f.toInt = mn.toInt - 1)) := by
+    subst hf
+    split
+    · next hc =>
+      refine ⟨Int.le_refl _, Or.inl ⟨rfl, ?_⟩⟩
+      simpa using hc
+    · next hc =>
+      have hlk : Kernel.Coc.lowKey w mn = false := by simp at hc; exact hc.2
+      have hne : mn.toInt ≠ -2 ^ 63 := fun h => by
+        have : mn = Int64.minValue := Int64.toInt_inj.1 (by rw [h, Int64.toInt_minValue])
+        simp [Kernel.Coc.lowKey, this] at hlk
+      have h1 : (mn - 1).toInt = mn.toInt - 1 := by
+        have := Int64.le_toInt mn
+        have := Int64.toInt_lt mn
+        rw [Int64.toInt_sub, Int64.toInt_one]
+        simp only [Int.bmod]
+        split <;> omega
+      exact ⟨by omega, Or.inr ⟨hlk, h1⟩⟩
+  have hR := lt_widthFor (mx - f).toUInt64.toNat
+  have hd64 := widthFor_le (mx - f).toUInt64.toNat (UInt64.toNat_lt _)
+  generalize Column.widthFor (mx - f).toUInt64.toNat = d at hR hd64 ⊢
+  refine ⟨by omega, by omega, fun i h1 h2 h3 h4 => ?_⟩
   have hk := hmem i h1 h2 h3 h4
   have a := hmn _ hk
   have c := hmx _ hk
@@ -905,34 +918,18 @@ theorem planBlock_nul (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
     cases hl : ks.toList with
     | nil => rw [hl] at hk; cases hk
     | cons _ _ => simp [Array.isEmpty, ← Array.length_toList, hl]
-  have hr : (Kernel.Coc.keyAt w x i - mn).toUInt64.toNat = ((Kernel.Coc.keyAt w x i).toInt - mn.toInt).toNat :=
-    sub_toNat _ _ a
-  have hRm : (mx - mn).toUInt64.toNat = (mx.toInt - mn.toInt).toNat := sub_toNat _ _ (Int.le_trans a c)
-  have hkl := Int64.le_toInt (Kernel.Coc.keyAt w x i)
-  have hku := Int64.toInt_lt (Kernel.Coc.keyAt w x i)
-  have hml := Int64.le_toInt mn
-  split
-  · next hc =>
-    have hd : d < 64 := by simp only [Bool.and_eq_true, decide_eq_true_eq] at hc; exact hc.1.2
-    have hpow : 2 ^ (d + 1) = 2 * 2 ^ d := by rw [Nat.pow_succ]; omega
-    refine ⟨a, by rw [show (128 + (d + 1)) % 128 = d + 1 by omega, hpow]; omega, fun he => ?_⟩
-    rw [show (128 + (d + 1)) % 128 = d + 1 by omega] at he
-    have := congrArg UInt64.toNat he
-    rw [hones _ (by omega), hpow] at this
-    omega
-  · next hc =>
-    rw [show (128 + d) % 128 = d by omega]
-    refine ⟨a, by omega, fun he => ?_⟩
-    have := congrArg UInt64.toNat he
-    rw [hones _ hd64] at this
-    by_cases hd : d < 64
-    · -- the range is `2 ^ d - 1` exactly, which `nulBlock` widens
-      have : (mx - mn).toUInt64 = Column.ones d := UInt64.toNat_inj.1 (by rw [hones _ hd64]; omega)
-      rw [this, hne] at hc; simp [hd] at hc
-    · have : d = 64 := by omega
-      subst this
-      have h64 : (2 : Nat) ^ 64 = 18446744073709551616 := rfl
-      omega
+  have hfk : f.toInt ≤ (Kernel.Coc.keyAt w x i).toInt := by omega
+  have hr := sub_toNat f _ hfk
+  have hRm := sub_toNat f mx (by omega)
+  refine ⟨hfk, ?_, fun h0 => ?_⟩
+  · rw [show (128 + d) % 128 = d by omega]; omega
+  · have hkf : (Kernel.Coc.keyAt w x i).toInt = f.toInt := by
+      have := congrArg UInt64.toNat h0; rw [hr] at this; simp at this; omega
+    rcases hfa.2 with ⟨rfl, hl⟩ | ⟨-, hf1⟩
+    · rw [hne] at hl
+      have : Kernel.Coc.keyAt w x i = f := Int64.toInt_inj.1 hkf
+      rw [this]; simpa using hl
+    · omega
 
 /-- Indices of a strictly increasing list below its count of entries under `m` are those whose entries are. -/
 theorem lt_count (L : List Nat) (hL : L.Pairwise (· < ·)) (m k : Nat) (hk : k < L.length) :
@@ -1241,7 +1238,7 @@ case no encoding holds: a column of `2 ^ 64` rows or more carries no patch list,
 span all `2 ^ 64` a row that is no null keeping the key `2 ^ 63 - 1` keeps the null's top residual. -/
 theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (x nul : ByteArray)
     {patch : Bool} (i : Nat) (hi : i < x.size / w)
-    (hbig : 2 ^ 64 ≤ x.size / w → Column.bitAt nul i = false → (Kernel.Coc.keyAt w x i).toInt = 2 ^ 63 - 1 →
+    (hbig : 2 ^ 64 ≤ x.size / w → Column.bitAt nul i = false → Kernel.Coc.lowKey w (Kernel.Coc.keyAt w x i) = true →
       ∀ j, i / 2 ^ lg * 2 ^ lg ≤ j →
       j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
     Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1 (Kernel.Coc.encodeAt lg w.toUSize x patch nul).2
@@ -1251,11 +1248,6 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
     rcases System.Platform.numBits_eq with h | h <;> simp [Nat.toUSize, h] <;> omega
   have hBp : 0 < 2 ^ lg := Nat.two_pow_pos _
   have hB16 : 2 ^ lg ≤ 65536 := Nat.pow_le_pow_right (by decide) hlg.2
-  have hones : ∀ d, d ≤ 64 → ((Column.ones d).toNat % 2 ^ d).toUInt64 = Column.ones d := fun d hd => by
-    have : 2 ^ d ≤ 2 ^ 64 := Nat.pow_le_pow_right (by decide) hd
-    have := Nat.two_pow_pos d
-    rw [Column.ones_eq, Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt (by omega : 2 ^ d - 1 < 2 ^ 64),
-      Nat.mod_eq_of_lt (by omega : 2 ^ d - 1 < 2 ^ d)]
   unfold Kernel.Coc.encodeAt
   simp only [hwt, Nat.one_shiftLeft]
   generalize hn : x.size / w = n at *
@@ -1376,13 +1368,13 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
     (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) (e.2.2.2.2 % 128) fun j =>
         if (decide (a.2 * 2 ^ lg + j < n) && Column.bitAt nul (a.2 * 2 ^ lg + j)) = true then
-          Column.ones (e.2.2.2.2 % 128) else
+          0 else
         (if (decide (a.2 * 2 ^ lg + j < n) && !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2
           (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
           Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
     (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>
       if (decide (m * 2 ^ lg + j < n) && Column.bitAt nul (m * 2 ^ lg + j)) = true then
-        Column.ones (e.2.2.2.2 % 128) else
+        0 else
       (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
@@ -1451,7 +1443,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
       (pack ++ tail)[Column.blockStart M (i / 2 ^ lg) + k]? =
       (Kernel.Coc.packRes (2 ^ lg) ((blk (i / 2 ^ lg)).2.2.2.2 % 128) fun j =>
         if (decide (i / 2 ^ lg * 2 ^ lg + j < n) && Column.bitAt nul (i / 2 ^ lg * 2 ^ lg + j)) = true then
-          Column.ones ((blk (i / 2 ^ lg)).2.2.2.2 % 128) else
+          0 else
         (if (decide (i / 2 ^ lg * 2 ^ lg + j < n) && !Kernel.Coc.patched lst (blk (i / 2 ^ lg)).2.2.2.1
           (blk (i / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j))) = true then
           Kernel.Coc.keyAt w x (i / 2 ^ lg * 2 ^ lg + j) - (blk (i / 2 ^ lg)).2.2.2.1 else 0).toUInt64)[k]? := by
@@ -1501,25 +1493,27 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
     · cases A
       · rfl
       · obtain ⟨hf, -, -, hk'⟩ := hpn _ hA
-        obtain ⟨-, hlt, hcol⟩ := hk' i hi1 hi2 hi hni
+        obtain ⟨hle, hlt, hcol⟩ := hk' i hi1 hi2 hi hni
         have hk := hout i hi hni (Or.inr hA)
         cases hpt : Kernel.Coc.patched lst (blk (i / 2 ^ lg)).2.2.2.1 (blk (i / 2 ^ lg)).2.2.2.2
             (Kernel.Coc.keyAt w x i)
         · have hnot : i ∉ exc.toList := fun h => by rw [hmem, hni, hpt] at h; exact Bool.false_ne_true h.2
           rw [(hx hnot).1, if_neg (by simp), if_pos (by simp [hi, hpt]), hf, Nat.mod_eq_of_lt hlt,
             Nat.toUInt64_eq, UInt64.ofNat_toNat]
-          cases hb : ((Kernel.Coc.keyAt w x i - (blk (i / 2 ^ lg)).1).toUInt64 ==
-              Column.ones ((blk (i / 2 ^ lg)).2.2.2.2 % 128))
+          cases hb : ((Kernel.Coc.keyAt w x i - (blk (i / 2 ^ lg)).1).toUInt64 == 0)
           · rfl
-          · -- a value at the null's code is patched, so the column has no patch list: `hbig` says the block holds no null
+          · -- residual 0 and no patch: the key is the base, patched wherever a list exists, so the column has none and
+            -- `hbig` says the block holds no null
+            have hb0 := beq_iff_eq.1 hb
             have hn64 : ¬ n < 2 ^ 64 := fun h64n => by
-              rw [hf] at hpt hk
-              simp only [Kernel.Coc.patched, ← hlst, hk, hb, decide_eq_true h64n, decide_eq_true (hd128.2 rfl), Bool.false_or,
-                Bool.true_and] at hpt
-              all_goals cases hpt
+              have hkb := eq_of_sub_zero _ _ hle hb0
+              rw [hf] at hpt
+              simp only [Kernel.Coc.patched, ← hlst, decide_eq_true h64n, decide_eq_true (hd128.2 rfl), hkb,
+                beq_self_eq_true, Bool.true_and, Bool.or_true] at hpt
+              cases hpt
             obtain ⟨k, hk1, hb1⟩ := Array.any_eq_true.1 hA
             simp only [Array.size_range, getElem_range] at hk1 hb1
-            rw [hbig (by omega) hni (hcol (beq_iff_eq.1 hb)) (i / 2 ^ lg * 2 ^ lg + k) (by omega) (by omega) (by omega)]
+            rw [hbig (by omega) hni (hcol hb0) (i / 2 ^ lg * 2 ^ lg + k) (by omega) (by omega) (by omega)]
               at hb1
             cases hb1
         · -- a value at the null's code: the patch list holds it, so it is no null
@@ -1531,7 +1525,7 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
     · have hA' := any_nul_of lg n nul (i / 2 ^ lg) i hi1 hi2 hi hni
       rw [hA] at hA'; subst hA'
       have hnot : i ∉ exc.toList := fun h => by rw [hmem, hni] at h; exact Bool.false_ne_true h.2
-      rw [(hx hnot).1, if_pos (by simp [hi]), hones _ hd64]
+      rw [(hx hnot).1, if_pos (by simp [hi])]
       simp
   unfold Column.foROpt
   rw [hnul]
@@ -1760,5 +1754,78 @@ theorem idAt_packIds {w n i : Nat} {f : Nat → Nat}
   · exact idAt_packIds_lane 4 n f (by decide) (by decide) hi hf
   · exact idAt_packIds_lane 8 n f (by decide) (by decide) hi hf
 
-end Rel.Verify
 
+theorem sum_res (c : UInt64) (l : List UInt64) : ∀ a r : UInt64,
+    l.foldl (· + ·) (c * r + a) = c * (r + UInt64.ofNat l.length) + l.foldl (fun s k => s + (k - c)) a := by
+  induction l with
+  | nil => intro a r; simp
+  | cons x tl ih =>
+    intro a r
+    simp only [List.foldl_cons, List.length_cons]
+    have e : c * r + a + x = c * (r + 1) + (a + (x - c)) := by grind
+    rw [e, ih, UInt64.ofNat_add]
+    congr 1
+    grind
+
+/-- The sum of a column's rows folded as `sum ≜ inr° ≫ ⦇0,+⦈` reads them (`Column.foROpt`'s values added, a null
+skipped) is `c·k + Σg`: where each value of rows `l` is `c + g i`, `k` the rows that are values, `Σg` their `g`.
+`step` is the fold's step, `agg` the count and the sum of `g` beside it. -/
+theorem sum_opt_fold (f : Nat → Option UInt64) (g : Nat → UInt64) (c : UInt64) (l : List Nat)
+    (hv : ∀ i ∈ l, ∀ v, f i = some v → v = c + g i) : ∀ r a : UInt64,
+    l.foldl (fun acc i => match f i with | none => acc | some v => acc + v) (c * r + a) =
+      c * (l.foldl (fun p i => match f i with | none => p | some _ => (p.1 + 1, p.2 + g i)) (r, a)).1 +
+        (l.foldl (fun p i => match f i with | none => p | some _ => (p.1 + 1, p.2 + g i)) (r, a)).2 := by
+  induction l with
+  | nil => intro r a; rfl
+  | cons i tl ih =>
+    intro r a
+    have ih := ih fun j hj => hv j (List.mem_cons_of_mem _ hj)
+    simp only [List.foldl_cons]
+    cases hf : f i with
+    | none => exact ih r a
+    | some v =>
+      have e : c * r + a + v = c * (r + 1) + (a + g i) := by rw [hv i List.mem_cons_self v hf]; grind
+      simp only [hf]
+      rw [e]; exact ih (r + 1) (a + g i)
+
+/-- **The block sum is `base·k + Σr`**: the values of block `b` of a nullable column, added with the nulls skipped
+(`Column.blockSum`, the language's `sum ≜ inr° ≫ ⦇0,+⦈` over `foROpt`), is the block's base times its `k` non-null rows
+plus their residuals' sum, the kernel's `bsum` of a flagged block (`Coc.nulBlock`, `nulBlock_sum`). Where each value is its
+base plus its residual: an unpatched row by `foRBits` at frame 0, a patched row because the writer patches only a row
+holding the base (`Coc.nulBlock`). -/
+theorem blockSum_eq (M P : ByteArray) (b : Nat)
+    (hv : ∀ j < Column.blk M, ∀ v, Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) = some v →
+      v = Column.baseAt M b + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j) :
+    Column.blockSum M P (Column.blockStarts M) b =
+      Column.baseAt M b * ((List.range (Column.blk M)).foldl (fun p j =>
+        match Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) with
+        | none => p
+        | some _ => (p.1 + 1, p.2 + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j)) ((0 : UInt64), (0 : UInt64))).1 +
+      ((List.range (Column.blk M)).foldl (fun p j =>
+        match Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) with
+        | none => p
+        | some _ => (p.1 + 1, p.2 + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j)) ((0 : UInt64), (0 : UInt64))).2 := by
+  have := sum_opt_fold (fun j => Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j))
+    (fun j => Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j) (Column.baseAt M b)
+    (List.range (Column.blk M)) (fun j hj => hv j (List.mem_range.1 hj)) 0 0
+  simpa [Column.blockSum] using this
+
+/-- The sum of the keys a flagged block's writer adds, `Coc.nulBlock`'s `bsum`: over the rows that are not null, so it is
+the base times their count plus the sum of their keys less the base, the residuals of rows below the base's patches. -/
+theorem nulBlock_sum (B w n b : Nat) (x nul : ByteArray) :
+    (Kernel.Coc.nulBlock B w n b x nul).2.2.1 =
+      (Kernel.Coc.nulBlock B w n b x nul).1.toUInt64 *
+        UInt64.ofNat (((Array.range (min (b * B + B) n - b * B)).filter fun j => !Column.bitAt nul (b * B + j)).size) +
+      ((((Array.range (min (b * B + B) n - b * B)).filter fun j => !Column.bitAt nul (b * B + j)).map
+        fun j => (Kernel.Coc.keyAt w x (b * B + j)).toUInt64).toList.foldl
+          (fun s k => s + (k - (Kernel.Coc.nulBlock B w n b x nul).1.toUInt64)) 0) := by
+  have h := sum_res (Kernel.Coc.nulBlock B w n b x nul).1.toUInt64
+    (((Array.range (min (b * B + B) n - b * B)).filter fun j => !Column.bitAt nul (b * B + j)).map
+      fun j => (Kernel.Coc.keyAt w x (b * B + j)).toUInt64).toList 0 0
+  simp only [UInt64.mul_zero, UInt64.zero_add, UInt64.add_zero, Array.length_toList, Array.size_map] at h
+  refine Eq.trans ?_ h
+  rw [Array.toList_map, List.foldl_map, Array.foldl_toList]
+  unfold Kernel.Coc.nulBlock
+  simp only [Array.foldl_map]
+
+end Rel.Verify

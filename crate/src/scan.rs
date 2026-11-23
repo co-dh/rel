@@ -443,7 +443,7 @@ impl Scan<'_> {
         let mut tmp = pod::Scr::<u64>::new(nb);
         // the seed is read only at a segment start
         let mut sd = pod::Scr::<u64>::new(if none { 0 } else { nb });
-        // `null`: the seed is its null flags, read off the block's flag and top residual, not the words
+        // `null`: the seed is its null flags, read off the block's flag and residual 0, not the words
         if !none { if self.op == NULL { self.seed.nuls(lo, &mut sd) } else { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut sd) } }
         let Some((x0, rest)) = self.xs.split_first() else {
             rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { if at(i) { c = sd[i] } *o = c });
@@ -768,7 +768,7 @@ mod kscan_tests {
         assert_eq!(kscan(0, false, 6, 6, 4, None, &[(4, a.borrow()), (4, a.borrow())], &[], &[]).map(|_| ()), e);
         assert_eq!(kscan(18, false, 6, 6, 4, None, &[(4, a.borrow())], &[], &[]).map(|_| ()), e);
     }
-    // `null` answers 1 at a null row and 0 elsewhere (`foRNuls`), from the flagged block's top residual and not the
+    // `null` answers 1 at a null row and 0 elsewhere (`foRNuls`), from the flagged block's residual 0 and not the
     // decoded word (`[5, null, 7]` is `[0, 1, 0]`: the null's residual is 3, which with the frame 5 reads 8, a value);
     // a column with no null, some, and all, one block and across the block boundary, both directions, `seg` every row
     #[test] fn kscan_null_reads_the_flag() {

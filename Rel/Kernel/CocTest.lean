@@ -90,15 +90,15 @@ def readN (xs : List UInt64) (ns : List Nat)
   let r := enc (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
   (List.range xs.length).map (Column.foROpt r.1 r.2 #[])
 
--- values 3 4 6 at rows 0 2 3, nulls at 1 4: range 3 = `2 ^ 2 - 1` reaches the top residual, so width 3, flagged (131);
--- residuals 0 7 1 3 7
-example : encN [3, 0, 4, 6, 0] [1, 4] = (md 3 6 13 5 131, [120, 118] ++ List.replicate 382 0) := by decide +kernel
-#guard encN [3, 0, 4, 6, 0] [1, 4] == (md 3 6 13 5 131, [120, 118] ++ List.replicate 382 0)
+-- values 3 4 6 at rows 0 2 3, nulls at 1 4: base 2 (least value less one), range 4 so width 3, flagged (131);
+-- residuals 1 0 2 4 0
+example : encN [3, 0, 4, 6, 0] [1, 4] = (md 2 6 13 5 131, [129, 8] ++ List.replicate 382 0) := by decide +kernel
+#guard encN [3, 0, 4, 6, 0] [1, 4] == (md 2 6 13 5 131, [129, 8] ++ List.replicate 382 0)
 example : readN [3, 0, 4, 6, 0] [1, 4] = [some 3, none, some 4, some 6, none] := by decide +kernel
 #guard readN [3, 0, 4, 6, 0] [1, 4] == [some 3, none, some 4, some 6, none]
 
--- `Int64.min`, `Int64.max` and a null in one block: the range is all `2 ^ 64` keys, width 64 cannot widen, and
--- `Int64.max - Int64.min = 2 ^ 64 - 1` is the null's code, so the `Int64.max` row is patched and reads as itself.
+-- `Int64.min`, `Int64.max` and a null in one block: the range is all `2 ^ 64` keys, width 64, and the base cannot go
+-- below `Int64.min`, so its row sits at residual 0, the null's code: it is patched and reads as itself.
 -- The Lean body runs at the least block the layout admits, `2 ^ 6`: the kernel walks the pack from byte 0 on every
 -- byte a reader takes, and the patch list sits after the block's `2 ^ lg * 8` residual bytes, 8192 at `lgEnc`
 -- (45 s, 16.7 GB) and 512 at 6; the answer is the same rows, which is all `lg` cannot change.
@@ -177,5 +177,14 @@ example : parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) =
 #guard parts (Coc.boolsOf (u 2600) (packOf 2600 fun i => (i % 3 == 0 && i < 1024) || 2048 ≤ i)) ==
   parts (Coc.bools 2600 (Column.bitAt (packOf 2600 fun i => (i % 3 == 0 && i < 1024) || 2048 ≤ i)))
 #guard parts (Coc.boolsOf (u 12) (bytes1 [0b101])) == parts (Coc.bools 12 (Column.bitAt (bytes1 [0b101])))
+
+-- `sum 100 0N 105 = 205` (null-zero: folds skip null): the language's sum over `foROpt` (`Column.blockSum`) and the
+-- writer's `bsum` of the flagged block (`Coc.nulBlock`), base 99 and residuals 1 and 6, so `99 * 2 + 7`
+def sumN (xs : List UInt64) (ns : List Nat) : UInt64 × UInt64 :=
+  let nul := Column.packIds 1 xs.length fun i => (ns.contains i).toNat
+  let r := Coc.encode (u 8) (dense xs) nul
+  (Column.blockSum r.1 r.2 (Column.blockStarts r.1) 0, (Coc.nulBlock (2 ^ Column.lgEnc) 8 xs.length 0 (dense xs) nul).2.2.1)
+example : sumN [100, 0, 105] [1] = (205, 205) := by decide +kernel
+#guard sumN [100, 0, 105] [1] == (205, 205)
 
 end Rel.Kernel.CocTest

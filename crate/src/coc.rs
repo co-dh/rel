@@ -53,7 +53,7 @@ impl<'a> Meta<'a> {
     pub fn blk(&self) -> usize { 1 << self.lg }
     /// Lean `widthAt`: block `b`'s residual width, the low seven bits of its width byte; every reader takes it here
     pub fn w(&self, b: usize) -> u8 { self.width[b] & WIDTH_MASK }
-    /// Lean `nulAt`: block `b` holds nulls in band, its top residual `2^w - 1` the null (Lean `foRNul`)
+    /// Lean `nulAt`: block `b` holds nulls in band, residual 0 the null (Lean `foRNul`)
     pub fn nul(&self, b: usize) -> bool { self.width[b] & NUL_FLAG != 0 }
     /// coc.rs
     pub fn grid(&self, n: usize) -> bool { self.mblk == n.div_ceil(self.blk()) }

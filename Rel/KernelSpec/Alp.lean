@@ -143,12 +143,12 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
     (fun (a : ByteArray × Nat) (e : Int64 × Int64 × UInt64 × Int64 × Nat) =>
       (a.1 ++ Kernel.Coc.packRes (2 ^ lg) (e.2.2.2.2 % 128) fun j =>
         if (decide (a.2 * 2 ^ lg + j < n) && Column.bitAt nul (a.2 * 2 ^ lg + j)) = true then
-          Column.ones (e.2.2.2.2 % 128) else (if (decide (a.2 * 2 ^ lg + j < n) &&
+          0 else (if (decide (a.2 * 2 ^ lg + j < n) &&
         !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2 (Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (a.2 * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64, a.2 + 1))
     (fun m (e : Int64 × Int64 × UInt64 × Int64 × Nat) j =>
       if (decide (m * 2 ^ lg + j < n) && Column.bitAt nul (m * 2 ^ lg + j)) = true then
-        Column.ones (e.2.2.2.2 % 128) else (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2
+        0 else (if (decide (m * 2 ^ lg + j < n) && !Kernel.Coc.patched lst e.2.2.2.1 e.2.2.2.2
         (Kernel.Coc.keyAt w x (m * 2 ^ lg + j))) = true then
         Kernel.Coc.keyAt w x (m * 2 ^ lg + j) - e.2.2.2.1 else 0).toUInt64)
     (fun a m e => rfl)
