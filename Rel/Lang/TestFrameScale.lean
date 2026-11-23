@@ -40,12 +40,12 @@ rel_program frameScaleN3 where
     check summarize(F(r) sum, r) = {(∗,1495504)}
     check cumAgg(F(x π₂) sum, x) = ran(d3) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
     -- `c` holds a value at key 0, i.e. at multiples of 100: `fills` reads `100·(i div 100)`
-    c : N ⟶ N+1 ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
-    check fills(c) [𝟙, {(∗,0)}] = ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    c : N ⟶ 1+N ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
+    check fills(c) [{(∗,0)}, 𝟙] = ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
     -- `q` is `x` one step later: row `i ≥ 100` meets `i − 99` of its key, so Σ (i − 99) = (n−100)(n−99)/2
     q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
-    a : N ⟶ (N×N)×((N×N)+1) ≜ aj(π₁, π₂, π₁, π₂, x, q)
-    check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,405450)}
+    a : N ⟶ (N×N)×(1+(N×N)) ≜ aj(π₁, π₂, π₁, π₂, x, q)
+    check summarize(F(a π₂ [{(∗,0)}, π₂]) sum, a) = {(∗,405450)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,999)),(1,(98,998)),(2,(97,997))}
     -- sorted position `p` holds key `p div T`, row `p div T + 100·(p mod T)`
     check sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩

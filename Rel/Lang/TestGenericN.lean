@@ -63,9 +63,9 @@ rel_program paramNT where
     obj N
     obj K = {A,B,C}
     x : N ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1))}
-    xn : N ⟶ K×(N+1) ≜ ⟨x π₁, dom(x) tot({(0,5),(2,5)})⟩
+    xn : N ⟶ K×(1+N) ≜ ⟨x π₁, dom(x) tot({(0,5),(2,5)})⟩
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8))}
-    check filterJust(π₂, xn) ⟨π₁, π₂ inl°⟩ = {(0,(B,5)),(1,(B,5))}
+    check filterJust(π₂, xn) ⟨π₁, π₂ inr°⟩ = {(0,(B,5)),(1,(B,5))}
     check filterNothing(π₂, xn) π₁ = {(0,A),(1,C)}
     check filterBy(dom(π₂ {(3,3),(5,5)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
     check innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((C,1),(C,8)))}
@@ -78,9 +78,9 @@ rel_program paramPT where
     obj P = 0…15
     obj K = {A,B,C}
     x : P ⟶ K×P ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1))}
-    xn : P ⟶ K×(P+1) ≜ ⟨x π₁, dom(x) tot({(0,5),(2,5)})⟩
+    xn : P ⟶ K×(1+P) ≜ ⟨x π₁, dom(x) tot({(0,5),(2,5)})⟩
     y : P ⟶ K×P ≜ {(0,(A,9)),(1,(C,8))}
-    check filterJust(π₂, xn) ⟨π₁, π₂ inl°⟩ = {(0,(B,5)),(1,(B,5))}
+    check filterJust(π₂, xn) ⟨π₁, π₂ inr°⟩ = {(0,(B,5)),(1,(B,5))}
     check filterNothing(π₂, xn) π₁ = {(0,A),(1,C)}
     check filterBy(dom(π₂ {(3,3),(5,5)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
     check innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((C,1),(C,8)))}

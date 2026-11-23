@@ -127,7 +127,7 @@ def lastABB : Except String Enc := do
 example : view lastABB = enc8 [0, 2] := by decide +kernel
 #guard view lastABB == enc8 [0, 2]
 
-/-- `xs` with the rows `ns` null (`atom+1`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
+/-- `xs` with the rows `ns` null (`1+atom`, in band), as `wordsFoR` writes it; a null row's word is never read. -/
 def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
   wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
 

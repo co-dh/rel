@@ -2,6 +2,7 @@ module
 
 public import Rel.Kernel.Coc
 public import Rel.Kernel.Op
+public import Rel.Kernel.Scatter
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -235,16 +236,38 @@ def segAll (n : USize) : Option Enc → Except String (Array UInt64)
   | none => .ok (Array.replicate n.toNat 1)
   | some e => rawAll .u1 n e
 
+/-- Whether `kscan` reads its sources as **one stream**: `first` over several sources and no chain. The answer is then
+the sources one after the other (`n` the sum of their row counts), the seed being that stream and no column folded
+into it; any other call folds its sources row by row, each holding `n` rows. -/
+def kscanStream (op : Op) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) : Bool :=
+  (match op with | .first => true | _ => false) && pre.isEmpty && post.isEmpty && decide (1 < es.length)
+
 /-- Whether `kscan` refuses before reading a word: only where a row exists, a chain step that can fail
 (`Op.stepFails`), or a folded column under an op reading its divisor from the carry (`Op.readsDivisor`). -/
-def kscanRefuses (op : Op) (n : USize) (es : List Enc) (pre post : List (Op × UInt64)) : Bool :=
+def kscanRefuses (op : Op) (n : USize) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) : Bool :=
   n != 0 && (op.readsDivisor && 1 < es.length || (pre ++ post).any fun p => p.1.stepFails p.2)
 
+/-- The columns `kscan` folds, each source's `nⱼ` words through `chain pre`, and the null flag of each row of the first
+(`foRNuls`). A stream is one column, the sources joined (their flags joined likewise), and their `nⱼ` must sum to `n`.
+Otherwise every source holds `n` rows and none a null (`noNul`): no op but a stream's `first` has an answer at one. -/
+def kscanCols (op : Op) (s : QAtomicType) (n : USize) (es : List (USize × Enc)) (pre post : List (Op × UInt64)) :
+    Except String (List (Array UInt64) × Array UInt64) := do
+  let ws ← es.mapM fun p => rawAll s p.1 p.2 >>= chainAll pre
+  if kscanStream op es pre post then
+    if (es.map (·.1.toNat)).sum != n.toNat then throw s!"kscan: the sources do not hold n = {n} rows in all"
+    pure ([ws.foldl (· ++ ·) #[]], es.foldl (fun a p => a ++ foRNuls p.1 p.2) #[])
+  else
+    if es.any (·.1 != n) then throw s!"kscan: a source holds a row count other than n = {n}"
+    es.forM fun p => noNul "kscan" p.1 p.2
+    pure (ws, #[])
+
 /-- **The scan primitive** (design §4, `raw_kscan`): the segmented prefix fold of `op` over the `n` rows of `es`, read
-at `s`. `seg`, read as booleans, marks the rows that start a segment (`none`: every row does); the first column of
+at `s`. Each source is a count `nⱼ` of rows and a column (`kscanCols`: all `n` but in a stream). `seg`, read as booleans, marks the rows that start a segment (`none`: every row does); the first column of
 `es` is the seed a segment starts from and the others are folded into each row. So a map is every row a segment
 (`out[i] = op(a[i], b[i])`), a scan one segment from a seed column, a fold a scan's last row, and `es = [e]` fills `e`
-forward from the marked rows.
+forward from the marked rows. A stream (`kscanStream`) is the one scan of the sources in order, the concatenation of
+the columns: a null row of a source is a null row of the answer, its flag carried as `seg` carries the word, and every
+other call refuses a null source row.
 **Owner approval A, 2026-11-20: per-row Op chain.** Each word read from `es` first goes through `chain pre` and each
 answer word through `chain post`; the fold's carry is the answer before `post`. So an element-wise computation of several
 `Op`s — widen on load, the verb, `fto`, a compare against a constant — is one pass writing one encoded column, never an
@@ -257,25 +280,28 @@ The answer is `foR` at every `t`, the words encoded whole by `Coc.encode` at 8 b
 `t`'s width; at a boolean `t` each word is cut to its low bit first, a `foR` of `u1` being what `Enc.WF` admits there.
 Beside the answer it returns the **fold result**: the word of the row the fold visits last (row `n − 1`, row 0 under
 `rev`), cut to `t`'s width as `Enc.raw t` reads it back (`kscan_last`), and `none` at `n = 0`, where no row is visited.
-An `Op.eval` error, a column short of `n` raw words, an empty `es` or a `t` of no width is the `.error`, never a default.
+An `Op.eval` error, a column short of its `nⱼ` raw words, an empty `es` or a `t` of no width is the `.error`, never a default.
 Temporary name until 6.11: `Kernel.scan` (`Driver.lean`) and `qlean_scan` exist. -/
 @[extern "qlean_k_scan"]
-def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Option Enc) (es : @& List Enc)
+def kscan (op : @& Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : @& Option Enc) (es : @& List (USize × Enc))
     (pre post : @& List (Op × UInt64) := []) : Except String (Enc × Option UInt64) := do
   if kscanRefuses op n es pre post then
     throw "kscan: the op is rdiv or rmod, or a chain step fails at some word (div, mod, or rdiv/rmod by 0)"
   let rv := fun a : Array UInt64 => if rev then a.reverse else a
   let g ← segAll n seg
-  match ← es.mapM fun e => rawAll s n e >>= chainAll pre with
-  | [] => .error "kscan: es is empty; its first column is the seed"
-  | seed :: xs =>
+  match ← kscanCols op s n es pre post with
+  | ([], _) => .error "kscan: es is empty; its first column is the seed"
+  | (seed :: xs, ns) =>
     let out ← chainAll post (← (List.range n.toNat).foldlM (kscanRow op (rv g) (rv seed) (xs.map rv)) #[])
     match t.width with
     | none => .error "kscan: the answer type has no fixed width"
     | some w =>
       let ws := (rv out).map fun v => if t = .u1 then v % 2 else v
+      -- the flags go through the fold as the seed's words do, a carried row keeping its flag
+      let nl ← (List.range n.toNat).foldlM (kscanRow .first (rv g) (rv ns) []) #[]
+      let nul := if ns.any (· != 0) then nulMap (rv nl) else .empty
       -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`
-      let r := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8)
+      let r := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul
       -- `out` is in fold order, so its last word is the row visited last
       pure (.foR r.1 r.2, out.back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w)))
 

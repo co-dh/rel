@@ -18,12 +18,14 @@ fn list(mut l: B) -> Vec<B> {
 }
 
 /// `kscan` (`crate::scan::kscan`) of the Lean `Option Enc` `seg` (`none` the scalar 0, `some` tag 1), the list `es`,
-/// and the chains `pre`, `post`: lists of pairs (tag 0) of an `Op` and a boxed `UInt64`.
+/// the list `es` of `(USize × Enc)`, and the chains `pre`, `post`: lists of pairs (tag 0) of an `Op` and a boxed `UInt64`.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 fn kscan(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: B, es: B, pre: B, post: B) -> Result<(O, Option<u64>), String> {
     let steps = |l: B| list(l).into_iter().map(|p| (scan::op_code(p.field(0)), p.field(1).unbox_u64())).collect::<Vec<_>>();
     let seg = if seg.is_scalar() { None } else { Some(seg.field(0)) };
-    scan::kscan(op, rev, s, t, n, seg, &list(es), &steps(pre), &steps(post))
+    // each source a pair (tag 0) of its row count, a boxed `USize` (the 64-bit layout of a boxed `UInt64`), and its column
+    let es = list(es).into_iter().map(|p| (p.field(0).unbox_u64() as usize, p.field(1))).collect::<Vec<_>>();
+    scan::kscan(op, rev, s, t, n, seg, &es, &steps(pre), &steps(post))
 }
 
 
