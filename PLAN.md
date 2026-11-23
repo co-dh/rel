@@ -458,6 +458,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ✅ 运行路径上的平方解码（nodecode 765527b）：`foRBits` 每个元素重算 trailer 偏移 O(nblk)，`Vals.cols` 为判形状解码整列；
   改为 `foROk` 判形状、`foRExc`/`foRFrame` 取 `blockStarts` 的 trailer；10⁵ 行 leftJoin 40.2s→0.96s、带 null 的 group-by
   187s→1.54s；`make decode` 列出仍可达 `foRBits`/`alpBits` 的编译定义（`decode-allow.txt`，150 个，余为单元素读与 u1 位图）。
+  ✅ decode 门（决定 G）：`decode-allow.txt` 中的名字是 `irReach` 的叶子（到达但不展开），只有一条不经任何白名单名字的路径
+  通向 `foRBits`/`alpBits` 才被标出；白名单里不再自己到达解码器的条目（或已不是 RelRun 编译定义）算 stale 并使门失败。179→9 个。
 - 🔄 D.13 `sums`（dataframe 请求，q 的 `sums`，分支 `sums`）：prim 行 `sums : κ×ν ⟶ γ ↦ κ×ν ⟶ γ`，key 在源对象里，
   每个 key 内按位置升序的左 fold 前缀和，溢出或 null 之后该 key 余下的行无像。含义（`rowDens`）是
   `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)`（`Den.lean` 的 `sumsDen`）。

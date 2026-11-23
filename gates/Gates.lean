@@ -67,13 +67,14 @@ def decoders : List Name := [`Rel.Column.foRBits, `Rel.Column.alpBits]
 /-- The compiled code `n` runs, transitively, each callee mapped to the caller that first reached it (`n ↦ n`). It
     reads the IR, the code the compiler emitted: an `@[extern]` declaration is a call with no Lean body, an
     `@[implemented_by]` one its implementation, and a proof or a type is not there at all. -/
-partial def irReach (env : Environment) (n : Name) : Std.HashMap Name Name :=
+partial def irReach (env : Environment) (leaf : Name → Bool) (n : Name) : Std.HashMap Name Name :=
   go (({} : Std.HashMap Name Name).insert n n) [n]
 where
   go (seen : Std.HashMap Name Name) : List Name → Std.HashMap Name Name
     | [] => seen
     | c :: cs => match IR.findEnvDecl env c with
-      | some d =>
+      -- a `leaf` other than the root is reached and reported, never expanded: its own reads are its entry's business
+      | some d => if c != n && leaf c then go seen cs else
         let new := (IR.collectUsedDecls env d).toList.filter (!seen.contains ·)
         go (new.foldl (fun s x => s.insert x c) seen) (new ++ cs)
       | none => go seen cs
@@ -141,9 +142,13 @@ def main : List String → IO UInt32
     | "decode" =>
       -- every declaration of the modules with compiled code that reaches a per-element decoder (`decoders`), with
       -- the call chain on stderr: the run path reads encoded columns through the kernels, never element by element
+      -- An allowlisted name (`decode-allow.txt`, read from the cwd) is a leaf of the walk: a declaration is flagged only
+      -- when a path to a decoder passes through no allowlisted name, so an allowlisted entry is flagged too while its own
+      -- body needs it; `make decode` then fails on a listed name that is not printed (stale or no longer compiled).
+      let allow := (← IO.FS.readFile "decode-allow.txt").splitOn "\n" |>.filter (· ≠ "") |> Std.HashSet.ofList
       let compiled := ds.filter fun n => written env n && (IR.findEnvDecl env n).isSome
       let bad := compiled.filterMap fun n =>
-        let r := irReach env n
+        let r := irReach env (fun c => allow.contains c.toString) n
         (r.keys.find? fun c => decoders.any (·.isPrefixOf c)).map fun t => (n, chain r t)
       for (n, p) in bad do IO.println n; IO.eprintln s!"{n}: {" → ".intercalate (p.map toString)}"
       IO.eprintln s!"gates decode: {bad.size} of {compiled.size} compiled declarations of {mods.size} modules reach {decoders}"
