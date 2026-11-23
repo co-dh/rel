@@ -1821,9 +1821,10 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
   | .sum x y =>
     if h : n = 0 ∧ rows.isEmpty then h.1 ▸ (do
       let ⟨A, u⟩ ← litCol p 0 x []; let ⟨B, v⟩ ← litCol p 0 y []
-      pure ⟨.sum A B, ⟨0, 0, Arr.mk (Rel.Ext.Enc.blank .u1 0) (Rel.Ext.Enc.blank_WF .u1 0) (Rel.Ext.Enc.blank_plain .u1 0),
-        Arr.mk (Rel.Ext.Enc.blank .i64 0)
-        (Rel.Ext.Enc.blank_WF .i64 0) (Rel.Ext.Enc.blank_plain .i64 0), u, v⟩⟩ : Except Err ((A : Obj) × Vals A 0))
+      let _ := (u, v)
+      match Vals.none (.sum A B) with
+      | .ok z => pure ⟨.sum A B, z⟩
+      | .error s => throw ⟨p, s!"an empty literal of {o}: {s}"⟩ : Except Err ((A : Obj) × Vals A 0))
     else throw ⟨p, s!"a literal relates elements of declared objects, found {o}"⟩
   | o => do
     -- an object declared at another atom (`obj F : f64`): each word stored at that atom (`wordAt`)

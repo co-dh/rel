@@ -874,6 +874,10 @@ def atomE (t : Rel.QAtomicType) (n : USize) (x : Arr t n) : Except String Lean.E
   | .foR m p => pure (g ``Gen.atom #[toExpr t, uE n, mkStrLit (hex m), mkStrLit (hex p)])
   | _ => throw s!"a column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
 
+/-- `rfl : Obj.band A B = o`, the proof `Gen.optV`/`Gen.sumV` take. -/
+def bandRfl (o : Option Rel.QAtomicType) : Lean.Expr :=
+  mkApp2 (mkConst ``Eq.refl [1]) (toTypeExpr (Option Rel.QAtomicType)) (toExpr o)
+
 /-- A column rebuilt from its parts: each atom column from its payload (`atomE`), the rest by `Vals`'s shape. -/
 def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
   | .atom t, n, x => atomE t n x
@@ -881,9 +885,14 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
     pure (g ``Gen.pairV #[oE a, oE b, uE n, ← valsE a n x.1, ← valsE b n x.2])
   | .arr b, n, ⟨m, lo, hi, p⟩ => do
     pure (g ``Gen.arrV #[oE b, uE n, uE m, ← atomE .i64 n lo, ← atomE .i64 n hi, ← valsE b m p])
-  | .sum a b, n, ⟨l, r, tag, idx, x, y⟩ => do
-    pure (g ``Gen.sumV #[oE a, oE b, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
-      ← valsE a l x, ← valsE b r y])
+  -- the `Obj.band` fact is `rfl` at the closed objects the term names, checked when the term is added
+  | .sum a b, n, s => match s.view with
+    | .opt (t := t) _ x => match x.1 with
+      | .foR m p => pure (g ``Gen.optV #[oE a, oE b, toExpr t, bandRfl (some t), uE n, mkStrLit (hex m), mkStrLit (hex p)])
+      | _ => throw s!"a nullable column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
+    | .gen _ l r tag idx x y => do
+      pure (g ``Gen.sumV #[oE a, oE b, bandRfl none, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
+        ← valsE a l x, ← valsE b r y])
   | .one, n, _ => pure (g ``Gen.oneV #[uE n])
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
@@ -895,8 +904,11 @@ def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize
   | .prod a b, _, x, .prod c d, _, y => valsEq a x.1 c y.1 && valsEq b x.2 d y.2
   | .arr b, n, ⟨_, lo, hi, p⟩, .arr d, m, ⟨_, lo', hi', q⟩ =>
     decide (n = m) && encEq lo.enc lo'.enc && encEq hi.enc hi'.enc && valsEq b p d q
-  | .sum a b, n, ⟨_, _, tag, idx, x, y⟩, .sum c d, m, ⟨_, _, tag', idx', x', y'⟩ =>
-    decide (n = m) && encEq tag.enc tag'.enc && encEq idx.enc idx'.enc && valsEq a x c x' && valsEq b y d y'
+  | .sum a b, n, s, .sum c d, m, s' => match s.view, s'.view with
+    | .opt (t := t) _ x, .opt (t := u) _ y => decide (t = u) && decide (n = m) && encEq x.1 y.1
+    | .gen _ _ _ tag idx x y, .gen _ _ _ tag' idx' x' y' =>
+      decide (n = m) && encEq tag.enc tag'.enc && encEq idx.enc idx'.enc && valsEq a x c x' && valsEq b y d y'
+    | _, _ => false
   | .one, _, _, .one, _, _ => true
   | _, _, _, _, _, _ => false
 
