@@ -151,7 +151,8 @@ theorem arithOp_den {B : Obj} {n : USize} {X : Vals (.prod B B) n} {T : Tab (.pr
   cases B
   case atom u =>
     simp only [Tab.arithOp, hs, and_self, ↓reduceIte] at h
-    obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
+    obtain ⟨⟨w, flag⟩, hm, h⟩ := Except.bind_eq_ok'.1 h
+    obtain ⟨-, -, hU⟩ := Except.bind_eq_ok'.1 h
     exact keep_map_holds hU (fun i => stepColsAt_spec hm i) a b
   all_goals simp [Tab.arithOp, hs] at h
 
@@ -161,6 +162,7 @@ theorem arithOp_wf {s : String} {B : Obj} {n : USize} {X : Vals (.prod B B) n} {
   rcases hl : arithOps.lookup s with _ | k <;> cases B <;> simp only [Tab.arithOp, hl, and_self, ↓reduceIte] at h
   case some.atom u =>
     obtain ⟨⟨w, f⟩, -, h⟩ := Except.bind_eq_ok'.1 h
+    obtain ⟨-, -, h⟩ := Except.bind_eq_ok'.1 h
     exact keep_wf h ⟨hX, trivial⟩
   all_goals cases h
 
@@ -174,6 +176,8 @@ theorem succOp_den {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.s
     case i64 =>
       simp only [Tab.succOp, bind, Except.bind_eq_ok'] at h
       obtain ⟨s, hs, h⟩ := h
+      obtain ⟨_, -, h⟩ := h
+      obtain ⟨-, -, h⟩ := h
       cases h
       have hrow := Tab.succCol_row hs
       simp only [Tab.Holds, Lang.succOn]
@@ -192,6 +196,8 @@ theorem succOp_wf {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.su
     case i64 =>
       simp only [Tab.succOp, bind, Except.bind_eq_ok'] at h
       obtain ⟨_, -, h⟩ := h
+      obtain ⟨_, -, h⟩ := h
+      obtain ⟨-, -, h⟩ := h
       cases h; exact ⟨hX, trivial⟩
     all_goals simp [Tab.succOp] at h
   all_goals simp [Tab.succOp] at h

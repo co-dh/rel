@@ -296,6 +296,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     每个变量的建表函数，按需（`dem`）或闭合建表失败（`GenK.memo` 留 lazy）的实参在每个使用处按其上下文建表，
     其余闭合建一次；body 只见实参（`Code.args` 的 `η.closed`）；对象不符读 `𝟘`（`Code.bind`）。测试：`native1a`
     加 `ld`（位矩阵）`l1`（计数）`rd`（`/`）`gc`（实参 `succ` 按需），共 27 个闭定义，`make native` 逐字节相等。
+    B5c（owner 决定 2026-11-22：i64 整数溢出既不变 null 也不丢行，运行报错）：已做——`Tab.arithOp`/`Tab.succOp`
+    （`Rel/Run/Arith.lean`）在 `stepColsAt`/`succCol` 之后用 `arithOvf`/`failAt` 找出第一个溢出行（两操作数非 null、
+    除数 ≠ 0、被 `stepCols` 丢掉；`succ` 为 `Int64.maxValue`），报 `plus: i64 overflow at plus(9223372036854775807, 1)`；
+    null 操作数与零除数仍无像，float 不查（±∞）。`stepCols_spec`/`arithOp_den` 不变（成功分支无溢出行）；`#guard`
+    覆盖溢出与不溢出各例。未做：C 发射器（`arithOpB`/`succOpB`）仍按旧语义丢行，native 与 Lean 在溢出行上不一致，
+    待 EmitC 同改；`succ ≜ ⟨𝟙,⊤1⟩ ≫ plus` 与 `Tm.succ_den`：PLAN 无此文字，未做。
     分支 `nativetm4`（合并 3a、3b）：σ 是 3a 的 `Vars`（`ν` `μ` `hylo` 的一轮绑定为 `fun _ _ _ => pure X`），
     `ldivSelB` 的 `iteT` 按 `regsOf`/`withRegs` 读回 `Col` 树，`groupsB` 与 `expandB` 共用于 `compB`。
     仍拒绝并指名：`est` `thin` 与三种 fold（`foldRounds` 未接 `Instr.loop`）、行 `F` 及其余数组/求和行、

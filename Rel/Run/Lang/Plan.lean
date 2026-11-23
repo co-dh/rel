@@ -310,9 +310,34 @@ structure Plan where
   input : List Instr := []
   deriving Inhabited
 
-/-- What `fail msg args` prints: `msg`, then the registers after `: `, separated by `, `. -/
-def failText (msg : String) (vs : List Val) : String :=
-  if vs.isEmpty then msg else msg ++ ": " ++ ", ".intercalate (vs.map Val.show)
+/-- A `fail` message's pieces: the text between its placeholders, and each placeholder (`\x01`: the register as
+    `Val.show` prints it; `\x02`: a `u64` word read as signed, the column convention). Control characters, not `{}`:
+    no message of the plan's other failures can hold one. -/
+def failSegs (msg : String) : List (String ⊕ Bool) :=
+  let (d, cur) := msg.foldl (fun (d, cur) c =>
+    if c == '\x01' || c == '\x02' then (d ++ [.inl cur, .inr (c == '\x02')], "") else (d, cur.push c)) ([], "")
+  d ++ [.inl cur]
+
+/-- What `fail msg args` prints: where `msg` has placeholders (`failSegs`) the registers in them, one each; else `msg`,
+    then the registers after `: `, separated by `, `. -/
+def failText (msg : String) (vs : List Val) : Except String String :=
+  let segs := failSegs msg
+  if segs.all (·.isLeft) then pure (if vs.isEmpty then msg else msg ++ ": " ++ ", ".intercalate (vs.map Val.show))
+  else if (segs.filter (·.isRight)).length != vs.length then
+    throw s!"plan: fail `{msg}` has {(segs.filter (·.isRight)).length} placeholders for {vs.length} registers"
+  else do
+    let mut out := ""
+    let mut vs := vs
+    for s in segs do
+      match s with
+      | .inl t => out := out ++ t
+      | .inr signed =>
+        let v :: r := vs | throw "plan: fail: no register left for a placeholder"
+        vs := r
+        out := out ++ (match signed, v with
+          | true, .u64 x => toString (Int64.ofNat x.toNat)
+          | _, v => v.show)
+    pure out
 
 /-- Register `a`, read by `who`. -/
 def reg (rs : Array Val) (who : String) (a : Nat) : Except String Val := match rs[a]? with
@@ -361,7 +386,7 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
     | .inr _ =>
       unless k.res.isEmpty do throw s!"plan: `{sym}` reads, which a plan does only at its input edge (`Plan.input`)"
       pure (rs, ws.push (sym, vs))
-  | .fail msg as, rs, _ => do throw (failText msg (← as.mapM (reg rs "fail")).toList)
+  | .fail msg as, rs, _ => do throw (← failText msg (← as.mapM (reg rs "fail")).toList)
   | .apply f as, rs, ws => do
     let some g := fs[f]? | throw s!"plan: apply f{f}, which is not an earlier function"
     let (out, ws) ← g gs (← as.mapM (reg rs s!"apply f{f}")) ws
