@@ -230,6 +230,26 @@ rel_program nativeIO where
     output nu to csv "out/io/nu.csv"
     output nu to "out/io/nu"
     output cn to "out/io/cn"
+    -- general sums written as own table directories (tag, position, each summand's own file, a side of `1` its count
+    -- file): `[N]+N` (a list summand) and `1+(N×N)` (a summand `1`, a product summand), kept as test/native/in/gm and
+    -- test/native/in/gx
+    schema GM = {a : [N]+N}
+    schema GX = {a : 1+(N×N)}
+    ed : N ⟶ N ≜ {(1,2),(2,3),(3,5)}
+    xs : N ⟶ [N] ≜ {(1,3 1 2),(2,[]),(3,1 2)}
+    gm : N ⟶ GM ≜ xs inl
+    gx : N ⟶ GX ≜ ⟨ed, ed⟩ inr
+    output gm to "out/io/gm"
+    output gx to "out/io/gx"
+    -- those directories and `out/io/nu` read back as own table directories (the tag, the position and each summand's file,
+    -- a `1` summand's count against the tag's rows, a nullable column as `1+N` in band) and written again: `out/io/gmi`,
+    -- `gxi` and `nd` equal `gm`, `gx` and `nu` byte for byte
+    input gmi : N ⟶ GM from "in/gm"
+    input gxi : N ⟶ GX from "in/gx"
+    input nd : N ⟶ NRow from "in/nu"
+    output gmi to "out/io/gmi"
+    output gxi to "out/io/gxi"
+    output nd to "out/io/nd"
     -- symbol columns: two CSV files interned into one dictionary (ids in insertion order, not text order: `pear`, `apple`,
     -- `fig`, then `kiwi`), read, written back as texts, and met on ids by `∪`
     obj S : sym
