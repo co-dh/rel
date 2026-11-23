@@ -980,7 +980,9 @@ def compSelB (bits : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
 /-- **`compT`**: `R ≫ S` (`compSelB`, as `GenK.compV`), `S` (the table `s` in a context, on demand where `ds`) read at
     `ran R`, its range the values `ran` the composition's context knows. -/
 def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
-  compSelB Tab.bitsMax R (← s (← if ds then (return { dom := some (← nubB R.n R.val), ran }) else pure {}))
+  let bound : Bld TabB := do s { dom := some (← nubB R.n R.val), ran }
+  -- a closed `S` that cannot run closed (`<` on an infinite universe; `GenK.memo` keeps it lazy) is read at `ran R`
+  compSelB Tab.bitsMax R (← if ds then bound else tryCatch (s {}) fun e => tryCatch bound fun _ => throw e)
 
 /-! #### The rounds of a fold (`Tab.foldRounds`) and the list rows its steps read -/
 
@@ -1341,7 +1343,15 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (n, X) ← known "π₁" D.dom; canonT ⟨n, X, ← repath A "" (X.take (objWidth A))⟩
   | _, _, .outr (A := A) (B := B) => do
     let (n, X) ← known "π₂" D.dom; canonT ⟨n, X, ← repath B "" (X.drop (objWidth A))⟩
-  | _, _, .comp R S => do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) S.dem D.ran
+  -- `GenK.comp`: `R` first, handing `S` its range; where `R` cannot run so (`<` bounded only by `S`) or the context
+  -- bounds only the range, `S` first, `R` run knowing its range is `S`'s domain (`compS`); where neither runs, `R`'s error
+  | _, _, .comp R S => do
+    let rFirst := do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) S.dem D.ran
+    let sFirst := do
+      let s ← tabB σ { ran := D.ran } S
+      compSelB Tab.bitsMax (← tabB σ { dom := D.dom, ran := some (← domOf s) } R) s
+    if R.dem && D.dom.isNone && D.ran.isSome then tryCatch sFirst fun e => tryCatch rFirst fun _ => throw e
+    else tryCatch rFirst fun e => tryCatch sFirst fun _ => throw e
   | _, _, .conv R => do
     let r ← tabB σ ⟨D.ran, D.dom, D.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ R; canonT ⟨r.n, r.val, r.key⟩
   | _, _, .meet R S => do
