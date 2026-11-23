@@ -2392,6 +2392,19 @@ where
     | some { uniVar := some _, .. } => throw ⟨p, s!"{op} on {n}: a number object, which its constant is not generic over"⟩
     | _ => throw ⟨p, s!"{op} on {n}: no universe"⟩
 
+/-- Whether `n` is an object variable at the placeholder of a generic constant (`varObj`): it stands for the object of
+    every use, so a node that would fix it to a number object is built so as to keep it a variable, or refused. -/
+def phVar (n : OTy) : Bool :=
+  match zonk mc n with
+  | .base m => (objs.lookup m).any fun i => i.ovar && match i.obj with | .atom a => varAtoms.contains a | _ => false
+  | _ => false
+
+/-- Whether `<`, `≤` at `n` run the row on `n`'s universe (`Tm.lt`, `Tm.leq`): at a base object, but not at a
+    placeholder when the prelude's test is in scope (`test`), which keeps the constant generic over it (`Tm.cmpDef`
+    instantiated at each use's object, `Tm.instObj`) where the row would fix it to a number object. -/
+def rowOrd (n : OTy) (test : Bool) : Bool :=
+  (match zonk mc n with | .base _ => true | _ => false) && !(test && phVar objs mc n)
+
 /-- Whether the object `n` is the atom `sym`, whose ids are in insertion order and so have no order of their own. -/
 def symObj (n : OTy) : Bool :=
   match zonk mc n with | .base nm => (objs.lookup nm).any (·.obj == .atom .sym) | _ => false
@@ -2403,7 +2416,8 @@ def ordObj (p : Pos) (op : String) (n : OTy) (df : Bool) : Except Err Obj := do
     let nm := ((cmpOps.find? (·.2 == (op == "<"))).map (·.1)).getD op
     throw ⟨p, s!"{op} at {zonk mc n}: the order of an object that is no atom is the prelude's `{nm}`, which is not defined above this line"⟩
   let B ← toObj objs mc dp n
-  if let some t := B.ascBad then throw ⟨p, s!"{op} at {zonk mc n}: the atom {atomName t} has no order code"⟩
+  -- a placeholder stands for the object of each use, whose atoms it does not name
+  if let some t := B.ascBad then unless phVar objs mc n do throw ⟨p, s!"{op} at {zonk mc n}: the atom {atomName t} has no order code"⟩
   pure B
 
 /-- An order at `sym` is the order of the texts: with `r = rank(D)` (`rk`, built from the program's `dictionary D`)
@@ -2442,6 +2456,25 @@ def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.pr
   | .error e => throw ⟨e.pos,
     e.msg.map (s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): " ++ ·)⟩
 
+/-- `t` with each `Tm.cmpDef c U` at an atom `t` the row orders (`ordNum`), `c` a call of the prelude's `lt`/`le`
+    (`cmpRow`'s constant), the row `Tm.lt U`/`Tm.leq U` run fused (`GenK.cmpRel`), call bodies included: a generic
+    constant's order put at a number object (`callTm`). At an integer-stored atom the two mean the same
+    (`Tm.cmpDef_lt_den` with `Tm.ltDef_den`, the `le` pair). -/
+partial def Tm.cmpRows {A B : Obj} (r : Tm A B) : Tm A B :=
+  match r with
+  | .comp (.pair (@Tm.arg _ _ C D (.prim d) U) (.top _)) (.comp (.call _ n _ _ _) .outr) =>
+    match A, (cmpOps.find? fun (o, _) => (cmpRow o).prelude == some n) with
+    -- at f32/f64 this is the IEEE row, as a number object's `<` is today: whether it is `Obj.lt` there is open (Q2),
+    -- so the float semantics stays the row's
+    | .atom t, some (_, s) =>
+      if h : t.ordNum.isSome ∧ d.sym == domRow.sym ∧ B = .atom t ∧ C = .atom t ∧ D = .atom t then
+        let U' : Tm (.atom t) (.atom t) := cast (by rw [h.2.2.2.1, h.2.2.2.2]) U.cmpRows
+        cast (by rw [h.2.2.1]) (if s then Tm.lt U' else Tm.leq U')
+      else r.mapM (m := Id) (·.cmpRows)
+    | _, _ => r.mapM (m := Id) (·.cmpRows)
+  | .call ks c cv os b => .call ks c cv os b.cmpRows
+  | _ => r.mapM (m := Id) (·.cmpRows)
+
 /-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` and its converse's
     constant `cv` at their objects (`Tm.instObj` at its placeholders `ph`), `os` those of the variables it is generic over. A
     variable it is not generic over keeps its placeholder, so `σ` is the identity there. -/
@@ -2458,7 +2491,7 @@ def callTm (pos : Pos) (c : Lean.Name) (us : List (OTy × Bool × Bool)) (ks : L
   let inst {X Y : Obj} : Res → Except Err (Tm X Y)
     | ⟨X₀, Y₀, b⟩ => do
       let b ← (b.instObj ph σ).mapError fun e => (⟨pos, s!"`{c}` at the objects of this call: {e}"⟩ : Err)
-      if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b)
+      if h : X₀.inst ph σ = X ∧ Y₀.inst ph σ = Y then pure (h.1 ▸ h.2 ▸ b.cmpRows)
       else internal dp s!"`{c}`'s body is not at the objects of its call"
   return .call ks c cv os (← inst t)
 
@@ -2622,13 +2655,10 @@ def build (δ : Dem) : Pre → Except Err Res
           throw ⟨dp, s!"{r.sym} at the object variable {n} needs its universe: its definition is cut to it (§4)"⟩
         pure (o, (⟨v, X, ·⟩ : Tm X X → String × (X : Obj) × Tm X X) <$> u,
           initSeg objs o || match X with | .atom a => r.native.contains a | _ => false)
-    -- a variable at the placeholder of a generic constant (`varObj`) whose universe is read: neither the cut nor the
-    -- definition is known before the call fixes its object, so the row is refused here, cheaply, and `once` keeps
-    -- that variable a number object, each use building the row at its own object
-    if let some (o, _) := us.find? fun (o, u, _) => u.isSome && match o with
-        | .base n => (objs.lookup n).any fun i => i.ovar && match i.obj with | .atom a => varAtoms.contains a | _ => false
-        | _ => false then
-      throw ⟨dp, s!"{r.sym} at {o}: its universe is read, so it is built at the object of a use, not a placeholder (§4)"⟩
+    -- a variable at the placeholder of a generic constant (`varObj`) whose universe is read: the cut is not known
+    -- before the call fixes its object, so the definition is built, generic over it (`Tm.instObj`); a node of it that
+    -- fixes the object refuses there, and `once` keeps that variable a number object
+    if us.any fun (o, u, _) => u.isSome && phVar objs mc o then return ← build δ q
     -- with no universe the row runs (its definition would need keys none supply)
     let some cut := us.filter (!unbounded objs ·.1) |>.mapM fun (_, u, cuts) => if cuts then u else none
       | if us.all (·.2.1.isSome) then build δ q else row ()
@@ -2661,7 +2691,7 @@ def build (δ : Dem) : Pre → Except Err Res
   | .leq p n rk df => do
     if symObj objs mc n then
       return ← symOrd dp δ p "≤" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.leq (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    if let .base _ := zonk mc n then
+    if rowOrd objs mc n df.isSome then
       let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, Tm.leq U⟩
     let B ← ordObj objs mc dp p "≤" n df.isSome
     let some d := df | internal dp "≤: the order test"
@@ -2673,7 +2703,7 @@ def build (δ : Dem) : Pre → Except Err Res
   | .lt p n rk df => do
     if symObj objs mc n then
       return ← symOrd dp δ p "<" none (fun Q Qc => ⟨_, .comp Q (.comp (Tm.lt (t := .i64) (.ran Q)) Qc)⟩) (← (match rk with | none => pure none | some q => do pure (some (← build δ q))))
-    if let .base _ := zonk mc n then
+    if rowOrd objs mc n df.isSome then
       let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
     let B ← ordObj objs mc dp p "<" n df.isSome
     let some d := df | internal dp "<: the order test"
