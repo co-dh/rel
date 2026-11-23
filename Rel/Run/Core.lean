@@ -45,6 +45,11 @@ abbrev El := Carrier
     null (design card "1+atom", decision K). -/
 abbrev Arr (t : QAtomicType) (n : USize) := {e : Enc // Enc.WF t n e ∧ Kernel.hasNul e = false}
 
+/-- The block starts a whole-column reader computes once (`Column.blockStarts`); `#[]` where the payload has no block. -/
+def _root_.Rel.Ext.Enc.starts {X : Type} : Ext.Enc X → Array Nat
+  | .foR md _ => Column.blockStarts md
+  | _ => #[]
+
 namespace Arr
 
 variable {t : QAtomicType} {n : USize}
@@ -65,14 +70,18 @@ def mk (e : Enc) (h : Enc.WF t n e) (hN : Kernel.hasNul e = false) : Arr t n := 
 theorem gen_size (x : Arr .general n) {xs : Array QValue} (hc : x.enc = .gen xs) : xs.size = n.toNat := by
   have hw := x.wf; rw [hc] at hw; exact hw
 
-/-- Element `i`. At an atom type it is `Enc.get`'s atom at `i` read back at the index; the
+/-- Element `i`, `starts` the block starts of `x.enc` (`Enc.starts`) hoisted by a caller that reads every row, or `#[]`
+    (`get`) for a single read. At an atom type it is `Enc.get`'s atom at `i` read back at the index; the
     fallback, the atom of zero bits, is unreachable under `wf`, as is the general list's non-`gen` one. -/
-def get (x : Arr t n) (i : Fin n.toNat) : El t :=
+def getWith (starts : Array Nat) (x : Arr t n) (i : Fin n.toNat) : El t :=
   match t, x with
   | .general, x => match hc : x.enc with
     | .gen xs => xs[i.1]'(by rw [gen_size x hc]; exact i.2)
     | _ => QValue.general #[] 0
-  | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default
+  | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t (.atom a)).getD default
+
+/-- Element `i` of a single read: no hoisted block starts. -/
+def get (x : Arr t n) (i : Fin n.toNat) : El t := x.getWith #[] i
 
 /-- `get` at an atom type: `Enc.get`'s atom read back at `t`. -/
 theorem get_ne (x : Arr t n) (i : Fin n.toNat) (h : t ≠ .general) :
@@ -152,16 +161,23 @@ theorem plain_general (x : Opt .general n) : Kernel.hasNul x.enc = false := by
   have hw := x.wf; generalize x.enc = e at hw ⊢; cases e <;> first | rfl | exact absurd hw.1 (by decide) | exact hw.elim
 
 /-- Whether row `i` is the null: tested on the block (`Column.foRNul`: flagged, unpatched, top residual), never
-    decoded. Only a `foR` payload holds one. -/
-def isNul (x : Opt t n) (i : Nat) : Bool := match x.enc with
-  | .foR md pk => Column.foRNul md pk #[] i
+    decoded. Only a `foR` payload holds one. `starts` as `Arr.getWith`. -/
+def isNulWith (starts : Array Nat) (x : Opt t n) (i : Nat) : Bool := match x.enc with
+  | .foR md pk => Column.foRNul md pk starts i
   | _ => false
 
-/-- Row `i` as `t+1`: `none` at the null, else `Arr.get`'s element (`foROpt` read back at `t`). -/
-def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) :=
-  if x.isNul i then none else some (match t, x with
-    | .general, x => Arr.get (Arr.mk x.enc x.wf x.plain_general) i
-    | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default)
+/-- `isNulWith` of a single read: no hoisted block starts. -/
+def isNul (x : Opt t n) (i : Nat) : Bool := x.isNulWith #[] i
+
+/-- Row `i` as `t+1`: `none` at the null, else `Arr.get`'s element (`foROpt` read back at `t`). `starts` as
+    `Arr.getWith`. -/
+def getWith (starts : Array Nat) (x : Opt t n) (i : Fin n.toNat) : Option (El t) :=
+  if x.isNulWith starts i then none else some (match t, x with
+    | .general, x => Arr.getWith starts (Arr.mk x.enc x.wf x.plain_general) i
+    | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t (.atom a)).getD default)
+
+/-- Row `i` of a single read: no hoisted block starts. -/
+def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) := x.getWith #[] i
 
 /-- The nullable column of `xs`, `none` the null: the values' dense bytes (a null's `0`, never read) and the bitmap of
     the null rows through the one writer `Coc.encode`. `Enc.WF` is decided, never assumed; `none` where an atom is not
@@ -247,6 +263,35 @@ theorem foRBits_starts (md pk : ByteArray) (i : Nat) :
   by_cases h : i / Column.blk md ≤ Column.nblk md
   · simp [Verify.blockStarts_get md h, Verify.blockStarts_get md (Nat.le_refl _)]
   · simp [Verify.blockStarts_get md (Nat.le_refl _), Array.getElem?_eq_none (show (Column.blockStarts md).size ≤ i / Column.blk md by omega)]
+
+/-- `foRNul` with no hoisted table reads the starts `blockStarts` holds, as `foRBits_starts`. -/
+theorem foRNul_starts (md pk : ByteArray) (i : Nat) :
+    Column.foRNul md pk #[] i = Column.foRNul md pk (Column.blockStarts md) i := by
+  have hs : (Column.blockStarts md).size = Column.nblk md + 1 := (Verify.blockStarts_fold md (Column.nblk md)).2.1
+  unfold Column.foRNul
+  by_cases h : i / Column.blk md ≤ Column.nblk md
+  · simp [Verify.blockStarts_get md h, Verify.blockStarts_get md (Nat.le_refl _)]
+  · simp [Verify.blockStarts_get md (Nat.le_refl _), Array.getElem?_eq_none (show (Column.blockStarts md).size ≤ i / Column.blk md by omega)]
+
+/-- A whole-column reader's hoisted starts change no element: `Arr.getWith` at `Enc.starts` is `Arr.get`. -/
+theorem Arr.getWith_starts {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin n.toNat) :
+    x.getWith x.enc.starts i = x.get i := by
+  unfold Arr.get Arr.getWith
+  cases t <;> (try rfl) <;> (
+    simp only [Enc.get]; cases hc : x.enc <;> simp [Ext.Enc.starts, foRBits_starts])
+
+theorem Opt.getWith_starts {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) :
+    x.getWith x.enc.starts i = x.get i := by
+  unfold Opt.get Opt.getWith Opt.isNulWith
+  cases hc : x.enc with
+  | foR md pk =>
+    simp only [Ext.Enc.starts, foRNul_starts]
+    split
+    · rfl
+    · refine congrArg some ?_
+      cases t <;> simp [Arr.getWith, Enc.get, hc, foRBits_starts]
+  | gen xs => simp [Ext.Enc.starts]
+  | pos => simp [Ext.Enc.starts]
 
 /-- Under `wf`, a long `foR` column's element `i` is its `foRBits` decode, read as a long. -/
 theorem Arr.get_long_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x.enc = .foR md pk)
@@ -562,11 +607,12 @@ def ValsB.row : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Fin
     each, which over all rows is `n * m` reads; here a row is the payload's slice `[lo i, hi i)`, the clamp
     `ValsB.row` applies, and a sum row indexes its side's rows by the clamped position. An atom column is read through
     `Arr.get`, the one reader, so a gate that walks compiled code stops at it. -/
-def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) := Array.ofFn x.get
+def Arr.rowsImpl {t : QAtomicType} {n : USize} (x : Arr t n) : Array (El t) :=
+  let s := x.enc.starts; Array.ofFn (x.getWith s)
 
 def ColB.rowsImpl : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Array (El t)
   | false, _, _, x => Arr.rowsImpl x
-  | true, _, n, x => Array.ofFn (n := n.toNat) fun i => (Opt.get x i).getD default
+  | true, _, n, x => let s := x.enc.starts; Array.ofFn (n := n.toNat) fun i => (Opt.getWith s x i).getD default
 
 def ValsB.rowsImpl : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Array A.El
   | _, .atom _, _, x => ColB.rowsImpl x
@@ -577,7 +623,7 @@ def ValsB.rowsImpl : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n �
     Array.ofFn (n := n.toNat) fun i =>
       (fs.extract (los[i]?.getD 0).toInt.toNat (his[i]?.getD 0).toInt.toNat).toList
   | _, .sum a b, n, s => match ValsB.view s with
-    | .opt h x => Array.ofFn (n := n.toNat) fun i => Obj.optEl h (x.get i)
+    | .opt h x => let s := x.enc.starts; Array.ofFn (n := n.toNat) fun i => Obj.optEl h (x.getWith s i)
     | .gen _ tag x y =>
     let xs := ValsB.rowsImpl x; let ys := ValsB.rowsImpl y; let tags := Arr.rowsImpl tag
     Array.ofFn (n := n.toNat) fun i =>
@@ -603,13 +649,14 @@ private theorem slice_aux {α : Type} (n : Nat) (g : Fin n → α) (a b : Nat) :
         exact this
     | succ a => cases b <;> simp [Function.comp_def] <;> exact h _ _
 
-theorem Arr.rowsImpl_eq {t : QAtomicType} {n : USize} (x : Arr t n) : Arr.rowsImpl x = Array.ofFn x.get := rfl
+theorem Arr.rowsImpl_eq {t : QAtomicType} {n : USize} (x : Arr t n) : Arr.rowsImpl x = Array.ofFn x.get := by
+  unfold Arr.rowsImpl; exact congrArg Array.ofFn (funext (Arr.getWith_starts x))
 
 theorem ColB.rowsImpl_eq {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) :
     ColB.rowsImpl x = Array.ofFn (ColB.get x) := by
   cases o
   · exact Arr.rowsImpl_eq x
-  · rfl
+  · exact congrArg Array.ofFn (funext fun i => by simp only [Opt.getWith_starts]; rfl)
 
 /-- `ValsB.rowsImpl` is `Array.ofFn ValsB.row`, with no well-formedness: each of `ValsB.row`'s clamps (a slice's `lo`
     below `0`, its `hi` above `m`, `hi ≤ lo`) is what `Array.extract` does at the same bounds. -/
@@ -633,7 +680,7 @@ theorem ValsB.rowsImpl_eq : {o : Bool} → {A : Obj} → {n : USize} → (x : Va
     simp only [ValsB.row]
     generalize ValsB.view s = v
     cases v with
-    | opt h x => rfl
+    | opt h x => exact congrArg Array.ofFn (funext fun i => by simp only [Opt.getWith_starts])
     | gen h tag x y =>
       simp only [ValsB.rowsImpl_eq x, ValsB.rowsImpl_eq y, Arr.rowsImpl_eq tag]
       refine congrArg Array.ofFn (funext fun i => ?_)

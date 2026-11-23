@@ -62,14 +62,11 @@ and the kernels' `blockStarts` are one decode (`blockStarts_get`), as in `foRBit
 theorem Opt.isNul_eq_false {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) :
     x.isNul i = false ↔ (foRNuls n x.enc)[i.1]? = some 0 := by
   have hw := x.wf
-  unfold Opt.isNul
+  unfold Opt.isNul Opt.isNulWith
   cases hc : x.enc with
   | foR md pk =>
     rw [hc] at hw; simp only [Enc.WF] at hw
-    have hb : i.1 / Column.blk md ≤ Column.nblk md :=
-      Nat.le_of_lt (Nat.div_lt_of_lt_mul (Nat.lt_of_lt_of_le i.2 hw.2.2.1))
-    have hs : Column.foRNul md pk #[] i = Column.foRNul md pk (Column.blockStarts md) i := by
-      unfold Column.foRNul; simp [Verify.blockStarts_get md hb, Verify.blockStarts_get md (Nat.le_refl _)]
+    have hs := foRNul_starts md pk i
     simp only [hs, foRNuls, Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some]
     cases Column.foRNul md pk (Column.blockStarts md) i <;> simp
   | _ => simp [foRNuls, i.2]
@@ -94,7 +91,8 @@ theorem Opt.get_ofArr {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin n.toN
     (Opt.ofArr x).get i = some (x.get i) := by
   have hn : (Opt.ofArr x).isNul i = false := (Opt.isNul_eq_false _ i).2 (foRNuls_plain x.wf x.plain i.2)
   by_cases hg : t = .general
-  · subst hg; simp only [Opt.get, hn, Bool.false_eq_true, if_false]; rfl
+  · subst hg; have hn' : (Opt.ofArr x).isNulWith #[] i = false := hn
+    simp only [Opt.get, Opt.getWith, hn', Bool.false_eq_true, if_false]; rfl
   · rw [Opt.get_ne _ i hg, hn, Arr.get_ne x i hg]; rfl
 
 /-- **`Arr.get_eq_of_raw` with nulls**: two `Opt`s whose rows `i`, `j` carry one null flag (`foRNuls`) and, off a null,

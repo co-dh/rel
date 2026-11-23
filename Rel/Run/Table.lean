@@ -112,12 +112,15 @@ def readCol : (o : Bool) → (t : QAtomicType) → (path : String) → IO ((n : 
     in no file. A summand's
     unowned rows are `Opt.fill`'s, so two unowned rows read alike (`ColB.OwnedOn`). -/
 def leafFill {t : QAtomicType} {n : USize} (path : String) (own : Array Bool) (x : Opt t n) : IO Unit := do
-  let starts := match x.enc with | .foR md _ => Column.blockStarts md | _ => #[]
-  for i in [0:n.toNat] do
+  let starts := x.enc.starts
+  for h : i in [0:n.toNat] do
     unless own.getD i true do
       let bad : Option String := match x.enc with
+        -- the one offending element is read through `Opt.get`, never the whole column decoded for a message
         | .foR md pk => if Column.foRNul md pk starts i then none
-            else some s!"the {repr t} word {(Ext.Enc.raw t n x.enc).getD i 0}"
+            else some (match Opt.get x ⟨i, h.2.1⟩ with
+              | some y => s!"the {repr t} word {QAtomicType.word t y}"
+              | none => "a null")
         -- `Opt.filler` of a general leaf is its `default`, which no own file holds (`readOpt` refuses the column), so a
         -- `.gen` payload reaching here is no read
         | .gen _ => some "a general payload, which the own format does not hold"
@@ -143,13 +146,13 @@ def fillBad (dir : String) : {o : Bool} → {A : Obj} → {n : USize} → String
   | _, .sum _ _, n, p, own, s => match ValsB.view s with
     | .opt _ x => leafFill (file dir p) own x
     | .gen _ tag x y => do
-      let raw := Ext.Enc.raw .u1 n tag.enc
+      let tags := Arr.rowsImpl tag
       for i in [0:n.toNat] do
-        if !own.getD i true && raw.getD i 0 != 0 then
-          throw (IO.userError s!"{file dir (p ++ ".tag")}: row {i} is not owned by the side and its tag is {raw.getD i 0}, \
+        if !own.getD i true && tags.getD i false then
+          throw (IO.userError s!"{file dir (p ++ ".tag")}: row {i} is not owned by the side and its tag is `true`, \
             not `false`: a dense sum's tag is `false` where its side owns no row")
-      let owns (v : UInt64) := (Array.range n.toNat).map fun i => own.getD i true && raw.getD i 0 == v
-      fillBad dir (p ++ ".l") (owns 0) x; fillBad dir (p ++ ".r") (owns 1) y
+      let owns (v : Bool) := (Array.range n.toNat).map fun i => own.getD i true && tags.getD i false == v
+      fillBad dir (p ++ ".l") (owns false) x; fillBad dir (p ++ ".r") (owns true) y
 
 /-- The inverse of `cols`: the side of object `A` at ownership `o` mapped from the files `cols` names under the prefix `p`
     in `dir`, with its count and the file the count was read from. The columns of one side have its count; a list's
