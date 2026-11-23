@@ -1021,7 +1021,9 @@ def Registry.call? (r : Registry) : MetaM (Lean.Name → Option Once) := do
     let ctors := (← getConstInfoInduct ``Tm).ctors
     let ctor (i : Nat) := toString ((ctors.getD i .anonymous).componentsRev.headD .anonymous)
     let keys : Std.HashMap Lean.Name Lean.Name :=
-      (r.calls.map (·.2) ++ r.again.toList).foldl (fun m o => m.insert o.const o.key) {}
+      -- a derived converse is named `const ++ conv` (`convOf`), so its key is the key's `conv`
+      (r.calls.map (·.2) ++ r.again.toList).foldl (fun m o =>
+        (convOf o).elim (m.insert o.const o.key) fun cv => (m.insert o.const o.key).insert cv (o.key ++ `conv)) {}
     let key (c : Lean.Name) := keys.getD c c
     for o' in r.again do
       let some o := r.calls.lookup o'.key
