@@ -229,6 +229,9 @@ structure Prim where
       values at `sumAtoms`, a unary float verb's at `floatAtoms`): an object of any other atom is refused as `succ`
       refuses one (`Elab.numObj`), never left to fail inside its definition. -/
   num : List (String × List QAtomicType) := []
+  /-- The atoms of its `num` variables at which it has no definition and runs as itself (`sum`'s `floatAtoms`: it
+      rounds once, which no fold of `plus` does); a theorem's hypothesis about its definition reads this field. -/
+  native : List QAtomicType := []
   /-- Its object variables whose canon order it reads as their value order (`sums`'s positions): each must be an
       object of an atom stored as an integer (`QAtomicType.intOrd`), refused by name elsewhere (`Elab.build`). -/
   ord : List String := []
@@ -252,7 +255,7 @@ def lengthRow : Prim :=
     prelude := `Rel.Programs.prelude.length,
     aop := .ok `Freyd.Alg.RelSet.ListRel.length }
 def sumRow : Prim :=
-  { sym := "sum", num := [("ℕ", sumAtoms)], sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
+  { sym := "sum", num := [("ℕ", sumAtoms)], native := floatAtoms, sig := ([], .list (.var {} "ℕ"), .var {} "ℕ"),
     prelude := `Rel.Programs.prelude.sum,
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a

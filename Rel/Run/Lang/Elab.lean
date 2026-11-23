@@ -2245,7 +2245,7 @@ def zeroTm {t : QAtomicType} (h : t.ordNum.isSome) (u : Tm (.atom t) (.atom t)) 
 inductive DfnCut : {A B : Obj} → Tm A B → Type
   | length {E : Obj} (u₀ u : Tm .long .long) :
     DfnCut (A := .arr E) (B := .long) (.fold (zeroTm (t := .i64) rfl u₀) (.comp .outl (Tm.cut1 succRow u)))
-  | sum {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ floatAtoms) (u₀ u : Tm (.atom t) (.atom t)) :
+  | sum {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ sumRow.native) (u₀ u : Tm (.atom t) (.atom t)) :
     DfnCut (A := .arr (.atom t)) (B := .atom t) (.fold (zeroTm h u₀) (Tm.cut2 (arithRow "plus") u))
   -- at a float atom `sum` rounds once (`Lang.sumDen`), no fold of `plus` (rounding each step): its definition is
   -- the row cut to the universe, `F(u) sum u`
@@ -2285,14 +2285,11 @@ def DfnCut.fused {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
   | .est Q => .est (pairTest Q)
   | .front Q => .front (pairTest Q)
 
-/-- The row cut to its universe: `sum`'s tests its elements in it first (`F(u)`), as `plus` does; a row whose law
-    needs no universe, itself. -/
+/-- The row cut to its universe, read off its signature (`Prim.cut`): `sum`'s tests its elements in it first
+    (`F(u)`), as `plus` does; a row whose law needs no universe, itself. -/
 def DfnCut.cut {A B : Obj} {d : Tm A B} : DfnCut d → Tm A B
-  | .length _ u => .comp (.prim lengthRow) u
-  | @DfnCut.sum t _ _ _ u => .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
-    (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
-  | @DfnCut.fsum t u => .comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom t)) (.arr (.atom t))) u)
-    (.prim sumRow : Tm (.arr (.atom t)) (.atom t))) u
+  | .length _ u => Prim.cut lengthRow _ _ [("ℕ", ⟨_, u⟩)]
+  | .sum _ _ _ u | .fsum u => Prim.cut sumRow _ _ [("ℕ", ⟨_, u⟩)]
   | .flat R => .arg (.prim flatRow) R
   | .foldI e S => .arg (.arg (.prim foldIRow) e) S
   | .dom R => .dom R
@@ -2311,7 +2308,7 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
      | .arr (.atom t), .atom t', u =>
        if h : t' = t then by
          obtain rfl := h
-         exact if hf : t' ∈ floatAtoms then some ⟨_, .fsum u⟩
+         exact if hf : t' ∈ sumRow.native then some ⟨_, .fsum u⟩
            else if ho : t'.ordNum.isSome then some ⟨_, .sum ho hf u u⟩ else none
        else none
      | _, _, _ => none),
