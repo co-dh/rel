@@ -1,32 +1,28 @@
-nullband3g1 handoff (budget reached; tool calls ran out before the Lean downstream)
+nullband3g2 handoff
 
-DONE and green (commit 2872d28 + the KernelSpec/Scan.lean commit after it):
-- Rel/Kernel/Scan.lean: `kscan ... (es : List (USize × Enc))`; new `kscanStream op es pre post` (op = .first, no chain,
-  more than one source => the sources are ONE stream, their rows must sum to n); new `kscanCols` (returns the folded
-  columns and the first column's null flags); lock-step requires every source to hold n rows and no null (`noNul "kscan"`);
-  a stream writes `nulMap` of the flags carried like the words (kscanRow .first). Imports Rel.Kernel.Scatter. Checked by
-  `lean` with the worktree's built olean (Rel.Kernel.Scan built via cap lake build, exit 0).
-- crate/src/scan.rs: `Col::Cat` (segments (start,end,col)), `has_nul`, `first_nul`, `nul_bits`, `kscan(.., es: &[(usize,B)], ..)`;
-  tests `kscan_streams_its_sources` (nulls in neither/x/y/both, rev, seg) pass; `cargo test --features std` 83 passed;
-  `sh crate/build.sh syms` exit 0 (9 + 4 disjoint). `unit` no longer has the `first` arm (first over two sources is a stream).
-- crate/src/ffi/scan.rs: es is a list of pairs (boxed USize, Enc).
-- Rel/KernelSpec/Scan.lean: new `mapM_pairs`, `kscanCols_lock`; `raw_kscanChain`, `raw_kscan`, `kscan_last` take
-  `hs : kscanStream op es pre post = false` and es : List (USize × Enc); the file compiles with `lean`.
+GREEN and committed (branch worktree-agent-a676a6321cbdd9688): RelKernel (with ScanTest incl. stream pairs), RelRun.
 
-NOT DONE:
-1. Rel/KernelSpec/Closure.lean `kscan_closed` (line ~239): es is now List (USize × Enc); add hypothesis
-   `hN : ∀ p ∈ es, hasNul p.2 = false` and prove `hasNul r.1 = false`. The proof's splits changed like raw_kscanChain's
-   (extra `split` for `kscanCols` giving `c cs' ns`, and one for `nl`, as in raw_kscanChain); the `nul` is
-   `if ns.any (· != 0) then nulMap .. else .empty`; need `ns.any (· != 0) = false`: ns = #[] when no stream
-   (`kscanCols_lock`), and in a stream the foldl of `foRNuls p.1 p.2`, all zero when `hasNul p.2 = false` — that needs
-   a lemma without WF (`hasNul_flags` needs WF): `nulAt md b` is `128 ≤ widthByte md b`, check `widthByte` is 0 past nblk.
-   Then `wordsFoR_closed`/`hasNul_wordsFoR` apply as today. The kscan answer is `Enc.foR (Coc.encode 8 .. nul)` = `wordsFoR ws nul`.
-2. Rel/KernelSpec/KGather (4 uses of kscan / raw_kscan): migrate `es` ↦ `es.map (n, ·)` and add the `hs` hypothesis
-   (op is concrete and not `.first`, or one source: `by decide`/`rfl` on `kscanStream`).
-3. Rel/Kernel/ScanTest.lean: migrate every `decide`/`#guard` pair (`kscan ... [a, b]` ↦ `[(n, a), (n, b)]`; any `.first` with
-   two sources is now a stream error unless the counts sum to n) and add pairs for the stream: nulls in first only, second
-   only, both, neither (build the sources with `wordsFoR ws nul`, expect `wordsFoR ws' nul'` of the concatenation).
-4. Rel/Lang/EmitC.lean `mapB` (line ~112) and Rel/Run/Lang/Plan.lean `scanB` (line ~595): each source in `listB` must be
-   a pair `ctorB 0 #[nReg, srcReg] #[]` (a scalar register in an object field is boxed, see Plan.lean line 35); `n` is the
-   same n register. Other callers of kscan (build error list will name them) — `lake build RelKernel RelRun Rel`.
-5. Gates not run: `lake build RelKernel` (only Rel.Kernel.Scan was built), then `RelRun Rel`; list the red ones.
+Design changes beyond the brief:
+- `kscan_closed` takes `hS : kscanStream .. = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2`
+  (only a stream reads its sources' null flags); `kscan_lock_closed (hs : kscanStream .. = false)` is the no-hypothesis form;
+  `kscanStream_ne (h : op ≠ .first)`; macro `lockstep` (Closure.lean) = the autoParam tactic proving `kscanStream .. = false`.
+- `colMap_closed/plain`, `colArr`, `scanArr` take `hs : kscanStream .. = false` (autoParam `by lockstep` on colArr/scanArr);
+  `colPrefix_closed/plain` take `ho : op ≠ .first := by decide`.
+- `.first` over two sources with no chain is now a STREAM, so `colMap/colArr .first n a a [] []` (identity map) no longer
+  works: replaced by one-source `scanArr .first false .i64 .i64 n Option.none [(n, a)]` (Run/List `Vals.cells`, Run/Where
+  `positions`), `Arr.pos n` (Run/Struct `injCols`), `kscan .first .. [(n, tag.enc)]` (Run/Cols `tagCount`).
+- Plan.srcB n x = `ctorB 0 #[n, x] #[]`; scanB and EmitC.mapB use it.
+
+RED (`lake build Rel`, log /data/tmp/nb3g3.log):
+1. Rel/RepCanon.lean:192-204 (`raw_kscan`-style lemma over `kscan ... [a, b]`, now `[(n, a), (n, b)]`; the proof uses `mapM_chain`
+   that must become `mapM_pairs`/`kscanCols_lock`, as in KernelSpec/Scan `raw_kscanChain`); 7 errors, all from the es type.
+2. Runtime `#guard` failures (value false, no message): Lang/Test/Kern9 (kernT9.ok), TestFrameCols (frameCols.ok,
+   frameDescribe.failures), TestFrameSchema, TestGenericN (paramNT/paramPT), TestFrameStat (frameStatT, frameStatFloatT),
+   TestPivotDisk (datesT floatsT symsT ...), TestFrameApp, TestFrameBench, TestFrameQuery, TestFrameScale, TestFrameUnbounded.
+   Likely one cause: lock-step `kscan` now REFUSES a null source row (`noNul "kscan"` in `kscanCols`) where it used to read
+   the null word, e.g. `stepCols` `ne a` / `colMap .ne n x x` over a nullable column (Run/Arith), or a count mismatch
+   (`es.any (·.1 != n)`). Next step: run one failing test's pipeline and print the `Except` error text (the first message
+   names it: "kscan: row k is null, and a null names no row" or "a source holds a row count other than n"), then fix the
+   caller to read the column through the null-aware path, not the kernel.
+3. Not done: Concat (`Arr.concat/Opt.concat` as one stream `kscan .first`, deleting scatter+add, `shiftCol`, null refusal);
+   Rel/KernelSpec/KGather had no kscan use in this tree (module builds).
