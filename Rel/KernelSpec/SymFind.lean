@@ -1,13 +1,18 @@
-import Rel.KernelSpec.FindMember
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Group
-import Rel.Kernel.Sort
-import Rel.KernelSpec.Codes
-import Rel.Kernel.Value
-import Rel.Kernel.Search
-import Rel.KernelSpec.Assign
-import Rel.Kernel.Need
-import Rel.Kernel.Structural
+module
+
+public import Rel.KernelSpec.FindMember
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Group
+public import Rel.Kernel.Sort
+public import Rel.KernelSpec.Codes
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+public import Rel.KernelSpec.Assign
+public import Rel.Kernel.Need
+public import Rel.Kernel.Structural
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.SymFind` the Rel kernels reach; `Rel.Verify.SymFind` imports it. -/
 
@@ -28,8 +33,6 @@ theorem idAt_packIds_idWidthOf {nd n i : Nat} {f : Nat → Nat} (hnd : nd ≤ 2 
 
 
 
-/-- info: 'Rel.Verify.idAt_packIds_idWidthOf' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms idAt_packIds_idWidthOf
 
 end Rel.Verify
 

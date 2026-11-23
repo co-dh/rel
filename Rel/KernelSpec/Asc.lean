@@ -1,6 +1,11 @@
-import Rel.Kernel.Asc
-import Rel.KernelSpec.Scatter
-import Rel.KernelSpec.Search
+module
+
+public import Rel.Kernel.Asc
+public import Rel.KernelSpec.Scatter
+public import Rel.KernelSpec.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `asc`'s laws (design §4, `asc_sorted` and `asc_perm`), on the words `Enc.raw` reads from its arguments: the
 permutation is a stable lexicographic sort of the rows by their order codes, and each answer column is its input
@@ -590,14 +595,5 @@ theorem ascOrd_atom {t : QAtomicType} {f : UInt64 → UInt64} (ht : ascOrd t = s
 
 end Rel.Verify
 
-/-- info: 'Rel.Verify.asc_perm' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.asc_perm
 
-/-- info: 'Rel.Verify.kasc_pos_first' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.kasc_pos_first
 
-/-- info: 'Rel.Verify.kasc_pos_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.kasc_pos_key

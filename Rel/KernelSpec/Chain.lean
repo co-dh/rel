@@ -1,8 +1,13 @@
-import Rel.KernelSpec.FindMember
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Coc
-import Rel.Kernel.Value
-import Rel.Kernel.Elementwise
+module
+
+public import Rel.KernelSpec.FindMember
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Value
+public import Rel.Kernel.Elementwise
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Chain` the Rel kernels reach; `Rel.Verify.Chain` imports it. -/
 

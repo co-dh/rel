@@ -1,6 +1,11 @@
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Value
-import Rel.Kernel.Scan
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Value
+public import Rel.Kernel.Scan
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Distinct` the Rel kernels reach; `Rel.Verify.Distinct` imports it. -/
 
@@ -32,10 +37,6 @@ theorem elemsW_foldl {E : Type} (g : E → UInt64) (w : Nat) (hw0 : 0 < w) (hw :
   rw [elemsW_foldl_mod g w hw0 hw l]
   exact List.map_congr_left fun e he => by rw [Nat.mod_eq_of_lt (hg e he), UInt64.ofNat_toNat]
 
-/-- info: 'Rel.Verify.elemsW_foldl_mod' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms elemsW_foldl_mod
-#print axioms elemsW_foldl
 
 end Rel.Verify
 

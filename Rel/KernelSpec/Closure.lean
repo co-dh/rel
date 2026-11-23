@@ -1,8 +1,13 @@
-import Rel.KernelSpec.Alp
-import Rel.KernelSpec.Scan
-import Rel.KernelSpec.Scatter
-import Rel.KernelSpec.KGather
-import Rel.KernelSpec.KSeen
+module
+
+public import Rel.KernelSpec.Alp
+public import Rel.KernelSpec.Scan
+public import Rel.KernelSpec.Scatter
+public import Rel.KernelSpec.KGather
+public import Rel.KernelSpec.KSeen
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The closure law (PLAN 6.14): a column a kernel answers is a column, `Ext.Enc.WF` at the type and length its body
 determines, and a column every kernel reads, `Enc.Valid`. Every one of the five answers `wordsFoR` of its words

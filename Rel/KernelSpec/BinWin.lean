@@ -1,12 +1,17 @@
-import Rel.KernelSpec.Search
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Group
-import Rel.KernelSpec.Ids
-import Rel.Kernel.Sort
-import Rel.Kernel.Value
-import Rel.Kernel.Search
-import Rel.KernelSpec.Distinct
-import Rel.Kernel.Scan
+module
+
+public import Rel.KernelSpec.Search
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Group
+public import Rel.KernelSpec.Ids
+public import Rel.Kernel.Sort
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+public import Rel.KernelSpec.Distinct
+public import Rel.Kernel.Scan
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.BinWin` the Rel kernels reach; `Rel.Verify.BinWin` imports it. -/
 
@@ -42,4 +47,3 @@ theorem binBytes_last (w : USize) (float signed : Bool) (hay keys : ByteArray) (
 
 
 end Rel.Verify
-#print axioms Rel.Verify.binBytes_last

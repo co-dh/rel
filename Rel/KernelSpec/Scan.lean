@@ -1,6 +1,11 @@
-import Rel.Kernel.Scan
-import Rel.KernelSpec.Ids
-import Rel.KernelSpec.Search
+module
+
+public import Rel.Kernel.Scan
+public import Rel.KernelSpec.Ids
+public import Rel.KernelSpec.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 open Rel.Ext
 
@@ -257,6 +262,3 @@ theorem kscan_last {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.
 
 end Rel.Kernel
 
-/-- info: 'Rel.Kernel.raw_kscan' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Kernel.raw_kscan

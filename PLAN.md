@@ -1736,6 +1736,10 @@ relk 线程池空转 2 526（与前三项重叠）。
   非 module 的检查文件；(b) 证明 `unfold`/`rfl` 用到 core 未 expose 的定义（`Array.range`、`Nat.fold`：
   `KernelSpec.Encoding` 52、1141、1580 行），要改用 core 的引理；(c) `Kernel.Dep.Monadic` import `KernelSpec.Elementwise`；
   (d) `RepSums`、`Lang.DfnLaw` 依赖 `Run.Lang.Elab`（meta 代码），不在本项范围。
+- ▶ perf9c `Rel.KernelSpec.*` 与 `Kernel.Dep.Monadic` 已是 module（(a)(b)(c) 解决）。`#print axioms` 的 pin 移到非 module 的
+  `Rel/KernelSpec/AxiomsTest.lean`（`make axioms` 只查 `Rel.Core`，KernelSpec 可用 Classical，所以不能交给它）。
+  测量：改 `KernelSpec.Encoding` 一个证明，KernelSpec/Kernel 中只重建 Encoding 本身，但 non-module 的 `Run.*`、`Rep*`、
+  `Lang.*` 照旧全部重建：157 个模块、197 s。所以剩下的瓶颈是 (d)：`Run.*` 与 `Rel` 库要迁到 module。
 
 ## Baseline
 

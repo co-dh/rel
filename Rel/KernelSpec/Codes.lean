@@ -1,11 +1,16 @@
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Group
-import Rel.Kernel.Need
-import Rel.Kernel.Sort
-import Rel.Kernel.Coc
-import Rel.Kernel.Scan
-import Rel.Kernel.Value
-import Rel.Kernel.Search
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Group
+public import Rel.Kernel.Need
+public import Rel.Kernel.Sort
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Scan
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Codes` the Rel kernels reach; `Rel.Verify.Codes` imports it. -/
 
@@ -53,11 +58,5 @@ theorem groupIn_firstsBy {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (m
 
 
 
-/-- info: 'Rel.Verify.groupOf_iff' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms groupOf_iff
-/-- info: 'Rel.Verify.lt_idWidthOf' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms lt_idWidthOf
 
 end Rel.Verify

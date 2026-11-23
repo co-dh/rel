@@ -1,10 +1,15 @@
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Sort
-import Rel.Kernel.Coc
-import Rel.Kernel.Scan
-import Rel.Kernel.Value
-import Rel.KernelSpec.Raw
-import Rel.Kernel.Elementwise
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Sort
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Scan
+public import Rel.Kernel.Value
+public import Rel.KernelSpec.Raw
+public import Rel.Kernel.Elementwise
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Group` the Rel kernels reach; `Rel.Verify.Group` imports it. -/
 
@@ -203,11 +208,6 @@ variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (offs b : ByteArray)
 
 end Segs
 
-#print axioms groupOf_eq_iff
-#print axioms rows_groupOf
-#print axioms groups_congr
-/-- info: 'Rel.Verify.idsCap_packIds' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms idsCap_packIds
 
 end Rel.Verify
 
@@ -245,6 +245,5 @@ section Segs
 variable (op : Coc.Over) (cls : UInt8) (nul : Int64) (offs b : ByteArray)
 
 end Segs
-#print axioms ids_get
 
 end Rel.Verify

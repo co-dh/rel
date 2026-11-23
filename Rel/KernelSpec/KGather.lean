@@ -1,5 +1,10 @@
-import Rel.Kernel.Gather
-import Rel.KernelSpec.Asc
+module
+
+public import Rel.Kernel.Gather
+public import Rel.KernelSpec.Asc
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 -- `Asc` for `ascGrade_spec`, the law of the composition's sort step; it imports `Scatter`'s `scatterWords_spec`
 
 /-! `gather`'s laws (design §4: `out[i] = e[ix[i]]`), on the words `Enc.raw` reads from its arguments:

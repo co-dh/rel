@@ -1,10 +1,15 @@
-import Rel.KernelSpec.Encoding
-import Rel.KernelSpec.Elementwise
-import Rel.Kernel.Coc
-import Rel.KernelSpec.Distinct
-import Rel.Kernel.Structural
-import Rel.Kernel.Value
-import Rel.Kernel.Elementwise
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.KernelSpec.Elementwise
+public import Rel.Kernel.Coc
+public import Rel.KernelSpec.Distinct
+public import Rel.Kernel.Structural
+public import Rel.Kernel.Value
+public import Rel.Kernel.Elementwise
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.EwEnc` the Rel kernels reach; `Rel.Verify.EwEnc` imports it. -/
 
@@ -62,28 +67,10 @@ theorem decode_of_encode8 {x m p : ByteArray} {n : USize} (h : Coc.encode 8 x = 
 
 end Rel.Verify
 
-/-- info: 'Rel.Verify.elemsW_decode_encode' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.elemsW_decode_encode
 
-/-- info: 'Rel.Verify.width_bounds' does not depend on any axioms -/
-#guard_msgs in
-#print axioms Rel.Verify.width_bounds
 
-/-- info: 'Rel.Verify.toUSize_toNat_of_le8' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.toUSize_toNat_of_le8
 
-/-- info: 'Rel.Verify.eq_of_ite_some' does not depend on any axioms -/
-#guard_msgs in
-#print axioms Rel.Verify.eq_of_ite_some
 
-/-- info: 'Rel.Verify.eq_of_ite_none' does not depend on any axioms -/
-#guard_msgs in
-#print axioms Rel.Verify.eq_of_ite_none
 
-/-- info: 'Rel.Verify.decode_of_encode8' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Rel.Verify.decode_of_encode8
 
 

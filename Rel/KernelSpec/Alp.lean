@@ -1,6 +1,11 @@
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Coc
-import Rel.Kernel.Value
+module
+
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Alp` the Rel kernels reach; `Rel.Verify.Alp` imports it. -/
 
@@ -114,7 +119,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   -- a patch list is written only with patching on, so below `2 ^ 64` elements
   have h64e : exc.size ≠ 0 → exc.size < 2 ^ 64 := fun h => by
     have hen : exc.size ≤ n := by
-      rw [← hexc, ← Array.length_toList, Array.toList_filter, toList_range]
+      rw [← hexc, ← Array.length_toList, Array.toList_filter, Array.toList_range]
       exact Nat.le_trans (List.length_filter_le _ _) (by simp)
     by_cases hn64 : n < 2 ^ 64
     · exact Nat.lt_of_le_of_lt hen hn64
@@ -125,7 +130,7 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
         | nil => rfl
         | cons j t =>
           have hj : j ∈ exc.toList := hl ▸ List.mem_cons_self
-          rw [← hexc, Array.toList_filter, toList_range, List.mem_filter, List.mem_range] at hj
+          rw [← hexc, Array.toList_filter, Array.toList_range, List.mem_filter, List.mem_range] at hj
           have h2 := hj.2
           simp only [Kernel.Coc.patched, ← hlst, decide_eq_false hn64, Bool.false_and, Bool.or_false] at h2
           rw [hbg j hj.1, hin j hj.1 hpl] at h2; exact absurd h2 Bool.false_ne_true

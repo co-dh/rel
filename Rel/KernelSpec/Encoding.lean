@@ -1,5 +1,10 @@
-import Rel.Kernel.Coc
-import Rel.Kernel.Value
+module
+
+public import Rel.Kernel.Coc
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Encoding` the Rel kernels reach; `Rel.Verify.Encoding` imports it. -/
 
@@ -30,25 +35,8 @@ theorem getElem?_push {α : Type} (a : Array α) (v : α) (i : Nat) :
     · rw [Array.getElem?_push_lt h, Array.getElem?_eq_getElem h]
     · rw [Array.getElem?_eq_none (by rw [Array.size_push]; omega), Array.getElem?_eq_none (by omega)]
 
-/-- `Array.range` is `Array.ofFn`, whose loop is private; it is reached here as any `g` with the
-loop's two equations, which hold by `rfl` since the loop is structural. -/
-theorem toList_range (n : Nat) : (Array.range n).toList = List.range n := by
-  have key : ∀ (g : Array Nat → (i : Nat) → i ≤ n → Array Nat), (∀ acc h, g acc 0 h = acc) →
-      (∀ acc i (h : i + 1 ≤ n), g acc (i + 1) h = g (acc.push (n - i - 1)) i (Nat.le_of_succ_le h)) →
-      ∀ i (h : i ≤ n) acc, acc.toList = List.range acc.size → acc.size + i = n →
-        (g acc i h).toList = List.range n := by
-    intro g h0 hs i
-    induction i with
-    | zero => intro h acc ha hn; rw [h0, ha, ← hn]; rfl
-    | succ i ih =>
-      intro h acc ha hn
-      rw [hs, ih _ _ (by rw [Array.toList_push, ha, Array.size_push, List.range_succ, show n - i - 1 = acc.size by omega])
-        (by rw [Array.size_push]; omega)]
-  unfold Array.range Array.ofFn
-  exact key _ (fun _ _ => rfl) (fun _ _ _ => rfl) n (Nat.le_refl n) _ rfl (Nat.zero_add n)
-
 theorem getElem_range (n i : Nat) (h : i < (Array.range n).size) : (Array.range n)[i] = i := by
-  rw [← Array.getElem_toList]; simp only [toList_range, List.getElem_range]
+  rw [← Array.getElem_toList]; simp only [Array.toList_range, List.getElem_range]
 
 /-- The fold behind `blockStarts` carries `blockStart` at the block it has reached, one entry per
 block reached and `0` before any, which is the invariant all three parts of the statement are. -/
@@ -494,7 +482,7 @@ theorem blockOf_bounds (B w n b : Nat) (x : ByteArray) (i : Nat)
   simp only [← Array.foldl_toList]
   have hm : Kernel.Coc.keyAt w x i ∈ ((Array.range (min (b * B + B) n - b * B)).map
       fun j => Kernel.Coc.keyAt w x (b * B + j)).toList := by
-    simp only [Array.toList_map, toList_range, List.mem_map, List.mem_range]
+    simp only [Array.toList_map, Array.toList_range, List.mem_map, List.mem_range]
     exact ⟨i - b * B, by omega, by congr 1; omega⟩
   generalize ((Array.range (min (b * B + B) n - b * B)).map fun j => Kernel.Coc.keyAt w x (b * B + j)).toList = l
     at *
@@ -726,7 +714,7 @@ theorem planBlock_bounds (lg w n : Nat) (pl : Bool) (x : ByteArray) (b : Nat) (h
       fun j => Kernel.Coc.keyAt w x (b * 2 ^ lg + j)).toList,
       ∃ j, b * 2 ^ lg ≤ j ∧ j < b * 2 ^ lg + 2 ^ lg ∧ j < n ∧ Kernel.Coc.keyAt w x j = k := by
     intro k hk
-    simp only [Array.toList_map, toList_range, List.mem_map, List.mem_range] at hk
+    simp only [Array.toList_map, Array.toList_range, List.mem_map, List.mem_range] at hk
     obtain ⟨j, hj, rfl⟩ := hk
     exact ⟨b * 2 ^ lg + j, by omega, by omega, by omega, rfl⟩
   have hmn : (Kernel.Coc.blockOf (2 ^ lg) w n b x).1 ∈ ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
@@ -739,7 +727,7 @@ theorem planBlock_bounds (lg w n : Nat) (pl : Bool) (x : ByteArray) (b : Nat) (h
       split
       · exact ha
       · exact hk
-    simp only [Array.toList_map, toList_range, List.mem_map, List.mem_range]
+    simp only [Array.toList_map, Array.toList_range, List.mem_map, List.mem_range]
     exact ⟨0, by omega, rfl⟩
   obtain ⟨hf, hd, hp⟩ := planOf_bounds pl ((Array.range (min (b * 2 ^ lg + 2 ^ lg) n - b * 2 ^ lg)).map
       fun j => Kernel.Coc.keyAt w x (b * 2 ^ lg + j)) (Kernel.Coc.blockOf (2 ^ lg) w n b x).1
@@ -812,7 +800,7 @@ theorem planBlock_nul (lg w n : Nat) (pl : Bool) (x nul : ByteArray) (b : Nat)
   have hmem : ∀ i, b * 2 ^ lg ≤ i → i < b * 2 ^ lg + 2 ^ lg → i < n → Column.bitAt nul i = false →
       Kernel.Coc.keyAt w x i ∈ ks.toList := fun i h1 h2 h3 h4 => by
     subst hks
-    simp only [Array.toList_map, Array.toList_filter, toList_range, List.mem_map, List.mem_filter, List.mem_range]
+    simp only [Array.toList_map, Array.toList_filter, Array.toList_range, List.mem_map, List.mem_filter, List.mem_range]
     exact ⟨i - b * 2 ^ lg, ⟨by omega, by simp [Nat.add_sub_cancel' h1, h4]⟩, by rw [Nat.add_sub_cancel' h1]⟩
   generalize ks.getD 0 0 = a0
   simp only [← Array.foldl_toList]
@@ -990,7 +978,7 @@ theorem excBlob_reads (word : UInt64) (B : Nat) (hB : 0 < B ∧ B ≤ 65536) (w 
     rw [this, Nat.mod_eq_of_lt (bitsAt_lt _ _ _ hw), UInt64.ofNat_toNat]
   have hS2' : S2 = (List.range (nb + 1)).foldl (init := ByteArray.empty)
       (fun acc b => Column.pushBits acc (exc.filter (· < b * B)).size.toUInt64 8) := by
-    rw [← hS2, ← Array.foldl_toList, toList_range]
+    rw [← hS2, ← Array.foldl_toList, Array.toList_range]
   have W2 := foldl_pushBits (fun b => (exc.filter (· < b * B)).size.toUInt64) 8 (by decide)
     (List.range (nb + 1)) ByteArray.empty
   rw [← hS2', e0] at W2
@@ -1133,7 +1121,8 @@ theorem pack_blockStart {E : Type} (M : ByteArray) (B : Nat) (hB : Column.blk M 
     (bs.foldl f (ByteArray.empty, 0)).1.size = Column.blockStart M (Column.nblk M) ∧
     ∀ i (h : i < bs.size), ∀ k < (Kernel.Coc.packRes B (d bs[i]) (Q i bs[i])).size,
       (bs.foldl f (ByteArray.empty, 0)).1[Column.blockStart M i + k]? = (Kernel.Coc.packRes B (d bs[i]) (Q i bs[i]))[k]? := by
-  have h := pack_fold0 f (fun m e => Kernel.Coc.packRes B (d e) (Q m e)) hf (Column.blockStart M) bs.toList rfl
+  have h := pack_fold0 f (fun m e => Kernel.Coc.packRes B (d e) (Q m e)) hf (Column.blockStart M) bs.toList
+    (by rw [Column.blockStart, Nat.fold_zero])
     (fun c h => by rw [packRes_size, blockStart_succ, hB, hd c (by simpa using h)]; simp)
   rw [Array.foldl_toList] at h
   simp only [Array.length_toList, Array.getElem_toList] at h
@@ -1240,14 +1229,14 @@ theorem foROpt_encode (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw0 :
       (Array.range n) = exc
   have hexs : exc.toList.Pairwise (· < ·) := by
     -- by index, not `List.pairwise_lt_range`, which carries `Classical.choice`
-    subst hexc; rw [Array.toList_filter, toList_range]
+    subst hexc; rw [Array.toList_filter, Array.toList_range]
     exact (List.pairwise_iff_getElem.2 fun i j _ _ h => by rw [List.getElem_range, List.getElem_range]; exact h).filter _
   have hmem : ∀ j, j ∈ exc.toList ↔ j < n ∧ (!Column.bitAt nul j && Kernel.Coc.patched lst (blk (j / 2 ^ lg)).2.2.2.1
       (blk (j / 2 ^ lg)).2.2.2.2 (Kernel.Coc.keyAt w x j)) = true := by
-    intro j; subst hexc; rw [Array.toList_filter, toList_range, List.mem_filter, List.mem_range]
+    intro j; subst hexc; rw [Array.toList_filter, Array.toList_range, List.mem_filter, List.mem_range]
     exact and_congr_right fun h => by rw [hbg j h]
   have hen : exc.size ≤ n := by
-    subst hexc; rw [← Array.length_toList, Array.toList_filter, toList_range]
+    subst hexc; rw [← Array.length_toList, Array.toList_filter, Array.toList_range]
     exact Nat.le_trans (List.length_filter_le _ _) (by simp)
   have hnil : exc.size = 0 → exc.toList = [] := fun h => by
     rw [← Array.length_toList] at h; exact List.eq_nil_of_length_eq_zero h
@@ -1572,7 +1561,7 @@ theorem resAt_lane (P : ByteArray) (c j : Nat) (hc : c ≤ 8) :
 theorem fold_eq_foldl_range {α : Type} (n : Nat) (g : Nat → α → α) (a : α) :
     Nat.fold n (fun i _ acc => g i acc) a = (List.range n).foldl (fun acc i => g i acc) a := by
   induction n with
-  | zero => rfl
+  | zero => rw [Nat.fold_zero, List.range_zero, List.foldl_nil]
   | succ n ih => simp only [Nat.fold_succ, ih, List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
 
 /-- **`idAt` inverts `packIds` at a whole-byte lane** `8c`, for an id the lane holds. -/
@@ -1696,5 +1685,3 @@ theorem idAt_packIds {w n i : Nat} {f : Nat → Nat}
 
 end Rel.Verify
 
-/-- info: 'Rel.Verify.idAt_packIds' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms Rel.Verify.idAt_packIds

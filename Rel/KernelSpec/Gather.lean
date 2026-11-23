@@ -1,12 +1,17 @@
-import Rel.KernelSpec.FindMember
-import Rel.KernelSpec.Encoding
-import Rel.Kernel.Coc
-import Rel.KernelSpec.Distinct
-import Rel.Kernel.Structural
-import Rel.KernelSpec.Where
-import Rel.Kernel.Value
-import Rel.Kernel.Search
-import Rel.Kernel.Elementwise
+module
+
+public import Rel.KernelSpec.FindMember
+public import Rel.KernelSpec.Encoding
+public import Rel.Kernel.Coc
+public import Rel.KernelSpec.Distinct
+public import Rel.Kernel.Structural
+public import Rel.KernelSpec.Where
+public import Rel.Kernel.Value
+public import Rel.Kernel.Search
+public import Rel.Kernel.Elementwise
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Verify.Gather` the Rel kernels reach; `Rel.Verify.Gather` imports it. -/
 
@@ -96,20 +101,12 @@ theorem bitAt_packOf (n : Nat) (f : Nat → Bool) (j : Nat) (hj : j < n) : Colum
 
 
 
-/-- info: 'Rel.Verify.elemsW_decode' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms elemsW_decode
 
 
 
-/-- info: 'Rel.Verify.elemsW_bytesOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms elemsW_bytesOf
 
 
-/-- info: 'Rel.Verify.byteOf_bit' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms byteOf_bit
 
-/-- info: 'Rel.Verify.bitAt_packOf' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms bitAt_packOf
 
 
 
