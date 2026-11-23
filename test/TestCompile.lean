@@ -54,9 +54,9 @@ partial def reuse (prev : List (Nat × Res)) {A B : Obj} (t : Tm A B) : Tm A B :
 /-- `t` with each numbered part read as slot `f k` of another numbering, `k` its own (`Tm.numberKey` at `f = id`):
     a call's body is entered, as `Tm.number` numbers it. -/
 partial def renumber (f : Nat → Nat) {A B : Obj} (t : Tm A B) : Tm A B := match t with
-  | .share k _ => .share (f k) .zero
-  | .call ks c os b => .call ks c os (renumber f b)
-  | .callCv ks c c' os b u => .callCv ks c c' os (renumber f b) u
+  | .call ks c cv os b => match c.slot? with
+    | some k => .slot (f k) .zero
+    | none => .call ks c cv os (renumber f b)
   | t => Id.run (t.mapMSz fun c _ => pure (renumber f c))
 
 /-- What one program may cost this gate, in ms: its constant evaluated, its re-read and every run of its code. The gate
