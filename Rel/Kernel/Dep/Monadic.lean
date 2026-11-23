@@ -1,8 +1,13 @@
-import Std.Data.HashSet
-import Rel.Kernel.Dep.Val
-import Rel.KernelSpec.Elementwise
-import Rel.Kernel.Eval.Val
-import Rel.Kernel.Value
+module
+
+public import Std.Data.HashSet
+public import Rel.Kernel.Dep.Val
+public import Rel.KernelSpec.Elementwise
+public import Rel.Kernel.Eval.Val
+public import Rel.Kernel.Value
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The part of `Rel.Dep.Monadic` the Rel kernels reach; `Rel.Dep.Monadic` imports it. -/
 
