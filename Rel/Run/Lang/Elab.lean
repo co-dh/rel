@@ -2234,6 +2234,16 @@ def dfns : List (String × ((A B : Obj) → List Res → Tm B B → Option ((d :
          obtain ⟨rfl, rfl, rfl⟩ := h; exact some ⟨_, .front Q⟩ else none
      | _, _ => none)]
 
+/-- The converses a program states as theorems `c° = c'` (no parameters, no hypotheses), `(c, c')` in order: the
+    definitions' source of `convOf`, read off the declarations, never kept as a second list. -/
+def convs (prog : Program) : List (String × String) :=
+  prog.filterMap fun | .«theorem» _ _ [] (.conv _ (.name _ c)) (.name _ c') true _ [] _ => some (c, c') | _ => none
+
+/-- The name of the converse of `c`: a row's `Prim.conv`, or a definition's `c'` from `cs = convs prelude`
+    (§5.2 of `doc/tm-minimal-design.zh.typ`); `none` where the converse is no named one. Not `Expand.convOf`,
+    which builds a converse body. -/
+def convOf (cs : List (String × String)) (c : String) : Option String := (Prim.find? c).bind (·.conv) <|> cs.lookup c
+
 section Build
 
 variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
