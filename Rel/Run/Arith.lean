@@ -155,6 +155,14 @@ def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String 
       arithOvf s X b
       Tab.keep (k := .prod (.atom t) (.atom t')) (v := .atom u) ⟨n, X, w⟩ b
     else .error s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
+  | some k, .prod (.opt (.atom .i64)) (.opt (.atom .i64)), .opt (.atom .i64), X =>
+    match nulVerb k with
+    | some (o, _, _) => do
+      let r ← kscan o false .i64 .i64 n none [(n, (X.1 : Opt .i64 n).enc), (n, (X.2 : Opt .i64 n).enc)]
+      match Enc.wf? .i64 n r.1 with
+      | some ⟨h⟩ => pure ⟨n, X, (Opt.mk r.1 h : Opt .i64 n)⟩
+      | none => .error s!"{s}: the answer column is not {n} well-formed elements of i64"
+    | none => .error s!"{s} on 1+i64: the verb has no order on null (`Op.nulFold`)"
   | some _, _, _, _ => .error s!"{s} runs from a pair of one number object to it"
   | none, _, _, _ => .error s!"{s}: no value verb"
 

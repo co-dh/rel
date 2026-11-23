@@ -364,7 +364,7 @@ end Tab
 /-- **`nanFlag` of an answer `w`** at a number atom `t`: the flag is a bit, set exactly where `w`'s word is not
 `2^63`, and then `w`'s element is that word read at `t`. -/
 theorem nanFlag_spec {t : QAtomicType} {n : USize} {w : Arr t n} {keep : Enc} (hf : t.storeFmt?.isSome)
-    (hv : Kernel.Enc.Valid n w.enc) (h : nanFlag n w.enc = .ok keep) (i : Fin n.toNat) :
+    (h : nanFlag n w.enc = .ok keep) (i : Fin n.toNat) :
     wd n keep i < 2 ∧ ∀ v, (wd n keep i ≠ 0 ∧ w.get i = v) ↔
       (wd n w.enc i ≠ 0x8000000000000000 ∧ v = QAtomicType.ofBits t (wd n w.enc i)) := by
   obtain ⟨x, y, u, W, hx, -, hu, hW, hk⟩ := (colMap_chain h).2.2.2 i.1 i.2
@@ -378,7 +378,7 @@ theorem nanFlag_spec {t : QAtomicType} {n : USize} {w : Arr t n} {keep : Enc} (h
   subst hW
   rw [if_pos rfl] at hk
   obtain ⟨hg, -, -⟩ := Tab.storeFmt_ne hf
-  obtain ⟨a, ha, -, ew⟩ := Arr.get_raw_atom w hv hg i
+  obtain ⟨a, ha, -, ew⟩ := Arr.get_raw_atom w hg i
   have ew' : w.get i = QAtomicType.ofBits t a := by rw [ew, Tab.of_atomOfBits a hg hf]
   rw [ha, Option.getD_some] at hk
   have hka : wd n keep i = if nulWord ≠ a then 1 else 0 := by
@@ -426,7 +426,7 @@ theorem fstepCols_spec {t : QAtomicType} {k : UInt8} {n : USize} {x y w : Arr t 
       rw [if_neg (by rcases hf with rfl | rfl <;> decide)] at hwi
       simp only [wd, hwi, Option.getD_some]; exact hv0
   obtain ⟨X, Y, hX, hY, hst, hv⟩ := key
-  obtain ⟨h2, hn⟩ := nanFlag_spec (by rcases hf with rfl | rfl <;> decide) hv hkp i
+  obtain ⟨h2, hn⟩ := nanFlag_spec (by rcases hf with rfl | rfl <;> decide) hkp i
   refine ⟨h2, fun v => (hn v).trans ?_⟩
   constructor
   · rintro ⟨h1, rfl⟩; exact ⟨X, Y, _, hX, hY, hst, h1, rfl⟩
@@ -453,7 +453,7 @@ theorem fmapCols_spec {t u : QAtomicType} {o : Op} {n : USize} {x y : Arr t n} {
   obtain ⟨X, X', v, hX, hX', hv, hW⟩ := colMap_widen hf (Tab.storeFmt_ne hu).2.2 hc i hs hn
   have hW' : (Op.ofF64 u).eval 0 v = .ok (wd n w'.enc i) := by
     simpa only [chain, List.foldlM_cons, List.foldlM_nil, bind_pure] using hW
-  obtain ⟨h2, hn⟩ := nanFlag_spec hu (colMap_closed hs hc (Or.inr (nulFree₂ x.plain y.plain))).1 hkp i
+  obtain ⟨h2, hn⟩ := nanFlag_spec hu hkp i
   refine ⟨h2, fun v' => (hn v').trans ?_⟩
   constructor
   · rintro ⟨h1, rfl⟩; exact ⟨X, X', v, _, hX, hX', hv, hW', h1, rfl⟩

@@ -615,8 +615,8 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   rw [hes', ascKeys_append, lexLe_append_of_eq _ _ hcode] at hlex
   have hg : t ≠ .general := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hf
   have hv := (Arr.eq_of_codes x.key.2 hcs1).1
-  obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hv hg (sel i)
-  obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hv hg (sel j)
+  obtain ⟨a, ha, hua, hga⟩ := Arr.get_raw_atom x.key.2 hg (sel i)
+  obtain ⟨b, hb, hub, hgb⟩ := Arr.get_raw_atom x.key.2 hg (sel j)
   simp only [ascKeys, ascKey, nulCodes, nulWords, Arr.plain, Bool.false_eq_true, ↓reduceIte, List.nil_append,
     List.cons_append, lexLe, Array.getElem?_map, ha, hb,
     Option.map_some, Option.getD_some, hf, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true,
