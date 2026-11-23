@@ -228,5 +228,68 @@ theorem mixOp_wf {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.mix
     all_goals simp [Tab.mixOp] at h
   all_goals simp [Tab.mixOp] at h
 
+/-- **The words of `Arr.ofFn t n f`** as the kernels read them: word `i` is `f i` cut to `t`'s `8 * w` bits
+(`raw_encodeAt` of the packing `foldl_pushBits` reads back). -/
+theorem _root_.Rel.Arr.raw_ofFn {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hu : t ≠ .u1 ∧ t.width.isSome)
+    {n : USize} (f : Fin n.toNat → UInt64) (i : Fin n.toNat) :
+    (Enc.raw t n (Arr.ofFn t n f hu).enc)[i.1]? = some (UInt64.ofNat ((f i).toNat % 2 ^ (8 * w))) := by
+  have hw : 0 < w ∧ w ≤ 8 := by cases t <;> simp [QAtomicType.width] at ht ⊢ <;> omega
+  have hf := Verify.foldl_pushBits (fun x : UInt64 => x) w hw.2 (List.ofFn f) .empty
+  simp only [ht, Option.getD_some] at hf
+  simp only [Arr.ofFn, Arr.ofBytes, Ext.Enc.ofBytes, ht, Option.getD_some, Kernel.Coc.encode]
+  change (Enc.raw t n (Enc.foR _ _))[i.1]? = _
+  rw [Verify.raw_encodeAt t w ht hu.1 Column.lgEnc (by decide) _ n
+    (by rw [hf.1]; simp [Nat.mul_div_cancel_left _ hw.1])]
+  have := hf.2.2 i.1 (by simp)
+  simp only [ByteArray.size_empty, Nat.zero_add, List.getElem_ofFn] at this
+  simp [i.2, Nat.mul_comm, this]
+
+/-- **`ymd` keeps `Tab.WF`**: `X` keyed to the day words, `keep`. -/
+theorem ymd_wf {A B : Obj} {n : USize} {X : Vals A n} {t : Tab A B} (h : Tab.ymd X = .ok t) (hX : Vals.WF X) :
+    t.WF := by
+  unfold Tab.ymd at h
+  split at h
+  · exact keep_wf h ⟨hX, trivial⟩
+  · cases h
+
+/-- **`ymd X` denotes `ymdDen`** on the texts `X`: a cell to the day it spells (`Db.Csv.ymd`), no row where it
+spells none. -/
+theorem ymd_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} (h : Tab.ymd X = .ok T) (a : A.El) (b : B.El) :
+    T.Holds a b ↔ (∃ i, X.row i = a) ∧ Lang.ymdDen A B a b := by
+  unfold Tab.ymd at h
+  split at h
+  case h_2 => cases h
+  show _ ↔ _ ∧ (Db.Csv.ymd a).map Int32.ofInt = some b
+  rename_i X
+  have hr : ∀ i : Fin n.toNat,
+      ((Tab.toList (k := .arr (.atom .char)) (v := .one) ⟨n, X, ()⟩).toArray[i.1]?.map (·.1)).getD [] = X.row i := by
+    intro i; simp [Tab.toList, i.2]
+  simp only [Tab.ymd, hr] at h
+  have hf : ∀ i : Fin n.toNat, (Enc.raw .i64 n (Arr.ofFn .i64 n fun j =>
+      if (Db.Csv.ymd (X.row j)).isSome then 1 else 0).enc)[i.1]?.getD 0 =
+      if (Db.Csv.ymd (X.row i)).isSome then 1 else 0 := by
+    intro i; rw [Arr.raw_ofFn rfl]; simp only [Option.getD_some]; split <;> decide
+  have hd : ∀ i : Fin n.toNat, Vals.row (A := .atom .date) (Arr.ofFn .date n fun j =>
+      (Int32.ofInt ((Db.Csv.ymd (X.row j)).getD 0)).toUInt32.toUInt64) i =
+      Int32.ofInt ((Db.Csv.ymd (X.row i)).getD 0) := by
+    intro i
+    rw [Vals.row_atom, Arr.get_word _ rfl, Arr.raw_ofFn rfl]
+    simp only [Option.getD_some, QAtomicType.ofBits]
+    rw [Nat.mod_eq_of_lt (by simpa using (Int32.ofInt _).toUInt32.toNat_lt)]
+    simp
+  rw [keep_holds h (fun i hi => by
+    have := hf ⟨i, hi⟩; dsimp only at this ⊢; rw [this]; split <;> decide)]
+  constructor
+  · rintro ⟨i, hi, rfl, rfl⟩
+    refine ⟨⟨i, rfl⟩, ?_⟩
+    have hi' := hf i ▸ hi
+    show _ = some (Vals.row (A := .atom .date) _ i)
+    rw [hd i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
+  · rintro ⟨⟨i, rfl⟩, hb⟩
+    refine ⟨i, ?_, rfl, ?_⟩
+    · rw [hf i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
+    · show Vals.row (A := .atom .date) _ i = _
+      rw [hd i]; cases hy : Db.Csv.ymd (X.row i) <;> simp_all
+
 end Tab
 end Rel

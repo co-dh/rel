@@ -599,9 +599,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
 - 🔄 df-F3 字符串（dataframe F3）：`Rel/Programs/Frame.lean` 加库定义 `splitOn(s)`（q 的 `vs`，左 fold，最后一段以 `s`
   结尾时切开，多字符分隔符同一条定义、取最左不重叠的匹配）与 `match(T, q, A) ≜ dom(⦇[q, T]⦈ A)`（`T` 是转移关系，
-  DFA 或 NFA）；无新行、无新 kernel；测试 `TestFrameText`。⬜ `parseDate` 停：`(y, m, d) ↦ 天数` 只在 Lean 的
-  `Db.Csv.daysFrom`；owner 选行 `ymd : [C] ⟶ D`（含义 `Db.Csv.ymd`，非 kernel），df-F3b 未做：要 `Tab.ymd`（解码单元格、
-  `Csv.ymd`、写 `date` 列、无像的行丢掉）、`_wf`/`_holds`、`RowCode`/`rowDens`、`prims` 行、`kernRows`、`rowOK_ymd`。
+  DFA 或 NFA）；无新行、无新 kernel；测试 `TestFrameText`。✅ df-F3c `parseDate` 即行 `ymd : [C] ⟶ D`（owner
+  2026-11-23）：`Tab.ymd` 读字节后调 `Db.Csv.ymd`（现也读 `yyyy-mm-dd`，Rust `csv.rs` 同改），`ymdDen`、
+  `ymd_wf`/`ymd_den`（RepCast）、`rowOK_ymd`；relc 按名拒绝。
   ✅ df-F3b `matchAll(T, q, A) ≜ suffix prefix match(T, q, A)`（`TestFrameText`）；✅ df-F3b 字面量中单字符串
   （`Tup.char?`）：`litTy` 给开放对象，上下文是 `char` 处读作 `char`（`litCol`），否则 `settleLit` 定为文本 `[C]`；
   `TestFrameText` 的 DFA 表写 `"0"`…`"9"`。

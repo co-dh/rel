@@ -303,7 +303,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     接受的每个连续片段（`suffix prefix`，与 `contains` 同样形成片段）。字面量里只有一个字符的字符串在 `char` 位置是
     `char`（q 的读法），在其余位置是文本 `[C]`，由上下文决定（`Tup.char?`）], "part"),
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
-    [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate`：F3，停在「日数」一步], "part"),
+    [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate` 即行 `ymd : [C] ⟶ D`（F3）], "full"),
   ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`],
     [`rand(s, x) ≜ ⟨dom(x) $ R, ⊤ s⟩plus mix`；`shuffle(s, x) ≜ dom(x) iasc(rand(s, x)) x`；`sample(s, n, x) ≜ take(n, shuffle(s, x))`；
     `randomSplit(s, p, x)`：抽签 `div 2^10` 小于 `p·2^53` 的行，`randomRest` 是其余行；`kFolds(s, k, x) ≜ ⟨rand(s, x), ⊤ k⟩mod`],
@@ -384,10 +384,9 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     一次、对象变量是刚性的；`obj V from` 只读 `i64` 列（`sym` 列要 `sym` 的字面量对象）；导入的有限对象不能生成。
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   `splitOn`、`match` 是库定义（上表），无新行、无新 kernel；正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
-  仍缺：(1) `parseDate`：数字是 `$` 与 `minus` 的算术、`⦇[0, ⟨π₁ ×10, π₂⟩plus]⦈`，但 `(2024, 1, 15) ↦ 19737` 这条规则只在
-  Lean 的 `Db.Csv.daysFrom`（CSV 读法与日期字面量共用），没有行；在 Rel 里写一遍 Hinnant 公式是同一知识的第二份，
-  所以待定：加行 `ymd : [C] ⟶ D`（含义 `Db.Csv.ymd`，非 kernel），或写一份公式并由测试钉住；
-  owner 已选行 `ymd : [C] ⟶ D`（含义即 `Db.Csv.ymd`，非 kernel），未做。
+  `parseDate` 是行 `ymd : [C] ⟶ D`（owner 2026-11-23 决定）：含义是 `Db.Csv.ymd` 的图（`yyyy.mm.dd` 或 `yyyy-mm-dd`），
+  非 kernel：`Tab.ymd` 在 Lean 里读单元格的字节，日数规则只此一份，CSV 读法、日期字面量与该行共用；读不成日期的
+  文本没有像。
 - *F4 atom 覆盖。* 列可以在声明的 atom 对象上（`obj F : f64`、`obj D : date`）：只比较、排序、匹配值的运算
   （`sortBy` `topK` `distinct` `aggregate` 的组与 `min` `max`、join）照常运行（`TestFrameTyped`）。`arith` 与 `<` `≤`
   在 `f64` `f32` 上（`TestFloatArith`）；prim `sum` 在 `i64` `f64` 上，按位置从左加（`TestFrameTyped.sumFloatT`）。

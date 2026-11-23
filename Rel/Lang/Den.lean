@@ -335,6 +335,7 @@ def asc : RowCode := ⟨"asc", fun σ => (.long, σ₁ σ)⟩
 def sums : RowCode := ⟨"sums", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def flat : RowCode := ⟨"flat", fun σ => (.prod (σ₁ σ) (σ₂ σ), σ.getD 2 .long)⟩
 def cast : RowCode := ⟨"$", fun σ => (σ₁ σ, σ₂ σ)⟩
+def ymd : RowCode := ⟨"ymd", fun σ => (.arr (σ₁ σ), σ₂ σ)⟩
 def foldI : RowCode := ⟨"foldI", fun σ => (.prod (σ₁ σ) (.arr (σ.getD 2 .long)), σ₂ σ)⟩
 def dom : RowCode := ⟨"dom", fun σ => (σ₁ σ, σ₁ σ)⟩
 def ran : RowCode := ⟨"ran", fun σ => (σ₂ σ, σ₂ σ)⟩
@@ -342,6 +343,12 @@ def nil : RowCode := ⟨"nil", fun σ => (σ₁ σ, .arr (σ₂ σ))⟩
 def est : RowCode := ⟨"est", fun σ => (.arr (σ₁ σ), σ₁ σ)⟩
 def front : RowCode := ⟨"front", fun σ => (.arr (σ₁ σ), .arr (σ₁ σ))⟩
 end RowCode
+
+/-- `ymd` at `[char] ⟶ date`: the graph of `Db.Csv.ymd` on the text's chars (a partial function, the formula not
+    copied), the day at `date`'s carrier; `𝟘` at any other objects. -/
+def ymdDen : (A B : Obj) → Core.Rel (Obj.El A) (Obj.El B)
+  | .arr (.atom .char), .atom .date => fun cs d => (Db.Csv.ymd cs).map Int32.ofInt = some d
+  | _, _ => fun _ _ => False
 
 /-- `$` at `A ⟶ B`: the graph of the embedding of `A`'s atom in `B`'s (`QAtomicType.embed`), a partial function that
     never rounds; `𝟘` where a side is no atom. -/
@@ -421,6 +428,8 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
    ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩,
+   -- a text to the day it spells (`ymdDen`)
+   ⟨ymd, fun σ _ => ymdDen (.arr (σ₁ σ)) (σ₂ σ)⟩,
    ⟨foldI, fun σ => Sem.two (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ₂ σ))
       (X₂ := .prod (.prod (σ₁ σ) (σ₂ σ)) (σ.getD 2 .long)) (Y₂ := .prod (σ₁ σ) (σ₂ σ)) foldIDen⟩,
    -- the prelude's `star(R) ≜ μX : 𝟙 ∪ R X`, its body as `Tm.den` reads the definition's `μ`

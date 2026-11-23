@@ -259,13 +259,15 @@ def mdays (y m : Nat) : Nat :=
 def dayText (z : Int) : List UInt8 :=
   let (y, m, d) := civil z; pad 4 y.toNat ++ 46 :: pad 2 m ++ 46 :: pad 2 d
 
-/-- `yyyy.mm.dd`, q's spelling (also the Rel literal, `Elab.qForm`), a valid day of
-    years 0001–9999, as days since 1970-01-01. -/
+/-- `yyyy.mm.dd`, q's spelling (also the Rel literal, `Elab.qForm`), or `yyyy-mm-dd` (ISO 8601, which q's `"D"$`
+    reads too: one separator, written twice), a valid day of years 0001–9999, as days since 1970-01-01. The one
+    reading of a day: the CSV reader, the date literal and the row `ymd` (`Tab.ymd`) all call it. -/
 def ymd (f : List UInt8) : Option Int :=
   match f with
   | [a, b, c, d, s, e, g, s', h, i] =>
     let (y, m, dd) := (natOf [a, b, c, d], natOf [e, g], natOf [h, i])
-    if s = 46 ∧ s' = 46 ∧ [a, b, c, d, e, g, h, i].all isDig ∧ 1 ≤ y ∧ 1 ≤ m ∧ m ≤ 12 ∧ 1 ≤ dd ∧ dd ≤ mdays y m
+    if (s = 46 ∨ s = 45) ∧ s' = s ∧ [a, b, c, d, e, g, h, i].all isDig ∧ 1 ≤ y ∧ 1 ≤ m ∧ m ≤ 12 ∧ 1 ≤ dd ∧
+      dd ≤ mdays y m
     then some (daysFrom y m dd) else none
   | _ => none
 
