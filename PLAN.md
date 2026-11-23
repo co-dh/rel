@@ -1804,6 +1804,20 @@ relk 线程池空转 2 526（与前三项重叠）。
   测量：`GenSound` 的一个证明内加注释，只重建 `GenSound` 1 个模块（18 s），整个命令约 27 s；`RepSums` 同样只重建自身
   （2.5 s，命令约 5 s）。perf9e 之前 `Lang.*` 都是 non-module，改任何证明会重建整个下游。
 
+- ○ B5b（`doc/tm-minimal-design.zh.typ` §3.1/§3.2/§3.3、批次表 B5；未动代码，只记锚点）：
+  - 二元行 `at : [β]×ν ⟶ β`（q 的索引），`at(k) ≜ ⟨𝟙, ⊤ k⟩ at`；删 `Tm.atPos` 与 `Pre.atPos`。`Tm.atPos` 的使用处
+    （index `use_site`）：`Den`（`den`、`den_congr`、`den_pol_spine`、`den_linIn`、`den_local`）、`ConvSpec`（`convTm_den`、
+    `convTm_instObj_den`）、`GenSound`（`GenHyp`、`monoOK`、`pol_of_fv`、`number_spine`、`gen_wf_spine` 用 `Tab.atPos_wf`、
+    `gen_sound_spine` 用 `GenK.atPos_sound`）、`Run.Lang.{Tm,TmGen,Expand,Elab}`、`EmitC`（`Plan.nodeB`）；
+    `Tab.atPos`（`Run/Power`）→ `GenK.atPos`（`Run/Lang/GenK`）、`atPos_holds`（`RepTabDiv`）、`atPos_wf`（`RepWF`）、
+    `RepChecks.TabDiv`。新行要 `prims` 一行、`rowDens` 一句、`rowsProved` 的 `RowOK`、EmitC 的 plan recipe
+    （check-159：新行没有 plan recipe，relc 报错）、decode 允许表重生成。
+  - `lt`：定义 `dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)`，`Tm.lt_den` 由 `lamDen` 的 `Pairwise B.lt` 得；fused 行
+    `Tab.cmpPairs`（`Div`），定理把行与定义相连。依赖二元行 `at`。
+  - 未验证项 (2)：`ascDen`（`Rel/AscOrder.lean:41`）= `⟦(dom(P) Λ(> P) length)°⟧` 无证明；证出前 `asc` 留在
+    `unproved`（`Prim` 的 `asc` 行注释同）。证明依赖 `lt`（`>` 是任意 object 上的序）。
+  - 次序：`at` 行 → 迁 `atPos` 用户 → `lt` 定义与 fused 行定理 → `asc` 定义与 `ascDen` 定理。每步一个 agent，opus 做证明。
+
 ## Baseline
 
 compile-diff 只是差分测试：生成的代码对 `Tm.gen`，gate = 0 个不同。pin（`test/compile-diff.json`）已删（W.12），
