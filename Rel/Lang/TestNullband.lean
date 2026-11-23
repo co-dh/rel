@@ -90,7 +90,7 @@ def vText (f : Nat → String) (k : Nat) : String := "v\n" ++ String.join ((List
     pure t
   let cat (x y : Nat → String) : IO (Except String ((n : USize) × Vals vS.obj n)) := do
     let (a, b) := (← rd x "/a.csv", ← rd y "/b.csv")
-    pure ((⟨_, ·⟩) <$> Vals.concat (a.n + b.n) a.val b.val)
+    pure ((⟨_, ·⟩) <$> ValsB.concat (a.n + b.n) a.val b.val)
   let full (i : Nat) := toString (7 * i)
   match ← cat full (fun i => full (5000 + i)) with
   | .ok ⟨_, v⟩ =>

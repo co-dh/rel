@@ -10,7 +10,7 @@ public import Rel.RepTabDiv
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
+/-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `ValsB.gather`ed, `ValsB.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row
 (`Vals.none_wf`), so a cell of its output is a cell of an input. These are the base the switch of `Rel.Wf`'s `tab`
 case to `Tab.WF` stands on: each op's `_wf` lemma there is one of these. -/
@@ -113,7 +113,7 @@ theorem compTabMat_key_wf {R : Tab A B} {n g w ka M : USize} {o o' ra ra' : Enc}
 
 theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h : Tab.inlConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
-  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
   · obtain ⟨rfl, rfl⟩ := Obj.band_some hb
     simp only [bind, Except.bind] at h
     okSplit
@@ -122,16 +122,16 @@ theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
   okSplit
-  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hXw) (conv_wf ‹_› (inl_wf ‹_› hX.1))
+  all_goals exact canon_wf h ⟨Vals.gather_wf ‹_› hXw, Vals.gather_wf ‹_› hX.1⟩
 
 theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h : Tab.inrConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
-  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
   · -- a band column: both sides are gathers, whose `Vals.WF` is `Vals.gather_wf`'s, and a band side's is `True`
     unfold Tab.inrConvBand at h
     obtain ⟨rfl, rfl⟩ := Obj.band_some hb
     simp only [bind, Except.bind, pure, Except.pure, cast_eq, eq_mpr_eq_cast] at h
-    -- UNBUILT: the splits are kscan, whereCol, Vals.gather, Opt.gather, Arr.of; adjust to the goal state
+    -- UNBUILT: the splits are kscan, whereCol, ValsB.gather, Opt.gather, Arr.of; adjust to the goal state
     repeat (split at h; · cases h)
     cases h
     exact ⟨Vals.gather_wf ‹_› (by simp only [Vals.WF, Vals.view_ofOpt]), trivial⟩
@@ -139,7 +139,7 @@ theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
   okSplit
-  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hXw) (conv_wf ‹_› (inr_wf ‹_› hX.2))
+  all_goals exact canon_wf h ⟨Vals.gather_wf ‹_› hXw, Vals.gather_wf ‹_› hX.2.1⟩
 
 /-! ### The power operators that build no cell -/
 
@@ -215,7 +215,7 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     rename_i y2 h2
     cases h; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
   | .sum _ _, _, s, _, h, hx => by
-    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [Vals.pack, hv] at h
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩ <;> simp only [Vals.pack, hv] at h
     · simp only [pure, Except.pure, Except.ok.injEq] at h; cases h; exact hx
     simp only [bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
@@ -224,7 +224,9 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     rename_i y' h2
     cases h
     simp only [Vals.WF, hv] at hx
-    simp only [Vals.WF, Vals.view_ofGen]; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
+    simp only [Vals.WF, Vals.view_ofGen]
+    exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2.1, fun i hi => by rw [Vals.pack_row y h2 hx.2.1]; exact hx.2.2.1 i hi,
+      fun i hi => by rw [Vals.pack_row x h1 hx.1]; exact hx.2.2.2 i hi⟩
   | .arr B, n, ⟨m, lo, up, f⟩, y, h, hx => by
     simp only [Vals.pack] at h
     split at h; · cases h
