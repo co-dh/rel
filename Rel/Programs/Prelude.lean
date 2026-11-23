@@ -55,6 +55,8 @@ rel_program prelude where
 
     prefix : [α] ⟶ [α] ≜ cat° π₁                                  -- B&dM p.126 prefix: x ⧺ y ↦ x
     suffix : [α] ⟶ [α] ≜ cat° π₂                                  -- B&dM p.127 suffix, dual to prefix: x ⧺ y ↦ y
+    inits : [α] ⟶ [[α]] ≜ Λ(prefix)                                -- the prefixes of a list, shortest first
+    setify : [α] ⟶ [α] ≜ Λ(∋)                                       -- the elements of a list as a set: sorted, no repeats
     concat : [[α]] ⟶ [α] ≜ ⦇[nil, cat]⦈                    -- B&dM p.129
     subseq : [α] ⟶ [α] ≜ ⦇[nil, snoc ∪ π₁]⦈                -- B&dM p.123, on snoc lists
     tails : [α] ⟶ [[α]] ≜ ⦇[nil τ, ⟨⟨π₁,π₂head⟩cons,π₂⟩cons]⦈ʳ   -- B&dM p.127 tails = ⦇[wrap nil, extend]⦈
