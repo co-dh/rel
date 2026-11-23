@@ -365,8 +365,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   A.1 的拒绝都有报错，`Rel/Lang/TestIO.lean` 每条一个 `#guard_msgs`；GenSoundTest 1298/1298（145 个程序）。
   未做/与 design.md 不同：被 import 的程序带 input 被拒（已做（ff73e19，合并 328b653）：importer 继承 import 的 input，
   `TestIO.importT`）；带参数或 test 的定义提到 input 被拒（把 input 作参数
-  传入）；运行时定义仍 emit 已有的参数化常量（未做：`Expand.walk` 对运行时定义仍把 `.defn` 放进 `pend`，由 `Expand.emit`
-  经 `addConst` 写出参数化常量，`n.io` 又按 `Once` 的 body 经 `Tm.gen` 另算一份；I3 未改成只留 kernel 一份）；sym/general 的 CSV 拒绝无法测（不能声明这种
+  传入）；运行时定义只 emit 一份（I3b ✅：参数化常量的 `addConst` 已在 7.3c 删除；运行时定义的 body 只是 registry 里的 `Once`，
+  由 `n.io` 经 `Tm.gen` 运行一次；`TestIO` 末尾的 `run_cmd` 数 `tradesIO` 的 `Tm` 常量，只有 share 槽 `c.t<k>`）；sym/general 的 CSV 拒绝无法测（不能声明这种
   object）；compile-diff 只在 main 跑（`main-only`）。
   I5 ✅（分支 `io-i5`）：CSV 的 Lean 模型，无 extern。`Rel/Kernel/Db/Csv.lean`：`csvWords cols b`、`csvText cols n ws`、
   逐 atom 的读写（`readAtom`/`fmtAtom`，float 精确舍入 + 最短文本，date/datetime 以 1970-01-01 为原点）、C.4 的拒绝；

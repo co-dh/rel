@@ -633,3 +633,22 @@ rel_program twoLibT where
     input b : N ⟶ S from "/data/tmp/rel-test-io-lib/two/b"
     common : N ⟶ S ≜ a ∩ b
     output common to "/data/tmp/rel-test-io-lib/one/common"
+
+-- a run-time definition (`big`, `pxOf`: both read the input `t`) is emitted once: its body is the registry's `Once`,
+-- run by `tradesIO.io`; no constant of its own beside the `Decl` it is declared as. The constants of `Tm` type under the
+-- program are its share-table slots `c.t<k>` and nothing else (each numbered term, `big`'s body included, is one `Tm`
+-- inside `io`'s code, not a constant), and each registered `Once` of the program is a `Decl`, never a `Tm`.
+open Lean in
+run_cmd Elab.Command.liftCoreM do
+  let env ← getEnv
+  let tmC := env.constants.map₂.toList.filterMap fun (c, i) =>
+    if (`Rel.Lang.TestIO.tradesIO).isPrefixOf c && i.type.getAppFn.constName? == some ``Rel.Lang.Tm then some c else none
+  let slots := (List.range 5).map fun k => `Rel.Lang.TestIO.tradesIO.c ++ Name.mkSimple s!"t{k}"
+  unless tmC.toArray.qsort (·.toString < ·.toString) == slots.toArray do
+    throwError "tradesIO emits the `Tm` constants {tmC}, not just the share slots {slots}"
+  let reg := Rel.Lang.Expand.relRegistry.getState env
+  for (_, o) in reg.calls do
+    if (`Rel.Lang.TestIO.tradesIO).isPrefixOf o.const then
+      let some i := env.find? o.const | throwError "the `Once` constant {o.const} is declared nowhere"
+      unless i.type.getAppFn.constName? == some ``Rel.Lang.Decl do
+        throwError "the run-time definition {o.const} is emitted as {i.type}, a second copy of its body"
