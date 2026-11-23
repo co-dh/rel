@@ -359,13 +359,16 @@ theorem arithOvf_keep {s : String} {n : USize} {X : Vals (.prod .long .long) n} 
     have ef := (colMap_raw hf).2.2.2 j hj
     simp only [Op.eval, Except.ok.injEq] at e1 e2 ez ea1 enk enz ea2 ef
     simp only [wd]; rw [← ef, ← ea1, ← ea2, ← enk, ← enz, ← e1, ← e2, ← ez]
+  have bit2 : ∀ c : UInt64, c < 2 → c = 0 ∨ c = 1 := fun c h => by
+      have := UInt64.lt_iff_toNat_lt.1 h; simp at this
+      exact (by omega : c.toNat = 0 ∨ c.toNat = 1).imp UInt64.toNat_inj.1 UInt64.toNat_inj.1
   have hfb : ∀ j < n.toNat, wd n f j < 2 := fun j hj => by
     rw [row j hj]
-    have hk : wd n keep j = 0 ∨ wd n keep j = 1 := by have := hb j hj; bv_omega
+    have hk : wd n keep j = 0 ∨ wd n keep j = 1 := bit2 _ (hb j hj)
     rcases hw (nulWord != wd n X.1.enc j) with e1 | e1 <;> rcases hw (nulWord != wd n X.2.enc j) with e2 | e2 <;>
       rcases hw (0 == wd n X.2.enc j) with e3 | e3 <;> rcases hk with e4 | e4 <;> rw [e1, e2, e3, e4] <;> decide
   refine Classical.byContradiction fun hk1 => hT0 ?_
-  have hk0 : wd n keep i = 0 := by have := hb i i.2; bv_omega
+  have hk0 : wd n keep i = 0 := (bit2 _ (hb i i.2)).resolve_right hk1
   have hf1 : wd n f i ≠ 0 := by
     rw [row i i.2, hk0]
     simp [Op.w, Ne.symm h1, Ne.symm h2, Ne.symm h3, bne_iff_ne, beq_iff_eq]
@@ -419,14 +422,64 @@ theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {
       · rfl
       · rename_i hn
         have hNP : NP = 0 := by rw [hp3] at hn; revert hn; split <;> simp_all
-        refine (hp4 hNP).trans ?_; revert hp1; cases Op.min.eval _ _ <;> simp [bind, Except.bind, chain, Op.eval] <;> exact fun h => h.symm
+        refine (hp4 hNP).trans ?_; revert hp1
+        cases Op.min.eval _ _ <;> simp [bind, Except.bind, chain, Op.eval] <;> exact fun h => (Except.ok.inj h).symm
     rw [hpf] at hq1; rw [hd0] at hq2
     rw [show chain ([] : List (Op × UInt64)) = (pure : UInt64 → Except String UInt64) from rfl, bind_pure] at hq1
     simp only [rdFill, hd0, bne_self_eq_false, Bool.false_eq_true, if_false, imax, Except.ok.injEq] at hq1
+    -- both operands non-null: the answer word is `d`'s, `Ew.intStep` of the operands
+    have hnn : rdNul n x.enc i = 0 → rdNul n y.enc i = 0 →
+        (wd n d i).toInt64 = Ew.intStep k Alg.nul (wd n x.enc i).toInt64 (wd n y.enc i).toInt64 := fun hX hY => by
+      have hfx : wd n x'.enc i = wd n x.enc i := by rw [fillNulCol_row x.wf hx' i, hX]; rfl
+      have hfy : wd n y'.enc i = wd n y.enc i := by rw [fillNulCol_row y.wf hy' i, hY]; rfl
+      obtain ⟨hb2, hsp⟩ := hspec i i.2
+      rw [hfx, hfy] at hsp
+      have hc := hc1r i i.2
+      obtain ⟨u, v, m, e, hu, hv', hm, he, hde⟩ := hdr i i.2
+      cases hu; cases hv'
+      simp only [Op.eval, Except.ok.injEq] at hc hm
+      simp only [chain, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure, Except.pure,
+        Except.ok.injEq] at he
+      have hdv : wd n d i = nulWord - (nulWord - wd n W.enc i) * wd n keep i := by
+        simp only [wd, hde, if_neg (by decide : QAtomicType.i64 ≠ .u1), Option.getD_some]; rw [← he, ← hm, hc]
+      have bit2 : ∀ c : UInt64, c < 2 → c = 0 ∨ c = 1 := fun c h => by
+        have := UInt64.lt_iff_toNat_lt.1 h; simp at this
+        exact (by omega : c.toNat = 0 ∨ c.toNat = 1).imp UInt64.toNat_inj.1 UInt64.toNat_inj.1
+      have s1 : ∀ a b : UInt64, a - (a - b) * 1 = b := fun a b => by grind
+      have s0 : ∀ a b : UInt64, a - (a - b) * 0 = a := fun a b => by grind
+      rcases bit2 _ hb2 with hk0 | hk1
+      · rw [hdv, hk0, s0]
+        refine Classical.byContradiction fun hne => ?_
+        have hnul : Alg.nul = nulWord.toInt64 := rfl
+        have hsd : Lang.stepDen k ((wd n x.enc i).toInt64, (wd n y.enc i).toInt64)
+            (Ew.intStep k Alg.nul (wd n x.enc i).toInt64 (wd n y.enc i).toInt64) := by
+          have hX' : (wd n x.enc i).toInt64 ≠ Alg.nul := fun h => hne (by
+            rw [h]; rcases hk with rfl | rfl | rfl <;> simp [Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+              Verify.Ew.intStep_mul, hnul])
+          have hY' : (wd n y.enc i).toInt64 ≠ Alg.nul := fun h => hne (by
+            rw [h]; rcases hk with rfl | rfl | rfl <;> simp [Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+              Verify.Ew.intStep_mul, hnul])
+          by_cases hy0 : wd n y.enc i = 0
+          · rw [hy0]
+            rcases hk with rfl | rfl | rfl <;>
+              simp (config := {decide := true}) [Lang.stepDen, Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+                Verify.Ew.intStep_mul, Verify.Ew.intStep_idiv, hX'] <;>
+              first | done | exact (Classical.em _).symm | (intro h; exact hX' (by rw [h]; decide))
+          · have hw1 := arithOvf_keep hov (fun j hj => (hspec j hj).1) i
+              (by rw [hfx]; intro h; exact hX' (by rw [h]; rfl)) (by rw [hfy]; intro h; exact hY' (by rw [h]; rfl))
+              (by rw [hfy]; exact hy0)
+            rw [hk0] at hw1; exact absurd hw1 (by decide)
+        obtain ⟨hk', -⟩ := (hsp _).2 hsd
+        exact hk' hk0
+      · rw [hdv, hk1, s1]
+        exact ((hsp _).1 ⟨by rw [hk1]; decide, rfl⟩).1
+    have hqe : (Opt.mk q.1 hz : Opt .i64 n).enc = q.1 := rfl
     rcases rdNul_bit n x.enc i with hX | hX <;> rcases rdNul_bit n y.enc i with hY | hY <;>
       simp only [hX, hY, Op.eval, Except.ok.injEq] at hp2 <;> subst hp2 <;>
-      simp only [Op.eval, Except.ok.injEq] at hq2 <;> subst hq2 <;> simp (config := {decide := true}) at hp3
-    all_goals done
+      simp only [Op.eval, Except.ok.injEq] at hq2 <;> subst hq2 <;> simp (config := {decide := true}) at hp3 <;>
+      simp (config := {decide := true}) only [hp3] at hq3 hq4 <;>
+      simp (config := {decide := true}) [hX, hY, hq3, hqe, optWord]
+    show (wd n q.1 i).toInt64 = _; rw [hq4 trivial, ← hq1]; exact hnn hX hY
   constructor
   · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, rz i⟩
   · rintro ⟨⟨i, rfl⟩, hw⟩; exact ⟨i, rfl, nulStep_fun (rz i) hw⟩
