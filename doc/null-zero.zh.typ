@@ -86,7 +86,7 @@
 == 语义（先定，再谈 kernel）
 
 - 二元算术 `plus minus times div mod` 在 `1+V` 上是 `V` 上动词的 `1+(−)` 提升：任一操作数是 null，结果是 null。现在的 `noNul "kscan"` 对这些 `Op` 取消。
-- 比较与二元 `max` `min` 不传播，按和的次序 `inl < inr`（架构已定：null 小于每个值）。`max(null, 5) = 5`，`min(null, 5) = null`。见文末待选 A–C。
+- 比较与二元 `max` `min` 不传播，按和的次序 `inl < inr`（架构已定：null 小于每个值）。`max(null, 5) = 5`，`min(null, 5) = null`。见文末（已定 A）。
 - fold（分段 `scan` 的 `sums prds mins maxs fills`）跳过 null（现状 `scanOf … isNull`，q 的 `sum`），不传播。
 
 == "0 × x = 0" 在哪里成立
@@ -120,7 +120,7 @@
   [fold `max`], [自动], [`f + max r`；`max r = 0` ⇔ 全 null ⇔ 结果 null。例：`max r = 6` → 105],
   [fold `min`], [一次减法], [对 `r − 1`（无符号回绕，null 变成最大）取 `min` 再加 1。例：`0, 2^64−1, 5` → `0` → `r = 1` → 100],
   [fold `prd`、`fills`], [掩码], [`m = 0` 的行跳过（现状的 `isNull` 分支）],
-  [二元 `max` `min`], [掩码], [`max`：`(m, v)` 字典序取大；`min` 取小（待选 A）],
+  [二元 `max` `min`], [掩码], [`max`：`(m, v)` 字典序取大；`min` 取小（A）],
   [stream `first`、concat 重定基], [同 frame 自动；换 frame 掩码], [同 `f`：残差零扩展到 `w'`。换成 `f'`：`r' = m·(r + f − f')`。无标志块并入带标志块：`f' ≤ min − 1`，`r' = r + f − f'`],
   [`gather`、`scatter` 的 `last`], [掩码], [按源块 `r' = m·(r + f_src − f_out)`，一遍完成；null 随残差走，Rust 不需要第二遍取标志。`fill` 的格是值],
   [`inl°`、`inr°`、`null`], [—], [带标志的块按 `r ≠ 0` / `r == 0` 取行；无标志的块整块留下 / 整块丢掉],
@@ -148,9 +148,9 @@
 - 顺序：g3、h4 合并 → 一个提交 `nullzero` 改上表的读写两端并重 pin → 之后再按 §4.2 逐个放开算术 `Op` 的 `noNul`（每个 `Op` 一条 `decide` + `#guard`）。
 - 与架构文档：`rel-architecture` §4.2 卡片里"（已撤）null 码移到残差 0"一条恢复为现行决定，"顶残差"各处随 `nullzero` 提交改写。
 
-= 待主人选
+= 已定：A（nullmaxmin 064240d 起实现）
 
 二元 `max` `min` 遇到 null 操作数：
-- *A*（本文采用）按和的次序，同 q 的 `|` `&`：`max(null, 5) = 5`，`min(null, 5) = null`。理由：架构已定 null 小于每个值，`max` `min` 由次序定义。
+- *A*（已定，已实现）按和的次序，同 q 的 `|` `&`：`max(null, 5) = 5`，`min(null, 5) = null`。理由：架构已定 null 小于每个值，`max` `min` 由次序定义。
 - *B* 与算术一样传播：任一为 null 则 null。理由："其它运算同理"。
 - *C* 仍拒绝（`noNul`），等有程序用到再定。
