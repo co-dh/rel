@@ -314,6 +314,15 @@ partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
     return (← ctorB 1 #[lo, hi, ← listB els] #[n, m], ← posB)
   | .sum .. => sumB "asc"
 
+/-- `kseen` over the `n` rows, in `kasc` order, of the columns `es` (each an `AscKey` beside its column, one register):
+    the count `k` of runs of equal rows (the last row's group `+ 1`, a `kscan max` fold), each row's group `g`, each
+    run's first row `f`. -/
+def seenB (n : Nat) (es : List Nat) : Bld (Nat × Nat × Nat) := do
+  let kg ← callK (kernel% Rel.Kernel.kseen) #[n, ← listB es]
+  let g ← nth kg 1 "kseen"
+  let z ← wordsB n 0
+  pure (← lastB n (← nth (← scanB .max .i64 n (some z) [z, g]) 1 "kscan") 1, g, ← nth kg 2 "kseen")
+
 /-- `kasc ≫ kseen` over the `n` rows of the columns `cs`: the count `k` of runs of equal rows (the last row's group
     `+ 1`, a `kscan max` fold), each sorted row's group `g`, each run's first sorted row `f`, the permutation `p`. -/
 def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
@@ -328,11 +337,8 @@ where ascSeenOnB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
   let mut sorted := #[]
   for (k, _) in ks do
     sorted := sorted.push (← ctorB 0 #[k, ← projB l 1 0 .obj] #[]); l ← projB l 1 1 .obj
-  let kg ← callK (kernel% Rel.Kernel.kseen) #[n, ← listB sorted.toList]
-  let g ← nth kg 1 "kseen"
-  let z ← wordsB n 0
-  let k ← lastB n (← nth (← scanB .max .i64 n (some z) [z, g]) 1 "kscan") 1
-  pure (k, g, ← nth kg 2 "kseen", ← nth sp 1 "kasc")
+  let (k, g, f) ← seenB n sorted.toList
+  pure (k, g, f, ← nth sp 1 "kasc")
 
 /-- The `n`-row columns `cs` at the `m` rows `ix` (`Vals.gather`): an array's `lo` and `hi` gathered, its payload
     kept. -/
@@ -1206,10 +1212,68 @@ def cmpOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match cmp
   | some _, _, _ => throw s!"{s} runs on pairs of one number object"
   | none, _, _ => throw s!"{s}: no order"
 
+/-- **`Tab.sumTail`**: the prefix sum `W` of the `n` words `v` within the segments `seg` (one `kscan` from `0`) at the
+    atom `u`, and each row's bad word: at `i64` a wrap (`v`, `W − v` of one sign, `W` of the other) or the null read
+    or made; at `f64` the `fto` `W'` of the IEEE sum not `W`, or a NaN; a `W'` that is neither fails the run. -/
+def sumTailB (what : String) (u : QAtomicType) (n seg v : Nat) : Bld (Nat × Nat) := do
+  let z ← wordsB n 0
+  let test (x : Nat) (o : Kernel.Op) (w : UInt64) : Bld Nat := mapB .first n x x .i64 .i64 [] [(o, w)]
+  match u with
+  | .i64 =>
+    let W ← nth (← scanB .add .i64 n (some seg) [z, v]) 0 "kscan"
+    let sv ← test v .gt 0
+    let d ← mapB .sub n W v
+    let ovf ← mapB .and n (← mapB .eq n sv (← test d .gt 0)) (← mapB .ne n sv (← test W .gt 0))
+    let bad ← mapB .or n ovf (← mapB .or n (← test W .eq nulWord) (← test v .eq nulWord))
+    pure (← mapB .add n W z, bad)
+  | .f64 =>
+    let W ← nth (← scanB .fadd .i64 n (some seg) [z, v]) 0 "kscan"
+    let W' ← mapB (.fto .f64) n W W .f64
+    let ne ← mapB .ne n W' W
+    let nan ← test W' .eq nulWord
+    let (k, _) ← whereB n (← mapB .and n ne (← mapB .not n nan nan))
+    guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
+      s!"{what}: an f64 prefix sum is -0, which no sum of canonical words from +0 makes" #[]
+    pure (W', ← mapB .or n ne nan)
+  | u => throw s!"{what}: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+
+/-- **`Tab.sumOn`** on the `n` cells `X` of the atom `u`: the elements EXPANDed into `(G, i)`, a segment opened at
+    each cell's first element, `sumTailB`; a cell with a bad element (`scatter or`) dropped (`keepB`), the others
+    reading the sum at their last element (`scatter last`, `0` at an empty cell); then `canonT`. -/
+def sumOnB (u : QAtomicType) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
+  let (m, lo, hi, f) ← arrCol "sum" X
+  cellsBoundB "sum" n m
+  let (T, G, i) ← expandB n (← mapB .sub n hi lo)
+  let v ← gatherB T (← mapB .add T (← gatherB T G n lo) i) m (← col1 f)
+  let (W, bad) ← sumTailB "sum" u T (← mapB .first T i i .i64 .i64 [] [(.eq, 0)]) v
+  let badC ← scatterB .or T G bad n
+  let L ← scatterB .last T G W n
+  canonT (← keepB ⟨n, X, [.atom "" u (← mapB .or n L L u)]⟩ (← mapB .not n badC badC))
+
+/-- **`Tab.sumsOn`** on `x : K × P ⟶ u`: `canonT`, `x` checked simple (`seenB` on the whole key has a run per row),
+    the segments the runs of `K` (`seenB` on `K`'s columns, ones scattered to the first rows), `sumTailB`, and a bad
+    word carried to the rest of its key (a segmented `kscan or`), those rows dropped (`keepB`). -/
+def sumsOnB (K : Obj) (u : QAtomicType) (x : TabB) : Bld TabB := funT [x] fun
+  | [x] => do
+    let C ← canonT x
+    let n := C.n
+    let seen (cs : Cols) : Bld (Nat × Nat × Nat) := do
+      seenB n (← cs.mapM fun c => do let (k, e) ← keyB n c; ctorB 0 #[k, e] #[])
+    let (m, _, _) ← seen C.key
+    guard (← call1 (kernel% USize.decEq) #[m, n])
+      "sums: x is not simple, two values at one (key, position); sums folds one value per (key, position): rows, distinct" #[n, m]
+    let (gk, _, fk) ← seen (C.key.take (objWidth K))
+    let seg ← scatterB .last gk fk (← wordsB gk 1) n
+    let (W, bad) ← sumTailB "sums" u n seg (← col1 C.val)
+    let badR ← nth (← scanB .or .i64 n (some seg) [← wordsB n 0, bad]) 0 "kscan"
+    keepB ⟨n, C.key, [.atom "" u W]⟩ (← mapB .not n badR badR)
+  | _ => throw "sums: not one table"
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
     runs under (`Expand.primE`): `floatOp`, `cast`, `arithOp`, `succOp` and `cmpOp` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
-    on its keys (`GenK.onKeys`), `foldI` one fold per (key, array) in demand. Any other row is refused, naming it. -/
+    on its keys (`GenK.onKeys`), `foldI` one fold per (key, array) in demand, `sum` on the arrays in demand, `sums` on
+    its relation's whole table. Any other row is refused, naming it. -/
 def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld TabB := do
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
@@ -1287,6 +1351,17 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
         let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
         lamB b n X (← diffB G (← compB P (← piB b b false Y.n Y.key)))
     | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
+  else if c == ``Tab.sum then match A with
+    | .arr (.atom u) => do let (n, X) ← known r.sym D.dom; sumOnB u n X
+    | _ => throw "sum: the elements are no atom"
+  -- `Tab.sums`' cases at the position object `P`, the value object `V`
+  else if c == ``Tab.sums then match A, B, xs with
+    | .prod K (.atom t), .atom u, [x] => match u with
+      | .i64 | .f64 => if t.intOrd then do sumsOnB K u (← x {}) else throw s!"sums: positions of {repr t} are not ordered by value"
+      | u => throw s!"sums: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+    | .prod _ (.atom _), _, [_] => throw "sums: the values are no atom"
+    | _, _, [_] => throw "sums: the positions are no atom"
+    | _, _, _ => throw s!"sums given {xs.length} relations, not one"
   else if c == ``GenK.nil then match B with
     | .arr b => do let (n, X) ← known r.sym D.dom; nilB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a target that is no array"

@@ -74,6 +74,15 @@ rel_program native1a where
     q1 : X ⟶ X ≜ {(A,B),(B,C)}
     fa : N ⟶ X×X ≜ {(0,0)}⊤(N,X)⟨𝟙,bo⟩ ∪ ({(1,1)}⊤(N,X)⟨𝟙,q1⟩)
     fi : N ⟶ (X×X)×(X×X) ≜ pf(fa)
+    -- `sum` and `sums` at `i64` with a wrapping row (cell 1, key 1 from position 1 on: dropped), and `sum` at `f64`
+    obj I
+    obj F : f64
+    bg : N ⟶ [I] ≜ {(1,9223372036854775807 1),(2,5 6),(3,[]),(4,7 0)}
+    sb : N ⟶ I ≜ bg sum
+    fl : N ⟶ [F] ≜ {(1,1.5 2.25),(2,[]),(3,0.5 0.25)}
+    sf : N ⟶ F ≜ fl sum
+    sx : N×N ⟶ I ≜ {((1,0),5),((1,1),9223372036854775807),((1,2),1),((2,0),3),((2,1),4),((2,2),9)}
+    ss : N×N ⟶ I ≜ sums(sx)
 
 /-- `output x to "out"`. -/
 def plan : Lean.Meta.MetaM (Except String Plan) := return (← outputOf ``native1a "x" "out") >>= Bld.plan
@@ -220,7 +229,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("hd", semOut native1a.hd), ("ee", semOut native1a.ee), ("lm", semOut native1a.lm), ("lu", semOut native1a.lu),
    ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
    ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
-   ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi)]
+   ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi), ("sb", semOut native1a.sb),
+   ("sf", semOut native1a.sf), ("ss", semOut native1a.ss)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
