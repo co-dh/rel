@@ -604,7 +604,7 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
   | error s => simp [ValsB.cols, heK, bind, Except.bind] at hes
   | ok eK =>
   have hes' : es = eK ++ [(.atom t, Arr.enc x.key.2), (.atom u, Arr.enc (t := u) x.val)] := by
-    simp only [ValsB.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp
+    simp only [ValsB.cols, heK, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hes; rw [← hes]; simp; exact ⟨rfl, rfl⟩
   rw [hes'] at hcs
   obtain ⟨csK, csP, hcsK, hcsP, -⟩ := mapM_append_ok hcs
   obtain ⟨cs1, -, hcs1, -, -⟩ := mapM_append_ok (l1 := [(AscKey.atom t, Arr.enc x.key.2)])
@@ -890,7 +890,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
   have hx1 : (Enc.raw .i64 C.n R)[t.1]?.getD 0 ^^^ 1 ≠ 0 ↔ (Enc.raw .i64 C.n R)[t.1]?.getD 0 = 0 := by
     rcases hb.1 with e | e <;> rw [e] <;> decide
   rw [hx1, hb.2]
-  show _ ∧ _ ∧ ValsB.row (A := .atom u) Wa t = c ↔ _
+  show _ ∧ _ ∧ ValsB.row (o := false) (A := .atom u) Wa t = c ↔ _
   rw [Vals.row_atom]
   constructor <;> rintro ⟨h1, h2, h3⟩ <;> exact ⟨h2, h1, h3.symm⟩
 
@@ -969,7 +969,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
   -- the cells `[SN g, EN g)`, their widths `EN g - SN g` at `w`, laid out by EXPAND at the offsets `off g`
-  obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
+  obtain ⟨SN, EN, hw1, hb1, hrow⟩ := cellSpan_spec (fun i => hX.2.2.1 i trivial) hm63 f
   have hwv : ∀ g < n.toNat, (Enc.raw .i64 n w)[g]?.getD 0 = (EN g - SN g).toUInt64 := fun g hg => by
     have es := (colMap_raw hw).2.2.2 g hg
     rw [(hw1 g hg).2, (hw1 g hg).1] at es; simp only [Op.eval, Except.ok.injEq] at es
