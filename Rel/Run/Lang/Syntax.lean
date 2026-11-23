@@ -66,6 +66,9 @@ inductive OExp
   | prod (a b : OExp)
   | sum (a b : OExp)
   | list (a : OExp)
+  /-- `⟨θ ↦ A⟩`: the object `A` once per element of the finite object `θ`, laid out as `Schema.objAt` lays a schema's
+      columns; `θ` may be an object variable, whose elements are read at each use (F1). -/
+  | each (p : Pos) (o a : OExp)
   deriving Repr, Inhabited, BEq
 
 /-- The builtin operators of §b. A constant (arity 0) may take its objects, `⊤(A,B)`; the others take relations.
@@ -544,6 +547,7 @@ def OExp.render (inner : Bool) : OExp → String
   | .prod a b => let s := s!"{a.render true}×{b.render true}"; if inner then s!"({s})" else s
   | .sum a b => let s := s!"{a.render true}+{b.render true}"; if inner then s!"({s})" else s
   | .list a => s!"[{a.render false}]"
+  | .each _ o a => s!"⟨{o.render false} ↦ {a.render false}⟩"
 
 def OExp.show (o : OExp) : String := o.render false
 
@@ -553,10 +557,37 @@ def OExp.vars : OExp → List String
   | .name .. => []
   | .prod a b | .sum a b => (a.vars ++ b.vars).eraseDups
   | .list a => a.vars
+  | .each _ o a => (o.vars ++ a.vars).eraseDups
 
 /-- The object variables of a row's parameters and type, in order, each once. -/
 def Prim.vars (r : Prim) : List String :=
   ((r.sig.1.flatMap fun ((x, y), _) => x.vars ++ y.vars) ++ r.sig.2.1.vars ++ r.sig.2.2.vars).eraseDups
+
+/-- The object variables a `⟨θ ↦ A⟩` in `o` takes its elements from: those of each `θ`, which a use must solve before
+    the elements are known. -/
+def OExp.eachVars : OExp → List String
+  | .name .. | .var .. => []
+  | .prod a b | .sum a b => a.eachVars ++ b.eachVars
+  | .list a => a.eachVars
+  | .each _ o a => o.vars ++ o.eachVars ++ a.eachVars
+
+/-- Whether `o` has a `⟨θ ↦ A⟩`. -/
+def OExp.hasEach : OExp → Bool
+  | .name .. | .var .. => false
+  | .prod a b | .sum a b => a.hasEach || b.hasEach
+  | .list a => a.hasEach
+  | .each .. => true
+
+/-- The same for the term `e`: its objects and its own `⟨v ∈ V ↦ …⟩`. -/
+partial def Expr.eachVars : Expr → List String
+  | .name .. => []
+  | .op _ _ os as => os.flatMap OExp.eachVars ++ as.flatMap (·.eachVars)
+  | .app _ _ as => as.flatMap (·.eachVars)
+  | .comp a b | .bin _ _ a b | .pair _ a b | .junc _ a b | .inf _ _ a b | .whr _ _ a b => a.eachVars ++ b.eachVars
+  | .fold _ _ r | .conv _ r | .compl _ r | .fix _ _ _ r => r.eachVars
+  | .lit _ _ ty => (ty.map fun (a, b) => a.eachVars ++ b.eachVars).getD []
+  | .col _ s _ => s.eachVars
+  | .each _ _ o b => o.vars ++ o.eachVars ++ b.eachVars
 
 /-- The row's name as a leaf of an error: `sym`, with `( )` when it takes relations. -/
 def Prim.leaf (r : Prim) : String := if r.sig.1.isEmpty then r.sym else s!"{r.sym}( )"

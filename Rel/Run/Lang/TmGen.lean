@@ -59,6 +59,11 @@ def OExp.at (vs : List String) (σ : List Obj) : OExp → Obj
   | .prod a b => .prod (a.at vs σ) (b.at vs σ)
   | .sum a b => .sum (a.at vs σ) (b.at vs σ)
   | .list a => .arr (a.at vs σ)
+  -- no row's signature has a `⟨θ ↦ A⟩` (the `#guard` below), so no row is read at one
+  | .each .. => .long
+
+#guard prims.all fun r =>
+  !(r.sig.1.any fun ((x, y), _) => x.hasEach || y.hasEach) && !r.sig.2.1.hasEach && !r.sig.2.2.hasEach
 
 /-- Row `r`'s relations' objects and its own at the objects `σ` of its variables, those marked in `lg` read at
     `.long`: what its `rowGens` entry checks its codes against (`Codes.at`) and returns, read from the row alone. -/

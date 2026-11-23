@@ -32,6 +32,9 @@ rel_program dummiesT where
     check d ⟨⟨π₁ π₁ [{(∗,no)}, {(∗,yes)}], π₁ π₂ [{(∗,no)}, {(∗,yes)}]⟩, π₂ [{(∗,no)}, {(∗,yes)}]⟩ =
       {(0,((no,yes),no)),(1,((yes,no),no)),(2,((no,yes),no)),(3,((no,no),yes))} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
     check d col D "c_9" [{(∗,no)}, {(∗,yes)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
+    g : P ⟶ D ≜ getDummies(col T "c", x)
+    check g = d where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
+    check g col D "c_9" [{(∗,no)}, {(∗,yes)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
 
 #guard dummiesT.ok
 
@@ -137,7 +140,7 @@ rel_program pivotT where
 #guard pivotT.ok
 
 -- an unbounded object has no elements to generate over
-/-- error: line 144, col 21: `N` is no finite object of this program: a schema over an object needs its elements -/
+/-- error: line 147, col 21: `N` is no finite object of this program: a schema over an object needs its elements -/
 #guard_msgs in
 rel_program unboundedT where
     obj N

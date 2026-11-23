@@ -768,6 +768,7 @@ def Env.obj? (env : Env) (n : String) : Option ObjInfo :=
 /-- The object `1` in scope, the source a `nil` no context fixes starts at (`settleNil`). -/
 def Env.one (env : Env) : OTy := ((env.obj? "1").map (·.ty)).getD (.base "1")
 
+mutual
 /-- `o` as the program wrote it, resolved: an alias stands for its definition, a variable for its object in `vs`,
     one use's instantiation (§e). -/
 def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
@@ -780,6 +781,24 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .prod a b => return .prod (← oty env vs a) (← oty env vs b)
   | .sum a b => return .sum (← oty env vs a) (← oty env vs b)
   | .list a => return .arr (← oty env vs a)
+  | .each p o a => do
+    let ws ← eachWords env vs p o
+    let b ← oty env vs a
+    pure (Schema.objAt b .prod (ws.map (·, b)))
+
+/-- The words of the elements of the finite object `o` (an object variable's, the call's, at this use): `o` resolved
+    and solved to a declared base object, its `ObjInfo.words`. -/
+def eachWords (env : Env) (vs : List (String × OTy)) (p : Pos) (o : OExp) : M (List String) := do
+  let ot ← oty env vs o
+  let n ← match zonk (← Lean.getMCtx) ot with
+    | .base n => pure n
+    | _ => throw ⟨p, s!"`{o.show}` is not determined where ⟨{o.show} ↦ …⟩ is expanded: its elements are read \
+        from the object a use gives it; give the use an argument or an expected type at it"⟩
+  let some ws := (((← get).objs.lookup n).orElse fun _ => env.obj? n).bind ObjInfo.words
+    | throw ⟨p, s!"`{n}` is no finite object of this program: a product over an object needs its elements"⟩
+  if ws.isEmpty then throw ⟨p, s!"`{n}` has no element: a product over it has no component"⟩
+  pure ws
+end
 
 /-- A solved object's `Obj`: a declared base object as `ObjInfo.obj` stores it (`long` but for `obj F : t`), an
     object variable likewise. -/
@@ -1574,19 +1593,13 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
   -- `V` at this use's object (an object variable's, the call's), each element `w` of it put for `v` as the literal
   -- `{(∗,w)} : 1 ⟶ V`; the results nested pairs, left to right
   | .each p v o b => do
-    let ot ← oty env [] o
-    let n ← match zonk (← Lean.getMCtx) ot with
-      | .base n => pure n
-      | _ => throw ⟨p, s!"`{o.show}` is not determined where ⟨{v} ∈ {o.show} ↦ …⟩ is expanded: its elements are read \
-          from the object a use gives it; give the use an argument or an expected type at it"⟩
-    let some ws := (((← get).objs.lookup n).orElse fun _ => env.obj? n).bind ObjInfo.words
-      | throw ⟨p, s!"`{n}` is no finite object of this program: a product over an object needs its elements"⟩
+    let ws ← eachWords env [] p o
     let xs ← ws.mapM fun w => do
       let e ← litArg env p [(.leaf "∗", .leaf w)] (some (.name p "1", o))
       elabE { env with params := (v, e) :: env.params } m b
     match xs with
     | x :: xs => xs.foldlM (pairArg m p) x
-    | [] => throw ⟨p, s!"`{n}` has no element: a product over it has no component"⟩
+    | [] => throw ⟨p, s!"`{o.show}` has no element: a product over it has no component"⟩
   | .junc p a b => do
     let x ← elabE env m a; let y ← elabE env m b
     match m, x.isFam || y.isFam with
@@ -1668,8 +1681,9 @@ def pmatch (env : Env) (p : Pos) (vs : List (String × OTy)) : OExp → OTy → 
   | .list x, t => do match ← split p (fun a _ => .arr a) t with
     | some (a, _) => pmatch env p vs x a
     | none => pure .no
-  | o@(.name ..), t => do
-    let O ← oty env [] o
+  -- a declared name or a `⟨θ ↦ A⟩` is one object once resolved, at the variables met so far
+  | o@(.name ..), t | o@(.each ..), t => do
+    let O ← oty env vs o
     pure (if ← defEq t O then .ok vs else .no)
 
 /-- `x ⟶ y` matched against `s ⟶ t`. -/

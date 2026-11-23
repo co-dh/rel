@@ -157,6 +157,8 @@ syntax (name := oList) "[" relObj "]" : relObj
 syntax (name := oParen) "(" relObj ")" : relObj
 syntax:60 (name := oProd) relObj:60 "×" relObj:61 : relObj
 syntax:60 (name := oSum) relObj:60 "+" relObj:61 : relObj
+-- `⟨θ ↦ A⟩`: `A` once per element of the finite object `θ`, laid out as a schema's columns are (F1)
+syntax (name := oEach) "⟨" relObj "↦" relObj "⟩" : relObj
 
 syntax (name := tyArrow) ":" relObj "⟶" relObj : relType
 
@@ -311,6 +313,7 @@ partial def obj (s : Syntax) : C OExp := match s.getKind with
   | ``oParen => obj s[1]
   | ``oProd => do pure (.prod (← obj s[0]) (← obj s[2]))
   | ``oSum => do pure (.sum (← obj s[0]) (← obj s[2]))
+  | ``oEach => do pure (.each (← posOf s[0]) (← obj s[1]) (← obj s[3]))
   | _ => failAt s "expected an object"
 
 /-- `: A ⟶ B`, its objects possibly object variables (§e). -/
