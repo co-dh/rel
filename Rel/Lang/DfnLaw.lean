@@ -57,7 +57,7 @@ theorem chain_in {P : Int64 → Prop} (hP : (∀ x, P x) ∨ InitSeg P) (g : Nat
 
 /-- `zeroCol t` holds `t`'s word `0`. -/
 theorem zeroCol_row {t : QAtomicType} (h : t.ordNum.isSome) (i : Fin (1 : USize).toNat) :
-    ValsB.row (A := .atom t) (zeroCol t h) i = QAtomicType.ofBits t 0 := by
+    ValsB.row (o := false) (A := .atom t) (zeroCol t h) i =QAtomicType.ofBits t 0 := by
   obtain ⟨w, hw⟩ : ∃ w, t.width = some w := by cases t <;> first | exact ⟨_, rfl⟩ | exact absurd h (by decide)
   have hu : t ≠ .u1 := by rintro rfl; exact absurd h (by decide)
   have h0 := (Rel.Verify.wordsFoR_closed #[(0 : UInt64)] (n := 1) (by simp)).2.1
@@ -537,7 +537,7 @@ theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
     (Tm.at0 (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by
   simp only [Tm.at0, Tm.den, Tm.argDen, Prim.den_indexRow, atOn]
   simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.top, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
-  have h0 : ∀ i, ValsB.row (A := .atom .i64) (zeroCol .i64 rfl) i = (0 : Int64) := fun i => by rw [zeroCol_row]; rfl
+  have h0 : ∀ i, ValsB.row (o := false) (A := .atom .i64) (zeroCol .i64 rfl) i = (0 : Int64) := fun i => by rw [zeroCol_row]; rfl
   simp only [h0, exists_eq_left, exists_const, and_true, true_and, exists_and_left]
   constructor
   · rintro ⟨⟨ys, k⟩, ⟨rfl, -, hk⟩, -, h⟩

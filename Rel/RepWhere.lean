@@ -70,7 +70,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hn63 : n.toNat < 2 ^ 63 := by omega
   have hnm : n.toNat * m.toNat < 2 ^ 63 := by omega
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
-  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec wX.1 hm63 f
+  obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec (fun i => wX.2.2.1 i trivial) hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := by
     intro i hi
@@ -106,7 +106,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
       rw [← (colMap_post hbm).2 t ht, bne_comm]; rfl
     rw [← Except.ok.inj es]
     have hDn := D.n.toNat_lt_size
-    rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
+    rcases Tab.index_spec hia (Tab.dom_wf hD wP).1 (Vals.gather_wf hv wX.2.2.2) ⟨t, ht⟩ with ⟨a, ea, hra⟩ | ⟨ea, hno⟩
     · have hk : ∃ y, P.Holds (ValsB.row v ⟨t, ht⟩) y := ((Tab.dom_holds hD wP.1 _ _).1 ⟨a, hra, rfl⟩).2
       have hne : (raw .i64 T ia)[t]?.getD 0 ≠ D.n.toUInt64 := fun c => by
         have := congrArg UInt64.toNat c; rw [ea, USize.toNat_toUInt64] at this; omega
@@ -157,7 +157,7 @@ theorem positions_spec {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr B) n}
   have hsel : ∀ j (hj : j < K.toNat), ((raw .i64 K sel).toList.map UInt64.toNat)[j]? =
       some (((raw .i64 K sel)[j]?.getD 0).toNat) := fun j hj => by
     rw [List.getElem?_map, Array.getElem?_toList, Array.getElem?_eq_getElem (by omega)]; rfl
-  have hpj : ∀ j (hj : j < K.toNat), ValsB.row (A := .long) pay ⟨j, hj⟩ =
+  have hpj : ∀ j (hj : j < K.toNat), ValsB.row (o := false) (A := .long) pay ⟨j, hj⟩ =
       ((raw .i64 T u)[((raw .i64 K sel)[j]?.getD 0).toNat]?.getD 0).toInt64 := fun j hj => by
     have es := scanArr_first_word hpay j hj
     rw [(kgather_word hgs (expand_plain hex) j hj).2] at es
