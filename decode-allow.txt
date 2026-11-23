@@ -4,7 +4,5 @@ Rel.Ew.bitBits
 Rel.Ew.cmpBits
 Rel.Lang.Embed.diskOf
 Rel.Lang.Table.readSchema
-Rel.Lang.showRel
 Rel.Opt.get
 Rel.Opt.ofAtoms
-Rel.Tab.ymd
