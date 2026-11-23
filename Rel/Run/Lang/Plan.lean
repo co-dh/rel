@@ -262,10 +262,6 @@ inductive Instr
   | lit (v : Val)
   /-- `r… = call sym(args)`: the `@[extern]` kernel of C symbol `sym` on the registers `args`. -/
   | call (sym : String) (args : Array Nat)
-  /-- `r… = call sym(args)` of an `IO` read at the input edge, unless the file at the path in register `args[0]` (a
-      `str`) is absent: then the literal registers `dflt`, as many as the kernel answers. A library's dictionary files
-      (`Table.libDict`) are read this way: none yet is the empty dictionary. -/
-  | readOpt (sym : String) (args : Array Nat) (dflt : Array Val)
   /-- `need`'s failing branch: print `msg` and the registers `args`, exit 1. -/
   | fail (msg : String) (args : Array Nat)
   /-- `r… = apply f(args)`: the plan's function number `f`, which must come before the one applying it. -/
@@ -390,7 +386,6 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
     | .inr _ =>
       unless k.res.isEmpty do throw s!"plan: `{sym}` reads, which a plan does only at its input edge (`Plan.input`)"
       pure (rs, ws.push (sym, vs))
-  | .readOpt sym .., _, _ => throw s!"plan: `{sym}` reads, which a plan does only at its input edge (`Plan.input`)"
   | .fail msg as, rs, _ => do throw (← failText msg (← as.mapM (reg rs "fail")).toList)
   | .apply f as, rs, ws => do
     let some g := fs[f]? | throw s!"plan: apply f{f}, which is not an earlier function"
@@ -456,24 +451,17 @@ def Plan.run (abi : String → Option Kernel) (p : Plan) : Except String (Array 
     nothing, where the C has written what came before its `fail`; the gates compare runs that succeed. -/
 def Plan.exec (abi : String → Option Kernel) (p : Plan) : IO (Array Val) := do
   -- the input edge first: each read's registers become `lit`s of `main`, so the run stays pure
-  let read (ins : Array Val) (sym : String) (as : Array Nat) (dflt : Option (Array Val)) : IO (Array Val) := do
-    let some k := abi sym | throw (IO.userError s!"plan: no kernel `{sym}` in the ABI table")
-    let .inr act := k.run | throw (IO.userError s!"plan: the input edge calls `{sym}`, which is no `IO` kernel")
-    let vs : Array Val ← IO.ofExcept (as.mapM (reg ins sym))
-    let path? : Option Val := vs[0]?
-    let out ← match dflt, path? with
-      | none, _ => act vs
-      | some d, some (.str path) => if ← System.FilePath.pathExists path then act vs else pure d
-      | some _, _ => throw (IO.userError s!"plan: readOpt `{sym}`: its first register is not a path")
-    unless out.size == k.res.size do
-      throw (IO.userError s!"plan: `{sym}` answered {out.size} registers, its declaration {k.res.size}")
-    pure out
   let mut ins : Array Val := #[]
   for i in p.input do
     match i with
     | .lit v => ins := ins.push v
-    | .call sym as => ins := ins ++ (← read ins sym as none)
-    | .readOpt sym as d => ins := ins ++ (← read ins sym as (some d))
+    | .call sym as =>
+      let some k := abi sym | throw (IO.userError s!"plan: no kernel `{sym}` in the ABI table")
+      let .inr act := k.run | throw (IO.userError s!"plan: the input edge calls `{sym}`, which is no `IO` kernel")
+      let out ← act (← IO.ofExcept (as.mapM (reg ins sym)))
+      unless out.size == k.res.size do
+        throw (IO.userError s!"plan: `{sym}` answered {out.size} registers, its declaration {k.res.size}")
+      ins := ins ++ out
     | _ => throw (IO.userError "plan: the input edge holds `lit`s and `IO` reads only")
   let (rs, ws) ← IO.ofExcept ({ p with input := [], main := ins.toList.map Instr.lit ++ p.main }.run abi)
   for (sym, vs) in ws do
@@ -501,10 +489,6 @@ def emit (i : Instr) (nres : Nat) : Bld (Array Nat) :=
 
 /-- `call sym(args)` of a kernel answering `nres` registers: the new registers. -/
 def call (sym : String) (args : Array Nat) (nres : Nat) : Bld (Array Nat) := emit (.call sym args) nres
-
-/-- `readOpt sym(args)` of an `IO` read answering `nres` registers, `dflt` where the file at `args[0]` is absent. -/
-def readOpt (sym : String) (args : Array Nat) (dflt : Array Val) : Bld (Array Nat) :=
-  emit (.readOpt sym args dflt) dflt.size
 
 /-- `b` as a block of its own after the registers so far: its instructions and result registers; the functions and
     globals it adds stay. -/
@@ -552,27 +536,24 @@ def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String P
 /-- One column of a side (`cols`): a side of `1`'s count, or an atom column with its type and length. -/
 abbrev SideCol := USize ⊕ (t : QAtomicType) × (k : USize) × Opt t k
 
+/-- An atom column at ownership `o` as a nullable one: `Opt.ofArr` where every row is owned, itself where it is `Opt`. -/
+def ColB.toOpt : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Opt t n
+  | false, _, _, x => Opt.ofArr x
+  | true, _, _, x => x
+
 /-- A side's atom columns, each with its path in the side: `""` an atom; `.1`/`.2` a product's; `.lo`/`.hi`/`.e`
-    an array's bounds and payload; `.tag`/`.idx`/`.l`/`.r` a sum's tags, positions and two payloads, a band sum
+    an array's bounds and payload; `.tag`/`.l`/`.r` a sum's tags and two summand columns, a band sum
     (`Obj.band`) its one nullable column at the side's own path. A side of `1`
     is `.inl` its count: it has a file like any side (`Db.ownNParts` kind 5), holding the count and no part. -/
-def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String × SideCol)
-  | .atom _, _, x, p => [(p, .inr ⟨_, _, Opt.ofArr x⟩)]
-  | .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
-  | .arr b, _, ⟨_, lo, hi, f⟩, p =>
-    [(p ++ ".lo", .inr ⟨_, _, Opt.ofArr lo⟩), (p ++ ".hi", .inr ⟨_, _, Opt.ofArr hi⟩)] ++ cols b f (p ++ ".e")
-  | .sum a b, n, s, p => match s.view with
+def cols : {o : Bool} → (A : Obj) → {n : USize} → ValsB o A n → String → List (String × SideCol)
+  | _, .atom _, _, x, p => [(p, .inr ⟨_, _, ColB.toOpt x⟩)]
+  | _, .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
+  | _, .arr b, _, ⟨_, lo, hi, f⟩, p =>
+    [(p ++ ".lo", .inr ⟨_, _, ColB.toOpt lo⟩), (p ++ ".hi", .inr ⟨_, _, ColB.toOpt hi⟩)] ++ cols b f (p ++ ".e")
+  | _, .sum a b, _, s, p => match s.view with
     | .opt _ x => [(p, .inr ⟨_, _, x⟩)]
-    | .gen _ _ _ tag idx x y =>
-    -- a summand with no atom column (`1`) stores the rows the tag gives it, as `colsOf` counts them, never the `l`/`r` its
-    -- producer left (a gather keeps it): one count for every producer of the same relation
-    let side (cs : List (String × SideCol)) (right : Bool) :=
-      if cs.any (·.2.isRight) then cs else
-        let k := ((List.finRange n.toNat).filter fun i => tag.get i).length
-        cs.map fun (q, _) => (q, .inl (if right then k else n.toNat - k).toUSize)
-    [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩), (p ++ ".idx", .inr ⟨_, _, Opt.ofArr idx⟩)] ++
-      side (cols a x (p ++ ".l")) false ++ side (cols b y (p ++ ".r")) true
-  | .one, n, _, p => [(p, .inl n)]
+    | .gen _ tag x y => [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
+  | _, .one, n, _, p => [(p, .inl n)]
 
 /-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/
 def oneKind : UInt8 := 5
