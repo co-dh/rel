@@ -37,7 +37,7 @@ def positions {n : USize} (P : Tab B B) (X : Vals (.arr B) n) : Except String (T
     let b ← colMap .first T ix ix .i64 .i64 [] [(.ne, D.n.toUInt64)]
     let (K, sel) ← whereCol T b
     let uK ← kgather K sel T u
-    let pay ← colArr .first K uK uK
+    let pay ← scanArr .first false .i64 .i64 K Option.none [(K, uK)]
     canon ⟨n, ⟨m, lo, hi, f⟩, ← Vals.cells n (← kscatter .add T G b n 0) (pay : Vals .long K)⟩
 
 end Tab
