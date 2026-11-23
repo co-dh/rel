@@ -249,27 +249,30 @@ theorem fsum_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
       (∀ (A : UInt64) r x Xx, fval u x = some Xx → ∀ y, TS ((A, r), x) y ↔
         Op.ftoWord u (faddW A Xx) ≠ 0x8000000000000000 ∧
           y = (faddW A Xx, QAtomicType.ofBits u (Op.ftoWord u (faddW A Xx)))) := by
-    refine ⟨fun _ b => b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1,
+    refine ⟨(Core.Rel.graph fun _ => QAtomicType.ofBits u 0) ≫ Core.Rel.rpair (fwideDen u) (𝟙 _),
       Core.Rel.rpair (Core.Rel.graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
         (Core.Rel.graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ Core.Rel.rpair (𝟙 _) (froundDen u),
       fun _ _ => Iff.rfl, fun y => ⟨?_, ?_⟩, fun A r x Xx hx y => ?_⟩
-    · rintro ⟨ys, hy, ⟨_, h1, h2⟩, -, rfl⟩
+    · rintro ⟨ys, hy, ⟨_, hs⟩, -, rfl⟩
+      obtain ⟨h1, h2⟩ := (fsumDen_seed u _ _).1 hs
       rw [h1] at h2; have h3 : some Z = some _ := hZ.symm.trans h2
       exact Prod.ext (Option.some.inj h3).symm h1
     · rintro rfl
-      exact ⟨[(Z, QAtomicType.ofBits u 0)], rfl, ⟨(Z, QAtomicType.ofBits u 0), rfl, hZ⟩,
+      exact ⟨[(Z, QAtomicType.ofBits u 0)], rfl, ⟨(Z, QAtomicType.ofBits u 0), (fsumDen_seed u _ _).2 ⟨rfl, hZ⟩⟩,
         fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩
     · have hfa : ∀ a b, Op.fadd.eval a b = .ok (faddW a b) := fun _ _ => rfl
+      have hfo : ∀ s, (Op.fto u).eval 0 s = .ok (Op.ftoWord u s) := fun _ => rfl
       obtain ⟨y1, y2⟩ := y
-      simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, Core.Rel.corefl, faddDen, froundDen, fwideDen, hfa, Except.ok.injEq,
-        Prod.mk.injEq]
       constructor
-      · rintro ⟨⟨p1, p2⟩, ⟨rfl, _, rfl, h2⟩, s, rfl, rfl, R', hR', _, ⟨rfl, hn⟩, rfl⟩
-        rw [hx] at h2; cases h2
-        cases hR'
-        exact ⟨hn, rfl, rfl⟩
-      · rintro ⟨hn, rfl, rfl⟩
-        exact ⟨(A, Xx), ⟨rfl, x, rfl, hx⟩, _, rfl, rfl, _, rfl, _, ⟨rfl, hn⟩, rfl⟩
+      · rintro ⟨⟨p1, p2⟩, ⟨rfl, _, rfl, h2⟩, t, hadd, hid, hF⟩
+        obtain rfl : p2 = Xx := Option.some.inj (h2.symm.trans hx)
+        obtain rfl : t = faddW _ _ := (Except.ok.inj ((hfa _ _).symm.trans hadd)).symm
+        obtain ⟨R, hR, hn, hy⟩ := (froundDen_iff u _ _).1 hF
+        obtain rfl : R = Op.ftoWord u (faddW _ _) := (Except.ok.inj ((hfo _).symm.trans hR)).symm
+        subst hid; subst hy; exact ⟨hn, rfl⟩
+      · rintro ⟨hn, he⟩
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj he
+        exact ⟨(A, Xx), ⟨rfl, x, rfl, hx⟩, _, hfa _ _, rfl, (froundDen_iff u _ _).2 ⟨_, hfo _, hn, rfl⟩⟩
   -- the fold over pairs: the carry `C t` and its rounding
   have hC : ∀ t < m, ∀ y, foldDen Te TS
       (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v) y ↔
@@ -676,9 +679,9 @@ theorem _root_.Rel.Lang.sumDen_nil {u : QAtomicType} (hu : u = .i64 ∨ u = .f32
   have hsd : Lang.sumDen u = Lang.fsumDen u := by rcases hu with rfl | rfl <;> rfl
   rw [hsd]
   constructor
-  · rintro ⟨y, ⟨ys, hy, ⟨_, h1, -⟩, -, rfl⟩, rfl⟩; exact h1
+  · rintro ⟨y, ⟨ys, hy, ⟨_, hs⟩, -, rfl⟩, rfl⟩; exact ((Lang.fsumDen_seed u _ _).1 hs).1
   · rintro rfl
-    exact ⟨(X, _), ⟨[(X, QAtomicType.ofBits u 0)], rfl, ⟨(X, QAtomicType.ofBits u 0), rfl, hX⟩,
+    exact ⟨(X, _), ⟨[(X, QAtomicType.ofBits u 0)], rfl, ⟨(X, QAtomicType.ofBits u 0), (Lang.fsumDen_seed u _ _).2 ⟨rfl, hX⟩⟩,
       fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩, rfl⟩
 
 /-- **`sumTail`'s bad column holds no null**: at either type it is a `colMap .or` (`colMap_plain`). -/

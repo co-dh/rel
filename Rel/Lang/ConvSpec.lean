@@ -287,7 +287,7 @@ theorem convTm_den (ρ : Val) : ∀ {A B : Obj} (t : Tm A B) (δ : Dem) (ds : Li
         refine ⟨?_, fun _ _ => rfl⟩
         first
           | (show r.den ρ ∪ s.den ρ = _; rw [hs, hr]; rfl)
-          | (show diffDen (r.den ρ) (s.den ρ) = _; rw [hs, hr]; rfl)
+          | (show Core.Rel.diff (r.den ρ) (s.den ρ) = _; rw [hs, hr]; rfl)
   | @meet A' _ R S ihR ihS =>
     refine fun hok => ⟨fun u hu => ?_, fun A₁ A₂ h p hp => ?_⟩
     · by_cases hd : (Tm.meet R S).dem δ ds = false
@@ -705,7 +705,7 @@ theorem convTm_instObj_den (ph : List Rel.QAtomicType) (σ : List Obj) (ρ : Val
         refine ⟨?_, fun _ _ => rfl⟩
         first
           | (show r'.den ρ ∪ s'.den ρ = _; rw [hs, hr]; rfl)
-          | (show diffDen (r'.den ρ) (s'.den ρ) = _; rw [hs, hr]; rfl)
+          | (show Core.Rel.diff (r'.den ρ) (s'.den ρ) = _; rw [hs, hr]; rfl)
   | @meet A' _ R S ihR ihS =>
     refine fun t' ht hok => ?_
     have ht0 := ht

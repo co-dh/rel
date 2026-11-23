@@ -171,7 +171,7 @@ theorem Tm.frontDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (x : (Obj.arr B).El) (
   have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
     simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
   rw [Tm.front_den]
-  simp only [Tm.frontDef, Tm.den, frontDen, lamDen, diffDen, hτ, Core.Rel.comp, Core.Rel.recip]
+  simp only [Tm.frontDef, Tm.den, frontDen, lamDen, Core.Rel.diff, hτ, Core.Rel.comp, Core.Rel.recip]
 
 /-- `ran`'s text means the row (Q3 = H), as `Tm.domDef_den`: its body at `α = general`, `β = u1`, parameter `R` the
     variable 2. -/

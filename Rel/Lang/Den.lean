@@ -47,8 +47,6 @@ variable {A B C : Obj} {Φ Ψ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj
 /-! ### The named meanings: each the `T` of its node's `Gen.*_sound` lemma -/
 
 
-/-- `R − S`, pointwise. -/
-abbrev diffDen (TR TS : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El A) (Obj.El B) := fun x y => TR x y ∧ ¬ TS x y
 
 /-- `R\S` within the universes `UB`, `UC`: the book's left division where `R` has a column (`R° ≫ ⊤`), every pair
     of the universes where it has none (`UB° ≫ ⊤ ≫ UC`). -/
@@ -242,8 +240,14 @@ abbrev faddDen : Core.Rel (Obj.El (.prod (.atom .f64) (.atom .f64))) (Obj.El (.a
 /-- An `f64` word to the word of the atom `t` nearest it: `Op.fto t`, then the coreflexive `corefl` dropping `2^63` (a NaN),
     then the value `ofBits t` of the word. -/
 abbrev froundDen (t : QAtomicType) : Core.Rel (Obj.El (.atom .f64)) (Obj.El (.atom t)) :=
-  (fun r R => (Rel.Kernel.Op.fto t).eval 0 r = .ok R : Core.Rel (Obj.El (.atom .f64)) UInt64) ≫
-    corefl (· ≠ 0x8000000000000000) ≫ (graph (QAtomicType.ofBits t) : Core.Rel UInt64 (Obj.El (.atom t)))
+  (graph ((Rel.Kernel.Op.fto t).eval 0) ≫ (graph Except.ok)° : Core.Rel (Obj.El (.atom .f64)) UInt64) ≫
+    Core.Rel.diff (𝟙 _) ((graph fun _ : Unit => (0x8000000000000000 : UInt64))° ≫ graph fun _ : Unit => 0x8000000000000000) ≫
+    (graph (QAtomicType.ofBits t) : Core.Rel UInt64 (Obj.El (.atom t)))
+
+theorem froundDen_iff (t : QAtomicType) (r : Obj.El (.atom .f64)) (y : Obj.El (.atom t)) :
+    froundDen t r y ↔ ∃ R, (Rel.Kernel.Op.fto t).eval 0 r = .ok R ∧ R ≠ 0x8000000000000000 ∧ y = QAtomicType.ofBits t R :=
+  ⟨fun ⟨R, h, _, ⟨rfl, hn⟩, hy⟩ => ⟨R, (Core.Rel.graph_recip_graph _ _ _ _).1 h, fun e => hn ⟨(), e, e⟩, hy⟩,
+   fun ⟨R, h, hn, hy⟩ => ⟨R, (Core.Rel.graph_recip_graph _ _ _ _).2 h, _, ⟨rfl, fun ⟨_, e, _⟩ => hn e⟩, hy⟩⟩
 
 /-- **`⦇[0, plus]⦈` at the float atom `u`**: the left fold over pairs (carry, value) from `u`'s `0` paired with
     its `f64` word (`fwideDen`, as the kernel widens its seed), each element widened likewise, added to the carry in
@@ -251,9 +255,14 @@ abbrev froundDen (t : QAtomicType) : Core.Rel (Obj.El (.atom .f64)) (Obj.El (.at
     the value `π₂`. So a float sum accumulates in `f64` and rounds once to `u`, every prefix being checked for a NaN. -/
 abbrev fsumDen (u : QAtomicType) : Core.Rel (Obj.El (.arr (.atom u))) (Obj.El (.atom u)) :=
   foldDen (E := .atom u) (V := .prod (.atom .f64) (.atom u))
-      (fun _ b => b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1)
+      ((graph fun _ => QAtomicType.ofBits u 0) ≫ rpair (fwideDen u) (𝟙 _))
       (rpair (graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
           (graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ rpair (𝟙 _) (froundDen u)) ≫ graph Prod.snd
+
+theorem fsumDen_seed (u : QAtomicType) (a b : Obj.El (.prod (.atom .f64) (.atom u))) :
+    ((graph fun _ => QAtomicType.ofBits u 0) ≫ rpair (fwideDen u) (𝟙 _)) a b ↔
+      b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1 :=
+  ⟨fun ⟨_, e, h, e'⟩ => ⟨e'.symm.trans e, e' ▸ h⟩, fun ⟨e, h⟩ => ⟨_, rfl, e ▸ h, e.symm⟩⟩
 
 /-- **`⦇[0, plus]⦈` at the atom `u`**, the one fold `sum` and `sums` read: `fsumDen` at a float atom (one rule for
     every float atom: added in `f64`, rounded once); at any other atom the left fold of `stepAt u add` from the word
@@ -508,7 +517,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | ρ, _, _, .conv R => (R.den ρ)°
   | ρ, _, _, .meet R S => R.den ρ ∩ S.den ρ
   | ρ, _, _, .join R S => R.den ρ ∪ S.den ρ
-  | ρ, _, _, .diff R S => diffDen (R.den ρ) (S.den ρ)
+  | ρ, _, _, .diff R S => Core.Rel.diff (R.den ρ) (S.den ρ)
   | ρ, _, _, .ldiv R S U V => ldivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .rdiv R S U V => rdivDen (R.den ρ) (S.den ρ) (U.den ρ) (V.den ρ)
   | ρ, _, _, .pair R S => rpair (R.den ρ) (S.den ρ)
@@ -788,7 +797,7 @@ theorem inter_le' {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (
 theorem union_le' {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY : Y ⊑ Y') : X ∪ Y ⊑ X' ∪ Y' :=
   le_iff.2 fun a b h => by rw [union_apply] at h ⊢; exact h.imp (le_iff.1 hX _ _) (le_iff.1 hY _ _)
 
-theorem diff_le {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY : Y' ⊑ Y) : diffDen X Y ⊑ diffDen X' Y' :=
+theorem diff_le {X X' Y Y' : Core.Rel (Obj.El A) (Obj.El B)} (hX : X ⊑ X') (hY : Y' ⊑ Y) : Core.Rel.diff X Y ⊑ Core.Rel.diff X' Y' :=
   le_iff.2 fun _ _ h => ⟨le_iff.1 hX _ _ h.1, fun h' => h.2 (le_iff.1 hY _ _ h')⟩
 
 theorem ldiv_le {R : Core.Rel (Obj.El A) (Obj.El B)} {S S' : Core.Rel (Obj.El A) (Obj.El C)} {U U' : Core.Rel (Obj.El B) (Obj.El B)} {V V' : Core.Rel (Obj.El C) (Obj.El C)} (hS : S ⊑ S') (hU : U ⊑ U')
