@@ -4,6 +4,7 @@ public import Rel.Lang.GenKFold
 public import Rel.RepTabArith
 public import Rel.KernelSpec.Elementwise
 public import Rel.Run.Lang.Elab
+import all Init.Data.Array.Basic
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -94,6 +95,51 @@ theorem Gen.atom_eq {t : QAtomicType} {n : USize} {m p : String} {e : Enc}
   subst he
   obtain ⟨⟨w⟩, hs⟩ := Option.isSome_iff_exists.1 (Ext.Enc.wf?_isSome hw hu)
   unfold Gen.atom; dsimp only; rw [hs]; simp only [hN, dite_true]
+
+/-- **What `Gen.unhex` reads**, for any text `s`: byte `i` is the hex digits `2i`, `2i + 1` of `s`'s UTF-8 bytes,
+    `s.toList.utf8Encode`, the form a literal's bytes evaluate in (`String.toUTF8` of a literal is not exposed). -/
+theorem Gen.unhex_toList (s : String) : (Gen.unhex s).data.toList =
+    let u := s.toList.utf8Encode
+    (List.range (u.size / 2)).map fun i =>
+      let d (c : UInt8) : UInt8 := if c ≤ 57 then c - 48 else c - 87
+      d (u.data.getD (2 * i) 0) * 16 + d (u.data.getD (2 * i + 1) 0) := by
+  have push : ∀ {α : Type} (l : List α) (g : α → UInt8) (b : ByteArray),
+      (l.foldl (fun b x => b.push (g x)) b).data.toList = b.data.toList ++ l.map g := by
+    intro α l; induction l with
+    | nil => simp
+    | cons x l ih => intro g b; simp [ih]
+  rw [← String.toByteArray_ofList, String.ofList_toList]
+  simp [Gen.unhex, Std.Legacy.Range.forIn'_eq_forIn'_range', ← List.range_eq_range']
+  show (List.foldl (α := ByteArray) _ _ _).data.toList = _
+  rw [push, show (ByteArray.emptyWithCapacity (s.utf8ByteSize / 2)).data = #[] from rfl, Array.toList_empty,
+    List.nil_append]
+  apply List.ext_getElem
+  · simp
+  · intro i _ h2
+    simp only [List.length_map, List.length_range] at h2
+    have h3 : 2 * i + 1 < s.toByteArray.data.size := show _ < s.utf8ByteSize by omega
+    simp only [List.getElem_map, List.getElem_attach, List.getElem_range]
+    rw [Array.getElem?_eq_getElem h3, Array.getElem?_eq_getElem (show 2 * i < s.toByteArray.data.size by omega),
+      Option.getD_some]
+    simp only [Option.getD_some]
+    rfl
+
+-- `maxRecDepth`: the literal's 114 digits and `Coc.encode` of one word unfold past the default depth
+set_option maxRecDepth 100000 in
+/-- **The literal `0`** of a body, as `Expand.atomE` writes `zeroCol .i64`, is `zeroCol .i64`: both payloads evaluate,
+    the literal's by `Gen.unhex_toList`, `wordsFoR #[0]` by unfolding (`Array.range` read through `import all`). -/
+theorem Gen.atom_zero : Gen.atom .i64 (USize.ofNat 1)
+    "0000000000000000000000000000000000000000000000000000000000000000000000000000008001000000000000000a0000000000000000"
+    "" = (zeroCol .i64 rfl, true) := by
+  have hb : ∀ {a b : ByteArray}, a.data.toList = b.data.toList → a = b := fun {a b} h => by
+    cases a; cases b; simp_all
+  have he : Enc.foR (Gen.unhex
+      "0000000000000000000000000000000000000000000000000000000000000000000000000000008001000000000000000a0000000000000000")
+      (Gen.unhex "") = wordsFoR #[0] := by
+    unfold wordsFoR
+    congr 1 <;> apply hb <;> rw [Gen.unhex_toList] <;> with_unfolding_all rfl
+  exact Gen.atom_eq (n := USize.ofNat 1) he (zeroCol .i64 rfl).wf (fun _ _ _ h => absurd h (by decide))
+    (zeroCol .i64 rfl).plain
 
 /-- A table literal (`Gen.relV`) means its rows (`Tab.Holds`). -/
 theorem Tm.relV_den (ρ : Val) {A B : Obj} {n : USize} (k : Vals A n × Bool) (v : Vals B n × Bool) (x : A.El)

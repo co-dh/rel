@@ -226,12 +226,55 @@ theorem Tm.ascDef_den (ρ : Val) {B : Obj} (Pa : Tm B B) (u₀ u : Tm .long .lon
     · rintro ⟨rfl, hb⟩; exact ⟨_, rfl, rfl, hb⟩) hp j a
   exact ⟨h, fun hall => by rw [h]; exact ⟨fun h => h.2, fun h => ⟨hall j, h⟩⟩⟩
 
-/-! unproved (B10cd-D3e): `Tm.lengthDef_den`, `Tm.sumDef_den` on `prelude.length.body` / `prelude.sum.body`.
-    Both bodies equal `.fold (Tm.ran (.val V)) (Tm.cut1 succRow (.var 1))` / `(Tm.cut2 (arithRow "plus") (.var 0))`
-    by `rfl` (i64 is not in `varAtoms`, so `instObj` leaves it; the universe is the variable, `.var 1` / `.var 0`,
-    taken as `u₀ = u` of `Tm.lengthDef_row` / `Tm.sumDef_row`, with `P 0` as the one extra hypothesis, since the
-    body's seed `ran V` carries no universe). What does not close: `V`'s column is `Gen.atom .i64 1 <hex> ""`, to be
-    shown `zeroCol .i64 rfl`: `Gen.atom_eq` (DfnLaw) reduces that to `Enc.foR (unhex <hex>) (unhex "") = wordsFoR #[0]`,
-    which holds by `with_unfolding_all rfl` in a non-module file only (`String.toUTF8`, `Std.Range.forIn'` unexposed). -/
+/-- The seed of the `length` and `sum` bodies, the table `{((), 0)}` (its column the literal `0`, `Gen.atom_zero`):
+    its one value is `0`. -/
+theorem Gen.relVZero_rep (ρ : Val) (a : Obj.one.El) (b : Int64) : Rep.rep (Gen.relV Obj.one (.atom .i64) (USize.ofNat 1)
+    (Gen.oneV false (USize.ofNat 1)) (zeroCol .i64 rfl, true)).fst a b ↔ b = 0 :=
+  (Tm.relV_den (A := .one) (B := .atom .i64) (n := USize.ofNat 1) ρ (Gen.oneV false (USize.ofNat 1))
+      ((zeroCol .i64 rfl : Arr .i64 (USize.ofNat 1)), true) a b).trans ⟨fun ⟨i, _, h⟩ => by rw [← h, zeroCol_row]; rfl,
+    fun h => ⟨⟨0, by simp [USize.toNat_ofNat]⟩, Subsingleton.elim _ _, by rw [h, zeroCol_row]; rfl⟩⟩
+
+/-- **`length`'s text means the row** (Q3 = H): `prelude.length.body` at any objects `σ` is `Tm.lengthDef` with both
+    universes the variable 1 (`P`, every number or an initial segment), but seeded by `ran` of the literal `{((), 0)}`,
+    which carries no universe: so `P 0` is assumed. -/
+theorem Tm.lengthDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {P : Obj.long.El → Prop}
+    (hP : (∀ x, P x) ∨ Seg .long P) (hU : ∀ x y, ρ 1 .long .long x y ↔ x = y ∧ P x) (h0 : P 0)
+    {t' : Tm ((Obj.arr (Obj.atom .general)).inst ph σ) ((Obj.atom .i64).inst ph σ)}
+    (ht : Rel.Programs.prelude.length.body.instObj ph σ = .ok t') (x) (hx : Short _ x) (w : Obj.long.El) :
+    (t'.den ρ x w ↔ (Tm.comp (.prim lengthRow) (.var 1 : Tm .long .long)).den ρ x w) ∧
+      ((∀ x, P x) →
+        (t'.den ρ x w ↔ (Tm.prim lengthRow : Tm ((Obj.arr (Obj.atom .general)).inst ph σ) .long).den ρ x w)) := by
+  obtain rfl := Except.ok.inj ht
+  have hl := Tm.lengthDef_row ρ (E := (Obj.atom .general).inst ph σ) (.var 1) (.var 1) hP hU hU x hx w
+  have hz := zeroTm_den (t := .i64) rfl (.var 1) ρ (P := P) hU
+  have hb : QAtomicType.ofBits .i64 0 = (0 : Int64) := rfl
+  haveI : Nonempty (Obj.inst ph σ Obj.one).El := ⟨()⟩
+  simp only [Tm.lengthDef, Tm.den, Tm.argDen, Gen.atom_zero, cast_eq] at hl hz ⊢
+  rw [foldDen_start] at hl ⊢
+  erw [Prim.den_ranRow]
+  simp only [hz, hb, h0, and_true, Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip, Gen.relVZero_rep ρ,
+    exists_eq_left, exists_eq_left', and_self, exists_const, Tm.cut1, Tm.den] at hl ⊢
+  exact hl
+
+/-- **`sum`'s text means the row** (Q3 = H), as `Tm.lengthDef_den`: `Tm.sumDef` at `i64` (not a float, so `sumRow`
+    has a fold) with both universes the variable 0. -/
+theorem Tm.sumDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {P : (Obj.atom .i64).El → Prop}
+    (hP : (∀ x, P x) ∨ Seg (.atom .i64) P) (hU : ∀ x y, ρ 0 (.atom .i64) (.atom .i64) x y ↔ x = y ∧ P x) (h0 : P 0)
+    {t' : Tm ((Obj.arr (Obj.atom .i64)).inst ph σ) ((Obj.atom .i64).inst ph σ)}
+    (ht : Rel.Programs.prelude.sum.body.instObj ph σ = .ok t') (x) (hx : Short _ x) (w : (Obj.atom .i64).El) :
+    (t'.den ρ x w ↔ (Tm.comp (.comp (.arg (.prim mapRow : Tm (.arr (.atom .i64)) (.arr (.atom .i64)))
+      (.var 0 : Tm (.atom .i64) (.atom .i64))) (.prim sumRow : Tm (.arr (.atom .i64)) (.atom .i64))) (.var 0)).den ρ x w) ∧
+      ((∀ x, P x) → (t'.den ρ x w ↔ (Tm.prim sumRow : Tm (.arr (.atom .i64)) (.atom .i64)).den ρ x w)) := by
+  obtain rfl := Except.ok.inj ht
+  have hl := Tm.sumDef_row ρ (t := .i64) rfl (by decide) (.var 0) (.var 0) hP hU hU x hx w
+  have hz := zeroTm_den (t := .i64) rfl (.var 0) ρ (P := P) hU
+  have hb : QAtomicType.ofBits .i64 0 = (0 : Int64) := rfl
+  haveI : Nonempty (Obj.inst ph σ Obj.one).El := ⟨()⟩
+  simp only [Tm.sumDef, Tm.den, Tm.argDen, Gen.atom_zero, cast_eq] at hl hz ⊢
+  rw [foldDen_start] at hl ⊢
+  erw [Prim.den_ranRow]
+  simp only [hz, hb, h0, and_true, Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip, Gen.relVZero_rep ρ,
+    exists_eq_left, exists_eq_left', and_self, exists_const, Tm.cut2, Tm.den] at hl ⊢
+  exact hl
 
 end Rel.Lang

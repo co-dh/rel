@@ -21,10 +21,7 @@ meta import Rel.Run.Lang.Syntax
 namespace Rel.Lang
 
 /-- The rows with a `prelude` definition and no theorem `Tm.<sym>Def_den` yet. -/
--- tails, length, sum: each body reads the literal `0` as `Gen.atom .i64 1 <hex> ""`. `Gen.atom_eq` (DfnLaw) turns it
--- into `wordsFoR #[0]` given `Enc.foR (unhex <hex>) (unhex "") = wordsFoR #[0]`, which a `module` cannot evaluate:
--- `String.toUTF8` of a literal and `Std.Range.forIn'` are not exposed (a non-module file closes it by `rfl`).
-meta def unproved : List String := ["tails", "length", "sum"]
+meta def unproved : List String := []
 
 /-- The name of the theorem that row `r`'s definition means the row. -/
 meta def Prim.defDenName (r : Prim) : Lean.Name := .str `Rel.Lang.Tm (r.sym ++ "Def_den")
