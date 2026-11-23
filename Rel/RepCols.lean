@@ -493,6 +493,55 @@ theorem kscan_first_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List
   · rw [e, hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq
   · simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
 
+/-- **A one-source `kscan .null` at no `seg` writes `chain post` of each null flag** (`kscan_first_chain` with `null`'s
+first column the source's flags `foRNuls`): word `i` of the answer is `chain post` of row `i`'s flag. -/
+theorem kscan_null_chain {s t : QAtomicType} {n : USize} {a : Enc} {post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (hs : kscanStream .null [(n, a)] [] post = false) (h : kscan .null false s t n none [(n, a)] [] post = .ok r) :
+    (raw .i64 n r.1).size = n.toNat ∧ ∀ i < n.toNat, ∃ w,
+      chain post ((foRNuls n a)[i]?.getD 0) = .ok w ∧ (raw .i64 n r.1)[i]? = some (if t = .u1 then w % 2 else w) := by
+  have hr := h
+  unfold kscan at hr
+  by_cases hd : kscanRefuses .null n [(n, a)] [] post = true
+  · simp only [hd, ↓reduceIte] at hr; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at hr
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure, segAll] at hr
+  split at hr; · cases hr
+  rename_i cs hc
+  split at hr; · cases hr
+  rename_i ca cs' ns
+  obtain ⟨-, hns, ws', hcc, hcs⟩ := kscanCols_lock hs hc
+  obtain ⟨hl, -⟩ := mapM_chain (es := [a]) hcc
+  rcases ws' with _ | ⟨w0, _ | ⟨_, _⟩⟩ <;> try simp at hl
+  simp only [if_pos rfl, List.take_succ_cons, List.take_zero, List.map_cons, List.map_nil, List.length_cons,
+    List.length_nil, List.drop_succ_cons, List.drop_zero, List.singleton_append, List.cons.injEq] at hcs
+  obtain ⟨rfl, rfl⟩ := hcs
+  split at hr; · cases hr
+  rename_i out₀ hf
+  split at hr; · cases hr
+  rename_i out hp
+  split at hr; · cases hr
+  rename_i w' ht
+  split at hr; · cases hr
+  rename_i nl hnl
+  simp only [Except.ok.injEq] at hr
+  subst hns
+  have ho : r.1 = wordsFoR (out.map fun v => if t = .u1 then v % 2 else v) := by
+    rw [← hr]; first | rfl | simp [wordsFoR]
+  rw [ho]; clear ho hr
+  obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
+  obtain ⟨hps, hpr⟩ := chainAll_ok hp
+  have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hps, hos]
+  refine ⟨?_, fun i hi => ?_⟩
+  · rw [(wordsFoR_closed _ hW.symm).2.1]; exact hW
+  rw [(wordsFoR_closed _ hW.symm).2.1]
+  have hr := hrow i (by omega)
+  rw [if_neg (fun hh => by simp [hi] at hh)] at hr
+  simp only [↓reduceIte, List.length_cons, List.length_nil, List.drop_succ_cons, List.drop_zero, List.nil_append, List.append_eq, List.map_id', List.map_id,
+    List.map_nil, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hr
+  have hq := hpr i (by omega)
+  refine ⟨out[i]?.getD 0, ?_, ?_⟩
+  · rw [hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq
+  · simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
+
 /-- **`lastCount` reads the last word**: `x` where the last of the `K` words is `x < 2^63`, `0` at `K = 0`. -/
 theorem lastCount_eq {K : USize} {P : Enc} (hw : Enc.WF .i64 K P) (hN : hasNul P = false)
     (hf : ∃ md pk, P = .foR md pk) {x : Nat} (hx : x < 2 ^ 63) (hl : 0 < K.toNat → (raw .i64 K P)[K.toNat - 1]?.getD 0 = x.toUInt64)
