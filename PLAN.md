@@ -1822,6 +1822,9 @@ relk 线程池空转 2 526（与前三项重叠）。
     （check-159：新行没有 plan recipe，relc 报错）、decode 允许表重生成。
   - `lt`：定义 `dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)`，`Tm.lt_den` 由 `lamDen` 的 `Pairwise B.lt` 得；fused 行
     `Tab.cmpPairs`（`Div`），定理把行与定义相连。依赖二元行 `at`。
+  - 未验证项 (1)：`ltAt` 对 `Obj.lt`。已证（B5b4）：所有整数存储的 atom（`intOrd`：u8 i8 i16 i32 i64 char date
+    datetime），`ordAt_int` 给出，`Tm.lt_row_den`（`RepSums`，无 `h`）。未证：f32/f64——`Obj.lt` 是位的 totalOrder，
+    `ltAt` 是 IEEE：`-0.0` 对 `0.0`（`Obj.lt` 真、`ltAt` 假），NaN 对 `1.0`（`Obj.lt 1.0 NaN` 真、`ltAt` 两向皆假）。
   - 未验证项 (2)：`ascDen`（`Rel/AscOrder.lean:41`）= `⟦(dom(P) Λ(> P) length)°⟧` 无证明；证出前 `asc` 留在
     `unproved`（`Prim` 的 `asc` 行注释同）。证明依赖 `lt`（`>` 是任意 object 上的序）。
   - 次序：`at` 行 → 迁 `atPos` 用户 → `lt` 定义与 fused 行定理 → `asc` 定义与 `ascDen` 定理。每步一个 agent，opus 做证明。

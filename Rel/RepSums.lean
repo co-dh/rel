@@ -478,6 +478,13 @@ theorem ordAt_int {t : QAtomicType} (h : t.intOrd = true) : OrdAt t :=
       · exact Int.le_of_lt e
       · exact Int.le_refl _⟩
 
+-- floats are left out: `Obj.lt` orders bits by totalOrder (`-0.0 < 0.0`, NaN last) and `ltAt` is IEEE's (neither holds)
+/-- **The row `lt` is the definition `Tm.ltDef`** at every integer-stored atom (`ordDen` is the row's meaning,
+    `Tab.cmpPairs` its code, `Tab.cmpPairs_holds`): `ltAt t` is `Obj.lt` there (`ordAt_int`). -/
+theorem Tm.lt_row_den (ρ : Val) {t : QAtomicType} (h : t.intOrd = true) :
+    ordDen true (.atom t) = (Tm.ltDef (.atom t)).den ρ := by
+  rw [Tm.lt_den]; funext p q; simp only [ordDen, if_true, (ordAt_int h).1]
+
 /-- Only an atom with an order code (`ascOrd`) can have canon's order be `ltAt`: `u1`'s `false < true` has
 no `ltAt`, and a `general` value is not `leAt` itself. -/
 theorem OrdAt.ascOrd {t : QAtomicType} (h : OrdAt t) : ∃ f, ascOrd t = some f := by
