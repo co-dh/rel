@@ -1334,27 +1334,42 @@ theorem Opt.valid_of_gather {t : QAtomicType} {n M : USize} {ix : Enc} {x : Opt 
   · rename_i hk; exact kgather_valid hk
   · cases h
 
+/-- **`ColB.gather` answers** on a valid column at valid positions below its length, at either ownership. -/
+theorem ColB.gather_ok {o : Bool} {t : QAtomicType} {n M : USize} {ix : Enc} (x : ColB o t n)
+    (hx : Enc.Valid n (ColB.enc x)) (hi : Enc.Valid M ix) (hiN : hasNul ix = false)
+    (hr : ∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < n.toNat) : ∃ v, ColB.gather M ix x = .ok v := by
+  cases o
+  · exact Arr.gather_ok x hx hi hiN hr
+  · exact Opt.gather_ok x hx hi hiN hr
+
+/-- A column `ColB.gather` read is valid, at either ownership. -/
+theorem ColB.valid_of_gather {o : Bool} {t : QAtomicType} {n M : USize} {ix : Enc} {x : ColB o t n} {v : ColB o t M}
+    (h : ColB.gather M ix x = .ok v) : Enc.Valid n (ColB.enc x) := by
+  cases o
+  · exact Arr.valid_of_gather h
+  · exact Opt.valid_of_gather h
+
 /-- **A side gathered once is gathered at any valid positions below its length**: `ValsB.gather` reads the same
     columns at every `ix`. -/
 theorem Vals.gather_ok_of_ok {M M' : USize} {ix ix' : Enc} (hi : Enc.Valid M' ix') (hiN : hasNul ix' = false) :
-    {A : Obj} → {n : USize} → (x : Vals A n) → {v : Vals A M} → ValsB.gather M ix x = .ok v →
+    {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) → {v : ValsB o A M} → ValsB.gather M ix x = .ok v →
     (∀ k < M'.toNat, ((raw .i64 M' ix')[k]?.getD 0).toNat < n.toNat) → ∃ v', ValsB.gather M' ix' x = .ok v'
-  | .atom _, _, x, _, h, hr => Arr.gather_ok x (Arr.valid_of_gather h) hi hiN hr
-  | .prod _ _, _, x, _, h, hr => by
+  | _, .atom _, _, x, _, h, hr => ColB.gather_ok x (ColB.valid_of_gather h) hi hiN hr
+  | _, .prod _ _, _, x, _, h, hr => by
     simp only [ValsB.gather, bind] at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, -⟩ := h
     obtain ⟨a', ha'⟩ := Vals.gather_ok_of_ok hi hiN x.1 ha hr
     obtain ⟨b', hb'⟩ := Vals.gather_ok_of_ok hi hiN x.2 hb hr
     simp only [ValsB.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-  | .arr _, _, ⟨c, lo, hi', f⟩, _, h, hr => by
+  | _, .arr _, _, ⟨c, lo, hi', f⟩, _, h, hr => by
     simp only [ValsB.gather, bind] at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, h⟩ := h
     rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, -⟩ := h
-    obtain ⟨a', ha'⟩ := Arr.gather_ok lo (Arr.valid_of_gather ha) hi hiN hr
-    obtain ⟨b', hb'⟩ := Arr.gather_ok hi' (Arr.valid_of_gather hb) hi hiN hr
+    obtain ⟨a', ha'⟩ := ColB.gather_ok lo (ColB.valid_of_gather ha) hi hiN hr
+    obtain ⟨b', hb'⟩ := ColB.gather_ok hi' (ColB.valid_of_gather hb) hi hiN hr
     simp only [ValsB.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-  | .sum _ _, _, s, _, h, hr => by
+  | _, .sum _ _, _, s, _, h, hr => by
     rcases hv : s.view with ⟨hbd, x⟩ | ⟨hbd, tag, x, y⟩ <;> simp only [ValsB.gather, hv, bind] at h
     · rw [Except.bind_eq_ok'] at h; obtain ⟨a, ha, -⟩ := h
       obtain ⟨a', ha'⟩ := Opt.gather_ok x (Opt.valid_of_gather ha) hi hiN hr
@@ -1366,7 +1381,7 @@ theorem Vals.gather_ok_of_ok {M M' : USize} {ix ix' : Enc} (hi : Enc.Valid M' ix
     obtain ⟨b', hb'⟩ := Vals.gather_ok_of_ok hi hiN x hb hr
     obtain ⟨c', hc'⟩ := Vals.gather_ok_of_ok hi hiN y hc hr
     simp only [ValsB.gather, hv, ha', hb', hc', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-  | .one, n, _, _, _, hr => by
+  | _, .one, n, _, _, _, hr => by
     obtain ⟨p, hp⟩ := Arr.gather_ok (Arr.mk (t := .i64) (n := n) .pos trivial rfl) trivial hi hiN hr
     simp only [ValsB.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨(), trivial⟩
 
@@ -1396,14 +1411,14 @@ theorem ascCol_cells_valid {m n c : USize} {lo hi e : Enc} {els : List (AscKey �
 /-- **A side `kasc` reads is gathered at any valid positions below its length**: `ascCol` answering on each of its
     key columns (`ValsB.cols`) makes every column `ValsB.gather` reads valid. -/
 theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) (hiN : hasNul ix = false) :
-    {A : Obj} → {n : USize} → (x : Vals A n) → {es : List (AscKey × Enc)} → ValsB.cols x = .ok es →
+    {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) → {es : List (AscKey × Enc)} → ValsB.cols x = .ok es →
     (∀ e ∈ es, ∃ c, ascCol n e = .ok c) →
     (∀ k < M.toNat, ((raw .i64 M ix)[k]?.getD 0).toNat < n.toNat) → ∃ v, ValsB.gather M ix x = .ok v
-  | .atom _, _, x, _, hes, hc, hr => by
+  | _, .atom _, _, x, _, hes, hc, hr => by
     simp only [ValsB.cols, Except.ok.injEq] at hes; subst hes
     obtain ⟨c, hc⟩ := hc _ List.mem_cons_self
-    exact Arr.gather_ok x (ascCol_valid hc) hi hiN hr
-  | .prod _ _, _, x, _, hes, hc, hr => by
+    exact ColB.gather_ok x (ascCol_valid hc) hi hiN hr
+  | _, .prod _ _, _, x, _, hes, hc, hr => by
     simp only [ValsB.cols, bind] at hes
     rw [Except.bind_eq_ok'] at hes; obtain ⟨e1, h1, hes⟩ := hes
     rw [Except.bind_eq_ok'] at hes; obtain ⟨e2, h2, hes⟩ := hes
@@ -1411,22 +1426,22 @@ theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) (hiN
     obtain ⟨a', ha'⟩ := Vals.gather_ok_of_cols hi hiN x.1 h1 (fun e he => hc e (List.mem_append_left _ he)) hr
     obtain ⟨b', hb'⟩ := Vals.gather_ok_of_cols hi hiN x.2 h2 (fun e he => hc e (List.mem_append_right _ he)) hr
     simp only [ValsB.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-  | .arr _, _, ⟨c, lo, hi', f⟩, _, hes, hc, hr => by
+  | _, .arr _, _, ⟨c, lo, hi', f⟩, _, hes, hc, hr => by
     simp only [ValsB.cols, bind] at hes
     rw [Except.bind_eq_ok'] at hes; obtain ⟨fs, -, hes⟩ := hes
     simp only [pure, Except.pure, Except.ok.injEq] at hes; subst hes
     obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
     obtain ⟨vl, vh⟩ := ascCol_cells_valid hk
-    obtain ⟨a', ha'⟩ := Arr.gather_ok lo vl hi hiN hr
-    obtain ⟨b', hb'⟩ := Arr.gather_ok hi' vh hi hiN hr
+    obtain ⟨a', ha'⟩ := ColB.gather_ok lo vl hi hiN hr
+    obtain ⟨b', hb'⟩ := ColB.gather_ok hi' vh hi hiN hr
     simp only [ValsB.gather, ha', hb', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-  | .sum _ _, n, s, es, hes, hc, hr => by
+  | _, .sum _ _, n, s, es, hes, hc, hr => by
     rcases hv : s.view with ⟨hbd, x⟩ | ⟨hbd, tag, x, y⟩
     · simp only [ValsB.cols, hv, Except.ok.injEq] at hes; subst hes
       obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
       obtain ⟨a', ha'⟩ := Opt.gather_ok x (ascCol_valid hk) hi hiN hr
       simp only [ValsB.gather, hv, ha', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-    obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv hes
+    obtain ⟨xs, ys, rfl, hxs, hys⟩ := ValsB.cols_sum hv hes
     obtain ⟨k, hk⟩ := hc _ List.mem_cons_self
     obtain ⟨a', ha'⟩ := Arr.gather_ok tag (ascCol_valid hk) hi hiN hr
     obtain ⟨b', hb'⟩ := Vals.gather_ok_of_cols hi hiN x hxs
@@ -1434,7 +1449,7 @@ theorem Vals.gather_ok_of_cols {M : USize} {ix : Enc} (hi : Enc.Valid M ix) (hiN
     obtain ⟨c', hc'⟩ := Vals.gather_ok_of_cols hi hiN y hys
       (fun e he => hc e (List.mem_cons_of_mem _ (List.mem_append_right _ he))) hr
     simp only [ValsB.gather, hv, ha', hb', hc', bind, Except.bind, pure, Except.pure]; exact ⟨_, rfl⟩
-  | .one, n, _, _, _, _, hr => by
+  | _, .one, n, _, _, _, _, hr => by
     obtain ⟨p, hp⟩ := Arr.gather_ok (Arr.mk (t := .i64) (n := n) .pos trivial rfl) trivial hi hiN hr
     simp only [ValsB.gather, hp, bind, Except.bind, pure, Except.pure]; exact ⟨(), trivial⟩
 
