@@ -7,6 +7,7 @@ public import Rel.RepTabDiv
 public import Rel.RepTabComp
 public import Rel.RepStruct
 public import Rel.RepCanon
+public import Rel.RepSums
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -255,13 +256,18 @@ theorem symAsc_holds {D : Dict} {Rk : Tab .long .long} {P : Tab (.atom .sym) (.a
 flipped), and a one-element key list orders as its element. -/
 theorem Obj.lt_long (x y : Int64) : Obj.lt .long x y ↔ x < y := by
   have key : ∀ x : Int64, Obj.key .long x = [(Kernel.ordCode 8 false true x.toUInt64).toNat] := fun _ => rfl
-  have c : ∀ u : UInt64, Kernel.ordCode 8 false true u = u ^^^ 9223372036854775808 := fun u => by
-    simp [Kernel.ordCode]; bv_decide
+  have c : ∀ x : Int64, (Kernel.ordCode 8 false true x.toUInt64).toNat = (x.toInt + 2 ^ 63).toNat := fun x => by
+    rw [ordCode_signed (by omega) (by omega)]
+    have h3 := BitVec.toInt_eq_toNat_cond x.toBitVec
+    have h4 := x.toBitVec.isLt
+    have h2 : x.toUInt64.toNat = x.toBitVec.toNat := rfl
+    simp only [Int64.toInt] at *
+    split at h3 <;> omega
   unfold Obj.lt; rw [key, key, c, c]
   simp only [List.cons_lt_cons_iff, List.not_lt_nil, and_false, or_false]
-  rw [← UInt64.lt_iff_toNat_lt, UInt64.lt_iff_toBitVec_lt, Int64.lt_iff_toBitVec_slt]
-  simp only [UInt64.toBitVec_xor, Int64.toBitVec_toUInt64]
-  bv_decide
+  rw [Int64.lt_iff_toInt_lt]
+  have h1 := Int64.le_toInt x; have h2 := Int64.toInt_lt x; have h3 := Int64.le_toInt y; have h4 := Int64.toInt_lt y
+  omega
 
 /-- **Each ascending list of ranks has an ascending list of texts of its length**: the rank `b` of `ys` is the rank
 of an id `i` of `D`, whose text `z` is the one `rank_lt_iff` orders as `b` is. -/
