@@ -293,11 +293,11 @@ theorem scatter_last_at {N K : USize} {ix e o : Enc} (h : kscatter .last N ix e 
   have h' : (raw .i64 K o)[π q]? = some ((raw .i64 N e)[q]?.getD 0) := by rw [← hat q hq]; exact this
   rw [h']; rfl
 
-/-- **GROUP over the rows of `x`** (`Vals.cols`, `kasc`, `kseen` over the sorted columns): sorted row `q` is input
+/-- **GROUP over the rows of `x`** (`ValsB.cols`, `kasc`, `kseen` over the sorted columns): sorted row `q` is input
 row `π q`, `π` a permutation of the rows; sorted row `q` is in group `gr q`, whose first sorted row is `fs G`; two
 sorted rows share a group exactly when their input rows are equal. -/
 theorem group_rows {A : Obj} {N : USize} {x : Vals A N} {es : List (AscKey × Enc)} {vs : List Enc} {p g f : Enc}
-    {k : Nat} (hw : Vals.WF x) (hes : Vals.cols x = .ok es) (hasc : kasc N es = .ok (vs, p))
+    {k : Nat} (hw : Vals.WF x) (hes : ValsB.cols x = .ok es) (hasc : kasc N es = .ok (vs, p))
     (hseen : kseen N ((es.map (·.1)).zip vs) = .ok (k, g, f)) :
     ∃ π gr fs : Nat → Nat, k ≤ N.toNat ∧
       (∀ q < N.toNat, (raw .i64 N p)[q]?.getD 0 = (π q).toUInt64 ∧ π q < N.toNat) ∧
@@ -308,7 +308,7 @@ theorem group_rows {A : Obj} {N : USize} {x : Vals A N} {es : List (AscKey × En
       (∀ G < k, (raw .i64 k.toUSize f)[G]?.getD 0 = (fs G).toUInt64 ∧ fs G < N.toNat ∧ gr (fs G) = G) ∧
       ∀ q < N.toNat, ∀ q' < N.toNat, gr q = gr q' ↔
         ∀ (h : π q < N.toNat) (h' : π q' < N.toNat), x.row ⟨π q, h⟩ = x.row ⟨π q', h'⟩ := by
-  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (ValsB.cols_wf _ hes)
   obtain ⟨hperm, -⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
   generalize ascGrade N.toNat (ascKeys N es) = ps at hp hkq hperm
@@ -631,7 +631,7 @@ theorem Tab.compOne_canon {A B C : Obj}
   have hzw := Vals.concat_wf hNn hz hR.2 hS.1
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
-  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
+  obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (ValsB.cols_wf _ hes)
   have hpN := kasc_plain hasc
   obtain ⟨hperm, hsort⟩ := ascGrade_spec N.toNat (ascKeys N es)
   obtain ⟨hk, hg, hf⟩ := kseen_ok hseen
@@ -827,8 +827,8 @@ theorem Tab.compOne_canon {A B C : Obj}
     obtain ⟨wR, wS, qR, qS⟩ := hrw t.1 G hG h1 h2
     generalize Fs G + (t.1 - Sw G) / bN G = a1 at wR qR
     generalize Fs G + cRN G + (t.1 - Sw G) % bN G = a2 at wS qS
-    obtain ⟨i, hi, hXi⟩ := Vals.gather_row R.key hX t
-    obtain ⟨j, hj, hYj⟩ := Vals.gather_row S.val hY t
+    obtain ⟨i, hi, hXi⟩ := ValsB.gather_row R.key hX t
+    obtain ⟨j, hj, hYj⟩ := ValsB.gather_row S.val hY t
     rw [wR, toNat_toUInt64 (by have := hpsN a1 qR.1; omega)] at hi
     rw [wS, toNat_toUInt64 (by have := hpsN a2 qS.1; omega)] at hj
     have eK : Kk a1 = Kk a2 := (fs.2.2.1 a1 qR.1 a2 qS.1).1 (qR.2.1.trans qS.2.1.symm)
@@ -875,8 +875,8 @@ theorem Tab.compOne_canon {A B C : Obj}
     rw [hmod, show Fs G + cRN G + (qj - Fs G - cRN G) = qj by omega, hps qj (by omega), ej,
       Nat.add_sub_cancel_left] at wS
     have htT : t < Tn.toUSize.toNat := by omega
-    obtain ⟨i', hi', hXi⟩ := Vals.gather_row R.key hX ⟨t, htT⟩
-    obtain ⟨j', hj', hYj⟩ := Vals.gather_row S.val hY ⟨t, htT⟩
+    obtain ⟨i', hi', hXi⟩ := ValsB.gather_row R.key hX ⟨t, htT⟩
+    obtain ⟨j', hj', hYj⟩ := ValsB.gather_row S.val hY ⟨t, htT⟩
     rw [wR, toNat_toUInt64 (by omega)] at hi'
     rw [wS, toNat_toUInt64 (by omega)] at hj'
     refine ⟨⟨t, htT⟩, ?_, ?_⟩
