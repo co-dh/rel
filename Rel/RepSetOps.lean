@@ -149,6 +149,24 @@ theorem whereCol_size {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o)) 
   obtain ⟨his, -, -, hoe⟩ := raw_kgather _ _ _ _ _ ho'
   rw [hoe, (wordsFoR_nul _ _ (by rw [Array.size_map, his])).2.1]
 
+/-- **`whereCol` lists the positions of the `1` words**: some answer row holds `i` exactly when `b[i]` is set. -/
+theorem whereCol_mem {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
+    (hb : ∀ i < m.toNat, (Enc.raw .i64 m b)[i]?.getD 0 < 2) (i : Nat) :
+    (∃ k < K.toNat, ((Enc.raw .i64 K o)[k]?.getD 0).toNat = i) ↔ i < m.toNat ∧ (Enc.raw .i64 m b)[i]?.getD 0 ≠ 0 := by
+  have hsz := whereCol_size h
+  have hmem : i ∈ (Enc.raw .i64 K o).toList.map UInt64.toNat ↔ i < m.toNat ∧ (Enc.raw .i64 m b)[i]?.getD 0 ≠ 0 := by
+    rw [whereCol_spec h hb, List.mem_filter, List.mem_range, decide_eq_true_eq]
+  rw [← hmem, List.mem_map]
+  constructor
+  · rintro ⟨k, hk, rfl⟩
+    refine ⟨_, Array.getElem_mem_toList (by rw [hsz]; exact hk : k < (Enc.raw .i64 K o).size), ?_⟩
+    rw [getElem?_pos (Enc.raw .i64 K o) k (by omega), Option.getD_some]
+  · rintro ⟨v, hv, rfl⟩
+    obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hv
+    rw [Array.length_toList] at hk
+    refine ⟨k, hsz ▸ hk, ?_⟩
+    rw [Array.getElem_toList, getElem?_pos (Enc.raw .i64 K o) k hk, Option.getD_some]
+
 /-- Rows with equal codes are `lexLe` both ways. -/
 theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
     ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0) → lexLe ks i j = true
