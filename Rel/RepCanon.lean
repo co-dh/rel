@@ -16,29 +16,62 @@ namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
 
 /-- **An element is the atom of its word**: in a column every kernel reads (`foR`, or `pos` at `i64`), element `i` is
-`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. -/
-theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kernel.Enc.Valid n x.enc)
-    (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
-      x.get i = (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
-  have hw := x.wf
-  rw [Arr.get_ne x i hg]
-  cases hc : x.enc with
+`Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. Stated on the
+payload `e` at a row `foRNuls` flags as no null, so it serves `Arr` (no null anywhere) and `Opt` (off its nulls). -/
+theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n e) (hx : Kernel.Enc.Valid n e)
+    (hg : t ≠ .general) (i : Fin n.toNat) (h0 : (foRNuls n e)[i.1]? = some 0) :
+    ∃ a, (Enc.raw .i64 n e)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
+      ((Enc.get t n e i).bind fun a => (Dep.Carrier.of? t (.atom a) : Option (El t))).getD default =
+        (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg)) : Option (El t)).getD default := by
+  cases e with
   | foR md pk =>
-    rw [hc] at hw
+    have hnul : Column.foRNul md pk (Column.blockStarts md) i = false := by simpa [foRNuls, i.2] using h0
     refine ⟨Column.foRBits md pk (Column.blockStarts md) i, by simp only [raw_foR .i64 8 rfl
       (by decide : QAtomicType.i64 ≠ .u1), Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some,
       Nat.reduceMul, ofNat_toNat_mod64], fun hu => by
-        subst hu; have hp := x.plain; rw [hc] at hp; simp only [Enc.WF] at hw
-        exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2 _ (by
-          simp [Column.foROpt, foRNul_of_plain hp (Nat.lt_of_lt_of_le i.2 hw.2.2.1)])), ?_⟩
+        subst hu; simp only [Enc.WF] at hw
+        exact UInt64.lt_iff_toNat_lt.2 (hw.2.1 trivial i i.2 _ (by simp [Column.foROpt, hnul])), ?_⟩
     cases t <;> first | exact absurd rfl hg |
       simp only [Enc.get, if_pos i.2, QAtomicType.width, foRBits_starts, Option.bind_some]
   | pos =>
-    rw [hc] at hw
     cases t <;> simp only [Enc.WF] at hw
     exact ⟨UInt64.ofNat i.1, by simp [Enc.raw, i.2], fun h => absurd h (by decide),
       by simp [Enc.get, i.2, Column.atomOfBits]⟩
-  | _ => all_goals (rw [hc] at hx; simp only [Kernel.Enc.Valid] at hx)
+  | _ => all_goals simp only [Kernel.Enc.Valid] at hx
+
+/-- `Enc.get_raw_atom` at an `Arr`, whose every row is no null (`foRNuls_plain`). -/
+theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kernel.Enc.Valid n x.enc)
+    (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
+      x.get i = (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
+  rw [Arr.get_ne x i hg]; exact Enc.get_raw_atom x.wf hx hg i (foRNuls_plain x.wf x.plain i.2)
+
+/-- `Obj.optOf` undoes `Obj.optEl`: a band row read as `a + b` and back is the row. -/
+theorem Obj.optOf_optEl {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : Option (El t)) :
+    Obj.optOf h (Obj.optEl h v) = v := by
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h; cases v <;> rfl
+
+/-- `Opt.get` at an atom type: `none` at a null, else `Arr.get`'s reading of the payload. -/
+theorem Opt.get_ne {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) (h : t ≠ .general) :
+    x.get i = if x.isNul i then none else
+      some (((Enc.get t n x.enc i).bind fun a => Dep.Carrier.of? t (.atom a)).getD default) := by
+  cases t <;> first | exact absurd rfl h | rfl
+
+/-- **`Opt.isNul` is the flag `foRNuls` moves**: row `i` is no null exactly where its flag word is `0`; `isNul`'s `#[]`
+and the kernels' `blockStarts` are one decode (`blockStarts_get`), as in `foRBits_starts`. -/
+theorem Opt.isNul_eq_false {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) :
+    x.isNul i = false ↔ (foRNuls n x.enc)[i.1]? = some 0 := by
+  have hw := x.wf
+  unfold Opt.isNul
+  cases hc : x.enc with
+  | foR md pk =>
+    rw [hc] at hw; simp only [Enc.WF] at hw
+    have hb : i.1 / Column.blk md ≤ Column.nblk md :=
+      Nat.le_of_lt (Nat.div_lt_of_lt_mul (Nat.lt_of_lt_of_le i.2 hw.2.2.1))
+    have hs : Column.foRNul md pk #[] i = Column.foRNul md pk (Column.blockStarts md) i := by
+      unfold Column.foRNul; simp [Verify.blockStarts_get md hb, Verify.blockStarts_get md (Nat.le_refl _)]
+    simp only [hs, foRNuls, Array.getElem?_map, Array.getElem?_range, i.2, if_true, Option.map_some]
+    cases Column.foRNul md pk (Column.blockStarts md) i <;> simp
+  | _ => simp [foRNuls, i.2]
 
 /-- **Equal atoms of the words, equal elements**: two `Arr`s of one type in a column every kernel reads (`foR`, or `pos`
 at `i64`) whose raw words `a` at `i` and `b` at `j` read as one atom (`atomOfBits`, given the `u1` bound every `Arr`
@@ -54,6 +87,31 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg i
   obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg j
   rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
+
+/-- **`Arr.get_eq_of_raw` with nulls**: two `Opt`s whose rows `i`, `j` carry one null flag (`foRNuls`) and, off a null,
+words that read as one atom hold one element there, `none` at a null. -/
+theorem Opt.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Opt t n) (y : Opt t m) (hx : Kernel.Enc.Valid n x.enc)
+    (hy : Kernel.Enc.Valid m y.enc) (i : Fin n.toNat) (j : Fin m.toNat)
+    (hf : (foRNuls n x.enc)[i.1]? = (foRNuls m y.enc)[j.1]?)
+    (h : (foRNuls n x.enc)[i.1]? = some 0 → ∀ (hg : t ≠ .general) a b, (Enc.raw .i64 n x.enc)[i.1]? = some a →
+      (Enc.raw .i64 m y.enc)[j.1]? = some b → (t = .u1 → a < 2 ∧ b < 2) →
+        Column.atomOfBits t a hg = Column.atomOfBits t b hg) : x.get i = y.get j := by
+  have hg : t ≠ .general := by
+    rintro rfl; have hw := x.wf
+    cases hc : x.enc <;> (rw [hc] at hw hx; simp only [Enc.WF, Kernel.Enc.Valid] at hw hx) <;> exact absurd hw.1 (by decide)
+  rw [Opt.get_ne x i hg, Opt.get_ne y j hg]
+  by_cases h0 : (foRNuls n x.enc)[i.1]? = some 0
+  · rw [(Opt.isNul_eq_false x i).2 h0, (Opt.isNul_eq_false y j).2 (hf ▸ h0)]
+    obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hx hg i h0
+    obtain ⟨b, hb, hub, ey⟩ := Enc.get_raw_atom y.wf hy hg j (hf ▸ h0)
+    simp only [Bool.false_eq_true, if_false, ex, ey, h h0 hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
+  · have h1 : x.isNul i = true := by
+      cases hh : x.isNul i; · exact absurd ((Opt.isNul_eq_false x i).1 hh) h0
+      rfl
+    have h2 : y.isNul j = true := by
+      cases hh : y.isNul j; · exact absurd (hf.trans ((Opt.isNul_eq_false y j).1 hh)) h0
+      rfl
+    simp only [h1, h2, if_true]
 
 section
 open Ext.Enc
@@ -238,6 +296,65 @@ theorem Arr.gather_row {t : QAtomicType} {m n : USize} {ix : Enc} (x : Arr t n) 
       rw [hw] at hi
       simp only [Option.getD_some, Option.map_some] at hi ⊢
       simp only [Array.getElem?_eq_getElem (show w.toNat < _ by rw [hes]; exact hi), Option.getD_some]
+  · cases h
+
+/-- A flag word of `foRNuls` is `0` or `1`. -/
+theorem foRNuls_bit (m : USize) (e : Enc) {i : Nat} (hi : i < m.toNat) :
+    (foRNuls m e)[i]? = some (if (foRNuls m e)[i]?.getD 0 != 0 then 1 else 0) := by
+  cases e <;> simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, Array.getElem?_replicate, hi, if_true,
+    Option.map_some, Option.getD_some] <;> (try split) <;> simp_all
+
+/-- A kernel's answer reads back its word at each row its null bitmap leaves unflagged; a flagged row's raw word is
+its block's top residual, not `ws[k]`. -/
+theorem raw_wordsFoR_of_bit (ws : Array UInt64) (nul : ByteArray) {m : USize} (hws : ws.size = m.toNat) (k : Nat)
+    (hk : k < ws.size) (hnk : Column.bitAt nul k = false) : (Enc.raw .i64 m (wordsFoR ws nul))[k]? = some ws[k] := by
+  obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws nul = .foR md pk := ⟨_, _, rfl⟩
+  have h := (wordsFoR_nul ws nul hws.symm).2.2.1 md pk hE k hk
+  rw [hnk, if_neg Bool.false_ne_true] at h
+  unfold Column.foROpt at h; split at h; · cases h
+  rw [hE, raw_foR .i64 8 rfl (by decide)]
+  simp only [Array.getElem?_map, Array.getElem?_range, show k < m.toNat by omega, if_true, Option.map_some,
+    Nat.reduceMul, Option.some.inj h, ofNat_toNat_mod64]
+
+/-- **`Arr.gather_row` with nulls**: row `j` of `Opt.gather m ix x` is row `ix[j]` of `x`, null flag included, since
+`kgather` moves each row's flag (`foRNuls`) with its word (`raw_kgather`). -/
+theorem Opt.gather_row {t : QAtomicType} {m n : USize} {ix : Enc} (x : Opt t n) {y : Opt t m}
+    (h : Opt.gather m ix x = .ok y) (j : Fin m.toNat) : ∃ i : Fin n.toNat,
+      ((Enc.raw .i64 m ix)[j.1]?.getD 0).toNat = i.1 ∧ y.get j = x.get i := by
+  simp only [Opt.gather] at h
+  split at h
+  · rename_i o ho
+    cases h
+    have hv := kgather_valid ho
+    obtain ⟨his, hes, hlt, ho'⟩ := raw_kgather m ix n _ o ho
+    generalize hws : (Enc.raw .i64 m ix).map (fun i => (Enc.raw .i64 n x.enc)[i.toNat]?.getD 0) = ws at ho'
+    generalize hnul : (if hasNul x.enc then nulMap ((Enc.raw .i64 m ix).map fun i => (foRNuls n x.enc)[i.toNat]?.getD 0)
+      else .empty) = nul at ho'
+    have hwsz : ws.size = m.toNat := by rw [← hws, Array.size_map, his]
+    have hj : j.1 < (Enc.raw .i64 m ix).size := by rw [his]; exact j.2
+    have hjw : j.1 < ws.size := by rw [hwsz]; exact j.2
+    have hi := hlt j j.2
+    have hc := wordsFoR_nul ws nul (n := m) hwsz.symm
+    -- the flag of row `j` is source row `ix[j]`'s
+    have hf : (foRNuls m o)[j.1]? = (foRNuls n x.enc)[((Enc.raw .i64 m ix)[j.1]?.getD 0).toNat]? := by
+      rw [ho', foRNuls_wordsFoR ws nul hwsz.symm j hjw]
+      cases hN : hasNul x.enc
+      · rw [foRNuls_plain x.wf hN hi]; simp [← hnul, hN, bitAt_empty]
+      · rw [foRNuls_bit n x.enc hi]; simp only [← hnul, hN, if_true]
+        unfold nulMap
+        rw [bitAt_packOf _ _ j (by simpa [his] using j.2)]
+        simp [Array.getElem?_eq_getElem hj]
+    refine ⟨⟨_, hi⟩, rfl, Opt.get_eq_of_raw _ x (show Kernel.Enc.Valid m o by rw [ho']; exact hc.1) hv j ⟨_, hi⟩ hf
+      fun h0 _ a b ha hb _ => ?_⟩
+    have hbit : Column.bitAt nul j = false := by
+      have := (foRNuls_wordsFoR ws nul hwsz.symm j hjw).symm.trans (ho' ▸ h0)
+      cases hb' : Column.bitAt nul j <;> simp_all
+    have e := raw_wordsFoR_of_bit ws nul hwsz j hjw hbit
+    rw [← ho'] at e
+    rw [e, ← hws] at ha
+    simp only [Array.getElem_map, Option.some.injEq] at ha
+    rw [Array.getElem?_eq_getElem hj, Option.getD_some] at hb
+    rw [← ha, hb]; rfl
   · cases h
 
 end
@@ -491,12 +608,6 @@ theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List
     List.getElem?_eq_getElem h2, Option.map_some, Option.some.injEq] at e2
   rw [← hc64 _ (List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem h1))),
     ← hc64 _ (List.mem_range.1 (hperm'.mem_iff.1 (List.getElem_mem h2))), e2]
-
-/-- A flag word of `foRNuls` is `0` or `1`. -/
-theorem foRNuls_bit (m : USize) (e : Enc) {i : Nat} (hi : i < m.toNat) :
-    (foRNuls m e)[i]? = some (if (foRNuls m e)[i]?.getD 0 != 0 then 1 else 0) := by
-  cases e <;> simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, Array.getElem?_replicate, hi, if_true,
-    Option.map_some, Option.getD_some] <;> (try split) <;> simp_all
 
 /-- **A sorted column agrees with its input row by row, nulls included**: `v`, `asc_perm`'s answer for the input
 column `e` through the permutation `ps`, holds at row `q` input row `ps[q]`'s null flag and, off a null, its word; and
@@ -757,6 +868,44 @@ theorem Arr.eq_of_codes {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
     Array.getElem?_map] at hk
   exact Arr.get_eq_of_raw x x hv hv i i' fun hg a b ha hb hu =>
     (ascOrd_atom hof hg hu).1 (by simpa only [ha, hb, Option.map_some, Option.getD_some] using hk)
+
+/-- **`Arr.eq_of_codes` with nulls**: rows of an `Opt` with equal order codes (`nulCodes`: the null column, then the
+word codes with `0` at a null) carry one null flag and, off a null, one atom, so one element. -/
+theorem Opt.eq_of_codes {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
+    (hc : [(.atom t, x.enc)].mapM (ascCol n) = .ok cs) : Kernel.Enc.Valid n x.enc ∧ ∀ i i' : Fin n.toNat,
+      seenKey n [(.atom t, x.enc)] i = seenKey n [(.atom t, x.enc)] i' → x.get i = x.get i' := by
+  obtain ⟨hlen, hf⟩ := mapM_ok hc
+  have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
+  obtain ⟨hraw, hsz, -, hat⟩ := ascCol_ok hac
+  obtain ⟨f, hof⟩ := hat t rfl
+  have hv := ascCol_valid hac
+  dsimp only at hof hv hraw
+  have hs : (Enc.raw .i64 n x.enc).size = n.toNat := by rw [← hraw]; exact hsz
+  refine ⟨hv, fun i i' hk => ?_⟩
+  have hbit : ∀ q : Fin n.toNat, ∃ u, (foRNuls n x.enc)[q.1]? = some u ∧ (u = 0 ∨ u = 1) := fun q => by
+    rw [foRNuls_bit n x.enc q.2]; split <;> simp
+  obtain ⟨u, hu, hu2⟩ := hbit i
+  obtain ⟨u', hu', hu2'⟩ := hbit i'
+  have hw := Array.getElem?_eq_getElem (show i.1 < _ by rw [hs]; exact i.2)
+  have hw' := Array.getElem?_eq_getElem (show i'.1 < _ by rw [hs]; exact i'.2)
+  simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, hof, Option.getD_some, List.append_nil, List.map_cons,
+    List.map_nil] at hk
+  cases hN : hasNul x.enc
+  · have h0 := foRNuls_plain x.wf hN i.2
+    have h0' := foRNuls_plain x.wf hN i'.2
+    simp only [hN, Bool.false_eq_true, if_false, List.nil_append, List.map_cons, List.map_nil, List.cons.injEq,
+      and_true, Array.getElem?_map, hw, hw', Option.map_some, Option.getD_some] at hk
+    exact Opt.get_eq_of_raw x x hv hv i i' (h0.trans h0'.symm) fun _ hg a b ha hb hh => by
+      rw [hw] at ha; rw [hw'] at hb; cases ha; cases hb; exact (ascOrd_atom hof hg hh).1 hk
+  · simp only [hN, if_true, List.singleton_append, List.map_cons, List.map_nil, List.cons.injEq, and_true,
+      Array.getElem?_map, Array.getElem?_mapIdx, hu, hu', hw, hw', Option.map_some, Option.getD_some] at hk
+    have huu : u = u' := by
+      rcases hu2 with rfl | rfl <;> rcases hu2' with rfl | rfl <;> first | rfl | exact absurd hk.1 (by decide)
+    subst huu
+    refine Opt.get_eq_of_raw x x hv hv i i' (hu.trans hu'.symm) fun h0 hg a b ha hb hh => ?_
+    rw [hu] at h0; cases h0
+    rw [hw] at ha; rw [hw'] at hb; cases ha; cases hb
+    exact (ascOrd_atom hof hg hh).1 (by simpa using hk.2)
 
 /-- **A duplicate-free list inside another is no longer**: each element of `l₁` erased from `l₂` in turn. -/
 theorem nodup_length_le {α : Type} [DecidableEq α] : ∀ {l₁ l₂ : List α}, l₁.Nodup → l₁ ⊆ l₂ →
@@ -1021,8 +1170,12 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     have c1 := Vals.cell_le hw i; have c2 := Vals.cell_le hw i'
     rw [dif_pos (by omega), dif_pos (by omega)]
     exact Vals.row_of_codes f hw.2 hfs hcs' _ _ (hk k hkl)
-  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, hw, es, hes, cs, hc, i, i', hk => by
-    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
+  | .sum _ _, n, s, hw, es, hes, cs, hc, i, i', hk => by
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩
+    · simp only [Vals.cols, hv, Except.ok.injEq] at hes; subst hes
+      simp only [Vals.row, hv, (Opt.eq_of_codes x hc).2 i i' hk]
+    simp only [Vals.WF, hv] at hw
+    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     obtain ⟨hv, heq⟩ := Arr.eq_of_codes tag hc0
@@ -1034,8 +1187,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     obtain ⟨k0, k12⟩ := List.append_inj hk (by simp [seenKey, ascKeys])
     obtain ⟨k1, k2⟩ := List.append_inj k12 (by simp [seenKey])
     have ht := heq i i' k0
-    show Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i = Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i'
-    simp only [Vals.row, ht]
+    simp only [Vals.row, hv, ht]
     cases htt : tag.get i'
     · simp only [Bool.false_eq_true, ↓reduceIte]
       by_cases h0 : 0 < l.toNat
@@ -1087,6 +1239,53 @@ theorem Arr.codes_of_eq {t : QAtomicType} {n : USize} (x : Arr t n) {cs}
       Option.map_some]
     exact congrArg (· :: []) ((ascOrd_atom hof hg hu).2 (he hr))
 
+/-- **Equal elements of an `Opt`, equal order codes**, `Opt.eq_of_codes`' converse: equal elements are both null
+(one flag, code `0`) or both one atom (`ascOrd_atom`), and `nulCodes_row` reads no more. -/
+theorem Opt.codes_of_eq {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
+    (hc : [(.atom t, x.enc)].mapM (ascCol n) = .ok cs) (i i' : Fin n.toNat) (hr : x.get i = x.get i') :
+    seenKey n [(.atom t, x.enc)] i = seenKey n [(.atom t, x.enc)] i' := by
+  obtain ⟨hlen, hf⟩ := mapM_ok hc
+  have hac := hf 0 _ (cs[0]'(by simp at hlen; omega)) rfl (List.getElem?_eq_getElem _)
+  obtain ⟨hraw, hsz, -, hat⟩ := ascCol_ok hac
+  obtain ⟨f, hof⟩ := hat t rfl
+  have hv := ascCol_valid hac
+  dsimp only at hof hv hraw
+  have hs : (Enc.raw .i64 n x.enc).size = n.toNat := by rw [← hraw]; exact hsz
+  have hg : t ≠ .general := by rintro rfl; simp [ascOrd, ascLayout, orderKind] at hof
+  have hw := Array.getElem?_eq_getElem (show i.1 < _ by rw [hs]; exact i.2)
+  have hw' := Array.getElem?_eq_getElem (show i'.1 < _ by rw [hs]; exact i'.2)
+  have hbit : ∀ q : Fin n.toNat, x.isNul q = true → (foRNuls n x.enc)[q.1]? = some 1 := fun q h => by
+    have h1 := foRNuls_bit n x.enc q.2
+    have h2 : (foRNuls n x.enc)[q.1]? ≠ some 0 := fun e => absurd ((Opt.isNul_eq_false x q).2 e) (by simp [h])
+    rw [h1] at h2 ⊢; split at h2 <;> simp_all
+  rw [Opt.get_ne x i hg, Opt.get_ne x i' hg] at hr
+  -- equal elements: one flag, and off a null one atom
+  have key : (foRNuls n x.enc)[i.1]? = (foRNuls n x.enc)[i'.1]? ∧
+      ((foRNuls n x.enc)[i.1]? = some 0 → f (Enc.raw .i64 n x.enc)[i.1] = f (Enc.raw .i64 n x.enc)[i'.1]) := by
+    cases h1 : x.isNul i <;> cases h2 : x.isNul i' <;> simp only [h1, h2, Bool.false_eq_true, if_false, if_true,
+      reduceCtorEq] at hr
+    · have e1 := (Opt.isNul_eq_false x i).1 h1
+      have e2 := (Opt.isNul_eq_false x i').1 h2
+      refine ⟨e1.trans e2.symm, fun _ => ?_⟩
+      obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hv hg i e1
+      obtain ⟨b, hb, hub, ey⟩ := Enc.get_raw_atom x.wf hv hg i' e2
+      rw [hw] at ha; rw [hw'] at hb; cases ha; cases hb
+      rw [Option.some.injEq, ex, ey] at hr
+      refine (ascOrd_atom hof hg fun hu => ⟨hua hu, hub hu⟩).2 ?_
+      cases t <;> first | exact absurd rfl hg | simp_all [Column.atomOfBits, Dep.Carrier.of?]
+    · exact ⟨(hbit i h1).trans (hbit i' h2).symm, fun e => by rw [hbit i h1] at e; cases e⟩
+  simp only [seenKey, ascKeys, ascKey, hof, Option.getD_some, List.append_nil]
+  rw [← Array.map_id (Array.map f (Enc.raw .i64 n x.enc))]
+  refine nulCodes_row rfl key.1 ?_
+  unfold nulWords; split
+  · simp only [Array.getElem?_mapIdx, Array.getElem?_map, hw, hw', Option.map_some, ← key.1]
+    cases hq : (foRNuls n x.enc)[i.1]?.getD 0 == 0 <;> simp only [hq, if_true, Bool.false_eq_true, if_false]
+    · rfl
+    · rw [key.2 (by cases h : (foRNuls n x.enc)[i.1]? <;> simp_all)]
+  · rename_i hN
+    simp only [Array.getElem?_map, hw, hw', Option.map_some,
+      key.2 (foRNuls_plain x.wf (Bool.eq_false_iff.2 hN) i.2)]
+
 /-- **Equal rows, equal order codes**, `Vals.row_of_codes`' converse, column by column (`Arr.codes_of_eq`). -/
 theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Vals.WF x → {es : List (AscKey × Enc)} →
     Vals.cols x = .ok es → ∀ {cs}, es.mapM (ascCol n) = .ok cs → ∀ i i' : Fin n.toNat,
@@ -1114,15 +1313,19 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     have e := hr.2 k hkl
     rw [dif_pos (by omega), dif_pos (by omega)] at e
     exact Vals.codes_of_row f hw.2 hfs hcs' _ _ e
-  | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩, hw, es, hes, cs, hc, i, i', hr => by
-    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
+  | .sum _ _, n, s, hw, es, hes, cs, hc, i, i', hr => by
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩
+    · simp only [Vals.cols, hv, Except.ok.injEq] at hes; subst hes
+      simp only [Vals.row, hv] at hr
+      exact Opt.codes_of_eq x hc i i' (by simpa only [Obj.optOf_optEl] using congrArg (Obj.optOf hb) hr)
+    simp only [Vals.WF, hv] at hw
+    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     obtain ⟨xl0, xg, yl0, yg⟩ := hrest (Arr.eq_of_codes tag hc0).1
     have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
       fun _ _ q => by simp [seenKey, ascKeys_append]
-    change Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i = Vals.row (A := .sum _ _) ⟨l, r, tag, idx, x, y⟩ i' at hr
-    simp only [Vals.row] at hr
+    simp only [Vals.row, hv] at hr
     -- equal rows sit in one summand
     have ht : tag.get i = tag.get i' := by revert hr; cases tag.get i <;> cases tag.get i' <;> simp
     have k1 : seenKey n xs i = seenKey n xs i' := by
