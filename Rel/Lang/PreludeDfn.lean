@@ -249,14 +249,15 @@ theorem Tm.sumDef_row (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t
 
 /-- At the universes `u₀`, `u` of `length` (`P` every number, or an initial segment), `asc(P)`'s definition, with the
     count `Tm.lengthDef u₀ u`, means the row cut to `P` where `dom P` has a short list ascending by `Obj.lt`; at every
-    number, the row (`ascDen`, `Prim.den_ascRow`). -/
-theorem Tm.ascDef_den (ρ : Val) {B : Obj} (Pa : Tm B B) (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
+    number, the row (`ascDen`, `Prim.den_ascRow`); `G` is `>` on `dom Pa` (`hG`). -/
+theorem Tm.ascDef_row (ρ : Val) {B : Obj} (Pa G : Tm B B) (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
+    (hG : ∀ x y, (∃ c, Pa.den ρ x c) → (∃ c, Pa.den ρ y c) → (G.den ρ x y ↔ B.lt y x))
     (hP : (∀ x, P x) ∨ Seg .long P) (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
     (hp : ∃ ys : List B.El, ys.Pairwise B.lt ∧ (∀ b, b ∈ ys ↔ ∃ c, Pa.den ρ b c) ∧ ys.length < 2 ^ 63) (j : Int64)
     (a : B.El) :
-    ((Tm.ascDef Pa (Tm.lengthDef u₀ u)).den ρ j a ↔ P j ∧ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a) ∧
-      ((∀ x, P x) → ((Tm.ascDef Pa (Tm.lengthDef u₀ u)).den ρ j a ↔ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a)) := by
-  have h := Tm.ascDef_of_len ρ Pa (Tm.lengthDef u₀ u) P (fun zs hs w => by
+    ((Tm.ascDef Pa G (Tm.lengthDef u₀ u)).den ρ j a ↔ P j ∧ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a) ∧
+      ((∀ x, P x) → ((Tm.ascDef Pa G (Tm.lengthDef u₀ u)).den ρ j a ↔ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a)) := by
+  have h := Tm.ascDef_of_len ρ Pa G (Tm.lengthDef u₀ u) P hG (fun zs hs w => by
     rw [(Tm.lengthDef_row ρ u₀ u hP hU₀ hU zs hs w).1]
     simp only [Tm.den, Prim.den_lengthRow, Core.Rel.comp, hU]
     constructor
