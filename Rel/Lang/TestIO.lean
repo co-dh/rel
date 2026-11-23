@@ -512,12 +512,9 @@ rel_program symAscIO where
     srt : N ⟶ S ≜ asc(ran(a))
     sorted : N ⟶ [C] ≜ srt D
     output sorted to csv "/data/tmp/rel-test-io-symasc/t.csv"
-    lessThan : α ⟶ α ≜ <
-    lts : N ⟶ N ≜ a lessThan a°
-    output lts to csv "/data/tmp/rel-test-io-symasc/l.csv"
 
 /--
-info: "val\na\nb\nc\n|val\n2\n0\n2\n"
+info: "val\na\nb\nc\n"
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -527,13 +524,39 @@ info: "val\na\nb\nc\n|val\n2\n0\n2\n"
   IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
   symAscIO.io
   let r ← IO.FS.readFile (d ++ "/t.csv")
-  let r2 ← IO.FS.readFile (d ++ "/l.csv")
   IO.FS.removeDirAll d
-  return r ++ "|" ++ r2
+  return r
+
+-- `lessThan : S ⟶ S ≜ <` is a definition that reads the dictionary `D` without naming it (`Expand.walk`): its body is
+-- `symOrd`'s order of the texts
+open Rel.Programs.prelude in
+rel_program symPolyIO where
+    obj N
+    obj S : sym
+    obj C : char
+    input a : N ⟶ S from csv "/data/tmp/rel-test-io-sympoly/a.csv"
+    dictionary D : S ⟶ [C]
+    lessThan : S ⟶ S ≜ <
+    lts : N ⟶ N ≜ a lessThan a°
+    output lts to csv "/data/tmp/rel-test-io-sympoly/l.csv"
+
+/--
+info: "val\n2\n0\n2\n"
+-/
+#guard_msgs in
+#eval show IO _ from do
+  let d := "/data/tmp/rel-test-io-sympoly"
+  if ← System.FilePath.pathExists d then IO.FS.removeDirAll d
+  IO.FS.createDirAll d
+  IO.FS.writeFile (d ++ "/a.csv") "val\nb\na\nc\n"
+  symPolyIO.io
+  let r ← IO.FS.readFile (d ++ "/l.csv")
+  IO.FS.removeDirAll d
+  return r
 
 -- a dictionary before a CSV input with a symbol column would lack that input's texts: refused where it is elaborated
 /--
-error: line 514, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
+error: line 568, col 5: input `b` has a symbol column and comes after `dictionary D`, which is bound to the texts of the inputs before it; move `dictionary D` after `input b`
 -/
 #guard_msgs in
 rel_program dictFirstT where
