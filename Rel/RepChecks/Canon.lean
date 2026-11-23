@@ -35,13 +35,14 @@ def canonAgrees {k v : Obj} [BEq k.El] [BEq v.El] (R : Tab k v) : Bool :=
 
 #guard [[(3, 1), (1, 2), (3, 1), (-1, 2), (1, 2), (2, 7), (-5, -5), (0, 0)], [(-2, 9), (-2, 9), (7, -3)], []].all
   fun ps => canonAgrees (tab ps)
-/-- The table whose row `i` is `(tag, payload, value)` = `ts[i]`, its key the dense sum side (`Vals.zeros` for the summand
-the tag does not name): the left column holds the payload where the tag is `false`, the right where it is `true`, `0`
-elsewhere, every column `foR` (`Alg.col`). -/
+/-- The table whose row `i` is `(tag, payload, value)` = `ts[i]`, its key the dense sum side: each summand is a nullable
+column of all `n` rows (`Opt.ofArr`), the left holding the payload where the tag is `false`, the right where it is
+`true`, `0` elsewhere (a row the tag does not name is never read), every column `foR` (`Alg.col`). -/
 def sumTab (ts : List (Bool × Int64 × Int64)) : Tab (.sum .long .long) .long :=
   ⟨ts.length.toUSize, ValsB.ofGen rfl (Arr.bools _ fun i => (ts.getD i (false, 0, 0)).1)
-    (List.length_map _ ▸ Alg.col (ts.map fun t => if t.1 then 0 else t.2.1))
-    (List.length_map _ ▸ Alg.col (ts.map fun t => if t.1 then t.2.1 else 0)), List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
+    (Opt.ofArr (List.length_map _ ▸ Alg.col (ts.map fun t => if t.1 then 0 else t.2.1)))
+    (Opt.ofArr (List.length_map _ ▸ Alg.col (ts.map fun t => if t.1 then t.2.1 else 0))),
+    List.length_map _ ▸ Alg.col (ts.map (·.2.2))⟩
 
 -- sum sides, as the key, the value and both: rows of one tag and payload are one row; all-right, all-left, and no row
 #guard [[(false, 5, 1), (true, 4, 2), (false, 5, 1), (false, 5, 1), (true, 9, 2), (true, 4, 2), (false, 7, 3)],

@@ -386,7 +386,7 @@ theorem colMap_max_self {n : USize} {a o : Enc} {s : UInt64} (hW : Enc.WF .i64 n
       (fill := 0x8000000000000000) rfl (by decide : (QAtomicType.i64).width = some 8) (by decide) hs hWs ⟨(n, a), by simp, hN⟩ hr
     simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl, -⟩ := hes
     intro i hi
-    obtain ⟨⟨v, hv1, hv2⟩, hn1, hn2⟩ := hrow i hi
+    obtain ⟨hv, hn1, hn2⟩ := hrow i hi
     simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure,
       Except.pure, UInt64.and_self, Except.ok.injEq] at hn1
     have hf := foRNuls_bit n a hi
@@ -404,12 +404,10 @@ theorem colMap_max_self {n : USize} {a o : Enc} {s : UInt64} (hW : Enc.WF .i64 n
     rw [← hr1] at h2
     have hr0 : rdNul n a i = 0 := by simp only [rdNul, h0]; rfl
     simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure,
-      Except.pure, rdFill, hr0, bne_self_eq_false, Bool.false_eq_true, if_false] at hv1 hv2
-    simp only [Op.eval, ite_self, Except.ok.injEq] at hv1
-    simp only [chain, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure, Except.pure, Except.ok.injEq,
-      Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some] at hv2
-    subst hv1
-    rw [h2]; simp only [Array.getElem_map, cutBit, if_neg (by decide : QAtomicType.i64 ≠ .u1), ← hv2]
+      Except.pure, rdFill, hr0, bne_self_eq_false, Bool.false_eq_true, if_false] at hv
+    simp only [chain, List.foldlM_cons, List.foldlM_nil, Op.eval, ite_self, bind, Except.bind, pure, Except.pure,
+      Except.ok.injEq, Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some] at hv
+    rw [h2]; simp only [Array.getElem_map, cutBit, if_neg (by decide : QAtomicType.i64 ≠ .u1), ← hv]
   · have hN' : hasNul a = false := by simpa using hN
     have hF : (Op.max).nulFold = none ∨ ∀ p ∈ [(n, a), (n, a)], hasNul p.2 = false := Or.inr fun p hp => by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hN'
