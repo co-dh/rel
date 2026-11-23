@@ -1569,6 +1569,12 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.uncat then match A with
     | .arr b => do let (n, X) ← known r.sym D.dom; uncatB b n X
     | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  -- `Tab.prefix`, `Tab.suffix`: `uncat ≫ π₁` (`π₂`), `Tab.comp` of the splits with their side
+  else if c == ``Tab.prefix || c == ``Tab.suffix then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; projT (.arr b) (.arr b) (c == ``Tab.prefix) (← uncatB b n X)
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  -- `Tab.tau` = `Λ(𝟙)`: `lam X (idU X)`, `idU X` the coreflexive of the keys
+  else if c == ``Tab.tau then do let (n, X) ← known r.sym D.dom; lamB A n X (← coreflB n X)
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
