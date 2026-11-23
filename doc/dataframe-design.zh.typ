@@ -105,7 +105,7 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   [`Day`], [`date`（`i32`）], [1970-01-01 以来的天数],
   [`UTCTime`], [`datetime`（`i64`）], [1970-01-01 00:00:00 以来的纳秒，无时区],
   [list 列（`collect`）], [`Obj.arr T`], [],
-  [`Maybe a`], [`A+1`], [见 1.3],
+  [`Maybe a`], [`1+A`], [见 1.3],
 )
 
 == null 的表示
@@ -114,15 +114,15 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 
 #tbl(c-sem, (auto, auto, 1fr), ([读法], [例的值], [结论]),
   [q 的哨兵值], [`1 2 0N 4`：位置 2 存保留值 `0N`（i64 的最小值）], [带内表示；q 语义不在 Rel 中（`rel-architecture` §4.1）],
-  [和类型 `v : C ⟶ V+1`], [`{(0,inl 1),(1,inl 2),(2,inr ∗),(3,inl 4)}`], [*采用*：每列都是全函数，`x ⟨a, v⟩` 不丢行],
-  [部分列 `v inl°`], [`{(0,1),(1,2),(3,4)}`：位置 2 没有像], [派生的读法：表达式里与 null 比较的行被 `filterBy` 去掉，和 polars 一致],
+  [和类型 `v : C ⟶ 1+V`], [`{(0,inr 1),(1,inr 2),(2,inl ()),(3,inr 4)}`], [*采用*：每列都是全函数，`x ⟨a, v⟩` 不丢行],
+  [部分列 `v inr°`], [`{(0,1),(1,2),(3,4)}`：位置 2 没有像], [派生的读法：表达式里与 null 比较的行被 `filterBy` 去掉，和 polars 一致],
 )
 
-- `inl°`、`inr°` 是 `prims` 的行；`[R, S] = inl° R ∪ inr° S`：按 tag 分情况，null 一支读 `S : 1 ⟶ B`。
-- `tot(R)`（3.1）把部分的 `R : A ⟶ B` 变回全的 `A ⟶ B+1`：`R` 有值取值，否则 null。
-- 存储（决定 K，`rel-architecture` §4 "`atom+1`" 卡片）：`atom+1` 是*一列*，null 在该列自己的 foR 块里：宽度字节第 7 位是块的 null 标志，只有带标志的块留一个残差作 null 码，无 null 的块照旧。null 码是残差 0（决定 O），带标志块里值存成残差 + 1；今天的 `foRNul` 仍判顶残差 $2^w − 1$，`nullbot` 改它与 Rust；`Vals` 的 `atom+1` 换成 `Opt` 未做。
-- 只有 `atom+1` 在带内：`(V+1)+1` 与一般 `A+B` 仍是 tag 列加各分支内的位置（第 0 节的 `sum`），内层 `V+1` 在带内。
-- 次序随 q：null 小于每个值，`inr ∗ < inl a`；例的列 `asc` 后是 `[null, 1, 2, 4]`。
+- `inl°`、`inr°` 是 `prims` 的行；`[R, S] = inl° R ∪ inr° S`：按 tag 分情况，null 一支读 `R : 1 ⟶ B`。
+- `tot(R)`（3.1）把部分的 `R : A ⟶ B` 变回全的 `A ⟶ 1+B`：`R` 有值取值，否则 null。
+- 存储（决定 K）：`1+atom` 是*一列*，null 在该列自己的 foR 块里：宽度字节第 7 位是块的 null 标志，带标志的块把顶残差 $2^w − 1$（全 1）留作 null 码，无 null 的块照旧；kernel 用 `foRNul` 在编码上判 null，不解码。`Vals` 的 `1+atom` 换成 `Opt` 未做。
+- 只有 `1+atom` 在带内：`1+(1+V)` 与一般 `A+B` 仍是 tag 列加各分支内的位置（第 0 节的 `sum`），内层 `1+V` 在带内。
+- 次序随 q：可空类型写作 `1+X`，null 是 `inl ()`；和的次序 `inl < inr` 就是 `inl () < inr a`，null 小于每个值；例的列 `asc` 后是 `[null, 1, 2, 4]`。
 
 // ───────────────────────────── 2
 = 存储与顺序
@@ -282,7 +282,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`<>`（行拼接）], [`append(x, y) ≜ x ∪ ((dom(y) ⟨𝟙, ⊤ count(x)⟩plus)° y)`], [`sym` 列同一个数据库字典，id 原样拼接（`rel-architecture` §4.3）], "full"),
   ([`|||`（列拼接）], [`hstack(x, y) ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩`], [两个 frame 行数不同时结果是 `𝟘`：F9], "full"),
   ([`impute` `imputeWith` `fromMaybe` `castWithDefault`], [`x v [𝟙, c]`；`imputeWith` 是 `x v [𝟙, summarize(f, x)]`], [`c : 1 ⟶ V`], "full"),
-  ([`toMaybe` `isJust` `isNothing` `isNull` `fromJust` `whenPresent`], [`inl`、`dom(inl°)`、`dom(inr°)`、`dom(inr°)`、`inl°`、`e ⊕ 𝟙`], [复合，库中没有定义], "full"),
+  ([`toMaybe` `isJust` `isNothing` `isNull` `fromJust` `whenPresent`], [`inr`、`dom(inr°)`、`dom(inl°)`、`dom(inl°)`、`inr°`、`𝟙 ⊕ e`], [复合，库中没有定义], "full"),
   ([`recode` `recodeWithDefault`], [`x v T`；带缺省 `x v tot(T) [𝟙, c]`], [`T` 是 `Tm.val` 的字面量表], "full"),
   ([`lift` `lift2` `nullLift` `bind`], [无], [F7], "no"),
   ([`cast` `toDouble` `div` `mod` `pow` `fround` `relu` `eq` `lt` `and` `or` `not` …],
