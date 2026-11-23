@@ -911,9 +911,8 @@ def valsE : (A : Obj) → (n : USize) → Vals A n → Except String Lean.Expr
     | .opt (t := t) _ x => match x.1 with
       | .foR m p => pure (g ``Gen.optV #[oE a, oE b, toExpr t, bandRfl (some t), uE n, mkStrLit (hex m), mkStrLit (hex p)])
       | _ => throw s!"a nullable column of {n} rows in a symbol, general or pos payload cannot be rebuilt"
-    | .gen _ l r tag idx x y => do
-      pure (g ``Gen.sumV #[oE a, oE b, bandRfl none, uE n, uE l, uE r, ← atomE .u1 n tag, ← atomE .i64 n idx,
-        ← valsE a l x, ← valsE b r y])
+    | .gen _ tag x y => do
+      pure (g ``Gen.sumV #[oE a, oE b, bandRfl none, uE n, ← atomE .u1 n tag, ← valsE a n x, ← valsE b n y])
   | .one, n, _ => pure (g ``Gen.oneV #[uE n])
 
 def relE {A B : Obj} (R : Tab A B) : Except String Lean.Expr := do
@@ -927,8 +926,8 @@ def valsEq : (A : Obj) → {n : USize} → Vals A n → (C : Obj) → {m : USize
     decide (n = m) && encEq lo.enc lo'.enc && encEq hi.enc hi'.enc && valsEq b p d q
   | .sum a b, n, s, .sum c d, m, s' => match s.view, s'.view with
     | .opt (t := t) _ x, .opt (t := u) _ y => decide (t = u) && decide (n = m) && encEq x.1 y.1
-    | .gen _ _ _ tag idx x y, .gen _ _ _ tag' idx' x' y' =>
-      decide (n = m) && encEq tag.enc tag'.enc && encEq idx.enc idx'.enc && valsEq a x c x' && valsEq b y d y'
+    | .gen _ tag x y, .gen _ tag' x' y' =>
+      decide (n = m) && encEq tag.enc tag'.enc && valsEq a x c x' && valsEq b y d y'
     | _, _ => false
   | .one, _, _, .one, _, _ => true
   | _, _, _, _, _, _ => false
