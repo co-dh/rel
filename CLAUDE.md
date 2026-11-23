@@ -36,6 +36,18 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
   and lax natural transformations (`∋`, `est`, `front`), maps on positions, and `where` (q's `where`: a set of positions
   numbered in position order, the one place row order enters; not `Enc.enum`, the symbol dictionary encoding).
 
+## Null (`doc/null-zero.zh.typ`)
+- `1+t` is a band column `Opt t n`: the null is in the encoded column itself, no separate bitmap, no decoded copy.
+- Encoding: null = residual 0 in a flagged foR block; the block base is min−1, so every value's residual is ≥ 1.
+  Decode and width are unchanged. Null test: block flag ∧ no patch ∧ residual 0. The switch from the old all-ones
+  residual lives only in `Column.foRNul` and `Coc.nulBlock` (Rust `is_nul`); own-files written before it are rewritten.
+- Pointwise ops propagate null, as q (`1+0N = 0N`). Free for column × positive constant and scalar add/sub; a
+  two-column op or div masks with `[r≠0]`.
+- Folds skip null, as q (`sum 100 0N 105 = 205`): `sum ≜ inr° ≫ ⦇0,+⦈`, so `sum` is still a fold (null is the
+  fold's unit, not a zero). The kernel computes `base·k + Σr` (k = non-null rows), tied to the definition by a theorem.
+- Binary max/min order null below every value: `max(0N,5) = 5`, `min(0N,5) = 0N`.
+- Concat is one `kscan .first` stream over both columns; nulls stay in-band.
+
 ## Goal
 Rel is a programming language of its own, not an implementation of k or q:
 - A program is written in the algebra above — a composition of a few executable Rel primitives — and runs as
