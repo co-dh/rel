@@ -995,6 +995,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `muGrow` 32 s → 5.0 s（其中 import 0.7 s）。余下每轮仍与 `|X|` 成正比：`∪` 是 concat + `canon`（重排全部 `X`），
       `−` 是 `select`（`kasc` 全部 `X ++ F(Δ)`）；perf：`write_nul` 21%、pool 空转 17%、排序 15%、`for_meta` 10%。
       再省需要已排序表的归并 / 对已排序 `X` 的成员测试（新 kernel 组合），未做。
+      perf10（2026-11-22）：`muGrow` 的“排序 15%”是 `kasc` 的 cells 键（`Cells::codes` 按 `[u64]` 逐字比较等长的秩串），
+      改为 64 字一段 `memcmp` 跳过公共前缀：比较 + quicksort 23.6% → 6.1%，`muGrow` 6.9 s → 4.2–5.5 s；`res_get_in`
+      强制内联（边缘读取放冷路径）+ `encode_meta_blk` 一遍算 min/max/sum：`sudokupc9` 3.08–3.20 s → 2.77–2.80 s。
+      余下：`for_meta` 8–10% 是 `plan` 的直方图（标量计数），`write_nul` 闭包是各 producer 内联进来的块步，未动。
       未证：`Tab.keepBits_holds`、`Tab.compTabMat_holds`（命题已写在 `bitsfin` 的报告里，缺 `index` 与 `colMap` 的 spec）、
       `Tab.pack`、`Tab.map`、新行、`GenK.hylo`。
       状态（2026-11-19 17:58，master `a2f1f9b`；`make check` 绿到 `6a91b10`，其后的合并未构建）：已合入 `frame1b`（`frame`
