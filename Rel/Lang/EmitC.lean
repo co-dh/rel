@@ -1169,14 +1169,54 @@ def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fu
   canonT ⟨M, ← gatherCols M iD n X,
     [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
 
+/-- The two atom columns of a pair side `X`, the error naming the verb `s` otherwise. -/
+def pairCols (s : String) (X : Cols) : Bld (Nat × Nat) := do
+  let (some (Col.atom _ _ x), some (Col.atom _ _ y)) := (X[0]?, X[1]?)
+    | throw s!"{s}: a pair side of {X.length} columns, not of two atoms"
+  pure (x, y)
+
+/-- **`Tab.arithOp s`** on the pairs `X` of `A` (`stepOn`): `stepB` of the row's verb at `B`'s atom on the two
+    components, the rows it keeps with their answers; `Tab.arithOp`'s errors at the objects it refuses. -/
+def arithOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match arithOps.lookup s, A, B with
+  | some k, .prod (.atom t) (.atom t'), .atom u =>
+    if t = u ∧ t' = u then do
+      let (a, b) ← pairCols s X
+      let (w, f) ← stepB u k n a b
+      keepB ⟨n, X, [.atom "" u w]⟩ f
+    else throw s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
+  | some _, _, _ => throw s!"{s} runs from a pair of one number object to it"
+  | none, _, _ => throw s!"{s}: no value verb"
+
+/-- **`Tab.succOp`** on the values `X` of `i64` (`succOn`): each word `u` to `u + [u ≠ null]` (`Tab.succCol`), the
+    null to itself. -/
+def succOpB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
+  | .atom .i64, .atom .i64 => do
+    let e ← col1 X
+    pure ⟨n, X, [.atom "" .i64 (← mapB .add n e (← mapB .first n e e .i64 .i64 [] [(.ne, nulWord)]))]⟩
+  | _, _ => throw "succ runs from an object of i64 to it"
+
+/-- **`Tab.cmpOp s`** on the pairs `X` of `A` (`cmpAt`): the rows whose two words, through `wideB`, pass the row's
+    order `Tab.ordOp`, kept as the coreflexive on the pairs. -/
+def cmpOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match cmpOps.lookup s, A, B with
+  | some lt, .prod (.atom t) (.atom t'), .prod (.atom u) (.atom u') =>
+    if t' = t ∧ u = t ∧ u' = t then do
+      let (a, c) ← pairCols s X
+      keepB ⟨n, X, X⟩ (← mapB (← ofExc (Tab.ordOp lt t)) n (← wideB t n a) (← wideB t n c))
+    else throw s!"{s} runs on pairs of one number object, found {repr t}×{repr t'} to {repr u}×{repr u'}"
+  | some _, _, _ => throw s!"{s} runs on pairs of one number object"
+  | none, _, _ => throw s!"{s}: no order"
+
 /-- A row of `kernRows` at `A ⟶ B` given its relations' tables `xs` in a context, by the wrapper its `Tab` operator
-    runs under (`Expand.primE`): `floatOp` and `cast` on the values in demand (`GenK.ofVals`), `asc` on its
+    runs under (`Expand.primE`): `floatOp`, `cast`, `arithOp`, `succOp` and `cmpOp` on the values in demand (`GenK.ofVals`), `asc` on its
     relation's whole table (`GenK.ofRel`), `uncons`/`unsnoc` on the values, `snoc` after them (`GenK.after`), `flat`
     on its keys (`GenK.onKeys`), `foldI` one fold per (key, array) in demand. Any other row is refused, naming it. -/
 def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld TabB := do
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
   else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
+  else if c == ``Tab.arithOp then let (n, X) ← known r.sym D.dom; arithOpB r.sym A B n X
+  else if c == ``Tab.succOp then let (n, X) ← known r.sym D.dom; succOpB A B n X
+  else if c == ``Tab.cmpOp then let (n, X) ← known r.sym D.dom; cmpOpB r.sym A B n X
   else if c == ``Tab.map then match A, B, xs with
     -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand
     | .arr a, .arr b, [x] => do

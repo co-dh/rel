@@ -1,10 +1,7 @@
 Rel.Alg.tagBits
 Rel.Arr.get
-Rel.Arr.of
 Rel.Ew.bitBits
 Rel.Ew.cmpBits
-Rel.Lang.Gen.atom
 Rel.Lang.showRel
-Rel.Opt.gather
 Rel.Opt.get
 Rel.Opt.ofAtoms
