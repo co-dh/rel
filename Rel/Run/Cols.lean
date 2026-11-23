@@ -15,7 +15,7 @@ open Rel.Ext Rel.Kernel Rel.Verify
 /-- The running fold of `op` over the `n` words of `a` from the word `0`: `kscan` with one segment. -/
 def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do
   let z ← colConst n 0
-  let r ← kscan op false .i64 .i64 n z [z, a]
+  let r ← kscan op false .i64 .i64 n z [(n, z), (n, a)]
   pure r.1
 
 /-- The `n` words `i + s`: one `kscan` of the positions with `s` added by its post chain, not `colMap .add` of a
@@ -24,9 +24,10 @@ def shiftCol (n : USize) (s : UInt64) : Except String Enc := colMap .first n .po
 
 /-- `colMap`'s answer as an `Arr t n`, the map's output well formed at `t` (`colMap_closed`). -/
 def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAtomicType := .i64)
-    (pre post : List (Op × UInt64) := []) : Except String (Arr t n) :=
+    (pre post : List (Op × UInt64) := []) (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) :
+    Except String (Arr t n) :=
   match h : colMap op n a b t s pre post with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2 (colMap_plain h))
+  | .ok o => .ok (Arr.mk o (colMap_closed hs h).2 (colMap_plain hs h))
   | .error s => .error s
 
 /-- The `kscan` chain taking a word of the atom `t` to the word its verbs and orders compute on: an `f32` word widened to
@@ -41,15 +42,17 @@ def widen (t : QAtomicType) : List (Op × UInt64) :=
     | none => []
 
 /-- `kscan`'s answer as an `Arr t n`, well formed at `t` (`kscan_closed`). -/
-def scanArr (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : Option Enc) (es : List Enc)
-    (pre post : List (Op × UInt64) := []) : Except String (Arr t n) :=
+def scanArr (op : Op) (rev : Bool) (s t : QAtomicType) (n : USize) (seg : Option Enc) (es : List (USize × Enc))
+    (pre post : List (Op × UInt64) := []) (hs : kscanStream op es pre post = false := by lockstep) :
+    Except String (Arr t n) :=
   match h : kscan op rev s t n seg es pre post with
-  | .ok r => .ok (Arr.mk r.1 (kscan_closed h).2.1 (kscan_closed h).2.2)
+  | .ok r =>
+    .ok (Arr.mk r.1 (kscan_lock_closed hs h).2.1 (kscan_lock_closed hs h).2.2)
   | .error s => .error s
 
 /-- **`colArr` is `colMap`** on the array's column. -/
 theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t s : QAtomicType} {pre post : List (Op × UInt64)}
-    {w : Arr t n} (h : colArr op n a b t s pre post = .ok w) : colMap op n a b t s pre post = .ok w.enc := by
+    {w : Arr t n} {hs : kscanStream op [(n, a), (n, b)] pre post = false} (h : colArr op n a b t s pre post hs = .ok w) : colMap op n a b t s pre post = .ok w.enc := by
   unfold colArr at h; split at h
   · cases h; rename_i o hc; exact hc
   · cases h
@@ -63,6 +66,16 @@ def Arr.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x 
   let a ← kscatter .last n₁ .pos x.enc n 0
   let b ← kscatter .last n₂ off y.enc n 0
   colArr .add n a b t
+
+/-- CONCAT of two nullable columns: `Arr.concat` where neither holds a null. A null row needs one kernel call that
+merges two sources with their null bits, and none does yet (`kscan` writes no null, `kscatter` reads one source and
+fills the rest with a constant): there the error, naming the side. -/
+def Opt.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x : Opt t n₁) (y : Opt t n₂) :
+    Except String (Opt t n) :=
+  if hx : hasNul x.enc = false then
+    if hy : hasNul y.enc = false then Opt.ofArr <$> Arr.concat n off (Arr.mk x.enc x.wf hx) (Arr.mk y.enc y.wf hy)
+    else .error s!"concat: the second 1+{repr t} column holds a null, and no kernel yet merges two columns' null bits"
+  else .error s!"concat: the first 1+{repr t} column holds a null, and no kernel yet merges two columns' null bits"
 
 /-- The layout of `n₁` rows followed by `n₂`: the summed count `n` and the destinations `off` of the second part
 (`shiftCol n₂ n₁`); the error where `n` does not fit a `USize`. -/
@@ -83,7 +96,9 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .atom _, _, _ | .one, _, _ => true
   | .prod _ _, _, x => Vals.cellsOk x.1 && Vals.cellsOk x.2
   | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
-  | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.cellsOk x && Vals.cellsOk y
+  | .sum _ _, _, s => match s.view with
+    | .opt .. => true
+    | .gen _ _ _ _ _ x y => Vals.cellsOk x && Vals.cellsOk y
 
 /-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
@@ -95,19 +110,20 @@ def Arr.clampShift {n : USize} (c s : UInt64) (x : Arr .i64 n) : Except String (
   colArr .first n x.enc x.enc .i64 .i64 [] [(.max, 0), (.min, c), (.add, s)]
 
 /-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
-theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) :
+theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide) :
     Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact ⟨(kscan_closed hr).1, (kscan_closed hr).2.1⟩
+  exact ⟨(kscan_lock_closed (kscanStream_ne ho _ _ _) hr).1, (kscan_lock_closed (kscanStream_ne ho _ _ _) hr).2.1⟩
 
 /-- `colPrefix`'s answer holds no null (`kscan_closed`). -/
-theorem colPrefix_plain {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) : hasNul o = false := by
+theorem colPrefix_plain {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide) :
+    hasNul o = false := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact (kscan_closed hr).2.2
+  exact (kscan_lock_closed (kscanStream_ne ho _ _ _) hr).2.2
 
 /-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
 def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) (hN : hasNul e = false) : Nat :=
@@ -122,7 +138,7 @@ def summandPos (n : USize) (s : Bool) (tag : Arr .u1 n) (idx : Enc) : Except Str
 (`colPrefix .add`), the last word (`lastCount`); past `2^63` rows, which a signed count cannot reach, the error. -/
 def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
   if 2 ^ 63 ≤ n.toNat then .error s!"count: {n} rows, past an Int64 count" else do
-    let p ← colMap .first n tag.enc tag.enc .i64 .i64 [] (if s then [] else [(.not, 0)])
+    let p := (← kscan .first false .i64 .i64 n none [(n, tag.enc)] [] (if s then [] else [(.not, 0)])).1
     match h : colPrefix .add n p with
     | .ok P => .ok (lastCount n P (colPrefix_closed h).2 (colPrefix_plain h))
     | .error e => .error e
@@ -130,7 +146,7 @@ def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/
 def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
   match h : shiftCol n 0 with
-  | .ok o => .ok (Arr.mk o (colMap_closed h).2 (colMap_plain h))
+  | .ok o => .ok (Arr.mk o (colMap_closed (by simp [kscanStream]) h).2 (colMap_plain (by simp [kscanStream]) h))
   | .error e => .error e
 
 /-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its
@@ -171,11 +187,14 @@ def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → 
       let hi ← Arr.concat n off hi₁ (← hi₂.shift m₁.toUInt64)
       pure ⟨p.1, lo, hi, ← Vals.concat p.1 p.2 f₁ f₂⟩
     else .error s!"concat: {m₁} + {m₂} payload rows, past an Int64 bound"
-  | .sum _ _, _, _, n, off, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩ =>
+  | .sum _ _, _, _, n, off, s₁, s₂ => match s₁.view, s₂.view with
+    | .opt h x₁, .opt h' x₂ => Vals.ofOpt h <$> Opt.concat n off x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
+    | .opt h _, .gen h' .. | .gen h' .., .opt h _ => absurd (h.symm.trans h') nofun
+    | .gen h _ _ tag₁ idx₁ x₁ y₁, .gen _ _ _ tag₂ idx₂ x₂ y₂ =>
     if n.toNat ≤ 2 ^ 63 then do
       let L ← Vals.catSummand n off false tag₁ idx₁ x₁ tag₂ idx₂ x₂ fun m o x y => Vals.concat m o x y
       let R ← Vals.catSummand n off true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m o x y => Vals.concat m o x y
-      pure ⟨L.1, R.1, ← Arr.concat n off tag₁ tag₂, ← Arr.pos n, L.2, R.2⟩
+      pure (Vals.ofGen h L.1 R.1 (← Arr.concat n off tag₁ tag₂) (← Arr.pos n) L.2 R.2)
     else .error s!"concat: a sum side of {n} rows, past an Int64 position"
   | .one, _, _, _, _, _, _ => pure ()
 
