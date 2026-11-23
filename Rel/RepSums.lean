@@ -204,71 +204,106 @@ theorem sums_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
 /-- `kscan .fadd`'s step as a total function, the `fn` `segScan_ok` folds (`Op.eval .fadd` never fails). -/
 abbrev faddW (a x : UInt64) : UInt64 := match Op.eval .fadd a x with | .ok r => r | .error _ => 0
 
-/-- **A float `plus` step read from the scan**: `stepAt .f64 add` takes `(acc, v)` to `fto` of the IEEE sum, so where
-the scan's row is that sum `W` and its `fto` is `W` or `2^63`, the step holds exactly when the row's `fto` is `W`, not
-`2^63`, and `w` is `W`. No property of `Float` is used. -/
-theorem stepF_word {acc v W W' : UInt64} (hW : W = faddW acc v) (hW' : W' = Op.ftoWord .f64 W)
-    (hodd : W' = W ∨ W' = 0x8000000000000000) (w : (Obj.atom .f64).El) :
-    stepAt .f64 Ew.add (acc, v) w ↔ (W' = W ∧ W' ≠ 0x8000000000000000) ∧ w = W := by
-  have hs : fstep .f64 Ew.add acc v = .ok (Op.ftoWord .f64 (faddW acc v)) := rfl
-  have e : stepAt .f64 Ew.add (acc, v) w ↔ W' ≠ 0x8000000000000000 ∧ w = W' := by
-    rw [hW', hW]
-    constructor
-    · rintro ⟨X, Y, r, hX, hY, hr, hn, rfl⟩
-      cases hX; cases hY; rw [hs] at hr; cases hr; exact ⟨hn, rfl⟩
-    · rintro ⟨hn, rfl⟩; exact ⟨_, _, _, rfl, rfl, hs, hn, rfl⟩
-  rw [e]; rcases hodd with h | h <;> rw [h] <;> simp
-
-/-- **The left fold of a float run one row longer** (`sums_snoc` at `f64`). -/
-theorem sumsF_snoc {v W bad : Nat → UInt64} {P : List Nat} {A : UInt64} {q : Nat}
-    (hfold : ∀ w, foldDen (E := .atom .f64) (V := .atom .f64) (fun _ b => b = QAtomicType.ofBits .f64 0)
-      (stepAt .f64 Ew.add) (P.map v) w ↔ (∀ p ∈ P, bad p = 0) ∧ w = A)
-    (hq : ∀ w, stepAt .f64 Ew.add (A, v q) w ↔ bad q = 0 ∧ w = W q) (w : (Obj.atom .f64).El) :
-    foldDen (E := .atom .f64) (V := .atom .f64) (fun _ b => b = QAtomicType.ofBits .f64 0) (stepAt .f64 Ew.add)
-      ((P ++ [q]).map v) w ↔ (∀ p ∈ P ++ [q], bad p = 0) ∧ w = W q := by
+/-- **A left fold one element longer, row by row** (`foldDen_snoc`): where the fold over the rows `P` is exactly `A` when
+no `bad` word of `P` is set, and the step from `A` at row `q` is exactly `B` when `bad q` is not, the fold over
+`P ++ [q]` is exactly `B` when no bad word of `P ++ [q]` is set. -/
+theorem foldDen_snoc_iff {E V : Obj} {Te : Core.Rel (Obj.El V) (Obj.El V)} {TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)}
+    {v : Nat → E.El} {bad : Nat → UInt64} {P : List Nat} {A B : V.El} {q : Nat}
+    (hfold : ∀ y, foldDen Te TS (P.map v) y ↔ (∀ p ∈ P, bad p = 0) ∧ y = A)
+    (hq : ∀ y, TS (A, v q) y ↔ bad q = 0 ∧ y = B) (y : V.El) :
+    foldDen Te TS ((P ++ [q]).map v) y ↔ (∀ p ∈ P ++ [q], bad p = 0) ∧ y = B := by
   rw [List.map_append, List.map_singleton, foldDen_snoc]
   simp only [List.mem_append, List.mem_singleton, or_imp, forall_and, forall_eq]
   constructor
-  · rintro ⟨u, hu, hs⟩
-    obtain ⟨hb, rfl⟩ := (hfold u).1 hu
-    obtain ⟨h1, h2⟩ := (hq w).1 hs
+  · rintro ⟨a, ha, hs⟩
+    obtain ⟨hb, rfl⟩ := (hfold a).1 ha
+    obtain ⟨h1, h2⟩ := (hq y).1 hs
     exact ⟨⟨hb, h1⟩, h2⟩
   · rintro ⟨⟨hb, h1⟩, rfl⟩
     exact ⟨A, (hfold A).2 ⟨hb, rfl⟩, (hq _).2 ⟨h1, rfl⟩⟩
 
-/-- **The prefix sums of a key at `f64`, as a left fold** (`sums_fold` at `f64`): `W` the segmented `kscan .fadd`,
-`W'` its `fto`, every row's `W'` either `W` or `2^63`; the fold is `W t` exactly when no row up to `t` is bad. -/
-theorem sumsF_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
-    (hrun : ∀ a b c, a ≤ b → b ≤ c → c < m → g a = g c → g b = g a) (v W W' bad : Nat → UInt64)
-    (hW : ∀ t < m, W t =
-      (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v).foldl faddW 0)
-    (hW' : ∀ t < m, W' t = Op.ftoWord .f64 (W t)) (hodd : ∀ t < m, W' t = W t ∨ W' t = 0x8000000000000000)
-    (hbad : ∀ t < m, (bad t = 0 ↔ W' t = W t ∧ W' t ≠ 0x8000000000000000)) :
-    ∀ t < m, ∀ w, foldDen (E := .atom .f64) (V := .atom .f64) (fun _ b => b = QAtomicType.ofBits .f64 0)
-      (stepAt .f64 Ew.add)
-      (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v) w ↔
+/-- **The float sum of a key's rows, as words** (`sums_fold` at a float atom): `X q` the `f64` word of the value `v q`
+(`fval`), `Z` that of `u`'s `0`; `R t` is `fto u` of the `faddW` fold from `Z` of `X` over the rows `≤ t` of `t`'s
+group, and `bad t` is set exactly where `R t` is `2^63` (a NaN). Then `fsumDen u` of those rows' values is `R t` read at
+`u`, exactly when no bad word among them is set. Words only: no property of `Float` is used. -/
+theorem fsum_fold {α : Type} [DecidableEq α] {g : Nat → α} {m : Nat}
+    (hrun : ∀ a b c, a ≤ b → b ≤ c → c < m → g a = g c → g b = g a) {u : QAtomicType}
+    (v : Nat → (Obj.atom u).El) (X R bad : Nat → UInt64) (hX : ∀ q < m, fval u (v q) = some (X q)) {Z : UInt64}
+    (hZ : fval u (QAtomicType.ofBits u 0) = some Z)
+    (hR : ∀ t < m, R t = Op.ftoWord u
+      ((((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map X).foldl faddW Z))
+    (hbad : ∀ t < m, (bad t = 0 ↔ R t ≠ 0x8000000000000000)) :
+    ∀ t < m, ∀ w, fsumDen u (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v)
+      w ↔ (∀ q ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf g m q = Verify.groupOf g m t), bad q = 0) ∧
+        w = QAtomicType.ofBits u (R t) := by
+  obtain ⟨Te, TS, hD, hTe, hTS⟩ : ∃ (Te : Core.Rel (Obj.El (.prod (.atom .f64) (.atom u)))
+      (Obj.El (.prod (.atom .f64) (.atom u))))
+      (TS : Core.Rel (Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u))) (Obj.El (.prod (.atom .f64) (.atom u)))),
+      (∀ xs w, fsumDen u xs w ↔ ∃ y, foldDen Te TS xs y ∧ w = y.2) ∧
+      (∀ y, foldDen Te TS [] y ↔ y = (Z, QAtomicType.ofBits u 0)) ∧
+      (∀ (A : UInt64) r x Xx, fval u x = some Xx → ∀ y, TS ((A, r), x) y ↔
+        Op.ftoWord u (faddW A Xx) ≠ 0x8000000000000000 ∧
+          y = (faddW A Xx, QAtomicType.ofBits u (Op.ftoWord u (faddW A Xx)))) := by
+    refine ⟨fun _ b => b.2 = QAtomicType.ofBits u 0 ∧ fwideDen u b.2 b.1,
+      Core.Rel.rpair (Core.Rel.graph fun p : Obj.El (.prod (.prod (.atom .f64) (.atom u)) (.atom u)) => p.1.1)
+        (Core.Rel.graph Prod.snd ≫ fwideDen u) ≫ faddDen ≫ Core.Rel.rpair (𝟙 _) (froundDen u),
+      fun _ _ => Iff.rfl, fun y => ⟨?_, ?_⟩, fun A r x Xx hx y => ?_⟩
+    · rintro ⟨ys, hy, ⟨_, h1, h2⟩, -, rfl⟩
+      rw [h1] at h2; have h3 : some Z = some _ := hZ.symm.trans h2
+      exact Prod.ext (Option.some.inj h3).symm h1
+    · rintro rfl
+      exact ⟨[(Z, QAtomicType.ofBits u 0)], rfl, ⟨(Z, QAtomicType.ofBits u 0), rfl, hZ⟩,
+        fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩
+    · have hfa : ∀ a b, Op.fadd.eval a b = .ok (faddW a b) := fun _ _ => rfl
+      obtain ⟨y1, y2⟩ := y
+      simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, faddDen, froundDen, fwideDen, hfa, Except.ok.injEq,
+        Prod.mk.injEq]
+      constructor
+      · rintro ⟨⟨p1, p2⟩, ⟨rfl, _, rfl, h2⟩, s, rfl, rfl, R', hR', hn, rfl⟩
+        rw [hx] at h2; cases h2
+        cases hR'
+        exact ⟨hn, rfl, rfl⟩
+      · rintro ⟨hn, rfl, rfl⟩
+        exact ⟨(A, Xx), ⟨rfl, x, rfl, hx⟩, _, rfl, rfl, _, rfl, hn, rfl⟩
+  -- the fold over pairs: the carry `C t` and its rounding
+  have hC : ∀ t < m, ∀ y, foldDen Te TS
+      (((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map v) y ↔
       (∀ q ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf g m q = Verify.groupOf g m t), bad q = 0) ∧
-        w = W t := by
-  have hq : ∀ q < m, ∀ A, W q = faddW A (v q) → ∀ w, stepAt .f64 Ew.add (A, v q) w ↔ bad q = 0 ∧ w = W q :=
-    fun q hq A hA w => by rw [hbad q hq]; exact stepF_word hA (hW' q hq) (hodd q hq) w
-  have h0 : ∀ q < m, ((List.range (q + 1)).filter fun p => Verify.groupOf g m p = Verify.groupOf g m q) = [] ++ [q] →
-      ∀ w, foldDen (E := .atom .f64) (V := .atom .f64) (fun _ b => b = QAtomicType.ofBits .f64 0)
-        (stepAt .f64 Ew.add) (([] ++ [q]).map v) w ↔ (∀ p ∈ [] ++ [q], bad p = 0) ∧ w = W q :=
-    fun q hq' e => sumsF_snoc (A := 0) (fun w => by rw [List.map_nil, foldDen_nil]; simp; rfl)
-      (hq q hq' 0 (by rw [hW q hq', e]; rfl))
-  intro t
-  induction t with
-  | zero => intro ht; have e : ((List.range 1).filter fun p => Verify.groupOf g m p = Verify.groupOf g m 0) = [] ++ [0] := by simp
-            rw [e]; exact h0 0 ht e
-  | succ t ih =>
-    intro ht
-    have e := groupRows_succ hrun ht
-    rw [e]
-    split
-    · rename_i hg
-      refine sumsF_snoc (ih (by omega)) (hq (t + 1) ht _ ?_)
-      rw [hW (t + 1) ht, hW t (by omega), e, if_pos hg, List.map_append, List.foldl_append]; rfl
-    · rename_i hg; rw [if_neg hg] at e; exact h0 (t + 1) ht e
+        y = ((((List.range (t + 1)).filter fun q => Verify.groupOf g m q = Verify.groupOf g m t).map X).foldl faddW Z,
+          QAtomicType.ofBits u (R t)) := by
+    have hq : ∀ q < m, ∀ (A : UInt64) r, (((List.range (q + 1)).filter fun p => Verify.groupOf g m p =
+        Verify.groupOf g m q).map X).foldl faddW Z = faddW A (X q) → ∀ y, TS ((A, r), v q) y ↔ bad q = 0 ∧
+        y = ((((List.range (q + 1)).filter fun p => Verify.groupOf g m p = Verify.groupOf g m q).map X).foldl faddW Z,
+          QAtomicType.ofBits u (R q)) := fun q hq A r e y => by
+      rw [hTS A r (v q) (X q) (hX q hq) y, hbad q hq, hR q hq, e]
+    have h0 : ∀ q < m, ((List.range (q + 1)).filter fun p => Verify.groupOf g m p = Verify.groupOf g m q) = [] ++ [q] →
+        ∀ y, foldDen Te TS (([] ++ [q]).map v) y ↔ (∀ p ∈ [] ++ [q], bad p = 0) ∧
+          y = ((([] ++ [q]).map X).foldl faddW Z, QAtomicType.ofBits u (R q)) := fun q hq' e => by
+      refine foldDen_snoc_iff (A := (Z, QAtomicType.ofBits u 0)) (fun y => by rw [List.map_nil, hTe]; simp) ?_
+      have := hq q hq' Z (QAtomicType.ofBits u 0) (by rw [e]; rfl)
+      rwa [e] at this
+    intro t
+    induction t with
+    | zero => intro ht; have e : ((List.range 1).filter fun p => Verify.groupOf g m p = Verify.groupOf g m 0) = [] ++ [0] := by simp
+              rw [e]; exact h0 0 ht e
+    | succ t ih =>
+      intro ht
+      have e := groupRows_succ hrun ht
+      rw [e]
+      split
+      · rename_i hg
+        refine foldDen_snoc_iff (ih (by omega)) ?_
+        have := hq (t + 1) ht _ (QAtomicType.ofBits u (R t)) (by rw [e, if_pos hg, List.map_append, List.foldl_append]; rfl)
+        rwa [e, if_pos hg] at this
+      · rename_i hg; rw [if_neg hg] at e; exact h0 (t + 1) ht e
+  intro t ht w
+  rw [hD]
+  constructor
+  · rintro ⟨y, hy, rfl⟩
+    obtain ⟨hb, rfl⟩ := (hC t ht y).1 hy
+    exact ⟨hb, rfl⟩
+  · rintro ⟨hb, rfl⟩
+    exact ⟨_, (hC t ht _).2 ⟨hb, rfl⟩, rfl⟩
 
 /-- **canon's order on the atom `t` is the language's** (`ltAt`, `leAt`): what `sums` needs of its positions, which
 canon sorts by their order codes (`Obj.lt`) while `sumsDen` reads them in `leAt t`. -/
@@ -593,12 +628,46 @@ theorem canon_pos_lt {K : Obj} {t u : QAtomicType} {f : UInt64 → UInt64} (hf :
     show Vals.row (A := .atom t) x.key.2 (sel i) = Vals.row (A := .atom t) x.key.2 (sel j)
     rw [Vals.row_atom, Vals.row_atom, hga, hgb, e]
 
-/-- An `i64` or `f64` array's element is its word read at the atom (`Arr.get_i64`, `wideCol_word`). -/
-theorem _root_.Rel.Arr.get_ofBits {u : QAtomicType} (hu : u = .i64 ∨ u = .f64) {N : USize} (y : Arr u N)
+/-- **A word cut to the width of an atom of a sum reads as the word** (`ofBits` keeps the low `8w` bits). -/
+theorem _root_.Rel.QAtomicType.ofBits_cut {u : QAtomicType} (hu : u = .i64 ∨ u = .f32 ∨ u = .f64) {w : Nat}
+    (hw : u.width = some w) (x : UInt64) :
+    QAtomicType.ofBits u (UInt64.ofNat (x.toNat % 2 ^ (8 * w))) = QAtomicType.ofBits u x := by
+  rcases hu with rfl | rfl | rfl <;> cases hw
+  · show (UInt64.ofNat (x.toNat % 2 ^ 64)).toInt64 = x.toInt64; rw [ofNat_toNat_mod64]
+  · show (UInt64.ofNat (x.toNat % 2 ^ 32)).toUInt32 = x.toUInt32; apply UInt32.toNat_inj.mp; simp
+  · exact ofNat_toNat_mod64 x
+
+/-- An array of a sum's atom (`i64`, `f32`, `f64`) holds at `i` its whole word read at the atom (`Arr.get_word`, the
+`foR` read cut to the atom's width, `raw_foR_cut`; `Arr.get_i64` at `i64`, where a column may be `pos`). -/
+theorem _root_.Rel.Arr.get_ofBits {u : QAtomicType} (hu : u = .i64 ∨ u = .f32 ∨ u = .f64) {N : USize} (y : Arr u N)
     (i : Fin N.toNat) : y.get i = QAtomicType.ofBits u ((Enc.raw .i64 N y.enc)[i.1]?.getD 0) := by
-  rcases hu with rfl | rfl
+  rcases hu with rfl | hu
   · exact Arr.get_i64 y i
-  · have := wideCol_word y rfl (Or.inr rfl) i; simpa [fval] using this
+  obtain ⟨w, hw⟩ : ∃ w, u.width = some w := by rcases hu with rfl | rfl <;> exact ⟨_, rfl⟩
+  have hu1 : u ≠ .u1 := by rcases hu with rfl | rfl <;> decide
+  have hw' := y.wf
+  rw [Arr.get_word y (by rcases hu with rfl | rfl <;> decide) i]
+  cases hc : y.enc with
+  | foR M P =>
+    rw [raw_foR_cut hw hu1 N rfl, Array.getElem?_map]
+    cases (Enc.raw .i64 N (.foR M P))[i.1]? with
+    | none => rfl
+    | some x => exact QAtomicType.ofBits_cut (.inr hu) hw x
+  | _ => rw [hc] at hw'; rcases hu with rfl | rfl <;> simp [Enc.WF] at hw'
+
+/-- **The sum of no elements is `0`** at every atom of a sum. -/
+theorem _root_.Rel.Lang.sumDen_nil {u : QAtomicType} (hu : u = .i64 ∨ u = .f32 ∨ u = .f64) (c : (Obj.atom u).El) :
+    Lang.sumDen u [] c ↔ c = QAtomicType.ofBits u 0 := by
+  rcases hu with rfl | hu
+  · exact Lang.foldDen_nil _ _ _
+  obtain ⟨X, hX⟩ : ∃ X, fval u (QAtomicType.ofBits u 0) = some X := by rcases hu with rfl | rfl <;> exact ⟨_, rfl⟩
+  have hsd : Lang.sumDen u = Lang.fsumDen u := by rcases hu with rfl | rfl <;> rfl
+  rw [hsd]
+  constructor
+  · rintro ⟨y, ⟨ys, hy, ⟨_, h1, -⟩, -, rfl⟩, rfl⟩; exact h1
+  · rintro rfl
+    exact ⟨(X, _), ⟨[(X, QAtomicType.ofBits u 0)], rfl, ⟨(X, QAtomicType.ofBits u 0), rfl, hX⟩,
+      fun t ht => absurd ht (Nat.not_lt_zero _), rfl⟩, rfl⟩
 
 /-- **`sumTail`'s bad column holds no null**: at either type it is a `colMap .or` (`colMap_plain`). -/
 theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad : Enc} {W : Arr u n}
@@ -608,10 +677,72 @@ theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad :
   all_goals try cases h
   all_goals rename_i hb; exact colMap_plain hb
 
+/-- **`sumTailF` is `Lang.fsumDen` of each run up to each row**: one segmented `kscan .fadd` (`runScanChain_ok`), each
+word of `v` read at `u` and widened (`widen_fval`), the seed `u`'s `0` widened likewise, each row's carry rounded once by
+`fto u`; read whole (`kscan_i64`) a row's word is `2^63` exactly at a NaN, which sets its bad word
+(`Lang.fsum_fold`). -/
+theorem sumTailF_fold {α : Type} [DecidableEq α] {u : QAtomicType} (hu : u = .f32 ∨ u = .f64) {n : USize}
+    {Kk : Nat → α} (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a) {seg z v bad : Enc}
+    {W : Arr u n} (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
+    (hz : colConst n 0 = .ok z) (h : Tab.sumTailF u n seg z v = .ok (W, bad)) :
+    ∀ t (ht : t < n.toNat),
+      ((Enc.raw .i64 n bad)[t]?.getD 0 = 0 ∨ (Enc.raw .i64 n bad)[t]?.getD 0 = 1) ∧ ∀ w : (Obj.atom u).El,
+        Lang.sumDen u
+          (((List.range (t + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t).map
+            fun q => QAtomicType.ofBits u ((Enc.raw u n v)[q]?.getD 0)) w ↔
+        (∀ q ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t),
+          (Enc.raw .i64 n bad)[q]?.getD 0 = 0) ∧ w = W.get ⟨t, ht⟩ := by
+  simp only [Tab.sumTailF, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨W0, hW0, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨b, hb, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
+  obtain ⟨r2, hk⟩ : ∃ r2, kscan .fadd false u u n seg [z, v] (widen u) [(.fto u, 0)] = .ok (W0.enc, r2) := by
+    unfold scanArr at hW0; split at hW0
+    · rename_i r hr; cases hW0; exact ⟨r.2, hr⟩
+    · cases hW0
+  obtain ⟨w0, hw0, hw8⟩ : ∃ w0, u.width = some w0 ∧ w0 ≤ 8 := by rcases hu with rfl | rfl <;> exact ⟨_, rfl, by omega⟩
+  have hu1 : u ≠ .u1 := by rcases hu with rfl | rfl <;> decide
+  have hsd : Lang.sumDen u = Lang.fsumDen u := by rcases hu with rfl | rfl <;> rfl
+  -- a word read at `u` through `widen u`, and its element's `f64` word
+  obtain ⟨pw, hpw⟩ : ∃ pw : UInt64 → UInt64, ∀ a, chain (widen u) a = .ok (pw a) ∧
+      fval u (QAtomicType.ofBits u a) = some (pw a) :=
+    ⟨fun a => match chain (widen u) a with | .ok x => x | .error _ => 0, fun a => by
+      obtain ⟨X, hX, hf⟩ := widen_fval hu a; constructor <;> simp only [hX, hf]⟩
+  -- the seed: `colConst n 0` read at `u` is `0`
+  have hz0 : ∀ i < n.toNat, pw ((Enc.raw u n z)[i]?.getD 0) = pw 0 := fun i hi => by
+    obtain ⟨hfo, -⟩ := raw_scatter 0 .pos .pos n 0 z rfl hz
+    rw [raw_foR_cut hw0 hu1 n hfo, colConst_raw hz, Array.getElem?_map, Array.getElem?_replicate, if_pos hi]
+    rfl
+  have hop : ∀ a x, Op.fadd.eval a x = .ok (Lang.faddW a x) := fun _ _ => rfl
+  have hpost : ∀ a, chain [(.fto u, 0)] a = .ok (Op.ftoWord u a) := fun _ => rfl
+  have hU := (runScanChain_ok hop hw0 hruns (fun a => (hpw a).1) hpost hsu hz0 hk).2
+  obtain ⟨r3, hk64⟩ := kscan_i64 hw0 hu1 hk
+  have h64 := (runScanChain_ok (w := 8) hop rfl hruns (fun a => (hpw a).1) hpost hsu hz0 hk64).2
+  simp only [if_neg hu1, if_neg (show QAtomicType.i64 ≠ .u1 by decide)] at hU h64
+  have h64' : ∀ q < n.toNat, (Enc.raw .i64 n W0.enc)[q]?.getD 0 = Op.ftoWord u
+      ((((List.range (q + 1)).filter fun p => Verify.groupOf Kk n.toNat p = Verify.groupOf Kk n.toNat q).map
+        fun p => pw ((Enc.raw u n v)[p]?.getD 0)).foldl Lang.faddW (pw 0)) := fun q hq => by
+    rw [h64 q hq]; exact ofNat_toNat_mod64 _
+  have hB : ∀ q < n.toNat, (Enc.raw .i64 n b)[q]?.getD 0 =
+      if (0x8000000000000000 : UInt64) = (Enc.raw .i64 n W0.enc)[q]?.getD 0 then 1 else 0 :=
+    fun q hq => eval_eq_word ((colMap_post hb).2 q hq)
+  have hF := Lang.fsum_fold hruns (fun q => QAtomicType.ofBits u ((Enc.raw u n v)[q]?.getD 0))
+    (fun q => pw ((Enc.raw u n v)[q]?.getD 0)) (fun q => (Enc.raw .i64 n W0.enc)[q]?.getD 0)
+    (fun q => (Enc.raw .i64 n b)[q]?.getD 0) (fun q _ => (hpw _).2) (hpw 0).2 h64'
+    (fun q hq => by
+      simp only [hB q hq]
+      by_cases e : (Enc.raw .i64 n W0.enc)[q]?.getD 0 = 0x8000000000000000
+      · simp [e]
+      · simp [e, Ne.symm e])
+  intro t ht
+  refine ⟨by rw [hB t ht]; split <;> simp, fun w => ?_⟩
+  rw [hsd, hF t ht w, Arr.get_word W0 (by rcases hu with rfl | rfl <;> decide), hU t ht,
+    QAtomicType.ofBits_cut (.inr hu) hw0, ← h64' t ht]
+
 /-- **`sumTail` is the left fold `⦇[0, plus]⦈` of each run up to each row** (`sums` per key, `sum` per cell): `Kk`
 names the runs and `seg` marks their first rows (`runScan_ok`); row `t` of `W` is the fold of `stepAt u add` from `0`
 over `v` at the rows `≤ t` of `t`'s run exactly when no bad word among them is set. At `i64` the bad word is a step that
-wrapped or met the null (`badWord_spec`, `Lang.sums_fold`); at `f64` one whose `fto` is `2^63` (`Lang.sumsF_fold`). -/
+wrapped or met the null (`badWord_spec`, `Lang.sums_fold`); at a float atom one whose rounding is `2^63` (`sumTailF_fold`). -/
 theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicType} {n : USize} {Kk : Nat → α}
     (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a) {seg v bad : Enc} {W : Arr u n}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
@@ -620,7 +751,7 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
       ((Enc.raw .i64 n bad)[t]?.getD 0 = 0 ∨ (Enc.raw .i64 n bad)[t]?.getD 0 = 1) ∧ ∀ w : (Obj.atom u).El,
         Lang.sumDen u
           (((List.range (t + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t).map
-            fun q => QAtomicType.ofBits u ((Enc.raw .i64 n v)[q]?.getD 0)) w ↔
+            fun q => QAtomicType.ofBits u ((Enc.raw u n v)[q]?.getD 0)) w ↔
         (∀ q ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t),
           (Enc.raw .i64 n bad)[q]?.getD 0 = 0) ∧ w = W.get ⟨t, ht⟩ := by
   cases u
@@ -651,77 +782,14 @@ theorem sumTail_fold {α : Type} [DecidableEq α] {what : String} {u : QAtomicTy
     simp only [Op.eval, Except.ok.injEq, UInt64.add_zero] at e
     rw [Arr.get_i64, ← e]
     exact hF t ht w
+  case f32 =>
+    simp only [Tab.sumTail, bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+    exact ⟨.inr (.inl rfl), sumTailF_fold (.inl rfl) hruns hsu hz h⟩
   case f64 =>
     simp only [Tab.sumTail, bind] at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨Ws, W2⟩, hr, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨W', hW', h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨nE, hnE, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨nan, hnan, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨nn, hnn, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨odd, hodd, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k, sel⟩, hk, h⟩ := h
-    dsimp only at h
-    split at h
-    · first | cases h | (simp only [throw, throwThe, MonadExceptOf.throw, bind, Except.bind] at h; cases h)
-    rename_i hk0; simp only [ne_eq, Decidable.not_not] at hk0
-    rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
-    rw [Except.bind_eq_ok'] at h; obtain ⟨bad', hbad, h⟩ := h
-    simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
-    have hWs := (runScan_ok (op := .fadd) (fn := Lang.faddW) (fun _ _ => rfl) hruns hsu hz hr).2
-    have hFW : ∀ q < n.toNat, (Enc.raw .i64 n W'.enc)[q]?.getD 0 =
-        Op.ftoWord .f64 ((Enc.raw .i64 n Ws)[q]?.getD 0) := fun q hq => by
-      obtain ⟨v0, hv0, hwi⟩ := (colMap_get (colArr_ok hW')).2 q hq
-      rw [hwi, if_neg (by decide), Option.getD_some]; exact (Except.ok.inj hv0).symm
-    have hNE := fun q hq => eval_ne_word ((colMap_raw hnE).2.2.2 q hq)
-    have hNAN : ∀ q < n.toNat, (Enc.raw .i64 n nan)[q]?.getD 0 =
-        if (Enc.raw .i64 n W'.enc)[q]?.getD 0 = 0x8000000000000000 then 1 else 0 := fun q hq => by
-      have := eval_eq_word ((colMap_post hnan).2 q hq)
-      simpa only [eq_comm (a := (0x8000000000000000 : UInt64))] using this
-    have hOp : ∀ {o : Op} {a b e : Enc}, colMap o n a b = .ok e → ∀ q < n.toNat,
-        o.eval ((Enc.raw .i64 n a)[q]?.getD 0) ((Enc.raw .i64 n b)[q]?.getD 0) = .ok ((Enc.raw .i64 n e)[q]?.getD 0) :=
-      fun h q hq => (colMap_raw h).2.2.2 q hq
-    have hODD : ∀ q < n.toNat, (Enc.raw .i64 n odd)[q]?.getD 0 = (Enc.raw .i64 n nE)[q]?.getD 0 &&&
-        ((Enc.raw .i64 n nan)[q]?.getD 0 ^^^ 1) := fun q hq => by
-      have a := hOp hodd q hq; have b := hOp hnn q hq
-      simp only [Op.eval, Except.ok.injEq] at a b; rw [← a, ← b]
-    have hBAD : ∀ q < n.toNat, (Enc.raw .i64 n bad')[q]?.getD 0 = (Enc.raw .i64 n nE)[q]?.getD 0 |||
-        (Enc.raw .i64 n nan)[q]?.getD 0 := fun q hq => by
-      have a := hOp hbad q hq; simp only [Op.eval, Except.ok.injEq] at a; rw [← a]
-    have hodd2 : ∀ q < n.toNat, (Enc.raw .i64 n odd)[q]?.getD 0 < 2 := fun q hq => by
-      rw [hODD q hq, hNE q hq, hNAN q hq]; split <;> split <;> decide
-    -- no row's `fto` is other than its sum or `2^63`: `whereCol` found none
-    have hH : ∀ q < n.toNat, (Enc.raw .i64 n W'.enc)[q]?.getD 0 = (Enc.raw .i64 n Ws)[q]?.getD 0 ∨
-        (Enc.raw .i64 n W'.enc)[q]?.getD 0 = 0x8000000000000000 := fun q hq => by
-      have h0 : (Enc.raw .i64 n odd)[q]?.getD 0 = 0 := by
-        refine Decidable.byContradiction fun hc => ?_
-        obtain ⟨j, hj, -⟩ := (whereCol_mem hk hodd2 q).2 ⟨hq, hc⟩
-        rw [hk0] at hj; simp at hj
-      rw [hODD q hq, hNE q hq, hNAN q hq] at h0
-      by_cases a : (Enc.raw .i64 n W'.enc)[q]?.getD 0 = (Enc.raw .i64 n Ws)[q]?.getD 0
-      · exact .inl a
-      · by_cases b : (Enc.raw .i64 n W'.enc)[q]?.getD 0 = 0x8000000000000000
-        · exact .inr b
-        · rw [if_pos a, if_neg b] at h0; exact absurd h0 (by decide)
-    have hbw : ∀ q < n.toNat, ((Enc.raw .i64 n bad')[q]?.getD 0 = 0 ∨ (Enc.raw .i64 n bad')[q]?.getD 0 = 1) ∧
-        ((Enc.raw .i64 n bad')[q]?.getD 0 = 0 ↔ (Enc.raw .i64 n W'.enc)[q]?.getD 0 =
-          (Enc.raw .i64 n Ws)[q]?.getD 0 ∧ (Enc.raw .i64 n W'.enc)[q]?.getD 0 ≠ 0x8000000000000000) :=
-      fun q hq => by
-        rw [hBAD q hq, hNE q hq, hNAN q hq]
-        by_cases a : (Enc.raw .i64 n W'.enc)[q]?.getD 0 = (Enc.raw .i64 n Ws)[q]?.getD 0 <;>
-          by_cases b : (Enc.raw .i64 n W'.enc)[q]?.getD 0 = 0x8000000000000000 <;> simp [a, b] <;>
-            first | exact (Classical.em _).symm | (split <;> decide)
-    have hF := Lang.sumsF_fold hruns (fun q => (Enc.raw .i64 n v)[q]?.getD 0)
-      (fun q => (Enc.raw .i64 n Ws)[q]?.getD 0) (fun q => (Enc.raw .i64 n W'.enc)[q]?.getD 0)
-      (fun q => (Enc.raw .i64 n bad')[q]?.getD 0) hWs hFW hH (fun t ht => (hbw t ht).2)
-    refine ⟨.inr rfl, fun t ht => ⟨(hbw t ht).1, fun w => ?_⟩⟩
-    have hmem : t ∈ (List.range (t + 1)).filter (fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat t) := by
-      simp
-    refine (hF t ht w).trans ?_
-    rw [Arr.get_ofBits (.inr rfl)]
-    constructor
-    · rintro ⟨hall, h2⟩; exact ⟨hall, by rw [h2]; exact ((hbw t ht).2.1 (hall t hmem)).1.symm⟩
-    · rintro ⟨hall, h2⟩; exact ⟨hall, by rw [h2]; exact ((hbw t ht).2.1 (hall t hmem)).1⟩
+    exact ⟨.inr (.inr rfl), sumTailF_fold (.inr rfl) hruns hsu hz h⟩
   all_goals
     simp only [Tab.sumTail, bind] at h
     rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h; cases h
@@ -800,10 +868,10 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
         if hq : q < C.n.toNat then C.val.row ⟨q, hq⟩ else d) =
       ((List.range (t.1 + 1)).filter fun q => Verify.groupOf (seenKey C.n e2) C.n.toNat q =
         Verify.groupOf (seenKey C.n e2) C.n.toNat t).map
-        fun q => QAtomicType.ofBits u ((Enc.raw .i64 C.n (Arr.enc (t := u) C.val))[q]?.getD 0) := by
+        fun q => QAtomicType.ofBits u ((Enc.raw u C.n (Arr.enc (t := u) C.val))[q]?.getD 0) := by
     intro d; apply List.map_congr_left; intro q hq
     simp only [List.mem_filter, List.mem_range] at hq
-    rw [dif_pos (by omega), Vals.row_atom, Arr.get_ofBits hu]
+    rw [dif_pos (by omega), Vals.row_atom, Arr.get_word _ (by rcases hu with rfl | rfl | rfl <;> decide)]
   rw [hmap, (hF t t.2).2 c, hNB t t.2]
   have hb := hBR t t.2
   have hx1 : (Enc.raw .i64 C.n R)[t.1]?.getD 0 ^^^ 1 ≠ 0 ↔ (Enc.raw .i64 C.n R)[t.1]?.getD 0 = 0 := by
@@ -969,11 +1037,21 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
       refine ⟨fun _ ⟨_, hne⟩ => hne (t - 1) (by omega) (UInt64.toNat_inj.1 ?_), fun _ => by decide⟩
       rw [hin _ hg (t - 1) (by omega) (by omega)]
   obtain ⟨hu, hF⟩ := sumTail_fold hruns hsu hst
+  -- the gathered values are a `foR` column, read at `u` as its whole words cut to `u`'s width
+  have hvr : ∀ j, QAtomicType.ofBits u ((Enc.raw u T' v)[j]?.getD 0) =
+      QAtomicType.ofBits u ((Enc.raw .i64 T' v)[j]?.getD 0) := fun j => by
+    obtain ⟨w0, hw0⟩ : ∃ w, u.width = some w := by rcases hu with rfl | rfl | rfl <;> exact ⟨_, rfl⟩
+    rw [raw_foR_cut hw0 (by rcases hu with rfl | rfl | rfl <;> decide) T'
+      (by rw [kgather_plain hv (Arr.plain (t := u) f)]; rfl), Array.getElem?_map]
+    cases (Enc.raw .i64 T' v)[j]? with
+    | none => rfl
+    | some x => exact QAtomicType.ofBits_cut hu hw0 x
   have hxl : ∀ g (hg : g < n.toNat), (Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩).length = EN g - SN g :=
     fun g hg => by rw [hrow]; simp
-  have hvx : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g), QAtomicType.ofBits u ((Enc.raw .i64 T' v)[off g + k]?.getD 0) =
+  have hvx : ∀ g (hg : g < n.toNat) k (hk : k < EN g - SN g), QAtomicType.ofBits u ((Enc.raw u T' v)[off g + k]?.getD 0) =
       (Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩)[k]'(by rw [hxl]; exact hk) := by
     intro g hg k hk
+    rw [hvr]
     have ht : off g + k < T'.toNat := by have := hle g hg; omega
     obtain ⟨hGk, hUk⟩ := hG2 g hg k hk
     obtain ⟨-, hg1t⟩ := hGt _ ht
@@ -1007,7 +1085,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     intro g hg
     obtain ⟨v0, hv0, hwi⟩ := (colMap_get (colArr_ok htot)).2 g hg
     simp only [Op.eval, Except.ok.injEq, UInt64.or_self] at hv0
-    rw [Arr.get_ofBits hu, hwi, if_neg (by rcases hu with rfl | rfl <;> decide), Option.getD_some, ← hv0, hLf g hg,
+    rw [Arr.get_ofBits hu, hwi, if_neg (by rcases hu with rfl | rfl | rfl <;> decide), Option.getD_some, ← hv0, hLf g hg,
       hfilt g hg]
   -- the cell's elements are its run's values, and its run is the last row's prefix
   have hcell : ∀ g (hg : g < n.toNat) c, Lang.sumAt (.atom u) (Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩) c ↔
@@ -1016,7 +1094,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     rw [(hbadCg g hg).2, htot g hg]
     rcases Nat.eq_zero_or_pos (EN g - SN g) with h0 | h0
     · rw [List.eq_nil_of_length_eq_zero ((hxl g hg).trans h0), h0]
-      simp only [Lang.sumAt]; simp; exact Lang.foldDen_nil _ _ _
+      simp only [Lang.sumAt]; simp; exact Lang.sumDen_nil hu c
     · have ht : off g + (EN g - SN g) - 1 < T'.toNat := by have := hle g hg; omega
       have hrows : ((List.range (off g + (EN g - SN g) - 1 + 1)).filter fun q =>
           Verify.groupOf (fun t => (Enc.raw .i64 T' G)[t]?.getD 0) T'.toNat q =
@@ -1036,7 +1114,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
           rw [decide_eq_true_eq, (firsts_spec _ _).2.2.1 q (by omega) _ ht] at e
           obtain ⟨-, h1, -⟩ := hpos q (by omega)
           rw [e, hlg] at h1; omega
-      have hmap : (List.range' (off g) (EN g - SN g)).map (fun q => QAtomicType.ofBits u ((Enc.raw .i64 T' v)[q]?.getD 0)) =
+      have hmap : (List.range' (off g) (EN g - SN g)).map (fun q => QAtomicType.ofBits u ((Enc.raw u T' v)[q]?.getD 0)) =
           Vals.row (A := .arr (.atom u)) ⟨m, lo, up, f⟩ ⟨g, hg⟩ := by
         apply List.ext_getElem (by simp [hxl])
         intro k h1 h2
