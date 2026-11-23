@@ -185,8 +185,9 @@ partial def tree (d : String) : IO (List String) := do
 -- keyed by symbol; `px` the importer's, the px column of `big`
 /--
 info: ([(0, 0, 10), (1, 2, 30)], [(0, 10), (2, 30)], [(0, 10), (1, 30)],
-  ["big", "big/px", "big/sym", "px", "px/val", "pxof", "pxof/key", "pxof/key/key", "pxof/val", "pxof/val/val",
-    "trades.csv"])
+  ["big", "big/.d.e", "big/.d.hi", "big/.d.lo", "big/px", "big/sym", "px", "px/.d.e", "px/.d.hi", "px/.d.lo", "px/val",
+    "pxof", "pxof/key", "pxof/key/.d.e", "pxof/key/.d.hi", "pxof/key/.d.lo", "pxof/key/key", "pxof/val",
+    "pxof/val/.d.e", "pxof/val/.d.hi", "pxof/val/.d.lo", "pxof/val/val", "trades.csv"])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -296,7 +297,7 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
   return (out, back.toList)
 
 -- refused at elaboration: a nullable column whose `1` is no one-element object, and a text of no `char`
-/-- error: line 303, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+/-- error: line 304, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
 #guard_msgs in
 rel_program csvSumT where
     obj N
@@ -353,7 +354,7 @@ info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
 
 -- refused, the objects printed as written (`1`, not its constant): a nullable column of a nullable atom
 open Rel.Programs.prelude in
-/-- error: line 361, col 5: input `t` from csv "t.csv": column 'a' is (N+1)+1; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+/-- error: line 362, col 5: input `t` from csv "t.csv": column 'a' is (N+1)+1; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
 #guard_msgs in
 rel_program csvNestT where
     obj N

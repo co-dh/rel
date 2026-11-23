@@ -89,7 +89,8 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
   `select` `exclude` `rename` `derive` `join` 是 `Schema` 上的函数，给出两个 `S.obj` 之间的项。
 - 为什么不加 `Obj` 构造子：`Schema.obj` 让表示等式按定义成立，kernel、存储、`rep`、canonical、`lam_sound` 都看不到新东西；
   新构造子要给每个对 `Obj` 的 match 加分支。代价：字段类型相同、名字不同的两个 schema 有同一个 `Obj`，只有 schema 这一层区分它们。
-- `.d` 就是 `Schema` 的落盘形式，同一个来源；依赖数据的 schema 见 F1。
+- `.d` 就是 `Schema` 的落盘形式，同一个来源：`Table.write` 把列名按顺序写成 `.d`（文本列 `[C]`，与字典 `sym` 同一写法，
+  文件 `.d.lo` `.d.hi` `.d.e`），`Table.readSchema` 读回 `Schema`（列名读 `.d`，每列的 `Obj` 读该列文件的头）；依赖数据的 schema 见 F1。
 
 各 atom 的编码与比较见 `rel-architecture` §4.3『原子类型：都是 foR 的 code』。
 
@@ -306,7 +307,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`dimensions` `nRows` `nColumns` `columnNames`], [`count(x)`；`nColumns` `columnNames` 读 `Schema`], [列名只在 schema 里，frame 是位置的], "full"),
   ([`readTsv` `readParquet` `readJSON` `writeParquet`], [无], [F6], "no"),
   ([`readCsv` `writeCsv` `scanCsv`], [`input x : N ⟶ S from csv "f"` / `output x to csv "f"`],
-    [schema 在语句里声明（F1 不变）；CSV 解析是 crate 的 IO 导出（F6）], "full"),
+    [schema 在语句里声明，或 `schema S from "dir"` 在 elaboration 时读表目录的 `.d`（F1）；CSV 文件没有 `.d`，要声明；CSV 解析是 crate 的 IO 导出（F6）], "full"),
   ([`scanParquet` `fromDataFrame` `run`（Lazy）], [`rel_program` 中的定义],
     [`rel_program` 本身就是 plan：`rel-architecture` §1], "full"),
   ([`fold`、`display`、Plot、`DecisionTree`、`KMeans` 等], [不在本设计范围], [宿主层的工具与模型库], "out"),
@@ -333,7 +334,7 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     [每行对每个值列一次，得 `(id, 列名, 值)`；各列要同类型], "full"),
   ([pivot（long）], [`aggregate(⟨k, q⟩, f, x)`], [long 形式就是 key 为 `K×P` 的 frame], "full"),
   ([pivot（wide）], [`pivotWide(k, q, s, t, f, x) ≜ firstOcc(x k) x k ⟨𝟙, ⟨tot(⟨𝟙, ⊤ s⟩ agg((x ⟨k, q⟩)°, f)), tot(⟨𝟙, ⊤ t⟩ agg((x ⟨k, q⟩)°, f))⟩⟩`],
-    [每个声明的值 `s`、`t` 一列，没有的为 null：F1], "part"),
+    [每个声明的值 `s`、`t` 一列，没有的为 null；按磁盘上列的不同值生成列要设计变更：F1], "part"),
 )
 
 == DataHaskell `dataframe` 的导出函数
@@ -355,9 +356,19 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
 
 写不出来、或只能别扭地写出来的运算。
 
-- *F1 依赖数据的 schema 无法给出类型。* wide pivot、`get_dummies`、读文件时推断 schema：结果的 `Obj` 要读了值才知道，
-  而 `Tm A B` 在 elaboration 时固定 `B`。wide pivot 只对声明的有限 `obj P` 可写；long 形式是忠实的那个。
-  读文件要声明 schema，或在 elaboration 时读 `.d`。
+- *F1 依赖数据的 schema：在 elaboration 时读数据定下。* wide pivot、`get_dummies`、读文件时推断 schema：结果的 `Obj`
+  要读了值才知道，而 `Tm A B` 在 elaboration 时固定 `B`。做法：依赖数据的对象在 elaboration 时读数据的 `.d` 定下，
+  `B` 仍是固定的；数据变了，程序要重新 elaborate（`rel_program` 重新编译），旧的 elaboration 不会察觉。
+  - 读文件（已做）：`schema S from "dir"` 在 elaboration 时读 `dir` 的 `.d`（`Embed.diskOf` → `Table.readSchema`），
+    得到与 `schema S = {…}` 相同的 `ObjDef.schema`，没有第二种 schema 类型。磁盘只记 atom，不记程序的对象名，所以每列
+    在它的 atom 的无界对象上，以 atom 命名（`qty : i32` 即 `obj i32 : i32`），语句替程序声明它；程序已把这个名字声明成
+    别的对象时报错。`sym` 列被拒（没有 `sym` 的字面量对象）。测试 `Rel/Lang/TestSchemaDisk.lean`。
+  - wide pivot、`get_dummies`（未做，要设计变更）：例 `get_dummies(c)`，磁盘上 `c` 的不同值是 `A` `B`，结果 schema 是
+    `{c_A : u1, c_B : u1}`，列名就是数据的值。缺两样：(a) 以列的不同值为元素的对象：`obj V = {A,B}` 把元素编码为
+    `0…n−1`，而磁盘上 `sym` 列存字典 id、`i64` 列存值本身（`{3,7,9}`），编码对不上，要一种带显式 universe 的对象声明；
+    (b) `.rel` 定义不能对一个对象的元素逐个生成积的分量：`⟨c ≫ (=A), c ≫ (=B)⟩` 的形状随 `|V|` 变，要在
+    elaborator 里按 `V` 的元素展开成 schema 的生成式。两者都超出现有 elaboration 机制。在此之前 wide pivot 只对声明的
+    有限 `obj P` 可写；long 形式是忠实的那个。
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   `splitOn`、`match` 是库定义（上表），无新行、无新 kernel；正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
   仍缺：(1) `parseDate`：数字是 `$` 与 `minus` 的算术、`⦇[0, ⟨π₁ ×10, π₂⟩plus]⦈`，但 `(2024, 1, 15) ↦ 19737` 这条规则只在

@@ -105,7 +105,7 @@ def trades (n : USize) (id px qty : List Int64) : IO (Vals Trade.obj n) :=
 
 -- a positional table: the files are the schema's columns, no key file; read back by the schema, its key the positions
 /--
-info: ([(0, (10, 500), 5), (1, (20, 50), 7), (2, (30, 900), 9)], ["id", "px", "qty"])
+info: ([(0, (10, 500), 5), (1, (20, 50), 7), (2, (30, 900), 9)], [".d.e", ".d.hi", ".d.lo", "id", "px", "qty"])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -129,7 +129,7 @@ info: [(0, (10, 500), 5), (1, (30, 900), 9)]
 -- a keyed result, its key not a row number: `key/` and `val/`, each a positional table; a side that is not a record
 -- is the one column named by the side
 /--
-info: (true, ["key", "val"], ["key"], ["px", "qty"])
+info: (true, ["key", "val"], [".d.e", ".d.hi", ".d.lo", "key"], [".d.e", ".d.hi", ".d.lo", "px", "qty"])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -144,7 +144,7 @@ info: (true, ["key", "val"], ["key"], ["px", "qty"])
 
 -- a record key: the key table has a file per key column
 /--
-info: (true, ["a", "b"], ["val"])
+info: (true, [".d.e", ".d.hi", ".d.lo", "a", "b"], [".d.e", ".d.hi", ".d.lo", "val"])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -158,7 +158,7 @@ info: (true, ["a", "b"], ["val"])
 
 -- an empty table: its files hold no row, and it reads back empty
 /--
-info: ([], ["id", "px", "qty"])
+info: ([], [".d.e", ".d.hi", ".d.lo", "id", "px", "qty"])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -274,7 +274,7 @@ def strs (xs : List String) : IO (Vals (.arr (.atom .char)) xs.length.toUSize) :
 -- dictionary, gets `2 0` (`ibm` keeps id 0), read back as written, and the dictionary grows to `ibm aapl msft`; the
 -- table directory holds its ids alone; a dictionary that does not start with the library's (`zz` at id 0) is refused
 /--
-info: (["ibm", "aapl", "msft"], [0, 1], [2, 0], [2, 0], ["s"],
+info: (["ibm", "aapl", "msft"], [0, 1], [2, 0], [2, 0], [".d.e", ".d.hi", ".d.lo", "s"],
   "/data/tmp/rel-test-table/lib: the library's dictionary of 3 texts and the program's of 1 differ at id 0; a dictionary is append-only, so these ids are not of this library")
 -/
 #guard_msgs in
