@@ -1879,8 +1879,8 @@ relk 线程池空转 2 526（与前三项重叠）。
   - 次序：`at` 行 → 迁 `atPos` 用户 → `lt` 定义与 fused 行定理 → `asc` 定义与 `ascDen` 定理。每步一个 agent，opus 做证明。
 
 - Tm28 批次状态（master eb8c78b；`doc/tm-minimal-design.zh.typ:355-373` 的批次表；依据是代码与 index
-  `.lake/build/refactor-index.db`，不是 PLAN 的旧标记）。`Rel.Lang.Tm`（`Rel/Run/Lang/Tm.lean:21-85`）今天 33 个构造子，
-  目标 28；多出的 5 个：`leq` `lt`（B5 未删）、`own` `share` `callCv`（B9）。index 列 `Tm.lt` `Tm.leq` 为构造子是对的。
+  `.lake/build/refactor-index.db`，不是 PLAN 的旧标记）。`Rel.Lang.Tm`（`Rel/Run/Lang/Tm.lean:21-85`）今天 31 个构造子，
+  目标 28；多出的 3 个：`leq` `lt`（B5 未删）、`share`（B9d；`own` `callCv` 已由 B9bc 删）。index 列 `Tm.lt` `Tm.leq` 为构造子是对的。
   - ✓ B1：无 `Tm.E` `GenK.E` `Tab.E`；`Tm.E_den`（`Lang/Den.lean:1110`）。a7fc083、ffa522b。
   - ✓ B2：`Tm.prod` 是 def（`Tm.lean:140`），`Tm.prod_den`（`Den.lean:638`），`Tm.prodUni`（`Tm.lean:161`）；无
     `GenK.prod` `Tab.prod`。9d5e0d9。
@@ -1897,7 +1897,7 @@ relk 线程池空转 2 526（与前三项重叠）。
     的意义 `ordDen`（`Den.lean:392`）读的就是 `ltAt`/`leAt`。`Tm.ltDef` `Tm.ascDef` 是 Lean 里构造的项，不是 prelude
     文本：归 B10c。
   - ⬜ B9：`Expand.convOf`（`Expand.lean:186`）是旧机制（`Once → Option (Name × Res)`，给 `callCv` 造逆体），不是设计的
-    `convOf : 名字 → Option 名字`；index 无 `convs` `permConv`；`Tm.own/share/callCv` 仍是构造子，`var` 仍带 `d`
+    `convOf : 名字 → Option 名字`；index 无 `convs` `permConv`；`Tm.share` 仍是构造子（`own` `callCv` 已由 B9bc 删），`var` 仍带 `d`
     （`Tm.lean:66`、`:128`），`Tm.dem` 无 `δ`。
   - ⬜ B10：`dfns` 仍在（`Elab.lean:2201`，`build` 用于 `:2496`）；index 无 `prelude.length/sum/flat`、无 `unproved`；
     六行 `filter takewhile tails prefix suffix concat` 仍只有 `prelude :=`（`Syntax.lean:324/327/345/347/349/351`）与
@@ -1925,21 +1925,9 @@ relk 线程池空转 2 526（与前三项重叠）。
     - B9a（只加声明，不改遍历）：`theorem permConv : perm° = perm`（`rel_aop prelude`，`Programs/Prelude.lean:45` 的
       `perm`）；表 `Elab.convs` 由 prelude 的 `c° = c'` 定理生成；`convOf : 名字 → Option 名字` 查 `Prim.conv` 与
       `Elab.convs`。旧的 `Expand.convOf`（`Expand.lean:186`，用于 `callDef:504`）在 B9c 删，B9a 不动它。
-    - B9b 删 `own`：`convTm` 对 `call` 查 `convOf`，`perm` 查到自己。`Pre.own`：`Elab.lean:415`、`traverse:620`、
-      `build:2515-2517`，`Expand.lean` `useDef:74`。`Tm.own`：`Tm.lean:51`、`dem:121`、`size:175`、`mapMSz:202`、`fv:244`、
-      `subst:291`、`pol:334`、`linIn:364`、`kids:398`；`TmGen.lean` `gen:180`、`hasCode:244`、`tmE:318`；`Elab.lean`
-      `instObj:323`、`convTm:2028`；`Den.lean` `den:490`、`argDen:512`、`den_congr:682`、`den_pol_spine:954`、
-      `den_linIn:1099`、`den_local:1233/1261`；`GenSound.lean` `GenHyp:199`、`monoOK:214`、`pol_of_fv:1499`、
-      `number_spine:1762`；`ConvSpec.lean` `ConvOK:117`、`convTm_den:185-187`、`convTm_instObj_den:573-575`；`EmitC.lean`
-      `nodeB:1491`。
-    - B9c 删 `callCv`：`call … c …` 的逆是对 `convOf c` 再做 `callTm`（`Elab.lean:2335`，造 `callCv` 于 `:2351`）。
-      `Tm.lean:73`、`dem:122`、`size:176`、`inner:227`、`fv:255`、`subst:315`、`pol:344`；`TmGen.lean` `gen:199`、
-      `argGen:211`、`hasCode:255`、`argHasCode:265`、`tmE:328-329`、`numberKey:350`、`number:383`；`Elab.lean`
-      `instObj:331`、`convTm:2064`；`Expand.lean` `convOf:186`、`callDef:504`、`fieldsEq:935-936`；`Den.lean` `den:497`、
-      `argDen:509`、`den_congr:716`、`den_pol_spine:1027`、`den_linIn:1100`、`den_local:1261/1263`；`GenSound.lean`
-      `GenHyp:200`、`monoOK:216`、`pol_of_fv:1499`、`numGeneric:1716`、`number_spine:1762`、`number_spec:1785`；
-      `ConvSpec.lean` `ConvOK:128`、`convTm_den:208-210`、`convTm_instObj_den:601-603`、`callTm_convOK:903-905`；
-      `EmitC.lean` `nodeB:1515`、`argB:1541`；`GenSoundTest.lean:113`。
+    - ✓ B9bc 删 `own` `callCv`：`Tm.call ks c (cv : Option Name) os b`，`cv` 是 `c` 的逆常量（`Elab.convs` 里自逆定理
+      `c° = c` 给出 `c` 自己，否则是派生逆 `convOf`：`c ++ conv`，体为 `convTm` 的结果）；`Registry.call?` 把派生逆常量映到
+      `key ++ conv` 再比较体。测试：`Lang/Test/Lists.lean` 的 `convs`（`perm°`；用户定义 `f` 的 `(f° y)°`）。
     - B9d `share` 改为零元 `call`：`Tm.lean:62`、`dem:121`、`size:176`、`inner:226`、`fv:254`、`subst:313`、`pol:343`；
       `TmGen.lean` `gen:186`、`argGen:210`、`hasCode:245`、`argHasCode:264`、`tmE:323-324`、`numberKey:348`、
       `numberSlot:359/366`、`number:379-384`、`Code.shares:390`、`:410`、`emit:622`；`Elab.lean` `instObj:328`、
