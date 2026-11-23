@@ -205,9 +205,11 @@ def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 Ã
   else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
 /-- Whether key `k` of a `w`-byte column is the least a `w`-byte element (sign-extended) or an `Int64` can hold: the one
-key `k - 1` wraps or leaves the type at, so a block holding a null cannot put its base below it. -/
+key `k - 1` wraps or leaves the type at, so a block holding a null cannot put its base below it. One byte is q's
+unsigned pair (`Column.sext`), whose least is `0`: a `u1` block `{0, 1, null}` is base `0`, width 1, so `Column.u1Ok` decides it. -/
 def lowKey (w : Nat) (k : Int64) : Bool :=
-  k == Int64.minValue || k.toUInt64 == (Rel.Column.sext w ((1 : UInt64) <<< (8 * w - 1).toUInt64)).toUInt64
+  k == Int64.minValue || if w = 1 then k == 0 else
+    k.toUInt64 == (Rel.Column.sext w ((1 : UInt64) <<< (8 * w - 1).toUInt64)).toUInt64
 
 /-- Block `b`, of `B` elements, of a nullable column (`1+atom`, owner decision K) where it holds a null: `x` its `n`
 `w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its maximum and `blockOf`'s sum are taken over the

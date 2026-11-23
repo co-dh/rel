@@ -517,8 +517,10 @@ never per element (`Verify.u1Ok_bound`): an unpatched value is `baseAt + foRFram
 `ones (widthAt)`, and a patched value is its patch.
 Every `u1` column the encoder writes passes, since it picks the minimal width (`widthFor` of the block's range), so a
 `0`/`1` block is base `0` width `1` or base `0`/`1` width `0`; a file whose `u1` block has a larger frame or width is
-rejected, even where each of its values happens to be `0` or `1`. So is a `u1` block flagged for a null: its base is
-`-1`, below every value; a nullable column (`Opt`) is decided by `Enc.WF` itself. -/
+rejected, even where each of its values happens to be `0` or `1`. A `u1` block flagged for a null passes too: `0` is
+the least of a byte (`Coc.lowKey`), so its base is `0`, the null is residual `0`, `1` residual `1` and a `0` a patch,
+width 1 and `base + ones width = 1`. That holds for a column encoded at one byte; the CSV reader's 8-byte words
+(`wordsFoR`) have `Int64.minValue` as their least, so its `u1` block holding a null is base `-1`, width 2, and fails. -/
 def u1Ok (metadata pack : ByteArray) : Bool :=
   let e := blockStart metadata (nblk metadata)
   Nat.all (nblk metadata) fun b _ =>
