@@ -100,7 +100,7 @@ theorem Opt.lt_of_codes {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
     simp only [seenKey, ascKeys, ascKey, nulCodes, nulWords, hof, Option.getD_some, List.append_nil]
     cases hn : x.isNul q
     · have h0 := (Opt.isNul_eq_false x q).1 hn
-      obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hv hg q h0
+      obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hg q h0
       rw [hw] at ha; cases ha
       refine .inr ⟨(ordCode w fl s (Enc.raw .i64 n x.enc)[q.1]).toNat, ?_, ?_⟩
       · cases hasNul x.enc <;> simp [Array.getElem?_mapIdx, hw, h0]

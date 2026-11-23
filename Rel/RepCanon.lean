@@ -18,7 +18,7 @@ open Rel.Ext Rel.Kernel Rel.Verify
 /-- **An element is the atom of its word**: in a column every kernel reads (`foR`, or `pos` at `i64`), element `i` is
 `Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. Stated on the
 payload `e` at a row `foRNuls` flags as no null, so it serves `Arr` (no null anywhere) and `Opt` (off its nulls). -/
-theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n e) (hx : Kernel.Enc.Valid n e)
+theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n e)
     (hg : t ≠ .general) (i : Fin n.toNat) (h0 : (foRNuls n e)[i.1]? = some 0) :
     ∃ a, (Enc.raw .i64 n e)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
       ((Enc.get t n e i).bind fun a => (Dep.Carrier.of? t (.atom a) : Option (El t))).getD default =
@@ -37,13 +37,13 @@ theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t 
     cases t <;> simp only [Enc.WF] at hw
     exact ⟨UInt64.ofNat i.1, by simp [Enc.raw, i.2], fun h => absurd h (by decide),
       by simp [Enc.get, i.2, Column.atomOfBits]⟩
-  | _ => all_goals simp only [Kernel.Enc.Valid] at hx
+  | _ => all_goals cases t <;> first | exact absurd rfl hg | simp only [Enc.WF] at hw
 
 /-- `Enc.get_raw_atom` at an `Arr`, whose every row is no null (`foRNuls_plain`). -/
-theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n) (hx : Kernel.Enc.Valid n x.enc)
+theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n)
     (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
       x.get i = (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
-  rw [Arr.get_ne x i hg]; exact Enc.get_raw_atom x.wf hx hg i (foRNuls_plain x.wf x.plain i.2)
+  rw [Arr.get_ne x i hg]; exact Enc.get_raw_atom x.wf hg i (foRNuls_plain x.wf x.plain i.2)
 
 /-- `Obj.optOf` undoes `Obj.optEl`: a band row read as `a + b` and back is the row. -/
 theorem Obj.optOf_optEl {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t) (v : Option (El t)) :
@@ -85,8 +85,8 @@ theorem Arr.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Arr
   have hg : t ≠ .general := by
     rintro rfl; have hw := x.wf
     cases hc : x.enc <;> (rw [hc] at hw hx; simp only [Enc.WF, Kernel.Enc.Valid] at hw hx) <;> exact absurd hw.1 (by decide)
-  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hx hg i
-  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hy hg j
+  obtain ⟨a, ha, hua, ex⟩ := Arr.get_raw_atom x hg i
+  obtain ⟨b, hb, hub, ey⟩ := Arr.get_raw_atom y hg j
   rw [ex, ey, h hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
 
 /-- A column with no null read as nullable (`Opt.ofArr`) holds `some` of its element at every row. -/
@@ -111,8 +111,8 @@ theorem Opt.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Opt t n) (y : Opt
   rw [Opt.get_ne x i hg, Opt.get_ne y j hg]
   by_cases h0 : (foRNuls n x.enc)[i.1]? = some 0
   · rw [(Opt.isNul_eq_false x i).2 h0, (Opt.isNul_eq_false y j).2 (hf ▸ h0)]
-    obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hx hg i h0
-    obtain ⟨b, hb, hub, ey⟩ := Enc.get_raw_atom y.wf hy hg j (hf ▸ h0)
+    obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hg i h0
+    obtain ⟨b, hb, hub, ey⟩ := Enc.get_raw_atom y.wf hg j (hf ▸ h0)
     simp only [Bool.false_eq_true, if_false, ex, ey, h h0 hg a b ha hb fun hu => ⟨hua hu, hub hu⟩]
   · have h1 : x.isNul i = true := by
       cases hh : x.isNul i; · exact absurd ((Opt.isNul_eq_false x i).1 hh) h0
@@ -279,9 +279,9 @@ theorem clampFin_word {w : UInt64} {m : Nat} (h : 0 < m) (hw : w.toNat < m) (hm 
   apply Fin.ext; simp only [clampFin, e]; omega
 
 /-- A boolean element is `true` exactly where its word is `1`. -/
-theorem Arr.get_u1 {n : USize} (x : Arr .u1 n) (hx : Kernel.Enc.Valid n x.enc) (i : Fin n.toNat) :
+theorem Arr.get_u1 {n : USize} (x : Arr .u1 n) (i : Fin n.toNat) :
     ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ a = (if x.get i then 1 else 0) := by
-  obtain ⟨a, ha, hu, e⟩ := Arr.get_raw_atom x hx (by decide) i
+  obtain ⟨a, ha, hu, e⟩ := Arr.get_raw_atom x (by decide) i
   refine ⟨a, ha, ?_⟩
   have h2 : a.toNat < 2 := UInt64.lt_iff_toNat_lt.1 (hu rfl)
   rw [e]
@@ -570,7 +570,7 @@ theorem Vals.cols_sum {a b : Obj} {n l r : USize} {s : Vals (.sum a b) n} {hb : 
   -- `px` is `idx` on the left summand's rows and `0` on the right's, `py` the other way round
   have wx : ∀ q : Fin n.toNat, (Enc.raw .i64 n px)[q.1]?.getD 0 =
       if tag.get q = false then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := fun q => by
-    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag q
     obtain ⟨v1, e1, h1⟩ := hnt' q q.2
     obtain ⟨v2, e2, h2⟩ := hpx' q q.2
     simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e1; subst e1
@@ -579,7 +579,7 @@ theorem Vals.cols_sum {a b : Obj} {n l r : USize} {s : Vals (.sum a b) n} {hb : 
     rw [et]; cases tag.get q <;> simp
   have wy : ∀ q : Fin n.toNat, (Enc.raw .i64 n py)[q.1]?.getD 0 =
       if tag.get q = true then (Enc.raw .i64 n idx.enc)[q.1]?.getD 0 else 0 := fun q => by
-    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag hv q
+    obtain ⟨t, ht, et⟩ := Arr.get_u1 tag q
     obtain ⟨v2, e2, h2⟩ := hpy' q q.2
     simp only [ht, Option.getD_some, Op.eval, Except.ok.injEq] at e2; subst e2
     simp only [h2, if_neg hi64, Option.getD_some]
@@ -1225,8 +1225,8 @@ theorem Arr.atom_of_get_eq {t : QAtomicType} {n m : USize} (x : Arr t n) (y : Ar
     (hb : (Enc.raw .i64 m y.enc)[j.1]? = some b) :
     (t = .u1 → a < 2 ∧ b < 2) ∧ (x.get i = y.get j → Column.atomOfBits t a hg = Column.atomOfBits t b hg) := by
   -- an element is `Carrier.of?` of its word's atom (`Arr.get_raw_atom`, any encoding), which keeps the atom
-  obtain ⟨a', ha', hua, ex⟩ := Arr.get_raw_atom x hx hg i
-  obtain ⟨b', hb', hub, ey⟩ := Arr.get_raw_atom y hy hg j
+  obtain ⟨a', ha', hua, ex⟩ := Arr.get_raw_atom x hg i
+  obtain ⟨b', hb', hub, ey⟩ := Arr.get_raw_atom y hg j
   obtain rfl := Option.some.inj (ha.symm.trans ha'); obtain rfl := Option.some.inj (hb.symm.trans hb')
   refine ⟨fun hu => ⟨hua hu, hub hu⟩, fun h => ?_⟩
   rw [ex, ey] at h
@@ -1280,8 +1280,8 @@ theorem Opt.codes_of_eq {t : QAtomicType} {n : USize} (x : Opt t n) {cs}
     · have e1 := (Opt.isNul_eq_false x i).1 h1
       have e2 := (Opt.isNul_eq_false x i').1 h2
       refine ⟨e1.trans e2.symm, fun _ => ?_⟩
-      obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hv hg i e1
-      obtain ⟨b, hb, hub, ey⟩ := Enc.get_raw_atom x.wf hv hg i' e2
+      obtain ⟨a, ha, hua, ex⟩ := Enc.get_raw_atom x.wf hg i e1
+      obtain ⟨b, hb, hub, ey⟩ := Enc.get_raw_atom x.wf hg i' e2
       rw [hw] at ha; rw [hw'] at hb; cases ha; cases hb
       rw [Option.some.injEq, ex, ey] at hr
       refine (ascOrd_atom hof hg fun hu => ⟨hua hu, hub hu⟩).2 ?_
