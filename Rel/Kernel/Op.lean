@@ -29,6 +29,9 @@ inductive Op
   /-- `div` and `mod` with the operands turned round, `eval a x = x / a`, `x % a`: a chain step `(rdiv, c)` of
       `kscan` is `x / c`, a constant divisor, which `div`'s step `c / x` cannot write (perf11). -/
   | rdiv | rmod
+  /-- The random source (dataframe F8): `x` to splitmix64's output at the counter `x` (`mixWord`), a pure hash, so a
+      program reading it stays a relation that answers the same at the same counter. -/
+  | mix
   /-- `$` (S6/S7): the word of `t` holding the value of the word read at `s` (`QAtomicType.castWord`), `2^63` where
       none; one constructor for every pair, so `Op` reaches Rust as an object (`op_code`), not a byte. -/
   | cast (s t : QAtomicType)
@@ -43,7 +46,7 @@ namespace Op
 unary ops and `last` look at the element alone. -/
 def readsAcc : Op → Bool
   | neg | abs | not | last | fneg | fabs | fsqrt | fexp | flog | fsin | fcos | ftan | fasin | facos | fatan | ffloor
-  | fround | f32to64 | cast .. | fto _ => false
+  | fround | f32to64 | mix | cast .. | fto _ => false
   | _ => true
 
 
@@ -85,6 +88,15 @@ def ofF64 : QAtomicType → Op
   | .f32 => .fto .f32
   | .f64 => .fto .f64
   | u => .cast .f64 u
+
+/-- `mix`'s word: splitmix64 (Steele, Lea, Flood 2014) at the counter `x`, the finaliser of the state `(x + 1)·γ`
+    (`γ = 0x9e3779b97f4a7c15`), shifted right by one so the answer is an `i64` in `[0, 2^63)`: `x = 0, 1, 2` are the
+    first three outputs of the generator seeded `0` (`0xe220a8397b1dcdaf`, … ) halved. -/
+def mixWord (x : UInt64) : UInt64 :=
+  let z := (x + 1) * 0x9e3779b97f4a7c15
+  let z := (z ^^^ (z >>> 30)) * 0xbf58476d1ce4e5b9
+  let z := (z ^^^ (z >>> 27)) * 0x94d049bb133111eb
+  (z ^^^ (z >>> 31)) >>> 1
 
 /-- Total, with the failure typed: integer `div`/`mod` by `0` is `.error`, not a null (`Ew.intStep` answers q's `0N`
 there, a value the raw word cannot tell from an ordinary one). The unary ops ignore `acc`. -/
@@ -146,6 +158,7 @@ def eval : Op → UInt64 → UInt64 → Except String UInt64
   | fgt, a, x => .ok (w (f x < f a))
   | fge, a, x => .ok (w (f x ≤ f a))
   | f32to64, _, x => .ok (widen32 x)
+  | mix, _, x => .ok (mixWord x)
   | cast s t, _, x => .ok (QAtomicType.castWord s t x)
   | fto t, _, x => .ok (ftoWord t x)
 
@@ -231,6 +244,10 @@ def neg1 : UInt64 := 0xffffffffffffffff
 #guard (Op.fto .f32).eval 0 (one (-1e-50)) matches .ok 0
 #guard (Op.fto .f32).eval 0 (one 1e300) matches .ok 0x7f800000
 #guard (Op.fto .i64).eval 0 (one 1.0) matches .ok 0x8000000000000000
+-- splitmix64 seeded `0`, its outputs `0xe220a8397b1dcdaf 0x6e789e6aa1b965f4 0x06c45d188009454f` halved (the Rust
+-- `op_eval_floors_and_types_its_errors` checks the same words); the counter wraps: `2^64 − 1` is the state `0`
+#guard [0, 1, 2, 0xffffffffffffffff].map (fun x => (Op.mix.eval 0 x).toOption) ==
+  [0x7110541cbd8ee6d7, 0x373c4f3550dcb2fa, 0x03622e8c4004a2a7, 0].map some
 
 end Op
 end Rel.Kernel

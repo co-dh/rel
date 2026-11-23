@@ -154,11 +154,19 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         34 => fw(m::tan(f(x))), 35 => fw(m::asin(f(x))), 36 => fw(m::acos(f(x))), 37 => fw(m::atan(f(x))),
         38 => fw(crate::ew::floor64(f(x))), 39 => crate::ew::round_even(x),
         40 => w(f(a) == f(x)), 41 => w(f(a) != f(x)), 42 => w(f(a) < f(x)), 43 => w(f(a) <= f(x)), 44 => w(f(x) < f(a)), 45 => w(f(x) <= f(a)),
-        46 => widen32(x),
+        46 => widen32(x), 49 => mix_word(x),
         // `fto t`, the last constructor: its code is `FTO + t`; `cast s t`: `CAST + 13 s + t` (`op_code`)
         c if c >= FTO => fto_word(c - FTO, x),
         _ => cast_word(op, x),
     }
+}
+
+/// `Op.mixWord` (Rel/Kernel/Op.lean): splitmix64 at the counter `x`, the finaliser of `(x + 1)·γ`, halved into `[0, 2^63)`.
+pub fn mix_word(x: u64) -> u64 {
+    let z = x.wrapping_add(1).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    let z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    let z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    (z ^ (z >> 31)) >> 1
 }
 
 /// The code of `Op.fto t` is `FTO + t` (`t` a `QAtomicType` index), past every cast's code.
@@ -179,10 +187,10 @@ pub fn fto_word(t: u8, x: u64) -> u64 {
 }
 
 /// The code of `Op.cast s t` is `CAST + 13 * s + t` (`s`, `t` `QAtomicType` indices, below 13): one `u8` names every op.
-pub const CAST: u8 = 49;
+pub const CAST: u8 = 50;
 
-/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 49) a ctor
-/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 50) one whose field is byte 0.
+/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 50) a ctor
+/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 51) one whose field is byte 0.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn op_code(o: crate::lean::B) -> u8 {
     if o.is_scalar() { o.unbox() as u8 }
@@ -679,6 +687,8 @@ mod kscan_tests {
             [0, 0x4000000000000000, 0x4000000000000000, 0x8000000000000000, 0xc000000000000000, 0x4000000000000000,
              0x4008000000000000, 0x8000000000000000, 0x4330000000000001, 0x7ff0000000000000, 0xfff0000000000000]);
         assert_eq!(op_word(39, 0, 0x7ff8000000000001), 0x7ff8000000000001);
+        // `mix` at the counters Op.lean's `#guard` checks the Lean body on
+        assert_eq!([0, 1, 2, u64::MAX].map(|x| op_word(49, 0, x)), [0x7110541cbd8ee6d7, 0x373c4f3550dcb2fa, 0x03622e8c4004a2a7, 0]);
     }
 }
 

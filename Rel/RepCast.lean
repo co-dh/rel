@@ -196,5 +196,37 @@ theorem succOp_wf {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.su
     all_goals simp [Tab.succOp] at h
   all_goals simp [Tab.succOp] at h
 
+/-- **The row `mix` on the values `X`** denotes `mixOn`: each counter `u` to `Op.mixWord u`; no row at an object other
+    than `i64`. -/
+theorem mixOp_den {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.mixOp X = .ok T) (x w : A.El) :
+    T.Holds x w ↔ (∃ i, X.row i = x) ∧ Lang.mixOn A x w := by
+  cases A
+  case atom t =>
+    cases t
+    case i64 =>
+      simp only [Tab.mixOp, bind, Except.bind_eq_ok'] at h
+      obtain ⟨s, hs, h⟩ := h
+      cases h
+      have hrow := Tab.mixCol_row hs
+      simp only [Tab.Holds, Lang.mixOn]
+      constructor
+      · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, hrow i⟩
+      · rintro ⟨⟨i, rfl⟩, rfl⟩; exact ⟨i, rfl, hrow i⟩
+    all_goals simp [Tab.mixOp] at h
+  all_goals simp [Tab.mixOp] at h
+
+/-- **The row `mix` keeps `Tab.WF`**: `X` keyed to the answer words. -/
+theorem mixOp_wf {A : Obj} {n : USize} {X : Vals A n} {T : Tab A A} (h : Tab.mixOp X = .ok T) (hX : Vals.WF X) :
+    T.WF := by
+  cases A
+  case atom t =>
+    cases t
+    case i64 =>
+      simp only [Tab.mixOp, bind, Except.bind_eq_ok'] at h
+      obtain ⟨_, -, h⟩ := h
+      cases h; exact ⟨hX, trivial⟩
+    all_goals simp [Tab.mixOp] at h
+  all_goals simp [Tab.mixOp] at h
+
 end Tab
 end Rel

@@ -94,7 +94,7 @@ instance : Reg QAtomicType := Reg.enum QAtomicType.ofNat QAtomicType.ctorIdx
 def nullOps : List Kernel.Op :=
   [.add, .sub, .mul, .div, .mod, .min, .max, .neg, .abs, .eq, .ne, .lt, .le, .gt, .ge, .and, .or, .not, .first, .last,
    .fadd, .fsub, .fmul, .fdiv, .fpow, .fmin, .fmax, .fneg, .fabs, .fsqrt, .fexp, .flog, .fsin, .fcos, .ftan, .fasin,
-   .facos, .fatan, .ffloor, .fround, .feq, .fne, .flt, .fle, .fgt, .fge, .f32to64, .rdiv, .rmod]
+   .facos, .fatan, .ffloor, .fround, .feq, .fne, .flt, .fle, .fgt, .fge, .f32to64, .rdiv, .rmod, .mix]
 -- every index below `cast`'s, the last constructor, holds its own `Op`
 #guard nullOps.zipIdx.all (fun (o, i) => o.ctorIdx == i) && nullOps.length == (Kernel.Op.cast .i64 .i64).ctorIdx
 
