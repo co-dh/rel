@@ -386,8 +386,8 @@ theorem map_wf {A B : Obj} {n : USize} {R : Tab A B} {X : Vals (.arr A) n} {t : 
     obtain rfl : CN = T := hc.1
     rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
     have hm63 : m.toNat < 2 ^ 63 := by omega
-    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
-    have wC := comp_wf hC ⟨trivial, Vals.gather_wf hv hX.2⟩ hR
+    obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec (fun i => hX.2.2.1 i trivial) hm63 f
+    have wC := comp_wf hC ⟨trivial, Vals.gather_wf hv hX.2.2.2⟩ hR
     refine canon_wf h ⟨hX, Vals.cells_expand_wf hex hY m.toNat (fun i hi => ?_) (by dsimp only; omega) (by dsimp only; omega) wC.2⟩
     obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
     rw [e1, toNat_toUInt64 (by omega)]; exact b1

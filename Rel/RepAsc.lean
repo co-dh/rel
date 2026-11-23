@@ -35,10 +35,10 @@ theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok
     have e : ∀ j, U.val.row j = P.key.row (sel j) := fun j => congrArg Prod.snd (hrow j)
     rw [e j, e j']
     exact Vals.lamLaw ((z, P.key) : Vals (.prod .long B) P.n) ⟨trivial, wP.1⟩ hes hcs (sel j) (sel j')
-      (by show Vals.row (A := .long) z _ = Vals.row (A := .long) z _; rw [Vals.row_atom, Vals.row_atom,
+      (by show ValsB.row (o := false) (A := .long) z _ = ValsB.row (o := false) (A := .long) z _; rw [Vals.row_atom, Vals.row_atom,
         Arr.zeros_get hz, Arr.zeros_get hz]) hl hs
   have hH : ∀ k b, (∃ i, U.key.row i = k ∧ U.val.row i = b) ↔
-      ∃ i, Vals.row (A := .long) z i = k ∧ P.key.row i = b := canon_holds hU ⟨trivial, wP.1⟩
+      ∃ i, ValsB.row (o := false) (A := .long) z i = k ∧ P.key.row i = b := canon_holds hU ⟨trivial, wP.1⟩
   let ys := List.ofFn fun j => U.val.row j
   have hys : ys.Pairwise B.lt := List.pairwise_iff_getElem.2 fun i i' hi hi' h => by
     simp only [ys, List.getElem_ofFn]; exact hlt ⟨i, by simpa [ys] using hi⟩ ⟨i', by simpa [ys] using hi'⟩ h
@@ -53,7 +53,7 @@ theorem asc_holds {B : Obj} {P : Tab B B} {T : Tab .long B} (h : Tab.asc P = .ok
       exact ⟨j, hj⟩
   funext j a
   apply propext
-  show (∃ i, Vals.row (A := .long) p i = j ∧ U.val.row i = a) ↔ _
+  show (∃ i, ValsB.row (o := false) (A := .long) p i = j ∧ U.val.row i = a) ↔ _
   constructor
   · rintro ⟨i, rfl, rfl⟩
     refine ⟨ys, hys, hmem, i.1, by simp [ys, i.2], ?_⟩
