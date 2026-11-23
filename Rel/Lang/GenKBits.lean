@@ -1401,11 +1401,8 @@ theorem ascCol_cells_valid {m n c : USize} {lo hi e : Enc} {els : List (AscKey �
       cases hl : foRWords "asc: cells lo" n lo with
       | error s => simp [hix, hn, hf, hl, bind, Except.bind] at h
       | ok l =>
-        cases hnl : noNul "asc: cells lo" n lo with
-        | error s => simp [hix, hn, hf, hl, hnl, bind, Except.bind] at h
-        | ok u' =>
         cases hh : foRWords "asc: cells hi" n hi with
-        | error s => simp [hix, hn, hf, hl, hnl, hh, bind, Except.bind] at h
+        | error s => simp [hix, hn, hf, hl, hh, bind, Except.bind] at h
         | ok l' => exact ⟨(foRWords_valid _ _ _).2 _ hl, (foRWords_valid _ _ _).2 _ hh⟩
 
 /-- **A side `kasc` reads is gathered at any valid positions below its length**: `ascCol` answering on each of its
