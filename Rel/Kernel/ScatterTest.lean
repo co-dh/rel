@@ -112,6 +112,13 @@ def idxs : List (Array UInt64) := [(Array.range 4000).map fun k => (k * 7919 % 9
   view (kscatter op (USize.ofNat is.size) (col is.toList) (col (patchedE is.size).toList) (u 5000) 9) ==
     view (wordsFoR <$> scatterWords op is (patchedE is.size) 5000 9)
 
+-- a plain write of 3000 rows (3 blocks and a tail) through the positions, as `.pos` and as the column `0 .. 2999`, answers
+-- the blocks of `e` as they stand, with patches or without: the Rust against the Lean fold, compiled
+#guard [patchedE 3000, (Array.range 3000).map fun k => (3 * k + 1).toUInt64].all fun es =>
+  [(.pos : Ext.Enc Empty), col ((List.range 3000).map Nat.toUInt64)].all fun ix =>
+  view (kscatter .last (u 3000) ix (col es.toList) (u 3000) 9) ==
+    view (wordsFoR <$> scatterWords .last ((Array.range 3000).map Nat.toUInt64) es 3000 9)
+
 -- `last`, each group's last row in group order: the positions scattered to `kseen`'s `g` under `.last`. `A B B` (in
 -- `kasc` order, as `kseen` takes it) has `g = 0 1 1` (2 groups), so `last = 0 2`
 def lastABB : Except String Enc := do

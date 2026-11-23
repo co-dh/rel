@@ -127,6 +127,34 @@ mod tests {
             else { Err(format!("gather: index {i} at row {k} is not below n = {}", es.len())) }).collect()
     }
 
+    // an index reading whole blocks of `e` in order (the positions, the same as a `foR`, blocks rotated: 3 blocks and a
+    // tail) answers by moving them; the bytes are those of `words` encoded, for `e` smooth and with patches
+    #[test] fn moved_blocks_are_words() {
+        use crate::{coc, enc::MOVED, testutil::{column, enc_words, parts}};
+        use core::sync::atomic::Ordering::Relaxed;
+        let n = 3500usize;
+        let rot: Vec<u64> = (1024..3072u64).chain(0..1024).chain(3072..n as u64).collect();
+        for patched in [false, true] {
+            let es = column(n, patched);
+            let [me, pe] = enc_words(&es);
+            let ce = coc::view(&me, &pe, n).unwrap_or_else(|e| panic!("test column does not view: {e}"));
+            assert_eq!(ce.exc.is_some(), patched);
+            let ids: Vec<u64> = (0..n as u64).collect();
+            for (k, is) in [&ids, &rot].into_iter().enumerate() {
+                let [mi, pi] = enc_words(is);
+                let ci = coc::view(&mi, &pi, n).unwrap_or_else(|e| panic!("test column does not view: {e}"));
+                for ix in [Blocks::from(ci), Blocks::pos(n)] {
+                    if k == 1 && matches!(ix.src, crate::blocks::Src::Pos) { continue }
+                    let t = Take { ix, e: ce, sw: ce.one_width(), d: None, bad: AtomicUsize::new(usize::MAX) };
+                    assert!(t.take(0).is_some() && t.take(1).is_some() && t.take(2).is_some(), "patched {patched} ix {k}");
+                    let before = MOVED.load(Relaxed);
+                    let o = enc(&ix, &ce).expect("gather");
+                    assert!(MOVED.load(Relaxed) > before);
+                    assert_eq!(parts(&o), enc_words(&words(is, &es).expect("rows below n")), "patched {patched} ix {k}");
+                }
+            }
+        }
+    }
     #[test] fn index_past_n_is_an_error() {
         assert_eq!(words(&[1, 3, 9], &[1, 2, 3]), Err("gather: index 3 at row 1 is not below n = 3".into()));
         // above `usize::MAX` on a 32-bit target too: the `u64` comparison, not the cast, decides

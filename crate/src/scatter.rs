@@ -250,6 +250,27 @@ mod tests {
             }
         }
     }
+    // a plain write through the positions `0 .. m` moves the blocks of `e` that fill their answer block (3 blocks and a
+    // tail; smooth and with patches); the answer is the bytes `words` encodes, which no block was moved into
+    #[test] fn moved_blocks_are_words() {
+        use crate::{enc::MOVED, testutil::{column, enc_words, parts}};
+        use core::sync::atomic::Ordering::Relaxed;
+        let n = 3500usize;
+        for patched in [false, true] {
+            for m in [n, 3200, 1024, 700] {
+                let es = column(m, patched);
+                let [me, pe] = enc_words(&es);
+                let ce = coc::view(&me, &pe, m).unwrap_or_else(|e| panic!("test column does not view: {e}"));
+                assert_eq!(ce.exc.is_some(), patched);
+                let (before, is) = (MOVED.load(Relaxed), (0..m as u64).collect::<Vec<_>>());
+                let o = blocks(LAST, &Blocks::pos(m), &Blocks::from(ce), n, 7, None);
+                // a block moves where `e`'s and the answer's rows agree: the whole blocks, and the tail when `m = n`
+                assert!(MOVED.load(Relaxed) > before || m < 1024, "patched {patched} m {m}: no block moved");
+                let want = words(LAST, &is, &es, n, 7).map(|w| enc_words(&w));
+                assert_eq!(o.map(|o| parts(&o)), want, "patched {patched} m {m}");
+            }
+        }
+    }
     // indices whose `ix` blocks are ordered by their metadata but scrambled inside, each block's cells spanning several
     // answer blocks (BitsTest's shape): every answer block must cut only rows of a block it has itself seen ascend
     #[test] fn scrambled_inside_ordered_blocks_is_words() {
