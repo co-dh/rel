@@ -178,10 +178,37 @@ theorem rdNul_bit (n : USize) (e : Enc) (i : Fin n.toNat) : rdNul n e i = 0 ∨ 
   have hb := foRNuls_bit n e i.2
   simp only [rdNul] at hb ⊢; rw [hb]; split <;> simp
 
+/-- **The rows of `nulVerb`**: `max`/`min`, which `kscan` orders null by (`Op.nulFold`), or a verb that propagates
+    null (`b = or`, `f = nulWord`) whose `Op` orders none. -/
+theorem nulVerb_cases {k : UInt8} {o b : Op} {f : UInt64} (h : nulVerb k = some (o, b, f)) :
+    (o = .max ∧ b = .and ∧ f = 0x8000000000000000 ∧ k = Ew.greater) ∨
+    (o = .min ∧ b = .or ∧ f = 0x7fffffffffffffff ∧ k = Ew.lesser) ∨
+    (b = .or ∧ f = nulWord ∧ o.nulFold = none ∧ (k = Ew.add ∨ k = Ew.sub ∨ k = Ew.mul)) := by
+  unfold nulVerb at h
+  by_cases h1 : k = Ew.greater
+  · simp [h1, Op.nulFold] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact .inl ⟨rfl, rfl, rfl, h1⟩
+  by_cases h2 : k = Ew.lesser
+  · simp [h2, Op.nulFold] at h; obtain ⟨rfl, rfl, rfl⟩ := h; exact .inr (.inl ⟨rfl, rfl, rfl, h2⟩)
+  refine .inr (.inr ?_)
+  by_cases h3 : k = Ew.add
+  · subst h3; simp (config := {decide := true}) [List.lookup, beq_iff_eq, Ew.add, Ew.sub, Ew.mul] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl, .inl rfl⟩
+  by_cases h4 : k = Ew.sub
+  · subst h4; simp (config := {decide := true}) [List.lookup, beq_iff_eq, Ew.add, Ew.sub, Ew.mul] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl, .inr (.inl rfl)⟩
+  by_cases h5 : k = Ew.mul
+  · subst h5; simp (config := {decide := true}) [List.lookup, beq_iff_eq, Ew.add, Ew.sub, Ew.mul] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨rfl, rfl, rfl, .inr (.inr rfl)⟩
+  have e3 : (k == Ew.add) = false := by simp [h3]
+  have e4 : (k == Ew.sub) = false := by simp [h4]
+  have e5 : (k == Ew.mul) = false := by simp [h5]
+  simp [h1, h2, e3, e4, e5, List.lookup] at h
+
 /-- **The word step of `nulStep`**: `max`/`min` (`nulVerb`) of the operands' words `X`, `Y`, a null (flag `NX`, `NY`)
     read as the order's identity `f`, is the answer's word `W` where the flags' `b` (`and`/`or`) is `0`, the answer's
     flag `NW` being whether it is set; read back by `optWord`, a pair `nulStep k` relates. -/
-theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some (o, b, f)) {X Y Z NX NY NZ NW W : UInt64}
+theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some (o, b, f))
+    (hnf : o.nulFold = some (b, f)) {X Y Z NX NY NZ NW W : UInt64}
     (hX : NX = 0 ∨ NX = 1) (hY : NY = 0 ∨ NY = 1)
     (hz : o.eval (if NX != 0 then f else X) (if NY != 0 then f else Y) = .ok Z) (hn : b.eval NX NY = .ok NZ)
     (hW : NW = if NZ != 0 then 1 else 0) (hZ : NZ = 0 → W = Z) :
@@ -189,12 +216,10 @@ theorem nulStep_words {k : UInt8} {o b : Op} {f : UInt64} (hv : nulVerb k = some
   refine ⟨o, b, f, hv, ?_⟩
   have hc : (o = .max ∧ b = .and ∧ f = 0x8000000000000000 ∧ k = Ew.greater) ∨
       (o = .min ∧ b = .or ∧ f = 0x7fffffffffffffff ∧ k = Ew.lesser) := by
-    unfold nulVerb at hv
-    by_cases h1 : k = Ew.greater
-    · simp [h1, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact .inl ⟨rfl, rfl, rfl, h1⟩
-    · by_cases h2 : k = Ew.lesser
-      · simp [h2, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact .inr ⟨rfl, rfl, rfl, h2⟩
-      · simp [h1, h2] at hv
+    rcases nulVerb_cases hv with h | h | ⟨-, -, h, -⟩
+    · exact .inl h
+    · exact .inr h
+    · rw [h] at hnf; cases hnf
   rcases hc with ⟨rfl, rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl, rfl⟩ <;> rcases hX with rfl | rfl <;>
     rcases hY with rfl | rfl <;> simp only [Op.eval, Except.ok.injEq] at hz hn <;> subst hn <;> subst hW <;>
     simp (config := {decide := true}) [optWord, Op.i] at hz hZ ⊢ <;> (try subst hZ) <;> (try subst hz) <;>
@@ -218,20 +243,246 @@ theorem nulStep_fun {k : UInt8} {p : (Obj.prod (.opt .long) (.opt .long)).El} {w
     (rcases h with ⟨hb, rfl⟩ | ⟨hb, rfl⟩ <;> rcases h' with ⟨hb', rfl⟩ | ⟨hb', rfl⟩ <;>
       first | rfl | exact absurd hb hb' | exact absurd hb' hb)
 
-/-- `Tab.arithOp` at `1+i64`: one `kscan` of the verb's `Op` (`nulVerb`) over the two columns, its answer the column. -/
+/-- `Tab.arithOp` at `1+i64`: one `kscan` of the verb's `Op` (`nulVerb`) over the two columns where it orders null,
+    else `nulStepCol`; its answer the column. -/
 theorem arithOp_opt {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) n}
     {T : Tab (.prod (.opt .long) (.opt .long)) (.opt .long)} {s : String} {k : UInt8}
     (hs : arithOps.lookup s = some k) (h : Tab.arithOp s X = .ok T) :
     ∃ o b f r hz, nulVerb k = some (o, b, f) ∧
-      kscan o false .i64 .i64 n none [(n, (X.1 : Opt .i64 n).enc), (n, (X.2 : Opt .i64 n).enc)] = .ok r ∧
-      T = ⟨n, X, (Opt.mk r.1 hz : Opt .i64 n)⟩ := by
+      (if o.nulFold = some (b, f) then
+        (·.1) <$> kscan o false .i64 .i64 n none [(n, (X.1 : Opt .i64 n).enc), (n, (X.2 : Opt .i64 n).enc)]
+       else Tab.nulStepCol s k n (X.1 : Opt .i64 n).enc (X.2 : Opt .i64 n).enc) = .ok r ∧
+      T = ⟨n, X, (Opt.mk r hz : Opt .i64 n)⟩ := by
   simp only [Tab.arithOp, hs] at h
   rcases hv : nulVerb k with _ | ⟨o, b, f⟩ <;> simp only [hv] at h
   · cases h
-  obtain ⟨r, hr, h⟩ := Except.bind_eq_ok'.1 h
-  rcases hw : Enc.wf? .i64 n r.1 with _ | ⟨⟨hz⟩⟩ <;> simp only [hw] at h
-  · cases h
-  exact ⟨o, b, f, r, hz, rfl, hr, (Except.ok.inj h).symm⟩
+  refine ⟨o, b, f, ?_⟩
+  by_cases hnf : o.nulFold = some (b, f) <;> simp only [hnf, ↓reduceIte] at h ⊢ <;>
+  · obtain ⟨r, hr, h⟩ := Except.bind_eq_ok'.1 h
+    rcases hw : Enc.wf? .i64 n r with _ | ⟨⟨hz⟩⟩ <;> simp only [hw] at h
+    · cases h
+    exact ⟨r, hz, by first | rfl | trivial, hr, (Except.ok.inj h).symm⟩
+
+/-- **Row `i` of a two-column `kscan` map of an op `o` that orders null** (`Op.nulFold = some (b, f)`), the answer
+    through `chain post`, a source null or not: the answer is `WF`, its flag is `b` of the sources' flags, and where
+    that is `0` its word is `chain post` of `o` on the sources' words, a null read as `f` (`rdFill`). -/
+theorem kscan_nul_map {o b : Op} {f : UInt64} (hnf : o.nulFold = some (b, f)) {n : USize} {x y : Enc}
+    {post : List (Op × UInt64)} {r : Enc × Option UInt64} (hx : Enc.WF .i64 n x) (hy : Enc.WF .i64 n y)
+    (h : kscan o false .i64 .i64 n none [(n, x), (n, y)] [] post = .ok r) :
+    Enc.WF .i64 n r.1 ∧ ∀ i : Fin n.toNat, ∃ NZ Z,
+      (o.eval (rdFill f .i64 n x i) (rdFill f .i64 n y i) >>= chain post) = .ok Z ∧
+      b.eval (rdNul n x i) (rdNul n y i) = .ok NZ ∧ rdNul n r.1 i = (if NZ != 0 then 1 else 0) ∧
+      (NZ = 0 → wd n r.1 i = Z) := by
+  have hk : kscanStream o [(n, x), (n, y)] [] post = false := by cases o <;> simp_all [Op.nulFold, kscanStream]
+  by_cases hN : ∃ p ∈ [(n, x), (n, y)], hasNul p.2 = true
+  · obtain ⟨out, nl, hos, hns, hre, -, hwf, p, ps, hes, hrow⟩ :=
+      Verify.kscan_nul_row hnf rfl rfl hk (by simp [hx, hy]) hN h
+    simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl⟩ := hes
+    refine ⟨hwf, fun i => ?_⟩
+    obtain ⟨h1, h2, h3⟩ := hrow i i.2
+    simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind_pure] at h1 h2
+    refine ⟨_, _, h1, h2, by simp [rdNul, h3], fun h0 => ?_⟩
+    have hbit : Column.bitAt (nulMap nl) i = false := by
+      rw [nulMap, Verify.bitAt_packOf _ _ _ (by rw [hns]; exact i.2)]; simp [h0]
+    rw [wd, hre, raw_wordsFoR_of_bit _ _ (by simp [hos]) i (by simp [hos]) hbit]
+    simp [Verify.cutBit, Array.getElem?_eq_getElem (show i.1 < out.size by rw [hos]; exact i.2)]
+  · simp only [not_exists, not_and, Bool.not_eq_true] at hN
+    have hF : o.nulFold = none ∨ ∀ p ∈ [(n, x), (n, y)], hasNul p.2 = false := .inr hN
+    have hc : colMap o n x y .i64 .i64 [] post = .ok r.1 := by
+      simp only [colMap, h, bind, Except.bind, pure, Except.pure]
+    have hon : o ≠ .null := by rintro rfl; simp [Op.nulFold] at hnf
+    have cl := Verify.kscan_lock_closed hk hF h
+    obtain ⟨-, -, -, hcr⟩ := colMap_chain hc hk hon hF
+    have h0 : ∀ e : Enc, Enc.WF .i64 n e → hasNul e = false → ∀ i : Fin n.toNat, rdNul n e i = 0 :=
+      fun e hw he i => by simp [rdNul, Verify.foRNuls_plain hw he i.2]
+    refine ⟨cl.2.1, fun i => ?_⟩
+    obtain ⟨X, Y, v, W, hX, hY, hv, hW, ho⟩ := hcr i i.2
+    have hx0 := h0 _ hx (hN (n, x) (by simp)) i; have hy0 := h0 _ hy (hN (n, y) (by simp)) i
+    cases hX; cases hY
+    refine ⟨0, W, ?_, ?_, by simp [h0 _ cl.2.1 cl.2.2 i], fun _ => by simp [wd, ho]⟩
+    · simp only [rdFill, hx0, hy0, bne_self_eq_false, Bool.false_eq_true, if_false, hv]; exact hW
+    · rw [hx0, hy0]; cases o <;> simp [Op.nulFold] at hnf <;> obtain ⟨rfl, rfl⟩ := hnf <;> rfl
+
+/-- **`fillNulCol` writes each row's word, a null row's as `nulWord`.** -/
+theorem fillNulCol_row {n : USize} {x : Enc} (hx : Enc.WF .i64 n x) {z : Arr .i64 n} (h : Tab.fillNulCol n x = .ok z)
+    (i : Fin n.toNat) : wd n z.enc i = if rdNul n x i != 0 then nulWord else wd n x i := by
+  unfold Tab.fillNulCol at h
+  obtain ⟨c, hc, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨m, hm, h⟩ := Except.bind_eq_ok'.1 h
+  have hz : z.enc = m.1 := by
+    split at h <;> first | (cases h; rfl) | simp [throw, throwThe, MonadExceptOf.throw] at h
+  have hck : kscanStream .null [(n, x)] [] [(.first, nulWord)] = false := rfl
+  obtain ⟨-, hzc⟩ := kscan_null_chain hck hc
+  have cl := Verify.kscan_lock_closed hck (.inl rfl) hc
+  have hc0 : rdNul n c.1 i = 0 := by simp [rdNul, Verify.foRNuls_plain cl.2.1 cl.2.2 i.2]
+  have hzi : rdFill 0x8000000000000000 .i64 n c.1 i = nulWord := by
+    obtain ⟨v, hw, hr⟩ := hzc i i.2
+    simp [chain, Op.eval] at hw
+    simp [rdFill, hc0, hr, ← hw]
+  obtain ⟨-, row⟩ := kscan_nul_map (o := .max) (post := []) rfl hx cl.2.1 hm
+  obtain ⟨NZ, Z, h1, h2, -, h4⟩ := row i
+  have hNZ : NZ = 0 := by rw [hc0] at h2; simpa [Op.eval] using h2.symm
+  rw [hz, h4 hNZ]
+  rw [show chain ([] : List (Op × UInt64)) = (pure : UInt64 → Except String UInt64) from rfl, bind_pure, hzi] at h1
+  rcases rdNul_bit n x i with h0 | h0 <;> simp only [rdFill, h0] at h1 ⊢
+  · simp only [bne_self_eq_false, Bool.false_eq_true, if_false] at h1 ⊢
+    simp only [Op.eval, Except.ok.injEq, Op.i] at h1
+    rw [← h1, if_neg]; intro hl; rw [Int64.lt_iff_toInt_lt] at hl
+    have := Int64.minValue_le_toInt ((Enc.raw .i64 n x)[i.1]?.getD 0).toInt64; simp [nulWord] at hl this; omega
+  · simp only [Op.eval, Except.ok.injEq] at h1; rw [← h1]; simp [nulWord]
+
+/-- **`arithOvf` passing keeps every checked row**: where `arithOvf` answers `.ok ()` on the `i64` pairs `X` and the
+    `0`/`1` column `keep`, a row with both words not `nulWord` and the divisor not `0` has keep word `1`. -/
+theorem arithOvf_keep {s : String} {n : USize} {X : Vals (.prod .long .long) n} {keep : Enc}
+    (h : Tab.arithOvf s (t := .i64) (t' := .i64) X keep = .ok ()) (hb : ∀ j < n.toNat, wd n keep j < 2)
+    (i : Fin n.toNat) (h1 : wd n X.1.enc i ≠ nulWord) (h2 : wd n X.2.enc i ≠ nulWord) (h3 : wd n X.2.enc i ≠ 0) :
+    wd n keep i = 1 := by
+  simp only [Tab.arithOvf] at h
+  obtain ⟨z, hz, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨n1, hn1, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨n2, hn2, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨a1, ha1, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨nk, hnk, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨nz, hnz, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨a2, ha2, h⟩ := Except.bind_eq_ok'.1 h
+  obtain ⟨f, hf, h⟩ := Except.bind_eq_ok'.1 h
+  unfold Tab.failAt at h
+  obtain ⟨T, hT, h⟩ := Except.bind_eq_ok'.1 h
+  have hT0 : ¬ 0 < T.n.toNat := fun h0 => by simp [h0, throw, throwThe, MonadExceptOf.throw] at h
+  have hw : ∀ c : Bool, Op.w c = 0 ∨ Op.w c = 1 := fun c => by cases c <;> simp [Op.w]
+  -- row `j` of the flag: both words not null, keep `0`, divisor not `0`
+  have row : ∀ j < n.toNat, wd n f j = (Op.w (nulWord != wd n X.1.enc j) &&& Op.w (nulWord != wd n X.2.enc j)) &&&
+      ((wd n keep j ^^^ 1) &&& (Op.w (0 == wd n X.2.enc j) ^^^ 1)) := fun j hj => by
+    have e1 := (colMap_post hn1).2 j hj; have e2 := (colMap_post hn2).2 j hj; have ez := (colMap_post hz).2 j hj
+    have ea1 := (colMap_raw ha1).2.2.2 j hj; have enk := (colMap_raw hnk).2.2.2 j hj
+    have enz := (colMap_raw hnz).2.2.2 j hj; have ea2 := (colMap_raw ha2).2.2.2 j hj
+    have ef := (colMap_raw hf).2.2.2 j hj
+    simp only [Op.eval, Except.ok.injEq] at e1 e2 ez ea1 enk enz ea2 ef
+    simp only [wd]; rw [← ef, ← ea1, ← ea2, ← enk, ← enz, ← e1, ← e2, ← ez]
+  have bit2 : ∀ c : UInt64, c < 2 → c = 0 ∨ c = 1 := fun c h => by
+      have := UInt64.lt_iff_toNat_lt.1 h; simp at this
+      exact (by omega : c.toNat = 0 ∨ c.toNat = 1).imp UInt64.toNat_inj.1 UInt64.toNat_inj.1
+  have hfb : ∀ j < n.toNat, wd n f j < 2 := fun j hj => by
+    rw [row j hj]
+    have hk : wd n keep j = 0 ∨ wd n keep j = 1 := bit2 _ (hb j hj)
+    rcases hw (nulWord != wd n X.1.enc j) with e1 | e1 <;> rcases hw (nulWord != wd n X.2.enc j) with e2 | e2 <;>
+      rcases hw (0 == wd n X.2.enc j) with e3 | e3 <;> rcases hk with e4 | e4 <;> rw [e1, e2, e3, e4] <;> decide
+  refine Classical.byContradiction fun hk1 => hT0 ?_
+  have hk0 : wd n keep i = 0 := (bit2 _ (hb i i.2)).resolve_right hk1
+  have hf1 : wd n f i ≠ 0 := by
+    rw [row i i.2, hk0]
+    simp [Op.w, Ne.symm h1, Ne.symm h2, Ne.symm h3, bne_iff_ne, beq_iff_eq]
+  obtain ⟨j, -⟩ := (keep_holds hT hfb (X.row i) (X.row i)).2 ⟨i, hf1, rfl, rfl⟩
+  exact Nat.lt_of_le_of_lt (Nat.zero_le _) j.2
+
+/-- **`nulStepCol` denotes `nulStep`** at a verb that propagates null (`+ - *`): a row with a null operand is the null
+    (`p`'s flag), else the step's word (`keep` `1`, `stepCols_spec`) or `nulWord` where `Ew.intStep` answers the null
+    (`keep` `0`, by `arithOvf_keep` and, at a zero operand, `stepDen`). -/
+theorem nulStepCol_den {n : USize} {x y : Opt .i64 n} {s : String} {k : UInt8} {o b : Op} {f : UInt64} {r : Enc}
+    (hv : nulVerb k = some (o, b, f)) (hnf : ¬o.nulFold = some (b, f))
+    (hr : Tab.nulStepCol s k n x.enc y.enc = .ok r) (hz : Enc.WF .i64 n r)
+    (a : (Obj.prod (.opt .long) (.opt .long)).El) (w : (Obj.opt .long).El) :
+    (⟨n, (x, y), (Opt.mk r hz : Opt .i64 n)⟩ : Tab (.prod (.opt .long) (.opt .long)) (.opt .long)).Holds a w ↔
+      (∃ i, Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i = a) ∧ Lang.nulStep k a w := by
+  obtain ⟨rfl, rfl, -, hk⟩ : b = .or ∧ f = nulWord ∧ o.nulFold = none ∧ (k = Ew.add ∨ k = Ew.sub ∨ k = Ew.mul) := by
+    rcases nulVerb_cases hv with ⟨rfl, rfl, rfl, -⟩ | ⟨rfl, rfl, rfl, -⟩ | h
+    · exact absurd rfl hnf
+    · exact absurd rfl hnf
+    · exact h
+  unfold Tab.nulStepCol at hr
+  obtain ⟨p, hp, hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨x', hx', hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨y', hy', hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨⟨W, keep⟩, hst, hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨⟨⟩, hov, hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨c1, hc1, hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨d, hd, hr⟩ := Except.bind_eq_ok'.1 hr
+  obtain ⟨q, hq, hr⟩ := Except.bind_eq_ok'.1 hr
+  cases hr
+  obtain ⟨hpw, hpi⟩ := kscan_nul_map (o := .min) rfl x.wf y.wf hp
+  obtain ⟨-, hdw, hdn⟩ := colMap_closed (by rfl) hd
+  obtain ⟨-, hqi⟩ := kscan_nul_map (o := .min) (post := []) rfl hdw hpw hq
+  obtain ⟨-, hc1r⟩ := colMap_post hc1
+  obtain ⟨-, -, -, hdr⟩ := colMap_chain hd
+  have hspec := stepCols_spec hst
+  have imax : ∀ v : UInt64, Op.min.eval v 0x7fffffffffffffff = .ok v := fun v => by
+    simp only [Op.eval, Except.ok.injEq, Op.i]
+    rw [if_neg]; intro h; rw [Int64.lt_iff_toInt_lt] at h; have := Int64.toInt_lt v.toInt64; simp at h this; omega
+  have rz : ∀ i : Fin n.toNat, Lang.nulStep k (Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i)
+      (Vals.row (A := .opt .long) (Opt.mk q.1 hz : Opt .i64 n) i) := fun i => by
+    show Lang.nulStep k (Vals.row (A := .opt .long) x i, Vals.row (A := .opt .long) y i) _
+    rw [row_opt_i64, row_opt_i64, row_opt_i64]
+    refine ⟨o, .or, nulWord, hv, ?_⟩
+    obtain ⟨NP, ZP, hp1, hp2, hp3, hp4⟩ := hpi i
+    obtain ⟨NQ, ZQ, hq1, hq2, hq3, hq4⟩ := hqi i
+    have hd0 : rdNul n d i = 0 := by simp [rdNul, Verify.foRNuls_plain hdw hdn i.2]
+    -- `p`'s word is `i64` max wherever its flag is `0`, so `rdFill` reads it as `i64` max at every row
+    have hpf : rdFill 0x7fffffffffffffff .i64 n p.1 i = 0x7fffffffffffffff := by
+      unfold rdFill; split
+      · rfl
+      · rename_i hn
+        have hNP : NP = 0 := by rw [hp3] at hn; revert hn; split <;> simp_all
+        refine (hp4 hNP).trans ?_; revert hp1
+        cases Op.min.eval _ _ <;> simp [bind, Except.bind, chain, Op.eval] <;> exact fun h => (Except.ok.inj h).symm
+    rw [hpf] at hq1; rw [hd0] at hq2
+    rw [show chain ([] : List (Op × UInt64)) = (pure : UInt64 → Except String UInt64) from rfl, bind_pure] at hq1
+    simp only [rdFill, hd0, bne_self_eq_false, Bool.false_eq_true, if_false, imax, Except.ok.injEq] at hq1
+    -- both operands non-null: the answer word is `d`'s, `Ew.intStep` of the operands
+    have hnn : rdNul n x.enc i = 0 → rdNul n y.enc i = 0 →
+        (wd n d i).toInt64 = Ew.intStep k Alg.nul (wd n x.enc i).toInt64 (wd n y.enc i).toInt64 := fun hX hY => by
+      have hfx : wd n x'.enc i = wd n x.enc i := by rw [fillNulCol_row x.wf hx' i, hX]; rfl
+      have hfy : wd n y'.enc i = wd n y.enc i := by rw [fillNulCol_row y.wf hy' i, hY]; rfl
+      obtain ⟨hb2, hsp⟩ := hspec i i.2
+      rw [hfx, hfy] at hsp
+      have hc := hc1r i i.2
+      obtain ⟨u, v, m, e, hu, hv', hm, he, hde⟩ := hdr i i.2
+      cases hu; cases hv'
+      simp only [Op.eval, Except.ok.injEq] at hc hm
+      simp only [chain, List.foldlM_cons, List.foldlM_nil, Op.eval, bind, Except.bind, pure, Except.pure,
+        Except.ok.injEq] at he
+      have hdv : wd n d i = nulWord - (nulWord - wd n W.enc i) * wd n keep i := by
+        simp only [wd, hde, if_neg (by decide : QAtomicType.i64 ≠ .u1), Option.getD_some]; rw [← he, ← hm, hc]
+      have bit2 : ∀ c : UInt64, c < 2 → c = 0 ∨ c = 1 := fun c h => by
+        have := UInt64.lt_iff_toNat_lt.1 h; simp at this
+        exact (by omega : c.toNat = 0 ∨ c.toNat = 1).imp UInt64.toNat_inj.1 UInt64.toNat_inj.1
+      have s1 : ∀ a b : UInt64, a - (a - b) * 1 = b := fun a b => by grind
+      have s0 : ∀ a b : UInt64, a - (a - b) * 0 = a := fun a b => by grind
+      rcases bit2 _ hb2 with hk0 | hk1
+      · rw [hdv, hk0, s0]
+        refine Classical.byContradiction fun hne => ?_
+        have hnul : Alg.nul = nulWord.toInt64 := rfl
+        have hsd : Lang.stepDen k ((wd n x.enc i).toInt64, (wd n y.enc i).toInt64)
+            (Ew.intStep k Alg.nul (wd n x.enc i).toInt64 (wd n y.enc i).toInt64) := by
+          have hX' : (wd n x.enc i).toInt64 ≠ Alg.nul := fun h => hne (by
+            rw [h]; rcases hk with rfl | rfl | rfl <;> simp [Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+              Verify.Ew.intStep_mul, hnul])
+          have hY' : (wd n y.enc i).toInt64 ≠ Alg.nul := fun h => hne (by
+            rw [h]; rcases hk with rfl | rfl | rfl <;> simp [Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+              Verify.Ew.intStep_mul, hnul])
+          by_cases hy0 : wd n y.enc i = 0
+          · rw [hy0]
+            rcases hk with rfl | rfl | rfl <;>
+              simp (config := {decide := true}) [Lang.stepDen, Verify.Ew.intStep_add, Verify.Ew.intStep_sub,
+                Verify.Ew.intStep_mul, Verify.Ew.intStep_idiv, hX'] <;>
+              first | done | exact (Classical.em _).symm | (intro h; exact hX' (by rw [h]; decide))
+          · have hw1 := arithOvf_keep hov (fun j hj => (hspec j hj).1) i
+              (by rw [hfx]; intro h; exact hX' (by rw [h]; rfl)) (by rw [hfy]; intro h; exact hY' (by rw [h]; rfl))
+              (by rw [hfy]; exact hy0)
+            rw [hk0] at hw1; exact absurd hw1 (by decide)
+        obtain ⟨hk', -⟩ := (hsp _).2 hsd
+        exact hk' hk0
+      · rw [hdv, hk1, s1]
+        exact ((hsp _).1 ⟨by rw [hk1]; decide, rfl⟩).1
+    have hqe : (Opt.mk q.1 hz : Opt .i64 n).enc = q.1 := rfl
+    rcases rdNul_bit n x.enc i with hX | hX <;> rcases rdNul_bit n y.enc i with hY | hY <;>
+      simp only [hX, hY, Op.eval, Except.ok.injEq] at hp2 <;> subst hp2 <;>
+      simp only [Op.eval, Except.ok.injEq] at hq2 <;> subst hq2 <;> simp (config := {decide := true}) at hp3 <;>
+      simp (config := {decide := true}) only [hp3] at hq3 hq4 <;>
+      simp (config := {decide := true}) [hX, hY, hq3, hqe, optWord]
+    show (wd n q.1 i).toInt64 = _; rw [hq4 trivial, ← hq1]; exact hnn hX hY
+  constructor
+  · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, rz i⟩
+  · rintro ⟨⟨i, rfl⟩, hw⟩; exact ⟨i, rfl, nulStep_fun (rz i) hw⟩
 
 /-- **`Tab.arithOp` at `1+i64` denotes `nulStep`**: a source holding a null is read through `kscan_nul_row`, none
     through `colMap_raw` (the answer then holds none, `kscan_lock_closed`), both giving `nulStep_words` row by row. -/
@@ -242,46 +493,28 @@ theorem arithOp_opt_den {n : USize} {X : Vals (.prod (.opt .long) (.opt .long)) 
   obtain ⟨o, b, f, r, hz, hv, hr, rfl⟩ := arithOp_opt hs h
   obtain ⟨x, y⟩ := X
   change Opt .i64 n at x y
+  by_cases hnf : o.nulFold = some (b, f)
+  case neg =>
+    rw [if_neg hnf] at hr
+    exact nulStepCol_den hv hnf hr hz a w
+  rw [if_pos hnf] at hr
+  obtain ⟨r, hkr, rfl⟩ : ∃ r', kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] = .ok r' ∧ r'.1 = r := by
+    revert hr; cases kscan o false .i64 .i64 n none [(n, x.enc), (n, y.enc)] <;>
+      simp [Functor.map, Except.map]
   have ho : (o = .max ∨ o = .min) ∧ o.nulFold = some (b, f) := by
-    unfold nulVerb at hv
-    by_cases h1 : k = Ew.greater
-    · simp [h1, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact ⟨.inl rfl, rfl⟩
-    · by_cases h2 : k = Ew.lesser
-      · simp [h1, h2, Op.nulFold] at hv; obtain ⟨rfl, rfl, rfl⟩ := hv; exact ⟨.inr rfl, rfl⟩
-      · simp [h1, h2] at hv
-  have hk : kscanStream o [(n, x.enc), (n, y.enc)] [] [] = false := by rcases ho.1 with rfl | rfl <;> rfl
-  -- row `i`: the verb on the words a null reads as `f`, the flags' `b`, and the answer's word off its null
-  have row : ∀ i : Fin n.toNat, ∃ NZ Z, o.eval (rdFill f .i64 n x.enc i) (rdFill f .i64 n y.enc i) = .ok Z ∧
-      b.eval (rdNul n x.enc i) (rdNul n y.enc i) = .ok NZ ∧ rdNul n r.1 i = (if NZ != 0 then 1 else 0) ∧
-      (NZ = 0 → (Enc.raw .i64 n r.1)[i.1]?.getD 0 = Z) := fun i => by
-    by_cases hN : ∃ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = true
-    · obtain ⟨out, nl, hos, hns, hre, -, -, p, ps, hes, hrow⟩ :=
-        Verify.kscan_nul_row ho.2 rfl rfl hk (by simp [x.wf, y.wf]) hN hr
-      simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl⟩ := hes
-      obtain ⟨h1, h2, h3⟩ := hrow i i.2
-      simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind_pure] at h1 h2
-      refine ⟨_, _, h1, h2, by simp [rdNul, h3], fun h0 => ?_⟩
-      have hbit : Column.bitAt (nulMap nl) i = false := by
-        rw [nulMap, Verify.bitAt_packOf _ _ _ (by rw [hns]; exact i.2)]; simp [h0]
-      rw [hre, raw_wordsFoR_of_bit _ _ (by simp [hos]) i (by simp [hos]) hbit]
-      simp [Verify.cutBit, Array.getElem?_eq_getElem (show i.1 < out.size by rw [hos]; exact i.2)]
-    · simp only [not_exists, not_and, Bool.not_eq_true] at hN
-      have hF : o.nulFold = none ∨ ∀ p ∈ [(n, x.enc), (n, y.enc)], hasNul p.2 = false := .inr hN
-      have hc : colMap o n x.enc y.enc .i64 .i64 = .ok r.1 := by
-        simp only [colMap, hr, bind, Except.bind, pure, Except.pure]
-      obtain ⟨-, -, -, hcr⟩ := colMap_raw hc hk (by rcases ho.1 with rfl | rfl <;> decide) hF
-      have h0 : ∀ e : Enc, Enc.WF .i64 n e → hasNul e = false → rdNul n e i = 0 := fun e hw he => by
-        simp [rdNul, Verify.foRNuls_plain hw he i.2]
-      have hx0 := h0 _ x.wf (hN (n, x.enc) (by simp)); have hy0 := h0 _ y.wf (hN (n, y.enc) (by simp))
-      refine ⟨0, _, by simp only [rdFill, hx0, hy0]; exact hcr i i.2, ?_,
-        by simp [h0 _ hz (Verify.kscan_lock_closed hk hF hr).2.2], fun _ => rfl⟩
-      rw [hx0, hy0]; rcases ho with ⟨rfl | rfl, hnf⟩ <;> simp [Op.nulFold] at hnf <;> obtain ⟨rfl, rfl⟩ := hnf <;> rfl
+    refine ⟨?_, hnf⟩
+    rcases nulVerb_cases hv with ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨-, -, h, -⟩
+    · exact .inl rfl
+    · exact .inr rfl
+    · rw [h] at hnf; cases hnf
+  obtain ⟨-, row⟩ := kscan_nul_map (post := []) ho.2 x.wf y.wf hkr
   have rz : ∀ i : Fin n.toNat, Lang.nulStep k (Vals.row (A := .prod (.opt .long) (.opt .long)) (x, y) i)
       (Vals.row (A := .opt .long) (Opt.mk r.1 hz : Opt .i64 n) i) := fun i => by
     obtain ⟨NZ, Z, h1, h2, h3, h4⟩ := row i
+    rw [show chain ([] : List (Op × UInt64)) = (pure : UInt64 → Except String UInt64) from rfl, bind_pure] at h1
     show Lang.nulStep k (Vals.row (A := .opt .long) x i, Vals.row (A := .opt .long) y i) _
     rw [row_opt_i64, row_opt_i64, row_opt_i64]
-    exact nulStep_words hv (rdNul_bit n _ i) (rdNul_bit n _ i) h1 h2 h3 h4
+    exact nulStep_words hv hnf (rdNul_bit n _ i) (rdNul_bit n _ i) h1 h2 h3 h4
   constructor
   · rintro ⟨i, rfl, rfl⟩; exact ⟨⟨i, rfl⟩, rz i⟩
   · rintro ⟨⟨i, rfl⟩, hw⟩; exact ⟨i, rfl, nulStep_fun (rz i) hw⟩

@@ -117,11 +117,14 @@ def cmpOps : List (String × Bool) := [("lt", true), ("le", false)]
     test row (`cmpRow`) by its `cmpOps` key. -/
 def ordSym (strict : Bool) : String := if strict then "<" else "≤"
 
-/-- The kernel `Op` of the value verb `k` where `kscan` orders null (`Op.nulFold = some (b, fill)`), with that order:
-    `max` and `min` of `stepCols`. The rule `arithOp` runs on `1+i64` reads this, not the verbs' names. -/
+/-- **The value verbs at `1+i64`**: the verb's kernel `Op` `o`, how the operands' null flags combine `b`, and the word
+    a null operand reads `f`. `max`/`min`: `kscan` orders null (`Op.nulFold o = some (b, f)`); `+ - *` propagate it
+    (`b = or`), `f` the null `stepCols` reads. `div`/`mod`/`divide` have none: a zero divisor drops a non-null row.
+    The rule `arithOp` runs on `1+i64` reads this, not the verbs' names. -/
 def nulVerb (k : UInt8) : Option (Op × Op × UInt64) :=
-  (if k == Ew.greater then some Op.max else if k == Ew.lesser then some Op.min else none).bind fun o =>
-    o.nulFold.map fun (b, f) => (o, b, f)
+  match (if k == Ew.greater then some Op.max else if k == Ew.lesser then some Op.min else none) with
+  | some o => o.nulFold.map fun (b, f) => (o, b, f)
+  | none => ([(Ew.add, Op.add), (Ew.sub, .sub), (Ew.mul, .mul)].lookup k).map fun o => (o, .or, nulWord)
 
 namespace Tab
 
@@ -144,6 +147,31 @@ def arithOvf (s : String) {t t' : QAtomicType} {n : USize} (X : Vals (.prod (.at
     failAt (A := .prod .long .long) X f fun (a, b) => s!"{s}: i64 overflow at {s}({a.toInt}, {b.toInt})"
   | _, _, _ => pure ()
 
+/-- The `n` words of the `1+i64` column `e` as a plain column, a null row's word `nulWord`: `max` against the constant
+    `nulWord` (`kscan .null` for the row count), a null reading `max`'s identity `nulWord`, the flags' `and` `0`. -/
+def fillNulCol (n : USize) (e : Enc) : Except String (Arr .i64 n) := do
+  let z ← kscan .null false .i64 .i64 n none [(n, e)] [] [(.first, nulWord)]
+  let r ← kscan .max false .i64 .i64 n none [(n, e), (n, z.1)]
+  match Enc.wf? .i64 n r.1, h : hasNul r.1 with
+  | some ⟨hw⟩, false => pure (Arr.mk r.1 hw h)
+  | _, _ => throw s!"fillNulCol: the filled column is not {n} plain elements of i64"
+
+/-- **A verb `k` that propagates null** (`nulVerb`'s `b = or`: `+ - *`) on the `1+i64` columns `x`, `y`: the carrier
+    `p` (`min` of the two, flags `or`, each word to `i64` max by the post chain), `stepCols` and `arithOvf` on the
+    operands filled with `nulWord` (`fillNulCol`), its answer `nulWord` where it kept no row (an operand's value is the
+    word `2^63`, as `Ew.intStep` answers), and the answer `min` of that and `p`: `p`'s null, else the step. -/
+def nulStepCol (s : String) (k : UInt8) (n : USize) (x y : Enc) : Except String Enc := do
+  let p ← kscan .min false .i64 .i64 n none [(n, x), (n, y)] [] [(.first, 0x7fffffffffffffff)]
+  let x' ← fillNulCol n x; let y' ← fillNulCol n y
+  let (w, keep) ← stepCols k n x' y'
+  arithOvf s (t := .i64) (t' := .i64) (x', y') keep
+  -- a non-null `1+i64` can hold the word `2^63`, which `Ew.intStep` answers as null: so `d` selects `nulWord` by
+  -- `keep`, `nulWord - (nulWord - w)·keep`, not by the operands' flags
+
+  let d ← colMap .mul n (← colMap .first n w.enc w.enc .i64 .i64 [] [(.sub, nulWord)]) keep .i64 .i64 []
+    [(.sub, nulWord)]
+  return (← kscan .min false .i64 .i64 n none [(n, d), (n, p.1)]).1
+
 /-- **The row `s` of `arithOps` on the pairs `X`** (`rowDens`: `stepOn`): `stepColsAt` of the two components, the
     rows it keeps with their answers (`Tab.keep`, no `canon`), the run failing where an `i64` answer overflowed
     (`arithOvf`). The row is the first argument so `kernRows` names one constant for every name, as `Tab.floatOp`. -/
@@ -157,12 +185,15 @@ def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String 
     else .error s!"{s} runs from a pair of one number object to it, found {repr t}×{repr t'} to {repr u}"
   | some k, .prod (.opt (.atom .i64)) (.opt (.atom .i64)), .opt (.atom .i64), X =>
     match nulVerb k with
-    | some (o, _, _) => do
-      let r ← kscan o false .i64 .i64 n none [(n, (X.1 : Opt .i64 n).enc), (n, (X.2 : Opt .i64 n).enc)]
-      match Enc.wf? .i64 n r.1 with
-      | some ⟨h⟩ => pure ⟨n, X, (Opt.mk r.1 h : Opt .i64 n)⟩
+    | some (o, b, f) => do
+      let x := (X.1 : Opt .i64 n).enc; let y := (X.2 : Opt .i64 n).enc
+      -- an op `kscan` orders null by reads the columns itself; any other propagates null (`nulStepCol`)
+      let r ← if o.nulFold = some (b, f) then (·.1) <$> kscan o false .i64 .i64 n none [(n, x), (n, y)]
+        else nulStepCol s k n x y
+      match Enc.wf? .i64 n r with
+      | some ⟨h⟩ => pure ⟨n, X, (Opt.mk r h : Opt .i64 n)⟩
       | none => .error s!"{s}: the answer column is not {n} well-formed elements of i64"
-    | none => .error s!"{s} on 1+i64: the verb has no order on null (`Op.nulFold`)"
+    | none => .error s!"{s} on 1+i64: a zero divisor drops a non-null row, which a `1+i64` answer cannot"
   | some _, _, _, _ => .error s!"{s} runs from a pair of one number object to it"
   | none, _, _, _ => .error s!"{s}: no value verb"
 
