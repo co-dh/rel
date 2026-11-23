@@ -1,6 +1,11 @@
-import Rel.Run.Struct
-import Rel.Run.List
-import Rel.Run.Div
+module
+
+public import Rel.Run.Struct
+public import Rel.Run.List
+public import Rel.Run.Div
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The fixed points `νX : top ∩ f(X)` and `μX : f(X)` of `Tab` (`doc/rel-architecture.zh.typ` §4): a Lean loop
 calling the operations until the row count stops, the rule of the old `CRel.fixOn` (`Rel/Run/CRelLoopDef.lean`)

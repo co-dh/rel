@@ -1,6 +1,11 @@
-import Rel.Run.Canon
-import Rel.Run.Cols
-import Rel.Run.Struct
+module
+
+public import Rel.Run.Canon
+public import Rel.Run.Cols
+public import Rel.Run.Struct
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The row `asc` of `prims` on `Tab`: architecture §4's `canon` (`asc → seen → gather`) of a set, numbered by
 position (`Arr.pos`). -/

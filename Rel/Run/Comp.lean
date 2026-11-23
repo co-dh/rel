@@ -1,5 +1,10 @@
-import Rel.Run.Cols
-import Rel.Run.SetOps
+module
+
+public import Rel.Run.Cols
+public import Rel.Run.SetOps
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! Converse and composition as compositions of the five kernels (PLAN 6.14 W3), at the `Tab → Tab` boundary, on the
 encoded columns as they are, in the style of `Rel/Run/Canon.lean`.

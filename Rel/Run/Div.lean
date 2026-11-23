@@ -1,5 +1,10 @@
-import Rel.Run.Arith
-import Rel.Run.Struct
+module
+
+public import Rel.Run.Arith
+public import Rel.Run.Struct
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The `Tm` constructors `ldiv`, `rdiv`, `lam`, `E`, `nil`, `lt`, `leq` (`Rel/Run/Lang/Tm.lean`) as operators on `Tab`
 over the five kernels (PLAN 6.14 W3), on the encoded columns as they are, as `Rel/Run/Comp.lean`. Each operator's

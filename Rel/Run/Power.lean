@@ -1,4 +1,9 @@
-import Rel.Run.List
+module
+
+public import Rel.Run.List
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The power operators `est`, `front`, `atPos` of `Tm` (`Rel/Run/Lang/Tm.lean`) and the `prims` rows `τ`, `length`,
 `setify` (`rowDens`) as operators on `Tab` over the five kernels (PLAN 6.14 W3, step T5), on the encoded columns as they

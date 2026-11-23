@@ -1,5 +1,10 @@
-import Rel.Run.Arith
-import Rel.Kernel.Cast
+module
+
+public import Rel.Run.Arith
+public import Rel.Kernel.Cast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The row `$` (typed base S6, owner ruling J) as an operator on `Tab`: each value in demand to the same number at the
 target atom (`QAtomicType.embed`), the rows with no image dropped (`Tab.keep`).

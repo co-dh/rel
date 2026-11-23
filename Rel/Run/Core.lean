@@ -1,3 +1,5 @@
+module
+
 /-
   The RelRep core: a relation is a key and a value column of one length `n` over the positions
   `0 … n-1`, `R x y ↔ ∃ i, key.get i = x ∧ val.get i = y` — a tabulation, `key° ≫ val = R`.
@@ -5,11 +7,14 @@
   `Column.get` (qlean's one-element reader over `bitsAt`/`bitAt`/`foRBits`), never
   `Column.atoms`. Lists exist in proofs only (`toList`).
 -/
-import Rel.Kernel.Dep.Monadic
-import Rel.KernelSpec.Alp
-import Rel.KernelSpec.SymFind
-import Rel.KernelSpec.Gather
-import Rel.KernelSpec.Closure
+public import Rel.Kernel.Dep.Monadic
+public import Rel.KernelSpec.Alp
+public import Rel.KernelSpec.SymFind
+public import Rel.KernelSpec.Gather
+public import Rel.KernelSpec.Closure
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 open Rel.Ext
 
@@ -596,8 +601,6 @@ private def tbig : Tab .long (.arr .long) := ⟨1100, big 0, ⟨1100, big 0, big
 
 end Checks
 
-#print axioms Arr.get
-#print axioms Tab.holds_iff_mem_toList
 
 end Rel
 

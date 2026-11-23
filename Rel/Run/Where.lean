@@ -1,5 +1,10 @@
-import Rel.Run.List
-import Rel.Run.Bits
+module
+
+public import Rel.Run.List
+public import Rel.Run.Bits
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The row `positions(p)` of `prims` on `Tab`: architecture §4's where(`b`) (`whereCol`, `scan → scatter`, no sort)
 run on each array's elements, `b` the test `p`. -/
