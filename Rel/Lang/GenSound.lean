@@ -844,7 +844,7 @@ theorem rowOK_asc : RowOK "asc" :=
     rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
     simp only [Sem.one]
     split
-    · exact GenK.ofRel_sound hss (hw _ (List.mem_singleton_self _)) fun _ _ h hr => by subst hr; exact Tab.asc_holds h
+    · exact GenK.ofRel_sound hss (hw _ (List.mem_singleton_self _)) fun _ _ h wr hr => by subst hr; exact Tab.asc_holds h wr
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_sums : RowOK "sums" :=
@@ -866,7 +866,7 @@ theorem rowOK_sums : RowOK "sums" :=
     rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
     simp only [Sem.one]
     split
-    · exact GenK.ofRel_sound hss (hw _ (List.mem_singleton_self _)) fun _ _ h hr => by subst hr; exact Tab.sums_den h
+    · exact GenK.ofRel_sound hss (hw _ (List.mem_singleton_self _)) fun _ _ h wr hr => by subst hr; exact Tab.sums_den h wr
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
