@@ -87,7 +87,7 @@ private def sidesOk {A : Obj} [BEq A.El] (f : ∀ {n m : USize}, Vals A n → Va
 -- `K ≫ < ≫ L` at `i64` keeps the pair in order (3 < 5) only, not the equal (3, 3) nor the greater (3, 1)
 #guard newL (Tab.lt .i64 (Alg.col [3]) (Alg.col [3, 5, 1])) == some [(3, 5)]
 #guard newL (Tab.lt .i64 (Alg.col [5, 3]) (Alg.col [3])) == some []
--- `date` is ordered as its stored integer (`ordNum`); `sym` has no order, and the refusal keeps its text
+-- `date` is ordered as its stored integer (`ordNum`); sym has no kernel order, its order is `rank`'s (`Elab.symOrd`)
 #guard (match Tab.ordOp true .date with | .ok op => op == Op.lt | .error _ => false)
 #guard (match Tab.ordOp true .sym with
   | .error e => e == "< on objects of Rel.QAtomicType.sym: no order" | .ok _ => false)

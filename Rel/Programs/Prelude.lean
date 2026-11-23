@@ -17,6 +17,7 @@ rel_program prelude where
     mid(R : α ⟶ α) : α ⟶ α×α ≜ ⟨R°,R⟩                            -- y ↦ (x,z) with x R y and y R z: mid(<) is x<y<z
     iasc(c : β ⟶ α) : β ⟶ β ≜ asc(ran(⟨c,𝟙⟩))π₂                  -- q's iasc: j ↦ the position of c's j-th smallest, ties by position
     unenum(I : α ⟶ β, D : β ⟶ γ) : α ⟶ γ ≜ I D                   -- q's unenumerate: each id of I through the dictionary D (`dictionary D : S ⟶ [C]`)
+    rank(D : α ⟶ β) : α ⟶ γ ≜ D asc(ran(D))°                     -- an id to its text's position in text order: iasc(D)°, the order `<` on sym compares
     -- infix operators fold left to right, so `R X` is parenthesised: `𝟙 ∪ R X` is `(𝟙 ∪ R) X`, whose `μ` is `𝟘`
     star(R : α ⟶ α) : α ⟶ α ≜ μX : 𝟙 ∪ (R X)                     -- R*, the reflexive transitive closure
 

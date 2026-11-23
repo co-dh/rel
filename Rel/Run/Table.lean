@@ -248,15 +248,6 @@ def symRanked (what : String) (D : Dict) {n : USize} (K : Vals (.atom .sym) n) :
   unless D.n.toNat < 2 ^ 63 do .error s!"{what}: the dictionary of {D.n} texts has ranks past Int64"
   pure P
 
-/-- **`<` on `sym` by text order**, `K ≫ rank ≫ < ≫ rank° ≫ L` (design §4.3): the ranks of the two sides compared at
-    `i64`, a composition of `rank`, `Tab.lt` and a converse, so no kernel of its own. `Tab.ordOp` refuses `sym`
-    because an id's order is insertion order, not text order. -/
-def symLt (D : Dict) {n m : USize} (K : Vals (.atom .sym) n) (L : Vals (.atom .sym) m) :
-    Except String (Tab (.atom .sym) (.atom .sym)) := do
-  let P ← symRanked "<" D K
-  let Q ← symRanked "<" D L
-  (← P.comp (← Tab.lt .i64 P.val Q.val)).comp (← Q.conv)
-
 /-- **`asc(P)` on `sym` by text order**, `asc(R° ≫ R) ≫ R°` with `R = K ≫ rank` for the set `K = dom P` (design
     §4.3): the ranks of the set numbered by `asc` at `i64`, each read back as its symbol, so `j ↦ a` with `a` the `j`-th
     smallest text. -/

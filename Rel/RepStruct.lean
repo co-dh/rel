@@ -440,7 +440,6 @@ namespace Tab
 theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
     x.get i = none := by
   unfold Opt.nuls at h
-  dsimp only at h
   split at h
   rotate_left; · cases h
   cases h
@@ -450,11 +449,11 @@ theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t
     simp only [nulMap, Array.size_replicate]
     rw [bitAt_packOf _ _ _ i.2]; simp
   rw [hb, if_pos rfl] at hf
-  have hn : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i = true := by
-    cases hc : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i
+  have hn : ∀ pf, Opt.isNul (⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), pf⟩ : Opt t n) i = true := fun pf => by
+    cases hc : Opt.isNul (⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), pf⟩ : Opt t n) i
     · exact absurd (Option.some.inj (((Opt.isNul_eq_false _ i).1 hc).symm.trans hf)) (by decide)
     · rfl
-  simp only [Opt.get, hn, if_true]
+  simp only [Opt.get, hn _, if_true]
 
 /-- **Every row of `Vals.optInr h Y` is `inr` of `Y`'s row**, the band column's element read as `a + b`. -/
 theorem Vals.optInr_get {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n)

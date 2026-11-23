@@ -337,21 +337,19 @@ info: the symbol columns of `a` are ids in the library /db/one and those of `b` 
   let U ← IO.ofExcept (unenum "b" E (← IO.ofExcept (frame J)))
   return (T.toList == (← IO.ofExcept (frame x)).toList, J.toList, U.toList == T.toList)
 
--- `<` and `asc` on `sym` by text order (decision J), by hand: `b a c` interned in that order take the ids `0 1 2`, text
--- order is `a b c`, so ids 1 < 0 < 2: `<` on all three symbols is `(0,2) (1,0) (1,2)` (insertion order would give
--- `(0,1) (0,2) (1,2)`), `asc` numbers the ids `1 0 2` as `0 1 2`; an id 7 past the dictionary is refused
+-- `asc` on `sym` by text order (decision J; `<` is `Elab.symOrd`, tested in `TestIO`), by hand: `b a c` interned in that
+-- order take the ids `0 1 2`, text order is `a b c`, so `asc` numbers the ids `1 0 2` as `0 1 2`; an id 7 past the
+-- dictionary is refused
 /--
-info: ([(0, 2), (1, 0), (1, 2)], [(0, 1), (1, 0), (2, 2)], "<: 1 of 1 ids are past the dictionary of 3 texts")
+info: ([(0, 1), (1, 0), (2, 2)], "asc: 1 of 1 ids are past the dictionary of 3 texts")
 -/
 #guard_msgs in
 #eval show IO _ from do
   let (D, I) ← IO.ofExcept (intern "t" (← IO.ofExcept Dict.empty) (← strs ["b", "a", "c"]))
-  let lt ← IO.ofExcept (symLt D I I)
   let up ← IO.ofExcept (symAsc D ⟨3, I, I⟩)
   let bad : Arr .sym 1 ← IO.ofExcept (Arr.of .sym 1 (wordsFoR #[7]) "literal")
-  return ((lt.toList.map fun (a, c) => (a.toNat, c.toNat)).mergeSort fun p q => p.1 < q.1 || p.1 == q.1 && p.2 ≤ q.2,
-    up.toList.map fun (j, a) => (j.toNatClampNeg, a.toNat),
-    match symLt D bad bad with | .error e => e | .ok _ => "accepted")
+  return (up.toList.map fun (j, a) => (j.toNatClampNeg, a.toNat),
+    match symRanked "asc" D bad with | .error e => e | .ok _ => "accepted")
 
 /-- A `u1` column as a file holds it: `bs`, one byte each, encoded by the one writer `Coc.encode`. -/
 def u1Of (bs : List UInt8) : Except String (Arr .u1 bs.length.toUSize) :=
