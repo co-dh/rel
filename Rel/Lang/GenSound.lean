@@ -942,7 +942,9 @@ theorem rowOK_F : RowOK "F" := rowOK_args (c := RowCode.map) rfl rfl fun _ σ xs
     rename_i he; revert hss; obtain ⟨h1, h2⟩ := he; subst h1; subst h2; intro hss
     simp only [Sem.one]
     split
-    · exact GenK.map_sound hss (hw _ (List.mem_singleton_self _))
+    · exact fun K hK => (GenK.reps_iff _ _ _).2 fun t ht x y h1 h2 h3 =>
+        ((GenK.reps_iff _ _ _).1 (GenK.map_sound hss (hw _ (List.mem_singleton_self _)) K hK) t ht x y h1 h2 h3).trans
+          (mapDen_iff _ x y).symm
     · rename_i h; exact absurd ⟨rfl, rfl⟩ h
 
 open Classical in
@@ -1063,8 +1065,8 @@ theorem GenK.flat_sound {I A B : Obj} {R : Rel I (.prod A B)} {X : Core.Rel I.El
     have er := (GenK.reps_iff _ _ _).1 (hR ⟨some ⟨_, Xs.1⟩, none, none⟩ ⟨wX.1, trivial, trivial⟩) r hr
     obtain ⟨i, rfl⟩ := (GenK.side_some hK p).1 hp
     have wr := wR.runE (by exact ⟨wX.1, trivial, trivial⟩) hr
-    exact (Tab.flat_holds ht wX wr _ b).trans ((and_iff_right ⟨i, rfl⟩).trans
-      (er _ _ ((GenK.side_some rfl _).2 ⟨i, rfl⟩) rfl trivial))
+    exact (Tab.flat_holds ht wX wr _ b).trans (((and_iff_right ⟨i, rfl⟩).trans
+      (er _ _ ((GenK.side_some rfl _).2 ⟨i, rfl⟩) rfl trivial)).trans (flatDen_iff X (ValsB.row Xs i) b).symm)
 
 theorem rowOK_flat : RowOK "flat" := rowOK_args (c := RowCode.flat) rfl rfl fun _ σ xs _ _ _ _ hn hw hv => by
   have h1 : rowArity "flat" = 1 := by decide
