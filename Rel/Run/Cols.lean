@@ -138,16 +138,42 @@ def cellBad {n : USize} (m : USize) (lo hi : Arr .i64 n) : Option (Fin n.toNat) 
   (List.finRange n.toNat).find? fun i =>
     !decide (0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int))
 
-/-- No `arr` side of `x` has a `cellBad` cell: `Vals.WF` decided (`Vals.cellsOk_wf`), for a table no `readVals`
-read (a literal, a universe). -/
-def ValsB.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
-  | .atom _, _, _ | .one, _, _ => true
-  | .prod _ _, _, x => ValsB.cellsOk x.1 && ValsB.cellsOk x.2
-  | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && ValsB.cellsOk f
-  | .sum _ _, _, s => match s.view with
-    | .opt .. => true
-    -- the filler clause of `Vals.WF` is not decided here: a literal dense sum is refused until it is (PLAN 8.2)
-    | .gen .. => false
+/-- `v` is `default : QValue` (`.atom (.u1 false)`, the derived instance), tested by its constructors because `QValue`
+has no decidable equality (`QValue.isDefault_eq`). -/
+def QValue.isDefault : QValue → Bool
+  | .atom (.u1 false) => true
+  | _ => false
+
+/-- `Opt.filler t` decided: the null off `general`, at `general` its `default` (`QValue.isDefault`). -/
+def Opt.fillerOk : (t : QAtomicType) → Option (El t) → Bool
+  | .general, some v => QValue.isDefault v
+  | .general, none => false
+  | .u1, v | .u8, v | .i16, v | .i32, v | .i64, v | .f32, v | .f64, v | .char, v | .i8, v | .sym, v | .date, v
+  | .datetime, v => v.isNone
+
+/-- `ColB.OwnedOn` decided over the rows `P` owns: an `Opt` leaf is no null on `P` and `Opt.fillerOk` off it. -/
+def ColB.ownedOk : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → (Fin n.toNat → Bool) → Bool
+  | false, _, _, _, _ => true
+  | true, t, n, x, P => (List.finRange n.toNat).all fun i =>
+    if P i then (Opt.get x i).isSome else Opt.fillerOk t (Opt.get x i)
+
+/-- `ValsB.WFOn` decided over the rows `P` owns (`ValsB.cellsOkOn_wf`): the cell clause of an `arr` side, the filler
+clause of a leaf (`ColB.ownedOk`), the tag `false` off `P` and each summand owning the rows of `P` its tag names. -/
+def ValsB.cellsOkOn : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → (Fin n.toNat → Bool) → Bool
+  | _, .atom _, _, x, P => ColB.ownedOk x P
+  | _, .one, _, _, _ => true
+  | _, .prod _ _, _, x, P => ValsB.cellsOkOn x.1 P && ValsB.cellsOkOn x.2 P
+  | _, .arr _, n, ⟨m, lo, hi, f⟩, P => ColB.ownedOk lo P && ColB.ownedOk hi P &&
+    (List.finRange n.toNat).all (fun i => !P i || decide (0 ≤ (ColB.get lo i).toInt ∧
+      (ColB.get lo i).toInt ≤ (ColB.get hi i).toInt ∧ (ColB.get hi i).toInt ≤ (m.toNat : Int))) &&
+    ValsB.cellsOkOn f fun _ => true
+  | _, .sum _ _, n, s, P => match s.view with
+    | .opt _ x => (List.finRange n.toNat).all fun i => P i || (Opt.get x i).isNone
+    | .gen _ tag x y => (List.finRange n.toNat).all (fun i => P i || !tag.get i) &&
+      ValsB.cellsOkOn x (fun i => P i && !tag.get i) && ValsB.cellsOkOn y (fun i => P i && tag.get i)
+
+/-- `Vals.WF` decided (`Vals.cellsOk_wf`), for a table no `readVals` read (a literal, a universe). -/
+def ValsB.cellsOk {A : Obj} {n : USize} (x : Vals A n) : Bool := ValsB.cellsOkOn x fun _ => true
 
 /-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=

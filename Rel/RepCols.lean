@@ -735,19 +735,70 @@ theorem cellBad_none {n m : USize} {lo hi : Arr .i64 n} : cellBad m lo hi = none
     0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
   simp [cellBad, List.find?_eq_none]
 
-/-- **`ValsB.cellsOk` decides `Vals.WF`** in the direction a literal needs: its `arr` clause is `cellBad_none`. -/
-theorem Vals.cellsOk_wf : {A : Obj} → {n : USize} → {x : Vals A n} → ValsB.cellsOk x = true → Vals.WF x
-  | .atom _, _, _, _ | .one, _, _, _ => trivial
-  | .prod _ _, _, _, h => by
-    simp only [ValsB.cellsOk, Bool.and_eq_true] at h; exact ⟨Vals.cellsOk_wf h.1, Vals.cellsOk_wf h.2⟩
-  | .arr _, _, ⟨_, _, _, _⟩, h => by
-    simp only [ValsB.cellsOk, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
-    exact ⟨trivial, trivial, fun i _ => cellBad_none.1 h.1 i,Vals.cellsOk_wf h.2⟩
-  | .sum _ _, _, s, h => by
-    simp only [ValsB.cellsOk] at h; simp only [Vals.WF, ValsB.WFOn]
-    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
-    · simp only [hv]; exact fun i hn => absurd trivial hn
-    · simp only [hv, Bool.false_eq_true] at h
+/-- `QValue.isDefault` tests for `default`. -/
+theorem QValue.isDefault_eq {v : QValue} (h : QValue.isDefault v = true) : v = default := by
+  unfold QValue.isDefault at h; split at h
+  · rfl
+  · cases h
+
+/-- `Opt.fillerOk` tests for `Opt.filler`. -/
+theorem Opt.fillerOk_eq {t : QAtomicType} {v : Option (El t)} (h : Opt.fillerOk t v = true) : v = Opt.filler t := by
+  cases t
+  case general =>
+    cases v with
+    | none => simp [Opt.fillerOk] at h
+    | some w => exact congrArg some (QValue.isDefault_eq h)
+  all_goals (cases v <;> simp_all [Opt.fillerOk, Opt.filler])
+
+/-- **`ColB.ownedOk` decides `ColB.OwnedOn`** over the rows `Q` that `P` holds. -/
+theorem ColB.ownedOk_on {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) {P : Fin n.toNat → Bool}
+    {Q : Fin n.toNat → Prop} (hQ : ∀ i, Q i ↔ P i = true) (h : ColB.ownedOk x P = true) : ColB.OwnedOn x Q := by
+  cases o
+  · trivial
+  · simp only [ColB.ownedOk, List.all_eq_true, List.mem_finRange, true_implies] at h
+    intro i
+    have hi := h i
+    refine ⟨fun hq => ?_, fun hq => ?_⟩
+    · rw [(hQ i).1 hq] at hi; simpa [Option.isSome_iff_ne_none] using hi
+    · have hp : P i = false := by
+        cases hp : P i
+        · rfl
+        · exact absurd ((hQ i).2 hp) hq
+      rw [hp] at hi; simp only [Bool.false_eq_true, ↓reduceIte] at hi
+      exact Opt.fillerOk_eq hi
+
+/-- **`ValsB.cellsOkOn` decides `ValsB.WFOn`** over the rows `Q` that `P` holds, in the direction a literal needs. -/
+theorem ValsB.cellsOkOn_wf : {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) → {P : Fin n.toNat → Bool} →
+    {Q : Fin n.toNat → Prop} → (∀ i, Q i ↔ P i = true) → ValsB.cellsOkOn x P = true → ValsB.WFOn x Q
+  | _, .atom _, _, x, _, _, hQ, h => ColB.ownedOk_on x hQ h
+  | _, .one, _, _, _, _, _, _ => trivial
+  | _, .prod _ _, _, x, _, _, hQ, h => by
+    simp only [ValsB.cellsOkOn, Bool.and_eq_true] at h
+    exact ⟨ValsB.cellsOkOn_wf x.1 hQ h.1, ValsB.cellsOkOn_wf x.2 hQ h.2⟩
+  | _, .arr _, _, ⟨m, lo, hi, f⟩, P, Q, hQ, h => by
+    simp only [ValsB.cellsOkOn, Bool.and_eq_true, List.all_eq_true, List.mem_finRange, true_implies,
+      Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq] at h
+    obtain ⟨⟨⟨hl, hh⟩, hc⟩, hf⟩ := h
+    exact ⟨ColB.ownedOk_on lo hQ hl, ColB.ownedOk_on hi hQ hh,
+      fun i hq => (hc i).resolve_left (by simp [(hQ i).1 hq]),
+      ValsB.cellsOkOn_wf f (fun _ => iff_of_true trivial rfl) hf⟩
+  | _, .sum _ _, _, s, P, Q, hQ, h => by
+    simp only [ValsB.cellsOkOn] at h; simp only [ValsB.WFOn]
+    cases hv : s.view with
+    | opt hb x =>
+      simp only [hv, List.all_eq_true, List.mem_finRange, true_implies, Bool.or_eq_true,
+        Option.isNone_iff_eq_none] at h
+      exact fun i hq => (h i).resolve_left (by rwa [hQ i] at hq)
+    | gen hb tag x y =>
+      simp only [hv, Bool.and_eq_true, List.all_eq_true, List.mem_finRange, true_implies, Bool.or_eq_true,
+        Bool.not_eq_true'] at h
+      obtain ⟨⟨ht, hx⟩, hy⟩ := h
+      exact ⟨fun i hq => (ht i).resolve_left (by rwa [hQ i] at hq),
+        ValsB.cellsOkOn_wf x (fun i => by rw [hQ i]; simp) hx, ValsB.cellsOkOn_wf y (fun i => by rw [hQ i]; simp) hy⟩
+
+/-- **`ValsB.cellsOk` decides `Vals.WF`** in the direction a literal needs. -/
+theorem Vals.cellsOk_wf {A : Obj} {n : USize} {x : Vals A n} (h : ValsB.cellsOk x = true) : Vals.WF x :=
+  ValsB.cellsOkOn_wf x (fun _ => iff_of_true trivial rfl) h
 
 /-- **`Vals.nub` keeps `Vals.WF`**: its rows are `ValsB.gather`ed from `x`. -/
 theorem Vals.nub_wf {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
