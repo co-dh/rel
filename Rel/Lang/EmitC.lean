@@ -1588,15 +1588,15 @@ inductive InRead
     `Table.readCsvDict`): a keyed table directory's `key/` and `val/`, a keyed CSV file's key columns then value
     columns. A nullable CSV column is regrouped, a symbol column interned: no plan recipe does those, so each is
     refused, naming the input. -/
-def readIn (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : String) : Bld InRead := do
+def readIn (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) : Bld InRead := do
   let no (why : String) : Bld InRead := throw s!"input `{x}` from \"{path}\": {why}, which no plan recipe does yet"
   match csv with
-  | some cs =>
+  | some (sep, cs) =>
     if hasSum k.obj || hasSum v.obj then
       return ← no "a nullable CSV column, whose parts the read regroups and checks (`Table.ofCsv`)"
     if cs.any (fun (_, _, t, _) => t == .sym) then
       return ← no "a symbol column, whose texts the read interns into the program's dictionary (`Table.intern`)"
-    let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put cs)]
+    let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put cs), ← lit (.u8 sep)]
     let kc := if k.isEmpty then [] else objCols k.obj ""
     return .csv k v kc (objCols v.obj "") (← nth rs 1 "csvRead")
   | none =>
@@ -1669,7 +1669,8 @@ def sideOf (x : String) (r : InRead) : Bld (Side × Side) := do
     value side only, its rows renumbered by their order; else `key/` and `val/` (a CSV file: the key's columns, then
     the value's), each column from its `Enc` register (a column mapped from its file too, `ownSideB`). A positions
     column has no file and no CSV part: it is refused, naming the column. -/
-def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : String) (s : Side × Side) : Bld Unit := do
+def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) (s : Side × Side) :
+    Bld Unit := do
   let sides := if k.isEmpty then [(v, s.2, path)] else [(k, s.1, Table.file path "key"), (v, s.2, Table.file path "val")]
   let col (S : Schema) (side : Side) (p : String) : Bld (Array Nat) := match side.lookup p with
     | some r => pure r
@@ -1678,7 +1679,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
   | none => for (S, side, dir) in sides do
       for (p, q, _) in schemaCols S do
         discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 Side.enc) 0
-  | some cs =>
+  | some (sep, cs) =>
     if cs.any (fun (_, _, t, _) => t == .sym) then
       throw s!"output `{x}` to csv \"{path}\": a symbol column, whose ids the write decodes through the program's \
         dictionary (`Table.decode`), which no plan recipe does yet"
@@ -1693,7 +1694,7 @@ def writeOut (x : String) (k v : Schema) (csv : Option Db.CsvCols) (path : Strin
         rows := some m
         es := es ++ [← ctorB 0 #[m, e] #[]]
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
-    discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put cs), n, ← listB es] 0
+    discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put cs), ← lit (.u8 sep), n, ← listB es] 0
 
 /-- The plan of the IO statements of the program `n`, read after its homes (`progOf`, `Expand.read`), as `n.io`
     runs them: the input edge reads the inputs the outputs reach (`Expand.ioReach`, `readIn`); `main` builds each

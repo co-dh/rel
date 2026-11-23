@@ -186,14 +186,14 @@ def convOf (o : Once) : Option (Lean.Name × Res) :=
     it by: its own short name, an imported one's constant (`Parse.constOf`). -/
 inductive Io
   /-- `input n : A ⟶ B from path`: the table of key columns `key` (`[]`: positions) and value columns `val`, read from
-      the table directory `path`, or from the CSV file `path` with the header `csv`. -/
-  | input (n : String) (A B : Obj) (key val : Schema) (csv : Option Db.CsvCols) (path : String)
+      the table directory `path`, or from the CSV file `path` with the separator and header `csv`. -/
+  | input (n : String) (A B : Obj) (key val : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String)
   /-- A run-time definition: the body of its constant `c` run with its variables bound to the tables of the run-time
       names `deps` (`Expand.ioGo`). -/
   | defn (n : String) (c : Lean.Name) (deps : List String)
   /-- `output n to path`: the table of `n` written as `key ⟶ val`, to the table directory `path`, or to the CSV file
-      `path` with the header `csv`; `n` a run-time name or the closed definition whose constant is `closed`. -/
-  | output (n : String) (A B : Obj) (key val : Schema) (csv : Option Db.CsvCols) (path : String)
+      `path` with the separator and header `csv`; `n` a run-time name or the closed definition whose constant is `closed`. -/
+  | output (n : String) (A B : Obj) (key val : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String)
       (closed : Option Lean.Name)
 
 /-- `s` with each name `f` renames. -/
@@ -675,11 +675,11 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
     match d with
     | .input p n ty csv path =>
       -- an imported program's input is the importer's (IO design A.2), read by the importer's `n.io`
-      let (A, B, K, S, hdr) ← ioCols env p s!"input `{n}` from {if csv then "csv " else ""}\"{path}\"" ty csv
+      let (A, B, K, S, hdr) ← ioCols env p s!"input `{n}` from {if csv.isSome then "csv " else ""}\"{path}\"" ty csv.isSome
       rt := rt ++ [(n, ⟨n, some ty⟩, none)]
-      io := io ++ [.input n A B K S (if csv then some hdr else none) path]
+      io := io ++ [.input n A B K S (csv.map (·, hdr)) path]
     | .output p n csv path =>
-      let what := s!"output `{n}` to {if csv then "csv " else ""}\"{path}\""
+      let what := s!"output `{n}` to {if csv.isSome then "csv " else ""}\"{path}\""
       let n := rtName env rt n
       if let some q := outs.lookup path then
         throw ⟨p, s!"{what}: the output at line {q.line} writes \"{path}\" already; give each output a path of its own"⟩
@@ -692,8 +692,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
               "its sources"
           else s!"{what}: `{n}` is not defined before it; an output names a definition or an input of the program"⟩
       let some ty := ty | throw ⟨p, s!"{what}: `{n}` declares no type"⟩
-      let (A, B, K, S, hdr) ← ioCols env p what ty csv
-      io := io ++ [.output n A B K S (if csv then some hdr else none) path (if (rt.lookup n).isSome then none else some (Parse.constOf own n))]
+      let (A, B, K, S, hdr) ← ioCols env p what ty csv.isSome
+      io := io ++ [.output n A B K S (csv.map (·, hdr)) path (if (rt.lookup n).isSome then none else some (Parse.constOf own n))]
       outs := outs ++ [(path, p)]
     | .obj _ n od =>
       -- an imported program's object is its constant's, so the importer's types name the same object (§2.3);

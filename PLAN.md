@@ -639,6 +639,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     返回时变量未解的，其数检查记入 `St.uses`，在项 elaborate 完（`settleOpen`、`generalise` 之后）由
     `Elab.settleUses` 在实例上跑；无物固定的变量报错，写出变量、定义与使用处。测试 `TestGenericNum.avgGT`
     （`avgG : [Z] ⟶ φ` 在两个 f64 对象上）、`avgGOpen`（`print x avgG` 报错）。
+- ✅ df-F6b 输入格式（dataframe F6）：TSV 是 CSV 换分隔符，不是第二个读写器。`csvRead`/`csvWrite`（Lean 模型与 crate
+  导出 `qlean_csv_read`/`qlean_csv_write`）多一个 `sep : UInt8` 参数，`Csv.dialect` 拒绝 `"` `\r` `\n`；读后写回的定理
+  `csvWords_csvText` 对每个分隔符成立。程序里写在声明文件处：`input x : N ⟶ S from csv '\t' "f"`、
+  `output x to csv '\t' "f"`，不写为 `,`（`Decl.input/output` 的 `csv : Option UInt8`，`Io` 的 `csv : Option (UInt8 ×
+  CsvCols)`）。测试：`TestTable` TSV 往返（含 `,` 的字段不加引号、含 `\t` 的加引号），`TestFrameApp.tsvApp` 程序往返，
+  crate `records_as_the_model` 的 `\t` 用例。parquet、JSON 不做（owner 决定）。`test/disabled/CsvTest.lean` 已停用，未改。
 - ⬜ S9 文档：architecture §1、§4.3，dataframe F4，PLAN（随各步）。
 
 ### P0 baseline — 1/1

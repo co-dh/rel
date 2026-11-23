@@ -72,9 +72,10 @@ inductive Lx | plain | quoted (o : Nat) | closed | closedCr
   deriving DecidableEq
 
 /-- The records of `all` with the byte each starts at, from the rest `bs` at byte `p`: the field so far `fld`, the
-    record's fields so far `row`, the record's first byte `st`, the records before `acc`. A record ends at `\n` or
+    record's fields so far `row`, the record's first byte `st`, the records before `acc`. Fields are separated by `sep`
+    (`,` in CSV, `\t` in TSV); a record ends at `\n` or
     `\r\n`; the last one may lack it. A refusal names the line (C.4). -/
-def lex (all : List UInt8) : List UInt8 → Lx → Nat → List UInt8 → List (List UInt8) → Nat →
+def lex (all : List UInt8) (sep : UInt8) : List UInt8 → Lx → Nat → List UInt8 → List (List UInt8) → Nat →
     List (Nat × List (List UInt8)) → Except String (List (Nat × List (List UInt8)))
   | [], .quoted o, _, _, _, _, _ => .error s!"a quoted field opened at line {lineAt all o} is not closed"
   | [], .closedCr, p, _, _, _, _ =>
@@ -83,45 +84,45 @@ def lex (all : List UInt8) : List UInt8 → Lx → Nat → List UInt8 → List (
     if s = .plain ∧ fld = [] ∧ row = [] then .ok acc else .ok (acc ++ [(st, row ++ [fld])])
   | c :: r, .quoted o, p, fld, row, st, acc =>
     if c = 34 then match r with
-      | d :: r' => if d = 34 then lex all r' (.quoted o) (p + 2) (fld ++ [34]) row st acc
-        else lex all (d :: r') .closed (p + 1) fld row st acc
-      | [] => lex all [] .closed (p + 1) fld row st acc
-    else lex all r (.quoted o) (p + 1) (fld ++ [c]) row st acc
+      | d :: r' => if d = 34 then lex all sep r' (.quoted o) (p + 2) (fld ++ [34]) row st acc
+        else lex all sep (d :: r') .closed (p + 1) fld row st acc
+      | [] => lex all sep [] .closed (p + 1) fld row st acc
+    else lex all sep r (.quoted o) (p + 1) (fld ++ [c]) row st acc
   | c :: r, .closedCr, p, fld, row, st, acc =>
-    if c = 10 then lex all r .plain (p + 1) [] [] (p + 1) (acc ++ [(st, row ++ [fld])])
+    if c = 10 then lex all sep r .plain (p + 1) [] [] (p + 1) (acc ++ [(st, row ++ [fld])])
     else .error s!"line {lineAt all p}: after a closing '\"' comes '\\x0d' with no '\\x0a' after it"
   | c :: r, .closed, p, fld, row, st, acc =>
-    if c = 44 then lex all r .plain (p + 1) [] (row ++ [fld]) st acc
-    else if c = 10 then lex all r .plain (p + 1) [] [] (p + 1) (acc ++ [(st, row ++ [fld])])
-    else if c = 13 then lex all r .closedCr (p + 1) fld row st acc
-    else .error s!"line {lineAt all p}: after a closing '\"' comes {shown [c]}, not ',' or a record end"
+    if c = sep then lex all sep r .plain (p + 1) [] (row ++ [fld]) st acc
+    else if c = 10 then lex all sep r .plain (p + 1) [] [] (p + 1) (acc ++ [(st, row ++ [fld])])
+    else if c = 13 then lex all sep r .closedCr (p + 1) fld row st acc
+    else .error s!"line {lineAt all p}: after a closing '\"' comes {shown [c]}, not {shown [sep]} or a record end"
   | c :: r, .plain, p, fld, row, st, acc =>
-    if c = 44 then lex all r .plain (p + 1) [] (row ++ [fld]) st acc
+    if c = sep then lex all sep r .plain (p + 1) [] (row ++ [fld]) st acc
     -- an unquoted field's last `\r` before `\n` is the `\r\n` record end, not data
-    else if c = 10 then lex all r .plain (p + 1) [] [] (p + 1)
+    else if c = 10 then lex all sep r .plain (p + 1) [] [] (p + 1)
       (acc ++ [(st, row ++ [if fld.getLast? = some 13 then fld.dropLast else fld])])
     else if c = 34 then
-      if fld = [] then lex all r (.quoted p) (p + 1) [] row st acc
+      if fld = [] then lex all sep r (.quoted p) (p + 1) [] row st acc
       else .error s!"line {lineAt all p}: a '\"' inside an unquoted field"
-    else lex all r .plain (p + 1) (fld ++ [c]) row st acc
+    else lex all sep r .plain (p + 1) (fld ++ [c]) row st acc
 
-/-- Whether a field is written quoted: it holds `,` `"` `\r` or `\n` (C.2). -/
-def special (c : UInt8) : Bool := c = 44 || c = 34 || c = 13 || c = 10
+/-- Whether a field is written quoted: it holds the separator `sep`, `"` `\r` or `\n` (C.2). -/
+def special (sep c : UInt8) : Bool := c = sep || c = 34 || c = 13 || c = 10
 
 /-- A byte inside a quoted field as written: `"` doubled. -/
 def quote (c : UInt8) : List UInt8 := if c = 34 then [34, 34] else [c]
 
 /-- A field as written. -/
-def field (f : List UInt8) : List UInt8 := if f.any special then 34 :: f.flatMap quote ++ [34] else f
+def field (sep : UInt8) (f : List UInt8) : List UInt8 := if f.any (special sep) then 34 :: f.flatMap quote ++ [34] else f
 
 /-- A record's fields as written, without its end. -/
-def record : List (List UInt8) → List UInt8
+def record (sep : UInt8) : List (List UInt8) → List UInt8
   | [] => []
-  | [f] => field f
-  | f :: fs => field f ++ 44 :: record fs
+  | [f] => field sep f
+  | f :: fs => field sep f ++ sep :: record sep fs
 
 /-- Records as written, each ending in `\n`. -/
-def records (rs : List (List (List UInt8))) : List UInt8 := rs.flatMap (record · ++ [10])
+def records (sep : UInt8) (rs : List (List (List UInt8))) : List UInt8 := rs.flatMap (record sep · ++ [10])
 
 /-! ### Atoms -/
 
@@ -390,6 +391,12 @@ def form : QAtomicType → List String → String
 
 /-! ### Files -/
 
+/-- The separator `sep` a file's fields are split at (`,` CSV, `\t` TSV, any other byte alike), refused when it is
+    `"`, `\r` or `\n`: those open a quoted field or end a record, so a field holding it could not be told apart. -/
+def dialect (sep : UInt8) : Except String Unit :=
+  if sep = 34 ∨ sep = 13 ∨ sep = 10 then .error s!"the separator {shown [sep]} quotes a field or ends a record"
+  else .ok ()
+
 /-- The schema's names as the errors list them. -/
 def names (cols : CsvCols) : String := s!"[{", ".intercalate (cols.map (·.1))}]"
 
@@ -532,23 +539,24 @@ end Csv
 
 open Csv in
 /-- The reader's model (C.1): the file's bytes read under the schema `cols`, as the row count and each column's parts
-    (`layout`), or the first refusal in C.4's order — the schema, the records (quotes), the header, then the first
+    (`layout`), fields split at `sep`, or the first refusal in C.4's order — the separator (`dialect`), the schema, the records (quotes), the header, then the first
     failing row: its field count, then its first failing column. -/
-def csvWords (cols : CsvCols) (b : List UInt8) : Except String (Nat × List (Array UInt64)) := do
+def csvWords (sep : UInt8) (cols : CsvCols) (b : List UInt8) : Except String (Nat × List (Array UInt64)) := do
+  dialect sep
   schema cols
-  let recs ← lex b b .plain 0 [] [] 0 []
+  let recs ← lex b sep b .plain 0 [] [] 0 []
   header cols (recs.head?.map (·.2) |>.getD [])
   let rs ← rows cols b 0 recs.tail
   pure (recs.tail.length, wordsOf cols rs)
 
-/-- **The CSV reader**, IO export `qlean_csv_read` (IO design C.1): the file at `path` read under the schema `cols` as
-the row count and each column's parts (`CsvShape`), each with its count, as a `foR` of 8-byte words (`Kernel.wordsFoR`,
+/-- **The CSV reader**, IO export `qlean_csv_read` (IO design C.1): the file at `path` read under the schema `cols`, its
+fields split at `sep` (`,` CSV, `\t` TSV: one reader, `Csv.dialect`), as the row count and each column's parts (`CsvShape`), each with its count, as a `foR` of 8-byte words (`Kernel.wordsFoR`,
 `kscan`'s answer form), or the first refusal of `csvWords` after `{path}: `. The extern maps the file and reads it a
 block at a time straight into each part's encoder (`crate/src/csv.rs`), never holding a column decoded;
 `Rel.Kernel.Db.CsvTest` runs it beside this body on every case of the table. -/
 @[extern "qlean_csv_read"]
-def csvRead (path : @& String) (cols : @& CsvCols) : IO (USize × List (USize × Enc)) := do
-  let (n, ws) ← IO.ofExcept ((csvWords cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
+def csvRead (path : @& String) (cols : @& CsvCols) (sep : UInt8) : IO (USize × List (USize × Enc)) := do
+  let (n, ws) ← IO.ofExcept ((csvWords sep cols (← IO.FS.readBinFile path).data.toList).mapError (s!"{path}: {·}"))
   return (n.toUSize, ws.map fun a => (a.size.toUSize, Kernel.wordsFoR a))
 
 /-- The writer is given `k` parts, as many as the schema's columns are stored as (`CsvShape.parts`). -/
@@ -560,13 +568,14 @@ open Csv in
 /-- The writer's model (C.1): `n` rows of the columns' parts `ws` as a file, the header first, each record ending in
     `\n`; or the first refusal, by row and then column: a part of the wrong count, a position outside its payload
     (`fieldAt`), a field with no text (`fieldText`). -/
-def csvText (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except String (List UInt8) := do
+def csvText (sep : UInt8) (cols : CsvCols) (n : Nat) (ws : List (Array UInt64)) : Except String (List UInt8) := do
+  dialect sep
   schema cols
   arity cols ws.length
   (cols.zip (groups cols ws)).forM fun ((c, s, _), ps) => (ps.take s.rowParts).forM fun a =>
     if a.size = n then .ok () else .error s!"column '{c}' holds {a.size} words, not {n}"
   let rs ← rowsText cols 0 (← fieldsOf cols n ws)
-  pure (records (cols.map (bytes ·.1) :: rs))
+  pure (records sep (cols.map (bytes ·.1) :: rs))
 
 /-- The parts `es`, each with its count, as their raw words (`Kernel.rawAll` at each part's atom, `CsvShape.atoms`; of
     the null's values only the count), after the part count is checked (`arity`). -/
@@ -585,9 +594,9 @@ reads each row part a block of rows at a time from its encoding, a payload the b
 and writes the formatted rows to a temporary renamed over `path` (`crate/src/csv.rs` `write`), so a refusal leaves
 `path` as it was and no column is held decoded; `Rel.Kernel.Db.CsvTest` runs it beside this body on every case. -/
 @[extern "qlean_csv_write"]
-def csvWrite (path : @& String) (cols : @& CsvCols) (n : USize) (es : @& List (USize × Enc)) : IO Unit := do
+def csvWrite (path : @& String) (cols : @& CsvCols) (sep : UInt8) (n : USize) (es : @& List (USize × Enc)) : IO Unit := do
   if let some d := (System.FilePath.mk path).parent then IO.FS.createDirAll d
-  let b ← IO.ofExcept ((do csvText cols n.toNat (← raws cols es) : Except String (List UInt8)).mapError (s!"{path}: {·}"))
+  let b ← IO.ofExcept ((do csvText sep cols n.toNat (← raws cols es) : Except String (List UInt8)).mapError (s!"{path}: {·}"))
   IO.FS.writeBinFile path ⟨b.toArray⟩
 
 end Rel.Db

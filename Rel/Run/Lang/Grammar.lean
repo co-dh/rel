@@ -217,9 +217,10 @@ syntax (name := sSchemaFrom) &"schema" relWord &" from " str : relStmt
 -- `where t ≜ L`: the table `L` for the input `t` (IO design A.4)
 syntax (name := sPrint) &"print" rel ("where" relItem,+)? : relStmt
 syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? : relStmt
--- IO design A.1: no keyword a table directory, `csv` one CSV file; `&`, so `input output csv` stay names
-syntax (name := sInput) &"input" relWord relType &" from " (&"csv")? str : relStmt
-syntax (name := sOutput) &"output" relWord &" to " (&"csv")? str : relStmt
+-- IO design A.1: no keyword a table directory, `csv` one CSV file, `csv '\t'` one whose fields a `\t` separates (TSV;
+-- any one-byte separator, `,` when none is written); `&`, so `input output csv` stay names
+syntax (name := sInput) &"input" relWord relType &" from " (&"csv" (char)?)? str : relStmt
+syntax (name := sOutput) &"output" relWord &" to " (&"csv" (char)?)? str : relStmt
 syntax (name := sDefn) relWord ("(" relParam,+ ")")? (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? : relStmt
 syntax (name := sInfix) "_" relWord "_" "(" relParam,+ ")" (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? :
   relStmt

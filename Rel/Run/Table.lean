@@ -462,13 +462,14 @@ def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) �
       pure (es.take s.parts ++ rest, D)
 
 /-- The CSV file `path` as the table `K ⟶ S`, its symbol columns interned into the database's dictionary `D`, its
-    header `cols` (the key's columns then the value's, `Db.CsvCols`), each column read straight into its encoding
+    header `cols` (the key's columns then the value's, `Db.CsvCols`), its fields split at `sep` (`,` CSV, `\t` TSV), each column read straight into its encoding
     (`Db.csvRead`, `ofCsv`, `encVals`), a symbol column as its texts then interned (`internCsv`); `K = []`: positions,
     the frame of its rows (`frame`), else keyed, its rows canonical (`canon`). The answer carries the grown `D`. A
     program's CSV inputs (`n.io`) are each read into the `D` the one before grew, so two files' equal texts are one id
     (§0.2) and `∪`, `∩`, join meet on ids. -/
-def readCsvDict (D : Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) : IO (Tab K.obj S.obj × Dict) := do
-  let (n, es) ← Db.csvRead path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·)))
+def readCsvDict (D : Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) (sep : UInt8 := 44) :
+    IO (Tab K.obj S.obj × Dict) := do
+  let (n, es) ← Db.csvRead path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·))) sep
   let (es, ds) ← IO.ofExcept (internCsv path D cols es)
   let side (R : Schema) (es : List (USize × Enc)) (ns : List String) :
       Except String (Vals R.obj n × List (USize × Enc) × List String) := do
@@ -513,10 +514,11 @@ def decodeCsv (path : String) (ds : Option Dict) : Db.CsvCols → List (USize ×
     key columns and value columns, written from their encodings (`Db.csvWrite`), a symbol column as its texts through
     the database's dictionary `ds` (`decodeCsv`); `K = []`: positions, the value columns only, rows renumbered by their
     order, as `write` drops the key. -/
-def writeCsv (ds : Option Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) (t : Tab K.obj S.obj) : IO Unit := do
+def writeCsv (ds : Option Dict) (K S : Schema) (cols : Db.CsvCols) (path : String) (t : Tab K.obj S.obj)
+    (sep : UInt8 := 44) : IO Unit := do
   let ks ← match K with | [] => pure [] | _ => IO.ofExcept (csvEncs path t.key)
   let es ← IO.ofExcept (decodeCsv path ds cols (ks ++ (← IO.ofExcept (csvEncs path t.val))))
-  Db.csvWrite path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·))) t.n es
+  Db.csvWrite path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·))) sep t.n es
 
 /-- The table of the run-time definition `x` (IO design B): its code run closed, as a closed definition's is
     (`Expand.emit`), its error the op's message after `x`. -/
