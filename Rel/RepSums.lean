@@ -687,7 +687,7 @@ theorem sumTail_plain {what : String} {u : QAtomicType} {n : USize} {seg v bad :
   cases u <;> simp only [Tab.sumTail, Tab.sumTailF, bind, Except.bind] at h
   all_goals (repeat' split at h)
   all_goals try cases h
-  all_goals rename_i hb; exact colMap_plain (by lockstep) hb
+  all_goals rename_i hb; exact (colMap_closed (by lockstep) hb).2.2
 
 /-- **`sumTailF` is `Lang.fsumDen` of each run up to each row**: one segmented `kscan .fadd` (`runScanChain_ok`), each
 word of `v` read at `u` and widened (`widen_fval`), the seed `u`'s `0` widened likewise, each row's carry rounded once by

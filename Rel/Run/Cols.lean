@@ -28,7 +28,7 @@ def colArr (op : Op) (n : USize) (a b : Enc) (t : QAtomicType := .i64) (s : QAto
     (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
     Except String (Arr t n) :=
   match h : colMap op n a b t s pre post with
-  | .ok o => .ok (Arr.mk o (colMap_closed hs h hF).2 (colMap_plain hs h hF))
+  | .ok o => .ok (Arr.mk o (colMap_closed hs h hF).2.1 (colMap_closed hs h hF).2.2)
   | .error s => .error s
 
 /-- The `kscan` chain taking a word of the atom `t` to the word its verbs and orders compute on: an `f32` word widened to
@@ -167,26 +167,16 @@ theorem colPrefix_hF {op : Op} {n : USize} {a z : Enc} (hz : colConst n 0 = .ok 
     · exact Verify.kscatter_plain hz rfl
     · exact ha
 
-/-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64` (`kscan_closed`). -/
+/-- `colPrefix`'s answer is a column every kernel reads, `Enc.WF` at `i64`, holding no null (`kscan_closed`). -/
 theorem colPrefix_closed {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide)
     (hF : op.nulFold = none ∨ hasNul a = false := by nulfree) :
-    Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o := by
+    Kernel.Enc.Valid n o ∧ Enc.WF .i64 n o ∧ hasNul o = false := by
   unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
   rename_i z hz
   split at h; · cases h
   rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
   have hF' := colPrefix_hF hz hF
-  exact ⟨(kscan_lock_closed (kscanStream_ne ho _ _ _) hF' hr).1, (kscan_lock_closed (kscanStream_ne ho _ _ _) hF' hr).2.1⟩
-
-/-- `colPrefix`'s answer holds no null (`kscan_closed`). -/
-theorem colPrefix_plain {op : Op} {n : USize} {a o : Enc} (h : colPrefix op n a = .ok o) (ho : op ≠ .first := by decide)
-    (hF : op.nulFold = none ∨ hasNul a = false := by nulfree) :
-    hasNul o = false := by
-  unfold colPrefix at h; simp only [bind, Except.bind] at h; split at h; · cases h
-  rename_i z hz
-  split at h; · cases h
-  rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-  exact (kscan_lock_closed (kscanStream_ne ho _ _ _) (colPrefix_hF hz hF) hr).2.2
+  exact kscan_lock_closed (kscanStream_ne ho _ _ _) hF' hr
 
 /-- The last of the `n` words of the `i64` column `e`, or `0` at `n = 0`, read as a count (`Arr.get`, one element). -/
 def lastCount (n : USize) (e : Enc) (h : Enc.WF .i64 n e) (hN : hasNul e = false) : Nat :=
@@ -203,13 +193,13 @@ def tagCount (n : USize) (s : Bool) (tag : Arr .u1 n) : Except String Nat :=
   if 2 ^ 63 ≤ n.toNat then .error s!"count: {n} rows, past an Int64 count" else do
     let p := (← kscan .first false .i64 .i64 n none [(n, tag.enc)] [] (if s then [] else [(.not, 0)])).1
     match h : colPrefix .add n p with
-    | .ok P => .ok (lastCount n P (colPrefix_closed h).2 (colPrefix_plain h))
+    | .ok P => .ok (lastCount n P (colPrefix_closed h).2.1 (colPrefix_closed h).2.2)
     | .error e => .error e
 
 /-- The positions `0 … n-1`, a `foR` column (`shiftCol n 0`). -/
 def Arr.pos (n : USize) : Except String (Arr .i64 n) :=
   match h : shiftCol n 0 with
-  | .ok o => .ok (Arr.mk o (colMap_closed (by simp [kscanStream]) h).2 (colMap_plain (by simp [kscanStream]) h))
+  | .ok o => .ok (Arr.mk o (colMap_closed (by simp [kscanStream]) h).2.1 (colMap_closed (by simp [kscanStream]) h).2.2)
   | .error e => .error e
 
 /-- Summand `s` of a sum side of `m` rows (tags `tag`, positions `idx`) at those rows, as `Vals.row` reads them: its
