@@ -42,8 +42,9 @@ fn read(path: B, cs: B, sep: u8) -> Result<O, Fail> {
     let mut es: Vec<O> = Vec::new();
     for (c, (col, bad)) in cs.iter().zip(&bad).enumerate() {
         // an in-band nullable's one encoding: its values under its null bitmap (`wordsFoR v (nulMap f)`)
+        let ts = csv::atoms(col);
         for (part, k) in csv::counts(&lx, c, col).into_iter().enumerate() {
-            let e = Sink::new(k, 8).enc().answer_nul(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad), lx.nul(c));
+            let e = Sink::new(k, 8).enc().least(csv::least(ts[part])).answer_nul(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad), lx.nul(c));
             es.push(ctor(0, [box_usize_o(k), e], &[]));
         }
     }
@@ -65,11 +66,7 @@ fn write(path: B, cs: B, sep: u8, n: usize, es: B) -> Result<O, Fail> {
     while !l.is_scalar() { v.push((l.field(0).field(0).usize_field(0), l.field(0).field(1))); l = l.field(1) }
     csv::arity(&cs, v.len()).map_err(at)?;
     // each encoding's atom, `CsvShape.atoms`
-    let ts = cs.iter().flat_map(|c| match c.shape {
-        csv::SH_NULL => alloc::vec![csv::QT_U1, csv::QT_I64, c.t],
-        csv::SH_TEXT => alloc::vec![csv::QT_I64, csv::QT_I64, c.t],
-        _ => alloc::vec![c.t],
-    });
+    let ts = cs.iter().flat_map(|c| csv::atoms(c));
     let src = ts.zip(&v).map(|(t, &(k, e))| scan::raw_all(t, k, e)).collect::<Result<Vec<_>, _>>().map_err(at)?;
     csv::dialect(sep).map_err(at)?;
     csv::schema(&cs).map_err(at)?;

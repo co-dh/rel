@@ -27,8 +27,8 @@ pub fn view<'a>(who: &str, meta: B<'a>, pack: B<'a>, n: usize) -> Coc<'a> {
 
 export! {
     /// `(meta, pack)` of the dense column `x` of elements `width` bytes wide (`elt_width`), its null rows the set bits of
-    /// `nul` (empty: none)
-    fn qlean_coc_encode(width: usize, x: B, nul: B) -> O { encode(x, elt_width("qlean_coc_encode", width), false, nul.bytes()) }
+    /// `nul` (empty: none), the least key of its atom type `least` (`QAtomicType.least`; Lean `Coc.lowKey`)
+    fn qlean_coc_encode(width: usize, x: B, nul: B, least: i64) -> O { encode(x, elt_width("qlean_coc_encode", width), false, nul.bytes(), least) }
     /// The column restored: `n` elements of `width` bytes, little-endian
     fn qlean_coc_decode(width: usize, meta: B, pack: B, n: usize) -> O {
         let c = view("qlean_coc_decode", meta, pack, n);
@@ -57,8 +57,8 @@ pub fn dec<T: pod::Elt + Send>(c: &Coc) -> O {
 
 /// The dense column `x` of `w`-byte elements through a `Sink`: the answer, or with `shrinks` `some` of it, `none`
 /// where the encoded form is not shorter than `x` (the `*_below` exports).
-pub fn encode(x: B, w: usize, shrinks: bool, nul: &[u8]) -> O {
-    let (s, p) = (Sink::new(x.bytes().len() / w, w), Blocks::dense(x.bytes(), w));
+pub fn encode(x: B, w: usize, shrinks: bool, nul: &[u8], least: i64) -> O {
+    let (s, p) = (Sink::new(x.bytes().len() / w, w).least(least), Blocks::dense(x.bytes(), w));
     if !shrinks { return s.answer_nul(&p, nul) }
     s.write_nul(&p, true, nul).map_or_else(|| boxed(0), |a| ctor(1, [a], &[]))
 }

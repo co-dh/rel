@@ -91,7 +91,8 @@ def Holds (x : Arr t n) (i : Int64) (y : El t) : Prop := ∃ j : Fin n.toNat, In
 
 /-- `Enc.WF` decided on the encoding, never per element: at `foR` its `u1` clause is read off the blocks
     (`Column.u1Ok`, sound by `Verify.u1Ok_bound`), so `none` also where a `u1` block's frame or width admits a value
-    of 2, which no column the encoder writes has (`Column.u1Ok`'s comment). -/
+    of 2. No writer produces one (each takes its block's least key from the atom, `QAtomicType.least`), so `none` is
+    final: no caller falls back to a per-element check. -/
 def _root_.Rel.Ext.Enc.wf? (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (PLift (Enc.WF t n e)) :=
   match e with
   | .foR md pk =>
@@ -117,7 +118,7 @@ def of (t : QAtomicType) (n : USize) (e : Enc) (what : String) : Except String (
   | some ⟨h⟩ =>
     if hN : Kernel.hasNul e = false then .ok ⟨e, h, hN⟩
     else .error s!"{what}: a column holding a null, and its type has none"
-  | none => .error s!"{what}: a payload that is not {n} well-formed elements of {repr t} (a u1 block's frame or width admitting a value of 2 or more included)"
+  | none => .error s!"{what}: a payload that is not {n} well-formed elements of {repr t} (`Ext.Enc.wf?` refuses its blocks)"
 
 end Arr
 
@@ -198,7 +199,7 @@ theorem lgAt_encodeAt (lg : Nat) (hlg : lg < 2 ^ 64) (width : USize) (hw : width
   refine (Verify.foRMeta_reads lg hlg _ n _ fun b h => ?_).2.1
   simp only [Array.size_map, Array.size_range] at h
   simp only [Array.getElem_map, Verify.getElem_range]
-  exact Nat.lt_of_le_of_lt (Verify.planBlock_bounds lg w n _ x b (Verify.mul_lt_of_lt_cdiv hKp h)).2.1
+  exact Nat.lt_of_le_of_lt (Verify.planBlock_bounds Int64.minValue lg w n _ x b (Verify.mul_lt_of_lt_cdiv hKp h)).2.1
     (by decide)
 
 /-- `encode`'s metadata passes `Enc.WF`'s `lgOk`: it is `encodeAt` at `Column.lgEnc`. -/
@@ -213,7 +214,7 @@ theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isS
     (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF (X := X) t n
     (.foR (Kernel.Coc.encode (t.width.getD 0).toUSize b).1 (Kernel.Coc.encode (t.width.getD 0).toUSize b).2) := by
   have hw : 0 < t.width.getD 0 ∧ t.width.getD 0 ≤ 8 := by cases t <;> simp [QAtomicType.width] at hu ⊢
-  have h := Verify.nblk_encode Column.lgEnc (by decide) _ hw.1 hw.2 b (patch := true) (nul := .empty)
+  have h := Verify.nblk_encode Column.lgEnc (by decide) _ hw.1 hw.2 b (patch := true) (nul := .empty) (least := Int64.minValue)
   rw [hn, Nat.mul_div_cancel_left _ hw.1] at h
   have hk : n.toNat ≤ Column.blk (Kernel.Coc.encodeAt Column.lgEnc (t.width.getD 0).toUSize b).1 *
       Column.nblk (Kernel.Coc.encodeAt Column.lgEnc (t.width.getD 0).toUSize b).1 := by

@@ -198,18 +198,16 @@ pub fn coc_sumnul(width: usize) -> i64 {
 }
 /// Row `i` of a column is null: bit `i` of the bitmap `nul` (Lean `Column.bitAt`; a bit past `nul` is 0).
 pub fn is_nul(nul: &[u8], i: usize) -> bool { nul.get(i >> 3).is_some_and(|b| b >> (i & 7) & 1 != 0) }
-/// Lean `Coc.lowKey`: `k` is the least key of a `T` (or of an `i64`), the one a block's base cannot go below by 1.
-/// One byte is q's unsigned pair, whose least is 0 (`Elt::i` zero-extends it).
-fn low_key<T: Elt>(k: i64) -> bool {
-    k == i64::MIN || if size_of::<T>() == 1 { k == 0 } else { k == i64::MIN >> (64 - 8 * size_of::<T>()) }
-}
+/// Lean `Coc.lowKey`: `k` is `least`, the least key of the column's atom type (`QAtomicType.least`, never read from the byte
+/// width: a `u1` in 8-byte words has the least 0), or of an `i64`, the one a block's base cannot go below by 1.
+fn low_key(least: i64, k: i64) -> bool { k == least || k == i64::MIN }
 /// Lean `Coc.nulBlock`, the null branch of the writer's block step `Coc.planBlock`: block `m.b`'s `nb` elements `x`
 /// (rows `lo ..`), some null. Maximum and sum over the rows that are not null; the base is the least such key less one, so
 /// every value's residual is at least 1 and the null is residual 0, the width `width_for(max - base)`, flagged
 /// (`coc::NUL_FLAG`); its frame the base. Where the least key is the type's own least (`low_key`, which the base cannot go
 /// below) or there is none, the base is that key and the rows holding it are patched (they would read as null).
-pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], lo: usize) {
-    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize, nul: &[u8], lo: usize) {
+pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], lo: usize, least: i64) {
+    fn go<T: Elt>(m: &mut EncMeta, x: &[u8], nb: usize, nul: &[u8], lo: usize, least: i64) {
         let (mut mn, mut mx, mut s, mut any) = (0i64, 0i64, 0i64, false);
         for (i, v) in elts::<T>(x, "coc_enc_nul_meta")[..nb].iter().enumerate() {
             if is_nul(nul, lo + i) { continue }
@@ -217,7 +215,7 @@ pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], 
             if any { (mn, mx) = (mn.min(k), mx.max(k)) } else { (mn, mx, any) = (k, k, true) }
             s = s.wrapping_add(k);
         }
-        let f = if !any || low_key::<T>(mn) { mn } else { mn - 1 };
+        let f = if !any || low_key(least, mn) { mn } else { mn - 1 };
         let d = crate::bits::width_for((mx as u64).wrapping_sub(f as u64));
         // a value at the null's code is patched (Lean `Coc.patched`): a column in memory is below Lean's `2 ^ 64` gate
         let ne = elts::<T>(x, "coc_enc_nul_meta")[..nb].iter().enumerate()
@@ -225,7 +223,7 @@ pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], 
         (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (f, mx, s, d | crate::coc::NUL_FLAG, ne);
         if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
     }
-    crate::by_width!(int width, go(m, x, nb, nul, lo))
+    crate::by_width!(int width, go(m, x, nb, nul, lo, least))
 }
 /// The residuals of a block `nul_meta` planned: a null row's is 0, a value at that code (the base) a patch (residual 0,
 /// its bytes in the patch list) where `nul_meta` counted patches, every other row its key less the base, so the null
@@ -365,12 +363,12 @@ pub static MOVED: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUs
 /// writer's own steps, reading `x`, rows `lo ..` null where `nul` says (Lean `Coc.planBlock`): a block holding a null is
 /// `nul_meta`'s, any other `for_meta`'s.
 pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: impl FnOnce(bool) -> EncPack<'b>, x: impl FnOnce() -> &'a [u8],
-                        nb: usize, width: usize, nul: &[u8], lo: usize) {
+                        nb: usize, width: usize, nul: &[u8], lo: usize, least: i64) {
     if let Some((c, pb)) = mv.take(m.b) { #[cfg(test)] MOVED.fetch_add(1, core::sync::atomic::Ordering::Relaxed); move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
     let x = x();
     // only the rows `nul` has bits for: a column with no null (`nul` empty) tests no row, where testing each cost a
     // pass over every block of every written column
-    if (lo..(lo + nb).min(nul.len() * 8)).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo); return nul_pack(&mut pack(false), x, width, nul, lo) }
+    if (lo..(lo + nb).min(nul.len() * 8)).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo, least); return nul_pack(&mut pack(false), x, width, nul, lo) }
     for_meta(m, x, width, nb);
     for_pack(&mut pack(false), x, width)
 }

@@ -45,6 +45,15 @@ def width : QAtomicType → Option Nat
   | i64 | f64 | datetime | sym => some 8
   | general => none
 
+/-- The least key of an element of the atom `t`, as the encoder reads a word (`Coc.keyAt`): the key a nullable block's
+base cannot go below by one (`Coc.lowKey`). A one-byte atom is q's unsigned pair, so `0`, at any word width it is held
+in; a wider one is its width's least, and `general`, whose elements are boxed, the `Int64` least. -/
+def least : QAtomicType → Int64
+  | u1 | u8 | char | i8 => 0
+  | i16 => -0x8000
+  | i32 | f32 | date => -0x80000000
+  | i64 | f64 | datetime | sym | general => Int64.minValue
+
 end QAtomicType
 
 namespace Bits

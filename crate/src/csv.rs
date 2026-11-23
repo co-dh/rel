@@ -535,13 +535,27 @@ fn civil(z: i64) -> (i64, i64, i64) {
 pub const QT_U1: u8 = 0;
 pub const QT_I64: u8 = 4;
 const QT_U8: u8 = 1;
+const QT_I16: u8 = 2;
+const QT_I32: u8 = 3;
 const QT_F32: u8 = 5;
 const QT_F64: u8 = 6;
 const QT_CHAR: u8 = 7;
+const QT_I8: u8 = 8;
 const QT_SYM: u8 = 9;
 const QT_DATE: u8 = 10;
 const QT_DATETIME: u8 = 11;
 const QT_GENERAL: u8 = 12;
+
+/// Lean `QAtomicType.least`: the least key of an element of atom `t`, as the words hold it, which a nullable block's base
+/// cannot go below (`Coc.lowKey`). One byte is q's unsigned pair, so 0 whatever the width of the words it is held in.
+pub fn least(t: u8) -> i64 {
+    match t { QT_U1 | QT_U8 | QT_CHAR | QT_I8 => 0, QT_I16 => i16::MIN as i64, QT_I32 | QT_F32 | QT_DATE => i32::MIN as i64, _ => i64::MIN }
+}
+
+/// Each encoding's atom (Lean `CsvShape.atoms`), the column's atom being `c.t`: one per `encs` of the shape.
+pub fn atoms(c: &Col) -> alloc::vec::Vec<u8> {
+    match c.shape { SH_NULL => alloc::vec![QT_U1, QT_I64, c.t], SH_TEXT => alloc::vec![QT_I64, QT_I64, c.t], _ => alloc::vec![c.t] }
+}
 
 /// What a column's field must be, as an error names it (`form`).
 fn form(c: &Col) -> String {

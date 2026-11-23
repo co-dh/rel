@@ -65,11 +65,12 @@ def noNul (what : String) (m : USize) (e : Enc) : Except String Unit :=
 
 /-- Words as a `foR` answer of 8-byte elements, `foRWords`' converse: the extern `Coc.encode` (`Coc.encodeAt` at
 `lgEnc`), which `qlean_coc_encode` writes (`exports::scan::for_words`). `nul` is `encode`'s null bitmap, row `i` null
-where `Column.bitAt nul i` (its word then unread); empty, the default, for a column with none. -/
-def wordsFoR (ws : Array UInt64) (nul : ByteArray := .empty) : Enc :=
+where `Column.bitAt nul i` (its word then unread); empty, the default, for a column with none. `least` is the column's
+`QAtomicType.least` (`Coc.lowKey`), the `Int64`'s by default. -/
+def wordsFoR (ws : Array UInt64) (nul : ByteArray := .empty) (least : Int64 := Int64.minValue) : Enc :=
   -- `ofNat32`, not the literal `8`, whose `toNat` is `8 % 2 ^ numBits` and stops `decide` at the opaque `numBits`;
   -- the extern, not its body: the body's width search is quadratic in a block and costs minutes on a wide column
-  let p := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul
+  let p := Coc.encode (USize.ofNat32 8 (by decide)) (ws.foldl (init := .empty) fun acc w => Column.pushBits acc w 8) nul least
   .foR p.1 p.2
 
 /-- The flag words `ns` (`foRNuls`' form) as `wordsFoR`'s null bitmap, one bit a row, set where the flag is not `0`:

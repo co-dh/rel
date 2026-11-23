@@ -124,12 +124,12 @@ through `Column.foROpt` and cut to the payload's `8 * w` bits, is `none` at a nu
 (`foROpt_encode`). `raw_encodeAt` is its null-free case. `hbig` is `foROpt_encode`'s, at every row: only a column of
 `2 ^ 64` rows or more, which carries no patch list, needs it. -/
 theorem rawOpt_encodeAt (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x nul : ByteArray)
-    {patch : Bool} (n : Nat) (hn : n ≤ x.size / w)
-    (hbig : 2 ^ 64 ≤ x.size / w → ∀ i < n, Column.bitAt nul i = false → Kernel.Coc.lowKey w (Kernel.Coc.keyAt w x i) = true → ∀ j,
+    {patch : Bool} {least : Int64} (n : Nat) (hn : n ≤ x.size / w)
+    (hbig : 2 ^ 64 ≤ x.size / w → ∀ i < n, Column.bitAt nul i = false → Kernel.Coc.lowKey least (Kernel.Coc.keyAt w x i) = true → ∀ j,
       i / 2 ^ lg * 2 ^ lg ≤ j → j < i / 2 ^ lg * 2 ^ lg + 2 ^ lg → j < x.size / w → Column.bitAt nul j = false) :
-    (Array.range n).map (fun i => (Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1
-      (Kernel.Coc.encodeAt lg w.toUSize x patch nul).2
-      (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch nul).1) i).map
+    (Array.range n).map (fun i => (Column.foROpt (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1
+      (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).2
+      (Column.blockStarts (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1) i).map
         fun v => UInt64.ofNat (v.toNat % 2 ^ (8 * w))) =
       (Array.range n).map fun i => if Column.bitAt nul i then none else some (Column.bitsAt x (i * w) w) := by
   refine Array.ext (by simp) fun i h1 _ => ?_

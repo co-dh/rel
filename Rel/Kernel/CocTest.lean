@@ -113,13 +113,23 @@ example : encN [0, 0] [0, 1] = (md 0 0 0 2 128, []) := by decide +kernel
 
 /-- A `u1` column `xs` (bytes, `0` or `1`) with nulls at `ns`: its width at block 0, `Column.u1Ok`, and its rows read back. -/
 def readU (xs : List UInt8) (ns : List Nat) : Nat × Bool × List (Option UInt64) :=
-  let r := Coc.encode (u 1) ⟨xs.toArray⟩ (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
+  let r := Coc.encode (u 1) ⟨xs.toArray⟩ (Column.packIds 1 xs.length fun i => (ns.contains i).toNat) QAtomicType.u1.least
+  (Column.widthAt r.1 0, Column.u1Ok r.1 r.2, (List.range xs.length).map (Column.foROpt r.1 r.2 #[]))
+
+/-- The same `u1` column as `readU` held as 8-byte words, the form the CSV reader writes (`wordsFoR`): the least key is
+the atom's, `QAtomicType.least`, not the byte width's. -/
+def readW (xs : List UInt64) (ns : List Nat) : Nat × Bool × List (Option UInt64) :=
+  let r := Coc.encode (u 8) (dense xs) (Column.packIds 1 xs.length fun i => (ns.contains i).toNat) QAtomicType.u1.least
   (Column.widthAt r.1 0, Column.u1Ok r.1 r.2, (List.range xs.length).map (Column.foROpt r.1 r.2 #[]))
 
 -- `0 1 null 0`: one byte's least is 0 (`lowKey`), so the base is 0, not -1: null residual 0, `1` residual 1, both `0`s
 -- patched; width 1, so `u1Ok` holds and the block round-trips
 example : readU [0, 1, 0, 0] [2] = (1, true, [some 0, some 1, none, some 0]) := by decide +kernel
 #guard readU [0, 1, 0, 0] [2] == (1, true, [some 0, some 1, none, some 0])
+
+-- `0 1 null 0` as 8-byte words: still base 0, width 1, `u1Ok` true (the width 2 of base -1 was what `Ext.Enc.wf?` refused)
+example : readW [0, 1, 0, 0] [2] = (1, true, [some 0, some 1, none, some 0]) := by decide +kernel
+#guard readW [0, 1, 0, 0] [2] == (1, true, [some 0, some 1, none, some 0])
 
 -- no null: the unpatched column, here the same bytes as `encode`'s
 example : encN [11, 7, 12, 7] [] = enc [11, 7, 12, 7] := by decide +kernel
@@ -193,7 +203,7 @@ example : parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) =
 def sumN (xs : List UInt64) (ns : List Nat) : UInt64 × UInt64 :=
   let nul := Column.packIds 1 xs.length fun i => (ns.contains i).toNat
   let r := Coc.encode (u 8) (dense xs) nul
-  (Column.blockSum r.1 r.2 (Column.blockStarts r.1) 0, (Coc.nulBlock (2 ^ Column.lgEnc) 8 xs.length 0 (dense xs) nul).2.2.1)
+  (Column.blockSum r.1 r.2 (Column.blockStarts r.1) 0, (Coc.nulBlock Int64.minValue (2 ^ Column.lgEnc) 8 xs.length 0 (dense xs) nul).2.2.1)
 example : sumN [100, 0, 105] [1] = (205, 205) := by decide +kernel
 #guard sumN [100, 0, 105] [1] == (205, 205)
 
