@@ -139,6 +139,11 @@ theorem wf (x : Opt t n) : Enc.WF t n x.enc := x.2
 /-- `e` under the header `t`, `n`. -/
 def mk (e : Enc) (h : Enc.WF t n e) : Opt t n := ⟨e, h⟩
 
+/-- What a row `Opt.fill` writes reads as: the null, or at `general`, which has no null, its `default`. -/
+def filler : (t : QAtomicType) → Option (El t)
+  | .general => some (default : QValue)
+  | _ => none
+
 /-- A column with no null as a nullable one: `inl`, which leaves the storage as it is. -/
 def ofArr (x : Arr t n) : Opt t n := ⟨x.1, x.2.1⟩
 

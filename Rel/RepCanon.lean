@@ -465,11 +465,6 @@ theorem ValsB.gather_row {m : USize} {ix : Enc} : {o : Bool} → {A : Obj} → {
     obtain ⟨i, e, -⟩ := Arr.gather_row (Arr.mk (t := .i64) (n := n) .pos trivial rfl) h1 j
     exact ⟨i, e, rfl⟩
 
-/-- What a row `Opt.fill` writes reads as: the null, or at `general`, which has no null, its `default`. -/
-def Opt.filler : (t : QAtomicType) → Option (El t)
-  | .general => some (default : QValue)
-  | _ => none
-
 /-- **A side whose every cell is a slice of its payload** (PLAN 8.5), over the rows `P` the side owns: at an `arr` side
 each owned row's `[lo, hi)` has `0 ≤ lo ≤ hi ≤ m` and the payload is `WFOn` all its rows; an `Opt` leaf (`o = true`) is
 no null on `P` and the filler (`Opt.filler`) off `P`, so two unowned rows read alike; a generic sum has tag `false` off `P`, and each summand owns the rows of `P` its tag names.
