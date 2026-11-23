@@ -1898,7 +1898,8 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
         let r ← col S side p
         let (some m, some e) := (r[Side.count]?, r[Side.enc]?)
           | throw s!"output `{x}` to csv \"{path}\": column `{p}` has no `Enc` register, which `csvWrite` takes"
-        rows := some m
+        -- the first column holds the rows: a later column may be an array's payload (`.e`), of its own count
+        if rows.isNone then rows := some m
         if t == .sym then
           -- `unenum`: the ids `I ≫ D` as texts, refused unless every id has one (`Table.decode`)
           let T ← compB ⟨m, [.atom "" .i64 (← posB)], [.atom "" .i64 e]⟩ D
@@ -1954,10 +1955,12 @@ def ioOf (n : Lean.Name) :
               | none => throw s!"`{x}` reads `{d}`, which is not read or computed before it"
             let ⟨_, _, t⟩ := o.res
             σ := σ ++ [(x, ← ofTm env t)]
-        -- `dictionary x : S ⟶ [C]` (`Table.dictRel`) as a table of the plan: its first attempt failed `csvWrite`'s count
-        -- check on the ids column of a written dictionary, not yet explained, so it is refused rather than guessed
+        -- `dictionary x : S ⟶ [C]` (`Table.dictRel`): `D` as it is here, its key the ids `0 …` (`internB`'s `D'`)
         | .dict x _ _ =>
-          if reach.contains x then throw s!"`dictionary {x}`: the dictionary as a relation, which no plan recipe builds yet"
+          if reach.contains x then
+            -- the ids are `pos`, which no write reads the parts of (`encRegs`): one `kscan` makes them a `foR`
+            let [.atom q t p] := D.key | throw s!"`dictionary {x}`: the dictionary's key is not one column"
+            σ := σ ++ [(x, ← sidesOf { D with key := [.atom q t (← mapB .add D.n p (← wordsB D.n 0))] })]
         | .output x _ _ k v c p cl =>
           mainStepB do
             let t ← match cl, σ.lookup x with

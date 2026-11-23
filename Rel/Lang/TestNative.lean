@@ -231,6 +231,10 @@ rel_program nativeIO where
     input sy : N ⟶ SRow from csv "in/sy.csv"
     input sz : N ⟶ SRow from csv "in/sz.csv"
     su : N ⟶ SRow ≜ sy ∪ sz
+    -- the dictionary as the relation `S ⟶ [C]` after both inputs: id order, its texts
+    obj C : char
+    dictionary dd : S ⟶ [C]
+    output dd to csv "out/io/dd.csv"
     output sy to csv "out/io/sy.csv"
     output sz to csv "out/io/sz.csv"
     output su to csv "out/io/su.csv"
