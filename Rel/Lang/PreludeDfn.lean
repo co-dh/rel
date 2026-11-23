@@ -131,7 +131,7 @@ def Tm.sumDef {t : QAtomicType} (h : t.ordNum.isSome) (u₀ u : Tm (.atom t) (.a
 
 /-- At the universes `u₀`, `u` the coreflexive on `P` (every number, or an initial segment), `length` means the row
     cut to `u`; at every number, the row. -/
-theorem Tm.lengthDef_den (ρ : Val) {E : Obj} (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
+theorem Tm.lengthDef_row (ρ : Val) {E : Obj} (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
     (hP : (∀ x, P x) ∨ Seg .long P) (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
     (x : (Obj.arr E).El) (hx : Short _ x) (w : Obj.long.El) :
     ((Tm.lengthDef u₀ u).den ρ x w ↔ (Tm.comp (.prim lengthRow) u).den ρ x w) ∧
@@ -140,9 +140,9 @@ theorem Tm.lengthDef_den (ρ : Val) {E : Obj} (u₀ u : Tm .long .long) {P : Obj
     obtain ⟨rfl, rfl⟩ := Option.some.inj h
     exact ⟨hU₀, hU⟩) x hx w
 
-/-- As `Tm.lengthDef_den`, for `sum` at an atom `t` that is not a float (`hf`, the row's `native` atoms: a float's
+/-- As `Tm.lengthDef_row`, for `sum` at an atom `t` that is not a float (`hf`, the row's `native` atoms: a float's
     `sum` rounds once and has no fold of `plus`). -/
-theorem Tm.sumDef_den (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ sumRow.native)
+theorem Tm.sumDef_row (ρ : Val) {t : QAtomicType} (h : t.ordNum.isSome) (hf : t ∉ sumRow.native)
     (u₀ u : Tm (.atom t) (.atom t)) {P : (Obj.atom t).El → Prop} (hP : (∀ x, P x) ∨ Seg (.atom t) P)
     (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
     (x : (Obj.arr (.atom t)).El) (hx : Short _ x) (w : (Obj.atom t).El) :
@@ -166,11 +166,20 @@ theorem Tm.ascDef_den (ρ : Val) {B : Obj} (Pa : Tm B B) (u₀ u : Tm .long .lon
     ((Tm.ascDef Pa (Tm.lengthDef u₀ u)).den ρ j a ↔ P j ∧ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a) ∧
       ((∀ x, P x) → ((Tm.ascDef Pa (Tm.lengthDef u₀ u)).den ρ j a ↔ ascDen B (fun b => ∃ c, Pa.den ρ b c) j a)) := by
   have h := Tm.ascDef_of_len ρ Pa (Tm.lengthDef u₀ u) P (fun zs hs w => by
-    rw [(Tm.lengthDef_den ρ u₀ u hP hU₀ hU zs hs w).1]
+    rw [(Tm.lengthDef_row ρ u₀ u hP hU₀ hU zs hs w).1]
     simp only [Tm.den, Prim.den_lengthRow, Core.Rel.comp, hU]
     constructor
     · rintro ⟨b, rfl, rfl, hb⟩; exact ⟨rfl, hb⟩
     · rintro ⟨rfl, hb⟩; exact ⟨_, rfl, rfl, hb⟩) hp j a
   exact ⟨h, fun hall => by rw [h]; exact ⟨fun h => h.2, fun h => ⟨hall j, h⟩⟩⟩
+
+/-! unproved (B10cd-D3e): `Tm.lengthDef_den`, `Tm.sumDef_den` on `prelude.length.body` / `prelude.sum.body`.
+    Both bodies equal `.fold (Tm.ran (.val V)) (Tm.cut1 succRow (.var 1))` / `(Tm.cut2 (arithRow "plus") (.var 0))`
+    by `rfl` (i64 is not in `varAtoms`, so `instObj` leaves it; the universe is the variable, `.var 1` / `.var 0`,
+    taken as `u₀ = u` of `Tm.lengthDef_row` / `Tm.sumDef_row`, with `P 0` as the one extra hypothesis, since the
+    body's seed `ran V` carries no universe). What does not close: `V`'s column is `Gen.atom .i64 1 <hex> ""`, to be
+    shown `zeroCol .i64 rfl` (then `zeroTm_den`, `foldDen_start`). `Enc.foR (unhex <hex>) (unhex "") = wordsFoR #[0]`
+    holds by `with_unfolding_all rfl`; the step left is `Ext.Enc.wf? .i64 1 (wordsFoR #[0]) = some _`, whose
+    condition has an unbounded `∃ j` (no `Decidable`), so `decide` does not evaluate it. -/
 
 end Rel.Lang

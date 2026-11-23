@@ -23,7 +23,8 @@ namespace Rel.Lang
 /-- The rows with a `prelude` definition and no theorem `Tm.<sym>Def_den` yet. -/
 -- tails: its body seeds `ran(uni ≫ nil ≫ τ)` and reads the head by `call head` over a `Tm.val` table literal
 -- (`Gen.relV`); no lemma gives `Tm.den` of a generated `val`/`uni` literal, so body = `Tm.tailsDef` does not close.
-meta def unproved : List String := ["tails"]
+-- length, sum: seed column `Gen.atom` ≠ `zeroCol` unshown (`Enc.wf?` returns some under `Enc.WF` is missing; PreludeDfn, end)
+meta def unproved : List String := ["tails", "length", "sum"]
 
 /-- The name of the theorem that row `r`'s definition means the row. -/
 meta def Prim.defDenName (r : Prim) : Lean.Name := .str `Rel.Lang.Tm (r.sym ++ "Def_den")
