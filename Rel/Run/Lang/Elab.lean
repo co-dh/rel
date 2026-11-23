@@ -1208,6 +1208,10 @@ def refusals (objs : Objs) (ws : List String) : String :=
     atom, whose verbs are computed on `f64` words (`fval`). -/
 def valueAtom (t : QAtomicType) : Bool := intAtoms.contains t || floatAtoms.contains t
 
+/-- The atom the declared object `n` is stored at: its own, or `i64` for an object declared at none (S1). -/
+def storeAtom (objs : Objs) (n : String) : QAtomicType :=
+  match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
+
 /-- The name and atom of `o`, a number object `op` computes on: a declared object stored at an atom `ok` admits
     (`valueAtom` for the value verbs and orders, `i64` alone for `succ` and `sums`); an object variable whose checks
     are left to each use (`ObjInfo.deferred`) admits every atom. -/
@@ -1217,7 +1221,7 @@ def numObj (objs : Objs) (mc : Lean.MetavarContext) (p : Pos) (o : OTy) (op : St
   | .base n =>
     -- an object declared at no atom is stored at `i64` (S1); at an atom `op` has no step for, `op` is refused, never
     -- run on the bits
-    let t := match objs.lookup n with | some { obj := .atom t, ovar := false, .. } => t | _ => .i64
+    let t := storeAtom objs n
     if ok t || (objs.lookup n).any (·.deferred) then pure (n, t) else
       let ats := ", ".intercalate ((atomNames.filter (ok ·.2)).map (atomName ·.2))
       -- the atoms `op` runs at that `t` casts to without loss (`castOK`): the program casts (`$`), explicitly
@@ -1978,11 +1982,24 @@ def litCol (p : Pos) (n : USize) (o : OTy) (rows : List Tup) : Except Err ((A : 
     if let .base m := o then if let some { obj := .one, .. } := objs.lookup m then return ⟨.one, ()⟩
     if h : cs.length.toUSize = n then (let c : Arr .i64 n := h ▸ col cs; pure ⟨.long, c⟩) else internal dp "literal rows"
 
+/-- The row node `x` runs its definition, not the row (O2): it carries its definition `q` and a `num` variable stands
+    for an object no atom of its list stores (a non-atom object, or a declared object of another atom). An object
+    variable whose checks are left to each use (`ObjInfo.deferred`) or an open object is decided later. -/
+def Pre.textAt : Pre → Bool
+  | .prim r _ s t (some _) => r.num.any fun (v, ats) =>
+    match (r.sig.2.2.varAt v (zonk mc t)).orElse fun _ => r.sig.2.1.varAt v (zonk mc s) with
+    | some (.base n) => !(objs.lookup n).any (·.deferred) && !ats.contains (storeAtom objs n)
+    | some (.mv _) | none => false
+    | some _ => true
+  | _ => false
+
 /-- The number checks of the node `x` at its solved objects: the number objects it computes on (`numsAt`, read by
     `settleLit` too), `$`'s `castOK`, and a literal's words read at its objects (`litCol`). `build` runs them; a use of a generic definition runs them on its expansion
     first, so the error names the use and the objects its variables were given (`mkDef`). An object the use has not
     solved yet is checked when `build` reaches it. -/
 def numCheck (x : Pre) : Except Err Unit := do
+  -- a node that runs its definition is checked where `build` builds that definition
+  if x.textAt objs mc then return
   x.numsAt mc |>.forM fun (o, op, ok) =>
     if (zonk mc o).mvs.isEmpty then discard (numObj objs mc dp o op ok) else pure ()
   match x with
@@ -2512,6 +2529,8 @@ def build (δ : Dem) : Pre → Except Err Res
   -- cut to the universes (`Prim.cut`) where each bounded one is `0…k` or an atom of `r.native`, and as its
   -- definition `q` elsewhere — `[−3,3,3] sum` on `−3…3` is `𝟘` by the definition, `3` by the cut (§4)
   | .prim r xs s t q => do
+    -- O2: where a `num` variable stands for no atom of the row's, the definition runs, raising its own error
+    if let some q' := q then if (Pre.prim r xs s t q).textAt objs mc then return ← build δ q'
     numCheck objs mc dp (.prim r xs s t q)
     -- an object whose canon order is not its value order (a float's bits, a symbol's bytes) is refused by name
     r.ord.forM fun v => do

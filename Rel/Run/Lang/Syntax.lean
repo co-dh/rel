@@ -186,6 +186,15 @@ def Expr.pos : Expr → Pos
   | .lit p .. | .fix p .. | .col p .. | .each p .. => p
   | .comp a _ | .whr _ _ _ a => a.pos
 
+open Lean Elab Term in
+/-- Each atom by its name, the name of its `QAtomicType` constructor (`f64`, `datetime`), read from the inductive's own
+    constructor list: `obj F : f64` names an atom as Lean does, with no second spelling to keep in step. -/
+def atomNames : List (Lean.Name × Rel.QAtomicType) := by_elab do
+  let .inductInfo i ← getConstInfo ``Rel.QAtomicType | throwError "Rel.QAtomicType is no inductive type"
+  let (n, t) := (Lean.mkConst ``Lean.Name, Lean.mkConst ``Rel.QAtomicType)
+  Meta.mkListLit (Lean.mkApp2 (Lean.mkConst ``Prod [0, 0]) n t) (i.ctors.map fun c =>
+    Lean.mkApp4 (Lean.mkConst ``Prod.mk [0, 0]) n t (toExpr (Lean.Name.mkSimple c.getString!)) (Lean.mkConst c))
+
 /-- The atom the counting rows (`length`, `succ`, the positions of `positions`, `asc`) run on. -/
 def intAtoms : List QAtomicType := [.i64]
 /-- The atoms a sum (`sum`, `sums`) runs at (`Lang.sumDen`): `i64` added exactly; a float atom added left to right
@@ -334,7 +343,10 @@ def indexRow : Prim :=
 /-- The order test `s` of `cmpOps`, the coreflexive `N×N ⟶ N×N` on the pairs in order, no universe inside. -/
 def cmpRow (s : String) : Prim :=
   { sym := s, sig := ([], .prod (.var {} "N") (.var {} "N"), .prod (.var {} "N") (.var {} "N")), written := false,
-    aop := .error "AOP declares no order on atoms" }
+    num := [("N", (atomNames.map (·.2)).filter (·.ordNum.isSome))], native := floatAtoms,
+    prelude := some (.str `Rel.Programs.prelude s), aop := .error "AOP declares no order on atoms" }
+-- the row's fused atoms, `num` minus `native`, are the integer-stored ones (`Tm.lt_row_den`'s hypothesis)
+#guard (atomNames.map (·.2)).all fun t => (t.ordNum.isSome && !floatAtoms.contains t) == t.intOrd
 /-- `≤`, `<` on a universe `U : N ⟶ N`, the row `cmpRow` given `U` as `⟨dom U, ⊤(dom U)⟩ cmpRow π₂`
     (`Tm.cmpDef`), run fused by `GenK.cmpRel`: closed, or on the pairs a meet hands it. Its symbol is the surface one,
     distinct from the test row's `lt`/`le`. -/
@@ -511,15 +523,6 @@ structure Param where
   name : String
   ty : Option (OExp × OExp)
   deriving Repr, Inhabited
-
-open Lean Elab Term in
-/-- Each atom by its name, the name of its `QAtomicType` constructor (`f64`, `datetime`), read from the inductive's own
-    constructor list: `obj F : f64` names an atom as Lean does, with no second spelling to keep in step. -/
-def atomNames : List (Lean.Name × Rel.QAtomicType) := by_elab do
-  let .inductInfo i ← getConstInfo ``Rel.QAtomicType | throwError "Rel.QAtomicType is no inductive type"
-  let (n, t) := (Lean.mkConst ``Lean.Name, Lean.mkConst ``Rel.QAtomicType)
-  Meta.mkListLit (Lean.mkApp2 (Lean.mkConst ``Prod [0, 0]) n t) (i.ctors.map fun c =>
-    Lean.mkApp4 (Lean.mkConst ``Prod.mk [0, 0]) n t (toExpr (Lean.Name.mkSimple c.getString!)) (Lean.mkConst c))
 
 open Lean in deriving instance ToExpr for Rel.QAtomicType
 

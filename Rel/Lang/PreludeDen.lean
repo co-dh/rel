@@ -8,6 +8,7 @@ public import Rel.Lang.PreludeConcat
 public import Rel.Lang.PreludeTails
 public import Rel.Lang.PreludeStar
 public import Rel.Lang.PreludeDfn
+public import Rel.Lang.PreludeOrd
 import Lean
 meta import Rel.Run.Lang.Syntax
 

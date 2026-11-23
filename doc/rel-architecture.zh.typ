@@ -185,7 +185,7 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
   [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
-  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.ltDef_den`、`Tm.leqDef_den`）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
+  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
   [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删；闭部分的共享槽是零元 `call`，`share` 已删）],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有定义 `Tm.ascDef`），在某个类型上实例化，参数由 `arg` 给出],
@@ -264,6 +264,15 @@ asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
     已核实：`Expand.read` 给出 elaborate 出的项（`Read` 的第五项 `List Once`，`emit` 把它登记进 `relRegistry`），但只在 elaboration
     时可达，没有类型为 `Tm` 的 Lean 常量（`prelude.filter` 是 `Decl`）；`Tm.den` 已把 `call` 读成它的体在实参绑定下的 `den`
     （`Den.lean` 的两条 `.call`），所以不需要新的语义],
+  [8 带定义的行在哪个 object 上运行（O2，C5）], [`.prim r` 节点带定义调用 `q` 时，按 `num` 变量的 object `o` 选：`o` 是 `r.num` 中、
+    不在 `r.native` 中的 atom：行（由定理绑定，再经 universe 规则）；`o` 是 `r.native` 中的 atom：行本身（那里文本不是它的定义）；
+    其它（非 atom 的 object、`num` 之外的 atom）：文本 `build δ q`，失败处由文本报错；对象变量：在每次使用时判定。
+    不带 `q` 的 `.prim`（elaborator 自建，或没有文本的行）在 `num` 之外仍被拒绝。`cmpRow`：`num` 为有序 atom，`native := floatAtoms`，
+    fused 集合即整数存储的 atom（`#guard`），`Tm.lt_row_den`、`Tm.le_row_den` 的前提],
+    [决定 3（浮点 `sum`）：行按 atom 限定它的定义，限定写在行上（`Prim.native`），定理前提读同一字段；浮点上 IEEE 的 `<` 与 `Obj.lt`
+    （位的 totalOrder）不同，所以浮点是 native。决定 F：`lt` 是任意 object 上的序，`num` 之外拒绝就去掉了这个序。Q1 = A：调用的含义是
+    定义在调用处对象上的展开，行只在定理或 `native` 允许处代替展开。`length` `sum` 的文本恰在 `num` 之外的 atom 上失败，所以只改错误措辞、
+    不改值。`N×N`、`1+N`、`[char]` 上的 `lt` 运行文本（`Test/Orders.lean` 的 `ltObjs`）],
 )
 
 待 owner 决定（选项与推荐在 `/data/tmp/hb10c/brief.md`，决定前相关步骤不发）：
@@ -677,8 +686,8 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 
 #block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
   [构造子], [`mem`（`∋`） `inl` `inr`；`fold` `foldr` `hylo`（AOP 的标准递归组合子）],
-  [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）`≤`（待验证）],
-  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`asc`（定理未证）],
+  [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）],
+  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`asc`（定理未证）],
   [native 行], [`cons` `snoc` `cat` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
 )]
 

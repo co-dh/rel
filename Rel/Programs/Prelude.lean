@@ -60,6 +60,10 @@ rel_program prelude where
     perm : [α] ⟶ [α] ≜ ⦇[nil, add]⦈ where add ≜ (cat°×𝟙)⟨⟨π₁π₁,π₂⟩snoc,π₁π₂⟩cat
     ordered(Q : α ⟶ α) : [α] ⟶ [α] ≜ 𝟙 − dom(tails ∋ ⟨at(0),tail⟩(π₁∼Q ∩ (π₂∋)))   -- every element is Q-related to each later one
     sort(Q : α ⟶ α) : [α] ⟶ [α] ≜ perm ordered(Q)
+    -- the order of any object (O2): `Obj.lt`, the sorted pair `Λ(π₁ ∪ π₂)` starting with `x`; the row `cmpRow` runs
+    -- instead at an integer-stored atom (`Tm.ltDef_den`), and as itself at a float atom, where IEEE's `<` is not this
+    lt : α×α ⟶ α×α ≜ dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)   -- the pairs in order: the sorted pair starts with x, x ≠ y
+    le : α×α ⟶ α×α ≜ lt ∪ dom(π₁ ∩ π₂)                          -- the pairs in order or equal
 
     -- Laws of any relation, proved by `rel_aop prelude` (relaop/RelAop/Prelude.lean); a map is `dom(f) = 𝟙` and `simple(f)`.
 
