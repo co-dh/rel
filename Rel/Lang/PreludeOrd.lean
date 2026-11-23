@@ -21,7 +21,8 @@ theorem Tm.le_row_den (ρ : Val) {t : QAtomicType} (h : t.intOrd = true) :
   funext p q; apply propext
   obtain ⟨x, y⟩ := p
   obtain ⟨x', y'⟩ := q
-  simp only [Tm.leDef, Tm.den, Tm.lt_den, Tm.dom_den, ordDen, Bool.false_eq_true, if_false, (ordAt_int h).2,
+  rw [ordDen_iff]
+  simp only [Tm.leDef, Tm.den, Tm.lt_den, Tm.dom_den, Bool.false_eq_true, if_false, (ordAt_int h).2,
     (ordAt_int h).1, Core.Rel.union, Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph,
     Prod.mk.injEq]
   constructor
