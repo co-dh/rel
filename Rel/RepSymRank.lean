@@ -13,7 +13,7 @@ public import Rel.Lang.DfnLaw
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! The law of `Table.symLt` and `Table.symAsc` (`Rel/Run/Table.lean`): `<` and `asc` on a `sym` column go through
+/-! The law of `Table.symAsc` (`Rel/Run/Table.lean`) and the laws of `<` and `asc` at `sym` as terms (`Elab.symOrd`): they go through
 the rank of the symbol's text (owner decision J), so they follow the order of the texts and not of the ids. -/
 
 namespace Rel.Lang.Table
@@ -169,49 +169,6 @@ theorem frame_functional {B : Obj} {n : USize} {x : Vals B n} {D : Tab .long B} 
     simp [Nat.toUInt64, UInt64.toInt64, Int64.toBitVec] at e
     obtain rfl : j = j' := Fin.ext (by omega)
     rfl
-
-/-- **`<` on `sym` follows text order**: `K ≫ < ≫ L` holds `(a, c)` when `a ∈ K`, `c ∈ L`, both ids have a rank,
-and the text of `a` is before the text of `c` (`Obj.lt`, the order of `asc`), whatever order the ids were inserted in. -/
-theorem symLt_holds {D : Dict} {R : Tab .long .long} {n m : USize} {K : Vals (.atom .sym) n}
-    {L : Vals (.atom .sym) m} {T : Tab (.atom .sym) (.atom .sym)} (h : symLt D K L = .ok T) (hR : rank D = .ok R)
-    (wD : D.WF) (hf : ∀ i t t', D.Holds i t → D.Holds i t' → t = t') (a c : UInt64) :
-    T.Holds a c ↔ (∃ i, K.row i = a) ∧ (∃ j, L.row j = c) ∧ (∃ r, R.Holds a.toInt64 r) ∧ (∃ s, R.Holds c.toInt64 s) ∧
-      ∃ t u, D.Holds a.toInt64 t ∧ D.Holds c.toInt64 u ∧ Obj.lt (.arr (.atom .char)) t u := by
-  unfold symLt at h
-  simp only [Bind.bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨P, hP, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨Q, hQ, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨Lt, hLt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨PL, hPL, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨QC, hQC, h⟩ := h
-  have wR := rank_wf hR wD
-  have hb := (symRanked_holds hP hR wR 0 0).1
-  have hPh := fun a r => (symRanked_holds hP hR wR a r).2
-  have hQh := fun a r => (symRanked_holds hQ hR wR a r).2
-  have wP := atom_wf P
-  have wQ := atom_wf Q
-  have wLt := atom_wf Lt
-  have wPL := Tab.comp_wf hPL wP wLt
-  have wQC := Tab.conv_wf hQC wQ
-  rw [Tab.comp_holds h wPL wQC]
-  constructor
-  · rintro ⟨y, hPLy, hQCy⟩
-    obtain ⟨z, hz, hl⟩ := (Tab.comp_holds hPL wP wLt a y).1 hPLy
-    obtain ⟨-, -, hzy⟩ := (Tab.lt_holds hLt trivial trivial z y).1 hl
-    obtain ⟨ha, hRa⟩ := (hPh a z).1 hz
-    obtain ⟨hc, hRc⟩ := (hQh c y).1 ((Tab.conv_holds hQC wQ y c).1 hQCy)
-    obtain ⟨t, ht, -⟩ := (rank_holds hR wD _ _).1 hRa
-    obtain ⟨u, hu, -⟩ := (rank_holds hR wD _ _).1 hRc
-    exact ⟨ha, hc, ⟨z, hRa⟩, ⟨y, hRc⟩, t, u, ht, hu, (rank_lt_iff hR wD hb hf ht hu hRa hRc).1 hzy⟩
-  · rintro ⟨ha, hc, ⟨r, hRa⟩, ⟨s, hRc⟩, t, u, ht, hu, hlt⟩
-    have hzy : r < s := (rank_lt_iff hR wD hb hf ht hu hRa hRc).2 hlt
-    obtain ⟨i, -, hi⟩ := (hPh a r).2 ⟨ha, hRa⟩
-    have hQcs := (hQh c s).2 ⟨hc, hRc⟩
-    have hQcs2 := hQcs
-    obtain ⟨j, -, hj⟩ := hQcs2
-    exact ⟨s, (Tab.comp_holds hPL wP wLt a s).2 ⟨r, (hPh a r).2 ⟨ha, hRa⟩,
-      (Tab.lt_holds hLt trivial trivial r s).2 ⟨⟨i, hi⟩, ⟨j, hj⟩, hzy⟩⟩,
-      (Tab.conv_holds hQC wQ s c).2 hQcs⟩
 
 /-- **`asc` on `sym` numbers the set by rank**: `symAsc D P` holds `(j, a)` when `a` is in `dom P` and its rank
 `r` is the `j`-th smallest of the ranks of `dom P` (`ascDen` at `ℕ`), so by `rank_lt_iff` the `j`-th smallest text. -/
