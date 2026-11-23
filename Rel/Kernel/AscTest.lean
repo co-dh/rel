@@ -179,10 +179,11 @@ def spans : List (AscKey × Enc) :=
 def ncol (xs : List UInt64) (ns : List Nat) : Enc :=
   wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat)
 
-/-- An answer as its error, or each column's and the permutation's metadata and pack bytes. -/
+/-- An answer as its error, or each column's and the permutation's metadata and pack bytes, through `.data.toList`, a
+projection: `ByteArray.toList` is well-founded recursion the kernel unfolds a byte at a time. -/
 def bview : Except String (List Enc × Enc) → String ⊕ List (List UInt8 × List UInt8)
   | .error s => .inl s
-  | .ok (vs, p) => .inr ((vs ++ [p]).map fun | .foR md pk => (md.toList, pk.toList) | _ => ([], []))
+  | .ok (vs, p) => .inr ((vs ++ [p]).map fun | .foR md pk => (md.data.toList, pk.data.toList) | _ => ([], []))
 
 -- q's order: the nulls (rows 1 and 3, kept in input order) first, then 1 and 3; the flags move with the words
 example : bview (kasc (u 4) [(.atom .i64, ncol [3, 0, 1, 0] [1, 3])]) =
