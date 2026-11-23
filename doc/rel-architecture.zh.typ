@@ -696,7 +696,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 #block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
   [构造子], [`mem`（`∋`） `inl` `inr`；`fold` `foldr` `hylo`（AOP 的标准递归组合子）],
   [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）],
-  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`asc`（定理未证）],
+  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理待 D3e-asc，原：定理未证）],
   [native 行], [`cons` `snoc` `cat` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
 )]
 
