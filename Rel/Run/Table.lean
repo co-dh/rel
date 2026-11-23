@@ -228,6 +228,33 @@ def unenum {A V : Obj} (what : String) (D : Tab .long V) (I : Tab A (.atom .sym)
   if T.n = I.n then pure T
   else .error s!"{what}: {I.n.toNat - T.n.toNat} of {I.n} ids are past the dictionary of {D.n} texts"
 
+/-- `K ≫ rank : sym ⟶ ℕ`, each symbol of the column `K` to the position of its text in text order (owner decision J),
+    the one place order enters a symbol. An id past the dictionary has no rank, so the answer is short and refused;
+    ranks are `Int64`, so a dictionary of `2^63` texts is refused. -/
+def symRanked (what : String) (D : Dict) {n : USize} (K : Vals (.atom .sym) n) :
+    Except String (Tab (.atom .sym) .long) := do
+  let P ← (symIds (⟨n, K, K⟩ : Tab (.atom .sym) (.atom .sym))).comp (← rank D)
+  unless P.n = n do .error s!"{what}: {n.toNat - P.n.toNat} of {n} ids are past the dictionary of {D.n} texts"
+  unless D.n.toNat < 2 ^ 63 do .error s!"{what}: the dictionary of {D.n} texts has ranks past Int64"
+  pure P
+
+/-- **`<` on `sym` by text order**, `K ≫ rank ≫ < ≫ rank° ≫ L` (design §4.3): the ranks of the two sides compared at
+    `i64`, a composition of `rank`, `Tab.lt` and a converse, so no kernel of its own. `Tab.ordOp` refuses `sym`
+    because an id's order is insertion order, not text order. -/
+def symLt (D : Dict) {n m : USize} (K : Vals (.atom .sym) n) (L : Vals (.atom .sym) m) :
+    Except String (Tab (.atom .sym) (.atom .sym)) := do
+  let P ← symRanked "<" D K
+  let Q ← symRanked "<" D L
+  (← P.comp (← Tab.lt .i64 P.val Q.val)).comp (← Q.conv)
+
+/-- **`asc(P)` on `sym` by text order**, `asc(R° ≫ R) ≫ R°` with `R = K ≫ rank` for the set `K = dom P` (design
+    §4.3): the ranks of the set numbered by `asc` at `i64`, each read back as its symbol, so `j ↦ a` with `a` the `j`-th
+    smallest text. -/
+def symAsc (D : Dict) (P : Tab (.atom .sym) (.atom .sym)) : Except String (Tab .long (.atom .sym)) := do
+  let R ← symRanked "asc" D (← P.dom).key
+  let C ← R.conv
+  (← Tab.asc (← C.comp R)).comp C
+
 /-- The texts of the ids `y` through the dictionary `D`: `unenum` of the frame of `y`, row `i` its id. -/
 def decode {n : USize} (what : String) (D : Dict) (y : Arr .sym n) : Except String (Vals (.arr (.atom .char)) n) := do
   let T ← unenum what D (← frame y)
