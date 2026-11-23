@@ -305,10 +305,10 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`parseDate` `daysBetween`], [`daysBetween(a, b) ≜ ⟨a $ Z, b $ Z⟩minus`],
     [日期读作其天数（`a`、`b` 在任一 `date` 对象上，`Z : i64` 是库声明的对象）；`date` 上的 `minus` 仍被拒：差不是日期；`parseDate` 即行 `ymd : [C] ⟶ D`（F3）], "full"),
   ([`sample` `shuffle` `randomSplit` `kFolds` `stratifiedSample` `mkRandom`],
-    [`rand(s, x) ≜ ⟨dom(x) $ R, ⊤ s⟩plus mix`；`shuffle(s, x) ≜ dom(x) iasc(rand(s, x)) x`；`sample(s, n, x) ≜ take(n, shuffle(s, x))`；
-    `randomSplit(s, p, x)`：抽签 `div 2^10` 小于 `p·2^53` 的行，`randomRest` 是其余行；`kFolds(s, k, x) ≜ ⟨rand(s, x), ⊤ k⟩mod`],
+    [`mkRandom(s) ≜ ⟨𝟙 $ R, ⊤ s⟩plus mix`；`rand(s, x) ≜ dom(x) mkRandom(s)`；`shuffle(s, x) ≜ dom(x) iasc(rand(s, x)) x`；`sample(s, n, x) ≜ take(n, shuffle(s, x))`；
+    `randomSplit(s, p, x)`：抽签 `div 2^10` 小于 `p·2^53` 的行，`randomRest` 是其余行；`kFolds(s, k, x) ≜ ⟨rand(s, x), ⊤ k⟩mod`；`stratifiedSample(s, n, a, x) ≜ dom(y) asc(dom(⟨sumsBy(y a, dom(y) ⊤ 1), ⊤ n $ R⟩ cor(≤))) y`，`y = shuffle(s, x)`],
     [随机源是纯哈希 `mix`（splitmix64 在计数 `i + s` 处，`Op.mixWord`，值在 `[0, 2^63)`），同一种子同一答案，程序仍是关系（F8）；
-    `stratifiedSample` `mkRandom` 未做], "part"),
+    `relc` 把 `mix` 编成一次 `kscan`（`mixOpB`）], "full"),
   ([`fromList` `fromRows` `fromColumns` `fromUnboxedVector` `empty`], [字面量 `Tm.val`，或 `⟨x, y⟩`], [], "full"),
   ([`columnAsVector` `columnAsList` `toList` `toRowList` `to*Matrix`], [`summarize(F(x c), x)`], [位置顺序的数组], "full"),
   ([`dimensions` `nRows` `nColumns` `columnNames`], [`count(x)`；`nColumns` `columnNames` 读 `Schema`], [列名只在 schema 里，frame 是位置的], "full"),
@@ -414,5 +414,10 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   （`(u + 1)·γ` 的 finaliser 右移一位），一个 `scan` map 的 `Op`（`Op.mix`），无新 kernel、无新导出；
   `rand(s, x)` 在位置 `i` 上取 `mix(i + s)`。种子 `s` 是参数，同一种子同一答案，`shuffle` `sample` `randomSplit`
   `kFolds` 都是 `frameRand` 中的定义（`TestFrameRand` 以手算的 splitmix64 值钉住）。
+  `mkRandom` 本文原未定义，这里定为带种子的流（numpy `default_rng(s)` 的关系形式，不是有状态的对象）：
+  `mkRandom(s) : ν ⟶ R` 把位置 `i` 连到 `mix(i + s)`，自身没有定义域，由读它的一方限定（`take(n, mkRandom(s))`），
+  `rand(s, x) ≜ dom(x) mkRandom(s)` 即其限定。`stratifiedSample(s, n, a, x)`（pandas `groupby(a).sample(n)`）复合
+  `shuffle`、`sumsBy`（组内从 1 起的计数）与 `cor(≤)`：按 `shuffle` 的顺序保留组内计数不超过 `n` 的行；只有一组时就是
+  `sample`。`relc` 把 `mix` 行编成一次 `kscan`（`Op.mix`，Rust `op_word` 分支 49），native gate 的 `mx` 逐字节比较。
 - *F9 位置模型之外的两处。* 单元格里的 list（`Obj.arr`：字符串、`collect` 的结果）是一个值，`N` 只给 frame 的行编号。
   `⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；`hstack` 另加行数相等的检查，不等长时是 `𝟘`。

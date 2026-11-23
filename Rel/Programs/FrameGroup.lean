@@ -77,10 +77,16 @@ open Rel.Programs.prelude Rel.Programs.frame in
 rel_program frameRand where
     obj R : i64
     obj Q : f64
-    rand(s : 1 ⟶ R, x : ν ⟶ β) : ν ⟶ R ≜ ⟨dom(x) $ R, ⊤ s⟩plus mix
+    -- the seeded stream (numpy `default_rng(s)`, as a relation, not a stateful object): position `i` to the draw
+    -- `mix(i + s)`; it has no domain of its own, so a reader bounds it (`rand`, `take(n, mkRandom(s))`)
+    mkRandom(s : 1 ⟶ R) : ν ⟶ R ≜ ⟨𝟙 $ R, ⊤ s⟩plus mix
+    rand(s : 1 ⟶ R, x : ν ⟶ β) : ν ⟶ R ≜ dom(x) mkRandom(s)
     -- the rows in the order of their draws (`iasc` is stable, so equal draws keep position order)
     shuffle(s : 1 ⟶ R, x : ν ⟶ β) : ν ⟶ β ≜ dom(x) iasc(rand(s, x)) x
     sample(s : 1 ⟶ R, n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β ≜ take(n, shuffle(s, x))
+    -- `sample` within each group of `x a` (pandas `groupby(a).sample(n)`): in `shuffle`'s order, the rows whose
+    -- count within their group (`sumsBy` of ones, from 1) is at most `n`; one group is `sample`
+    stratifiedSample(s : 1 ⟶ R, n : 1 ⟶ ν, a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ β ≜ dom(y) asc(dom(⟨sumsBy(y a, dom(y) ⊤ one), ⊤ n $ R⟩ cor(≤))) y where y ≜ shuffle(s, x), one ≜ {(∗,1)}
     -- the rows whose draw is below `p·2^63`, read as `draw div 2^10 < p·2^53` so the draw is an exact `f64`;
     -- `randomRest` is the other rows, so the two split `x`
     randomSplit(s : 1 ⟶ R, p : 1 ⟶ Q, x : ν ⟶ β) : ν ⟶ β ≜ dom(⟨⟨rand(s, x), ⊤ k⟩div $ Q, ⊤ ⟨p, m⟩times⟩ cor(<)) x where k ≜ {(∗,1024)}, m ≜ {(∗,9007199254740992.0)}

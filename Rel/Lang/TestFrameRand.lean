@@ -8,6 +8,8 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameRand in
 rel_program frameRandT where
     obj P = 0…15
     obj K = {A,B,C,D,E,F,G,H}
+    obj G = {u,v}
+    g : K ⟶ G ≜ {(A,u),(B,u),(C,u),(D,u),(E,v),(F,v),(G,v),(H,v)}
     x : P ⟶ K ≜ {(0,A),(1,B),(2,C)}
     y : P ⟶ K ≜ {(0,A),(1,B),(2,C),(3,D),(4,E),(5,F),(6,G),(7,H)}
     s0 : 1 ⟶ R ≜ {(∗,0)}
@@ -25,6 +27,15 @@ rel_program frameRandT where
     check randomRest(s42, half, y) = {(2,C),(3,D)}
     check count(randomSplit(s42, half, y)) = {(∗,6)}
     check kFolds(s42, three, y) = {(0,1),(1,1),(2,0),(3,0),(4,0),(5,1),(6,1),(7,2)}
+    -- the stream's first two draws: splitmix64 at counters 0, 1 and at 42, 43
+    check take(two, mkRandom(s0)) = {(0,8147104208329303767),(1,3980143261097177850)}
+    check take(two, mkRandom(s42)) = {(0,283244664701664340),(1,675551852842775707)}
+    -- groups u = A…D, v = E…H; seed 0 shuffles `y` to C E G F B H A D, so the first two of u are C B, of v E G;
+    -- seed 42 to A B H E F G C D: A B of u, H E of v
+    check stratifiedSample(s0, two, g, y) = {(0,C),(1,E),(2,G),(3,B)}
+    check stratifiedSample(s42, two, g, y) = {(0,A),(1,B),(2,H),(3,E)}
+    -- one group: `sample`
+    check stratifiedSample(s0, two, ⊤ {(∗,u)}, x) = sample(s0, two, x)
 
 #guard frameRandT.failures.map toString == []
 

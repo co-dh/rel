@@ -85,6 +85,8 @@ rel_program native1a where
     ss : N×N ⟶ I ≜ sums(sx)
     -- `length` of cells of two, none and two elements
     ln : N ⟶ N ≜ bg length
+    -- `mix` (splitmix64, `Op.mixWord`) at counters 0, 42 and the largest `i64`, where `u + 1` leaves the sign
+    mx : N ⟶ I ≜ {(1,0),(2,42),(3,9223372036854775807)} mix
     -- `<` on an unbounded object, bounded only by the literal composed after it: run with its range that literal's
     -- domain (`S` first) and read at the range of the table before it (a closed node that cannot run closed)
     obj M
@@ -237,7 +239,8 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("ld", semOut native1a.ld), ("l1", semOut native1a.l1), ("rd", semOut native1a.rd), ("gc", semOut native1a.gc),
    ("fm", semOut native1a.fm), ("hy", semOut native1a.hy), ("f1", semOut native1a.f1), ("f3", semOut native1a.f3),
    ("es", semOut native1a.es), ("th", semOut native1a.th), ("fi", semOut native1a.fi), ("sb", semOut native1a.sb),
-   ("sf", semOut native1a.sf), ("ss", semOut native1a.ss), ("gb", semOut native1a.gb), ("tk", semOut native1a.tk), ("ln", semOut native1a.ln)]
+   ("sf", semOut native1a.sf), ("ss", semOut native1a.ss), ("gb", semOut native1a.gb), ("tk", semOut native1a.tk), ("ln", semOut native1a.ln),
+   ("mx", semOut native1a.mx)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do

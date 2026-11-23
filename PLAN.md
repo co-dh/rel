@@ -157,7 +157,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ✅ df-F8 随机源：`Op.mix`（splitmix64 在计数 `u` 处，`Op.mixWord`，Rust `op_word` 分支 49，`cast`/`fto` 码后移一位，
   `RELK.txt` 不变），row `mix : R ⟶ R`（i64，`Tab.mixOp`，`mixOp_den`/`mixOp_wf`，`rowOK_mix`）；`frameRand` 库：
   `rand` `shuffle` `sample` `randomSplit` `randomRest` `kFolds`，`TestFrameRand` 钉住种子 0 与 42 的手算值。
-  未做：`stratifiedSample`、`mkRandom`；`EmitC` 没有 `mix` 的 C 代码（`relc` 遇到该 row 报错）。
+  df-F8b：`mkRandom(s) ≜ ⟨𝟙 $ R, ⊤ s⟩plus mix`（带种子的流，`rand(s, x) ≜ dom(x) mkRandom(s)`）；
+  `stratifiedSample(s, n, a, x)` = `shuffle` 后按组内计数（`sumsBy` 的 1）`≤ n` 保留，一组时即 `sample`；
+  `TestFrameRand` 钉住两者在种子 0 与 42 的手算值。`EmitC` 的 `mixOpB`（e647519）已把 `mix` 编成 `kscan`，
+  native gate 加 `mx`（计数 0、42、`2^63−1`），`make native` 逐字节一致。
 - 🔄 D.3 6.9 atom（含 `date`、`datetime`、`u8`）：Rust tag 表 WIP，Lean rename 排在 3.8 之后（见 6.9）。
   执行约束：机器 30 GB，`cap` 的 20000 MB 是每个进程的虚拟地址上限（`ulimit -v`），不是占用；限不住多个 build 的总 RSS，所以重的命令（全量 build、`lean-refactor`）前加 `cc-guard/bin/admit`：只在可用内存够时启动，不加锁，CPU 让调度器分。合并后把 sha 告诉 dataframe 会话，stage 1 rebase 到它上面。
 - ✅ D.4 6.13a 虚拟行号 `Enc.pos`：已合并，以下为合并前的记录。`d4pos2` 32b83cf，`RelKernel`、`RelRun` 与所有用到 `Enc` 的 `Rel` module build
