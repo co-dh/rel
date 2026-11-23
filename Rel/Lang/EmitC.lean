@@ -1,9 +1,14 @@
-import Rel.Run.Lang.Plan
-import Rel.Run.Lang.Expand
-import Rel.Kernel.Db.ObjectFile
-import Rel.Kernel.Db.Csv
-import Rel.Run.Lang.TmGen
-import Rel.Lang.Table
+module
+
+public import Rel.Run.Lang.Plan
+public import Rel.Run.Lang.Expand
+public import Rel.Kernel.Db.ObjectFile
+public import Rel.Kernel.Db.Csv
+public import Rel.Run.Lang.TmGen
+public import Rel.Lang.Table
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! # `relc`: a plan printed as C (`doc/rel-native-design.md` §6, stage 1a)
 

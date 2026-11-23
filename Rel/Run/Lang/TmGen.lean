@@ -110,10 +110,12 @@ run_elab do
     pure ((s, lg), mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) genTy (toExpr s) e)
   let ty := mkApp (mkConst ``List [0]) (mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``String) genTy)
   let val ← mkListLit (mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``String) genTy) (es.map (·.2))
-  addAndCompile (.defnDecl (mkDefinitionValEx `Rel.Lang.rowGens [] ty val .abbrev .safe [`Rel.Lang.rowGens]))
+  -- `forceExpose`: a generated def sits outside the `@[expose]` section, and a proof `rfl`s through its body
+  let addExposed (d : Declaration) : CoreM Unit := do addDecl d (forceExpose := true); compileDecl d
+  addExposed (.defnDecl (mkDefinitionValEx `Rel.Lang.rowGens [] ty val .abbrev .safe [`Rel.Lang.rowGens]))
   -- the choice beside the code, so `primHasCode` reads a row's objects (`rowObjs`) without reaching its code
   let lty ← el (← `(List (String × List Bool)))
-  addAndCompile (.defnDecl (mkDefinitionValEx `Rel.Lang.rowLongs [] lty (toExpr (es.map (·.1))) .abbrev .safe
+  addExposed (.defnDecl (mkDefinitionValEx `Rel.Lang.rowLongs [] lty (toExpr (es.map (·.1))) .abbrev .safe
     [`Rel.Lang.rowLongs]))
 
 /-- The number of relations row `s` is given: its `prims` entry's, the one `rowGens` was generated from. -/

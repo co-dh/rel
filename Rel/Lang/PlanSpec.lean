@@ -1,4 +1,9 @@
-import Rel.Lang.EmitC
+module
+
+public import Rel.Lang.EmitC
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! # A builder's plan means its def (`doc/rel-native-design.md` §13, stage 1b)
 
