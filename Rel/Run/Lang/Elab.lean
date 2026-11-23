@@ -2657,7 +2657,7 @@ def build (δ : Dem) : Pre → Except Err Res
       unless (match ← objOf objs dp u with | .one => true | _ => false) do
         throw ⟨p, s!"{(Op.arith k).sym} on {zonk mc n}: the left summand {u} is not the unit, so the sum is no nullable `1+N`"⟩
       unless t == .i64 do throw ⟨p, s!"{(Op.arith k).sym} on {zonk mc n}: only `1+i64` has a null order, found {repr t}"⟩
-      return ⟨_, _, Tm.cut2 (arithRow s) (← uniTm objs mc dp p n (.opt .long) (Op.arith k).sym)⟩
+      return ⟨_, _, Tm.cut2 (arithRow s) (← uniTm objs mc dp δ p n (.opt .long) (Op.arith k).sym)⟩
     let ⟨t, U⟩ ← numU objs mc p n (Op.arith k).sym (arithOk k)
     if valueAtom t then
       let some (s, _) := arithOps.find? (·.2 == k) | internal dp s!"no row of arithOps has the verb {k}"

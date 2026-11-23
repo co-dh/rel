@@ -1093,6 +1093,10 @@ theorem ColB.get_i64 {o : Bool} {n : USize} (x : ColB o .i64 n) (hn : ColB.Flat 
     simp only [ColB.get, h, Option.getD_some]
     try rfl
 
+/-- An `Arr` has no null row (`hasNul = false`), so every lemma about a `ColB.Flat` column holds of it. -/
+theorem Arr.flat {t : QAtomicType} {n : USize} (x : Arr t n) : ColB.Flat (o := false) x :=
+  fun i => foRNuls_plain x.2.1 x.2.2 i.2
+
 /-- A column with no row flagged null owns every row it is `OwnedOn`. -/
 theorem ColB.owned_of_flat {n : USize} {P : Fin n.toNat → Prop} (x : ColB true .i64 n) (hn : ColB.Flat x)
     (hx : ColB.OwnedOn x P) (i : Fin n.toNat) : P i := by
