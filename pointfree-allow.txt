@@ -18,7 +18,6 @@ Rel.Hylo.rounds
 Rel.Lang.atDen
 Rel.Lang.floatDen
 Rel.Lang.leqDen
-Rel.Lang.loopDen
 Rel.Lang.ltDen
 Rel.Lang.memDen
 Rel.Lang.stepAt
