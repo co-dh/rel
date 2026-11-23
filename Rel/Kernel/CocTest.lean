@@ -178,4 +178,13 @@ example : parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) =
   parts (Coc.bools 2600 (Column.bitAt (packOf 2600 fun i => (i % 3 == 0 && i < 1024) || 2048 ≤ i)))
 #guard parts (Coc.boolsOf (u 12) (bytes1 [0b101])) == parts (Coc.bools 12 (Column.bitAt (bytes1 [0b101])))
 
+-- `sum 100 0N 105 = 205` (null-zero: folds skip null): the language's sum over `foROpt` (`Column.blockSum`) and the
+-- writer's `bsum` of the flagged block (`Coc.nulBlock`), base 99 and residuals 1 and 6, so `99 * 2 + 7`
+def sumN (xs : List UInt64) (ns : List Nat) : UInt64 × UInt64 :=
+  let nul := Column.packIds 1 xs.length fun i => (ns.contains i).toNat
+  let r := Coc.encode (u 8) (dense xs) nul
+  (Column.blockSum r.1 r.2 (Column.blockStarts r.1) 0, (Coc.nulBlock (2 ^ Column.lgEnc) 8 xs.length 0 (dense xs) nul).2.2.1)
+example : sumN [100, 0, 105] [1] = (205, 205) := by decide +kernel
+#guard sumN [100, 0, 105] [1] == (205, 205)
+
 end Rel.Kernel.CocTest

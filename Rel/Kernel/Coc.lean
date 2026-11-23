@@ -211,7 +211,8 @@ def lowKey (w : Nat) (k : Int64) : Bool :=
 
 /-- Block `b`, of `B` elements, of a nullable column (`1+atom`, owner decision K) where it holds a null: `x` its `n`
 `w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its maximum and `blockOf`'s sum are taken over the
-rows that are not null (`0`, `0` where every row is). Its base is the least such key less one, so every value's residual
+rows that are not null (`0`, `0` where every row is); the sum skips exactly the null rows, so it is `base·k + Σr`
+(`Verify.blockSum_eq`), a value at `sumNul` being a value here. Its base is the least such key less one, so every value's residual
 is at least 1 and the null is residual 0; its width byte is `widthFor` of the maximum less the base, plus `nulAt`'s bit 7.
 Where the least key is the type's own least (`lowKey`, which the base cannot go below) or no row is a value, the base is
 that key and `encodeAt` patches the rows holding it (`patched`). -/
@@ -221,7 +222,7 @@ def nulBlock (B w n b : Nat) (x nul : ByteArray) : Int64 × Int64 × UInt64 × N
     fun j => keyAt w x (lo + j)
   let mn := ks.foldl min (ks.getD 0 0)
   let mx := ks.foldl max (ks.getD 0 0)
-  let s := ks.foldl (init := (0 : UInt64)) fun acc k => if k.toUInt64 == sumNul w then acc else acc + k.toUInt64
+  let s := ks.foldl (init := (0 : UInt64)) fun acc k => acc + k.toUInt64
   let f := if ks.isEmpty || lowKey w mn then mn else mn - 1
   (f, mx, s, 128 + Rel.Column.widthFor (mx - f).toUInt64.toNat)
 

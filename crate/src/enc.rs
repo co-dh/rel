@@ -212,7 +212,7 @@ pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], 
             if is_nul(nul, lo + i) { continue }
             let k = v.i();
             if any { (mn, mx) = (mn.min(k), mx.max(k)) } else { (mn, mx, any) = (k, k, true) }
-            if k != self::nul::<T>() { s = s.wrapping_add(k) }
+            s = s.wrapping_add(k);
         }
         let f = if !any || low_key::<T>(mn) { mn } else { mn - 1 };
         let d = crate::bits::width_for((mx as u64).wrapping_sub(f as u64));

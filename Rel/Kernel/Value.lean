@@ -506,6 +506,12 @@ def foRNul (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Bool :=
 def foROpt (metadata pack : ByteArray) (starts : Array Nat) (i : Nat) : Option UInt64 :=
   if foRNul metadata pack starts i then none else some (foRBits metadata pack starts i)
 
+/-- Block `b`'s sum as the language states it, `sum ≜ inr° ≫ ⦇0,+⦈` over `foROpt`: the values added, a null skipped
+(wrapping at 64 bits, as the kernel's `bsum` does). -/
+def blockSum (metadata pack : ByteArray) (starts : Array Nat) (b : Nat) : UInt64 :=
+  (List.range (blk metadata)).foldl (init := 0) fun acc j =>
+    match foROpt metadata pack starts (b * blk metadata + j) with | none => acc | some v => acc + v
+
 /-- Whether every value a `foR` payload holds is below 2, decided per block from its metadata and patch list alone,
 never per element (`Verify.u1Ok_bound`): an unpatched value is `baseAt + foRFrame + residual`, the residual at most
 `ones (widthAt)`, and a patched value is its patch.

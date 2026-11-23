@@ -1754,5 +1754,78 @@ theorem idAt_packIds {w n i : Nat} {f : Nat → Nat}
   · exact idAt_packIds_lane 4 n f (by decide) (by decide) hi hf
   · exact idAt_packIds_lane 8 n f (by decide) (by decide) hi hf
 
-end Rel.Verify
 
+theorem sum_res (c : UInt64) (l : List UInt64) : ∀ a r : UInt64,
+    l.foldl (· + ·) (c * r + a) = c * (r + UInt64.ofNat l.length) + l.foldl (fun s k => s + (k - c)) a := by
+  induction l with
+  | nil => intro a r; simp
+  | cons x tl ih =>
+    intro a r
+    simp only [List.foldl_cons, List.length_cons]
+    have e : c * r + a + x = c * (r + 1) + (a + (x - c)) := by grind
+    rw [e, ih, UInt64.ofNat_add]
+    congr 1
+    grind
+
+/-- The sum of a column's rows folded as `sum ≜ inr° ≫ ⦇0,+⦈` reads them (`Column.foROpt`'s values added, a null
+skipped) is `c·k + Σg`: where each value of rows `l` is `c + g i`, `k` the rows that are values, `Σg` their `g`.
+`step` is the fold's step, `agg` the count and the sum of `g` beside it. -/
+theorem sum_opt_fold (f : Nat → Option UInt64) (g : Nat → UInt64) (c : UInt64) (l : List Nat)
+    (hv : ∀ i ∈ l, ∀ v, f i = some v → v = c + g i) : ∀ r a : UInt64,
+    l.foldl (fun acc i => match f i with | none => acc | some v => acc + v) (c * r + a) =
+      c * (l.foldl (fun p i => match f i with | none => p | some _ => (p.1 + 1, p.2 + g i)) (r, a)).1 +
+        (l.foldl (fun p i => match f i with | none => p | some _ => (p.1 + 1, p.2 + g i)) (r, a)).2 := by
+  induction l with
+  | nil => intro r a; rfl
+  | cons i tl ih =>
+    intro r a
+    have ih := ih fun j hj => hv j (List.mem_cons_of_mem _ hj)
+    simp only [List.foldl_cons]
+    cases hf : f i with
+    | none => exact ih r a
+    | some v =>
+      have e : c * r + a + v = c * (r + 1) + (a + g i) := by rw [hv i List.mem_cons_self v hf]; grind
+      simp only [hf]
+      rw [e]; exact ih (r + 1) (a + g i)
+
+/-- **The block sum is `base·k + Σr`**: the values of block `b` of a nullable column, added with the nulls skipped
+(`Column.blockSum`, the language's `sum ≜ inr° ≫ ⦇0,+⦈` over `foROpt`), is the block's base times its `k` non-null rows
+plus their residuals' sum, the kernel's `bsum` of a flagged block (`Coc.nulBlock`, `nulBlock_sum`). Where each value is its
+base plus its residual: an unpatched row by `foRBits` at frame 0, a patched row because the writer patches only a row
+holding the base (`Coc.nulBlock`). -/
+theorem blockSum_eq (M P : ByteArray) (b : Nat)
+    (hv : ∀ j < Column.blk M, ∀ v, Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) = some v →
+      v = Column.baseAt M b + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j) :
+    Column.blockSum M P (Column.blockStarts M) b =
+      Column.baseAt M b * ((List.range (Column.blk M)).foldl (fun p j =>
+        match Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) with
+        | none => p
+        | some _ => (p.1 + 1, p.2 + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j)) ((0 : UInt64), (0 : UInt64))).1 +
+      ((List.range (Column.blk M)).foldl (fun p j =>
+        match Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) with
+        | none => p
+        | some _ => (p.1 + 1, p.2 + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j)) ((0 : UInt64), (0 : UInt64))).2 := by
+  have := sum_opt_fold (fun j => Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j))
+    (fun j => Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j) (Column.baseAt M b)
+    (List.range (Column.blk M)) (fun j hj => hv j (List.mem_range.1 hj)) 0 0
+  simpa [Column.blockSum] using this
+
+/-- The sum of the keys a flagged block's writer adds, `Coc.nulBlock`'s `bsum`: over the rows that are not null, so it is
+the base times their count plus the sum of their keys less the base, the residuals of rows below the base's patches. -/
+theorem nulBlock_sum (B w n b : Nat) (x nul : ByteArray) :
+    (Kernel.Coc.nulBlock B w n b x nul).2.2.1 =
+      (Kernel.Coc.nulBlock B w n b x nul).1.toUInt64 *
+        UInt64.ofNat (((Array.range (min (b * B + B) n - b * B)).filter fun j => !Column.bitAt nul (b * B + j)).size) +
+      ((((Array.range (min (b * B + B) n - b * B)).filter fun j => !Column.bitAt nul (b * B + j)).map
+        fun j => (Kernel.Coc.keyAt w x (b * B + j)).toUInt64).toList.foldl
+          (fun s k => s + (k - (Kernel.Coc.nulBlock B w n b x nul).1.toUInt64)) 0) := by
+  have h := sum_res (Kernel.Coc.nulBlock B w n b x nul).1.toUInt64
+    (((Array.range (min (b * B + B) n - b * B)).filter fun j => !Column.bitAt nul (b * B + j)).map
+      fun j => (Kernel.Coc.keyAt w x (b * B + j)).toUInt64).toList 0 0
+  simp only [UInt64.mul_zero, UInt64.zero_add, UInt64.add_zero, Array.length_toList, Array.size_map] at h
+  refine Eq.trans ?_ h
+  rw [Array.toList_map, List.foldl_map, Array.foldl_toList]
+  unfold Kernel.Coc.nulBlock
+  simp only [Array.foldl_map]
+
+end Rel.Verify
