@@ -44,7 +44,5 @@ rel_program frameJoin where
     -- get_dummies' column of the value `s` of `c`: `inl` where a row's `c` is `s` (`c s° s`, the coreflexive `c ≫ (= s)`),
     -- `inr` elsewhere; over a finite object `V`, `⟨v ∈ V ↦ dummy(c, v, x)⟩` is every column (doc F1)
     dummy(c : β ⟶ θ, s : 1 ⟶ θ, x : ν ⟶ β) : ν ⟶ 1+1 ≜ dom(x) tot(x c s°)
-    -- get_dummies: `dummy` at every element of `c`'s object, which a use gives (`⟨e ∈ θ ↦ …⟩` is expanded there)
-    getDummies(c : β ⟶ θ, x : ν ⟶ β) ≜ ⟨e ∈ θ ↦ dummy(c, e, x)⟩
 
 end Rel.Programs

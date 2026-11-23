@@ -776,7 +776,7 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
     | none => throw ⟨p, s!"unknown object '{n}'"⟩
   | .var p n => match (vs.lookup n).orElse fun _ => env.ovars.lookup n with
     | some o => pure o
-    | none => throw ⟨p, s!"the object variable '{n}' is not instantiated here DBG {env.ovars.map (·.1)} {vs.map (·.1)} gdef {env.gdef}"⟩
+    | none => throw ⟨p, s!"the object variable '{n}' is not instantiated here"⟩
   | .prod a b => return .prod (← oty env vs a) (← oty env vs b)
   | .sum a b => return .sum (← oty env vs a) (← oty env vs b)
   | .list a => return .arr (← oty env vs a)

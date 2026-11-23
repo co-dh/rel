@@ -31,10 +31,6 @@ rel_program dummiesT where
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "c", e, x)⟩
     check d ⟨⟨π₁ π₁ [{(∗,yes)}, {(∗,no)}], π₁ π₂ [{(∗,yes)}, {(∗,no)}]⟩, π₂ [{(∗,yes)}, {(∗,no)}]⟩ =
       {(0,((no,yes),no)),(1,((yes,no),no)),(2,((no,yes),no)),(3,((no,no),yes))} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
-    -- the library definition generic over the object: the columns are `V`'s elements, read from the data at this use
-    g : P ⟶ D ≜ getDummies(col T "c", x)
-    check g = d where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
-    check g col D "c_9" [{(∗,yes)}, {(∗,no)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
     check d col D "c_9" [{(∗,yes)}, {(∗,no)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
 
 #guard dummiesT.ok
