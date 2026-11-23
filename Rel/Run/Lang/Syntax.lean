@@ -288,7 +288,7 @@ def domRow : Prim :=
 /-- `ran(R) = 𝟙 ∩ R° R`, the fused form of its definition `dom(R°)` (`Elab.dfns`), one column sorted where the
     definition sorts two (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
 def ranRow : Prim :=
-  { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"), conv := "ran",
+  { sym := "ran", sig := ([((.var {} "A", .var {} "B"), none)], .var {} "B", .var {} "B"), conv := "ran",
     prelude := `Rel.Programs.prelude.ran, written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `[] : A ⟶ [B]`, every source to the empty list, the fused form of its definition `Λ(𝟘)` (`Elab.dfns`), a
     constant column (`GenK.nil`). -/

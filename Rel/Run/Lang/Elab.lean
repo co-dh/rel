@@ -786,6 +786,11 @@ structure Env where
 def Env.def? (env : Env) (n : String) : Option Def :=
   (env.defs.lookup n).orElse fun _ => match env.res n with | .ext e => if e.obj || e.thm then none else env.ext.lookup e.const | _ => none
 
+/-- The definition whose constant is `c`: another program's (`ext`), else this program's own, whose constant ends in
+    its name (`Parse.constOf`), as while the program defining `c` is itself being elaborated. -/
+def Env.defOf (env : Env) (c : Lean.Name) : Option Def :=
+  (env.ext.lookup c).orElse fun _ => match c with | .str _ n => env.defs.lookup n | _ => none
+
 /-- The infix operator `n`: the program's `_n_`, else the registered infix the resolver gives. -/
 def Env.infix? (env : Env) (n : String) : Option Def :=
   (env.defs.lookup s!"_{n}_").orElse fun _ => match env.res n with | .ext e => if e.isInfix then env.ext.lookup e.const else none | _ => none
@@ -1413,7 +1418,7 @@ where
     | .mv _, _ => unify p "the source of ⦇R⦈'s base inl R" src env.one
     | _, _ => pure ()
     -- `ran(a)` is the prelude's definition, found by its row's constant, so a program that renames it still folds
-    match ranRow.prelude.bind fun c => env.ext.lookup c with
+    match ranRow.prelude.bind env.defOf with
     | some d => pure (← d.apply p [a], s)
     | none => throw ⟨p, "⦇R⦈'s start is `ran(a)`, and the prelude's `ran` is not in scope"⟩
 
