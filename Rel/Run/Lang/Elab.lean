@@ -692,9 +692,10 @@ partial def Pre.foldShared {α : Type} (g : Pre → List α × List Pre) (x : Pr
 /-- The parts `parts` names, without their polarity: where a walk goes on unless it says otherwise. -/
 def Pre.subs (x : Pre) : List Pre := x.parts.map (·.1)
 
-/-- The source of each `nil` in `x`, a definition's body at its use included. -/
+/-- The source of each `nil` in `x` (a node, or a row with an open source, `Prim.openSrc`), a definition's body at its
+    use included. -/
 def Pre.nilSrcs (x : Pre) : List OTy :=
-  x.foldShared fun | .nil a _ => ([a], []) | y => ([], y.subs)
+  x.foldShared fun | .nil a _ => ([a], []) | y@(.prim r _ s _) => ((if r.openSrc then [s] else []), y.subs) | y => ([], y.subs)
 
 /-- `x` and every node under it, a call's expansion included. -/
 def Pre.nodes (x : Pre) : List Pre := x.foldShared fun y => ([y], y.subs)

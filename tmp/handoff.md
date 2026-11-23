@@ -1,28 +1,26 @@
-# B9bc handoff (WIP, nothing built yet)
+# B10c2 handoff (worktree agent-aaf0133cb02dd7fc4)
 
-Design as in the task: `Tm.own` and `Tm.callCv` deleted, `Tm.call ks c (cv : Option Name) os b`.
+Done (committed): RelRun green; Rel/Lang/PreludeDfn.lean (Tm.<sym>Def, Tm.<sym>Def_den for flat foldI dom ran nil front)
+imported in PreludeDen (green, gate check passes); Prelude.lean builds (foldI text must be on ONE line: a continuation
+line after `≜` is not read); Env.defOf (Elab.lean) finds the fold start's `ran` while the prelude is elaborated;
+ranRow's argument form is `none` (read whole, as the old `applied .ran`).
 
-## Done (edited, NOT yet compiled)
-- `Rel/Run/Lang/Tm.lean`: ctor, dem, size, mapMSz, inner, fv, subst, pol, linIn, kids.
-- `Rel/Run/Lang/TmGen.lean`: gen, argGen, hasCode, argHasCode, #guards, tmE (`toExpr cv`), numberKey, number, twoCalls.
-- `Rel/Run/Lang/Elab.lean`: instObj, `Pre.own` + traverse arm + build arm deleted, `Pre.call.cv : Option Name`, convTm
-  (own arm deleted; call arm = self theorem branch with `by obtain ⟨-, rfl⟩ := h; exact pure …`, derived branch
-  `convTm b`), callTm (`return .call ks c cv os (← inst t)`), callNode.
-- `Rel/Run/Lang/Expand.lean`: `useDef` perm arm deleted; `convOf o : Option Name` = guard then `some (o.const ++ `conv)`;
-  `callDef` has new param `cs : List (String × String)` before `d`; `cv := own <|> convOf o` where `own` = `some k`
-  iff `cs.lookup n = some n` (self theorem); `walk` passes `convs prog` at both callDef sites; `fieldsEq` compares `cv.map key`.
-  Choice: table taken from the walked program (`convs prog`, in `walk`) not threaded through `read`.
-  A theorem `c° = c'` with c' ≠ c falls to the derived converse (the name c' has no body here).
+WIP (uncommitted before the WIP commit): Prim.openSrc (Syntax.lean) + Pre.nilSrcs reads `.prim` rows with it, so a
+`nil` used as a row still defaults its open source to `1` (settleOpen). `nil(1)` in Programs/Edit.lean and
+Programs/Knapsack.lean rewritten to `nil`.
+NOTE: `lake build RelRun` did not relink librel_Rel_Run.so (.so older than Syntax.olean), so a `lean` probe
+(/data/tmp/hb10c2-open.lean, lists rows with openSrc) still ran the OLD compiled code; first version of openSrc
+(no prelude test) also selected asc $ sqrt neg abs ... and broke TestGenericNum (`length`'s target became 1). The
+current version (prelude.isSome && no params && source var not in target) must be verified by a full build of
+`RelRun Rel` (target the .so: `lake build RelRun:shared` or the lib's facet) and TestGenericNum.
 
-## Left (anchors are use_site rows of the index, lines of f10a505)
-1. `Rel/Lang/ConvSpec.lean`: ConvOK `:115-128` (own, callCv clauses -> the `call … (some c')` clause of the task),
-   `convTm_den` (own :185, call :203, callCv :208), `convTm_instObj_den` (:573, :596, :601), `callTm_convOK` (:903; delete if unused),
-   it may need `ρ` after the colon.
-2. `Rel/Lang/Den.lean`: den :490/497, argDen :509/512, den_congr :682/716, den_pol_spine :954/1027, den_linIn :1099/1100,
-   den_local :1233/1261/1263.
-3. `Rel/Lang/GenSound.lean`: GenHyp :199-200, monoOK :214-216, pol_of_fv :1499, numGeneric :1716, number_spine :1762, number_spec :1785.
-4. `Rel/Lang/EmitC.lean`: nodeB :1491/1515, argB :1541.  `Rel/Lang/GenSoundTest.lean` :113-143 (`call` has the new `cv` arg).
-5. `Rel/Programs/Prelude.lean:43-44` comment mentioning `Tm.own`; `Registry.call?` (`Expand.lean` ~1020) check that a name does not determine the body.
-6. Tests: `#guard` with a program using `perm°`; a program `(f° g)°` with a user definition `f` (derived converse).
-7. Docs: PLAN.md B9b/B9c -> one merged line; `doc/rel-architecture.zh.typ` ~187, ~189; `doc/tm-minimal-design.zh.typ` ~282-284; `typst compile` both.
-8. Build: `CAP_MEM_MB=20000 /home/dh/repo/freyd/scripts/cap lake build` of the edited modules, then `RelRun Rel`.
+Left (errors of the last full build, build7, with the first openSrc):
+- test programs without the prelude use dom/ran now: add `open Rel.Programs.prelude in` before the `rel_program`
+  (TestFloatObj 14, 77(#guard_msgs in … open … in); TestFloatArith 10, 36, 77, 143) — "unknown name 'dom'".
+- Rel/Programs/Edit.lean:8 (line 71 col 54) and Rel/Lang/Test/Orders.lean:8 (line 17 col 46):
+  "⊤'s target: [..] has no universe" — check whether still failing after openSrc is right.
+- TestGenericNum (63..141), FrameGroup:39: "length's definition (dfns) has no form at [i64] ⟶ 1", "$ from 1 (no atom) to ψ" —
+  caused by the over-broad openSrc; re-check after the fix.
+- then `lake build RelRun Rel`, commit `B10c2: …`, re-time Test/Folds Test/Lists Test/Orders TestGenericNum
+  (baselines 0.94 1.95 0.64 0.82 s), check TestGenericNum.lean:133 avgS.
+Log of the last full build: /data/tmp/hb10c2-build7.log

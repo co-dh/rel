@@ -589,6 +589,13 @@ def OExp.vars : OExp → List String
 def Prim.vars (r : Prim) : List String :=
   ((r.sig.1.flatMap fun ((x, y), _) => x.vars ++ y.vars) ++ r.sig.2.1.vars ++ r.sig.2.2.vars).eraseDups
 
+/-- The row's source is a variable nothing else in its signature names (`nil : A ⟶ [B]`): a use no context fixes
+    starts at the object `1` (`settleOpen`). -/
+def Prim.openSrc (r : Prim) : Bool :=
+  match r.sig.2.1 with
+  | .var _ v => r.prelude.isSome && r.sig.1.isEmpty && !(r.sig.2.2.vars.contains v)
+  | _ => false
+
 /-- The object variables a `⟨θ ↦ A⟩` in `o` takes its elements from: those of each `θ`, which a use must solve before
     the elements are known. -/
 def OExp.eachVars : OExp → List String

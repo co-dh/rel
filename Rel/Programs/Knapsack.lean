@@ -47,7 +47,7 @@ rel_program knapsack where
        cpr(a,ps) = [(p,a) ∣ p ← ps], the fold over ps that pairs each packing with a; its arguments are families (§e), so
        the step passes the item and the packings as ⟨⊤,π₂⟩, ⟨⊤,π₁⟩ and drops the 1 of the result. -/
 
-    cpr(a : 1 ⟶ N×N, ps : 1 ⟶ [[N×N]]) : 1 ⟶ [[N×N]×(N×N)] ≜ ps⦇[nil(1), ⟨π₁, ⟨π₂, ⊤ a⟩⟩snoc]⦈
+    cpr(a : 1 ⟶ N×N, ps : 1 ⟶ [[N×N]]) : 1 ⟶ [[N×N]×(N×N)] ≜ ps⦇[nil, ⟨π₁, ⟨π₂, ⊤ a⟩⟩snoc]⦈
     step : [[N×N]]×(N×N) ⟶ [[N×N]] ≜ cpr(⟨⊤,π₂⟩,⟨⊤,π₁⟩)π₂⟨F(snoc)filter(within(w)), F(π₁)⟩merge(R)thinL(Q)
     knap : K ⟶ [N×N] ≜ X⦇[X nil τ, step]⦈est(R)   -- minL(R) is est(R) on the thinned array
 
