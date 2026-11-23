@@ -55,11 +55,11 @@ theorem hylo_sound {A B : Obj} {what : String} {ch : Rel A A} {CH : Core.Rel (Ob
         obtain ⟨R, hR, hT⟩ := bind_ok hT
         obtain ⟨P, hP, hT⟩ := bind_ok hT
         have wR := (compT_wf (r' := .ok M) (fun _ hr => by cases hr; exact wM) wch).runE Known.wf_empty hR
-        rw [Tab.union_holds hT wD (Tab.ran_wf hP wR), Tab.ran_holds hP]
+        rw [Tab.union_holds hT wD (Tab.ran_wf hP wR), Tab.ran_holds hP wR.2]
         refine or_congr Iff.rfl (and_congr Iff.rfl ?_)
         exact exists_congr fun x => (compT_holds hch wch M wM R hR x a)) hNw
       (fun R => ∀ a a', R a a' → a = a') (fun _ _ h => h.elim)
-      (fun R hR a a' h => h.elim (hR a a') fun h => h.elim (fun h => ((Tab.idU_holds hD a a').1 h).1) (·.1)) hN
+      (fun R hR a a' h => h.elim (hR a a') fun h => h.elim (fun h => ((Tab.idU_holds hD wX a a').1 h).1) (·.1)) hN
     have hDN : ∀ a, D.Holds a a → N.Holds a a := fun a h => hNF a a (Or.inl h)
     have hcl : ∀ a a', N.Holds a a → CH a a' → N.Holds a' a' := fun a a' h c => hNF a' a' (Or.inr ⟨rfl, a, a, h, c⟩)
     -- the rounds on `N`: below `μ Φ`, and a prefixed point there
@@ -74,9 +74,9 @@ theorem hylo_sound {A B : Obj} {what : String} {ch : Rel A A} {CH : Core.Rel (Ob
         (le_iff.1 (hm R (Core.Rel.mu Φ) (le_iff.2 hR)) a b h.2)) hY
     have hZ : Core.Rel.mu Φ ⊑ fun a b => N.Holds a a → Y.Holds a b := mu_le <| le_iff.2 fun a b hz hn =>
       hYF a b ⟨hn, (hl (fun a b => N.Holds a a → Y.Holds a b) (rep Y) a (fun a' c b' => ⟨fun hy => hy (hcl a a' hn c), fun hy _ => hy⟩) b).1 hz⟩
-    have hDa : D.Holds a a := (Tab.idU_holds hD a a).2 ⟨rfl, (side_some hK a).1 ha⟩
+    have hDa : D.Holds a a := (Tab.idU_holds hD wX a a).2 ⟨rfl, (side_some hK a).1 ha⟩
     rw [rep_apply, Tab.comp_holds h wD (Tab.mu_wf hYw hY)]
-    exact ⟨fun ⟨a', hd, hy⟩ => by obtain ⟨rfl, -⟩ := (Tab.idU_holds hD a a').1 hd; exact hYm a b hy,
+    exact ⟨fun ⟨a', hd, hy⟩ => by obtain ⟨rfl, -⟩ := (Tab.idU_holds hD wX a a').1 hd; exact hYm a b hy,
       fun hm' => ⟨a, hDa, le_iff.1 hZ a b hm' (hDN a hDa)⟩⟩
 
 end GenK
