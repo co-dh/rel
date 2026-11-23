@@ -786,7 +786,7 @@ theorem sums_holds {K : Obj} {t u : QAtomicType} (hord : Lang.OrdAt t) {x T : Ta
     fun t ht => by
       have := (colMap_raw hnb).2.2.2 t ht
       simp only [Op.eval, Except.ok.injEq] at this; exact this.symm
-  have hx : rep x = rep C := funext fun a => funext fun c => propext (canon_holds hC a c).symm
+  have hx : rep x = rep C := funext fun a => funext fun c => propext (canon_holds hC hw a c).symm
   rw [hx]
   funext a c
   apply propext
@@ -1058,7 +1058,7 @@ theorem sum_holds {V : Obj} {n : USize} {X : Vals (.arr V) n} {T : Tab (.arr V) 
     rw [hkpg g hg]; rcases (hbadCg g hg).1 with h | h <;> rw [h] <;> decide
   have hgood : ∀ g < n.toNat, (Enc.raw .i64 n kp)[g]?.getD 0 ≠ 0 ↔ (Enc.raw .i64 n badC)[g]?.getD 0 = 0 := fun g hg => by
     rw [hkpg g hg]; rcases (hbadCg g hg).1 with h | h <;> rw [h] <;> decide
-  rw [canon_holds h, keep_holds hK hkp2]
+  rw [canon_holds h (keep_wf hK ⟨hX, trivial⟩), keep_holds hK hkp2]
   constructor
   · rintro ⟨⟨g, hg⟩, hk, rfl, rfl⟩
     exact ⟨⟨_, rfl⟩, (hcell g hg _).2 ⟨(hgood g hg).1 hk, by rw [Vals.row_atom]⟩⟩

@@ -884,7 +884,7 @@ theorem Tab.compSel_holds {bits : Nat} {R : Tab A B} {S : Tab B C} {X : Tab A C}
   have hF : ∀ {Y : Tab A C}, Tab.compFrom Tab.blockRows R S x = .ok Y → e = .inl Y →
       (X.Holds a c ↔ ∃ b, R.Holds a b ∧ S.Holds b c) := fun hY hp => by
     subst hp; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
-    obtain ⟨U, hU, hH⟩ := Tab.compFrom_canon hx hY hR hS; rw [Tab.canon_holds hU]; exact hH a c
+    obtain ⟨U, hU, hUw, hH⟩ := Tab.compFrom_canon hx hY hR hS; rw [Tab.canon_holds hU hUw]; exact hH a c
   have hP : ∀ {Y : Tab A C}, (pure (Sum.inl Y) : Except String _) = .ok e → e = .inl Y := fun he => by
     simp only [pure, Except.pure, Except.ok.injEq] at he; exact he.symm
   split at he
