@@ -2225,7 +2225,13 @@ theorem top_wf {V : Rel B B} (wV : V.Wf) : (GenK.top A B V).Wf := by
     refine tab_wf fun t ht => ?_
     obtain ⟨v, hv, ht⟩ := bind_ok ht
     obtain ⟨w, hw, ht⟩ := bind_ok ht
-    exact Tab.top_wf ht hX (cut_wf kW (wV.runE kW hv) hw).2
+    have wW := cut_wf kW (wV.runE kW hv) hw
+    cases hP : K.pairs with
+    | none => simp only [hP] at ht; exact Tab.top_wf ht hX wW.2
+    | some p =>
+      simp only [hP] at ht
+      have wp : p.WF := by have h3 := hK.2.2; rw [hP] at h3; exact h3
+      exact cut_wf (K := ⟨some c, some ⟨_, w.val⟩, none⟩) ⟨hX, wW.2, trivial⟩ wp ht
 
 /-- **`ldiv` is `X \ Y` within `TB`, `TC`** on a `Rel.Wf` divisor: a matrix `S` is divided on its bits
     (`Tab.ldivTabMat_law`) or read back and `Tab.ldivSel`, any other `S` through `Tab.ldivSel`. -/

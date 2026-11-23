@@ -339,11 +339,30 @@ theorem top_sound {V : Rel B B} {Y : Core.Rel B.El B.El} (hV : ∀ K, K.WF → V
     have hR : (⟨none, K.ran, none⟩ : Known B B).WF := ⟨trivial, hW.2.1, trivial⟩
     have ev := (reps_iff _ _ _).1 (hV _ hR) v hv
     have ew := cut_agrees hR (wV.runE hR hv) hw
-    intro a b ha hb _
-    refine (Tab.top_val_holds ht (by have h1 := hW.1; rw [hK] at h1; exact h1) (cut_wf hR (wV.runE hR hv) hw) a b).trans
-      ⟨fun ⟨_, c, _, h⟩ => ⟨c, trivial, ?_⟩, fun ⟨c, _, h⟩ => ⟨(side_some hK a).1 ha, c, trivial, ?_⟩⟩
-    · exact (ev c b rfl hb trivial).1 ((ew c b rfl hb trivial).1 h)
-    · exact (ew c b rfl hb trivial).2 ((ev c b rfl hb trivial).2 h)
+    have wW := cut_wf hR (wV.runE hR hv) hw
+    have hX : Vals.WF X := by have h1 := hW.1; rw [hK] at h1; exact h1
+    intro a b ha hb hon
+    -- `Y` holds beside `b` iff `b` is a value of `w`
+    have hY : (∃ j, w.val.row j = b) ↔ ∃ c, Y c b := by
+      refine ⟨fun ⟨j, hj⟩ => ⟨w.key.row j, (ev (w.key.row j) b rfl hb trivial).1
+        ((ew (w.key.row j) b rfl hb trivial).1 ?_)⟩, fun ⟨c, h⟩ => ?_⟩
+      · exact ⟨j, rfl, hj⟩
+      · obtain ⟨j, -, hj⟩ := (ew c b rfl hb trivial).2 ((ev c b rfl hb trivial).2 h)
+        exact ⟨j, hj⟩
+    cases hP : K.pairs with
+    | none =>
+      simp only [hP] at ht
+      refine (Tab.top_val_holds ht hX wW a b).trans
+        ⟨fun ⟨_, c, _, h⟩ => ⟨c, trivial, ?_⟩, fun ⟨c, _, h⟩ => ⟨(side_some hK a).1 ha, c, trivial, ?_⟩⟩
+      · exact (ev c b rfl hb trivial).1 ((ew c b rfl hb trivial).1 h)
+      · exact (ew c b rfl hb trivial).2 ((ev c b rfl hb trivial).2 h)
+    | some p =>
+      simp only [hP] at ht
+      have hp : rep p a b := by unfold Known.on at hon; rw [hP] at hon; exact hon
+      have wp : p.WF := by have h3 := hW.2.2; rw [hP] at h3; exact h3
+      exact (cut_holds ht hX wW.2 wp a b).trans
+        ⟨fun ⟨_, _, h⟩ => let ⟨c, h⟩ := hY.1 h; ⟨c, trivial, h⟩,
+         fun ⟨c, _, h⟩ => ⟨(side_some hK a).1 ha, hp, hY.2 ⟨c, h⟩⟩⟩
 
 /-- **`bound` keeps `Tab.WF`**: its table is `cut_wf`'s, its context that table's sides and the table. -/
 theorem bound_wf {K : Known A B} {r : Tab A B} {p : Tab A B × Known A B} (hK : K.WF) (hr : r.WF)
