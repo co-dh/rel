@@ -58,20 +58,28 @@ def nonCanonical (t : QAtomicType) (b : El t) : Option Nat :=
     they lie (`Db.ownEnc`) and entered through `Arr.of`, which decides `Enc.WF`; a float column's words checked to be
     canonical (`nonCanonical`), the first row that is not refused. The header's attribute is a promise nothing here
     re-checks, so it is not taken over. -/
-def readArr (t : QAtomicType) (path : String) : IO ((n : USize) × Arr t n) := do
+def readOpt (t : QAtomicType) (path : String) : IO ((n : USize) × Opt t n) := do
   if t matches .general then throw (IO.userError s!"{path}: a general column, which the own format does not hold")
   let f ← Db.ownMap path
   unless f.code == t.code.toUInt8 do
     throw (IO.userError s!"{path}: atom type code {f.code}, the column is {repr t} (code {t.code})")
   let some e := Db.ownEnc f.kind f.parts
     | throw (IO.userError s!"{path}: constructor kind {f.kind}, which `Db.ownEnc` does not rebuild")
-  let x ← IO.ofExcept (Arr.of t f.count e path)
+  let some ⟨h⟩ := Ext.Enc.wf? t f.count e
+    | throw (IO.userError s!"{path}: a payload that is not {f.count} well-formed elements of {repr t}")
+  return ⟨f.count, Opt.mk e h⟩
+
+/-- `readOpt` of a column that holds no null (an atom side's), its floats canonical. -/
+def readArr (t : QAtomicType) (path : String) : IO ((n : USize) × Arr t n) := do
+  let ⟨n, o⟩ ← readOpt t path
+  let x ← if hN : Kernel.hasNul o.enc = false then pure (Arr.mk o.enc o.wf hN)
+    else throw (IO.userError s!"{path}: a column holding a null, and its type {repr t} has none")
   if t matches .f32 | .f64 then
-    for h : i in [0:f.count.toNat] do
+    for h : i in [0:n.toNat] do
       if let some b := nonCanonical t (x.get ⟨i, h.upper⟩) then
         throw (IO.userError s!"{path}: row {i} holds the {repr t} bit pattern 0x{String.mk (Nat.toDigits 16 b)}, \
           which is not canonical (a NaN or -0)")
-  return ⟨f.count, x⟩
+  return ⟨n, x⟩
 
 /-- `y`, read from `fy`, as a column of the side whose count `n` was read from `fx`: the two counts are equal. -/
 def same {F : USize → Type} (fx : String) (n : USize) (fy : String) (y : (m : USize) × F m) : IO (F n) :=
@@ -96,12 +104,14 @@ def readVals : (A : Obj) → (dir p : String) → IO (String × (n : USize) × V
       throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is the cell [{lo.get i}, {hi.get i}), not a slice of the {m} rows of \
         {file dir (p ++ ".e")}: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ {m}")
     return (file dir (p ++ ".lo"), ⟨n, m, lo, hi, e⟩)
-  | .sum a b, dir, p => do
+  | .sum a b, dir, p => match h : Obj.band a b with
+    | some t => do let ⟨n, x⟩ ← readOpt t (file dir p); return (file dir p, ⟨n, Vals.ofOpt h x⟩)
+    | none => do
     let ⟨n, tag⟩ ← readArr .u1 (file dir (p ++ ".tag"))
     let idx ← same (file dir (p ++ ".tag")) n (file dir (p ++ ".idx")) (← readArr .i64 (file dir (p ++ ".idx")))
     let (_, ⟨l, x⟩) ← readVals a dir (p ++ ".l")
     let (_, ⟨r, y⟩) ← readVals b dir (p ++ ".r")
-    return (file dir (p ++ ".tag"), ⟨n, l, r, tag, idx, x, y⟩)
+    return (file dir (p ++ ".tag"), ⟨n, Vals.ofGen h l r tag idx x y⟩)
   -- a side of `1`: its file holds its count and no part (`Plan.oneKind`)
   | .one, dir, p => do
     let f ← Db.ownMap (file dir p)
@@ -236,8 +246,8 @@ def writeSym {n : USize} (dir p : String) (y : Arr .sym n) : IO Unit := writeVal
 def checkSyms {A : Obj} {n : USize} (dir p : String) (D : Dict) (x : Vals A n) : Except String Unit := do
   let E ← D.dom
   for (q, c) in cols A x p do
-    if let .inr ⟨.sym, _, y⟩ := c then
-      let _ ← unenum (file dir q) E (← frame y)
+    if let .inr ⟨.sym, k, y⟩ := c then
+      let _ ← unenum (file dir q) E (← frame (B := .atom .sym) (← Arr.of .sym k y.enc (file dir q)))
 
 /-- The converse of `writeSym`: the ids at `p`, refused unless each has a text in `D` (`checkSyms`). -/
 def readSym (D : Dict) (dir p : String) : IO ((n : USize) × Arr .sym n) := do
@@ -332,12 +342,17 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
     let ⟨m, hi, es⟩ ← encArr path .i64 es
     let ⟨k, f, es⟩ ← encVals path b es
     if h : m = n then pure ⟨n, ⟨k, lo, h ▸ hi, f⟩, es⟩ else .error s!"{path}: list bounds of {n} and {m} rows"
-  | .sum a b, es => do
+  | .sum a b, es => match hb : Obj.band a b, es with
+    | some t, (k, e) :: es => match Ext.Enc.wf? t k e with
+      | some ⟨h⟩ => pure ⟨k, Vals.ofOpt hb (Opt.mk e h), es⟩
+      | none => .error s!"{path}: a {repr t}+1 column part of {k} rows that is not well-formed"
+    | some t, [] => .error s!"{path}: no column part left for a {repr t}+1 column"
+    | none, es => do
     let ⟨n, tag, es⟩ ← encArr path .u1 es
     let ⟨m, idx, es⟩ ← encArr path .i64 es
     let ⟨l, x, es⟩ ← encVals path a es
     let ⟨r, y, es⟩ ← encVals path b es
-    if h : m = n then pure ⟨n, ⟨l, r, tag, h ▸ idx, x, y⟩, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"
+    if h : m = n then pure ⟨n, Vals.ofGen hb l r tag (h ▸ idx) x y, es⟩ else .error s!"{path}: sum tags of {n} and positions of {m} rows"
   -- a side of `1`: its part (a CSV column of its one element's code, or a sum's empty right side) gives the count
   | .one, (n, _) :: es => pure ⟨n, (), es⟩
   | .one, [] => .error s!"{path}: no column part left for a side of `1`"

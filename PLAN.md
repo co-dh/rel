@@ -1438,6 +1438,20 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     处匹配各加一支。分部分做，每部分一个 agent、各自建绿：
     - nullband3a：`Run/Core`（`Vals`、`row`、`gather`、`concat`、`cols`、`pack`、`readVals`/`encVals`）+ `Gather` +
       `TestNullband`。
+    - 🔄 nullband3a（部分）：`Vals (.sum a b) n := SumCols … (Obj.band a b)`。一个谓词 `Obj.band a b`：`t+1` 且
+      `t.width` 有值（有块）时 `some t`，存成一列 `Opt t n`；其余 sum（含 `general+1`）照旧 tag/idx/两边。入口只有
+      `Vals.view : Vals (.sum a b) n → SumV a b n`（`.opt h x` / `.gen h l r tag idx x y`），出口 `Vals.ofOpt`/`ofGen`；
+      `Obj.band_some`、`Obj.optEl`/`optOf`（`Option (El t)` ↔ `a+b` 的元素，null = `inr ()`）。已绿（worktree 建）：
+      `Run.Core`（`row`、`rowsImpl`）、`Gather`（`Opt.gather`）、`Cols`（`cellsOk`；`concat` 经新 `Opt.concat`）、`Canon`
+      （`cols`：band 列自身是键，`kasc` 的 `nulCodes` 给 null 在前）、`List`（`pack`）、`Struct`（`none`、`inl` =
+      `Opt.ofArr`、`inr` = `Opt.nuls`）、`Table`（`readOpt`，`readArr` 建在其上；`readVals`/`encVals` band 支）、
+      `Lang.Plan`（`SideCol` 带 `Opt`，band 列在 side 自己的路径）。
+      缺 kernel（报错而非解码，待主人定）：`Opt.concat` 两边任一含 null 时报错——没有一个 kernel 把两列连同 null 位
+      合并（`kscan` 不写 null、`kscatter` 只读一个源、其余格填常数）；`inl°`/`inr°` 在 band 列上报错（需把值与 null
+      分开的 kernel）。
+      未做：`Run.Lang.Gen`（`sumV` 第 53 行 `⟨l, r, …⟩`：生成代码要为 band side 发 `optV`），之后的 `Rel.Run.*`
+      未建；CSV `S+1` 仍按 3 部分写（`csvEncs`），`encVals` 的 band 支读 1 部分——CSV 3 → 1 未做；`TestNullband` 往返
+      （`i64+1`、`u1+1` 经 row/gather/concat/cols/pack/readVals/encVals/CSV、null 在前、跨块）未加。Rep*/GenK* 未建。
     - 之后按 import 次序每个 Rep 模块一部分：nullband3b `ObjOrder`、3c `RepCanon`、3d `RepCols`、3e `RepOrder`、
       3f `RepStruct`、3g `RepWF`、3h `GenKBits`（及建时报错的其余模块，各按 import 次序接在后面）。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
