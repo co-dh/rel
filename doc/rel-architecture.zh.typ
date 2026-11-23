@@ -224,12 +224,16 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   diagram(spacing: (2mm, 8mm), edge-stroke: 0.8pt, label-size: 8pt,
     node((0, 0), [列：$n$ 个 code], ..bx(c-run, none)),
     edge((0, 0), (0, 1), "-|>", [每 $2^"lg"$ 个一块，`lg` 每列自选], label-side: left),
-    node((0, 1), grid(columns: 3, gutter: 0pt,
-      box(fill: c-sem.lighten(70%), inset: 5pt, stroke: 0.6pt + c-sem)[base $b$],
+    node((0, 1), grid(columns: 4, gutter: 0pt,
+      box(fill: c-sem.lighten(70%), inset: 5pt, stroke: 0.6pt + c-sem)[frame $b$],
       box(fill: c-syn.lighten(75%), inset: 5pt, stroke: 0.6pt + c-syn)[宽度 $w ∈ 0..64$],
-      box(fill: c-run.lighten(80%), inset: 5pt, stroke: 0.6pt + c-run)[$2^"lg"$ 个 $w$ 位偏移，紧密打包])),
+      box(fill: c-run.lighten(80%), inset: 5pt, stroke: 0.6pt + c-run)[$2^"lg"$ 个 $w$ 位偏移，紧密打包],
+      box(fill: c-rs.lighten(80%), inset: 5pt, stroke: 0.6pt + c-rs)[patch 列表])),
   ),
-  caption: [第 $i$ 个元素 $= b + "offset"_w [i]$；`ofRaw` 对每块取 $w = "bitwidth"(max − min)$。
+  caption: [第 $i$ 个元素 $= b + "offset"_w [i]$；若 $i$ 在 patch 列表中，则等于 patch 值。
+    写出端 `Coc.planOf`（Lean，是规约）对每块取 $d ∈ 0.."bitwidth"(max − min)$ 使
+    $"cost"(d) = ⌈n_b d \/ 8⌉ + (2 + "esz") · "npatch"("frameAt"(d), d)$ 最小，同价取较窄的 $d$（$w = d$）；
+    $"frameAt"(d)$ 是使 patch 最少的块内 key，同数取最小者，从 $min$ 起找。
     `lg` 是列的参数（如 0..16）：值域变化快的列用小块（每块 $w$ 更窄），平稳的列用大块（base 和宽度的开销更少）。],
 )
 
@@ -237,13 +241,16 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`bits`（bitmap）], [$b = 0$，$w = 1$], [布尔列、mask],
   [`enum` / ids], [$b = 0$，$w = ⌈log_2 "card"⌉$，同样的残差打包], [code 列的常态],
   [`foR`], [一般情形], [不变],
-  [常量列], [$w = 0$], [只存 base],
+  [常量列], [$w = 0$], [只存 frame],
+  [离群值], [窄 $w$ 加 patch 列表], [如 `[0×10, 255]`：原来 $w = 8$，打包 1024 字节；现在 $w = 0$ 加一个 patch，打包 40 字节],
   [`bytes`（dense）], [不再是一种形式], [只在某块值域确实需要 $w = 8k$ 时出现，是 foR 的退化块，不单独实现],
 )
 
 - 结论：*一种编码*，就是现有的 `Ext.Enc.foR`（曾设想的 `packed` 即去掉缓存的 `foR`，已弃用）。`Enc.raw` 只有一个解码，所有 kernel 的模型仍写在 `raw` 上。
 - 缓存（只服务速度，语义从不读，证明零成本）：`maxv`（谓词跳过整块）、`bsum`/`sumnul`/`sumn`（O(nblk) 求和）、`off`（块起点）。
-- 每个 kernel 读 foR、写 foR；写出由共享的 `Producer::block_into` 逐块完成，不经过稠密中间数组。
+- 写出：Lean 的 `Coc.planOf` 是规约，对每块按上图的 cost(d) 选 $d$；Rust `enc::for_blk` 写出同样的字节，`CocTest` 逐字节核对。
+- null 是普通值，不是必被 patch 的值。
+- 读：Lean 的 `foRBits`/`foRWords` 读 patch 和 frame；Rust 的每个读者都经过 `coc::view`。Lean 中 kernel 调用的写出端是 `wordsFoR`。
 
 #card(c-run, [`atom+1`：null 在带内（决定 K）])[
   可空原子 `V+1` 存成*一列*，含义仍是 `V+1`（null = `inr ∗`）。宽度字节只用到 64，第 7 位空出来作 null 标志：
