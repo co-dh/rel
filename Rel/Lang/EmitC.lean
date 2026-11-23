@@ -1305,6 +1305,112 @@ def lamB (B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X [R] fu
   canonT ⟨M, ← gatherCols M iD n X,
     [.arr "" (← nth pay 0 "if") (← gatherB M sel k lo) (← gatherB M sel k hi) (← repath B ".e" pv)]⟩
 
+/-- **`Tab.positions`** on the arrays `X` (`n` rows) of `B`, `P` the test run knowing its domain is the elements: the
+    elements EXPANDed (`v`, `T` rows, offset `u` in its cell `G`), `⟨pos, v⟩ ≫ dom P` the kept element rows `sel`
+    ascending (`dom P` a coreflexive, so at most one row per position); each cell's count of them is `kscatter .add` at
+    `G` of the `0`/`1` word of `sel`, the new payload the offsets `u` there, laid out one cell after another; then
+    `canonT`. -/
+def positionsB (n : Nat) (X : Cols) (P : TabB) : Bld TabB := funV n X [P] fun n X Ps => do
+  let [P] := Ps | throw "positions: not one table"
+  let (m, lo, hi, f) ← arrCol "positions" X
+  cellsBoundB "positions" n m
+  let (s, e) ← spanB n m lo hi
+  let (T, G, u) ← expandB n (← mapB .sub n e s)
+  let v ← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f
+  let C ← compB ⟨T, [.atom "" .i64 (← posB)], v⟩ (← coreflB P.n P.key)
+  let sel ← col1 C.key
+  let c ← scatterB .add T G (← scatterB .add C.n sel (← wordsB C.n 1) T) n
+  let (Q, _) ← prefixB .add n c
+  canonT ⟨n, X, [.arr "" C.n (← mapB .sub n Q c) (← mapB .add n Q (← wordsB n 0)) [.atom ".e" .i64 (← gatherB C.n sel T u)]]⟩
+
+/-- **`Tab.cons`** (`P ≫ cons`), the mirror of `snocB`: `(a, xs)` to `[a] ++ xs`, `Vals.cat` after `τ × 𝟙`; then `canonT`.
+    Named for the `bump` step of `thinL`, its one caller. -/
+def bumpConsB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
+  let [P] := Ps | throw "cons: not one table"
+  let w := objWidth B
+  let tau := (P.n, ← posB, ← mapB .add P.n (← posB) (← wordsB P.n 1), ← repath B ".e" (P.val.take w))
+  canonT ⟨P.n, P.key, [← cellCatB B P.n tau (← arrCol "cons" (P.val.drop w))]⟩
+
+/-- **`Tab.cat`** (`P ≫ cat`): `(xs, ys)` to `xs ++ ys` (`Vals.cat`); then `canonT`. Named for `merge`'s clock. -/
+def mergeCatB (B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
+  let [P] := Ps | throw "cat: not one table"
+  canonT ⟨P.n, P.key, [← cellCatB B P.n (← arrCol "cat" (P.val.take 1)) (← arrCol "cat" (P.val.drop 1))]⟩
+
+/-- **`dom (T ≫ diag q (ran T))`** (`Tab.diag`): the rows of `T` whose pair value `p` has `q` relate `p` to `p`, `q` run
+    knowing its domain is the pairs `D = ran T`; `diag q D = q(D) ∩ D`. The one reading of a test in `front`, `thinL`,
+    `merge`. -/
+def testDomB (q : Dom → Bld TabB) (T : TabB) : Bld TabB := do
+  let D ← coreflB T.n T.val
+  let C ← compB T (← interB (← q { dom := some (D.n, D.val) }) D)
+  coreflB C.n C.key
+
+/-- **`Tab.bump`** on the pairs `p = (el, ys)`'s table (`Tab.thinL`'s step): on `E = ran p`, `u = ys ≫ cons°` is `(b, bs)`;
+    `up`, `down` the rows where the test holds of `(x, b)`, of `(b, x)`; the answer `p ≫` of `x :: bs` at `up`, `ys` at
+    `down`, `x :: ys` at `lone` (`ys` empty, or neither test holds). -/
+def bumpB (B : Obj) (q : Dom → Bld TabB) (p : TabB) : Bld TabB := do
+  let EO := Obj.prod B (.arr B)
+  let E ← coreflB p.n p.val
+  let x ← projT B (.arr B) true E
+  let ys ← projT B (.arr B) false E
+  let u ← compB ys (← unconsB B true ys.n ys.val)
+  let b ← projT B (.arr B) true u
+  let up ← testDomB q (← pairB EO B B x b)
+  let down ← testDomB q (← pairB EO B B b x)
+  let du ← coreflB u.n u.key
+  let lone ← unionB (← diffB E du) (← diffB (← diffB du up) down)
+  let bs ← projT B (.arr B) false u
+  let r ← unionB (← unionB (← bumpConsB B lone) (← compB up (← bumpConsB B (← pairB EO B (.arr B) x bs))))
+    (← compB down ys)
+  compB p r
+
+/-- **`Tab.thinL`** on the arrays `X` (`n` rows) of `B`, `q` the pair test: `⦇nil, bump(q)⦈ʳ` as `Tab.thinL` runs it,
+    `foldRoundsB` (`peelB` from the right) from `idU X`, `nil X`, `𝟘`, the payload's row count plus two rounds; one plan
+    function (`funT`). -/
+def thinLB (B : Obj) (q : Dom → Bld TabB) (n : Nat) (X : Cols) : Bld TabB := funT [⟨n, X, []⟩] fun
+  | [Xt] => do
+    let (m, _, _, _) ← arrCol "thinL" Xt.key
+    foldRoundsB (peelB B false) (fun P el => do bumpB B q (← pairB (.arr B) B (.arr B) el P))
+      (← call1 (kernel% USize.add) #[m, ← lit (.size 2)]) (← coreflB Xt.n Xt.key) (← nilB B Xt.n Xt.key)
+      (← zeroB (.arr B) (.arr B))
+  | _ => throw "thinL: not one table"
+
+/-- **`Tab.mergeRound`** on the state `S = ((x, y), acc)`: heads `a`, `b` of `x`, `y` (`cons°`); `l` the rows where the
+    test holds of `(a, b)`; `x` steps (its tail, `acc ++ [a]`) where `l` or `y` is empty, else `y` steps. -/
+def mergeRoundB (B : Obj) (q : Dom → Bld TabB) (S : TabB) : Bld TabB := do
+  let AA := Obj.prod (.arr B) (.arr B)
+  let xy ← projT AA (.arr B) true S
+  let acc ← projT AA (.arr B) false S
+  let x ← projT (.arr B) (.arr B) true xy
+  let y ← projT (.arr B) (.arr B) false xy
+  let ux ← compB x (← unconsB B true x.n x.val)
+  let uy ← compB y (← unconsB B true y.n y.val)
+  let a ← projT B (.arr B) true ux
+  let b ← projT B (.arr B) true uy
+  let l ← testDomB q (← pairB AA B B a b)
+  let dy ← coreflB uy.n uy.key
+  let tx ← unionB l (← diffB (← coreflB ux.n ux.key) dy)
+  let ty ← diffB dy l
+  let sx ← pairB AA AA (.arr B) (← pairB AA (.arr B) (.arr B) (← projT B (.arr B) false ux) y)
+    (← snocB B (← pairB AA (.arr B) B acc a))
+  let sy ← pairB AA AA (.arr B) (← pairB AA (.arr B) (.arr B) x (← projT B (.arr B) false uy))
+    (← snocB B (← pairB AA (.arr B) B acc b))
+  unionB (← compB tx sx) (← compB ty sy)
+
+/-- **`Tab.merge`** on the pairs of arrays `X` (`n` rows) of `B`, `q` the pair test: `foldRoundsB` (`peelB` from the left)
+    over `cat D` from `⟨D, nil⟩` and `𝟘`, `D = idU X`, one round per element of both arrays plus two; the answer
+    `D ≫ out ≫ π₂`, as `Tab.merge`. One plan function (`funT`). -/
+def mergeB (B : Obj) (q : Dom → Bld TabB) (n : Nat) (X : Cols) : Bld TabB := funT [⟨n, X, []⟩] fun
+  | [Xt] => do
+    let AA := Obj.prod (.arr B) (.arr B)
+    let D ← coreflB Xt.n Xt.key
+    let (m₁, _, _, _) ← arrCol "merge" (D.val.take 1)
+    let (m₂, _, _, _) ← arrCol "merge" (D.val.drop 1)
+    let k ← call1 (kernel% USize.add) #[← call1 (kernel% USize.add) #[m₁, m₂], ← lit (.size 2)]
+    let out ← foldRoundsB (peelB B true) (fun S _ => mergeRoundB B q S) k (← mergeCatB B D)
+      (← pairB AA AA (.arr B) D (← nilB B D.n D.key)) (← zeroB AA (.prod AA (.arr B)))
+    compB D (← projT AA (.arr B) false out)
+  | _ => throw "merge: not one table"
+
 /-- The two atom columns of a pair side `X`, the error naming the verb `s` otherwise. -/
 def pairCols (s : String) (X : Cols) : Bld (Nat × Nat) := do
   let (some (Col.atom _ _ x), some (Col.atom _ _ y)) := (X[0]?, X[1]?)
@@ -1556,6 +1662,24 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
         let Y ← diffB Δ (← coreflB wΔ.n wΔ.key)
         lamB b n X (← diffB G (← compB P (← piB b b false Y.n Y.key)))
     | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
+  -- `Tab.setify` = `Λ(∋)`: `lam X (mem X)`
+  else if c == ``Tab.setify then match A with
+    | .arr b => do let (n, X) ← known r.sym D.dom; lamB b n X (← memB b n X)
+    | _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array"
+  -- `GenK.elems`: the test `P` run knowing its domain is `ran(∋)` at the arrays in demand, as `Tab.map`
+  else if c == ``Tab.positions then match A, xs with
+    | .arr b, [p] => do
+      let (n, X) ← known r.sym D.dom
+      let M ← memB b n X
+      positionsB n X (← p { dom := some (← nubB M.n M.val) })
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
+  -- `GenK.testVals` (`thinL`) and `GenK.testAfter` (`merge`): the pair test run knowing its domain is the pairs asked about
+  else if c == ``Tab.thinL then match A, xs with
+    | .arr b, [q] => do let (n, X) ← known r.sym D.dom; thinLB b q n X
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no array, or given {xs.length} relations, not one"
+  else if c == ``Tab.merge then match A, xs with
+    | .prod (.arr b) (.arr _), [q] => do let (n, X) ← known r.sym D.dom; mergeB b q n X
+    | _, _ => throw s!"row `{r.sym}` (`{c}`) at a source that is no pair of arrays, or given {xs.length} relations, not one"
   else if c == ``Tab.sum then match A with
     | .arr (.atom u) => do let (n, X) ← known r.sym D.dom; sumOnB u n X
     | _ => throw "sum: the elements are no atom"
