@@ -2679,15 +2679,22 @@ def build (δ : Dem) : Pre → Except Err Res
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     pure ⟨A, B, ← callArgs δ pos c us xs ts (← callTm objs mc dp pos c us ks ph t cv A B)⟩
   -- each argument built once, the body with every parameter read on demand where an argument needs keys, else
-  -- closed; where that does not build δ (a body reading a parameter whole, an argument only tested), the expansion
-  | .callE _ c ks xs alt cl od a b =>
-    let viaCall : Except Err Res := do
-      let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
-      -- a variable bound to itself in its pair-test δ form is passed as its pair test, as `callArgs` passes one
-      let rs ← xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h
-        match x with
-        | .var _ _ _ _ (some true) => do let ⟨A, B, t⟩ ← test δ x; pure (⟨.prod A B, .prod A B, t⟩ : Res)
-        | _ => build δ x
+  -- closed. The one refusal is an argument that does not build but tests (`R/S` outside a meet): the expansion puts
+  -- it where the body tests it, so that use runs as the expansion; every other error is the call's, and propagates
+  | .callE _ c ks xs alt cl od a b => do
+    let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
+    -- a variable bound to itself in its pair-test δ form is passed as its pair test, as `callArgs` passes one; an
+    -- argument's failure carries whether it is that refusal
+    let args : Except (Err × Bool) (List Res) := xs.attach.mapM fun ⟨x, h⟩ => have := List.sizeOf_lt_of_mem h
+      match x with
+      | .var _ _ _ _ (some true) => match test δ x with
+        | .ok ⟨A, B, t⟩ => pure (⟨.prod A B, .prod A B, t⟩ : Res)
+        | .error e => throw (e, false)
+      | _ => (build δ x).mapError fun e => (e, (test δ x).toBool)
+    match args with
+    | .error (_, true) => build δ alt
+    | .error (e, false) => throw e
+    | .ok rs => do
       -- only an argument given a variable of its own (`callOf`) takes the form chosen here
       let dem := (xs.zip rs).any fun (x, r) => !(x matches .var ..) && r.2.2.dem δ []
       -- `od` reads every parameter on demand; one whose argument is closed is read whole, as it is given: the body
@@ -2698,11 +2705,6 @@ def build (δ : Dem) : Pre → Except Err Res
       if u.dem δ [] != t.dem δ' [] then internal dp s!"`{c}`'s call and its body differ in dem"
       if h : A' = A ∧ B' = B then pure ⟨A, B, h.1 ▸ h.2 ▸ u⟩
       else internal dp s!"`{c}`'s body is not at the objects of its call"
-    match viaCall with
-    | .ok r => pure r
-    | .error e =>
-      let r := build δ alt
-      dbgTrace s!"CEFALL {c} {match r with | .ok _ => "ALTOK" | .error e' => if e'.msg == e.msg then "ALTSAME" else "ALTFAIL " ++ e'.msg} | {e.msg}" fun _ => r
   -- the body read whole each round, on its source's universe when it needs keys
   | .fix p least k x S q a b => do
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b

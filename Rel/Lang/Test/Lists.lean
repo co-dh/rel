@@ -139,7 +139,7 @@ rel_program onDemand where
 -- refused: an order with a leaf that reads its argument whole, so neither side of its composition is tested
 #eval errAt ("obj N = 0…9\nobj K = {a,b}\nL : K ⟶ [[N]] ≜ {(a,[1 2] [3])}\n" ++
   "S : [N] ⟶ [α] ≜ ran(𝟙([N])) length ≤(N,N) length°\nprint L sort(S)\n") 5
-  "⊤'s target: [N] has no universe"
+  "ran( ) reads its argument whole: [N] has no universe"
 
 /-! `concat` is `List.flatten` (`rep_concatC`): order and duplicates kept. `w` is `a ↦ [[3 1] [2] [1]]`;
     `d` is `a ↦ [[1] [] [1]]`, `b ↦ [[] [1] []]`; `e` is `a ↦ [[3 1]]`, `b ↦ []`, an empty outer array. -/
