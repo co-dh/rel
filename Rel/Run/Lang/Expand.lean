@@ -969,7 +969,6 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
       r.prelude == r'.prelude && r.mono == r'.mono && r.dem == r'.dem && r.num == r'.num && r.ord == r'.ord &&
       match r.aop, r'.aop with | .ok a, .ok b => a == b | .error a, .error b => a == b | _, _ => false
     | _ => false
-  | .share k _ => match u with | .share k' _ => k == k' | _ => false
   | .var d k => match u with | .var d' k' => d == d' && k == k' | _ => false
   | .call ks c cv os _ => match u with
     | .call ks' c' cv' os' _ => ks == ks' && key c == key c' && cv.map key == cv'.map key && os == os' | _ => false
@@ -980,7 +979,7 @@ def Tm.fieldsEq (key : Lean.Name → Lean.Name) {A B C D : Obj} (t : Tm A B) (u 
 
 /-- The first node, from the root, where the bodies `t`, `u` of one registry key differ, as its path of
     constructors (`ctor`); `none` when they are the same definition: per node its constructor, objects and other
-    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a `share`'s term, a call's body) in order. A call's body is
+    fields (`Tm.fieldsEq`), then its parts (`Tm.parts`, a call's body) in order. A call's body is
     entered: a `callOf` call has no registry key, so its name does not determine its body. -/
 partial def Tm.diffAt (key : Lean.Name → Lean.Name) (ctor : Nat → String) (path : List String := []) :
     Res → Res → Option String
