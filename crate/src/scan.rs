@@ -304,6 +304,16 @@ impl<'a> Col<'a> {
             }
         }
     }
+    /// Rows `lo .. lo + out.len()`'s null flags as words (`foRNuls`): `1` at a null (`Coc::is_nul`, tested on the block,
+    /// only a flagged block read), `0` elsewhere and in every column that is not a `foR`.
+    pub(crate) fn nuls(&self, lo: usize, out: &mut [u64]) {
+        out.fill(0);
+        let Col::Blk(Blocks { src: Src::For(c), .. }, _, _) = *self else { return };
+        let (lg, hi) = (c.meta.lg, (lo + out.len()).min(c.meta.n));
+        for b in (lo >> lg..hi.div_ceil(1 << lg)).filter(|&b| b < c.meta.mblk && c.meta.nul(b)) {
+            for i in (b << lg).max(lo)..((b + 1) << lg).min(hi) { out[i - lo] = c.is_nul(i) as u64 }
+        }
+    }
     /// The FoR column behind block `b` of the writer's grid where its metadata are its rows' words read as `i64`: 8
     /// bytes, or a block whose minimum is at least 0, where zero- and sign-extension agree. `[base, maxv]` bounds
     /// every element of the block, patches included (`Coc.blockOf`); under a mask, only where `maxv` is within it.

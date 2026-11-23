@@ -29,9 +29,9 @@ rel_program dummiesT where
     input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/t"
     schema D = {c ∈ V : 1+1}
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "c", e, x)⟩
-    check d ⟨⟨π₁ π₁ [{(∗,yes)}, {(∗,no)}], π₁ π₂ [{(∗,yes)}, {(∗,no)}]⟩, π₂ [{(∗,yes)}, {(∗,no)}]⟩ =
+    check d ⟨⟨π₁ π₁ [{(∗,no)}, {(∗,yes)}], π₁ π₂ [{(∗,no)}, {(∗,yes)}]⟩, π₂ [{(∗,no)}, {(∗,yes)}]⟩ =
       {(0,((no,yes),no)),(1,((yes,no),no)),(2,((no,yes),no)),(3,((no,no),yes))} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
-    check d col D "c_9" [{(∗,yes)}, {(∗,no)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
+    check d col D "c_9" [{(∗,no)}, {(∗,yes)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
 
 #guard dummiesT.ok
 
@@ -131,7 +131,7 @@ rel_program pivotT where
     obj K = {A,B,C}
     obj S = {a,b}
     t3 : P ⟶ K×(S×N) ≜ {(0,(A,(a,1))),(1,(B,(a,2))),(2,(A,(b,3))),(3,(A,(a,4))),(4,(C,(b,5)))}
-    pw : P ⟶ K×(N×N) ≜ pivotOn(π₁, ⟨w ∈ S ↦ pivotCol(π₁, π₂ π₁, w, F(t3 π₂ π₂) sum, t3)⟩, t3) ⟨π₁, ⟨π₂ π₁ [𝟙, {(∗,0)}], π₂ π₂ [𝟙, {(∗,0)}]⟩⟩
+    pw : P ⟶ K×(N×N) ≜ pivotOn(π₁, ⟨w ∈ S ↦ pivotCol(π₁, π₂ π₁, w, F(t3 π₂ π₂) sum, t3)⟩, t3) ⟨π₁, ⟨π₂ π₁ [{(∗,0)}, 𝟙], π₂ π₂ [{(∗,0)}, 𝟙]⟩⟩
     check pw = {(0,(A,(5,3))),(1,(B,(2,0))),(2,(C,(0,5)))}
 
 #guard pivotT.ok

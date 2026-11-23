@@ -267,21 +267,21 @@ info: ("sym,px\nA,10\nC,30\n", "key,val\nA,10\nC,30\n", [(0, 0, 10), (1, 2, 30)]
 
 /-! ## A nullable and a text column in CSV (step I8) -/
 
--- `name : [C]` a text (the field's bytes, `"…"` quoted where they hold `,` `"` or a line end), `px : N+1` nullable
+-- `name : [C]` a text (the field's bytes, `"…"` quoted where they hold `,` `"` or a line end), `px : 1+N` nullable
 -- (the empty field its null); read and written back unchanged
 open Rel.Programs.prelude in
 rel_program csvNullIO where
     obj N
     obj C : char
-    schema Row = {name : [C], px : N+1}
+    schema Row = {name : [C], px : 1+N}
     input t : N ⟶ Row from csv "/data/tmp/rel-test-io-null/in.csv"
     output t to csv "/data/tmp/rel-test-io-null/out.csv"
 
--- by hand: the rows ("abc", 10), ("x,\"y\"", null), ("", 7); `px`'s values 10 and 7 at positions 0 and 1 of its left
--- side, the null at 0 of its right side (`inr ∗`); `name`'s cells `[0,3) [3,8) [8,8)` of the bytes `abcx,"y"`
+-- by hand: the rows ("abc", 10), ("x,\"y\"", null), ("", 7); `px`'s values 10 and 7 at positions 0 and 1 of its right
+-- side, the null at 0 of its left side (`inl ∗`); `name`'s cells `[0,3) [3,8) [8,8)` of the bytes `abcx,"y"`
 /--
 info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
- [(0, [97, 98, 99], Sum.inl 10), (1, [120, 44, 34, 121, 34], Sum.inr ()), (2, [], Sum.inl 7)])
+ [(0, [97, 98, 99], Sum.inr 10), (1, [120, 44, 34, 121, 34], Sum.inl ()), (2, [], Sum.inr 7)])
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -291,28 +291,28 @@ info: ("name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n",
   IO.FS.writeFile (d ++ "/in.csv") "name,px\nabc,10\n\"x,\"\"y\"\"\",\n,7\n"
   csvNullIO.io
   let out ← IO.FS.readFile (d ++ "/out.csv")
-  let (back, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] [("name", .arr (.atom .char)), ("px", .sum .long .one)]
-    [("name", .text, .char, []), ("px", .null, .i64, [])] (d ++ "/out.csv")
+  let (back, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] [("name", .arr (.atom .char)), ("px", .opt .long)]
+    [("name", .text, .char, []), ("px", Table.nullShape .long, .i64, [])] (d ++ "/out.csv")
   IO.FS.removeDirAll d
   return (out, back.toList)
 
 -- refused at elaboration: a nullable column whose `1` is no one-element object, and a text of no `char`
-/-- error: line 304, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+/-- error: line 304, col 5: input `t` from csv "t.csv": column 'val' is N+N; a CSV field holds an atom, a nullable atom `1+V` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
 #guard_msgs in
 rel_program csvSumT where
     obj N
     input t : N ⟶ N+N from csv "t.csv"
 
-/-! ## The CSV columns follow the object: a record `S+1`, a product, a date key -/
+/-! ## The CSV columns follow the object: a record `1+S`, a product, a date key -/
 
--- `N×(Q+1)`: the factor `N` one column, `Q+1` one nullable column per field of `Q`, labelled by its factor (`Q.sym`,
+-- `N×(1+Q)`: the factor `N` one column, `1+Q` one nullable column per field of `Q`, labelled by its factor (`Q.sym`,
 -- `Q.bid`); both empty is the `1`
 open Rel.Programs.prelude in
 rel_program csvRecNullIO where
     obj N
     obj K = {A,B}
     schema Q = {sym : K, bid : N}
-    input t : N ⟶ N×(Q+1) from csv "/data/tmp/rel-test-io-rec/in.csv"
+    input t : N ⟶ N×(1+Q) from csv "/data/tmp/rel-test-io-rec/in.csv"
     output t to csv "/data/tmp/rel-test-io-rec/out.csv"
 
 -- `obj D : date` is no positions: its key is the column `key`, before `val`
@@ -322,15 +322,15 @@ rel_program csvDateKeyIO where
     input t : D ⟶ N from csv "/data/tmp/rel-test-io-rec/days.csv"
     output t to csv "/data/tmp/rel-test-io-rec/days-out.csv"
 
--- by hand: rows (5, (A,10)), (6, the `1`), (7, (B,0)), `Q+1`'s left side rows 0 and 2 at its positions 0, 1, its
--- right side row 1; the date keys written back in key order; a row with one field of `Q` empty and not the other
+-- by hand: rows (5, (A,10)), (6, the `1`), (7, (B,0)), `1+Q`'s right side rows 0 and 2 at its positions 0, 1, its
+-- left side row 1; the date keys written back in key order; a row with one field of `Q` empty and not the other
 -- refused, naming the row and both columns
 /--
 info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
  "key,val\n2024.01.15,1\n2024.01.16,3\n",
- [(0, 5, Sum.inl (0, 10)), (1, 6, Sum.inr ()), (2, 7, Sum.inl (1, 0))],
+ [(0, 5, Sum.inr (0, 10)), (1, 6, Sum.inl ()), (2, 7, Sum.inr (1, 0))],
  [(19737, 1), (19738, 3)],
- "/data/tmp/rel-test-io-rec/bad.csv: data row 2: column 'Q.sym' is not empty and column 'Q.bid' is empty (null); the columns of one `S+1` are empty together, and all of them empty is the `1`")
+ "/data/tmp/rel-test-io-rec/bad.csv: data row 2: column 'Q.sym' is not empty and column 'Q.bid' is empty (null); the columns of one `1+S` are empty together, and all of them empty is the `1`")
 -/
 #guard_msgs in
 #eval show IO _ from do
@@ -343,7 +343,7 @@ info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
   let out ← IO.FS.readFile (d ++ "/out.csv")
   let days ← IO.FS.readFile (d ++ "/days-out.csv")
   let cols : Db.CsvCols := [("N", .atom, .i64, []), ("Q.sym", .null, .i64, ["A", "B"]), ("Q.bid", .null, .i64, [])]
-  let S : Schema := [("val", .prod .long (.sum (.prod .long .long) .one))]
+  let S : Schema := [("val", .prod .long (.opt (.prod .long .long)))]
   let (back, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [] S cols (d ++ "/out.csv")
   let (dback, _) ← Table.readCsvDict (← IO.ofExcept Table.Dict.empty) [("key", .atom .date)] [("val", .long)]
     [("key", .atom, .date, []), ("val", .atom, .i64, [])] (d ++ "/days-out.csv")
@@ -354,11 +354,11 @@ info: ("N,Q.sym,Q.bid\n5,A,10\n6,,\n7,B,0\n",
 
 -- refused, the objects printed as written (`1`, not its constant): a nullable column of a nullable atom
 open Rel.Programs.prelude in
-/-- error: line 362, col 5: input `t` from csv "t.csv": column 'a' is (N+1)+1; a CSV field holds an atom, a nullable atom `V+1` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
+/-- error: line 362, col 5: input `t` from csv "t.csv": column 'a' is 1+(1+N); a CSV field holds an atom, a nullable atom `1+V` (`1` an object of one element) or a text `[C]`; declare it a table directory (drop `csv`) -/
 #guard_msgs in
 rel_program csvNestT where
     obj N
-    schema R = {a : (N+1)+1}
+    schema R = {a : 1+(1+N)}
     input t : N ⟶ R from csv "t.csv"
 
 /-! ## A symbol column: the program's one dictionary -/

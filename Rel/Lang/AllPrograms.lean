@@ -30,6 +30,7 @@ import Rel.Lang.TestCast
 import Rel.Lang.TestDateLit
 import Rel.Lang.TestFloatArith
 import Rel.Lang.TestIO
+import Rel.Lang.TestNullband
 import Rel.Lang.TestTopProd
 import Rel.Lang.TestDetab
 import Rel.Lang.TestEdit

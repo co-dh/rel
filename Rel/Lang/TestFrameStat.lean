@@ -106,7 +106,7 @@ rel_program frameStatT where
     check quantile({(∗,0.5)}, one) = {(∗,7.0)}
     -- zScore: no sample std at one row, so no rows
     check zScore(one) 𝟙(F) = 𝟘
-    check describe(one) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(1,(7.0,(-1.0,(7,7)))))}
+    check describe(one) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙], π₂ π₂ π₂⟩⟩⟩ = {(∗,(1,(7.0,(-1.0,(7,7)))))}
     -- no rows: no answer (`𝟙(F)` fixes the result object, which `𝟘` does not)
     z : N ⟶ N ≜ 𝟘
     check summarize(F(z) avg, z) 𝟙(F) = 𝟘
@@ -114,7 +114,7 @@ rel_program frameStatT where
     check genericPercentile({(∗,0.0)} 𝟙(F), z) 𝟙(N) = 𝟘
     check describe(z) (𝟙 × (𝟙(F) × 𝟙)) = 𝟘
     -- count 3, mean 4, sample std 3, min 1, max 7
-    check describe(t) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(4.0,(3.0,(1,7)))))}
+    check describe(t) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(4.0,(3.0,(1,7)))))}
     -- A at 0 2 3, B at 1: 3/4, 1/4
     k : N ⟶ K ≜ {(0,A),(1,B),(2,A),(3,A)}
     check valueProportions(𝟙, k) = {(0,(A,0.75)),(1,(B,0.25))}
@@ -135,7 +135,7 @@ rel_program frameStatFloatT where
     -- (x − 2)/1.5
     check zScore(f) = {(0,-1.0),(1,0.0),(2,1.0)}
     -- count 3, mean 2, sample std 1.5, min 0.5, max 3.5
-    check describe(f) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [𝟙, {(∗,-1.0)}], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(2.0,(1.5,(0.5,3.5)))))}
+    check describe(f) ⟨π₁, ⟨π₂ π₁, ⟨π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙], π₂ π₂ π₂⟩⟩⟩ = {(∗,(3,(2.0,(1.5,(0.5,3.5)))))}
     -- symmetric: E[x³] = (0.125 + 8 + 42.875)/3 = 17 = 2·(3·1.5 + 4), so 0
     check summarize(F(f) skewness, f) = {(∗,0.0)}
     -- 0 0 0 0 2.5 (`s5` of `frameStatT` halved): μ = 0.5, var 1.25 − 0.25 = 1, E[x³] = 3.125, m3 = 3.125 − 0.5·3.25 = 1.5

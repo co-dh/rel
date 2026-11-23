@@ -30,7 +30,9 @@ def Vals.none : (A : Obj) → Except String (Vals A 0)
   | .atom t => Arr.zeros t 0
   | .prod a b => do pure (← Vals.none a, ← Vals.none b)
   | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← Vals.none b⟩
-  | .sum a b => do pure ⟨0, 0, ← Arr.zeros .u1 0, ← Arr.zeros .i64 0, ← Vals.none a, ← Vals.none b⟩
+  | .sum a b => match h : Obj.band a b with
+    | some t => do pure (Vals.ofOpt h (Opt.ofArr (← Arr.zeros t 0)))
+    | .none => do pure (Vals.ofGen h 0 0 (← Arr.zeros .u1 0) (← Arr.zeros .i64 0) (← Vals.none a) (← Vals.none b))
   | .one => pure ()
 
 /-- The index columns of CROSS: `T = n · m` rows, `iR = pos / m`, `iS = pos % m` (`colMap` of the positions and
@@ -58,6 +60,19 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
   expandNote s!"a product of {n} × {m} values (Vals.cross)" (n.toNat * m.toNat) fun _ => do
     let (T, iR, iS) ← crossIx n m
     pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
+
+/-- `Y`'s rows as the band column of `a + b`, each `inr`: the storage as it is (`Opt.ofArr`). -/
+def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n) : Opt t n := by
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact Opt.ofArr Y
+
+/-- The one row of the unit side `1`, as a side `A` known to be `1`. -/
+def Vals.unit {A : Obj} (h : A = .one) : Vals A 1 := by subst h; exact ()
+
+/-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
+writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
+def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
+  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
+  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
 
 /-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
 through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one
@@ -113,31 +128,46 @@ def pair (R : Tab A B) (S : Tab A C) : Except String (Tab A (.prod B C)) :=
 /-- **`inl` on the values `X`**, `idU X ≫ inl`: row `k` is `X`'s row `k` beside the left summand's row `k`, the sum
 side over `X` itself and no right row (`injCols` with tag `0`), canonical. -/
 def inl {n : USize} (X : Vals A n) : Except String (Tab A (.sum A B)) := do
-  let (tag, idx) ← injCols n false
-  canon ⟨n, X, ⟨n, 0, tag, idx, X, ← Vals.none B⟩⟩
+  match h : Obj.band A B with
+  | some t => canon ⟨n, X, Vals.ofOpt h (← Opt.nuls t n)⟩
+  | none => do
+    let (tag, idx) ← injCols n false
+    canon ⟨n, X, Vals.ofGen h n 0 tag idx X (← Vals.none B)⟩
 
 /-- **`inr` on the values `Y`**, `idU Y ≫ inr`: the mirror of `inl`, tag `1`. -/
 def inr {n : USize} (Y : Vals B n) : Except String (Tab B (.sum A B)) := do
-  let (tag, idx) ← injCols n true
-  canon ⟨n, Y, ⟨0, n, tag, idx, ← Vals.none A, Y⟩⟩
+  match h : Obj.band A B with
+  | some _ => canon ⟨n, Y, Vals.ofOpt h (Vals.optInr h Y)⟩
+  | none => do
+    let (tag, idx) ← injCols n true
+    canon ⟨n, Y, Vals.ofGen h 0 n tag idx (← Vals.none A) Y⟩
 
 /-- **`inl°` on the sum values `X`**, `idU X ≫ inl°`: `X` beside `(inl x)°`, `x` its left payload, which every
 left row reads. A left payload of no value reads `A.dflt` at a left row (`Vals.row`), which `x` cannot give: there
 the answer is none where `X` has only right rows (`idU X − dom(idU X ≫ (inr y)°)` empty), else the error. -/
 def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) A) := do
+  match X.view with
+  -- a band column's one left row is the null `inl ()`, so `inl°` is `D ≫ (inl ())°` on `inl`'s one null row
+  | .opt h _ => do (← idU X).comp (← (← inl (B := B) (Vals.unit (Obj.band_some h).1)).conv)
+  | .gen _ l _ _ _ x y =>
   let D ← idU X
-  if X.1.toNat = 0 then
-    if (← D.diff (← (← D.comp (← (← inr (A := A) X.2.2.2.2.2).conv)).dom)).n = 0 then zero
+  if l.toNat = 0 then
+    if (← D.diff (← (← D.comp (← (← inr (A := A) y).conv)).dom)).n = 0 then zero
     else throw "inl°: a left row over a left payload of no value"
-  else D.comp (← (← inl (B := B) X.2.2.2.2.1).conv)
+  else D.comp (← (← inl (B := B) x).conv)
 
 /-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`. -/
 def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
+  match X.view with
+  -- `D ≫ (inr V)°` with `V` the band's words, null flags dropped (a `kscan` map), would keep `X`'s `inr` rows; its law
+  -- needs `Enc.Valid n x.enc`, which `Vals.WF` of a band column does not carry (PLAN nullband3h)
+  | .opt .. => throw "inr°: on a 1+t band column, whose values the law cannot yet read (Vals.WF carries no Enc.Valid)"
+  | .gen _ _ r _ _ x y =>
   let D ← idU X
-  if X.2.1.toNat = 0 then
-    if (← D.diff (← (← D.comp (← (← inl (B := B) X.2.2.2.2.1).conv)).dom)).n = 0 then zero
+  if r.toNat = 0 then
+    if (← D.diff (← (← D.comp (← (← inl (B := B) x).conv)).dom)).n = 0 then zero
     else throw "inr°: a right row over a right payload of no value"
-  else D.comp (← (← inr (A := A) X.2.2.2.2.2).conv)
+  else D.comp (← (← inr (A := A) y).conv)
 
 /-- **`Rᴵ` on the pairs `X`**, `idU X ≫ Rᴵ` = `((π₁ ≫ R) ∩ (π₂ ≫ π₁°)) ≫ π₂` (`flatDen_eq`): the rows `(i, a)` of `X`
 beside `R`'s `(a', b)` at `i`, kept where the equality test `a = a'` holds (`∩` with `π₂ ≫ π₁°` on `R`'s values), then
