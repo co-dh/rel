@@ -431,23 +431,24 @@ theorem Tab.tails_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
   rcases L with ⟨N, key, m, lo, hi, f⟩
   simp only [pure, Except.pure, Except.ok.injEq] at h
   subst h
+  have wL := Tab.lamOf_wf hL wX (Tab.uncat_wf hU wX)
   -- the cells of `⟨m, lo, hi, f.2⟩` are those of `⟨m, lo, hi, f⟩` mapped by `Prod.snd`
   have hrow : ∀ i, Vals.row (A := .arr (.arr B)) ⟨m, lo, hi, f.2⟩ i =
       (Vals.row (A := .arr (.prod (.arr B) (.arr B))) ⟨m, lo, hi, f⟩ i).map Prod.snd := fun i => by
-    rw [Vals.row_arr, Vals.row_arr, List.map_map]
+    rw [Vals.row_arr i (wL.2.1 i), Vals.row_arr i (wL.2.1 i), List.map_map]
     congr 1; funext k; simp only [Function.comp_apply, apply_dite Prod.snd]; rfl
-  obtain ⟨C, hC⟩ := Tab.uncat_canonical hU
+  obtain ⟨C, hC, wC⟩ := Tab.uncat_canonical hU wX
   have hs : ∀ (hx : ∃ i, X.row i = xs) zs, lamDen C.Holds xs zs ↔
       zs = (List.range (xs.length + 1)).map fun k => (xs.take k, xs.drop k) :=
     fun hx => lamDen_splits xs fun p =>
-      (Tab.canon_holds hC xs p).symm.trans ((Tab.uncat_holds hU wX xs p).trans (and_iff_right hx))
+      (Tab.canon_holds hC wC xs p).symm.trans ((Tab.uncat_holds hU wX xs p).trans (and_iff_right hx))
   constructor
   · rintro ⟨i, hk, hv⟩
-    obtain ⟨hx, hd⟩ := (Tab.lamOf_den hC hL wX (Tab.uncat_wf hU wX) xs _).1 ⟨i, hk, rfl⟩
+    obtain ⟨hx, hd⟩ := (Tab.lamOf_den hC hL wX (Tab.uncat_wf hU wX) wC xs _).1 ⟨i, hk, rfl⟩
     refine ⟨hx, ?_⟩
     rw [← hv, hrow, (hs hx _).1 hd, List.map_map]; rfl
   · rintro ⟨hx, rfl⟩
-    obtain ⟨i, hk, hv⟩ := (Tab.lamOf_den hC hL wX (Tab.uncat_wf hU wX) xs _).2 ⟨hx, (hs hx _).2 rfl⟩
+    obtain ⟨i, hk, hv⟩ := (Tab.lamOf_den hC hL wX (Tab.uncat_wf hU wX) wC xs _).2 ⟨hx, (hs hx _).2 rfl⟩
     exact ⟨i, hk, by rw [hrow]; simp only at hv; rw [hv, List.map_map]; rfl⟩
 
 theorem rowOK_tails : RowOK "tails" := rowOK_of (c := RowCode.tails) rfl rfl fun _ σ _ _ _ hs hv => by
@@ -467,8 +468,8 @@ theorem GenK.after_row_sound {A B : Obj} {f : {K : Obj} → Tab K A → Except S
     rw [hD] at h
     rw [hf D t (Tab.idU_wf hD hX) h]
     constructor
-    · rintro ⟨a', ha', hp⟩; obtain ⟨rfl, hx⟩ := (Tab.idU_holds hD a a').1 ha'; exact ⟨hx, hp⟩
-    · rintro ⟨hx, hp⟩; exact ⟨a, (Tab.idU_holds hD a a).2 ⟨rfl, hx⟩, hp⟩
+    · rintro ⟨a', ha', hp⟩; obtain ⟨rfl, hx⟩ := (Tab.idU_holds hD hX a a').1 ha'; exact ⟨hx, hp⟩
+    · rintro ⟨hx, hp⟩; exact ⟨a, (Tab.idU_holds hD hX a a).2 ⟨rfl, hx⟩, hp⟩
 
 /-- A row run after the keys (`GenK.after`) is `Wf` when `f` keeps `Tab.WF` (`Tab.idU_wf`). -/
 theorem GenK.after_wf {A B : Obj} {f : {K : Obj} → Tab K A → Except String (Tab K B)}
@@ -603,7 +604,7 @@ them that holds `graph f`. -/
 theorem Tab.uncat_comp_holds {B : Obj} {n : USize} {X : Vals (.arr B) n}
     {g : {m : USize} → Vals (.prod (.arr B) (.arr B)) m → Except String (Tab (.prod (.arr B) (.arr B)) (.arr B))}
     {f : (Obj.prod (.arr B) (.arr B)).El → List B.El}
-    (hg : ∀ m (P : Vals (.prod (.arr B) (.arr B)) m) t, g P = .ok t → ∀ p ys,
+    (hg : ∀ m (P : Vals (.prod (.arr B) (.arr B)) m) t, g P = .ok t → Vals.WF P → ∀ p ys,
       t.Holds p ys ↔ (∃ i, P.row i = p) ∧ Core.Rel.graph f p ys)
     (hgw : ∀ m (P : Vals (.prod (.arr B) (.arr B)) m) t, g P = .ok t → Vals.WF P → t.WF)
     {T : Tab (.arr B) (.arr B)} (h : (do let u ← Tab.uncat X; u.comp (← g u.val)) = .ok T) (wX : Vals.WF X)
@@ -615,17 +616,17 @@ theorem Tab.uncat_comp_holds {B : Obj} {n : USize} {X : Vals (.arr B) n}
   rw [Tab.comp_holds h wU (hgw _ _ _ hG wU.2)]
   constructor
   · rintro ⟨p, hp, hq⟩
-    exact ⟨((Tab.uncat_holds hU wX xs p).1 hp).1, p, ((Tab.uncat_holds hU wX xs p).1 hp).2, ((hg _ _ _ hG p ys).1 hq).2⟩
+    exact ⟨((Tab.uncat_holds hU wX xs p).1 hp).1, p, ((Tab.uncat_holds hU wX xs p).1 hp).2, ((hg _ _ _ hG wU.2 p ys).1 hq).2⟩
   · rintro ⟨hx, p, he, rfl⟩
     have hp := (Tab.uncat_holds hU wX xs p).2 ⟨hx, he⟩
     obtain ⟨i, -, hv⟩ := hp
-    exact ⟨p, (Tab.uncat_holds hU wX xs p).2 ⟨hx, he⟩, (hg _ _ _ hG p _).2 ⟨⟨i, hv⟩, rfl⟩⟩
+    exact ⟨p, (Tab.uncat_holds hU wX xs p).2 ⟨hx, he⟩, (hg _ _ _ hG wU.2 p _).2 ⟨⟨i, hv⟩, rfl⟩⟩
 
 /-- **`prefix`** (`Tab.prefix`) = `cat° ≫ π₁`: each array of `X` to its initial segments. -/
 theorem Tab.prefix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
     (h : Tab.prefix X = .ok T) (wX : Vals.WF X) (xs ys : List B.El) :
     T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys <+: xs := by
-  rw [Tab.uncat_comp_holds (g := fun P => Tab.outl P) (f := Prod.fst) (fun _ _ _ h => Tab.outl_holds h)
+  rw [Tab.uncat_comp_holds (g := fun P => Tab.outl P) (f := Prod.fst) (fun _ _ _ h hP => Tab.outl_holds h hP)
     (fun _ _ _ h w => Tab.outl_wf h w) h wX]
   exact and_congr_right fun _ => ⟨fun ⟨p, he, hy⟩ => ⟨p.2, by rw [hy, he]⟩, fun ⟨t, ht⟩ => ⟨(ys, t), ht.symm, rfl⟩⟩
 
@@ -633,7 +634,7 @@ theorem Tab.prefix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.
 theorem Tab.suffix_holds {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.arr B)}
     (h : Tab.suffix X = .ok T) (wX : Vals.WF X) (xs ys : List B.El) :
     T.Holds xs ys ↔ (∃ i, X.row i = xs) ∧ ys <:+ xs := by
-  rw [Tab.uncat_comp_holds (g := fun P => Tab.outr P) (f := Prod.snd) (fun _ _ _ h => Tab.outr_holds h)
+  rw [Tab.uncat_comp_holds (g := fun P => Tab.outr P) (f := Prod.snd) (fun _ _ _ h hP => Tab.outr_holds h hP)
     (fun _ _ _ h w => Tab.outr_wf h w) h wX]
   exact and_congr_right fun _ => ⟨fun ⟨p, he, hy⟩ => ⟨p.1, by rw [hy, he]⟩, fun ⟨t, ht⟩ => ⟨(t, ys), ht.symm, rfl⟩⟩
 
@@ -662,10 +663,10 @@ theorem Tab.inits_den {B : Obj} {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr
   have hP' := hP; unfold Tab.prefix at hP'
   obtain ⟨u, hu, hP'⟩ := GenK.bind_ok hP'; obtain ⟨o, ho, hP'⟩ := GenK.bind_ok hP'
   have wu := Tab.uncat_wf hu wX
-  obtain ⟨U, hU, -⟩ := Tab.comp_canon hP' wu (Tab.outl_wf ho wu.2)
-  rw [Tab.lamOf_den hU h (wD := wX) (wr := Tab.prefix_wf hP wX)]
+  obtain ⟨U, hU, wU, -⟩ := Tab.comp_canon hP' wu (Tab.outl_wf ho wu.2)
+  rw [Tab.lamOf_den hU h (wD := wX) (wr := Tab.prefix_wf hP wX) (wR := wU)]
   exact and_congr_right fun hx => lamDen_inits xs (fun ys =>
-    (Tab.canon_holds hU xs ys).symm.trans ((Tab.prefix_holds hP wX xs ys).trans (and_iff_right hx))) yss
+    (Tab.canon_holds hU wU xs ys).symm.trans ((Tab.prefix_holds hP wX xs ys).trans (and_iff_right hx))) yss
 
 theorem rowOK_inits : RowOK "inits" := rowOK_of (c := RowCode.inits) rfl rfl fun _ σ _ _ _ hs hv => by
   cases hv
@@ -1145,7 +1146,7 @@ theorem rowOK_ran : RowOK "ran" := rowOK_args (c := RowCode.ran) rfl rfl fun _ �
 theorem rowOK_nil : RowOK "nil" := rowOK_of (c := RowCode.nil) rfl rfl fun _ σ _ _ _ _ hv => by
   cases hv
   rcases σ with _ | ⟨a, _ | ⟨b, σ⟩⟩ <;> exact ⟨GenK.ofVals_wf fun _ _ _ hX h => Tab.nil_wf h hX,
-    ⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ _ h => Tab.nil_holds h⟩
+    ⟨rfl, rfl⟩, GenK.ofVals_row_sound fun _ _ _ hX h => Tab.nil_holds h hX⟩
 
 /-- Every row of `rowsProved` is `RowOK`: the obligations enumerated from the list `rowGens_proved` checks. -/
 theorem rowsProved_ok (r : Prim) (h : r.sym ∈ rowsProved) : RowOK r.sym := by
@@ -1378,8 +1379,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
   case zero => exact GenK.zero_sound
   case id => exact GenK.id_sound
   case top V ih => exact GenK.top_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf V η hs.2))
-  case outl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.outl_holds h
-  case outr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.outr_holds h
+  case outl => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.outl_holds h hX
+  case outr => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.outr_holds h hX
   case comp R S ihR ihS =>
     exact GenK.comp_sound (code_of ((ihR (by omega)).1 η ρ hl.1 hs)) (code_of ((ihS (by omega)).1 η ρ hl.2 hs))
       (code_wf (gen_wf R η hs.2)) (code_wf (gen_wf S η hs.2))
@@ -1415,8 +1416,8 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       (code_wf (gen_wf S η hs.2))
   case lam R ih => exact GenK.lam_sound (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf R η hs.2))
   case mem => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.mem_holds h hX
-  case inl => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inl_holds h
-  case inr => exact GenK.ofVals_row_sound fun _ _ _ _ h => Tab.inr_holds h
+  case inl => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.inl_holds h hX
+  case inr => exact GenK.ofVals_row_sound fun _ _ _ hX h => Tab.inr_holds h hX
   case own R ih => exact code_of ((ih (by omega)).1 η ρ hl hs)
   case leq U ih => exact GenK.cmp_sound (s := false) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))
   case lt U ih => exact GenK.cmp_sound (s := true) (code_of ((ih (by omega)).1 η ρ hl hs)) (code_wf (gen_wf U η hs.2))

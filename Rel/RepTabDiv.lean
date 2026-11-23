@@ -1468,22 +1468,6 @@ theorem unsnoc_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod 
     obtain ⟨h1, h2⟩ := List.append_inj' hx rfl
     exact ⟨⟨k, hk⟩, hKi, by rw [hv, h1, (List.cons.inj h2).1]⟩
 
-/-- **`uncat X` is canonical**: its last step is `canon`, so a `Λ` of it is `lamOf` (`Tab.tails`). -/
-theorem uncat_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (.arr B) (.arr B))}
-    (h : Tab.uncat X = .ok T) : T.Canonical := by
-  obtain ⟨m, lo, up, f⟩ := X
-  dsimp only [Tab.uncat] at h
-  split at h; · cases h
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨_, _, _⟩, -, h⟩ := h; try dsimp only at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  exact ⟨_, h⟩
-
 /-- **`uncat` keeps `Tab.WF`**: split `d ≤ EN - SN` of cell `[SN, EN)` (`expand_spec` of the counts `EN - SN + 1`) is
 `[SN, SN + d)` and `[SN + d, EN)`, inside `m` (`cellSpan_start_le` where the cell is empty). -/
 private theorem uncat_pre_wf {n m Tn : USize} {lo up : Arr .i64 n} {f : Vals B m} {w G u : Enc}
@@ -1541,8 +1525,9 @@ private theorem uncat_pre_wf {n m Tn : USize} {lo up : Arr .i64 n} {f : Vals B m
   · obtain ⟨a, d, b, -, hd, hb', hab, hbm⟩ := hJ t
     exact cell_wf_nat hd hb' hab hbm hm63
 
-theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.arr B) (.arr B))}
-    (h : Tab.uncat X = .ok t) (hX : Vals.WF X) : t.WF := by
+/-- **`uncat X` is `canon` of a well-formed table**: so a `Λ` of it is `lamOf` (`Tab.tails`), and it keeps `Tab.WF`. -/
+theorem uncat_canonical {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.arr B) (.arr B))}
+    (h : Tab.uncat X = .ok t) (hX : Vals.WF X) : ∃ R : Tab (.arr B) (.prod (.arr B) (.arr B)), R.canon = .ok t ∧ R.WF := by
   obtain ⟨m, lo, up, f⟩ := X
   dsimp only [Tab.uncat] at h
   split at h; · cases h
@@ -1555,7 +1540,11 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
   rw [Except.bind_eq_ok'] at h; obtain ⟨mid, hmid, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eG, heG, h⟩ := h
-  exact canon_wf h (uncat_pre_wf hX hb hw hex hsG hmid hK heG)
+  exact ⟨_, h, uncat_pre_wf hX hb hw hex hsG hmid hK heG⟩
+
+theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.arr B) (.arr B))}
+    (h : Tab.uncat X = .ok t) (hX : Vals.WF X) : t.WF :=
+  let ⟨_, hc, w⟩ := uncat_canonical h hX; canon_wf hc w
 
 
 /-- **`uncat X` denotes `cat°` on the arrays `X`**: each cell of `X` to each of its splits. Cell `i` is `[SN, EN)`
