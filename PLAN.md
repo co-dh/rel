@@ -1427,7 +1427,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `Vals.cols` 的 sum 键列是 `tag`（`inl` = false 在前），`Vals.lt_of_codes` 的 sum 支（`RepOrder` ~197–242）经
     `Arr.lt_of_codes tag` 证它。改法（一般的，不特判 `.one`）：每个 sum `inr` 在前——`Obj.key` 换成 `inl ↦ 1 ::`、
     `inr ↦ 0 ::`，`cols` 的键列用 `colMap .not` 的 `¬tag`（已算出），`RepOrder`/`RepCanon` 的 sum 支随之改；
-    `Vals` 换 `Opt` 之后 `atom+1` 的键是 `nulCodes`，已是 null 在前，与之一致。
+    `Vals` 换 `Opt` 之后 `1+atom` 的键是 `nulCodes`，已是 null 在前，与之一致。
+    ✅ null1x（主人定 2026-11-22，取代上面"每个 sum `inr` 在前"的改法）：可空类型写 `1+X`，null = `inl ()`，和的次序
+    `inl < inr` 本身即 null 在前，`Obj.key`/`cols`/`RepOrder` 不改。一般规则 `Obj.opt X = .sum .one X`（`@[match_pattern]`，
+    `Run/Core`）：CSV 的 `ioCols`/`csvLeaves`/`Table.toCsv`/`ofCsv` 只经它认可空列；extern 仍按 `V+1` 布局（tag 1 = null），
+    `Table.swapTag`（`colMap` 取反 tag）在读写两端换边。null 码仍是顶残差（`foRNul`、Rust 不改）。⬜ dataframe 库翻转 `X+1`。
     主人定（F）：null 码只在含 null 的块里留（宽度字节 bit 7），无 null 的块照旧走普通 foR 计划——无 null 的块不付任何
     代价，读者仍只有一条路径（每块判一次标志位）。`planBlock` 现状即此，不改。
     rq17c 发现：第 3 步必须先于第 2 步。`kgather` 今天是 `wordsFoR (gatherWords (foRWords ix) (foRWords e))`，`wordsFoR`
