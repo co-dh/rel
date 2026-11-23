@@ -64,6 +64,16 @@ def Arr.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x 
   let b ← kscatter .last n₂ off y.enc n 0
   colArr .add n a b t
 
+/-- CONCAT of two nullable columns: `Arr.concat` where neither holds a null. A null row needs one kernel call that
+merges two sources with their null bits, and none does yet (`kscan` writes no null, `kscatter` reads one source and
+fills the rest with a constant): there the error, naming the side. -/
+def Opt.concat {t : QAtomicType} {n₁ n₂ : USize} (n : USize) (off : Enc) (x : Opt t n₁) (y : Opt t n₂) :
+    Except String (Opt t n) :=
+  if hx : hasNul x.enc = false then
+    if hy : hasNul y.enc = false then Opt.ofArr <$> Arr.concat n off (Arr.mk x.enc x.wf hx) (Arr.mk y.enc y.wf hy)
+    else .error s!"concat: the second {repr t}+1 column holds a null, and no kernel yet merges two columns' null bits"
+  else .error s!"concat: the first {repr t}+1 column holds a null, and no kernel yet merges two columns' null bits"
+
 /-- The layout of `n₁` rows followed by `n₂`: the summed count `n` and the destinations `off` of the second part
 (`shiftCol n₂ n₁`); the error where `n` does not fit a `USize`. -/
 def catPlan (n₁ n₂ : USize) : Except String (USize × Enc) :=
@@ -83,7 +93,9 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .atom _, _, _ | .one, _, _ => true
   | .prod _ _, _, x => Vals.cellsOk x.1 && Vals.cellsOk x.2
   | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
-  | .sum _ _, _, ⟨_, _, _, _, x, y⟩ => Vals.cellsOk x && Vals.cellsOk y
+  | .sum _ _, _, s => match s.view with
+    | .opt .. => true
+    | .gen _ _ _ _ _ x y => Vals.cellsOk x && Vals.cellsOk y
 
 /-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
@@ -171,11 +183,14 @@ def Vals.concat : {A : Obj} → {n₁ n₂ : USize} → (n : USize) → Enc → 
       let hi ← Arr.concat n off hi₁ (← hi₂.shift m₁.toUInt64)
       pure ⟨p.1, lo, hi, ← Vals.concat p.1 p.2 f₁ f₂⟩
     else .error s!"concat: {m₁} + {m₂} payload rows, past an Int64 bound"
-  | .sum _ _, _, _, n, off, ⟨_, _, tag₁, idx₁, x₁, y₁⟩, ⟨_, _, tag₂, idx₂, x₂, y₂⟩ =>
+  | .sum _ _, _, _, n, off, s₁, s₂ => match s₁.view, s₂.view with
+    | .opt h x₁, .opt h' x₂ => Vals.ofOpt h <$> Opt.concat n off x₁ (Option.some.inj (h'.symm.trans h) ▸ x₂)
+    | .opt h _, .gen h' .. | .gen h' .., .opt h _ => absurd (h.symm.trans h') nofun
+    | .gen h _ _ tag₁ idx₁ x₁ y₁, .gen _ _ _ tag₂ idx₂ x₂ y₂ =>
     if n.toNat ≤ 2 ^ 63 then do
       let L ← Vals.catSummand n off false tag₁ idx₁ x₁ tag₂ idx₂ x₂ fun m o x y => Vals.concat m o x y
       let R ← Vals.catSummand n off true tag₁ idx₁ y₁ tag₂ idx₂ y₂ fun m o x y => Vals.concat m o x y
-      pure ⟨L.1, R.1, ← Arr.concat n off tag₁ tag₂, ← Arr.pos n, L.2, R.2⟩
+      pure (Vals.ofGen h L.1 R.1 (← Arr.concat n off tag₁ tag₂) (← Arr.pos n) L.2 R.2)
     else .error s!"concat: a sum side of {n} rows, past an Int64 position"
   | .one, _, _, _, _, _, _ => pure ()
 
