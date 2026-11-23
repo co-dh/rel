@@ -5,6 +5,8 @@ public import Rel.RepTabComp
 public import Rel.RepSetOps
 public import Rel.RepTabDiv
 public import Rel.KernelSpec.BitRows
+public import Rel.RepMerge
+public import Rel.AscOrder
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -158,6 +160,45 @@ theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} 
       rw [← hct, heq i (by omega) t t.2, zx i i.2]
     · show cd (n₁.toNat + j) = G ↔ _
       rw [← hct, heq _ (by omega) t t.2, zy j j.2]
+
+/-- **`Vals.code`'s numbers ascend in `Obj.lt`**: numbers `G < G'` have representatives `rep[G]`, `rep[G']` whose rows
+ascend (`Vals.firsts_rep`, `Verify.firsts_sorted`: `kasc` order with unequal codes; `ValsB.lt_of_codes`). -/
+theorem Vals.code_lt {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h : Vals.code x = .ok (k, c, rep))
+    (hw : Vals.WF x) {G G' : Nat} (hGG : G < G') (hG' : G' < k.toNat) (i i' : Fin n.toNat)
+    (hi : ((raw .i64 k rep)[G]?.getD 0).toNat = i.1) (hi' : ((raw .i64 k rep)[G']?.getD 0).toNat = i'.1) :
+    A.lt (x.row i) (x.row i') := by
+  simp only [Vals.code, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨es, hes, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k', g, f⟩, hseen, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨c', -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨rep', hrep, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -, rfl⟩ := h
+  obtain ⟨ps, K, hps, hkey, -, hkU, hsel⟩ := Vals.firsts_rep hes hasc hseen hrep
+  subst hps
+  rw [hkU] at hG'
+  obtain ⟨hl, hne⟩ := Verify.firsts_sorted hkey hGG ((hsel G (by omega)).trans (by rw [hi]))
+    ((hsel G' hG').trans (by rw [hi']))
+  obtain ⟨cs, hcs, -⟩ := kasc_ok hasc
+  exact ValsB.lt_of_codes x (fun _ => True) hw hes hcs i i' trivial trivial (lexLe_lt _ hl hne)
+
+/-- **`Vals.code2`'s numbers ascend in `Obj.lt`** (`Vals.code_lt` of the concatenation it numbers). -/
+theorem Vals.code2_lt {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} {k : USize} {bx bY : Enc}
+    {Z : (N : USize) × Vals A N × Enc} (h : Vals.code2 x y = .ok (k, bx, bY, Z)) (hx : Vals.WF x) (hy : Vals.WF y)
+    {G G' : Nat} (hGG : G < G') (hG' : G' < k.toNat) (i i' : Fin Z.1.toNat)
+    (hi : ((raw .i64 k Z.2.2)[G]?.getD 0).toNat = i.1) (hi' : ((raw .i64 k Z.2.2)[G']?.getD 0).toNat = i'.1) :
+    A.lt (Z.2.1.row i) (Z.2.1.row i') := by
+  simp only [Vals.code2, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, -, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k', c, rep⟩, hcode, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, _, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨_, _, h⟩ := h
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, -, -, rfl⟩ := h
+  exact Vals.code_lt hcode (Vals.concat_wf (catRows_ok hcat) hz hx hy) hGG hG' i i' hi hi'
 
 /-- A `P` below `N` has a last one: no later `k'` below `N` is a `P`. -/
 theorem last_of_exists {P : Nat → Prop} {N : Nat} :
@@ -538,6 +579,132 @@ theorem Tab.compBits_comp {R : Tab A B} {S : Tab B C} {X Y : Tab A C} (h : Tab.c
     (h' : R.comp S = .ok Y) (hR : R.WF) (hS : S.WF) : X.Holds = Y.Holds :=
   funext fun a => funext fun c => propext ((Tab.compBits_holds h hR hS a c).trans (Tab.comp_holds h' hR hS a c).symm)
 
+/-- **`Tab.ofBits` reads the set bits row-major, so its rows ascend in `Obj.lt`**: `whereCol` lists bits `a·w + j`
+ascending, a larger `a` names a larger row of `x` (`hx`), one `a` with a larger `j` a larger row of `y` (`hy`). -/
+theorem Tab.ofBits_sorted {n m g w : USize} {o ra rc : Enc} {x : Vals A n} {y : Vals C m} {X : Tab A C}
+    (h : Tab.ofBits g w o x ra y rc = .ok X) (hra : hasNul ra = false) (hrc : hasNul rc = false)
+    (hgw : (g * w).toNat = g.toNat * w.toNat) (hb : g.toNat * w.toNat < 2 ^ 63)
+    (ho : ∀ a < g.toNat, ∀ j < w.toNat, ∃ v : UInt64, (raw .i64 (g * w) o)[a * w.toNat + j]? = some v ∧ v < 2)
+    (hx : ∀ a a', a < a' → a' < g.toNat → ∀ i i' : Fin n.toNat, ((raw .i64 g ra)[a]?.getD 0).toNat = i.1 →
+      ((raw .i64 g ra)[a']?.getD 0).toNat = i'.1 → A.lt (x.row i) (x.row i'))
+    (hy : ∀ j j', j < j' → j' < w.toNat → ∀ i i' : Fin m.toNat, ((raw .i64 w rc)[j]?.getD 0).toNat = i.1 →
+      ((raw .i64 w rc)[j']?.getD 0).toNat = i'.1 → C.lt (y.row i) (y.row i'))
+    (t t' : Fin X.n.toNat) (htt : t.1 < t'.1) :
+    (Obj.prod A C).lt (X.key.row t, X.val.row t) (X.key.row t', X.val.row t') := by
+  simp only [Tab.ofBits, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨M, sel⟩, hM, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨dv, hdv, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨md, hmd, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨iy, hiy, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨X1, hX1, h⟩ := h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨Y1, hY1, h⟩ := h
+  cases h
+  have hwpos : ∀ i < g.toNat * w.toNat, 0 < w.toNat := fun i hi =>
+    Nat.pos_of_ne_zero fun e => by rw [e, Nat.mul_zero] at hi; omega
+  have hbit : ∀ i < g.toNat * w.toNat, (raw .i64 (g * w) o)[i]?.getD 0 < 2 := fun i hi => by
+    have hw0 := hwpos i hi
+    obtain ⟨v, hv, hv2⟩ := ho (i / w.toNat) ((Nat.div_lt_iff_lt_mul hw0).2 hi) (i % w.toNat) (Nat.mod_lt _ hw0)
+    rw [Nat.div_add_mod'] at hv
+    rw [hv, Option.getD_some]; exact hv2
+  have hsel := whereCol_spec hM fun i hi => hbit i (hgw ▸ hi)
+  have hMs := whereCol_size hM
+  -- row `t` is bit `s t`; `s` ascends, as the set bits `whereCol` lists
+  obtain ⟨s, hs⟩ : ∃ s : Nat → Nat, ∀ t, s t = ((raw .i64 M sel)[t]?.getD 0).toNat := ⟨_, fun _ => rfl⟩
+  have hlen : ((raw .i64 M sel).toList.map UInt64.toNat).length = M.toNat := by simp [hMs]
+  have hget : ∀ t (ht : t < M.toNat), ((raw .i64 M sel).toList.map UInt64.toNat)[t]'(hlen ▸ ht) = s t :=
+    fun t ht => by rw [hs]; simp [getElem?_pos (raw .i64 M sel) t (by omega)]
+  have hP : ((raw .i64 M sel).toList.map UInt64.toNat).Pairwise (· < ·) := by
+    rw [hsel]; exact List.pairwise_lt_range.filter _
+  have hlt : s t < s t' := by
+    rw [← hget t t.2, ← hget t' t'.2]; exact List.pairwise_iff_getElem.1 hP _ _ _ _ htt
+  have hin : ∀ t (ht : t < M.toNat), s t < g.toNat * w.toNat := fun t ht => by
+    have hm := List.getElem_mem (l := (raw .i64 M sel).toList.map UInt64.toNat) (hlen ▸ ht)
+    rw [hget t ht, hsel, List.mem_filter, List.mem_range] at hm; omega
+  -- row `t` is `(x[ra[s t / w]], y[rc[s t % w]])`
+  have hrow : ∀ t : Fin M.toNat,
+      (∃ i0 : Fin n.toNat, ((raw .i64 g ra)[s t / w.toNat]?.getD 0).toNat = i0.1 ∧ X1.row t = x.row i0) ∧
+      ∃ i1 : Fin m.toNat, ((raw .i64 w rc)[s t % w.toNat]?.getD 0).toNat = i1.1 ∧ Y1.row t = y.row i1 := by
+    intro t
+    have hi := hin t t.2
+    have hw0 := hwpos _ hi
+    have hwg : w.toNat ≤ g.toNat * w.toNat := by
+      have := Nat.mul_le_mul_right w.toNat (show 1 ≤ g.toNat from Nat.pos_of_ne_zero fun e => by
+        rw [e, Nat.zero_mul] at hi; omega)
+      rwa [Nat.one_mul] at this
+    have e : (raw .i64 M sel)[t.1]?.getD 0 = (s t).toUInt64 := UInt64.toNat_inj.mp (by simp [hs])
+    have wcw : w.toUInt64 = w.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp)
+    have e1 := (colMap_post hdv).2 t t.2
+    rw [e, wcw, eval_rdiv_nat (by omega) (by omega) hw0, Except.ok.injEq] at e1
+    have e2 := (colMap_post hmd).2 t t.2
+    rw [e, wcw, eval_rmod_nat (by omega) (by omega) hw0, Except.ok.injEq] at e2
+    have hdl : s t / w.toNat < 2 ^ 64 := Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (by omega)
+    have hml : s t % w.toNat < 2 ^ 64 := Nat.lt_of_lt_of_le (Nat.mod_lt _ hw0) (by omega)
+    have gx := (kgather_word hix hra t t.2).2
+    rw [← e1, toNat_toUInt64 hdl] at gx
+    have gy := (kgather_word hiy hrc t t.2).2
+    rw [← e2, toNat_toUInt64 hml] at gy
+    obtain ⟨i0, h0, r0⟩ := ValsB.gather_row x hX1 t
+    obtain ⟨i1, h1, r1⟩ := ValsB.gather_row y hY1 t
+    exact ⟨⟨i0, by rw [← gx]; exact h0, r0⟩, ⟨i1, by rw [← gy]; exact h1, r1⟩⟩
+  obtain ⟨⟨i0, h0, r0⟩, ⟨i1, h1, r1⟩⟩ := hrow t
+  obtain ⟨⟨i0', h0', r0'⟩, ⟨i1', h1', r1'⟩⟩ := hrow t'
+  show (Obj.prod A C).lt (X1.row t, Y1.row t) (X1.row t', Y1.row t')
+  rw [r0, r1, r0', r1', Obj.lt_prod]
+  have hw0 := hwpos _ (hin t' t'.2)
+  have hq' : s t' / w.toNat < g.toNat := (Nat.div_lt_iff_lt_mul hw0).2 (hin t' t'.2)
+  rcases Nat.lt_or_eq_of_le (Nat.div_le_div_right (c := w.toNat) (Nat.le_of_lt hlt)) with hq | hq
+  · exact .inl (hx _ _ hq hq' i0 i0' h0 h0')
+  · obtain rfl : i0 = i0' := Fin.ext (h0.symm.trans (by rw [hq]; exact h0'))
+    have e1 := Nat.div_add_mod (s t) w.toNat; have e2 := Nat.div_add_mod (s t') w.toNat
+    rw [hq] at e1
+    exact .inr ⟨rfl, hy _ _ (by omega) (Nat.mod_lt _ hw0) i1 i1' h1 h1'⟩
+
+/-- **Canonical uniqueness**: two tables of one relation, each strictly ascending in `Obj.lt`, list the same rows
+(`lt_sorted_unique`). -/
+theorem Tab.toList_eq_of_lt {X Y : Tab A C} (hH : X.Holds = Y.Holds)
+    (hX : ∀ t t' : Fin X.n.toNat, t.1 < t'.1 →
+      (Obj.prod A C).lt (X.key.row t, X.val.row t) (X.key.row t', X.val.row t'))
+    (hY : ∀ t t' : Fin Y.n.toNat, t.1 < t'.1 →
+      (Obj.prod A C).lt (Y.key.row t, Y.val.row t) (Y.key.row t', Y.val.row t')) : X.toList = Y.toList := by
+  have mem : ∀ (T : Tab A C) (p : A.El × C.El), p ∈ T.toList ↔ T.Holds p.1 p.2 := fun T p => by
+    simp only [Tab.toList, List.mem_ofFn, Tab.Holds]
+    exact ⟨fun ⟨i, e⟩ => ⟨i, by rw [← e], by rw [← e]⟩, fun ⟨i, e1, e2⟩ => ⟨i, by rw [e1, e2]⟩⟩
+  have pw : ∀ T : Tab A C, (∀ t t' : Fin T.n.toNat, t.1 < t'.1 →
+      (Obj.prod A C).lt (T.key.row t, T.val.row t) (T.key.row t', T.val.row t')) →
+      T.toList.Pairwise (Obj.prod A C).lt := fun T hT => List.pairwise_iff_getElem.2 fun i j hi hj hij => by
+    simp only [Tab.toList, List.length_ofFn] at hi hj
+    simp only [Tab.toList, List.getElem_ofFn]; exact hT ⟨i, hi⟩ ⟨j, hj⟩ hij
+  exact lt_sorted_unique (B := .prod A C) (pw X hX) (pw Y hY) fun p => by rw [mem, mem, hH]
+
+/-- **`compBits` is `comp`, row for row** (the `#guard`s of `Rel/BitsTest.lean`, proved): both list `R ≫ S` strictly
+ascending in `Obj.lt`, `Tab.ofBits_sorted` over `Vals.code`'s numbers (`Vals.code_lt`) one side, `canon` the other. -/
+theorem Tab.compBits_eq {R : Tab A B} {S : Tab B C} {X Y : Tab A C} (h : Tab.compBits R S = .ok X)
+    (h' : R.comp S = .ok Y) (hR : R.WF) (hS : S.WF) : X.toList = Y.toList := by
+  obtain ⟨U, hU, hUw, -⟩ := Tab.comp_canon h' hR hS
+  refine Tab.toList_eq_of_lt (Tab.compBits_comp h h' hR hS) ?_ (Tab.canon_lt hU hUw)
+  simp only [Tab.compBits, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka', kc', o', ra', rc'⟩, hM, hX⟩ := h; try dsimp only at hX
+  simp only [Tab.compMat, bind] at hM
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨⟨kb, bR, bS, Z⟩, -, hM⟩ := hM; try dsimp only at hM
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨⟨ka, aR, ra⟩, ha, hM⟩ := hM; try dsimp only at hM
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨⟨kc, cS, rc⟩, hc, hM⟩ := hM; try dsimp only at hM
+  split at hM
+  · cases hM
+  rename_i hov
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨_, _, hM⟩ := hM
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨_, _, hM⟩ := hM
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨_, _, hM⟩ := hM
+  rw [Except.bind_eq_ok'] at hM; obtain ⟨o, hk, hM⟩ := hM
+  simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hM
+  obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hM
+  obtain ⟨-, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hk
+  exact Tab.ofBits_sorted hX (Vals.code_plain ha).2.1 (Vals.code_plain hc).2.1 hgw
+    (by have := Nat.mul_le_mul_right kc.toNat (Nat.le_add_left ka.toNat kb.toNat); omega)
+    (fun r hr j hj => let ⟨v, _, hv, hv2, _⟩ := hbit r hr j hj; ⟨v, hv, hv2⟩)
+    (fun _ _ haa ha' i i' hi hi' => Vals.code_lt ha hR.1 haa ha' i i' hi hi')
+    (fun _ _ hjj hj' i i' hi hi' => Vals.code_lt hc hS.2 hjj hj' i i' hi hi')
+
 /-- **`colCat` is the words of `a`, then those of `b`**. -/
 theorem colCat_raw {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b = .ok (N, o))
     (ha : hasNul a = false) (hb : hasNul b = false) :
@@ -891,6 +1058,33 @@ theorem Tab.ldivBits_ldiv {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C
     (h : Tab.ldivBits R S UB UC = .ok T) (h' : Tab.ldiv R S UB UC = .ok T')
     (hR : R.WF) (hS : S.WF) (hUB : UB.WF) (hUC : UC.WF) : T.Holds = T'.Holds :=
   funext fun b => funext fun c => propext ((Tab.ldivBits_holds h hR hS hUB hUC b c).trans (Tab.ldiv_holds h' hR hS hUB hUC b c).symm)
+
+/-- **`ldivBits` is `ldiv`, row for row** (the `#guard`s of `Rel/BitsTest.lean`, proved): `Tab.ofBits_sorted` over
+`Vals.code2`'s numbers (`Vals.code2_lt`) one side, `canon` the other (`Tab.ldivOf_canon`). -/
+theorem Tab.ldivBits_eq {R : Tab A B} {S : Tab A C} {UB : Tab B B} {UC : Tab C C} {T T' : Tab B C}
+    (h : Tab.ldivBits R S UB UC = .ok T) (h' : Tab.ldiv R S UB UC = .ok T')
+    (hR : R.WF) (hS : S.WF) (hUB : UB.WF) (hUC : UC.WF) : T.toList = T'.toList := by
+  have hd := h'
+  simp only [Tab.ldiv, bind] at hd
+  rw [Except.bind_eq_ok'] at hd; obtain ⟨r, hr, hd⟩ := hd
+  rw [Except.bind_eq_ok'] at hd; obtain ⟨s, hs, hd⟩ := hd
+  obtain ⟨U, hU, hUw⟩ := Tab.ldivOf_canon hd (Tab.canon_wf hr hR) (Tab.canon_wf hs hS) hUB hUC
+  refine Tab.toList_eq_of_lt (Tab.ldivBits_ldiv h h' hR hS hUB hUC) ?_ (Tab.canon_lt hU hUw)
+  simp only [Tab.ldivBits, bind] at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨ka, aR, aS, Za⟩, ha2, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kb, bR, bU, Nb, zb, rb⟩, hb2, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kc, cS, cU, Nc, zc, rc⟩, hc2, h⟩ := h; try dsimp only at h
+  split at h
+  · cases h
+  rename_i hov
+  repeat (rw [Except.bind_eq_ok'] at h; obtain ⟨_, _, h⟩ := h; try dsimp only at h)
+  rename_i hk
+  obtain ⟨-, hgw, -, -, -, -, -, hbit⟩ := raw_kbitrows hk
+  exact Tab.ofBits_sorted h (Vals.code2_plain hb2).2.2 (Vals.code2_plain hc2).2.2 hgw
+    (by have := Nat.mul_le_mul_right kc.toNat (show kb.toNat ≤ ka.toNat + 1 + kb.toNat by omega); omega)
+    (fun r hr j hj => let ⟨v, _, hv, hv2, _⟩ := hbit r hr j hj; ⟨v, hv, hv2⟩)
+    (fun _ _ haa ha' i i' hi hi' => Vals.code2_lt hb2 hR.2 hUB.2 haa ha' i i' hi hi')
+    (fun _ _ hjj hj' i i' hi hi' => Vals.code2_lt hc2 hS.2 hUC.2 hjj hj' i i' hi hi')
 
 /-- **`R.compSel bits S` denotes `R ≫ S`** at every `bits`: its bit branch by `Tab.compBits_holds`, its other by
 `Tab.compFrom_canon`. -/

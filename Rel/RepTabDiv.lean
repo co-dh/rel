@@ -1735,17 +1735,25 @@ theorem pack_holds {k v : Obj} {R R' : Tab k v} (h : R.pack = .ok R') (wR : R.WF
 end Tab
 
 
-/-- **`r \ s` keeps `Tab.WF`**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the vacuous part
-(`cross_wf` of `ran`s). -/
-theorem Tab.ldivOf_wf {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
-    (h : ldivOf r s UB UC = .ok t) (hr : r.WF) (hs : s.WF) (hB : UB.WF) (hC : UC.WF) : t.WF := by
+/-- **`r \ s` is `canon` of a well-formed table**: the groups of `Q = r° ≫ ⟨𝟙, s⟩` gathered (`compOne_wf`), `∪` the
+vacuous part (`cross_wf` of `ran`s), `∪` being `canon` of the concatenation. -/
+theorem Tab.ldivOf_canon {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldivOf r s UB UC = .ok t) (hr : r.WF) (hs : s.WF) (hB : UB.WF) (hC : UC.WF) :
+    ∃ U : Tab B C, U.canon = .ok t ∧ U.WF := by
   simp only [Tab.ldivOf, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i Q hQ
   have wQ := compOne_wf hQ ⟨hr.2, hr.1⟩ ⟨hs.1, hs.1, hs.2⟩
   okSplit
-  exact union_wf h ⟨Vals.gather_wf ‹_› wQ.1, Vals.gather_wf ‹_› wQ.2.2⟩
-    (cross_wf ‹_› (diff_wf ‹_› (ran_wf ‹_› hB) (ran_wf ‹_› hr)).1 (ran_wf ‹_› hC).1)
+  have wX := cross_wf ‹_› (diff_wf ‹_› (ran_wf ‹_› hB) (ran_wf ‹_› hr)).1 (ran_wf ‹_› hC).1
+  simp only [Tab.union, bind, Except.bind] at h
+  split at h; · cases h
+  exact ⟨_, h, concat_wf ‹_› ⟨Vals.gather_wf ‹_› wQ.1, Vals.gather_wf ‹_› wQ.2.2⟩ wX⟩
+
+/-- **`r \ s` keeps `Tab.WF`** (`Tab.ldivOf_canon`). -/
+theorem Tab.ldivOf_wf {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B} {UC : Tab C C} {t : Tab B C}
+    (h : ldivOf r s UB UC = .ok t) (hr : r.WF) (hs : s.WF) (hB : UB.WF) (hC : UC.WF) : t.WF :=
+  let ⟨_, hU, hUw⟩ := ldivOf_canon h hr hs hB hC; canon_wf hU hUw
 
 /-- **`ldivOf` holds as `ldivDen`** on canonical `r`, `s`: a pair `(b, c)` of the counting stage has as many
 `r`-witnesses `a` of `b` with `s a c` as `r`-witnesses of `b` at all, so (rows being distinct) every one; the vacuous
