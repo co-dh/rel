@@ -530,7 +530,24 @@ left summand, where it has one. -/
 theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A} (h : Tab.inlConv X = .ok T)
     (hX : Vals.WF X) (s : (Obj.sum A B).El) (a : A.El) : T.Holds s a ↔ (∃ i, X.row i = s) ∧ Core.Rel.inl a s := by
   rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
-  · cases h
+  · -- a band column: `inl`'s one null row, whose left payload is the unit `1`, which every `a` is
+    obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+    simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i D hD
+    split at h; · cases h
+    rename_i I hI
+    split at h; · cases h
+    rename_i C hC
+    have wI := inl_wf hI (trivial : Vals.WF (Vals.unit rfl))
+    rw [comp_holds h (idU_wf hD hX) (conv_wf hC wI)]
+    constructor
+    · rintro ⟨s', hd, hc⟩
+      obtain ⟨rfl, hs⟩ := (idU_holds hD hX _ _).1 hd
+      exact ⟨hs, ((inl_holds hI trivial _ _).1 ((conv_holds hC wI _ _).1 hc)).2⟩
+    · rintro ⟨⟨i, hi⟩, hs⟩
+      exact ⟨s, (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC wI _ _).2
+        ((inl_holds hI trivial _ _).2 ⟨⟨⟨0, by simp⟩, rfl⟩, hs⟩)⟩
   have hXw := hX
   simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h

@@ -65,6 +65,9 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
 def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n) : Opt t n := by
   obtain ⟨rfl, rfl⟩ := Obj.band_some h; exact Opt.ofArr Y
 
+/-- The one row of the unit side `1`, as a side `A` known to be `1`. -/
+def Vals.unit {A : Obj} (h : A = .one) : Vals A 1 := by subst h; exact ()
+
 /-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
 writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
 def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
@@ -144,7 +147,8 @@ left row reads. A left payload of no value reads `A.dflt` at a left row (`Vals.r
 the answer is none where `X` has only right rows (`idU X − dom(idU X ≫ (inr y)°)` empty), else the error. -/
 def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) A) := do
   match X.view with
-  | .opt .. => throw "inl°: on a 1+t band column, which no kernel yet splits into its values and its nulls"
+  -- a band column's one left row is the null `inl ()`, so `inl°` is `D ≫ (inl ())°` on `inl`'s one null row
+  | .opt h _ => do (← idU X).comp (← (← inl (B := B) (Vals.unit (Obj.band_some h).1)).conv)
   | .gen _ l _ _ _ x y =>
   let D ← idU X
   if l.toNat = 0 then
@@ -155,7 +159,9 @@ def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) 
 /-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`. -/
 def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
   match X.view with
-  | .opt .. => throw "inr°: on a 1+t band column, which no kernel yet splits into its values and its nulls"
+  -- `D ≫ (inr V)°` with `V` the band's words, null flags dropped (a `kscan` map), would keep `X`'s `inr` rows; its law
+  -- needs `Enc.Valid n x.enc`, which `Vals.WF` of a band column does not carry (PLAN nullband3h)
+  | .opt .. => throw "inr°: on a 1+t band column, whose values the law cannot yet read (Vals.WF carries no Enc.Valid)"
   | .gen _ _ r _ _ x y =>
   let D ← idU X
   if r.toNat = 0 then
