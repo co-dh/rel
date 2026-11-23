@@ -545,11 +545,17 @@ def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String ×
   | .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
   | .arr b, _, ⟨_, lo, hi, f⟩, p =>
     [(p ++ ".lo", .inr ⟨_, _, Opt.ofArr lo⟩), (p ++ ".hi", .inr ⟨_, _, Opt.ofArr hi⟩)] ++ cols b f (p ++ ".e")
-  | .sum a b, _, s, p => match s.view with
+  | .sum a b, n, s, p => match s.view with
     | .opt _ x => [(p, .inr ⟨_, _, x⟩)]
     | .gen _ _ _ tag idx x y =>
-    [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩), (p ++ ".idx", .inr ⟨_, _, Opt.ofArr idx⟩)] ++ cols a x (p ++ ".l") ++
-      cols b y (p ++ ".r")
+    -- a summand with no atom column (`1`) stores the rows the tag gives it, as `colsOf` counts them, never the `l`/`r` its
+    -- producer left (a gather keeps it): one count for every producer of the same relation
+    let side (cs : List (String × SideCol)) (right : Bool) :=
+      if cs.any (·.2.isRight) then cs else
+        let k := ((List.finRange n.toNat).filter fun i => tag.get i).length
+        cs.map fun (q, _) => (q, .inl (if right then k else n.toNat - k).toUSize)
+    [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩), (p ++ ".idx", .inr ⟨_, _, Opt.ofArr idx⟩)] ++
+      side (cols a x (p ++ ".l")) false ++ side (cols b y (p ++ ".r")) true
   | .one, n, _, p => [(p, .inl n)]
 
 /-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/

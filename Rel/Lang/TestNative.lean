@@ -87,6 +87,10 @@ rel_program native1a where
     -- `1+(N×N)` is no band column: its summand `1` has no column, its count is the tag's rows (`colsOf`) and its file
     -- holds the count only (`oneKind`; the left `1` of no row here, written by `writeOnes`); `inr` of a pair
     gx : N ⟶ 1+(N×N) ≜ ⟨ed, ed⟩ inr
+    -- `inl ()` rows of two keys, and beside the `inr` rows (`∪` is `canon`): the `1` summand's count after `canon`
+    gy : N ⟶ 1+(N×N) ≜ {(1,∗),(2,∗)} inl
+    gz : N ⟶ 1+(N×N) ≜ gy ∪ gx
+    gw : N ⟶ 1+(N×N) ≜ gy ∪ gy
     -- the key of a sum whose summand holds a list or a sum (`zeroCols`: the other summand has no row)
     gm : N ⟶ [N]+N ≜ xs inl
     gp : N ⟶ (N+N)+N ≜ gi inl
@@ -300,7 +304,7 @@ def semOuts : List (String × (String → IO Unit)) :=
    ("sf", semOut native1a.sf), ("ss", semOut native1a.ss), ("gb", semOut native1a.gb), ("tk", semOut native1a.tk), ("ln", semOut native1a.ln),
    ("mx", semOut native1a.mx), ("gi", semOut native1a.gi), ("gj", semOut native1a.gj), ("gk", semOut native1a.gk),
    ("gu", semOut native1a.gu), ("gn", semOut native1a.gn), ("gv", semOut native1a.gv),
-   ("gx", semOut native1a.gx), ("gm", semOut native1a.gm), ("gp", semOut native1a.gp)]
+   ("gx", semOut native1a.gx), ("gy", semOut native1a.gy), ("gz", semOut native1a.gz), ("gw", semOut native1a.gw),("gm", semOut native1a.gm), ("gp", semOut native1a.gp)]
 
 -- CROSS past `crossMax` pairs fails the run as `Vals.cross` fails, before any column is built
 #eval show IO Unit from do
