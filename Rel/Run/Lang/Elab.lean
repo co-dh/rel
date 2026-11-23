@@ -83,6 +83,15 @@ def litLayout (t : Rel.QAtomicType) : Option (Nat × Bool × Bool) := if t == .u
 def atomName (t : Rel.QAtomicType) : String :=
   match atomNames.find? (·.2 == t) with | some (n, _) => n.toString | none => s!"{repr t}"
 
+/-- `A` as a program writes it, each atom `t` the object named by it (`atomName`), and the atoms it names: where
+    `schema S from` puts a column. -/
+def oexpOf : Obj → OExp × List Rel.QAtomicType
+  | .atom t => (.name {} (atomName t), [t])
+  | .prod a b => let (x, s) := oexpOf a; let (y, u) := oexpOf b; (.prod x y, s ++ u)
+  | .sum a b => let (x, s) := oexpOf a; let (y, u) := oexpOf b; (.sum x y, s ++ u)
+  | .arr a => let (x, s) := oexpOf a; (.list x, s)
+  | .one => (.name {} "1", [])
+
 /-- The bits of the float of `w` bytes nearest `±m·10^e` (`s` false) or `±m·10^(-e)` (`s` true): `OfScientific`,
     the reader of Lean's own float literals; `neg` its sign, so `-0.0` is the negative zero. -/
 def floatBits (w : Nat) (neg : Bool) (m : Nat) (s : Bool) (e : Nat) : UInt64 :=
