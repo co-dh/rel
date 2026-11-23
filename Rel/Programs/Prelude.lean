@@ -1,4 +1,7 @@
-import Rel.Run.Lang.Embed
+module
+public import Rel.Run.Lang.Embed
+public import Rel.Run.Lang.Expand
+@[expose] public section
 /-! # The prelude: definitions every program sees (`rel_program … after prelude`), elaborated before it. A program
     that defines one of these names again gets "already defined … in the prelude". -/
 namespace Rel.Programs

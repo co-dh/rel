@@ -616,14 +616,20 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
     #[← mkArrayLit (mkConst ``Res) ((parts.toList.zip sh.toList).map fun (⟨A, B, _⟩, c) => sigE ``Tm A B c)])
   let shC := mkConst (n ++ `shares)
   let es ← nt.mapM fun ⟨A, B, t⟩ => return (A, B, ← liftE (tmE sh t))
+  -- each row's definition (`Prim.prelude`) as built once, at its placeholders (`Once.ph`): the constant `c.body`,
+  -- the term the row's binding theorem is about (Q3 = H); not numbered, so a call's body is written whole
+  let bodies := os.filter fun o => prims.any (·.prelude == some o.const)
+  -- exported with its value, as `@[expose]` would: the theorem unfolds it in another module
+  for o in bodies do
+    withExporting <| addConst (o.const ++ `body) (g ``Tm #[oE o.res.1, oE o.res.2.1]) (← liftE (tmE #[] o.res.2.2))
   -- `tmE` checked, not proved: a `Lean.Expr` has no meaning inside Lean's logic. Every term written (each slot's
-  -- constant, each numbered term), evaluated, is the term `Code.program` gave, node by node (`Tm.diffAt`); a `share`
-  -- compares its slot only (`Tm.numberKey`), since that slot's constant is checked itself
+  -- constant, each numbered term, each body), evaluated, is the term `Code.program` gave (the `Once`'s body), node by
+  -- node (`Tm.diffAt`); a `share` compares its slot only (`Tm.numberKey`), since that slot's constant is checked itself
   let written := (parts.toList.zip sh.toList).map (fun (⟨A, B, _⟩, c) => sigE ``Tm A B c) ++
-    es.map fun (A, B, e) => sigE ``Tm A B e
+    es.map (fun (A, B, e) => sigE ``Tm A B e) ++ bodies.map fun o => sigE ``Tm o.res.1 o.res.2.1 (mkConst (o.const ++ `body))
   let vs ← withCurrHeartbeats do
     unsafe evalExpr (List Res) (listT (mkConst ``Res)) (← mkListLit (mkConst ``Res) written)
-  let want := parts.toList ++ nt
+  let want := parts.toList ++ nt ++ bodies.map (·.res)
   unless vs.length == want.length do
     throwError "rel_program {n}: internal: {written.length} terms written by `Expand.tmE` evaluate to {vs.length}"
   let slot (r : Res) : Res := ⟨r.1, r.2.1, r.2.2.numberKey⟩

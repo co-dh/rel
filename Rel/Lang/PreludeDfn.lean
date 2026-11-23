@@ -1,13 +1,16 @@
 module
 
 public import Rel.Lang.DfnLaw
+public import Rel.Programs.Prelude
 
 @[expose] public section
 
 /-! The definitions of `flat`, `foldI`, `dom`, `ran`, `nil`, `front` (`Programs/Prelude.lean`) mean their rows (B10c2):
     each term is the index of the matching `DfnCut` constructor, and the theorem specialises `Tm.dfnCut_den`
     at the trivial universe (these constructors have `uni = none`, so `hUs` is vacuous). `length` and `sum` (C3)
-    carry the universes of their base and step, so their theorems take the universe hypotheses themselves. -/
+    carry the universes of their base and step, so their theorems take the universe hypotheses themselves.
+    Q3 = H (B10d): `Tm.<sym>Def_den` is about the body the prelude elaborates, `prelude.<sym>.body` (`Expand.emit`),
+    at any objects (`Tm.instObj`); the Lean-built term's theorem, renamed `Tm.<sym>Def_row`, is its middle step. -/
 
 namespace Rel.Lang
 
@@ -44,10 +47,19 @@ theorem Tm.foldIDef_den (ρ : Val) {I E V : Obj} (e : Tm I (.prod V V)) (S : Tm 
   (Tm.dfnCut_den (.foldI e S) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
     (fun _ => trivial)
 
-theorem Tm.domDef_den (ρ : Val) {A B : Obj} (R : Tm A B) (x : A.El) (hx : Short A x) (w : A.El) :
+theorem Tm.domDef_row (ρ : Val) {A B : Obj} (R : Tm A B) (x : A.El) (hx : Short A x) (w : A.El) :
     (Tm.domDef R).den ρ x w ↔ (Tm.dom R).den ρ x w :=
   (Tm.dfnCut_den (.dom R) ρ (P := fun _ => True) (Or.inl fun _ => trivial) (by simp [DfnCut.uni]) x hx w).2
     (fun _ => trivial)
+
+/-- **`dom`'s text means the row** (Q3 = H): the body the prelude elaborates, `prelude.dom.body` (built at the
+    placeholders `general`, `u1` of `α`, `β`; its parameter `R` the variable 2), at any objects `σ` (`Tm.instObj`,
+    any `ph`, as `convTm_instObj_den`), means `dom(R)` there. -/
+theorem Tm.domDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {t' : Tm ((Obj.atom .general).inst ph σ)
+    ((Obj.atom .general).inst ph σ)} (ht : Rel.Programs.prelude.dom.body.instObj ph σ = .ok t') (x) (hx : Short _ x)
+    (w) : t'.den ρ x w ↔ (Tm.dom (.var 2 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .u1).inst ph σ))).den ρ x w := by
+  obtain rfl : Tm.domDef (.var 2) = t' := Except.ok.inj ht
+  exact Tm.domDef_row ρ _ x hx w
 
 theorem Tm.ranDef_den (ρ : Val) {A B : Obj} (R : Tm A B) (x : B.El) (hx : Short B x) (w : B.El) :
     (Tm.ranDef R).den ρ x w ↔ (Tm.ran R).den ρ x w :=
