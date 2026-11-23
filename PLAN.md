@@ -363,8 +363,10 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   input 是没有 body 的运行时名；无参数且直接提到运行时名的定义按已有的参数化定义 elaboration（运行时名即其参数，
   无第二种绑定）；`check`/`print` 的 `where` 把 input 换成表、运行时定义换成对它的应用，未给表的 input 报错并指名。
   A.1 的拒绝都有报错，`Rel/Lang/TestIO.lean` 每条一个 `#guard_msgs`；GenSoundTest 1298/1298（145 个程序）。
-  未做/与 design.md 不同：被 import 的程序带 input 被拒（等 I3）；带参数或 test 的定义提到 input 被拒（把 input 作参数
-  传入）；运行时定义仍 emit 已有的参数化常量（只 emit `.kernel` 在 I3）；sym/general 的 CSV 拒绝无法测（不能声明这种
+  未做/与 design.md 不同：被 import 的程序带 input 被拒（已做（ff73e19，合并 328b653）：importer 继承 import 的 input，
+  `TestIO.importT`）；带参数或 test 的定义提到 input 被拒（把 input 作参数
+  传入）；运行时定义仍 emit 已有的参数化常量（未做：`Expand.walk` 对运行时定义仍把 `.defn` 放进 `pend`，由 `Expand.emit`
+  经 `addConst` 写出参数化常量，`n.io` 又按 `Once` 的 body 经 `Tm.gen` 另算一份；I3 未改成只留 kernel 一份）；sym/general 的 CSV 拒绝无法测（不能声明这种
   object）；compile-diff 只在 main 跑（`main-only`）。
   I5 ✅（分支 `io-i5`）：CSV 的 Lean 模型，无 extern。`Rel/Kernel/Db/Csv.lean`：`csvWords cols b`、`csvText cols n ws`、
   逐 atom 的读写（`readAtom`/`fmtAtom`，float 精确舍入 + 最短文本，date/datetime 以 1970-01-01 为原点）、C.4 的拒绝；
@@ -607,7 +609,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   留给 dataframe 库；`minus` 在 `date` 上仍报错（`TestFrameTyped.daysCastT` 钉住组合的行）。
 - ✅ S7 `Op.cast s t`（`Op` 的最后一个构造子，带两个字段）：`kscan`/`kscatter` 以 `@& Op` 传对象，Rust `cast_word`
   （`CAST = 46`），无新导出；`Reg Op` 按对象传（`nullOps`）。所有数值对一个构造子，不只 `i64 → f64`。
-- 🔄 df-F3 字符串（dataframe F3）：`Rel/Programs/Frame.lean` 加库定义 `splitOn(s)`（q 的 `vs`，左 fold，最后一段以 `s`
+- ✅ df-F3 字符串（dataframe F3；`splitOn`、`match` 已做（c899c29），`matchAll` 已做（26c4b8b），`ymd` 已做（ea6a8aa），
+  三者都在 `TestFrameText`）：`Rel/Programs/Frame.lean` 加库定义 `splitOn(s)`（q 的 `vs`，左 fold，最后一段以 `s`
   结尾时切开，多字符分隔符同一条定义、取最左不重叠的匹配）与 `match(T, q, A) ≜ dom(⦇[q, T]⦈ A)`（`T` 是转移关系，
   DFA 或 NFA）；无新行、无新 kernel；测试 `TestFrameText`。✅ df-F3c `parseDate` 即行 `ymd : [C] ⟶ D`（owner
   2026-11-23）：`Tab.ymd` 读字节后调 `Db.Csv.ymd`（现也读 `yyyy-mm-dd`，Rust `csv.rs` 同改），`ymdDen`、
@@ -903,8 +906,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       定律上，不再逐点改，由 W3 把这些算子直接改写到五个 kernel 上。`Expand.atomE` 对 sym/general/ALP 列报错。
     - W1b 删除 foR + `pos` 之外的编码（决定 M）：在 W1a 之后（`.bytes` 没有构造点时删 constructor）。
     - ✅ W2（fb78052，f24cf81，18224ec） 第一个算子端到端（04acf52）：`Tab.canon`/`ran`/`dom` = `kasc` → `kseen` → `kgather`
-      （`Rel/Run/Canon.lean`，定律 `Rel/RepCanon.lean`），kernel 之间无转换。未做：替换旧的 `canonC`/`nubC`/
-      `CRel.ran`/`CRel.dom`（等 W3 的 `pick` 替换，以及 `sym`、`general`、`arr`、`sum` 列）。前提 `hK` 已去掉
+      （`Rel/Run/Canon.lean`，定律 `Rel/RepCanon.lean`），kernel 之间无转换。替换旧的 `canonC`/`nubC`/
+      `CRel.ran`/`CRel.dom`：已做（18224ec 删旧层，合并 f65faf6；索引里无这些名字）。前提 `hK` 已去掉
       （2f86a15，`ordcode`，owner: G）：`ascOrd_atom`、`Vals.row_of_seenKey`；`Vals.nub_sorted`（按序码升序、无两行
       序码相等）；`Vals.seenKey_iff_row`（序码相等 ⇔ 行相等）、`Vals.nub_distinct`（005e20e）。缺：1024 行块边界的
       Lean 例子（`decide +kernel` 不归约；已诊断为 `encodeAt` 的 kernel 归约代价，见 D.12 的 seen1024 一条；
@@ -1060,6 +1063,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
       `muGrow` 32 s → 5.0 s（其中 import 0.7 s）。余下每轮仍与 `|X|` 成正比：`∪` 是 concat + `canon`（重排全部 `X`），
       `−` 是 `select`（`kasc` 全部 `X ++ F(Δ)`）；perf：`write_nul` 21%、pool 空转 17%、排序 15%、`for_meta` 10%。
       再省需要已排序表的归并 / 对已排序 `X` 的成员测试（新 kernel 组合），未做。
+      缺（planaudit2）：没有对两个已排序 `Tab` 的归并，也没有对已排序 `X` 的成员测试；`Tab.merge`/`Tab.mergeRound`
+      （`Rel/Run/Fix.lean`）是 list 的归并排序，`Coc.mergeBy`/`mergePairs` 是旧编码的归并，都不是；`Tab.union`、`Tab.rdiff`
+      （`unionDiff`）仍每轮 `kasc` 全部 `X ++ F(Δ)`。需要新 kernel 组合，只报告。
       perf10（2026-11-22）：`muGrow` 的“排序 15%”是 `kasc` 的 cells 键（`Cells::codes` 按 `[u64]` 逐字比较等长的秩串），
       改为 64 字一段 `memcmp` 跳过公共前缀：比较 + quicksort 23.6% → 6.1%，`muGrow` 6.9 s → 4.2–5.5 s；`res_get_in`
       强制内联（边缘读取放冷路径）+ `encode_meta_blk` 一遍算 min/max/sum：`sudokupc9` 3.08–3.20 s → 2.77–2.80 s。
