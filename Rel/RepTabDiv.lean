@@ -673,7 +673,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, off⟩, hpl, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, hpl, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨F, hF, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₁, hw₁, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₂, hw₂, h⟩ := h
@@ -696,7 +696,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   rw [Except.bind_eq_ok'] at h; obtain ⟨lo', hlo', h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨hi', hhi', h⟩ := h
   cases h
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hpl
+  have hNn := catRows_ok hpl
   have hm₁ : m₁.toNat < 2 ^ 63 := by omega
   have hm₂ : m₂.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
@@ -741,7 +741,7 @@ theorem Vals.cat_row {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.c
   have ht : ((List.range i.1).map wN).sum + d < T.toNat := by omega
   rw [List.getElem_map, List.getElem_range', Nat.one_mul, dif_pos ht]
   obtain ⟨j, hj, hgj⟩ := Vals.gather_row F hg ⟨_, ht⟩
-  rw [hgj, Vals.concat_row hNn hoff f₁ f₂ hF hX.2 hY.2]
+  rw [hgj, Vals.concat_row hNn f₁ f₂ hF hX.2 hY.2]
   obtain ⟨hG, hu⟩ := hrun i.1 i.2 (((List.range i.1).map wN).sum + d) (by omega) (by omega)
   rw [Nat.add_sub_cancel_left] at hu
   have hGi : ((raw .i64 T G)[((List.range i.1).map wN).sum + d]?.getD 0).toNat = i.1 := by
@@ -943,7 +943,7 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
   rename_i hb
   simp only [bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, off⟩, hpl, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, hpl, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨F, hF, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₁, hw₁, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨w₂, hw₂, h⟩ := h
@@ -961,13 +961,13 @@ theorem Vals.cat_wf {B : Obj} {n : USize} {X Y Z : Vals (.arr B) n} (h : Vals.ca
   rw [Except.bind_eq_ok'] at h; obtain ⟨cab, hcab, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨g, hg, h⟩ := h
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hpl
+  have hNn := catRows_ok hpl
   have hm₁ : m₁.toNat < 2 ^ 63 := by omega
   have hm₂ : m₂.toNat < 2 ^ 63 := by omega
   obtain ⟨S₁, E₁, hse₁', hb₁, -⟩ := cellSpan_spec hX.1 hm₁ f₁
   obtain ⟨S₂, E₂, hse₂', hb₂, -⟩ := cellSpan_spec hY.1 hm₂ f₂
   refine Vals.cells_expand_wf hex h (m₁.toNat + m₂.toNat) (fun i hi => ?_) (by omega) (by omega)
-    (Vals.gather_wf hg (Vals.concat_wf hNn hoff hF hX.2 hY.2))
+    (Vals.gather_wf hg (Vals.concat_wf hNn hF hX.2 hY.2))
   obtain ⟨x₁, y₁⟩ := cellSpan_width hse₁' hb₁ hw₁ i hi
   obtain ⟨x₂, y₂⟩ := cellSpan_width hse₂' hb₂ hw₂ i hi
   have es := (colMap_raw hw).2.2.2 i hi
@@ -1772,7 +1772,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
   rw [Except.bind_eq_ok'] at h; obtain ⟨sg1, hsg1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨c1, hc1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cnt, hcnt, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, hcat, h⟩ := h; try dsimp only at h
   split at h
   · rw [Except.bind_eq_ok'] at h; obtain ⟨_, h', -⟩ := h; cases h'
   rename_i hN63
@@ -1805,11 +1805,11 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
   have hP : (∃ j, X1.row j = b ∧ Y1.row j = c) ↔
       (∃ a, R.Holds a b ∧ S.Holds a c) ∧ ∀ a, R.Holds a b → S.Holds a c := by
     have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
-    obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
-    have hzr := Vals.concat_row hNn hoff r.val Q.key hz hrw.2 (compOne_wf hQ hw.1 hw.2).1
+    have hNn := catRows_ok hcat
+    have hzr := Vals.concat_row hNn r.val Q.key hz hrw.2 (compOne_wf hQ hw.1 hw.2).1
     have hNU := N.toNat_lt_size
     obtain ⟨π1, gr1, fs1, hkN, hp1, -, hsur1, hcnt1, hg1, hf1, hrow1⟩ := group_rows (A := .prod B C) (N := Q.n) (x := (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)) ⟨wQ.1, wQ.2.2⟩ hes hasc hseen
-    obtain ⟨π2, gr2, fs2, hbkN, hp2, hinj2, hsur2, hcnt2, hg2, -, hrow2⟩ := group_rows (Vals.concat_wf hNn hoff hz hrw.2 (compOne_wf hQ hw.1 hw.2).1) hbs hbasc hbseen
+    obtain ⟨π2, gr2, fs2, hbkN, hp2, hinj2, hsur2, hcnt2, hg2, -, hrow2⟩ := group_rows (Vals.concat_wf hNn hz hrw.2 (compOne_wf hQ hw.1 hw.2).1) hbs hbasc hbseen
     have hK : k.toUSize.toNat = k := USize.toNat_ofNat_of_lt' (by omega)
     have hbK : bk.toUSize.toNat = bk := USize.toNat_ofNat_of_lt' (by omega)
     have hnU : r.n.toUInt64 = r.n.toNat.toUInt64 := UInt64.toNat_inj.mp (by simp <;> omega)
@@ -2140,7 +2140,7 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
       have : L = [] := List.eq_nil_iff_forall_not_mem.2 fun j hj => by obtain ⟨hj', _⟩ := (hL j).1 hj; omega
       subst this; exact ⟨i, h1, rfl⟩
   simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, hcat, h⟩ := h; try dsimp only at h
   split at h; · cases h
   rename_i hN
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
@@ -2159,8 +2159,8 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
   rw [Except.bind_eq_ok'] at h; obtain ⟨fs, hfs, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨iD, hiD, h⟩ := h
   ------------------------------------------------------------------ the sorted rows and their groups
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
-  have wz := Vals.concat_wf hNn hoff hz wD wr.1
+  have hNn := catRows_ok hcat
+  have wz := Vals.concat_wf hNn hz wD wr.1
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
   obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
@@ -2248,9 +2248,9 @@ theorem lamOf_canon {n : USize} {D : Vals A n} {r : Tab A B} {T : Tab A (.arr B)
     obtain ⟨q, hq, e⟩ := List.mem_iff_getElem.1 (hperm.mem_iff.2 (List.mem_range.2 hi))
     exact ⟨q, by omega, by rw [hps q (by omega)]; exact e⟩
   have zD : ∀ i (hi : i < n.toNat), z.row ⟨i, by omega⟩ = D.row ⟨i, hi⟩ := fun i hi => by
-    rw [Vals.concat_row hNn hoff D r.key hz wD wr.1, dif_pos hi]
+    rw [Vals.concat_row hNn D r.key hz wD wr.1, dif_pos hi]
   have zR : ∀ j (hj : j < r.n.toNat), z.row ⟨n.toNat + j, by omega⟩ = r.key.row ⟨j, hj⟩ := fun j hj => by
-    rw [Vals.concat_row hNn hoff D r.key hz wD wr.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
+    rw [Vals.concat_row hNn D r.key hz wD wr.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
   -- within a group, sorted positions read ascending input rows (`kasc` is stable)
   have hmono : ∀ q q', q < q' → q' < N.toNat →
       Verify.groupOf Kk N.toNat q = Verify.groupOf Kk N.toNat q' → ps[q]?.getD 0 < ps[q']?.getD 0 := by

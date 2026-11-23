@@ -103,11 +103,11 @@ theorem tagged_wf {R S : Tab A B} {p : Tab A B × Enc} (h : R.tagged S = .ok p) 
   simp only [Tab.tagged, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i q hq
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan R.n S.n = .ok (q.1, q.2) from hq)
+  have hn := catRows_ok hq
   split at h; · cases h
   rename_i x hx; split at h; · cases h
   rename_i y hy; okSplit
-  cases h; exact ⟨Vals.concat_wf hn ho hx hR.1 hS.1, Vals.concat_wf hn ho hy hR.2 hS.2⟩
+  cases h; exact ⟨Vals.concat_wf hn hx hR.1 hS.1, Vals.concat_wf hn hy hR.2 hS.2⟩
 
 /-- **`select` keeps `Tab.WF`**: the kept groups' rows gathered from the tagged concatenation. -/
 theorem select_wf {keep : USize → Enc → Enc → Except String Enc} {R S t : Tab A B} (h : select keep R S = .ok t)

@@ -90,8 +90,7 @@ def vText (f : Nat → String) (k : Nat) : String := "v\n" ++ String.join ((List
     pure t
   let cat (x y : Nat → String) : IO (Except String ((n : USize) × Vals vS.obj n)) := do
     let (a, b) := (← rd x "/a.csv", ← rd y "/b.csv")
-    let off := (← IO.ofExcept ((← IO.ofExcept (Arr.pos b.n)).shift a.n.toUInt64)).enc
-    pure ((⟨_, ·⟩) <$> Vals.concat (a.n + b.n) off a.val b.val)
+    pure ((⟨_, ·⟩) <$> Vals.concat (a.n + b.n) a.val b.val)
   let full (i : Nat) := toString (7 * i)
   match ← cat full (fun i => full (5000 + i)) with
   | .ok ⟨_, v⟩ =>
@@ -100,10 +99,12 @@ def vText (f : Nat → String) (k : Nat) : String := "v\n" ++ String.join ((List
     unless out == vText full 10000 do throw (IO.userError s!"concat 1+N: written as {out.take 200}…")
   | .error m => throw (IO.userError s!"concat 1+N with no null: {m}")
   let holed (i : Nat) := if i % 3 = 1 then "" else full i
-  let want := s!"concat: the first 1+{repr QAtomicType.i64} column holds a null, and no kernel yet merges two columns' null bits"
-  match ← cat holed holed with
-  | .ok _ => throw (IO.userError "concat 1+N with nulls on both sides: an answer, not the error")
-  | .error m => unless m == want do throw (IO.userError s!"concat 1+N with nulls on both sides: {m}")
+  match ← cat holed (fun i => holed (5000 + i)) with
+  | .ok ⟨_, v⟩ =>
+    Table.writeCsv none [] vS vCols (d ++ "/c.csv") (← IO.ofExcept (Table.frame v))
+    let out ← IO.FS.readFile (d ++ "/c.csv")
+    unless out == vText holed 10000 do throw (IO.userError s!"concat 1+N with nulls: written as {out.take 200}…")
+  | .error m => throw (IO.userError s!"concat 1+N with nulls on both sides: {m}")
   IO.FS.removeDirAll d
 
 end Rel.Lang.TestNullband

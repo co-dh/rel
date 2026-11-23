@@ -36,7 +36,8 @@ theorem Vals.code2_plain {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂}
     {z : (N : USize) × Vals A N × Enc} (h : Vals.code2 x y = .ok (k, cx, cy, z)) :
     hasNul cx = false ∧ hasNul cy = false ∧ hasNul z.2.2 = false := by
   simp only [Vals.code2, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨z', -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k', c, rep⟩, hc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨cx', hx, h⟩ := h
@@ -106,18 +107,24 @@ theorem Vals.code2_spec {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂} 
         ((∃ i : Fin n₁.toNat, cx i = G) ∨ ∃ j : Fin n₂.toNat, cy j = G) ∧
         (∀ i : Fin n₁.toNat, cx i = G ↔ x.row i = Z.2.1.row t) ∧ ∀ j : Fin n₂.toNat, cy j = G ↔ y.row j = Z.2.1.row t := by
   simp only [Vals.code2, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N, sh⟩, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, hsh, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k', c, rep⟩, hcode, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨bx', hbx, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨bY', hbY, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl, rfl, rfl⟩ := h
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
-  have hzr := Vals.concat_row hNn hoff x y hz hx hy
-  obtain ⟨hkN, hck, hrep, hceq⟩ := Vals.code_spec hcode (Vals.concat_wf hNn hoff hz hx hy)
+  have hNn := catRows_ok hcat
+  have hzr := Vals.concat_row hNn x y hz hx hy
+  obtain ⟨hkN, hck, hrep, hceq⟩ := Vals.code_spec hcode (Vals.concat_wf hNn hz hx hy)
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
+  -- `shiftCol` puts word `k` of `y` at `n₁ + k`, a count below `N < USize.size ≤ 2^64`
+  have hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ sh)[k]?.getD 0).toNat = n₁.toNat + k := fun k hk => by
+    rw [shiftCol_raw hsh k hk]
+    simp [UInt64.toNat_add]
+    omega
   let cd := fun t : Nat => ((raw .i64 N c)[t]?.getD 0).toNat
   have hcd : ∀ t < N.toNat, (raw .i64 N c)[t]?.getD 0 = (cd t).toUInt64 := fun t _ =>
     UInt64.toNat_inj.mp (by simp [cd])
@@ -537,15 +544,21 @@ theorem colCat_raw {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b
     N.toNat = n₁.toNat + n₂.toNat ∧ ∀ q < N.toNat, (raw .i64 N o)[q]?.getD 0 =
       if q < n₁.toNat then (raw .i64 n₁ a)[q]?.getD 0 else (raw .i64 n₂ b)[q - n₁.toNat]?.getD 0 := by
   simp only [colCat, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N', sh⟩, hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N', hcat, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, hsh, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨s1, hs1, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨s2, hs2, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o', ho, h⟩ := h
   simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
+  have hNn := catRows_ok hcat
   have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N'.toNat_lt_size
+  -- `shiftCol` puts word `k` of `b` at `n₁ + k`, a count below `N' < USize.size ≤ 2^64`
+  have hoff : ∀ k < n₂.toNat, ((raw .i64 n₂ sh)[k]?.getD 0).toNat = n₁.toNat + k := fun k hk => by
+    rw [shiftCol_raw hsh k hk]
+    simp [UInt64.toNat_add]
+    omega
   -- each side lands at `d + k`, and every other word is the fill `0`
   have side : ∀ {m : USize} {ix e s : Enc}, kscatter .last m ix e N' 0 = .ok s → hasNul e = false → ∀ d,
       (∀ k < m.toNat, ((raw .i64 m ix)[k]?.getD 0).toNat = d + k) → d + m.toNat ≤ N'.toNat →
@@ -578,7 +591,8 @@ theorem colCat_raw {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b
 theorem colCat_plain {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b = .ok (N, o)) :
     hasNul o = false ∧ Ext.Enc.WF .i64 N o := by
   simp only [colCat, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N', sh⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N', -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨s1, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨s2, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨o', ho, h⟩ := h

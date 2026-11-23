@@ -1460,7 +1460,8 @@ theorem Vals.code_valid {n k : USize} {x : Vals A n} {c rep : Enc} (h : Vals.cod
 theorem Vals.code2_code {n₁ n₂ k N : USize} {x : Vals A n₁} {y : Vals A n₂} {bx bY rep : Enc} {z : Vals A N}
     (h : Vals.code2 x y = .ok (k, bx, bY, ⟨N, z, rep⟩)) : ∃ c, Vals.code z = .ok (k, c, rep) := by
   simp only [Vals.code2, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨⟨N0, sh⟩, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨N0, -, h⟩ := h; try dsimp only at h
+  rw [Except.bind_eq_ok'] at h; obtain ⟨sh, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨z0, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨k0, c0, rep0⟩, hc, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h

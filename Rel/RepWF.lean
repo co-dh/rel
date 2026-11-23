@@ -27,11 +27,13 @@ theorem Vals.code2_wf {n₁ n₂ : USize} {x : Vals A n₁} {y : Vals A n₂}
   simp only [Vals.code2, bind, Except.bind, pure, Except.pure] at h
   split at h; · cases h
   rename_i p hp
-  obtain ⟨hn, ho⟩ := catPlan_ok (show catPlan n₁ n₂ = .ok (p.1, p.2) from hp)
+  have hn := catRows_ok hp
+  split at h; · cases h
+  rename_i sh hsh
   split at h; · cases h
   rename_i z hz
   okSplit
-  cases h; exact Vals.concat_wf hn ho hz hx hy
+  cases h; exact Vals.concat_wf hn hz hx hy
 
 namespace Tab
 

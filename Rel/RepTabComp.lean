@@ -597,7 +597,7 @@ theorem Tab.compOne_canon {A B C : Obj}
   split at hx; · cases hx
   rename_i hnm
   simp only [bind] at hx; rw [Except.bind_eq_ok'] at hx; obtain ⟨_, -, hx⟩ := hx
-  rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨N, sh⟩, hcat, hx⟩ := hx; try dsimp only at hx
+  rw [Except.bind_eq_ok'] at hx; obtain ⟨N, hcat, hx⟩ := hx; try dsimp only at hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨z, hz, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨es, hes, hx⟩ := hx
   rw [Except.bind_eq_ok'] at hx; obtain ⟨⟨vs, p⟩, hasc, hx⟩ := hx; try dsimp only at hx
@@ -627,8 +627,8 @@ theorem Tab.compOne_canon {A B C : Obj}
   rw [Except.bind_eq_ok'] at h; obtain ⟨Y, hY, h⟩ := h
   refine ⟨_, h, ⟨Vals.gather_wf hX hR.1, Vals.gather_wf hY hS.2⟩, fun a c => ?_⟩
   ------------------------------------------------------------------ the sorted rows and their groups
-  obtain ⟨hNn, hoff⟩ := catPlan_ok hcat
-  have hzw := Vals.concat_wf hNn hoff hz hR.2 hS.1
+  have hNn := catRows_ok hcat
+  have hzw := Vals.concat_wf hNn hz hR.2 hS.1
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hNU := N.toNat_lt_size
   obtain ⟨cs, hcs, hp, hkq⟩ := kasc_grade hasc (Vals.cols_wf _ hes)
@@ -815,9 +815,9 @@ theorem Tab.compOne_canon {A B C : Obj}
   ------------------------------------------------------------------ the rows of `U` are the pairs of `R ≫ S`
   have fs := firsts_spec Kk N.toNat
   have zR : ∀ i (hi : i < R.n.toNat), z.row ⟨i, by omega⟩ = R.val.row ⟨i, hi⟩ := fun i hi => by
-    rw [Vals.concat_row hNn hoff R.val S.key hz hR.2 hS.1, dif_pos hi]
+    rw [Vals.concat_row hNn R.val S.key hz hR.2 hS.1, dif_pos hi]
   have zS : ∀ j (hj : j < S.n.toNat), z.row ⟨R.n.toNat + j, by omega⟩ = S.key.row ⟨j, hj⟩ := fun j hj => by
-    rw [Vals.concat_row hNn hoff R.val S.key hz hR.2 hS.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
+    rw [Vals.concat_row hNn R.val S.key hz hR.2 hS.1, dif_neg (by simp)]; simp only [Nat.add_sub_cancel_left]
   unfold Tab.Holds
   constructor
   · rintro ⟨t, ha, hc⟩
