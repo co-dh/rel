@@ -212,12 +212,10 @@ pub fn nul_meta(m: &mut EncMeta, x: &[u8], width: usize, nb: usize, nul: &[u8], 
         let r = (mx as u64).wrapping_sub(mn as u64);
         let mut d = crate::bits::width_for(r);
         if any && d < 64 && r == (1u64 << d) - 1 { d += 1 }
-        // a value at the null's code is patched (Lean `Coc.patched`), where the column carries a patch list
+        // a value at the null's code is patched (Lean `Coc.patched`): a column in memory is below Lean's `2 ^ 64` gate
         let top = if d == 64 { u64::MAX } else { (1u64 << d) - 1 };
-        let ne = if !m.patch { 0 } else {
-            elts::<T>(x, "coc_enc_nul_meta")[..nb].iter().enumerate()
-                .filter(|&(i, v)| !is_nul(nul, lo + i) && (v.i() as u64).wrapping_sub(mn as u64) == top).count() as u32
-        };
+        let ne = elts::<T>(x, "coc_enc_nul_meta")[..nb].iter().enumerate()
+            .filter(|&(i, v)| !is_nul(nul, lo + i) && (v.i() as u64).wrapping_sub(mn as u64) == top).count() as u64;
         (*m.base, *m.maxv, *m.bsum, *m.width, *m.nexc) = (mn, mx, s, d | crate::coc::NUL_FLAG, ne);
         if let Some(f) = m.frm.as_deref_mut() { *f = 0 }
     }

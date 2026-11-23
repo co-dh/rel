@@ -373,7 +373,6 @@ theorem csr_spec {n g : USize} {gid x ends idx : Enc} (h : csr n g gid x = .ok (
     simp only [Bool.and_true]; exact toNat_toUInt64 (Nat.lt_of_le_of_lt (hCn (G + 1)) (by omega))
   -- `kasc` of one `i64` column below `2^63` is the stable numeric order on `gid`
   obtain ⟨-, -, hp, -⟩ := kasc_grade hasc (by simp only [List.mem_singleton]; rintro _ rfl; exact ⟨_, hgw⟩)
-    (Or.inr (by simp only [List.mem_singleton]; rintro _ rfl; exact hgN))
   have hks : ascKeys n [(.atom .i64, gid)] = [(raw .i64 n gid).map (ordKey 8 false true)] := by
     simp only [ascKeys, ascKey, nulCodes, nulWords, hgN, Bool.false_eq_true, if_false, List.nil_append,
       List.append_nil]; rfl

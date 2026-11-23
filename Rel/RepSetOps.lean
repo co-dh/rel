@@ -667,7 +667,6 @@ theorem select_ok {keep : USize → Enc → Enc → Except String Enc} {κ : Pro
   have hc64 : ∀ a, a < C.n.toNat → a.toUInt64.toNat = a := fun a ha => by simp; omega
   have hkey : ∀ q (hq : q < ps.length), seenKey C.n ((es.map (·.1)).zip vs) q = seenKey C.n es ps[q] := by
     obtain ⟨-, -, -, hk⟩ := kasc_grade hvp (fun x hx => (Vals.cols_wf _ hes x hx).1)
-      (.inr fun x hx => (Vals.cols_wf _ hes x hx).2)
     rw [asc_perm_grade hvp hp hperm]; exact hk
   obtain ⟨hmm, hg, hf⟩ := kseen_ok hr
   generalize seenKey C.n ((es.map (·.1)).zip vs) = Kf at hmm hg hf hkey

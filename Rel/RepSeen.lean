@@ -68,7 +68,7 @@ theorem kasc_kseen {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
     ∃ r, kseen n ((es.map (·.1)).zip vs) = .ok r := by
   obtain ⟨ps, -, hperm, hvl, hcol⟩ := asc_perm n es vs p ha
   obtain ⟨cs, hc, -⟩ := kasc_ok ha
-  obtain ⟨-, -, -, hkey⟩ := kasc_grade ha hwf (.inr hpl)
+  obtain ⟨-, -, -, hkey⟩ := kasc_grade ha hwf
   obtain ⟨hlc, hf⟩ := mapM_ok hc
   have hlen : ps.length = n.toNat := by simpa using hperm.length_eq
   have hread : ∀ c ∈ (es.map (·.1)).zip vs, ∃ r, ascCol n c = .ok r := fun c hc' => by

@@ -105,7 +105,7 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
     obtain ⟨j, hj, hjn, hjb⟩ := nulAt_encodeAt Column.lgEnc hlg 8 (by decide) (by decide) X nul b
       (mul_lt_of_lt_cdiv (Nat.two_pow_pos _) hb) hf
     refine ⟨j, hj, by omega, ?_⟩
-    have h := hopt _ (by omega)
+    have h := hopt (b * 2 ^ Column.lgEnc + j) (by omega)
     rw [if_pos hjb] at h
     unfold Column.foROpt at h; split at h
     · assumption

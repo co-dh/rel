@@ -426,11 +426,9 @@ theorem foRNuls_bit (m : USize) (e : Enc) {i : Nat} (hi : i < m.toNat) :
 
 /-- **A sorted column agrees with its input row by row, nulls included**: `v`, `asc_perm`'s answer for the input
 column `e` through the permutation `ps`, holds at row `q` input row `ps[q]`'s null flag and, off a null, its word; and
-`v` holds a null exactly where `e` does (`hasNul_flags`, `e` being `Ext.Enc.WF`). Below `2 ^ 32` rows `wordsFoR` reads
-back every flag it wrote (`foRNuls_wordsFoR`'s `hbig`); at more, a row keeping `2 ^ 63 - 1` in a block with a null
-reads as the null. -/
+`v` holds a null exactly where `e` does (`hasNul_flags`, `e` being `Ext.Enc.WF`). -/
 theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64} {nul : ByteArray} {ps : List Nat}
-    (hm : m.toNat < 2 ^ 32) (hw : Ext.Enc.WF t m e) (hv : v = wordsFoR ws nul) (hws : ws.size = m.toNat)
+    (hw : Ext.Enc.WF t m e) (hv : v = wordsFoR ws nul) (hws : ws.size = m.toNat)
     (hwq : ∀ k (hk : k < ps.length), ws[k]? = (Enc.raw .i64 m e)[ps[k]]?)
     (h0 : hasNul e = false → nul = .empty)
     (h1 : hasNul e = true → ∃ nf : Array UInt64, nul = nulMap nf ∧ nf.size = m.toNat ∧
@@ -444,7 +442,7 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
   -- the flags: `nul` is `e`'s flags through `ps`, or empty where `e` has none
   have hfv : ∀ k (hk : k < ps.length), (foRNuls m (wordsFoR ws nul))[k]? = (foRNuls m e)[ps[k]]? := by
     intro k hk
-    rw [foRNuls_wordsFoR ws nul hws.symm k (by omega) fun h32 => absurd h32 (by omega)]
+    rw [foRNuls_wordsFoR ws nul hws.symm k (by omega)]
     rw [foRNuls_bit m e (hlt k hk)]
     cases hN : hasNul e
     · rw [h0 hN, bitAt_empty]
@@ -464,7 +462,7 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
   have hraw : ∀ k (hk : k < ws.size), Column.bitAt nul k = false → (Enc.raw .i64 m (wordsFoR ws nul))[k]? = some ws[k] := by
     intro k hk hnk
     obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws nul = .foR md pk := ⟨_, _, rfl⟩
-    have h := (wordsFoR_nul ws nul hws.symm).2.2.1 md pk hE k hk fun h32 => absurd h32 (by omega)
+    have h := (wordsFoR_nul ws nul hws.symm).2.2.1 md pk hE k hk
     rw [hnk, if_neg Bool.false_ne_true] at h
     unfold Column.foROpt at h; split at h; · cases h
     rw [hE, raw_foR .i64 8 rfl (by decide)]
@@ -502,7 +500,7 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
     · simp
     · -- a row whose flag is `0` is no null in `nul`, so it reads back its word
       have hnq : Column.bitAt nul q = false := by
-        have h := (foRNuls_wordsFoR ws nul hws.symm q (by omega) fun h32 => absurd h32 (by omega)).symm.trans (hfv q hq)
+        have h := (foRNuls_wordsFoR ws nul hws.symm q (by omega)).symm.trans (hfv q hq)
         cases hb : Column.bitAt nul q
         · rfl
         · rw [hb] at h; rw [← h] at hf; simp at hf
@@ -522,10 +520,9 @@ theorem kseen_plain {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc
 
 /-- **`kasc`'s grade**: `p` reads as the stable grade `ps` of the codes (`Verify.asc_perm_grade`), and the `kseen` key
 of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s: every key column is `Ext.Enc.WF` (so its
-`hasNul` is its rows' flags) and there are fewer than `2 ^ 32` rows (`asc_col_row`). -/
+`hasNul` is its rows' flags (`asc_col_row`). -/
 theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
-    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2)
-    (hN : N.toNat < 2 ^ 32 ∨ ∀ x ∈ es, hasNul x.2 = false) :
+    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2) :
     ∃ cs, es.mapM (ascCol N) = .ok cs ∧
       Enc.raw .i64 N p = ((ascGrade N.toNat (ascKeys N es)).map Nat.toUInt64).toArray ∧
       ∀ q (hq : q < (ascGrade N.toNat (ascKeys N es)).length),
@@ -545,19 +542,7 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
     obtain ⟨ws, nul, hv, hws, hwq, h0, h1⟩ := hcol c es[c] (vs[c]'(by simp at h; omega)) (List.getElem?_eq_getElem h')
       (List.getElem?_eq_getElem _)
     obtain ⟨t, hw⟩ := hwf es[c] (List.getElem_mem h')
-    rcases hN with hN | hpl
-    · exact asc_col_row hN hw hv hws hwq h0 h1 hperm q hq
-    -- a plain column sorts with no null bitmap: its codes are its words and every flag is `0` (no row bound needed)
-    have hp := hpl _ (List.getElem_mem h')
-    obtain rfl := h0 hp
-    have hcl := wordsFoR_closed ws hws.symm
-    have hqN : q < N.toNat := by simpa using Nat.lt_of_lt_of_eq hq hperm.length_eq
-    have hpq : ps[q] < N.toNat := List.mem_range.1 (hperm.mem_iff.1 (List.getElem_mem hq))
-    rw [hv]
-    refine ⟨?_, by rw [hasNul_wordsFoR, hp], ?_⟩
-    · simp only [nulWords, hasNul_wordsFoR, hp, Bool.false_eq_true, ↓reduceIte]; rw [hcl.2.1, hwq q hq]
-    · rw [foRNuls_plain (hcl.2.2 (t := .i64) rfl fun h => by cases h) (hasNul_wordsFoR ws) hqN,
-        foRNuls_plain hw hp hpq]
+    exact asc_col_row hw hv hws hwq h0 h1 hperm q hq
   refine ascKeys_row (List.map_fst_zip (by simp [hvl])) (fun c h h' => ?_) fun c h h' => ?_
   · simp only [List.getElem_zip]; exact (hc c h h').1
   · simp only [List.getElem_zip]; exact (hc c h h').2
@@ -614,18 +599,17 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
     simp only [Vals.cols, Except.ok.injEq] at h; subst h; cases hc
 
 /-- **The sorted rows' key at `q` is input row `ps[q]`'s**, `ps` the permutation `asc_perm` reads `p` as: `kasc_grade`
-on a side's columns (`Vals.cols_wf`), below `2 ^ 32` rows. -/
+on a side's columns (`Vals.cols_wf`). -/
 theorem Vals.sorted_key {A : Obj} {n : USize} {x : Vals A n} {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es)
     {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p)) {ps : List Nat}
     (hp : p = wordsFoR (ps.map Nat.toUInt64).toArray) (hperm : ps.Perm (List.range n.toNat)) :
     ∀ q (hq : q < ps.length), seenKey n ((es.map (·.1)).zip vs) q = seenKey n es ps[q] := by
   obtain ⟨-, -, -, hk⟩ := kasc_grade ha (fun c hc => (Vals.cols_wf x hes c hc).1)
-    (.inr fun c hc => (Vals.cols_wf x hes c hc).2)
   rw [asc_perm_grade ha hp hperm]; exact hk
 
 /-- **Every row of `x` has a row of `Vals.nub x` equal to it in the kernels' order codes** (`seenKey` over the side's
 columns `es`): the first input row of its run among the sorted rows. Where equal codes mean equal rows, the two sides
-hold the same rows (`Vals.nub_rows`). Below `2 ^ 32` rows (`kasc_grade`). -/
+hold the same rows (`Vals.nub_rows`). -/
 theorem Vals.nub_cover {A : Obj} {n : USize} {x : Vals A n} {r : (m : USize) × Vals A m} (h : Vals.nub x = .ok r)
     {es : List (AscKey × Enc)} (hes : Vals.cols x = .ok es) (i : Fin n.toNat) :
     ∃ j : Fin r.1.toNat, ∃ i' : Fin n.toNat, Vals.row r.2 j = Vals.row x i' ∧ seenKey n es i' = seenKey n es i := by
