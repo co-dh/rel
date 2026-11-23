@@ -251,6 +251,57 @@ A = {1,2,3}，R = {1→2, 2→3}，φX = 𝟙 ∪ R X
   [`Tm.dem`], [实现，但由 `Tm` 计算], [构造子与其部分的函数（`Tm.lean:122-137`），`var` 除外], [保留为函数，加 `δ`；每删一个构造子少一条子句],
 )
 
+== `δ` 的规则（B9e）
+
+一个例子，定义 `c(R) ≜ R S`，体 `b = comp (var 7) S`，两处调用共用同一个体：
+
+```
+dem δ (arg (call [7] c b) (val T)) []        // 实参 val T
+  → (val T).dem δ [] = false                 // 实参的位，压栈
+  → (call [7] c b).dem δ [false]
+  → b.dem {7 ↦ false} []                     // 绑定者 call 写入
+  → (var 7).dem {7 ↦ false} [] = false       // comp 读左操作数；结果 closed
+
+dem δ (arg (call [7] c b) Λ(Q)) []           // 实参 Λ(Q)，位为 true
+  → b.dem {7 ↦ true} [] = true               // 同一个体，on demand
+```
+
+今天这两处调用各存一个体（`var false 7` 与 `var true 7`，`Elab.lean:2710` 的 `t.subst`）；改后体只有 `var 7`。
+
+规则：
+
+- 签名：`Tm.dem : Tm A B → Dem → List Bool → Bool`，`Dem = Nat → Bool`。第三个参数 `ds` 是 spine 上还没被绑定的实参的位，顺序同 `Tm.argGen` 的 `xs`。
+- `var k`：`δ k`。
+- `arg f x`：先算 `d = x.dem δ []`，再算 `f.dem δ (d :: ds)`；行为头的 spine 照旧读 `Tm.whole` `Tm.bounds`，`prim` 不读 `ds`。
+- `call ks c cv os b`：`b.dem (Dem.args ks ds) []`。`Dem.args` 把 `ks` 逐个绑到 `ds`，其余变量为 false，与 `Code.args`、`Val.args` 同形：体只看得见它的 `ks`。零元 `call`（共享部分）因此在空环境下算。
+- `mu` `nu` 是 false、`hylo` 是 true 的叶子，`Tm.dem` 不进入它们的体。进入体的遍历（`Tm.gen`、`Plan.nodeB`、`build`）在绑定处写 `k ↦ false`：变量是每轮的表。
+- 其余子句不变，子项以 `δ` 与空的 `ds` 递归。
+
+`dem` 的含义（由代码读出）：
+
+- `dem` 不是任何定理的假设。`Tm.gen_sound`（`GenSound.lean:1478`）的陈述里没有它；`Tm.code`（`TmGen.lean:154`）只用它决定是否 `GenK.memo`，而 `memo` 对不能 closed 运行的 lazy 值原样返回（`GenK.lean:103`），两个分支都 sound。
+- `convTm_den`（`ConvSpec.lean:152`）只对 `t.dem` 分情况：false 时 `convTm t = conv t`（`convTm_of_false`），true 时按结构下推；`var` 的情况由 `Tm.ConvOK` 的 `ρ k B A = (ρ k A B)°` 证，与位无关。
+- 所以 `true` 许可的是两个选择：读者要供给 key（`closeRes` 复合源 universe，`closed?` 拒绝），以及 `convTm` 按结构下推。它选的是哪一个 sound 的 plan，不是 plan 是否 sound。
+
+推论：
+
+- 所有定理对任意 `δ` `ds` 成立，改为全称量化；`Code.program_sound` 的陈述不变，因为 `δ` 是 `Code` 的字段 `dem`（`Code.bind` `Code.args` 同时绑定变量的 code 与位，一个绑定者只写一次，两者不会不一致）。
+- `convTm` 的 `var _ k ↦ var true k` 今天就是恒等：它只在 `t.dem = true` 时到达，那时 `d` 已是 true。改后是 `var k ↦ var k`，绑定者不必为逆另写：逆常量 `c'` 的体绑定在同样的 `ks` 与同样的实参上，`δ` 相同。`convTm` 自己带 `δ` 与 `ds`（它读 `t.dem`），在 `call` 处换成 `Dem.args ks ds`，在 `arg` 处压栈。
+
+没有绑定者的顶层 `δ`：
+
+#tbl(c-syn, (auto, 1fr, 1fr), ([调用者], [`δ`], [依据]),
+  [`build`（及其内的 `closeRes` `closed?` `uniPart` `convPre`）], [显式参数。顶层取被 build 的 `Pre` 自己的变量 form：`Pre.var` 的 form 为 `some _` 的变量是 true，其余 false], [form 是 elaborator 定的（`elabOnce`：参数的 form 即 `fs`；universe 变量与不动点变量是 `none`），`Expand.once` `callDef` `top` `walk` 都只有这个 `Pre`],
+  [`build` 的 `.fix` `.hylo`], [`δ.bind k false`], [变量是每轮的表],
+  [`build` 的 `.callE`], [`ks` 逐个绑到实参的 `dem`；`t.subst` 一行删去], [今天的 `cl`（全 closed）与 `od` 加 `subst` 正是这个值],
+  [`Once` 的体（`Expand.convOf`）], [`Once.dem`：参数 `i` 是变量 `gen.length + i`，位是 `params` 的第三项], [与 `elabOnce` 给 `Pre.var` 的 form 同源（`fs`）],
+  [closed 项：`Expand.closed`、`emit` 的定义检查、`Code.shares`], [`Dem.empty`], [`fv = []`，值与 `δ` 无关],
+  [`Tm.code`、`Plan.nodeB` `argB`], [环境里的位：`Code.dem`，`Vars` 每项多一个 Bool], [与 code 同一个绑定者],
+  [`ConvSpec` 的定理], [全称量化 `δ` `ds`], [见上],
+)
+
+值会变的只有一类：constant 的调用（`build` 的 `.call`，`callTm` 与 `callArgs`）里，体按 form `none` 建成（参数或 universe 变量当作 closed），而实参的 `dem` 是 true。这只在实参是无界数 object 的 universe（`uniPart` 给 `𝟙`）、含它的积或和的 universe、或被这样的 universe 关闭的实参时出现。今天体里存的位是 false，调用报告 closed；改后调用的 `dem` 是 true，与把体内联时的回答相同。其余每个 use 的值不变。
+
 == 以后的选项（现在不做）：`const`，行、定义、共享部分是同一个东西
 
 决定 J 留 `prim` 与 `call` 两个构造子。本节是以后可做的进一步合并，不在批次里。J 已经给出其中的两部分：逆表（§5.2），以及「共享部分是零元 `call`」。没有给出的是：`prim` 与 `call` 合一、`rowDens` `kernRows` `rowGens` 合成一张表、体不内联。
