@@ -56,7 +56,7 @@ rel_program datesT where
     input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/dates"
     schema D = {c ∈ V : 1+1}
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "d", e, x)⟩
-    check d col D "c_2024.01.15" [{(∗,yes)}, {(∗,no)}] = {(0,yes),(1,no),(2,yes),(3,no)} where x ≜ {(0,(2024.01.15,10)),(1,(2022.01.08,20)),(2,(2024.01.15,30)),(3,(2024.03.18,40))}
+    check d col D "c_2024.01.15" [{(∗,no)}, {(∗,yes)}] = {(0,yes),(1,no),(2,yes),(3,no)} where x ≜ {(0,(2024.01.15,10)),(1,(2022.01.08,20)),(2,(2024.01.15,30)),(3,(2024.03.18,40))}
 
 #guard datesT.ok
 
@@ -80,7 +80,7 @@ rel_program floatsT where
     input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/floats"
     schema D = {c ∈ V : 1+1}
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "f", e, x)⟩
-    check d col D "c_-2.5" [{(∗,yes)}, {(∗,no)}] = {(0,no),(1,yes),(2,no)} where x ≜ {(0,(1.5,10)),(1,(-2.5,20)),(2,(1.5,30))}
+    check d col D "c_-2.5" [{(∗,no)}, {(∗,yes)}] = {(0,no),(1,yes),(2,no)} where x ≜ {(0,(1.5,10)),(1,(-2.5,20)),(2,(1.5,30))}
 
 #guard floatsT.ok
 
@@ -104,7 +104,7 @@ rel_program symsT where
     input x : P ⟶ T from "/data/tmp/rel-test-pivot-disk/syms"
     schema D = {c ∈ V : 1+1}
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "s", e, x)⟩
-    check d col D "c_5" [{(∗,yes)}, {(∗,no)}] = {(0,yes),(1,no),(2,yes)} where x ≜ {(0,(5,10)),(1,(2,20)),(2,(5,30))}
+    check d col D "c_5" [{(∗,no)}, {(∗,yes)}] = {(0,yes),(1,no),(2,yes)} where x ≜ {(0,(5,10)),(1,(2,20)),(2,(5,30))}
 
 #guard symsT.ok
 
