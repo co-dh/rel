@@ -424,12 +424,16 @@ def toCsv (path : String) : Obj → List (USize × Enc) → Except String (List 
   | .arr (.atom _), lo :: hi :: e :: ps => pure ([lo, hi, e], ps)
   -- the column of a `1` is its one element's name in every row
   | .one, x :: ps => pure ([x], ps)
-  -- the left side's `1` part is dropped: a null is an empty field
-  | .opt a, t :: i :: _ :: ps => match atomCount a with
-    | some k => if k ≤ ps.length then do
-        let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
-      else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
-    | none => .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+  -- the in-band `1+V` (`Obj.band`) is its one `Opt` part, the CSV column of shape `opt` as it lies; any other `1+S`
+  -- drops its left side's `1` part: a null is an empty field
+  | .opt a, ps => match Obj.band .one a, ps with
+    | some _, x :: ps => pure ([x], ps)
+    | none, t :: i :: _ :: ps => match atomCount a with
+      | some k => if k ≤ ps.length then do
+          let t ← swapTag t; pure ((ps.take k).flatMap fun v => [t, i, v], ps.drop k)
+        else .error s!"{path}: {ps.length} parts for the {k} nullable columns of a `1+S`"
+      | none => .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
+    | _, _ => .error s!"{path}: too few parts for a `1+S`"
   | _, _ => .error s!"{path}: a side whose object is no CSV column set (a list of no atom, a sum of no `1+S`), or too few parts"
 
 /-- `k` groups of three parts from the front of `cs` (one CSV nullable column's tags, positions, values), and the
@@ -448,7 +452,10 @@ def ofCsv (path : String) : Obj → List (USize × Enc) → List String →
   | .prod a b, cs, ns => do
     let (x, cs, ns) ← ofCsv path a cs ns; let (y, cs, ns) ← ofCsv path b cs ns; pure (x ++ y, cs, ns)
   | .arr (.atom _), lo :: hi :: e :: cs, _ :: ns => pure ([lo, hi, e], cs, ns)
-  | .opt a, cs, ns => do
+  | .opt a, cs, ns => if (Obj.band .one a).isSome then match cs, ns with
+      | x :: cs, _ :: ns => pure ([x], cs, ns)
+      | _, _ => .error s!"{path}: no column part or header name left for a nullable column"
+    else do
     let some k := atomCount a | .error s!"{path}: a `1+S` whose `S` is no product of atoms has no CSV columns"
     let some ((t, i, v) :: g, cs) := triples k cs | .error s!"{path}: too few column parts for {k} nullable columns"
     let some c := ns.head? | .error s!"{path}: no header name left for a nullable column"
@@ -480,8 +487,8 @@ def internCsv (path : String) (D : Dict) : Db.CsvCols → List (USize × Enc) �
       let (es, D) ← internCsv path D cols es
       pure ((n, y.enc) :: es, D)
     else do
-      let (rest, D) ← internCsv path D cols (es.drop s.parts)
-      pure (es.take s.parts ++ rest, D)
+      let (rest, D) ← internCsv path D cols (es.drop s.encs)
+      pure (es.take s.encs ++ rest, D)
 
 /-- The CSV file `path` as the table `K ⟶ S`, its symbol columns interned into the database's dictionary `D`, its
     header `cols` (the key's columns then the value's, `Db.CsvCols`), each column read straight into its encoding
@@ -529,7 +536,7 @@ def decodeCsv (path : String) (ds : Option Dict) : Db.CsvCols → List (USize ×
       let some D := ds | .error s!"{path}: the symbol column '{c}' and no dictionary"
       let x ← decode s!"{path}: column '{c}'" D (← Arr.of .sym k e s!"{path}: column '{c}'")
       pure ((← csvEncs path x) ++ (← decodeCsv path ds cols es))
-    else do pure (es.take s.parts ++ (← decodeCsv path ds cols (es.drop s.parts)))
+    else do pure (es.take s.encs ++ (← decodeCsv path ds cols (es.drop s.encs)))
 
 /-- The table `t : K ⟶ S` as the CSV file `path`, the converse of `readCsvDict`: its header `cols`, then each row's
     key columns and value columns, written from their encodings (`Db.csvWrite`), a symbol column as its texts through
