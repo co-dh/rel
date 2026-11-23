@@ -1488,12 +1488,14 @@ theorem uncat_canonical {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.pr
 `[SN, SN + d)` and `[SN + d, EN)`, inside `m` (`cellSpan_start_le` where the cell is empty). -/
 private theorem uncat_pre_wf {n m Tn : USize} {lo up : Arr .i64 n} {f : Vals B m} {w G u : Enc}
     {sG mid eG : Arr .i64 Tn} {K : Vals (.arr B) Tn}
-    (hX : Vals.WF (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩) (hm63 : m.toNat < 2 ^ 63) (hn63 : n.toNat < 2 ^ 63)
+    (hX : Vals.WF (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩) (hb : ¬2 ^ 63 ≤ n.toNat * (m.toNat + 1) + n.toNat + m.toNat + 1)
     (hw : colMap Op.sub n up.enc lo.enc .i64 .i64 [] [(Op.add, 1)] = .ok w)
     (hex : expand n w = .ok (Tn, G, u)) (hsG : Arr.gather Tn G lo = .ok sG)
     (hmid : colArr Op.add Tn sG.enc u = .ok mid) (hK : Vals.gather Tn G (A := .arr B) (n := n) ⟨m, (lo, up, f)⟩ = .ok K)
     (heG : Arr.gather Tn G up = .ok eG) :
     Tab.WF (⟨Tn, K, (⟨m, (sG, mid, f)⟩, ⟨m, (mid, eG, f)⟩)⟩ : Tab (.arr B) (.prod (.arr B) (.arr B))) := by
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  have hn63 : n.toNat < 2 ^ 63 := by omega
   obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hX.1 hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i + 1 := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
@@ -1553,7 +1555,7 @@ theorem uncat_wf {n : USize} {X : Vals (.arr B) n} {t : Tab (.arr B) (.prod (.ar
   rw [Except.bind_eq_ok'] at h; obtain ⟨mid, hmid, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨K, hK, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨eG, heG, h⟩ := h
-  exact canon_wf h (uncat_pre_wf hX (by omega) (by omega) hw hex hsG hmid hK heG)
+  exact canon_wf h (uncat_pre_wf hX hb hw hex hsG hmid hK heG)
 
 
 /-- **`uncat X` denotes `cat°` on the arrays `X`**: each cell of `X` to each of its splits. Cell `i` is `[SN, EN)`
@@ -1576,7 +1578,7 @@ theorem uncat_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) (.prod (
   rw [Except.bind_eq_ok'] at h; obtain ⟨eG, heG, h⟩ := h
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
-  rw [canon_holds h (uncat_pre_wf hX hm63 hn63 hw hex hsG hmid hK heG)]
+  rw [canon_holds h (uncat_pre_wf hX hb hw hex hsG hmid hK heG)]
   obtain ⟨SN, EN, hse', hb1, hrow⟩ := cellSpan_spec hX.1 hm63 f
   obtain ⟨wN, hwN⟩ : ∃ F : Nat → Nat, ∀ i, F i = EN i - SN i + 1 := ⟨_, fun _ => rfl⟩
   have hww : ∀ i < n.toNat, (raw .i64 n w)[i]?.getD 0 = (wN i).toUInt64 := fun i hi => by
@@ -1787,7 +1789,7 @@ theorem Tab.ldivOf_holds {A B C : Obj} {r : Tab A B} {s : Tab A C} {UB : Tab B B
   rw [Except.bind_eq_ok'] at h; obtain ⟨cr, hcr, h⟩ := h
   have wQ := compOne_wf hQ hw.1 hw.2
   rw [union_holds h ⟨Vals.gather_wf hX1 wQ.1, Vals.gather_wf hY1 wQ.2.2⟩ (cross_wf hcr
-    (diff_wf hdf (ran_wf hub hUB) (ran_wf hrr hrw)).1 (ran_wf huc hUC).1), cross_holds hcr]
+    (diff_wf hdf (ran_wf hub hUB) (ran_wf hrr hrw)).1 (ran_wf huc hUC).1), cross_holds hcr (diff_wf hdf (ran_wf hub hUB) (ran_wf hrr hrw)).1 (ran_wf huc hUC).1]
   have hP : (∃ j, X1.row j = b ∧ Y1.row j = c) ↔
       (∃ a, R.Holds a b ∧ S.Holds a c) ∧ ∀ a, R.Holds a b → S.Holds a c := by
     have hU64 : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
