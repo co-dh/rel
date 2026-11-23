@@ -21,7 +21,7 @@ variable {A B C : Obj}
 /-- The `n` rows of `x` numbered by value: `kasc ≫ kseen` (`k` distinct values, numbered in `kasc` order), each input
 row's number (`kscatter .last` of the run numbers through `p`), and each number's first input row. -/
 def Vals.code {n : USize} (x : Vals A n) : Except String (USize × Enc × Enc) := do
-  let es ← Vals.cols x
+  let es ← ValsB.cols x
   let (vs, p) ← kasc n es
   let (k, g, f) ← kseen n ((es.map (·.1)).zip vs)
   pure (k.toUSize, ← kscatter .last n p g n 0, ← kgather k.toUSize f n p)
@@ -38,7 +38,7 @@ def Vals.code2 {n₁ n₂ : USize} (x : Vals A n₁) (y : Vals A n₂) :
     Except String (USize × Enc × Enc × ((N : USize) × Vals A N × Enc)) := do
   let N ← catRows n₁ n₂
   let sh ← shiftCol n₂ n₁.toUInt64
-  let z ← Vals.concat N x y
+  let z ← ValsB.concat N x y
   let (k, c, rep) ← Vals.code z
   pure (k, ← kgather n₁ .pos N c, ← kgather n₂ sh N c, ⟨N, z, rep⟩)
 
@@ -159,8 +159,8 @@ def index {g n : USize} (xr : Vals A g) (v : Vals A n) : Except String Enc := do
 def keepBits (T : Tab A C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) (ra : Enc) (y : Vals C m) (rc : Enc) :
     Except String (Tab A C) := do
   let t ← T.canon
-  let ia ← index (← Vals.gather g ra x) t.key
-  let ic ← index (← Vals.gather w rc y) t.val
+  let ia ← index (← ValsB.gather g ra x) t.key
+  let ic ← index (← ValsB.gather w rc y) t.val
   let ok ← colMap .and t.n (← colMap .first t.n ia ia .i64 .i64 [] [(.gt, g.toUInt64)])
     (← colMap .first t.n ic ic .i64 .i64 [] [(.gt, w.toUInt64)])
   let (M, sel) ← whereCol t.n ok
@@ -174,9 +174,9 @@ def keepBits (T : Tab A C) {n m : USize} (g w : USize) (o : Enc) (x : Vals A n) 
 `ra'`. -/
 def compTabMat (R : Tab A B) {n : USize} (g w : USize) (o : Enc) (x : Vals B n) (ra : Enc) :
     Except String (USize × Enc × ((M : USize) × Vals A M) × Enc) := do
-  let ix ← index (← Vals.gather g ra x) R.val
+  let ix ← index (← ValsB.gather g ra x) R.val
   let (M, sel) ← whereCol R.n (← colMap .first R.n ix ix .i64 .i64 [] [(.gt, g.toUInt64)])
-  let key ← Vals.gather M sel R.key
+  let key ← ValsB.gather M sel R.key
   let (ka, aR, ra') ← Vals.code key
   let (ends, idx) ← csr M ka aR (← kgather M sel R.n ix)
   pure (ka, ← kbitrows false w g M ka ends idx o, (⟨M, key⟩ : (M : USize) × Vals A M), ra')
@@ -192,10 +192,10 @@ def ldivTabMat (R : Tab A B) (UB : Tab B B) (UC : Tab C C) {n m : USize} (g w : 
     (ra : Enc) (y : Vals C m) (rc : Enc) : Except String
       (Option (USize × USize × Enc × ((N : USize) × Vals B N) × Enc × ((N : USize) × Vals C N) × Enc)) := do
   let (kb, bR, _, ⟨_, zb, rb⟩) ← Vals.code2 R.val UB.val
-  let (kc, cM, cU, ⟨_, zc, rc'⟩) ← Vals.code2 (← Vals.gather w rc y) UC.val
+  let (kc, cM, cU, ⟨_, zc, rc'⟩) ← Vals.code2 (← ValsB.gather w rc y) UC.val
   if bitsMax < kb.toNat * w.toNat ∨ bitsMax < kb.toNat * kc.toNat ∨ bitsMax < kb.toNat * UC.n.toNat then
     return none
-  let ix ← index (← Vals.gather g ra x) R.key
+  let ix ← index (← ValsB.gather g ra x) R.key
   let on ← colMap .first R.n ix ix .i64 .i64 [] [(.gt, g.toUInt64)]
   let (P, sel) ← whereCol R.n on
   let (ends, idx) ← csr P kb (← kgather P sel R.n bR) (← kgather P sel R.n ix)

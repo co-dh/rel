@@ -35,7 +35,7 @@ def ones (n : USize) : Except String (Nat × Int64) := do
   let p ← Arr.pos n
   let t ← Tab.sums (⟨n, (← Arr.zeros .i64 n, p), ← colArr .first n .pos .pos .i64 .i64 [] [(.and, 0), (.or, 1)]⟩ :
     Tab (.prod .long .long) .long)
-  if h : 0 < t.n.toNat then pure (t.n.toNat, Vals.row (A := .long) t.val ⟨t.n.toNat - 1, by omega⟩)
+  if h : 0 < t.n.toNat then pure (t.n.toNat, ValsB.row (A := .long) t.val ⟨t.n.toNat - 1, by omega⟩)
   else throw "sums: no rows"
 
 #guard (ones 1000000).toOption == some (1000000, 1000000)
