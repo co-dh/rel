@@ -249,9 +249,10 @@ theorem kscanStream_ne {op : Op} (h : op ≠ .first) (es : List (USize × Enc)) 
 /-- **`kscanCols` flags no null row** where every source holds none: a lock-step call carries no flags, and a stream's are
 the sources' `foRNuls`, all `0` (`hasNul_flags`). -/
 theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize × Enc)} {pre post : List (Op × UInt64)}
-    {ws : List (Array UInt64)} {ns : Array UInt64}
+    {ws : List (Array UInt64)} {ns : List (Array UInt64)}
     (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
-    (h : kscanCols op s n es pre post = .ok (ws, ns)) : ns.any (· != 0) = false := by
+    (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
+    (h : kscanCols op s n es pre post = .ok (ws, ns)) : ns.any (·.any (· != 0)) = false := by
   by_cases hs : kscanStream op es pre post = true
   · obtain ⟨hN, hW⟩ := hS hs
     unfold kscanCols at h
@@ -263,7 +264,7 @@ theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize 
       by_cases hsum : ((es.map (·.1.toNat)).sum != n.toNat) = true
       · simp [hsum] at h
       · simp only [hsum, Bool.false_eq_true, if_false, pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
-        rw [← h.2]
+        rw [← h.2, List.any_cons, List.any_nil, Bool.or_false]
         have key : ∀ (l : List (USize × Enc)) (a : Array UInt64), (∀ p ∈ l, hasNul p.2 = false) →
             (∀ p ∈ l, Ext.Enc.WF s p.1 p.2) → a.any (· != 0) = false →
             (l.foldl (fun a p => a ++ foRNuls p.1 p.2) a).any (· != 0) = false := by
@@ -278,7 +279,7 @@ theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize 
             rw [Array.any_append, ha, hq]; rfl
         exact key es #[] hN hW (by simp)
   · rw [Bool.not_eq_true] at hs
-    obtain ⟨-, rfl, -⟩ := kscanCols_lock hs h
+    obtain ⟨-, rfl, -⟩ := kscanCols_lock hs hF h
     simp
 
 /-- **`kscan` closes**: its answer is valid at its `n` rows, `Ext.Enc.WF` at its answer type `t`, and holds no null
@@ -287,6 +288,7 @@ no null and be `Ext.Enc.WF` at `s`. -/
 theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc}
     {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
     (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
     (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false := by
   unfold kscan at h
@@ -298,7 +300,7 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
   rename_i cs hc
   split at h; · cases h
   rename_i c cs' ns
-  have hns := kscanCols_nul hS hc
+  have hns := kscanCols_nul hS hF hc
   split at h; · cases h
   rename_i out₀ hf
   split at h; · cases h
@@ -322,9 +324,10 @@ theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg
 /-- **`kscan` closes** where it is no stream (`kscanStream`): no hypothesis on its sources. -/
 theorem kscan_lock_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc}
     {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
-    (hs : kscanStream op es pre post = false) (h : kscan op rev s t n seg es pre post = .ok r) :
+    (hs : kscanStream op es pre post = false) (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
+    (h : kscan op rev s t n seg es pre post = .ok r) :
     Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false :=
-  kscan_closed (fun h => absurd h (by rw [hs]; decide)) h
+  kscan_closed (fun h => absurd h (by rw [hs]; decide)) hF h
 
 /-! A stream (`kscanStream`, no segment marks) over sources that may hold nulls: the answer is the sources' words joined
 and their flags joined (`streamEnc`), and reads back each source's rows, null included. -/
@@ -434,7 +437,7 @@ theorem kscan_stream {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hs :
       (streamRaw s es).back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) := by
   have hst : kscanStream .first es [] [] = true := by simp [kscanStream, hl]
   have hrf : kscanRefuses .first n es [] [] = false := by simp [kscanRefuses, Op.readsDivisor]
-  have hcols : kscanCols .first s n es [] [] = .ok ([streamRaw s es], streamNul es) := by
+  have hcols : kscanCols .first s n es [] [] = .ok ([streamRaw s es], [streamNul es]) := by
     unfold kscanCols
     rw [mapM_raw_pairs hs hW]
     simp [hst, hn, streamRaw, streamNul, bind, Except.bind, pure, Except.pure]
@@ -445,7 +448,8 @@ theorem kscan_stream {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hs :
   unfold kscan
   simp only [hrf, Bool.false_eq_true, bind, Except.bind, hg, hcols, ↓reduceIte,
     foldlM_first (seed := streamRaw s es) hgg (hRs.trans hn), foldlM_first (seed := streamNul es) hgg (hNs.trans hn),
-    chainAll_nil, pure, Except.pure, ht, List.map_nil]
+    chainAll_nil, pure, Except.pure, ht, List.map_nil, Op.nulFold, Option.elim, List.headD_cons, List.drop_succ_cons,
+    List.drop_zero, List.any_cons, List.any_nil, Bool.or_false]
   rfl
 
 /-- Row `k` of source `j` of a stream, one array per source (`f`) of `p.1` rows, is row `(rows before j) + k` of the

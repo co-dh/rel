@@ -102,6 +102,14 @@ def mixWord (x : UInt64) : UInt64 :=
   let z := (z ^^^ (z >>> 27)) * 0x94d049bb133111eb
   (z ^^^ (z >>> 31)) >>> 1
 
+/-- How `kscan` orders null for a binary op: null is below every value (`max(0N,5) = 5`, `min(0N,5) = 0N`), so a null
+word is replaced by the op's identity (`i64` min for `max`, `i64` max for `min`) and the null flags fold with `and`
+(`max`: null only where all are) or `or` (`min`: null where any is). `none`: the op refuses a null row. -/
+def nulFold : Op → Option (Op × UInt64)
+  | min => some (or, 0x7fffffffffffffff)
+  | max => some (and, 0x8000000000000000)
+  | _ => none
+
 /-- Total, with the failure typed: integer `div`/`mod` by `0` is `.error`, not a null (`Ew.intStep` answers q's `0N`
 there, a value the raw word cannot tell from an ordinary one). The unary ops ignore `acc`. -/
 def eval : Op → UInt64 → UInt64 → Except String UInt64
