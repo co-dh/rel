@@ -246,6 +246,8 @@ rel_program nativeIO where
     dictionary dd : S ⟶ [C]
     output dd to csv "out/io/dd.csv"
     output sy to csv "out/io/sy.csv"
+    -- own format with a symbol column: its ids as they lie, and the library dictionary out/io/sym.* (Table.writeLib)
+    output sy to "out/io/sy"
     output sz to csv "out/io/sz.csv"
     output su to csv "out/io/su.csv"
     cp : N ⟶ Row ≜ t

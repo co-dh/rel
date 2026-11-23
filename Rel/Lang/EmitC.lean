@@ -160,7 +160,7 @@ partial def tysOf (cs : Cols) : Bld (List Ty) := return (← cs.mapM fun
 /-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
     block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
 partial def reads (base : Nat) : Instr → List Nat
-  | .call _ as | .fail _ as | .apply _ as => as.toList
+  | .call _ as | .readOpt _ as _ | .fail _ as | .apply _ as => as.toList
   | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
   | .ctor _ os ss => os.toList ++ ss.toList
   | .proj x .. | .sproj x .. | .part x _ => [x]
@@ -171,6 +171,7 @@ partial def reads (base : Nat) : Instr → List Nat
 partial def Instr.rename (f : Nat → Nat) : Instr → Instr
   | .lit v => .lit v
   | .call s as => .call s (as.map f)
+  | .readOpt s as d => .readOpt s (as.map f) d
   | .fail m as => .fail m (as.map f)
   | .apply g as => .apply g (as.map f)
   | .global g => .global g
@@ -186,7 +187,7 @@ partial def Instr.rename (f : Nat → Nat) : Instr → Instr
 partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
   | [] => none
   | i :: is => (match i with
-    | .call s as => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
+    | .call s as | .readOpt s as _ => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
     | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
     | .ite c t _ e _ => if c == a then some .bit else useTy fs a t <|> useTy fs a e
     | .proj x .. | .sproj x .. => if x == a then some .obj else none
@@ -199,6 +200,7 @@ def resN (fs gs : Array Fun) : Instr → Nat
   | .lit _ | .ctor .. | .proj .. | .sproj .. | .part .. => 1
   | .fail .. => 0
   | .call s _ => (abiOf s).elim 0 (·.res.size)
+  | .readOpt _ _ d => d.size
   | .apply g _ => (fs[g]?).elim 0 (·.res.size)
   | .global g => (gs[g]?).elim 0 (·.res.size)
   | .ite _ _ rt _ _ => rt.size
@@ -219,7 +221,7 @@ partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is
       | .sproj _ _ _ ss k => ss[k]?
       | .part .. => some .bytes
       | .fail .. => none
-      | .call s _ => (abiOf s).bind (·.res[j]?)
+      | .call s _ | .readOpt s _ _ => (abiOf s).bind (·.res[j]?)
       | .apply g _ => (fs[g]?).bind (funTy · j)
       | .global g => (gs[g]?).bind (funTy · j)
       | .ite _ t rt _ _ => rt[j]?.bind (defTy fs gs pre base t)
@@ -1922,10 +1924,6 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
     | none => throw s!"output `{x}` to \"{path}\": column `{p}` of {Schema.names S} is positions, which have no file"
   match csv with
   | none => for (S, side, dir) in sides do
-      -- `Table.writeOwn`'s `writeLib` compares the library's dictionary files already on disk, read at run time
-      if Table.symIn S.obj then
-        throw s!"output `{x}` to \"{path}\": a symbol column, whose library dictionary (`Table.writeLib`) is checked \
-          against the files already on disk, which no plan recipe reads yet"
       -- the side's `.d` as `Table.write` writes it: the same column (`textCol S.names`) through `writeVals`' own
       -- steps (`cols`, `ownFile`), known when the plan is built, so its parts are literals
       for (q, c) in cols _ (Table.textCol S.names).2 Table.dName do
@@ -1959,19 +1957,67 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
     discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put ts), ← lit (.u8 sep), n, ← listB es] 0
 
+/-- The library `L`'s dictionary as `Table.writeDict` lays it out: the text column `sym`'s files (`objCols` of `[C]`). -/
+def libCols : List (String × QAtomicType) := objCols (.arr (.atom .char)) ""
+
+/-- The library's dictionary files `L/sym.lo`, `sym.hi`, `sym.e` at the input edge, each column's `ownMap` register
+    (`libDict`): a file absent is the empty column (`readOpt`), so a library with no dictionary yet reads as the
+    empty one. -/
+def readLib (L : String) : Bld (List (String × QAtomicType × Nat)) := libCols.mapM fun (p, t) => do
+  let some f ← ofExc (Db.ownFile t 0 (Rel.Kernel.wordsFoR #[] : Enc)) | throw "readLib: an empty column has no file"
+  let d : Val := .ctor 0 #[.parts f.parts] #[.u8 f.code, .u8 f.kind, .size f.count]
+  let k := kernel% Rel.Db.ownMap
+  pure (p, t, ← nth (← readOpt k.sym #[← lit (.str (Table.file L ("sym" ++ p)))] #[d]) 0 "ownMap")
+
+/-- The dictionary `D : ℕ ⟶ [C]` of the files `readLib` read, as `Table.libDict` reads them: its key the ids `0 …`. -/
+def libDictB (L : String) (cs : List (String × QAtomicType × Nat)) : Bld TabB := do
+  let (s, _) ← ownSideB s!"the dictionary of the library {L}" cs none
+  let some n := (s.lookup ".lo").bind (·[Side.count]?) | throw s!"library {L}: its dictionary has no row count"
+  pure ⟨n, [.atom "" .i64 (← posB)], ← colsOf (.arr (.atom .char)) s ""⟩
+
+/-- `Table.writeLib`: `D` as the dictionary of the library `L` whose files held `old`, append-only. `old ⊑ D` (`old − D`
+    empty) else the run fails; where `D` has more rows, its three text files `sym.lo`, `sym.hi`, `sym.e` and
+    `sym.rank = D ≫ asc(ran D)°` (`Table.rank`) are written, as `Table.writeDict` writes them. -/
+def writeLibB (L : String) (old D : TabB) : Bld Unit := do
+  let X ← diffB old D
+  guard (← call1 (kernel% USize.decEq) #[X.n, ← lit (.size 0)])
+    s!"{L}: the library's dictionary of \x01 texts and the program's of \x01 differ; a dictionary is append-only, so \
+      these ids are not of this library" #[old.n, D.n]
+  let w (q : String) (rs : Array Nat) : Bld Unit := do
+    discard <| call "qlean_own_write" (#[← lit (.str (Table.file L q))] ++ rs.extract 0 Side.enc) 0
+  discard <| ite (← call1 (kernel% USize.decEq) #[old.n, D.n]) (pure #[]) (do
+    let s ← flatB D.n D.val
+    for (p, _) in libCols do
+      let some rs := s.lookup p | throw s!"library {L}: the dictionary's column `{p}` has no registers"
+      w ("sym" ++ p) rs
+    let R ← compB D (← convB (← ascB (.arr (.atom .char)) (← coreflB D.n D.val)))
+    let some rs := (← flatB R.n R.val).lookup "" | throw s!"library {L}: the rank is not one column"
+    w "sym.rank" rs
+    pure #[])
+
+/-- What the input edge answered: each input's read (`readIn`), and the library's dictionary files (`readLib`) of the own
+    tables with a symbol column (`Table.progLib`), if any. -/
+abbrev IoIn := List (String × InRead) × Option (String × List (String × QAtomicType × Nat))
+
 /-- The plan of the IO statements of the program `n`, read after its homes (`progOf`, `Expand.read`), as `n.io`
     runs them: the input edge reads the inputs the outputs reach (`Expand.ioReach`, `readIn`); `main` builds each
     run-time definition they reach on the tables of its run-time names (`ofTm`, its variables `Once.binds`), then
     writes each output (`writeOut`), a closed definition's from its term. -/
 def ioOf (n : Lean.Name) :
-    Lean.Meta.MetaM (Except String (Bld (List (String × InRead)) × (List (String × InRead) → Bld Unit))) := do
+    Lean.Meta.MetaM (Except String (Bld IoIn × (IoIn → Bld Unit))) := do
   let (chain, prog) ← progOf n
   let r ← (Expand.read (fun _ => none) chain prog).run
   return do
     let (ds, _, _, _, os, io) ← r.mapError (s!"{repr ·}")
     let reach := Expand.ioReach io
+    -- the library of the own tables with symbol columns, as `ioE` finds it (`Table.progLib`)
+    let lib ← Table.progLib (io.filterMap fun
+      | .input x _ _ k v none p => if reach.contains x then some (x, p, k, v) else none
+      | .output x _ _ k v none p _ => some (x, p, k, v)
+      | _ => none)
+    let symOut := io.any fun | .output _ _ _ k v none _ _ => Table.symIn k.obj || Table.symIn v.obj | _ => false
     -- every input's refusal, not the first's, as `wr` below
-    let rd : Bld (List (String × InRead)) := do
+    let rd : Bld IoIn := do
       let (rs, errs) ← io.foldlM (init := ([], #[])) fun (rs, errs) s => match s with
         | .input x _ _ k v c p =>
           if reach.contains x then
@@ -1979,12 +2025,15 @@ def ioOf (n : Lean.Name) :
           else pure (rs, errs)
         | _ => pure (rs, errs)
       unless errs.isEmpty do throw ("\n".intercalate errs.toList)
-      pure rs
-    let wr (ins : List (String × InRead)) : Bld Unit := do
+      pure (rs, ← lib.mapM fun L => return (L, ← readLib L))
+    let wr (ins : IoIn) : Bld Unit := do
       let mut σ : List (String × Side × Side) := []
-      -- the program's dictionary (§0.2): empty, grown by each CSV input's symbols in statement order (`Expand.ioE`);
-      -- an own table with a symbol column starts it from its library's, which `readIn` and `writeOut` refuse
-      let mut D ← zeroB .long (.arr (.atom .char))
+      -- the program's dictionary (§0.2): grown by each CSV input's symbols in statement order (`Expand.ioE`), from the
+      -- library's (`libDictB`) where an own table has a symbol column, else from the empty one
+      let old ← match ins.2 with
+        | some (L, cs) => libDictB L cs
+        | none => zeroB .long (.arr (.atom .char))
+      let mut D := old
       -- every statement's refusal, not the first's: the list is the work a program needs of the plan
       let mut errs : Array String := #[]
       for s in io do
@@ -1992,7 +2041,7 @@ def ioOf (n : Lean.Name) :
         match s with
         -- an input's table in statement order, so a `dictionary` after it holds its symbols and none of a later input's
         | .input x .. =>
-          if let some r := ins.lookup x then
+          if let some r := ins.1.lookup x then
             let (t, D') ← sideOf x D r
             σ := σ ++ [(x, t)]; D := D'
         | .defn x c deps =>
@@ -2020,6 +2069,9 @@ def ioOf (n : Lean.Name) :
             writeOut x k v c p t D
        catch e => errs := errs.push e
       unless errs.isEmpty do throw ("\n".intercalate errs.toList)
+      if symOut then
+        let some (L, _) := ins.2 | throw "an own output with a symbol column has no library"
+        mainStepB (writeLibB L old D)
     pure (rd, wr)
 
 /-! ### The C -/
@@ -2121,6 +2173,7 @@ def ctorC (x : String) (tag : Nat) (os ss : List (String × Ty)) : Except String
 def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Array (Array Ty)) : Instr → Except String Nat
   | .lit _ => pure 1
   | .call sym _ => match abi sym with | some k => pure k.res.size | none => throw s!"no kernel `{sym}` in the ABI table"
+  | .readOpt _ _ d => pure d.size
   | .fail .. => pure 0
   | .apply f _ => match fres[f]? with | some t => pure t.size | none => throw s!"apply f{f}: no earlier function"
   | .global g => match gtys[g]? with | some t => pure t.size | none => throw s!"global g{g}: no earlier global"
@@ -2186,6 +2239,17 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
   for i in ia do bases := bases.push n; n := n + (← defs abi fres gtys i)
   let later (j : Nat) : List Nat := res.toList ++ ((ia.extract j ia.size).zip (bases.extract j ia.size)).toList.flatMap
     fun (i, b) => reads b i
+  -- `if (cnd) { t } else { e }` in the scope `rs`: each branch hands its results `rt`, `re` to fresh C variables, which
+  -- the enclosing scope owns; `down` the references the branches release themselves
+  let ifC (cnd : String) (rs : Array CReg) (down : List Nat) (t : List Instr) (rt : Array Nat) (e : List Instr)
+      (re : Array Nat) : EM (String × List (String × Ty)) := do
+    let (tc, trs, txs) ← blockC abi fres gtys (ind ++ "  ") rs down t rt
+    let (ec, _, exs) ← blockC abi fres gtys (ind ++ "  ") rs down e re
+    let tys ← rt.toList.mapM fun a => return (← creg trs a).2.1
+    let os ← tys.mapM fun t => return (← fresh, t)
+    let set (xs : Array String) := String.join ((os.zip xs.toList).map fun ((o, _), v) => s!"{ind}  {o} = {v};\n")
+    pure (String.join (os.map fun (o, t) => s!"{ind}{cTy t} {o};\n") ++ s!"{ind}if ({cnd}) \{\n" ++ tc ++ set txs ++
+      s!"{ind}} else \{\n" ++ ec ++ set exs ++ s!"{ind}}\n", os)
   let mut rs := rs₀
   let mut live : List Nat := owe
   let mut c := ""
@@ -2314,13 +2378,21 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
       -- the references read last here are handed to the branches, each releasing them itself
       let down := live.filter (!after.contains ·)
       live := live.filter (after.contains ·)
-      let (tc, trs, txs) ← blockC abi fres gtys (ind ++ "  ") rs down t rt
-      let (ec, _, exs) ← blockC abi fres gtys (ind ++ "  ") rs down e re
-      let tys ← rt.toList.mapM fun a => return (← creg trs a).2.1
-      let os ← tys.mapM fun t => return (← fresh, t)
-      for (o, t) in os do c := c ++ s!"{ind}{cTy t} {o};\n"
-      let set (xs : Array String) := String.join ((os.zip xs.toList).map fun ((o, _), v) => s!"{ind}  {o} = {v};\n")
-      c := c ++ s!"{ind}if ({x}) \{\n" ++ tc ++ set txs ++ s!"{ind}} else \{\n" ++ ec ++ set exs ++ s!"{ind}}\n"
+      let (s, os) ← ifC x rs down t rt e re
+      c := c ++ s
+      for (o, t) in os do rs := rs.push (o, t, true); live := live ++ [rs.size - 1]
+    | .readOpt sym as dflt =>
+      -- `if (the file exists) { the read } else { dflt }`, as an `if` whose condition is the path's
+      let some k := abi sym | throw s!"no kernel `{sym}` in the ABI table"
+      unless k.res.size == dflt.size do throw s!"readOpt `{sym}`: {dflt.size} defaults for {k.res.size} registers"
+      let some p := as[0]? | throw s!"readOpt `{sym}`: no path register"
+      let (x, ty, _) ← creg rs p
+      unless ty == .str do throw s!"readOpt `{sym}`: register {p} is a {repr ty}, not a path"
+      let down := live.filter (!after.contains ·)
+      live := live.filter (after.contains ·)
+      let (s, os) ← ifC s!"access(lean_string_cstr({x}), F_OK) == 0" rs down [.call sym as]
+        (List.range' rs.size dflt.size).toArray (dflt.toList.map .lit) (List.range' rs.size dflt.size).toArray
+      c := c ++ s
       for (o, t) in os do rs := rs.push (o, t, true); live := live ++ [rs.size - 1]
     | .loop k init body out done msg =>
       let (kx, kt, _) ← creg rs k
