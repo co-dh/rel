@@ -1208,6 +1208,11 @@ def succOpB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
     pure ⟨n, X, [.atom "" .i64 (← mapB .add n e (← mapB .first n e e .i64 .i64 [] [(.ne, nulWord)]))]⟩
   | _, _ => throw "succ runs from an object of i64 to it"
 
+/-- **`Tab.mixOp`** on the values `X` of `i64` (`mixOn`): one `kscan` map of `Op.mix`, each word `u` to `Op.mixWord u`. -/
+def mixOpB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
+  | .atom .i64, .atom .i64 => do let e ← col1 X; pure ⟨n, X, [.atom "" .i64 (← mapB .mix n e e)]⟩
+  | _, _ => throw "mix runs from an object of i64 to it"
+
 /-- **`Tab.cmpOp s`** on the pairs `X` of `A` (`cmpAt`): the rows whose two words, through `wideB`, pass the row's
     order `Tab.ordOp`, kept as the coreflexive on the pairs. -/
 def cmpOpB (s : String) (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match cmpOps.lookup s, A, B with
@@ -1294,6 +1299,7 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
   else if c == ``Tab.arithOp then let (n, X) ← known r.sym D.dom; arithOpB r.sym A B n X
   else if c == ``Tab.succOp then let (n, X) ← known r.sym D.dom; succOpB A B n X
+  else if c == ``Tab.mixOp then let (n, X) ← known r.sym D.dom; mixOpB A B n X
   else if c == ``Tab.cmpOp then let (n, X) ← known r.sym D.dom; cmpOpB r.sym A B n X
   else if c == ``Tab.map then match A, B, xs with
     -- `GenK.elems`: `R` run knowing its domain is `ran(∋)` at the arrays in demand
@@ -1667,7 +1673,8 @@ def sideOf (x : String) (r : InRead) : Bld (Side × Side) := do
 
 /-- `output x to [csv] path` of the table `s` (`n.io`'s `Table.write`, `writeKeyed`, `writeCsv`): key `k = []`, the
     value side only, its rows renumbered by their order; else `key/` and `val/` (a CSV file: the key's columns, then
-    the value's), each column from its `Enc` register (a column mapped from its file too, `ownSideB`). A positions
+    the value's), each column from its `Enc` register (a column mapped from its file too, `ownSideB`), a directory's
+    side with its `.d` (`Table.dName`) as `Table.write` writes it. A positions
     column has no file and no CSV part: it is refused, naming the column. -/
 def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) (s : Side × Side) :
     Bld Unit := do
@@ -1677,6 +1684,12 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
     | none => throw s!"output `{x}` to \"{path}\": column `{p}` of {Schema.names S} is positions, which have no file"
   match csv with
   | none => for (S, side, dir) in sides do
+      -- the side's `.d` as `Table.write` writes it: the same column (`textCol S.names`) through `writeVals`' own
+      -- steps (`cols`, `ownFile`), known when the plan is built, so its parts are literals
+      for (q, c) in cols _ (Table.textCol S.names).2 Table.dName do
+        if let some f ← ofExc (ownFile q c) then
+          discard <| call "qlean_own_write" #[← lit (.str (Table.file dir q)), ← lit (Reg.put f.code),
+            ← lit (Reg.put f.kind), ← lit (Reg.put f.count), ← lit (.parts f.parts)] 0
       for (p, q, _) in schemaCols S do
         discard <| call "qlean_own_write" (#[← lit (.str (Table.file dir q))] ++ (← col S side p).extract 0 Side.enc) 0
   | some (sep, cs) =>
