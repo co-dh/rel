@@ -81,7 +81,8 @@ theorem foRStd_iff {n : USize} {md pk : ByteArray} : Kernel.Coc.foRStd n md pk =
 block size the layout admits, patched or not: the codec's half of the closure law, a column the codec answers is one
 every kernel that reads `foR` through `Coc.foRStd` accepts. -/
 theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw : w = 1 ∨ w = 2 ∨ w = 4 ∨ w = 8)
-    (x : ByteArray) {patch : Bool} {nul : ByteArray} {least : Int64} :
+    (x : ByteArray) {patch : Bool} {nul : ByteArray} {least : Int64}
+    (hle : ∀ i < x.size / w, Column.bitAt nul i = false → least.toInt ≤ (Kernel.Coc.keyAt w x i).toInt) :
     FoRWF (x.size / w) (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).1 (Kernel.Coc.encodeAt lg w.toUSize x patch nul least).2 := by
   have hw0 : 0 < w := by omega
   have hw8 : w ≤ 8 := by omega
@@ -91,9 +92,9 @@ theorem foRWF_encodeAt (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (w : Nat) (hw :
   have hB16 : 2 ^ lg ≤ 65536 := Nat.pow_le_pow_right (by decide) hlg.2
   unfold Kernel.Coc.encodeAt
   simp only [hwt, Nat.one_shiftLeft]
-  generalize x.size / w = n
+  generalize x.size / w = n at hle ⊢
   have hd := fun b => planBlock_byte least lg w n (patch && decide (n < 2 ^ 64)) x nul b
-  have hin := fun j => planBlock_inside least lg w n (patch && decide (n < 2 ^ 64)) x nul j
+  have hin := fun j hj hpl => planBlock_inside least lg w n (patch && decide (n < 2 ^ 64)) x nul j hj hpl hle
   have h64 : (patch && decide (n < 2 ^ 64)) = true → n < 2 ^ 64 := fun h => by simp at h; exact h.2
   generalize (patch && decide (n < 2 ^ 64)) = pl at hd hin h64 ⊢
   generalize hlst : decide (n < 2 ^ 64) = lst

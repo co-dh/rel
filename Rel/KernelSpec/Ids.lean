@@ -70,7 +70,8 @@ theorem foRBits_bools (n : Nat) (p : Nat → Bool) {i : Nat} (hi : i < n) :
   have ho : Column.foROpt (Kernel.Coc.bools n p).1 (Kernel.Coc.bools n p).2
       (Column.blockStarts (Kernel.Coc.bools n p).1) i = some (p i).toNat.toUInt64 := by
     simp only [Kernel.Coc.bools, h1]
-    rw [Verify.foROpt_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ .empty i (by rw [hs]; simpa using hi)
+    rw [Verify.foROpt_encode Column.lgEnc (by decide) 1 (by decide) (by decide) _ .empty (least := Int64.minValue) i
+      (by rw [hs]; simpa using hi) (fun _ _ _ => by rw [Int64.toInt_minValue]; exact Int64.le_toInt _)
       fun _ _ _ j _ _ _ => Verify.bitAt_empty j]
     simp only [Verify.bitAt_empty, Bool.false_eq_true, ↓reduceIte, Kernel.Coc.keyAt, Column.sext, beq_self_eq_true,
       if_true, Nat.mul_one, hb i hi (by cases p i <;> decide)]

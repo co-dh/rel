@@ -64,8 +64,12 @@ theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : By
 /-- **A kernel's answer is a column, null flags or not**: `wordsFoR ws nul least`, at the `ws.size` rows it holds, is valid
 (every kernel reads it), holds that many words, reads back through `Column.foROpt` as `none` at a null
 (`Column.bitAt nul`) and `ws` elsewhere (`foROpt_encode`, whose `hbig` the `USize` row count discharges), and is
-`Ext.Enc.WF` at every fixed-width type, a boolean one where every word but a null's is `0` or `1`. -/
-theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) (least : Int64 := Int64.minValue) :
+`Ext.Enc.WF` at every fixed-width type, a boolean one where every word but a null's is `0` or `1`. `hle` is what makes
+`least` the atom type's least key: every word that is not null is at or above it (`planBlock_nul`), which the default
+`Int64.minValue` meets by itself. -/
+theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) (least : Int64 := Int64.minValue)
+    (hle : ∀ i (hi : i < ws.size), Column.bitAt nul i = false → least.toInt ≤ ws[i].toInt64.toInt := by
+      intro _ _ _; rw [Int64.toInt_minValue]; exact Int64.le_toInt _) :
     Enc.Valid n (wordsFoR ws nul least) ∧ (raw .i64 n (wordsFoR ws nul least)).size = n.toNat ∧
       (∀ md pk, wordsFoR ws nul least = .foR md pk → ∀ i (hi : i < ws.size),
         Column.foROpt md pk (Column.blockStarts md) i = if Column.bitAt nul i then none else some ws[i]) ∧
@@ -88,6 +92,10 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
     rw [Nat.mod_eq_of_lt (UInt64.toNat_lt _), Nat.mul_comm, hxg i (by simpa using hi), ofNat_toNat_mod64,
       Array.getElem_toList] at h1
     exact UInt64.toNat_inj.mp h1
+  have hleX : ∀ j < X.size / 8, Column.bitAt nul j = false → least.toInt ≤ (Coc.keyAt 8 X j).toInt := fun j hj hb => by
+    have hj' : j < ws.size := by omega
+    have : Coc.keyAt 8 X j = ws[j].toInt64 := by rw [← hkey j hj']; simp
+    rw [this]; exact hle j hj' hb
   -- a `USize` count is below `2 ^ 64`, where the writer always patches, so `foROpt_encode`'s `hbig` is vacuous
   have hn64 : n.toNat < 2 ^ 64 := by have := n.toNat_lt_size; rcases USize.size_eq with h | h <;> omega
   have hopt : ∀ i (hi : i < ws.size),
@@ -95,12 +103,12 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
         (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul least).2
         (Column.blockStarts (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul least).1) i =
         if Column.bitAt nul i then none else some ws[i] := fun i hi => by
-    rw [foROpt_encode Column.lgEnc hlg 8 (by decide) (by decide) X nul i (by omega) fun h64 => absurd h64 (by omega),
+    rw [foROpt_encode Column.lgEnc hlg 8 (by decide) (by decide) X nul i (by omega) hleX fun h64 => absurd h64 (by omega),
       hkey i hi]
   have hV : Enc.Valid n (.foR (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul least).1
       (Coc.encodeAt Column.lgEnc (8 : Nat).toUSize X true nul least).2) := by
     have hl := (nblk_encode Column.lgEnc hlg 8 (by decide) (by decide) X (patch := true) (nul := nul) (least := least)).2.2
-    refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X (patch := true) (nul := nul) (least := least))⟩
+    refine ⟨by unfold Column.lgOk; rw [hl]; decide, foRStd_iff.2 (hnX ▸ foRWF_encodeAt Column.lgEnc hlg 8 (by omega) X (patch := true) (nul := nul) (least := least) hleX)⟩
   refine ⟨hV, by rw [raw_foR .i64 8 rfl (by decide)]; simp, fun md pk he i hi => ?_,
     fun ht hu => Enc.Valid.wf hV ht (fun h1 i hi v hv => ?_) fun b hb hf => ?_⟩
   · injection he with h1 h2; subst h1 h2; exact hopt i hi
@@ -179,10 +187,12 @@ theorem foRNuls_plain {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t
 /-- **A kernel's answer reads back its null flags**: row `i` of `wordsFoR ws nul least` is flagged exactly where
 `Column.bitAt nul i`. -/
 theorem foRNuls_wordsFoR (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) (i : Nat)
-    (hi : i < ws.size) (least : Int64 := Int64.minValue) :
+    (hi : i < ws.size) (least : Int64 := Int64.minValue)
+    (hle : ∀ i (hi : i < ws.size), Column.bitAt nul i = false → least.toInt ≤ ws[i].toInt64.toInt := by
+      intro _ _ _; rw [Int64.toInt_minValue]; exact Int64.le_toInt _) :
     (foRNuls n (wordsFoR ws nul least))[i]? = some (if Column.bitAt nul i then 1 else 0) := by
   obtain ⟨md, pk, hE⟩ : ∃ md pk, wordsFoR ws nul least = .foR md pk := ⟨_, _, rfl⟩
-  have h := (wordsFoR_nul ws nul hn least).2.2.1 md pk hE i hi
+  have h := (wordsFoR_nul ws nul hn least hle).2.2.1 md pk hE i hi
   rw [hE]; unfold Column.foROpt at h
   simp only [foRNuls, Array.getElem?_map, Array.getElem?_range, show i < n.toNat by omega, if_true, Option.map_some]
   cases hb : Column.bitAt nul i <;> cases hf : Column.foRNul md pk (Column.blockStarts md) i <;> simp_all

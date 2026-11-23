@@ -205,9 +205,10 @@ def planOf (patch : Bool) (ks : Array Int64) (mn mx : Int64) (w : Nat) : Int64 Ã
   else (mn, Rel.Column.widthFor (mx - mn).toUInt64.toNat)
 
 /-- Whether key `k` is the least the column's atom type holds, `least` (`QAtomicType.least`, never read from the byte
-width: a `u1` held as 8-byte words has the least `0`), or the `Int64` least, where `k - 1` wraps: the one key a block
-holding a null cannot put its base below. A `u1` block `{0, 1, null}` is so base `0`, width 1, and `Column.u1Ok` decides it. -/
-def lowKey (least k : Int64) : Bool := k == least || k == Int64.minValue
+width: a `u1` held as 8-byte words has the least `0`): the one key a block holding a null cannot put its base below,
+every value of the column being at or above it. A `u1` block `{0, 1, null}` is so base `0`, width 1, and `Column.u1Ok`
+decides it. -/
+def lowKey (least k : Int64) : Bool := k == least
 
 /-- Block `b`, of `B` elements, of a nullable column (`1+atom`, owner decision K) where it holds a null: `x` its `n`
 `w`-byte elements, row `i` the null where `Column.bitAt nul i`. Its maximum and `blockOf`'s sum are taken over the
