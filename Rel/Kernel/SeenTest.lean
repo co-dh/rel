@@ -171,7 +171,7 @@ def halves : String ⊕ (Nat × List UInt64 × List UInt64) :=
 #guard view (u 2000) (u 4) (kseen (u 2000) [col ((List.range 2000).map fun i => (i / 1000).toUInt64),
   col ((List.range 2000).map fun i => (i / 500 % 2).toUInt64)]) == halves
 
-/-- `xs` with the rows `ns` null (`atom+1`, in band) as an `i64` key column; a null row's word is never read. -/
+/-- `xs` with the rows `ns` null (`1+atom`, in band) as an `i64` key column; a null row's word is never read. -/
 def ncol (xs : List UInt64) (ns : List Nat) : AscKey × Enc :=
   (.atom .i64, wordsFoR xs.toArray (Column.packIds 1 xs.length fun i => (ns.contains i).toNat))
 
