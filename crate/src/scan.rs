@@ -154,7 +154,7 @@ pub fn op_word(op: u8, a: u64, x: u64) -> u64 {
         34 => fw(m::tan(f(x))), 35 => fw(m::asin(f(x))), 36 => fw(m::acos(f(x))), 37 => fw(m::atan(f(x))),
         38 => fw(crate::ew::floor64(f(x))), 39 => crate::ew::round_even(x),
         40 => w(f(a) == f(x)), 41 => w(f(a) != f(x)), 42 => w(f(a) < f(x)), 43 => w(f(a) <= f(x)), 44 => w(f(x) < f(a)), 45 => w(f(x) <= f(a)),
-        46 => widen32(x), 49 => mix_word(x),
+        46 => widen32(x), 49 => mix_word(x), NULL => a,
         // `fto t`, the last constructor: its code is `FTO + t`; `cast s t`: `CAST + 13 s + t` (`op_code`)
         c if c >= FTO => fto_word(c - FTO, x),
         _ => cast_word(op, x),
@@ -186,11 +186,14 @@ pub fn fto_word(t: u8, x: u64) -> u64 {
     }
 }
 
-/// The code of `Op.cast s t` is `CAST + 13 * s + t` (`s`, `t` `QAtomicType` indices, below 13): one `u8` names every op.
-pub const CAST: u8 = 50;
+/// `Op.null` (code 50): the row's null flag, read from the seed's block metadata and residuals (`Col::nuls`); as a step it keeps the carry, like `first`.
+pub const NULL: u8 = 50;
 
-/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 50) a ctor
-/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 51) one whose field is byte 0.
+/// The code of `Op.cast s t` is `CAST + 13 * s + t` (`s`, `t` `QAtomicType` indices, below 13): one `u8` names every op.
+pub const CAST: u8 = 51;
+
+/// The op code of the Lean `Op` `o`: a nullary op is the scalar of its constructor index, `cast s t` (tag 51) a ctor
+/// whose two `QAtomicType` fields are its scalar bytes 0 and 1, `fto t` (tag 52) one whose field is byte 0.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub fn op_code(o: crate::lean::B) -> u8 {
     if o.is_scalar() { o.unbox() as u8 }
@@ -440,7 +443,8 @@ impl Scan<'_> {
         let mut tmp = pod::Scr::<u64>::new(nb);
         // the seed is read only at a segment start
         let mut sd = pod::Scr::<u64>::new(if none { 0 } else { nb });
-        if !none { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut sd) }
+        // `null`: the seed is its null flags, read off the block's flag and top residual, not the words
+        if !none { if self.op == NULL { self.seed.nuls(lo, &mut sd) } else { self.seed.load(lo, &mut sd, pod::bytes_mut(&mut tmp)); chain(self.pre, &mut sd) } }
         let Some((x0, rest)) = self.xs.split_first() else {
             rows!(self.rev, out.iter_mut().enumerate(), (i, o) => { if at(i) { c = sd[i] } *o = c });
             return
@@ -562,8 +566,8 @@ pub fn kscan<'a>(op: u8, rev: bool, s: u8, t: u8, n: usize, seg: Option<B<'a>>, 
         alloc::vec![Col::Cat(&segs)]
     } else {
         if es.iter().any(|e| e.0 != n) { return Err(format!("kscan: a source holds a row count other than n = {n}")) }
-        // no op but a stream's `first` has an answer at a null (`noNul`)
-        if let Some(k) = cols.iter().find_map(|c| c.first_nul(n)) { return Err(format!("kscan: row {k} is null, and a null names no row")) }
+        // no op but a stream's `first` has an answer at a null (`noNul`), `null` being the one that reads the first column's
+        if let Some(k) = cols.iter().skip((op == NULL) as usize).find_map(|c| c.first_nul(n)) { return Err(format!("kscan: row {k} is null, and a null names no row")) }
         cols
     };
     let Some((&seed, xs)) = cols.split_first() else { return Err("kscan: es is empty; its first column is the seed".into()) };
@@ -763,6 +767,24 @@ mod kscan_tests {
         let e = Err("kscan: row 2 is null, and a null names no row".to_string());
         assert_eq!(kscan(0, false, 6, 6, 4, None, &[(4, a.borrow()), (4, a.borrow())], &[], &[]).map(|_| ()), e);
         assert_eq!(kscan(18, false, 6, 6, 4, None, &[(4, a.borrow())], &[], &[]).map(|_| ()), e);
+    }
+    // `null` answers 1 at a null row and 0 elsewhere (`foRNuls`), from the flagged block's top residual and not the
+    // decoded word (`[5, null, 7]` is `[0, 1, 0]`: the null's residual is 3, which with the frame 5 reads 8, a value);
+    // a column with no null, some, and all, one block and across the block boundary, both directions, `seg` every row
+    #[test] fn kscan_null_reads_the_flag() {
+        for n in [1usize, 3, 1000, 1024, 1025, 2500] {
+            for fl in [vec![0u64; n], (0..n as u64).map(|i| (i % 7 == 2) as u64).collect(), vec![1u64; n]] {
+                let x: Vec<u64> = column(n, 3).iter().zip(&fl).map(|(&w, &f)| if f != 0 { 0 } else { w }).collect();
+                let (a, want) = (enc_nul(&x, &fl), parts(&enc_for(&fl, 8)));
+                for rev in [false, true] {
+                    let got = kscan(NULL, rev, 6, 6, n, None, &[(n, a.borrow())], &[], &[]).expect("kscan null");
+                    assert_eq!(parts(&got.0), want, "null n {n} rev {rev}");
+                }
+            }
+        }
+        let a = enc_nul(&[5, 0, 7], &[0, 1, 0]);
+        let got = kscan(NULL, false, 6, 6, 3, None, &[(3, a.borrow())], &[], &[]).expect("kscan null");
+        assert_eq!(parts(&got.0), parts(&enc_for(&[0, 1, 0], 8)));
     }
     // a step that can fail (`div`, `mod`, `rdiv`/`rmod` by 0) and an op reading its divisor from the carry are refused
     // before any column is read

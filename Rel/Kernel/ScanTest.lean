@@ -204,6 +204,24 @@ private def kfoR (ws : Array UInt64) : Enc :=
     (fun r => (r.1.raw .i64 (USize.ofNat kn)).toList) ==
   ((List.range kn).foldlM (kscanRow op (Array.replicate kn 1) a [b]) #[]).toOption.map (·.toList)
 
+-- `null` (owner decision: a null is the flagged block's all-ones residual, scanned and compared): `[5, null, 7]` is one
+-- block, frame 5, width 2, residuals `[0, 3, 2]`, flag set, and the answer is `[0, 1, 0]`; the null's residual would
+-- decode to `8`, a value. `decide` runs the row fold on the flags, `#guard` the Rust on the encoded column.
+example : kwords ((List.range 3).foldlM (kscanRow .null #[1, 1, 1] #[0, 1, 0] []) #[]) = [0, 1, 0] := by decide
+private def knul (fl : Array UInt64) : Enc := wordsFoR (fl.mapIdx fun i f => if f = 0 then (5 + i % 4).toUInt64 else 0) (nulMap fl)
+private def knulRead (fl : Array UInt64) : Option (List UInt64) :=
+  (kscan .null false .i64 .i64 (USize.ofNat fl.size) none [knul fl]).toOption.map fun r => (r.1.raw .i64 (USize.ofNat fl.size)).toList
+#guard knulRead #[0, 1, 0] = some [0, 1, 0]
+-- none, some and all null, in one block and across the 1024-row block boundary
+#guard [1, 3, 1000, 1024, 1025, 2500].all fun n =>
+  [Array.replicate n 0, (Array.range n).map fun i => if i % 7 = 2 then 1 else 0, Array.replicate n 1].all fun fl =>
+    knulRead fl == some fl.toList
+-- a null in the last row of a block and the first of the next
+#guard knulRead ((Array.range 2048).map fun i => if i = 1023 ∨ i = 1024 then 1 else 0) ==
+  some (((Array.range 2048).map fun i => if i = 1023 ∨ i = 1024 then 1 else 0).toList)
+-- a null in the SECOND column refuses (only the seed is read as flags)
+#guard (kscan .null false .i64 .i64 3 none [knul #[0, 0, 0], knul #[0, 1, 0]]).toBool = false
+
 end Rel.Kernel
 
 
