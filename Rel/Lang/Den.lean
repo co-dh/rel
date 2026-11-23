@@ -3,13 +3,18 @@
   Total and structural: each node is the `T` its `Gen.*_sound` lemma proves, written with the allegory's operators
   (`≫ ° ∩ ∪ 𝟙 𝟘`, D3 = E); `μ`, `ν` are `Core.Rel.mu`, `nu`, defined for every body, so no monotonicity is assumed here.
 -/
-import Rel.Run.Lang.Tm
-import Rel.Run.Where
-import Rel.AscOrder
-import Rel.Rep
-import Rel.ObjOrder
-import Rel.Core.Fix
-import Rel.Kernel.Cast
+module
+
+public import Rel.Run.Lang.Tm
+public import Rel.Run.Where
+public import Rel.AscOrder
+public import Rel.Rep
+public import Rel.ObjOrder
+public import Rel.Core.Fix
+public import Rel.Kernel.Cast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 namespace Rel.Lang
 
@@ -1239,7 +1244,5 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Core.Rel (Obj.El A)
     · dsimp only at hc; cases hc
     · exact free _ (Bool.eq_false_iff.mpr ‹_›) a d
 
-#print axioms Tm.den_pol
-#print axioms Core.Rel.mu_fix
 
 end Rel.Lang

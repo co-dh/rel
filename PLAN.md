@@ -1741,6 +1741,16 @@ relk 线程池空转 2 526（与前三项重叠）。
   `Rel/KernelSpec/AxiomsTest.lean`（`make axioms` 只查 `Rel.Core`，KernelSpec 可用 Classical，所以不能交给它）。
   测量：改 `KernelSpec.Encoding` 一个证明，KernelSpec/Kernel 中只重建 Encoding 本身，但 non-module 的 `Run.*`、`Rep*`、
   `Lang.*` 照旧全部重建：157 个模块、197 s。所以剩下的瓶颈是 (d)：`Run.*` 与 `Rel` 库要迁到 module。
+- ▶ perf9e `Rel/Rep*.lean` 中 14 个（`Rep`、`RepBits`、`RepCanon`、`RepCast`、`RepCols`、`RepOrder`、`RepSeen`、`RepSetOps`、
+  `RepStruct`、`RepTabArith`、`RepTabComp`、`RepTabDiv`、`RepWF`、`RepWFOps`）以及 `ObjOrder`、`AscOrder`、`Lang.Den` 已是 module；
+  没有 `private` 需要改 public。两处改动：(a) module 里的 `#guard` 读不到 import 进来的编译代码的 IR（`Could not find native
+  implementation of external declaration 'Rel.tab'`），所以每个文件的 `section Checks` 移到非 module 的 `Rel/RepChecks/<X>.lean`
+  （`RepChecks.Canon` 的 `tab`、`specOk`、`sumTab` 等是其余检查与 `Lang.Test.Prelude` 共用的）；(b) `#print axioms` 的 pin 移到
+  `Rel/RepAxiomsTest.lean`（`#guard_msgs`）。新目录 `Rel/RepChecks/` 需要 `lake -R`（`make` 的 `CONF` 自动做）。仍非 module：
+  `RepAsc`、`RepWhere`、`RepSums`，因为它们 import `Lang.GenKFold`/`GenKBits`/`DfnLaw`（非 module），而 `Lang.GenKSpec` 又
+  import `RepBits`/`RepTabArith`/`RepWFOps`，所以要等 `Rel/Lang/*` 迁完。测量：改 `RepCanon` 一个证明（证明内加注释），
+  只重建 `RepCanon` 1 个模块（2.5 s），其余 module 的 importer 与非 module 的 importer 都只是 replay（公开接口不变），
+  整个命令 3 s；perf9d 是 125 个模块、106 s。
 
 ## Baseline
 

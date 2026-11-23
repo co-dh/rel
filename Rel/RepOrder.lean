@@ -1,5 +1,10 @@
-import Rel.RepCanon
-import Rel.ObjOrder
+module
+
+public import Rel.RepCanon
+public import Rel.ObjOrder
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! **`kasc`'s order is `Obj.lt`** (PLAN S5): on any side whose columns `kasc` reads (`ascCol` answers on each), a row
 whose order codes (`seenKey`) are below another's holds an element below the other's in `Obj.lt`. An atom's key is

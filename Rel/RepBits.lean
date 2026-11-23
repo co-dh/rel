@@ -1,8 +1,13 @@
-import Rel.Run.Bits
-import Rel.RepTabComp
-import Rel.RepSetOps
-import Rel.RepTabDiv
-import Rel.KernelSpec.BitRows
+module
+
+public import Rel.Run.Bits
+public import Rel.RepTabComp
+public import Rel.RepSetOps
+public import Rel.RepTabDiv
+public import Rel.KernelSpec.BitRows
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The laws of `Tab.compBits` and `Tab.ldivBits` (`Rel/Run/Bits.lean`), from the kernels' laws and `raw_kbitrows`:
 each step's words first (`Vals.code`), then the answers against `Tab.comp_holds` and `Tab.ldiv_holds`. -/

@@ -1,6 +1,11 @@
-import Rel.RepWF
-import Rel.Run.Cast
-import Rel.Run.Where
+module
+
+public import Rel.RepWF
+public import Rel.Run.Cast
+public import Rel.Run.Where
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! **`Tab.WF` kept by the rounds, `front`, the value verbs, `$` and the folds on cells** (PLAN 8.5), on the
 lemmas of `Rel/RepWF.lean` (`Tab.pack_wf` and the List ops'). `positions` is `positions_spec` (`Rel/RepWhere.lean`). -/

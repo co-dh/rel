@@ -1,9 +1,14 @@
-import Rel.RepCols
-import Rel.Run.Bits
-import Rel.Run.Power
-import Rel.Run.Asc
-import Rel.Run.Fix
-import Rel.RepTabDiv
+module
+
+public import Rel.RepCols
+public import Rel.Run.Bits
+public import Rel.Run.Power
+public import Rel.Run.Asc
+public import Rel.Run.Fix
+public import Rel.RepTabDiv
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! **`Tab.WF` kept by each `Tab` op** (PLAN 8.5): an op's output sides are `Vals.gather`ed, `Vals.concat`ed or
 `Vals.nub`bed from its inputs' sides (`Vals.gather_wf`, `Vals.concat_wf`, `Tab.canon_wf`), or are sides of no row

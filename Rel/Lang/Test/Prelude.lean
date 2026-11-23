@@ -1,5 +1,5 @@
 import Rel.Lang.Test.Common
-import Rel.RepCanon
+import Rel.RepChecks.Canon
 
 namespace Rel.Lang.Test
 
