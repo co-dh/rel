@@ -1,4 +1,9 @@
-import Rel.Lang.GenKSpec
+module
+
+public import Rel.Lang.GenKSpec
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 
 /-! The laws of `Tab.keepBits` and `Tab.compTabMat` (`Rel/Run/Bits.lean`), the two ops `GenKSpec` reads a bit matrix

@@ -1,5 +1,10 @@
-import Rel.Run.Table
-import Rel.RepCols
+module
+
+public import Rel.Run.Table
+public import Rel.RepCols
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The laws of a table directory (PLAN D.9); the code is `Rel.Run.Table`, which `n.io` calls. -/
 

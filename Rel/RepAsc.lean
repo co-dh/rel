@@ -1,7 +1,12 @@
-import Rel.Lang.GenKFold
-import Rel.AscOrder
-import Rel.Run.Asc
-import Rel.RepOrder
+module
+
+public import Rel.Lang.GenKFold
+public import Rel.AscOrder
+public import Rel.Run.Asc
+public import Rel.RepOrder
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The law of `Tab.asc` (`Rel/Run/Asc.lean`): `canon`'s rows `(0, b)` ascend in the codes `kasc` sorts by, which
 `Vals.lamLaw` ties to `Obj.lt`; so the values,

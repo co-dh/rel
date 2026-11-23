@@ -1,4 +1,9 @@
-import Rel.Lang.GenKBits
+module
+
+public import Rel.Lang.GenKBits
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `GenK.hylo` represents `μX : Φ(X)` (`Tm.den` of `hylo`) on the keys in demand: the nodes `N` it builds are the keys
     closed under the children, and the rounds of `Tab.mu` on `N ≫ φ` reach a table that is below `μ Φ` (each round

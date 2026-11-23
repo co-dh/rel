@@ -1,5 +1,10 @@
-import Rel.Lang.Den
-import Rel.Run.Lang.Elab
+module
+
+public import Rel.Lang.Den
+public import Rel.Run.Lang.Elab
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 namespace Rel.Lang
 

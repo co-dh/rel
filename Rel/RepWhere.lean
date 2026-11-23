@@ -1,5 +1,10 @@
-import Rel.RepTabDiv
-import Rel.Lang.GenKFold
+module
+
+public import Rel.RepTabDiv
+public import Rel.Lang.GenKFold
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The law of `Tab.positions` (`Rel/Run/Where.lean`): each array to `positionsL` of its elements' test. -/
 

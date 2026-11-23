@@ -1,7 +1,12 @@
-import Rel.Lang.GenKFold
-import Rel.RepTabArith
-import Rel.KernelSpec.Elementwise
-import Rel.Run.Lang.Elab
+module
+
+public import Rel.Lang.GenKFold
+public import Rel.RepTabArith
+public import Rel.KernelSpec.Elementwise
+public import Rel.Run.Lang.Elab
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! A row of `dfns` is its definition's fused form (§4). `build` runs, in place of the definition, the fused row at an
     unbounded object and the fused row followed by `𝟙` of the target at an initial segment `0…k`; `Tm.dfnCut_den`

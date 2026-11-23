@@ -1,7 +1,12 @@
-import Rel.RepAsc
-import Rel.RepTabDiv
-import Rel.Lang.DfnLaw
-import Rel.Run.SetOps
+module
+
+public import Rel.RepAsc
+public import Rel.RepTabDiv
+public import Rel.Lang.DfnLaw
+public import Rel.Run.SetOps
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The law of `Tab.sums` (`Rel/Run/SetOps.lean`): `canon` puts each key's rows in one run ascending in the position
 (`kseen_runs`, the `i64` order codes), the segmented `kscan .add` holds at each row its key's prefix sum

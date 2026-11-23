@@ -1,4 +1,9 @@
-import Rel.Lang.GenKBits
+module
+
+public import Rel.Lang.GenKBits
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The `GenK` ops of the value verbs and the folds (`arith`, `fold`), each representing its constructor's case of
     `Tm.den` from the op's `Tab` law, in `GenKSpec`'s style (`reps_iff`, `ofVals_sound`). -/
@@ -1142,7 +1147,7 @@ theorem mergeStep_len {α : Type} {le : α → α → Bool} {v v' : (List α × 
   rcases v with ⟨⟨_ | ⟨a, x⟩, _ | ⟨b, y⟩⟩, acc⟩ <;> simp only [mergeStep, Option.some.injEq, reduceCtorEq] at h <;>
     subst h
   · simp
-  · cases x <;> simp [List.merge]
+  · cases x <;> simp
   · rw [List.cons_merge_cons]; by_cases hab : le a b <;> simp [hab, List.cons_merge_cons] <;> omega
 
 theorem mergeStep_none {α : Type} (le : α → α → Bool) (v : (List α × List α) × List α) :

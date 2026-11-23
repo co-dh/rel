@@ -1,4 +1,9 @@
-import Rel.Lang.GenKBits
+module
+
+public import Rel.Lang.GenKBits
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The `GenK` ops of the fixed points (`nu`, `mu`), each representing its constructor's case of `Tm.den` from the
     rounds of `Tab.fixOn`. A round is met with (`ν`) or joined to (`μ`) the table before it, so the rounds form a

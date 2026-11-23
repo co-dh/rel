@@ -1,4 +1,9 @@
-import Rel.Lang.GenKBits
+module
+
+public import Rel.Lang.GenKBits
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The `GenK` ops of the power operators `est` and `atPos`, each representing its constructor's case of `Tm.den`
     from the op's `Tab` law (`Tab.est_holds`, `Tab.atPos_holds`), in `GenKSpec`'s style (`ofVals_row_sound`). -/

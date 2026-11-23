@@ -1,13 +1,18 @@
-import Rel.Lang.GenKFold
-import Rel.RepWhere
-import Rel.RepAsc
-import Rel.RepSums
-import Rel.Lang.GenKEst
-import Rel.Lang.GenKFix
-import Rel.Lang.GenKHylo
-import Rel.Lang.Den
-import Rel.Run.Lang.TmGen
-import Rel.RepCast
+module
+
+public import Rel.Lang.GenKFold
+public import Rel.RepWhere
+public import Rel.RepAsc
+public import Rel.RepSums
+public import Rel.Lang.GenKEst
+public import Rel.Lang.GenKFix
+public import Rel.Lang.GenKHylo
+public import Rel.Lang.Den
+public import Rel.Run.Lang.TmGen
+public import Rel.RepCast
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `Tm.gen`: `Expand.node` as a Lean function from a term to its `GenK` code, one `GenK` op per constructor with
     `Expand.node`'s argument order, and `Tm.code` as `Expand.code` (a closed part memoised, `GenK.memo`). Then

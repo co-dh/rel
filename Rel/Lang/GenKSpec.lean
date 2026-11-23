@@ -1,7 +1,12 @@
-import Rel.Run.Lang.GenK
-import Rel.RepBits
-import Rel.RepTabArith
-import Rel.RepWFOps
+module
+
+public import Rel.Run.Lang.GenK
+public import Rel.RepBits
+public import Rel.RepTabArith
+public import Rel.RepWFOps
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! Each `GenK` op whose `Tab` law exists represents its constructor's case of `Tm.den`: given parts that represent
     their meanings in every context, the op represents the right-hand side `Tm.den` gives that constructor, in every
