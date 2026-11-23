@@ -1559,7 +1559,10 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   else throw s!"row `{r.sym}` (`{c}`): no plan recipe builds its `Tab` operator yet"
 
 /-- What each variable reads (`Code`'s twin): its table at the objects and in the context its use gives it. -/
-abbrev Vars := List (Nat × ((A B : Obj) → Dom → Bld TabB))
+abbrev Vars := List (Nat × Bool × ((A B : Obj) → Dom → Bld TabB))
+
+/-- The demand bit of each variable of `σ` (`Tm.dem`'s `δ`): the bit its binder wrote, `false` for a variable no binder bound. -/
+def Vars.dem (σ : Vars) : Dem := fun k => ((σ.lookup k).map (·.1)).getD false
 
 /-- A variable bound to the registers `s` of a table (an input, a run-time definition): `s` in every context. -/
 def sideArg (s : Side × Side) : (A B : Obj) → Dom → Bld TabB :=
@@ -1599,31 +1602,31 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   -- `GenK.comp`: `R` first, handing `S` its range; where `R` cannot run so (`<` bounded only by `S`) or the context
   -- bounds only the range, `S` first, `R` run knowing its range is `S`'s domain (`compS`); where neither runs, `R`'s error
   | _, _, .comp R S => do
-    let rFirst := do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) S.dem D.ran
+    let rFirst := do compTB (← tabB σ { dom := D.dom } R) (tabB σ · S) (S.dem σ.dem []) D.ran
     let sFirst := do
       let s ← tabB σ { ran := D.ran } S
       compSelB Tab.bitsMax (← tabB σ { dom := D.dom, ran := some (← domOf s) } R) s
-    if R.dem && D.dom.isNone && D.ran.isSome then tryCatch sFirst fun e => tryCatch rFirst fun _ => throw e
+    if (R.dem σ.dem []) && D.dom.isNone && D.ran.isSome then tryCatch sFirst fun e => tryCatch rFirst fun _ => throw e
     else tryCatch rFirst fun e => tryCatch sFirst fun _ => throw e
   | _, _, .conv R => do
     let r ← tabB σ ⟨D.ran, D.dom, D.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ R; canonT ⟨r.n, r.val, r.key⟩
   | _, _, .meet R S => do
-    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem D boundOf
+    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) (R.dem σ.dem []) (S.dem σ.dem []) D boundOf
     interB r s
   | _, _, .join R S => do unionB (← tabB σ D R) (← tabB σ D S)
   | _, _, .diff R S => do
     let r ← tabB σ D R
-    diffB r (← tabB σ (← if S.dem then boundOf r else pure D) S)
+    diffB r (← tabB σ (← if (S.dem σ.dem []) then boundOf r else pure D) S)
   | _, _, .pair (A := A) (B := B) (C := C) R S => do
-    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
+    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) (R.dem σ.dem []) (S.dem σ.dem []) { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
     pairB A B C r s
-  | A, B, .var _ k => match σ.lookup k with
-    | some b => b A B D
+  | A, B, .var k => match σ.lookup k with
+    | some (_, b) => b A B D
     | none => throw s!"variable {k}, which no input table or call argument is bound to"
-  | _, _, .nu k S b => do nuB (fun X => tabB ((k, fun _ _ _ => pure X) :: σ) {} b) (← tabB σ {} S)
+  | _, _, .nu k S b => do nuB (fun X => tabB ((k, false, fun _ _ _ => pure X) :: σ) {} b) (← tabB σ {} S)
   | A, B, .mu k w cap b => do
-    muB (Tab.capMsg w cap) (← sizeB (cap - 1)) (fun X => tabB ((k, fun _ _ _ => pure X) :: σ) {} b)
+    muB (Tab.capMsg w cap) (← sizeB (cap - 1)) (fun X => tabB ((k, false, fun _ _ _ => pure X) :: σ) {} b)
       (← tabB σ {} (.zero : Tm A B))
   | A, B, .hylo k w b => do
     -- `GenK.hylo` on the keys `X` in demand: the nodes `N`, no cycle among them (`ν`), then `D ≫ μY : N ≫ φ(Y)`
@@ -1631,14 +1634,14 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let some ch := b.kids k A | throw s!"Tm.gen: {w} gives the hylo no children (Tm.kids)"
     let Dt ← coreflB n X
     let N ← muB (Tab.capMsg w USize.size) (← sizeB (USize.size - 1)) (fun N => do
-        let C ← compTB N (tabB σ · ch) ch.dem; unionB Dt (← coreflB C.n C.val))
+        let C ← compTB N (tabB σ · ch) (ch.dem σ.dem []); unionB Dt (← coreflB C.n C.val))
       (← tabB σ {} (.zero : Tm A A))
-    let C ← compTB N (tabB σ · ch) ch.dem
+    let C ← compTB N (tabB σ · ch) (ch.dem σ.dem [])
     let cyc ← nuB (fun P => do let CP ← compB C P; coreflB CP.n CP.key) N
     guard (← call1 (kernel% USize.decEq) #[cyc.n, ← lit (.size 0)]) (GenK.cycleMsg w) #[cyc.n, N.n]
     compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
       (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
-      (fun Y => compTB N (tabB ((k, fun _ _ _ => pure Y) :: σ) · b) b.dem) (← tabB σ {} (.zero : Tm A B)))
+      (fun Y => compTB N (tabB ((k, false, fun _ _ _ => pure Y) :: σ) · b) (b.dem (Vars.dem ((k, false, fun _ _ _ => pure Y) :: σ)) [])) (← tabB σ {} (.zero : Tm A B)))
   | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) => argB σ D A B t []
   -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
   | _, _, .ldiv R S UB UC => do
@@ -1650,10 +1653,10 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   -- `GenK.fold`, `GenK.foldr`: `Tab.foldRounds` from `idU X` and `X × ran e`, `S` on `⟨P, el⟩` (`⟨el, P⟩`)
   | _, _, .fold (E := E) (V := V) e S => do
     let (n, X) ← known "fold" D.dom
-    foldB E V true n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) V E P el) (tabB σ · S) S.dem
+    foldB E V true n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) V E P el) (tabB σ · S) (S.dem σ.dem [])
   | _, _, .foldr (E := E) (V := V) e S => do
     let (n, X) ← known "foldr" D.dom
-    foldB E V false n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) E V el P) (tabB σ · S) S.dem
+    foldB E V false n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) E V el P) (tabB σ · S) (S.dem σ.dem [])
 
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
@@ -1669,8 +1672,8 @@ partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
       let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
         fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
       let lazy := at_ (tabB σ · x)
-      if x.dem then pure (k, lazy) else
-        try let t ← tabB σ {} x; pure (k, at_ fun _ => pure t) catch _ => pure (k, lazy)
+      if x.dem σ.dem [] then pure (k, true, lazy) else
+        try let t ← tabB σ {} x; pure (k, false, at_ fun _ => pure t) catch _ => pure (k, false, lazy)
     tabB bs D b
   | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
   | t, [] => tabB σ D t
@@ -1680,10 +1683,10 @@ end
 /-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
     to them (a run-time definition's inputs, `Once.binds`): a variable's own registers, else `tabB`'s table. -/
 def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Side × Side)
-  | _, _, .var _ k => match σ.lookup k with
+  | _, _, .var k => match σ.lookup k with
     | some s => pure s
     | none => throw s!"variable {k}, which no input table is bound to"
-  | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, sideArg s)) {} t)
+  | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, false, sideArg s)) {} t)
 
 
 unsafe def progOfUnsafe (n : Lean.Name) : Lean.Meta.MetaM (List (Lean.Name × Program) × Program) := do

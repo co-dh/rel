@@ -507,7 +507,7 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, A, B, .prim r => Prim.den r A B []
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
-  | ρ, A, B, .var _ k => ρ k A B
+  | ρ, A, B, .var k => ρ k A B
   | _, _, _, .call ks _ _ _ b => b.den (Val.args ks [])
   | ρ, _, _, .arg f x => f.argDen ρ [⟨_, _, x.den ρ⟩]
   -- the rounds start at `⟦S⟧` and meet each with it (`Gen.nu`), so `S` bounds the greatest fixed point
@@ -679,7 +679,7 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     t.den ρ = t.den ρ' ∧ ∀ ss, t.argDen ρ ss = t.argDen ρ' ss := by
   intro A B t
   induction t with
-  | var _ k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
+  | var k => intro ρ ρ' h; exact ⟨by simp only [Tm.den, h k (by simp [Tm.fv])], fun _ => rfl⟩
   | top V ih => intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | comp R S ihR ihS | meet R S ihR ihS | join R S ihR ihS | diff R S ihR ihS | pair R S ihR ihS
   | foldr R S ihR ihS | fold R S ihR ihS =>
@@ -959,7 +959,7 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
       Sems.sle s ss ss' → sle s (t.argDen ρ ss) (t.argDen ρ' ss') := by
   intro A B t
   induction t with
-  | var _ j =>
+  | var j =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩
     simp only [Tm.den]
     by_cases e : j = k
@@ -1069,7 +1069,7 @@ theorem Tm.den_linIn {k : Nat} {A' B' : Obj} {t : Tm A' B'} (h : t.linIn k = tru
     fun t hc => le_iff.2 fun a b h => Or.inl (by rw [g₁.congr hc]; exact h)
   revert h
   induction t with
-  | var _ j =>
+  | var j =>
     intro _
     by_cases e : j = k
     · subst e; exact hk _ _
@@ -1182,7 +1182,7 @@ theorem Tm.den_local (k : Nat) {A B : Obj} (ρ : Val) (X Y : Core.Rel (Obj.El A)
       rw [Val.bind_ne (by rintro rfl; simp [hi] at h), Val.bind_ne (by rintro rfl; simp [hi] at h)]).1]
   intro C D t
   induction t with
-  | @var C' D' _ j =>
+  | @var C' D' j =>
     intro c hc a hX d
     unfold Tm.kids at hc; split at hc
     · rename_i hk

@@ -29,6 +29,8 @@ def Codes.at (xs : Codes) (i : Nat) (X Y : Obj) : Option (Rel X Y) := match xs[i
 structure Code where
   var : Nat → (A B : Obj) → Rel A B
   sh : Codes := []
+  /-- The demand bit of each variable, bound with its code (`Tm.dem`'s `δ`). -/
+  dem : Dem := Dem.empty
 
 instance : CoeFun Code fun _ => Nat → (A B : Obj) → Rel A B := ⟨Code.var⟩
 
@@ -39,17 +41,18 @@ def Code.empty : Code := { var := fun _ A B => GenK.zero A B }
 def Code.closed (η : Code) : Code := { Code.empty with sh := η.sh }
 
 /-- `η` with `k` bound to `r`, `Val.bind`'s twin: a use at other objects reads `𝟘`. -/
-def Code.bind (η : Code) (k : Nat) {A B : Obj} (r : Rel A B) : Code := { η with var := fun j A' B' =>
-  if j = k then (if h : A = A' ∧ B = B' then h.1 ▸ h.2 ▸ r else GenK.zero A' B') else η j A' B' }
+def Code.bind (η : Code) (k : Nat) {A B : Obj} (r : Rel A B) (d : Bool := false) : Code :=
+  { η with dem := η.dem.bind k d, var := fun j A' B' =>
+      if j = k then (if h : A = A' ∧ B = B' then h.1 ▸ h.2 ▸ r else GenK.zero A' B') else η j A' B' }
 
 /-! ### A row's code: `Expand.primE` run once per row of `kernRows`, at its object variables -/
 
 /-- The codes `xs` bound to the variables `ks`, one for one, the first outermost, under `η`'s table and no other
     variable: `Val.args`'s twin, what a kernel twin's parameters are bound to (`Expand.emit`: `Once.binds.zip`, read
     by `List.lookup`, which finds the first). -/
-def Code.args (η : Code) : List Nat → Codes → Code
-  | k :: ks, ⟨_, _, x⟩ :: xs => (Code.args η ks xs).bind k x
-  | _, _ => η.closed
+def Code.args (η : Code) : List Nat → Codes → List Bool → Code
+  | k :: ks, ⟨_, _, x⟩ :: xs, ds => (Code.args η ks xs ds.tail).bind k x (ds.headD false)
+  | _, _, _ => η.closed
 
 /-- The pattern `o` at the objects `σ` of the variables `vs` (in order), a declared name `.long` (F6): `Prim.objs`
     read backwards. -/
@@ -151,7 +154,7 @@ mutual
 /-- `Expand.code`, its shared constants the slots of `η.sh` (`Tm.gen`): a `t` that needs no keys memoised
     (`GenK.memo`), any other its node. -/
 def Tm.code (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
-  if !t.dem then GenK.memo A B (t.gen η) else t.gen η
+  if !t.dem η.dem [] then GenK.memo A B (t.gen η) else t.gen η
 termination_by 2 * t.size + 1
 
 /-- `Expand.node`: `t`'s own `GenK` op, its parts by `Tm.code`. A fixed point's variable reads its round's table
@@ -184,7 +187,7 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
   | B, .sum A _, .inr => GenK.ofVals B _ (Tab.inr (A := A))
   | .arr Y, V, .foldr e S => GenK.foldr Y V (e.code η) (S.code η)
   | .arr Y, V, .fold e S => GenK.fold Y V (e.code η) (S.code η)
-  | A, B, .var _ k => η k A B
+  | A, B, .var k => η k A B
   | A, B, .nu k S b => GenK.nu A B (S.code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .mu k w n b => GenK.mu A B w n (b.linIn k) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   -- children `Tm.kids` reads in no shape bound no recursion: `Expand.node` refuses it, as here
@@ -193,22 +196,22 @@ def Tm.gen (η : Code) {A B : Obj} (t : Tm A B) : Rel A B :=
     if (b.kids k A).isNone then .tab (.error s!"Tm.gen: {w} gives the hylo no children (Tm.kids)") else
     GenK.hylo A B w (((b.kids k A).getD .zero).code η) fun X => b.code (η.bind k (GenK.const A B (.ok X)))
   | A, B, .prim r => primGen r A B []
-  | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩]
+  | _, _, .arg f x => f.argGen η [⟨_, _, x.code η⟩] [x.dem η.dem []]
   -- a slot (`Name.slot?`) is read from the table, computed once per program; where the table has none, built here
   | A, B, .call ks c _ _ b => match c.slot?.bind (η.sh.at · A B) with
     | some r => r
-    | none => b.code (Code.args η ks [])
+    | none => b.code (Code.args η ks [] [])
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
 
 /-- A spine `f` given its later relations' codes `xs` (`Expand.primOf`, `Expand.spine`), in the order `Tm.argDen`
     reads their meanings: a row's code of all of them, or a call's body's code with them bound at its `ks`; `share`
     seen through, built under no variable. A spine headed by neither is an error table. -/
-def Tm.argGen (η : Code) {A B : Obj} (t : Tm A B) (xs : Codes) : Rel A B :=
+def Tm.argGen (η : Code) {A B : Obj} (t : Tm A B) (xs : Codes) (ds : List Bool) : Rel A B :=
   match A, B, t with
   | A, B, .prim r => primGen r A B xs
-  | _, _, .arg f x => f.argGen η (⟨_, _, x.code η⟩ :: xs)
-  | _, _, .call ks _ _ _ b => b.code (Code.args η ks xs)
+  | _, _, .arg f x => f.argGen η (⟨_, _, x.code η⟩ :: xs) (x.dem η.dem [] :: ds)
+  | _, _, .call ks _ _ _ b => b.code (Code.args η ks xs ds)
   | _, _, _ => .tab (.error "Tm.gen: a spine headed by neither a row nor a call")
 termination_by 2 * t.size
 decreasing_by all_goals simp only [Tm.size] at *; omega
@@ -316,7 +319,7 @@ def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.E
   | _, _, .prim (A := A) (B := B) r => return g ``Tm.prim #[oE A, oE B, toExpr r]
   | _, _, .foldr (E := E) (V := V) e S => return g ``Tm.foldr #[oE E, oE V, ← tmE sh e, ← tmE sh S]
   | _, _, .fold (E := E) (V := V) e S => return g ``Tm.fold #[oE E, oE V, ← tmE sh e, ← tmE sh S]
-  | _, _, .var (A := A) (B := B) d k => return g ``Tm.var #[oE A, oE B, toExpr d, toExpr k]
+  | _, _, .var (A := A) (B := B) k => return g ``Tm.var #[oE A, oE B, toExpr k]
   | _, _, .call (A := A) (B := B) ks c cv os b =>
     return g ``Tm.call #[oE A, oE B, toExpr ks, toExpr c, toExpr cv, toExpr os,
       ← match c.slot?.bind (sh[·]?) with | some e => pure e | none => tmE sh b]
@@ -390,14 +393,14 @@ def Code.program (ds : List Res) : List Res × Array Res :=
 /-- Two call sites of one body `b`, which reads its parameter `0` beside the closed part `(𝟘)°`; each call given a
     free variable, so neither call is closed. -/
 private def twoCalls (b : Tm .long .long) : Tm .long .long :=
-  .join (.arg (.call [0] `f none [] b) (.var (A := .long) (B := .long) false 5)) (.arg (.call [0] `g none [] b) (.var (A := .long) (B := .long) false 6))
+  .join (.arg (.call [0] `f none [] b) (.var (A := .long) (B := .long) 5)) (.arg (.call [0] `g none [] b) (.var (A := .long) (B := .long) 6))
 
 -- the body's closed part is numbered inside both calls, to one slot (`𝟘` its own part, slot 0): two slots in all,
 -- each computed once (`Code.shares`), where `Tm.mapM`'s walk numbers none and one slot per site would be four
 #guard
-  let b : Tm .long .long := .meet (.var false 0) (.conv .zero)
+  let b : Tm .long .long := .meet (.var 0) (.conv .zero)
   let (t, ts, _) := ((twoCalls b).number).run (#[], {})
-  let b' : Tm .long .long := .meet (.var false 0) (.slot 1 (.conv (.slot 0 .zero)))
+  let b' : Tm .long .long := .meet (.var 0) (.slot 1 (.conv (.slot 0 .zero)))
   ts.size == 2 && ((Expand.tmE #[] t).toOption.map toString == (Expand.tmE #[] (twoCalls b')).toOption.map toString)
 
 /-! ### What `rel_program n` emits: its share table once, each term as `Tm.gen` under it -/
@@ -535,7 +538,7 @@ def ioGo (inst sh : Lean.Expr) (body : Lean.Name → Option (Once × Lean.Expr))
         throwError "rel_program expansion: internal: `{d}` is a table at {repr X} ⟶ {repr Y}, and `{x}` reads it \
           at {repr P} ⟶ {repr Q}"
     let xs ← mkListLit (mkApp2 (mkConst ``Sigma [0, 0]) (mkConst ``Obj) (sigM ``Rel.Rel)) (args.map fun (X, Y, t) => sigE ``Rel.Rel X Y (tabRel (oE X) (oE Y) t))
-    let v := g ``Tm.gen #[g ``Code.args #[sh, toExpr o.binds, xs], oE A, oE B, e]
+    let v := g ``Tm.gen #[g ``Code.args #[sh, toExpr o.binds, xs, toExpr ([] : List Bool)], oE A, oE B, e]
     bindIO inst (mkApp4 (mkConst ``Table.ofRun) (oE A) (oE B) (toExpr x) v) (mkApp2 (mkConst ``Tab) (oE A) (oE B)) x
       fun t => ioGo inst sh body reach fin ss ((x, A, B, t) :: σ) d
   | .output .. :: ss, σ, d => ioGo inst sh body reach fin ss σ d
@@ -643,7 +646,7 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
         ← none' ``Rel.Known.pairs._default]])
   let mut entries : List Lean.Expr := []
   for ((x, ⟨A, B, t⟩), (_, _, v)) in ds.zip dC do
-    unless !t.dem do throwError "rel_program expansion: internal: `{x}` needs keys"
+    unless !t.dem Dem.empty [] do throwError "rel_program expansion: internal: `{x}` needs keys"
     let k := Parse.constOf n x
     addConst k (mkApp2 (mkConst ``Except [0, 0]) (mkConst ``String) (mkApp2 (mkConst ``Tab) (oE A) (oE B))) (← app A B v)
     entries := entries ++ [g ``Gen.entry #[toExpr x, oE A, oE B, mkConst k]]

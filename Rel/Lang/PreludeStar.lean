@@ -14,7 +14,7 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 /-- `star(P)` at `B ⟶ B`: `μX : 𝟙 ∪ (P X)`, `X` the variable `k`. -/
 def Tm.starDef {B : Obj} (k : Nat) (what : String) (cap : Nat) (P : Tm B B) : Tm B B :=
-  .mu k what cap (.join .id (.comp P (.var false k)))
+  .mu k what cap (.join .id (.comp P (.var k)))
 
 theorem Prim.den_star {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
     Prim.den (rowOf "star") B B [⟨B, B, T⟩] = Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X := by
