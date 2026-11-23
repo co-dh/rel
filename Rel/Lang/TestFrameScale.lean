@@ -45,7 +45,7 @@ rel_program frameScaleN3 where
     -- `q` is `x` one step later: row `i ≥ 100` meets `i − 99` of its key, so Σ (i − 99) = (n−100)(n−99)/2
     q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
     a : N ⟶ (N×N)×(1+(N×N)) ≜ aj(π₁, π₂, π₁, π₂, x, q)
-    check summarize(F(a π₂ [π₂, {(∗,0)}]) sum, a) = {(∗,405450)}
+    check summarize(F(a π₂ [{(∗,0)}, π₂]) sum, a) = {(∗,405450)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,999)),(1,(98,998)),(2,(97,997))}
     -- sorted position `p` holds key `p div T`, row `p div T + 100·(p mod T)`
     check sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩
