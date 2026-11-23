@@ -87,7 +87,7 @@ theorem Prim.den_conv : ∀ r ∈ prims, ∀ s r', r.conv = some s → Prim.find
   repeat' apply And.intro
   all_goals (try intro _ (_ : _ ∈ _)); intro s r' hs hr'; first | cases hs | simp at hs
   all_goals simp [Prim.find?, prims, consRow, mapRow, lengthRow,
-    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow, estRow, frontRow] at hr'
+    sumRow, flatRow, foldIRow, starRow, domRow, ranRow, nilRow, estRow, frontRow, ascRow] at hr'
   all_goals subst hr'
   all_goals
     intro A B ss
