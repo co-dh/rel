@@ -1,10 +1,15 @@
-import Rel.Run.Cast
-import Rel.RepSetOps
-import Rel.RepCanon
-import Rel.RepCols
-import Rel.RepTabDiv
-import Rel.RepTabArith
-import Rel.Lang.Den
+module
+
+public import Rel.Run.Cast
+public import Rel.RepSetOps
+public import Rel.RepCanon
+public import Rel.RepCols
+public import Rel.RepTabDiv
+public import Rel.RepTabArith
+public import Rel.Lang.Den
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The law of `$` (`Tab.cast`): its table is the graph of `QAtomicType.embed` on the values in demand. -/
 

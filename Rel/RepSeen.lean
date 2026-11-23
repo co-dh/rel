@@ -1,4 +1,9 @@
-import Rel.RepCanon
+module
+
+public import Rel.RepCanon
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! `kasc ≫ kseen` (PLAN D.12): `kseen` answers only rows in `kasc` order (`kseen_sorted`), and `kasc`'s sorted
 columns are such rows, so the composition never takes `kseen`'s error (`kasc_kseen`). Its answer is `kseen_ok`'s over

@@ -2,8 +2,13 @@
   A table read in the allegory of sets: `rep R` is the relation `R.Holds` as a `Rel(Set)` arrow, and `Reps` says
   what a runtime `Rel` computes agrees with a `Rel(Set)` arrow on what its context knows.
 -/
-import Rel.Core.Rel
-import Rel.Run.Lang.Lazy
+module
+
+public import Rel.Core.Rel
+public import Rel.Run.Lang.Lazy
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 namespace Rel.Rep
 
@@ -76,8 +81,6 @@ theorem meet_comp_conv_graph {α β γ : Type} (f : α → β) (X Y : Core.Rel �
       ⟨w, ⟨hx, ((show w' = f a from ey).trans (show w = f a from ex).symm) ▸ hy⟩, ex⟩,
       fun ⟨_, ⟨hx, hy⟩, e⟩ => ⟨⟨_, hx, e⟩, ⟨_, hy, e⟩⟩⟩
 
--- `Classical.choice` below comes with `Rel.Holds` itself (through qlean's `Carrier`), not from the proofs
-#print axioms Holds
 /-- What `thinLOn` computes from one array `xs`, `le` its test read as an order: the chain `ys` from `[]`, each
     `ys[t]` the element `xs[t]` bumped into `ys[t+1]`, `w` its head. -/
 def thinLDen {B : Obj} (le : B.El → B.El → Bool) (xs w : List B.El) : Prop :=

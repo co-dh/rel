@@ -1,7 +1,12 @@
-import Rel.Run.Arith
-import Rel.RepTabComp
-import Rel.RepSetOps
-import Rel.Lang.Den
+module
+
+public import Rel.Run.Arith
+public import Rel.RepTabComp
+public import Rel.RepSetOps
+public import Rel.Lang.Den
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! Laws of `Tab.arith` and `Tab.succ` (`Rel/Run/Arith.lean`): `stepCols_spec`, `Tab.succ_holds`; and checks
 against the meanings `arithDen`, `succDen` of

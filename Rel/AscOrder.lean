@@ -1,4 +1,9 @@
-import Rel.ObjOrder
+module
+
+public import Rel.ObjOrder
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 /-! The row `asc`'s meaning: `asc(P) : ℕ ⟶ B` numbers the set `dom P` in `Obj.lt` order, and the law that makes the
 numbering one: a list strictly ascending in `Obj.lt` is fixed by its elements. -/

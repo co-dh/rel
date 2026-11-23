@@ -2,9 +2,14 @@
   q's `asc` order on every side `A : Obj`: the order qlean's sort kernels implement (`c/sort.c`,
   `QLean/Kernel/Sort.lean`), lifted from atoms to products, arrays and sums.
 -/
-import Rel.Run.Core
-import Rel.Kernel.Asc
-import Rel.KernelSpec.Search
+module
+
+public import Rel.Run.Core
+public import Rel.Kernel.Asc
+public import Rel.KernelSpec.Search
+
+-- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
+@[expose] public section
 
 namespace Rel
 
@@ -196,8 +201,5 @@ theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {f s : Bool} (ht : ascLayout
 #guard (Obj.atom .f64).key (0 : UInt64) < (Obj.atom .f64).key (0x3ff0000000000000 : UInt64)
 #guard (Obj.atom .f32).key (0x80000000 : UInt32) < (Obj.atom .f32).key (0 : UInt32)
 
-#print axioms Obj.lt_trichotomy
-#print axioms Obj.lt_prod
-#print axioms Obj.lt_cons
 
 end Rel
