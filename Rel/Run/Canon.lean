@@ -19,26 +19,31 @@ open Rel.Ext Rel.Kernel Rel.Verify
 
 /-- A summand's columns at its sum side's `n` rows: `cols` of the summand `y` gathered at the positions `p`; a summand
 of no rows has no columns, and a position outside it is the error naming the `side`. -/
-def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n → Except String (List (AscKey × Enc)))
-    (p : Enc) (y : Vals B m) : Except String (List (AscKey × Enc)) :=
+def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : ValsB true B n → Except String (List (AscKey × Enc)))
+    (p : Enc) (y : ValsB true B m) : Except String (List (AscKey × Enc)) :=
   if m.toNat = 0 then .ok [] else match ValsB.gather n p y with
     | .ok g => cols g
     | .error s => .error s!"cols: a sum side's {side} position: {s}"
 
+/-- The key columns of an atom column at ownership `o`: its payload, a nullable one coding its nulls first (`kasc`). -/
+def ColB.enc : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Enc
+  | false, _, _, x => Arr.enc x
+  | true, _, _, x => Opt.enc x
+
 /-- The key columns of a side (`AscKey`), in the order of `ValsB.row`'s tuple. An `arr` side is one `cells` key over its
 `lo`, `hi` and its payload's columns, row `i` naming cell `i` (`.pos`), so equal codes are equal cells as lists. A
-`sum` side is its tag, then the left summand's columns, then the right's: a row holds `0` in the summand its tag does
-not name (`Vals.zeros`, kept by every operator), a constant, so equal codes are equal rows. -/
-def ValsB.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (AscKey × Enc))
-  | .atom t, _, x => .ok [(.atom t, Arr.enc (t := t) x)]
-  | .prod _ _, _, x => do pure ((← ValsB.cols x.1) ++ (← ValsB.cols x.2))
-  | .arr _, n, ⟨c, lo, hi, f⟩ => do pure [(.cells n c lo.enc hi.enc (← ValsB.cols f), .pos)]
+`sum` side is its tag, then the left summand's columns, then the right's: a row the tag does not name holds the null
+there (`ValsB true`), a constant, so equal codes are equal rows. -/
+def ValsB.cols : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Except String (List (AscKey × Enc))
+  | _, .atom t, _, x => .ok [(.atom t, ColB.enc x)]
+  | _, .prod _ _, _, x => do pure ((← ValsB.cols x.1) ++ (← ValsB.cols x.2))
+  | _, .arr _, n, ⟨c, lo, hi, f⟩ => do pure [(.cells n c (ColB.enc lo) (ColB.enc hi) (← ValsB.cols f), .pos)]
   -- a band column is its own key: `kasc` codes its nulls first (`Asc.nulCodes`), as `Obj.key` puts `inl` first
-  | .sum _ _, n, s => match s.view with
+  | _, .sum _ _, n, s => match ValsB.view s with
     | .opt (t := t) _ x => .ok [(.atom t, x.enc)]
     | .gen _ tag x y => do pure ((.atom .u1, tag.enc) :: ((← ValsB.cols x) ++ (← ValsB.cols y)))
   -- no column: every row of `1` is its one value
-  | .one, _, _ => .ok []
+  | _, .one, _, _ => .ok []
 
 /-- **The side `x` without duplicate rows, ascending**: `kasc` over its atom columns (sorted columns `vs`, permutation
 `p`), `kseen` over the sorted columns (the first row of each run of equal rows, `k` of them, ascending), `kgather` of
