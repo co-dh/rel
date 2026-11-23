@@ -244,6 +244,13 @@ rel_program nativeIO where
     output sy to csv "out/io/sy.csv"
     output sz to csv "out/io/sz.csv"
     output su to csv "out/io/su.csv"
+    -- a `1+S` not in band (`1+PQ`, no band column): one nullable file column per field of `PQ` (`PQ.pa`, `PQ.pb`; as a key
+    -- `pa`, `pb`), a row with both empty the `1`; read (`csvSideB`: tag, position, values of each) and written back
+    schema PQ = {pa : N, pb : N}
+    input pq : N ⟶ N×(1+PQ) from csv "in/pq.csv"
+    input qk : 1+PQ ⟶ N from csv "in/qk.csv"
+    output pq to csv "out/io/pq.csv"
+    output qk to csv "out/io/qk.csv"
     cp : N ⟶ Row ≜ t
     un : N ⟶ Row ≜ t ∪ t
     cm : N ⟶ N ≜ t t°

@@ -1707,14 +1707,28 @@ def writeRel {A B : Obj} (dir : String) (R : Tab A B) : IO Unit := do
 
 /-! ### A program's IO statements (IO step I10): what `n.io` reads, computes and writes, as a plan -/
 
-/-- Whether `A` holds a sum not in band (`Obj.band`), whose CSV columns (`1+S`, one nullable column per atom of `S`)
-    `Table.ofCsv` regroups and checks, which no plan recipe does; an in-band `1+t` is one `csvRead` column as it is. -/
-def hasSum : Obj → Bool
-  | .atom _ => false
-  | .prod a b => hasSum a || hasSum b
-  | .arr b => hasSum b
-  | .sum a b => (Obj.band a b).isNone
-  | .one => false
+/-- The CSV columns of a side of `A` in file order, as `Table.ofCsv`/`Table.toCsv` lay them out: `part`, one atom column of
+    `objCols` (one file part: an atom, an in-band `1+t`, a text's `lo`, `hi`, `e` each); `one`, a side of `1`, whose
+    file part holds no column; `null`, a `1+S` not in band, `S` atoms `vs`: the tag and position columns' paths and one
+    file column per atom of `S`, each of three parts (tag `1` at a null, position, the non-null rows' values). -/
+inductive CsvCol
+  | part (p : String) (t : QAtomicType)
+  | one
+  | null (tag idx : String) (vs : List (String × QAtomicType))
+
+/-- `CsvCol`s of the side of `A` at `p`, by the object alone (`Table.ofCsv`'s cases); refused where `Table.ofCsv` is: a
+    `1+S` whose `S` is no product of atoms, a list of no atom, a sum of no `1+S`. -/
+def csvCols : Obj → String → Except String (List CsvCol)
+  | .atom t, p => pure [.part p t]
+  | .prod a b, p => return (← csvCols a (p ++ ".1")) ++ (← csvCols b (p ++ ".2"))
+  | .arr (.atom t), p => pure ((objCols (.arr (.atom t)) p).map fun (q, u) => .part q u)
+  | .one, _ => pure [.one]
+  | .sum a b, p => match Obj.band a b, a with
+    | some t, _ => pure [.part p t]
+    | none, .one => if (Table.atomCount b).isSome then pure [.null (p ++ ".tag") (p ++ ".idx") (objCols b (p ++ ".r"))]
+      else throw s!"column `{p}` is a `1+S` whose `S` ({repr b}) is no product of atoms, which has no CSV columns"
+    | none, _ => throw s!"column `{p}` is a sum of no `1+S` ({repr (Obj.sum a b)}), which has no CSV columns"
+  | A, p => throw s!"column `{p}` is {repr A}, which is no CSV column set"
 
 /-- Whether `A` holds a sum at all: a table directory's tag, position and null columns are not read by `ownSideB`. -/
 def hasAnySum : Obj → Bool
@@ -1779,26 +1793,25 @@ def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Exce
 
 /-- An input as its read at the input edge answers it, with its key schema `k` (`[]`: positions) and value schema
     `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
-    atom columns of the key and of the value and `csvRead`'s list register (a CSV file). -/
+    CSV columns of the key and of the value (`csvCols`) and `csvRead`'s list register (a CSV file). -/
 inductive InRead
   | own (k v : Schema) (kc vc : List (String × QAtomicType × Nat))
-  | csv (k v : Schema) (kc vc : List (String × QAtomicType)) (l : Nat)
+  | csv (k v : Schema) (kc vc : List CsvCol) (l : Nat)
 
 /-- The input edge's reads of `input x : k ⟶ v from [csv] path` (`n.io`'s `Table.read`, `Table.readKeyed`,
     `Table.readCsvDict`): a keyed table directory's `key/` and `val/`, a keyed CSV file's key columns then value
-    columns. A nullable CSV column is regrouped, a symbol column interned: no plan recipe does those, so each is
-    refused, naming the input. -/
+    columns; a nullable `1+S` not in band is regrouped by `csvSideB`, a symbol column interned by `sideOf`. A column
+    mapped from its file that holds a symbol, a general column or a sum is refused, naming the input. -/
 def readIn (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (path : String) : Bld InRead := do
   let no (why : String) : Bld InRead := throw s!"input `{x}` from \"{path}\": {why}, which no plan recipe does yet"
   match csv with
   | some (sep, cs) =>
-    if hasSum k.obj || hasSum v.obj then
-      return ← no "a nullable CSV column, whose parts the read regroups and checks (`Table.ofCsv`)"
     -- a symbol column is read as its texts (`Db.Csv.symText`), interned by `sideOf` (`internB`)
     let ts ← ofExc ((Db.Csv.symText cs).mapError (s!"{path}: " ++ ·))
     let rs ← callK (kernel% Rel.Db.csvRead) #[← lit (.str path), ← lit (Reg.put ts), ← lit (.u8 sep)]
-    let kc := if k.isEmpty then [] else objCols k.obj ""
-    return .csv k v kc (objCols v.obj "") (← nth rs 1 "csvRead")
+    let cols (S : Schema) := ofExc ((csvCols S.obj "").mapError (s!"input `{x}` from \"{path}\": " ++ ·))
+    let kc ← if k.isEmpty then pure [] else cols k
+    return .csv k v kc (← cols v) (← nth rs 1 "csvRead")
   | none =>
     let own (S : Schema) (dir : String) := (schemaCols S).mapM fun (p, q, t) => do
       if [QAtomicType.sym, .general].contains t then
@@ -1866,10 +1879,10 @@ def internB (D : TabB) (n : Nat) (x : Col) : Bld (TabB × Nat) := do
 
 /-- The symbol columns `cs` (paths, atoms) of a side `s` read by `csvSideB`, each one's three text parts replaced by
     its ids (`internB`, `Table.internCsv`) into `D`, left to right; the side and the grown dictionary. -/
-def internSide (cs : List (String × QAtomicType)) (D : TabB) (s : Side) : Bld (Side × TabB) := do
+def internSide (cs : List CsvCol) (D : TabB) (s : Side) : Bld (Side × TabB) := do
   let mut s := s
   let mut D := D
-  for (p, _) in cs.filter (·.2 == .sym) do
+  for p in cs.filterMap fun | .part p .sym => some p | _ => none do
     let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
     let (some lo, some hi, some e, some m, some n) :=
         (reg (p ++ ".lo") Side.enc, reg (p ++ ".hi") Side.enc, reg (p ++ ".e") Side.enc, reg (p ++ ".e") Side.count,
@@ -1880,15 +1893,44 @@ def internSide (cs : List (String × QAtomicType)) (D : TabB) (s : Side) : Bld (
     D := D'
   pure (s, D)
 
-/-- The CSV columns `cs` of a side, each count and `Enc` taken off `csvRead`'s list `l`; the rest of the list. -/
-def csvSideB (cs : List (String × QAtomicType)) (l : Nat) : Bld (Side × Nat) := do
+/-- The first cell of `csvRead`'s list `l`: its count and `Enc`; the rest of the list. -/
+def csvCell (l : Nat) : Bld (Nat × Nat × Nat) := do
+  let cell ← projB l 1 0 .obj
+  pure (← projB cell 0 0 .size, ← projB cell 0 1 .obj, ← projB l 1 1 .obj)
+
+/-- The CSV columns `cs` of a side, each count and `Enc` taken off `csvRead`'s list `l`; the rest of the list. A `1+S`
+    not in band (`Table.ofCsv`): the first file column's tag, swapped to the language's (`1` at the `inr`, `swapTag`),
+    its position and values, then each other file column's values, its tag required equal to the first's (the `1` is
+    every field of `S` empty), else the run fails with the count of the rows that differ. -/
+def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
   let mut l := l
   let mut s : Side := []
-  for (p, t) in csvParts cs do
-    let cell ← projB l 1 0 .obj
-    let (n, e) := (← projB cell 0 0 .size, ← projB cell 0 1 .obj)
-    s := s ++ [(p, (← encRegs t n e).push e)]
-    l ← projB l 1 1 .obj
+  for c in cs do
+    match c with
+    | .part p t =>
+      for (q, u) in csvParts [(p, t)] do
+        let (n, e, l') ← csvCell l
+        s := s ++ [(q, (← encRegs u n e).push e)]
+        l := l'
+    | .one => l := (← csvCell l).2.2
+    | .null tag idx vs =>
+      let mut first : Option (Nat × Nat × String) := none
+      for (q, u) in vs do
+        let (n, t, l₁) ← csvCell l
+        let (_, i, l₂) ← csvCell l₁
+        let (m, v, l₃) ← csvCell l₂
+        l := l₃
+        match first with
+        | none =>
+          let nt ← mapB .first n t t .u1 .i64 [] [(.not, 0)]
+          s := s ++ [(tag, (← encRegs .u1 n nt).push nt), (idx, (← encRegs .i64 n i).push i)]
+          first := some (n, t, q)
+        | some (n₁, t₁, q₁) =>
+          let (_, k) ← prefixB .add n₁ (← mapB .ne n₁ t₁ t .i64 .u1)
+          guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
+            s!"nullable columns `{q₁}` and `{q}` of one `1+S` are empty in different rows; they are empty together, \
+              and all of them empty is the `1`" #[k]
+        s := s ++ [(q, (← encRegs u m v).push v)]
   pure (s, l)
 
 /-- The table an input's read answered, in `main`: its key side and value side (`csvSideB`, `ownSideB`); a keyed
@@ -1941,21 +1983,34 @@ def writeOut (x : String) (k v : Schema) (csv : Option (UInt8 × Db.CsvCols)) (p
     let mut es : List Nat := []
     let mut rows : Option Nat := none
     for (S, side, _) in sides do
-      if hasSum S.obj then throw s!"output `{x}` to csv \"{path}\": a nullable CSV column, which no plan recipe writes yet"
-      for (p, _, t) in schemaCols S do
+      let reg (p : String) : Bld (Nat × Nat) := do
         let r ← col S side p
         let (some m, some e) := (r[Side.count]?, r[Side.enc]?)
           | throw s!"output `{x}` to csv \"{path}\": column `{p}` has no `Enc` register, which `csvWrite` takes"
+        pure (m, e)
+      for c in ← ofExc ((csvCols S.obj "").mapError (s!"output `{x}` to csv \"{path}\": " ++ ·)) do
+        -- the parts of one CSV column, each its count and `Enc`, as `Table.toCsv` lays them out
+        let ps : List (Nat × Nat) ← match c with
+          | .part p .sym => do
+            let (m, e) ← reg p
+            -- `unenum`: the ids `I ≫ D` as texts, refused unless every id has one (`Table.decode`)
+            let T ← compB ⟨m, [.atom "" .i64 (← posB)], [.atom "" .i64 e]⟩ D
+            guard (← call1 (kernel% USize.decEq) #[T.n, m])
+              s!"output `{x}` to csv \"{path}\": column `{p}` has ids past the dictionary of texts, ids and texts matched" #[m, T.n]
+            let [.arr _ m' lo hi [.atom _ _ pe]] := T.val | throw s!"output `{x}`: the texts of column `{p}` are not one text column"
+            pure [(m, lo), (m, hi), (m', pe)]
+          | .part p _ => do pure [← reg p]
+          | .one => throw s!"output `{x}` to csv \"{path}\": a column of the side `1`, which no plan recipe writes yet \
+              (`Table.csvEncs` writes its one element's code `0` in each row)"
+          -- a `1+S` not in band: each file column of `S` the tag swapped to `1` at a null (`swapTag`), the position, its values
+          | .null tag idx vs => do
+            let (m, t) ← reg tag
+            let (_, i) ← reg idx
+            let nt ← mapB .first m t t .u1 .i64 [] [(.not, 0)]
+            pure (← vs.mapM fun (q, _) => do let (k, v) ← reg q; pure [(m, nt), (m, i), (k, v)]).flatten
         -- the first column holds the rows: a later column may be an array's payload (`.e`), of its own count
-        if rows.isNone then rows := some m
-        if t == .sym then
-          -- `unenum`: the ids `I ≫ D` as texts, refused unless every id has one (`Table.decode`)
-          let T ← compB ⟨m, [.atom "" .i64 (← posB)], [.atom "" .i64 e]⟩ D
-          guard (← call1 (kernel% USize.decEq) #[T.n, m])
-            s!"output `{x}` to csv \"{path}\": column `{p}` has ids past the dictionary of texts, ids and texts matched" #[m, T.n]
-          let [.arr _ m' lo hi [.atom _ _ pe]] := T.val | throw s!"output `{x}`: the texts of column `{p}` are not one text column"
-          es := es ++ [← ctorB 0 #[m, lo] #[], ← ctorB 0 #[m, hi] #[], ← ctorB 0 #[m', pe] #[]]
-        else es := es ++ [← ctorB 0 #[m, e] #[]]
+        if rows.isNone then rows := ps.head?.map (·.1)
+        for (m, e) in ps do es := es ++ [← ctorB 0 #[m, e] #[]]
     let some n := rows | throw s!"output `{x}` to csv \"{path}\": no column"
     discard <| call "qlean_csv_write" #[← lit (.str path), ← lit (Reg.put ts), ← lit (.u8 sep), n, ← listB es] 0
 
