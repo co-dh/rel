@@ -73,6 +73,40 @@ theorem zeroCol_row {t : QAtomicType} (h : t.ordNum.isSome) (i : Fin (1 : USize)
     simpa [Rel.Verify.ofNat_toNat_mod64] using this
   simp [hi, hf]
 
+/-! ### Generated literals: what `Gen` rebuilds a table or a universe literal of a body into -/
+
+/-- `Enc.wf?` answers `some` wherever `Enc.WF` holds, but on a `u1` block whose frame or width admits a 2
+    (`Column.u1Ok`), which it refuses. -/
+theorem _root_.Rel.Ext.Enc.wf?_isSome {X : Type} {t : QAtomicType} {n : USize} {e : Ext.Enc X}
+    (h : Ext.Enc.WF t n e) (hu : ∀ md pk, e = .foR md pk → t = .u1 → Column.u1Ok md pk = true) :
+    (Ext.Enc.wf? t n e).isSome := by
+  cases e with
+  | foR md pk => cases t <;> (unfold Ext.Enc.wf?; dsimp only; rw [dif_pos ⟨h.1, hu md pk rfl, h.2.2⟩]; rfl)
+  | gen xs => cases t <;> simp_all [Ext.Enc.wf?, Ext.Enc.WF]
+  | pos => cases t <;> first | rfl | (simp [Ext.Enc.WF] at h)
+
+/-- A generated atom literal (`Gen.atom`) is the column its payload encodes, its bit `true`, wherever that payload is
+    `WF` and holds no null (`Ext.Enc.wf?_isSome`). -/
+theorem Gen.atom_eq {t : QAtomicType} {n : USize} {m p : String} {e : Enc}
+    (he : Enc.foR (Gen.unhex m) (Gen.unhex p) = e) (hw : Ext.Enc.WF t n e)
+    (hu : ∀ md pk, e = .foR md pk → t = .u1 → Column.u1Ok md pk = true) (hN : hasNul e = false) :
+    Gen.atom t n m p = (Arr.mk e hw hN, true) := by
+  subst he
+  obtain ⟨⟨w⟩, hs⟩ := Option.isSome_iff_exists.1 (Ext.Enc.wf?_isSome hw hu)
+  unfold Gen.atom; dsimp only; rw [hs]; simp only [hN, dite_true]
+
+/-- A table literal (`Gen.relV`) means its rows (`Tab.Holds`). -/
+theorem Tm.relV_den (ρ : Val) {A B : Obj} {n : USize} (k : Vals A n × Bool) (v : Vals B n × Bool) (x : A.El)
+    (y : B.El) : (Tm.val (Gen.relV A B n k v).1).den ρ x y ↔ ∃ i, k.1.row i = x ∧ v.1.row i = y := Iff.rfl
+
+/-- A universe on `1` (`Gen.oneV` builds one) is the identity of `1` where it has a row, else empty. -/
+theorem Tm.uniOne_den (ρ : Val) {m : USize} (U : Vals .one m) (x y : Obj.El .one) :
+    (Tm.uni U).den ρ x y ↔ 0 < m.toNat := by
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨i, -⟩; exact Nat.lt_of_le_of_lt (Nat.zero_le _) i.2
+  · intro h; exact ⟨⟨0, h⟩, by simp⟩
+
 /-- The base `0` (`zeroTm`): its values are the word `0` of the atom, where it is in its universe. -/
 theorem zeroTm_den {t : QAtomicType} (h : t.ordNum.isSome) (u₀ : Tm (.atom t) (.atom t)) (ρ : Val)
     {P : (Obj.atom t).El → Prop} (hU : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (v : (Obj.atom t).El) :
