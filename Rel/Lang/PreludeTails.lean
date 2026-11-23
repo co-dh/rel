@@ -52,7 +52,7 @@ theorem Tm.tailsSeed_den (ρ : Val) {B : Obj} :
   simp [Tm.den, Tm.nil, Prim.den_nilRow, Prim.den_tau, nilDen, Core.Rel.comp]
 
 /-- **The definition of `tails` means the row**: the suffixes of `xs`, longest first. -/
-theorem Tm.tailsDef_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (yss : Obj.El (.arr (.arr B))) :
+theorem Tm.tailsDef_row (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (yss : Obj.El (.arr (.arr B))) :
     (Tm.tailsDef B).den ρ xs yss ↔ Prim.den (rowOf "tails") (.arr B) (.arr (.arr B)) [] xs yss := by
   rw [Prim.den_tails]
   have hd : (Tm.tailsDef B).den ρ = foldrDen (fun _ b => b = [[]]) ((Tm.tailsStep B).den ρ) := by
