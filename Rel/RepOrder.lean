@@ -144,7 +144,7 @@ theorem ValsB.lt_of_codes : {A : Obj} → {o : Bool} → {n : USize} → (x : Va
     cases o
     · exact Arr.lt_of_codes x hc i i' h
     · have own : ∀ q, P q → ∃ v, Opt.get x q = some v := fun q hq =>
-        Option.ne_none_iff_exists'.1 fun e => (hw q).1 e hq
+        Option.ne_none_iff_exists'.1 fun e => (hw q).1 hq e
       obtain ⟨v, hv⟩ := own i hPi
       obtain ⟨v', hv'⟩ := own i' hPi'
       have hl := Opt.lt_of_codes x hc i i' h

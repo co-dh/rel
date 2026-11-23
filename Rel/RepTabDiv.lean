@@ -31,7 +31,7 @@ theorem nil_holds {n : USize} {D : Vals A n} {T : Tab A (.arr B)} (h : Tab.nil D
   unfold Tab.nil at h; simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i z hz; split at h; · cases h
-  rw [canon_holds h ⟨hD, fun i => by rw [Arr.zeros_get hz]; simp, Vals.none_wf ‹_›⟩]
+  rw [canon_holds h ⟨hD, trivial, trivial, fun i _ => by rw [Arr.zeros_get hz]; simp, Vals.none_wf _ ‹_›⟩]
   simp only [Tab.Holds, ValsB.row]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, h2.symm⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, h2.symm⟩⟩
 
@@ -241,7 +241,7 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
   rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨x, hx, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨y, hy, h⟩ := h
-  rw [canon_holds h ⟨Vals.gather_wf hx hX, Vals.gather_wf hy hX.2⟩]
+  rw [canon_holds h ⟨Vals.gather_wf hx hX, Vals.gather_wf hy hX.2.2.2⟩]
   have hU : USize.size ≤ 2 ^ 64 := by rcases USize.size_eq with h | h <;> omega
   have hm63 : m.toNat < 2 ^ 63 := by omega
   have hn63 : n.toNat < 2 ^ 63 := by omega
@@ -262,7 +262,7 @@ theorem mem_holds {n : USize} {X : Vals (.arr B) n} {T : Tab (.arr B) B} (h : Ta
     rw [Arr.get_i64, Arr.get_i64, ← hLf, ← hHf, hEN, hSN]; omega
   -- the words `lo`, `hi - lo`: `0 ≤ lo ≤ hi ≤ m` (`Vals.WF`), so `lo = SN`, `hi = EN`
   have hW : ∀ i < n.toNat, 0 ≤ Lf i ∧ Lf i ≤ Hf i ∧ Hf i ≤ m.toNat := fun i hi => by
-    have := hX.1 ⟨i, hi⟩; rwa [Arr.get_i64, Arr.get_i64, ← hLf, ← hHf] at this
+    have := hX.2.2.1 ⟨i, hi⟩ trivial; rwa [Arr.get_i64, Arr.get_i64, ← hLf, ← hHf] at this
   have hsw : ∀ i < n.toNat, (raw .i64 n lo.enc)[i]?.getD 0 = (SN i).toUInt64 := by
     intro i hi
     obtain ⟨h63, hv⟩ := toInt64_nonneg (x := (raw .i64 n lo.enc)[i]?.getD 0) (by rw [← hLf]; have := hW i hi; omega)
@@ -341,7 +341,7 @@ end Tab
 theorem Vals.row_cell {B : Obj} {n m : USize} (lo hi : Arr .i64 n) (f : Vals B m) (i : Fin n.toNat) {a b : Nat}
     (ha : (raw .i64 n lo.enc)[i.1]?.getD 0 = a.toUInt64) (hb : (raw .i64 n hi.enc)[i.1]?.getD 0 = b.toUInt64)
     (hab : a ≤ b) (hbm : b ≤ m.toNat) (hm : m.toNat < 2 ^ 63) :
-    ValsB.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
+    ValsB.row (o := false) (A := .arr B) ⟨m, lo, hi, f⟩ i =
       (List.range' a (b - a)).map fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt := by
   have hc : 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
     simp only [Arr.get_i64, ha, hb, toInt64_toInt_nat (show a < 2 ^ 63 by omega),
@@ -358,7 +358,7 @@ being read empty wherever it lies (`uncat`'s split of a cell `cellSpan` clamped)
 theorem Vals.row_span {B : Obj} {n m : USize} (lo hi : Arr .i64 n) (f : Vals B m) (i : Fin n.toNat) {a b : Nat}
     (ha : (raw .i64 n lo.enc)[i.1]?.getD 0 = a.toUInt64) (hb : (raw .i64 n hi.enc)[i.1]?.getD 0 = b.toUInt64)
     (hab : a ≤ b) (hbm : b ≤ m.toNat ∨ a = b) (h63 : a < 2 ^ 63) (hm : m.toNat < 2 ^ 63) :
-    ValsB.row (A := .arr B) ⟨m, lo, hi, f⟩ i =
+    ValsB.row (o := false) (A := .arr B) ⟨m, lo, hi, f⟩ i =
       (List.range' a (b - a)).map fun k => if h : k < m.toNat then ValsB.row f ⟨k, h⟩ else B.dflt := by
   rcases hbm with hbm | rfl
   · exact Vals.row_cell lo hi f i ha hb hab hbm hm
