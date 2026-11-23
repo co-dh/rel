@@ -59,6 +59,6 @@ pub fn dec<T: pod::Elt + Send>(c: &Coc) -> O {
 /// where the encoded form is not shorter than `x` (the `*_below` exports).
 pub fn encode(x: B, w: usize, shrinks: bool, nul: &[u8]) -> O {
     let (s, p) = (Sink::new(x.bytes().len() / w, w), Blocks::dense(x.bytes(), w));
-    if !shrinks { return s.write_nul(&p, false, nul).expect("qlean_coc_encode: a write with no size test has an answer") }
+    if !shrinks { return s.answer_nul(&p, nul) }
     s.write_nul(&p, true, nul).map_or_else(|| boxed(0), |a| ctor(1, [a], &[]))
 }
