@@ -9,7 +9,7 @@ public import Rel.Run.List
 /-! `rank` and the merge of sorted tables (architecture §4.7), as compositions of the five kernels, no new one: a row
 compare `P < T`, `P = T` by one `kasc ≫ kseen` over `P ++ T` (`Vals.cmpRows`), `rank(X)` on `T` by bisection with that
 compare as its step (`Vals.rank`), and `(X ∪ T, T − X)` of a canonical `X` from the rank without sorting `X`
-(`Tab.mergeDiff`). `Tab.unionDiffSel` picks it where `T` is small against `X` (`m · L ≤ n`), else `Tab.unionDiff`. -/
+(`Tab.mergeDiff`). `Tab.unionDiffSel` picks it where `X` is large against `T` (`(m + 1024) · L ≤ n`), else `Tab.unionDiff`. -/
 
 namespace Rel
 open Rel.Ext Rel.Kernel Rel.Verify
@@ -86,10 +86,14 @@ def mergeDiff (X T : Tab k v) : Except String (Tab k v × Tab k v) := do
 /-- The bisection's round count `L = ⌈log₂ n⌉ + 2`. -/
 def bisectRounds (n : Nat) : Nat := n.log2 + 3
 
-/-- **`(X ∪ T, T − X)`**: `mergeDiff` where `T` is small against `X` (`m · L ≤ n`), else `unionDiff`; both give the
-same relations (`unionDiffSel_holds`), so the choice carries no proof obligation. -/
+/-- The fixed cost of `mergeDiff`'s `L` bisection rounds (each a dozen small kernel calls, whatever the row count), in
+rows of `T`: measured, `mergeDiff` is no slower than `unionDiff` once `(m + 1024) · L ≤ n` (`m = 1 .. 1000`). -/
+def mergeCallRows : Nat := 1024
+
+/-- **`(X ∪ T, T − X)`**: `mergeDiff` where `n` pays for its `L` rounds, `(m + mergeCallRows) · L ≤ n`, else
+`unionDiff`; both give the same relations (`unionDiffSel_holds`), so the choice carries no proof obligation. -/
 def unionDiffSel (X T : Tab k v) : Except String (Tab k v × Tab k v) :=
-  if T.n.toNat * bisectRounds X.n.toNat ≤ X.n.toNat then X.mergeDiff T else X.unionDiff T
+  if (T.n.toNat + mergeCallRows) * bisectRounds X.n.toNat ≤ X.n.toNat then X.mergeDiff T else X.unionDiff T
 
 end Tab
 

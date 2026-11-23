@@ -306,18 +306,6 @@ theorem mu_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A 
   split at hX; · cases hX
   exact union_wf hX wX (hf _ _ ‹_› wX)
 
-theorem muLin_wf {what : String} {cap : Nat} {f : Tab A B → Except String (Tab A B)}
-    (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : muLin what cap f = .ok t) : t.WF := by
-  simp only [muLin, bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at h
-  obtain ⟨Z, hZ, r, hr, rfl⟩ := h
-  refine (fixOn_wf (fun s : Tab A B × Tab A B => s.1.WF ∧ s.2.WF) (fun _ _ h w => Except.ok.inj h ▸ w)
-    (fun s t hs ⟨w1, w2⟩ => ?_) hr ⟨zero_wf hZ, zero_wf hZ⟩).1
-  simp only [bind, pure, Except.pure, Except.bind_eq_ok', Except.ok.injEq] at hs
-  obtain ⟨T, hT, T', hT', p, hp, D, hD, rfl⟩ := hs
-  have wT' := pack_wf hT' (hf _ _ hT w2)
-  obtain ⟨hU, hD0⟩ := unionDiff_ok (show s.1.unionDiff T' = .ok (p.1, p.2) from hp)
-  exact ⟨union_wf hU w1 wT', pack_wf hD (select_wf hD0 w1 wT')⟩
-
 theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
     (hf : ∀ X t, f X = .ok t → X.WF → t.WF) {t : Tab A B} (h : nu f top = .ok t) (hT : top.WF) : t.WF := by
   simp only [nu, bind, Except.bind] at h
@@ -326,30 +314,6 @@ theorem nu_wf {f : Tab A B → Except String (Tab A B)} {top : Tab A B}
   simp only [bind, Except.bind] at hX
   split at hX; · cases hX
   exact inter_wf hX wX (hf _ _ ‹_› wX)
-
-/-- `P ≫ star(R)` on a `WF` `P`, `step` keeping `WF`: each round's `X` and `Δ` stay `WF` (`fixOn_wf` on the pair). -/
-theorem star_wf {K B : Obj} {step : Tab B B → Except String (Tab B B)} (hf : ∀ D t, step D = .ok t → D.WF → t.WF)
-    {P t : Tab K B} (h : star step P = .ok t) (hP : P.WF) : t.WF := by
-  simp only [star, bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨P', hP', h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨r, hr, h⟩ := h
-  obtain rfl : r.1 = t := Except.ok.inj h
-  refine (fixOn_wf (fun s : Tab K B × Tab K B => s.1.WF ∧ s.2.WF) (fun s t hs ws => ?_) (fun s t hs ws => ?_) hr
-    ⟨canon_wf hP' hP, canon_wf hP' hP⟩).1
-  · simp only [bind] at hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
-    obtain rfl : (U, D) = t := Except.ok.inj hs
-    exact ⟨pack_wf hU ws.1, pack_wf hD ws.2⟩
-  · simp only [bind] at hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨Dr, hDr, hs⟩ := hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨T, hT, hs⟩ := hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨N, hN, hs⟩ := hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨D, hD, hs⟩ := hs
-    rw [Except.bind_eq_ok'] at hs; obtain ⟨U, hU, hs⟩ := hs
-    obtain rfl : (U, D) = t := Except.ok.inj hs
-    have wD := diff_wf hD (comp_wf hN ws.2 (hf _ _ hT (ran_wf hDr ws.2))) ws.1
-    exact ⟨union_wf hU ws.1 wD, wD⟩
 
 /-! ### `Λ`: `nil`, `lamOf`, `lam`, `E` -/
 
