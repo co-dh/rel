@@ -328,7 +328,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .prim r => pure (.prim r)
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
-  | _, _, .share k R => return .share k (← R.instObj ph σ)
   | _, _, .var d k => pure (.var d k)
   | _, _, .call ks c cv os b => return .call ks c cv (os.map (·.inst ph σ)) (← b.instObj ph σ)
   | _, _, .arg f x => return .arg (← f.instObj ph σ) (← x.instObj ph σ)
@@ -2115,7 +2114,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
           | .inr _ => throw l
         | _, _ => throw l
       | _, _, _ => throw l
-  | .share _ R => convTm R
   -- a row by its converse's row (`cons° = uncons`); any other row's converse is lazy (§0): `(c, a) ∈ r°` is `a r c`,
   -- run by `GenK.conv` on the side its context knows, as `<` is, so no row's converse is refused
   | .prim r => match r.conv.bind Prim.find? with
@@ -2151,7 +2149,6 @@ def convProj {A₁ A₂ B : Obj} (t : Tm (.prod A₁ A₂) B) : Except String (P
   | .outl => pure (.inl .id)
   | .outr => pure (.inr .id)
   | .comp R S => do let s ← convTm S; pure (Proj.pre s (← convProj R))
-  | .share _ R => convProj R
   | .meet R S => do match Proj.meet (← convProj R) (← convProj S) with
     | .inr z => pure z
     | .inl _ => throw "a meet across both projections"

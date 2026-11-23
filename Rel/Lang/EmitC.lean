@@ -1618,7 +1618,6 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let (r, s) ← bothB (tabB σ · R) (tabB σ · S) R.dem S.dem { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
     pairB A B C r s
-  | _, _, .share _ R => tabB σ D R
   | A, B, .var _ k => match σ.lookup k with
     | some b => b A B D
     | none => throw s!"variable {k}, which no input table or call argument is bound to"
@@ -1665,7 +1664,6 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
 partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
     Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
   | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
-  | .share _ R, xs => argB σ D A B R xs
   | .call ks _ _ _ b, xs => do
     let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
       let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
@@ -1685,7 +1683,6 @@ def ofTm (σ : List (Nat × Side × Side)) : {A B : Obj} → Tm A B → Bld (Sid
   | _, _, .var _ k => match σ.lookup k with
     | some s => pure s
     | none => throw s!"variable {k}, which no input table is bound to"
-  | _, _, .share _ R => ofTm σ R
   | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, sideArg s)) {} t)
 
 

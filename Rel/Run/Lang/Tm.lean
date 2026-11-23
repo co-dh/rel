@@ -50,9 +50,6 @@ inductive Tm : Obj → Obj → Type where
   | foldr {E V : Obj} (e : Tm V V) (S : Tm (.prod E V) V) : Tm (.arr E) V
   /-- `⦇e,S⦈`, the left fold, on the arrays in demand: each read from index 0, `S` on `(acc, x)`. -/
   | fold {E V : Obj} (e : Tm V V) (S : Tm (.prod V E) V) : Tm (.arr E) V
-  /-- `R`, closed, numbered `k` among the program's closed parts (`Tm.number`): its code is built once
-      (`Code.shares`). -/
-  | share {A B : Obj} (k : Nat) (R : Tm A B) : Tm A B
   /-- The variable `k` of the fixed point that binds it: its value in the round being run; or a constant's
       parameter, on the keys in demand when its argument is a pair test (`Form`). `d`: its demand bit, which the
       use site fixes, as `call` stores its own. -/
@@ -62,7 +59,8 @@ inductive Tm : Obj → Obj → Type where
       the order `arg` gives them; `c` at `os`, the objects of the variables it is generic over, its shared code.
       `cv`: the constant of the converse `c°` (`convTm`), `none` where no converse runs on demand. `c°` is `c` itself
       where it is a theorem (`perm° = perm`, which the fold `perm` is cannot derive), else `c'` the converse the body
-      `b` derives. -/
+      `b` derives. A closed part `R` numbered `k` among the program's closed parts (`Tm.number`) is the nullary call
+      `call [] (slotName k) none [] R`: its code is built once (`Code.shares`). -/
   | call {A B : Obj} (ks : List Nat) (c : Lean.Name) (cv : Option Lean.Name) (os : List Obj) (b : Tm A B) : Tm A B
   /-- `f` given one more argument `x`: a relation, a pair test, or the universe of one of its object variables. -/
   | arg {A B C D : Obj} (f : Tm A B) (x : Tm C D) : Tm A B
@@ -76,6 +74,17 @@ inductive Tm : Obj → Obj → Type where
       children `body.kids k` (`c` then `G`'s membership) reach from them, each node's value `body` run once its
       children have theirs; `what` names the coalgebra `c`, where the failure a cycle of the children reports is. -/
   | hylo {A B : Obj} (k : Nat) (what : String) (body : Tm A B) : Tm A B
+
+/-- The constant of the closed part numbered `k` (`Tm.number`), and `k` read back from it: no definition's name has
+    this shape, so a nullary call is a slot exactly where `Lean.Name.slot?` answers. -/
+def slotName (k : Nat) : Lean.Name := .num `_slot k
+
+def _root_.Lean.Name.slot? : Lean.Name → Option Nat
+  | .num `_slot k => some k
+  | _ => none
+
+/-- The closed part `R` numbered `k`. -/
+def Tm.slot {A B : Obj} (k : Nat) (R : Tm A B) : Tm A B := .call [] (slotName k) none [] R
 
 /-- A built term with its objects. -/
 abbrev Res := (A : Obj) × (B : Obj) × Tm A B
@@ -118,7 +127,7 @@ def Tm.bounds : {A B : Obj} → Tm A B → Bool
     them needs keys where one of them does, its head alone (`prim`) is no term that runs. -/
 def Tm.dem : {A B : Obj} → Tm A B → Bool
   | _, _, .arg R x => if R.whole then (!(R matches .prim _) && R.dem) || x.dem else R.dem && !R.bounds
-  | _, _, .comp R _ | _, _, .share _ R | _, _, .call _ _ _ _ R => R.dem
+  | _, _, .comp R _ | _, _, .call _ _ _ _ R => R.dem
   | _, _, .join R S => R.dem || S.dem
   -- `⟨R,S⟩`'s domain is `dom R ∩ dom S`, `R ∩ S` within `R` and `S`, so one closed operand bounds the other
   -- (`GenK.pairK`, `GenK.meetK`); `R − S` within `R`, which bounds `S` (`GenK.diff`)
@@ -180,7 +189,7 @@ def Tm.cut2 {A : Obj} (r : Prim) (U : Tm A A) : Tm (.prod A A) A := .comp (U.pro
     (`size_kids`), since `Tm.gen` recurses into `kids` of a `hylo`'s body. -/
 def Tm.size : {A B : Obj} → Tm A B → Nat
   | _, _, .top R | _, _, .conv R | _, _, .lam R
-  | _, _, .share _ R | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ _ R =>
+  | _, _, .mu _ _ _ R | _, _, .hylo _ _ R | _, _, .call _ _ _ _ R =>
     R.size + 1
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .foldr R S | _, _, .fold R S | _, _, .arg R S
@@ -227,7 +236,7 @@ def Tm.parts {A B : Obj} (t : Tm A B) : List Res :=
 /-- The terms a check over every node of `t` visits next: its parts, and the term `Tm.mapM` does not enter, a
     `share`'s and a call's body, since a `callOf` call's body is no registry constant's. -/
 def Tm.inner {A B : Obj} : Tm A B → List Res
-  | .share _ R | .call _ _ _ _ R => [⟨_, _, R⟩]
+  | .call _ _ _ _ R => [⟨_, _, R⟩]
   | t => t.parts
 
 /-- The variables free in `t`: a binder (`μ`, `ν`, `hylo`) drops its own, and a `share` is closed. Structural,
@@ -251,7 +260,7 @@ def Tm.fv : {A B : Obj} → Tm A B → List Nat
   | _, _, .hylo k _ b => b.fv.filter (· != k)
   -- every leaf listed: a wildcard makes the equation lemmas of this 40-constructor family slow to build
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call .. => []
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .call .. => []
 
 /-! ### Substitution -/
 
@@ -306,7 +315,6 @@ def Tm.subst : Tm.Sub → {A B : Obj} → Tm A B → Tm A B
   | _, _, _, .inl => .inl
   | _, _, _, .inr => .inr
   | _, _, _, .prim r => .prim r
-  | _, _, _, .share k R => .share k R
   | _, _, _, .call ks c cv os b => .call ks c cv os b
 
 mutual
@@ -333,7 +341,7 @@ def Tm.pol (s : Bool) (k : Nat) : {A B : Obj} → Tm A B → Bool
   | _, _, t@(.arg f x) => f.spinePol s k && x.pol s k || !t.fv.contains k
   | _, _, t@(.lam _) => !t.fv.contains k
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
-  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .share .. | _, _, .call .. => true
+  | _, _, .mem | _, _, .inl | _, _, .inr | _, _, .prim _ | _, _, .call .. => true
 
 /-- `t` a `mono` row (`prims`) given relations, each occurring with sign `s` in `k` (`Tm.pol`): the spine
     `.arg (… (.arg (.prim r) x₁) …) xₙ`, of any length `n` (`Tm.den_pol_spine`). -/

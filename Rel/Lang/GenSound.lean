@@ -191,12 +191,11 @@ def rowsProved : List String :=
   floatOps.map (·.1) ++ arithOps.map (·.1) ++ ["succ", "mix", "at"] ++ cmpOps.map (·.1) ++ cmpOps.map (ordSym ·.2)
 
 /-- What `Tm.gen_sound` asks of `t`: the body of each fixed point positive in its variable (`Tm.pol`, which
-    `Tm.den_mono` reads), and `P k R` at each `share k R` (its slot, `Codes.Shares`). `Λ`'s order law asks nothing,
+    `Tm.den_mono` reads), and `P k R` at each slot call `Tm.slot k R` (`Codes.Shares`). `Λ`'s order law asks nothing,
     since it is a theorem (`Vals.lamLaw`). -/
 def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm A B → Prop
-  | _, _, .share k R => P k R ∧ R.GenHyp P
-  | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .call _ _ _ _ R => R.GenHyp P
+  | _, _, .call _ c _ _ R => (∀ k, c.slot? = some k → P k R) ∧ R.GenHyp P
+  | _, _, .lam R | _, _, .top R | _, _, .conv R => R.GenHyp P
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.GenHyp P ∧ S.GenHyp P
   | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.GenHyp P ∧ S.GenHyp P ∧ U.GenHyp P ∧ V.GenHyp P
@@ -207,11 +206,10 @@ def Tm.GenHyp (P : {A B : Obj} → Nat → Tm A B → Prop) : {A B : Obj} → Tm
   | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
   | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => True
 
-/-- `Tm.GenHyp` with nothing asked at a `share` (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
+/-- `Tm.GenHyp` with nothing asked at a slot (`Tm.monoOK_iff`): what `GenSoundTest` evaluates beside
     `Tm.hasCode`. -/
 def Tm.monoOK : {A B : Obj} → Tm A B → Bool
   | _, _, .lam R | _, _, .top R | _, _, .conv R
-  | _, _, .share _ R
   | _, _, .call _ _ _ _ R => R.monoOK
   | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
   | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.monoOK && S.monoOK
@@ -1311,15 +1309,11 @@ theorem Tm.gen_wf_spine {A B : Obj} (t : Tm A B) :
       rcases List.mem_cons.1 hy with rfl | hy
     any_goals exact c f (by omega) η hη
     all_goals first | exact hx y hy | simp at hy
-  case share _ R =>
-    refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
-    · split
-      · rename_i h; exact Codes.at_wf hη.2 h
-      · exact c R (by omega) η.closed ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩
-    · exact (H R (by omega)).2 η.closed xs ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩ hx
   case call ks _ _ _ b =>
     refine ⟨fun η hη => ?_, fun η xs hη hx => ?_⟩ <;> simp only [Tm.gen, Tm.argGen]
-    · exact c b (by omega) _ (Code.args_wf hη ks [] fun _ h => nomatch h)
+    · split
+      · rename_i h; obtain ⟨_, _, h⟩ := Option.bind_eq_some_iff.1 h; exact Codes.at_wf hη.2 h
+      · exact c b (by omega) _ (Code.args_wf hη ks [] fun _ h => nomatch h)
     · exact c b (by omega) _ (Code.args_wf hη ks xs hx)
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η hη => ?_, fun η xs _ _ => by unfold Tm.argGen; exact trivial⟩
@@ -1408,22 +1402,16 @@ theorem Tm.gen_sound_spine {A B : Obj} (t : Tm A B) :
       simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
     · exact step η ρ [] [] hl hs (fun _ h => nomatch h) trivial
     · exact step η ρ xs ss hl hs hx hr
-  -- its slot where the table has one (`Codes.Shares`), else built under `η`'s table and no variable
-  case share _ R ih =>
-    refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
-      simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen] <;>
-      have he : Sound η.closed Val.empty := ⟨fun _ _ _ => GenK.zero_sound, fun _ _ _ => GenK.zero_wf, hs.2.2⟩
-    · intro K; split
-      · rename_i r h; exact hl.1 r h K
-      · exact code_of ((ih (by omega)).1 η.closed Val.empty hl.2 he) K
-    · exact (ih (by omega)).2 η.closed Val.empty xs ss hl.2 he hx hr
-  -- the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`; same table
+  -- a slot where the table has one (`Codes.Shares`; its meaning is the body's under no variable, `Val.args ks []`),
+  -- else the body under its arguments bound at `ks` (`Sound.args`), whatever the caller's `η`, `ρ`; same table
   case call ks _ _ _ b ih =>
     refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss hl hs hx hr => ?_⟩ <;>
       simp only [Tm.GenHyp] at hl <;> simp only [Tm.gen, Tm.den, Tm.argGen, Tm.argDen]
-    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
-        (Sound.args hs ks [] [] (fun _ h => nomatch h) trivial))
-    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl)
+    · intro K; split
+      · rename_i r h; obtain ⟨k, hk, h⟩ := Option.bind_eq_some_iff.1 h; cases ks <;> exact hl.1 k hk r h K
+      · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl.2)
+          (Sound.args hs ks [] [] (fun _ h => nomatch h) trivial)) K
+    · exact code_of ((ih (by omega)).1 _ _ (by rw [Code.args_sh]; exact hl.2)
         (Sound.args hs ks xs ss hx hr))
   -- a spine headed by neither a row nor a call is an error table
   all_goals refine ⟨fun η ρ hl hs => ?_, fun η ρ xs ss _ _ _ _ => by unfold Tm.argGen; exact herr _ _⟩
@@ -1517,7 +1505,11 @@ theorem Tm.GenHyp.mono {P Q : {A B : Obj} → Nat → Tm A B → Prop}
     t.GenHyp Q := by
   induction t <;> simp_all [Tm.GenHyp]
 
-theorem Tm.pol_of_fv {A B : Obj} (t : Tm A B) : ∀ (s : Bool) (k : Nat), k ∉ t.fv → t.pol s k = true := by
+theorem Tm.GenHyp.slot {P : {A B : Obj} → Nat → Tm A B → Prop} {A B : Obj} {k : Nat} {R : Tm A B} (h : P k R)
+    (hR : R.GenHyp P) : (Tm.slot k R).GenHyp P :=
+  ⟨fun j hj => by obtain rfl := Option.some.inj (hj.symm.trans rfl); exact h, hR⟩
+
+theorem Tm.pol_of_fv{A B : Obj} (t : Tm A B) : ∀ (s : Bool) (k : Nat), k ∉ t.fv → t.pol s k = true := by
   induction t with
   | arg f x ihf ihx => intro s k h; cases f <;> simp_all [Tm.pol, Tm.fv] <;> grind
   | _ => intro s k h; simp only [Tm.pol, Tm.fv] at h ⊢ <;> grind
@@ -1569,9 +1561,9 @@ theorem numberSlot_spec {A B : Obj} (t : Tm A B) (s : Shares) (hs : Shares.Inv s
   -- a new slot: `t` pushed
   have new : ∀ m, Expand.closed t = true →
       let s' : Shares := (s.1.push ⟨A, B, t⟩, m)
-      Shares.Inv s' ∧ Shares.Ext s.1 s'.1 ∧ NOut t (.share s.1.size t) s'.1 := fun m h => by
+      Shares.Inv s' ∧ Shares.Ext s.1 s'.1 ∧ NOut t (.slot s.1.size t) s'.1 := fun m h => by
     have he := Shares.Ext.push s.1 ⟨A, B, t⟩
-    refine ⟨fun x hx => ?_, he, ⟨⟨by simp [Res.Slot], ht.ext he⟩, by simp [Tm.fv], fun _ _ _ => by simp [Tm.pol],
+    refine ⟨fun x hx => ?_, he, ⟨.slot (by simp [Res.Slot]) (ht.ext he), by simp [Tm.slot, Tm.fv], fun _ _ _ => by simp [Tm.slot, Tm.pol],
       by simp [np h]⟩⟩
     rcases Array.mem_push.1 hx with hx | hx
     · exact (hs x hx).ext he
@@ -1589,8 +1581,8 @@ theorem numberSlot_spec {A B : Obj} (t : Tm A B) (s : Shares) (hs : Shares.Inv s
           · rename_i hAB
             obtain ⟨rfl, rfl⟩ := hAB
             rename_i hk _
-            refine ⟨hs, fun _ _ x => x, ⟨⟨hk, hs _ (Array.mem_of_getElem? hk)⟩, by simp [Tm.fv],
-              fun _ _ _ => by simp [Tm.pol], fun r e => absurd e (np h r)⟩⟩
+            refine ⟨hs, fun _ _ x => x, ⟨.slot hk (hs _ (Array.mem_of_getElem? hk)), by simp [Tm.slot, Tm.fv],
+              fun _ _ _ => by simp [Tm.slot, Tm.pol], fun r e => absurd e (np h r)⟩⟩
           · exact new m h
         · exact new m h
   · simp only [h, Bool.not_false, if_true]
@@ -1735,9 +1727,9 @@ local macro "nout" : tactic => `(tactic| (
   · (try simp only [Tm.pol, Tm.fv, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', Bool.eq_false_iff,
       List.contains_iff_mem, decide_eq_true_eq, decide_eq_false_iff_not, beq_iff_eq] at *); grind))
 
-/-- The constructors `Tm.number` numbers through `Tm.mapMSz`: all but `share` and a spine's nodes. -/
+/-- The constructors `Tm.number` numbers through `Tm.mapMSz`: all but a spine's nodes (a call, a slot included). -/
 def Tm.numGeneric : {A B : Obj} → Tm A B → Bool
-  | _, _, .share .. | _, _, .arg .. | _, _, .call .. => false
+  | _, _, .arg .. | _, _, .call .. => false
   | _, _, _ => true
 
 theorem Tm.number_mapMSz {A B : Obj} (t : Tm A B) (h : t.numGeneric = true) (hd : Bool) :
@@ -1779,7 +1771,6 @@ theorem Tm.number_spine {A B : Obj} (t : Tm A B) (s : Bool) (k : Nat) (hg : t.Ge
     have hf := ih f (by simp only [Tm.size]; omega) hg.1 true st hs
     have hx := ih x (by simp only [Tm.size]; omega) hg.2 false _ hf.1
     rw [Tm.number.eq_def]
-    simp only [Tm.numberWrap]
     show Tm.spinePol s k (.arg ((f.number true).run st).1 ((x.number).run ((f.number true).run st).2).1) = true
     simp only [Tm.spinePol, Bool.and_eq_true]
     exact ⟨ihf hg.1 (fun c hc => ih c (by simp only [Tm.size]; omega)) hp.1 st hs, hx.2.2.2.2.1 s k hp.2⟩
@@ -1797,14 +1788,19 @@ theorem Tm.number_spec : ∀ (n : Nat) {A B : Obj} (t : Tm A B), t.size ≤ n �
     cases hk : t.numGeneric
     · cases t <;> simp only [Tm.numGeneric, Bool.true_eq_false] at hk <;> simp only [Tm.GenHyp] at hg <;>
         simp only [Tm.size] at hn <;> rw [Tm.number.eq_def] <;> dsimp only
-      case share k R =>
-        intro s hs
-        obtain ⟨i, e, o⟩ := ih R (by omega) hg.2 hd s hs
-        have hn : ∀ j, j ∉ ((R.number hd).run s).1.fv := fun j hj => by simpa [hg.1] using o.2.1 j hj
-        exact ⟨i, e, o.1, fun j hj => absurd hj (hn j), fun b j _ => Tm.pol_of_fv _ b j (hn j),
-          fun _ e => by cases e⟩
       case call ks c cv os b =>
-        exact NSpec.bindWrap (NSpec.map1 _ (ih b (by omega) hg false) (by nout)) hd
+        by_cases hc : c.slot?.isSome = true
+        · -- a slot is its body numbered, whose part is closed
+          rw [if_pos hc]
+          intro s hs
+          obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 hc
+          obtain ⟨i, e, o⟩ := ih b (by omega) hg.2 hd s hs
+          have hn : ∀ j, j ∉ ((b.number hd).run s).1.fv := fun j hj => by simpa [hg.1 k hk] using o.2.1 j hj
+          exact ⟨i, e, o.1, fun j hj => absurd hj (hn j), fun b j _ => Tm.pol_of_fv _ b j (hn j),
+            fun _ e => by cases e⟩
+        · rw [if_neg hc]
+          have hc' : ∀ k, c.slot? ≠ some k := fun k h => hc (by simp [h])
+          exact NSpec.bindWrap (NSpec.map1 _ (ih b (by omega) hg.2 false) (by nout)) hd
       case arg C D f x =>
         -- `cases` binds the function as `x` and the argument as `f`
         refine NSpec.bindWrap (NSpec.map2Q (Q := fun a => ∀ s k, x.spinePol s k = true → a.spinePol s k = true)

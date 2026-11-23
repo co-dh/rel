@@ -1880,7 +1880,7 @@ relk 线程池空转 2 526（与前三项重叠）。
 
 - Tm28 批次状态（master eb8c78b；`doc/tm-minimal-design.zh.typ:355-373` 的批次表；依据是代码与 index
   `.lake/build/refactor-index.db`，不是 PLAN 的旧标记）。`Rel.Lang.Tm`（`Rel/Run/Lang/Tm.lean:21-85`）今天 31 个构造子，
-  目标 28；多出的 3 个：`leq` `lt`（B5 未删）、`share`（B9d；`own` `callCv` 已由 B9bc 删）。index 列 `Tm.lt` `Tm.leq` 为构造子是对的。
+  目标 28；多出的 2 个：`leq` `lt`（B5 未删）（`own` `callCv` 已由 B9bc、`share` 已由 B9d 删）。index 列 `Tm.lt` `Tm.leq` 为构造子是对的。
   - ✓ B1：无 `Tm.E` `GenK.E` `Tab.E`；`Tm.E_den`（`Lang/Den.lean:1110`）。a7fc083、ffa522b。
   - ✓ B2：`Tm.prod` 是 def（`Tm.lean:140`），`Tm.prod_den`（`Den.lean:638`），`Tm.prodUni`（`Tm.lean:161`）；无
     `GenK.prod` `Tab.prod`。9d5e0d9。
@@ -1928,14 +1928,10 @@ relk 线程池空转 2 526（与前三项重叠）。
     - ✓ B9bc 删 `own` `callCv`：`Tm.call ks c (cv : Option Name) os b`，`cv` 是 `c` 的逆常量（`Elab.convs` 里自逆定理
       `c° = c` 给出 `c` 自己，否则是派生逆 `convOf`：`c ++ conv`，体为 `convTm` 的结果）；`Registry.call?` 把派生逆常量映到
       `key ++ conv` 再比较体。测试：`Lang/Test/Lists.lean` 的 `convs`（`perm°`；用户定义 `f` 的 `(f° y)°`）。
-    - B9d `share` 改为零元 `call`：`Tm.lean:62`、`dem:121`、`size:176`、`inner:226`、`fv:254`、`subst:313`、`pol:343`；
-      `TmGen.lean` `gen:186`、`argGen:210`、`hasCode:245`、`argHasCode:264`、`tmE:323-324`、`numberKey:348`、
-      `numberSlot:359/366`、`number:379-384`、`Code.shares:390`、`:410`、`emit:622`；`Elab.lean` `instObj:328`、
-      `convTm:2056`、`convProj:2089`；`Expand.lean` `fieldsEq:932`；`Den.lean` `den:495`、`argDen:511`、`den_congr:716`、
-      `den_pol_spine:1027`、`den_linIn:1100`、`den_local:1261/1263`；`GenSound.lean` `GenHyp:197`、`monoOK:215`、
-      `pol_of_fv:1499`、`numberSlot_spec:1548`、`shares_sh:1617`、`Code.shares_sound:1623-1646`、`numGeneric:1716`、
-      `number_spine:1762`、`Code.program_sound:1820`（重述）；`ConvSpec.lean` `ConvOK:119`、`convTm_den:229-231`、
-      `convTm_instObj_den:634-641`；`EmitC.lean` `nodeB:1491`、`argB:1540`、`Plan.ofTm:1560`。
+    - ✓ B9d 删 `share`：闭部分 `R` 的第 `k` 号槽是零元 `call [] (slotName k) none [] R`（`Tm.slot`；`Name.slot?` 读回
+      `k`）。`share` 子句并入 `call`：`gen`（槽读 `η.sh`，否则体）、`GenHyp`（`(∀ k, c.slot? = some k → P k b) ∧
+      b.GenHyp P`）、`numberKey` `numberSlot` `number` `tmE` `fieldsEq` 按名字认槽；`convTm` `convProj` `ConvOK` 的 share
+      子句删（编号在 Elab 之后）。
     - B9e `Tm.dem` 加 `δ`，`var` 去 `d`：`Tm.dem`（`Tm.lean:119-136`）93 处使用：`ConvSpec` 43（`:131-791`）、`Elab` 18
       （`:2013-2596`）、`EmitC` 13（`:1472-1546`）、`Tm` 11、`Expand` 5（`:187-867`）、`TmGen` 2（`:149`、`:656`）、
       `GenSound` 1（`:1537`）。`Tm.var` 52 处：`Tm` 13（`:66-391`）、`Elab` 11（`:329-2652`，`convTm:2019` 造
