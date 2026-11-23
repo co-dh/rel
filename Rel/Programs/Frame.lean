@@ -41,23 +41,23 @@ rel_program frame where
     counts(D : α ⟶ α, R : α ⟶ ν) : α ⟶ ν ≜ agg(R, length) ∪ ((D − dom(R)) ⊤ {(∗,0)})
 
     -- columns: `tot(R)` makes a partial column total, null where `R` has no value
-    tot(R : α ⟶ β) : α ⟶ β+1 ≜ R inl ∪ ((𝟙 − dom(R)) ⊤ inr)
+    tot(R : α ⟶ β) : α ⟶ 1+β ≜ R inr ∪ ((𝟙 − dom(R)) ⊤ inl)
     -- the rows whose nullable column `c` holds a value, or holds the null
-    filterJust(c : β ⟶ γ+1, x : ν ⟶ β) : ν ⟶ β ≜ filterBy(dom(c inl°), x)
-    filterNothing(c : β ⟶ γ+1, x : ν ⟶ β) : ν ⟶ β ≜ filterBy(dom(c inr°), x)
+    filterJust(c : β ⟶ 1+γ, x : ν ⟶ β) : ν ⟶ β ≜ filterBy(dom(c inr°), x)
+    filterNothing(c : β ⟶ 1+γ, x : ν ⟶ β) : ν ⟶ β ≜ filterBy(dom(c inl°), x)
     -- q's xprev: row `i` reads row `i − n`, null where there is none; `diff` subtracts it from row `i`
-    shift(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β+1 ≜ dom(x) tot(⟨𝟙, ⊤ n⟩minus x)
-    diff(n : 1 ⟶ ν, x : ν ⟶ γ) : ν ⟶ γ+1 ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)
+    shift(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ 1+β ≜ dom(x) tot(⟨𝟙, ⊤ n⟩minus x)
+    diff(n : 1 ⟶ ν, x : ν ⟶ γ) : ν ⟶ 1+γ ≜ dom(x) tot(⟨x, ⟨𝟙, ⊤ n⟩minus x⟩minus)
     -- q's next, `n` rows ahead (polars shift(−n), q's `(−n) xprev`): `plus`, as `−n` is no element of a bounded `ν`
-    next(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ β+1 ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)
+    next(n : 1 ⟶ ν, x : ν ⟶ β) : ν ⟶ 1+β ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)
     -- the first and last row, null on an empty frame (`head` of the ascending positions is the first)
-    firstOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(head, x) x)
-    lastOrNothing(x : ν ⟶ β) : 1 ⟶ β+1 ≜ tot(summarize(last, x) x)
+    firstOrNothing(x : ν ⟶ β) : 1 ⟶ 1+β ≜ tot(summarize(head, x) x)
+    lastOrNothing(x : ν ⟶ β) : 1 ⟶ 1+β ≜ tot(summarize(last, x) x)
     -- the null rows of the nullable column `c`
-    nulls(c : β ⟶ γ+1, x : ν ⟶ β) : 1 ⟶ ν ≜ count(filterNothing(c, x))
+    nulls(c : β ⟶ 1+γ, x : ν ⟶ β) : 1 ⟶ ν ≜ count(filterNothing(c, x))
     -- q's fills: `r(i)` counts the valued rows `j ≤ i`, so `p` sends `i` to the valued row of equal count, the last
     -- one `≤ i`; at count 0 there is none and the null stays
-    fills(c : ν ⟶ γ+1) : ν ⟶ γ+1 ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(counts(dom(c), dom(c inl°))), p ≜ r (dom(c inl°) r)°
+    fills(c : ν ⟶ 1+γ) : ν ⟶ 1+γ ≜ (p ∪ (dom(c) − dom(p))) c where r ≜ cumSum(counts(dom(c), dom(c inr°))), p ≜ r (dom(c inr°) r)°
     -- `|||` (polars hstack, q's `,'`): the rows side by side, none unless both frames have the same length
     hstack(x : ν ⟶ β, y : ν ⟶ δ) : ν ⟶ β×δ ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩
     applyWhere(p : β ⟶ β, e : β ⟶ β) : β ⟶ β ≜ (p e) ∪ (𝟙 − p)
@@ -69,9 +69,9 @@ rel_program frame where
     apply(f : γ ⟶ ε, a : β ⟶ γ, b : β ⟶ δ, x : ν ⟶ β) : ν ⟶ ε×δ ≜ x ⟨lift(f, a), b⟩
     -- on `1+X` the null passes: `bind`'s `f` may itself give the null, `nullLift`'s gives a value; `nullLift2` is
     -- the null where either column is
-    bind(f : γ ⟶ δ+1, c : β ⟶ γ+1) : β ⟶ δ+1 ≜ c [f, inr]
-    nullLift(f : γ ⟶ δ, c : β ⟶ γ+1) : β ⟶ δ+1 ≜ bind(f inl, c)
-    nullLift2(f : γ×δ ⟶ ε, a : β ⟶ γ+1, b : β ⟶ δ+1) : β ⟶ ε+1 ≜ (lift2(f, a inl°, b inl°) inl) ∪ ((dom(⟨a, b⟩) − dom(⟨a inl°, b inl°⟩)) ⊤ inr)
+    bind(f : γ ⟶ 1+δ, c : β ⟶ 1+γ) : β ⟶ 1+δ ≜ c [inl, f]
+    nullLift(f : γ ⟶ δ, c : β ⟶ 1+γ) : β ⟶ 1+δ ≜ bind(f inr, c)
+    nullLift2(f : γ×δ ⟶ ε, a : β ⟶ 1+γ, b : β ⟶ 1+δ) : β ⟶ 1+ε ≜ (lift2(f, a inr°, b inr°) inr) ∪ ((dom(⟨a, b⟩) − dom(⟨a inr°, b inr°⟩)) ⊤ inl)
     contains(s : [α] ⟶ [α]) : [α] ⟶ [α] ≜ dom(suffix prefix s)
     -- q's `vs` at the separator `s` (a coreflexive, as `contains` takes it): a left fold appends each element to the
     -- last piece and cuts that piece where it ends in `s`; a fold, not `where` of the matches, because q keeps the

@@ -34,7 +34,7 @@ def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64
     | .foR md pk => s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
     | _ => s!"{what}: constructor {e.ctorIdx} is not foR")
 
-/-- Whether `e` holds a null (`atom+1`'s `1`, in band): a `foR` block flagged (`Column.nulAt`). It reads one width byte
+/-- Whether `e` holds a null (`1+atom`'s `1`, in band): a `foR` block flagged (`Column.nulAt`). It reads one width byte
 a block and no element (owner decision F: only a block holding a null is flagged), so a kernel moves null flags only
 for an argument that has them and a column with none costs what it did. -/
 def hasNul : Enc → Bool
