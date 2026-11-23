@@ -67,7 +67,7 @@ def objLeaves : Obj → String → List (String × Option QAtomicType)
   -- the one representation function of a sum side, chosen by the object: in-band (`Obj.band`) it is one nullable column
   | .sum a b, p => match Obj.band a b with
     | some t => [(p, some t)]
-    | none => [(p ++ ".tag", some .u1), (p ++ ".idx", some .i64)] ++ objLeaves a (p ++ ".l") ++ objLeaves b (p ++ ".r")
+    | none => (p ++ ".tag", some .u1) :: (objLeaves a (p ++ ".l") ++ objLeaves b (p ++ ".r"))
   -- a side of `1` has a file of its own (kind `oneKind`: its count, no part), and no atom
   | .one, p => [(p, none)]
 
@@ -81,12 +81,12 @@ def objCols (A : Obj) (p : String) : List (String × QAtomicType) := (objLeaves 
     atom, its `Enc` register); an `arr` side (its path; its payload's row count `m`, a `size` register; `lo`, `hi`,
     `Enc` registers of `i64`; its payload's columns, `m` rows); a `sum` side `A+B` not in band (`Obj.band`): its two
     payloads' row counts `l`, `r` (size registers), the tag (`u1`) and position (`i64`) `Enc` registers, the payloads'
-    columns. A sum in band (`1+t`) is the atom column `Opt t n`, its null inside the encoding: an `atom`, as `Vals.cols`
+    columns. A sum in band (`1+t`) is the atom column `Opt t n`, its null inside the encoding: an `atom`, as `ValsB.cols`
     keys it. A product side is its two sides' columns one after the other (`Cols`), in `objCols` order. -/
 inductive Col where
   | atom (p : String) (t : QAtomicType) (e : Nat)
   | arr (p : String) (m lo hi : Nat) (pay : List Col)
-  | sum (p : String) (l r tag idx : Nat) (x y : List Col)
+  | sum (p : String) (tag : Nat) (x y : List Col)
   deriving Inhabited
 
 /-- A side's columns. -/
@@ -140,22 +140,22 @@ def lastB (n fold : Nat) (d : USize) : Bld Nat := do
 partial def regsOf (cs : Cols) : Bld (List Nat) := return (← cs.mapM fun
   | .atom _ _ e => pure [e]
   | .arr _ m lo hi f => return [m, lo, hi] ++ (← regsOf f)
-  | .sum _ l r tag idx x y => return [l, r, tag, idx] ++ (← regsOf x) ++ (← regsOf y)).flatten
+  | .sum _ tag x y => return [tag] ++ (← regsOf x) ++ (← regsOf y)).flatten
 
 /-- The columns `cs` with their registers taken in order from `rs` (`regsOf`'s inverse), and the registers left. -/
 partial def withRegs (cs : Cols) (rs : List Nat) : Bld (Cols × List Nat) :=
   cs.foldlM (init := (([] : Cols), rs)) fun (acc, rs) c => match c, rs with
     | .atom p t _, e :: rs => pure (acc ++ [.atom p t e], rs)
     | .arr p _ _ _ f, m :: lo :: hi :: rs => do let (f, rs) ← withRegs f rs; pure (acc ++ [.arr p m lo hi f], rs)
-    | .sum p _ _ _ _ x y, l :: r :: tag :: idx :: rs => do
-      let (x, rs) ← withRegs x rs; let (y, rs) ← withRegs y rs; pure (acc ++ [.sum p l r tag idx x y], rs)
+    | .sum p _ x y, tag :: rs => do
+      let (x, rs) ← withRegs x rs; let (y, rs) ← withRegs y rs; pure (acc ++ [.sum p tag x y], rs)
     | _, _ => throw "a loop's state: fewer registers than its columns read"
 
 /-- The types of `regsOf cs`: an `Enc` an object, an array's count a size. -/
 partial def tysOf (cs : Cols) : Bld (List Ty) := return (← cs.mapM fun
   | .atom .. => pure [Ty.obj]
   | .arr _ _ _ _ f => return [.size, .obj, .obj] ++ (← tysOf f)
-  | .sum _ _ _ _ _ x y => return [.size, .size, .obj, .obj] ++ (← tysOf x) ++ (← tysOf y)).flatten
+  | .sum _ _ x y => return [Ty.obj] ++ (← tysOf x) ++ (← tysOf y)).flatten
 
 /-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
     block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
@@ -314,32 +314,17 @@ def prefixB (op : Kernel.Op) (n a : Nat) : Bld (Nat × Nat) := do
     | throw "prefix: not one column"
   pure (P, l)
 
-/-- The `n`-row columns `cs` at the `m` rows `ix` (`Vals.gather`): an array's `lo` and `hi` gathered, its payload
+/-- The `n`-row columns `cs` at the `m` rows `ix` (`ValsB.gather`): an array's `lo` and `hi` gathered, its payload
     kept; a sum's tags and positions gathered, its two payloads kept. -/
-def gatherCols (m ix n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun c => funC [(n, c)] fun
+partial def gatherCols (m ix n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun c => funC [(n, c)] fun
   | [(n, .atom p t e)] => return (m, .atom p t (← gatherB m ix n e))
   | [(n, .arr p c lo hi f)] => return (m, .arr p c (← gatherB m ix n lo) (← gatherB m ix n hi) f)
-  | [(n, .sum p l r tag idx x y)] => return (m, .sum p l r (← gatherB m ix n tag) (← gatherB m ix n idx) x y)
+  -- dense sum: the tag and both summand columns are `n` rows (`ValsB.gather`), so all three are gathered
+  | [(n, .sum p tag x y)] => return (m, .sum p (← gatherB m ix n tag) (← gatherCols m ix n x) (← gatherCols m ix n y))
   | _ => throw "gather: not one column"
 
-/-- A flat list of registers as the (`AscKey`, column) pairs `keysB` laid out in it. -/
-def pairsOf : List Nat → List (Nat × Nat)
-  | k :: e :: r => (k, e) :: pairsOf r
-  | _ => []
-
-/-- The columns `cs` shaped as they are but holding only zero words, `c` rows each (a list's payload and a sum's two
-    payloads none, `z` the size register `0`): the keys of a summand of no rows, read at `n` rows, tie every row as no
-    key does, whatever the summand holds (a list, a sum), because `keysB` reads this shape as it reads any. -/
-partial def zeroCols (z c : Nat) (cs : Cols) : Bld Cols := cs.mapM fun col => do
-  let zs ← wordsB c 0
-  let at_ (t : QAtomicType) : Bld Nat := mapB .add c zs zs t
-  match col with
-  | .atom p t _ => pure (.atom p t (← at_ t))
-  | .arr p _ _ _ f => pure (.arr p z (← at_ .i64) (← at_ .i64) (← zeroCols z z f))
-  | .sum p _ _ _ _ x y => pure (.sum p z z (← at_ .u1) (← at_ .i64) (← zeroCols z z x) (← zeroCols z z y))
-
 mutual
-/-- The `kasc` key of the `n`-row column `c` (`Vals.cols`), an `AscKey` register and its column: an atom column its
+/-- The `kasc` key of the `n`-row column `c` (`ValsB.cols`), an `AscKey` register and its column: an atom column its
     words at its atom; an `arr` side one `cells` key over its `lo`, `hi` and its payload's keys, its column the
     positions, row `i` naming cell `i`. A sum has several keys (`keysB`), so no one. -/
 partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
@@ -349,21 +334,13 @@ partial def keyB (n : Nat) : Col → Bld (Nat × Nat)
     return (← ctorB 1 #[lo, hi, ← listB els] #[n, m], ← posB)
   | .sum .. => sumB "a list's cell key of"
 
-/-- The keys of the column `c` (`Vals.cols`' list): one, or for a sum its tag, then the left summand's keys gathered at
+/-- The keys of the column `c` (`ValsB.cols`' list): one, or for a sum its tag, then the left summand's keys gathered at
     `idx · ¬tag`, then the right's at `idx · tag` (`Vals.summandCols`). A summand of no rows has no keys there; its
     positions would read outside it, so there the keys are zeros, which ties every row as no key does. -/
 partial def keysB (n : Nat) : Col → Bld (List (Nat × Nat))
-  | .sum _ l r tag idx x y => do
-    let nt ← mapB .not n tag tag
-    let side (m pos : Nat) (cs : Cols) : Bld (List (Nat × Nat)) := do
-      let zero ← zeroCols (← lit (.size 0)) n cs
-      let ks (c : Cols) : Bld (Array Nat) := do
-        let l := (← c.mapM (keysB n)).flatten
-        pure (l.foldl (fun a (k, e) => (a.push k).push e) #[])
-      let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) (ks zero) (do ks (← gatherCols n pos m cs))
-      pure (pairsOf rs.toList)
-    return (← ctorB 0 #[] #[← lit (Reg.put QAtomicType.u1)], tag) ::
-      ((← side l (← mapB .mul n idx nt) x) ++ (← side r (← mapB .mul n idx tag) y))
+  | .sum _ tag x y => do
+    let ks (c : Cols) : Bld (List (Nat × Nat)) := return (← c.mapM (keysB n)).flatten
+    return (← ctorB 0 #[] #[← lit (Reg.put QAtomicType.u1)], tag) :: ((← ks x) ++ (← ks y))
   | c => return [← keyB n c]
 end
 
@@ -433,7 +410,7 @@ def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← 
 /-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
 def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
 
-/-- **`Vals.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
+/-- **`ValsB.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
     atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` as they are
     (`0 ≤ lo ≤ hi ≤ m`, `Vals.WF`), the second's shifted past the first (`shiftB`); a sum's tags joined, its positions
     `0 … n-1`, each summand by `catSummandB`. -/
@@ -442,43 +419,10 @@ partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
     | [(n₁, x), (n₂, y)] => return (n, ← concatColB n n₁ n₂ off x y)
     | _ => throw "concat: not two columns"
 where
-  /-- **`Vals.catSide`**: summand `s` of the `m` rows of a sum side (tags `tag`, positions `idx`, summand `x` of `l` rows,
-      the other side's summand `o` of `l'` rows) at those rows: `x` gathered at `idx` clamped into `x`, times the tag
-      (`summandPos`). Where `x` has no row, no row may be tagged into it (`tagCount`), and `o` gathered at row `0` stands in. -/
-  catSideB (s : Bool) (m tag idx l : Nat) (x : Cols) (l' : Nat) (o : Cols) : Bld Cols := do
-    let z ← lit (.size 0)
-    let nt ← mapB .not m tag tag
-    let sel := if s then tag else nt
-    let rs ← ite (← call1 (kernel% USize.decEq) #[l, z]) (do
-        let (_, c) ← prefixB .add m sel
-        guard (← call1 (kernel% USize.decEq) #[c, z])
-          s!"concat: rows tagged into the {if s then "right" else "left"} summand, which has no rows" #[c]
-        pure (← regsOf (← gatherCols m (← wordsB m 0) l' o)).toArray) (do
-      let hi ← constB m (← u64B (← call1 (kernel% USize.sub) #[l, ← lit (.size 1)]))
-      let i ← mapB .min m (← mapB .max m idx (← wordsB m 0)) hi
-      pure (← regsOf (← gatherCols m (← mapB .mul m i sel) l x)).toArray)
-    return (← withRegs x rs.toList).1
-  /-- **`Vals.catSummand`**: summand `s` of the concat of two sum sides (`n₁`, `n₂` rows; summands `x₁` of `l₁` rows,
-      `x₂` of `l₂`) into `n` rows: where both summands are empty their concat, else each side's `catSideB`
-      concatenated. Its row count and columns. -/
-  catSummandB (n n₁ n₂ off : Nat) (s : Bool) (tag₁ idx₁ l₁ : Nat) (x₁ : Cols) (tag₂ idx₂ l₂ : Nat) (x₂ : Cols) :
-      Bld (Nat × Cols) := do
-    let z ← lit (.size 0)
-    let both ← andB (← call1 (kernel% USize.decEq) #[l₁, z]) (call1 (kernel% USize.decEq) #[l₂, z])
-    let rs ← ite both (do
-        let (m, o) ← catB l₁ l₂
-        pure (#[m] ++ (← regsOf (← concatB m l₁ l₂ o x₁ x₂)).toArray)) (do
-      pure (#[n] ++ (← regsOf (← concatB n n₁ n₂ off (← catSideB s n₁ tag₁ idx₁ l₁ x₁ l₂ x₂)
-        (← catSideB s n₂ tag₂ idx₂ l₂ x₂ l₁ x₁))).toArray))
-    match rs.toList with
-    | m :: rs => pure (m, (← withRegs x₁ rs).1)
-    | [] => throw "concat: a summand's registers are empty"
   concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
-    | .sum p l₁ r₁ tag₁ idx₁ x₁ y₁, .sum _ l₂ r₂ tag₂ idx₂ x₂ y₂ => do
-      guard (← call1 (kernel% USize.decLt) #[n, ← lit (.size (2 ^ 63 + 1))]) "concat: a sum side past an Int64 position" #[n]
-      let (l, x) ← catSummandB n n₁ n₂ off false tag₁ idx₁ l₁ x₁ tag₂ idx₂ l₂ x₂
-      let (r, y) ← catSummandB n n₁ n₂ off true tag₁ idx₁ r₁ y₁ tag₂ idx₂ r₂ y₂
-      return .sum p l r (← catColB .u1 n n₁ n₂ tag₁ tag₂) (← posB) x y
+    -- dense sum: the tags and both summand columns are `n₁`, `n₂` rows, so each is joined as any column (nulls stay in-band)
+    | .sum p tag₁ x₁ y₁, .sum _ tag₂ x₂ y₂ => do
+      return .sum p (← catColB .u1 n n₁ n₂ tag₁ tag₂) (← concatB n n₁ n₂ off x₁ x₂) (← concatB n n₁ n₂ off y₁ y₂)
     | .atom p t x, .atom _ _ y => return .atom p t (← catColB t n n₁ n₂ x y)
     | .arr p m₁ lo₁ hi₁ f₁, .arr _ m₂ lo₂ hi₂ f₂ => do
       let (m, o) ← catB m₁ m₂
@@ -610,8 +554,8 @@ partial def repath (A : Obj) (pre : String) (cs : Cols) : Bld Cols := match A, c
   | .one, [] => pure []
   | .sum a b, cs => match Obj.band a b, cs with
     | some t, [.atom _ _ e] => pure [.atom pre t e]
-    | none, [.sum _ l r tag idx x y] => do
-      pure [.sum pre l r tag idx (← repath a (pre ++ ".l") x) (← repath b (pre ++ ".r") y)]
+    | none, [.sum _ tag x y] => do
+      pure [.sum pre tag (← repath a (pre ++ ".l") x) (← repath b (pre ++ ".r") y)]
     | _, cs => throw s!"{cs.length} columns where a side of {repr A} is read"
   | _, cs => throw s!"{cs.length} columns where a side of {repr A} is read"
 
@@ -637,28 +581,39 @@ partial def noneB (z : Nat) (A : Obj) (p : String := "") : Bld Cols := match A w
     | some t => noneB z (.atom t) p
     | none => do
       let c ← wordsB z 0
-      return [.sum p z z (← mapB .add z c c .u1) (← mapB .add z c c) (← noneB z a (p ++ ".l")) (← noneB z b (p ++ ".r"))]
+      return [.sum p (← mapB .add z c c .u1) (← noneB z a (p ++ ".l")) (← noneB z b (p ++ ".r"))]
 
 /-- **`Opt.nuls`**: `n` nulls of a band column, the `kgather` of one flagged zero word (the encoding `Opt.nuls` writes
     for one row) at `n` zero indices; a null is a value to `kgather`, its flag moving with its word. -/
 def nulsB (n : Nat) : Bld Nat := do
   gatherB n (← wordsB n 0) (← lit (.size 1)) (← lit (Reg.put (Kernel.wordsFoR #[0] (Kernel.nulMap #[1]) : Enc)))
 
+/-- **`Vals.zeros`**: `n` rows of `A` all in-band null, the filler of the rows a dense summand does not own: `nulsB` per atom
+    column; an `arr` side `n` null cells over no payload; a band sum `n` nulls; another sum tag `0` over two such summands. -/
+partial def zerosB (n : Nat) (A : Obj) (p : String) : Bld Cols := match A with
+  | .atom t => return [.atom p t (← nulsB n)]
+  | .prod a b => return (← zerosB n a (p ++ ".1")) ++ (← zerosB n b (p ++ ".2"))
+  | .arr b => do
+    let z ← lit (.size 0)
+    return [.arr p z (← nulsB n) (← nulsB n) (← noneB z b (p ++ ".e"))]
+  | .one => return []
+  | .sum a b => match Obj.band a b with
+    | some t => return [.atom p t (← nulsB n)]
+    | none => return [.sum p (← mapB .first n (← posB) (← posB) .u1 .i64 [] [(.and, 0), (.or, 0)])
+        (← zerosB n a (p ++ ".l")) (← zerosB n b (p ++ ".r"))]
+
 /-- **`inl`/`inr` on the `n` values `X`** (`Tab.inl`, `Tab.inr`, `s` the right one): row `k` is `X`'s row `k` beside the
     summand's row `k`, canonical. In band the `inr` side is `X` as it is (`Vals.optInr`), the `inl ()` side `n` nulls
-    (`nulsB`). Else the tag is `s` in every row (`injCols`: the positions through
-    `[(.and, 0), (.or, s)]` at `u1`), the position `k`, `X` the one payload and the other of no row (`Vals.none`). -/
+    (`nulsB`). Else the tag is `s` in every row (`tagCol`: the positions through `[(.and, 0), (.or, s)]` at `u1`), `X`
+    the owned summand as it is (`Vals.lift`) and the other `n` null rows (`zerosB`). -/
 def injB (A B : Obj) (s : Bool) (n : Nat) (X : Cols) : Bld TabB := do
   match Obj.band A B with
   | some t =>
     canonT ⟨n, X, ← if s then repath B "" X else do pure [.atom "" t (← nulsB n)]⟩
   | none =>
-    guard (← call1 (kernel% USize.decLt) #[n, ← lit (.size (2 ^ 63 + 1))]) "inj: rows past an Int64 position" #[n]
-    let z ← lit (.size 0)
     let tag ← mapB .first n (← posB) (← posB) .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)]
-    let pos ← posB
-    if s then canonT ⟨n, X, [.sum "" z n tag pos (← noneB z A ".l") (← repath B ".r" X)]⟩
-    else canonT ⟨n, X, [.sum "" n z tag pos (← repath A ".l" X) (← noneB z B ".r")]⟩
+    if s then canonT ⟨n, X, [.sum "" tag (← zerosB n A ".l") (← repath B ".r" X)]⟩
+    else canonT ⟨n, X, [.sum "" tag (← repath A ".l" X) (← zerosB n B ".r")]⟩
 
 /-- A side's columns of the object `A` at the path `p`: each atom column's `Enc` register; a positions column, which
     has no registers (`litSide`), the positions; an array's `lo`, `hi` and payload, its row count a payload column's
@@ -682,16 +637,8 @@ partial def colsOf (A : Obj) (s : Side) (p : String := "") : Bld Cols := match A
     | some t => colsOf (.atom t) s p
     | none => do
       let reg (q : String) (i : Nat) : Option Nat := (s.lookup q).bind (·[i]?)
-      let (some tag, some idx, some n) := (reg (p ++ ".tag") Side.enc, reg (p ++ ".idx") Side.enc, reg (p ++ ".tag") Side.count)
-        | throw s!"sum `{p}`: its tag or position column has no `Enc` register or count"
-      -- a summand with no atom column (`1`) has no register holding its count: it is the rows the tag gives it
-      -- (`tagCount`: right, the tag's sum `k`; left, `n - k`)
-      let cnt (A : Obj) (q : String) (right : Bool) : Bld Nat := match (objCols A q).findSome? (reg ·.1 Side.count) with
-        | some m => pure m
-        | none => do
-          let k := (← prefixB .add n tag).2
-          if right then pure k else call1 (kernel% USize.sub) #[n, k]
-      return [.sum p (← cnt a (p ++ ".l") false) (← cnt b (p ++ ".r") true) tag idx (← colsOf a s (p ++ ".l")) (← colsOf b s (p ++ ".r"))]
+      let some tag := reg (p ++ ".tag") Side.enc | throw s!"sum `{p}`: its tag column has no `Enc` register"
+      return [.sum p tag (← colsOf a s (p ++ ".l")) (← colsOf b s (p ++ ".r"))]
 
 /-- The row count of a table's sides: a column's `count` register. -/
 def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[Side.count]?) with
@@ -704,8 +651,7 @@ partial def flatB (n : Nat) (cs : Cols) : Bld Side := return (← cs.mapM fun
   | .atom p t e => return [(p, (← encRegs t n e).push e)]
   | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo).push lo), (p ++ ".hi", (← encRegs .i64 n hi).push hi)]
       ++ (← flatB m f)
-  | .sum p l r tag idx x y => return [(p ++ ".tag", (← encRegs .u1 n tag).push tag), (p ++ ".idx", (← encRegs .i64 n idx).push idx)]
-      ++ (← flatB l x) ++ (← flatB r y)).flatten
+  | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x) ++ (← flatB n y))).flatten
 
 /-- A `TabB`'s sides as `output` takes them: each column's registers (`encRegs`), then its `Enc`. -/
 def sidesOf (T : TabB) : Bld (Side × Side) := do pure (← flatB T.n T.key, ← flatB T.n T.val)
@@ -771,7 +717,7 @@ partial def packB (n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
     match ← withRegs [.arr p m lo hi f] rs.toList with
     | ([c], _) => pure c
     | _ => throw "pack: an array's registers read as no one column"
-  | .sum p l r tag idx x y => return .sum p l r tag idx (← packB l x) (← packB r y)
+  | .sum p tag x y => return .sum p tag (← packB n x) (← packB n y)
 
 /-- **`Tab.pack`**: both sides' payloads cut (`packB`). -/
 def packT (T : TabB) : Bld TabB := funT [T] fun
@@ -1751,7 +1697,7 @@ partial def onesOf (n : Bld Nat) : (A : Obj) → Cols → String → Bld (List (
   | .prod a b, cs, p => return (← onesOf n a (cs.take (objWidth a)) (p ++ ".1")) ++
       (← onesOf n b (cs.drop (objWidth a)) (p ++ ".2"))
   | .arr b, [.arr _ m _ _ f], p => onesOf (pure m) b f (p ++ ".e")
-  | .sum a b, [.sum _ l r _ _ x y], p => return (← onesOf (pure l) a x (p ++ ".l")) ++ (← onesOf (pure r) b y (p ++ ".r"))
+  | .sum a b, [.sum _ _ x y], p => return (← onesOf n a x (p ++ ".l")) ++ (← onesOf n b y (p ++ ".r"))
   | _, _, _ => pure []
 
 /-- Each side of `1` of the side `side` of `A`, written to the file `files` names by its path: kind `oneKind`, its count
@@ -1860,13 +1806,9 @@ partial def ownCountsB (x : String) (s : Side) (cnt : List (String × Nat)) : (A
   | .sum a b, p, n => match Obj.band a b with
     | some _ => sameCount x cnt p n
     | none => do
-      sameCount x cnt (p ++ ".tag") n; sameCount x cnt (p ++ ".idx") n
-      let some tag := (s.lookup (p ++ ".tag")).bind (·[Side.enc]?)
-        | throw s!"input `{x}`: sum `{p}`: its tag has no `Enc` register"
-      let k := (← prefixB .add n tag).2
-      let side (A : Obj) (q : String) (c : Nat) : Bld Unit := do
-        ownCountsB x s cnt A q (← if (objCols A q).isEmpty then pure c else ownCount x cnt A q)
-      side a (p ++ ".l") (← call1 (kernel% USize.sub) #[n, k]); side b (p ++ ".r") k
+      -- dense: both summand columns have the sum's `n` rows (null where the tag names the other side)
+      sameCount x cnt (p ++ ".tag") n
+      ownCountsB x s cnt a (p ++ ".l") n; ownCountsB x s cnt b (p ++ ".r") n
 
 /-- The side an input's mapped files answer (`Table.readVals`): each atom column's type code, constructor kind
     checked as `Table.readArr` checks them, its `Enc` rebuilt from its parts as `Db.ownEnc` rebuilds it, a float column
