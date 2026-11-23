@@ -1119,8 +1119,8 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
     intro l hl; induction l with
     | nil => rfl
     | cons x l ih =>
-      simp only [List.map_cons, List.forM_cons]
-      simp only [noNul, hl x List.mem_cons_self, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure]
+      simp only [List.map_cons, List.forM]
+      simp only [noNul, hl x List.mem_cons_self, Bool.false_eq_true, if_false, bind, Except.bind]
       exact ih (fun y hy => hl y (List.mem_cons_of_mem _ hy))
   have hany : ∀ l : List Enc, (l.map (n, ·)).any (·.1 != n) = false := fun l => by simp
   -- every column after the seed folds at every row
@@ -1160,7 +1160,8 @@ theorem kscan_post_ok {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {se
     | some e => exact ⟨_, by simp only [segAll, rawAll, hseg e rfl, if_true]; rfl⟩
   have hcols : kscanCols op s n ((c :: cs).map (n, ·)) [] post = .ok ((c :: cs).map (·.raw s n), #[]) := by
     unfold kscanCols
-    simp only [hm _ hes, hst, hnn _ hpl, hany, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure]
+    rw [hm _ hes]
+    simp only [hst, hnn _ hpl, hany, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure]
   -- `hop` at a row and the carry 0 rules out a folded op reading its divisor from the carry
   have hd : kscanRefuses op n ((c :: cs).map (n, ·)) [] post = false := by
     unfold kscanRefuses
@@ -1277,7 +1278,7 @@ theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (
   have hK1 : ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize.toNat = C m.toNat + 1 := by
     rw [hKn]; exact USize.toNat_ofNat_of_lt' (by have := hCle m.toNat; omega)
   obtain ⟨e, he⟩ := kscatter_ok (op := .last) (m := m) (ix := d) (e := .pos)
-    (n := ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize) (fill := 0) (colMap_closed hd).1 trivial (colMap_plain hd) rfl
+    (n := ((sk.2.getD 0).toNat.toUSize.toNat + 1).toUSize) (fill := 0) (colMap_closed (by lockstep) hd).1 trivial (colMap_plain (by lockstep) hd) rfl
     (fun _ _ _ => ⟨_, rfl⟩) (fun k hk => by
       rw [hdv k hk, hc64 _ (by have := hCle k; omega), hK1]; have := hmono k m.toNat (by omega); omega)
   obtain ⟨o, ho⟩ := kgather_ok (m := (sk.2.getD 0).toNat.toUSize) (ix := .pos) (e := e) trivial (kscatter_closed he).1 rfl
@@ -1285,7 +1286,7 @@ theorem whereCol_ok {m : USize} {b : Enc} (hm : m.toNat < min (USize.size - 1) (
       simp only [Enc.raw, Array.getElem?_map, Array.getElem?_range, hk, if_true, Option.map_some, Option.getD_some]
       rw [hK1, hc64 _ (by rw [hKn] at hk; have := hCle m.toNat; omega)]; rw [hKn] at hk; omega)
   unfold whereCol; dsimp only; rw [if_pos hm]
-  simp only [hz, hsk, hd, he, ho, bind, Except.bind, Functor.map, Except.map]
+  simp only [hz, hsk', hd, he, ho, bind, Except.bind, Functor.map, Except.map]
   exact ⟨_, _, rfl, (kgather_closed ho).1⟩
 
 /-- A list `mapM` answered on answers on each of its elements. -/
@@ -1667,7 +1668,7 @@ theorem Tab.compSelM_reads {r : Tab A B} {s : Tab B C} {g w : USize} {o ra rc : 
     obtain ⟨-, -, hra, -⟩ := Vals.code_spec hca hr.1
     obtain ⟨-, -, hrc, -⟩ := Vals.code_spec hcc hs.2
     refine Tab.ofBits_ok hgw (by omega)
-      (raw_size_of_bits hgw fun a ha j hj => let ⟨v, _, hv, _⟩ := hbit a ha j hj; ⟨v, hv⟩)
+      (raw_size_of_bits hgw fun a ha j hj => let ⟨v, _, hv, _⟩ := hbit a ha j hj; ⟨v, hv⟩) (kbitrows_plain hko)
       (fun a ha j hj => by obtain ⟨v, -, hv, hv2, -⟩ := hbit a ha j hj; rw [hv]; exact hv2)
       (Vals.code_valid hca) (Vals.code_valid hcc) (Vals.code_plain hca).2.1 (Vals.code_plain hcc).2.1 (fun a ha j hj _ => ⟨?_, ?_⟩)
       (fun _ _ hv hn hr => Vals.gather_ok_of_code hca hv hn hr) (fun _ _ hv hn hr => Vals.gather_ok_of_code hcc hv hn hr)
@@ -1710,7 +1711,7 @@ theorem Tab.compTabMat_reads {n m M : USize} {r : Tab A B} {g w ka : USize} {o o
   obtain ⟨-, hgw, -, -, -, hseg, hidx, hbit⟩ := raw_kbitrows hko
   obtain ⟨-, -, hra, -⟩ := Vals.code_spec hcode (Vals.gather_wf hkey wr.1)
   refine Tab.ofBits_ok hgw (by omega)
-    (raw_size_of_bits hgw fun a ha j hj => let ⟨v, _, hv, _⟩ := hbit a ha j hj; ⟨v, hv⟩)
+    (raw_size_of_bits hgw fun a ha j hj => let ⟨v, _, hv, _⟩ := hbit a ha j hj; ⟨v, hv⟩) (kbitrows_plain hko)
     (fun a ha j hj => by obtain ⟨v, -, hv, hv2, -⟩ := hbit a ha j hj; rw [hv]; exact hv2)
     (Vals.code_valid hcode) hrc (Vals.code_plain hcode).2.1 hrcN (fun a ha j hj hne => ⟨?_, ?_⟩)
     (fun _ _ hv hn hr => Vals.gather_ok_of_code hcode hv hn hr)
@@ -1741,7 +1742,7 @@ theorem Tab.ldivTabMat_reads {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc
   obtain ⟨hr, -, ho, hx, hy, hra, hrc, -⟩ := hw
   rcases hs : Tab.ofBits g w o x ra y rc with e | s
   · exact absurd hs (hr e)
-  obtain ⟨hkbc, -, PP, hw', -, -, -⟩ :=
+  obtain ⟨hkbc, -, PP, hw', -, -, -, -, -, hoN⟩ :=
     Tab.ldivTabMat_spec h hs (fun a ha j hj => some_lt_two (ho a ha j hj)) hx hy hra hrc hrw hub huc wx wy
   simp only [Tab.ldivTabMat, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨kb0, bR, bU, Nb, zb0, rb0⟩, hb2, h⟩ := h; try dsimp only at h
@@ -1762,7 +1763,7 @@ theorem Tab.ldivTabMat_reads {n m N N' : USize} {r : Tab A B} {ub : Tab B B} {uc
   obtain ⟨-, -, hrb, -⟩ := Vals.code_spec hcb (Vals.code2_wf hb2 hrw.2 hub.2)
   obtain ⟨-, -, hrc, -⟩ := Vals.code_spec hcc (Vals.code2_wf hc2 (Vals.gather_wf hyM wy) huc.2)
   refine Tab.ofBits_ok hkbc (by omega)
-    (raw_size_of_bits hkbc fun a ha j hj => let ⟨v, hv, _⟩ := hw' a ha j hj; ⟨v, hv⟩)
+    (raw_size_of_bits hkbc fun a ha j hj => let ⟨v, hv, _⟩ := hw' a ha j hj; ⟨v, hv⟩) hoN
     (fun a ha j hj => by obtain ⟨v, hv, hv2, -⟩ := hw' a ha j hj; rw [hv]; exact hv2)
     (Vals.code_valid hcb) (Vals.code_valid hcc) (Vals.code_plain hcb).2.1 (Vals.code_plain hcc).2.1 (fun a ha j hj _ => ⟨?_, ?_⟩)
     (fun _ _ hv hn hr => Vals.gather_ok_of_code hcb hv hn hr) (fun _ _ hv hn hr => Vals.gather_ok_of_code hcc hv hn hr)
