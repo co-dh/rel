@@ -74,4 +74,12 @@ def readErr (S : Schema) (d : String) : IO String := do
   IO.FS.removeFile "/data/tmp/rel-test-schema-disk/trade/.d.lo"
   readErr [("id", .long), ("qty", .atom .i32)] "/data/tmp/rel-test-schema-disk/trade"
 
+-- a name with no files is `none` at once (it once recursed on `.1` for ever), whatever the name's form
+/-- info: [true, true, true] -/
+#guard_msgs in
+#eval do
+  fixture "/data/tmp/rel-test-schema-disk/trade"
+  return [(← objOf? "/data/tmp/rel-test-schema-disk/trade" "nope").isNone, (← objOf? "/data/tmp/rel-test-schema-disk/trade" "").isNone,
+    (← objOf? "/data/tmp/rel-test-schema-disk/trade" "id.1.2").isNone]
+
 end Rel.Lang.TestSchemaDisk

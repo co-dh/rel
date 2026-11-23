@@ -144,25 +144,35 @@ def write {n : USize} (S : Schema) (dir : String) (x : Vals S.obj n) : IO Unit :
   IO.ofExcept S.check; IO.FS.createDirAll dir
   writeVals (A := .arr (.atom .char)) dir dName (textCol S.names).2; writeCols dir S.reverse x
 
+/-- `objOf?` with `k` more steps: each step is a part, and a part that is found is a file of `dir`, so the entries of
+    `dir` bound the depth and the recursion is on `k`, never on the growing name. -/
+def objOfK (dir : String) : Nat → String → IO (Option Obj)
+  | 0, _ => pure none
+  | k + 1, p => do
+    -- a directory is no column file, whatever name (`""`) reaches it
+    let has (q : String) : IO Bool := do return (← System.FilePath.pathExists (file dir q)) && !(← System.FilePath.isDir (file dir q))
+    let need (q : String) : IO Obj := do
+      let some a ← objOfK dir k q | throw (IO.userError s!"{file dir q}: no column file, a part of the side {file dir p}")
+      pure a
+    if ← has p then
+      let f ← Db.ownMap (file dir p)
+      if f.kind == oneKind then return some .one
+      let some (_, t) := atomNames.find? (·.2.code.toUInt8 == f.code)
+        | throw (IO.userError s!"{file dir p}: atom type code {f.code}, the code of no atom")
+      return some (.atom t)
+    if ← has (p ++ ".lo") then return some (.arr (← need (p ++ ".e")))
+    if ← has (p ++ ".tag") then return some (.sum (← need (p ++ ".l")) (← need (p ++ ".r")))
+    match ← objOfK dir k (p ++ ".1") with
+    | some a => return some (.prod a (← need (p ++ ".2")))
+    | none => return none
+
 /-- The object of the side stored under `p` in `dir`, read back from its files, the converse of `cols`'s paths: a file
     at `p` is an atom (its header's type code) or a side of `1` (`oneKind`); `p.lo` a list, `p.tag` a sum, `p.1` a
-    pair; `none` when nothing is stored under `p`. -/
-partial def objOf? (dir p : String) : IO (Option Obj) := do
-  let has (q : String) : IO Bool := System.FilePath.pathExists (file dir q)
-  let need (q : String) : IO Obj := do
-    let some a ← objOf? dir q | throw (IO.userError s!"{file dir q}: no column file, a part of the side {file dir p}")
-    pure a
-  if ← has p then
-    let f ← Db.ownMap (file dir p)
-    if f.kind == oneKind then return some .one
-    let some (_, t) := atomNames.find? (·.2.code.toUInt8 == f.code)
-      | throw (IO.userError s!"{file dir p}: atom type code {f.code}, the code of no atom")
-    return some (.atom t)
-  if ← has (p ++ ".lo") then return some (.arr (← need (p ++ ".e")))
-  if ← has (p ++ ".tag") then return some (.sum (← need (p ++ ".l")) (← need (p ++ ".r")))
-  match ← objOf? dir (p ++ ".1") with
-  | some a => return some (.prod a (← need (p ++ ".2")))
-  | none => return none
+    pair; `none` when no file of `dir` is stored under `p`, and always ends: the depth is bounded by the entries of
+    `dir` (`objOfK`). -/
+def objOf? (dir p : String) : IO (Option Obj) := do
+  unless ← System.FilePath.isDir dir do return none
+  objOfK dir ((← System.FilePath.readDir dir).size + 1) p
 
 
 /-- The frame of the value side `x`: its key the positions `0 … n-1`, which are on no file. -/
@@ -234,8 +244,7 @@ def readSchema (dir : String) : IO Schema := do
     name, never by position, as `readCols` finds each by its name. A directory with no `.d` (data written before
     `Table.write` wrote one) is not checked and reads as it always did. -/
 def checkDisk (S : Schema) (dir : String) : IO Unit := do
-  -- `.d` is a `[C]` column, whose list file is `.lo` (`objOf?`); `objOf?` itself never ends on a missing name
-  unless ← System.FilePath.pathExists (file dir (dName ++ ".lo")) do return
+  unless (← objOf? dir dName).isSome do return
   let fd := file dir dName
   let D ← readSchema dir
   for (c, o) in S do
