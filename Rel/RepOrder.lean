@@ -190,21 +190,20 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
       · have h2 := mt (flag q hqp).2 h1
         rw [List.getElem?_eq_none (by rw [len]; omega), List.getElem?_eq_none (by rw [len]; omega)]
   | .sum a b, n, ⟨l, r, tag, idx, x, y⟩, hw, es, hes, cs, hc, i, i', h => by
-    obtain ⟨xs, ys, rfl, hrest⟩ := Vals.cols_sum hes
-    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
+    obtain ⟨nt, xs, ys, rfl, -, hnt, xl0, xg, yl0, yg⟩ := Vals.cols_sum hes
+    obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, nt.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
-    obtain ⟨hv, heq⟩ := Arr.eq_of_codes tag hc0
-    obtain ⟨xl0, xg, yl0, yg⟩ := hrest hv
     have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
       fun _ _ q => by simp [seenKey, ascKeys_append]
-    rw [show (AscKey.atom .u1, tag.enc) :: (xs ++ ys) = [(AscKey.atom .u1, tag.enc)] ++ (xs ++ ys) from rfl,
+    rw [show (AscKey.atom .u1, nt.enc) :: (xs ++ ys) = [(AscKey.atom .u1, nt.enc)] ++ (xs ++ ys) from rfl,
       hs, hs, hs, hs, List.map_append, List.map_append, List.map_append, List.map_append] at h
     show (Obj.sum a b).lt (Vals.row (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ i)
       (Vals.row (A := .sum a b) ⟨l, r, tag, idx, x, y⟩ i')
     simp only [Vals.row]
-    by_cases et : (seenKey n [(.atom .u1, tag.enc)] i).map UInt64.toNat =
-        (seenKey n [(.atom .u1, tag.enc)] i').map UInt64.toNat
-    · have ht := heq i i' (map_toNat_inj et)
+    by_cases et : (seenKey n [(.atom .u1, nt.enc)] i).map UInt64.toNat =
+        (seenKey n [(.atom .u1, nt.enc)] i').map UInt64.toNat
+    · have ht : tag.get i = tag.get i' := by
+        simpa [hnt] using (Arr.eq_of_codes nt hc0).2 i i' (map_toNat_inj et)
       rw [et, lt_append_left_iff] at h
       rw [ht]
       cases htt : tag.get i'
@@ -238,12 +237,14 @@ theorem Vals.lt_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Vals
           simp only [↓reduceIte, dif_pos h0]
           exact (Obj.lt_inr a b _ _).2 (by simpa using this)
         · rw [yl0 (by omega)] at h; simp [seenKey, ascKeys] at h
-    · have hT := Arr.lt_of_codes tag hc0 i i' (lt_of_append_lt (by simp [seenKey]) et h)
+    · -- the key column is `¬tag`, so a lower code is `inr`
+      have hT := Arr.lt_of_codes nt hc0 i i' (lt_of_append_lt (by simp [seenKey]) et h)
+      rw [hnt, hnt] at hT
       revert hT
       cases tag.get i <;> cases tag.get i' <;> intro hT
       · exact absurd hT (Obj.lt_irrefl _ _)
-      · exact Obj.lt_inl_inr a b _ _
       · exact absurd hT (by decide)
+      · exact Obj.lt_inr_inl a b _ _
       · exact absurd hT (Obj.lt_irrefl _ _)
   | .one, _, _, _, es, hes, _, _, _, _, h => by
     simp only [Vals.cols, Except.ok.injEq] at hes; subst hes; simp [seenKey, ascKeys] at h

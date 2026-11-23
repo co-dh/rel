@@ -27,7 +27,7 @@ def Vals.summandCols {B : Obj} {n m : USize} (side : String) (cols : Vals B n �
 
 /-- The key columns of a side (`AscKey`), in the order of `Vals.row`'s tuple. An `arr` side is one `cells` key over its
 `lo`, `hi` and its payload's columns, row `i` naming cell `i` (`.pos`), so equal codes are equal cells as lists. A
-`sum` side is its tag, then the left summand's columns gathered at `idx * not(tag)`, then the right's at `idx * tag`
+`sum` side is its tag negated (`¬tag`: `inr` first), then the left summand's columns gathered at `idx * not(tag)`, then the right's at `idx * tag`
 (`Vals.summandCols`): a row of the other summand reads that summand's row `0`, a constant, so equal codes are equal
 rows. A summand past `2^63` rows, which an `Int64` position cannot reach, is the error. -/
 def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (AscKey × Enc))
@@ -37,13 +37,17 @@ def Vals.cols : {A : Obj} → {n : USize} → Vals A n → Except String (List (
   | .sum _ _, n, ⟨l, r, tag, idx, x, y⟩ =>
     if 2 ^ 63 < l.toNat ∨ 2 ^ 63 < r.toNat then .error s!"cols: a sum side of {l} and {r} rows, past an Int64 position"
     -- `idx` is read here only by `colMap`, which takes more forms than `kgather` (`Vals.gather`); a side numbered
-    -- here must be one every kernel reads, as `kasc` checks the tag
+    -- here must be one every kernel reads; so must `tag`, which `kasc` no longer sees (it reads `¬tag`)
     else if !foROk n idx.enc then
       .error s!"cols: a sum side's idx column (constructor {idx.enc.ctorIdx}) is no foR column of {n} rows"
+    else if !foROk n tag.enc then
+      .error s!"cols: a sum side's tag column (constructor {tag.enc.ctorIdx}) is no foR column of {n} rows"
     else do
-      let px ← colMap .mul n idx.enc (← colMap .not n tag.enc tag.enc)
+      -- the key is `¬tag`, so `inr` (tag `1`) sorts first (`Obj.key`): q's null before every value
+      let nt ← colMap .not n tag.enc tag.enc .u1
+      let px ← colMap .mul n idx.enc nt
       let py ← colMap .mul n idx.enc tag.enc
-      pure ((.atom .u1, tag.enc) ::
+      pure ((.atom .u1, nt) ::
         ((← Vals.summandCols (n := n) "left" Vals.cols px x) ++ (← Vals.summandCols (n := n) "right" Vals.cols py y)))
   -- no column: every row of `1` is its one value
   | .one, _, _ => .ok []
