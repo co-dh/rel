@@ -462,6 +462,46 @@ theorem Prim.den_indexRow {B : Obj} : Prim.den indexRow (.prod (.arr B) .long) B
       some ⟨⟨"at", fun σ => (.prod (.arr (σ₁ σ)) (σ₂ σ), σ₁ σ)⟩, fun σ _ => atOn (σ₁ σ) (σ₂ σ)⟩ := rfl
   unfold Prim.den; simp only [List.map_nil]; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
+theorem Prim.den_cmpRow_lt {A : Obj} : Prim.den (cmpRow "lt") (.prod A A) (.prod A A) [] = ordDen true A := by
+  have ho : (cmpRow "lt").objs (.prod A A) (.prod A A) [] = some [A] := by
+    simp [Prim.objs, Option.orElse, cmpRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (cmpRow "lt").sym) =
+      some ⟨⟨"lt", fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen true (σ₁ σ)⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+theorem Prim.den_cmpRow_le {A : Obj} : Prim.den (cmpRow "le") (.prod A A) (.prod A A) [] = ordDen false A := by
+  have ho : (cmpRow "le").objs (.prod A A) (.prod A A) [] = some [A] := by
+    simp [Prim.objs, Option.orElse, cmpRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (cmpRow "le").sym) =
+      some ⟨⟨"le", fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen false (σ₁ σ)⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+/-- `<` on the universe `U` of the atom `t`: `ltDen`. -/
+theorem Tm.lt_ltDen (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : (Tm.lt U).den ρ = ltDen t (U.den ρ) := by
+  funext a b; apply propext
+  simp only [Tm.lt, Tm.cmp, Tm.den, Tm.dom_den, Prim.den_cmpRow_lt, ordDen, Core.Rel.comp, Core.Rel.rpair,
+    Core.Rel.top, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph, ltDen]
+  simp only [if_true]
+  constructor
+  · rintro ⟨⟨x, y⟩, ⟨⟨rfl, v, h1, -⟩, w, -, rfl, w2, -, hw⟩, p, ⟨rfl, hl⟩, rfl⟩
+    exact ⟨⟨v, h1⟩, ⟨w2, hw⟩, hl⟩
+  · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
+    exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), ⟨rfl, hl⟩, rfl⟩
+
+/-- `≤` on the universe `U` of the atom `t`: `leqDen`. -/
+theorem Tm.leq_leqDen (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) : (Tm.leq U).den ρ = leqDen t (U.den ρ) := by
+  funext a b; apply propext
+  simp only [Tm.leq, Tm.cmp, Tm.den, Tm.dom_den, Prim.den_cmpRow_le, ordDen, Core.Rel.comp, Core.Rel.rpair,
+    Core.Rel.top, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, Core.Rel.graph, leqDen]
+  simp only [Bool.false_eq_true, if_false]
+  constructor
+  · rintro ⟨⟨x, y⟩, ⟨⟨rfl, v, h1, -⟩, w, -, rfl, w2, -, hw⟩, p, ⟨rfl, hl⟩, rfl⟩
+    exact ⟨⟨v, h1⟩, ⟨w2, hw⟩, hl⟩
+  · rintro ⟨⟨v, hv⟩, ⟨w, hw⟩, hl⟩
+    exact ⟨(a, b), ⟨⟨rfl, v, hv, hv⟩, b, trivial, rfl, w, hw, hw⟩, (a, b), ⟨rfl, hl⟩, rfl⟩
+
 theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
     (Tm.at0 (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by
   simp only [Tm.at0, Tm.den, Tm.argDen, Prim.den_indexRow, atOn]

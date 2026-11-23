@@ -321,8 +321,6 @@ def Tm.instObj (ph : List Rel.QAtomicType) (σ : List Obj) : {A B : Obj} → Tm 
   | _, _, .inr => pure .inr
   | _, _, .prim r => pure (.prim r)
   | _, _, .own R => return .own (← R.instObj ph σ)
-  | _, _, .leq t U => do fixed (.leq t (← back (← U.instObj ph σ)))
-  | _, _, .lt t U => do fixed (.lt t (← back (← U.instObj ph σ)))
   | _, _, .foldr e S => return .foldr (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .fold e S => return .fold (← e.instObj ph σ) (← S.instObj ph σ)
   | _, _, .share k R => return .share k (← R.instObj ph σ)
@@ -2022,8 +2020,6 @@ def convTm {A B : Obj} (t : Tm A B) : Except String (Tm B A) :=
   | .conv R => pure R
   | .ldiv R S U V => pure (.conv (.ldiv R S U V))
   | .rdiv R S U V => pure (.conv (.rdiv R S U V))
-  | .leq t U => pure (.conv (.leq t U))
-  | .lt t U => pure (.conv (.lt t U))
   | .id => pure .id
   | .own R => pure (.own R)
   | .comp R S => do let s ← convTm S; let r ← convTm R; pure (.comp s r)
@@ -2525,13 +2521,13 @@ def build : Pre → Except Err Res
     if valueAtom t then
       let some (s, _) := arithOps.find? (·.2 == k) | internal dp s!"no row of arithOps has the verb {k}"
       return ⟨_, _, Tm.cut2 (arithRow s) U⟩
-    let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (.leq t U)
-    let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (.lt t U)) swapTm)
+    let le : Tm (.prod (.atom t) (.atom t)) _ := pairTest (Tm.leq U)
+    let gt : Tm (.prod (.atom t) (.atom t)) _ := .comp swapTm (.comp (pairTest (Tm.lt U)) swapTm)
     let (hi, lo) : Tm (.prod (.atom t) (.atom t)) (.atom t) × Tm (.prod (.atom t) (.atom t)) (.atom t) :=
       if k == Rel.Kernel.Ew.greater then (.outr, .outl) else (.outl, .outr)
     return ⟨_, _, .join (.comp le hi) (.comp gt lo)⟩
-  | .leq p n => do let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, .leq t U⟩
-  | .lt p n => do let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, .lt t U⟩
+  | .leq p n => do let ⟨t, U⟩ ← numU objs mc p n "≤" (·.ordNum.isSome); return ⟨_, _, Tm.leq U⟩
+  | .lt p n => do let ⟨t, U⟩ ← numU objs mc p n "<" (·.ordNum.isSome); return ⟨_, _, Tm.lt U⟩
   | .fold true e s => do
     let r ← build e; let ⟨V, _, _⟩ := r
     match ← build s with
