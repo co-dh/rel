@@ -71,35 +71,6 @@ theorem colArr_ok {op : Op} {n : USize} {a b : Enc} {t s : QAtomicType} {pre pos
 /-- A column of `foROk` rows is one every kernel reads (`Enc.Valid`). -/
 theorem foROk_valid {n : USize} {e : Enc} (h : foROk n e = true) : Enc.Valid n e := by cases e <;> simpa [Enc.Valid] using h
 
-/-- A stream over columns holding no null writes no flag: `streamEnc` holds no null. -/
-theorem streamEnc_plain {s t : QAtomicType} {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
-    (hN : ∀ p ∈ es, hasNul p.2 = false) : hasNul (streamEnc s t es) = false := by
-  have key : ∀ (L : List (Array UInt64)) (acc : Array UInt64), (∀ x ∈ acc, x = 0) → (∀ a ∈ L, ∀ x ∈ a, x = 0) →
-      ∀ x ∈ L.foldl (· ++ ·) acc, x = 0 := by
-    intro L; induction L with
-    | nil => intro acc h _; exact h
-    | cons a L ih =>
-      intro acc h hL
-      exact ih _ (fun x hx => by
-        rcases Array.mem_append.1 hx with hx | hx
-        · exact h x hx
-        · exact hL a (by simp) x hx) (fun b hb => hL b (by simp [hb]))
-  have hz : (streamNul es).any (· != 0) = false := by
-    rw [Bool.eq_false_iff]; intro h
-    obtain ⟨i, hi, hp⟩ := Array.any_eq_true.1 h
-    obtain ⟨v, hv⟩ : ∃ v, v = (streamNul es)[i] := ⟨_, rfl⟩
-    have hmem : v ∈ streamNul es := hv ▸ Array.getElem_mem hi
-    rw [streamNul_eq] at hmem
-    have := key (es.map fun p => foRNuls p.1 p.2) #[] (fun x hx => by simp at hx) (fun a ha x hx => by
-      obtain ⟨p, hp, rfl⟩ := List.mem_map.1 ha
-      obtain ⟨j, hj, rfl⟩ := Array.mem_iff_getElem.1 hx
-      have := foRNuls_plain (hW p hp) (hN p hp) (i := j) (by simpa [foRNuls_size] using hj)
-      rw [Array.getElem?_eq_getElem hj] at this
-      exact Option.some.inj this) v hmem
-    rw [← hv] at hp
-    simp [this] at hp
-  unfold streamEnc; rw [hz]; exact hasNul_wordsFoR _
-
 /-- **CONCAT of two nullable columns of one type**: ONE `kscan` stream of `x` then `y` (`kscanStream`, `.first` with no
 chain), which re-encodes the `n₁ + n₂` words block by block and carries each row's null flag, so a null stays a null
 in-band. Where `t` has no width, the sources do not hold `n` rows between them or a source is no `foR`/`pos` column
@@ -240,17 +211,6 @@ def Vals.catSide {B : Obj} {m l l' : USize} (s : Bool) (tag : Arr .u1 m) (idx : 
     if c = 0 then ValsB.gather m (← colConst m 0) o
     else .error s!"concat: {c} rows tagged into the {if s then "right" else "left"} summand, which has no rows"
   else do ValsB.gather m (← summandPos m s tag (← idx.clampShift (l.toUInt64 - 1) 0).enc) x
-
-/-- Summand `s` of the concat of two sum sides of `n₁` and `n₂` rows, its rows `x₁` and `x₂` on each: their concat
-`cat` where both are empty (every row of the summand reads `Obj.dflt`), else each side's `Vals.catSide` (the other
-side's summand standing in for an empty one) concatenated, `n` rows read at the positions `Arr.pos`. -/
-def Vals.catSummand {B : Obj} {n₁ n₂ l₁ l₂ : USize} (n : USize) (s : Bool) (tag₁ : Arr .u1 n₁)
-    (idx₁ : Arr .i64 n₁) (x₁ : ValsB true B l₁) (tag₂ : Arr .u1 n₂) (idx₂ : Arr .i64 n₂) (x₂ : ValsB true B l₂)
-    (cat : {m₁ m₂ : USize} → (m : USize) → ValsB true B m₁ → ValsB true B m₂ → Except String (ValsB true B m)) :
-    Except String ((m : USize) × ValsB true B m) :=
-  if l₁.toNat = 0 ∧ l₂.toNat = 0 then do let m ← catRows l₁ l₂; pure ⟨m, ← cat m x₁ x₂⟩
-  else if 2 ^ 63 < l₁.toNat ∨ 2 ^ 63 < l₂.toNat then .error s!"concat: a sum summand of {l₁} or {l₂} rows, past 2^63"
-  else do pure ⟨n, ← cat n (← Vals.catSide s tag₁ idx₁ x₁ x₂) (← Vals.catSide s tag₂ idx₂ x₂ x₁)⟩
 
 /-- The words of the nullable `x` with `s` added: `Arr.shift` over `Opt`, a null staying null (`colMap_closed_nul`). The
 op is `max` of `x` with itself, the identity on a word, not `first`: `first` refuses a null row (`noNul`), `max` orders it. -/

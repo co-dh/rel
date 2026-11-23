@@ -622,18 +622,6 @@ private theorem holds_inr_of_row {n : USize} {Y : Vals B n} {V : Vals (.sum A B)
   simp only [Tab.Holds, hrow, Core.Rel.inr, Core.Rel.graph]
   exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
 
-/-- **A dense sum side's tag column is a valid column**: the gather of the sum side reads it (`kgather`). -/
-theorem Vals.gather_tag_valid {a b : Obj} {n m : USize} {ix : Enc} {X : Vals (.sum a b) n} {G : Vals (.sum a b) m}
-    {hb : Obj.band a b = none} {tag : Arr .u1 n} {x : ValsB true a n} {y : ValsB true b n} (hv : X.view = .gen hb tag x y)
-    (hG : ValsB.gather m ix X = .ok G) : Kernel.Enc.Valid n tag.enc := by
-  simp only [ValsB.gather, hv, bind, Except.bind, pure, Except.pure] at hG
-  split at hG; · cases hG
-  rename_i t' ht'
-  unfold Arr.gather at ht'
-  split at ht'
-  · rename_i o ho; exact kgather_valid ho
-  · cases ht'
-
 /-- `not` of a boolean column holds `1` exactly at its `false` rows. -/
 theorem Arr.not_mask {n : USize} {tag : Arr .u1 n} {b : Enc} (hbm : colMap .not n tag.enc tag.enc = .ok b)
     (i : Fin n.toNat) : (Enc.raw .i64 n b)[i.1]?.getD 0 = if (!tag.get i) = true then 1 else 0 := by

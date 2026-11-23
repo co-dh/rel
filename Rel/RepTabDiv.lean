@@ -408,16 +408,6 @@ theorem cellSpan_start_le {n m : USize} {lo up : ColB false .i64 n}
   obtain ⟨-, hv⟩ := toInt64_nonneg (x := (raw .i64 n lo.enc)[i.1]?.getD 0) hl.1
   omega
 
-/-- **`colArr` answers `colMap`'s column**, the converse of `colArr_ok`. -/
-theorem colArr_of_ok {op : Op} {n : USize} {a b o : Enc} {t : QAtomicType} (h : colMap op n a b t = .ok o)
-    (hs : kscanStream op [(n, a), (n, b)] [] [] = false := by lockstep)
-    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
-    colArr op n a b t .i64 [] [] hs hF = .ok (Arr.mk o (colMap_closed hs h hF).2.1 (colMap_closed hs h hF).2.2) := by
-  unfold colArr
-  split
-  · rename_i o' h'; have := h.symm.trans h'; cases this; rfl
-  · rename_i s' h'; have := h.symm.trans h'; cases this
-
 /-- **The non-empty cells** (`uncons`, `unsnoc`): `whereCol` of `lo < hi` on cells `Vals.WF` admits lists exactly
 the cells `[SN, EN)` with `SN < EN`. -/
 theorem cellSpan_where {B : Obj} {n m M : USize} {lo up : ColB false .i64 n} {lt sel : Enc}
@@ -1167,14 +1157,6 @@ theorem foldl_or01 : ∀ (l : List UInt64) (a : UInt64), (a = 0 ∨ a = 1) → (
     obtain ⟨h1, h2⟩ := foldl_or01 l (a ||| y) hay.1 fun z hz => hl z (List.mem_cons_of_mem _ hz)
     simp only [List.foldl_cons, List.forall_mem_cons]
     exact ⟨h1, h2.trans (by rw [hay.2, and_assoc])⟩
-
-/-- The wrapping `+` fold of longs, read as words, is the words' `+` fold. -/
-theorem foldl_add_toUInt64 : ∀ (xs : List Int64) (a : UInt64),
-    (xs.map Int64.toUInt64).foldl (· + ·) a = a + (xs.foldr (· + ·) 0).toUInt64
-  | [], a => by simp; rfl
-  | x :: xs, a => by
-    simp only [List.map_cons, List.foldl_cons, List.foldr_cons, Int64.toUInt64_add, foldl_add_toUInt64 xs]
-    rw [UInt64.add_assoc]
 
 /-- **A long `a + b` is exact** when it is not the null and does not overflow (`a` and `b` of one sign, `a + b` of the
 other): exactly when `a + b` lies strictly inside `(-2^63, 2^63)`. -/
@@ -2107,21 +2089,6 @@ theorem Tab.ldiv_holds {A B C : Obj} {R : Tab A B} {S : Tab A C} {UB : Tab B B} 
     show r.Holds = R.Holds from funext fun a => funext fun b => propext
     (canon_holds hr hRw a b), show s.Holds = S.Holds from funext fun a => funext fun c => propext
     (canon_holds hs hSw a c)]
-
-/-- **`rdiv` holds as `rdivDen`**: it is `ldivOf` of the two converses (`canon` answers), conversed
-(`R / S = (S° \ R°)°`). -/
-theorem Tab.rdiv_holds {A B C : Obj} {R : Tab A C} {S : Tab B C} {UA : Tab A A} {UB : Tab B B} {T : Tab A B}
-    (h : Tab.rdiv R S UA UB = .ok T) (hRw : R.WF) (hSw : S.WF) (hUA : UA.WF) (hUB : UB.WF)
-    (a : A.El) (b : B.El) :
-    T.Holds a b ↔ Lang.rdivDen R.Holds S.Holds UA.Holds UB.Holds a b := by
-  unfold Tab.rdiv at h
-  simp only [bind] at h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨S', hS, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨R', hR, h⟩ := h
-  rw [Except.bind_eq_ok'] at h; obtain ⟨L, hL, h⟩ := h
-  rw [conv_holds h (ldivOf_wf hL (conv_wf hS hSw) (conv_wf hR hRw) hUB hUA),
-    ldivOf_holds ⟨_, hS, hSw.2, hSw.1⟩ ⟨_, hR, hRw.2, hRw.1⟩ hL (conv_wf hS hSw) (conv_wf hR hRw) hUB hUA]
-  simp only [Lang.ldivDen_iff, Lang.rdivDen_iff, conv_holds hS hSw, conv_holds hR hRw, and_comm (a := ∃ b', UB.Holds b' b)]
 
 /-! ## Checks on `foR` tables -/
 

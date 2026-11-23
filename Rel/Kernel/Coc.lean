@@ -402,53 +402,7 @@ def over (op : Over) (nul : Int64) (metadata : @& ByteArray) (pack : @& ByteArra
     let x := v.toInt64
     if !op.boolCast && x == nul then acc else op.step acc x
 
-/-- `2 ^ 53`, the one bound in the float layer. Past it an integer is no longer exact as a double,
-so "the value is the integer `d`" stops being true; it is also what keeps a block's integer sum
-inside an `Int64` at `Column.blk` elements, and what leaves room to shift a whole block by a
-constant. `rust/src/coc.rs`'s `ALP_P53`. -/
-def alpP53 : Float := 9007199254740992.0
 
-
-/-- The element as a `Float`. A four-byte element widens exactly and order-preservingly, which is
-why the whole layer is type-erased into `Float` for the reason the integral one is type-erased into
-`Int64`. This is never the path a value takes back to the user — it may canonicalise a NaN
-payload — so an exception is copied as bits and only compared or added here. -/
-def alpVal (f32 : Bool) (x : UInt64) : Float :=
-  if f32 then (Float32.ofBits x.toUInt32).toFloat else Float.ofBits x
-
-/-- Is `x` the decimal `d * 10 ^ -e`, and if so which `d` (as `Int64` bits)? Decided by decoding `d`
-and comparing **bits**: comparing values would admit `-0.0`, which decodes as `+0.0`.
-
-`Float.round` breaks a tie away from zero where `rust/src/coc.rs`'s `nearbyint` breaks it to even. Nothing
-rests on that: the round trip is what accepts a `d`, so each side accepts only its own `d` and both
-satisfy the specification `alpDecode (alpEncode x) = x`. -/
-def alpDat (f32 : Bool) (x : UInt64) (e : Nat) : Option UInt64 :=
-  let s := alpVal f32 x * Rel.Column.pow10 e
-  if s.abs < alpP53 then
-    let d := s.round.toInt64.toUInt64
-    if Rel.Column.alpDec d e f32 == x then some d else none
-  else none
-
-
-/-- Block `b`'s exponent and each of its elements' `d`, `none` at an exception. The exponent is the
-largest any of the block's elements needs and then **every** element is re-verified at it: raising
-it is not harmless, `x * 10 ^ e` running out of mantissa, so a value exact at its own exponent can
-still fall out here. -/
-def alpBlockOf (f32 : Bool) (B w n b : Nat) (x : ByteArray) (own : Array (Option Nat)) :
-    Nat × Array (Option UInt64) :=
-  let lo := b * B
-  let js := Array.range (min (lo + B) n - lo)
-  let e := js.foldl (init := 0) fun acc j => max acc ((own[lo + j]!).getD 0)
-  (e, js.map fun j =>
-    if (own[lo + j]!).isNone then none
-    else alpDat f32 (Rel.Column.bitsAt x ((lo + j) * w) w) e)
-
-/-- The alp blob: `excBlob` ending in each block's exponent, its flag word saying whether an element is four bytes.
-`Column.alpSects` reads this ladder back and `rust/src/coc.rs`'s `alp_layout` is the C's one copy of it. -/
-def alpBlob (f32 : Bool) (B w n : Nat) (x : ByteArray) (bs : Array (Nat × Array (Option UInt64))) :
-    ByteArray :=
-  excBlob (if f32 then 1 else 0) B w bs.size x ((Array.range n).filter fun i => ((bs[i / B]!).2[i % B]!).isNone)
-    (bs.foldl (init := ByteArray.empty) fun acc be => acc.push be.1.toUInt8)
 
 
 
@@ -461,26 +415,6 @@ starts are hoisted out of the loop. Every specification below is a fold over it.
 def alpElems (metadata pack a : ByteArray) (n : USize) : List UInt64 :=
   let starts := Rel.Column.blockStarts metadata
   (List.range n.toNat).map (Rel.Column.alpBits metadata pack a starts)
-
-/-- The dense payload an ALP column denotes: `n` little-endian elements. This is the inverse of
-`alpEncode64` and the entry every kernel family written over dense floats reaches an ALP column
-through — `Column.bytesOf` is that call. -/
-def alpDecode64 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
-  (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    Rel.Column.pushBits acc v 8
-
-def alpDecode32 (metadata pack a : @& ByteArray) (n : USize) : ByteArray :=
-  (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    Rel.Column.pushBits acc v 4
-
-/-- `alpElems` as `w`-byte elements, the payload `Column.get` reads an ALP column as at any fixed
-width: the two C decoders at the widths ALP is the encoding for, the fold they implement otherwise.
-One reader, so `Column.bytesOf` never declines a column `Column.get` reads and `~`'s element
-fallback never sees one `Kernel.columnHash` cannot key. -/
-def alpDecode (w : USize) (metadata pack a : ByteArray) (n : USize) : ByteArray :=
-  if w == 4 then alpDecode32 metadata pack a n else if w == 8 then alpDecode64 metadata pack a n
-  else (alpElems metadata pack a n).foldl (init := ByteArray.empty) fun acc v =>
-    Rel.Column.pushBits acc v w.toNat
 
 end Rel.Kernel.Coc
 

@@ -1823,28 +1823,6 @@ theorem sum_opt_fold (f : Nat → Option UInt64) (g : Nat → UInt64) (c : UInt6
       simp only [hf]
       rw [e]; exact ih (r + 1) (a + g i)
 
-/-- **The block sum is `base·k + Σr`**: the values of block `b` of a nullable column, added with the nulls skipped
-(`Column.blockSum`, the language's `sum ≜ inr° ≫ ⦇0,+⦈` over `foROpt`), is the block's base times its `k` non-null rows
-plus their residuals' sum, the kernel's `bsum` of a flagged block (`Coc.nulBlock`, `nulBlock_sum`). Where each value is its
-base plus its residual: an unpatched row by `foRBits` at frame 0, a patched row because the writer patches only a row
-holding the base (`Coc.nulBlock`). -/
-theorem blockSum_eq (M P : ByteArray) (b : Nat)
-    (hv : ∀ j < Column.blk M, ∀ v, Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) = some v →
-      v = Column.baseAt M b + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j) :
-    Column.blockSum M P (Column.blockStarts M) b =
-      Column.baseAt M b * ((List.range (Column.blk M)).foldl (fun p j =>
-        match Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) with
-        | none => p
-        | some _ => (p.1 + 1, p.2 + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j)) ((0 : UInt64), (0 : UInt64))).1 +
-      ((List.range (Column.blk M)).foldl (fun p j =>
-        match Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j) with
-        | none => p
-        | some _ => (p.1 + 1, p.2 + Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j)) ((0 : UInt64), (0 : UInt64))).2 := by
-  have := sum_opt_fold (fun j => Column.foROpt M P (Column.blockStarts M) (b * Column.blk M + j))
-    (fun j => Column.resAt P (Column.blockStarts M)[b]! (Column.widthAt M b) j) (Column.baseAt M b)
-    (List.range (Column.blk M)) (fun j hj => hv j (List.mem_range.1 hj)) 0 0
-  simpa [Column.blockSum] using this
-
 /-- The sum of the keys a flagged block's writer adds, `Coc.nulBlock`'s `bsum`: over the rows that are not null, so it is
 the base times their count plus the sum of their keys less the base, the residuals of rows below the base's patches. -/
 theorem nulBlock_sum (least : Int64) (B w n b : Nat) (x nul : ByteArray) :

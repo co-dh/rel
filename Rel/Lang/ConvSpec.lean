@@ -456,10 +456,6 @@ theorem bind_ok_iff {ε α β : Type} {x : Except ε α} {f : α → Except ε �
 theorem pure_ok_iff {ε α : Type} {a b : α} : (pure a : Except ε α) = .ok b ↔ a = b := by
   simp [pure, Except.pure]
 
-theorem mapError_ok_iff {ε ε' α : Type} {f : ε → ε'} {x : Except ε α} {b : α} :
-    x.mapError f = .ok b ↔ x = .ok b := by
-  cases x <;> simp [Except.mapError]
-
 /-- A node `Tm.instObj.fixed` keeps: `σ` keeps its objects and the node is `t` itself, moved along that equality.
     Stated for any `X Y`, because at an atom in `varAtoms` (a float) `Obj.inst` does not reduce. -/
 theorem fixed_ok (ph : List Rel.QAtomicType) (σ : List Obj) {X Y : Obj} {t : Tm X Y} {t'}

@@ -177,9 +177,5 @@ theorem encEq_sound : (e f : Enc) → encCellFree e = true → encEq e f = true 
 
 end
 
-/-- **`valEq` is `=` on a cell-free value**: reflexive everywhere, and equal values where one holds no cell. -/
-theorem valEq_iff {a b : QValue} (hc : cellFree a = true) : valEq a b = true ↔ a = b :=
-  ⟨valEq_sound a b hc, fun h => h ▸ valEq_refl a⟩
-
 
 end Rel
