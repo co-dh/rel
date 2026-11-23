@@ -399,25 +399,26 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ✅ 余下各项（seen-rest）：composite 定理 `kasc_kseen`（`Rel/RepSeen.lean`：`kasc` 答出时，`kseen` 在其排好的列上
   不报错；所答由 `kseen_ok`、`kasc_grade` 给出）；runs 引理已有（`kseen_runs`，`RepSetOps`）；`Order.groupIds*` 已在
   92cbb31 等处删除，`kseen` 的调用者全走 kernel；doc §4 的 `seen` 行改写（`Order.idsBy` → `firstsBy`/`groupIn`，列出定律）。
-  待 rq17f4 之后折叠：`lexLe_congr_right`（`RepTabComp`）是 `lexLe_congr` 的特例，`nub_cover`/`nub_sel` 内联的
+  ✅ 已折叠（4e2420e；rq17f5 `Vals.sorted_key`）：`lexLe_congr_right`（`RepTabComp`）是 `lexLe_congr` 的特例，`nub_cover`/`nub_sel` 内联的
   `hkey` 即 `kasc_grade`。
   rq17f5（部分）：`nub_cover`/`nub_sel` 的 `hkey` 改为 `Vals.sorted_key`（`kasc_grade` + `asc_perm_grade`）；新引理
   `Vals.cols_wf`（`Vals.cols` 的每列 `Ext.Enc.WF`，由 `Arr.wf` 与 `.pos` 得）；`hN : n.toNat < 2 ^ 32` 加到
   `Vals.nub_*` 与 `Tab.canon_holds`/`ran_holds`/`dom_holds`；`kscatter_words` 加前提 `hasNul e = false`。
   ⬜ 阻塞（待决定）：`Vals.row` 在原子上读 `Arr.get`，null 行读到的是块的 top residual，`kgather` 之后是新块的，
   所以 `Arr.gather_row`、`Arr.eq_of_codes`、`Arr.codes_of_eq`、`Arr.get_raw_atom` 的 u1 界在有 null 的列上为假。
-  `RepSeen` 引用 `kasc_grade`、`lexLe_congr_right` 折叠仍未做。
+  ✅ `RepSeen` 引用 `kasc_grade`（rq17f7）、`lexLe_congr_right` 折叠（4e2420e）。
   rq17f6（部分）：阻塞按设计卡 "atom+1"（决定 K）解除：`Arr t n` 的类型带 `hasNul = false`（`Arr.plain`），`Arr.mk` 要它、
   `Arr.of` 判定它；`Arr.opt` 删除（无调用者）。新引理 `Verify.hasNul_of_nulAt`、`foRNul_of_plain`、`ofBytes_plain`、
   `bools_plain`、`Ext.Enc.blank_plain`、`colMap_plain`、`colPrefix_plain`；`kscan_closed` 多一项 `hasNul = false`。
   `Rel.Run.*` 与 `RepCanon` 全绿（`gather_row` 经 `kgather_plain`，u1 界经 `foRNul_of_plain`，`eq_of_codes`/`codes_of_eq`
   经 `nulCodes`/`nulWords` 在无 null 处化简）。⬜ 剩：`RepCols` 起的下游模块未建；`kscatter_words` 调用者传 `x.plain`；
-  `hN` 调用者；`RepSeen`/`lexLe_congr_right` 折叠。in-band `V+1` 今天没有 `Obj` 情形，待设计。
+  `hN` 调用者；✅ `RepSeen`/`lexLe_congr_right` 折叠（4e2420e）。in-band `V+1` 今天没有 `Obj` 情形，待设计。
   rq17f7（部分）：合并 9199fbf（`scatter.rs` 冲突：`ordered` 快路只在 `nul = None` 时走，因它不写 null 位）。绿：
   `RepCols`（`raw_scatter` 取 `x.plain`、`lastCount_eq` 取 `hN`、`wordsArr` 取 `hasNul_wordsFoR`）、`RepOrder`、
   `RepSeen`（`kasc_kseen` 引 `kasc_grade`，取 `hwf`/`hN`/列无 null；`ascCol_perm` 过 `noNul`）、`Gather`（`hnn` 删，
-  用 `foRNul_of_plain`）、`RepCanon`（`Vals.cols_wf` 加"列无 null"合取）。`lexLe_congr_right` 折叠未做（改
-  `RepTabComp` 引 `Rel.RepSeen`，:226 用 `lexLe_congr rfl e.symm`）。`RepSetOps` 未绿：缺 `kscatter_plain`（三种证法
+  用 `foRNul_of_plain`）、`RepCanon`（`Vals.cols_wf` 加"列无 null"合取）。✅ `lexLe_congr_right` 折叠（4e2420e：
+  `RepTabComp` 引 `Rel.RepSeen`，:238 用 `lexLe_congr rfl e.symm`；dry-lex 查 index：`Rel/Rep*.lean` 无其他
+  `_left`/`_right`/`'` 特例）。`RepSetOps` 未绿：缺 `kscatter_plain`（三种证法
   均在 `whnf` 超时，见 /data/tmp/rq17f7-handoff.md）；`union_holds`/`canon_sorted`/`canon_distinct` 已取 `hN`，其
   调用者（GenKFold、RepTabDiv、RepWFOps、GenKSpec、GenKHylo、RepAsc、RepSums、GenKFix）未改。
   rq17f8（部分）：合并 rq17f7（2c948e0），`kscatter` 保留 master 的 `readsDivisor` 拒绝在 null 搬运之前。
