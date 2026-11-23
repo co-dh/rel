@@ -31,6 +31,33 @@ theorem foldDen_foldl {E V : Obj} {TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)
       rw [(hS _ _ _).1 hs] at h; exact h
     · intro h; exact ⟨v, f v x, ⟨v, rfl⟩, (hS v x _).2 rfl, h⟩
 
+/-- A right fold whose step relation is the function `f` on the values satisfying the invariant `I` (kept by `f`,
+    true of the seed) is `List.foldr f`. -/
+theorem foldrDen_foldr {E V : Obj} {TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)} {f : E.El → V.El → V.El}
+    {I : V.El → Prop} (hS : ∀ x a, I a → ∀ w, TS (x, a) w ↔ w = f x a) (hI : ∀ x a, I a → I (f x a)) :
+    ∀ (xs : List E.El) (v : V.El), I v → ∀ w, foldrDen (fun _ b => b = v) TS xs w ↔ w = xs.foldr f v := by
+  suffices ∀ n (xs : List E.El), xs.length = n → ∀ v, I v → ∀ w,
+      foldrDen (fun _ b => b = v) TS xs w ↔ w = xs.foldr f v from fun xs => this _ xs rfl
+  intro n
+  induction n with
+  | zero =>
+    intro xs h v _ w
+    obtain rfl := List.length_eq_zero_iff.1 h
+    simpa using foldrDen_nil TS v w
+  | succ n ih =>
+    intro xs h v hv w
+    have hne : xs ≠ [] := by rintro rfl; simp at h
+    obtain ⟨xs', x, rfl⟩ : ∃ xs' x, xs = xs' ++ [x] :=
+      ⟨xs.dropLast, xs.getLast hne, (List.dropLast_concat_getLast hne).symm⟩
+    have hl : xs'.length = n := by simpa using h
+    rw [foldrDen_snoc]
+    constructor
+    · rintro ⟨v₀, v', ⟨_, rfl⟩, hs, h'⟩
+      rw [(hS x _ hv v').1 hs] at h'
+      simpa [List.foldr_append] using (ih xs' hl _ (hI x _ hv) w).1 h'
+    · intro hw
+      exact ⟨v, f x v, ⟨v, rfl⟩, (hS x v hv _).2 rfl, (ih xs' hl _ (hI x _ hv) w).2 (by simpa [List.foldr_append] using hw)⟩
+
 theorem Prim.den_tau {B : Obj} : Prim.den (rowOf "τ") B (.arr B) [] = fun a Y => Y = [a] := by
   have hs : (rowOf "τ").sig = ([], .var {} "A", .list (.var {} "A")) := rfl
   have ho : (rowOf "τ").objs B (.arr B) [] = some [B] := by
