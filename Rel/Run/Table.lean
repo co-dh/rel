@@ -281,6 +281,17 @@ def readSchema (dir : String) : IO Schema := do
     pure ((n, o) :: S)
   IO.ofExcept ((Schema.check S).mapError (s!"{fd}: " ++ ·)); pure S
 
+/-- The object `objOf?` reads back from the files of `A`: an in-band sum (`Obj.band`) is its one nullable column, a file of
+    the atom `t` (`cols`), so it is stored as `t`; the rest as it is. -/
+def stored : Obj → Obj
+  | .atom t => .atom t
+  | .prod a b => .prod (stored a) (stored b)
+  | .arr b => .arr (stored b)
+  | .sum a b => match Obj.band a b with
+    | some t => .atom t
+    | none => .sum (stored a) (stored b)
+  | .one => .one
+
 /-- The declared schema `S` against the `.d` of `dir` (`readSchema`): a column declared and not on disk, on disk and
     not declared, or at another object is the error naming the column and both objects. The columns are compared by
     name, never by position, as `readCols` finds each by its name. A directory with no `.d` (data written before
@@ -292,7 +303,7 @@ def checkDisk (S : Schema) (dir : String) : IO Unit := do
   for (c, o) in S do
     match D.lookup c with
     | none => throw (IO.userError s!"{fd}: column {c} is not on disk, declared {(oexpOf o).1.show}")
-    | some d => unless d == o do throw (IO.userError s!"{fd}: column {c} is {(oexpOf d).1.show}, declared {(oexpOf o).1.show}")
+    | some d => unless d == stored o do throw (IO.userError s!"{fd}: column {c} is {(oexpOf d).1.show}, declared {(oexpOf o).1.show}")
   for (c, d) in D do
     unless S.any (·.1 == c) do throw (IO.userError s!"{fd}: column {c} is {(oexpOf d).1.show} on disk, not declared")
 
