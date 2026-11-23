@@ -129,7 +129,9 @@ impl Cells<'_> {
         u.dedup();
         let cell = |k: usize| &r[u[k].0..u[k].1];
         let mut o: Vec<usize> = (0..u.len()).collect();
-        o.sort_unstable_by(|&a, &b| cell(a).cmp(cell(b)));
+        // stable sort: it merges runs already in order (a `∪` of canonical tables is two), where `sort_unstable_by`
+        // compares O(n log n) cells whatever the input
+        o.sort_by(|&a, &b| cell(a).cmp(cell(b)));
         let mut rk = vec![0u64; u.len()];
         for w in 1..o.len() { rk[o[w]] = rk[o[w - 1]] + (cell(o[w - 1]) != cell(o[w])) as u64 }
         // every span of `sp` is in `u` and every word of `ix` in `q`, so both searches find it

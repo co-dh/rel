@@ -333,7 +333,9 @@ pub fn move_blk<'a, 'b>(mv: &(impl Producer + ?Sized), m: &mut EncMeta, pack: im
                         nb: usize, width: usize, nul: &[u8], lo: usize) {
     if let Some((c, pb)) = mv.take(m.b) { move_meta(m, &c, pb); return move_pack(&mut pack(true), &c, pb, width) }
     let x = x();
-    if (lo..lo + nb).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo); return nul_pack(&mut pack(false), x, width, nul, lo) }
+    // only the rows `nul` has bits for: a column with no null (`nul` empty) tests no row, where testing each cost a
+    // pass over every block of every written column
+    if (lo..(lo + nb).min(nul.len() * 8)).any(|i| is_nul(nul, i)) { nul_meta(m, x, width, nb, nul, lo); return nul_pack(&mut pack(false), x, width, nul, lo) }
     for_meta(m, x, width, nb);
     for_pack(&mut pack(false), x, width)
 }
