@@ -525,12 +525,22 @@ def ownFile (p : String) : SideCol → Except String (Option Db.OwnFile)
     holds one (a literal or computed vector, a CSV read; not a column mapped from its file, which is its parts). -/
 abbrev Side := List (String × Array Nat)
 
+/-- A column's `ownFile` registers in `Db.ownWrite`'s argument order, the one place that order is written: every
+    reader indexes them by `Side.count` and `Side.enc`. -/
+def Side.regs (code kind count parts : Nat) : Array Nat := #[code, kind, count, parts]
+
+/-- The position of a column's row count among its registers (`Side.regs`). -/
+def Side.count : Nat := 2
+
+/-- The position of a column's `Enc` register, after its `Side.regs`. -/
+def Side.enc : Nat := 4
+
 /-- The side's columns as `lit`s; a positions column has none. -/
 def litSide {A : Obj} {n : USize} (x : Vals A n) : Bld Side :=
   (cols A x "").filterMapM fun (p, c) => do
     let .inr ⟨_, _, x⟩ := c | return none
     let some f ← ownFile p c | return none
-    let rs ← #[.u8 f.code, .u8 f.kind, .size f.count, .parts f.parts].mapM lit
+    let rs := Side.regs (← lit (.u8 f.code)) (← lit (.u8 f.kind)) (← lit (.size f.count)) (← lit (.parts f.parts))
     return some (p, rs.push (← lit (Reg.put x.enc)))
 
 /-! ### Recipes on the five kernels (design §4) -/
