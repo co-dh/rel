@@ -222,8 +222,9 @@ theorem count_iff {E : Obj} {Te TU : Core.Rel (Obj.El .long) (Obj.El .long)} {P 
     rw [Rel.Verify.Ew.intStep_add, if_neg (not_or.2 ⟨hnt, by decide⟩), Int64.ofNat_add]; rfl
   have hS : ∀ a x b, (graph Prod.fst ≫ succDen TU : Core.Rel (Obj.El (.prod .long E)) (Obj.El .long)) (a, x) b ↔
       P a ∧ b = Ew.intStep Ew.add Alg.nul a 1 ∧ P b := fun a x b => by
-    simp only [Core.Rel.comp, Core.Rel.graph, succDen, hd]
-    exact ⟨fun ⟨_, rfl, h⟩ => h, fun h => ⟨a, rfl, h⟩⟩
+    simp only [Core.Rel.comp, Core.Rel.graph, hd]
+    exact ⟨fun ⟨_, rfl, h⟩ => let ⟨h1, h2, h3⟩ := (succDen_iff _ _ _).1 h; ⟨(hd _).1 h1, h2, (hd _).1 h3⟩,
+      fun ⟨h1, h2, h3⟩ => ⟨a, rfl, (succDen_iff _ _ _).2 ⟨(hd _).2 h1, h2, (hd _).2 h3⟩⟩⟩
   rw [foldDen_start]
   constructor
   · rintro ⟨v, hv, hf⟩
@@ -503,7 +504,8 @@ theorem Tm.cmpDef_lt_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t
     simp only [Tm.den, Prim.den_cmpRow_lt, ordDen_iff, if_true]
   funext a b; apply propext
   rw [Tm.cmpDef_den ρ _ U fun p q h => ((hd p q).1 h).1, hd]
-  simp only [Tm.lt, Tm.den, Tm.argDen, Prim.den_cmpRelRow_lt, ltDen, true_and]
+  simp only [Tm.lt, Tm.den, Tm.argDen, Prim.den_cmpRelRow_lt, true_and]
+  exact (ltDen_iff _ _ _ _).symm
 
 theorem Tm.cmpDef_le_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t)) :
     (Tm.cmpDef (.prim (cmpRow "le")) U).den ρ = (Tm.leq U).den ρ := by
@@ -512,7 +514,8 @@ theorem Tm.cmpDef_le_den (ρ : Val) {t : QAtomicType} (U : Tm (.atom t) (.atom t
     simp only [Tm.den, Prim.den_cmpRow_le, ordDen_iff, Bool.false_eq_true, if_false]
   funext a b; apply propext
   rw [Tm.cmpDef_den ρ _ U fun p q h => ((hd p q).1 h).1, hd]
-  simp only [Tm.leq, Tm.den, Tm.argDen, Prim.den_cmpRelRow_le, leqDen, true_and]
+  simp only [Tm.leq, Tm.den, Tm.argDen, Prim.den_cmpRelRow_le, true_and]
+  exact (leqDen_iff _ _ _ _).symm
 
 theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
     (Tm.at0 (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by
@@ -523,9 +526,11 @@ theorem Tm.at0_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
   constructor
   · rintro ⟨⟨ys, k⟩, ⟨rfl, -, hk⟩, -, h⟩
     obtain ⟨-, rfl⟩ := hk
-    exact h
+    obtain ⟨hl, e⟩ := List.getElem?_eq_some_iff.1 h
+    exact ⟨hl, e.symm⟩
   · intro h
-    exact ⟨⟨xs, 0⟩, ⟨rfl, ⟨0, by simp⟩, rfl⟩, (by decide : (0 : Int) ≤ Int64.toInt (0 : Int64)), h⟩
+    exact ⟨⟨xs, 0⟩, ⟨rfl, ⟨0, by simp⟩, rfl⟩, (by decide : (0 : Int) ≤ Int64.toInt (0 : Int64)),
+      List.getElem?_eq_some_iff.2 ⟨h.1, h.2.symm⟩⟩
 
 /-- `Λ(π₁ ∪ π₂) at(0)` reads `x` at the pair `(x, y)` of two different elements exactly where `x` is the smaller:
     the one list ascending by `Obj.lt` holding both has the smaller first. -/

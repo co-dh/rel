@@ -112,13 +112,14 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
     split at h
     case isFalse => cases h
     rename_i hf
-    rw [Lang.floatDen_iff₁]
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
     refine keep_map_holds hU (fun i => ?_) a b
     obtain ⟨h2, hi⟩ := fmapCols_spec hf.2.1 hf.2.2 hm i (floatOps_ne hs).1 (floatOps_ne hs).2
     -- a unary `Op` reads its second operand alone (`Op.eval_acc`), so `X X` is `0 X`
-    refine ⟨h2, fun v => (hi v).trans ⟨fun ⟨X, X', Y, R, hX, hX', hY, hR⟩ => ?_,
-      fun ⟨_, X, Y, R, hX, hY, hR⟩ => ⟨X, X, Y, R, hX, hX, by rw [Op.eval_acc hf.1]; exact hY, hR⟩⟩⟩
+    refine ⟨h2, fun v => ?_⟩
+    rw [Lang.floatDen_iff₁]
+    refine (hi v).trans ⟨fun ⟨X, X', Y, R, hX, hX', hY, hR⟩ => ?_,
+      fun ⟨_, X, Y, R, hX, hY, hR⟩ => ⟨X, X, Y, R, hX, hX, by rw [Op.eval_acc hf.1]; exact hY, hR⟩⟩
     rw [hX] at hX'; cases hX'
     exact ⟨hf.1, X, Y, R, hX, by rw [← Op.eval_acc hf.1 X X]; exact hY, hR⟩
   | .prod (.atom t) (.atom t'), .atom u, X, T, h, a, b =>
@@ -127,11 +128,12 @@ theorem floatOp_den {A B : Obj} {n : USize} {X : Vals A n} {T : Tab A B} {s : St
     case isFalse => cases h
     rename_i hf
     obtain ⟨ho, rfl, hf, hu⟩ := hf
-    rw [Lang.floatDen_iff₂]
     obtain ⟨⟨w, flag⟩, hm, hU⟩ := Except.bind_eq_ok'.1 h
     refine keep_map_holds hU (fun i => ?_) a b
     obtain ⟨h2, hi⟩ := fmapCols_spec hf hu hm i (floatOps_ne hs).1 (floatOps_ne hs).2
-    exact ⟨h2, fun v => (hi v).trans ⟨fun hr => ⟨ho, rfl, hr⟩, fun ⟨_, _, hr⟩ => hr⟩⟩
+    refine ⟨h2, fun v => ?_⟩
+    rw [Lang.floatDen_iff₂]
+    exact (hi v).trans ⟨fun hr => ⟨ho, rfl, hr⟩, fun ⟨_, _, hr⟩ => hr⟩
   | .atom _, .prod .., _, _, h, _, _ | .atom _, .arr _, _, _, h, _, _ | .atom _, .sum .., _, _, h, _, _
   | .prod (.atom _) (.atom _), .prod .., _, _, h, _, _ | .prod (.atom _) (.atom _), .arr _, _, _, h, _, _
   | .prod (.atom _) (.atom _), .sum .., _, _, h, _, _
