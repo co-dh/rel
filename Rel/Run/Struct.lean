@@ -30,16 +30,26 @@ def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
   let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
   if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
 
-/-- `n` rows of `A` all `A.dflt`, the filler of the side of a dense sum that a row does not hold: `Arr.zeros` per atom
+/-- The tag column of a sum side whose `n` rows are all in one summand: every tag `s` (the positions through the post
+chain `[(.and, 0), (.or, s)]`, written at `u1`). -/
+def tagCol (n : USize) (s : Bool) : Except String (Arr .u1 n) :=
+  colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)]
+
+/-- `n` rows of `t`'s `default` (q's null): the positions through the post chain `[(.and, 0), (.or, w)]`, `w` the stored
+word of the null, written at `t`; refused at `general`, whose payload no word fills. -/
+def Arr.dflts (t : QAtomicType) (n : USize) : Except String (Arr t n) :=
+  colArr .first n .pos .pos t .i64 [] [(.and, 0), (.or, QAtomicType.word t (@default (Dep.Carrier t) Dep.instInhabitedCarrier))]
+
+/-- `n` rows of `A` all `A.dflt`, the filler of the side of a dense sum that a row does not hold: `Arr.dflts` per atom
 column; an `arr` side of `n` empty cells `[0, 0)` over no payload; a band sum `n` nulls (`inl ()`); another `sum` side of
 tag `0` (`inl`) over two such summands. -/
 def Vals.zeros : (A : Obj) → (n : USize) → Except String (Vals A n)
-  | .atom t, n => Arr.zeros t n
+  | .atom t, n => Arr.dflts t n
   | .prod a b, n => do pure (← Vals.zeros a n, ← Vals.zeros b n)
   | .arr b, n => do pure ⟨0, ← Arr.zeros .i64 n, ← Arr.zeros .i64 n, ← Vals.zeros b 0⟩
   | .sum a b, n => match h : Obj.band a b with
     | some t => do pure (Vals.ofOpt h (← Opt.nuls t n))
-    | .none => do pure (Vals.ofGen h (← Arr.zeros .u1 n) (← Vals.zeros a n) (← Vals.zeros b n))
+    | .none => do pure (Vals.ofGen h (← tagCol n false) (← Vals.zeros a n) (← Vals.zeros b n))
   | .one, _ => pure ()
 
 /-- No row of `A`: `Vals.zeros` at `0` rows. -/
@@ -77,11 +87,6 @@ def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = so
 
 /-- The one row of the unit side `1`, as a side `A` known to be `1`. -/
 def Vals.unit {A : Obj} (h : A = .one) : Vals A 1 := by subst h; exact ()
-
-/-- The tag column of a sum side whose `n` rows are all in one summand: every tag `s` (the positions through the post
-chain `[(.and, 0), (.or, s)]`, written at `u1`). -/
-def tagCol (n : USize) (s : Bool) : Except String (Arr .u1 n) :=
-  colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)]
 
 namespace Tab
 variable {A B C D I : Obj}
