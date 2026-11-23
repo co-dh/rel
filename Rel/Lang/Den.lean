@@ -528,7 +528,7 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Co
 end
 
 /-- `domRow` at `A ⟶ A` given `T : A ⟶ B` means `𝟙 ∩ T T°`; its definition `⟨𝟙,R⟩π₁` means the same
-    (`Tm.dfnCut_den`). -/
+    (`Tm.domDef_den`). -/
 theorem Prim.den_domRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
     Prim.den domRow A A [⟨A, B, T⟩] = 𝟙 _ ∩ T ≫ T° := by
   have ho : domRow.objs A A [(A, B)] = some [A, B] := by
@@ -541,7 +541,7 @@ theorem Prim.den_domRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
 /-- `ranRow` at `B ⟶ B` given `T : A ⟶ B` means `𝟙 ∩ T° T`; its definition `dom(R°)` means the same
-    (`Tm.dfnCut_den`). -/
+    (`Tm.ranDef_den`). -/
 theorem Prim.den_ranRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
     Prim.den ranRow B B [⟨A, B, T⟩] = 𝟙 _ ∩ T° ≫ T°° := by
   have ho : ranRow.objs B B [(A, B)] = some [A, B] := by
@@ -553,7 +553,7 @@ theorem Prim.den_ranRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- `nilRow` at `A ⟶ [B]` means `nilDen`; its definition `Λ(𝟘)` means the same (`Tm.dfnCut_den`). -/
+/-- `nilRow` at `A ⟶ [B]` means `nilDen`; its definition `Λ(𝟘)` means the same (`Tm.nilDef_den`). -/
 theorem Prim.den_nilRow {A B : Obj} : Prim.den nilRow A (.arr B) [] = nilDen := by
   have ho : nilRow.objs A (.arr B) [] = some [A, B] := by
     simp [Prim.objs, Option.orElse, nilRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
@@ -571,7 +571,7 @@ theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = �
   simp only [Tm.ran, Tm.den, Tm.argDen]; exact Prim.den_ranRow _
 
 /-- `estRow` at `[B] ⟶ B` given the pair test `T` means `estDen T`; its definition `∋ ∩ (∈ \ (Q ∪ 𝟙)°)` means the
-    same where `T` is `τ(Q)` (`Tm.dfnCut_den`). -/
+    same where `T` is `τ(Q)` (`Tm.estDef_den`). -/
 theorem Prim.den_estRow {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) :
     Prim.den estRow (.arr B) B [⟨.prod B B, .prod B B, T⟩] = estDen T := by
   have ho : estRow.objs (.arr B) B [(.prod B B, .prod B B)] = some [B] := by
@@ -584,7 +584,7 @@ theorem Prim.den_estRow {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.p
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
 /-- `frontRow` at `[B] ⟶ [B]` given the pair test `T` means `frontDen T`; its definition `Λ(∋ − ∋ (Q − Q°))` means
-    the same where `T` is `τ(Q)` (`Tm.dfnCut_den`). -/
+    the same where `T` is `τ(Q)` (`Tm.frontDef_den`). -/
 theorem Prim.den_frontRow {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) :
     Prim.den frontRow (.arr B) (.arr B) [⟨.prod B B, .prod B B, T⟩] = frontDen T := by
   have ho : frontRow.objs (.arr B) (.arr B) [(.prod B B, .prod B B)] = some [B] := by

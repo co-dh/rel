@@ -1910,7 +1910,7 @@ relk 线程池空转 2 526（与前三项重叠）。
   - 🔄 B9（B9a 94525bb、B9bc 52aa2f5 已做；B9d、B9e 未做；以下为开工前的状态）：`Expand.convOf`（`Expand.lean:186`）是旧机制（`Once → Option (Name × Res)`，给 `callCv` 造逆体），不是设计的
     `convOf : 名字 → Option 名字`；index 无 `convs` `permConv`；`Tm.share` 仍是构造子（`own` `callCv` 已由 B9bc 删），`var` 仍带 `d`
     （`Tm.lean:66`、`:128`），`Tm.dem` 无 `δ`。
-  - 🔄 B10（B10a 077fa2b、B10b b6887db 已做；B10c、B10d 未做；以下为开工前的状态）：`dfns` 仍在（`Elab.lean:2201`，`build` 用于 `:2496`）；index 无 `prelude.length/sum/flat`、无 `unproved`；
+  - ✓ B10（B10a 077fa2b、B10b b6887db；B10c、B10d：D1 829a6c4、D2a 0e02c2f、D3 合并 fa44129/db48d05/3a53bc9、D2b 41bc1c1、C5 8181cea、D4 门读体常量；以下为开工前的状态）：`dfns` 仍在（`Elab.lean:2201`，`build` 用于 `:2496`）；index 无 `prelude.length/sum/flat`、无 `unproved`；
     六行 `filter takewhile tails prefix suffix concat` 仍只有 `prelude :=`（`Syntax.lean:324/327/345/347/349/351`）与
     `useDef`（`Expand.lean:41-74`），各有 `rowOK_*`（kernel 对 `rowDens`），没有「行 = 定义」的定理。
   - B5d 删 `Tm.leq` `Tm.lt`（一个 agent，opus；证明小，改动面是各遍历的子句）：
@@ -1950,22 +1950,22 @@ relk 线程池空转 2 526（与前三项重叠）。
       `GenSoundTest:148`。
     - 与 nullband 相邻：B9c/B9d/B9e 改 `Expand.Tm.fieldsEq`（`Expand.lean:929-936`），nullband 改其上方的 `valsE`
       `valsEq`（`:882-922`）；不同声明，hunk 相邻，合并时看一眼。
-  - B10（设计：在 B9 之后）：
-    - B10a `unproved` 名单（`Syntax.lean`，`prims:318` 旁）：`filter takewhile tails prefix suffix concat`；`#guard`
+  - ✓ B10（设计：在 B9 之后）：
+    - ✓ B10a `unproved` 名单（`Syntax.lean`，`prims:318` 旁）：`filter takewhile tails prefix suffix concat`；`#guard`
       枚举义务而非记录：`prims` 里每个带 `prelude` 的行（今天七个：这六个与 `starRow`）要么有定理要么在名单里。
       `starRow` 归哪边，由它的 `rowDens` 项（`Den.lean:401` 起）是否就是定义的 den 决定。
-    - B10b 六条定理，每行一个 agent、各自一个新文件（同处追加会冲突）：prelude 文本的项（`Prelude.lean`：
+    - ✓ B10b 六条定理，每行一个 agent、各自一个新文件（同处追加会冲突）：prelude 文本的项（`Prelude.lean`：
       `prefix:34`、`suffix:35`、`concat:36`、`tails:38`、`filter:39`、`takewhile:40`）的 den = 该行的 `rowDens` 项。项
       若在证明里取不到 elaborate 的结果，照 `Tm.ltDef`（`DfnLaw.lean:454`）在 Lean 里构造并 `#guard` 它与 elaborate 的项
       相等。已有 kernel 一侧：`rowOK_tails:459`、`prefix:646`、`suffix:650`、`concat:686`、`filter:789`、
       `takewhile:810`（`GenSound.lean`）。证完从 `unproved` 去掉该名（合并时取交集）。
       `concat` 一条与 nullband 冲突（它改 `RepStruct.lean` 的 concat 证明）：等 nullband 合入后再做。
-    - B10c 定义文本移入 prelude：`length` `sum` `flat`（`DfnCut.length/sum/fsum/flat`：`Elab.lean:2139-2148`、
+    - ✓ B10c（D1 829a6c4、D2a 0e02c2f、D3 fa44129/db48d05/3a53bc9、C5 8181cea） 定义文本移入 prelude：`length` `sum` `flat`（`DfnCut.length/sum/fsum/flat`：`Elab.lean:2139-2148`、
       `uni:2165-2167`、`fused:2171-2173`、`cut:2184-2189`、`dfns:2202-2212`；`Tm.dfnCut_den` 的情形
       `DfnLaw.lean:302/359/375/388`），以及同样是 Lean 构造的 `lt`（`Tm.ltDef`，`DfnLaw.lean:454`）、`asc`
       （`Tm.ascDef`，`:529`）和 `dfns` 里的 `foldI dom ran nil est front`。`Op.table`（`Syntax.lean:403-416`）的行名
       改为 prelude 常量。
-    - B10d 删 `dfns`（`Elab.lean:2201`）与 `build` 的查表（`:2496`）：`DfnCut` 只留「fused / cut / 定义」的选择，定义项
+    - ✓ B10d（D2b 41bc1c1；D4 门读体常量） 删 `dfns`（`Elab.lean:2201`）与 `build` 的查表（`:2496`）：`DfnCut` 只留「fused / cut / 定义」的选择，定义项
       由 `callTm`（`Elab.lean:2335`）读自行的 `Prim.prelude`；`useDef`（`Expand.lean:41-74`）的按名替换并入同一规则。
   - 次序（设计 `:371-373`）：B5d → B9a → B9b → B9c → B9d → B9e → B10a → B10b → B10c → B10d。设计只允许 B5d 为下一步，
     B9 独占。

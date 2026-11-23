@@ -2,7 +2,7 @@ import Rel.Programs.FrameJoin
 
 /-! The aggregates `count`, `summarize`, `agg` at a large DECLARED object `M = 0…499999` on a frame of few rows: each
     reads `length` or `sum` of a list, whose definition (a fold, one round per element, each round on all of `M`)
-    `build` replaces by the row cut to `M` (`dfns`, `Tm.dfnCut_den`), one pass. When the definition ran instead,
+    `build` runs as the row cut to `M` (`Prim.cut`, the `.prim` rule), one pass. When the definition ran instead,
     `count` of 1000 rows took 6.3 s at |M| = 5·10⁴ and 35 s at 5·10⁵ (measured); of the 5000 rows here, minutes.
     Expected rows by hand: `x` is `0…4999`, `i mod 10` sums to `500·45 = 22500`, and each residue holds 500
     positions. -/

@@ -211,12 +211,12 @@ length : [α] ⟶ β ≜ ⦇[{(∗,0)}, π₁ succ]⦈
     [`sum : [β] ⟶ β ≜ ⦇[{(∗,0)}, plus]⦈`：在 `N`、`0…5`、`−3…3`、f64 上与行 `sum` 同值（已用 probe 验证）],
   [2 数对象变量], [类型里不写 `num`：`β` 是普通对象变量，体里的数动词（`succ`、`plus`、字面量）作用在它上面，它就是数变量，检查留给每次使用
     （上文 `ObjInfo.deferred`、`numCheck`）。universe 只有一条规则：对象变量的 universe 是常量的实参（`uniVar`），由调用处按调用的对象给出。
-    行能跑的 atom 仍写在行上（`Prim.num`），由 `useDef` 换上的 `.prim` 节点检查。`build` 在调用处读 universe 只为选 fused / cut / 定义，不再用来造定义项],
-    [文本定义与用户的泛型定义是同一种东西，不能有第二套 universe 读法；`DfnCut` 每次调用读 `uniPart`、`numU` 造项，就是那第二套],
+    行能跑的 atom 仍写在行上（`Prim.num`），由 `useDef` 换上的 `.prim` 节点检查。`build` 只有一条 `.prim` 规则（B10cd 已做）：无 `q` → 行；无 universe（无界）→ 行；初始段或 `r.native` atom → `Prim.cut`；其余（非 atom 的 object、其它 atom）→ 文本 `build δ q`（`Pre.textAt`）；universe 只用来选这三者，不再用来造定义项],
+    [文本定义与用户的泛型定义是同一种东西，不能有第二套 universe 读法；旧的 `DfnCut` 每次调用读 `uniPart`、`numU` 造项，就是那第二套，已随 `dfns` 一起删除],
     [`z : N ⟶ [P]`，`P = 0…5`：`z length` 的 `β` 解为 `P`，常量得到 `𝟙(P)` 为实参；`P` 是初始段，`build` 选 cut `length 𝟙(P)`],
   [3 float atom 上的 `sum`], [行按 atom 限定它的定义：`sumRow` 的定义文本只在 `t ∉ floatAtoms` 上是它的定义（定理 `Tm.sumDef_den` 的前提）；
     在 float atom 上 `sum` 是 native 行，含义 `sumDen`，有界对象上按 atom 运算的统一写法切到 universe：`F(u) sum u`。
-    限定写在行上（`Prim.native : List QAtomicType`，B10d 删 `dfns` 时由它接手 `dfns` 里的 float 分支），定理的前提读同一个字段],
+    限定写在行上（`Prim.native : List QAtomicType`，`dfns` 已删，float 分支由它承接：`r.native` atom → `Prim.cut`），定理的前提读同一个字段],
     [§4「power 与 list」的 `sum` 行已定：float 上 `⦇[0, plus]⦈` 每步舍入、`sumDen` 只舍入一次，二者不等。不用两行：q 只有一个 `sum`，
     `sumDen` 是 `sumAtoms` 上的一个含义。不进 `unproved`：名单只能变短，而这条定理在 f32 上为假],
     [f32 `[2^24, 1, 1]`：`sumDen` 得 `2^24+2`，fold 得 `2^24`；所以 f32 上运行的是行，不是文本],
@@ -247,7 +247,7 @@ asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
 
 #tbl(c-syn, (auto, 1.2fr, 1.6fr), ([决定], [规则], [理由]),
   [5 不含 `0` 的对象上的初值（Q1 = A）], [字面量只有一条规则：`obj Q = 1…5`、`w : N ⟶ [Q]` 上 `w length`、`w sum` 在该使用处报错
-    `` `length` at this call, where α is Q, β is Q: 0 is not in Q = 1…5 ``，不再是 `𝟘`。`zeroTm` 随 `dfns` 删除。
+    `` `length` at this call, where α is Q, β is Q: 0 is not in Q = 1…5 ``，不再是 `𝟘`。`zeroTm` 已随 `dfns` 删除。
     `length` 的签名不变（`[α] ⟶ β`），不把目标固定为 ℕ],
     [调用的含义是定义在调用处对象上的展开（上文单态化）：展开 `⦇[{(∗,0)}, π₁ succ]⦈ : [α] ⟶ Q` 由用户直接写出时就报这个错。
     把泛型体里的字面量切到变量的 universe，是同一段文本在泛型体内为 `𝟘`、体外报错：第二条字面量规则，并把错误换成一张看似合理的空表。
@@ -478,7 +478,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`τ` = `Λ(𝟙)`], [`𝟙` on `X` = `dom ⟨X, X⟩`（`asc → seen → gather`）→ Λ 行；Λ 中 `X` 与表共 `N` 行，`N ≥ 2^63` 拒绝],
   [`setify` = `Λ(∋)`], [`∋` 行 → Λ 行],
   [`length`], [格界 → `scan(sub)` 得宽 `e − s`；payload `m ≥ 2^63` 拒绝。是 `fold` 定义（§1、§7「`prims` 行改为
-    `fold`」）的融合形式，定理 `⟦length 行⟧ = ⟦fold 定义⟧` 即 `Tm.dfnCut_den`（已证）],
+    `fold`」）的融合形式，定理 `⟦length 行⟧ = ⟦fold 定义⟧` 即 `Tm.lengthDef_den`（已证）],
   [`at(k)`], [格界 → `scan` 测 `k < e − s` → where → `gather`（格，及 payload 第 `s + k` 个）；`m + k ≥ 2^63` 拒绝],
   [`est(Q)`], [`G = ∋`、`D = ran ⟨G, G⟩`、`V = ran G`；`Y = (D − Q(D)) − ran ⟨V, V⟩`（失败的对，去掉对角）；
     结果 `G − ⟨G, G⟩ ≫ Y ≫ π₁`。只用 `∋` `⟨,⟩` `ran` `−` `≫` `π₁` 各行，`Q` 只在一个数组内的对 `D` 上跑；
@@ -502,10 +502,10 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     （`sumAtoms`），含义是 `sumDen`（`Tab.sum_holds`）：i64 上是 `stepAt add` 的左折叠；float atom 上每个元素
     加宽到 f64、在 f64 上左折叠 `⦇0, fadd⦈`、结果舍入一次到 `t`（f32 `[2^24, 1, 1]` 得 `2^24+2`，逐步舍入会得
     `2^24`；f64 上舍入是恒等，结果不变）。融合行只用在没有 universe 的对象上；target 有 universe
-    （声明的有限对象，或泛型常量里的数变量）时 elaborator 展开 prelude 里的定义文本（行带 `prelude :=`，`Elab.dfns`：`sum` 是 `⦇[{(∗,0)}, plus]⦈`，
+    （声明的有限对象，或泛型常量里的数变量）时 elaborator 展开 prelude 里的定义文本（行带 `prelude :=`，由 `.prim` 规则选行或文本：`sum` 是 `⦇[{(∗,0)}, plus]⦈`，
     `length` 是 `⦇[{(∗,0)}, π₁ succ]⦈`，定理 `Tm.sumDef_den`、`Tm.lengthDef_den`），所以每一步都留在对象内：`−3…3` 上 `[3,3,−3] sum` 无结果（中间和 6），`1…5` 上
     `length` 被拒（fold 的基是字面量 `0`，按字面量读在目标上，`0 ∉ 1…5`）；float atom 上定义 `⦇[0, plus]⦈` 每步舍入，与 `sumDen` 不同，故
-    `Elab.dfns` 不在 float atom 上构建它（`DfnCut.sum` 要求 `t ∉ floatAtoms`），融合行照跑。造出新数的 row 必须带 `dfn`],
+    float atom（`r.native`）上规则选 `Prim.cut`，融合行照跑。造出新数的 row 必须带 `dfn`],
   [`sums`（q 的 `sums`，`x : κ×ν ⟶ γ` ↦ `κ×ν ⟶ γ`）], [`canon(x)` → 全 key 列 `seen`（组数少于行数即 `x` 不简单，
     报错并给出该位置）→ `κ` 列 `seen` 得每个 key 的首行 → `scatter(last)` 得段标 `seg` → 分段 `scan(add)`（种子 0）得
     前缀和 `W` → `scan` 测溢出（`v` 与 `W − v` 同号、`W` 异号）或 null `−2^63` → 分段 `scan(or)` 把坏步传到该 key
@@ -513,7 +513,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     做一次分段 `scan(fadd)`（种子 `+0`，自左向右，q 的顺序；`pre` 加宽到 f64，`post` `fto t`），每个前缀值是 f64
     累加值舍入一次到 `t`，该值为 `2^63`（NaN）为坏步，同样分段 `scan(or)` 传播。不排序 `canon` 之外的东西、不回置换。
     含义是组合 `agg(dom(x) (𝟙 × ≥) dom(x), F(x) sumDen)`（`rowDens` 即此组合），本行是它的融合形式（定理
-    `Tab.sums_holds`，无前提）。`Elab.dfns` 同 `asc`：待 `Elab.dfns` 能读行的关系参数],
+    `Tab.sums_holds`，无前提）。`sums` 同 `asc`：没有 prelude 文本，`build` 直接跑行],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：
     每个值换成 `t` 中表示同一个数的字（`QAtomicType.embed`，不舍入），无像时写 null 字 `2^63`（任何像都不是它：
     `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新

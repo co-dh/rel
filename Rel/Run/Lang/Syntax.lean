@@ -223,7 +223,8 @@ instance : Lean.ToExpr PrimDem where
     (`ℕ` too: a declared number object is stored as `.long`, F6) instantiated by the elaborator; `conv` the row of
     its converse; `aop` its AOP reading (`Calc.builtins`) or why it has none; `mono`: it reads its parameters
     monotonically (§e's fixed points); `prelude` and `aop` named unchecked (`Test` and `Calc` check them). A row
-    that is the fused form of a definition (§4) is keyed in `Elab.dfns`, which builds the definition. -/
+    that is the fused form of a definition (§4) carries its text in `prelude`; `build` runs the row or the text by the
+    `.prim` rule (no `q` → row; no universe → row; initial segment or `native` atom → `Prim.cut`; else `Pre.textAt`). -/
 structure Prim where
   sym : String
   sig : List ((OExp × OExp) × Option Bool) × OExp × OExp
@@ -257,7 +258,7 @@ def consRow : Prim :=
 def mapRow : Prim :=
   { sym := "F", sig := ([((.var {} "A", .var {} "B"), some false)], .list (.var {} "A"), .list (.var {} "B")),
     written := false }
--- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈` (§4, `Elab.dfns`): each step kept in the object, as `succ`,
+-- `length = ⦇[0, π₁ succ]⦈`, `sum = ⦇[0, plus]⦈` (§4, `prelude`): each step kept in the object, as `succ`,
 -- `plus` keep theirs
 def lengthRow : Prim :=
   { sym := "length", num := [("ℕ", intAtoms)], sig := ([], .list (.var {} "E"), .var {} "ℕ"),
@@ -269,19 +270,19 @@ def sumRow : Prim :=
     aop := .ok `Freyd.Alg.RelSet.ListRel.sum }
 /-- `asc(P)`: q's `asc` of the set `dom P`, `j ↦` its `j`-th smallest element in `Obj.lt` order; not `mono`: a
     larger `P` renumbers. Its definition `(dom(P) Λ(> dom(P)) length)°` is `Tm.ascDef`, proved equal to the row's
-    meaning where `dom P` has a sorted list (`Tm.ascDef_den`); it is no `Elab.dfns` row, since `build` runs the row. -/
+    meaning where `dom P` has a sorted list (`Tm.ascDef_den`); it has no text-run case, since `build` runs the row. -/
 def ascRow : Prim :=
   { sym := "asc", num := [("ℕ", intAtoms)], sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "ℕ", .var {} "B"),
     mono := false, aop := .error "AOP declares no numbering of a set by its order", dem := .whole }
 /-- `Rᴵ`: the family `R : I ⟶ A×B` as one relation `I×A ⟶ B`, the fused form of its definition
-    `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`Elab.dfns`), `R` run on the keys in demand (`Tab.flat`). -/
+    `⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂` (`prelude`), `R` run on the keys in demand (`Tab.flat`). -/
 def flatRow : Prim :=
   { sym := "flat", sig := ([((.var {} "I", .prod (.var {} "A") (.var {} "B")), some false)],
       .prod (.var {} "I") (.var {} "A"), .var {} "B"),
     prelude := `Rel.Programs.prelude.flat, written := false,
     aop := .error "AOP declares no family read as one relation of the key and the source" }
 /-- `⦇e,S⦈` given a family (§e): `e : I ⟶ V×V`, `S : (I×V)×E ⟶ I×V` as one relation `I×[E] ⟶ V`, the fused form
-    of its definition `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` (`Elab.dfns`), one fold per (key, array) in demand
+    of its definition `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` (`prelude`), one fold per (key, array) in demand
     (`GenK.foldI`). -/
 def foldIRow : Prim :=
   { sym := "foldI", sig := ([((.var {} "I", .prod (.var {} "V") (.var {} "V")), some false),
@@ -294,17 +295,17 @@ def foldIRow : Prim :=
 def starRow : Prim :=
   { sym := "star", sig := ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B"),
     prelude := `Rel.Programs.prelude.star, keyLift := true }
-/-- `dom(R) = 𝟙 ∩ R R°`, the fused form of its definition `⟨𝟙,R⟩π₁` (`Elab.dfns`), `R` run on the keys in demand
+/-- `dom(R) = 𝟙 ∩ R R°`, the fused form of its definition `⟨𝟙,R⟩π₁` (`prelude`), `R` run on the keys in demand
     (`GenK.dom`); `B` named by its parameter only (`Prim.objs`). -/
 def domRow : Prim :=
   { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"), conv := "dom",
     prelude := `Rel.Programs.prelude.dom, written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
-/-- `ran(R) = 𝟙 ∩ R° R`, the fused form of its definition `dom(R°)` (`Elab.dfns`), one column sorted where the
+/-- `ran(R) = 𝟙 ∩ R° R`, the fused form of its definition `dom(R°)` (`prelude`), one column sorted where the
     definition sorts two (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
 def ranRow : Prim :=
   { sym := "ran", sig := ([((.var {} "A", .var {} "B"), none)], .var {} "B", .var {} "B"), conv := "ran",
     prelude := `Rel.Programs.prelude.ran, written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
-/-- `[] : A ⟶ [B]`, every source to the empty list, the fused form of its definition `Λ(𝟘)` (`Elab.dfns`), a
+/-- `[] : A ⟶ [B]`, every source to the empty list, the fused form of its definition `Λ(𝟘)` (`prelude`), a
     constant column (`GenK.nil`). -/
 def nilRow : Prim :=
   { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
@@ -410,7 +411,7 @@ def prims : List Prim :=
    ascRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
    -- `agg(dom(x) (𝟙 × ≥) dom(x), F(x) ⦇[0, plus]⦈)` (`rowDens`). Not `mono`: a larger `x` changes the sums. Its
-   -- definition is, as `asc`'s, no `Elab.dfns` row. The positions `P` and the values `V` are two objects: only
+   -- definition is, as `asc`'s, no text `build` runs. The positions `P` and the values `V` are two objects: only
    -- `V` is summed, so only `V` is a number object (`num`); `P` is only ordered (`ord`)
    { sym := "sums", num := [("V", sumAtoms)], ord := ["P"],
      sig := ([((.prod (.var {} "K") (.var {} "P"), .var {} "V"), some false)], .prod (.var {} "K") (.var {} "P"),

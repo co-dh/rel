@@ -9,11 +9,12 @@ import all Init.Data.Array.Basic
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! A row of `dfns` is its definition's fused form (§4). `build` runs, in place of the definition, the fused row at an
-    unbounded object and the fused row followed by `𝟙` of the target at an initial segment `0…k`; `Tm.dfnCut_den`
-    proves each means the definition, from one fact (`chain_in`): a fold from `0` whose step never decreases the
-    value leaves `0…k` only at its result. At any other universe the definition runs: there a partial sum or count
-    may leave the object while the result is in it. `Prim.dfn_read` ties `dfns` to the rows of `DfnCut`. -/
+/-! A row with a `prelude` text is the text's fused form (§4). The `.prim` rule of `build`: no `q` → the row; no
+    universe (unbounded) → the row; an initial segment `0…k` or an `r.native` atom → `Prim.cut`, the row followed by
+    `𝟙` of the target; any other object or atom → the text `build δ q` (`Pre.textAt`). `Tm.<sym>Def_den` proves each
+    means the text, from one fact (`chain_in`): a fold from `0` whose step never decreases the value leaves `0…k`
+    only at its result. At any other universe the text runs: there a partial sum or count may leave the object
+    while the result is in it. -/
 
 namespace Rel.Lang
 

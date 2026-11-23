@@ -127,7 +127,7 @@ rel_program avgGOpen where
     x : N ⟶ [Z] ≜ {(0,[1 2 3 4])}
     print x avgG
 
--- `sum` at the object variable itself: the constant is built with φ at `.long` (`dfns` has no form at a
+-- `sum` at the object variable itself: the constant is built with φ at `.long` (the `.prim` rule has no atom at a
 -- placeholder, `Expand.once`), so a use at f64 or at a universe builds the expansion there (`Pre.call`'s `alt`),
 -- where `build` chooses the row: the fused f64 fold, the i64 one, the fold cut to `0…5`; through a second generic
 -- definition (`g`) likewise

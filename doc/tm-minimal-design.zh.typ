@@ -58,7 +58,7 @@
 ```
 
 - `E(R)`：今天是构造子 `Tm.E`，其 `den` 子句 `EDen`（`Rel/Lang/Den.lean:280`）字面上就是 `lamDen (∋ ≫ T)`，其代码 `GenK.E`（`Rel/Run/Lang/GenK.lean:311`）字面上就是 `lam (comp (ofVals Tab.mem) R)`。构造子没有带来任何东西：它是 #text(fill: c-sem)[定义]。
-- `length`：定义是 fold，行 `length`（`Tab.length`，`Rel/Run/Power.lean:26`）一次读出每个 cell 的宽度。两者相等是定理 `Tm.dfnCut_den`（`Rel/Lang/DfnLaw.lean:258`）。它是 #text(fill: c-run)[fused 行]。
+- `length`：定义是 fold，行 `length`（`Tab.length`，`Rel/Run/Power.lean:26`）一次读出每个 cell 的宽度。两者相等是定理 `Tm.lengthDef_den`（`Rel/Lang/PreludeDfn.lean`）。它是 #text(fill: c-run)[fused 行]。
 - `∋`：没有任何项与它同义，它在每个 object 上都有，是 #text(fill: c-syn)[构造子]（决定 B）。`cons` 同样不可定义，但只属于数组这个数据类型，是 #text(fill: c-rs)[native 行]。
 
 == 规则（全文只在此处陈述一次）
@@ -104,7 +104,7 @@
   [`E(R)`], [`E(R) ≜ Λ(∋ R)`], [新增 `Tm.E_den`：展开 `EDen`（`Den.lean:280`）与 `rowDens` 的 `∋` 项即得，`rfl` 级], [`GenK.E` 已是这个复合（§4.6：`∋` 行 → `≫` → `Λ`），代价不变。lifted 路径 `appliedL`（`Elab.lean:1239`）已经按定义构造。dem 相同（`lam` 恒为 true）],
   [`R × S`], [`R × S ≜ ⟨π₁ R, π₂ S⟩`], [新增 `Tm.prod_den`：`rprodMap = rpair (fst ≫ R) (snd ≫ S)`。相邻引理 `Rep.rpair_eq_meet_proj`（`Rel/Rep.lean:84`），freyd 侧 `RelSet.prodMap_eq_rprodMap`], [`build` 在任一操作数 on demand 时已经这样构造（`Elab.lean:2308-2318`）。两侧都 closed 时今天走 `Tab.prod`（CROSS）；改后 dem 由 false 变 true，closed 使用由 `closeRes` 读源 universe，该 universe 见下条],
   [积 object 的 universe], [`ran(⟨⊤(u), ⊤(v)⟩)`，`⊤(u) : 1 ⟶ A`], [`uniPart`（`Elab.lean:2130`）今天写 `.prod u v`；改为左式，`den` 相同（在 key `∗` 上的 pair 即 CROSS）], [代价相同：单 key 上的 `Tab.pair` 就是一次 CROSS。`Tm.code` 里「`prod` 不 memo」的特例（`TmGen.lean:136`）随之删除],
-  [`succ`], [`succ ≜ ⟨𝟙, ⊤ 1⟩ plus`], [新增 `Tm.succ_den`：对 `succDen`（`Den.lean:72`）与 `arithDen` 展开], [`Tab.succ`（`Rel/Run/Arith.lean:120`）是一次 `scan`；定义多一次 pair。`succ` 出现在 fold 的 step 里（`DfnCut.length`），所以保留 fused 行 `succ`],
+  [`succ`], [`succ ≜ ⟨𝟙, ⊤ 1⟩ plus`], [新增 `Tm.succ_den`：对 `succDen`（`Den.lean:72`）与 `arithDen` 展开], [`Tab.succ`（`Rel/Run/Arith.lean:120`）是一次 `scan`；定义多一次 pair。`succ` 出现在 fold 的 step 里（`prelude.length` 的 fold 步），所以保留 fused 行 `succ`],
   [`max` `min`], [`max ≜ τ(≤) π₂ ∪ τ(>) π₁`], [在非值 atom 上 `build` 已这样构造（`Elab.lean:2373-2380`）], [值 atom 上 kernel 有 `max` `min` 的 `Op`：fused 行],
   [任意 object 上的序 `lt`（决定 F）], [`lt ≜ dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)`：pair `(x,y)` 上的 test，`Λ` 把 `{x,y}` 按 `Obj.lt` 排序，`at(0)` 读出较小者], [新增 `Tm.lt_den`：由 `lamDen`（`Den.lean:244`）的 `Pairwise B.lt` 得 `(x,y) lt (x,y) ↔ B.lt x y`], [定义每对元素建一个两元数组；所以加 fused 行 `lt`（`Tab.cmpPairs`，`Div.lean:114`）。它与 §3.5 的 atom 行 `lt` 是同一行，前提见批次 B5 的未验证项],
 )
@@ -115,10 +115,10 @@
   [`dom(R)`], [`dom(R) ≜ ⟨𝟙, R⟩ π₁`。不用 `𝟙 ∩ R R°`：`R°` 在 on-demand 的 `R` 上经常不能运行（`convTm` 对 `lam` `fold` 等报错，`Elab.lean:1928-2001`）], [新增 `Tm.dom_den`：`⟨𝟙,R⟩π₁ = 𝟙 ∩ R ≫ R°`（今天的 `den` 子句），逐点三行。行的正确性已有 `GenK.dom_sound`（`GenKSpec.lean:173`）], [行 `dom` → `Tab.dom`（`Rel/Run/Canon.lean:71`，§4.5：取一列 → `asc` → `seen`）。定义多一次 pair 与一次 gather。dem：定义为 `R.dem`，与今天相同；行要有同样的 dem，见 §3.3（决定 Q）],
   [`ran(R)`], [`ran(R) ≜ dom(R°)`], [新增 `Tm.ran_den`，由 `Tm.dom_den` 得。行：`GenK.ran_sound`（`GenKSpec.lean:180`）], [行 `ran` → `Tab.ran`（`Canon.lean:67`）。定义要先 `Tab.conv`（两列重排序），行只排一列],
   [`nil`], [`nil ≜ Λ(𝟘)`], [新增 `Tm.nil_den`：`lamDen 𝟘 a ys ↔ ys = []`（`lamDen`，`Den.lean:244`；`nilDen`，`Den.lean:66`）。行：`Tab.nil_holds`（`RepTabDiv.lean:23`）], [行 `nil` → `Tab.nil`（`Rel/Run/Div.lean:64`），常数列。`nil` 是每个 fold 的初值，所以保留行],
-  [`est(Q)`], [`est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)`。`∈ \ S°` 是最大的 `Y` 使 `∈ Y ⊑ S°`：`xs Y b` 则 `xs` 的每个 `c` 满足 `b S c`], [新增 `Tm.est_den`：等于 `estDen`（`Den.lean:239`）。`∪ 𝟙` 正是 `estDen` 里的 `c ≠ b`，所以不需要 `Q` 自反的假设。行：`Tab.est_holds`（`RepTabDiv.lean:2651`）、`GenK.est_sound`（`GenKEst.lean:14`）], [行 `est`，参数是 pair test `τ(Q)`，与 `thinL` `merge` 同形（`Prim.sig` 的 `some true`，`GenK.testVals`，`GenK.lean:369`）→ `Tab.est`（`Power.lean:49`）。数组 object 没有 universe，定义里的 `\` 不能运行，所以该处永远选行（`DfnCut.fused` 的既有规则）。lifted 路径已按定义构造（`Elab.lean:1439-1446`）],
+  [`est(Q)`], [`est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)`。`∈ \ S°` 是最大的 `Y` 使 `∈ Y ⊑ S°`：`xs Y b` 则 `xs` 的每个 `c` 满足 `b S c`], [新增 `Tm.est_den`：等于 `estDen`（`Den.lean:239`）。`∪ 𝟙` 正是 `estDen` 里的 `c ≠ b`，所以不需要 `Q` 自反的假设。行：`Tab.est_holds`（`RepTabDiv.lean:2651`）、`GenK.est_sound`（`GenKEst.lean:14`）], [行 `est`，参数是 pair test `τ(Q)`，与 `thinL` `merge` 同形（`Prim.sig` 的 `some true`，`GenK.testVals`，`GenK.lean:369`）→ `Tab.est`（`Power.lean:49`）。数组 object 没有 universe，定义里的 `\` 不能运行，所以该处永远选行（`.prim` 规则「无 universe → 行」）。lifted 路径已按定义构造（`Elab.lean:1439-1446`）],
   [`front(Q)`], [`front(Q) ≜ Λ(∋ − ∋ (Q − Q°))`：去掉被别的元素严格压过的元素], [新增 `Tm.thin_den`：等于 `thinDen`（`Den.lean:284`）。行：`Tab.thin_den`（`RepTabDiv.lean:2705`）、`GenK.thin_sound`（`GenKEst.lean:20`）], [行 `front` → `Tab.thin`（`Power.lean:63`）。`Q` closed 时定义可直接运行，但要把整张 `Q` 与成员表连接；行只在同一数组内的元素对上读 `Q`。按决定 P 改名，名字见决定 U],
   [`foldI(e,S)`], [`foldI(e,S) ≜ ⟨π₂ ⦇e,S⦈, π₁⟩ dom(π₁π₁ ∩ π₂) π₁π₂`：carrier 为 `I×V` 的一个 `fold`，再按 key 取出], [已有 `foldIDen_eq`（`Den.lean:188`）。行：`GenK.foldI_sound`（`GenKFold.lean:348`）], [行 `foldI` → `GenK.foldI`（`GenK.lean:353`）。定义在每个数组上为 `e` 的所有 key 设初值；行只为与该数组配对的 key 设初值。这回答了架构 §7 的「先验证两者确实可写出」：可写出，但须留行],
-  [`length` `sum` `flat`], [已有：`DfnCut`（`Elab.lean:2056-2063`）], [已有：`Tm.dfnCut_den`], [不变；定义的文本移入 prelude（§6）],
+  [`length` `sum` `flat`], [prelude 文本（§6，已做）], [`Tm.<sym>Def_den`], [一条 `.prim` 规则选行 / `Prim.cut` / 文本],
   [`asc(P)`], [`asc(P) ≜ (dom(P) Λ(> P) length)°`，其中 `>` 是任意 object 上的序], [无：没有定理把 `ascDen`（`Rel/AscOrder.lean:34`）与它等同（`Syntax.lean:292-294`）；批次 B5 的未验证项], [行 `asc` → `Tab.asc`（`Rel/Run/Asc.lean:20`）。`>` 用 §3.1 的 `lt`（决定 F）],
   [`star(R)`], [`star(R) ≜ μX : 𝟙 ∪ R X`], [新增 `Tab.star_holds`], [见 §4],
 )
@@ -157,7 +157,7 @@
 (2,3) {(U×U) plus U} 5          // 有界 object 上的 plus：elaborator 在两侧复合 U
 ```
 
-统一为第二种：每个 atom 运算是一行，签名只含 atom object，行里没有 universe；有界 object 上的运算由 elaborator 写成 `⟨π₁U, π₂U⟩ 行 U`。这正是 `DfnCut.cut`（`Elab.lean:2066-2082`）对 `length` `sum` 已经做的事。
+统一为第二种：每个 atom 运算是一行，签名只含 atom object，行里没有 universe；有界 object 上的运算由 elaborator 写成 `⟨π₁U, π₂U⟩ 行 U`。这正是 `Prim.cut` 对 `length` `sum` 做的事。
 
 #tbl(c-rs, (auto, 1fr, 1fr), ([运算], [归属], [说明]),
   [`plus minus times div mod divide`], [native 行，各 atom `t` 一个实例], [→ `Tab.arith`（`Arith.lean:104`），§4.5 的 `scan` 链不变。`den`：`arithDen`（`Den.lean:127`）去掉 `U`],
@@ -325,7 +325,7 @@ sort(≤)     今天：arg (call … prelude.sort …)   // 定义，体内联
 )
 
 - `den`：`Val` 增加常量环境，按依赖顺序对表折叠得到（定义不递归；`Code.shares` 今天就是这样折叠 slot 的）。`Tm.den` 仍是结构递归，因为体不再内联。
-- DRY：表是唯一来源。`rowDens`、`kernRows`、`rowGens`、`Elab.dfns`、`Prim.prelude`、`Shares` 今天是六张按名字对齐的表（`#guard rowGens.length = kernRows.length`，`TmGen.lean:129`）；改后前五张是同一张表的字段。
+- DRY：表是唯一来源。`rowDens`、`kernRows`、`rowGens`、`Prim.prelude`、`Shares` 是五张按名字对齐的表（`Elab.dfns` 已并入 `Prim.prelude`，B10cd）（`#guard rowGens.length = kernRows.length`，`TmGen.lean:129`）；改后前五张是同一张表的字段。
 - 这是 IR 吗：不是第二种项。程序 = `Consts` 表 + 若干 `Tm`；表里共享部分的项由 `Tm.number` 生成。
 
 == 逆表
@@ -369,21 +369,12 @@ sort(≤)     今天：arg (call … prelude.sort …)   // 定义，体内联
 
 = fused 行的选择：一个机制
 
-今天有两个机制，都做「用行替换定义」：
+已完成（B10cd）：只有一个机制，键是 `Prim.prelude`（行指名它的定义；不需要 §5.1 的表）。原来的第二个机制（Lean 里构造 `Tm` 的 `Elab.dfns` 加 `DfnCut`）已删除。
 
-#tbl(c-run, (auto, 1fr, 1fr), ([], [`Prim.prelude` + `useDef`], [`Elab.dfns` + `DfnCut`]),
-  [谁写定义], [prelude 文本（`filter` `takewhile` `tails` `prefix` `suffix` `concat`）], [Lean 里构造的 `Tm`（`length` `sum` `flat`），prelude 里没有],
-  [用户写什么], [定义名], [行名],
-  [替换], [`Expand.useDef`（`Expand.lean:41-58`）按常量名换成 `.prim`], [`build` 按 universe 选 `fused` / `cut` / 定义（`Elab.lean:2330-2363`）],
-  [定理], [无：「named unchecked」，由 `Test` 与 `Calc` 检查], [`Tm.dfnCut_den`，并由 `Prim.dfn_read` 锁定行的名单],
-)
-
-合并为一个，键是 `Prim.prelude`（行指名它的定义；不需要 §5.1 的表）：
-
-- 定义的文本一律在 prelude。`length ≜ ⦇[0, π₁ succ]⦈`、`sum`、`flat` 从 `DfnCut` 的 Lean 构造移为 prelude 文本；`DfnCut` 只保留「按 universe 选 fused / cut / 定义」的规则，其定义项由 `callTm` 读自行的 `prelude` 常量。`Elab.dfns` 删除。
-- 用户写的永远是定义名；行没有独立的 surface 名字。`Op.table`（`Syntax.lean:323-336`）里 `dom ran E est front nil` 等项改为 prelude 常量。
-- 选择规则不变（`Elab.lean:2330-2363`）：不需要 universe 或 universe 无界 → 行；universe 是初始段 → `cut`；否则 → 定义。
-- 每个 fused 项必须有定理。今天「unchecked」的六行（`filter` 等）成为待证义务，列在批次 B10；证出之前留在一个显式的 `unproved` 名单里，名单只能变短。
+- 定义的文本一律在 prelude。`length ≜ ⦇[0, π₁ succ]⦈`、`sum`、`flat` 是 prelude 文本，定义项由 `callTm` 读自行的 `prelude` 常量。`Elab.dfns`、`DfnCut`、`zeroTm`、`Tm.dfnCut_den` 已删除。
+- 用户写的永远是定义名；行没有独立的 surface 名字。`Op.table` 里 `dom ran E est front nil` 等项是 prelude 常量。
+- `build` 对 `.prim` 节点只有一条规则：无 `q` → 行；无 universe（无界）→ 行；初始段或 `r.native` atom → `Prim.cut`（行后接目标上的 `𝟙`）；其余（非 atom 的 object、其它 atom）→ 文本 `build δ q`（`Pre.textAt`）。
+- 每个 fused 项都有定理 `Tm.<sym>Def_den`：它是关于 `prelude.<sym>.body` 的（`Tm.instObj` 在任意 object 上）。`Rel/Lang/PreludeDen.lean` 的检查枚举带 `prelude` 的行，要求定理存在且其类型提到该行的体常量 `<prelude>.body`；`unproved` 名单为空。
 
 = 对各部分的改动汇总
 
