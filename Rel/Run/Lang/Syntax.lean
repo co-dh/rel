@@ -143,6 +143,9 @@ def Tup.char? : Tup → Option String
   | .arr [.leaf w] => if (charOf w.toUTF8.toList).isSome then some w else none
   | _ => none
 
+/-- The words of the elements of the range `lo…hi`, ascending. -/
+def rangeWords (lo hi : Int) : List String := (List.range (hi + 1 - lo).toNat).map fun k : Nat => toString (lo + k)
+
 /-- A term of §c. `name` is a program's definition or parameter; `op` a builtin with its objects and arguments;
     `app` a program's operator applied. Composition is juxtaposition. -/
 inductive Expr
@@ -168,12 +171,16 @@ inductive Expr
   | fix (p : Pos) (least : Bool) (x : String) (body : Expr)
   /-- `body where x ≜ e`: the item `e` computed once, `x` in `body` its parameter (`Elab.callOf`). -/
   | whr (p : Pos) (x : String) (e body : Expr)
+  /-- `⟨v ∈ V ↦ body⟩`: `body` at each element `w` of the object `V` (`v` the literal `{(∗,w)} : 1 ⟶ V`), the results
+      nested pairs left to right. `V` may be an object variable: the elements are read at each use, where the call
+      has solved it (`Elab.elabE`; F1). -/
+  | each (p : Pos) (v : String) (o : OExp) (body : Expr)
   deriving Repr, Inhabited
 
 /-- The position a term starts at. -/
 def Expr.pos : Expr → Pos
   | .name p _ | .op p .. | .app p .. | .bin p .. | .inf p .. | .conv p _ | .compl p _ | .pair p .. | .junc p .. | .fold p ..
-  | .lit p .. | .fix p .. | .col p .. => p
+  | .lit p .. | .fix p .. | .col p .. | .each p .. => p
   | .comp a _ | .whr _ _ _ a => a.pos
 
 /-- The atom the counting rows (`length`, `succ`, the positions of `positions`, `asc`) run on. -/
@@ -439,6 +446,7 @@ partial def Expr.subst (σ : List (String × Expr)) : Expr → Expr
   -- `x` is bound in the body, so an outer `x` is not replaced there
   | .fix p l x b => .fix p l x (b.subst (σ.filter (·.1 != x)))
   | .whr p x e b => .whr p x (e.subst σ) (b.subst (σ.filter (·.1 != x)))
+  | .each p v o b => .each p v o (b.subst (σ.filter (·.1 != v)))
 
 /-- Every name `e` mentions, bound or free, operators applied included: a variable not among them captures nothing
     in `e`. -/
@@ -453,6 +461,7 @@ partial def Expr.names : Expr → List String
   | .lit .. | .col .. => []
   | .fix _ _ x b => x :: b.names
   | .whr _ x e b => x :: (e.names ++ b.names)
+  | .each _ v _ b => v :: b.names
 
 /-- A body: a relation, or a test `e ⊑ f` (§e). -/
 inductive Body
@@ -595,6 +604,7 @@ partial def Expr.render (l : Nat) (full : Bool := false) : Expr → String
     let s := s!"{if least then "μ" else "ν"}{x} : {b.render 0 full}"; if full || l ≥ 1 then s!"({s})" else s
   -- printed as its expansion, the item in place, so a message reads the term as written in use
   | .whr _ x e b => (b.subst [(x, e)]).render l full
+  | .each _ v o b => s!"⟨{v} ∈ {o.show} ↦ {b.render 0 full}⟩"
 
 def Expr.show (e : Expr) : String := e.render 0
 
