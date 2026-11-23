@@ -414,37 +414,79 @@ theorem concat_split {R S C : Tab k v} (h : R.concat S = .ok C) (hR : R.WF) (hS 
     · rw [rk, dif_neg (by simp)]; simpa using ha
     · rw [rv, dif_neg (by simp)]; simpa using hb
 
-/-- **A segmented `kscan` over runs is a prefix fold per run**: `Kk` names each row's run (`hruns`) and the segment
-marks are `0` exactly off the runs' first rows, so row `i` of the scan holds `fn` (the total `op`) folded from `z`
-over `x` at the rows `≤ i` of `i`'s run, in row order. -/
-theorem runScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
-    {α : Type} [DecidableEq α] {n : USize} {Kk : Nat → α}
+/-- **A `foR` column read at `t` is its `i64` words cut to `t`'s width** (`raw_foR`). -/
+theorem _root_.Rel.raw_foR_cut {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1) (n : USize) {e : Enc}
+    {M P : ByteArray} (he : e = .foR M P) : Enc.raw t n e =
+      (Enc.raw .i64 n e).map fun x => UInt64.ofNat (x.toNat % 2 ^ (8 * w)) := by
+  have hw : w ≤ 8 := by cases t <;> simp [QAtomicType.width] at ht hb ⊢ <;> omega
+  subst he; rw [raw_foR t w ht hb, raw_foR .i64 8 rfl (by decide), Array.map_map]
+  refine Array.ext (by simp) fun i _ _ => ?_
+  simp only [Array.getElem_map, Function.comp_apply, UInt64.toNat_ofNat']
+  rw [Nat.mod_mod_of_dvd _ (Nat.pow_dvd_pow 2 (by omega : 8 * w ≤ 64)), Nat.mod_mod_of_dvd _ (Nat.pow_dvd_pow 2 (by omega : 8 * w ≤ 8 * 8))]
+
+/-- **`kscan`'s answer does not depend on its type `t` but through the `u1` cut**: at a `t` of a width that is not
+`u1` it is the answer at `i64`, whose read keeps every word whole. -/
+theorem _root_.Rel.kscan_i64 {op : Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1)
+    {n : USize} {seg : Option Enc} {es : List Enc} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
+    (h : kscan op rev s t n seg es pre post = .ok r) : ∃ v, kscan op rev s .i64 n seg es pre post = .ok (r.1, v) := by
+  unfold kscan at h ⊢
+  by_cases hd : kscanRefuses op n es pre post = true
+  · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind] at h
+  simp only [hd, Bool.false_eq_true, if_false, bind, Except.bind, pure, Except.pure] at h ⊢
+  split at h; · cases h
+  rename_i g hg
+  split at h; · cases h
+  rename_i cs hc
+  split at h; · cases h
+  rename_i c cs'
+  split at h; · cases h
+  rename_i out₀ hf
+  split at h; · cases h
+  rename_i out hp
+  rw [ht] at h
+  simp only [hb, ↓reduceIte, Except.ok.injEq] at h
+  subst h
+  exact ⟨_, by simp only [QAtomicType.width, show QAtomicType.i64 ≠ .u1 by decide, ↓reduceIte]; rfl⟩
+
+/-- **A segmented `kscan` over runs is a prefix fold per run, at any read type and chains**: `Kk` names each row's run
+(`hruns`) and the segment marks are `0` exactly off the runs' first rows; every word read at `s` goes through
+`chain pre` (`pw`), the seed column's to `z`, and every answer through `chain post` (`pf`). So row `i` of the scan read
+at `t` is `pf` of `fn` (the total `op`) folded from `z` over the `pw` words of `x` at the rows `≤ i` of `i`'s run, in
+row order, cut to `t`'s width (`raw_kscanChain`). -/
+theorem runScanChain_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+    {α : Type} [DecidableEq α] {s t : QAtomicType} {w : Nat} (ht : t.width = some w) {n : USize} {Kk : Nat → α}
     (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a)
-    {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
+    {pre post : List (Op × UInt64)} {pw pf : UInt64 → UInt64} (hpre : ∀ a, chain pre a = .ok (pw a))
+    (hpost : ∀ a, chain post a = .ok (pf a)) {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
     (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
-    (h3 : colConst n z = .ok zc) (h4 : kscan op false .i64 .i64 n seg [zc, x] = .ok (sc, v)) :
-    (Enc.raw .i64 n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw .i64 n sc)[i]?.getD 0 =
-      (((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q =
-        Verify.groupOf Kk n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+    (hz : ∀ i < n.toNat, pw ((Enc.raw s n zc)[i]?.getD 0) = z)
+    (h4 : kscan op false s t n seg [zc, x] pre post = .ok (sc, v)) :
+    (Enc.raw t n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw t n sc)[i]?.getD 0 = UInt64.ofNat ((pf
+      ((((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat i).map
+        fun q => pw ((Enc.raw s n x)[q]?.getD 0)).foldl fn z)).toNat % 2 ^ (if t = .u1 then 1 else 8 * w)) := by
   have fs := firsts_spec Kk n.toNat
   -- the scan: each row folds its own word into the previous row's, or into `z` on a first row
-  obtain ⟨-, -, c, cs, hccs, out, hos, hsc, -, hrow⟩ := raw_kscan op false .i64 .i64 8 rfl n seg [zc, x] _ h4
-  obtain ⟨rfl, rfl⟩ := List.cons.inj hccs
-  have hout : Enc.raw .i64 n sc = out := by
-    refine hsc.trans (Array.ext (by simp) fun i h1 h2 => ?_)
-    simp only [Bool.false_eq_true, ↓reduceIte, Array.getElem_map]
-    show UInt64.ofNat (out[i].toNat % 2 ^ 64) = out[i]
-    rw [Nat.mod_eq_of_lt (by have := out[i].toNat_lt_size; simp at this ⊢; omega)]
-    exact UInt64.ofNat_toNat
-  have hstep : ∀ i < n.toNat, out[i]?.getD 0 = fn (if 0 < i ∧ (Enc.raw .u1 n seg)[i]?.getD 0 = 0
-      then out[i - 1]?.getD 0 else z) ((Enc.raw .i64 n x)[i]?.getD 0) := by
+  obtain ⟨g, hg, c, cs, hc, out₀, out, hos, hp, he, -, hrow⟩ :=
+    raw_kscanChain op false s t w ht n seg [zc, x] pre post _ h4
+  obtain ⟨rfl, -⟩ := rawAll_ok (show rawAll .u1 n seg = .ok g from hg)
+  obtain ⟨hl, hP⟩ := mapM_chain hc
+  obtain ⟨c1, rfl⟩ : ∃ c1, cs = [c1] := by
+    match cs, hl with
+    | [c1], _ => exact ⟨c1, rfl⟩
+  have hw : ∀ e a, (e, a) ∈ [zc, x].zip [c, c1] → ∀ i < n.toNat, a[i]?.getD 0 = pw ((Enc.raw s n e)[i]?.getD 0) :=
+    fun e a hm i hi => by
+      have := (hP _ hm).2.2 i hi; rw [hpre] at this; exact (Except.ok.inj this).symm
+  have hc0 := hw zc c (by simp); have hc1 := hw x c1 (by simp)
+  have hstep : ∀ i < n.toNat, out₀[i]?.getD 0 = fn (if 0 < i ∧ (Enc.raw .u1 n seg)[i]?.getD 0 = 0
+      then out₀[i - 1]?.getD 0 else z) (pw ((Enc.raw s n x)[i]?.getD 0)) := by
     intro i hi
     have e := hrow i (by omega)
     simp only [List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte, List.foldlM_cons, List.foldlM_nil,
-      hop, colConst_raw h3, Array.getElem?_replicate, hi, Option.getD_some, bind_pure, Except.ok.injEq] at e
+      hop, hc0 i hi, hz i hi, hc1 i hi, bind_pure, Except.ok.injEq] at e
     rw [Array.getElem?_eq_getElem (by omega), Option.getD_some]; exact e.symm
-  have claim : ∀ i < n.toNat, out[i]?.getD 0 = (((List.range (i + 1)).filter fun q =>
-      Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+  have claim : ∀ i < n.toNat, out₀[i]?.getD 0 = (((List.range (i + 1)).filter fun q =>
+      Verify.groupOf Kk n.toNat q = Verify.groupOf Kk n.toNat i).map
+        fun q => pw ((Enc.raw s n x)[q]?.getD 0)).foldl fn z := by
     intro i
     induction i with
     | zero => intro hi; rw [hstep 0 hi]; simp
@@ -471,7 +513,28 @@ theorem runScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x,
             have hq := List.mem_range.1 hq
             exact ((fs.2.1 _).1 hm).2 q hq ((fs.2.2.1 q (by omega) (i + 1) hi).1 e)
         rw [if_neg fun h => hs h.2, hnil]; rfl
-  exact ⟨by rw [hout]; exact hos, fun i hi => by rw [hout]; exact claim i hi⟩
+  obtain ⟨hps, hpw⟩ := chainAll_ok hp
+  simp only [Bool.false_eq_true, ↓reduceIte] at he
+  refine ⟨by rw [he]; simp [hps, hos], fun i hi => ?_⟩
+  have e := hpw i (by omega)
+  rw [hpost, claim i hi] at e
+  rw [he, Array.getElem?_map, Array.getElem?_eq_getElem (by omega), Option.map_some, Option.getD_some,
+    ← Option.getD_some (a := out[i]) (b := 0), ← Array.getElem?_eq_getElem (by omega), ← Except.ok.inj e]
+
+/-- **A segmented `kscan` over runs is a prefix fold per run** (`runScanChain_ok` at `i64`, no chains, the seed
+`colConst n z`): row `i` of the scan holds `fn` folded from `z` over `x` at the rows `≤ i` of `i`'s run. -/
+theorem runScan_ok {op : Op} {fn : UInt64 → UInt64 → UInt64} (hop : ∀ a x, op.eval a x = .ok (fn a x))
+    {α : Type} [DecidableEq α] {n : USize} {Kk : Nat → α}
+    (hruns : ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → Kk a = Kk c → Kk b = Kk a)
+    {z : UInt64} {seg zc x sc : Enc} {v : Option UInt64}
+    (hsu : ∀ i < n.toNat, ((Enc.raw .u1 n seg)[i]?.getD 0 = 0 ↔ i ∉ firstsOf Kk n.toNat))
+    (h3 : colConst n z = .ok zc) (h4 : kscan op false .i64 .i64 n seg [zc, x] = .ok (sc, v)) :
+    (Enc.raw .i64 n sc).size = n.toNat ∧ ∀ i < n.toNat, (Enc.raw .i64 n sc)[i]?.getD 0 =
+      (((List.range (i + 1)).filter fun q => Verify.groupOf Kk n.toNat q =
+        Verify.groupOf Kk n.toNat i).map ((Enc.raw .i64 n x)[·]?.getD 0)).foldl fn z := by
+  obtain ⟨hs, hr⟩ := runScanChain_ok (w := 8) hop rfl hruns (pw := id) (pf := id) (fun _ => rfl) (fun _ => rfl) hsu
+    (fun i hi => by rw [colConst_raw h3, Array.getElem?_replicate, if_pos hi]) h4
+  exact ⟨hs, fun i hi => by rw [hr i hi]; exact ofNat_toNat_mod64 _⟩
 
 /-- **The segment marks of `kseen`'s groups** (`groupFold`'s and `Tab.sums`'s): ones `kscatter`ed to the first rows `f`,
 read as booleans, are `0` exactly off the groups' first rows, the form `runScan_ok` folds by. -/
