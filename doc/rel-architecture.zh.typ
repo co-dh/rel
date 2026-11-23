@@ -414,7 +414,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     结果不展开（草稿，待审）：`≫` 选了位矩阵就返回 `Rel.bits`（`Tab.compSelM`），下一个运算若也读位矩阵则直接接上——
     `tab ≫ bits` 以左表值在 `bits` 行值中的序号选行，再 `bitrows`（`Tab.compTabMat`，输出 `≤ 2²⁷` 位时）；
     `bits ∩ tab` 以两侧在行值、列值中的序号取位 `o[a·w+c]` 过滤表（`Tab.keepBits`）；`R \ bits`、`bits ≫ S`、`∪`、`−` 先读成行。
-    `rdiv` 经 `Tab.ldivSel`（`R/S = (S° \ R°)°`）同样可选位矩阵],[`Tab.compBits_comp`：`compBits R S = .ok X`、`comp R S = .ok Y` ⟹ `X.Holds = Y.Holds`；`Tab.ldivBits_ldiv`：`ldivBits` 对 `ldiv` 同式（由 `raw_kbitrows`、`csr_spec`、`colCat_raw`、`Tab.compBits_holds`、`Tab.ldivBits_holds` 证，`Rel/RepBits.lean`）。只证所表的关系相同；输出为 `Canon`（与 `Tab.comp` 的行序相同）未证：仓库中尚无从 `kasc` 秩序到 `Obj.lt` 的桥，现由 `Rel/BitsTest.lean` 的 `#guard` 对照], [`Tab.compBits` `Tab.ldivBits`],
+    `rdiv` 经 `Tab.ldivSel`（`R/S = (S° \ R°)°`）同样可选位矩阵],[`Tab.compBits_comp`：`compBits R S = .ok X`、`comp R S = .ok Y` ⟹ `X.Holds = Y.Holds`；`Tab.ldivBits_ldiv`：`ldivBits` 对 `ldiv` 同式（由 `raw_kbitrows`、`csr_spec`、`colCat_raw`、`Tab.compBits_holds`、`Tab.ldivBits_holds` 证，`Rel/RepBits.lean`）。输出为 `Canon`（与 `Tab.comp` 的行序相同）：`Tab.compBits_eq`、`Tab.ldivBits_eq` 证 `X.toList = Y.toList`（`Tab.ofBits_sorted`：位按行主序读出，`Vals.code_lt`：编号按 `Obj.lt` 升序；`Tab.toList_eq_of_lt`：同一关系、都严格升序则行表相同），`Rel/BitsTest.lean` 的 `#guard` 保留 ✅ fecfe1b（原：只证所表的关系相同；输出为 `Canon` 未证：仓库中尚无从 `kasc` 秩序到 `Obj.lt` 的桥，现由 `#guard` 对照）], [`Tab.compBits` `Tab.ldivBits`],
 )
 - `AscKey` 的 `cells`（草稿，待审）：一个 `arr` 侧作一个键，列的每个字是格号，格 = `[lo, hi)` 夹到共享 payload
   `[0, c)`；`els` 是 payload 的键列。两格按元素逐个比较序码（字典序），真前缀在前；格长相同且各元素序码相等才相等。
