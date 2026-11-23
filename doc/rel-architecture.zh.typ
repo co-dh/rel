@@ -128,7 +128,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   证明连到 Lean 定义为止。`@[extern]` kernel 的 Rust 实现只由 `decide`（kernel 中用 Lean body 算）与 `#guard`
   （运行编译后的 Rust）成对测试；Lean 编译器本身是信任基。kernel 越少，这条只有测试的边界越窄。
   读入侧也在这条边界内：文件字节读成表（`own_map` 的 `own::check`、`csv_read`）没有 Lean 模型能证明「读到的表就是文件的含义」，
-  写出的文件能读回（往返律）同样只有测试。]
+  写出的文件能读回（往返律）同样只有测试。
+  分配失败也在这条边界内：Lean body 没有分配失败，所以类型是 `Except` 的 kernel 在 Rust 侧可以返回
+  `"<kernel>: cannot allocate <bytes> bytes for <what>"`，而它的 Lean body 在同一输入上是 `.ok`；`_ = .ok _` 的定理
+  说的是 body。类型是纯的 extern（`Coc.encode`）与 Lean 运行时自己的分配（答案数组）失败时带消息停止。]
 
 
 // ───────────────────────────── 1
