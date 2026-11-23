@@ -185,10 +185,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
   [power], [`lam`（Λ） `mem`（`∋`）；`E` → 定义；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
-  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）在有序 atom 上是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），在其它 object 上是 `Tm.cmpDef c U`（`Tm.cmpDef_den`；`c` 是 prelude 的 `lt` `le`，`Pre.lt` 的 `df` 字段，已定 9），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是定义 `Tm.ascDef = (dom(P) Λ(> dom(P)) length)°`（含义 `Tm.asc_den`），行 `asc`（`ascRow`）是 fused 行],
+  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）在有序 atom 上是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），在其它 object 上是 `Tm.cmpDef c U`（`Tm.cmpDef_den`；`c` 是 prelude 的 `lt` `le`，`Pre.lt` 的 `df` 字段，已定 9），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是 prelude 定义 `asc ≜ (dom(P) Λ(> dom(P)) length)°`（即 `Tm.ascDef`，含义 `Tm.ascDef_den`），行 `asc`（`ascRow`，`prelude := prelude.asc`）是它的 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
   [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删；闭部分的共享槽是零元 `call`，`share` 已删）],
-  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有定义 `Tm.ascDef`），在某个类型上实例化，参数由 `arg` 给出],
+  [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有 prelude 定义 `asc`（`Tm.ascDef`）），在某个类型上实例化，参数由 `arg` 给出],
   [三层], [上面只列 `Tm` 的构造子（今天 30 个，目标 28 个：再删 `leq` `lt`）。其余运算在另两层：prelude 里的一条 point-free 定义；`prims` 的一行，是某条定义的快速实现并由定理 `行.den = 定义.den` 绑定（fused 行），或不可定义的 native 行。判定规则见 `doc/tm-minimal-design.zh.typ` §1.2],
 )
 
@@ -522,7 +522,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     做一次分段 `scan(fadd)`（种子 `+0`，自左向右，q 的顺序；`pre` 加宽到 f64，`post` `fto t`），每个前缀值是 f64
     累加值舍入一次到 `t`，该值为 `2^63`（NaN）为坏步，同样分段 `scan(or)` 传播。不排序 `canon` 之外的东西、不回置换。
     含义是组合 `agg(dom(x) (𝟙 × ≥) dom(x), F(x) sumDen)`（`rowDens` 即此组合），本行是它的融合形式（定理
-    `Tab.sums_holds`，无前提）。`sums` 同 `asc`：没有 prelude 文本，`build` 直接跑行],
+    `Tab.sums_holds`，无前提）。`sums` 没有 prelude 文本，`build` 直接跑行],
   [`$`（`x $ F`，`x : A ⟶ N` ↦ `A ⟶ F`，只在 `castOK N F` 的原子对之间）], [`scan` map（`Op.cast s t`，在编码列上）：
     每个值换成 `t` 中表示同一个数的字（`QAtomicType.embed`，不舍入），无像时写 null 字 `2^63`（任何像都不是它：
     `word_ne_nul`）→ `scan` map（`Op.ne`，对常量列 `2^63`）得 0/1 标志 → where（`keep`）→ `canon`。无新 kernel、无新
