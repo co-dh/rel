@@ -77,8 +77,8 @@ inductive OExp
     `Tm` constructors; `map` runs as its row (`Op.row`), kept a constructor for `Calc.toTerm`'s reading as a relator. -/
 inductive Op
   | id | zero | top | outl | outr | inl | inr | mem | leq | lt | succ | arith (k : UInt8)
-  | nil | alpha | prim (s : String)
-  | dom | ran | lam | E | est | front | map
+  | alpha | prim (s : String)
+  | lam | E | est | map
   /-- `hylo(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
       name programs define (Party), so the builtin is `hylo`. -/
   | hylo
@@ -264,7 +264,8 @@ def ascRow : Prim :=
 def flatRow : Prim :=
   { sym := "flat", sig := ([((.var {} "I", .prod (.var {} "A") (.var {} "B")), some false)],
       .prod (.var {} "I") (.var {} "A"), .var {} "B"),
-    written := false, aop := .error "AOP declares no family read as one relation of the key and the source" }
+    prelude := `Rel.Programs.prelude.flat, written := false,
+    aop := .error "AOP declares no family read as one relation of the key and the source" }
 /-- `⦇e,S⦈` given a family (§e): `e : I ⟶ V×V`, `S : (I×V)×E ⟶ I×V` as one relation `I×[E] ⟶ V`, the fused form
     of its definition `(π₁π₁° ∩ π₂⦇ran⟨𝟙,eπ₂⟩, S ∩ π₁π₁π₁°⦈)π₂` (`Elab.dfns`), one fold per (key, array) in demand
     (`GenK.foldI`). -/
@@ -272,7 +273,8 @@ def foldIRow : Prim :=
   { sym := "foldI", sig := ([((.var {} "I", .prod (.var {} "V") (.var {} "V")), some false),
       ((.prod (.prod (.var {} "I") (.var {} "V")) (.var {} "E"), .prod (.var {} "I") (.var {} "V")), some false)],
       .prod (.var {} "I") (.list (.var {} "E")), .var {} "V"),
-    written := false, aop := .error "AOP declares no fold of a family read as one relation of the key and the list" }
+    prelude := `Rel.Programs.prelude.foldI, written := false,
+    aop := .error "AOP declares no fold of a family read as one relation of the key and the list" }
 /-- `star(R) ≜ μX : 𝟙 ∪ R X`, the prelude's, run as its fused form `Tab.star` (semi-naive, on the keys in demand, so
     also on an object with no universe, where the closed `μ` cannot run). -/
 def starRow : Prim :=
@@ -282,17 +284,17 @@ def starRow : Prim :=
     (`GenK.dom`); `B` named by its parameter only (`Prim.objs`). -/
 def domRow : Prim :=
   { sym := "dom", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "A", .var {} "A"), conv := "dom",
-    written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
+    prelude := `Rel.Programs.prelude.dom, written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `ran(R) = 𝟙 ∩ R° R`, the fused form of its definition `dom(R°)` (`Elab.dfns`), one column sorted where the
     definition sorts two (`GenK.ran`); `A` named by its parameter only (`Prim.objs`). -/
 def ranRow : Prim :=
   { sym := "ran", sig := ([((.var {} "A", .var {} "B"), some false)], .var {} "B", .var {} "B"), conv := "ran",
-    written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
+    prelude := `Rel.Programs.prelude.ran, written := false, dem := .arg, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `[] : A ⟶ [B]`, every source to the empty list, the fused form of its definition `Λ(𝟘)` (`Elab.dfns`), a
     constant column (`GenK.nil`). -/
 def nilRow : Prim :=
   { sym := "nil", sig := ([], .var {} "A", .list (.var {} "B")),
-    written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
+    prelude := `Rel.Programs.prelude.nil, written := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- `est(Q) ≜ ∋ ∩ (∈ \ (Q ∪ 𝟙)°)` given `Q` as its pair test (`Tab.est`): written as its `Op`, which
     `Calc.toTerm` reads (`Op.row`). The array object has no universe for `\`, so the row always runs. -/
 def estRow : Prim :=
@@ -302,7 +304,8 @@ def estRow : Prim :=
     more elements. -/
 def frontRow : Prim :=
   { sym := "front", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .list (.var {} "B")),
-    written := false, mono := false, aop := .error "a row of the allegory, not of AOP's catalogue" }
+    prelude := `Rel.Programs.prelude.front, written := false, mono := false,
+    aop := .error "a row of the allegory, not of AOP's catalogue" }
 /-- The value verb `s` of `arithOps`, `N×N ⟶ N` on a number atom, no universe inside (§3.5): `build` cuts it to a
     bounded object's universe `U` as `(U×U) s U` (`Tm.cut2`), so it is never written. -/
 def arithRow (s : String) : Prim :=
@@ -427,9 +430,9 @@ def Op.table : List (String × Op × Nat) :=
    ("mod", .arith Rel.Kernel.Ew.imod, 0), ("max", .arith Rel.Kernel.Ew.greater, 0),
    ("min", .arith Rel.Kernel.Ew.lesser, 0),
    -- q's `%` by its word and its glyph; `Op.sym` prints the first
-   ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("nil", .nil, 0), ("α", .alpha, 0),
-   ("dom", .dom, 1), ("ran", .ran, 1), ("Λ", .lam, 1), ("E", .E, 1),
-   ("est", .est, 1), ("front", .front, 1), ("F", .map, 1),
+   ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("α", .alpha, 0),
+   ("Λ", .lam, 1), ("E", .E, 1),
+   ("est", .est, 1), ("F", .map, 1),
    ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++
   (prims.filter fun r => r.written && r.prelude.isNone).map fun r => (r.sym, .prim r.sym, r.sig.1.length)
