@@ -194,6 +194,7 @@ def gidOut (dir : String) : Bld Unit := do
     native gate runs `nativeIO.io` (`relc run`) beside the native executable on `test/native/in` (a CSV file and a
     table directory) and compares `out/io` byte for byte. -/
 
+open Rel.Programs.prelude in
 rel_program nativeIO where
     obj N
     obj F : f64

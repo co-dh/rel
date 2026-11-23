@@ -349,7 +349,9 @@ partial def keysB (n : Nat) : Col → Bld (List (Nat × Nat))
       let zero ← cs.mapM fun
         | .atom p t _ => do let z ← wordsB n 0; pure (Col.atom p t (← mapB .add n z z t))
         | _ => sumB "asc of a summand holding a list or a sum:"
-      let ks (c : Cols) : Bld (Array Nat) := return (← (← c.mapM (keysB n)).flatten).foldl (fun a (k, e) => a.push k |>.push e) #[]
+      let ks (c : Cols) : Bld (Array Nat) := do
+        let l := (← c.mapM (keysB n)).flatten
+        pure (l.foldl (fun a (k, e) => (a.push k).push e) #[])
       let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) (ks zero) (do ks (← gatherCols n pos m cs))
       pure (pairsOf rs.toList)
     return (← ctorB 0 #[] #[← lit (Reg.put QAtomicType.u1)], tag) ::
@@ -553,7 +555,7 @@ partial def repath (A : Obj) (pre : String) (cs : Cols) : Bld Cols := match A, c
   | .one, [] => pure []
   | .sum a b, cs => match Obj.band a b, cs with
     | some t, [.atom _ _ e] => pure [.atom pre t e]
-    | none, [.sum _ l r tag idx x y] =>
+    | none, [.sum _ l r tag idx x y] => do
       pure [.sum pre l r tag idx (← repath a (pre ++ ".l") x) (← repath b (pre ++ ".r") y)]
     | _, cs => throw s!"{cs.length} columns where a side of {repr A} is read"
   | _, cs => throw s!"{cs.length} columns where a side of {repr A} is read"
@@ -1522,8 +1524,8 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, _, .uni (m := m) U => do coreflB (← lit (.size m)) (← colsOf A (← litSide U))
   | A, B, .zero => zeroB A B
   | _, _, .mem (B := b) => do let (n, X) ← known "∋" D.dom; memB b n X
-  | A, B, .inl => do let (n, X) ← known "inl" D.dom; injB A B false n X
-  | A, B, .inr => do let (n, X) ← known "inr" D.dom; injB A B true n X
+  | _, _, .inl (A := A) (B := B) => do let (n, X) ← known "inl" D.dom; injB A B false n X
+  | _, _, .inr (A := A) (B := B) => do let (n, X) ← known "inr" D.dom; injB A B true n X
   | _, _, .id => do let (n, X) ← known "𝟙" (D.dom <|> D.ran); coreflB n X
   | _, _, .top V => do
     let (n, X) ← known "⊤" D.dom
