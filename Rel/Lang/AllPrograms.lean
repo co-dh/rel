@@ -40,6 +40,7 @@ import Rel.Lang.TestFrameBound
 import Rel.Lang.TestFrameCols
 import Rel.Lang.TestFrameGroup
 import Rel.Lang.TestFrameJoin
+import Rel.Lang.TestFrameLift
 import Rel.Lang.TestFrameNull
 import Rel.Lang.TestFramePos
 import Rel.Lang.TestFrameQuery
@@ -47,6 +48,7 @@ import Rel.Lang.TestCmpMeet
 import Rel.Lang.TestFrameScale
 import Rel.Lang.TestFrameSchema
 import Rel.Lang.TestFrameStat
+import Rel.Lang.TestFrameText
 import Rel.Lang.TestFrameTyped
 import Rel.Lang.TestFrameUnbounded
 import Rel.Lang.TestFusedM
