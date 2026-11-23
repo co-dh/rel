@@ -609,7 +609,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   ✅ df-F3b `matchAll(T, q, A) ≜ suffix prefix match(T, q, A)`（`TestFrameText`）；✅ df-F3b 字面量中单字符串
   （`Tup.char?`）：`litTy` 给开放对象，上下文是 `char` 处读作 `char`（`litCol`），否则 `settleLit` 定为文本 `[C]`；
   `TestFrameText` 的 DFA 表写 `"0"`…`"9"`。
-- ⬜ S8 库定义 `mean` `stddev` `correlation` `skewness` `zScore` `valueProportions` float `describe` `daysBetween`
+- ✅ S8 库定义（`Rel/Programs/FrameGroup.lean` 的 `frameStat`，测试 `TestFrameStat`、`TestFrameTyped`）：q 名 `avg` `dev` `corr`（q 的 `cor`；prelude 的 `cor` 已是坐标反射，故叫 `corr`，dataframe 库沿用此名）`skewness` `zScore` `valueProportions` `describe` `daysBetween`，另有 `var` `svar` `sdev` `cov` `scov` `quantile`；`mean`/`stddev`/`correlation` 是 DataHaskell 名，库用 q 名，未另加别名。每条点式、无新 kernel/Tm 构造子，期望值在测试注释里手算。
   （dataframe 会话）。前提：
   - ✅ 真商 `%`（q 的 `divide`，分支 `fdiv`）：`arith` 族的又一个值动词 `Ew.divide = 3`（q 的动词号），`fverbBy` 中为
     `fdiv`，`stepAt`、`fstepCols`、`arith_sound` 不变即覆盖它（`fverbBy_map` 多一个情形）。名字 `divide` 与 `%` 都在
@@ -636,7 +636,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     ✅ perf11f（3da3cb3，合入 7543bb6）：常量除数的 `rdiv`/`rmod` 作 `kscan` 链的 `post` 步（`Op.rdiv/rmod`，`kscanRefuses`，
     `kscan_post_ok`）；`Bench.Blocks` 的 scan 90950 不变、scatter 87334 → 85987；`Bench.Edit` 的 scan 179437 → 179371、
     scatter 67148 → 66482；wall 1031 → 985 ms（Blocks）、1319 → 1199 ms（Edit）；`Bench.SudokuPC9` scan 3414、scatter 3970、wall 27.5 s。
-  - 🟡 float `sum`/`sums`：`mean`、float `describe` 需要它。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
+  - ✅ float `sum`：`avg`、float `describe` 已用它；float `sums`（`scan`）无库定义需要它，不在 S8 内。`sums` 取 i64 或 f64 值（S4e/S4f），f32 按名报错；
     f64 `sum`（格）已落地（分支 `sumL2`）。
   - ✅ 对象变量上的数动词与 `$`（分支 `objvar`，dataframe 请求，architecture §1）：泛型定义的体可写自己的对象变量
     （`x $ φ`，`Parse.S.ovars`、`Env.ovars`）；数动词与 `$` 在对象变量上的检查（`Elab.numCheck`）留到每次使用：
