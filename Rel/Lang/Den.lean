@@ -155,21 +155,190 @@ abbrev arithDen (t : QAtomicType) (k : UInt8) (TU : Core.Rel (Obj.El (.atom t)) 
   (𝟙 _ ∩ (graph Prod.fst ≫ TU) ≫ (graph Prod.fst ≫ TU)°) ≫
     ((𝟙 _ ∩ (graph Prod.snd ≫ TU) ≫ (graph Prod.snd ≫ TU)°) ≫ (stepAt t k ≫ TU))
 
-/-- `fold(e, S)`: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next value. -/
-abbrev foldrDen {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
-  fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
-    (∃ a, Te a (ys[xs.length]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_self _) hy.symm))) ∧
-    (∀ t (ht : t < xs.length), TS (xs[t]'ht, ys[t + 1]'(Nat.lt_of_lt_of_eq (Nat.succ_lt_succ ht) hy.symm))
-      (ys[t]'(Nat.lt_of_lt_of_eq (Nat.lt_succ_of_lt ht) hy.symm))) ∧
-    w = ys[0]'(Nat.lt_of_lt_of_eq (Nat.zero_lt_succ _) hy.symm)
+/-- One unfolding of `⦇e, S⦈` over `[nil, snoc]`, `μX. (nil ≫ ⊤ ≫ ran e) ∪ (snoc° ≫ (X × 𝟙) ≫ S)`: the empty array
+    has the value `v` of `e`'s range, an array `xs ++ [x]` the step `S` of a value of `xs` and `x`. -/
+abbrev foldStep {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V))
+    (X : Core.Rel (Obj.El (.arr E)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
+  (corefl (Eq ([] : List E.El)) ≫ top ≫ (𝟙 _ ∩ Te° ≫ top)) ∪
+    ((graph fun p : List E.El × E.El => p.1 ++ [p.2])° ≫ rprodMap X (𝟙 _) ≫ TS)
 
-/-- The left fold `⦇e, S⦈` over `[nil, snoc]`: a chain of values `ys`, its first from `e`, each the step `S` of the
-    value before and the element (`(acc, x)`, index 0 first), the result its last. -/
+/-- The left fold `⦇e, S⦈` over `[nil, snoc]`: the least fixed point of `foldStep`. `foldDen_iff` reads it as a chain
+    of values `ys`, its first from `e`, each the step `S` of the value before and the element, the result its last. -/
 abbrev foldDen {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
-  fun xs w => ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
-    (∃ a, Te a (ys[0]'(by omega))) ∧
-    (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
-    w = ys[xs.length]'(by omega)
+  mu (foldStep Te TS)
+
+/-- One unfolding of `fold(e, S)` over `[nil, cons]`: `μX. (nil ≫ ⊤ ≫ ran e) ∪ (cons° ≫ (𝟙 × X) ≫ S)`. -/
+abbrev foldrStep {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V))
+    (X : Core.Rel (Obj.El (.arr E)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
+  (corefl (Eq ([] : List E.El)) ≫ top ≫ (𝟙 _ ∩ Te° ≫ top)) ∪
+    ((graph fun p : E.El × List E.El => p.1 :: p.2)° ≫ rprodMap (𝟙 _) X ≫ TS)
+
+/-- `fold(e, S)`: the least fixed point of `foldrStep`; `foldrDen_iff` reads it as a chain of values `ys`, its last
+    from `e`, each the step `S` of the element and the next value. -/
+abbrev foldrDen {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) : Core.Rel (Obj.El (.arr E)) (Obj.El V) :=
+  mu (foldrStep Te TS)
+
+theorem foldStep_mono {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) :
+    Monotonic (foldStep Te TS) := fun _ _ h =>
+  le_iff.2 fun _ _ hx => hx.elim Or.inl fun ⟨p, hp, q, hq, hS⟩ => Or.inr ⟨p, hp, q, ⟨le_iff.1 h _ _ hq.1, hq.2⟩, hS⟩
+
+theorem foldrStep_mono {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) :
+    Monotonic (foldrStep Te TS) := fun _ _ h =>
+  le_iff.2 fun _ _ hx => hx.elim Or.inl fun ⟨p, hp, q, hq, hS⟩ => Or.inr ⟨p, hp, q, ⟨hq.1, le_iff.1 h _ _ hq.2⟩, hS⟩
+
+
+/-- The left fold of no elements is the range of `e`. -/
+theorem foldDen_empty {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (w : V.El) :
+    foldDen Te TS [] w ↔ ∃ a, Te a w := by
+  refine (Iff.of_eq (congrFun (congrFun (mu_fix (foldStep_mono Te TS)).symm _) _)).trans ?_
+  simp only [foldStep, Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.corefl, Core.Rel.inter_apply, Core.Rel.id,
+    Core.Rel.top, Core.Rel.recip, Core.Rel.graph, Core.Rel.rprodMap]
+  constructor
+  · rintro (⟨_, ⟨-, -⟩, _, -, rfl, e, he, -⟩ | ⟨p, hp, -⟩)
+    · exact ⟨e, he⟩
+    · exact absurd (List.append_eq_nil_iff.1 hp.symm).2 (List.cons_ne_nil _ _)
+  · rintro ⟨a, ha⟩
+    exact Or.inl ⟨[], ⟨rfl, trivial⟩, w, trivial, rfl, a, ha, trivial⟩
+
+/-- The left fold of `xs ++ [x]` is one step from the left fold of `xs`. -/
+theorem foldDen_snoc {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (x : E.El) (w : V.El) :
+    foldDen Te TS (xs ++ [x]) w ↔ ∃ u, foldDen Te TS xs u ∧ TS (u, x) w := by
+  refine (Iff.of_eq (congrFun (congrFun (mu_fix (foldStep_mono Te TS)).symm _) _)).trans ?_
+  simp only [foldStep, Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.corefl, Core.Rel.recip, Core.Rel.graph,
+    Core.Rel.rprodMap, Core.Rel.id]
+  constructor
+  · rintro (⟨_, ⟨-, h⟩, -⟩ | ⟨⟨ys, y⟩, hp, ⟨u, z⟩, ⟨hu, hz⟩, hS⟩)
+    · exact absurd (List.append_eq_nil_iff.1 h.symm).2 (List.cons_ne_nil _ _)
+    · obtain ⟨rfl, h⟩ := List.append_inj' hp rfl
+      obtain rfl := (List.cons.inj h).1
+      obtain rfl := hz
+      exact ⟨u, hu, hS⟩
+  · rintro ⟨u, hu, hS⟩
+    exact Or.inr ⟨(xs, x), rfl, (u, x), ⟨hu, rfl⟩, hS⟩
+
+/-- The right fold of no elements is the range of `e`. -/
+theorem foldrDen_empty {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (w : V.El) :
+    foldrDen Te TS [] w ↔ ∃ a, Te a w := by
+  refine (Iff.of_eq (congrFun (congrFun (mu_fix (foldrStep_mono Te TS)).symm _) _)).trans ?_
+  simp only [foldrStep, Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.corefl, Core.Rel.inter_apply, Core.Rel.id,
+    Core.Rel.top, Core.Rel.recip, Core.Rel.graph, Core.Rel.rprodMap]
+  constructor
+  · rintro (⟨_, ⟨-, -⟩, _, -, rfl, e, he, -⟩ | ⟨p, hp, -⟩)
+    · exact ⟨e, he⟩
+    · exact absurd hp.symm (List.cons_ne_nil _ _)
+  · rintro ⟨a, ha⟩
+    exact Or.inl ⟨[], ⟨rfl, trivial⟩, w, trivial, rfl, a, ha, trivial⟩
+
+/-- The right fold of `x :: xs` is one step from `x` and the right fold of `xs`. -/
+theorem foldrDen_cons {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (x : E.El) (xs : List E.El) (w : V.El) :
+    foldrDen Te TS (x :: xs) w ↔ ∃ u, foldrDen Te TS xs u ∧ TS (x, u) w := by
+  refine (Iff.of_eq (congrFun (congrFun (mu_fix (foldrStep_mono Te TS)).symm _) _)).trans ?_
+  simp only [foldrStep, Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.corefl, Core.Rel.recip, Core.Rel.graph,
+    Core.Rel.rprodMap, Core.Rel.id]
+  constructor
+  · rintro (⟨_, ⟨-, h⟩, -⟩ | ⟨⟨y, ys⟩, hp, ⟨z, u⟩, ⟨hz, hu⟩, hS⟩)
+    · exact absurd h.symm (List.cons_ne_nil _ _)
+    · obtain ⟨rfl, rfl⟩ := List.cons.inj hp
+      obtain rfl := hz
+      exact ⟨u, hu, hS⟩
+  · rintro ⟨u, hu, hS⟩
+    exact Or.inr ⟨(x, xs), rfl, (x, u), ⟨rfl, hu⟩, hS⟩
+
+/-- A chain of values for `xs ++ [x]` is one for `xs` and a step (the chain form of `foldDen_snoc`). -/
+theorem foldChain_snoc {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (x : E.El) (w : V.El) :
+    (∃ ys : List V.El, ∃ hy : ys.length = (xs ++ [x]).length + 1,
+      (∃ a, Te a (ys[0]'(by omega))) ∧
+      (∀ t (ht : t < (xs ++ [x]).length), TS (ys[t]'(by omega), (xs ++ [x])[t]'ht) (ys[t + 1]'(by omega))) ∧
+      w = ys[(xs ++ [x]).length]'(by omega)) ↔
+    ∃ u, (∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
+      (∃ a, Te a (ys[0]'(by omega))) ∧
+      (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
+      u = ys[xs.length]'(by omega)) ∧ TS (u, x) w := by
+  constructor
+  · rintro ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩
+    simp only [List.length_append, List.length_singleton] at hy
+    refine ⟨ys[xs.length]'(by omega), ⟨ys.take (xs.length + 1), by simp; omega, ⟨a, by simpa using ha⟩,
+      fun t ht => ?_, by simp⟩, ?_⟩
+    · have := hs t (by simp; omega)
+      simpa [List.getElem_append_left ht, List.getElem_take] using this
+    · have := hs xs.length (by simp)
+      simpa using this
+  · rintro ⟨u, ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩, hS⟩
+    refine ⟨ys ++ [w], by simp [hy], ⟨a, by rw [List.getElem_append_left (by omega)]; exact ha⟩, fun t ht => ?_,
+      by simp [hy]⟩
+    simp only [List.length_append, List.length_singleton] at ht
+    by_cases ht' : t < xs.length
+    · have := hs t ht'
+      simpa [List.getElem_append_left ht', List.getElem_append_left (show t < ys.length by omega),
+        List.getElem_append_left (show t + 1 < ys.length by omega)] using this
+    · obtain rfl : t = xs.length := by omega
+      simpa [List.getElem_append_left (show xs.length < ys.length by omega), hy] using hS
+
+/-- `foldDen` pointwise: a chain of values `ys`, its first from `e`, each the step `S` of the value before and the
+    element (`(acc, x)`, index 0 first), the result its last. -/
+theorem foldDen_iff {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (w : V.El) :
+    foldDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
+      (∃ a, Te a (ys[0]'(by omega))) ∧
+      (∀ t (ht : t < xs.length), TS (ys[t]'(by omega), xs[t]'ht) (ys[t + 1]'(by omega))) ∧
+      w = ys[xs.length]'(by omega) := by
+  obtain ⟨n, hn⟩ : ∃ n, xs.length = n := ⟨_, rfl⟩
+  induction n generalizing xs w with
+  | zero =>
+    obtain rfl := List.length_eq_zero_iff.1 hn
+    rw [foldDen_empty]
+    constructor
+    · rintro ⟨a, ha⟩; exact ⟨[w], rfl, ⟨a, ha⟩, fun _ ht => absurd ht (Nat.not_lt_zero _), rfl⟩
+    · rintro ⟨ys, hy, ⟨a, ha⟩, -, rfl⟩
+      obtain ⟨y, rfl⟩ := List.length_eq_one_iff.1 hy
+      exact ⟨a, ha⟩
+  | succ n ih =>
+    obtain ⟨xs', x, rfl⟩ : ∃ xs' x, xs = xs' ++ [x] := by
+      obtain h | ⟨xs', x, h⟩ := List.eq_nil_or_concat xs
+      · simp [h] at hn
+      · exact ⟨xs', x, by simpa using h⟩
+    rw [foldDen_snoc, foldChain_snoc]
+    exact exists_congr fun u => and_congr_left' (ih xs' u (by simpa using hn))
+
+/-- A chain of values for `x :: xs` is one for `xs` and a step (the chain form of `foldrDen_cons`). -/
+theorem foldrChain_cons {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (x : E.El) (xs : List E.El) (w : V.El) :
+    (∃ ys : List V.El, ∃ hy : ys.length = (x :: xs).length + 1,
+      (∃ a, Te a (ys[(x :: xs).length]'(by omega))) ∧
+      (∀ t (ht : t < (x :: xs).length), TS ((x :: xs)[t]'ht, ys[t + 1]'(by omega)) (ys[t]'(by omega))) ∧
+      w = ys[0]'(by omega)) ↔
+    ∃ u, (∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
+      (∃ a, Te a (ys[xs.length]'(by omega))) ∧
+      (∀ t (ht : t < xs.length), TS (xs[t]'ht, ys[t + 1]'(by omega)) (ys[t]'(by omega))) ∧
+      u = ys[0]'(by omega)) ∧ TS (x, u) w := by
+  constructor
+  · rintro ⟨_ | ⟨y, ys⟩, hy, ⟨a, ha⟩, hs, rfl⟩
+    · simp at hy
+    · simp only [List.length_cons, Nat.add_right_cancel_iff] at hy
+      exact ⟨ys[0]'(by omega), ⟨ys, hy, ⟨a, by simpa using ha⟩, fun t ht => by simpa using hs (t + 1) (by simpa using ht), rfl⟩,
+        by simpa using hs 0 (by simp)⟩
+  · rintro ⟨u, ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩, hS⟩
+    refine ⟨w :: ys, by simp [hy], ⟨a, by simpa using ha⟩, fun t ht => ?_, rfl⟩
+    cases t with
+    | zero => simpa using hS
+    | succ t => simpa using hs t (by simpa using ht)
+
+/-- `foldrDen` pointwise: a chain of values `ys`, its last from `e`, each the step `S` of the element and the next
+    value, the result its first. -/
+theorem foldrDen_iff {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (xs : List E.El) (w : V.El) :
+    foldrDen Te TS xs w ↔ ∃ ys : List V.El, ∃ hy : ys.length = xs.length + 1,
+      (∃ a, Te a (ys[xs.length]'(by omega))) ∧
+      (∀ t (ht : t < xs.length), TS (xs[t]'ht, ys[t + 1]'(by omega)) (ys[t]'(by omega))) ∧
+      w = ys[0]'(by omega) := by
+  induction xs generalizing w with
+  | nil =>
+    rw [foldrDen_empty]
+    constructor
+    · rintro ⟨a, ha⟩; exact ⟨[w], rfl, ⟨a, ha⟩, fun _ ht => absurd ht (Nat.not_lt_zero _), rfl⟩
+    · rintro ⟨ys, hy, ⟨a, ha⟩, -, rfl⟩
+      obtain ⟨y, rfl⟩ := List.length_eq_one_iff.1 hy
+      exact ⟨a, ha⟩
+  | cons x xs ih =>
+    rw [foldrDen_cons, foldrChain_cons]
+    exact exists_congr fun u => and_congr_left' (ih u)
 
 
 /-- `fold(e, S)` given a family: at the key `i`, the left fold whose start is the fibre of `e` at `i` and whose step
@@ -186,10 +355,11 @@ abbrev foldIDen {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (T
     `foldDen` of the family at the key. -/
 theorem foldIDen_iff {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V))) (TS : Core.Rel (Obj.El (.prod (.prod I V) E)) (Obj.El (.prod I V))) (p : Obj.El (.prod I (.arr E))) (w : Obj.El V) :
     foldIDen Te TS p w ↔ foldDen (fun a b => Te p.1 (a, b)) (fun q v => TS ((p.1, q.1), q.2) (p.1, v)) p.2 w := by
-  simp only [foldIDen, foldDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair,
+  simp only [foldIDen, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph,
     Core.Rel.id]
   constructor
-  · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩, rfl⟩
+  · rintro ⟨q, ⟨⟨i, rfl, hq⟩, xs, rfl, hF⟩, rfl⟩
+    obtain ⟨zs, hz, ⟨_, rfl, j, ⟨rfl, b, hb, hb2⟩, -, -⟩, hS, rfl⟩ := (foldDen_iff _ _ _ _).1 hF
     -- the step keeps the index, so every value of the chain carries the seed's, which the result's is the key's
     have hz0 : ∀ t (ht : t < zs.length), zs[t].1 = zs[0].1 := by
       intro t
@@ -201,9 +371,10 @@ theorem foldIDen_iff {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V)
         exact he.symm.trans (ih (by omega))
     have hidx : ∀ t (ht : t < zs.length), zs[t].1 = p.1 := fun t ht =>
       (hz0 t ht).trans ((hz0 p.2.length (by omega)).symm.trans hq.symm)
-    refine ⟨zs.map Prod.snd, by simp [hz], ⟨b.1, ?_⟩, fun t ht => ?_, by simp⟩
+    refine (foldDen_iff _ _ _ _).2 ⟨zs.map Prod.snd, by simp [hz], ⟨b.1, ?_⟩, fun t ht => ?_, by simp⟩
     · have e := hidx 0 (by omega)
-      simp only [List.getElem_map, hb2, ← e]
+      have hb2' : zs[0].snd = b.snd := hb2
+      simp only [List.getElem_map, hb2', ← e]
       exact hb
     · obtain ⟨h, -⟩ := hS t ht
       have h1 : ((p.1, zs[t + 1].2) : (I.prod V).El) = zs[t + 1] := Prod.ext (hidx (t + 1) (by omega)).symm rfl
@@ -211,10 +382,12 @@ theorem foldIDen_iff {I E V : Obj} (Te : Core.Rel (Obj.El I) (Obj.El (.prod V V)
       simp only [List.getElem_map]
       rw [h1, h0]
       exact h
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩
-    refine ⟨(p.1, ys[p.2.length]), ⟨⟨_, rfl, rfl⟩, _, rfl, ys.map (p.1, ·), by simp [hy],
-      ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩, rfl⟩
+  · intro h
+    obtain ⟨ys, hy, ⟨a, ha⟩, hS, rfl⟩ := (foldDen_iff _ _ _ _).1 h
+    refine ⟨(p.1, ys[p.2.length]), ⟨⟨_, rfl, rfl⟩, _, rfl, (foldDen_iff _ _ _ _).2 ⟨ys.map (p.1, ·), by simp [hy],
+      ⟨_, rfl, p.1, ⟨?_, _, ha, ?_⟩, ?_, _, ha, ?_⟩, fun t ht => ⟨?_, _, rfl, _, rfl, ?_⟩, ?_⟩⟩, rfl⟩
     all_goals simp
+    rename_i t ht
     simpa using hS t (by simpa using ht)
 
 
@@ -255,7 +428,9 @@ abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.E
 
 theorem mapDen_iff {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) (xs : Obj.El (.arr A)) (ys : Obj.El (.arr B)) :
     mapDen T xs ys ↔ ys.length = xs.length ∧ ∀ t (ht : t < xs.length) (ht' : t < ys.length), T (xs[t]'ht) (ys[t]'ht') := by
-  simp only [mapDen, foldDen, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair]
+  unfold mapDen
+  rw [foldDen_iff]
+  simp only [Core.Rel.comp, Core.Rel.recip, Core.Rel.graph, Core.Rel.rpair]
   constructor
   · rintro ⟨zs, hz, ⟨_, _, rfl, h0⟩, hs, rfl⟩
     -- the chain's `t`-th value is the first `t` answers
@@ -928,13 +1103,15 @@ theorem ordRelDen_le (s : Bool) (A : Obj) {U U' : Core.Rel (Obj.El A) (Obj.El A)
 
 theorem foldr_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El (.prod A B)) (Obj.El B)} (he : e ⊑ e') (hS : S ⊑ S') :
     foldrDen e S ⊑ foldrDen e' S' :=
-  le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
-    ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
+  le_iff.2 fun _ _ h =>
+    let ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ := (foldrDen_iff _ _ _ _).1 h
+    (foldrDen_iff _ _ _ _).2 ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
 theorem fold_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El (.prod B A)) (Obj.El B)} (he : e ⊑ e') (hS : S ⊑ S') :
     foldDen e S ⊑ foldDen e' S' :=
-  le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
-    ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
+  le_iff.2 fun _ _ h =>
+    let ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ := (foldDen_iff _ _ _ _).1 h
+    (foldDen_iff _ _ _ _).2 ⟨ys, hy, ⟨a, le_iff.1 he _ _ ha⟩, fun t ht => le_iff.1 hS _ _ (hs t ht), hw⟩
 
 theorem foldI_le {e e' : Core.Rel (Obj.El C) (Obj.El (.prod B B))} {S S' : Core.Rel (Obj.El (.prod (.prod C B) A)) (Obj.El (.prod C B))} (he : e ⊑ e')
     (hS : S ⊑ S') : foldIDen e S ⊑ foldIDen e' S' :=

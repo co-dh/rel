@@ -78,29 +78,6 @@ theorem lexLe_append_of_eq : ∀ (ks ks2 : List (Array UInt64)) {i j : Nat},
 
 namespace Lang
 
-/-- The left fold of `xs ++ [x]` is one step from the left fold of `xs`. -/
-theorem foldDen_snoc {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V)) (xs : List E.El) (x : E.El) (w : V.El) :
-    foldDen Te TS (xs ++ [x]) w ↔ ∃ u, foldDen Te TS xs u ∧ TS (u, x) w := by
-  constructor
-  · rintro ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩
-    simp only [List.length_append, List.length_singleton] at hy
-    refine ⟨ys[xs.length]'(by omega), ⟨ys.take (xs.length + 1), by simp; omega, ⟨a, by simpa using ha⟩,
-      fun t ht => ?_, by simp⟩, ?_⟩
-    · have := hs t (by simp; omega)
-      simpa [List.getElem_append_left ht, List.getElem_take] using this
-    · have := hs xs.length (by simp)
-      simpa using this
-  · rintro ⟨u, ⟨ys, hy, ⟨a, ha⟩, hs, rfl⟩, hS⟩
-    refine ⟨ys ++ [w], by simp [hy], ⟨a, by rw [List.getElem_append_left (by omega)]; exact ha⟩, fun t ht => ?_,
-      by simp [hy]⟩
-    simp only [List.length_append, List.length_singleton] at ht
-    by_cases ht' : t < xs.length
-    · have := hs t ht'
-      simpa [List.getElem_append_left ht', List.getElem_append_left (show t < ys.length by omega),
-        List.getElem_append_left (show t + 1 < ys.length by omega)] using this
-    · obtain rfl : t = xs.length := by omega
-      simpa [List.getElem_append_left (show xs.length < ys.length by omega), hy] using hS
-
 /-- `dom(T) (𝟙 × ≥) dom(T)` pointwise. -/
 theorem upToDen_iff {K V : Obj} {t : QAtomicType} (T : Core.Rel (Obj.El (.prod K (.atom t))) (Obj.El V)) (a b : (Obj.prod K (.atom t)).El) :
     upToDen T a b ↔ (∃ c, T a c) ∧ (∃ c, T b c) ∧ a.1 = b.1 ∧ leAt t b.2 a.2 := by
