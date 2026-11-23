@@ -207,4 +207,7 @@ def sumN (xs : List UInt64) (ns : List Nat) : UInt64 × UInt64 :=
 example : sumN [100, 0, 105] [1] = (205, 205) := by decide +kernel
 #guard sumN [100, 0, 105] [1] == (205, 205)
 
+/-- `Kernel.stop` returns its model where the model is all there is; the C export exits, so no `#guard`. -/
+example : Kernel.stop (α := Nat) (fun _ => "m") (fun _ => 7) = 7 := rfl
+
 end Rel.Kernel.CocTest

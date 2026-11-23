@@ -101,6 +101,31 @@ partial def chain (r : Std.HashMap Name Name) (t : Name) (acc : List Name := [])
   | some p => if p == t then t :: acc else chain r p (t :: acc)
   | none => t :: acc
 
+/-- The readers `listban` forbids on the run path: an array turned into a `List`, and `List.range`. -/
+def listBan : List Name := [`Array.toList, `ByteArray.toList, `List.range, `Rel.Arr.toList, `Rel.Tab.toList]
+
+/-- The gate "no compiled declaration of the modules reaches a reader of `readers`" (`decode`, `listban`): every
+    declaration with compiled code whose IR, transitively (`irReach`), calls a reader (name prefix, so `List.range.loop`
+    counts), with the call chain on stderr. An `@[extern]` declaration's Lean body is a specification, not compiled code,
+    so a reader only a spec or a theorem mentions is not reached; a callee outside the package is a leaf. A name of `<gate>-allow.txt` (read from the cwd) is a
+    leaf of the walk: a declaration is flagged only when a path to a reader passes through no allowlisted name, so an
+    allowlisted entry is flagged too while its own body needs it; `make <gate>` then fails on a listed name that is not
+    printed (stale or no longer compiled). -/
+def irGate (env : Environment) (ds : Array Name) (mods : Array Name) (gate : String) (readers : List Name) : IO UInt32 := do
+  let allow := (← IO.FS.readFile s!"{gate}-allow.txt").splitOn "\n" |>.filter (· ≠ "") |> Std.HashSet.ofList
+  let compiled := ds.filter fun n => written env n && (IR.findEnvDecl env n).isSome
+  -- the package's own compiled code, specialisations (`List.mapTR.go._at_.Rel…`) and lambdas included; a callee of Init, Std
+  -- or Lean is a leaf, because what `Nat.repr` or `Lean.Syntax` read inside the library is not a choice of this package
+  let pkg (c : Name) := (env.getModuleIdxFor? c).any fun i => (env.header.moduleNames[i.toNat]?).any (·.getRoot == `Rel)
+  let bad := compiled.filterMap fun n =>
+    let r := irReach env (fun c => !pkg c || allow.contains c.toString) n
+    -- a library reader counts when package code names it; `List.flatMapTR.go._at_.Rel…` is the library's own List→Array
+    -- plumbing, which the package did not write
+    (r.keys.find? fun c => readers.any (·.isPrefixOf c) && (c.getRoot == `Rel || (r[c]?).any (·.getRoot == `Rel))).map fun t => (n, chain r t)
+  for (n, p) in bad do IO.println n; IO.eprintln s!"{n}: {" → ".intercalate (p.map toString)}"
+  IO.eprintln s!"gates {gate}: {bad.size} of {compiled.size} compiled declarations of {mods.size} modules reach {readers}"
+  return 0
+
 def runMeta (env : Environment) (x : MetaM α) : IO α :=
   Prod.fst <$> (x.run' {}).toIO { fileName := "<gates>", fileMap := default } { env }
 
@@ -160,19 +185,7 @@ def main : List String → IO UInt32
       for n in bad do IO.println n
       IO.eprintln s!"gates pointfree: {bad.size} relation-valued of {cand.size} defs written over points among {ds.size} declarations"
       return 0
-    | "decode" =>
-      -- every declaration of the modules with compiled code that reaches a per-element decoder (`decoders`), with
-      -- the call chain on stderr: the run path reads encoded columns through the kernels, never element by element
-      -- An allowlisted name (`decode-allow.txt`, read from the cwd) is a leaf of the walk: a declaration is flagged only
-      -- when a path to a decoder passes through no allowlisted name, so an allowlisted entry is flagged too while its own
-      -- body needs it; `make decode` then fails on a listed name that is not printed (stale or no longer compiled).
-      let allow := (← IO.FS.readFile "decode-allow.txt").splitOn "\n" |>.filter (· ≠ "") |> Std.HashSet.ofList
-      let compiled := ds.filter fun n => written env n && (IR.findEnvDecl env n).isSome
-      let bad := compiled.filterMap fun n =>
-        let r := irReach env (fun c => allow.contains c.toString) n
-        (r.keys.find? fun c => decoders.any (·.isPrefixOf c)).map fun t => (n, chain r t)
-      for (n, p) in bad do IO.println n; IO.eprintln s!"{n}: {" → ".intercalate (p.map toString)}"
-      IO.eprintln s!"gates decode: {bad.size} of {compiled.size} compiled declarations of {mods.size} modules reach {decoders}"
-      return 0
-    | _ => throw (IO.userError s!"gates: unknown command {cmd} (axioms | externs | bang | pointfree | decode)")
-  | [] => throw (IO.userError "usage: gates axioms|externs|bang|pointfree|decode MODULE...")
+    | "decode" => irGate env ds mods "decode" decoders
+    | "listban" => irGate env ds mods "listban" listBan
+    | _ => throw (IO.userError s!"gates: unknown command {cmd} (axioms | externs | bang | pointfree | decode | listban)")
+  | [] => throw (IO.userError "usage: gates axioms|externs|bang|pointfree|decode|listban MODULE...")
