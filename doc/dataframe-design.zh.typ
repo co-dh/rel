@@ -120,7 +120,9 @@ Rel 本身（`Obj`、`Tm`、kernel、编码、原子、`compile`）见 `rel-arch
 
 - `inl°`、`inr°` 是 `prims` 的行；`[R, S] = inl° R ∪ inr° S`：按 tag 分情况，null 一支读 `S : 1 ⟶ B`。
 - `tot(R)`（3.1）把部分的 `R : A ⟶ B` 变回全的 `A ⟶ B+1`：`R` 有值取值，否则 null。
-- 存储：`V+1` 是 tag 列加各分支内的位置，每个分支的值各自成列（`rel-architecture` 第 0 节的 `sum`）。
+- 存储（决定 K，`rel-architecture` §4 "`atom+1`" 卡片）：`atom+1` 是*一列*，null 在该列自己的 foR 块里：宽度字节第 7 位是块的 null 标志，只有带标志的块留一个残差作 null 码，无 null 的块照旧。null 码是残差 0（决定 O），带标志块里值存成残差 + 1；今天的 `foRNul` 仍判顶残差 $2^w − 1$，`nullbot` 改它与 Rust；`Vals` 的 `atom+1` 换成 `Opt` 未做。
+- 只有 `atom+1` 在带内：`(V+1)+1` 与一般 `A+B` 仍是 tag 列加各分支内的位置（第 0 节的 `sum`），内层 `V+1` 在带内。
+- 次序随 q：null 小于每个值，`inr ∗ < inl a`；例的列 `asc` 后是 `[null, 1, 2, 4]`。
 
 // ───────────────────────────── 2
 = 存储与顺序
