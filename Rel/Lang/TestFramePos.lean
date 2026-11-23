@@ -29,9 +29,9 @@ rel_program framePos where
     check cumSum(x π₂) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
     check sumsBy(x π₁, x π₂) = {(0,5),(1,3),(2,10),(3,1),(4,10),(5,3),(6,11),(7,13)}
     -- first and last `v`; an empty frame gives the null, read here as 40
-    check firstOrNothing(x π₂) [𝟙, {(∗,40)}] = {(∗,5)}
-    check lastOrNothing(x π₂) [𝟙, {(∗,40)}] = {(∗,3)}
-    check firstOrNothing(take({(∗,0)}, x π₂)) [𝟙, {(∗,40)}] = {(∗,40)}
+    check firstOrNothing(x π₂) [{(∗,40)}, 𝟙] = {(∗,5)}
+    check lastOrNothing(x π₂) [{(∗,40)}, 𝟙] = {(∗,3)}
+    check firstOrNothing(take({(∗,0)}, x π₂)) [{(∗,40)}, 𝟙] = {(∗,40)}
 
 #guard framePos.ok
 
