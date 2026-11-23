@@ -135,7 +135,8 @@ def Vals.cellsOk : {A : Obj} → {n : USize} → Vals A n → Bool
   | .arr _, _, ⟨m, lo, hi, f⟩ => (cellBad m lo hi).isNone && Vals.cellsOk f
   | .sum _ _, _, s => match s.view with
     | .opt .. => true
-    | .gen _ _ x y => Vals.cellsOk x && Vals.cellsOk y
+    -- the filler clause of `Vals.WF` is not decided here: a literal dense sum is refused until it is (PLAN 8.2)
+    | .gen .. => false
 
 /-- The words of `x` with `s` added: one `kscan` whose post chain adds `s` (`colMap_const_eq`). -/
 def Arr.shift {n : USize} (s : UInt64) (x : Arr .i64 n) : Except String (Arr .i64 n) :=
