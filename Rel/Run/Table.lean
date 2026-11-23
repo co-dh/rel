@@ -87,39 +87,59 @@ def same {F : USize → Type} (fx : String) (n : USize) (fy : String) (y : (m : 
   if h : y.1 = n then pure (h ▸ y.2)
   else throw (IO.userError s!"{fy} has {y.1} rows and {fx} has {n}: the columns of one side have one count")
 
-/-- The inverse of `cols`: the side of object `A` mapped from the files `cols` names under the prefix `p` in `dir`,
-    with its count and the file the count was read from. The columns of one side have its count; a list's payload
-    and a sum's two payloads have their own. The paths are `cols`'s (`TestTable` round-trips each form). -/
-def readVals : (A : Obj) → (dir p : String) → IO (String × (n : USize) × Vals A n)
-  | .atom t, dir, p => do let ⟨n, x⟩ ← readArr t (file dir p); return (file dir p, ⟨n, x⟩)
-  | .prod a b, dir, p => do
-    let (fx, ⟨n, x⟩) ← readVals a dir (p ++ ".1")
-    let (fy, y) ← readVals b dir (p ++ ".2")
-    return (fx, ⟨n, x, ← same fx n fy y⟩)
-  | .arr b, dir, p => do
-    let ⟨n, lo⟩ ← readArr .i64 (file dir (p ++ ".lo"))
-    let hi ← same (file dir (p ++ ".lo")) n (file dir (p ++ ".hi")) (← readArr .i64 (file dir (p ++ ".hi")))
-    let (_, ⟨m, e⟩) ← readVals b dir (p ++ ".e")
+/-- The first of the `n` cells `[lo, hi)` of columns at ownership `o` that is no slice of a payload of `m` rows: `cellBad`
+    where every row is owned; where a row may be the in-band null (a summand's), the null row reads as the cell `[0, 0)`. -/
+def cellBadB {o : Bool} {n : USize} (m : USize) (lo hi : ColB o .i64 n) : Option (Fin n.toNat) :=
+  match o, lo, hi with
+  | false, lo, hi => cellBad m lo hi
+  | true, lo, hi => (List.finRange n.toNat).find? fun i =>
+      let l := (Opt.get lo i).getD 0; let h := (Opt.get hi i).getD 0
+      !decide (0 ≤ l.toInt ∧ l.toInt ≤ h.toInt ∧ h.toInt ≤ (m.toNat : Int))
+
+/-- The atom column of type `t` at ownership `o` from `path`: `readArr` where every row is owned, `readOpt` where a row
+    may be the in-band null. -/
+def readCol : (o : Bool) → (t : QAtomicType) → (path : String) → IO ((n : USize) × ColB o t n)
+  | false, t, path => readArr t path
+  | true, t, path => readOpt t path
+
+/-- The inverse of `cols`: the side of object `A` at ownership `o` mapped from the files `cols` names under the prefix `p`
+    in `dir`, with its count and the file the count was read from. The columns of one side have its count; a list's
+    payload has its own (every row owned). A general sum is a tag and two summands of the sum's count, read at `o = true`
+    (a summand's other rows hold the in-band null); a band sum is one `Opt` column. The paths are `cols`'s
+    (`TestTable` round-trips each form). -/
+def readValsB : (o : Bool) → (A : Obj) → (dir p : String) → IO (String × (n : USize) × ValsB o A n)
+  | o, .atom t, dir, p => do let ⟨n, x⟩ ← readCol o t (file dir p); return (file dir p, ⟨n, x⟩)
+  | o, .prod a b, dir, p => do
+    let (fx, ⟨n, x⟩) ← readValsB o a dir (p ++ ".1")
+    let (fy, y) ← readValsB o b dir (p ++ ".2")
+    return (fx, ⟨n, x, ← same (F := ValsB o b) fx n fy y⟩)
+  | o, .arr b, dir, p => do
+    let ⟨n, lo⟩ ← readCol o .i64 (file dir (p ++ ".lo"))
+    let hi ← same (F := ColB o .i64) (file dir (p ++ ".lo")) n (file dir (p ++ ".hi")) (← readCol o .i64 (file dir (p ++ ".hi")))
+    let (_, ⟨m, e⟩) ← readValsB false b dir (p ++ ".e")
     -- the one place a cell's bounds are checked (PLAN 8.5): past here every cell is a slice of its payload
-    if let some i := cellBad m lo hi then
-      throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is the cell [{lo.get i}, {hi.get i}), not a slice of the {m} rows of \
+    if let some i := cellBadB m lo hi then
+      throw (IO.userError s!"{file dir (p ++ ".lo")}: row {i} is not a slice of the {m} rows of \
         {file dir (p ++ ".e")}: a cell [lo, hi) needs 0 ≤ lo ≤ hi ≤ {m}")
     return (file dir (p ++ ".lo"), ⟨n, m, lo, hi, e⟩)
-  | .sum a b, dir, p => match h : Obj.band a b with
+  | _, .sum a b, dir, p => match h : Obj.band a b with
     | some t => do let ⟨n, x⟩ ← readOpt t (file dir p); return (file dir p, ⟨n, ValsB.ofOpt h x⟩)
     | none => do
-    let ⟨n, tag⟩ ← readArr .u1 (file dir (p ++ ".tag"))
-    let (_, x) ← readVals a dir (p ++ ".l")
-    let (_, y) ← readVals b dir (p ++ ".r")
-    -- every row read as owned: the ownership mask a file must carry is the later package (PLAN 8.2)
-    return (file dir (p ++ ".tag"), ⟨n, ValsB.ofGen h tag (Vals.lift (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".l")) x))
-      (Vals.lift (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".r")) y))⟩)
+    let ft := file dir (p ++ ".tag")
+    let ⟨n, tag⟩ ← readArr .u1 ft
+    let (_, x) ← readValsB true a dir (p ++ ".l")
+    let (_, y) ← readValsB true b dir (p ++ ".r")
+    return (ft, ⟨n, ValsB.ofGen h tag (← same (F := ValsB true a) ft n (file dir (p ++ ".l")) x)
+      (← same (F := ValsB true b) ft n (file dir (p ++ ".r")) y)⟩)
   -- a side of `1`: its file holds its count and no part (`Plan.oneKind`)
-  | .one, dir, p => do
+  | _, .one, dir, p => do
     let f ← Db.ownMap (file dir p)
     unless f.kind == oneKind && f.parts.isEmpty do
       throw (IO.userError s!"{file dir p}: constructor kind {f.kind} with {f.parts.size} parts, a side of `1` is kind {oneKind} with none")
     return (file dir p, ⟨f.count, ()⟩)
+
+/-- `readValsB` of a side every row of which is owned: the sides of a table. -/
+abbrev readVals (A : Obj) (dir p : String) := readValsB false A dir p
 
 /-- The columns of `R`, a schema reversed (`Schema.objR`'s order), from `x`: each column's files under its name. -/
 def writeCols {n : USize} (dir : String) : (R : Schema) → Vals (Schema.objR .long .prod R) n → IO Unit

@@ -591,6 +591,9 @@ def nulsB (n : Nat) : Bld Nat := do
 /-- **`Vals.zeros`**: `n` rows of `A` all in-band null, the filler of the rows a dense summand does not own: `nulsB` per atom
     column; an `arr` side `n` null cells over no payload; a band sum `n` nulls; another sum tag `0` over two such summands. -/
 partial def zerosB (n : Nat) (A : Obj) (p : String) : Bld Cols := match A with
+  -- Lean's `Opt.fill .general` is `.gen default`, a form native `Enc` has none of (nor the own format): refuse, never
+  -- write a different filler that a Lean read of the same file would not equal
+  | .atom .general => throw s!"column `{p}`: a general atom has no native filler (Lean's `Opt.fill` writes `.gen default`)"
   | .atom t => return [.atom p t (← nulsB n)]
   | .prod a b => return (← zerosB n a (p ++ ".1")) ++ (← zerosB n b (p ++ ".2"))
   | .arr b => do
