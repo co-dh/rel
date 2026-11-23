@@ -16,7 +16,7 @@ fn ix<'a>(what: &str, m: usize, e: B<'a>) -> Result<asc::Ix<'a>, String> {
 /// `ascCol`, one `(AscKey, Enc)` at `m` rows, in its order of failure: the key column and the column it carries.
 /// `atom t` (ctor 0, `t` its one byte): the type's order, then `ascWords` (`pos` only at `i64`, code 4, and at most
 /// `2^63` rows). `cells n c lo hi els` (ctor 1, objects `lo hi els`, then `n c`): the column's words, none null, each
-/// below `n`, `lo` and `hi`, each with no null, then each of `els` at `c` rows.
+/// below `n`, `lo` and `hi` (a null in either makes its cell empty, `Cells::span`), then each of `els` at `c` rows.
 #[cfg(all(feature = "ffi", not(any(test, feature = "std"))))]
 pub(crate) fn key<'a>(m: usize, el: B<'a>) -> Result<(asc::Col<'a>, asc::Ix<'a>), String> {
     let (k, e) = (el.field(0), el.field(1));
@@ -36,9 +36,8 @@ pub(crate) fn key<'a>(m: usize, el: B<'a>) -> Result<(asc::Col<'a>, asc::Ix<'a>)
     let x = ix("asc: cells", m, e)?;
     no_nul("asc: cells", m, e)?;
     if let Some(r) = (0..m).map(|i| x.get(i) as u64).find(|&r| r >= n as u64) { return Err(format!("asc: cells: row word {r} names no cell of {n}")) }
-    // a word of `lo` or `hi` is a payload row, so a null there is refused as `noNul` refuses one of `ix`
-    let lo = ix("asc: cells lo", n, k.field(0))?; no_nul("asc: cells lo", n, k.field(0))?;
-    let hi = ix("asc: cells hi", n, k.field(1))?; no_nul("asc: cells hi", n, k.field(1))?;
+    let lo = ix("asc: cells lo", n, k.field(0))?;
+    let hi = ix("asc: cells hi", n, k.field(1))?;
     let (mut els, mut l) = (Vec::new(), k.field(2));
     while !l.is_scalar() { els.push(key(c, l.field(0))?.0); l = l.field(1) }
     Ok((asc::Col::Cells(asc::Cells { ix: x, c, lo, hi, els }), x))
