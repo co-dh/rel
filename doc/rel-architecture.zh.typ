@@ -690,7 +690,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 )
 
 其它 TODO：
-- `Tm` 加 `inl` `inr` `mem`；行 `inl°` `inr°` 随之删除。
+- ✅ 1ab20ac（原：`Tm` 加 `inl` `inr` `mem`；行 `inl°` `inr°` 随之删除。）
 - 每个运算的归属（构造子 / 定义 / native 行 / fused 行），结论取自 `doc/tm-minimal-design.zh.typ` §3：
 
 #block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
