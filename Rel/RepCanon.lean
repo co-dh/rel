@@ -589,8 +589,8 @@ theorem ValsB.gather_wf {m : USize} {ix : Enc} : {o : Bool} → {A : Obj} → {n
       rw [r]; exact ht i fun hp => hj ⟨i, e, hp⟩
 
 /-- What `ValsB.cols` answers at a `sum` side, unfolded: the tag's column, then each summand's columns. -/
-theorem Vals.cols_sum {a b : Obj} {n : USize} {s : Vals (.sum a b) n} {hb : Obj.band a b = none}
-    {tag : Arr .u1 n} {x : Vals a n} {y : Vals b n} (hv : s.view = .gen hb tag x y)
+theorem ValsB.cols_sum {o : Bool} {a b : Obj} {n : USize} {s : ValsB o (.sum a b) n} {hb : Obj.band a b = none}
+    {tag : Arr .u1 n} {x : ValsB true a n} {y : ValsB true b n} (hv : s.view = .gen hb tag x y)
     {es : List (AscKey × Enc)} (hes : ValsB.cols s = .ok es) :
     ∃ xs ys, es = (.atom .u1, tag.enc) :: (xs ++ ys) ∧ ValsB.cols x = .ok xs ∧ ValsB.cols y = .ok ys := by
   simp only [ValsB.cols, hv, bind, Except.bind, pure, Except.pure] at hes
@@ -783,7 +783,7 @@ theorem Vals.cols_wf : {A : Obj} → {n : USize} → (x : Vals A n) → {es : Li
     rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, tag, x, y⟩
     · simp only [ValsB.cols, hv, Except.ok.injEq] at h; subst h
       rw [List.mem_singleton.1 hc]; exact ⟨_, x.wf⟩
-    obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv h
+    obtain ⟨xs, ys, rfl, hxs, hys⟩ := ValsB.cols_sum hv h
     rcases List.mem_cons.1 hc with rfl | hc
     · exact ⟨.u1, tag.wf⟩
     rcases List.mem_append.1 hc with hc | hc
@@ -1117,7 +1117,7 @@ theorem Verify.ascCodes_of_cells {m n c : USize} {lo hi e : Enc} {els : List (As
 /-- What `ValsB.cols` answers at an `arr` side, unfolded: one `cells` key over the payload's columns `fs`, which `kasc`
 reads; two rows have equal codes exactly where their cells have one length and equal payload codes element by
 element (`cellFns_eq_iff`). -/
-theorem Vals.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c} {es : List (AscKey × Enc)} {cs}
+theorem ValsB.cols_arr {B : Obj} {n c : USize} {lo hi : Arr .i64 n} {f : Vals B c} {es : List (AscKey × Enc)} {cs}
     (hw : Vals.WF (A := .arr B) ⟨c, lo, hi, f⟩) (hes : ValsB.cols (A := .arr B) ⟨c, lo, hi, f⟩ = .ok es)
     (hc : es.mapM (ascCol n) = .ok cs) :
     ∃ fs, ValsB.cols f = .ok fs ∧ (∃ cs', fs.mapM (ascCol c) = .ok cs') ∧ ∀ i i' : Fin n.toNat,
@@ -1166,7 +1166,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     show (ValsB.row x.1 i, ValsB.row x.2 i) = (ValsB.row x.1 i', ValsB.row x.2 i')
     rw [Vals.row_of_codes x.1 hw.1 h1 hc1 i i' k1, Vals.row_of_codes x.2 hw.2 h2 hc2 i i' k2]
   | .arr _, n, ⟨c, lo, hi, f⟩, hw, es, hes, cs, hc, i, i', hk => by
-    obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hw hes hc
+    obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := ValsB.cols_arr hw hes hc
     obtain ⟨hl, hk⟩ := (hkey i i').1 hk
     rw [Vals.row_arr i (hw.1 i), Vals.row_arr i' (hw.1 i'), map_range'_eq_iff]
     refine ⟨hl, fun k hkl => ?_⟩
@@ -1179,7 +1179,7 @@ theorem Vals.row_of_codes : {A : Obj} → {n : USize} → (x : Vals A n) → Val
     · simp only [ValsB.cols, hv, Except.ok.injEq] at hes; subst hes
       simp only [ValsB.row, hv, (Opt.eq_of_codes x hc).2 i i' hk]
     simp only [Vals.WF, hv] at hw
-    obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv hes
+    obtain ⟨xs, ys, rfl, hxs, hys⟩ := ValsB.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     obtain ⟨hvt, heq⟩ := Arr.eq_of_codes tag hc0
@@ -1300,7 +1300,7 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
       simp [seenKey, ascKeys_append]
     rw [hs, hs, Vals.codes_of_row x.1 hw.1 h1 hc1 i i' r1, Vals.codes_of_row x.2 hw.2 h2 hc2 i i' r2]
   | .arr _, n, ⟨c, lo, hi, f⟩, hw, es, hes, cs, hc, i, i', hr => by
-    obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := Vals.cols_arr hw hes hc
+    obtain ⟨fs, hfs, ⟨cs', hcs'⟩, hkey⟩ := ValsB.cols_arr hw hes hc
     rw [Vals.row_arr i (hw.1 i), Vals.row_arr i' (hw.1 i'), map_range'_eq_iff] at hr
     refine (hkey i i').2 ⟨hr.1, fun k hkl => ?_⟩
     have b1 := hkl; have b2 := hr.1 ▸ hkl
@@ -1314,7 +1314,7 @@ theorem Vals.codes_of_row : {A : Obj} → {n : USize} → (x : Vals A n) → Val
       simp only [ValsB.row, hv] at hr
       exact Opt.codes_of_eq x hc i i' (by simpa only [Obj.optOf_optEl] using congrArg (Obj.optOf hb) hr)
     simp only [Vals.WF, hv] at hw
-    obtain ⟨xs, ys, rfl, hxs, hys⟩ := Vals.cols_sum hv hes
+    obtain ⟨xs, ys, rfl, hxs, hys⟩ := ValsB.cols_sum hv hes
     obtain ⟨c0, c12, hc0, hc12, -⟩ := mapM_append_ok (l1 := [(.atom .u1, tag.enc)]) (l2 := xs ++ ys) hc
     obtain ⟨c1, c2, hc1, hc2, -⟩ := mapM_append_ok hc12
     have hs : ∀ (e1 e2 : List (AscKey × Enc)) q, seenKey n (e1 ++ e2) q = seenKey n e1 q ++ seenKey n e2 q :=
