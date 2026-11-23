@@ -332,8 +332,8 @@ theorem fillNul_get {k : UInt64} {fl w : Array UInt64} {i : Nat} (hi : i < w.siz
 source held `n` rows, the columns are the sources' words with `fill` at each null row, and the flag columns are the
 sources' own (`foRNuls`). -/
 theorem kscanCols_fill {op b : Op} {fill : UInt64} {s : QAtomicType} {n : USize} {es : List (USize × Enc)}
-    {ws ns : List (Array UInt64)} (hs : kscanStream op es [] [] = false) (hnf : op.nulFold = some (b, fill))
-    (hn : ∃ p ∈ es, hasNul p.2 = true) (h : kscanCols op s n es [] [] = .ok (ws, ns)) :
+    {post : List (Op × UInt64)} {ws ns : List (Array UInt64)} (hs : kscanStream op es [] post = false) (hnf : op.nulFold = some (b, fill))
+    (hn : ∃ p ∈ es, hasNul p.2 = true) (h : kscanCols op s n es [] post = .ok (ws, ns)) :
     (∀ p ∈ es, p.1 = n) ∧ (∀ p ∈ es, (p.2.raw s n).size = n.toNat) ∧
       ws = es.map (fun p => fillNul fill (foRNuls n p.2) (p.2.raw s n)) ∧ ns = es.map fun p => foRNuls n p.2 := by
   unfold kscanCols at h

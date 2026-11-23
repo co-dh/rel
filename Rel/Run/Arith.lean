@@ -163,8 +163,8 @@ def arithOp (s : String) {A B : Obj} {n : USize} (X : Vals A n) : Except String 
 def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .atom .i64, .atom .i64, X => do
-    let s ← succCol n X.enc
-    failAt (A := .long) X (← colMap .first n X.enc X.enc .i64 .i64 [] [(.eq, 0x7FFFFFFFFFFFFFFF)])
+    let s ← succCol n (Arr.enc X)
+    failAt (A := .long) X (← colMap .first n (Arr.enc X) (Arr.enc X) .i64 .i64 [] [(.eq, 0x7FFFFFFFFFFFFFFF)])
       fun u => s!"succ: i64 overflow at succ({u.toInt})"
     pure ⟨n, X, s⟩
   | _, _, _ => .error "succ runs from an object of i64 to it"
@@ -174,7 +174,7 @@ def succOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
 def mixOp {A B : Obj} {n : USize} (X : Vals A n) : Except String (Tab A B) :=
   match A, B, X with
   | .atom .i64, .atom .i64, X => do
-    let s ← colArr .mix n X.enc X.enc
+    let s ← colArr .mix n (Arr.enc X) (Arr.enc X)
     pure ⟨n, X, s⟩
   | _, _, _ => .error "mix runs from an object of i64 to it"
 
