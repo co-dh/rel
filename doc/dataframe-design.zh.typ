@@ -382,8 +382,8 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
     (b) 在有限对象上生成积：`⟨v ∈ V ↦ e⟩` 把 `e` 在每个元素 `w` 处（`v` 换成字面量 `{(∗,w)} : 1 ⟶ V`）的项左嵌套成对，
     与 `Schema.obj` 同形；`schema D = {c ∈ V : A}` 每个元素一列 `c_w : A`。`V` 可以是任何有限对象（声明的 `{…}`、
     范围、磁盘的）。`dummy`、`pivotCol` 是逐元素的库定义，积在使用处由 (b) 生成。测试 `Rel/Lang/TestPivotDisk.lean`。
-  - 未做：对象变量上的生成（库定义 `getDummies(c, x)` 本身对 `V` 泛型）要求定义在每个使用处展开，现在定义只 elaborate
-    一次、对象变量是刚性的；`obj V from` 只读 `i64` 列（`sym` 列要 `sym` 的字面量对象）；导入的有限对象不能生成。
+  - 已做（df-F1）：对象 `⟨θ ↦ A⟩`（`OExp.each`）是 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，元素在每次使用处由调用解出的对象读（`Elab.eachWords`）。体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义没有常量，每次使用在调用处展开（`Expand.once`）；库定义 `getDummies(c, x) : ν ⟶ ⟨θ ↦ 1+1⟩ ≜ ⟨e ∈ θ ↦ dummy(c, e, x)⟩` 对 `θ` 泛型（`TestPivotDisk` 的 `dummiesT` 与 `dummy` 逐元素的结果相同）。
+    未做：`obj V from` 只读 `i64` 列（`sym` 列要 `sym` 的字面量对象）；导入的有限对象不能生成。
 - *F3 字符串别扭。* 字符串是 `arr char`，单元格里的值，不是 frame（F9）；`contains` 的规格要形成全部子串。
   `splitOn`、`match` 是库定义（上表），无新行、无新 kernel；正则是「步骤为转移表」的 fold，把正则编译成表在语言之外。
   `parseDate` 是行 `ymd : [C] ⟶ D`（owner 2026-11-23 决定）：含义是 `Db.Csv.ymd` 的图（`yyyy.mm.dd` 或 `yyyy-mm-dd`），

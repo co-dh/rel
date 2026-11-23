@@ -263,6 +263,12 @@ structure ObjInfo where
   /-- A schema's columns (`schema S = {…}`), `ty` their `Schema.objAt`; none for any other object. -/
   cols : Schema OTy := []
 
+/-- The words of its elements in code order, where it has a finite list: the named ones, the integers of a range. -/
+def ObjInfo.words (i : ObjInfo) : Option (List String) :=
+  match i.range with
+  | some (lo, hi) => some (rangeWords lo hi)
+  | none => if i.elems.isEmpty then none else some i.elems
+
 /-- The atoms a placeholder may be: every atom but `.long`'s, which the number verbs fix (`Tm.instObj.fixed`). -/
 def varAtoms : List Rel.QAtomicType := [.general, .u1, .u8, .i16, .i32, .f32, .f64, .char, .sym,
   .i8, .date, .datetime]
@@ -762,6 +768,7 @@ def Env.obj? (env : Env) (n : String) : Option ObjInfo :=
 /-- The object `1` in scope, the source a `nil` no context fixes starts at (`settleNil`). -/
 def Env.one (env : Env) : OTy := ((env.obj? "1").map (·.ty)).getD (.base "1")
 
+mutual
 /-- `o` as the program wrote it, resolved: an alias stands for its definition, a variable for its object in `vs`,
     one use's instantiation (§e). -/
 def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
@@ -774,6 +781,24 @@ def oty (env : Env) (vs : List (String × OTy) := []) : OExp → M OTy
   | .prod a b => return .prod (← oty env vs a) (← oty env vs b)
   | .sum a b => return .sum (← oty env vs a) (← oty env vs b)
   | .list a => return .arr (← oty env vs a)
+  | .each p o a => do
+    let ws ← eachWords env vs p o
+    let b ← oty env vs a
+    pure (Schema.objAt b .prod (ws.map (·, b)))
+
+/-- The words of the elements of the finite object `o` (an object variable's, the call's, at this use): `o` resolved
+    and solved to a declared base object, its `ObjInfo.words`. -/
+def eachWords (env : Env) (vs : List (String × OTy)) (p : Pos) (o : OExp) : M (List String) := do
+  let ot ← oty env vs o
+  let n ← match zonk (← Lean.getMCtx) ot with
+    | .base n => pure n
+    | _ => throw ⟨p, s!"`{o.show}` is not determined where ⟨{o.show} ↦ …⟩ is expanded: its elements are read \
+        from the object a use gives it; give the use an argument or an expected type at it"⟩
+  let some ws := (((← get).objs.lookup n).orElse fun _ => env.obj? n).bind ObjInfo.words
+    | throw ⟨p, s!"`{n}` is no finite object of this program: a product over an object needs its elements"⟩
+  if ws.isEmpty then throw ⟨p, s!"`{n}` has no element: a product over it has no component"⟩
+  pure ws
+end
 
 /-- A solved object's `Obj`: a declared base object as `ObjInfo.obj` stores it (`long` but for `obj F : t`), an
     object variable likewise. -/
@@ -1451,6 +1476,22 @@ def callOf (env : Env) (p : Pos) (c : String) (bs : List (String × Arg)) (body 
     | .rel q s t => .rel (.callE p c ks (rels.map (·.2.1)) (alt q) (form q none) (form q (some false)) s t) s t
     | .fam q i s t => .fam (alt q) i s t
 
+/-- A table at `p`, its objects read from its words and unified with the declared type `ty` where there is one. -/
+def litArg (env : Env) (p : Pos) (ps : List (Tup × Tup)) (ty : Option (OExp × OExp)) : M Arg := do
+  let a ← litTy env.objs env.gdef p (ps.map (·.1)); let b ← litTy env.objs env.gdef p (ps.map (·.2))
+  if let some (A, B) := ty then
+    unify p "the table's source" a (← oty env [] A); unify p "the table's target" b (← oty env [] B)
+  pure (.rel (.lit p a b ps env.gdef) a b)
+
+/-- The pair `⟨x, y⟩` at `p`, lifted when one of them is a family and `m` an index. -/
+def pairArg (m : Option OTy) (p : Pos) (x y : Arg) : M Arg :=
+  match m, x.isFam || y.isFam with
+  | some I, true => do let r ← lPair p (← famOf I p x) (← famOf I p y); pure (.fam r.1 I r.2.1 r.2.2)
+  | _, _ => do
+    let (q, s, t) := x.plain; let (r, s', t') := y.plain
+    unify p "the source of the pair's second part" s' s
+    pure (.rel (.pair q r) s (.prod t t'))
+
 mutual
 
 /-- Elaborate `e` in the mode `m`: plain, or the body of a definition lifted to the index `I`. -/
@@ -1548,14 +1589,17 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match ← elabE env m a with
     | .fam q i s t => let r := lCompl i p (q, s, t); pure (.fam r.1 i r.2.1 r.2.2)
     | .rel q s t => pure (.rel (.diff (.top p s t none) q) s t)
-  | .pair p a b => do
-    let x ← elabE env m a; let y ← elabE env m b
-    match m, x.isFam || y.isFam with
-    | some I, true => let r ← lPair p (← famOf I p x) (← famOf I p y); pure (.fam r.1 I r.2.1 r.2.2)
-    | _, _ =>
-      let (q, s, t) := x.plain; let (r, s', t') := y.plain
-      unify p "the source of the pair's second part" s' s
-      pure (.rel (.pair q r) s (.prod t t'))
+  | .pair p a b => do pairArg m p (← elabE env m a) (← elabE env m b)
+  -- `V` at this use's object (an object variable's, the call's), each element `w` of it put for `v` as the literal
+  -- `{(∗,w)} : 1 ⟶ V`; the results nested pairs, left to right
+  | .each p v o b => do
+    let ws ← eachWords env [] p o
+    let xs ← ws.mapM fun w => do
+      let e ← litArg env p [(.leaf "∗", .leaf w)] (some (.name p "1", o))
+      elabE { env with params := (v, e) :: env.params } m b
+    match xs with
+    | x :: xs => xs.foldlM (pairArg m p) x
+    | [] => throw ⟨p, s!"`{o.show}` has no element: a product over it has no component"⟩
   | .junc p a b => do
     let x ← elabE env m a; let y ← elabE env m b
     match m, x.isFam || y.isFam with
@@ -1576,11 +1620,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     unify p "the source of the fold's step" ev (if d then .prod e v else .prod v e)
     unify p "the target of the fold's step" w v
     pure (.rel (.fold d (.close p q v "the fold's start is read whole") r) (.arr e) v)
-  | .lit p ps ty => do
-    let a ← litTy env.objs env.gdef p (ps.map (·.1)); let b ← litTy env.objs env.gdef p (ps.map (·.2))
-    if let some (A, B) := ty then
-      unify p "the table's source" a (← oty env [] A); unify p "the table's target" b (← oty env [] B)
-    pure (.rel (.lit p a b ps env.gdef) a b)
+  | .lit p ps ty => litArg env p ps ty
   -- a built term, as a closed definition is (`walk`)
   | .col p s c => do let (r, a, b) ← MonadExcept.ofExcept (colOf env p s c); settle m p [] (.rel (.tm r) a b)
   -- `X : a ⟶ b` in scope in the body, which has that type and is monotonic in `X`; `ν` from the conjuncts
@@ -1641,8 +1681,9 @@ def pmatch (env : Env) (p : Pos) (vs : List (String × OTy)) : OExp → OTy → 
   | .list x, t => do match ← split p (fun a _ => .arr a) t with
     | some (a, _) => pmatch env p vs x a
     | none => pure .no
-  | o@(.name ..), t => do
-    let O ← oty env [] o
+  -- a declared name or a `⟨θ ↦ A⟩` is one object once resolved, at the variables met so far
+  | o@(.name ..), t | o@(.each ..), t => do
+    let O ← oty env vs o
     pure (if ← defEq t O then .ok vs else .no)
 
 /-- `x ⟶ y` matched against `s ⟶ t`. -/

@@ -406,8 +406,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   每列在以其 atom 命名的无界对象上；测试 `Rel/Lang/TestSchemaDisk.lean`。第 2 部分已做（df-F1b）：`obj V from "dir" c`
   （`ObjDef.coded`，元素保持存储的值，`ObjInfo.codes`）；有限对象上的积 `⟨v ∈ V ↦ e⟩` 与 `schema D = {c ∈ V : A}`（在
   `Grammar.expr`/`Embed.stmt` 里展开，无新 `Tm`）；库定义 `dummy`、`pivotCol`、`pivotOn`（`pivotWide` 改写为它们）；测试
-  `Rel/Lang/TestPivotDisk.lean`。df-F1d 已做：`obj V from "dir" c` 读 `.d` 所命名 atom 的列（`ObjDef.coded` 带 atom，`ObjInfo.obj := .atom t`；元素是该列的不同存储字，按 `Kernel.ascOrd` 排序，名字是 `wordText`，与字面量同一读法；`elWord` 现包含 `sym`，其 id 即元素）；`u1`/`general` 无字面量，报 `no literal of u1 is stored`；非 `i64` 的有限对象无 universe；测试 date、f64、sym 的 `dummy`。未做：对象变量上的生成（`getDummies(c, x)` 本身对 `V` 泛型，要定义逐使用处展开）；
-  导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`。已做（df-F1c）：`readSide` 经 `Table.checkDisk` 核对 `.d` 与声明的 schema（缺列、多列、atom 不同都报
+  `Rel/Lang/TestPivotDisk.lean`。df-F1d 已做：`obj V from "dir" c` 读 `.d` 所命名 atom 的列（`ObjDef.coded` 带 atom，`ObjInfo.obj := .atom t`；元素是该列的不同存储字，按 `Kernel.ascOrd` 排序，名字是 `wordText`，与字面量同一读法；`elWord` 现包含 `sym`，其 id 即元素）；`u1`/`general` 无字面量，报 `no literal of u1 is stored`；非 `i64` 的有限对象无 universe；测试 date、f64、sym 的 `dummy`。
+  已做（df-F1）：对象 `⟨θ ↦ A⟩`（`OExp.each`）是 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，元素在每次使用处由调用解出的对象读（`Elab.eachWords`）。体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义没有常量，每次使用在调用处展开（`Expand.once`）；库定义 `getDummies(c, x) : ν ⟶ ⟨θ ↦ 1+1⟩ ≜ ⟨e ∈ θ ↦ dummy(c, e, x)⟩` 对 `θ` 泛型（`TestPivotDisk` 的 `dummiesT` 与 `dummy` 逐元素的结果相同）。未做：导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`。已做（df-F1c）：`readSide` 经 `Table.checkDisk` 核对 `.d` 与声明的 schema（缺列、多列、atom 不同都报
   `<dir>/.d: column c is …, declared …`；`read`、`readKeyed` 都经 `readSide`；无 `.d` 的旧数据照旧读）；`oexpOf` 移到 `Elab`；
   `objOf?` 按步数结构递归，必终止（fix-objOf）。
 - 🔄 D.12 `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即

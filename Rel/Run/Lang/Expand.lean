@@ -372,6 +372,9 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
   -- per variable: generic over its object, and given its universe; one the call puts an unbounded number object at
   -- is `num`, one it puts an initial segment of ℕ at is `seg` (`nb`), so a row with a `dfn` there runs fused
   -- (`build`), as it does outside a body
+  -- a `⟨θ ↦ …⟩` over a variable of `vs` has no object until a use solves it (`eachWords`): no constant, each use
+  -- builds its expansion at the call's objects
+  if (e.eachVars ++ ty.1.eachVars ++ ty.2.eachVars).any (· ∈ vs) then return (none, specs)
   let ph ← liftExcept (placeholdersFor env p n vs.length)
   let run (fl : List (Bool × Bool)) (deferred := false) : EM (Once × List Once) := do
     let objs := vs.zipIdx.map (fun (v, k) =>

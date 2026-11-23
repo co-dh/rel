@@ -162,6 +162,10 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   `n#i`（`Elab.generalise`，`mkDef` 的每次使用与无参定义都经过它）：没有使用能确定它，所以每次使用都取常量建变量时的
   对象 `.long`（未声明名字的 `objOf`），数检查照常在它上面跑（`numObj`、`numCheck`）。字面量与 `nil` 的开放对象仍归
   `settleOpen`；`check` 不是定义，其中仍开放的对象照旧报错。
+- 对象 `⟨θ ↦ A⟩`（`OExp.each`）是对象 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，
+  它的元素在每次使用处读（`Elab.eachWords`，经 `ObjInfo.words`），所以体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义
+  没有常量（`Expand.once`），每次使用是它在调用处对象上的展开，与上一条的单态化同一条路；`prims` 的签名里没有它
+  （`TmGen` 的 `#guard`），所以没有行在它上面读。库定义 `getDummies(c, x) : ν ⟶ ⟨θ ↦ 1+1⟩` 对 `θ` 泛型。
 - 泛型定义体里的数字面量（整数与浮点，`Elab.numParts` 读得出的词）先是开放对象（`Elab.litTy`），上下文可把它定在对象
   变量上（`⟨a, {(∗,0.5)}⟩plus` 里的 φ）；`numCheck` 在每次使用解出的对象上按该对象的 atom 读它的词（`litCol`），读不出
   就在该使用处报错：`` `inc` at this call, where φ is N: '0.5' is not an element of N, an object of i64 ``。
