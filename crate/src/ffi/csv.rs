@@ -17,7 +17,9 @@ fn cols<'a>(mut l: B<'a>) -> Result<Vec<Col<'a>>, String> {
         let rest = sh.field(1);
         let (mut ns, mut k) = (Vec::new(), rest.field(1));
         while !k.is_scalar() { ns.push(s(k.field(0))?); k = k.field(1) }
-        v.push(Col { name: s(c.field(0))?, shape: sh.field(0).unbox() as u8, t: rest.field(0).unbox() as u8, names: ns });
+        let (name, k) = (s(c.field(0))?, sh.field(0).unbox());
+        if k > csv::SH_LAST as usize { return Err(format!("CsvCols: column '{name}' has CsvShape constructor {k}; the reader knows 0 to {} (atom, null, text, opt)", csv::SH_LAST)) }
+        v.push(Col { name, shape: k as u8, t: rest.field(0).unbox() as u8, names: ns });
         l = l.field(1);
     }
     Ok(v)
@@ -39,8 +41,9 @@ fn read(path: B, cs: B, sep: u8) -> Result<O, Fail> {
     let bad: Vec<AtomicUsize> = cs.iter().map(|_| AtomicUsize::new(usize::MAX)).collect();
     let mut es: Vec<O> = Vec::new();
     for (c, (col, bad)) in cs.iter().zip(&bad).enumerate() {
+        // an in-band nullable's one encoding: its values under its null bitmap (`wordsFoR v (nulMap f)`)
         for (part, k) in csv::counts(&lx, c, col).into_iter().enumerate() {
-            let e = Sink::new(k, 8).enc().answer(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad));
+            let e = Sink::new(k, 8).enc().answer_nul(&|buf: &mut [i64], lo: usize| csv::fill(b, &lx, c, col, part, lo, buf, bad), lx.nul(c));
             es.push(ctor(0, [box_usize_o(k), e], &[]));
         }
     }
@@ -61,7 +64,7 @@ fn write(path: B, cs: B, sep: u8, n: usize, es: B) -> Result<O, Fail> {
     let (mut v, mut l) = (Vec::new(), es);
     while !l.is_scalar() { v.push((l.field(0).field(0).usize_field(0), l.field(0).field(1))); l = l.field(1) }
     csv::arity(&cs, v.len()).map_err(at)?;
-    // each part's atom, `CsvShape.atoms`
+    // each encoding's atom, `CsvShape.atoms`
     let ts = cs.iter().flat_map(|c| match c.shape {
         csv::SH_NULL => alloc::vec![csv::QT_U1, csv::QT_I64, c.t],
         csv::SH_TEXT => alloc::vec![csv::QT_I64, csv::QT_I64, c.t],
@@ -70,9 +73,14 @@ fn write(path: B, cs: B, sep: u8, n: usize, es: B) -> Result<O, Fail> {
     let src = ts.zip(&v).map(|(t, &(k, e))| scan::raw_all(t, k, e)).collect::<Result<Vec<_>, _>>().map_err(at)?;
     csv::dialect(sep).map_err(at)?;
     csv::schema(&cs).map_err(at)?;
-    let cnt: Vec<usize> = v.iter().map(|p| p.0).collect();
+    // each part read from its encoding: its raw words, or its null flags read on the block (`Csv.raws`)
+    let ps = csv::parts(&cs);
+    let cnt: Vec<usize> = ps.iter().map(|p| v[p.0].0).collect();
     let mut tmp = alloc::vec![0u8; 8 << DEFAULT_LG];
-    csv::write(path.cstr(), &cs, sep, n, &cnt, DEFAULT_LG, |p, lo, out| src[p].load(lo, out, &mut tmp))
+    csv::write(path.cstr(), &cs, sep, n, &cnt, DEFAULT_LG, |p, lo, out| match ps[p] {
+        (e, true) => src[e].nuls(lo, out),
+        (e, false) => src[e].load(lo, out, &mut tmp),
+    })
         .map_err(|e| match e { Fail::User(t) => at(t), e => e })?;
     Ok(boxed(0))
 }
