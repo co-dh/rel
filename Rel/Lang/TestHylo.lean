@@ -38,7 +38,7 @@ rel_program hyloCycle where
     S : E×[N] ⟶ N ≜ π₂ sum
     bad : E ⟶ N ≜ hylo(⟨𝟙, Λ(next)⟩, S)
 
-#guard hyloCycle.failures.map (·.msg) == [s!"bad: the coalgebra c at line {decl_line% hyloCycle + 5}, col 24 " ++
+#guard hyloCycle.failures.map (s!"{·.msg}") == [s!"bad: the coalgebra c at line {decl_line% hyloCycle + 5}, col 24 " ++
   "reaches a node from itself, so it is not well-founded there (2 of 3 nodes)"]
 
 open Rel.Programs.prelude in

@@ -875,7 +875,7 @@ def colOf (env : Env) (p : Pos) (s : OExp) (c : String) : Except Err (Res × OTy
   match Schema.col? S c, i.cols.lookup c with
   | .ok ⟨B, t⟩, some b => pure (⟨_, B, t⟩, i.ty, b)
   | .error m, _ => throw ⟨p, s!"schema `{n}`: {m}"⟩
-  | .ok _, none => throw ⟨p, s!"internal: schema `{n}` has the column '{c}' as an `Obj` and not as an object"⟩
+  | .ok _, none => throw ⟨p, .internal s!"schema `{n}` has the column '{c}' as an `Obj` and not as an object"⟩
 
 /-! ### The lifted rows of §e, each shape stated once -/
 
@@ -1152,7 +1152,7 @@ def Prim.inst (env : Env) (r : Prim) : M (List ((OTy × OTy) × Option Bool) × 
 def Op.row (p : Pos) : Op → M (Option Prim)
   | .prim s => match Prim.find? s with
     | some r => pure (some r)
-    | none => throw ⟨p, s!"internal: no row `{s}` in `prims`"⟩
+    | none => throw ⟨p, .internal s!"no row `{s}` in `prims`"⟩
   | .map => pure (some mapRow)
   | _ => pure none
 
@@ -1212,7 +1212,7 @@ def ObjInfo.member (i : ObjInfo) (n w : String) : Except String Unit :=
   | some (lo, hi), _, _ => match w.toInt? with
     | some k => if lo ≤ k ∧ k ≤ hi then pure () else throw s!"{w} is not in {n} = {lo}…{hi}"
     | none => throw s!"'{w}' is not an element of {n}"
-  | none, true, .atom t => match wordAt {} n t w with | .ok _ => pure () | .error e => throw e.msg
+  | none, true, .atom t => match wordAt {} n t w with | .ok _ => pure () | .error e => throw s!"{e.msg}"
   | _, _, _ => throw s!"'{w}' is not an element of {n}"
 
 /-- The declared objects holding all the words `ws` (`ObjInfo.member`), each once: an imported object is in scope
@@ -1937,7 +1937,7 @@ section Num
 
 variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
 
-def internal {α : Type} (what : String) : Except Err α := throw ⟨dp, s!"internal: {what}"⟩
+def internal {α : Type} (what : String) : Except Err α := throw ⟨dp, .internal what⟩
 
 /-- The element `w` of the declared base object `o`: its position among the named elements, or the number. -/
 def code (p : Pos) (o : OTy) (w : String) : Except Err Int64 :=
@@ -2061,7 +2061,7 @@ def Use.check (u : Use) : Except Err Unit := do
       (`{u.n}` : {u.sig}); give the use an expected type: a typed definition, a check against a typed term, or a \
       composition that fixes {v}"⟩
   if let .error e := u.xs.forM (numCheck objs mc u.p) then
-    throw ⟨u.p, s!"`{u.n}` at this call, where {", ".intercalate (us.map fun (v, o) => s!"{v} is {o}")}: {e.msg}"⟩
+    throw ⟨u.p, e.msg.map (s!"`{u.n}` at this call, where {", ".intercalate (us.map fun (v, o) => s!"{v} is {o}")}: " ++ ·)⟩
 
 end Num
 
@@ -2315,7 +2315,7 @@ def closed? {A B : Obj} (δ : Dem) (r : Res) : Except Err (Tm A B) := do
 def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   if let some ⟨A', U⟩ := uniOf objs o then
     -- the one reader that forces the universe: a product past `crossMax` fails the definition that reads it
-    let ⟨_, U⟩ ← U.get.mapError fun e => (⟨dp, e⟩ : Err)
+    let ⟨_, U⟩ ← U.get.mapError fun e => (⟨dp, .user e⟩ : Err)
     return ← if h : A' = A then pure (some (.uni (h ▸ U))) else internal dp "universe objects disagree"
   match o, A with
   -- an object variable's universe is its constant's argument even where the call puts an unbounded object (`num`)
@@ -2406,7 +2406,7 @@ def symOrd (δ : Dem) (p : Pos) (op : String) (P : Option Res)
             if h' : A' = .atom .sym ∧ B' = .atom .sym then
               match A', B', s, h' with | _, _, s, ⟨rfl, rfl⟩ => pure (Tm.comp s r)
             else internal dp s!"the set of {op} is at {repr A'} ⟶ {repr B'}, not sym ⟶ sym"
-        let ⟨X, t⟩ := mk Q (← (convTm δ [] Q).mapError (⟨p, ·⟩))
+        let ⟨X, t⟩ := mk Q (← (convTm δ [] Q).mapError (⟨p, .user ·⟩))
         pure ⟨X, .atom .sym, t⟩
     else internal dp s!"rank(D) is at {repr A} ⟶ {repr B}, not sym ⟶ i64"
 
@@ -2422,7 +2422,7 @@ def closeRes (δ : Dem) (p : Pos) (a : OTy) (why : String) : Res → Except Err 
 def paramOf (why : String) : Except Err Cor → Except Err ((B : Obj) × Tm (.prod B B) (.prod B B))
   | .ok ⟨A, B, c⟩ => if h : B = A then pure ⟨A, h ▸ c⟩ else internal dp s!"{why}'s order is not on one object"
   | .error e => throw ⟨e.pos,
-    s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): {e.msg}"⟩
+    e.msg.map (s!"{why} runs its order on the pairs it compares, and the order is not testable on pairs (§a): " ++ ·)⟩
 
 /-- The call node of the constant `c` at `A ⟶ B`, its object variables at `us`: its body `t` and its converse's
     constant `cv` at their objects (`Tm.instObj` at its placeholders `ph`), `os` those of the variables it is generic over. A
@@ -2450,7 +2450,7 @@ def litRes (p : Pos) (a b : OTy) (ps : List (Tup × Tup)) (gd : Option String) :
     let ⟨A, k⟩ ← litCol objs mc dp p n (zonk mc a) (ps.map (·.1))
     let ⟨B, v⟩ ← litCol objs mc dp p n (zonk mc b) (ps.map (·.2))
     pure ⟨A, B, .val ⟨n, k, v⟩⟩).mapError fun e => match gd with
-      | some d => ⟨e.pos, s!"`{d}` at the objects of this call: {e.msg}"⟩
+      | some d => ⟨e.pos, e.msg.map (s!"`{d}` at the objects of this call: " ++ ·)⟩
       | none => e
 
 /-- Each place `t` reads the variable `k` free, as that `var` node: a binder of `k` hides its scope, and a call's
@@ -2499,7 +2499,7 @@ def build (δ : Dem) : Pre → Except Err Res
   | .outr a b => return ⟨_, _, .outr (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .comp p q => do
     let ⟨A, B, t⟩ ← build δ p; let ⟨B', C, u⟩ ← build δ q
-    if h : B' = B then pure ⟨A, C, .comp t (h ▸ u)⟩ else internal dp "composition objects disagree"
+    if h : B' = B then pure ⟨A, C, .comp t (h ▸ u)⟩ else internal dp s!"composition objects disagree: {repr A} ⟶ {repr B} then {repr B'} ⟶ {repr C}"
   -- `R°`: closed, conversed whole; on demand, pushed to the leaves (`convTm`); a leaf whose converse does not
   -- run on demand reads `R` whole on its source's universe
   | .conv (.close _ (.conv (.close _ q _ _)) _ _) => build δ q
@@ -2794,7 +2794,7 @@ termination_by (sizeOf xs, 3)
 def test (δ : Dem) (p : Pre) : Except Err Cor :=
   match build δ p with
   | .ok ⟨A, B, t⟩ => pure ⟨A, B, pairTest t⟩
-  | .error err => match p with
+  | .error err => err.user <| match p with
     | .close _ q _ _ => test δ q
     | .callE _ _ _ _ alt _ _ _ _ => test δ alt
     -- a constant that is a pair test, `τ(c(…)) : A×B ⟶ A×B` (`once`)

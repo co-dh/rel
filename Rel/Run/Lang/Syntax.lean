@@ -27,17 +27,38 @@ structure Pos where
 
 instance : ToString Pos := ⟨fun p => s!"line {p.line}, col {p.col}"⟩
 
+/-- What an error says and whose fault it is: `user` is a refusal of the program's text, which a caller may answer
+    with a fallback; `internal` is a broken invariant of the elaborator, which no caller may swallow. -/
+inductive Msg
+  | user (s : String)
+  | internal (s : String)
+  deriving Repr, Inhabited
+
+/-- The same kind, its text rewritten: a rewrap of an error keeps whether it is internal. -/
+def Msg.map (f : String → String) : Msg → Msg
+  | .user s => .user (f s)
+  | .internal s => .internal (f s)
+
+def Msg.isInternal : Msg → Bool | .internal _ => true | .user _ => false
+
+instance : ToString Msg := ⟨fun | .user s => s | .internal s => s!"internal: {s}"⟩
+instance : Coe String Msg := ⟨.user⟩
+
 /-- A front-end error: where, and what was found against what was expected. -/
 structure Err where
   pos : Pos
-  msg : String
+  msg : Msg
   deriving Repr, Inhabited
 
+/-- A catch-all site falls back only on a refusal of the program's text: an internal error goes on. -/
+def Err.user {m : Type → Type} [Monad m] [MonadExceptOf Err m] {α : Type} (e : Err) (k : m α) : m α :=
+  if e.msg.isInternal then throw e else k
+
 /-- Line 0 is no place in the program: an error of the prelude's own text says where in its message. -/
-instance : ToString Err := ⟨fun e => if e.pos.line == 0 then e.msg else s!"{e.pos}: {e.msg}"⟩
+instance : ToString Err := ⟨fun e => if e.pos.line == 0 then s!"{e.msg}" else s!"{e.pos}: {e.msg}"⟩
 
 /-- An error raised re-reading the program `n` a program imports: where in `n` it is. -/
-def Err.inProg (n : String) (e : Err) : Err := ⟨default, s!"in the program `{n}`, {e.pos}: {e.msg}"⟩
+def Err.inProg (n : String) (e : Err) : Err := ⟨default, e.msg.map (s!"in the program `{n}`, {e.pos}: " ++ ·)⟩
 
 /-- A definition or object of a program, as the registry records it (`Expand.relRegistry`) and the resolver gives
     it: its constant `n.x`, its arity, whether it is an infix operator `_x_`, an object, a theorem. -/

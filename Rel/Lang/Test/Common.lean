@@ -44,7 +44,7 @@ def errAt (src : String) (line : Nat) (what : String) (col : Option Nat := none)
     CM Unit := do
   let r ← readIn (Parse.after (preludeScope) prog) src
   match ← Lean.Elab.Command.liftTermElabM (elabErr (r.map (prog ++ ·))) with
-  | some e => unless e.pos.line == line && col.all (· == e.pos.col) && (e.msg.splitOn what).length > 1 do
+  | some e => unless e.pos.line == line && col.all (· == e.pos.col) && ((toString e.msg).splitOn what).length > 1 do
       throwError "expected an error at line {line} with '{what}', got {e}"
   | none => throwError "expected an error at line {line} with '{what}', got none"
 
