@@ -393,6 +393,11 @@ def ordDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El (.prod A A)) (Obj.El (.pr
   | .atom t => fun p q => q = p ∧ if s then ltAt t p.1 p.2 else leAt t p.1 p.2
   | _ => fun _ _ => False
 
+/-- The row `cmpRelRow` at `A` given the universe `U`: `ltDen`/`leqDen` at an atom, `𝟘` elsewhere. -/
+def ordRelDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A) → Core.Rel (Obj.El A) (Obj.El A)
+  | .atom t => fun U => if s then ltDen t U else leqDen t U
+  | _ => fun _ _ _ => False
+
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Core.Rel (Obj.El (c.ty σ).1) (Obj.El (c.ty σ).2)
 
@@ -450,7 +455,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨⟨"succ", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => succOn (σ₁ σ)⟩,
    ⟨⟨"mix", fun σ => (σ₁ σ, σ₁ σ)⟩, fun σ _ => mixOn (σ₁ σ)⟩,
    ⟨⟨"at", fun σ => (.prod (.arr (σ₁ σ)) (σ₂ σ), σ₁ σ)⟩, fun σ _ => atOn (σ₁ σ) (σ₂ σ)⟩] ++
-  cmpOps.map fun (s, b) => ⟨⟨s, fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen b (σ₁ σ)⟩
+  cmpOps.map (fun (s, b) => ⟨⟨s, fun σ => (.prod (σ₁ σ) (σ₁ σ), .prod (σ₁ σ) (σ₁ σ))⟩, fun σ _ => ordDen b (σ₁ σ)⟩) ++
+  cmpOps.map fun (_, b) => ⟨⟨ordSym b, fun σ => (σ₁ σ, σ₁ σ)⟩,
+    fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) (ordRelDen b (σ₁ σ))⟩
 
 
 /-- The row `r`'s meaning at `A ⟶ B` given its relation arguments' meanings, found as `Prim.run` finds its code;
@@ -488,8 +495,6 @@ noncomputable def Tm.den : Val → {A B : Obj} → Tm A B → Core.Rel (Obj.El A
   | _, _, _, .inr => Core.Rel.inr
   | _, A, B, .prim r => Prim.den r A B []
   | ρ, _, _, .own R => R.den ρ
-  | ρ, _, _, .leq t U => leqDen t (U.den ρ)
-  | ρ, _, _, .lt t U => ltDen t (U.den ρ)
   | ρ, _, _, .foldr e S => foldrDen (e.den ρ) (S.den ρ)
   | ρ, _, _, .fold e S => foldDen (e.den ρ) (S.den ρ)
   | _, _, _, .share _ R => R.den Val.empty
@@ -687,7 +692,6 @@ theorem Tm.den_congr : ∀ {A B : Obj} (t : Tm A B) (ρ ρ' : Val), (∀ i ∈ t
     intro ρ ρ' h
     have e := ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])
     exact ⟨by simp only [Tm.den, e.1], fun ss => by simp only [Tm.argDen, e.2 ss]⟩
-  | leq _ R ih | lt _ R ih
   | lam R ih =>
     intro ρ ρ' h; exact ⟨by simp only [Tm.den, (ih ρ ρ' fun i hi => h i (by simp [Tm.fv, hi])).1], fun _ => rfl⟩
   | ldiv R S U V ihR ihS ihU ihV | rdiv R S U V ihR ihS ihU ihV =>
@@ -795,6 +799,14 @@ theorem leq_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.a
 theorem lt_le {t : QAtomicType} {U U' : Core.Rel (Obj.El (.atom t)) (Obj.El (.atom t))} (hU : U ⊑ U') : ltDen t U ⊑ ltDen t U' :=
   le_iff.2 fun _ _ ⟨⟨v, hv⟩, ⟨v', hv'⟩, e⟩ => ⟨⟨v, le_iff.1 hU _ _ hv⟩, ⟨v', le_iff.1 hU _ _ hv'⟩, e⟩
 
+theorem ordRelDen_le (s : Bool) (A : Obj) {U U' : Core.Rel (Obj.El A) (Obj.El A)} (hU : U ⊑ U') :
+    ordRelDen s A U ⊑ ordRelDen s A U' := by
+  cases A <;> simp only [ordRelDen]
+  · cases s
+    · exact leq_le hU
+    · exact lt_le hU
+  all_goals exact Core.Rel.le_refl _
+
 theorem foldr_le {e e' : Core.Rel (Obj.El B) (Obj.El B)} {S S' : Core.Rel (Obj.El (.prod A B)) (Obj.El B)} (he : e ⊑ e') (hS : S ⊑ S') :
     foldrDen e S ⊑ foldrDen e' S' :=
   le_iff.2 fun _ _ ⟨ys, hy, ⟨a, ha⟩, hs, hw⟩ =>
@@ -867,9 +879,10 @@ theorem rowDens_mono : ∀ e ∈ rowDens, (Prim.find? e.1.sym).any (·.mono) = t
   simp only [rowDens, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at he
   -- a `floatOps`, `arithOps`, `succ`, `mix`, `at` or `cmpOps` row takes no relation; then one case per row whatever their number,
   -- in `rowDens` order
-  rcases he with (((he | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩) | (rfl | rfl | rfl)) | ⟨_, -, rfl⟩
+  rcases he with ((((he | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩) | (rfl | rfl | rfl)) | ⟨_, -, rfl⟩) | ⟨_, -, rfl⟩
   rotate_left
   iterate 6 exact Core.Rel.le_refl _
+  · dsimp only; exact Sem.one_mono (fun hT => ordRelDen_le _ _ hT) h
   repeat' first | (rcases he with rfl | he) | subst he
   all_goals first | exact Core.Rel.le_refl _ | exact absurd hm (by decide) | skip
   · dsimp only; refine Sem.one_mono (fun hT => le_iff.2 fun _ _ hm => ?_) h
@@ -1001,8 +1014,6 @@ theorem Tm.den_pol_spine (k : Nat) : ∀ {A B : Obj} (t : Tm A B),
       simp only [hb]; exact sle.refl _
     · simp only [Tm.pol, Bool.or_eq_true, beq_iff_eq, e, false_or] at hp
       exact sle.lfp fun X => ih.1 s _ _ hp (g.bind e X)
-  | leq _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 leq_le (ih.1 s ρ ρ' hp g)
-  | lt _ U ih => refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; exact sle.map1 lt_le (ih.1 s ρ ρ' hp g)
   | foldr e S ihe ihS =>
     refine ⟨fun s ρ ρ' hp g => ?_, fun _ _ _ _ _ h => by simp [Tm.spinePol] at h⟩; simp only [Tm.pol, Bool.and_eq_true] at hp
     exact sle.map2 foldr_le (ihe.1 s ρ ρ' hp.1 g) (ihS.1 s ρ ρ' hp.2 g)

@@ -263,10 +263,10 @@ def cmp (op : String) {t : QAtomicType} (o : Except String Kernel.Op) (U : Rel (
   match K.pairs with
   | some p => Tab.cmpPairs o (← cut ⟨some k, some l, none⟩ p)
   | none => Tab.cmpOn o k.2 l.2
-def leq (t : QAtomicType) (U : Rel (.atom t) (.atom t)) : Rel (.atom t) (.atom t) :=
-  cmp "≤" (Tab.ordOp false t) U
-def lt (t : QAtomicType) (U : Rel (.atom t) (.atom t)) : Rel (.atom t) (.atom t) :=
-  cmp "<" (Tab.ordOp true t) U
+/-- The row `cmpRelRow strict` given `U` (`kernRows`): `cmp` at an atom, an error table at any other object. -/
+def cmpRel (strict : Bool) (A : Obj) (U : Rel A A) : Rel A A := match A, U with
+  | .atom t, U => cmp (ordSym strict) (Tab.ordOp strict t) U
+  | _, _ => .tab (.error s!"{ordSym strict} runs on a number object")
 
 /-- `Λ(R)` on the keys `X` (`Tab.lam`), `R` run knowing its domain is `X`. -/
 def lam (A B : Obj) (R : Rel A B) : Rel A (.arr B) :=
@@ -382,7 +382,8 @@ def kernRows : List (String × Lean.Name × List Lean.Expr) :=
    ("dom", ``GenK.dom), ("ran", ``GenK.ran), ("nil", ``GenK.nil)].map fun (s, c) => (s, c, [])) ++
   floatOps.map (fun (s, _) => (s, ``Tab.floatOp, [Lean.mkStrLit s])) ++
   arithOps.map (fun (s, _) => (s, ``Tab.arithOp, [Lean.mkStrLit s])) ++ [("succ", ``Tab.succOp, []), ("mix", ``Tab.mixOp, []), ("at", ``Tab.atRow, [])] ++
-  cmpOps.map fun (s, _) => (s, ``Tab.cmpOp, [Lean.mkStrLit s])
+  cmpOps.map (fun (s, _) => (s, ``Tab.cmpOp, [Lean.mkStrLit s])) ++
+  cmpOps.map fun (_, b) => (ordSym b, ``GenK.cmpRel, [Lean.toExpr b])
 
 -- every kernel row is a row of `prims`
 #guard kernRows.all fun (s, _) => prims.any (·.sym == s)

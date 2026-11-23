@@ -507,7 +507,7 @@ theorem cmp_side {op w : String} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
 
 /-- `cmp (ordOp s t) U` is the order `ordAt s t` of the atom `t` on `U`'s domain: on the pairs `p` a meet hands it,
     `p` cut to the two sides then tested (`Tab.cmpPairs_holds`), agreeing with the order on exactly `p`; else on the
-    cross of the sides (`Tab.cmpOn_holds`). `leq t` and `lt t` give `leqDen t`, `ltDen t`. -/
+    cross of the sides (`Tab.cmpOn_holds`). `GenK.cmpRel` at an atom is it (`rowOK_cmpRel`). -/
 theorem cmp_sound {op : String} {s : Bool} {t : QAtomicType} {U : Rel (.atom t) (.atom t)}
     {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El} (hU : ∀ K, K.WF → U.Reps K TU) (wU : U.Wf) :
     ∀ K, K.WF → (GenK.cmp op (Tab.ordOp s t) U).Reps K
@@ -529,11 +529,6 @@ theorem cmp_sound {op : String} {s : Bool} {t : QAtomicType} {U : Rel (.atom t) 
     refine ((Tab.cmpPairs_holds hop h a c).trans (and_congr ((cut_holds hq trivial trivial ⟨trivial, trivial⟩ a c).trans ?_)
       Iff.rfl)).trans and_assoc
     rw [← sk, ← sl]; exact ⟨fun ⟨x, _, z⟩ => ⟨x, z⟩, fun ⟨x, z⟩ => ⟨x, hp, z⟩⟩
-
-example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
-    (hU : ∀ K, K.WF → U.Reps K TU) (wU : U.Wf) : ∀ K, K.WF → (GenK.leq t U).Reps K (leqDen t TU) := cmp_sound (s := false) hU wU
-example {t : QAtomicType} {U : Rel (.atom t) (.atom t)} {TU : Core.Rel (Obj.atom t).El (Obj.atom t).El}
-    (hU : ∀ K, K.WF → U.Reps K TU) (wU : U.Wf) : ∀ K, K.WF → (GenK.lt t U).Reps K (ltDen t TU) := cmp_sound (s := true) hU wU
 
 /-! ### The rows with a law, under `ofVals` (the wrapper `Expand.primE` fits a row on values alone to) -/
 
