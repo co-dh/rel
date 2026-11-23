@@ -526,6 +526,10 @@ def ordRelDen (s : Bool) : (A : Obj) → Core.Rel (Obj.El A) (Obj.El A) → Core
 /-- A row's meaning at its object variables `σ`, given its relation arguments' meanings. -/
 abbrev RowDen (c : RowCode) := (σ : List Obj) → List Sem → Core.Rel (Obj.El (c.ty σ).1) (Obj.El (c.ty σ).2)
 
+/-- `a` is in the domain of `T`: the test a row with a relation argument (`filter`, `takewhile`, `positions`, `asc`)
+    applies to an element. A test, not a relation, so its body is a predicate of points by nature. -/
+abbrev inDom {α β : Type} (T : Core.Rel α β) (a : α) : Prop := ∃ b, T a b
+
 /-- The rows `prefix`/`suffix`: the first/second component of a splitting of `xs` (`uncat`). -/
 def splitDen (s : Bool) (A : Type) : Core.Rel (List A) (List A) :=
   (graph fun p : List A × List A => p.1 ++ p.2)° ≫ if s then graph Prod.fst else graph Prod.snd
@@ -547,9 +551,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
   [⟨tau, fun _ _ => graph fun a => [a]⟩,
    ⟨cons, fun _ _ => graph fun p => p.1 :: p.2⟩,
    ⟨map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩,
-   ⟨filter, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => graph fun xs => xs.filter fun x => decide (∃ y, T x y)⟩,
+   ⟨filter, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => graph fun xs => xs.filter fun x => decide (inDom T x)⟩,
    ⟨takewhile, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T =>
-      graph fun xs => xs.takeWhile fun x => decide (∃ y, T x y)⟩,
+      graph fun xs => xs.takeWhile fun x => decide (inDom T x)⟩,
    ⟨thinL, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T =>
       thinLDen fun a b => decide (T (a, b) (a, b))⟩,
    ⟨merge, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₁ σ)) (Y := .prod (σ₁ σ) (σ₁ σ)) fun T =>
@@ -572,9 +576,9 @@ def rowDens : List ((c : RowCode) × RowDen c) :=
    ⟨setify, fun σ _ => lamDen (memDen (A := σ₁ σ))⟩,
    -- dataframe §3.1's `where(dom(xs ≫ p))`: the positions of `xs` whose element is in `dom(p)`, ascending
    ⟨positions, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T =>
-      graph (positionsL fun x => decide (∃ y, T x y))⟩,
+      graph (positionsL fun x => decide (inDom T x))⟩,
    -- q's `asc` of the set `dom P`: `j` to its `j`-th element in `Obj.lt` order
-   ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) fun b => ∃ c, T b c⟩,
+   ⟨asc, fun σ => Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => ascDen (σ₁ σ) (inDom T)⟩,
    ⟨sums, fun σ => Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ.getD 2 .long) (sumsAt (σ₁ σ) (σ₂ σ) (σ.getD 2 .long))⟩,
    ⟨flat, fun σ => Sem.one (X := σ₁ σ) (Y := .prod (σ₂ σ) (σ.getD 2 .long)) flatDen⟩,
    ⟨cast, fun σ _ => castDen (σ₁ σ) (σ₂ σ)⟩,
