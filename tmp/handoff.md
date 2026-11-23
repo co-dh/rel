@@ -1,23 +1,31 @@
-# 8.2d handoff
+# 8.2e handoff
 
-Design: `ValsB (o : Bool) : Obj → USize → Type` (o a PARAMETER, matched only through `ColB o t n`, so sum/prod/one reduce
-at a variable o), `Vals := ValsB false`, `ColB false = Arr`, `ColB true = Opt`. Summand columns of a dense sum are
-`ValsB true`. Generic functions were renamed `Vals.* -> ValsB.*` (row view ofOpt ofGen gather concat cols cellsOk
-rowsImpl) so that field notation on `x : Vals A n` still finds them by unfolding `Vals`; `Vals.enc`/`Vals.get`
-(Core.lean) keep `x.enc`/`x.get i` working on atom sides.
+Branch merged with fb4ab1a (8.2d) with no conflict (auto-merged EmitC, TestNative, Expand, Table).
 
-## Done (committed, built green)
-Rel.Run.Core, Gather, Cols, Canon, Struct (Opt.fill, Vals.lift/unlift/zeros/none; Arr.dflts deleted), Arith, Cast, Div,
-Lang.Gen (sumV takes ValsB true summands), doc/rel-architecture.zh.typ line 74 (typst compile NOT yet run).
+## Done (RelRun builds green: `lake build RelRun`, 242 jobs)
+- `Rel/Run/List.lean`: `Vals.pack` -> `ValsB.pack` generic over `o`; at `o = true` an `arr` keeps its cells and packs only
+  its payload (null bounds of the other summand's rows are read by no width/prefix sum); `Tab.pack` calls it.
+  `cells/tau/cat/zip` stay `Vals` (only called at `o = false`).
+- `Rel/Run/Lang/Plan.lean`: `ColB.toOpt` (new), `cols` generic over `o`.
+- `Rel/Run/Lang/Gen.lean`: new `Gen.opt`, `Gen.colB o`; `pairV arrV sumV optV oneV` take `o` first.
+- `Rel/Run/Lang/Expand.lean`: `colE` (new), `valsE`/`valsEq` generic over `o` (summand columns rebuilt at `true`);
+  `Rel/Run/Lang/TmGen.lean` calls `valsE false`.
+- `Rel/Run/Table.lean`: `symIds` states `Arr.enc (t := .sym)` (the abbrev `Vals.enc` defeated `generalize`);
+  `readVals`/`encVals` wrap the two summands in `Vals.lift` (ownership mask is the later package).
+- `injCols_ok` (master RepStruct:407) users on master: `Tab.inl_holds`, `Tab.inr_holds` only; `Rel.injCols` itself is not
+  in the 8.2d `Run/Struct.lean` any more, so restore only if `inl_holds`/`inr_holds` are re-proved via it (not needed by
+  the dense `Vals.zeros` design).
 
-## Left, first errors
-- `Rel/Run/List.lean:50:67` `Vals.pack` on a sum's `.gen` summands: `ValsB.ofGen h tag (← Vals.pack x) ...` gets
-  `ValsB true`; `Vals.pack`/`cells`/`tau`/`cat`/`zip` must become ValsB-generic (arr lo/hi are `ColB o .i64`).
-- `Rel/Run/Lang/Plan.lean:550:102` `cols a x ...` on a `ValsB true` summand.
-- Not yet reached: RepCanon (Vals.WF -> `ValsB.WFOn x P`: Opt leaf `isNul i = true <-> ¬P i`; gen sum
-  `(∀ i, ¬P i → tag.get i = false) ∧ WFOn x (P ∧ ¬tag) ∧ WFOn y (P ∧ tag)`; `Vals.WF x := x.WFOn (fun _ => True)`),
-  RepCols, RepStruct (`Vals.zeros_ok`, `Vals.ofGen_wf`, `inl/inr` laws; `Opt.nuls_get` is kept; add an `Opt.fill`
-  lemma, `Opt.fill t n = Opt.nuls t n` for t ≠ general), RepTabDiv, RepWF (`pack_wf` filler clauses).
-- Test in Core.lean: `tsum` summands now `Opt.ofArr`.
-- Later agent (as scoped): readVals/encVals/cellsOk ownership mask, GenKBits/GenSound, EmitC, tests, and
-  `ColB`-generic `Vals.gather` for `Opt` null rows needs no change (kgather moves flags).
+## Left (proof side, nothing started)
+`lake build Rel.RepCanon` first errors (log /data/tmp/e82e-b6.log):
+- `Rel/RepCanon.lean:390:109`, `394:4`, `394:41 Unknown constant Rel.Vals.view_go_cast`, `397`, `398`, `426`, `435
+  Unknown constant Rel.Vals.view_ofOpt`, `444`, `468`, `477`, `478`, `491`, `521`, `989`, `998`, `1018`, `1049`, `1082`,
+  `1097 Unknown constant Rel.Vals.cols_arr`, `1218`, `1231`, `1408` (lemma names were renamed `Vals.* -> ValsB.*` in Core/Canon;
+  the proofs still say `Vals.view_ofOpt`, `Vals.view_go_cast`, `Vals.cols_arr`, and the statements are over `Vals`, not `ValsB o`).
+- Plan from the task: `Vals.WF` -> `ValsB.WFOn x P` (Opt leaf: `isNul i <-> ¬P i`; gen sum
+  `(forall i, ¬P i -> tag.get i = false) /\ WFOn x (P /\ ¬tag) /\ WFOn y (P /\ tag)`; `Vals.WF x := x.WFOn (fun _ => True)`),
+  then RepCols, RepStruct (`Vals.zeros_ok`, `ofGen_wf`, `none_wf`; delete `Arr.dflts_get`; add
+  `Opt.fill t n = Opt.nuls t n` for `t != general`), RepTabDiv, RepWF (`pack_wf` filler clauses; `pack_row` in RepTabDiv uses
+  the old `Vals.pack`, now `ValsB.pack`).
+- Later (as scoped): read-check ownership mask in `readVals`/`encVals`, GenKBits/GenSound, EmitC nullable summands, tests,
+  Core.lean test `tsum`.

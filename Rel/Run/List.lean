@@ -31,10 +31,13 @@ def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Ex
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads
 the same. A payload joined to a copy of itself (`ValsB.concat` in `∪`, `cat`) doubles while its cells read one copy;
 the cut is paid by the dead half, so a round's slices (`uncons`) are not copied each round. -/
-def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A n)
-  | .atom _, _, x => pure x
-  | .prod _ _, _, x => do pure (← Vals.pack x.1, ← Vals.pack x.2)
-  | .arr _, n, ⟨m, lo, hi, f⟩ => do
+def ValsB.pack : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Except String (ValsB o A n)
+  | _, .atom _, _, x => pure x
+  | _, .prod _ _, _, x => do pure (← ValsB.pack x.1, ← ValsB.pack x.2)
+  -- a summand's cells (`o = true`) have null bounds in the rows of the other summand, which no width or prefix sum
+  -- reads: its own payload is cut, its cells kept
+  | true, .arr _, _, ⟨m, lo, hi, f⟩ => do pure ⟨m, lo, hi, ← ValsB.pack f⟩
+  | false, .arr _, n, ⟨m, lo, hi, f⟩ => do
     -- the bounds, widths, their prefix sums and the positions `lo + u` are read signed: each below `n * m + n + m`
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"pack: {n} cells over {m} elements past 2^63"
     let w ← colMap .sub n hi.enc lo.enc
@@ -43,16 +46,16 @@ def Vals.pack : {A : Obj} → {n : USize} → Vals A n → Except String (Vals A
     | .ok P =>
       if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2 (colPrefix_plain hP) ≤ m.toNat then do
         let (T, G, u) ← expand n w
-        Vals.cells n w (← Vals.pack (← ValsB.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
-      else pure ⟨m, lo, hi, ← Vals.pack f⟩
-  | .sum _ _, _, s => match s.view with
+        Vals.cells n w (← ValsB.pack (← ValsB.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
+      else pure ⟨m, lo, hi, ← ValsB.pack f⟩
+  | _, .sum _ _, _, s => match s.view with
     | .opt .. => pure s
-    | .gen h tag x y => do pure (ValsB.ofGen h tag (← Vals.pack x) (← Vals.pack y))
-  | .one, _, _ => pure ()
+    | .gen h tag x y => do pure (ValsB.ofGen h tag (← ValsB.pack x) (← ValsB.pack y))
+  | _, .one, _, _ => pure ()
 
 /-- **`R` with its payloads cut** (`Vals.pack` of both sides): the same rows in the same order. -/
 def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do
-  pure ⟨R.n, ← Vals.pack R.key, ← Vals.pack R.val⟩
+  pure ⟨R.n, ← ValsB.pack R.key, ← ValsB.pack R.val⟩
 
 /-- **`τ` on the rows of `x`**: row `i` the one-element cell `[i, i + 1)` over `x` itself. -/
 def Vals.tau {B : Obj} {n : USize} (x : Vals B n) : Except String (Vals (.arr B) n) := do

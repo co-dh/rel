@@ -536,19 +536,24 @@ def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String P
 /-- One column of a side (`cols`): a side of `1`'s count, or an atom column with its type and length. -/
 abbrev SideCol := USize ⊕ (t : QAtomicType) × (k : USize) × Opt t k
 
+/-- An atom column at ownership `o` as a nullable one: `Opt.ofArr` where every row is owned, itself where it is `Opt`. -/
+def ColB.toOpt : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Opt t n
+  | false, _, _, x => Opt.ofArr x
+  | true, _, _, x => x
+
 /-- A side's atom columns, each with its path in the side: `""` an atom; `.1`/`.2` a product's; `.lo`/`.hi`/`.e`
     an array's bounds and payload; `.tag`/`.l`/`.r` a sum's tags and two summand columns, a band sum
     (`Obj.band`) its one nullable column at the side's own path. A side of `1`
     is `.inl` its count: it has a file like any side (`Db.ownNParts` kind 5), holding the count and no part. -/
-def cols : (A : Obj) → {n : USize} → Vals A n → String → List (String × SideCol)
-  | .atom _, _, x, p => [(p, .inr ⟨_, _, Opt.ofArr x⟩)]
-  | .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
-  | .arr b, _, ⟨_, lo, hi, f⟩, p =>
-    [(p ++ ".lo", .inr ⟨_, _, Opt.ofArr lo⟩), (p ++ ".hi", .inr ⟨_, _, Opt.ofArr hi⟩)] ++ cols b f (p ++ ".e")
-  | .sum a b, _, s, p => match s.view with
+def cols : {o : Bool} → (A : Obj) → {n : USize} → ValsB o A n → String → List (String × SideCol)
+  | _, .atom _, _, x, p => [(p, .inr ⟨_, _, ColB.toOpt x⟩)]
+  | _, .prod a b, _, x, p => cols a x.1 (p ++ ".1") ++ cols b x.2 (p ++ ".2")
+  | _, .arr b, _, ⟨_, lo, hi, f⟩, p =>
+    [(p ++ ".lo", .inr ⟨_, _, ColB.toOpt lo⟩), (p ++ ".hi", .inr ⟨_, _, ColB.toOpt hi⟩)] ++ cols b f (p ++ ".e")
+  | _, .sum a b, _, s, p => match s.view with
     | .opt _ x => [(p, .inr ⟨_, _, x⟩)]
     | .gen _ tag x y => [(p ++ ".tag", .inr ⟨_, _, Opt.ofArr tag⟩)] ++ cols a x (p ++ ".l") ++ cols b y (p ++ ".r")
-  | .one, n, _, p => [(p, .inl n)]
+  | _, .one, n, _, p => [(p, .inl n)]
 
 /-- `Db.ownNParts`'s kind of a side of `1`: the header's count, no part. -/
 def oneKind : UInt8 := 5

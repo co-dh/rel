@@ -111,8 +111,9 @@ def readVals : (A : Obj) → (dir p : String) → IO (String × (n : USize) × V
     let ⟨n, tag⟩ ← readArr .u1 (file dir (p ++ ".tag"))
     let (_, x) ← readVals a dir (p ++ ".l")
     let (_, y) ← readVals b dir (p ++ ".r")
-    return (file dir (p ++ ".tag"), ⟨n, ValsB.ofGen h tag (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".l")) x)
-      (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".r")) y)⟩)
+    -- every row read as owned: the ownership mask a file must carry is the later package (PLAN 8.2)
+    return (file dir (p ++ ".tag"), ⟨n, ValsB.ofGen h tag (Vals.lift (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".l")) x))
+      (Vals.lift (← same (file dir (p ++ ".tag")) n (file dir (p ++ ".r")) y))⟩)
   -- a side of `1`: its file holds its count and no part (`Plan.oneKind`)
   | .one, dir, p => do
     let f ← Db.ownMap (file dir p)
@@ -220,8 +221,8 @@ def rank (D : Dict) : Except String (Tab .long .long) := do D.comp (← (← Tab
 /-- The symbol relation `I : A ⟶ sym` as its ids `A ⟶ ℕ`: a `sym` column is its ids (`Enc.WF`), so the payload is
     taken as it lies and its well-formedness carried over by proof, never re-decided (`Arr.of`) or read. -/
 def symIds {A : Obj} (I : Tab A (.atom .sym)) : Tab A .long :=
-  ⟨I.n, I.key, Arr.mk I.val.enc (by
-    have h := I.val.wf; generalize I.val.enc = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])
+  ⟨I.n, I.key, Arr.mk (Arr.enc (t := .sym) I.val) (by
+    have h := I.val.wf; generalize Arr.enc (t := .sym) I.val = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])
     I.val.plain⟩
 
 /-- The dictionary `D : ℕ ⟶ [C]` as the relation `sym ⟶ [C]`: row `i` is the text of id `i` (`Dict`), so the ids `0 … n-1`
@@ -461,7 +462,7 @@ def encVals (path : String) : (A : Obj) → List (USize × Enc) →
     let ⟨l, x, es⟩ ← encVals path a es
     let ⟨r, y, es⟩ ← encVals path b es
     if h : l = n then
-      if h' : r = n then pure ⟨n, ValsB.ofGen hb tag (h ▸ x) (h' ▸ y), es⟩
+      if h' : r = n then pure ⟨n, ValsB.ofGen hb tag (Vals.lift (h ▸ x)) (Vals.lift (h' ▸ y)), es⟩
       else .error s!"{path}: sum tags of {n} and a right summand of {r} rows"
     else .error s!"{path}: sum tags of {n} and a left summand of {l} rows"
   -- a side of `1`: its part (a CSV column of its one element's code, or a sum's empty right side) gives the count

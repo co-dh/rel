@@ -297,7 +297,7 @@ instance : ToExpr Prim where
     again. Not a `ToExpr`: it fails where those do (a symbol, general or ALP payload is not rebuilt). -/
 def tmE (sh : Array Lean.Expr) : {A B : Obj} → Tm A B → Except String Lean.Expr
   | _, _, .val (A := A) (B := B) R => return g ``Tm.val #[oE A, oE B, fst (g ``Tab #[oE A, oE B]) (← relE R)]
-  | _, _, .uni (A := A) (m := m) U => return g ``Tm.uni #[oE A, uE m, fst (g ``Vals #[oE A, uE m]) (← valsE A m U)]
+  | _, _, .uni (A := A) (m := m) U => return g ``Tm.uni #[oE A, uE m, fst (g ``Vals #[oE A, uE m]) (← valsE false A m U)]
   | _, _, .zero (A := A) (B := B) => return g ``Tm.zero #[oE A, oE B]
   | _, _, .id (A := A) => return g ``Tm.id #[oE A]
   | _, _, .top (A := A) (B := B) V => return g ``Tm.top #[oE A, oE B, ← tmE sh V]
