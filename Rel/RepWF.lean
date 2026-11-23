@@ -111,17 +111,26 @@ theorem compTabMat_key_wf {R : Tab A B} {n g w ka M : USize} {o o' ra ra' : Enc}
 
 theorem inlConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) A} (h : Tab.inlConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
-  obtain ⟨l, r, tag, idx, x, y⟩ := X
-  simp only [Tab.inlConv, bind, Except.bind] at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
+  · obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+    simp only [bind, Except.bind] at h
+    okSplit
+    exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inl_wf ‹_› trivial))
+  have hXw := hX
+  simp only [Vals.WF, hv] at hX
+  simp only [bind, Except.bind] at h
   okSplit
-  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inl_wf ‹_› hX.1))
+  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hXw) (conv_wf ‹_› (inl_wf ‹_› hX.1))
 
 theorem inrConv_wf {n : USize} {X : Vals (.sum A B) n} {t : Tab (.sum A B) B} (h : Tab.inrConv X = .ok t)
     (hX : Vals.WF X) : t.WF := by
-  obtain ⟨l, r, tag, idx, x, y⟩ := X
-  simp only [Tab.inrConv, bind, Except.bind] at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
+  · cases h
+  have hXw := hX
+  simp only [Vals.WF, hv] at hX
+  simp only [bind, Except.bind] at h
   okSplit
-  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hX) (conv_wf ‹_› (inr_wf ‹_› hX.2))
+  all_goals first | exact zero_wf h | exact comp_wf h (idU_wf ‹_› hXw) (conv_wf ‹_› (inr_wf ‹_› hX.2))
 
 /-! ### The power operators that build no cell -/
 
@@ -203,13 +212,17 @@ theorem Vals.pack_wf : {A : Obj} → {n : USize} → {x y : Vals A n} → Vals.p
     split at h; · cases h
     rename_i y2 h2
     cases h; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
-  | .sum _ _, _, ⟨l, r, tag, idx, x, y⟩, _, h, hx => by
-    simp only [Vals.pack, bind, Except.bind, pure, Except.pure] at h
+  | .sum _ _, _, s, _, h, hx => by
+    rcases hv : s.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> simp only [Vals.pack, hv] at h
+    · simp only [pure, Except.pure, Except.ok.injEq] at h; cases h; exact hx
+    simp only [bind, Except.bind, pure, Except.pure] at h
     split at h; · cases h
     rename_i x' h1
     split at h; · cases h
     rename_i y' h2
-    cases h; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
+    cases h
+    simp only [Vals.WF, hv] at hx
+    simp only [Vals.WF, Vals.view_ofGen]; exact ⟨Vals.pack_wf h1 hx.1, Vals.pack_wf h2 hx.2⟩
   | .arr B, n, ⟨m, lo, up, f⟩, y, h, hx => by
     simp only [Vals.pack] at h
     split at h; · cases h

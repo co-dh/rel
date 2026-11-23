@@ -40,13 +40,19 @@ theorem Vals.none_wf : {A : Obj} → {x : Vals A 0} → Vals.none A = .ok x → 
     rename_i f hf; cases h
     exact ⟨fun i => absurd i.2 (by simp), Vals.none_wf hf⟩
   | .sum _ _, _, h => by
-    simp only [Vals.none, bind, Except.bind, pure, Except.pure] at h
-    split at h; · cases h
-    split at h; · cases h
-    split at h; · cases h
-    rename_i p hp; split at h; · cases h
-    rename_i q hq; cases h
-    exact ⟨Vals.none_wf hp, Vals.none_wf hq⟩
+    unfold Vals.none at h
+    split at h
+    · simp only [bind, Except.bind, pure, Except.pure] at h
+      split at h; · cases h
+      cases h; simp only [Vals.WF, Vals.view_ofOpt]
+    · simp only [bind, Except.bind, pure, Except.pure] at h
+      split at h; · cases h
+      split at h; · cases h
+      split at h; · cases h
+      rename_i p hp; split at h; · cases h
+      rename_i q hq; cases h
+      simp only [Vals.WF, Vals.view_ofGen]
+      exact ⟨Vals.none_wf hp, Vals.none_wf hq⟩
 
 namespace Tab
 variable {A B C D I : Obj}
@@ -157,15 +163,23 @@ theorem top_wf {n m : USize} {X : Vals A n} {Y : Vals B m} {t : Tab A B} (h : Ta
 /-- **`inl X` keeps `Tab.WF`**: `X` on both sides, a right summand of no row. -/
 theorem inl_wf {n : USize} {X : Vals A n} {t : Tab A (.sum A B)} (h : Tab.inl (B := B) X = .ok t)
     (hX : Vals.WF X) : t.WF := by
-  simp only [Tab.inl, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨hX, hX, Vals.none_wf ‹_›⟩
+  unfold Tab.inl at h
+  split at h
+  · simp only [bind, Except.bind] at h
+    split at h; · cases h
+    exact canon_wf h ⟨hX, by simp only [Vals.WF, Vals.view_ofOpt]⟩
+  · simp only [bind, Except.bind] at h
+    okSplit
+    exact canon_wf h ⟨hX, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨hX, Vals.none_wf ‹_›⟩⟩
 
 theorem inr_wf {n : USize} {Y : Vals B n} {t : Tab B (.sum A B)} (h : Tab.inr (A := A) Y = .ok t)
     (hY : Vals.WF Y) : t.WF := by
-  simp only [Tab.inr, bind, Except.bind] at h
-  okSplit
-  exact canon_wf h ⟨hY, Vals.none_wf ‹_›, hY⟩
+  unfold Tab.inr at h
+  split at h
+  · exact canon_wf h ⟨hY, by simp only [Vals.WF, Vals.view_ofOpt]⟩
+  · simp only [bind, Except.bind] at h
+    okSplit
+    exact canon_wf h ⟨hY, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨Vals.none_wf ‹_›, hY⟩⟩
 
 /-- **`compPairs` keeps `Tab.WF`**: `comp`, or `compFrom` within `crossMax`. -/
 theorem compPairs_wf {R : Tab A B} {S : Tab B C} {t : Tab A C} (h : Tab.compPairs R S = .ok t) (hR : R.WF)
@@ -422,48 +436,120 @@ theorem injCols_ok {n : USize} {s : Bool} {tag : Arr .u1 n} {idx : Arr .i64 n} (
 
 namespace Tab
 
+/-- **Every row of `Opt.nuls t n` is the null** (`wordsFoR` of `n` zero words with every row flagged). -/
+theorem Opt.nuls_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.nuls t n = .ok x) (i : Fin n.toNat) :
+    x.get i = none := by
+  unfold Opt.nuls at h
+  dsimp only at h
+  split at h
+  rotate_left; · cases h
+  cases h
+  have hf := foRNuls_wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)) (n := n) (by simp) i.1
+    (by simpa using i.2)
+  have hb : Column.bitAt (nulMap (Array.replicate n.toNat 1)) i.1 = true := by
+    simp only [nulMap, Array.size_replicate]
+    rw [bitAt_packOf _ _ _ i.2]; simp
+  rw [hb, if_pos rfl] at hf
+  have hn : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i = true := by
+    cases hc : Opt.isNul ⟨wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1)), ‹_›⟩ i
+    · exact absurd (Option.some.inj (((Opt.isNul_eq_false _ i).1 hc).symm.trans hf)) (by decide)
+    · rfl
+  simp only [Opt.get, hn, if_true]
+
+/-- **Every row of `Vals.optInr h Y` is `inr` of `Y`'s row**, the band column's element read as `a + b`. -/
+theorem Vals.optInr_get {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n)
+    (i : Fin n.toNat) : Obj.optEl h ((Vals.optInr h Y).get i) = .inr (Vals.row Y i) := by
+  obtain ⟨rfl, rfl⟩ := Obj.band_some h
+  unfold Vals.optInr Obj.optEl
+  generalize Obj.band_some h = p; obtain ⟨p1, p2⟩ := p
+  simp only [Opt.get_ofArr]; rfl
+
+/-- The table `⟨n, X, V⟩` of rows `inl` of `X`'s rows denotes `inl` on `X`. -/
+private theorem holds_inl_of_row {n : USize} {X : Vals A n} {V : Vals (.sum A B) n}
+    (hrow : ∀ k, Vals.row V k = .inl (X.row k)) (a : A.El) (s : (Obj.sum A B).El) :
+    Tab.Holds (⟨n, X, V⟩ : Tab A (.sum A B)) a s ↔ (∃ i, X.row i = a) ∧ Core.Rel.inl a s := by
+  simp only [Tab.Holds, hrow, Core.Rel.inl, Core.Rel.graph]
+  exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
+
+private theorem holds_inr_of_row {n : USize} {Y : Vals B n} {V : Vals (.sum A B) n}
+    (hrow : ∀ k, Vals.row V k = .inr (Y.row k)) (b : B.El) (s : (Obj.sum A B).El) :
+    Tab.Holds (⟨n, Y, V⟩ : Tab B (.sum A B)) b s ↔ (∃ i, Y.row i = b) ∧ Core.Rel.inr b s := by
+  simp only [Tab.Holds, hrow, Core.Rel.inr, Core.Rel.graph]
+  exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
+
 /-- **`Tab.inl X` denotes `inl` on the values `X`** (`idU X ≫ Core.Rel.inl`, the injection `junc` is defined by). -/
 theorem inl_holds {n : USize} {X : Vals A n} {T : Tab A (.sum A B)} (h : Tab.inl X = .ok T) (hX : Vals.WF X)
     (a : A.El) (s : (Obj.sum A B).El) : T.Holds a s ↔ (∃ i, X.row i = a) ∧ Core.Rel.inl a s := by
   unfold Tab.inl at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i ti hti
-  obtain ⟨tag, idx⟩ := ti
-  split at h; · cases h
-  rename_i y hy
-  rw [canon_holds h ⟨hX, hX, Vals.none_wf hy⟩]
-  have hrow : ∀ k : Fin n.toNat, Vals.row (A := .sum A B) ⟨n, 0, tag, idx, X, y⟩ k = .inl (X.row k) := fun k => by
+  split at h
+  · rename_i t ht
+    simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i z hz
+    rw [canon_holds h ⟨hX, by simp only [Vals.WF, Vals.view_ofOpt]⟩]
+    refine holds_inl_of_row (fun k => ?_) a s
+    obtain ⟨rfl, rfl⟩ := Obj.band_some ht
+    simp only [Vals.row, Vals.view_ofOpt, Opt.nuls_get hz k]
+    unfold Obj.optEl; generalize Obj.band_some ht = p; obtain ⟨p1, p2⟩ := p; rfl
+  · simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i ti hti
+    obtain ⟨tag, idx⟩ := ti
+    split at h; · cases h
+    rename_i y hy
+    rw [canon_holds h ⟨hX, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨hX, Vals.none_wf hy⟩⟩]
+    refine holds_inl_of_row (fun k => ?_) a s
     obtain ⟨ht, hc⟩ := injCols_ok hti k
-    simp only [Vals.row, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
+    simp only [Vals.row, Vals.view_ofGen, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
     rfl
-  simp only [Tab.Holds, hrow, Core.Rel.inl, Core.Rel.graph]
-  exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
 
 /-- **`Tab.inr Y` denotes `inr` on the values `Y`** (`idU Y ≫ Core.Rel.inr`). -/
 theorem inr_holds {n : USize} {Y : Vals B n} {T : Tab B (.sum A B)} (h : Tab.inr Y = .ok T) (hY : Vals.WF Y)
     (b : B.El) (s : (Obj.sum A B).El) : T.Holds b s ↔ (∃ i, Y.row i = b) ∧ Core.Rel.inr b s := by
   unfold Tab.inr at h
-  simp only [bind, Except.bind] at h
-  split at h; · cases h
-  rename_i ti hti
-  obtain ⟨tag, idx⟩ := ti
-  split at h; · cases h
-  rename_i x hx
-  rw [canon_holds h ⟨hY, Vals.none_wf hx, hY⟩]
-  have hrow : ∀ k : Fin n.toNat, Vals.row (A := .sum A B) ⟨0, n, tag, idx, x, Y⟩ k = .inr (Y.row k) := fun k => by
+  split at h
+  · rename_i t ht
+    rw [canon_holds h ⟨hY, by simp only [Vals.WF, Vals.view_ofOpt]⟩]
+    refine holds_inr_of_row (fun k => ?_) b s
+    simp only [Vals.row, Vals.view_ofOpt]
+    exact Vals.optInr_get ht Y k
+  · simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i ti hti
+    obtain ⟨tag, idx⟩ := ti
+    split at h; · cases h
+    rename_i x hx
+    rw [canon_holds h ⟨hY, by simp only [Vals.WF, Vals.view_ofGen]; exact ⟨Vals.none_wf hx, hY⟩⟩]
+    refine holds_inr_of_row (fun k => ?_) b s
     obtain ⟨ht, hc⟩ := injCols_ok hti k
-    simp only [Vals.row, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
+    simp only [Vals.row, Vals.view_ofGen, ht, dif_pos (Nat.lt_of_le_of_lt (Nat.zero_le _) k.2), hc]
     rfl
-  simp only [Tab.Holds, hrow, Core.Rel.inr, Core.Rel.graph]
-  exact ⟨fun ⟨i, h1, h2⟩ => ⟨⟨i, h1⟩, by rw [← h2, h1]⟩, fun ⟨⟨i, h1⟩, h2⟩ => ⟨i, h1, by rw [h2, h1]⟩⟩
 
 /-- **`Tab.inlConv X` denotes `inl°` on the values `X`** (`idU X ≫ Core.Rel.inl°`): a sum value of `X` beside its
 left summand, where it has one. -/
 theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A} (h : Tab.inlConv X = .ok T)
     (hX : Vals.WF X) (s : (Obj.sum A B).El) (a : A.El) : T.Holds s a ↔ (∃ i, X.row i = s) ∧ Core.Rel.inl a s := by
-  obtain ⟨l, r, tag, idx, x, y⟩ := X
-  unfold Tab.inlConv at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inlConv at h <;> simp only [hv] at h
+  · -- a band column: `inl`'s one null row, whose left payload is the unit `1`, which every `a` is
+    obtain ⟨rfl, rfl⟩ := Obj.band_some hb
+    simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i D hD
+    split at h; · cases h
+    rename_i I hI
+    split at h; · cases h
+    rename_i C hC
+    have wI := inl_wf hI (trivial : Vals.WF (Vals.unit rfl))
+    rw [comp_holds h (idU_wf hD hX) (conv_wf hC wI)]
+    constructor
+    · rintro ⟨s', hd, hc⟩
+      obtain ⟨rfl, hs⟩ := (idU_holds hD hX _ _).1 hd
+      exact ⟨hs, ((inl_holds hI trivial _ _).1 ((conv_holds hC wI _ _).1 hc)).2⟩
+    · rintro ⟨⟨i, hi⟩, hs⟩
+      exact ⟨s, (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC wI _ _).2
+        ((inl_holds hI trivial _ _).2 ⟨⟨⟨0, by simp⟩, rfl⟩, hs⟩)⟩
+  have hXw := hX
+  simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i D hD
@@ -478,19 +564,19 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
     rename_i F hF
     split at h; · cases h
     rename_i M hM
-    have wD := idU_wf hD hX
+    have wD := idU_wf hD hXw
     have wF := dom_wf hF (comp_wf hE wD (conv_wf hC (inr_wf hI hX.2)))
     split at h
     · rename_i hM0
       rw [zero_holds h, false_iff]
       rintro ⟨⟨i, hi⟩, hs⟩
       simp only [Core.Rel.inl, Core.Rel.graph] at hs
-      have hd : D.Holds s s := (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩
+      have hd : D.Holds s s := (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩
       have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
       have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM wD wF _ _).2 ⟨hd, hf⟩)
       obtain ⟨-, b, hb⟩ := (dom_holds hF (comp_wf hE wD (conv_wf hC (inr_wf hI hX.2))).1 _ _).1 hf
       obtain ⟨s', hs', hc⟩ := (comp_holds hE wD (conv_wf hC (inr_wf hI hX.2)) _ _).1 hb
-      obtain ⟨rfl, -⟩ := (idU_holds hD hX _ _).1 hs'
+      obtain ⟨rfl, -⟩ := (idU_holds hD hXw _ _).1 hs'
       have he := ((inr_holds hI hX.2 _ _).1 ((conv_holds hC (inr_wf hI hX.2) _ _).1 hc)).2
       simp only [Core.Rel.inr, Core.Rel.graph] at he
       exact absurd (hs.symm.trans he) (by simp)
@@ -500,16 +586,16 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
     rename_i I hI
     split at h; · cases h
     rename_i C hC
-    rw [comp_holds h (idU_wf hD hX) (conv_wf hC (inl_wf hI hX.1))]
+    rw [comp_holds h (idU_wf hD hXw) (conv_wf hC (inl_wf hI hX.1))]
     constructor
     · rintro ⟨s', hd, hc⟩
-      obtain ⟨rfl, hs⟩ := (idU_holds hD hX _ _).1 hd
+      obtain ⟨rfl, hs⟩ := (idU_holds hD hXw _ _).1 hd
       exact ⟨hs, ((inl_holds hI hX.1 _ _).1 ((conv_holds hC (inl_wf hI hX.1) _ _).1 hc)).2⟩
     · rintro ⟨⟨i, hi⟩, hs⟩
-      refine ⟨s, (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inl_wf hI hX.1) _ _).2 ((inl_holds hI hX.1 _ _).2 ⟨?_, hs⟩)⟩
+      refine ⟨s, (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inl_wf hI hX.1) _ _).2 ((inl_holds hI hX.1 _ _).2 ⟨?_, hs⟩)⟩
       simp only [Core.Rel.inl, Core.Rel.graph] at hs
       subst hs
-      simp only [Vals.row] at hi
+      simp only [Vals.row, hv] at hi
       split at hi
       · cases hi
       · rw [dif_pos (by omega)] at hi; exact ⟨_, Sum.inl.inj hi⟩
@@ -517,8 +603,10 @@ theorem inlConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) A}
 /-- **`Tab.inrConv X` denotes `inr°` on the values `X`** (`idU X ≫ Core.Rel.inr°`): the mirror of `inlConv_holds`. -/
 theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B} (h : Tab.inrConv X = .ok T)
     (hX : Vals.WF X) (s : (Obj.sum A B).El) (b : B.El) : T.Holds s b ↔ (∃ i, X.row i = s) ∧ Core.Rel.inr b s := by
-  obtain ⟨l, r, tag, idx, x, y⟩ := X
-  unfold Tab.inrConv at h
+  rcases hv : X.view with ⟨hb, x⟩ | ⟨hb, l, r, tag, idx, x, y⟩ <;> unfold Tab.inrConv at h <;> simp only [hv] at h
+  · cases h
+  have hXw := hX
+  simp only [Vals.WF, hv] at hX
   simp only [bind, Except.bind] at h
   split at h; · cases h
   rename_i D hD
@@ -533,19 +621,19 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
     rename_i F hF
     split at h; · cases h
     rename_i M hM
-    have wD := idU_wf hD hX
+    have wD := idU_wf hD hXw
     have wF := dom_wf hF (comp_wf hE wD (conv_wf hC (inl_wf hI hX.1)))
     split at h
     · rename_i hM0
       rw [zero_holds h, false_iff]
       rintro ⟨⟨i, hi⟩, hs⟩
       simp only [Core.Rel.inr, Core.Rel.graph] at hs
-      have hd : D.Holds s s := (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩
+      have hd : D.Holds s s := (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩
       have hn : ¬ M.Holds s s := fun ⟨j, _⟩ => by have := j.2; simp [hM0] at this
       have hf : F.Holds s s := Classical.byContradiction fun hf => hn ((diff_holds hM wD wF _ _).2 ⟨hd, hf⟩)
       obtain ⟨-, a, ha⟩ := (dom_holds hF (comp_wf hE wD (conv_wf hC (inl_wf hI hX.1))).1 _ _).1 hf
       obtain ⟨s', hs', hc⟩ := (comp_holds hE wD (conv_wf hC (inl_wf hI hX.1)) _ _).1 ha
-      obtain ⟨rfl, -⟩ := (idU_holds hD hX _ _).1 hs'
+      obtain ⟨rfl, -⟩ := (idU_holds hD hXw _ _).1 hs'
       have he := ((inl_holds hI hX.1 _ _).1 ((conv_holds hC (inl_wf hI hX.1) _ _).1 hc)).2
       simp only [Core.Rel.inl, Core.Rel.graph] at he
       exact absurd (hs.symm.trans he) (by simp)
@@ -555,16 +643,16 @@ theorem inrConv_holds {n : USize} {X : Vals (.sum A B) n} {T : Tab (.sum A B) B}
     rename_i I hI
     split at h; · cases h
     rename_i C hC
-    rw [comp_holds h (idU_wf hD hX) (conv_wf hC (inr_wf hI hX.2))]
+    rw [comp_holds h (idU_wf hD hXw) (conv_wf hC (inr_wf hI hX.2))]
     constructor
     · rintro ⟨s', hd, hc⟩
-      obtain ⟨rfl, hs⟩ := (idU_holds hD hX _ _).1 hd
+      obtain ⟨rfl, hs⟩ := (idU_holds hD hXw _ _).1 hd
       exact ⟨hs, ((inr_holds hI hX.2 _ _).1 ((conv_holds hC (inr_wf hI hX.2) _ _).1 hc)).2⟩
     · rintro ⟨⟨i, hi⟩, hs⟩
-      refine ⟨s, (idU_holds hD hX _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inr_wf hI hX.2) _ _).2 ((inr_holds hI hX.2 _ _).2 ⟨?_, hs⟩)⟩
+      refine ⟨s, (idU_holds hD hXw _ _).2 ⟨rfl, i, hi⟩, (conv_holds hC (inr_wf hI hX.2) _ _).2 ((inr_holds hI hX.2 _ _).2 ⟨?_, hs⟩)⟩
       simp only [Core.Rel.inr, Core.Rel.graph] at hs
       subst hs
-      simp only [Vals.row] at hi
+      simp only [Vals.row, hv] at hi
       split at hi
       · rw [dif_pos (by omega)] at hi; exact ⟨_, Sum.inr.inj hi⟩
       · cases hi

@@ -12,7 +12,7 @@ rel_program frameLiftT where
     dbl : N ⟶ N ≜ ⟨𝟙, 𝟙⟩plus
     atLeast(m : 1 ⟶ N) : N ⟶ N ≜ ⟨𝟙, ⊤ m⟩max
     wsum : N×N ⟶ N ≜ ⟨π₁, π₂ dbl⟩plus
-    low : N ⟶ N+1 ≜ tot(dom(< {(6,∗)}))
+    low : N ⟶ 1+N ≜ tot(dom(< {(6,∗)}))
     check x lift(dbl, π₂) = {(0,10),(1,6),(2,10),(3,2),(4,14),(5,4),(6,2),(7,6)}
     -- a definition with a parameter, applied before it is passed
     check x lift(atLeast({(∗,3)}), π₂) = {(0,5),(1,3),(2,5),(3,3),(4,7),(5,3),(6,3),(7,3)}
@@ -24,13 +24,13 @@ rel_program frameLiftT where
     -- `v` doubled, moved in front of `k`
     check apply(dbl, π₂, π₁, x) = {(0,(10,B)),(1,(6,A)),(2,(10,B)),(3,(2,C)),(4,(14,A)),(5,(4,C)),(6,(2,B)),(7,(6,A))}
     -- nullable `nc`: 5 · 5 · 7 · · 3; `n2`: · · 4 · · · · 1; the null read as 40
-    nc : P ⟶ N+1 ≜ dom(x) tot({(0,5),(2,5),(4,7),(7,3)})
-    n2 : P ⟶ N+1 ≜ dom(x) tot({(2,4),(7,1)})
-    check nullLift(dbl, nc) [𝟙, {(∗,40)}] = {(0,10),(1,40),(2,10),(3,40),(4,14),(5,40),(6,40),(7,6)}
+    nc : P ⟶ 1+N ≜ dom(x) tot({(0,5),(2,5),(4,7),(7,3)})
+    n2 : P ⟶ 1+N ≜ dom(x) tot({(2,4),(7,1)})
+    check nullLift(dbl, nc) [{(∗,40)}, 𝟙] = {(0,10),(1,40),(2,10),(3,40),(4,14),(5,40),(6,40),(7,6)}
     -- `low` sends 7 to the null as well
-    check bind(low, nc) [𝟙, {(∗,40)}] = {(0,5),(1,40),(2,5),(3,40),(4,40),(5,40),(6,40),(7,3)}
+    check bind(low, nc) [{(∗,40)}, 𝟙] = {(0,5),(1,40),(2,5),(3,40),(4,40),(5,40),(6,40),(7,3)}
     -- both present only at 2 (5 + 2·4) and 7 (3 + 2·1)
-    check nullLift2(wsum, nc, n2) [𝟙, {(∗,40)}] = {(0,40),(1,40),(2,13),(3,40),(4,40),(5,40),(6,40),(7,5)}
+    check nullLift2(wsum, nc, n2) [{(∗,40)}, 𝟙] = {(0,40),(1,40),(2,13),(3,40),(4,40),(5,40),(6,40),(7,5)}
 
 #guard frameLiftT.ok
 
