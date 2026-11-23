@@ -217,8 +217,8 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`select` `exclude` `selectBy`], [`x ⟨col S "a", col S "b"⟩`], [列名在 elaboration 时检查], "full"),
   ([`rename` `renameMany`], [只改 `Schema`，frame 不变], [列名只在 schema 里，frame 是位置的（1.2）], "full"),
   ([`derive` `deriveMany` `deriveWithExpr` `insert*` `cloneColumn`], [`x ⟨𝟙, e⟩`], [], "full"),
-  ([`apply` `applyMany` `applyInt` `applyDouble` `safeApply` `applyAtIndex`], [`x ⟨a e, b⟩`],
-    [`e` 是构造子与 `arith` 的复合；任意 Haskell 函数：F7], "part"),
+  ([`apply` `applyMany` `applyInt` `applyDouble` `safeApply` `applyAtIndex`], [`apply(f, a, b, x) ≜ x ⟨lift(f, a), b⟩`，即 `x ⟨a f, b⟩`],
+    [`f` 是程序里的 Rel 定义（构造子、`Op` 行与关系的复合），作关系参数传入；任意 Haskell 函数不进入程序：F7], "full"),
   ([`applyWhere`], [`applyWhere(p, e) ≜ (p e) ∪ (𝟙 − p)`，后接于 `x`], [], "full"),
   ([`filter` `filterWhere` `filterBy`], [`filterBy(p, x)`，如 `p = dom(a < ∩ b)`], [], "full"),
   ([`filterJust` `filterAllJust`], [`filterJust(c, x)`], [], "full"),
@@ -282,7 +282,10 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   ([`impute` `imputeWith` `fromMaybe` `castWithDefault`], [`x v [𝟙, c]`；`imputeWith` 是 `x v [𝟙, summarize(f, x)]`], [`c : 1 ⟶ V`], "full"),
   ([`toMaybe` `isJust` `isNothing` `isNull` `fromJust` `whenPresent`], [`inl`、`dom(inl°)`、`dom(inr°)`、`dom(inr°)`、`inl°`、`e ⊕ 𝟙`], [复合，库中没有定义], "full"),
   ([`recode` `recodeWithDefault`], [`x v T`；带缺省 `x v tot(T) [𝟙, c]`], [`T` 是 `Tm.val` 的字面量表], "full"),
-  ([`lift` `lift2` `nullLift` `bind`], [无], [F7], "no"),
+  ([`lift` `lift2` `nullLift` `nullLift2` `bind`],
+    [`lift(f, c) ≜ c f`；`lift2(f, a, b) ≜ ⟨a, b⟩ f`；`bind(f, c) ≜ c [f, inr]`；`nullLift(f, c) ≜ bind(f inl, c)`；
+    `nullLift2(f, a, b)`：两列都有值时 `⟨a inl°, b inl°⟩ f inl`，否则 null],
+    [`f` 是 Rel 定义，作关系参数（`TestFrameLift`）；部分的 `f` 在无像的行上没有结果，不变成 null：F7], "full"),
   ([`cast` `toDouble` `div` `mod` `pow` `fround` `relu` `eq` `lt` `and` `or` `not` …],
     [`pow x i` 是 `⟨x $ F, i $ F⟩xexp`（`i` 是字面量或列）；`div` `mod` 是 `arith`；`eq` 是 `𝟙`，`lt` 是 `<`；`and` `or` `not` 是 coreflexive 的 `∩` `∪` `−`；`relu = ⟨𝟙, ⊤ 0⟩max`；`toDouble` 是 `x v $ F`（`obj F : f64`）；`fround` 是 row `x v round`],
     [`$` 只保值（整数 → 浮点、窄 → 宽）；`arith` 与 `<` 在 `f64` `f32` 上（`TestFloatArith`），`div` 是取整的商，`%` 是真商；浮点 → 整数是 `floor`（`f32` `f64` 到 `i64`，NaN 与越界无像，`TestFloatArith.unaryT`）；
@@ -365,8 +368,11 @@ next(n, x)        ≜ dom(x) tot(⟨𝟙, ⊤ n⟩plus x)                 行 i 
   时间列被拒，`f64` 的 canon 序在 S5 之前是位的序（`TestFrameTyped.sumsFloatPosT`）。
 - *F5 时间类型。* `date`、`datetime` 是整数 code，没有时区。日历运算（取月份、截断到月）是整数算术加上与日历表的 join。
 - *F6 IO 在代数之外。* 程序读的 frame 是 `input` 语句声明的名字，路径与格式写在语句里；CSV 的解析是 crate 的 IO 导出，不是列上的关系。
-- *F7 宿主函数。* `lift`、`lift2`、`apply`、`bind` 接受任意 Haskell 函数；Rel 只有 `Op` 的有限集合及其复合。
-  这也是 polars 表达式（不含 `map_elements`）同样的限制。
+- *F7 宿主函数。* 覆盖的：`lift`、`lift2`、`apply`、`bind`、`nullLift`、`nullLift2` 是 `frame` 的库定义，元素函数
+  `f` 是程序里的 Rel 定义（构造子、`Op` 行与关系的复合，可带参数，如 `atLeast(m) ≜ ⟨𝟙, ⊤ m⟩max`），作为关系参数
+  传入，与 `applyWhere(p, e)` 同一机制；如 `x lift(dbl, π₂)`、`dbl ≜ ⟨𝟙, 𝟙⟩plus`，在 `v = 5 3 …` 上得 `10 6 …`
+  （`TestFrameLift`）。不覆盖的：任意 Haskell（或 Lean）函数。它在程序里是一个不透明的 kernel，违反「只有原语是
+  kernel」，没有 Rel 的律可用于它，也不能在编码列上计算；polars 表达式（不含 `map_elements`）是同样的限制。
 - *F8 抽样。* `sample(n)` 是有多个像的关系（任意 n 行），实现选其中一个，是规格的 refinement，不是相等。
 - *F9 位置模型之外的两处。* 单元格里的 list（`Obj.arr`：字符串、`collect` 的结果）是一个值，`N` 只给 frame 的行编号。
   `⟨x, y⟩` 的定义域是 `dom(x) ∩ dom(y)`，长度不等时取较短的；`hstack` 另加行数相等的检查，不等长时是 `𝟘`。

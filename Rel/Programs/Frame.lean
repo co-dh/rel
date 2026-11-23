@@ -61,6 +61,17 @@ rel_program frame where
     -- `|||` (polars hstack, q's `,'`): the rows side by side, none unless both frames have the same length
     hstack(x : ν ⟶ β, y : ν ⟶ δ) : ν ⟶ β×δ ≜ dom(⟨x, y⟩ ⊤ count(x) count(y)°) ⟨x, y⟩
     applyWhere(p : β ⟶ β, e : β ⟶ β) : β ⟶ β ≜ (p e) ∪ (𝟙 − p)
+    -- DataHaskell's function lifts (F7): the element function `f` is a Rel definition passed as a relation, never a
+    -- host function, which would be a kernel outside the primitives; a partial `f` leaves its rows without an image
+    lift(f : γ ⟶ δ, c : β ⟶ γ) : β ⟶ δ ≜ c f
+    lift2(f : γ×δ ⟶ ε, a : β ⟶ γ, b : β ⟶ δ) : β ⟶ ε ≜ ⟨a, b⟩ f
+    -- the frame form: column `a` replaced by `f` of it, in front of the columns `b` kept
+    apply(f : γ ⟶ ε, a : β ⟶ γ, b : β ⟶ δ, x : ν ⟶ β) : ν ⟶ ε×δ ≜ x ⟨lift(f, a), b⟩
+    -- on `1+X` the null passes: `bind`'s `f` may itself give the null, `nullLift`'s gives a value; `nullLift2` is
+    -- the null where either column is
+    bind(f : γ ⟶ δ+1, c : β ⟶ γ+1) : β ⟶ δ+1 ≜ c [f, inr]
+    nullLift(f : γ ⟶ δ, c : β ⟶ γ+1) : β ⟶ δ+1 ≜ bind(f inl, c)
+    nullLift2(f : γ×δ ⟶ ε, a : β ⟶ γ+1, b : β ⟶ δ+1) : β ⟶ ε+1 ≜ (lift2(f, a inl°, b inl°) inl) ∪ ((dom(⟨a, b⟩) − dom(⟨a inl°, b inl°⟩)) ⊤ inr)
     contains(s : [α] ⟶ [α]) : [α] ⟶ [α] ≜ dom(suffix prefix s)
 
 end Rel.Programs

@@ -477,6 +477,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`TestSums.sumsPN`、`sumsI`、`sumsF`）。窄整数 γ 要等值算子支持窄整数。
   ⬜ 未做：`Prim.dfn` 条目（上面的组合式）等 dfn 能读行的关系参数（与 `asc` 相同）；`Plan.ofTm` 没有 prim 的
   recipe，不需要加。
+- ✅ df-F7 宿主函数（`dataframe-design` F7）：任意 Haskell/Lean 函数不进入程序（那是原语之外的不透明 kernel）；
+  元素函数是程序里的 Rel 定义，作为关系参数传给 `frame` 的库定义 `lift(f, c) ≜ c f`、`lift2(f, a, b) ≜ ⟨a, b⟩f`、
+  `apply(f, a, b, x) ≜ x ⟨lift(f, a), b⟩`、`bind(f, c) ≜ c [f, inr]`、`nullLift(f, c) ≜ bind(f inl, c)`、`nullLift2`
+  （任一列为 null 即 null）。测试 `Rel/Lang/TestFrameLift.lean`（无参、带参 `atLeast(m)`、部分的 `f`）。
+  未覆盖：DataHaskell 用列名指定 `apply` 的目标列（这里 `a` 取列、`b` 是保留的列，替换的列放在最前）。
 
 ### typed base objects（`/data/tmp/typedbase/design.md` §7：float `arith`/`div`、`sqrt`、`date` 上的 `minus`）
 
