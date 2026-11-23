@@ -6,6 +6,7 @@ public import Rel.RepOrder
 public import Rel.RepCanon
 public import Rel.RepTabComp
 public import Rel.RepTabDiv
+public import Rel.RepWF
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -197,5 +198,124 @@ theorem Vals.cmpRows_spec {A : Obj} {m : USize} {P T : Vals A m} (hP : Vals.WF P
   · by_cases h : cd i.1 < cd (m.toNat + i.1) <;> simp [h]
   · rw [← key2, ← hi]; by_cases h : (cd i.1).toUInt64 = (cd (m.toNat + i.1)).toUInt64 <;> simp [h]
   · by_cases h : (cd i.1).toUInt64 = (cd (m.toNat + i.1)).toUInt64 <;> simp [h]
+
+private theorem w64 {x : Nat} (hx : x < 2 ^ 63) : x.toUInt64.toNat = x := by
+  simpa using Nat.mod_eq_of_lt (show x < 2 ^ 64 by omega)
+
+/-- **The bisection keeps the cut `t` of each row of `T` in `[base, base + len]`**, `t i` the number of rows of `X` below
+`T.row i` (`ht`): a probe at `base + half - 1` is below `T.row i` iff `base + half ≤ t i`, so the cut stays in the new
+window, and `len` halves (rounding up) until it is `1`, which `len ≤ 2 ^ fuel` reaches by the last round. -/
+theorem Vals.bisect_spec {A : Obj} {n m : USize} {X : Vals A n} {T : Vals A m} (hX : Vals.WF X) (hT : Vals.WF T)
+    (hm : 2 * m.toNat ≤ 2 ^ 63) (hn : n.toNat < 2 ^ 63) (t : Fin m.toNat → Nat)
+    (ht : ∀ i, ∀ j : Fin n.toNat, A.lt (X.row j) (T.row i) ↔ j.1 < t i) :
+    ∀ (fuel len : Nat) (base r : Enc), Vals.bisect X T fuel len base = .ok r → 1 ≤ len → len ≤ 2 ^ fuel →
+      (∀ i : Fin m.toNat, ((Enc.raw .i64 m base)[i.1]?.getD 0).toNat ≤ t i ∧
+        t i ≤ ((Enc.raw .i64 m base)[i.1]?.getD 0).toNat + len ∧
+        ((Enc.raw .i64 m base)[i.1]?.getD 0).toNat + len ≤ n.toNat) →
+      ∀ i : Fin m.toNat, ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat ≤ t i ∧
+        t i ≤ ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat + 1 ∧ ((Enc.raw .i64 m r)[i.1]?.getD 0).toNat + 1 ≤ n.toNat := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro len base r h h1 h2 hb i
+    simp only [Vals.bisect, pure, Except.pure, Except.ok.injEq] at h
+    subst h
+    have : len = 1 := by simp at h2; omega
+    subst this; exact hb i
+  | succ fuel ih =>
+    intro len base r h h1 h2 hb
+    unfold Vals.bisect at h
+    by_cases hl : len ≤ 1
+    · simp only [hl, if_true, Bind.bind] at h
+      simp only [Pure.pure, Except.pure, Except.ok.injEq] at h; subst h
+      have : len = 1 := by omega
+      subst this; exact hb
+    simp only [hl, if_false, Bind.bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨-, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨q, hq, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨g, hg, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨pk, hpk, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨c, e⟩, hc, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨mu, hmu, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨b', hb', h⟩ := h
+    rw [Nat.pow_succ] at h2
+    refine ih (len - len / 2) b' r h (by omega) (by omega) ?_
+    have hgW := Vals.gather_wf hg hX
+    have hpkW : Vals.WF pk := ValsB.pack_wf hpk (P := fun _ => True) hgW (fun _ _ => trivial)
+    intro i
+    obtain ⟨hb1, hb2, hb3⟩ := hb i
+    have hq1 := (colMap_post hq).2 i.1 i.2
+    simp only [Op.eval, Except.ok.injEq] at hq1
+    have hbn : ((Enc.raw .i64 m base)[i.1]?.getD 0).toNat < 2 ^ 63 := by omega
+    have hqn : ((Enc.raw .i64 m q)[i.1]?.getD 0).toNat = (len / 2 - 1) + ((Enc.raw .i64 m base)[i.1]?.getD 0).toNat := by
+      rw [← hq1, UInt64.toNat_add, w64 (by omega)]; exact Nat.mod_eq_of_lt (by omega)
+    obtain ⟨i', hi', hrow⟩ := ValsB.gather_row X hg i
+    rw [hqn] at hi'
+    have hrp := ValsB.pack_row g hpk (P := fun _ => True) hgW (fun _ _ => trivial) i trivial
+    obtain ⟨c1, c2, -, -⟩ := Vals.cmpRows_spec hpkW hT hm hc i
+    rw [hrp, hrow] at c1
+    have hlt := ht i i'
+    have hmu1 := (colMap_post hmu).2 i.1 i.2
+    simp only [Op.eval, Except.ok.injEq] at hmu1
+    obtain ⟨-, hb1'⟩ := colMap_get hb'
+    obtain ⟨v, hv, rv⟩ := hb1' i.1 i.2
+    simp only [Op.eval, Except.ok.injEq] at hv
+    simp only [if_neg (show ¬ QAtomicType.i64 = .u1 by decide)] at rv
+    rw [rv, Option.getD_some, ← hv, ← hmu1]
+    by_cases hcj : ((Enc.raw .i64 m c)[i.1]?.getD 0) = 1
+    · have hl1 := hlt.1 (c1.1 hcj)
+      rw [hcj, UInt64.mul_one, UInt64.toNat_add, w64 (by omega), Nat.mod_eq_of_lt (by omega)]
+      omega
+    · have h0 : ((Enc.raw .i64 m c)[i.1]?.getD 0) = 0 := by
+        have h1 := UInt64.le_iff_toNat_le.1 c2
+        have h2 : ((Enc.raw .i64 m c)[i.1]?.getD 0).toNat ≠ 1 := fun e => hcj (UInt64.toNat_inj.1 (by simpa using e))
+        exact UInt64.toNat_inj.1 (by simp at h1 ⊢; omega)
+      have hnl : ¬ (i'.1 < t i) := fun h => hcj (c1.2 (hlt.2 h))
+      rw [h0, UInt64.mul_zero, UInt64.add_zero]
+      omega
+
+/-- `min` of two words below `2^63`, signed as `Op.eval` reads them. -/
+theorem eval_min_nat {a x : UInt64} (ha : a.toNat < 2 ^ 63) (hx : x.toNat < 2 ^ 63) :
+    Op.eval .min a x = .ok (if x.toNat < a.toNat then x else a) := by
+  show Except.ok (if x.toInt64 < a.toInt64 then x else a) = _
+  simp only [Int64.lt_iff_toInt_lt, toInt64_toInt ha, toInt64_toInt hx]
+  simp
+
+/-- **Where `T`'s value cuts a strictly ascending `X`**: the rows of `X` below `v` are exactly the first `t`. -/
+theorem Vals.cut {A : Obj} {n : USize} {X : Vals A n}
+    (hs : ∀ i j : Fin n.toNat, i.1 < j.1 → A.lt (X.row i) (X.row j)) (v : A.El) :
+    ∃ t ≤ n.toNat, ∀ j : Fin n.toNat, A.lt (X.row j) v ↔ j.1 < t := by
+  have key : ∀ k ≤ n.toNat, ∃ t ≤ k, ∀ j : Fin n.toNat, j.1 < k → (A.lt (X.row j) v ↔ j.1 < t) := by
+    intro k
+    induction k with
+    | zero => intro _; exact ⟨0, Nat.le_refl _, fun j hj => absurd hj (by omega)⟩
+    | succ k ih =>
+      intro hk
+      obtain ⟨t, htk, hj⟩ := ih (by omega)
+      by_cases hl : A.lt (X.row ⟨k, by omega⟩) v
+      · refine ⟨k + 1, Nat.le_refl _, fun j hjk => ?_⟩
+        refine ⟨fun _ => hjk, fun _ => ?_⟩
+        rcases Nat.lt_or_ge j.1 k with h | h
+        · exact List.lt_trans (hs j ⟨k, by omega⟩ h) hl
+        · have : j = ⟨k, by omega⟩ := Fin.ext (by show j.1 = k; omega)
+          rw [this]; exact hl
+      · refine ⟨t, by omega, fun j hjk => ?_⟩
+        rcases Nat.lt_or_ge j.1 k with h | h
+        · exact hj j h
+        · have : j = ⟨k, by omega⟩ := Fin.ext (by show j.1 = k; omega)
+          rw [this]; exact ⟨fun h => absurd h hl, fun h => absurd h (by omega)⟩
+  obtain ⟨t, ht, h⟩ := key n.toNat (Nat.le_refl _)
+  exact ⟨t, ht, fun j => h j j.2⟩
+
+private theorem count_lt : ∀ (n t : Nat), t ≤ n → ((List.range n).filter fun j => decide (j < t)).length = t
+  | 0, t, h => by simp; omega
+  | n + 1, t, h => by
+    rw [List.range_succ, List.filter_append]
+    by_cases ht : t ≤ n
+    · simp [count_lt n t ht, ht]
+    · have : t = n + 1 := by omega
+      subst this
+      rw [List.filter_eq_self.2 (fun j hj => by simp at hj ⊢; omega)]
+      simp
 
 end Rel

@@ -47,7 +47,7 @@ def Vals.bisect {A : Obj} {n m : USize} (X : Vals A n) (T : Vals A m) : Nat → 
 /-- `(r, h)` of `bisect`'s last two steps; see `bisect`. -/
 def Vals.rank {A : Obj} {n m : USize} (X : Vals A n) (T : Vals A m) : Except String (Enc × Enc) := do
   if 2 ^ 63 ≤ n.toNat then throw s!"rank: {n} rows in X, not below 2^63 (positions are read signed)"
-  if 2 ^ 63 ≤ m.toNat then throw s!"rank: {m} rows in T, not below 2^63 (positions are read signed)"
+  if 2 ^ 62 ≤ m.toNat then throw s!"rank: {m} rows in T, not below 2^62 (the row compare's group numbers reach 2m and are read signed)"
   -- one bind, not `(← colConst m 0, ← colConst m 0)`: Lean 4.28 merges the two equal calls and emits both `ctor_get`s of
   -- the one result with a single `inc`, so the column is freed twice (heap corruption, exit 139 / "not a field")
   if n = 0 then let z ← colConst m 0; return (z, z)
