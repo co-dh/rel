@@ -24,16 +24,64 @@ open Rel.Ext Rel.Kernel Rel.Verify
 def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) :=
   colArr .first n .pos .pos t .i64 [] [(.and, 0)]
 
-/-- No row of `A`: `Arr.zeros _ 0` per atom column; an `arr` side of no cells over no payload, a `sum` side over two
-summands of no rows. -/
+/-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
+writer, whose null flags `foRNuls_wordsFoR` reads back; `Opt.ofAtoms` has no such lemma for its width-`w` bytes. -/
+def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
+  let e := wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
+  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"inl: {n} nulls are not a well-formed column of {repr t}"
+
+/-- The tag column of a sum side whose `n` rows are all in one summand: every tag `s` (the positions through the post
+chain `[(.and, 0), (.or, s)]`, written at `u1`). -/
+def tagCol (n : USize) (s : Bool) : Except String (Arr .u1 n) :=
+  colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)]
+
+/-- `n` fillers of `1+t`, each null (`Opt.nuls`); a `general` payload has no block to flag, so its filler is `n` of its
+`default` (`Enc.WF` decided, never assumed), which no row ever reads. -/
+def Opt.fill (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
+  let e : Enc := match t with
+    | .general => .gen (Array.replicate n.toNat default)
+    | _ => wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
+  if h : Ext.Enc.WF t n e then .ok ⟨e, h⟩ else .error s!"filler: {n} rows are not a well-formed column of {repr t}"
+
+/-- `X` with every row owned as the summand column of a dense sum: each atom column `Opt.ofArr`, which leaves the storage
+as it is. -/
+def Vals.lift : {A : Obj} → {n : USize} → Vals A n → ValsB true A n
+  | .atom _, _, x => Opt.ofArr x
+  | .prod _ _, _, x => (Vals.lift x.1, Vals.lift x.2)
+  | .arr _, _, ⟨m, lo, hi, f⟩ => ⟨m, Opt.ofArr lo, Opt.ofArr hi, f⟩
+  | .sum _ _, _, x => x
+  | .one, _, _ => ()
+
+/-- No row of `A`: no zero word per atom, an `arr` side of no cells, a sum of no rows (its summands `Vals.lift`ed). -/
 def Vals.none : (A : Obj) → Except String (Vals A 0)
   | .atom t => Arr.zeros t 0
   | .prod a b => do pure (← Vals.none a, ← Vals.none b)
   | .arr b => do pure ⟨0, ← Arr.zeros .i64 0, ← Arr.zeros .i64 0, ← Vals.none b⟩
   | .sum a b => match h : Obj.band a b with
-    | some t => do pure (Vals.ofOpt h (Opt.ofArr (← Arr.zeros t 0)))
-    | .none => do pure (Vals.ofGen h 0 0 (← Arr.zeros .u1 0) (← Arr.zeros .i64 0) (← Vals.none a) (← Vals.none b))
+    | some t => do pure (ValsB.ofOpt h (← Opt.nuls t 0))
+    | .none => do pure (ValsB.ofGen h (← tagCol 0 false) (Vals.lift (← Vals.none a)) (Vals.lift (← Vals.none b)))
   | .one => pure ()
+
+/-- `n` rows of `A` all in-band null, the filler of the rows a summand of a dense sum does not own (`ValsB true`): `Opt.fill`
+per atom column; an `arr` side of `n` null cells over no payload; a band sum `n` nulls; another `sum` side of tag `0` over
+two such summands. -/
+def Vals.zeros : (A : Obj) → (n : USize) → Except String (ValsB true A n)
+  | .atom t, n => Opt.fill t n
+  | .prod a b, n => do pure (← Vals.zeros a n, ← Vals.zeros b n)
+  | .arr b, n => do pure ⟨0, ← Opt.fill .i64 n, ← Opt.fill .i64 n, ← Vals.none b⟩
+  | .sum a b, n => match h : Obj.band a b with
+    | some t => do pure (ValsB.ofOpt h (← Opt.nuls t n))
+    | .none => do pure (ValsB.ofGen h (← tagCol n false) (← Vals.zeros a n) (← Vals.zeros b n))
+  | .one, _ => pure ()
+
+/-- A summand column whose rows are all owned (`inl°`, `inr°` after the gather), as an `Arr` per atom: `Arr.of` refuses a
+column holding a null, which no owned row is; `what` names the producer. -/
+def Vals.unlift (what : String) : {A : Obj} → {n : USize} → ValsB true A n → Except String (Vals A n)
+  | .atom t, n, x => Arr.of t n (Opt.enc x) what
+  | .prod _ _, _, x => do pure (← Vals.unlift what x.1, ← Vals.unlift what x.2)
+  | .arr _, n, ⟨m, lo, hi, f⟩ => do pure ⟨m, ← Arr.of .i64 n (Opt.enc lo) what, ← Arr.of .i64 n (Opt.enc hi) what, f⟩
+  | .sum _ _, _, x => pure x
+  | .one, _, _ => pure ()
 
 /-- The index columns of CROSS: `T = n · m` rows, `iR = pos / m`, `iS = pos % m` (`colMap` of the positions and
 the post steps `(.rdiv, m)`, `(.rmod, m)`). `.rdiv`, `.rmod` read their words signed, so `n · m + m` stays below
@@ -59,7 +107,7 @@ def Vals.cross {A B : Obj} {n m : USize} (x : Vals A n) (y : Vals B m) :
       meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`)"
   expandNote s!"a product of {n} × {m} values (Vals.cross)" (n.toNat * m.toNat) fun _ => do
     let (T, iR, iS) ← crossIx n m
-    pure ⟨T, ← Vals.gather T iR x, ← Vals.gather T iS y⟩
+    pure ⟨T, ← ValsB.gather T iR x, ← ValsB.gather T iS y⟩
 
 /-- `Y`'s rows as the band column of `a + b`, each `inr`: the storage as it is (`Opt.ofArr`). -/
 def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = some t) (Y : Vals b n) : Opt t n := by
@@ -67,22 +115,6 @@ def Vals.optInr {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = so
 
 /-- The one row of the unit side `1`, as a side `A` known to be `1`. -/
 def Vals.unit {A : Obj} (h : A = .one) : Vals A 1 := by subst h; exact ()
-
-/-- `n` nulls of `1+t` (each `inl ()`): `n` zero words with every row flagged, written by `wordsFoR`, the kernel answer's
-writer. Its `Enc.WF` is `Verify.wordsFoR_nul`'s clause (the `u1` one vacuous, every word `0`), so no element is read to
-decide it; a `t` with no width (`general`) has no block to flag and is the error. -/
-def Opt.nuls (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  if hw : t.width.isSome then
-    .ok ⟨_, (Verify.wordsFoR_nul (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))
-      (n := n) (by simp)).2.2.2 hw fun _ i hi _ => by simp⟩
-  else .error s!"inl: nulls of {repr t}, which has no block to flag"
-
-/-- The tag and position columns of a sum side whose `n` rows are all in one summand: every tag `s` (the positions
-through the post chain `[(.and, 0), (.or, s)]`, written at `u1`), row `k` at position `k` (the positions written by one
-`kscan`). A summand past `2^63` rows, which an `Int64` position cannot reach, is the error. -/
-def injCols (n : USize) (s : Bool) : Except String (Arr .u1 n × Arr .i64 n) := do
-  if 2 ^ 63 < n.toNat then throw s!"inj: {n} rows, past an Int64 position"
-  pure (← colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)], ← Arr.pos n)
 
 namespace Tab
 variable {A B C D I : Obj}
@@ -129,35 +161,27 @@ def pair (R : Tab A B) (S : Tab A C) : Except String (Tab A (.prod B C)) :=
     compPairs (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S
 
 /-- **`inl` on the values `X`**, `idU X ≫ inl`: row `k` is `X`'s row `k` beside the left summand's row `k`, the sum
-side over `X` itself and no right row (`injCols` with tag `0`), canonical. -/
+side of tag `0` over `X` itself and a zero right column (`Vals.zeros`), canonical. -/
 def inl {n : USize} (X : Vals A n) : Except String (Tab A (.sum A B)) := do
   match h : Obj.band A B with
-  | some t => canon ⟨n, X, Vals.ofOpt h (← Opt.nuls t n)⟩
-  | none => do
-    let (tag, idx) ← injCols n false
-    canon ⟨n, X, Vals.ofGen h n 0 tag idx X (← Vals.none B)⟩
+  | some t => canon ⟨n, X, ValsB.ofOpt h (← Opt.nuls t n)⟩
+  | none => do canon ⟨n, X, ValsB.ofGen h (← tagCol n false) (Vals.lift X) (← Vals.zeros B n)⟩
 
 /-- **`inr` on the values `Y`**, `idU Y ≫ inr`: the mirror of `inl`, tag `1`. -/
 def inr {n : USize} (Y : Vals B n) : Except String (Tab B (.sum A B)) := do
   match h : Obj.band A B with
-  | some _ => canon ⟨n, Y, Vals.ofOpt h (Vals.optInr h Y)⟩
-  | none => do
-    let (tag, idx) ← injCols n true
-    canon ⟨n, Y, Vals.ofGen h 0 n tag idx (← Vals.none A) Y⟩
+  | some _ => canon ⟨n, Y, ValsB.ofOpt h (Vals.optInr h Y)⟩
+  | none => do canon ⟨n, Y, ValsB.ofGen h (← tagCol n true) (← Vals.zeros A n) (Vals.lift Y)⟩
 
-/-- **`inl°` on the sum values `X`**, `idU X ≫ inl°`: `X` beside `(inl x)°`, `x` its left payload, which every
-left row reads. A left payload of no value reads `A.dflt` at a left row (`Vals.row`), which `x` cannot give: there
-the answer is none where `X` has only right rows (`idU X − dom(idU X ≫ (inr y)°)` empty), else the error. -/
+/-- **`inl°` on the sum values `X`**, `idU X ≫ inl°`: the rows of tag `0` (`whereCol` of the negated tags), each `X` row
+beside its left column's row there, canonical: one `canon` of the selected rows, no `comp`. -/
 def inlConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) A) := do
   match X.view with
   -- a band column's one left row is the null `inl ()`, so `inl°` is `D ≫ (inl ())°` on `inl`'s one null row
   | .opt h _ => do (← idU X).comp (← (← inl (B := B) (Vals.unit (Obj.band_some h).1)).conv)
-  | .gen _ l _ _ _ x y =>
-  let D ← idU X
-  if l.toNat = 0 then
-    if (← D.diff (← (← D.comp (← (← inr (A := A) y).conv)).dom)).n = 0 then zero
-    else throw "inl°: a left row over a left payload of no value"
-  else D.comp (← (← inl (B := B) x).conv)
+  | .gen _ tag x _ =>
+    let (m, sel) ← whereCol n (← colMap .not n tag.enc tag.enc)
+    canon ⟨m, ← ValsB.gather m sel X, ← Vals.unlift "inl°" (← ValsB.gather m sel x)⟩
 
 /-- **`inr°` on a band column `x`** (`1 + t`, a null row the all-ones residual): `X ≫ inr°` keeps the rows that are no
 null, each beside its value. The null test is a scan comparing with the residual (`kscan .null`, then `not`), `whereCol`
@@ -170,18 +194,15 @@ def inrConvBand {a b : Obj} {t : QAtomicType} {n : USize} (h : Obj.band a b = so
   obtain rfl := (Obj.band_some h).2
   exact do
     let (m, sel) ← whereCol n (← kscan .null false t .u1 n none [(n, x.enc)] [] [(.not, 0)]).1
-    pure ⟨m, ← Vals.gather m sel (Vals.ofOpt h x), ← Arr.of t m (← Opt.gather m sel x).enc "inr°"⟩
+    pure ⟨m, ← ValsB.gather m sel (ValsB.ofOpt h x), ← Arr.of t m (← Opt.gather m sel x).enc "inr°"⟩
 
-/-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`. -/
+/-- **`inr°` on the sum values `X`**, `idU X ≫ inr°`: the mirror of `inlConv`, the rows of tag `1`. -/
 def inrConv {n : USize} (X : Vals (.sum A B) n) : Except String (Tab (.sum A B) B) := do
   match X.view with
   | .opt h x => inrConvBand h x
-  | .gen _ _ r _ _ x y =>
-  let D ← idU X
-  if r.toNat = 0 then
-    if (← D.diff (← (← D.comp (← (← inl (B := B) x).conv)).dom)).n = 0 then zero
-    else throw "inr°: a right row over a right payload of no value"
-  else D.comp (← (← inr (A := A) y).conv)
+  | .gen _ tag _ y =>
+    let (m, sel) ← whereCol n tag.enc
+    canon ⟨m, ← ValsB.gather m sel X, ← Vals.unlift "inr°" (← ValsB.gather m sel y)⟩
 
 -- `inr°` on a `1 + long` column: the rows that are no null, each beside its value; none, some and all null
 private def inrBand (xs : List (Option QAtom)) : Option (List ((Unit ⊕ Int64) × Int64)) := do
