@@ -27,17 +27,6 @@ def _root_.Rel.ValsB.regVals : {o : Bool} → {A : Obj} → {n : USize} → Vals
     | .gen _ tag x y => Reg.put tag.enc :: (ValsB.regVals x ++ ValsB.regVals y)
   | _, .one, _, _ => []
 
-/-- Every `Enc` is a register that reads back as itself (`foR` its parts, `pos` none). -/
-theorem enc_get_put : ∀ e : Enc, (Reg.get? (Reg.put e) : Option Enc) = some e
-  | .foR m p => foR_get_put m p
-  | .pos => by
-    have hp : (Reg.put (Enc.pos : Enc) : Val) = .ctor (Enc.pos : Enc).ctorIdx #[] #[] := by with_unfolding_all rfl
-    rw [hp]
-    dsimp only [Reg.get?]
-    conv => lhs; whnf
-    rw [Array.mapM_eq_mapM_toList]
-    simp
-
 /-- `ColB.gather` is `kgather` of the column's `Enc`, at either ownership. -/
 theorem ColB.gather_kgather : ∀ {o : Bool} {t : QAtomicType} {n m : USize} {ix : Enc} {x : ColB o t n}
     {y : ColB o t m}, ColB.gather m ix x = .ok y → kgather m ix n (ColB.enc x) = .ok (ColB.enc y)
@@ -166,15 +155,6 @@ theorem mapM_pair_extends {rs R : Array Val} (m : Extends rs R) : ∀ {ps : List
     obtain ⟨a, ha, b, hb, rfl⟩ : ∃ a, rs[p.1]? = some a ∧ ∃ b, rs[p.2]? = some b ∧ v = (a, b) := by
       cases h1 : rs[p.1]? <;> cases h2 : rs[p.2]? <;> simp_all
     exact omapM_cons.mpr ⟨_, _, by simp [m ha, m hb], mapM_pair_extends m hl, rfl⟩
-
-theorem qtype_get_put (t : QAtomicType) : (Reg.get? (Reg.put t) : Option QAtomicType) = some t := by
-  cases t <;> rfl
-
-theorem ascKey_get (v : Val) : (Reg.get? v : Option AscKey) = ascGet? v := rfl
-
-theorem ascGet?_atom (t : QAtomicType) : (Reg.get? (Val.ctor 0 #[] #[Reg.put t]) : Option AscKey) = some (.atom t) := by
-  rw [ascKey_get, ascGet?.eq_def]
-  simp [qtype_get_put]
 
 /-- The list `Reg (List (AscKey × Enc))` lays out of the pairs `ps` reads as the pairs read. -/
 theorem ascGetL?_foldr : ∀ ps : List (Val × Val),
@@ -477,5 +457,143 @@ theorem ascSeenOnB_builds {fg : Array Fun × Array Fun} {o : Bool} (A : Obj) {nv
   simp only [pure_bind]
   exact Builds.pure fun _ => reads_of (l := [k1, g1, f1, p1]) (vs := [.size k.toUSize, Reg.put g, Reg.put f, Reg.put p])
     (by simp [h1, h2, h3, m6 (m5 hpR1)])
+
+theorem withRegs_append : ∀ (c1 c2 : Cols) (rs : List Nat), withRegs (c1 ++ c2) rs =
+    (do let (a, rs) ← withRegs c1 rs; let (b, rs) ← withRegs c2 rs; pure (a ++ b, rs))
+  | [], c2, rs => by simp [withRegs]
+  | c :: c1, c2, rs => by
+    simp only [List.cons_append, withRegs, bind_assoc]
+    refine congrArg (withReg c rs >>= ·) (funext fun x => ?_)
+    obtain ⟨c', r⟩ := x
+    simp only [withRegs_append c1 c2 r, bind_assoc]
+    refine congrArg (withRegs c1 r >>= ·) (funext fun y => ?_)
+    obtain ⟨a, r'⟩ := y
+    simp only [bind_assoc, pure_bind]
+    refine congrArg (withRegs c2 r' >>= ·) (funext fun z => ?_)
+    obtain ⟨b, r''⟩ := z
+    rfl
+
+/-- **`ColsOf` survives `withRegs`**: the columns `cs` of a side of `A` relocated to any registers `ps` of their count
+    are columns of a side of `A` again, of the same length, holding exactly `ps`. -/
+theorem withRegs_colsOf : ∀ (A : Obj) {cs : Cols}, ColsOf A cs → ∀ ps rest, ps.length = (Cols.regs cs).length →
+    ∃ cs', withRegs cs (ps ++ rest) = Pure.pure (cs', rest) ∧ ColsOf A cs' ∧ Cols.regs cs' = ps ∧
+      cs'.length = cs.length
+  | .atom t, _, ⟨p, e, rfl⟩, ps, rest, hl => by
+    match ps, hl with
+    | [e'], _ => exact ⟨[.atom p t e'], by simp [withRegs, withReg], ⟨p, e', rfl⟩, by simp [Cols.regs, Col.regs], rfl⟩
+  | .prod a b, _, ⟨c1, c2, rfl, h1, h2⟩, ps, rest, hl => by
+    rw [Cols.regs_append, List.length_append] at hl
+    obtain ⟨d1, e1, k1, r1, l1⟩ := withRegs_colsOf a h1 (ps.take (Cols.regs c1).length)
+      (ps.drop (Cols.regs c1).length ++ rest) (by rw [List.length_take]; omega)
+    obtain ⟨d2, e2, k2, r2, l2⟩ := withRegs_colsOf b h2 (ps.drop (Cols.regs c1).length) rest
+      (by rw [List.length_drop]; omega)
+    refine ⟨d1 ++ d2, ?_, ⟨d1, d2, rfl, k1, k2⟩, by rw [Cols.regs_append, r1, r2, List.take_append_drop],
+      by simp [l1, l2]⟩
+    rw [withRegs_append, show ps ++ rest = ps.take (Cols.regs c1).length ++ (ps.drop (Cols.regs c1).length ++ rest)
+      by rw [← List.append_assoc, List.take_append_drop], e1, pure_bind]
+    simp only [e2, pure_bind]
+  | .arr b, _, ⟨p, m, lo, hi, f, rfl, hf⟩, ps, rest, hl => by
+    match ps, hl with
+    | m' :: lo' :: hi' :: ps, hl =>
+      simp [Cols.regs, Col.regs] at hl
+      obtain ⟨f', e, k, r, l⟩ := withRegs_colsOf b hf ps rest (by simpa [Cols.regs] using hl)
+      refine ⟨[.arr p m' lo' hi' f'], ?_, ⟨p, m', lo', hi', f', rfl, k⟩, by simp [Cols.regs, Col.regs, r], rfl⟩
+      simp [withRegs, withReg, e]
+  | .sum a b, cs, h, ps, rest, hl => by
+    simp only [ColsOf] at h ⊢
+    cases hb : Obj.band a b with
+    | some t =>
+      simp only [hb] at h ⊢
+      obtain ⟨p, e, rfl⟩ := h
+      match ps, hl with
+      | [e'], _ => exact ⟨[.atom p t e'], by simp [withRegs, withReg], ⟨p, e', rfl⟩, by simp [Cols.regs, Col.regs], rfl⟩
+    | none =>
+      simp only [hb] at h ⊢
+      obtain ⟨p, tag, xs, ys, rfl, ha, hb'⟩ := h
+      match ps, hl with
+      | tag' :: ps, hl =>
+        simp [Cols.regs, Col.regs] at hl
+        obtain ⟨xs', e1, k1, r1, l1⟩ := withRegs_colsOf a ha (ps.take (Cols.regs xs).length)
+          (ps.drop (Cols.regs xs).length ++ rest) (by rw [List.length_take]; omega)
+        obtain ⟨ys', e2, k2, r2, l2⟩ := withRegs_colsOf b hb' (ps.drop (Cols.regs xs).length) rest
+          (by rw [List.length_drop]; omega)
+        refine ⟨[.sum p tag' xs' ys'], ?_, ⟨p, tag', xs', ys', rfl, k1, k2⟩,
+          by simp [Cols.regs, Col.regs, r1, r2], rfl⟩
+        rw [show tag' :: ps ++ rest = tag' :: (ps.take (Cols.regs xs).length ++ (ps.drop (Cols.regs xs).length ++ rest))
+          by rw [← List.append_assoc, List.take_append_drop]; rfl]
+        simp [withRegs, withReg, e1, e2]
+  | .one, _, rfl, ps, rest, hl => by
+    match ps, hl with
+    | [], _ => exact ⟨[], by simp [withRegs], rfl, rfl, rfl⟩
+
+/-- **`ascSeenB` builds**: `funV` of `ascSeenOnB` (`funV_builds`) over the columns `cs` of a side `x` of `A`
+    (`ascSeenOnB_builds`' premises); `kk` continues with the four registers of the answer, holding `k`, `g`, `f`, `p`,
+    under any functions and globals extending `fg`'s. -/
+theorem ascSeenB_builds {fg : Array Fun × Array Fun} {o : Bool} (A : Obj) {nv : USize} {x : ValsB o A nv}
+    {cs : Cols} {L : List Nat} {rs : Array Val} {n : Nat} {ks : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
+    {k : Nat} {g f z : Enc} {r : Enc × Option UInt64} {kk : Nat × Nat × Nat × Nat → Bld (Array Nat)} {out : Array Val}
+    (hcs : ColsOf A cs) (hL : regsOf cs = pure L)
+    (hx : L.mapM (fun i => rs[i]?) = some x.regVals) (hn : rs[n]? = some (.size nv)) (hks : x.cols = .ok ks)
+    (hN : nv.toNat ≤ 2 ^ 63) (ha : kasc nv ks = .ok (vs, p)) (hk : kseen nv ((ks.map (·.1)).zip vs) = .ok (k, g, f))
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 0 = .ok z)
+    (hsc : kscan .max false .i64 .i64 nv (some z) [(nv, z), (nv, g)] [] [] = .ok r) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (ys : Array Val) (a b c d : Nat), (∃ e, fg2.1 = fg.1 ++ e) →
+      fg2.2 = fg.2 → Ordered fg2.1 → [a, b, c, d].mapM (fun i => (rs ++ ys)[i]?) =
+        some [.size k.toUSize, Reg.put g, Reg.put f, Reg.put p] → ∃ fg', Builds abiOf fg2 fg' (kk (a, b, c, d)) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (ascSeenB n cs >>= kk) rs out := by
+  obtain rfl : L = Cols.regs cs := pure_inj (hL.symm.trans (regsOf_eq cs))
+  obtain ⟨L0, hL0, hlx⟩ := regsOf_of_colsOf A hcs
+  obtain rfl : L0 = Cols.regs cs := pure_inj (hL0.symm.trans (regsOf_eq cs))
+  let pv : Array Val := (Val.size nv :: x.regVals).toArray
+  let ps := List.range' (rs.size + 1) (Cols.regs cs).length
+  obtain ⟨cs', hw, hcs', hr', hl'⟩ := withRegs_colsOf A hcs ps [] (by simp [ps])
+  rw [List.append_nil] at hw
+  have hpv : pv.size = (n :: Cols.regs cs).length := by simp [pv, hlx x]
+  -- the parameters' registers in `rs ++ pv`: the count at `rs.size`, the columns `cs'` after it
+  have hread := holds_of_reg (mapM_reg_range rs pv "")
+  rw [hpv, List.length_cons, List.range'_succ] at hread
+  obtain ⟨v0, vs0, hv0, hps, e0⟩ := omapM_cons.mp hread
+  simp only [pv, List.cons.injEq] at e0
+  obtain ⟨rfl, rfl⟩ := e0
+  have hge : AllGe rs.size (Cols.regs cs') := fun a h => by
+    rw [hr'] at h; simp only [ps, List.mem_range'] at h; omega
+  obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg) (k := (n :: Cols.regs cs).length) (rs := rs)
+    (Typed.ascSeenBody cs' (Nat.le_refl _) hge)
+  have hB := ascSeenOnB_builds (fg := fg) (rs := rs ++ pv) (n := rs.size) A hcs' (by rw [regsOf_eq, hr'])
+    hps hv0 hks hN ha hk hz hsc
+  let P : TabB → Prop := fun U => ∃ k g f p : Nat, U = ⟨k, [.atom "" .i64 g, .atom "" .i64 f, .atom "" .i64 p], []⟩
+  have heq : ((do let (k, g, f, p) ← ascSeenB.ascSeenOnB rs.size cs'; Pure.pure (⟨k, [.atom "" .i64 g,
+      .atom "" .i64 f, .atom "" .i64 p], []⟩ : TabB) : Bld TabB) >>= answerRegs P) =
+      (do let (k', g', f', p') ← ascSeenB.ascSeenOnB rs.size cs'; Pure.pure #[k', g', f', p']) := by
+    rw [bind_assoc]
+    refine congrArg (_ >>= ·) (funext fun t => ?_)
+    obtain ⟨k1, g1, f1, p1⟩ := t
+    simp only [pure_bind]
+    unfold answerRegs
+    rw [if_pos ⟨k1, g1, f1, p1, rfl⟩, tabsRegs_eq]
+    simp [TabB.regs, Cols.regs, Col.regs]
+  unfold ascSeenB
+  rw [bind_assoc]
+  refine funV_builds (P := P) (fg1 := fg) (Us := []) (T := ⟨rs.size, cs', []⟩) (pv := pv)
+    (o := #[.size k.toUSize, Reg.put g, Reg.put f, Reg.put p]) (ctys := ctys)
+    (by rw [tabsRegs_eq]; simp [TabB.regs]) (fun _ => reads_of (by rw [List.mapM_cons, hn, hx]; rfl)) ?_
+    (by rw [← heq] at hB; exact hB.2.2 #[]) hfo
+    (fun _ _ _ => (Grows.ascSeenOnB _ _).bind fun _ => Grows.pure _)
+    (fun U body xs R rtys h _ hR hy is => hcl U body _ R rtys h hR hy is) ?_
+  · rw [List.length_cons, List.range'_succ]
+    simp only [tabsAt, List.foldlM_cons, List.foldlM_nil, List.append_nil]
+    rw [hw]
+    simp [← hl']
+  · rintro U ⟨k0, g0, f0, p0, rfl⟩ fg2 R' V ys he hf ho hR hV
+    have hsz := mapM_ok_size (hR "")
+    rcases R' with ⟨_ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨d, _ | ⟨_, _⟩⟩⟩⟩⟩⟩ <;> simp at hsz
+    have hV0 : tabsAt [⟨k0, [.atom "" .i64 g0, .atom "" .i64 f0, .atom "" .i64 p0], []⟩] [a, b, c, d] =
+        Pure.pure ([⟨a, [.atom "" .i64 b, .atom "" .i64 c, .atom "" .i64 d], []⟩], []) := by
+      first | rfl | with_unfolding_all rfl
+    have := pure_inj (hV.symm.trans hV0)
+    simp only [Prod.mk.injEq, List.cons.injEq, and_true] at this
+    subst this
+    simp only [pure_bind]
+    exact hkk fg2 ys a b c d he hf ho (holds_of_reg (hR ""))
 
 end Rel.Lang.Plan

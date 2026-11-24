@@ -849,23 +849,42 @@ theorem Builds.listBG {fg fg' : Array Fun × Array Fun} {out rs : Array Val} {l 
       Builds abi fg fg' (k r) R out) : Builds abi fg fg' (Plan.listB l >>= k) rs out :=
   Builds.listB h fun _ _ hr => hk _ _ hr fun h => get_app h
 
+/-- Every `Enc` is a register that reads back as itself (`foR` its parts, `pos` none). -/
+theorem enc_get_put : ∀ e : Enc, (Reg.get? (Reg.put e) : Option Enc) = some e
+  | .foR m p => foR_get_put m p
+  | .pos => by
+    have hp : (Reg.put (Enc.pos : Enc) : Val) = .ctor (Enc.pos : Enc).ctorIdx #[] #[] := by with_unfolding_all rfl
+    rw [hp]
+    dsimp only [Reg.get?]
+    conv => lhs; whnf
+    rw [Array.mapM_eq_mapM_toList]
+    simp
+
+theorem qtype_get_put (t : QAtomicType) : (Reg.get? (Reg.put t) : Option QAtomicType) = some t := by
+  cases t <;> rfl
+
+theorem ascKey_get (v : Val) : (Reg.get? v : Option AscKey) = ascGet? v := rfl
+
+theorem ascGet?_atom (t : QAtomicType) : (Reg.get? (Val.ctor 0 #[] #[Reg.put t]) : Option AscKey) = some (.atom t) := by
+  rw [ascKey_get, ascGet?.eq_def]
+  simp [qtype_get_put]
+
 theorem groupIdsB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {t n c : Nat} {nv : USize} {ty : QAtomicType}
     {cc s0 pe g1 g2 out : Enc} {sl : List Enc} {cnt : Nat}
     (hn : rs[n]? = some (.size nv)) (ht : rs[t]? = some (Reg.put ty)) (hc : rs[c]?.bind Reg.get? = some cc)
-    (hak : (Reg.get? (Val.ctor 0 #[] #[Reg.put ty]) : Option AscKey) = some (.atom ty))
     (hs : kasc nv [(.atom ty, cc)] = .ok (s0 :: sl, pe))
     (hg : kseen nv [(.atom ty, s0)] = .ok (cnt, g1, g2))
-    (hk : kscatter .last nv pe g1 nv 0 = .ok out)
-    (hrt : ∀ e ∈ [s0, pe, g1], (Reg.get? (Reg.put e) : Option Enc) = some e) :
+    (hk : kscatter .last nv pe g1 nv 0 = .ok out) :
     Builds abiOf fg fg (do let r ← groupIdsB t n c; Pure.pure #[r]) rs #[Reg.put out] := by
   obtain ⟨cv, hcv, hgc⟩ := Option.bind_eq_some_iff.mp hc
-  simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq] at hrt
-  obtain ⟨rs0, rpe, rg1⟩ := hrt
+  have rs0 := enc_get_put s0
+  have rpe := enc_get_put pe
+  have rg1 := enc_get_put g1
   have hpair : ∀ (a : Enc) (v : Val), Reg.get? v = some a →
       (Reg.get? (Val.ctor 0 #[Val.ctor 0 #[] #[Reg.put ty], v] #[]) : Option (AscKey × Enc)) = some (.atom ty, a) := by
     intro a v hv
     show (do pure (← Reg.get? (Val.ctor 0 #[] #[Reg.put ty]), ← Reg.get? v)) = _
-    rw [hak, hv]; rfl
+    rw [ascGet?_atom, hv]; rfl
   have hlist : ∀ (pv : Val) (x : AscKey × Enc), Reg.get? pv = some x →
       (Reg.get? (Val.ctor 1 #[pv, Val.ctor 0 #[] #[]] #[]) : Option (List (AscKey × Enc))) = some [x] := by
     intro pv x h; exact (listGet?_foldr [pv]).trans (by simp [h])
