@@ -13,6 +13,7 @@ public import Rel.Lang.PreludeLoop
 public import Rel.Lang.PreludeStar
 public import Rel.Lang.PreludeDfn
 public import Rel.Lang.PreludeOrd
+public import Rel.Lang.PreludeThinL
 import Lean
 meta import Rel.Run.Lang.Syntax
 

@@ -388,7 +388,7 @@ def prims : List Prim :=
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
      mono := false, prelude := `Rel.Programs.prelude.takewhile },
    { sym := "thinL", sig := ([((.var {} "B", .var {} "B"), some true)], .list (.var {} "B"), .list (.var {} "B")),
-     mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
+     mono := false, prelude := `Rel.Programs.prelude.thinL, aop := .ok `Freyd.Alg.RelSet.ListRel.thinL },
    { sym := "merge",
      sig := ([((.var {} "B", .var {} "B"), some true)], .prod (.list (.var {} "B")) (.list (.var {} "B")),
        .list (.var {} "B")),
