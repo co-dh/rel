@@ -122,6 +122,12 @@ def fcells : List (AscKey × Enc) :=
 example : pview (u 4) (kasc (u 4) fcells) = .inr [3, 1, 0, 2] := by decide +kernel
 #guard pview (u 4) (kasc (u 4) fcells) == .inr [3, 1, 0, 2]
 
+-- an empty cell reads no payload wherever its `lo` points: over an empty payload, cells `[2, 2)` and `[1, 1)` are both
+-- `[]`, so the two rows tie in input order (`cellLen = 0`; the Rust slice `2..2` of a length-0 payload panicked)
+def emptyAt : List (AscKey × Enc) := [cells (u 2) (u 0) [2, 1] [2, 1] [(.atom .i64, col [])]]
+example : pview (u 2) (kasc (u 2) emptyAt) = .inr [0, 1] := by decide +kernel
+#guard pview (u 2) (kasc (u 2) emptyAt) == .inr [0, 1]
+
 -- a word naming no cell is the error
 def noCell : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: cells: row word 2 names no cell of 2"
 example : view (u 2) (kasc (u 2) [cells (u 2) (u 1) [0, 0] [1, 1] [(.atom .i64, col [7])] (col [0, 2])]) = noCell := by

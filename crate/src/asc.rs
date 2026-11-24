@@ -114,7 +114,9 @@ impl Cells<'_> {
     fn span(&self, q: usize) -> Range<usize> {
         if self.lo.nul(q) || self.hi.nul(q) { return 0..0 }
         let s = self.lo.get(q).max(0) as usize;
-        s..(self.hi.get(q).max(0) as usize).max(s)
+        let e = self.hi.get(q).max(0) as usize;
+        // an empty cell is `0..0` wherever its `lo` points (`cellLen = 0`: no element is read), so it indexes no payload
+        if e <= s { 0..0 } else { s..e }
     }
     /// The working key of rows `0 .. m`: the rank of each row's cell in `cellFns`' `lexLe` order (the first element
     /// that differs decides, else a proper prefix first). The payload rows are ranked once (`rank`), each cell named by

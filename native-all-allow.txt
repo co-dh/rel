@@ -1,7 +1,3 @@
-Rel.Lang.Test.cycle K: crashed, exit 134: range start index 2 out of range for slice of length 0
-Rel.Lang.Test.cycle Z: crashed, exit 134: range start index 2 out of range for slice of length 0
-Rel.Lang.Test.cycle plan: crashed, exit 134: range start index 2 out of range for slice of length 0
-Rel.Lang.Test.cycle ζ: crashed, exit 134: range start index 2 out of range for slice of length 0
 Rel.Lang.TestCmpMeet.cmpMeet3 bad: bad: cross: values of the left object by values of the right, past the bound 268435456 pairs: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`): 100000, 100000
 Rel.Lang.TestCmpMeet.cmpMeetT either: either: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
 Rel.Lang.TestCmpMeet.cmpMeetT ge: ge: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
