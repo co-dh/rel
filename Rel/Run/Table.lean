@@ -42,13 +42,17 @@ open Rel Rel.Lang.Plan
 /-- The file of the column `q` in the table directory `dir`. -/
 def file (dir q : String) : String := (System.FilePath.mk dir / q).toString
 
-/-- The one column writer of a side: each atom column of `x` with its payloads cut to the cells' reach (`ValsB.pack 0`,
-    the form that depends on the cells alone) (`cols` under the prefix `p`) to `file dir <path>`; a positions column has
-    no file. -/
-def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
-  for (q, c) in cols A (← IO.ofExcept (ValsB.pack 0 x)) p do
+/-- The columns of the side `x` (`cols` under the prefix `p`) to `file dir <path>` as they are, whatever the cells: a
+    positions column has no file. A test of the reader writes a malformed side through it. -/
+def writeRaw {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
+  for (q, c) in cols A x p do
     if let some f ← IO.ofExcept (ownFile q c) then
       Db.ownWrite (file dir q) f.code f.kind f.count f.parts
+
+/-- The one column writer of a side: `writeRaw` of `x` with its payloads cut to the cells' reach (`ValsB.pack 0`,
+    the form that depends on the cells alone), so a file holds the value and not the dead payload an operator left. -/
+def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
+  writeRaw dir p (← IO.ofExcept (ValsB.pack 0 x))
 
 /-- The bit pattern of a word of type `t` that is not in the canonical form `Obj.key` and the kernels assume (typed
     base design, R7 and decision D: a NaN has no row, `-0` is `+0`), `none` for a canonical word: the stored word

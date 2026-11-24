@@ -310,7 +310,7 @@ private def bigCell : Except String (Vals (.arr .long) 1) := do
 
 -- `ValsB.pack` past `2^63` elements is the error: `cellSpan` would read the size as the signed word `-2^63`, every
 -- width `0`, and answer a payload of no rows
-#guard match bigCell, bigCell >>= ValsB.pack with
+#guard match bigCell, bigCell >>= ValsB.pack 2 with
   | .ok _, .error e => e == "pack: 1 cells over 9223372036854775808 elements past 2^63"
   | _, _ => false
 
