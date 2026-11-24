@@ -1,6 +1,7 @@
 import Rel.Lang.TestNative
 import Rel.Programs.SudokuAC
 import Rel.Programs.SudokuPC
+import Rel.Programs.Chess
 
 /-! The native plans of the fixpoint programs `SudokuAC`, `SudokuPC`: each table-valued side of each `check`, opened
     from the program, is planned (`planOfIn`) and its plan's writes are those of the Lean value (`writesAgree`). They
@@ -8,11 +9,8 @@ import Rel.Programs.SudokuPC
     which lists the same rows as the bit-matrix `Rel.bits` (`Tab.compBits_eq`, `Tab.ldivBits_eq`). `agree` logs the
     times.
 
-    `Chess` (3×3, `natChess.mm`) is left out: it agrees, but its plan takes 44–75 s to build and 15–27 s to run, where
-    every definition here takes under 0.6 s. The build is not one slow step but 503,827 `funB` calls (`EmitC`), each
-    rebuilding a recipe body and then scanning the plan's function array with the structural `==` of `Fun`
-    (`fs.findIdx? (· == F)`), to end with 1010 distinct functions (16.5k instructions). A fix is a keyed memo of `funB`
-    in the `Bld` state (a `Fun` hash index), which changes the state shape `PlanSpec` quantifies over. -/
+    `Chess` (3×3, `natChess.mm`) is planned too: a closed definition is one global (`shareB`), so its plan holds each
+    definition once, not a copy at every use. -/
 
 namespace Rel.Lang.TestNativeProgB
 
@@ -30,6 +28,10 @@ rel_program natPC where
     sv : Cell ⟶ D ≜ s
     sp : Cell ⟶ D ≜ s'
 
+open Rel.Programs.prelude Rel.Programs.chess in
+rel_program natChess where
+    mm : Sq×Sq ⟶ Pc ≜ m
+
 /-- `writesAgree` of the definition `x` of the program `m`, with its own heartbeat budget and its time printed. -/
 def agree {A B : Obj} (m : Lean.Name) (x : String) (v : Except String (Tab A B)) : Lean.Meta.MetaM Unit := do
   let t ← IO.monoMsNow
@@ -46,5 +48,6 @@ def agree {A B : Obj} (m : Lean.Name) (x : String) (v : Except String (Tab A B))
   agree ``natAC "solv" natAC.solv
   agree ``natPC "sv" natPC.sv
   agree ``natPC "sp" natPC.sp
+  agree ``natChess "mm" natChess.mm
 
 end Rel.Lang.TestNativeProgB
