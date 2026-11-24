@@ -6,10 +6,12 @@ public import Rel.RepCanon
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! # `gatherCols` means `ValsB.gather` (`canonT_builds`, stage 1b)
+/-! # `gatherCols` means `ValsB.gather`, `nubB` means `Vals.nub`, `canonT` means `Tab.canon`
 
 A side `x : ValsB o A n` in registers is `ValsB.regVals x`, in `regsOf` order; `gatherB` of one register is
-`kgather` of its `Enc`, which is what `ColB.gather` computes. -/
+`kgather` of its `Enc`, which is what `ColB.gather` computes. `nubB_builds` composes `ascSeenB_builds`,
+`gatherB_builds` and `gatherCols_builds` as `Vals.nub` composes `kasc`, `kseen`, `kgather` and `ValsB.gather`;
+`canonT_builds` is it at the pair side. -/
 
 namespace Rel.Lang.Plan
 
@@ -990,5 +992,146 @@ theorem gatherCols_builds (A : Obj) : ∀ {o : Bool} {nv mv : USize} {x : ValsB 
             fun a ha => hge a (by simp [Col.regs, ha])).bind fun _ _ =>
           (Typed.gatherColsOf (S := [m]) (ix := ix) (.inr (List.mem_singleton_self _)) rs.size ys' (Nat.le_refl _)
             fun a ha => hge a (by simp [Col.regs, ha])).bind fun _ _ => Typed.pure trivial
+
+/-! ### `nubB` means `Vals.nub`, `canonT` means `Tab.canon` -/
+
+/-- **`nubB` builds `Vals.nub`**: the columns `cs` of a side `x` of `A` (registers holding `x`, `n` its count `nv`),
+    `Vals.nub x = ⟨mv, y⟩`: `funV` (`funV_builds`) of `ascSeenB` (`ascSeenB_builds`), `gatherB` of `p` at `f`, and
+    `gatherCols` there (`gatherCols_builds`); `kk` continues with a count register holding `mv` and columns of `cs`'s
+    shape holding `y`. `hN`, `hz`, `hsc` are `ascSeenB_builds`' premises at the `g` that `kseen` answers. -/
+theorem nubB_builds {fg : Array Fun × Array Fun} (A : Obj) {nv mv : USize} {x : Vals A nv} {y : Vals A mv}
+    {cs : Cols} {rs : Array Val} {n : Nat} {z : Enc} {kk : Nat × Cols → Bld (Array Nat)} {out : Array Val}
+    (hcs : ColsOf A cs) (hx : (Cols.regs cs).mapM (fun i => rs[i]?) = some x.regVals)
+    (hn : rs[n]? = some (.size nv)) (hnub : Vals.nub x = .ok ⟨mv, y⟩) (hN : nv.toNat ≤ 2 ^ 63)
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 0 = .ok z)
+    (hsc : ∀ es vs p k g f, ValsB.cols x = .ok es → kasc nv es = .ok (vs, p) →
+      kseen nv ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+      ∃ r, kscan .max false .i64 .i64 nv (some z) [(nv, z), (nv, g)] [] [] = .ok r) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (k : Nat) (cs' : Cols) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
+      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape cs' = Cols.shape cs →
+      (k :: Cols.regs cs').mapM (fun i => (rs ++ ys)[i]?) = some (.size mv :: y.regVals) →
+      ∃ fg', Builds abiOf fg2 fg' (kk (k, cs')) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (nubB n cs >>= kk) rs out := by
+  obtain ⟨es, vs, p, k, g, f, ix, y', hes, ha, hk, hix, hy, he⟩ := Vals.nub_ok hnub
+  cases he
+  obtain ⟨r, hsc⟩ := hsc es vs p k g f hes ha hk
+  -- the parameter table `⟨n, cs, []⟩` read after `rs`: the count at `rs.size`, columns `cs'` of `cs`'s shape after it
+  have hA : tabsRegs [(⟨n, cs, []⟩ : TabB)] = Pure.pure (n :: Cols.regs cs) := by
+    rw [tabsRegs_eq]; simp [TabB.regs]
+  obtain ⟨A', Y, t1, -, -, t4⟩ := tab_spec (⟨n, cs, []⟩ : TabB)
+  obtain rfl := pure_inj (t1.symm.trans hA)
+  obtain ⟨V0, v1, v2, -, v4, v5⟩ := t4 (List.range' rs.size (n :: Cols.regs cs).length) [] (by simp)
+  rw [List.append_nil] at v1
+  obtain ⟨n0, cs', val⟩ := V0
+  dsimp only at v4 v5
+  obtain rfl : val = [] := by rw [Cols.shape_eq_map, Cols.shape_eq_map] at v5; simpa using v5
+  rw [tabsRegs_eq] at v2
+  have v2' := pure_inj v2
+  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, TabB.regs, List.length_cons, List.range'_succ,
+    List.cons.injEq] at v2'
+  obtain ⟨rfl, hr'⟩ := v2'
+  let pv : Array Val := (Val.size nv :: x.regVals).toArray
+  have hlx : (Cols.regs cs).length = x.regVals.length := ColsOf.regs_length hcs x
+  have hcs' : ColsOf A cs' := ColsOf.shape A hcs v4
+  have hn' : (rs ++ pv)[rs.size]? = some (.size nv) := by simp [pv]
+  have hx' : (Cols.regs cs').mapM (fun i => (rs ++ pv)[i]?) = some x.regVals := by
+    have := mapM_range_append (rs.push (.size nv)) x.regVals
+    rwa [Array.size_push, ← hlx, ← hr', show rs.push (Val.size nv) ++ x.regVals.toArray = rs ++ pv by simp [pv]]
+      at this
+  let P : TabB → Prop := fun U => U.val = [] ∧ Cols.shape U.key = Cols.shape cs
+  -- the body: `ascSeenB`, `gatherB` of `p` at `f`, `gatherCols` there, its answer of the shape `P` holding `y`
+  have hB : ∃ fg1, Builds abiOf fg fg1 ((do
+      let (k, _, f, p) ← ascSeenB rs.size cs'
+      Pure.pure (⟨k, ← gatherCols k (← gatherB k f rs.size p) rs.size cs', []⟩ : TabB)) >>= answerRegs P)
+      (rs ++ pv) (Val.size k.toUSize :: y'.regVals).toArray := by
+    simp only [bind_assoc]
+    refine ascSeenB_builds A hcs' (regsOf_eq cs') hx' hn' hes hN ha hk hz hsc hfo
+      fun fg2 ys a b c d he hf ho hr => ?_
+    obtain ⟨ha', hr⟩ := mapM_get_cons hr
+    obtain ⟨-, hr⟩ := mapM_get_cons hr
+    obtain ⟨hf', hr⟩ := mapM_get_cons hr
+    obtain ⟨hp', -⟩ := mapM_get_cons hr
+    simp only [pure_bind]
+    obtain ⟨fg', h⟩ := gatherCols_builds A (rs := (rs ++ pv ++ ys).push (Reg.put ix)) (ix := (rs ++ pv ++ ys).size)
+      (kk := fun cs'' => answerRegs P ⟨a, cs'', []⟩) hcs' (mapM_extends (fun h => get_push (get_app h)) hx')
+      (get_push ha') (by simp) (get_push (get_app hn')) hy ho fun fg3 cs'' ys2 _ _ _ hs hr2 =>
+        ⟨fg3, Builds.answerRegs ⟨rfl, hs.trans v4⟩ (tabsRegs_eq _) fun _ => reads_of (by
+          simp only [List.flatMap_cons, List.flatMap_nil, TabB.regs, List.append_nil]
+          exact omapM_cons.mpr ⟨_, _, get_app (get_push ha'), hr2, rfl⟩)⟩
+    exact ⟨fg', gatherB_builds ha' hf' (get_app hn') hp' hix h⟩
+  obtain ⟨fg1, ⟨a1, ha1⟩, ⟨b1, hb1⟩, hB1⟩ := hB
+  have hge : AllGe rs.size (Cols.regs cs') := fun a h => by rw [hr', List.mem_range'_1] at h; omega
+  obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg1) (k := (n :: Cols.regs cs).length) (rs := rs)
+    (Typed.nubBody cs' (Nat.le_refl _) hge)
+  unfold nubB
+  rw [bind_assoc]
+  refine funV_builds (P := P) (fg1 := fg1) (Us := []) (T := ⟨rs.size, cs', []⟩) (pv := pv)
+    (o := (Val.size k.toUSize :: y'.regVals).toArray) (ctys := ctys) hA
+    (fun _ => reads_of (by rw [List.mapM_cons, hn, hx]; rfl)) v1 (hB1 #[]) hfo
+    (fun n X Ts => (Grows.ascSeenB _ _).bind fun _ =>
+      (Grows.gatherB _ _ _ _).bind fun _ => (Grows.gatherCols _ _ _ _).bind fun _ => Grows.pure _)
+    (fun U body xs R rtys h _ hR hy is => hcl U body _ R rtys h hR hy is) ?_
+  rintro ⟨un, ukey, uval⟩ ⟨hv, hs⟩ fg2 R' V ys he hf ho hR hV
+  dsimp only at hv hs
+  subst hv
+  obtain ⟨AU, YU, u1, -, -, u4⟩ := tab_spec (⟨un, ukey, []⟩ : TabB)
+  rw [tabsRegs_eq] at u1
+  obtain rfl := (pure_inj u1).symm
+  have hl : R'.toList.length = (TabB.regs ⟨un, ukey, []⟩).length := by
+    have h1 := mapM_ok_size (hR "")
+    have h2 : (Cols.regs ukey).length = (Cols.regs cs).length := by
+      rw [← Cols.regs_shape ukey, hs, Cols.regs_shape]
+    simp only [Array.length_toList, TabB.regs, List.append_nil, List.length_cons, h2, ColsOf.regs_length hcs y']
+    simpa using h1.symm
+  obtain ⟨V', f1, f2, -, f4, f5⟩ := u4 R'.toList [] (by simpa using hl)
+  rw [List.append_nil] at f1
+  obtain rfl : V = V' := by
+    have := pure_inj (hV.symm.trans f1); simp only [Prod.mk.injEq, List.cons.injEq, and_true] at this; exact this
+  obtain ⟨vn, vkey, vval⟩ := V
+  dsimp only at f4 f5
+  obtain rfl : vval = [] := by rw [Cols.shape_eq_map, Cols.shape_eq_map] at f5; simpa using f5
+  rw [tabsRegs_eq] at f2
+  have f2' := pure_inj f2
+  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, TabB.regs] at f2'
+  have hread := holds_of_reg (hR "")
+  rw [← f2'] at hread
+  simp only [pure_bind]
+  obtain ⟨e2, he2⟩ := he
+  exact hkk fg2 vn vkey ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ ⟨b1, by rw [hf, hb1]⟩ ho
+    (f4.trans hs) hread
+
+/-- **`canonT` builds `Tab.canon`**: the table `T` of a key side of `a` and a value side of `b`, its registers
+    holding `R`, `R.canon = R'`: `nubB` of the pair side (`nubB_builds` at `a × b`), split back at `T.key`'s length;
+    `kk` continues with a table of `T`'s shape whose registers hold `R'`. -/
+theorem canonT_builds {fg : Array Fun × Array Fun} {a b : Obj} {R R' : Tab a b} {T : TabB} {rs : Array Val}
+    {z : Enc} {kk : TabB → Bld (Array Nat)} {out : Array Val} (hk : ColsOf a T.key) (hv : ColsOf b T.val)
+    (hT : T.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)))
+    (hc : R.canon = .ok R') (hN : R.n.toNat ≤ 2 ^ 63)
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) R.n 0 = .ok z)
+    (hsc : ∀ es vs p k g f, ValsB.cols (A := .prod a b) (R.key, R.val) = .ok es → kasc R.n es = .ok (vs, p) →
+      kseen R.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+      ∃ r, kscan .max false .i64 .i64 R.n (some z) [(R.n, z), (R.n, g)] [] [] = .ok r) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
+      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape U.key = Cols.shape T.key →
+      Cols.shape U.val = Cols.shape T.val →
+      U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size R'.n :: (R'.key.regVals ++ R'.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (canonT T >>= kk) rs out := by
+  unfold Tab.canon at hc
+  rcases hnub : Vals.nub (A := .prod a b) (R.key, R.val) with e | ⟨m, y⟩
+  · simp [hnub, Functor.map, Except.map] at hc
+  simp only [hnub, Functor.map, Except.map, Except.ok.injEq] at hc
+  subst hc
+  obtain ⟨hn, hx⟩ := mapM_get_cons hT
+  unfold canonT
+  rw [bind_assoc]
+  refine nubB_builds (.prod a b) (x := (R.key, R.val)) ⟨T.key, T.val, rfl, hk, hv⟩ hx hn hnub hN hz hsc hfo
+    fun fg2 k cs' ys he hf ho hs hr => ?_
+  rw [Cols.shape_eq_map, Cols.shape_eq_map, List.map_append, List.map_eq_append_iff] at hs
+  obtain ⟨k', v', rfl, hk', hv'⟩ := hs
+  have hl : k'.length = T.key.length := by simpa using congrArg List.length hk'
+  simp only [pure_bind, List.take_left' hl, List.drop_left' hl]
+  exact hkk fg2 ⟨k, k', v'⟩ ys he hf ho (by rw [Cols.shape_eq_map, Cols.shape_eq_map]; exact hk')
+    (by rw [Cols.shape_eq_map, Cols.shape_eq_map]; exact hv') (by simpa [TabB.regs] using hr)
 
 end Rel.Lang.Plan
