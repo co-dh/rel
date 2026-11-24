@@ -410,12 +410,6 @@ def over (op : Over) (nul : Int64) (metadata : @& ByteArray) (pack : @& ByteArra
 
 
 
-/-- The elements as raw bits, `elems`' counterpart on this constructor and the one place the block
-starts are hoisted out of the loop. Every specification below is a fold over it. -/
-def alpElems (metadata pack a : ByteArray) (n : USize) : List UInt64 :=
-  let starts := Rel.Column.blockStarts metadata
-  (List.range n.toNat).map (Rel.Column.alpBits metadata pack a starts)
-
 end Rel.Kernel.Coc
 
 namespace Rel.Column

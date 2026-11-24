@@ -198,12 +198,18 @@ example : parts (Ew.bit Ew.lesser Ew.va (bytes1 [0b11101]) (bytes1 [0]) (u 5)) =
   parts (Coc.bools 2600 (Column.bitAt (packOf 2600 fun i => (i % 3 == 0 && i < 1024) || 2048 ≤ i)))
 #guard parts (Coc.boolsOf (u 12) (bytes1 [0b101])) == parts (Coc.bools 12 (Column.bitAt (bytes1 [0b101])))
 
--- `sum 100 0N 105 = 205` (null-zero: folds skip null): the language's sum over `foROpt` (`Column.blockSum`) and the
+/-- Block `b`'s sum as the language states it, `sum ≜ inr° ≫ ⦇0,+⦈` over `foROpt`: the values added, a null skipped
+(wrapping at 64 bits, as the kernel's `bsum` does). -/
+def blockSum (metadata pack : ByteArray) (starts : Array Nat) (b : Nat) : UInt64 :=
+  (List.range (Column.blk metadata)).foldl (init := 0) fun acc j =>
+    match Column.foROpt metadata pack starts (b * Column.blk metadata + j) with | none => acc | some v => acc + v
+
+-- `sum 100 0N 105 = 205` (null-zero: folds skip null): the language's sum over `foROpt` (`blockSum`) and the
 -- writer's `bsum` of the flagged block (`Coc.nulBlock`), base 99 and residuals 1 and 6, so `99 * 2 + 7`
 def sumN (xs : List UInt64) (ns : List Nat) : UInt64 × UInt64 :=
   let nul := Column.packIds 1 xs.length fun i => (ns.contains i).toNat
   let r := Coc.encode (u 8) (dense xs) nul
-  (Column.blockSum r.1 r.2 (Column.blockStarts r.1) 0, (Coc.nulBlock Int64.minValue (2 ^ Column.lgEnc) 8 xs.length 0 (dense xs) nul).2.2.1)
+  (blockSum r.1 r.2 (Column.blockStarts r.1) 0, (Coc.nulBlock Int64.minValue (2 ^ Column.lgEnc) 8 xs.length 0 (dense xs) nul).2.2.1)
 example : sumN [100, 0, 105] [1] = (205, 205) := by decide +kernel
 #guard sumN [100, 0, 105] [1] == (205, 205)
 
