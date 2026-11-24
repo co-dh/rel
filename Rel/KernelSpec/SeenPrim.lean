@@ -51,7 +51,7 @@ noncomputable def seenPrims (n : Nat) (ks : List (Array UInt64)) : Except String
 
 /-! ## The models, row by row -/
 
-theorem foldlM_ok {op : Op} {f : UInt64 → UInt64 → UInt64} (hf : ∀ a x, op.eval a x = .ok (f a x))
+theorem foldlM_eval_ok {op : Op} {f : UInt64 → UInt64 → UInt64} (hf : ∀ a x, op.eval a x = .ok (f a x))
     (xs : List (Array UInt64)) (i : Nat) (a : UInt64) :
     xs.foldlM (fun a x => op.eval a (x[i]?.getD 0)) a = .ok (xs.foldl (fun a x => f a (x[i]?.getD 0)) a) := by
   induction xs generalizing a with
@@ -73,13 +73,13 @@ theorem scanW_spec {op : Op} {f : UInt64 → UInt64 → UInt64} (hf : ∀ a x, o
         (if 0 < m ∧ seg[m]?.getD 0 = 0 then o[m - 1]?.getD 0 else seed[m]?.getD 0)), ?_⟩
       rw [scanW] at ho ⊢
       rw [List.range_succ, List.foldlM_append, ho]
-      simp only [bind, Except.bind, List.foldlM_cons, List.foldlM_nil, kscanRow, foldlM_ok hf, Functor.map, Except.map]
+      simp only [bind, Except.bind, List.foldlM_cons, List.foldlM_nil, kscanRow, foldlM_eval_ok hf, Functor.map, Except.map]
       rfl
   obtain ⟨out, ho⟩ := hex n
   obtain ⟨hs, hi⟩ := foldlM_kscanRow op seg seed xs n out ho
   refine ⟨out, ho, hs, fun i hn => ?_⟩
   have := hi i (by omega)
-  rw [foldlM_ok hf] at this
+  rw [foldlM_eval_ok hf] at this
   rw [Array.getElem?_eq_getElem (by omega), Option.getD_some]
   exact (Except.ok.inj this).symm
 
