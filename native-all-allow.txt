@@ -8,6 +8,6 @@ Rel.Lang.TestCmpMeet.cmpMeetT gel: gel: ≤ on an unbounded object: nothing boun
 Rel.Lang.TestCmpMeet.cmpMeetT gt: gt: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
 Rel.Lang.TestCmpMeet.cmpMeetT le: le: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
 Rel.Lang.TestCmpMeet.cmpMeetT lt: lt: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
-Rel.Lang.TestFrameUnbounded.frameUnboundedT pz: pz: plan: proj r1.0 reads constructor 2, not 0
-Rel.Lang.TestFrameUnbounded.frameUnboundedT sa: sa: plan: proj r1.0 reads constructor 2, not 0
+Rel.Lang.TestFrameUnbounded.frameUnboundedT pz: the plan of `pz` writes 1 of 1 columns, not those of its Lean value (2 wanted); differing (got, want, code, kind, count) [(out/val, (out/key, (true, (true, true))))]; got [out/val]; want [out/key, out/val]
+Rel.Lang.TestFrameUnbounded.frameUnboundedT sa: the plan of `sa` writes 1 of 1 columns, not those of its Lean value (2 wanted); differing (got, want, code, kind, count) [(out/val, (out/key, (true, (true, true))))]; got [out/val]; want [out/key, out/val]
 Rel.Lang.TestNativeF.nativeF dy: dy: row `ymd` (`Rel.Tab.ymd`): no plan recipe builds its `Tab` operator yet

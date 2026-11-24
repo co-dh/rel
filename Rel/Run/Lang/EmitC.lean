@@ -780,9 +780,10 @@ def flatB (n : Nat) (cs : Cols) (pos : String → Bool := fun _ => false) : Bld 
 /-- `flatB` of one column. -/
 def flatC (n : Nat) (c : Col) (pos : String → Bool := fun _ => false) : Bld Side := match c with
   | .atom p t e => if pos p then pure [] else do
-    -- `Enc` is a sum (`foR` | `gen` | `pos`) and `encRegs` reads the `foR` parts: a `pos` column has none, so it is a
-    -- positions column (no registers, as `outSides` and `colsAtom` take it), never read as a `foR`
-    if ← isPosB e then pure [] else return [(p, (← encRegs t n e).push e)]
+    -- `Enc` is a sum (`foR` | `gen` | `pos`) and `encRegs` reads the `foR` parts, which `pos` has none of: it is
+    -- made a `foR` first (one `kscan`, as `dictionary`'s ids), the file Lean's value holds for it
+    let e ← if ← isPosB e then mapB .add n e (← wordsB n 0) else pure e
+    return [(p, (← encRegs t n e).push e)]
   | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo).push lo), (p ++ ".hi", (← encRegs .i64 n hi).push hi)]
       ++ (← flatB m f pos)
   | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x pos) ++ (← flatB n y pos))
