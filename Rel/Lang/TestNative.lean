@@ -432,9 +432,14 @@ def writesAgree {A B : Obj} (what : String) (p : Except String Plan) (v : Except
     let d := ((g.zip w).filter fun (a, b) => !(a == b)).map fun (a, b) => (a.1, b.1, a.2.1 == b.2.1, a.2.2.1 == b.2.2.1, a.2.2.2.1 == b.2.2.2.1)
     throwError (s!"the plan of `{what}` writes {got.length} of {ws.size} columns, not those of its Lean value ({want.length} wanted); differing (got, want, code, kind, count) {d}; got {g.map (·.1)}; want {w.map (·.1)}")
 
+/-- The plan of `output x to "out"` for the definition `x` of the program `m` from the reading `r` of `m`
+    (`Expand.reread m`), which a caller planning each definition of `m` reads once. -/
+def planOfRead (m : Lean.Name) (r : Except Err Expand.Read) (x : String) : Except String Plan :=
+  outputOfRead m r x "out" >>= Bld.plan
+
 /-- The plan of `output x to "out"` for the definition `x` of the program `m` (`rel_program m`). -/
 def planOfIn (m : Lean.Name) (x : String) : Lean.Meta.MetaM (Except String Plan) :=
-  return (← outputOf m x "out") >>= Bld.plan
+  return planOfRead m (← Expand.reread m) x
 
 /-- `writesAgree` of the definition `x` of the program `m` against its Lean value `v`, with its own heartbeat budget
     (a block of checks shares one otherwise) and its plan and run times logged. -/

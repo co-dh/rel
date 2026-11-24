@@ -2225,14 +2225,18 @@ def claimB (n : Lean.Name) (ds : List (String × Res)) : Bld (List (String × Re
     set (is, c, fs, (gs.push tag) ++ Array.replicate (numberedAt 0 ds).2 default)
     pure (numberedAt (gs.size + 1) ds).1
 
+/-- The plan's steps of `output x to dir` in the program `n`, from its reading `r` (`Expand.reread n`): a caller that plans
+    several definitions of `n` reads it once. -/
+def outputOfRead (n : Lean.Name) (r : Except Err Expand.Read) (x : String) (dir : String) :
+    Except String (Bld Unit) := do
+  let (ds, _) ← r.mapError (s!"{repr ·}")
+  pure (mainStepB do
+    let some ⟨A, B, t⟩ := (← claimB n ds).lookup x | throw s!"`{x}` is no closed definition of the program"
+    output dir A B (← outSides A B (← ofTm [] t)))
+
 /-- The plan's steps of `output x to dir` in the program `n`, read as `rel_program` read it (`Expand.reread`). -/
-def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
-  let r ← Expand.reread n
-  return do
-    let (ds, _) ← r.mapError (s!"{repr ·}")
-    pure (mainStepB do
-      let some ⟨A, B, t⟩ := (← claimB n ds).lookup x | throw s!"`{x}` is no closed definition of the program"
-      output dir A B (← outSides A B (← ofTm [] t)))
+def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) :=
+  return outputOfRead n (← Expand.reread n) x dir
 
 /-- An input as its read at the input edge answers it, with its key schema `k` (`[]`: positions) and value schema
     `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
