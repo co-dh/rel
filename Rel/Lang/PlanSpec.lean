@@ -894,4 +894,225 @@ theorem groupIdsB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {t n c :
   · simp [arg, hlast, hsz, rpe, rg1, hu, hk, Out.out]; rfl
   exact Builds.pure fun _ => reads_of (l := [r]) (vs := [Reg.put out]) (by simp [hr])
 
+/-! ### `arithB`: its kernel chain, registers named by what they hold -/
+
+/-- The column `o a b` answers: the map `kscan o` (every row a segment) over the `i64` columns `a`, `b` of `nv` rows. -/
+def MapCol (o : Kernel.Op) (nv : USize) (a b r : Enc) : Prop :=
+  ∃ f, kscan o false .i64 .i64 nv none [(nv, a), (nv, b)] [] [] = .ok (r, f)
+
+/-- The column "`s = u op v` did not wrap" that `arithB` computes, each map of its chain named by its column: for
+    `add` and `sub` the sign of `v` against the side of `u` that `s` lies on, for `mul` `u = 0` or `s / u = v`. -/
+def ArithExact (op : Kernel.Op) (nv : USize) (zc uc vc sc ec : Enc) : Prop := match op with
+  | .add => ∃ g1 g2, MapCol .ge nv vc zc g1 ∧ MapCol .ge nv sc uc g2 ∧ MapCol .eq nv g1 g2 ec ∧
+      (Reg.get? (Reg.put g1) : Option Enc) = some g1 ∧ (Reg.get? (Reg.put g2) : Option Enc) = some g2
+  | .sub => ∃ g1 g2, MapCol .ge nv vc zc g1 ∧ MapCol .le nv sc uc g2 ∧ MapCol .eq nv g1 g2 ec ∧
+      (Reg.get? (Reg.put g1) : Option Enc) = some g1 ∧ (Reg.get? (Reg.put g2) : Option Enc) = some g2
+  | .mul => ∃ g0 g1 g2 g3, MapCol .eq nv uc zc g0 ∧ MapCol .add nv uc g0 g1 ∧ MapCol .div nv sc g1 g2 ∧
+      MapCol .eq nv g2 vc g3 ∧ MapCol .or nv g0 g3 ec ∧ (Reg.get? (Reg.put g0) : Option Enc) = some g0 ∧
+      (Reg.get? (Reg.put g1) : Option Enc) = some g1 ∧ (Reg.get? (Reg.put g2) : Option Enc) = some g2 ∧
+      (Reg.get? (Reg.put g3) : Option Enc) = some g3
+  | _ => False
+
+
+
+/-- `m o a b` (one `kscan` map, its first answer taken), then `c` on a register holding the column `rc`. -/
+theorem Builds.mB {fg fg' : Array Fun × Array Fun} {rs out : Array Val} {o : Kernel.Op} {n a b : Nat} {nv : USize}
+    {ua ub : Val} {ca cb rc : Enc} {c : Nat → Bld (Array Nat)}
+    (hop : (Reg.get? (Reg.put o) : Option Kernel.Op) = some o) (hn : rs[n]? = some (.size nv))
+    (ha : rs[a]? = some ua) (hga : Reg.get? ua = some ca) (hb : rs[b]? = some ub) (hgb : Reg.get? ub = some cb)
+    (hk : MapCol o nv ca cb rc)
+    (hc : ∀ r R, R[r]? = some (Reg.put rc) → Extends rs R → Builds abiOf fg fg' (c r) R out) :
+    Builds abiOf fg fg' (scanB o .i64 n none [a, b] >>= fun x => nth x 0 "kscan" >>= c) rs out := by
+  obtain ⟨f, hk⟩ := hk
+  refine Builds.bindG (scanB_builds hop (by rw [hn]; rfl) (seg := none) (sg := none) rfl (es := [a, b])
+    (xs := [ca, cb]) (by simp [ha, hga, hb, hgb]) hk) fun ps R hps m => ?_
+  obtain ⟨p, hp0, hpR⟩ := holds_at hps (i := 0) rfl
+  rw [nth_of (by simpa using hp0), pure_bind]
+  exact hc p R hpR m
+
+/-- `whereB n keep`, then `k` on its two registers holding `o0`, `o1`, in registers extending `rs`. -/
+theorem Builds.whereG {fg : Array Fun × Array Fun} {rs out : Array Val} {n keep : Nat} {o0 o1 : Val}
+    (hb : Builds abiOf fg fg (whereB n keep >>= fun (r, p) => Pure.pure #[r, p]) rs #[o0, o1])
+    {k : Nat × Nat → Bld (Array Nat)}
+    (hk : ∀ r p R, R[r]? = some o0 → R[p]? = some o1 → Extends rs R → Builds abiOf fg fg (k (r, p)) R out) :
+    Builds abiOf fg fg (whereB n keep >>= k) rs out := by
+  have e : whereB n keep >>= k = (whereB n keep >>= fun (r, p) => Pure.pure #[r, p]) >>= fun a =>
+      k (a[0]?.getD 0, a[1]?.getD 0) := by simp
+  rw [e]
+  refine Builds.bindG hb fun a R h m => ?_
+  obtain ⟨r, hr, hR⟩ := holds_at h (i := 0) (v := o0) rfl
+  obtain ⟨p, hp, hP⟩ := holds_at h (i := 1) (v := o1) rfl
+  rw [show a[0]?.getD 0 = r by simp at hr; simp [hr], show a[1]?.getD 0 = p by simp at hp; simp [hp]]
+  exact hk r p R hR hP m
+
+
+set_option hygiene false in
+/-- After a step whose registers extend the old ones through `m`, the listed facts about registers hold in the new. -/
+macro "up " m:ident " [" hs:ident* "]" : tactic => do
+  let rs ← hs.mapM fun h => `(tactic| replace $h:ident := $m:ident $h:ident)
+  `(tactic| ($[$rs];*))
+
+/-- The `Op` a `kscan` map takes reads back from its register. -/
+macro "rop" : tactic => `(tactic| with_unfolding_all rfl)
+
+/-- What `arithB` builds once its `exact` column (register `ex`) is known: the rows kept where no operand and not `s` is
+    null and `s` did not wrap, `whereB` of them, and the columns gathered there. Kept a `def` of its own so that its
+    theorem is a lemma of its own (a declaration's proof is limited in heartbeats); `arithB_builds` checks that it is
+    what `arithB` continues with. -/
+def arithTail (n u v s nul ex : Nat) : Bld (Array Nat) := do
+  let m (o : Kernel.Op) (a b : Nat) : Bld Nat := do nth (← scanB o .i64 n none [a, b]) 0 "kscan"
+  let keep ← m .and (← m .and (← m .ne u nul) (← m .ne v nul)) (← m .and (← m .ne s nul) ex)
+  let (r, w) ← whereB n keep
+  let g (x : Nat) := call1 (kernel% kgather) #[r, w, n, x]
+  return #[r, ← g u, ← g v, ← g s]
+
+theorem arithTail_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n u v s nul ex : Nat} {nv K : USize}
+    {uv vv : Val} {uc vc zc nc sc ec k1 k2 k3 k4 k5 kc pc ixc ix1c zrc onec cutc w gu gv gs : Enc}
+    {fo ixf cutf : Option UInt64} {f : UInt64}
+    (hn : rs[n]? = some (.size nv)) (hu : rs[u]? = some uv) (hgu : Reg.get? uv = some uc)
+    (hv : rs[v]? = some vv) (hgv : Reg.get? vv = some vc)
+    (hsr : rs[s]? = some (Reg.put sc)) (hnr : rs[nul]? = some (Reg.put nc)) (her : rs[ex]? = some (Reg.put ec))
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 0 = .ok zc)
+    (hk1 : MapCol .ne nv uc nc k1) (hk2 : MapCol .ne nv vc nc k2) (hk3 : MapCol .and nv k1 k2 k3)
+    (hk4 : MapCol .ne nv sc nc k4) (hk5 : MapCol .and nv k4 ec k5) (hk6 : MapCol .and nv k3 k5 kc)
+    (hwp : kscan .add false .i64 .i64 nv (some zc) [(nv, zc), (nv, kc)] [] [] = .ok (pc, fo))
+    (hwf : nv ≠ 0 → fo = some f) (hwK : (if nv = 0 then (0 : UInt64) else f).toUSize = K)
+    (hwix : kscan .mul false .i64 .i64 nv none [(nv, kc), (nv, pc)] [] [] = .ok (ixc, ixf))
+    (hws : kscatter .last nv ixc .pos (K + 1) 0 = .ok ix1c)
+    (hwzr : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) K 0 = .ok zrc)
+    (hwone : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) K 1 = .ok onec)
+    (hwcut : kscan .add false .i64 .i64 K (some zrc) [(K, zrc), (K, onec)] [] [] = .ok (cutc, cutf))
+    (hwg : kgather K cutc (K + 1) ix1c = .ok w)
+    (hgu' : kgather K w nv uc = .ok gu) (hgv' : kgather K w nv vc = .ok gv) (hgs' : kgather K w nv sc = .ok gs)
+    (hrt : ∀ e ∈ [zc, nc, sc, ec, k1, k2, k3, k4, k5, kc, w, pc, ixc, ix1c, zrc, onec, cutc, .pos],
+      (Reg.get? (Reg.put e) : Option Enc) = some e) :
+    Builds abiOf fg fg (arithTail n u v s nul ex) rs #[.size K, Reg.put gu, Reg.put gv, Reg.put gs] := by
+  have hrtw : ∀ e ∈ [zc, pc, ixc, ix1c, zrc, onec, cutc, (.pos : Enc)], (Reg.get? (Reg.put e) : Option Enc) = some e :=
+    fun e he => hrt e (by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at he ⊢
+      rcases he with h | h | h | h | h | h | h | h <;> simp [h])
+  simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq] at hrt
+  obtain ⟨rz, rnl, rsc, rex, rk1, rk2, rk3, rk4, rk5, rkc, rw, rp, rix, rix1, rzr, rone, rcut, rpos⟩ := hrt
+  have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+  unfold arithTail
+  simp only [bind_assoc]
+  refine Builds.mB (by rop) hn hu hgu hnr rnl hk1 fun a1 R h1 m => ?_
+  up m [hn hu hv hsr hnr her]
+  refine Builds.mB (by rop) hn hv hgv hnr rnl hk2 fun a2 R h2 m => ?_
+  up m [hn hu hv hsr hnr her h1]
+  refine Builds.mB (by rop) hn h1 rk1 h2 rk2 hk3 fun a3 R h3 m => ?_
+  up m [hn hu hv hsr hnr her]
+  refine Builds.mB (by rop) hn hsr rsc hnr rnl hk4 fun a4 R h4 m => ?_
+  up m [hn hu hv hsr hnr her h3]
+  refine Builds.mB (by rop) hn h4 rk4 her rex hk5 fun a5 R h5 m => ?_
+  up m [hn hu hv hsr hnr h3]
+  refine Builds.mB (by rop) hn h3 rk3 h5 rk5 hk6 fun keep R hkp m => ?_
+  up m [hn hu hv hsr]
+  refine Builds.whereG (whereB_builds hn (by simp [hkp, rkc]) hz hwp hwf hwK hwix hws hwzr hwone hwcut hwg hrtw)
+    fun r p R hr hp m => ?_
+  dsimp only
+  up m [hn hu hv hsr]
+  refine Builds.call1G (v := Reg.put gu) (by abiK) rfl
+    (reads_of (l := [r, p, n, u]) (vs := [.size K, Reg.put w, .size nv, uv]) (by simp [hr, hp, hn, hu])) ?_ rfl
+    fun x1 R h1 m => ?_
+  · simp [arg, hsz, rw, hgu, hgu', Out.out]; rfl
+  up m [hn hu hv hsr hr hp]
+  refine Builds.call1G (v := Reg.put gv) (by abiK) rfl
+    (reads_of (l := [r, p, n, v]) (vs := [.size K, Reg.put w, .size nv, vv]) (by simp [hr, hp, hn, hv])) ?_ rfl
+    fun x2 R h2 m => ?_
+  · simp [arg, hsz, rw, hgv, hgv', Out.out]; rfl
+  up m [hn hu hv hsr hr hp h1]
+  refine Builds.call1G (v := Reg.put gs) (by abiK) rfl
+    (reads_of (l := [r, p, n, s]) (vs := [.size K, Reg.put w, .size nv, Reg.put sc])
+      (by simp [hr, hp, hn, hsr])) ?_ rfl
+    fun x3 R h3 m => ?_
+  · simp [arg, hsz, rw, rsc, hgs', Out.out]; rfl
+  up m [hr h1 h2]
+  exact Builds.pure fun _ => reads_of (l := [r, x1, x2, x3])
+    (vs := [.size K, Reg.put gu, Reg.put gv, Reg.put gs]) (by simp [hr, h1, h2, h3])
+
+theorem arithB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.Op} {n u v : Nat} {nv K : USize}
+    {uv vv : Val} {uc vc zc nc sc ec k1 k2 k3 k4 k5 kc pc ixc ix1c zrc onec cutc w gu gv gs : Enc}
+    {fo ixf cutf : Option UInt64} {f : UInt64}
+    (hn : rs[n]? = some (.size nv)) (hu : rs[u]? = some uv) (hgu : Reg.get? uv = some uc)
+    (hv : rs[v]? = some vv) (hgv : Reg.get? vv = some vc)
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 0 = .ok zc)
+    (hnl : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv Alg.nul.toUInt64 = .ok nc)
+    (hs : MapCol op nv uc vc sc) (hex : ArithExact op nv zc uc vc sc ec)
+    (hk1 : MapCol .ne nv uc nc k1) (hk2 : MapCol .ne nv vc nc k2) (hk3 : MapCol .and nv k1 k2 k3)
+    (hk4 : MapCol .ne nv sc nc k4) (hk5 : MapCol .and nv k4 ec k5) (hk6 : MapCol .and nv k3 k5 kc)
+    (hwp : kscan .add false .i64 .i64 nv (some zc) [(nv, zc), (nv, kc)] [] [] = .ok (pc, fo))
+    (hwf : nv ≠ 0 → fo = some f) (hwK : (if nv = 0 then (0 : UInt64) else f).toUSize = K)
+    (hwix : kscan .mul false .i64 .i64 nv none [(nv, kc), (nv, pc)] [] [] = .ok (ixc, ixf))
+    (hws : kscatter .last nv ixc .pos (K + 1) 0 = .ok ix1c)
+    (hwzr : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) K 0 = .ok zrc)
+    (hwone : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) K 1 = .ok onec)
+    (hwcut : kscan .add false .i64 .i64 K (some zrc) [(K, zrc), (K, onec)] [] [] = .ok (cutc, cutf))
+    (hwg : kgather K cutc (K + 1) ix1c = .ok w)
+    (hgu' : kgather K w nv uc = .ok gu) (hgv' : kgather K w nv vc = .ok gv) (hgs' : kgather K w nv sc = .ok gs)
+    (hrt : ∀ e ∈ [zc, nc, sc, ec, k1, k2, k3, k4, k5, kc, w, pc, ixc, ix1c, zrc, onec, cutc, .pos],
+      (Reg.get? (Reg.put e) : Option Enc) = some e) :
+    Builds abiOf fg fg (arithB op n u v) rs #[.size K, Reg.put gu, Reg.put gv, Reg.put gs] := by
+  have tail := fun {R : Array Val} {s nul ex : Nat} (hn : R[n]? = some (.size nv)) (hu : R[u]? = some uv)
+    (hv : R[v]? = some vv) (hsr : R[s]? = some (Reg.put sc)) (hnr : R[nul]? = some (Reg.put nc))
+    (her : R[ex]? = some (Reg.put ec)) => arithTail_builds (fg := fg) (n := n) (u := u) (v := v) hn hu hgu hv hgv hsr hnr her
+      hz hk1 hk2 hk3 hk4 hk5 hk6 hwp hwf hwK hwix hws hwzr hwone hwcut hwg hgu' hgv' hgs' hrt
+  have rsc : (Reg.get? (Reg.put sc) : Option Enc) = some sc := hrt sc (by simp)
+  have rnl : (Reg.get? (Reg.put nc) : Option Enc) = some nc := hrt nc (by simp)
+  have rz : (Reg.get? (Reg.put zc) : Option Enc) = some zc := hrt zc (by simp)
+  have key : op = .add ∨ op = .sub ∨ op = .mul := by
+    revert hex
+    cases op <;> first
+      | (intro h; simp only [ArithExact] at h; done)
+      | (intro _; left; rfl)
+      | (intro _; right; left; rfl)
+      | (intro _; right; right; rfl)
+  unfold arithB
+  simp only [bind_assoc]
+  rcases key with rfl | rfl | rfl
+  all_goals
+    refine Builds.litG fun c0 R h0 m => ?_
+    up m [hn hu hv]
+    refine Builds.bind1G (constB_builds hn h0 hz) fun z R hz2 m => ?_
+    up m [hn hu hv]
+    refine Builds.litG fun c1 R h1 m => ?_
+    up m [hn hu hv hz2]
+    refine Builds.bind1G (constB_builds hn h1 hnl) fun nul R hnul m => ?_
+    up m [hn hu hv hz2]
+    refine Builds.mB (by rop) hn hu hgu hv hgv hs fun s R hsr m => ?_
+    up m [hn hu hv hz2 hnul]
+  case' inl =>
+    obtain ⟨g1, g2, hm1, hm2, hm3, rg1, rg2⟩ := hex
+    refine Builds.mB (by rop) hn hv hgv hz2 rz hm1 fun x1 R hx1 m => ?_
+    up m [hn hu hv hz2 hnul hsr]
+    refine Builds.mB (by rop) hn hsr rsc hu hgu hm2 fun x2 R hx2 m => ?_
+    up m [hn hu hv hnul hsr hx1]
+    refine Builds.mB (by rop) hn hx1 rg1 hx2 rg2 hm3 fun ex R hex' m => ?_
+    up m [hn hu hv hnul hsr]
+  case' inr.inl =>
+    obtain ⟨g1, g2, hm1, hm2, hm3, rg1, rg2⟩ := hex
+    refine Builds.mB (by rop) hn hv hgv hz2 rz hm1 fun x1 R hx1 m => ?_
+    up m [hn hu hv hz2 hnul hsr]
+    refine Builds.mB (by rop) hn hsr rsc hu hgu hm2 fun x2 R hx2 m => ?_
+    up m [hn hu hv hnul hsr hx1]
+    refine Builds.mB (by rop) hn hx1 rg1 hx2 rg2 hm3 fun ex R hex' m => ?_
+    up m [hn hu hv hnul hsr]
+  case' inr.inr =>
+    obtain ⟨g0, g1, g2, g3, hm0, hm1, hm2, hm3, hm4, rg0, rg1, rg2, rg3⟩ := hex
+    refine Builds.mB (by rop) hn hu hgu hz2 rz hm0 fun x0 R hx0 m => ?_
+    up m [hn hu hv hnul hsr]
+    refine Builds.mB (by rop) hn hu hgu hx0 rg0 hm1 fun x1 R hx1 m => ?_
+    up m [hn hu hv hnul hsr hx0]
+    refine Builds.mB (by rop) hn hsr rsc hx1 rg1 hm2 fun x2 R hx2 m => ?_
+    up m [hn hu hv hnul hsr hx0]
+    refine Builds.mB (by rop) hn hx2 rg2 hv hgv hm3 fun x3 R hx3 m => ?_
+    up m [hn hu hv hnul hsr hx0]
+    refine Builds.mB (by rop) hn hx0 rg0 hx3 rg3 hm4 fun ex R hex' m => ?_
+    up m [hn hu hv hnul hsr]
+  all_goals
+    have h := tail hn hu hv hsr hnul hex'
+    unfold arithTail at h
+    simp only [bind_assoc] at h
+    exact h
+
 end Rel.Lang.Plan
