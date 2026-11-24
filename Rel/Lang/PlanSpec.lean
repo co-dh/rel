@@ -2290,16 +2290,6 @@ theorem Grows.partB (x i : Nat) : Grows (Plan.partB x i) := Grows.emit1 rfl
 theorem Grows.foldrM {α β : Type} {f : α → β → Bld β} (hf : ∀ a b, Grows (f a b)) (l : List α) (init : β) :
     Grows (l.foldrM f init) := Grows.foldlM (fun b a => hf a b) _ _
 
-theorem Grows.forIn {α β : Type} {f : α → β → Bld (ForInStep β)} (hf : ∀ a b, Grows (f a b)) :
-    ∀ (l : List α) (init : β), Grows (forIn l init f)
-  | [], init => by rw [List.forIn_nil]; exact Grows.pure _
-  | a :: l, init => by
-    rw [List.forIn_cons]
-    refine (hf a init).bind fun r => ?_
-    cases r with
-    | done b => exact Grows.pure _
-    | yield b => exact Grows.forIn hf l b
-
 /-- A builder made of binds, `ite`s, `mapM`s and the primitives: the goals left are its other builders' `Grows`. -/
 local macro "grows" : tactic => `(tactic| repeat' first
   | exact Grows.pure _ | exact Grows.throw _ | (with_reducible refine Grows.bind ?_ (fun _ => ?_))
@@ -2307,6 +2297,11 @@ local macro "grows" : tactic => `(tactic| repeat' first
   | exact Grows.lit _ | exact Grows.call1 _ _ | exact Grows.callK _ _ | exact Grows.nth _ _ _
   | exact Grows.ctorB _ _ _ | exact Grows.projB _ _ _ _ | exact Grows.isTagB _ _ | exact Grows.partB _ _
   | exact Grows.emit1 rfl | dsimp only | split)
+
+theorem Grows.sortedB (l : Nat) (ks : List (Nat × Nat)) : Grows (Plan.sortedB l ks) := by
+  induction ks generalizing l with
+  | nil => exact Grows.pure _
+  | cons k ks ih => simp only [Plan.sortedB]; grows; exact ih _
 
 theorem Grows.listB (rs : List Nat) : Grows (Plan.listB rs) := by
   unfold Plan.listB
@@ -2380,7 +2375,7 @@ theorem Grows.gatherCols (m ix : Nat) : ∀ (n : Nat) (cs : Cols), Grows (Plan.g
 
 theorem Grows.ascSeenOnB (n : Nat) (cs : Cols) : Grows (Plan.ascSeenB.ascSeenOnB n cs) := by
   unfold Plan.ascSeenB.ascSeenOnB; grows
-  all_goals first | exact Grows.keysB _ _ | exact Grows.listB _ | exact Grows.seenB _ _ | (refine Grows.forIn (fun a b => ?_) _ _; grows)
+  all_goals first | exact Grows.keysB _ _ | exact Grows.listB _ | exact Grows.seenB _ _ | exact Grows.sortedB _ _
 
 theorem Grows.ascSeenB (n : Nat) (cs : Cols) : Grows (Plan.ascSeenB n cs) := by
   unfold Plan.ascSeenB; grows
