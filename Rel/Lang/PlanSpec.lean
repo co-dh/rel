@@ -121,15 +121,19 @@ theorem Env.mono {fs : Array Sem} {gs : Array (Array Val)} {fg fg' : Array Fun �
 
 /-! ### The primitives -/
 
+/-- `Builds` after the one block `is`: all a function body needs (`funB` builds it after `#[]`). -/
+def BuildsAt (abi : String → Option Kernel) (fg fg' : Array Fun × Array Fun) (b : Bld (Array Nat)) (rs out : Array Val)
+    (is : Array Instr) : Prop :=
+  ∃ js xs r, b.run (is, rs.size, fg) = .ok (r, is ++ js, (rs ++ xs).size, fg') ∧
+    (∀ fs gs, Env abi fs gs fg' → ∀ ws, runB abi fs gs js.toList rs ws = .ok (rs ++ xs, ws)) ∧
+    ∀ who, r.mapM (reg (rs ++ xs) who) = .ok out
+
 /-- `b`, built after the registers `rs` while the functions and globals grow from `fg` to `fg'`, appends
     instructions which, run after `rs` and any writes under any meaning of `fg'`, define the registers `xs` and write
     nothing, and answers registers holding `out`. -/
 def Builds (abi : String → Option Kernel) (fg fg' : Array Fun × Array Fun) (b : Bld (Array Nat))
     (rs out : Array Val) : Prop :=
-  (∃ a, fg'.1 = fg.1 ++ a) ∧ (∃ a, fg'.2 = fg.2 ++ a) ∧ ∀ is, ∃ js xs r,
-    b.run (is, rs.size, fg) = .ok (r, is ++ js, (rs ++ xs).size, fg') ∧
-    (∀ fs gs, Env abi fs gs fg' → ∀ ws, runB abi fs gs js.toList rs ws = .ok (rs ++ xs, ws)) ∧
-    ∀ who, r.mapM (reg (rs ++ xs) who) = .ok out
+  (∃ a, fg'.1 = fg.1 ++ a) ∧ (∃ a, fg'.2 = fg.2 ++ a) ∧ ∀ is, BuildsAt abi fg fg' b rs out is
 
 variable {fs : Array Sem} {gs : Array (Array Val)}
 
@@ -2261,38 +2265,60 @@ theorem Grows.canonT (T : TabB) : Grows (Plan.canonT T) := by
   unfold Plan.canonT
   exact (Grows.nubB _ _).bind fun _ => Grows.pure _
 
+open Classical in
+/-- The registers of the table `U` a function body answers, when `U` is of the shape `P` that the caller reads it by
+    (`funT_builds`): a body proved by `Builds` of its parts ends in this, so its answer's shape comes out of the proof. -/
+noncomputable def answerRegs (P : TabB → Prop) (U : TabB) : Bld (Array Nat) :=
+  if P U then return (← tabsRegs [U]).toArray else throw "a function's answer: not of its shape"
+
+/-- The last step of a table function's body: `U` of the shape `P`, its registers `R` holding `out`. -/
+theorem Builds.answerRegs {fg : Array Fun × Array Fun} {P : TabB → Prop} {U : TabB} {R : List Nat}
+    {rs out : Array Val} (hP : P U) (hR : tabsRegs [U] = Pure.pure R)
+    (hm : ∀ who, R.toArray.mapM (reg rs who) = .ok out) : Builds abi fg fg (Plan.answerRegs P U) rs out := by
+  unfold Plan.answerRegs; rw [if_pos hP, hR, pure_bind]; exact Builds.pure hm
+
 /-- `funB_builds` for a table function `funT Ts b`: the parameters are the registers `A` of `Ts` read in `rs` (`pv`),
-    the body `b` reads the tables `Us` whose registers are the parameters, and answers the table `U` whose registers
-    `R` hold `o`; the table `kk` continues with is `U` over the registers `R'` that the answer's `funB` leaves. -/
-theorem funT_builds {fg fg1 : Array Fun × Array Fun} {Ts : List TabB} {b : List TabB → Bld TabB}
-    {kk : TabB → Bld (Array Nat)} {rs pv xs o out : Array Val} {A R : List Nat} {Us : List TabB} {U : TabB}
-    {body : Array Instr} {rtys ctys : List Ty}
+    and the body `b` reads the tables `Us` whose registers are the parameters. The body is given as `Builds` proves
+    it, from its parts: built after `#[]`, it answers a table `U` of the shape `P` whose registers hold `o`
+    (`answerRegs`); `kk` continues with `U` over the registers `R'` the answer's `funB` leaves. `hty` reads the body's
+    instructions, which closure conversion types. -/
+theorem funT_builds {P : TabB → Prop} {fg fg1 : Array Fun × Array Fun} {Ts : List TabB} {b : List TabB → Bld TabB}
+    {kk : TabB → Bld (Array Nat)} {rs pv o out : Array Val} {A : List Nat} {Us : List TabB} {ctys : List Ty}
     (hA : tabsRegs Ts = Pure.pure A) (ha : ∀ who, A.toArray.mapM (reg rs who) = .ok pv)
     (hUs : tabsAt Ts (List.range' rs.size A.length) = Pure.pure (Us, []))
-    (hrun : (b Us).run (#[], rs.size + A.length, fg) = .ok (U, body, (rs ++ pv ++ xs).size, fg1))
-    (hR : tabsRegs [U] = Pure.pure R) (hT : tysTab U = Pure.pure rtys)
-    (hbody : ∀ fs gs, Env abi fs gs fg1 → ∀ ws, runB abi fs gs body.toList (rs ++ pv) ws = .ok (rs ++ pv ++ xs, ws))
-    (hres : ∀ who, R.toArray.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hfo : Ordered fg.1)
+    (hB : BuildsAt abi fg fg1 (b Us >>= answerRegs P) (rs ++ pv) o #[]) (hfo : Ordered fg.1)
     (hb : ∀ Ts', Grows (b Ts'))
-    (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size R.toArray rtys
-      ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
-    (hk : ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val), (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
+    (hty : ∀ U body xs R rtys, (b Us).run (#[], rs.size + A.length, fg) = .ok (U, body, (rs ++ pv ++ xs).size, fg1) →
+      P U → tabsRegs [U] = Pure.pure R → tysTab U = Pure.pure rtys → ∀ is, cloTys fg1.1 fg1.2 is body rs.size
+        R.toArray rtys ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
+    (hk : ∀ U, P U → ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val),
+      (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
       tabsAt [U] R'.toList = Pure.pure ([V], []) → ∃ fg', Builds abi fg2 fg' (kk V) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funT Ts b >>= kk) rs out := by
   obtain ⟨A', Y, h1, h2, h3, -⟩ := tabs_spec Ts
   obtain rfl : A = A' := pure_inj (hA.symm.trans h1)
-  obtain ⟨R', RY, g1, g2, g3, g4⟩ := tab_spec U
-  obtain rfl : R = R' := pure_inj (hR.symm.trans g1)
+  have hpv : (rs ++ pv).size = rs.size + A.length := by
+    have := mapM_ok_size (ha ""); simp at this; simp [this]
+  -- the body's run, its answer `U` and its instructions, read off `hB`
+  obtain ⟨body, xs, r, hrB, hbody, hres⟩ := hB
+  rw [hpv, Array.empty_append, StateT.run_bind] at hrB
+  rcases hU : (b Us).run (#[], rs.size + A.length, fg) with e | ⟨U, s⟩
+  · rw [hU] at hrB; cases hrB
+  rw [hU, ok_bind] at hrB
+  obtain ⟨R, rtys, g1, g2, -, g4⟩ := tab_spec U
+  have hP : P U := Classical.byContradiction fun hP => by simp only [answerRegs, if_neg hP] at hrB; cases hrB
+  simp only [answerRegs, if_pos hP, g1, pure_bind, StateT.run_pure] at hrB
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hrB)
   unfold funT
   rw [h2, h1]
   simp only [pure_bind, bind_assoc]
-  refine funB_builds (fg := fg) (fg1 := fg1) (x := U) (r := R.toArray) (ctys := ctys) (rtys := rtys) (pv := pv) (xs := xs) (o := o)
-    (body := body) h3 ha ?_ hbody hres hfo ?_ hty ?_
+  refine funB_builds (fg := fg) (fg1 := fg1) (x := U) (r := R.toArray) (ctys := ctys) (rtys := rtys) (pv := pv)
+    (xs := xs) (o := o) (body := body) h3 ha ?_ hbody hres hfo ?_ (hty U body xs R rtys hU hP g1 g2) ?_
   · rw [← h3]
-    simp only [hUs, pure_bind, StateT.run_bind, hrun, ok_bind, hR, hT, StateT.run_pure]
+    simp only [hUs, pure_bind, StateT.run_bind, hU, ok_bind, g1, g2, StateT.run_pure]
     rfl
   · rw [← h3]
-    simp only [hUs, pure_bind, hR, hT]
+    simp only [hUs, pure_bind]
     exact (hb Us).bind fun U' => by
       obtain ⟨A2, Y2, e1, e2, -⟩ := tab_spec U'
       rw [e1, e2]; exact Grows.pure _
@@ -2301,29 +2327,28 @@ theorem funT_builds {fg fg1 : Array Fun × Array Fun} {Ts : List TabB} {b : List
       have h1 := mapM_ok_size (hr ""); have h2 := mapM_ok_size (hres ""); simp at h2; omega
     obtain ⟨V, f1, -⟩ := g4 r'.toList [] (by simpa using hsz)
     rw [List.append_nil] at f1
-    have := hk fg2 r' V ys he hf hr f1
+    have := hk U hP fg2 r' V ys he hf hr f1
     simp only [f1, pure_bind]
     exact this
 
 /-- `funT_builds` for `funV n X Ts b`: the first table is the `n` values `X` (a table of no value columns), and `b`
-    reads it as `n` and `X`, then the tables `Us'`. -/
-theorem funV_builds {fg fg1 : Array Fun × Array Fun} {n : Nat} {X : Cols} {Ts : List TabB}
-    {b : Nat → Cols → List TabB → Bld TabB} {kk : TabB → Bld (Array Nat)} {rs pv xs o out : Array Val}
-    {A R : List Nat} {T : TabB} {Us : List TabB} {U : TabB} {body : Array Instr} {rtys ctys : List Ty}
+    reads it as `n` and `X`, then the tables `Us`. -/
+theorem funV_builds {P : TabB → Prop} {fg fg1 : Array Fun × Array Fun} {n : Nat} {X : Cols} {Ts : List TabB}
+    {b : Nat → Cols → List TabB → Bld TabB} {kk : TabB → Bld (Array Nat)} {rs pv o out : Array Val} {A : List Nat}
+    {T : TabB} {Us : List TabB} {ctys : List Ty}
     (hA : tabsRegs (⟨n, X, []⟩ :: Ts) = Pure.pure A) (ha : ∀ who, A.toArray.mapM (reg rs who) = .ok pv)
     (hUs : tabsAt (⟨n, X, []⟩ :: Ts) (List.range' rs.size A.length) = Pure.pure (T :: Us, []))
-    (hrun : (b T.n T.key Us).run (#[], rs.size + A.length, fg) = .ok (U, body, (rs ++ pv ++ xs).size, fg1))
-    (hR : tabsRegs [U] = Pure.pure R) (hT : tysTab U = Pure.pure rtys)
-    (hbody : ∀ fs gs, Env abi fs gs fg1 → ∀ ws, runB abi fs gs body.toList (rs ++ pv) ws = .ok (rs ++ pv ++ xs, ws))
-    (hres : ∀ who, R.toArray.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hfo : Ordered fg.1)
+    (hB : BuildsAt abi fg fg1 (b T.n T.key Us >>= answerRegs P) (rs ++ pv) o #[]) (hfo : Ordered fg.1)
     (hb : ∀ n X Ts, Grows (b n X Ts))
-    (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size R.toArray rtys
-      ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
-    (hk : ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val),
+    (hty : ∀ U body xs R rtys, (b T.n T.key Us).run (#[], rs.size + A.length, fg) =
+        .ok (U, body, (rs ++ pv ++ xs).size, fg1) →
+      P U → tabsRegs [U] = Pure.pure R → tysTab U = Pure.pure rtys → ∀ is, cloTys fg1.1 fg1.2 is body rs.size
+        R.toArray rtys ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
+    (hk : ∀ U, P U → ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val),
       (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
       tabsAt [U] R'.toList = Pure.pure ([V], []) → ∃ fg', Builds abi fg2 fg' (kk V) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funV n X Ts b >>= kk) rs out :=
-  funT_builds (b := fun | T :: Ts => b T.n T.key Ts | [] => throw "a function on values: no table") hA ha hUs hrun hR hT
-    hbody hres hfo (fun | T :: Ts => hb _ _ _ | [] => Grows.throw _) hty hk
+  funT_builds (b := fun | T :: Ts => b T.n T.key Ts | [] => throw "a function on values: no table") hA ha hUs hB hfo
+    (fun | _ :: _ => hb _ _ _ | [] => Grows.throw _) hty hk
 
 end Rel.Lang.Plan
