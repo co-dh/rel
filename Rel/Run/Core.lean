@@ -36,7 +36,7 @@ def expandNoteImpl {α : Type u} (what : String) (rows : Nat) (k : Unit → α) 
 @[reducible, implemented_by expandNoteImpl]
 def expandNote {α : Type u} (what : String) (rows : Nat) (k : Unit → α) : α := k ()
 
-/-- An element of a column of type `t`: qlean's `Carrier`, a `QValue` in a general list. -/
+/-- An element of a column of type `t`: qlean's `Carrier`, `()` at the placeholder `general`. -/
 abbrev El := Carrier
 
 /-- A vector of `n` elements of type `t`: the encoded column itself, `Enc.WF` saying it holds `n` elements of `t`
@@ -72,20 +72,18 @@ theorem gen_size (x : Arr .general n) {xs : Array QValue} (hc : x.enc = .gen xs)
 
 /-- Element `i`, `starts` the block starts of `x.enc` (`Enc.starts`) hoisted by a caller that reads every row, or `#[]`
     (`get`) for a single read. At an atom type it is `Enc.get`'s atom at `i` read back at the index; the
-    fallback, the atom of zero bits, is unreachable under `wf`, as is the general list's non-`gen` one. -/
+    fallback, the atom of zero bits, is unreachable under `wf`; `general` has the one point `()`. -/
 def getWith (starts : Array Nat) (x : Arr t n) (i : Fin n.toNat) : El t :=
   match t, x with
-  | .general, x => match hc : x.enc with
-    | .gen xs => xs[i.1]'(by rw [gen_size x hc]; exact i.2)
-    | _ => QValue.general #[] 0
-  | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t (.atom a)).getD default
+  | .general, _ => ()
+  | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t a).getD default
 
 /-- Element `i` of a single read: no hoisted block starts. -/
 def get (x : Arr t n) (i : Fin n.toNat) : El t := x.getWith #[] i
 
 /-- `get` at an atom type: `Enc.get`'s atom read back at `t`. -/
 theorem get_ne (x : Arr t n) (i : Fin n.toNat) (h : t ≠ .general) :
-    x.get i = ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default := by
+    x.get i = ((Enc.get t n x.enc i).bind fun a => Carrier.of? t a).getD default := by
   cases t <;> first | exact absurd rfl h | rfl
 
 /-- The elements in position order, for proofs only. -/
@@ -150,7 +148,7 @@ def mk (e : Enc) (h : Enc.WF t n e) : Opt t n := ⟨e, h⟩
 
 /-- What a row `Opt.fill` writes reads as: the null, or at `general`, which has no null, its `default`. -/
 def filler : (t : QAtomicType) → Option (El t)
-  | .general => some (default : QValue)
+  | .general => some ()
   | _ => none
 
 /-- A column with no null as a nullable one: `inl`, which leaves the storage as it is. -/
@@ -174,7 +172,7 @@ def isNul (x : Opt t n) (i : Nat) : Bool := x.isNulWith #[] i
 def getWith (starts : Array Nat) (x : Opt t n) (i : Fin n.toNat) : Option (El t) :=
   if x.isNulWith starts i then none else some (match t, x with
     | .general, x => Arr.getWith starts (Arr.mk x.enc x.wf x.plain_general) i
-    | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t (.atom a)).getD default)
+    | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t a).getD default)
 
 /-- Row `i` of a single read: no hoisted block starts. -/
 def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) := x.getWith #[] i
@@ -182,7 +180,7 @@ def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) := x.getWith #[] i
 /-- `get`'s body at the single-read `#[]`: the null test, else the element read back at `t`. -/
 theorem get_eq (x : Opt t n) (i : Fin n.toNat) : x.get i = if x.isNul i then none else some (match t, x with
     | .general, x => Arr.get (Arr.mk x.enc x.wf x.plain_general) i
-    | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t (.atom a)).getD default) := rfl
+    | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t a).getD default) := rfl
 
 end Opt
 
@@ -748,9 +746,6 @@ private def l3 : Arr .i64 3 := Arr.ofBytes .i64 (packLongs [7, -1, 42]) (by long
 private def bs : Arr .u1 3 := Arr.bools 3 (Column.bitAt ⟨#[0b101]⟩)
 #guard bs.toList == [true, false, true]
 
-
-private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.general #[] 0 : QValue)]) (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl) rfl
-#guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.i64 1), .general #[] _ _ => true | _, _ => false
 
 -- `Tab.toList` runs as `toListImpl`; the spec `List.ofFn` of the rows is computed beside it. An `arr` side whose
 -- slices are in range, past the payload and negative, and a dense `sum` side.

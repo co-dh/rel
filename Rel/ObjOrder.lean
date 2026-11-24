@@ -173,7 +173,7 @@ raw word `a` reads as (`atomOfBits`, at `u1` a word below `2`) is `[ordCode a]`,
 column is the value order `Obj.lt`. -/
 theorem Obj.key_ordCode {t : QAtomicType} {w : Nat} {f s : Bool} (ht : ascLayout t = some (w, f, s))
     (hg : t ≠ .general) (a : UInt64) (hu : t = .u1 → a < 2) :
-    Obj.key (.atom t) ((Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default) =
+    Obj.key (.atom t) ((Carrier.of? t (Column.atomOfBits t a hg)).getD default) =
       [(ordCode w f s a).toNat] := by
   -- `ordCode` reads only the low `8 * w` bits (`toNat_and_mask`), which `bitsOf ∘ atomOfBits` keeps
   have low : ∀ {w : Nat} (x : UInt64), 1 ≤ w → w ≤ 8 → x.toNat % 2 ^ (8 * w) = a.toNat % 2 ^ (8 * w) →

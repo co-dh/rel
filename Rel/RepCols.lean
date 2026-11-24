@@ -98,7 +98,7 @@ theorem Arr.get_word {t : QAtomicType} {n : USize} (x : Arr t n) (ht : t.ordNum.
   obtain ⟨w, hwd⟩ : ∃ w, t.width = some w := by cases t <;> first | exact absurd ht (by decide) | exact ⟨_, rfl⟩
   have hg := QAtomicType.ne_general_of_width hwd
   have hu : t ≠ .u1 := by rintro rfl; exact absurd ht (by decide)
-  have ofA : ∀ a, (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default = QAtomicType.ofBits t a := by
+  have ofA : ∀ a, (Dep.Carrier.of? t (Column.atomOfBits t a hg)).getD default = QAtomicType.ofBits t a := by
     intro a; cases t <;> first | rfl | exact absurd ht (by decide)
   rw [Arr.get_ne x i hg, ← ofA]
   suffices e : Enc.get t n x.enc i.1 = some (Column.atomOfBits t ((raw t n x.enc)[i.1]?.getD 0) hg) by rw [e]; rfl
@@ -687,19 +687,13 @@ theorem cellBad_none {n m : USize} {lo hi : Arr .i64 n} : cellBad m lo hi = none
     0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int) := by
   simp [cellBad, List.find?_eq_none]
 
-/-- `QValue.isDefault` tests for `default`. -/
-theorem QValue.isDefault_eq {v : QValue} (h : QValue.isDefault v = true) : v = default := by
-  unfold QValue.isDefault at h; split at h
-  · rfl
-  · cases h
-
 /-- `Opt.fillerOk` tests for `Opt.filler`. -/
 theorem Opt.fillerOk_eq {t : QAtomicType} {v : Option (El t)} (h : Opt.fillerOk t v = true) : v = Opt.filler t := by
   cases t
   case general =>
     cases v with
     | none => simp [Opt.fillerOk] at h
-    | some w => exact congrArg some (QValue.isDefault_eq h)
+    | some w => rfl
   all_goals (cases v <;> simp_all [Opt.fillerOk, Opt.filler])
 
 /-- **`ColB.ownedOk` decides `ColB.OwnedOn`** over the rows `Q` that `P` holds. -/

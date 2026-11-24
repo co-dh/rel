@@ -376,7 +376,7 @@ theorem key_num {t : QAtomicType} (h : t.intOrd = true) : ∃ off : Int, ∀ v :
   have hs : t.storeFmt?.isSome := by rw [hst]; rfl
   have hg : t ≠ .general := by rintro rfl; cases hst
   have k := Obj.key_ordCode hl hg (QAtomicType.word t v) (fun e => by subst e; cases hst)
-  have ho : (Dep.Carrier.of? t (.atom (Column.atomOfBits t (QAtomicType.word t v) hg))).getD default =
+  have ho : (Dep.Carrier.of? t (Column.atomOfBits t (QAtomicType.word t v) hg)).getD default =
       QAtomicType.ofBits t (QAtomicType.word t v) := by
     cases t <;> first | rfl | exact absurd hs (by decide)
   rw [ho, QAtomicType.ofBits_word v hs] at k

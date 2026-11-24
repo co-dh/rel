@@ -20,15 +20,14 @@ open Rel Rel.Eval
 of `t` really is an atom of `t`. -/
 def Carrier.null (t : QAtomicType) (hn : t ≠ .general := by first | decide | assumption) :
     Carrier t :=
-  (Carrier.of? t (.atom (nullAtom t))).get (by
-    have h := Carrier.of?_type (X := Empty) (nullAtom t)
+  (Carrier.of? t (nullAtom t)).get (by
+    have h := Carrier.of?_type (nullAtom t)
     rwa [Verify.nullAtom_type] at h)
 
 /-- Every carrier is inhabited: by its q null, which is also the right default for the
-out-of-range reads below since that is what q answers for them, and a general list's element by
-`default : QValue`, a general list's fill depending on its elements rather than on its type. -/
+out-of-range reads below since that is what q answers for them, and `general`'s one point by `()`. -/
 instance {t : QAtomicType} : Inhabited (Carrier t) :=
-  if hg : t = .general then ⟨hg ▸ (default : QValue)⟩ else ⟨Carrier.null t hg⟩
+  if hg : t = .general then ⟨hg ▸ ()⟩ else ⟨Carrier.null t hg⟩
 
 end Rel.Dep
 

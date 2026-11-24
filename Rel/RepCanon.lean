@@ -21,8 +21,8 @@ payload `e` at a row `foRNuls` flags as no null, so it serves `Arr` (no null any
 theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n e)
     (hg : t ≠ .general) (i : Fin n.toNat) (h0 : (foRNuls n e)[i.1]? = some 0) :
     ∃ a, (Enc.raw .i64 n e)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
-      ((Enc.get t n e i).bind fun a => (Dep.Carrier.of? t (.atom a) : Option (El t))).getD default =
-        (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg)) : Option (El t)).getD default := by
+      ((Enc.get t n e i).bind fun a => (Dep.Carrier.of? t a : Option (El t))).getD default =
+        (Dep.Carrier.of? t (Column.atomOfBits t a hg) : Option (El t)).getD default := by
   cases e with
   | foR md pk =>
     have hnul : Column.foRNul md pk (Column.blockStarts md) i = false := by simpa [foRNuls, i.2] using h0
@@ -42,7 +42,7 @@ theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t 
 /-- `Enc.get_raw_atom` at an `Arr`, whose every row is no null (`foRNuls_plain`). -/
 theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n)
     (hg : t ≠ .general) (i : Fin n.toNat) : ∃ a, (Enc.raw .i64 n x.enc)[i.1]? = some a ∧ (t = .u1 → a < 2) ∧
-      x.get i = (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default := by
+      x.get i = (Dep.Carrier.of? t (Column.atomOfBits t a hg)).getD default := by
   rw [Arr.get_ne x i hg]; exact Enc.get_raw_atom x.wf hg i (foRNuls_plain x.wf x.plain i.2)
 
 /-- `Obj.optOf` undoes `Obj.optEl`: a band row read as `a + b` and back is the row. -/
@@ -54,7 +54,7 @@ theorem Obj.optOf_optEl {a b : Obj} {t : QAtomicType} (h : Obj.band a b = some t
 /-- `Opt.get` at an atom type: `none` at a null, else `Arr.get`'s reading of the payload. -/
 theorem Opt.get_ne {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) (h : t ≠ .general) :
     x.get i = if x.isNul i then none else
-      some (((Enc.get t n x.enc i).bind fun a => Dep.Carrier.of? t (.atom a)).getD default) := by
+      some (((Enc.get t n x.enc i).bind fun a => Dep.Carrier.of? t a).getD default) := by
   cases t <;> first | exact absurd rfl h | rfl
 
 /-- **`Opt.isNul` is the flag `foRNuls` moves**: row `i` is no null exactly where its flag word is `0`; `isNul`'s `#[]`
@@ -92,7 +92,7 @@ theorem Opt.get_ofArr {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin n.toN
   have hn : (Opt.ofArr x).isNul i = false := (Opt.isNul_eq_false _ i).2 (foRNuls_plain x.wf x.plain i.2)
   by_cases hg : t = .general
   · subst hg; have hn' : (Opt.ofArr x).isNulWith #[] i = false := hn
-    simp only [Opt.get, Opt.getWith, hn', Bool.false_eq_true, if_false]; rfl
+    simp only [Opt.get, Opt.getWith, hn', Bool.false_eq_true, if_false]
   · rw [Opt.get_ne _ i hg, hn, Arr.get_ne x i hg]; rfl
 
 /-- **`Arr.get_eq_of_raw` with nulls**: two `Opt`s whose rows `i`, `j` carry one null flag (`foRNuls`) and, off a null,

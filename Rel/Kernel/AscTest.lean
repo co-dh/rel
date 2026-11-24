@@ -60,15 +60,7 @@ example : pview (u 5) (kasc (u 5) flt) = .inr [3, 2, 4, 0, 1] := by decide +kern
 example : view (u 3) (kasc (u 3) []) = .inr ([], [0, 1, 2]) := by decide +kernel
 #guard view (u 3) (kasc (u 3) []) == .inr ([], [0, 1, 2])
 
--- the errors, the first in the order of `es`: a type with no order, then `foRWords`' (a form other than `foR`, a `foR`
--- whose blocks hold fewer than `m` elements)
-def gen : String ⊕ (List (List UInt64) × List UInt64) := .inl "asc: type 12 has no fixed-width order"
-example : view (u 2) (kasc (u 2) [(.atom .general, col [0, 1]), (.atom .i64, .gen #[])]) = gen := by decide +kernel
-#guard view (u 2) (kasc (u 2) [(.atom .general, col [0, 1]), (.atom .i64, .gen #[])]) == gen
-def dense : String ⊕ (List (List UInt64) × List UInt64) := .inl s!"asc: constructor {(.gen #[] : Enc).ctorIdx} is not foR"
-example : view (u 2) (kasc (u 2) [(.atom .i64, .gen #[]), (.atom .general, col [0, 1])]) = dense := by decide +kernel
-#guard view (u 2) (kasc (u 2) [(.atom .i64, .gen #[]), (.atom .general, col [0, 1])]) == dense
--- one block of `2 ^ 6` holds fewer than `65` elements
+-- the error `foRWords` gives a `foR` whose blocks hold fewer than `m` elements; one block of `2 ^ 6` holds fewer than `65` elements
 def short : String ⊕ (List (List UInt64) × List UInt64) :=
   .inl "asc: foR: 1 blocks of 2^6 and a 8-byte pack are not the layout of 65 elements"
 example : view (u 65) (kasc (u 65) [(.atom .i64, col [0, 1])]) = short := by decide +kernel

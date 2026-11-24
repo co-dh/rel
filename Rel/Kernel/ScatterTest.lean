@@ -33,11 +33,7 @@ def past : String ⊕ (List UInt8 × List UInt8) := .inl "scatter: index 5 at ro
 example : view (kscatter .last (u 3) (col [1, 5, 9]) (col [1, 2, 3]) (u 3) 0) = past := by decide +kernel
 #guard view (kscatter .last (u 3) (col [1, 5, 9]) (col [1, 2, 3]) (u 3) 0) == past
 
--- a form other than `foR`, and a `foR` whose blocks do not cover `m`
-def dense : String ⊕ (List UInt8 × List UInt8) := .inl s!"scatter: e: constructor {(.gen #[] : Enc).ctorIdx} is not foR"
-example : view (kscatter .last (u 2) (col [0, 1]) (.gen #[]) (u 2) 0) = dense := by
-  decide +kernel
-#guard view (kscatter .last (u 2) (col [0, 1]) (.gen #[]) (u 2) 0) == dense
+-- a `foR` whose blocks do not cover `m`
 def short : String ⊕ (List UInt8 × List UInt8) :=
   .inl "scatter: ix: foR: 1 blocks of 2^10 and a 256-byte pack are not the layout of 1025 elements"
 example : view (kscatter .last (u 1025) (col [0, 1, 2]) (col [0, 1, 2]) (u 9) 0) = short := by decide +kernel

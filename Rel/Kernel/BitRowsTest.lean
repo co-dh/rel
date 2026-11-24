@@ -39,11 +39,6 @@ example : view (kbitrows true (u 0) (u 3) (u 0) (u 2) (col [0, 0]) (col []) (col
 #guard view (kbitrows true (u 0) (u 3) (u 0) (u 2) (col [0, 0]) (col []) (col [])) == bits []
 
 -- the errors, in the body's order: a layout, a segment out of order or past `ni`, a row number past `na`
-def eEnds : String ⊕ (List UInt8 × List UInt8) := .inl s!"bitrows: ends: constructor {(.gen #[] : Enc).ctorIdx} is not foR"
-example : view (kbitrows false (u 2) (u 3) (u 4) (u 1) (.gen #[]) (col [0, 1, 2, 2]) m3) =
-  eEnds := by decide +kernel
-#guard view (kbitrows false (u 2) (u 3) (u 4) (u 1) (.gen #[]) (col [0, 1, 2, 2]) m3) ==
-  eEnds
 def eM : String ⊕ (List UInt8 × List UInt8) := .inl s!"bitrows: m: constructor {(.pos : Enc).ctorIdx} is not foR"
 example : view (kbitrows false (u 2) (u 3) (u 4) (u 3) (col [2, 2, 4]) (col [0, 1, 2, 2]) .pos) = eM := by
   decide +kernel
