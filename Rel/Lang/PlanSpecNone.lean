@@ -109,4 +109,64 @@ theorem mapB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.
     rw [← hro]
     exact reads_of (l := [q]) (vs := [Reg.put r.1]) (by simp [hRq])
 
+/-! ### The column of no row -/
+
+/-- `colMap .add 0 c c t`, `c` the zero words of no row: the column `noneB` writes at an atom. -/
+def zerosC (t : QAtomicType) : Except String Enc :=
+  kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 >>= fun c => colMap .add 0 c c t
+
+/-- `zerosC` at every type is `Arr.zeros t 0`'s column, by evaluation of the kernels at no row. -/
+theorem zerosC_arr (t : QAtomicType) {y : Arr t 0} (h : Arr.zeros t 0 = .ok y) : zerosC t = .ok y.enc := by
+  have e : zerosC t = (Arr.zeros t 0).map Arr.enc := by cases t <;> with_unfolding_all rfl
+  rw [e, h]; rfl
+
+/-- … and `Opt.nuls t 0`'s, at a type with a column (`general` has none: `Opt.nuls` refuses it). -/
+theorem zerosC_opt (t : QAtomicType) {y : Opt t 0} (h : Opt.nuls t 0 = .ok y) : zerosC t = .ok y.enc := by
+  have e : ∀ t, t ≠ .general → zerosC t = (Opt.nuls t 0).map Opt.enc := by
+    intro t ht; cases t <;> first | exact absurd rfl ht | with_unfolding_all rfl
+  have hg : t ≠ .general := by rintro rfl; simp [Opt.nuls] at h
+  rw [e t hg, h]; rfl
+
+/-- … and `tagCol 0 false`'s. -/
+theorem zerosC_tag {y : Arr .u1 0} (h : tagCol 0 false = .ok y) : zerosC .u1 = .ok y.enc := by
+  have e : zerosC .u1 = (tagCol 0 false).map Arr.enc := by with_unfolding_all rfl
+  rw [e, h]; rfl
+
+theorem zerosC_c {t : QAtomicType} {o : Enc} (h : zerosC t = .ok o) :
+    ∃ c, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok c := by
+  obtain ⟨c, hc, -⟩ := except_bind_ok h; exact ⟨c, hc⟩
+
+theorem zerosC_ok {t : QAtomicType} {o c : Enc} (hc : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok c)
+    (h : zerosC t = .ok o) : colMap .add 0 c c t = .ok o := by
+  unfold zerosC at h; rw [hc] at h; exact h
+
+theorem reg_ty (t : QAtomicType) : (Reg.get? (Reg.put t) : Option QAtomicType) = some t := by cases t <;> rfl
+
+theorem reg_add : (Reg.get? (Reg.put Kernel.Op.add) : Option Kernel.Op) = some .add := by with_unfolding_all rfl
+
+theorem reg_nil : (Reg.get? (Reg.put ([] : List (Kernel.Op × UInt64))) : Option (List (Kernel.Op × UInt64))) = some [] := by
+  with_unfolding_all rfl
+
+/-- `mapB .add z c c t` of the zero words `c` at `z` holding `0`: the register of `zerosC t`. -/
+theorem zerosB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {z c : Nat} {t : QAtomicType} {o cc : Enc}
+    (hz : rs[z]? = some (.size 0)) (hc : rs[c]? = some (Reg.put cc))
+    (hcc : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok cc) (ho : zerosC t = .ok o) :
+    Builds abiOf fg fg (do let r ← mapB .add z c c t .i64 [] []; Pure.pure #[r]) rs #[Reg.put o] :=
+  mapB_builds hz hc hc reg_add (reg_ty _) (reg_ty _) reg_nil reg_nil (zerosC_ok hcc ho)
+
+/-- `noneAtomB z t p` builds one atom column of the register `zerosC t`. -/
+theorem noneAtomB_builds {fg fg' : Array Fun × Array Fun} {rs : Array Val} {z : Nat} {t : QAtomicType} {p : String}
+    {o : Enc} {kk : Cols → Bld (Array Nat)} {out : Array Val} (hz : rs[z]? = some (.size 0)) (ho : zerosC t = .ok o)
+    (hkk : ∀ (U : Cols) (ys : Array Val), (∃ e, U = [.atom p t e]) →
+      (Cols.regs U).mapM (fun i => (rs ++ ys)[i]?) = some [Reg.put o] → Builds abiOf fg fg' (kk U) (rs ++ ys) out) :
+    Builds abiOf fg fg' (noneAtomB z t p >>= kk) rs out := by
+  obtain ⟨c, hc⟩ := zerosC_c ho
+  unfold noneAtomB
+  simp only [bind_assoc]
+  refine Builds.bind1 (wordsB_builds hz hc) fun r xs hr => Builds.bind1 (zerosB_builds (get_app hz) hr hc ho)
+    fun r2 xs2 hr2 => ?_
+  simp only [pure_bind]
+  rw [Array.append_assoc] at hr2 ⊢
+  exact hkk _ _ ⟨r2, rfl⟩ (by simp [Cols.regs, Col.regs, hr2])
+
 end Rel.Lang.Plan
