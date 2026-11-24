@@ -2,6 +2,7 @@ module
 
 public import Rel.Lang.PreludeRows
 public import Rel.Lang.PreludeDfn
+public import Rel.Lang.PreludeOrd
 public import Rel.Lang.GenSound
 public import Rel.RepSymRank
 public import Rel.Programs.Prelude
@@ -167,6 +168,69 @@ theorem Tm.positionsDef_row (ρ : Val) {B : Obj} (p : Tm B B) (u₀ u : Tm .long
     simp only [Tm.den, Tm.argDen, Core.Rel.comp, Prim.den_positions, Prim.den_mapRow_corefl hU]
   · rw [e, key]
     simp only [Tm.den, Tm.argDen, Prim.den_positions]
+    exact ⟨fun ⟨b, hb, h, _⟩ => h.trans hb, fun h => ⟨_, rfl, h, fun e _ => hall e⟩⟩
+
+/-- **`positions`'s text means the row cut to the universe** (Q3 = H), as `Tm.ascDef_den`: `prelude.positions.body` at
+    any objects `σ` is `Tm.positionsBody` of its items `s` (`Tm.positionsS` of the variable 2, its `at(0)` literal
+    `Tm.zeroLit_den`) and `len` (`Tm.lengthDef_den` with the universe variable 1: `P`, every number or an initial
+    segment, `P 0` as for `length`'s seed), so `Tm.positionsBody_key` gives the row cut to `P`, as `Tm.positionsDef_row`. -/
+theorem Tm.positionsDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {P : Obj.long.El → Prop}
+    (hP : (∀ x, P x) ∨ Seg .long P) (hU : ∀ x y, ρ 1 .long .long x y ↔ x = y ∧ P x) (h0 : P 0)
+    {t' : Tm ((Obj.atom .general).arr.inst ph σ) ((Obj.atom .i64).arr.inst ph σ)}
+    (ht : Rel.Programs.prelude.positions.body.instObj ph σ = .ok t') (x) (hx : Short _ x) (w) :
+    (t'.den ρ x w ↔ (Tm.comp (Tm.arg (.prim (rowOf "positions") : Tm ((Obj.atom .general).arr.inst ph σ) (Obj.arr .long))
+      (.var 2 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)))
+      (Tm.arg (.prim mapRow : Tm (Obj.arr .long) (Obj.arr .long)) (.var 1 : Tm .long .long))).den ρ x w) ∧
+      ((∀ x, P x) → (t'.den ρ x w ↔ (Tm.arg (.prim (rowOf "positions") : Tm ((Obj.atom .general).arr.inst ph σ)
+        (Obj.arr .long)) (.var 2 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ))).den ρ x w)) := by
+  -- `i64` is no placeholder: `σ` keeps it
+  have hU' : ∀ x y, ρ 1 ((Obj.atom .i64).inst ph σ) ((Obj.atom .i64).inst ph σ) x y ↔ x = y ∧ P x := hU
+  -- the right side names `ρ 2`, not `(var 2).den ρ`, so `rw [Tm.den]` below can only unfold `t'`
+  have key : t'.den ρ x w ↔ ∃ b, b = positionsL (fun a => decide (∃ y,
+      ρ 2 ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ) a y)) x ∧ w = b ∧ ∀ e ∈ b, P e := by
+    obtain rfl := Except.ok.inj ht
+    have hz := Tm.zeroLit_den ρ
+    simp only [Tm.den] at hz
+    rw [Tm.den, Tm.argDen, Tm.argDen, Tm.argDen]
+    -- `Tm.den.eq_25` is the `.arg` clause: a bare `Tm.den` would unfold a `.var` of the argument list first
+    rw [Tm.den.eq_25, Tm.argDen, Tm.argDen, Tm.argDen]
+    refine (Tm.positionsBody_key _ (P := P) (.var 2) (.var 4) (.var 7) ?_ x hx ?_ w).trans ?_
+    -- the variables bound by the two calls: `Tm.den.eq_23` (the `.var` clause) unfolds them and nothing else
+    · intro xs pre
+      simp (config := { decide := true }) only [Tm.den.eq_23, Val.args, Val.bind, ↓reduceIte,
+        and_self, dite_true]
+      -- `[β].inst ph σ = [β.inst ph σ]` holds by `rfl`, so the binder's cast is the identity
+      rw [dif_pos rfl]
+      refine Iff.trans ?_ (Tm.positionsS_den ρ (.var 2) xs pre)
+      simp only [Tm.positionsS, Tm.at0, Tm.dom, Tm.den, Tm.argDen, Gen.atom_zero, cast_eq, hz, Core.Rel.comp_assoc]
+      exact Iff.rfl
+    · intro zs n hs
+      simp (config := { decide := true }) only [Tm.den.eq_23, Val.args, Val.bind, ↓reduceIte,
+        and_self, dite_true]
+      rw [Tm.den.eq_25, Tm.argDen, dif_pos ⟨rfl, rfl⟩]
+      refine ((Tm.lengthDef_den [.general] [(Obj.atom .general).inst ph σ] _ hP ?_ h0 rfl zs hs n).1).trans ?_
+      · intro x y
+        simp (config := { decide := true }) only [Tm.den.eq_23, Val.args, Val.bind, ↓reduceIte,
+          and_self, dite_true]
+        exact hU' x y
+      -- `length` is called at `[β]`: its row at `(Obj.arr α).inst [α] [β]`, which is `[β]`
+      have hl : ∀ b, Prim.den lengthRow ((Obj.arr (.atom .general)).inst [.general] [(Obj.atom .general).inst ph σ])
+          .long [] zs b ↔ b = Int64.ofNat zs.length :=
+        fun b => iff_of_eq (congrFun (congrFun (Prim.den_lengthRow (E := (Obj.atom .general).inst ph σ)) zs) b)
+      simp only [Tm.den, Core.Rel.comp, Val.args, Val.bind, if_true, and_self]
+      constructor
+      · rintro ⟨b, hb, h⟩; obtain rfl := (hl b).1 hb; obtain ⟨rfl, hb⟩ := (hU' _ _).1 h; exact ⟨rfl, hb⟩
+      · rintro ⟨rfl, hb⟩; exact ⟨_, (hl _).2 rfl, (hU' _ _).2 ⟨rfl, hb⟩⟩
+    · simp (config := { decide := true }) only [Tm.den.eq_23, Val.args, Val.bind, ↓reduceIte,
+        and_self, dite_true]
+  -- the row at `[β].inst ph σ`, which is `[β.inst ph σ]`
+  have hp := Prim.den_positions (B := (Obj.atom .general).inst ph σ) (ρ 2 _ _)
+  change Prim.den (rowOf "positions") ((Obj.atom .general).arr.inst ph σ) (Obj.arr .long) _ = _ at hp
+  refine ⟨?_, fun hall => ?_⟩
+  · rw [key]
+    simp only [Tm.den, Tm.argDen, Core.Rel.comp, hp, Prim.den_mapRow_corefl hU]
+  · rw [key]
+    simp only [Tm.den, Tm.argDen, hp]
     exact ⟨fun ⟨b, hb, h, _⟩ => h.trans hb, fun h => ⟨_, rfl, h, fun e _ => hall e⟩⟩
 
 end Rel.Lang
