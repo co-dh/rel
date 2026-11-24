@@ -119,6 +119,39 @@ theorem kscan2_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kerne
     rw [nth_of (by simpa using hp0), pure_bind]
     exact Builds.pure fun who => by simp [reg, hpR]; rfl
 
+/-- `Opt.concat` is the one `kscan .first` stream of the two columns. -/
+theorem Opt.concat_kscan {t : QAtomicType} {n₁ n₂ n : USize} {x : Opt t n₁} {y : Opt t n₂} {z : Opt t n}
+    (h : Opt.concat n x y = .ok z) :
+    ∃ f, kscan .first false t t n none [(n₁, x.enc), (n₂, y.enc)] [] [] = .ok (z.enc, f) := by
+  unfold Opt.concat at h
+  split at h
+  · split at h
+    · split at h
+      · split at h
+        · rename_i r hr
+          cases h
+          exact ⟨r.2, hr⟩
+        · cases h
+      · cases h
+    · cases h
+  · cases h
+
+/-- `Opt.shift` is `kscan .max` of the column with itself and the post step `(.add, s)`. -/
+theorem Opt.shift_kscan {n : USize} {s : UInt64} {x z : Opt .i64 n} (h : Opt.shift s x = .ok z) :
+    ∃ f, kscan .max false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.add, s)] = .ok (z.enc, f) := by
+  unfold Opt.shift at h
+  split at h
+  · rename_i o ho
+    cases h
+    unfold colMap at ho
+    cases hk : kscan .max false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.add, s)] with
+    | error e => rw [hk] at ho; cases ho
+    | ok r =>
+      rw [hk] at ho
+      cases ho
+      exact ⟨r.2, rfl⟩
+  · cases h
+
 /-- `mapB op n a b t s pre post`: the registers hold the count `nv` and the columns `ca`, `cb`; the new register holds
     the column of `kscan op` with every row a segment (`MapCol` where `pre`, `post` are empty). -/
 theorem mapB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.Op} {s t : QAtomicType}
@@ -191,5 +224,137 @@ theorem catB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n₁ n₂ : 
     (by rop) (qtype_get_put _) (qtype_get_put _) (pre := []) (post := []) (by rop) (by rop) hk) fun o R5 ho5 m5 => ?_
   up m5 [hr1]
   exact Builds.pure fun who => by simp [reg, hr1, ho5, ← hap]; rfl
+
+/-- `shiftB n x s`, the registers holding the count `nv`, the column `xc` and the size `sv`: the new register holds the
+    column of `Opt.shift sv.toUInt64`'s `colMap .max` (`Opt.shift_kscan`), `kscan .max` of `x` with itself and the post
+    step `(.add, sv.toUInt64)`: the same call as its spec. -/
+theorem shiftB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n x s : Nat} {nv sv : USize} {ux : Val}
+    {xc rc : Enc} {f : Option UInt64} (hn : rs[n]? = some (.size nv)) (hx : rs[x]? = some ux)
+    (hgx : Reg.get? ux = some xc) (hs : rs[s]? = some (.size sv))
+    (hk : kscan .max false .i64 .i64 nv none [(nv, xc), (nv, xc)] [] [(.add, sv.toUInt64)] = .ok (rc, f)) :
+    Builds abiOf fg fg (do let r ← shiftB n x s; Pure.pure #[r]) rs #[Reg.put rc] := by
+  unfold shiftB
+  simp only [bind_assoc]
+  refine Builds.litG fun c0 R0 h0 m0 => ?_
+  up m0 [hn hx hs]
+  refine Builds.litG fun c1 R1 h1 m1 => ?_
+  up m1 [hn hx hs h0]
+  refine Builds.litG fun c2 R2 h2 m2 => ?_
+  up m2 [hn hx hs h0 h1]
+  refine Builds.litG fun c3 R3 h3 m3 => ?_
+  up m3 [hn hx hs h0 h1 h2]
+  refine Builds.ctorBG (reads_of (l := []) (vs := []) rfl) (reads_of (l := []) (vs := []) rfl) fun g R4 hg m4 => ?_
+  up m4 [hn hx hs h0 h1 h2 h3]
+  refine Builds.ctorBG (os := #[.size nv, ux]) (reads_of (l := [n, x]) (vs := [.size nv, ux]) (by simp [hn, hx]))
+    (reads_of (l := []) (vs := []) rfl) fun y1 R5 hy1 m5 => ?_
+  up m5 [hn hx hs h0 h1 h2 h3 hg]
+  refine Builds.ctorBG (os := #[.size nv, ux]) (reads_of (l := [n, x]) (vs := [.size nv, ux]) (by simp [hn, hx]))
+    (reads_of (l := []) (vs := []) rfl) fun y2 R6 hy2 m6 => ?_
+  up m6 [hn hx hs h0 h1 h2 h3 hg hy1]
+  refine Builds.listBG (l := [y1, y2]) (vs := [.ctor 0 #[.size nv, ux] #[], .ctor 0 #[.size nv, ux] #[]])
+    (by simp [hy1, hy2]) fun l R7 hl m7 => ?_
+  up m7 [hn hx hs h0 h1 h2 h3 hg]
+  refine Builds.listBG (l := []) (vs := []) rfl fun pr R8 hpr m8 => ?_
+  up m8 [hn hx hs h0 h1 h2 h3 hg hl]
+  refine Builds.litG fun ca R9 hca m9 => ?_
+  up m9 [hn hx hs h0 h1 h2 h3 hg hl hpr]
+  refine Builds.bind1G (u64B_builds hs) fun w R10 hw m10 => ?_
+  up m10 [hn hx h0 h1 h2 h3 hg hl hpr hca]
+  refine Builds.ctorBG (os := #[Reg.put Kernel.Op.add, .u64 sv.toUInt64])
+    (reads_of (l := [ca, w]) (vs := [Reg.put Kernel.Op.add, .u64 sv.toUInt64]) (by simp [hca, hw]))
+    (reads_of (l := []) (vs := []) rfl) fun pp R11 hpp m11 => ?_
+  up m11 [hn hx h0 h1 h2 h3 hg hl hpr]
+  refine Builds.listBG (l := [pp]) (vs := [.ctor 0 #[Reg.put Kernel.Op.add, .u64 sv.toUInt64] #[]])
+    (by simp [hpp]) fun po R12 hpo m12 => ?_
+  up m12 [hn h0 h1 h2 h3 hg hl hpr]
+  have hop : ∀ o : Kernel.Op, o = .max ∨ o = .add → (Reg.get? (Reg.put o) : Option Kernel.Op) = some o := by
+    rintro o (rfl | rfl) <;> rop
+  have hv1 : (Reg.get? (Val.ctor 0 #[.size nv, ux] #[]) : Option (USize × Enc)) = some (nv, xc) := by
+    show (do pure (← Reg.get? (Val.size nv), ← Reg.get? ux)) = _; rw [hgx]; rfl
+  have hlist : (Reg.get? (Val.ctor 1 #[Val.ctor 0 #[.size nv, ux] #[], Val.ctor 1 #[Val.ctor 0 #[.size nv, ux] #[],
+      Val.ctor 0 #[] #[]] #[]] #[]) : Option (List (USize × Enc))) = some [(nv, xc), (nv, xc)] := by
+    have h := listGet?_foldr (α := USize × Enc) [Val.ctor 0 #[.size nv, ux] #[], Val.ctor 0 #[.size nv, ux] #[]]
+    simp only [List.foldr] at h; rw [h]; simp [hv1]
+  have hpair : (Reg.get? (Val.ctor 0 #[Reg.put Kernel.Op.add, .u64 sv.toUInt64] #[]) : Option (Kernel.Op × UInt64)) =
+      some (.add, sv.toUInt64) := by
+    show (do pure (← Reg.get? (Reg.put Kernel.Op.add), ← Reg.get? (Val.u64 sv.toUInt64))) = _
+    rw [hop _ (Or.inr rfl)]; rfl
+  have hpost : (Reg.get? (Val.ctor 1 #[Val.ctor 0 #[Reg.put Kernel.Op.add, .u64 sv.toUInt64] #[], Val.ctor 0 #[] #[]]
+      #[]) : Option (List (Kernel.Op × UInt64))) = some [(.add, sv.toUInt64)] := by
+    have h := listGet?_foldr (α := Kernel.Op × UInt64) [Val.ctor 0 #[Reg.put Kernel.Op.add, .u64 sv.toUInt64] #[]]
+    simp only [List.foldr] at h; rw [h]; simp [hpair]
+  have hpre : (Reg.get? (Val.ctor 0 #[] #[]) : Option (List (Kernel.Op × UInt64))) = some [] := by rop
+  have hgv : (Reg.get? (Val.ctor 0 #[] #[]) : Option (Option Enc)) = some none := rfl
+  refine Builds.callKG (vs := #[Reg.put Kernel.Op.max, .bit false, Reg.put QAtomicType.i64, Reg.put QAtomicType.i64,
+      .size nv, .ctor 0 #[] #[], .ctor 1 #[.ctor 0 #[.size nv, ux] #[], .ctor 1 #[.ctor 0 #[.size nv, ux] #[],
+        .ctor 0 #[] #[]] #[]] #[], .ctor 0 #[] #[], .ctor 1 #[.ctor 0 #[Reg.put Kernel.Op.add, .u64 sv.toUInt64] #[],
+        .ctor 0 #[] #[]] #[]])
+    (o := #[Reg.put rc, Reg.put f]) (by abiK) (by rop) ?_ ?_ rfl fun a' R hR m => ?_
+  · refine reads_of (l := [c0, c1, c2, c3, n, g, l, pr, po]) (vs := _) ?_
+    simp [h0, h1, h2, h3, hn, hg, hl, hpr, hpo]
+  · simp [arg, hop _ (Or.inl rfl), qtype_get_put, hpre, hpost, hlist, hgv, hk, Out.out]
+    rfl
+  · obtain ⟨p, hp0, hpR⟩ := holds_at hR (i := 0) (v := Reg.put rc) rfl
+    rw [nth_of (by simpa using hp0), pure_bind]
+    exact Builds.pure fun who => by simp [reg, hpR]; rfl
+
+/-! ### `Grows`, `Typed` -/
+
+-- `PlanSpec`'s `grows`, `typed` and `ge` are `local` there, so this file states the leaves its five builders use
+local macro "growsCat" : tactic => `(tactic| repeat' first
+  | exact Grows.pure _ | (with_reducible refine Grows.bind ?_ (fun _ => ?_)) | exact Grows.lit _
+  | exact Grows.call1 _ _ | exact Grows.callK _ _ | exact Grows.nth _ _ _ | exact Grows.ctorB _ _ _
+  | exact Grows.srcB _ _ | exact Grows.listB _ | exact Grows.posB | exact Grows.constB _ _
+  | exact Grows.mapB _ _ _ _ _ _ _ _ | dsimp only)
+
+theorem Grows.scatterB (op : Kernel.Op) (rows dst x cells : Nat) (fill : UInt64) :
+    Grows (Plan.scatterB op rows dst x cells fill) := by
+  unfold Plan.scatterB; growsCat
+
+theorem Grows.u64B (s : Nat) : Grows (Plan.u64B s) := Grows.call1 _ _
+
+theorem Grows.catB (n₁ n₂ : Nat) : Grows (Plan.catB n₁ n₂) := by
+  unfold Plan.catB; growsCat
+
+theorem Grows.catColB (t : QAtomicType) (n n₁ n₂ x y : Nat) : Grows (Plan.catColB t n n₁ n₂ x y) := by
+  unfold Plan.catColB; growsCat
+
+theorem Grows.shiftB (n x s : Nat) : Grows (Plan.shiftB n x s) := by
+  unfold Plan.shiftB; growsCat
+
+local macro "typedCat" : tactic => `(tactic| repeat' first
+  | exact Typed.lit _ | refine Typed.call1 ?_ | refine Typed.callK ?_ | refine Typed.nth ?_ _ _
+  | refine Typed.ctorB ?_ ?_ _ | refine Typed.listB ?_ | refine Typed.pure ?_
+  | refine Typed.srcB ?_ ?_ | exact Typed.posB | refine Typed.constB ?_ ?_ | refine Typed.mapB ?_ ?_ ?_
+  | (with_reducible apply Typed.bind (hf := fun _ _ => ?_)) | dsimp only)
+
+/-- `kscatter` declares all six arguments, so a `scatterB` is typed at every `m`, its registers captured or not. -/
+theorem Typed.scatterB {m : Nat} {op : Kernel.Op} {rows dst x cells : Nat} {fill : UInt64} :
+    Typed m (fun r => m ≤ r) (Plan.scatterB op rows dst x cells fill) := by
+  unfold Plan.scatterB
+  refine (Typed.lit _).bind fun a ha => (Typed.lit _).bind fun b hb => Typed.call1Of fun fs a' ha' _ => ?_
+  obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := [a, rows, dst, x, cells, b]) (by simpa using ha')
+  simp only [List.length_cons, List.length_nil] at hjl
+  simp only [useTy, List.toList_toArray, hj, Option.bind_some]
+  rcases j with _ | _ | _ | _ | _ | _ | j <;> first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
+
+/-- `USize.toUInt64` declares its argument, so a `u64B` is typed at every `m`. -/
+theorem Typed.u64B {m : Nat} {s : Nat} : Typed m (fun r => m ≤ r) (Plan.u64B s) := by
+  unfold Plan.u64B
+  refine Typed.call1Of fun fs a' ha' _ => ?_
+  obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := [s]) (by simpa using ha')
+  simp only [List.length_cons, List.length_nil] at hjl
+  simp only [useTy, List.toList_toArray, hj, Option.bind_some]
+  rcases j with _ | j <;> first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
+
+theorem Typed.mapB {m : Nat} {op : Kernel.Op} {n a b : Nat} {t s : QAtomicType} {pre post : List (Kernel.Op × UInt64)}
+    (hn : m ≤ n) (ha : m ≤ a) (hb : m ≤ b) : Typed m (fun r => m ≤ r) (Plan.mapB op n a b t s pre post) := by
+  unfold Plan.mapB
+  typedCat <;> all_goals first | omega | assumption | (simp <;> omega) | (simp_all <;> omega)
+
+theorem Typed.catB {m : Nat} {n₁ n₂ : Nat} (h1 : m ≤ n₁) (h2 : m ≤ n₂) :
+    Typed m (fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) (Plan.catB n₁ n₂) := by
+  unfold Plan.catB
+  typedCat <;> all_goals first | omega | assumption | (simp <;> omega) | (simp_all <;> omega)
 
 end Rel.Lang.Plan
