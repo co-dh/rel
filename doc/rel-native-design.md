@@ -293,7 +293,7 @@ lambda；没有任何一处从运行时数据造出函数。唯一在运行时�
 | `n.rel.x := 读回 (Plan.run n.plan.x)`；`n.c.c<i>` 是 plan 的 global         | `Expand.addConst`/`share`/`emit`            |
 | `Gen.Sound` 改述在 `Plan.run` 上                                            | `Rel/Lang/GenSpec.lean`、`Expand.prf`       |
 | 算子的 builder（`compC`、`nubC`、`foldRound`、`Bits.*` … 各自的 kernel 序列） | `Run/{Alg,Code,AC3Def}.lean`、`Run/CRel*Def.lean`、`Run/Lang/Bits.lean` |
-| emitter 和 ABI 表                                                           | 新 `Rel/Lang/EmitC.lean`，exe `relc`        |
+| emitter 和 ABI 表                                                           | 新 `Rel/Run/Lang/EmitC.lean`，exe `relc`        |
 
 - 每条 `*_sound` 由两步合成：`Plan.run (builder args) = 原 CRel 算子 args`，加今天的 `rep_*`。
 - 顺序由程序拉动（第 13 节）。迁完一个算子的标志：它的 `host` 从 `Gen` 里消失，且上面那条等式有定理。
@@ -405,7 +405,7 @@ owner：`Run/*`、`Rel/Lang/*`、`Rel/Rep*` = ffreyd；`Rel/Programs/*` = aima�
   唯一的 kernel 调用是 `qlean_own_write`。锥是 0 个 `Alg` def，所以这一步只量管线本身。
 - 交付和估计：`rt.c`（150）；`Plan` 的 `lit`/`call`/`fail` 和 `Plan.run`（200）；`relc` 和 ABI 表（350）；
   `col` 的 writer 胶水和 `main`（100）；lakefile 和测试（100）。
-- 文件：`c/rt.c`（qlean）、新 `Run/Lang/Plan.lean`、新 `Rel/Lang/EmitC.lean`、新 `Rel/Lang/TestNative.lean`、
+- 文件：`c/rt.c`（qlean）、新 `Run/Lang/Plan.lean`、新 `Rel/Run/Lang/EmitC.lean`、新 `Rel/Lang/TestNative.lean`、
   `/home/dh/repo/freyd/leetq/lakefile.lean`。owner：ffreyd。
 - 门：1、2；输出目录逐字节等于 Lean 这一侧用 `qlean_own_write` 写出的。
 - 它回答路线 B 最大的未知数：现成的 `libqleankernel.a` 能不能只靠 `rt.c` 链接并跑起来。
@@ -416,7 +416,7 @@ owner：`Run/*`、`Rel/Lang/*`、`Rel/Rep*` = ffreyd；`Rel/Programs/*` = aima�
 - 交付和估计：`Fun`/`apply`/`if`/global 和 last-use 释放（350）；173 个 def 的锥的 builder —— `Code` 的底座、
   `compC`、`ranC`、`arith`、`Bits` 的 `comp` 一条 bit 规则（约 1200）；`Plan.run (builder) = compC` 一条定理，
   用来量代价（约 300）；测试（50）。
-- 文件：`Run/Lang/Plan.lean`、`Rel/Lang/EmitC.lean`、`Run/{Alg,Code}.lean`、`Run/Lang/Bits.lean` 里那个锥。
+- 文件：`Run/Lang/Plan.lean`、`Rel/Run/Lang/EmitC.lean`、`Run/{Alg,Code}.lean`、`Run/Lang/Bits.lean` 里那个锥。
   owner：ffreyd。
 - 门：四条；另外两个测试输入各逼出一条分支（一个 universe 小到走 bit，一个超过 2²⁷ bit 走 table）。
 - 判断点：这里量出每个 def 的 builder 加定理的代价。若明显贵于它的旧定义，停下来把范围缩到他点名的程序。
@@ -443,7 +443,7 @@ owner：`Run/*`、`Rel/Lang/*`、`Rel/Rep*` = ffreyd；`Rel/Programs/*` = aima�
 ### 阶段 3 — 循环（约 1500 行）
 - 交付：`loop` 指令；`foldByC` 的锥（`foldRound`、`nubC`、`antiJoinC`、`unionC`、`pairC`、`demandStepC`）；
   程序 `x⦇ran(zero),plus⦈`，step 是一个 `Fun`。
-- 文件：`Run/Lang/Plan.lean`、`Rel/Lang/EmitC.lean`、`Run/Alg.lean`。owner：ffreyd。
+- 文件：`Run/Lang/Plan.lean`、`Rel/Run/Lang/EmitC.lean`、`Run/Alg.lean`。owner：ffreyd。
 - 门：四条；100 万行输入下峰值 RSS 不随轮数涨，且不超过 Lean backend 的峰值。
 
 ### 阶段 4 — `Gen` 变成 Lean backend（约 900 行改动）

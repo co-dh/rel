@@ -1648,7 +1648,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
     `pack_toList`、`foldRounds_holds` 的 `hpack` 多取输入的 `WF`，经 `peelL/peelR_holds`、`mu/star_holds`、
     `nu_sound`、`comp_uncons`、`rowOK_*`（`ofVals_row_sound`/`after_row_sound` 已给的 `WF`）传入。只加 WF 前提，
     无语句弱化。`Vals.row` 的 `clampFin`（全函数模型）保留。
-  - ✅ 删 clamp 第二步之三（8.5s2j）：C 发射器 `concatB`（`Lang/EmitC`）跟上 `Vals.concat`：`clampShiftB` 删去，第一段
+  - ✅ 删 clamp 第二步之三（8.5s2j）：C 发射器 `concatB`（`Run/Lang/EmitC`）跟上 `Vals.concat`：`clampShiftB` 删去，第一段
     `lo`/`hi` 原样、第二段 `shiftB`（1 `constB` + 1 `mapB .add`）。每格 `lo`、`hi` 各 2 次 `clampShiftB`（每次 2 `constB`
     + 1 `wordsB` + 3 `mapB`）→ 第二段 2 kernel、第一段 0。剩下的 `sum` 位置 `clampFin`、`catSide`/`compBlocks` 的
     `clampShift` 是求和位置与块号，不是 `lo`/`hi`，不属 8.5。
@@ -1858,7 +1858,7 @@ relk 线程池空转 2 526（与前三项重叠）。
   import `RepBits`/`RepTabArith`/`RepWFOps`，所以要等 `Rel/Lang/*` 迁完。测量：改 `RepCanon` 一个证明（证明内加注释），
   只重建 `RepCanon` 1 个模块（2.5 s），其余 module 的 importer 与非 module 的 importer 都只是 replay（公开接口不变），
   整个命令 3 s；perf9d 是 125 个模块、106 s。
-- ▶ perf9f `Rel/Lang/{GenKSpec,GenKBits,GenKFold,GenKEst,GenKFix,GenKHylo,DfnLaw,GenSound,ConvSpec,Table,EmitC,PlanSpec}` 与
+- ▶ perf9f `Rel/Lang/{GenKSpec,GenKBits,GenKFold,GenKEst,GenKFix,GenKHylo,DfnLaw,GenSound,ConvSpec,Table,PlanSpec} `Rel/Run/Lang/EmitC`` 与
   `RepAsc`、`RepWhere`、`RepSums` 已是 module（这些文件里没有 `#guard`/`#print axioms`，无需搬检查；`Run.Lang.Elab` 已是
   module，perf9b 的 (d) 已不成立）。两处改动：(a) `GenKFold` 的 `simp [List.merge]` 改为 `simp`（`List.merge` 在 core 中没有
   expose）；(b) `Run/Lang/TmGen.lean` 里 `addAndCompile` 生成的 `rowGens`、`rowLongs` 在 `@[expose]` 段之外，body 不 expose，
@@ -1921,7 +1921,7 @@ relk 线程池空转 2 526（与前三项重叠）。
       `den_congr:690`、`den_pol_spine:1004-1005`、`den_linIn:1100`、`den_local:1261/1263`；`Lang/GenSound.lean`
       `GenHyp:199`、`monoOK:215`、`pol_of_fv:1499`、`number_spine:1762`、`gen_wf_spine:1330-1331`（`GenK.cmp_wf`）、
       `gen_sound_spine:1449-1450`（`GenK.cmp_sound`）；`Lang/ConvSpec.lean` `convTm_den:157`、
-      `convTm_instObj_den:535`；`Lang/EmitC.lean` `Plan.nodeB:1513-1514`。
+      `convTm_instObj_den:535`；`Run/Lang/EmitC.lean` `Plan.nodeB:1513-1514`。
     - 先量后删：`GenK.cmp`（`GenK.lean:259-265`）在 meet 给出 `K.pairs` 时只跑 `Tab.cmpPairs`，否则 CROSS；定义项在
       `R ∩ <` 下是否仍只跑给定的 pairs，由 `Frame*` 测试的 `#guard` 与时间判定。若变成 CROSS（`crossMax` 报错或变慢），
       加 `pairTest`（`Elab.lean:1985`）的化简 `τ(<) = (U×U) lt` 与其定理（设计 `:165`），不留构造子。

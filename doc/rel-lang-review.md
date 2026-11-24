@@ -70,7 +70,7 @@ Tm       → Run.Algebra, Syntax                    -- new module: lines 19–10
 Elab     → Tm
 Bits     → Tm                                     -- was Elab
 Plan     → Tm, QLean.Db.Own                       -- was Expand
-EmitC    → Plan, Expand                           -- it calls Expand.read (Rel/Lang/EmitC.lean:34)
+EmitC    → Plan, Expand                           -- it calls Expand.read (Rel/Run/Lang/EmitC.lean:34)
 Grammar  → Parse                                  -- new module: Embed's syntax categories and Syntax → Expr
 Embed    → Grammar, Expand
 Aop.Calc → Grammar, 12 Freyd/AOP modules          -- was Embed
@@ -235,7 +235,7 @@ stated at each stage:
 - `Run/Lang/Plan.lean:1` imports `Run.Lang.Expand`. `module_need` records `Plan → Run.Core` and
   `Plan → Run.Lang.Elab` only (every `Tm` constructor, for `ofTm` at `Plan.lean:332`); the source has no
   `Expand.`, `Gen.`, `Parse.` or `Program`.
-- Cut: `Plan` imports `Elab` (after row 1, `Tm`). `Rel/Lang/EmitC.lean` adds `import LeetQ.Run.Lang.Expand`,
+- Cut: `Plan` imports `Elab` (after row 1, `Tm`). `Rel/Run/Lang/EmitC.lean` adds `import LeetQ.Run.Lang.Expand`,
   which it uses at line 34 (`Expand.read`).
 - Effect: `Plan` (417 lines) stops rebuilding on edits to `Expand` (37 commits in 30 days), `Gen`, `Bits`,
   `Parse`. With row 1 its closure falls from 46 modules to about 31.

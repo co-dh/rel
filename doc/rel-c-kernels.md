@@ -3,7 +3,7 @@
 Computed, not read off names. Two reachability walks, then a C call graph over the entries they name:
 
 - Lean side: `/data/tmp/relc-audit/Reach.lean` (`lake env lean --run`, qlean plugins loaded) imports the `LeetQ.Run`
-  modules and `LeetQ.Rel.Lang.EmitC`, and walks the constant closure (types, values, `implemented_by`) until an
+  modules and `LeetQ.Rel.Run.Lang.EmitC`, and walks the constant closure (types, values, `implemented_by`) until an
   `@[extern]` constant, read with `Lean.getExternNameFor`.
 - C side: `/data/tmp/relc-audit/graph.py` dumps `clang -Xclang -ast-dump=json` of every `c/*.c` with the lakefile
   flags (`elementwise.c` three times, `-DEW_PART=1..3`; `scan.c` with `recurrenceFlags`), takes each function
