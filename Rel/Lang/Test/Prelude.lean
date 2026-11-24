@@ -67,6 +67,18 @@ rel_program converses where
   ["{(∗, 1 2 3), (∗, 1 3 2), (∗, 2 1 3), (∗, 2 3 1), (∗, 3 1 2), (∗, 3 2 1)}", "{(∗, 1 2 3)}",
    "{(∗, 1 2 3), (∗, 1 3 2), (∗, 2 1 3), (∗, 2 3 1), (∗, 3 1 2), (∗, 3 2 1)}", "{}"]
 
+-- `merge(Q)`: its `loop` keys a state `([N]×[N])×[N]` that has no universe, so `foldI` runs as its row; the head of
+-- the first side is taken when it is `≤` the second's (equal ones first side first), or when the second is empty
+open Rel.Programs.prelude in
+rel_program merges where
+    obj N = 0…9
+    x : 1 ⟶ [N] ≜ {(∗,1 3 5)}
+    y : 1 ⟶ [N] ≜ {(∗,2 3 4 6)}
+    print ⟨x,y⟩ merge(≤)
+    print ⟨y,x⟩ merge(≤)
+    print ⟨x,nil⟩ merge(≤)
+#guard printed merges.prints == ["{(∗, 1 2 3 3 4 5 6)}", "{(∗, 1 2 3 3 4 5 6)}", "{(∗, 1 3 5)}"]
+
 -- a declared infix operator: `R + S = ⟨R,S⟩plus`, the prelude's `⇒` and `⊕`, a program's own `_≼_`, each read at
 -- the one level with `∩`, left to right
 open Rel.Programs.prelude in

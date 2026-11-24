@@ -93,7 +93,10 @@ namespace Rel.Lang
     declaration elaborated, nothing evaluated), in order; with no program, the prelude's. -/
 def typesOf (src : Option Program) : EM (List String) := do
   let prog := src.getD Programs.prelude
-  let _ ← Expand.read (fun _ => none) (if src.isSome then [(`prelude, Programs.prelude)] else []) prog
+  -- the prelude under its own constant, as `rel_program` reads it: a definition with a fused row (`useDef`) then runs
+  -- as that row, as at a use, so `foldI` at a key with no universe is the row, not its text
+  let _ ← if src.isSome then Expand.read (fun _ => none) [(``Programs.prelude, Programs.prelude)] prog
+    else Expand.read (fun _ => none) [] prog (own := ``Programs.prelude)
   pure (prog.filterMap fun | .defn _ n ps _ ty => some (sigOf n ps ty) | _ => none)
 
 -- the prelude's converse table is its one `c° = c'` theorem; rows answer from `Prim.conv`, a name with neither has none
