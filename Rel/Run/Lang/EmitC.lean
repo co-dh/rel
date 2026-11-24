@@ -2117,19 +2117,32 @@ def shareB (k : Nat) (A B : Obj) (inl glob : Bld TabB) : Bld TabB := do
     modify fun (is, n, fs, gs) => (is, n, fs, (gs ++ Array.replicate (k + 1 - gs.size) default).modify k fun _ => failedSlot e)
     inl
 
+/-- A relation given to a spine is no larger than all of them: `argB`'s measure bounds each by the sum. -/
+theorem size_le_args {x : (C : Obj) × (E : Obj) × Tm C E} {xs : List ((C : Obj) × (E : Obj) × Tm C E)}
+    (h : x ∈ xs) : x.2.2.size ≤ (xs.map fun x => x.2.2.size).sum := by
+  obtain ⟨_, _, rfl⟩ := List.append_of_mem h; simp only [List.map_append, List.sum_append_nat, List.map_cons,
+    List.sum_cons]; omega
+
+/-- A call of `tabB`/`nodeB`/`argB` lowers their rank `(Tm.size, kind)`: the size, else at one size the kind. -/
+local macro "tm_dec" : tactic => `(tactic| (
+  (try simp only [Tm.size, List.map_cons, List.sum_cons, List.map_nil, List.sum_nil])
+  first | exact Prod.Lex.left _ _ (by omega) | exact Prod.Lex.right' _ (by omega) (by decide)))
+
 mutual
 /-- **A term's table**: its node's recipe (`nodeB`) as one plan function (`funT`), closing over the tables of its
     context and its variables, so every node kind is built by one path and the block applying it (`main`, a
     function, a loop's round) holds one `apply` per node, never the node's kernels inlined. -/
-partial def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB :=
+def tabB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB :=
   fun t => funT [] fun _ => nodeB σ D t
+termination_by _ _ t => (t.size, 2)
+decreasing_by all_goals tm_dec
 
 /-- A node's table, by the `Tab` operators its `GenK` code runs (design §4), its variables `σ` what
     each reads (`Vars`), `D` the values its context knows its source to hold (`compT`: a composition's left
     operand's range). A node on demand is read at `D`; a closed node ignores it, and its full table is a superset
     that every consumer of a `D`-bounded answer cuts alike. The nodes no plan recipe builds are refused, naming
     them and what they need. -/
-partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
+def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | A, B, .val R => do
     let (k, v) := (← litSide R.key, ← litSide R.val)
     canonT ⟨← lit (.size R.n), ← colsOf A k, ← colsOf B v⟩
@@ -2178,12 +2191,18 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     | none => throw s!"variable {k}, which no input table or call argument is bound to"
   | _, _, .nu k S b => do nuB (fun X => tabB ((k, false, fun _ _ _ => pure X) :: σ) {} b) (← tabB σ {} S)
   | A, B, .mu k w cap b => do
+    have : 0 < b.size := by cases b <;> simp [Tm.size]
     muB (Tab.capMsg w cap) (← sizeB (cap - 1)) (fun X => tabB ((k, false, fun _ _ _ => pure X) :: σ) {} b)
       (← tabB σ {} (.zero : Tm A B))
   | A, B, .hylo k w b => do
     -- `GenK.hylo` on the keys `X` in demand: the nodes `N`, no cycle among them (`ν`), then `D ≫ μY : N ≫ φ(Y)`
     let (n, X) ← known "hylo" D.dom
-    let some ch := b.kids k A | throw s!"Tm.gen: {w} gives the hylo no children (Tm.kids)"
+    -- `h` ties the children to `b` (`Tm.size_kids`), the measure `tabB` recurses on
+    match h : b.kids k A with
+    | none => throw s!"Tm.gen: {w} gives the hylo no children (Tm.kids)"
+    | some ch =>
+    have : ch.size ≤ b.size := by simpa [h] using Tm.size_kids k A b
+    have : 0 < b.size := by cases b <;> simp [Tm.size]
     let Dt ← coreflB n X
     let N ← muB (Tab.capMsg w USize.size) (← sizeB (USize.size - 1)) (fun N => do
         let C ← compTB N (tabB σ · ch) (ch.dem σ.dem []); unionB Dt (← coreflB C.n C.val))
@@ -2194,7 +2213,9 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
       (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
       (fun Y => compTB N (tabB ((k, false, fun _ _ _ => pure Y) :: σ) · b) (b.dem (Vars.dem ((k, false, fun _ _ _ => pure Y) :: σ)) [])) (← tabB σ {} (.zero : Tm A B)))
-  | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) => argB σ D A B t []
+  | A, B, .prim r => argB σ D A B (.prim r) []
+  | A, B, .arg f x => argB σ D A B (.arg f x) []
+  | A, B, .call ks c cv os b => argB σ D A B (.call ks c cv os b) []
   -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
   | _, _, .ldiv R S UB UC => do
     ldivSelB ldivB Tab.bitsMax (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UB) (← tabB σ {} UC)
@@ -2209,21 +2230,23 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .foldr (E := E) (V := V) e S => do
     let (n, X) ← known "foldr" D.dom
     foldB E V false n X (← tabB σ {} e) fun P el => do compTB (← pairB (.arr E) E V el P) (tabB σ · S) (S.dem σ.dem [])
-
+termination_by _ _ t => (t.size, 1)
+decreasing_by all_goals tm_dec
 
 /-- A spine `f x₁ … xₖ` (`Tm.argGen`) given its later relations `xs`, in the context `D`: a row by `rowB`, each
     relation's table built in the context the row's wrapper gives it; a call by its body under its arguments bound at
     `ks` and no other variable (`Code.args`). An argument is built at each use in the context the use gives it where
     it runs on demand, or where it cannot run closed (`GenK.memo` keeps it lazy); else once, closed (`GenK.memo`).
     A use at other objects than the argument's reads `𝟘` (`Code.bind`). -/
-partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
+def argB (σ : Vars) (D : Dom) (A B : Obj) :
     Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
   | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
   | .call [] c _ _ b, [] => match c.slot? with
     | some k => shareB k A B (tabB [] D b) (tabB [] {} b)
     | none => tabB [] D b
   | .call ks _ _ _ b, xs => do
-    let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
+    let bs ← (ks.zip xs).attach.mapM fun ⟨(k, ⟨C, E, x⟩), h⟩ => do
+      have : x.size ≤ (xs.map fun x => x.2.2.size).sum := size_le_args (List.of_mem_zip h).2
       let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
         fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
       let lazy := at_ (tabB σ · x)
@@ -2232,9 +2255,12 @@ partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
         tryCatchThe BErr (do let t ← tabB σ {} x; pure (k, false, at_ fun _ => pure t)) fun e =>
           if e.lazy then pure (k, false, lazy) else throwThe BErr e
     tabB bs D b
-  | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
-  | t, [] => tabB σ D t
+  | .prim r, xs => rowB r A B D (xs.attach.map fun ⟨⟨_, _, x⟩, h⟩ =>
+    have : x.size ≤ (xs.map fun x => x.2.2.size).sum := size_le_args h; (tabB σ · x))
   | _, xs => throw s!"{xs.length} relations given to a term that is no row and no call"
+-- the spine and the relations it was given shrink together; `nodeB` hands `argB` only a row, an `arg` or a call
+termination_by t xs => (t.size + (xs.map fun x => x.2.2.size).sum, 0)
+decreasing_by all_goals tm_dec
 end
 
 /-- The registers of a term's value, key side then value side, its variables `σ` the registers of the tables bound
