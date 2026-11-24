@@ -1792,15 +1792,16 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
     (hrun : (b (List.range' rs.size tys.length)).run (#[], rs.size + tys.length, fg) =
       .ok ((r, rtys, x), body, (rs ++ pv ++ xs).size, fg1))
     (hbody : ∀ fs gs, Env abi fs gs fg1 → ∀ ws, runB abi fs gs body.toList (rs ++ pv) ws = .ok (rs ++ pv ++ xs, ws))
-    (hres : ∀ who, r.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hord : Ordered fg1.1)
-    (hext : (∃ a, fg1.1 = fg.1 ++ a) ∧ ∃ a, fg1.2 = fg.2 ++ a)
+    (hres : ∀ who, r.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hfo : Ordered fg.1)
+    (hG : Grows (b (List.range' rs.size tys.length)))
     (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size r rtys
       ((readsB rs.size body.toList ++ r.toList).filter (· < rs.size)).eraseDups = .ok ctys)
     (hk : ∀ fg2 r' ys, (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, r'.mapM (reg (rs ++ ys) who) = .ok o) →
       ∃ fg', Builds abi fg2 fg' (kk (r', x)) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funB tys args b >>= kk) rs out := by
   obtain ⟨F0, G0⟩ := fg; obtain ⟨F1, G1⟩ := fg1
-  simp only at hty hord hext hk
+  obtain ⟨hord, -, hext1, hext2⟩ := hG _ _ _ hrun hfo (by simp [Instr.callsB])
+  simp only at hty hord hext1 hext2 hk
   -- the parameters' values, as a list read under any name
   have ha0 := ha ""
   rw [Array.mapM_eq_mapM_toList] at ha0
@@ -1830,7 +1831,7 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
       fun who => by simpa using hm.mapMA xs who (fun _ _ => trivial) (hres who)
     obtain ⟨fg', hk'⟩ := hk (F1, G1) _ xs ⟨#[], by simp⟩ rfl hres'
     refine ⟨fg', Builds.of_run (fg2 := (F1, G1)) (js := body.map (·.rename (spliceReg rs.size tys.length args)))
-      (fun is => ?_) hext.1 hext.2 (fun fs gs hE ws => ?_) hk'⟩
+      (fun is => ?_) hext1 hext2 (fun fs gs hE ws => ?_) hk'⟩
     · simp [funB, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hn,
         hrun, hC, ok_bind, hlen]
       rw [show rs.size + (tys.length + xs.size) - tys.length = rs.size + xs.size by omega]; rfl
@@ -1874,9 +1875,9 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
       (fun who => by rw [← ho]; exact mapM_reg_range rs o who)
     refine ⟨fg', Builds.of_run (fg2 := ((addFun F1 F).2, G1))
       (js := #[.apply (addFun F1 F).1 (args ++ cs).toArray]) (fun is => ?_)
-      (let ⟨a, e⟩ := hext.1; let ⟨a2, e2⟩ := hadd.1
+      (let ⟨a, e⟩ := hext1; let ⟨a2, e2⟩ := hadd.1
         ⟨a ++ a2, by show (addFun F1 F).2 = F0 ++ (a ++ a2); rw [e2, e, Array.append_assoc]⟩)
-      hext.2 (fun fs gs hE ws => ?_) hk'⟩
+      hext2 (fun fs gs hE ws => ?_) hk'⟩
     · simp [funB, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hn,
         hrun, hC, hty, ok_bind, hlen, -List.filter_append]
       have hlift : ∀ {β : Type} (v : β), (monadLift (Except.ok v : Except String β) : Except BErr β) = .ok v := fun _ => rfl
