@@ -16,6 +16,8 @@ public import Rel.Lang.PreludeOrd
 public import Rel.Lang.PreludeThinL
 public import Rel.Lang.PreludePositions
 public import Rel.Lang.PreludeMerge
+public import Rel.Lang.PreludeCat
+public import Rel.Lang.PreludeSnoc
 import Lean
 meta import Rel.Run.Lang.Syntax
 

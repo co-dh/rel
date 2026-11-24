@@ -48,7 +48,12 @@ rel_program prelude where
 
     -- `at(0)τ ∩ 𝟙` holds the one-element arrays; it stands for τ°, whose converse does not run on demand.
 
-    head : [α] ⟶ α ≜ at(0)                                        -- B&dM p.267 head = outl cons°
+    -- `cat` is the left fold over the reversed first list from the second, by `cons` alone (`snoc` is defined from `cat`):
+    -- `r` reverses a list (the left fold of `cons` from `[]`), `s` is `cons` on (acc, x)
+    cat : [α]×[α] ⟶ [α] ≜ ⟨π₂, π₁ r⟩ loop(s) where s ≜ ⟨π₂,π₁⟩cons, r ≜ ⟨nil,𝟙⟩ loop(s)   -- B&dM p.129 ⧺: (xs, ys) ↦ xs ++ ys
+    snoc : [α]×α ⟶ [α] ≜ (𝟙×τ) cat                                 -- B&dM p.249 snoc: (xs, x) ↦ xs ++ [x]
+
+    head : [α] ⟶ α ≜ at(0)                                       -- B&dM p.267 head = outl cons°
     tail : [α] ⟶ [α] ≜ cat° dom(π₁ (at(0)τ ∩ 𝟙))π₂                -- B&dM p.149 tail = outr cons°
     init : [α] ⟶ [α] ≜ cat° dom(π₂ (at(0)τ ∩ 𝟙))π₁                -- B&dM p.249 init = outl snoc°
     last : [α] ⟶ α ≜ cat° π₂ (at(0)τ ∩ 𝟙)at(0)                    -- B&dM p.267 last = outr snoc°
