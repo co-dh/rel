@@ -1139,21 +1139,21 @@ def Ordered (F : Array Fun) : Prop := ∀ i (h : i < F.size), ∀ j ∈ Instr.ca
 /-- `cloTys` throws only for a register no reader and no result slot types: it never reaches `defTy`'s walk, so it does
     not depend on the enclosing block `is` (nor on `Ordered`: the walk's bounds only matter for the registers that fall
     through to the definition, which `hty` of `funB_builds` quantifies over as any `is`). -/
-theorem cloTys_ok (fs gs : Array Fun) (is body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty)
+theorem cloTys_ok (fs gs : Array Fun) (body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty)
     (cs : List Nat)
     (h : ∀ a ∈ cs, ∃ t, (useTyB fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?)) = some t) :
-    ∃ ts, cloTys fs gs is body n r rtys cs = .ok ts := by
-  unfold cloTys
-  dsimp only
-  generalize defTyB fs gs gs.size fs.size (fun _ => pure none) (n - (is.toList.map (resN fs gs)).sum) is.toList = dty
+    ∃ ts, ∀ is, cloTys fs gs is body n r rtys cs = .ok ts := by
   induction cs with
-  | nil => exact ⟨[], rfl⟩
+  | nil => exact ⟨[], fun _ => rfl⟩
   | cons a cs ih =>
     obtain ⟨t, ht⟩ := h a (by simp)
     obtain ⟨ts, hts⟩ := ih fun b hb => h b (by simp [hb])
-    refine ⟨t :: ts, ?_⟩
+    refine ⟨t :: ts, fun is => ?_⟩
+    have e := hts is
+    unfold cloTys at e ⊢
+    dsimp only at e ⊢
     rw [List.mapM_cons, ht]
-    simp only [bind, Except.bind, hts]
+    simp only [bind, Except.bind, e]
     rfl
 
 /-- `h` moves the registers `E0` to `E0'`: each `a < E0.size` with `P a` reads alike at `h a`, and a register after
