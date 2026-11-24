@@ -67,6 +67,7 @@ rel_program prelude where
     -- B&dM thinning `⦇[nil, bump(Q)]⦈ʳ`, `h = (x, head ys)`: `x Q b` gives `x :: tail ys`; `b Q x` gives `ys`; neither, or `ys = []`, gives `x :: ys`
     thinL(Q : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, (dom(h cor(Q)) ⟨π₁, π₂ tail⟩cons) ∪ (dom(h ⟨π₂,π₁⟩ cor(Q)) π₂) ∪ ((𝟙 − dom(h cor(Q)) − dom(h ⟨π₂,π₁⟩ cor(Q))) cons)]⦈ʳ where h ≜ ⟨π₁, π₂ at(0)⟩
     positions(p : α ⟶ α) : [α] ⟶ [ν] ≜ (𝟙 − dom(s (𝟙 − dom(len)))) Λ(s len) where s ≜ cat° dom(π₂ at(0) p) π₁, len ≜ length   -- q's where of the mask dom(p): the positions of the passing elements, ascending
+    merge(Q : α ⟶ α) : [α]×[α] ⟶ [α] ≜ ⟨⟨𝟙, nil⟩, cat⟩ loop(π₁ (l ⟨⟨π₁π₁ tail, π₁π₂⟩, ⟨π₂, a⟩snoc⟩ ∪ ((𝟙 − l) ⟨⟨π₁π₁, π₁π₂ tail⟩, ⟨π₂, b⟩snoc⟩))) π₂ where a ≜ π₁π₁ at(0), b ≜ π₁π₂ at(0), l ≜ dom(⟨a,b⟩ cor(Q)) ∪ (dom(a) − dom(b))   -- merge by a clocked loop: take the head `a` of the first when `a Q b` or the second is empty
 
     -- B&dM p.130 `perm ≜ ⦇[nil, add]⦈`: add puts the new element anywhere in the array so far. Its converse is
     -- itself, stated by the theorem `permConv` below (`Elab.convs`), because `perm° = perm` cannot be derived.
