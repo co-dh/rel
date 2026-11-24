@@ -1743,6 +1743,43 @@ theorem Grows.defFun {ps : Array Ty} {b : Array Nat → Bld (Array Nat)} (hb : �
 theorem callsB_map_rename (f : Nat → Nat) (l : List Instr) : Instr.callsB (l.map (·.rename f)) = Instr.callsB l := by
   rw [← renameB_eq, callsB_rename]
 
+theorem Grows.funB {α : Type} {tys : List Ty} {args : List Nat} {b : List Nat → Bld (Array Nat × List Ty × α)}
+    (hb : ∀ ps, Grows (b ps)) : Grows (Plan.funB tys args b) := fun ⟨is, n, fs, gs⟩ x s' h ho hc => by
+  by_cases hk : args.length = tys.length
+  · cases hr : (b (List.range' n tys.length)).run (#[], n + tys.length, fs, gs) with
+    | error _ => simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr,
+        err_bind_eq, Functor.map, Except.map] at h
+    | ok p =>
+      obtain ⟨⟨r, rtys, x0⟩, body, m, fs1, gs1⟩ := p
+      obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
+      simp only at o1 c1 e1 d1
+      by_cases hC : spliceable body = true
+      · simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
+          ok_bind, Functor.map, Except.map] at h
+        obtain ⟨-, rfl⟩ := h
+        refine ⟨o1, fun j hj => ?_, ⟨a1, e1⟩, ⟨b1, d1⟩⟩
+        simp only [Array.toList_append, Array.toList_map, callsB_append, callsB_map_rename, List.mem_append] at hj
+        rcases hj with hj | hj
+        · have := hc j hj; simp only at this; rw [e1]; simp; omega
+        · exact c1 j hj
+      · have key : ∀ F : Fun, (∀ j ∈ Instr.callsB F.body, j < fs1.size) →
+            GStep (is, n, fs, gs) (is, n, (addFun fs1 F).2, gs1) := fun F hF _ hc' => by
+          obtain ⟨hO, a2, e2⟩ := addFun_ordered o1 hF
+          refine ⟨hO, fun j hj => ?_, ⟨a1 ++ a2, by rw [e2, e1, Array.append_assoc]⟩, ⟨b1, d1⟩⟩
+          have := hc' j hj; simp only at this ⊢; rw [e2, e1]; simp; omega
+        simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
+          ok_bind, -List.filter_append] at h
+        obtain ⟨ctys, hty, h⟩ := bind_ok h
+        simp only [Functor.map, Except.map] at h
+        split at h
+        · cases h
+        · rename_i v hv
+          obtain ⟨-, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+          have g2 := Grows.apply _ _ _ _ _ _ hv
+          exact GStep.trans (key _ (by intro j hj; simp only [callsB_map_rename] at hj; exact c1 j hj)) g2 ho hc
+  · simp [Plan.funB, StateT.run_bind, StateT.run_get, hk, throwThe, MonadExceptOf.throw, MonadExcept.throw,
+      err_bind_eq, Functor.map, Except.map] at h
+
 /-- `funB tys args b`, then `kk` on its registers and `b`'s value `x`: the body `b` builds after `rs` and the
     parameters `pv` (`args` read), defining `xs` and answering `o`, is spliced in place (`spliceable`) or becomes a
     function (closure conversion, `cloReg`) applied after `rs`; either way `o` follows `rs`. The function may be an
