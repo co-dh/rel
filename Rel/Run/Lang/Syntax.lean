@@ -396,7 +396,7 @@ def prims : List Prim :=
    { sym := "loop",
      sig := ([((.prod (.var {} "X") (.var {} "Y"), .var {} "X"), some false)],
        .prod (.var {} "X") (.list (.var {} "Y")), .var {} "X"),
-     aop := .error "AOP declares no iteration to a fixed point from the left" },
+     prelude := `Rel.Programs.prelude.loop, aop := .error "AOP declares no iteration to a fixed point from the left" },
    { sym := "uncons", sig := ([], .list (.var {} "B"), .prod (.var {} "B") (.list (.var {} "B"))),
      conv := "cons", written := false },
    lengthRow, sumRow,

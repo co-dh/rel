@@ -9,6 +9,7 @@ public import Rel.Lang.PreludeTails
 public import Rel.Lang.PreludeSetify
 public import Rel.Lang.PreludeTau
 public import Rel.Lang.PreludeInits
+public import Rel.Lang.PreludeLoop
 public import Rel.Lang.PreludeStar
 public import Rel.Lang.PreludeDfn
 public import Rel.Lang.PreludeOrd
