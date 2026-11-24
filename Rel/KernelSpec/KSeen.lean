@@ -63,6 +63,21 @@ theorem kseen_sorted {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × 
       | some j => rw [hf] at hs; nomatch hs
       | none => simpa using List.find?_eq_none.1 hf i (List.mem_range.2 (by omega))
 
+/-- **Rows in `lexLe` order are runs**: where each row below `n` is `lexLe` the next, a row between two rows of one key
+has that key, because it is `lexLe` both ways with them (`lexLe_trans`, `keys_of_lexLe`). -/
+theorem lexLe_runs (ks : List (Array UInt64)) {n : Nat} (hs : ∀ i, i + 1 < n → lexLe ks i (i + 1) = true) :
+    ∀ a b c, a ≤ b → b ≤ c → c < n →
+      ks.map (·[a]?.getD 0) = ks.map (·[c]?.getD 0) → ks.map (·[b]?.getD 0) = ks.map (·[a]?.getD 0) := by
+  have up : ∀ d i, i + d < n → lexLe ks i (i + d) = true := by
+    intro d; induction d with
+    | zero => intro i _; exact lexLe_of_keys _ rfl
+    | succ d ih => intro i hi; exact lexLe_trans _ _ _ _ (ih i (by omega)) (hs (i + d) (by omega))
+  have up' : ∀ i j, i ≤ j → j < n → lexLe ks i j = true := fun i j hij hj => by
+    have := up (j - i) i (by omega); rwa [Nat.add_sub_of_le hij] at this
+  intro a b c hab hbc hc e
+  exact (keys_of_lexLe _ (up' a b hab (by omega))
+    (lexLe_trans _ _ _ _ (up' b c hbc hc) (lexLe_of_keys _ e.symm))).symm
+
 /-- **`kseen` answers `firstsOf` and `groupOf` of `seenKey`**: the count of first rows, each row's group as `n` words
 and the first rows ascending as `k` words, each as `wordsFoR`. -/
 theorem kseen_ok {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc} (h : kseen n es = .ok (k, g, f)) :

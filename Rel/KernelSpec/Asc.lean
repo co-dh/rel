@@ -36,6 +36,27 @@ theorem lexLe_trans : ∀ (ks : List (Array UInt64)) (i j k : Nat), lexLe ks i j
     · exact .inl (by omega)
     · exact .inr ⟨by omega, ih h1 h2⟩
 
+/-- Rows with equal codes are `lexLe` both ways. -/
+theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
+    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0) → lexLe ks i j = true
+  | [], _, _, _ => rfl
+  | c :: cs, i, j, h => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    simp [lexLe, h.1, lexLe_of_keys cs h.2]
+
+/-- Rows `lexLe` both ways have equal codes. -/
+theorem keys_of_lexLe : ∀ (ks : List (Array UInt64)) {i j : Nat}, lexLe ks i j = true → lexLe ks j i = true →
+    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0)
+  | [], _, _, _, _ => rfl
+  | c :: cs, i, j, h1, h2 => by
+    simp only [lexLe, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h1 h2
+    simp only [List.map_cons, List.cons.injEq]
+    rcases h1 with h1 | ⟨e1, h1⟩ <;> rcases h2 with h2 | ⟨e2, h2⟩
+    · have := UInt64.lt_iff_toNat_lt.1 h1; have := UInt64.lt_iff_toNat_lt.1 h2; omega
+    · rw [e2] at h1; exact absurd (UInt64.lt_iff_toNat_lt.1 h1) (Nat.lt_irrefl _)
+    · rw [e1] at h2; exact absurd (UInt64.lt_iff_toNat_lt.1 h2) (Nat.lt_irrefl _)
+    · exact ⟨e1, keys_of_lexLe cs h1 h2⟩
+
 theorem ascIns_perm (le : Nat → Nat → Bool) (x : Nat) : ∀ l : List Nat, (ascIns le x l).Perm (x :: l)
   | [] => .refl _
   | y :: ys => by

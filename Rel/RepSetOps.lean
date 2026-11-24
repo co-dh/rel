@@ -167,41 +167,11 @@ theorem whereCol_mem {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
     refine ⟨k, hsz ▸ hk, ?_⟩
     rw [Array.getElem_toList, getElem?_pos (Enc.raw .i64 K o) k hk, Option.getD_some]
 
-/-- Rows with equal codes are `lexLe` both ways. -/
-theorem lexLe_of_keys : ∀ (ks : List (Array UInt64)) {i j : Nat},
-    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0) → lexLe ks i j = true
-  | [], _, _, _ => rfl
-  | c :: cs, i, j, h => by
-    simp only [List.map_cons, List.cons.injEq] at h
-    simp [lexLe, h.1, lexLe_of_keys cs h.2]
-
-/-- Rows `lexLe` both ways have equal codes. -/
-theorem keys_of_lexLe : ∀ (ks : List (Array UInt64)) {i j : Nat}, lexLe ks i j = true → lexLe ks j i = true →
-    ks.map (·[i]?.getD 0) = ks.map (·[j]?.getD 0)
-  | [], _, _, _, _ => rfl
-  | c :: cs, i, j, h1, h2 => by
-    simp only [lexLe, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h1 h2
-    simp only [List.map_cons, List.cons.injEq]
-    rcases h1 with h1 | ⟨e1, h1⟩ <;> rcases h2 with h2 | ⟨e2, h2⟩
-    · have := UInt64.lt_iff_toNat_lt.1 h1; have := UInt64.lt_iff_toNat_lt.1 h2; omega
-    · rw [e2] at h1; exact absurd (UInt64.lt_iff_toNat_lt.1 h1) (Nat.lt_irrefl _)
-    · rw [e1] at h2; exact absurd (UInt64.lt_iff_toNat_lt.1 h2) (Nat.lt_irrefl _)
-    · exact ⟨e1, keys_of_lexLe cs h1 h2⟩
-
 /-- **The rows of one `kseen` key are one run** where `kseen` answers: its rows are in `kasc` order (`kseen_sorted`),
 so a row between two rows of one key is `lexLe` both ways with them (`lexLe_trans`). -/
 theorem kseen_runs {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
     ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → seenKey n es a = seenKey n es c → seenKey n es b = seenKey n es a := by
-  have hs := kseen_sorted h
-  have up : ∀ d i, i + d < n.toNat → lexLe (ascKeys n es) i (i + d) = true := by
-    intro d; induction d with
-    | zero => intro i _; exact lexLe_of_keys _ rfl
-    | succ d ih => intro i hi; exact lexLe_trans _ _ _ _ (ih i (by omega)) (hs (i + d) (by omega))
-  have up' : ∀ i j, i ≤ j → j < n.toNat → lexLe (ascKeys n es) i j = true := fun i j hij hj => by
-    have := up (j - i) i (by omega); rwa [Nat.add_sub_of_le hij] at this
-  intro a b c hab hbc hc e
-  exact (keys_of_lexLe _ (up' a b hab (by omega))
-    (lexLe_trans _ _ _ _ (up' b c hbc hc) (lexLe_of_keys _ e.symm))).symm
+  lexLe_runs _ (kseen_sorted h)
 
 /-! ## CONCAT and `∪` -/
 namespace Tab
