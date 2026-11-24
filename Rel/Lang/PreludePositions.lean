@@ -200,7 +200,7 @@ theorem Tm.positionsDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {
       simp (config := { decide := true }) only [Tm.den.eq_23, Val.args, Val.bind, ↓reduceIte,
         and_self, dite_true]
       -- `[β].inst ph σ = [β.inst ph σ]` holds by `rfl`, so the binder's cast is the identity
-      rw [dif_pos rfl]
+      rw [dif_pos (show (Obj.atom .general).arr.inst ph σ = ((Obj.atom .general).inst ph σ).arr from rfl)]
       refine Iff.trans ?_ (Tm.positionsS_den ρ (.var 2) xs pre)
       simp only [Tm.positionsS, Tm.at0, Tm.dom, Tm.den, Tm.argDen, Gen.atom_zero, cast_eq, hz, Core.Rel.comp_assoc]
       exact Iff.rfl
