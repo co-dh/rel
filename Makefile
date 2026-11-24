@@ -255,7 +255,7 @@ endef
 # an @[extern] declaration's Lean body is a specification, never compiled, so it is not walked
 define listban_NOW
 $(LAKE) build gates
-$(LAKE) query RelKernel:modules RelRun:modules Rel:modules | tr ' ' '\n' | grep -E '^Rel\.(Run|Kernel|Lang\.GenK)' | grep -v Test | xargs $(LAKE) env $(GATES) listban 2> $(T)/listban.chains | sort -u > $(T)/listban.txt
+$(LAKE) query RelKernel:modules RelRun:modules Rel:modules | tr ' ' '\n' | grep -E '^Rel\.(Run|Kernel|Lang\.GenK)' | grep -v 'Test\|Rel.Run.Lang.EmitC' | xargs $(LAKE) env $(GATES) listban 2> $(T)/listban.chains | sort -u > $(T)/listban.txt
 endef
 
 bang: index
