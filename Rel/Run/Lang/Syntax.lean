@@ -379,7 +379,7 @@ def cmpRelRow (strict : Bool) : Prim :=
 /-- Every builtin run on the keys in demand: adding one is adding its row. -/
 def prims : List Prim :=
   [{ sym := "τ", sig := ([], .var {} "A", .list (.var {} "A")),
-     aop := .ok `Freyd.Alg.singletonMap }, consRow, mapRow,
+     prelude := `Rel.Programs.prelude.τ, aop := .ok `Freyd.Alg.singletonMap }, consRow, mapRow,
    -- `filter(p)`, `takewhile(p)` given one relation run as their mask forms (`rep_filterC`, `rep_takewhileC`, `elems_test`);
    -- not `mono`: a larger `p` keeps more elements, a different list, not a superset of pairs (`rowDens`)
    { sym := "filter", sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "B")),
