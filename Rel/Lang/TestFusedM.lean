@@ -60,7 +60,7 @@ rel_program fusedGT where
 #guard fusedGT.failures.map toString == []
 
 -- at `Q` the definitions' fold base is the literal `0 ∉ Q`, read at the target like any literal: refused there
-/-- error: line 20, col 24: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/
+/-- error: line 69, col 21: in `Rel.Programs.prelude.length`: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program fusedQ where
@@ -68,7 +68,7 @@ rel_program fusedQ where
     qs : 1 ⟶ [Q] ≜ {(∗,1 2)}
     qn : 1 ⟶ Q ≜ qs length
 
-/-- error: line 21, col 21: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/
+/-- error: line 77, col 22: in `Rel.Programs.prelude.sum`: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program fusedQs where

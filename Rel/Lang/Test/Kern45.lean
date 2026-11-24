@@ -106,7 +106,7 @@ rel_program sumFold where
 #guard sumFold.ok
 
 -- the fold's base is the literal `0`, read at the target like any literal: `0 ∉ P`, so the text is refused there
-/-- error: line 20, col 24: `ran` at this call, where α is 1, β is P: 0 is not in P = 1…5 -/
+/-- error: line 115, col 19: in `Rel.Programs.prelude.length`: `ran` at this call, where α is 1, β is P: 0 is not in P = 1…5 -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program lenFoldP where
