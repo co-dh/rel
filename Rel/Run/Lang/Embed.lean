@@ -14,6 +14,7 @@ namespace Rel.Lang.Embed
 
 open Lean Parser Elab Elab.Command Parser.Command
 open Rel.Lang
+open Rel.Lang.Expand (programOf resolverAt reread)
 open Rel.Lang.Parse (P)
 /-- The parameters `ps` of the definition or theorem `w`, each a name no builtin takes, each once. -/
 def params (s : Syntax) (w : String) (ps : Array Syntax) : C (List Param) := do
@@ -240,14 +241,6 @@ def diskOf (ss : Array Syntax) (s₀ : Parse.S) : CommandElabM Parse.S := do
     | .ok r => return some ((f, c), r)
   return { s₀ with disk, diskVals }
 
-unsafe def programOfUnsafe (n : Name) : CommandElabM Program := do
-  match (← getEnv).evalConstCheck Program (← getOptions) ``Program n with
-  | .ok p => pure p
-  | .error e => throwError "cannot read the program `{n}`: {e}"
-
-/-- The value of the program `n`, a `rel_program` elaborated before. -/
-@[implemented_by programOfUnsafe] opaque programOf (n : Name) : CommandElabM Program
-
 def defConst (n : Name) (v : Lean.Expr) : CoreM Unit :=
   addAndCompile <| .defnDecl
     { name := n, levelParams := [], type := mkConst ``Program, value := v, hints := .abbrev, safety := .safe }
@@ -256,27 +249,6 @@ def defConst (n : Name) (v : Lean.Expr) : CoreM Unit :=
 def declConst (c : Name) (d : Decl) : CoreM Unit :=
   addAndCompile <| .defnDecl
     { name := c, levelParams := [], type := mkConst ``Decl, value := toExpr d, hints := .abbrev, safety := .safe }
-
-/-- The resolver in the namespace `ns` with the `open`s `opens` (module design §2.3): Lean's `resolveGlobalName`
-    gives the candidates of a written name, the registry keeps its own; and whether a written prefix is a
-    namespace. -/
-def resolverAt (env : Environment) (opts : Options) (reg : Expand.Registry) (ns : Name) (opens : List OpenDecl) :
-    (String → Found) × (String → Bool) :=
-  let id (t : String) : Name := (Parse.parts t).foldl Name.str .anonymous
-  let at_ (ns : Name) (t : String) : List Name := ((ResolveName.resolveGlobalName env opts ns opens (id t)).filterMap
-    fun (c, fs) => if fs.isEmpty then some c else none).eraseDups
-  -- Lean's resolution from the namespace `ns` outwards, where a constant that is no Rel definition shadows nothing:
-  -- the first namespace level whose resolution has Rel definitions gives them
-  let levels := (ns.components.length + 1 |> List.range).map fun k => ns.components.take (ns.components.length - k)
-  (fun t =>
-    let es := (levels.map fun c => (at_ (c.foldl (· ++ ·) .anonymous) t).filterMap (reg.exts[·]?)).find? (!·.isEmpty)
-    match es with
-    | some [(e, _)] => .ext e
-    | some es => .bad true s!"ambiguous name `{t}`: it is {es.map (·.1.const)}"
-    | none => match at_ ns t with
-      | [] => .none
-      | cs => .bad false s!"`{t}` is not a Rel definition: Lean resolves it to {cs}",
-   fun t => !(ResolveName.resolveNamespace env ns opens (id t)).isEmpty)
 
 /-- The scope of a program read here: the current namespace and `open`s. -/
 def scopeHere : CommandElabM Parse.S := do
