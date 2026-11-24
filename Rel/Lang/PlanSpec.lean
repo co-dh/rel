@@ -2682,12 +2682,14 @@ theorem spliceReg_ge {m n k : Nat} {args : List Nat} (hargs : ∀ a ∈ args, m 
     · omega
 
 /-- `funB`: spliced, the body's reads below `m` stay (its parameters are `args`, none below `m`); applied, the `apply`
-    reads `args` and the closure, each typed by the function's parameter. -/
-theorem Typed.funB {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Prop} {tys : List Ty} {args : List Nat}
-    {b : List Nat → Bld (Array Nat × List Ty × α)} (hargs : ∀ a ∈ args, m ≤ a)
+    reads `args` and the closure, each typed by the function's parameter. The body may answer registers of `S` below `m`
+    (captured, as a count a closure hands back): the answers are above `m` or of `S`, as `spliceReg` keeps one below
+    `m`. -/
+theorem Typed.funBOf {α : Type} {m : Nat} {S : List Nat} {Q : Array Nat × List Ty × α → Prop} {tys : List Ty}
+    {args : List Nat} {b : List Nat → Bld (Array Nat × List Ty × α)} (hargs : ∀ a ∈ args, m ≤ a)
     (hb : ∀ ps, (∀ p ∈ ps, m ≤ p) → ps.length = tys.length →
-      Typed m (fun x : Array Nat × List Ty × α => (∀ a ∈ x.1, m ≤ a) ∧ Q x) (b ps)) :
-    Typed m (fun x : Array Nat × α => (∀ a ∈ x.1, m ≤ a) ∧ ∃ r rtys, Q (r, rtys, x.2) ∧ r.size = x.1.size)
+      Typed m (fun x : Array Nat × List Ty × α => (∀ a ∈ x.1, m ≤ a ∨ a ∈ S) ∧ Q x) (b ps)) :
+    Typed m (fun x : Array Nat × α => (∀ a ∈ x.1, m ≤ a ∨ a ∈ S) ∧ ∃ r rtys, Q (r, rtys, x.2) ∧ r.size = x.1.size)
       (Plan.funB tys args b) := by
   intro is n fs gs x s' hm h
   by_cases hk : args.length = tys.length
@@ -2712,7 +2714,11 @@ theorem Typed.funB {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Pro
         refine ⟨body.map (·.rename (spliceReg n tys.length args)), fa, rfl, rfl, by simp only; omega,
           ⟨fun a ha => ?_, r, rtys, q2, by simp⟩, fun y a ha hlt => ?_⟩
         · obtain ⟨c, hc, rfl⟩ := Array.mem_map.1 ha
-          exact spliceReg_ge hargs hm (q1 c hc)
+          by_cases hc' : m ≤ c
+          · exact .inl (spliceReg_ge hargs hm hc')
+          · refine .inr ?_
+            rw [show spliceReg n tys.length args c = c from if_pos (by omega)]
+            exact (q1 c hc).resolve_left hc'
         · simp only [Array.toList_map] at ha ⊢
           obtain ⟨c, hc, rfl⟩ := readsB_rename_mem m _ body.toList hnb a ha
           have hcn : c < m := by
@@ -2742,7 +2748,7 @@ theorem Typed.funB {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Pro
             obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hv)
             refine ⟨#[.apply _ _], fa, rfl, rfl, Nat.le_add_right _ _, ⟨fun a ha => ?_, r, rtys, q2, by simp⟩,
               fun y a ha hlt' => ?_⟩
-            · simp at ha; omega
+            · exact .inl (by simp at ha; omega)
             · simp only [readsB, reads, List.append_nil] at ha
               obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
               have hjt : j < (tys ++ ctys).toArray.size := by
@@ -2758,7 +2764,7 @@ theorem Typed.funB {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Pro
             obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hv)
             refine ⟨#[.apply _ _], fa.push _, rfl, Array.push_append, Nat.le_add_right _ _,
               ⟨fun a ha => ?_, r, rtys, q2, by simp⟩, fun y a ha hlt' => ?_⟩
-            · simp at ha; omega
+            · exact .inl (by simp at ha; omega)
             · simp only [readsB, reads, List.append_nil] at ha
               obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
               have hjt : j < (tys ++ ctys).toArray.size := by
@@ -2771,6 +2777,15 @@ theorem Typed.funB {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Pro
               try rfl
   · simp [Plan.funB, StateT.run_bind, StateT.run_get, hk, throwThe, MonadExceptOf.throw, MonadExcept.throw,
       err_bind_eq, Functor.map, Except.map] at h
+
+theorem Typed.funB {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Prop} {tys : List Ty} {args : List Nat}
+    {b : List Nat → Bld (Array Nat × List Ty × α)} (hargs : ∀ a ∈ args, m ≤ a)
+    (hb : ∀ ps, (∀ p ∈ ps, m ≤ p) → ps.length = tys.length →
+      Typed m (fun x : Array Nat × List Ty × α => (∀ a ∈ x.1, m ≤ a) ∧ Q x) (b ps)) :
+    Typed m (fun x : Array Nat × α => (∀ a ∈ x.1, m ≤ a) ∧ ∃ r rtys, Q (r, rtys, x.2) ∧ r.size = x.1.size)
+      (Plan.funB tys args b) :=
+  (Typed.funBOf (S := []) hargs fun ps hp hl => (hb ps hp hl).mono fun _ hx => ⟨fun a ha => .inl (hx.1 a ha), hx.2⟩).mono
+    fun _ hx => ⟨fun a ha => (hx.1 a ha).resolve_right (by simp), hx.2⟩
 
 /-- `funT_builds`' `hty` of a `Typed` body: every register below `rs.size` it closes over is read by an instruction
     that types it, or is a slot of its answer (`tysTab`), so `cloTys` never reaches the enclosing block. -/
@@ -2842,11 +2857,12 @@ theorem Cols.regs_append : ∀ cs ds : Cols, Cols.regs (cs ++ ds) = Cols.regs cs
   | [], _ => rfl
   | c :: cs, ds => by simp [Cols.regs, Cols.regs_append cs ds]
 
-theorem Cols.regs_ge {m : Nat} : ∀ cs : Cols, AllGe m (Cols.regs cs) ↔ ∀ c ∈ cs, AllGe m (Col.regs c)
-  | [] => by simp [Cols.regs, AllGe]
+/-- A property of every register of `cs` is one of every register of each column (`AllGe` one such property). -/
+theorem Cols.regs_all {P : Nat → Prop} : ∀ cs : Cols, (∀ a ∈ Cols.regs cs, P a) ↔ ∀ c ∈ cs, ∀ a ∈ Col.regs c, P a
+  | [] => by simp [Cols.regs]
   | c :: cs => by
-    have ih := Cols.regs_ge (m := m) cs
-    simp only [AllGe, Cols.regs, List.forall_mem_append, List.forall_mem_cons] at ih ⊢
+    have ih := Cols.regs_all (P := P) cs
+    simp only [Cols.regs, List.forall_mem_append, List.forall_mem_cons] at ih ⊢
     rw [ih]
 
 theorem tabsRegs_eq (Ts : List TabB) : tabsRegs Ts = Pure.pure (Ts.flatMap TabB.regs) := by
@@ -2865,7 +2881,7 @@ theorem Typed.emit1Of {m : Nat} {i : Instr} (hi : ∀ fs, ∀ a ∈ reads m i, a
   rw [this] at h
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
   refine ⟨#[i], #[], rfl, by simp, by simp, hm, fun y a ha hlt => ?_⟩
-  simp only [Array.toList, List.toArray, readsB, List.append_nil] at ha
+  simp only [List.toArray, readsB, List.append_nil] at ha
   obtain ⟨t, ht⟩ := hi (fs ++ y) a ha hlt
   exact ⟨t, by show (useTy _ a i <|> none) = some t; rw [ht]; rfl⟩
 
@@ -3140,15 +3156,16 @@ theorem tabsAt_regs {Ts : List TabB} {ps : List Nat} (hl : ps.length = (Ts.flatM
 
 /-- `funT`: its body reads the tables `Us` whose registers are its parameters (new, above `m`) and answers a table of
     registers above `m`; the answer's registers are the call's results. -/
-theorem Typed.funT {m : Nat} {Ts : List TabB} {b : List TabB → Bld TabB} (hT : AllGe m (Ts.flatMap TabB.regs))
-    (hb : ∀ Us, AllGe m (Us.flatMap TabB.regs) → Typed m (fun U => AllGe m U.regs) (b Us)) :
-    Typed m (fun V => AllGe m V.regs) (funT Ts b) := by
+theorem Typed.funTOf {m : Nat} {S : List Nat} {Ts : List TabB} {b : List TabB → Bld TabB}
+    (hT : AllGe m (Ts.flatMap TabB.regs))
+    (hb : ∀ Us, AllGe m (Us.flatMap TabB.regs) → Typed m (fun U => ∀ a ∈ U.regs, m ≤ a ∨ a ∈ S) (b Us)) :
+    Typed m (fun V => ∀ a ∈ V.regs, m ≤ a ∨ a ∈ S) (funT Ts b) := by
   obtain ⟨A, Y, h1, h2, h3, -⟩ := tabs_spec Ts
   obtain rfl : A = Ts.flatMap TabB.regs := pure_inj (h1.symm.trans (tabsRegs_eq Ts))
   unfold Plan.funT
   rw [h2, h1]
   simp only [pure_bind]
-  refine (Typed.funB (Q := fun x => x.2.2.regs = x.1.toList) hT fun ps hps hlen => ?_).bind fun x hx => ?_
+  refine (Typed.funBOf (S := S) (Q := fun x => x.2.2.regs = x.1.toList) hT fun ps hps hlen => ?_).bind fun x hx => ?_
   · obtain ⟨Us, hat, hUs⟩ := tabsAt_regs (Ts := Ts) (ps := ps) (hlen.trans h3.symm)
     rw [hat]
     simp only [pure_bind]
@@ -3172,6 +3189,12 @@ theorem Typed.funT {m : Nat} {Ts : List TabB} {b : List TabB → Bld TabB} (hT :
       rw [this] at ha; simpa using ha
     · exact Typed.throw _
 
+theorem Typed.funT {m : Nat} {Ts : List TabB} {b : List TabB → Bld TabB} (hT : AllGe m (Ts.flatMap TabB.regs))
+    (hb : ∀ Us, AllGe m (Us.flatMap TabB.regs) → Typed m (fun U => AllGe m U.regs) (b Us)) :
+    Typed m (fun V => AllGe m V.regs) (funT Ts b) :=
+  (Typed.funTOf (S := []) hT fun Us hU => (hb Us hU).mono fun _ hx a ha => .inl (hx a ha)).mono
+    fun _ hx a ha => (hx a ha).resolve_right (by simp)
+
 theorem Typed.funV {m n : Nat} {X : Cols} {Ts : List TabB} {b : Nat → Cols → List TabB → Bld TabB}
     (hn : m ≤ n) (hX : AllGe m (Cols.regs X)) (hT : AllGe m (Ts.flatMap TabB.regs))
     (hb : ∀ n X Ts, m ≤ n → AllGe m (Cols.regs X) → AllGe m (Ts.flatMap TabB.regs) →
@@ -3193,14 +3216,14 @@ theorem Typed.funV {m n : Nat} {X : Cols} {Ts : List TabB} {b : Nat → Cols →
         (fun a ha => h a (by simp only [List.flatMap_cons]; exact List.mem_append_right _ ha))
     | [], _ => exact Typed.throw _
 
-theorem Typed.funC {m : Nat} {xs : List (Nat × Col)} {b : List (Nat × Col) → Bld (Nat × Col)}
+theorem Typed.funCOf {m : Nat} {S : List Nat} {xs : List (Nat × Col)} {b : List (Nat × Col) → Bld (Nat × Col)}
     (hx : ∀ p ∈ xs, m ≤ p.1 ∧ AllGe m (Col.regs p.2))
     (hb : ∀ ys, (∀ p ∈ ys, m ≤ p.1 ∧ AllGe m (Col.regs p.2)) →
-      Typed m (fun p => m ≤ p.1 ∧ AllGe m (Col.regs p.2)) (b ys)) :
-    Typed m (fun c => AllGe m (Col.regs c)) (Plan.funC xs b) := by
+      Typed m (fun p => (m ≤ p.1 ∨ p.1 ∈ S) ∧ ∀ a ∈ Col.regs p.2, m ≤ a ∨ a ∈ S) (b ys)) :
+    Typed m (fun c => ∀ a ∈ Col.regs c, m ≤ a ∨ a ∈ S) (Plan.funC xs b) := by
   unfold Plan.funC
   dsimp only
-  refine (Typed.funT (fun a ha => ?_) fun Us hUs => ?_).bind fun T hT => ?_
+  refine (Typed.funTOf (S := S) (fun a ha => ?_) fun Us hUs => ?_).bind fun T hT => ?_
   · obtain ⟨T, hT, haT⟩ := List.mem_flatMap.1 ha
     obtain ⟨⟨n, c⟩, hp, rfl⟩ := List.mem_map.1 hT
     have := hx _ hp
@@ -3221,31 +3244,33 @@ theorem Typed.funC {m : Nat} {xs : List (Nat × Col)} {b : List (Nat × Col) →
       rcases ha with rfl | ha
       · exact hp.1
       · exact hp.2 a ha
-  · refine (Typed.bind (Q := fun p : Nat × Col => m ≤ p.1 ∧ AllGe m (Col.regs p.2)) ?_ fun p hp => Typed.pure hp.2)
+  · refine (Typed.bind (Q := fun p : Nat × Col => (m ≤ p.1 ∨ p.1 ∈ S) ∧ ∀ a ∈ Col.regs p.2, m ≤ a ∨ a ∈ S) ?_
+      fun p hp => Typed.pure hp.2)
     dsimp only
     split
     · rename_i c hk
       exact Typed.pure ⟨hT _ (by simp [TabB.regs]), fun a ha => hT a (by simp [TabB.regs, hk, Cols.regs, ha])⟩
     · exact Typed.throw _
 
-theorem Typed.gatherCols {m : Nat} {k ix : Nat} (hk : m ≤ k) :
+/-- `gatherCols` whose count register `k` is above `m` or captured (of `S`): every register it answers is too. -/
+theorem Typed.gatherColsOf {m : Nat} {S : List Nat} {k ix : Nat} (hk : m ≤ k ∨ k ∈ S) :
     ∀ (n : Nat) (cs : Cols), m ≤ n → AllGe m (Cols.regs cs) →
-      Typed m (fun r => AllGe m (Cols.regs r)) (Plan.gatherCols k ix n cs) := by
+      Typed m (fun r => ∀ a ∈ Cols.regs r, m ≤ a ∨ a ∈ S) (Plan.gatherCols k ix n cs) := by
   intro n cs
   induction hs : Col.sizes cs using Nat.strongRecOn generalizing n cs with
   | _ s ih =>
     intro hn hcs
     unfold Plan.gatherCols
-    refine (Typed.mapM fun ⟨c, hc⟩ _ => ?_).mono fun bs h => (Cols.regs_ge bs).2 h
-    have hcc : AllGe m (Col.regs c) := ((Cols.regs_ge cs).1 hcs) c hc
-    refine Typed.funC (fun p hp => ?_) fun ys hys => ?_
+    refine (Typed.mapM fun ⟨c, hc⟩ _ => ?_).mono fun bs h => (Cols.regs_all bs).2 h
+    have hcc : AllGe m (Col.regs c) := ((Cols.regs_all cs).1 hcs) c hc
+    refine Typed.funCOf (S := S) (fun p hp => ?_) fun ys hys => ?_
     · simp only [List.mem_singleton] at hp
       subst hp
       exact ⟨hn, hcc⟩
     · match ys, hys with
       | [(n', .atom p t e)], hys =>
         have h1 := hys _ (List.mem_singleton_self _)
-        exact Typed.gatherB.bind fun r hr => Typed.pure ⟨hk, fun a ha => by simp [Col.regs] at ha; omega⟩
+        exact Typed.gatherB.bind fun r hr => Typed.pure ⟨hk, fun a ha => .inl (by simp [Col.regs] at ha; omega)⟩
       | [(n', .arr p c' lo hi f)], hys =>
         have h1 := hys _ (List.mem_singleton_self _)
         have hc' : m ≤ c' := h1.2 c' (by simp [Col.regs])
@@ -3253,10 +3278,10 @@ theorem Typed.gatherCols {m : Nat} {k ix : Nat} (hk : m ≤ k) :
           Typed.pure ⟨hk, fun a ha => by
             simp [Col.regs] at ha
             rcases ha with rfl | rfl | rfl | ha
-            · exact hc'
-            · exact hr1
-            · exact hr2
-            · exact h1.2 a (by simp [Col.regs, ha])⟩
+            · exact .inl hc'
+            · exact .inl hr1
+            · exact .inl hr2
+            · exact .inl (h1.2 a (by simp [Col.regs, ha]))⟩
       | [(n', .sum p tag x y)], hys =>
         have h1 := hys _ (List.mem_singleton_self _)
         have hx : AllGe m (Cols.regs x) := fun a ha => h1.2 a (by simp [Col.regs, ha])
@@ -3269,7 +3294,7 @@ theorem Typed.gatherCols {m : Nat} {k ix : Nat} (hk : m ≤ k) :
             Typed.pure ⟨hk, fun a ha => by
               simp only [Col.regs, List.mem_append, List.mem_singleton] at ha
               rcases ha with (rfl | ha) | ha
-              · exact hr
+              · exact .inl hr
               · exact hx' a ha
               · exact hy' a ha⟩
       | [], _ => exact Typed.throw _
@@ -3277,11 +3302,15 @@ theorem Typed.gatherCols {m : Nat} {k ix : Nat} (hk : m ≤ k) :
       | (_, .arr ..) :: _ :: _, _ => exact Typed.throw _
       | (_, .sum ..) :: _ :: _, _ => exact Typed.throw _
 
+theorem Typed.gatherCols {m : Nat} {k ix : Nat} (hk : m ≤ k) (n : Nat) (cs : Cols) (hn : m ≤ n)
+    (hcs : AllGe m (Cols.regs cs)) : Typed m (fun r => AllGe m (Cols.regs r)) (Plan.gatherCols k ix n cs) :=
+  (Typed.gatherColsOf (S := []) (ix := ix) (.inl hk) n cs hn hcs).mono fun _ h a ha => (h a ha).resolve_right (by simp)
+
 theorem Typed.ascSeenOnB {m n : Nat} (cs : Cols) (hn : m ≤ n) (hcs : AllGe m (Cols.regs cs)) :
     Typed m (fun r : Nat × Nat × Nat × Nat => m ≤ r.1 ∧ m ≤ r.2.1 ∧ m ≤ r.2.2.1 ∧ m ≤ r.2.2.2)
       (Plan.ascSeenB.ascSeenOnB n cs) := by
   unfold Plan.ascSeenB.ascSeenOnB
-  refine (Typed.mapM fun c hc => Typed.keysB hn c ((Cols.regs_ge cs).1 hcs c hc)).bind fun kss hkss => ?_
+  refine (Typed.mapM fun c hc => Typed.keysB hn c ((Cols.regs_all cs).1 hcs c hc)).bind fun kss hkss => ?_
   dsimp only
   have hks : PairsGe m kss.flatten := fun p hp => by
     obtain ⟨l, hl, hpl⟩ := List.mem_flatten.1 hp
