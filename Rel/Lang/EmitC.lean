@@ -2057,8 +2057,9 @@ def output (dir : String) (A B : Obj) (rs : Sides) : Bld Unit := do
     let ones ← if (objLeaves O "").any (·.2.isNone) then onesOf (pure rs.n) O (← colsOf O cs) "" else pure []
     for (p, t) in objLeaves O "" do
       if t.isSome then
-        let some r := cs.lookup p | throw s!"the column `{p}` of the {side} has no registers"
-        discard <| call "qlean_own_write" (#[← lit (.str (file p))] ++ r.extract 0 Side.enc) 0
+        -- a positions column has no registers (`outSides`) and no file, as in `writeOut`
+        if let some r := cs.lookup p then
+          discard <| call "qlean_own_write" (#[← lit (.str (file p))] ++ r.extract 0 Side.enc) 0
       else
         let some m := ones.lookup p | throw s!"the side of `1` at `{p}` (file {file p}) has no row count"
         writeOne (file p) m
