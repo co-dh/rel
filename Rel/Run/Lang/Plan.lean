@@ -13,7 +13,7 @@ public import Rel.Kernel.Seen
 
 A plan is first-order data: instructions over numbered registers, each register defined once, in order. A `call`
 names an `@[extern]` kernel by its C symbol; `Plan.run` is what a plan means, calling the same kernels through the
-table `kernel%` builds from their declarations, and `relc` (`Rel/Lang/EmitC`) prints the same plan as C. -/
+table `kernel%` builds from their declarations, and `relc` (`Rel/Run/Lang/EmitC`) prints the same plan as C. -/
 
 namespace Rel.Lang.Plan
 

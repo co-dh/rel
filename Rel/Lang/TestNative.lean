@@ -1,4 +1,4 @@
-import Rel.Lang.EmitC
+import Rel.Run.Lang.EmitC
 import Rel.Run.Lang.Embed
 import Rel.Programs.Prelude
 

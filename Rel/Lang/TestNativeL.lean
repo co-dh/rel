@@ -1,7 +1,7 @@
 import Rel.Lang.TestNative
 
 /-! The native recipes of the list rows `cat`, `cons`, `zip`, `concat` (`Tab.flatten`): `catTabB`, `consB`, `zipB`,
-    `flattenB` (`Rel/Lang/EmitC.lean`). The plan of each definition, run, writes the columns of the Lean value (the
+    `flattenB` (`Rel/Run/Lang/EmitC.lean`). The plan of each definition, run, writes the columns of the Lean value (the
     check the `rel-native` gate makes on `out/key`, `out/val`), on cells of three, none, one and two elements. -/
 
 namespace Rel.Lang.TestNativeL
