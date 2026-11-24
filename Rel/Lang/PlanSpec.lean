@@ -442,4 +442,187 @@ theorem constB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n fill : N
     rfl
 
 
+/-! ### `scanB`: its arguments as lists and pairs -/
+
+/-- A register stays where it was after more are appended. -/
+theorem get_app {rs xs : Array Val} {i : Nat} {v : Val} (h : rs[i]? = some v) : (rs ++ xs)[i]? = some v := by
+  rcases Nat.lt_or_ge i rs.size with h1 | h1
+  · rw [Array.getElem?_append_left h1, h]
+  · rw [Array.getElem?_eq_none h1] at h; cases h
+
+theorem get_push {rs : Array Val} {x : Val} {i : Nat} {v : Val} (h : rs[i]? = some v) : (rs.push x)[i]? = some v := by
+  rw [Array.push_eq_append]; exact get_app h
+
+/-- `Option`'s `mapM` over a cons answers a cons exactly when the head and the tail answer. -/
+theorem omapM_cons {α β : Type} {f : α → Option β} {x : α} {l : List α} {ws : List β} :
+    (x :: l).mapM f = some ws ↔ ∃ v vs, f x = some v ∧ l.mapM f = some vs ∧ ws = v :: vs := by
+  rw [List.mapM_cons]
+  cases hx : f x <;> cases hl : l.mapM f <;> simp [eq_comm]
+
+/-- The registers `l`, holding `vs`, still hold them after more are appended. -/
+theorem mapM_get_app {rs xs : Array Val} : ∀ {l : List Nat} {vs : List Val},
+    l.mapM (fun x => rs[x]?) = some vs → l.mapM (fun x => (rs ++ xs)[x]?) = some vs
+  | [], _, h => h
+  | _ :: _, _, h => by
+    obtain ⟨v, vs, hx, hl, rfl⟩ := omapM_cons.mp h
+    exact omapM_cons.mpr ⟨v, vs, get_app hx, mapM_get_app hl, rfl⟩
+
+/-- The registers `l`, holding `vs`, read. -/
+theorem reads_of {rs : Array Val} {who : String} {l : List Nat} {vs : List Val}
+    (h : l.mapM (fun x => rs[x]?) = some vs) : l.toArray.mapM (reg rs who) = .ok vs.toArray := by
+  rw [List.mapM_toArray]
+  suffices e : l.mapM (reg rs who) = .ok vs by rw [e]; rfl
+  induction l generalizing vs with
+  | nil => simp at h; subst h; rfl
+  | cons x l ih =>
+    obtain ⟨v, vs, hx, hl, rfl⟩ := omapM_cons.mp h
+    rw [List.mapM_cons, reg_of hx, ih hl]; rfl
+
+/-- Registers each reading as an `α`: the values they hold. -/
+theorem mapM_bind_split {α : Type} [Reg α] {rs : Array Val} : ∀ {es : List Nat} {xs : List α},
+    es.mapM (fun x => rs[x]?.bind Reg.get?) = some xs →
+    ∃ bs, es.mapM (fun x => rs[x]?) = some bs ∧ bs.mapM Reg.get? = some xs
+  | [], xs, h => ⟨[], rfl, h⟩
+  | _ :: _, _, h => by
+    obtain ⟨a, as, ha, hl, rfl⟩ := omapM_cons.mp h
+    obtain ⟨v, hv, hg⟩ := Option.bind_eq_some_iff.mp ha
+    obtain ⟨bs, hbs, hgs⟩ := mapM_bind_split hl
+    exact ⟨v :: bs, omapM_cons.mpr ⟨v, bs, hv, hbs, rfl⟩, omapM_cons.mpr ⟨a, as, hg, hgs, rfl⟩⟩
+
+/-- The list `Reg (List α)` lays out of the cells `vs` reads back as the cells read. -/
+theorem listGet?_foldr {α : Type} [Reg α] (vs : List Val) :
+    (Reg.get? (vs.foldr (fun v c => .ctor 1 #[v, c] #[]) (.ctor 0 #[] #[])) : Option (List α)) = vs.mapM Reg.get? := by
+  show listGet? _ = _
+  induction vs with
+  | nil => rw [listGet?.eq_def]; rfl
+  | cons v vs ih =>
+    rw [listGet?.eq_def]
+    change (do pure ((← Reg.get? v) :: (← listGet? (vs.foldr (fun v c => Val.ctor 1 #[v, c] #[]) (.ctor 0 #[] #[])))))
+      = _
+    rw [ih, List.mapM_cons]
+
+/-- Pairs of `v` (reading `a`) and each of `bs` (reading `xs`) read as the pairs of `a` and each of `xs`. -/
+theorem mapM_pair {α β : Type} [Reg α] [Reg β] {v : Val} {a : α} (hv : Reg.get? v = some a) :
+    ∀ (bs : List Val) {xs : List β}, bs.mapM Reg.get? = some xs →
+      (bs.map fun b => Val.ctor 0 #[v, b] #[]).mapM (Reg.get? (α := α × β)) = some (xs.map (a, ·))
+  | [], xs, h => by simp at h; subst h; rfl
+  | b :: bs, _, h => by
+    obtain ⟨x, ys, hb, hl, rfl⟩ := omapM_cons.mp h
+    have hp : (Reg.get? (Val.ctor 0 #[v, b] #[]) : Option (α × β)) = some (a, x) := by
+      show (do pure (← Reg.get? v, ← Reg.get? b)) = _; rw [hv, hb]; rfl
+    exact omapM_cons.mpr ⟨_, _, hp, mapM_pair hv bs hl, rfl⟩
+
+/-- `es.mapM (srcB n)`, then `k` on its registers: each the pair of `a` (register `n`) and its column. -/
+theorem Builds.srcs {fg fg' : Array Fun × Array Fun} {n : Nat} {a : Val} {out : Array Val} :
+    ∀ (es : List Nat) {bs : List Val} {rs : Array Val} {k : List Nat → Bld (Array Nat)}, rs[n]? = some a →
+    es.mapM (fun x => rs[x]?) = some bs →
+    (∀ xs rl, rl.mapM (fun r => (rs ++ xs)[r]?) = some (bs.map fun b => Val.ctor 0 #[a, b] #[]) →
+      Builds abi fg fg' (k rl) (rs ++ xs) out) →
+    Builds abi fg fg' (es.mapM (srcB n) >>= k) rs out
+  | [], _, rs, k, _, h, hk => by
+    simp at h; subst h; simpa using hk #[] [] rfl
+  | x :: es, _, rs, k, hn, h, hk => by
+    obtain ⟨b, bs, hx, h1, rfl⟩ := omapM_cons.mp h
+    rw [List.mapM_cons]; simp only [bind_assoc, pure_bind]; unfold srcB
+    refine Builds.ctorB (reads_of (l := [n, x]) (vs := [a, b]) (by simp [hn, hx])) (reads_of (l := []) (vs := []) rfl) ?_
+    have e : ∀ xs, rs.push (Val.ctor 0 #[a, b] #[]) ++ xs = rs ++ (#[Val.ctor 0 #[a, b] #[]] ++ xs) := fun xs => by
+      simp only [Array.push_eq_append, Array.append_assoc]
+    refine Builds.srcs es (get_push hn) (by rw [Array.push_eq_append]; exact mapM_get_app h1) fun xs rl hrl => ?_
+    rw [e] at hrl ⊢
+    exact hk _ _ (omapM_cons.mpr ⟨_, _, by rw [← Array.append_assoc]; exact get_app (by simp), hrl, rfl⟩)
+
+/-- The cells `l` (holding `vs`) consed onto the list in `acc`, then `k` on the list's register. -/
+theorem Builds.cells {fg fg' : Array Fun × Array Fun} {out rs : Array Val} {acc : Nat} {av : Val}
+    (ha : rs[acc]? = some av) : ∀ (l : List Nat) {vs : List Val} {k : Nat → Bld (Array Nat)},
+    l.mapM (fun x => rs[x]?) = some vs →
+    (∀ xs r, (rs ++ xs)[r]? = some (vs.foldr (fun v c => .ctor 1 #[v, c] #[]) av) →
+      Builds abi fg fg' (k r) (rs ++ xs) out) →
+    Builds abi fg fg' (l.foldrM (fun x c => Plan.ctorB 1 #[x, c] #[]) acc >>= k) rs out
+  | [], _, k, h, hk => by simp at h; subst h; simpa using hk #[] acc (by simpa using ha)
+  | x :: l, _, k, h, hk => by
+    obtain ⟨v, vs, hx, h1, rfl⟩ := omapM_cons.mp h
+    rw [List.foldrM_cons, bind_assoc]
+    refine Builds.cells ha l h1 fun xs r hr => Builds.ctorB
+      (reads_of (l := [x, r]) (vs := [v, vs.foldr (fun v c => .ctor 1 #[v, c] #[]) av]) (by simp [get_app hx, hr]))
+      (reads_of (l := []) (vs := []) rfl) ?_
+    have e : (rs ++ xs).push (Val.ctor 1 #[v, vs.foldr (fun v c => .ctor 1 #[v, c] #[]) av] #[]) =
+        rs ++ xs.push (Val.ctor 1 #[v, vs.foldr (fun v c => .ctor 1 #[v, c] #[]) av] #[]) := by
+      simp only [Array.push_eq_append, Array.append_assoc]
+    rw [e]; exact hk _ _ (by rw [← e]; simp)
+
+/-- `listB l` of the registers `l` holding `vs`, then `k` on its register: the list `Reg (List α)` lays out. -/
+theorem Builds.listB {fg fg' : Array Fun × Array Fun} {out rs : Array Val} {l : List Nat} {vs : List Val}
+    {k : Nat → Bld (Array Nat)} (h : l.mapM (fun x => rs[x]?) = some vs)
+    (hk : ∀ xs r, (rs ++ xs)[r]? = some (vs.foldr (fun v c => .ctor 1 #[v, c] #[]) (.ctor 0 #[] #[])) →
+      Builds abi fg fg' (k r) (rs ++ xs) out) : Builds abi fg fg' (Plan.listB l >>= k) rs out := by
+  unfold Plan.listB; rw [bind_assoc]
+  refine Builds.ctorB (reads_of (l := []) (vs := []) rfl) (reads_of (l := []) (vs := []) rfl) ?_
+  have e : ∀ xs, rs.push (Val.ctor 0 #[] #[]) ++ xs = rs ++ (#[Val.ctor 0 #[] #[]] ++ xs) := fun xs => by
+    simp only [Array.push_eq_append, Array.append_assoc]
+  refine Builds.cells (av := .ctor 0 #[] #[]) (by simp) l (by rw [Array.push_eq_append]; exact mapM_get_app h) fun xs r hr => ?_
+  rw [e] at hr ⊢; exact hk _ _ hr
+
+/-- `scanB op t n seg es`, the registers holding: the row count `nv` (`n`), the segment-start column `sg` (`seg`,
+    `none`: every row, a map) and the columns `xs` (`es`), each read as `Reg.get?` reads it: its two registers are
+    the pair `kscan op false t t nv sg (xs.map (nv, ·)) [] []` answers. -/
+theorem scanB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.Op} {t : QAtomicType} {n : Nat}
+    {nv : USize} {seg : Option Nat} {sg : Option Enc} {es : List Nat} {xs : List Enc} {r : Enc × Option UInt64}
+    (hop : (Reg.get? (Reg.put op) : Option Kernel.Op) = some op) (hn : rs[n]?.bind Reg.get? = some nv)
+    (hseg : seg.mapM (fun s => rs[s]?.bind Reg.get?) = some sg)
+    (hes : es.mapM (fun x => rs[x]?.bind Reg.get?) = some xs)
+    (hk : kscan op false t t nv sg (xs.map (nv, ·)) [] [] = .ok r) :
+    Builds abiOf fg fg (scanB op t n seg es) rs #[Reg.put r.1, Reg.put r.2] := by
+  obtain ⟨vn, hvn, hgn⟩ := Option.bind_eq_some_iff.mp hn
+  obtain ⟨bs, hbs, hgb⟩ := mapM_bind_split hes
+  have ht : (Reg.get? (Reg.put t) : Option QAtomicType) = some t := by cases t <;> rfl
+  have hl : (Reg.get? ((bs.map fun b => Val.ctor 0 #[vn, b] #[]).foldr (fun v c => .ctor 1 #[v, c] #[])
+      (.ctor 0 #[] #[])) : Option (List (USize × Enc))) = some (xs.map (nv, ·)) := by
+    rw [listGet?_foldr, mapM_pair hgn bs hgb]
+  have hnil : (Reg.get? (Val.ctor 0 #[] #[]) : Option (List (Kernel.Op × UInt64))) = some [] := by
+    show listGet? _ = _; rw [listGet?.eq_def]; rfl
+  unfold scanB
+  -- the segment register `gv`; then the same steps for either `seg`
+  cases seg
+  case' none =>
+    simp at hseg; subst hseg; dsimp only
+    refine Builds.ctorB (reads_of (l := []) (vs := []) rfl) (reads_of (l := []) (vs := []) rfl) ?_
+    have hgv : (Reg.get? (Val.ctor 0 #[] #[]) : Option (Option Enc)) = some none := rfl
+    generalize Val.ctor 0 #[] #[] = gv at hgv ⊢
+  case' some s =>
+    obtain ⟨e, he, rfl⟩ : ∃ e : Enc, rs[s]?.bind Reg.get? = some e ∧ sg = some e := by
+      cases h : rs[s]?.bind (Reg.get? (α := Enc)) <;> simp [h] at hseg; exact ⟨_, rfl, hseg.symm⟩
+    obtain ⟨v, hv, hge⟩ := Option.bind_eq_some_iff.mp he
+    dsimp only
+    refine Builds.ctorB (reads_of (l := [s]) (vs := [v]) (by simp [hv])) (reads_of (l := []) (vs := []) rfl) ?_
+    have hgv : (Reg.get? (Val.ctor 1 #[v] #[]) : Option (Option Enc)) = some (some e) := by
+      show some <$> Reg.get? v = _; rw [hge]; rfl
+    generalize Val.ctor 1 #[v] #[] = gv at hgv ⊢
+  all_goals
+    refine Builds.lit (Builds.lit (Builds.lit (Builds.lit ?_)))
+    refine Builds.srcs es (get_push (get_push (get_push (get_push (get_push hvn)))))
+      (by simp only [Array.push_eq_append]; exact mapM_get_app (mapM_get_app (mapM_get_app (mapM_get_app
+        (mapM_get_app hbs))))) fun xs1 rl hrl => ?_
+    refine Builds.listB hrl fun xs2 r1 hr1 => ?_
+    refine Builds.listB (l := []) rfl fun xs3 r2 hr2 => ?_
+    refine Builds.listB (l := []) rfl fun xs4 r3 hr3 => ?_
+    rw [← bind_pure (Plan.callK (kernel% kscan) _)]
+    refine Builds.callK (o := #[Reg.put r.1, Reg.put r.2])
+      (by with_unfolding_all simp [abiOf, Rel.Lang.Plan.abi]) rfl
+      (reads_of (vs := [Reg.put op, .bit false, Reg.put t, Reg.put t, vn, gv,
+        (bs.map fun b => Val.ctor 0 #[vn, b] #[]).foldr (fun v c => .ctor 1 #[v, c] #[]) (.ctor 0 #[] #[]),
+        .ctor 0 #[] #[], .ctor 0 #[] #[]]) ?_) ?_ rfl (Builds.pure (mapM_reg_range _ _))
+    · refine omapM_cons.mpr ⟨_, _, ?_, omapM_cons.mpr ⟨_, _, ?_, omapM_cons.mpr ⟨_, _, ?_, omapM_cons.mpr ⟨_, _, ?_,
+        omapM_cons.mpr ⟨_, _, ?_, omapM_cons.mpr ⟨_, _, ?_, omapM_cons.mpr ⟨_, _, ?_, omapM_cons.mpr ⟨_, _, ?_,
+        omapM_cons.mpr ⟨_, _, ?_, rfl, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩, rfl⟩
+      · exact get_app (get_app (get_app (get_app (by simp [Array.getElem_push]))))
+      · exact get_app (get_app (get_app (get_app (by simp [Array.getElem_push]))))
+      · exact get_app (get_app (get_app (get_app (by simp [Array.getElem_push]))))
+      · exact get_app (get_app (get_app (get_app (by simp [Array.getElem_push]))))
+      · exact get_app (get_app (get_app (get_app (get_push (get_push (get_push (get_push (get_push hvn))))))))
+      · exact get_app (get_app (get_app (get_app (get_push (get_push (get_push (get_push (by simp))))))))
+      · exact get_app (get_app hr1)
+      · exact get_app hr2
+      · exact hr3
+    · (simp [arg, hop, ht, hgn, hgv, hl, hnil, hk, Out.out]) <;> rfl
+
 end Rel.Lang.Plan
