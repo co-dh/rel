@@ -63,11 +63,23 @@ rel_program natSel where
 open Rel.Programs.prelude Programs.quicksort in
 rel_program natQuick where
     Cp : [N] ⟶ [N] ≜ C perm ordered(≤)
-    -- `x sort'`, `y sort'`, `z sort'`, `e sort'`, `C sort'` (the hylo `sort'`): the plan's run stops with
-    -- "kscan: row 0 is null, and a null names no row"; `x split` and `x c` plan and agree.
+    ec : 1 ⟶ 1+(([N]×N)×[N]) ≜ e c
+    xc : 1 ⟶ 1+(([N]×N)×[N]) ≜ x c
+    xs : 1 ⟶ [N] ≜ x sort'
+    ys : 1 ⟶ [N] ≜ y sort'
+    zs : 1 ⟶ [N] ≜ z sort'
+    es : 1 ⟶ [N] ≜ e sort'
+    Cs : [N] ⟶ [N] ≜ C sort'
 
 #eval show Lean.Meta.MetaM Unit from do
   writesAgree "Cp" (← planOfIn ``natQuick "Cp") natQuick.Cp
+  writesAgree "ec" (← planOfIn ``natQuick "ec") natQuick.ec
+  writesAgree "xc" (← planOfIn ``natQuick "xc") natQuick.xc
+  writesAgree "xs" (← planOfIn ``natQuick "xs") natQuick.xs
+  writesAgree "ys" (← planOfIn ``natQuick "ys") natQuick.ys
+  writesAgree "zs" (← planOfIn ``natQuick "zs") natQuick.zs
+  writesAgree "es" (← planOfIn ``natQuick "es") natQuick.es
+  writesAgree "Cs" (← planOfIn ``natQuick "Cs") natQuick.Cs
 
 open Rel.Programs.prelude Programs.detab in
 rel_program natDetab where
