@@ -1703,6 +1703,45 @@ theorem Grows.apply (f : Nat) (args : Array Nat) (nres : Nat) : Grows (Plan.appl
   · simp [Plan.apply, StateT.run_bind, StateT.run_get, hf, throwThe, MonadExceptOf.throw, MonadExcept.throw,
       err_bind_eq, Functor.map, Except.map] at h
 
+theorem Grows.loop {k : Nat} {init : Array Nat} {msg : String} {b : Array Nat → Bld (Array Nat × Nat)}
+    (hb : ∀ ps, Grows (b ps)) : Grows (Plan.loop k init msg b) := fun ⟨is, n, fs, gs⟩ x s' h ho hc => by
+  cases hr : (b (Array.range' n init.size)).run (#[], n + init.size, fs, gs) with
+  | error _ => simp [Plan.loop, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr,
+      err_bind_eq, Functor.map, Except.map] at h
+  | ok p =>
+    obtain ⟨⟨out, d⟩, is', n', fs', gs'⟩ := p
+    obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
+    simp only at o1 c1 e1 d1
+    by_cases hs : out.size = init.size
+    · simp [Plan.loop, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr, hs,
+        ok_bind, emit_ok, Functor.map, Except.map] at h
+      obtain ⟨-, rfl⟩ := h
+      refine ⟨o1, fun j hj => ?_, ⟨a1, e1⟩, ⟨b1, d1⟩⟩
+      simp only [Array.toList_push, callsB_append, Instr.callsB, Instr.calls, List.append_nil, List.mem_append] at hj
+      rcases hj with hj | hj
+      · have := hc j hj; simp only at this; rw [e1]; simp; omega
+      · exact c1 j hj
+    · simp [Plan.loop, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr, hs,
+        ok_bind, throwThe, MonadExceptOf.throw, MonadExcept.throw, err_bind_eq, Functor.map, Except.map] at h
+
+theorem Grows.defFun {ps : Array Ty} {b : Array Nat → Bld (Array Nat)} (hb : ∀ qs, Grows (b qs)) :
+    Grows (Plan.defFun ps b) := fun ⟨is, n, fs, gs⟩ x s' h ho hc => by
+  cases hr : (b (Array.range ps.size)).run (#[], ps.size, fs, gs) with
+  | error _ => simp [Plan.defFun, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr,
+      err_bind_eq, Functor.map, Except.map] at h
+  | ok p =>
+    obtain ⟨r, body, n', fs', gs'⟩ := p
+    obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
+    simp only at o1 c1 e1 d1
+    simp [Plan.defFun, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr, ok_bind,
+      Functor.map, Except.map] at h
+    obtain ⟨-, rfl⟩ := h
+    refine ⟨o1.push c1, fun j hj => ?_, ⟨a1 ++ #[⟨ps, body.toList, r⟩], ?_⟩, ⟨b1, d1⟩⟩
+    · have := hc j hj; simp only at this ⊢; rw [e1]; simp; omega
+    · rw [e1]; simp
+
+theorem callsB_map_rename (f : Nat → Nat) (l : List Instr) : Instr.callsB (l.map (·.rename f)) = Instr.callsB l := by
+  rw [← renameB_eq, callsB_rename]
 
 /-- `funB tys args b`, then `kk` on its registers and `b`'s value `x`: the body `b` builds after `rs` and the
     parameters `pv` (`args` read), defining `xs` and answering `o`, is spliced in place (`spliceable`) or becomes a
