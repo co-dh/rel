@@ -672,6 +672,16 @@ def whereB (n keep : Nat) : Bld (Nat × Nat) := do
   let cut ← nth (← scanB .add .i64 r (some zr) [zr, ← constB r (← lit (.u64 1))]) 0 "kscan"
   pure (r, ← call1 (kernel% kgather) #[r, cut, r1, ix1])
 
+/-- What `arithB` builds once its `exact` column (register `ex`) is known: the rows kept where no operand and not `s` is
+    null and `s` did not wrap, `whereB` of them, and the columns gathered there. A `def` of its own so that its build
+    theorem is a lemma of its own (a declaration's proof is limited in heartbeats). -/
+def arithTail (n u v s nul ex : Nat) : Bld (Array Nat) := do
+  let m (o : Kernel.Op) (a b : Nat) : Bld Nat := do nth (← scanB o .i64 n none [a, b]) 0 "kscan"
+  let keep ← m .and (← m .and (← m .ne u nul) (← m .ne v nul)) (← m .and (← m .ne s nul) ex)
+  let (r, w) ← whereB n keep
+  let g (x : Nat) := call1 (kernel% kgather) #[r, w, n, x]
+  return #[r, ← g u, ← g v, ← g s]
+
 /-- `Alg.arith op` (`add`, `sub`, `mul`) on the `i64` columns `u`, `v` of `n` rows: `s = u op v` wrapped (a `kscan`
     map: every row a segment), the rows kept where no operand and not `s` is null and `s` did not wrap (`kscan` maps
     of compares), `whereB` of them, and the columns gathered there (`kgather`): the count, then `u`, `v`, `s`. -/
@@ -686,10 +696,7 @@ def arithB (op : Kernel.Op) (n u v : Nat) : Bld (Array Nat) := do
     | .sub => do m .eq (← m .ge v z) (← m .le s u)
     | .mul => do let u0 ← m .eq u z; m .or u0 (← m .eq (← m .div s (← m .add u u0)) v)
     | _ => throw s!"arithB: {repr op} is not `add`, `sub` or `mul`, the arithmetic whose wrap it checks"
-  let keep ← m .and (← m .and (← m .ne u nul) (← m .ne v nul)) (← m .and (← m .ne s nul) exact)
-  let (r, w) ← whereB n keep
-  let g (x : Nat) := call1 (kernel% kgather) #[r, w, n, x]
-  return #[r, ← g u, ← g v, ← g s]
+  arithTail n u v s nul exact
 
 /-- Each row's group among the `n` rows of the column `c` of the type in the byte `t`, groups numbered in `asc` order of their keys (design §4,
     group-by = `asc ≫ seen`): `kasc` sorts the rows (the sorted column and the permutation `p`), `kseen` numbers the

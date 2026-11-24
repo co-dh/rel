@@ -955,17 +955,6 @@ macro "up " m:ident " [" hs:ident* "]" : tactic => do
 /-- The `Op` a `kscan` map takes reads back from its register. -/
 macro "rop" : tactic => `(tactic| with_unfolding_all rfl)
 
-/-- What `arithB` builds once its `exact` column (register `ex`) is known: the rows kept where no operand and not `s` is
-    null and `s` did not wrap, `whereB` of them, and the columns gathered there. Kept a `def` of its own so that its
-    theorem is a lemma of its own (a declaration's proof is limited in heartbeats); `arithB_builds` checks that it is
-    what `arithB` continues with. -/
-def arithTail (n u v s nul ex : Nat) : Bld (Array Nat) := do
-  let m (o : Kernel.Op) (a b : Nat) : Bld Nat := do nth (← scanB o .i64 n none [a, b]) 0 "kscan"
-  let keep ← m .and (← m .and (← m .ne u nul) (← m .ne v nul)) (← m .and (← m .ne s nul) ex)
-  let (r, w) ← whereB n keep
-  let g (x : Nat) := call1 (kernel% kgather) #[r, w, n, x]
-  return #[r, ← g u, ← g v, ← g s]
-
 theorem arithTail_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n u v s nul ex : Nat} {nv K : USize}
     {uv vv : Val} {uc vc zc nc sc ec k1 k2 k3 k4 k5 kc pc ixc ix1c zrc onec cutc w gu gv gs : Enc}
     {fo ixf cutf : Option UInt64} {f : UInt64}
@@ -1110,9 +1099,6 @@ theorem arithB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kerne
     refine Builds.mB (by rop) hn hx0 rg0 hx3 rg3 hm4 fun ex R hex' m => ?_
     up m [hn hu hv hnul hsr]
   all_goals
-    have h := tail hn hu hv hsr hnul hex'
-    unfold arithTail at h
-    simp only [bind_assoc] at h
-    exact h
+    exact tail hn hu hv hsr hnul hex'
 
 end Rel.Lang.Plan
