@@ -1520,7 +1520,7 @@ theorem moves_clo {rs pv : Array Val} {cs : List Nat} :
   · simp only [Array.size_append, List.size_toArray, List.length_map] at ha ⊢
     unfold cloReg; rw [if_neg (by omega), if_neg (by omega)]; omega
 
-theorem addFun_spec [LawfulBEq Fun] (fs : Array Fun) (F : Fun) :
+theorem addFun_spec (fs : Array Fun) (F : Fun) :
     ((addFun fs F).2 = fs ∧ ∃ h : (addFun fs F).1 < fs.size, fs[(addFun fs F).1] = F) ∨
       ((addFun fs F).2 = fs.push F ∧ (addFun fs F).1 = fs.size) := by
   unfold addFun
@@ -1531,13 +1531,26 @@ theorem addFun_spec [LawfulBEq Fun] (fs : Array Fun) (F : Fun) :
     dsimp only
     exact Or.inl ⟨rfl, h, by simpa using hp⟩
 
+/-- `addFun` keeps the functions `Ordered` and only appends, given that `F` applies only functions already there. -/
+theorem addFun_ordered {fs : Array Fun} {F : Fun} (ho : Ordered fs) (hF : ∀ j ∈ Instr.callsB F.body, j < fs.size) :
+    Ordered (addFun fs F).2 ∧ ∃ a, (addFun fs F).2 = fs ++ a := by
+  rcases addFun_spec fs F with ⟨e2, -⟩ | ⟨e2, -⟩
+  · rw [e2]; exact ⟨ho, #[], by simp⟩
+  · rw [e2]
+    refine ⟨fun i h j hj => ?_, #[F], by simp⟩
+    simp only [Array.size_push] at h
+    by_cases hi : i < fs.size
+    · rw [Array.getElem_push_lt hi] at hj; exact ho i hi j hj
+    · obtain rfl : i = fs.size := by omega
+      rw [Array.getElem_push_eq] at hj; exact hF j hj
+
 
 /-- `funB tys args b`, then `kk` on its registers and `b`'s value `x`: the body `b` builds after `rs` and the
     parameters `pv` (`args` read), defining `xs` and answering `o`, is spliced in place (`spliceable`) or becomes a
     function (closure conversion, `cloReg`) applied after `rs`; either way `o` follows `rs`. The function may be an
     earlier equal one (`addFun`), which `Ordered` makes mean the same; `hty` says the closure's types do not depend on
     the enclosing block. -/
-theorem funB_builds [LawfulBEq Fun] {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty}
+theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty}
     {args : List Nat} {b : List Nat → Bld (Array Nat × List Ty × α)} {kk : Array Nat × α → Bld (Array Nat)}
     {rs pv xs o out : Array Val} {r : Array Nat} {rtys ctys : List Ty} {x : α} {body : Array Instr}
     (hn : args.length = tys.length) (ha : ∀ who, args.toArray.mapM (reg rs who) = .ok pv)

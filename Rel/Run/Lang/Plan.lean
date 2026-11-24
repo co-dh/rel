@@ -23,7 +23,7 @@ open Lean Elab Term Meta Tab Rel.Kernel
     (C `size_t`, below `2^63`, where `lean_box` holds it); `obj` a constructor object, `lean_ctor_object`. -/
 inductive Ty
   | bytes | size | bit | u8 | str | parts | u64 | i64 | nat | obj
-  deriving BEq, Repr, Inhabited
+  deriving DecidableEq, Repr, Inhabited
 
 -- `kernel%` runs at elaboration, so its `toExpr` instance is meta
 meta section
@@ -46,7 +46,76 @@ inductive Val
   | i64 (x : Int64)
   | nat (n : Nat)
   | ctor (tag : Nat) (objs scal : Array Val)
-  deriving Inhabited, BEq
+  deriving Inhabited
+
+/-! `deriving DecidableEq` refuses the nesting (`Array Val`, `List Instr`), so the equality of `Val` and `Instr` is a
+    `beq` proved lawful; their `DecidableEq` is that `beq`'s, so `==` and `=` agree (`addFun`'s `findIdx?` finds an
+    equal function). A `ctor`'s fields are compared in place (`attach`, `zipWith`): no `Array.toList` (`listban`). -/
+
+/-- Structural equality of values: a `ctor`'s fields pairwise, by index. -/
+def Val.beq : Val → Val → Bool
+  | .bytes a, .bytes b => decide (a = b)
+  | .size a, .size b => a == b
+  | .bit a, .bit b => a == b
+  | .u8 a, .u8 b => a == b
+  | .str a, .str b => a == b
+  | .parts a, .parts b => decide (a = b)
+  | .u64 a, .u64 b => a == b
+  | .i64 a, .i64 b => a == b
+  | .nat a, .nat b => a == b
+  | .ctor t o s, .ctor t' o' s' => t == t' && o.size == o'.size && s.size == s'.size &&
+    (Array.zipWith (fun x y => x.1.beq y) o.attach o').all id && (Array.zipWith (fun x y => x.1.beq y) s.attach s').all id
+  | _, _ => false
+termination_by a => a
+decreasing_by all_goals (have := Array.sizeOf_lt_of_mem x.2; simp_wf; omega)
+
+/-- Two arrays of one size whose entries agree pairwise by `p`, read as `zipWith … |>.all id`. -/
+theorem zipWith_all {o o' : Array Val} {p : Val → Val → Bool} (hn : o.size = o'.size)
+    (h : (Array.zipWith (fun x y => p x.1 y) o.attach o').all id = true) (i : Nat) (h1 : i < o.size) (h2 : i < o'.size) :
+    p o[i] o'[i] = true := by
+  rw [Array.all_eq_true] at h
+  have := h i (by simp [Array.size_zipWith]; omega)
+  simpa using this
+
+theorem Val.eq_of_beq : ∀ {a b : Val}, a.beq b = true → a = b
+  | .ctor t o s, b, h => by
+    cases b with
+    | ctor t' o' s' =>
+      rw [Val.beq] at h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨⟨⟨ht, ho⟩, hs⟩, hO⟩, hS⟩ := h
+      have eo : o = o' := Array.ext ho fun i h1 h2 =>
+        have : sizeOf o[i] < sizeOf o := Array.sizeOf_lt_of_mem (Array.getElem_mem h1)
+        Val.eq_of_beq (zipWith_all (p := Val.beq) ho hO i h1 h2)
+      have es : s = s' := Array.ext hs fun i h1 h2 =>
+        have : sizeOf s[i] < sizeOf s := Array.sizeOf_lt_of_mem (Array.getElem_mem h1)
+        Val.eq_of_beq (zipWith_all (p := Val.beq) hs hS i h1 h2)
+      rw [ht, eo, es]
+    | _ => simp [Val.beq] at h
+  | .bytes _, b, h | .size _, b, h | .bit _, b, h | .u8 _, b, h | .str _, b, h | .parts _, b, h | .u64 _, b, h
+  | .i64 _, b, h | .nat _, b, h => by
+    cases b <;> simp [Val.beq] at h <;> rw [h]
+termination_by a => a
+decreasing_by all_goals (simp_wf; omega)
+
+theorem Val.beq_refl : ∀ a : Val, a.beq a = true
+  | .ctor t o s => by
+    rw [Val.beq]
+    simp only [beq_self_eq_true, Bool.and_true, Bool.true_and, Bool.and_eq_true, Array.all_eq_true]
+    refine ⟨fun i hi => ?_, fun i hi => ?_⟩
+    · simp only [Array.size_zipWith, Array.size_attach, Nat.min_self] at hi
+      have : sizeOf o[i] < sizeOf o := Array.sizeOf_lt_of_mem (Array.getElem_mem hi)
+      simpa using Val.beq_refl o[i]
+    · simp only [Array.size_zipWith, Array.size_attach, Nat.min_self] at hi
+      have : sizeOf s[i] < sizeOf s := Array.sizeOf_lt_of_mem (Array.getElem_mem hi)
+      simpa using Val.beq_refl s[i]
+  | .bytes _ | .size _ | .bit _ | .u8 _ | .str _ | .parts _ | .u64 _ | .i64 _ | .nat _ => by simp [Val.beq]
+termination_by a => a
+decreasing_by all_goals (simp_wf; omega)
+
+instance : BEq Val := ⟨Val.beq⟩
+instance : LawfulBEq Val where eq_of_beq := Val.eq_of_beq; rfl := Val.beq_refl _
+instance : DecidableEq Val := fun a b => decidable_of_iff (a == b) beq_iff_eq
 
 def Val.ty : Val → Ty
   | .bytes _ => .bytes | .size _ => .size | .bit _ => .bit | .u8 _ => .u8 | .str _ => .str | .parts _ => .parts
@@ -297,15 +366,75 @@ inductive Instr
       next state, its bit `done` set ending the loop with it. `k` (a `size`) rounds with `done` clear fail the run
       with `msg`: `Tab.fixOn`'s and `Tab.foldRounds`' cap. -/
   | loop (k : Nat) (init : Array Nat) (body : List Instr) (out : Array Nat) (done : Nat) (msg : String)
-  deriving Inhabited, BEq
+  deriving Inhabited
+
+mutual
+/-- Structural equality of instructions (`Val.beq`'s pattern): nested blocks compared by `Instr.beqL`. -/
+def Instr.beq : Instr → Instr → Bool
+  | .lit a, .lit b => a == b
+  | .call s a, .call s' a' => s == s' && a == a'
+  | .readOpt s a d, .readOpt s' a' d' => s == s' && a == a' && d == d'
+  | .fail m a, .fail m' a' => m == m' && a == a'
+  | .apply f a, .apply f' a' => f == f' && a == a'
+  | .global g, .global g' => g == g'
+  | .ite c t rt e re, .ite c' t' rt' e' re' =>
+    c == c' && Instr.beqL t t' && rt == rt' && Instr.beqL e e' && re == re'
+  | .ctor t o s, .ctor t' o' s' => t == t' && o == o' && s == s'
+  | .proj x t i y, .proj x' t' i' y' => x == x' && t == t' && i == i' && y == y'
+  | .sproj x t n ss i, .sproj x' t' n' ss' i' => x == x' && t == t' && n == n' && ss == ss' && i == i'
+  | .part x i, .part x' i' => x == x' && i == i'
+  | .loop k i b o d m, .loop k' i' b' o' d' m' =>
+    k == k' && i == i' && Instr.beqL b b' && o == o' && d == d' && m == m'
+  | _, _ => false
+/-- `Instr.beq` of two blocks, instruction by instruction. -/
+def Instr.beqL : List Instr → List Instr → Bool
+  | [], [] => true
+  | a :: as, b :: bs => a.beq b && Instr.beqL as bs
+  | _, _ => false
+end
+
+mutual
+theorem Instr.eq_of_beq : ∀ {a b : Instr}, a.beq b = true → a = b
+  | .ite .., b, h => by
+    cases b <;> simp only [Instr.beq, Bool.and_eq_true, beq_iff_eq, reduceCtorEq] at h
+    obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h
+    rw [h1, Instr.eq_of_beqL h2, h3, Instr.eq_of_beqL h4, h5]
+  | .loop .., b, h => by
+    cases b <;> simp only [Instr.beq, Bool.and_eq_true, beq_iff_eq, reduceCtorEq] at h
+    obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
+    rw [h1, h2, Instr.eq_of_beqL h3, h4, h5, h6]
+  | .lit _, b, h | .call .., b, h | .readOpt .., b, h | .fail .., b, h | .apply .., b, h | .global _, b, h
+  | .ctor .., b, h | .proj .., b, h | .sproj .., b, h | .part .., b, h => by
+    cases b <;> simp_all [Instr.beq]
+theorem Instr.eq_of_beqL : ∀ {a b : List Instr}, Instr.beqL a b = true → a = b
+  | [], [], _ => rfl
+  | a :: as, b :: bs, h => by
+    simp only [Instr.beqL, Bool.and_eq_true] at h; rw [Instr.eq_of_beq h.1, Instr.eq_of_beqL h.2]
+  | [], _ :: _, h | _ :: _, [], h => by simp [Instr.beqL] at h
+end
+
+mutual
+theorem Instr.beq_refl : ∀ a : Instr, a.beq a = true
+  | .ite _ t _ e _ => by simp [Instr.beq, Instr.beqL_refl t, Instr.beqL_refl e]
+  | .loop _ _ b .. => by simp [Instr.beq, Instr.beqL_refl b]
+  | .lit _ | .call .. | .readOpt .. | .fail .. | .apply .. | .global _ | .ctor .. | .proj .. | .sproj .. | .part .. => by
+    simp [Instr.beq]
+theorem Instr.beqL_refl : ∀ a : List Instr, Instr.beqL a a = true
+  | [] => rfl
+  | a :: as => by simp [Instr.beqL, Instr.beq_refl a, Instr.beqL_refl as]
+end
+
+instance : BEq Instr := ⟨Instr.beq⟩
+instance : LawfulBEq Instr where eq_of_beq := Instr.eq_of_beq; rfl := Instr.beq_refl _
+instance : DecidableEq Instr := fun a b => decidable_of_iff (a == b) beq_iff_eq
 
 /-- A function: its parameters' types (registers `0 … k-1`, borrowed), its body, its result registers (owned). A
-    global is a function of no parameter. -/
+    global is a function of no parameter. Its `==` is its `DecidableEq`'s, so `LawfulBEq Fun` holds. -/
 structure Fun where
   params : Array Ty
   body : List Instr
   res : Array Nat
-  deriving Inhabited, BEq
+  deriving Inhabited, DecidableEq
 
 /-- A plan (§6): functions, each applying only earlier ones, so the call graph has no cycle; globals, computed in
     order before `main`; `main`; and its input edge, `lit`s and calls of `IO` reads only, whose registers are
