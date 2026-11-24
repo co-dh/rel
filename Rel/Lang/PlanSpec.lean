@@ -2375,7 +2375,7 @@ theorem Grows.gatherCols (m ix : Nat) : ∀ (n : Nat) (cs : Cols), Grows (Plan.g
 
 theorem Grows.ascSeenOnB (n : Nat) (cs : Cols) : Grows (Plan.ascSeenB.ascSeenOnB n cs) := by
   unfold Plan.ascSeenB.ascSeenOnB; grows
-  all_goals first | exact Grows.keysB _ _ | exact Grows.listB _ | exact Grows.seenB _ _ | exact Grows.sortedB _ _
+  all_goals first | exact Grows.keysL _ _ | exact Grows.listB _ | exact Grows.seenB _ _ | exact Grows.sortedB _ _
 
 theorem Grows.ascSeenB (n : Nat) (cs : Cols) : Grows (Plan.ascSeenB n cs) := by
   unfold Plan.ascSeenB; grows

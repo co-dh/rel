@@ -489,7 +489,7 @@ def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
   let [.atom _ _ g, .atom _ _ f, .atom _ _ p] := T.key | throw "asc: not three columns"
   pure (T.n, g, f, p)
 where ascSeenOnB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
-  let ks := (← cs.mapM (keysB n)).flatten
+  let ks ← keysL n cs
   let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← ks.mapM fun (k, e) => ctorB 0 #[k, e] #[])]
   let (k, g, f) ← seenB n (← sortedB (← nth sp 0 "kasc") ks)
   pure (k, g, f, ← nth sp 1 "kasc")

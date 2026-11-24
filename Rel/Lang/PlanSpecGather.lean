@@ -343,4 +343,139 @@ theorem keysL_builds {fg fg' : Array Fun × Array Fun} {out : Array Val} :
     subst hks
     simpa [keysL] using hc [] rs [] rfl rfl fun h => h
 
+/-! ### `ascSeenOnB`: `keysL`, then `kasc`, `sortedB`, `seenB` -/
+
+theorem except_mapM_length {α β : Type} {f : α → Except String β} :
+    ∀ {l : List α} {r : List β}, l.mapM f = .ok r → r.length = l.length
+  | [], r, h => by rw [List.mapM_nil] at h; cases h; rfl
+  | a :: l, r, h => by
+    rw [List.mapM_cons] at h
+    obtain ⟨b, -, h'⟩ := except_bind_ok h
+    obtain ⟨bs, hbs, h''⟩ := except_bind_ok h'
+    cases h''
+    simp [except_mapM_length hbs]
+
+theorem option_mapM_length {α β : Type} {f : α → Option β} :
+    ∀ {l : List α} {r : List β}, l.mapM f = some r → r.length = l.length
+  | [], r, h => by rw [List.mapM_nil] at h; cases h; rfl
+  | a :: l, r, h => by
+    obtain ⟨b, bs, -, hbs, rfl⟩ := omapM_cons.mp h
+    simp [option_mapM_length hbs]
+
+/-- `kasc` answers one sorted column per key. -/
+theorem kasc_length {m : USize} {es : List (AscKey × Enc)} {vs : List Enc} {pv : Enc}
+    (h : kasc m es = .ok (vs, pv)) : vs.length = es.length := by
+  unfold kasc at h
+  obtain ⟨cs, hcs, h⟩ := except_bind_ok h
+  dsimp only at h
+  obtain ⟨r, -, h⟩ := except_bind_ok h
+  obtain ⟨vs', hvs, h⟩ := except_bind_ok h
+  obtain ⟨ns, hns, h⟩ := except_bind_ok h
+  cases h
+  simp [except_mapM_length hvs, except_mapM_length hcs, except_mapM_length hns]
+
+theorem pair_get {α β : Type} [Reg α] [Reg β] (a b : Val) :
+    (Reg.get? (Val.ctor 0 #[a, b] #[]) : Option (α × β)) = (do pure (← Reg.get? a, ← Reg.get? b)) := rfl
+
+theorem pairs_get : ∀ kvs : List (Val × Val),
+    ((kvs.map fun p => Val.ctor 0 #[p.1, p.2] #[]).mapM Reg.get? : Option (List (AscKey × Enc))) =
+      kvs.mapM fun p => do pure (← (Reg.get? p.1 : Option AscKey), ← (Reg.get? p.2 : Option Enc))
+  | [] => rfl
+  | p :: ps => by rw [List.map_cons, List.mapM_cons, List.mapM_cons, pairs_get ps]; rfl
+
+/-- The first registers of the pairs `ps` hold the first values. -/
+theorem mapM_fst {R : Array Val} : ∀ {ps : List (Nat × Nat)} {vs : List (Val × Val)},
+    ps.mapM (fun p => do pure (← R[p.1]?, ← R[p.2]?)) = some vs →
+    (ps.map (·.1)).mapM (fun x => R[x]?) = some (vs.map (·.1))
+  | [], _, h => by rw [List.mapM_nil] at h; cases h; rfl
+  | p :: ps, _, h => by
+    obtain ⟨v, vs, hv, hl, rfl⟩ := omapM_cons.mp h
+    obtain ⟨a, ha, b, -, rfl⟩ : ∃ a, R[p.1]? = some a ∧ ∃ b, R[p.2]? = some b ∧ v = (a, b) := by
+      cases h1 : R[p.1]? <;> cases h2 : R[p.2]? <;> simp_all
+    exact omapM_cons.mpr ⟨_, _, ha, mapM_fst hl, rfl⟩
+
+/-- The keys `ks` beside the sorted columns `vs`, as `sortedB` lays them, read as the pairs `kseen` takes. -/
+theorem sorted_get : ∀ {kvs : List (Val × Val)} {ks : List (AscKey × Enc)} {vs : List Enc},
+    kvs.mapM (fun p => do pure (← (Reg.get? p.1 : Option AscKey), ← (Reg.get? p.2 : Option Enc))) = some ks →
+    (((kvs.map (·.1)).zip vs).map fun p => Val.ctor 0 #[p.1, Reg.put p.2] #[]).mapM
+      (Reg.get? : Val → Option (AscKey × Enc)) = some ((ks.map (·.1)).zip vs)
+  | [], _, _, h => by rw [List.mapM_nil] at h; cases h; rfl
+  | _ :: _, _, [], _ => by simp
+  | p :: kvs, _, v :: vs, h => by
+    obtain ⟨w, ws, hw, hl, rfl⟩ := omapM_cons.mp h
+    obtain ⟨a, ha, -, -, rfl⟩ : ∃ a, (Reg.get? p.1 : Option AscKey) = some a ∧
+        ∃ e, (Reg.get? p.2 : Option Enc) = some e ∧ w = (a, e) := by
+      cases h1 : (Reg.get? p.1 : Option AscKey) <;> cases h2 : (Reg.get? p.2 : Option Enc) <;> simp_all
+    simp only [List.map_cons, List.zip_cons_cons, List.mapM_cons, sorted_get hl]
+    simp [pair_get, ha, enc_get_put]
+
+/-- Registers holding `bs`, which read as `xs`: they read as `xs` (`mapM_bind_split`'s converse). -/
+theorem mapM_bind_join {α : Type} [Reg α] {rs : Array Val} : ∀ {es : List Nat} {bs : List Val} {xs : List α},
+    es.mapM (fun x => rs[x]?) = some bs → bs.mapM Reg.get? = some xs →
+    es.mapM (fun x => rs[x]?.bind Reg.get?) = some xs
+  | [], _, _, h, h' => by rw [List.mapM_nil] at h; cases h; exact h'
+  | _ :: _, _, _, h, h' => by
+    obtain ⟨v, vs, hv, hl, rfl⟩ := omapM_cons.mp h
+    obtain ⟨a, as, ha, hs, rfl⟩ := omapM_cons.mp h'
+    exact omapM_cons.mpr ⟨a, as, by rw [hv]; exact ha, mapM_bind_join hl hs, rfl⟩
+
+/-- A three-register builder `b` (its theorem stated of `b >>= fun t => pure #[t.1, t.2.1, t.2.2]`), then `k`. -/
+theorem Builds.bind3G {abi : String → Option Kernel} {fg fg1 fg' : Array Fun × Array Fun}
+    {b : Bld (Nat × Nat × Nat)} {k : Nat × Nat × Nat → Bld (Array Nat)} {rs out : Array Val} {o1 o2 o3 : Val}
+    (hb : Builds abi fg fg1 (b >>= fun t => Pure.pure #[t.1, t.2.1, t.2.2]) rs #[o1, o2, o3])
+    (hk : ∀ t R, R[t.1]? = some o1 → R[t.2.1]? = some o2 → R[t.2.2]? = some o3 → Extends rs R →
+      Builds abi fg1 fg' (k t) R out) : Builds abi fg fg' (b >>= k) rs out := by
+  have e : b >>= k = (b >>= fun t => Pure.pure #[t.1, t.2.1, t.2.2]) >>= fun a =>
+      k (a[0]?.getD 0, a[1]?.getD 0, a[2]?.getD 0) := by simp
+  rw [e]
+  refine Builds.bindG hb fun a R h m => ?_
+  obtain ⟨x, hx, hX⟩ := holds_at h (i := 0) (v := o1) rfl
+  obtain ⟨y, hy, hY⟩ := holds_at h (i := 1) (v := o2) rfl
+  obtain ⟨z, hz, hZ⟩ := holds_at h (i := 2) (v := o3) rfl
+  rw [show a[0]?.getD 0 = x by simp at hx; simp [hx], show a[1]?.getD 0 = y by simp at hy; simp [hy],
+    show a[2]?.getD 0 = z by simp at hz; simp [hz]]
+  exact hk (x, y, z) R hX hY hZ m
+
+/-- **`ascSeenOnB` builds**: the columns `cs` of a side `x` (`keysL_builds`' premises), `kasc` of its keys `x.cols`
+    answering the sorted columns `vs` and the permutation `p`, `kseen` of the keys beside `vs` answering `k`, `g`,
+    `f` (`seenB_builds`' premises): its four registers hold `k`, `g`, `f`, `p`. -/
+theorem ascSeenOnB_builds {fg : Array Fun × Array Fun} {o : Bool} (A : Obj) {nv : USize} {x : ValsB o A nv}
+    {cs : Cols} {L : List Nat} {rs : Array Val} {n : Nat} {ks : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
+    {k : Nat} {g f z : Enc} {r : Enc × Option UInt64} (hcs : ColsOf A cs) (hL : regsOf cs = pure L)
+    (hx : L.mapM (fun i => rs[i]?) = some x.regVals) (hn : rs[n]? = some (.size nv)) (hks : x.cols = .ok ks)
+    (hN : nv.toNat ≤ 2 ^ 63) (ha : kasc nv ks = .ok (vs, p)) (hk : kseen nv ((ks.map (·.1)).zip vs) = .ok (k, g, f))
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 0 = .ok z)
+    (hsc : kscan .max false .i64 .i64 nv (some z) [(nv, z), (nv, g)] [] [] = .ok r) :
+    Builds abiOf fg fg (do let (k', g', f', p') ← ascSeenB.ascSeenOnB n cs; Pure.pure #[k', g', f', p']) rs
+      #[.size k.toUSize, Reg.put g, Reg.put f, Reg.put p] := by
+  have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+  unfold ascSeenB.ascSeenOnB
+  simp only [bind_assoc]
+  refine keysL_builds A hcs hL hx hn hks fun ps R1 kvs hps hkv m1 => ?_
+  refine Builds.pairsB (by intro _ _; rfl) ps hps fun qs R2 hqs m2 => ?_
+  refine Builds.listBG hqs fun l R3 hl m3 => ?_
+  have hread : (Reg.get? ((kvs.map fun p => Val.ctor 0 #[p.1, p.2] #[]).foldr (fun v c => Val.ctor 1 #[v, c] #[])
+      (Val.ctor 0 #[] #[])) : Option (List (AscKey × Enc))) = some ks :=
+    (listGet?_foldr _).trans ((pairs_get kvs).trans hkv)
+  generalize (kvs.map fun p => Val.ctor 0 #[p.1, p.2] #[]).foldr (fun v c => Val.ctor 1 #[v, c] #[])
+    (Val.ctor 0 #[] #[]) = F at hl hread
+  refine Builds.callKG (o := #[Reg.put vs, Reg.put p]) (by abiK) rfl
+    (reads_of (l := [n, l]) (vs := [.size nv, F]) (by simp [hl, m3 (m2 (m1 hn))])) ?_ rfl fun sp R4 hsp m4 => ?_
+  · simp [arg, hsz, hread, ha, Out.out]; rfl
+  obtain ⟨p0, hp0, hpR⟩ := holds_at hsp (i := 0) rfl
+  obtain ⟨p1, hp1, hpR1⟩ := holds_at hsp (i := 1) rfl
+  rw [nth_of (by simpa using hp0), pure_bind]
+  have hlen : (kvs.map (·.1)).length = vs.length := by
+    rw [List.length_map, ← option_mapM_length hkv, kasc_length ha]
+  refine sortedB_builds ps hpR (mapM_fst (mapM_pair_extends (fun h => m4 (m3 (m2 h))) hps)) hlen
+    fun es R5 hes m5 => ?_
+  refine Builds.bind3G (seenB_builds hN (m5 (m4 (m3 (m2 (m1 hn))))) (mapM_bind_join hes (sorted_get hkv)) hk hz hsc
+    fun e _ => enc_get_put e) fun t R6 h1 h2 h3 m6 => ?_
+  obtain ⟨k1, g1, f1⟩ := t
+  dsimp only at h1 h2 h3 ⊢
+  rw [nth_of (by simpa using hp1)]
+  simp only [pure_bind]
+  exact Builds.pure fun _ => reads_of (l := [k1, g1, f1, p1]) (vs := [.size k.toUSize, Reg.put g, Reg.put f, Reg.put p])
+    (by simp [h1, h2, h3, m6 (m5 hpR1)])
+
 end Rel.Lang.Plan
