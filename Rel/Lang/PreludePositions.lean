@@ -194,7 +194,7 @@ theorem Tm.positionsDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val) {
     rw [Tm.den, Tm.argDen, Tm.argDen, Tm.argDen]
     -- `Tm.den.eq_25` is the `.arg` clause: a bare `Tm.den` would unfold a `.var` of the argument list first
     rw [Tm.den.eq_25, Tm.argDen, Tm.argDen, Tm.argDen]
-    refine (Tm.positionsBody_key _ (P := P) (.var 2) (.var 4) (.var 7) ?_ x hx ?_ w).trans ?_
+    refine (Tm.positionsBody_key _ (P := P) (.var 2) _ _ ?_ x hx ?_ w).trans ?_
     -- the variables bound by the two calls: `Tm.den.eq_23` (the `.var` clause) unfolds them and nothing else
     · intro xs pre
       simp (config := { decide := true }) only [Tm.den.eq_23, Val.args, Val.bind, ↓reduceIte,
