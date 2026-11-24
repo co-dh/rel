@@ -70,4 +70,76 @@ theorem gatherB_builds {fg fg' : Array Fun × Array Fun} {rs out : Array Val} {m
     simp [arg, hsz, enc_get_put, hk, Out.out]
     rfl
 
+/-! ### `gatherCols_builds`: the columns of a side, and what renaming their registers keeps -/
+
+/-- The columns `cs` lay out a side of `A` node for node as `ValsB` stores it (`Col`): an atom, or a sum in band
+    (`Obj.band`), one `atom` column of that atom; an array an `arr` column over its payload's columns; a sum not in band
+    a `sum` column over its summands'; a product its two sides' columns one after the other; `1` none. -/
+inductive Fits : Obj → Cols → Prop
+  | atom {t : QAtomicType} {p : String} {e : Nat} : Fits (.atom t) [.atom p t e]
+  | band {a b : Obj} {t : QAtomicType} {p : String} {e : Nat} : Obj.band a b = some t → Fits (.sum a b) [.atom p t e]
+  | arr {b : Obj} {p : String} {m lo hi : Nat} {f : Cols} : Fits b f → Fits (.arr b) [.arr p m lo hi f]
+  | sum {a b : Obj} {p : String} {tag : Nat} {x y : Cols} : Obj.band a b = none → Fits a x → Fits b y →
+      Fits (.sum a b) [.sum p tag x y]
+  | prod {a b : Obj} {xs ys : Cols} : Fits a xs → Fits b ys → Fits (.prod a b) (xs ++ ys)
+  | one : Fits .one []
+
+/-- `Fits` reads only the columns' shape: the columns `withRegs` hands back (`regsOf_spec`) fit as the ones it renamed. -/
+theorem Fits.shape {A : Obj} {cs : Cols} (h : Fits A cs) : ∀ {cs' : Cols}, Cols.shape cs' = Cols.shape cs → Fits A cs' := by
+  have one : ∀ {cs' : Cols} {c : Col}, Cols.shape cs' = Cols.shape [c] → ∃ c', cs' = [c'] ∧ Col.shape c' = Col.shape c :=
+    fun e => by
+      rw [Cols.shape_eq_map, Cols.shape_eq_map, List.map_cons, List.map_nil, List.map_eq_singleton_iff] at e
+      exact e
+  induction h with
+  | atom =>
+    intro cs' e; obtain ⟨c, rfl, hc⟩ := one e
+    cases c <;> simp only [Col.shape, Col.atom.injEq, reduceCtorEq] at hc
+    obtain ⟨rfl, rfl, -⟩ := hc; exact .atom
+  | band hb =>
+    intro cs' e; obtain ⟨c, rfl, hc⟩ := one e
+    cases c <;> simp only [Col.shape, Col.atom.injEq, reduceCtorEq] at hc
+    obtain ⟨rfl, rfl, -⟩ := hc; exact .band hb
+  | arr _ ih =>
+    intro cs' e; obtain ⟨c, rfl, hc⟩ := one e
+    cases c <;> simp only [Col.shape, Col.arr.injEq, reduceCtorEq, true_and] at hc
+    obtain ⟨rfl, hf⟩ := hc; exact .arr (ih hf)
+  | sum hb _ _ ihx ihy =>
+    intro cs' e; obtain ⟨c, rfl, hc⟩ := one e
+    cases c <;> simp only [Col.shape, Col.sum.injEq, reduceCtorEq, true_and] at hc
+    obtain ⟨rfl, hx, hy⟩ := hc; exact .sum hb (ihx hx) (ihy hy)
+  | prod _ _ ihx ihy =>
+    intro cs' e
+    rw [Cols.shape_eq_map, Cols.shape_eq_map, List.map_append, List.map_eq_append_iff] at e
+    obtain ⟨xs', ys', rfl, hx, hy⟩ := e
+    exact .prod (ihx (by rw [Cols.shape_eq_map, Cols.shape_eq_map]; exact hx))
+      (ihy (by rw [Cols.shape_eq_map, Cols.shape_eq_map]; exact hy))
+  | one =>
+    intro cs' e
+    rw [Cols.shape_eq_map] at e
+    obtain rfl := List.map_eq_nil_iff.1 e
+    exact .one
+
+mutual
+theorem Col.size_shape : ∀ c : Col, Col.size (Col.shape c) = Col.size c
+  | .atom .. => rfl
+  | .arr _ _ _ _ f => by simp only [Col.shape, Col.size, Col.sizes_shape f]
+  | .sum _ _ x y => by simp only [Col.shape, Col.size, Col.sizes_shape x, Col.sizes_shape y]
+theorem Col.sizes_shape : ∀ cs : Cols, Col.sizes (Cols.shape cs) = Col.sizes cs
+  | [] => rfl
+  | c :: cs => by simp only [Cols.shape, Col.sizes, Col.size_shape c, Col.sizes_shape cs]
+end
+
+/-- Columns of one shape are of one size: the guard `gatherCols` puts on the column `funC` hands back holds. -/
+theorem Col.size_of_shape {c c' : Col} (h : Col.shape c' = Col.shape c) : Col.size c' = Col.size c := by
+  rw [← Col.size_shape c', h, Col.size_shape]
+
+/-- `gatherCols` gathers each column on its own (`attach` serves only its termination): a product side's columns are
+    its two sides' gathered one after the other. -/
+theorem gatherCols_append (m ix n : Nat) (xs ys : Cols) : gatherCols m ix n (xs ++ ys) =
+    (do let a ← gatherCols m ix n xs; let b ← gatherCols m ix n ys; Pure.pure (a ++ b)) := by
+  unfold gatherCols
+  rw [List.mapM_subtype (g := fun c => _) (fun _ _ => rfl), List.mapM_subtype (g := fun c => _) (fun _ _ => rfl),
+    List.mapM_subtype (g := fun c => _) (fun _ _ => rfl), List.unattach_attach, List.unattach_attach,
+    List.unattach_attach, List.mapM_append]
+
 end Rel.Lang.Plan
