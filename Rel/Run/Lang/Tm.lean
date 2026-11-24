@@ -138,28 +138,31 @@ def Dem.args (ks : List Nat) (ds : List Bool) : Dem := fun k => ((ks.zip ds).loo
 /-- `t` runs on demand (§a): read only at the keys its left context supplies. A function of the constructor and its
     parts, except `var`, which reads its binder's bit in `δ`; a row made from its relations' whole tables
     (`Tm.whole`) given all of them needs keys where one of them does, its head alone (`prim`) is no term that runs.
-    `ds`: the bits of the arguments of the spine not yet bound, which `call` binds to its `ks`. -/
-def Tm.dem : {A B : Obj} → Tm A B → Dem → List Bool → Bool
-  | _, _, .arg R x, δ, ds =>
-    let d := x.dem δ []
-    if R.whole then (!(R matches .prim _) && R.dem δ (d :: ds)) || d else R.dem δ (d :: ds) && !R.bounds
+    `ds`: the bits of the arguments of the spine not yet bound, which `call` binds to its `ks`. `lz` (default `false`)
+    counts a `bounds` row as running on demand: the value `GenK` makes of it is `Rel.lazy`, which `meetK`, `pairK`
+    and `diff` (and the plan's `bothB`) read to let the other operand bound it, though the elaborator asks it no keys. -/
+def Tm.dem : {A B : Obj} → Tm A B → Dem → List Bool → optParam Bool false → Bool
+  | _, _, .arg R x, δ, ds, lz =>
+    let d := x.dem δ [] lz
+    if R.whole then (!(R matches .prim _) && R.dem δ (d :: ds) lz) || d else R.dem δ (d :: ds) lz && (lz || !R.bounds)
   -- the binder: the body sees its `ks` at its arguments' bits and no other variable
-  | _, _, .call ks _ _ _ b, _, ds => b.dem (Dem.args ks ds) []
-  | _, _, .comp R _, δ, _ => R.dem δ []
-  | _, _, .join R S, δ, _ => R.dem δ [] || S.dem δ []
+  | _, _, .call ks _ _ _ b, _, ds, lz => b.dem (Dem.args ks ds) [] lz
+  | _, _, .comp R _, δ, _, lz => R.dem δ [] lz
+  | _, _, .join R S, δ, _, lz => R.dem δ [] lz || S.dem δ [] lz
   -- `⟨R,S⟩`'s domain is `dom R ∩ dom S`, `R ∩ S` within `R` and `S`, so one closed operand bounds the other
   -- (`GenK.pairK`, `GenK.meetK`); `R − S` within `R`, which bounds `S` (`GenK.diff`)
-  | _, _, .pair R S, δ, _ | _, _, .meet R S, δ, _ => R.dem δ [] && S.dem δ []
-  | _, _, .diff R _, δ, _ => R.dem δ []
-  | _, _, .var k, δ, _ => δ k
+  | _, _, .pair R S, δ, _, lz | _, _, .meet R S, δ, _, lz => R.dem δ [] lz && S.dem δ [] lz
+  | _, _, .diff R _, δ, _, lz => R.dem δ [] lz
+  | _, _, .var k, δ, _, _ => δ k
   -- an injection's converse runs on the sum values in demand (`Tab.inlConv`); any other converse is read whole
-  | _, _, .conv R, _, _ => (R matches .inl | .inr)
+  -- (`lz`: `GenK.conv` is `lift1`, lazy where `R` is)
+  | _, _, .conv R, δ, _, lz => (R matches .inl | .inr) || (lz && R.dem δ [] lz)
   -- every leaf listed, as in `Tm.fv`
-  | _, _, .val _, _, _ | _, _, .uni _, _, _ | _, _, .zero, _, _ | _, _, .ldiv .., _, _ | _, _, .rdiv .., _, _
-  | _, _, .nu .., _, _ | _, _, .mu .., _, _ => false
-  | _, _, .id, _, _ | _, _, .top _, _, _ | _, _, .outl, _, _ | _, _, .outr, _, _ | _, _, .lam _, _, _
-  | _, _, .mem, _, _ | _, _, .inl, _, _ | _, _, .inr, _, _ | _, _, .prim _, _, _
-  | _, _, .foldr .., _, _ | _, _, .fold .., _, _ | _, _, .hylo .., _, _ => true
+  | _, _, .val _, _, _, _ | _, _, .uni _, _, _, _ | _, _, .zero, _, _, _ | _, _, .ldiv .., _, _, _
+  | _, _, .rdiv .., _, _, _ | _, _, .nu .., _, _, _ | _, _, .mu .., _, _, _ => false
+  | _, _, .id, _, _, _ | _, _, .top _, _, _, _ | _, _, .outl, _, _, _ | _, _, .outr, _, _, _ | _, _, .lam _, _, _, _
+  | _, _, .mem, _, _, _ | _, _, .inl, _, _, _ | _, _, .inr, _, _, _ | _, _, .prim _, _, _, _
+  | _, _, .foldr .., _, _, _ | _, _, .fold .., _, _, _ | _, _, .hylo .., _, _, _ => true
 
 /-- `R × S ≜ ⟨π₁R, π₂S⟩` (`Tm.prod_den`): on demand, each operand on its side of the pairs in demand; where none
     are, the product is closed by its source's universe (`closeRes`, `Tm.prodUni`). -/

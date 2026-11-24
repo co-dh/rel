@@ -2096,14 +2096,15 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
   | _, _, .conv R => do
     let r ← tabB σ ⟨D.ran, D.dom, D.pairs.map fun p => ⟨p.n, p.val, p.key⟩⟩ R; canonT ⟨r.n, r.val, r.key⟩
   | _, _, .meet R S => do
-    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) (R.dem σ.dem []) (S.dem σ.dem []) D boundOf
+    -- the operands' laziness is `Rel.lazy` (`lz`): a comparison is lazy on `Known`, so the other operand bounds it
+    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) (R.dem σ.dem [] true) (S.dem σ.dem [] true) D boundOf
     interB r s
   | _, _, .join R S => do unionB (← tabB σ D R) (← tabB σ D S)
   | _, _, .diff R S => do
     let r ← tabB σ D R
-    diffB r (← tabB σ (← if (S.dem σ.dem []) then boundOf r else pure D) S)
+    diffB r (← tabB σ (← if (S.dem σ.dem [] true) then boundOf r else pure D) S)
   | _, _, .pair (A := A) (B := B) (C := C) R S => do
-    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) (R.dem σ.dem []) (S.dem σ.dem []) { dom := D.dom }
+    let (r, s) ← bothB (tabB σ · R) (tabB σ · S) (R.dem σ.dem [] true) (S.dem σ.dem [] true) { dom := D.dom }
       fun t => return { dom := some (← domOf t) }
     pairB A B C r s
   | A, B, .var k => match σ.lookup k with
