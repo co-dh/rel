@@ -338,4 +338,57 @@ macro "build_step" : tactic => `(tactic| ((try simp only [bind_assoc, pure_bind]
                           (by with_unfolding_all rfl) (by with_unfolding_all reads) (by with_unfolding_all rfl) rfl ?_
   | (with_reducible refine Builds.pure ?_); intro; reads)))
 
+/-! ### `whereB`: primitives its recipe uses beyond `lit`/`call1` -/
+
+/-- `ctorB`, then the rest: the constructor of `os`, `ss` (the registers `objs`, `scal` read) is pushed. -/
+theorem Builds.ctorB {fg fg' : Array Fun × Array Fun} {tag : Nat} {objs scal : Array Nat} {os ss rs out : Array Val}
+    {c : Nat → Bld (Array Nat)} (ho : objs.mapM (reg rs "ctor") = .ok os) (hs : scal.mapM (reg rs "ctor") = .ok ss)
+    (hc : Builds abi fg fg' (c rs.size) (rs.push (.ctor tag os ss)) out) :
+    Builds abi fg fg' (Plan.ctorB tag objs scal >>= c) rs out :=
+  Builds.emit1 (fun _ _ _ ws => by simp [runI, ho, hs, ok_bind]; rfl) hc
+
+/-- `projB`, then the rest: field `i` of the constructor `tag` in register `x`, a `v` of type `t`, is pushed. -/
+theorem Builds.projB {fg fg' : Array Fun × Array Fun} {x tag i : Nat} {t : Ty} {os ss rs out : Array Val} {v : Val}
+    {c : Nat → Bld (Array Nat)} (hx : rs[x]? = some (.ctor tag os ss)) (hv : os[i]? = some v) (ht : v.ty = t)
+    (hc : Builds abi fg fg' (c rs.size) (rs.push v) out) : Builds abi fg fg' (Plan.projB x tag i t >>= c) rs out :=
+  Builds.emit1 (fun _ _ _ ws => by
+    have e : (t == t) = true := by cases t <;> rfl
+    simp [runI, reg_of hx, hv, ht, e, ok_bind]; rfl) hc
+
+/-- `callK k as`, then the rest: the kernel `k` answers all its registers `o` from the registers `as` read. -/
+theorem Builds.callK {fg fg' : Array Fun × Array Fun} {k : Kernel} {f : Array Val → Except String (Array Val)}
+    {as : Array Nat} {vs o rs out : Array Val} {c : Array Nat → Bld (Array Nat)} (hk : abiOf k.sym = some k)
+    (hf : k.run = .inl f) (ha : as.mapM (reg rs k.sym) = .ok vs) (ho : f vs = .ok o) (hs : o.size = k.res.size)
+    (hc : Builds abiOf fg fg' (c (List.range' rs.size o.size).toArray) (rs ++ o) out) :
+    Builds abiOf fg fg' (Plan.callK k as >>= c) rs out := by
+  rw [show Plan.callK k as = Plan.emit (.call k.sym as) o.size by simp [Plan.callK, Plan.call, hs]]
+  exact Builds.emit_bind (fun _ _ _ _ => runI_call hk hf ha ho hs) hc
+
+/-- `nth rs i` of a register list that holds `r` at `i` is `r`, building nothing. -/
+theorem nth_of {rs : Array Nat} {i r : Nat} {who : String} (h : rs[i]? = some r) : nth rs i who = Pure.pure r := by
+  simp [nth, h]
+
+/-- `if c then t else e` with the bit in `c` set: `t` builds and runs, and `e` is only built — its instructions never
+    run, so it need not succeed (`whereB`'s `else` reads a fold that is `none` exactly where `then` is taken). -/
+theorem Builds.ite_true {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {t e : Bld (Array Nat)} {rs ot : Array Val}
+    {je : Array Instr} {n' : Nat} {re' : Array Nat} (hc : rs[c]? = some (.bit true)) (ht : Builds abi fg fg1 t rs ot)
+    (he : e.run (#[], rs.size, fg1) = .ok (re', je, n', fg2)) (hs : ot.size = re'.size)
+    (h2 : (∃ a, fg2.1 = fg1.1 ++ a) ∧ (∃ a, fg2.2 = fg1.2 ++ a)) :
+    Builds abi fg fg2 (Plan.ite c t e) rs ot := by
+  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, ht⟩ := ht
+  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩⟩ := h2
+  obtain ⟨jt, xt, rt, hrt, hbt, hmt⟩ := ht #[]
+  have st : ot.size = rt.size := mapM_ok_size (hmt "")
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
+    fun is => ⟨#[.ite c jt.toList rt je.toList re'], ot, (List.range' rs.size rt.size).toArray, ?_, fun fs gs hE ws => ?_,
+    fun who => st ▸ mapM_reg_range rs _ who⟩⟩
+  · have hrs : rt.size = re'.size := by omega
+    simp only [Plan.ite, block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, monadLift_self, hrt,
+      he, ok_bind, pure_bind, bind_assoc]
+    simp [hrs, emit_run, st]
+  · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
+    rw [show (#[Instr.ite c jt.toList rt je.toList re'] : Array Instr).toList = [.ite c jt.toList rt je.toList re']
+      from rfl, runB.eq_2]
+    simp [runI, reg_of hc, hbt fs gs hE1, hmt, runB.eq_1, ok_bind, Functor.map, Except.map]
+
 end Rel.Lang.Plan
