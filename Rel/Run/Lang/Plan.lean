@@ -488,9 +488,26 @@ def Plan.exec (abi : String → Option Kernel) (p : Plan) : IO (Array Val) := do
 
 /-! ### Building a plan -/
 
+/-- A build error: `lazy` where the part needs its use site's bounds (`known`), so it has no closed table, which `shareB`
+    expects (a lazy slot); any other error is a bug, and a `String` thrown or caught is one. -/
+structure BErr where
+  msg : String
+  lazy : Bool := false
+
+instance : Coe String BErr := ⟨fun msg => { msg }⟩
+
+instance : ToString BErr := ⟨BErr.msg⟩
+
+instance : MonadLift (Except String) (Except BErr) := ⟨Except.mapError fun msg => { msg }⟩
+
 /-- A plan being built: the current block's instructions, the number of registers defined so far, and the plan's
     functions and globals. -/
-abbrev Bld := StateT (Array Instr × Nat × Array Fun × Array Fun) (Except String)
+abbrev Bld := StateT (Array Instr × Nat × Array Fun × Array Fun) (Except BErr)
+
+/-- A `String` thrown in `Bld` is a bug (`BErr`); one caught is the message of any error, its `lazy` mark dropped. -/
+instance : MonadExceptOf String Bld where
+  throw msg := throwThe BErr { msg }
+  tryCatch x h := tryCatchThe BErr x fun e => h e.msg
 
 /-- A one-register instruction's register. -/
 def emit1 (i : Instr) : Bld Nat := modifyGet fun (is, n, fg) => (n, (is.push i, n + 1, fg))
@@ -541,13 +558,13 @@ def apply (f : Nat) (args : Array Nat) (nres : Nat) : Bld (Array Nat) := emit (.
 
 
 /-- The plan of `main`. -/
-def Bld.plan (b : Bld Unit) : Except String Plan := do
+def Bld.plan (b : Bld Unit) : Except String Plan := Except.mapError BErr.msg do
   let ((), is, _, fs, gs) ← b.run (#[], 0, #[], #[])
   pure { funs := fs, globals := gs, main := is.toList }
 
 /-- The plan of `rd`, its input edge (`lit`s and `IO` reads only, as `Plan.exec` checks), then `main`'s `b` on what
     `rd` answers. -/
-def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String Plan := do
+def Bld.planIO {α : Type} (rd : Bld α) (b : α → Bld Unit) : Except String Plan := Except.mapError BErr.msg do
   let (a, is, n, fs, gs) ← rd.run (#[], 0, #[], #[])
   let ((), ms, _, fs, gs) ← (b a).run (#[], n, fs, gs)
   pure { funs := fs, globals := gs, main := ms.toList, input := is.toList }

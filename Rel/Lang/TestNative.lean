@@ -444,12 +444,14 @@ def agree {A B : Obj} (m : Lean.Name) (x : String) (v : Except String (Tab A B))
     let p ← planOfIn m x
     let t1 ← IO.monoMsNow
     writesAgree x p v
-    -- a slot of `shareB` whose closed build failed is built inline at each use: counted with its errors, as the loss is silent otherwise
-    let g := p.toOption.elim "" fun p =>
-      let bad := p.globals.toList.filterMap (·.failure?)
-      s!", slots built {(p.globals.filter (!·.res.isEmpty)).size} of {p.globals.size}, closed build failed {bad.length}{
-        if bad.isEmpty then "" else s!" ({bad.eraseDups})"}"
+    -- a slot of `shareB` not built is inline at each use: a lazy slot is expected, any other failure is a bug and fails the gate
+    let (g, bugs) := p.toOption.elim ("", []) fun p =>
+      let fs := p.globals.toList.filterMap (·.failure?)
+      let bugs := (fs.filter (!·.lazy)).map (·.msg)
+      (s!", slots built {(p.globals.filter (!·.res.isEmpty)).size} of {p.globals.size}, lazy slots {(fs.filter (·.lazy)).length}, closed build failed {bugs.length}{
+        if bugs.isEmpty then "" else s!" ({bugs.eraseDups})"}", bugs)
     Lean.logInfo m!"{m}.{x}: plan {t1 - t} ms, run {(← IO.monoMsNow) - t1} ms{g}"
+    unless bugs.isEmpty do throwError "{m}.{x}: closed build failed {bugs.eraseDups}"
 
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`)
 #eval show Lean.Meta.MetaM Unit from do writesAgree "x" (← plan) native1a.x

@@ -688,7 +688,7 @@ structure Dom where
 /-- The values a leaf on demand reads, or `GenK.ofVals`' error where they are unknown. -/
 def known (what : String) : Option (Nat × Cols) → Bld (Nat × Cols)
   | some d => pure d
-  | none => throw s!"{what}: a leaf on demand ran with its domain unknown"
+  | none => throwThe BErr { msg := s!"{what}: a leaf on demand ran with its domain unknown", lazy := true }
 
 /-- `T`'s domain values (`Tab.dom`'s side), the bound `GenK.bound` hands the other operand of `∩`, `−`, `⟨,⟩`. -/
 def domOf (T : TabB) : Bld (Nat × Cols) := nubB T.n T.key
@@ -848,8 +848,8 @@ def stepB (t : QAtomicType) (k : UInt8) (n a b : Nat) : Bld (Nat × Nat) := do
 def cmpB (u : Dom → Bld TabB) (op : String) (o : Except String Kernel.Op) (t : QAtomicType) (D : Dom) : Bld TabB := do
   let o ← ofExc o
   let side (w : String) (s : Option (Nat × Cols)) : Bld (Nat × Cols) := do
-    let U ← try u { dom := s } catch e => throw (if s.isSome then e else
-      s!"{op} on an unbounded object: nothing bounds its {w} side; compose it with a table on that side ({e})")
+    let U ← tryCatchThe BErr (u { dom := s }) fun e => throwThe BErr (if s.isSome then e else
+      { e with msg := s!"{op} on an unbounded object: nothing bounds its {w} side; compose it with a table on that side ({e.msg})" })
     let d ← coreflB U.n U.key
     match s with
     | none => pure (d.n, d.key)
@@ -1091,7 +1091,7 @@ def compSelB (bits : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
 def compTB (R : TabB) (s : Dom → Bld TabB) (ds : Bool) (ran : Option (Nat × Cols) := none) : Bld TabB := do
   let bound : Bld TabB := do s { dom := some (← nubB R.n R.val), ran }
   -- a closed `S` that cannot run closed (`<` on an infinite universe; `GenK.memo` keeps it lazy) is read at `ran R`
-  compSelB Tab.bitsMax R (← if ds then bound else tryCatch (s {}) fun e => tryCatch bound fun _ => throw e)
+  compSelB Tab.bitsMax R (← if ds then bound else tryCatchThe BErr (s {}) fun e => tryCatchThe BErr bound fun _ => throwThe BErr e)
 
 /-! #### The rounds of a fold (`Tab.foldRounds`) and the list rows its steps read -/
 
@@ -1841,11 +1841,13 @@ def shapeB (A B : Obj) : Bld TabB := do
 /-- A slot whose closed build failed with `e`, as `shareB` marks it: no result, two literals (a program's tag global is one),
     so the plan's stats count it and the error is kept. A part that runs on its context's values (`sum°`, `F(R)°`: a
     converse of a row on demand, which `Tm.dem` reads as closed) has no table without them: its use builds it inline. -/
-def failedSlot (e : String) : Fun := ⟨#[], [.lit (.str "closed build failed"), .lit (.str e)], #[]⟩
+def failedSlot (e : BErr) : Fun :=
+  ⟨#[], [.lit (.str (if e.lazy then "lazy slot" else "closed build failed")), .lit (.str e.msg)], #[]⟩
 
-/-- The error of a slot marked `failedSlot`. -/
-def Fun.failure? (F : Fun) : Option String := match F.res.isEmpty, F.body with
-  | true, [.lit (.str "closed build failed"), .lit (.str e)] => some e
+/-- The error of a slot marked `failedSlot`, with whether it is a lazy slot (`BErr.lazy`) or a bug. -/
+def Fun.failure? (F : Fun) : Option BErr := match F.res.isEmpty, F.body with
+  | true, [.lit (.str "closed build failed"), .lit (.str e)] => some { msg := e }
+  | true, [.lit (.str "lazy slot"), .lit (.str e)] => some { msg := e, lazy := true }
   | _, _ => none
 
 /-- **A closed part computed once** (`Tm.slot k`): its table is global `k`, built at the first use in a block of its own
@@ -1867,7 +1869,7 @@ def shareB (k : Nat) (A B : Obj) (inl glob : Bld TabB) : Bld TabB := do
   if slot.any (!·.res.isEmpty) then use else
   -- the closed build reads no use site, so its failure is the slot's: tried once, then every use is inline
   if slot.any (·.failure?.isSome) then inl else
-  tryCatch (do
+  tryCatchThe BErr (do
     let (is, n, fs, gs) ← get
     let (rs, body, _, fs, gs) ← (do
       let U ← glob
@@ -1917,8 +1919,8 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     let sFirst := do
       let s ← tabB σ { ran := D.ran } S
       compSelB Tab.bitsMax (← tabB σ { dom := D.dom, ran := some (← domOf s) } R) s
-    if (R.dem σ.dem []) && D.dom.isNone && D.ran.isSome then tryCatch sFirst fun e => tryCatch rFirst fun _ => throw e
-    else tryCatch rFirst fun e => tryCatch sFirst fun _ => throw e
+    if (R.dem σ.dem []) && D.dom.isNone && D.ran.isSome then tryCatchThe BErr sFirst fun e => tryCatchThe BErr rFirst fun _ => throwThe BErr e
+    else tryCatchThe BErr rFirst fun e => tryCatchThe BErr sFirst fun _ => throwThe BErr e
   | _, _, .conv (.inl (A := A) (B := B)) => do let (n, X) ← known "inl°" D.dom; injConvB A B false n X
   | _, _, .conv (.inr (A := A) (B := B)) => do let (n, X) ← known "inr°" D.dom; injConvB A B true n X
   | _, _, .conv R => do

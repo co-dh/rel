@@ -20,7 +20,7 @@ open Tab Rel.Kernel
 /-! ### Reading registers -/
 
 /-- `Except`'s bind on a success, which `simp` does not reduce by itself. -/
-theorem ok_bind {α β : Type} (a : α) (f : α → Except String β) : (Except.ok a >>= f) = f a := rfl
+theorem ok_bind {ε α β : Type} (a : α) (f : α → Except ε β) : (Except.ok a >>= f) = f a := rfl
 
 /-- What `emit` appends: `i`, defining the next `nres` registers. -/
 theorem emit_run (i : Instr) (nres : Nat) (is : Array Instr) (n : Nat) (fg : Array Fun × Array Fun) :
