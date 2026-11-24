@@ -1629,6 +1629,80 @@ theorem Grows.emit {i : Instr} (hi : i.calls = []) (nres : Nat) : Grows (Plan.em
   obtain ⟨-, rfl⟩ := Except.ok.inj h |> Prod.mk.inj
   exact GStep.push _ _ _ _ _ _ (by simp [hi])
 
+theorem err_bind_eq {ε α β : Type} (e : ε) (f : α → Except ε β) : (Except.error e >>= f) = .error e := rfl
+
+theorem emit_ok (i : Instr) (nres : Nat) (is : Array Instr) (n : Nat) (fs gs : Array Fun) :
+    (Plan.emit i nres).run (is, n, fs, gs) = .ok ((List.range' n nres).toArray, (is.push i, n + nres, fs, gs)) := rfl
+
+theorem block_ok {b : Bld (Array Nat)} {is : Array Instr} {n : Nat} {fs gs : Array Fun} {r : Array Nat}
+    {is' : Array Instr} {n' : Nat} {fs' gs' : Array Fun} (hr : b.run (#[], n, fs, gs) = .ok (r, is', n', fs', gs')) :
+    (block b).run (is, n, fs, gs) = .ok ((is'.toList, r), (is, n, fs', gs')) := by
+  simp [block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hr,
+    ok_bind, Functor.map, Except.map] <;> rfl
+
+theorem block_err {b : Bld (Array Nat)} {is : Array Instr} {n : Nat} {fs gs : Array Fun} {e : BErr}
+    (hr : b.run (#[], n, fs, gs) = .error e) : (block b).run (is, n, fs, gs) = .error e := by
+  simp [block, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr, err_bind_eq,
+    Functor.map, Except.map]
+
+/-- What `block b` leaves: the block `is` as it was, the functions and globals `b` grew, and the new block's calls
+    inside them. -/
+theorem block_spec {b : Bld (Array Nat)} (hb : Grows b) {is : Array Instr} {n : Nat} {fs gs : Array Fun}
+    {x : List Instr × Array Nat} {s' : Array Instr × Nat × Array Fun × Array Fun}
+    (h : (block b).run (is, n, fs, gs) = .ok (x, s')) (ho : Ordered fs) :
+    s'.1 = is ∧ s'.2.1 = n ∧ Ordered s'.2.2.1 ∧ (∀ j ∈ Instr.callsB x.1, j < s'.2.2.1.size) ∧
+      (∃ a, s'.2.2.1 = fs ++ a) ∧ ∃ a, s'.2.2.2 = gs ++ a := by
+  cases hr : b.run (#[], n, fs, gs) with
+  | error e => rw [block_err hr] at h; cases h
+  | ok p =>
+    obtain ⟨r, is', n', fs', gs'⟩ := p
+    obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ hr ho (by simp [Instr.callsB])
+    rw [block_ok hr] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+    exact ⟨rfl, rfl, o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩
+
+theorem Grows.block {b : Bld (Array Nat)} (hb : Grows b) : Grows (block b) := fun ⟨is, n, fs, gs⟩ x s' h ho hc => by
+  obtain ⟨e1, e2, o, -, ⟨a, ea⟩, ⟨c, ec⟩⟩ := block_spec hb h ho
+  refine ⟨o, fun j hj => ?_, ⟨a, ea⟩, ⟨c, ec⟩⟩
+  rw [e1] at hj; have := hc j hj; simp only at this; rw [ea]; simp; omega
+
+theorem Grows.ite {c : Nat} {t e : Bld (Array Nat)} (ht : Grows t) (he : Grows e) : Grows (Plan.ite c t e) :=
+    fun ⟨is, n, fs, gs⟩ x s' h ho hc => by
+  cases h1 : (Plan.block t).run (is, n, fs, gs) with
+  | error _ => simp only [Plan.ite, StateT.run_bind, h1, err_bind_eq] at h; cases h
+  | ok p1 =>
+    obtain ⟨⟨ti, rt⟩, is₁, n₁, fs₁, gs₁⟩ := p1
+    obtain ⟨e1, e2, o1, c1, ⟨a1, ea1⟩, ⟨b1, eb1⟩⟩ := block_spec ht h1 ho
+    simp only at e1 e2 o1 c1 ea1 eb1; subst e1 e2
+    cases h2 : (Plan.block e).run (is₁, n₁, fs₁, gs₁) with
+    | error _ => simp only [Plan.ite, StateT.run_bind, h1, h2, ok_bind, err_bind_eq] at h; cases h
+    | ok p2 =>
+      obtain ⟨⟨ei, re⟩, is₂, n₂, fs₂, gs₂⟩ := p2
+      obtain ⟨e1, e2, o2, c2, ⟨a2, ea2⟩, ⟨b2, eb2⟩⟩ := block_spec he h2 o1
+      simp only at e1 e2 o2 c2 ea2 eb2; subst e1 e2
+      by_cases hs : rt.size = re.size
+      · simp [Plan.ite, StateT.run_bind, h1, h2, ok_bind, hs, emit_ok] at h
+        obtain ⟨-, rfl⟩ := h
+        refine ⟨o2, fun j hj => ?_, ⟨a1 ++ a2, ?_⟩, ⟨b1 ++ b2, ?_⟩⟩
+        · simp only [Array.toList_push, callsB_append, Instr.callsB, Instr.calls, List.append_nil, List.mem_append] at hj
+          rcases hj with hj | hj | hj
+          · have := hc j hj; rw [ea2, ea1]; simp at this ⊢; omega
+          · have := c1 j hj; rw [ea2]; simp; omega
+          · exact c2 j hj
+        · rw [ea2, ea1, Array.append_assoc]
+        · rw [eb2, eb1, Array.append_assoc]
+      · simp [Plan.ite, StateT.run_bind, h1, h2, ok_bind, hs, throwThe, MonadExceptOf.throw, MonadExcept.throw,
+          Functor.map, Except.map, err_bind_eq] at h
+
+theorem Grows.apply (f : Nat) (args : Array Nat) (nres : Nat) : Grows (Plan.apply f args nres) :=
+    fun ⟨is, n, fs, gs⟩ x s' h => by
+  by_cases hf : f < fs.size
+  · rw [apply_run hf, emit_ok] at h
+    obtain ⟨-, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+    exact GStep.push _ _ _ _ _ _ (by simp [Instr.calls, hf])
+  · simp [Plan.apply, StateT.run_bind, StateT.run_get, hf, throwThe, MonadExceptOf.throw, MonadExcept.throw,
+      err_bind_eq, Functor.map, Except.map] at h
+
 
 /-- `funB tys args b`, then `kk` on its registers and `b`'s value `x`: the body `b` builds after `rs` and the
     parameters `pv` (`args` read), defining `xs` and answering `o`, is spliced in place (`spliceable`) or becomes a
