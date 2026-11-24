@@ -322,12 +322,6 @@ theorem Grows.catColB (t : QAtomicType) (n n₁ n₂ x y : Nat) : Grows (Plan.ca
 theorem Grows.shiftB (n x s : Nat) : Grows (Plan.shiftB n x s) := by
   unfold Plan.shiftB; growsCat
 
-local macro "typedCat" : tactic => `(tactic| repeat' first
-  | exact Typed.lit _ | refine Typed.call1 ?_ | refine Typed.callK ?_ | refine Typed.nth ?_ _ _
-  | refine Typed.ctorB ?_ ?_ _ | refine Typed.listB ?_ | refine Typed.pure ?_
-  | refine Typed.srcB ?_ ?_ | exact Typed.posB | refine Typed.constB ?_ ?_ | refine Typed.mapB ?_ ?_ ?_
-  | (with_reducible apply Typed.bind (hf := fun _ _ => ?_)) | dsimp only)
-
 /-- `kscatter` declares all six arguments, so a `scatterB` is typed at every `m`, its registers captured or not. -/
 theorem Typed.scatterB {m : Nat} {op : Kernel.Op} {rows dst x cells : Nat} {fill : UInt64} :
     Typed m (fun r => m ≤ r) (Plan.scatterB op rows dst x cells fill) := by
@@ -335,7 +329,7 @@ theorem Typed.scatterB {m : Nat} {op : Kernel.Op} {rows dst x cells : Nat} {fill
   refine (Typed.lit _).bind fun a ha => (Typed.lit _).bind fun b hb => Typed.call1Of fun fs a' ha' _ => ?_
   obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := [a, rows, dst, x, cells, b]) (by simpa using ha')
   simp only [List.length_cons, List.length_nil] at hjl
-  simp only [useTy, List.toList_toArray, hj, Option.bind_some]
+  simp only [useTy, hj, Option.bind_some]
   rcases j with _ | _ | _ | _ | _ | _ | j <;> first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
 
 /-- `USize.toUInt64` declares its argument, so a `u64B` is typed at every `m`. -/
@@ -344,17 +338,47 @@ theorem Typed.u64B {m : Nat} {s : Nat} : Typed m (fun r => m ≤ r) (Plan.u64B s
   refine Typed.call1Of fun fs a' ha' _ => ?_
   obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := [s]) (by simpa using ha')
   simp only [List.length_cons, List.length_nil] at hjl
-  simp only [useTy, List.toList_toArray, hj, Option.bind_some]
+  simp only [useTy, hj, Option.bind_some]
   rcases j with _ | j <;> first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
 
+/-- The `kscan` call of two sources (`mapB`, `catColB`, `shiftB`): every register it reads is at least `m`, so is the
+    answer's. -/
 theorem Typed.mapB {m : Nat} {op : Kernel.Op} {n a b : Nat} {t s : QAtomicType} {pre post : List (Kernel.Op × UInt64)}
     (hn : m ≤ n) (ha : m ≤ a) (hb : m ≤ b) : Typed m (fun r => m ≤ r) (Plan.mapB op n a b t s pre post) := by
   unfold Plan.mapB
-  typedCat <;> all_goals first | omega | assumption | (simp <;> omega) | (simp_all <;> omega)
+  refine (Typed.lit _).bind fun c0 h0 => (Typed.lit _).bind fun c1 h1 => (Typed.lit _).bind fun c2 h2 =>
+    (Typed.lit _).bind fun c3 h3 => (Typed.ctorB (by simp) (by simp) 0).bind fun g hg =>
+    (Typed.srcB hn ha).bind fun x hx => (Typed.srcB hn hb).bind fun y hy =>
+    (Typed.listB (rs := [x, y]) (by intro a ha; simp at ha; omega)).bind fun l hl =>
+    (Typed.lit _).bind fun c4 h4 => (Typed.lit _).bind fun c5 h5 =>
+    (Typed.callK (by intro a ha; simp at ha; omega)).bind fun o ho => Typed.nth ho 0 "kscan"
+
+theorem Typed.catColB {m : Nat} {t : QAtomicType} {n n₁ n₂ x y : Nat} (hn : m ≤ n) (h1 : m ≤ n₁) (h2 : m ≤ n₂)
+    (hx : m ≤ x) (hy : m ≤ y) : Typed m (fun r => m ≤ r) (Plan.catColB t n n₁ n₂ x y) := by
+  unfold Plan.catColB
+  refine (Typed.lit _).bind fun c0 h0 => (Typed.lit _).bind fun c1 h1' => (Typed.lit _).bind fun c2 h2' =>
+    (Typed.lit _).bind fun c3 h3 => (Typed.ctorB (by simp) (by simp) 0).bind fun g hg =>
+    (Typed.srcB h1 hx).bind fun x' hx' => (Typed.srcB h2 hy).bind fun y' hy' =>
+    (Typed.listB (rs := [x', y']) (by intro a ha; simp at ha; omega)).bind fun l hl =>
+    (Typed.lit _).bind fun c4 h4 => (Typed.lit _).bind fun c5 h5 =>
+    (Typed.callK (by intro a ha; simp at ha; omega)).bind fun o ho => Typed.nth ho 0 "kscan"
+
+theorem Typed.shiftB {m : Nat} {n x s : Nat} (hn : m ≤ n) (hx : m ≤ x) : Typed m (fun r => m ≤ r) (Plan.shiftB n x s) := by
+  unfold Plan.shiftB
+  refine (Typed.lit _).bind fun c0 h0 => (Typed.lit _).bind fun c1 h1 => (Typed.lit _).bind fun c2 h2 =>
+    (Typed.lit _).bind fun c3 h3 => (Typed.ctorB (by simp) (by simp) 0).bind fun g hg =>
+    (Typed.srcB hn hx).bind fun y1 hy1 => (Typed.srcB hn hx).bind fun y2 hy2 =>
+    (Typed.listB (rs := [y1, y2]) (by intro a ha; simp at ha; omega)).bind fun l hl =>
+    (Typed.listB (rs := []) (fun _ h => nomatch h)).bind fun pr hpr => (Typed.lit _).bind fun ca hca =>
+    Typed.u64B.bind fun w hw => (Typed.ctorB (objs := #[ca, w]) (by intro a ha; simp at ha; omega) (by simp) 0).bind fun pp hpp =>
+    (Typed.listB (rs := [pp]) (by intro a ha; simp at ha; omega)).bind fun po hpo =>
+    (Typed.callK (by intro a ha; simp at ha; omega)).bind fun o ho => Typed.nth ho 0 "kscan"
 
 theorem Typed.catB {m : Nat} {n₁ n₂ : Nat} (h1 : m ≤ n₁) (h2 : m ≤ n₂) :
     Typed m (fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) (Plan.catB n₁ n₂) := by
   unfold Plan.catB
-  typedCat <;> all_goals first | omega | assumption | (simp <;> omega) | (simp_all <;> omega)
+  exact (Typed.call1 (by simp; omega)).bind fun a ha => Typed.posB.bind fun p hp =>
+    (Typed.call1 (by simp; omega)).bind fun c hc => (Typed.constB h2 hc).bind fun z hz =>
+    (Typed.mapB h2 hp hz).bind fun o ho => Typed.pure ⟨ha, ho⟩
 
 end Rel.Lang.Plan
