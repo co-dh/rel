@@ -498,9 +498,9 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`cat`（`(xs, ys) ↦ xs ++ ys`）], [两 payload 拼接（`scatter` + `scan(add)`）→ 两侧格界 → `scan` 宽 `w₁ + w₂` →
     EXPAND → `gather` `s₁[G]` `s₂[G]` `w₁[G]` → `scan` 选下标（`u < w₁` 取第一段 `s₁[G] + u`，否则
     `m₁ + s₂[G] + u − w₁`）→ `gather` payload → `scan` 前缀和得新格 `lo` `hi`；
-    `n(m₁ + m₂) + n + m₁ + m₂ ≥ 2^63` 拒绝。是 §7 中应成为定义的列表运算的融合形式，`⟦cat 行⟧ = ⟦定义⟧` 未证],
+    `n(m₁ + m₂) + n + m₁ + m₂ ≥ 2^63` 拒绝。是 prelude 定义，`Tm.catDef_den`（e6adc7a）：`⟨π₂, π₁ r⟩ loop(s)`，`s ≜ ⟨π₂,π₁⟩cons`，`r ≜ ⟨nil,𝟙⟩ loop(s)` 反转，只用 `cons`；原：融合形式，`⟦cat 行⟧ = ⟦定义⟧` 未证],
   [`snoc` `cons`], [`(𝟙 × τ) ≫ cat`、`(τ × 𝟙) ≫ cat`；这里的 `τ` 是逐行单元素格 `[i, i + 1)`（`scan`），
-    不经 Λ 行、不 `canon`。同为融合形式，`⟦snoc 行⟧ = ⟦定义⟧`、`⟦cons 行⟧ = ⟦定义⟧` 未证],
+    不经 Λ 行、不 `canon`。`snoc` 是 prelude 定义 `(𝟙 × τ) cat`，`Tm.snocDef_den`（e6adc7a）；原：融合形式，`⟦snoc 行⟧ = ⟦定义⟧` 未证。`cons` 仍是 native 行（融合形式，`⟦cons 行⟧ = ⟦定义⟧` 未证）],
   [`zip`], [两侧格界 → `scan(min)` 宽 → EXPAND → `gather` 两 payload 各在 `s₁[G] + u`、`s₂[G] + u` →
     `scan` 前缀和得新格；拒绝条件同 `cat`],
   [`sum`（`⦇0, +⦈`）], [格界 → EXPAND → `gather` 元素 `v` → 每格首元素（偏移 0）标段 → 自左向右分段
@@ -696,8 +696,8 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 #block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
   [构造子], [`mem`（`∋`） `inl` `inr`；`fold` `foldr` `hylo`（AOP 的标准递归组合子）],
   [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）],
-  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`τ`（`Tm.τDef_den`（9fee149））`positions`（`Tm.positionsDef_den`（fc6214f））`loop`（`Tm.loopDef_den`（11d846a））`thinL`（`Tm.thinLDef_den`（09a7562））`merge`（`Tm.mergeDef_den`（a58f429））`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理 ✅ e96e272（原：待 D3e-asc，定理未证））],
-  [native 行], [`cons` `snoc` `cat` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
+  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`τ`（`Tm.τDef_den`（9fee149））`cat`（`Tm.catDef_den`（e6adc7a））`snoc`（`Tm.snocDef_den`（e6adc7a））`positions`（`Tm.positionsDef_den`（fc6214f））`loop`（`Tm.loopDef_den`（11d846a））`thinL`（`Tm.thinLDef_den`（09a7562））`merge`（`Tm.mergeDef_den`（a58f429））`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理 ✅ e96e272（原：待 D3e-asc，定理未证））],
+  [native 行], [`cons` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
 )]
 
 - `flat` 已不是构造子（行 `flatRow`，定理 `Tm.flat_den`）；`foldI` 改为「定义 + fused 行」（tm-minimal-design §3.2）。`fold` `foldr` `hylo` 是 AOP 的标准递归组合子，留作构造子。
