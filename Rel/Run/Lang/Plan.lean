@@ -124,11 +124,14 @@ instance {α : Type} [Reg α] : Reg (Option α) := ⟨.obj, fun
   | .ctor 1 #[a] #[] => some <$> Reg.get? a
   | _ => none, fun | none => .ctor 0 #[] #[] | some a => .ctor 1 #[Reg.put a] #[]⟩
 
-/-- A list's cells read back, `[]` constructor `0`, `a :: l` constructor `1` of `a` and `l`. -/
-partial def listGet? {α : Type} [Reg α] : Val → Option (List α)
-  | .ctor 0 #[] #[] => some []
-  | .ctor 1 #[a, l] #[] => do pure ((← Reg.get? a) :: (← listGet? l))
+/-- A list's cells read back, `[]` constructor `0`, `a :: l` constructor `1` of `a` and `l`. Fields tested by size, not
+    matched as `#[a, l]`, and recursion on `sizeOf`, not `partial`: so it has an unfolding equation a proof can use. -/
+def listGet? {α : Type} [Reg α] : Val → Option (List α)
+  | .ctor 0 os ss => if os.isEmpty && ss.isEmpty then some [] else none
+  | .ctor 1 os ss => if h : os.size = 2 ∧ ss.isEmpty then do pure ((← Reg.get? os[0]) :: (← listGet? os[1])) else none
   | _ => none
+termination_by v => sizeOf v
+decreasing_by have := Array.sizeOf_getElem os 1 (by omega); simp; omega
 
 instance {α : Type} [Reg α] : Reg (List α) :=
   ⟨.obj, listGet?, fun l => l.foldr (fun a r => .ctor 1 #[Reg.put a, r] #[]) (.ctor 0 #[] #[])⟩
