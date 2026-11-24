@@ -784,6 +784,28 @@ def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[S
   | some n => pure n
   | none => throw "a table whose every column is positions, so no register holds its row count"
 
+/-- Whether register `a` of the block `is` (registers numbered from `base`) is the `pos` literal (`posB`), the one `Enc`
+    constructor that has no parts: followed through the registers a `global` or an `apply` answers from its body's.
+    A register defined any other way (a parameter, a kernel's answer, an `if`'s) is not known to be. -/
+partial def posIn (fs gs : Array Fun) (a : Nat) (base : Nat) : List Instr → Bool
+  | [] => false
+  | i :: is =>
+    let k := resN fs gs i
+    if base ≤ a && a < base + k then
+      let inFun (F : Fun) := (F.res[a - base]?).elim false (posIn fs gs · F.params.size F.body)
+      match i with
+      | .lit (.ctor c #[] #[]) => c == (Enc.pos : Enc).ctorIdx
+      | .global g => (gs[g]?).elim false inFun
+      | .apply f _ => (fs[f]?).elim false inFun
+      | _ => false
+    else posIn fs gs a (base + k) is
+
+/-- `posIn` of register `e` in the block being built. -/
+def isPosB (e : Nat) : Bld Bool := do
+  let (is, n, fs, gs) ← get
+  pure (posIn fs gs e (n - is.foldl (· + resN fs gs ·) 0) is.toList)
+
+
 mutual
 /-- The `n`-row columns `cs` as `output` takes them, in `cols` order: an atom column's registers; an array's `lo`,
     `hi`, then its payload's columns at its count `m`. -/
@@ -792,7 +814,11 @@ def flatB (n : Nat) (cs : Cols) (pos : String → Bool := fun _ => false) : Bld 
   | c :: cs => return (← flatC n c pos) ++ (← flatB n cs pos)
 /-- `flatB` of one column. -/
 def flatC (n : Nat) (c : Col) (pos : String → Bool := fun _ => false) : Bld Side := match c with
-  | .atom p t e => if pos p then pure [] else return [(p, (← encRegs t n e).push e)]
+  | .atom p t e => if pos p then pure [] else do
+    -- `Enc` is a sum (`foR` | `pos`) and `encRegs` reads the `foR` parts, which `pos` has none of: it is
+    -- made a `foR` first (one `kscan`, as `dictionary`'s ids), the file Lean's value holds for it
+    let e ← if ← isPosB e then mapB .add n e (← wordsB n 0) else pure e
+    return [(p, (← encRegs t n e).push e)]
   | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo).push lo), (p ++ ".hi", (← encRegs .i64 n hi).push hi)]
       ++ (← flatB m f pos)
   | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x pos) ++ (← flatB n y pos))
@@ -1746,7 +1772,14 @@ def sumTailB (what : String) (u : QAtomicType) (n seg v : Nat) : Bld (Nat × Nat
     guard (← call1 (kernel% USize.decEq) #[k, ← lit (.size 0)])
       s!"{what}: an f64 prefix sum is -0, which no sum of canonical words from +0 makes" #[]
     pure (W', ← mapB .or n ne nan)
-  | u => throw s!"{what}: values of {repr u} have no sum here; cast them to f64 or i64 first (x $ F)"
+  | .f32 =>
+    -- as `Tab.sumTailF`: one `kscan` adds in `f64` (`widen`) and rounds each prefix sum to `f32` (the `fto` post step)
+    let W ← nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put Kernel.Op.fadd), ← lit (.bit false),
+      ← lit (Reg.put QAtomicType.f32), ← lit (Reg.put QAtomicType.f32), n, ← ctorB 1 #[seg] #[],
+      ← listB [← srcB n z, ← srcB n v], ← lit (Reg.put (Rel.widen .f32)), ← lit (Reg.put [(Kernel.Op.fto .f32, (0 : UInt64))])])
+      0 "kscan"
+    pure (W, ← test W .eq nulWord)
+  | u => throw s!"{what}: values of {repr u} have no sum here; cast them to f32, f64 or i64 first (x $ F)"
 
 /-- **`Tab.sumOn`** on the `n` cells `X` of the atom `u`: the elements EXPANDed into `(G, i)`, a segment opened at
     each cell's first element, `sumTailB`; a cell with a bad element (`scatter or`) dropped (`keepB`), the others
