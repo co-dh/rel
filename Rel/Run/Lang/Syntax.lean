@@ -424,10 +424,13 @@ def prims : List Prim :=
      conv := "snoc", written := false },
    { sym := "setify", sig := ([], .list (.var {} "B"), .list (.var {} "B")),
      prelude := `Rel.Programs.prelude.setify, aop := .ok `Freyd.Alg.RelSet.ListRel.setify },
-   -- `positions(p)`: dataframe §3.1's `where(dom(xs ≫ p))`, named so because `where` is a keyword (§c); it makes
-   -- positions, numbers of `ℕ`, so it has no `dfn` until `rank` can be written and no use where `ℕ` has a universe
+   -- `positions(p)`: dataframe §3.1's `where(dom(xs ≫ p))`, named so because `where` is a keyword (§c). Its `dfn` is
+   -- `(𝟙 − dom(s (𝟙 − dom(length)))) Λ(s length)`, `s` the prefixes ending just before a passing element: their lengths
+   -- are the positions, `Λ` lists them ascending; the guard keeps `xs` only where every length is in `ℕ`'s universe,
+   -- so at an initial segment the text is the row cut to it (`Prim.cut`), where `ℕ` has no universe a text still runs
    { sym := "positions", num := [("ℕ", intAtoms)],
      sig := ([((.var {} "B", .var {} "B"), some false)], .list (.var {} "B"), .list (.var {} "ℕ")),
+     prelude := `Rel.Programs.prelude.positions,
      mono := false, aop := .error "AOP declares no positions of the elements of a list that pass a test" },
    ascRow,
    -- `sums(x)`: q's `sums` per key, `x : κ×ν ⟶ γ`, the key the source's first component; the fused form of
