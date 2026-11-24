@@ -52,6 +52,7 @@ Rel.Lang.Once.binds
 Rel.Lang.Plan.Bld.plan
 Rel.Lang.Plan.Bld.planIO
 Rel.Lang.Plan.Plan.exec
+Rel.Lang.Plan.abi
 Rel.Lang.Plan.arithB
 Rel.Lang.Plan.ascGet?
 Rel.Lang.Plan.block

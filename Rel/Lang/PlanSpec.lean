@@ -1,6 +1,6 @@
 module
 
-public import Rel.Lang.EmitC
+public import Rel.Run.Lang.EmitC
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
