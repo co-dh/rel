@@ -1991,7 +1991,9 @@ partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
         fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
       let lazy := at_ (tabB σ · x)
       if x.dem σ.dem [] then pure (k, true, lazy) else
-        try let t ← tabB σ {} x; pure (k, false, at_ fun _ => pure t) catch _ => pure (k, false, lazy)
+        -- only a lazy part (`known`) falls back to its use site's bounds; any other error is a bug and propagates
+        tryCatchThe BErr (do let t ← tabB σ {} x; pure (k, false, at_ fun _ => pure t)) fun e =>
+          if e.lazy then pure (k, false, lazy) else throwThe BErr e
     tabB bs D b
   | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
   | t, [] => tabB σ D t
@@ -2458,6 +2460,9 @@ def writeLibB (L : String) (old D : TabB) : Bld Unit := do
     tables with a symbol column (`Table.progLib`), if any. -/
 abbrev IoIn := List (String × InRead) × Option (String × List (String × QAtomicType × Nat))
 
+/-- Several steps' errors as one: every message, `lazy` only if every one is, so a collected failure keeps its kind. -/
+def BErr.join (es : Array BErr) : BErr := { msg := "\n".intercalate (es.map (·.msg)).toList, lazy := es.all (·.lazy) }
+
 /-- The plan of the IO statements of the program `n`, read as `rel_program` read it (`Expand.reread`), as `n.io`
     runs them: the input edge reads the inputs the outputs reach (`Expand.ioReach`, `readIn`); `main` builds each
     run-time definition they reach on the tables of its run-time names (`ofTm`, its variables `Once.binds`), then
@@ -2476,13 +2481,13 @@ def ioOf (n : Lean.Name) :
     let symOut := io.any fun | .output _ _ _ k v none _ _ => Table.symIn k.obj || Table.symIn v.obj | _ => false
     -- every input's refusal, not the first's, as `wr` below
     let rd : Bld IoIn := do
-      let (rs, errs) ← io.foldlM (init := ([], #[])) fun (rs, errs) s => match s with
+      let (rs, errs) ← io.foldlM (init := (([] : List (String × InRead)), (#[] : Array BErr))) fun (rs, errs) s => match s with
         | .input x _ _ k v c p =>
           if reach.contains x then
-            tryCatch (do pure (rs ++ [(x, ← readIn x k v c p)], errs)) fun e => pure (rs, errs.push e)
+            tryCatchThe BErr (do pure (rs ++ [(x, ← readIn x k v c p)], errs)) fun e => pure (rs, errs.push e)
           else pure (rs, errs)
         | _ => pure (rs, errs)
-      unless errs.isEmpty do throw ("\n".intercalate errs.toList)
+      unless errs.isEmpty do throwThe BErr (BErr.join errs)
       pure (rs, ← lib.mapM fun L => return (L, ← readLib L))
     let wr (ins : IoIn) : Bld Unit := do
       let mut σ : List (String × Sides) := []
@@ -2493,7 +2498,7 @@ def ioOf (n : Lean.Name) :
         | none => zeroB .long (.arr (.atom .char))
       let mut D := old
       -- every statement's refusal, not the first's: the list is the work a program needs of the plan
-      let mut errs : Array String := #[]
+      let mut errs : Array BErr := #[]
       for s in io do
        try
         match s with
@@ -2525,8 +2530,8 @@ def ioOf (n : Lean.Name) :
                 | none => throw s!"output `{x}`: no closed definition `{x}`"
               | none, none => throw s!"output `{x}`: not read or computed before it"
             writeOut x k v c p (← outSides k.obj v.obj t) D
-       catch e => errs := errs.push e
-      unless errs.isEmpty do throw ("\n".intercalate errs.toList)
+       catch e : BErr => errs := errs.push e
+      unless errs.isEmpty do throwThe BErr (BErr.join errs)
       if symOut then
         let some (L, _) := ins.2 | throw "an own output with a symbol column has no library"
         mainStepB (writeLibB L old D)
