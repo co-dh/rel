@@ -81,9 +81,4 @@ Rel.Verify.firstsOf
 Rel.Verify.groupOf
 Rel.Verify.ids
 Rel.Verify.offD
-Rel.cellFree
-Rel.encCellFree
-Rel.encEq
 Rel.positionsL
-Rel.tabCellFree
-Rel.tabEq
