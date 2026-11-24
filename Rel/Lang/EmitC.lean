@@ -743,10 +743,12 @@ def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
 /-- **`ValsB.pack k`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at
     most `1/k` of it is read (`0 < m`, `k · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered
     there, laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. `k = 0` cuts every
-    payload, the form an output file holds (`Table.writeVals`). -/
-partial def packB (k n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
+    payload, the form an output file holds (`Table.writeVals`). `sm`: the columns are a summand's (`ValsB.pack`'s
+    `o = true`), whose cells have null bounds in the other summand's rows: an array's own payload is kept, its nested
+    payloads cut. -/
+partial def packB (k n : Nat) (cs : Cols) (sm : Bool := false) : Bld Cols := cs.mapM fun
   | c@(.atom ..) => pure c
-  | .arr p m lo hi f => do
+  | .arr p m lo hi f => if sm then return .arr p m lo hi (← packB k m f) else do
     cellsBoundB "pack" n m
     let (s, e) ← spanB n m lo hi
     let w ← mapB .sub n e s
@@ -761,7 +763,7 @@ partial def packB (k n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
     match ← withRegs [.arr p m lo hi f] rs.toList with
     | ([c], _) => pure c
     | _ => throw "pack: an array's registers read as no one column"
-  | .sum p tag x y => return .sum p tag (← packB k n x) (← packB k n y)
+  | .sum p tag x y => return .sum p tag (← packB k n x true) (← packB k n y true)
 
 /-- **`Tab.pack`** at `k`: both sides' payloads cut (`packB`). -/
 def packT (T : TabB) (k : Nat := 2) : Bld TabB := funT [T] fun

@@ -427,7 +427,10 @@ def writesAgree {A B : Obj} (what : String) (p : Except String Plan) (v : Except
   let flat (pf : String × Db.OwnFile) :=
     (pf.1, pf.2.code, pf.2.kind, pf.2.count.toNat, pf.2.parts.toList.map (·.toList))
   unless got.length == ws.size && got.map flat == want.map flat do
-    throwError "the plan of `{what}` writes {got.length} of {ws.size} columns, not those of its Lean value"
+    let g := got.map flat
+    let w := want.map flat
+    let d := ((g.zip w).filter fun (a, b) => !(a == b)).map fun (a, b) => (a.1, b.1, a.2.1 == b.2.1, a.2.2.1 == b.2.2.1, a.2.2.2.1 == b.2.2.2.1)
+    throwError (s!"the plan of `{what}` writes {got.length} of {ws.size} columns, not those of its Lean value ({want.length} wanted); differing (got, want, code, kind, count) {d}; got {g.map (·.1)}; want {w.map (·.1)}")
 
 /-- The plan of `output x to "out"` for the definition `x` of the program `m` (`rel_program m`). -/
 def planOfIn (m : Lean.Name) (x : String) : Lean.Meta.MetaM (Except String Plan) :=
