@@ -22,6 +22,8 @@ def firstLine (s : String) : String := (s.takeWhile (· != '\n')).toString
     fails, its writes differ from `v`, or the budget ends first. -/
 def failure (env : Environment) (n : Name) (x : String) {A B : Obj} (v : Except String (Tab A B)) :
     IO (Option String) := do
+  -- a definition Lean itself refuses (`v` an error: a refusal a test pins) has no value to compare: not a native gap
+  if let .error _ := v then return none
   let run : IO (Option String) := try
       let _ ← (Lean.withCurrHeartbeats do writesAgree x (← planOfIn n x) v : Meta.MetaM Unit).run'.toIO
         { fileName := "native-all", fileMap := default } { env }
