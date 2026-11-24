@@ -797,4 +797,101 @@ theorem whereB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n keep : N
   exact Builds.pure fun _ => reads_of (l := [r, wr]) (vs := [.size K, Reg.put w])
     (by simp [hw, m19 (m18 (m17 (N16 hr)))])
 
+/-! ### `groupIdsB`: its kernel chain, registers named by what they hold -/
+
+/-- `ctorB`, then `c` on a register holding the constructor, in registers extending `rs`. -/
+theorem Builds.ctorBG {fg fg' : Array Fun × Array Fun} {tag : Nat} {objs scal : Array Nat} {os ss rs out : Array Val}
+    {c : Nat → Bld (Array Nat)} (ho : objs.mapM (reg rs "ctor") = .ok os) (hs : scal.mapM (reg rs "ctor") = .ok ss)
+    (hc : ∀ r R, R[r]? = some (.ctor tag os ss) → Extends rs R → Builds abi fg fg' (c r) R out) :
+    Builds abi fg fg' (Plan.ctorB tag objs scal >>= c) rs out :=
+  Builds.ctorB ho hs (hc _ _ (by simp) fun h => get_push h)
+
+/-- `projB`, then `c` on a register holding the field, in registers extending `rs`. -/
+theorem Builds.projBG {fg fg' : Array Fun × Array Fun} {x tag i : Nat} {t : Ty} {os ss rs out : Array Val} {v : Val}
+    {c : Nat → Bld (Array Nat)} (hx : rs[x]? = some (.ctor tag os ss)) (hv : os[i]? = some v) (ht : v.ty = t)
+    (hc : ∀ r R, R[r]? = some v → Extends rs R → Builds abi fg fg' (c r) R out) :
+    Builds abi fg fg' (Plan.projB x tag i t >>= c) rs out :=
+  Builds.projB hx hv ht (hc _ _ (by simp) fun h => get_push h)
+
+/-- `callK k as`, then `c` on registers holding the answers `o`, in registers extending `rs`. -/
+theorem Builds.callKG {fg fg' : Array Fun × Array Fun} {k : Kernel} {f : Array Val → Except String (Array Val)}
+    {as : Array Nat} {vs o rs out : Array Val} {c : Array Nat → Bld (Array Nat)} (hk : abiOf k.sym = some k)
+    (hf : k.run = .inl f) (ha : as.mapM (reg rs k.sym) = .ok vs) (ho : f vs = .ok o) (hs : o.size = k.res.size)
+    (hc : ∀ a R, a.toList.mapM (fun x => R[x]?) = some o.toList → Extends rs R → Builds abiOf fg fg' (c a) R out) :
+    Builds abiOf fg fg' (Plan.callK k as >>= c) rs out :=
+  Builds.callK hk hf ha ho hs (hc _ _ (holds_of_reg (mapM_reg_range rs o "")) fun h => get_app h)
+
+/-- `listB l`, then `k` on a register holding the list, in registers extending `rs`. -/
+theorem Builds.listBG {fg fg' : Array Fun × Array Fun} {out rs : Array Val} {l : List Nat} {vs : List Val}
+    {k : Nat → Bld (Array Nat)} (h : l.mapM (fun x => rs[x]?) = some vs)
+    (hk : ∀ r R, R[r]? = some (vs.foldr (fun v c => .ctor 1 #[v, c] #[]) (.ctor 0 #[] #[])) → Extends rs R →
+      Builds abi fg fg' (k r) R out) : Builds abi fg fg' (Plan.listB l >>= k) rs out :=
+  Builds.listB h fun _ _ hr => hk _ _ hr fun h => get_app h
+
+theorem groupIdsB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {t n c : Nat} {nv : USize} {ty : QAtomicType}
+    {cc s0 pe g1 g2 out : Enc} {sl : List Enc} {cnt : Nat}
+    (hn : rs[n]? = some (.size nv)) (ht : rs[t]? = some (Reg.put ty)) (hc : rs[c]?.bind Reg.get? = some cc)
+    (hak : (Reg.get? (Val.ctor 0 #[] #[Reg.put ty]) : Option AscKey) = some (.atom ty))
+    (hs : kasc nv [(.atom ty, cc)] = .ok (s0 :: sl, pe))
+    (hg : kseen nv [(.atom ty, s0)] = .ok (cnt, g1, g2))
+    (hk : kscatter .last nv pe g1 nv 0 = .ok out)
+    (hrt : ∀ e ∈ [s0, pe, g1], (Reg.get? (Reg.put e) : Option Enc) = some e) :
+    Builds abiOf fg fg (do let r ← groupIdsB t n c; Pure.pure #[r]) rs #[Reg.put out] := by
+  obtain ⟨cv, hcv, hgc⟩ := Option.bind_eq_some_iff.mp hc
+  simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq] at hrt
+  obtain ⟨rs0, rpe, rg1⟩ := hrt
+  have hpair : ∀ (a : Enc) (v : Val), Reg.get? v = some a →
+      (Reg.get? (Val.ctor 0 #[Val.ctor 0 #[] #[Reg.put ty], v] #[]) : Option (AscKey × Enc)) = some (.atom ty, a) := by
+    intro a v hv
+    show (do pure (← Reg.get? (Val.ctor 0 #[] #[Reg.put ty]), ← Reg.get? v)) = _
+    rw [hak, hv]; rfl
+  have hlist : ∀ (pv : Val) (x : AscKey × Enc), Reg.get? pv = some x →
+      (Reg.get? (Val.ctor 1 #[pv, Val.ctor 0 #[] #[]] #[]) : Option (List (AscKey × Enc))) = some [x] := by
+    intro pv x h; exact (listGet?_foldr [pv]).trans (by simp [h])
+  have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+  have hu : ∀ x : UInt64, (Reg.get? (Val.u64 x) : Option UInt64) = some x := fun _ => rfl
+  have hlast : (Reg.get? (Reg.put Kernel.Op.last) : Option Kernel.Op) = some .last := by with_unfolding_all rfl
+  unfold groupIdsB
+  simp only [bind_assoc]
+  refine Builds.ctorBG (reads_of (l := []) (vs := []) rfl) (reads_of (l := [t]) (vs := [Reg.put ty]) (by simp [ht]))
+    fun a R1 ha m1 => ?_
+  refine Builds.ctorBG (reads_of (l := [a, c]) (vs := [Val.ctor 0 #[] #[Reg.put ty], cv]) (by simp [ha, m1 hcv]))
+    (reads_of (l := []) (vs := []) rfl) fun p R2 hp m2 => ?_
+  refine Builds.listBG (l := [p]) (vs := [Val.ctor 0 #[Val.ctor 0 #[] #[Reg.put ty], cv] #[]]) (by simp [hp])
+    fun l1 R3 hl1 m3 => ?_
+  have M3 : Extends rs R3 := fun h => m3 (m2 (m1 h))
+  refine Builds.callKG (o := #[Reg.put (s0 :: sl), Reg.put pe]) (by abiK) rfl
+    (reads_of (l := [n, l1]) (vs := [.size nv, [Val.ctor 0 #[Val.ctor 0 #[] #[Reg.put ty], cv] #[]].foldr
+      (fun v c => Val.ctor 1 #[v, c] #[]) (Val.ctor 0 #[] #[])]) (by simp [hl1, M3 hn])) ?_ rfl fun sp R4 hsp m4 => ?_
+  · simp [arg, hsz, hlist _ _ (hpair _ _ hgc), hs, Out.out]; rfl
+  obtain ⟨p0, hp0, hpR⟩ := holds_at hsp (i := 0) rfl
+  obtain ⟨p1, hp1, hpR1⟩ := holds_at hsp (i := 1) rfl
+  have e : (Reg.put (s0 :: sl) : Val) = .ctor 1 #[Reg.put s0, Reg.put sl] #[] := by with_unfolding_all rfl
+  rw [e] at hpR
+  rw [nth_of (by simpa using hp0), pure_bind]
+  have M4 : Extends rs R4 := fun h => m4 (M3 h)
+  refine Builds.projBG (os := #[Reg.put s0, Reg.put sl]) (ss := #[]) (v := Reg.put s0) hpR rfl
+    (by with_unfolding_all rfl) fun so R5 hso m5 => ?_
+  refine Builds.ctorBG (reads_of (l := []) (vs := []) rfl)
+    (reads_of (l := [t]) (vs := [Reg.put ty]) (by simp [m5 (M4 ht)])) fun a2 R6 ha2 m6 => ?_
+  refine Builds.ctorBG (reads_of (l := [a2, so]) (vs := [Val.ctor 0 #[] #[Reg.put ty], Reg.put s0])
+    (by simp [ha2, m6 hso])) (reads_of (l := []) (vs := []) rfl) fun p2 R7 hp2 m7 => ?_
+  refine Builds.listBG (l := [p2]) (vs := [Val.ctor 0 #[Val.ctor 0 #[] #[Reg.put ty], Reg.put s0] #[]])
+    (by simp [hp2]) fun l2 R8 hl2 m8 => ?_
+  have M8 : Extends rs R8 := fun h => m8 (m7 (m6 (m5 (M4 h))))
+  refine Builds.callKG (o := #[.nat cnt, Reg.put g1, Reg.put g2]) (by abiK) rfl
+    (reads_of (l := [n, l2]) (vs := [.size nv, [Val.ctor 0 #[Val.ctor 0 #[] #[Reg.put ty], Reg.put s0] #[]].foldr
+      (fun v c => Val.ctor 1 #[v, c] #[]) (Val.ctor 0 #[] #[])]) (by simp [hl2, M8 hn])) ?_ rfl fun kg R9 hkg m9 => ?_
+  · simp [arg, hsz, hlist _ _ (hpair _ _ rs0), hg, Out.out]; rfl
+  obtain ⟨q1, hq1, hqR⟩ := holds_at hkg (i := 1) rfl
+  refine Builds.litG fun cl R10 hcl m10 => ?_
+  rw [nth_of (by simpa using hp1), pure_bind, nth_of (by simpa using hq1), pure_bind]
+  refine Builds.litG fun c0 R11 hc0 m11 => ?_
+  refine Builds.call1G (v := Reg.put out) (by abiK) rfl
+    (reads_of (l := [cl, n, p1, q1, n, c0]) (vs := [Reg.put Kernel.Op.last, .size nv, Reg.put pe, Reg.put g1, .size nv, .u64 0])
+      (by simp [hc0, m11 hcl, m11 (m10 (m9 (M8 hn))), m11 (m10 (m9 (m8 (m7 (m6 (m5 hpR1)))))), m11 (m10 hqR)])) ?_ rfl
+    fun r R12 hr m12 => ?_
+  · simp [arg, hlast, hsz, rpe, rg1, hu, hk, Out.out]; rfl
+  exact Builds.pure fun _ => reads_of (l := [r]) (vs := [Reg.put out]) (by simp [hr])
+
 end Rel.Lang.Plan
