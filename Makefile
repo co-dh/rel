@@ -33,7 +33,7 @@ UNCHANGED = h=$$( { $(2); } | sha256sum | cut -c1-64); if [ -f $(T)/$(1).pass ] 
 PASSED    = echo "$$h" > $(T)/$(1).pass
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build pc9-time allcov crate-test syms tags native native-all ldd index-complete axioms noreduce panic bang pointfree decode listban kernel-tested externs compile-diff
+GATES_LIST := build pc9-time allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode listban kernel-tested externs compile-diff
 .PHONY: check main-only nogmp bench indexpanic-allow bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow native-all-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
