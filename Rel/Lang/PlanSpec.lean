@@ -3243,11 +3243,7 @@ theorem Typed.ascSeenOnB {m n : Nat} (cs : Cols) (hn : m ≤ n) (hcs : AllGe m (
     Typed m (fun r : Nat × Nat × Nat × Nat => m ≤ r.1 ∧ m ≤ r.2.1 ∧ m ≤ r.2.2.1 ∧ m ≤ r.2.2.2)
       (Plan.ascSeenB.ascSeenOnB n cs) := by
   unfold Plan.ascSeenB.ascSeenOnB
-  refine (Typed.mapM fun c hc => Typed.keysB hn c ((Cols.regs_ge cs).1 hcs c hc)).bind fun kss hkss => ?_
-  dsimp only
-  have hks : PairsGe m kss.flatten := fun p hp => by
-    obtain ⟨l, hl, hpl⟩ := List.mem_flatten.1 hp
-    exact hkss l hl p hpl
+  refine (Typed.keysL hn cs hcs).bind fun ks hks => ?_
   refine (Typed.mapM (f := fun p : Nat × Nat => match p with | (k, e) => Plan.ctorB 0 #[k, e] #[]) fun p hp => ?_).bind
     fun els hels => (Typed.listB hels).bind fun l hl => (Typed.callK (by simp; omega)).bind fun sp hsp =>
       (Typed.nth hsp 0 "kasc").bind fun s0 hs0 => (Typed.sortedB _ s0 hs0 hks).bind fun sorted hsorted =>
