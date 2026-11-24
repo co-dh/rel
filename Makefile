@@ -33,8 +33,8 @@ UNCHANGED = h=$$( { $(2); } | sha256sum | cut -c1-64); if [ -f $(T)/$(1).pass ] 
 PASSED    = echo "$$h" > $(T)/$(1).pass
 
 # cheapest first: compile-diff takes minutes, so a gate that fails in seconds is reported before it starts
-GATES_LIST := build pc9-time allcov crate-test syms tags native ldd index-complete axioms noreduce panic bang pointfree decode listban kernel-tested externs compile-diff
-.PHONY: check main-only nogmp bench indexpanic-allow bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow $(GATES_LIST)
+GATES_LIST := build pc9-time allcov crate-test syms tags native native-all ldd index-complete axioms noreduce panic bang pointfree decode listban kernel-tested externs compile-diff
+.PHONY: check main-only nogmp bench indexpanic-allow bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow native-all-allow $(GATES_LIST)
 check: main-only $(GATES_LIST)
 	$(GATE)
 	echo "make check: every gate passed"
@@ -283,8 +283,28 @@ kernel-tested: index
 	$(kernel-tested_NOW)
 	$(call ALLOWED,kernel-tested)
 
+# which registered definitions run natively: each closed definition of every program of Rel.Lang.AllPrograms is planned and
+# its plan's writes compared with its Lean value (test/NativeAll.lean), one line `program def: first line of the error` per
+# failure (a plan that refuses, a difference, a kernel crash, a timeout), against native-all-allow.txt. The run takes the
+# precompiled libraries of .lake/build/lib for its child processes, one of which a kernel panic kills; the exit status and
+# the stderr line of a child stay in $(T)/native-all.err
+define native-all_NOW
+$(LAKE) build Rel.Lang.AllPrograms RelKernel RelRun
+NATIVE_ALL_LIB=$(CURDIR)/.lake/build/lib CAP_MEM_MB=$(MEM) $(CAP) $(LAKE) env lean $(CURDIR)/test/NativeAll.lean > $(T)/native-all.raw 2> $(T)/native-all.err
+sed '/^cap: /d' $(T)/native-all.raw | sort -u > $(T)/native-all.txt
+cat $(T)/native-all.err
+echo "native-all: $$(wc -l < $(T)/native-all.txt) closed definitions do not run natively"
+endef
+
+native-all: main-only index
+	$(GATE)
+	$(native-all_NOW)
+	$(call ALLOWED,native-all)
+
+native-all-allow: main-only
+
 # regenerate an allowlist from what violates today; read the diff before committing it
-bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow: %-allow: index
+bang-allow pointfree-allow decode-allow listban-allow kernel-tested-allow native-all-allow: %-allow: index
 	$(GATE)
 	$($*_NOW)
 	cp $(T)/$*.txt $*-allow.txt

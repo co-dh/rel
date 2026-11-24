@@ -1,0 +1,18 @@
+Rel.Lang.Test.cycle K: crashed, exit 134: range start index 2 out of range for slice of length 0
+Rel.Lang.Test.cycle Z: crashed, exit 134: range start index 2 out of range for slice of length 0
+Rel.Lang.Test.cycle plan: crashed, exit 134: range start index 2 out of range for slice of length 0
+Rel.Lang.Test.cycle ζ: crashed, exit 134: range start index 2 out of range for slice of length 0
+Rel.Lang.TestCmpMeet.cmpMeet3 bad: bad: cross: values of the left object by values of the right, past the bound 268435456 pairs: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`): 100000, 100000
+Rel.Lang.TestCmpMeet.cmpMeetT either: either: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestCmpMeet.cmpMeetT ge: ge: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestCmpMeet.cmpMeetT gel: gel: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestCmpMeet.cmpMeetT gt: gt: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestCmpMeet.cmpMeetT le: le: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestCmpMeet.cmpMeetT lt: lt: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestDemand.pairN bad: bad: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
+Rel.Lang.TestFrameStat.frameStatF32T m: m: sum: values of Rel.QAtomicType.f32 have no sum here; cast them to f64 or i64 first (x $ F)
+Rel.Lang.TestFrameUnbounded.frameUnboundedT pz: pz: plan: proj r1.0 reads constructor 2, not 0
+Rel.Lang.TestFrameUnbounded.frameUnboundedT sa: sa: plan: proj r1.0 reads constructor 2, not 0
+Rel.Lang.TestHylo.hyloCycle bad: bad: the coalgebra c at line 39, col 24 reaches a node from itself, so it is not well-founded there: 2, 3
+Rel.Lang.TestNativeF.nativeF dy: dy: row `ymd` (`Rel.Tab.ymd`): no plan recipe builds its `Tab` operator yet
+Rel.Lang.TestUnbounded.unboundedT bad: bad: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
