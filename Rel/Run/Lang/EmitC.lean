@@ -2117,10 +2117,16 @@ def shareB (k : Nat) (A B : Obj) (inl glob : Bld TabB) : Bld TabB := do
     modify fun (is, n, fs, gs) => (is, n, fs, (gs ++ Array.replicate (k + 1 - gs.size) default).modify k fun _ => failedSlot e)
     inl
 
+/-- A relation given to a spine is no larger than all of them: `argB`'s measure bounds each by the sum. -/
+theorem size_le_args {x : (C : Obj) × (E : Obj) × Tm C E} {xs : List ((C : Obj) × (E : Obj) × Tm C E)}
+    (h : x ∈ xs) : x.2.2.size ≤ (xs.map fun x => x.2.2.size).sum := by
+  obtain ⟨_, _, rfl⟩ := List.append_of_mem h; simp only [List.map_append, List.sum_append_nat, List.map_cons,
+    List.sum_cons]; omega
+
 /-- A call of `tabB`/`nodeB`/`argB` lowers their rank `(Tm.size, kind)`: the size, else at one size the kind. -/
-local macro "tm_dec" : tactic => `(tactic| first
-  | (apply Prod.Lex.left; (try simp only [Tm.size, List.map_cons, List.sum_cons, List.map_nil, List.sum_nil] at *); omega)
-  | (apply Prod.Lex.right'; ((try simp only [Tm.size, List.map_cons, List.sum_cons, List.map_nil, List.sum_nil] at *); omega); decide))
+local macro "tm_dec" : tactic => `(tactic| (
+  (try simp only [Tm.size, List.map_cons, List.sum_cons, List.map_nil, List.sum_nil])
+  first | exact Prod.Lex.left _ _ (by omega) | exact Prod.Lex.right' _ (by omega) (by decide)))
 
 mutual
 /-- **A term's table**: its node's recipe (`nodeB`) as one plan function (`funT`), closing over the tables of its
@@ -2207,7 +2213,9 @@ def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
     compB Dt (← muB s!"{w} ran its cap of its nodes' count + 3 rounds without reaching a fixed point"
       (← call1 (kernel% USize.add) #[N.n, ← lit (.size 2)])
       (fun Y => compTB N (tabB ((k, false, fun _ _ _ => pure Y) :: σ) · b) (b.dem (Vars.dem ((k, false, fun _ _ _ => pure Y) :: σ)) [])) (← tabB σ {} (.zero : Tm A B)))
-  | A, B, t@(.prim _) | A, B, t@(.arg ..) | A, B, t@(.call ..) => argB σ D A B t []
+  | A, B, .prim r => argB σ D A B (.prim r) []
+  | A, B, .arg f x => argB σ D A B (.arg f x) []
+  | A, B, .call ks c cv os b => argB σ D A B (.call ks c cv os b) []
   -- `GenK.ldiv`'s bit-matrix `S` (`ldivM`) answers the table `ldivSel` does (`Tab.ldivTabMat_law`); a plan's `S` is rows
   | _, _, .ldiv R S UB UC => do
     ldivSelB ldivB Tab.bitsMax (← tabB σ {} R) (← tabB σ {} S) (← tabB σ {} UB) (← tabB σ {} UC)
@@ -2237,7 +2245,8 @@ def argB (σ : Vars) (D : Dom) (A B : Obj) :
     | some k => shareB k A B (tabB [] D b) (tabB [] {} b)
     | none => tabB [] D b
   | .call ks _ _ _ b, xs => do
-    let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
+    let bs ← (ks.zip xs).attach.mapM fun ⟨(k, ⟨C, E, x⟩), h⟩ => do
+      have : x.size ≤ (xs.map fun x => x.2.2.size).sum := size_le_args (List.of_mem_zip h).2
       let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
         fun A' B' D' => if C = A' ∧ E = B' then b D' else zeroB A' B'
       let lazy := at_ (tabB σ · x)
@@ -2246,12 +2255,11 @@ def argB (σ : Vars) (D : Dom) (A B : Obj) :
         tryCatchThe BErr (do let t ← tabB σ {} x; pure (k, false, at_ fun _ => pure t)) fun e =>
           if e.lazy then pure (k, false, lazy) else throwThe BErr e
     tabB bs D b
-  | .prim r, xs => rowB r A B D (xs.map fun ⟨_, _, x⟩ => (tabB σ · x))
-  | t, [] => tabB σ D t
+  | .prim r, xs => rowB r A B D (xs.attach.map fun ⟨⟨_, _, x⟩, h⟩ =>
+    have : x.size ≤ (xs.map fun x => x.2.2.size).sum := size_le_args h; (tabB σ · x))
   | _, xs => throw s!"{xs.length} relations given to a term that is no row and no call"
--- a spine (`nodeB` hands `argB` only these) ranks below `nodeB`, any other term above `tabB`, which it falls back to
-termination_by t xs => (t.size + (xs.map fun x => x.2.2.size).sum,
-  match t with | .prim _ | .arg .. | .call .. => 0 | _ => 3)
+-- the spine and the relations it was given shrink together; `nodeB` hands `argB` only a row, an `arg` or a call
+termination_by t xs => (t.size + (xs.map fun x => x.2.2.size).sum, 0)
 decreasing_by all_goals tm_dec
 end
 
