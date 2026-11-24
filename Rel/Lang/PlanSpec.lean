@@ -2073,6 +2073,53 @@ theorem Grows.tabsRegs (Ts : List TabB) : Grows (tabsRegs Ts) :=
 theorem Grows.tysOf (cs : Cols) : Grows (tysOf cs) :=
   let ⟨_, _, _, h, _⟩ := regsOf_spec cs; Grows.of_pure h
 
+-- `withRegs` on any registers, not only `regsOf_spec`'s length: `funB` hands its body registers of any count.
+mutual
+theorem Grows.withRegs : ∀ (cs : Cols) (rs : List Nat), Grows (withRegs cs rs)
+  | [], rs => by unfold Rel.Lang.Plan.withRegs; exact Grows.pure _
+  | c :: cs, rs => by
+    unfold Rel.Lang.Plan.withRegs
+    exact (Grows.withReg c rs).bind fun _ => (Grows.withRegs cs _).bind fun _ => Grows.pure _
+theorem Grows.withReg : ∀ (c : Col) (rs : List Nat), Grows (withReg c rs)
+  | .atom p t e, r :: rs => by unfold Rel.Lang.Plan.withReg; exact Grows.pure _
+  | .atom p t e, [] => by unfold Rel.Lang.Plan.withReg; exact Grows.throw _
+  | .arr p m lo hi f, a :: b :: d :: rs => by
+    unfold Rel.Lang.Plan.withReg; exact (Grows.withRegs f rs).bind fun _ => Grows.pure _
+  | .arr p m lo hi f, [] => by unfold Rel.Lang.Plan.withReg; exact Grows.throw _
+  | .arr p m lo hi f, [_] => by unfold Rel.Lang.Plan.withReg; exact Grows.throw _
+  | .arr p m lo hi f, [_, _] => by unfold Rel.Lang.Plan.withReg; exact Grows.throw _
+  | .sum p tag x y, a :: rs => by
+    unfold Rel.Lang.Plan.withReg
+    exact (Grows.withRegs x rs).bind fun _ => (Grows.withRegs y _).bind fun _ => Grows.pure _
+  | .sum p tag x y, [] => by unfold Rel.Lang.Plan.withReg; exact Grows.throw _
+end
+
+theorem Grows.tabsAt (Ts : List TabB) (rs : List Nat) : Grows (tabsAt Ts rs) := by
+  unfold Rel.Lang.Plan.tabsAt
+  refine Grows.foldlM (fun ⟨Us, rs⟩ T => ?_) Ts _
+  match rs with
+  | n :: rs => exact (Grows.withRegs _ rs).bind fun _ => Grows.pure _
+  | [] => exact Grows.throw _
+
+theorem Grows.tysTab (T : TabB) : Grows (tysTab T) := (Grows.tysOf _).bind fun _ => Grows.pure _
+
+/-- A table function grows the plan as its body does: `hb` of `funT_builds` for a body that itself calls `funT`. -/
+theorem Grows.funT {Ts : List TabB} {b : List TabB → Bld TabB} (hb : ∀ Us, Grows (b Us)) : Grows (funT Ts b) := by
+  unfold Rel.Lang.Plan.funT
+  refine (Grows.mapM Grows.tysTab Ts).bind fun _ => (Grows.tabsRegs Ts).bind fun _ => Grows.bind ?_ fun x => ?_
+  · exact Grows.funB fun ps => (Grows.tabsAt Ts ps).bind fun _ => (hb _).bind fun U =>
+      (Grows.tabsRegs [U]).bind fun _ => (Grows.tysTab U).bind fun _ => Grows.pure _
+  · rcases x with ⟨_, _⟩
+    refine (Grows.tabsAt _ _).bind fun _ => ?_
+    split
+    · exact Grows.pure _
+    · exact Grows.throw _
+
+theorem Grows.funV {n : Nat} {X : Cols} {Ts : List TabB} {b : Nat → Cols → List TabB → Bld TabB}
+    (hb : ∀ n X Ts, Grows (b n X Ts)) : Grows (funV n X Ts b) := by
+  unfold Rel.Lang.Plan.funV
+  exact Grows.funT fun | T :: Ts => hb _ _ _ | [] => Grows.throw _
+
 /-- `funB_builds` for a table function `funT Ts b`: the parameters are the registers `A` of `Ts` read in `rs` (`pv`),
     the body `b` reads the tables `Us` whose registers are the parameters, and answers the table `U` whose registers
     `R` hold `o`; the table `kk` continues with is `U` over the registers `R'` that the answer's `funB` leaves. -/
