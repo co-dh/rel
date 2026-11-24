@@ -179,14 +179,14 @@ theorem colConst_u1 {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e
     refine Array.ext (by simp) fun j _ _ => ?_
     simp
   rw [hu, Array.getElem?_map, he, Array.getElem?_replicate, if_pos hi]; rfl
-/-- **`colMap op n a b t s pre post` at any answer type `t`**: both arguments hold `n` words read at `s`, and word `i`
-of the answer is `chain post` of `op` of `a`'s and `b`'s words `i` through `chain pre`, a boolean answer's cut to its
-bit. -/
-theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pre post : List (Op × UInt64)}
+/-- **`colMap op n a b t s pre post` at any answer type `t`** is `wordsFoR` of its own words, so two calls writing the
+same words answer the same `Enc` (`colMap_const_eq`); both arguments hold `n` words read at `s`, and word `i` of the
+answer is `chain post` of `op` of `a`'s and `b`'s words `i` through `chain pre`, a boolean answer's cut to its bit. -/
+theorem colMap_enc {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pre post : List (Op × UInt64)}
     (h : colMap op n a b t s pre post = .ok o)
     (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) (hn : op ≠ .null := by decide)
     (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
-    (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat,
+    o = wordsFoR (raw .i64 n o) ∧ (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat,
       ∃ x y v w, chain pre ((raw s n a)[i]?.getD 0) = .ok x ∧ chain pre ((raw s n b)[i]?.getD 0) = .ok y ∧
         op.eval x y = .ok v ∧ chain post v = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) := by
   unfold colMap at h
@@ -224,7 +224,7 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
   obtain ⟨hos, hrow⟩ := foldlM_kscanRow _ _ _ _ _ _ hf
   obtain ⟨hps, hpr⟩ := chainAll_ok hp
   have hW : (out.map fun v => if t = .u1 then v % 2 else v).size = n.toNat := by simp [hps, hos]
-  refine ⟨ha, hb, ?_, fun i hi => ?_⟩
+  refine ⟨by rw [(wordsFoR_closed _ hW.symm).2.1], ha, hb, ?_, fun i hi => ?_⟩
   · rw [(wordsFoR_closed _ hW.symm).2.1]; exact hW
   rw [(wordsFoR_closed _ hW.symm).2.1]
   have hr := hrow i (by omega)
@@ -239,6 +239,46 @@ theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pr
     refine ⟨_, _, v, _, hra i hi, hrb i hi, he,
       by rw [hr]; simpa [Array.getElem?_eq_getElem (show i < out₀.size by omega)] using hq, ?_⟩
     simp [Array.getElem?_eq_getElem (show i < out.size by omega)]
+
+/-- `colMap_enc` without the `Enc`: the arguments' sizes and the answer's words. -/
+theorem colMap_chain {op : Op} {t s : QAtomicType} {n : USize} {a b o : Enc} {pre post : List (Op × UInt64)}
+    (h : colMap op n a b t s pre post = .ok o)
+    (hs : kscanStream op [(n, a), (n, b)] pre post = false := by lockstep) (hn : op ≠ .null := by decide)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, b)], hasNul p.2 = false := by nulfree) :
+    (raw s n a).size = n.toNat ∧ (raw s n b).size = n.toNat ∧ (raw .i64 n o).size = n.toNat ∧ ∀ i < n.toNat,
+      ∃ x y v w, chain pre ((raw s n a)[i]?.getD 0) = .ok x ∧ chain pre ((raw s n b)[i]?.getD 0) = .ok y ∧
+        op.eval x y = .ok v ∧ chain post v = .ok w ∧ (raw .i64 n o)[i]? = some (if t = .u1 then w % 2 else w) :=
+  (colMap_enc h hs hn hF).2
+
+/-- **`colMap_const_eq`: a map against a constant column is the one-`kscan` post step.** `op` of each word of `a` and
+the column `colConst n c` (two columns read, one written: the C builders' form) answers the same `Enc` as `colMap .first`
+of `a` with the post step `(op', c')` (one column read: the Lean spec's form), wherever `op w c` answers what
+`op' c' w` answers: `.lt`/`(.gt, c)`, `.div`/`(.rdiv, c)`, `.mod`/`(.rmod, c)` at `c' = c` (only their messages at a
+divisor 0 differ), and `.sub`/`(.add, 0 - c)` (`neg_add_word`). -/
+theorem colMap_const_eq {op op' : Op} {n : USize} {a k o e : Enc} {c c' : UInt64}
+    (hk : colConst n c = .ok k) (ho : colMap op n a k = .ok o)
+    (he : colMap .first n a a .i64 .i64 [] [(op', c')] = .ok e)
+    (hf : ∀ w v, op'.eval c' w = .ok v → op.eval w c = .ok v)
+    (hs : kscanStream op [(n, a), (n, k)] [] [] = false := by lockstep) (hn : op ≠ .null := by decide)
+    (hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, k)], hasNul p.2 = false := by nulfree) : o = e := by
+  obtain ⟨ho', -, -, hso, hro⟩ := colMap_enc ho hs hn hF
+  obtain ⟨he', -, -, hse, hre⟩ := colMap_enc he (by simp [kscanStream]) (by decide) (.inl rfl)
+  rw [ho', he']
+  refine congrArg (wordsFoR ·) (Array.ext (by rw [hso, hse]) fun i h1 h2 => ?_)
+  obtain ⟨x, y, v, w, hx, hy, hv, hw, hoi⟩ := hro i (by omega)
+  obtain ⟨x', y', v', w', hx', -, hv', hw', hei⟩ := hre i (by omega)
+  simp only [chain, List.foldlM_nil, List.foldlM_cons, pure, Except.pure, Except.ok.injEq, bind,
+    Except.bind] at hx hy hw hx' hv' hw'
+  subst hx hy hw hx'
+  simp only [Op.eval, Except.ok.injEq] at hv'
+  subst hv'
+  have hw2 : op'.eval c' ((raw .i64 n a)[i]?.getD 0) = .ok w' := by
+    cases h : op'.eval c' ((raw .i64 n a)[i]?.getD 0) <;> rw [h] at hw' <;> simpa using hw'
+  rw [colConst_raw hk, Array.getElem?_replicate, if_pos (by omega), Option.getD_some, hf _ _ hw2,
+    Except.ok.injEq] at hv
+  rw [Array.getElem?_eq_getElem h1, if_neg (by decide)] at hoi
+  rw [Array.getElem?_eq_getElem h2, if_neg (by decide)] at hei
+  rw [Option.some.inj hoi, Option.some.inj hei, hv]
 
 /-- **`colMap op n a b t` at any answer type `t`**: word `i` is `op` of `a`'s and `b`'s words `i`, a boolean answer's
 cut to its bit (`colMap_chain` at no chain; `colMap_raw` is the `i64` case with the argument sizes). -/
