@@ -392,7 +392,7 @@ def prims : List Prim :=
    { sym := "merge",
      sig := ([((.var {} "B", .var {} "B"), some true)], .prod (.list (.var {} "B")) (.list (.var {} "B")),
        .list (.var {} "B")),
-     mono := false, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
+     mono := false, prelude := `Rel.Programs.prelude.merge, aop := .ok `Freyd.Alg.RelSet.ListRel.merge },
    { sym := "loop",
      sig := ([((.prod (.var {} "X") (.var {} "Y"), .var {} "X"), some false)],
        .prod (.var {} "X") (.list (.var {} "Y")), .var {} "X"),

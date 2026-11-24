@@ -64,6 +64,7 @@ rel_program prelude where
     tails : [α] ⟶ [[α]] ≜ ⦇[nil τ, ⟨⟨π₁,π₂head⟩cons,π₂⟩cons]⦈ʳ   -- B&dM p.127 tails = ⦇[wrap nil, extend]⦈
     filter(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₂p)snoc ∪ ((𝟙 − dom(π₂p))π₁)]⦈      -- B&dM p.66 ⦇[nil, p outl → cons, outr]⦈
     takewhile(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₁p)cons ∪ ((𝟙 − dom(π₁p))nil)]⦈ʳ  -- B&dM p.174 (7.39) ⦇[nil, p outl → cons, nil]⦈
+    merge(Q : α ⟶ α) : [α]×[α] ⟶ [α] ≜ ⟨⟨𝟙, nil⟩, cat⟩ loop(π₁ (l ⟨⟨π₁π₁ tail, π₁π₂⟩, ⟨π₂, a⟩snoc⟩ ∪ ((𝟙 − l) ⟨⟨π₁π₁, π₁π₂ tail⟩, ⟨π₂, b⟩snoc⟩))) π₂ where a ≜ π₁π₁ at(0), b ≜ π₁π₂ at(0), l ≜ dom(⟨a,b⟩ cor(Q)) ∪ (dom(a) − dom(b))   -- merge by a clocked loop: take the head `a` of the first when `a Q b` or the second is empty
 
     -- B&dM p.130 `perm ≜ ⦇[nil, add]⦈`: add puts the new element anywhere in the array so far. Its converse is
     -- itself, stated by the theorem `permConv` below (`Elab.convs`), because `perm° = perm` cannot be derived.
