@@ -597,8 +597,8 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : ColB false .i64
 (`[SN, EN)`, `cellSpan_spec`) is laid out at `[Σ_{<i} w, Σ_{≤i} w)` (`Vals.cells`), whose row `Σ_{<i} w + d` is
 gathered from payload row `SN + d` (`Vals.cells_expand_row` at `g = id`); a summand keeps its cells and packs its
 payload. -/
-theorem ValsB.pack_row : {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) → {y : ValsB o A n} →
-    ValsB.pack x = .ok y → {P : Fin n.toNat → Prop} → ValsB.WFOn x P → (o = false → ∀ i, P i) →
+theorem ValsB.pack_row {k : Nat} : {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) → {y : ValsB o A n} →
+    ValsB.pack k x = .ok y → {P : Fin n.toNat → Prop} → ValsB.WFOn x P → (o = false → ∀ i, P i) →
     ∀ i, P i → ValsB.row y i = ValsB.row x i
   | _, .atom _, _, x, _, h, _, _, _, i, _ => by
     simp only [ValsB.pack, pure, Except.pure, Except.ok.injEq] at h; cases h; rfl

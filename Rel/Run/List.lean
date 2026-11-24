@@ -27,16 +27,19 @@ def Vals.cells {B : Obj} {T : USize} (n : USize) (w : Enc) (pay : Vals B T) : Ex
   let P ← colPrefix .add n w
   pure ⟨T, ← colArr .sub n P w, ← scanArr .first false .i64 .i64 n Option.none [(n, P)], pay⟩
 
-/-- `x` with every array payload cut to the elements its cells read, where at most half of it is read (`2 · T ≤ m`,
+/-- `x` with every array payload cut to the elements its cells read, where at most `1/k` of it is read (`k · T ≤ m`,
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads
 the same. A payload joined to a copy of itself (`ValsB.concat` in `∪`, `cat`) doubles while its cells read one copy;
-the cut is paid by the dead half, so a round's slices (`uncons`) are not copied each round. -/
-def ValsB.pack : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Except String (ValsB o A n)
+the cut at `k = 2` is paid by the dead half, so a round's slices (`uncons`) are not copied each round. `k = 0` cuts
+every payload: the payload is then the cells' slices one after another and `lo`, `hi` their running sums, a form
+that depends on the cells alone (design §0: a payload past the cells' reach is no part of an `arr` value), which is
+what an output file holds (`Table.writeVals`). -/
+def ValsB.pack (k : Nat) : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Except String (ValsB o A n)
   | _, .atom _, _, x => pure x
-  | _, .prod _ _, _, x => do pure (← ValsB.pack x.1, ← ValsB.pack x.2)
+  | _, .prod _ _, _, x => do pure (← ValsB.pack k x.1, ← ValsB.pack k x.2)
   -- a summand's cells (`o = true`) have null bounds in the rows of the other summand, which no width or prefix sum
   -- reads: its own payload is cut, its cells kept
-  | true, .arr _, _, ⟨m, lo, hi, f⟩ => do pure ⟨m, lo, hi, ← ValsB.pack f⟩
+  | true, .arr _, _, ⟨m, lo, hi, f⟩ => do pure ⟨m, lo, hi, ← ValsB.pack k f⟩
   | false, .arr _, n, ⟨m, lo, hi, f⟩ => do
     -- the bounds, widths, their prefix sums and the positions `lo + u` are read signed: each below `n * m + n + m`
     if 2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat then throw s!"pack: {n} cells over {m} elements past 2^63"
@@ -44,18 +47,18 @@ def ValsB.pack : {o : Bool} → {A : Obj} → {n : USize} → ValsB o A n → Ex
     match hP : colPrefix .add n w with
     | .error err => throw err
     | .ok P =>
-      if 0 < m.toNat ∧ 2 * lastCount n P (colPrefix_closed hP).2.1 (colPrefix_closed hP).2.2 ≤ m.toNat then do
+      if 0 < m.toNat ∧ k * lastCount n P (colPrefix_closed hP).2.1 (colPrefix_closed hP).2.2 ≤ m.toNat then do
         let (T, G, u) ← expand n w
-        Vals.cells n w (← ValsB.pack (← ValsB.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
-      else pure ⟨m, lo, hi, ← ValsB.pack f⟩
+        Vals.cells n w (← ValsB.pack k (← ValsB.gather T (← colMap .add T (← kgather T G n lo.enc) u) f))
+      else pure ⟨m, lo, hi, ← ValsB.pack k f⟩
   | _, .sum _ _, _, s => match s.view with
     | .opt .. => pure s
-    | .gen h tag x y => do pure (ValsB.ofGen h tag (← ValsB.pack x) (← ValsB.pack y))
+    | .gen h tag x y => do pure (ValsB.ofGen h tag (← ValsB.pack k x) (← ValsB.pack k y))
   | _, .one, _, _ => pure ()
 
 /-- **`R` with its payloads cut** (`ValsB.pack` of both sides): the same rows in the same order. -/
 def Tab.pack {k v : Obj} (R : Tab k v) : Except String (Tab k v) := do
-  pure ⟨R.n, ← ValsB.pack R.key, ← ValsB.pack R.val⟩
+  pure ⟨R.n, ← ValsB.pack 2 R.key, ← ValsB.pack 2 R.val⟩
 
 /-- **`τ` on the rows of `x`**: row `i` the one-element cell `[i, i + 1)` over `x` itself. -/
 def Vals.tau {B : Obj} {n : USize} (x : Vals B n) : Except String (Vals (.arr B) n) := do

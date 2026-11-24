@@ -42,10 +42,11 @@ open Rel Rel.Lang.Plan
 /-- The file of the column `q` in the table directory `dir`. -/
 def file (dir q : String) : String := (System.FilePath.mk dir / q).toString
 
-/-- The one column writer of a side: each atom column of `x` (`cols` under the prefix `p`) to `file dir <path>`; a
-    positions column has no file. -/
+/-- The one column writer of a side: each atom column of `x` with its payloads cut to the cells' reach (`ValsB.pack 0`,
+    the form that depends on the cells alone) (`cols` under the prefix `p`) to `file dir <path>`; a positions column has
+    no file. -/
 def writeVals {A : Obj} {n : USize} (dir p : String) (x : Vals A n) : IO Unit := do
-  for (q, c) in cols A x p do
+  for (q, c) in cols A (← IO.ofExcept (ValsB.pack 0 x)) p do
     if let some f ← IO.ofExcept (ownFile q c) then
       Db.ownWrite (file dir q) f.code f.kind f.count f.parts
 
