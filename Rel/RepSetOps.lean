@@ -171,7 +171,7 @@ theorem whereCol_mem {m K : USize} {b o : Enc} (h : whereCol m b = .ok (K, o))
 so a row between two rows of one key is `lexLe` both ways with them (`lexLe_trans`). -/
 theorem kseen_runs {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
     ∀ a b c, a ≤ b → b ≤ c → c < n.toNat → seenKey n es a = seenKey n es c → seenKey n es b = seenKey n es a := by
-  lexLe_runs _ (kseen_sorted h)
+  exact lexLe_runs _ (kseen_sorted h)
 
 /-! ## CONCAT and `∪` -/
 namespace Tab
