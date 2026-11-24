@@ -170,7 +170,7 @@ def arithOut (dir : String) : Bld Unit := do
   let (rs, is, _, fs, gs) ← IO.ofExcept (arithIn.run (#[], 0, #[], #[]))
   let (vs, _) ← IO.ofExcept (({ funs := fs, globals := gs, main := is.toList } : Plan).run abiOf)
   let col (i : Nat) : List UInt64 := match rs[i]?.bind (vs[·]?) |>.bind (Reg.get? (α := Enc)) with
-    | some e => (Ext.Enc.raw .i64 3 e).toList | none => []
+    | some e => (Enc.raw .i64 3 e).toList | none => []
   unless (rs[0]?.bind (vs[·]?) |>.bind (Reg.get? (α := USize))) == some 3 do throw (IO.userError "arithB keeps not 3 rows")
   unless col 1 == [5, 7, (-3 : Int64).toUInt64] && col 3 == [6, 9, 1] do
     throw (IO.userError s!"arithB keeps u = {col 1}, s = {col 3}")
@@ -217,7 +217,7 @@ def gplan (cs : List (QAtomicType × Nat × Enc × List UInt64)) : Except String
 /-- `Plan.run` of `gplan [c]` answers `c`'s ids. -/
 def agrees (c : QAtomicType × Nat × Enc × List UInt64) : IO Bool := do
   let (rs, _) ← IO.ofExcept ((← IO.ofExcept (gplan [c])).run abiOf)
-  pure <| (rs.back?.bind (Reg.get? (α := Enc))).any fun g => (Ext.Enc.raw .i64 c.2.1.toUSize g).toList == c.2.2.2
+  pure <| (rs.back?.bind (Reg.get? (α := Enc))).any fun g => (Enc.raw .i64 c.2.1.toUSize g).toList == c.2.2.2
 
 #eval show IO Unit from do for c in codes do unless ← agrees c do throw (IO.userError s!"group ids differ at {repr c.1}")
 

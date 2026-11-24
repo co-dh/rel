@@ -15,7 +15,7 @@ rows (`whereCol`, `colMap .div/.mod`, `kgather`). A bit matrix is a `u1` `Enc` a
 choice between these and `Tab.comp`'s expansion or `Tab.ldiv`'s count is `bitsWin`, read by `compSel` and `ldivSel`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 variable {A B C : Obj}
 
 /-- The `n` rows of `x` numbered by value: `kasc ≫ kseen` (`k` distinct values, numbered in `kasc` order), each input

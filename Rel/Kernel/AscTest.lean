@@ -4,7 +4,7 @@ import Rel.Kernel.Asc
 `qlean_k_asc`, against one literal. -/
 
 namespace Rel.Kernel.AscTest
-open Ext.Enc
+open Enc
 
 /-- `k` as a `USize` whose `toNat` the kernel reduces: a literal's is `k % 2 ^ numBits`, and `numBits` is opaque. -/
 def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h

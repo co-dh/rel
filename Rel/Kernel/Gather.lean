@@ -15,7 +15,7 @@ An index `≥ n` is an error naming it, never a fill (PLAN 6.6, as `kscatter`). 
 `kscan`'s and `kscatter`'s; 6.11 renames. -/
 
 namespace Rel.Kernel
-open Ext.Enc
+open Enc
 
 /-- A row of `gather`'s concatenation: `(key, tag, idx)`, then the value. Source row `j` is `(j, 0, j, e[j])` and
 query row `i` is `(ix[i], 1, i, 0)`, so a source sorts right before the queries that name it. -/

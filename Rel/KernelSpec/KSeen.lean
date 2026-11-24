@@ -12,7 +12,7 @@ public import Rel.KernelSpec.Codes
 is `kasc_kseen` (`Rel/RepSeen.lean`), which needs `kasc`'s grade laws. -/
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 /-- Row `i`'s key as `kseen` compares it: its order code in every column (`ascKeys`, `kasc`'s codes). -/
 def seenKey (n : USize) (es : List (AscKey × Enc)) (i : Nat) : List UInt64 := (ascKeys n es).map (·[i]?.getD 0)

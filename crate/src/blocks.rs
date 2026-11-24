@@ -5,9 +5,9 @@
 use crate::coc::Coc;
 use crate::pod::{self, Elt};
 
-/// `Ext.Enc`'s constructor tags, generated from Lean's `ctorIdx` (`make tags` writes and checks `tag.rs`); every Rust
+/// `Enc`'s constructor tags, generated from Lean's `ctorIdx` (`make tags` writes and checks `tag.rs`); every Rust
 /// reader and writer of an `Enc` names them from here.
-// generated whole: a constructor no Rust code reads (`GEN`) stays listed rather than the generator skipping it
+// generated whole: a constructor no Rust code reads stays listed rather than the generator skipping it
 #[allow(dead_code)]
 pub mod tag {
     include!("tag.rs");

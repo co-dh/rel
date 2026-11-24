@@ -12,7 +12,7 @@ public import Rel.KernelSpec.Asc
 `crate/src/gather.rs` runs, and `raw_kgather`, the law `raw_permute` of PLAN 6.6. -/
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 /-- The lexicographic order on a row's `(key, tag, idx)`: the order `compose` needs of the sorted rows. -/
 private def rowLe (a b : GatherRow) : Bool :=

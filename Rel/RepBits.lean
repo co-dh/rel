@@ -15,13 +15,13 @@ public import Rel.AscOrder
 each step's words first (`Vals.code`), then the answers against `Tab.comp_holds` and `Tab.ldiv_holds`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 variable {A B C : Obj}
 
 /-- `Vals.code`'s numbers and representatives hold no null: a scatter of `kseen`'s groups and a gather of `kasc`'s
 grade. -/
 theorem Vals.code_plain {n : USize} {x : Vals A n} {k : USize} {c rep : Enc} (h : Vals.code x = .ok (k, c, rep)) :
-    hasNul c = false ∧ hasNul rep = false ∧ Ext.Enc.WF .i64 n c := by
+    hasNul c = false ∧ hasNul rep = false ∧ Enc.WF .i64 n c := by
   simp only [Vals.code, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨es, -, h⟩ := h
   rw [Except.bind_eq_ok'] at h; obtain ⟨⟨vs, p⟩, hasc, h⟩ := h; try dsimp only at h
@@ -398,7 +398,7 @@ private theorem sorted_countP_lt : ∀ {L : List Nat}, L.Pairwise (· ≤ ·) �
 /-- **`csr` groups the rows by `gid`**: row `t` of `idx` is row `π t` of `x`, every row of `x` is some `π t`, and
 `kbitrows`' segment `r` (`[ends[r-1], ends[r])`) is the `t` with `gid (π t) = r`. -/
 theorem csr_spec {n g : USize} {gid x ends idx : Enc} (h : csr n g gid x = .ok (ends, idx))
-    (hgw : Ext.Enc.WF .i64 n gid) (hgN : hasNul gid = false) (hxN : hasNul x = false) (gr : Nat → Nat)
+    (hgw : Enc.WF .i64 n gid) (hgN : hasNul gid = false) (hxN : hasNul x = false) (gr : Nat → Nat)
     (hg : ∀ q < n.toNat, (raw .i64 n gid)[q]?.getD 0 = (gr q).toUInt64 ∧ gr q < g.toNat) (hg63 : g.toNat ≤ 2 ^ 63) :
     ∃ π : Nat → Nat, (∀ t < n.toNat, π t < n.toNat ∧ (raw .i64 n idx)[t]?.getD 0 = (raw .i64 n x)[π t]?.getD 0) ∧
       (∀ q < n.toNat, ∃ t < n.toNat, π t = q) ∧ ∀ r < g.toNat, ∀ t,
@@ -756,7 +756,7 @@ theorem colCat_raw {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b
 
 /-- `colCat`'s answer is a plain `i64` column: a `colMap` (`colMap_closed`). -/
 theorem colCat_plain {n₁ n₂ N : USize} {a b o : Enc} (h : colCat n₁ n₂ a b = .ok (N, o)) :
-    hasNul o = false ∧ Ext.Enc.WF .i64 N o := by
+    hasNul o = false ∧ Enc.WF .i64 N o := by
   simp only [colCat, bind] at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨N', -, h⟩ := h; try dsimp only at h
   rw [Except.bind_eq_ok'] at h; obtain ⟨sh, -, h⟩ := h

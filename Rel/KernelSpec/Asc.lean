@@ -12,7 +12,7 @@ permutation is a stable lexicographic sort of the rows by their order codes, and
 column read through the permutation. -/
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 theorem lexLe_total : ∀ (ks : List (Array UInt64)) (i j : Nat), (lexLe ks i j || lexLe ks j i) = true
   | [], _, _ => rfl

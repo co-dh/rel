@@ -10,26 +10,25 @@ public import Rel.KernelSpec.KSeen
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-/-! The closure law (PLAN 6.14): a column a kernel answers is a column, `Ext.Enc.WF` at the type and length its body
+/-! The closure law (PLAN 6.14): a column a kernel answers is a column, `Enc.WF` at the type and length its body
 determines, and a column every kernel reads, `Enc.Valid`. Every one of the five answers `wordsFoR` of its words
 (`kscan` and `kscatter` spell it `Coc.encode` at 8 bytes, the same term), so `wordsFoR_closed` carries the law and each
 kernel's theorem only names its words and their count. A composition's success is then a chain of these laws. -/
 
 namespace Rel.Kernel
-open Ext.Enc
+open Enc
 
 /-- The arguments `foRWords` reads at `n` rows, its test stated as a proposition: a `foR` column in the writers' layout
 (`Coc.foRStd`) with a stored `lg` the layout admits, or `pos`. `foRWords_valid` is its reading, `Enc.Valid.wf` what it
-gives `Ext.Enc.WF`. -/
+gives `Enc.WF`. -/
 def Enc.Valid (n : USize) : Enc → Prop
   | .foR md pk => Column.lgOk md = true ∧ Coc.foRStd n md pk = true
   | .pos => True
-  | _ => False
 
 end Rel.Kernel
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 /-- **The reader accepts exactly a valid column**: `foRWords` answers the raw words of what `Enc.Valid` admits, and
 an error at everything else. -/
@@ -42,13 +41,13 @@ theorem foRWords_valid (what : String) (m : USize) (e : Enc) :
   · exact hv.1 ‹_›
   · cases h
 
-/-- A valid `foR` column is `Ext.Enc.WF` at every fixed-width type, a boolean one where every element but a null is `0` or `1`:
-`Coc.foRStd`'s block count covers the `n` elements, the layout part of `Ext.Enc.WF`. -/
+/-- A valid `foR` column is `Enc.WF` at every fixed-width type, a boolean one where every element but a null is `0` or `1`:
+`Coc.foRStd`'s block count covers the `n` elements, the layout part of `Enc.WF`. -/
 theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : ByteArray} (h : Enc.Valid n (.foR md pk))
     (ht : t.width.isSome) (hu : t = .u1 → ∀ i < n.toNat, ∀ v, Column.foROpt md pk (Column.blockStarts md) i = some v → v.toNat < 2)
     (hN : ∀ b < Column.nblk md, Column.nulAt md b = true → ∃ j < Column.blk md, b * Column.blk md + j < n.toNat ∧
       Column.foRNul md pk (Column.blockStarts md) (b * Column.blk md + j) = true) :
-    Ext.Enc.WF t n (.foR md pk : Enc) := by
+    Enc.WF t n (.foR md pk : Enc) := by
   obtain ⟨hlg, hs⟩ := h
   have hF := (foRStd_iff.1 hs).nblk
   have hb := blk_pos md
@@ -57,14 +56,14 @@ theorem _root_.Rel.Kernel.Enc.Valid.wf {t : QAtomicType} {n : USize} {md pk : By
     have := Nat.div_add_mod (n.toNat + Column.blk md - 1) (Column.blk md)
     have := Nat.mod_lt (n.toNat + Column.blk md - 1) hb
     omega
-  cases t <;> simp only [Ext.Enc.WF] <;>
+  cases t <;> simp only [Enc.WF] <;>
     first | exact ⟨ht, hu, hle, hlg, hN⟩ | exact ⟨ht, fun _ => hu rfl, hle, hlg, hN⟩ | exact ⟨ht, hle, hlg, hN⟩ |
       (simp [QAtomicType.width] at ht)
 
 /-- **A kernel's answer is a column, null flags or not**: `wordsFoR ws nul least`, at the `ws.size` rows it holds, is valid
 (every kernel reads it), holds that many words, reads back through `Column.foROpt` as `none` at a null
 (`Column.bitAt nul`) and `ws` elsewhere (`foROpt_encode`, whose `hbig` the `USize` row count discharges), and is
-`Ext.Enc.WF` at every fixed-width type, a boolean one where every word but a null's is `0` or `1`. `hle` is what makes
+`Enc.WF` at every fixed-width type, a boolean one where every word but a null's is `0` or `1`. `hle` is what makes
 `least` the atom type's least key: every word that is not null is at or above it (`planBlock_nul`), which the default
 `Int64.minValue` meets by itself. -/
 theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.toNat = ws.size) (least : Int64 := Int64.minValue)
@@ -74,7 +73,7 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
       (∀ md pk, wordsFoR ws nul least = .foR md pk → ∀ i (hi : i < ws.size),
         Column.foROpt md pk (Column.blockStarts md) i = if Column.bitAt nul i then none else some ws[i]) ∧
       ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), Column.bitAt nul i = false → ws[i] < 2) →
-        Ext.Enc.WF t n (wordsFoR ws nul least) := by
+        Enc.WF t n (wordsFoR ws nul least) := by
   have h8 : USize.ofNat32 8 (by decide) = (8 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp [h])
   have hlg : 6 ≤ Column.lgEnc ∧ Column.lgEnc ≤ 16 := ⟨by decide, by decide⟩
@@ -132,11 +131,11 @@ theorem wordsFoR_nul (ws : Array UInt64) (nul : ByteArray) {n : USize} (hn : n.t
     exact UInt64.lt_iff_toNat_lt.1 (hu h1 i hi' (by simpa using hni))
 
 /-- **A kernel's answer is a column**: `wordsFoR ws`, at the `ws.size` rows it holds, is valid (every kernel reads
-it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Ext.Enc.WF` at every fixed-width type,
+it), reads back as `ws` (so the next kernel reads the words this one wrote), and is `Enc.WF` at every fixed-width type,
 a boolean one where every word is `0` or `1`. -/
 theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size) :
     Enc.Valid n (wordsFoR ws) ∧ raw .i64 n (wordsFoR ws) = ws ∧
-      ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2) → Ext.Enc.WF t n (wordsFoR ws) := by
+      ∀ {t : QAtomicType}, t.width.isSome → (t = .u1 → ∀ i (h : i < ws.size), ws[i] < 2) → Enc.WF t n (wordsFoR ws) := by
   obtain ⟨hV, -, hopt, hwf⟩ := wordsFoR_nul ws .empty hn
   have h0 := bitAt_empty
   refine ⟨hV, ?_, fun ht hu => hwf ht fun h1 i hi _ => hu h1 i hi⟩
@@ -150,16 +149,16 @@ theorem wordsFoR_closed (ws : Array UInt64) {n : USize} (hn : n.toNat = ws.size)
   rw [Option.some.inj h, ofNat_toNat_mod64]
 
 /-- **A column holds a null exactly where a row's flag is set**: `hasNul` reads the blocks' flags, and under
-`Ext.Enc.WF` a flagged block holds a null row (owner decision F) while a null row's block is flagged (`foRNul`). So two
+`Enc.WF` a flagged block holds a null row (owner decision F) while a null row's block is flagged (`foRNul`). So two
 columns whose rows' flags agree up to a permutation agree on `hasNul`. -/
-theorem hasNul_flags {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t n e) :
+theorem hasNul_flags {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n e) :
     hasNul e = (foRNuls n e).any (· != 0) := by
   cases e with
   | foR md pk =>
     have hw' : n.toNat ≤ Column.blk md * Column.nblk md ∧ ∀ b < Column.nblk md, Column.nulAt md b = true →
         ∃ j < Column.blk md, b * Column.blk md + j < n.toNat ∧
           Column.foRNul md pk (Column.blockStarts md) (b * Column.blk md + j) = true := by
-      cases t <;> simp only [Ext.Enc.WF] at hw <;> exact ⟨hw.2.2.1, hw.2.2.2.2⟩
+      cases t <;> simp only [Enc.WF] at hw <;> exact ⟨hw.2.2.1, hw.2.2.2.2⟩
     obtain ⟨hle, hN⟩ := hw'
     rw [Bool.eq_iff_iff, hasNul, foRNuls, Array.any_eq_true, Array.any_eq_true]
     simp only [List.mem_range, Array.size_map, Array.size_range, Array.getElem_map, Array.getElem_range]
@@ -177,7 +176,7 @@ theorem hasNul_flags {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t 
     exact (Bool.eq_false_iff.2 fun h => by obtain ⟨i, hi, h⟩ := Array.any_eq_true.1 h; simp at h).symm
 
 /-- A column holding no null flags none of its rows (`hasNul_flags`). -/
-theorem foRNuls_plain {t : QAtomicType} {n : USize} {e : Enc} (hw : Ext.Enc.WF t n e) (hN : hasNul e = false)
+theorem foRNuls_plain {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t n e) (hN : hasNul e = false)
     {i : Nat} (hi : i < n.toNat) : (foRNuls n e)[i]? = some 0 := by
   have hs : i < (foRNuls n e).size := by cases e <;> simp [foRNuls, hi]
   rw [hasNul_flags hw, Array.any_eq_false] at hN
@@ -263,7 +262,7 @@ theorem kscanStream_ne {op : Op} (h : op ≠ .first) (es : List (USize × Enc)) 
 the sources' `foRNuls`, all `0` (`hasNul_flags`). -/
 theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize × Enc)} {pre post : List (Op × UInt64)}
     {ws : List (Array UInt64)} {ns : List (Array UInt64)}
-    (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Enc.WF s p.1 p.2)
     (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
     (h : kscanCols op s n es pre post = .ok (ws, ns)) : ns.any (·.any (· != 0)) = false := by
   by_cases hs : kscanStream op es pre post = true
@@ -279,7 +278,7 @@ theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize 
       · simp only [hsum, Bool.false_eq_true, if_false, pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
         rw [← h.2, List.any_cons, List.any_nil, Bool.or_false]
         have key : ∀ (l : List (USize × Enc)) (a : Array UInt64), (∀ p ∈ l, hasNul p.2 = false) →
-            (∀ p ∈ l, Ext.Enc.WF s p.1 p.2) → a.any (· != 0) = false →
+            (∀ p ∈ l, Enc.WF s p.1 p.2) → a.any (· != 0) = false →
             (l.foldl (fun a p => a ++ foRNuls p.1 p.2) a).any (· != 0) = false := by
           intro l
           induction l with
@@ -295,15 +294,15 @@ theorem kscanCols_nul {op : Op} {s : QAtomicType} {n : USize} {es : List (USize 
     obtain ⟨-, rfl, -⟩ := kscanCols_lock hs hF h
     simp
 
-/-- **`kscan` closes**: its answer is valid at its `n` rows, `Ext.Enc.WF` at its answer type `t`, and holds no null
+/-- **`kscan` closes**: its answer is valid at its `n` rows, `Enc.WF` at its answer type `t`, and holds no null
 (written with no null bitmap). Only a stream (`kscanStream`) reads its sources' null flags, so only there must they hold
-no null and be `Ext.Enc.WF` at `s`. -/
+no null and be `Enc.WF` at `s`. -/
 theorem kscan_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize} {seg : Option Enc}
     {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
-    (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    (hS : kscanStream op es pre post = true → (∀ p ∈ es, hasNul p.2 = false) ∧ ∀ p ∈ es, Enc.WF s p.1 p.2)
     (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
     (h : kscan op rev s t n seg es pre post = .ok r) :
-    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false := by
+    Enc.Valid n r.1 ∧ Enc.WF t n r.1 ∧ hasNul r.1 = false := by
   unfold kscan at h
   by_cases hd : kscanRefuses op n es pre post = true
   · simp only [hd, ↓reduceIte] at h; simp [bind, Except.bind, throw, throwThe, MonadExceptOf.throw] at h
@@ -339,23 +338,22 @@ theorem kscan_lock_closed {op : Op} {rev : Bool} {s t : QAtomicType} {n : USize}
     {es : List (USize × Enc)} {pre post : List (Op × UInt64)} {r : Enc × Option UInt64}
     (hs : kscanStream op es pre post = false) (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
     (h : kscan op rev s t n seg es pre post = .ok r) :
-    Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ hasNul r.1 = false :=
+    Enc.Valid n r.1 ∧ Enc.WF t n r.1 ∧ hasNul r.1 = false :=
   kscan_closed (fun h => absurd h (by rw [hs]; decide)) hF h
 
 /-! A stream (`kscanStream`, no segment marks) over sources that may hold nulls: the answer is the sources' words joined
 and their flags joined (`streamEnc`), and reads back each source's rows, null included. -/
 
-/-- `e`'s `n` raw words at a fixed-width `s` are `n` of them where `Ext.Enc.WF` holds. -/
-theorem raw_size_wf {s : QAtomicType} {n : USize} {e : Enc} (hs : s.width.isSome) (h : Ext.Enc.WF s n e) :
+/-- `e`'s `n` raw words at a fixed-width `s` are `n` of them where `Enc.WF` holds. -/
+theorem raw_size_wf {s : QAtomicType} {n : USize} {e : Enc} (hs : s.width.isSome) (h : Enc.WF s n e) :
     (e.raw s n).size = n.toNat := by
   cases e with
-  | foR md pk => cases s <;> simp_all [Ext.Enc.raw, QAtomicType.width]
-  | pos => cases s <;> simp_all [Ext.Enc.WF, Ext.Enc.raw]
-  | _ => cases s <;> simp_all [Ext.Enc.WF, QAtomicType.width]
+  | foR md pk => cases s <;> simp_all [Enc.raw, QAtomicType.width]
+  | pos => cases s <;> simp_all [Enc.WF, Enc.raw]
 
-/-- A source list of `Ext.Enc.WF` columns, read one after the other: each source's raw words, `chainAll []` being `pure`. -/
+/-- A source list of `Enc.WF` columns, read one after the other: each source's raw words, `chainAll []` being `pure`. -/
 theorem mapM_raw_pairs {s : QAtomicType} (hs : s.width.isSome) :
-    ∀ {es : List (USize × Enc)}, (∀ p ∈ es, Ext.Enc.WF s p.1 p.2) →
+    ∀ {es : List (USize × Enc)}, (∀ p ∈ es, Enc.WF s p.1 p.2) →
       es.mapM (fun p => rawAll s p.1 p.2 >>= chainAll []) = .ok (es.map fun p => p.2.raw s p.1)
   | [], _ => rfl
   | p :: es, h => by
@@ -426,7 +424,7 @@ def streamEnc (s t : QAtomicType) (es : List (USize × Enc)) : Enc :=
   wordsFoR ((streamRaw s es).map (cutBit t)) (if (streamNul es).any (· != 0) then nulMap (streamNul es) else .empty)
 
 theorem streamRaw_size {s : QAtomicType} (hs : s.width.isSome) {es : List (USize × Enc)}
-    (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) : (streamRaw s es).size = (es.map (·.1.toNat)).sum := by
+    (hW : ∀ p ∈ es, Enc.WF s p.1 p.2) : (streamRaw s es).size = (es.map (·.1.toNat)).sum := by
   unfold streamRaw
   rw [foldl_append_size, List.map_map]
   congr 1
@@ -444,7 +442,7 @@ theorem streamNul_size (es : List (USize × Enc)) : (streamNul es).size = (es.ma
 /-- **`kscan` of a stream** (`kscanStream`, no segment marks) is `streamEnc`: the sources' words joined and cut to `t`,
 their flags joined. Its fold result is the last joined word. -/
 theorem kscan_stream {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hs : s.width.isSome) {n : USize}
-    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (hl : 1 < es.length)
+    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Enc.WF s p.1 p.2) (hl : 1 < es.length)
     (hn : (es.map (·.1.toNat)).sum = n.toNat) :
     kscan .first false s t n none es = .ok (streamEnc s t es,
       (streamRaw s es).back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) := by
@@ -487,14 +485,14 @@ theorem bitAt_stream {ns : Array UInt64} {i : Nat} (hi : i < ns.size) :
     rw [Array.any_eq_false] at h
     simp [bitAt_empty, Array.getElem?_eq_getElem hi, h i hi]
 
-/-- **`kscan` of a stream closes**, nulls and all: its answer is `streamEnc`, valid and `Ext.Enc.WF` at `t`, wherever every
-source is `Ext.Enc.WF` at `s` and their rows sum to `n`. -/
+/-- **`kscan` of a stream closes**, nulls and all: its answer is `streamEnc`, valid and `Enc.WF` at `t`, wherever every
+source is `Enc.WF` at `s` and their rows sum to `n`. -/
 theorem kscan_stream_closed {s t : QAtomicType} {w : Nat} (ht : t.width = some w) (hs : s.width.isSome) {n : USize}
-    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2) (hl : 1 < es.length)
+    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Enc.WF s p.1 p.2) (hl : 1 < es.length)
     (hn : (es.map (·.1.toNat)).sum = n.toNat) :
     kscan .first false s t n none es = .ok (streamEnc s t es,
       (streamRaw s es).back?.map fun v => UInt64.ofNat (v.toNat % 2 ^ (if t = .u1 then 1 else 8 * w))) ∧
-    Enc.Valid n (streamEnc s t es) ∧ Ext.Enc.WF t n (streamEnc s t es) := by
+    Enc.Valid n (streamEnc s t es) ∧ Enc.WF t n (streamEnc s t es) := by
   have hsz : n.toNat = ((streamRaw s es).map (cutBit t)).size := by
     rw [Array.size_map, streamRaw_size hs hW, hn]
   obtain ⟨hV, -, -, hwf⟩ := wordsFoR_nul ((streamRaw s es).map (cutBit t)) (if (streamNul es).any (· != 0) then
@@ -516,17 +514,17 @@ theorem foldlM_row {α : Type} (op : Op) {i : Nat} {F : α → Array UInt64} {r 
     | ok c' => exact ih (fun q' hq' => hr q' (by simp [hq'])) c'
 
 /-- **`kscan` of a map whose op orders null** (`Op.nulFold = some (b, fill)`) over sources one of which holds a null: the
-answer is `wordsFoR` of the words `out` cut to `t` under the flag words `nl`, valid and `Ext.Enc.WF` at `t` (an `Opt t n`),
+answer is `wordsFoR` of the words `out` cut to `t` under the flag words `nl`, valid and `Enc.WF` at `t` (an `Opt t n`),
 and row `i` is, with `p :: ps` the sources,
 - word: `op` folded over the sources' words with a null read as `fill` (`rdFill`), then through `chain post`, `out[i]`;
 - flag: `b` (`and`/`or`) folded over the sources' flags (`rdNul`), `nl[i]`, the answer's own flag (`foRNuls`) being
   whether it is set. -/
 theorem kscan_nul_row {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, fill)) {s t : QAtomicType} {w : Nat}
     (ht : t.width = some w) (hs : s.width.isSome) {n : USize} {es : List (USize × Enc)} {post : List (Op × UInt64)}
-    {r : Enc × Option UInt64} (hst : kscanStream op es [] post = false) (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    {r : Enc × Option UInt64} (hst : kscanStream op es [] post = false) (hW : ∀ p ∈ es, Enc.WF s p.1 p.2)
     (hn : ∃ p ∈ es, hasNul p.2 = true) (h : kscan op false s t n none es [] post = .ok r) :
     ∃ out nl : Array UInt64, out.size = n.toNat ∧ nl.size = n.toNat ∧ r.1 = wordsFoR (out.map (cutBit t)) (nulMap nl) ∧
-      Enc.Valid n r.1 ∧ Ext.Enc.WF t n r.1 ∧ ∃ p ps, es = p :: ps ∧ ∀ i < n.toNat,
+      Enc.Valid n r.1 ∧ Enc.WF t n r.1 ∧ ∃ p ps, es = p :: ps ∧ ∀ i < n.toNat,
         ((ps.map (·.2)).foldlM (fun a e => op.eval a (rdFill fill s n e i)) (rdFill fill s n p.2 i) >>= chain post) =
           .ok (out[i]?.getD 0) ∧
         (ps.map (·.2)).foldlM (fun a e => b.eval a (rdNul n e i)) (rdNul n p.2 i) = .ok (nl[i]?.getD 0) ∧
@@ -608,7 +606,7 @@ theorem kscan_nul_row {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, f
 /-- **A stream's answer reads each source's rows, null included**: row `k` of source `j` is row `(rows before j) + k` of the
 answer, read through `foROpt` as `none` where the source's flag (`foRNuls`) is set and as its raw word cut to `t` else. -/
 theorem kscan_stream_get {s t : QAtomicType} (hs : s.width.isSome) {n : USize}
-    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Ext.Enc.WF s p.1 p.2)
+    {es : List (USize × Enc)} (hW : ∀ p ∈ es, Enc.WF s p.1 p.2)
     (hn : (es.map (·.1.toNat)).sum = n.toNat) {j k : Nat} (hj : j < es.length) (hk : k < es[j].1.toNat)
     {md pk : ByteArray} (he : streamEnc s t es = .foR md pk) :
     Column.foROpt md pk (Column.blockStarts md) (((es.take j).map (·.1.toNat)).sum + k) =
@@ -635,11 +633,11 @@ theorem kscan_stream_get {s t : QAtomicType} (hs : s.width.isSome) {n : USize}
     rw [← e2, Array.getElem?_eq_getElem hr]; rfl
   simp only [Array.getElem_map, e3]
 
-/-- **`kscatter` closes**: its answer holds `n` words, read back by `raw .i64`, valid and `Ext.Enc.WF` at every fixed-width
+/-- **`kscatter` closes**: its answer holds `n` words, read back by `raw .i64`, valid and `Enc.WF` at every fixed-width
 type but the boolean. -/
 theorem kscatter_closed {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
     (h : kscatter op m ix e n fill = .ok o) :
-    Enc.Valid n o ∧ (raw .i64 n o).size = n.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t n o := by
+    Enc.Valid n o ∧ (raw .i64 n o).size = n.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t n o := by
   unfold kscatter at h
   split at h; · cases h
   simp only [bind, Except.bind] at h
@@ -666,9 +664,9 @@ theorem kscatter_plain {op : Op} {m n : USize} {ix e o : Enc} {fill : UInt64}
     subst h
     exact hasNul_wordsFoR _
 
-/-- **`kgather` closes**: its answer holds `m` words, valid and `Ext.Enc.WF` at every fixed-width type but the boolean. -/
+/-- **`kgather` closes**: its answer holds `m` words, valid and `Enc.WF` at every fixed-width type but the boolean. -/
 theorem kgather_closed {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) :
-    Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Ext.Enc.WF t m o := by
+    Enc.Valid m o ∧ (raw .i64 m o).size = m.toNat ∧ ∀ {t : QAtomicType}, t.width.isSome → t ≠ .u1 → Enc.WF t m o := by
   obtain ⟨hs, -, -, rfl⟩ := raw_kgather m ix n e o h
   have hm : m.toNat = (Array.map (fun i => (raw .i64 n e)[i.toNat]?.getD 0) (raw .i64 m ix)).size := by
     rw [Array.size_map, hs]

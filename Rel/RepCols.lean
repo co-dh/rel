@@ -11,7 +11,7 @@ public import Rel.KernelSpec.Closure
 the words `Enc.raw` reads, from the five kernels' laws. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 /-- `kscan` at `i64` writes its words as they are: the cut to `8 * 8` bits is the identity. -/
 private theorem mod_i64 (v : UInt64) : UInt64.ofNat (v.toNat % 2 ^ (if QAtomicType.i64 = .u1 then 1 else 8 * 8)) = v := by
@@ -140,7 +140,6 @@ theorem raw_cut {t : QAtomicType} {w : Nat} (ht : t.width = some w) {m : USize} 
     simp only [Enc.raw, Array.getElem?_map, Array.getElem?_range, hk, if_true, Option.map_some, Option.getD_some,
       Option.some.injEq]
     exact (mod_i64 _).symm
-  | _ => all_goals simp only [Kernel.Enc.Valid] at hV
 
 /-- **A stream's answer reads each source's rows, null included**, as `Opt.get_eq_of_raw` asks: row `S + k` of the answer
 `z` (`streamEnc`), `S` the rows of the sources before source `j`, is row `k` of that source `src`. The flags are
@@ -338,7 +337,7 @@ theorem colMap_max_self {n : USize} {a o : Enc} {s : UInt64} (hW : Enc.WF .i64 n
       (foRNuls n o)[i]? = (foRNuls n a)[i]? ∧
         ((foRNuls n a)[i]? = some 0 → (raw .i64 n o)[i]? = some (s + (raw .i64 n a)[i]?.getD 0)) := by
   have hs : kscanStream .max [(n, a), (n, a)] [] [(.add, s)] = false := by simp [kscanStream]
-  have hWs : ∀ p ∈ [(n, a), (n, a)], Ext.Enc.WF .i64 p.1 p.2 := fun p hp => by
+  have hWs : ∀ p ∈ [(n, a), (n, a)], Enc.WF .i64 p.1 p.2 := fun p hp => by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hW
   by_cases hN : hasNul a = true
   · unfold colMap at h; simp only [bind, Except.bind] at h

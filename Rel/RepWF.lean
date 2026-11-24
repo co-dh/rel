@@ -16,7 +16,7 @@ public import Rel.RepTabDiv
 case to `Tab.WF` stands on: each op's `_wf` lemma there is one of these. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 /-! ### The bit-matrix and division ops -/
 

@@ -47,7 +47,7 @@ theorem get_sym_i64 {n : USize} (v : Arr .sym n) (w : Arr .i64 n) (he : w.enc = 
   rw [Arr.get_ne _ _ (by decide), Arr.get_ne _ _ (by decide), he]
   have h := v.wf
   generalize v.enc = e at h ⊢
-  cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width, Ext.Enc.get, Column.atomOfBits, Dep.Carrier.of?]
+  cases e <;> simp_all [Enc.WF, QAtomicType.width, Enc.get, Column.atomOfBits, Dep.Carrier.of?]
 
 /-- The id of a `sym` read as the `i64` the rank table is keyed by. -/
 theorem symIds_row {A : Obj} (I : Tab A (.atom .sym)) (i : Fin I.n.toNat) :

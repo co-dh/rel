@@ -12,7 +12,7 @@ matrix read back as rows (`Tab.ofBits`). Apart from `Canon` because `Rel.bits` (
 and `Canon`'s `Tab.dom`/`Tab.ran` would then reach every module that opens both `Tab` and `Alg`, making `dom` ambiguous. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- The source column of a successful `kgather` is one every kernel reads (`foRWords` accepted it). -/
 theorem kgather_valid {m n : USize} {ix e o : Enc} (h : kgather m ix n e = .ok o) : Kernel.Enc.Valid n e := by
@@ -61,7 +61,6 @@ theorem Opt.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Opt t n
     cases t <;> simp only [Enc.WF] at hw
     simp only [hasNul, Bool.false_eq_true, if_false]
     exact (wordsFoR_closed _ (by rw [Array.size_map, his])).2.2 rfl (fun h => absurd h (by decide))
-  | _ => all_goals simp only [Kernel.Enc.Valid] at hv
 
 /-- `n` cells holding the word `w`: `kscatter` of no rows. -/
 def colConst (n : USize) (w : UInt64) : Except String Enc := kscatter .last 0 .pos .pos n w
@@ -88,9 +87,9 @@ theorem colMap_closed {op : Op} {n : USize} {a b o : Enc} {t s : QAtomicType} {p
 column every kernel reads, `Enc.WF` at `t` (`kscan_nul_row` where `a` holds a null, `colMap_closed` where not). -/
 theorem colMap_closed_nul {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, fill)) {n : USize} {a o : Enc}
     {t s : QAtomicType} {post : List (Op × UInt64)} (ht : t.width.isSome) (hsw : s.width.isSome)
-    (hW : Ext.Enc.WF s n a) (hs : kscanStream op [(n, a), (n, a)] [] post = false)
+    (hW : Enc.WF s n a) (hs : kscanStream op [(n, a), (n, a)] [] post = false)
     (h : colMap op n a a t s [] post = .ok o) : Kernel.Enc.Valid n o ∧ Enc.WF t n o := by
-  have hWs : ∀ p ∈ [(n, a), (n, a)], Ext.Enc.WF s p.1 p.2 := fun p hp => by
+  have hWs : ∀ p ∈ [(n, a), (n, a)], Enc.WF s p.1 p.2 := fun p hp => by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> exact hW
   by_cases hN : hasNul a = true
   · unfold colMap at h; simp only [bind, Except.bind] at h
@@ -155,10 +154,10 @@ def whereCol (m : USize) (b : Enc) : Except String (USize × Enc) :=
   else .error s!"where: {m} rows, not below {B}: m + 1 cells fit a USize and the counts 0 … m are i64 words below it"
 
 -- `1 0 1 1 0`: the destinations `0 1 1 2 3` send the dropped row 1 to row 2's cell and row 4 to the spare cell `3`
-#guard (whereCol 5 (Ext.Enc.ofBytes 8 (Column.packIds 64 5 fun i => [1, 0, 1, 1, 0][i]?.getD 0))).toOption.map
+#guard (whereCol 5 (Enc.ofBytes 8 (Column.packIds 64 5 fun i => [1, 0, 1, 1, 0][i]?.getD 0))).toOption.map
   (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (3, [0, 2, 3])
 -- no kept row, and no row at all: `K = 0`
-#guard (whereCol 3 (Ext.Enc.ofBytes 8 (Column.packIds 64 3 fun _ => 0))).toOption.map
+#guard (whereCol 3 (Enc.ofBytes 8 (Column.packIds 64 3 fun _ => 0))).toOption.map
   (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
 #guard (whereCol 0 .pos).toOption.map (fun r => (r.1.toNat, (Enc.raw .i64 r.1 r.2).toList)) = some (0, [])
 

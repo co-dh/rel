@@ -13,7 +13,6 @@ public import Rel.Kernel.Elementwise
 /-! The part of `Rel.Kernel.Structural` the Rel kernels reach; `Rel.Kernel.Structural` imports it. -/
 
 
-open Rel.Ext
 namespace Rel.Kernel
 
 

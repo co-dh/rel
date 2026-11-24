@@ -9,7 +9,7 @@ public import Rel.Lang.GenKFold
 /-! The law of `Tab.positions` (`Rel/Run/Where.lean`): each array to `positionsL` of its elements' test. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc Rel.Rep
+open  Rel.Kernel Rel.Verify Enc Rel.Rep
 
 /-- The rows below `Σ_{<i} w`, filtered, are the runs before `i` filtered one after another. -/
 theorem filter_runs (wN : Nat → Nat) (keep : Nat → Bool) : ∀ i,

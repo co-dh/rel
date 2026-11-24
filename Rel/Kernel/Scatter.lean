@@ -16,7 +16,7 @@ spare cell and cuts that cell off (WHERE, `doc/rel-kernels.md`). The `k` in the 
 (`Driver.lean`) already names the driver; 6.11 renames. -/
 
 namespace Rel.Kernel
-open Ext.Enc
+open Enc
 
 /-- Whether `e` is an argument every kernel reads at `m` rows: a `foR` column in the writers' layout (`Coc.foRStd`) with a
 stored `lg` the layout admits, or `pos`. It reads the metadata and the pack's size only, never an element, so a caller
@@ -24,13 +24,12 @@ that asks only this calls it and not `foRWords`, whose answer is every word deco
 @[simp] def foROk (m : USize) : Enc → Bool
   | .foR md pk => Column.lgOk md && Coc.foRStd m md pk
   | .pos => true
-  | _ => false
 
 /-- The `m` raw words of an argument `foROk` admits, as `Enc.raw` reads a 64-bit column, or why it does not hold them: a
 layout `Coc.foRStd` refuses at `m`, or a form other than `foR` and `pos`, which no kernel of design §4 reads. `pos` is
 word `i = i` at every `m` (PLAN 6.13): the kernel's loop index. -/
 def foRWords (what : String) (m : USize) (e : Enc) : Except String (Array UInt64) :=
-  if foROk m e then .ok (Ext.Enc.raw .i64 m e) else .error (match e with
+  if foROk m e then .ok (Enc.raw .i64 m e) else .error (match e with
     | .foR md pk => s!"{what}: foR: {Column.nblk md} blocks of 2^{Column.lgAt md} and a {pk.size}-byte pack are not the layout of {m} elements"
     | _ => s!"{what}: constructor {e.ctorIdx} is not foR")
 

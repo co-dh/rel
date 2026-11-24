@@ -12,7 +12,7 @@ compare as its step (`Vals.rank`), and `(X ∪ T, T − X)` of a canonical `X` f
 (`Tab.mergeDiff`). `Tab.unionDiffSel` picks it where `X` is large against `T` (`(m + 1024) · L ≤ n`), else `Tab.unionDiff`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- **The row compare** `P < T` and `P = T`, row by row, as `0`/`1` words: `P ++ T` (`2m` rows) is grouped by `kasc ≫
 kseen`, whose group numbers grow with the order, so `<` and `=` of two rows are `<` and `=` of their numbers; `kscatter

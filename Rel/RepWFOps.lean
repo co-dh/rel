@@ -12,7 +12,7 @@ public import Rel.Run.Where
 lemmas of `Rel/RepWF.lean` (`Tab.pack_wf` and the List ops'). `positions` is `positions_spec` (`Rel/RepWhere.lean`). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 namespace Tab
 

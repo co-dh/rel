@@ -13,7 +13,7 @@ against the meanings `arithDen`, `succDen` of
 `Rel/Lang/Den.lean`, read on lists. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 /-- Word `i` of the `n`-word `i64` column `e`. -/
 abbrev wd (n : USize) (e : Enc) (i : Nat) : UInt64 := (raw .i64 n e)[i]?.getD 0
 

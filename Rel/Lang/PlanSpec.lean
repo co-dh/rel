@@ -393,13 +393,13 @@ theorem Builds.ite_true {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {t e : B
 /-! ### Recipes on the kernels: `constB`, `scanB` -/
 
 /-- A `foR` column is a register that reads back as itself (`Reg Enc` writes its parts and reads them back). -/
-theorem foR_get_put (m p : ByteArray) : (Reg.get? (Reg.put (Ext.Enc.foR m p : Enc)) : Option Enc) = some (.foR m p) := by
-  have hp : (Reg.put (Ext.Enc.foR m p : Enc) : Val) = .ctor 0 (#[m, p].map .bytes) #[] := by with_unfolding_all rfl
+theorem foR_get_put (m p : ByteArray) : (Reg.get? (Reg.put (Enc.foR m p : Enc)) : Option Enc) = some (.foR m p) := by
+  have hp : (Reg.put (Enc.foR m p : Enc) : Val) = .ctor 0 (#[m, p].map .bytes) #[] := by with_unfolding_all rfl
   rw [hp]
   dsimp only [Reg.get?]
   conv => lhs; whnf
   rw [Array.mapM_eq_mapM_toList]
-  have c4 : ((0 : Nat) == (Ext.Enc.pos : Enc).ctorIdx) = false := by with_unfolding_all rfl
+  have c4 : ((0 : Nat) == (Enc.pos : Enc).ctorIdx) = false := by with_unfolding_all rfl
   simp [c4]
   with_unfolding_all rfl
 
@@ -774,7 +774,7 @@ theorem whereB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n keep : N
   have N12 : Extends R6 R12 := fun h => m12 (m11 (m10 (m9 (m8 (m7 h)))))
   refine Builds.call1G (v := Reg.put ix1c) (by abiK) rfl
     (reads_of (l := [cl, n, ix, cp, r1, c3])
-      (vs := [Reg.put Kernel.Op.last, .size nv, Reg.put ixc, Reg.put (Ext.Enc.pos : Enc), .size (K + 1), .u64 0])
+      (vs := [Reg.put Kernel.Op.last, .size nv, Reg.put ixc, Reg.put (Enc.pos : Enc), .size (K + 1), .u64 0])
       (by simp [h3, m12 hcp, m12 (m11 hcl), m12 (m11 (m10 hr1)), N12 (M6 hn), m12 (m11 (m10 (m9 (m8 hixR))))]))
     ?_ rfl fun ix1 R13 hix1 m13 => ?_
   · simp [arg, hlast, hsz, rix, hpos, hu, hs, Out.out]; rfl

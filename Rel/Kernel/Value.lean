@@ -21,10 +21,9 @@ instance (priority := high) instDecidableEqSumElim {α β : Type _} [DecidableEq
 
 /-- The element type of a column. The constructor index is the tag the Rust kernels read: the fixed-width
 types come first, so `u1`..`i8` (0..8) are `crate/src/key.rs`'s `SK_*` kinds, then `sym`, `date` (i32 days),
-`datetime` (i64 ns) and `general`. `code` gives q's type code. `general` is q's type 0, a list of any values;
-q has no type-0 atom, so `general` is a column type with no atom value: a function that reads or builds an
-atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. A general list's null is not a function of its
-type either: it depends on the value (its first item's typed null, its empty vector, or `()`). -/
+`datetime` (i64 ns) and `general`. `code` gives q's type code. `general` is only the placeholder of a type
+variable (`varAtoms`): it has no atom value and no column (`Enc` has no boxed payload), and a function that
+reads or builds an atom (`atomOfBits`, `Column.ofAtoms`) takes `t ≠ .general`. -/
 inductive QAtomicType
   | u1 | u8 | i16 | i32 | i64 | f32 | f64 | char | i8
   | sym | date | datetime
@@ -103,85 +102,10 @@ def tolerant (x y : Float) : Bool :=
 
 end QAtom
 
-/-- The cell a marked value keeps its index in, built when the cell is made. In C because the
-builder, `Kernel.Index.build`, sits above this module and is reached through the slot it registers
-at initialisation; a cell made before that keeps its value and builds on its first lookup. -/
-opaque IndexCell.Pointed : NonemptyType
-def IndexCell : Type := IndexCell.Pointed.type
-
-namespace Ext
-
-mutual
-
-/-- A q value, typed at run time as q's `K` is. `vector` carries its element type and its length in a
-header as a q vector does: the payload is untyped bytes, the header's `t` is what says how wide an
-element is and how to read it, and `Enc.atoms` is the only way back to atoms. An element of the wrong
-type is not representable — `Column.atoms_type` proves it. What remains as an external condition is
-that the payload's shape agrees with the header; `Enc.WF` states that, and `QValue.WFAt` on a value.
-
-`vector` is every list, a general one included: a general list is `.vector .general xs.size (.gen xs)`,
-which the pattern `QValue.general` names. One constructor, so a list has one representation; a header
-the payload disagrees with is `Enc.mismatch`. -/
-inductive QValue (X : Type)
-  | atom : QAtom → QValue X
-  /-- `t` and `n` are read, never inferred from the payload — `⌈n/8⌉` bytes, a block count or a pack
-  at width `w` do not determine `n`. `attr` is the attribute, at the wire's code 1 to 4, and the cell
-  holding the index q builds when it applies it, `none` for no attribute; a general list's mark is
-  here too, and an enumeration's is on its indices. Set through `QValue.mark`, read through
-  `QValue.attrCell`. -/
-  | vector : (t : QAtomicType) → (n : USize) → (enc : Enc X) → (attr : Option (UInt8 × IndexCell)) → QValue X
-  /-- The `Bool` is q's sorted dictionary, type 127: measured, it is not the key's `` `s `` —
-  `` -8!(`s#`a`b)!1 2 `` writes 99, and `-9!` of a 127 over a bare key keeps the key bare. -/
-  | dict : QValue X → QValue X → (sorted : Bool) → QValue X
-  | table : QTable X → QValue X
-  /-- A keyed table: a dictionary whose key and value are both tables. The implicit `IndexCell` holds
-  the key-row index (`Index.keys`), built on the table's first lookup or append and kept and extended
-  from then on; a construction goes through `QValue.key`. The `Bool` is `dict`'s: q's sorted
-  dictionary, `` `s#kt ``, which no flag of either table says. -/
-  | keyed : QTable X → QTable X → (sorted : Bool) → {_ix : IndexCell} → QValue X
-  /-- A general list whose elements are all vectors of one type, laid out as **one** payload and
-  the boundaries that cut it: `string`'s answer, `flip`'s rows, and every `each` over a string
-  family. The fields are the whole payload's, its header the element type and the total element count;
-  the elements it denotes are dense vectors over `.bytes <slice>`, and `slicesExpand` is what
-  builds them where something insists on having them.
-
-  It exists because a per-element **Lean loop** is the floor under all of those, not the objects
-  the loop allocates. Measured on this machine at a million elements: `Array.push` of an unboxed
-  `Nat` is 73ms, `ByteArray.push` 126ms, and a `QValue.vector` over one *shared* payload 99ms,
-  against the 0.23ns an element a C kernel spends on `xf+xf`. So the answer has to stay one
-  payload and the loop that would cut it into a million values has to not run. -/
-  | slices : (t : QAtomicType) → (n : USize) → (enc : Enc X) → (attr : Option (UInt8 × IndexCell)) →
-      Array Nat → QValue X
-  /-- Functions and their relatives, wire types 100–112, kept as raw decoded components.
-  The checker treats these as `dynamic` until the lambda's source can be re-parsed. -/
-  | func : Int8 → Array (QValue X) → QValue X
-  /-- A q error (wire type −128), carrying the error text without its leading backtick. -/
-  | err : String → QValue X
-  /-- An enumeration, q's types ±20: the global named `domain` indexed by `ix`, a `long` atom or a
-  `long` vector. The name, not q's session code, is the identity (`Prim.Ty.enum`), and what an
-  index denotes is read from the global at each use, because `` `d?x `` extends the domain in place
-  under the enumerations already built over it.
-
-  The indices are an ordinary `long` column and so encoded like one: they lie in `[0, count d)`,
-  which frame-of-reference packs to the domain's bit width, where `int` would only halve it. -/
-  | enum : String → QValue X → QValue X
-  /-- A value of the extension `X`, atom or column, which rel knows nothing about: qlean's guid. Last, so the
-  tags of the nine constructors before it and every field layout are unchanged. -/
-  | ext : X → QValue X
-  deriving Inhabited
-
-/-- A q table: column names paired with equal-length column vectors, and the attribute byte q holds on
-the table itself (`62 0N`: `0` none, then `` `s `` `` `u `` `` `p `` `` `g ``), which no column says:
-`-9!` of `62 02` answers a table whose `attr` is `` `u `` with every column bare. -/
-inductive QTable (X : Type)
-  -- the byte is here, not on `QValue.table`, because `keyed` holds two tables and q marks either one
-  -- (`` `s#kt `` the key, `asc kt` the value), so one field serves all three places a table sits
-  | mk : Array String → Array (QValue X) → (attr : UInt8) → QTable X
-  deriving Inhabited
-
-/-- A vector's payload, one constructor per layout. No constructor stores the element count: it is
-the header's `n` on `QValue.vector`, one source for it. -/
-inductive Enc (X : Type)
+/-- A vector's payload, one constructor per layout. No constructor stores the element count: it is the
+header's `n` (`Enc.WF`), one source for it. A column of type `general` has no payload: `general` is only the
+placeholder type of a type variable (`varAtoms`), and no boxed column exists. -/
+inductive Enc
   /-- Frame of Reference: the elements in blocks of `blk = 2 ^ lg` (64 .. 65536, `lg` read from the
   trailer), each block storing its minimum and the
   bit width of `x - base`, and the residuals bit-packed at that width. What it buys is not memory
@@ -209,7 +133,7 @@ inductive Enc (X : Type)
   adds at a million elements rather than a million, which puts `sum` where `min` and `max` already
   are. **A sum is only a sum relative to two things, and the trailer carries both.** The first is the
   null it skipped: this constructor does not know its element type, the same bytes are `long` or
-  `int` or `short` depending on the tag the `QValue` around it carries, and each of those skips a
+  `int` or `short` depending on the type tag the column carries, and each of those skips a
   different value, so `sumnul` names the one these sums used and a reduction at any other null
   recomputes. `0` is no type's null and marks metadata whose sums were never filled in, which is what
   a kernel that builds an encoded column and cannot cheaply maintain them leaves behind. The second
@@ -222,40 +146,15 @@ inductive Enc (X : Type)
   The element count is the header's: `nblk` only bounds it to a multiple of `blk`. Every fixed-width
   type is held here and nowhere else (one encoding, doc/rel-architecture.zh.typ §4): a literal, a
   kernel's answer and a file's column alike, a `float` as its stored bits. -/
-  | foR : (metadata : ByteArray) → (pack : ByteArray) → Enc X
-  /-- A general list, q's type 0: its elements as values, under the header type
-  `QAtomicType.general`: the pattern `QValue.general`. Under an atom type it is a mismatch,
-  `Column.mismatch`, as a typed payload under `general` is. -/
-  | gen : Array (QValue X) → Enc X
+  | foR : (metadata : ByteArray) → (pack : ByteArray) → Enc
   /-- The row positions `0 … n-1` of an `i64` column, `n` the header's: element `i` is `i`, and nothing is stored, in
   memory or on disk (PLAN 6.13). A kernel reads it as its loop index, never as a materialised `til n`. A kernel's
   answer is `pos` only where its arguments' forms say so, never because the values happen to be positions. `WF`
   admits it at no type until no executable reader is left that needs a dense payload (6.13b).
 
-  Nullary, so in Lean's ABI it is the scalar `lean_box(4)`, its tag, which `crate/src/blocks.rs`'s `POS` names. -/
-  | pos : Enc X
+  Nullary, so in Lean's ABI it is the scalar `lean_box(1)`, its tag, which `crate/src/blocks.rs`'s `POS` names. -/
+  | pos : Enc
   deriving Inhabited
-
-end
-
-end Ext
-
-/-- rel's own values, at no extension: `Empty` has no value, so a `match` over them needs no `ext` arm. -/
-abbrev QValue := Ext.QValue Empty
-abbrev QTable := Ext.QTable Empty
-abbrev Enc := Ext.Enc Empty
-
--- `Rel.QValue.atom` … as aliases of the family's constructors, so rel's code names them as before
-export Ext (QValue.atom QValue.vector QValue.dict QValue.table QValue.keyed QValue.slices QValue.func QValue.err
-  QValue.enum QValue.ext QTable.mk Enc.foR Enc.gen)
-
-/-- What a rel function that recurses through `gen`, `dict` or `table` must do at an `ext`; a field is added when
-another such function must. -/
-class ValueExt (X : Type) where
-  /-- q's `~` on two extension values. -/
-  identical : X → X → Bool
-
-instance : ValueExt Empty := ⟨nofun⟩
 
 namespace Column
 
@@ -654,7 +553,7 @@ def packIds (w n : Nat) (f : Nat → Nat) : ByteArray :=
 
 end Column
 
-namespace Ext.Enc
+namespace Enc
 open Column
 
 /-- What the header promises about the payload: the layout is one `t` has, and it holds exactly `n`
@@ -664,9 +563,8 @@ a `u1` `foR` and never `bytes`; Frame of Reference takes every fixed-width type,
 element but a null 0 or 1, read through `foROpt`, since a null row holds residual 0 and no value does); a `foR` payload's blocks cover its `n`, and a block flagged `nulAt` holds a null row (`foRNul`). A `sym` column is
 its ids, positions in the sorted, distinct dictionary held beside it at the Rel level and never in the payload,
 so id order is symbol order and every integer kernel reads it unchanged (PLAN 8.3). -/
-def WF (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Prop :=
+def WF (t : QAtomicType) (n : USize) (e : Enc) : Prop :=
   match t, e with
-  | .general, .gen xs => xs.size = n.toNat
   | t, .foR metadata pack =>
     t.width.isSome ∧ (t = .u1 → ∀ i < n.toNat, ∀ v, foROpt metadata pack (blockStarts metadata) i = some v → v.toNat < 2) ∧
       n.toNat ≤ blk metadata * nblk metadata ∧ lgOk metadata ∧
@@ -684,7 +582,7 @@ about a numeric column is stated over this.
 Every form reads an element of a `w`-byte type as its `8 * w` bits zero-extended, the dense payload's own reading, so
 `raw` is a function of the column and not of its form: `foRBits` holds an element sign-extended to 64 bits
 (`Verify.unbias_keyAt`), and its encoded forms are cut to the low `8 * w` here, a boolean's to its one bit. -/
-def raw (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
+def raw (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
   match t, e with
   | .u1, .foR metadata pack => let starts := blockStarts metadata
     (Array.range n.toNat).map fun i => UInt64.ofNat ((foRBits metadata pack starts i).toNat % 2)
@@ -712,7 +610,7 @@ theorem lowBytes_toNat (w : Nat) (hw : 0 < w) (v : UInt64) : (lowBytes w v).toNa
   · exact (Nat.mod_eq_of_lt (Nat.lt_of_lt_of_le this (Nat.pow_le_pow_right (by decide) (by omega)))).symm
 
 /-- `raw` as it runs: each `% 2 ^ (8 * w)` a `lowBytes` mask. -/
-def rawImpl (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
+def rawImpl (t : QAtomicType) (n : USize) (e : Enc) : Array UInt64 :=
   match t, e with
   | .u1, .foR metadata pack => let starts := blockStarts metadata
     (Array.range n.toNat).map fun i => (foRBits metadata pack starts i) &&& 1
@@ -724,7 +622,7 @@ def rawImpl (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
   | _, _ => #[]
 
 @[csimp] theorem raw_eq_rawImpl : @raw = @rawImpl := by
-  funext X t n e
+  funext t n e
   have h1 : ∀ v : UInt64, UInt64.ofNat (v.toNat % 2) = v &&& 1 := fun v => by
     apply UInt64.toNat_inj.1
     have := UInt64.toNat_lt v
@@ -736,10 +634,10 @@ def rawImpl (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Array UInt64 :=
       Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.mod_le _ _) (UInt64.toNat_lt v))]
   cases e <;> cases t <;> simp [raw, rawImpl, QAtomicType.width, ← h1, ← hw]
 
-end Ext.Enc
+end Enc
 
 namespace Column
-open Ext.Enc
+open Enc
 
 /-- `push` grows the array by one byte. -/
 theorem push_size (b : ByteArray) (x : UInt8) : (b.push x).size = b.size + 1 := by
@@ -900,22 +798,6 @@ theorem bitsAt_pushBits (b : ByteArray) (v : UInt64) (w : Nat) (hw : w ≤ 8) :
 
 end Column
 
-namespace QTable
-
-end QTable
-
-namespace QValue
-
-end QValue
-
-namespace QValue
-
-end QValue
-
-namespace QValue
-
-end QValue
-
 
 
 /-- q's `0n`. Arithmetic that produces a NaN produces exactly this pattern in q. -/
@@ -960,15 +842,6 @@ def type : QAtom → QAtomicType
 
 
 end QAtom
-
-/-- A general list, q's type 0: the `general` column over `gen`, the one representation a list has.
-A pattern too, written `.general xs _ _`: the count is the header's and `xs.size` is not a pattern, so
-both a match and a construction name it; a construction from a Lean `Array` whose count is not in scope
-goes through `QValue.ofArray`. The attribute is a parameter because a general list carries one in q
-(`` `u#(1;`a) ``), and a pattern that pinned `none` would miss it; a construction defaults it to `none`. -/
-@[match_pattern] abbrev Ext.QValue.general (xs : Array (Ext.QValue X)) (n : USize)
-    (a : Option (UInt8 × IndexCell) := none) : Ext.QValue X :=
-  .vector .general n (.gen xs) a
 
 
 namespace Column
@@ -1034,10 +907,10 @@ def atomOfBits (t : QAtomicType) (v : UInt64) (h : t ≠ .general := by first | 
 
 end Column
 
-namespace Ext.Enc
+namespace Enc
 open Column
 
-instance (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Decidable (WF t n e) := by
+instance (t : QAtomicType) (n : USize) (e : Enc) : Decidable (WF t n e) := by
   unfold WF; split <;> (try split) <;> exact inferInstance
 
 
@@ -1054,7 +927,7 @@ The body used to be `(atoms t c)[i]!`, which materialised the whole column to re
 it — 64 lookups on a vector of a million cost 64 million boxed atoms. It had no caller yet, so
 nothing was slowed by it; `tools/bench-ts.lean` was the first and measured 3.4 µs per element
 before this was fixed. -/
-def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) (starts : Array Nat := #[]) : Option QAtom :=
+def get (t : QAtomicType) (n : USize) (e : Enc) (i : Nat) (starts : Array Nat := #[]) : Option QAtom :=
   if i < n.toNat then
     match t, e with
     | t, .foR metadata pack =>
@@ -1068,16 +941,10 @@ def get (t : QAtomicType) (n : USize) (e : Ext.Enc X) (i : Nat) (starts : Array 
   else none
 
 
-end Ext.Enc
-
-/-- `v` is a vector at `t` holding `n` elements laid out as its type has them. Where a proof needs a
-typed vector it takes `{v : QValue // v.WFAt t n}`. -/
-def Ext.QValue.WFAt (t : QAtomicType) (n : USize) : Ext.QValue X → Prop
-  | .vector t' n' e _ => t' = t ∧ n' = n ∧ Enc.WF t n e
-  | _ => False
+end Enc
 
 namespace Column
-open Ext.Enc
+open Enc
 
 
 
@@ -1087,9 +954,5 @@ def boolOf (a : QAtom) : Bool := match a with | .u1 b => b | _ => false
 
 
 end Column
-
-namespace QTable
-
-end QTable
 
 end Rel

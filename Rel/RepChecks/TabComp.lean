@@ -4,7 +4,7 @@ import Rel.RepTabComp
 /-! The `#guard` checks of `Rel.RepTabComp`, kept outside the module: a `#guard` runs compiled code, whose IR a `module` does not export (PLAN perf9e). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 
 section Checks

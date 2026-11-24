@@ -15,7 +15,7 @@ public import Rel.RepWF
 of two rows off the group numbers of `kasc ≫ kseen`, so it is `Obj.lt` and `=`; `rank` is the bisection on that compare. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- **Groups are numbered in the order of their keys**: where a key's rows are runs (`kseen_runs`), rows `a < b` of two
 different keys are in groups `groupOf a < groupOf b`. The first row `f` of `b`'s group, if it were before `a`'s,

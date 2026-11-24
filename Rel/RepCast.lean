@@ -14,7 +14,7 @@ public import Rel.Lang.Den
 /-! The law of `$` (`Tab.cast`): its table is the graph of `QAtomicType.embed` on the values in demand. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel
+open  Rel.Kernel
 
 namespace Tab
 
@@ -636,7 +636,7 @@ theorem _root_.Rel.Arr.raw_ofFn {t : QAtomicType} {w : Nat} (ht : t.width = some
   have hw : 0 < w ∧ w ≤ 8 := by cases t <;> simp [QAtomicType.width] at ht ⊢ <;> omega
   have hf := Verify.foldl_pushBits (fun x : UInt64 => x) w hw.2 (List.ofFn f) .empty
   simp only [ht, Option.getD_some] at hf
-  simp only [Arr.ofFn, Arr.ofBytes, Ext.Enc.ofBytes, ht, Option.getD_some, Kernel.Coc.encode]
+  simp only [Arr.ofFn, Arr.ofBytes, Enc.ofBytes, ht, Option.getD_some, Kernel.Coc.encode]
   change (Enc.raw t n (Enc.foR _ _))[i.1]? = _
   rw [Verify.raw_encodeAt t w ht hu.1 Column.lgEnc (by decide) _ n
     (by rw [hf.1]; simp [Nat.mul_div_cancel_left _ hw.1])]

@@ -14,7 +14,7 @@ One `kscan` map of `Op.cast s t` on the encoded column writes the target words, 
 has no image (`QAtomicType.castWord`, never an image's word: `word_ne_nul`); the flag is `colMap .ne` against it. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel
+open  Rel.Kernel
 
 namespace Tab
 

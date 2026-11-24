@@ -4,7 +4,7 @@ Rel.Db.Csv.fieldAt
 Rel.Db.Csv.fieldsOf
 Rel.Db.Csv.fmtFloat
 Rel.Db.Csv.lex
-Rel.Ext.Enc.bytesOf
+Rel.Enc.bytesOf
 Rel.Kernel.Coc.elems
 Rel.Kernel.Coc.foRStd
 Rel.Kernel.Coc.packRes
@@ -81,10 +81,4 @@ Rel.Verify.firstsOf
 Rel.Verify.groupOf
 Rel.Verify.ids
 Rel.Verify.offD
-Rel.cellFree
-Rel.encCellFree
-Rel.encEq
 Rel.positionsL
-Rel.tabCellFree
-Rel.tabEq
-Rel.valEq

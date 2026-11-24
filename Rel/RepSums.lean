@@ -15,7 +15,7 @@ segmented `kscan .or` keeps a row exactly when no step of its key up to it faile
 `sumsDen` over the key's values up to the row. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Rel.Rep
+open  Rel.Kernel Rel.Verify Rel.Rep
 open scoped Rel.Core.Rel
 
 /-- Flipping the top bit `b` of a word of `b + 1` bits adds `2^b` below it and takes `2^b` off above it. -/

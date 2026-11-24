@@ -4,7 +4,7 @@ import Rel.RepStruct
 /-! The `#guard` checks of `Rel.RepStruct`, kept outside the module: a `#guard` runs compiled code, whose IR a `module` does not export (PLAN perf9e). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 open scoped Rel.Core.Rel
 
 section Checks

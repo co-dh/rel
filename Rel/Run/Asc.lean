@@ -11,7 +11,7 @@ public import Rel.Run.Struct
 position (`Arr.pos`). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel
+open  Rel.Kernel
 
 /-- The first atom type of `A` with no order code (`ascLayout`: a general atom) or whose code is not its order (a
 symbol: `kasc` orders ids, the text order is `Table.rank`'s), the ones whose `kasc` order `Obj.key_ordCode` does not

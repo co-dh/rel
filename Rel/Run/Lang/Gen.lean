@@ -8,7 +8,6 @@ public import Rel.Run.Lang.Lazy
 /-! What the code a `rel_program` definition expands into names besides `GenK`: a definition's listed value
     (`Gv`, `entry`), and the literal columns rebuilt from their payloads. -/
 
-open Rel.Ext
 
 namespace Rel.Lang
 
@@ -36,25 +35,28 @@ def unhex (s : String) : ByteArray := Id.run do
 /-- The `foR` column of `t` whose metadata and pack are the hex texts `m` and `p`, rebuilt as it was written, and its
     fit as its ok bit: `Enc.WF` and no null (`hasNul`) are decided, so a payload that does not fit `n` is a blank column with bit false, never a
     wrong column read as right. -/
-def atom (t : QAtomicType) (n : USize) (m p : String) : Arr t n × Bool :=
+def atom (t : QAtomicType) (n : USize) (m p : String) (hw : t.width.isSome = true := by first | decide | assumption) :
+    Arr t n × Bool :=
   let e := Enc.foR (unhex m) (unhex p)
   match Enc.wf? t n e with
   | some ⟨h⟩ => if hN : hasNul e = false then (Arr.mk e h hN, true) else blank
   | none => blank
-where blank := (Arr.mk (Enc.blank t n) (Enc.blank_WF t n) (Enc.blank_plain t n), false)
+where blank := (Arr.mk (Enc.blank t n) (Enc.blank_WF t n hw) (Enc.blank_plain t n hw), false)
 
 /-- A nullable column's payload `m`, `p` rebuilt as `atom` rebuilds a column but nulls allowed: `Enc.WF` decided, a
     payload that does not fit `n` a blank column with bit false. -/
-def opt (t : QAtomicType) (n : USize) (m p : String) : Opt t n × Bool :=
+def opt (t : QAtomicType) (n : USize) (m p : String) (hw : t.width.isSome = true := by first | decide | assumption) :
+    Opt t n × Bool :=
   let e := Enc.foR (unhex m) (unhex p)
   match Enc.wf? t n e with
   | some ⟨w⟩ => (⟨e, w⟩, true)
-  | none => (⟨Enc.blank t n, Enc.blank_WF t n⟩, false)
+  | none => (⟨Enc.blank t n, Enc.blank_WF t n hw⟩, false)
 /-- An atom column at ownership `o` rebuilt from its payload: `atom`, or `opt` where a row may be null. -/
-def colB (o : Bool) (t : QAtomicType) (n : USize) (m p : String) : ColB o t n × Bool :=
+def colB (o : Bool) (t : QAtomicType) (n : USize) (m p : String) (hw : t.width.isSome = true := by first | decide | assumption) :
+    ColB o t n × Bool :=
   match o with
-  | false => atom t n m p
-  | true => opt t n m p
+  | false => atom t n m p hw
+  | true => opt t n m p hw
 
 /-- A rebuilt column from its rebuilt parts, its bit the `&&` of theirs; at ownership `o`, as `ValsB`. -/
 def pairV (o : Bool) (A B : Obj) (n : USize) (x : ValsB o A n × Bool) (y : ValsB o B n × Bool) :
@@ -67,9 +69,10 @@ def sumV (o : Bool) (A B : Obj) (h : Obj.band A B = none) (n : USize) (tag : Arr
     (x : ValsB true A n × Bool) (y : ValsB true B n × Bool) : ValsB o (.sum A B) n × Bool :=
   (ValsB.ofGen h tag.1 x.1 y.1, tag.2 && x.2 && y.2)
 /-- A band sum's one nullable column (`Obj.band`), rebuilt by `opt`. -/
-def optV (o : Bool) (A B : Obj) (t : QAtomicType) (h : Obj.band A B = some t) (n : USize) (m p : String) :
+def optV (o : Bool) (A B : Obj) (t : QAtomicType) (h : Obj.band A B = some t) (n : USize) (m p : String)
+    (hw : t.width.isSome = true := by first | decide | assumption) :
     ValsB o (.sum A B) n × Bool :=
-  ((ValsB.ofOpt h (opt t n m p).1, (opt t n m p).2))
+  ((ValsB.ofOpt h (opt t n m p hw).1, (opt t n m p hw).2))
 /-- A side of `1`: no column, so nothing to rebuild and nothing to misfit. -/
 def oneV (o : Bool) (n : USize) : ValsB o .one n × Bool := ((), true)
 def relV (A B : Obj) (n : USize) (k : Vals A n × Bool) (v : Vals B n × Bool) : Tab A B × Bool :=

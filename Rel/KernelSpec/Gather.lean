@@ -16,7 +16,6 @@ public import Rel.Kernel.Elementwise
 /-! The part of `Rel.Verify.Gather` the Rel kernels reach; `Rel.Verify.Gather` imports it. -/
 
 
-open Rel.Ext
 
 namespace Rel.Verify
 open Rel Rel.Kernel
@@ -32,7 +31,7 @@ theorem elemsW_decode (w : USize) (hw0 : 0 < w.toNat) (hw : w.toNat ≤ 8) (M P 
 /-- **`bytesOf` reads what `raw` reads**: the dense payload a fixed-width kernel is handed is the column's elements
 at its own width, `raw` reading every form zero-extended from `8 * w` bits. -/
 theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb : t ≠ .u1)
-    (hw0 : 0 < w) (hw : w ≤ 8) (n : USize) (e : Ext.Enc X) (hxw : Enc.WF t n e)
+    (hw0 : 0 < w) (hw : w ≤ 8) (n : USize) (e : Enc) (hxw : Enc.WF t n e)
     (src : ByteArray) (h : Enc.bytesOf t n e = some src) :
     elemsW w src = (Enc.raw t n e).toList := by
   have hwU : w.toUSize.toNat = w := USize.toNat_ofNat_of_lt' (Nat.lt_of_le_of_lt hw (Nat.lt_of_lt_of_le (by decide) USize.le_size))
@@ -50,7 +49,6 @@ theorem elemsW_bytesOf {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
     rw [List.foldl_map, elemsW_foldl_mod Nat.toUInt64 8 (by decide) (by decide)]
     simp only [Enc.raw, Array.toList_map, Array.toList_range, List.map_map]
     exact List.map_congr_left fun a _ => UInt64.toNat_inj.mp (by simp [UInt64.toNat_ofNat, Nat.mod_mod])
-  | _ => simp [Enc.bytesOf] at h
 
 
 /-- The byte `packOf` builds from eight flags, flag `t` at bit `t`. -/

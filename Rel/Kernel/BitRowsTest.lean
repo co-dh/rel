@@ -5,7 +5,7 @@ import Rel.Kernel.ScatterTest
 `qlean_k_bitrows`, against one literal. -/
 
 namespace Rel.Kernel.BitRowsTest
-open Ext.Enc ScatterTest
+open Enc ScatterTest
 
 /-- `bs` as a `u1` `foR` the way `kbitrows` writes one: `Coc.encodeAt lgEnc 1 _ false`, a mixed block its bitmap. -/
 def enc1 (bs : List Bool) : Enc :=

@@ -11,7 +11,7 @@ public import Rel.Lang.GenKSpec
     not wrapping, and each side's rows `x[ra[·]]`, `y[rc[·]]` distinct (`Vals.code`'s `rep`). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc Rel.Rep
+open  Rel.Kernel Rel.Verify Enc Rel.Rep
 open scoped Rel.Core.Rel
 variable {A B C : Obj}
 
@@ -471,7 +471,7 @@ theorem Tab.compTabMat_wf {n m M : USize} {r : Tab A B} {g w ka : USize} {o o' r
     rows `x[q]` of the input rows `q` with `gr q = G`, stated over the input rows rather than `csr`'s order. -/
 theorem csr_kbitrows {all : Bool} {n g na w : USize} {gid x ends idx m o : Enc}
     (hc : csr n g gid x = .ok (ends, idx)) (hk : kbitrows all w na n g ends idx m = .ok o)
-    (hgW : Ext.Enc.WF .i64 n gid) (hgN : hasNul gid = false) (hxN : hasNul x = false) (gr : Nat → Nat)
+    (hgW : Enc.WF .i64 n gid) (hgN : hasNul gid = false) (hxN : hasNul x = false) (gr : Nat → Nat)
     (hg : ∀ q < n.toNat, (raw .i64 n gid)[q]?.getD 0 = (gr q).toUInt64 ∧ gr q < g.toNat) (hg63 : g.toNat ≤ 2 ^ 63) :
     (na * w).toNat = na.toNat * w.toNat ∧ (g * w).toNat = g.toNat * w.toNat ∧
     (∀ q < n.toNat, ((raw .i64 n x)[q]?.getD 0).toNat < na.toNat) ∧

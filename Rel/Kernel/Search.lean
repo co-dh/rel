@@ -9,7 +9,6 @@ public import Rel.Kernel.Value
 /-! The part of `Rel.Kernel.Search` the Rel kernels reach; `Rel.Kernel.Search` imports it. -/
 
 
-open Rel.Ext
 namespace Rel.Kernel
 
 /-- The key an equality compares, with the values q holds equal folded together: the two zeros onto

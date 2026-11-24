@@ -13,7 +13,7 @@ law `wordsFoR_closed` (a kernel's answer reads back as the words it wrote). `Arr
 the elements, and `ValsB.gather_row` to the rows. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- **An element is the atom of its word**: in a column every kernel reads (`foR`, or `pos` at `i64`), element `i` is
 `Carrier.of?` of the atom its raw word `a` reads as (`atomOfBits`), and at `u1` that word is below `2`. Stated on the
@@ -37,7 +37,6 @@ theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t 
     cases t <;> simp only [Enc.WF] at hw
     exact ⟨UInt64.ofNat i.1, by simp [Enc.raw, i.2], fun h => absurd h (by decide),
       by simp [Enc.get, i.2, Column.atomOfBits]⟩
-  | _ => all_goals cases t <;> first | exact absurd rfl hg | simp only [Enc.WF] at hw
 
 /-- `Enc.get_raw_atom` at an `Arr`, whose every row is no null (`foRNuls_plain`). -/
 theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n)
@@ -121,7 +120,7 @@ theorem Opt.get_eq_of_raw {t : QAtomicType} {n m : USize} (x : Opt t n) (y : Opt
     simp only [h1, h2, if_true]
 
 section
-open Ext.Enc
+open Enc
 
 /-- **`kscatter` under any `op`, on words**: the answer reads back as `scatterWords` of its arguments' words where `e`
 holds no null; a null row's raw word is its block's top residual, not the word scattered there. -/
@@ -654,9 +653,9 @@ theorem Verify.asc_perm_grade {n : USize} {es : List (AscKey × Enc)} {vs : List
 
 /-- **A sorted column agrees with its input row by row, nulls included**: `v`, `asc_perm`'s answer for the input
 column `e` through the permutation `ps`, holds at row `q` input row `ps[q]`'s null flag and, off a null, its word; and
-`v` holds a null exactly where `e` does (`hasNul_flags`, `e` being `Ext.Enc.WF`). -/
+`v` holds a null exactly where `e` does (`hasNul_flags`, `e` being `Enc.WF`). -/
 theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64} {nul : ByteArray} {ps : List Nat}
-    (hw : Ext.Enc.WF t m e) (hv : v = wordsFoR ws nul) (hws : ws.size = m.toNat)
+    (hw : Enc.WF t m e) (hv : v = wordsFoR ws nul) (hws : ws.size = m.toNat)
     (hwq : ∀ k (hk : k < ps.length), ws[k]? = (Enc.raw .i64 m e)[ps[k]]?)
     (h0 : hasNul e = false → nul = .empty)
     (h1 : hasNul e = true → ∃ nf : Array UInt64, nul = nulMap nf ∧ nf.size = m.toNat ∧
@@ -686,7 +685,7 @@ theorem asc_col_row {m : USize} {t : QAtomicType} {e v : Enc} {ws : Array UInt64
       simp [hz]
     · obtain ⟨nf, rfl, hnf, hnk⟩ := h1 hN
       unfold nulMap; rw [bitAt_packOf _ _ k (by omega), hnk k hk]
-  have hwv : Ext.Enc.WF .i64 m (wordsFoR ws nul) := (wordsFoR_nul ws nul hws.symm).2.2.2 rfl fun h => by cases h
+  have hwv : Enc.WF .i64 m (wordsFoR ws nul) := (wordsFoR_nul ws nul hws.symm).2.2.2 rfl fun h => by cases h
   have hsz : (foRNuls m (wordsFoR ws nul)).size = m.toNat := foRNuls_size m _
   have hse : (foRNuls m e).size = m.toNat := foRNuls_size m e
   -- `v` holds a null exactly where `e` does: its flags are `e`'s through the permutation `ps`
@@ -737,10 +736,10 @@ theorem kseen_plain {n : USize} {es : List (AscKey × Enc)} {k : Nat} {g f : Enc
   obtain ⟨-, hg, hf⟩ := kseen_ok h; rw [hg, hf]; exact ⟨hasNul_wordsFoR _, hasNul_wordsFoR _⟩
 
 /-- **`kasc`'s grade**: `p` reads as the stable grade `ps` of the codes (`Verify.asc_perm_grade`), and the `kseen` key
-of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s: every key column is `Ext.Enc.WF` (so its
+of sorted row `q` (over the sorted columns `vs`) is input row `ps[q]`'s: every key column is `Enc.WF` (so its
 `hasNul` is its rows' flags (`asc_col_row`). -/
 theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc}
-    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t N x.2) :
+    (ha : kasc N es = .ok (vs, p)) (hwf : ∀ x ∈ es, ∃ t, Enc.WF t N x.2) :
     ∃ cs, es.mapM (ascCol N) = .ok cs ∧
       Enc.raw .i64 N p = ((ascGrade N.toNat (ascKeys N es)).map Nat.toUInt64).toArray ∧
       ∀ q (hq : q < (ascGrade N.toNat (ascKeys N es)).length),
@@ -765,14 +764,14 @@ theorem kasc_grade {N : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : 
   · simp only [List.getElem_zip]; exact (hc c h h').1
   · simp only [List.getElem_zip]; exact (hc c h h').2
 
-/-- **Every key column of a side is a column**, `Ext.Enc.WF` at some type and the side's `n`: an atom's and a sum's
+/-- **Every key column of a side is a column**, `Enc.WF` at some type and the side's `n`: an atom's and a sum's
 tag are their `Arr`'s, a `cells` key is `.pos`, a summand's are those of the side gathered from it, and a `1+atom t`
 band is its own `Opt` column, which holds its nulls in band (`kasc` codes them first, `nulCodes`). -/
-theorem ColB.enc_wf {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) : Ext.Enc.WF t n (ColB.enc x) := by
+theorem ColB.enc_wf {o : Bool} {t : QAtomicType} {n : USize} (x : ColB o t n) : Enc.WF t n (ColB.enc x) := by
   cases o <;> exact x.wf
 
 theorem ValsB.cols_wf : {o : Bool} → {A : Obj} → {n : USize} → (x : ValsB o A n) → {es : List (AscKey × Enc)} →
-    ValsB.cols x = .ok es → ∀ c ∈ es, ∃ t, Ext.Enc.WF t n c.2
+    ValsB.cols x = .ok es → ∀ c ∈ es, ∃ t, Enc.WF t n c.2
   | _, .atom t, _, x, _, h, c, hc => by
     simp only [ValsB.cols, Except.ok.injEq] at h; subst h
     rw [List.mem_singleton.1 hc]; exact ⟨t, ColB.enc_wf x⟩
@@ -1118,7 +1117,7 @@ theorem nulWords_get {m : USize} {e : Enc} {c : Array UInt64} {i : Nat} (h : (fo
   · rfl
 
 /-- `nulWords` at a row flagged null is `0`. -/
-theorem nulWords_nul {t : QAtomicType} {m : USize} {e : Enc} (hw : Ext.Enc.WF t m e) (c : Array UInt64) {i : Nat}
+theorem nulWords_nul {t : QAtomicType} {m : USize} {e : Enc} (hw : Enc.WF t m e) (c : Array UInt64) {i : Nat}
     (hi : i < m.toNat) (h : (foRNuls m e)[i]? ≠ some 0) : (nulWords m e c)[i]?.getD 0 = 0 := by
   unfold nulWords; split
   · have hlt : i < (foRNuls m e).size := by rw [foRNuls_size]; exact hi

@@ -19,7 +19,7 @@ The step reads raw words as `Op.eval` does (two's complement `Int64`); `Ew.intSt
 word `2^63`. Laws in `Rel/RepTabArith.lean`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- `Ew.intStep`'s null `Int64.minValue` as a raw word. -/
 def nulWord : UInt64 := 0x8000000000000000

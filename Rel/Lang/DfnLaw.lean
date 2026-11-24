@@ -79,22 +79,22 @@ theorem zeroCol_row {t : QAtomicType} (h : t.ordNum.isSome) (i : Fin (1 : USize)
 
 /-- `Enc.wf?` answers `some` wherever `Enc.WF` holds, but on a `u1` block whose frame or width admits a 2
     (`Column.u1Ok`), which it refuses. -/
-theorem _root_.Rel.Ext.Enc.wf?_isSome {X : Type} {t : QAtomicType} {n : USize} {e : Ext.Enc X}
-    (h : Ext.Enc.WF t n e) (hu : ∀ md pk, e = .foR md pk → t = .u1 → Column.u1Ok md pk = true) :
-    (Ext.Enc.wf? t n e).isSome := by
+theorem _root_.Rel.Enc.wf?_isSome {t : QAtomicType} {n : USize} {e : Enc}
+    (h : Enc.WF t n e) (hu : ∀ md pk, e = .foR md pk → t = .u1 → Column.u1Ok md pk = true) :
+    (Enc.wf? t n e).isSome := by
   cases e with
-  | foR md pk => cases t <;> (unfold Ext.Enc.wf?; dsimp only; rw [dif_pos ⟨h.1, hu md pk rfl, h.2.2⟩]; rfl)
-  | gen xs => cases t <;> simp_all [Ext.Enc.wf?, Ext.Enc.WF]
-  | pos => cases t <;> first | rfl | (simp [Ext.Enc.WF] at h)
+  | foR md pk => cases t <;> (unfold Enc.wf?; dsimp only; rw [dif_pos ⟨h.1, hu md pk rfl, h.2.2⟩]; rfl)
+  | pos => cases t <;> first | rfl | (simp [Enc.WF] at h)
 
 /-- A generated atom literal (`Gen.atom`) is the column its payload encodes, its bit `true`, wherever that payload is
-    `WF` and holds no null (`Ext.Enc.wf?_isSome`). -/
+    `WF` and holds no null (`Enc.wf?_isSome`). -/
 theorem Gen.atom_eq {t : QAtomicType} {n : USize} {m p : String} {e : Enc}
-    (he : Enc.foR (Gen.unhex m) (Gen.unhex p) = e) (hw : Ext.Enc.WF t n e)
-    (hu : ∀ md pk, e = .foR md pk → t = .u1 → Column.u1Ok md pk = true) (hN : hasNul e = false) :
-    Gen.atom t n m p = (Arr.mk e hw hN, true) := by
+    (he : Enc.foR (Gen.unhex m) (Gen.unhex p) = e) (hw : Enc.WF t n e)
+    (hu : ∀ md pk, e = .foR md pk → t = .u1 → Column.u1Ok md pk = true) (hN : hasNul e = false)
+    (ht : t.width.isSome = true) :
+    Gen.atom t n m p ht = (Arr.mk e hw hN, true) := by
   subst he
-  obtain ⟨⟨w⟩, hs⟩ := Option.isSome_iff_exists.1 (Ext.Enc.wf?_isSome hw hu)
+  obtain ⟨⟨w⟩, hs⟩ := Option.isSome_iff_exists.1 (Enc.wf?_isSome hw hu)
   unfold Gen.atom; dsimp only; rw [hs]; simp only [hN, dite_true]
 
 /-- **What `Gen.unhex` reads**, for any text `s`: byte `i` is the hex digits `2i`, `2i + 1` of `s`'s UTF-8 bytes,
@@ -140,7 +140,7 @@ theorem Gen.atom_zero : Gen.atom .i64 (USize.ofNat 1)
     unfold wordsFoR
     congr 1 <;> apply hb <;> rw [Gen.unhex_toList] <;> with_unfolding_all rfl
   exact Gen.atom_eq (n := USize.ofNat 1) he (zeroCol .i64 rfl).wf (fun _ _ _ h => absurd h (by decide))
-    (zeroCol .i64 rfl).plain
+    (zeroCol .i64 rfl).plain (by decide)
 
 /-- A table literal (`Gen.relV`) means its rows (`Tab.Holds`). -/
 theorem Tm.relV_den (ρ : Val) {A B : Obj} {n : USize} (k : Vals A n × Bool) (v : Vals B n × Bool) (x : A.El)

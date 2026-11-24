@@ -683,7 +683,7 @@ def whereB (n keep : Nat) : Bld (Nat × Nat) := do
     (do pure #[← projB fold 1 0 .u64])) 0 "if"]
   let ix ← nth (← scanB .mul .i64 n none [keep, p]) 0 "kscan"
   let r1 ← call1 (kernel% USize.add) #[r, ← lit (.size 1)]
-  let ix1 ← call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), n, ix, ← lit (Reg.put (Ext.Enc.pos : Enc)), r1,
+  let ix1 ← call1 (kernel% kscatter) #[← lit (Reg.put Kernel.Op.last), n, ix, ← lit (Reg.put (Enc.pos : Enc)), r1,
     ← lit (.u64 0)]
   let zr ← constB r (← lit (.u64 0))
   let cut ← nth (← scanB .add .i64 r (some zr) [zr, ← constB r (← lit (.u64 1))]) 0 "kscan"

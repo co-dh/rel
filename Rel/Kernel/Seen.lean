@@ -18,7 +18,7 @@ groups, as are two NaNs with different bits. Normalising NaN and `-0` happens wh
 is temporary, as for `kscan`; 6.11 renames. -/
 
 namespace Rel.Kernel
-open Ext.Enc
+open Enc
 
 /-- **The seen kernel** (PLAN D.12): over the `n` rows of the columns `es`, each an `AscKey` beside its column, read as
 `kasc` reads it (`ascCol`, a `cells` key by its cells' element codes), rows in `kasc` order (every adjacent pair `lexLe`), the number `k` of distinct keys, each row's group `g`

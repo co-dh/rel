@@ -10,7 +10,7 @@ columns are such rows, so the composition never takes `kseen`'s error (`kasc_kse
 the sorted rows, whose key at `q` is input row `ps[q]`'s (`kasc_grade`), and its groups are runs (`kseen_runs`). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- `lexLe` reads two rows only through their codes: rows `i`, `j` of `ks` with the codes of rows `i'`, `j'` of `ks'`
 compare as those do. -/
@@ -69,7 +69,7 @@ column reads again (`ascCol_perm`) and the rows are in `kasc` order (`ascGrade_s
 answers is `kseen_ok`'s, the groups `Order.groupIn` numbers over the sorted rows' keys, row `q`'s key being input row
 `ps[q]`'s (`kasc_grade`). -/
 theorem kasc_kseen {n : USize} {es : List (AscKey × Enc)} {vs : List Enc} {p : Enc} (ha : kasc n es = .ok (vs, p))
-    (hwf : ∀ x ∈ es, ∃ t, Ext.Enc.WF t n x.2) (hpl : ∀ x ∈ es, hasNul x.2 = false) :
+    (hwf : ∀ x ∈ es, ∃ t, Enc.WF t n x.2) (hpl : ∀ x ∈ es, hasNul x.2 = false) :
     ∃ r, kseen n ((es.map (·.1)).zip vs) = .ok r := by
   obtain ⟨ps, -, hperm, hvl, hcol⟩ := asc_perm n es vs p ha
   obtain ⟨cs, hc, -⟩ := kasc_ok ha

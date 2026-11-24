@@ -25,7 +25,7 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
 
 ## What RelRep is
 - The core: a relation is a pair of typed arrays of one length, `Rel k v = {n, key : Arr k n, val : Arr v n}`.
-  An `Arr` is a `Column` of one `QAtomicType`, `general` (q's type 0, each element boxed) included. The key
+  An `Arr` is a `Column` of one `QAtomicType`; `general` is only the placeholder of a type variable, with no boxed column. The key
   is a plain `Arr`, as in q.
 - `Arr` is the implementation and Lean's `List` is for proofs only: every compiled op builds and reads arrays,
   and a `List` appears only in a statement or a `#guard` (`toList`, `El`), because Lean has the lemmas for `List`

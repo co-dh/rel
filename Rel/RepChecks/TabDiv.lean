@@ -4,7 +4,7 @@ import Rel.RepTabDiv
 /-! The `#guard` checks of `Rel.RepTabDiv`, kept outside the module: a `#guard` runs compiled code, whose IR a `module` does not export (PLAN perf9e). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 
 section Checks
@@ -306,7 +306,7 @@ private def sumSp (xs : List (List Int64)) : List (List Int64 × Int64) :=
 private def bigCell : Except String (Vals (.arr .long) 1) := do
   pure ⟨9223372036854775808, ← colArr .add 1 (← colConst 1 0) (← colConst 1 0),
     ← colArr .add 1 (← colConst 1 1) (← colConst 1 0),
-    (⟨.pos, by simp [Ext.Enc.WF], rfl⟩ : Arr .i64 9223372036854775808)⟩
+    (⟨.pos, by simp [Enc.WF], rfl⟩ : Arr .i64 9223372036854775808)⟩
 
 -- `ValsB.pack` past `2^63` elements is the error: `cellSpan` would read the size as the signed word `-2^63`, every
 -- width `0`, and answer a payload of no rows

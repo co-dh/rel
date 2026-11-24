@@ -17,7 +17,7 @@ Rows in `lexLe` order, `key i` a row's codes across the columns `ks` (words, as 
 The models are the words `kscan` and `kscatter` compute (`kscanRow`, `scatterWords`); no kernel and no `Op` is added. -/
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 -- noncomputable: these are models for proofs, never run; no IR means listban does not walk their `List`s
 

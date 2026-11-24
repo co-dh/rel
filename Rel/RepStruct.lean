@@ -12,7 +12,7 @@ public import Rel.Core.Rel
 (`Tm.den`, `Rel/Lang/Den.lean`) as the right-hand side, and their checks against their denotations as sets. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 open scoped Rel.Core.Rel
 /-- `Arr.zeros` holds `0` at every row. -/
 theorem Arr.zeros_get {n : USize} {z : Arr .i64 n} (h : Arr.zeros .i64 n = .ok z) (i : Fin n.toNat) : z.get i = 0 := by
@@ -77,9 +77,8 @@ theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t
     x.get i = Opt.filler t := by
   by_cases hg : t = .general
   · subst hg
-    unfold Opt.fill at h
-    cases h
-    simp only [Opt.get_eq, Opt.isNul, Opt.isNulWith, Opt.enc, Bool.false_eq_true, if_false, Opt.filler]
+    unfold Opt.fill Opt.nuls at h
+    simp [QAtomicType.width] at h
   · rw [Opt.get_nulWords _ (Opt.fill_enc hg h) i, Opt.filler_ne hg]
 
 /-- **`Vals.lift` reads as `x`**: each `Opt.ofArr` holds `some` of the `Arr`'s element (`Opt.get_ofArr`). -/
