@@ -25,6 +25,12 @@ rel_program natS where
     mg : N ⟶ [N] ≜ pq merge(≤)
     -- a row on a source with a relation given a list of lists is run through `F`, `merge` of two empty cells
     me : N ⟶ [N] ≜ ⟨ys, ys⟩ merge(≤)
+    -- `asc` keys are `pos`; `F(tt)` on them runs `iteT` (a total `tt`: the `canonT` branch) and `F(ev)` the fold branch (a
+    -- partial `ev`), so a key reaches the sink as the `if`'s result, `pos` in a branch and no literal there
+    tt : N ⟶ N ≜ {(1,2),(2,3),(3,1),(4,5),(5,4)}
+    ac : N ⟶ [N] ≜ asc(ran(xs))
+    am : N ⟶ [N] ≜ asc(ran(xs)) F(tt)
+    ap : N ⟶ [N] ≜ asc(ran(xs)) F(ev)
 
 #eval show Lean.Meta.MetaM Unit from do
   writesAgree "st" (← planOfIn ``natS "st") natS.st
@@ -32,5 +38,28 @@ rel_program natS where
   writesAgree "tn" (← planOfIn ``natS "tn") natS.tn
   writesAgree "mg" (← planOfIn ``natS "mg") natS.mg
   writesAgree "me" (← planOfIn ``natS "me") natS.me
+  writesAgree "ac" (← planOfIn ``natS "ac") natS.ac
+  writesAgree "am" (← planOfIn ``natS "am") natS.am
+  writesAgree "ap" (← planOfIn ``natS "ap") natS.ap
+
+/-! An array bound that is `pos` (`.lo` the positions `0, 1, 2`): `flatB` writes it as the `foR` the file holds, the
+    constructor read at run time as for a bound that is a kernel's answer. -/
+
+/-- `flatB` of one array column over three rows whose `.lo` is `posB`, `.hi` is `lo + 1`: the plan's last register is
+    the `.lo` `Enc` written. -/
+def arrPos : Except String Plan := Bld.plan do
+  let n ← lit (.size 3)
+  let lo ← posB
+  let hi ← mapB .add n lo (← wordsB n 1)
+  let s ← flatB n [.arr "" n lo hi [.atom ".e" .i64 (← wordsB n 7)]]
+  let some (_, rs) := s.head? | throw "flatB of one array: no side"
+  let some e := rs.back? | throw "flatB: a side with no register"
+  discard <| nth (← ite (← lit (.bit true)) (pure #[e]) (pure #[e])) 0 "if"
+
+#eval show IO Unit from do
+  let (rs, _) ← IO.ofExcept ((← IO.ofExcept arrPos).run abiOf)
+  let some e := rs.back?.bind (Reg.get? (α := Enc)) | throw (IO.userError "arrPos: the last register is no Enc")
+  unless e.ctorIdx == (Enc.foR .empty .empty).ctorIdx && (Enc.raw .i64 3 e).toList == [0, 1, 2] do
+    throw (IO.userError s!"arrPos: the `.lo` written is not the foR of 0, 1, 2: {(Enc.raw .i64 3 e).toList}")
 
 end Rel.Lang.TestNativeS
