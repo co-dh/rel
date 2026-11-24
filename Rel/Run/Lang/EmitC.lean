@@ -234,18 +234,23 @@ def Instr.renameB (f : Nat → Nat) : List Instr → List Instr
   | i :: is => i.rename f :: Instr.renameB f is
 end
 
-/-- The type the block `is` reads the outer register `a` as: the declared type of the first reader's argument, a
-    kernel's (`abiOf`) or a function's of `fs`; an `if`'s bit, a `loop`'s cap, a `proj`'s constructor. -/
-partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
+mutual
+/-- The type the instruction `i` reads the outer register `a` as: the declared type of its argument, a kernel's
+    (`abiOf`) or a function's of `fs`; an `if`'s bit, a `loop`'s cap, a `proj`'s constructor. -/
+def useTy (fs : Array Fun) (a : Nat) : Instr → Option Ty
+  | .call s as | .readOpt s as _ => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
+  | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
+  | .ite c t _ e _ => if c == a then some .bit else useTyB fs a t <|> useTyB fs a e
+  | .proj x .. | .isTag x _ | .sproj x .. => if x == a then some .obj else none
+  | .part x _ => if x == a then some .parts else none
+  | .loop k _ b .. => if k == a then some .size else useTyB fs a b
+  | _ => none
+/-- `useTy` of the first instruction of the block that has an answer (structural over the nested blocks: this and
+    `useTy` are one mutual pair). -/
+def useTyB (fs : Array Fun) (a : Nat) : List Instr → Option Ty
   | [] => none
-  | i :: is => (match i with
-    | .call s as | .readOpt s as _ => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
-    | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
-    | .ite c t _ e _ => if c == a then some .bit else useTy fs a t <|> useTy fs a e
-    | .proj x .. | .isTag x _ | .sproj x .. => if x == a then some .obj else none
-    | .part x _ => if x == a then some .parts else none
-    | .loop k _ b .. => if k == a then some .size else useTy fs a b
-    | _ => none) <|> useTy fs a is
+  | i :: is => useTy fs a i <|> useTyB fs a is
+end
 
 /-- The number of registers the instruction `i` defines, `fs` and `gs` the plan's functions and globals. -/
 def resN (fs gs : Array Fun) : Instr → Nat
@@ -258,28 +263,52 @@ def resN (fs gs : Array Fun) : Instr → Nat
   | .ite _ _ rt _ _ => rt.size
   | .loop _ init .. => init.size
 
-/-- The type of register `a` as the instruction defining it declares it, in the block `is` numbered from `base`
-    (`pre` the registers before it): a literal's, a kernel's or a function's result, a field read. -/
-partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is : List Instr) (a : Nat) : Option Ty :=
-  if a < base then pre a else match is with
-  | [] => none
-  | i :: is =>
-    let funTy (F : Fun) (j : Nat) : Option Ty := F.res[j]?.bind (defTy fs gs (F.params[·]?) F.params.size F.body)
+mutual
+/-- The type of register `a` as the instruction `i` defining registers from `base` declares it (`pre` the registers
+    before): a literal's, a kernel's or a function's result, a field read. The bounds `m` and `n`: the globals and
+    functions the registers' definitions may apply (a body applies only earlier ones, `Plan`'s invariant), so the
+    walk into an applied body is on a smaller bound; one that is not smaller throws. -/
+def defTy (fs gs : Array Fun) (m n : Nat) (pre : Nat → Except String (Option Ty)) (base : Nat) (i : Instr)
+    (a : Nat) : Except String (Option Ty) :=
+  if a < base then pre a else if a - base < resN fs gs i then
     let j := a - base
-    if j < resN fs gs i then match i with
-      | .lit v => some v.ty
-      | .ctor .. => some .obj
-      | .proj _ _ _ t => some t
-      | .isTag .. => some .bit
-      | .sproj _ _ _ ss k => ss[k]?
-      | .part .. => some .bytes
-      | .fail .. => none
-      | .call s _ | .readOpt s _ _ => (abiOf s).bind (·.res[j]?)
-      | .apply g _ => (fs[g]?).bind (funTy · j)
-      | .global g => (gs[g]?).bind (funTy · j)
-      | .ite _ t rt _ _ => rt[j]?.bind (defTy fs gs pre base t)
-      | .loop _ init .. => init[j]?.bind pre
-    else defTy fs gs (defTy fs gs pre base [i]) (base + resN fs gs i) is a
+    match i with
+    | .lit v => pure (some v.ty)
+    | .ctor .. => pure (some .obj)
+    | .proj _ _ _ t => pure (some t)
+    | .isTag .. => pure (some .bit)
+    | .sproj _ _ _ ss k => pure ss[k]?
+    | .part .. => pure (some .bytes)
+    | .fail .. => pure none
+    | .call s _ | .readOpt s _ _ => pure ((abiOf s).bind (·.res[j]?))
+    | .apply g _ => match fs[g]? with
+      | none => pure none
+      | some F => if g < n then match F.res[j]? with
+          | none => pure none
+          | some r => defTyB fs gs m g (fun a => pure F.params[a]?) F.params.size F.body r
+        else throw s!"f{g} is applied where only the functions below f{n} may be (a body applies only earlier ones)"
+    | .global g => match gs[g]? with
+      | none => pure none
+      | some F => if g < m then match F.res[j]? with
+          | none => pure none
+          | some r => defTyB fs gs g fs.size (fun a => pure F.params[a]?) F.params.size F.body r
+        else throw s!"g{g} is read where only the globals below g{m} may be (a global reads only earlier ones)"
+    | .ite _ t rt _ _ => match rt[j]? with
+      | none => pure none
+      | some r => defTyB fs gs m n pre base t r
+    | .loop _ init .. => match init[j]? with
+      | none => pure none
+      | some r => pre r
+  else pure none
+termination_by (m, n, sizeOf i)
+/-- `defTy` over a block: the registers of its instructions in turn (structural over the nested blocks: this and
+    `defTy` are one mutual pair, well founded on the bounds). -/
+def defTyB (fs gs : Array Fun) (m n : Nat) (pre : Nat → Except String (Option Ty)) (base : Nat) :
+    List Instr → Nat → Except String (Option Ty)
+  | [], a => if a < base then pre a else pure none
+  | i :: is, a => defTyB fs gs m n (fun a => defTy fs gs m n pre base i a) (base + resN fs gs i) is a
+termination_by is => (m, n, sizeOf is)
+end
 
 /-- The types of the enclosing registers `cs` a function's body `body`, answering `r` of the types `rtys`, reads after
     the enclosing block `is` of `n` registers: as their reader declares (`useTy`), else as their result slot, else as
@@ -287,10 +316,13 @@ partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is
 def cloTys (fs gs : Array Fun) (is body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty) (cs : List Nat) :
     Except String (List Ty) :=
   -- a register no reader types is typed by its definition in the enclosing block
-  let dty := defTy fs gs (fun _ => none) (n - (is.toList.map (resN fs gs)).sum) is.toList
-  cs.mapM fun a => match useTy fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?) <|> dty a with
+  let dty := defTyB fs gs gs.size fs.size (fun _ => pure none) (n - (is.toList.map (resN fs gs)).sum) is.toList
+  cs.mapM fun a => do
+    match useTyB fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?) with
     | some t => pure t
-    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
+    | none => match ← dty a with
+      | some t => pure t
+      | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
 
 /-- A body of at most one instruction holding no block, which `funB` splices in place: its `apply` costs as much. -/
 def spliceable (body : Array Instr) : Bool :=
@@ -3050,8 +3082,8 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
   pure (c, rs, outs)
 
 /-- The types of `F`'s results as its body defines them (`defTy`), `fs` and `gs` the plan's functions and globals. -/
-def Fun.resTys (fs gs : Array Fun) (F : Fun) : Except String (Array Ty) := F.res.mapM fun a =>
-  match defTy fs gs (F.params[·]?) F.params.size F.body a with
+def Fun.resTys (fs gs : Array Fun) (F : Fun) : Except String (Array Ty) := F.res.mapM fun a => do
+  match ← defTyB fs gs gs.size fs.size (fun a => pure F.params[a]?) F.params.size F.body a with
   | some t => pure t
   | none => throw s!"result register r{a}: no instruction declares its type"
 
