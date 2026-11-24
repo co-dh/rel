@@ -1136,6 +1136,26 @@ end
     meaning over all, so an equal earlier function (`funB`'s `findIdx?`) means what the new one would. -/
 def Ordered (F : Array Fun) : Prop := ∀ i (h : i < F.size), ∀ j ∈ Instr.callsB F[i].body, j < i
 
+/-- `cloTys` throws only for a register no reader and no result slot types: it never reaches `defTy`'s walk, so it does
+    not depend on the enclosing block `is` (nor on `Ordered`: the walk's bounds only matter for the registers that fall
+    through to the definition, which `hty` of `funB_builds` quantifies over as any `is`). -/
+theorem cloTys_ok (fs gs : Array Fun) (is body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty)
+    (cs : List Nat)
+    (h : ∀ a ∈ cs, ∃ t, (useTyB fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?)) = some t) :
+    ∃ ts, cloTys fs gs is body n r rtys cs = .ok ts := by
+  unfold cloTys
+  dsimp only
+  generalize defTyB fs gs gs.size fs.size (fun _ => pure none) (n - (is.toList.map (resN fs gs)).sum) is.toList = dty
+  induction cs with
+  | nil => exact ⟨[], rfl⟩
+  | cons a cs ih =>
+    obtain ⟨t, ht⟩ := h a (by simp)
+    obtain ⟨ts, hts⟩ := ih fun b hb => h b (by simp [hb])
+    refine ⟨t :: ts, ?_⟩
+    rw [List.mapM_cons, ht]
+    simp only [bind, Except.bind, hts]
+    rfl
+
 /-- `h` moves the registers `E0` to `E0'`: each `a < E0.size` with `P a` reads alike at `h a`, and a register after
     `E0` is shifted to the same place after `E0'`. -/
 def Moves (h : Nat → Nat) (P : Nat → Prop) (E0 E0' : Array Val) : Prop :=
