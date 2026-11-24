@@ -462,16 +462,25 @@ def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← 
 /-- `c ∧ d`, `d` built only in the branch where `c` holds. -/
 def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
 
+mutual
 /-- **`ValsB.concat`** into `n` rows, the two sides' columns paired by position (one object, one `objCols` order):
     atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` as they are
     (`0 ≤ lo ≤ hi ≤ m`, `Vals.WF`), the second's shifted past the first (`shiftB`); a sum's tags joined, its positions
     `0 … n-1`, each summand by `catSummandB`. -/
-partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
-  (xs.zip ys).mapM fun (x, y) => funC [(n₁, x), (n₂, y)] fun
-    | [(n₁, x), (n₂, y)] => return (n, ← concatColB n n₁ n₂ off x y)
+def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
+  (xs.zip ys).attach.mapM fun ⟨⟨x, y⟩, hxy⟩ => funC [(n₁, x), (n₂, y)] fun
+    -- `funC` hands back `x` with its registers renamed, so no larger (the guard says so to the termination checker)
+    | [(n₁, x'), (n₂, y')] =>
+      if h : x'.size ≤ x.size then return (n, ← concatColB n n₁ n₂ off x' y')
+      else throw "concat: a column larger than the column it renames"
     | _ => throw "concat: not two columns"
-where
-  concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
+termination_by 2 * Col.sizes xs + 1
+decreasing_by
+  all_goals have := Col.size_le_of_mem (List.of_mem_zip hxy).1
+  all_goals omega
+
+/-- `concatB` of one pair of columns. -/
+def concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
     -- dense sum: the tags and both summand columns are `n₁`, `n₂` rows, so each is joined as any column (nulls stay in-band)
     | .sum p tag₁ x₁ y₁, .sum _ tag₂ x₂ y₂ => do
       return .sum p (← catColB .u1 n n₁ n₂ tag₁ tag₂) (← concatB n n₁ n₂ off x₁ x₂) (← concatB n n₁ n₂ off y₁ y₂)
@@ -484,6 +493,11 @@ where
       return .arr p m (← b lo₁ lo₂) (← b hi₁ hi₂) (← concatB m m₁ m₂ o f₁ f₂)
     | .sum .., _ | _, .sum .. => sumB "∪"
     | _, _ => throw "concat: two sides of one object with columns of different shapes"
+termination_by x _ => 2 * x.size
+decreasing_by all_goals simp_all [Col.size]; all_goals omega
+end
+
+example (n n₁ n₂ off) : concatB n n₁ n₂ off [] [] = pure [] := by unfold concatB; rfl
 
 /-- **`R ∪ S`** (`Tab.union`): `Tab.canon` of the concatenation. -/
 def unionB (R S : TabB) : Bld TabB := funT [R, S] fun
