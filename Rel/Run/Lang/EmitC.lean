@@ -287,6 +287,24 @@ def cloTys (fs gs : Array Fun) (is body : Array Instr) (n : Nat) (r : Array Nat)
     | some t => pure t
     | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
 
+/-- A body of at most one instruction holding no block, which `funB` splices in place: its `apply` costs as much. -/
+def spliceable (body : Array Instr) : Bool :=
+  body.all (fun | .ite .. | .loop .. => false | _ => true) && body.size ≤ 1
+
+/-- A spliced body's register `a`, built after `n` registers and `k` parameters, in the enclosing block: a parameter
+    is its argument of `args`, a register of the body moves down over the parameters. -/
+def spliceReg (n k : Nat) (args : List Nat) (a : Nat) : Nat :=
+  if a < n then a else if a < n + k then args.getD (a - n) a else a - k
+
+/-- A body's register `a`, built after `n` registers and `k` parameters, in its function: the parameters first, then
+    the enclosing registers `cs` it reads, then its own. -/
+def cloReg (n k : Nat) (cs : List Nat) (a : Nat) : Nat :=
+  if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
+
+/-- `F` among the functions `fs`: the number of an equal one, else `F` pushed. -/
+def addFun (fs : Array Fun) (F : Fun) : Nat × Array Fun :=
+  match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
+
 /-- `b` on parameters of the types `tys` as a plan function, applied to `args`; `b` answers its result registers,
     their types and a value `α` (the answer's shape): a recipe built at many nodes is one C function, not a copy
     inlined at each (which outgrows `cc -O2`). A function whose body equals an earlier one's is that one, so each
@@ -299,16 +317,14 @@ def funB {α : Type} (tys : List Ty) (args : List Nat) (b : List Nat → Bld (Ar
   let k := tys.length
   unless args.length == k do throw s!"a function of {k} parameters applied to {args.length} registers"
   let ((r, rtys, x), body, m, fs, gs) ← (b (List.range' n k)).run (#[], n + k, fs, gs)
-  -- a body of at most one instruction holding no block is spliced in place: its `apply` costs as much
-  let flat : Instr → Bool := fun | .ite .. | .loop .. => false | _ => true
-  if body.all flat && body.size ≤ 1 then
-    let g (a : Nat) : Nat := if a < n then a else if a < n + k then args.getD (a - n) a else a - k
+  if spliceable body then
+    let g := spliceReg n k args
     set (is ++ body.map (·.rename g), m - k, fs, gs); return (r.map g, x)
   let cs := ((readsB n body.toList ++ r.toList).filter (· < n)).eraseDups
   let ctys ← cloTys fs gs is body n r rtys cs
-  let f (a : Nat) : Nat := if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
+  let f := cloReg n k cs
   let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
-  let (g, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
+  let (g, fs) := addFun fs F
   set (is, n, fs, gs)
   return (← apply g (args ++ cs).toArray r.size, x)
 
