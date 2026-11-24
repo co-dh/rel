@@ -28,14 +28,6 @@ def colRegs (t : QAtomicType) (kind : UInt8) (count : Nat) (bs : Array Nat) : Bl
   let ps ← bs.foldlM (fun ps b => call1 (kernel% Rel.Db.pushPart) #[ps, b]) (← lit (.parts #[]))
   return Side.regs (← lit (.u8 t.code.toUInt8)) (← lit (.u8 kind)) count ps
 
-/-- The `Enc` register `e` of `count` rows of type `t` as `output`'s registers: a `foR` (what every kernel answers,
-    design §4) handed over as the kind `Db.ownParts` gives it, its parts its two fields, so it is written as it is
-    encoded. The tag and the kind are read off the constructor, so a renumbering of either reaches the plan. -/
-def encRegs (t : QAtomicType) (count e : Nat) : Bld (Array Nat) := do
-  let f : Enc := .foR .empty .empty
-  let .ok (some (k, _)) := Db.ownParts f | throw "encRegs: `Db.ownParts` holds no `foR`"
-  colRegs t k count #[← projB e f.ctorIdx 0 .bytes, ← projB e f.ctorIdx 1 .bytes]
-
 /-- The files of the object `A`, each with its path as `cols` names it under `p`, from the object alone: an atom column
     with its atom (`some`), a side of `1` (`none`). -/
 def objLeaves : Obj → String → List (String × Option QAtomicType)
@@ -117,6 +109,17 @@ def mapB (op : Kernel.Op) (n a b : Nat) (t : QAtomicType := .i64) (s : QAtomicTy
 
 /-- `colConst n w`: `n` cells of the word `w`. -/
 def wordsB (n : Nat) (w : UInt64) : Bld Nat := do constB n (← lit (.u64 w))
+
+/-- The `Enc` register `e` of `count` rows of type `t` as `output`'s registers, then the `Enc` written: a `foR` (what
+    every kernel answers, design §4) handed over as the kind `Db.ownParts` gives it, its parts its two fields, so it is
+    written as it is encoded. An `Enc` is `foR` | `pos` and `pos` has no parts, so the constructor is read at run time
+    and a `pos` is made a `foR` first (one `kscan`, as `dictionary`'s ids), the file Lean's value holds for it. The tag
+    and the kind are read off the constructor, so a renumbering of either reaches the plan. -/
+def encRegs (t : QAtomicType) (count e : Nat) : Bld (Array Nat) := do
+  let f : Enc := .foR .empty .empty
+  let .ok (some (k, _)) := Db.ownParts f | throw "encRegs: `Db.ownParts` holds no `foR`"
+  let e ← nth (← ite (← isTagB e f.ctorIdx) (pure #[e]) (do pure #[← mapB .add count e (← wordsB count 0)])) 0 "if"
+  return (← colRegs t k count #[← projB e f.ctorIdx 0 .bytes, ← projB e f.ctorIdx 1 .bytes]).push e
 
 /-- `kscatter op` of the `rows` words `x` to the cells `dst` of `cells`, the others `fill`. -/
 def scatterB (op : Kernel.Op) (rows dst x cells : Nat) (fill : UInt64 := 0) : Bld Nat := do
@@ -200,7 +203,7 @@ def reads (base : Nat) : Instr → List Nat
   | .call _ as | .readOpt _ as _ | .fail _ as | .apply _ as => as.toList
   | .ite c t rt e re => c :: ((readsB base t ++ rt.toList ++ readsB base e ++ re.toList).filter (· < base))
   | .ctor _ os ss => os.toList ++ ss.toList
-  | .proj x .. | .sproj x .. | .part x _ => [x]
+  | .proj x .. | .isTag x _ | .sproj x .. | .part x _ => [x]
   | .lit _ | .global _ => []
   | .loop k init b out d _ => k :: init.toList ++ ((readsB base b ++ out.toList ++ [d]).filter (· < base))
 /-- `reads` of a block (`flatMap`, structural over the nested blocks: this and `reads` are one mutual pair). -/
@@ -221,6 +224,7 @@ def Instr.rename (f : Nat → Nat) : Instr → Instr
   | .ite c t rt e re => .ite (f c) (Instr.renameB f t) (rt.map f) (Instr.renameB f e) (re.map f)
   | .ctor tag os ss => .ctor tag (os.map f) (ss.map f)
   | .proj x tag i t => .proj (f x) tag i t
+  | .isTag x tag => .isTag (f x) tag
   | .sproj x tag nobj ss i => .sproj (f x) tag nobj ss i
   | .part x i => .part (f x) i
   | .loop k init b out d msg => .loop (f k) (init.map f) (Instr.renameB f b) (out.map f) (f d) msg
@@ -238,14 +242,14 @@ partial def useTy (fs : Array Fun) (a : Nat) : List Instr → Option Ty
     | .call s as | .readOpt s as _ => (as.toList.idxOf? a).bind fun j => (abiOf s).bind (·.args[j]?.map (·.1))
     | .apply g as => (as.toList.idxOf? a).bind fun j => fs[g]?.bind (·.params[j]?)
     | .ite c t _ e _ => if c == a then some .bit else useTy fs a t <|> useTy fs a e
-    | .proj x .. | .sproj x .. => if x == a then some .obj else none
+    | .proj x .. | .isTag x _ | .sproj x .. => if x == a then some .obj else none
     | .part x _ => if x == a then some .parts else none
     | .loop k _ b .. => if k == a then some .size else useTy fs a b
     | _ => none) <|> useTy fs a is
 
 /-- The number of registers the instruction `i` defines, `fs` and `gs` the plan's functions and globals. -/
 def resN (fs gs : Array Fun) : Instr → Nat
-  | .lit _ | .ctor .. | .proj .. | .sproj .. | .part .. => 1
+  | .lit _ | .ctor .. | .proj .. | .isTag .. | .sproj .. | .part .. => 1
   | .fail .. => 0
   | .call s _ => (abiOf s).elim 0 (·.res.size)
   | .readOpt _ _ d => d.size
@@ -266,6 +270,7 @@ partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is
       | .lit v => some v.ty
       | .ctor .. => some .obj
       | .proj _ _ _ t => some t
+      | .isTag .. => some .bit
       | .sproj _ _ _ ss k => ss[k]?
       | .part .. => some .bytes
       | .fail .. => none
@@ -784,28 +789,6 @@ def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[S
   | some n => pure n
   | none => throw "a table whose every column is positions, so no register holds its row count"
 
-/-- Whether register `a` of the block `is` (registers numbered from `base`) is the `pos` literal (`posB`), the one `Enc`
-    constructor that has no parts: followed through the registers a `global` or an `apply` answers from its body's.
-    A register defined any other way (a parameter, a kernel's answer, an `if`'s) is not known to be. -/
-partial def posIn (fs gs : Array Fun) (a : Nat) (base : Nat) : List Instr → Bool
-  | [] => false
-  | i :: is =>
-    let k := resN fs gs i
-    if base ≤ a && a < base + k then
-      let inFun (F : Fun) := (F.res[a - base]?).elim false (posIn fs gs · F.params.size F.body)
-      match i with
-      | .lit (.ctor c #[] #[]) => c == (Enc.pos : Enc).ctorIdx
-      | .global g => (gs[g]?).elim false inFun
-      | .apply f _ => (fs[f]?).elim false inFun
-      | _ => false
-    else posIn fs gs a (base + k) is
-
-/-- `posIn` of register `e` in the block being built. -/
-def isPosB (e : Nat) : Bld Bool := do
-  let (is, n, fs, gs) ← get
-  pure (posIn fs gs e (n - is.foldl (· + resN fs gs ·) 0) is.toList)
-
-
 mutual
 /-- The `n`-row columns `cs` as `output` takes them, in `cols` order: an atom column's registers; an array's `lo`,
     `hi`, then its payload's columns at its count `m`. -/
@@ -814,14 +797,10 @@ def flatB (n : Nat) (cs : Cols) (pos : String → Bool := fun _ => false) : Bld 
   | c :: cs => return (← flatC n c pos) ++ (← flatB n cs pos)
 /-- `flatB` of one column. -/
 def flatC (n : Nat) (c : Col) (pos : String → Bool := fun _ => false) : Bld Side := match c with
-  | .atom p t e => if pos p then pure [] else do
-    -- `Enc` is a sum (`foR` | `pos`) and `encRegs` reads the `foR` parts, which `pos` has none of: it is
-    -- made a `foR` first (one `kscan`, as `dictionary`'s ids), the file Lean's value holds for it
-    let e ← if ← isPosB e then mapB .add n e (← wordsB n 0) else pure e
-    return [(p, (← encRegs t n e).push e)]
-  | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo).push lo), (p ++ ".hi", (← encRegs .i64 n hi).push hi)]
+  | .atom p t e => if pos p then pure [] else return [(p, ← encRegs t n e)]
+  | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo)), (p ++ ".hi", (← encRegs .i64 n hi))]
       ++ (← flatB m f pos)
-  | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x pos) ++ (← flatB n y pos))
+  | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag)) :: ((← flatB n x pos) ++ (← flatB n y pos))
 end
 
 example (n pos p t e) (h : pos p = true) : flatC n (.atom p t e) pos = pure [] := by unfold flatC; simp [h]
@@ -2455,7 +2434,7 @@ def internSide (cs : List CsvCol) (D : TabB) (s : Side) : Bld (Side × TabB) := 
           reg (p ++ ".lo") Side.count)
       | throw s!"symbol column `{p}`: its text parts have no registers"
     let (D', ids) ← internB D n (.arr "" m lo hi [.atom ".e" .char e])
-    s := s.filter (fun (q, _) => ![p ++ ".lo", p ++ ".hi", p ++ ".e"].contains q) ++ [(p, (← encRegs .sym n ids).push ids)]
+    s := s.filter (fun (q, _) => ![p ++ ".lo", p ++ ".hi", p ++ ".e"].contains q) ++ [(p, (← encRegs .sym n ids))]
     D := D'
   pure (s, D)
 
@@ -2476,7 +2455,7 @@ def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
     | .part p t =>
       for (q, u) in csvParts [(p, t)] do
         let (n, e, l') ← csvCell l
-        s := s ++ [(q, (← encRegs u n e).push e)]
+        s := s ++ [(q, (← encRegs u n e))]
         l := l'
     | .one => l := (← csvCell l).2.2
     | .null tag vs =>
@@ -2490,7 +2469,7 @@ def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
         match first with
         | none =>
           let nt ← mapB .first n t t .u1 .i64 [] [(.not, 0)]
-          s := s ++ [(tag, (← encRegs .u1 n nt).push nt)]
+          s := s ++ [(tag, (← encRegs .u1 n nt))]
           first := some (n, t, i, q)
         | some (n₁, t₁, _, q₁) =>
           let (_, k) ← prefixB .add n₁ (← mapB .ne n₁ t₁ t .i64 .u1)
@@ -2506,7 +2485,7 @@ def csvSideB (cs : List CsvCol) (l : Nat) : Bld (Side × Nat) := do
         let tot ← call1 (kernel% USize.add) #[m, nn]
         let ix ← mapB .add n i (← mapB .mul n t (← constB n (← u64B m)))
         let d ← gatherB n ix tot (← catColB u tot m nn v (← nulsB nn))
-        s := s ++ [(q, (← encRegs u n d).push d)]
+        s := s ++ [(q, (← encRegs u n d))]
   pure (s, l)
 
 /-- The table an input's read answered, in `main`: its key side and value side (`csvSideB`, `ownSideB`); a keyed
@@ -2692,10 +2671,7 @@ def ioOf (n : Lean.Name) :
             σ := σ ++ [(x, ← ofTm env t)]
         -- `dictionary x : S ⟶ [C]` (`Table.dictRel`): `D` as it is here, its key the ids `0 …` (`internB`'s `D'`)
         | .dict x _ _ =>
-          if reach.contains x then
-            -- the ids are `pos`, which no write reads the parts of (`encRegs`): one `kscan` makes them a `foR`
-            let [.atom q t p] := D.key | throw s!"`dictionary {x}`: the dictionary's key is not one column"
-            σ := σ ++ [(x, ← sidesOf { D with key := [.atom q t (← mapB .add D.n p (← wordsB D.n 0))] })]
+          if reach.contains x then σ := σ ++ [(x, ← sidesOf D)]
         | .output x _ _ k v c p cl =>
           mainStepB do
             let t ← match cl, σ.lookup x with
@@ -2817,7 +2793,7 @@ def defs (abi : String → Option Kernel) (fres : Array (Array Ty)) (gtys : Arra
   | .global g => match gtys[g]? with | some t => pure t.size | none => throw s!"global g{g}: no earlier global"
   | .ite _ _ rt _ _ => pure rt.size
   | .loop _ init .. => pure init.size
-  | .ctor .. | .proj .. | .sproj .. | .part .. => pure 1
+  | .ctor .. | .proj .. | .isTag .. | .sproj .. | .part .. => pure 1
 
 /-- The emitter's state: the next fresh C name, the prototypes, the statics. -/
 abbrev EM := StateT (Nat × List String × String) (Except String)
@@ -2919,6 +2895,12 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
       c := c ++ (if isObj t then s!"{ind}lean_object *{x} = lean_ctor_get({y}, {i}); lean_inc({x});\n"
         else s!"{ind}{cTy t} {x} = {cUnbox t s!"lean_ctor_get({y}, {i})"};\n")
       rs := rs.push (x, t, true); live := live ++ [rs.size - 1]
+    | .isTag r tag =>
+      let (y, ty, _) ← creg rs r
+      unless ty == .obj do throw s!"isTag reads register {r}, a {repr ty}, not a constructor"
+      let x ← fresh
+      c := c ++ s!"{ind}{cTy .bit} {x} = lean_obj_tag({y}) == {tag};\n"
+      rs := rs.push (x, .bit, true)
     | .sproj r tag nobj ss i =>
       let (y, ty, _) ← creg rs r
       unless ty == .obj do throw s!"sproj reads register {r}, a {repr ty}, not a constructor"

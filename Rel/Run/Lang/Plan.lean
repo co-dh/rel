@@ -353,6 +353,9 @@ inductive Instr
   /-- `r = proj x.i`: object field `i` of the constructor in register `x`, whose tag must be `tag`, read as a `t`
       (unboxed when `t` is a scalar); any other tag fails the run. -/
   | proj (x tag i : Nat) (t : Ty)
+  /-- `r = isTag x tag`: the bit that the constructor in register `x` has tag `tag` (`lean_obj_tag`); a value that is not
+      a constructor fails the run. The branch on an `Enc`'s constructor (`foR` | `pos`) is an `ite` on it. -/
+  | isTag (x tag : Nat)
   /-- `r = sproj x.i`: scalar field `i` of the constructor in register `x` of tag `tag`, `nobj` object fields and
       scalar fields of the types `ss` in declaration order (`Val.ctor`'s scalars), stored unboxed as the Lean
       compiler lays them out (an `ownMap` answer's count and bytes); any other tag fails the run. -/
@@ -381,6 +384,7 @@ def Instr.beq : Instr → Instr → Bool
     c == c' && Instr.beqL t t' && rt == rt' && Instr.beqL e e' && re == re'
   | .ctor t o s, .ctor t' o' s' => t == t' && o == o' && s == s'
   | .proj x t i y, .proj x' t' i' y' => x == x' && t == t' && i == i' && y == y'
+  | .isTag x t, .isTag x' t' => x == x' && t == t'
   | .sproj x t n ss i, .sproj x' t' n' ss' i' => x == x' && t == t' && n == n' && ss == ss' && i == i'
   | .part x i, .part x' i' => x == x' && i == i'
   | .loop k i b o d m, .loop k' i' b' o' d' m' =>
@@ -404,7 +408,7 @@ theorem Instr.eq_of_beq : ∀ {a b : Instr}, a.beq b = true → a = b
     obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
     rw [h1, h2, Instr.eq_of_beqL h3, h4, h5, h6]
   | .lit _, b, h | .call .., b, h | .readOpt .., b, h | .fail .., b, h | .apply .., b, h | .global _, b, h
-  | .ctor .., b, h | .proj .., b, h | .sproj .., b, h | .part .., b, h => by
+  | .ctor .., b, h | .proj .., b, h | .isTag .., b, h | .sproj .., b, h | .part .., b, h => by
     cases b <;> simp_all [Instr.beq]
 theorem Instr.eq_of_beqL : ∀ {a b : List Instr}, Instr.beqL a b = true → a = b
   | [], [], _ => rfl
@@ -417,7 +421,8 @@ mutual
 theorem Instr.beq_refl : ∀ a : Instr, a.beq a = true
   | .ite _ t _ e _ => by simp [Instr.beq, Instr.beqL_refl t, Instr.beqL_refl e]
   | .loop _ _ b .. => by simp [Instr.beq, Instr.beqL_refl b]
-  | .lit _ | .call .. | .readOpt .. | .fail .. | .apply .. | .global _ | .ctor .. | .proj .. | .sproj .. | .part .. => by
+  | .lit _ | .call .. | .readOpt .. | .fail .. | .apply .. | .global _ | .ctor .. | .proj .. | .isTag .. | .sproj ..
+  | .part .. => by
     simp [Instr.beq]
 theorem Instr.beqL_refl : ∀ a : List Instr, Instr.beqL a a = true
   | [] => rfl
@@ -545,6 +550,10 @@ def runI (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Va
       | some v => if v.ty == t then pure (rs.push v, ws) else throw s!"plan: proj r{x}.{i} is a {repr v.ty}, not a {repr t}"
       | none => throw s!"plan: proj r{x}.{i}: constructor {tag} has {os.size} object fields"
     | _ => throw s!"plan: proj reads register {x}, which is not a constructor"
+  | .isTag x tag, rs, ws => do
+    match ← reg rs "isTag" x with
+    | .ctor tag' .. => pure (rs.push (.bit (tag' == tag)), ws)
+    | _ => throw s!"plan: isTag reads register {x}, which is not a constructor"
   | .sproj x tag nobj ss i, rs, ws => do
     match ← reg rs "sproj" x with
     | .ctor tag' os vs =>
@@ -778,6 +787,9 @@ def ctorB (tag : Nat) (objs scal : Array Nat) : Bld Nat := emit1 (.ctor tag objs
 
 /-- `r = proj x.i`, `x` of tag `tag`, read as a `t`. -/
 def projB (x tag i : Nat) (t : Ty) : Bld Nat := emit1 (.proj x tag i t)
+
+/-- `r = isTag x tag`: the bit that `x` is a constructor of tag `tag`. -/
+def isTagB (x tag : Nat) : Bld Nat := emit1 (.isTag x tag)
 
 /-- `r = part x.i`, a `bytes`. -/
 def partB (x i : Nat) : Bld Nat := emit1 (.part x i)

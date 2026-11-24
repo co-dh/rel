@@ -1309,6 +1309,15 @@ theorem runI_moves (hm : Moves h P E0 E0') (hb : ∀ a, base ≤ a → P a) :
           exact ⟨#[w], by simp, by rw [if_pos hty]; simp [pure, Except.pure]⟩
         · cases hr
     · cases hr
+  | .isTag x tag, X, ws, p, hp, _, hr => by
+    simp only [runI] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    simp only [Instr.rename, runI, hm.reg X (hp x (by simp [reads])) hv, ok_bind]
+    cases v
+    all_goals try (cases hr; done)
+    rename_i tag' os ss
+    cases hr
+    exact ⟨#[.bit (tag' == tag)], by simp, by simp [pure, Except.pure]⟩
   | .sproj x tag nobj ss i, X, ws, p, hp, _, hr => by
     simp only [runI] at hr
     obtain ⟨v, hv, hr⟩ := bind_ok hr
@@ -1416,7 +1425,7 @@ end sim
 
 mutual
 theorem calls_rename (f : Nat → Nat) : ∀ i : Instr, (i.rename f).calls = i.calls
-  | .lit _ | .call .. | .readOpt .. | .fail .. | .apply .. | .global _ | .ctor .. | .proj .. | .sproj .. | .part .. =>
+  | .lit _ | .call .. | .readOpt .. | .fail .. | .apply .. | .global _ | .ctor .. | .proj .. | .isTag .. | .sproj .. | .part .. =>
     rfl
   | .ite _ t _ e _ => by simp only [Instr.rename, Instr.calls, callsB_rename f t, callsB_rename f e]
   | .loop _ _ b .. => by simp only [Instr.rename, Instr.calls, callsB_rename f b]
