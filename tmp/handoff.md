@@ -1,29 +1,30 @@
-merge ROW-DFN handoff. DONE (compiles, no sorry), Rel/Lang/PreludeMerge.lean:
-- `mstep`, `miter`, `mstep_inv`, `mstep_iter`, `loopDen_merge` (loopDen T (((x,y),[]), x ++ y) c <-> c = (([],[]), merge x y le)
-  given `hT : ∀ s e w, T (s, e) w ↔ (s.1.1 ≠ [] ∨ s.1.2 ≠ []) ∧ w = mstep le s`), `Prim.den_loop`, `Prim.den_merge`,
-  `Tm.zeroLit`, `Tm.headAt`, `Tm.headAt_den`, `Tm.mergeTail`, `Tm.mergeTail_den` (tail xs ys <-> ∃ a, xs = a :: ys).
-- Prelude text added after takewhile (builds), row `merge` has `prelude := `Rel.Programs.prelude.merge`.
-- PreludeDen: imports PreludeMerge, `unproved := ["merge"]` until `Tm.mergeDef_den` exists (delete the entry then).
+merge ROW-DFN handoff, round 2 (branch worktree-agent-afaae7ffa52641af7; 7beb52f merged in, no conflict).
 
-LEFT: `Tm.mergeDef_row` and `Tm.mergeDef_den`. Method (as `Tm.estDef_den`): `obtain rfl : Tm.mergeDef (.var 1) = t' := Except.ok.inj ht`
-(defeq with the evaluated body; `Rel.Programs.prelude.merge.body` printed by `#print` in a scratch file imports PreludeRows + Programs.Prelude).
-The body is let-lifted calls; its exact shape (B generic, Q : Tm B B), to be defined as `Tm.mergeDef` and checked by that `obtain`:
+DONE (in tmp/MergeDef.lean, a scratch file importing PreludeMerge/PreludeLoop/PreludeOrd; check it with
+`env LEAN_PATH=<wt>/.lake/build/lib/lean lean <wt>/tmp/MergeDef.lean`, ~1 min):
+- `Tm.mergeDef` (with `local notation "𝕊"` for the state `((B*×B*)×B*)`): the `obtain rfl : Tm.mergeDef (.var 1) = t' :=
+  Except.ok.inj ht` example COMPILES, so the shape is confirmed against `prelude.merge.body`.
+- In `Tm.mergeDef_row`: `hτ`, `hnil` (`nilDen x l ↔ l = []` by `simp [nilDen, Core.Rel.graph]`), the main
+  `simp only [...]` and `refine outer _ _ fun s e w => ?_` work (T is unified).
+- `outer` (any T with hT ⇒ `((⟨⟨𝟙,nilDen⟩,cat⟩ ≫ loopDen T) ≫ π₂) p ys ↔ ys = merge`): `generalize loopDen T = L`
+  BEFORE simp (`loopDen` unfolds to `foldDen` under any simp). After the simp the goal is
+    (∃ a b a1 b1 b2 b3, (((x = a1 ∧ y = b1) ∧ b2 = []) ∧ b3 = x ++ y) ∧ L (((a1,b1),b2),b3) ((a,b),ys)) ↔ ys = merge x y le
+  the `rintro` in the file has one binder count wrong (error: Unknown identifier `h`, line 63) — fix the pattern to the
+  goal above (6 existentials then the conjunction; the right-to-left witness is ⟨[], [], x, y, [], x ++ y, …⟩ with
+  a,b the final lists `[]`, `[]`: currently it passes `[]`,`[]` first, which is right; check the nesting).
 
-  .arg (.arg (.call [2,1] `a none [] (.arg (.arg (.arg (.call [3,2,1] `b none []
-      (.arg (.arg (.arg (.arg (.call [6,3,2,1] `l none [] MAIN) L_DEF) (.var 3)) (.var 2)) (.var 1))) B_DEF) (.var 2)) (.var 1))) A_DEF) Q
-  A_DEF = .comp (.comp .outl .outl) Tm.headAt        B_DEF = .comp (.comp .outl .outr) Tm.headAt
-  L_DEF = .join (.dom (.comp (.pair (.var 2) (.var 3)) (.arg (.call [2] `Rel.Programs.prelude.cor (some `Rel.Programs.prelude.cor.conv) [B, B]
-            (.dom (.meet (.comp .outl (.var 2)) .outr))) (.var 1)))) (.diff (.dom (.var 2)) (.dom (.var 3)))
-  MAIN  = .comp (.comp (.pair (.pair .id Tm.nil) (.prim (rowOf "cat"))) (.arg (.prim (rowOf "loop")) (.comp .outl X))) .outr
-  X     = .join (.comp (.var 6) A_PART) (.comp (.diff .id (.var 6)) B_PART)
-  A_PART = .pair (.pair (.comp (.comp .outl .outl) (Tm.mergeTail B)) (.comp .outl .outr)) (.comp (.pair .outr (.var 2)) (.prim (rowOf "snoc")))
-  B_PART = .pair (.pair (.comp .outl .outl) (.comp (.comp .outl .outr) (Tm.mergeTail B))) (.comp (.pair .outr (.var 3)) (.prim (rowOf "snoc")))
-(the printed tree was read from the `#print`; the association of `.comp` in MAIN/tail is the one thing to confirm by the `obtain`.)
-
-Proof of `Tm.mergeDef_row ρ Q p ys : (Tm.mergeDef Q).den ρ p ys ↔ (Tm.arg (.prim (rowOf "merge")) (pairTest Q)).den ρ p ys`:
-1. `simp only [Tm.mergeDef, Tm.den, Tm.argDen, Val.args, Val.bind, Val.empty, Nat.reduceEqDiff, reduceIte, and_self, Prim.den_loop, Prim.den_merge]`
-   (this set reduced every Val.bind cast on the real body; `Tm.mergeTail`/`Tm.headAt` stay folded so `Tm.mergeTail_den`/`Tm.headAt_den` rewrite them).
-2. `refine (loopDen_merge (fun a b => decide (Q.den ρ a b)) _ ?hT x y ys).trans ?_`-shaped step: T is unified from the goal.
-3. `?hT`: cases xs, ys; each is `Tm.mergeTail_den`, `Tm.dom_den'`, `Prim.den_snoc`, `Tm.headAt_den` and the call `cor` = `dom(π₁Q ∩ π₂)` read at `ρ 1`;
-   the pair test `(pairTest Q).den ρ (a,b) (a,b) ↔ Q.den ρ a b` is `hτ` in `Tm.frontDef_row`.
-Then `Tm.mergeDef_den` as `Tm.estDef_den`; then delete `"merge"` from `unproved` in PreludeDen.lean.
+LEFT:
+1. `hT` in `Tm.mergeDef_row` (the `sorry` at the end). With `Tm.den` + `Tm.dom_den` + `Val.bind` lookup in one
+   `simp only` and then `rcases xs; rcases zs; simp [mstep]` the whole theorem hits the 200000 heartbeat limit.
+   Plan: do not unfold `Tm.den` again; prove first, by `rfl`/`simp` per lemma, the meaning of the three environment
+   terms that appear in T: `den ρ' (.var 2)` = `(π₁π₁) ≫ den ρ headAt`, `.var 3` likewise with π₁π₂, and
+   `den ρ' L_DEF` (the `l` call) = `dom(⟨a,b⟩ cor Q) ∪ (dom a − dom b)` read pointwise as
+   `s ↦ (s.1.1 ≠ [] ∧ s.1.2 ≠ [] ∧ Q (head xs) (head ys)) ∨ (s.1.1 ≠ [] ∧ s.1.2 = [])`; rewrite with those, then case on xs, zs.
+   (`Tm.dom_den'` pointwise is in Rel.RepSymRank, not imported; `Tm.dom_den` (Den) is the relation form.)
+2. Move `Tm.mergeDef`, `Tm.mergeDef_row`, and `Tm.mergeDef_den` (copy `Tm.estDef_den`, PreludeDfn.lean:63) into
+   Rel/Lang/PreludeMerge.lean; add `public import Rel.Lang.PreludeLoop` and `Rel.Lang.PreludeOrd` there.
+3. DRY in PreludeMerge.lean: delete `Prim.den_loop` (verbatim copy of `Prim.den_loopRow`, PreludeLoop.lean); inline
+   `Tm.zeroLit` into `Tm.headAt` and replace the `hz` proof in `Tm.headAt_den` by `Tm.zeroLit_den` (PreludeOrd.lean:37)
+   after `Gen.atom_zero` (as `Tm.ltDef_den` does: `have hz := Tm.zeroLit_den ρ; simp only [Tm.den] at hz`).
+4. PreludeDen.lean:31 `unproved := []`. Delete tmp/handoff.md, tmp/MergeDef.lean, tmp/PrintMerge.lean from git.
+5. Build `cap lake build Rel.Lang.PreludeMerge Rel.Lang.PreludeDen Rel.Lang.AllPrograms`; `make pointfree decode listban axioms`.
