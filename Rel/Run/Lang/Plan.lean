@@ -682,9 +682,11 @@ def defFun (ps : Array Ty) (b : Array Nat → Bld (Array Nat)) : Bld Nat := do
   let (r, body, _, fs', gs') ← (b (List.range ps.size).toArray).run (#[], ps.size, fs, gs)
   set (is, n, fs'.push ⟨ps, body.toList, r⟩, gs'); pure fs'.size
 
-/-- `apply f(args)`, `f` answering `nres` registers. -/
-def apply (f : Nat) (args : Array Nat) (nres : Nat) : Bld (Array Nat) := emit (.apply f args) nres
-
+/-- `apply f(args)`, `f` answering `nres` registers; `f` is an earlier function, as `Plan`'s invariant needs. -/
+def apply (f : Nat) (args : Array Nat) (nres : Nat) : Bld (Array Nat) := do
+  let (_, _, fs, _) ← get
+  unless f < fs.size do throw s!"apply f{f}: the plan has {fs.size} functions"
+  emit (.apply f args) nres
 
 /-- The plan of `main`. -/
 def Bld.plan (b : Bld Unit) : Except String Plan := Except.mapError BErr.msg do
