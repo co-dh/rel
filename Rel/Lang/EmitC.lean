@@ -406,8 +406,13 @@ def catColB (t : QAtomicType) (n n₁ n₂ x y : Nat) : Bld Nat := do
     ← lit (Reg.put t), n, ← ctorB 0 #[] #[], ← listB [← srcB n₁ x, ← srcB n₂ y],
     ← lit (Reg.put ([] : List (Kernel.Op × UInt64))), ← lit (Reg.put ([] : List (Kernel.Op × UInt64)))]) 0 "kscan"
 
-/-- **`Arr.shift`**: the `n` words `x`, `s` added (`s` a `size` register). -/
-def shiftB (n x s : Nat) : Bld Nat := do mapB .add n x (← constB n (← u64B s))
+/-- **`Opt.shift`** (`Arr.shift` where no row is null): the `n` words `x`, `s` added (`s` a `size` register), a null staying
+    null. `max` of `x` with itself, the identity on a word, then the post step `(.add, s)`: `first` and `add` refuse a null
+    row, `max` orders it. `s` is a register, so the post chain is a list built at run time, its pair `(.add, s)` a `ctor`. -/
+def shiftB (n x s : Nat) : Bld Nat := do
+  nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put Kernel.Op.max), ← lit (.bit false), ← lit (Reg.put QAtomicType.i64),
+    ← lit (Reg.put QAtomicType.i64), n, ← ctorB 0 #[] #[], ← listB [← srcB n x, ← srcB n x], ← listB [],
+    ← listB [← ctorB 0 #[← lit (Reg.put Kernel.Op.add), ← u64B s] #[]]]) 0 "kscan"
 
 /-- `nth` of an `if`'s one register. -/
 def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
