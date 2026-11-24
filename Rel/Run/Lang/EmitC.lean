@@ -193,30 +193,42 @@ end
 
 example (p t e) : tysC (.atom p t e) = pure [Ty.obj] := by unfold tysC; rfl
 
+mutual
 /-- The registers an instruction reads that were defined before register `base` (an `if`'s first result): a nested
     block's own registers are numbered from `base` on, so its reads below `base` are the outer ones. -/
-partial def reads (base : Nat) : Instr → List Nat
+def reads (base : Nat) : Instr → List Nat
   | .call _ as | .readOpt _ as _ | .fail _ as | .apply _ as => as.toList
-  | .ite c t rt e re => c :: ((t.flatMap (reads base) ++ rt.toList ++ e.flatMap (reads base) ++ re.toList).filter (· < base))
+  | .ite c t rt e re => c :: ((readsB base t ++ rt.toList ++ readsB base e ++ re.toList).filter (· < base))
   | .ctor _ os ss => os.toList ++ ss.toList
   | .proj x .. | .sproj x .. | .part x _ => [x]
   | .lit _ | .global _ => []
-  | .loop k init b out d _ => k :: init.toList ++ ((b.flatMap (reads base) ++ out.toList ++ [d]).filter (· < base))
+  | .loop k init b out d _ => k :: init.toList ++ ((readsB base b ++ out.toList ++ [d]).filter (· < base))
+/-- `reads` of a block (`flatMap`, structural over the nested blocks: this and `reads` are one mutual pair). -/
+def readsB (base : Nat) : List Instr → List Nat
+  | [] => []
+  | i :: is => reads base i ++ readsB base is
+end
 
+mutual
 /-- `i` with each register `a` it names read as `f a`: blocks share one register space, so nested ones move alike. -/
-partial def Instr.rename (f : Nat → Nat) : Instr → Instr
+def Instr.rename (f : Nat → Nat) : Instr → Instr
   | .lit v => .lit v
   | .call s as => .call s (as.map f)
   | .readOpt s as d => .readOpt s (as.map f) d
   | .fail m as => .fail m (as.map f)
   | .apply g as => .apply g (as.map f)
   | .global g => .global g
-  | .ite c t rt e re => .ite (f c) (t.map (·.rename f)) (rt.map f) (e.map (·.rename f)) (re.map f)
+  | .ite c t rt e re => .ite (f c) (Instr.renameB f t) (rt.map f) (Instr.renameB f e) (re.map f)
   | .ctor tag os ss => .ctor tag (os.map f) (ss.map f)
   | .proj x tag i t => .proj (f x) tag i t
   | .sproj x tag nobj ss i => .sproj (f x) tag nobj ss i
   | .part x i => .part (f x) i
-  | .loop k init b out d msg => .loop (f k) (init.map f) (b.map (·.rename f)) (out.map f) (f d) msg
+  | .loop k init b out d msg => .loop (f k) (init.map f) (Instr.renameB f b) (out.map f) (f d) msg
+/-- `Instr.rename` of a block (`map`, structural over the nested blocks). -/
+def Instr.renameB (f : Nat → Nat) : List Instr → List Instr
+  | [] => []
+  | i :: is => i.rename f :: Instr.renameB f is
+end
 
 /-- The type the block `is` reads the outer register `a` as: the declared type of the first reader's argument, a
     kernel's (`abiOf`) or a function's of `fs`; an `if`'s bit, a `loop`'s cap, a `proj`'s constructor. -/
@@ -264,6 +276,17 @@ partial def defTy (fs gs : Array Fun) (pre : Nat → Option Ty) (base : Nat) (is
       | .loop _ init .. => init[j]?.bind pre
     else defTy fs gs (defTy fs gs pre base [i]) (base + resN fs gs i) is a
 
+/-- The types of the enclosing registers `cs` a function's body `body`, answering `r` of the types `rtys`, reads after
+    the enclosing block `is` of `n` registers: as their reader declares (`useTy`), else as their result slot, else as
+    their definition in `is` (`defTy`). -/
+def cloTys (fs gs : Array Fun) (is body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty) (cs : List Nat) :
+    Except String (List Ty) :=
+  -- a register no reader types is typed by its definition in the enclosing block
+  let dty := defTy fs gs (fun _ => none) (n - (is.toList.map (resN fs gs)).sum) is.toList
+  cs.mapM fun a => match useTy fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?) <|> dty a with
+    | some t => pure t
+    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
+
 /-- `b` on parameters of the types `tys` as a plan function, applied to `args`; `b` answers its result registers,
     their types and a value `α` (the answer's shape): a recipe built at many nodes is one C function, not a copy
     inlined at each (which outgrows `cc -O2`). A function whose body equals an earlier one's is that one, so each
@@ -281,12 +304,8 @@ def funB {α : Type} (tys : List Ty) (args : List Nat) (b : List Nat → Bld (Ar
   if body.all flat && body.size ≤ 1 then
     let g (a : Nat) : Nat := if a < n then a else if a < n + k then args.getD (a - n) a else a - k
     set (is ++ body.map (·.rename g), m - k, fs, gs); return (r.map g, x)
-  let cs := ((body.toList.flatMap (reads n) ++ r.toList).filter (· < n)).eraseDups
-  -- a register no reader types is typed by its definition in the enclosing block
-  let dty := defTy fs gs (fun _ => none) (n - (is.toList.map (resN fs gs)).sum) is.toList
-  let ctys ← cs.mapM fun a => match useTy fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?) <|> dty a with
-    | some t => pure t
-    | none => throw s!"a function's body reads the enclosing register r{a}, but no instruction declares its type"
+  let cs := ((readsB n body.toList ++ r.toList).filter (· < n)).eraseDups
+  let ctys ← cloTys fs gs is body n r rtys cs
   let f (a : Nat) : Nat := if a < n then k + cs.idxOf a else if a < n + k then a - n else a - n + cs.length
   let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
   let (g, fs) := match fs.findIdx? (· == F) with | some i => (i, fs) | none => (fs.size, fs.push F)
