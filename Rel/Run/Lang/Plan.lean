@@ -49,11 +49,10 @@ inductive Val
   deriving Inhabited
 
 /-! `deriving DecidableEq` refuses the nesting (`Array Val`, `List Instr`), so the equality of `Val` and `Instr` is a
-    structural `beq` (mutual with its list form), proved lawful; their `DecidableEq` is that `beq`'s, so `==` and `=`
-    agree (`addFun`'s `findIdx?` finds an equal function). -/
+    `beq` proved lawful; their `DecidableEq` is that `beq`'s, so `==` and `=` agree (`addFun`'s `findIdx?` finds an
+    equal function). A `ctor`'s fields are compared in place (`attach`, `zipWith`): no `Array.toList` (`listban`). -/
 
-mutual
-/-- Structural equality of values: a `ctor`'s fields compared as lists (`Val.beqL`). -/
+/-- Structural equality of values: a `ctor`'s fields pairwise, by index. -/
 def Val.beq : Val → Val → Bool
   | .bytes a, .bytes b => decide (a = b)
   | .size a, .size b => a == b
@@ -64,42 +63,55 @@ def Val.beq : Val → Val → Bool
   | .u64 a, .u64 b => a == b
   | .i64 a, .i64 b => a == b
   | .nat a, .nat b => a == b
-  | .ctor t ⟨o⟩ ⟨s⟩, .ctor t' ⟨o'⟩ ⟨s'⟩ => t == t' && Val.beqL o o' && Val.beqL s s'
+  | .ctor t o s, .ctor t' o' s' => t == t' && o.size == o'.size && s.size == s'.size &&
+    (Array.zipWith (fun x y => x.1.beq y) o.attach o').all id && (Array.zipWith (fun x y => x.1.beq y) s.attach s').all id
   | _, _ => false
-/-- `Val.beq` of two lists, element by element. -/
-def Val.beqL : List Val → List Val → Bool
-  | [], [] => true
-  | a :: as, b :: bs => a.beq b && Val.beqL as bs
-  | _, _ => false
-end
+termination_by a => a
+decreasing_by all_goals (have := Array.sizeOf_lt_of_mem x.2; simp_wf; omega)
 
-mutual
+/-- Two arrays of one size whose entries agree pairwise by `p`, read as `zipWith … |>.all id`. -/
+theorem zipWith_all {o o' : Array Val} {p : Val → Val → Bool} (hn : o.size = o'.size)
+    (h : (Array.zipWith (fun x y => p x.1 y) o.attach o').all id = true) (i : Nat) (h1 : i < o.size) (h2 : i < o'.size) :
+    p o[i] o'[i] = true := by
+  rw [Array.all_eq_true] at h
+  have := h i (by simp [Array.size_zipWith]; omega)
+  simpa using this
+
 theorem Val.eq_of_beq : ∀ {a b : Val}, a.beq b = true → a = b
-  | .ctor t ⟨o⟩ ⟨s⟩, b, h => by
+  | .ctor t o s, b, h => by
     cases b with
     | ctor t' o' s' =>
-      obtain ⟨o'⟩ := o'; obtain ⟨s'⟩ := s'
-      simp only [Val.beq, Bool.and_eq_true, beq_iff_eq] at h
-      rw [h.1.1, Val.eq_of_beqL h.1.2, Val.eq_of_beqL h.2]
+      rw [Val.beq] at h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨⟨⟨ht, ho⟩, hs⟩, hO⟩, hS⟩ := h
+      have eo : o = o' := Array.ext ho fun i h1 h2 =>
+        have : sizeOf o[i] < sizeOf o := Array.sizeOf_lt_of_mem (Array.getElem_mem h1)
+        Val.eq_of_beq (zipWith_all (p := Val.beq) ho hO i h1 h2)
+      have es : s = s' := Array.ext hs fun i h1 h2 =>
+        have : sizeOf s[i] < sizeOf s := Array.sizeOf_lt_of_mem (Array.getElem_mem h1)
+        Val.eq_of_beq (zipWith_all (p := Val.beq) hs hS i h1 h2)
+      rw [ht, eo, es]
     | _ => simp [Val.beq] at h
   | .bytes _, b, h | .size _, b, h | .bit _, b, h | .u8 _, b, h | .str _, b, h | .parts _, b, h | .u64 _, b, h
   | .i64 _, b, h | .nat _, b, h => by
     cases b <;> simp [Val.beq] at h <;> rw [h]
-theorem Val.eq_of_beqL : ∀ {a b : List Val}, Val.beqL a b = true → a = b
-  | [], [], _ => rfl
-  | a :: as, b :: bs, h => by
-    simp only [Val.beqL, Bool.and_eq_true] at h; rw [Val.eq_of_beq h.1, Val.eq_of_beqL h.2]
-  | [], _ :: _, h | _ :: _, [], h => by simp [Val.beqL] at h
-end
+termination_by a => a
+decreasing_by all_goals (simp_wf; omega)
 
-mutual
 theorem Val.beq_refl : ∀ a : Val, a.beq a = true
-  | .ctor t ⟨o⟩ ⟨s⟩ => by simp [Val.beq, Val.beqL_refl o, Val.beqL_refl s]
+  | .ctor t o s => by
+    rw [Val.beq]
+    simp only [beq_self_eq_true, Bool.and_true, Bool.true_and, Bool.and_eq_true, Array.all_eq_true]
+    refine ⟨fun i hi => ?_, fun i hi => ?_⟩
+    · simp only [Array.size_zipWith, Array.size_attach, Nat.min_self] at hi
+      have : sizeOf o[i] < sizeOf o := Array.sizeOf_lt_of_mem (Array.getElem_mem hi)
+      simpa using Val.beq_refl o[i]
+    · simp only [Array.size_zipWith, Array.size_attach, Nat.min_self] at hi
+      have : sizeOf s[i] < sizeOf s := Array.sizeOf_lt_of_mem (Array.getElem_mem hi)
+      simpa using Val.beq_refl s[i]
   | .bytes _ | .size _ | .bit _ | .u8 _ | .str _ | .parts _ | .u64 _ | .i64 _ | .nat _ => by simp [Val.beq]
-theorem Val.beqL_refl : ∀ a : List Val, Val.beqL a a = true
-  | [] => rfl
-  | a :: as => by simp [Val.beqL, Val.beq_refl a, Val.beqL_refl as]
-end
+termination_by a => a
+decreasing_by all_goals (simp_wf; omega)
 
 instance : BEq Val := ⟨Val.beq⟩
 instance : LawfulBEq Val where eq_of_beq := Val.eq_of_beq; rfl := Val.beq_refl _
