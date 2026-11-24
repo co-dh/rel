@@ -512,4 +512,69 @@ theorem countPass_stable (B : Nat) (k : Array UInt64) (p : List Nat) (hn : p.len
       ← hd]
     exact ⟨h1, h2⟩
 
+/-! ### `ascGrade` is the fold of the counting passes (LSD radix) -/
+
+/-- Row `i` stands before row `j` in the stable lexicographic order of `ks`: `ascGrade_spec`'s relation. -/
+def lexLt (ks : List (Array UInt64)) (i j : Nat) : Prop := lexLe ks i j = true ∧ (lexLe ks j i = true → i < j)
+
+/-- A pairwise-sorted duplicate-free list: of two members, the one at the smaller index is related to the other. -/
+theorem pairwise_idxOf {p : List Nat} {R : Nat → Nat → Prop} (hnd : p.Nodup) (hp : p.Pairwise R) {a b : Nat}
+    (ha : a ∈ p) (hb : b ∈ p) (h : p.idxOf a < p.idxOf b) : R a b := by
+  obtain ⟨r, hr, rfl⟩ := List.getElem_of_mem ha
+  obtain ⟨s, hs, rfl⟩ := List.getElem_of_mem hb
+  rw [idxOf_getElem' hnd hr, idxOf_getElem' hnd hs] at h
+  exact List.pairwise_iff_getElem.mp hp r s hr hs h
+
+/-- The first column `c` decides unless the two digits are equal, and then the later columns `cs` do. -/
+theorem lexLt_cons {c : Array UInt64} {cs : List (Array UInt64)} {i j : Nat} (h1 : dig c i ≤ dig c j)
+    (h2 : dig c j ≤ dig c i → lexLt cs i j) : lexLt (c :: cs) i j := by
+  unfold dig at h1 h2
+  rcases Nat.lt_or_eq_of_le h1 with hlt | heq
+  · have hlt' : c[i]?.getD 0 < c[j]?.getD 0 := UInt64.lt_iff_toNat_lt.mpr hlt
+    have hnlt : ¬ c[j]?.getD 0 < c[i]?.getD 0 := fun h => by have := UInt64.lt_iff_toNat_lt.mp h; omega
+    have hne : ¬ c[j]?.getD 0 = c[i]?.getD 0 := fun h => by rw [h] at hlt; omega
+    refine ⟨by simp [lexLe, hlt'], fun h => ?_⟩
+    simp [lexLe, hnlt, hne] at h
+  · have he : c[i]?.getD 0 = c[j]?.getD 0 := UInt64.toNat_inj.mp heq
+    obtain ⟨l1, l2⟩ := h2 (Nat.le_of_eq heq.symm)
+    refine ⟨by simp [lexLe, he, l1], fun h => ?_⟩
+    simp [lexLe, he] at h
+    exact l2 h
+
+/-- **One pass is one column of `ascGrade`**: the counting pass by the first column `c` of the sort by the later columns
+`cs` is the sort by `c :: cs`. Both are permutations of `range m` pairwise sorted by the strict total order `lexLt`
+(`List.Perm.eq_of_pairwise`), `countPass_stable` giving the first and `ascGrade_spec` the second. -/
+theorem ascGrade_cons (B : Nat) (c : Array UInt64) (cs : List (Array UInt64)) (m : Nat) (hm : m < 2 ^ 64)
+    (hB : ∀ i < m, dig c i < B) : countPass B c (ascGrade m cs) = .ok (ascGrade m (c :: cs)) := by
+  obtain ⟨hpp, hps⟩ := ascGrade_spec m cs
+  obtain ⟨hqp, hqs⟩ := ascGrade_spec m (c :: cs)
+  have hlen : (ascGrade m cs).length = m := by rw [hpp.length_eq]; simp
+  have hmem : ∀ i ∈ ascGrade m cs, i < m := fun i hi => List.mem_range.mp (hpp.mem_iff.mp hi)
+  have hnd : (ascGrade m cs).Nodup := hpp.nodup_iff.mpr List.nodup_range
+  obtain ⟨q, hq, hqperm, hqpw⟩ := countPass_stable B c (ascGrade m cs) (by rw [hlen]; exact hm)
+    (fun i hi => by have := hmem i hi; omega) hnd (fun i hi => hB i (hmem i hi))
+  have hqe : q = ascGrade m (c :: cs) := by
+    refine List.Perm.eq_of_pairwise (le := lexLt (c :: cs))
+      (fun a b _ _ h1 h2 => by have := h1.2 h2.1; have := h2.2 h1.1; omega) ?_ hqs
+      ((hqperm.trans hpp).trans hqp.symm)
+    exact hqpw.imp_of_mem fun {a b} ha hb ⟨h1, h2⟩ => lexLt_cons h1 fun h3 =>
+      pairwise_idxOf hnd hps (hqperm.mem_iff.mp ha) (hqperm.mem_iff.mp hb) (h2 h3)
+  rw [hq, hqe]
+
+/-- With no key column the grade is `range m`: both are permutations of it, sorted by `<`. -/
+theorem ascGrade_nil (m : Nat) : ascGrade m [] = List.range m := by
+  obtain ⟨hp, hs⟩ := ascGrade_spec m []
+  exact List.Perm.eq_of_pairwise (le := (· < ·)) (fun a b _ _ h1 h2 => by omega)
+    (hs.imp fun {a b} h => h.2 (by simp [lexLe])) List.pairwise_lt_range hp
+
+/-- **`ascGrade` is the LSD radix sort**: the counting passes by the key columns from the last to the first, starting
+from `range m`, answer `ascGrade m cs` (every digit below `B`, `m < 2 ^ 64`). -/
+theorem ascGrade_eq_passes (B : Nat) (m : Nat) (hm : m < 2 ^ 64) :
+    ∀ cs : List (Array UInt64), (∀ c ∈ cs, ∀ i < m, dig c i < B) →
+      cs.reverse.foldlM (fun p c => countPass B c p) (List.range m) = .ok (ascGrade m cs)
+  | [], _ => by simp [ascGrade_nil]; rfl
+  | c :: cs, h => by
+    rw [List.reverse_cons, List.foldlM_append, ascGrade_eq_passes B m hm cs fun c' hc' => h c' (List.mem_cons_of_mem _ hc')]
+    simpa using ascGrade_cons B c cs m hm (h c List.mem_cons_self)
+
 end Rel.Verify
