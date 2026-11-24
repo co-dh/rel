@@ -41,7 +41,7 @@ def Vals.bisect {A : Obj} {n m : USize} (X : Vals A n) (T : Vals A m) : Nat → 
     if len ≤ 1 then return base
     let half := len / 2
     let q ← colMap .first m base base .i64 .i64 [] [(.add, (half - 1).toUInt64)]
-    let (c, _) ← Vals.cmpRows (← ValsB.pack (← ValsB.gather m q X)) T
+    let (c, _) ← Vals.cmpRows (← ValsB.pack 2 (← ValsB.gather m q X)) T
     bisect X T fuel (len - half) (← colMap .add m base (← colMap .first m c c .i64 .i64 [] [(.mul, half.toUInt64)]))
 
 /-- `(r, h)` of `bisect`'s last two steps; see `bisect`. -/
@@ -52,10 +52,10 @@ def Vals.rank {A : Obj} {n m : USize} (X : Vals A n) (T : Vals A m) : Except Str
   -- the one result with a single `inc`, so the column is freed twice (heap corruption, exit 139 / "not a field")
   if n = 0 then let z ← colConst m 0; return (z, z)
   let base ← Vals.bisect X T (n.toNat.log2 + 1) n.toNat (← colConst m 0)
-  let (c, _) ← Vals.cmpRows (← ValsB.pack (← ValsB.gather m base X)) T
+  let (c, _) ← Vals.cmpRows (← ValsB.pack 2 (← ValsB.gather m base X)) T
   let r ← colMap .add m base c
   let q ← colMap .first m r r .i64 .i64 [] [(.min, (n.toNat - 1).toUInt64)]
-  let (_, h) ← Vals.cmpRows (← ValsB.pack (← ValsB.gather m q X)) T
+  let (_, h) ← Vals.cmpRows (← ValsB.pack 2 (← ValsB.gather m q X)) T
   pure (r, h)
 
 namespace Tab

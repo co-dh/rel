@@ -223,7 +223,7 @@ end Tab
 /-- **`ValsB.pack` keeps `ValsB.WFOn`**: a cut payload (`o = false`, every row owned) is the input's gathered and
 packed, laid out by `Vals.cells` over the EXPAND of the cells' own widths, each at most `m` (`cellSpan_width`,
 `Vals.cells_expand_wf`); a summand keeps its tag and cells and packs its payload. -/
-theorem ValsB.pack_wf : {o : Bool} → {A : Obj} → {n : USize} → {x y : ValsB o A n} → ValsB.pack x = .ok y →
+theorem ValsB.pack_wf {k : Nat} : {o : Bool} → {A : Obj} → {n : USize} → {x y : ValsB o A n} → ValsB.pack k x = .ok y →
     {P : Fin n.toNat → Prop} → ValsB.WFOn x P → (o = false → ∀ i, P i) → ValsB.WFOn y P
   | _, .atom _, _, _, _, h, _, hx, _ => by
     simp only [ValsB.pack, pure, Except.pure, Except.ok.injEq] at h; cases h; exact hx

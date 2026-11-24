@@ -415,8 +415,11 @@ def writesAgree {A B : Obj} (what : String) (p : Except String Plan) (v : Except
   let p ← match p with | .ok p => pure p | .error e => throwError "{what}: {e}"
   let (_, ws) ← match p.run abiOf with | .ok r => pure r | .error e => throwError "{what}: {e}"
   let x ← match v with | .ok x => pure x | .error e => throwError "{what}: {e}"
+  -- each side as `Table.writeVals` writes it: payloads cut to the cells' reach (`ValsB.pack 0`)
+  let (xk, xv) ← match ValsB.pack 0 x.key, ValsB.pack 0 x.val with
+    | .ok k, .ok v => pure (k, v) | .error e, _ | _, .error e => throwError "{what}: {e}"
   let side (s : String) (cs : List (String × SideCol)) := cs.map fun (p, v) => ("out/" ++ s ++ p, v)
-  let want ← match (side "key" (cols _ x.key "") ++ side "val" (cols _ x.val "")).filterMapM
+  let want ← match (side "key" (cols _ xk "") ++ side "val" (cols _ xv "")).filterMapM
       (fun (p, v) => do pure ((← ownFile p v).map fun f => (p, f))) with | .ok w => pure w | .error e => throwError e
   let got := ws.toList.filterMap fun (_, vs) => match vs.toList with
     | .str p :: c :: k :: n :: ps :: _ => (p, ·) <$> Reg.get? (α := Db.OwnFile) (.ctor 0 #[ps] #[c, k, n])

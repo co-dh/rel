@@ -84,9 +84,9 @@ info: /data/tmp/rel-test-table/badcell/a.lo: row 1 is the cell [2, 7), not a sli
 #eval show IO Unit from do
   let dir ← fresh "badcell"
   let e ← longs 5 [1, 2, 3, 4, 5]
-  writeVals (A := .arr .long) dir "a" (⟨5, ← longs 2 [0, 2], ← longs 2 [1, 7], e⟩ : Vals (.arr .long) 2)
-  writeVals (A := .arr .long) dir "b" (⟨5, ← longs 1 [3], ← longs 1 [1], e⟩ : Vals (.arr .long) 1)
-  writeVals (A := .arr .long) dir "c" (⟨5, ← longs 1 [-1], ← longs 1 [2], e⟩ : Vals (.arr .long) 1)
+  writeRaw (A := .arr .long) dir "a" (⟨5, ← longs 2 [0, 2], ← longs 2 [1, 7], e⟩ : Vals (.arr .long) 2)
+  writeRaw (A := .arr .long) dir "b" (⟨5, ← longs 1 [3], ← longs 1 [1], e⟩ : Vals (.arr .long) 1)
+  writeRaw (A := .arr .long) dir "c" (⟨5, ← longs 1 [-1], ← longs 1 [2], e⟩ : Vals (.arr .long) 1)
   ["a", "b", "c"].forM fun p => do IO.println (say (← (readVals (.arr .long) dir p).toBaseIO))
 
 -- a dense sum `ℤ + ℤ` of three rows, every tag `false`: `.l` owns every row and `.r` is `Opt.fill`. Read back, so the

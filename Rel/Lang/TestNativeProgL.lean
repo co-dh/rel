@@ -78,8 +78,10 @@ rel_program natDetab where
     ye : 1 ⟶ [Ch] ≜ y entab
     De : [Ch] ⟶ [Ch] ≜ D entab
     Ded : [Ch] ⟶ [Ch] ≜ D entab detab
-    -- `p Λ(H)est(R)`, `q …`, `y …`, `D Λ(H)est(R)`: "the plan of `pH` writes 4 of 4 columns, not those of its
-    -- Lean value"; `p Λ(H)` agrees, `est(R)` leaves a longer payload column `val.e` (8205 cells, the value's 6564)
+    pLe : 1 ⟶ [Ch] ≜ p Λ(H)est(R)
+    qLe : 1 ⟶ [Ch] ≜ q Λ(H)est(R)
+    yLe : 1 ⟶ [Ch] ≜ y Λ(H)est(R)
+    DLe : [Ch] ⟶ [Ch] ≜ D Λ(H)est(R)
 
 #eval show Lean.Meta.MetaM Unit from do
   writesAgree "xd" (← planOfIn ``natDetab "xd") natDetab.xd
@@ -90,15 +92,23 @@ rel_program natDetab where
   writesAgree "De" (← planOfIn ``natDetab "De") natDetab.De
   writesAgree "Ded" (← planOfIn ``natDetab "Ded") natDetab.Ded
 
+#eval show Lean.Meta.MetaM Unit from do writesAgree "pLe" (← planOfIn ``natDetab "pLe") natDetab.pLe
+#eval show Lean.Meta.MetaM Unit from do writesAgree "qLe" (← planOfIn ``natDetab "qLe") natDetab.qLe
+#eval show Lean.Meta.MetaM Unit from do writesAgree "yLe" (← planOfIn ``natDetab "yLe") natDetab.yLe
+#eval show Lean.Meta.MetaM Unit from do writesAgree "DLe" (← planOfIn ``natDetab "DLe") natDetab.DLe
+
 open Rel.Programs.prelude Programs.edit in
 rel_program natEdit where
     Dml : [A]×[A] ⟶ N ≜ D mle length 𝟙(N)
     Dsl : [A]×[A] ⟶ N ≜ spec length 𝟙(N)
-    -- `D mle`, `spec`: "the plan of `Dm` writes 13 of 13 columns, not those of its Lean value": the payload columns
-    -- `val.e.*` hold 52 cells where the value's hold 26
+    Dm : [A]×[A] ⟶ [A+(A+A)] ≜ D mle
+    Sp : [A]×[A] ⟶ [A+(A+A)] ≜ spec
 
 #eval show Lean.Meta.MetaM Unit from do
   writesAgree "Dml" (← planOfIn ``natEdit "Dml") natEdit.Dml
   writesAgree "Dsl" (← planOfIn ``natEdit "Dsl") natEdit.Dsl
+
+#eval show Lean.Meta.MetaM Unit from do writesAgree "Dm" (← planOfIn ``natEdit "Dm") natEdit.Dm
+#eval show Lean.Meta.MetaM Unit from do writesAgree "Sp" (← planOfIn ``natEdit "Sp") natEdit.Sp
 
 end Rel.Lang.TestNativeProgL

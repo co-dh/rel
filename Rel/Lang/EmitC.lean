@@ -733,31 +733,32 @@ def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
     ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, one]]) (lit (.bit false)) (lit (.bit true))
   guard ok s!"{what}: n cells × m elements past 2^63, n · m + n + m" #[n, m]
 
-/-- **`Vals.pack`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at most
-    half of it is read (`0 < m`, `2 · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered there,
-    laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. -/
-partial def packB (n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
+/-- **`ValsB.pack k`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at
+    most `1/k` of it is read (`0 < m`, `k · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered
+    there, laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. `k = 0` cuts every
+    payload, the form an output file holds (`Table.writeVals`). -/
+partial def packB (k n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
   | c@(.atom ..) => pure c
   | .arr p m lo hi f => do
     cellsBoundB "pack" n m
     let (s, e) ← spanB n m lo hi
     let w ← mapB .sub n e s
     let (P, T) ← prefixB .add n w
-    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB m f)]).toArray
+    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB k m f)]).toArray
     let cut : Bld (Array Nat) := do
       let (T', G, u) ← expandB n w
       let g ← gatherCols T' (← mapB .add T' (← gatherB T' G n s) u) m f
-      pure (← regsOf [.arr p T' (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← packB T' g)]).toArray
-    let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.add) #[T, T]]
+      pure (← regsOf [.arr p T' (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← packB k T' g)]).toArray
+    let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.mul) #[T, ← lit (.size k.toUSize)]]
     let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) keep (ite wide keep cut)
     match ← withRegs [.arr p m lo hi f] rs.toList with
     | ([c], _) => pure c
     | _ => throw "pack: an array's registers read as no one column"
-  | .sum p tag x y => return .sum p tag (← packB n x) (← packB n y)
+  | .sum p tag x y => return .sum p tag (← packB k n x) (← packB k n y)
 
-/-- **`Tab.pack`**: both sides' payloads cut (`packB`). -/
-def packT (T : TabB) : Bld TabB := funT [T] fun
-  | [T] => return ⟨T.n, ← packB T.n T.key, ← packB T.n T.val⟩
+/-- **`Tab.pack`** at `k`: both sides' payloads cut (`packB`). -/
+def packT (T : TabB) (k : Nat := 2) : Bld TabB := funT [T] fun
+  | [T] => return ⟨T.n, ← packB k T.n T.key, ← packB k T.n T.val⟩
   | _ => throw "pack: not one table"
 
 /-- **`Tab.fixOn`**: rounds of `step` from the tables `Xs` (`Plan.loop`, the state each one's count and columns), at
@@ -769,7 +770,7 @@ def fixB (msg : String) (step : List TabB → Bld (List TabB)) (k : Nat) (Xs : L
   let shape (rs : Array Nat) : Bld (List TabB) := return (← tabsAt Xs rs.toList).1
   first (← shape (← loop k (← tabsRegs Xs).toArray msg fun rs => do
     let Ts ← shape rs
-    let Ys ← (← step Ts).mapM packT
+    let Ys ← (← step Ts).mapM (packT ·)
     pure ((← tabsRegs Ys).toArray, ← call1 (kernel% USize.decEq) #[(← first Ys).n, (← first Ts).n])))
 
 /-- **`Tab.nu`**: rounds `X ↦ X ∩ f(X)` from `top` made canonical, its row count plus two of them. -/
@@ -1959,6 +1960,11 @@ def ofTm (σ : List (Nat × Sides)) : {A B : Obj} → Tm A B → Bld Sides
     | none => throw s!"variable {k}, which no input table is bound to"
   | _, _, t => do sidesOf (← tabB (σ.map fun (k, s) => (k, false, sideArg s)) {} t)
 
+/-- The registers `s` of a table `A ⟶ B` as an output file holds it: every array's payload cut to the cells' reach
+    (`packT` at `k = 0`, `ValsB.pack 0`, which `Table.writeVals` writes), so the written columns depend on the cells
+    alone and not on how much dead payload the operators left (design §0). -/
+def outSides (A B : Obj) (s : Sides) : Bld Sides := do sidesOf (← packT (← sideArg s A B {}) 0)
+
 
 
 /-- The Lean side of the same output: `R`'s two sides written by the table writer under the names `output` gives
@@ -2042,7 +2048,7 @@ def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Exce
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
     let some ⟨A, B, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
-    pure (mainStepB do output dir A B (← ofTm [] t))
+    pure (mainStepB do output dir A B (← outSides A B (← ofTm [] t)))
 
 /-- An input as its read at the input edge answers it, with its key schema `k` (`[]`: positions) and value schema
     `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
@@ -2437,7 +2443,7 @@ def ioOf (n : Lean.Name) :
                 | some ⟨_, _, t⟩ => ofTm [] t
                 | none => throw s!"output `{x}`: no closed definition `{x}`"
               | none, none => throw s!"output `{x}`: not read or computed before it"
-            writeOut x k v c p t D
+            writeOut x k v c p (← outSides k.obj v.obj t) D
        catch e => errs := errs.push e
       unless errs.isEmpty do throw ("\n".intercalate errs.toList)
       if symOut then
