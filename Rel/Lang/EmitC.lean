@@ -2017,24 +2017,35 @@ partial def onesOf (n : Bld Nat) : (A : Obj) → Cols → String → Bld (List (
   | .sum a b, [.sum _ _ x y], p => return (← onesOf n a x (p ++ ".l")) ++ (← onesOf n b y (p ++ ".r"))
   | _, _, _ => pure []
 
-/-- Each side of `1` of the side `side` of `A`, written to the file `files` names by its path: kind `oneKind`, its count
-    (`onesOf`), no part (`ownFile`). -/
+/-- A side of `1` written to the file `f`: kind `oneKind`, its count `m`, no part (`ownFile`). -/
+def writeOne (f : String) (m : Nat) : Bld Unit := do
+  discard <| call "qlean_own_write" #[← lit (.str f), ← lit (.u8 0), ← lit (.u8 oneKind), m, ← lit (.parts #[])] 0
+
+/-- Each side of `1` of the side `side` of `A`, written to the file `files` names by its path (`writeOne`), its count
+    `onesOf`. -/
 def writeOnes (n : Nat) (A : Obj) (side : Side) (files : List (String × String)) : Bld Unit := do
   if files.isEmpty then return
   let ones ← onesOf (pure n) A (← colsOf A side) ""
   for (p, f) in files do
     let some m := ones.lookup p | throw s!"the side of `1` at `{p}` (file {f}) has no row count"
-    discard <| call "qlean_own_write" #[← lit (.str f), ← lit (.u8 0), ← lit (.u8 oneKind), m, ← lit (.parts #[])] 0
+    writeOne f m
 
-/-- `output R to dir`, `R : A ⟶ B`: each column of `R`'s registers written by `qlean_own_write` to `dir/key<path>` and
-    `dir/val<path>`, each side of `1` as `writeOnes`. The directory must exist; the kernel's error names the path when it
-    does not. -/
+/-- `output R to dir`, `R : A ⟶ B`: each leaf of each side of `R` in `objLeaves` order (the order of the Lean value's
+    `Table.writeVals`): an atom column's registers written by `qlean_own_write` to `dir/key<path>` and `dir/val<path>`; a
+    side of `1` as `writeOne`, its count from `onesOf`. The directory must exist; the
+    kernel's error names the path when it does not. -/
 def output (dir : String) (A B : Obj) (rs : Sides) : Bld Unit := do
   for (side, O, cs) in [("key", A, rs.key), ("val", B, rs.val)] do
     let file (p : String) := (System.FilePath.mk dir / (side ++ p)).toString
-    for (p, r) in cs do
-      discard <| call "qlean_own_write" (#[← lit (.str (file p))] ++ r.extract 0 Side.enc) 0
-    writeOnes rs.n O cs ((objLeaves O "").filterMap fun (p, t) => if t.isNone then some (p, file p) else none)
+    -- `colsOf` refuses a column with no `Enc`, which only a side of `1` needs read
+    let ones ← if (objLeaves O "").any (·.2.isNone) then onesOf (pure rs.n) O (← colsOf O cs) "" else pure []
+    for (p, t) in objLeaves O "" do
+      if t.isSome then
+        let some r := cs.lookup p | throw s!"the column `{p}` of the {side} has no registers"
+        discard <| call "qlean_own_write" (#[← lit (.str (file p))] ++ r.extract 0 Side.enc) 0
+      else
+        let some m := ones.lookup p | throw s!"the side of `1` at `{p}` (file {file p}) has no row count"
+        writeOne (file p) m
 
 /-- The plan's steps of `output x to dir` in the program `n`, read as `rel_program` read it (`Expand.reread`). -/
 def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
