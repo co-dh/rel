@@ -28,7 +28,7 @@ meta import Rel.Run.Lang.Syntax
 namespace Rel.Lang
 
 /-- The rows with a `prelude` definition and no theorem `Tm.<sym>Def_den` yet. -/
-meta def unproved : List String := ["merge"]  -- `Tm.mergeDef_den`: PreludeMerge.lean, tmp/handoff.md
+meta def unproved : List String := []
 
 /-- The name of the theorem that row `r`'s definition means the row. -/
 meta def Prim.defDenName (r : Prim) : Lean.Name := .str `Rel.Lang.Tm (r.sym ++ "Def_den")

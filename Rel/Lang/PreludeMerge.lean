@@ -3,6 +3,8 @@ module
 public import Rel.Lang.PreludeRows
 public import Rel.Lang.PreludeDfn
 public import Rel.Lang.PreludeConcat
+public import Rel.Lang.PreludeLoop
+public import Rel.Lang.PreludeOrd
 public import Rel.Programs.Prelude
 
 @[expose] public section
@@ -104,19 +106,6 @@ theorem loopDen_merge {B : Obj} (le : B.El → B.El → Bool)
       simp only [List.nil_merge, List.append_nil] at h1
       simp [h1]
 
-theorem Prim.den_loop {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) :
-    Prim.den (rowOf "loop") (.prod X (.arr Y)) X [⟨.prod X Y, X, T⟩] = loopDen T := by
-  have hs : (rowOf "loop").sig = ([((.prod (.var {} "X") (.var {} "Y"), .var {} "X"), some false)],
-      .prod (.var {} "X") (.list (.var {} "Y")), .var {} "X") := rfl
-  have ho : (rowOf "loop").objs (.prod X (.arr Y)) X [(.prod X Y, X)] = some [X, Y] := by
-    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
-      List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == (rowOf "loop").sym) = some ⟨RowCode.loop, fun σ =>
-      Sem.one (X := .prod (σ₁ σ) (σ₂ σ)) (Y := σ₁ σ) loopDen⟩ := rfl
-  unfold Prim.den; simp only [List.map_cons, List.map_nil]
-  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
-  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
-
 theorem Prim.den_merge {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.prod B B))) :
     Prim.den (rowOf "merge") (.prod (.arr B) (.arr B)) (.arr B) [⟨.prod B B, .prod B B, T⟩] =
       fun p ys => ys = List.merge p.1 p.2 fun a b => decide (T (a, b) (a, b)) := by
@@ -132,14 +121,12 @@ theorem Prim.den_merge {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.pr
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
-/-- The literal `0` the prelude elaborates for `at(0)`: the one-row table `{(0, 0)}` of `i64`. -/
-def Tm.zeroLit : Tm (.atom .i64) (.atom .i64) :=
-  .val (Gen.relV (.atom .i64) (.atom .i64) (USize.ofNat 1)
+/-- `at(0)` as the prelude elaborates it: `Tm.at0` with the one-row table `{(0, 0)}` of `i64` for `0`. -/
+def Tm.headAt {B : Obj} : Tm (.arr B) B :=
+  .comp (.pair .id (.top (.val (Gen.relV (.atom .i64) (.atom .i64) (USize.ofNat 1)
     (Gen.atom .i64 (USize.ofNat 1) "0000000000000000000000000000000000000000000000000000000000000000000000000000008001000000000000000a0000000000000000" "")
-    (Gen.atom .i64 (USize.ofNat 1) "0000000000000000000000000000000000000000000000000000000000000000000000000000008001000000000000000a0000000000000000" "")).1
-
-/-- `at(0)` as the prelude elaborates it (`Tm.at0` with the table literal for `0`). -/
-def Tm.headAt {B : Obj} : Tm (.arr B) B := .comp (.pair .id (.top Tm.zeroLit)) (.prim indexRow)
+    (Gen.atom .i64 (USize.ofNat 1) "0000000000000000000000000000000000000000000000000000000000000000000000000000008001000000000000000a0000000000000000" "")).1)))
+    (.prim indexRow)
 
 /-- The prelude's `tail`, `cat° dom(π₁ (at(0)τ ∩ 𝟙))π₂`, as a call. -/
 def Tm.mergeTail (B : Obj) : Tm (.arr B) (.arr B) :=
@@ -149,14 +136,9 @@ def Tm.mergeTail (B : Obj) : Tm (.arr B) (.arr B) :=
 theorem Tm.headAt_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
     (Tm.headAt (B := B)).den ρ xs b ↔ ∃ h : 0 < xs.length, b = xs[0]'h := by
   rw [← Tm.at0_den ρ xs b]
-  have hz : Tm.zeroLit.den ρ = (Tm.uni (A := .atom .i64) (zeroCol .i64 rfl)).den ρ := by
-    funext x y; apply propext
-    rw [Tm.zeroLit, Tm.relV_den, Gen.atom_zero]
-    simp only [Tm.den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
-    constructor
-    · rintro ⟨i, h1, h2⟩; exact ⟨i, by rw [h1], by rw [h2]⟩
-    · rintro ⟨i, h1, h2⟩; exact ⟨i, by rw [h1], by rw [h2]⟩
-  simp only [Tm.headAt, Tm.at0, Tm.den, hz]
+  have hz := Tm.zeroLit_den ρ
+  simp only [Tm.den] at hz
+  simp only [Tm.headAt, Tm.at0, Tm.den, Gen.atom_zero, hz]
 
 theorem Tm.mergeTail_den (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
     (Tm.mergeTail B).den ρ xs ys ↔ ∃ a, xs = a :: ys := by
@@ -167,5 +149,89 @@ theorem Tm.mergeTail_den (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
     exact ⟨b', by rw [hx, hfst, hb2]; rfl⟩
   · rintro ⟨a, rfl⟩
     exact ⟨([a], ys), ⟨([a], ys), rfl, rfl, [a], ⟨⟨a, ⟨by simp, rfl⟩, rfl⟩, rfl⟩, ⟨a, ⟨by simp, rfl⟩, rfl⟩, rfl⟩, rfl⟩
+
+set_option hygiene false in
+/-- The merge loop's state `((xs, ys), acc)`. -/
+local notation "𝕊" => Obj.prod (Obj.prod (Obj.arr B) (Obj.arr B)) (Obj.arr B)
+
+/-- `merge(Q)` as the prelude elaborates it: the calls `a`, `b`, `l` of its `where` around the clocked `loop`, the
+    state `S = ((xs, ys), acc)`; `.var 6 : S ⟶ S` is `l`, `.var 2`, `.var 3 : S ⟶ B` are `a`, `b`, `.var 1` is `Q`. -/
+def Tm.mergeDef {B : Obj} (Q : Tm B B) : Tm (.prod (.arr B) (.arr B)) (.arr B) :=
+  .arg (.arg (.call [2, 1] `a none [] (.arg (.arg (.arg (.call [3, 2, 1] `b none []
+      (.arg (.arg (.arg (.arg (.call [6, 3, 2, 1] `l none []
+        (.comp (.comp (.pair (.pair .id Tm.nil) (.prim (rowOf "cat")) : Tm (.prod (.arr B) (.arr B)) (.prod 𝕊 (.arr B))) (.arg (.prim (rowOf "loop") : Tm (.prod 𝕊 (.arr B)) 𝕊)
+          (.comp (.outl : Tm (.prod 𝕊 B) 𝕊) (.join
+            (.comp (.var 6 : Tm 𝕊 𝕊)
+              (.pair (.pair (.comp (.comp .outl .outl) (Tm.mergeTail B)) (.comp .outl .outr))
+                (.comp (.pair .outr (.var 2 : Tm 𝕊 B)) (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B)))))
+            (.comp (.diff .id (.var 6))
+              (.pair (.pair (.comp .outl .outl) (.comp (.comp .outl .outr) (Tm.mergeTail B)))
+                (.comp (.pair .outr (.var 3 : Tm 𝕊 B)) (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B))))))))) .outr))
+        (.join (.dom (.comp (.pair (.var 2 : Tm 𝕊 B) (.var 3))
+            (.arg (.call [2] `Rel.Programs.prelude.cor (some `Rel.Programs.prelude.cor.conv) [B, B]
+              (.dom (.meet (.comp .outl (.var 2 : Tm B B)) .outr))) (.var 1 : Tm B B))))
+          (.diff (.dom (.var 2 : Tm 𝕊 B))
+            (.dom (.var 3 : Tm 𝕊 B)))))
+        (.var 3 : Tm 𝕊 B)) (.var 2 : Tm 𝕊 B))
+        (.var 1 : Tm B B)))
+      (.comp (.comp .outl .outr) Tm.headAt : Tm 𝕊 B))
+      (.var 2 : Tm 𝕊 B)) (.var 1 : Tm B B)))
+    (.comp (.comp .outl .outl) Tm.headAt : Tm 𝕊 B)) Q
+
+theorem Tm.mergeDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (p : (Obj.prod (Obj.arr B) (Obj.arr B)).El)
+    (ys : (Obj.arr B).El) :
+    (Tm.mergeDef Q).den ρ p ys ↔ (Tm.arg (.prim (rowOf "merge")) (pairTest Q)).den ρ p ys := by
+  have hτ := Tm.pairTest_den ρ Q
+  have hnil : ∀ x (l : (Obj.arr B).El), (nilDen : Core.Rel (Obj.El (.prod (.arr B) (.arr B))) _) x l ↔ l = [] :=
+    fun x l => by
+      simp [nilDen, Core.Rel.graph]
+  -- the clocked loop from `((x, y), [])` over `x ++ y`, then `π₂`, is `merge x y` for any step that is `mstep`
+  have outer : ∀ (T : Core.Rel (Obj.El (.prod 𝕊 B)) (Obj.El 𝕊)) (le : B.El → B.El → Bool),
+      (∀ s e w, T (s, e) w ↔ (s.1.1 ≠ [] ∨ s.1.2 ≠ []) ∧ w = mstep le s) →
+      ((((((𝟙 _).rpair nilDen).rpair fun (q : (Obj.prod (.arr B) (.arr B)).El) (zs : (Obj.arr B).El) => zs = q.1 ++ q.2) ≫ loopDen T) ≫ graph Prod.snd) p ys ↔
+        ys = List.merge p.1 p.2 le) := by
+    intro T le hT
+    obtain ⟨x, y⟩ := p
+    have hl := loopDen_merge le T hT x y
+    generalize loopDen T = L at hl ⊢
+    simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, hnil, Prod.exists, Prod.mk.injEq]
+    constructor
+    · rintro ⟨a, b, c, ⟨a1, b2, b3, b4, ⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, h⟩, rfl⟩
+      exact (Prod.mk.inj ((hl _).1 h)).2
+    · rintro rfl; exact ⟨[], [], _, ⟨x, y, [], x ++ y, ⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, (hl _).2 rfl⟩, rfl⟩
+  simp only [Tm.mergeDef, Tm.den, Tm.argDen, Val.args, Val.bind, Val.empty, Nat.reduceEqDiff, reduceIte, and_self,
+    Prim.den_loopRow, Prim.den_merge, ↓reduceDIte, Tm.nil, Prim.den_nilRow, Prim.den_cat, hτ]
+  refine outer _ _ fun s e w => ?_
+  have hd : ∀ ρ' (xs : (Obj.arr B).El) b, (Tm.headAt (B := B)).den ρ' xs b ↔ xs.head? = some b := fun ρ' xs b => by
+    rw [Tm.headAt_den]; cases xs <;> simp [eq_comm]
+  obtain ⟨⟨xs, zs⟩, acc⟩ := s
+  simp only [Core.Rel.comp, Core.Rel.union, Core.Rel.diff, Core.Rel.inter, Core.Rel.id, Core.Rel.graph,
+    Core.Rel.rpair, Core.Rel.recip, Prim.den_snoc, hd, Tm.mergeTail_den, Tm.dom_den, Tm.den,
+    Tm.argDen, Val.args, Val.bind, Val.empty, Nat.reduceEqDiff, reduceIte, ↓reduceDIte, and_self]
+  rcases xs with _ | ⟨a, xs⟩ <;> rcases zs with _ | ⟨b, zs⟩ <;>
+    simp only [mstep, exists_eq_left, exists_eq_left', exists_and_left,
+      true_and, Prod.exists, Prod.mk.injEq, ne_eq,
+      reduceCtorEq, not_true_eq_false, not_false_eq_true, or_false, false_or, false_and, and_false, exists_false,
+      List.cons.injEq, decide_eq_true_eq, or_true,
+      and_assoc, List.head?_nil, List.head?_cons, Option.some.injEq, or_and_right, exists_or,
+      not_and, forall_exists_index, forall_eq', and_self]
+  all_goals obtain ⟨⟨w1, w2⟩, w3⟩ := w
+  · simp [eq_comm, and_assoc]
+  · simp [eq_comm, and_assoc]
+  · have e : (∃ c, Tm.den ρ Q a c ∧ c = b ∧ Tm.den ρ Q a c ∧ c = b) ↔ Tm.den ρ Q a b :=
+      ⟨fun ⟨_, h, hc, _⟩ => hc ▸ h, fun h => ⟨b, h, rfl, h, rfl⟩⟩
+    simp only [e]
+    by_cases hq : Tm.den ρ Q a b <;> simp [hq, eq_comm, and_assoc]
+
+/-- **`merge`'s text means the row** (Q3 = H), as `Tm.estDef_den`: `prelude.merge.body` at `α = general`, parameter
+    `Q` the variable 1, means `merge(τ(Q))` at any objects `σ`. -/
+theorem Tm.mergeDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
+    {t' : Tm (Obj.prod (Obj.arr ((Obj.atom .general).inst ph σ)) (Obj.arr ((Obj.atom .general).inst ph σ)))
+      (Obj.arr ((Obj.atom .general).inst ph σ))}
+    (ht : Rel.Programs.prelude.merge.body.instObj ph σ = .ok t') (p ys) :
+    t'.den ρ p ys ↔ (Tm.arg (.prim (rowOf "merge"))
+      (pairTest (.var 1 : Tm ((Obj.atom .general).inst ph σ) ((Obj.atom .general).inst ph σ)))).den ρ p ys := by
+  obtain rfl : Tm.mergeDef (.var 1) = t' := Except.ok.inj ht
+  exact Tm.mergeDef_row ρ _ p ys
 
 end Rel.Lang

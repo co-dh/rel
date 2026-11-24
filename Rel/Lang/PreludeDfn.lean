@@ -164,11 +164,15 @@ theorem Tm.nilDef_row (ρ : Val) {A B : Obj} (x : A.El) (hx : Short A x) (w : (O
   · rintro ⟨-, h⟩; exact List.eq_nil_iff_forall_not_mem.2 fun b hb => (h b).1 hb
   · rintro rfl; exact ⟨List.Pairwise.nil, fun b => iff_of_false (List.not_mem_nil) fun h => h⟩
 
+/-- A pair test `τ(Q)` holds on the diagonal point `(a, b)` exactly when `a Q b`. -/
+theorem Tm.pairTest_den (ρ : Val) {B : Obj} (Q : Tm B B) (a b : B.El) :
+    (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := by
+  simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+
 theorem Tm.frontDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (x : (Obj.arr B).El) (hx : Short _ x) (w : (Obj.arr B).El) :
     (Tm.frontDef Q).den ρ x w ↔ (Tm.front (pairTest Q)).den ρ x w := by
   -- `∋ − ∋ (Q − Q°)` keeps `c` of `x` that no `b` of `x` beats strictly, `frontDen` of `τ(Q)` on its diagonal
-  have hτ : ∀ a b, (pairTest Q).den ρ (a, b) (a, b) ↔ Q.den ρ a b := fun a b => by
-    simp [pairTest, Tm.dom_den, Tm.den, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+  have hτ := Tm.pairTest_den ρ Q
   rw [Tm.front_den, frontDen_iff]
   simp only [Tm.frontDef, Tm.den]
   rw [lamDen_iff]
