@@ -596,4 +596,29 @@ theorem ascSeenB_builds {fg : Array Fun × Array Fun} {o : Bool} (A : Obj) {nv :
     simp only [pure_bind]
     exact hkk fg2 ys a b c d he hf ho (holds_of_reg (hR ""))
 
+/-! ### `gatherCols_builds`: columns of one shape, and a product side gathered -/
+
+mutual
+theorem Col.size_shape : ∀ c : Col, Col.size (Col.shape c) = Col.size c
+  | .atom .. => rfl
+  | .arr _ _ _ _ f => by simp only [Col.shape, Col.size, Col.sizes_shape f]
+  | .sum _ _ x y => by simp only [Col.shape, Col.size, Col.sizes_shape x, Col.sizes_shape y]
+theorem Col.sizes_shape : ∀ cs : Cols, Col.sizes (Cols.shape cs) = Col.sizes cs
+  | [] => rfl
+  | c :: cs => by simp only [Cols.shape, Col.sizes, Col.size_shape c, Col.sizes_shape cs]
+end
+
+/-- Columns of one shape are of one size: the guard `gatherCols` puts on the column `funC` hands back holds. -/
+theorem Col.size_of_shape {c c' : Col} (h : Col.shape c' = Col.shape c) : Col.size c' = Col.size c := by
+  rw [← Col.size_shape c', h, Col.size_shape]
+
+/-- `gatherCols` gathers each column on its own (`attach` serves only its termination): a product side's columns are
+    its two sides' gathered one after the other. -/
+theorem gatherCols_append (m ix n : Nat) (xs ys : Cols) : gatherCols m ix n (xs ++ ys) =
+    (do let a ← gatherCols m ix n xs; let b ← gatherCols m ix n ys; Pure.pure (a ++ b)) := by
+  unfold gatherCols
+  rw [List.mapM_subtype (g := fun c => _) (fun _ _ => rfl), List.mapM_subtype (g := fun c => _) (fun _ _ => rfl),
+    List.mapM_subtype (g := fun c => _) (fun _ _ => rfl), List.unattach_attach, List.unattach_attach,
+    List.unattach_attach, List.mapM_append]
+
 end Rel.Lang.Plan
