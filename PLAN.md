@@ -409,7 +409,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`ObjDef.coded`，元素保持存储的值，`ObjInfo.codes`）；有限对象上的积 `⟨v ∈ V ↦ e⟩` 与 `schema D = {c ∈ V : A}`（在
   `Grammar.expr`/`Embed.stmt` 里展开，无新 `Tm`）；库定义 `dummy`、`pivotCol`、`pivotOn`（`pivotWide` 改写为它们）；测试
   `Rel/Lang/TestPivotDisk.lean`。df-F1d 已做：`obj V from "dir" c` 读 `.d` 所命名 atom 的列（`ObjDef.coded` 带 atom，`ObjInfo.obj := .atom t`；元素是该列的不同存储字，按 `Kernel.ascOrd` 排序，名字是 `wordText`，与字面量同一读法；`elWord` 现包含 `sym`，其 id 即元素）；`u1`/`general` 无字面量，报 `no literal of u1 is stored`；非 `i64` 的有限对象无 universe；测试 date、f64、sym 的 `dummy`。
-  已做（df-F1）：对象 `⟨θ ↦ A⟩`（`OExp.each`）是 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，元素在每次使用处由调用解出的对象读（`Elab.eachWords`）。体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义没有常量，每次使用在调用处展开（`Expand.once`）；库定义 `getDummies(c, x) : ν ⟶ ⟨θ ↦ 1+1⟩ ≜ ⟨e ∈ θ ↦ dummy(c, e, x)⟩` 对 `θ` 泛型（`TestPivotDisk` 的 `dummiesT` 与 `dummy` 逐元素的结果相同）。未做：导入的有限对象不能生成；EmitC/native 的输出路径不写 `.d`。已做（df-F1c）：`readSide` 经 `Table.checkDisk` 核对 `.d` 与声明的 schema（缺列、多列、atom 不同都报
+  已做（df-F1）：对象 `⟨θ ↦ A⟩`（`OExp.each`）是 `A` 在有限对象 `θ` 每个元素处各一份，布局同 `Schema.objAt`；`θ` 可以是对象变量，元素在每次使用处由调用解出的对象读（`Elab.eachWords`）。体或类型里有对 `vs` 中变量的 `⟨θ ↦ …⟩` 的定义没有常量，每次使用在调用处展开（`Expand.once`）；库定义 `getDummies(c, x) : ν ⟶ ⟨θ ↦ 1+1⟩ ≜ ⟨e ∈ θ ↦ dummy(c, e, x)⟩` 对 `θ` 泛型（`TestPivotDisk` 的 `dummiesT` 与 `dummy` 逐元素的结果相同）。未做：导入的有限对象不能生成；已做（e647519：`Plan.writeOut` 写 `Table.dName`）。已做（df-F1c）：`readSide` 经 `Table.checkDisk` 核对 `.d` 与声明的 schema（缺列、多列、atom 不同都报
   `<dir>/.d: column c is …, declared …`；`read`、`readKeyed` 都经 `readSide`；无 `.d` 的旧数据照旧读）；`oexpOf` 移到 `Elab`；
   `objOf?` 按步数结构递归，必终止（fix-objOf）。
 - ✅ D.12（2141ae7；下列各项均已落地） `kseen` 取代 `kdistinct`（owner 2026-11-18 批准；仍是五个 kernel，一个 declaration）：答 `(k, g, first)`，即
@@ -1134,7 +1134,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
         `kasc ≫ kseen` + `kgather`）存在时一并改格式。现在没有程序用 `sym`。）
       - `Rel/KernelWF/Read.lean` 无使用者的引理：item DEAD（原：约 60 条、`KernelSpec` 里若干条引理无使用者但对象还在：留到 T11 的归纳定理写完，
         仍无使用者的再删。）
-      - 性能与 `Tab.toList` csimp 等见上面"未做"。
+      - 性能与 `Tab.toList`：见 LISTBAN-3。
     - **T11 生成代码的正确性**（分析：`/data/tmp/oracle/design.md`；依据 architecture `:117-119` "`compile` 返回自己的证明，
       每个节点的 `Gen.*_sound` 是其定义的一部分"、`:352` "compile-diff = `compile` 对 `rel_program` 差分"、`:123-125`
       "证明止于 Lean 定义，Rust 由 `decide` / `#guard` 测"）。现状：`Expand.node` 每个 `Tm` 构造子对一个 `GenK.*`，
@@ -1835,7 +1835,7 @@ relk 线程池空转 2 526（与前三项重叠）。
   `Db.Csv.fmtAtom`/`readAtom`（`print`、`check`、错误信息经 `Elab.wordText` 同源，CSV 与 `crate/src/csv.rs` 同步改为 `.`）；`sep` 参数去掉。
 - ✅ W.12 compile-diff 的 pin（`test/compile-diff.json`、`compile-diff-write`、`REL_COMPILE_DIFF_OUT`）删除，只留差分测试
   （生成的代码对 `rel_program` 常量）；compile-diff 只在 master gate 跑（`main-only`）。
-- ▶ perf9b 证明层迁到 `module`（23bf589）：`Rel.Kernel.*`（`Dep.Monadic` 除外）与 `KernelSpec.{Csv,Own}` 已是 module；
+- ✅ perf9b（bd41d8c）证明层迁到 `module`（23bf589）：`Rel.Kernel.*`（`Dep.Monadic` 除外）与 `KernelSpec.{Csv,Own}` 已是 module；
   头部 `module` / `public import` / `@[expose] public section`（脚本 `/data/tmp/perf9b/mod.awk`）。exposed body 只能引用
   public 声明，所以这些文件里的 `private def` 与 `@[csimp]` 定理及其 `*Impl` 改为 public。测量：改 `Kernel.Value` 的一个
   证明，重建 95 个模块、280 s，module 的 importer（其余 `Kernel.*`）不重建，非 module 的 importer（`KernelSpec.*`、
@@ -1844,11 +1844,11 @@ relk 线程池空转 2 526（与前三项重叠）。
   非 module 的检查文件；(b) 证明 `unfold`/`rfl` 用到 core 未 expose 的定义（`Array.range`、`Nat.fold`：
   `KernelSpec.Encoding` 52、1141、1580 行），要改用 core 的引理；(c) `Kernel.Dep.Monadic` import `KernelSpec.Elementwise`；
   (d) `RepSums`、`Lang.DfnLaw` 依赖 `Run.Lang.Elab`（meta 代码），不在本项范围。
-- ▶ perf9c `Rel.KernelSpec.*` 与 `Kernel.Dep.Monadic` 已是 module（(a)(b)(c) 解决）。`#print axioms` 的 pin 移到非 module 的
+- ✅ perf9c（35b21de, 08ecb41）`Rel.KernelSpec.*` 与 `Kernel.Dep.Monadic` 已是 module（(a)(b)(c) 解决）。`#print axioms` 的 pin 移到非 module 的
   `Rel/KernelSpec/AxiomsTest.lean`（`make axioms` 只查 `Rel.Core`，KernelSpec 可用 Classical，所以不能交给它）。
   测量：改 `KernelSpec.Encoding` 一个证明，KernelSpec/Kernel 中只重建 Encoding 本身，但 non-module 的 `Run.*`、`Rep*`、
-  `Lang.*` 照旧全部重建：157 个模块、197 s。所以剩下的瓶颈是 (d)：`Run.*` 与 `Rel` 库要迁到 module。
-- ▶ perf9e `Rel/Rep*.lean` 中 14 个（`Rep`、`RepBits`、`RepCanon`、`RepCast`、`RepCols`、`RepOrder`、`RepSeen`、`RepSetOps`、
+  `Lang.*` 照旧全部重建：157 个模块、197 s。所以剩下的瓶颈是 (d)：`Run.*` 与 `Rel` 库要迁到 module。（已由 perf9f 解决）
+- ✅ perf9e（094b744）`Rel/Rep*.lean` 中 14 个（`Rep`、`RepBits`、`RepCanon`、`RepCast`、`RepCols`、`RepOrder`、`RepSeen`、`RepSetOps`、
   `RepStruct`、`RepTabArith`、`RepTabComp`、`RepTabDiv`、`RepWF`、`RepWFOps`）以及 `ObjOrder`、`AscOrder`、`Lang.Den` 已是 module；
   没有 `private` 需要改 public。两处改动：(a) module 里的 `#guard` 读不到 import 进来的编译代码的 IR（`Could not find native
   implementation of external declaration 'Rel.tab'`），所以每个文件的 `section Checks` 移到非 module 的 `Rel/RepChecks/<X>.lean`
@@ -1858,7 +1858,7 @@ relk 线程池空转 2 526（与前三项重叠）。
   import `RepBits`/`RepTabArith`/`RepWFOps`，所以要等 `Rel/Lang/*` 迁完。测量：改 `RepCanon` 一个证明（证明内加注释），
   只重建 `RepCanon` 1 个模块（2.5 s），其余 module 的 importer 与非 module 的 importer 都只是 replay（公开接口不变），
   整个命令 3 s；perf9d 是 125 个模块、106 s。
-- ▶ perf9f `Rel/Lang/{GenKSpec,GenKBits,GenKFold,GenKEst,GenKFix,GenKHylo,DfnLaw,GenSound,ConvSpec,Table,PlanSpec} `Rel/Run/Lang/EmitC`` 与
+- ✅ perf9f（5fb4dde）`Rel/Lang/{GenKSpec,GenKBits,GenKFold,GenKEst,GenKFix,GenKHylo,DfnLaw,GenSound,ConvSpec,Table,PlanSpec} `Rel/Run/Lang/EmitC`` 与
   `RepAsc`、`RepWhere`、`RepSums` 已是 module（这些文件里没有 `#guard`/`#print axioms`，无需搬检查；`Run.Lang.Elab` 已是
   module，perf9b 的 (d) 已不成立）。两处改动：(a) `GenKFold` 的 `simp [List.merge]` 改为 `simp`（`List.merge` 在 core 中没有
   expose）；(b) `Run/Lang/TmGen.lean` 里 `addAndCompile` 生成的 `rowGens`、`rowLongs` 在 `@[expose]` 段之外，body 不 expose，

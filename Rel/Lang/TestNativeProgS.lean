@@ -9,8 +9,7 @@ import Rel.Programs.Wumpus
 /-! The search programs of `Rel/Programs/` run natively with the answer they have in Lean: per program one
     `rel_program` opened on it, one definition per side of a table-valued `check`, and `writesAgree` of the plan of
     each definition (`planOfIn`) against its Lean value, the check the `rel-native` gate makes on `out/key`, `out/val`.
-    Left out:
-    - Blocks: `plan` did not finish (its plan or its Lean value ran past 20 minutes). -/
+    Blocks: TestNativeProgBlocks (6d4f255). -/
 
 namespace Rel.Lang.TestNativeProgS
 

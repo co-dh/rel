@@ -72,7 +72,7 @@ inductive Obj                           -- 类型的代码；A B 都是 Obj
   | atom (t : Atom)                     -- u1 char i8 i16 i32 i64 f32 f64 sym（目标：从 QAtomicType 收窄，见 §4.3）
   | prod (a b : Obj)                    -- 积：多列
   | sum  (a b : Obj)                    -- 和：tag 列 + 两个 n 行可空的 summand 列（不拥有的行为 null）；1+atom 是一列，null 在带内（§4 foR）
-  | sum  (a b : Obj)                    -- 和：tag 列 + 各分支位置；1+atom 是一列，null 在带内（§4 foR）
+  | arr  (b : Obj)                      -- 数组：元素是 b 的数组，阶与重数是值的一部分；lo、hi 指向平坦的 payload
   | one                                 -- 终对象 1（决定 M）：只有一个值，不存任何列；`obj 1 = {∗}` 这类单元素对象都是它
 
 Obj.El : Obj → Type                     -- 解码：atom ↦ 原子的 Lean 类型，prod ↦ ×，arr ↦ List，sum ↦ ⊕，one ↦ Unit
@@ -500,7 +500,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `m₁ + s₂[G] + u − w₁`）→ `gather` payload → `scan` 前缀和得新格 `lo` `hi`；
     `n(m₁ + m₂) + n + m₁ + m₂ ≥ 2^63` 拒绝。是 prelude 定义，`Tm.catDef_den`（e6adc7a）：`⟨π₂, π₁ r⟩ loop(s)`，`s ≜ ⟨π₂,π₁⟩cons`，`r ≜ ⟨nil,𝟙⟩ loop(s)` 反转，只用 `cons`；原：融合形式，`⟦cat 行⟧ = ⟦定义⟧` 未证],
   [`snoc` `cons`], [`(𝟙 × τ) ≫ cat`、`(τ × 𝟙) ≫ cat`；这里的 `τ` 是逐行单元素格 `[i, i + 1)`（`scan`），
-    不经 Λ 行、不 `canon`。`snoc` 是 prelude 定义 `(𝟙 × τ) cat`，`Tm.snocDef_den`（e6adc7a）；原：融合形式，`⟦snoc 行⟧ = ⟦定义⟧` 未证。`cons` 仍是 native 行（融合形式，`⟦cons 行⟧ = ⟦定义⟧` 未证）],
+    不经 Λ 行、不 `canon`。`snoc` 是 prelude 定义 `(𝟙 × τ) cat`，`Tm.snocDef_den`（e6adc7a）；原：融合形式，`⟦snoc 行⟧ = ⟦定义⟧` 未证。`cons` 仍是 native 行（CATSNOC-DFN 决定 `nil`/`cons` 保留为 native 行）],
   [`zip`], [两侧格界 → `scan(min)` 宽 → EXPAND → `gather` 两 payload 各在 `s₁[G] + u`、`s₂[G] + u` →
     `scan` 前缀和得新格；拒绝条件同 `cat`],
   [`sum`（`⦇0, +⦈`）], [格界 → EXPAND → `gather` 元素 `v` → 每格首元素（偏移 0）标段 → 自左向右分段
@@ -682,7 +682,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 #tbl(c-run, (auto, auto, 1fr, auto), ([序], [gap], [缺什么], [能否证明]),
   [1], [`foldI`], [由 `fold` 定义，运行时是 fused 行 `foldIRow`（B6）；行与定义由 `Prim.den_foldIRow` 与 `GenK.foldI_sound` 相连], [已证],
   [2], [`share` 含自由变量], [共享部分必须是闭项；开项在每次绑定下重算是代码的错], [✅ de83595 04d6115 2c5fd08 32ff518（原：能：改 `Expand` 不共享开项，无需新证明）],
-  [3], [`setify` / `asc` 行], [`asc`、`seen` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做],
+  [3], [`setify` / `asc` 行], [`asc`、`seen` 改为 kernel 后，缺的是它们的定律：float 不满足 `Obj.Ordered`（NaN）；缺「排序后的排列唯一」（`¬ lt` 反对称）], [✅ `Tm.asc_den`、`rowOK_asc`、`lam_sound`（原：能：float 用保序位映射后有全序；反对称是常规证明。与 float 编码同批做）],
   [4], [`hylo`], [按轮迭代 = lfp，需要 `den_local`（body 在一组 key 上的输出只依赖这组 key）], [✅ 06a7c56（原：多半能（positive body）；可能要加 locality 前提）],
   [5], [`lam` `E` `front`], [同一集合有多种数组表示；需要 D2 canonical table（有序、无重复）], [✅ ad4299f（原：能：先实现 canonical 形式（`doc/rel-denotation-design.md` §7.1））],
   [6], [`call`], [泛型定义还没有语义（stage 5）], [✅ f57f461（原：能：语义 = 展开成定义的项）],
