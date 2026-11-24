@@ -32,15 +32,6 @@ open Rel.Programs.prelude Rel.Programs.chess in
 rel_program natChess where
     mm : Sq×Sq ⟶ Pc ≜ m
 
-/-- `writesAgree` of the definition `x` of the program `m`, with its own heartbeat budget and its time printed. -/
-def agree {A B : Obj} (m : Lean.Name) (x : String) (v : Except String (Tab A B)) : Lean.Meta.MetaM Unit := do
-  let t ← IO.monoMsNow
-  Lean.withCurrHeartbeats do
-    let p ← planOfIn m x
-    let t1 ← IO.monoMsNow
-    writesAgree x p v
-    Lean.logInfo m!"{m}.{x}: plan {t1 - t} ms, run {(← IO.monoMsNow) - t1} ms"
-
 #eval show Lean.Meta.MetaM Unit from do
   agree ``natAC "gv" natAC.gv
   agree ``natAC "sv" natAC.sv
