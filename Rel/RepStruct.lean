@@ -79,8 +79,7 @@ theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t
   · subst hg
     unfold Opt.fill at h
     cases h
-    simp only [Opt.get_eq, Opt.isNul, Opt.isNulWith, Opt.enc, Bool.false_eq_true, if_false, Opt.filler, Option.some.injEq]
-    simp [Arr.get, Arr.getWith, Arr.enc, Arr.mk]
+    simp only [Opt.get_eq, Opt.isNul, Opt.isNulWith, Opt.enc, Bool.false_eq_true, if_false, Opt.filler]
   · rw [Opt.get_nulWords _ (Opt.fill_enc hg h) i, Opt.filler_ne hg]
 
 /-- **`Vals.lift` reads as `x`**: each `Opt.ofArr` holds `some` of the `Arr`'s element (`Opt.get_ofArr`). -/

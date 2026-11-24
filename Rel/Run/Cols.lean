@@ -109,15 +109,9 @@ def cellBad {n : USize} (m : USize) (lo hi : Arr .i64 n) : Option (Fin n.toNat) 
   (List.finRange n.toNat).find? fun i =>
     !decide (0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (hi.get i).toInt ∧ (hi.get i).toInt ≤ (m.toNat : Int))
 
-/-- `v` is `default : QValue` (`.atom (.u1 false)`, the derived instance), tested by its constructors because `QValue`
-has no decidable equality (`QValue.isDefault_eq`). -/
-def QValue.isDefault : QValue → Bool
-  | .atom (.u1 false) => true
-  | _ => false
-
-/-- `Opt.filler t` decided: the null off `general`, at `general` its `default` (`QValue.isDefault`). -/
+/-- `Opt.filler t` decided: the null off `general`, at `general` its one point `()`. -/
 def Opt.fillerOk : (t : QAtomicType) → Option (El t) → Bool
-  | .general, some v => QValue.isDefault v
+  | .general, some _ => true
   | .general, none => false
   | .u1, v | .u8, v | .i16, v | .i32, v | .i64, v | .f32, v | .f64, v | .char, v | .i8, v | .sym, v | .date, v
   | .datetime, v => v.isNone
