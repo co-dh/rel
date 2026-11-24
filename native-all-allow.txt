@@ -1,7 +1,1 @@
-Rel.Lang.TestCmpMeet.cmpMeetT either: either: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
-Rel.Lang.TestCmpMeet.cmpMeetT ge: ge: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
-Rel.Lang.TestCmpMeet.cmpMeetT gel: gel: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
-Rel.Lang.TestCmpMeet.cmpMeetT gt: gt: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
-Rel.Lang.TestCmpMeet.cmpMeetT le: le: ≤ on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
-Rel.Lang.TestCmpMeet.cmpMeetT lt: lt: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (𝟙: a leaf on demand ran with its domain unknown)
 Rel.Lang.TestNativeF.nativeF dy: dy: row `ymd` (`Rel.Tab.ymd`): no plan recipe builds its `Tab` operator yet
