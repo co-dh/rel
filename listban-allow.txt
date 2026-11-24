@@ -23,9 +23,14 @@ Rel.Kernel.binBytes
 Rel.Kernel.bitRowsOf
 Rel.Kernel.cellFns
 Rel.Kernel.chainAll
+Rel.Kernel.countPass
 Rel.Kernel.gatherRows
 Rel.Kernel.gatherWords
 Rel.Kernel.packOf
+Rel.Kernel.placeWords
+Rel.Kernel.rankCol
+Rel.Kernel.rankSeg
+Rel.Kernel.scanAdd
 Rel.Kernel.scatterWords
 Rel.Lang.Embed.atomOf
 Rel.Lang.Embed.define
@@ -70,10 +75,12 @@ Rel.Tab.toListImpl
 Rel.ValsB.rowsImpl
 Rel.Verify.bucketOf
 Rel.Verify.byteOf
+Rel.Verify.cp
 Rel.Verify.elemsW
 Rel.Verify.firstsOf
 Rel.Verify.groupOf
 Rel.Verify.ids
+Rel.Verify.offD
 Rel.cellFree
 Rel.encCellFree
 Rel.encEq
