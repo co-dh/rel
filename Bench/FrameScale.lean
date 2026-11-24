@@ -63,7 +63,7 @@ rel_program frameScaleN5 where
     check count(j) = {(∗,50000)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,1275000)}
     check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,1000)}⟩times, ⊤ {(∗,49950000)}⟩plus⟩
-    -- the comparison rows as at 10³ that finish within 5 s; `aj` takes 5.0 s here (measured), so it stays at 10⁴
+    -- the comparison rows as at 10³ that finish within 5 s; `aj` takes 2.4 s here (measured; 3.3 s with the generator)
     t : N ⟶ N×N ≜ take({(∗,50000)}, x)
     check summarize(F(t π₂) sum, t) = {(∗,1249975000)}
     dr : N ⟶ N×N ≜ drop({(∗,50000)}, x)
@@ -73,6 +73,10 @@ rel_program frameScaleN5 where
     check cumSum(x π₂) = ran(d5) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
     c : N ⟶ 1+N ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
     check fills(c) [{(∗,0)}, 𝟙] = ran(d5) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    -- Σ (i − 99) over i ≥ 100: (n−100)(n−99)/2
+    q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
+    a : N ⟶ (N×N)×(1+(N×N)) ≜ aj(π₁, π₂, π₁, π₂, x, q)
+    check summarize(F(a π₂ [{(∗,0)}, π₂]) sum, a) = {(∗,4990054950)}
     check topK({(∗,3)}, π₂, x) = {(0,(99,99999)),(1,(98,99998)),(2,(97,99997))}
     check sortBy(π₁, x) = ran(d5) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,1000)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,1000)}⟩div⟩plus⟩
 
@@ -85,8 +89,10 @@ rel_program cumAggPast where
     check cumAgg(F(x π₂) sum, x) = x π₂
 
 /--
-info: ["check cumAgg(F(x π₂) sum, x), x π₂: cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown",
-  "cumAgg(F(x π₂) sum, x): cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown"]
+info: [Rel.Lang.Msg.user
+   "check cumAgg(F(x π₂) sum, x), x π₂: cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown",
+ Rel.Lang.Msg.user
+   "cumAgg(F(x π₂) sum, x): cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown; run the other operand first: a leaf on demand ran with its domain unknown"]
 -/
 #guard_msgs in
 #eval cumAggPast.failures.map (·.msg)
