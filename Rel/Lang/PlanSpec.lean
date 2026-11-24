@@ -2476,4 +2476,311 @@ theorem funV_builds {P : TabB → Prop} {fg fg1 : Array Fun × Array Fun} {n : N
   funT_builds (b := fun | T :: Ts => b T.n T.key Ts | [] => throw "a function on values: no table") hA ha hUs hB hfo
     (fun | _ :: _ => hb _ _ _ | [] => Grows.throw _) hty hk
 
+/-! ### Closure types are read off the body (`Typed`): `hty` of `funT_builds` from its parts -/
+
+theorem readsB_append (m : Nat) : ∀ l₁ l₂ : List Instr, readsB m (l₁ ++ l₂) = readsB m l₁ ++ readsB m l₂
+  | [], _ => rfl
+  | i :: l, l₂ => by simp only [List.cons_append, readsB, readsB_append m l l₂, List.append_assoc]
+
+theorem useTyB_append (fs : Array Fun) (a : Nat) : ∀ l₁ l₂ : List Instr,
+    useTyB fs a (l₁ ++ l₂) = (useTyB fs a l₁ <|> useTyB fs a l₂)
+  | [], _ => rfl
+  | i :: l, l₂ => by
+    simp only [List.cons_append, useTyB, useTyB_append fs a l l₂]
+    cases useTy fs a i <;> rfl
+
+/-- A run of `b` from at least `m` registers appends a block `js` and functions `fa`, and answers `x` with `Q x`;
+    every register below `m` that `js` reads, a reader in `js` types under any functions extending the run's: what
+    `cloTys` needs of a body closing over the registers below `m` (`Typed.cloTys`). -/
+def Typed {α : Type} (m : Nat) (Q : α → Prop) (b : Bld α) : Prop :=
+  ∀ is n fs gs x s', m ≤ n → b.run (is, n, fs, gs) = .ok (x, s') → ∃ js fa, s'.1 = is ++ js ∧
+    s'.2.2.1 = fs ++ fa ∧ n ≤ s'.2.1 ∧ Q x ∧
+      ∀ y, ∀ a ∈ readsB m js.toList, a < m → ∃ t, useTyB (s'.2.2.1 ++ y) a js.toList = some t
+
+theorem Typed.pure {α : Type} {m : Nat} {Q : α → Prop} {x : α} (hx : Q x) : Typed m Q (Pure.pure x : Bld α) :=
+    fun is n fs gs y s' _ h => by
+  simp [StateT.run_pure] at h
+  obtain ⟨rfl, rfl⟩ := h
+  exact ⟨#[], #[], by simp, by simp, Nat.le_refl _, hx, fun _ a ha => by simp [readsB] at ha⟩
+
+theorem Typed.throw {α : Type} {m : Nat} {Q : α → Prop} (e : BErr) : Typed m Q (throwThe BErr e : Bld α) :=
+    fun is n fs gs x s' _ h => by
+  simp [throwThe, MonadExceptOf.throw, Functor.map, Except.map] at h
+
+theorem Typed.mono {α : Type} {m : Nat} {Q Q' : α → Prop} {b : Bld α} (hb : Typed m Q b) (hq : ∀ x, Q x → Q' x) :
+    Typed m Q' b := fun is n fs gs x s' hm h => by
+  obtain ⟨js, fa, e, f, l, q, t⟩ := hb is n fs gs x s' hm h
+  exact ⟨js, fa, e, f, l, hq x q, t⟩
+
+theorem Typed.bind {α β : Type} {m : Nat} {Q : α → Prop} {R : β → Prop} {b : Bld α} {f : α → Bld β}
+    (hb : Typed m Q b) (hf : ∀ a, Q a → Typed m R (f a)) : Typed m R (b >>= f) :=
+    fun is n fs gs x s' hm h => by
+  rw [StateT.run_bind] at h
+  obtain ⟨⟨a, ⟨is1, n1, fs1, gs1⟩⟩, h₁, h₂⟩ := bind_ok h
+  obtain ⟨js1, fa1, e1, f1, l1, q1, t1⟩ := hb _ _ _ _ _ _ hm h₁
+  simp only at e1 f1 l1
+  subst e1 f1
+  obtain ⟨js2, fa2, e2, f2, l2, q2, t2⟩ := hf a q1 _ _ _ _ _ _ (by omega) h₂
+  refine ⟨js1 ++ js2, fa1 ++ fa2, by rw [e2, Array.append_assoc], by rw [f2, Array.append_assoc],
+    by omega, q2, fun y a ha hlt => ?_⟩
+  rw [Array.toList_append, readsB_append] at ha
+  rw [Array.toList_append, useTyB_append]
+  rcases List.mem_append.1 ha with ha | ha
+  · obtain ⟨t, ht⟩ := t1 (fa2 ++ y) a ha hlt
+    simp only at ht
+    rw [f2, Array.append_assoc, Array.append_assoc]
+    rw [Array.append_assoc] at ht
+    exact ⟨t, by rw [ht]; rfl⟩
+  · obtain ⟨t, ht⟩ := t2 y a ha hlt
+    cases h1 : useTyB (s'.2.2.1 ++ y) a js1.toList with
+    | some u => exact ⟨u, rfl⟩
+    | none => exact ⟨t, by rw [ht]; rfl⟩
+
+theorem Typed.mapM {α β : Type} {m : Nat} {Q : β → Prop} {f : α → Bld β} (hf : ∀ a, Typed m Q (f a)) :
+    ∀ l : List α, Typed m (fun bs => ∀ b ∈ bs, Q b) (l.mapM f)
+  | [] => Typed.pure fun _ h => nomatch h
+  | a :: l => by
+    rw [List.mapM_cons]
+    exact (hf a).bind fun b hb => (Typed.mapM hf l).bind fun bs hbs =>
+      Typed.pure fun c hc => (List.mem_cons.1 hc).elim (fun e => e ▸ hb) (hbs c)
+
+/-- Emitting `i`, whose every read below `m` its own reader types (under any functions). -/
+theorem Typed.emit {m : Nat} {i : Instr} (hi : ∀ fs, ∀ a ∈ reads m i, a < m → ∃ t, useTy fs a i = some t)
+    (nres : Nat) : Typed m (fun r => ∀ a ∈ r, m ≤ a) (Plan.emit i nres) := fun is n fs gs x s' hm h => by
+  rw [emit_run] at h
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+  refine ⟨#[i], #[], rfl, by simp, by simp, fun a ha => ?_, fun y a ha hlt => ?_⟩
+  · simp at ha; omega
+  · simp only [readsB, List.append_nil] at ha
+    obtain ⟨t, ht⟩ := hi (fs ++ y) a ha hlt
+    exact ⟨t, by show (useTy _ a i <|> none) = some t; rw [ht]; rfl⟩
+
+theorem idxOf?_of_mem {a : Nat} : ∀ {l : List Nat}, a ∈ l → ∃ j, l.idxOf? a = some j ∧ j < l.length
+  | b :: l, h => by
+    by_cases hb : b = a
+    · subst hb; exact ⟨0, by simp [List.idxOf?, List.findIdx?_cons], by simp⟩
+    · obtain ⟨j, hj, hl⟩ := idxOf?_of_mem ((List.mem_cons.1 h).resolve_left (Ne.symm hb))
+      refine ⟨j + 1, ?_, by simp; omega⟩
+      simp only [List.idxOf?, List.findIdx?_cons] at hj ⊢
+      simp [hb, hj]
+
+/-- Renaming the registers by `g` keeps a first index no larger. -/
+theorem idxOf?_map (g : Nat → Nat) {a : Nat} : ∀ {l : List Nat} {j}, l.idxOf? a = some j →
+    ∃ j', j' ≤ j ∧ (l.map g).idxOf? (g a) = some j'
+  | [], j, h => by simp [List.idxOf?] at h
+  | b :: l, j, h => by
+    by_cases hg : g b = g a
+    · exact ⟨0, Nat.zero_le _, by simp [List.idxOf?, List.findIdx?_cons, hg]⟩
+    · have hb : b ≠ a := fun e => hg (e ▸ rfl)
+      simp only [List.idxOf?, List.findIdx?_cons, beq_iff_eq, hb, if_false] at h
+      obtain ⟨j0, hj0, rfl⟩ := Option.map_eq_some_iff.1 h
+      obtain ⟨j', hle, hj'⟩ := idxOf?_map g (l := l) (by simpa [List.idxOf?] using hj0)
+      refine ⟨j' + 1, by omega, ?_⟩
+      simp only [List.idxOf?, List.findIdx?_cons, List.map_cons, beq_iff_eq, hg, if_false] at hj' ⊢
+      simp [hj']
+
+/-- An instruction holding no block, renamed by `g`, types `g a` where it typed `a`. -/
+theorem useTy_rename (fs : Array Fun) (g : Nat → Nat) (a : Nat) {t : Ty} : ∀ i : Instr,
+    (match i with | .ite .. | .loop .. => false | _ => true) = true → useTy fs a i = some t →
+      ∃ t', useTy fs (g a) (i.rename g) = some t'
+  | .call s as, _, h | .readOpt s as _, _, h => by
+    simp only [useTy, Instr.rename] at h ⊢
+    obtain ⟨j, hj, h⟩ := Option.bind_eq_some_iff.1 h
+    obtain ⟨j', hle, hj'⟩ := idxOf?_map g (by simpa using hj)
+    obtain ⟨K, hK, h⟩ := Option.bind_eq_some_iff.1 h
+    obtain ⟨p, hp, -⟩ := Option.map_eq_some_iff.1 h
+    have : j' < K.args.size := Nat.lt_of_le_of_lt hle (Array.getElem?_eq_some_iff.1 hp).1
+    exact ⟨(K.args[j']'this).1, by simp [hj', hK, this]⟩
+  | .apply f as, _, h => by
+    simp only [useTy, Instr.rename] at h ⊢
+    obtain ⟨j, hj, h⟩ := Option.bind_eq_some_iff.1 h
+    obtain ⟨j', hle, hj'⟩ := idxOf?_map g (by simpa using hj)
+    obtain ⟨F, hF, h⟩ := Option.bind_eq_some_iff.1 h
+    have : j' < F.params.size := Nat.lt_of_le_of_lt hle (Array.getElem?_eq_some_iff.1 h).1
+    exact ⟨F.params[j'], by simp [hj', hF, this]⟩
+  | .proj x .., _, h | .isTag x _, _, h | .sproj x .., _, h | .part x _, _, h => by
+    simp only [useTy, Instr.rename] at h ⊢
+    split at h
+    · rename_i e; simp only [beq_iff_eq] at e; subst e; exact ⟨_, if_pos (beq_self_eq_true _)⟩
+    · cases h
+  | .lit _, _, h | .global _, _, h | .fail .., _, h | .ctor .., _, h => by simp [useTy] at h
+
+theorem useTyB_rename (fs : Array Fun) (g : Nat → Nat) (a : Nat) {t : Ty} : ∀ l : List Instr,
+    (∀ i ∈ l, (match i with | .ite .. | .loop .. => false | _ => true) = true) → useTyB fs a l = some t →
+      ∃ t', useTyB fs (g a) (l.map (·.rename g)) = some t'
+  | [], _, h => by simp [useTyB] at h
+  | i :: l, hl, h => by
+    simp only [useTyB, List.map_cons] at h ⊢
+    cases hi : useTy fs a i with
+    | some u =>
+      obtain ⟨t', ht'⟩ := useTy_rename fs g a i (hl i (by simp)) hi
+      exact ⟨t', by rw [ht']; rfl⟩
+    | none =>
+      rw [hi] at h
+      obtain ⟨t', ht'⟩ := useTyB_rename fs g a l (fun j hj => hl j (by simp [hj])) h
+      cases useTy fs (g a) (i.rename g) with
+      | some v => exact ⟨v, rfl⟩
+      | none => exact ⟨t', ht'⟩
+
+theorem reads_rename (m : Nat) (g : Nat → Nat) : ∀ i : Instr,
+    (match i with | .ite .. | .loop .. => false | _ => true) = true → reads m (i.rename g) = (reads m i).map g
+  | .call .., _ | .readOpt .., _ | .fail .., _ | .apply .., _ | .ctor .., _ => by simp [reads, Instr.rename]
+  | .proj .., _ | .isTag .., _ | .sproj .., _ | .part .., _ | .lit _, _ | .global _, _ => by
+    simp [reads, Instr.rename]
+
+theorem readsB_rename_mem (m : Nat) (g : Nat → Nat) : ∀ l : List Instr,
+    (∀ i ∈ l, (match i with | .ite .. | .loop .. => false | _ => true) = true) →
+      ∀ a ∈ readsB m (l.map (·.rename g)), ∃ c ∈ readsB m l, g c = a
+  | [], _, a, ha => by simp [readsB] at ha
+  | i :: l, hl, a, ha => by
+    simp only [List.map_cons, readsB, List.mem_append] at ha
+    rcases ha with ha | ha
+    · rw [reads_rename m _ i (hl i (by simp))] at ha
+      obtain ⟨c, hc, e⟩ := List.mem_map.1 ha
+      exact ⟨c, by simp [readsB, hc], e⟩
+    · obtain ⟨c, hc, e⟩ := readsB_rename_mem m g l (fun j hj => hl j (by simp [hj])) a ha
+      exact ⟨c, by simp [readsB, hc], e⟩
+
+theorem cloTys_length {fs gs : Array Fun} {is body : Array Instr} {n : Nat} {r : Array Nat} {rtys : List Ty}
+    {cs : List Nat} {ts : List Ty} (h : Plan.cloTys fs gs is body n r rtys cs = .ok ts) : ts.length = cs.length := by
+  unfold Plan.cloTys at h; exact mapM_ok_length _ h
+
+theorem spliceReg_ge {m n k : Nat} {args : List Nat} (hargs : ∀ a ∈ args, m ≤ a) (hn : m ≤ n) {a : Nat}
+    (ha : m ≤ a) : m ≤ spliceReg n k args a := by
+  unfold spliceReg
+  split
+  · exact ha
+  · split
+    · rw [List.getD_eq_getElem?_getD]
+      cases h : args[a - n]? with
+      | none => exact ha
+      | some b => exact hargs b (List.mem_of_getElem? h)
+    · omega
+
+/-- `funB`: spliced, the body's reads below `m` stay (its parameters are `args`, none below `m`); applied, the `apply`
+    reads `args` and the closure, each typed by the function's parameter. -/
+theorem Typed.funB {α : Type} {m : Nat} {Q : α → Prop} {tys : List Ty} {args : List Nat}
+    {b : List Nat → Bld (Array Nat × List Ty × α)} (hargs : ∀ a ∈ args, m ≤ a)
+    (hb : ∀ ps, (∀ p ∈ ps, m ≤ p) →
+      Typed m (fun x : Array Nat × List Ty × α => (∀ a ∈ x.1, m ≤ a) ∧ Q x.2.2) (b ps)) :
+    Typed m (fun x : Array Nat × α => (∀ a ∈ x.1, m ≤ a) ∧ Q x.2) (Plan.funB tys args b) := by
+  intro is n fs gs x s' hm h
+  by_cases hk : args.length = tys.length
+  · cases hr : (b (List.range' n tys.length)).run (#[], n + tys.length, fs, gs) with
+    | error _ => simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr,
+        err_bind_eq, Functor.map, Except.map] at h
+    | ok p =>
+      obtain ⟨⟨r, rtys, x0⟩, body, n1, fs1, gs1⟩ := p
+      obtain ⟨js, fa, e1, f1, l1, ⟨q1, q2⟩, t1⟩ :=
+        hb _ (fun p hp => by simp [List.mem_range'] at hp; omega) _ _ _ _ _ _ (by omega) hr
+      simp only [Array.empty_append] at e1 f1 l1
+      subst e1 f1
+      by_cases hC : spliceable body = true
+      · simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
+          ok_bind, Functor.map, Except.map] at h
+        obtain ⟨rfl, rfl⟩ := h
+        have hnb : ∀ i ∈ body.toList, (match i with | .ite .. | .loop .. => false | _ => true) = true := by
+          simp only [spliceable, Bool.and_eq_true, Array.all_eq_true] at hC
+          intro i hi
+          obtain ⟨j, hj, rfl⟩ := List.getElem_of_mem hi
+          exact hC.1 j (by simpa using hj)
+        refine ⟨body.map (·.rename (spliceReg n tys.length args)), fa, rfl, rfl, by simp only; omega,
+          ⟨fun a ha => ?_, q2⟩, fun y a ha hlt => ?_⟩
+        · obtain ⟨c, hc, rfl⟩ := Array.mem_map.1 ha
+          exact spliceReg_ge hargs hm (q1 c hc)
+        · simp only [Array.toList_map] at ha ⊢
+          obtain ⟨c, hc, rfl⟩ := readsB_rename_mem m _ body.toList hnb a ha
+          have hcn : c < m := by
+            refine Nat.lt_of_not_le fun hcm => ?_
+            exact absurd hlt (Nat.not_lt.2 (spliceReg_ge hargs hm hcm))
+          obtain ⟨t, ht⟩ := t1 y c hc hcn
+          obtain ⟨t', ht'⟩ := useTyB_rename _ (spliceReg n tys.length args) c body.toList hnb ht
+          exact ⟨t', ht'⟩
+      · simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
+          ok_bind, -List.filter_append] at h
+        obtain ⟨ctys, hty, h⟩ := bind_ok h
+        simp only [Functor.map, Except.map] at h
+        split at h
+        · cases h
+        · rename_i v hv
+          obtain ⟨r', s1⟩ := v
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+          have hcl : ctys.length = (((readsB n body.toList ++ r.toList).filter (· < n)).eraseDups).length := by
+            revert hty
+            cases hc : Plan.cloTys (fs ++ fa) gs1 is body n r rtys
+                ((readsB n body.toList ++ r.toList).filter (· < n)).eraseDups with
+            | error e => intro h; cases h
+            | ok ts => intro h; cases h; exact cloTys_length hc
+          rcases addFun_spec (fs ++ fa) _ with ⟨e2, hlt, hget⟩ | ⟨e2, e1⟩
+          · rw [e2] at hv
+            rw [apply_run hlt, emit_ok] at hv
+            obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hv)
+            refine ⟨#[.apply _ _], fa, rfl, rfl, Nat.le_add_right _ _, ⟨fun a ha => ?_, q2⟩,
+              fun y a ha hlt' => ?_⟩
+            · simp at ha; omega
+            · simp only [readsB, reads, List.append_nil] at ha
+              obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
+              have hjt : j < (tys ++ ctys).toArray.size := by
+                simp only [List.length_append] at hjl; simp only [List.size_toArray, List.length_append]; omega
+              refine ⟨((tys ++ ctys).toArray)[j], ?_⟩
+              show (useTy _ a (.apply _ _) <|> none) = _
+              simp only [useTy, hj, Option.bind_some, Array.getElem?_append_left hlt,
+                Array.getElem?_eq_getElem hlt, hget, Option.bind_some]
+              try rw [Array.getElem?_eq_getElem hjt]
+              try rfl
+          · rw [e2] at hv
+            rw [apply_run (by rw [e1]; simp), emit_ok] at hv
+            obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hv)
+            refine ⟨#[.apply _ _], fa.push _, rfl, Array.push_append, Nat.le_add_right _ _,
+              ⟨fun a ha => ?_, q2⟩, fun y a ha hlt' => ?_⟩
+            · simp at ha; omega
+            · simp only [readsB, reads, List.append_nil] at ha
+              obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
+              have hjt : j < (tys ++ ctys).toArray.size := by
+                simp only [List.length_append] at hjl; simp only [List.size_toArray, List.length_append]; omega
+              refine ⟨((tys ++ ctys).toArray)[j], ?_⟩
+              show (useTy _ a (.apply _ _) <|> none) = _
+              simp only [useTy, hj, Option.bind_some, e1]
+              rw [Array.getElem?_append_left (by simp), Array.getElem?_push_size, Option.bind_some]
+              try rw [Array.getElem?_eq_getElem hjt]
+              try rfl
+  · simp [Plan.funB, StateT.run_bind, StateT.run_get, hk, throwThe, MonadExceptOf.throw, MonadExcept.throw,
+      err_bind_eq, Functor.map, Except.map] at h
+
+/-- `funT_builds`' `hty` of a `Typed` body: every register below `rs.size` it closes over is read by an instruction
+    that types it, or is a slot of its answer (`tysTab`), so `cloTys` never reaches the enclosing block. -/
+theorem Typed.cloTys {fg fg1 : Array Fun × Array Fun} {b : Bld TabB} {Q : TabB → Prop} {k : Nat} {rs : Array Val}
+    (hT : Typed rs.size Q b) : ∃ ctys, ∀ U body n' R rtys, b.run (#[], rs.size + k, fg) = .ok (U, body, n', fg1) →
+      tabsRegs [U] = Pure.pure R → tysTab U = Pure.pure rtys → ∀ is, Plan.cloTys fg1.1 fg1.2 is body rs.size
+        R.toArray rtys ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys := by
+  by_cases hr : ∃ U body n' R rtys, b.run (#[], rs.size + k, fg) = .ok (U, body, n', fg1) ∧
+      tabsRegs [U] = Pure.pure R ∧ tysTab U = Pure.pure rtys
+  · obtain ⟨U, body, n', R, rtys, h, hR, hy⟩ := hr
+    obtain ⟨js, fa, e, -, -, -, t⟩ := hT _ _ _ _ _ _ (by omega) h
+    simp only [Array.empty_append] at e
+    subst e
+    obtain ⟨A, Y, g1, g2, g3, -⟩ := tab_spec U
+    obtain rfl := pure_inj (hR.symm.trans g1)
+    obtain rfl := pure_inj (hy.symm.trans g2)
+    obtain ⟨ts, hts⟩ := cloTys_ok fg1.1 fg1.2 body rs.size R.toArray rtys
+        ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups fun a ha => by
+      simp only [mem_eraseDups, List.mem_filter, List.mem_append, decide_eq_true_eq] at ha
+      obtain ⟨ha | ha, hlt⟩ := ha
+      · obtain ⟨t, ht⟩ := t #[] a ha hlt
+        have ht' : useTyB fg1.1 a body.toList = some t := by rw [← Array.append_empty (xs := fg1.1)]; exact ht
+        exact ⟨t, by rw [ht']; rfl⟩
+      · obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
+        have : j < rtys.length := by first | omega | (simp at hjl; omega)
+        cases useTyB fg1.1 a body.toList with
+        | some u => exact ⟨u, rfl⟩
+        | none => exact ⟨rtys[j], by simp [hj, this]⟩
+    refine ⟨ts, fun U' body' n'' R' rtys' h' hR' hy' is => ?_⟩
+    rw [h] at h'
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h'
+    obtain ⟨rfl, rfl, -, -⟩ := h'
+    obtain rfl := pure_inj (hR.symm.trans hR')
+    obtain rfl := pure_inj (hy.symm.trans hy')
+    exact hts is
+  · exact ⟨[], fun U body n' R rtys h hR hy => absurd ⟨U, body, n', R, rtys, h, hR, hy⟩ hr⟩
+
 end Rel.Lang.Plan
