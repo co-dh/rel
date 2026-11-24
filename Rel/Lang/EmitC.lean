@@ -409,6 +409,13 @@ def catColB (t : QAtomicType) (n n₁ n₂ x y : Nat) : Bld Nat := do
 /-- **`Arr.shift`**: the `n` words `x`, `s` added (`s` a `size` register). -/
 def shiftB (n x s : Nat) : Bld Nat := do mapB .add n x (← constB n (← u64B s))
 
+/-- **`Opt.shift`**: `shiftB` of a nullable column, a null staying null. `add` refuses a null row (`noNul`), so a null is read
+    as `0` through `max` with zeros, shifted, then `min`ed with `big`, `i64` max where `x` holds a value and null where it
+    is null (`Opt.maskWith`). -/
+def shiftNulB (n x s : Nat) : Bld Nat := do
+  let big ← mapB .max n x x .i64 .i64 [] [(.and, 0), (.or, 0x7fffffffffffffff)]
+  mapB .min n big (← shiftB n (← mapB .max n x (← wordsB n 0)) s)
+
 /-- `nth` of an `if`'s one register. -/
 def ite1 (c : Nat) (t e : Bld Nat) : Bld Nat := do nth (← ite c (return #[← t]) (return #[← e])) 0 "if"
 
@@ -419,21 +426,23 @@ def andB (c : Nat) (d : Bld Nat) : Bld Nat := ite1 c d (lit (.bit false))
     atom columns by `catColB`; an array's payloads joined (`catB`, the recursive call) and its `lo`, `hi` as they are
     (`0 ≤ lo ≤ hi ≤ m`, `Vals.WF`), the second's shifted past the first (`shiftB`); a sum's tags joined, its positions
     `0 … n-1`, each summand by `catSummandB`. -/
-partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) : Bld Cols :=
+partial def concatB (n n₁ n₂ off : Nat) (xs ys : Cols) (nul : Bool := false) : Bld Cols :=
   (xs.zip ys).mapM fun (x, y) => funC [(n₁, x), (n₂, y)] fun
-    | [(n₁, x), (n₂, y)] => return (n, ← concatColB n n₁ n₂ off x y)
+    | [(n₁, x), (n₂, y)] => return (n, ← concatColB nul n n₁ n₂ off x y)
     | _ => throw "concat: not two columns"
 where
-  concatColB (n n₁ n₂ off : Nat) : Col → Col → Bld Col
+  -- `nul`: the columns are a summand's (`ValsB true`), whose array bounds may be null, shifted by `shiftNulB`
+  concatColB (nul : Bool) (n n₁ n₂ off : Nat) : Col → Col → Bld Col
     -- dense sum: the tags and both summand columns are `n₁`, `n₂` rows, so each is joined as any column (nulls stay in-band)
     | .sum p tag₁ x₁ y₁, .sum _ tag₂ x₂ y₂ => do
-      return .sum p (← catColB .u1 n n₁ n₂ tag₁ tag₂) (← concatB n n₁ n₂ off x₁ x₂) (← concatB n n₁ n₂ off y₁ y₂)
+      return .sum p (← catColB .u1 n n₁ n₂ tag₁ tag₂) (← concatB n n₁ n₂ off x₁ x₂ true) (← concatB n n₁ n₂ off y₁ y₂ true)
     | .atom p t x, .atom _ _ y => return .atom p t (← catColB t n n₁ n₂ x y)
     | .arr p m₁ lo₁ hi₁ f₁, .arr _ m₂ lo₂ hi₂ f₂ => do
       let (m, o) ← catB m₁ m₂
       guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) "concat: payload rows m₁ + m₂ past an Int64 bound"
         #[m₁, m₂]
-      let b (x₁ x₂ : Nat) : Bld Nat := do catColB .i64 n n₁ n₂ x₁ (← shiftB n₂ x₂ m₁)
+      let b (x₁ x₂ : Nat) : Bld Nat := do
+        catColB .i64 n n₁ n₂ x₁ (← if nul then shiftNulB n₂ x₂ m₁ else shiftB n₂ x₂ m₁)
       return .arr p m (← b lo₁ lo₂) (← b hi₁ hi₂) (← concatB m m₁ m₂ o f₁ f₂)
     | .sum .., _ | _, .sum .. => sumB "∪"
     | _, _ => throw "concat: two sides of one object with columns of different shapes"
