@@ -219,19 +219,41 @@ instance : Reg Enc := ⟨.obj, fun
 
 mutual
 /-- `atom t` is constructor `0` of the byte `t`; `cells n c lo hi els` constructor `1` of the objects `lo hi els`
-    and the words `n c`, as the runtime lays a constructor out. -/
-partial def ascGet? : Val → Option AscKey
-  | .ctor 0 #[] #[t] => AscKey.atom <$> Reg.get? t
-  | .ctor 1 #[lo, hi, els] #[n, c] => do
-    let _ : Reg AscKey := ⟨.obj, ascGet?, ascPut⟩
-    pure (.cells (← Reg.get? n) (← Reg.get? c) (← Reg.get? lo) (← Reg.get? hi) (← Reg.get? els))
+    and the words `n c`, as the runtime lays a constructor out. Recursion on `sizeOf`, not `partial`, as `listGet?`:
+    so a proof can read a key register back; `els` is read as `Reg (List (AscKey × Enc))` lays it out. -/
+def ascGet? : Val → Option AscKey
+  | .ctor 0 os ss => if h : os.isEmpty ∧ ss.size = 1 then AscKey.atom <$> Reg.get? ss[0] else none
+  | .ctor 1 os ss => if h : os.size = 3 ∧ ss.size = 2 then do
+      pure (.cells (← Reg.get? ss[0]) (← Reg.get? ss[1]) (← Reg.get? os[0]) (← Reg.get? os[1]) (← ascGetL? os[2]))
+    else none
   | _ => none
+termination_by v => sizeOf v
+decreasing_by have := Array.sizeOf_getElem os 2 (by omega); simp; omega
+/-- `ascGet?`'s key list: `listGet?` of `ascPairGet?`. -/
+def ascGetL? : Val → Option (List (AscKey × Enc))
+  | .ctor 0 os ss => if os.isEmpty && ss.isEmpty then some [] else none
+  | .ctor 1 os ss => if h : os.size = 2 ∧ ss.isEmpty then do pure ((← ascPairGet? os[0]) :: (← ascGetL? os[1]))
+    else none
+  | _ => none
+termination_by v => sizeOf v
+decreasing_by
+  all_goals first
+    | (have := Array.sizeOf_getElem os 0 (by omega); simp; omega)
+    | (have := Array.sizeOf_getElem os 1 (by omega); simp; omega)
+/-- `ascGet?`'s key beside its column: the pair `Reg (α × β)` lays out. -/
+def ascPairGet? : Val → Option (AscKey × Enc)
+  | .ctor 0 os ss => if h : os.size = 2 ∧ ss.isEmpty then do pure (← ascGet? os[0], ← Reg.get? os[1]) else none
+  | _ => none
+termination_by v => sizeOf v
+decreasing_by have := Array.sizeOf_getElem os 0 (by omega); simp; omega
+end
+
+/-- `ascGet?`'s layout of a key. -/
 partial def ascPut : AscKey → Val
   | .atom t => .ctor 0 #[] #[Reg.put t]
   | .cells n c lo hi els =>
     let _ : Reg AscKey := ⟨.obj, ascGet?, ascPut⟩
     .ctor 1 #[Reg.put lo, Reg.put hi, Reg.put els] #[.size n, .size c]
-end
 
 instance : Reg AscKey := ⟨.obj, ascGet?, ascPut⟩
 /-- A scan's verb is an enum too: its constructor index in a byte. -/
