@@ -74,6 +74,8 @@ import Rel.Lang.TestNativeApp
 import Rel.Lang.TestNativeProgS
 import Rel.Lang.TestNativeProgSum
 import Rel.Lang.TestPivotDisk
+import Rel.Lang.TestPivotDiskObj
+import Rel.Lang.TestPivotDiskImport
 import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
 import Rel.Lang.TestSchemaDisk
