@@ -1004,6 +1004,41 @@ theorem seenB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n : Nat} {e
   exact Builds.pure fun _ => reads_of (l := [kr, q1, q2]) (vs := [.size k.toUSize, Reg.put g, Reg.put f])
     (by simp [hkr, m5 (m4 (m3 (m2 hqR))), m5 (m4 (m3 (m2 hq2R)))])
 
+/-- Registers holding `vs` hold them in registers extending these. -/
+theorem mapM_extends {rs R : Array Val} (m : Extends rs R) :
+    ∀ {l : List Nat} {vs : List Val}, l.mapM (fun x => rs[x]?) = some vs → l.mapM (fun x => R[x]?) = some vs
+  | [], _, h => h
+  | _ :: _, _, h => by
+    obtain ⟨v, vs, hx, hl, rfl⟩ := omapM_cons.mp h
+    exact omapM_cons.mpr ⟨v, vs, m hx, mapM_extends m hl, rfl⟩
+
+/-- `sortedB l ks`, `l` holding the sorted columns `vs` `kasc` answers and the keys of `ks` holding `kv`, one per
+    column, then `c` on its registers: each holds a key beside its sorted column, as `kseen` reads them. -/
+theorem sortedB_builds {fg fg' : Array Fun × Array Fun} {out : Array Val} :
+    ∀ (ks : List (Nat × Nat)) {kv : List Val} {vs : List Enc} {rs : Array Val} {l : Nat}
+      {c : List Nat → Bld (Array Nat)}, rs[l]? = some (Reg.put vs) →
+    (ks.map (·.1)).mapM (fun x => rs[x]?) = some kv → kv.length = vs.length →
+    (∀ ps R, ps.mapM (fun x => R[x]?) = some ((kv.zip vs).map fun p => Val.ctor 0 #[p.1, Reg.put p.2] #[]) →
+      Extends rs R → Builds abiOf fg fg' (c ps) R out) →
+    Builds abiOf fg fg' (sortedB l ks >>= c) rs out
+  | [], kv, vs, rs, l, c, _, hk, _, hc => by
+    simp only [List.map_nil, List.mapM_nil, Option.pure_def, Option.some.injEq] at hk; subst hk
+    simpa [sortedB] using hc [] rs rfl fun h => h
+  | (k, e) :: ks, _, vs, rs, l, c, hl, hk, hlen, hc => by
+    obtain ⟨a, kv, ha, hk', rfl⟩ := omapM_cons.mp (by rw [List.map_cons] at hk; exact hk)
+    match vs, hlen with
+    | v :: vs, hlen =>
+    have e : (Reg.put (v :: vs) : Val) = .ctor 1 #[Reg.put v, Reg.put vs] #[] := by with_unfolding_all rfl
+    rw [e] at hl
+    simp only [sortedB, bind_assoc, pure_bind]
+    refine Builds.projBG hl rfl (by with_unfolding_all rfl) fun h R1 hh m1 => ?_
+    refine Builds.ctorBG (reads_of (l := [k, h]) (vs := [a, Reg.put v]) (by simp [hh, m1 ha]))
+      (reads_of (l := []) (vs := []) rfl) fun p R2 hp m2 => ?_
+    refine Builds.projBG (m2 (m1 hl)) rfl (by cases vs <;> with_unfolding_all rfl) fun t R3 ht m3 => ?_
+    refine sortedB_builds ks ht (mapM_extends (fun h => m3 (m2 (m1 h))) hk') (by simpa using hlen)
+      fun ps R hps m => ?_
+    exact hc (p :: ps) R (omapM_cons.mpr ⟨_, _, m (m3 hp), hps, rfl⟩) fun h => m (m3 (m2 (m1 h)))
+
 /-! ### `arithB`: its kernel chain, registers named by what they hold -/
 
 /-- The column `o a b` answers: the map `kscan o` (every row a segment) over the `i64` columns `a`, `b` of `nv` rows. -/

@@ -474,6 +474,13 @@ def seenB (n : Nat) (es : List Nat) : Bld (Nat × Nat × Nat) := do
   let z ← wordsB n 0
   pure (← lastB n (← nth (← scanB .max .i64 n (some z) [z, g]) 1 "kscan") 1, g, ← nth kg 2 "kseen")
 
+/-- Each key of `ks` beside its sorted column: the cells, in order, of the list `l` that `kasc` answers. -/
+def sortedB : Nat → List (Nat × Nat) → Bld (List Nat)
+  | _, [] => pure []
+  | l, (k, _) :: ks => do
+    let p ← ctorB 0 #[k, ← projB l 1 0 .obj] #[]
+    return p :: (← sortedB (← projB l 1 1 .obj) ks)
+
 /-- `kasc ≫ kseen` over the `n` rows of the columns `cs`: the count `k` of runs of equal rows (the last row's group
     `+ 1`, a `kscan max` fold), each sorted row's group `g`, each run's first sorted row `f`, the permutation `p`. -/
 def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
@@ -484,11 +491,7 @@ def ascSeenB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
 where ascSeenOnB (n : Nat) (cs : Cols) : Bld (Nat × Nat × Nat × Nat) := do
   let ks := (← cs.mapM (keysB n)).flatten
   let sp ← callK (kernel% Rel.Kernel.kasc) #[n, ← listB (← ks.mapM fun (k, e) => ctorB 0 #[k, e] #[])]
-  let mut l ← nth sp 0 "kasc"
-  let mut sorted := #[]
-  for (k, _) in ks do
-    sorted := sorted.push (← ctorB 0 #[k, ← projB l 1 0 .obj] #[]); l ← projB l 1 1 .obj
-  let (k, g, f) ← seenB n sorted.toList
+  let (k, g, f) ← seenB n (← sortedB (← nth sp 0 "kasc") ks)
   pure (k, g, f, ← nth sp 1 "kasc")
 
 /-- **`Vals.nub`**: the `n` rows of `cs` without duplicates, ascending: each run's first input row (`kgather` of
