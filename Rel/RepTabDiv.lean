@@ -593,6 +593,251 @@ theorem Vals.cells_expand_row {A B : Obj} {n m : USize} {lo up : ColB false .i64
   rw [← es, ← UInt64.ofNat_add, Nat.add_sub_cancel_left,
     toNat_toUInt64 (by have := (hb1 i.1).2.1; have := hwm i.1; omega)]
 
+/-- **`colConst n w` is a plain column** (`kscatter_closed`, `kscatter_plain`): `Enc.WF` at `i64`, no null. -/
+theorem colConst_plain {n : USize} {w : UInt64} {e : Enc} (h : colConst n w = .ok e) :
+    Enc.WF .i64 n e ∧ hasNul e = false :=
+  ⟨(kscatter_closed h).2.2 (by decide) (by decide), kscatter_plain h rfl⟩
+
+/-- **`colMap` of two columns under an op that orders null** (`Op.nulFold = some (b, fill)`), nulls included: the answer
+is `Enc.WF` and row `i` has the flag `b` folds of the sources' flags (`kscan_nul_row`; `0` and `0` where neither holds a
+null, `colMap_closed`) and, where that flag is `0`, the word `chain post (op (rdFill a) (rdFill c))`. -/
+theorem colMap_nul_row {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, fill)) (hb : b.eval 0 0 = .ok 0)
+    {n : USize} {a c o : Enc} {post : List (Op × UInt64)} (hWa : Enc.WF .i64 n a) (hWc : Enc.WF .i64 n c)
+    (hs : kscanStream op [(n, a), (n, c)] [] post = false) (h : colMap op n a c .i64 .i64 [] post = .ok o) :
+    Enc.WF .i64 n o ∧ ∀ i < n.toNat, ∃ nl, b.eval (rdNul n a i) (rdNul n c i) = .ok nl ∧
+      (foRNuls n o)[i]? = some (if nl != 0 then 1 else 0) ∧ (nl = 0 → ∃ w, (raw .i64 n o)[i]? = some w ∧
+        (op.eval (rdFill fill .i64 n a i) (rdFill fill .i64 n c i) >>= chain post) = .ok w) := by
+  have hWs : ∀ p ∈ [(n, a), (n, c)], Ext.Enc.WF .i64 p.1 p.2 := fun p hp => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> assumption
+  by_cases hN : hasNul a = true ∨ hasNul c = true
+  · have hex : ∃ p ∈ [(n, a), (n, c)], hasNul p.2 = true := by
+      rcases hN with hN | hN
+      · exact ⟨(n, a), by simp, hN⟩
+      · exact ⟨(n, c), by simp, hN⟩
+    unfold colMap at h; simp only [bind, Except.bind] at h
+    split at h; · cases h
+    rename_i r hr; simp only [pure, Except.pure, Except.ok.injEq] at h; subst h
+    obtain ⟨out, nl, hos, hnl, hr1, hV, hF, p, ps, hes, hrow⟩ :=
+      kscan_nul_row hnf (by decide : (QAtomicType.i64).width = some 8) (by decide) hs hWs hex hr
+    simp only [List.cons.injEq] at hes; obtain ⟨rfl, rfl, -⟩ := hes
+    refine ⟨hF, fun i hi => ?_⟩
+    obtain ⟨hv, hn1, hn2⟩ := hrow i hi
+    simp only [List.map_cons, List.map_nil, List.foldlM_cons, List.foldlM_nil, bind_pure] at hn1 hv
+    refine ⟨nl[i]?.getD 0, hn1, hn2, fun h0 => ?_⟩
+    have hsz : n.toNat = (out.map (cutBit .i64)).size := by simp [hos]
+    have hb : Column.bitAt (nulMap nl) i = false := by
+      have h1 := foRNuls_wordsFoR (out.map (cutBit .i64)) (nulMap nl) hsz i (by simpa [hos] using hi)
+      rw [← hr1, hn2, h0] at h1
+      cases hb : Column.bitAt (nulMap nl) i <;> simp_all
+    have h2 := raw_wordsFoR_of_bit (out.map (cutBit .i64)) (nulMap nl) (m := n) (by simp [hos]) i
+      (by simpa [hos] using hi) hb
+    rw [← hr1] at h2
+    refine ⟨out[i]?.getD 0, ?_, hv⟩
+    rw [h2]; simp only [Array.getElem_map, cutBit, if_neg (by decide : QAtomicType.i64 ≠ .u1),
+      Array.getElem?_eq_getElem (show i < out.size by omega), Option.getD_some]
+  · have hNa : hasNul a = false := by simp_all
+    have hNc : hasNul c = false := by simp_all
+    have hF : op.nulFold = none ∨ ∀ p ∈ [(n, a), (n, c)], hasNul p.2 = false := Or.inr fun p hp => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> assumption
+    have hn : op ≠ .null := by rintro rfl; simp [Op.nulFold] at hnf
+    have hC := colMap_closed hs h hF
+    obtain ⟨-, -, -, hrow⟩ := colMap_chain h hs hn hF
+    refine ⟨hC.2.1, fun i hi => ?_⟩
+    have hra : rdNul n a i = 0 := by simp [rdNul, Verify.foRNuls_plain hWa hNa hi]
+    have hrc : rdNul n c i = 0 := by simp [rdNul, Verify.foRNuls_plain hWc hNc hi]
+    refine ⟨0, by rw [hra, hrc]; exact hb, by rw [Verify.foRNuls_plain hC.2.1 hC.2.2 hi]; rfl, fun _ => ?_⟩
+    obtain ⟨x', y', v, w, hx, hy, hv, hw, ho⟩ := hrow i hi
+    simp only [chain, List.foldlM_nil, pure, Except.pure, Except.ok.injEq] at hx hy
+    subst hx hy
+    refine ⟨w, by rw [ho, if_neg (by decide : QAtomicType.i64 ≠ .u1)], ?_⟩
+    simp only [rdFill, hra, hrc, bne_self_eq_false, Bool.false_eq_true, if_false, hv]
+    exact hw
+
+/-- A null row of an `i64` column reads `default`, `i64` min (`Dep.Carrier.null`). -/
+theorem ColB.get_null {n : USize} {x : Opt .i64 n} {i : Fin n.toNat} (h : x.get i = none) :
+    (ColB.get (o := true) x i).toInt = -2 ^ 63 := by
+  simp only [ColB.get, h]; decide
+
+/-- Row `i` of `x` where it is not owned is the null, read as `i64` min. -/
+theorem ColB.get_unowned {n : USize} {P : Fin n.toNat → Prop} {x : Opt .i64 n} (hx : ColB.OwnedOn (o := true) x P)
+    {i : Fin n.toNat} (hp : ¬P i) : (ColB.get (o := true) x i).toInt = -2 ^ 63 :=
+  ColB.get_null (by rw [(hx i).2 hp]; exact Opt.filler_ne (by decide))
+
+/-- **`max x 0` of a nullable `i64` column is a plain column** (`colMap_nul_row`: a null reads `i64` min, which `max`
+lifts to `0`): `ColB.get x` clamped below at `0`. -/
+theorem Opt.maxZero {n : USize} (x : Opt .i64 n) {z s : Enc} (hz : colConst n 0 = .ok z)
+    (h : colMap .max n x.enc z = .ok s) : ∃ a : Arr .i64 n, a.enc = s ∧
+      ∀ i : Fin n.toNat, (a.get i).toInt = max (ColB.get (o := true) x i).toInt 0 := by
+  obtain ⟨hzW, hzN⟩ := colConst_plain hz
+  have hs : kscanStream .max [(n, x.enc), (n, z)] [] [] = false := by simp [kscanStream]
+  obtain ⟨hW, hrow⟩ := colMap_nul_row (b := .and) (fill := 0x8000000000000000) rfl (by simp [Op.eval]) x.wf hzW hs h
+  have hz0 : ∀ i < n.toNat, rdNul n z i = 0 := fun i hi => by simp [rdNul, Verify.foRNuls_plain hzW hzN hi]
+  have hnl : ∀ i < n.toNat, ∀ nl, (Op.and).eval (rdNul n x.enc i) (rdNul n z i) = .ok nl → nl = 0 := fun i hi nl h1 => by
+    rw [hz0 i hi] at h1; simp only [Op.eval, UInt64.and_zero, Except.ok.injEq] at h1; exact h1.symm
+  have hfl : ∀ i < n.toNat, (foRNuls n s)[i]? = some 0 := fun i hi => by
+    obtain ⟨nl, h1, h2, -⟩ := hrow i hi
+    rw [h2, hnl i hi nl h1]; rfl
+  have hN : hasNul s = false := by
+    refine Classical.byContradiction fun hc => ?_
+    have hc' : hasNul s = true := by simpa using hc
+    rw [Verify.hasNul_flags hW] at hc'
+    simp only [Array.any_eq_true] at hc'
+    obtain ⟨j, hj, hne⟩ := hc'
+    have hj' : j < n.toNat := by rwa [Verify.foRNuls_size] at hj
+    have := hfl j hj'
+    rw [Array.getElem?_eq_getElem hj] at this
+    simp only [Option.some.injEq] at this
+    simp [this] at hne
+  refine ⟨Arr.mk s hW hN, rfl, fun i => ?_⟩
+  obtain ⟨nl, h1, h2, h3⟩ := hrow i.1 i.2
+  obtain ⟨w, hw, hv⟩ := h3 (hnl i.1 i.2 nl h1)
+  rw [Arr.get_i64]
+  show ((raw .i64 n s)[i.1]?.getD 0).toInt64.toInt = _
+  rw [hw, Option.getD_some]
+  have hzr : rdFill 0x8000000000000000 .i64 n z i.1 = 0 := by
+    simp [rdFill, hz0 i.1 i.2, colConst_raw hz, Array.getElem?_replicate, i.2]
+  rw [hzr] at hv
+  simp only [Op.eval, chain, List.foldlM_nil, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hv
+  have h0 : ((0 : UInt64).toInt64).toInt = 0 := by decide
+  have hi : ∀ x, Op.i x = x.toInt64 := fun _ => rfl
+  by_cases hn : (foRNuls n x.enc)[i.1]? = some 0
+  · have hr0 : rdNul n x.enc i.1 = 0 := by simp [rdNul, hn]
+    simp only [rdFill, hr0, bne_self_eq_false, Bool.false_eq_true, if_false] at hv
+    have hg := ColB.get_i64 (o := true) x hn
+    rw [hg]
+    split at hv
+    · rename_i hlt
+      have := Int64.lt_iff_toInt_lt.1 hlt
+      simp only [hi] at this
+      rw [h0] at this
+      rw [← hv]
+      change 0 = max ((raw .i64 n x.enc)[i.1]?.getD 0).toInt64.toInt 0
+      omega
+    · rename_i hlt
+      have : ¬ ((raw .i64 n x.enc)[i.1]?.getD 0).toInt64.toInt < (0 : UInt64).toInt64.toInt :=
+        fun hh => hlt (Int64.lt_iff_toInt_lt.2 hh)
+      rw [h0] at this
+      rw [← hv]
+      change _ = max ((raw .i64 n x.enc)[i.1]?.getD 0).toInt64.toInt 0
+      omega
+  · have hr1 : rdNul n x.enc i.1 ≠ 0 := fun h0' => hn (by
+      rw [foRNuls_bit n x.enc i.2]; simp [rdNul] at h0'; simp [h0'])
+    have hnul : x.isNul i = true := by
+      cases hh : x.isNul i
+      · exact absurd ((Opt.isNul_eq_false x i).1 hh) hn
+      · rfl
+    simp only [rdFill, bne_iff_ne, ne_eq, hr1, not_false_eq_true, if_true] at hv
+    have hlt : Op.i 0x8000000000000000 < Op.i 0 := by simp only [hi]; decide
+    rw [if_pos hlt] at hv
+    have hg := ColB.get_null (x := x) (i := i) (by rw [Opt.get_ne x i (by decide : QAtomicType.i64 ≠ .general), hnul]; rfl)
+    rw [← hv, hg, h0]; decide
+
+/-- **`big`** (`max lo lo` post `[(.and, 0), (.or, 0x7fff…)]`) has `lo`'s flag in every row and `i64` max in the
+rows `lo` does not flag. -/
+theorem Opt.bigOf {n : USize} (lo : Opt .i64 n) {big : Enc}
+    (h : colMap .max n lo.enc lo.enc .i64 .i64 [] [(.and, 0), (.or, 0x7fffffffffffffff)] = .ok big) :
+    Enc.WF .i64 n big ∧ ∀ i < n.toNat, (foRNuls n big)[i]? = (foRNuls n lo.enc)[i]? ∧
+      ((foRNuls n lo.enc)[i]? = some 0 → (raw .i64 n big)[i]? = some 0x7fffffffffffffff) := by
+  have hs : kscanStream .max [(n, lo.enc), (n, lo.enc)] [] [(.and, 0), (.or, 0x7fffffffffffffff)] = false := by
+    simp [kscanStream]
+  obtain ⟨hW, hrow⟩ := colMap_nul_row (b := .and) (fill := 0x8000000000000000) rfl (by simp [Op.eval]) lo.wf lo.wf hs h
+  refine ⟨hW, fun i hi => ?_⟩
+  obtain ⟨nl, h1, h2, h3⟩ := hrow i hi
+  simp only [Op.eval, UInt64.and_self, Except.ok.injEq] at h1
+  subst h1
+  have hf := foRNuls_bit n lo.enc hi
+  refine ⟨by rw [h2]; exact hf.symm, fun h0 => ?_⟩
+  have hr0 : rdNul n lo.enc i = 0 := by simp [rdNul, h0]
+  obtain ⟨w, hw, hv⟩ := h3 hr0
+  simp only [Op.eval, chain, List.foldlM_cons, List.foldlM_nil, bind, Except.bind, pure, Except.pure,
+    Except.ok.injEq, ite_self, UInt64.and_zero, UInt64.zero_or, UInt64.zero_and, UInt64.or_zero] at hv
+  rw [hw, ← hv]
+
+/-- `min` of a word with `i64` max is the word. -/
+theorem min_big (r : UInt64) : (if Op.i r < Op.i 0x7fffffffffffffff then r else 0x7fffffffffffffff) = r := by
+  split
+  · rfl
+  · rename_i hlt
+    have h1 : ¬ (r.toInt64.toInt < (0x7fffffffffffffff : UInt64).toInt64.toInt) := fun hh =>
+      hlt (Int64.lt_iff_toInt_lt.2 hh)
+    have hM : ((0x7fffffffffffffff : UInt64).toInt64).toInt = 2 ^ 63 - 1 := by decide
+    rw [hM] at h1
+    have h2 := Verify.toInt_toInt64 r
+    have h3 := UInt64.toNat_lt r
+    apply UInt64.toNat_inj.1
+    split at h2 <;> simp only [UInt64.toNat_ofNat] <;> omega
+
+/-- A column `y` with the flags of the `i64` column `x` owns `x`'s rows. -/
+theorem Opt.ownedOn_flags {n : USize} {P : Fin n.toNat → Prop} {x : Opt .i64 n} (hx : ColB.OwnedOn (o := true) x P)
+    (y : Opt .i64 n) (hf : ∀ i : Fin n.toNat, (foRNuls n y.enc)[i.1]? = (foRNuls n x.enc)[i.1]?) :
+    ColB.OwnedOn (o := true) y P := fun i => by
+  constructor
+  · intro hp h0
+    have h1 := ColB.flag_of_owned (o := true) x hx i hp
+    have h2 : y.isNul i = false := (Opt.isNul_eq_false y i).2 (by rw [hf i]; exact h1)
+    rw [Opt.get_ne y i (by decide), h2] at h0; simp at h0
+  · intro hp
+    have h1 := ColB.flag_of_unowned x hx i hp
+    have h2 : y.isNul i = true := by
+      cases hh : y.isNul i
+      · exact absurd (((hf i).symm.trans ((Opt.isNul_eq_false y i).1 hh)) : (foRNuls n x.enc)[i.1]? = some 0) h1
+      · rfl
+    rw [Opt.get_ne y i (by decide), h2]; simp [Opt.filler_ne (by decide : QAtomicType.i64 ≠ .general)]
+
+/-- **`Opt.maskWith big x`** answers `x`'s words under `big`'s flags: row `i` is flagged as `big`, and where `big` is no
+null (reading `i64` max, as `Opt.bigOf` gives) it reads `x`'s long. -/
+theorem Opt.maskWith_get {n : USize} {big : Enc} (hbW : Enc.WF .i64 n big)
+    (hbw : ∀ i < n.toNat, (foRNuls n big)[i]? = some 0 → (raw .i64 n big)[i]? = some 0x7fffffffffffffff)
+    {x : Arr .i64 n} {y : Opt .i64 n} (h : Opt.maskWith big x = .ok y) (i : Fin n.toNat) :
+    (foRNuls n y.enc)[i.1]? = (foRNuls n big)[i.1]? ∧
+      ((foRNuls n big)[i.1]? = some 0 → ColB.get (o := true) y i = x.get i) := by
+  unfold Opt.maskWith at h
+  simp only [bind, Except.bind] at h
+  split at h; · cases h
+  rename_i e he
+  split at h
+  case h_2 => cases h
+  rename_i hh _
+  simp only [pure, Except.pure, Except.ok.injEq] at h
+  subst h
+  have hs : kscanStream .min [(n, big), (n, x.enc)] [] [] = false := by simp [kscanStream]
+  obtain ⟨hW, hrow⟩ := colMap_nul_row (op := .min) (b := .or) (fill := 0x7fffffffffffffff) rfl (by simp [Op.eval])
+    hbW x.wf hs he
+  obtain ⟨nl, h1, h2, h3⟩ := hrow i.1 i.2
+  have hx0 : rdNul n x.enc i.1 = 0 := by
+    have := Arr.flat x i
+    unfold rdNul; rw [show (foRNuls n x.enc)[i.1]? = some 0 from this]; rfl
+  rw [hx0] at h1
+  simp only [Op.eval, UInt64.or_zero, Except.ok.injEq] at h1
+  subst h1
+  have hf := foRNuls_bit n big i.2
+  refine ⟨by show (foRNuls n e)[i.1]? = _; rw [h2]; exact hf.symm, fun h0 => ?_⟩
+  have hr0 : rdNul n big i.1 = 0 := by simp [rdNul, h0]
+  obtain ⟨w, hw, hv⟩ := h3 hr0
+  have hrb := hbw i.1 i.2 h0
+  have hfy : (foRNuls n e)[i.1]? = some 0 := by rw [h2, hr0]; rfl
+  simp only [rdFill, hr0, hx0, bne_self_eq_false, Bool.false_eq_true, if_false, hrb, Option.getD_some, Op.eval, chain,
+    List.foldlM_nil, bind, Except.bind, pure, Except.pure, Except.ok.injEq] at hv
+  rw [min_big] at hv
+  have hg := ColB.get_i64 (o := true) (Opt.mk e hh) hfy
+  rw [hg, Arr.get_i64]
+  show ((raw .i64 n e)[i.1]?.getD 0).toInt64 = ((raw .i64 n x.enc)[i.1]?.getD 0).toInt64
+  rw [hw, Option.getD_some, hv]
+
+/-- **`Vals.cells` over the EXPAND of the widths of dense cells keeps `Vals.WF`** (`ValsB.pack`): the cells `[lo, up)`
+(`cellSpan_spec`) have widths at most `m` (`cellSpan_width`), `n · m` below `2^63`. -/
+theorem Vals.cells_dense_wf {B : Obj} {n m : USize} {lo up : Arr .i64 n} {f : Vals B m} {w G u : Enc} {T : USize}
+    {pay : Vals B T} {Y : Vals (.arr B) n} (hb : ¬2 ^ 63 ≤ n.toNat * m.toNat + n.toNat + m.toNat)
+    (hse : ∀ i : Fin n.toNat, 0 ≤ (lo.get i).toInt ∧ (lo.get i).toInt ≤ (up.get i).toInt ∧
+      (up.get i).toInt ≤ (m.toNat : Int))
+    (hw : colMap .sub n up.enc lo.enc = .ok w) (hex : expand n w = .ok (T, G, u))
+    (hY : Vals.cells n w pay = .ok Y) (hp : Vals.WF pay) : Vals.WF Y := by
+  have hm63 : m.toNat < 2 ^ 63 := by omega
+  obtain ⟨SN, EN, hse', hb1, -⟩ := cellSpan_spec hse hm63 f
+  refine Vals.cells_expand_wf hex hY m.toNat (fun i hi => ?_) (by omega) (by omega) hp
+  obtain ⟨e1, b1⟩ := cellSpan_width hse' hb1 hw i hi
+  rw [e1, toNat_toUInt64 (by omega)]; exact b1
+
 /-- **`ValsB.pack` keeps every owned row**: where a payload is cut (`o = false`, every row owned), cell `i`
 (`[SN, EN)`, `cellSpan_spec`) is laid out at `[Σ_{<i} w, Σ_{≤i} w)` (`Vals.cells`), whose row `Σ_{<i} w + d` is
 gathered from payload row `SN + d` (`Vals.cells_expand_row` at `g = id`); a summand keeps its cells and packs its
@@ -624,13 +869,59 @@ theorem ValsB.pack_row {k : Nat} : {o : Bool} → {A : Obj} → {n : USize} → 
     cases ht : tag.get i
     · simp only [Bool.false_eq_true, ↓reduceIte, ValsB.pack_row x h1 wx.2.1 (fun h => nomatch h) i ⟨hi, ht⟩]
     · simp only [↓reduceIte, ValsB.pack_row y h2 wx.2.2 (fun h => nomatch h) i ⟨hi, ht⟩]
-  | true, .arr B, n, ⟨m, lo, up, f⟩, y, h, _, wx, _, i, _ => by
-    simp only [ValsB.pack, bind, Except.bind, pure, Except.pure] at h
+  | true, .arr B, n, ⟨m, lo, up, f⟩, y, h, P, wx, _, i, hp => by
+    simp only [ValsB.pack] at h
     split at h; · cases h
-    rename_i f' hf'
+    rename_i hb
+    simp only [bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨s, hs, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+    split at h; · cases h
+    split at h
+    case isFalse =>
+      rw [Except.bind_eq_ok'] at h; obtain ⟨f', hf', h⟩ := h
+      cases h
+      have e := fun j => ValsB.pack_row f hf' wx.2.2.2 (fun _ _ => trivial) j trivial
+      simp only [ValsB.row, e]
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨sg, hsg, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨g', hg', h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨p, hpk, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T', lo', hi', f'⟩, hY, h⟩ := h; try dsimp only at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨big, hbig, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨y1, h1, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨y2, h2, h⟩ := h
     cases h
-    have e := fun j => ValsB.pack_row f hf' wx.2.2.2 (fun _ _ => trivial) j trivial
-    simp only [ValsB.row, e]
+    obtain ⟨sA, rfl, hsA⟩ := Opt.maxZero lo hz hs
+    obtain ⟨eA, rfl, heA⟩ := Opt.maxZero up hz he
+    have hge : ∀ i : Fin n.toNat, P i → (sA.get i).toInt = (ColB.get (o := true) lo i).toInt ∧
+        (eA.get i).toInt = (ColB.get (o := true) up i).toInt := fun i hp => by
+      have := wx.2.2.1 i hp
+      rw [hsA i, heA i]; omega
+    have hse : ∀ i : Fin n.toNat, 0 ≤ (sA.get i).toInt ∧ (sA.get i).toInt ≤ (eA.get i).toInt ∧
+        (eA.get i).toInt ≤ (m.toNat : Int) := fun i => by
+      by_cases hp : P i
+      · have := wx.2.2.1 i hp; rw [hsA i, heA i]; omega
+      · rw [hsA i, heA i, ColB.get_unowned wx.1 hp, ColB.get_unowned wx.2.1 hp]; omega
+    obtain ⟨hbW, hbk⟩ := Opt.bigOf lo hbig
+    have hbw : ∀ j < n.toNat, (foRNuls n big)[j]? = some 0 → (raw .i64 n big)[j]? = some 0x7fffffffffffffff :=
+      fun j hj h0 => (hbk j hj).2 ((hbk j hj).1.symm.trans h0)
+    have hb0 : (foRNuls n big)[i.1]? = some 0 := by
+      rw [(hbk i.1 i.2).1]; exact ColB.flag_of_owned (o := true) lo wx.1 i hp
+    have e3 : ColB.get (o := true) y1 i = ColB.get (o := false) lo' i := (Opt.maskWith_get hbW hbw h1 i).2 hb0
+    have e4 : ColB.get (o := true) y2 i = ColB.get (o := false) hi' i := (Opt.maskWith_get hbW hbw h2 i).2 hb0
+    have e1 : (ColB.get (o := false) sA i).toInt = (ColB.get (o := true) lo i).toInt := (hge i hp).1
+    have e2 : (ColB.get (o := false) eA i).toInt = (ColB.get (o := true) up i).toInt := (hge i hp).2
+    have hr := Vals.cells_expand_row (lo := sA) (up := eA) (f := f) hb hse hw hex hsg hix id (fun t => by
+      obtain ⟨j, hj, hgj⟩ := ValsB.gather_row f hg' t
+      exact ⟨j, hj, (ValsB.pack_row g' hpk (Vals.gather_wf hg' wx.2.2.2) (fun _ _ => trivial) t trivial).trans hgj⟩)
+      hY i
+    simp only [ValsB.row, e1, e2, e3, e4, List.map_id] at hr ⊢
+    exact hr
   | false, .arr B, n, ⟨m, lo, up, f⟩, y, h, _, wx, hall, i, _ => by
     have hse := fun i => wx.2.2.1 i (hall rfl i)
     simp only [ValsB.pack] at h

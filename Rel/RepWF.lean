@@ -247,11 +247,51 @@ theorem ValsB.pack_wf {k : Nat} : {o : Bool} → {A : Obj} → {n : USize} → {
     simp only [ValsB.WFOn, hv] at hx
     simp only [ValsB.WFOn, ValsB.view_ofGen]
     exact ⟨hx.1, ValsB.pack_wf h1 hx.2.1 (fun h => nomatch h), ValsB.pack_wf h2 hx.2.2 (fun h => nomatch h)⟩
-  | true, .arr B, n, ⟨m, lo, up, f⟩, y, h, _, hx, _ => by
-    simp only [ValsB.pack, bind, Except.bind, pure, Except.pure] at h
+  | true, .arr B, n, ⟨m, lo, up, f⟩, y, h, P, hx, _ => by
+    simp only [ValsB.pack] at h
     split at h; · cases h
-    rename_i f' hf'
-    cases h; exact ⟨hx.1, hx.2.1, hx.2.2.1, ValsB.pack_wf hf' hx.2.2.2 fun _ _ => trivial⟩
+    rename_i hb
+    simp only [bind] at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨_, -, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨z, hz, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨s, hs, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨e, he, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨w, hw, h⟩ := h
+    split at h; · cases h
+    split at h
+    case isFalse =>
+      rw [Except.bind_eq_ok'] at h; obtain ⟨f', hf', h⟩ := h
+      cases h; exact ⟨hx.1, hx.2.1, hx.2.2.1, ValsB.pack_wf hf' hx.2.2.2 fun _ _ => trivial⟩
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T, G, u⟩, hex, h⟩ := h; try dsimp only at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨sg, hsg, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨ix, hix, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨g', hg', h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨p, hpk, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨⟨T', lo', hi', f'⟩, hY, h⟩ := h; try dsimp only at h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨big, hbig, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨y1, h1, h⟩ := h
+    rw [Except.bind_eq_ok'] at h; obtain ⟨y2, h2, h⟩ := h
+    cases h
+    obtain ⟨sA, rfl, hsA⟩ := Opt.maxZero lo hz hs
+    obtain ⟨eA, rfl, heA⟩ := Opt.maxZero up hz he
+    have hse : ∀ i : Fin n.toNat, 0 ≤ (sA.get i).toInt ∧ (sA.get i).toInt ≤ (eA.get i).toInt ∧
+        (eA.get i).toInt ≤ (m.toNat : Int) := fun i => by
+      by_cases hp : P i
+      · have := hx.2.2.1 i hp; rw [hsA i, heA i]; omega
+      · rw [hsA i, heA i, ColB.get_unowned hx.1 hp, ColB.get_unowned hx.2.1 hp]; omega
+    obtain ⟨hbW, hbk⟩ := Opt.bigOf lo hbig
+    have hbw : ∀ j < n.toNat, (foRNuls n big)[j]? = some 0 → (raw .i64 n big)[j]? = some 0x7fffffffffffffff :=
+      fun j hj h0 => (hbk j hj).2 ((hbk j hj).1.symm.trans h0)
+    have hY' := Vals.cells_dense_wf (f := f) hb hse hw hex hY
+      (ValsB.pack_wf hpk (Vals.gather_wf hg' hx.2.2.2) fun _ _ => trivial)
+    refine ⟨Opt.ownedOn_flags hx.1 y1 fun j => ((Opt.maskWith_get hbW hbw h1 j).1).trans (hbk j.1 j.2).1,
+      Opt.ownedOn_flags hx.1 y2 fun j => ((Opt.maskWith_get hbW hbw h2 j).1).trans (hbk j.1 j.2).1, fun j hj => ?_,
+      hY'.2.2.2⟩
+    have hb0 : (foRNuls n big)[j.1]? = some 0 := by
+      rw [(hbk j.1 j.2).1]; exact ColB.flag_of_owned (o := true) lo hx.1 j hj
+    have e3 : ColB.get (o := true) y1 j = ColB.get (o := false) lo' j := (Opt.maskWith_get hbW hbw h1 j).2 hb0
+    have e4 : ColB.get (o := true) y2 j = ColB.get (o := false) hi' j := (Opt.maskWith_get hbW hbw h2 j).2 hb0
+    rw [e3, e4]; exact hY'.2.2.1 j trivial
   | false, .arr B, n, ⟨m, lo, up, f⟩, y, h, P, hx, hall => by
     have hse := fun i => hx.2.2.1 i (hall rfl i)
     simp only [ValsB.pack] at h

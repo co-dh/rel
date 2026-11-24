@@ -71,6 +71,7 @@ import Rel.Lang.TestNativeProgB
 import Rel.Lang.TestNativeProgL
 import Rel.Lang.TestNativeApp
 import Rel.Lang.TestNativeProgS
+import Rel.Lang.TestNativeProgSum
 import Rel.Lang.TestPivotDisk
 import Rel.Lang.TestPositions
 import Rel.Lang.TestSchema
