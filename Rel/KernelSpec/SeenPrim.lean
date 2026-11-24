@@ -210,13 +210,13 @@ theorem newCols_ok {n : Nat} (hn : n < 2 ^ 64) (ks : List (Array UInt64)) :
 
 /-- `d[i] = [i = 0 ∨ key i ≠ key (i−1)]`. -/
 theorem d_ok {n : Nat} (hn : n < 2 ^ 64) (ks : List (Array UInt64)) :
-    ∃ d, (do scanW .or n (Array.replicate n 1) (← headCol n) (← ks.mapM (newCol n)) :
-      Except String (Array UInt64)) = .ok d ∧ d.size = n ∧ ∀ i < n, d[i]?.getD 0 = if isNew ks i then 1 else 0 := by
+    ∃ h ds d, headCol n = .ok h ∧ ks.mapM (newCol n) = .ok ds ∧ scanW .or n (Array.replicate n 1) h ds = .ok d ∧
+      d.size = n ∧ ∀ i < n, d[i]?.getD 0 = if isNew ks i then 1 else 0 := by
   obtain ⟨h, hh, -, hhi⟩ := head_ok hn
   obtain ⟨ds, hds, hF⟩ := newCols_ok hn ks
   obtain ⟨d, hd, hdz, hdi⟩ := scanW_spec (op := .or) (f := fun a x => a ||| x) (fun _ _ => rfl) n
     (Array.replicate n 1) h ds
-  refine ⟨d, by simp only [hh, hds, bind, Except.bind]; exact hd, hdz, fun i hi => ?_⟩
+  refine ⟨h, ds, d, hh, hds, hd, hdz, fun i hi => ?_⟩
   have e := hdi i hi
   have h1 : (Array.replicate n (1 : UInt64))[i]?.getD 0 = 1 := by simp [hi]
   simp only [h1, show ¬ (1 : UInt64) = 0 by decide, and_false, if_false] at e
@@ -293,5 +293,126 @@ theorem filter_range_rank (f : Nat → Bool) : ∀ m i, i < m → f i = true →
 theorem u64_ofNat_sub_one {c : Nat} (hc : 1 ≤ c) : UInt64.ofNat c - 1 = UInt64.ofNat (c - 1) := by
   obtain ⟨c, rfl⟩ : ∃ c', c = c' + 1 := ⟨c - 1, by omega⟩
   simp [UInt64.ofNat_add]
+
+/-- **`seenPrims` is `seen`'s answer** on rows in `lexLe` order (`kseen_sorted`): `k = fs.length`, each row's group and
+each group's first row, `fs` and `groups` as `kseen`'s body states them. -/
+theorem seenPrims_eq {n : Nat} (hn : n < 2 ^ 64) (ks : List (Array UInt64))
+    (hs : ∀ i, i + 1 < n → lexLe ks i (i + 1) = true) :
+    seenPrims n ks = .ok ((Order.firstsBy n (keyAt ks)).length,
+      Array.ofFn (n := n) fun i => (Order.groupIn (Order.firstsBy n (keyAt ks)) (keyAt ks) i.1).toUInt64,
+      ((Order.firstsBy n (keyAt ks)).map Nat.toUInt64).toArray) := by
+  simp only [groupIn_firstsBy]
+  simp only [firstsBy_eq]
+  have hrun := lexLe_runs ks hs
+  have hF : firstsOf (keyAt ks) n = (List.range n).filter (isNew ks) := by
+    unfold firstsOf
+    apply List.filter_congr
+    intro p hp
+    have hp' := List.mem_range.1 hp
+    have h1 := firsts_runs (g := keyAt ks) (m := n) hrun p
+    have h2 : p ∈ firstsOf (keyAt ks) n ↔ ((List.range p).all fun j => !decide (keyAt ks j = keyAt ks p)) = true := by
+      unfold firstsOf; simp [List.mem_filter, hp]
+    rw [Bool.eq_iff_iff, ← h2, h1]
+    rcases Nat.eq_zero_or_pos p with rfl | hpos
+    · exact ⟨fun _ => by simp [isNew], fun _ => ⟨hp', fun q hq => absurd hq (by omega)⟩⟩
+    · have hb : isNew ks p = true ↔ keyAt ks p ≠ keyAt ks (p - 1) := by
+        have : (p == 0) = false := by simpa using (by omega : p ≠ 0)
+        simp only [isNew, this, Bool.false_or, bne_iff_ne]
+      refine ⟨fun ⟨_, h⟩ => hb.2 fun e => h (p - 1) (by omega) e.symm, fun hnew => ⟨hp', fun q hq e => ?_⟩⟩
+      obtain rfl : q = p - 1 := by omega
+      exact hb.1 hnew e.symm
+  have hlen : (firstsOf (keyAt ks) n).length = cnt ks n := by rw [hF]; rfl
+  have hget : ∀ i : Nat, (firstsOf (keyAt ks) n)[i]? = ((List.range n).filter (isNew ks))[i]? := fun i => by rw [hF]
+  have hrank : ∀ i < n, isNew ks i = true → (firstsOf (keyAt ks) n)[cnt ks i]? = some i := fun i hi hn' => by
+    rw [hget]; exact filter_range_rank _ n i hi hn'
+  have hnodup : (firstsOf (keyAt ks) n).Nodup := ((firsts_spec (keyAt ks) n).1).imp Nat.ne_of_lt
+  have hrank' : ∀ r i : Nat, (firstsOf (keyAt ks) n)[r]? = some i → i < n ∧ isNew ks i = true ∧ cnt ks i = r := by
+    intro r i h
+    have hm : i ∈ firstsOf (keyAt ks) n := List.mem_of_getElem? h
+    rw [hF, List.mem_filter, List.mem_range] at hm
+    refine ⟨hm.1, hm.2, ?_⟩
+    have := hrank i hm.1 hm.2
+    exact (List.getElem?_inj (List.getElem?_eq_some_iff.1 h).1 hnodup (h.trans this.symm)).symm
+  have hG : ∀ i < n, groupOf (keyAt ks) n i = cnt ks (i + 1) - 1 := by
+    intro i
+    induction i using Nat.strongRecOn with
+    | _ i ih =>
+      intro hi
+      by_cases hnew : isNew ks i = true
+      · have hr := hrank i hi hnew
+        obtain ⟨hj, hFi⟩ := List.getElem?_eq_some_iff.1 hr
+        have := (firsts_spec (keyAt ks) n).2.2.2.1 (cnt ks i) hj
+        rw [hFi] at this
+        rw [this, cnt_succ, if_pos hnew]; rfl
+      · have h0 : i ≠ 0 := fun e => hnew (by simp [isNew, e])
+        have hk : keyAt ks i = keyAt ks (i - 1) := by simpa [isNew, h0] using hnew
+        rw [(firsts_spec (keyAt ks) n).2.2.1 i hi (i - 1) (by omega) |>.2 hk, ih (i - 1) (by omega) (by omega),
+          show i - 1 + 1 = i by omega, cnt_succ, if_neg hnew]
+        rfl
+  -- the pipeline
+  obtain ⟨h, ds, d, hh, hds, hd, hdz, hdi⟩ := d_ok hn ks
+  obtain ⟨p, hp, hpz, hpi⟩ := p_ok hdi
+  obtain ⟨g, hg, hgz, hgi⟩ := g_ok (n := n) (p := p)
+  obtain ⟨q, hq, hqz, hqi⟩ := dst_ok (n := n) (p := p) (d := d)
+  have hcn : cnt ks n < 2 ^ 64 := Nat.lt_of_le_of_lt (cnt_le ks n) hn
+  have hK : (p.back?.getD 0).toNat = cnt ks n := by
+    rcases Nat.eq_zero_or_pos n with rfl | hpos
+    · simp [Array.back?_eq_getElem?, show p.size = 0 from hpz, cnt]
+    · rw [Array.back?_eq_getElem?, hpz, hpi _ (by omega), show n - 1 + 1 = n by omega, UInt64.toNat_ofNat',
+        Nat.mod_eq_of_lt hcn]
+  have hqv : ∀ i < n, q[i]?.getD 0 = UInt64.ofNat (cnt ks i) := fun i hi => by
+    rw [hqi i hi, hpi i hi, hdi i hi, cnt_succ]
+    split <;> simp [UInt64.ofNat_add]
+  have hqn : ∀ i, i < n → ixAt q i = cnt ks i := fun i hi => by
+    simp only [ixAt, hqv i hi, UInt64.toNat_ofNat']
+    exact Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (cnt_le ks i) (by omega))
+  obtain ⟨hex, hsp⟩ := scatterWords_spec q ((Array.range n).map UInt64.ofNat) (cnt ks n + 1) 0
+  obtain ⟨w, hw⟩ := hex.2 fun k hk => by
+    rw [hqz] at hk; rw [hqn k hk]; have := cnt_mono ks (show k ≤ n by omega); omega
+  have hwsz := (hsp w hw).1
+  have hwr : ∀ i < n, isNew ks i = true → w[cnt ks i]? = some (UInt64.ofNat i) := fun i hi hnew => by
+    have := (hsp w hw).2.2 i (by rw [hqz]; exact hi) fun k' h1 h2 => by
+      rw [hqz] at h2; rw [hqn k' h2, hqn i hi]
+      have := cnt_mono ks (show i + 1 ≤ k' by omega); rw [cnt_succ, if_pos hnew] at this; omega
+    rw [hqn i hi] at this
+    simpa [hi] using this
+  simp only [seenPrims, hh, hds, hd, hp, hq, hw, hg, hK, bind, Except.bind, pure, Except.pure]
+  congr 1
+  refine Prod.ext hlen.symm (Prod.ext ?_ ?_)
+  · apply Array.ext
+    · simp [hgz]
+    · intro i h1 h2
+      simp only [Array.getElem_ofFn]
+      have hi : i < n := by simpa [hgz] using h1
+      have := hgi i hi
+      rw [Array.getElem?_eq_getElem h1, Option.getD_some] at this
+      rw [this, hpi i hi, hG i hi]
+      have h11 : cnt ks 1 = 1 := by simp [cnt, isNew]
+      exact u64_ofNat_sub_one (by have := cnt_mono ks (show 1 ≤ i + 1 by omega); omega)
+  · have hsz : (w.extract 0 (cnt ks n)).size = cnt ks n := by simp [hwsz]
+    apply Array.ext
+    · simp [hsz, hlen]
+    · intro r h1 h2
+      have hlt : r < (firstsOf (keyAt ks) n).length := by rw [hlen]; simpa [hsz] using h1
+      obtain ⟨hin, hnw, hc⟩ := hrank' r _ (List.getElem?_eq_getElem hlt)
+      have := hwr _ hin hnw
+      rw [hc, Array.getElem?_eq_getElem (by omega)] at this
+      simp only [Array.getElem_extract, List.getElem_toArray, List.getElem_map, Nat.zero_add]
+      exact Option.some.inj this
+
+/-- **`kseen` is `seenPrims`** through `wordsFoR`: where `kseen` answers, its count is `seenPrims`' and its two columns
+are `wordsFoR` of `seenPrims`' words, over `kasc`'s codes `ascKeys` (`kseen_ok`, `kseen_sorted`). So `seen` is a
+composition of `scan` and `scatter`. -/
+theorem kseen_eq_prims {n : USize} {es : List (AscKey × Enc)} {r : Nat × Enc × Enc} (h : kseen n es = .ok r) :
+    ∃ p, seenPrims n.toNat (ascKeys n es) = .ok p ∧ r = (p.1, wordsFoR p.2.1, wordsFoR p.2.2) := by
+  obtain ⟨k, g, f⟩ := r
+  obtain ⟨hk, hg, hf⟩ := kseen_ok h
+  have hn : n.toNat < 2 ^ 64 := by
+    have := n.toNat_lt_size
+    rcases USize.size_eq with h | h <;> omega
+  refine ⟨_, seenPrims_eq hn _ (kseen_sorted h), ?_⟩
+  simp only [groupIn_firstsBy]
+  simp only [firstsBy_eq]
+  exact Prod.ext hk (Prod.ext hg hf)
 
 end Rel.Verify
