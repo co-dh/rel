@@ -430,6 +430,16 @@ def writesAgree {A B : Obj} (what : String) (p : Except String Plan) (v : Except
 def planOfIn (m : Lean.Name) (x : String) : Lean.Meta.MetaM (Except String Plan) :=
   return (← outputOf m x "out") >>= Bld.plan
 
+/-- `writesAgree` of the definition `x` of the program `m` against its Lean value `v`, with its own heartbeat budget
+    (a block of checks shares one otherwise) and its plan and run times logged. -/
+def agree {A B : Obj} (m : Lean.Name) (x : String) (v : Except String (Tab A B)) : Lean.Meta.MetaM Unit := do
+  let t ← IO.monoMsNow
+  Lean.withCurrHeartbeats do
+    let p ← planOfIn m x
+    let t1 ← IO.monoMsNow
+    writesAgree x p v
+    Lean.logInfo m!"{m}.{x}: plan {t1 - t} ms, run {(← IO.monoMsNow) - t1} ms"
+
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`)
 #eval show Lean.Meta.MetaM Unit from do writesAgree "x" (← plan) native1a.x
 
