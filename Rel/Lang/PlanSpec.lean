@@ -1933,4 +1933,220 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
         [.apply (addFun F1 F).1 (args ++ cs).toArray] from rfl, runB.eq_2, runI_apply hf (hargs _) hsem, ok_bind]
       rfl
 
+/-! ### Table functions (`funT`, `funV`): the parameters and the answer are `tabsRegs`, read back by `tabsAt` -/
+
+theorem pure_inj {α : Type} {x y : α} (h : (Pure.pure x : Bld α) = Pure.pure y) : x = y := by
+  have := congrArg (fun m : Bld α => m.run (#[], 0, #[], #[])) h
+  simp [StateT.run_pure] at this
+  exact (Prod.mk.inj (Except.ok.inj this)).1
+
+theorem Grows.of_pure {α : Type} {b : Bld α} {x : α} (h : b = Pure.pure x) : Grows b := h ▸ Grows.pure x
+
+theorem Grows.foldlM {α β : Type} {f : β → α → Bld β} (hf : ∀ b a, Grows (f b a)) :
+    ∀ (l : List α) (init : β), Grows (l.foldlM f init)
+  | [], init => by rw [List.foldlM_nil]; exact Grows.pure _
+  | a :: l, init => by
+    rw [List.foldlM_cons]
+    exact (hf init a).bind fun b => Grows.foldlM hf l b
+
+mutual
+/-- `regsOf`, `tysOf` of `cs` are pure, of one length, and `withRegs` takes any registers of that length. -/
+theorem regsOf_spec : ∀ cs : Cols, ∃ L T, regsOf cs = Pure.pure L ∧ tysOf cs = Pure.pure T ∧ L.length = T.length ∧
+    ∀ ps rest, ps.length = L.length → ∃ cs', withRegs cs (ps ++ rest) = Pure.pure (cs', rest) ∧
+      regsOf cs' = Pure.pure ps ∧ tysOf cs' = Pure.pure T
+  | [] => ⟨[], [], rfl, rfl, rfl, fun ps rest h => by
+      obtain rfl : ps = [] := List.length_eq_zero_iff.1 h
+      exact ⟨[], rfl, rfl, rfl⟩⟩
+  | c :: cs => by
+    obtain ⟨L1, T1, h1, h2, h3, h4⟩ := regsC_spec c
+    obtain ⟨L2, T2, g1, g2, g3, g4⟩ := regsOf_spec cs
+    refine ⟨L1 ++ L2, T1 ++ T2, ?_, ?_, by simp [h3, g3], fun ps rest hp => ?_⟩
+    · rw [regsOf, h1, g1]; rfl
+    · rw [tysOf, h2, g2]; rfl
+    · simp only [List.length_append] at hp
+      obtain ⟨c', e1, e2, e3⟩ := h4 (ps.take L1.length) (ps.drop L1.length ++ rest) (by simp; omega)
+      obtain ⟨cs', f1, f2, f3⟩ := g4 (ps.drop L1.length) rest (by simp; omega)
+      refine ⟨c' :: cs', ?_, ?_, ?_⟩
+      · rw [withRegs, show ps ++ rest = ps.take L1.length ++ (ps.drop L1.length ++ rest) from
+        by rw [← List.append_assoc, List.take_append_drop], e1]
+        simp only [pure_bind]; rw [f1]; rfl
+      · rw [regsOf, e2, f2]; simp
+      · rw [tysOf, e3, f3]; rfl
+theorem regsC_spec : ∀ c : Col, ∃ L T, regsC c = Pure.pure L ∧ tysC c = Pure.pure T ∧ L.length = T.length ∧
+    ∀ ps rest, ps.length = L.length → ∃ c', withReg c (ps ++ rest) = Pure.pure (c', rest) ∧
+      regsC c' = Pure.pure ps ∧ tysC c' = Pure.pure T
+  | .atom p t e => ⟨[e], [Ty.obj], rfl, rfl, rfl, fun ps rest h => by
+      match ps, h with
+      | [e'], _ => exact ⟨.atom p t e', rfl, rfl, rfl⟩⟩
+  | .arr p m lo hi f => by
+    obtain ⟨L, T, h1, h2, h3, h4⟩ := regsOf_spec f
+    refine ⟨[m, lo, hi] ++ L, [.size, .obj, .obj] ++ T, ?_, ?_, by simp [h3], fun ps rest hp => ?_⟩
+    · rw [regsC, h1]; rfl
+    · rw [tysC, h2]; rfl
+    · match ps, hp with
+      | m' :: lo' :: hi' :: ps, hp =>
+        obtain ⟨f', e1, e2, e3⟩ := h4 ps rest (by simpa using hp)
+        refine ⟨.arr p m' lo' hi' f', ?_, ?_, ?_⟩
+        · rw [List.cons_append, List.cons_append, List.cons_append, withReg, e1]; rfl
+        · rw [regsC, e2]; rfl
+        · rw [tysC, e3]; rfl
+  | .sum p tag x y => by
+    obtain ⟨Lx, Tx, h1, h2, h3, h4⟩ := regsOf_spec x
+    obtain ⟨Ly, Ty', g1, g2, g3, g4⟩ := regsOf_spec y
+    refine ⟨[tag] ++ Lx ++ Ly, [Ty.obj] ++ Tx ++ Ty', ?_, ?_, by simp [h3, g3], fun ps rest hp => ?_⟩
+    · rw [regsC, h1, g1]; rfl
+    · rw [tysC, h2, g2]; rfl
+    · match ps, hp with
+      | t' :: ps, hp =>
+        have hp' : ps.length = Lx.length + Ly.length := by simp at hp; omega
+        obtain ⟨x', e1, e2, e3⟩ := h4 (ps.take Lx.length) (ps.drop Lx.length ++ rest) (by simp; omega)
+        obtain ⟨y', f1, f2, f3⟩ := g4 (ps.drop Lx.length) rest (by simp; omega)
+        refine ⟨.sum p t' x' y', ?_, ?_, ?_⟩
+        · rw [List.cons_append, withReg, show ps ++ rest = ps.take Lx.length ++ (ps.drop Lx.length ++ rest) from
+            by rw [← List.append_assoc, List.take_append_drop], e1]
+          simp only [pure_bind]; rw [f1]; rfl
+        · rw [regsC, e2, f2]; simp
+        · rw [tysC, e3, f3]; rfl
+end
+
+/-- A table's parameter types: its count a `size`, then `tysOf` its columns (`funT`'s `tysT`, which is local to it). -/
+def tysTab (T : TabB) : Bld (List Ty) := return Ty.size :: (← tysOf (T.key ++ T.val))
+
+theorem tabsRegs_append (Ts Us : List TabB) :
+    tabsRegs (Ts ++ Us) = (do let a ← tabsRegs Ts; let b ← tabsRegs Us; pure (a ++ b)) := by
+  simp only [tabsRegs, List.mapM_append, bind_assoc, pure_bind, List.flatten_append]
+
+theorem tabsAt_append (Ts : List TabB) (T : TabB) (rs : List Nat) :
+    tabsAt (Ts ++ [T]) rs = (do
+      let (Us, rs') ← tabsAt Ts rs; let (V, r'') ← tabsAt [T] rs'; pure (Us ++ V, r'')) := by
+  simp only [tabsAt, List.foldlM_append, List.foldlM_cons, List.foldlM_nil, bind_pure]
+  congr; funext ⟨Us, rs'⟩
+  cases rs' with
+  | nil => simp; rfl
+  | cons n rs => simp
+
+theorem tab_spec (T : TabB) : ∃ A Y, tabsRegs [T] = Pure.pure A ∧ tysTab T = Pure.pure Y ∧ A.length = Y.length ∧
+    ∀ ps rest, ps.length = A.length → ∃ V, tabsAt [T] (ps ++ rest) = Pure.pure ([V], rest) ∧
+      tabsRegs [V] = Pure.pure ps ∧ tysTab V = Pure.pure Y := by
+  obtain ⟨L, Tt, h1, h2, h3, h4⟩ := regsOf_spec (T.key ++ T.val)
+  refine ⟨T.n :: L, Ty.size :: Tt, ?_, ?_, by simp [h3], fun ps rest hp => ?_⟩
+  · simp [tabsRegs, h1]
+  · simp [tysTab, h2]
+  · match ps, hp with
+    | n' :: ps, hp =>
+      obtain ⟨cs, e1, e2, e3⟩ := h4 ps rest (by simpa using hp)
+      refine ⟨⟨n', cs.take T.key.length, cs.drop T.key.length⟩, ?_, ?_, ?_⟩
+      · simp [tabsAt, e1]
+      · simp [tabsRegs, e2]
+      · simp [tysTab, e3]
+
+/-- The registers and parameter types of the tables `Ts` are pure and of one length, and `tabsAt` takes any registers
+    of that length, answering tables of the same shapes (`tysTab`) holding exactly them (`tabsRegs`). -/
+theorem tabs_spec (Ts : List TabB) : ∃ A Y, tabsRegs Ts = Pure.pure A ∧ Ts.mapM tysTab = Pure.pure Y ∧
+    A.length = Y.flatten.length ∧ ∀ ps rest, ps.length = A.length → ∃ Us, tabsAt Ts (ps ++ rest) = Pure.pure (Us, rest) ∧
+      tabsRegs Us = Pure.pure ps ∧ Us.mapM tysTab = Pure.pure Y := by
+  induction hn : Ts.length generalizing Ts with
+  | zero =>
+    obtain rfl : Ts = [] := List.length_eq_zero_iff.1 hn
+    refine ⟨[], [], by simp [tabsRegs], rfl, rfl, fun ps rest hp => ?_⟩
+    obtain rfl : ps = [] := List.length_eq_zero_iff.1 hp
+    exact ⟨[], by simp [tabsAt], by simp [tabsRegs], rfl⟩
+  | succ k ih =>
+    obtain rfl | ⟨Ts, T, rfl⟩ := List.eq_nil_or_concat Ts
+    · simp at hn
+    rw [List.concat_eq_append] at hn ⊢
+    obtain ⟨A, Y, h1, h2, h3, h4⟩ := ih Ts (by simpa using hn)
+    obtain ⟨A1, Y1, g1, g2, g3, g4⟩ := tab_spec T
+    refine ⟨A ++ A1, Y ++ [Y1], ?_, ?_, by simp [h3, g3], fun ps rest hp => ?_⟩
+    · rw [tabsRegs_append, h1, g1]; rfl
+    · simp [List.mapM_append, h2, g2]
+    · simp only [List.length_append] at hp
+      obtain ⟨Us, e1, e2, e3⟩ := h4 (ps.take A.length) (ps.drop A.length ++ rest) (by rw [List.length_take]; omega)
+      obtain ⟨V, f1, f2, f3⟩ := g4 (ps.drop A.length) rest (by rw [List.length_drop]; omega)
+      refine ⟨Us ++ [V], ?_, ?_, ?_⟩
+      · rw [tabsAt_append, show ps ++ rest = ps.take A.length ++ (ps.drop A.length ++ rest) from
+          by rw [← List.append_assoc, List.take_append_drop], e1]
+        simp only [pure_bind]; rw [f1]; simp
+      · rw [tabsRegs_append, e2, f2]; simp
+      · simp [List.mapM_append, e3, f3]
+
+theorem Grows.tabsRegs (Ts : List TabB) : Grows (tabsRegs Ts) :=
+  let ⟨_, _, h, _⟩ := tabs_spec Ts; Grows.of_pure h
+
+theorem Grows.tysOf (cs : Cols) : Grows (tysOf cs) :=
+  let ⟨_, _, _, h, _⟩ := regsOf_spec cs; Grows.of_pure h
+
+theorem funT_eq (Ts : List TabB) (b : List TabB → Bld TabB) : funT Ts b = (do
+    let tys ← Ts.mapM tysTab
+    let args ← tabsRegs Ts
+    let (rs, U) ← funB tys.flatten args fun ps => do
+      let U ← b (← tabsAt Ts ps).1; pure ((← tabsRegs [U]).toArray, ← tysTab U, U)
+    match (← tabsAt [U] rs.toList).1 with
+    | [V] => pure V
+    | _ => throw "a function's answer: not one table") := rfl
+
+/-- `funB_builds` for a table function `funT Ts b`: the parameters are the registers `A` of `Ts` read in `rs` (`pv`),
+    the body `b` reads the tables `Us` whose registers are the parameters, and answers the table `U` whose registers
+    `R` hold `o`; the table `kk` continues with is `U` over the registers `R'` that the answer's `funB` leaves. -/
+theorem funT_builds {fg fg1 : Array Fun × Array Fun} {Ts : List TabB} {b : List TabB → Bld TabB}
+    {kk : TabB → Bld (Array Nat)} {rs pv xs o out : Array Val} {A R : List Nat} {Us : List TabB} {U : TabB}
+    {body : Array Instr} {rtys ctys : List Ty}
+    (hA : tabsRegs Ts = Pure.pure A) (ha : ∀ who, A.toArray.mapM (reg rs who) = .ok pv)
+    (hUs : tabsAt Ts (List.range' rs.size A.length) = Pure.pure (Us, []))
+    (hrun : (b Us).run (#[], rs.size + A.length, fg) = .ok (U, body, (rs ++ pv ++ xs).size, fg1))
+    (hR : tabsRegs [U] = Pure.pure R) (hT : tysTab U = Pure.pure rtys)
+    (hbody : ∀ fs gs, Env abi fs gs fg1 → ∀ ws, runB abi fs gs body.toList (rs ++ pv) ws = .ok (rs ++ pv ++ xs, ws))
+    (hres : ∀ who, R.toArray.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hfo : Ordered fg.1)
+    (hb : ∀ Ts', Grows (b Ts'))
+    (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size R.toArray rtys
+      ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
+    (hk : ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val), (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
+      tabsAt [U] R'.toList = Pure.pure ([V], []) → ∃ fg', Builds abi fg2 fg' (kk V) (rs ++ ys) out) :
+    ∃ fg', Builds abi fg fg' (funT Ts b >>= kk) rs out := by
+  obtain ⟨A', Y, h1, h2, h3, -⟩ := tabs_spec Ts
+  obtain rfl : A = A' := pure_inj (hA.symm.trans h1)
+  obtain ⟨R', RY, g1, g2, g3, g4⟩ := tab_spec U
+  obtain rfl : R = R' := pure_inj (hR.symm.trans g1)
+  rw [funT_eq, h2, h1]
+  simp only [pure_bind, bind_assoc]
+  refine funB_builds (fg := fg) (fg1 := fg1) (x := U) (r := R.toArray) (ctys := ctys) (rtys := rtys) (pv := pv) (xs := xs) (o := o)
+    (body := body) h3 ha ?_ hbody hres hfo ?_ hty ?_
+  · rw [← h3]
+    simp only [hUs, pure_bind, StateT.run_bind, hrun, ok_bind, hR, hT, StateT.run_pure]
+    rfl
+  · rw [← h3]
+    simp only [hUs, pure_bind, hR, hT]
+    exact (hb Us).bind fun U' => by
+      obtain ⟨A2, Y2, e1, e2, -⟩ := tab_spec U'
+      rw [e1, e2]; exact Grows.pure _
+  · intro fg2 r' ys he hf hr
+    have hsz : r'.size = R.length := by
+      have h1 := mapM_ok_size (hr ""); have h2 := mapM_ok_size (hres ""); simp at h2; omega
+    obtain ⟨V, f1, -⟩ := g4 r'.toList [] (by simpa using hsz)
+    rw [List.append_nil] at f1
+    have := hk fg2 r' V ys he hf hr f1
+    simp only [f1, pure_bind]
+    exact this
+
+/-- `funT_builds` for `funV n X Ts b`: the first table is the `n` values `X` (a table of no value columns), and `b`
+    reads it as `n` and `X`, then the tables `Us'`. -/
+theorem funV_builds {fg fg1 : Array Fun × Array Fun} {n : Nat} {X : Cols} {Ts : List TabB}
+    {b : Nat → Cols → List TabB → Bld TabB} {kk : TabB → Bld (Array Nat)} {rs pv xs o out : Array Val}
+    {A R : List Nat} {T : TabB} {Us : List TabB} {U : TabB} {body : Array Instr} {rtys ctys : List Ty}
+    (hA : tabsRegs (⟨n, X, []⟩ :: Ts) = Pure.pure A) (ha : ∀ who, A.toArray.mapM (reg rs who) = .ok pv)
+    (hUs : tabsAt (⟨n, X, []⟩ :: Ts) (List.range' rs.size A.length) = Pure.pure (T :: Us, []))
+    (hrun : (b T.n T.key Us).run (#[], rs.size + A.length, fg) = .ok (U, body, (rs ++ pv ++ xs).size, fg1))
+    (hR : tabsRegs [U] = Pure.pure R) (hT : tysTab U = Pure.pure rtys)
+    (hbody : ∀ fs gs, Env abi fs gs fg1 → ∀ ws, runB abi fs gs body.toList (rs ++ pv) ws = .ok (rs ++ pv ++ xs, ws))
+    (hres : ∀ who, R.toArray.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hfo : Ordered fg.1)
+    (hb : ∀ n X Ts, Grows (b n X Ts))
+    (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size R.toArray rtys
+      ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
+    (hk : ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val),
+      (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
+      tabsAt [U] R'.toList = Pure.pure ([V], []) → ∃ fg', Builds abi fg2 fg' (kk V) (rs ++ ys) out) :
+    ∃ fg', Builds abi fg fg' (funV n X Ts b >>= kk) rs out :=
+  funT_builds (b := fun | T :: Ts => b T.n T.key Ts | [] => throw "a function on values: no table") hA ha hUs hrun hR hT
+    hbody hres hfo (fun | T :: Ts => hb _ _ _ | [] => Grows.throw _) hty hk
+
 end Rel.Lang.Plan
