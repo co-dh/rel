@@ -541,6 +541,9 @@ structure Use where
   sig : String
   us : List (String × OTy)
   xs : List Pre
+  /-- The imported definitions whose bodies this use sits in, innermost first, as `in `c`: `; their lines are not named: a
+      body's position is its own file's, and the error is at the call in the program being read. -/
+  ctx : String := ""
 
 structure St where
   /-- The uses whose object variables the context solves after they return, an expected type at the use: a
@@ -2071,11 +2074,11 @@ def numCheck (x : Pre) : Except Err Unit := do
 def Use.check (u : Use) : Except Err Unit := do
   let us := u.us.map fun (v, o) => (v, zonk mc o)
   if let some (v, _) := us.find? (!·.2.mvs.isEmpty) then
-    throw ⟨u.p, s!"`{u.n}` at this use: nothing here fixes its object variable '{v}' \
+    throw ⟨u.p, s!"{u.ctx}`{u.n}` at this use: nothing here fixes its object variable '{v}' \
       (`{u.n}` : {u.sig}); give the use an expected type: a typed definition, a check against a typed term, or a \
       composition that fixes {v}"⟩
   if let .error e := u.xs.forM (numCheck objs mc u.p) then
-    throw ⟨u.p, e.msg.map (s!"`{u.n}` at this call, where {", ".intercalate (us.map fun (v, o) => s!"{v} is {o}")}: " ++ ·)⟩
+    throw ⟨u.p, e.msg.map (s!"{u.ctx}`{u.n}` at this call, where {", ".intercalate (us.map fun (v, o) => s!"{v} is {o}")}: " ++ ·)⟩
 
 end Num
 
@@ -2144,7 +2147,7 @@ def mkDef (env : Env) (n : String) (dp : Pos) (ps : List Param) (body : Body) (t
     -- solved its variables, so the error names the use and each variable's object; a variable the use's expected
     -- type fixes (one only the result names) is solved after this returns, so its use waits (`settleUses`)
     let mc ← Lean.getMCtx
-    let u : Use := ⟨p, n, (ty.map OExp.arrow).getD "", vs.reverse, r.plain.1.nodes⟩
+    let u : Use := { p, n, sig := (ty.map OExp.arrow).getD "", us := vs.reverse, xs := r.plain.1.nodes }
     if gdef.isSome then
       if u.us.all fun (_, o) => (zonk mc o).mvs.isEmpty then
         if let .error e := u.check (← get).objs mc then throw e

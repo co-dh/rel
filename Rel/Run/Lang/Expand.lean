@@ -59,7 +59,10 @@ def useDef (c : Lean.Name) (imported : Bool) (d : Def) : Def :=
       match row, as.find? Arg.isFam with
       | some x, some (.fam _ I _ _) => if x.keyLift && as.length == x.sig.1.length then return ← appliedRowL I p x as
       | _, _ => pure ()
+      let k := (← get).uses.length
       let r ← if imported then tryCatch (d.apply p as) reword else d.apply p as
+      -- a use the body left waiting (`settleUses`) is at its prelude position; it is raised at this call instead, naming `c` unless the use is of `c` itself
+      if imported then modify fun st => { st with uses := st.uses.take k ++ (st.uses.drop k).map fun u => { u with p, ctx := if u.n == c.getString! then u.ctx else s!"in `{c}`: " ++ u.ctx } }
       -- the body's positions are its program's: at the use, so what `build` raises later is at the use
       -- a prelude definition with a row of its own runs as that row's constant
       -- given relations, not families, as its parameters are
