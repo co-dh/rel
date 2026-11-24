@@ -568,6 +568,13 @@ inductive ObjDef
   | num (t : Rel.QAtomicType := .i64)
   deriving Repr, Inhabited
 
+/-- The words of its elements in order, where the declaration lists them: the one reading both a program's own
+    finite objects (`Parse.after`) and an imported one's (`Parse.S.finExt`) go through. -/
+def ObjDef.words : ObjDef → Option (List String)
+  | .elems ws | .coded _ ws _ => some ws
+  | .range lo hi => some (rangeWords lo hi)
+  | _ => none
+
 /-- A `calc` step's reason (`doc/rel-mss-proof-design.md` §3): `:= n(R, …)` cites the theorem `n` at the
     arguments `args` (none when it has no parameters), `:= ≜ n` unfolds or folds back the definition `n`. The
     cited theorem as the resolver found it: `c`, the registry's constant, or none for the program's own `n`. -/

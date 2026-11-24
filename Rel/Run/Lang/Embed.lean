@@ -102,7 +102,7 @@ def stmt (s : Syntax) : C Decl := do
     pure (.schema cs)
   | ``sSchemaEach => objDecl do
     let c ← wordOf s[4]; let v ← wordOf s[6]; let o ← obj s[8]
-    let some ws := (← get).fin.lookup v
+    let some ws ← onText s[6] "" (Parse.finOf v)
       | failAt s[6] s!"`{v}` is no finite object of this program: a schema over an object needs its elements"
     let cs := ws.map fun w => (s!"{c}_{w}", o)
     if let .error m := Schema.check cs then failAt s[6] m
@@ -253,7 +253,7 @@ def declConst (c : Name) (d : Decl) : CoreM Unit :=
 /-- The scope of a program read here: the current namespace and `open`s. -/
 def scopeHere : CommandElabM Parse.S := do
   let (res, ns) := resolverAt (← getEnv) (← getOptions) (Expand.relRegistry.getState (← getEnv)) (← getCurrNamespace) (← getOpenDecls)
-  pure { cs := #[], res, ns }
+  pure { cs := #[], res, ns, finExt := Expand.finOfConst (← getEnv) (← getOptions) }
 
 /-- The programs the constants `used` reach, each after the programs its own names reach, in the order they were
     defined (an import's before the importer's). -/

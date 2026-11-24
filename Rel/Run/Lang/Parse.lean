@@ -47,7 +47,10 @@ structure S where
   diskVals : List ((String × String) × (Rel.QAtomicType × List UInt64)) := []
   /-- The program's finite objects, each with its elements as a literal writes them, in order: what a product or
       schema generated over an object (`⟨v ∈ V ↦ e⟩`, `schema D = {c ∈ V : A}`, F1) ranges over. -/
-  fin : List (String × List String) := []
+  finHere : List (String × List String) := []
+  /-- The words of the elements of an imported object, by its registry constant, read from the `Decl` the constant
+      holds (`Expand.finOfConst`): an error is why that constant cannot be read; none, it is no finite object. -/
+  finExt : Lean.Name → Except String (Option (List String)) := fun _ => .ok none
 
 abbrev P := StateT S (Except Err)
 
@@ -220,16 +223,24 @@ def num (w : String) : P Int := do
   | some k => if -2^63 ≤ k ∧ k < 2^63 then pure k else throw ⟨p, s!"the number {w} does not fit a long"⟩
   | none => throw ⟨p, s!"expected a number, found '{w}'"⟩
 
+/-- The words of the elements of the finite object `n`: the program's own, else the imported one the resolver gives
+    (a program's own object of that name, finite or not, shadows an imported one). -/
+def finOf (n : String) : P (Option (List String)) := do
+  let s ← get
+  if let some ws := s.finHere.lookup n then return some ws
+  if s.objs.contains n then return none
+  match s.res n with
+  | .ext e => if !e.obj then pure none else match s.finExt e.const with
+    | .ok ws => do set { s with used := e.const :: s.used }; pure ws
+    | .error m => throw ⟨← pos, m⟩
+  | _ => pure none
+
 /-- The scope the program `prog` leaves when read in the scope `s`: each definition known with its arity, each
     object declared, each name taken at its line. -/
 def after (s : S) (prog : Program) : S := prog.foldl (init := s) fun s d => match d with
   | .defn p k ps _ _ => { s with known := (k, ps.length) :: s.known, taken := (k, at_ p) :: s.taken }
   | .obj p n d =>
-    let ws : Option (List String) := match d with
-      | .elems ws | .coded _ ws _ => some ws
-      | .range lo hi => some (rangeWords lo hi)
-      | _ => none
-    { s with objs := n :: s.objs, taken := (n, at_ p) :: s.taken, fin := (ws.map fun w => (n, w) :: s.fin).getD s.fin }
+    { s with objs := n :: s.objs, taken := (n, at_ p) :: s.taken, finHere := (d.words.map fun w => (n, w) :: s.finHere).getD s.finHere }
   | .«theorem» p n .. => { s with thms := n :: s.thms, taken := (n, at_ p) :: s.taken }
   | .input p n .. | .dict p n .. => { s with known := (n, 0) :: s.known, taken := (n, at_ p) :: s.taken }
   | _ => s

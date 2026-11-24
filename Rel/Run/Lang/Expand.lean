@@ -1085,6 +1085,20 @@ unsafe def programOfUnsafe {m : Type → Type} [Monad m] [MonadEnv m] [MonadOpti
 @[implemented_by programOfUnsafe] opaque programOf {m : Type → Type} [Monad m] [MonadEnv m] [MonadOptions m]
     [MonadError m] (n : Name) : m Program
 
+unsafe def declOfUnsafe (env : Environment) (opts : Options) (c : Name) : Except String Decl :=
+  env.evalConstCheck Decl opts ``Decl c
+
+/-- The declaration `c : Decl` a registered object's constant holds (`Embed.declConst`). -/
+@[implemented_by declOfUnsafe] opaque declOf (env : Environment) (opts : Options) (c : Name) : Except String Decl
+
+/-- The words of the elements of the registered object `c` (`Parse.S.finExt`): its declaration's `ObjDef.words`,
+    read as a program's own are, so an imported finite object ranges as the same-module one does. -/
+def finOfConst (env : Environment) (opts : Options) (c : Name) : Except String (Option (List String)) :=
+  match declOf env opts c with
+  | .ok (.obj _ _ d) => .ok d.words
+  | .ok _ => .error s!"the constant `{c}` is registered as an object but holds no object declaration"
+  | .error m => .error s!"cannot read the object `{c}`: {m}"
+
 /-- The resolver in the namespace `ns` with the `open`s `opens` (module design §2.3): Lean's `resolveGlobalName`
     gives the candidates of a written name, the registry keeps its own; and whether a written prefix is a
     namespace. -/
