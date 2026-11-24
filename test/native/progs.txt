@@ -7,3 +7,4 @@
 # a program that writes beside its inputs).
 rel-native Rel.Lang.TestNative - Rel.Lang.TestNative.nativeIO - out
 trade-native Rel.Lang.TestFrameApp Rel.Lang.TestFrameApp.tradeApp Rel.Lang.TestFrameApp.tradeApp Rel.Lang.TestFrameApp.tradeInputs .
+mss-native Rel.Lang.TestNativeApp Rel.Lang.TestNativeApp.mssApp Rel.Lang.TestNativeApp.mssApp Rel.Lang.TestNativeApp.mssInputs .
