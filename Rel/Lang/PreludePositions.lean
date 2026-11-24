@@ -100,28 +100,21 @@ theorem Prim.den_positions {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
   simp only [Sem.one]; rw [dif_pos ⟨rfl, rfl⟩]
   rfl
 
-/-- At the universes `u₀`, `u` of `length` (`P` every number, or an initial segment), `positions(p)`'s definition means
-    the row cut to `P` (`F(u)` after it): the passing positions, ascending, all in `P`; at every number, the row. -/
-theorem Tm.positionsDef_row (ρ : Val) {B : Obj} (p : Tm B B) (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
-    (hP : (∀ x, P x) ∨ Seg .long P) (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
-    (x : (Obj.arr B).El) (hx : Short _ x) (w : (Obj.arr .long).El) :
-    ((Tm.positionsDef p u₀ u).den ρ x w ↔
-      (Tm.comp (Tm.arg (.prim (rowOf "positions") : Tm (.arr B) (.arr .long)) p) (Tm.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u)).den ρ x w) ∧
-      ((∀ x, P x) → ((Tm.positionsDef p u₀ u).den ρ x w ↔ (Tm.arg (.prim (rowOf "positions") : Tm (.arr B) (.arr .long)) p).den ρ x w)) := by
-  have hx : x.length < 2 ^ 63 := hx
-  have hL : ∀ zs : List B.El, ∀ n, zs.length < 2 ^ 63 →
-      ((Tm.lengthDef u₀ u).den ρ zs n ↔ n = Int64.ofNat zs.length ∧ P n) := fun zs n hs => by
-    rw [(Tm.lengthDef_row ρ u₀ u hP hU₀ hU zs hs n).1]
-    simp only [Tm.den, Prim.den_lengthRow, Core.Rel.comp, hU]
-    constructor
-    · rintro ⟨b, rfl, rfl, hb⟩; exact ⟨rfl, hb⟩
-    · rintro ⟨rfl, hb⟩; exact ⟨_, rfl, rfl, hb⟩
-  simp only [Tm.positionsDef, Tm.positionsBody_den, lamDen_iff, Tm.den, Tm.argDen, Core.Rel.comp, Prim.den_positions,
-    Prim.den_mapRow_corefl hU, Tm.positionsS_den]
+/-- **The body, given its two parts**: `s` the prefixes before a passing element (`hS`) and `L` their count in `P`
+    (`hL`), means the passing positions of `x` (`positionsL`, ascending) when all lie in `P`, and no list else. -/
+theorem Tm.positionsBody_key (ρ : Val) {B : Obj} (p : Tm B B) (s : Tm (.arr B) (.arr B)) (L : Tm (.arr B) .long)
+    {P : Obj.long.El → Prop}
+    (hS : ∀ xs pre, s.den ρ xs pre ↔ ∃ k, ∃ h : k < xs.length, pre = xs.take k ∧ ∃ c, p.den ρ xs[k] c)
+    (x : List B.El) (hx : x.length < 2 ^ 63)
+    (hL : ∀ zs : List B.El, ∀ n, zs.length < 2 ^ 63 → (L.den ρ zs n ↔ n = Int64.ofNat zs.length ∧ P n))
+    (w : List Int64) :
+    (Tm.positionsBody s L).den ρ x w ↔
+      ∃ b, b = positionsL (fun a => decide (∃ y, p.den ρ a y)) x ∧ w = b ∧ ∀ e ∈ b, P e := by
+  simp only [Tm.positionsBody_den, lamDen_iff, Core.Rel.comp, hS]
   have hfa : ∀ a, decide (∃ y, p.den ρ a y) = true ↔ ∃ y, p.den ρ a y := fun a => decide_eq_true_iff
   have hlen : ∀ k, k < x.length → (x.take k).length = k := fun k hk => by simp; omega
   have hb63 : ∀ k, (x.take k).length < 2 ^ 63 := fun k => Nat.lt_of_le_of_lt (List.length_take_le' _ _) hx
-  have hmem : ∀ b, (∃ pre, (∃ k h, pre = x.take k ∧ ∃ c, p.den ρ x[k] c) ∧ (Tm.lengthDef u₀ u).den ρ pre b) ↔
+  have hmem : ∀ b, (∃ pre, (∃ k h, pre = x.take k ∧ ∃ c, p.den ρ x[k] c) ∧ L.den ρ pre b) ↔
       b ∈ positionsL (fun a => decide (∃ y, p.den ρ a y)) x ∧ P b := by
     intro b; rw [mem_positionsL]
     constructor
@@ -132,28 +125,48 @@ theorem Tm.positionsDef_row (ρ : Val) {B : Obj} (p : Tm B B) (u₀ u : Tm .long
     · rintro ⟨⟨k, hk, hf, rfl⟩, hPb⟩
       obtain ⟨c, hc⟩ := (hfa _).1 hf
       exact ⟨x.take k, ⟨k, hk, rfl, c, hc⟩, (hL _ _ (hb63 k)).2 ⟨by rw [hlen k hk], hPb⟩⟩
-  have key : (((∀ pre : List B.El, (∃ k, ∃ h : k < x.length, pre = x.take k ∧ ∃ c, p.den ρ x[k] c) →
-        ∃ n, (Tm.lengthDef u₀ u).den ρ pre n) ∧ List.Pairwise Obj.long.lt w ∧
-          ∀ b, b ∈ w ↔ ∃ pre, (∃ k, ∃ h : k < x.length, pre = x.take k ∧ ∃ c, p.den ρ x[k] c) ∧
-            (Tm.lengthDef u₀ u).den ρ pre b)) ↔
-      ∃ b, b = positionsL (fun a => decide (∃ y, p.den ρ a y)) x ∧ w = b ∧ ∀ e ∈ b, P e := by
+  constructor
+  · rintro ⟨hg, hs, hm⟩
+    have hP' : ∀ e ∈ positionsL (fun a => decide (∃ y, p.den ρ a y)) x, P e := fun e he => by
+      obtain ⟨k, hk, hf, rfl⟩ := (mem_positionsL _ _ _).1 he
+      obtain ⟨c, hc⟩ := (hfa _).1 hf
+      obtain ⟨n, hn⟩ := hg (x.take k) ⟨k, hk, rfl, c, hc⟩
+      have h := (hL _ _ (hb63 k)).1 hn
+      rw [hlen k hk] at h
+      exact h.1 ▸ h.2
+    exact ⟨_, rfl, lt_sorted_unique hs (positionsL_sorted _ _ hx)
+      fun b => (hm b).trans ((hmem b).trans ⟨fun h => h.1, fun h => ⟨h, hP' b h⟩⟩), hP'⟩
+  · rintro ⟨b, rfl, rfl, hP'⟩
+    refine ⟨fun pre ⟨k, hk, hpre, c, hc⟩ => ?_, positionsL_sorted _ _ hx, fun b => ?_⟩
+    · subst hpre
+      exact ⟨Int64.ofNat k, (hL _ _ (hb63 k)).2 ⟨by rw [hlen k hk], hP' _
+        ((mem_positionsL _ _ _).2 ⟨k, hk, (hfa _).2 ⟨c, hc⟩, rfl⟩)⟩⟩
+    · exact ⟨fun h => (hmem b).2 ⟨h, hP' b h⟩, fun h => ((hmem b).1 h).1⟩
+
+/-- At the universes `u₀`, `u` of `length` (`P` every number, or an initial segment), `positions(p)`'s definition means
+    the row cut to `P` (`F(u)` after it): the passing positions, ascending, all in `P`; at every number, the row. -/
+theorem Tm.positionsDef_row (ρ : Val) {B : Obj} (p : Tm B B) (u₀ u : Tm .long .long) {P : Obj.long.El → Prop}
+    (hP : (∀ x, P x) ∨ Seg .long P) (hU₀ : ∀ x y, u₀.den ρ x y ↔ x = y ∧ P x) (hU : ∀ x y, u.den ρ x y ↔ x = y ∧ P x)
+    (x : (Obj.arr B).El) (hx : Short _ x) (w : (Obj.arr .long).El) :
+    ((Tm.positionsDef p u₀ u).den ρ x w ↔
+      (Tm.comp (Tm.arg (.prim (rowOf "positions") : Tm (.arr B) (.arr .long)) p)
+        (Tm.arg (.prim mapRow : Tm (.arr .long) (.arr .long)) u)).den ρ x w) ∧
+      ((∀ x, P x) → ((Tm.positionsDef p u₀ u).den ρ x w ↔
+        (Tm.arg (.prim (rowOf "positions") : Tm (.arr B) (.arr .long)) p).den ρ x w)) := by
+  have hL : ∀ zs : List B.El, ∀ n, zs.length < 2 ^ 63 →
+      ((Tm.lengthDef u₀ u).den ρ zs n ↔ n = Int64.ofNat zs.length ∧ P n) := fun zs n hs => by
+    rw [(Tm.lengthDef_row ρ u₀ u hP hU₀ hU zs hs n).1]
+    simp only [Tm.den, Prim.den_lengthRow, Core.Rel.comp, hU]
     constructor
-    · rintro ⟨hg, hs, hm⟩
-      have hP' : ∀ e ∈ positionsL (fun a => decide (∃ y, p.den ρ a y)) x, P e := fun e he => by
-        obtain ⟨k, hk, hf, rfl⟩ := (mem_positionsL _ _ _).1 he
-        obtain ⟨c, hc⟩ := (hfa _).1 hf
-        obtain ⟨n, hn⟩ := hg (x.take k) ⟨k, hk, rfl, c, hc⟩
-        have h := (hL _ _ (hb63 k)).1 hn
-        rw [hlen k hk] at h
-        exact h.1 ▸ h.2
-      exact ⟨_, rfl, lt_sorted_unique hs (positionsL_sorted _ _ hx)
-        fun b => (hm b).trans ((hmem b).trans ⟨fun h => h.1, fun h => ⟨h, hP' b h⟩⟩), hP'⟩
-    · rintro ⟨b, rfl, rfl, hP'⟩
-      refine ⟨fun pre ⟨k, hk, hpre, c, hc⟩ => ?_, positionsL_sorted _ _ hx, fun b => ?_⟩
-      · subst hpre
-        exact ⟨Int64.ofNat k, (hL _ _ (hb63 k)).2 ⟨by rw [hlen k hk], hP' _
-          ((mem_positionsL _ _ _).2 ⟨k, hk, (hfa _).2 ⟨c, hc⟩, rfl⟩)⟩⟩
-      · exact ⟨fun h => (hmem b).2 ⟨h, hP' b h⟩, fun h => ((hmem b).1 h).1⟩
-  exact ⟨key, fun hall => key.trans ⟨fun ⟨b, hb, h, _⟩ => hb ▸ h, fun h => ⟨_, rfl, h, fun e _ => hall e⟩⟩⟩
+    · rintro ⟨b, rfl, rfl, hb⟩; exact ⟨rfl, hb⟩
+    · rintro ⟨rfl, hb⟩; exact ⟨_, rfl, rfl, hb⟩
+  have key := Tm.positionsBody_key ρ p _ _ (Tm.positionsS_den ρ p) x hx hL w
+  have e : Tm.positionsDef p u₀ u = Tm.positionsBody (Tm.positionsS p) (Tm.lengthDef u₀ u) := rfl
+  refine ⟨?_, fun hall => ?_⟩
+  · rw [e, key]
+    simp only [Tm.den, Tm.argDen, Core.Rel.comp, Prim.den_positions, Prim.den_mapRow_corefl hU]
+  · rw [e, key]
+    simp only [Tm.den, Tm.argDen, Prim.den_positions]
+    exact ⟨fun ⟨b, hb, h, _⟩ => h.trans hb, fun h => ⟨_, rfl, h, fun e _ => hall e⟩⟩
 
 end Rel.Lang
