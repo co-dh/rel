@@ -65,7 +65,7 @@ inductive Col where
   | atom (p : String) (t : QAtomicType) (e : Nat)
   | arr (p : String) (m lo hi : Nat) (pay : List Col)
   | sum (p : String) (tag : Nat) (x y : List Col)
-  deriving Inhabited
+  deriving Inhabited, BEq
 
 /-- A side's columns. -/
 abbrev Cols := List Col
@@ -1823,6 +1823,39 @@ def Vars.dem (σ : Vars) : Dem := fun k => ((σ.lookup k).map (·.1)).getD false
 def sideArg (s : Sides) : (A B : Obj) → Dom → Bld TabB :=
   fun A B _ => return ⟨s.n, ← colsOf A s.key, ← colsOf B s.val⟩
 
+/-- The columns every table `A ⟶ B` has, read off the objects alone: `colsOf` on a side holding each leaf, every register
+    `0`. `shareB` fills its registers from a global's. -/
+def shapeB (A B : Obj) : Bld TabB := do
+  let side (O : Obj) : Side := (objLeaves O "").filterMap fun (p, t) =>
+    t.map fun _ => (p, Array.replicate (max Side.enc Side.count + 1) 0)
+  pure ⟨0, ← colsOf A (side A), ← colsOf B (side B)⟩
+
+/-- **A closed part computed once** (`Tm.slot k`): its table is global `k`, built at the first use in a block of its own
+    (a closed part reads nothing of the enclosing block, so `glob` is `tabB` closed, `{}` its context), and read by
+    `global k` at every use, as the Lean value reads `n.shares`. The global's registers are the table's (`tabsRegs`) and
+    its columns must be the objects' shape (`shapeB`), so a use rebuilds the columns from the registers alone; else, or
+    where the closed build fails, `inl` (the use's own build) answers, with its own error if it has one. Global numbers
+    are slot numbers, the slots not yet built empty globals that compute nothing: a plan's slots are one program's
+    (`Code.program`). -/
+def shareB (k : Nat) (A B : Obj) (inl glob : Bld TabB) : Bld TabB := do
+  let shape ← shapeB A B
+  let use : Bld TabB := do
+    let (_, _, _, gs) ← get
+    let some F := gs[k]? | throw s!"global g{k}: not built"
+    match (← tabsAt [shape] (← emit (.global k) F.res.size).toList).1 with
+    | [T] => pure T
+    | _ => throw s!"global g{k}: not one table"
+  if (((← get).2.2.2)[k]?).any (!·.res.isEmpty) then use else
+  tryCatch (do
+    let (is, n, fs, gs) ← get
+    let (rs, body, _, fs, gs) ← (do
+      let U ← glob
+      let (cs, rest) ← withRegs (shape.key ++ shape.val) (← regsOf (U.key ++ U.val))
+      unless rest.isEmpty && cs == U.key ++ U.val do throw s!"global g{k}: its table is not the shape of its objects"
+      tabsRegs [U]).run (#[], 0, fs, gs)
+    set (is, n, fs, (gs ++ Array.replicate (k + 1 - gs.size) default).modify k fun _ => ⟨#[], body.toList, rs.toArray⟩)
+    use) fun _ => inl
+
 mutual
 /-- **A term's table**: its node's recipe (`nodeB`) as one plan function (`funT`), closing over the tables of its
     context and its variables, so every node kind is built by one path and the block applying it (`main`, a
@@ -1924,6 +1957,9 @@ partial def nodeB (σ : Vars) (D : Dom) : {A B : Obj} → Tm A B → Bld TabB
 partial def argB (σ : Vars) (D : Dom) (A B : Obj) :
     Tm A B → List ((C : Obj) × (E : Obj) × Tm C E) → Bld TabB
   | .arg f x, xs => argB σ D A B f (⟨_, _, x⟩ :: xs)
+  | .call [] c _ _ b, [] => match c.slot? with
+    | some k => shareB k A B (tabB [] D b) (tabB [] {} b)
+    | none => tabB [] D b
   | .call ks _ _ _ b, xs => do
     let bs ← (ks.zip xs).mapM fun (k, ⟨C, E, x⟩) => do
       let at_ (b : Dom → Bld TabB) : (A' B' : Obj) → Dom → Bld TabB :=
@@ -2039,13 +2075,34 @@ def output (dir : String) (A B : Obj) (rs : Sides) : Bld Unit := do
         let some m := ones.lookup p | throw s!"the side of `1` at `{p}` (file {file p}) has no row count"
         writeOne (file p) m
 
+/-- The closed definitions `ds` of a program numbered together from slot `base` (`Tm.number`, as `rel_program` shares them),
+    and the number of slots. -/
+def numberedAt (base : Nat) (ds : List (String × Res)) : List (String × Res) × Nat :=
+  let r := (ds.mapM (m := StateM Shares) fun (x, ⟨A, B, t⟩) => do pure (x, (⟨A, B, ← t.number⟩ : Res))).run
+    (Array.replicate base ⟨.one, .one, .zero⟩, {})
+  (r.1, r.2.1.size - base)
+
+/-- The closed definitions `ds` of the program `n` numbered for the plan: each closed part is one slot in every definition,
+    so `shareB` computes it once. The slots are global numbers, a region of the globals for each program: a tag global
+    (a literal, the program's name) then one global per slot, so two programs in one plan never read each other's. Each
+    `outputOf` and `ioOf` of `n` finds its tag and numbers from the same base. -/
+def claimB (n : Lean.Name) (ds : List (String × Res)) : Bld (List (String × Res)) := do
+  let tag : Fun := ⟨#[], [.lit (.str n.toString)], #[]⟩
+  let (is, c, fs, gs) ← get
+  match gs.findIdx? (· == tag) with
+  | some i => pure (numberedAt (i + 1) ds).1
+  | none =>
+    set (is, c, fs, (gs.push tag) ++ Array.replicate (numberedAt 0 ds).2 default)
+    pure (numberedAt (gs.size + 1) ds).1
+
 /-- The plan's steps of `output x to dir` in the program `n`, read as `rel_program` read it (`Expand.reread`). -/
 def outputOf (n : Lean.Name) (x : String) (dir : String) : Lean.Meta.MetaM (Except String (Bld Unit)) := do
   let r ← Expand.reread n
   return do
     let (ds, _) ← r.mapError (s!"{repr ·}")
-    let some ⟨A, B, t⟩ := ds.lookup x | throw s!"`{x}` is no closed definition of the program"
-    pure (mainStepB do output dir A B (← outSides A B (← ofTm [] t)))
+    pure (mainStepB do
+      let some ⟨A, B, t⟩ := (← claimB n ds).lookup x | throw s!"`{x}` is no closed definition of the program"
+      output dir A B (← outSides A B (← ofTm [] t)))
 
 /-- An input as its read at the input edge answers it, with its key schema `k` (`[]`: positions) and value schema
     `v`: each atom column's path, atom and `ownMap` register, the key's and the value's (a table directory), or the
@@ -2437,7 +2494,7 @@ def ioOf (n : Lean.Name) :
           mainStepB do
             let t ← match cl, σ.lookup x with
               | none, some t => pure t
-              | some _, _ => match ds.lookup x with
+              | some _, _ => match (← claimB n ds).lookup x with
                 | some ⟨_, _, t⟩ => ofTm [] t
                 | none => throw s!"output `{x}`: no closed definition `{x}`"
               | none, none => throw s!"output `{x}`: not read or computed before it"
@@ -2804,31 +2861,38 @@ partial def blockC (abi : String → Option Kernel) (fres gtys : Array (Array Ty
     outs := outs.push x
   pure (c, rs, outs)
 
+/-- The types of `F`'s results as its body defines them (`defTy`), `fs` and `gs` the plan's functions and globals. -/
+def Fun.resTys (fs gs : Array Fun) (F : Fun) : Except String (Array Ty) := F.res.mapM fun a =>
+  match defTy fs gs (F.params[·]?) F.params.size F.body a with
+  | some t => pure t
+  | none => throw s!"result register r{a}: no instruction declares its type"
+
 /-- `p` as one C file: the statics, the kernels' prototypes, one `static` function per plan function, and `main`,
     which computes the globals, runs `main`'s block in the directory its one argument names, and frees the globals. -/
 def relc (abi : String → Option Kernel) (p : Plan) : Except String String := do
   let go : EM String := do
+    -- every global's types before any function: a function reads a global (`shareB`) as well as a global applies one
+    let gtys ← (p.globals.mapM (Fun.resTys p.funs p.globals) : Except String _)
     let mut fres : Array (Array Ty) := #[]
     let mut fns := ""
     for (f, i) in p.funs.toList.zipIdx do
       let ps ← f.params.toList.mapM fun t => return (← fresh, t)
-      let (c, rs, outs) ← blockC abi fres #[] "  " (ps.toArray.map fun (x, t) => (x, t, false)) [] f.body f.res
+      let (c, rs, outs) ← blockC abi fres gtys "  " (ps.toArray.map fun (x, t) => (x, t, false)) [] f.body f.res
       let tys ← f.res.toList.mapM fun a => return (← creg rs a).2.1
       let sig := ps.map (fun (x, t) => s!"{cTy t} {x}") ++ (tys.zipIdx.map fun (t, k) => s!"{cTy t} *o{k}")
       fns := fns ++ s!"static void f{i}({", ".intercalate sig}) \{\n" ++ c ++
         String.join ((outs.toList.zipIdx).map fun (x, k) => s!"  *o{k} = {x};\n") ++ "}\n"
       fres := fres.push tys.toArray
-    let mut gtys : Array (Array Ty) := #[]
     let mut gs := ""
     let mut gdec := ""
     for (g, i) in p.globals.toList.zipIdx do
       let (c, rs, outs) ← blockC abi fres gtys "    " #[] [] g.body g.res
       let tys ← g.res.toList.mapM fun a => return (← creg rs a).2.1
+      unless gtys[i]? == some tys.toArray do throw s!"global g{i}: its registers are {repr tys}, `defTy` says {repr gtys[i]?}"
       for (t, k) in tys.zipIdx do
         static s!"static {cTy t} g{i}_{k};\n"
         if isObj t then gdec := gdec ++ s!"  lean_dec(g{i}_{k});\n"
       gs := gs ++ "  {\n" ++ c ++ String.join ((outs.toList.zipIdx).map fun (x, k) => s!"    g{i}_{k} = {x};\n") ++ "  }\n"
-      gtys := gtys.push tys.toArray
     -- the input edge's registers are `main`'s first, so the two are one block (`Plan.exec` splices them likewise)
     let (c, _, _) ← blockC abi fres gtys "  " #[] [] (p.input ++ p.main) #[]
     let (_, protos, stat) ← get
