@@ -116,7 +116,7 @@ rel_program symsT where
 def fixtureBit (p : String) : IO Unit := do
   if ← System.FilePath.pathExists p then IO.FS.removeDirAll p
   write [("b", .atom .u1)] p
-    (Arr.mk (Ext.Enc.blank .u1 3) (Ext.Enc.blank_WF .u1 3) (Ext.Enc.blank_plain .u1 3))
+    (Arr.mk (Enc.blank .u1 3) (Enc.blank_WF .u1 3) (Enc.blank_plain .u1 3))
 
 #eval fixtureBit "/data/tmp/rel-test-pivot-disk/bits"
 

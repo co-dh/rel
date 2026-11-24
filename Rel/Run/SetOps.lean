@@ -15,7 +15,7 @@ the groups whose flag holds, their positions found by `whereCol`. No column is d
 calls. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 namespace Tab
 variable {k v : Obj}

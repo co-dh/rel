@@ -13,7 +13,7 @@ public import Rel.RepSeen
 /-! The laws of `Tab.conv` and `Tab.comp` (`Rel/Run/Comp.lean`), from the five kernels' laws and `Tab.canon_holds`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 
 /-- A predicate closed under betweenness, least at `a` wherever it holds, and only below `N`, holds exactly on

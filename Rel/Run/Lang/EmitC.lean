@@ -126,7 +126,7 @@ def scatterB (op : Kernel.Op) (rows dst x cells : Nat) (fill : UInt64 := 0) : Bl
 def gatherB (m ix n x : Nat) : Bld Nat := call1 (kernel% Rel.Kernel.kgather) #[m, ix, n, x]
 
 /-- The positions `0, 1, …`, the `Enc` of every length. -/
-def posB : Bld Nat := lit (Reg.put (Ext.Enc.pos : Enc))
+def posB : Bld Nat := lit (Reg.put (Enc.pos : Enc))
 
 /-- The last word of an `n`-row `kscan`'s fold `fold`, plus `d`, as a size; `0` at `n = 0`, where no row is folded
     (`lastCount`). -/

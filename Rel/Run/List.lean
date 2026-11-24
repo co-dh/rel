@@ -19,7 +19,7 @@ the second. `snoc` is `cat` after `𝟙 × τ` (`Vals.tau`, the one-element cell
 is a slice `[lo, hi)` of the input's own payload. No column is decoded or re-encoded. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- `n` cells of the widths `w`, laid out one after another over the payload `pay`: `hi` the running sum of `w`
 (`colPrefix .add`, the layout `expand` places its groups by), `lo = hi - w`. -/
@@ -34,7 +34,7 @@ def Opt.maskWith {n : USize} (big : Enc) (x : Arr .i64 n) : Except String (Opt .
   let e ← colMap .min n big x.enc
   match Enc.wf? .i64 n e with
   | some ⟨h⟩ => pure (Opt.mk e h)
-  | none => throw s!"pack: the masked bounds are not {n} well-formed longs (`Ext.Enc.wf?` refuses their blocks)"
+  | none => throw s!"pack: the masked bounds are not {n} well-formed longs (`Enc.wf?` refuses their blocks)"
 
 /-- `x` with every array payload cut to the elements its cells read, where at most `1/k` of it is read (`k · T ≤ m`,
 `T` the summed widths): the widths EXPANDed, the payload `kgather`ed there, laid out by `Vals.cells`; nested payloads

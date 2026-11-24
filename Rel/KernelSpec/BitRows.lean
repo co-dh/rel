@@ -13,7 +13,7 @@ public import Rel.KernelSpec.Alp
 arguments, from the body `bitRowsOf`. -/
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 /-- Every element of a list on which `forM` succeeds passes `f`. -/
 private theorem forM_ok {ε α : Type} {f : α → Except ε PUnit} :

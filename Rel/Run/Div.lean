@@ -13,7 +13,7 @@ right-hand side is its constructor's denotation (`Rel/Lang/Den.lean`: `ldivDen`,
 demand `D`, as the compiled term reads it (`Tm.lam`'s doc). Their laws are in `Rel/RepTabDiv.lean`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 namespace Tab
 variable {A B C : Obj}

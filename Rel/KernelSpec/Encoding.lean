@@ -9,7 +9,6 @@ public import Rel.Kernel.Value
 /-! The part of `Rel.Verify.Encoding` the Rel kernels reach; `Rel.Verify.Encoding` imports it. -/
 
 
-open Rel.Ext
 
 namespace Rel.Verify
 
@@ -600,7 +599,7 @@ theorem u1Ok_bound (M P : ByteArray) (h : Column.u1Ok M P = true) (i : Nat)
 
 theorem raw_foR (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (n : USize) (M P : ByteArray) :
-    Enc.raw (X := X) t n (.foR M P) = (Array.range n.toNat).map fun i =>
+    Enc.raw t n (.foR M P) = (Array.range n.toNat).map fun i =>
       UInt64.ofNat ((Column.foRBits M P (Column.blockStarts M) i).toNat % 2 ^ (8 * w)) := by
   cases t <;> simp_all [Enc.raw]
 theorem bitsAt_lt (b : ByteArray) (o w : Nat) (hw : w ≤ 8) : (Column.bitsAt b o w).toNat < 2 ^ (8 * w) := by

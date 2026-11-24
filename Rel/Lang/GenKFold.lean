@@ -750,7 +750,6 @@ theorem Tab.takewhile_holds {B : Obj} {n : USize} {P : Tab B B} {X : Vals (.arr 
       (hfold _ _ _).2 (htw xs)⟩
 
 section
-open Rel.Ext
 
 /-- A strictly ascending map of `[0, T)` into `[0, T)` is the identity. -/
 theorem strictMono_id {T : Nat} {f : Nat → Nat} (hs : ∀ i j, i < j → j < T → f i < f j) (hb : ∀ i < T, f i < T) :

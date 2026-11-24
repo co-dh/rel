@@ -71,7 +71,7 @@ def readOpt (t : QAtomicType) (path : String) : IO ((n : USize) × Opt t n) := d
     throw (IO.userError s!"{path}: atom type code {f.code}, the column is {repr t} (code {t.code})")
   let some e := Db.ownEnc f.kind f.parts
     | throw (IO.userError s!"{path}: constructor kind {f.kind}, which `Db.ownEnc` does not rebuild")
-  let some ⟨h⟩ := Ext.Enc.wf? t f.count e
+  let some ⟨h⟩ := Enc.wf? t f.count e
     | throw (IO.userError s!"{path}: a payload that is not {f.count} well-formed elements of {repr t}")
   return ⟨f.count, Opt.mk e h⟩
 
@@ -126,9 +126,6 @@ def leafFill {t : QAtomicType} {n : USize} (path : String) (own : Array Bool) (x
             else some (match Opt.get x ⟨i, h.2.1⟩ with
               | some y => s!"the {repr t} word {QAtomicType.word t y}"
               | none => "a null")
-        -- `Opt.filler` of a general leaf is its `default`, which no own file holds (`readOpt` refuses the column), so a
-        -- `.gen` payload reaching here is no read
-        | .gen _ => some "a general payload, which the own format does not hold"
         | .pos => some s!"the position {i}"
       if let some v := bad then
         throw (IO.userError s!"{path}: row {i} is a row the other summand owns and holds {v}, not null: a summand of a \
@@ -302,7 +299,7 @@ def rank (D : Dict) : Except String (Tab .long .long) := do D.comp (← (← Tab
     taken as it lies and its well-formedness carried over by proof, never re-decided (`Arr.of`) or read. -/
 def symIds {A : Obj} (I : Tab A (.atom .sym)) : Tab A .long :=
   ⟨I.n, I.key, Arr.mk (Arr.enc (t := .sym) I.val) (by
-    have h := I.val.wf; generalize Arr.enc (t := .sym) I.val = e at h ⊢; cases e <;> simp_all [Ext.Enc.WF, QAtomicType.width])
+    have h := I.val.wf; generalize Arr.enc (t := .sym) I.val = e at h ⊢; cases e <;> simp_all [Enc.WF, QAtomicType.width])
     I.val.plain⟩
 
 /-- The dictionary `D : ℕ ⟶ [C]` as the relation `sym ⟶ [C]`: row `i` is the text of id `i` (`Dict`), so the ids `0 … n-1`
@@ -514,14 +511,14 @@ def encArr (path : String) (t : QAtomicType) : List (USize × Enc) →
   | (k, e) :: es => do pure ⟨k, ← Arr.of t k e s!"{path}: a {repr t} column part of {k} rows", es⟩
   | [] => .error s!"{path}: no column part left for a {repr t} column"
 
-/-- The first part of `es` as a nullable column of type `t`, its blocks checked by `Ext.Enc.wf?` (the whole check: a writer
+/-- The first part of `es` as a nullable column of type `t`, its blocks checked by `Enc.wf?` (the whole check: a writer
     takes the block's least key from the atom, `QAtomicType.least`, so a part it refuses is malformed, never decoded
     element by element to find out); its count, and the parts left over. -/
 def encOpt (path : String) (t : QAtomicType) : List (USize × Enc) →
     Except String ((n : USize) × Opt t n × List (USize × Enc))
-  | (k, e) :: es => match Ext.Enc.wf? t k e with
+  | (k, e) :: es => match Enc.wf? t k e with
     | some ⟨h⟩ => pure ⟨k, Opt.mk e h, es⟩
-    | none => .error s!"{path}: a {repr t} column part of {k} rows whose blocks are not well-formed (`Ext.Enc.wf?` refuses it)"
+    | none => .error s!"{path}: a {repr t} column part of {k} rows whose blocks are not well-formed (`Enc.wf?` refuses it)"
   | [] => .error s!"{path}: no column part left for a {repr t} column"
 
 /-- The first part of `es` as an atom column of type `t` at ownership `o`: `encArr` where every row is owned, `encOpt`

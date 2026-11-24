@@ -10,7 +10,7 @@ public import Rel.Run.Bits
 run on each array's elements, `b` the test `p`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- The positions `t` of `xs`, ascending, whose element passes `p`: dataframe §3.1's `where(dom(xs ≫ p))`, q's
 `where` of the mask `p` over `xs`. -/

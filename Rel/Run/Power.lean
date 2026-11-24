@@ -13,7 +13,7 @@ they are, as `Rel/Run/Div.lean`. Each is run on the values in demand `X` its con
 (`Gen.est`, `Gen.front`); `τ` and `setify` are `Λ` of `𝟙` and of `∋`; `length` and `at` read the cell bounds. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 namespace Tab
 variable {A B : Obj}

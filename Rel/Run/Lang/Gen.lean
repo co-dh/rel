@@ -8,7 +8,6 @@ public import Rel.Run.Lang.Lazy
 /-! What the code a `rel_program` definition expands into names besides `GenK`: a definition's listed value
     (`Gv`, `entry`), and the literal columns rebuilt from their payloads. -/
 
-open Rel.Ext
 
 namespace Rel.Lang
 

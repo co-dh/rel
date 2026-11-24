@@ -17,7 +17,7 @@ destinations is that column sorted. `crate/src/asc.rs` is the fused form, an LSD
 codes. The `k` in the name is temporary until 6.11. -/
 
 namespace Rel.Kernel
-open Ext.Enc
+open Enc
 open Rel.Kernel.Scan (Kind)
 
 /-- The layout a column of type `t` is ordered at (`orderKind`): its width in bytes, whether it is a float and whether

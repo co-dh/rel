@@ -18,7 +18,7 @@ and the answer is `Tab.canon`ed. No column is decoded or re-encoded: every argum
 own column; the output count is the one element `Arr.get` reads. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- **EXPAND** (`doc/rel-kernels.md`) of the `K` widths `w`: `T` output rows, each row's group `G` and its offset `u`
 in the group. A prefix sum `P` places the groups (`o = P - w`), `kscatter (.max)` of each group id at its offset,

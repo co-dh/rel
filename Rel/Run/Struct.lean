@@ -17,7 +17,7 @@ CROSS (`doc/rel-kernels.md`): `n · m` rows, row `t` pairing row `t / m` of one 
 both index columns one `kscan` map (`colMap .div`, `.mod`) of the positions by the constant `m`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- `n` zero words at the atom type `t`: one `kscan` of the positions through the post step `(.and, 0)`, written at
 `t`; a constant operand is a post step, not a `colConst` scatter (`colMap_const_eq`). -/
@@ -28,7 +28,7 @@ def Arr.zeros (t : QAtomicType) (n : USize) : Except String (Arr t n) :=
 every row being null (`bitAt_packOf`). Proved here so the writers below run no `Decidable (Enc.WF …)` instance, which
 decodes the column. -/
 theorem nulWords_wf {t : QAtomicType} {n : USize} (ht : t.width.isSome) :
-    Ext.Enc.WF t n (wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))) :=
+    Enc.WF t n (wordsFoR (Array.replicate n.toNat 0) (nulMap (Array.replicate n.toNat 1))) :=
   (wordsFoR_nul _ _ (by simp)).2.2.2 ht fun _ i hi hb => by
     simp only [nulMap, Array.size_replicate] at hb hi
     rw [bitAt_packOf _ _ _ hi] at hb; simp [hi] at hb
@@ -44,12 +44,8 @@ chain `[(.and, 0), (.or, s)]`, written at `u1`). -/
 def tagCol (n : USize) (s : Bool) : Except String (Arr .u1 n) :=
   colArr .first n .pos .pos .u1 .i64 [] [(.and, 0), (.or, if s then 1 else 0)]
 
-/-- `n` fillers of `1+t`, each null (`Opt.nuls`); a `general` payload has no block to flag, so its filler is `n` of its
-`default`, which no row ever reads. -/
-def Opt.fill (t : QAtomicType) (n : USize) : Except String (Opt t n) :=
-  match t with
-  | .general => .ok ⟨.gen (Array.replicate n.toNat default), by simp [Ext.Enc.WF]⟩
-  | t => Opt.nuls t n
+/-- `n` fillers of `1+t`, each null (`Opt.nuls`); `general` has no column, so it is refused. -/
+def Opt.fill (t : QAtomicType) (n : USize) : Except String (Opt t n) := Opt.nuls t n
 
 /-- `X` with every row owned as the summand column of a dense sum: each atom column `Opt.ofArr`, which leaves the storage
 as it is. -/

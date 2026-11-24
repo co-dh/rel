@@ -9,7 +9,7 @@ public import Rel.KernelSpec.Raw
 /-! `scatter`'s law (design §4: `out[ix[k]] = e[k]`), on the words `Enc.raw` reads from its arguments. -/
 
 namespace Rel.Verify
-open Rel.Kernel Ext.Enc
+open Rel.Kernel Enc
 
 /-- The fold `scatterWords` runs, over the first `m` rows from any start `o`: it succeeds exactly when every index is
 below `n`, keeps the size, leaves a cell no row names as it was, and holds in a named cell the last row naming it. -/

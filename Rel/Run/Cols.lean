@@ -10,7 +10,7 @@ composition of the five kernels on encoded columns: a constant column, a pointwi
 (`doc/rel-kernels.md`) of two tables' columns. Their laws are in `Rel/RepCols.lean`. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- The running fold of `op` over the `n` words of `a` from the word `0`: `kscan` with one segment. -/
 def colPrefix (op : Op) (n : USize) (a : Enc) : Except String Enc := do

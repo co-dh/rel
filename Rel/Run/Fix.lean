@@ -154,7 +154,7 @@ def thinL {B : Obj} {n : USize} (q : Tab (.prod B B) (.prod B B) → Except Stri
     (X : Vals (.arr B) n) : Except String (Tab (.arr B) (.arr B)) :=
   do foldRounds peelR (fun P el => do bump q (← el.pair P)) (X.1.toNat + 2) (← idU X) (← nil X) (← zero)
 
-open Rel.Ext Rel.Kernel in
+open  Rel.Kernel in
 /-- **`F(R)` on the cells `X`** (`mapDen`: `xs F(R) ys` iff `|ys| = |xs|` and `xs[i] R ys[i]`), `R` given on the
 elements of the cells. One pass where `R` is a function on them: the elements EXPANDed into a flat payload `v` of `T`
 rows (as `sum`), `⟨pos, v⟩ ≫ R` keyed by position, and where each of the `T` positions has exactly one image those

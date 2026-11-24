@@ -13,7 +13,7 @@ column after column as `Obj.key` compares its parts. So the order law `Λ` reads
 (`Vals.lamLaw`): `kasc` refuses a general atom, the one type whose codes are not its order. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- Code lists are equal where their `toNat` lists are. -/
 theorem map_toNat_inj : ∀ {u v : List UInt64}, u.map UInt64.toNat = v.map UInt64.toNat → u = v

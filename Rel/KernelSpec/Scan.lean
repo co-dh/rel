@@ -7,7 +7,6 @@ public import Rel.KernelSpec.Search
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-open Rel.Ext
 
 /-! The scan primitive's law (design §4, `raw_scan`; `raw_kscan` until 6.11 takes the name back from the driver's): an
 answer `kscan` returns is the segmented prefix fold of `Op.eval` over the raw rows of its columns, cut to the answer

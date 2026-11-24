@@ -59,21 +59,21 @@ info: ok kind 2 count 64 part sizes [57, 816]
 foR: metadata 57 bytes, pack 816 bytes
 -/
 #guard_msgs in
-#eval column .i64 64 (Ext.Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000])))
+#eval column .i64 64 (Enc.ofBytes 8 (dense ((List.range 63).map (·.toUInt64) ++ [1000000000000])))
 
 /--
 info: ok kind 2 count 0 part sizes [24, 0]
 foR: metadata 24 bytes, pack 0 bytes
 -/
 #guard_msgs in
-#eval column .i64 0 (Ext.Enc.ofBytes 8 .empty)
+#eval column .i64 0 (Enc.ofBytes 8 .empty)
 
 /--
 info: ok kind 2 count 3 part sizes [57, 256]
 foR: metadata 57 bytes, pack 256 bytes
 -/
 #guard_msgs in
-#eval column .i64 3 (Ext.Enc.ofBytes 8 (dense [2, 0, 1]))
+#eval column .i64 3 (Enc.ofBytes 8 (dense [2, 0, 1]))
 
 -- positions are never written (PLAN 6.13): `ownFile` answers no file; a symbol column is its `foR` ids (PLAN 8.3) and
 -- is written as any other column; and the writer refuses kind 6, a number that is no kind

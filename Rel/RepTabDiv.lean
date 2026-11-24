@@ -20,7 +20,7 @@ of those, `Rel/Run/Fix.lean`'s, `Rel/Run/Power.lean`'s and `Rel/Run/List.lean`'s
 denotations (`Rel/Lang/Den.lean`) on lists, as sets. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 namespace Tab
 variable {A B C : Obj}
@@ -607,7 +607,7 @@ theorem colMap_nul_row {op b : Op} {fill : UInt64} (hnf : op.nulFold = some (b, 
     Enc.WF .i64 n o ∧ ∀ i < n.toNat, ∃ nl, b.eval (rdNul n a i) (rdNul n c i) = .ok nl ∧
       (foRNuls n o)[i]? = some (if nl != 0 then 1 else 0) ∧ (nl = 0 → ∃ w, (raw .i64 n o)[i]? = some w ∧
         (op.eval (rdFill fill .i64 n a i) (rdFill fill .i64 n c i) >>= chain post) = .ok w) := by
-  have hWs : ∀ p ∈ [(n, a), (n, c)], Ext.Enc.WF .i64 p.1 p.2 := fun p hp => by
+  have hWs : ∀ p ∈ [(n, a), (n, c)], Enc.WF .i64 p.1 p.2 := fun p hp => by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hp; rcases hp with rfl | rfl <;> assumption
   by_cases hN : hasNul a = true ∨ hasNul c = true
   · have hex : ∃ p ∈ [(n, a), (n, c)], hasNul p.2 = true := by
@@ -2929,7 +2929,7 @@ end Tab
 end Rel
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 namespace Tab
 
@@ -3099,7 +3099,7 @@ end Tab
 end Rel
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Ext.Enc
+open  Rel.Kernel Rel.Verify Enc
 
 namespace Tab
 

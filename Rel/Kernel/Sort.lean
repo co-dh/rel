@@ -12,7 +12,6 @@ public import Rel.Kernel.Search
 /-! The part of `Rel.Kernel.Sort` the Rel kernels reach; `Rel.Kernel.Sort` imports it. -/
 
 
-open Rel.Ext
 namespace Rel.Kernel.Order
 
 open Rel.Kernel.Scan (Kind)

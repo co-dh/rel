@@ -11,7 +11,7 @@ matrix is a `u1` `foR` column of `na · w` rows and its width `w`, nothing else;
 (`Rel/Run/Bits.lean`) are the compositions that choose it. -/
 
 namespace Rel.Kernel
-open Ext.Enc
+open Enc
 
 /-- `kbitrows` past its layout checks, on the words `es` (`g` segment ends), `is` (`ni` row numbers) and `ms`
 (`na · w` bits, each word's bit 0): the first segment out of order, then the first row number `≥ na`, is the error;

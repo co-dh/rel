@@ -5,7 +5,7 @@ Outside `Rel.Run`: only tests build a column from atoms, and the decode gate roo
 libraries. -/
 
 namespace Rel
-open Rel Rel.Ext Rel.Dep
+open Rel Rel.Dep
 
 namespace Opt
 

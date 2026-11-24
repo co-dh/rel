@@ -9,7 +9,6 @@ public import Rel.Kernel.Value
 /-! The part of `Rel.Verify.Raw` the Rel kernels reach; `Rel.Verify.Raw` imports it. -/
 
 
-open Rel.Ext
 
 namespace Rel.Verify
 
@@ -51,7 +50,7 @@ namespace Rel.Verify
 
 open Rel Rel.Column
 
-theorem size_raw {t : QAtomicType} (n : USize) (e : Ext.Enc X) (hw : Enc.WF t n e) (hb : t ≠ .u1)
+theorem size_raw {t : QAtomicType} (n : USize) (e : Enc) (hw : Enc.WF t n e) (hb : t ≠ .u1)
     (hs : t ≠ .sym) (hn : t ≠ .general) : (Enc.raw t n e).size = n.toNat := by
   cases e <;> cases t <;> simp_all [Enc.raw, Enc.WF, QAtomicType.width]
 
@@ -73,7 +72,7 @@ theorem atomOfBits_mod {t : QAtomicType} {w : Nat} (ht : t.width = some w) (hb :
 `i`'s base plus its residual is `x`'s element sign-extended (`foRBits_encode`), cut back to its `8 * w` bits. -/
 theorem raw_encodeAt (t : QAtomicType) (w : Nat) (ht : t.width = some w) (hb : t ≠ .u1)
     (lg : Nat) (hlg : 6 ≤ lg ∧ lg ≤ 16) (x : ByteArray) (n : USize) (hn : n.toNat ≤ x.size / w) :
-    Enc.raw (X := X) t n (.foR (Kernel.Coc.encodeAt lg w.toUSize x).1 (Kernel.Coc.encodeAt lg w.toUSize x).2) =
+    Enc.raw t n (.foR (Kernel.Coc.encodeAt lg w.toUSize x).1 (Kernel.Coc.encodeAt lg w.toUSize x).2) =
       (Array.range n.toNat).map fun i => Column.bitsAt x (i * w) w := by
   have hw : 0 < w ∧ w ≤ 8 := by cases t <;> simp [QAtomicType.width] at ht ⊢ <;> omega
   rw [raw_foR t w ht hb]

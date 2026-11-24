@@ -13,7 +13,7 @@ public import Rel.RepOrder
 read in position order, are the one strictly ascending list of `dom P` (`lt_sorted_unique`). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify Rel.Rep
+open  Rel.Kernel Rel.Verify Rel.Rep
 
 namespace Tab
 

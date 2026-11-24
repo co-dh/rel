@@ -10,7 +10,7 @@ public import Rel.RepCols
 and `Tab.canon`'s (`Rel/RepCanon.lean`). -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-! ## WHERE -/
 

@@ -307,7 +307,7 @@ asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
 
 == 移出 rel 的 q 语义
 
-#tbl(c-rs, (auto, 1fr), ([移出], [原因]),
+  [`gen`（boxed）], [已删：不再有 boxed 列（`Enc` 只有 `foR` 与 `pos`）；boxed 值先编成 code 再进 Rel],
   [`gen`（boxed）], [不在 kernel 里处理 boxed 值；boxed 值先编成 code 再进 Rel],
   [`til` `cycle` `floor` `widen`], [q verb，不是 allegory 运算],
   [`find` `bin search` `member` `match`], [q 的查找 verb；Rel 中是 `≫`（join）的特例],
@@ -389,7 +389,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 )
 
 - 原子的宽度只决定 code 的值域上限（`i8` ≤ 8 位 …）；块的宽度 $w$ 仍按数据选，常常比声明宽度窄。
-- `general`（q 的类型 0，每个元素装箱）是列类型，不是原子：没有 code、没有 kernel 序（`Obj.key` 给 `[]`，所有 general 值相等），
+- `general` 只是类型变量的占位类型（`varAtoms` 的 0 号）：不是原子，也没有列（没有 boxed 载荷），没有 code、没有 kernel 序（`Obj.key` 给 `[]`），
   所以 `asc` 与 `sym` 一样拒绝它（`Obj.ascBad`）。语言不持有的字：`f32` `f64` 的 NaN 与负零（`QAtomicType.nonCanonical`），
   产生浮点字的地方把零规范成一个。`1+atom` 仍是一列，null 是带标志块里的残差 0（§4.2）。
 

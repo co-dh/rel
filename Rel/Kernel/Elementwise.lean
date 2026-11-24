@@ -11,7 +11,6 @@ public import Rel.Kernel.Value
 /-! The part of `Rel.Kernel.Elementwise` the Rel kernels reach; `Rel.Kernel.Elementwise` imports it. -/
 
 
-open Rel.Ext
 namespace Rel.Kernel.Ew
 
 /-- Storage classes. `bits` is a `widen` source only: a boolean payload is one bit per element, so

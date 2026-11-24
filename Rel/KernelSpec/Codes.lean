@@ -15,7 +15,6 @@ public import Rel.Kernel.Search
 /-! The part of `Rel.Verify.Codes` the Rel kernels reach; `Rel.Verify.Codes` imports it. -/
 
 
-open Rel.Ext
 namespace Rel.Verify
 
 open Rel Rel.Kernel

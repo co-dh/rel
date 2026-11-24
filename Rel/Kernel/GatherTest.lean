@@ -4,7 +4,7 @@ import Rel.Kernel.Gather
 Rust export `qlean_k_gather` (the fused form), against one literal. -/
 
 namespace Rel.Kernel.GatherTest
-open Ext.Enc
+open Enc
 
 /-- `k` as a `USize` whose `toNat` the kernel reduces: a literal's is `k % 2 ^ numBits`, and `numBits` is opaque. -/
 def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h

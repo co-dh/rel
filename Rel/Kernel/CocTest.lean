@@ -8,7 +8,7 @@ outlier a patch is cheaper for, and a low outlier under which the frame is lifte
 columns through the Rust readers `qlean_coc_decode`, `qlean_coc_over` and `qlean_k_scatter`. -/
 
 namespace Rel.Kernel.CocTest
-open Ext.Enc
+open Enc
 
 /-- `k` as a `USize` whose `toNat` the kernel reduces: a literal's is `k % 2 ^ numBits`, and `numBits` is opaque. -/
 def u (k : Nat) (h : k < 4294967296 := by decide) : USize := USize.ofNat32 k h
@@ -127,7 +127,7 @@ def readW (xs : List UInt64) (ns : List Nat) : Nat × Bool × List (Option UInt6
 example : readU [0, 1, 0, 0] [2] = (1, true, [some 0, some 1, none, some 0]) := by decide +kernel
 #guard readU [0, 1, 0, 0] [2] == (1, true, [some 0, some 1, none, some 0])
 
--- `0 1 null 0` as 8-byte words: still base 0, width 1, `u1Ok` true (the width 2 of base -1 was what `Ext.Enc.wf?` refused)
+-- `0 1 null 0` as 8-byte words: still base 0, width 1, `u1Ok` true (the width 2 of base -1 was what `Enc.wf?` refused)
 example : readW [0, 1, 0, 0] [2] = (1, true, [some 0, some 1, none, some 0]) := by decide +kernel
 #guard readW [0, 1, 0, 0] [2] == (1, true, [some 0, some 1, none, some 0])
 

@@ -14,7 +14,6 @@ public import Rel.Kernel.Elementwise
 /-! The part of `Rel.Verify.EwEnc` the Rel kernels reach; `Rel.Verify.EwEnc` imports it. -/
 
 
-open Rel.Ext
 namespace Rel.Verify
 
 open Rel Rel.Kernel

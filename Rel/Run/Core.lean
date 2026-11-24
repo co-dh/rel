@@ -16,7 +16,6 @@ public import Rel.KernelSpec.Closure
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
 
-open Rel.Ext
 
 namespace Rel
 
@@ -40,13 +39,13 @@ def expandNote {α : Type u} (what : String) (rows : Nat) (k : Unit → α) : α
 abbrev El := Carrier
 
 /-- A vector of `n` elements of type `t`: the encoded column itself, `Enc.WF` saying it holds `n` elements of `t`
-    (`t` and `n` live in the type, never in a header beside the payload); a general list is `.gen xs`. Its payload
+    (`t` and `n` live in the type, never in a header beside the payload). Its payload
     holds no flagged block (`Kernel.hasNul`): an `Arr t n` is the atom object `t`, and only `1+t` holds the in-band
     null (design card "1+atom", decision K). -/
 abbrev Arr (t : QAtomicType) (n : USize) := {e : Enc // Enc.WF t n e ∧ Kernel.hasNul e = false}
 
 /-- The block starts a whole-column reader computes once (`Column.blockStarts`); `#[]` where the payload has no block. -/
-def _root_.Rel.Ext.Enc.starts {X : Type} : Ext.Enc X → Array Nat
+def _root_.Rel.Enc.starts : Enc → Array Nat
   | .foR md _ => Column.blockStarts md
   | _ => #[]
 
@@ -65,10 +64,6 @@ theorem plain (x : Arr t n) : Kernel.hasNul x.enc = false := x.2.2
 
 /-- `e` as a column of `n` elements of `t`. -/
 def mk (e : Enc) (h : Enc.WF t n e) (hN : Kernel.hasNul e = false) : Arr t n := ⟨e, h, hN⟩
-
-/-- A general list's payload is `gen` and holds its `n` elements. -/
-theorem gen_size (x : Arr .general n) {xs : Array QValue} (hc : x.enc = .gen xs) : xs.size = n.toNat := by
-  have hw := x.wf; rw [hc] at hw; exact hw
 
 /-- Element `i`, `starts` the block starts of `x.enc` (`Enc.starts`) hoisted by a caller that reads every row, or `#[]`
     (`get`) for a single read. At an atom type it is `Enc.get`'s atom at `i` read back at the index; the
@@ -100,7 +95,7 @@ def Holds (x : Arr t n) (i : Int64) (y : El t) : Prop := ∃ j : Fin n.toNat, In
     (`Column.u1Ok`, sound by `Verify.u1Ok_bound`), so `none` also where a `u1` block's frame or width admits a value
     of 2. No writer produces one (each takes its block's least key from the atom, `QAtomicType.least`), so `none` is
     final: no caller falls back to a per-element check. -/
-def _root_.Rel.Ext.Enc.wf? (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option (PLift (Enc.WF t n e)) :=
+def _root_.Rel.Enc.wf? (t : QAtomicType) (n : USize) (e : Enc) : Option (PLift (Enc.WF t n e)) :=
   match e with
   | .foR md pk =>
     if h : t.width.isSome ∧ (t = .u1 → Column.u1Ok md pk = true) ∧ n.toNat ≤ Column.blk md * Column.nblk md ∧
@@ -110,10 +105,6 @@ def _root_.Rel.Ext.Enc.wf? (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Optio
       cases t <;> exact ⟨h.1, fun hu i hi v hv =>
         Verify.u1Ok_bound md pk (h.2.1 hu) i (Nat.div_lt_of_lt_mul (by omega)) v hv, h.2.2⟩⟩
     else none
-  -- by constructor, not `WF`'s own instance, whose code holds the per-element `foR` clause
-  | .gen xs => match t with
-    | .general => if h : xs.size = n.toNat then some ⟨h⟩ else none
-    | _ => none
   | .pos => match t with
     | .i64 => some ⟨trivial⟩
     | _ => none
@@ -125,7 +116,7 @@ def of (t : QAtomicType) (n : USize) (e : Enc) (what : String) : Except String (
   | some ⟨h⟩ =>
     if hN : Kernel.hasNul e = false then .ok ⟨e, h, hN⟩
     else .error s!"{what}: a column holding a null, and its type has none"
-  | none => .error s!"{what}: a payload that is not {n} well-formed elements of {repr t} (`Ext.Enc.wf?` refuses its blocks)"
+  | none => .error s!"{what}: a payload that is not {n} well-formed elements of {repr t} (`Enc.wf?` refuses its blocks)"
 
 end Arr
 
@@ -154,10 +145,6 @@ def filler : (t : QAtomicType) → Option (El t)
 /-- A column with no null as a nullable one: `inl`, which leaves the storage as it is. -/
 def ofArr (x : Arr t n) : Opt t n := ⟨x.1, x.2.1⟩
 
-/-- A general list holds no null: its payload is `gen`, which has no block to flag. -/
-theorem plain_general (x : Opt .general n) : Kernel.hasNul x.enc = false := by
-  have hw := x.wf; generalize x.enc = e at hw ⊢; cases e <;> first | rfl | exact absurd hw.1 (by decide) | exact hw.elim
-
 /-- Whether row `i` is the null: tested on the block (`Column.foRNul`: flagged, unpatched, top residual), never
     decoded. Only a `foR` payload holds one. `starts` as `Arr.getWith`. -/
 def isNulWith (starts : Array Nat) (x : Opt t n) (i : Nat) : Bool := match x.enc with
@@ -171,7 +158,7 @@ def isNul (x : Opt t n) (i : Nat) : Bool := x.isNulWith #[] i
     `Arr.getWith`. -/
 def getWith (starts : Array Nat) (x : Opt t n) (i : Fin n.toNat) : Option (El t) :=
   if x.isNulWith starts i then none else some (match t, x with
-    | .general, x => Arr.getWith starts (Arr.mk x.enc x.wf x.plain_general) i
+    | .general, _ => ()
     | t, x => ((Enc.get t n x.enc i starts).bind fun a => Carrier.of? t a).getD default)
 
 /-- Row `i` of a single read: no hoisted block starts. -/
@@ -179,7 +166,7 @@ def get (x : Opt t n) (i : Fin n.toNat) : Option (El t) := x.getWith #[] i
 
 /-- `get`'s body at the single-read `#[]`: the null test, else the element read back at `t`. -/
 theorem get_eq (x : Opt t n) (i : Fin n.toNat) : x.get i = if x.isNul i then none else some (match t, x with
-    | .general, x => Arr.get (Arr.mk x.enc x.wf x.plain_general) i
+    | .general, _ => ()
     | t, x => ((Enc.get t n x.enc i).bind fun a => Carrier.of? t a).getD default) := rfl
 
 end Opt
@@ -218,7 +205,7 @@ theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
     encoded at `w` is well formed at `n`: every such column the runtime builds (`Arr.ofBytes`), which `decide` cannot
     evaluate through `Coc.encode`. -/
 theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isSome) (b : ByteArray) {n : USize}
-    (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF (X := X) t n
+    (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF t n
     (.foR (Kernel.Coc.encode (t.width.getD 0).toUSize b).1 (Kernel.Coc.encode (t.width.getD 0).toUSize b).2) := by
   have hw : 0 < t.width.getD 0 ∧ t.width.getD 0 ≤ 8 := by cases t <;> simp [QAtomicType.width] at hu ⊢
   have h := Verify.nblk_encode Column.lgEnc (by decide) _ hw.1 hw.2 b (patch := true) (nul := .empty) (least := Int64.minValue)
@@ -237,7 +224,7 @@ theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isS
 
 /-- A dense payload encoded at `w` bytes holds no null: the encoder flags no block without a null bitmap. Stated on
     `ofBytes` itself, so a caller at a literal width unifies it without evaluating the encoder. -/
-theorem ofBytes_plain (w : Nat) (hw : 0 < w ∧ w ≤ 8) (b : ByteArray) : Kernel.hasNul (Ext.Enc.ofBytes w b) = false :=
+theorem ofBytes_plain (w : Nat) (hw : 0 < w ∧ w ≤ 8) (b : ByteArray) : Kernel.hasNul (Enc.ofBytes w b) = false :=
   Verify.hasNul_of_nulAt (Verify.nulAt_encodeAt_empty Column.lgEnc (by decide) w hw.1 hw.2 b)
 
 /-- `foRBits` with no hoisted table reads the start `blockStarts` holds (`blockStarts_get`), so
@@ -264,20 +251,19 @@ theorem Arr.getWith_starts {t : QAtomicType} {n : USize} (x : Arr t n) (i : Fin 
     x.getWith x.enc.starts i = x.get i := by
   unfold Arr.get Arr.getWith
   cases t <;> (try rfl) <;> (
-    simp only [Enc.get]; cases hc : x.enc <;> simp [Ext.Enc.starts, foRBits_starts])
+    simp only [Enc.get]; cases hc : x.enc <;> simp [Enc.starts, foRBits_starts])
 
 theorem Opt.getWith_starts {t : QAtomicType} {n : USize} (x : Opt t n) (i : Fin n.toNat) :
     x.getWith x.enc.starts i = x.get i := by
   unfold Opt.get Opt.getWith Opt.isNulWith
   cases hc : x.enc with
   | foR md pk =>
-    simp only [Ext.Enc.starts, foRNul_starts]
+    simp only [Enc.starts, foRNul_starts]
     split
     · rfl
     · refine congrArg some ?_
       cases t <;> simp [Arr.getWith, Enc.get, hc, foRBits_starts]
-  | gen xs => simp [Ext.Enc.starts]
-  | pos => simp [Ext.Enc.starts]
+  | pos => simp [Enc.starts]
 
 /-- Under `wf`, a long `foR` column's element `i` is its `foRBits` decode, read as a long. -/
 theorem Arr.get_long_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x.enc = .foR md pk)
@@ -298,7 +284,7 @@ theorem Arr.get_raw_foR {m : USize} (x : Arr .i64 m) {md pk : ByteArray} (hc : x
     encoded here at its exit, which goes with the old layer (W5). -/
 def Arr.ofBytes (t : QAtomicType) {n : USize} (b : ByteArray) (h : b.size = t.width.getD 0 * n.toNat)
     (hu : t ≠ .u1 ∧ t.width.isSome := by decide) : Arr t n :=
-  Arr.mk (Ext.Enc.ofBytes (t.width.getD 0) b) (foRBytes_wf t hu b h)
+  Arr.mk (Enc.ofBytes (t.width.getD 0) b) (foRBytes_wf t hu b h)
     (ofBytes_plain _ (by cases t <;> simp [QAtomicType.width] at hu ⊢) b)
 
 
@@ -340,7 +326,7 @@ theorem get_boolBits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {b : ByteArray}
 /-- `Coc.bools` at a count `n` is a well formed boolean column of `n` rows: each element `0` or `1`
     (`foRBits_bools`), its blocks covering `n`, its `lg` the encoder's. -/
 theorem wf_bools {X : Type} {n : USize} (p : Nat → Bool) :
-    Ext.Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Ext.Enc X) := by
+    Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Enc) := by
   have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp)
   obtain ⟨hs, -⟩ := Verify.packIds_bytes 1 n.toNat (fun i => (p i).toNat) (by decide) (by decide)
@@ -409,21 +395,22 @@ theorem get_boolsOf {n : USize} (g : ByteArray) {j : Nat} (hj : j < n.toNat) :
 def Arr.bools (n : USize) (p : Nat → Bool) : Arr .u1 n :=
   Arr.mk (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2) (wf_bools p) (bools_plain n p)
 
-theorem Ext.Enc.blank_WF {X : Type} (t : QAtomicType) (n : USize) : Ext.Enc.WF t n (Ext.Enc.blank (X := X) t n) := by
+theorem Enc.blank_WF (t : QAtomicType) (n : USize) (h : t ≠ .general := by first | decide | assumption) :
+    Enc.WF t n (Enc.blank t n) := by
   cases t
   case u1 => exact wf_bools fun _ => false
-  case general => simp [Ext.Enc.blank, Ext.Enc.WF]
+  case general => exact absurd rfl h
   -- every fixed-width type: `blank` is `ofBytes` of `n` zero elements
   all_goals exact foRBytes_wf _ (by decide) _ ((Array.size_replicate).trans (Nat.mul_comm _ _))
 
-theorem Ext.Enc.blank_plain (t : QAtomicType) (n : USize) : Kernel.hasNul (Ext.Enc.blank t n) = false := by
+theorem Enc.blank_plain (t : QAtomicType) (n : USize) : Kernel.hasNul (Enc.blank t n) = false := by
   cases t
   case u1 => exact bools_plain n fun _ => false
   case general => rfl
-  all_goals (simp only [Ext.Enc.blank, QAtomicType.width]; exact ofBytes_plain _ (by decide) _)
+  all_goals (simp only [Enc.blank, QAtomicType.width]; exact ofBytes_plain _ (by decide) _)
 
 namespace Column
-open Ext.Enc
+open Enc
 
 
 end Column

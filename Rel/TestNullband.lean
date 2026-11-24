@@ -35,7 +35,7 @@ def agrees {t : QAtomicType} {n : USize} [BEq (El t)] (x : Opt t n) (f : Nat →
 
 -- rows 3 (null), 4, 1004 (null), 1005 and 2999 (null), gathered
 #guard match Opt.ofAtoms .i64 longs with
-  | some x => match Opt.gather 5 (Ext.Enc.ofBytes 8 (packLongs [3, 4, 1004, 1005, 2999])) x with
+  | some x => match Opt.gather 5 (Enc.ofBytes 8 (packLongs [3, 4, 1004, 1005, 2999])) x with
     | .ok g => (List.finRange _).map g.get == [none, some (20 - 7000), none, some (5025 - 7000), none]
     | .error _ => false
   | none => false
@@ -43,7 +43,7 @@ def agrees {t : QAtomicType} {n : USize} [BEq (El t)] (x : Opt t n) (f : Nat →
 -- q's `asc 3 0N 1` is `0N 1 3`: null is below every value, so `kasc` grades it first (`iasc` = `1 2 0`)
 #guard match Opt.ofAtoms .i64 #[some (.i64 3), none, some (.i64 1)] with
   | some x => match Kernel.kasc 3 [(.atom .i64, x.enc)] with
-    | .ok (_, p) => Ext.Enc.raw .i64 3 p == #[1, 2, 0] && match Opt.gather 3 p x with
+    | .ok (_, p) => Enc.raw .i64 3 p == #[1, 2, 0] && match Opt.gather 3 p x with
       | .ok s => (List.finRange _).map s.get == [none, some 1, some 3]
       | .error _ => false
     | .error _ => false
@@ -56,8 +56,8 @@ def joinPairs (ls rs : Array (Option QAtom)) : Option (List (Nat × Nat)) := do
   let N := (ls ++ rs).size
   let (vs, p) ← (Kernel.kasc N.toUSize [(.atom .i64, x.enc)]).toOption
   let (_, g, _) ← (Kernel.kseen N.toUSize [(.atom .i64, vs.headD .pos)]).toOption
-  let ps := Ext.Enc.raw .i64 N.toUSize p
-  let gs := Ext.Enc.raw .i64 N.toUSize g
+  let ps := Enc.raw .i64 N.toUSize p
+  let gs := Enc.raw .i64 N.toUSize g
   -- input row `j`'s group: the group of the sorted row holding it
   let grp := fun j => ((List.range N).find? (ps[·]? == some j.toUInt64)).bind (gs[·]?)
   pure ((List.range ls.size).flatMap fun l => (List.range rs.size).filterMap fun r =>

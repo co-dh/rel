@@ -418,12 +418,12 @@ namespace Rel.Column
 
 end Rel.Column
 
-namespace Rel.Ext.Enc
+namespace Rel.Enc
 open Column
 
 /-- The payload as dense bytes, decoded once from its blocks, and `none` at a type whose payload is not fixed-width:
 the form a kernel family outside this file that has not yet been rewritten over blocks reads. -/
-def bytesOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
+def bytesOf (t : QAtomicType) (n : USize) (e : Enc) : Option ByteArray :=
   match e, t with
   | .foR metadata pack, t => t.width.map fun w =>
     Rel.Kernel.Coc.decode w.toUSize metadata pack n
@@ -433,9 +433,9 @@ def bytesOf (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
 
 /-- The `foR` column of the dense payload `b`, `w` bytes an element: where every producer of a fixed-width column
 (a literal, `ofAtoms`, `blank`, a test) enters the one encoding. -/
-def ofBytes (w : Nat) (b : ByteArray) : Ext.Enc X :=
+def ofBytes (w : Nat) (b : ByteArray) : Enc :=
   .foR (Rel.Kernel.Coc.encode w.toUSize b).1 (Rel.Kernel.Coc.encode w.toUSize b).2
-end Rel.Ext.Enc
+end Rel.Enc
 
 namespace Rel.Kernel
 
@@ -459,7 +459,7 @@ def bitsOfFoR (metadata pack : @& ByteArray) (n : USize) : ByteArray :=
 /-- A boolean payload as its bitmap, whichever of the two forms `Enc.WF .u1` admits it is in (a `u1` `foR`
 through `bitsOfFoR`); `none` at any other type or form. The one boolean read every bitmap consumer goes through,
 here below `Elementwise` so that its operand readers take a boolean through it too. -/
-def boolBits (t : QAtomicType) (n : USize) (e : Ext.Enc X) : Option ByteArray :=
+def boolBits (t : QAtomicType) (n : USize) (e : Enc) : Option ByteArray :=
   match t, e with
   | .u1, .foR m p => some (bitsOfFoR m p n)
   | _, _ => none
@@ -468,25 +468,24 @@ end Rel.Kernel
 
 namespace Rel
 
-namespace Ext.Enc
+namespace Enc
 open Column
 
 /-- `n` elements of `t`, all zero bits, for every `n`: the value a failed `need`'s model answers. It
 needs no bound because a replicated array has the size asked for. Here, after `Coc.bools`, because a
 boolean is a `u1` `foR`. -/
-def blank (t : QAtomicType) (n : USize) : Ext.Enc X :=
+def blank (t : QAtomicType) (n : USize) : Enc :=
   match t, t.width with
-  | .general, _ => .gen (Array.replicate n.toNat default)
   | .u1, _ => .foR (Kernel.Coc.bools n.toNat fun _ => false).1 (Kernel.Coc.bools n.toNat fun _ => false).2
   | _, some w => ofBytes w ⟨Array.replicate (n.toNat * w) 0⟩
-  | _, none => .gen #[]
+  | _, none => default
 
 /-- The payload holding exactly these atoms at `t`, count `as.size`, or `none` if one of them is not
 at `t`. Only the payload, because the header is the caller's arguments: `.vector t as.size e none`.
 The caller decides what a mismatch means — `Eval.vectorOf` answers with a general list, which is q's
 own behaviour — so this never coerces. -/
 def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first | decide | assumption) :
-    Option (Ext.Enc X) :=
+    Option (Enc) :=
   if as.all (·.type == t) then match t with
     | .general => absurd rfl h
     | .u1 => some (.foR (Kernel.Coc.bools as.size fun i => (as[i]?.map boolOf).getD false).1
@@ -498,18 +497,13 @@ def ofAtoms (t : QAtomicType) (as : Array QAtom) (h : t ≠ .general := by first
       | none => none
   else none
 
-end Ext.Enc
+end Enc
 
 namespace Column
-open Ext.Enc
+open Enc
 
 
 end Column
 
-namespace Ext.QValue
-
-
-
-end Ext.QValue
 
 end Rel

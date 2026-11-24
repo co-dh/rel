@@ -15,7 +15,7 @@ An `arr` side is one `cells` key (`AscKey`) over its payload's columns, gathered
 the kernels do not read (any encoding but `foR`) is the error that names it: those producers move to `foR` in the next package. -/
 
 namespace Rel
-open Rel.Ext Rel.Kernel Rel.Verify
+open  Rel.Kernel Rel.Verify
 
 /-- The key columns of an atom column at ownership `o`: its payload, a nullable one coding its nulls first (`kasc`). -/
 def ColB.enc : {o : Bool} → {t : QAtomicType} → {n : USize} → ColB o t n → Enc

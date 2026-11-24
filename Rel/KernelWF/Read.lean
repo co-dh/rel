@@ -55,7 +55,6 @@ open Rel.Kernel Rel
 end Rel.KernelWF
 
 -- from Rel.KernelWF.Driver
-open Rel.Ext
 
 namespace Rel.Kernel
 open Column
@@ -74,7 +73,6 @@ open Tab Rel.Kernel Rel
 end Rel.Alg
 
 -- from Rel.KernelWF.RazeSpec
-open Rel.Ext
 
 namespace Rel.KernelWF
 
@@ -87,7 +85,6 @@ open Tab Rel.Kernel Rel.Dep Rel Rel.Alg
 end Rel.KernelWF
 
 -- from Rel.KernelWF.RazeSym
-open Rel.Ext
 
 namespace Rel.KernelWF
 
@@ -117,7 +114,6 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 end Rel.KernelWF
 
 -- from Rel.KernelWF.PickSpec
-open Rel.Ext
 
 namespace Rel.KernelWF
 
@@ -148,7 +144,6 @@ open Tab Rel.Kernel Rel.Verify Rel
 end Rel.Alg
 
 -- from Rel.KernelWF.PickRow
-open Rel.Ext
 
 namespace Rel.Alg
 
@@ -160,7 +155,6 @@ open Tab Rel.Kernel Rel.Verify Rel
 end Rel.Alg
 
 -- from Rel.KernelWF.CodesSpec
-open Rel.Ext
 
 namespace Rel.Alg
 
@@ -175,7 +169,6 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 end Rel.Alg
 
 -- from Rel.KernelWF.CodesSym
-open Rel.Ext
 
 namespace Rel.Alg
 
@@ -193,7 +186,6 @@ open Tab Rel.Dep Rel.Kernel Rel.Verify Rel
 end Rel.Alg
 
 -- from Rel.KernelWF.AscSpec
-open Rel.Ext
 
 namespace Rel.Alg
 

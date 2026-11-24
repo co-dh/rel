@@ -13,7 +13,7 @@ namespace Rel.MergeTest
 open Rel.Kernel Rel.Verify Rel.BitsTest
 
 /-- The words of an `i64` column of `n` rows. -/
-def words (n : USize) (e : Enc) : List UInt64 := (Rel.Ext.Enc.raw .i64 n e).toList
+def words (n : USize) (e : Enc) : List UInt64 := (Rel.Enc.raw .i64 n e).toList
 
 /-- `rank` and its hit column of `T`'s rows in the canonical `X`, as words. -/
 def rankOf (X T : List (Int64 × Int64)) : Except String (List UInt64 × List UInt64) := do
