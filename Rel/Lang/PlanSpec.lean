@@ -1101,4 +1101,558 @@ theorem arithB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kerne
   all_goals
     exact tail hn hu hv hsr hnul hex'
 
+/-! ### A function of a body: closure conversion and splicing (`funB`) -/
+
+mutual
+/-- The plan functions an instruction applies, its nested blocks' included. -/
+def Instr.calls : Instr → List Nat
+  | .apply f _ => [f]
+  | .ite _ t _ e _ => Instr.callsB t ++ Instr.callsB e
+  | .loop _ _ b .. => Instr.callsB b
+  | _ => []
+/-- `Instr.calls` of a block. -/
+def Instr.callsB : List Instr → List Nat
+  | [] => []
+  | i :: is => i.calls ++ Instr.callsB is
+end
+
+/-- Each function applies only earlier ones (`Plan`'s invariant): its meaning over the entries before it is then its
+    meaning over all, so an equal earlier function (`funB`'s `findIdx?`) means what the new one would. -/
+def Ordered (F : Array Fun) : Prop := ∀ i (h : i < F.size), ∀ j ∈ Instr.callsB F[i].body, j < i
+
+/-- `h` moves the registers `E0` to `E0'`: each `a < E0.size` with `P a` reads alike at `h a`, and a register after
+    `E0` is shifted to the same place after `E0'`. -/
+def Moves (h : Nat → Nat) (P : Nat → Prop) (E0 E0' : Array Val) : Prop :=
+  (∀ a, a < E0.size → P a → E0'[h a]? = E0[a]?) ∧ ∀ a, E0.size ≤ a → h a = a - E0.size + E0'.size
+
+theorem bind_ok {ε α β : Type} {x : Except ε α} {f : α → Except ε β} {b : β} (h : (x >>= f) = .ok b) :
+    ∃ a, x = .ok a ∧ f a = .ok b := by
+  cases x with
+  | error e => cases h
+  | ok a => exact ⟨a, rfl, h⟩
+
+section moves
+variable {h : Nat → Nat} {P : Nat → Prop} {E0 E0' : Array Val}
+
+theorem Moves.get (hm : Moves h P E0 E0') (X : Array Val) {a : Nat} (hp : P a) :
+    (E0' ++ X)[h a]? = (E0 ++ X)[a]? := by
+  rcases Nat.lt_or_ge a E0.size with ha | ha
+  · have e := hm.1 a ha hp
+    have hl : h a < E0'.size := by
+      rcases Nat.lt_or_ge (h a) E0'.size with hl | hl
+      · exact hl
+      · rw [Array.getElem?_eq_none hl, Array.getElem?_eq_getElem ha] at e; cases e
+    rw [Array.getElem?_append_left hl, Array.getElem?_append_left ha, e]
+  · rw [hm.2 a ha, Array.getElem?_append_right (by omega), Array.getElem?_append_right ha]
+    congr 1; omega
+
+theorem Moves.reg (hm : Moves h P E0 E0') (X : Array Val) {who : String} {a : Nat} {v : Val} (hp : P a)
+    (hr : reg (E0 ++ X) who a = .ok v) : reg (E0' ++ X) who (h a) = .ok v := by
+  unfold Plan.reg at hr ⊢; rw [hm.get X hp]
+  cases e : (E0 ++ X)[a]? with
+  | none => rw [e] at hr; cases hr
+  | some w => rw [e] at hr; exact hr
+
+theorem Moves.mapM (hm : Moves h P E0 E0') (X : Array Val) (who : String) :
+    ∀ (as : List Nat) {vs : List Val}, (∀ a ∈ as, P a) → as.mapM (Plan.reg (E0 ++ X) who) = .ok vs →
+      (as.map h).mapM (Plan.reg (E0' ++ X) who) = .ok vs
+  | [], _, _, hr => hr
+  | a :: as, _, hp, hr => by
+    rw [List.mapM_cons] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    obtain ⟨l, hl, hr⟩ := bind_ok hr
+    rw [List.map_cons, List.mapM_cons, hm.reg X (hp a (by simp)) hv,
+      hm.mapM X who as (fun b hb => hp b (by simp [hb])) hl]
+    exact hr
+
+theorem Moves.mapMA (hm : Moves h P E0 E0') (X : Array Val) (who : String) {as : Array Nat} {vs : Array Val}
+    (hp : ∀ a ∈ as.toList, P a) (hr : as.mapM (Plan.reg (E0 ++ X) who) = .ok vs) :
+    (as.map h).mapM (Plan.reg (E0' ++ X) who) = .ok vs := by
+  rw [Array.mapM_eq_mapM_toList] at hr ⊢
+  rw [Array.toList_map]
+  obtain ⟨l, hl, hr⟩ := bind_ok hr
+  rw [hm.mapM X who _ hp hl]; exact hr
+
+end moves
+
+theorem P_of_filter {P : Nat → Prop} {base : Nat} {L : List Nat} (hP : ∀ a ∈ L.filter (· < base), P a)
+    (hb : ∀ a, base ≤ a → P a) : ∀ a ∈ L, P a := fun a ha => by
+  rcases Nat.lt_or_ge a base with h | h
+  · exact hP a (List.mem_filter.2 ⟨ha, by simpa using h⟩)
+  · exact hb a h
+
+theorem rounds_moves {h : Nat → Nat} {P : Nat → Prop} {E0 E0' X : Array Val}
+    {step step' : Array Val → Writes → Except String (Array Val × Writes)} {out : Array Nat} {d : Nat}
+    {msg : String} (hm : Moves h P E0 E0') (hp : ∀ a ∈ out.toList ++ [d], P a)
+    (hs : ∀ s ws p, step s ws = .ok p → ∃ Y, p.1 = E0 ++ (X ++ s ++ Y) ∧ step' s ws = .ok (E0' ++ (X ++ s ++ Y), p.2)) :
+    ∀ c s ws q, rounds step out d msg c s ws = .ok q → rounds step' (out.map h) (h d) msg c s ws = .ok q
+  | 0, _, _, _, hr => by cases hr
+  | c + 1, s, ws, q, hr => by
+    unfold rounds at hr ⊢
+    obtain ⟨⟨xs, ws1⟩, hst, hr⟩ := bind_ok hr
+    obtain ⟨Y, hY, hst'⟩ := hs s ws _ hst
+    simp only at hY; subst hY
+    rw [hst', ok_bind]; dsimp only
+    obtain ⟨s', ho, hr⟩ := bind_ok hr
+    rw [hm.mapMA _ _ (fun a ha => hp a (by simp [ha])) ho, ok_bind]
+    obtain ⟨v, hd, hr⟩ := bind_ok hr
+    rw [hm.reg _ (hp d (by simp)) hd, ok_bind]
+    split at hr
+    · exact hr
+    · exact rounds_moves hm hp hs c s' ws1 q hr
+    · cases hr
+
+section sim
+variable {h : Nat → Nat} {P : Nat → Prop} {E0 E0' : Array Val} {base : Nat}
+  {fs' : Array Sem}
+
+mutual
+/-- An instruction run after `E0 ++ X` that reads only registers `P` holds of, renamed by `h`, runs alike after
+    `E0' ++ X`: it appends the same registers and writes. -/
+theorem runI_moves (hm : Moves h P E0 E0') (hb : ∀ a, base ≤ a → P a) :
+    ∀ (i : Instr) (X : Array Val) (ws : Writes) (p : Array Val × Writes), (∀ a ∈ reads base i, P a) →
+      (∀ j ∈ i.calls, fs'[j]? = fs[j]?) → runI abi fs gs i (E0 ++ X) ws = .ok p →
+      ∃ Y, p.1 = E0 ++ X ++ Y ∧ runI abi fs' gs (i.rename h) (E0' ++ X) ws = .ok (E0' ++ X ++ Y, p.2)
+  | .lit v, X, ws, p, _, _, hr => by
+    simp only [runI] at hr; cases hr
+    exact ⟨#[v], by simp, by rw [← Array.push_eq_append]; rfl⟩
+  | .call sym as, X, ws, p, hp, _, hr => by
+    have hv' := fun {vs} => hm.mapMA (vs := vs) X sym (as := as) (fun a ha => hp a (by simpa [reads] using ha))
+    simp only [runI] at hr
+    cases hk : abi sym with
+    | none => rw [hk] at hr; cases hr
+    | some k =>
+      rw [hk] at hr; simp only at hr
+      obtain ⟨vs, hv, hr⟩ := bind_ok hr
+      cases hkr : k.run with
+      | inl f =>
+        rw [hkr] at hr; simp only at hr
+        obtain ⟨out, hf, hr⟩ := bind_ok hr
+        split at hr
+        · rename_i hs; cases hr
+          exact ⟨out, rfl, runI_call hk hkr (hv' hv) hf (by simpa using hs)⟩
+        · cases hr
+      | inr act =>
+        rw [hkr] at hr; simp only at hr
+        split at hr
+        · rename_i hs; cases hr
+          exact ⟨#[], by simp, by simp [Instr.rename, runI, hk, hv' hv, hkr, hs, ok_bind, pure, Except.pure]⟩
+        · cases hr
+  | .readOpt .., X, ws, p, _, _, hr => by simp only [runI] at hr; cases hr
+  | .fail msg as, X, ws, p, _, _, hr => by
+    simp only [runI] at hr
+    obtain ⟨_, _, hr⟩ := bind_ok hr
+    obtain ⟨_, _, hr⟩ := bind_ok hr
+    cases hr
+  | .apply f as, X, ws, p, hp, hc, hr => by
+    simp only [runI] at hr
+    cases hg : fs[f]? with
+    | none => rw [hg] at hr; cases hr
+    | some g =>
+      rw [hg] at hr; simp only at hr
+      obtain ⟨vs, hv, hr⟩ := bind_ok hr
+      obtain ⟨⟨o, ws1⟩, ho, hr⟩ := bind_ok hr
+      cases hr
+      refine ⟨o, rfl, ?_⟩
+      simp only [Instr.rename, runI, (hc f (by simp [Instr.calls])).trans hg,
+        hm.mapMA X _ (fun a ha => hp a (by simpa [reads] using ha)) hv, ok_bind, ho]
+      rfl
+  | .global g, X, ws, p, _, _, hr => by
+    simp only [runI] at hr
+    cases hg : gs[g]? with
+    | none => rw [hg] at hr; cases hr
+    | some v =>
+      rw [hg] at hr; cases hr
+      exact ⟨v, rfl, by simp [Instr.rename, runI, hg, pure, Except.pure]⟩
+  | .ctor tag os ss, X, ws, p, hp, _, hr => by
+    simp only [runI] at hr
+    obtain ⟨a, ha, hr⟩ := bind_ok hr
+    obtain ⟨b, hb', hr⟩ := bind_ok hr
+    cases hr
+    refine ⟨#[.ctor tag a b], by simp, ?_⟩
+    simp only [Instr.rename, runI, hm.mapMA X _ (fun x hx => hp x (by simp [reads, hx])) ha,
+      hm.mapMA X _ (fun x hx => hp x (by simp [reads, hx])) hb', ok_bind]
+    simp [pure, Except.pure]
+  | .proj x tag i t, X, ws, p, hp, _, hr => by
+    simp only [runI] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    simp only [Instr.rename, runI, hm.reg X (hp x (by simp [reads])) hv, ok_bind]
+    cases v
+    all_goals try (cases hr; done)
+    rename_i tag' os ss
+    dsimp only at hr ⊢
+    split at hr
+    · rename_i htag
+      rw [if_pos htag]; simp only [pure_bind] at hr ⊢
+      cases hoi : os[i]? with
+      | none => rw [hoi] at hr; cases hr
+      | some w =>
+        rw [hoi] at hr; dsimp only at hr ⊢
+        split at hr
+        · rename_i hty; cases hr
+          exact ⟨#[w], by simp, by rw [if_pos hty]; simp [pure, Except.pure]⟩
+        · cases hr
+    · cases hr
+  | .sproj x tag nobj ss i, X, ws, p, hp, _, hr => by
+    simp only [runI] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    simp only [Instr.rename, runI, hm.reg X (hp x (by simp [reads])) hv, ok_bind]
+    cases v
+    all_goals try (cases hr; done)
+    rename_i tag' os vs
+    dsimp only at hr ⊢
+    split at hr
+    · rename_i htag
+      rw [if_pos htag]; simp only [pure_bind] at hr ⊢
+      cases hoi : vs[i]? with
+      | none => rw [hoi] at hr; cases hr
+      | some w =>
+        rw [hoi] at hr; cases hr
+        exact ⟨#[w], by simp, by simp [pure, Except.pure]⟩
+    · cases hr
+  | .part x i, X, ws, p, hp, _, hr => by
+    simp only [runI] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    simp only [Instr.rename, runI, hm.reg X (hp x (by simp [reads])) hv, ok_bind]
+    cases v
+    all_goals try (cases hr; done)
+    rename_i bs
+    dsimp only at hr ⊢
+    cases hoi : bs[i]? with
+    | none => rw [hoi] at hr; cases hr
+    | some w =>
+      rw [hoi] at hr; cases hr
+      exact ⟨#[.bytes w], by simp, by simp [pure, Except.pure]⟩
+  | .ite c t rt e re, X, ws, p, hp, hc, hr => by
+    have hpl : ∀ a ∈ readsB base t ++ rt.toList ++ readsB base e ++ re.toList, P a :=
+      P_of_filter (fun a ha => hp a (by simp only [reads]; exact List.mem_cons_of_mem _ ha)) hb
+    simp only [runI] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    simp only [Instr.rename, runI, hm.reg X (hp c (by simp [reads])) hv, ok_bind]
+    cases v
+    all_goals try (cases hr; done)
+    rename_i bt
+    cases bt
+    all_goals
+      dsimp only at hr ⊢
+      obtain ⟨⟨xs, ws1⟩, hrun, hr⟩ := bind_ok hr
+      obtain ⟨Y, hY, hrun'⟩ := runB_moves hm hb _ X ws _ (fun a ha => hpl a (by simp [ha]))
+        (fun j hj => hc j (by simp [Instr.calls, hj])) hrun
+      simp only at hY; subst hY
+      dsimp only at hr
+      obtain ⟨o, ho, hr⟩ := bind_ok hr
+      cases hr
+      refine ⟨o, rfl, ?_⟩
+      rw [hrun', ok_bind]; dsimp only
+      rw [Array.append_assoc] at ho
+      have ho' := hm.mapMA (X ++ Y) _ (fun a ha => hpl a (by simp [ha])) ho
+      rw [← Array.append_assoc] at ho'
+      simp only [ho', ok_bind]; rfl
+  | .loop k init b out d msg, X, ws, p, hp, hc, hr => by
+    have hpl : ∀ a ∈ readsB base b ++ out.toList ++ [d], P a :=
+      P_of_filter (fun a ha => hp a (by simp only [reads]; exact List.mem_append_right _ ha)) hb
+    simp only [runI] at hr
+    obtain ⟨v, hv, hr⟩ := bind_ok hr
+    simp only [Instr.rename, runI, hm.reg X (hp k (by simp [reads])) hv, ok_bind]
+    cases v
+    all_goals try (cases hr; done)
+    rename_i cap
+    obtain ⟨s0, hs0, hr⟩ := bind_ok hr
+    obtain ⟨⟨s, ws1⟩, hro, hr⟩ := bind_ok hr
+    cases hr
+    refine ⟨s, rfl, ?_⟩
+    dsimp only
+    rw [hm.mapMA X _ (fun a ha => hp a (by simp [reads, ha])) hs0, ok_bind]
+    have hro' := rounds_moves (X := X) (step' := fun s ws => runB abi fs' gs (Instr.renameB h b) (E0' ++ X ++ s) ws)
+      hm (fun a ha => hpl a (by simp at ha ⊢; rcases ha with ha | ha <;> simp [ha]))
+      (fun s ws q hq => by
+        rw [Array.append_assoc] at hq
+        obtain ⟨Y, hY, hq'⟩ := runB_moves hm hb b (X ++ s) ws q (fun a ha => hpl a (by simp [ha]))
+          (fun j hj => hc j (by simp [Instr.calls, hj])) hq
+        refine ⟨Y, by rw [hY]; simp [Array.append_assoc], ?_⟩
+        show runB abi fs' gs (Instr.renameB h b) (E0' ++ X ++ s) ws = _
+        rw [Array.append_assoc, hq']; simp [Array.append_assoc]) _ _ _ _ hro
+    rw [hro', ok_bind]; rfl
+
+/-- `runI_moves` of a block. -/
+theorem runB_moves (hm : Moves h P E0 E0') (hb : ∀ a, base ≤ a → P a) :
+    ∀ (l : List Instr) (X : Array Val) (ws : Writes) (p : Array Val × Writes), (∀ a ∈ readsB base l, P a) →
+      (∀ j ∈ Instr.callsB l, fs'[j]? = fs[j]?) → runB abi fs gs l (E0 ++ X) ws = .ok p →
+      ∃ Y, p.1 = E0 ++ X ++ Y ∧ runB abi fs' gs (Instr.renameB h l) (E0' ++ X) ws = .ok (E0' ++ X ++ Y, p.2)
+  | [], X, ws, p, _, _, hr => by
+    simp only [runB] at hr; cases hr
+    exact ⟨#[], by simp, by simp [Instr.renameB, runB, pure, Except.pure]⟩
+  | i :: l, X, ws, p, hp, hc, hr => by
+    simp only [runB] at hr
+    obtain ⟨⟨xs, ws1⟩, hi, hr⟩ := bind_ok hr
+    obtain ⟨Y, hY, hi'⟩ := runI_moves hm hb i X ws _ (fun a ha => hp a (by simp [readsB, ha]))
+      (fun j hj => hc j (by simp [Instr.callsB, hj])) hi
+    simp only at hY; subst hY
+    rw [Array.append_assoc] at hr
+    obtain ⟨Z, hZ, hl'⟩ := runB_moves hm hb l (X ++ Y) ws1 p (fun a ha => hp a (by simp [readsB, ha]))
+      (fun j hj => hc j (by simp [Instr.callsB, hj])) hr
+    refine ⟨Y ++ Z, by rw [hZ]; simp [Array.append_assoc], ?_⟩
+    simp only [Instr.renameB, runB, hi', ok_bind]
+    rw [Array.append_assoc, hl']; simp [Array.append_assoc]
+end
+
+end sim
+
+mutual
+theorem calls_rename (f : Nat → Nat) : ∀ i : Instr, (i.rename f).calls = i.calls
+  | .lit _ | .call .. | .readOpt .. | .fail .. | .apply .. | .global _ | .ctor .. | .proj .. | .sproj .. | .part .. =>
+    rfl
+  | .ite _ t _ e _ => by simp only [Instr.rename, Instr.calls, callsB_rename f t, callsB_rename f e]
+  | .loop _ _ b .. => by simp only [Instr.rename, Instr.calls, callsB_rename f b]
+theorem callsB_rename (f : Nat → Nat) : ∀ l : List Instr, Instr.callsB (Instr.renameB f l) = Instr.callsB l
+  | [] => rfl
+  | i :: l => by simp only [Instr.renameB, Instr.callsB, calls_rename f i, callsB_rename f l]
+end
+
+theorem renameB_eq (f : Nat → Nat) : ∀ l : List Instr, Instr.renameB f l = l.map (·.rename f)
+  | [] => rfl
+  | i :: l => by simp only [Instr.renameB, List.map_cons, renameB_eq f l]
+
+theorem mapM_reg_getD {rs : Array Val} {who : String} : ∀ {as : List Nat} {vs : List Val},
+    as.mapM (reg rs who) = .ok vs → ∀ i, i < as.length → ∀ d, rs[as.getD i d]? = vs[i]?
+  | [], _, _, i, hi, _ => absurd hi (by simp)
+  | a :: as, vs, h, i, hi, d => by
+    rw [List.mapM_cons] at h
+    obtain ⟨v, hv, h⟩ := bind_ok h
+    obtain ⟨l, hl, h⟩ := bind_ok h
+    cases h
+    cases i with
+    | zero =>
+      unfold reg at hv
+      cases e : rs[a]? with
+      | none => rw [e] at hv; cases hv
+      | some w => rw [e] at hv; cases hv; simp [e]
+    | succ i => simpa using mapM_reg_getD hl i (by simp at hi; omega) d
+
+theorem mapM_reg_lt {rs : Array Val} {who : String} : ∀ (l : List Nat), (∀ c ∈ l, c < rs.size) →
+    l.mapM (reg rs who) = .ok (l.map (rs[·]?.getD default))
+  | [], _ => rfl
+  | c :: l, h => by
+    have hc : reg rs who c = .ok (rs[c]?.getD default) := by
+      unfold reg; rw [Array.getElem?_eq_getElem (h c (by simp))]; rfl
+    rw [List.mapM_cons, hc, mapM_reg_lt l (fun d hd => h d (by simp [hd]))]; rfl
+
+theorem getElem?_idxOf {a : Nat} : ∀ {l : List Nat}, a ∈ l → l[l.idxOf a]? = some a
+  | b :: l, h => by
+    rw [List.idxOf_cons]
+    cases hb : (b == a) with
+    | true => simp at hb; subst hb; simp
+    | false =>
+      simp only [cond_false]; simp at hb
+      have : a ∈ l := by
+        rcases List.mem_cons.1 h with h | h
+        · exact absurd h.symm hb
+        · exact h
+      simpa using getElem?_idxOf this
+
+theorem mem_eraseDups_loop {a : Nat} : ∀ (as bs : List Nat),
+    a ∈ List.eraseDupsBy.loop (fun x y => x == y) as bs ↔ a ∈ as ∨ a ∈ bs
+  | [], bs => by simp [List.eraseDupsBy.loop]
+  | c :: as, bs => by
+    simp only [List.eraseDupsBy.loop]
+    split
+    · rename_i h
+      have hc : c ∈ bs := by simpa using h
+      rw [mem_eraseDups_loop as bs]; simp only [List.mem_cons]
+      constructor
+      · rintro (h1 | h1) <;> simp [h1]
+      · rintro ((h1 | h1) | h1)
+        · subst h1; exact Or.inr hc
+        · exact Or.inl h1
+        · exact Or.inr h1
+    · rw [mem_eraseDups_loop as (c :: bs)]; simp only [List.mem_cons]
+      constructor
+      · rintro (h1 | h1 | h1) <;> simp [h1]
+      · rintro ((h1 | h1) | h1) <;> simp [h1]
+
+theorem mem_eraseDups {a : Nat} {l : List Nat} : a ∈ l.eraseDups ↔ a ∈ l := by
+  simp only [List.eraseDups, List.eraseDupsBy]; rw [mem_eraseDups_loop]; simp
+
+/-- A builder `m` answering `(r', y)` and appending `js`, which define `ys`, then `kk` on its answer. -/
+theorem Builds.of_run {abi : String → Option Kernel} {β : Type} {m : Bld (Array Nat × β)}
+    {kk : Array Nat × β → Bld (Array Nat)} {fg fg2 fg' : Array Fun × Array Fun} {rs ys out : Array Val}
+    {r' : Array Nat} {y : β} {js : Array Instr}
+    (hm : ∀ is, m.run (is, rs.size, fg) = .ok ((r', y), is ++ js, (rs ++ ys).size, fg2))
+    (h1 : ∃ a, fg2.1 = fg.1 ++ a) (h2 : ∃ a, fg2.2 = fg.2 ++ a)
+    (hs : ∀ fs gs, Env abi fs gs fg2 → ∀ ws, runB abi fs gs js.toList rs ws = .ok (rs ++ ys, ws))
+    (hk : Builds abi fg2 fg' (kk (r', y)) (rs ++ ys) out) : Builds abi fg fg' (m >>= kk) rs out := by
+  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, hk⟩ := hk
+  obtain ⟨a1, ha1⟩ := h1; obtain ⟨b1, hb1⟩ := h2
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
+    fun is => ?_⟩
+  obtain ⟨js2, xs2, r2, hr2, hs2, hm2⟩ := hk (is ++ js)
+  refine ⟨js ++ js2, ys ++ xs2, r2, ?_, fun fs gs hE ws => ?_, fun who => by simpa [Array.append_assoc] using hm2 who⟩
+  · simp only [StateT.run_bind, hm, ok_bind]; simpa [Array.append_assoc] using hr2
+  · rw [Array.toList_append, runB_append, hs fs gs (Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE) ws, ok_bind]
+    simpa [Array.append_assoc] using hs2 fs gs hE ws
+
+theorem moves_splice {rs : Array Val} {args : List Nat} {l : List Val} {who : String}
+    (hl : args.mapM (reg rs who) = .ok l) :
+    Moves (spliceReg rs.size args.length args) (fun _ => True) (rs ++ l.toArray) rs := by
+  have hlen := mapM_ok_length args hl
+  refine ⟨fun a ha _ => ?_, fun a ha => ?_⟩
+  · simp only [Array.size_append, List.size_toArray] at ha
+    unfold spliceReg
+    by_cases h1 : a < rs.size
+    · rw [if_pos h1, Array.getElem?_append_left h1]
+    · rw [if_neg h1, if_pos (by omega), Array.getElem?_append_right (by omega), mapM_reg_getD hl _ (by omega)]
+      simp
+  · simp only [Array.size_append, List.size_toArray] at ha ⊢
+    unfold spliceReg; rw [if_neg (by omega), if_neg (by omega)]; omega
+
+theorem moves_clo {rs pv : Array Val} {cs : List Nat} :
+    Moves (cloReg rs.size pv.size cs) (fun a => a < rs.size → a ∈ cs) (rs ++ pv)
+      (pv ++ (cs.map (rs[·]?.getD default)).toArray) := by
+  refine ⟨fun a ha hp => ?_, fun a ha => ?_⟩
+  · simp only [Array.size_append] at ha
+    unfold cloReg
+    by_cases h1 : a < rs.size
+    · rw [if_pos h1, Array.getElem?_append_left h1, Array.getElem?_append_right (by omega),
+        show pv.size + cs.idxOf a - pv.size = cs.idxOf a by omega]
+      simp [List.getElem?_map, getElem?_idxOf (hp h1), Array.getElem?_eq_getElem h1]
+    · rw [if_neg h1, if_pos (by omega), Array.getElem?_append_left (by omega),
+        Array.getElem?_append_right (by omega)]
+  · simp only [Array.size_append, List.size_toArray, List.length_map] at ha ⊢
+    unfold cloReg; rw [if_neg (by omega), if_neg (by omega)]; omega
+
+theorem addFun_spec [LawfulBEq Fun] (fs : Array Fun) (F : Fun) :
+    ((addFun fs F).2 = fs ∧ ∃ h : (addFun fs F).1 < fs.size, fs[(addFun fs F).1] = F) ∨
+      ((addFun fs F).2 = fs.push F ∧ (addFun fs F).1 = fs.size) := by
+  unfold addFun
+  cases e : fs.findIdx? (· == F) with
+  | none => exact Or.inr ⟨rfl, rfl⟩
+  | some i =>
+    obtain ⟨h, hp, -⟩ := Array.findIdx?_eq_some_iff_getElem.1 e
+    dsimp only
+    exact Or.inl ⟨rfl, h, by simpa using hp⟩
+
+
+/-- `funB tys args b`, then `kk` on its registers and `b`'s value `x`: the body `b` builds after `rs` and the
+    parameters `pv` (`args` read), defining `xs` and answering `o`, is spliced in place (`spliceable`) or becomes a
+    function (closure conversion, `cloReg`) applied after `rs`; either way `o` follows `rs`. The function may be an
+    earlier equal one (`addFun`), which `Ordered` makes mean the same; `hty` says the closure's types do not depend on
+    the enclosing block. -/
+theorem funB_builds [LawfulBEq Fun] {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty}
+    {args : List Nat} {b : List Nat → Bld (Array Nat × List Ty × α)} {kk : Array Nat × α → Bld (Array Nat)}
+    {rs pv xs o out : Array Val} {r : Array Nat} {rtys ctys : List Ty} {x : α} {body : Array Instr}
+    (hn : args.length = tys.length) (ha : ∀ who, args.toArray.mapM (reg rs who) = .ok pv)
+    (hrun : (b (List.range' rs.size tys.length)).run (#[], rs.size + tys.length, fg) =
+      .ok ((r, rtys, x), body, (rs ++ pv ++ xs).size, fg1))
+    (hbody : ∀ fs gs, Env abi fs gs fg1 → ∀ ws, runB abi fs gs body.toList (rs ++ pv) ws = .ok (rs ++ pv ++ xs, ws))
+    (hres : ∀ who, r.mapM (reg (rs ++ pv ++ xs) who) = .ok o) (hord : Ordered fg1.1)
+    (hext : (∃ a, fg1.1 = fg.1 ++ a) ∧ ∃ a, fg1.2 = fg.2 ++ a)
+    (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size r rtys
+      ((readsB rs.size body.toList ++ r.toList).filter (· < rs.size)).eraseDups = .ok ctys)
+    (hk : ∀ fg2 r' ys, (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, r'.mapM (reg (rs ++ ys) who) = .ok o) →
+      ∃ fg', Builds abi fg2 fg' (kk (r', x)) (rs ++ ys) out) :
+    ∃ fg', Builds abi fg fg' (funB tys args b >>= kk) rs out := by
+  obtain ⟨F0, G0⟩ := fg; obtain ⟨F1, G1⟩ := fg1
+  simp only at hty hord hext hk
+  -- the parameters' values, as a list read under any name
+  have ha0 := ha ""
+  rw [Array.mapM_eq_mapM_toList] at ha0
+  obtain ⟨l, hl, hpv⟩ := bind_ok ha0
+  cases hpv
+  have hlw : ∀ who, args.mapM (reg rs who) = .ok l := fun who => by
+    have h := ha who
+    rw [Array.mapM_eq_mapM_toList] at h
+    obtain ⟨l', hl', e⟩ := bind_ok h
+    injection e with e
+    have e2 := congrArg Array.toList e; simp at e2; subst e2; exact hl'
+  have hlen : l.length = tys.length := (mapM_ok_length args hl).trans hn
+  by_cases hC : spliceable body = true
+  · -- spliced: the body's instructions renamed by `spliceReg`, after `rs`
+    have hm := moves_splice hl
+    rw [hn] at hm
+    have hsim : ∀ fs gs, Env abi fs gs (F1, G1) → ∀ ws, runB abi fs gs
+        (Instr.renameB (spliceReg rs.size tys.length args) body.toList) rs ws = .ok (rs ++ xs, ws) := by
+      intro fs gs hE ws
+      have h0 : runB abi fs gs body.toList (rs ++ l.toArray ++ #[]) ws = .ok (rs ++ l.toArray ++ xs, ws) := by
+        rw [Array.append_empty]; exact hbody fs gs hE ws
+      obtain ⟨Y, hY, h'⟩ := runB_moves (base := 0) (fs' := fs) hm (fun _ _ => trivial) body.toList #[] ws _
+        (fun _ _ => trivial) (fun _ _ => rfl) h0
+      simp only [Array.append_empty] at hY; rw [Array.append_right_inj] at hY; subst hY
+      simpa using h'
+    have hres' : ∀ who, (r.map (spliceReg rs.size tys.length args)).mapM (reg (rs ++ xs) who) = .ok o :=
+      fun who => by simpa using hm.mapMA xs who (fun _ _ => trivial) (hres who)
+    obtain ⟨fg', hk'⟩ := hk (F1, G1) _ xs ⟨#[], by simp⟩ rfl hres'
+    refine ⟨fg', Builds.of_run (fg2 := (F1, G1)) (js := body.map (·.rename (spliceReg rs.size tys.length args)))
+      (fun is => ?_) hext.1 hext.2 (fun fs gs hE ws => ?_) hk'⟩
+    · simp [funB, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hn,
+        hrun, hC, ok_bind, hlen]
+      rw [show rs.size + (tys.length + xs.size) - tys.length = rs.size + xs.size by omega]; rfl
+    · rw [Array.toList_map, ← renameB_eq]; exact hsim fs gs hE ws
+  · -- applied: the body as a function of the parameters and the enclosing registers `cs` it reads
+    let cs := ((readsB rs.size body.toList ++ r.toList).filter (· < rs.size)).eraseDups
+    have hcs : ∀ c ∈ cs, c < rs.size := fun c hc => by
+      have := (List.mem_filter.1 (mem_eraseDups.1 hc)).2; simpa using this
+    let cvs : Array Val := (cs.map (rs[·]?.getD default)).toArray
+    let f := cloReg rs.size tys.length cs
+    let F : Fun := ⟨(tys ++ ctys).toArray, body.toList.map (·.rename f), r.map f⟩
+    have hm : Moves f (fun a => a < rs.size → a ∈ cs) (rs ++ l.toArray) (l.toArray ++ cvs) := by
+      have := moves_clo (rs := rs) (pv := l.toArray) (cs := cs); rwa [show l.toArray.size = tys.length by simp [hlen]] at this
+    have hP : ∀ a ∈ readsB rs.size body.toList, a < rs.size → a ∈ cs := fun a ha h1 =>
+      mem_eraseDups.2 (List.mem_filter.2 ⟨List.mem_append_left _ ha, by simpa using h1⟩)
+    have hres' : ∀ who, (r.map f).mapM (reg (l.toArray ++ cvs ++ xs) who) = .ok o := fun who =>
+      hm.mapMA xs who (fun a ha h1 => mem_eraseDups.2 (List.mem_filter.2
+        ⟨List.mem_append_right _ ha, by simpa using h1⟩)) (hres who)
+    have ho : o.size = r.size := mapM_ok_size (hres "")
+    have hargs : ∀ who, (args ++ cs).toArray.mapM (reg rs who) = .ok (l.toArray ++ cvs) := fun who => by
+      rw [Array.mapM_eq_mapM_toList, List.toList_toArray, List.mapM_append, hlw who, mapM_reg_lt cs hcs]
+      simp [cvs, pure, Except.pure, Functor.map, Except.map, ok_bind]
+    have hadd : (∃ a, (addFun F1 F).2 = F1 ++ a) ∧ (addFun F1 F).2[(addFun F1 F).1]? = some F ∧
+        ∀ fs : Array Sem, ∀ j ∈ Instr.callsB body.toList,
+          (fs.extract 0 (addFun F1 F).1)[j]? = (fs.extract 0 F1.size)[j]? := by
+      rcases addFun_spec F1 F with ⟨e2, hlt, hget⟩ | ⟨e2, e1⟩
+      · refine ⟨⟨#[], by simp [e2]⟩, by rw [e2, Array.getElem?_eq_getElem hlt, hget], fun fs j hj => ?_⟩
+        have hj' : j < (addFun F1 F).1 := hord _ hlt j (by
+          rw [hget]; show j ∈ Instr.callsB (body.toList.map (·.rename f)); rw [← renameB_eq, callsB_rename]; exact hj)
+        rw [Array.getElem?_extract, Array.getElem?_extract]
+        by_cases hjs : j < fs.size
+        · rw [if_pos (by omega), if_pos (by omega)]
+        · rw [if_neg (by omega), if_neg (by omega)]
+      · exact ⟨⟨#[F], by simp [e2]⟩, by simp [e2, e1], fun fs j _ => by rw [e1]⟩
+    obtain ⟨fg', hk'⟩ := hk ((addFun F1 F).2, G1) (List.range' rs.size r.size).toArray o hadd.1 rfl
+      (fun who => by rw [← ho]; exact mapM_reg_range rs o who)
+    refine ⟨fg', Builds.of_run (fg2 := ((addFun F1 F).2, G1))
+      (js := #[.apply (addFun F1 F).1 (args ++ cs).toArray]) (fun is => ?_)
+      (let ⟨a, e⟩ := hext.1; let ⟨a2, e2⟩ := hadd.1
+        ⟨a ++ a2, by show (addFun F1 F).2 = F0 ++ (a ++ a2); rw [e2, e, Array.append_assoc]⟩)
+      hext.2 (fun fs gs hE ws => ?_) hk'⟩
+    · simp [funB, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hn,
+        hrun, hC, hty, ok_bind, hlen, -List.filter_append]
+      have hlift : ∀ {β : Type} (v : β), (monadLift (Except.ok v : Except String β) : Except BErr β) = .ok v := fun _ => rfl
+      simp [hlift, apply, emit, StateT.run_modifyGet, cs]
+      simp only [Functor.map, Except.map, F, f, cs, List.filter_append, (mapM_ok_size (hres "")).symm]
+    · obtain ⟨a, ha2⟩ := hadd.1
+      have hE' : Env abi fs gs (F1 ++ a, G1 ++ #[]) := by rw [← ha2, Array.append_empty]; exact hE
+      have hE1 : Env abi (fs.extract 0 F1.size) gs (F1, G1) := hE'.restrict (FEnv.extract hE'.1) rfl
+      have h0 : runB abi (fs.extract 0 F1.size) gs body.toList (rs ++ l.toArray ++ #[]) ws =
+          .ok (rs ++ l.toArray ++ xs, ws) := by rw [Array.append_empty]; exact hbody _ gs hE1 ws
+      obtain ⟨Y, hY, h'⟩ := runB_moves (base := rs.size) (fs' := fs.extract 0 (addFun F1 F).1) hm
+        (fun a h1 h2 => absurd h2 (by omega)) body.toList #[] ws _ hP (hadd.2.2 fs) h0
+      simp only [Array.append_empty] at hY; rw [Array.append_right_inj] at hY; subst hY
+      simp only [Array.append_empty] at h'
+      have hlt : (addFun F1 F).1 < (addFun F1 F).2.size := by
+        have := hadd.2.1
+        rcases Nat.lt_or_ge (addFun F1 F).1 (addFun F1 F).2.size with h | h
+        · exact h
+        · rw [Array.getElem?_eq_none h] at this; cases this
+      have hget : (addFun F1 F).2[(addFun F1 F).1] = F := by
+        have := hadd.2.1; rw [Array.getElem?_eq_getElem hlt] at this; exact Option.some.inj this
+      have hf : fs[(addFun F1 F).1]? = some (F.sem abi (fs.extract 0 (addFun F1 F).1)) := by
+        rw [hE.1 _ hlt, hget]
+      have hsem : F.sem abi (fs.extract 0 (addFun F1 F).1) gs (l.toArray ++ cvs) ws = .ok (o, ws) := by
+        show (do let (xs, ws) ← runB abi _ gs (body.toList.map (Instr.rename f)) (l.toArray ++ cvs) ws
+                 pure (← (r.map f).mapM (reg xs "result"), ws)) = _
+        rw [← renameB_eq, h', ok_bind]; dsimp only; rw [hres' "result", ok_bind]; rfl
+      rw [show (#[Instr.apply (addFun F1 F).1 (args ++ cs).toArray] : Array Instr).toList =
+        [.apply (addFun F1 F).1 (args ++ cs).toArray] from rfl, runB.eq_2, runI_apply hf (hargs _) hsem, ok_bind]
+      rfl
+
 end Rel.Lang.Plan
