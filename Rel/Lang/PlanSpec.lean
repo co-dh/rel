@@ -2120,6 +2120,147 @@ theorem Grows.funV {n : Nat} {X : Cols} {Ts : List TabB} {b : Nat → Cols → L
   unfold Rel.Lang.Plan.funV
   exact Grows.funT fun | T :: Ts => hb _ _ _ | [] => Grows.throw _
 
+/-! ### `Grows` of the recipes on the primitives (`Plan.lean`'s builders, `EmitC`'s keys, gather and `asc`) -/
+
+theorem Grows.emit1 {i : Instr} (hi : i.calls = []) : Grows (Plan.emit1 i) := fun ⟨is, n, fs, gs⟩ x s' h => by
+  have : (Plan.emit1 i).run (is, n, fs, gs) = .ok (n, (is.push i, n + 1, fs, gs)) := rfl
+  rw [this] at h
+  obtain ⟨-, rfl⟩ := Except.ok.inj h |> Prod.mk.inj
+  exact GStep.push _ _ _ _ _ _ (by simp [hi])
+
+theorem Grows.lit (v : Val) : Grows (Plan.lit v) := Grows.emit1 rfl
+
+theorem Grows.call1 (k : Kernel) (args : Array Nat) : Grows (Plan.call1 k args) := by
+  unfold Plan.call1
+  dsimp only
+  split
+  · exact (Grows.pure _).bind fun _ => Grows.emit1 rfl
+  · exact (Grows.throw _).bind fun _ => Grows.emit1 rfl
+theorem Grows.callK (k : Kernel) (args : Array Nat) : Grows (Plan.callK k args) := Grows.emit rfl _
+
+
+theorem Grows.nth (rs : Array Nat) (i : Nat) (who : String) : Grows (Plan.nth rs i who) := by
+  unfold Plan.nth
+  split
+  · exact Grows.pure _
+  · exact Grows.throw _
+
+theorem Grows.ctorB (tag : Nat) (objs scal : Array Nat) : Grows (Plan.ctorB tag objs scal) := Grows.emit1 rfl
+
+theorem Grows.projB (x tag i : Nat) (t : Ty) : Grows (Plan.projB x tag i t) := Grows.emit1 rfl
+
+theorem Grows.isTagB (x tag : Nat) : Grows (Plan.isTagB x tag) := Grows.emit1 rfl
+
+theorem Grows.partB (x i : Nat) : Grows (Plan.partB x i) := Grows.emit1 rfl
+
+theorem Grows.foldrM {α β : Type} {f : α → β → Bld β} (hf : ∀ a b, Grows (f a b)) (l : List α) (init : β) :
+    Grows (l.foldrM f init) := Grows.foldlM (fun b a => hf a b) _ _
+
+theorem Grows.forIn {α β : Type} {f : α → β → Bld (ForInStep β)} (hf : ∀ a b, Grows (f a b)) :
+    ∀ (l : List α) (init : β), Grows (forIn l init f)
+  | [], init => by rw [List.forIn_nil]; exact Grows.pure _
+  | a :: l, init => by
+    rw [List.forIn_cons]
+    refine (hf a init).bind fun r => ?_
+    cases r with
+    | done b => exact Grows.pure _
+    | yield b => exact Grows.forIn hf l b
+
+/-- A builder made of binds, `ite`s, `mapM`s and the primitives: the goals left are its other builders' `Grows`. -/
+local macro "grows" : tactic => `(tactic| repeat' first
+  | exact Grows.pure _ | exact Grows.throw _ | (with_reducible refine Grows.bind ?_ (fun _ => ?_))
+  | (with_reducible refine Grows.ite ?_ ?_) | (with_reducible refine Grows.mapM (fun _ => ?_) _)
+  | exact Grows.lit _ | exact Grows.call1 _ _ | exact Grows.callK _ _ | exact Grows.nth _ _ _
+  | exact Grows.ctorB _ _ _ | exact Grows.projB _ _ _ _ | exact Grows.isTagB _ _ | exact Grows.partB _ _
+  | exact Grows.emit1 rfl | dsimp only | split)
+
+theorem Grows.listB (rs : List Nat) : Grows (Plan.listB rs) := by
+  unfold Plan.listB
+  refine (Grows.ctorB _ _ _).bind fun _ => Grows.foldrM (fun x l => Grows.ctorB _ _ _) _ _
+
+theorem Grows.srcB (n x : Nat) : Grows (Plan.srcB n x) := Grows.ctorB _ _ _
+
+theorem Grows.constB (n fill : Nat) : Grows (Plan.constB n fill) := by
+  unfold Plan.constB; grows
+
+theorem Grows.scanB (op : Kernel.Op) (t : QAtomicType) (n : Nat) (seg : Option Nat) (es : List Nat) :
+    Grows (Plan.scanB op t n seg es) := by
+  unfold Plan.scanB
+  cases seg <;> grows <;> first | exact Grows.listB _ | exact Grows.srcB _ _
+
+theorem Grows.posB : Grows Plan.posB := Grows.lit _
+
+theorem Grows.lastB (n fold : Nat) (d : USize) : Grows (Plan.lastB n fold d) := by
+  unfold Plan.lastB; grows
+
+theorem Grows.wordsB (n : Nat) (w : UInt64) : Grows (Plan.wordsB n w) := by
+  unfold Plan.wordsB; grows
+  exact Grows.constB _ _
+
+theorem Grows.mapB (op : Kernel.Op) (n a b : Nat) (t s : QAtomicType) (pre post : List (Kernel.Op × UInt64)) :
+    Grows (Plan.mapB op n a b t s pre post) := by
+  unfold Plan.mapB; grows
+  all_goals first | exact Grows.listB _ | exact Grows.srcB _ _
+
+mutual
+theorem Grows.keysB (n : Nat) : ∀ c : Col, Grows (Plan.keysB n c)
+  | .sum _ tag x y => by
+    unfold Rel.Lang.Plan.keysB; grows
+    all_goals first | exact Grows.keysL n x | exact Grows.keysL n y
+  | .atom _ t e => by unfold Rel.Lang.Plan.keysB; grows
+  | .arr _ m lo hi f => by
+    unfold Rel.Lang.Plan.keysB; grows
+    all_goals first | exact Grows.keysL m f | exact Grows.listB _ | exact Grows.posB
+theorem Grows.keysL (n : Nat) : ∀ cs : Cols, Grows (Plan.keysL n cs)
+  | [] => by unfold Rel.Lang.Plan.keysL; exact Grows.pure _
+  | c :: cs => by
+    unfold Rel.Lang.Plan.keysL; grows
+    all_goals first | exact Grows.keysB n c | exact Grows.keysL n cs
+end
+
+theorem Grows.seenB (n : Nat) (es : List Nat) : Grows (Plan.seenB n es) := by
+  unfold Plan.seenB; grows
+  all_goals first | exact Grows.listB _ | exact Grows.wordsB _ _ | exact Grows.scanB _ _ _ _ _ | exact Grows.lastB _ _ _
+
+theorem Grows.gatherB (m ix n x : Nat) : Grows (Plan.gatherB m ix n x) := Grows.call1 _ _
+
+theorem Grows.funC {xs : List (Nat × Col)} {b : List (Nat × Col) → Bld (Nat × Col)} (hb : ∀ ys, Grows (b ys)) :
+    Grows (Plan.funC xs b) := by
+  unfold Plan.funC
+  refine (Grows.funT fun Us => ?_).bind fun T => ?_
+  · grows
+    all_goals first | exact hb _
+  · grows
+
+/-- Induction on `Col.sizes`, the measure `gatherCols` terminates by: a sum's summands are smaller than the sum. -/
+theorem Grows.gatherCols (m ix : Nat) : ∀ (n : Nat) (cs : Cols), Grows (Plan.gatherCols m ix n cs) := by
+  intro n cs
+  induction hs : Col.sizes cs using Nat.strongRecOn generalizing n cs with
+  | _ s ih =>
+    unfold Plan.gatherCols
+    refine Grows.mapM (fun ⟨c, hc⟩ => Grows.funC fun ys => ?_) _
+    split <;> grows
+    all_goals first | exact Grows.gatherB _ _ _ _ | skip
+    all_goals subst hs
+    all_goals exact ih _ (by have := Col.size_le_of_mem hc; simp [Col.size] at *; omega) _ _ rfl
+
+theorem Grows.ascSeenOnB (n : Nat) (cs : Cols) : Grows (Plan.ascSeenB.ascSeenOnB n cs) := by
+  unfold Plan.ascSeenB.ascSeenOnB; grows
+  all_goals first | exact Grows.keysB _ _ | exact Grows.listB _ | exact Grows.seenB _ _ | (refine Grows.forIn (fun a b => ?_) _ _; grows)
+
+theorem Grows.ascSeenB (n : Nat) (cs : Cols) : Grows (Plan.ascSeenB n cs) := by
+  unfold Plan.ascSeenB; grows
+  all_goals first | exact Grows.funV fun n X Ts => (Grows.ascSeenOnB _ _).bind fun _ => Grows.pure _
+
+theorem Grows.nubB (n : Nat) (cs : Cols) : Grows (Plan.nubB n cs) := by
+  unfold Plan.nubB; grows
+  all_goals first | exact Grows.funV fun n X Ts => (Grows.ascSeenB _ _).bind fun _ =>
+    (Grows.gatherB _ _ _ _).bind fun _ => (Grows.gatherCols _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.canonT (T : TabB) : Grows (Plan.canonT T) := by
+  unfold Plan.canonT
+  exact (Grows.nubB _ _).bind fun _ => Grows.pure _
+
 /-- `funB_builds` for a table function `funT Ts b`: the parameters are the registers `A` of `Ts` read in `rs` (`pv`),
     the body `b` reads the tables `Us` whose registers are the parameters, and answers the table `U` whose registers
     `R` hold `o`; the table `kk` continues with is `U` over the registers `R'` that the answer's `funB` leaves. -/
