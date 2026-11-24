@@ -390,5 +390,56 @@ theorem Builds.ite_true {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {t e : B
     rw [show (#[Instr.ite c jt.toList rt je.toList re'] : Array Instr).toList = [.ite c jt.toList rt je.toList re']
       from rfl, runB.eq_2]
     simp [runI, reg_of hc, hbt fs gs hE1, hmt, runB.eq_1, ok_bind, Functor.map, Except.map]
+/-! ### Recipes on the kernels: `constB`, `scanB` -/
+
+/-- A `foR` column is a register that reads back as itself (`Reg Enc` writes its parts and reads them back). -/
+theorem foR_get_put (m p : ByteArray) : (Reg.get? (Reg.put (Ext.Enc.foR m p : Enc)) : Option Enc) = some (.foR m p) := by
+  have hp : (Reg.put (Ext.Enc.foR m p : Enc) : Val) = .ctor 0 (#[m, p].map .bytes) #[] := by with_unfolding_all rfl
+  rw [hp]
+  dsimp only [Reg.get?]
+  conv => lhs; whnf
+  rw [Array.mapM_eq_mapM_toList]
+  have c4 : ((0 : Nat) == (Ext.Enc.pos : Enc).ctorIdx) = false := by with_unfolding_all rfl
+  simp [c4]
+  with_unfolding_all rfl
+
+/-- A `wordsFoR` is a register that reads back as itself. -/
+theorem wordsFoR_get_put (ws : Array UInt64) :
+    (Reg.get? (Reg.put (wordsFoR ws)) : Option Enc) = some (wordsFoR ws) := foR_get_put _ _
+
+/-- `constB n fill`, `n` holding the row count `nv` and `fill` the word `fv`: its register holds the column
+    `kscatter .last 0 e e nv fv` answers (`e` the empty column: no row is scattered). -/
+theorem constB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n fill : Nat} {nv : USize} {fv : UInt64} {c : Enc}
+    (hn : rs[n]? = some (.size nv)) (hf : rs[fill]? = some (.u64 fv))
+    (hk : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv fv = .ok c) :
+    Builds abiOf fg fg (do let r ← constB n fill; Pure.pure #[r]) rs #[Reg.put c] := by
+  have hn1 : n < rs.size := by
+    rcases Nat.lt_or_ge n rs.size with h | h
+    · exact h
+    · rw [Array.getElem?_eq_none h] at hn; cases hn
+  have hf1 : fill < rs.size := by
+    rcases Nat.lt_or_ge fill rs.size with h | h
+    · exact h
+    · rw [Array.getElem?_eq_none h] at hf; cases hf
+  unfold constB; simp only [bind_assoc]
+  with_reducible refine Builds.lit ?_
+  with_reducible refine Builds.lit ?_
+  with_reducible refine Builds.lit ?_
+  refine Builds.call1 (vs := #[Reg.put Kernel.Op.last, .size 0, Reg.put (wordsFoR #[]), Reg.put (wordsFoR #[]),
+      .size nv, .u64 fv]) (v := Reg.put c) (by with_unfolding_all simp [abiOf, Rel.Lang.Plan.abi, List.find?])
+    (by with_unfolding_all rfl) ?_ ?_ rfl ?_
+  · rw [List.mapM_toArray]
+    simp [reg, Array.getElem?_push, Array.getElem_push, hn, hf, show n ≠ rs.size by omega, show n ≠ rs.size + 1 by omega, show n ≠ rs.size + 1 + 1 by omega, show fill ≠ rs.size by omega, show fill ≠ rs.size + 1 by omega, show fill ≠ rs.size + 1 + 1 by omega, show rs.size ≠ rs.size + 1 + 1 by omega]
+    rfl
+  · have hop : (Reg.get? (Reg.put Kernel.Op.last) : Option Kernel.Op) = some .last := by with_unfolding_all rfl
+    have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+    have hu : ∀ x : UInt64, (Reg.get? (Val.u64 x) : Option UInt64) = some x := fun _ => rfl
+    simp [arg, hop, hsz, hu, wordsFoR_get_put, hk, Out.out]
+    rfl
+  · with_reducible refine Builds.pure ?_
+    intro who
+    simp [reg, Array.size_push, Array.getElem_push]
+    rfl
+
 
 end Rel.Lang.Plan
