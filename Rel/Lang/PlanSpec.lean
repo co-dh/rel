@@ -1143,21 +1143,21 @@ def Ordered (F : Array Fun) : Prop := ∀ i (h : i < F.size), ∀ j ∈ Instr.ca
 /-- `cloTys` throws only for a register no reader and no result slot types: it never reaches `defTy`'s walk, so it does
     not depend on the enclosing block `is` (nor on `Ordered`: the walk's bounds only matter for the registers that fall
     through to the definition, which `hty` of `funB_builds` quantifies over as any `is`). -/
-theorem cloTys_ok (fs gs : Array Fun) (is body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty)
+theorem cloTys_ok (fs gs : Array Fun) (body : Array Instr) (n : Nat) (r : Array Nat) (rtys : List Ty)
     (cs : List Nat)
     (h : ∀ a ∈ cs, ∃ t, (useTyB fs a body.toList <|> (r.toList.idxOf? a).bind (rtys[·]?)) = some t) :
-    ∃ ts, cloTys fs gs is body n r rtys cs = .ok ts := by
-  unfold cloTys
-  dsimp only
-  generalize defTyB fs gs gs.size fs.size (fun _ => pure none) (n - (is.toList.map (resN fs gs)).sum) is.toList = dty
+    ∃ ts, ∀ is, cloTys fs gs is body n r rtys cs = .ok ts := by
   induction cs with
-  | nil => exact ⟨[], rfl⟩
+  | nil => exact ⟨[], fun _ => rfl⟩
   | cons a cs ih =>
     obtain ⟨t, ht⟩ := h a (by simp)
     obtain ⟨ts, hts⟩ := ih fun b hb => h b (by simp [hb])
-    refine ⟨t :: ts, ?_⟩
+    refine ⟨t :: ts, fun is => ?_⟩
+    have e := hts is
+    unfold cloTys at e ⊢
+    dsimp only at e ⊢
     rw [List.mapM_cons, ht]
-    simp only [bind, Except.bind, hts]
+    simp only [bind, Except.bind, e]
     rfl
 
 /-- `h` moves the registers `E0` to `E0'`: each `a < E0.size` with `P a` reads alike at `h a`, and a register after
@@ -1829,12 +1829,13 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
     (hG : Grows (b (List.range' rs.size tys.length)))
     (hty : ∀ is, cloTys fg1.1 fg1.2 is body rs.size r rtys
       ((readsB rs.size body.toList ++ r.toList).filter (· < rs.size)).eraseDups = .ok ctys)
-    (hk : ∀ fg2 r' ys, (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, r'.mapM (reg (rs ++ ys) who) = .ok o) →
+    (hk : ∀ fg2 r' ys, (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → Ordered fg2.1 →
+      (∀ who, r'.mapM (reg (rs ++ ys) who) = .ok o) →
       ∃ fg', Builds abi fg2 fg' (kk (r', x)) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funB tys args b >>= kk) rs out := by
   obtain ⟨F0, G0⟩ := fg; obtain ⟨F1, G1⟩ := fg1
-  obtain ⟨hord, -, hext1, hext2⟩ := hG _ _ _ hrun hfo (by simp [Instr.callsB])
-  simp only at hty hord hext1 hext2 hk
+  obtain ⟨hord, hcb, hext1, hext2⟩ := hG _ _ _ hrun hfo (by simp [Instr.callsB])
+  simp only at hty hord hcb hext1 hext2 hk
   -- the parameters' values, as a list read under any name
   have ha0 := ha ""
   rw [Array.mapM_eq_mapM_toList] at ha0
@@ -1862,7 +1863,7 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
       simpa using h'
     have hres' : ∀ who, (r.map (spliceReg rs.size tys.length args)).mapM (reg (rs ++ xs) who) = .ok o :=
       fun who => by simpa using hm.mapMA xs who (fun _ _ => trivial) (hres who)
-    obtain ⟨fg', hk'⟩ := hk (F1, G1) _ xs ⟨#[], by simp⟩ rfl hres'
+    obtain ⟨fg', hk'⟩ := hk (F1, G1) _ xs ⟨#[], by simp⟩ rfl hord hres'
     refine ⟨fg', Builds.of_run (fg2 := (F1, G1)) (js := body.map (·.rename (spliceReg rs.size tys.length args)))
       (fun is => ?_) hext1 hext2 (fun fs gs hE ws => ?_) hk'⟩
     · simp [funB, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hn,
@@ -1905,7 +1906,7 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
       · exact h
       · rw [Array.getElem?_eq_none h] at this; cases this
     obtain ⟨fg', hk'⟩ := hk ((addFun F1 F).2, G1) (List.range' rs.size r.size).toArray o hadd.1 rfl
-      (fun who => by rw [← ho]; exact mapM_reg_range rs o who)
+      (addFun_ordered hord fun j hj => hcb j (by rwa [callsB_map_rename] at hj)).1 (fun who => by rw [← ho]; exact mapM_reg_range rs o who)
     refine ⟨fg', Builds.of_run (fg2 := ((addFun F1 F).2, G1))
       (js := #[.apply (addFun F1 F).1 (args ++ cs).toArray]) (fun is => ?_)
       (let ⟨a, e⟩ := hext1; let ⟨a2, e2⟩ := hadd.1
@@ -2292,7 +2293,7 @@ theorem funT_builds {P : TabB → Prop} {fg fg1 : Array Fun × Array Fun} {Ts : 
       P U → tabsRegs [U] = Pure.pure R → tysTab U = Pure.pure rtys → ∀ is, cloTys fg1.1 fg1.2 is body rs.size
         R.toArray rtys ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
     (hk : ∀ U, P U → ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val),
-      (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
+      (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → Ordered fg2.1 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
       tabsAt [U] R'.toList = Pure.pure ([V], []) → ∃ fg', Builds abi fg2 fg' (kk V) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funT Ts b >>= kk) rs out := by
   obtain ⟨A', Y, h1, h2, h3, -⟩ := tabs_spec Ts
@@ -2322,12 +2323,12 @@ theorem funT_builds {P : TabB → Prop} {fg fg1 : Array Fun × Array Fun} {Ts : 
     exact (hb Us).bind fun U' => by
       obtain ⟨A2, Y2, e1, e2, -⟩ := tab_spec U'
       rw [e1, e2]; exact Grows.pure _
-  · intro fg2 r' ys he hf hr
+  · intro fg2 r' ys he hf ho hr
     have hsz : r'.size = R.length := by
       have h1 := mapM_ok_size (hr ""); have h2 := mapM_ok_size (hres ""); simp at h2; omega
     obtain ⟨V, f1, -⟩ := g4 r'.toList [] (by simpa using hsz)
     rw [List.append_nil] at f1
-    have := hk U hP fg2 r' V ys he hf hr f1
+    have := hk U hP fg2 r' V ys he hf ho hr f1
     simp only [f1, pure_bind]
     exact this
 
@@ -2345,7 +2346,7 @@ theorem funV_builds {P : TabB → Prop} {fg fg1 : Array Fun × Array Fun} {n : N
       P U → tabsRegs [U] = Pure.pure R → tysTab U = Pure.pure rtys → ∀ is, cloTys fg1.1 fg1.2 is body rs.size
         R.toArray rtys ((readsB rs.size body.toList ++ R.toArray.toList).filter (· < rs.size)).eraseDups = .ok ctys)
     (hk : ∀ U, P U → ∀ (fg2 : Array Fun × Array Fun) (R' : Array Nat) (V : TabB) (ys : Array Val),
-      (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
+      (∃ a, fg2.1 = fg1.1 ++ a) → fg2.2 = fg1.2 → Ordered fg2.1 → (∀ who, R'.mapM (reg (rs ++ ys) who) = .ok o) →
       tabsAt [U] R'.toList = Pure.pure ([V], []) → ∃ fg', Builds abi fg2 fg' (kk V) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funV n X Ts b >>= kk) rs out :=
   funT_builds (b := fun | T :: Ts => b T.n T.key Ts | [] => throw "a function on values: no table") hA ha hUs hB hfo
