@@ -24,7 +24,6 @@ gives `Enc.WF`. -/
 def Enc.Valid (n : USize) : Enc → Prop
   | .foR md pk => Column.lgOk md = true ∧ Coc.foRStd n md pk = true
   | .pos => True
-  | _ => False
 
 end Rel.Kernel
 
@@ -351,7 +350,6 @@ theorem raw_size_wf {s : QAtomicType} {n : USize} {e : Enc} (hs : s.width.isSome
   cases e with
   | foR md pk => cases s <;> simp_all [Enc.raw, QAtomicType.width]
   | pos => cases s <;> simp_all [Enc.WF, Enc.raw]
-  | _ => cases s <;> simp_all [Enc.WF, QAtomicType.width]
 
 /-- A source list of `Enc.WF` columns, read one after the other: each source's raw words, `chainAll []` being `pure`. -/
 theorem mapM_raw_pairs {s : QAtomicType} (hs : s.width.isSome) :

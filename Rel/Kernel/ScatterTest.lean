@@ -111,7 +111,7 @@ def idxs : List (Array UInt64) := [(Array.range 4000).map fun k => (k * 7919 % 9
 -- a plain write of 3000 rows (3 blocks and a tail) through the positions, as `.pos` and as the column `0 .. 2999`, answers
 -- the blocks of `e` as they stand, with patches or without: the Rust against the Lean fold, compiled
 #guard [patchedE 3000, (Array.range 3000).map fun k => (3 * k + 1).toUInt64].all fun es =>
-  [(.pos : Enc Empty), col ((List.range 3000).map Nat.toUInt64)].all fun ix =>
+  [(.pos : Enc), col ((List.range 3000).map Nat.toUInt64)].all fun ix =>
   view (kscatter .last (u 3000) ix (col es.toList) (u 3000) 9) ==
     view (wordsFoR <$> scatterWords .last ((Array.range 3000).map Nat.toUInt64) es 3000 9)
 

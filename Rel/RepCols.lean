@@ -140,7 +140,6 @@ theorem raw_cut {t : QAtomicType} {w : Nat} (ht : t.width = some w) {m : USize} 
     simp only [Enc.raw, Array.getElem?_map, Array.getElem?_range, hk, if_true, Option.map_some, Option.getD_some,
       Option.some.injEq]
     exact (mod_i64 _).symm
-  | _ => all_goals simp only [Kernel.Enc.Valid] at hV
 
 /-- **A stream's answer reads each source's rows, null included**, as `Opt.get_eq_of_raw` asks: row `S + k` of the answer
 `z` (`streamEnc`), `S` the rows of the sources before source `j`, is row `k` of that source `src`. The flags are

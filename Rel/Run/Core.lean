@@ -204,7 +204,7 @@ theorem lgOk_encode (width : USize) (hw : width.toNat ≤ 8) (x : ByteArray) :
 /-- A dense payload `b` of `n` elements of a fixed-width type `t` other than `u1`, `w` bytes each, Frame-of-Reference
     encoded at `w` is well formed at `n`: every such column the runtime builds (`Arr.ofBytes`), which `decide` cannot
     evaluate through `Coc.encode`. -/
-theorem foRBytes_wf {X : Type} (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isSome) (b : ByteArray) {n : USize}
+theorem foRBytes_wf (t : QAtomicType) (hu : t ≠ .u1 ∧ t.width.isSome) (b : ByteArray) {n : USize}
     (hn : b.size = t.width.getD 0 * n.toNat) : Enc.WF t n
     (.foR (Kernel.Coc.encode (t.width.getD 0).toUSize b).1 (Kernel.Coc.encode (t.width.getD 0).toUSize b).2) := by
   have hw : 0 < t.width.getD 0 ∧ t.width.getD 0 ≤ 8 := by cases t <;> simp [QAtomicType.width] at hu ⊢
@@ -325,7 +325,7 @@ theorem get_boolBits {n : USize} {e : Enc} (hw : Enc.WF .u1 n e) {b : ByteArray}
 
 /-- `Coc.bools` at a count `n` is a well formed boolean column of `n` rows: each element `0` or `1`
     (`foRBits_bools`), its blocks covering `n`, its `lg` the encoder's. -/
-theorem wf_bools {X : Type} {n : USize} (p : Nat → Bool) :
+theorem wf_bools {n : USize} (p : Nat → Bool) :
     Enc.WF .u1 n (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2 : Enc) := by
   have h1 : USize.ofNat32 1 (by decide) = (1 : Nat).toUSize := USize.toNat_inj.mp (by
     rcases System.Platform.numBits_eq with h | h <;> simp)
@@ -356,7 +356,7 @@ theorem bools_plain (n : USize) (p : Nat → Bool) :
 theorem boolBits_bools {n : USize} (f : Nat → Bool) :
     Kernel.boolBits .u1 n (.foR (Kernel.Coc.bools n.toNat (Column.bitAt (Kernel.packOf n.toNat f))).1
       (Kernel.Coc.bools n.toNat (Column.bitAt (Kernel.packOf n.toNat f))).2 : Enc) = some (Kernel.packOf n.toNat f) := by
-  have hb := (wf_bools (X := Unit) (n := n) (Column.bitAt (Kernel.packOf n.toNat f))).2.2.1
+  have hb := (wf_bools (n := n) (Column.bitAt (Kernel.packOf n.toNat f))).2.2.1
   have hf : ∀ i < n.toNat, Column.bitAt (Kernel.packOf n.toNat f) i = f i := fun i hi => Verify.bitAt_packOf _ _ _ hi
   generalize Column.bitAt (Kernel.packOf n.toNat f) = P at hb hf ⊢
   simp only [Kernel.boolBits, Kernel.bitsOfFoR, Option.some.injEq]
@@ -374,7 +374,7 @@ theorem boolBits_bools {n : USize} (f : Nat → Bool) :
 theorem bitAt_bools {N : Nat} {n : USize} (p : Nat → Bool) (hN : N = n.toNat) {i : Nat} (hi : i < n.toNat) :
     Column.bitAt (Kernel.bitsOfFoR (Kernel.Coc.bools N p).1 (Kernel.Coc.bools N p).2 n) i = p i := by
   subst hN
-  have hb := Nat.lt_of_lt_of_le hi (wf_bools (X := Unit) (n := n) p).2.2.1
+  have hb := Nat.lt_of_lt_of_le hi (wf_bools (n := n) p).2.2.1
   simp only [Kernel.bitsOfFoR, Verify.bitAt_packOf _ _ _ hi, (foRBits_bools _ _ hi).2, hb, decide_true, Bool.true_and]
   cases p i <;> decide
 
@@ -395,18 +395,19 @@ theorem get_boolsOf {n : USize} (g : ByteArray) {j : Nat} (hj : j < n.toNat) :
 def Arr.bools (n : USize) (p : Nat → Bool) : Arr .u1 n :=
   Arr.mk (.foR (Kernel.Coc.bools n.toNat p).1 (Kernel.Coc.bools n.toNat p).2) (wf_bools p) (bools_plain n p)
 
-theorem Enc.blank_WF (t : QAtomicType) (n : USize) (h : t ≠ .general := by first | decide | assumption) :
+theorem Enc.blank_WF (t : QAtomicType) (n : USize) (h : t.width.isSome = true := by first | decide | assumption) :
     Enc.WF t n (Enc.blank t n) := by
   cases t
   case u1 => exact wf_bools fun _ => false
-  case general => exact absurd rfl h
+  case general => simp [QAtomicType.width] at h
   -- every fixed-width type: `blank` is `ofBytes` of `n` zero elements
   all_goals exact foRBytes_wf _ (by decide) _ ((Array.size_replicate).trans (Nat.mul_comm _ _))
 
-theorem Enc.blank_plain (t : QAtomicType) (n : USize) : Kernel.hasNul (Enc.blank t n) = false := by
+theorem Enc.blank_plain (t : QAtomicType) (n : USize) (h : t.width.isSome = true := by first | decide | assumption) :
+    Kernel.hasNul (Enc.blank t n) = false := by
   cases t
   case u1 => exact bools_plain n fun _ => false
-  case general => rfl
+  case general => simp [QAtomicType.width] at h
   all_goals (simp only [Enc.blank, QAtomicType.width]; exact ofBytes_plain _ (by decide) _)
 
 namespace Column

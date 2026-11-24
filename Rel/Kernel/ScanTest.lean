@@ -128,12 +128,12 @@ example : kwords ((List.range 4).foldlM (kscanRow .or #[0, 1, 0, 1] #[0, 1, 0, 1
   [1, 1, 1, 0]
 
 -- `pos` (PLAN 6.13) as the seed: row `i` reads `i`, `0+1, 1+2 | 2+3, 5+4`
-example : (Enc.raw (X := Empty) .i64 (USize.ofNat32 4 (by decide)) .pos).toList = [0, 1, 2, 3] := by decide +kernel
+example : (Enc.raw .i64 (USize.ofNat32 4 (by decide)) .pos).toList = [0, 1, 2, 3] := by decide +kernel
 example : kwords ((List.range 4).foldlM (kscanRow .add #[1, 0, 1, 0] #[0, 1, 2, 3] [#[1, 2, 3, 4]]) #[]) =
     [1, 3, 5, 9] := by decide
 #guard kread (kscan .add false .i64 .i64 4 kseg (ks 4 [.pos, Enc.ofBytes 8 (Column.packIds 64 4 (· + 1))])) = [1, 3, 5, 9]
 -- `pos` is `i64` only: as `seg` (read as booleans) and read at `i32` it holds no raw elements, the error
-example : (Enc.raw (X := Empty) .u1 (USize.ofNat32 4 (by decide)) .pos).size = 0 := by decide +kernel
+example : (Enc.raw .u1 (USize.ofNat32 4 (by decide)) .pos).size = 0 := by decide +kernel
 #guard (kscan .add false .i64 .i64 4 (some .pos) kcols).toBool = false
 #guard (kscan .add false .i32 .i64 4 kseg (ks 4 [.pos])).toBool = false
 

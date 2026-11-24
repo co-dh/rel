@@ -47,7 +47,7 @@ def roundTrip (f : OwnFile) : IO OwnFile := do
 def column (t : QAtomicType) (n : USize) (e : Enc) : IO Unit := do
   let some f ← IO.ofExcept (ownFile t n e) | throw (IO.userError "positions, which have no file")
   let g ← roundTrip f
-  match ownEnc (X := Empty) g.kind g.parts with
+  match ownEnc g.kind g.parts with
   | some (.foR m p) => IO.println s!"foR: metadata {m.size} bytes, pack {p.size} bytes"
   | some _ => IO.println "another constructor"
   | none => throw (IO.userError s!"ownEnc: no constructor of kind {g.kind}")
@@ -79,7 +79,7 @@ foR: metadata 57 bytes, pack 256 bytes
 -- is written as any other column; and the writer refuses kind 6, a number that is no kind
 /-- info: Except.ok none -/
 #guard_msgs in
-#eval (ownFile (X := Empty) .i64 5 .pos).map (·.map key)
+#eval (ownFile .i64 5 .pos).map (·.map key)
 /--
 info: ("error: a column of kind and part count 2:2 or 5:0, given kind 6 with 0 parts",
  "error: a column of kind and part count 2:2 or 5:0, given kind 6 with 0 parts")

@@ -37,7 +37,6 @@ theorem Enc.get_raw_atom {t : QAtomicType} {n : USize} {e : Enc} (hw : Enc.WF t 
     cases t <;> simp only [Enc.WF] at hw
     exact ⟨UInt64.ofNat i.1, by simp [Enc.raw, i.2], fun h => absurd h (by decide),
       by simp [Enc.get, i.2, Column.atomOfBits]⟩
-  | _ => all_goals cases t <;> first | exact absurd rfl hg | simp only [Enc.WF] at hw
 
 /-- `Enc.get_raw_atom` at an `Arr`, whose every row is no null (`foRNuls_plain`). -/
 theorem Arr.get_raw_atom {t : QAtomicType} {n : USize} (x : Arr t n)

@@ -61,7 +61,6 @@ theorem Opt.kgather_wf {t : QAtomicType} {n m : USize} {ix o : Enc} (x : Opt t n
     cases t <;> simp only [Enc.WF] at hw
     simp only [hasNul, Bool.false_eq_true, if_false]
     exact (wordsFoR_closed _ (by rw [Array.size_map, his])).2.2 rfl (fun h => absurd h (by decide))
-  | _ => all_goals simp only [Kernel.Enc.Valid] at hv
 
 /-- `n` cells holding the word `w`: `kscatter` of no rows. -/
 def colConst (n : USize) (w : UInt64) : Except String Enc := kscatter .last 0 .pos .pos n w
