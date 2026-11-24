@@ -2009,9 +2009,6 @@ theorem regsC_spec : ∀ c : Col, ∃ L T, regsC c = Pure.pure L ∧ tysC c = Pu
         · rw [tysC, e3, f3]; rfl
 end
 
-/-- A table's parameter types: its count a `size`, then `tysOf` its columns (`funT`'s `tysT`, which is local to it). -/
-def tysTab (T : TabB) : Bld (List Ty) := return Ty.size :: (← tysOf (T.key ++ T.val))
-
 theorem tabsRegs_append (Ts Us : List TabB) :
     tabsRegs (Ts ++ Us) = (do let a ← tabsRegs Ts; let b ← tabsRegs Us; pure (a ++ b)) := by
   simp only [tabsRegs, List.mapM_append, bind_assoc, pure_bind, List.flatten_append]
@@ -2076,15 +2073,6 @@ theorem Grows.tabsRegs (Ts : List TabB) : Grows (tabsRegs Ts) :=
 theorem Grows.tysOf (cs : Cols) : Grows (tysOf cs) :=
   let ⟨_, _, _, h, _⟩ := regsOf_spec cs; Grows.of_pure h
 
-theorem funT_eq (Ts : List TabB) (b : List TabB → Bld TabB) : funT Ts b = (do
-    let tys ← Ts.mapM tysTab
-    let args ← tabsRegs Ts
-    let (rs, U) ← funB tys.flatten args fun ps => do
-      let U ← b (← tabsAt Ts ps).1; pure ((← tabsRegs [U]).toArray, ← tysTab U, U)
-    match (← tabsAt [U] rs.toList).1 with
-    | [V] => pure V
-    | _ => throw "a function's answer: not one table") := rfl
-
 /-- `funB_builds` for a table function `funT Ts b`: the parameters are the registers `A` of `Ts` read in `rs` (`pv`),
     the body `b` reads the tables `Us` whose registers are the parameters, and answers the table `U` whose registers
     `R` hold `o`; the table `kk` continues with is `U` over the registers `R'` that the answer's `funB` leaves. -/
@@ -2107,7 +2095,8 @@ theorem funT_builds {fg fg1 : Array Fun × Array Fun} {Ts : List TabB} {b : List
   obtain rfl : A = A' := pure_inj (hA.symm.trans h1)
   obtain ⟨R', RY, g1, g2, g3, g4⟩ := tab_spec U
   obtain rfl : R = R' := pure_inj (hR.symm.trans g1)
-  rw [funT_eq, h2, h1]
+  unfold funT
+  rw [h2, h1]
   simp only [pure_bind, bind_assoc]
   refine funB_builds (fg := fg) (fg1 := fg1) (x := U) (r := R.toArray) (ctys := ctys) (rtys := rtys) (pv := pv) (xs := xs) (o := o)
     (body := body) h3 ha ?_ hbody hres hfo ?_ hty ?_

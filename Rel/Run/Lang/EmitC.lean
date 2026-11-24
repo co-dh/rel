@@ -365,11 +365,13 @@ def funB {α : Type} (tys : List Ty) (args : List Nat) (b : List Nat → Bld (Ar
   set (is, n, fs, gs)
   return (← apply g (args ++ cs).toArray r.size, x)
 
+/-- A table's parameter types: its count a `size`, then `tysOf` its columns. -/
+def tysTab (T : TabB) : Bld (List Ty) := return Ty.size :: (← tysOf (T.key ++ T.val))
+
 /-- `funB` on tables: each `T` of `Ts` passed as its count, then `regsOf`, and the answer a table likewise. -/
 def funT (Ts : List TabB) (b : List TabB → Bld TabB) : Bld TabB := do
-  let tysT (T : TabB) : Bld (List Ty) := return Ty.size :: (← tysOf (T.key ++ T.val))
-  let (rs, U) ← funB (← Ts.mapM tysT).flatten (← tabsRegs Ts) fun ps => do
-    let U ← b (← tabsAt Ts ps).1; pure ((← tabsRegs [U]).toArray, ← tysT U, U)
+  let (rs, U) ← funB (← Ts.mapM tysTab).flatten (← tabsRegs Ts) fun ps => do
+    let U ← b (← tabsAt Ts ps).1; pure ((← tabsRegs [U]).toArray, ← tysTab U, U)
   match (← tabsAt [U] rs.toList).1 with
   | [V] => pure V
   | _ => throw "a function's answer: not one table"
