@@ -1065,17 +1065,66 @@ def castB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
     keepB ⟨n, X, [.atom "" t w]⟩ (← mapB .ne n w (← wordsB n nulWord))
   | _, _ => throw "$: casts a number object to a number object"
 
+/-- The one array column of a side of `[B]`, or the error naming `what` reads it. -/
+def arrCol (what : String) : Cols → Bld (Nat × Nat × Nat × Cols)
+  | [.arr _ m lo hi f] => pure (m, lo, hi, f)
+  | cs => throw s!"{what}: a side of {cs.length} columns where one array side is read"
+
+/-- **`Tab.ymd`** (`Db.Csv.ymd`) on the texts `X` (`n` cells): each cell's ten chars gathered from its payload (`kgather`
+    at `lo + j`, the clamped span's start, the payload padded by one cell so a short cell reads in bounds), the digits,
+    separators, ranges and `mdays` tested and the day count (`Db.Csv.daysFrom`) computed as `kscan` maps over those ten
+    columns, the day written at `date` (its `Int32` as a word), kept where the cell reads as a day. No cell is decoded
+    to a list: every step is a map over words, so the whole column goes through the kernels. -/
+def ymdB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
+  | .arr (.atom .char), .atom .date => do
+    let (m, lo, hi, f) ← arrCol "ymd" X
+    let (s, e) ← spanB n m lo hi
+    let one ← lit (.size 1)
+    let (M, _) ← catB m one
+    let P ← catColB .char M m one (← col1 f) (← wordsB one 0)
+    let mc ← constB n (← u64B m)
+    let m2 (o : Kernel.Op) (x y : Nat) : Bld Nat := mapB o n x y
+    let k (w : UInt64) : Bld Nat := wordsB n w
+    -- a map by a constant, as a post chain (`rdiv`/`rmod` not needed: only commutative steps and `add`)
+    let ch (x : Nat) (st : List (Kernel.Op × UInt64)) : Bld Nat := mapB .first n x x .i64 .i64 [] st
+    let cs ← (List.range 10).mapM fun (j : Nat) => do gatherB n (← m2 .min (← ch s [(.add, j.toUInt64)]) mc) M P
+    let [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9] := cs | throw "ymd: not ten chars"
+    let [d0, d1, d2, d3, d5, d6, d8, d9] ← [c0, c1, c2, c3, c5, c6, c8, c9].mapM (ch · [(.add, (0 : UInt64) - 48)])
+      | throw "ymd: not eight digits"
+    let dg := [d0, d1, d2, d3, d5, d6, d8, d9]
+    let isDig ← dg.mapM fun d => do m2 .eq (← ch d [(.max, 0), (.min, 9)]) d
+    let fold (o : Kernel.Op) (x : Nat) (xs : List Nat) : Bld Nat := xs.foldlM (m2 o) x
+    let num (a b : Nat) : Bld Nat := do m2 .add (← ch a [(.mul, 10)]) b
+    let y ← num (← num (← num d0 d1) d2) d3
+    let mo ← num d5 d6
+    let dd ← num d8 d9
+    let z ← k 0
+    let leap ← m2 .and (← m2 .eq (← m2 .mod y (← k 4)) z)
+      (← m2 .or (← m2 .ne (← m2 .mod y (← k 100)) z) (← m2 .eq (← m2 .mod y (← k 400)) z))
+    let is30 ← fold .or (← ch mo [(.eq, 4)]) [← ch mo [(.eq, 6)], ← ch mo [(.eq, 9)], ← ch mo [(.eq, 11)]]
+    let md ← m2 .sub (← m2 .sub (← k 31) (← m2 .mul (← ch mo [(.eq, 2)]) (← m2 .sub (← k 3) leap))) is30
+    let ok ← fold .and (← m2 .eq (← m2 .sub e s) (← k 10)) (isDig ++ [
+      ← m2 .or (← ch c4 [(.eq, 46)]) (← ch c4 [(.eq, 45)]), ← m2 .eq c7 c4, ← m2 .ge y (← k 1),
+      ← m2 .ge mo (← k 1), ← m2 .le mo (← k 12), ← m2 .ge dd (← k 1), ← m2 .le dd md])
+    let le2 ← m2 .le mo (← k 2)
+    let y' ← m2 .sub y le2
+    let era ← m2 .div y' (← k 400)
+    let yoe ← m2 .sub y' (← m2 .mul era (← k 400))
+    let mp ← m2 .add (← m2 .sub mo (← k 3)) (← m2 .mul (← k 12) le2)
+    let doy ← m2 .sub (← m2 .add (← m2 .div (← m2 .add (← m2 .mul (← k 153) mp) (← k 2)) (← k 5)) dd) (← k 1)
+    let days ← m2 .sub (← m2 .add (← m2 .sub (← m2 .add (← m2 .add (← m2 .mul era (← k 146097))
+      (← m2 .mul yoe (← k 365))) (← m2 .div yoe (← k 4))) (← m2 .div yoe (← k 100))) doy) (← k 719468)
+    -- the write at `date` keeps the low 32 bits (`Int32.ofInt`, `toUInt32`); the rows kept are the ones `ok` marks, the rest 0
+    let w ← mapB .mul n days ok .date .i64
+    keepB ⟨n, X, [.atom "" .date w]⟩ ok
+  | _, _ => throw "ymd runs from a text [char] to a date, found other objects"
+
 /-- **`Tab.asc`** of `P : B ⟶ B`: `canon` of the rows `(0, b)`, `b` a key of `P`, keyed by their positions. -/
 def ascB (B : Obj) (P : TabB) : Bld TabB := do
   if let some t := B.ascBad then
     throw s!"asc: elements of type {repr t} have no order code (a symbol or a general atom): number a set of numbers"
   let U ← canonT ⟨P.n, [.atom "" .i64 (← wordsB P.n 0)], P.key⟩
   pure ⟨U.n, [.atom "" .i64 (← posB)], U.val⟩
-
-/-- The one array column of a side of `[B]`, or the error naming `what` reads it. -/
-def arrCol (what : String) : Cols → Bld (Nat × Nat × Nat × Cols)
-  | [.arr _ m lo hi f] => pure (m, lo, hi, f)
-  | cs => throw s!"{what}: a side of {cs.length} columns where one array side is read"
 
 /-- **`Tab.mem`** (`∋`) on the arrays `X` (`n` rows): EXPAND of the clamped widths `e - s`, the key the cell `X[G]`,
     the value the payload at `s[G] + u`; then `canonT`. -/
@@ -1840,6 +1889,7 @@ def rowB (r : Prim) (A B : Obj) (D : Dom) (xs : List (Dom → Bld TabB)) : Bld T
   let some (c, _) := kernRows.lookup r.sym | throw s!"row `{r.sym}`: no `Tab` operator in `kernRows`"
   if c == ``Tab.floatOp then let (n, X) ← known r.sym D.dom; floatOpB r.sym A B n X
   else if c == ``Tab.cast then let (n, X) ← known r.sym D.dom; castB A B n X
+  else if c == ``Tab.ymd then let (n, X) ← known r.sym D.dom; ymdB A B n X
   else if c == ``Tab.arithOp then let (n, X) ← known r.sym D.dom; arithOpB r.sym A B n X
   else if c == ``Tab.succOp then let (n, X) ← known r.sym D.dom; succOpB A B n X
   else if c == ``Tab.mixOp then let (n, X) ← known r.sym D.dom; mixOpB A B n X
