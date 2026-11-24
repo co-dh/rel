@@ -484,7 +484,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`∋`（on `X`）], [格界 → EXPAND(`e − s`) → `gather`（key 取格 `X[G]`，val 取 payload 第 `s[G] + u` 个）；
     `n·m + n + m ≥ 2^63` 拒绝],
   [`E(R)`], [`Λ(∋ ≫ R)`：`∋` 行 → `≫` 行 → Λ 行],
-  [`τ` = `Λ(𝟙)`], [`𝟙` on `X` = `dom ⟨X, X⟩`（`asc → seen → gather`）→ Λ 行；Λ 中 `X` 与表共 `N` 行，`N ≥ 2^63` 拒绝],
+  [`τ` = `Λ(𝟙)`], [`𝟙` on `X` = `dom ⟨X, X⟩`（`asc → seen → gather`）→ Λ 行；Λ 中 `X` 与表共 `N` 行，`N ≥ 2^63` 拒绝。`τ ≜ Λ(𝟙)` 是 prelude 定义，`Tm.τDef_den`（9fee149）],
   [`setify` = `Λ(∋)`], [`∋` 行 → Λ 行],
   [`length`], [格界 → `scan(sub)` 得宽 `e − s`；payload `m ≥ 2^63` 拒绝。是 `fold` 定义（§1、§7「`prims` 行改为
     `fold`」）的融合形式，定理 `⟦length 行⟧ = ⟦fold 定义⟧` 即 `Tm.lengthDef_den`（已证）],
@@ -562,13 +562,13 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
     `X' = T ∪ X` 与 `Δ' = T − X`（再 `pack`）共用 `T ++ X` 的一次 `asc` + `seen`（`Tab.unionDiff`：`∪` 行取各组首行，`−`
     行取无 `X` 行的组；`Tab.unionDiff_ok` 证二者即 `union`、`diff`），`Δ'` 为空即停；`F` 只读上一轮新增的行。轮数、上限与报错同 `Tab.mu`；
     `F(X ∪ Y) ⊑ F(X) ∪ F(Y)`（`Tm.den_linIn`）使之与 `Tab.mu` 同解（`Tab.muLin_holds`、`GenK.mu_sound`）],
-  [`loop(F)`（草稿，待审）], [`P ≫ loop(F)`：在 `ran P` 的每个 `(c, ys)` 上，以 `c` 起、沿 `ys` 的左折叠
+  [`loop(F)`（prelude 定义，`Tm.loopDef_den`（11d846a）；原：草稿，待审）], [`P ≫ loop(F)`：在 `ran P` 的每个 `(c, ys)` 上，以 `c` 起、沿 `ys` 的左折叠
     （`Tab.foldRounds` + `cons°`），每轮 `p ≫ F(ran p)`，`p` 为该轮的对 `(acc, y)`],
-  [`merge(Q)`（草稿，待审）], [状态 `((x, y), acc)` 自 `((x, y), [])` 起，以 `cat(x, y)` 为时钟跑 `|x| + |y|` 轮
+  [`merge(Q)`（prelude 定义，`Tm.mergeDef_den`、`Tm.mergeDef_row`（a58f429）；原：草稿，待审）], [状态 `((x, y), acc)` 自 `((x, y), [])` 起，以 `cat(x, y)` 为时钟跑 `|x| + |y|` 轮
     `Tab.foldRounds`：`Q` 按对角读（同 `front`）：`l = dom(⟨a, b⟩ ≫ (Q(D) ∩ D))`，`D = ran ⟨a, b⟩`
     （`a`、`b` 为两侧 `cons°` 的头；`(a, b) Q (a, b)` 的键），`l` 或 `y` 空时取 `a`，否则取 `b`，
     `snoc` 到 `acc`；结果 `π₂`],
-  [`thinL(Q)`（草稿，待审）], [`⦇nil, bump(Q)⦈ʳ`（`Tab.foldRounds` + `snoc°`）；`bump` 在对 `(x, ys)` 上：
+  [`thinL(Q)`（prelude 定义，`Tm.thinLDef_den`（09a7562）；原：草稿，待审）], [`⦇nil, bump(Q)⦈ʳ`（`Tab.foldRounds` + `snoc°`）；`bump` 在对 `(x, ys)` 上：
     `u = ys ≫ cons°` 得 `(b, bs)`，`Q` 按对角读（同 `front`，`Q(D) ∩ D`）：`(x, b) Q (x, b)` 时 `x :: bs`，
     `(b, x) Q (b, x)` 时 `ys`，`ys` 空或两者皆否时 `cons`（`x :: ys`）],
   [`F(R)`（草稿，待审）], [格界 → EXPAND → `gather` 元素成平铺 payload `v`（`T` 行）→ `⟨pos, v⟩ ≫ R`（按位置作键）；
@@ -696,7 +696,7 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 #block(breakable: false)[#tbl(c-syn, (auto, 1fr), ([归属], [运算]),
   [构造子], [`mem`（`∋`） `inl` `inr`；`fold` `foldr` `hylo`（AOP 的标准递归组合子）],
   [纯定义], [`E` `×` 积 object 的 universe `<`（对 native 行 `lt`）],
-  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理 ✅ e96e272（原：待 D3e-asc，定理未证））],
+  [定义 + fused 行], [`dom` `ran` `nil` `est` `front` `foldI` `length` `sum` `flat` `succ` `max` `min` `lt`（任意 object 上的序，决定 F）`le`（`lt ∪ dom(π₁ ∩ π₂)`，`Tm.leDef_den`）`τ`（`Tm.τDef_den`（9fee149））`positions`（`Tm.positionsDef_den`（fc6214f））`loop`（`Tm.loopDef_den`（11d846a））`thinL`（`Tm.thinLDef_den`（09a7562））`merge`（`Tm.mergeDef_den`（a58f429））`asc`（`Tm.asc_den` ✅ b34db9e；行 = 定义定理 ✅ e96e272（原：待 D3e-asc，定理未证））],
   [native 行], [`cons` `snoc` `cat` `zip` `cons°`；`at`（二元行）；`plus minus times div mod divide`；`$`；浮点运算],
 )]
 
