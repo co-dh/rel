@@ -444,8 +444,11 @@ def agree {A B : Obj} (m : Lean.Name) (x : String) (v : Except String (Tab A B))
     let p ← planOfIn m x
     let t1 ← IO.monoMsNow
     writesAgree x p v
-    -- a slot of `shareB` left unbuilt is a use that fell back to its inline build: logged, as the loss is silent otherwise
-    let g := p.toOption.elim "" fun p => s!", slots built {(p.globals.filter (!·.res.isEmpty)).size} of {p.globals.size}"
+    -- a slot of `shareB` whose closed build failed is built inline at each use: counted with its errors, as the loss is silent otherwise
+    let g := p.toOption.elim "" fun p =>
+      let bad := p.globals.toList.filterMap (·.failure?)
+      s!", slots built {(p.globals.filter (!·.res.isEmpty)).size} of {p.globals.size}, closed build failed {bad.length}{
+        if bad.isEmpty then "" else s!" ({bad.eraseDups})"}"
     Lean.logInfo m!"{m}.{x}: plan {t1 - t} ms, run {(← IO.monoMsNow) - t1} ms{g}"
 
 -- the plan's writes are those of the Lean value `native1a.x` (`Tab.conv`: swapped, then `canon`)

@@ -1838,6 +1838,16 @@ def shapeB (A B : Obj) : Bld TabB := do
     t.map fun _ => (p, Array.replicate (max Side.enc Side.count + 1) 0)
   pure ⟨0, ← colsOf A (side A), ← colsOf B (side B)⟩
 
+/-- A slot whose closed build failed with `e`, as `shareB` marks it: no result, two literals (a program's tag global is one),
+    so the plan's stats count it and the error is kept. A part that runs on its context's values (`sum°`, `F(R)°`: a
+    converse of a row on demand, which `Tm.dem` reads as closed) has no table without them: its use builds it inline. -/
+def failedSlot (e : String) : Fun := ⟨#[], [.lit (.str "closed build failed"), .lit (.str e)], #[]⟩
+
+/-- The error of a slot marked `failedSlot`. -/
+def Fun.failure? (F : Fun) : Option String := match F.res.isEmpty, F.body with
+  | true, [.lit (.str "closed build failed"), .lit (.str e)] => some e
+  | _, _ => none
+
 /-- **A closed part computed once** (`Tm.slot k`): its table is global `k`, built at the first use in a block of its own
     (a closed part reads nothing of the enclosing block, so `glob` is `tabB` closed, `{}` its context), and read by
     `global k` at every use, as the Lean value reads `n.shares`. The global's registers are the table's (`tabsRegs`) and
@@ -1853,7 +1863,10 @@ def shareB (k : Nat) (A B : Obj) (inl glob : Bld TabB) : Bld TabB := do
     match (← tabsAt [shape] (← emit (.global k) F.res.size).toList).1 with
     | [T] => pure T
     | _ => throw s!"global g{k}: not one table"
-  if (((← get).2.2.2)[k]?).any (!·.res.isEmpty) then use else
+  let slot := ((← get).2.2.2)[k]?
+  if slot.any (!·.res.isEmpty) then use else
+  -- the closed build reads no use site, so its failure is the slot's: tried once, then every use is inline
+  if slot.any (·.failure?.isSome) then inl else
   tryCatch (do
     let (is, n, fs, gs) ← get
     let (rs, body, _, fs, gs) ← (do
@@ -1862,7 +1875,9 @@ def shareB (k : Nat) (A B : Obj) (inl glob : Bld TabB) : Bld TabB := do
       unless rest.isEmpty && cs == U.key ++ U.val do throw s!"global g{k}: its table is not the shape of its objects"
       tabsRegs [U]).run (#[], 0, fs, gs)
     set (is, n, fs, (gs ++ Array.replicate (k + 1 - gs.size) default).modify k fun _ => ⟨#[], body.toList, rs.toArray⟩)
-    use) fun _ => inl
+    use) fun e => do
+    modify fun (is, n, fs, gs) => (is, n, fs, (gs ++ Array.replicate (k + 1 - gs.size) default).modify k fun _ => failedSlot e)
+    inl
 
 mutual
 /-- **A term's table**: its node's recipe (`nodeB`) as one plan function (`funT`), closing over the tables of its
