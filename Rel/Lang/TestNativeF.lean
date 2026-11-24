@@ -1,9 +1,8 @@
 import Rel.Lang.TestNative
 
 /-! The fixpoint rows `star`, `loop` run natively (`Plan.rowB`: `starB`, `loopB`): each definition's plan writes the
-    columns `writeRel` writes of its Lean value (`writesAgree`, the `rel-native` gate's check). `ymd` has no recipe:
-    the day count of a text has one source, `Db.Csv.ymd`, which no kernel of the plan ABI computes, so its plan is
-    refused naming the row. -/
+    columns `writeRel` writes of its Lean value (`writesAgree`, the `rel-native` gate's check). `ymd` runs natively too
+    (`ymdB`): each text's ten chars are gathered and its day count computed by `kscan` maps. -/
 
 namespace Rel.Lang.TestNativeF
 
@@ -29,7 +28,7 @@ rel_program nativeF where
     check lp = {(1,6),(2,5),(3,9)}
     lq : N ⟶ I ≜ ⟨a0, xs⟩ loop(π₁ ∪ π₂)
     check lq = {(1,0),(1,1),(1,2),(1,3),(2,5),(3,1),(3,4)}
-    tx : N ⟶ [C] ≜ {(1,"2024.01.15"),(2,"2024.02.30")}
+    tx : N ⟶ [C] ≜ {(1,"2024.01.15"),(2,"2024.02.30"),(3,"1969-12-31"),(4,"0001.01.01"),(5,"2024.2.3"),(6,"2023-02-29"),(7,"2024.13.01"),(8,""),(9,"2024.01-15"),(0,"2000.02.29")}
     dy : N ⟶ D ≜ tx ymd
 
 
@@ -42,10 +41,8 @@ rel_program nativeF where
 -- the Lean values the plans match (the `check` lines), so an agreeing plan of a wrong value is caught here
 #guard nativeF.failures.map toString == []
 
--- `ymd`'s plan is refused naming the row, never a wrong table
+-- `ymd`: the day count and the keep flag computed by the plan's `kscan` maps equal `Tab.ymd`'s (`Db.Csv.ymd`)
 #eval show Lean.Meta.MetaM Unit from do
-  match ← planOfIn ``nativeF "dy" with
-  | .error e => unless (e.splitOn "row `ymd`").length == 2 do throwError "ymd's plan fails with {e}"
-  | .ok _ => throwError "ymd has a plan, but no recipe computes it"
+  writesAgree "dy" (← planOfIn ``nativeF "dy") nativeF.dy
 
 end Rel.Lang.TestNativeF

@@ -1103,8 +1103,8 @@ def ymdB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
     let doy ← m2 .sub (← m2 .add (← m2 .div (← m2 .add (← m2 .mul (← k 153) mp) (← k 2)) (← k 5)) dd) (← k 1)
     let days ← m2 .sub (← m2 .add (← m2 .sub (← m2 .add (← m2 .add (← m2 .mul era (← k 146097))
       (← m2 .mul yoe (← k 365))) (← m2 .div yoe (← k 4))) (← m2 .div yoe (← k 100))) doy) (← k 719468)
-    -- floor `mod 2^32`: the word of the `Int32` the day count is (`Int32.ofInt`, `toUInt32`)
-    let w ← mapB .mod n days (← k 4294967296) .date .i64
+    -- the write at `date` keeps the low 32 bits (`Int32.ofInt`, `toUInt32`); the rows kept are the ones `ok` marks, the rest 0
+    let w ← mapB .mul n days ok .date .i64
     keepB ⟨n, X, [.atom "" .date w]⟩ ok
   | _, _ => throw "ymd runs from a text [char] to a date, found other objects"
 
