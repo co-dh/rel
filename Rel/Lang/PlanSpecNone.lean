@@ -243,5 +243,76 @@ theorem noneB_builds {fg fg' : Array Fun × Array Fun} {z : Nat} (A : Obj) :
         simpa only [Array.append_assoc] using mapM_get_app (xs := ys2) hr
       simp [Cols.regs, Col.regs, ValsB.regVals, ValsB.view_ofGen, Vals.regVals_lift, tagCol_zero htag, e1, e2, hr2]
 
+/-- `zeroB A B` builds a table whose registers hold `Tab.zero`'s: the count `0`, then `noneB` of each side. -/
+theorem zeroB_builds {fg fg' : Array Fun × Array Fun} {A B : Obj} {R : Tab A B} {rs : Array Val}
+    {kk : TabB → Bld (Array Nat)} {out : Array Val} (hR : Tab.zero = .ok R)
+    (hkk : ∀ (U : TabB) (ys : Array Val), ColsOf A U.key → ColsOf B U.val →
+      U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)) →
+      Builds abiOf fg fg' (kk U) (rs ++ ys) out) :
+    Builds abiOf fg fg' (zeroB A B >>= kk) rs out := by
+  unfold Tab.zero at hR
+  obtain ⟨xa, ha, hR⟩ := except_bind_ok hR
+  obtain ⟨xb, hb, hR⟩ := except_bind_ok hR
+  cases hR
+  unfold zeroB
+  simp only [bind_assoc, pure_bind]
+  refine Builds.lit ?_
+  rw [show rs.push (Val.size 0) = rs ++ #[Val.size 0] by simp]
+  have hz : (rs ++ #[Val.size 0])[rs.size]? = some (.size 0) := by simp
+  refine noneB_builds A hz ha fun U ys hU hr => noneB_builds B (get_app hz) hb fun U2 ys2 hU2 hr2 => ?_
+  simp only [Array.append_assoc] at hr hr2 ⊢
+  refine hkk ⟨rs.size, U, U2⟩ _ hU hU2 ?_
+  have e2 : (Cols.regs U).mapM (fun i => (rs ++ (#[Val.size 0] ++ (ys ++ ys2)))[i]?) = some xa.regVals := by
+    simpa only [Array.append_assoc] using mapM_get_app (xs := ys2) hr
+  have e0 : (rs ++ (#[Val.size 0] ++ (ys ++ ys2)))[rs.size]? = some (.size 0) := by
+    have h := get_app (xs := ys ++ ys2) hz; rwa [Array.append_assoc] at h
+  simp only [TabB.regs, Cols.regs_append, List.mapM_append, List.mapM_cons, e0, e2, hr2]
+  rfl
+
+/-- The columns of a side of `A` are `objWidth A` many. -/
+theorem ColsOf.length_eq : ∀ {A : Obj} {cs : Cols}, ColsOf A cs → cs.length = objWidth A
+  | .atom _, _, ⟨_, _, h⟩ => by subst h; simp [objWidth]
+  | .prod _ _, _, ⟨_, _, h, h1, h2⟩ => by subst h; simp [objWidth, ColsOf.length_eq h1, ColsOf.length_eq h2]
+  | .arr _, _, ⟨_, _, _, _, _, h, _⟩ => by subst h; simp [objWidth]
+  | .one, _, h => by subst h; simp [objWidth]
+  | .sum a b, _, h => by
+    unfold ColsOf at h
+    split at h
+    · obtain ⟨_, _, h⟩ := h; subst h; simp [objWidth]
+    · obtain ⟨_, _, _, _, h, -⟩ := h; subst h; simp [objWidth]
+
+/-- `repath A pre` has no spec counterpart: it renames the paths of a side's columns (`Tab.pair`'s key rebracketing in
+    `pairB`), so it keeps `ColsOf A` and the registers, never failing on a side of `A`. -/
+theorem repath_eq : ∀ (A : Obj) {pre : String} {cs : Cols}, ColsOf A cs →
+    ∃ cs', repath A pre cs = pure cs' ∧ ColsOf A cs' ∧ Cols.regs cs' = Cols.regs cs
+  | .atom t, pre, _, ⟨p, e, h⟩ => by
+    subst h; exact ⟨[.atom pre t e], by simp [repath], ⟨pre, e, rfl⟩, by simp [Cols.regs, Col.regs]⟩
+  | .prod a b, pre, _, ⟨c1, c2, h, h1, h2⟩ => by
+    subst h
+    obtain ⟨d1, e1, g1, r1⟩ := repath_eq a (pre := pre ++ ".1") h1
+    obtain ⟨d2, e2, g2, r2⟩ := repath_eq b (pre := pre ++ ".2") h2
+    refine ⟨d1 ++ d2, ?_, ⟨d1, d2, rfl, g1, g2⟩, by simp [Cols.regs_append, r1, r2]⟩
+    have ht : (c1 ++ c2).take (objWidth a) = c1 := by simp [← ColsOf.length_eq h1]
+    have hd : (c1 ++ c2).drop (objWidth a) = c2 := by simp [← ColsOf.length_eq h1]
+    simp [repath, ht, hd, e1, e2]
+  | .arr b, pre, _, ⟨p, m, lo, hi, f, h, hf⟩ => by
+    subst h
+    obtain ⟨f', e, g, r⟩ := repath_eq b (pre := pre ++ ".e") hf
+    exact ⟨[.arr pre m lo hi f'], by simp [repath, e], ⟨pre, m, lo, hi, f', rfl, g⟩, by simp [Cols.regs, Col.regs, r]⟩
+  | .one, pre, _, h => by subst h; exact ⟨[], by simp [repath], rfl, rfl⟩
+  | .sum a b, pre, cs, h => by
+    unfold ColsOf at h
+    split at h
+    · rename_i t hband
+      obtain ⟨p, e, h⟩ := h; subst h
+      refine ⟨[.atom pre t e], by simp [repath, hband], by simp only [ColsOf, hband]; exact ⟨pre, e, rfl⟩,
+        by simp [Cols.regs, Col.regs]⟩
+    · rename_i hband
+      obtain ⟨p, tag, x, y, h, hx, hy⟩ := h; subst h
+      obtain ⟨x', ex, gx, rx⟩ := repath_eq a (pre := pre ++ ".l") hx
+      obtain ⟨y', ey, gy, ry⟩ := repath_eq b (pre := pre ++ ".r") hy
+      refine ⟨[.sum pre tag x' y'], by simp [repath, hband, ex, ey],
+        by simp only [ColsOf, hband]; exact ⟨pre, tag, x', y', rfl, gx, gy⟩, by simp [Cols.regs, Col.regs, rx, ry]⟩
+
 end Rel.Lang.Plan
 
