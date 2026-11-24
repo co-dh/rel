@@ -749,17 +749,27 @@ def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[S
   | some n => pure n
   | none => throw "a table whose every column is positions, so no register holds its row count"
 
-/-- Whether register `e` is the `pos` literal (`posB`) of the block being built, the one `Enc` constructor that has no
-    parts; a register of an enclosing block or a call's result is not known to be. -/
+/-- Whether register `a` of the block `is` (registers numbered from `base`) is the `pos` literal (`posB`), the one `Enc`
+    constructor that has no parts: followed through the registers a `global` or an `apply` answers from its body's.
+    A register defined any other way (a parameter, a kernel's answer, an `if`'s) is not known to be. -/
+partial def posIn (fs gs : Array Fun) (a : Nat) (base : Nat) : List Instr → Bool
+  | [] => false
+  | i :: is =>
+    let k := resN fs gs i
+    if base ≤ a && a < base + k then
+      let inFun (F : Fun) := (F.res[a - base]?).elim false (posIn fs gs · F.params.size F.body)
+      match i with
+      | .lit (.ctor c #[] #[]) => c == (Ext.Enc.pos : Enc).ctorIdx
+      | .global g => (gs[g]?).elim false inFun
+      | .apply f _ => (fs[f]?).elim false inFun
+      | _ => false
+    else posIn fs gs a (base + k) is
+
+/-- `posIn` of register `e` in the block being built. -/
 def isPosB (e : Nat) : Bld Bool := do
   let (is, n, fs, gs) ← get
-  let mut r := n - is.foldl (· + resN fs gs ·) 0
-  for i in is do
-    let k := resN fs gs i
-    if r ≤ e && e < r + k then
-      return (match i with | .lit (.ctor c #[] #[]) => c == (Ext.Enc.pos : Enc).ctorIdx | _ => false)
-    r := r + k
-  pure false
+  pure (posIn fs gs e (n - is.foldl (· + resN fs gs ·) 0) is.toList)
+
 
 mutual
 /-- The `n`-row columns `cs` as `output` takes them, in `cols` order: an atom column's registers; an array's `lo`,
