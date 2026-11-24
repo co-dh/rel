@@ -683,14 +683,16 @@ def countOf (s : Side × Side) : Bld Nat := match (s.1 ++ s.2).findSome? (·.2[S
 
 /-- The `n`-row columns `cs` as `output` takes them, in `cols` order: an atom column's registers; an array's `lo`,
     `hi`, then its payload's columns at its count `m`. -/
-partial def flatB (n : Nat) (cs : Cols) : Bld Side := return (← cs.mapM fun
-  | .atom p t e => return [(p, (← encRegs t n e).push e)]
+partial def flatB (n : Nat) (cs : Cols) (pos : String → Bool := fun _ => false) : Bld Side := return (← cs.mapM fun
+  | .atom p t e => if pos p then pure [] else return [(p, (← encRegs t n e).push e)]
   | .arr p m lo hi f => return [(p ++ ".lo", (← encRegs .i64 n lo).push lo), (p ++ ".hi", (← encRegs .i64 n hi).push hi)]
-      ++ (← flatB m f)
-  | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x) ++ (← flatB n y))).flatten
+      ++ (← flatB m f pos)
+  | .sum p tag x y => return (p ++ ".tag", (← encRegs .u1 n tag).push tag) :: ((← flatB n x pos) ++ (← flatB n y pos))).flatten
 
-/-- A `TabB`'s sides as `output` takes them: each column's registers (`encRegs`), then its `Enc`. -/
-def sidesOf (T : TabB) : Bld Sides := do pure ⟨T.n, ← flatB T.n T.key, ← flatB T.n T.val⟩
+/-- A `TabB`'s sides as `output` takes them: each column's registers (`encRegs`), then its `Enc`; a column whose path
+    `pk`/`pv` (key, value) holds is a positions column, which has no registers (`colsOf`'s `posB`), left out. -/
+def sidesOf (T : TabB) (pk pv : String → Bool := fun _ => false) : Bld Sides := do
+  pure ⟨T.n, ← flatB T.n T.key pk, ← flatB T.n T.val pv⟩
 
 /-- What a node's context knows of its sides (design §0 `Known`): the values of its domain and of its range, each a
     count and columns, and the pairs a meet hands it (`GenK.bound`). -/
@@ -1963,7 +1965,8 @@ def ofTm (σ : List (Nat × Sides)) : {A B : Obj} → Tm A B → Bld Sides
 /-- The registers `s` of a table `A ⟶ B` as an output file holds it: every array's payload cut to the cells' reach
     (`packT` at `k = 0`, `ValsB.pack 0`, which `Table.writeVals` writes), so the written columns depend on the cells
     alone and not on how much dead payload the operators left (design §0). -/
-def outSides (A B : Obj) (s : Sides) : Bld Sides := do sidesOf (← packT (← sideArg s A B {}) 0)
+def outSides (A B : Obj) (s : Sides) : Bld Sides := do
+  sidesOf (← packT (← sideArg s A B {}) 0) (fun p => (s.key.lookup p).isNone) (fun p => (s.val.lookup p).isNone)
 
 
 
@@ -2364,7 +2367,8 @@ def writeLibB (L : String) (old D : TabB) : Bld Unit := do
   let w (q : String) (rs : Array Nat) : Bld Unit := do
     discard <| call "qlean_own_write" (#[← lit (.str (Table.file L q))] ++ rs.extract 0 Side.enc) 0
   discard <| ite (← call1 (kernel% USize.decEq) #[old.n, D.n]) (pure #[]) (do
-    let s ← flatB D.n D.val
+    -- the files as `Table.writeDict` writes them: `writeVals`, payloads cut to the cells' reach (`outSides`' form)
+    let s ← flatB D.n (← packT ⟨D.n, [], D.val⟩ 0).val
     for (p, _) in libCols do
       let some rs := s.lookup p | throw s!"library {L}: the dictionary's column `{p}` has no registers"
       w ("sym" ++ p) rs
