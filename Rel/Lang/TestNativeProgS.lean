@@ -9,13 +9,8 @@ import Rel.Programs.Wumpus
 /-! The search programs of `Rel/Programs/` run natively with the answer they have in Lean: per program one
     `rel_program` opened on it, one definition per side of a table-valued `check`, and `writesAgree` of the plan of
     each definition (`planOfIn`) against its Lean value, the check the `rel-native` gate makes on `out/key`, `out/val`.
-    Left out, each with the failure it gives (`Rel/Lang/ProbeK` etc. probes, one `#eval` per definition):
-    - Knapsack `s`, `p`, `knap`, `knap ∩ s` and Party `gfold Λ(choose)est(R(rating)°)`, `best`, `root best`: the plan
-      writes as many columns as the Lean value, "the plan of `k4` writes 5 of 5 columns, not those of its Lean value"
-      (`y3`, `y4`, `y10`: 4 of 4): every one is `est(R)` with `R` an order built from `value`/`cost` (a fold `sum` of
-      `F(π₁)`), the recipe of `est` is the gap.
-    - Blocks: `plan` did not finish (its plan or its Lean value ran past 20 minutes).
-    - Not yet planned: the `∩`, `𝟘` and literal sides of JobShop and the `∩`/literal sides of Party. -/
+    Left out:
+    - Blocks: `plan` did not finish (its plan or its Lean value ran past 20 minutes). -/
 
 namespace Rel.Lang.TestNativeProgS
 
@@ -25,26 +20,41 @@ open Rel.Programs.prelude Rel.Programs.knapsack in
 rel_program natK where
     k1 : K ⟶ [N×N] ≜ X⦇[X nil, S]⦈
     k2 : K ⟶ [N×N] ≜ X subseq within(w)
+    k3 : K ⟶ [N×N] ≜ s
+    k4 : K ⟶ [N×N] ≜ p
+    k5 : K ⟶ [N×N] ≜ knap
+    k6 : K ⟶ [N×N] ≜ knap ∩ s
     k7 : K ⟶ [N×N] ≜ {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5)),(d,(5,4) (5,6))}
     k8 : K ⟶ [N×N] ≜ {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5))}
 
 open Rel.Programs.prelude Rel.Programs.jobshop in
 rel_program natJ where
     j1 : Job ⟶ Job ≜ 𝟙(Job)
+    j2 : Job ⟶ Job ≜ 𝟙(Job) ∩ (s s°)
     j3 : N ⟶ N ≜ s° s
+    j4 : N ⟶ N ≜ (s° s) ∩ 𝟙(N)
     j5 : 1 ⟶ [Job] ≜ jobs
     j6 : 1 ⟶ [Job] ≜ jobs ∩ (jobs ordered(∼pre°))
     j7 : Job ⟶ Job ≜ ⟨𝟙,s⟩ bad ⟨𝟙,s⟩°
+    j8 : Job ⟶ Job ≜ 𝟘
     j9 : Job ⟶ N ≜ s
+    j10 : Job ⟶ N ≜ {(AxleF,0),(AxleB,10),(WheelRF,10),(WheelLF,10),(WheelRB,20),(WheelLB,20),(NutsRF,11),(NutsLF,11),(NutsRB,21),(NutsLB,21),(CapRF,13),(CapLF,13),(CapRB,23),(CapLB,23),(Inspect,24)}
 
 open Rel.Programs.prelude Rel.Programs.partyPlan in
 rel_program natY where
     y1 : E ⟶ [E] ≜ party setify
     y2 : E ⟶ [E] ≜ Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    y3 : E ⟶ [E] ≜ gfold Λ(choose)est(R(rating)°)
+    y4 : E ⟶ [E] ≜ best
+    y5 : E ⟶ [E] ≜ (gfold Λ(choose)est(R(rating)°)) ∩ best
     y6 : E ⟶ [E] ≜ Λ(guests)
+    y7 : E ⟶ [E] ≜ Λ(guests) ∩ best
     y8 : E ⟶ N ≜ c max
     y9 : E ⟶ N ≜ best cost(rating)
+    y10 : E ⟶ [E] ≜ root best
+    y11 : E ⟶ [E] ≜ {(a,a d e f)}
     y12 : E ⟶ N ≜ root c max
+    y13 : E ⟶ N ≜ {(a,17)}
 
 open Rel.Programs.prelude Rel.Programs.circuit in
 rel_program natC where
@@ -69,20 +79,35 @@ rel_program natW where
 #eval show Lean.Meta.MetaM Unit from do
   agree ``natK "k1" natK.k1
   agree ``natK "k2" natK.k2
+  agree ``natK "k3" natK.k3
+  agree ``natK "k4" natK.k4
+  agree ``natK "k5" natK.k5
+  agree ``natK "k6" natK.k6
   agree ``natK "k7" natK.k7
   agree ``natK "k8" natK.k8
   agree ``natJ "j1" natJ.j1
+  agree ``natJ "j2" natJ.j2
   agree ``natJ "j3" natJ.j3
+  agree ``natJ "j4" natJ.j4
   agree ``natJ "j5" natJ.j5
   agree ``natJ "j6" natJ.j6
   agree ``natJ "j7" natJ.j7
+  agree ``natJ "j8" natJ.j8
   agree ``natJ "j9" natJ.j9
+  agree ``natJ "j10" natJ.j10
   agree ``natY "y1" natY.y1
   agree ``natY "y2" natY.y2
+  agree ``natY "y3" natY.y3
+  agree ``natY "y4" natY.y4
+  agree ``natY "y5" natY.y5
   agree ``natY "y6" natY.y6
+  agree ``natY "y7" natY.y7
   agree ``natY "y8" natY.y8
   agree ``natY "y9" natY.y9
+  agree ``natY "y10" natY.y10
+  agree ``natY "y11" natY.y11
   agree ``natY "y12" natY.y12
+  agree ``natY "y13" natY.y13
   agree ``natC "c1" natC.c1
   agree ``natC "c2" natC.c2
   agree ``natC "c3" natC.c3
