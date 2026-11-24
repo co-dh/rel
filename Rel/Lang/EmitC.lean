@@ -736,29 +736,37 @@ def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
 /-- **`ValsB.pack k`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at
     most `1/k` of it is read (`0 < m`, `k · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered
     there, laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. `k = 0` cuts every
-    payload, the form an output file holds (`Table.writeVals`). -/
-partial def packB (k n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
+    payload, the form an output file holds (`Table.writeVals`). `o` is `ValsB`'s ownership: inside a summand (`true`) a
+    cell may have null bounds (width `0` through `spanB`, null orders below), and the laid-out bounds are `min`ed with
+    `big`, `i64` max where a bound is a value and null where it is null, so they stay null (`Opt.maskWith`). -/
+partial def packB (o : Bool) (k n : Nat) (cs : Cols) : Bld Cols := cs.mapM fun
   | c@(.atom ..) => pure c
   | .arr p m lo hi f => do
     cellsBoundB "pack" n m
     let (s, e) ← spanB n m lo hi
     let w ← mapB .sub n e s
     let (P, T) ← prefixB .add n w
-    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB k m f)]).toArray
+    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB false k m f)]).toArray
     let cut : Bld (Array Nat) := do
       let (T', G, u) ← expandB n w
       let g ← gatherCols T' (← mapB .add T' (← gatherB T' G n s) u) m f
-      pure (← regsOf [.arr p T' (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← packB k T' g)]).toArray
+      let lo' ← mapB .sub n P w
+      let hi' ← mapB .add n P (← wordsB n 0)
+      let (lo'', hi'') ← if o then do
+          let big ← mapB .max n lo lo .i64 .i64 [] [(.and, 0), (.or, 0x7fffffffffffffff)]
+          pure (← mapB .min n big lo', ← mapB .min n big hi')
+        else pure (lo', hi')
+      pure (← regsOf [.arr p T' lo'' hi'' (← packB false k T' g)]).toArray
     let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.mul) #[T, ← lit (.size k.toUSize)]]
     let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) keep (ite wide keep cut)
     match ← withRegs [.arr p m lo hi f] rs.toList with
     | ([c], _) => pure c
     | _ => throw "pack: an array's registers read as no one column"
-  | .sum p tag x y => return .sum p tag (← packB k n x) (← packB k n y)
+  | .sum p tag x y => return .sum p tag (← packB true k n x) (← packB true k n y)
 
 /-- **`Tab.pack`** at `k`: both sides' payloads cut (`packB`). -/
 def packT (T : TabB) (k : Nat := 2) : Bld TabB := funT [T] fun
-  | [T] => return ⟨T.n, ← packB k T.n T.key, ← packB k T.n T.val⟩
+  | [T] => return ⟨T.n, ← packB false k T.n T.key, ← packB false k T.n T.val⟩
   | _ => throw "pack: not one table"
 
 /-- **`Tab.fixOn`**: rounds of `step` from the tables `Xs` (`Plan.loop`, the state each one's count and columns), at
