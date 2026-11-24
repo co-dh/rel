@@ -35,10 +35,30 @@ rel_program natMss where
   writesAgree "asc" (← planOfIn ``natMss "asc") natMss.asc
   writesAgree "ams" (← planOfIn ``natMss "ams") natMss.ams
 
-/- Selsort: every side of `Programs.selsort` (`x perm ordered(≤)`, `x X`, `C X`, `C perm ordered(≤)`, ...) is refused
-   alike, since `outputOf` reads the whole chain (`Expand.read (fun _ => none)`) and the home's `X` fails there:
-   "in the program `Rel.Programs.selsort`, line 28, col 36: the converse of `add` does not run on demand, so R° reads
-   R whole: [N] has no universe; compose a set of its elements before it (§a)". Left out. -/
+open Rel.Programs.prelude Programs.selsort in
+rel_program natSel where
+    xo : 1 ⟶ [N] ≜ x perm ordered(≤)
+    yo : 1 ⟶ [N] ≜ y perm ordered(≤)
+    zo : 1 ⟶ [N] ≜ z perm ordered(≤)
+    eo : 1 ⟶ [N] ≜ e perm ordered(≤)
+    xX : 1 ⟶ [N] ≜ x X
+    yX : 1 ⟶ [N] ≜ y X
+    zX : 1 ⟶ [N] ≜ z X
+    eX : 1 ⟶ [N] ≜ e X
+    CX : [N] ⟶ [N] ≜ C X
+    Co : [N] ⟶ [N] ≜ C perm ordered(≤)
+
+#eval show Lean.Meta.MetaM Unit from do
+  writesAgree "xo" (← planOfIn ``natSel "xo") natSel.xo
+  writesAgree "yo" (← planOfIn ``natSel "yo") natSel.yo
+  writesAgree "zo" (← planOfIn ``natSel "zo") natSel.zo
+  writesAgree "eo" (← planOfIn ``natSel "eo") natSel.eo
+  writesAgree "xX" (← planOfIn ``natSel "xX") natSel.xX
+  writesAgree "yX" (← planOfIn ``natSel "yX") natSel.yX
+  writesAgree "zX" (← planOfIn ``natSel "zX") natSel.zX
+  writesAgree "eX" (← planOfIn ``natSel "eX") natSel.eX
+  writesAgree "CX" (← planOfIn ``natSel "CX") natSel.CX
+  writesAgree "Co" (← planOfIn ``natSel "Co") natSel.Co
 
 open Rel.Programs.prelude Programs.quicksort in
 rel_program natQuick where

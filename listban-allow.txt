@@ -40,12 +40,13 @@ Rel.Lang.Embed.litItem
 Rel.Lang.Embed.params
 Rel.Lang.Embed.prim
 Rel.Lang.Embed.program
-Rel.Lang.Embed.resolverAt
 Rel.Lang.Embed.stmt
 Rel.Lang.Expand.Registry.call?
 Rel.Lang.Expand.callDef
 Rel.Lang.Expand.emit
 Rel.Lang.Expand.once
+Rel.Lang.Expand.reread
+Rel.Lang.Expand.resolverAt
 Rel.Lang.Expand.sigOf
 Rel.Lang.Once.binds
 Rel.Lang.Plan.Bld.plan

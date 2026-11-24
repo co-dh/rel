@@ -1075,6 +1075,60 @@ def Registry.call? (r : Registry) : MetaM (Lean.Name → Option Once) := do
           modules neither importing the other, with different bodies: at {d}"
   pure (r.calls.lookup ·)
 
+unsafe def programOfUnsafe {m : Type → Type} [Monad m] [MonadEnv m] [MonadOptions m] [MonadError m] (n : Name) :
+    m Program := do
+  match (← getEnv).evalConstCheck Program (← getOptions) ``Program n with
+  | .ok p => pure p
+  | .error e => throwError "cannot read the program `{n}`: {e}"
+
+/-- The value of the program `n`, a `rel_program` elaborated before. -/
+@[implemented_by programOfUnsafe] opaque programOf {m : Type → Type} [Monad m] [MonadEnv m] [MonadOptions m]
+    [MonadError m] (n : Name) : m Program
+
+/-- The resolver in the namespace `ns` with the `open`s `opens` (module design §2.3): Lean's `resolveGlobalName`
+    gives the candidates of a written name, the registry keeps its own; and whether a written prefix is a
+    namespace. -/
+def resolverAt (env : Environment) (opts : Options) (reg : Expand.Registry) (ns : Name) (opens : List OpenDecl) :
+    (String → Found) × (String → Bool) :=
+  let id (t : String) : Name := (Parse.parts t).foldl Name.str .anonymous
+  let at_ (ns : Name) (t : String) : List Name := ((ResolveName.resolveGlobalName env opts ns opens (id t)).filterMap
+    fun (c, fs) => if fs.isEmpty then some c else none).eraseDups
+  -- Lean's resolution from the namespace `ns` outwards, where a constant that is no Rel definition shadows nothing:
+  -- the first namespace level whose resolution has Rel definitions gives them
+  let levels := (ns.components.length + 1 |> List.range).map fun k => ns.components.take (ns.components.length - k)
+  (fun t =>
+    let es := (levels.map fun c => (at_ (c.foldl (· ++ ·) .anonymous) t).filterMap (reg.exts[·]?)).find? (!·.isEmpty)
+    match es with
+    | some [(e, _)] => .ext e
+    | some es => .bad true s!"ambiguous name `{t}`: it is {es.map (·.1.const)}"
+    | none => match at_ ns t with
+      | [] => .none
+      | cs => .bad false s!"`{t}` is not a Rel definition: Lean resolves it to {cs}",
+   fun t => !(ResolveName.resolveNamespace env ns opens (id t)).isEmpty)
+
+/-- What the registered program `n` reads, re-read at its recorded homes (`.chain`) and scopes (`.prog`) and with
+    the registry's definitions elaborated once (`calls`), as `rel_program` reads it: a use of one is a `call` node
+    holding its body at the call's objects (`Tm.den`, `Tm.gen` read the body), a use with no constant its
+    expansion. The registry is the final one without the keys `n` built itself (`walk`'s `once`), which `emit`
+    registered after `n`'s read: so `n` is re-read as it was read, each such call holding its own `call`, not a
+    call of the registered constant (`callCv`), and its terms equal `emit`'s. A key a later program registered is
+    one `n` never reached, since `n` would have built it; a key registered twice is read at its first `Once`, the
+    second checked to be the same definition (`Registry.call?`). -/
+def reread (n : Name) : MetaM (Except Err Expand.Read) := do
+  let env ← getEnv; let opts ← getOptions
+  let reg := Expand.relRegistry.getState env
+  -- a `Once` `n` built is the constant `n ++ …` (`callDef`), unless a program inside `n`'s namespace built it
+  let own (c : Name) := n.isPrefixOf c && !reg.progs.any fun (m, _) => m != n && n.isPrefixOf m && m.isPrefixOf c
+  let built := (reg.calls.map (·.2) ++ reg.again.toList).filter (own ·.const)
+  let mine := built.map (·.key)
+  let progs ← ((reg.chains.lookup n).getD []).mapM fun m => return (m, ← programOf m)
+  let resOf (h : Name) : String → Found := match reg.progs.find? (·.1 == h) with
+    | some (_, ns, os) => (resolverAt env opts reg ns os).1
+    | none => fun _ => .none
+  let calls ← reg.call?
+  -- the bodies `n` built are `emit`'s (`seed`), not elaborated again; a use of one is still `n`'s own `call`
+  (Expand.read (fun k => if mine.contains k then none else calls k) progs (← programOf n) n resOf
+    built).run
 end Expand
 
 end Rel.Lang
