@@ -87,13 +87,16 @@ theorem Opt.nuls_zero {t : QAtomicType} {y : Opt t 0} (h : Opt.nuls t 0 = .ok y)
     exact ⟨by simp [Opt.enc, nulMap, packOf], ht⟩
   · cases h
 
-/-- The `kscatter` `wordsB z 0` runs at no row, and `colMap .add` of it at a type with a width: `noneB`'s column. -/
-theorem zeros_kernels {t : QAtomicType} (ht : t.width.isSome) :
-    ∃ c f, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok c ∧
-      kscan .add false .i64 t 0 none [(0, c), (0, c)] [] [] = .ok (wordsFoR #[], f) := by
+/-- The `kscatter` `wordsB z 0` runs at no row answers. -/
+theorem zeros_scatter : ∃ c, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok c :=
   have hv := (wordsFoR_closed #[] (n := 0) (by simp)).1
-  obtain ⟨c, hc⟩ := kscatter_ok (op := .last) (fill := 0) (n := 0) hv hv (hasNul_wordsFoR _) (hasNul_wordsFoR _)
+  kscatter_ok (op := .last) (fill := 0) (n := 0) hv hv (hasNul_wordsFoR _) (hasNul_wordsFoR _)
     (fun k hk => by simp at hk) (fun k hk => by simp at hk)
+
+/-- … and `colMap .add` of its answer, at a type with a width, answers `wordsFoR #[]`: `noneB`'s column. -/
+theorem zeros_map {t : QAtomicType} {c : Enc} (ht : t.width.isSome)
+    (hc : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok c) :
+    ∃ f, kscan .add false .i64 t 0 none [(0, c), (0, c)] [] [] = .ok (wordsFoR #[], f) := by
   obtain ⟨-, cs, -⟩ := kscatter_closed hc
   have cN := kscatter_plain hc (hasNul_wordsFoR _)
   obtain ⟨o, ho⟩ := colMap_ok (op := .add) ht cs cs cN cN (fun i hi => by simp at hi)
@@ -101,7 +104,7 @@ theorem zeros_kernels {t : QAtomicType} (ht : t.width.isSome) :
   subst ho0
   unfold colMap at ho
   obtain ⟨r, hr, hr1⟩ := except_bind_ok ho
-  refine ⟨c, r.2, hc, ?_⟩
+  refine ⟨r.2, ?_⟩
   rw [hr]
   cases r
   cases hr1
@@ -114,17 +117,15 @@ theorem reg_add : (Reg.get? (Reg.put Kernel.Op.add) : Option Kernel.Op) = some .
 theorem reg_nil : (Reg.get? (Reg.put ([] : List (Kernel.Op × UInt64))) : Option (List (Kernel.Op × UInt64))) = some [] := by
   with_unfolding_all rfl
 
-/-- `wordsB z 0` then `mapB .add z c c t` at `z` holding `0`, then `k` on its register, which holds `wordsFoR #[]`. -/
-theorem zerosB_builds {fg fg' : Array Fun × Array Fun} {rs : Array Val} {z : Nat} {t : QAtomicType}
+/-- `mapB .add z c c t` at `z` holding `0` and `c` the zero words, then `k` on its register: `wordsFoR #[]`. -/
+theorem zeroMapB_builds {fg fg' : Array Fun × Array Fun} {rs : Array Val} {z c : Nat} {t : QAtomicType} {cc : Enc}
     {k : Nat → Bld (Array Nat)} {out : Array Val} (hz : rs[z]? = some (.size 0)) (ht : t.width.isSome)
+    (hc : rs[c]? = some (Reg.put cc)) (hcc : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) 0 0 = .ok cc)
     (hk : ∀ r xs, (rs ++ xs)[r]? = some (Reg.put (wordsFoR #[])) → Builds abiOf fg fg' (k r) (rs ++ xs) out) :
-    Builds abiOf fg fg' (wordsB z 0 >>= fun c => mapB .add z c c t >>= k) rs out := by
-  obtain ⟨c, f, hc, hk2⟩ := zeros_kernels ht
-  refine Builds.bind1 (wordsB_builds hz hc) fun r xs hr => ?_
-  refine Builds.bind1 (mapB_builds (get_app hz) hr (enc_get_put _) hr (enc_get_put _) reg_add (reg_ty _) (reg_ty _)
-    reg_nil reg_nil hk2) fun r2 xs2 hr2 => ?_
-  rw [Array.append_assoc] at hr2 ⊢
-  exact hk r2 _ hr2
+    Builds abiOf fg fg' (mapB .add z c c t >>= k) rs out := by
+  obtain ⟨f, hk2⟩ := zeros_map ht hcc
+  exact Builds.bind1 (mapB_builds hz hc (enc_get_put _) hc (enc_get_put _) reg_add (reg_ty _) (reg_ty _)
+    reg_nil reg_nil hk2) hk
 
 /-- `noneAtomB z t p` builds one atom column whose register holds `wordsFoR #[]`. -/
 theorem noneAtomB_builds {fg fg' : Array Fun × Array Fun} {rs : Array Val} {z : Nat} {t : QAtomicType} {p : String}
@@ -135,8 +136,112 @@ theorem noneAtomB_builds {fg fg' : Array Fun × Array Fun} {rs : Array Val} {z :
     Builds abiOf fg fg' (noneAtomB z t p >>= kk) rs out := by
   unfold noneAtomB
   simp only [bind_assoc]
-  refine zerosB_builds hz ht fun r xs hr => ?_
+  obtain ⟨cc, hcc⟩ := zeros_scatter
+  refine Builds.bind1 (wordsB_builds hz hcc) fun c xs hc => zeroMapB_builds (get_app hz) ht hc hcc fun r xs1 hr => ?_
   simp only [pure_bind]
+  rw [Array.append_assoc] at hr ⊢
   exact hkk _ _ ⟨r, rfl⟩ (by simp [Cols.regs, Col.regs, hr])
 
+/-- Lifting a side to a dense sum's summand (`Opt.ofArr` per atom) leaves its storage, so its registers. -/
+theorem Vals.regVals_lift : ∀ {A : Obj} {n : USize} (x : Vals A n), (Vals.lift x).regVals = x.regVals
+  | .atom _, _, _ => rfl
+  | .prod _ _, _, x => by
+    simp only [Vals.lift, ValsB.regVals, Vals.regVals_lift x.1, Vals.regVals_lift x.2]
+  | .arr _, _, ⟨_, _, _, _⟩ => rfl
+  | .sum _ _, _, _ => rfl
+  | .one, _, _ => rfl
+
+/-- `noneB z A p` builds the columns of a side of `A` (`ColsOf`) whose registers hold `Vals.none A`'s, `z` holding
+    the count `0`. -/
+theorem noneB_builds {fg fg' : Array Fun × Array Fun} {z : Nat} (A : Obj) :
+    ∀ {p : String} {rs : Array Val} {x : Vals A 0} {kk : Cols → Bld (Array Nat)} {out : Array Val},
+    rs[z]? = some (.size 0) → Vals.none A = .ok x →
+    (∀ (U : Cols) (ys : Array Val), ColsOf A U → (Cols.regs U).mapM (fun i => (rs ++ ys)[i]?) = some x.regVals →
+      Builds abiOf fg fg' (kk U) (rs ++ ys) out) →
+    Builds abiOf fg fg' (noneB z A p >>= kk) rs out := by
+  induction A with
+  | atom t =>
+    intro p rs x kk out hz hx hkk
+    obtain ⟨he, ht⟩ := Arr.zeros_zero (by unfold Vals.none at hx; exact hx)
+    unfold noneB
+    exact noneAtomB_builds hz ht fun U ys ⟨e, hU⟩ hr => hkk U ys ⟨p, e, hU⟩
+      (by rw [hr]; simp [ValsB.regVals, ColB.enc, he])
+  | prod a b iha ihb =>
+    intro p rs x kk out hz hx hkk
+    unfold Vals.none at hx
+    obtain ⟨xa, ha, hx⟩ := except_bind_ok hx
+    obtain ⟨xb, hb, hx⟩ := except_bind_ok hx
+    cases hx
+    unfold noneB
+    simp only [bind_assoc, pure_bind]
+    refine iha hz ha fun U ys hU hr => ihb (get_app hz) hb fun U2 ys2 hU2 hr2 => ?_
+    rw [Array.append_assoc] at hr2 ⊢
+    refine hkk (U ++ U2) (ys ++ ys2) ⟨U, U2, rfl, hU, hU2⟩ ?_
+    rw [Cols.regs_append, List.mapM_append, ← Array.append_assoc, mapM_get_app hr, Array.append_assoc, hr2]
+    rfl
+  | arr b ih =>
+    intro p rs x kk out hz hx hkk
+    unfold Vals.none at hx
+    obtain ⟨lo, hlo, hx⟩ := except_bind_ok hx
+    obtain ⟨hi, hhi, hx⟩ := except_bind_ok hx
+    obtain ⟨f, hf, hx⟩ := except_bind_ok hx
+    cases hx
+    obtain ⟨cc, hcc⟩ := zeros_scatter
+    unfold noneB
+    simp only [bind_assoc, pure_bind]
+    refine Builds.bind1 (wordsB_builds hz hcc) fun c xs hc => zeroMapB_builds (get_app hz) rfl hc hcc
+      fun r1 xs1 h1 => ?_
+    simp only [Array.append_assoc] at h1 ⊢
+    refine zeroMapB_builds (get_app hz) rfl (by simpa only [Array.append_assoc] using get_app (xs := xs1) hc) hcc
+      fun r2 xs2 h2 => ?_
+    simp only [Array.append_assoc] at h2 ⊢
+    refine ih (get_app hz) hf fun U ys hU hr => ?_
+    simp only [Array.append_assoc] at hr ⊢
+    refine hkk _ _ ⟨p, z, r1, r2, U, rfl, hU⟩ ?_
+    have e1 : (rs ++ (xs ++ (xs1 ++ (xs2 ++ ys))))[z]? = some (.size 0) := get_app hz
+    have e2 : (rs ++ (xs ++ (xs1 ++ (xs2 ++ ys))))[r1]? = some (Reg.put (wordsFoR #[])) := by
+      simpa only [Array.append_assoc] using get_app (xs := xs2 ++ ys) h1
+    have e3 : (rs ++ (xs ++ (xs1 ++ (xs2 ++ ys))))[r2]? = some (Reg.put (wordsFoR #[])) := by
+      simpa only [Array.append_assoc] using get_app (xs := ys) h2
+    simp [Cols.regs, Col.regs, ValsB.regVals, ColB.enc, (Arr.zeros_zero hlo).1, (Arr.zeros_zero hhi).1, e1, e2, e3, hr]
+  | one =>
+    intro p rs x kk out hz hx hkk
+    unfold noneB
+    simp only [pure_bind]
+    have h := hkk [] #[] rfl rfl
+    rwa [Array.append_empty] at h
+  | sum a b iha ihb =>
+    intro p rs x kk out hz hx hkk
+    unfold Vals.none at hx
+    unfold noneB
+    split at hx
+    · rename_i t hband
+      obtain ⟨y, hy, hx⟩ := except_bind_ok hx
+      cases hx
+      obtain ⟨he, ht⟩ := Opt.nuls_zero hy
+      simp only [hband]
+      exact noneAtomB_builds hz ht fun U ys ⟨e, hU⟩ hr => hkk U ys (by simp only [ColsOf, hband]; exact ⟨p, e, hU⟩)
+        (by rw [hr]; simp [ValsB.regVals, ValsB.view_ofOpt, he])
+    · rename_i hband
+      obtain ⟨tag, htag, hx⟩ := except_bind_ok hx
+      obtain ⟨xa, ha, hx⟩ := except_bind_ok hx
+      obtain ⟨xb, hb, hx⟩ := except_bind_ok hx
+      cases hx
+      obtain ⟨cc, hcc⟩ := zeros_scatter
+      simp only [hband, bind_assoc, pure_bind]
+      refine Builds.bind1 (wordsB_builds hz hcc) fun c xs hc => zeroMapB_builds (get_app hz) rfl hc hcc
+        fun r1 xs1 h1 => ?_
+      simp only [Array.append_assoc] at h1 ⊢
+      refine iha (get_app hz) ha fun U ys hU hr => ?_
+      simp only [Array.append_assoc] at hr ⊢
+      refine ihb (get_app hz) hb fun U2 ys2 hU2 hr2 => ?_
+      simp only [Array.append_assoc] at hr2 ⊢
+      refine hkk _ _ (by simp only [ColsOf, hband]; exact ⟨p, r1, U, U2, rfl, hU, hU2⟩) ?_
+      have e1 : (rs ++ (xs ++ (xs1 ++ (ys ++ ys2))))[r1]? = some (Reg.put (wordsFoR #[])) := by
+        simpa only [Array.append_assoc] using get_app (xs := ys ++ ys2) h1
+      have e2 : (Cols.regs U).mapM (fun i => (rs ++ (xs ++ (xs1 ++ (ys ++ ys2))))[i]?) = some xa.regVals := by
+        simpa only [Array.append_assoc] using mapM_get_app (xs := ys2) hr
+      simp [Cols.regs, Col.regs, ValsB.regVals, ValsB.view_ofGen, Vals.regVals_lift, tagCol_zero htag, e1, e2, hr2]
+
 end Rel.Lang.Plan
+
