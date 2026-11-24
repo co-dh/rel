@@ -19,8 +19,10 @@ The models are the words `kscan` and `kscatter` compute (`kscanRow`, `scatterWor
 namespace Rel.Verify
 open Rel.Kernel Ext.Enc
 
+-- noncomputable: these are models for proofs, never run; no IR means listban does not walk their `List`s
+
 /-- `kscan`'s row fold over `n` rows at `rev = false`, as words: the body of `kscan`. -/
-def scanW (op : Op) (n : Nat) (seg seed : Array UInt64) (xs : List (Array UInt64)) : Except String (Array UInt64) :=
+noncomputable def scanW (op : Op) (n : Nat) (seg seed : Array UInt64) (xs : List (Array UInt64)) : Except String (Array UInt64) :=
   (List.range n).foldlM (kscanRow op seg seed xs) #[]
 
 /-- The indices `1 … n−1`: row `k` of a column `scatter`ed there lands at row `k + 1`, the column shifted one row down. -/
@@ -33,12 +35,12 @@ def headIx (n : Nat) : Array UInt64 := (Array.range (min n 1)).map UInt64.ofNat
 def headCol (n : Nat) : Except String (Array UInt64) := scatterWords .last (headIx n) (Array.replicate n 1) n 0
 
 /-- `[c[i] ≠ c[i−1]]` on `n` rows (row 0 reads the shift's fill `0`): `scan` map `.ne` of `c` and `c` shifted down. -/
-def newCol (n : Nat) (c : Array UInt64) : Except String (Array UInt64) := do
+noncomputable def newCol (n : Nat) (c : Array UInt64) : Except String (Array UInt64) := do
   scanW .ne n (Array.replicate n 1) c [← scatterWords .last (shiftIx n) c n 0]
 
 /-- **`seen` over code columns `ks` of `n` rows in `lexLe` order, as `scan` and `scatter`**: the number `k` of groups,
 each row's group `g` and each group's first row, as words. -/
-def seenPrims (n : Nat) (ks : List (Array UInt64)) : Except String (Nat × Array UInt64 × Array UInt64) := do
+noncomputable def seenPrims (n : Nat) (ks : List (Array UInt64)) : Except String (Nat × Array UInt64 × Array UInt64) := do
   let one := Array.replicate n (1 : UInt64)
   let zero := Array.replicate n (0 : UInt64)
   let d ← scanW .or n one (← headCol n) (← ks.mapM (newCol n))
@@ -146,7 +148,7 @@ abbrev keyAt (ks : List (Array UInt64)) (i : Nat) : List UInt64 := ks.map (·[i]
 def isNew (ks : List (Array UInt64)) (i : Nat) : Bool := i == 0 || keyAt ks i != keyAt ks (i - 1)
 
 /-- The runs started below row `i`. -/
-def cnt (ks : List (Array UInt64)) (i : Nat) : Nat := ((List.range i).filter (isNew ks)).length
+noncomputable def cnt (ks : List (Array UInt64)) (i : Nat) : Nat := ((List.range i).filter (isNew ks)).length
 
 theorem cnt_succ (ks : List (Array UInt64)) (i : Nat) : cnt ks (i + 1) = cnt ks i + if isNew ks i then 1 else 0 := by
   unfold cnt; rw [List.range_succ, List.filter_append]; cases hb : isNew ks i <;> simp [hb]
