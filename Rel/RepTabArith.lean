@@ -363,7 +363,7 @@ theorem storeFmt_ne {u : QAtomicType} (h : u.storeFmt?.isSome) : u ≠ .general 
 
 /-- A word read as an atom holding a number (`atomOfBits`) is `ofBits t` of it. -/
 theorem of_atomOfBits {t : QAtomicType} (a : UInt64) (hg : t ≠ .general) (h : t.storeFmt?.isSome) :
-    (Dep.Carrier.of? t (.atom (Column.atomOfBits t a hg))).getD default = QAtomicType.ofBits t a := by
+    (Dep.Carrier.of? t (Column.atomOfBits t a hg)).getD default = QAtomicType.ofBits t a := by
   cases t <;> first | rfl | exact absurd h (by decide)
 
 end Tab
