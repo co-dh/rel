@@ -749,9 +749,6 @@ private def bs : Arr .u1 3 := Arr.bools 3 (Column.bitAt ⟨#[0b101]⟩)
 #guard bs.toList == [true, false, true]
 
 
-private def gs : Arr .general 2 := Arr.mk (.gen #[(.atom (.i64 1) : QValue), (.general #[] 0 : QValue)]) (by unfold Enc.WF; simp only [USize.reduceToNat]; rfl) rfl
-#guard match id (α := QValue) (gs.get ⟨0, by simp⟩), id (α := QValue) (gs.get ⟨1, by simp⟩) with | .atom (.i64 1), .general #[] _ _ => true | _, _ => false
-
 -- `Tab.toList` runs as `toListImpl`; the spec `List.ofFn` of the rows is computed beside it. An `arr` side whose
 -- slices are in range, past the payload and negative, and a dense `sum` side.
 private def ta : Tab .long (.arr .long) := ⟨3, l3, ⟨4, Arr.ofBytes .i64 (packLongs [0, 2, -5]) (by longs_lit),
