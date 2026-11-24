@@ -66,6 +66,7 @@ rel_program prelude where
     takewhile(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₁p)cons ∪ ((𝟙 − dom(π₁p))nil)]⦈ʳ  -- B&dM p.174 (7.39) ⦇[nil, p outl → cons, nil]⦈
     -- B&dM thinning `⦇[nil, bump(Q)]⦈ʳ`, `h = (x, head ys)`: `x Q b` gives `x :: tail ys`; `b Q x` gives `ys`; neither, or `ys = []`, gives `x :: ys`
     thinL(Q : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, (dom(h cor(Q)) ⟨π₁, π₂ tail⟩cons) ∪ (dom(h ⟨π₂,π₁⟩ cor(Q)) π₂) ∪ ((𝟙 − dom(h cor(Q)) − dom(h ⟨π₂,π₁⟩ cor(Q))) cons)]⦈ʳ where h ≜ ⟨π₁, π₂ at(0)⟩
+    positions(p : α ⟶ α) : [α] ⟶ [ν] ≜ (𝟙 − dom(s (𝟙 − dom(len)))) Λ(s len) where s ≜ cat° dom(π₂ at(0) p) π₁, len ≜ length   -- q's where of the mask dom(p): the positions of the passing elements, ascending
 
     -- B&dM p.130 `perm ≜ ⦇[nil, add]⦈`: add puts the new element anywhere in the array so far. Its converse is
     -- itself, stated by the theorem `permConv` below (`Elab.convs`), because `perm° = perm` cannot be derived.
