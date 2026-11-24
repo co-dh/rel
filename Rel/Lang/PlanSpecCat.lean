@@ -119,4 +119,77 @@ theorem kscan2_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kerne
     rw [nth_of (by simpa using hp0), pure_bind]
     exact Builds.pure fun who => by simp [reg, hpR]; rfl
 
+/-- `mapB op n a b t s pre post`: the registers hold the count `nv` and the columns `ca`, `cb`; the new register holds
+    the column of `kscan op` with every row a segment (`MapCol` where `pre`, `post` are empty). -/
+theorem mapB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.Op} {s t : QAtomicType}
+    {pre post : List (Kernel.Op × UInt64)} {n a b : Nat} {nv : USize} {ua ub : Val} {ca cb rc : Enc} {f : Option UInt64}
+    (hn : rs[n]? = some (.size nv)) (ha : rs[a]? = some ua) (hga : Reg.get? ua = some ca) (hb : rs[b]? = some ub)
+    (hgb : Reg.get? ub = some cb) (hop : (Reg.get? (Reg.put op) : Option Kernel.Op) = some op)
+    (hs : (Reg.get? (Reg.put s) : Option QAtomicType) = some s) (ht : (Reg.get? (Reg.put t) : Option QAtomicType) = some t)
+    (hpre : (Reg.get? (Reg.put pre) : Option (List (Kernel.Op × UInt64))) = some pre)
+    (hpost : (Reg.get? (Reg.put post) : Option (List (Kernel.Op × UInt64))) = some post)
+    (hk : kscan op false s t nv none [(nv, ca), (nv, cb)] pre post = .ok (rc, f)) :
+    Builds abiOf fg fg (do let r ← mapB op n a b t s pre post; Pure.pure #[r]) rs #[Reg.put rc] := by
+  unfold mapB
+  simp only [bind_assoc]
+  exact kscan2_builds (n₁ := n) (n₂ := n) hn hn hn ha hga hb hgb hop hs ht hpre hpost hk
+
+/-- `catColB t n n₁ n₂ x y`: the registers hold the counts and the columns `xc`, `yc`; the new register holds the
+    column of the one `kscan .first` stream `Opt.concat` runs (`Opt.concat_kscan`). -/
+theorem catColB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {t : QAtomicType} {n n₁ n₂ x y : Nat}
+    {nv n1 n2 : USize} {ux uy : Val} {xc yc rc : Enc} {f : Option UInt64}
+    (hn : rs[n]? = some (.size nv)) (h1 : rs[n₁]? = some (.size n1)) (h2 : rs[n₂]? = some (.size n2))
+    (hx : rs[x]? = some ux) (hgx : Reg.get? ux = some xc) (hy : rs[y]? = some uy) (hgy : Reg.get? uy = some yc)
+    (hk : kscan .first false t t nv none [(n1, xc), (n2, yc)] [] [] = .ok (rc, f)) :
+    Builds abiOf fg fg (do let r ← catColB t n n₁ n₂ x y; Pure.pure #[r]) rs #[Reg.put rc] := by
+  unfold catColB
+  simp only [bind_assoc]
+  exact kscan2_builds (pre := []) (post := []) hn h1 h2 hx hgx hy hgy (by rop) (qtype_get_put t) (qtype_get_put t) (by rop) (by rop) hk
+
+theorem catRows_add {a b p : USize} (h : catRows a b = .ok p) : a + b = p := by
+  unfold catRows at h
+  split at h
+  · rename_i hlt
+    cases h
+    apply USize.toNat_inj.1
+    simp [USize.toNat_add, Nat.toUSize, Nat.mod_eq_of_lt hlt]
+  · cases h
+
+/-- `catB n₁ n₂`, the registers holding the counts `a`, `b`: its count register holds `catRows a b`, and the cells
+    `off` the column `kscan .add` answers over the positions and the constant column `kscatter` of the word `a`
+    (`concatB` only hands `off` down: `ValsB.concat` has no counterpart, so the kernel answers are premises). -/
+theorem catB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n₁ n₂ : Nat} {a b p : USize} {zc oc : Enc}
+    {f : Option UInt64} (h1 : rs[n₁]? = some (.size a)) (h2 : rs[n₂]? = some (.size b)) (hp : catRows a b = .ok p)
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) b a.toUInt64 = .ok zc)
+    (hk : kscan .add false .i64 .i64 b none [(b, .pos), (b, zc)] [] [] = .ok (oc, f)) :
+    Builds abiOf fg fg (do let (n, off) ← catB n₁ n₂; Pure.pure #[n, off]) rs #[.size p, Reg.put oc] := by
+  have hap := catRows_add hp
+  unfold catB
+  simp only [bind_assoc, pure_bind]
+  refine Builds.call1G (vs := #[.size a, .size b]) (v := .size (a + b)) (by abiK) (by rop) ?_ ?_ rfl
+    fun r1 R1 hr1 m1 => ?_
+  · rw [List.mapM_toArray]
+    simp [reg, h1, h2]
+    rfl
+  · simp [arg]
+    rfl
+  up m1 [h1 h2]
+  unfold posB
+  refine Builds.litG fun rp R2 hrp m2 => ?_
+  up m2 [h1 h2 hr1]
+  refine Builds.call1G (vs := #[.size a]) (v := .u64 a.toUInt64) (by abiK) (by rop) ?_ ?_ rfl
+    fun r3 R3 hr3 m3 => ?_
+  · rw [List.mapM_toArray]
+    simp [reg, h1]
+    rfl
+  · simp [arg]
+    rfl
+  up m3 [h1 h2 hr1 hrp]
+  refine Builds.bind1G (constB_builds h2 hr3 hz) fun z R4 hz4 m4 => ?_
+  up m4 [h2 hr1 hrp]
+  refine Builds.bind1G (mapB_builds (n := n₂) (a := rp) (b := z) h2 hrp (enc_get_put _) hz4 (enc_get_put _)
+    (by rop) (qtype_get_put _) (qtype_get_put _) (pre := []) (post := []) (by rop) (by rop) hk) fun o R5 ho5 m5 => ?_
+  up m5 [hr1]
+  exact Builds.pure fun who => by simp [reg, hr1, ho5, ← hap]; rfl
+
 end Rel.Lang.Plan
