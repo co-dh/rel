@@ -24,7 +24,7 @@ run_cmd do
   for (n, _, _) in reg.progs do
     match ← liftTermElabM (reread n) with
     | .error e => throwError "GenSoundTest: re-reading {n}: {e}"
-    | .ok (ds, _, _, _, fs, _) =>
+    | .ok (ds, _, _, _, _, fs, _) =>
       defs := defs ++ ds.map (fun (x, r) => (s!"{n}.{x}", r)) ++ fs.map fun o => (toString o.const, o.res)
   for c in (reg.calls.map (·.2.const)).eraseDups do
     if let some (_, o) := reg.calls.find? (·.2.const == c) then
