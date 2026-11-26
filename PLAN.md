@@ -1721,6 +1721,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
   现在 `Λ` 用的 kernel（优化，由定理绑到这个 pattern）；`absorption`、`Eunion`、`estMap` 等含 `Λ` 的律改述成 `÷ ∋`；
   Mss、Prelude、Prefix 等程序一起转写；`doc/rel-architecture.zh.typ` §1、§4 先改。
+- ⬜ 9.8b′ 重做 9.8b（owner 2026-11-26）：`E` 是 functor，留在 prim 与语法里，定义为 `E(R) ≜ (∋R)÷∋`（companion 0.10a
+  `existsImage` 行，freyd `AOP.A4_6.existsImage`）；`Λ` 不再是语法或 `Tm` 节点，只有 `X÷∋` 一条路径：elaborator 把
+  `X÷∋`（右操作数是 `∋`）交给 `Pre.lam X`，`E(R)` 就是 `(∋R)÷∋` 走同一条，不另设 `.E` 分支。absorption
+  `(S÷∋)E(R) = (SR)÷∋` 对每个 `S` 成立（0.10a `Λ_absorption`，monad 的复合律），按一般形式实现并证明，删掉只认
+  `S = 𝟙` 的 `Pre.compFuse` 特例。9.8b 的「一般形式不成立」反例（`S a` 取遍 ℕ）是 rel 模型的缺陷：`lamDen` 只取有限升序
+  数组，而 `El` 可以无穷——修模型（`Λ` 的 denotation 限到程序声明的有限载体，或用真正的 power transpose），不弱化 law。
 - ⬜ 9.9 freyd `diag/algprog-companion.pdf`（`diag/aop/00-laws.typ` … `10-greedy.typ`）里每条 Lean 证明在 Rel 语言里再写一遍，
   两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 去 `Λ` 后的写法），
   在 rel 里证（9.10 的机制）；freyd `AOP/A*.lean` 的 Lean 证明不动。先列出 companion 引用的全部定理（义务表），逐条记 Rel 版本
