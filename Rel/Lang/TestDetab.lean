@@ -45,9 +45,9 @@ open Rel.Programs.prelude Programs.detab in
 rel_program out where
     print x detab
     print x detab entab
-    print p Λ(H)est(R)
-    print q Λ(H)est(R)
-    print y Λ(H)est(R)
+    print p ((𝟙÷∋)E(H))est(R)
+    print q ((𝟙÷∋)E(H))est(R)
+    print y ((𝟙÷∋)E(H))est(R)
     print p entab
     print q entab
     print y entab
@@ -60,7 +60,7 @@ rel_program out where
 -- the note's run: detab of ab, a tab, c d
 #guard out.prints[0]? == some s!"x detab = {shown [detabL x]}"
 -- the specification is every shortest preimage; q has two
-#guard (out.prints.drop 2).take 3 == inputs.map fun (v, y) => s!"{v} Λ(H) est(R) = {shown (shortest y)}"
+#guard (out.prints.drop 2).take 3 == inputs.map fun (v, y) => s!"{v} ((𝟙÷∋)E(H)) est(R) = {shown (shortest y)}"
 #guard (inputs[1]?.map fun v => (shortest v.2).length) == some 2
 -- the program gives one shortest preimage
 #guard (shortest (detabL x)).any fun s => out.prints[1]? == some s!"x detab entab = {shown [s]}"

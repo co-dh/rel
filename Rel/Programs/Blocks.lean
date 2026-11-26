@@ -19,19 +19,19 @@ rel_program blocks where
 
     c : [X×X] ⟶ [X×X]×(X×X) ≜ ⟨𝟙,M(∋)⟩            -- a state, each move it allows
     ⇝ : [X×X]×(X×X) ⟶ X×X ≜ S'(π₁∋,π₂)            -- the pairs it leads to
-    t : [X×X] ⟶ [X×X] ≜ cΛ(⇝)                     -- one move
-    s₀ : [X×X] ⟶ [X×X] ≜ ran(Λ(⊤(X,X)⟨𝟙,S₀⟩))     -- the start state
-    r : [X×X] ⟶ [N] ≜ dom(s₀)Λ(⊤)                 -- the array 0…12, one fold round each
+    t : [X×X] ⟶ [X×X] ≜ c ((𝟙÷∋)E(⇝))                     -- one move
+    s₀ : [X×X] ⟶ [X×X] ≜ ran((𝟙÷∋)E(⊤(X,X)⟨𝟙,S₀⟩))     -- the start state
+    r : [X×X] ⟶ [N] ≜ dom(s₀) ((𝟙÷∋)E(⊤))                 -- the array 0…12, one fold round each
     L(D : α ⟶ β, B : β ⟶ β) : β×N ⟶ β×N ≜ ran(r⦇[⟨D,D⊤{(0,0)}⟩, π₁ ∪ (π₁⟨π₁B,π₂ succ⟩)]⦈)   -- (s,k): s is k steps of B from D
     Q : [X×X] ⟶ [X×X] ≜ ran(L(s₀,t)π₁)            -- the reachable states
     H : [X×X] ⟶ [X×X] ≜ Qh(∋)                     -- the reachable states holding G
     C : [X×X]×N ⟶ [X×X]×N ≜ L(H,(Qt)°)            -- each state with each walk length to H
     W : [X×X] ⟶ N ≜ (Cπ₁)°(Cπ₂)
-    δ : [X×X] ⟶ N ≜ Λ(W)est(≤)                    -- the distance to the goal
-    K : [X×X] ⟶ [X×X]×(X×X) ≜ Qc dom(Λ(⇝)δ succ ∩ (π₁δ))   -- the moves that take the distance down by one
+    δ : [X×X] ⟶ N ≜ (𝟙÷∋)E(W)est(≤)                    -- the distance to the goal
+    K : [X×X] ⟶ [X×X]×(X×X) ≜ Qc dom((𝟙÷∋)E(⇝)δ succ ∩ (π₁δ))   -- the moves that take the distance down by one
     ≼ : α×β ⟶ α×β ≜ π₁ < π₁° ∪ (π₁π₁° ∩ (π₂ ≤ π₂°))   -- moves in lexicographic order
-    σ : [X×X] ⟶ X×X ≜ Λ(Kπ₂)est(≼)                -- the move chosen in each state
-    nx : [X×X] ⟶ [X×X] ≜ ⟨dom(σ),σ⟩Λ(⇝)           -- the state it leads to
+    σ : [X×X] ⟶ X×X ≜ (𝟙÷∋)E(Kπ₂)est(≼)                -- the move chosen in each state
+    nx : [X×X] ⟶ [X×X] ≜ ⟨dom(σ),σ⟩ ((𝟙÷∋)E(⇝))           -- the state it leads to
     Z : [X×X]×N ⟶ [X×X]×N ≜ L(s₀,nx)              -- the chosen path, with each state's step
     ζ : N ⟶ [X×X] ≜ (Zπ₂)°(Zπ₁)                   -- the k-th state
     plan : N ⟶ X×X ≜ ζσ                           -- the k-th move

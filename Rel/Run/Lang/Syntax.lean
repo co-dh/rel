@@ -697,6 +697,9 @@ partial def Expr.render (l : Nat) (full : Bool := false) : Expr → String
     let as := if args.isEmpty then "" else "(" ++ ", ".intercalate (args.map (Expr.render 0 full)) ++ ")"
     o.sym ++ os ++ as
   | .app _ n args => n ++ "(" ++ ", ".intercalate (args.map (Expr.render 0 full)) ++ ")"
+  | .comp (.bin _ .symDiv (.op _ .id [] []) (.op _ .mem [] [])) (.op _ .E [] [a]) =>
+    let s := if full then s!"(𝟙 ÷ ∋) E({a.render 0 full})" else s!"(𝟙÷∋)E({a.render 0 full})"
+    if full || l ≥ 1 then s!"({s})" else s
   | .comp a b => let s := s!"{a.render a.lhs full} {b.render 1 full}"; if full || l ≥ 1 then s!"({s})" else s
   | .bin _ o a b => let s := s!"{a.render a.lhs full} {o.sym} {b.render 1 full}"; if full || l ≥ 1 then s!"({s})" else s
   | .inf _ n a b => let s := s!"{a.render a.lhs full} {n} {b.render 1 full}"; if full || l ≥ 1 then s!"({s})" else s
