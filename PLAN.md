@@ -1715,7 +1715,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   freyd 与 rel 互不依赖。原状：`freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，rel 的 `lake build`
   对一条错的 `theorem zeroEntire` 照样绿，下游坏了 rel 看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 至少从 11-23
   红到 9.4 才发现，并挡住 freyd 的 index 刷新与 note gate）。relaop 不再修。
-- ⬜ 9.8 语言去掉 `Λ`，写成复合 `Λ(R) = (𝟙 ÷ ∋)E(R)`（owner 2026-11-26：`𝟙 ÷ ∋` 是单元素映射 τ，一个 bead；`E` 是 functor，一根
+- ⬜ 9.8 语言去掉 `Λ`，写成复合 `Λ(R) = (𝟙÷∋)E(R)`，不带空格（owner 2026-11-26：`𝟙÷∋` 是单元素映射 τ，一个 bead；`E` 是 functor，一根
   wire；两者对 string diagram 友好）。路径：`a  (𝟙÷∋)  {a}  E(R)  {b : a R b}`。9.8a（Mss）已派 sonnet。
   一个点：`a  (R ÷ ∋)  s` 当且仅当 `∀b. a R b ⟺ s ∋ b`，即 `s = {b : a R b}`——用 rel 自己的 `÷`
   （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
@@ -1724,9 +1724,9 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ 9.9 freyd `diag/algprog-companion.pdf`（`diag/aop/00-laws.typ` … `10-greedy.typ`）里每条 Lean 证明在 Rel 语言里再写一遍，
   两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 去 `Λ` 后的写法），
   在 rel 里证（9.10 的机制）；freyd `AOP/A*.lean` 的 Lean 证明不动。先列出 companion 引用的全部定理（义务表），逐条记 Rel 版本
-  或缺什么（语法写不出的定理形式、rel 公理里缺的 law）。(b) owner 要图生成器也读 rel_program；按 9.7 两仓互不依赖，freyd 的
-  `scripts/diag-export`（`diag/tool/DiagExport.lean`）不能 import rel——待 owner 定：rel 自带一个读 calc（经 rel 的 parser/`Tm`，
-  不做字符串匹配）、输出同一种图数据的导出器，还是其它。依赖 9.6、9.8、9.10。
+  或缺什么（语法写不出的定理形式、rel 公理里缺的 law）。(b) owner 定 D（2026-11-26，暂不做）：rel 自带图导出器，读 rel_program；按 9.7 两仓互不依赖，freyd 的
+  `scripts/diag-export`（`diag/tool/DiagExport.lean`）不能 import rel，所以导出器在 rel 里，读 calc（经 rel 的 parser/`Tm`，
+  不做字符串匹配），输出与 freyd 同一种图数据（画法复制 `strdiag.typ` 或抽成两边共用的 typst 包）。依赖 9.6、9.8、9.10。
 - ⬜ 9.10 owed law 在 rel 里证（9.7）：每个 `rel_program` 里没有 `calc` 的 `theorem` 由 rel 自己的公理（`Rel.Core` 的 allegory
   律，或对 `Tm.den` 证）证掉，rel_program 在缺证明时拒绝 elaborate（机制在 9.1 设计稿定）。义务表：Mss 的 `zeroEntire`
   `zeroSimple` `geqRefl` `estUnion` `greedyFold` `toFused` `toScan`；Prelude 的 `absorption` `Eunion` `Ecomp` `estMap`
