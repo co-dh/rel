@@ -477,7 +477,7 @@ partial def atomOf (s : Syntax) (p : Lang.Pos) (n : String) (app objs pair : Opt
     | none, none => failAt s "expected '('"
   | none, none =>
     if n == "Λ" && (app.isSome || objs.isSome) then
-      throw ⟨p, "unknown operator 'Λ'; write (𝟙÷∋)E(…) or (𝟙÷∋) for the identity"⟩
+      throw ⟨p, "unknown operator 'Λ'; write ^(…)"⟩
     if (← get).thms.contains n || ((← get).ext n).any (·.thm) then throw ⟨p, s!"`{n}` is a theorem, not a relation"⟩
     -- a name no scope gives, applied: the elaborator names it unknown
     if !(← Parse.isInfix n) then match app, objs with

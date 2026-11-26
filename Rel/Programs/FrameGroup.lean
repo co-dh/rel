@@ -66,7 +66,7 @@ rel_program frameStat where
     zScore(c : ν ⟶ γ) : ν ⟶ φ ≜ ⟨⟨c $ φ, ⊤ m⟩minus, ⊤ s⟩% where m ≜ summarize(F(c) avg 𝟙(φ), c), s ≜ summarize(F(c) sdev 𝟙(φ), c)
     valueProportions(a : β ⟶ γ, x : ν ⟶ β) : ν ⟶ γ×φ ≜ valueCounts(a, x) ⟨π₁, ⟨π₂ $ φ, ⊤ count(x) $ φ⟩%⟩
     -- count, mean, std (pandas: the sample one, null at one row), min, max of a column
-    describe(c : ν ⟶ γ) : 1 ⟶ ν×(φ×((1+φ)×(γ×γ))) ≜ ⟨count(c), ⟨summarize(F(c) avg, c), ⟨tot(summarize(F(c) sdev, c)), ⟨summarize(F(c) ((𝟙÷∋)E(∋)) head, c), summarize(F(c) ((𝟙÷∋)E(∋)) last, c)⟩⟩⟩⟩
+    describe(c : ν ⟶ γ) : 1 ⟶ ν×(φ×((1+φ)×(γ×γ))) ≜ ⟨count(c), ⟨summarize(F(c) avg, c), ⟨tot(summarize(F(c) sdev, c)), ⟨summarize(F(c) ^(∋) head, c), summarize(F(c) ^(∋) last, c)⟩⟩⟩⟩
     -- the days from `b` to `a`, at any date object `δ`: each date read as its day count
     daysBetween(a : ν ⟶ δ, b : ν ⟶ δ) : ν ⟶ Z ≜ ⟨a $ Z, b $ Z⟩minus
 

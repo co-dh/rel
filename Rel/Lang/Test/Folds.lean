@@ -11,7 +11,7 @@ rel_program foldLaw where
     obj X = {A,B,C}
     obj K = 0…2
     obj L = 5…6
-    ℓ : 1 ⟶ [L] ≜ (𝟙÷∋)E(⊤(1,L))
+    ℓ : 1 ⟶ [L] ≜ ^(⊤(1,L))
     p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
     R₀ : X ⟶ X ≜ {(A,B)}
     R₁ : X ⟶ X ≜ {(A,B),(B,C)}
@@ -41,7 +41,7 @@ rel_program foldClosed where
     obj X = {A,B,C}
     obj K = 0…2
     obj L = 5…6
-    ℓ : 1 ⟶ [L] ≜ (𝟙÷∋)E(⊤(1,L))
+    ℓ : 1 ⟶ [L] ≜ ^(⊤(1,L))
     G : X ⟶ X ≜ {(A,B),(C,C)}
     p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ (𝟙×G) ∪ (π₁ (𝟙×(∼R ∩ G))) ∪ (π₁ (𝟙×dom(R))) ∪ (π₁⟨π₁,π₁⟩)]⦈)
     R₀ : X ⟶ X ≜ {(A,B)}
@@ -109,22 +109,22 @@ rel_program estConv where
     c₀ : [E] ⟶ N ≜ F(rating)sum
     R₀ : [E] ⟶ [E] ≜ c₀ ≤ c₀°
     R₀c : [E] ⟶ [E] ≜ c₀ ≥ c₀°
-    check (𝟙÷∋)E(Hn)est(≤°) = (𝟙÷∋)E(Hn)est(≥)
-    check (𝟙÷∋)E(Hn)front(≤°) = (𝟙÷∋)E(Hn)front(≥)
-    check (𝟙÷∋)E(H)est(R(rating)°) = (𝟙÷∋)E(H)est(Rc(rating))
-    check (𝟙÷∋)E(H)front(R(rating)°) = (𝟙÷∋)E(H)front(Rc(rating))
-    check (𝟙÷∋)E(H)est(R₀°) = (𝟙÷∋)E(H)est(R₀c)
-    check (𝟙÷∋)E(H)front(R₀°) = (𝟙÷∋)E(H)front(R₀c)
-    check (𝟙÷∋)E(H)thinL(R₀°) = (𝟙÷∋)E(H)thinL(R₀c)
-    check (𝟙÷∋)E(H)est(R₀) = (𝟙÷∋)E(H)est(R(rating))
-    print (𝟙÷∋)E(Hn)est(≤°)
-    print (𝟙÷∋)E(H)est(R(rating)°)
-    print (𝟙÷∋)E(H)est(R(rating))
+    check ^(Hn)est(≤°) = ^(Hn)est(≥)
+    check ^(Hn)front(≤°) = ^(Hn)front(≥)
+    check ^(H)est(R(rating)°) = ^(H)est(Rc(rating))
+    check ^(H)front(R(rating)°) = ^(H)front(Rc(rating))
+    check ^(H)est(R₀°) = ^(H)est(R₀c)
+    check ^(H)front(R₀°) = ^(H)front(R₀c)
+    check ^(H)thinL(R₀°) = ^(H)thinL(R₀c)
+    check ^(H)est(R₀) = ^(H)est(R(rating))
+    print ^(Hn)est(≤°)
+    print ^(H)est(R(rating)°)
+    print ^(H)est(R(rating))
 
 -- `R°` picks the greatest cost (`a b`, 10), `R` the least (`a c`, 5)
 #guard estConv.ok && estConv.prints == [
-  "(𝟙÷∋)E(Hn) est(≤°) = {(1, 5), (2, 9)}", "(𝟙÷∋)E(H) est(R(rating)°) = {(a, a b), (b, a b)}",
-  "(𝟙÷∋)E(H) est(R(rating)) = {(a, a c), (b, b c)}"]
+  "^(Hn) est(≤°) = {(1, 5), (2, 9)}", "^(H) est(R(rating)°) = {(a, a b), (b, a b)}",
+  "^(H) est(R(rating)) = {(a, a c), (b, b c)}"]
 
 
 end Rel.Lang.Test

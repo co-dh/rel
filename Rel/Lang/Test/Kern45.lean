@@ -24,8 +24,8 @@ rel_program kernT45 where
     lt : N ⟶ N ≜ r <
     sc : N ⟶ N ≜ r succ
     pl : N ⟶ N ≜ w plus
-    lr : N ⟶ [N] ≜ (𝟙÷∋)E(r)
-    lw : N ⟶ [N×N] ≜ (𝟙÷∋)E(w)
+    lr : N ⟶ [N] ≜ ^(r)
+    lw : N ⟶ [N×N] ≜ ^(w)
     er : N ⟶ [N] ≜ x E(r)
     ew : N ⟶ [N×N] ≜ x E(w)
     nl : N ⟶ [N] ≜ r nil

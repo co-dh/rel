@@ -67,7 +67,7 @@ rel_program chsDiv where
 -- `R×S` on demand as `⟨π₁R,π₂S⟩`; closed, as before
 open Rel.Programs.prelude chs in
 rel_program chsProd where
-    print ⟨{(1,1)},⟨{(1,2)},(𝟙÷∋)E({(1,1)})⟩⟩(𝟙×π₁)plus
+    print ⟨{(1,1)},⟨{(1,2)},^({(1,1)})⟩⟩(𝟙×π₁)plus
     print y cons°(𝟙×perm)
     print ⟨x,{(∗,b)}⟩(perm×𝟙)
     print {(1,1)}×{(2,3)}

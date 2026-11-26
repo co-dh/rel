@@ -17,8 +17,8 @@ rel_program edit where
     /- The universe: the strings of length ≤ 1, and every edit sequence of length ≤ 2, which holds all the edit sequences
        of a pair of them (each operation consumes a character of one string). -/
 
-    r₂ : 1 ⟶ [N] ≜ (𝟙÷∋)E(⊤{(0,0)})                    -- the array 0, one fold round
-    r₄ : 1 ⟶ [N] ≜ (𝟙÷∋)E(⊤{(0,0),(1,1)})              -- the array 0…1
+    r₂ : 1 ⟶ [N] ≜ ^(⊤{(0,0)})                    -- the array 0, one fold round
+    r₄ : 1 ⟶ [N] ≜ ^(⊤{(0,0),(1,1)})              -- the array 0…1
     Ss : [A] ⟶ [A] ≜ ran(r₂⦇[nil, π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)    -- the strings
     Es : [A+(A+A)] ⟶ [A+(A+A)] ≜ ran(r₄⦇[nil, π₁ ∪ (⟨π₁,π₁⊤⟩snoc)]⦈)   -- the edit sequences
     D : [A]×[A] ⟶ [A]×[A] ≜ Ss×Ss                 -- the pairs of strings
@@ -29,7 +29,7 @@ rel_program edit where
     step : ([A]×[A])×(A+(A+A)) ⟶ [A]×[A] ≜ ⟨⟨π₁π₁,π₂cpy°⟩snoc,⟨π₁π₂,π₂cpy°⟩snoc⟩ ∪ ⟨⟨π₁π₁,π₂del°⟩snoc,π₁π₂⟩ ∪ ⟨π₁π₁,⟨π₁π₂,π₂ins°⟩snoc⟩
     edit : [A+(A+A)] ⟶ [A]×[A] ≜ Es⦇[base, step]⦈   -- edit ≜ ⦇[base,step]⦈, on the sequences Es
     R : [α] ⟶ [β] ≜ length ≤(N,N) length°         -- R ≜ length ≤ length°, run on the pairs est compares
-    spec : [A]×[A] ⟶ [A+(A+A)] ≜ D ((𝟙÷∋)E(edit°))est(R)  -- Λ(edit°) est(R): a shortest sequence of each pair
+    spec : [A]×[A] ⟶ [A+(A+A)] ≜ D^(edit°)est(R)  -- Λ(edit°) est(R): a shortest sequence of each pair
 
     /- The tabulation (09:596-610) read left to right: the book's columns hold the edits of the suffixes of `x` and
        fold `y` from its end; here each column holds the edits of the prefixes of `x` (entry `i` for `x[:i]`), `y` is

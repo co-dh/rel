@@ -11,10 +11,10 @@ open Rel.Programs.prelude Programs.blocks in
 rel_program orders where
     O : X ⟶ X ≜ {(A,A),(A,B),(A,C),(B,B),(B,C),(C,C)}
     Of : [X×X] ⟶ X×X ≜ Q⊤(St,X)⟨𝟙,O⟩
-    lc(S : X ⟶ X) : X ⟶ X ≜ (𝟙÷∋)E(S)est(O)
-    lf(S : X ⟶ X, V : X ⟶ X) : X ⟶ X ≜ (𝟙÷∋)E(S)est(V)
-    tc(S : X ⟶ X) : X ⟶ [X] ≜ (𝟙÷∋)E(S)front(O)
-    tf(S : X ⟶ X, V : X ⟶ X) : X ⟶ [X] ≜ (𝟙÷∋)E(S)front(V)
+    lc(S : X ⟶ X) : X ⟶ X ≜ ^(S)est(O)
+    lf(S : X ⟶ X, V : X ⟶ X) : X ⟶ X ≜ ^(S)est(V)
+    tc(S : X ⟶ X) : X ⟶ [X] ≜ ^(S)front(O)
+    tf(S : X ⟶ X, V : X ⟶ X) : X ⟶ [X] ≜ ^(S)front(V)
     Y(S : X ⟶ X) : X ⟶ X ≜ ∼S
     check Qlc(∋) = Q∋
     check Qlf(∋,Of) = Qlc(∋)

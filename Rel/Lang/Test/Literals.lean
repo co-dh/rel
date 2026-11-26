@@ -152,7 +152,7 @@ rel_program signed where
     obj K = {a,b}
     x : K ⟶ Z ≜ {(a,-1),(b,2),(a,-3)} -- a comment, after a signed literal
     print x
-    print (𝟙÷∋)E(x)
+    print ^(x)
     print x − {(a,-3)}
     print {(-1,-1)}−{(2,2)}
     s : Z ⟶ Z ≜ 𝟙(Z) succ
@@ -170,7 +170,7 @@ rel_program signed where
 def ints (R : Tab .long .long) : List (Int × Int) := R.toList.map fun (a, b) => (a.toInt, b.toInt)
 
 #guard signed.ok
-#guard signed.prints == ["x = {(a, -3), (a, -1), (b, 2)}", "(𝟙÷∋)E(x) = {(a, -3 -1), (b, [2])}",
+#guard signed.prints == ["x = {(a, -3), (a, -1), (b, 2)}", "^(x) = {(a, -3 -1), (b, [2])}",
   "x − {(a, -3)} = {(a, -1), (b, 2)}", "{(-1, -1)} − {(2, 2)} = {(-1, -1)}"]
 -- `succ` at `-1` gives `0`, at the top `3` nothing; `≤`, `<` the numeric order
 #guard (get signed.expanded "s" .long .long).map ints == some ((zs.filter (· < 3)).map fun a => (a, a + 1))

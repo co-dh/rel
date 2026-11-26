@@ -64,7 +64,7 @@ rel_program digits where
     dg : N ⟶ N ≜ dom(<{(10,10)})
     op : N×N ⟶ N ≜ ⟨⟨π₁,π₁ ten⟩times,π₂ dg⟩plus
     x : N ⟶ N ≜ {(107,107)}
-    r : N ⟶ [K] ≜ x ((𝟙÷∋)E(⊤(N,K)))
+    r : N ⟶ [K] ≜ x^(⊤(N,K))
     nz : N ⟶ N ≜ 𝟙(N) − {(0,0)}
     step : N×[N] ⟶ N×[N] ≜ ⟨π₁{(0,0)},π₂⟩ ∪ ⟨π₁ nz op° π₁,⟨π₁ nz op° π₂,π₂⟩cons⟩
     ds : N ⟶ [N] ≜ r⦇[x⟨𝟙,nil⟩, π₁ step]⦈π₂
@@ -78,7 +78,7 @@ open Rel.Programs.prelude in
 rel_program foldNamed where
     obj X = {A,B}
     R : 1+([X]×X) ⟶ [X] ≜ [nil, snoc]
-    As : [X] ⟶ [X] ≜ ran((𝟙÷∋)E(⊤(1,X))⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤⟩snoc)]⦈)
+    As : [X] ⟶ [X] ≜ ran(^(⊤(1,X))⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤⟩snoc)]⦈)
     check As⦇R⦈ = As
     check As⦇R 𝟙⦈ = As
     check As⦇[nil, snoc]⦈ = As

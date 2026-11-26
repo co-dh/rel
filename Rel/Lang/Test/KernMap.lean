@@ -19,7 +19,7 @@ rel_program kernMap where
     f2 : N ⟶ [N] ≜ x F(r)
     f3 : N ⟶ [N] ≜ z x F(succ)
     boss : E ⟶ E ≜ {(1,0),(2,0),(3,1),(4,3),(5,3)}
-    kids : E ⟶ [E] ≜ (𝟙÷∋)E(boss°)
+    kids : E ⟶ [E] ≜ ^(boss°)
     S : E×[N] ⟶ N ≜ π₂ sum succ
     sz : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, S)
     -- the rows worked by hand from each definition's relations, not read from a run

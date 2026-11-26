@@ -39,7 +39,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 #eval trips ["R S", "R°", "R ∩ S", "R ∪ S", "R − S", "∼R", "R ⇒ S", "𝟘", "⊤", "𝟙", "⊤(X, X)", "𝟙(X)", "dom(R)",
   "ran(R)", "R \\ S", "R / S", "frac(R, S)", "⟨R, S⟩", "π₁", "π₂", "R × S", "[R, S]", "inl", "inr", "R + S",
-  "(𝟙÷∋)E(R)", "∋", "∈", "E(R)", "τ", "nil", "α", "cons°", "⦇R⦈", "F(R)", "est(R)", "front(R)",
+  "^(R)", "(𝟙÷∋)E(R)", "∋", "∈", "E(R)", "τ", "nil", "α", "cons°", "⦇R⦈", "F(R)", "est(R)", "front(R)",
   "filter(p)", "takewhile(p)", "length", "sum", "head", "tail", "suffix", "succ", "plus", "≤", "<",
   "{(A, B), (B, A)}", "R ∪ S R", "R S ∪ R", "R ∩ S ∪ R", "R ∪ S ∩ R", "R ∪ (S R)", "R (S p)", "∼(R S)°",
   "(∼R)°", "∼R S", "{((A, B), A), ((B, A), B)}", "{(A, (B, (A, B)))}"]
@@ -91,6 +91,15 @@ example : True := trivial
   match ← readIn preludeScope ("print " ++ "Λ" ++ "(𝟙)") with
   | .error e => unless (toString e.msg).startsWith "unknown operator 'Λ'" do throwError "{e}"
   | .ok _ => throwError "the former power-transpose operator parsed"
+
+
+open Rel.Programs.prelude in
+rel_program powerDefinition where
+    obj B = {a,b,c}
+    R : B ⟶ B ≜ {(a,c),(a,b)}
+    check ^(R) = (𝟙÷∋)E(R)
+
+#guard powerDefinition.ok
 
 
 end Rel.Lang.Test

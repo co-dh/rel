@@ -19,7 +19,7 @@ rel_program frameSpec where
     x : 1 ⟶ [K×N] ≜ {(∗,(B,5) (A,3) (B,5) (C,1) (A,7) (C,2) (B,1) (A,3))}
     big : N ⟶ N ≜ dom(>{(2,∗)})
     sel(k : γ ⟶ K) : K×[γ] ⟶ [γ] ≜ strₗ filter(cor(k°)) F(π₂)
-    out : 1 ⟶ [K×N] ≜ x filter(dom(π₂ big)) ((𝟙÷∋)E(⟨∋π₁, 𝟙⟩⟨π₁, sel(π₁)⟩)) F(𝟙 × (F(π₂) sum))
+    out : 1 ⟶ [K×N] ≜ x filter(dom(π₂ big)) ^(⟨∋π₁, 𝟙⟩⟨π₁, sel(π₁)⟩) F(𝟙 × (F(π₂) sum))
 
 open Rel.Programs.prelude in
 rel_program frame where
@@ -31,7 +31,7 @@ rel_program frame where
     big : N ⟶ N ≜ dom(<°{(2,∗)})
     keep : P ⟶ P ≜ dom(x col S "v" big)
     groups : K ⟶ P ≜ (keep x col S "k")°
-    out : K ⟶ N ≜ dom(groups) ((𝟙÷∋)E(groups)) F(x col S "v") sum
+    out : K ⟶ N ≜ dom(groups) ^(groups) F(x col S "v") sum
     check out = {(A,13),(B,10)} where x ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1)),(4,(A,7)),(5,(C,2)),(6,(B,1)),(7,(A,3))}
 
 -- by hand: `keep` is the positions 0 1 2 4 7; A's are 1 4 7 (3+7+3), B's 0 2 (5+5), C has none. B's two rows both
