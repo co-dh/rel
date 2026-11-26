@@ -465,6 +465,12 @@ def Pre.rdivWhole (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
 def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
   .meet (.rdivWhole pos r s a b) (.conv (.rdivWhole pos s r b a))
 
+/-- `q r` as a composition; the singleton map `Λ(𝟙)` meeting `E(R) = Λ(∋ R)` is `Λ(R)` (`lamDen_id_comp`), so
+    `(𝟙÷∋)E(R)` builds the node `Λ(R)` did. Only `Λ(𝟙)`: `Λ(S)E(R) = Λ(S R)` fails where `S`'s image is infinite. -/
+def Pre.compFuse : Pre → Pre → Pre
+  | .lam (.id _), .lam (.comp (.mem _) x) => .lam x
+  | q, r => .comp q r
+
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
 def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
@@ -1698,7 +1704,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       | _, _ =>
         let (q, s, t) := x.plain; let (r, s', t') := y.plain
         unify p "the source of the right factor of a composition" s' t
-        pure (.rel (.comp q r) s t')
+        pure (.rel (Pre.compFuse q r) s t')
   | .bin p o a b => do
     let x ← elabE env m a; let y ← elabE env m b
     match m, x.isFam || y.isFam with

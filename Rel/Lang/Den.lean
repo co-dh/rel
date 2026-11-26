@@ -519,6 +519,25 @@ theorem lamDen_symDiv (T : Core.Rel (Obj.El A) (Obj.El B)) :
       rdivDen_iff.2 ⟨fun c hc => (h c).2 hc, .inr ⟨⟨ys, rfl, hp⟩, a, trivial⟩⟩⟩, rfl, hp⟩,
     fun ⟨_, ⟨h1, h2⟩, rfl, hp⟩ => ⟨hp, fun b => ⟨(rdivDen_iff.1 h1).1 b, (rdivDen_iff.1 h2).1 b⟩⟩⟩)
 
+/-- `Λ(𝟙) ≫ Λ(∋ ≫ T) = Λ(T)`: the singleton map `[a]` then the image of the one-element array. Not `Λ(S) ≫ Λ(∋ ≫ T) = Λ(S ≫ T)`
+    for any `S`: where `S`'s image is infinite the left side has no list and `Λ(S ≫ T)` may (`T` constant). -/
+theorem lamDen_id_comp (T : Core.Rel (Obj.El A) (Obj.El B)) : lamDen (𝟙 _) ≫ lamDen (memDen ≫ T) = lamDen T := by
+  have single : ∀ a ys, lamDen (𝟙 (Obj.El A)) a ys ↔ ys = [a] := fun a ys => (lamDen_iff _ a ys).trans
+    ⟨fun ⟨hp, h⟩ => by
+      obtain _ | ⟨y, _ | ⟨y', ys⟩⟩ := ys
+      · exact absurd ((h a).2 rfl) (by simp)
+      · rw [show y = a from ((h y).1 (by simp)).symm]
+      · have e : y = y' := ((h y).1 (by simp)).symm.trans ((h y').1 (by simp))
+        exact absurd (e ▸ (List.pairwise_cons.1 hp).1 y' (by simp)) (A.lt_irrefl y'),
+     fun h => h ▸ ⟨by simp, fun b => by simp [eq_comm]; rfl⟩⟩
+  funext a zs
+  refine propext ⟨fun ⟨ys, h1, h2⟩ => ?_, fun h => ⟨[a], (single a [a]).2 rfl, ?_⟩⟩
+  · obtain rfl := (single a ys).1 h1
+    obtain ⟨hp, h2⟩ := (lamDen_iff _ _ zs).1 h2
+    exact (lamDen_iff _ a zs).2 ⟨hp, fun b => (h2 b).trans ⟨fun ⟨_, hb, hT⟩ => by simp at hb; exact hb ▸ hT, fun hT => ⟨a, by simp, hT⟩⟩⟩
+  · obtain ⟨hp, h⟩ := (lamDen_iff _ a zs).1 h
+    exact (lamDen_iff (memDen ≫ T) [a] zs).2 ⟨hp, fun b => (h b).trans ⟨fun hT => ⟨a, by simp, hT⟩, fun ⟨_, hb, hT⟩ => by simp at hb; exact hb ▸ hT⟩⟩
+
 /-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
 abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) :=
   foldDen (E := A) (V := .arr B) ((graph fun _ : Unit => ([] : Obj.El (.arr B)))° ≫ graph fun _ : Unit => [])
