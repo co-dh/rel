@@ -302,9 +302,9 @@ def goalOf (c : Expand.Chk) : TermElabM Lean.Expr := Meta.withLocalDeclD `ρ (mk
 /-- The theorem `t` of the program `n` with steps `_ = x := why` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
     `Tm`), a step citing a theorem is that theorem's own `….proof.m`, joined by `Eq.trans`. `links` are the steps'
-    elaborated checks (`Expand.walk`). A theorem with parameters, hypotheses, `⊑` steps or a step citing a theorem with
+    elaborated checks and `bad` the errors of the chains that did not elaborate (`Expand.walk`). A theorem with parameters, hypotheses, `⊑` steps or a step citing a theorem with
     no proof constant (or at arguments) is not certified: `some` of what is missing, to be listed. -/
-def certifyCalc (n : Name) (links : List Expand.Chk) (p : Pos) (t : String) (ps : List Param) (eq : Bool) (noHyps : Bool)
+def certifyCalc (n : Name) (links : List Expand.Chk) (bad : List (Pos × String)) (p : Pos) (t : String) (ps : List Param) (eq : Bool) (noHyps : Bool)
     (steps : List (Pos × Bool × Expr × Why)) : TermElabM (Option String) := do
   let env ← getEnv
   unless env.contains `Rel.Lang.Tm.den do
@@ -324,9 +324,10 @@ def certifyCalc (n : Name) (links : List Expand.Chk) (p : Pos) (t : String) (ps 
   if let some (_, what) := cant.find? (·.1) then return some s!"{t}: the theorem {what}"
   if !lacks.isEmpty then
     return some s!"{t}: no proof constant for {", ".intercalate (lacks.map fun (_, _, _, w) => why w)}"
-  let some whole := links.find? (·.1 == p) | return some s!"{t}: its statement or a step does not type as a `check` (write `check` of the same sides for the error)"
+  let some whole := links.find? (·.1 == p) | return some s!"{t}: {(bad.lookup p).getD "its statement or a step does not type as a `check`"}"
   let goal ← goalOf whole
-  let value ← Meta.withLocalDeclD `ρ (mkConst `Rel.Lang.Val) fun ρ => do
+  -- a step that does not hold is the reason the theorem is listed, never an error of the program
+  let value : Except String Lean.Expr ← Meta.withLocalDeclD `ρ (mkConst `Rel.Lang.Val) fun ρ => do
     let mut acc : Option Lean.Expr := none
     for (q, _, _, w) in steps do
       let some l := links.find? (·.1 == q) | throwError "rel_program: no elaborated step at {q}"
@@ -334,18 +335,19 @@ def certifyCalc (n : Name) (links : List Expand.Chk) (p : Pos) (t : String) (ps 
       let step ← match cite w with
         | none =>
           unless ← Meta.isDefEq a b do
-            throwError "rel_program: step at {q} of {t}: `≜ {why w}` unfolds a definition, but both sides are not one term: {a} and {b}"
+            return .error s!"step at {q}: `≜ {why w}` unfolds a definition, but both sides are not one term: {← Meta.ppExpr a} and {← Meta.ppExpr b}"
           Meta.mkEqRefl a
         | some c =>
           let pr := mkApp (mkConst c) ρ
           unless ← Meta.isDefEq (← Meta.inferType pr) (← Meta.mkEq a b) do
-            throwError "rel_program: step at {q} of {t}: {c} proves {← Meta.inferType pr}, not {← Meta.mkEq a b}"
+            return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr (← Meta.mkEq a b)}"
           pure pr
       acc ← match acc with | none => pure (some step) | some s => some <$> Meta.mkEqTrans s step
     let some chain := acc | throwError "rel_program: theorem {t} has no steps"
-    Meta.mkLambdaFVars #[ρ] chain
+    pure (.ok (← Meta.mkLambdaFVars #[ρ] chain))
+  let value ← match value with | .ok v => pure v | .error e => return some s!"{t}: {e}"
   unless ← Meta.isDefEq (← Meta.inferType value) goal do
-    throwError "rel_program: the chain of {t} at {p} proves {← Meta.inferType value}, not {goal}"
+    return some s!"{t}: the chain at {p} proves {← Meta.ppExpr (← Meta.inferType value)}, not {← Meta.ppExpr goal}"
   addDecl (.thmDecl { name := n ++ `proof ++ Name.mkSimple t, levelParams := [], type := goal, value })
   pure none
 
@@ -354,7 +356,9 @@ def certifyCalc (n : Name) (links : List Expand.Chk) (p : Pos) (t : String) (ps 
     the typed terms that emission consumes (`checks`, `thms`, matched by position), as the statement `goalOf`:
     `n.proof.check<i>` for the `i`-th proved check, `n.proof.<t>` for the theorem `t`. A `calc` theorem is certified
     by `certifyCalc`; the ones it cannot are the strings of the constant `n.proof.unproved`. -/
-def certify (n : Name) (prog : Program) (checks thms : List Expand.Chk) : TermElabM Unit := do
+def certify (n : Name) (prog : Program) (checks : List Expand.Chk) (thms : List Expand.Chk × List (Pos × String)) :
+    TermElabM Unit := do
+  let (thms, bad) := thms
   let mut index := 0
   let mut unproved : List String := []
   for decl in prog do
@@ -365,7 +369,7 @@ def certify (n : Name) (prog : Program) (checks thms : List Expand.Chk) : TermEl
       | .«theorem» p t _ _ _ _ _ _ _ (some proof) => pure (p, proof, Name.mkSimple t)
       | .«theorem» p t ps _ _ eq _ hyps steps none =>
         if steps.isEmpty then continue
-        if let some m ← certifyCalc n thms p t ps eq hyps.isEmpty steps then unproved := unproved ++ [m]
+        if let some m ← certifyCalc n thms bad p t ps eq hyps.isEmpty steps then unproved := unproved ++ [m]
         continue
       | _ => continue
     let some c := (checks ++ thms).find? (fun c => c.1 == p)

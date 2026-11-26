@@ -217,9 +217,9 @@ def Io.rename (f : String → String) : Io → Io
     mentions one, with its declared type and, for a definition, the run-time names it mentions. -/
 abbrev Rt := List (String × Param × Option (List String))
 
-/-- What a program reads: its closed definitions, its prints (text and term), its checks, its proved theorems (the sides of each `by` lemma: stated, never run), its objects, its
+/-- What a program reads: its closed definitions, its prints (text and term), its checks, its proved theorems (the sides of each `by` lemma: stated, never run, and the error of each `calc` chain that did not elaborate), its objects, its
     definitions elaborated once, and the statements `n.io` runs, its imports' inputs and run-time definitions first. -/
-abbrev Read := List (String × Res) × List (String × Top) × List Chk × List Chk × Objs × List Once × List Io
+abbrev Read := List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String)) × Objs × List Once × List Io
 
 /-- The object variables of a definition, in order, each once: its parameters' then its type's. -/
 def varsOf (qs : List Param) (ty : OExp × OExp) : List String :=
@@ -684,7 +684,7 @@ def rtNamesE (env : Env) (rt : Rt) (e : Expr) : Expr :=
     (`rt₀` those of its imports), and the statements `n.io` runs (`Io`). -/
 def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
     (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := []) :
-    EM (Env × List (String × Res) × List (String × Top) × List Chk × List Chk × List Once × Rt × List Io) := do
+    EM (Env × List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String)) × List Once × Rt × List Io) := do
   let mut env := env
   let mut specs := specs
   let mut pend : List (Env × Pos × String × List Param × Expr × (OExp × OExp) × List String × Def) := []
@@ -695,6 +695,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
   let mut ths : List Chk := []
+  -- a `calc` theorem whose chain did not elaborate as `check`s: where, and the error, for `certify` to list
+  let mut bad : List (Pos × String) := []
   -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
   -- parameter of the statements after it that mention it; with its declared type and, for a definition, its own
   let mut rt : Rt := rt₀
@@ -865,7 +867,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
           for (q, _, y, _) in steps do
             let (c, sp') ← checkOf env q (rtNamesE env rt x) (rtNamesE env rt y) true sp; sp := sp'; ls := ls ++ [c]; x := y
           specs := sp; ths := ths ++ ls
-        catch _ => pure ()
+        catch e => bad := bad ++ [(p, s!"{e.msg}")]
       -- `on A`: each link of the chain (the statement itself when there is none) evaluated as a `check`
       if let some a := on then
         let mut x := e
@@ -880,7 +882,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
       specs := sp ++ o.toList
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls (convs prog) d)) :: mine
-  pure (env, ds, pr, cs, ths, specs, rt, io)
+  pure (env, ds, pr, cs, (ths, bad), specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope
