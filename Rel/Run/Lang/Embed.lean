@@ -57,13 +57,12 @@ def defn (s : Syntax) (w key : String) (ps : Array Syntax) (ty body test wh : Sy
   modify fun st => { st with known := outer, ovars := [] }
   pure (.defn p key ps b ty)
 
-/-- The lemma `theorem n … by lemma` names, refused beside a `calc`, `on` or `if`: a Lean proof states the
-    whole theorem, which has none of them. -/
+/-- The lemma `theorem n … by lemma` names, refused beside a `calc` or `on`: a Lean proof states the
+    whole theorem, which has neither (an `if` hypothesis is a premise of its statement). -/
 def proofOf (s : Syntax) (n : String) : C (Option Lean.Name) := do
   if s[10].getNumArgs == 0 then return none
   let l := s[10][1].getId
-  let bad := [(s[9].getNumArgs != 0, "a `calc`"), (s[3].getNumArgs != 0, "`on`"),
-    (s[4].getNumArgs != 0, "`if`")].filter (·.1)
+  let bad := [(s[9].getNumArgs != 0, "a `calc`"), (s[3].getNumArgs != 0, "`on`")].filter (·.1)
   if let some (_, what) := bad.head? then
     failAt s[10] s!"theorem `{n}` has `by {l}` and {what}: a Lean proof is written for a theorem with none"
   pure (some l)
@@ -290,14 +289,17 @@ def sidesAt (ρ : Lean.Expr) : Expand.Chk → TermElabM (Lean.Expr × Lean.Expr)
     let den t := mkAppN (mkConst denName) #[ρ, Expand.oE A, Expand.oE B, t]
     pure (den (← ofExcept (Expand.tmE #[] R)), den (← ofExcept (Expand.tmE #[] S)))
 
-/-- The statement `∀ ρ, Tm.den ρ R = Tm.den ρ S` (`Rel.le` for `⊑`) of the elaborated check `c`: the one goal every
+/-- The statement `∀ ρ, H₁ → … → Hₖ → Tm.den ρ R = Tm.den ρ S` (`Rel.le` for `⊑`) of the elaborated check `c`, each
+    premise `Hᵢ` built as the conclusion is from the check `hs[i]` under the same `ρ`: the one goal every
     certificate is checked against. -/
-def goalOf (c : Expand.Chk) : TermElabM Lean.Expr := Meta.withLocalDeclD `ρ (mkConst `Rel.Lang.Val) fun ρ => do
-  let (r, s) ← sidesAt ρ c
-  let (_, _, _, eq, _, _, ⟨A, B, _, _⟩) := c
-  let body ← if eq then Meta.mkEq r s
-    else pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[Expand.oE A |> mkApp (mkConst ``Rel.Obj.El), Expand.oE B |> mkApp (mkConst ``Rel.Obj.El), r, s])
-  Meta.mkForallFVars #[ρ] body
+def goalOf (c : Expand.Chk) (hs : List Expand.Chk := []) : TermElabM Lean.Expr :=
+  Meta.withLocalDeclD `ρ (mkConst `Rel.Lang.Val) fun ρ => do
+    let prop (c : Expand.Chk) : TermElabM Lean.Expr := do
+      let (r, s) ← sidesAt ρ c
+      let (_, _, _, eq, _, _, ⟨A, B, _, _⟩) := c
+      if eq then Meta.mkEq r s
+      else pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[Expand.oE A |> mkApp (mkConst ``Rel.Obj.El), Expand.oE B |> mkApp (mkConst ``Rel.Obj.El), r, s])
+    Meta.mkForallFVars #[ρ] (← hs.foldrM (fun h b => do pure (mkForall `h .default (← prop h) b)) (← prop c))
 
 /-- The theorem `t` of the program `n` with steps `_ = x := why` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
@@ -356,9 +358,9 @@ def certifyCalc (n : Name) (links : List Expand.Chk) (bad : List (Pos × String)
     the typed terms that emission consumes (`checks`, `thms`, matched by position), as the statement `goalOf`:
     `n.proof.check<i>` for the `i`-th proved check, `n.proof.<t>` for the theorem `t`. A `calc` theorem is certified
     by `certifyCalc`; the ones it cannot are the strings of the constant `n.proof.unproved`. -/
-def certify (n : Name) (prog : Program) (checks : List Expand.Chk) (thms : List Expand.Chk × List (Pos × String)) :
-    TermElabM Unit := do
-  let (thms, bad) := thms
+def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
+    (thms : List Expand.Chk × List (Pos × String) × List (Pos × List Expand.Chk)) : TermElabM Unit := do
+  let (thms, bad, hyps) := thms
   let mut index := 0
   let mut unproved : List String := []
   for decl in prog do
@@ -374,7 +376,7 @@ def certify (n : Name) (prog : Program) (checks : List Expand.Chk) (thms : List 
       | _ => continue
     let some c := (checks ++ thms).find? (fun c => c.1 == p)
       | throwError "rel_program: no elaborated check at {p}"
-    let goal ← goalOf c
+    let goal ← goalOf c ((hyps.lookup p).getD [])
     let value ← Term.withoutErrToSorry <| Term.elabTermEnsuringType (mkIdent proof) goal
     Term.synthesizeSyntheticMVarsNoPostponing
     let value ← instantiateMVars value

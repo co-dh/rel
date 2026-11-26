@@ -219,7 +219,7 @@ abbrev Rt := List (String × Param × Option (List String))
 
 /-- What a program reads: its closed definitions, its prints (text and term), its checks, its proved theorems (the sides of each `by` lemma: stated, never run, and the error of each `calc` chain that did not elaborate), its objects, its
     definitions elaborated once, and the statements `n.io` runs, its imports' inputs and run-time definitions first. -/
-abbrev Read := List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String)) × Objs × List Once × List Io
+abbrev Read := List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String) × List (Pos × List Chk)) × Objs × List Once × List Io
 
 /-- The object variables of a definition, in order, each once: its parameters' then its type's. -/
 def varsOf (qs : List Param) (ty : OExp × OExp) : List String :=
@@ -688,7 +688,7 @@ def rtNamesE (env : Env) (rt : Rt) (e : Expr) : Expr :=
     (`rt₀` those of its imports), and the statements `n.io` runs (`Io`). -/
 def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
     (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := []) :
-    EM (Env × List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String)) × List Once × Rt × List Io) := do
+    EM (Env × List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String) × List (Pos × List Chk)) × List Once × Rt × List Io) := do
   let mut env := env
   let mut specs := specs
   let mut pend : List (Env × Pos × String × List Param × Expr × (OExp × OExp) × List String × Def) := []
@@ -699,6 +699,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
   let mut ths : List Chk := []
+  let mut hs : List (Pos × List Chk) := []
   -- a `calc` theorem whose chain did not elaborate as `check`s: where, and the error, for `certify` to list
   let mut bad : List (Pos × String) := []
   -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
@@ -857,10 +858,16 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       -- `x ↦ y` typed as a `check`, at the step's line, unless a step cites a theorem at arguments (never certified)
       let calcOk := proof.isNone && !steps.isEmpty && hyps.isEmpty && eq &&
         steps.all fun (_, k, _, w) => k && match w with | .thm _ _ _ as => as.isEmpty | .unfold .. => true
-      -- `by lemma` (no `calc`, `on` or `if`: `Embed`): both sides typed once as a `check`'s are, for the denotation
-      -- only, the parameters variables; kept for `certify`
+      -- `by lemma` (no `calc` or `on`: `Embed`): both sides, and each hypothesis `a = b` / `a ⊑ b` after `if`, typed once
+      -- as a `check`'s are, for the denotation only, the parameters variables; kept for `certify`
       if proof.isSome then
+        let mut cs' : List Chk := []
+        for (a, b) in hyps do
+          let some (k, b) := b | throw ⟨a.pos, s!"theorem `{n}` has `by` and the hypothesis `{a.show}`, a test applied: " ++
+            "only `a = b` and `a ⊑ b` are premises of a Lean proof"⟩
+          let (c, sp) ← checkOf env a.pos (rtNamesE env rt a) (rtNamesE env rt b) k specs true ps; specs := sp; cs' := cs' ++ [c]
         let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs true ps; specs := sp; ths := ths ++ [c]
+        hs := hs ++ [(p, cs')]
       -- a chain whose statement or links do not type as checks is left uncertified:
       -- `certifyCalc` lists it
       if calcOk then
@@ -887,7 +894,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
       specs := sp ++ o.toList
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls (convs prog) d)) :: mine
-  pure (env, ds, pr, cs, (ths, bad), specs, rt, io)
+  pure (env, ds, pr, cs, (ths, bad, hs), specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope

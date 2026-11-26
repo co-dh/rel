@@ -84,6 +84,15 @@ rel_program convParam where
 #check convParam.proof.cc
 #check convParam.proof.nn
 
+-- A hypothesis after `if` is a premise of the goal, over the same `ρ` and parameters: `R = S ⊢ R = S`.
+private theorem hypId {A B : Obj} {R S : Tm A B} (ρ : Val) (h : R.den ρ = S.den ρ) : R.den ρ = S.den ρ := h
+
+rel_program hypThm where
+    obj N = 0…3
+    theorem hy(R : N ⟶ N, S : N ⟶ N) if R = S : R = S by hypId
+
+#check hypThm.proof.hy
+
 end Rel.Lang
 
 #check Rel.Programs.prefixCata.proof.shares
