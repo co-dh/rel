@@ -1726,7 +1726,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `X÷∋`（右操作数是 `∋`）交给 `Pre.lam X`，`E(R)` 就是 `(∋R)÷∋` 走同一条，不另设 `.E` 分支。absorption
   `(S÷∋)E(R) = (SR)÷∋` 对每个 `S` 成立（0.10a `Λ_absorption`，monad 的复合律），按一般形式实现并证明，删掉只认
   `S = 𝟙` 的 `Pre.compFuse` 特例。9.8b 的「一般形式不成立」反例（`S a` 取遍 ℕ）是 rel 模型的缺陷：`lamDen` 只取有限升序
-  数组，而 `El` 可以无穷——修模型，不弱化 law，也不换成集合：`Λ`、`E` 仍在 rel 的数组上（严格升序数组作集合的规范代表，owner 2026-11-26），denotation 限到程序声明的有限载体（`obj N = …`），那里每个像都是一个数组，absorption 在数组上成立。
+  数组，而 `El` 可以无穷——修模型，不弱化 law，也不换成集合：`Λ`、`E` 仍在 rel 的数组上（严格升序数组作集合的规范代表，owner 2026-11-26），law 的前提是「每个像在声明对象里有限」（owner 2026-11-26，同 B&dM 的 finite powerset）：atom 对象都有限声明，`>` `≤` `⊤` 带 universe、按边界 `lazy` 求值，所以 atom 上 `Λ`、`E` 总有值（例：N = -10…20，`{3,7} E(>) {-10,…,6}`），与书一致；缺口只在像落在 `[N]` 且无穷时（`Λ(prefix°)`：一个数组的全部延长），一个格子装不下，`lazy` 也不解决（结果是一个格子的值）。9.9 搬 companion 证明时把用到这种 `Λ` 的步骤逐条列出。
 - ⬜ 9.9 freyd `diag/algprog-companion.pdf`（`diag/aop/00-laws.typ` … `10-greedy.typ`）里每条 Lean 证明在 Rel 语言里再写一遍，
   两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 去 `Λ` 后的写法），
   在 rel 里证（9.10 的机制）；freyd `AOP/A*.lean` 的 Lean 证明不动。先列出 companion 引用的全部定理（义务表），逐条记 Rel 版本
