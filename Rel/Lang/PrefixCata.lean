@@ -50,3 +50,5 @@ run_cmd do
     throwError "a rejected relation proof exported executable code"
 
 end Rel.Lang
+
+#check Rel.Programs.prefixCata.proof.shares
