@@ -1723,6 +1723,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `Calc.lean` 至少从 11-23 红到 9.4 才发现）。与 P9「没有证明写不出程序」冲突，9.1 设计稿必须回答，两条路：
   (a) 证明搬进 rel——rel 带 AOP 模型，或直接对可执行语义 `Tm.den` 证（与 9.2 compile subtype 同一处）；
   (b) 依赖方向不变，rel 的 gate 加 build freyd relaop。owner 看设计稿再定。
+- ⬜ 9.8 语言去掉 `Λ`，改写成对 `∋` 的对称除法 `Λ(R) = R ÷ ∋`（owner 2026-11-26：后者对 string diagram 友好）。
+  一个点：`a  (R ÷ ∋)  s` 当且仅当 `∀b. a R b ⟺ s ∋ b`，即 `s = {b : a R b}`——用 rel 自己的 `÷`
+  （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
+  现在 `Λ` 用的 kernel（优化，由定理绑到这个 pattern）；`absorption`、`Eunion`、`estMap` 等含 `Λ` 的律改述成 `÷ ∋`；
+  Mss、Prelude、Prefix 等程序与 `rel_aop` 的 `rel(…)` 读法一起转写；`doc/rel-architecture.zh.typ` §1、§4 先改。
 
 ## 3. 各 phase 的并行与串行
 
