@@ -1700,6 +1700,18 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ 9.2 按 9.1 实现 (a)：`compile` 取代 `Tm.gen`/`Tm.gen_sound`，`GenHyp` 在 elaboration 时证掉。
 - ⬜ 9.3 按 9.1 实现 (b)：`check … by …`；`Rel/Programs/Prefix.lean` 的 check 由 `Tm.prefixFold_prefixDef` 证掉，
   `Rel/Lang/PrefixCata.lean` 里手写的 `prefixCata_check` 删去；其余程序的 check 逐个补证明或改为测试。
+- 🔄 9.4 B&dM p.126 `⦇[nil, nil ∪ cons]⦈ʳ = prefix` 在 Rel 里证：陈述与 calc 写在 `rel_program prefixCata`
+  （`theorem foldUP`（fold 唯一性，owed）、`prefixEq`（owed）、`prefixFold : prefixC = prefix := calc …`），
+  owed law 由 freyd `rel_aop prefixCata` 证。rel 侧 ✅ `fdb180c`（分支 `keep-prefixfold-rel`）。freyd 侧：relaop 桥
+  移植到 prims 行 ✅ `ff0a26b`（`Calc`/`CalcTest` 绿；`builtins` 读每一行 `prims`，`allegoryRows` 给 dom/ran/est/nil
+  的 AOP 名，两种 fold 读作 `relCata`，`symDiv` 按定义）；`RelAop/Prefix.lean` WIP `39433b4`（分支 `keep-prefixaop`，
+  worktree `freyd/.claude/worktrees/prefixaop` 仍 locked；`relaop/lake-manifest.json` 第 9 行未提交的改动在 merge
+  前 checkout 掉）。卡点：rel_aop 的对象变量取自 model，`foldUP` 只能特化到 `N`；`[R,S]` 要的 `Coproduct` 与 model 的
+  `K` 不 unify。计划引理：`relCata_UP` + `cata_square_junc_iff`（foldUP），`prefix_cancel` `prefix_cat` `prefix_cata`
+  （prefixEq）。交接 `/data/tmp/prefixaop-handoff.md`。下一个 agent 从这里新起，不续旧 agent。
+- ⬜ 9.5 `RelAop.Prelude` 红（与 9.4 无关，挡住 `Mss`、`RelAopTest`）：prelude 新增的 owed `permConv : perm° = perm` 与
+  `starLinear : μX : S ∪ (R X) = star(R) S`（`Rel/Programs/Prelude.lean:90-91`）没有 bridge 证明；`μX` 不在
+  `rel(…)` fragment 里，先扩 `Calc`。
 
 ## 3. 各 phase 的并行与串行
 
