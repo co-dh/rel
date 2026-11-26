@@ -636,8 +636,8 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   let val ← el (← `(fun d hd => ($iff d.2.2).1
     ((List.all_eq_true.1 $(mkIdent (`_root_ ++ pn ++ `all))) d hd)))
   addDecl (.thmDecl { name := pn ++ `shares, levelParams := [], type := goal, value := val })
-  -- `Code.program_sound` at this program's input: its type is the statement, so nothing is restated here
-  let sound ← el (← `($(mkIdent `_root_.Rel.Lang.Code.program_sound) $il $(mkIdent (`_root_ ++ pn ++ `shares))))
+  -- `Code.program_reps` at this program's input: its type is the statement, so nothing is restated here
+  let sound ← el (← `($(mkIdent `_root_.Rel.Lang.Code.program_reps) $il $(mkIdent (`_root_ ++ pn ++ `shares))))
   addDecl (.thmDecl { name := pn ++ `sound, levelParams := [], type := ← inferType sound, value := sound })
   -- slot `k`'s term as the constant `n.c.t<k>`, its own parts (lower slots) by theirs: each part's term built once
   let mut sh : Array Lean.Expr := #[]

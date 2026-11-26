@@ -1871,4 +1871,12 @@ theorem Code.program_sound (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _
   have hs := Code.shares_sound _ i
   exact ⟨hs.1, fun d hd => Tm.GenHyp.mono hs.2 (o d hd)⟩
 
+/-- **The compiled code represents the denotation**: under the program's share table, every numbered term's generated
+    code `Reps` the term's denotation in the empty context, on every well-formed store. -/
+theorem Code.program_reps (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) :
+    ∀ d ∈ (Code.program ds).1, ∀ K, K.WF →
+      (d.2.2.gen (Code.shares (Code.program ds).2)).Reps K (d.2.2.den Val.empty) := fun d hd K hK =>
+  let s := Code.program_sound ds h
+  Tm.gen_sound d.2.2 _ _ (s.2 d hd) s.1 K hK
+
 end Rel.Lang
