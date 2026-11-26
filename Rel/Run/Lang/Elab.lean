@@ -465,6 +465,13 @@ def Pre.rdivWhole (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
 def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
   .meet (.rdivWhole pos r s a b) (.conv (.rdivWhole pos s r b a))
 
+/-- `q r` as a composition; `Λ(S)` followed by `E(T) = Λ(∋ T)` is `Λ(S T)` (absorption, `lamDen_absorb`), so
+    `(S÷∋)E(T)` builds one Λ node, and `(𝟙÷∋)E(X)` builds the node `Λ(X)` did. -/
+def Pre.compFuse : Pre → Pre → Pre
+  | .lam (.id _), .lam (.comp (.mem _) x) => .lam x
+  | .lam s, .lam (.comp (.mem _) x) => .lam (.comp s x)
+  | q, r => .comp q r
+
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
     runs on the values of its summand in demand (`Tab.inlConv`), and is covered by the laws of `∪`, `≫` and the rows. -/
 def Pre.junc (r s : Pre) (a b : OTy) : Pre :=
@@ -1393,14 +1400,29 @@ def appliedRow (env : Env) (p : Pos) (r : Prim) (qs : List (Pre × OTy × OTy)) 
     pure (r.pass p f q s')
   pure (.rel (.prim r xs s t none) s t)
 
+/-- Collect the values of each relation in a family on the full source universe. -/
+def powerL (I : OTy) (p : Pos) (q : Pre) (s t : OTy) : Arg :=
+  let (r, a, b) := lLam I (some (.top p I s none)) (q, s, t)
+  .fam r I a b
+
+/-- The existential image `E(R) ≜ (∋R)÷∋` on a plain relation. -/
+def existsImage (q : Pre) (s : OTy) : Pre :=
+  .lam (.comp (.mem s) q)
+
+/-- The primitive `Λ(R) ≜ (𝟙÷∋)E(R)`. Absorb the singleton before lifting a family, since the intermediate
+    array object has no universe. -/
+def singletonImage (p : Pos) : Arg → Arg
+  | .rel q s t => .rel (Pre.compFuse (.lam (.id s)) (existsImage q s)) s (.arr t)
+  | .fam q I s t => powerL I p q s t
+
 /-- A builtin applied to relations, every argument one relation. -/
 def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M Arg := do
   if let some r ← o.row p then return ← appliedRow env p r as
   match as with
   | [(q, s, t)] => do
     match o with
-    | .lam => pure (.rel (.lam q) s (.arr t))
-    | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
+    | .lam => pure (singletonImage p (.rel q s t))
+    | .E => pure (.rel (existsImage q s) (.arr s) (.arr t))
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
 
@@ -1421,8 +1443,8 @@ def appliedRowL (I : OTy) (p : Pos) (r : Prim) (as : List Arg) : M Arg := do
 def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
   if let some x ← o.row p then return ← appliedRowL I p x as
   let fs ← as.mapM (famOf I p)
+  if let (.lam, [(q, s, t)]) := (o, fs) then return singletonImage p (.fam q I s t)
   let r ← match o, fs with
-    | .lam, [R] => pure (lLam I (some (.top p I R.2.1 none)) R)
     | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.mem b) (.arr b) b) R))
     | o, _ => notLiftable p s!"{o.sym}( )"
   pure (.fam r.1 I r.2.1 r.2.2)
@@ -1472,9 +1494,12 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
     | .rdiv => do
       unify p "the target of `/`'s right operand" t' t
       pure (.rel (Pre.rdivWhole p q r s s') s s')
+    -- `R÷∋` is `Λ(R)` with sets as sorted arrays (`lamDen_symDiv`)
     | .symDiv => do
       unify p "the target of `÷`'s right operand" t' t
-      pure (.rel (Pre.symDiv p q r s s') s s')
+      match r with
+      | .mem _ => pure (.rel (.lam q) s s')
+      | _ => pure (.rel (Pre.symDiv p q r s s') s s')
     | .ldiv => do
       unify p "the source of `\\`'s right operand" s' s
       let w := "R\\S reads its operands whole outside a meet with a term run on demand"
@@ -1484,6 +1509,9 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
 
 /-- A binary operator with a family on a side, by the rows of §e. -/
 def binaryL (I : OTy) (p : Pos) (o : Bin) (x y : Arg) : M Arg := do
+  if let (.symDiv, .fam q _ s t, .rel (.mem _) _ t') := (o, x, y) then
+    unify p "the target of `÷`'s right operand" t' t
+    return powerL I p q s t
   let R ← famOf I p x; let S ← famOf I p y
   let r ← match o with
     | .meet => lSame p Pre.meet R S
@@ -1650,6 +1678,8 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match env.infix? n with
     | some d => settle m p [x, y] (← d.apply p [x, y])
     | none => throw ⟨p, s!"unknown infix operator '{n}'"⟩
+  | .comp (.bin p .symDiv (.op _ .id [] []) (.op _ .mem [] [])) (.op _ .E [] [x]) =>
+    return singletonImage p (← elabE env m x)
   | .comp a b => do
     let x ← elabE env m a
     let p := b.pos
@@ -1695,7 +1725,7 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
       | _, _ =>
         let (q, s, t) := x.plain; let (r, s', t') := y.plain
         unify p "the source of the right factor of a composition" s' t
-        pure (.rel (.comp q r) s t')
+        pure (.rel (Pre.compFuse q r) s t')
   | .bin p o a b => do
     let x ← elabE env m a; let y ← elabE env m b
     match m, x.isFam || y.isFam with

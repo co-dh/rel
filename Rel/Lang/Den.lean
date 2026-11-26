@@ -511,6 +511,30 @@ theorem lamDen_iff (T : Core.Rel (Obj.El A) (Obj.El B)) (a : Obj.El A) (ys : Obj
 theorem lamDen_fun (T : Core.Rel (Obj.El A) (Obj.El B)) :
     lamDen T = fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b := funext fun a => funext fun ys => propext (lamDen_iff T a ys)
 
+/-- `Λ(T)` is `T ÷ ∋` within the universes everything and the sorted arrays (companion 0.10a row 3, freyd `Λ R := R /ₛ ∋`). -/
+theorem lamDen_symDiv (T : Core.Rel (Obj.El A) (Obj.El B)) :
+    lamDen T = symDivDen (fun _ _ => True) (corefl (List.Pairwise B.lt)) T memDen ≫ corefl (List.Pairwise B.lt) := by
+  funext a ys
+  refine propext ((lamDen_iff T a ys).trans ⟨fun ⟨hp, h⟩ => ⟨ys, ⟨rdivDen_iff.2 ⟨fun c hc => (h c).1 hc, .inr ⟨⟨a, trivial⟩, ys, rfl, hp⟩⟩,
+      rdivDen_iff.2 ⟨fun c hc => (h c).2 hc, .inr ⟨⟨ys, rfl, hp⟩, a, trivial⟩⟩⟩, rfl, hp⟩,
+    fun ⟨_, ⟨h1, h2⟩, rfl, hp⟩ => ⟨hp, fun b => ⟨(rdivDen_iff.1 h1).1 b, (rdivDen_iff.1 h2).1 b⟩⟩⟩)
+
+/-- Absorption `Λ(S) E(T) = Λ(S T)` (companion 0.10a `Λ_absorption`, the power monad's composition law), on arrays:
+    the premise says `S` has an array at every point, which every relation on a declared finite object has. -/
+theorem lamDen_absorb (S : Core.Rel (Obj.El A) (Obj.El B)) (T : Core.Rel (Obj.El B) (Obj.El C))
+    (hS : ∀ a, ∃ ys, lamDen S a ys) : lamDen S ≫ lamDen (memDen ≫ T) = lamDen (S ≫ T) := by
+  funext a zs
+  refine propext ⟨fun ⟨ys, h1, h2⟩ => ?_, fun hh => ?_⟩
+  · obtain ⟨hp, hy⟩ := (lamDen_iff S a ys).1 h1
+    obtain ⟨hq, hz⟩ := (lamDen_iff (memDen ≫ T) ys zs).1 h2
+    exact (lamDen_iff (S ≫ T) a zs).2 ⟨hq, fun c => (hz c).trans
+      ⟨fun ⟨y, hyy, hTy⟩ => ⟨y, (hy y).1 hyy, hTy⟩, fun ⟨y, hSy, hTy⟩ => ⟨y, (hy y).2 hSy, hTy⟩⟩⟩
+  · obtain ⟨ys, h1⟩ := hS a
+    obtain ⟨hp, hy⟩ := (lamDen_iff S a ys).1 h1
+    obtain ⟨hq, hz⟩ := (lamDen_iff (S ≫ T) a zs).1 hh
+    exact ⟨ys, h1, (lamDen_iff (memDen ≫ T) ys zs).2 ⟨hq, fun c => (hz c).trans
+      ⟨fun ⟨y, hSy, hTy⟩ => ⟨y, (hy y).2 hSy, hTy⟩, fun ⟨y, hyy, hTy⟩ => ⟨y, (hy y).1 hyy, hTy⟩⟩⟩⟩
+
 /-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
 abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) :=
   foldDen (E := A) (V := .arr B) ((graph fun _ : Unit => ([] : Obj.El (.arr B)))° ≫ graph fun _ : Unit => [])

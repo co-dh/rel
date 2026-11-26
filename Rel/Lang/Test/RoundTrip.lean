@@ -39,7 +39,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 #eval trips ["R S", "R°", "R ∩ S", "R ∪ S", "R − S", "∼R", "R ⇒ S", "𝟘", "⊤", "𝟙", "⊤(X, X)", "𝟙(X)", "dom(R)",
   "ran(R)", "R \\ S", "R / S", "frac(R, S)", "⟨R, S⟩", "π₁", "π₂", "R × S", "[R, S]", "inl", "inr", "R + S",
-  "Λ(R)", "∋", "∈", "E(R)", "τ", "nil", "α", "cons°", "⦇R⦈", "F(R)", "est(R)", "front(R)",
+  "Λ(R)", "(𝟙÷∋)E(R)", "∋", "∈", "E(R)", "τ", "nil", "α", "cons°", "⦇R⦈", "F(R)", "est(R)", "front(R)",
   "filter(p)", "takewhile(p)", "length", "sum", "head", "tail", "suffix", "succ", "plus", "≤", "<",
   "{(A, B), (B, A)}", "R ∪ S R", "R S ∪ R", "R ∩ S ∪ R", "R ∪ S ∩ R", "R ∪ (S R)", "R (S p)", "∼(R S)°",
   "(∼R)°", "∼R S", "{((A, B), A), ((B, A), B)}", "{(A, (B, (A, B)))}"]
@@ -84,6 +84,15 @@ example : True := trivial
   match ← readIn (preludeScope) "obj B = 0…1\nf(S) ≜ b ∪ S where a ≜ π₁, b ≜ a π₂ S\n" with
   | .ok p => unless p.filterMap reading == [("f", "(((π₁ π₂) S) ∪ S)")] do throwError "{p.filterMap reading}"
   | .error e => throwError "{e}"
+
+
+open Rel.Programs.prelude in
+rel_program powerDefinition where
+    obj B = {a,b,c}
+    R : B ⟶ B ≜ {(a,c),(a,b)}
+    check Λ(R) = (𝟙÷∋)E(R)
+
+#guard powerDefinition.ok
 
 
 end Rel.Lang.Test

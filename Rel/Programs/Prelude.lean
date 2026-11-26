@@ -83,10 +83,10 @@ rel_program prelude where
     -- Laws of any relation, proved by `rel_aop prelude` (relaop/RelAop/Prelude.lean); a map is `dom(f) = 𝟙` and `simple(f)`.
 
     simple(f : α ⟶ β) ≜ f°f ⊑ 𝟙                                   -- f relates each input to at most one output
-    theorem absorption(S : α ⟶ β, R : β ⟶ γ) : Λ(S)E(R) = Λ(S R)  -- B&dM (4.24) Λ-absorption
-    theorem Eunion(R : α ⟶ β) : E(R) = E(Λ(R))E(∋)                 -- E(R) is the union of the images of Λ(R)
+    theorem absorption(S : α ⟶ β, R : β ⟶ γ) : (𝟙÷∋)E(S)E(R) = (𝟙÷∋)E(S R)  -- B&dM (4.24) Λ-absorption
+    theorem Eunion(R : α ⟶ β) : E(R) = E((𝟙÷∋)E(R))E(∋)                 -- E(R) is the union of the images of Λ(R)
     theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) : E(R S) = E(R)E(S)        -- E is a functor
-    theorem estMap(f : α ⟶ β, R : β ⟶ β) if dom(f) = 𝟙, simple(f), 𝟙 ⊑ R : Λ(f)est(R) = f  -- a singleton's R-extreme is itself
+    theorem estMap(f : α ⟶ β, R : β ⟶ β) if dom(f) = 𝟙, simple(f), 𝟙 ⊑ R : (𝟙÷∋)E(f)est(R) = f  -- a singleton's R-extreme is itself
     theorem permConv : perm° = perm                                -- perm is its own converse (`Elab.convs`)
     theorem starLinear(R : α ⟶ α, S : α ⟶ β) : μX : S ∪ (R X) = star(R) S  -- a linear recursion is star(R) on S
 
