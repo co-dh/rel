@@ -1,6 +1,6 @@
 import Rel.Run.Table
 import Rel.Run.Lang.Embed
-
+import Rel.Lang.GenSound
 /-! `schema S from "dir"` (`doc/dataframe-design.zh.typ` F1): a table directory written with its `.d` (`Table.write`),
     its schema read back (`Table.readSchema`), and a program whose schema is read from it at elaboration. The
     directories are under `/data/tmp`. -/

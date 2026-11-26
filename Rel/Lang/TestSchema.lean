@@ -1,6 +1,6 @@
 import Rel.Run.Lang.Schema
 import Rel.Run.Lang.Embed
-
+import Rel.Lang.GenSound
 /-! `Schema` (PLAN D.11) on a frame of two columns, key `k` and value `v`, as `TestFrame`'s `[K×N]`: the schemas each
     function builds; the terms run in the programs below. -/
 

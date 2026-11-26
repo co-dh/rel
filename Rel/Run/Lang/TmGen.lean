@@ -606,33 +606,36 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
       throwError "rel_program: `{x}` reaches an output and these nodes of its body have no kernel body (GenK), so \
         `io` cannot compute it: {off}"
   let (nt, parts) := Code.program (terms ++ rts.map (·.2.res))
-  -- the premise of `Code.program_sound`, kernel-checked as `n.proof.shares` (`Tm.shareOK_iff`) where `GenSound` is imported
-  if (← getEnv).contains `Rel.Lang.Tm.shareOK_iff then
-    let pn := n ++ `proof
-    let inpN := pn ++ `input
-    let inp ← mkListLit (mkConst ``Res) (← (terms ++ rts.map (·.2.res)).mapM fun ⟨A, B, t⟩ =>
-      return sigE ``Tm A B (← liftE (tmE #[] t)))
-    addConst inpN (listT (mkConst ``Res)) inp
-    -- idents built, not quoted: a quoted name resolves here, where `GenSound` is not imported
-    let sOK : Lean.Term := mkIdent `_root_.Rel.Lang.Tm.shareOK
-    let iff : Lean.Term := mkIdent `_root_.Rel.Lang.Tm.shareOK_iff
-    let gh : Lean.Term := mkIdent `_root_.Rel.Lang.Tm.GenHyp
-    let il : Lean.Term := mkIdent (`_root_ ++ inpN)
-    let el (s : Lean.Term) : MetaM Lean.Expr := (do
-      let e ← Lean.Elab.Term.withoutErrToSorry (Lean.Elab.Term.elabTerm s none)
-      Lean.Elab.Term.synthesizeSyntheticMVarsNoPostponing
-      instantiateMVars e).run'
-    let oks ← withCurrHeartbeats do
-      unsafe evalExpr (List Bool) (listT (mkConst ``Bool)) (← el (← `(List.map (fun d : Res => $sOK d.2.2) $il)))
-    if let some i := oks.findIdx? (· == false) then
-      throwError "rel_program {n}: term {i}: a shared part has a free variable or a fixed point body is not positive"
-    let allTy ← el (← `(List.all $il (fun d : Res => $sOK d.2.2) = true))
-    let rfl' := mkApp2 (mkConst ``Eq.refl [1]) (mkConst ``Bool) (mkConst ``Bool.true)
-    addDecl (.thmDecl { name := pn ++ `all, levelParams := [], type := allTy, value := rfl' })
-    let goal ← el (← `(∀ d ∈ $il, $gh (fun _ R => R.fv = []) d.2.2))
-    let val ← el (← `(fun d hd => ($iff d.2.2).1
-      ((List.all_eq_true.1 $(mkIdent (`_root_ ++ pn ++ `all))) d hd)))
-    addDecl (.thmDecl { name := pn ++ `shares, levelParams := [], type := goal, value := val })
+  -- the premise of `Code.program_sound`, kernel-checked as `n.proof.shares` (`Tm.shareOK_iff`); `GenSound` imports this
+  -- module, so this check only names the import the program module is missing
+  unless (← getEnv).contains `Rel.Lang.Tm.shareOK_iff do
+    throwError "rel_program {n}: the certificate `{n}.proof.shares` needs `Rel.Lang.Tm.shareOK_iff`: \
+      add `import Rel.Lang.GenSound` (`Rel.Programs.Prelude` imports it) to this module"
+  let pn := n ++ `proof
+  let inpN := pn ++ `input
+  let inp ← mkListLit (mkConst ``Res) (← (terms ++ rts.map (·.2.res)).mapM fun ⟨A, B, t⟩ =>
+    return sigE ``Tm A B (← liftE (tmE #[] t)))
+  addConst inpN (listT (mkConst ``Res)) inp
+  -- idents built, not quoted: a quoted name resolves here, where `GenSound` is not imported
+  let sOK : Lean.Term := mkIdent `_root_.Rel.Lang.Tm.shareOK
+  let iff : Lean.Term := mkIdent `_root_.Rel.Lang.Tm.shareOK_iff
+  let gh : Lean.Term := mkIdent `_root_.Rel.Lang.Tm.GenHyp
+  let il : Lean.Term := mkIdent (`_root_ ++ inpN)
+  let el (s : Lean.Term) : MetaM Lean.Expr := (do
+    let e ← Lean.Elab.Term.withoutErrToSorry (Lean.Elab.Term.elabTerm s none)
+    Lean.Elab.Term.synthesizeSyntheticMVarsNoPostponing
+    instantiateMVars e).run'
+  let oks ← withCurrHeartbeats do
+    unsafe evalExpr (List Bool) (listT (mkConst ``Bool)) (← el (← `(List.map (fun d : Res => $sOK d.2.2) $il)))
+  if let some i := oks.findIdx? (· == false) then
+    throwError "rel_program {n}: term {i}: a shared part has a free variable or a fixed point body is not positive"
+  let allTy ← el (← `(List.all $il (fun d : Res => $sOK d.2.2) = true))
+  let rfl' := mkApp2 (mkConst ``Eq.refl [1]) (mkConst ``Bool) (mkConst ``Bool.true)
+  addDecl (.thmDecl { name := pn ++ `all, levelParams := [], type := allTy, value := rfl' })
+  let goal ← el (← `(∀ d ∈ $il, $gh (fun _ R => R.fv = []) d.2.2))
+  let val ← el (← `(fun d hd => ($iff d.2.2).1
+    ((List.all_eq_true.1 $(mkIdent (`_root_ ++ pn ++ `all))) d hd)))
+  addDecl (.thmDecl { name := pn ++ `shares, levelParams := [], type := goal, value := val })
   -- slot `k`'s term as the constant `n.c.t<k>`, its own parts (lower slots) by theirs: each part's term built once
   let mut sh : Array Lean.Expr := #[]
   for ⟨A, B, t⟩ in parts do
