@@ -1472,9 +1472,12 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
     | .rdiv => do
       unify p "the target of `/`'s right operand" t' t
       pure (.rel (Pre.rdivWhole p q r s s') s s')
+    -- `R÷∋` is `Λ(R)` with sets as sorted arrays (`lamDen_symDiv`)
     | .symDiv => do
       unify p "the target of `÷`'s right operand" t' t
-      pure (.rel (Pre.symDiv p q r s s') s s')
+      match r with
+      | .mem _ => pure (.rel (.lam q) s s')
+      | _ => pure (.rel (Pre.symDiv p q r s s') s s')
     | .ldiv => do
       unify p "the source of `\\`'s right operand" s' s
       let w := "R\\S reads its operands whole outside a meet with a term run on demand"

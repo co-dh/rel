@@ -511,6 +511,14 @@ theorem lamDen_iff (T : Core.Rel (Obj.El A) (Obj.El B)) (a : Obj.El A) (ys : Obj
 theorem lamDen_fun (T : Core.Rel (Obj.El A) (Obj.El B)) :
     lamDen T = fun a ys => ys.Pairwise B.lt ∧ ∀ b, b ∈ ys ↔ T a b := funext fun a => funext fun ys => propext (lamDen_iff T a ys)
 
+/-- `Λ(T)` is `T ÷ ∋` within the universes everything and the sorted arrays (companion 0.10a row 3, freyd `Λ R := R /ₛ ∋`). -/
+theorem lamDen_symDiv (T : Core.Rel (Obj.El A) (Obj.El B)) :
+    lamDen T = symDivDen (fun _ _ => True) (corefl (List.Pairwise B.lt)) T memDen ≫ corefl (List.Pairwise B.lt) := by
+  funext a ys
+  refine propext ((lamDen_iff T a ys).trans ⟨fun ⟨hp, h⟩ => ⟨ys, ⟨rdivDen_iff.2 ⟨fun c hc => (h c).1 hc, .inr ⟨⟨a, trivial⟩, ys, rfl, hp⟩⟩,
+      rdivDen_iff.2 ⟨fun c hc => (h c).2 hc, .inr ⟨⟨ys, rfl, hp⟩, a, trivial⟩⟩⟩, rfl, hp⟩,
+    fun ⟨_, ⟨h1, h2⟩, rfl, hp⟩ => ⟨hp, fun b => ⟨(rdivDen_iff.1 h1).1 b, (rdivDen_iff.1 h2).1 b⟩⟩⟩)
+
 /-- `F(T)`: two arrays of one length, related elementwise by `T`. -/
 abbrev mapDen {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr B)) :=
   foldDen (E := A) (V := .arr B) ((graph fun _ : Unit => ([] : Obj.El (.arr B)))° ≫ graph fun _ : Unit => [])
