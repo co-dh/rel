@@ -97,6 +97,9 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Search before creating a type** — a `Rel k v`, `RelRep`, `FinRel` or `Column` twin is the duplicate this
   repository was split to avoid; extend the one that exists.
 - **DRY**: one authoritative definition per fact; a stronger theorem with the weaker by specialisation.
+- **Add no new dependency on `~/repo/freyd`** — rel is to stand alone (a goal, not yet reached: freyd's `relaop/`
+  still proves some prelude laws, and builds run freyd's `scripts/cap`), so a law, a proof, a script or a tool rel
+  needs lives in rel, because each new reference to freyd is one more thing to undo before rel can leave it.
 - **Break a task into small pieces and give each piece to a sonnet agent** — the main thread does the analysis and
   writes each piece with its anchors and values decided, because a small decided piece is what sonnet finishes
   first time, while one large task on a stronger model costs more and stalls on the open parts.
