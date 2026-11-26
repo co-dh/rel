@@ -1693,13 +1693,14 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 
 ### P9 程序与证明一体（owner 2026-11-25：没有证明就写不出程序；额度重置 2026-11-27 17:00 后开始）
 
-- ⬜ 9.1 设计 note `doc/rel-proof-program.zh.typ`：`rel_program` 在没有证明时拒绝 elaborate。两层：(a) 运行 ⊨ 语义，
-  `compile : (t : Tm A B) → η.Sound ρ → {r : Rel A B // rep r = ⟦t⟧ρ}`（`rel-architecture` §0「规格写在类型里」，
-  今天仍是 `Tm.gen` + 单独的 `Tm.gen_sound`，前提 `Tm.GenHyp`）；(b) `check A = B` 带 `by` 证明，目标
-  `⟦c.tᵢ⟧ρ = ⟦c.tⱼ⟧ρ` 由 kernel 检查，无证明或证明不过即报错；具体输入上的比较降为测试；(c) 定理的证明在 rel 里（9.7 已定，9.10），`rel_aop`/freyd relaop 不再参与。先给 owner 看，再实现。
-- ⬜ 9.2 按 9.1 实现 (a)：`compile` 取代 `Tm.gen`/`Tm.gen_sound`，`GenHyp` 在 elaboration 时证掉。
-- ⬜ 9.3 按 9.1 实现 (b)：`check … by …`；`Rel/Programs/Prefix.lean` 的 check 由 `Tm.prefixFold_prefixDef` 证掉，
-  `Rel/Lang/PrefixCata.lean` 里手写的 `prefixCata_check` 删去；其余程序的 check 逐个补证明或改为测试。
+- 🔄 9.1 [设计评审稿](doc/rel-proof-program.zh.typ)：带证明的定义嵌在 `rel_program` 中。推导首式是规格，
+  末式定义关系 `p : A ⟶ B`，推导证明同型关系等式 `spec = p`。源码的目标和前提使用 Rel 的关系式。
+  `check … by …` 由 Lean kernel 检查等式或包含关系，具体输入比较写成测试。证明留在 rel 内（9.7、9.10）。
+- ⬜ 9.2 将编译 soundness 接到实际生成的代码，内部使用 `Tm.gen_sound`、`Tm.GenHyp` 和
+  `Code.program_sound`。源码中的证明仍是关系判断。
+- 🔄 9.3 Prefix 已接 `check … by …`。Lean 检查两侧实际 elaboration 后的 `Tm.den`，失败时拒绝发出可执行定义。
+  通用 fold 证明在 `Rel/Lang/PrefixFold.lean`，原手写 slot 证明由生成的证书取代。
+  后续补 `derive`、独立测试语法和完整迁移，再要求所有证明类声明提供证据。
 - 🔄 9.4 B&dM p.126 `⦇[nil, nil ∪ cons]⦈ʳ = prefix` 在 Rel 里证：陈述与 calc 写在 `rel_program prefixCata`
   （`theorem foldUP`（fold 唯一性，owed）、`prefixEq`（owed）、`prefixFold : prefixC = prefix := calc …`），rel 侧 ✅
   `fdb180c`（分支 `keep-prefixfold-rel`）。按 9.7 决定，owed 的 `foldUP`、`prefixEq` 在 rel 里由 `Rel.Core` 的公理证（9.10），
@@ -1715,20 +1716,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   freyd 与 rel 互不依赖。原状：`freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，rel 的 `lake build`
   对一条错的 `theorem zeroEntire` 照样绿，下游坏了 rel 看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 至少从 11-23
   红到 9.4 才发现，并挡住 freyd 的 index 刷新与 note gate）。relaop 不再修。
-- ⬜ 9.8 语言去掉 `Λ`，写成复合 `Λ(R) = (𝟙÷∋)E(R)`，不带空格（owner 2026-11-26：`𝟙÷∋` 是单元素映射 τ，一个 bead；`E` 是 functor，一根
-  wire；两者对 string diagram 友好）。路径：`a  (𝟙÷∋)  {a}  E(R)  {b : a R b}`。9.8a（Mss）已派 sonnet。
-  一个点：`a  (R ÷ ∋)  s` 当且仅当 `∀b. a R b ⟺ s ∋ b`，即 `s = {b : a R b}`——用 rel 自己的 `÷`
-  （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
-  现在 `Λ` 用的 kernel（优化，由定理绑到这个 pattern）；`absorption`、`Eunion`、`estMap` 等含 `Λ` 的律改述成 `÷ ∋`；
-  Mss、Prelude、Prefix 等程序一起转写；`doc/rel-architecture.zh.typ` §1、§4 先改。
-- ⬜ 9.8b′ 重做 9.8b（owner 2026-11-26）：`E` 是 functor，留在 prim 与语法里，定义为 `E(R) ≜ (∋R)÷∋`（companion 0.10a
-  `existsImage` 行，freyd `AOP.A4_6.existsImage`）；`Λ` 不再是语法或 `Tm` 节点，只有 `X÷∋` 一条路径：elaborator 把
-  `X÷∋`（右操作数是 `∋`）交给 `Pre.lam X`，`E(R)` 就是 `(∋R)÷∋` 走同一条，不另设 `.E` 分支。absorption
-  `(S÷∋)E(R) = (SR)÷∋` 对每个 `S` 成立（0.10a `Λ_absorption`，monad 的复合律），按一般形式实现并证明，删掉只认
-  `S = 𝟙` 的 `Pre.compFuse` 特例。9.8b 的「一般形式不成立」反例（`S a` 取遍 ℕ）是 rel 模型的缺陷：`lamDen` 只取有限升序
-  数组，而 `El` 可以无穷——修模型，不弱化 law，也不换成集合：`Λ`、`E` 仍在 rel 的数组上（严格升序数组作集合的规范代表，owner 2026-11-26），law 的前提是「每个像在声明对象里有限」（owner 2026-11-26，同 B&dM 的 finite powerset）：atom 对象都有限声明，`>` `≤` `⊤` 带 universe、按边界 `lazy` 求值，所以 atom 上 `Λ`、`E` 总有值（例：N = -10…20，`{3,7} E(>) {-10,…,6}`），与书一致；缺口只在像落在 `[N]` 且无穷时（`Λ(prefix°)`：一个数组的全部延长），一个格子装不下，`lazy` 也不解决（结果是一个格子的值）。9.9 搬 companion 证明时把用到这种 `Λ` 的步骤逐条列出。
+- ✅ 9.8（PR #1，合并 `d19b9a5`）保留 Unicode primitive `Λ(R)`，定义为 `(𝟙÷∋)E(R)`。
+  普通程序写 `Λ(R)`，Mss 和 Prelude 等式仍写显式复合；`(𝟙÷∋)` 取单元素数组，`E(R) ≜ (∋R)÷∋` 取存在像。
+- ✅ 9.8b′ 保留 `Pre.compFuse` 与 `lamDen_absorb`。若 `S` 在每个源点有数组像，则 `(S÷∋)E(R) = (SR)÷∋`。
+  数组以严格升序表示集合。9.9 逐条记载有限像前提，对 `Λ(prefix°)` 等可有无限像的步骤记录缺口。
 - ⬜ 9.9 freyd `diag/algprog-companion.pdf`（`diag/aop/00-laws.typ` … `10-greedy.typ`）里每条 Lean 证明在 Rel 语言里再写一遍，
-  两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 去 `Λ` 后的写法），
+  两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 的显式复合），
   在 rel 里证（9.10 的机制）；freyd `AOP/A*.lean` 的 Lean 证明不动。先列出 companion 引用的全部定理（义务表），逐条记 Rel 版本
   或缺什么（语法写不出的定理形式、rel 公理里缺的 law）。(b) owner 定 D（2026-11-26，暂不做）：rel 自带图导出器，读 rel_program；按 9.7 两仓互不依赖，freyd 的
   `scripts/diag-export`（`diag/tool/DiagExport.lean`）不能 import rel，所以导出器在 rel 里，读 calc（经 rel 的 parser/`Tm`，

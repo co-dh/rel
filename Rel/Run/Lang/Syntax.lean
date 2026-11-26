@@ -590,7 +590,7 @@ inductive Decl
   | defn (p : Pos) (n : String) (ps : List Param) (b : Body) (ty : Option (OExp × OExp))
   /-- `binds`: the `where` items, each an input of the program and the table that stands for it here (IO design A.4). -/
   | print (p : Pos) (e : Expr) (binds : List (String × Expr))
-  | check (p : Pos) (e f : Expr) (eq : Bool) (binds : List (String × Expr))
+  | check (p : Pos) (e f : Expr) (eq : Bool) (binds : List (String × Expr)) (proof : Option Lean.Name)
   /-- `input n : A ⟶ B from p`: a relation with no body, a parameter of the statements after it that mention it
       (IO design A.2); read from the table directory `path`, or the CSV file `path` when `csv` is its separator (`,` CSV, `\t` TSV). -/
   | input (p : Pos) (n : String) (ty : OExp × OExp) (csv : Option UInt8) (path : String)

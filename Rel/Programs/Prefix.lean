@@ -1,4 +1,4 @@
-import Rel.Programs.Prelude
+import Rel.Lang.PrefixFold
 
 /-! # `prefix` as a catamorphism
 
@@ -18,7 +18,7 @@ rel_program prefixCata where
 
     prefixC : [α] ⟶ [α] ≜ ⦇[nil, nil ∪ cons]⦈ʳ    -- B&dM p.126 prefix = ⦇[nil, nil ∪ cons]⦈
 
-    check x prefixC = x prefix
+    check x prefixC = x prefix by Rel.Lang.Tm.prefixFold_input
     check e prefixC = e prefix
     check {(∗,3 1)} ⊑ x prefixC
 

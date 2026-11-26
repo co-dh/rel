@@ -823,7 +823,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; settleUses; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
-    | .check p e f eq bs =>
+    | .check p e f eq bs _ =>
       let (e, f, bs) := (rtNamesE env rt e, rtNamesE env rt f, bs.map fun (x, l) => (rtName env rt x, l))
       let σ ← liftExcept (bindIns rt p "check" [e, f] bs)
       let (c, sp) ← checkOf env p (e.subst σ) (f.subst σ) eq specs; specs := sp; cs := cs ++ [c]

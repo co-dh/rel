@@ -114,7 +114,9 @@ def stmt (s : Syntax) : C Decl := do
       | failAt s[3] s!"the column {c} of {f} was not read before the program (`Embed.diskOf`)"
     pure (.coded t (xs.map (wordText t)) (xs.map (·.toInt64.toInt)))
   | ``sPrint => pure (.print p (← expr s[1]) (← binds s[2]))
-  | ``sCheck => pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]))
+  | ``sCheck =>
+    let proof := if s[5].getNumArgs == 0 then none else some s[5][1].getId
+    pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]) proof)
   | ``sInput => do
     let n ← wordOf s[1]
     Parse.fresh p n (← get).taken
@@ -262,6 +264,34 @@ def homesOf (reg : Expand.Registry) (used : List Name) : List Name :=
   let all := hs.flatMap fun h => ((reg.chains.lookup h).getD []) ++ [h]
   (reg.progs.toList.map (·.1)).filter all.contains
 
+/-- Check a named proof against the denotation of the typed terms that emission consumes. -/
+def certifyChecks (n : Name) (prog : Program) (checks : List Expand.Chk) : TermElabM Unit := do
+  let mut index := 0
+  for decl in prog do
+    let .check p _ _ _ _ (some proof) := decl | continue
+    let some (_, _, _, eq, _, _, ⟨A, B, R, S⟩) := checks.find? (fun c => c.1 == p)
+      | throwError "rel_program: no elaborated check at {p}"
+    let denName := `Rel.Lang.Tm.den
+    unless (← getEnv).contains denName do
+      throwError "rel_program: a proved check requires importing Rel.Lang.Den"
+    let r ← ofExcept (Expand.tmE #[] R)
+    let s ← ofExcept (Expand.tmE #[] S)
+    let goal ← Meta.withLocalDeclD `ρ (mkConst `Rel.Lang.Val) fun ρ => do
+      let den t := mkAppN (mkConst denName) #[ρ, Expand.oE A, Expand.oE B, t]
+      let body ← if eq then Meta.mkEq (den r) (den s)
+        else pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0])
+          #[Expand.oE A |> mkApp (mkConst ``Rel.Obj.El),
+            Expand.oE B |> mkApp (mkConst ``Rel.Obj.El), den r, den s])
+      Meta.mkForallFVars #[ρ] body
+    let value ← Term.withoutErrToSorry <| Term.elabTermEnsuringType (mkIdent proof) goal
+    Term.synthesizeSyntheticMVarsNoPostponing
+    let value ← instantiateMVars value
+    if value.hasSorry then
+      throwError "rel_program: proof of check at {p} contains an unresolved goal"
+    let name := n ++ `proof ++ Name.mkSimple s!"check{index}"
+    addDecl (.thmDecl { name, levelParams := [], type := goal, value })
+    index := index + 1
+
 /-- The program `n` named by `id`, read in the scope `s` that left `used`, what it reads (`Expand.emit`): each closed
     definition as the Lean definition `n.x`, its prints, its checks; then its definitions and objects registered,
     each a constant (`n.x : Decl`, its declaration, where it is not built once), with its scope and homes; the doc
@@ -291,6 +321,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
   match ← liftTermElabM (Expand.read calls progs prog n resOf).run with
   | .error e => throwErrorAt stx "{e}"
   | .ok r =>
+    liftTermElabM (certifyChecks n prog r.2.2.1)
     liftTermElabM (Expand.emit n r)
     for d in prog do
       if let some (_, e) := Parse.extOf n d then

@@ -97,6 +97,9 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Search before creating a type** — a `Rel k v`, `RelRep`, `FinRel` or `Column` twin is the duplicate this
   repository was split to avoid; extend the one that exists.
 - **DRY**: one authoritative definition per fact; a stronger theorem with the weaker by specialisation.
+- **Break a task into small pieces and give each piece to a sonnet agent** — the main thread does the analysis and
+  writes each piece with its anchors and values decided, because a small decided piece is what sonnet finishes
+  first time, while one large task on a stronger model costs more and stalls on the open parts.
 - Build under the memory cap: `CAP_MEM_MB=20000 /home/dh/repo/freyd/scripts/cap lake build RelCore RelKernel RelRun Rel`.
   Name the targets; a worktree builds only the modules it edited. Temporary files go under `/data/tmp`.
 

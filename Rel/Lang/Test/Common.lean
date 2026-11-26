@@ -72,7 +72,7 @@ def reading : Decl → Option (String × String)
   | .defn _ n _ (.rel e) _ => some (n, e.render 0 true)
   | .defn _ n _ (.test e f) _ => some (n, s!"{e.render 0 true} ⊑ {f.render 0 true}")
   | .print _ e _ => some ("print", e.render 0 true)
-  | .check _ e f eq _ => some ("check", s!"{e.render 0 true} {if eq then "=" else "⊑"} {f.render 0 true}")
+  | .check _ e f eq _ _ => some ("check", s!"{e.render 0 true} {if eq then "=" else "⊑"} {f.render 0 true}")
   | _ => none
 
 end Rel.Lang.Test

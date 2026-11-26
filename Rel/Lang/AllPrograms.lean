@@ -12,7 +12,7 @@ import Rel.Programs.JobShop
 import Rel.Programs.Knapsack
 import Rel.Programs.Mss
 import Rel.Programs.Party
-import Rel.Programs.Prefix
+import Rel.Lang.PrefixCata
 import Rel.Programs.Prelude
 import Rel.Programs.Quicksort
 import Rel.Programs.Selsort

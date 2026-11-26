@@ -224,7 +224,7 @@ syntax (name := sSchemaEach) &"schema" relWord "=" "{" relWord "∈" relWord ":"
 syntax (name := sObjFrom) &"obj" relWord &" from " str relWord : relStmt
 -- `where t ≜ L`: the table `L` for the input `t` (IO design A.4)
 syntax (name := sPrint) &"print" rel ("where" relItem,+)? : relStmt
-syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? : relStmt
+syntax (name := sCheck) &"check" rel cmpOp rel ("where" relItem,+)? ("by" ident)? : relStmt
 -- IO design A.1: no keyword a table directory, `csv` one CSV file, `csv '\t'` one whose fields a `\t` separates (TSV;
 -- any one-byte separator, `,` when none is written); `&`, so `input output csv` stay names
 syntax (name := sInput) &"input" relWord relType &" from " (&"csv" (char)?)? str : relStmt
