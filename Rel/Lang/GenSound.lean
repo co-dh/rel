@@ -222,6 +222,23 @@ def Tm.monoOK : {A B : Obj} → Tm A B → Bool
 theorem Tm.monoOK_iff {A B : Obj} (t : Tm A B) : t.monoOK = true ↔ t.GenHyp fun _ _ => True := by
   induction t <;> simp [Tm.monoOK, Tm.GenHyp, and_assoc, *]
 
+/-- `Tm.GenHyp` with each slot call's body closed (`Tm.shareOK_iff`): the premise of `Code.program_sound`. -/
+def Tm.shareOK : {A B : Obj} → Tm A B → Bool
+  | _, _, .call _ c _ _ R => (c.slot?.isNone || R.fv.isEmpty) && R.shareOK
+  | _, _, .lam R | _, _, .top R | _, _, .conv R => R.shareOK
+  | _, _, .comp R S | _, _, .meet R S | _, _, .join R S | _, _, .diff R S | _, _, .pair R S
+  | _, _, .fold R S | _, _, .foldr R S | _, _, .arg R S => R.shareOK && S.shareOK
+  | _, _, .ldiv R S U V | _, _, .rdiv R S U V => R.shareOK && S.shareOK && U.shareOK && V.shareOK
+  | _, _, .nu k S b => b.pol true k && S.shareOK && b.shareOK
+  | _, _, .mu k _ _ b | _, _, .hylo k _ b => b.pol true k && b.shareOK
+  | _, _, .val _ | _, _, .uni _ | _, _, .zero | _, _, .id | _, _, .outl | _, _, .outr
+  | _, _, .var .. | _, _, .prim _ | _, _, .mem | _, _, .inl | _, _, .inr => true
+
+theorem Tm.shareOK_iff {A B : Obj} (t : Tm A B) : t.shareOK = true ↔ t.GenHyp fun _ R => R.fv = [] := by
+  induction t <;> simp [Tm.shareOK, Tm.GenHyp, and_assoc, *]
+  case call =>
+    rcases h : (‹Lean.Name›).slot? with _ | k <;> simp [h, List.isEmpty_iff, *]
+
 theorem Tm.genHyp_memAt {P : {A B : Obj} → Nat → Tm A B → Prop} (C E : Obj) : (Tm.memAt C E).GenHyp P := by
   unfold Tm.memAt; split <;> (try split) <;> (try subst_vars) <;> simp [Tm.GenHyp]
 
