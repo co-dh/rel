@@ -1728,6 +1728,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
   现在 `Λ` 用的 kernel（优化，由定理绑到这个 pattern）；`absorption`、`Eunion`、`estMap` 等含 `Λ` 的律改述成 `÷ ∋`；
   Mss、Prelude、Prefix 等程序与 `rel_aop` 的 `rel(…)` 读法一起转写；`doc/rel-architecture.zh.typ` §1、§4 先改。
+- ⬜ 9.9 freyd `diag/algprog-companion.pdf`（`diag/aop/00-laws.typ` … `10-greedy.typ`）里每条 Lean 证明在 Rel 语言里再写一遍，
+  两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 去 `Λ` 后的写法），
+  由 `rel_aop` 证；freyd `AOP/A*.lean` 的 Lean 证明不动。先按 freyd 索引列出 companion 引用的全部定理（义务表），
+  逐条记 Rel 版本或缺什么（`rel(…)` 读不了的构造、语法写不出的定理形式）。(b) 图生成器（`scripts/diag-export`、
+  `diag/tool/DiagExport.lean`，现在读 Lean 证明项）加一个读 rel_program calc 的入口，经 rel 的 parser/`Tm` 取结构，不做字符串
+  匹配；同一条证明从两边出的图一致。依赖 9.6、9.8，以及 9.7 定下证明放哪边。
 
 ## 3. 各 phase 的并行与串行
 

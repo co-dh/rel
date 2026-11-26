@@ -60,19 +60,19 @@ rel_program mss where
     theorem greedyFold : Λ(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = ⦇[Λ(zero)est(≥), Λ(⊤zero ∪ plus)est(≥)]⦈ʳ
 
     theorem toShape : mss = shape := calc         -- note `mss-shape`
-      _ = Λ(suffix prefix sum)est(≥) := ≜ segment
-      _ = Λ(suffix)E(prefix sum)est(≥) := absorption(suffix, prefix sum)
-      _ = Λ(suffix)E(Λ(prefix sum))E(∋)est(≥) := Eunion(prefix sum)
-      _ = Λ(suffix)E(Λ(prefix sum))E(est(≥))est(≥) := estUnion
-      _ = Λ(suffix)E(Λ(prefix sum)est(≥))est(≥) := Ecomp(Λ(prefix sum), est(≥))
+      _ = Λ(suffix      prefix sum)       est(≥)         := ≜ segment
+      _ = Λ(suffix) E(  prefix sum)       est(≥)         := absorption(suffix, prefix sum)
+      _ = Λ(suffix) E(Λ(prefix sum)) E(∋) est(≥)         := Eunion(prefix sum)
+      _ = Λ(suffix) E(Λ(prefix sum)) E(   est(≥)) est(≥) := estUnion
+      _ = Λ(suffix) E(Λ(prefix sum)       est(≥)) est(≥) := Ecomp(Λ(prefix sum), est(≥))
       _ = shape := ≜ shape
     theorem toFused : shape = fused               -- note `mss-prefix-sum`
     theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
-      _ = Λ(suffix)E(Λ(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
-      _ = Λ(suffix)E(⦇[Λ(zero)est(≥), Λ(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
-      _ = Λ(suffix)E(⦇[zero, Λ(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
-      _ = Λ(suffix)E(⦇[zero, oplus]⦈ʳ)est(≥) := ≜ oplus
-      _ = Λ(suffix)E(g)est(≥) := ≜ g
+      _ = Λ(suffix) E(Λ(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
+      _ = Λ(suffix) E(⦇[Λ(zero) est(≥), Λ(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
+      _ = Λ(suffix) E(⦇[  zero, Λ(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
+      _ = Λ(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥) := ≜ oplus
+      _ = Λ(suffix) E(g)est(≥) := ≜ g
       _ = greedy := ≜ greedy
     theorem toScan : greedy = scan                -- note `mss-scan`
     theorem linear : mss = scan := calc
