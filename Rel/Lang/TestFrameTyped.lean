@@ -24,10 +24,10 @@ rel_program frameTypedT where
     check distinct(x π₁) = {(0,2022.01.08),(1,2021.12.29),(2,2022.01.13)}
     vd : N ⟶ D×N ≜ valueCounts(π₁, x)
     check vd = {(0,(2022.01.08,2)),(1,(2021.12.29,1)),(2,(2022.01.13,1))}
-    check aggregate(π₁, F(x π₂) Λ(∋) last, x) = {(0,(2022.01.08,2.5)),(1,(2021.12.29,-1.5)),(2,(2022.01.13,10))}
-    check summarize(F(x π₂) Λ(∋) head, x) = {(∗,-1.5)}
-    check summarize(F(x π₂) Λ(∋) last, x) = {(∗,10)}
-    check summarize(F(x π₁) Λ(∋) last, x) = {(∗,2022.01.13)}
+    check aggregate(π₁, F(x π₂) ((𝟙÷∋)E(∋)) last, x) = {(0,(2022.01.08,2.5)),(1,(2021.12.29,-1.5)),(2,(2022.01.13,10))}
+    check summarize(F(x π₂) ((𝟙÷∋)E(∋)) head, x) = {(∗,-1.5)}
+    check summarize(F(x π₂) ((𝟙÷∋)E(∋)) last, x) = {(∗,10)}
+    check summarize(F(x π₁) ((𝟙÷∋)E(∋)) last, x) = {(∗,2022.01.13)}
     -- join on a date (x's 0 2 meet y's 0, x's 3 meets y's 1) and on a float (x's 2 meets yf's 0, x's 3 yf's 1)
     y : N ⟶ D×K ≜ {(0,(2022.01.08,A)),(1,(2022.01.13,B))}
     ij : N ⟶ (D×F)×(D×K) ≜ innerJoin(π₁, π₁, x, y)

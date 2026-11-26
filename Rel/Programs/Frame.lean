@@ -9,7 +9,7 @@ namespace Rel.Programs
 open Rel.Programs.prelude in
 rel_program frame where
     -- aggregation: `f` reads the image of `R` as an array of positions, ascending (Λ's order)
-    agg(R : α ⟶ ν, f : [ν] ⟶ δ) : α ⟶ δ ≜ dom(R) Λ(R) f
+    agg(R : α ⟶ ν, f : [ν] ⟶ δ) : α ⟶ δ ≜ dom(R) ((𝟙÷∋)E(R)) f
     -- `(dom(x) ⊤)°`, not `⊤ dom(x)`: at an unbounded `ν` the leaf `⊤ : 1 ⟶ ν` has no domain to run on
     summarize(f : [ν] ⟶ δ, x : ν ⟶ β) : 1 ⟶ δ ≜ agg((dom(x) ⊤)°, f)
     count(x : ν ⟶ β) : 1 ⟶ ν ≜ summarize(length, x)

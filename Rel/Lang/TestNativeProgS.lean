@@ -42,12 +42,12 @@ rel_program natJ where
 open Rel.Programs.prelude Rel.Programs.partyPlan in
 rel_program natY where
     y1 : E ⟶ [E] ≜ party setify
-    y2 : E ⟶ [E] ≜ Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
-    y3 : E ⟶ [E] ≜ gfold Λ(choose)est(R(rating)°)
+    y2 : E ⟶ [E] ≜ (𝟙÷∋)E(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    y3 : E ⟶ [E] ≜ gfold ((𝟙÷∋)E(choose))est(R(rating)°)
     y4 : E ⟶ [E] ≜ best
-    y5 : E ⟶ [E] ≜ (gfold Λ(choose)est(R(rating)°)) ∩ best
-    y6 : E ⟶ [E] ≜ Λ(guests)
-    y7 : E ⟶ [E] ≜ Λ(guests) ∩ best
+    y5 : E ⟶ [E] ≜ (gfold ((𝟙÷∋)E(choose))est(R(rating)°)) ∩ best
+    y6 : E ⟶ [E] ≜ (𝟙÷∋)E(guests)
+    y7 : E ⟶ [E] ≜ (𝟙÷∋)E(guests) ∩ best
     y8 : E ⟶ N ≜ c max
     y9 : E ⟶ N ≜ best cost(rating)
     y10 : E ⟶ [E] ≜ root best

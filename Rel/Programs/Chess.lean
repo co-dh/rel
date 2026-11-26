@@ -44,7 +44,7 @@ rel_program chess where
     a(k : Sq ⟶ Sq, f : Sq ⟶ Sq, W : Sq ⟶ Sq) ≜ k (𝟙 ∪ (Kf)) ⊑ ⊤W  -- the king and each of its steps attacked
     i(B : Sq ⟶ Sq, Pin : Sq ⟶ Sq, W : Sq ⟶ Sq, k : Sq ⟶ Sq) ≜ B (𝟙 ∪ Pin°)Wk ⊑ Pin°⊤  -- each capture or interposition pinned
 
-    b : [Sq×Pc] ⟶ [Sq×Pc] ≜ ran(Λ(⊤(Sq,Sq)⟨𝟙,on⟩))   -- the board on
+    b : [Sq×Pc] ⟶ [Sq×Pc] ≜ ran((𝟙÷∋)E(⊤(Sq,Sq)⟨𝟙,on⟩))   -- the board on
     W' : [Sq×Pc] ⟶ Sq×Sq ≜ bW(∋)
     Pin' : [Sq×Pc] ⟶ Sq×Sq ≜ bPin(∋)
     Ω : [Sq×Pc] ⟶ [Sq×Pc] ≜ b a(k(∋),f(∋),W') i(B(∋),Pin',W',k(∋))   -- the board, when it is mate: the end

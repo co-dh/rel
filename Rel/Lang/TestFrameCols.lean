@@ -36,8 +36,8 @@ rel_program frameCols where
     check summarize(F(x π₂) sum, x) = {(∗,27)}
     check count(x) = {(∗,8)}
     check summarize(F(x π₂) ⟨sum, length⟩div, x) = {(∗,3)}
-    check summarize(F(x π₂) Λ(∋) last, x) = {(∗,7)}
-    check summarize(F(x π₂) Λ(∋) head, x) = {(∗,1)}
+    check summarize(F(x π₂) ((𝟙÷∋)E(∋)) last, x) = {(∗,7)}
+    check summarize(F(x π₂) ((𝟙÷∋)E(∋)) head, x) = {(∗,1)}
     check summarize(F(x π₁), x) = {(∗,B A B C A C B A)}
     -- the pair: rows where both frames have one; `|||` (hstack): none unless the lengths agree
     check ⟨x, z⟩ = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
