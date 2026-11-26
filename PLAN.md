@@ -1717,6 +1717,12 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   P9「没有证明写不出程序」同一件事；(b) 每一行写出完整的式子，理由夹在两行之间 `≐⟨ law(args) ⟩`，`begin … ∎`，不用
   `_ = x := …`；(c) 只服务这条推导的引理写在它的 `where` 里（`max-sum-prefix`、`lemma1`、`lemma2`），不提到程序顶层。
   改 `rel_program` 的语法与 `rel_aop` 的读法，Mss、Prelude、Prefix 的 calc 全部转写。在 9.1 设计稿里一起定。
+- ⬜ 9.7 rel 里的 `theorem` 在 rel 自己的 build 里没有证明（owner 2026-11-26 指出 rel 不依赖 freyd）：依赖方向是
+  `freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，所以 rel 的 `lake build` 对一条错的
+  `theorem zeroEntire` 照样绿；rel 一改，下游证明坏了 rel 也看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 的
+  `Calc.lean` 至少从 11-23 红到 9.4 才发现）。与 P9「没有证明写不出程序」冲突，9.1 设计稿必须回答，两条路：
+  (a) 证明搬进 rel——rel 带 AOP 模型，或直接对可执行语义 `Tm.den` 证（与 9.2 compile subtype 同一处）；
+  (b) 依赖方向不变，rel 的 gate 加 build freyd relaop。owner 看设计稿再定。
 
 ## 3. 各 phase 的并行与串行
 
