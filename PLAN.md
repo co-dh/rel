@@ -1696,44 +1696,42 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ 9.1 设计 note `doc/rel-proof-program.zh.typ`：`rel_program` 在没有证明时拒绝 elaborate。两层：(a) 运行 ⊨ 语义，
   `compile : (t : Tm A B) → η.Sound ρ → {r : Rel A B // rep r = ⟦t⟧ρ}`（`rel-architecture` §0「规格写在类型里」，
   今天仍是 `Tm.gen` + 单独的 `Tm.gen_sound`，前提 `Tm.GenHyp`）；(b) `check A = B` 带 `by` 证明，目标
-  `⟦c.tᵢ⟧ρ = ⟦c.tⱼ⟧ρ` 由 kernel 检查，无证明或证明不过即报错；具体输入上的比较降为测试。先给 owner 看，再实现。
+  `⟦c.tᵢ⟧ρ = ⟦c.tⱼ⟧ρ` 由 kernel 检查，无证明或证明不过即报错；具体输入上的比较降为测试；(c) 定理的证明在 rel 里（9.7 已定，9.10），`rel_aop`/freyd relaop 不再参与。先给 owner 看，再实现。
 - ⬜ 9.2 按 9.1 实现 (a)：`compile` 取代 `Tm.gen`/`Tm.gen_sound`，`GenHyp` 在 elaboration 时证掉。
 - ⬜ 9.3 按 9.1 实现 (b)：`check … by …`；`Rel/Programs/Prefix.lean` 的 check 由 `Tm.prefixFold_prefixDef` 证掉，
   `Rel/Lang/PrefixCata.lean` 里手写的 `prefixCata_check` 删去；其余程序的 check 逐个补证明或改为测试。
 - 🔄 9.4 B&dM p.126 `⦇[nil, nil ∪ cons]⦈ʳ = prefix` 在 Rel 里证：陈述与 calc 写在 `rel_program prefixCata`
-  （`theorem foldUP`（fold 唯一性，owed）、`prefixEq`（owed）、`prefixFold : prefixC = prefix := calc …`），
-  owed law 由 freyd `rel_aop prefixCata` 证。rel 侧 ✅ `fdb180c`（分支 `keep-prefixfold-rel`）。freyd 侧：relaop 桥
-  移植到 prims 行 ✅ `ff0a26b`（`Calc`/`CalcTest` 绿；`builtins` 读每一行 `prims`，`allegoryRows` 给 dom/ran/est/nil
-  的 AOP 名，两种 fold 读作 `relCata`，`symDiv` 按定义）；`RelAop/Prefix.lean` WIP `39433b4`（分支 `keep-prefixaop`，
-  worktree `freyd/.claude/worktrees/prefixaop` 仍 locked；`relaop/lake-manifest.json` 第 9 行未提交的改动在 merge
-  前 checkout 掉）。卡点：rel_aop 的对象变量取自 model，`foldUP` 只能特化到 `N`；`[R,S]` 要的 `Coproduct` 与 model 的
-  `K` 不 unify。计划引理：`relCata_UP` + `cata_square_junc_iff`（foldUP），`prefix_cancel` `prefix_cat` `prefix_cata`
-  （prefixEq）。交接 `/data/tmp/prefixaop-handoff.md`。下一个 agent 从这里新起，不续旧 agent。
-- ⬜ 9.5 `RelAop.Prelude` 红（与 9.4 无关，挡住 `Mss`、`RelAopTest`）：prelude 新增的 owed `permConv : perm° = perm` 与
-  `starLinear : μX : S ∪ (R X) = star(R) S`（`Rel/Programs/Prelude.lean:90-91`）没有 bridge 证明；`μX` 不在
-  `rel(…)` fragment 里，先扩 `Calc`。
+  （`theorem foldUP`（fold 唯一性，owed）、`prefixEq`（owed）、`prefixFold : prefixC = prefix := calc …`），rel 侧 ✅
+  `fdb180c`（分支 `keep-prefixfold-rel`）。按 9.7 决定，owed 的 `foldUP`、`prefixEq` 在 rel 里由 `Rel.Core` 的公理证（9.10），
+  不再走 freyd `rel_aop`。freyd 分支 `keep-prefixaop`（`ff0a26b` 桥移植、`39433b4` WIP）作废，只作参考：它选的 AOP 引理
+  `relCata_UP` + `cata_square_junc_iff`、`prefix_cancel` `prefix_cat` `prefix_cata` 是 rel 里要证的同名事实；
+  worktree `freyd/.claude/worktrees/prefixaop` 解锁删除。
 - ⬜ 9.6 rel_program 的 calc 改成 Agda 风格（owner 2026-11-26），样板 `~/repo/aopa/Examples/MSS/Derivation.agda` 160–232：
   (a) 推导即程序：`mss-der : Σ prog (spec ≐ prog)`，程序取自推导的末行（`mss = proj₁ mss-der`），不另写一个再证相等——与
   P9「没有证明写不出程序」同一件事；(b) 每一行写出完整的式子，理由夹在两行之间 `≐⟨ law(args) ⟩`，`begin … ∎`，不用
   `_ = x := …`；(c) 只服务这条推导的引理写在它的 `where` 里（`max-sum-prefix`、`lemma1`、`lemma2`），不提到程序顶层。
-  改 `rel_program` 的语法与 `rel_aop` 的读法，Mss、Prelude、Prefix 的 calc 全部转写。在 9.1 设计稿里一起定。
-- ⬜ 9.7 rel 里的 `theorem` 在 rel 自己的 build 里没有证明（owner 2026-11-26 指出 rel 不依赖 freyd）：依赖方向是
-  `freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，所以 rel 的 `lake build` 对一条错的
-  `theorem zeroEntire` 照样绿；rel 一改，下游证明坏了 rel 也看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 的
-  `Calc.lean` 至少从 11-23 红到 9.4 才发现）。与 P9「没有证明写不出程序」冲突，9.1 设计稿必须回答，两条路：
-  (a) 证明搬进 rel——rel 带 AOP 模型，或直接对可执行语义 `Tm.den` 证（与 9.2 compile subtype 同一处）；
-  (b) 依赖方向不变，rel 的 gate 加 build freyd relaop。owner 看设计稿再定。
+  改 `rel_program` 的语法与 rel 里检查 calc 的 elaborator，Mss、Prelude、Prefix 的 calc 全部转写。在 9.1 设计稿里一起定。
+- ✅ 9.7 决定（owner 2026-11-26，经 freyd-22 转达）：证明搬进 rel，rel 用自己的公理把 law 证掉，freyd `relaop/` 整个删掉，
+  freyd 与 rel 互不依赖。原状：`freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，rel 的 `lake build`
+  对一条错的 `theorem zeroEntire` 照样绿，下游坏了 rel 看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 至少从 11-23
+  红到 9.4 才发现，并挡住 freyd 的 index 刷新与 note gate）。relaop 不再修。
 - ⬜ 9.8 语言去掉 `Λ`，改写成对 `∋` 的对称除法 `Λ(R) = R ÷ ∋`（owner 2026-11-26：后者对 string diagram 友好）。
   一个点：`a  (R ÷ ∋)  s` 当且仅当 `∀b. a R b ⟺ s ∋ b`，即 `s = {b : a R b}`——用 rel 自己的 `÷`
   （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
   现在 `Λ` 用的 kernel（优化，由定理绑到这个 pattern）；`absorption`、`Eunion`、`estMap` 等含 `Λ` 的律改述成 `÷ ∋`；
-  Mss、Prelude、Prefix 等程序与 `rel_aop` 的 `rel(…)` 读法一起转写；`doc/rel-architecture.zh.typ` §1、§4 先改。
+  Mss、Prelude、Prefix 等程序一起转写；`doc/rel-architecture.zh.typ` §1、§4 先改。
 - ⬜ 9.9 freyd `diag/algprog-companion.pdf`（`diag/aop/00-laws.typ` … `10-greedy.typ`）里每条 Lean 证明在 Rel 语言里再写一遍，
   两份都留（owner 2026-11-26）。(a) 每条证明成一个 `rel_program` 的 `theorem … calc`（9.6 的 Agda 风格、9.8 去 `Λ` 后的写法），
-  由 `rel_aop` 证；freyd `AOP/A*.lean` 的 Lean 证明不动。先按 freyd 索引列出 companion 引用的全部定理（义务表），
-  逐条记 Rel 版本或缺什么（`rel(…)` 读不了的构造、语法写不出的定理形式）。(b) 图生成器（`scripts/diag-export`、
-  `diag/tool/DiagExport.lean`，现在读 Lean 证明项）加一个读 rel_program calc 的入口，经 rel 的 parser/`Tm` 取结构，不做字符串
-  匹配；同一条证明从两边出的图一致。依赖 9.6、9.8，以及 9.7 定下证明放哪边。
+  在 rel 里证（9.10 的机制）；freyd `AOP/A*.lean` 的 Lean 证明不动。先列出 companion 引用的全部定理（义务表），逐条记 Rel 版本
+  或缺什么（语法写不出的定理形式、rel 公理里缺的 law）。(b) owner 要图生成器也读 rel_program；按 9.7 两仓互不依赖，freyd 的
+  `scripts/diag-export`（`diag/tool/DiagExport.lean`）不能 import rel——待 owner 定：rel 自带一个读 calc（经 rel 的 parser/`Tm`，
+  不做字符串匹配）、输出同一种图数据的导出器，还是其它。依赖 9.6、9.8、9.10。
+- ⬜ 9.10 owed law 在 rel 里证（9.7）：每个 `rel_program` 里没有 `calc` 的 `theorem` 由 rel 自己的公理（`Rel.Core` 的 allegory
+  律，或对 `Tm.den` 证）证掉，rel_program 在缺证明时拒绝 elaborate（机制在 9.1 设计稿定）。义务表：Mss 的 `zeroEntire`
+  `zeroSimple` `geqRefl` `estUnion` `greedyFold` `toFused` `toScan`；Prelude 的 `absorption` `Eunion` `Ecomp` `estMap`
+  `permConv : perm° = perm` `starLinear : μX : S ∪ (R X) = star(R) S`（`Prelude.lean:83-91`）；Prefix 的 `foldUP` `prefixEq`；
+  逐条按 rel 索引核对，不靠这张手抄表。`Rel/Programs/Mss.lean:48-51` 等写着「owed to Lean: rel_aop … relaop」的注释改成
+  rel 内的证明。完成判据：rel 里没有任何文件引用 `relaop`/`rel_aop`；届时通知 freyd 会话（freyd-22）删 `freyd/relaop/`。
 
 ## 3. 各 phase 的并行与串行
 
