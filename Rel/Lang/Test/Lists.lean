@@ -10,8 +10,8 @@ open Rel.Programs.prelude in
 rel_program lists where
     obj N = 0…9
     obj K = {a,b}
-    x : K ⟶ [N] ≜ ⟨{(a,3),(b,1)}, Λ({(a,1),(a,2),(b,5)})⟩cons
-    y : K ⟶ [N] ≜ Λ({(a,7),(b,8),(b,9)})
+    x : K ⟶ [N] ≜ ⟨{(a,3),(b,1)}, (𝟙÷∋)E({(a,1),(a,2),(b,5)})⟩cons
+    y : K ⟶ [N] ≜ (𝟙÷∋)E({(a,7),(b,8),(b,9)})
     z : K ⟶ [N] ≜ ⟨{(a,3)}, x⟩cons
     print x inits
     print x tails
@@ -28,7 +28,7 @@ rel_program lists where
     print x sort(≤)
     print y subseq
     print x thinL(≤)
-    print ⟨Λ({(a,1),(a,5)}),Λ({(a,2),(a,3)})⟩merge(≤)
+    print ⟨(𝟙÷∋)E({(a,1),(a,5)}),(𝟙÷∋)E({(a,2),(a,3)})⟩merge(≤)
     print ⟨{(a,0),(b,1)},x⟩loop(plus)
 
 -- `thinL(≤)` runs the one-pass thinning: each element bumped into the thinned rest keeps the lower of the two
@@ -49,7 +49,7 @@ rel_program lists where
   "x sort(≤) = {(a, 1 2 3), (b, 1 5)}",
   "y subseq = {(a, []), (a, [7]), (b, []), (b, [8]), (b, 8 9), (b, [9])}",
   "x thinL(≤) = {(a, [1]), (b, [1])}",
-  "⟨Λ({(a, 1), (a, 5)}), Λ({(a, 2), (a, 3)})⟩ merge(≤) = {(a, 1 2 3 5), (b, [])}",
+  "⟨(𝟙÷∋)E({(a, 1), (a, 5)}), (𝟙÷∋)E({(a, 2), (a, 3)})⟩ merge(≤) = {(a, 1 2 3 5), (b, [])}",
   "⟨{(a, 0), (b, 1)}, x⟩ loop(plus) = {(a, 6), (b, 7)}"]
 
 /-! `at(i)`, positions from `0`, on the arrays `x` above: `at(0) = head`, `tail at(i) = at(i+1)`, and a position
@@ -59,7 +59,7 @@ open Rel.Programs.prelude in
 rel_program ats where
     obj N = 0…9
     obj K = {a,b}
-    x : K ⟶ [N] ≜ ⟨{(a,3),(b,1)}, Λ({(a,1),(a,2),(b,5)})⟩cons
+    x : K ⟶ [N] ≜ ⟨{(a,3),(b,1)}, (𝟙÷∋)E({(a,1),(a,2),(b,5)})⟩cons
     print x at(0)
     print x at(1)
     print x at(2)
@@ -96,7 +96,7 @@ rel_program listsLifted where
     R₀ : K ⟶ N ≜ {(a,3),(a,1)}
     R₁ : K ⟶ N ≜ {(a,2),(b,5),(b,1)}
     Fm : J ⟶ K×N ≜ {(i,i)}⊤(J,K)⟨𝟙,R₀⟩ ∪ ({(j,j)}⊤(J,K)⟨𝟙,R₁⟩)
-    f(S : K ⟶ N) : K ⟶ [[N]] ≜ ⟨S,Λ(S)⟩cons inits ∪ (Λ(S)cat°π₁ tails)
+    f(S : K ⟶ N) : K ⟶ [[N]] ≜ ⟨S,(𝟙÷∋)E(S)⟩cons inits ∪ ((𝟙÷∋)E(S)cat°π₁ tails)
     fF : J ⟶ K×[[N]] ≜ f(Fm)
     check {(i,i)}fF = {(i,i)}⊤(J,K)⟨𝟙,f(R₀)⟩
     check {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
@@ -110,7 +110,7 @@ rel_program onDemand where
     obj N = 0…9
     obj K = {a,b}
     L : K ⟶ [[N]] ≜ {(a,[1 2] [3] [8]),(b,[5] [4 6 7] [9])}
-    G : K ⟶ [[N]] ≜ Λ(L∋)
+    G : K ⟶ [[N]] ≜ (𝟙÷∋)E(L∋)
     R : [α] ⟶ [β] ≜ length ≤(N,N) length°
     p : [α] ⟶ [α] ≜ dom(length{(1,1)})
     print G est(R)
@@ -121,7 +121,7 @@ rel_program onDemand where
     print L sort(R)
     print L thinL(R)
     print ⟨L sort(R),{(a,[[1 2]]),(b,[[5]])}⟩merge(R)
-    print Λ({(a,3),(a,1),(b,5)})est(≤)
+    print (𝟙÷∋)E({(a,3),(a,1),(b,5)})est(≤)
     print G est(∼R)
 
 #guard onDemand.ok && onDemand.prints == [
@@ -134,7 +134,7 @@ rel_program onDemand where
   "L thinL(R) = {(a, [[3]]), (a, [[8]]), (b, [[5]]), (b, [[9]])}",
   "⟨L sort(R), {(a, [[1 2]]), (b, [[5]])}⟩ merge(R) = {(a, [3] [8] [1 2] [1 2]), (a, [8] [3] [1 2] [1 2]), " ++
     "(b, [5] [9] [5] [4 6 7]), (b, [9] [5] [5] [4 6 7])}",
-  "Λ({(a, 3), (a, 1), (b, 5)}) est(≤) = {(a, 1), (b, 5)}",
+  "(𝟙÷∋)E({(a, 3), (a, 1), (b, 5)}) est(≤) = {(a, 1), (b, 5)}",
   "G est(∼R) = {(a, 1 2), (b, 4 6 7)}"]
 -- refused: an order with a leaf that reads its argument whole, so neither side of its composition is tested
 #eval errAt ("obj N = 0…9\nobj K = {a,b}\nL : K ⟶ [[N]] ≜ {(a,[1 2] [3])}\n" ++
@@ -147,9 +147,9 @@ open Rel.Programs.prelude in
 rel_program concats where
     obj N = 0…9
     obj K = {a,b}
-    w : K ⟶ [[N]] ≜ ⟨⟨{(a,3)},Λ({(a,1)})⟩cons, ⟨Λ({(a,2)}), Λ(Λ({(a,1)}))⟩cons⟩cons
-    d : K ⟶ [[N]] ≜ ⟨Λ({(a,1)}), ⟨Λ({(b,1)}), Λ(Λ({(a,1)}))⟩cons⟩cons
-    e : K ⟶ [[N]] ≜ Λ(⟨{(a,3)},Λ({(a,1)})⟩cons)
+    w : K ⟶ [[N]] ≜ ⟨⟨{(a,3)},(𝟙÷∋)E({(a,1)})⟩cons, ⟨(𝟙÷∋)E({(a,2)}), (𝟙÷∋)E((𝟙÷∋)E({(a,1)}))⟩cons⟩cons
+    d : K ⟶ [[N]] ≜ ⟨(𝟙÷∋)E({(a,1)}), ⟨(𝟙÷∋)E({(b,1)}), (𝟙÷∋)E((𝟙÷∋)E({(a,1)}))⟩cons⟩cons
+    e : K ⟶ [[N]] ≜ (𝟙÷∋)E(⟨{(a,3)},(𝟙÷∋)E({(a,1)})⟩cons)
     print w concat
     print d concat
     print e concat
@@ -165,7 +165,7 @@ open Rel.Programs.prelude in
 rel_program convs where
     obj N = 0…9
     obj K = {a,b}
-    y : K ⟶ [N] ≜ Λ({(a,7),(b,8),(b,9)})
+    y : K ⟶ [N] ≜ (𝟙÷∋)E({(a,7),(b,8),(b,9)})
     f : K ⟶ [N] ≜ y
     print y perm°
     print y (f° y)°

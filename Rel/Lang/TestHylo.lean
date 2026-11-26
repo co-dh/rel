@@ -13,7 +13,7 @@ rel_program hylos where
     obj N = 0…40
     boss : E ⟶ E ≜ {(b,a),(c,a),(d,b),(e,b),(f,c),(h,g),(i,h)}
     rating : E ⟶ N ≜ {(a,3),(b,7),(c,2),(d,5),(e,1),(f,8),(g,4),(h,5),(i,4),(m,0)}
-    kids : E ⟶ [E] ≜ Λ(boss°)
+    kids : E ⟶ [E] ≜ (𝟙÷∋)E(boss°)
     S : E×[N] ⟶ N ≜ ⟨π₁ rating, π₂ sum⟩ plus      -- the ratings of a subtree, summed
     total : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, S)
     totalμ : E ⟶ N ≜ μX : ⟨𝟙, kids F(X)⟩S
@@ -36,7 +36,7 @@ rel_program hyloCycle where
     obj N = 0…40
     next : E ⟶ E ≜ {(a,b),(b,a)}                  -- a and b each other's child: c is not well-founded
     S : E×[N] ⟶ N ≜ π₂ sum
-    bad : E ⟶ N ≜ hylo(⟨𝟙, Λ(next)⟩, S)
+    bad : E ⟶ N ≜ hylo(⟨𝟙, (𝟙÷∋)E(next)⟩, S)
 
 #guard hyloCycle.failures.map (s!"{·.msg}") == [s!"bad: the coalgebra c at line {decl_line% hyloCycle + 5}, col 24 " ++
   "reaches a node from itself, so it is not well-founded there (2 of 3 nodes)"]

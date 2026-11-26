@@ -1400,13 +1400,22 @@ def appliedRow (env : Env) (p : Pos) (r : Prim) (qs : List (Pre × OTy × OTy)) 
     pure (r.pass p f q s')
   pure (.rel (.prim r xs s t none) s t)
 
+/-- Collect the values of a relation in a strictly ascending array. -/
+def power (q : Pre) (s t : OTy) : Arg :=
+  .rel (.lam q) s (.arr t)
+
+/-- Collect the values of each relation in a family on the full source universe. -/
+def powerL (I : OTy) (p : Pos) (q : Pre) (s t : OTy) : Arg :=
+  let (r, a, b) := lLam I (some (.top p I s none)) (q, s, t)
+  .fam r I a b
+
 /-- A builtin applied to relations, every argument one relation. -/
 def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M Arg := do
   if let some r ← o.row p then return ← appliedRow env p r as
   match as with
   | [(q, s, t)] => do
     match o with
-    | .lam => pure (.rel (.lam q) s (.arr t))
+    | .lam => pure (power q s t)
     | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ (∋R)÷∋, i.e. Λ(∋ R)` (`lamDen_symDiv`)
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
@@ -1483,7 +1492,7 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
     | .symDiv => do
       unify p "the target of `÷`'s right operand" t' t
       match r with
-      | .mem _ => pure (.rel (.lam q) s s')
+      | .mem _ => pure (power q s t)
       | _ => pure (.rel (Pre.symDiv p q r s s') s s')
     | .ldiv => do
       unify p "the source of `\\`'s right operand" s' s
@@ -1494,6 +1503,9 @@ def binary (p : Pos) (o : Bin) : Pre × OTy × OTy → Pre × OTy × OTy → M A
 
 /-- A binary operator with a family on a side, by the rows of §e. -/
 def binaryL (I : OTy) (p : Pos) (o : Bin) (x y : Arg) : M Arg := do
+  if let (.symDiv, .fam q _ s t, .rel (.mem _) _ t') := (o, x, y) then
+    unify p "the target of `÷`'s right operand" t' t
+    return powerL I p q s t
   let R ← famOf I p x; let S ← famOf I p y
   let r ← match o with
     | .meet => lSame p Pre.meet R S
@@ -1660,6 +1672,11 @@ def elabE (env : Env) (m : Option OTy) : Expr → M Arg
     match env.infix? n with
     | some d => settle m p [x, y] (← d.apply p [x, y])
     | none => throw ⟨p, s!"unknown infix operator '{n}'"⟩
+  -- Absorb the singleton into the image before lifting: the intermediate array object has no universe.
+  | .comp (.bin p .symDiv (.op _ .id [] []) (.op _ .mem [] [])) (.op _ .E [] [x]) => do
+    match ← elabE env m x with
+    | .rel q s t => pure (power q s t)
+    | .fam q I s t => pure (powerL I p q s t)
   | .comp a b => do
     let x ← elabE env m a
     let p := b.pos
