@@ -465,10 +465,11 @@ def Pre.rdivWhole (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
 def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
   .meet (.rdivWhole pos r s a b) (.conv (.rdivWhole pos s r b a))
 
-/-- `q r` as a composition; the singleton map `Λ(𝟙)` meeting `E(R) = Λ(∋ R)` is `Λ(R)` (`lamDen_id_comp`), so
-    `(𝟙÷∋)E(R)` builds the node `Λ(R)` did. Only `Λ(𝟙)`: `Λ(S)E(R) = Λ(S R)` fails where `S`'s image is infinite. -/
+/-- `q r` as a composition; `Λ(S)` followed by `E(T) = Λ(∋ T)` is `Λ(S T)` (absorption, `lamDen_absorb`), so
+    `(S÷∋)E(T)` builds one Λ node, and `(𝟙÷∋)E(X)` builds the node `Λ(X)` did. -/
 def Pre.compFuse : Pre → Pre → Pre
   | .lam (.id _), .lam (.comp (.mem _) x) => .lam x
+  | .lam s, .lam (.comp (.mem _) x) => .lam (.comp s x)
   | q, r => .comp q r
 
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
@@ -1406,7 +1407,7 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
   | [(q, s, t)] => do
     match o with
     | .lam => pure (.rel (.lam q) s (.arr t))
-    | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ Λ(∋ R)`
+    | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ (∋R)÷∋, i.e. Λ(∋ R)` (`lamDen_symDiv`)
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
 
