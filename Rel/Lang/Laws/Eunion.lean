@@ -167,3 +167,14 @@ theorem EDen_union (T : Core.Rel (Obj.El A) (Obj.El B)) (h : ∀ a, ∃ ys, lamD
     · obtain ⟨g, hg⟩ := h x
       exact ⟨g, (hLm g).2 ⟨x, hx, hg⟩, (((lamDen_iff T x g).1 hg).2 c).2 hT⟩
 
+/-- An image inside a list `l`, with no two members of one key but equal ones, has a strictly ascending list. -/
+theorem lamDen_total (T : Core.Rel (Obj.El A) (Obj.El B)) (a : A.El) (l : List B.El) (hl : ∀ b, T a b → b ∈ l)
+    (hk : ∀ b c, T a b → T a c → B.key b = B.key c → b = c) : ∃ ys, lamDen T a ys := by
+  classical
+  obtain ⟨L, hL, hm⟩ := sort_pw (B := B) (l.filter fun b => decide (T a b)) fun x hx y hy e => by
+    simp only [List.mem_filter, decide_eq_true_eq] at hx hy
+    exact hk x y hx.2 hy.2 e
+  exact ⟨L, (lamDen_iff T a L).2 ⟨hL, fun b => by simpa [hm, List.mem_filter] using hl b⟩⟩
+
+
+end Rel.Lang
