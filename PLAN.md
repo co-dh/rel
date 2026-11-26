@@ -1696,8 +1696,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 9.1 [设计评审稿](doc/rel-proof-program.zh.typ)：带证明的定义嵌在 `rel_program` 中。推导首式是规格，
   末式定义关系 `p : A ⟶ B`，推导证明同型关系等式 `spec = p`。源码的目标和前提使用 Rel 的关系式。
   `check … by …` 由 Lean kernel 检查等式或包含关系，具体输入比较写成测试。证明留在 rel 内（9.7、9.10）。
-- ⬜ 9.2 将编译 soundness 接到实际生成的代码，内部使用 `Tm.gen_sound`、`Tm.GenHyp` 和
-  `Code.program_sound`。源码中的证明仍是关系判断。
+- ✅ 9.2 将编译 soundness 接到实际生成的代码，内部使用 `Tm.gen_sound`、`Tm.GenHyp` 和
+  `Code.program_sound`。源码中的证明仍是关系判断。每个 `rel_program n` 发出 `n.proof.sound`（`Code.program_reps`，`9f49f12`）。
 - 🔄 9.3 Prefix 已接 `check … by …`。Lean 检查两侧实际 elaboration 后的 `Tm.den`，失败时拒绝发出可执行定义。
   通用 fold 证明在 `Rel/Lang/PrefixFold.lean`，原手写 slot 证明由生成的证书取代。
   后续补 `derive`、独立测试语法和完整迁移，再要求所有证明类声明提供证据。
