@@ -17,28 +17,28 @@ rel_program mss where
     /- The specification, Lean `mss ≜ Λ(segment sum) est(≥)`. -/
 
     segment : [α] ⟶ [α] ≜ suffix prefix           -- the note's `segment = suffix prefix`
-    mss : [N] ⟶ N ≜ (𝟙 ÷ ∋)E(segment sum)est(≥)
+    mss : [N] ⟶ N ≜ (𝟙÷∋)E(segment sum)est(≥)
 
     /- The versions the note's derivation passes through, Lean `mss_eq_scan : mss = ⦇k⦈ π₂ est(≥)`. The note writes ⊕
        as an operator; ⊕ is the sum of relations here, so it is the ordinary definition `oplus`. -/
 
-    oplus : N×N ⟶ N ≜ (𝟙 ÷ ∋)E(⊤zero ∪ plus)est(≥)       -- the larger of 0 and a+b; `⊤zero` is the note's `⊸ zero`
+    oplus : N×N ⟶ N ≜ (𝟙÷∋)E(⊤zero ∪ plus)est(≥)       -- the larger of 0 and a+b; `⊤zero` is the note's `⊸ zero`
     g : [N] ⟶ N ≜ ⦇[zero, oplus]⦈ʳ
     w : N×(N×α) ⟶ N ≜ (𝟙×π₁)oplus                 -- the head oplus the value the tail carries
 
-    shape : [N] ⟶ N ≜ (𝟙 ÷ ∋)E(suffix)E((𝟙 ÷ ∋)E(prefix sum)est(≥))est(≥)               -- the largest over suffixes of the largest prefix sum
-    fused : [N] ⟶ N ≜ (𝟙 ÷ ∋)E(suffix)E((𝟙 ÷ ∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)   -- `prefix sum` fused into the fold `⦇S⦈`
-    greedy : [N] ⟶ N ≜ (𝟙 ÷ ∋)E(suffix)E(g)est(≥)                                -- each suffix keeps the one value `g`
+    shape : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum)est(≥))est(≥)               -- the largest over suffixes of the largest prefix sum
+    fused : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)   -- `prefix sum` fused into the fold `⦇S⦈`
+    greedy : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E(g)est(≥)                                -- each suffix keeps the one value `g`
 
     /- `k ≜ [zero⟨𝟙,Λ(𝟙)⟩, ⟨w,⟨wΛ(𝟙),π₂π₂⟩ cup⟩]` (note :844) is the fold's seed and step below; the step's set is Lean's
        own `Λ(w ∪ π₂π₂∋)` (`k`, :756), an array: the language has no `cup`. -/
 
-    scan : [N] ⟶ N ≜ ⦇[zero⟨𝟙,(𝟙 ÷ ∋)⟩, ⟨w,(𝟙 ÷ ∋)E(w ∪ (π₂π₂∋))⟩]⦈ʳπ₂est(≥)
+    scan : [N] ⟶ N ≜ ⦇[zero⟨𝟙,(𝟙÷∋)⟩, ⟨w,(𝟙÷∋)E(w ∪ (π₂π₂∋))⟩]⦈ʳπ₂est(≥)
 
     /- The arrays over D = {-2,-1,3} of length at most 3: one fold round per element of D, each adding a head or not. -/
 
     D : N ⟶ N ≜ {(-2,-2),(-1,-1),(3,3)}
-    A : [N] ⟶ [N] ≜ ran((𝟙 ÷ ∋)E(⊤(1,N)D)⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤D⟩snoc)]⦈)
+    A : [N] ⟶ [N] ≜ ran((𝟙÷∋)E(⊤(1,N)D)⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤D⟩snoc)]⦈)
 
     check A shape = A mss
     check A fused = A mss
@@ -55,24 +55,24 @@ rel_program mss where
     theorem zeroEntire : dom(zero) = 𝟙
     theorem zeroSimple : zero°zero ⊑ 𝟙
     theorem geqRefl : 𝟙 ⊑ ≥
-    theorem estUnion : (𝟙 ÷ ∋)E(suffix)E((𝟙 ÷ ∋)E(prefix sum))E(∋)est(≥) = (𝟙 ÷ ∋)E(suffix)E((𝟙 ÷ ∋)E(prefix sum))E(est(≥))est(≥)  -- no set empty
-    -- the greedy row (𝟙 ÷ ∋)E(⦇S⦈)est(≥) = ⦇(𝟙 ÷ ∋)E(S)est(≥)⦈
-    theorem greedyFold : (𝟙 ÷ ∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = ⦇[(𝟙 ÷ ∋)E(zero)est(≥), (𝟙 ÷ ∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
+    theorem estUnion : (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(∋)est(≥) = (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(est(≥))est(≥)  -- no set empty
+    -- the greedy row (𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈
+    theorem greedyFold : (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
 
     theorem toShape : mss = shape := calc         -- note `mss-shape`
-      _ = (𝟙 ÷ ∋)E(suffix      prefix sum)       est(≥)         := ≜ segment
-      _ = (𝟙 ÷ ∋)E(suffix) E(  prefix sum)       est(≥)         := absorption(suffix, prefix sum)
-      _ = (𝟙 ÷ ∋)E(suffix) E((𝟙 ÷ ∋)E(prefix sum)) E(∋) est(≥)         := Eunion(prefix sum)
-      _ = (𝟙 ÷ ∋)E(suffix) E((𝟙 ÷ ∋)E(prefix sum)) E(   est(≥)) est(≥) := estUnion
-      _ = (𝟙 ÷ ∋)E(suffix) E((𝟙 ÷ ∋)E(prefix sum)       est(≥)) est(≥) := Ecomp((𝟙 ÷ ∋)E(prefix sum), est(≥))
+      _ = (𝟙÷∋)E(suffix      prefix sum)       est(≥)         := ≜ segment
+      _ = (𝟙÷∋)E(suffix) E(  prefix sum)       est(≥)         := absorption(suffix, prefix sum)
+      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(∋) est(≥)         := Eunion(prefix sum)
+      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(   est(≥)) est(≥) := estUnion
+      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)       est(≥)) est(≥) := Ecomp((𝟙÷∋)E(prefix sum), est(≥))
       _ = shape := ≜ shape
     theorem toFused : shape = fused               -- note `mss-prefix-sum`
     theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
-      _ = (𝟙 ÷ ∋)E(suffix) E((𝟙 ÷ ∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
-      _ = (𝟙 ÷ ∋)E(suffix) E(⦇[(𝟙 ÷ ∋)E(zero) est(≥), (𝟙 ÷ ∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
-      _ = (𝟙 ÷ ∋)E(suffix) E(⦇[  zero, (𝟙 ÷ ∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
-      _ = (𝟙 ÷ ∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥) := ≜ oplus
-      _ = (𝟙 ÷ ∋)E(suffix) E(g)est(≥) := ≜ g
+      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
+      _ = (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
+      _ = (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
+      _ = (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥) := ≜ oplus
+      _ = (𝟙÷∋)E(suffix) E(g)est(≥) := ≜ g
       _ = greedy := ≜ greedy
     theorem toScan : greedy = scan                -- note `mss-scan`
     theorem linear : mss = scan := calc
