@@ -2,13 +2,16 @@ import Rel.Lang.Laws.Eunion
 
 /-! `Mss.toScan : greedy = scan` at `Tm.den`, for a generic seed `Te` and step `TO` (the program's `zero`, `oplus`).
 
-- `greedy ≜ (𝟙÷∋)E(suffix)E(g)est(≥)`, `g ≜ ⦇[zero, oplus]⦈ʳ`: `lamDen 𝟙 ≫ EDen (splitDen false) ≫ EDen G ≫ estDen TQ`.
-- `scan ≜ ⦇[zero⟨𝟙,(𝟙÷∋)⟩, ⟨w,(𝟙÷∋)E(w ∪ π₂π₂∋)⟩]⦈ʳ π₂ est(≥)`: the fold `F` below, then `graph Prod.snd ≫ estDen TQ`.
+The shapes are those the elaborator builds: juxtaposition nests to the left (`Grammar`, `go (.comp e b)`), `R÷∋` is
+`Λ(R)` (`.lam`), and `Pre.compFuse` turns `Λ(S)E(T)` into `Λ(S T)` and `(𝟙÷∋)E(X)` into `Λ(X)`:
+- `greedy ≜ (𝟙÷∋)E(suffix)E(g)est(≥)`, `g ≜ ⦇[zero, oplus]⦈ʳ`: `lamDen (splitDen false ≫ G) ≫ estDen TQ`.
+- `scan ≜ ⦇[zero⟨𝟙,(𝟙÷∋)⟩, ⟨w,(𝟙÷∋)E(w ∪ π₂π₂∋)⟩]⦈ʳπ₂est(≥)`: `(F ≫ graph Prod.snd) ≫ estDen TQ`, `F` the fold
+  `foldrDen (Tz ≫ rpair 𝟙 (lamDen 𝟙)) (rpair W (lamDen (W ∪ (graph Prod.snd ≫ graph Prod.snd) ≫ memDen)))`.
 
 `scan_fold_iff`: `F` relates `xs` to `(g, L)` iff `G xs g` and `L` is the canonical list of `{G s | s suffix of xs}`.
 It uses only that `G` is simple (`Te`'s range has at most one value, `TO` simple); `toScan_den` adds that `G` is
-entire and that the suffixes of every array have a canonical list. `TO` need not be total arithmetic: the
-program's `oplus` is `(𝟙÷∋)E(⊤zero ∪ plus)est(≥)`, entire although `plus` at i64 is partial. -/
+entire. `TO` need not be total arithmetic: the program's `oplus` is `(𝟙÷∋)E(⊤zero ∪ plus)est(≥)`, entire although
+`plus` at i64 is partial. -/
 
 namespace Rel.Lang
 open scoped Rel.Core.Rel Classical
@@ -49,17 +52,9 @@ theorem foldrDen_entire (Te : Core.Rel (Obj.El V) (Obj.El V)) (TO : Core.Rel (Ob
 theorem scan_step_iff (TO : Core.Rel (Obj.El (.prod E V)) (Obj.El V))
     (W : Core.Rel (Obj.El (.prod E (.prod V (.arr V)))) (Obj.El V)) (hW : ∀ x u s c, W (x, (u, s)) c ↔ TO (x, u) c)
     (x : E.El) (u : V.El) (s : List V.El) (g : V.El) (L : List V.El) :
-    rpair W (lamDen (𝟙 _) ≫ EDen (W ∪ graph Prod.snd ≫ graph Prod.snd ≫ memDen)) (x, (u, s)) (g, L) ↔
+    rpair W (lamDen (W ∪ (graph Prod.snd ≫ graph Prod.snd) ≫ memDen)) (x, (u, s)) (g, L) ↔
       TO (x, u) g ∧ L.Pairwise V.lt ∧ ∀ c, c ∈ L ↔ TO (x, u) c ∨ c ∈ s := by
-  have hU : ∀ c, (∃ y, y ∈ [(x, (u, s))] ∧ (W ∪ graph Prod.snd ≫ graph Prod.snd ≫ memDen) y c) ↔
-      TO (x, u) c ∨ c ∈ s := fun c => by
-    simp [Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.graph, memDen, hW]
-  simp only [Core.Rel.rpair, Core.Rel.comp_apply, hW]
-  refine and_congr_right fun _ => ⟨fun ⟨ys, hy, hE⟩ => ?_, fun ⟨hp, hm⟩ =>
-    ⟨[(x, (u, s))], (lamDen_id_iff _ _).2 rfl, (EDen_iff _ _ _).2 ⟨hp, fun c => (hm c).trans (hU c).symm⟩⟩⟩
-  obtain rfl := (lamDen_id_iff _ _).1 hy
-  obtain ⟨hp, hm⟩ := (EDen_iff _ _ _).1 hE
-  exact ⟨hp, fun c => (hm c).trans (hU c)⟩
+  simp [Core.Rel.rpair, lamDen_iff, Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.graph, memDen, hW]
 
 /-- **The scan's fold**: `⦇[zero⟨𝟙,(𝟙÷∋)⟩, ⟨w,(𝟙÷∋)E(w ∪ π₂π₂∋)⟩]⦈ʳ` relates `xs` to `(g, L)` iff `g` is `G xs` and `L`
     is the canonical list of `G`'s values on the suffixes of `xs`, `G = ⦇[zero, oplus]⦈ʳ`. `Tz` is `zero` read at the
@@ -70,7 +65,7 @@ theorem scan_fold_iff (Te : Core.Rel (Obj.El V) (Obj.El V)) (Tz : Core.Rel (Obj.
     (hTO : ∀ p w w', TO p w → TO p w' → w = w') (hW : ∀ x u s c, W (x, (u, s)) c ↔ TO (x, u) c) :
     ∀ (xs : List E.El) (p : V.El × List V.El),
       foldrDen (Tz ≫ rpair (𝟙 _) (lamDen (𝟙 _)))
-          (rpair W (lamDen (𝟙 _) ≫ EDen (W ∪ graph Prod.snd ≫ graph Prod.snd ≫ memDen))) xs p ↔
+          (rpair W (lamDen (W ∪ (graph Prod.snd ≫ graph Prod.snd) ≫ memDen))) xs p ↔
         foldrDen Te TO xs p.1 ∧ lamDen (A := .arr E) (B := V) (splitDen false E.El ≫ foldrDen Te TO) xs p.2
   | [], (g, L) => by
     -- the one suffix of `[]` is `[]`, so the values on suffixes are the range of `e`
@@ -135,37 +130,23 @@ theorem scan_fold_iff (Te : Core.Rel (Obj.El V) (Obj.El V)) (Tz : Core.Rel (Obj.
           fun h => h.2⟩)
 
 /-- **`toScan` at `Tm.den`**: `(𝟙÷∋)E(suffix)E(g)est(≥) = ⦇[zero⟨𝟙,(𝟙÷∋)⟩, ⟨w,(𝟙÷∋)E(w ∪ π₂π₂∋)⟩]⦈ʳ π₂ est(≥)` with
-    `g = ⦇[zero, oplus]⦈ʳ`, `zero`'s range one value (`Te` at `g`'s carrier, `Tz` at the scan's), `oplus` (`TO`) entire
-    and simple, `w` (`W`) `oplus` of the head and the carried value, and every array's suffixes canonically listed. -/
+    `g = ⦇[zero, oplus]⦈ʳ` (`G`) entire, `zero`'s range at most one value (`Te` at `g`'s carrier, `Tz` at the scan's),
+    `oplus` (`TO`) simple, and `w` (`W`) `oplus` of the head and the carried value; `foldrDen_entire` supplies `hG`. -/
 theorem toScan_den (Te : Core.Rel (Obj.El V) (Obj.El V)) (Tz : Core.Rel (Obj.El (.prod V (.arr V))) (Obj.El V))
     (TO : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (W : Core.Rel (Obj.El (.prod E (.prod V (.arr V)))) (Obj.El V))
     (TQ : Core.Rel (Obj.El (.prod V V)) (Obj.El (.prod V V)))
-    (hz : ∀ v, (∃ a, Tz a v) ↔ ∃ a, Te a v) (hTe0 : ∃ a v, Te a v) (hTe : ∀ a a' v v', Te a v → Te a' v' → v = v')
-    (hTOe : ∀ p, ∃ w, TO p w) (hTO : ∀ p w w', TO p w → TO p w' → w = w')
-    (hW : ∀ x u s c, W (x, (u, s)) c ↔ TO (x, u) c)
-    (hsuf : ∀ xs : List E.El, ∃ L, lamDen (A := .arr E) (B := .arr E) (splitDen false E.El) xs L) :
-    lamDen (𝟙 _) ≫ EDen (A := .arr E) (B := .arr E) (splitDen false E.El) ≫ EDen (foldrDen Te TO) ≫ estDen TQ =
-      foldrDen (Tz ≫ rpair (𝟙 _) (lamDen (𝟙 _)))
-          (rpair W (lamDen (𝟙 _) ≫ EDen (W ∪ graph Prod.snd ≫ graph Prod.snd ≫ memDen))) ≫
-        graph Prod.snd ≫ estDen TQ := by
+    (hz : ∀ v, (∃ a, Tz a v) ↔ ∃ a, Te a v) (hTe : ∀ a a' v v', Te a v → Te a' v' → v = v')
+    (hTO : ∀ p w w', TO p w → TO p w' → w = w') (hG : ∀ xs, ∃ g, foldrDen Te TO xs g)
+    (hW : ∀ x u s c, W (x, (u, s)) c ↔ TO (x, u) c) :
+    lamDen (A := .arr E) (B := V) (splitDen false E.El ≫ foldrDen Te TO) ≫ estDen TQ =
+      (foldrDen (Tz ≫ rpair (𝟙 _) (lamDen (𝟙 _)))
+          (rpair W (lamDen (W ∪ (graph Prod.snd ≫ graph Prod.snd) ≫ memDen))) ≫ graph Prod.snd) ≫ estDen TQ := by
   funext xs c
-  refine propext ⟨fun ⟨ys, hys, L1, h1, L2, h2, he⟩ => ?_, fun ⟨p, hF, l, hl, he⟩ => ?_⟩
-  · obtain rfl := (lamDen_id_iff _ _).1 hys
-    obtain ⟨g, hg⟩ := foldrDen_entire Te TO hTe0 hTOe xs
-    obtain ⟨-, m1⟩ := (EDen_iff _ _ _).1 h1
-    obtain ⟨p2, m2⟩ := (EDen_iff _ _ _).1 h2
-    refine ⟨(g, L2), (scan_fold_iff Te Tz TO W hz hTe hTO hW xs _).2 ⟨hg, (lamDen_iff _ _ _).2 ⟨p2, fun d => ?_⟩⟩,
-      L2, rfl, he⟩
-    simp only [m2, m1, Core.Rel.comp_apply, List.mem_singleton, exists_eq_left]
+  refine propext ⟨fun ⟨L, hL, he⟩ => ?_, fun ⟨l, ⟨p, hF, hl⟩, he⟩ => ?_⟩
+  · obtain ⟨g, hg⟩ := hG xs
+    exact ⟨L, ⟨(g, L), (scan_fold_iff Te Tz TO W hz hTe hTO hW xs _).2 ⟨hg, hL⟩, rfl⟩, he⟩
   · obtain rfl := hl
-    obtain ⟨-, hL⟩ := (scan_fold_iff Te Tz TO W hz hTe hTO hW xs p).1 hF
-    obtain ⟨p2, m2⟩ := (lamDen_iff _ _ _).1 hL
-    obtain ⟨L1, h1⟩ := hsuf xs
-    obtain ⟨p1, m1⟩ := (lamDen_iff _ _ _).1 h1
-    refine ⟨[xs], (lamDen_id_iff _ _).2 rfl, L1, (EDen_iff _ _ _).2 ⟨p1, fun t => ?_⟩, p.2,
-      (EDen_iff _ _ _).2 ⟨p2, fun d => ?_⟩, he⟩
-    · simp only [m1, List.mem_singleton, exists_eq_left]
-    · simp only [m2, m1, Core.Rel.comp_apply]
+    exact ⟨p.2, ((scan_fold_iff Te Tz TO W hz hTe hTO hW xs p).1 hF).2, he⟩
 
 #print axioms toScan_den
 
