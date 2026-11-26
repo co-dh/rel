@@ -243,7 +243,7 @@ syntax (name := cStep) "_" cmpOp rel " := " ("≜")? relWord (noWs "(" rel,+ ")"
 -- a hypothesis: `e = f`, `e ⊑ f`, or a test applied; above level 0, so `R : …` after it is no fixed point `μX : φ`
 syntax relHyp := rel:1 (cmpOp rel:1)?
 syntax (name := sTheorem) &"theorem " relWord ("(" relParam,+ ")")? (&" on " rel:max)? (&" if " relHyp,+)? ":"
-  rel cmpOp rel (" := " &"calc" (colGt withPosition(relStep))+)? : relStmt
+  rel cmpOp rel (" := " &"calc" (colGt withPosition(relStep))+)? (" by " ident)? : relStmt
 
 /-- A program's statements, each at its own position, read with the program's tokens (`relTokens`). -/
 @[run_parser_attribute_hooks] def relStmts : Parser := relTokens (many (withPosition (kwBack (categoryParser `relStmt 0))))

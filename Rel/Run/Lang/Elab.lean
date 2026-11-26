@@ -2333,7 +2333,7 @@ def zeroCol (t : QAtomicType) (h : t.ordNum.isSome) : Arr t 1 :=
 /-- The converses a program states as theorems `c° = c'` (no parameters, no hypotheses), `(c, c')` in order: the
     definitions' source of `convOf`, read off the declarations, never kept as a second list. -/
 def convs (prog : Program) : List (String × String) :=
-  prog.filterMap fun | .«theorem» _ _ [] (.conv _ (.name _ c)) (.name _ c') true _ [] _ => some (c, c') | _ => none
+  prog.filterMap fun | .«theorem» _ _ [] (.conv _ (.name _ c)) (.name _ c') true _ [] _ _ => some (c, c') | _ => none
 
 /-- The name of the converse of `c`: a row's `Prim.conv`, or a definition's `c'` from `cs = convs prelude`
     (§5.2 of `doc/tm-minimal-design.zh.typ`); `none` where the converse is no named one. Not `Expand.convOf`,

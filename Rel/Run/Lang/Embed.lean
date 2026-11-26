@@ -57,6 +57,70 @@ def defn (s : Syntax) (w key : String) (ps : Array Syntax) (ty body test wh : Sy
   modify fun st => { st with known := outer, ovars := [] }
   pure (.defn p key ps b ty)
 
+/-- The lemma `theorem n … by lemma` names, refused beside a `calc`, parameters, `on` or `if`: a Lean proof states the
+    whole theorem, which has none of them. -/
+def proofOf (s : Syntax) (n : String) (ps : List Param) : C (Option Lean.Name) := do
+  if s[10].getNumArgs == 0 then return none
+  let l := s[10][1].getId
+  let bad := [(s[9].getNumArgs != 0, "a `calc`"), (!ps.isEmpty, "parameters"), (s[3].getNumArgs != 0, "`on`"),
+    (s[4].getNumArgs != 0, "`if`")].filter (·.1)
+  if let some (_, what) := bad.head? then
+    failAt s[10] s!"theorem `{n}` has `by {l}` and {what}: a Lean proof is written for a theorem with none"
+  pure (some l)
+
+/-- `theorem n(ps) on A if hs : e = f := calc … by lemma` (split from `stmt`, whose elaboration it would push past the
+    heartbeat limit). -/
+def theoremDecl (s : Syntax) (p : Pos) : C Decl := do
+  let opt (o : Syntax) := if o.getNumArgs == 0 then #[] else o[1].getSepArgs
+  let n ← wordOf s[1]
+  Parse.fresh p n (← get).taken
+  let ps ← params s n (opt s[2])
+  let proof ← proofOf s n ps
+  if s[3].getNumArgs != 0 && !ps.isEmpty then
+    failAt s[3] s!"`on` evaluates a theorem with no parameters; `{n}` has {ps.length}"
+  let outer := (← get).known
+  modify fun st => { st with known := ps.map (fun q => (q.name, 0)) ++ st.known }
+  let on ← if s[3].getNumArgs == 0 then pure none else some <$> expr s[3][1]
+  let hyps ← (opt s[4]).toList.mapM fun h => do
+    let a ← expr h[0]
+    if h[1].getNumArgs == 0 then pure (a, none) else pure (a, some (atomIn h[1][0] == "=", ← expr h[1][1]))
+  let e ← expr s[6]; let f ← expr s[8]; let eq := atomIn s[7] == "="
+  -- a reason is the program's theorem or definition, else the registry's one the resolver gives
+  let steps ← (if s[9].getNumArgs == 0 then #[] else s[9][2].getArgs).toList.mapM fun t => do
+    unless t.getKind == ``cStep do failAt t "expected a step `_ = e := n`"
+    let q ← posOf t; let x ← expr t[2]; let r ← posOf t[5]
+    -- a qualified reason, `laws.estMap`, is read as a term reads `m.x`; a bare one is one word
+    let m ← match t[5][0] with
+      | .ident _ _ c _ => if c.isAtomic then wordOf t[5] else onText t[5] (tokText t[5][0]) Parse.name
+      | _ => wordOf t[5]
+    let st ← get
+    -- a name not the program's is the registry's, through the resolver (§2.3), whose refusal (ambiguous) is the error
+    let own := st.known.any (fun k => k.1 == m || k.1 == Parse.infixKey m) || st.thms.contains m
+    let ex ← if own || ps.any (·.name == m) then pure none else match st.res m with
+      | .ext e => pure (some e)
+      | .bad _ msg => failAt t[5] msg
+      | .none => pure none
+    if let some e := ex then modify fun st => { st with used := e.const :: st.used }
+    let isDef := (st.known.any (fun k => k.1 == m || k.1 == Parse.infixKey m) && !ps.any (·.name == m)) ||
+      ex.any (fun e => !e.obj && !e.thm)
+    let isThm := st.thms.contains m || ex.any (·.thm)
+    let args ← if t[6].getNumArgs == 0 then pure [] else t[6][1].getSepArgs.toList.mapM expr
+    if t[4].getNumArgs != 0 && !args.isEmpty then failAt t[6] s!"`≜ {m}` unfolds a definition: it takes no arguments"
+    let why ← if t[4].getNumArgs == 0 then
+        if isThm then pure (Why.thm r m (if st.thms.contains m then none else ex.map (·.const)) args)
+        else failAt t[5] (if isDef then s!"`{m}` is a definition; write `≜ {m}`" else s!"unknown theorem '{m}'")
+      else if isDef then pure (Why.unfold r m)
+        else failAt t[5] (if isThm then s!"`{m}` is a theorem, not a definition"
+          else s!"unknown definition '{m}'")
+    if eq && atomIn t[1] != "=" then failAt t s!"`{n}` states `=`: a step `⊑` proves only `⊑`"
+    pure (q, atomIn t[1] == "=", x, why)
+  -- the chain starts at the left side (`_`) and must end at the right one, compared as the parser reads both
+  if let some (q, _, x, _) := steps.getLast? then
+    if x.render 0 true != f.render 0 true then
+      throw ⟨q, s!"the chain of `{n}` ends at {x.show}, not at its right side {f.show}"⟩
+  modify fun st => { st with known := outer }
+  pure (.«theorem» p n ps e f eq on hyps steps proof)
+
 def stmt (s : Syntax) : C Decl := do
   let p ← posOf s
   let objName : C String := do
@@ -136,54 +200,7 @@ def stmt (s : Syntax) : C Decl := do
         Parse.adv; pure (n, Parse.infixKey n)
     defn s w key (opt s[1]) s[2] s[4] s[5] s[6]
   | ``sInfix => do let n ← wordOf s[1]; defn s n (Parse.infixKey n) s[4].getSepArgs s[6] s[8] s[9] s[10]
-  | ``sTheorem => do
-    let n ← wordOf s[1]
-    Parse.fresh p n (← get).taken
-    let ps ← params s n (opt s[2])
-    if s[3].getNumArgs != 0 && !ps.isEmpty then
-      failAt s[3] s!"`on` evaluates a theorem with no parameters; `{n}` has {ps.length}"
-    let outer := (← get).known
-    modify fun st => { st with known := ps.map (fun q => (q.name, 0)) ++ st.known }
-    let on ← if s[3].getNumArgs == 0 then pure none else some <$> expr s[3][1]
-    let hyps ← (opt s[4]).toList.mapM fun h => do
-      let a ← expr h[0]
-      if h[1].getNumArgs == 0 then pure (a, none) else pure (a, some (atomIn h[1][0] == "=", ← expr h[1][1]))
-    let e ← expr s[6]; let f ← expr s[8]; let eq := atomIn s[7] == "="
-    -- a reason is the program's theorem or definition, else the registry's one the resolver gives
-    let steps ← (if s[9].getNumArgs == 0 then #[] else s[9][2].getArgs).toList.mapM fun t => do
-      unless t.getKind == ``cStep do failAt t "expected a step `_ = e := n`"
-      let q ← posOf t; let x ← expr t[2]; let r ← posOf t[5]
-      -- a qualified reason, `laws.estMap`, is read as a term reads `m.x`; a bare one is one word
-      let m ← match t[5][0] with
-        | .ident _ _ c _ => if c.isAtomic then wordOf t[5] else onText t[5] (tokText t[5][0]) Parse.name
-        | _ => wordOf t[5]
-      let st ← get
-      -- a name not the program's is the registry's, through the resolver (§2.3), whose refusal (ambiguous) is the error
-      let own := st.known.any (fun k => k.1 == m || k.1 == Parse.infixKey m) || st.thms.contains m
-      let ex ← if own || ps.any (·.name == m) then pure none else match st.res m with
-        | .ext e => pure (some e)
-        | .bad _ msg => failAt t[5] msg
-        | .none => pure none
-      if let some e := ex then modify fun st => { st with used := e.const :: st.used }
-      let isDef := (st.known.any (fun k => k.1 == m || k.1 == Parse.infixKey m) && !ps.any (·.name == m)) ||
-        ex.any (fun e => !e.obj && !e.thm)
-      let isThm := st.thms.contains m || ex.any (·.thm)
-      let args ← if t[6].getNumArgs == 0 then pure [] else t[6][1].getSepArgs.toList.mapM expr
-      if t[4].getNumArgs != 0 && !args.isEmpty then failAt t[6] s!"`≜ {m}` unfolds a definition: it takes no arguments"
-      let why ← if t[4].getNumArgs == 0 then
-          if isThm then pure (Why.thm r m (if st.thms.contains m then none else ex.map (·.const)) args)
-          else failAt t[5] (if isDef then s!"`{m}` is a definition; write `≜ {m}`" else s!"unknown theorem '{m}'")
-        else if isDef then pure (Why.unfold r m)
-          else failAt t[5] (if isThm then s!"`{m}` is a theorem, not a definition"
-            else s!"unknown definition '{m}'")
-      if eq && atomIn t[1] != "=" then failAt t s!"`{n}` states `=`: a step `⊑` proves only `⊑`"
-      pure (q, atomIn t[1] == "=", x, why)
-    -- the chain starts at the left side (`_`) and must end at the right one, compared as the parser reads both
-    if let some (q, _, x, _) := steps.getLast? then
-      if x.render 0 true != f.render 0 true then
-        throw ⟨q, s!"the chain of `{n}` ends at {x.show}, not at its right side {f.show}"⟩
-    modify fun st => { st with known := outer }
-    pure (.«theorem» p n ps e f eq on hyps steps)
+  | ``sTheorem => theoremDecl s p
   | _ => failAt s "expected a declaration"
 
 /-- `schema S from "dir"` (F1): the schema `diskOf` read from `dir`, each column at the unbounded object of its atom,
@@ -264,12 +281,20 @@ def homesOf (reg : Expand.Registry) (used : List Name) : List Name :=
   let all := hs.flatMap fun h => ((reg.chains.lookup h).getD []) ++ [h]
   (reg.progs.toList.map (·.1)).filter all.contains
 
-/-- Check a named proof against the denotation of the typed terms that emission consumes. -/
-def certifyChecks (n : Name) (prog : Program) (checks : List Expand.Chk) : TermElabM Unit := do
+/-- Check each named proof of `prog` (`check e = f by lemma`, `theorem t : e = f by lemma`) against the denotation of
+    the typed terms that emission consumes (`checks`, `thms`, matched by position), as the statement
+    `∀ ρ, Tm.den ρ R = Tm.den ρ S` (`Rel.le` for `⊑`): `n.proof.check<i>` for the `i`-th proved check, `n.proof.<t>`
+    for the theorem `t`. -/
+def certify (n : Name) (prog : Program) (checks thms : List Expand.Chk) : TermElabM Unit := do
   let mut index := 0
   for decl in prog do
-    let .check p _ _ _ _ (some proof) := decl | continue
-    let some (_, _, _, eq, _, _, ⟨A, B, R, S⟩) := checks.find? (fun c => c.1 == p)
+    let (p, proof, name) ← match decl with
+      | .check p _ _ _ _ (some proof) =>
+        index := index + 1
+        pure (p, proof, Name.mkSimple s!"check{index - 1}")
+      | .«theorem» p t _ _ _ _ _ _ _ (some proof) => pure (p, proof, Name.mkSimple t)
+      | _ => continue
+    let some (_, _, _, eq, _, _, ⟨A, B, R, S⟩) := (checks ++ thms).find? (fun c => c.1 == p)
       | throwError "rel_program: no elaborated check at {p}"
     let denName := `Rel.Lang.Tm.den
     unless (← getEnv).contains denName do
@@ -287,10 +312,8 @@ def certifyChecks (n : Name) (prog : Program) (checks : List Expand.Chk) : TermE
     Term.synthesizeSyntheticMVarsNoPostponing
     let value ← instantiateMVars value
     if value.hasSorry then
-      throwError "rel_program: proof of check at {p} contains an unresolved goal"
-    let name := n ++ `proof ++ Name.mkSimple s!"check{index}"
-    addDecl (.thmDecl { name, levelParams := [], type := goal, value })
-    index := index + 1
+      throwError "rel_program: proof of {name} at {p} contains an unresolved goal"
+    addDecl (.thmDecl { name := n ++ `proof ++ name, levelParams := [], type := goal, value })
 
 /-- The program `n` named by `id`, read in the scope `s` that left `used`, what it reads (`Expand.emit`): each closed
     definition as the Lean definition `n.x`, its prints, its checks; then its definitions and objects registered,
@@ -321,7 +344,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
   match ← liftTermElabM (Expand.read calls progs prog n resOf).run with
   | .error e => throwErrorAt stx "{e}"
   | .ok r =>
-    liftTermElabM (certifyChecks n prog r.2.2.1)
+    liftTermElabM (certify n prog r.2.2.1 r.2.2.2.1)
     liftTermElabM (Expand.emit n r)
     for d in prog do
       if let some (_, e) := Parse.extOf n d then

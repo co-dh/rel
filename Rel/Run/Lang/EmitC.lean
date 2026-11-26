@@ -2738,7 +2738,7 @@ def ioOf (n : Lean.Name) :
     Lean.Meta.MetaM (Except String (Bld IoIn × (IoIn → Bld Unit))) := do
   let r ← Expand.reread n
   return do
-    let (ds, _, _, _, os, io) ← r.mapError (s!"{repr ·}")
+    let (ds, _, _, _, _, os, io) ← r.mapError (s!"{repr ·}")
     let reach := Expand.ioReach io
     -- the library of the own tables with symbol columns, as `ioE` finds it (`Table.progLib`)
     let lib ← Table.progLib (io.filterMap fun

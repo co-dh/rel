@@ -34,6 +34,17 @@ rel_program prefixInclusion where
 
 #check prefixInclusion.proof.check0
 
+private theorem denEqRefl {A B : Obj} {R : Tm A B} (ρ : Val) : R.den ρ = R.den ρ := rfl
+
+-- A theorem carries the proof as a check does: `n.proof.<theorem>`.
+open Rel.Programs.prelude in
+rel_program prefixTheorem where
+    obj N = 0…9
+    x : 1 ⟶ [N] ≜ {(∗,3 1 2)}
+    theorem selfEq : x = x by denEqRefl
+
+#check prefixTheorem.proof.selfEq
+
 -- Changing the claimed relation keeps the types but invalidates the proof.
 /-- error: Type mismatch -/
 #guard_msgs (substring := true) in

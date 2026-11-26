@@ -578,7 +578,7 @@ def ioE (io : List Io) (reach : List String) (sh : Lean.Expr) (body : Lean.Name 
     does not hold, and each term that threw) and `n.ok`, that there is none; `n.inputs`, `n.outputs` (each
     statement's name, `csv`, path, an import's inputs first) and `n.io` (`ioE`). -/
 def emit (n : Name) (r : Read) : MetaM Unit := do
-  let (ds, ps, cs, objs, os, io) := r
+  let (ds, ps, cs, _, objs, os, io) := r
   addConst (n ++ `objs) (mkConst ``Objs) (← objsE objs)
   let objsC := mkConst (n ++ `objs)
   -- the registry holds each body as elaborated, not numbered: a call copies it (`callTm`)

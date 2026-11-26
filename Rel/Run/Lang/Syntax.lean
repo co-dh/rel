@@ -604,6 +604,8 @@ inductive Decl
   | «theorem» (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool) (on : Option Expr)
       -- each hypothesis after `if`: `e = f` or `e ⊑ f` (`some (eq, f)`), or a test applied, `t(R)` (`none`)
       (hyps : List (Expr × Option (Bool × Expr))) (steps : List (Pos × Bool × Expr × Why))
+      -- `by lemma`: a Lean proof of the statement, checked at elaboration as a `check`'s (`certify`)
+      (proof : Option Lean.Name)
   deriving Repr, Inhabited
 
 abbrev Program := List Decl

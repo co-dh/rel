@@ -217,9 +217,9 @@ def Io.rename (f : String → String) : Io → Io
     mentions one, with its declared type and, for a definition, the run-time names it mentions. -/
 abbrev Rt := List (String × Param × Option (List String))
 
-/-- What a program reads: its closed definitions, its prints (text and term), its checks, its objects, its
+/-- What a program reads: its closed definitions, its prints (text and term), its checks, its proved theorems (the sides of each `by` lemma: stated, never run), its objects, its
     definitions elaborated once, and the statements `n.io` runs, its imports' inputs and run-time definitions first. -/
-abbrev Read := List (String × Res) × List (String × Top) × List Chk × Objs × List Once × List Io
+abbrev Read := List (String × Res) × List (String × Top) × List Chk × List Chk × Objs × List Once × List Io
 
 /-- The object variables of a definition, in order, each once: its parameters' then its type's. -/
 def varsOf (qs : List Param) (ty : OExp × OExp) : List String :=
@@ -684,7 +684,7 @@ def rtNamesE (env : Env) (rt : Rt) (e : Expr) : Expr :=
     (`rt₀` those of its imports), and the statements `n.io` runs (`Io`). -/
 def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
     (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := []) :
-    EM (Env × List (String × Res) × List (String × Top) × List Chk × List Once × Rt × List Io) := do
+    EM (Env × List (String × Res) × List (String × Top) × List Chk × List Chk × List Once × Rt × List Io) := do
   let mut env := env
   let mut specs := specs
   let mut pend : List (Env × Pos × String × List Param × Expr × (OExp × OExp) × List String × Def) := []
@@ -694,6 +694,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut ds : List (String × Res) := []
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
+  let mut ths : List Chk := []
   -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
   -- parameter of the statements after it that mention it; with its declared type and, for a definition, its own
   let mut rt : Rt := rt₀
@@ -827,7 +828,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (e, f, bs) := (rtNamesE env rt e, rtNamesE env rt f, bs.map fun (x, l) => (rtName env rt x, l))
       let σ ← liftExcept (bindIns rt p "check" [e, f] bs)
       let (c, sp) ← checkOf env p (e.subst σ) (f.subst σ) eq specs; specs := sp; cs := cs ++ [c]
-    | .«theorem» p n ps e f eq on hyps steps =>
+    | .«theorem» p n ps e f eq on hyps steps proof =>
       let ns := e.names ++ f.names ++ (on.map (·.names)).getD [] ++
         hyps.flatMap (fun (a, b) => a.names ++ (b.map (·.2.names)).getD []) ++ steps.flatMap (·.2.2.1.names)
       let ns := ns.map (rtName env rt)
@@ -846,6 +847,9 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             s!"the statement's {e.show} is {zonk mc s} ⟶ {zonk mc t}"⟩
         : M Unit).run { specs, objs := env.objs }
       specs := st.specs
+      -- `by lemma` (no parameters, `on` or steps: `Embed`): both sides typed once as a `check`'s are, kept for `certify`
+      if proof.isSome then
+        let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs; specs := sp; ths := ths ++ [c]
       -- `on A`: each link of the chain (the statement itself when there is none) evaluated as a `check`
       if let some a := on then
         let mut x := e
@@ -860,7 +864,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
       specs := sp ++ o.toList
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls (convs prog) d)) :: mine
-  pure (env, ds, pr, cs, specs, rt, io)
+  pure (env, ds, pr, cs, ths, specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope
@@ -880,7 +884,7 @@ def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program
   let mut io : List Io := []
   for (h, hp) in homes do
     let env : Env := { res := res h, ext, extObjs := xo, objs := xo.map fun (c, i) => (c.toString, i) }
-    let (e, _, _, _, sp, rt', io') ←
+    let (e, _, _, _, _, sp, rt', io') ←
       (walk hp env (fun k => useDef (Parse.constOf h k) true) h calls false own specs true rt).adapt (Err.inProg h.toString)
     specs := sp
     let cn (y : String) : String := if rt.any (·.1 == y) then y else (Parse.constOf h y).toString
@@ -893,9 +897,9 @@ def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program
         | false, _, some df => ext := (x.const, df) :: ext
         | _, _, _ => pure ()
   let env : Env := { res := res own, ext, extObjs := xo, objs := xo.map fun (c, i) => (c.toString, i) }
-  let (e, ds, ps, cs, os, _, io') ← walk prog env (fun k => useDef (Parse.constOf own k) false) own calls true own specs
+  let (e, ds, ps, cs, ths, os, _, io') ← walk prog env (fun k => useDef (Parse.constOf own k) false) own calls true own specs
     false rt
-  pure (ds, ps, cs, e.objs, os, io ++ io')
+  pure (ds, ps, cs, ths, e.objs, os, io ++ io')
 
 /-! ### Constants as the `Expr` that builds them (`tmE`), and the registry -/
 
