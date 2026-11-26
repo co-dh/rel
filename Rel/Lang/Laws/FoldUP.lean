@@ -5,8 +5,8 @@ open Rel.Kernel Tab Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
-/-- Universal property of `⦇e, S⦈` over `[nil, snoc]`: `foldStep` has the one fixed point `foldDen`. The equations of
-    `foldDen_empty`/`foldDen_snoc` are re-proved for any fixed point `X`, then `X` and `foldDen` agree by length. -/
+/-- B&dM (5.12) on arrays, an instance of freyd's `relCata_UP`: `foldStep` has the one fixed point `foldDen`.
+    Any fixed point `X` meets `foldDen_empty`/`foldDen_snoc`'s equations, so it agrees with `foldDen` by length. -/
 theorem foldUP {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel (Obj.El (.prod V E)) (Obj.El V))
     (X : Core.Rel (Obj.El (.arr E)) (Obj.El V)) : X = foldStep Te TS X ↔ X = foldDen Te TS := by
   refine ⟨fun hX => ?_, fun hX => hX ▸ (mu_fix (foldStep_mono Te TS)).symm⟩
