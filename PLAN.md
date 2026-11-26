@@ -1712,6 +1712,11 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - ⬜ 9.5 `RelAop.Prelude` 红（与 9.4 无关，挡住 `Mss`、`RelAopTest`）：prelude 新增的 owed `permConv : perm° = perm` 与
   `starLinear : μX : S ∪ (R X) = star(R) S`（`Rel/Programs/Prelude.lean:90-91`）没有 bridge 证明；`μX` 不在
   `rel(…)` fragment 里，先扩 `Calc`。
+- ⬜ 9.6 rel_program 的 calc 改成 Agda 风格（owner 2026-11-26），样板 `~/repo/aopa/Examples/MSS/Derivation.agda` 160–232：
+  (a) 推导即程序：`mss-der : Σ prog (spec ≐ prog)`，程序取自推导的末行（`mss = proj₁ mss-der`），不另写一个再证相等——与
+  P9「没有证明写不出程序」同一件事；(b) 每一行写出完整的式子，理由夹在两行之间 `≐⟨ law(args) ⟩`，`begin … ∎`，不用
+  `_ = x := …`；(c) 只服务这条推导的引理写在它的 `where` 里（`max-sum-prefix`、`lemma1`、`lemma2`），不提到程序顶层。
+  改 `rel_program` 的语法与 `rel_aop` 的读法，Mss、Prelude、Prefix 的 calc 全部转写。在 9.1 设计稿里一起定。
 
 ## 3. 各 phase 的并行与串行
 
