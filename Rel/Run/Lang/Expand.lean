@@ -532,18 +532,22 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         pure (.fam (compSh i x x (liftConst i p (.id x) x x).1 call) i x y) }
 
 /-- A top-level term, `r` its elaboration `e` with the objects `st`: closed on its source's universe when it needs
-    keys, refused where that object has none. -/
-def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) : Except Err Top := do
+    keys, refused where that object has none, unless `den`: a term typed for its denotation only, never run. -/
+def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) (den : Bool := false) : Except Err Top := do
   let (q, s, t) := r.plain
   let δ : Dem := (q.demVars.contains ·)
   let ⟨A, B, tm⟩ ← build env.objs mc p δ (.close p q s noLeft)
-  if !tm.dem δ [] then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
+  if den || !tm.dem δ [] then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
 
 /-- `check e = f` at `p` (`⊑` when `eq` is false): the two sides
     elaborated together, one type, an object one side leaves open being the other's (§c); with the constants
-    `specs` built so far, returned with the ones its calls build. -/
-def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) : EM (Chk × List Once) := do
+    `specs` built so far, returned with the ones its calls build. `den`: a theorem's sides, typed for the denotation
+    only (no universe is needed, as nothing runs), the parameters `ps` the variables `Tm.var` the `∀ ρ` of the goal
+    quantifies over. -/
+def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) (den : Bool := false)
+    (ps : List Param := []) : EM (Chk × List Once) := do
   let ((r, r'), st) ← (do
+    let env ← if den then pure (← bindSig env ps (some p)).2 else pure env
     let r ← elabE env none e; let r' ← elabE env none f
     let (_, s, t) := r.plain; let (_, s', t') := r'.plain
     let mc ← Lean.getMCtx
@@ -553,8 +557,8 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     settleUses
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   let mc ← Lean.getMCtx
-  let (⟨A, B, R⟩, s, t) ← top env mc p e r
-  let (⟨A', B', S⟩, s', t') ← top env mc p f r'
+  let (⟨A, B, R⟩, s, t) ← top env mc p e r den
+  let (⟨A', B', S⟩, s', t') ← top env mc p f r' den
   if h : A' = A ∧ B' = B then pure ((p, e.show, f.show, eq, s, t, ⟨A, B, R, h.1 ▸ h.2 ▸ S⟩), st.specs)
   else throw ⟨p, s!"check: the sides have types {s} ⟶ {t} and {s'} ⟶ {t'}"⟩
 
@@ -849,23 +853,24 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             s!"the statement's {e.show} is {zonk mc s} ⟶ {zonk mc t}"⟩
         : M Unit).run { specs, objs := env.objs }
       specs := st.specs
-      -- a `calc` of `=` steps with no parameters or hypotheses is certified step by step (`certifyCalc`): each link
+      -- a `calc` of `=` steps with no hypotheses is certified step by step (`certifyCalc`): each link
       -- `x ↦ y` typed as a `check`, at the step's line, unless a step cites a theorem at arguments (never certified)
-      let calcOk := proof.isNone && !steps.isEmpty && ps.isEmpty && hyps.isEmpty && eq &&
+      let calcOk := proof.isNone && !steps.isEmpty && hyps.isEmpty && eq &&
         steps.all fun (_, k, _, w) => k && match w with | .thm _ _ _ as => as.isEmpty | .unfold .. => true
-      -- `by lemma` (no parameters, `on` or steps: `Embed`): both sides typed once as a `check`'s are, kept for `certify`
+      -- `by lemma` (no `calc`, `on` or `if`: `Embed`): both sides typed once as a `check`'s are, for the denotation
+      -- only, the parameters variables; kept for `certify`
       if proof.isSome then
-        let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs; specs := sp; ths := ths ++ [c]
-      -- a chain whose statement or links do not type as checks (a side with no universe) is left uncertified:
+        let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs true ps; specs := sp; ths := ths ++ [c]
+      -- a chain whose statement or links do not type as checks is left uncertified:
       -- `certifyCalc` lists it
       if calcOk then
         try
-          let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs
+          let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs true ps
           let mut x := e
           let mut ls : List Chk := [c]
           let mut sp := sp
           for (q, _, y, _) in steps do
-            let (c, sp') ← checkOf env q (rtNamesE env rt x) (rtNamesE env rt y) true sp; sp := sp'; ls := ls ++ [c]; x := y
+            let (c, sp') ← checkOf env q (rtNamesE env rt x) (rtNamesE env rt y) true sp true ps; sp := sp'; ls := ls ++ [c]; x := y
           specs := sp; ths := ths ++ ls
         catch e => bad := bad ++ [(p, s!"{e.msg}")]
       -- `on A`: each link of the chain (the statement itself when there is none) evaluated as a `check`

@@ -1944,15 +1944,20 @@ def declared (env : Env) (p : Pos) (n : String) (vs : List (String × OTy)) (ty 
     throw ⟨p, s!"`{n}` is declared {OExp.arrow ty}, but its body is {gen [s, t] s} ⟶ {gen [s, t] t}"⟩
 
 /-- The parameters `ps` with their objects, each declared one's object variables rigid and an undeclared type
-    fresh, and `env` with them in scope: a signature read with no use (`inferSig`, a theorem's statement). -/
-def bindSig (env : Env) (ps : List Param) : M (List (String × OTy × OTy) × Env) := do
+    fresh, and `env` with them in scope: a signature read with no use (`inferSig`, a theorem's statement). Given a
+    position `at?`, each parameter is a variable of its own (`Pre.var`, as `callOf` binds one), numbered from 0 in
+    order, so a term built from it is `Tm.var k` and its denotation is read under every `ρ`. -/
+def bindSig (env : Env) (ps : List Param) (at? : Option Pos := none) : M (List (String × OTy × OTy) × Env) := do
   let bs ← ps.mapM fun P => do
     match P.ty with
     | some (x, y) =>
       let vs := (x.vars ++ y.vars).map fun v => (v, OTy.base v)
       pure (P.name, ← oty env vs x, ← oty env vs y)
     | none => pure (P.name, ← fresh, ← fresh)
-  pure (bs, { env with params := bs.map fun (q, s, t) => (q, .rel (.zero s t) s t) })
+  let ps' ← bs.mapM fun (q, s, t) => match at? with
+    | some p => do pure (q, .rel (.var p (← modifyGet fun st => (st.fixes, { st with fixes := st.fixes + 1 })) s t none) s t)
+    | none => pure (q, .rel (.zero s t) s t)
+  pure (bs, { env with params := ps' })
 
 /-- The type of `n`, as `typesOf` prints it: each parameter's (declared, its variables kept as written, or
     inferred) and the body's, open objects named as variables; what a definition missing one should write. -/

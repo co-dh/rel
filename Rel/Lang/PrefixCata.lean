@@ -73,6 +73,17 @@ run_cmd do
   if env.contains `Rel.Lang.badPrefix.expanded || env.contains `Rel.Lang.badPrefix.x then
     throwError "a rejected relation proof exported executable code"
 
+-- A theorem with parameters carries `by lemma`: the parameters are the variables `∀ ρ` quantifies over, and its sides
+-- are typed for the denotation only, so `[N]` as a source needs no universe. The builder reads `R°°` as `R`, so the
+-- goal here is `den ρ (var 0) = den ρ (var 0)`.
+rel_program convParam where
+    obj N = 0…3
+    theorem cc(R : N ⟶ N) : R°° = R by denEqRefl
+    theorem nn(R : [N] ⟶ N) : R°° = R by denEqRefl
+
+#check convParam.proof.cc
+#check convParam.proof.nn
+
 end Rel.Lang
 
 #check Rel.Programs.prefixCata.proof.shares

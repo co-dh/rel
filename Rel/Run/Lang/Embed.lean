@@ -57,12 +57,12 @@ def defn (s : Syntax) (w key : String) (ps : Array Syntax) (ty body test wh : Sy
   modify fun st => { st with known := outer, ovars := [] }
   pure (.defn p key ps b ty)
 
-/-- The lemma `theorem n … by lemma` names, refused beside a `calc`, parameters, `on` or `if`: a Lean proof states the
+/-- The lemma `theorem n … by lemma` names, refused beside a `calc`, `on` or `if`: a Lean proof states the
     whole theorem, which has none of them. -/
-def proofOf (s : Syntax) (n : String) (ps : List Param) : C (Option Lean.Name) := do
+def proofOf (s : Syntax) (n : String) : C (Option Lean.Name) := do
   if s[10].getNumArgs == 0 then return none
   let l := s[10][1].getId
-  let bad := [(s[9].getNumArgs != 0, "a `calc`"), (!ps.isEmpty, "parameters"), (s[3].getNumArgs != 0, "`on`"),
+  let bad := [(s[9].getNumArgs != 0, "a `calc`"), (s[3].getNumArgs != 0, "`on`"),
     (s[4].getNumArgs != 0, "`if`")].filter (·.1)
   if let some (_, what) := bad.head? then
     failAt s[10] s!"theorem `{n}` has `by {l}` and {what}: a Lean proof is written for a theorem with none"
@@ -75,7 +75,7 @@ def theoremDecl (s : Syntax) (p : Pos) : C Decl := do
   let n ← wordOf s[1]
   Parse.fresh p n (← get).taken
   let ps ← params s n (opt s[2])
-  let proof ← proofOf s n ps
+  let proof ← proofOf s n
   if s[3].getNumArgs != 0 && !ps.isEmpty then
     failAt s[3] s!"`on` evaluates a theorem with no parameters; `{n}` has {ps.length}"
   let outer := (← get).known
@@ -302,9 +302,9 @@ def goalOf (c : Expand.Chk) : TermElabM Lean.Expr := Meta.withLocalDeclD `ρ (mk
 /-- The theorem `t` of the program `n` with steps `_ = x := why` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
     `Tm`), a step citing a theorem is that theorem's own `….proof.m`, joined by `Eq.trans`. `links` are the steps'
-    elaborated checks and `bad` the errors of the chains that did not elaborate (`Expand.walk`). A theorem with parameters, hypotheses, `⊑` steps or a step citing a theorem with
+    elaborated checks and `bad` the errors of the chains that did not elaborate (`Expand.walk`). A theorem with hypotheses, `⊑` steps or a step citing a theorem with
     no proof constant (or at arguments) is not certified: `some` of what is missing, to be listed. -/
-def certifyCalc (n : Name) (links : List Expand.Chk) (bad : List (Pos × String)) (p : Pos) (t : String) (ps : List Param) (eq : Bool) (noHyps : Bool)
+def certifyCalc (n : Name) (links : List Expand.Chk) (bad : List (Pos × String)) (p : Pos) (t : String) (eq : Bool) (noHyps : Bool)
     (steps : List (Pos × Bool × Expr × Why)) : TermElabM (Option String) := do
   let env ← getEnv
   unless env.contains `Rel.Lang.Tm.den do
@@ -320,7 +320,7 @@ def certifyCalc (n : Name) (links : List Expand.Chk) (bad : List (Pos × String)
     | some c, .thm _ _ _ [] => !env.contains c
     | some _, _ => true
     | none, _ => false
-  let cant := [(!ps.isEmpty, "has parameters"), (!noHyps, "has hypotheses"), (!eq || steps.any (!·.2.1), "has `⊑` steps")]
+  let cant := [(!noHyps, "has hypotheses"), (!eq || steps.any (!·.2.1), "has `⊑` steps")]
   if let some (_, what) := cant.find? (·.1) then return some s!"{t}: the theorem {what}"
   if !lacks.isEmpty then
     return some s!"{t}: no proof constant for {", ".intercalate (lacks.map fun (_, _, _, w) => why w)}"
@@ -369,7 +369,7 @@ def certify (n : Name) (prog : Program) (checks : List Expand.Chk) (thms : List 
       | .«theorem» p t _ _ _ _ _ _ _ (some proof) => pure (p, proof, Name.mkSimple t)
       | .«theorem» p t ps _ _ eq _ hyps steps none =>
         if steps.isEmpty then continue
-        if let some m ← certifyCalc n thms bad p t ps eq hyps.isEmpty steps then unproved := unproved ++ [m]
+        if let some m ← certifyCalc n thms bad p t eq hyps.isEmpty steps then unproved := unproved ++ [m]
         continue
       | _ => continue
     let some c := (checks ++ thms).find? (fun c => c.1 == p)
