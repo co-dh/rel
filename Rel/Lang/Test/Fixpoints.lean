@@ -67,7 +67,7 @@ rel_program muArr where
 
 -- `X` under an operator not monotonic in its argument, or in an antitone place; `ν` with no bound
 #eval errAt "obj B = 0…1\nf : B ⟶ B ≜ νX : ⊤(B,B) ∩ ((𝟙÷∋)E(X)∋)\n" 2
-  "νX: X occurs under Λ at 2:35; Λ is not monotonic in its argument, so the fixed point need not exist"
+  "νX: X occurs under power transpose (÷∋) at 2:35; power transpose (÷∋) is not monotonic in its argument, so the fixed point need not exist"
 #eval errAt "obj B = 0…1\nr : B ⟶ B ≜ {(0,1)}\nf : B ⟶ B ≜ μX : r ∪ X\\r\n" 3
   "μX: X occurs in the left operand of \\ at 3:22 (antitone); X must occur only in monotonic positions"
 -- `X` under two antitone places reads positively to `Pre.polarity`, but `\`'s left operand is read on both sides

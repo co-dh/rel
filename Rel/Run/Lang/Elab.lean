@@ -639,7 +639,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .rdiv q x y a b => return .rdiv (← fp q) (← mo x) (← f (some (.anti "the right operand of /")) y) a b
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
-  | .lam x => return .lam (← f (some (.not "Λ")) x)
+  | .lam x => return .lam (← f (some (.not "power transpose (÷∋)")) x)
   | .prim r xs s t q => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t (← q.mapM (f none))
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
@@ -1415,7 +1415,6 @@ def applied (env : Env) (p : Pos) (o : Op) (as : List (Pre × OTy × OTy)) : M A
   match as with
   | [(q, s, t)] => do
     match o with
-    | .lam => pure (power q s t)
     | .E => pure (.rel (.lam (.comp (.mem s) q)) (.arr s) (.arr t))  -- `E(R) ≜ (∋R)÷∋, i.e. Λ(∋ R)` (`lamDen_symDiv`)
     | _ => throw ⟨p, s!"{o.sym} takes {(Op.table.find? (·.2.1 == o)).map (·.2.2) |>.getD 0} arguments, found 1"⟩
   | as => throw ⟨p, s!"{o.sym}: wrong number of arguments, found {as.length}"⟩
@@ -1438,7 +1437,6 @@ def appliedL (I : OTy) (p : Pos) (o : Op) (as : List Arg) : M Arg := do
   if let some x ← o.row p then return ← appliedRowL I p x as
   let fs ← as.mapM (famOf I p)
   let r ← match o, fs with
-    | .lam, [R] => pure (lLam I (some (.top p I R.2.1 none)) R)
     | .E, [R] => do let b ← fresh; pure (lLam I none (← lComp I p (liftConst I p (.mem b) (.arr b) b) R))
     | o, _ => notLiftable p s!"{o.sym}( )"
   pure (.fam r.1 I r.2.1 r.2.2)
@@ -2276,7 +2274,7 @@ def convTm {A B : Obj} (δ : Dem) (ds : List Bool) (t : Tm A B) : Except String 
   | .top _ => throw "⊤"
   | .outl => throw "π₁"
   | .outr => throw "π₂"
-  | .lam _ => throw "Λ( )"
+  | .lam _ => throw "power transpose (÷∋)"
   | .mem => throw "∋"
   | .inl => pure (.conv .inl)
   | .inr => pure (.conv .inr)

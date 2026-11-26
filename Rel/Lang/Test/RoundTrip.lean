@@ -39,7 +39,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 #eval trips ["R S", "R°", "R ∩ S", "R ∪ S", "R − S", "∼R", "R ⇒ S", "𝟘", "⊤", "𝟙", "⊤(X, X)", "𝟙(X)", "dom(R)",
   "ran(R)", "R \\ S", "R / S", "frac(R, S)", "⟨R, S⟩", "π₁", "π₂", "R × S", "[R, S]", "inl", "inr", "R + S",
-  "Λ(R)", "∋", "∈", "E(R)", "τ", "nil", "α", "cons°", "⦇R⦈", "F(R)", "est(R)", "front(R)",
+  "(𝟙÷∋)E(R)", "∋", "∈", "E(R)", "τ", "nil", "α", "cons°", "⦇R⦈", "F(R)", "est(R)", "front(R)",
   "filter(p)", "takewhile(p)", "length", "sum", "head", "tail", "suffix", "succ", "plus", "≤", "<",
   "{(A, B), (B, A)}", "R ∪ S R", "R S ∪ R", "R ∩ S ∪ R", "R ∪ S ∩ R", "R ∪ (S R)", "R (S p)", "∼(R S)°",
   "(∼R)°", "∼R S", "{((A, B), A), ((B, A), B)}", "{(A, (B, (A, B)))}"]
@@ -84,6 +84,13 @@ example : True := trivial
   match ← readIn (preludeScope) "obj B = 0…1\nf(S) ≜ b ∪ S where a ≜ π₁, b ≜ a π₂ S\n" with
   | .ok p => unless p.filterMap reading == [("f", "(((π₁ π₂) S) ∪ S)")] do throwError "{p.filterMap reading}"
   | .error e => throwError "{e}"
+
+
+-- The former builtin application is rejected while reading the program.
+#eval do
+  match ← readIn preludeScope ("print " ++ "Λ" ++ "(𝟙)") with
+  | .error e => unless (toString e.msg).startsWith "unknown operator 'Λ'" do throwError "{e}"
+  | .ok _ => throwError "the former power-transpose operator parsed"
 
 
 end Rel.Lang.Test

@@ -99,7 +99,7 @@ inductive OExp
 inductive Op
   | id | zero | top | outl | outr | inl | inr | mem | leq | lt | succ | arith (k : UInt8)
   | alpha | prim (s : String)
-  | lam | E | map
+  | E | map
   /-- `hylo(c, S)`: an unfold by `c : A ⟶ G(A)` then a fold by `S : G(B) ⟶ B`, `μX : c G(X) S`; `fold` is a
       name programs define (Party), so the builtin is `hylo`. -/
   | hylo
@@ -475,7 +475,7 @@ def Op.table : List (String × Op × Nat) :=
    ("min", .arith Rel.Kernel.Ew.lesser, 0),
    -- q's `%` by its word and its glyph; `Op.sym` prints the first
    ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("α", .alpha, 0),
-   ("Λ", .lam, 1), ("E", .E, 1),
+   ("E", .E, 1),
    ("F", .map, 1),
    ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++
