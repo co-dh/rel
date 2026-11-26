@@ -1691,6 +1691,16 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   `.arg (.prim r) R` 的 def，`Tm.dom_den/ran_den/nil_den` 给其意义；`dom` `ran` 互为 `conv`（`Prim.den_conv` 以
   `Sem.one_corefl` 处理）；`Tm.kids` 的 `dom` 分支经 `Tm.idAt`；EmitC 的 `rowB` 按 `GenK.dom/ran/nil` 派发。
 
+### P9 程序与证明一体（owner 2026-11-25：没有证明就写不出程序；额度重置 2026-11-27 17:00 后开始）
+
+- ⬜ 9.1 设计 note `doc/rel-proof-program.zh.typ`：`rel_program` 在没有证明时拒绝 elaborate。两层：(a) 运行 ⊨ 语义，
+  `compile : (t : Tm A B) → η.Sound ρ → {r : Rel A B // rep r = ⟦t⟧ρ}`（`rel-architecture` §0「规格写在类型里」，
+  今天仍是 `Tm.gen` + 单独的 `Tm.gen_sound`，前提 `Tm.GenHyp`）；(b) `check A = B` 带 `by` 证明，目标
+  `⟦c.tᵢ⟧ρ = ⟦c.tⱼ⟧ρ` 由 kernel 检查，无证明或证明不过即报错；具体输入上的比较降为测试。先给 owner 看，再实现。
+- ⬜ 9.2 按 9.1 实现 (a)：`compile` 取代 `Tm.gen`/`Tm.gen_sound`，`GenHyp` 在 elaboration 时证掉。
+- ⬜ 9.3 按 9.1 实现 (b)：`check … by …`；`Rel/Programs/Prefix.lean` 的 check 由 `Tm.prefixFold_prefixDef` 证掉，
+  `Rel/Lang/PrefixCata.lean` 里手写的 `prefixCata_check` 删去；其余程序的 check 逐个补证明或改为测试。
+
 ## 3. 各 phase 的并行与串行
 
 | Phase | 步数 | 并行的 worktree（不共用 section）      | 串行                                        |
