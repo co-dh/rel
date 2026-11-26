@@ -45,6 +45,19 @@ rel_program prefixTheorem where
 
 #check prefixTheorem.proof.selfEq
 
+-- A `calc` theorem is certified step by step: `≜ y` is `rfl`, `selfEq` is the proof constant of a theorem above.
+open Rel.Programs.prelude in
+rel_program prefixCalc where
+    obj N = 0…9
+    x : 1 ⟶ [N] ≜ {(∗,3 1 2)}
+    y : 1 ⟶ [N] ≜ x
+    theorem selfEq : x = x by denEqRefl
+    theorem viaY : y = x := calc
+      _ = x := ≜ y
+      _ = x := selfEq
+
+#check prefixCalc.proof.viaY
+
 -- Changing the claimed relation keeps the types but invalidates the proof.
 /-- error: Type mismatch -/
 #guard_msgs (substring := true) in
