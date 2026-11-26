@@ -1715,7 +1715,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   freyd 与 rel 互不依赖。原状：`freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，rel 的 `lake build`
   对一条错的 `theorem zeroEntire` 照样绿，下游坏了 rel 看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 至少从 11-23
   红到 9.4 才发现，并挡住 freyd 的 index 刷新与 note gate）。relaop 不再修。
-- ⬜ 9.8 语言去掉 `Λ`，改写成对 `∋` 的对称除法 `Λ(R) = R ÷ ∋`（owner 2026-11-26：后者对 string diagram 友好）。
+- ⬜ 9.8 语言去掉 `Λ`，写成复合 `Λ(R) = (𝟙 ÷ ∋)E(R)`（owner 2026-11-26：`𝟙 ÷ ∋` 是单元素映射 τ，一个 bead；`E` 是 functor，一根
+  wire；两者对 string diagram 友好）。路径：`a  (𝟙÷∋)  {a}  E(R)  {b : a R b}`。9.8a（Mss）已派 sonnet。
   一个点：`a  (R ÷ ∋)  s` 当且仅当 `∀b. a R b ⟺ s ∋ b`，即 `s = {b : a R b}`——用 rel 自己的 `÷`
   （`Pre.symDiv`：`R/S ∩ (S/R)°`）取 `S = ∋` 正好是它。要做：`Tm` 与语法删 `Λ` 构造子；`R ÷ ∋` 由 plan 识别后仍落到
   现在 `Λ` 用的 kernel（优化，由定理绑到这个 pattern）；`absorption`、`Eunion`、`estMap` 等含 `Λ` 的律改述成 `÷ ∋`；
