@@ -126,7 +126,7 @@ A `cat` with a one-element array (`⟨π₁,π₂τ⟩cat`, `(τ×𝟙)cat`) is 
 
 Order 1 → 6; stage 5's program edits need stages 3 and 4. Gate after each, then the scratch timing on the ops the
 stage touched:
-`env CAP_MEM_MB=13000 /home/dh/repo/freyd/scripts/cap lake -d /home/dh/repo/freyd/leetq build LeetQ LeetQAop`.
+`env CAP_MEM_MB=13000 /home/dh/.local/bin/cap lake -d /home/dh/repo/freyd/leetq build LeetQ LeetQAop`.
 
 ### Stage 4: scan
 

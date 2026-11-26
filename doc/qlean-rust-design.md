@@ -403,7 +403,7 @@ Per task, in this order; a red gate stops the task and is reported, never worked
 | rel          | both exes exit 0, `nm -u` no `lean_`, `cmp` of `out/key`, `out/val` with the base is 0   |
 | benchmark    | min of 3 Rust medians / min of 3 C medians <= the task's threshold                       |
 
-Commands (`W` = the task's worktree, `T` = `/data/tmp/qrs/<task>`, `CAP` = `/home/dh/repo/freyd/scripts/cap`):
+Commands (`W` = the task's worktree, `T` = `/data/tmp/qrs/<task>`, `CAP` = `/home/dh/.local/bin/cap`):
 
 ```
 crate         env CAP_MEM_MB=8000 CAP sh W/rust/build.sh > T/cargo.log 2>&1

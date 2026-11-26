@@ -75,7 +75,7 @@
   每次 `LR` 运行之后：`LR index`，然后查询重复 namespace
   `select name from decl_info where name like 'Rel.Rel.Rel.%' or name like 'Rel.LeetQ.%' or name like 'Rel.QLean.%'`
   必须什么也不返回。
-- `B <targets>` = `CAP_MEM_MB=20000 /home/dh/repo/freyd/scripts/cap lake build <targets>`，输出写到
+- `B <targets>` = `CAP_MEM_MB=20000 /home/dh/.local/bin/cap lake build <targets>`，输出写到
   `/data/tmp/<step>.log`，读它的末尾。worktree 只 build 它编辑过的 module。
 - Phase gate（phase 合并之前在 main 上运行一次）：`make check`（build、compile-diff、crate-test、syms、
   native、ldd、index-complete、axioms、noreduce、panic、externs），然后

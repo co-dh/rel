@@ -98,12 +98,12 @@ Rel is a programming language of its own, not an implementation of k or q:
   repository was split to avoid; extend the one that exists.
 - **DRY**: one authoritative definition per fact; a stronger theorem with the weaker by specialisation.
 - **Add no new dependency on `~/repo/freyd`** — rel is to stand alone (a goal, not yet reached: freyd's `relaop/`
-  still proves some prelude laws, and builds run freyd's `scripts/cap`), so a law, a proof, a script or a tool rel
-  needs lives in rel, because each new reference to freyd is one more thing to undo before rel can leave it.
+  still proves some prelude laws), so a law, a proof, a script or a tool rel needs lives in rel, because each new
+  reference to freyd is one more thing to undo before rel can leave it.
 - **Break a task into small pieces and give each piece to a sonnet agent** — the main thread does the analysis and
   writes each piece with its anchors and values decided, because a small decided piece is what sonnet finishes
   first time, while one large task on a stronger model costs more and stalls on the open parts.
-- Build under the memory cap: `CAP_MEM_MB=20000 /home/dh/repo/freyd/scripts/cap lake build RelCore RelKernel RelRun Rel`.
+- Build under the memory cap: `CAP_MEM_MB=20000 /home/dh/.local/bin/cap lake build RelCore RelKernel RelRun Rel`.
   Name the targets; a worktree builds only the modules it edited. Temporary files go under `/data/tmp`.
 
 ## Gates

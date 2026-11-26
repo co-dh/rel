@@ -37,7 +37,7 @@ Setup:
 - take / eq / lt 的 coc 路径：`structural::gather_enc`（`qlean_structural_gather_foR` 的内部函数）和 `codec::mask_cmp`。
   rel 现在的 `gather` 走 `qlean_k_gather`（先把整列 decode 再取下标），表里 "gather 1%" 就是这条路径；`Coc::get` 已不存在。
 - CPU AMD Ryzen 9 9900X，`taskset -c 3`，`QLEAN_THREADS=1`，q 不带 `-s`：全部单线程。每个 cell 一个进程，套在
-  `CAP_MEM_MB=20000 freyd/scripts/cap` 里（它以 99 Hz 采样 perf，开销 <1%）。并发 session 让 load 在 5–10 之间；
+  `CAP_MEM_MB=20000 cap` 里（它以 99 Hz 采样 perf，开销 <1%）。并发 session 让 load 在 5–10 之间；
   `run.sh` 在 1 分钟 load ≥ 6 时等待，但 1M 的 asc 仍有噪声（两次运行 px asc 21.7 / 58.1 ms）。
 - 计时：relk/FastLanes 先 warm-up 一次，再跑 3 次取 median。q 先用 `\ts:k` 把 k 加倍到一个 batch ≥ 50 ms，再跑 3 个
   batch，取 median 除以 k（note.md §1 用的是 minimum；这里用 median，和 relk 一致）。

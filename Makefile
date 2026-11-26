@@ -9,7 +9,7 @@ SHELL        := /bin/bash
 export LC_ALL := C
 export CARGO_TARGET_DIR ?= /data/tmp/relk/target/$(notdir $(CURDIR))
 
-CAP     := /home/dh/repo/freyd/scripts/cap
+CAP     := /home/dh/.local/bin/cap
 LR      := /home/dh/repo/lean-refactor/scripts/lean-refactor
 MEM     := 20000
 LAKE    := lake -d $(CURDIR)

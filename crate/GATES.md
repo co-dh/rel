@@ -2,7 +2,7 @@
 
 Moved from qlean `rust/GATES.md` (the parts about the crate that now lives in `crate/`); paths rewritten to this repo.
 This repo's own gates are the `Makefile` targets (`make check`); `make syms` is `sh crate/build.sh syms` below.
-`CAP` = `/home/dh/repo/freyd/scripts/cap`, `T` = a scratch directory under `/data/tmp`,
+`CAP` = `/home/dh/.local/bin/cap`, `T` = a scratch directory under `/data/tmp`,
 `CARGO_TARGET_DIR` defaults to `/data/tmp/relk/target/<checkout name>` in `crate/build.sh`. Never piped into `tail`,
 never `|| true`.
 

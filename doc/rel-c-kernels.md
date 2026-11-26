@@ -111,7 +111,7 @@ this host has AVX-512, so those are the AVX-512 forms, `__m512`/`__m256` types).
 ```
 cd /home/dh/repo/freyd/leetq
 Q=/home/dh/repo/qlean/.lake/build/lib
-env CAP_MEM_MB=16000 /home/dh/repo/freyd/scripts/cap lake env lean --load-dynlib=$Q/libqleankernel.so \
+env CAP_MEM_MB=16000 /home/dh/.local/bin/cap lake env lean --load-dynlib=$Q/libqleankernel.so \
   --load-dynlib=$Q/libqlean_QLean.so --run /data/tmp/relc-audit/Reach.lean > /data/tmp/relc-audit/out.tsv
-env CAP_MEM_MB=16000 /home/dh/repo/freyd/scripts/cap python3 -I /data/tmp/relc-audit/graph.py
+env CAP_MEM_MB=16000 /home/dh/.local/bin/cap python3 -I /data/tmp/relc-audit/graph.py
 ```
