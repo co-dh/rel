@@ -475,8 +475,8 @@ def Op.table : List (String × Op × Nat) :=
    ("min", .arith Rel.Kernel.Ew.lesser, 0),
    -- q's `%` by its word and its glyph; `Op.sym` prints the first
    ("divide", .arith Rel.Kernel.Ew.divide, 0), ("%", .arith Rel.Kernel.Ew.divide, 0), ("α", .alpha, 0),
-   -- `^(R) ≜ (𝟙÷∋)E(R)` (Elab.singletonImage); `E(R) ≜ (∋R)÷∋`.
-   ("^", .lam, 1), ("E", .E, 1),
+   -- `Λ(R) ≜ (𝟙÷∋)E(R)` (Elab.singletonImage); `E(R) ≜ (∋R)÷∋`.
+   ("Λ", .lam, 1), ("E", .E, 1),
    ("F", .map, 1),
    ("hylo", .hylo, 2),
    ("at", .index 0, 0)] ++

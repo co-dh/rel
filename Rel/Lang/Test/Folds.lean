@@ -11,7 +11,7 @@ rel_program foldLaw where
     obj X = {A,B,C}
     obj K = 0…2
     obj L = 5…6
-    ℓ : 1 ⟶ [L] ≜ ^(⊤(1,L))
+    ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
     p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
     R₀ : X ⟶ X ≜ {(A,B)}
     R₁ : X ⟶ X ≜ {(A,B),(B,C)}
@@ -41,7 +41,7 @@ rel_program foldClosed where
     obj X = {A,B,C}
     obj K = 0…2
     obj L = 5…6
-    ℓ : 1 ⟶ [L] ≜ ^(⊤(1,L))
+    ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
     G : X ⟶ X ≜ {(A,B),(C,C)}
     p(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ (𝟙×G) ∪ (π₁ (𝟙×(∼R ∩ G))) ∪ (π₁ (𝟙×dom(R))) ∪ (π₁⟨π₁,π₁⟩)]⦈)
     R₀ : X ⟶ X ≜ {(A,B)}
@@ -109,22 +109,22 @@ rel_program estConv where
     c₀ : [E] ⟶ N ≜ F(rating)sum
     R₀ : [E] ⟶ [E] ≜ c₀ ≤ c₀°
     R₀c : [E] ⟶ [E] ≜ c₀ ≥ c₀°
-    check ^(Hn)est(≤°) = ^(Hn)est(≥)
-    check ^(Hn)front(≤°) = ^(Hn)front(≥)
-    check ^(H)est(R(rating)°) = ^(H)est(Rc(rating))
-    check ^(H)front(R(rating)°) = ^(H)front(Rc(rating))
-    check ^(H)est(R₀°) = ^(H)est(R₀c)
-    check ^(H)front(R₀°) = ^(H)front(R₀c)
-    check ^(H)thinL(R₀°) = ^(H)thinL(R₀c)
-    check ^(H)est(R₀) = ^(H)est(R(rating))
-    print ^(Hn)est(≤°)
-    print ^(H)est(R(rating)°)
-    print ^(H)est(R(rating))
+    check Λ(Hn)est(≤°) = Λ(Hn)est(≥)
+    check Λ(Hn)front(≤°) = Λ(Hn)front(≥)
+    check Λ(H)est(R(rating)°) = Λ(H)est(Rc(rating))
+    check Λ(H)front(R(rating)°) = Λ(H)front(Rc(rating))
+    check Λ(H)est(R₀°) = Λ(H)est(R₀c)
+    check Λ(H)front(R₀°) = Λ(H)front(R₀c)
+    check Λ(H)thinL(R₀°) = Λ(H)thinL(R₀c)
+    check Λ(H)est(R₀) = Λ(H)est(R(rating))
+    print Λ(Hn)est(≤°)
+    print Λ(H)est(R(rating)°)
+    print Λ(H)est(R(rating))
 
 -- `R°` picks the greatest cost (`a b`, 10), `R` the least (`a c`, 5)
 #guard estConv.ok && estConv.prints == [
-  "^(Hn) est(≤°) = {(1, 5), (2, 9)}", "^(H) est(R(rating)°) = {(a, a b), (b, a b)}",
-  "^(H) est(R(rating)) = {(a, a c), (b, b c)}"]
+  "Λ(Hn) est(≤°) = {(1, 5), (2, 9)}", "Λ(H) est(R(rating)°) = {(a, a b), (b, a b)}",
+  "Λ(H) est(R(rating)) = {(a, a c), (b, b c)}"]
 
 
 end Rel.Lang.Test

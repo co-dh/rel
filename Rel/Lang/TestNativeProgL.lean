@@ -90,10 +90,10 @@ rel_program natDetab where
     ye : 1 ⟶ [Ch] ≜ y entab
     De : [Ch] ⟶ [Ch] ≜ D entab
     Ded : [Ch] ⟶ [Ch] ≜ D entab detab
-    pLe : 1 ⟶ [Ch] ≜ p ^(H)est(R)
-    qLe : 1 ⟶ [Ch] ≜ q ^(H)est(R)
-    yLe : 1 ⟶ [Ch] ≜ y ^(H)est(R)
-    DLe : [Ch] ⟶ [Ch] ≜ D ^(H)est(R)
+    pLe : 1 ⟶ [Ch] ≜ p Λ(H)est(R)
+    qLe : 1 ⟶ [Ch] ≜ q Λ(H)est(R)
+    yLe : 1 ⟶ [Ch] ≜ y Λ(H)est(R)
+    DLe : [Ch] ⟶ [Ch] ≜ D Λ(H)est(R)
 
 #eval show Lean.Meta.MetaM Unit from do
   writesAgree "xd" (← planOfIn ``natDetab "xd") natDetab.xd

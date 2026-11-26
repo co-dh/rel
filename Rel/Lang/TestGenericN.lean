@@ -14,7 +14,7 @@ rel_program genericG where
     sm(x : ν ⟶ ν) : 1 ⟶ ν ≜ summarize(F(x) sum, x)
     len2(x : ν ⟶ β) : 1 ⟶ ν ≜ agg((dom(x) ⊤)°, length)
     cnt(x : ν ⟶ β) : 1 ⟶ ν ≜ count(x)
-    rk(p : ν ⟶ ν) : ν ⟶ ν ≜ p ^(> p) length
+    rk(p : ν ⟶ ν) : ν ⟶ ν ≜ p Λ(> p) length
 
 open Rel.Programs.prelude Rel.Programs.frame genericG in
 rel_program genericNT where

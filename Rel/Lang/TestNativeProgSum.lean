@@ -13,7 +13,7 @@ open Tab Rel.Lang Rel.Lang.Plan Rel.Kernel Rel.Lang.TestNative
 open Rel.Programs.prelude in
 rel_program natSum where
     obj N = 0…3
-    r : 1 ⟶ [N] ≜ ^(⊤{(0,0),(1,1)})
+    r : 1 ⟶ [N] ≜ Λ(⊤{(0,0),(1,1)})
     c : 1 ⟶ [N] ≜ ⟨r,r⟩ cat tail
     s : N ⟶ [N]+N ≜ (dom({(0,0),(1,1)}) ⊤c inl) ∪ ({(2,2)} inr)
     mx : N ⟶ N+N ≜ ({(0,0),(1,1)} inl) ∪ ({(2,2)} inr)

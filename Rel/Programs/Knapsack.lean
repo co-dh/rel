@@ -15,7 +15,7 @@ rel_program knapsack where
     /- The items (value, weight); a is the note's run (08-thinning.typ:750), d has two best packings. Λ lists each
        instance's items ascending, so a holds them in the reverse of the note's order. -/
 
-    X : K ⟶ [N×N] ≜ ^({(a,(6,5)),(a,(5,4)),(a,(4,6)),(a,(3,3)),(b,(7,4)),(b,(2,2)),(b,(9,8)),(c,(1,9)),(d,(5,5)),(d,(5,6)),(d,(5,4))})
+    X : K ⟶ [N×N] ≜ Λ({(a,(6,5)),(a,(5,4)),(a,(4,6)),(a,(3,3)),(b,(7,4)),(b,(2,2)),(b,(9,8)),(c,(1,9)),(d,(5,5)),(d,(5,6)),(d,(5,4))})
     w : N ⟶ N ≜ {(10,10)}                         -- the capacity
 
     value : [α×β] ⟶ α ≜ F(π₁)sum                  -- value ≜ sum list(val): the total value of a packing
@@ -30,13 +30,13 @@ rel_program knapsack where
 
     /- The specification, knap_laws' right side: Λ(subseq within(w)) est(R). -/
 
-    s : K ⟶ [N×N] ≜ ^(X subseq within(w))est(R)
+    s : K ⟶ [N×N] ≜ Λ(X subseq within(w))est(R)
 
     /- The specification as a fold, knap_spec: subseq within(w) = ⦇[nil, snoc within(w) ∪ π₁]⦈; the base
        case is X nil, the item case its step S. -/
 
     S : [α×N]×(α×N) ⟶ [α×N] ≜ snoc within(w) ∪ π₁   -- at each item, keep it if the packing still fits, or drop it
-    p : K ⟶ [N×N] ≜ ^(X⦇[X nil, S]⦈)est(R)     -- knap_laws_step2's left side: Λ⦇S⦈ est(R)
+    p : K ⟶ [N×N] ≜ Λ(X⦇[X nil, S]⦈)est(R)     -- knap_laws_step2's left side: Λ⦇S⦈ est(R)
 
     /- The derived program, knap_fold (08-thinning.typ:727):
 

@@ -93,7 +93,7 @@ def relSym : Parser := { fn := relSymFn, info := { collectTokens := (symToks ++ 
 
 /-- `p` read with the tokens the program's text has whatever namespaces are open: a token of more than one
     character that starts with a character of a name (`Parse.isSym`, letter-like) is dropped, so an opened
-    notation's `∋(` or `P(` does not swallow the name and its parenthesis. The grammar's own tokens are
+    notation's `Λ(`, `∋(` or `P(` does not swallow the name `Λ` and its parenthesis. The grammar's own tokens are
     one character each; a word (`end`, `def`) or one starting in ASCII other than a letter is a Lean keyword: a word
     is a Rel name (`kwName`), and a statement it starts that does not parse ends the program (`kwBack`). -/
 def relTokenTable (tt : TokenTable) : TokenTable :=
@@ -476,8 +476,6 @@ partial def atomOf (s : Syntax) (p : Lang.Pos) (n : String) (app objs pair : Opt
     | none, some a => do pure [.op p o [] (← args a)]
     | none, none => failAt s "expected '('"
   | none, none =>
-    if n == "Λ" && (app.isSome || objs.isSome) then
-      throw ⟨p, "unknown operator 'Λ'; write ^(…)"⟩
     if (← get).thms.contains n || ((← get).ext n).any (·.thm) then throw ⟨p, s!"`{n}` is a theorem, not a relation"⟩
     -- a name no scope gives, applied: the elaborator names it unknown
     if !(← Parse.isInfix n) then match app, objs with

@@ -28,8 +28,8 @@ rel_program jobshop where
     /- The solver: place the jobs in declaration order, each at its earliest start that conflicts with no placed one. -/
 
     cand : [Job×N]×Job ⟶ N ≜ (π₂⟨𝟙,⊤(Job,N)⟩ − (π₁ ∋ bad))dom(fin)π₂   -- the starts of the job that conflict with no placed one
-    step : [Job×N]×Job ⟶ [Job×N] ≜ ⟨π₁,⟨π₂,^(cand)est(≤)⟩⟩snoc    -- place the job at its earliest such start
-    jobs : 1 ⟶ [Job] ≜ ^(⊤(1,Job))                              -- the jobs in declaration order
+    step : [Job×N]×Job ⟶ [Job×N] ≜ ⟨π₁,⟨π₂,Λ(cand)est(≤)⟩⟩snoc    -- place the job at its earliest such start
+    jobs : 1 ⟶ [Job] ≜ Λ(⊤(1,Job))                              -- the jobs in declaration order
     sched : 1 ⟶ [Job×N] ≜ ⟨nil,jobs⟩loop(step)
     s : Job ⟶ N ≜ π₁° ran(sched ∋) π₂
 

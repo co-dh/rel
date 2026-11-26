@@ -639,7 +639,7 @@ def Pre.traverse {m : Type → Type} [Monad m] (fp : Pos → m Pos) (f : Option 
   | .rdiv q x y a b => return .rdiv (← fp q) (← mo x) (← f (some (.anti "the right operand of /")) y) a b
   | .pair x y => return .pair (← mo x) (← mo y)
   | .prod x y => return .prod (← mo x) (← mo y)
-  | .lam x => return .lam (← f (some (.not "power transpose (÷∋)")) x)
+  | .lam x => return .lam (← f (some (.not "Λ")) x)
   | .prim r xs s t q => return .prim r (← xs.mapM (f (some (if r.mono then .mono else .not r.sym)))) s t (← q.mapM (f none))
   | .succ q n => return .succ (← fp q) n
   | .arith q k n => return .arith (← fp q) k n
@@ -1409,7 +1409,7 @@ def powerL (I : OTy) (p : Pos) (q : Pre) (s t : OTy) : Arg :=
 def existsImage (q : Pre) (s : OTy) : Pre :=
   .lam (.comp (.mem s) q)
 
-/-- The primitive `^(R) ≜ (𝟙÷∋)E(R)`. Absorb the singleton before lifting a family, since the intermediate
+/-- The primitive `Λ(R) ≜ (𝟙÷∋)E(R)`. Absorb the singleton before lifting a family, since the intermediate
     array object has no universe. -/
 def singletonImage (p : Pos) : Arg → Arg
   | .rel q s t => .rel (Pre.compFuse (.lam (.id s)) (existsImage q s)) s (.arr t)
@@ -2279,7 +2279,7 @@ def convTm {A B : Obj} (δ : Dem) (ds : List Bool) (t : Tm A B) : Except String 
   | .top _ => throw "⊤"
   | .outl => throw "π₁"
   | .outr => throw "π₂"
-  | .lam _ => throw "power transpose (÷∋)"
+  | .lam _ => throw "Λ( )"
   | .mem => throw "∋"
   | .inl => pure (.conv .inl)
   | .inr => pure (.conv .inr)

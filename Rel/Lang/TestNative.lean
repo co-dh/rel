@@ -48,13 +48,13 @@ rel_program native1a where
     fc : X ⟶ N ≜ f(x)
     bo : X ⟶ X ≜ {(B,A),(C,A)}
     rt : X ⟶ N ≜ {(A,3),(B,7),(C,2)}
-    lm : X ⟶ [X] ≜ dom(x) ^(bo°)
+    lm : X ⟶ [X] ≜ dom(x) Λ(bo°)
     nl : X ⟶ [N] ≜ dom(x) nil
     lu : X ⟶ [X] ≜ lm ∪ (dom(x) nil)
     hd : X ⟶ X ≜ lm at(0)
     ee : X ⟶ [N] ≜ lm E(x)
     fm : X ⟶ [N] ≜ lm F(rt)
-    hy : X ⟶ N ≜ dom(x) hylo(⟨𝟙, ^(bo°)⟩, π₁ rt)
+    hy : X ⟶ N ≜ dom(x) hylo(⟨𝟙, Λ(bo°)⟩, π₁ rt)
     ld : N ⟶ N ≜ x \ x
     a1 : X ⟶ N ≜ {(A,1)}
     a2 : X ⟶ N ≜ {(A,2)}
@@ -69,7 +69,7 @@ rel_program native1a where
     es : N ⟶ N ≜ xs est(≤)
     th : N ⟶ [N] ≜ xs front(≤)
     obj L = 5…6
-    ℓ : 1 ⟶ [L] ≜ ^(⊤(1,L))
+    ℓ : 1 ⟶ [L] ≜ Λ(⊤(1,L))
     pf(R : X ⟶ X) : X×X ⟶ X×X ≜ ran(ℓ⦇[⟨𝟙,𝟙⟩, π₁ ∪ (π₁ (𝟙×R))]⦈)
     q1 : X ⟶ X ≜ {(A,B),(B,C)}
     fa : N ⟶ X×X ≜ {(0,0)}⊤(N,X)⟨𝟙,bo⟩ ∪ ({(1,1)}⊤(N,X)⟨𝟙,q1⟩)

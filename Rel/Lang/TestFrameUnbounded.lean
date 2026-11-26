@@ -33,8 +33,8 @@ rel_program frameUnboundedT where
     check count(x) = {(∗,8)}
     -- the integer quotient `sum div length` (`summarize` composes with `div`; not a mean)
     check summarize(F(x π₂) ⟨sum, length⟩div, x) = {(∗,3)}
-    check summarize(F(x π₂) ^(∋) last, x) = {(∗,7)}
-    check summarize(F(x π₂) ^(∋) head, x) = {(∗,1)}
+    check summarize(F(x π₂) Λ(∋) last, x) = {(∗,7)}
+    check summarize(F(x π₂) Λ(∋) head, x) = {(∗,1)}
     check summarize(F(x π₁), x) = {(∗,B A B C A C B A)}
     check ⟨x, z⟩ = {(0,((B,5),1)),(1,((A,3),2)),(2,((B,5),3))}
     check hstack(x, z) = 𝟘
@@ -68,7 +68,7 @@ rel_program frameUnboundedT where
     check dropLast({(∗,10)}, x) = 𝟘
     check rolling({(∗,3)}, F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,9),(4,13),(5,10),(6,10),(7,6)}
     check cumAgg(F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
-    check cumAgg(F(x π₂) ^(∋) last, x) = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,7)}
+    check cumAgg(F(x π₂) Λ(∋) last, x) = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,7)}
     check cumSum(x π₂) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
     check sumsBy(x π₁, x π₂) = {(0,5),(1,3),(2,10),(3,1),(4,10),(5,3),(6,11),(7,13)}
     check firstOrNothing(x π₂) [{(∗,40)}, 𝟙] = {(∗,5)}
@@ -88,9 +88,9 @@ rel_program frameUnboundedT where
     check firstOcc(x) = {(0,0),(1,1),(2,3),(3,4),(4,5),(5,6)}
     check distinct(x) = {(0,(B,5)),(1,(A,3)),(2,(C,1)),(3,(A,7)),(4,(C,2)),(5,(B,1))}
     check aggregate(π₁, F(x π₂) sum, x) = {(0,(B,11)),(1,(A,13)),(2,(C,3))}
-    check aggregate(π₁, F(x π₂) ^(∋) last, x) = {(0,(B,5)),(1,(A,7)),(2,(C,2))}
-    check aggregate(π₁, F(x π₂) ^(∋) head, x) = {(0,(B,1)),(1,(A,3)),(2,(C,1))}
-    ag3 : N ⟶ K×(N×(N×N)) ≜ aggregate(π₁, ⟨F(x π₂) sum, ⟨length, F(x π₂) ^(∋) last⟩⟩, x)
+    check aggregate(π₁, F(x π₂) Λ(∋) last, x) = {(0,(B,5)),(1,(A,7)),(2,(C,2))}
+    check aggregate(π₁, F(x π₂) Λ(∋) head, x) = {(0,(B,1)),(1,(A,3)),(2,(C,1))}
+    ag3 : N ⟶ K×(N×(N×N)) ≜ aggregate(π₁, ⟨F(x π₂) sum, ⟨length, F(x π₂) Λ(∋) last⟩⟩, x)
     check ag3 = {(0,(B,(11,(3,5)))),(1,(A,(13,(3,7)))),(2,(C,(3,(2,2))))}
     vc2 : N ⟶ (K×N)×N ≜ aggregate(⟨π₁, π₂⟩, length, x)
     check vc2 = {(0,((B,5),2)),(1,((A,3),2)),(2,((C,1),1)),(3,((A,7),1)),(4,((C,2),1)),

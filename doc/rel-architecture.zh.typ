@@ -184,8 +184,8 @@ compile η t : {r : Rel A B // rep r = ⟦t⟧ρ}       -- 方案 A：规格在�
   [division allegory], [`ldiv` `rdiv`；symmetric division 不是构造子，是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`，含义 `Tm.symDiv_den`），表层写作中缀 `R ÷ S`（`Bin.table`，与 `/` 同一优先级、左结合）],
   [Boolean（有补）], [`diff`：需要补，不属于一般 allegory],
   [product / sum], [`outl` `outr` `pair` `inl` `inr`；`prod` → 定义；`inl` `inr` 由行升为构造子，行 `inl°` `inr°` 删除；`[R,S]` 已是定义 `Pre.junc`（`inl° ≫ R ∪ inr° ≫ S`）],
-  [power], [`lam`（`R÷∋` 的内部构造子）与 `mem`（`∋`）；表层原语 `^(R)` 表示幂转置，等于 `(𝟙÷∋)E(R)`，`(𝟙÷∋)` 将一个值映为单元素数组；`E` 保留为原语，定义为 `E(R) ≜ (∋R)÷∋`；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
-  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）在有序 atom 上是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），在其它 object 上是 `Tm.cmpDef c U`（`Tm.cmpDef_den`；`c` 是 prelude 的 `lt` `le`，`Pre.lt` 的 `df` 字段，已定 9），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是 prelude 定义 `asc ≜ (dom(P) ^(> dom(P)) length)°`（即 `Tm.ascDef`，含义 `Tm.ascDef_den`），行 `asc`（`ascRow`，`prelude := prelude.asc`）是它的 fused 行],
+  [power], [`lam`（`R÷∋` 的内部构造子）与 `mem`（`∋`）；表层原语 `Λ(R)` 表示幂转置，等于 `(𝟙÷∋)E(R)`，`(𝟙÷∋)` 将一个值映为单元素数组；`E` 保留为原语，定义为 `E(R) ≜ (∋R)÷∋`；`nil` `est` `front` 是定义（`Tm.nil` `Tm.est` `Tm.front`）+ fused 行（`nilRow` `estRow` `frontRow`）；`at` 是 native 二元行 `[B]×ℕ ⟶ B`（`indexRow`；写作 `at(k)` 的是 `⟨𝟙, ⊤{k}⟩ at`），不再有构造子 `atPos`],
+  [数据], [`val R` `uni U`；`succ` `arith` 等 atom 运算是行（`succRow` `arithRow`；`mix` `$`、浮点运算、`at` 同）；`<` `≤`（带 universe `U`）在有序 atom 上是行 `cmpRelRow`（`dem := bounds`，`GenK.cmpRel`），在其它 object 上是 `Tm.cmpDef c U`（`Tm.cmpDef_den`；`c` 是 prelude 的 `lt` `le`，`Pre.lt` 的 `df` 字段，已定 9），测试行 `le` `lt`（`cmpRow`）是它的定义 `Tm.cmpDef` 里的一块（`Tm.cmpDef_lt_den`），也是 prelude 定义 `lt` `le` 的 fused 行：`num` 是有序 atom，`native := floatAtoms`，整数存储的 atom 上由 `Tm.ltDef_den`、`Tm.leDef_den` 绑定，其余 object 上运行文本（已定 8）；`asc(P)` 是 prelude 定义 `asc ≜ (dom(P) Λ(> dom(P)) length)°`（即 `Tm.ascDef`，含义 `Tm.ascDef_den`），行 `asc`（`ascRow`，`prelude := prelude.asc`）是它的 fused 行],
   [递归], [`mu` `nu` `fold`（`⦇e,S⦈`，代数 `[nil, snoc]` 上的 catamorphism：左折叠，步骤读 `(acc, x)`，从下标 0 向上；尽量从左到右读，程序的含义需要时才用从右到左读的 `foldr`（`⦇e,S⦈ʳ`，步骤读 `(x, acc)`，如 `thinL`）；输出数组只用 `snoc` 在末尾追加构造，从不在前面插入） `hylo`（`μX. c ≫ G(X) ≫ S`）；`foldI` → 定义 + fused 行],
   [绑定 / 复用], [`var` `arg` `call`（带逆常量 `cv : Option Name`，`own` `callCv` 已删；闭部分的共享槽是零元 `call`，`share` 已删）],
   [库原语], [`prim r`：`prims` 表的一行（`inits` `tails` `prefix` `concat` `zip` …；`asc` `seen` 是 kernel，行 `asc` 另有 prelude 定义 `asc`（`Tm.ascDef`）），在某个类型上实例化，参数由 `arg` 给出],
@@ -233,14 +233,14 @@ length : [α] ⟶ β ≜ ⦇[{(∗,0)}, π₁ succ]⦈
 ```
 dom(R : α ⟶ β) : α ⟶ α ≜ ⟨𝟙,R⟩π₁
 ran(R : α ⟶ β) : β ⟶ β ≜ dom(R°)
-nil : α ⟶ [β] ≜ ^(𝟘)
-front(Q : β ⟶ β) : [β] ⟶ [β] ≜ ^(∋ − (∋ (Q − Q°)))
+nil : α ⟶ [β] ≜ Λ(𝟘)
+front(Q : β ⟶ β) : [β] ⟶ [β] ≜ Λ(∋ − (∋ (Q − Q°)))
 flat(R : ι ⟶ α×β) : ι×α ⟶ β ≜ ⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂
 foldI(e : ι ⟶ β×β, S : (ι×β)×α ⟶ ι×β) : ι×[α] ⟶ β ≜ (π₁π₁° ∩ (π₂⦇[⊤ ran(⟨𝟙,e π₂⟩), S ∩ (π₁π₁π₁°)]⦈))π₂
 length : [α] ⟶ β ≜ ⦇[{(∗,0)}, π₁ succ]⦈
 sum : [β] ⟶ β ≜ ⦇[{(∗,0)}, plus]⦈
-lt : α×α ⟶ α×α ≜ dom(^(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)
-asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) ^(> dom(P)) length)°
+lt : α×α ⟶ α×α ≜ dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)
+asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°
 ```
 
 已定（B10c-q，按原则决定，无需 owner 输入）：
@@ -466,7 +466,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`R\S` `R/S` 对称除 `R ÷ S`], [不求补：按组比较「R 的 b 的个数」与「其中满足 S 的个数」，即分段 `scan`],
   [值动词 `plus` `minus` `times` `divide`（`%`，只在浮点 atom 上）`div` `mod` `max` `min`（`Tm.arith t`）], [两个操作数各与 `dom U` 复合（`≫`）→ 一次 `scan` 链：`i64` 上是整数 `Op` 加回绕/null 标记（`stepCols`）；浮点 atom 上先 `f32to64` 宽化，再 `fadd` `fsub` `fmul` `fdiv` `fmax` `fmin`，`div` 为 `ffloor(fdiv)`、`mod` 为 `x − y·ffloor(x/y)`（q 的定义），最后 `fto t` 写回 `t` 的规范字（`f32` 舍入、`−0` 写成 `+0`、NaN 写成 null）→ 非 null 的行 `keep` → `≫ U`；无新 kernel],
   [`<` `≤`（行 `cmpRelRow` 给定 `U`：`Tm.lt U`、`Tm.leq U`；定义 `Tm.cmpDef`）], [两侧（`K` 的 `pairs`，或 `dom U` 的 CROSS）→ `scan` 一次比较：`i64` 用有符号 `lt` `le`，浮点 atom 宽化到 `f64` 后用 IEEE 的 `flt` `fle`（`Tab.ordOp`）→ `keep`；非 atom 的 object 上是 `Tm.cmpDef c U`，`c` 是 prelude `lt` `le` 的文本，各步按文本里的 kernel 运行（已定 9）],
-  [`^(R)`、`R÷∋`（`arr` 侧，内部 `lam`）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
+  [`Λ(R)`、`R÷∋`（`arr` 侧，内部 `lam`）], [`asc ≫ seen` 的组号 `g` 与 `first` 给出 `lo`/`hi`],
   [`μ` `ν` `fold` `hylo`], [Lean 中的循环（`fixOn`），每轮调用上面的运算，行数不变即停：整体迭代（`Tab.fixOn`）；线性递归走行 `star`（semi-naive）],
 )
 
@@ -487,8 +487,8 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`∋`（on `X`）], [格界 → EXPAND(`e − s`) → `gather`（key 取格 `X[G]`，val 取 payload 第 `s[G] + u` 个）；
     `n·m + n + m ≥ 2^63` 拒绝],
   [`E(R)`], [`(∋R)÷∋`：`∋` 行 → `≫` 行 → `lam` 行],
-  [`τ` = `^(𝟙)`], [`𝟙` on `X` = `dom ⟨X, X⟩`（`asc → seen → gather`）→ `lam` 行；其中 `X` 与表共 `N` 行，`N ≥ 2^63` 拒绝。`τ ≜ ^(𝟙)` 是 prelude 定义，`Tm.τDef_den`（9fee149）],
-  [`setify` = `^(∋)`], [`∋` 行 → `lam` 行],
+  [`τ` = `Λ(𝟙)`], [`𝟙` on `X` = `dom ⟨X, X⟩`（`asc → seen → gather`）→ `lam` 行；其中 `X` 与表共 `N` 行，`N ≥ 2^63` 拒绝。`τ ≜ Λ(𝟙)` 是 prelude 定义，`Tm.τDef_den`（9fee149）],
+  [`setify` = `Λ(∋)`], [`∋` 行 → `lam` 行],
   [`length`], [格界 → `scan(sub)` 得宽 `e − s`；payload `m ≥ 2^63` 拒绝。是 `fold` 定义（§1、§7「`prims` 行改为
     `fold`」）的融合形式，定理 `⟦length 行⟧ = ⟦fold 定义⟧` 即 `Tm.lengthDef_den`（已证）],
   [`at(k)`], [格界 → `scan` 测 `k < e − s` → where → `gather`（格，及 payload 第 `s + k` 个）；`m + k ≥ 2^63` 拒绝],
@@ -551,8 +551,8 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
   [`snoc°`], [同 `cons°`：格 `[s, e − 1)` 与 payload 第 `e − 1` 个],
   [`cat°`], [格界 → EXPAND(`e − s + 1`)（每格的每个切点）→ `gather` `s` `e` → `scan` 切点 `s[G] + u`；
     两段 `[s, s + u)`、`[s + u, e)` 共享原 payload；`n(m + 1) + n + m + 1 ≥ 2^63` 拒绝],
-  [`inits`（草稿，待审）], [`^(prefix)`：`prefix` 行 → `lam` 行；一个数组的前缀互为真前缀，`lam` 的升序格即按长度递增，`[]` 在前],
-  [`tails`（草稿，待审）], [`^(cat°)F(π₂)`：`cat°` 行 → `lam` 行（格内按切点递增）→ 取格 payload 的第二列，格界不变（无 kernel）；
+  [`inits`（草稿，待审）], [`Λ(prefix)`：`prefix` 行 → `lam` 行；一个数组的前缀互为真前缀，`lam` 的升序格即按长度递增，`[]` 在前],
+  [`tails`（草稿，待审）], [`Λ(cat°)F(π₂)`：`cat°` 行 → `lam` 行（格内按切点递增）→ 取格 payload 的第二列，格界不变（无 kernel）；
     后缀按长度递减，`[]` 在后],
   [`concat`（草稿，待审）], [`⦇nil, cat⦈`：`fold` 行（`Tab.foldRounds`，每轮 `cons°`），步骤为 `cat` 行],
   [`filter(p)`（草稿，待审）], [`⦇nil, dom(π₂p) snoc ∪ (𝟙 − dom(π₂p)) π₁⦈`：`fold` 行，每轮 `≫ dom p`、`⟨,⟩`、`snoc` 行、`−`、`∪`],

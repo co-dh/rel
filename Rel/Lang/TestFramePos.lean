@@ -23,7 +23,7 @@ rel_program framePos where
     check rolling({(∗,3)}, F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,9),(4,13),(5,10),(6,10),(7,6)}
     -- running sum and running max of `v = 5 3 5 1 7 2 1 3`
     check cumAgg(F(x π₂) sum, x) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}
-    check cumAgg(F(x π₂) ^(∋) last, x) = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,7)}
+    check cumAgg(F(x π₂) Λ(∋) last, x) = {(0,5),(1,5),(2,5),(3,5),(4,7),(5,7),(6,7),(7,7)}
     -- the running sum as above, in `v`'s object `N` apart from the positions `P`; per key: B at 0 2 6 is 5 10 11,
     -- A at 1 4 7 is 3 10 13, C at 3 5 is 1 3
     check cumSum(x π₂) = {(0,5),(1,8),(2,13),(3,14),(4,21),(5,23),(6,24),(7,27)}

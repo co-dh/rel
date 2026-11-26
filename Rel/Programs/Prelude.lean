@@ -10,9 +10,9 @@ rel_program prelude where
 
     dom(R : α ⟶ β) : α ⟶ α ≜ ⟨𝟙,R⟩π₁              -- the domain of R as a subset of 𝟙
     ran(R : α ⟶ β) : β ⟶ β ≜ dom(R°)              -- the range of R as a subset of 𝟙
-    nil : α ⟶ [β] ≜ ^(𝟘)                          -- every source to the empty list
-    τ : α ⟶ [α] ≜ ^(𝟙)                            -- each value to its one-element list
-    front(Q : β ⟶ β) : [β] ⟶ [β] ≜ ^(∋ − (∋ (Q − Q°)))   -- the list's elements with no Q-predecessor in it
+    nil : α ⟶ [β] ≜ Λ(𝟘)                          -- every source to the empty list
+    τ : α ⟶ [α] ≜ Λ(𝟙)                            -- each value to its one-element list
+    front(Q : β ⟶ β) : [β] ⟶ [β] ≜ Λ(∋ − (∋ (Q − Q°)))   -- the list's elements with no Q-predecessor in it
     flat(R : ι ⟶ α×β) : ι×α ⟶ β ≜ ⟨π₁R,π₂⟩dom(π₁π₁ ∩ π₂)π₁π₂   -- the family R as one relation of key and source
     foldI(e : ι ⟶ β×β, S : (ι×β)×α ⟶ ι×β) : ι×[α] ⟶ β ≜ (π₁π₁° ∩ (π₂⦇[⊤ ran(⟨𝟙,e π₂⟩), S ∩ (π₁π₁π₁°)]⦈))π₂   -- the fold of a family: one fold per (key, list)
     loop(T : χ×υ ⟶ χ) : χ×[υ] ⟶ χ ≜ foldI(⟨𝟙,𝟙⟩, ⟨π₁π₁, ⟨π₁π₂,π₂⟩T⟩)   -- the left fold of T from the pair's own first component
@@ -23,7 +23,7 @@ rel_program prelude where
     -- the order of any object (O2): `Obj.lt`, the sorted pair `Λ(π₁ ∪ π₂)` starting with `x`; the row `cmpRow` runs
     -- instead at an integer-stored atom (`Tm.ltDef_den`), and as itself at a float atom, where IEEE's `<` is not this.
     -- Above `>`, `≥` and every other use of `<`: a use sees `lt` only where it is already defined (`cmpTest`)
-    lt : α×α ⟶ α×α ≜ dom(^(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)   -- the pairs in order: the sorted pair starts with x, x ≠ y
+    lt : α×α ⟶ α×α ≜ dom(Λ(π₁ ∪ π₂) at(0) ∩ π₁) − dom(π₁ ∩ π₂)   -- the pairs in order: the sorted pair starts with x, x ≠ y
     le : α×α ⟶ α×α ≜ lt ∪ dom(π₁ ∩ π₂)                          -- the pairs in order or equal
 
     ∈ : α ⟶ [α] ≜ ∋°                            -- membership, the converse of ∋
@@ -37,7 +37,7 @@ rel_program prelude where
     cor(S : α ⟶ β) : α×β ⟶ α×β ≜ dom(π₁S ∩ π₂)                  -- the pairs of S, as a coreflexive
     mid(R : α ⟶ α) : α ⟶ α×α ≜ ⟨R°,R⟩                            -- y ↦ (x,z) with x R y and y R z: mid(<) is x<y<z
     est(Q : β ⟶ β) : [β] ⟶ β ≜ ∋ − (⟨∋,∋⟩(𝟙 − cor(Q ∪ 𝟙))π₁)       -- the Q-extreme: an element with no partner outside Q ∪ 𝟙
-    asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) ^(> dom(P)) length)°         -- q's asc: j ↦ the j-th smallest element of dom(P), counted by the elements below it
+    asc(P : β ⟶ β) : ν ⟶ β ≜ (dom(P) Λ(> dom(P)) length)°         -- q's asc: j ↦ the j-th smallest element of dom(P), counted by the elements below it
     iasc(c : β ⟶ α) : β ⟶ β ≜ asc(ran(⟨c,𝟙⟩))π₂                  -- q's iasc: j ↦ the position of c's j-th smallest, ties by position
     unenum(I : α ⟶ β, D : β ⟶ γ) : α ⟶ γ ≜ I D                   -- q's unenumerate: each id of I through the dictionary D (`dictionary D : S ⟶ [C]`)
     rank(D : α ⟶ β) : α ⟶ γ ≜ D asc(ran(D))°                     -- an id to its text's position in text order: iasc(D)°, the order `<` on sym compares
@@ -62,8 +62,8 @@ rel_program prelude where
 
     prefix : [α] ⟶ [α] ≜ cat° π₁                                  -- B&dM p.126 prefix: x ⧺ y ↦ x
     suffix : [α] ⟶ [α] ≜ cat° π₂                                  -- B&dM p.127 suffix, dual to prefix: x ⧺ y ↦ y
-    inits : [α] ⟶ [[α]] ≜ ^(prefix)                                -- the prefixes of a list, shortest first
-    setify : [α] ⟶ [α] ≜ ^(∋)                                       -- the elements of a list as a set: sorted, no repeats
+    inits : [α] ⟶ [[α]] ≜ Λ(prefix)                                -- the prefixes of a list, shortest first
+    setify : [α] ⟶ [α] ≜ Λ(∋)                                       -- the elements of a list as a set: sorted, no repeats
     concat : [[α]] ⟶ [α] ≜ ⦇[nil, cat]⦈                    -- B&dM p.129
     subseq : [α] ⟶ [α] ≜ ⦇[nil, snoc ∪ π₁]⦈                -- B&dM p.123, on snoc lists
     tails : [α] ⟶ [[α]] ≜ ⦇[nil τ, ⟨⟨π₁,π₂head⟩cons,π₂⟩cons]⦈ʳ   -- B&dM p.127 tails = ⦇[wrap nil, extend]⦈
@@ -71,7 +71,7 @@ rel_program prelude where
     takewhile(p : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, dom(π₁p)cons ∪ ((𝟙 − dom(π₁p))nil)]⦈ʳ  -- B&dM p.174 (7.39) ⦇[nil, p outl → cons, nil]⦈
     -- B&dM thinning `⦇[nil, bump(Q)]⦈ʳ`, `h = (x, head ys)`: `x Q b` gives `x :: tail ys`; `b Q x` gives `ys`; neither, or `ys = []`, gives `x :: ys`
     thinL(Q : α ⟶ α) : [α] ⟶ [α] ≜ ⦇[nil, (dom(h cor(Q)) ⟨π₁, π₂ tail⟩cons) ∪ (dom(h ⟨π₂,π₁⟩ cor(Q)) π₂) ∪ ((𝟙 − dom(h cor(Q)) − dom(h ⟨π₂,π₁⟩ cor(Q))) cons)]⦈ʳ where h ≜ ⟨π₁, π₂ at(0)⟩
-    positions(p : α ⟶ α) : [α] ⟶ [ν] ≜ (𝟙 − dom(s (𝟙 − dom(len)))) ^(s len) where s ≜ cat° dom(π₂ at(0) p) π₁, len ≜ length   -- q's where of the mask dom(p): the positions of the passing elements, ascending
+    positions(p : α ⟶ α) : [α] ⟶ [ν] ≜ (𝟙 − dom(s (𝟙 − dom(len)))) Λ(s len) where s ≜ cat° dom(π₂ at(0) p) π₁, len ≜ length   -- q's where of the mask dom(p): the positions of the passing elements, ascending
     merge(Q : α ⟶ α) : [α]×[α] ⟶ [α] ≜ ⟨⟨𝟙, nil⟩, cat⟩ loop(π₁ (l ⟨⟨π₁π₁ tail, π₁π₂⟩, ⟨π₂, a⟩snoc⟩ ∪ ((𝟙 − l) ⟨⟨π₁π₁, π₁π₂ tail⟩, ⟨π₂, b⟩snoc⟩))) π₂ where a ≜ π₁π₁ at(0), b ≜ π₁π₂ at(0), l ≜ dom(⟨a,b⟩ cor(Q)) ∪ (dom(a) − dom(b))   -- merge by a clocked loop: take the head `a` of the first when `a Q b` or the second is empty
 
     -- B&dM p.130 `perm ≜ ⦇[nil, add]⦈`: add puts the new element anywhere in the array so far. Its converse is

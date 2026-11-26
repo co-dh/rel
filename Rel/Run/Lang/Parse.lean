@@ -71,7 +71,7 @@ def found : P String := do
 def expected {α : Type} (what : String) : P α := do throw ⟨← pos, s!"expected {what}, found {← found}"⟩
 
 def isSub (c : Char) : Bool := 0x2080 ≤ c.val && c.val ≤ 0x2089
-/-- A letter: Latin or Greek (`π`, `α`, `σ`, …). -/
+/-- A letter: Latin or Greek (`π`, `Λ`, `σ`, …). -/
 def isLetter (c : Char) : Bool := c.isAlpha || (0x370 ≤ c.val && c.val ≤ 0x3FF)
 def isIdCont (c : Char) : Bool := isLetter c || c.isDigit || isSub c || c == '\''
 /-- The characters of the grammar itself; any other non-letter is a one-character name (`⊤ ≤ ≼ ∋`). -/

@@ -19,7 +19,7 @@ rel_program partyPlan where
     rating : E ⟶ N ≜ {(a,3),(b,7),(c,2),(d,5),(e,1),(f,8),(g,4),(h,5),(i,4),(k,2),(l,2),(m,0)}
 
     under : E ⟶ E ≜ boss°*                        -- e and everyone below e
-    kids : E ⟶ [E] ≜ ^(boss°)
+    kids : E ⟶ [E] ≜ Λ(boss°)
     -- builtin F(r) : [α] ⟶ [β] relates [a₁,…,aₙ] to [b₁,…,bₙ] when every aᵢ r bᵢ (Run/Lang/Elab.lean, `.map`)
     cost(r : α ⟶ β) : [α] ⟶ β ≜ F(r) sum
     R(r : α ⟶ β) : [α] ⟶ [α] ≜ cost(r) ≤ cost(r)°
@@ -32,16 +32,16 @@ rel_program partyPlan where
     S : E×[[E]×[E]] ⟶ [E]×[E] ≜ ⟨include, exclude⟩
     fold : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids⟩, S)
     party : E ⟶ [E] ≜ fold choose
-    best : E ⟶ [E] ≜ ^(party)est(R(rating)°)
+    best : E ⟶ [E] ≜ Λ(party)est(R(rating)°)
 
     -- the sets with no employee beside his boss
-    check party setify = ^(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    check party setify = Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
 
     /- The greedy form (p. 178): exclude keeps only the best party of each child. -/
 
-    exclude₁ : E×[[E]×[E]] ⟶ [E] ≜ π₂F(^(choose)est(R(rating)°))concat
+    exclude₁ : E×[[E]×[E]] ⟶ [E] ≜ π₂F(Λ(choose)est(R(rating)°))concat
     gfold : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids⟩, ⟨include, exclude₁⟩)
-    check gfold ^(choose)est(R(rating)°) ⊑ best
+    check gfold Λ(choose)est(R(rating)°) ⊑ best
 
     /- The efficient form: c is (cost with e, cost without e), win the employees whose best party holds them, ties
        to include, and guests the party as a relation into E. -/
@@ -50,7 +50,7 @@ rel_program partyPlan where
     c : E ⟶ N×N ≜ hylo(⟨𝟙, kids⟩, tally)
     win : E ⟶ E ≜ dom((c π₁ ≥) ∩ (c π₂))
     guests : E ⟶ E ≜ (win boss° boss° ∪ ((𝟙 − win)boss°))* win   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
-    check ^(guests) ⊑ best
+    check Λ(guests) ⊑ best
     check c max = best cost(rating)
     root : E ⟶ E ≜ {(a,a)}
     check root best = {(a,a d e f)}

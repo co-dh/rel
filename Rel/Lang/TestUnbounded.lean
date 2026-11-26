@@ -23,7 +23,7 @@ rel_program unboundedT where
     ge : N ⟶ N ≜ p ≥ p
     pl : N ⟶ N ≜ p (p + p)
     len : 1 ⟶ N ≜ xs length
-    rank : N ⟶ N ≜ p ^(> p) length
+    rank : N ⟶ N ≜ p Λ(> p) length
     wh : N ⟶ N ≜ rank°
     bad : N ⟶ N ≜ <
     check sp = {(0,1),(1,2),(2,3),(3,4)}

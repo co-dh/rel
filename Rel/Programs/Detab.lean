@@ -27,7 +27,7 @@ rel_program detab where
 
     /- blanks k = k blanks: the converse of length on the all-blank strings, which step needs up to m of. -/
 
-    B : [Ch] ⟶ [Ch] ≜ S(^(⊤(1,N)dom(<m)),bl)
+    B : [Ch] ⟶ [Ch] ≜ S(Λ(⊤(1,N)dom(<m)),bl)
     blanks : α ⟶ [Ch] ≜ (B length)°
 
     /- detab tupled with col, run as the left loop from base = ([],0) (detab_tupled, detab_loop, 10:187-202):
@@ -43,7 +43,7 @@ rel_program detab where
        length ≤ 5 over {a,BL,TB}. detab never shortens, so C holds every preimage of a string of D. H ≜ detab° is
        restricted to C: the converse of a fold does not run on demand; R runs on the pairs est compares. -/
 
-    C : [Ch] ⟶ [Ch] ≜ S(^(⊤(1,K)), {(a,a),(BL,BL),(TB,TB)})
+    C : [Ch] ⟶ [Ch] ≜ S(Λ(⊤(1,K)), {(a,a),(BL,BL),(TB,TB)})
     H : [Ch] ⟶ [Ch] ≜ (C detab)°
     R : [α] ⟶ [β] ≜ length ≤(N,N) length°
     D : [Ch] ⟶ [Ch] ≜ ran(C detab)C               -- the outputs of detab that are candidates
@@ -70,13 +70,13 @@ rel_program detab where
 
     check x detab = {(∗,a b BL BL c BL d)}
     check x detab entab = {(∗,a b TB c BL d)}
-    check p ^(H)est(R) = {(∗,a TB)}
-    check q ^(H)est(R) = {(∗,a a a BL a),(∗,a a a TB a)}
-    check y ^(H)est(R) = {(∗,TB BL)}
+    check p Λ(H)est(R) = {(∗,a TB)}
+    check q Λ(H)est(R) = {(∗,a a a BL a),(∗,a a a TB a)}
+    check y Λ(H)est(R) = {(∗,TB BL)}
     check p entab = {(∗,a TB)}
     check q entab = {(∗,a a a TB a)}
     check y entab = {(∗,TB BL)}
-    check D entab ⊑ D ^(H)est(R)                  -- entab_laws, 10:148: the program is a shortest preimage
+    check D entab ⊑ D Λ(H)est(R)                  -- entab_laws, 10:148: the program is a shortest preimage
     check D entab detab = D                       -- detab entab = 𝟙 on detab's outputs
 
 #guard detab.ok

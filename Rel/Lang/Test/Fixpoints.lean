@@ -56,7 +56,7 @@ rel_program infPath where
 open Rel.Programs.prelude in
 rel_program muArr where
     obj B = 0…2
-    s : B ⟶ [B] ≜ ^({(0,0)}) ∪ ^({(0,1)}) ∪ ^({(0,2)})
+    s : B ⟶ [B] ≜ Λ({(0,0)}) ∪ Λ({(0,1)}) ∪ Λ({(0,2)})
     f : B ⟶ [B] ≜ μX : s ∪ (⟨X, X⟩ cat setify)
     d : B ⟶ [B] ≜ ⟨s, s⟩ cat setify
     e : B ⟶ [B] ≜ ⟨d, s⟩ cat setify
@@ -66,8 +66,8 @@ rel_program muArr where
 #guard muArr.prints == ["f = {(0, [0]), (0, 0 1), (0, 0 1 2), (0, 0 2), (0, [1]), (0, 1 2), (0, [2]), (1, []), (2, [])}"]
 
 -- `X` under an operator not monotonic in its argument, or in an antitone place; `ν` with no bound
-#eval errAt "obj B = 0…1\nf : B ⟶ B ≜ νX : ⊤(B,B) ∩ (^(X)∋)\n" 2
-  "νX: X occurs under power transpose (÷∋) at 2:30; power transpose (÷∋) is not monotonic in its argument, so the fixed point need not exist"
+#eval errAt "obj B = 0…1\nf : B ⟶ B ≜ νX : ⊤(B,B) ∩ (Λ(X)∋)\n" 2
+  "νX: X occurs under Λ at 2:30; Λ is not monotonic in its argument, so the fixed point need not exist"
 #eval errAt "obj B = 0…1\nr : B ⟶ B ≜ {(0,1)}\nf : B ⟶ B ≜ μX : r ∪ X\\r\n" 3
   "μX: X occurs in the left operand of \\ at 3:22 (antitone); X must occur only in monotonic positions"
 -- `X` under two antitone places reads positively to `Pre.polarity`, but `\`'s left operand is read on both sides
