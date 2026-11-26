@@ -46,7 +46,13 @@ theorem Tm.simple_single {B : Obj} {T : Tab .one B} {m : USize} {U : Vals B m} {
     (hk : T.n.toNat = k := by exact Rel.Lang.USize.toNat_ofNat_lt (by omega))
     (hl : m.toNat = l := by exact Rel.Lang.USize.toNat_ofNat_lt (by omega))
     (hn : k = 1 := by decide)
-    (hU : ∀ i : Fin k, ∃ j : Fin l, U.row (j.cast hl.symm) = T.val.row (i.cast hk.symm) := by decide +kernel)
+    -- the one row is `0`; the lengths are read as literals (`System.Platform.numBits` is opaque to the kernel) and the
+    -- column `Gen.atom` rebuilds is then decided by the kernel
+    (hU : ∀ i : Fin k, ∃ j : Fin l, U.row (j.cast hl.symm) = T.val.row (i.cast hk.symm) := by
+      intro i; obtain rfl : i = ⟨0, by omega⟩ := Fin.ext (by omega)
+      simp only [Nat.reducePow, Nat.reduceLT, Rel.Lang.USize.toNat_ofNat_lt, Rel.Enc.wf?, Rel.Lang.Gen.atom,
+        Rel.Lang.Gen.relV, Rel.ValsB.row, Rel.ColB.get, Rel.Arr.get, Rel.Arr.getWith, Rel.Enc.get]
+      decide +kernel)
     (ρ : Val) :
     (Tm.den ρ ((Tm.val T).conv.comp (Tm.val T))).le (Tm.den ρ ((Tm.uni U).comp Tm.id)) := by
   simp only [Tm.den, Core.Rel.comp_id]

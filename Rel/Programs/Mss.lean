@@ -1,4 +1,5 @@
 import Rel.Programs.Prelude
+import Rel.Lang.Laws.Map
 
 /-! # The maximum segment sum
 
@@ -52,8 +53,8 @@ rel_program mss where
 
     /- The facts that discharge `estMap(zero, ≥)`'s hypotheses: `zero` is a map and `≥` is reflexive. -/
 
-    theorem zeroEntire : dom(zero) = 𝟙
-    theorem zeroSimple : zero°zero ⊑ 𝟙
+    theorem zeroEntire : dom(zero) = 𝟙 by Rel.Lang.Tm.dom_single
+    theorem zeroSimple : zero°zero ⊑ 𝟙 by Rel.Lang.Tm.simple_single
     theorem geqRefl : 𝟙 ⊑ ≥
     theorem estUnion : (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(∋)est(≥) = (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(est(≥))est(≥)  -- no set empty
     -- the greedy row (𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈
@@ -91,3 +92,6 @@ rel_program mss where
 #guard mss.ok
 
 end Rel.Programs
+
+#check Rel.Programs.mss.proof.zeroEntire
+#check Rel.Programs.mss.proof.zeroSimple
