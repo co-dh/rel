@@ -2361,6 +2361,14 @@ variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
 
 def toObj (o : OTy) : Except Err Obj := objOf objs dp (zonk mc o)
 
+/-- Whether `o` names no object variable: a constant generic over `X` is built at a placeholder of `X` and run at the
+    object of each use (`Tm.instObj`), so what holds of the placeholder (`Obj.flat`) is not known of `X`. -/
+def OTy.fixed (objs : Objs) : OTy → Bool
+  | .base n => !(objs.lookup n).any (·.ovar)
+  | .prod a b | .sum a b => a.fixed objs && b.fixed objs
+  | .arr a => a.fixed objs
+  | .mv _ => false
+
 /-- `t` at the objects `A ⟶ B`: the cast is the equality `build` decided. -/
 def at? {A B : Obj} (r : Res) : Except Err (Tm A B) :=
   match r with
@@ -2606,7 +2614,9 @@ def build (δ : Dem) : Pre → Except Err Res
   | .outr a b => return ⟨_, _, .outr (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .comp p q => do
     let ⟨A, B, t⟩ ← build δ p; let ⟨B', C, u⟩ ← build δ q
-    if h : B' = B then pure ⟨A, C, .comp t (h ▸ u)⟩ else internal dp s!"composition objects disagree: {repr A} ⟶ {repr B} then {repr B'} ⟶ {repr C}"
+    -- `Λ(S) E(∋ X) = Λ(S X)` where `S`'s target `b` is fixed and flat (`Tm.fuseLam_den`); the composition elsewhere
+    let fuse := match p, q with | .lam _, .lam (.comp (.mem b) _) => (zonk mc b).fixed objs | _, _ => false
+    if h : B' = B then pure ⟨A, C, if fuse then Tm.fuseLam t (h ▸ u) else .comp t (h ▸ u)⟩ else internal dp s!"composition objects disagree: {repr A} ⟶ {repr B} then {repr B'} ⟶ {repr C}"
   -- `R°`: closed, conversed whole; on demand, pushed to the leaves (`convTm`); a leaf whose converse does not
   -- run on demand reads `R` whole on its source's universe
   | .conv (.close _ (.conv (.close _ q _ _)) _ _) => build δ q

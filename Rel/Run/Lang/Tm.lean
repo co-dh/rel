@@ -75,6 +75,21 @@ inductive Tm : Obj → Obj → Type where
       children have theirs; `what` names the coalgebra `c`, where the failure a cycle of the children reports is. -/
   | hylo {A B : Obj} (k : Nat) (what : String) (body : Tm A B) : Tm A B
 
+/-- `A` holds no array and no `general` atom: its elements are finitely many and `Obj.key` tells them apart
+    (`Obj.key_inj_of_flat`, `Obj.fin_of_flat`), so every relation into `A` has an array image at every point
+    (`lamDen_of_flat`). -/
+def _root_.Rel.Obj.flat : Obj → Bool
+  | .atom t => t != .general
+  | .prod a b | .sum a b => a.flat && b.flat
+  | .arr _ => false
+  | .one => true
+
+/-- `Λ(S) E(∋ X) = Λ(S X)` as a term, where `S`'s target is flat so `Λ(S)` has an array at every point
+    (`Tm.fuseLam_den`); any other pair is the composition. -/
+def Tm.fuseLam : {A B C : Obj} → Tm A B → Tm B C → Tm A C
+  | _, .arr B, _, .lam S, .lam (.comp .mem X) => if B.flat then .lam (.comp S X) else .comp (.lam S) (.lam (.comp .mem X))
+  | _, _, _, t, u => .comp t u
+
 /-- The constant of the closed part numbered `k` (`Tm.number`), and `k` read back from it: no definition's name has
     this shape, so a nullary call is a slot exactly where `Lean.Name.slot?` answers. -/
 def slotName (k : Nat) : Lean.Name := .num `_slot k
