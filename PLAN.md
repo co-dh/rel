@@ -1709,6 +1709,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   worktree `freyd/.claude/worktrees/prefixaop` 解锁删除。
 - ✅ 9.6 rel_program 的 calc 格式（owner 2026-11-27 定）：保持现状——每行一个完整式子，理由单独一行 `:= law(args)`；
   Agda 风格的「程序取自推导末行」与「引理进 `where`」不做（已完成部分：3a95cf2 c92b80b ef5350e 11f8088 736583a）。
+- ✅ 9.7 决定（owner 2026-11-26，经 freyd-22 转达）：证明搬进 rel，rel 用自己的公理把 law 证掉，freyd `relaop/` 整个删掉，
   freyd 与 rel 互不依赖。原状：`freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，rel 的 `lake build`
   对一条错的 `theorem zeroEntire` 照样绿，下游坏了 rel 看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 至少从 11-23
   红到 9.4 才发现，并挡住 freyd 的 index 刷新与 note gate）。relaop 不再修。
