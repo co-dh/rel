@@ -1,4 +1,4 @@
-import Rel.Lang.Laws.Eunion
+import Rel.Lang.Laws.Absorb
 
 /-! `Mss.toScan : greedy = scan` at `Tm.den`, for a generic seed `Te` and step `TO` (the program's `zero`, `oplus`).
 
@@ -18,12 +18,6 @@ open scoped Rel.Core.Rel Classical
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
 variable {E V : Obj}
-
-/-- `Λ(𝟙)` sends `a` to `[a]`. -/
-theorem lamDen_id_iff {A : Obj} (a : A.El) (ys : Obj.El (.arr A)) : lamDen (𝟙 _) a ys ↔ ys = [a] := by
-  refine ⟨fun h => ?_, fun h => h ▸ (lamDen_iff _ _ _).2 ⟨by simp, fun b => by simp [Core.Rel.id, eq_comm]⟩⟩
-  obtain ⟨hp, hm⟩ := (lamDen_iff _ _ _).1 h
-  exact pw_eq hp (by simp) fun c => (hm c).trans (by simp [Core.Rel.id, eq_comm])
 
 /-- `⦇e, S⦈ʳ` is simple where the range of `e` has at most one value and `S` is simple. -/
 theorem foldrDen_simple (Te : Core.Rel (Obj.El V) (Obj.El V)) (TO : Core.Rel (Obj.El (.prod E V)) (Obj.El V))
