@@ -117,6 +117,13 @@ rel_program genericTheorem where
 #check genericTheorem.proof.gg
 #check genericTheorem.proof.ii
 #check genericTheorem.proof.citeGg
+#check Programs.prelude.proof.foldUP
+#check Programs.prelude.proof.foldrUP
+
+#print axioms foldUP
+#print axioms foldrUP
+#print axioms Tm.foldUP_den
+#print axioms Tm.foldrUP_den
 
 example (A B : Obj) (ρ : Val) : ρ 0 A B = ρ 0 A B :=
   genericTheorem.proof.citeGg [A, B] ρ

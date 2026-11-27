@@ -78,6 +78,18 @@ theorem Prim.den_cons {B : Obj} :
   unfold Prim.den; simp only [List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
+theorem Prim.den_uncons {B : Obj} :
+    Prim.den (rowOf "uncons") (.arr B) (.prod B (.arr B)) [] =
+      Core.Rel.recip (Core.Rel.graph fun p => p.1 :: p.2) := by
+  have hs : (rowOf "uncons").sig = ([], .list B1, .prod B1 (.list B1)) := rfl
+  have ho : (rowOf "uncons").objs (.arr B) (.prod B (.arr B)) [] = some [B] := by
+    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (rowOf "uncons").sym) =
+      some ⟨RowCode.uncons, fun _ _ => Core.Rel.recip (Core.Rel.graph fun p => p.1 :: p.2)⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
 theorem Prim.den_uncat {B : Obj} :
     Prim.den (rowOf "uncat") (.arr B) (.prod (.arr B) (.arr B)) [] = fun xs p => xs = p.1 ++ p.2 := by
   have hs : (rowOf "uncat").sig = ([], .list B1, .prod (.list B1) (.list B1)) := rfl
@@ -97,6 +109,18 @@ theorem Prim.den_snoc {B : Obj} :
       List.eraseDupsBy.loop, List.lookup]
   have hf : rowDens.find? (·.1.sym == (rowOf "snoc").sym) =
       some ⟨RowCode.snoc, fun _ _ p ys => ys = p.1 ++ [p.2]⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+theorem Prim.den_unsnoc {B : Obj} :
+    Prim.den (rowOf "unsnoc") (.arr B) (.prod (.arr B) B) [] =
+      Core.Rel.recip (Core.Rel.graph fun p => p.1 ++ [p.2]) := by
+  have hs : (rowOf "unsnoc").sig = ([], .list B1, .prod (.list B1) B1) := rfl
+  have ho : (rowOf "unsnoc").objs (.arr B) (.prod (.arr B) B) [] = some [B] := by
+    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (rowOf "unsnoc").sym) =
+      some ⟨RowCode.unsnoc, fun _ _ => Core.Rel.recip (Core.Rel.graph fun p => p.1 ++ [p.2])⟩ := rfl
   unfold Prim.den; simp only [List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
