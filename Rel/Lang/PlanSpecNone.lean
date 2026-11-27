@@ -346,7 +346,7 @@ theorem Grows.zeroB (A B : Obj) : Grows (Plan.zeroB A B) := by
 theorem Typed.noneAtomB {m z : Nat} {t : QAtomicType} {p : String} (hz : m ≤ z) :
     Typed m (fun r => AllGe m (Cols.regs r)) (Plan.noneAtomB z t p) := by
   unfold Plan.noneAtomB
-  exact (Typed.wordsB hz 0).bind fun c hc => (Typed.mapB hz hc hc).bind fun e he =>
+  exact Typed.wordsB.bind fun c hc => (Typed.mapB hz hc hc).bind fun e he =>
     Typed.pure fun a ha => by simp [Cols.regs, Col.regs] at ha; omega
 
 theorem Typed.noneB {m z : Nat} (hz : m ≤ z) (A : Obj) :
@@ -359,7 +359,7 @@ theorem Typed.noneB {m z : Nat} (hz : m ≤ z) (A : Obj) :
       rw [Cols.regs_append] at ha; rcases List.mem_append.1 ha with ha | ha <;> first | exact hx a ha | exact hy a ha
   | arr b ih =>
     intro p; unfold Plan.noneB
-    exact (Typed.wordsB hz 0).bind fun c hc => (Typed.mapB hz hc hc).bind fun lo hlo =>
+    exact Typed.wordsB.bind fun c hc => (Typed.mapB hz hc hc).bind fun lo hlo =>
       (Typed.mapB hz hc hc).bind fun hi hhi => (ih _).bind fun f hf => Typed.pure fun a ha => by
         simp only [Cols.regs, Col.regs, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false] at ha
         rcases ha with (rfl | rfl | rfl) | ha <;> first | exact hz | exact hlo | exact hhi | exact hf _ ha
@@ -368,7 +368,7 @@ theorem Typed.noneB {m z : Nat} (hz : m ≤ z) (A : Obj) :
     intro p; unfold Plan.noneB
     split
     · exact Typed.noneAtomB hz
-    · exact (Typed.wordsB hz 0).bind fun c hc => (Typed.mapB hz hc hc).bind fun tag htag =>
+    · exact Typed.wordsB.bind fun c hc => (Typed.mapB hz hc hc).bind fun tag htag =>
         (iha _).bind fun x hx => (ihb _).bind fun y hy => Typed.pure fun a ha => by
           simp only [Cols.regs, Col.regs, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false,
             List.append_nil] at ha
