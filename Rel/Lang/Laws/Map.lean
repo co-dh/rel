@@ -50,6 +50,8 @@ theorem Tm.simple_single {B : Obj} {T : Tab .one B} {m : USize} {U : Vals B m} {
     -- column `Gen.atom` rebuilds is then decided by the kernel
     (hU : ∀ i : Fin k, ∃ j : Fin l, U.row (j.cast hl.symm) = T.val.row (i.cast hk.symm) := by
       intro i; obtain rfl : i = ⟨0, by omega⟩ := Fin.ext (by omega)
+      -- `maxRecDepth`: simp's whnf expands a hex text literal of hundreds of digits (as `Gen.atom_zero`)
+      set_option maxRecDepth 100000 in
       simp only [Nat.reducePow, Nat.reduceLT, Rel.Lang.USize.toNat_ofNat_lt, Rel.Enc.wf?, Rel.Lang.Gen.atom,
         Rel.Lang.Gen.relV, Rel.ValsB.row, Rel.ColB.get, Rel.Arr.get, Rel.Arr.getWith, Rel.Enc.get]
       decide +kernel)

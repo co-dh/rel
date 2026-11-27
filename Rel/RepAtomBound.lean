@@ -65,7 +65,7 @@ theorem Arr.get_foR_bound {n : USize} (x : Arr .i64 n) {md pk : ByteArray} (hx :
 `md` says it is well formed with no flagged block, and whose pack ends with the last block (`hp`), has every row in
 `[lo, hi]` if each block's range does. Every hypothesis reads `md`, and `p` only by its size, so a header is checked
 without the pack. -/
-theorem Lang.Gen.atom_get_bound {n : USize} {m p : String} {md : ByteArray} (hm : Gen.unhex m = md)
+theorem Lang.Gen.atom_get_bound {n : USize} {m p : List String} {md : ByteArray} (hm : Gen.unhex m = md)
     (hn : n.toNat ≤ Column.blk md * Column.nblk md) (hl : Column.lgOk md = true)
     (hN : (Array.range (Column.nblk md)).any (Column.nulAt md) = false)
     (hp : (Gen.unhex p).size ≤ Column.blockStart md (Column.nblk md)) (lo hi : Int)
@@ -89,7 +89,7 @@ def rangeMd : ByteArray :=
 
 set_option maxRecDepth 100000 in
 theorem unhex_rangeMd : Gen.unhex
-    "f6ffffffffffffff140000000000000000000000000000009b0000000000000000000000000000801f000000000000000a0000000000000005" =
+    ["f6ffffffffffffff140000000000000000000000000000009b00000000000000", "00000000000000801f000000000000000a0000000000000005"] =
     rangeMd := by
   have hb : ∀ {a b : ByteArray}, a.data.toList = b.data.toList → a = b := fun {a b} h => by
     cases a; cases b; simp_all
@@ -106,11 +106,11 @@ theorem rangeMd_rows : ∀ b < Column.nblk rangeMd, -10 ≤ (Column.baseAt range
 
 /-- The range literal `-10…20`, for any pack `p` of at most the block's 640 bytes: every row lies in `[-10, 21]`, from the
 header alone, with no row decoded. -/
-example (p : String) (hp : (Gen.unhex p).size ≤ 640) (i : Fin (USize.ofNat 31).toNat) :
+example (p : List String) (hp : (Gen.unhex p).size ≤ 640) (i : Fin (USize.ofNat 31).toNat) :
     -10 ≤ ((Lang.Gen.atom .i64 (USize.ofNat 31)
-      "f6ffffffffffffff140000000000000000000000000000009b0000000000000000000000000000801f000000000000000a0000000000000005"
+      ["f6ffffffffffffff140000000000000000000000000000009b00000000000000", "00000000000000801f000000000000000a0000000000000005"]
       p).1.get i).toInt ∧ ((Lang.Gen.atom .i64 (USize.ofNat 31)
-      "f6ffffffffffffff140000000000000000000000000000009b0000000000000000000000000000801f000000000000000a0000000000000005"
+      ["f6ffffffffffffff140000000000000000000000000000009b00000000000000", "00000000000000801f000000000000000a0000000000000005"]
       p).1.get i).toInt ≤ 21 :=
   Lang.Gen.atom_get_bound unhex_rangeMd (by rw [rangeMd_nblk, rangeMd_blk, USize.toNat_ofNat']; rcases System.Platform.numBits_eq with h | h <;> rw [h] <;> decide)
     rangeMd_lgOk rangeMd_nul (by rw [rangeMd_start]; exact hp) (-10) 21 (by decide) (by decide) rangeMd_rows i
