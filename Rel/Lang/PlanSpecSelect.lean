@@ -4,6 +4,7 @@ public import Rel.Lang.PlanSpecPrefix
 public import Rel.Lang.PlanSpecConcat
 public import Rel.Lang.PlanSpecGather
 public import Rel.Lang.PlanSpecUnion
+public import Rel.Lang.PlanSpecExpand
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -97,12 +98,6 @@ theorem Free.whereB (n keep : Nat) : Free (Plan.whereB n keep) := by
 
 theorem Free.wordsB (n : Nat) (w : UInt64) : Free (Plan.wordsB n w) := by
   unfold Plan.wordsB Plan.constB; free'
-
-theorem Free.scatterB (op : Kernel.Op) (rows dst x cells : Nat) (fill : UInt64) :
-    Free (Plan.scatterB op rows dst x cells fill) := by
-  unfold Plan.scatterB; free'
-
-theorem Free.gatherB (m ix n x : Nat) : Free (Plan.gatherB m ix n x) := Free.call1 _ _
 
 /-- The body of `selectB`'s plan function (`funT [R, S]`): the registers of the two tables are its parameters. -/
 def selBody (kb : Nat → Nat → Nat → Bld Nat) (R S : TabB) : Bld TabB := do
@@ -202,6 +197,33 @@ def KeepSpec (kp : USize → Enc → Enc → Except String Enc) (kb : Nat → Na
     rs[m]? = some (.size mv) → rs[mn]? = some (Reg.put mnc) → rs[mx]? = some (Reg.put mxc) → kp mv mnc mxc = .ok bits →
     Builds abiOf fg fg (do let r ← kb m mn mx; Pure.pure #[r]) rs #[Reg.put bits]
 
+/-- `mapB op` over registers chosen from `mn`, `mx` by `ra`, `rb` builds `colMap op` over the columns `ea`, `eb` chosen
+    the same way: the keep-builder of every `Tab.select` whose `keep` is one `kscan` map of the two folded masks. -/
+theorem keepSpec_map (op : Kernel.Op) (hop : (Reg.get? (Reg.put op) : Option Kernel.Op) = some op) (ra rb : Nat → Nat → Nat) (ea eb : Enc → Enc → Enc)
+    (hga : ∀ lv mn mx, lv ≤ mn → lv ≤ mx → lv ≤ ra mn mx) (hgb : ∀ lv mn mx, lv ≤ mn → lv ≤ mx → lv ≤ rb mn mx)
+    (hra : ∀ {rs : Array Val} {mn mx : Nat} {mnc mxc : Enc}, rs[mn]? = some (Reg.put mnc) → rs[mx]? = some (Reg.put mxc) →
+      rs[ra mn mx]? = some (Reg.put (ea mnc mxc)))
+    (hrb : ∀ {rs : Array Val} {mn mx : Nat} {mnc mxc : Enc}, rs[mn]? = some (Reg.put mnc) → rs[mx]? = some (Reg.put mxc) →
+      rs[rb mn mx]? = some (Reg.put (eb mnc mxc))) :
+    KeepSpec (fun m mn mx => colMap op m (ea mn mx) (eb mn mx)) (fun m mn mx => mapB op m (ra mn mx) (rb mn mx)) :=
+  ⟨fun _ _ _ => Grows.mapB _ _ _ _ _ _ _ _, fun _ _ _ => Free.mapB _ _ _ _ _ _ _ _,
+    fun lv m mn mx h1 h2 h3 => Typed.mapB h1 (hga lv mn mx h2 h3) (hgb lv mn mx h2 h3),
+    fun {fg rs m mn mx mv mnc mxc bits} hm hmn hmx hk => by
+      obtain ⟨r, hr, hr1⟩ := except_bind_ok hk
+      obtain rfl : r.1 = bits := by cases hr1; rfl
+      exact mapB_builds hm (hra hmn hmx) (enc_get_put _) (hrb hmn hmx) (enc_get_put _) hop (reg_ty _) (reg_ty _)
+        reg_nil reg_nil hr⟩
+
+/-- `interB`'s keep-builder builds `Tab.inter`'s `keep` (`colMap .lt` of the `and` and `or` masks). -/
+theorem keepSpec_inter : KeepSpec (fun m mn mx => colMap .lt m mn mx) (fun m mn mx => mapB .lt m mn mx) :=
+  keepSpec_map .lt (by with_unfolding_all rfl) (fun a _ => a) (fun _ b => b) (fun a _ => a) (fun _ b => b)
+    (fun _ _ _ h _ => h) (fun _ _ _ _ h => h) (fun h _ => h) (fun _ h => h)
+
+/-- `diffB`'s keep-builder builds `Tab.diff`'s `keep` (`colMap .not` of the `or` mask). -/
+theorem keepSpec_diff : KeepSpec (fun m _ mx => colMap .not m mx mx) (fun m _ mx => mapB .not m mx mx) :=
+  keepSpec_map .not (by with_unfolding_all rfl) (fun _ b => b) (fun _ b => b) (fun _ b => b) (fun _ b => b)
+    (fun _ _ _ _ h => h) (fun _ _ _ _ h => h) (fun _ h => h) (fun _ h => h)
+
 /-- `whereB`'s kernel calls over the mask `kc` of `nv` rows answer the count `K` and the positions `w`, which `whereCol`
     answers by other calls (`.sub` and `kscatter` at `pos`, not `.mul` and a cut): the one place `Tab.select`'s model and
     its plan part ways. Asked of the masks `keep` answers only (`selectB_builds`' `hW`). -/
@@ -215,13 +237,6 @@ def WhereAgree (nv K : USize) (kc w : Enc) : Prop := ∃ (zc pc ixc ix1c zrc one
     kscan .add false .i64 .i64 K (some zrc) [(K, zrc), (K, onec)] [] [] = .ok (cutc, cutf) ∧
     kgather K cutc (K + 1) ix1c = .ok w ∧
     ∀ e ∈ [zc, pc, ixc, ix1c, zrc, onec, cutc, .pos], (Reg.get? (Reg.put e) : Option Enc) = some e
-
-/-- `gatherB`, as the one-register builder the builders around it are chained from. -/
-theorem gatherB_builds1 {fg : Array Fun × Array Fun} {rs : Array Val} {m ix n e : Nat} {mv nv : USize}
-    {iv ev ov : Enc} (hm : rs[m]? = some (.size mv)) (hi : rs[ix]? = some (Reg.put iv)) (hn : rs[n]? = some (.size nv))
-    (he : rs[e]? = some (Reg.put ev)) (hk : kgather mv iv nv ev = .ok ov) :
-    Builds abiOf fg fg (do let r ← gatherB m ix n e; Pure.pure #[r]) rs #[Reg.put ov] :=
-  gatherB_builds hm hi hn he hk (Builds.pure fun who => by simp [reg]; rfl)
 
 theorem FExt.trans {x y z : Array Fun} (h1 : ∃ e, y = x ++ e) (h2 : ∃ e, z = y ++ e) : ∃ e, z = x ++ e := by
   obtain ⟨e1, rfl⟩ := h1; obtain ⟨e2, rfl⟩ := h2; exact ⟨e1 ++ e2, by rw [Array.append_assoc]⟩
@@ -465,5 +480,16 @@ theorem selectB_builds {kp : USize → Enc → Enc → Except String Enc} {kb : 
     obtain ⟨e1', he1⟩ := he
     exact hkk fg2 V ys ⟨a1 ++ e1', by rw [he1, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
       (f4.trans hsk) (f5.trans hsv) (by simpa [o] using hread)
+
+/-- **`interB` builds `Tab.inter`**: `SelectSpec` at `inter`'s `keep`; `interB R S` is `selectB` at that builder, and
+    `Tab.inter R S` is `Tab.select` at that `keep`, by unfolding. -/
+theorem interB_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B : Obj) :
+    SelectSpec A B (fun m mn mx => colMap .lt m mn mx) (fun m mn mx => mapB .lt m mn mx) :=
+  selectB_builds hT h63 keepSpec_inter A B
+
+/-- **`diffB` builds `Tab.diff`**: `SelectSpec` at `diff`'s `keep`, as `interB_builds`. -/
+theorem diffB_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B : Obj) :
+    SelectSpec A B (fun m _ mx => colMap .not m mx mx) (fun m _ mx => mapB .not m mx mx) :=
+  selectB_builds hT h63 keepSpec_diff A B
 
 end Rel.Lang.Plan
