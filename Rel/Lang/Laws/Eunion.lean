@@ -167,6 +167,13 @@ theorem EDen_union (T : Core.Rel (Obj.El A) (Obj.El B)) (h : ∀ a, ∃ ys, lamD
     · obtain ⟨g, hg⟩ := h x
       exact ⟨g, (hLm g).2 ⟨x, hx, hg⟩, (((lamDen_iff T x g).1 hg).2 c).2 hT⟩
 
+/-- The prelude's image union law, with `Λ(R)` defined at every point. -/
+theorem Tm.Eunion_den {R : Tm A B} (ρ : Val)
+    (h : (Tm.dom (.lam R)).den ρ = (Tm.id (A := A)).den ρ) :
+    (Tm.lam (.comp .mem R)).den ρ =
+      (Tm.comp (.lam (.comp .mem (.lam R))) (.lam (.comp .mem .mem))).den ρ :=
+  EDen_union (R.den ρ) (Tm.entire_of_dom h)
+
 /-- An image inside a list `l`, with no two members of one key but equal ones, has a strictly ascending list. -/
 theorem lamDen_total (T : Core.Rel (Obj.El A) (Obj.El B)) (a : A.El) (l : List B.El) (hl : ∀ b, T a b → b ∈ l)
     (hk : ∀ b c, T a b → T a c → B.key b = B.key c → b = c) : ∃ ys, lamDen T a ys := by

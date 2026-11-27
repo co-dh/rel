@@ -85,20 +85,23 @@ theorem foldrUP {E V : Obj} (Te : Core.Rel (Obj.El V) (Obj.El V)) (TS : Core.Rel
 abbrev Tm.closedNil (E : Obj) : Tm .one (.arr E) :=
   .comp (.uni (Gen.oneV false 1).1) .nil
 
+/-- The singleton source universe supplies the unit value of `nil`. -/
+theorem Tm.closedNil_den (E : Obj) (ρ : Val) :
+    (Tm.closedNil E).den ρ = nilDen (A := .one) (B := E) := by
+  funext u xs
+  apply propext
+  simp only [Tm.nil, Tm.den, Prim.den_nilRow, nilDen, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨_, _, h⟩
+    exact h
+  · intro h
+    exact ⟨(), ⟨⟨0, by simp⟩, trivial, trivial⟩, h⟩
+
 private theorem foldSeed_den {E V : Obj} (ρ : Val) (e : Tm .one V) :
     (Tm.comp (Tm.closedNil E).conv e).den ρ =
       corefl (Eq ([] : List E.El)) ≫ top ≫ (𝟙 _ ∩ ((Tm.ran e).den ρ)° ≫ top) := by
-  have hnil : (Tm.closedNil E).den ρ = nilDen (A := .one) (B := E) := by
-    funext u xs
-    apply propext
-    simp only [Tm.nil, Tm.den, Prim.den_nilRow, nilDen, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
-    constructor
-    · rintro ⟨_, _, h⟩
-      exact h
-    · intro h
-      exact ⟨(), ⟨⟨0, by simp⟩, trivial, trivial⟩, h⟩
   change ((Tm.closedNil E).den ρ)° ≫ e.den ρ = _
-  rw [hnil, Tm.ran_den]
+  rw [Tm.closedNil_den, Tm.ran_den]
   funext xs w
   apply propext
   constructor

@@ -1044,6 +1044,15 @@ theorem Prim.den_nilRow {A B : Obj} : Prim.den nilRow A (.arr B) [] = nilDen := 
 theorem Tm.dom_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.dom R).den ρ = 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)° := by
   simp only [Tm.dom, Tm.den, Tm.argDen]; exact Prim.den_domRow _
 
+/-- A term whose domain is the identity has an image at every point. -/
+theorem Tm.entire_of_dom {A B : Obj} {ρ : Val} {R : Tm A B}
+    (h : (Tm.dom R).den ρ = (Tm.id (A := A)).den ρ) : ∀ a, ∃ b, R.den ρ a b := by
+  rw [Tm.dom_den] at h
+  intro a
+  have ha : (𝟙 A.El ∩ R.den ρ ≫ (R.den ρ)°) a a := h.symm ▸ rfl
+  obtain ⟨b, hab, _⟩ := ha.2
+  exact ⟨b, hab⟩
+
 /-- `Tm.ran R`, `ranRow` given `R`, means `𝟙 ∩ R° R` (`Prim.den_ranRow`). -/
 theorem Tm.ran_den (ρ : Val) {A B : Obj} (R : Tm A B) : (Tm.ran R).den ρ = 𝟙 _ ∩ (R.den ρ)° ≫ (R.den ρ)°° := by
   simp only [Tm.ran, Tm.den, Tm.argDen]; exact Prim.den_ranRow _

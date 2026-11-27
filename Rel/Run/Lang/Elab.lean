@@ -467,11 +467,10 @@ def Pre.rdivWhole (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
 def Pre.symDiv (pos : Pos) (r s : Pre) (a b : OTy) : Pre :=
   .meet (.rdivWhole pos r s a b) (.conv (.rdivWhole pos s r b a))
 
-/-- `q r` as a composition; `Λ(S)` followed by `E(T) = Λ(∋ T)` is `Λ(S T)` (absorption, `lamDen_absorb`), so
-    `(S÷∋)E(T)` builds one Λ node, and `(𝟙÷∋)E(X)` builds the node `Λ(X)` did. -/
+/-- `q r` as a composition; `(𝟙÷∋)E(X)` builds the node `Λ(X)` did (`lamDen_id_EDen`). `(S÷∋)E(T) = Λ(S T)` needs
+    `Λ(S)` to have an array at every point (`lamDen_absorb`), which the source's objects decide, so it is not here. -/
 def Pre.compFuse : Pre → Pre → Pre
   | .lam (.id _), .lam (.comp (.mem _) x) => .lam x
-  | .lam s, .lam (.comp (.mem _) x) => .lam (.comp s x)
   | q, r => .comp q r
 
 /-- `[R,S] : a + b ⟶ _` is its definition `inl°R ∪ inr°S` (architecture §1, §7), not a node of its own: each part
@@ -2376,6 +2375,10 @@ def closed? {A B : Obj} (δ : Dem) (r : Res) : Except Err (Tm A B) := do
     number object's `𝟙` itself; else built from its parts, an object variable's being the universe its constant is
     given (`uniVar`). -/
 def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
+  let rec fullUni : OTy → Bool
+    | .base n => (objs.lookup n).any (·.fullUniverse)
+    | .arr a => fullUni a
+    | _ => false
   if let some ⟨A', U⟩ := uniOf objs o then
     -- the one reader that forces the universe: a product past `crossMax` fails the definition that reads it
     let ⟨_, U⟩ ← U.get.mapError fun e => (⟨dp, .user e⟩ : Err)
@@ -2386,6 +2389,8 @@ def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     | some { uniVar := some k, .. } => pure (some (.var k))
     | some i => pure (if i.fullUniverse || i.num then some .id else none)
     | _ => pure none
+  -- a theorem's object variable ranges over everything, so its arrays are all of `[a]`
+  | .arr a, .arr _ => pure (if fullUni a then some .id else none)
   | .prod a b, .prod A B => do
     let (some u, some v) := (← uniPart δ a A, ← uniPart δ b B) | pure none
     -- `⊤(u)` reads `u` whole, so a part on demand (an unbounded `𝟙`) gives `u × v` on demand

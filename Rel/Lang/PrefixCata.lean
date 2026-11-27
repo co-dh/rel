@@ -179,9 +179,25 @@ rel_program citeMissingPremise where
 
 #print axioms Val.bind_apply
 
+#check Programs.prelude.proof.absorption
+#check Programs.prelude.proof.Eunion
+#check Programs.prelude.proof.Ecomp
+#check Programs.prelude.proof.estMap
+#check Programs.prelude.proof.permConv
 #check Programs.prelude.proof.foldUP
 #check Programs.prelude.proof.foldrUP
 
+#print axioms Tm.entire_of_dom
+#print axioms Tm.absorption_den
+#print axioms Tm.Eunion_den
+#print axioms Tm.Ecomp_den
+#print axioms Tm.estMap_den
+#print axioms Tm.permConv_den
+#print axioms Tm.closedNil_den
+#print axioms EDen_comp
+#print axioms estMap_den
+#print axioms permDen_iff
+#print axioms permDen_conv
 #print axioms foldUP
 #print axioms foldrUP
 #print axioms Tm.foldUP_den

@@ -1,4 +1,9 @@
-import Rel.Lang.Den
+module
+
+public import Rel.Lang.Den
+public import Rel.Lang.Laws.Absorb
+
+public section
 
 /-! The Prelude law `estMap`: `(𝟙÷∋)E(f) est(R) = f` — the `R`-extreme of a singleton is itself.
 
@@ -31,6 +36,11 @@ theorem estMap_den {A B : Obj} (f : Core.Rel (Obj.El A) (Obj.El B))
     · rintro ⟨c', hc', hne, -⟩
       exact hne (List.mem_singleton.1 hc')
 
-#print axioms estMap_den
+/-- The prelude builds `Λ(f)` and passes the pair test of `R` to the extreme row. -/
+theorem Tm.estMap_den {A B : Obj} {f : Tm A B} {R : Tm B B} (ρ : Val)
+    (hsimple : (Tm.comp f.conv f).den ρ ⊑ (Tm.id (A := B)).den ρ) :
+    (Tm.comp (.lam f) (.est (.dom (.meet .outr (.comp .outl R))))).den ρ = f.den ρ := by
+  rw [Tm.den, Tm.est_den, Tm.den, ← lamDen_id_EDen, Core.Rel.comp_assoc]
+  exact Rel.Lang.estMap_den (f.den ρ) _ hsimple
 
 end Rel.Lang

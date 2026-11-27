@@ -33,4 +33,11 @@ theorem EDen_absorb (S : Core.Rel (Obj.El A) (Obj.El B)) (R : Core.Rel (Obj.El B
     (hS : ∀ a, ∃ ys, lamDen S a ys) : (lamDen (𝟙 _) ≫ EDen S) ≫ EDen R = lamDen (𝟙 _) ≫ EDen (S ≫ R) := by
   rw [lamDen_id_EDen, lamDen_id_EDen]
   exact lamDen_absorb S R hS
+
+/-- Absorption with its array existence premise, as elaborated in the prelude. -/
+theorem Tm.absorption_den {S : Tm A B} {R : Tm B C} (ρ : Val)
+    (h : (Tm.dom (.lam S)).den ρ = (Tm.id (A := A)).den ρ) :
+    (Tm.comp (.lam S) (.lam (.comp .mem R))).den ρ = (Tm.lam (.comp S R)).den ρ :=
+  lamDen_absorb (S.den ρ) (R.den ρ) (Tm.entire_of_dom h)
+
 end Rel.Lang

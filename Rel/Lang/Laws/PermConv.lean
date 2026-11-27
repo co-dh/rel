@@ -1,4 +1,8 @@
-import Rel.Lang.Den
+module
+
+public import Rel.Lang.Laws.FoldUP
+
+public section
 
 namespace Rel.Lang
 open Rel.Kernel Tab Rel.Rep
@@ -45,7 +49,30 @@ theorem permDen_conv {B : Obj} : (permDen (B := B))° = permDen := by
   funext ys xs
   exact propext ((permDen_iff xs ys).trans ((List.perm_comm).trans (permDen_iff ys xs).symm))
 
-#print axioms permDen_iff
-#print axioms permDen_conv
+/-- The prelude's insertion step, with `cat°` elaborated as the `uncat` row. -/
+abbrev Tm.permStep (B : Obj) : Tm (.prod (.arr B) B) (.arr B) :=
+  .comp (.comp ((Tm.prim (B := .prod (.arr B) (.arr B)) (rowOf "uncat")).prod .id)
+    (.pair (.comp (.pair (.comp .outl .outl) .outr) (.prim (B := .arr B) (rowOf "snoc"))) (.comp .outl .outr)))
+    (.prim (rowOf "cat"))
+
+/-- The converse contains the expanded fold. The forward term binds its insertion step through the local call. -/
+theorem Tm.permConv_den {B : Obj} {k : Nat} {c : Lean.Name} {os : List Obj} (ρ : Val) :
+    ((Tm.comp .id (Tm.fold (Tm.ran (Tm.closedNil B)) (Tm.permStep B))).conv).den ρ =
+      (Tm.arg (.call [k] c none os (.fold (Tm.ran (Tm.closedNil B)) (.var k))) (Tm.permStep B)).den ρ := by
+  have hseed (v : List B.El) : (∃ a, (Tm.ran (Tm.closedNil B)).den ρ a v) ↔ v = [] := by
+    simp [Tm.ran_den, Tm.closedNil_den, Core.Rel.id, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
+  have hfold : foldDen ((Tm.ran (Tm.closedNil B)).den ρ) ((Tm.permStep B).den ρ) = permDen := by
+    apply Core.Rel.ext
+    intro xs ys
+    unfold permDen
+    rw [foldDen_iff, foldDen_iff]
+    simp only [hseed, Tm.den, Tm.prod_den, Prim.den_uncat, Prim.den_snoc, Prim.den_cat,
+      nilDen, Core.Rel.graph, Core.Rel.comp_assoc, exists_const]
+  change (𝟙 _ ≫ foldDen ((Tm.ran (Tm.closedNil B)).den ρ) ((Tm.permStep B).den ρ))° = _
+  rw [Core.Rel.id_comp]
+  change (foldDen ((Tm.ran (Tm.closedNil B)).den ρ) ((Tm.permStep B).den ρ))° =
+    foldDen ((Tm.ran (Tm.closedNil B)).den ρ) ((Val.empty.bind k ((Tm.permStep B).den ρ)) k _ _)
+  rw [Val.bind_apply _ _ _ rfl rfl, hfold]
+  exact permDen_conv
 
 end Rel.Lang

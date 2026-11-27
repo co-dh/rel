@@ -2,7 +2,11 @@ module
 public import Rel.Run.Lang.Embed
 public import Rel.Run.Lang.Expand
 public import Rel.Lang.GenSound
+public import Rel.Lang.Laws.Absorb
+public import Rel.Lang.Laws.Ecomp
+public import Rel.Lang.Laws.EstMap
 public import Rel.Lang.Laws.FoldUP
+public import Rel.Lang.Laws.PermConv
 @[expose] public section
 /-! # The prelude: definitions every program sees (`rel_program … after prelude`), elaborated before it. A program
     that defines one of these names again gets "already defined … in the prelude". -/
@@ -85,11 +89,11 @@ rel_program prelude where
     -- Laws of any relation, proved by `rel_aop prelude` (relaop/RelAop/Prelude.lean); a map is `dom(f) = 𝟙` and `simple(f)`.
 
     simple(f : α ⟶ β) ≜ f°f ⊑ 𝟙                                   -- f relates each input to at most one output
-    theorem absorption(S : α ⟶ β, R : β ⟶ γ) : (𝟙÷∋)E(S)E(R) = (𝟙÷∋)E(S R)  -- B&dM (4.24) Λ-absorption
-    theorem Eunion(R : α ⟶ β) : E(R) = E((𝟙÷∋)E(R))E(∋)                 -- E(R) is the union of the images of Λ(R)
-    theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) : E(R S) = E(R)E(S)        -- E is a functor
-    theorem estMap(f : α ⟶ β, R : β ⟶ β) if dom(f) = 𝟙, simple(f), 𝟙 ⊑ R : (𝟙÷∋)E(f)est(R) = f  -- a singleton's R-extreme is itself
-    theorem permConv : perm° = perm                                -- perm is its own converse (`Elab.convs`)
+    theorem absorption(S : α ⟶ β, R : β ⟶ γ) if dom(Λ(S)) = 𝟙 : (𝟙÷∋)E(S)E(R) = (𝟙÷∋)E(S R) by Rel.Lang.Tm.absorption_den
+    theorem Eunion(R : α ⟶ β) if dom(Λ(R)) = 𝟙 : E(R) = E((𝟙÷∋)E(R))E(∋) by Rel.Lang.Tm.Eunion_den
+    theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) if dom(E(R)) = 𝟙 : E(R S) = E(R)E(S) by Rel.Lang.Tm.Ecomp_den
+    theorem estMap(f : α ⟶ β, R : β ⟶ β) if f°f ⊑ 𝟙 : (𝟙÷∋)E(f)est(R) = f by Rel.Lang.Tm.estMap_den
+    theorem permConv : perm° = perm by Rel.Lang.Tm.permConv_den
     theorem starLinear(R : α ⟶ α, S : α ⟶ β) : μX : S ∪ (R X) = star(R) S  -- a linear recursion is star(R) on S
     theorem foldUP(e : 1 ⟶ β, S : β×α ⟶ β, X : [α] ⟶ β) if X = nil°e ∪ (snoc°(X×𝟙)S) : X = ⦇[e, S]⦈ by Rel.Lang.Tm.foldUP_den  -- B&dM (5.12): the left fold's universal property
     theorem foldrUP(e : 1 ⟶ β, S : α×β ⟶ β, X : [α] ⟶ β) if X = nil°e ∪ (cons°(𝟙×X)S) : X = ⦇[e, S]⦈ʳ by Rel.Lang.Tm.foldrUP_den  -- B&dM (5.12): the right fold's universal property

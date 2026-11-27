@@ -90,6 +90,17 @@ theorem Prim.den_uncons {B : Obj} :
   unfold Prim.den; simp only [List.map_nil]
   rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
+theorem Prim.den_cat {B : Obj} :
+    Prim.den (rowOf "cat") (.prod (.arr B) (.arr B)) (.arr B) [] = fun p zs => zs = p.1 ++ p.2 := by
+  have hs : (rowOf "cat").sig = ([], .prod (.list (.var {} "B")) (.list (.var {} "B")), .list (.var {} "B")) := rfl
+  have ho : (rowOf "cat").objs (.prod (.arr B) (.arr B)) (.arr B) [] = some [B] := by
+    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (rowOf "cat").sym) =
+      some ⟨RowCode.cat, fun _ _ p zs => zs = p.1 ++ p.2⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
 theorem Prim.den_uncat {B : Obj} :
     Prim.den (rowOf "uncat") (.arr B) (.prod (.arr B) (.arr B)) [] = fun xs p => xs = p.1 ++ p.2 := by
   have hs : (rowOf "uncat").sig = ([], .list B1, .prod (.list B1) (.list B1)) := rfl
