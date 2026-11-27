@@ -2,6 +2,7 @@ import Rel.Lang.Laws.EstUnion
 import Rel.Lang.PreludeConcat
 import Rel.Lang.PreludeDfn
 import Rel.Lang.PreludeLoop
+import Rel.Lang.PreludeEnds
 
 /-! The two laws of B&dM §7.4 (pp.182-183) on the `Vec` model, over any element type and any pair test `TQ`:
 
@@ -199,6 +200,232 @@ theorem Tm.zipLax_den {A B C : Obj} (ρ : Val) :
   obtain ⟨h1, h2⟩ := Nat.lt_min.1 (List.length_zip ▸ ht)
   simp only [List.getElem_zip]
   exact ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hS t h2 (by omega)⟩⟩
+
+/-- `moves` of the cylinder program as it elaborates (`moves(x) = (up(x), x, down(x))`, `up = ⟨tail, head τ⟩cat`,
+    `down = ⟨last τ, init⟩cat`), the four calls each at the object instantiation `os`. -/
+def Tm.movesCall (B : Obj) (os : List Obj) : Tm (.arr B) (.arr (.arr B)) :=
+  .comp (B := .prod (.arr (.arr B)) (.arr (.arr B)))
+    (.pair
+      (.comp (B := .arr B) (.comp (B := .prod (.arr B) (.arr B))
+        (.pair (Tm.tailCall B os) (.comp (B := B) (Tm.headCall B os) (.prim (rowOf "τ")))) (.prim (rowOf "cat")))
+        (.prim (rowOf "τ")))
+      (.comp (B := .prod (.arr (.arr B)) (.arr (.arr B)))
+        (.pair (.prim (rowOf "τ"))
+          (.comp (B := .arr B) (.comp (B := .prod (.arr B) (.arr B))
+            (.pair (.comp (B := B) (Tm.lastCall B os) (.prim (rowOf "τ"))) (Tm.initCall B os)) (.prim (rowOf "cat")))
+            (.prim (rowOf "τ"))))
+        (.prim (rowOf "cat"))))
+    (.prim (rowOf "cat"))
+
+theorem Tm.movesCall_den (ρ : Val) {B : Obj} {os : List Obj} (xs : Obj.El (.arr B)) (zs : Obj.El (.arr (.arr B))) :
+    (Tm.movesCall B os).den ρ xs zs ↔
+      ∃ a as bs c, xs = a :: as ∧ xs = bs ++ [c] ∧ zs = [as ++ [a], xs, c :: bs] := by
+  simp only [Tm.movesCall, Tm.den, Core.Rel.comp, Core.Rel.rpair, Prim.den_tau, Prim.den_cat,
+    Tm.tailCall_den, Tm.headCall_den, Tm.lastCall_den, Tm.initCall_den]
+  constructor
+  · rintro ⟨p, ⟨⟨u, ⟨q, ⟨⟨a, hxa⟩, c', ⟨h, hc'⟩, hq2⟩, hu⟩, hpu⟩,
+      ⟨r, ⟨hr1, d, ⟨s, ⟨⟨e, ⟨ys, hys⟩, hs1⟩, ⟨f, hf⟩⟩, hd⟩, hr2⟩, hpr⟩⟩, hz⟩
+    have hc : c' = a := by subst hxa; simpa using hc'
+    obtain ⟨-, he⟩ := List.append_inj' (hys.symm.trans hf) (by simp)
+    have he' : e = f := List.singleton_inj.1 he
+    refine ⟨a, q.1, s.2, f, hxa, hf, ?_⟩
+    rw [hz, hpu, hpr, hr1, hr2, hd, hs1, hu, hq2, hc]
+    simp [he']
+  · rintro ⟨a, as, bs, c, h1, h2, rfl⟩
+    exact ⟨([as ++ [a]], [xs, c :: bs]), ⟨⟨as ++ [a], ⟨(as, [a]), ⟨⟨a, h1⟩, a, ⟨by simp [h1], by simp [h1]⟩, rfl⟩, rfl⟩, rfl⟩,
+      ⟨([xs], [c :: bs]), ⟨rfl, c :: bs, ⟨([c], bs), ⟨⟨c, ⟨bs, h2⟩, rfl⟩, ⟨c, h2⟩⟩, rfl⟩, rfl⟩, rfl⟩⟩, rfl⟩
+
+/-- Two lists related elementwise (Mathlib's `List.Forall₂`, which this repository does not import). -/
+inductive All2 {α β : Type} (R : α → β → Prop) : List α → List β → Prop
+  | nil : All2 R [] []
+  | cons {a b l l'} : R a b → All2 R l l' → All2 R (a :: l) (b :: l')
+
+theorem All2.append {α β : Type} {R : α → β → Prop} {l₁ l₁' l₂ l₂'} (h1 : All2 R l₁ l₁') (h2 : All2 R l₂ l₂') :
+    All2 R (l₁ ++ l₂) (l₁' ++ l₂') := by
+  induction h1 with
+  | nil => simpa using h2
+  | cons h _ ih => exact .cons h ih
+
+theorem All2.snoc_right {α β : Type} {R : α → β → Prop} :
+    ∀ {bs : List β} {xs : List α} {c : β}, All2 R xs (bs ++ [c]) → ∃ ys d, xs = ys ++ [d] ∧ All2 R ys bs ∧ R d c := by
+  intro bs
+  induction bs with
+  | nil => intro xs c h; cases h with | cons hr ht => cases ht; exact ⟨[], _, rfl, .nil, hr⟩
+  | cons b bs ih =>
+    intro xs c h
+    cases h with | cons hr ht => obtain ⟨ys, d, rfl, h1, h2⟩ := ih ht; exact ⟨_ :: ys, d, rfl, .cons hr h1, h2⟩
+
+/-- `F(T)` relates two lists exactly when they are `All2 T`. -/
+theorem mapDen_all2 {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
+    ∀ (xs : List A.El) (ys : List B.El), mapDen T xs ys ↔ All2 T xs ys := by
+  intro xs
+  induction xs with
+  | nil =>
+    intro ys; rw [mapDen_iff]; constructor
+    · rintro ⟨hl, -⟩; cases ys with | nil => exact .nil | cons => simp at hl
+    · intro h; cases h; exact ⟨rfl, fun t ht => absurd ht (by simp)⟩
+  | cons x xs ih =>
+    intro ys; rw [mapDen_iff]; constructor
+    · rintro ⟨hl, h⟩
+      cases ys with
+      | nil => simp at hl
+      | cons y ys =>
+        exact .cons (h 0 (by simp) (by simp)) ((ih ys).1 ((mapDen_iff _ _ _).2 ⟨by simpa using hl,
+          fun t ht ht' => h (t + 1) (by simpa using ht) (by simpa using ht')⟩))
+    · intro h
+      cases h with
+      | cons hr ht =>
+        obtain ⟨hl, h'⟩ := (mapDen_iff _ _ _).1 ((ih _).2 ht)
+        exact ⟨by simp [hl], fun t ht ht' => by
+          cases t with
+          | zero => exact hr
+          | succ t => exact h' t (by simpa using ht) (by simpa using ht')⟩
+
+/-- `F(S) moves ⊑ moves F(F(S))` as the program elaborates it, `S` the variable `0`, the calls of `moves` at the object
+    instantiations `os` (of `S`'s target) and `os'` (of its source). -/
+theorem Tm.movesLax_den {A B : Obj} {os os' : List Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ (((Tm.prim mapRow : Tm (.arr A) (.arr B)).arg (Tm.var 0 : Tm A B)).comp (Tm.movesCall B os)))
+      (Tm.den ρ ((Tm.movesCall A os').comp ((Tm.prim mapRow : Tm (.arr (.arr A)) (.arr (.arr B))).arg
+        ((Tm.prim mapRow : Tm (.arr A) (.arr B)).arg (Tm.var 0 : Tm A B))))) := by
+  refine Core.Rel.le_iff.2 fun xs zs h => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp] at h ⊢
+  obtain ⟨ys, hxy, hm⟩ := h
+  obtain ⟨a', as', bs', c', hy1, hy2, rfl⟩ := (Tm.movesCall_den ρ _ _).1 hm
+  subst hy1
+  rw [mapDen_all2] at hxy
+  obtain ⟨bs, c, hxs, hb, hSc⟩ := All2.snoc_right (hy2 ▸ hxy)
+  cases hxy with
+  | cons hSa hSas =>
+    refine ⟨[_ ++ [_], _ :: _, c :: bs], (Tm.movesCall_den ρ _ _).2 ⟨_, _, bs, c, rfl, hxs, rfl⟩, ?_⟩
+    rw [mapDen_all2]
+    exact .cons ((mapDen_all2 _ _ _).2 (All2.append hSas (.cons hSa .nil)))
+      (.cons ((mapDen_all2 _ _ _).2 (.cons hSa hSas)) (.cons ((mapDen_all2 _ _ _).2 (.cons hSc hb)) .nil))
+
+theorem All2.mono {α β : Type} {R R' : α → β → Prop} (hR : ∀ a b, R a b → R' a b) {l : List α} {l' : List β}
+    (h : All2 R l l') : All2 R' l l' := by
+  induction h with
+  | nil => exact .nil
+  | cons h _ ih => exact .cons (hR _ _ h) ih
+
+/-- `F` of a function `f` maps it over the list. -/
+theorem mapDen_graph {A B : Obj} (f : A.El → B.El) (m : List A.El) (w : List B.El) :
+    mapDen (fun p ys => ys = f p : Core.Rel (Obj.El A) (Obj.El B)) m w ↔ w = m.map f := by
+  rw [mapDen_iff]
+  constructor
+  · rintro ⟨hl, h⟩
+    refine List.ext_getElem (by simp [hl]) fun t h1 h2 => ?_
+    rw [List.getElem_map]; exact h t (by simpa using h2) h1
+  · rintro rfl; exact ⟨by simp, fun t ht ht' => by simp⟩
+
+/-- The left fold `loop(T)` of a step `T` that is the function `f` on (acc, y) is `List.foldl f`. -/
+theorem loopDen_foldl {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) (f : X.El → Y.El → X.El)
+    (hT : ∀ acc y w, T (acc, y) w ↔ w = f acc y) (a : X.El) (l : List Y.El) (c : X.El) :
+    loopDen T (a, l) c ↔ c = l.foldl f a := by
+  rw [loopDen_iff]
+  have tk : ∀ t (h : t < l.length), l.take (t + 1) = l.take t ++ [l[t]] := fun t h => by
+    rw [List.take_add_one, List.getElem?_eq_getElem h]; rfl
+  have key : ∀ g : Nat → X.El, g 0 = a → (∀ t (ht : t < l.length), T (g t, l[t]'ht) (g (t + 1))) →
+      ∀ t, t ≤ l.length → g t = (l.take t).foldl f a := by
+    intro g h0 hg t
+    induction t with
+    | zero => intro _; simpa using h0
+    | succ t ih =>
+      intro ht
+      rw [(hT _ _ _).1 (hg t (by omega)), ih (by omega), tk t (by omega), List.foldl_append]; rfl
+  constructor
+  · rintro ⟨g, h0, hg, rfl⟩
+    rw [key g h0 hg _ (Nat.le_refl _)]; simp
+  · rintro rfl
+    refine ⟨fun t => (l.take t).foldl f a, by simp, fun t ht => (hT _ _ _).2 ?_, by simp⟩
+    dsimp only
+    rw [tk t ht, List.foldl_append]; rfl
+
+/-- The step of `trans`, `zip F(snoc)`: `(acc, y) ↦ (acc zip y).map (++ [·])`. -/
+def Tm.transStep (B : Obj) : Tm (.prod (.arr (.arr B)) (.arr B)) (.arr (.arr B)) :=
+  .comp (B := .arr (.prod (.arr B) B)) (.prim (rowOf "zip"))
+    ((Tm.prim mapRow : Tm (.arr (.prod (.arr B) B)) (.arr (.arr B))).arg (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B)))
+
+/-- `loop(zip F(snoc))`, the left fold of `Tm.transStep` over the rows. -/
+def Tm.transLoop (B : Obj) : Tm (.prod (.arr (.arr B)) (.arr (.arr B))) (.arr (.arr B)) :=
+  (Tm.prim (rowOf "loop") : Tm (.prod (.arr (.arr B)) (.arr (.arr B))) (.arr (.arr B))).arg (Tm.transStep B)
+
+/-- `trans : [[α]] ⟶ [[α]] ≜ ⟨head F(τ), tail⟩loop(zip F(snoc))` as it elaborates, the calls at `os`. -/
+def Tm.transCall (B : Obj) (os : List Obj) : Tm (.arr (.arr B)) (.arr (.arr B)) :=
+  .comp (B := .prod (.arr (.arr B)) (.arr (.arr B)))
+    (.pair (.comp (B := .arr B) (Tm.headCall (.arr B) os)
+      ((Tm.prim mapRow : Tm (.arr B) (.arr (.arr B))).arg (.prim (rowOf "τ") : Tm B (.arr B)))) (Tm.tailCall (.arr B) os))
+    (Tm.transLoop B)
+
+/-- One row `y` laid under the columns `acc`. -/
+def snocRow {α : Type} (acc : List (List α)) (y : List α) : List (List α) := (acc.zip y).map fun p => p.1 ++ [p.2]
+
+theorem Tm.transStep_den (ρ : Val) {B : Obj} (acc : List (List B.El)) (y : List B.El) (w : List (List B.El)) :
+    (Tm.transStep B).den ρ (acc, y) w ↔ w = snocRow acc y := by
+  simp only [Tm.transStep, Tm.den, Tm.argDen, Core.Rel.comp, Prim.den_zip, Prim.den_mapRow, Prim.den_snoc,
+    Core.Rel.graph, exists_eq_left, snocRow]
+  exact mapDen_graph (A := .prod (.arr B) B) (B := .arr B) (fun p => p.1 ++ [p.2]) _ _
+
+theorem Tm.transCall_den (ρ : Val) {B : Obj} {os : List Obj} (xss : List (List B.El)) (zss : List (List B.El)) :
+    (Tm.transCall B os).den ρ xss zss ↔
+      ∃ r rs, xss = r :: rs ∧ zss = rs.foldl snocRow (r.map fun a => [a]) := by
+  have hl : ∀ (p : List (List B.El) × List (List B.El)) zs, (Tm.transLoop B).den ρ p zs ↔ zs = p.2.foldl snocRow p.1 := by
+    intro p zs
+    simp only [Tm.transLoop, Tm.den, Tm.argDen, Prim.den_loopRow]
+    exact loopDen_foldl (X := .arr (.arr B)) (Y := .arr B) _ snocRow (fun acc y w => Tm.transStep_den ρ acc y w) p.1 p.2 zs
+  simp only [Tm.transCall, Tm.den, Tm.argDen, Core.Rel.comp, Core.Rel.rpair, hl, Tm.headCall_den, Tm.tailCall_den, Prim.den_mapRow,
+    Prim.den_tau]
+  constructor
+  · rintro ⟨⟨c, rs⟩, ⟨⟨b1, ⟨h, hb1⟩, hm⟩, ⟨a, hx⟩⟩, hz⟩
+    have hb : b1 = a := by subst hx; simpa using hb1
+    subst hb
+    rw [mapDen_graph (A := B) (B := .arr B) (fun a => [a])] at hm
+    exact ⟨_, rs, hx, by rw [hz, hm]⟩
+  · rintro ⟨r, rs, rfl, rfl⟩
+    exact ⟨(r.map fun a => [a], rs), ⟨⟨r, ⟨by simp, rfl⟩, (mapDen_graph (A := B) (B := .arr B) (fun a => [a]) _ _).2 rfl⟩, ⟨r, rfl⟩⟩, rfl⟩
+
+theorem snocRow_all2 {α β : Type} {S : α → β → Prop} {acc : List (List α)} {acc' : List (List β)}
+    (h : All2 (All2 S) acc acc') : ∀ {y y'}, All2 S y y' → All2 (All2 S) (snocRow acc y) (snocRow acc' y') := by
+  induction h with
+  | nil => intro y y' _; exact .nil
+  | cons hl _ ih =>
+    intro y y' hy
+    cases hy with
+    | nil => exact .nil
+    | cons hx hys => exact .cons (All2.append hl (.cons hx .nil)) (ih hys)
+
+theorem foldl_snocRow_all2 {α β : Type} {S : α → β → Prop} {rs : List (List α)} {rs' : List (List β)}
+    (h : All2 (All2 S) rs rs') : ∀ {acc acc'}, All2 (All2 S) acc acc' →
+      All2 (All2 S) (rs.foldl snocRow acc) (rs'.foldl snocRow acc') := by
+  induction h with
+  | nil => intro acc acc' ha; exact ha
+  | cons hy _ ih => intro acc acc' ha; exact ih (snocRow_all2 ha hy)
+
+theorem singleton_all2 {α β : Type} {S : α → β → Prop} {r : List α} {r' : List β} (h : All2 S r r') :
+    All2 (All2 S) (r.map fun a => [a]) (r'.map fun a => [a]) := by
+  induction h with
+  | nil => exact .nil
+  | cons hx _ ih => exact .cons (.cons hx .nil) ih
+
+/-- `F(F(S)) trans ⊑ trans F(F(S))` as the program elaborates it, `S` the variable `0`, the calls of `trans` at the object
+    instantiations `os` (of `S`'s target) and `os'` (of its source). -/
+theorem Tm.transLax_den {A B : Obj} {os os' : List Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ (((Tm.prim mapRow : Tm (.arr (.arr A)) (.arr (.arr B))).arg
+        ((Tm.prim mapRow : Tm (.arr A) (.arr B)).arg (Tm.var 0 : Tm A B))).comp (Tm.transCall B os)))
+      (Tm.den ρ ((Tm.transCall A os').comp ((Tm.prim mapRow : Tm (.arr (.arr A)) (.arr (.arr B))).arg
+        ((Tm.prim mapRow : Tm (.arr A) (.arr B)).arg (Tm.var 0 : Tm A B))))) := by
+  refine Core.Rel.le_iff.2 fun xss zss h => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp] at h ⊢
+  obtain ⟨yss, hxy, ht⟩ := h
+  obtain ⟨r', rs', rfl, rfl⟩ := (Tm.transCall_den ρ _ _).1 ht
+  rw [mapDen_all2] at hxy
+  cases hxy with
+  | cons hr hrs =>
+    have hr' := (mapDen_all2 _ _ _).1 hr
+    have hrs' := hrs.mono fun a b h => (mapDen_all2 _ a b).1 h
+    exact ⟨_, (Tm.transCall_den ρ _ _).2 ⟨_, _, rfl, rfl⟩, (mapDen_all2 _ _ _).2
+      ((foldl_snocRow_all2 hrs' (singleton_all2 hr')).mono fun a b h => (mapDen_all2 _ a b).2 h)⟩
 
 end Rel.Lang
 

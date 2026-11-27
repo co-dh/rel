@@ -129,8 +129,8 @@ def Tm.headAt {B : Obj} : Tm (.arr B) B :=
     (.prim indexRow)
 
 /-- The prelude's `tail`, `cat° dom(π₁ (at(0)τ ∩ 𝟙))π₂`, as a call. -/
-def Tm.mergeTail (B : Obj) : Tm (.arr B) (.arr B) :=
-  .call [] `Rel.Programs.prelude.tail (some `Rel.Programs.prelude.tail.conv) [B]
+def Tm.tailCall (B : Obj) (os : List Obj := [B]) : Tm (.arr B) (.arr B) :=
+  .call [] `Rel.Programs.prelude.tail (some `Rel.Programs.prelude.tail.conv) os
     (.comp (.comp (.prim (rowOf "uncat")) (.dom (.comp .outl (.meet (.comp (Tm.headAt (B := B)) (.prim (rowOf "τ"))) .id)))) .outr)
 
 theorem Tm.headAt_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B) :
@@ -140,9 +140,9 @@ theorem Tm.headAt_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B)
   simp only [Tm.den] at hz
   simp only [Tm.headAt, Tm.at0, Tm.den, Gen.atom_zero, hz]
 
-theorem Tm.mergeTail_den (ρ : Val) {B : Obj} (xs ys : Obj.El (.arr B)) :
-    (Tm.mergeTail B).den ρ xs ys ↔ ∃ a, xs = a :: ys := by
-  simp only [Tm.mergeTail, Tm.den, Val.args, Tm.dom_den, Prim.den_uncat, Prim.den_tau, Core.Rel.comp, Core.Rel.inter,
+theorem Tm.tailCall_den (ρ : Val) {B : Obj} {os : List Obj} (xs ys : Obj.El (.arr B)) :
+    (Tm.tailCall B os).den ρ xs ys ↔ ∃ a, xs = a :: ys := by
+  simp only [Tm.tailCall, Tm.den, Val.args, Tm.dom_den, Prim.den_uncat, Prim.den_tau, Core.Rel.comp, Core.Rel.inter,
     Core.Rel.recip, Core.Rel.graph, Core.Rel.id, Tm.headAt_den, exists_eq_left]
   constructor
   · rintro ⟨b, ⟨b1, hx, rfl, b2, ⟨⟨b', -, hb2⟩, hfst⟩, -⟩, rfl⟩
@@ -162,10 +162,10 @@ def Tm.mergeDef {B : Obj} (Q : Tm B B) : Tm (.prod (.arr B) (.arr B)) (.arr B) :
         (.comp (.comp (.pair (.pair .id Tm.nil) (.prim (rowOf "cat")) : Tm (.prod (.arr B) (.arr B)) (.prod 𝕊 (.arr B))) (.arg (.prim (rowOf "loop") : Tm (.prod 𝕊 (.arr B)) 𝕊)
           (.comp (.outl : Tm (.prod 𝕊 B) 𝕊) (.join
             (.comp (.var 6 : Tm 𝕊 𝕊)
-              (.pair (.pair (.comp (.comp .outl .outl) (Tm.mergeTail B)) (.comp .outl .outr))
+              (.pair (.pair (.comp (.comp .outl .outl) (Tm.tailCall B)) (.comp .outl .outr))
                 (.comp (.pair .outr (.var 2 : Tm 𝕊 B)) (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B)))))
             (.comp (.diff .id (.var 6))
-              (.pair (.pair (.comp .outl .outl) (.comp (.comp .outl .outr) (Tm.mergeTail B)))
+              (.pair (.pair (.comp .outl .outl) (.comp (.comp .outl .outr) (Tm.tailCall B)))
                 (.comp (.pair .outr (.var 3 : Tm 𝕊 B)) (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B))))))))) .outr))
         (.join (.dom (.comp (.pair (.var 2 : Tm 𝕊 B) (.var 3))
             (.arg (.call [2] `Rel.Programs.prelude.cor (some `Rel.Programs.prelude.cor.conv) [B, B]
@@ -206,7 +206,7 @@ theorem Tm.mergeDef_row (ρ : Val) {B : Obj} (Q : Tm B B) (p : (Obj.prod (Obj.ar
     rw [Tm.headAt_den]; cases xs <;> simp [eq_comm]
   obtain ⟨⟨xs, zs⟩, acc⟩ := s
   simp only [Core.Rel.comp, Core.Rel.union, Core.Rel.diff, Core.Rel.inter, Core.Rel.id, Core.Rel.graph,
-    Core.Rel.rpair, Core.Rel.recip, Prim.den_snoc, hd, Tm.mergeTail_den, Tm.dom_den, Tm.den,
+    Core.Rel.rpair, Core.Rel.recip, Prim.den_snoc, hd, Tm.tailCall_den, Tm.dom_den, Tm.den,
     Tm.argDen, Val.args, Val.bind, Val.empty, Nat.reduceEqDiff, reduceIte, ↓reduceDIte, and_self]
   rcases xs with _ | ⟨a, xs⟩ <;> rcases zs with _ | ⟨b, zs⟩ <;>
     simp only [mstep, exists_eq_left, exists_eq_left', exists_and_left,
