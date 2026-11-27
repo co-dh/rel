@@ -2,6 +2,7 @@ module
 
 public import Rel.Lang.PlanSpecLoop
 public import Rel.Lang.PlanSpecUnion
+public import Rel.Lang.PlanSpecSelect
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -338,5 +339,209 @@ theorem fixB_builds {A B : Obj} {stepT : Tab A B → Except String (Tab A B)} {b
   obtain ⟨e1', he1⟩ := he
   exact hkk fg2 V ys ⟨a1 ++ e1', by rw [he1, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
     (f4.trans hsk') (f5.trans hsv') (by simpa [o] using hread)
+
+/-! ## `ν` and `μ`: `fixB` at the step `X ↦ X ∩ f(X)` and `X ↦ X ∪ f(X)` -/
+
+theorem Grows.interB (R S : TabB) : Grows (Plan.interB R S) := by
+  unfold Plan.interB; rw [selectB_eq]
+  refine Grows.funT fun Ts => ?_
+  rcases Ts with _ | ⟨T1, _ | ⟨T2, _ | ⟨T3, Ts⟩⟩⟩ <;> try exact Grows.throw _
+  exact Grows.selBody keepSpec_inter.1 T1 T2
+
+theorem Typed.interB {m : Nat} {R S : TabB} (hR : AllGe m R.regs) (hS : AllGe m S.regs) :
+    Typed m (fun U => AllGe m U.regs) (Plan.interB R S) := by
+  unfold Plan.interB; rw [selectB_eq]
+  refine Typed.funT (fun a ha => ?_) fun Us hU => ?_
+  · simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, List.mem_append] at ha
+    exact ha.elim (hR a) (hS a)
+  rcases Us with _ | ⟨T1, _ | ⟨T2, _ | ⟨T3, Us⟩⟩⟩ <;> try exact Typed.throw _
+  exact Typed.selBody (fun a b c h1 h2 h3 => keepSpec_inter.2.2.1 _ a b c h1 h2 h3)
+    (fun a ha => hU a (by simp [ha])) (fun a ha => hU a (by simp [ha]))
+
+theorem Grows.unionB (R S : TabB) : Grows (Plan.unionB R S) := by
+  unfold Plan.unionB
+  refine Grows.funT fun Ts => ?_
+  rcases Ts with _ | ⟨T1, _ | ⟨T2, _ | ⟨T3, Ts⟩⟩⟩ <;> try exact Grows.throw _
+  exact (Grows.catB _ _).bind fun ⟨n, off⟩ => (Grows.concatB (Col.sizes T1.key + 1) _ _ _ _ _ _
+    (Nat.lt_succ_self _)).bind fun _ => (Grows.concatB (Col.sizes T1.val + 1) _ _ _ _ _ _
+    (Nat.lt_succ_self _)).bind fun _ => Grows.canonT _
+
+theorem Typed.unionB {m : Nat} {R S : TabB} (hR : AllGe m R.regs) (hS : AllGe m S.regs) :
+    Typed m (fun U => AllGe m U.regs) (Plan.unionB R S) := by
+  unfold Plan.unionB
+  refine Typed.funT (fun a ha => ?_) fun Us hU => ?_
+  · simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, List.mem_append] at ha
+    exact ha.elim (hR a) (hS a)
+  rcases Us with _ | ⟨R1, _ | ⟨S1, _ | ⟨T3, Us⟩⟩⟩ <;> try exact Typed.throw _
+  have hm1 : AllGe m R1.regs := fun a ha => hU a (by simp [ha])
+  have hm2 : AllGe m S1.regs := fun a ha => hU a (by simp [ha])
+  have hnR : m ≤ R1.n := hm1 _ (by rw [TabB.regs_eq]; simp)
+  have hnS : m ≤ S1.n := hm2 _ (by rw [TabB.regs_eq]; simp)
+  have hkR : AllGe m (Cols.regs R1.key) := fun a ha => hm1 a (by rw [TabB.regs_eq]; simp [ha])
+  have hvR : AllGe m (Cols.regs R1.val) := fun a ha => hm1 a (by rw [TabB.regs_eq]; simp [ha])
+  have hkS : AllGe m (Cols.regs S1.key) := fun a ha => hm2 a (by rw [TabB.regs_eq]; simp [ha])
+  have hvS : AllGe m (Cols.regs S1.val) := fun a ha => hm2 a (by rw [TabB.regs_eq]; simp [ha])
+  refine (Typed.catB hnR hnS).bind fun ⟨n, off⟩ hno => ?_
+  refine (Typed.concatBOf (S := []) (Col.sizes R1.key + 1) n R1.n S1.n off R1.key S1.key (Nat.lt_succ_self _)
+    (.inl hno.1) hnR hnS hkR hkS).bind fun ck' hck' => ?_
+  refine (Typed.concatBOf (S := []) (Col.sizes R1.val + 1) n R1.n S1.n off R1.val S1.val (Nat.lt_succ_self _)
+    (.inl hno.1) hnR hnS hvR hvS).bind fun cv' hcv' => ?_
+  refine Typed.canonT _ ?_
+  intro a ha
+  simp only [TabB.regs, Cols.regs_append, List.mem_cons, List.mem_append] at ha
+  rcases ha with rfl | ha | ha
+  · exact hno.1
+  · simpa using hck' a ha
+  · simpa using hcv' a ha
+
+/-- **A binary table operation builds `op`** under the premise `Pr` on its operands (`UnionSpec`'s shape, `Pr` the kernel
+    facts it takes): `bld R' S'` with `R'`, `S'` holding `R`, `S`. -/
+def BinSpec (A B : Obj) (op : Tab A B → Tab A B → Except String (Tab A B)) (bld : TabB → TabB → Bld TabB)
+    (Pr : Tab A B → Tab A B → Prop) : Prop :=
+  ∀ {R S U : Tab A B} {R' S' : TabB} {fg : Array Fun × Array Fun} {rs : Array Val} {kk : TabB → Bld (Array Nat)}
+    {out : Array Val}, ColsOf A R'.key → ColsOf B R'.val → ColsOf A S'.key → ColsOf B S'.val → TabHolds R' R rs →
+    TabHolds S' S rs → op R S = .ok U → Pr R S → Ordered fg.1 →
+    (∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape R'.key → Cols.shape W.val = Cols.shape R'.val →
+      TabHolds W U (rs ++ ys) → ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) →
+    ∃ fg', Builds abiOf fg fg' (bld R' S' >>= kk) rs out
+
+/-- The kernel facts `∪` takes of the concatenation of its operands (`UnionSpec`'s). -/
+def UnionPre {A B : Obj} (R S : Tab A B) : Prop := ∀ C, R.concat S = .ok C → CanOK C
+
+/-- The kernel facts `∩` takes of its operands (`SelectSpec`'s, at `inter`'s `keep`). -/
+def InterPre {A B : Obj} (R S : Tab A B) : Prop := R.n.toNat + S.n.toNat < 2 ^ 63 ∧
+  (∀ C tag, R.tagged S = .ok (C, tag) → ∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) C.n 0 = .ok z) ∧
+  (∀ C tag es vs p k g f z, R.tagged S = .ok (C, tag) →
+    kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) C.n 0 = .ok z →
+    ValsB.cols (A := .prod A B) (C.key, C.val) = .ok es → kasc C.n es = .ok (vs, p) →
+    kseen C.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+    ∃ r, kscan .max false .i64 .i64 C.n (some z) [(C.n, z), (C.n, g)] [] [] = .ok r)
+
+theorem binSpec_union (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B : Obj) :
+    BinSpec A B Tab.union unionB UnionPre :=
+  fun hk hv hk' hv' hR hS hU hP hfo hkk => unionB_builds hc h63 A B hk hv hk' hv' hR hS hU hP hfo hkk
+
+theorem binSpec_inter (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63)
+    (hW : ∀ m mn mx bits K sel, colMap .lt m mn mx = .ok bits → whereCol m bits = .ok (K, sel) →
+      WhereAgree m K bits sel) (A B : Obj) : BinSpec A B Tab.inter interB InterPre :=
+  fun hk hv hk' hv' hR hS hU hP hfo hkk =>
+    interB_builds hT h63 A B hk hv hk' hv' hR hS hU hP.1 hP.2.1 hP.2.2 hW hfo hkk
+
+/-- **A round `X ↦ g(X)` of a loop builds**: `g` is `f` then the binary operation `op` of `X` and `f(X)`. -/
+theorem TabSpec.after {A B : Obj} {fT : Tab A B → Except String (Tab A B)} {bldF : TabB → Bld TabB}
+    {op : Tab A B → Tab A B → Except String (Tab A B)} {bld : TabB → TabB → Bld TabB}
+    {Pr : Tab A B → Tab A B → Prop} (hF : TabSpec A B fT bldF) (hO : BinSpec A B op bld Pr)
+    (hpre : ∀ X F, fT X = .ok F → Pr X F) :
+    TabSpec A B (fun X => fT X >>= op X) (fun X => bldF X >>= bld X) := by
+  intro X S X' fg rs kk out hk hv hX hS hfo hkk
+  obtain ⟨F, hF1, hF2⟩ := except_bind_ok hS
+  show ∃ fg', Builds abiOf fg fg' ((bldF X' >>= bld X') >>= kk) rs out
+  rw [bind_assoc]
+  refine hF hk hv hX hF1 hfo ?_
+  intro fg2 W ys he hf ho hsk hsv hW
+  refine hO hk hv (ColsOf.shape A hk hsk) (ColsOf.shape B hv hsv) (mapM_extends (fun h => get_app h) hX) hW hF2
+    (hpre X F hF1) ho ?_
+  intro fg3 V zs he3 hf3 ho3 hs1 hs2 hV
+  obtain ⟨fg', hB⟩ := hkk fg3 V (ys ++ zs) (FExt.trans he he3) (hf.trans hf3) ho3 hs1 hs2
+    (by rw [← Array.append_assoc]; exact hV)
+  exact ⟨fg', by rw [Array.append_assoc]; exact hB⟩
+
+/-- `Tab.nu`'s round on the tables of one state. -/
+def nuStep (f : TabB → Bld TabB) : List TabB → Bld (List TabB)
+  | [X] => return [← interB X (← f X)]
+  | Ts => throw s!"ν: a state of {Ts.length} tables, not one"
+
+/-- `Tab.mu`'s round. -/
+def muStep (f : TabB → Bld TabB) : List TabB → Bld (List TabB)
+  | [X] => return [← unionB X (← f X)]
+  | Ts => throw s!"μ: a state of {Ts.length} tables, not one"
+
+theorem nuB_eq (f : TabB → Bld TabB) (top : TabB) : nuB f top = (do
+    let T ← canonT top
+    fixB "Tab.nu: the row count still moved at the rows of top + 2 rounds" (nuStep f)
+      (← call1 (kernel% USize.add) #[T.n, ← lit (.size 2)]) [T]) := rfl
+
+theorem muB_eq (msg : String) (k : Nat) (f : TabB → Bld TabB) (Z : TabB) : muB msg k f Z = fixB msg (muStep f) k [Z] := rfl
+
+theorem nuStep_eq (f : TabB → Bld TabB) (T : TabB) : nuStep f [T] = (fun W => [W]) <$> (f T >>= interB T) := by
+  simp [nuStep]
+
+theorem muStep_eq (f : TabB → Bld TabB) (T : TabB) : muStep f [T] = (fun W => [W]) <$> (f T >>= unionB T) := by
+  simp [muStep]
+
+/-- **`nuB` builds `Tab.nu`**: `top'` holds `top` in `rs`; its canonical form `T` (`CanOK top`: `canonT_builds`' kernel
+    facts) has `T.n + 2` not wrapping (`hn`), the rounds' `∩` take `InterPre` (`hpre`), `fT` is built by `bldF` and
+    `Tab.pack` by `packT` (`TabSpec`); `kk` continues with a table of `top'`'s shape holding `Y`. -/
+theorem nuB_builds {A B : Obj} {fT : Tab A B → Except String (Tab A B)} {bldF : TabB → Bld TabB}
+    (hF : TabSpec A B fT bldF) (hGF : ∀ T, Grows (bldF T))
+    (hTF : ∀ m T, AllGe m T.regs → Typed m (fun U => AllGe m U.regs) (bldF T))
+    (hP : TabSpec A B Tab.pack (fun T => packT T)) (hGP : ∀ T, Grows (packT T))
+    (hTP : ∀ m T, AllGe m T.regs → Typed m (fun U => AllGe m U.regs) (packT T))
+    (hI : BinSpec A B Tab.inter interB InterPre) (hpre : ∀ X F, fT X = .ok F → InterPre X F)
+    {top Y : Tab A B} {top' : TabB} {fg : Array Fun × Array Fun} {rs : Array Val} {kk : TabB → Bld (Array Nat)}
+    {out : Array Val} (hk : ColsOf A top'.key) (hv : ColsOf B top'.val) (hX : TabHolds top' top rs) (hcan : CanOK top)
+    (hn : ∀ T : Tab A B, top.canon = .ok T → (T.n + 2).toNat = T.n.toNat + 2)
+    (hY : Tab.nu fT top = .ok Y) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape top'.key → Cols.shape W.val = Cols.shape top'.val →
+      TabHolds W Y (rs ++ ys) → ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (nuB bldF top' >>= kk) rs out := by
+  unfold Tab.nu at hY
+  obtain ⟨T, hT, hfix⟩ := except_bind_ok hY
+  rw [nuB_eq, bind_assoc]
+  obtain ⟨hN, z, hz, hsc⟩ := hcan
+  refine canonT_builds (R := top) (R' := T) hk hv hX hT (Nat.le_of_lt hN) hz hsc hfo ?_
+  intro fg2 U ys he hf ho hs1 hs2 hU
+  simp only [bind_assoc]
+  have hUn : (rs ++ ys)[U.n]? = some (.size T.n) := TabHolds.count hU
+  have hGs : ∀ Ts, Grows (nuStep bldF Ts) := by
+    intro Ts; rcases Ts with _ | ⟨T1, _ | ⟨T2, Ts⟩⟩ <;> try exact Grows.throw _
+    exact (hGF T1).bind fun F => (Grows.interB T1 F).bind fun _ => Grows.pure _
+  obtain ⟨fg', hB⟩ : ∃ fg', Builds abiOf fg2 fg'
+      (fixB "Tab.nu: the row count still moved at the rows of top + 2 rounds" (nuStep bldF)
+        ((rs ++ ys).push (.size 2)).size [U] >>= kk) (((rs ++ ys).push (.size 2)).push (.size (T.n + 2))) out := by
+    refine fixB_builds (fun T => nuStep_eq bldF T) hP (hF.after hI hpre) hGs hGP
+      (fun m T hT => (hTF m T hT).bind fun W hW => Typed.interB hT hW) hTP
+      (c := T.n + 2) (k := ((rs ++ ys).push (.size 2)).size) (ColsOf.shape A hk hs1) (ColsOf.shape B hv hs2)
+      (mapM_extends (fun h => get_push (get_push h)) hU) (by simp only [Array.getElem?_push_size]) (by rw [hn T hT]; exact hfix) ho ?_
+    intro fg3 W ys' he3 hf3 ho3 hw1 hw2 hW
+    have e : ((rs ++ ys).push (.size 2)).push (.size (T.n + 2)) ++ ys' =
+        rs ++ (ys ++ (#[.size 2] ++ (#[.size (T.n + 2)] ++ ys'))) := by
+      simp only [Array.push_eq_append, Array.append_assoc]
+    obtain ⟨fg', hB⟩ := hkk fg3 W (ys ++ (#[.size 2] ++ (#[.size (T.n + 2)] ++ ys'))) (FExt.trans he he3) (hf.trans hf3) ho3
+      (hw1.trans hs1) (hw2.trans hs2) (by rw [← e]; exact hW)
+    exact ⟨fg', by rw [e]; exact hB⟩
+  refine ⟨fg', Builds.lit (Builds.call1 (vs := #[.size T.n, .size 2]) (v := .size (T.n + 2)) (by abiK) (by rop) ?_ ?_ rfl hB)⟩
+  · have h1 : ((rs ++ ys).push (.size 2))[U.n]? = some (.size T.n) := get_push hUn
+    have h2 : ((rs ++ ys).push (.size 2))[(rs ++ ys).size]? = some (.size 2) := Array.getElem?_push_size ..
+    rw [List.mapM_toArray]; simp only [List.mapM_cons, List.mapM_nil, reg, h1, h2]; rfl
+  · simp [arg]; rfl
+
+/-- **`muB` builds `Tab.mu`**: `Z'` holds `𝟘` (`Tab.zero = Z0`) in `rs`, the register `k` the round count `c = cap - 1`;
+    the rounds' `∪` take `UnionPre`; `kk` continues with a table of `Z'`'s shape holding `Y`. -/
+theorem muB_builds {A B : Obj} {fT : Tab A B → Except String (Tab A B)} {bldF : TabB → Bld TabB}
+    (hF : TabSpec A B fT bldF) (hGF : ∀ T, Grows (bldF T))
+    (hTF : ∀ m T, AllGe m T.regs → Typed m (fun U => AllGe m U.regs) (bldF T))
+    (hP : TabSpec A B Tab.pack (fun T => packT T)) (hGP : ∀ T, Grows (packT T))
+    (hTP : ∀ m T, AllGe m T.regs → Typed m (fun U => AllGe m U.regs) (packT T))
+    (hI : BinSpec A B Tab.union unionB UnionPre) (hpre : ∀ X F, fT X = .ok F → UnionPre X F)
+    {Z0 Y : Tab A B} {Z' : TabB} {fg : Array Fun × Array Fun} {rs : Array Val} {kk : TabB → Bld (Array Nat)}
+    {out : Array Val} {what msg : String} {cap k : Nat} {c : USize} (hk : ColsOf A Z'.key) (hv : ColsOf B Z'.val)
+    (hZ : (Tab.zero : Except String (Tab A B)) = .ok Z0) (hX : TabHolds Z' Z0 rs) (hrk : rs[k]? = some (.size c))
+    (hc : c.toNat = cap - 1) (hY : Tab.mu what cap fT = .ok Y) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape Z'.key → Cols.shape W.val = Cols.shape Z'.val →
+      TabHolds W Y (rs ++ ys) → ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (muB msg k bldF Z' >>= kk) rs out := by
+  unfold Tab.mu at hY
+  obtain ⟨Z1, hZ1, hfix⟩ := except_bind_ok hY
+  obtain rfl : Z1 = Z0 := Except.ok.inj (hZ1.symm.trans hZ)
+  rw [muB_eq]
+  have hGs : ∀ Ts, Grows (muStep bldF Ts) := by
+    intro Ts; rcases Ts with _ | ⟨T1, _ | ⟨T2, Ts⟩⟩ <;> try exact Grows.throw _
+    exact (hGF T1).bind fun F => (Grows.unionB T1 F).bind fun _ => Grows.pure _
+  exact fixB_builds (fun T => muStep_eq bldF T) hP (hF.after hI hpre) hGs hGP
+    (fun m T hT => (hTF m T hT).bind fun W hW => Typed.unionB hT hW) hTP hk hv hX hrk (by rw [hc]; exact hfix) hfo hkk
 
 end Rel.Lang.Plan
