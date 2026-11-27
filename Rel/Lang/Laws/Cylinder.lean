@@ -124,4 +124,80 @@ theorem Tm.cons713_den {E : Obj} {R : Tm (.arr E) (.arr E)} (ρ : Val)
   exact (Tm.pairTest_den ρ R _ _).2 (hmo a m x ((Tm.pairTest_den ρ R _ _).1
     (hmax x hx fun e => hne (e ▸ rfl))))
 
+/-- `F` is a functor on `mapDen`: `F(T) F(U) = F(T U)`. -/
+theorem mapDen_comp {A B C : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) (U : Core.Rel (Obj.El B) (Obj.El C)) :
+    mapDen T ≫ mapDen U = mapDen (T ≫ U) := by
+  funext xs zs; apply propext
+  show (∃ ys, mapDen T xs ys ∧ mapDen U ys zs) ↔ mapDen (T ≫ U) xs zs
+  constructor
+  · rintro ⟨ys, h1, h2⟩
+    obtain ⟨hl, hT⟩ := (mapDen_iff _ _ _).1 h1
+    obtain ⟨hl', hU⟩ := (mapDen_iff _ _ _).1 h2
+    exact (mapDen_iff _ _ _).2 ⟨hl'.trans hl, fun t ht ht' =>
+      ⟨ys[t]'(by omega), hT t ht (by omega), hU t (by omega) ht'⟩⟩
+  · intro h0
+    obtain ⟨hl, h⟩ := (mapDen_iff _ _ _).1 h0
+    have h' := fun t : Fin xs.length => h t t.2 (by omega)
+    obtain ⟨f, hf⟩ : ∃ f : Fin xs.length → B.El, ∀ t : Fin xs.length,
+        T (xs[t.1]'t.2) (f t) ∧ U (f t) (zs[t.1]'(by omega)) :=
+      ⟨fun t => Classical.choose (h' t), fun t => Classical.choose_spec (h' t)⟩
+    refine ⟨List.ofFn f, (mapDen_iff _ _ _).2 ⟨by simp, fun t ht ht' => ?_⟩,
+      (mapDen_iff _ _ _).2 ⟨by simp [hl], fun t ht ht' => ?_⟩⟩
+    · simpa using (hf ⟨t, ht⟩).1
+    · simpa using (hf ⟨t, by omega⟩).2
+
+/-- `F(T) F(U) = F(T U)` as the program elaborates it. -/
+theorem Tm.Fcomp_den {A B C : Obj} (ρ : Val) :
+    Tm.den ρ (((Tm.prim mapRow : Tm (.arr A) (.arr B)).arg (Tm.var 0 : Tm A B)).comp
+      ((Tm.prim mapRow : Tm (.arr B) (.arr C)).arg (Tm.var 1 : Tm B C))) =
+    Tm.den ρ ((Tm.prim mapRow : Tm (.arr A) (.arr C)).arg ((Tm.var 0 : Tm A B).comp (Tm.var 1 : Tm B C))) := by
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow]; exact mapDen_comp _ _
+
+/-- `(𝟙×T)(𝟙×U) = (𝟙×(T U))` as the program elaborates it. -/
+theorem Tm.prodComp_den {E A B C : Obj} (ρ : Val) :
+    Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod E A) E).pair (Tm.outr.comp (Tm.var 0 : Tm A B))).comp
+      ((Tm.outl.comp Tm.id : Tm (.prod E B) E).pair (Tm.outr.comp (Tm.var 1 : Tm B C)))) =
+    Tm.den ρ ((Tm.outl.comp Tm.id : Tm (.prod E A) E).pair (Tm.outr.comp ((Tm.var 0 : Tm A B).comp (Tm.var 1 : Tm B C)))) := by
+  funext p q; apply propext
+  obtain ⟨e, a⟩ := p; obtain ⟨e', c⟩ := q
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id]
+  constructor
+  · rintro ⟨⟨e1, b⟩, ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hb⟩⟩, ⟨_, rfl, rfl⟩, ⟨_, rfl, hc⟩⟩
+    exact ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, _, hb, hc⟩⟩
+  · rintro ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, b, hb, hc⟩⟩
+    exact ⟨⟨_, b⟩, ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hb⟩⟩, ⟨_, rfl, rfl⟩, ⟨_, rfl, hc⟩⟩
+
+theorem Prim.den_zip {A B : Obj} :
+    Prim.den (rowOf "zip") (.prod (.arr A) (.arr B)) (.arr (.prod A B)) [] =
+      Core.Rel.graph fun p : List A.El × List B.El => p.1.zip p.2 := by
+  have hs : (rowOf "zip").sig = ([], .prod (.list (.var {} "A")) (.list (.var {} "B")),
+      .list (.prod (.var {} "A") (.var {} "B"))) := rfl
+  have ho : (rowOf "zip").objs (.prod (.arr A) (.arr B)) (.arr (.prod A B)) [] = some [A, B] := by
+    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
+      List.eraseDupsBy.loop, List.lookup]
+  have hf : rowDens.find? (·.1.sym == (rowOf "zip").sym) =
+      some ⟨RowCode.zip, fun _ _ => Core.Rel.graph fun p => p.1.zip p.2⟩ := rfl
+  unfold Prim.den; simp only [List.map_nil]
+  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
+
+/-- `(𝟙×F(S)) zip ⊑ zip F(𝟙×S)` as the program elaborates it: `zip` truncates to the shorter list and `F(S)` keeps
+    the length, so `S` moves along. -/
+theorem Tm.zipLax_den {A B C : Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod (.arr A) (.arr B)) (.arr A)).pair
+        (Tm.outr.comp ((Tm.prim mapRow : Tm (.arr B) (.arr C)).arg (Tm.var 0 : Tm B C)))).comp
+        (Tm.prim (rowOf "zip") : Tm (.prod (.arr A) (.arr C)) (.arr (.prod A C)))))
+      (Tm.den ρ ((Tm.prim (rowOf "zip") : Tm (.prod (.arr A) (.arr B)) (.arr (.prod A B))).comp
+        ((Tm.prim mapRow : Tm (.arr (.prod A B)) (.arr (.prod A C))).arg
+          ((Tm.outl.comp Tm.id : Tm (.prod A B) A).pair (Tm.outr.comp (Tm.var 0 : Tm B C)))))) := by
+  refine Core.Rel.le_iff.2 fun ⟨xs, ys⟩ zs h => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Prim.den_zip, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph,
+    Core.Rel.id] at h ⊢
+  obtain ⟨⟨a, b⟩, ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hys⟩⟩, rfl⟩ := h
+  obtain ⟨hl, hS⟩ := (mapDen_iff _ _ _).1 hys
+  refine ⟨_, rfl, (mapDen_iff _ _ _).2 ⟨by simp [hl], fun t ht ht' => ?_⟩⟩
+  obtain ⟨h1, h2⟩ := Nat.lt_min.1 (List.length_zip ▸ ht)
+  simp only [List.getElem_zip]
+  exact ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hS t h2 (by omega)⟩⟩
+
 end Rel.Lang

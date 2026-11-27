@@ -90,11 +90,11 @@ rel_program cylinder where
     /- The laws `fusion` cites besides `cons713` and `estConcat`: `×` and `F` are functors, and `moves`, `trans`, `zip`
        are lax natural (a natural function `η` has `F(S) η ⊑ η G(S)`). -/
 
-    theorem prodComp(A : α ⟶ β, B : β ⟶ γ) : (𝟙×A)(𝟙×B) = (𝟙×(A B))
-    theorem Fcomp(A : α ⟶ β, B : β ⟶ γ) : F(A)F(B) = F(A B)
+    theorem prodComp(A : α ⟶ β, B : β ⟶ γ) : (𝟙×A)(𝟙×B) = (𝟙×(A B)) by Rel.Lang.Tm.prodComp_den
+    theorem Fcomp(A : α ⟶ β, B : β ⟶ γ) : F(A)F(B) = F(A B) by Rel.Lang.Tm.Fcomp_den
     theorem movesLax(S : α ⟶ β) : F(S) moves ⊑ moves F(F(S))
     theorem transLax(S : α ⟶ β) : F(F(S)) trans ⊑ trans F(F(S))
-    theorem zipLax(S : α ⟶ β) : (𝟙×F(S)) zip ⊑ zip F(𝟙×S)
+    theorem zipLax(S : α ⟶ β) : (𝟙×F(S)) zip ⊑ zip F(𝟙×S) by Rel.Lang.Tm.zipLax_den
 
     theorem fusion if (𝟙×R) ⊑ cons R cons°, R R ⊑ R : (𝟙×F(est(R)))Q ⊑ gen F(est(R)) := calc
       (𝟙×F(est(R)))Q
