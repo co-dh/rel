@@ -14,9 +14,8 @@ public import Rel.Lang.PlanSpecPrefix
 `colPrefix .max`, `hG` its first `kgather`, `hg1 hu` the `kgather` and `colMap .sub` of the offset `u`.
 `expand` reads its count `T` as `lastCount`, the last word clamped at `2^63`, where `expandB` reads the word itself
 (`hT`), so the two agree where the word is below `2^63`. `expandB_spec` (`ExpandSpec`) derives the premises from
-`expand K w = .ok (T, G, u)`. Not covered: `groupsB`: its `funW` body reads the outer registers `R.n` and `K`, and `funW_builds` takes `Typed
-rs.size`, a body reading no register below its own (`Typed.mapB` needs `m ≤ n`), so it needs a `funW_builds` with
-captured registers first. -/
+`expand K w = .ok (T, G, u)`. `groupsW_spec` and `groupsB_builds` (`GroupsSpec`) cover `groupsB`: its body reads the outer registers `R.n` and `K`, which
+`funW_builds` takes as they are (see `groupsW`). -/
 
 namespace Rel.Lang.Plan
 
@@ -354,5 +353,139 @@ theorem groupsW_builds {fg : Array Fun × Array Fun} {rs : Array Val} {nr N g p 
     exact Typed.groupsW (Nat.le_refl _) (Nat.le_succ _) (Nat.le_succ_of_le (Nat.le_succ _))
   · intro fg2 m es ys he hf ho' hlen hread
     exact hkk fg2 m es ys he hf ho' hlen hread
+
+/-- `colConst` is the one `kscatter` of no row `constB` runs (its index and value columns of no row are read as none). -/
+theorem _root_.Rel.colConst_eq (n : USize) (w : UInt64) :
+    colConst n w = kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) n w := by
+  have hv := wordsFoR_closed #[] (n := 0) rfl
+  have hp : Enc.Valid 0 (.pos : Enc) := by simp [Enc.Valid]
+  have hnp : hasNul (.pos : Enc) = false := by simp [hasNul]
+  have hnw := hasNul_wordsFoR #[]
+  obtain ⟨o1, h1⟩ : ∃ o, colConst n w = .ok o := by
+    unfold colConst
+    exact Rel.kscatter_ok hp hp hnp hnp (fun k hk => by simp at hk) (fun k hk => by simp at hk)
+  obtain ⟨o2, h2⟩ : ∃ o, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) n w = .ok o :=
+    Rel.kscatter_ok hv.1 hv.1 hnw hnw (fun k hk => by simp at hk) (fun k hk => by simp at hk)
+  rw [h1, h2]
+  unfold colConst at h1
+  obtain ⟨ws1, fl1, e1, -, -, s1, -, -, c1, -⟩ := Rel.Verify.kscatter_ok _ _ _ _ _ _ h1
+  obtain ⟨ws2, fl2, e2, -, -, s2, -, -, c2, -⟩ := Rel.Verify.kscatter_ok _ _ _ _ _ _ h2
+  have : ws1 = ws2 := Array.ext (by rw [s1, s2]) fun j j1 j2 => by
+    have a := (c1 j (by omega) (fun k hk => by simp at hk)).1
+    have b := (c2 j (by omega) (fun k hk => by simp at hk)).1
+    rw [Array.getElem?_eq_getElem j1] at a
+    rw [Array.getElem?_eq_getElem j2] at b
+    exact (Option.some.inj a).trans (Option.some.inj b).symm
+  subst this
+  rw [e1, e2]
+  simp [hnp, hnw]
+
+/-- **`groupsW` builds `compGroups`' counts**, from `compGroups`' own kernel calls. -/
+theorem groupsW_spec {fg : Array Fun × Array Fun} {rs : Array Val} {nr N g p K : Nat} {nv Nv Kv : USize}
+    {gv pe e one sc cR cS wc : Enc} {kk : Nat × List Nat → Bld (Array Nat)}
+    {out : Array Val} (hr : rs[nr]? = some (.size nv)) (hN : rs[N]? = some (.size Nv))
+    (hg : rs[g]? = some (Reg.put gv)) (hp : rs[p]? = some (Reg.put pe)) (hK : rs[K]? = some (.size Kv))
+    (hn : ∃ k, colConst Nv nv.toUInt64 = .ok k ∧ ∃ o, colMap .lt Nv pe k = .ok o)
+    (he : colMap .first Nv pe pe .i64 .i64 [] [(.gt, nv.toUInt64)] = .ok e) (hcR : kscatter .add Nv gv e Kv 0 = .ok cR)
+    (h1 : colConst Nv 1 = .ok one) (hsc : kscatter .add Nv gv one Kv 0 = .ok sc)
+    (hcS : colMap .sub Kv sc cR = .ok cS) (hw : colMap .mul Kv cR cS = .ok wc) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (m : Nat) (es : List Nat) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → es.length = 3 →
+      (m :: es).mapM (fun i => (rs ++ ys)[i]?) = some [.size Kv, Reg.put cR, Reg.put cS, Reg.put wc] →
+      ∃ fg', Builds abiOf fg2 fg' (kk (m, es)) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (funW N [g, p] (groupsW nr K) >>= kk) rs out := by
+  obtain ⟨kc, hkc, o, ho⟩ := hn
+  obtain ⟨f1, ho'⟩ := colMap_kscan ho
+  obtain rfl : o = e := colMap_const_eq hkc ho he (fun w v h => by simpa [Op.eval] using h)
+  obtain ⟨f2, hcS'⟩ := colMap_kscan hcS
+  obtain ⟨f3, hw'⟩ := colMap_kscan hw
+  exact groupsW_builds hr hN hg hp hK (by rw [← _root_.Rel.colConst_eq]; exact hkc) ho' hcR
+    (by rw [← _root_.Rel.colConst_eq]; exact h1) hsc hcS' hw' hfo hkk
+
+/-- **`groupsB` builds `Tab.compGroups`**: `R'`, `S'` hold `R`, `S` in `rs`, `R.compGroups S` answers `(N, p, g, f, K, cR,
+    cS, wc)`; `kk` continues with registers holding them. The kernel facts `compGroups` leaves open (no totality lemma for
+    them exists) are premises: `ascSeenB`'s `hz`, `hsc` over `N` and `g`, and the `.lt` column against `R.n`. -/
+def GroupsSpec (A B C : Obj) : Prop := ∀ {R : Tab A B} {S : Tab B C} {R' S' : TabB} {fg : Array Fun × Array Fun}
+    {rs : Array Val} {N K : USize} {p g f cR cS wc : Enc}
+    {kk : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat → Bld (Array Nat)} {out : Array Val},
+    ColsOf A R'.key → ColsOf B R'.val → ColsOf B S'.key → ColsOf C S'.val →
+    R'.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)) →
+    S'.regs.mapM (fun i => rs[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)) →
+    R.compGroups S = .ok (N, p, g, f, K, cR, cS, wc) →
+    (∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) N 0 = .ok z ∧
+      ∃ r, kscan .max false .i64 .i64 N (some z) [(N, z), (N, g)] [] [] = .ok r) →
+    (∃ k, colConst N R.n.toUInt64 = .ok k ∧ ∃ o, colMap .lt N p k = .ok o) → Ordered fg.1 →
+    (∀ (fg2 : Array Fun × Array Fun) (R : Array Val) (a b c d e f' g' h : Nat), (∃ x, fg2.1 = fg.1 ++ x) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → [a, b, c, d, e, f', g', h].mapM (fun i => R[i]?) =
+        some [.size N, Reg.put p, Reg.put g, Reg.put f, .size K, Reg.put cR, Reg.put cS, Reg.put wc] →
+      ∃ fg', Builds abiOf fg2 fg' (kk (a, b, c, d, e, f', g', h)) R out) →
+    ∃ fg', Builds abiOf fg fg' (groupsB R' S' >>= kk) rs out
+
+theorem groupsB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B C : Obj) : GroupsSpec A B C := by
+  intro R S R' S' fg rs N K p g f cR cS wc kk out hRk hRv hSk hSv hR hS hG hz hn hfo hkk
+  unfold Tab.compGroups at hG
+  dsimp only at hG
+  split at hG
+  · cases hG
+  rename_i hov
+  obtain ⟨-, -, hG⟩ := except_bind_ok hG
+  obtain ⟨N0, hN0, hG⟩ := except_bind_ok hG
+  obtain ⟨Z, hZ, hG⟩ := except_bind_ok hG
+  obtain ⟨es, hes, hG⟩ := except_bind_ok hG
+  obtain ⟨⟨vs, p0⟩, hka, hG⟩ := except_bind_ok hG
+  obtain ⟨⟨k0, g0, f0⟩, hks, hG⟩ := except_bind_ok hG
+  obtain ⟨e, he, hG⟩ := except_bind_ok hG
+  obtain ⟨cR0, hcR, hG⟩ := except_bind_ok hG
+  obtain ⟨one, h1, hG⟩ := except_bind_ok hG
+  obtain ⟨sc, hsc, hG⟩ := except_bind_ok hG
+  obtain ⟨cS0, hcS, hG⟩ := except_bind_ok hG
+  obtain ⟨w0, hw, hG⟩ := except_bind_ok hG
+  simp only [Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at hG
+  obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ := hG
+  have hnm : R.n.toNat + S.n.toNat < 2 ^ 63 := by
+    have := Nat.zero_le (R.n.toNat * S.n.toNat); omega
+  have hNn : N0.toNat ≤ 2 ^ 63 := by rw [catRows_ok hN0]; omega
+  have e1 : R'.regs = R'.n :: (Cols.regs R'.key ++ Cols.regs R'.val) := by simp [TabB.regs, Cols.regs_append]
+  have e2 : S'.regs = S'.n :: (Cols.regs S'.key ++ Cols.regs S'.val) := by simp [TabB.regs, Cols.regs_append]
+  rw [e1] at hR
+  rw [e2] at hS
+  obtain ⟨hn1, gR⟩ := mapM_get_cons hR
+  obtain ⟨hn2, gS⟩ := mapM_get_cons hS
+  obtain ⟨-, gRv⟩ := mapM_split (ColsOf.regs_length hRk R.key) gR
+  obtain ⟨gSk, -⟩ := mapM_split (ColsOf.regs_length hSk S.key) gS
+  obtain ⟨zc, oc, f', hzc, hoc⟩ := hc R.n S.n hnm
+  unfold groupsB
+  simp only [bind_assoc]
+  refine Builds.bind2F (Free.catB _ _) (catB_builds hn1 hn2 hN0 hzc hoc) fun r1 r2 R2 hr1' hr2' hE => ?_
+  dsimp only
+  refine concatB_builds hc h63 B (x := R.val) (y := S.key) (z := Z) hRv hSk (mapM_extends hE gRv)
+    (mapM_extends hE gSk) hr1' (hE hn1) (hE hn2) hZ hfo ?_
+  intro fg2 cs' ys heC hfC hoC hs hr
+  obtain ⟨zq, hzq, rr, hrr⟩ := hz
+  refine ascSeenB_builds B (x := Z) (cs := cs') (L := Cols.regs cs') (n := r1) (ColsOf.shape B hRv hs) (regsOf_eq _) hr
+    (get_app hr1') hes hNn hka hks hzq hrr hoC ?_
+  intro fg3 ys2 a b c d he3 hf3 ho3 hread3
+  obtain ⟨ha, hread3⟩ := mapM_get_cons hread3
+  obtain ⟨hb, hread3⟩ := mapM_get_cons hread3
+  obtain ⟨hc', hread3⟩ := mapM_get_cons hread3
+  obtain ⟨hd, -⟩ := mapM_get_cons hread3
+  refine groupsW_spec (nr := R'.n) (N := r1) (g := b) (p := d) (K := a) (get_app (get_app (hE hn1)))
+    (get_app (get_app hr1')) hb hd ha hn he hcR h1 hsc hcS hw ho3 ?_
+  intro fg4 m es' ys3 he4 hf4 ho4 hlen hread4
+  match es', hlen with
+  | [cr, cs, wr], _ =>
+    simp only [pure_bind]
+    obtain ⟨hm, hread4⟩ := mapM_get_cons hread4
+    obtain ⟨hcr, hread4⟩ := mapM_get_cons hread4
+    obtain ⟨hcs, hread4⟩ := mapM_get_cons hread4
+    obtain ⟨hwr, -⟩ := mapM_get_cons hread4
+    obtain ⟨e1, h1'⟩ := heC
+    obtain ⟨e2, h2'⟩ := he3
+    obtain ⟨e3, h3'⟩ := he4
+    refine hkk fg4 _ r1 d b c a cr cs wr ⟨e1 ++ (e2 ++ e3), by rw [h3', h2', h1', Array.append_assoc, Array.append_assoc]⟩
+      (by rw [hf3] at hf4; exact hfC.trans hf4) ho4 (fun h => get_app (get_app (get_app (hE h)))) ?_
+    simp only [List.mapM_cons, List.mapM_nil, get_app (get_app (get_app hr1')), get_app hd, get_app hb, get_app hc',
+      get_app ha, hcr, hcs, hwr]
+    rfl
 
 end Rel.Lang.Plan
