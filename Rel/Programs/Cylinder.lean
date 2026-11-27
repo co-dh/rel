@@ -28,12 +28,14 @@ rel_program cylinder where
        one-square path per square, `F(τ τ)`, `F(τ)`: the step on the empty accumulator) to the first. -/
 
     gen : [α]×[[[α]]] ⟶ [[[α]]] ≜ (𝟙×(moves trans F(concat)))zip F(cp F(cons))
-    genFold : [[α]] ⟶ [[[α]]] ≜ ⦇[nil, (dom(π₂ head)gen) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ τ))]⦈ʳ
+    genStep : [α]×[[[α]]] ⟶ [[[α]]] ≜ (dom(π₂ head)gen) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ τ))
+    genFold : [[α]] ⟶ [[[α]]] ≜ ⦇[nil, genStep]⦈ʳ
     paths : [[α]] ⟶ [[α]] ≜ genFold concat
 
     R : [N] ⟶ [N] ≜ sum ≤ sum°                    -- a path is R-below another when its cost is at most the other's
     Q : [N]×[[N]] ⟶ [[N]] ≜ (𝟙×(moves trans F(est(R))))zip F(cons)
-    qFold : [[N]] ⟶ [[N]] ≜ ⦇[nil, (dom(π₂ head)Q) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ))]⦈ʳ
+    qStep : [N]×[[N]] ⟶ [[N]] ≜ (dom(π₂ head)Q) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ))
+    qFold : [[N]] ⟶ [[N]] ≜ ⦇[nil, qStep]⦈ʳ
 
     /- The run of the book on the columns `1 2 3 4` and `5 6 7 8` (m = 2, n = 4, p = 3). -/
 
@@ -76,7 +78,7 @@ rel_program cylinder where
     /- B&dM p.182, the three laws behind `cyl_laws`: the greedy path is among the generated (`Qfold_le_genFold`), and a
        cheapest of the rows' cheapest is a cheapest of the laid end to end (`est_concat`, `R` transitive). -/
 
-    theorem qfoldLe : qFold ⊑ genFold F(est(R))
+    theorem qfoldLe if (𝟙×F(est(R)))qStep ⊑ genStep F(est(R)) : qFold ⊑ genFold F(est(R)) by Rel.Lang.Tm.qfoldLe_den
     theorem estConcat(S : α ⟶ α) if S S ⊑ S : F(est(S)) est(S) ⊑ concat est(S) by Rel.Lang.Tm.estConcat_den
     check x qFold ⊑ x genFold F(est(R))
     check c F(est(R)) est(R) ⊑ c concat est(R)

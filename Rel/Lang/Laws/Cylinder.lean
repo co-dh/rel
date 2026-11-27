@@ -201,3 +201,59 @@ theorem Tm.zipLax_den {A B C : Obj} (ρ : Val) :
   exact ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hS t h2 (by omega)⟩⟩
 
 end Rel.Lang
+
+namespace Rel.Lang
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
+
+/-- Fold fusion for `⊑` (B&dM 7.13): if the step `S₂` followed by `T` covers `T` followed by the step `S₁`, and the
+    bases agree, then the fold of `S₁` is covered by the fold of `S₂` followed by `T`. -/
+theorem foldrDen_fuse {E V W : Obj} (Te₁ : Core.Rel (Obj.El V) (Obj.El V)) (Te₂ : Core.Rel (Obj.El W) (Obj.El W))
+    (S₁ : Core.Rel (Obj.El (.prod E V)) (Obj.El V)) (S₂ : Core.Rel (Obj.El (.prod E W)) (Obj.El W))
+    (T : Core.Rel (Obj.El W) (Obj.El V))
+    (h0 : ∀ a w, Te₁ a w → ∃ w', (∃ a', Te₂ a' w') ∧ T w' w)
+    (h1 : ∀ x g q r, T g q → S₁ (x, q) r → ∃ g', S₂ (x, g) g' ∧ T g' r) (xs : List E.El) (r : V.El) :
+    foldrDen Te₁ S₁ xs r → ∃ g, foldrDen Te₂ S₂ xs g ∧ T g r := by
+  induction xs generalizing r with
+  | nil =>
+    intro h
+    obtain ⟨a, ha⟩ := (foldrDen_empty _ _ _).1 h
+    obtain ⟨w', ⟨a', ha'⟩, hT⟩ := h0 a r ha
+    exact ⟨w', (foldrDen_empty _ _ _).2 ⟨a', ha'⟩, hT⟩
+  | cons x xs ih =>
+    intro h
+    obtain ⟨u, hu, hS⟩ := (foldrDen_cons _ _ _ _ _).1 h
+    obtain ⟨g, hg, hTg⟩ := ih u hu
+    obtain ⟨g', hS2, hT'⟩ := h1 x g u r hTg hS
+    exact ⟨g', (foldrDen_cons _ _ _ _ _).2 ⟨g, hg, hS2⟩, hT'⟩
+
+/-- `ran(⟨⟩ nil)` at `[V]`: the base `[nil, S]` of a fold over `[nil, cons]` as the program elaborates it. -/
+abbrev ranNil (V : Obj) : Tm (.arr V) (.arr V) :=
+  (Tm.prim ranRow : Tm (.arr V) (.arr V)).arg (((Tm.uni (Gen.oneV false (USize.ofNat 1)).fst : Tm .one .one).comp
+    (Tm.prim nilRow : Tm .one (.arr V))))
+
+/-- `qfoldLe` as the program elaborates it: with the step of `qFold` followed-by-covered by the step of `genFold`
+    after `T = F(U)` (`(𝟙×T) S₁ ⊑ S₂ T`), `⦇nil, S₁⦈ ⊑ ⦇nil, S₂⦈ T`. -/
+theorem Tm.qfoldLe_den {E X Y : Obj} {S₁ : Tm (.prod E (.arr X)) (.arr X)} {S₂ : Tm (.prod E (.arr Y)) (.arr Y)}
+    {U : Tm Y X} (ρ : Val)
+    (h : Core.Rel.le
+      (Tm.den ρ (((Tm.outl.comp Tm.id).pair (Tm.outr.comp ((Tm.prim mapRow : Tm (.arr Y) (.arr X)).arg U))).comp S₁))
+      (Tm.den ρ (S₂.comp ((Tm.prim mapRow : Tm (.arr Y) (.arr X)).arg U)))) :
+    Core.Rel.le (Tm.den ρ ((ranNil X).foldr S₁))
+      (Tm.den ρ (((ranNil Y).foldr S₂).comp ((Tm.prim mapRow : Tm (.arr Y) (.arr X)).arg U))) := by
+  refine Core.Rel.le_iff.2 fun xs r hr => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id] at h ⊢
+  have key := foldrDen_fuse (Tm.den ρ (ranNil X)) (Tm.den ρ (ranNil Y)) (Tm.den ρ S₁) (Tm.den ρ S₂) (mapDen (U.den ρ))
+    ?_ ?_ xs r hr
+  · exact key
+  · intro a w ha
+    simp only [Tm.den, Tm.argDen, Prim.den_ranRow, Prim.den_nilRow, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip,
+      Core.Rel.id] at ha ⊢
+    obtain ⟨rfl, b, ⟨b1, hb, hn⟩, -⟩ := ha
+    have h0 : a = [] := hn
+    subst h0
+    exact ⟨[], ⟨[], rfl, b, ⟨b1, hb, rfl⟩, b1, hb, rfl⟩, (mapDen_iff _ _ _).2 ⟨rfl, fun t ht => absurd ht (by simp)⟩⟩
+  · intro x g q r hT hS
+    exact Core.Rel.le_iff.1 h (x, g) r ⟨(x, q), ⟨⟨x, rfl, rfl⟩, ⟨g, rfl, hT⟩⟩, hS⟩
+
+end Rel.Lang
