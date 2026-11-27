@@ -378,7 +378,7 @@ theorem Typed.catB {m : Nat} {n₁ n₂ : Nat} (h1 : m ≤ n₁) (h2 : m ≤ n�
     Typed m (fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) (Plan.catB n₁ n₂) := by
   unfold Plan.catB
   exact (Typed.call1 (by simp; omega)).bind fun a ha => Typed.posB.bind fun p hp =>
-    (Typed.call1 (by simp; omega)).bind fun c hc => (Typed.constB h2 hc).bind fun z hz =>
+    (Typed.call1 (by simp; omega)).bind fun c hc => Typed.constB.bind fun z hz =>
     (Typed.mapB h2 hp hz).bind fun o ho => Typed.pure ⟨ha, ho⟩
 
 end Rel.Lang.Plan

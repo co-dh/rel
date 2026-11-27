@@ -3046,13 +3046,19 @@ theorem Typed.srcB {m : Nat} {n x : Nat} (hn : m ≤ n) (hx : m ≤ x) : Typed m
 
 theorem Typed.posB {m : Nat} : Typed m (fun r => m ≤ r) Plan.posB := Typed.lit _
 
-theorem Typed.constB {m : Nat} {n fill : Nat} (hn : m ≤ n) (hf : m ≤ fill) : Typed m (fun r => m ≤ r) (Plan.constB n fill) := by
+/-- `kscatter` declares all six arguments, so a `constB` is typed at every `m`, its registers captured or not: a
+    function body reads a captured count by it (`groupFoldB`'s `wordsB m 1`). -/
+theorem Typed.constB {m n fill : Nat} : Typed m (fun r => m ≤ r) (Plan.constB n fill) := by
   unfold Plan.constB
-  refine (Typed.lit _).bind fun e he => (Typed.lit _).bind fun a ha => (Typed.lit _).bind fun b hb =>
-    Typed.call1 (by simp; omega)
+  refine (Typed.lit _).bind fun e _ => (Typed.lit _).bind fun a _ => (Typed.lit _).bind fun b _ =>
+    Typed.call1Of fun fs a' ha' _ => ?_
+  obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := [a, b, e, e, n, fill]) (by simpa using ha')
+  simp only [List.length_cons, List.length_nil] at hjl
+  simp only [useTy, hj, Option.bind_some]
+  rcases j with _ | _ | _ | _ | _ | _ | j <;> first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
 
-theorem Typed.wordsB {m : Nat} {n : Nat} (hn : m ≤ n) (w : UInt64) : Typed m (fun r => m ≤ r) (Plan.wordsB n w) := by
-  unfold Plan.wordsB; refine (Typed.lit _).bind fun f hf => Typed.constB hn hf
+theorem Typed.wordsB {m n : Nat} {w : UInt64} : Typed m (fun r => m ≤ r) (Plan.wordsB n w) := by
+  unfold Plan.wordsB; exact (Typed.lit _).bind fun _ _ => Typed.constB
 
 theorem Typed.scanB {m : Nat} {op : Kernel.Op} {t : QAtomicType} {n : Nat} {seg : Option Nat} {es : List Nat}
     (hn : m ≤ n) (hs : ∀ s, seg = some s → m ≤ s) (he : AllGe m es) :
@@ -3092,7 +3098,7 @@ theorem Typed.seenB {m : Nat} {n : Nat} {es : List Nat} (hn : m ≤ n) (he : All
     Typed m (fun r : Nat × Nat × Nat => m ≤ r.1 ∧ m ≤ r.2.1 ∧ m ≤ r.2.2) (Plan.seenB n es) := by
   unfold Plan.seenB
   exact (Typed.listB he).bind fun l hl => (Typed.callK (by simp; omega)).bind fun kg hkg =>
-    (Typed.nth hkg 1 "kseen").bind fun g hg => (Typed.wordsB hn 0).bind fun z hz =>
+    (Typed.nth hkg 1 "kseen").bind fun g hg => Typed.wordsB.bind fun z hz =>
       (Typed.scanB hn (fun s hs => by cases hs; exact hz) (by intro a ha; simp at ha; omega)).bind fun sc hsc =>
         (Typed.nth hsc 1 "kscan").bind fun f hf => (Typed.lastB hn hf 1).bind fun k hk =>
           (Typed.nth hkg 2 "kseen").bind fun f2 hf2 => Typed.pure ⟨hk, hg, hf2⟩
