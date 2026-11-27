@@ -18,99 +18,101 @@
 
 #align(center)[
   #text(24pt, weight: "bold", fill: blue)[程序与证明一体] \
-  #text(10pt, fill: gray)[Rel P9 · 9.1 评审稿 · 基线 d19b9a5]
+  #text(10pt, fill: gray)[Rel P9 · 实现现状 · 基线 87f9a1e]
 ]
 
-= 范围与评审决定
+= 范围与现状
 
-`rel_program` 在缺少必需证明时停止 elaboration。带证明的程序定义写在 `rel_program` 内部。
-它同时给出一个关系 `A ⟶ B` 和一个同型关系等式。推导首式给规格，末式给定义体，证书记录两式相等。
-具体输入的行比较由独立的测试声明执行。
+证明写在 `rel_program` 内部：`check … by lemma` 与 `theorem … by lemma` / `theorem … := calc`。
+Lean kernel 检查的是两侧实际 elaboration 后的 `Tm.den` 的等式或包含。本节只记代码现在做什么，未做的单列。
 
-#tbl(blue, (auto, 1fr), ([评审项], [建议]),
-  [程序的证明类型], [在 `rel_program` 内声明关系 `p : A ⟶ B`，推导产生 `spec = p`。类型和证明目标只使用 Rel 的对象、关系与等式。],
-  [证明来源], [calc 的理由引用 Rel 内具名的 Lean 定理。候选 `by lemmaName` 引用已检查的证明，elaborator 将其类型与声明目标核对。参数和实例由目标推断，law 的前提由 `using` 或当前已证假设提供。],
-  [推导生成程序], [候选 `derive p : {r : A ⟶ B // spec = r} := calc`。最后一个完整表达式是定义体，证明随定义导出。局部引理由推导的 `where` 绑定。],
+#tbl(blue, (auto, 1fr, 1fr), ([评审项], [已实现], [未做]),
+  [证明目标], [关系判断 `R = S` / `R ⊑ S`，对象与关系参数在 `∀ ρ` 之下量化，`if` 假设是目标的前提。证明常量为 `n.proof.<t>`，`check` 为 `n.proof.check<i>`。], [`derive p : {r // spec = r}`：推导的末式生成定义体，没有实现。定义体与 spec 仍是两个声明。],
+  [证明来源], [`by lemma`：Lean 定理的类型与目标核对（`certify`）。calc 的一步引用已有证明常量的 theorem（`certifyCalc`）。], [`using`：前提只能取自 theorem 的 `if` 假设，没有 `using` 语法。],
+  [缺证明时], [calc 中无法认证的步骤列入 `n.proof.unproved`，附原因，不报错。`by lemma` 的类型不符是 elaboration 错误，不发出可执行定义。], [`rel_program` 在缺证明时拒绝 elaborate：未实现，没有 `by` 也没有 calc 的 `theorem` 照常通过（见 9.10 表）。],
+  [测试], [具体输入比较仍是 `check`（无 `by`）。], [独立的 `test` 声明：没有实现。],
 )
 
-9.8 以已合并的 PR 为准。用户可写 `Λ(R)`，其定义为 `(𝟙÷∋)E(R)`。
-Mss 与 Prelude 等式仍写显式复合。集合由严格升序数组表示，有限像条件由定理陈述与证明表达。
+9.8：用户可写 `Λ(R)`，定义为 `(𝟙÷∋)E(R)`；Mss 与 Prelude 的等式写显式复合。
+集合由严格升序数组表示，有限像条件写在定理的陈述里。
 
-= 9.2 编译证书的接入点
+= 9.2 编译证书
 
-`Expand.emit`（`Rel/Run/Lang/TmGen.lean`）把定义、打印、检查两侧及输出可达的 IO 定义
-送入 `Code.program`，再生成共享槽、`Tm` 与 `Tm.gen` 调用。普通入口在空 `Known` 下调用
-`runE`。IO 入口在输入读入后通过 `Code.args` 绑定，再调用 `Tm.gen`。首批接普通入口，IO
-入口单独验证输入绑定保持 `Sound`。
+#tbl(violet, (auto, 1fr), ([证书], [内容]),
+  [`n.proof.shares`], [`Tm.shareOK_iff` 把闭性与极性判定（`Tm.shareOK`）变成 `∀ d ∈ input, d.2.2.GenHyp (fun _ R => R.fv = [])`；`Expand.emit`（`Rel/Run/Lang/TmGen.lean`）发出。只在程序 import 了 `Rel.Lang.GenSound` 时发出（现为 Prelude、Prefix），共享子项含自由变量或不动点体非正时报错。],
+  [`n.proof.sound`], [`Code.program_reps` 应用于 `n.proof.shares`：在共享表下，每个已编号项的生成码 `Reps` 其 denotation `d.2.2.den Val.empty`，对任意良构 store 成立。内部使用 `Code.program_sound` 与 `Tm.gen_sound`。],
+)
 
-源码中的证明目标是 `spec = p`，其中两边都是 `A ⟶ B` 的关系。
-若后续法则需要在需求上下文内使用它，可对等式两边复合相同的关系。
-例如当 `K : X ⟶ A`、`L : B ⟶ Y` 时，复合 congruence 给出 `K spec L = K p L`。
-声明中的参数使用 Rel 的带类型关系参数。
+- 范围：`n.proof.sound` 覆盖空 `Known` 下的项。IO 入口经 `Code.args` 绑定输入，其 `Sound` 保持未单独验证，仍为开放项。
+- 证明项在编译时擦除；Rust extern 与文件 IO 沿用现有差分和往返测试。
 
-编译器内部另外检查实际生成的代码符合该关系的语义。合法 demand、共享槽、成功结果的表示，
-都由内部 soundness 验证处理。运行时 IO 与分配失败按现有执行语义报告。证明字段在编译时擦除。
+= 9.3–9.6 语法与认证
 
-+ 在编号前检查极性与候选共享子项的闭性，生成
-  `∀ d ∈ ds, d.2.2.GenHyp (fun _ R => R.fv = [])`。用 `Tm.monoOK_iff` 分解极性义务，
-  用结构证明补闭性。保留 `Tm.hasCode` 对缺少 kernel body 的拒绝。
-+ 在编号后用 `Code.program_sound` 得到共享表的 `Sound` 与已编号项的完整 `GenHyp`。
-  用 `Tm.gen_sound` 生成证书。证书直接引用 Lean 中发出的项和槽，`tmE` 的结构比对继续检查
-  metaprogram 序列化。先验证证书字段与实际调用的代码定义等价，再接回现有 `Except String (Tab A B)` 接口。
-+ `GenSound` 已 import `TmGen`。把需要证明的 elaboration 层放在两者之上，先用 Prefix 验证导入方向。
-  保留 `RelRun` 的 precompile 边界。用构建图确认通用证明编辑不会把程序和测试拉进运行库。
-+ 测试普通定义、共享槽和需要 `Code.args` 的 IO 定义。比较运行结果及错误路径。Lean 证明覆盖 Lean 定义，
-  Rust extern 与文件 IO 仍沿用仓库现有差分和往返测试。
-
-= 9.3–9.6 Prefix 验证切片
+下面是 `Rel/Programs/Mss.lean` 的 `toGreedy`，逐字：
 
 ```text
-derive prefixC : {p : [α] ⟶ [α] // prefix = p} := calc
-  prefix
-    := unfold prefix
-  cat° π₁
-    := foldUP([nil, nil ∪ cons], cat° π₁) using prefixEq
-  ⦇[nil, nil ∪ cons]⦈ʳ
-
-check x prefixC = x prefix by prefixOnInput
-test  e prefixC = e prefix
-test  {(∗,3 1)} ⊑ x prefixC
+theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
+  _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
+  _ = (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
+  _ = (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
+  _ = (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥) := ≜ oplus
+  _ = (𝟙÷∋)E(suffix) E(g)est(≥) := ≜ g
+  _ = greedy := ≜ greedy
 ```
 
-每个完整关系式只写一次。缩进的 `:=` 行证明它上方与下方的式子相等。
+从 `Rel/Lang/PrefixCata.lean` 取一条带假设的 `theorem … if … by …`（`hypThm`）：
 
-`prefixOnInput` 使用 `prefixC.spec` 的对称性和复合 congruence。证明目标是此条 `check` 实际
-elaborate 的两项在同一环境下的等式。对带参数的定理，环境量化该声明的对象和关系参数，
-`if` 假设写作 Rel 等式或包含关系。elaborator 在 Lean 内核中检查这些关系判断，等式链中的包含步拒绝 elaboration。
+```text
+private theorem hypId {A B : Obj} {R S : Tm A B} (ρ : Val) (h : R.den ρ = S.den ρ) : R.den ρ = S.den ρ := h
 
-#tbl(violet, (auto, 1fr), ([代码位置], [第一批改动]),
-  [`PrefixCata.lean`], [将 `Tm.prefixFold_prefixDef` 与通用 seed 引理移到 `Programs.Prefix` 可导入的证明模块。先用通用定理核验具体 check，再接入 `foldUP` 与 `prefixEq`。程序专属的 `c.t3/t4/t7` 留到 source-level check 接通后清理。],
-  [`Syntax / Grammar`], [为推导保留首式，每步的关系符、理由、源码位置和完整后继式，以及局部引理。以 `Why` 表示 law 引用与定义展开。为 `check` 和具体输入测试分别建声明。],
-  [`Embed / Parse`], [解析理由和局部作用域。先确立参数与对象 scope，再解析每步。用 elaborated term 检查首末项。程序 variant 若改变定义，重新验证依赖该定义的证书，或在没有替代证明时报错。],
-  [`Expand / 编译证书层`], [根据同一次 typed elaboration 生成程序体和证明目标。为生成的 `prefixC.spec` 检查完整 proof term，再允许导出及复用。],
+rel_program hypThm where
+    obj N = 0…3
+    theorem hy(R : N ⟶ N, S : N ⟶ N) if R = S : R = S by hypId
+```
+
+#tbl(green, (auto, 1fr), ([语法 / 机制], [现状]),
+  [calc 的形状], [每行 `_ = x := why`：`_` 是上一行的式子，`x` 是新式子，理由写在行尾。没有 Agda 风格的 `begin … ∎` 与夹在两行之间的理由，也没有缩进的 `:=` 行；局部 `where` 引理未做。],
+  [`why`], [`≜ m`：展开定义 `m`，两侧 elaborate 成同一 `Tm`，证明为 `rfl`。其余：引用 theorem 名，取其 `….proof.m`（同 program 或 prelude 的常量），用 `Eq.trans` 串接。],
+  [认证], [`certifyCalc`（`Rel/Run/Lang/Embed.lean`）逐步认证；`theoremChecks`（`Rel/Run/Lang/Expand.lean`）把陈述、前提和每个链接按同一签名 elaborate，`goalOf` 生成目标。引用的 theorem 若带前提，前提须在本 theorem 的 `if` 假设里找到。],
+  [不能认证], [含 `⊑` 步，被引 theorem 无证明常量，前提找不到，或某步的类型不符：整条 theorem 进入 `n.proof.unproved`，附原因。],
+  [对象变量], [theorem 未固定的对象变量被全称量化（`∀ σ`），`by` 与 calc 都按此认证（`genericTheorem`）。参数对象和 `𝟙` 的开放对象在读取 valuation 前实例化。],
+  [`theorem` 的边类型], [两侧只按 Den 定型，`[N]` 作源不需要 universe（`convParam`）。`R°°` 读作 `R`。],
+  [负例], [`badPrefix`：声称的关系改变后类型仍对，`by` 的证明类型不符，不发出任何可执行定义。],
+  [`check … by lemma`], [Prefix 的第一条 check 由 `Rel.Lang.Tm.prefixFold_input` 证；`check e prefixC = e prefix` 与 `check {(∗,3 1)} ⊑ x prefixC` 仍无证明。通用 fold 证明在 `Rel/Lang/PrefixFold.lean`。],
 )
 
-验收例删除 `using prefixEq` 后，`foldUP` 所需的 algebra-square 前提应出现在该行错误中。
-还要检查同类型的错误中间式、包含步用于等式、局部引理越界、variant 修改后复用旧证书，以及
-错误的 self-converse 声明。优化只读已在原始 denotation 上验过的 law，避免 `convs prog`
-从声明本身读取尚未证明的优化事实。
+开放：9.6f（calc 一步引用 `t(args)`，带实参）进行中；`derive`、`using`、`test` 声明、`where` 局部引理、`⊑` 链、Agda 风格 calc 未做。
 
-= 9.10 迁移批次与 9.9 义务表
+= 9.10 / 9.9 义务表
 
-#tbl(green, (auto, 1fr, 1fr), ([批次], [已有锚点], [完成条件]),
-  [Prefix], [基线有 3 条具体 `check`。通用 fold 语义已有证明，`foldUP` 和 `prefixEq` 的通用陈述见旧分支。], [末式运行同一 fold，source-level check 通过，原来的输入覆盖仍可执行。],
-  [Prelude], [6 条待验证 law。先做 `absorption`、`Eunion`、`Ecomp`、`estMap`，再处理 `permConv` 与 `starLinear`。], [参数和前提与实际对象一致。为已声明有限 atom 对象建立可复用的有限像证据。],
-  [Mss], [已有 `toShape`、`toGreedy`、`linear` 三条 calc。先接 `toShape`，再分开处理 `toFused`、`greedyFold`、`toScan`。], [末式生成可执行 scan。声明对象与运行时算术下的原有样例保留。遇到溢出或无限像，给出具体项和缺失前提供评审。],
-  [其余程序], [文本初扫 `Rel/Programs` 有 64 条 `check` 和 16 条 theorem，`Rel/Lang` 的程序块约有 960 条 `check`。], [以 parser 和声明索引复核清单。迁移具体输入测试时同步更新 `TestCompile` 的 literal-row 覆盖统计。所有迁移完成后启用全仓严格模式。],
+状态按代码核对。"已证"指 theorem 带 `by lemma`，产生 `n.proof.<t>`。"引理在"指 Lean 引理已有（`Rel/Lang/Laws/*`），但 theorem 尚未接上 `by`。
+
+#tbl(green, (auto, auto, 1fr), ([theorem], [状态], [证明 / 阻塞]),
+  [Prelude `foldUP`、`foldrUP`], [已证], [`Rel.Lang.Tm.foldUP_den`、`Tm.foldrUP_den`（`Laws/FoldUP.lean`，来自 `foldUP`、`foldrUP`；`den` of `uncons`/`unsnoc`）。依赖 `#print axioms` 核对。],
+  [Mss `zeroEntire`], [已证], [`Tm.dom_single`（`Laws/Map.lean`，经 `dom_of_entire`）。],
+  [Mss `zeroSimple`], [已证], [`Tm.simple_single`（`simple_of_fun`）。],
+  [Mss `geqRefl`], [已证], [`Tm.geq_refl`（`Laws/Order.lean`）。],
+  [Prelude `absorption`], [引理在], [`EDen_absorb`、`lamDen_id_EDen`（`Laws/Absorb.lean`）；theorem 未接 `by`。],
+  [Prelude `Eunion`], [引理在], [`EDen_union`（`Laws/Eunion.lean`）需每点有数组像（`∀ a, ∃ ys, lamDen T a ys`）；theorem 的陈述没有该前提，须补前提或限制对象，再接 `by`。],
+  [Prelude `Ecomp`], [引理在], [`EDen_comp`（`Laws/Ecomp.lean`）；theorem 未接 `by`。],
+  [Prelude `estMap`], [引理在], [`estMap_den`（`Laws/EstMap.lean`）只用 `simple(f)`；theorem 未接 `by`。],
+  [Prelude `permConv`], [引理在], [`permDen_iff`（`perm` 的 denotation 是 `List.Perm`）与 `permDen_conv`（`Laws/PermConv.lean`）；未接 `by`。],
+  [Prelude `starLinear`], [未证], [没有引理；`μX : S ∪ (R X) = star(R) S` 需不动点的唯一性。],
+  [Mss `estUnion`], [未证], [没有引理；它的陈述依赖「no set empty」。],
+  [Mss `greedyFold`], [未证], [没有引理；`(𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈` 须对 fold 归纳。],
+  [Mss `toFused`], [未证], [没有引理，也没有 calc。],
+  [Mss `toScan`], [引理在], [`toScan_den`（`Rel/Lang/MssScan.lean`）：对一般的种子 `Te` 与步 `TO`，按 elaborator 融合后的形状（`Λ(suffix g)`，左嵌套）证；未接 `by`。],
+  [Mss `toShape`、`toGreedy`、`linear`], [认证受阻], [calc 引用的 theorem（`absorption`、`Eunion`、`estUnion`、`Ecomp`、`greedyFold`、`estMap`、`toFused`、`toScan`）还没有 `….proof.m`，所以列入 `n.proof.unproved`，原因是 `no proof constant for …`。上面的引理接上 `by` 后，`toShape` 剩 `estUnion`，`toGreedy` 剩 `greedyFold`。],
+  [Prefix `prefixEq`], [不存在], [基线的 `prefixCata` 里只有一条 `check … by prefixFold_input`；`foldUP` 在 Prelude 已证，`prefixEq` 尚无陈述。],
 )
 
-9.9 每条 companion 引用记录原文位置、关系与对象的量化、前提、Rel 声明、证明依赖和当前阻塞。
-在被引用的 law 全部有记录后核对覆盖。图导出继续暂缓。Rel 内全部证明完毕且运行路径无
-`relaop` 引用后，再通知 freyd 清理桥。
+- 其余程序：`Rel/Programs` 与 `Rel/Lang` 的 `check` 仍为具体输入测试，没有迁移，全仓严格模式未启用。
+- 9.9：companion 引用的 law 尚无逐条记录（原文位置、量化、前提、Rel 声明、阻塞）；图导出暂缓。
+- 完成判据不变：rel 内全部证明完毕且运行路径无 `relaop` / `rel_aop` 引用，再通知 freyd 会话清理。
+  Mss 与 Prelude 里「owed to Lean: `rel_aop` …」的注释对应上表未证的行，随证明接上改写。
 
-= 验收与基线
+= 验收
 
-在同一 checkout 布局和资源限制下记录迁移前后的 `AllPrograms` 时间，运行 `make allcov`、
-`make compile-diff`、`make pc9-time` 及现有 pointfree、decode、listban、axioms gates。
-Prefix 首批还运行相关正、负例和 native 差分。保持现有覆盖和断言，证明项从可执行路径擦除。
-运行完整基线需要可写的 `/data/tmp`，目前该目录在 Codex sandbox 中只读。
+- 已有：`n.proof.shares`、`n.proof.sound`、`n.proof.check<i>`、`n.proof.<t>`、`n.proof.unproved` 的 `#check` 在 `Rel/Lang/PrefixCata.lean`；负例 `badPrefix` 用 `#guard_msgs` 断言并检查没有导出可执行代码。
+- 门：`lake build RelCore RelKernel RelRun Rel` 全绿；`foldUP`、`foldrUP`、`Tm.foldUP_den` 的 `#print axioms` 不含 `sorryAx`。
+- 待做：去掉 `using prefixEq` 之类前提后错误落在该行；包含步用于等式、错误中间式、局部引理越界、variant 修改后复用旧证书；`make allcov`、`make compile-diff`、`make pc9-time` 与既有 pointfree、decode、listban、axioms 门，在同一 checkout 布局和资源限制下比较迁移前后的 `AllPrograms` 时间。
