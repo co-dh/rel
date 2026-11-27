@@ -513,12 +513,12 @@ theorem Tm.pi1Lax_den {E A B : Obj} (ρ : Val) :
   rfl
 
 /-- `dom(π₂ head)` is the coreflexive of the pairs whose list is non-empty. -/
-theorem Tm.dom_head_iff {E A : Obj} (ρ : Val) (e : E.El) (xs : A.arr.El) (q : (Obj.prod E A.arr).El) :
-    (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A)).den ρ (e, xs) q ↔ q = (e, xs) ∧ 0 < xs.length := by
-  have hR : ∀ (q : (Obj.prod E A.arr).El) b, (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A).den ρ q b ↔
+theorem Tm.dom_head_iff {E A : Obj} {osA : List Obj} (ρ : Val) (e : E.El) (xs : A.arr.El) (q : (Obj.prod E A.arr).El) :
+    (Tm.dom (Tm.outr.comp (Tm.headCall A osA) : Tm (.prod E A.arr) A)).den ρ (e, xs) q ↔ q = (e, xs) ∧ 0 < xs.length := by
+  have hR : ∀ (q : (Obj.prod E A.arr).El) b, (Tm.outr.comp (Tm.headCall A osA) : Tm (.prod E A.arr) A).den ρ q b ↔
       ∃ h : 0 < q.2.length, b = q.2[0]'h := fun q b => by
     simp only [Tm.den, Core.Rel.comp, Core.Rel.graph]
-    exact ⟨fun ⟨_, h1, h2⟩ => h1 ▸ (Tm.at0_den ρ _ _).1 h2, fun h => ⟨_, rfl, (Tm.at0_den ρ _ _).2 h⟩⟩
+    exact ⟨fun ⟨_, h1, h2⟩ => h1 ▸ (Tm.headCall_den ρ _ _).1 h2, fun h => ⟨_, rfl, (Tm.headCall_den ρ _ _).2 h⟩⟩
   simp only [Tm.dom_den, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip, hR]
   constructor
   · rintro ⟨rfl, b, ⟨h, rfl⟩, h', -⟩
@@ -528,12 +528,12 @@ theorem Tm.dom_head_iff {E A : Obj} (ρ : Val) (e : E.El) (xs : A.arr.El) (q : (
 
 /-- `(𝟙×F(S)) dom(π₂ head) ⊑ dom(π₂ head) (𝟙×F(S))`: `F(S)` keeps the length, so a non-empty image has a non-empty
     source. -/
-theorem Tm.domLax_den {E A B : Obj} (ρ : Val) :
+theorem Tm.domLax_den {E A B : Obj} {osA osB : List Obj} (ρ : Val) :
     Core.Rel.le
       (Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
         (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))).comp
-        (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E B.arr) B))))
-      (Tm.den ρ ((Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A)).comp
+        (Tm.dom (Tm.outr.comp (Tm.headCall B osB) : Tm (.prod E B.arr) B))))
+      (Tm.den ρ ((Tm.dom (Tm.outr.comp (Tm.headCall A osA) : Tm (.prod E A.arr) A)).comp
         ((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
           (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))))) := by
   refine Core.Rel.le_iff.2 fun p q h => ?_
@@ -544,12 +544,12 @@ theorem Tm.domLax_den {E A B : Obj} (ρ : Val) :
   exact ⟨p, (Tm.dom_head_iff ρ p.1 p.2 _).2 ⟨rfl, by dsimp only at hlen hl ⊢; omega⟩, ⟨_, rfl, rfl⟩, ⟨_, rfl, hm⟩⟩
 
 /-- `(𝟙×F(S)) (𝟙 − dom(π₂ head)) ⊑ (𝟙 − dom(π₂ head)) (𝟙×F(S))`: an empty image has an empty source. -/
-theorem Tm.diffLax_den {E A B : Obj} (ρ : Val) :
+theorem Tm.diffLax_den {E A B : Obj} {osA osB : List Obj} (ρ : Val) :
     Core.Rel.le
       (Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
         (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))).comp
-        (Tm.diff Tm.id (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E B.arr) B)))))
-      (Tm.den ρ ((Tm.diff Tm.id (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A))).comp
+        (Tm.diff Tm.id (Tm.dom (Tm.outr.comp (Tm.headCall B osB) : Tm (.prod E B.arr) B)))))
+      (Tm.den ρ ((Tm.diff Tm.id (Tm.dom (Tm.outr.comp (Tm.headCall A osA) : Tm (.prod E A.arr) A))).comp
         ((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
           (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))))) := by
   refine Core.Rel.le_iff.2 fun p q h => ?_

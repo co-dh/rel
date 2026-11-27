@@ -133,8 +133,8 @@ rel_program cylinder where
 
     theorem compUnion(X : α ⟶ β, A : β ⟶ γ, B : β ⟶ γ) : X (A ∪ B) = (X A) ∪ (X B) by Rel.Lang.Tm.compUnion_den
     theorem unionComp(A : α ⟶ β, B : α ⟶ β, X : β ⟶ γ) : (A ∪ B) X = (A X) ∪ (B X) by Rel.Lang.Tm.unionComp_den
-    theorem domLax(S : α ⟶ β) : (𝟙×F(S)) dom(π₂ head) ⊑ dom(π₂ head) (𝟙×F(S))
-    theorem diffLax(S : α ⟶ β) : (𝟙×F(S)) (𝟙 − dom(π₂ head)) ⊑ (𝟙 − dom(π₂ head)) (𝟙×F(S))
+    theorem domLax(S : α ⟶ β) : (𝟙×F(S)) dom(π₂ head) ⊑ dom(π₂ head) (𝟙×F(S)) by Rel.Lang.Tm.domLax_den
+    theorem diffLax(S : α ⟶ β) : (𝟙×F(S)) (𝟙 − dom(π₂ head)) ⊑ (𝟙 − dom(π₂ head)) (𝟙×F(S)) by Rel.Lang.Tm.diffLax_den
     theorem pi1Lax(T : α ⟶ β) : (𝟙×T) π₁ ⊑ π₁ by Rel.Lang.Tm.pi1Lax_den
     theorem tauEst(S : [α] ⟶ [α]) : F(τ) ⊑ F(τ τ) F(est(S)) by Rel.Lang.Tm.tauEst_den
 
