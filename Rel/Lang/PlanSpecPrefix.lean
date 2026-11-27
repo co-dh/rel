@@ -210,7 +210,7 @@ theorem prefixB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kern
     `f` the first rows `fv`, `m` the group count `mv`, `x` the column `xv`. `sg` is the marks `seenSeg` answers and `ov`
     what `groupFold` answers over them: `kk` continues with a register holding `ov`. -/
 theorem groupFoldB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.Op} {n g f m x : Nat}
-    {z : UInt64} {nv mv : USize} {gv fv xv w sg zz ov : Enc} {r : Enc × Option UInt64} {kk : Nat → Bld (Array Nat)}
+    {z : UInt64} {nv mv : USize} {gv fv xv sg ov : Enc} {kk : Nat → Bld (Array Nat)}
     {out : Array Val} (hop : (Reg.get? (Reg.put op) : Option Kernel.Op) = some op)
     (hn : rs[n]? = some (.size nv)) (hg : rs[g]? = some (Reg.put gv)) (hf : rs[f]? = some (Reg.put fv))
     (hm : rs[m]? = some (.size mv)) (hx : rs[x]? = some (Reg.put xv))
