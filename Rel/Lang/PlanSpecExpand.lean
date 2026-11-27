@@ -13,14 +13,14 @@ public import Rel.Lang.PlanSpecPrefix
 `hz0 hk0` its first `colPrefix .add`, `ho` its `colMap .sub K P w`, `hsc` its `kscatter .max`, `hz1 hk1` its
 `colPrefix .max`, `hG` its first `kgather`, `hg1 hu` the `kgather` and `colMap .sub` of the offset `u`.
 `expand` reads its count `T` as `lastCount`, the last word clamped at `2^63`, where `expandB` reads the word itself
-(`hT`), so the two agree where the word is below `2^63`. Not covered: the bridge from `expand K w = .ok (T, G, u)` to
-these premises, and `groupsB`: its `funW` body reads the outer registers `R.n` and `K`, and `funW_builds` takes `Typed
+(`hT`), so the two agree where the word is below `2^63`. `expandB_spec` (`ExpandSpec`) derives the premises from
+`expand K w = .ok (T, G, u)`. Not covered: `groupsB`: its `funW` body reads the outer registers `R.n` and `K`, and `funW_builds` takes `Typed
 rs.size`, a body reading no register below its own (`Typed.mapB` needs `m ≤ n`), so it needs a `funW_builds` with
 captured registers first. -/
 
 namespace Rel.Lang.Plan
 
-open Rel Rel.Kernel
+open Rel Rel.Kernel Rel.Verify
 
 theorem Free.mapB (op : Kernel.Op) (n a b : Nat) (t s : QAtomicType) (pre post : List (Kernel.Op × UInt64)) :
     Free (Plan.mapB op n a b t s pre post) := by
@@ -157,5 +157,113 @@ theorem expandB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {K w : Nat
     | [g, u], _ =>
       simp only [pure_bind]
       exact hkk fg2 ys m g u he hf ho hread
+
+theorem colPrefix_kscan {op : Kernel.Op} {n : USize} {a P : Enc} (h : colPrefix op n a = .ok P) :
+    ∃ z r, colConst n 0 = .ok z ∧ kscan op false .i64 .i64 n (some z) [(n, z), (n, a)] [] [] = .ok r ∧ r.1 = P := by
+  unfold colPrefix at h; simp only [Bind.bind, Except.bind] at h; split at h; · cases h
+  rename_i z hz
+  split at h; · cases h
+  rename_i r hr; simp only [Pure.pure, Except.pure, Except.ok.injEq] at h
+  exact ⟨z, r, hz, hr, h⟩
+
+theorem colMap_kscan {op : Kernel.Op} {n : USize} {a b o : Enc} {t s : QAtomicType}
+    {pre post : List (Kernel.Op × UInt64)} (h : colMap op n a b t s pre post = .ok o) :
+    ∃ f, kscan op false s t n none [(n, a), (n, b)] pre post = .ok (o, f) := by
+  unfold colMap at h; simp only [Bind.bind, Except.bind] at h; split at h; · cases h
+  rename_i r hr; simp only [Pure.pure, Except.pure, Except.ok.injEq] at h
+  subst h; exact ⟨r.2, hr⟩
+
+/-- `kscan`'s fold word exists where a row does (`kscan_last` reads it, this says it is there). -/
+theorem kscan_last_isSome {op : Kernel.Op} {rev : Bool} {s t : QAtomicType} {w : Nat} (ht : t.width = some w)
+    {n : USize} {seg : Option Enc} {es : List (USize × Enc)} {pre post : List (Kernel.Op × UInt64)}
+    {r : Enc × Option UInt64} (hs : kscanStream op es pre post = false)
+    (hF : op.nulFold = none ∨ ∀ p ∈ es, hasNul p.2 = false)
+    (h : kscan op rev s t n seg es pre post = .ok r) (hn : n ≠ 0) : r.2.isSome := by
+  obtain ⟨-, -, -, -, -, -, out₀, out, hos₀, hp, -, he, -⟩ := raw_kscanChain op rev s t w ht n seg es pre post r hs hF h
+  have hos : out.size = n.toNat := (Kernel.chainAll_ok hp).1.trans hos₀
+  rw [he]
+  have hn' : n.toNat ≠ 0 := fun h0 => hn (USize.toNat_inj.mp (by simpa using h0))
+  have hp : out.size - 1 < out.size := by omega
+  rw [Array.back?_eq_getElem?, Array.getElem?_eq_getElem hp]; rfl
+
+/-- **`expandB` builds `expand`**, from `expand`'s own answer: `K` holds the group count `Kv`, `w` the widths `wv` (no
+    null), `expand Kv wv = .ok (Tv, G0, uc)`, and the last prefix word is below `2^63` (`expand` reads it as `lastCount`,
+    clamped at `0`; `expandB` reads the word). `kk` continues with registers holding `Tv`, `G0`, `uc`. -/
+def ExpandSpec : Prop := ∀ {Kv Tv : USize} {wv G0 uc : Enc} {fg : Array Fun × Array Fun} {rs : Array Val} {K w : Nat}
+    {kk : Nat × Nat × Nat → Bld (Array Nat)} {out : Array Val},
+    rs[K]? = some (.size Kv) → rs[w]? = some (Reg.put wv) → hasNul wv = false →
+    (∀ P, colPrefix .add Kv wv = .ok P → 0 < Kv.toNat → ((P.raw .i64 Kv)[Kv.toNat - 1]?.getD 0).toNat < 2 ^ 63) →
+    expand Kv wv = .ok (Tv, G0, uc) → Ordered fg.1 →
+    (∀ (fg2 : Array Fun × Array Fun) (ys : Array Val) (a b c : Nat), (∃ e, fg2.1 = fg.1 ++ e) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → [a, b, c].mapM (fun i => (rs ++ ys)[i]?) =
+        some [.size Tv, Reg.put G0, Reg.put uc] → ∃ fg', Builds abiOf fg2 fg' (kk (a, b, c)) (rs ++ ys) out) →
+    ∃ fg', Builds abiOf fg fg' (expandB K w >>= kk) rs out
+
+theorem expandB_spec : ExpandSpec := by
+  intro Kv Tv wv G0 uc fg rs K w kk out hK hw hwn hlt h hfo hkk
+  unfold expand at h
+  split at h; · cases h
+  rename_i P hP
+  simp only [expandNote] at h
+  split at h; · cases h
+  obtain ⟨T, hT⟩ : ∃ T, lastCount Kv P (colPrefix_closed hP (hF := Or.inr hwn)).2.1
+      (colPrefix_closed hP (hF := Or.inr hwn)).2.2 = T := ⟨_, rfl⟩
+  rw [hT] at h
+  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure] at h
+  cases hoe : colMap .sub Kv P wv with
+  | error e => rw [hoe] at h; cases h
+  | ok o =>
+  rw [hoe] at h; simp only [Except.bind] at h
+  cases hsce : kscatter .max Kv o .pos (T.toUSize + 1) 0 with
+  | error e => rw [hsce] at h; cases h
+  | ok sc =>
+  rw [hsce] at h; simp only [Except.bind] at h
+  cases hP1 : colPrefix .max (T.toUSize + 1) sc with
+  | error e => rw [hP1] at h; cases h
+  | ok P1 =>
+  rw [hP1] at h; simp only [Except.bind] at h
+  cases hGe : kgather T.toUSize .pos (T.toUSize + 1) P1 with
+  | error e => rw [hGe] at h; cases h
+  | ok G =>
+  rw [hGe] at h; simp only [Except.bind] at h
+  cases hg1 : kgather T.toUSize G Kv o with
+  | error e => rw [hg1] at h; cases h
+  | ok g1 =>
+  rw [hg1] at h; simp only [Except.bind] at h
+  cases hue : colMap .sub T.toUSize .pos g1 with
+  | error e => rw [hue] at h; cases h
+  | ok u =>
+  rw [hue] at h; simp only [Except.bind] at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨rfl, rfl, rfl⟩ := h
+  obtain ⟨z0, r0, hz0, hk0, hr0e⟩ := colPrefix_kscan hP
+  obtain ⟨z1, r1, hz1, hk1, hr1e⟩ := colPrefix_kscan hP1
+  obtain ⟨f0, ho⟩ := colMap_kscan hoe
+  obtain ⟨f2, hu⟩ := colMap_kscan hue
+  have hNsc : hasNul sc = false := Verify.kscatter_plain hsce rfl
+  have hr0 : Kv ≠ 0 → r0.2.isSome := kscan_last_isSome (w := 8) rfl (kscanStream_ne (by decide) _ _ _)
+    (colPrefix_hF hz0 (Or.inr hwn)) hk0
+  have hr1 : T.toUSize + 1 ≠ 0 → r1.2.isSome := kscan_last_isSome (w := 8) rfl (kscanStream_ne (by decide) _ _ _)
+    (colPrefix_hF hz1 (Or.inr hNsc)) hk1
+  have hT' : T.toUSize = if Kv = 0 then 0 else (r0.2.getD 0).toUSize + 0 := by
+    have hf : ∃ md pk, P = .foR md pk := hr0e ▸ kscan_foR hk0
+    by_cases h0 : Kv = 0
+    · have := lastCount_eq (colPrefix_closed hP (hF := Or.inr hwn)).2.1 (colPrefix_closed hP (hF := Or.inr hwn)).2.2 hf
+        (x := 0) (by omega) (fun h => by simp [h0] at h) (fun _ => rfl)
+      rw [hT] at this; subst this; simp [h0]; rfl
+    · have hk : 0 < Kv.toNat := by
+        have : Kv.toNat ≠ 0 := fun h => h0 (USize.toNat_inj.mp (by simpa using h))
+        omega
+      have hl := kscan_last (w := 8) rfl (kscanStream_ne (by decide) _ _ _) (colPrefix_hF hz0 (Or.inr hwn)) hk0
+      rw [hr0e] at hl
+      simp only [Bool.false_eq_true, ↓reduceIte] at hl
+      have := lastCount_eq (colPrefix_closed hP (hF := Or.inr hwn)).2.1 (colPrefix_closed hP (hF := Or.inr hwn)).2.2 hf
+        (x := ((P.raw .i64 Kv)[Kv.toNat - 1]?.getD 0).toNat) (hlt P hP hk)
+        (fun _ => by simp) (fun h => absurd h (by omega))
+      rw [hT] at this
+      rw [if_neg h0, hl, this]
+      rw [USize.add_zero]; exact USize.ofNat_uInt64ToNat _
+  rw [← hr0e] at ho; rw [← hr1e] at hGe
+  exact expandB_builds hK hw hz0 hk0 hr0 hT' ho hsce hz1 hk1 hr1 hGe hg1 hu hfo hkk
 
 end Rel.Lang.Plan
