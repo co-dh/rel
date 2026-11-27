@@ -165,12 +165,39 @@ abbrev Top := ((A : Obj) × (B : Obj) × Tm A B) × OTy × OTy
 /-- A `check`: where, both sides' texts, `=` (else `⊑`), the objects as named, both sides at one type. -/
 abbrev Chk := Pos × String × String × Bool × OTy × OTy × ((A : Obj) × (B : Obj) × Tm A B × Tm A B)
 
+/-- The signature of a certificate, with its object variables in substitution order. An unused untyped
+    parameter can have an undetermined source or target. -/
+structure ThmSig where
+  vars : List (String × QAtomicType)
+  params : List (Option OTy × Option OTy)
+  source : OTy
+  target : OTy
+
+/-- When a signature leaves its program, its own declared objects are known by their constants. -/
+def ThmSig.qualify (sig : ThmSig) (home : Lean.Name) (names : List String) : ThmSig :=
+  let rec go : OTy → OTy
+    | .base n => .base (if names.contains n && !(sig.vars.any (·.1 == n)) then (Parse.constOf home n).toString else n)
+    | .prod a b => .prod (go a) (go b)
+    | .sum a b => .sum (go a) (go b)
+    | .arr a => .arr (go a)
+    | o => o
+  { sig with params := sig.params.map fun (a, b) => (a.map go, b.map go)
+             source := go sig.source, target := go sig.target }
+
+/-- A chain link and the terms and object substitution of its citation, if it has arguments. -/
+structure CalcLink where
+  sides : Chk
+  args : List Res
+  objects : List (Option Obj × QAtomicType)
+
 /-- A theorem's denotation checks, all built at the same object placeholders. -/
 structure ThmChecks where
-  ph : List QAtomicType
+  sig : ThmSig
   statement : Chk
   premises : List Chk
-  links : List Chk
+  links : List CalcLink
+
+def ThmChecks.ph (c : ThmChecks) : List QAtomicType := c.sig.vars.map (·.2)
 
 abbrev Thms := List (Pos × ThmChecks) × List (Pos × String)
 
@@ -584,10 +611,37 @@ def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) :
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
   return (← buildCheck env (← Lean.getMCtx) p e f eq r r', st.specs)
 
+/-- Instantiate the cited signature with fresh objects and use its parameter types to elaborate the arguments. -/
+def citationArgs (env : Env) (p : Pos) (r : Arg) (sig? : Option ThmSig) (xs : List Expr) :
+    M (List Arg × List (OTy × QAtomicType)) := do
+  let some sig := sig? | return (← elabArgs env none xs, [])
+  unless xs.length == sig.params.length do
+    throw ⟨p, s!"the citation expects {sig.params.length} arguments, found {xs.length}"⟩
+  let os ← sig.vars.mapM fun _ => fresh
+  let vs := (sig.vars.map (·.1)).zip os
+  let rec inst : OTy → OTy
+    | .base n => (vs.lookup n).getD (.base n)
+    | .prod a b => .prod (inst a) (inst b)
+    | .sum a b => .sum (inst a) (inst b)
+    | .arr a => .arr (inst a)
+    | .mv m => .mv m
+  let args ← (xs.zip sig.params).mapM fun (x, a, b) => do
+    let arg ← elabE env none x
+    let (_, s, t) := arg.plain
+    if let some a := a then unify x.pos "the cited argument's source" s (inst a)
+    if let some b := b then unify x.pos "the cited argument's target" t (inst b)
+    pure arg
+  -- A result can mention an object that the parameters did not determine.
+  let (_, s, t) := r.plain
+  let saved ← save
+  unless (← defEq s (inst sig.source)) && (← defEq t (inst sig.target)) do restore saved
+  pure (args, os.zip (sig.vars.map (·.2)))
+
 /-- Elaborate a certificate over one signature, with the parameter objects first and the open objects inferred
     in the statement, premises and chain after them. All links share the statement's type. -/
 def theoremChecks (env : Env) (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool)
-    (hs : List (Pos × Expr × Expr × Bool)) (steps : List (Pos × Expr)) (specs : List Once) :
+    (hs : List (Pos × Expr × Expr × Bool)) (steps : List (Pos × Expr × List Expr × Option ThmSig))
+    (specs : List Once) :
     EM (ThmChecks × List Once) := do
   let vs := (paramVars ps).eraseDups
   let ph ← liftExcept (placeholdersFor env p n vs.length)
@@ -595,18 +649,20 @@ def theoremChecks (env : Env) (p : Pos) (n : String) (ps : List Param) (e f : Ex
     vs.zipWith (fun v a => (v, { placeholderInfo v (.atom a) with fullUniverse := true })) atoms
   let env' := { env with objs := objects vs ph ++ env.objs, ovars := vs.map fun v => (v, .base v) }
   let (checks, st) ← (do
-    let (_, env') ← bindSig env' ps (some p)
+    let (params, env') ← bindSig env' ps (some p)
     let r ← elabE env' none e; let s ← elabE env' none f
     unifySides p r s
     let premises ← hs.mapM fun (q, a, b, _) => do
       let x ← elabE env' none a; let y ← elabE env' none b
       unifySides q x y
       pure (x, y)
-    let links ← steps.mapM fun (q, x) => do
+    let links ← steps.mapM fun (q, x, xs, sig) => do
       let t ← elabE env' none x
       unifySides q r t
-      pure (q, x, t)
-    let terms := r :: s :: premises.flatMap (fun (x, y) => [x, y]) ++ links.map (·.2.2)
+      let (args, os) ← if xs.isEmpty then pure ([], []) else citationArgs env' q t sig xs
+      pure (q, x, t, xs.zip args, os)
+    let terms := r :: s :: premises.flatMap (fun (x, y) => [x, y]) ++
+      links.flatMap (fun (_, _, t, args, _) => t :: args.map (·.2))
     settleOpen env' p (terms.map (·.plain.1))
     let mc ← Lean.getMCtx
     let st ← get
@@ -626,13 +682,23 @@ def theoremChecks (env : Env) (p : Pos) (n : String) (ps : List Param) (e f : Ex
     let statement ← buildCheck env' mc p e f eq r s true
     let premises ← (hs.zip premises).mapM fun ((q, a, b, k), x, y) =>
       buildCheck env' mc q a b k x y true
-    let links ← (links.zip ((p, e, r) :: links)).mapM fun ((q, x, t), _, y, u) =>
-      buildCheck env' mc q y x true u t true
+    let links ← (links.zip ((p, e, r) :: links.map (fun (q, x, t, _, _) => (q, x, t)))).mapM
+        fun ((q, x, t, xs, os), _, y, u) => do
+      let sides ← buildCheck env' mc q y x true u t true
+      let args ← xs.mapM fun (x, arg) => return (← top env' mc x.pos x arg true).1
+      let objects ← os.mapM fun (o, a) => do
+        let o := zonk mc o
+        pure (← if o.mvs.isEmpty then some <$> objOf env'.objs q o else pure none, a)
+      pure ({ sides, args, objects } : CalcLink)
     -- Some elaborated alternatives are discarded by `build`. They do not contribute objects to the goal.
-    let used := (statement :: premises ++ links).flatMap fun (_, _, _, _, _, _, ⟨A, B, r, s⟩) =>
-      termAtoms ⟨A, B, r⟩ ++ termAtoms ⟨A, B, s⟩
-    let inferred := (ph.drop vs.length).take names.length
-    pure { ph := ph.take vs.length ++ inferred.filter used.contains, statement, premises, links } : M ThmChecks
+    let used := ((statement :: premises ++ links.map (·.sides)).flatMap fun (_, _, _, _, _, _, ⟨A, B, r, s⟩) =>
+      termAtoms ⟨A, B, r⟩ ++ termAtoms ⟨A, B, s⟩) ++ links.flatMap fun l =>
+        l.args.flatMap termAtoms ++ l.objects.flatMap (fun (o, _) => o.toList.flatMap Obj.atoms)
+    let keep (o : OTy) := let o := zonk mc o; if o.mvs.isEmpty then some o else none
+    let params := params.map fun (_, s, t) => (keep s, keep t)
+    let (_, _, _, _, source, target, _) := statement
+    let vars := vs.zip ph ++ (names.zip (ph.drop vs.length)).filter (used.contains ·.2)
+    pure { sig := { vars, params, source, target }, statement, premises, links } : M ThmChecks
     ).run { specs, objs := env'.objs }
   pure (checks, st.specs)
 
@@ -761,7 +827,8 @@ def rtNamesE (env : Env) (rt : Rt) (e : Expr) : Expr :=
     program that emits those built here; returned with the ones built here, the run-time names in scope after it
     (`rt₀` those of its imports), and the statements `n.io` runs (`Io`). -/
 def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
-    (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := []) :
+    (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := [])
+    (thmSigs : Lean.Name → Option ThmSig := fun _ => none) :
     EM (Env × List (String × Res) × List (String × Top) × List Chk × Thms × List Once × Rt × List Io) := do
   let mut env := env
   let mut specs := specs
@@ -773,6 +840,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
   let mut ths : List (Pos × ThmChecks) := []
+  let mut localSigs : List (String × ThmSig) := []
   -- a `calc` theorem whose chain did not elaborate as `check`s: where, and the error, for `certify` to list
   let mut bad : List (Pos × String) := []
   -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
@@ -910,7 +978,10 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (c, sp) ← checkOf env p (e.subst σ) (f.subst σ) eq specs; specs := sp; cs := cs ++ [c]
     | .«theorem» p n ps e f eq on hyps steps proof =>
       let ns := e.names ++ f.names ++ (on.map (·.names)).getD [] ++
-        hyps.flatMap (fun (a, b) => a.names ++ (b.map (·.2.names)).getD []) ++ steps.flatMap (·.2.2.1.names)
+        hyps.flatMap (fun (a, b) => a.names ++ (b.map (·.2.names)).getD []) ++
+        steps.flatMap fun (_, _, x, w) => x.names ++ match w with
+          | .thm _ _ _ xs => xs.flatMap (·.names)
+          | .unfold .. => []
       let ns := ns.map (rtName env rt)
       if let some (y, Y, _) := rt.find? fun (y, _) => ns.contains y && !ps.any (·.name == y) then
         throw ⟨p, s!"theorem `{n}` mentions `{y}`, which has no table at elaboration; state it with `{y}` a " ++
@@ -927,9 +998,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             s!"the statement's {e.show} is {zonk mc s} ⟶ {zonk mc t}"⟩
         : M Unit).run { specs, objs := env.objs }
       specs := st.specs
-      -- A `calc` of `=` steps is certified step by step unless a step cites a theorem at arguments.
-      let calcOk := proof.isNone && !steps.isEmpty && eq &&
-        steps.all fun (_, k, _, w) => k && match w with | .thm _ _ _ as => as.isEmpty | .unfold .. => true
+      -- A `calc` of `=` steps is certified step by step.
+      let calcOk := proof.isNone && !steps.isEmpty && eq && steps.all (·.2.1)
       -- Both certificate forms use the same denotation checks for the premises and conclusion.
       if proof.isSome || calcOk then
         try
@@ -939,9 +1009,13 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             let some (k, b) := b | throw ⟨a.pos, s!"theorem `{n}` has `{form}` and the hypothesis `{a.show}`, a test applied: " ++
               "only `a = b` and `a ⊑ b` are premises of a Lean proof"⟩
             pure (a.pos, rename a, rename b, k)
-          let (c, sp) ← theoremChecks env p n ps (rename e) (rename f) eq premises
-            (steps.map fun (q, _, x, _) => (q, rename x)) specs
+          let links := steps.map fun (q, _, x, w) => match w with
+            | .thm _ m c xs =>
+              (q, rename x, xs.map rename, c.elim (localSigs.lookup m) thmSigs)
+            | .unfold .. => (q, rename x, [], none)
+          let (c, sp) ← theoremChecks env p n ps (rename e) (rename f) eq premises links specs
           specs := sp; ths := ths ++ [(p, c)]
+          localSigs := (n, c.sig) :: localSigs
         catch e =>
           if proof.isSome then throw e
           bad := bad ++ [(p, s!"{e.msg}")]
@@ -969,7 +1043,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
 def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program)) (prog : Program)
     (own : Lean.Name := .anonymous)
     (res : Lean.Name → String → Found := fun h => Parse.openAll (homes.takeWhile (·.1 != h)))
-    (seed : List Once := []) : EM Read := do
+    (seed : List Once := []) (thmSigs : Lean.Name → Option ThmSig := fun _ => none) : EM Read := do
   let mut ext : List (Lean.Name × Def) := []
   let mut xo : List (Lean.Name × ObjInfo) := []
   -- the constants a call builds at a form no registered constant takes (`callDef`), which `own` emits
@@ -993,7 +1067,7 @@ def read (calls : Lean.Name → Option Once) (homes : List (Lean.Name × Program
         | _, _, _ => pure ()
   let env : Env := { res := res own, ext, extObjs := xo, objs := xo.map fun (c, i) => (c.toString, i) }
   let (e, ds, ps, cs, ths, os, _, io') ← walk prog env (fun k => useDef (Parse.constOf own k) false) own calls true own specs
-    false rt
+    false rt thmSigs
   pure (ds, ps, cs, ths, e.objs, os, io ++ io')
 
 /-! ### Constants as the `Expr` that builds them (`tmE`), and the registry -/
@@ -1124,6 +1198,7 @@ inductive RegEntry
   | chain (n : Name) (ns : List Name)
   | prog (n : Name) (ns : Name) (opens : List OpenDecl)
   | ext (e : Ext) (home : Name)
+  | thm (c : Name) (s : ThmSig)
   deriving Inhabited
 
 /-- The registry, written only by `rel_program`: the constants a use may call (`walk`), each program's homes,
@@ -1134,6 +1209,7 @@ structure Registry where
   chains : List (Name × List Name) := []
   progs : Array (Name × Name × List OpenDecl) := #[]
   exts : Std.HashMap Name (Ext × Name) := {}
+  thms : List (Name × ThmSig) := []
   /-- Each `call` whose key `calls` already held, in the order added (`add`). -/
   again : Array Once := #[]
 
@@ -1148,6 +1224,7 @@ def Registry.add (r : Registry) : RegEntry → Registry
   | .chain n ns => { r with chains := (n, ns) :: r.chains }
   | .prog n ns os => { r with progs := r.progs.push (n, ns, os) }
   | .ext e h => { r with exts := r.exts.insert e.const (e, h) }
+  | .thm c s => { r with thms := (c, s) :: r.thms }
 
 initialize relRegistry : SimplePersistentEnvExtension RegEntry Registry ←
   registerSimplePersistentEnvExtension {
@@ -1244,7 +1321,7 @@ def reread (n : Name) : MetaM (Except Err Expand.Read) := do
   let calls ← reg.call?
   -- the bodies `n` built are `emit`'s (`seed`), not elaborated again; a use of one is still `n`'s own `call`
   (Expand.read (fun k => if mine.contains k then none else calls k) progs (← programOf n) n resOf
-    built).run
+    built (reg.thms.lookup ·)).run
 end Expand
 
 end Rel.Lang

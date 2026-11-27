@@ -42,6 +42,12 @@ theorem Val.bind_ne {ρ : Val} {k j : Nat} {A B : Obj} {X : Core.Rel (Obj.El A) 
 theorem Val.bind_same {ρ ρ' : Val} {k : Nat} {A B : Obj} {X : Core.Rel (Obj.El A) (Obj.El B)} : ρ.bind k X k = ρ'.bind k X k := by
   funext A' B'; simp [Val.bind]
 
+theorem Val.bind_apply (ρ : Val) (k : Nat) {A B A' B' : Obj} (X : Core.Rel (Obj.El A) (Obj.El B))
+    (hA : A = A') (hB : B = B') : ρ.bind k X k A' B' = hA ▸ hB ▸ X := by
+  subst A'
+  subst B'
+  simp [Val.bind]
+
 variable {A B C : Obj} {Φ Ψ : Core.Rel (Obj.El A) (Obj.El B) → Core.Rel (Obj.El A) (Obj.El B)} {Y : Core.Rel (Obj.El A) (Obj.El B)}
 
 /-! ### The named meanings: each the `T` of its node's `Gen.*_sound` lemma -/

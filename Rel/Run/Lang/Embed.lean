@@ -284,27 +284,32 @@ def homesOf (reg : Expand.Registry) (used : List Name) : List Name :=
 /-- The object instantiation argument of a generic certificate. -/
 def substTy : Lean.Expr := mkApp (mkConst ``List [0]) (mkConst ``Rel.Obj)
 
+/-- The types and denotation of a built term at the caller's objects and valuation. -/
+def termAt (ρ : Lean.Expr) (σ : Option Lean.Expr) (ph : List QAtomicType) (p : Pos) (side : String)
+    (A B : Obj) (t : Tm A B) : TermElabM (Lean.Expr × Lean.Expr × Lean.Expr) := do
+  let denName := `Rel.Lang.Tm.den
+  let t ← ofExcept (Expand.tmE #[] t)
+  let (a, b) := (Expand.oE A, Expand.oE B)
+  let some σ := σ | return (a, b, mkAppN (mkConst denName) #[ρ, a, b, t])
+  let ph := toExpr ph
+  let inst := mkApp2 (mkConst ``Rel.Obj.inst) ph σ
+  let (a', b') := (mkApp inst a, mkApp inst b)
+  -- The instantiated term must exist with `σ` still arbitrary, including at any fixed nodes.
+  let value ← Meta.whnf (mkAppN (mkConst ``Tm.instObj) #[ph, σ, a, b, t])
+  let .app ok t := value | throwError "rel_program: {p}: cannot instantiate `{side}` at arbitrary objects"
+  unless ok.isAppOfArity ``Except.ok 2 do
+    throwError "rel_program: {p}: cannot instantiate `{side}` at arbitrary objects"
+  pure (a', b', mkAppN (mkConst denName) #[ρ, a', b', t])
+
 /-- `Tm.den ρ` of both sides, using `Tm.instObj` at the theorem's `σ` when it has object variables. -/
 def sidesAt (ρ : Lean.Expr) (c : Expand.Chk) (σ : Option Lean.Expr) (ph : List QAtomicType) :
     TermElabM (Lean.Expr × Lean.Expr × Lean.Expr × Lean.Expr) := do
   let (p, l, r, _, _, _, ⟨A, B, R, S⟩) := c
-  let denName := `Rel.Lang.Tm.den
-  unless (← getEnv).contains denName do
+  unless (← getEnv).contains `Rel.Lang.Tm.den do
     throwError "rel_program: a proved check requires importing Rel.Lang.Den"
-  let (a, b) := (Expand.oE A, Expand.oE B)
-  let ph := toExpr ph
-  let inst o := σ.elim o fun σ => mkApp3 (mkConst ``Rel.Obj.inst) ph σ o
-  let (a', b') := (inst a, inst b)
-  let den (side : String) (t : Tm A B) : TermElabM Lean.Expr := do
-    let t ← ofExcept (Expand.tmE #[] t)
-    let some σ := σ | return mkAppN (mkConst denName) #[ρ, a, b, t]
-    -- The instantiated term must exist with `σ` still arbitrary, including at any fixed nodes.
-    let value ← Meta.whnf (mkAppN (mkConst ``Tm.instObj) #[ph, σ, a, b, t])
-    let .app ok t := value | throwError "rel_program: {p}: cannot instantiate `{side}` at arbitrary objects"
-    unless ok.isAppOfArity ``Except.ok 2 do
-      throwError "rel_program: {p}: cannot instantiate `{side}` at arbitrary objects"
-    pure (mkAppN (mkConst denName) #[ρ, a', b', t])
-  pure (a', b', ← den l R, ← den r S)
+  let (a, b, r') ← termAt ρ σ ph p l A B R
+  let (_, _, s') ← termAt ρ σ ph p r A B S
+  pure (a, b, r', s')
 
 /-- The statement of an elaborated certificate, over the object substitution (if generic), the valuation of its
     parameters, and each premise. -/
@@ -319,12 +324,53 @@ def goalOf (c : Expand.Chk) (hs : List Expand.Chk := []) (ph : List QAtomicType 
   if ph.isEmpty then goal none else
     Meta.withLocalDeclD `σ substTy fun σ => do Meta.mkForallFVars #[σ] (← goal (some σ))
 
+/-- Use definitional equality first, then expose the denotation equations and evaluate typed variable lookups. -/
+def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) := do
+  let proofTy ← Meta.inferType proof
+  if ← Meta.isDefEq proofTy ty then return some proof
+  unless subst && proofTy.getAppFn == ty.getAppFn do return none
+  let mut rules : Meta.SimpTheorems := {}
+  for d in [`Rel.Lang.Tm.den, `Rel.Lang.Tm.argDen, `Rel.Lang.Val.args] do
+    rules ← rules.addDeclToUnfold d
+  rules ← rules.addConst `Rel.Lang.Val.bind_apply
+  rules ← rules.addConst `Rel.Lang.Val.bind_ne
+  let ctx ← Meta.Simp.mkContext (simpTheorems := #[rules])
+  let discharge : Meta.Simp.Discharge := fun p => Meta.withTransparency .default do
+    if let some (_, a, b) := p.eq? then
+      -- The caller and the citation can express the same object with different substitutions.
+      if ← Meta.isDefEq a b then return some (← Meta.mkEqRefl a)
+      return none
+    let q ← Meta.mkDecide p
+    if (← Meta.whnf q).isConstOf ``Bool.true then some <$> Meta.mkDecideProof p else pure none
+  let (a, _) ← Meta.simp proofTy ctx #[] (discharge? := some discharge)
+  let (b, _) ← Meta.simp ty ctx #[] (discharge? := some discharge)
+  unless ← Meta.isDefEq a.expr b.expr do return none
+  let pr ← a.proof?.elim (pure proof) (Meta.mkEqMP · proof)
+  return some (← b.proof?.elim (pure pr) (Meta.mkEqMPR · pr))
+
+/-- A certified sibling at the call's valuation, with its object arguments inferred from the premise when needed. -/
+def siblingProof (ρ : Lean.Expr) (σs : List Lean.Expr) (premise : Lean.Expr)
+    (c : Name) (ph : List QAtomicType) (subst : Bool) : TermElabM (Option Lean.Expr) := do
+  let pr := mkConst c
+  if ph.isEmpty then return ← calcMatch (mkApp pr ρ) premise subst
+  for σ in σs do
+    if let some h ← calcMatch (mkApp2 pr σ ρ) premise subst then return some h
+  Meta.withNewMCtxDepth do
+    let os ← ph.mapM fun _ => Meta.mkFreshExprMVar (mkConst ``Rel.Obj)
+    let σ ← Meta.mkListLit (mkConst ``Rel.Obj) os
+    let some h ← calcMatch (mkApp2 pr σ ρ) premise subst | return none
+    for (o, a) in os.zip ph do
+      if let .mvar m ← instantiateMVars o then m.assign (Expand.oE (.atom a))
+    let h ← instantiateMVars h
+    return if h.hasMVar then none else some h
+
 /-- The theorem `t` of the program `n` with steps `_ = x := why` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
     `Tm`), a step citing a theorem is that theorem's own `….proof.m`, joined by `Eq.trans`.
-    A citation can use premises from the elaborated goal. Unsupported links return their reason. -/
+    A citation can use the elaborated hypotheses and previously certified theorems. -/
 def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Bool)
-    (steps : List (Pos × Bool × Expr × Why)) : TermElabM (Option String) := do
+    (steps : List (Pos × Bool × Expr × Why)) (siblings : List (Name × List QAtomicType)) :
+    TermElabM (Option String) := do
   let env ← getEnv
   unless env.contains `Rel.Lang.Tm.den do
     return some s!"{t}: the program does not import Rel.Lang.Den"
@@ -335,13 +381,9 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
       | some (.str h m') => some (.str (h ++ `proof) m')
       | _ => some (n ++ `proof ++ Name.mkSimple m)
   let why := fun (w : Why) => match w with | .thm _ m _ _ => m | .unfold _ m => m
-  let lacks := steps.filter fun (_, _, _, w) => match cite w, w with
-    | some c, .thm _ _ _ [] => !env.contains c
-    | some _, _ => true
-    | none, _ => false
   if !eq || steps.any (!·.2.1) then return some s!"{t}: the theorem has `⊑` steps"
-  if !lacks.isEmpty then
-    return some s!"{t}: no proof constant for {", ".intercalate (lacks.map fun (_, _, _, w) => why w)}"
+  if let some (q, _, _, w) := steps.find? (fun (_, _, _, w) => (cite w).any (!env.contains ·)) then
+    return some s!"{t}: step at {q}: no proof constant for {why w}"
   let some cert := thms.1.lookup p |
     return some s!"{t}: {(thms.2.lookup p).getD "its statement or a step does not type as a `check`"}"
   let goal ← goalOf cert.statement cert.premises cert.ph
@@ -351,33 +393,50 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
     let σ := if generic then args[0]? else none
     let arity := if generic then 2 else 1
     let some ρ := args[arity - 1]? | throwError "rel_program: theorem {t} has no valuation binder"
-    let premises ← (args.extract arity args.size).mapM fun h => return (← Meta.inferType h, h)
+    let premises := args.extract arity args.size
     let mut acc : Option Lean.Expr := none
     for (q, _, _, w) in steps do
-      let some l := cert.links.find? (·.1 == q) | throwError "rel_program: no elaborated step at {q}"
-      let (_, _, a, b) ← sidesAt ρ l σ cert.ph
+      let some l := cert.links.find? (·.sides.1 == q) | throwError "rel_program: no elaborated step at {q}"
+      let (_, _, a, b) ← sidesAt ρ l.sides σ cert.ph
       let step ← match cite w with
         | none =>
           unless ← Meta.isDefEq a b do
             return .error s!"step at {q}: `≜ {why w}` unfolds a definition, but both sides are not one term: {← Meta.ppExpr a} and {← Meta.ppExpr b}"
           Meta.mkEqRefl a
         | some c =>
+          let subst := !l.args.isEmpty
+          let mut ρ' := ρ
+          for (⟨A, B, x⟩, k) in l.args.zipIdx do
+            let (a, b, den) ← termAt ρ σ cert.ph q s!"argument {k + 1} of {why w}" A B x
+            ρ' := mkAppN (mkConst `Rel.Lang.Val.bind) #[ρ', toExpr k, a, b, den]
+          let σ' ← if subst then do
+            let os := l.objects.map fun (o, ph) => match o, σ with
+              | some o, some σ => mkApp3 (mkConst ``Rel.Obj.inst) (toExpr cert.ph) σ (Expand.oE o)
+              | some o, none => Expand.oE o
+              | none, _ => Expand.oE (.atom ph)
+            pure (some (← Meta.mkListLit (mkConst ``Rel.Obj) os))
+          else pure σ
           let mut pr := mkConst c
           if let .forallE _ dom _ _ := (← Meta.inferType pr) then
             if dom == substTy then
-              let some σ := σ | return .error s!"step at {q}: {c} requires an object substitution"
+              let some σ := σ' | return .error s!"step at {q}: {c} requires an object substitution"
               pr := mkApp pr σ
-          pr := mkApp pr ρ
+          pr := mkApp pr ρ'
           let mut ty ← Meta.inferType pr
+          let objectLists := σ.toList ++ σ'.toList
           while true do
             let .forallE _ premise body _ := ty | break
-            let some (_, h) := ← premises.findM? (fun (ty, _) => Meta.isDefEq ty premise) |
-              return .error s!"step at {q}: {c} requires the premise {← Meta.ppExpr premise}, which is not among the theorem's hypotheses"
+            let h ← premises.toList.findSomeM? fun h => calcMatch h premise subst
+            let h ← if h.isSome then pure h else
+              siblings.findSomeM? (fun (c, ph) => siblingProof ρ objectLists premise c ph subst)
+            let some h := h |
+              return .error s!"step at {q}: {c} requires the premise {← Meta.ppExpr premise}, with no matching hypothesis or certified theorem"
             pr := mkApp pr h
             ty := body.instantiate1 h
-          unless ← Meta.isDefEq (← Meta.inferType pr) (← Meta.mkEq a b) do
-            return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr (← Meta.mkEq a b)}"
-          pure pr
+          let expected ← Meta.mkEq a b
+          let some proof ← calcMatch pr expected subst |
+            return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr expected}"
+          pure proof
       acc ← match acc with | none => pure (some step) | some s => some <$> Meta.mkEqTrans s step
     let some chain := acc | throwError "rel_program: theorem {t} has no steps"
     pure (.ok (← Meta.mkLambdaFVars args chain))
@@ -393,9 +452,10 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
     `n.proof.check<i>` for the `i`-th proved check, `n.proof.<t>` for the theorem `t`. A `calc` theorem is certified
     by `certifyCalc`; the ones it cannot are the strings of the constant `n.proof.unproved`. -/
 def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
-    (thms : Expand.Thms) : TermElabM Unit := do
+    (thms : Expand.Thms) (prelude : List (Name × List QAtomicType)) : TermElabM Unit := do
   let mut index := 0
   let mut unproved : List String := []
+  let mut siblings : List (Name × List QAtomicType) := []
   for decl in prog do
     let (p, proof, name) ← match decl with
       | .check p _ _ _ _ (some proof) =>
@@ -404,14 +464,18 @@ def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
       | .«theorem» p t _ _ _ _ _ _ _ (some proof) => pure (p, proof, Name.mkSimple t)
       | .«theorem» p t _ _ _ eq _ _ steps none =>
         if steps.isEmpty then continue
-        if let some m ← certifyCalc n thms p t eq steps then unproved := unproved ++ [m]
+        if let some m ← certifyCalc n thms p t eq steps (siblings ++ prelude) then unproved := unproved ++ [m]
+        else if let some cert := thms.1.lookup p then
+          siblings := (n ++ `proof ++ Name.mkSimple t, cert.ph) :: siblings
         continue
       | _ => continue
     let cert ← match thms.1.lookup p with
       | some cert => pure cert
       | none =>
         let some c := checks.find? (·.1 == p) | throwError "rel_program: no elaborated check at {p}"
-        pure ({ ph := [], statement := c, premises := [], links := [] } : Expand.ThmChecks)
+        let (_, _, _, _, source, target, _) := c
+        pure ({ sig := { vars := [], params := [], source, target }, statement := c, premises := [], links := [] } :
+          Expand.ThmChecks)
     let goal ← goalOf cert.statement cert.premises cert.ph
     let elabProof (ty : Lean.Expr) := Term.withoutErrToSorry do
       let value ← Term.elabTermEnsuringType (mkIdent proof) ty
@@ -426,10 +490,14 @@ def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
       | some v => pure v
       | none => Meta.forallBoundedTelescope goal (some 1) fun args ty => do
         Meta.mkLambdaFVars args (← elabProof ty)
-    addDecl (.thmDecl { name := n ++ `proof ++ name, levelParams := [], type := goal, value })
+    let c := n ++ `proof ++ name
+    addDecl (.thmDecl { name := c, levelParams := [], type := goal, value })
+    if let .«theorem» .. := decl then siblings := (c, cert.ph) :: siblings
   unless unproved.isEmpty do
     let ty := mkApp (mkConst ``List [0]) (mkConst ``String)
-    addDecl (.defnDecl { name := n ++ `proof ++ `unproved, levelParams := [], type := ty, value := toExpr unproved, hints := .abbrev, safety := .safe })
+    addAndCompile <| .defnDecl
+      { name := n ++ `proof ++ `unproved, levelParams := [], type := ty, value := toExpr unproved
+        hints := .abbrev, safety := .safe }
 
 /-- The program `n` named by `id`, read in the scope `s` that left `used`, what it reads (`Expand.emit`): each closed
     definition as the Lean definition `n.x`, its prints, its checks; then its definitions and objects registered,
@@ -457,16 +525,26 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
     | some (_, ns, os) => (resolverAt env opts reg ns os).1
     | none => fun _ => .none
   let calls ← liftTermElabM reg.call?
-  match ← liftTermElabM (Expand.read calls progs prog n resOf).run with
+  match ← liftTermElabM (Expand.read calls progs prog n resOf (thmSigs := (reg.thms.lookup ·))).run with
   | .error e => throwErrorAt stx "{e}"
   | .ok r =>
-    liftTermElabM (certify n prog r.2.2.1 r.2.2.2.1)
+    let thms := r.2.2.2.1
+    let prelude := reg.thms.filterMap fun (c, sig) =>
+      match c with
+      | .str home t => if home == `Rel.Programs.prelude then some ((home ++ `proof).str t, sig.vars.map (·.2)) else none
+      | _ => none
+    liftTermElabM (certify n prog r.2.2.1 thms prelude)
     liftTermElabM (Expand.emit n r)
+    let objects := prog.filterMap fun | .obj _ o _ => some o | _ => none
     for d in prog do
       if let some (_, e) := Parse.extOf n d then
         unless (← getEnv).contains e.const do
           liftCoreM (declConst e.const d)
         modifyEnv (Expand.relRegistry.addEntry · (.ext e n))
+      if let .«theorem» p t .. := d then
+        if (← getEnv).contains (n ++ `proof ++ Name.mkSimple t) then
+          if let some cert := thms.1.lookup p then
+            modifyEnv (Expand.relRegistry.addEntry · (.thm (n.str t) (cert.sig.qualify n objects)))
     modifyEnv (Expand.relRegistry.addEntry · (.prog n ns os))
     modifyEnv (Expand.relRegistry.addEntry · (.chain n homes))
 

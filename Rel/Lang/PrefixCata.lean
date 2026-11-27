@@ -117,6 +117,48 @@ rel_program genericTheorem where
 #check genericTheorem.proof.gg
 #check genericTheorem.proof.ii
 #check genericTheorem.proof.citeGg
+
+open Rel.Programs.prelude genericTheorem in
+rel_program citeArguments where
+    obj N = 0…3
+    x : 1 ⟶ [N] ≜ 𝟘
+    theorem concrete : x = x := calc
+      _ = x := gg(x)
+    theorem abstractObjects(Q : γ ⟶ δ, R : α ⟶ β) : R = R := calc
+      _ = R := gg(R)
+
+#check citeArguments.proof.concrete
+#check citeArguments.proof.abstractObjects
+
+rel_program citeSibling where
+    obj N = 0…3
+    x : N ⟶ N ≜ 𝟘
+    y : N ⟶ N ≜ x
+    theorem given(R : α ⟶ β, S : α ⟶ β) if R = S : R = S by hypId
+    theorem witness : x = y by denEqRefl
+    theorem fromSibling : x = y := calc
+      _ = y := given(x, y)
+    theorem fromHypothesis(Q : α ⟶ β, R : α ⟶ β, S : α ⟶ β) if R = S : R = S := calc
+      _ = S := given(R, S)
+
+#check citeSibling.proof.fromSibling
+#check citeSibling.proof.fromHypothesis
+
+rel_program citeMissingPremise where
+    obj N = 0…3
+    x : N ⟶ N ≜ 𝟘
+    y : N ⟶ N ≜ x
+    theorem given(R : N ⟶ N, S : N ⟶ N) if R = S : R = S by hypId
+    theorem unprovedWitness : x = y
+    theorem blocked : x = y := calc
+      _ = y := given(x, y)
+
+#guard citeMissingPremise.proof.unproved.length == 1
+#guard citeMissingPremise.proof.unproved.any fun msg =>
+  msg.startsWith "blocked:" && (msg.splitOn "given requires the premise").length == 2
+
+#print axioms Val.bind_apply
+
 #check Programs.prelude.proof.foldUP
 #check Programs.prelude.proof.foldrUP
 
