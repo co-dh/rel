@@ -687,7 +687,7 @@ theorem funC_builds {abi : String → Option Kernel} {fg : Array Fun × Array Fu
     (hT : ∀ c', Col.shape c' = Col.shape c → Col.regs c' = List.range' (rs.size + 1) (Col.regs c).length →
       Typed rs.size (fun _ => True) (b [(rs.size, c')])) (hb : ∀ ys, Grows (b ys)) (hfo : Ordered fg.1)
     (hk : ∀ (fg2 : Array Fun × Array Fun) (d : Col) (r0 : Nat) (ys : Array Val), (∃ a, fg2.1 = fg.1 ++ a) →
-      (∃ a, fg2.2 = fg.2 ++ a) → Ordered fg2.1 → Col.shape d = Col.shape c →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Col.shape d = Col.shape c →
       (r0 :: Col.regs d).mapM (fun i => (rs ++ ys)[i]?) = some o.toList → ∃ fg', Builds abi fg2 fg' (kk d) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funC [(n, c)] b >>= kk) rs out := by
   have hA : tabsRegs [(⟨n, [c], []⟩ : TabB)] = Pure.pure (n :: Col.regs c) := by
@@ -714,7 +714,7 @@ theorem funC_builds {abi : String → Option Kernel} {fg : Array Fun × Array Fu
   have hb' : b' [⟨rs.size, [c'], []⟩] = (b [(rs.size, c')] >>= fun p => Pure.pure (⟨p.1, [p.2], []⟩ : TabB)) := by
     simp only [b', List.mapM_cons, List.mapM_nil, pure_bind]
   have hr : Col.regs c' = List.range' (rs.size + 1) (Col.regs c).length := by simpa [Cols.regs] using hr'
-  obtain ⟨fg1, ⟨a1, ha1⟩, ⟨b1, hb1⟩, hB1⟩ := hB c' hc' hr
+  obtain ⟨fg1, ⟨a1, ha1⟩, hb1, hB1⟩ := hB c' hc' hr
   have hTy : Typed rs.size (fun _ => True) (b' [⟨rs.size, [c'], []⟩]) := by
     rw [hb']; exact (hT c' hc' hr).bind fun _ _ => Typed.pure trivial
   obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg1) (k := (n :: Col.regs c).length) hTy
@@ -751,7 +751,7 @@ theorem funC_builds {abi : String → Option Kernel} {fg : Array Fun × Array Fu
     rw [← f2'] at hread
     simp only [pure_bind]
     obtain ⟨e2, he2⟩ := he
-    exact hk fg2 d' vn ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ ⟨b1, by rw [hf, hb1]⟩ ho'
+    exact hk fg2 d' vn ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
       (hd'.trans hdc) hread
 
 /-! ### `gatherCols_builds` -/
@@ -802,7 +802,7 @@ theorem gatherCol_funC {A : Obj} {o : Bool} {nv mv : USize} {x : ValsB o A nv} {
       Typed rs.size (fun _ => True) (b [(rs.size, c')]))
     (hb : ∀ ys, Grows (b ys))
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (cs' : Cols) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape cs' = Cols.shape [c] →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape cs' = Cols.shape [c] →
       (Cols.regs cs').mapM (fun i => (rs ++ ys)[i]?) = some y.regVals → ∃ fg', Builds abiOf fg2 fg' (kk cs') (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (funC [(n, c)] b >>= fun d => kk [d]) rs out := by
   have hlx := mapM_get_length hx
@@ -828,7 +828,7 @@ theorem gatherAtom_builds {A : Obj} {o : Bool} {nv mv : USize} {x : ValsB o A nv
     (hi : rs[ix]? = some (Reg.put iv)) (hn : rs[n]? = some (.size nv)) (hk : kgather mv iv nv ev = .ok ov)
     (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (cs' : Cols) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape cs' = Cols.shape [.atom p t e] →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape cs' = Cols.shape [.atom p t e] →
       (Cols.regs cs').mapM (fun i => (rs ++ ys)[i]?) = some y.regVals → ∃ fg', Builds abiOf fg2 fg' (kk cs') (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (gatherCols m ix n [.atom p t e] >>= kk) rs out := by
   unfold gatherCols
@@ -859,7 +859,7 @@ theorem gatherCols_builds (A : Obj) : ∀ {o : Bool} {nv mv : USize} {x : ValsB 
     rs[m]? = some (.size mv) → rs[ix]? = some (Reg.put iv) → rs[n]? = some (.size nv) →
     ValsB.gather mv iv x = .ok y → Ordered fg.1 →
     (∀ (fg2 : Array Fun × Array Fun) (cs' : Cols) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape cs' = Cols.shape cs →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape cs' = Cols.shape cs →
       (Cols.regs cs').mapM (fun i => (rs ++ ys)[i]?) = some y.regVals → ∃ fg', Builds abiOf fg2 fg' (kk cs') (rs ++ ys) out) →
     ∃ fg', Builds abiOf fg fg' (gatherCols m ix n cs >>= kk) rs out := by
   induction A with
@@ -873,7 +873,7 @@ theorem gatherCols_builds (A : Obj) : ∀ {o : Bool} {nv mv : USize} {x : ValsB 
     subst hA
     unfold gatherCols
     simp only [List.attach_nil, List.mapM_nil, pure_bind]
-    have := hkk fg [] #[] ⟨#[], by simp⟩ ⟨#[], by simp⟩ hfo rfl rfl
+    have := hkk fg [] #[] ⟨#[], by simp⟩ (GExt.refl _) hfo rfl rfl
     rwa [Array.append_empty] at this
   | prod a b iha ihb =>
     intro o nv mv x y cs fg rs m ix n iv kk out hA hx hm hi hn hg hfo hkk
@@ -891,9 +891,9 @@ theorem gatherCols_builds (A : Obj) : ∀ {o : Bool} {nv mv : USize} {x : ValsB 
     refine ihb h2 (mapM_get_app hx2) (get_app hm) (get_app hi) (get_app hn) hg2 ho
       fun fg3 c2' ys2 he3 hf3 ho3 hs2 hr2 => ?_
     rw [Array.append_assoc] at hr2 ⊢
-    obtain ⟨e1, he1⟩ := he; obtain ⟨e3, he3⟩ := he3; obtain ⟨f1, hf1⟩ := hf; obtain ⟨f3, hf3⟩ := hf3
+    obtain ⟨e1, he1⟩ := he; obtain ⟨e3, he3⟩ := he3; 
     refine hkk fg3 (c1' ++ c2') (ys ++ ys2) ⟨e1 ++ e3, by rw [he3, he1, Array.append_assoc]⟩
-      ⟨f1 ++ f3, by rw [hf3, hf1, Array.append_assoc]⟩ ho3 ?_ ?_
+      (hf.trans hf3) ho3 ?_ ?_
     · simp only [Cols.shape_eq_map, List.map_append] at hs1 hs2 ⊢
       rw [hs1, hs2]
     · rw [Cols.regs_append, List.mapM_append, ← Array.append_assoc, mapM_get_app hr1, Array.append_assoc, hr2]
@@ -1008,7 +1008,7 @@ theorem nubB_builds {fg : Array Fun × Array Fun} (A : Obj) {nv mv : USize} {x :
       kseen nv ((es.map (·.1)).zip vs) = .ok (k, g, f) →
       ∃ r, kscan .max false .i64 .i64 nv (some z) [(nv, z), (nv, g)] [] [] = .ok r) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (k : Nat) (cs' : Cols) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape cs' = Cols.shape cs →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape cs' = Cols.shape cs →
       (k :: Cols.regs cs').mapM (fun i => (rs ++ ys)[i]?) = some (.size mv :: y.regVals) →
       ∃ fg', Builds abiOf fg2 fg' (kk (k, cs')) (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (nubB n cs >>= kk) rs out := by
@@ -1059,7 +1059,7 @@ theorem nubB_builds {fg : Array Fun × Array Fun} (A : Obj) {nv mv : USize} {x :
           simp only [List.flatMap_cons, List.flatMap_nil, TabB.regs, List.append_nil]
           exact omapM_cons.mpr ⟨_, _, get_app (get_push ha'), hr2, rfl⟩)⟩
     exact ⟨fg', gatherB_builds ha' hf' (get_app hn') hp' hix h⟩
-  obtain ⟨fg1, ⟨a1, ha1⟩, ⟨b1, hb1⟩, hB1⟩ := hB
+  obtain ⟨fg1, ⟨a1, ha1⟩, hb1, hB1⟩ := hB
   have hge : AllGe rs.size (Cols.regs cs') := fun a h => by rw [hr', List.mem_range'_1] at h; omega
   obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg1) (k := (n :: Cols.regs cs).length) (rs := rs)
     (Typed.nubBody cs' (Nat.le_refl _) hge)
@@ -1097,7 +1097,7 @@ theorem nubB_builds {fg : Array Fun × Array Fun} (A : Obj) {nv mv : USize} {x :
   rw [← f2'] at hread
   simp only [pure_bind]
   obtain ⟨e2, he2⟩ := he
-  exact hkk fg2 vn vkey ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ ⟨b1, by rw [hf, hb1]⟩ ho
+  exact hkk fg2 vn vkey ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho
     (f4.trans hs) hread
 
 /-- **`canonT` builds `Tab.canon`**: the table `T` of a key side of `a` and a value side of `b`, its registers
@@ -1112,7 +1112,7 @@ theorem canonT_builds {fg : Array Fun × Array Fun} {a b : Obj} {R R' : Tab a b}
       kseen R.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
       ∃ r, kscan .max false .i64 .i64 R.n (some z) [(R.n, z), (R.n, g)] [] [] = .ok r) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape U.key = Cols.shape T.key →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape T.key →
       Cols.shape U.val = Cols.shape T.val →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size R'.n :: (R'.key.regVals ++ R'.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) :

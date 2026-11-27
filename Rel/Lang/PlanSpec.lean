@@ -68,15 +68,39 @@ theorem mapM_reg_range (rs xs : Array Val) (who : String) :
 
 /-! ### What the plan's functions and globals mean -/
 
+/-- The globals `G` grow to `G'`: every slot of `G` is unbuilt (empty `res`, as the `default` that `shareB` fills below a
+    higher slot) or kept. An append, which `Builds` of a function does, is the case that keeps every slot. -/
+def GExt (G G' : Array Fun) : Prop :=
+  G.size ≤ G'.size ∧ ∀ i (h : i < G.size), G[i].res = #[] ∨ G'[i]? = some G[i]
+
+theorem GExt.refl (G : Array Fun) : GExt G G := ⟨Nat.le_refl _, fun i h => Or.inr (by simp [h])⟩
+
+theorem GExt.trans {G G' G'' : Array Fun} (h : GExt G G') (h' : GExt G' G'') : GExt G G'' :=
+  ⟨Nat.le_trans h.1 h'.1, fun i hi => by
+    rcases h.2 i hi with e | e
+    · exact Or.inl e
+    · have hi' : i < G'.size := by
+        rcases Nat.lt_or_ge i G'.size with h1 | h1
+        · exact h1
+        · rw [Array.getElem?_eq_none h1] at e; cases e
+      have e2 : G'[i] = G[i] := Option.some.inj ((Array.getElem?_eq_getElem hi').symm.trans e)
+      rcases h'.2 i hi' with e' | e'
+      · exact Or.inl (e2 ▸ e')
+      · exact Or.inr (e2 ▸ e')⟩
+
+theorem GExt.append (G a : Array Fun) : GExt G (G ++ a) :=
+  ⟨by simp, fun i h => Or.inr (by rw [Array.getElem?_append_left h]; simp [h])⟩
+
 /-- `fs` means the functions `F`: each entry is its function's meaning over the entries before it, as `sems` makes. -/
 def FEnv (abi : String → Option Kernel) (fs : Array Sem) (F : Array Fun) : Prop :=
   ∀ i (h : i < F.size), fs[i]? = some (F[i].sem abi (fs.extract 0 i))
 
-/-- `fs`, `gs` mean the functions and globals `fg`: a global holds what its body answers, writing nothing, under
-    some meaning of the functions — any, as a built body answers the same under each. -/
+/-- `fs`, `gs` mean the functions and globals `fg`: a built global (nonempty `res`) holds what its body answers,
+    writing nothing, under some meaning of the functions — any, as a built body answers the same under each. An unbuilt
+    slot (empty `res`, the filler below a higher slot) constrains nothing. -/
 def Env (abi : String → Option Kernel) (fs : Array Sem) (gs : Array (Array Val)) (fg : Array Fun × Array Fun) :
     Prop :=
-  FEnv abi fs fg.1 ∧ ∀ i (h : i < fg.2.size), ∃ v, gs[i]? = some v ∧
+  FEnv abi fs fg.1 ∧ ∀ i (h : i < fg.2.size), fg.2[i].res ≠ #[] → ∃ v, gs[i]? = some v ∧
     ∃ fs', FEnv abi fs' fg.1 ∧ ∀ ws, fg.2[i].sem abi fs' (gs.extract 0 i) #[] ws = .ok (v, ws)
 
 variable {abi : String → Option Kernel}
@@ -96,29 +120,36 @@ theorem FEnv.extract {fs : Array Sem} {F a : Array Fun} (h : FEnv abi fs (F ++ a
   rw [Array.getElem?_extract, if_pos (by simp; omega), Array.extract_extract]
   simpa [Nat.min_eq_left (Nat.le_of_lt hi)] using h1
 
-/-- A prefix of the functions and globals, under any meaning `fs'` of those functions and globals `gs'` agreeing
-    with `gs` on that prefix. -/
-theorem Env.restrict {fs fs' : Array Sem} {gs gs' : Array (Array Val)} {F a G b : Array Fun}
-    (h : Env abi fs gs (F ++ a, G ++ b)) (hf : FEnv abi fs' F) (hg : gs'.extract 0 G.size = gs.extract 0 G.size) :
+/-- A prefix of the functions and the globals `G` (grown to `G'`), under any meaning `fs'` of those functions and
+    globals `gs'` agreeing with `gs` on the first `m` slots, of which every built slot of `G` is one. -/
+theorem Env.restrict {fs fs' : Array Sem} {gs gs' : Array (Array Val)} {F a G G' : Array Fun}
+    (h : Env abi fs gs (F ++ a, G')) (hG : GExt G G') (hf : FEnv abi fs' F) (m : Nat)
+    (hm : ∀ i (h : i < G.size), m ≤ i → G[i].res = #[]) (hg : gs'.extract 0 m = gs.extract 0 m) :
     Env abi fs' gs' (F, G) := by
-  refine ⟨hf, fun i hi => ?_⟩
-  simp only at hi
-  obtain ⟨v, hv, fs'', h1, h2⟩ := h.2 i (by simp; omega)
-  have ex : ∀ x : Array (Array Val), (x.extract 0 G.size)[i]? = x[i]? := fun x => by
+  refine ⟨hf, fun i hi hne => ?_⟩
+  simp only at hi hne
+  have hi' : i < G'.size := Nat.lt_of_lt_of_le hi hG.1
+  have hG1 : G'[i] = G[i] := by
+    rcases hG.2 i hi with e | e
+    · exact absurd e hne
+    · exact Option.some.inj ((Array.getElem?_eq_getElem hi').symm.trans e)
+  have him : i < m := (Nat.lt_or_ge i m).resolve_right fun hc => hne (hm i hi hc)
+  obtain ⟨v, hv, fs'', h1, h2⟩ := h.2 i hi' (by simpa only [hG1] using hne)
+  have ex : ∀ x : Array (Array Val), (x.extract 0 m)[i]? = x[i]? := fun x => by
     rw [Array.getElem?_extract]; split
     · simp
     · rw [Array.getElem?_eq_none (by omega)]
   have e1 : gs'[i]? = gs[i]? := by rw [← ex gs', hg, ex gs]
   have e2 : gs'.extract 0 i = gs.extract 0 i := by
-    have := congrArg (·.extract 0 i) hg; simpa [Array.extract_extract, Nat.min_eq_left (Nat.le_of_lt hi)] using this
+    have := congrArg (·.extract 0 i) hg; simpa [Array.extract_extract, Nat.min_eq_left (Nat.le_of_lt him)] using this
   refine ⟨v, e1.trans hv, fs'', FEnv.mono h1, fun ws => ?_⟩
-  rw [e2]; simpa [Array.getElem_append_left hi] using h2 ws
+  rw [e2]; simpa only [hG1] using h2 ws
 
 theorem Env.mono {fs : Array Sem} {gs : Array (Array Val)} {fg fg' : Array Fun × Array Fun}
-    (h1 : ∃ a, fg'.1 = fg.1 ++ a) (h2 : ∃ a, fg'.2 = fg.2 ++ a) (h : Env abi fs gs fg') : Env abi fs gs fg := by
-  obtain ⟨a, ha⟩ := h1; obtain ⟨b, hb⟩ := h2
-  obtain rfl : fg' = (fg.1 ++ a, fg.2 ++ b) := Prod.ext ha hb
-  exact h.restrict (FEnv.mono h.1) rfl
+    (h1 : ∃ a, fg'.1 = fg.1 ++ a) (h2 : GExt fg.2 fg'.2) (h : Env abi fs gs fg') : Env abi fs gs fg := by
+  obtain ⟨F, G⟩ := fg; obtain ⟨F', G'⟩ := fg'
+  obtain ⟨a, rfl⟩ := h1
+  exact h.restrict h2 (FEnv.mono h.1) G.size (fun i hi hm => absurd hi (by omega)) rfl
 
 /-! ### The primitives -/
 
@@ -134,7 +165,7 @@ def BuildsAt (abi : String → Option Kernel) (fg fg' : Array Fun × Array Fun) 
     nothing, and answers registers holding `out`. -/
 def Builds (abi : String → Option Kernel) (fg fg' : Array Fun × Array Fun) (b : Bld (Array Nat))
     (rs out : Array Val) : Prop :=
-  (∃ a, fg'.1 = fg.1 ++ a) ∧ (∃ a, fg'.2 = fg.2 ++ a) ∧ ∀ is, BuildsAt abi fg fg' b rs out is
+  (∃ a, fg'.1 = fg.1 ++ a) ∧ GExt fg.2 fg'.2 ∧ ∀ is, BuildsAt abi fg fg' b rs out is
 
 variable {fs : Array Sem} {gs : Array (Array Val)}
 
@@ -154,7 +185,7 @@ theorem runI_apply {f : Nat} {as : Array Nat} {g : Sem} {vs out rs : Array Val} 
 /-- Nothing built: `r` read. -/
 theorem Builds.pure {fg : Array Fun × Array Fun} {r : Array Nat} {rs out : Array Val}
     (hm : ∀ who, r.mapM (reg rs who) = .ok out) : Builds abi fg fg (Pure.pure r) rs out :=
-  ⟨⟨#[], by simp⟩, ⟨#[], by simp⟩, fun is => ⟨#[], #[], r, by simp only [Array.append_empty]; rfl,
+  ⟨⟨#[], by simp⟩, GExt.refl _, fun is => ⟨#[], #[], r, by simp only [Array.append_empty]; rfl,
     fun _ _ _ ws => by rw [Array.append_empty]; rfl, by simpa using hm⟩⟩
 
 /-- One register defined by `i`, then `k` on it. `lit v` is `emit1 (.lit v)`. -/
@@ -226,21 +257,21 @@ theorem Builds.ite {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {bt : Bool} {
     {rs ot oe : Array Val} (hc : rs[c]? = some (.bit bt)) (ht : Builds abi fg fg1 t rs ot)
     (he : Builds abi fg1 fg2 e rs oe) (hs : ot.size = oe.size) :
     Builds abi fg fg2 (Plan.ite c t e) rs (if bt then ot else oe) := by
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, ht⟩ := ht
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, he⟩ := he
+  obtain ⟨⟨a1, ha1⟩, hb1, ht⟩ := ht
+  obtain ⟨⟨a2, ha2⟩, hb2, he⟩ := he
   obtain ⟨jt, xt, rt, hrt, hbt, hmt⟩ := ht #[]
   obtain ⟨je, xe, re, hre, hbe, hme⟩ := he #[]
   have st : ot.size = rt.size := mapM_ok_size (hmt "")
   have se : oe.size = re.size := mapM_ok_size (hme "")
   have ho : (if bt then ot else oe).size = rt.size := by cases bt <;> simp <;> omega
-  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, hb1.trans hb2,
     fun is => ⟨#[.ite c jt.toList rt je.toList re], if bt then ot else oe, (List.range' rs.size rt.size).toArray,
     ?_, fun fs gs hE ws => ?_, fun who => ho ▸ mapM_reg_range rs _ who⟩⟩
   · have hrs : rt.size = re.size := by omega
     simp only [Plan.ite, block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, monadLift_self, hrt, hre,
       ok_bind, pure_bind, bind_assoc]
     simp [hrs, emit_run, ho]
-  · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
+  · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ hb2 hE
     rw [show (#[Instr.ite c jt.toList rt je.toList re] : Array Instr).toList = [.ite c jt.toList rt je.toList re]
       from rfl, runB.eq_2]
     cases bt <;> simp [runI, reg_of hc, hbt fs gs hE1, hbe fs gs hE, hmt, hme, runB.eq_1, ok_bind,
@@ -252,17 +283,17 @@ theorem Builds.defFun {fg fg1 fg' : Array Fun × Array Fun} {ps : Array Ty} {b :
     {k : Nat → Bld (Array Nat)} {Q : Array Val → Array Val → Prop} {pv₀ o₀ rs out : Array Val}
     (hq : ∀ pv o, Q pv o → pv.size = ps.size) (h₀ : Q pv₀ o₀)
     (hb : ∀ pv o, Q pv o → Builds abi fg fg1 (b (List.range ps.size).toArray) pv o)
-    (hk : ∀ F : Fun, (∀ fs gs F' G', (∃ a, F' = fg1.1.push F ++ a) → (∃ a, G' = fg1.2 ++ a) →
+    (hk : ∀ F : Fun, (∀ fs gs F' G', (∃ a, F' = fg1.1.push F ++ a) → GExt fg1.2 G' →
         Env abi fs gs (F', G') → ∀ pv o ws, Q pv o → ∃ g, fs[fg1.1.size]? = some g ∧ g gs pv ws = .ok (o, ws)) →
       Builds abi (fg1.1.push F, fg1.2) fg' (k fg1.1.size) rs out) :
     Builds abi fg fg' (Plan.defFun ps b >>= k) rs out := by
   obtain ⟨F0, G0⟩ := fg; obtain ⟨F1, G1⟩ := fg1
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, hb₀⟩ := hb pv₀ o₀ h₀
+  obtain ⟨⟨a1, ha1⟩, hb1, hb₀⟩ := hb pv₀ o₀ h₀
   obtain ⟨body, xs₀, r, hrun, -, -⟩ := hb₀ #[]
   rw [hq _ _ h₀, Array.empty_append] at hrun
-  have hF : ∀ fs gs F' G', (∃ a, F' = F1.push ⟨ps, body.toList, r⟩ ++ a) → (∃ a, G' = G1 ++ a) →
+  have hF : ∀ fs gs F' G', (∃ a, F' = F1.push ⟨ps, body.toList, r⟩ ++ a) → GExt G1 G' →
       Env abi fs gs (F', G') → ∀ pv o ws, Q pv o → ∃ g, fs[F1.size]? = some g ∧ g gs pv ws = .ok (o, ws) := by
-    rintro fs gs F' G' ⟨a, rfl⟩ ⟨c, rfl⟩ hE pv o ws hpo
+    rintro fs gs F' G' ⟨a, rfl⟩ hG hE pv o ws hpo
     rw [Array.push_eq_append, Array.append_assoc] at hE
     refine ⟨Fun.sem abi (fs.extract 0 F1.size) ⟨ps, body.toList, r⟩, by simpa using hE.1 F1.size (by simp; omega), ?_⟩
     obtain ⟨-, -, h⟩ := hb pv o hpo
@@ -270,12 +301,11 @@ theorem Builds.defFun {fg fg1 fg' : Array Fun × Array Fun} {ps : Array Ty} {b :
     rw [hq _ _ hpo, Array.empty_append, hrun] at hr'
     simp only [Except.ok.injEq, Prod.mk.injEq] at hr'
     obtain ⟨rfl, rfl, -⟩ := hr'
-    have hE' : Env abi (fs.extract 0 F1.size) gs (F1, G1) := hE.restrict (FEnv.extract hE.1) rfl
+    have hE' : Env abi (fs.extract 0 F1.size) gs (F1, G1) := hE.restrict hG (FEnv.extract hE.1) G1.size (fun i hi hm => absurd hi (by omega)) rfl
     simp [Fun.sem, hrun' _ gs hE' ws, hm' "result", ok_bind, Functor.map, Except.map]
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, hk₀⟩ := hk _ hF
-  refine ⟨⟨a1 ++ #[⟨ps, body.toList, r⟩] ++ a2, ?_⟩, ⟨b1 ++ b2, ?_⟩, fun is => ?_⟩
+  obtain ⟨⟨a2, ha2⟩, hb2, hk₀⟩ := hk _ hF
+  refine ⟨⟨a1 ++ #[⟨ps, body.toList, r⟩] ++ a2, ?_⟩, hb1.trans hb2, fun is => ?_⟩
   · rw [ha2]; simp only at ha1 ⊢; subst ha1; simp only [Array.push_eq_append, Array.append_assoc]
-  · rw [hb2]; simp only at hb1 ⊢; subst hb1; simp only [Array.append_assoc]
   obtain ⟨js, xs, r2, hr2, hbk, hm2⟩ := hk₀ is
   refine ⟨js, xs, r2, ?_, hbk, hm2⟩
   simp only [Plan.defFun, StateT.run_bind, StateT.run_get, StateT.run_set, liftM, StateT.run_monadLift,
@@ -300,17 +330,17 @@ theorem Builds.bind {fg fg1 fg' : Array Fun × Array Fun} {b : Bld (Array Nat)} 
     {rs o out : Array Val} (hb : Builds abi fg fg1 b rs o)
     (hk : ∀ r xs, (∀ who, r.mapM (reg (rs ++ xs) who) = .ok o) → Builds abi fg1 fg' (k r) (rs ++ xs) out) :
     Builds abi fg fg' (b >>= k) rs out := by
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, hb⟩ := hb
+  obtain ⟨⟨a1, ha1⟩, hb1, hb⟩ := hb
   obtain ⟨_, xs0, r0, -, -, hm0⟩ := hb #[]
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, -⟩ := hk r0 xs0 hm0
-  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
+  obtain ⟨⟨a2, ha2⟩, hb2, -⟩ := hk r0 xs0 hm0
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, hb1.trans hb2,
     fun is => ?_⟩
   obtain ⟨js, xs, r, hr, hs, hm⟩ := hb is
   obtain ⟨-, -, hk'⟩ := hk r xs hm
   obtain ⟨js2, xs2, r2, hr2, hs2, hm2⟩ := hk' (is ++ js)
   refine ⟨js ++ js2, xs ++ xs2, r2, ?_, fun fs gs hE ws => ?_, fun who => by simpa [Array.append_assoc] using hm2 who⟩
   · simp only [StateT.run_bind, hr, ok_bind]; simpa [Array.append_assoc] using hr2
-  · rw [Array.toList_append, runB_append, hs fs gs (Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE) ws, ok_bind]
+  · rw [Array.toList_append, runB_append, hs fs gs (Env.mono ⟨a2, ha2⟩ hb2 hE) ws, ok_bind]
     simpa [Array.append_assoc] using hs2 fs gs hE ws
 
 
@@ -394,20 +424,20 @@ theorem nth_of {rs : Array Nat} {i r : Nat} {who : String} (h : rs[i]? = some r)
 theorem Builds.ite_true {fg fg1 fg2 : Array Fun × Array Fun} {c : Nat} {t e : Bld (Array Nat)} {rs ot : Array Val}
     {je : Array Instr} {n' : Nat} {re' : Array Nat} (hc : rs[c]? = some (.bit true)) (ht : Builds abi fg fg1 t rs ot)
     (he : e.run (#[], rs.size, fg1) = .ok (re', je, n', fg2)) (hs : ot.size = re'.size)
-    (h2 : (∃ a, fg2.1 = fg1.1 ++ a) ∧ (∃ a, fg2.2 = fg1.2 ++ a)) :
+    (h2 : (∃ a, fg2.1 = fg1.1 ++ a) ∧ GExt fg1.2 fg2.2) :
     Builds abi fg fg2 (Plan.ite c t e) rs ot := by
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, ht⟩ := ht
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩⟩ := h2
+  obtain ⟨⟨a1, ha1⟩, hb1, ht⟩ := ht
+  obtain ⟨⟨a2, ha2⟩, hb2⟩ := h2
   obtain ⟨jt, xt, rt, hrt, hbt, hmt⟩ := ht #[]
   have st : ot.size = rt.size := mapM_ok_size (hmt "")
-  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, hb1.trans hb2,
     fun is => ⟨#[.ite c jt.toList rt je.toList re'], ot, (List.range' rs.size rt.size).toArray, ?_, fun fs gs hE ws => ?_,
     fun who => st ▸ mapM_reg_range rs _ who⟩⟩
   · have hrs : rt.size = re'.size := by omega
     simp only [Plan.ite, block, StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, monadLift_self, hrt,
       he, ok_bind, pure_bind, bind_assoc]
     simp [hrs, emit_run, st]
-  · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE
+  · have hE1 : Env abi fs gs fg1 := Env.mono ⟨a2, ha2⟩ hb2 hE
     rw [show (#[Instr.ite c jt.toList rt je.toList re'] : Array Instr).toList = [.ite c jt.toList rt je.toList re']
       from rfl, runB.eq_2]
     simp [runI, reg_of hc, hbt fs gs hE1, hmt, runB.eq_1, ok_bind, Functor.map, Except.map]
@@ -766,7 +796,7 @@ theorem whereB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n keep : N
       Builds.litG fun r R hr _ => Builds.pure fun _ => reads_of (l := [r]) (vs := [.u64 0]) (by simp [hr])
     by_cases h0 : nv = 0
     · rw [if_pos h0]
-      exact Builds.ite_true (by simpa [h0] using he) ht rfl rfl ⟨⟨#[], by simp⟩, ⟨#[], by simp⟩⟩
+      exact Builds.ite_true (by simpa [h0] using he) ht rfl rfl ⟨⟨#[], by simp⟩, GExt.refl _⟩
     · rw [if_neg h0]
       have hfl : R4[fl]? = some (.ctor 1 #[.u64 f] #[]) := by
         rw [m4 (m3 hfR), hf h0]; rfl
@@ -956,7 +986,7 @@ theorem lastB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n fold : Na
       Builds.litG fun r R hr _ => Builds.pure fun _ => reads_of (l := [r]) (vs := [.size 0]) (by simp [hr])
     by_cases h0 : nv = 0
     · rw [if_pos h0]
-      exact Builds.ite_true (by simpa [h0] using he) ht rfl rfl ⟨⟨#[], by simp⟩, ⟨#[], by simp⟩⟩
+      exact Builds.ite_true (by simpa [h0] using he) ht rfl rfl ⟨⟨#[], by simp⟩, GExt.refl _⟩
     · rw [if_neg h0]
       obtain ⟨x, rfl⟩ := Option.isSome_iff_exists.mp (ho h0)
       have hx : R1[fold]? = some (.ctor 1 #[.u64 x] #[]) := by rw [m1 (m0 hf)]; rfl
@@ -1675,17 +1705,17 @@ theorem Builds.of_run {abi : String → Option Kernel} {β : Type} {m : Bld (Arr
     {kk : Array Nat × β → Bld (Array Nat)} {fg fg2 fg' : Array Fun × Array Fun} {rs ys out : Array Val}
     {r' : Array Nat} {y : β} {js : Array Instr}
     (hm : ∀ is, m.run (is, rs.size, fg) = .ok ((r', y), is ++ js, (rs ++ ys).size, fg2))
-    (h1 : ∃ a, fg2.1 = fg.1 ++ a) (h2 : ∃ a, fg2.2 = fg.2 ++ a)
+    (h1 : ∃ a, fg2.1 = fg.1 ++ a) (h2 : GExt fg.2 fg2.2)
     (hs : ∀ fs gs, Env abi fs gs fg2 → ∀ ws, runB abi fs gs js.toList rs ws = .ok (rs ++ ys, ws))
     (hk : Builds abi fg2 fg' (kk (r', y)) (rs ++ ys) out) : Builds abi fg fg' (m >>= kk) rs out := by
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, hk⟩ := hk
-  obtain ⟨a1, ha1⟩ := h1; obtain ⟨b1, hb1⟩ := h2
-  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [hb2, hb1, Array.append_assoc]⟩,
+  obtain ⟨⟨a2, ha2⟩, hb2, hk⟩ := hk
+  obtain ⟨a1, ha1⟩ := h1; have hb1 := h2
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, hb1.trans hb2,
     fun is => ?_⟩
   obtain ⟨js2, xs2, r2, hr2, hs2, hm2⟩ := hk (is ++ js)
   refine ⟨js ++ js2, ys ++ xs2, r2, ?_, fun fs gs hE ws => ?_, fun who => by simpa [Array.append_assoc] using hm2 who⟩
   · simp only [StateT.run_bind, hm, ok_bind]; simpa [Array.append_assoc] using hr2
-  · rw [Array.toList_append, runB_append, hs fs gs (Env.mono ⟨a2, ha2⟩ ⟨b2, hb2⟩ hE) ws, ok_bind]
+  · rw [Array.toList_append, runB_append, hs fs gs (Env.mono ⟨a2, ha2⟩ hb2 hE) ws, ok_bind]
     simpa [Array.append_assoc] using hs2 fs gs hE ws
 
 theorem moves_splice {rs : Array Val} {args : List Nat} {l : List Val} {who : String}
@@ -1761,7 +1791,7 @@ theorem callsB_append (l₁ l₂ : List Instr) : Instr.callsB (l₁ ++ l₂) = I
 def GStep (s s' : Array Instr × Nat × Array Fun × Array Fun) : Prop :=
   Ordered s.2.2.1 → (∀ j ∈ Instr.callsB s.1.toList, j < s.2.2.1.size) →
     Ordered s'.2.2.1 ∧ (∀ j ∈ Instr.callsB s'.1.toList, j < s'.2.2.1.size) ∧ (∃ a, s'.2.2.1 = s.2.2.1 ++ a) ∧
-      ∃ a, s'.2.2.2 = s.2.2.2 ++ a
+      GExt s.2.2.2 s'.2.2.2
 
 /-- Every run of `b` that succeeds is a `GStep`: it keeps the plan's functions `Ordered` (`Plan`'s invariant) and only
     appends to them and the globals. It holds for the builders made of the primitives, which `apply` (checking its
@@ -1769,20 +1799,20 @@ def GStep (s s' : Array Instr × Nat × Array Fun × Array Fun) : Prop :=
 def Grows {α : Type} (b : Bld α) : Prop := ∀ s x s', b.run s = .ok (x, s') → GStep s s'
 
 theorem GStep.refl (s : Array Instr × Nat × Array Fun × Array Fun) : GStep s s := fun ho hc =>
-  ⟨ho, hc, ⟨#[], by simp⟩, ⟨#[], by simp⟩⟩
+  ⟨ho, hc, ⟨#[], by simp⟩, GExt.refl _⟩
 
 theorem GStep.trans {s s₁ s₂ : Array Instr × Nat × Array Fun × Array Fun} (h₁ : GStep s s₁) (h₂ : GStep s₁ s₂) :
     GStep s s₂ := fun ho hc => by
-  obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := h₁ ho hc
-  obtain ⟨o2, c2, ⟨a2, e2⟩, ⟨b2, d2⟩⟩ := h₂ o1 c1
-  exact ⟨o2, c2, ⟨a1 ++ a2, by rw [e2, e1, Array.append_assoc]⟩, ⟨b1 ++ b2, by rw [d2, d1, Array.append_assoc]⟩⟩
+  obtain ⟨o1, c1, ⟨a1, e1⟩, d1⟩ := h₁ ho hc
+  obtain ⟨o2, c2, ⟨a2, e2⟩, d2⟩ := h₂ o1 c1
+  exact ⟨o2, c2, ⟨a1 ++ a2, by rw [e2, e1, Array.append_assoc]⟩, d1.trans d2⟩
 
 /-- Pushing `i` whose applied functions are already there. -/
 theorem GStep.push (is : Array Instr) (n : Nat) (fs gs : Array Fun) (i : Instr) (n' : Nat)
     (h : ∀ j ∈ i.calls, j < fs.size) : GStep (is, n, fs, gs) (is.push i, n', fs, gs) := fun ho hc =>
   ⟨ho, fun j hj => by
     simp only [Array.toList_push, callsB_append, Instr.callsB, List.append_nil, List.mem_append] at hj
-    exact hj.elim (hc j) (h j), ⟨#[], by simp⟩, ⟨#[], by simp⟩⟩
+    exact hj.elim (hc j) (h j), ⟨#[], by simp⟩, GExt.refl _⟩
 
 theorem Grows.pure {α : Type} (x : α) : Grows (Pure.pure x : Bld α) := fun s y s' h => by
   simp [StateT.run_pure] at h
@@ -1832,19 +1862,19 @@ theorem block_spec {b : Bld (Array Nat)} (hb : Grows b) {is : Array Instr} {n : 
     {x : List Instr × Array Nat} {s' : Array Instr × Nat × Array Fun × Array Fun}
     (h : (block b).run (is, n, fs, gs) = .ok (x, s')) (ho : Ordered fs) :
     s'.1 = is ∧ s'.2.1 = n ∧ Ordered s'.2.2.1 ∧ (∀ j ∈ Instr.callsB x.1, j < s'.2.2.1.size) ∧
-      (∃ a, s'.2.2.1 = fs ++ a) ∧ ∃ a, s'.2.2.2 = gs ++ a := by
+      (∃ a, s'.2.2.1 = fs ++ a) ∧ GExt gs s'.2.2.2 := by
   cases hr : b.run (#[], n, fs, gs) with
   | error e => rw [block_err hr] at h; cases h
   | ok p =>
     obtain ⟨r, is', n', fs', gs'⟩ := p
-    obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ hr ho (by simp [Instr.callsB])
+    obtain ⟨o1, c1, ⟨a1, e1⟩, d1⟩ := hb _ _ _ hr ho (by simp [Instr.callsB])
     rw [block_ok hr] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
-    exact ⟨rfl, rfl, o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩
+    exact ⟨rfl, rfl, o1, c1, ⟨a1, e1⟩, d1⟩
 
 theorem Grows.block {b : Bld (Array Nat)} (hb : Grows b) : Grows (block b) := fun ⟨is, n, fs, gs⟩ x s' h ho hc => by
-  obtain ⟨e1, e2, o, -, ⟨a, ea⟩, ⟨c, ec⟩⟩ := block_spec hb h ho
-  refine ⟨o, fun j hj => ?_, ⟨a, ea⟩, ⟨c, ec⟩⟩
+  obtain ⟨e1, e2, o, -, ⟨a, ea⟩, ec⟩ := block_spec hb h ho
+  refine ⟨o, fun j hj => ?_, ⟨a, ea⟩, ec⟩
   rw [e1] at hj; have := hc j hj; simp only at this; rw [ea]; simp; omega
 
 theorem Grows.ite {c : Nat} {t e : Bld (Array Nat)} (ht : Grows t) (he : Grows e) : Grows (Plan.ite c t e) :=
@@ -1853,25 +1883,25 @@ theorem Grows.ite {c : Nat} {t e : Bld (Array Nat)} (ht : Grows t) (he : Grows e
   | error _ => simp only [Plan.ite, StateT.run_bind, h1, err_bind_eq] at h; cases h
   | ok p1 =>
     obtain ⟨⟨ti, rt⟩, is₁, n₁, fs₁, gs₁⟩ := p1
-    obtain ⟨e1, e2, o1, c1, ⟨a1, ea1⟩, ⟨b1, eb1⟩⟩ := block_spec ht h1 ho
+    obtain ⟨e1, e2, o1, c1, ⟨a1, ea1⟩, eb1⟩ := block_spec ht h1 ho
     simp only at e1 e2 o1 c1 ea1 eb1; subst e1 e2
     cases h2 : (Plan.block e).run (is₁, n₁, fs₁, gs₁) with
     | error _ => simp only [Plan.ite, StateT.run_bind, h1, h2, ok_bind, err_bind_eq] at h; cases h
     | ok p2 =>
       obtain ⟨⟨ei, re⟩, is₂, n₂, fs₂, gs₂⟩ := p2
-      obtain ⟨e1, e2, o2, c2, ⟨a2, ea2⟩, ⟨b2, eb2⟩⟩ := block_spec he h2 o1
+      obtain ⟨e1, e2, o2, c2, ⟨a2, ea2⟩, eb2⟩ := block_spec he h2 o1
       simp only at e1 e2 o2 c2 ea2 eb2; subst e1 e2
       by_cases hs : rt.size = re.size
       · simp [Plan.ite, StateT.run_bind, h1, h2, ok_bind, hs, emit_ok] at h
         obtain ⟨-, rfl⟩ := h
-        refine ⟨o2, fun j hj => ?_, ⟨a1 ++ a2, ?_⟩, ⟨b1 ++ b2, ?_⟩⟩
+        refine ⟨o2, fun j hj => ?_, ⟨a1 ++ a2, ?_⟩, ?_⟩
         · simp only [Array.toList_push, callsB_append, Instr.callsB, Instr.calls, List.append_nil, List.mem_append] at hj
           rcases hj with hj | hj | hj
           · have := hc j hj; rw [ea2, ea1]; simp at this ⊢; omega
           · have := c1 j hj; rw [ea2]; simp; omega
           · exact c2 j hj
         · rw [ea2, ea1, Array.append_assoc]
-        · rw [eb2, eb1, Array.append_assoc]
+        · exact eb1.trans eb2
       · simp [Plan.ite, StateT.run_bind, h1, h2, ok_bind, hs, throwThe, MonadExceptOf.throw, MonadExcept.throw,
           Functor.map, Except.map, err_bind_eq] at h
 
@@ -1891,13 +1921,13 @@ theorem Grows.loop {k : Nat} {init : Array Nat} {msg : String} {b : Array Nat �
       err_bind_eq, Functor.map, Except.map] at h
   | ok p =>
     obtain ⟨⟨out, d⟩, is', n', fs', gs'⟩ := p
-    obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
+    obtain ⟨o1, c1, ⟨a1, e1⟩, d1⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
     simp only at o1 c1 e1 d1
     by_cases hs : out.size = init.size
     · simp [Plan.loop, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr, hs,
         ok_bind, emit_ok, Functor.map, Except.map] at h
       obtain ⟨-, rfl⟩ := h
-      refine ⟨o1, fun j hj => ?_, ⟨a1, e1⟩, ⟨b1, d1⟩⟩
+      refine ⟨o1, fun j hj => ?_, ⟨a1, e1⟩, d1⟩
       simp only [Array.toList_push, callsB_append, Instr.callsB, Instr.calls, List.append_nil, List.mem_append] at hj
       rcases hj with hj | hj
       · have := hc j hj; simp only at this; rw [e1]; simp; omega
@@ -1912,12 +1942,12 @@ theorem Grows.defFun {ps : Array Ty} {b : Array Nat → Bld (Array Nat)} (hb : �
       err_bind_eq, Functor.map, Except.map] at h
   | ok p =>
     obtain ⟨r, body, n', fs', gs'⟩ := p
-    obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
+    obtain ⟨o1, c1, ⟨a1, e1⟩, d1⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
     simp only at o1 c1 e1 d1
     simp [Plan.defFun, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hr, ok_bind,
       Functor.map, Except.map] at h
     obtain ⟨-, rfl⟩ := h
-    refine ⟨o1.push c1, fun j hj => ?_, ⟨a1 ++ #[⟨ps, body.toList, r⟩], ?_⟩, ⟨b1, d1⟩⟩
+    refine ⟨o1.push c1, fun j hj => ?_, ⟨a1 ++ #[⟨ps, body.toList, r⟩], ?_⟩, d1⟩
     · have := hc j hj; simp only at this ⊢; rw [e1]; simp; omega
     · rw [e1]; simp
 
@@ -1932,13 +1962,13 @@ theorem Grows.funB {α : Type} {tys : List Ty} {args : List Nat} {b : List Nat �
         err_bind_eq, Functor.map, Except.map] at h
     | ok p =>
       obtain ⟨⟨r, rtys, x0⟩, body, m, fs1, gs1⟩ := p
-      obtain ⟨o1, c1, ⟨a1, e1⟩, ⟨b1, d1⟩⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
+      obtain ⟨o1, c1, ⟨a1, e1⟩, d1⟩ := hb _ _ _ _ hr ho (by simp [Instr.callsB])
       simp only at o1 c1 e1 d1
       by_cases hC : spliceable body = true
       · simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
           ok_bind, Functor.map, Except.map] at h
         obtain ⟨-, rfl⟩ := h
-        refine ⟨o1, fun j hj => ?_, ⟨a1, e1⟩, ⟨b1, d1⟩⟩
+        refine ⟨o1, fun j hj => ?_, ⟨a1, e1⟩, d1⟩
         simp only [Array.toList_append, Array.toList_map, callsB_append, callsB_map_rename, List.mem_append] at hj
         rcases hj with hj | hj
         · have := hc j hj; simp only at this; rw [e1]; simp; omega
@@ -1946,7 +1976,7 @@ theorem Grows.funB {α : Type} {tys : List Ty} {args : List Nat} {b : List Nat �
       · have key : ∀ F : Fun, (∀ j ∈ Instr.callsB F.body, j < fs1.size) →
             GStep (is, n, fs, gs) (is, n, (addFun fs1 F).2, gs1) := fun F hF _ hc' => by
           obtain ⟨hO, a2, e2⟩ := addFun_ordered o1 hF
-          refine ⟨hO, fun j hj => ?_, ⟨a1 ++ a2, by rw [e2, e1, Array.append_assoc]⟩, ⟨b1, d1⟩⟩
+          refine ⟨hO, fun j hj => ?_, ⟨a1 ++ a2, by rw [e2, e1, Array.append_assoc]⟩, d1⟩
           have := hc' j hj; simp only at this ⊢; rw [e2, e1]; simp; omega
         simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
           ok_bind, -List.filter_append] at h
@@ -2067,7 +2097,7 @@ theorem funB_builds {α : Type} {fg fg1 : Array Fun × Array Fun} {tys : List Ty
       simp only [Functor.map, Except.map, F, f, cs, List.filter_append, (mapM_ok_size (hres "")).symm]
     · obtain ⟨a, ha2⟩ := hadd.1
       have hE' : Env abi fs gs (F1 ++ a, G1 ++ #[]) := by rw [← ha2, Array.append_empty]; exact hE
-      have hE1 : Env abi (fs.extract 0 F1.size) gs (F1, G1) := hE'.restrict (FEnv.extract hE'.1) rfl
+      have hE1 : Env abi (fs.extract 0 F1.size) gs (F1, G1) := hE'.restrict (GExt.append _ _) (FEnv.extract hE'.1) G1.size (fun i hi hm => absurd hi (by omega)) rfl
       have h0 : runB abi (fs.extract 0 F1.size) gs body.toList (rs ++ l.toArray ++ #[]) ws =
           .ok (rs ++ l.toArray ++ xs, ws) := by rw [Array.append_empty]; exact hbody _ gs hE1 ws
       obtain ⟨Y, hY, h'⟩ := runB_moves (base := rs.size) (fs' := fs.extract 0 (addFun F1 F).1) hm

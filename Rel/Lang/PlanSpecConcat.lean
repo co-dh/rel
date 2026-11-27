@@ -195,7 +195,7 @@ theorem funC2_builds {abi : String → Option Kernel} {fg : Array Fun × Array F
       Typed rs.size (fun _ => True) (b [(rs.size, c₁'), (rs.size + (Col.regs c₁).length + 1, c₂')]))
     (hb : ∀ ys, Grows (b ys)) (hfo : Ordered fg.1)
     (hk : ∀ (fg2 : Array Fun × Array Fun) (d : Col) (r0 : Nat) (ys : Array Val), (∃ a, fg2.1 = fg.1 ++ a) →
-      (∃ a, fg2.2 = fg.2 ++ a) → Ordered fg2.1 → Col.shape d = Col.shape c₁ →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Col.shape d = Col.shape c₁ →
       (r0 :: Col.regs d).mapM (fun i => (rs ++ ys)[i]?) = some o.toList → ∃ fg', Builds abi fg2 fg' (kk d) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funC [(n₁, c₁), (n₂, c₂)] b >>= kk) rs out := by
   have hA : tabsRegs [(⟨n₁, [c₁], []⟩ : TabB), ⟨n₂, [c₂], []⟩] =
@@ -226,7 +226,7 @@ theorem funC2_builds {abi : String → Option Kernel} {fg : Array Fun × Array F
       (b [(rs.size, c₁'), (rs.size + (Col.regs c₁).length + 1, c₂')] >>=
         fun p => Pure.pure (⟨p.1, [p.2], []⟩ : TabB)) := by
     simp only [b', List.mapM_cons, List.mapM_nil, pure_bind]
-  obtain ⟨fg1, ⟨a1, ha1⟩, ⟨b1, hb1⟩, hB1⟩ := hB c₁' c₂' hs1 hs2 hr1 hr2
+  obtain ⟨fg1, ⟨a1, ha1⟩, hb1, hB1⟩ := hB c₁' c₂' hs1 hs2 hr1 hr2
   have hTy : Typed rs.size (fun _ => True)
       (b' [⟨rs.size, [c₁'], []⟩, ⟨rs.size + (Col.regs c₁).length + 1, [c₂'], []⟩]) := by
     rw [hb']; exact (hT c₁' c₂' hs1 hs2 hr1 hr2).bind fun _ _ => Typed.pure trivial
@@ -266,7 +266,7 @@ theorem funC2_builds {abi : String → Option Kernel} {fg : Array Fun × Array F
     rw [← f2'] at hread
     simp only [pure_bind]
     obtain ⟨e2, he2⟩ := he
-    exact hk fg2 d' vn ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ ⟨b1, by rw [hf, hb1]⟩ ho'
+    exact hk fg2 d' vn ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
       (hd'.trans hdc) hread
 
 /-! ### `Typed`: `n` is read only as `kscan`'s declared row count, so a captured register is typed -/

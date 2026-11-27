@@ -74,7 +74,7 @@ theorem funW_builds {abi : String → Option Kernel} {fg : Array Fun × Array Fu
     (hT : Typed rs.size (fun _ => True) (b rs.size (List.range' (rs.size + 1) ws.length)))
     (hb : ∀ n ws, Grows (b n ws)) (hfo : Ordered fg.1)
     (hk : ∀ (fg2 : Array Fun × Array Fun) (m : Nat) (es : List Nat) (ys : Array Val), (∃ a, fg2.1 = fg.1 ++ a) →
-      (∃ a, fg2.2 = fg.2 ++ a) → Ordered fg2.1 → es.length = k →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → es.length = k →
       (m :: es).mapM (fun i => (rs ++ ys)[i]?) = some o.toList → ∃ fg', Builds abi fg2 fg' (kk (m, es)) (rs ++ ys) out) :
     ∃ fg', Builds abi fg fg' (funW n ws b >>= kk) rs out := by
   unfold funW
@@ -103,7 +103,7 @@ theorem funW_builds {abi : String → Option Kernel} {fg : Array Fun × Array Fu
     List.length_cons, List.range'_succ, List.cons.injEq] at v2'
   obtain ⟨rfl, rfl⟩ := v2'
   let P : TabB → Prop := fun U => U.val = [] ∧ ∃ es : List Nat, U.key = es.map (Col.atom "" .i64 ·) ∧ es.length = k
-  obtain ⟨fg1, ⟨a1, ha1⟩, ⟨b1, hb1⟩, hB1⟩ := hB
+  obtain ⟨fg1, ⟨a1, ha1⟩, hb1, hB1⟩ := hB
   have hTy : Typed rs.size (fun _ => True) (do
       let (m, xs) ← b rs.size (← wd ((List.range' (rs.size + 1) ws.length).map (Col.atom "" .i64 ·)))
       Pure.pure (⟨m, xs.map (Col.atom "" .i64 ·), []⟩ : TabB)) := by
@@ -144,7 +144,7 @@ theorem funW_builds {abi : String → Option Kernel} {fg : Array Fun × Array Fu
   rw [← f2'] at hread
   simp only [hwd, pure_bind]
   obtain ⟨e1, he1⟩ := he
-  exact hk fg2 vn es' ys ⟨a1 ++ e1, by rw [he1, ha1, Array.append_assoc]⟩ ⟨b1, by rw [hf, hb1]⟩ ho'
+  exact hk fg2 vn es' ys ⟨a1 ++ e1, by rw [he1, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
     (hl'.trans hlk) hread
 
 /-- **`prefixB` builds `colPrefix`'s `kscan` and its last word**: `n` holding the count `nv` and `a` the column `av`;
@@ -159,7 +159,7 @@ theorem prefixB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kern
     (hk : kscan op false .i64 .i64 nv (some z) [(nv, z), (nv, av)] [] [] = .ok r) (hr : nv ≠ 0 → r.2.isSome)
     (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (p l : Nat) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → (rs ++ ys)[p]? = some (Reg.put r.1) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → (rs ++ ys)[p]? = some (Reg.put r.1) →
       (rs ++ ys)[l]? = some (.size (if nv = 0 then 0 else (r.2.getD 0).toUSize + 0)) →
       ∃ fg', Builds abiOf fg2 fg' (kk (p, l)) (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (prefixB op n a >>= kk) rs out := by
@@ -216,7 +216,7 @@ theorem groupFoldB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : K
     (hm : rs[m]? = some (.size mv)) (hx : rs[x]? = some (Reg.put xv))
     (hseg : Tab.seenSeg nv fv mv = .ok sg) (hgf : Tab.groupFold op nv gv sg mv z xv = .ok ov) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (p : Nat) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → (rs ++ ys)[p]? = some (Reg.put ov) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → (rs ++ ys)[p]? = some (Reg.put ov) →
       ∃ fg', Builds abiOf fg2 fg' (kk p) (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (groupFoldB op n g f m z x >>= kk) rs out := by
   obtain ⟨w, hw, hseg⟩ : ∃ w, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) mv 1 = .ok w ∧

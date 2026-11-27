@@ -42,7 +42,7 @@ theorem coreflB_builds {fg : Array Fun × Array Fun} (A : Obj) {nv mv : USize} {
       kseen nv ((es.map (·.1)).zip vs) = .ok (k, g, f) →
       ∃ r, kscan .max false .i64 .i64 nv (some z) [(nv, z), (nv, g)] [] [] = .ok r) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape U.key = Cols.shape cs → Cols.shape U.val = Cols.shape cs →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape cs → Cols.shape U.val = Cols.shape cs →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size mv :: (y.regVals ++ y.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (coreflB n cs >>= kk) rs out := by
@@ -65,7 +65,7 @@ theorem coreflB_dom_builds {fg : Array Fun × Array Fun} {a b : Obj} {R : Tab a 
       kseen R.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
       ∃ r, kscan .max false .i64 .i64 R.n (some z) [(R.n, z), (R.n, g)] [] [] = .ok r) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape U.key = Cols.shape cs → Cols.shape U.val = Cols.shape cs →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape cs → Cols.shape U.val = Cols.shape cs →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size R'.n :: (R'.key.regVals ++ R'.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (coreflB n cs >>= kk) rs out := by
@@ -86,7 +86,7 @@ theorem coreflB_ran_builds {fg : Array Fun × Array Fun} {a b : Obj} {R : Tab a 
       kseen R.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
       ∃ r, kscan .max false .i64 .i64 R.n (some z) [(R.n, z), (R.n, g)] [] [] = .ok r) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape U.key = Cols.shape cs → Cols.shape U.val = Cols.shape cs →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape cs → Cols.shape U.val = Cols.shape cs →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size R'.n :: (R'.key.regVals ++ R'.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) :
     ∃ fg', Builds abiOf fg fg' (coreflB n cs >>= kk) rs out := by
@@ -109,7 +109,7 @@ theorem convT_builds {fg : Array Fun × Array Fun} {a b : Obj} {R : Tab a b} {R'
       kseen R.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
       ∃ r, kscan .max false .i64 .i64 R.n (some z) [(R.n, z), (R.n, g)] [] [] = .ok r) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
-      (∃ e, fg2.2 = fg.2 ++ e) → Ordered fg2.1 → Cols.shape U.key = Cols.shape T.val →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape T.val →
       Cols.shape U.val = Cols.shape T.key →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size R'.n :: (R'.key.regVals ++ R'.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) :

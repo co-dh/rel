@@ -75,7 +75,7 @@ theorem Builds.loop {fg fg1 : Array Fun × Array Fun} {k : Nat} {init : Array Na
     rcases hc : c.toNat with _ | j
     · exact absurd (hc ▸ h₀) (hn s₀)
     · exact ⟨j, rfl⟩
-  obtain ⟨s1, bt1, hs1, -, ⟨a1, ha1⟩, ⟨b1, hb1⟩, hB⟩ := hb j₀ s₀ hs₀ (by rw [← hj₀]; exact h₀)
+  obtain ⟨s1, bt1, hs1, -, ⟨a1, ha1⟩, hb1, hB⟩ := hb j₀ s₀ hs₀ (by rw [← hj₀]; exact h₀)
   obtain ⟨js, xs1, r, hr, -, hm1⟩ := hB #[]
   -- the round's build, the same from every state: `b` answering `(out, d)`, `r = out.push d`
   obtain ⟨out, d, m, hbr, rfl⟩ : ∃ (out : Array Nat) (d m : Nat), (b (List.range' rs.size init.size).toArray).run
@@ -113,7 +113,7 @@ theorem Builds.loop {fg fg1 : Array Fun × Array Fun} {k : Nat} {init : Array Na
           rw [hrun fs gs hE ws, ok_bind]; dsimp only; rw [ho, ok_bind, hd, ok_bind]; exact hro fs gs hE ws⟩
   obtain ⟨o, hJ, ho, hro⟩ := key c.toNat s₀ hs₀ h₀
   have hsz : out.size = init.size := hs1 ▸ (mapM_ok_size (mapM_push_ok (hm1 "")).1).symm
-  refine ⟨o, hJ, ⟨a1, ha1⟩, ⟨b1, hb1⟩, fun is => ⟨#[.loop k init js.toList out d msg], o,
+  refine ⟨o, hJ, ⟨a1, ha1⟩, hb1, fun is => ⟨#[.loop k init js.toList out d msg], o,
     (List.range' rs.size init.size).toArray, ?_, fun fs gs hE ws => ?_, fun who => ho ▸ mapM_reg_range rs o who⟩⟩
   · rw [show (List.range' rs.size init.size).toArray = Array.range' rs.size init.size by simp] at hbr
     simp [Plan.loop, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hbr, hsz,
@@ -122,30 +122,25 @@ theorem Builds.loop {fg fg1 : Array Fun × Array Fun} {k : Nat} {init : Array Na
       from rfl, runB.eq_2]
     simp [runI, reg_of hk, hi, hro fs gs hE ws, runB.eq_1, ok_bind, Functor.map, Except.map]
 
-/-- Setting slot `k` past the end of `G`, the slots between filled with `d`, appends to `G`. -/
-theorem append_replicate_modify {α : Type} (G : Array α) (d a : α) {k : Nat} (hk : G.size ≤ k) :
-    (G ++ Array.replicate (k + 1 - G.size) d).modify k (fun _ => a) = G ++ (Array.replicate (k - G.size) d).push a :=
-  Array.ext_getElem? fun i => by
-    simp only [Array.getElem?_modify, Array.getElem?_append, Array.getElem?_push, Array.getElem?_replicate,
-      Array.size_replicate]
-    by_cases h1 : i < G.size
-    · simp [h1, show k ≠ i by omega]
-    · simp only [h1, if_false]
-      by_cases h2 : k = i
-      · subst h2; simp [show k - G.size < k + 1 - G.size by omega]
-      · rw [if_neg h2, if_neg (by omega : ¬ i - G.size = k - G.size)]
-        by_cases h3 : i < k
-        · rw [if_pos (by omega), if_pos (by omega)]
-        · rw [if_neg (by omega), if_neg (by omega)]
+/-- Setting slot `k` of `G` (past its end, the slots between filled with `d`): the slots of `G` below `k` are kept, and
+    those at or above `k` are all unbuilt, so `GExt` holds. -/
+theorem GExt.fill {G : Array Fun} {k : Nat} (F : Fun) (hk : ∀ i (h : i < G.size), k ≤ i → G[i].res = #[]) :
+    GExt G ((G ++ Array.replicate (k + 1 - G.size) default).modify k fun _ => F) := by
+  refine ⟨by simp, fun i hi => ?_⟩
+  by_cases h : k = i
+  · exact Or.inl (hk i hi (by omega))
+  · exact Or.inr (by rw [Array.getElem?_modify, if_neg h, Array.getElem?_append_left hi]; simp [hi])
 
 /-- **A global's slot** (`shareB`'s step): `x`, built closed (after no register, in a block of its own) answering
-    `v`, becomes global `k`'s body, then `use`. `use` may read global `k` as `v` under every meaning of plan functions
-    and globals extending the ones the step leaves, as `defFun`'s continuation applies its function. The slot must lie
-    past the globals `x` leaves (`fg1.2.size ≤ k`), so the step only appends to them, as `Builds` needs. -/
+    a nonempty `v`, becomes global `k`'s body, then `use`. `use` may read global `k` as `v` under every meaning of plan
+    functions and globals extending the ones the step leaves, as `defFun`'s continuation applies its function. Slot `k`
+    may lie below globals `x` left (`shareB` fills it after a higher one), as every slot of `fg1.2` at or above `k` is
+    unbuilt (empty `res`): the step then overwrites no built slot, which `GExt` in `Builds` needs. -/
 theorem Builds.global {fg fg1 fg' : Array Fun × Array Fun} {k : Nat} {x : Bld (List Nat)} {use : Bld (Array Nat)}
-    {v rs out : Array Val} (hx : Builds abi fg fg1 (List.toArray <$> x) #[] v) (hk : fg1.2.size ≤ k)
+    {v rs out : Array Val} (hx : Builds abi fg fg1 (List.toArray <$> x) #[] v) (hv : v ≠ #[])
+    (hk : ∀ i (h : i < fg1.2.size), k ≤ i → fg1.2[i].res = #[])
     (hu : ∀ F : Fun, (∀ fs gs F' G', (∃ a, F' = fg1.1 ++ a) →
-        (∃ a, G' = (fg1.2 ++ Array.replicate (k + 1 - fg1.2.size) default).modify k (fun _ => F) ++ a) →
+        GExt ((fg1.2 ++ Array.replicate (k + 1 - fg1.2.size) default).modify k (fun _ => F)) G' →
         Env abi fs gs (F', G') → gs[k]? = some v) →
       Builds abi (fg1.1, (fg1.2 ++ Array.replicate (k + 1 - fg1.2.size) default).modify k fun _ => F) fg' use rs
         out) :
@@ -157,7 +152,7 @@ theorem Builds.global {fg fg1 fg' : Array Fun × Array Fun} {k : Nat} {x : Bld (
       use) rs out := by
   obtain ⟨F0, G0⟩ := fg; obtain ⟨F1, G1⟩ := fg1
   simp only at hk hu
-  obtain ⟨⟨a1, ha1⟩, ⟨b1, hb1⟩, hx⟩ := hx
+  obtain ⟨⟨a1, ha1⟩, hb1, hx⟩ := hx
   obtain ⟨js, xs, r, hr, hrun, hm⟩ := hx #[]
   obtain ⟨l, hxr, rfl⟩ : ∃ l, x.run (#[], 0, F0, G0) = .ok (l, js, xs.size, F1, G1) ∧ l.toArray = r := by
     rw [StateT.run_map] at hr
@@ -169,28 +164,33 @@ theorem Builds.global {fg fg1 fg' : Array Fun × Array Fun} {k : Nat} {x : Bld (
       obtain ⟨l, is', m, F, G⟩ := p
       obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hr
       exact ⟨l, rfl, rfl⟩
-  have hg := append_replicate_modify G1 default (⟨#[], js.toList, l.toArray⟩ : Fun) hk
+  have hfill := GExt.fill (G := G1) (k := k) (⟨#[], js.toList, l.toArray⟩ : Fun) hk
+  have hne : (⟨#[], js.toList, l.toArray⟩ : Fun).res ≠ #[] := fun h =>
+    hv (Array.eq_empty_of_size_eq_zero ((mapM_ok_size (hm "")).trans (by simpa using congrArg Array.size h)))
   have hF : ∀ fs gs F' G', (∃ a, F' = F1 ++ a) →
-      (∃ a, G' = (G1 ++ Array.replicate (k + 1 - G1.size) default).modify k
-        (fun _ => (⟨#[], js.toList, l.toArray⟩ : Fun)) ++ a) → Env abi fs gs (F', G') → gs[k]? = some v := by
-    rintro fs gs F' G' ⟨a, rfl⟩ ⟨c, rfl⟩ hE
+      GExt ((G1 ++ Array.replicate (k + 1 - G1.size) default).modify k
+        (fun _ => (⟨#[], js.toList, l.toArray⟩ : Fun))) G' → Env abi fs gs (F', G') → gs[k]? = some v := by
+    rintro fs gs F' G' ⟨a, rfl⟩ hG hE
     have hkG : k < ((G1 ++ Array.replicate (k + 1 - G1.size) default).modify k
         (fun _ => (⟨#[], js.toList, l.toArray⟩ : Fun))).size := by simp; omega
-    obtain ⟨v', hv', fs', hf', hsem⟩ := hE.2 k (by simp only [Array.size_append]; omega)
-    simp only [Array.getElem_append_left hkG, Array.getElem_modify_self] at hsem
-    rw [hg, Array.append_assoc] at hE
-    have hE' : Env abi fs' (gs.extract 0 k) (F1, G1) := hE.restrict (FEnv.mono hf')
-      (by rw [Array.extract_extract, Nat.zero_add, Nat.zero_add, Nat.min_eq_left hk])
+    have hGk : G'[k]? = some ⟨#[], js.toList, l.toArray⟩ := by
+      rcases hG.2 k hkG with e | e
+      · rw [Array.getElem_modify_self] at e; exact absurd e hne
+      · rw [Array.getElem_modify_self] at e; exact e
+    have hk' : k < G'.size := Nat.lt_of_lt_of_le hkG hG.1
+    have hGk' : G'[k] = ⟨#[], js.toList, l.toArray⟩ :=
+      Option.some.inj ((Array.getElem?_eq_getElem hk').symm.trans hGk)
+    obtain ⟨v', hv', fs', hf', hsem⟩ := hE.2 k hk' (by rw [hGk']; exact hne)
+    have hE' : Env abi fs' (gs.extract 0 k) (F1, G1) := (hE.restrict (hfill.trans hG) (FEnv.mono hf') k hk
+      (by simp [Array.extract_extract]))
     have hm' := hm "result"
     rw [Array.empty_append] at hm'
     have := hsem #[]
-    simp only [Fun.sem, hrun fs' _ hE' #[], Array.empty_append, ok_bind, hm'] at this
+    simp only [hGk', Fun.sem, hrun fs' _ hE' #[], Array.empty_append, ok_bind, hm'] at this
     rw [hv', (Prod.mk.inj (Except.ok.inj (show Except.ok (v, (#[] : Writes)) = _ from this))).1]
-  obtain ⟨⟨a2, ha2⟩, ⟨b2, hb2⟩, hu'⟩ := hu _ hF
-  simp only at ha1 hb1 ha2 hb2
-  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, ⟨b1 ++ (Array.replicate (k - G1.size) default).push
-    (⟨#[], js.toList, l.toArray⟩ : Fun) ++ b2, by rw [hb2, hg, hb1]; simp only [Array.append_assoc]⟩,
-    fun is => ?_⟩
+  obtain ⟨⟨a2, ha2⟩, hb2, hu'⟩ := hu _ hF
+  simp only at ha1 ha2
+  refine ⟨⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, hb1.trans (hfill.trans hb2), fun is => ?_⟩
   obtain ⟨js2, xs2, r2, hr2, hs2, hm2⟩ := hu' is
   refine ⟨js2, xs2, r2, ?_, hs2, hm2⟩
   simp only [StateT.run_bind, StateT.run_get, StateT.run_set, StateT.run_monadLift, liftM, monadLift_self, hxr,
