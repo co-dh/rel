@@ -106,6 +106,21 @@ rel_program hypCalc where
 #check hypCalc.proof.cy
 #check hypCalc.proof.citeCy
 
+-- The parameter objects and the open object of `𝟙` are instantiated before reading the valuation.
+rel_program genericTheorem where
+    theorem gg(R : α ⟶ β) : R = R by denEqRefl
+    theorem ii : 𝟙 ⊑ 𝟙 by denLeRefl
+    theorem citeGg(R : α ⟶ β) : R = R := calc
+      _ = R := gg
+      _ = R := gg
+
+#check genericTheorem.proof.gg
+#check genericTheorem.proof.ii
+#check genericTheorem.proof.citeGg
+
+example (A B : Obj) (ρ : Val) : ρ 0 A B = ρ 0 A B :=
+  genericTheorem.proof.citeGg [A, B] ρ
+
 end Rel.Lang
 
 #check Rel.Programs.prefixCata.proof.shares

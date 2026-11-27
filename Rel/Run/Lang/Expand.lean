@@ -165,6 +165,21 @@ abbrev Top := ((A : Obj) × (B : Obj) × Tm A B) × OTy × OTy
 /-- A `check`: where, both sides' texts, `=` (else `⊑`), the objects as named, both sides at one type. -/
 abbrev Chk := Pos × String × String × Bool × OTy × OTy × ((A : Obj) × (B : Obj) × Tm A B × Tm A B)
 
+/-- A theorem's denotation checks, all built at the same object placeholders. -/
+structure ThmChecks where
+  ph : List QAtomicType
+  statement : Chk
+  premises : List Chk
+  links : List Chk
+
+abbrev Thms := List (Pos × ThmChecks) × List (Pos × String)
+
+/-- The atoms a built term mentions, including its intermediate objects and a call's object arguments. -/
+partial def termAtoms : Res → List QAtomicType
+  | ⟨A, B, t⟩ =>
+    A.atoms ++ B.atoms ++ (match t with | .call _ _ _ os _ => os.flatMap Obj.atoms | _ => []) ++
+      t.inner.flatMap termAtoms
+
 /-- The object variable of the family index class `i` at a call (§e): a name no declaration can write. -/
 def idxVar (i : Nat) : String := s!"ι#{i}"
 
@@ -219,11 +234,14 @@ abbrev Rt := List (String × Param × Option (List String))
 
 /-- What a program reads: its closed definitions, its prints (text and term), its checks, its proved theorems (the sides of each `by` lemma: stated, never run, and the error of each `calc` chain that did not elaborate), its objects, its
     definitions elaborated once, and the statements `n.io` runs, its imports' inputs and run-time definitions first. -/
-abbrev Read := List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String) × List (Pos × List Chk)) × Objs × List Once × List Io
+abbrev Read := List (String × Res) × List (String × Top) × List Chk × Thms × Objs × List Once × List Io
+
+def paramVars (qs : List Param) : List String :=
+  (qs.filterMap (·.ty)).flatMap fun (x, y) => x.vars ++ y.vars
 
 /-- The object variables of a definition, in order, each once: its parameters' then its type's. -/
 def varsOf (qs : List Param) (ty : OExp × OExp) : List String :=
-  (qs.flatMap (fun P => match P.ty with | some (x, y) => x.vars ++ y.vars | none => []) ++ ty.1.vars ++ ty.2.vars).eraseDups
+  (paramVars qs ++ ty.1.vars ++ ty.2.vars).eraseDups
 
 /-- The body of `n(qs) ≜ e : ty` at the objects `objs`, its object variables `vs` rigid: each an object of its own
     whose universe is the variable of its place, each parameter the variable after them in its form `fs` (`Form`):
@@ -364,6 +382,10 @@ def placeholdersFor (env : Env) (p : Pos) (n : String) (k : Nat) : Except Err (L
       s!"stand for them ({ph.map atomName})"⟩
   pure ph
 
+/-- An object variable built at the same kind of placeholder as a generic definition body. -/
+def placeholderInfo (v : String) (obj : Obj) : ObjInfo :=
+  { ty := .base v, obj, ovar := true }
+
 /-- `n(qs) ≜ e : ty` built once (`elabOnce`); a body that needs keys stays a plan on them, and one that builds no
     relation but tests on pairs is its pair test (`test`, §a). A variable is generic (`varObj`) when the body builds
     with it an object of its own, else `.long`, a number object (`succ`, `sum` …). A body that does not build so is
@@ -387,8 +409,7 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
       let (gen, uni) := fl.getD k (false, true)
       let obj := if gen then (varObj ph k).getD .long else .long
       let (num, seg) := nb.getD k (false, false)
-      (v, ({ ty := .base v, uniVar := if uni then some k else none, obj, num, seg, ovar := true, deferred } :
-        ObjInfo))) ++ env.objs
+      (v, { placeholderInfo v obj with uniVar := if uni then some k else none, num, seg, deferred })) ++ env.objs
     let (os, r, st) ← elabOnce env p n qs e ty vs fs objs specs
     let (q, _, _) := r.plain
     let gen := fl.map (·.1)
@@ -536,31 +557,84 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) (den : Bool := false) : Except Err Top := do
   let (q, s, t) := r.plain
   let δ : Dem := (q.demVars.contains ·)
-  let ⟨A, B, tm⟩ ← build env.objs mc p δ (.close p q s noLeft)
+  let generic := den && (zonk mc s).bases.any fun n => (env.objs.lookup n).any (·.fullUniverse)
+  let ⟨A, B, tm⟩ ← build env.objs mc p δ (if generic then q else .close p q s noLeft)
   if den || !tm.dem δ [] then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
 
-/-- `check e = f` at `p` (`⊑` when `eq` is false): the two sides
-    elaborated together, one type, an object one side leaves open being the other's (§c); with the constants
-    `specs` built so far, returned with the ones its calls build. `den`: a theorem's sides, typed for the denotation
-    only (no universe is needed, as nothing runs), the parameters `ps` the variables `Tm.var` the `∀ ρ` of the goal
-    quantifies over. -/
-def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) (den : Bool := false)
-    (ps : List Param := []) : EM (Chk × List Once) := do
+def unifySides (p : Pos) (r r' : Arg) : M Unit := do
+  let (_, s, t) := r.plain; let (_, s', t') := r'.plain
+  let mc ← Lean.getMCtx
+  try unify p "" s' s; unify p "" t' t
+  catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
+
+def buildCheck (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e f : Expr) (eq : Bool) (r r' : Arg)
+    (den : Bool := false) : Except Err Chk := do
+  let (⟨A, B, R⟩, s, t) ← top env mc p e r den
+  let (⟨A', B', S⟩, s', t') ← top env mc p f r' den
+  if h : A' = A ∧ B' = B then pure (p, e.show, f.show, eq, s, t, ⟨A, B, R, h.1 ▸ h.2 ▸ S⟩)
+  else throw ⟨p, s!"check: the sides have types {s} ⟶ {t} and {s'} ⟶ {t'}"⟩
+
+/-- `check e = f` at `p` (`⊑` when `eq` is false), with the two sides elaborated at one type. -/
+def checkOf (env : Env) (p : Pos) (e f : Expr) (eq : Bool) (specs : List Once) : EM (Chk × List Once) := do
   let ((r, r'), st) ← (do
-    let env ← if den then pure (← bindSig env ps (some p)).2 else pure env
     let r ← elabE env none e; let r' ← elabE env none f
-    let (_, s, t) := r.plain; let (_, s', t') := r'.plain
-    let mc ← Lean.getMCtx
-    try unify p "" s' s; unify p "" t' t
-    catch _ => throw ⟨p, s!"check: the sides have types {zonk mc s} ⟶ {zonk mc t} and {zonk mc s'} ⟶ {zonk mc t'}"⟩
+    unifySides p r r'
     settleOpen env p [r.plain.1, r'.plain.1]
     settleUses
     pure (r, r') : M (Arg × Arg)).run { specs, objs := env.objs }
-  let mc ← Lean.getMCtx
-  let (⟨A, B, R⟩, s, t) ← top env mc p e r den
-  let (⟨A', B', S⟩, s', t') ← top env mc p f r' den
-  if h : A' = A ∧ B' = B then pure ((p, e.show, f.show, eq, s, t, ⟨A, B, R, h.1 ▸ h.2 ▸ S⟩), st.specs)
-  else throw ⟨p, s!"check: the sides have types {s} ⟶ {t} and {s'} ⟶ {t'}"⟩
+  return (← buildCheck env (← Lean.getMCtx) p e f eq r r', st.specs)
+
+/-- Elaborate a certificate over one signature, with the parameter objects first and the open objects inferred
+    in the statement, premises and chain after them. All links share the statement's type. -/
+def theoremChecks (env : Env) (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool)
+    (hs : List (Pos × Expr × Expr × Bool)) (steps : List (Pos × Expr)) (specs : List Once) :
+    EM (ThmChecks × List Once) := do
+  let vs := (paramVars ps).eraseDups
+  let ph ← liftExcept (placeholdersFor env p n vs.length)
+  let objects (vs : List String) (atoms : List QAtomicType) : Objs :=
+    vs.zipWith (fun v a => (v, { placeholderInfo v (.atom a) with fullUniverse := true })) atoms
+  let env' := { env with objs := objects vs ph ++ env.objs, ovars := vs.map fun v => (v, .base v) }
+  let (checks, st) ← (do
+    let (_, env') ← bindSig env' ps (some p)
+    let r ← elabE env' none e; let s ← elabE env' none f
+    unifySides p r s
+    let premises ← hs.mapM fun (q, a, b, _) => do
+      let x ← elabE env' none a; let y ← elabE env' none b
+      unifySides q x y
+      pure (x, y)
+    let links ← steps.mapM fun (q, x) => do
+      let t ← elabE env' none x
+      unifySides q r t
+      pure (q, x, t)
+    let terms := r :: s :: premises.flatMap (fun (x, y) => [x, y]) ++ links.map (·.2.2)
+    settleOpen env' p (terms.map (·.plain.1))
+    let mc ← Lean.getMCtx
+    let st ← get
+    let os := terms.flatMap fun t =>
+      let (q, a, b) := t.plain
+      a :: b :: q.foldShared fun x => (x.objects, x.kids)
+    let live := (os ++ st.uses.flatMap (·.us.map (·.2))).flatMap fun o => (zonk mc o).mvs
+    let openVars := st.made.reverse.filter live.contains
+    let names := openVars.zipIdx.map fun (_, i) => s!"{n}#{i}"
+    let ph ← liftExcept (placeholdersFor env p n (vs.length + names.length))
+    for (m, v) in openVars.zip names do
+      unify p "" (.mv m) (.base v)
+    modify fun st => { st with objs := objects names (ph.drop vs.length) ++ st.objs }
+    settleUses
+    let env' := { env' with objs := (← get).objs }
+    let mc ← Lean.getMCtx
+    let statement ← buildCheck env' mc p e f eq r s true
+    let premises ← (hs.zip premises).mapM fun ((q, a, b, k), x, y) =>
+      buildCheck env' mc q a b k x y true
+    let links ← (links.zip ((p, e, r) :: links)).mapM fun ((q, x, t), _, y, u) =>
+      buildCheck env' mc q y x true u t true
+    -- Some elaborated alternatives are discarded by `build`. They do not contribute objects to the goal.
+    let used := (statement :: premises ++ links).flatMap fun (_, _, _, _, _, _, ⟨A, B, r, s⟩) =>
+      termAtoms ⟨A, B, r⟩ ++ termAtoms ⟨A, B, s⟩
+    let inferred := (ph.drop vs.length).take names.length
+    pure { ph := ph.take vs.length ++ inferred.filter used.contains, statement, premises, links } : M ThmChecks
+    ).run { specs, objs := env'.objs }
+  pure (checks, st.specs)
 
 /-- The CSV columns of a side written `o` (IO design D), each with the labels that name it, outermost first, the
     object as written and as resolved. A schema's columns are its fields; a product's are its factors' columns, a factor
@@ -688,7 +762,7 @@ def rtNamesE (env : Env) (rt : Rt) (e : Expr) : Expr :=
     (`rt₀` those of its imports), and the statements `n.io` runs (`Io`). -/
 def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lean.Name) (calls : Lean.Name → Option Once)
     (emitting : Bool) (emitter : Lean.Name) (specs : List Once) (imported : Bool := false) (rt₀ : Rt := []) :
-    EM (Env × List (String × Res) × List (String × Top) × List Chk × (List Chk × List (Pos × String) × List (Pos × List Chk)) × List Once × Rt × List Io) := do
+    EM (Env × List (String × Res) × List (String × Top) × List Chk × Thms × List Once × Rt × List Io) := do
   let mut env := env
   let mut specs := specs
   let mut pend : List (Env × Pos × String × List Param × Expr × (OExp × OExp) × List String × Def) := []
@@ -698,8 +772,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut ds : List (String × Res) := []
   let mut pr : List (String × Top) := []
   let mut cs : List Chk := []
-  let mut ths : List Chk := []
-  let mut hs : List (Pos × List Chk) := []
+  let mut ths : List (Pos × ThmChecks) := []
   -- a `calc` theorem whose chain did not elaborate as `check`s: where, and the error, for `certify` to list
   let mut bad : List (Pos × String) := []
   -- the run-time names in scope (IO design A.2): each input, and each definition whose body mentions one, a
@@ -844,7 +917,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
           s!"parameter: `theorem {n}({y}{(Y.ty.map (s!" : {OExp.arrow ·}")).getD ""}, …)`"⟩
       -- every term of the chain at the statement's type, the parameters at their declared ones (§3)
       let ((), st) ← (do
-        let (_, env') ← bindSig env ps
+        let (_, env') ← bindSig { env with ovars := (paramVars ps).map fun v => (v, .base v) } ps
         let (_, s, t) := (← elabE env' none e).plain
         for (q, x, what) in (p, f, "its right side") :: steps.map fun (q, _, x, _) => (q, x, "this step") do
           let (_, s', t') := (← elabE env' none x).plain
@@ -860,21 +933,15 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       -- Both certificate forms use the same denotation checks for the premises and conclusion.
       if proof.isSome || calcOk then
         try
-          let mut sp := specs
-          let mut premises : List Chk := []
-          for (a, b) in hyps do
+          let rename := rtNamesE env rt
+          let premises ← hyps.mapM fun (a, b) => do
             let form := if proof.isSome then "by" else "calc"
             let some (k, b) := b | throw ⟨a.pos, s!"theorem `{n}` has `{form}` and the hypothesis `{a.show}`, a test applied: " ++
               "only `a = b` and `a ⊑ b` are premises of a Lean proof"⟩
-            let (c, sp') ← checkOf env a.pos (rtNamesE env rt a) (rtNamesE env rt b) k sp true ps
-            sp := sp'; premises := premises ++ [c]
-          let (c, sp') ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq sp true ps
-          sp := sp'
-          let mut x := e
-          let mut ls : List Chk := [c]
-          for (q, _, y, _) in steps do
-            let (c, sp') ← checkOf env q (rtNamesE env rt x) (rtNamesE env rt y) true sp true ps; sp := sp'; ls := ls ++ [c]; x := y
-          specs := sp; ths := ths ++ ls; hs := hs ++ [(p, premises)]
+            pure (a.pos, rename a, rename b, k)
+          let (c, sp) ← theoremChecks env p n ps (rename e) (rename f) eq premises
+            (steps.map fun (q, _, x, _) => (q, rename x)) specs
+          specs := sp; ths := ths ++ [(p, c)]
         catch e =>
           if proof.isSome then throw e
           bad := bad ++ [(p, s!"{e.msg}")]
@@ -892,7 +959,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (o, sp) ← once { env₀ with defs := mine ++ env₀.defs } p n qs e ty vs c c (qs.map fun _ => (none, none)) [] specs
       specs := sp ++ o.toList
     mine := (n, wrap n (callDef env₀ p n qs e ty vs c emitter calls (convs prog) d)) :: mine
-  pure (env, ds, pr, cs, (ths, bad, hs), specs, rt, io)
+  pure (env, ds, pr, cs, (ths, bad), specs, rt, io)
 
 /-- What the program `own` declares, `prog`, read after the programs `homes` its names reach (their definitions
     and objects), each read in order with its own resolver `res h` (module design §2.3), its definitions in scope

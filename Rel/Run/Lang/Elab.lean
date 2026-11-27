@@ -252,6 +252,8 @@ structure ObjInfo where
   /-- An object variable of a definition elaborated once: its universe is the variable `k`, an argument of the
       definition's constant. -/
   uniVar : Option Nat := none
+  /-- A theorem's object variable ranges over the whole object. Its universe in the denotation is `𝟙`. -/
+  fullUniverse : Bool := false
   /-- An object variable of a definition elaborated once: a numeral there is the number, which each call checks its
       object holds (`build`'s `.call`). -/
   ovar : Bool := false
@@ -719,6 +721,15 @@ def Pre.nilSrcs (x : Pre) : List OTy :=
 
 /-- `x` and every node under it, a call's expansion included. -/
 def Pre.nodes (x : Pre) : List Pre := x.foldShared fun y => ([y], y.subs)
+
+/-- The objects a node reads directly, before visiting its subterms. -/
+def Pre.objects : Pre → List OTy
+  | .zero a b | .top _ a b _ | .outl a b | .outr a b | .ldiv _ _ _ a b | .rdiv _ _ _ a b
+  | .nil a b | .inl a b | .inr a b | .prim _ _ a b _ | .lit _ a b _ _ | .var _ _ a b _
+  | .fix _ _ _ _ _ _ a b | .hylo _ _ _ a b | .callE _ _ _ _ _ _ _ a b => [a, b]
+  | .id a | .mem a | .succ _ a | .arith _ _ a | .leq _ a _ _ | .lt _ a _ _ | .close _ _ a _ => [a]
+  | .call _ _ us _ _ _ a b _ _ _ _ _ => a :: b :: us.map (·.1)
+  | _ => []
 
 /-- Each literal in `x`, a generic definition's body's (`Env.gdef`) with the definition's name last; its expansion
     at a use included. -/
@@ -2373,7 +2384,7 @@ def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   -- an object variable's universe is its constant's argument even where the call puts an unbounded object (`num`)
   | .base n, _ => match objs.lookup n with
     | some { uniVar := some k, .. } => pure (some (.var k))
-    | some { num := true, .. } => pure (some .id)
+    | some i => pure (if i.fullUniverse || i.num then some .id else none)
     | _ => pure none
   | .prod a b, .prod A B => do
     let (some u, some v) := (← uniPart δ a A, ← uniPart δ b B) | pure none
@@ -2445,7 +2456,9 @@ def rowOrd (n : OTy) (test : Bool) : Bool :=
 
 /-- Whether the object `n` is the atom `sym`, whose ids are in insertion order and so have no order of their own. -/
 def symObj (n : OTy) : Bool :=
-  match zonk mc n with | .base nm => (objs.lookup nm).any (·.obj == .atom .sym) | _ => false
+  match zonk mc n with
+  | .base nm => (objs.lookup nm).any (fun i => !i.fullUniverse && i.obj == .atom .sym)
+  | _ => false
 
 /-- `<`, `≤` (`op`) at the object `n` that is no atom: its object `B` and the prelude's order test `df` (`cmpTest`),
     refused when that is not in scope or an atom of `B` has no order code (`Obj.ascBad`, the one reader of it). -/
