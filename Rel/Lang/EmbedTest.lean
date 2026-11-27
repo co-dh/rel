@@ -54,8 +54,8 @@ open Rel.Programs.prelude in
 rel_program antiquot2 where
     f : 1 ⟶ 1 ≜ 𝟙 $x
 
-/-! `theorem n : e = f := calc` (`doc/rel-mss-proof-design.md` §3, §8): each step `_ = x := n` cites a theorem, `≜ n`
-    a definition; `on A` evaluates each step as a `check`. -/
+/-! `theorem n : e = f := calc` (`doc/rel-mss-proof-design.md` §3, §8): the chain alternates terms and reason lines
+    `:= n` (`⊑ := n` for `⊑`); `n` cites a theorem, `≜ n` a definition; `on A` evaluates each step as a `check`. -/
 
 open Rel.Programs.prelude in
 rel_program thm where
@@ -66,75 +66,107 @@ rel_program thm where
     x : K ⟶ N ≜ {(a,1),(b,2)}
     theorem unit : two 𝟙 = two
     theorem good on x : two 𝟙 = two := calc
-      _ = {(1,2),(2,2)} := ≜ two
-      _ = two := ≜ two
+      two 𝟙
+        := ≜ two
+      {(1,2),(2,2)}
+        := ≜ two
+      two
     theorem le on x : up ⊑ two := calc
-      _ ⊑ two 𝟙 := unit
-      _ = two := unit
+      up
+        ⊑ := unit
+      two 𝟙
+        := unit
+      two
 
 #guard thm.ok
 -- the chains stay in the program's constant, for `rel_aop` to read back
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss _ => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
-/-- error: line 85, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
+/-- error: line 93, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmType where
     theorem t : two = two := calc
-      _ = x := unit
-      _ = two := unit
+      two
+        := unit
+      x
+        := unit
+      two
 
-/-- error: line 93, col 11: `unit` is a theorem, not a relation -/
+/-- error: line 104, col 7: `unit` is a theorem, not a relation -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsRel where
     theorem t : two = two := calc
-      _ = unit := unit
+      two
+        := unit
+      unit
 
-/-- error: line 100, col 18: `two` is a definition; write `≜ two` -/
+/-- error: line 112, col 12: `two` is a definition; write `≜ two` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program relAsThm where
     theorem t : two = two := calc
-      _ = two := two
+      two
+        := two
+      two
 
-/-- error: line 107, col 20: `unit` is a theorem, not a definition -/
+/-- error: line 121, col 14: `unit` is a theorem, not a definition -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsDef where
     theorem t : two = two := calc
-      _ = two := ≜ unit
+      two
+        := ≜ unit
+      two
 
-/-- error: line 114, col 18: unknown theorem 'nope' -/
+/-- error: line 130, col 12: unknown theorem 'nope' -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmUnknown where
     theorem t : two = two := calc
-      _ = two := nope
+      two
+        := nope
+      two
 
-/-- error: line 121, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
+/-- error: line 140, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmEnds where
     theorem t : two 𝟙 = two := calc
-      _ = two 𝟙 := unit
+      two 𝟙
+        := unit
+      two 𝟙
 
-/-- error: line 128, col 7: `t` states `=`: a step `⊑` proves only `⊑` -/
+/-- error: line 147, col 7: the chain starts at `up`, the statement's left side is `two` -/
+#guard_msgs in
+open Rel.Programs.prelude thm in
+rel_program thmStarts where
+    theorem t : two = two := calc
+      up
+        := unit
+      two
+
+/-- error: line 157, col 9: `t` states `=`: a step `⊑` proves only `⊑` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmLe where
     theorem t : up = two := calc
-      _ ⊑ two := unit
+      up
+        ⊑ := unit
+      two
 
 open Rel.Programs.prelude thm in
 rel_program thmData where
     theorem t on x : up = two := calc
-      _ = two := unit
+      up
+        := unit
+      two
 
 #guard !thmData.ok
 #guard thmData.failures.map toString ==
-  [s!"line {decl_line% thmData + 2}, col 7: check failed: x up = \{(a, 2)}, x two = \{(a, 2), (b, 2)}"]
+  [s!"line {decl_line% thmData + 4}, col 7: check failed: x up = \{(a, 2)}, x two = \{(a, 2), (b, 2)}"]
 
 /-! A juxtaposed antiquotation ends its statement at its line, as a name does: the next line, a statement or a Lean
     command, is not read into it. `#rel_stmts` shows each statement a program's lines parse to. -/

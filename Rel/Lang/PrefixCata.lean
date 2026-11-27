@@ -53,8 +53,11 @@ rel_program prefixCalc where
     y : 1 ⟶ [N] ≜ x
     theorem selfEq : x = x by denEqRefl
     theorem viaY : y = x := calc
-      _ = x := ≜ y
-      _ = x := selfEq
+      y
+        := ≜ y
+      x
+        := selfEq
+      x
 
 #check prefixCalc.proof.viaY
 
@@ -99,9 +102,13 @@ rel_program hypCalc where
     x : 1 ⟶ [N] ≜ {(∗,3 1 2)}
     y : 1 ⟶ [N] ≜ x
     theorem cy(R : N ⟶ N, S : N ⟶ N) if R = S : y = x := calc
-      _ = x := ≜ y
+      y
+        := ≜ y
+      x
     theorem citeCy(R : N ⟶ N, S : N ⟶ N) if R = S : y = x := calc
-      _ = x := cy
+      y
+        := cy
+      x
 
 #check hypCalc.proof.cy
 #check hypCalc.proof.citeCy
@@ -111,8 +118,11 @@ rel_program genericTheorem where
     theorem gg(R : α ⟶ β) : R = R by denEqRefl
     theorem ii : 𝟙 ⊑ 𝟙 by denLeRefl
     theorem citeGg(R : α ⟶ β) : R = R := calc
-      _ = R := gg
-      _ = R := gg
+      R
+        := gg
+      R
+        := gg
+      R
 
 #check genericTheorem.proof.gg
 #check genericTheorem.proof.ii
@@ -123,9 +133,13 @@ rel_program citeArguments where
     obj N = 0…3
     x : 1 ⟶ [N] ≜ 𝟘
     theorem concrete : x = x := calc
-      _ = x := gg(x)
+      x
+        := gg(x)
+      x
     theorem abstractObjects(Q : γ ⟶ δ, R : α ⟶ β) : R = R := calc
-      _ = R := gg(R)
+      R
+        := gg(R)
+      R
 
 #check citeArguments.proof.concrete
 #check citeArguments.proof.abstractObjects
@@ -137,9 +151,13 @@ rel_program citeSibling where
     theorem given(R : α ⟶ β, S : α ⟶ β) if R = S : R = S by hypId
     theorem witness : x = y by denEqRefl
     theorem fromSibling : x = y := calc
-      _ = y := given(x, y)
+      x
+        := given(x, y)
+      y
     theorem fromHypothesis(Q : α ⟶ β, R : α ⟶ β, S : α ⟶ β) if R = S : R = S := calc
-      _ = S := given(R, S)
+      R
+        := given(R, S)
+      S
 
 #check citeSibling.proof.fromSibling
 #check citeSibling.proof.fromHypothesis
@@ -151,7 +169,9 @@ rel_program citeMissingPremise where
     theorem given(R : N ⟶ N, S : N ⟶ N) if R = S : R = S by hypId
     theorem unprovedWitness : x = y
     theorem blocked : x = y := calc
-      _ = y := given(x, y)
+      x
+        := given(x, y)
+      y
 
 #guard citeMissingPremise.proof.unproved.length == 1
 #guard citeMissingPremise.proof.unproved.any fun msg =>

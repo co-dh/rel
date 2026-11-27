@@ -236,14 +236,17 @@ syntax (name := sDefn) relWord ("(" relParam,+ ")")? (relType)? "≜" rel ("⊑"
 syntax (name := sInfix) "_" relWord "_" "(" relParam,+ ")" (relType)? "≜" rel ("⊑" rel)? ("where" relItem,+)? :
   relStmt
 -- Lean's `theorem … := calc` (§3, §8): `theorem` and `calc` stay names (`kwName`), so a Lean `theorem` command
--- after a program still ends it (`kwBack`); each step on its own line, indented past the statement, read from its
--- own position so that juxtaposition reaches along its line (`sameLine`)
--- a step cites a theorem at its arguments, `:= estMap(zero, ≥)`, as a definition is applied (`rApp`)
-syntax (name := cStep) "_" cmpOp rel " := " ("≜")? relWord (noWs "(" rel,+ ")")? : relStep
+-- after a program still ends it (`kwBack`); the chain alternates terms and reason lines, `t₀ ⏎ := n₁ ⏎ t₁ ⏎ …`, each
+-- on its own line, indented past the statement, read from its own position so that juxtaposition reaches along its
+-- line (`sameLine`); a reason is `[⊑] := [≜] n[(args)]`, the link `=` when it has no operator
+-- a reason cites a theorem at its arguments, `:= estMap(zero, ≥)`, as a definition is applied (`rApp`)
+syntax (name := cReason) (cmpOp)? " := " ("≜")? relWord (noWs "(" rel,+ ")")? : relStep
+syntax (name := cTerm) rel : relStep
+syntax relLink := colGt withPosition(relStep) colGt withPosition(relStep)
 -- a hypothesis: `e = f`, `e ⊑ f`, or a test applied; above level 0, so `R : …` after it is no fixed point `μX : φ`
 syntax relHyp := rel:1 (cmpOp rel:1)?
 syntax (name := sTheorem) &"theorem " relWord ("(" relParam,+ ")")? (&" on " rel:max)? (&" if " relHyp,+)? ":"
-  rel cmpOp rel (" := " &"calc" (colGt withPosition(relStep))+)? (" by " ident)? : relStmt
+  rel cmpOp rel (" := " &"calc" colGt withPosition(relStep) relLink+)? (" by " ident)? : relStmt
 
 /-- A program's statements, each at its own position, read with the program's tokens (`relTokens`). -/
 @[run_parser_attribute_hooks] def relStmts : Parser := relTokens (many (withPosition (kwBack (categoryParser `relStmt 0))))

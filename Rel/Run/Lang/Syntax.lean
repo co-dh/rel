@@ -599,7 +599,7 @@ inductive Decl
   | dict (p : Pos) (n : String) (ty : OExp × OExp)
   /-- `output n to path`: the table of the definition or input `n` written to `path` (`csv`: as one CSV file, its fields separated by that byte). -/
   | output (p : Pos) (n : String) (csv : Option UInt8) (path : String)
-  /-- `theorem n(ps) on A : e = f := calc` (`⊑` when `eq` is false), each step `_ = x := why` with its line; no
+  /-- `theorem n(ps) on A : e = f := calc` (`⊑` when `eq` is false), each step the term `x` after a reason line `:= why` (`⊑ := why` for `⊑`), with its line; no
       steps: the proof is owed to Lean. `on A`: each step is also evaluated as `check A x = A y` (§3). -/
   | «theorem» (p : Pos) (n : String) (ps : List Param) (e f : Expr) (eq : Bool) (on : Option Expr)
       -- each hypothesis after `if`: `e = f` or `e ⊑ f` (`some (eq, f)`), or a test applied, `t(R)` (`none`)

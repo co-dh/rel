@@ -86,35 +86,45 @@ def theoremDecl (s : Syntax) (p : Pos) : C Decl := do
     if h[1].getNumArgs == 0 then pure (a, none) else pure (a, some (atomIn h[1][0] == "=", ← expr h[1][1]))
   let e ← expr s[6]; let f ← expr s[8]; let eq := atomIn s[7] == "="
   -- a reason is the program's theorem or definition, else the registry's one the resolver gives
-  let steps ← (if s[9].getNumArgs == 0 then #[] else s[9][2].getArgs).toList.mapM fun t => do
-    unless t.getKind == ``cStep do failAt t "expected a step `_ = e := n`"
-    let q ← posOf t; let x ← expr t[2]; let r ← posOf t[5]
+  let steps ← (if s[9].getNumArgs == 0 then #[] else s[9][3].getArgs).toList.mapM fun l => do
+    let t := l[0]; let u := l[1]
+    unless t.getKind == ``cReason do failAt t "expected a reason line `[⊑] := n`"
+    unless u.getKind == ``cTerm do failAt u "expected a term after the reason line"
+    let q ← posOf u; let x ← expr u[0]; let r ← posOf t[3]
     -- a qualified reason, `laws.estMap`, is read as a term reads `m.x`; a bare one is one word
-    let m ← match t[5][0] with
-      | .ident _ _ c _ => if c.isAtomic then wordOf t[5] else onText t[5] (tokText t[5][0]) Parse.name
-      | _ => wordOf t[5]
+    let m ← match t[3][0] with
+      | .ident _ _ c _ => if c.isAtomic then wordOf t[3] else onText t[3] (tokText t[3][0]) Parse.name
+      | _ => wordOf t[3]
     let st ← get
     -- a name not the program's is the registry's, through the resolver (§2.3), whose refusal (ambiguous) is the error
     let own := st.known.any (fun k => k.1 == m || k.1 == Parse.infixKey m) || st.thms.contains m
     let ex ← if own || ps.any (·.name == m) then pure none else match st.res m with
       | .ext e => pure (some e)
-      | .bad _ msg => failAt t[5] msg
+      | .bad _ msg => failAt t[3] msg
       | .none => pure none
     if let some e := ex then modify fun st => { st with used := e.const :: st.used }
     let isDef := (st.known.any (fun k => k.1 == m || k.1 == Parse.infixKey m) && !ps.any (·.name == m)) ||
       ex.any (fun e => !e.obj && !e.thm)
     let isThm := st.thms.contains m || ex.any (·.thm)
-    let args ← if t[6].getNumArgs == 0 then pure [] else t[6][1].getSepArgs.toList.mapM expr
-    if t[4].getNumArgs != 0 && !args.isEmpty then failAt t[6] s!"`≜ {m}` unfolds a definition: it takes no arguments"
-    let why ← if t[4].getNumArgs == 0 then
+    let args ← if t[4].getNumArgs == 0 then pure [] else t[4][1].getSepArgs.toList.mapM expr
+    if t[2].getNumArgs != 0 && !args.isEmpty then failAt t[4] s!"`≜ {m}` unfolds a definition: it takes no arguments"
+    let why ← if t[2].getNumArgs == 0 then
         if isThm then pure (Why.thm r m (if st.thms.contains m then none else ex.map (·.const)) args)
-        else failAt t[5] (if isDef then s!"`{m}` is a definition; write `≜ {m}`" else s!"unknown theorem '{m}'")
+        else failAt t[3] (if isDef then s!"`{m}` is a definition; write `≜ {m}`" else s!"unknown theorem '{m}'")
       else if isDef then pure (Why.unfold r m)
-        else failAt t[5] (if isThm then s!"`{m}` is a theorem, not a definition"
+        else failAt t[3] (if isThm then s!"`{m}` is a theorem, not a definition"
           else s!"unknown definition '{m}'")
-    if eq && atomIn t[1] != "=" then failAt t s!"`{n}` states `=`: a step `⊑` proves only `⊑`"
-    pure (q, atomIn t[1] == "=", x, why)
-  -- the chain starts at the left side (`_`) and must end at the right one, compared as the parser reads both
+    -- a link with no operator is `=`
+    let isEq := atomIn t[0] != "⊑"
+    if eq && !isEq then failAt t s!"`{n}` states `=`: a step `⊑` proves only `⊑`"
+    pure (q, isEq, x, why)
+  -- the chain starts at the left side and ends at the right one, compared as the parser reads both
+  let first := s[9][2]
+  if s[9].getNumArgs != 0 then
+    unless first.getKind == ``cTerm do failAt first "expected the chain's first term"
+    let a ← expr first[0]
+    if a.render 0 true != e.render 0 true then
+      failAt first s!"the chain starts at `{a.show}`, the statement's left side is `{e.show}`"
   if let some (q, _, x, _) := steps.getLast? then
     if x.render 0 true != f.render 0 true then
       throw ⟨q, s!"the chain of `{n}` ends at {x.show}, not at its right side {f.show}"⟩
@@ -364,7 +374,7 @@ def siblingProof (ρ : Lean.Expr) (σs : List Lean.Expr) (premise : Lean.Expr)
     let h ← instantiateMVars h
     return if h.hasMVar then none else some h
 
-/-- The theorem `t` of the program `n` with steps `_ = x := why` (`theorem t : e = f := calc …`) certified as the chain
+/-- The theorem `t` of the program `n` with steps `:= why` then `x` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
     `Tm`), a step citing a theorem is that theorem's own `….proof.m`, joined by `Eq.trans`.
     A citation can use the elaborated hypotheses and previously certified theorems. -/

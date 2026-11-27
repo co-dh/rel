@@ -52,12 +52,19 @@ Lean kernel 检查的是两侧实际 elaboration 后的 `Tm.den` 的等式或包
 
 ```text
 theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
-  _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
-  _ = (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
-  _ = (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
-  _ = (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥) := ≜ oplus
-  _ = (𝟙÷∋)E(suffix) E(g)est(≥) := ≜ g
-  _ = greedy := ≜ greedy
+  fused
+    := ≜ fused
+  (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)
+    := greedyFold
+  (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
+    := estMap(zero, ≥)
+  (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
+    := ≜ oplus
+  (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥)
+    := ≜ g
+  (𝟙÷∋)E(suffix) E(g)est(≥)
+    := ≜ greedy
+  greedy
 ```
 
 从 `Rel/Lang/PrefixCata.lean` 取一条带假设的 `theorem … if … by …`（`hypThm`）：
@@ -71,7 +78,7 @@ rel_program hypThm where
 ```
 
 #tbl(green, (auto, 1fr), ([语法 / 机制], [现状]),
-  [calc 的形状], [每行 `_ = x := why`：`_` 是上一行的式子，`x` 是新式子，理由写在行尾。没有 Agda 风格的 `begin … ∎` 与夹在两行之间的理由，也没有缩进的 `:=` 行；局部 `where` 引理未做。],
+  [calc 的形状], [式子与理由行交替：第一个式子是陈述的左边，之后每个理由独占一行 `[⊑] := why`（缩进，无 cmpOp 时链接为 `=`），其后是新式子，最后一个式子是陈述的右边；每个式子只写一次，没有 `_`。局部 `where` 引理未做。],
   [`why`], [`≜ m`：展开定义 `m`，两侧 elaborate 成同一 `Tm`，证明为 `rfl`。其余：引用 theorem 名，取其 `….proof.m`（同 program 或 prelude 的常量），用 `Eq.trans` 串接。],
   [认证], [`certifyCalc`（`Rel/Run/Lang/Embed.lean`）逐步认证；`theoremChecks`（`Rel/Run/Lang/Expand.lean`）把陈述、前提和每个链接按同一签名 elaborate，`goalOf` 生成目标。引用的 theorem 若带前提，前提须在本 theorem 的 `if` 假设里找到。],
   [不能认证], [含 `⊑` 步，被引 theorem 无证明常量，前提找不到，或某步的类型不符：整条 theorem 进入 `n.proof.unproved`，附原因。],

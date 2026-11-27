@@ -62,26 +62,45 @@ rel_program mss where
     theorem greedyFold : (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
 
     theorem toShape : mss = shape := calc         -- note `mss-shape`
-      _ = (𝟙÷∋)E(suffix      prefix sum)       est(≥)         := ≜ segment
-      _ = (𝟙÷∋)E(suffix) E(  prefix sum)       est(≥)         := absorption(suffix, prefix sum)
-      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(∋) est(≥)         := Eunion(prefix sum)
-      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(   est(≥)) est(≥) := estUnion
-      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)       est(≥)) est(≥) := Ecomp((𝟙÷∋)E(prefix sum), est(≥))
-      _ = shape := ≜ shape
+      mss
+        := ≜ segment
+      (𝟙÷∋)E(suffix      prefix sum)       est(≥)
+        := absorption(suffix, prefix sum)
+      (𝟙÷∋)E(suffix) E(  prefix sum)       est(≥)
+        := Eunion(prefix sum)
+      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(∋) est(≥)
+        := estUnion
+      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(   est(≥)) est(≥)
+        := Ecomp((𝟙÷∋)E(prefix sum), est(≥))
+      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)       est(≥)) est(≥)
+        := ≜ shape
+      shape
     theorem toFused : shape = fused               -- note `mss-prefix-sum`
     theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
-      _ = (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥) := ≜ fused
-      _ = (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := greedyFold
-      _ = (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥) := estMap(zero, ≥)
-      _ = (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥) := ≜ oplus
-      _ = (𝟙÷∋)E(suffix) E(g)est(≥) := ≜ g
-      _ = greedy := ≜ greedy
+      fused
+        := ≜ fused
+      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)
+        := greedyFold
+      (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
+        := estMap(zero, ≥)
+      (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
+        := ≜ oplus
+      (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥)
+        := ≜ g
+      (𝟙÷∋)E(suffix) E(g)est(≥)
+        := ≜ greedy
+      greedy
     theorem toScan : greedy = scan                -- note `mss-scan`
     theorem linear : mss = scan := calc
-      _ = shape := toShape
-      _ = fused := toFused
-      _ = greedy := toGreedy
-      _ = scan := toScan
+      mss
+        := toShape
+      shape
+        := toFused
+      fused
+        := toGreedy
+      greedy
+        := toScan
+      scan
 
     /- Inputs: [3,1,4,1,5], [2,0,7], [], [3,-4,2,-1,2], [-2,-1,-3] keyed by a, b, c, d, e. -/
 
