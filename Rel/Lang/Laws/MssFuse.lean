@@ -13,39 +13,45 @@ namespace Rel.Lang
 
 variable {B : Obj}
 
-/-- The left fold from the seed `Te` over `x :: ys` is `Tp` of `x` and the fold over `ys`: the seed commutes with `Tp`
-    (`hc`) and `Tp` associates (`ha`). -/
+/-- The left fold from the seed `Te` over `x :: ys` is `Tp` of `x` and the fold over `ys`, on the lists a guard `Good`
+    admits (`hGp`: closed under prefix): the seed commutes with `Tp` at a guarded `[x]` (`hc`) and `Tp` associates on a
+    fold value `v` of `ys` under a guarded `x :: ys ++ [y]` (`ha`). -/
 theorem foldDen_cons_assoc (Te : Core.Rel (Obj.El B) (Obj.El B)) (Tp : Core.Rel (Obj.El (.prod B B)) (Obj.El B))
-    (hc : ∀ x w, (∃ u, (∃ a, Te a u) ∧ Tp (u, x) w) ↔ ∃ u, (∃ a, Te a u) ∧ Tp (x, u) w)
-    (ha : ∀ x v y w, (∃ u, Tp (x, v) u ∧ Tp (u, y) w) ↔ ∃ v', Tp (v, y) v' ∧ Tp (x, v') w)
-    (x : B.El) (ys : List B.El) (w : B.El) :
+    (Good : List B.El → Prop) (hGp : ∀ ys zs, Good (ys ++ zs) → Good ys)
+    (hc : ∀ x, Good [x] → ∀ w, (∃ u, (∃ a, Te a u) ∧ Tp (u, x) w) ↔ ∃ u, (∃ a, Te a u) ∧ Tp (x, u) w)
+    (ha : ∀ x ys y, Good (x :: (ys ++ [y])) → ∀ v w, foldDen Te Tp ys v →
+      ((∃ u, Tp (x, v) u ∧ Tp (u, y) w) ↔ ∃ v', Tp (v, y) v' ∧ Tp (x, v') w))
+    (x : B.El) (ys : List B.El) (hg : Good (x :: ys)) (w : B.El) :
     foldDen Te Tp (x :: ys) w ↔ ∃ u, foldDen Te Tp ys u ∧ Tp (x, u) w := by
   induction h : ys.length generalizing ys w with
   | zero =>
     obtain rfl := List.length_eq_zero_iff.1 h
     exact (foldDen_snoc Te Tp [] x w).trans ((exists_congr fun u => and_congr_left' (foldDen_empty Te Tp u)).trans
-      ((hc x w).trans (exists_congr fun u => and_congr_left' (foldDen_empty Te Tp u).symm)))
+      (((hc x hg) w).trans (exists_congr fun u => and_congr_left' (foldDen_empty Te Tp u).symm)))
   | succ n ih =>
     obtain ⟨ys, y, rfl⟩ := List.eq_nil_or_concat ys |>.resolve_left (by rintro rfl; simp at h)
-    rw [List.concat_eq_append]
-    have ih := fun u => ih ys u (by simpa using h)
+    rw [List.concat_eq_append] at hg ⊢
+    have ih := fun u => ih ys (hGp (x :: ys) [y] hg) u (by simpa using h)
     rw [← List.cons_append, foldDen_snoc]
     refine (exists_congr fun u => and_congr_left' (ih u)).trans (Iff.trans ?_
       (exists_congr fun v' => and_congr_left' (foldDen_snoc Te Tp ys y v').symm))
     constructor
     · rintro ⟨u, ⟨v, hv, hxv⟩, huy⟩
-      obtain ⟨v', h1, h2⟩ := (ha x v y w).1 ⟨u, hxv, huy⟩
+      obtain ⟨v', h1, h2⟩ := (ha x ys y hg v w hv).1 ⟨u, hxv, huy⟩
       exact ⟨v', ⟨v, hv, h1⟩, h2⟩
     · rintro ⟨v', ⟨v, hv, h1⟩, h2⟩
-      obtain ⟨u, h3, h4⟩ := (ha x v y w).2 ⟨v', h1, h2⟩
+      obtain ⟨u, h3, h4⟩ := (ha x ys y hg v w hv).2 ⟨v', h1, h2⟩
       exact ⟨u, ⟨v, hv, h3⟩, h4⟩
 
-/-- **The fusion**: the folds over the prefixes of `xs` are the right fold with the restarting step `Tf`
-    (`hT`: `Tf (x, u) = ⊤Te ∪ Tp (x, u)`). -/
+/-- **The fusion**: the folds over the prefixes of a guarded `xs` are the right fold with the restarting step `Tf`
+    (`hT`: `Tf (x, u) = ⊤Te ∪ Tp (x, u)`). `Good` is closed under prefix (`hGp`) and tail (`hGt`); `hc`, `ha` as in
+    `foldDen_cons_assoc`. -/
 theorem prefix_foldDen_fuse (Te : Core.Rel (Obj.El B) (Obj.El B)) (Tp Tf : Core.Rel (Obj.El (.prod B B)) (Obj.El B))
-    (hc : ∀ x w, (∃ u, (∃ a, Te a u) ∧ Tp (u, x) w) ↔ ∃ u, (∃ a, Te a u) ∧ Tp (x, u) w)
-    (ha : ∀ x v y w, (∃ u, Tp (x, v) u ∧ Tp (u, y) w) ↔ ∃ v', Tp (v, y) v' ∧ Tp (x, v') w)
-    (hT : ∀ x u w, Tf (x, u) w ↔ (∃ a, Te a w) ∨ Tp (x, u) w) (xs : List B.El) (w : B.El) :
+    (Good : List B.El → Prop) (hGp : ∀ ys zs, Good (ys ++ zs) → Good ys) (hGt : ∀ x xs, Good (x :: xs) → Good xs)
+    (hc : ∀ x, Good [x] → ∀ w, (∃ u, (∃ a, Te a u) ∧ Tp (u, x) w) ↔ ∃ u, (∃ a, Te a u) ∧ Tp (x, u) w)
+    (ha : ∀ x ys y, Good (x :: (ys ++ [y])) → ∀ v w, foldDen Te Tp ys v →
+      ((∃ u, Tp (x, v) u ∧ Tp (u, y) w) ↔ ∃ v', Tp (v, y) v' ∧ Tp (x, v') w))
+    (hT : ∀ x u w, Tf (x, u) w ↔ (∃ a, Te a w) ∨ Tp (x, u) w) (xs : List B.El) (hg : Good xs) (w : B.El) :
     (∃ ys zs, ys ++ zs = xs ∧ foldDen Te Tp ys w) ↔ foldrDen Te Tf xs w := by
   have hne : (∃ a w', Te a w') → ∀ xs : List B.El, ∃ u, foldrDen Te Tf xs u := by
     rintro ⟨a, w', h⟩ xs
@@ -73,13 +79,13 @@ theorem prefix_foldDen_fuse (Te : Core.Rel (Obj.El B) (Obj.El B)) (Tp Tf : Core.
         exact ⟨u, hu, (hT ..).2 (Or.inl ⟨a, ha'⟩)⟩
       | cons y ys' =>
         obtain ⟨rfl, h'⟩ := List.cons.inj h
-        obtain ⟨u, hu, hp⟩ := (foldDen_cons_assoc Te Tp hc ha y ys' w).1 hy
-        exact ⟨u, (ih u).1 ⟨ys', zs, h', hu⟩, (hT ..).2 (Or.inr hp)⟩
+        obtain ⟨u, hu, hp⟩ := (foldDen_cons_assoc Te Tp Good hGp hc ha y ys' (hGp (y :: ys') zs (by subst h'; exact hg)) w).1 hy
+        exact ⟨u, (ih (hGt _ xs hg) u).1 ⟨ys', zs, h', hu⟩, (hT ..).2 (Or.inr hp)⟩
     · rintro ⟨u, hu, hf⟩
       rcases (hT ..).1 hf with hs | hp
       · exact ⟨[], x :: xs, rfl, (foldDen_empty ..).2 hs⟩
-      · obtain ⟨ys, zs, h', hy⟩ := (ih u).2 hu
-        exact ⟨x :: ys, zs, by simp [h'], (foldDen_cons_assoc Te Tp hc ha x ys w).2 ⟨u, hy, hp⟩⟩
+      · obtain ⟨ys, zs, h', hy⟩ := (ih (hGt x xs hg) u).2 hu
+        exact ⟨x :: ys, zs, by simp [h'], (foldDen_cons_assoc Te Tp Good hGp hc ha x ys (hGp (x :: ys) zs (by subst h'; exact hg)) w).2 ⟨u, hy, hp⟩⟩
 
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 
@@ -93,6 +99,46 @@ theorem Tm.topSeed_rel {A B : Obj} (ρ : Val) (e : Tm .one B) :
     (Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e : Tm A B).den ρ = fun _ u => ∃ t, e.den ρ t u :=
   funext fun a => funext fun u => propext (Tm.topSeed_den ρ e a u)
 
+/-- The values of `ran e` are those of `e`. -/
+theorem Tm.ran_seed_iff {B : Obj} (ρ : Val) (e : Tm .one B) (u : B.El) :
+    (∃ a, (Tm.ran e).den ρ a u) ↔ ∃ t, e.den ρ t u := by
+  simp only [Tm.ran_den, Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip]
+  constructor
+  · rintro ⟨a, rfl, b, -, h⟩
+    exact ⟨b, h⟩
+  · rintro ⟨t, h⟩
+    exact ⟨u, rfl, t, h, h⟩
+
+/-- **The fusion on the lists a guard `Good` admits**: `prefix ⦇[e, S]⦈ = ⦇[e, ⊤e ∪ S]⦈ʳ` at each guarded `xs`, where the
+    seed commutes with `S` at a guarded `[x]` (`hc`) and `S` associates on a fold value of `ys` under a guarded
+    `x :: ys ++ [y]` (`ha`); `Good` is closed under prefix and tail. On a bounded object the sums that leave it are
+    dropped, so these hold only on the lists whose segment sums all stay inside. -/
+theorem Tm.prefixFuse_good_den {B : Obj} (ρ : Val) (e : Tm .one B) (S : Tm (.prod B B) B) (Good : List B.El → Prop)
+    (hGp : ∀ ys zs, Good (ys ++ zs) → Good ys) (hGt : ∀ x xs, Good (x :: xs) → Good xs)
+    (hc : ∀ x, Good [x] → ∀ w, (∃ u, (∃ a, (Tm.ran e).den ρ a u) ∧ S.den ρ (u, x) w) ↔
+      ∃ u, (∃ a, (Tm.ran e).den ρ a u) ∧ S.den ρ (x, u) w)
+    (ha : ∀ x ys y, Good (x :: (ys ++ [y])) → ∀ v w, foldDen ((Tm.ran e).den ρ) (S.den ρ) ys v →
+      ((∃ u, S.den ρ (x, v) u ∧ S.den ρ (u, y) w) ↔ ∃ v', S.den ρ (v, y) v' ∧ S.den ρ (x, v') w))
+    (xs : List B.El) (hg : Good xs) (w : B.El) :
+    (Tm.comp (.prim (rowOf "prefix") : Tm B.arr B.arr) (Tm.fold (Tm.ran e) S)).den ρ xs w ↔
+      (Tm.foldr (Tm.ran e) (.join (.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e) S)).den ρ xs w := by
+  have hT : ∀ x u w, (Tm.join (Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e) S).den ρ (x, u) w ↔
+      (∃ a, (Tm.ran e).den ρ a w) ∨ S.den ρ (x, u) w := fun x u w => by
+    change ((Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e : Tm (B.prod B) B).den ρ (x, u) w ∨
+      S.den ρ (x, u) w) ↔ _
+    rw [Tm.topSeed_den, Tm.ran_seed_iff]
+  have hpre : ∀ xs b, (Tm.prim (rowOf "prefix") : Tm B.arr B.arr).den ρ xs b ↔ b <+: xs := fun xs b =>
+    (Iff.of_eq (congrFun (congrFun (Tm.prefixFold_row ρ (Tm.prefixSeed B) (Tm.prefixFold_seed ρ)) xs) b)).symm.trans
+      (Tm.prefixFold_iff ρ _ (Tm.prefixFold_seed ρ) xs b)
+  refine Iff.trans ?_ (prefix_foldDen_fuse _ _ _ Good hGp hGt hc ha hT xs hg w)
+  simp only [Tm.den, Core.Rel.comp]
+  constructor
+  · rintro ⟨b, hb, hf⟩
+    obtain ⟨zs, h⟩ := (hpre xs b).1 hb
+    exact ⟨b, zs, h, hf⟩
+  · rintro ⟨b, zs, h, hf⟩
+    exact ⟨b, (hpre xs b).2 ⟨zs, h⟩, hf⟩
+
 /-- The prelude's `prefix ⦇[e, S]⦈ = ⦇[e, ⊤e ∪ S]⦈ʳ`, at the elaborated terms. The two premises are the no-overflow
     laws, `⟨⊤e,𝟙⟩S = ⟨𝟙,⊤e⟩S` (the seed commutes) and `⟨π₁S,π₂⟩S = ⟨π₁π₁,⟨π₁π₂,π₂⟩S⟩S` (`S` associates): in the book's
     `Int` they are `0 + x = x + 0` and `(x+v)+y = x+(v+y)`; on a bounded object a sum that leaves it is dropped, so they
@@ -104,14 +150,7 @@ theorem Tm.prefixFuse_den {B : Obj} (ρ : Val) (e : Tm .one B) (S : Tm (.prod B 
       (Tm.comp (.pair (.comp .outl .outl) (.comp (.pair (.comp .outl .outr) .outr) S)) S).den ρ) :
     (Tm.comp (.prim (rowOf "prefix")) (Tm.fold (Tm.ran e) S)).den ρ =
       (Tm.foldr (Tm.ran e) (.join (.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e) S)).den ρ := by
-  have hTe : ∀ u, (∃ a, (Tm.ran e).den ρ a u) ↔ ∃ t, e.den ρ t u := by
-    intro u
-    simp only [Tm.ran_den, Core.Rel.inter, Core.Rel.id, Core.Rel.comp, Core.Rel.recip]
-    constructor
-    · rintro ⟨a, rfl, b, -, h⟩
-      exact ⟨b, h⟩
-    · rintro ⟨t, h⟩
-      exact ⟨u, rfl, t, h, h⟩
+  have hTe := Tm.ran_seed_iff ρ e
   have hc : ∀ x w, (∃ u, (∃ a, (Tm.ran e).den ρ a u) ∧ S.den ρ (u, x) w) ↔
       ∃ u, (∃ a, (Tm.ran e).den ρ a u) ∧ S.den ρ (x, u) w := fun x w => by
     have e1 : ∀ T : Tm B B, (Tm.comp (.pair T .id) S).den ρ = rpair (T.den ρ) (𝟙 _) ≫ S.den ρ := fun _ => rfl
@@ -139,23 +178,9 @@ theorem Tm.prefixFuse_den {B : Obj} (ρ : Val) (e : Tm .one B) (S : Tm (.prod B 
     · rintro ⟨v', h1, h2⟩
       obtain ⟨a, b, ⟨hsa, rfl⟩, hs⟩ := this.2 ⟨x, v', ⟨rfl, v, y, ⟨rfl, rfl⟩, h1⟩, h2⟩
       exact ⟨a, hsa, hs⟩
-  have hT : ∀ x u w, (Tm.join (Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e) S).den ρ (x, u) w ↔
-      (∃ a, (Tm.ran e).den ρ a w) ∨ S.den ρ (x, u) w := fun x u w => by
-    change ((Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) e : Tm (B.prod B) B).den ρ (x, u) w ∨
-      S.den ρ (x, u) w) ↔ _
-    rw [Tm.topSeed_den, hTe]
-  have hpre : ∀ xs b, (Tm.prim (rowOf "prefix") : Tm B.arr B.arr).den ρ xs b ↔ b <+: xs := fun xs b =>
-    (Iff.of_eq (congrFun (congrFun (Tm.prefixFold_row ρ (Tm.prefixSeed B) (Tm.prefixFold_seed ρ)) xs) b)).symm.trans
-      (Tm.prefixFold_iff ρ _ (Tm.prefixFold_seed ρ) xs b)
-  funext xs w; apply propext
-  refine Iff.trans ?_ (prefix_foldDen_fuse _ _ _ hc ha hT xs w)
-  simp only [Tm.den, Core.Rel.comp]
-  constructor
-  · rintro ⟨b, hb, hf⟩
-    obtain ⟨zs, h⟩ := (hpre xs b).1 hb
-    exact ⟨b, zs, h, hf⟩
-  · rintro ⟨b, zs, h, hf⟩
-    exact ⟨b, (hpre xs b).2 ⟨zs, h⟩, hf⟩
+  funext xs w
+  exact propext (Tm.prefixFuse_good_den ρ e S (fun _ => True) (fun _ _ _ => trivial) (fun _ _ _ => trivial)
+    (fun x _ w => hc x w) (fun x _ y _ v w _ => ha x v y w) xs trivial w)
 
 /-- `prefixFuse_den` at the parameters `e = var 0`, `S = var 1` of a theorem `prefixFuse(e, S)`. -/
 theorem Tm.prefixFuse_var_den {B : Obj} (ρ : Val)
