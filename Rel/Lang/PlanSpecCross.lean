@@ -2,6 +2,7 @@ module
 
 public import Rel.Lang.PlanSpecSelect
 public import Rel.Lang.PlanSpecNone
+public import Rel.Lang.PlanSpecComp
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -265,28 +266,64 @@ theorem crossB_cross_builds {fg : Array Fun × Array Fun} {rs : Array Val} {nr m
   let ⟨hle, hTn, hT, hlt, hgx, hgy⟩ := cross_kernels h hk hd hr
   crossB_builds hn hm hle hTn hT hlt h63 crossMax_usize hk hd hr hgx hgy hxs hys hx hy hfo hkk
 
-/-- **`compB` builds `Tab.compPairs`** (what `pairB` runs): the stated hypothesis of `pairB_builds`, proved apart. A table
-    `L` of `a`-key and `b`-value columns in registers, `S` of `b` and `c`; `kk` continues on a table of `a` and `c`
-    columns holding the answer `T`. -/
-def CompSpec (a b c : Obj) : Prop := ∀ {fg : Array Fun × Array Fun} {L : Tab a b} {S : Tab b c} {T : Tab a c}
+/-- `compGroups`' answer is expanded in one block (`compCuts blockRows` is `none`): what `compB`, which builds
+    `Tab.compOne` alone, runs. Past it `Tab.comp` unions blocks (`compBlocks`), a different table encoding. -/
+def OneBlock {A B C : Obj} (L : Tab A B) (S : Tab B C) : Prop :=
+  ∀ x, L.compGroups S = .ok x → Tab.compCuts Tab.blockRows L.n x = .ok none
+
+/-- Where `compPairs` expands in one block it is `compOne`: both branches (the cross branch within `crossMax`, `comp`
+    = `compWith blockRows`, and the counted `compRows`/`compFrom` branch) end in `compExpand` of the one `compGroups`. -/
+theorem compPairs_eq_compOne {A B C : Obj} {L : Tab A B} {S : Tab B C} {T : Tab A C} (h : Tab.compPairs L S = .ok T)
+    (ho : OneBlock L S) : L.compOne S = .ok T := by
+  have hf : ∀ x, L.compGroups S = .ok x → Tab.compFrom Tab.blockRows L S x = Tab.compExpand L S x := fun x hx => by
+    simp only [Tab.compFrom, ho x hx, bind, Except.bind]; rfl
+  unfold Tab.compPairs at h
+  split at h
+  · unfold Tab.comp Tab.compWith at h
+    split at h
+    · exact h
+    · obtain ⟨x, hx, h⟩ := except_bind_ok h
+      rw [hf x hx] at h
+      simpa only [Tab.compOne, hx] using h
+  · obtain ⟨x, hx, h⟩ := except_bind_ok h
+    obtain ⟨k, hk, h⟩ := except_bind_ok h
+    split at h
+    · cases h
+    · rw [hf x hx] at h
+      simpa only [Tab.compOne, hx] using h
+
+/-- **`compB` builds `Tab.compPairs`** (what `pairB` runs) where `compPairs` is `compOne` (`OneBlock`): the stated
+    hypothesis of `pairB_builds`, proved from `compB_builds`. A table `L` of `a`-key and `b`-value columns in registers,
+    `S` of `b` and `c`; `kk` continues on a table of `a` and `c` columns holding the answer `T`. -/
+def CompPairsSpec (a b c : Obj) : Prop := ∀ {fg : Array Fun × Array Fun} {L : Tab a b} {S : Tab b c} {T : Tab a c}
     {TL TS : TabB} {rs out : Array Val} {kk : TabB → Bld (Array Nat)}, ColsOf a TL.key → ColsOf b TL.val →
     ColsOf b TS.key → ColsOf c TS.val →
     TL.regs.mapM (fun i => rs[i]?) = some (.size L.n :: (L.key.regVals ++ L.val.regVals)) →
     TS.regs.mapM (fun i => rs[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)) →
-    Tab.compPairs L S = .ok T → Ordered fg.1 →
+    Tab.compPairs L S = .ok T → OneBlock L S → CompPre a b c L S → CompPost a b c L T → Ordered fg.1 →
     (∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
       Ordered fg2.1 → ColsOf a U.key → ColsOf c U.val →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size T.n :: (T.key.regVals ++ T.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) →
     ∃ fg', Builds abiOf fg fg' (compB TL TS >>= kk) rs out
 
+theorem compPairsB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (a b c : Obj) : CompPairsSpec a b c := by
+  intro fg L S T TL TS rs out kk hLk hLv hSk hSv hL hS hp ho hpre hpost hfo hkk
+  refine compB_builds hc h63 a b c hLk hLv hSk hSv hL hS (compPairs_eq_compOne hp ho) hpre hpost hfo ?_
+  intro fg2 W ys he hf ho2 hsk hsv hr
+  exact hkk fg2 W ys he hf ho2 (ColsOf.shape a hLk hsk) (ColsOf.shape c hSv hsv) hr
+
 /-- **`pairB` builds `Tab.pair`**, given `compB`'s spec: the rebracketing of the key (`repath`) keeps the registers. -/
-theorem pairB_builds {A B C : Obj} (hcomp : CompSpec (.prod A B) A C) {fg : Array Fun × Array Fun} {R : Tab A B}
+theorem pairB_builds {A B C : Obj} (hcomp : CompPairsSpec (.prod A B) A C) {fg : Array Fun × Array Fun} {R : Tab A B}
     {S : Tab A C} {T : Tab A (.prod B C)} {RB SB : TabB} {rs out : Array Val} {kk : TabB → Bld (Array Nat)}
     (hRk : ColsOf A RB.key) (hRv : ColsOf B RB.val) (hSk : ColsOf A SB.key) (hSv : ColsOf C SB.val)
     (hR : RB.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)))
     (hS : SB.regs.mapM (fun i => rs[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)))
     (hp : R.pair S = .ok T) (hfo : Ordered fg.1)
+    (hone : OneBlock (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S)
+    (hpre : CompPre (.prod A B) A C ⟨R.n, (R.key, R.val), R.key⟩ S)
+    (hpost : ∀ T' : Tab (.prod A B) C, Tab.compPairs (⟨R.n, (R.key, R.val), R.key⟩ : Tab (.prod A B) A) S = .ok T' →
+      CompPost (.prod A B) A C ⟨R.n, (R.key, R.val), R.key⟩ T')
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
       Ordered fg2.1 → ColsOf A U.key → ColsOf (.prod B C) U.val →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size T.n :: (T.key.regVals ++ T.val.regVals)) →
@@ -305,7 +342,7 @@ theorem pairB_builds {A B C : Obj} (hcomp : CompSpec (.prod A B) A C) {fg : Arra
   obtain ⟨v1, e2, g2, r2⟩ := repath_eq B (pre := ".2") hRv
   unfold pairB
   simp only [bind_assoc, e1, e2, pure_bind]
-  refine hcomp (L := ⟨R.n, (R.key, R.val), R.key⟩) (TL := ⟨RB.n, k1 ++ v1, RB.key⟩) ?_ ?_ hSk hSv ?_ ?_ hT' hfo ?_
+  refine hcomp (L := ⟨R.n, (R.key, R.val), R.key⟩) (TL := ⟨RB.n, k1 ++ v1, RB.key⟩) ?_ ?_ hSk hSv ?_ ?_ hT' hone hpre (hpost _ hT') hfo ?_
   · exact ⟨k1, v1, rfl, g1, g2⟩
   · exact hRk
   · simp only [TabB.regs, Cols.regs_append, r1, r2, List.mapM_cons, hn, List.mapM_append, hx2, hx1]
