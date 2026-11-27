@@ -93,6 +93,19 @@ rel_program hypThm where
 
 #check hypThm.proof.hy
 
+open Rel.Programs.prelude in
+rel_program hypCalc where
+    obj N = 0…3
+    x : 1 ⟶ [N] ≜ {(∗,3 1 2)}
+    y : 1 ⟶ [N] ≜ x
+    theorem cy(R : N ⟶ N, S : N ⟶ N) if R = S : y = x := calc
+      _ = x := ≜ y
+    theorem citeCy(R : N ⟶ N, S : N ⟶ N) if R = S : y = x := calc
+      _ = x := cy
+
+#check hypCalc.proof.cy
+#check hypCalc.proof.citeCy
+
 end Rel.Lang
 
 #check Rel.Programs.prefixCata.proof.shares

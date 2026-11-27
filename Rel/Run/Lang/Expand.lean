@@ -854,32 +854,30 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             s!"the statement's {e.show} is {zonk mc s} ⟶ {zonk mc t}"⟩
         : M Unit).run { specs, objs := env.objs }
       specs := st.specs
-      -- a `calc` of `=` steps with no hypotheses is certified step by step (`certifyCalc`): each link
-      -- `x ↦ y` typed as a `check`, at the step's line, unless a step cites a theorem at arguments (never certified)
-      let calcOk := proof.isNone && !steps.isEmpty && hyps.isEmpty && eq &&
+      -- A `calc` of `=` steps is certified step by step unless a step cites a theorem at arguments.
+      let calcOk := proof.isNone && !steps.isEmpty && eq &&
         steps.all fun (_, k, _, w) => k && match w with | .thm _ _ _ as => as.isEmpty | .unfold .. => true
-      -- `by lemma` (no `calc` or `on`: `Embed`): both sides, and each hypothesis `a = b` / `a ⊑ b` after `if`, typed once
-      -- as a `check`'s are, for the denotation only, the parameters variables; kept for `certify`
-      if proof.isSome then
-        let mut cs' : List Chk := []
-        for (a, b) in hyps do
-          let some (k, b) := b | throw ⟨a.pos, s!"theorem `{n}` has `by` and the hypothesis `{a.show}`, a test applied: " ++
-            "only `a = b` and `a ⊑ b` are premises of a Lean proof"⟩
-          let (c, sp) ← checkOf env a.pos (rtNamesE env rt a) (rtNamesE env rt b) k specs true ps; specs := sp; cs' := cs' ++ [c]
-        let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs true ps; specs := sp; ths := ths ++ [c]
-        hs := hs ++ [(p, cs')]
-      -- a chain whose statement or links do not type as checks is left uncertified:
-      -- `certifyCalc` lists it
-      if calcOk then
+      -- Both certificate forms use the same denotation checks for the premises and conclusion.
+      if proof.isSome || calcOk then
         try
-          let (c, sp) ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq specs true ps
+          let mut sp := specs
+          let mut premises : List Chk := []
+          for (a, b) in hyps do
+            let form := if proof.isSome then "by" else "calc"
+            let some (k, b) := b | throw ⟨a.pos, s!"theorem `{n}` has `{form}` and the hypothesis `{a.show}`, a test applied: " ++
+              "only `a = b` and `a ⊑ b` are premises of a Lean proof"⟩
+            let (c, sp') ← checkOf env a.pos (rtNamesE env rt a) (rtNamesE env rt b) k sp true ps
+            sp := sp'; premises := premises ++ [c]
+          let (c, sp') ← checkOf env p (rtNamesE env rt e) (rtNamesE env rt f) eq sp true ps
+          sp := sp'
           let mut x := e
           let mut ls : List Chk := [c]
-          let mut sp := sp
           for (q, _, y, _) in steps do
             let (c, sp') ← checkOf env q (rtNamesE env rt x) (rtNamesE env rt y) true sp true ps; sp := sp'; ls := ls ++ [c]; x := y
-          specs := sp; ths := ths ++ ls
-        catch e => bad := bad ++ [(p, s!"{e.msg}")]
+          specs := sp; ths := ths ++ ls; hs := hs ++ [(p, premises)]
+        catch e =>
+          if proof.isSome then throw e
+          bad := bad ++ [(p, s!"{e.msg}")]
       -- `on A`: each link of the chain (the statement itself when there is none) evaluated as a `check`
       if let some a := on then
         let mut x := e
