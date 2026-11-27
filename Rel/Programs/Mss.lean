@@ -1,6 +1,7 @@
 import Rel.Programs.Prelude
 import Rel.Lang.Laws.Map
 import Rel.Lang.Laws.Order
+import Rel.Lang.Laws.MssFuse
 
 /-! # The maximum segment sum
 
@@ -75,6 +76,8 @@ rel_program mss where
       (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)       est(≥)) est(≥)
         := ≜ shape
       shape
+    -- B&dM's fusion of a fold into `prefix`; its premises are the no-overflow laws (`+` associates, `0` commutes with it)
+    theorem prefixFuse(e : 1 ⟶ β, S : β×β ⟶ β) if ⟨⊤e,𝟙⟩S = ⟨𝟙,⊤e⟩S, ⟨π₁ S, π₂⟩S = ⟨π₁π₁, ⟨π₁π₂,π₂⟩S⟩S : prefix ⦇[e, S]⦈ = ⦇[e, ⊤e ∪ S]⦈ʳ by Rel.Lang.Tm.prefixFuse_var_den
     theorem toFused : shape = fused               -- note `mss-prefix-sum`
     theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
       fused
