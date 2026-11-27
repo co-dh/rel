@@ -627,16 +627,17 @@ def citationArgs (env : Env) (p : Pos) (r : Arg) (sig? : Option ThmSig) (xs : Li
     | .sum a b => .sum (inst a) (inst b)
     | .arr a => .arr (inst a)
     | .mv m => .mv m
+  -- The step term fixes the cited result's objects first, so each argument is elaborated at the objects of its
+  -- occurrence there; a result that does not match leaves them to the parameters.
+  let (_, s, t) := r.plain
+  let saved ← save
+  unless (← defEq s (inst sig.source)) && (← defEq t (inst sig.target)) do restore saved
   let args ← (xs.zip sig.params).mapM fun (x, a, b) => do
     let arg ← elabE env none x
     let (_, s, t) := arg.plain
     if let some a := a then unify x.pos "the cited argument's source" s (inst a)
     if let some b := b then unify x.pos "the cited argument's target" t (inst b)
     pure arg
-  -- A result can mention an object that the parameters did not determine.
-  let (_, s, t) := r.plain
-  let saved ← save
-  unless (← defEq s (inst sig.source)) && (← defEq t (inst sig.target)) do restore saved
   pure (args, os.zip (sig.vars.map (·.2)))
 
 /-- Elaborate a certificate over one signature, with the parameter objects first and the open objects inferred

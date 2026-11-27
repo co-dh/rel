@@ -144,6 +144,18 @@ rel_program citeArguments where
 #check citeArguments.proof.concrete
 #check citeArguments.proof.abstractObjects
 
+-- A cited argument whose objects only the step fixes: `sum` is at `[N]` because the step term `x` is.
+open Rel.Programs.prelude genericTheorem in
+rel_program citeStepObjects where
+    obj N = 0…3
+    x : [N] ⟶ N ≜ sum
+    theorem viaSum : x = x := calc
+      x
+        := gg(sum)
+      x
+
+#check citeStepObjects.proof.viaSum
+
 rel_program citeSibling where
     obj N = 0…3
     x : N ⟶ N ≜ 𝟘
