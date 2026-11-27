@@ -96,9 +96,6 @@ theorem Free.whereB (n keep : Nat) : Free (Plan.whereB n keep) := by
   simp only [List.mapM_cons, List.mapM_nil, bind_assoc, pure_bind]
   free'
 
-theorem Free.wordsB (n : Nat) (w : UInt64) : Free (Plan.wordsB n w) := by
-  unfold Plan.wordsB Plan.constB; free'
-
 /-- The body of `selectB`'s plan function (`funT [R, S]`): the registers of the two tables are its parameters. -/
 def selBody (kb : Nat → Nat → Nat → Bld Nat) (R S : TabB) : Bld TabB := do
   let (n, off) ← catB R.n S.n
