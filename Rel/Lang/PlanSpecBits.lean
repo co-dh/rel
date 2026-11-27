@@ -101,6 +101,95 @@ theorem code2B_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A :
   · simp [hE6 (hE5 (hE4 hk3)), hE6 (hE5 (hE4 hn3)), hE6 hg5, hg6, hE6 (hE5 (hE4 hd3))]
 
 
+/-! ### One-register wrappers: `Builds.bind1F`'s shape for the emitters `Builds.litG`, `ctorBG`, `listBG`, `callKG` open
+
+Each emitter is `Free` and its register holds one fixed value, so a continuation that is itself `∃ fg'` (a `prefixB_builds`,
+a `Builds.bind1F` after it) follows it. -/
+
+theorem Builds.litF {fg : Array Fun × Array Fun} {v : Val} {rs out : Array Val} {c : Nat → Bld (Array Nat)}
+    (hk : ∀ r R, R[r]? = some v → Extends rs R → ∃ fg', Builds abiOf fg fg' (c r) R out) :
+    ∃ fg', Builds abiOf fg fg' (Plan.lit v >>= c) rs out :=
+  Builds.bind1F (Free.lit v) (Builds.litG fun r R hr _ => Builds.pure fun _ => reads_of (l := [r]) (vs := [v]) (by simp [hr]))
+    hk
+
+theorem Builds.ctorBF {fg : Array Fun × Array Fun} {tag : Nat} {objs scal : Array Nat} {os ss rs out : Array Val}
+    {c : Nat → Bld (Array Nat)} (ho : objs.mapM (reg rs "ctor") = .ok os) (hs : scal.mapM (reg rs "ctor") = .ok ss)
+    (hk : ∀ r R, R[r]? = some (.ctor tag os ss) → Extends rs R → ∃ fg', Builds abiOf fg fg' (c r) R out) :
+    ∃ fg', Builds abiOf fg fg' (Plan.ctorB tag objs scal >>= c) rs out :=
+  Builds.bind1F (Free.ctorB tag objs scal) (Builds.ctorBG ho hs fun r R hr _ => Builds.pure fun _ =>
+    reads_of (l := [r]) (vs := [.ctor tag os ss]) (by simp [hr])) hk
+
+theorem Builds.listBF {fg : Array Fun × Array Fun} {rs out : Array Val} {l : List Nat} {vs : List Val}
+    {c : Nat → Bld (Array Nat)} (h : l.mapM (fun x => rs[x]?) = some vs)
+    (hk : ∀ r R, R[r]? = some (vs.foldr (fun v c => .ctor 1 #[v, c] #[]) (.ctor 0 #[] #[])) → Extends rs R →
+      ∃ fg', Builds abiOf fg fg' (c r) R out) :
+    ∃ fg', Builds abiOf fg fg' (Plan.listB l >>= c) rs out :=
+  Builds.bind1F (Free.listB l) (Builds.listBG h fun r R hr _ => Builds.pure fun _ =>
+    reads_of (l := [r]) (vs := [vs.foldr (fun v c => .ctor 1 #[v, c] #[]) (.ctor 0 #[] #[])]) (by simp [hr])) hk
+
+theorem Builds.callKF {fg : Array Fun × Array Fun} {k : Kernel} {f : Array Val → Except String (Array Val)}
+    {as : Array Nat} {vs o rs out : Array Val} {c : Array Nat → Bld (Array Nat)} (hk : abiOf k.sym = some k)
+    (hf : k.run = .inl f) (ha : as.mapM (reg rs k.sym) = .ok vs) (ho : f vs = .ok o) (hs : o.size = k.res.size)
+    (hc : ∀ a R, a.toList.mapM (fun x => R[x]?) = some o.toList → Extends rs R →
+      ∃ fg', Builds abiOf fg fg' (c a) R out) :
+    ∃ fg', Builds abiOf fg fg' (Plan.callK k as >>= c) rs out := by
+  refine Builds.bindF (Free.callK k as) ?_ fun a xs h => hc a (rs ++ xs) (holds_of_reg (h "")) fun h => get_app h
+  rw [← bind_pure (Plan.callK k as)]
+  exact Builds.callK hk hf ha ho hs (Builds.pure (mapM_reg_range _ _))
+
+/-- **`csrB` builds `csr`**: `n` holds the row count `nv`, `g` the group count `gv`, `gid` and `x` the columns `gidc`,
+    `xc`. The kernel answers are the premises: the ones (`hone`), their `kscatter .add` by `gidc` (`hsc`), the
+    `colPrefix .add` of that (`hP`), `kasc` of `gidc` (`ha`) and the `kgather` of `xc` through its permutation (`hy`);
+    `kk` continues with registers holding the group ends `P` and `x` in group order `y`. -/
+theorem csrB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n g gid x : Nat} {nv gv : USize}
+    {gidc xc one sc P y p : Enc} {vs : List Enc} {kk : Nat × Nat → Bld (Array Nat)} {out : Array Val}
+    (hn : rs[n]? = some (.size nv)) (hg : rs[g]? = some (.size gv)) (hgid : rs[gid]? = some (Reg.put gidc))
+    (hx : rs[x]? = some (Reg.put xc))
+    (hone : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 1 = .ok one)
+    (hsc : kscatter .add nv gidc one gv 0 = .ok sc) (hP : colPrefix .add gv sc = .ok P)
+    (ha : kasc nv [(.atom .i64, gidc)] = .ok (vs, p)) (hy : kgather nv p nv xc = .ok y) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (R : Array Val) (a b : Nat), (∃ e, fg2.1 = fg.1 ++ e) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → [a, b].mapM (fun i => R[i]?) = some [Reg.put P, Reg.put y] →
+      ∃ fg', Builds abiOf fg2 fg' (kk (a, b)) R out) :
+    ∃ fg', Builds abiOf fg fg' (csrB n g gid x >>= kk) rs out := by
+  obtain ⟨z, r, hz, hk, hr1⟩ := colPrefix_kscan hP
+  unfold csrB
+  simp only [bind_assoc, pure_bind]
+  refine Builds.bind1F (Free.wordsB _ _) (wordsB_builds hn hone) fun w R1 hw hE1 => ?_
+  refine Builds.bind1F (Free.scatterB _ _ _ _ _ _) (scatterB_builds (hE1 hn) (hE1 hgid) hw (hE1 hg) (by rop) hsc)
+    fun s R2 hs hE2 => ?_
+  refine prefixB_builds (nv := gv) (av := sc) (z := z) (r := r) (by rop) (hE2 (hE1 hg)) hs hz hk ?_ hfo ?_
+  · exact fun h => kscan_last_isSome (w := 8) (by with_unfolding_all rfl) (by with_unfolding_all rfl) (Or.inl (by with_unfolding_all rfl)) hk h
+  intro fg2 q l ys he hf ho hq hl
+  rw [hr1] at hq
+  simp only [keyB, keysB, bind_assoc, pure_bind]
+  have E2 : Extends rs (R2 ++ ys) := fun h => get_app (hE2 (hE1 h))
+  have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+  refine Builds.litF fun c0 R3 h0 m3 => ?_
+  refine Builds.ctorBF (reads_of (l := []) (vs := []) rfl) (reads_of (l := [c0]) (vs := [Reg.put QAtomicType.i64])
+    (by simp [h0])) fun k R4 hk4 m4 => ?_
+  refine Builds.ctorBF (reads_of (l := [k, gid]) (vs := [.ctor 0 #[] #[Reg.put QAtomicType.i64], Reg.put gidc])
+    (by simp [hk4, m4 (m3 (E2 hgid))])) (reads_of (l := []) (vs := []) rfl) fun e R5 he5 m5 => ?_
+  refine Builds.listBF (l := [e]) (vs := [Val.ctor 0 #[.ctor 0 #[] #[Reg.put QAtomicType.i64], Reg.put gidc] #[]])
+    (by simp [he5]) fun lr R6 hl6 m6 => ?_
+  have hread : (Reg.get? (([Val.ctor 0 #[.ctor 0 #[] #[Reg.put QAtomicType.i64], Reg.put gidc] #[]]).foldr
+      (fun v c => Val.ctor 1 #[v, c] #[]) (Val.ctor 0 #[] #[])) : Option (List (AscKey × Enc))) =
+      some [(.atom .i64, gidc)] :=
+    (listGet?_foldr _).trans ((pairs_get [(.ctor 0 #[] #[Reg.put QAtomicType.i64], Reg.put gidc)]).trans
+      (by simp [ascGet?_atom, enc_get_put]))
+  generalize ([Val.ctor 0 #[.ctor 0 #[] #[Reg.put QAtomicType.i64], Reg.put gidc] #[]]).foldr
+    (fun v c => Val.ctor 1 #[v, c] #[]) (Val.ctor 0 #[] #[]) = F at hl6 hread
+  refine Builds.callKF (o := #[Reg.put vs, Reg.put p]) (by abiK) rfl
+    (reads_of (l := [n, lr]) (vs := [.size nv, F]) (by simp [hl6, m6 (m5 (m4 (m3 (E2 hn))))])) ?_ rfl
+    fun sp R7 hsp m7 => ?_
+  · simp [arg, hsz, hread, ha, Out.out]; rfl
+  obtain ⟨p1, hp1, hpR1⟩ := holds_at hsp (i := 1) rfl
+  rw [nth_of (by simpa using hp1), pure_bind]
+  refine Builds.bind1F (Free.gatherB _ _ _ _) (gatherB_builds1 (m7 (m6 (m5 (m4 (m3 (E2 hn)))))) hpR1
+    (m7 (m6 (m5 (m4 (m3 (E2 hn)))))) (m7 (m6 (m5 (m4 (m3 (E2 hx)))))) hy) fun gr R8 hg8 hE8 => ?_
+  refine hkk fg2 R8 q gr he hf ho (fun h => hE8 (m7 (m6 (m5 (m4 (m3 (E2 h))))))) ?_
+  simp [hE8 (m7 (m6 (m5 (m4 (m3 hq))))), hg8]
+
 /-- **`bitMatrixB` builds `bitMatrix`'s kernel chain**: `constB` of the word `w` (`hwc`), `kscan .mul` of `r` against it
     (`hm`), `kscan .add` of that against `c` (`ha`), the ones (`hone`) `kscatter`ed to `na · w` bits (`hsc`). `bitMatrix`
     reads the product as `colMap .first r r` with the post step `(.mul, w)`: the two answers are one column (`hmul`, the
@@ -209,5 +298,252 @@ theorem ofBitsB_builds (A C : Obj) {o' p' : Bool} {gv wv Mv nxv nyv : USize} {X 
   rfl
 
 
+
+/-! ### `compBitsB`'s plan function: its body, and that it grows -/
+
+/-- The body of `compBitsB`'s plan function (`funT [R, S]`). -/
+def compBitsBody (R S : TabB) : Bld TabB := do
+  let (kb, bR, bS, _) ← code2B R.n S.n R.val S.key
+  let (ka, aR, ra) ← codeB R.n R.key
+  let (kc, cS, rc) ← codeB S.n S.val
+  let (ends, idx) ← csrB R.n ka aR bR
+  let m ← bitMatrixB S.n kb kc bS cS
+  let o ← nth (← callK (kernel% Rel.Kernel.kbitrows) #[← lit (.bit false), kc, kb, R.n, ka, ends, idx, m]) 0 "kbitrows"
+  ofBitsB ka kc o R.n R.key ra S.n S.val rc
+
+theorem compBitsB_eq (R S : TabB) :
+    compBitsB R S = funT [R, S] (fun | [R, S] => compBitsBody R S | _ => throw "compBits: not two tables") := rfl
+
+theorem Grows.codeB (n : Nat) (cs : Cols) : Grows (Plan.codeB n cs) := by
+  unfold Plan.codeB
+  refine (Grows.ascSeenB _ _).bind fun q => ?_
+  obtain ⟨k, g, f, p⟩ := q
+  exact (Grows.scatterB _ _ _ _ _ _).bind fun _ => (Grows.gatherB _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.code2B (n₁ n₂ : Nat) (xs ys : Cols) : Grows (Plan.code2B n₁ n₂ xs ys) := by
+  unfold Plan.code2B
+  refine (Grows.catB _ _).bind fun q => ?_
+  obtain ⟨N, off⟩ := q
+  refine (Grows.concatB (Col.sizes xs + 1) _ _ _ _ _ _ (Nat.lt_succ_self _)).bind fun _ => (Grows.codeB _ _).bind fun q => ?_
+  obtain ⟨k, c, rep⟩ := q
+  exact Grows.posB.bind fun _ => (Grows.gatherB _ _ _ _).bind fun _ => (Grows.gatherB _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.csrB (n g gid x : Nat) : Grows (Plan.csrB n g gid x) := by
+  simp only [Plan.csrB, Plan.keyB, Plan.keysB, bind_assoc, pure_bind]
+  exact (Grows.wordsB _ _).bind fun _ => (Grows.scatterB _ _ _ _ _ _).bind fun _ => (Grows.prefixB _ _ _).bind fun _ =>
+    (Grows.lit _).bind fun _ => (Grows.ctorB _ _ _).bind fun _ => (Grows.ctorB _ _ _).bind fun _ =>
+    (Grows.listB _).bind fun _ => (Grows.callK _ _).bind fun _ => (Grows.nth _ _ _).bind fun _ =>
+    (Grows.gatherB _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.bitMatrixB (n na w r c : Nat) : Grows (Plan.bitMatrixB n na w r c) := by
+  unfold Plan.bitMatrixB
+  exact (Grows.u64B _).bind fun _ => (Grows.constB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+    (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.wordsB _ _).bind fun _ => (Grows.call1 _ _).bind fun _ =>
+    Grows.scatterB _ _ _ _ _ _
+
+theorem Grows.ofBitsB (g w o nx : Nat) (x : Cols) (ra ny : Nat) (y : Cols) (rc : Nat) :
+    Grows (Plan.ofBitsB g w o nx x ra ny y rc) := by
+  unfold Plan.ofBitsB
+  refine (Grows.call1 _ _).bind fun _ => (Grows.whereB _ _).bind fun q => ?_
+  obtain ⟨M, sel⟩ := q
+  exact (Grows.u64B _).bind fun _ => (Grows.constB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+    (Grows.gatherB _ _ _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.gatherB _ _ _ _).bind fun _ =>
+    (Grows.gatherCols _ _ _ _).bind fun _ => (Grows.gatherCols _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.compBitsBody (R S : TabB) : Grows (Plan.compBitsBody R S) := by
+  unfold Plan.compBitsBody
+  refine (Grows.code2B _ _ _ _).bind fun q => ?_
+  obtain ⟨kb, bR, bS, q4⟩ := q
+  refine (Grows.codeB _ _).bind fun q => ?_
+  obtain ⟨ka, aR, ra⟩ := q
+  refine (Grows.codeB _ _).bind fun q => ?_
+  obtain ⟨kc, cS, rc⟩ := q
+  refine (Grows.csrB _ _ _ _).bind fun q => ?_
+  obtain ⟨ends, idx⟩ := q
+  exact (Grows.bitMatrixB _ _ _ _ _).bind fun _ => (Grows.lit _).bind fun _ => (Grows.callK _ _).bind fun _ =>
+    (Grows.nth _ _ _).bind fun _ => Grows.ofBitsB _ _ _ _ _ _ _ _ _
+
+
+theorem Typed.codeB {m n : Nat} (cs : Cols) (hn : m ≤ n) (hcs : AllGe m (Cols.regs cs)) :
+    Typed m (fun r : Nat × Nat × Nat => m ≤ r.1 ∧ m ≤ r.2.1 ∧ m ≤ r.2.2) (Plan.codeB n cs) := by
+  unfold Plan.codeB
+  refine (Typed.ascSeenB cs hn hcs).bind fun q hq => ?_
+  obtain ⟨k, g, f, p⟩ := q
+  obtain ⟨hk, hg, hf, hp⟩ := hq
+  dsimp only at hk hg hf hp ⊢
+  exact Typed.scatterB.bind fun c hc => Typed.gatherB.bind fun d hd => Typed.pure ⟨hk, hc, hd⟩
+
+theorem Typed.code2B {m n₁ n₂ : Nat} (xs ys : Cols) (h1 : m ≤ n₁) (h2 : m ≤ n₂) (hxs : AllGe m (Cols.regs xs))
+    (hys : AllGe m (Cols.regs ys)) :
+    Typed m (fun r : Nat × Nat × Nat × Nat × Cols × Nat => m ≤ r.1 ∧ m ≤ r.2.1 ∧ m ≤ r.2.2.1 ∧ m ≤ r.2.2.2.1 ∧
+      AllGe m (Cols.regs r.2.2.2.2.1) ∧ m ≤ r.2.2.2.2.2) (Plan.code2B n₁ n₂ xs ys) := by
+  unfold Plan.code2B
+  refine (Typed.catB h1 h2).bind fun p hp => ?_
+  obtain ⟨N, off⟩ := p
+  obtain ⟨hN, hoff⟩ := hp
+  dsimp only at hN hoff ⊢
+  refine ((Typed.concatBOf (S := []) (Col.sizes xs + 1) N n₁ n₂ off xs ys (Nat.lt_succ_self _) (.inl hN) h1 h2 hxs
+    hys).mono fun r h a ha => (h a ha).resolve_right (by simp)).bind fun z hz => ?_
+  refine (Typed.codeB z hN hz).bind fun q hq => ?_
+  obtain ⟨k, c, rep⟩ := q
+  obtain ⟨hk, hc, hrep⟩ := hq
+  dsimp only at hk hc hrep ⊢
+  exact Typed.posB.bind fun pa hpa => Typed.gatherB.bind fun e1 he1 => Typed.gatherB.bind fun e2 he2 =>
+    Typed.pure ⟨hk, he1, he2, hN, hz, hrep⟩
+
+theorem Typed.csrB {m n g gid x : Nat} (hn : m ≤ n) (hg : m ≤ g) (hgid : m ≤ gid) :
+    Typed m (fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) (Plan.csrB n g gid x) := by
+  simp only [Plan.csrB, Plan.keyB, Plan.keysB, bind_assoc, pure_bind]
+  refine Typed.wordsB.bind fun w hw => Typed.scatterB.bind fun s hs => (Typed.prefixB hg hs).bind fun q hq => ?_
+  obtain ⟨pp, l⟩ := q
+  obtain ⟨hpp, hl⟩ := hq
+  dsimp only at hpp hl ⊢
+  refine (Typed.lit _).bind fun c hc => (Typed.ctorB (by simp) (by simp [hc]) _).bind fun k hk => ?_
+  refine (Typed.ctorB (by intro a ha; simp at ha; rcases ha with rfl | rfl <;> assumption) (by simp) _).bind
+    fun e he => ?_
+  refine (Typed.listB (by simp [AllGe, he])).bind fun lr hlr => ?_
+  refine (Typed.callK (by intro a ha; simp at ha; rcases ha with rfl | rfl <;> assumption)).bind fun sp hsp => ?_
+  refine (Typed.nth hsp _ _).bind fun p1 hp1 => Typed.gatherB.bind fun gr hgr => Typed.pure ⟨hpp, hgr⟩
+
+theorem Typed.bitMatrixB {m n na w r c : Nat} (hn : m ≤ n) (hna : m ≤ na) (hw : m ≤ w) (hr : m ≤ r) (hc : m ≤ c) :
+    Typed m (fun x => m ≤ x) (Plan.bitMatrixB n na w r c) := by
+  simp only [Plan.bitMatrixB, show Plan.wordOf = Plan.u64B from rfl]
+  refine Typed.u64B.bind fun wr hwr => Typed.constB.bind fun wc hwc => (Typed.mapB hn hr hwc).bind fun mr hmr =>
+    (Typed.mapB hn hmr hc).bind fun ar har => Typed.wordsB.bind fun on hon =>
+    (Typed.call1 (by intro a ha; simp at ha; rcases ha with rfl | rfl <;> assumption)).bind fun cr hcr =>
+    Typed.scatterB
+
+theorem Typed.ofBitsB {m g w o nx ny : Nat} {ra rc : Nat} {x y : Cols} (hg : m ≤ g) (hw : m ≤ w) (ho : m ≤ o) (hnx : m ≤ nx)
+    (hny : m ≤ ny) (hx : AllGe m (Cols.regs x)) (hy : AllGe m (Cols.regs y)) :
+    Typed m (fun U => AllGe m U.regs) (Plan.ofBitsB g w o nx x ra ny y rc) := by
+  simp only [Plan.ofBitsB, show Plan.wordOf = Plan.u64B from rfl]
+  refine (Typed.call1 (by intro a ha; simp at ha; rcases ha with rfl | rfl <;> assumption)).bind fun gw hgw => ?_
+  refine (Typed.whereB hgw ho).bind fun q hq => ?_
+  obtain ⟨M, sel⟩ := q
+  obtain ⟨hM, hsel⟩ := hq
+  dsimp only at hM hsel ⊢
+  refine Typed.u64B.bind fun wr hwr => Typed.constB.bind fun wc hwc => (Typed.mapB hM hsel hwc).bind fun dr hdr =>
+    Typed.gatherB.bind fun ir hir => (Typed.mapB hM hsel hwc).bind fun mr hmr => Typed.gatherB.bind fun jr hjr =>
+    (Typed.gatherCols hM nx x hnx hx).bind fun x' hx' => (Typed.gatherCols hM ny y hny hy).bind fun y' hy' =>
+    Typed.pure ?_
+  intro a ha
+  simp only [TabB.regs, Cols.regs_append, List.mem_cons, List.mem_append] at ha
+  rcases ha with rfl | ha | ha
+  · exact hM
+  · exact hx' a ha
+  · exact hy' a ha
+
+theorem Typed.compBitsBody {m : Nat} {R S : TabB} (hR : AllGe m R.regs) (hS : AllGe m S.regs) :
+    Typed m (fun U => AllGe m U.regs) (Plan.compBitsBody R S) := by
+  have hRn : m ≤ R.n := hR _ (by simp [TabB.regs])
+  have hSn : m ≤ S.n := hS _ (by simp [TabB.regs])
+  have hRk : AllGe m (Cols.regs R.key) := fun a ha => hR a (by simp [TabB.regs, Cols.regs_append, ha])
+  have hRv : AllGe m (Cols.regs R.val) := fun a ha => hR a (by simp [TabB.regs, Cols.regs_append, ha])
+  have hSk : AllGe m (Cols.regs S.key) := fun a ha => hS a (by simp [TabB.regs, Cols.regs_append, ha])
+  have hSv : AllGe m (Cols.regs S.val) := fun a ha => hS a (by simp [TabB.regs, Cols.regs_append, ha])
+  unfold Plan.compBitsBody
+  refine (Typed.code2B R.val S.key hRn hSn hRv hSk).bind fun q hq => ?_
+  obtain ⟨kb, bR, bS, NB, zb, rb⟩ := q
+  obtain ⟨hkb, hbR, hbS, hNB, hzb, hrb⟩ := hq
+  dsimp only at hkb hbR hbS hNB hzb hrb ⊢
+  refine (Typed.codeB R.key hRn hRk).bind fun q hq => ?_
+  obtain ⟨ka, aR, ra⟩ := q
+  obtain ⟨hka, haR, hra⟩ := hq
+  dsimp only at hka haR hra ⊢
+  refine (Typed.codeB S.val hSn hSv).bind fun q hq => ?_
+  obtain ⟨kc, cS, rc⟩ := q
+  obtain ⟨hkc, hcS, hrc⟩ := hq
+  dsimp only at hkc hcS hrc ⊢
+  refine (Typed.csrB hRn hka haR).bind fun q hq => ?_
+  obtain ⟨ends, idx⟩ := q
+  obtain ⟨hends, hidx⟩ := hq
+  dsimp only at hends hidx ⊢
+  refine (Typed.bitMatrixB hSn hkb hkc hbS hcS).bind fun mm hmm => (Typed.lit _).bind fun lb hlb =>
+    (Typed.callK (by intro a ha; simp at ha; rcases ha with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> assumption)).bind
+    fun os hos => (Typed.nth hos _ _).bind fun o ho => Typed.ofBitsB hka hkc ho hRn hSn hRk hSv
+
+
+/-! ### `funT` of a two-table body
+
+`selectB_builds` and `compB_builds` are one proof with the body and the output shape changed: `funT [R', S']` of a body
+`body R S` builds what the body builds at the two tables renamed to fresh registers (`tabsAt_two`), when the body grows
+and is typed (`Grows`, `Typed`), and the answer's columns have the shape `K`, `V`. -/
+
+theorem funT2_builds {A B C D E F : Obj} {R : Tab A B} {S : Tab C D} {T' : Tab E F} {R' S' : TabB} {K V : Cols}
+    {body : TabB → TabB → Bld TabB} {nm : String} {fg : Array Fun × Array Fun} {rs : Array Val}
+    {kk : TabB → Bld (Array Nat)} {out : Array Val} (hG : ∀ R S, Grows (body R S))
+    (hTy : ∀ {m : Nat} {R S : TabB}, AllGe m R.regs → AllGe m S.regs → Typed m (fun U => AllGe m U.regs) (body R S))
+    (hKc : ColsOf E K) (hVc : ColsOf F V)
+    (hR : R'.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)))
+    (hS : S'.regs.mapM (fun i => rs[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)))
+    (hfo : Ordered fg.1)
+    (hbody : ∀ {R1 S1 : TabB} {rs' : Array Val} {kk' : TabB → Bld (Array Nat)} {out' : Array Val},
+      Cols.shape R1.key = Cols.shape R'.key → Cols.shape R1.val = Cols.shape R'.val →
+      Cols.shape S1.key = Cols.shape S'.key → Cols.shape S1.val = Cols.shape S'.val →
+      R1.regs.mapM (fun i => rs'[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)) →
+      S1.regs.mapM (fun i => rs'[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)) →
+      (∀ (fg2 : Array Fun × Array Fun) (U : TabB) (Rn : Array Val), Extends rs' Rn → (∃ e, fg2.1 = fg.1 ++ e) →
+        GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape K → Cols.shape U.val = Cols.shape V →
+        U.regs.mapM (fun i => Rn[i]?) = some (.size T'.n :: (T'.key.regVals ++ T'.val.regVals)) →
+        ∃ fg', Builds abiOf fg2 fg' (kk' U) Rn out') →
+      ∃ fg', Builds abiOf fg fg' (body R1 S1 >>= kk') rs' out')
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape K → Cols.shape W.val = Cols.shape V →
+      W.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size T'.n :: (T'.key.regVals ++ T'.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (funT [R', S'] (fun | [R, S] => body R S | _ => throw nm) >>= kk) rs out := by
+  have hlR := mapM_get_length hR
+  have hlS := mapM_get_length hS
+  obtain ⟨R1, S1, hUs, hsR1, hsR2, hsS1, hsS2, hr1, hs1⟩ := tabsAt_two R' S' rs.size
+  let pv : List Val := (.size R.n :: (R.key.regVals ++ R.val.regVals)) ++ (.size S.n :: (S.key.regVals ++ S.val.regVals))
+  have hpl : (R'.regs ++ S'.regs).length = pv.length := by rw [List.length_append, hlR, hlS]; simp [pv]; omega
+  have hA : tabsRegs [R', S'] = Pure.pure (R'.regs ++ S'.regs) := by rw [tabsRegs_eq]; simp
+  have ha : ∀ who, (R'.regs ++ S'.regs).toArray.mapM (reg rs who) = .ok pv.toArray := fun _ =>
+    reads_of (by rw [List.mapM_append, hR, hS]; rfl)
+  have g : (R1.regs ++ S1.regs).mapM (fun i => (rs ++ pv.toArray)[i]?) = some pv := by
+    rw [hr1, hs1, List.range'_append_1, ← List.length_append, hpl]
+    exact mapM_range_append rs pv
+  obtain ⟨gR, gS⟩ := mapM_split (by rw [hr1, List.length_range', hlR]) g
+  let P : TabB → Prop := fun W => Cols.shape W.key = Cols.shape K ∧ Cols.shape W.val = Cols.shape V
+  let o : Array Val := (Val.size T'.n :: (T'.key.regVals ++ T'.val.regVals)).toArray
+  have hB : ∃ fg1, Builds abiOf fg fg1 (body R1 S1 >>= answerRegs P) (rs ++ pv.toArray) o := by
+    refine hbody hsR1 hsR2 hsS1 hsS2 gR gS ?_
+    intro fg4 U' ys3 he4 hf4 ho4 hs4 hs5 hs6 hr4
+    refine ⟨fg4, Builds.answerRegs (P := P) ⟨hs5, hs6⟩ (tabsRegs_eq _) fun _ => ?_⟩
+    simpa [o] using reads_of hr4
+  obtain ⟨fg1, ⟨a1, ha1⟩, hb1, hB1⟩ := hB
+  have hm1 : AllGe rs.size R1.regs := fun a ha => by rw [hr1, List.mem_range'_1] at ha; omega
+  have hm2 : AllGe rs.size S1.regs := fun a ha => by rw [hs1, List.mem_range'_1] at ha; omega
+  have hT : Typed rs.size (fun _ => True) (body R1 S1) := (hTy hm1 hm2).mono fun _ _ => trivial
+  obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg1) (k := (R'.regs ++ S'.regs).length) hT
+  refine funT_builds (P := P) (Us := [R1, S1]) (ctys := ctys) (o := o) hA ha hUs (hB1 #[]) hfo ?_
+    (fun U body xs R rtys h _ hR hy is => hcl U body _ R rtys h hR hy is) ?_
+  · intro Ts
+    rcases Ts with _ | ⟨T1, _ | ⟨T2, _ | ⟨T3, Ts⟩⟩⟩ <;> try exact Grows.throw _
+    exact hG T1 T2
+  · intro U' ⟨hsk, hsv⟩ fg2 Rr V ys he hf ho' hRr hV
+    obtain ⟨AU, YU, u1, -, -, u4⟩ := tab_spec U'
+    rw [tabsRegs_eq] at u1
+    obtain rfl := (pure_inj u1).symm
+    have hl : Rr.toList.length = ([U'].flatMap TabB.regs).length := by
+      have h1 := mapM_ok_size (hRr "")
+      have k1 := ColsOf.regs_length (ColsOf.shape E hKc hsk) T'.key
+      have k2 := ColsOf.regs_length (ColsOf.shape F hVc hsv) T'.val
+      simp only [o, List.size_toArray, List.length_cons, List.length_append] at h1
+      simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, TabB.regs, Cols.regs_append, List.length_cons,
+        List.length_append, Array.length_toList, k1, k2]
+      omega
+    obtain ⟨V', f1, f2, -, f4, f5⟩ := u4 Rr.toList [] (by simpa using hl)
+    rw [List.append_nil] at f1
+    obtain rfl : V = V' := by
+      have := pure_inj (hV.symm.trans f1); simp only [Prod.mk.injEq, List.cons.injEq, and_true] at this; exact this
+    rw [tabsRegs_eq] at f2
+    have f2' := pure_inj f2
+    have hread := holds_of_reg (hRr "")
+    simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil] at f2'
+    rw [← f2'] at hread
+    obtain ⟨e1', he1⟩ := he
+    exact hkk fg2 V ys ⟨a1 ++ e1', by rw [he1, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
+      (f4.trans hsk) (f5.trans hsv) (by simpa [o] using hread)
 
 end Rel.Lang.Plan
