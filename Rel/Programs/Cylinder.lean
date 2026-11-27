@@ -127,7 +127,40 @@ rel_program cylinder where
         = := ≜ gen
       gen F(est(R))
 
-    theorem cylLaws : qFold est(R) ⊑ paths est(R) := calc
+    /- The step of the fold: the `dom(π₂ head)` branch is `Q` (`gen`), the other starts from the singletons. `F(S)` keeps
+       the length of the accumulator, so the branch test and `π₁` pass through `(𝟙×F(S))`; `F(τ) ⊑ F(τ τ) F(est(S))`
+       as `est` of a singleton is its member; composition distributes over `∪`. -/
+
+    theorem compUnion(X : α ⟶ β, A : β ⟶ γ, B : β ⟶ γ) : X (A ∪ B) = (X A) ∪ (X B) by Rel.Lang.Tm.compUnion_den
+    theorem unionComp(A : α ⟶ β, B : α ⟶ β, X : β ⟶ γ) : (A ∪ B) X = (A X) ∪ (B X) by Rel.Lang.Tm.unionComp_den
+    theorem domLax(S : α ⟶ β) : (𝟙×F(S)) dom(π₂ head) ⊑ dom(π₂ head) (𝟙×F(S))
+    theorem diffLax(S : α ⟶ β) : (𝟙×F(S)) (𝟙 − dom(π₂ head)) ⊑ (𝟙 − dom(π₂ head)) (𝟙×F(S))
+    theorem pi1Lax(T : α ⟶ β) : (𝟙×T) π₁ ⊑ π₁ by Rel.Lang.Tm.pi1Lax_den
+    theorem tauEst(S : [α] ⟶ [α]) : F(τ) ⊑ F(τ τ) F(est(S)) by Rel.Lang.Tm.tauEst_den
+
+    theorem stepFuse if (𝟙×R) ⊑ cons R cons°, R R ⊑ R : (𝟙×F(est(R))) qStep ⊑ genStep F(est(R)) := calc
+      (𝟙×F(est(R))) qStep
+        := ≜ qStep
+      (𝟙×F(est(R))) ((dom(π₂ head)Q) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ)))
+        = := compUnion(𝟙×F(est(R)), dom(π₂ head)Q, (𝟙 − dom(π₂ head))π₁ F(τ))
+      ((𝟙×F(est(R))) (dom(π₂ head)Q)) ∪ ((𝟙×F(est(R))) ((𝟙 − dom(π₂ head))π₁ F(τ)))
+        ⊑ := domLax(est(R))
+      (dom(π₂ head)(𝟙×F(est(R)))Q) ∪ ((𝟙×F(est(R))) ((𝟙 − dom(π₂ head))π₁ F(τ)))
+        ⊑ := diffLax(est(R))
+      (dom(π₂ head)(𝟙×F(est(R)))Q) ∪ ((𝟙 − dom(π₂ head))(𝟙×F(est(R)))π₁ F(τ))
+        ⊑ := pi1Lax(F(est(R)))
+      (dom(π₂ head)(𝟙×F(est(R)))Q) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ))
+        ⊑ := fusion
+      (dom(π₂ head)gen F(est(R))) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ))
+        ⊑ := tauEst(R)
+      (dom(π₂ head)gen F(est(R))) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ τ) F(est(R)))
+        = := unionComp(dom(π₂ head)gen, (𝟙 − dom(π₂ head))π₁ F(τ τ), F(est(R)))
+      ((dom(π₂ head)gen) ∪ ((𝟙 − dom(π₂ head))π₁ F(τ τ))) F(est(R))
+        = := ≜ genStep
+      genStep F(est(R))
+
+    -- `qfoldLe`'s `if` is `stepFuse`, under the hypotheses `fusion` and `estConcat` take of `R`
+    theorem cylLaws if (𝟙×R) ⊑ cons R cons°, R R ⊑ R : qFold est(R) ⊑ paths est(R) := calc
       qFold est(R)
         ⊑ := qfoldLe
       genFold F(est(R)) est(R)

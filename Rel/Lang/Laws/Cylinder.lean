@@ -484,3 +484,100 @@ theorem Tm.qfoldLe_den {E X Y : Obj} {S₁ : Tm (.prod E (.arr X)) (.arr X)} {S�
     exact Core.Rel.le_iff.1 h (x, g) r ⟨(x, q), ⟨⟨x, rfl, rfl⟩, ⟨g, rfl, hT⟩⟩, hS⟩
 
 end Rel.Lang
+
+namespace Rel.Lang
+open scoped Rel.Core.Rel
+open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
+
+/-- Composition distributes over `∪` on the right: `X (A ∪ B) = X A ∪ X B`, as the program elaborates it. -/
+theorem Tm.compUnion_den {A B C : Obj} (ρ : Val) :
+    Tm.den ρ ((Tm.var 0 : Tm A B).comp ((Tm.var 1 : Tm B C).join (Tm.var 2 : Tm B C))) =
+    Tm.den ρ (((Tm.var 0 : Tm A B).comp (Tm.var 1 : Tm B C)).join ((Tm.var 0 : Tm A B).comp (Tm.var 2 : Tm B C))) := by
+  simp only [Tm.den]; exact Core.Rel.comp_union _ _ _
+
+/-- ... and on the left: `(A ∪ B) X = A X ∪ B X`. -/
+theorem Tm.unionComp_den {A B C : Obj} (ρ : Val) :
+    Tm.den ρ (((Tm.var 0 : Tm A B).join (Tm.var 1 : Tm A B)).comp (Tm.var 2 : Tm B C)) =
+    Tm.den ρ (((Tm.var 0 : Tm A B).comp (Tm.var 2 : Tm B C)).join ((Tm.var 1 : Tm A B).comp (Tm.var 2 : Tm B C))) := by
+  simp only [Tm.den]; exact Core.Rel.union_comp _ _ _
+
+/-- `(𝟙×T) π₁ ⊑ π₁`: `T` is only read, so the left component passes through. -/
+theorem Tm.pi1Lax_den {E A B : Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod E A) E).pair (Tm.outr.comp (Tm.var 0 : Tm A B))).comp
+        (Tm.outl : Tm (.prod E B) E)))
+      (Tm.den ρ (Tm.outl : Tm (.prod E A) E)) := by
+  refine Core.Rel.le_iff.2 fun ⟨e, a⟩ e' h => ?_
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id] at h ⊢
+  obtain ⟨⟨e1, b⟩, ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hb⟩⟩, rfl⟩ := h
+  rfl
+
+/-- `dom(π₂ head)` is the coreflexive of the pairs whose list is non-empty. -/
+theorem Tm.dom_head_iff {E A : Obj} (ρ : Val) (e : E.El) (xs : A.arr.El) (q : (Obj.prod E A.arr).El) :
+    (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A)).den ρ (e, xs) q ↔ q = (e, xs) ∧ 0 < xs.length := by
+  have hR : ∀ (q : (Obj.prod E A.arr).El) b, (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A).den ρ q b ↔
+      ∃ h : 0 < q.2.length, b = q.2[0]'h := fun q b => by
+    simp only [Tm.den, Core.Rel.comp, Core.Rel.graph]
+    exact ⟨fun ⟨_, h1, h2⟩ => h1 ▸ (Tm.at0_den ρ _ _).1 h2, fun h => ⟨_, rfl, (Tm.at0_den ρ _ _).2 h⟩⟩
+  simp only [Tm.dom_den, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip, hR]
+  constructor
+  · rintro ⟨rfl, b, ⟨h, rfl⟩, h', -⟩
+    exact ⟨rfl, h⟩
+  · rintro ⟨rfl, h⟩
+    exact ⟨rfl, _, ⟨h, rfl⟩, h, rfl⟩
+
+/-- `(𝟙×F(S)) dom(π₂ head) ⊑ dom(π₂ head) (𝟙×F(S))`: `F(S)` keeps the length, so a non-empty image has a non-empty
+    source. -/
+theorem Tm.domLax_den {E A B : Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
+        (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))).comp
+        (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E B.arr) B))))
+      (Tm.den ρ ((Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A)).comp
+        ((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
+          (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))))) := by
+  refine Core.Rel.le_iff.2 fun p q h => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id] at h ⊢
+  obtain ⟨⟨e1, ys⟩, ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hm⟩⟩, hd⟩ := h
+  obtain ⟨rfl, hl⟩ := (Tm.dom_head_iff ρ _ _ _).1 hd
+  have hlen := ((mapDen_iff _ _ _).1 hm).1
+  exact ⟨p, (Tm.dom_head_iff ρ p.1 p.2 _).2 ⟨rfl, by dsimp only at hlen hl ⊢; omega⟩, ⟨_, rfl, rfl⟩, ⟨_, rfl, hm⟩⟩
+
+/-- `(𝟙×F(S)) (𝟙 − dom(π₂ head)) ⊑ (𝟙 − dom(π₂ head)) (𝟙×F(S))`: an empty image has an empty source. -/
+theorem Tm.diffLax_den {E A B : Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ (((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
+        (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))).comp
+        (Tm.diff Tm.id (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E B.arr) B)))))
+      (Tm.den ρ ((Tm.diff Tm.id (Tm.dom (Tm.outr.comp Tm.at0 : Tm (.prod E A.arr) A))).comp
+        ((Tm.outl.comp Tm.id : Tm (.prod E A.arr) E).pair
+          (Tm.outr.comp ((Tm.prim mapRow : Tm A.arr B.arr).arg (Tm.var 0 : Tm A B)))))) := by
+  refine Core.Rel.le_iff.2 fun p q h => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id,
+    Core.Rel.diff_apply] at h ⊢
+  obtain ⟨⟨e1, ys⟩, ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, hm⟩⟩, hq, hd⟩ := h
+  have hlen := ((mapDen_iff _ _ _).1 hm).1
+  subst hq
+  exact ⟨p, ⟨rfl, fun h => hd ((Tm.dom_head_iff ρ _ _ _).2
+    ⟨rfl, by have := ((Tm.dom_head_iff ρ _ _ _).1 h).2; dsimp only at hlen this ⊢; omega⟩)⟩, ⟨_, rfl, rfl⟩, ⟨_, rfl, hm⟩⟩
+
+/-- `F(τ) ⊑ F(τ τ) F(est(S))`: `est(S)` of a one-element list is its element. -/
+theorem Tm.tauEst_den {A : Obj} (ρ : Val) :
+    Core.Rel.le
+      (Tm.den ρ ((Tm.prim mapRow : Tm A.arr A.arr.arr).arg (Tm.prim (rowOf "τ") : Tm A A.arr)))
+      (Tm.den ρ (((Tm.prim mapRow : Tm A.arr A.arr.arr.arr).arg
+          ((Tm.prim (rowOf "τ") : Tm A A.arr).comp (Tm.prim (rowOf "τ") : Tm A.arr A.arr.arr))).comp
+        ((Tm.prim mapRow : Tm A.arr.arr.arr A.arr.arr).arg
+          (Tm.est (pairTest (Tm.var 0 : Tm A.arr A.arr)))))) := by
+  refine Core.Rel.le_iff.2 fun xs ys h => ?_
+  simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp, Tm.est_den, Prim.den_tau, Core.Rel.graph] at h ⊢
+  obtain ⟨hl, hT⟩ := (mapDen_iff _ _ _).1 h
+  refine ⟨xs.map fun a => [[a]], (mapDen_iff _ _ _).2 ⟨by simp, fun t ht ht' => ⟨[xs[t]'ht], rfl, by simp⟩⟩,
+    (mapDen_iff _ _ _).2 ⟨by simp [hl], fun t ht ht' => ?_⟩⟩
+  have hy := hT t (by omega) (by omega)
+  refine (estDen_iff _ _ _).2 ⟨by simp [hy], ?_⟩
+  rintro ⟨c, hc, hne, -⟩
+  simp at hc hy
+  exact hne (by simp [hc, hy])
+
+end Rel.Lang
