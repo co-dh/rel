@@ -269,4 +269,131 @@ theorem funC2_builds {abi : String → Option Kernel} {fg : Array Fun × Array F
     exact hk fg2 d' vn ys ⟨a1 ++ e2, by rw [he2, ha1, Array.append_assoc]⟩ ⟨b1, by rw [hf, hb1]⟩ ho'
       (hd'.trans hdc) hread
 
+/-! ### `Typed`: `n` is read only as `kscan`'s declared row count, so a captured register is typed -/
+
+/-- `Plan.callK` whose every argument below `m` the kernel's declaration types (`Typed.call1Of` for a multi-result kernel). -/
+theorem Typed.callKOf {m : Nat} {k : Kernel} {args : Array Nat}
+    (h : ∀ fs, ∀ a ∈ args, a < m → ∃ t, useTy fs a (.call k.sym args) = some t) :
+    Typed m (fun r => ∀ a ∈ r, m ≤ a) (Plan.callK k args) :=
+  Typed.emit (fun fs a ha hlt => h fs a (by simpa [reads] using ha) hlt) _
+
+/-- `kscan` declares all nine arguments, so every register of a nine-argument call is typed. -/
+theorem useTy_kscan (fs : Array Fun) (args : Array Nat) (hl : args.size = 9) (a : Nat) (ha : a ∈ args) :
+    ∃ t, useTy fs a (.call (kernel% Rel.Kernel.kscan).sym args) = some t := by
+  obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := args.toList) (by simpa using ha)
+  simp only [Array.length_toList, hl] at hjl
+  simp only [useTy, hj, Option.bind_some]
+  rcases j with _ | _ | _ | _ | _ | _ | _ | _ | _ | j <;> first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
+
+/-- `Typed.catColB` with no bound on the row count `n`: it is only `kscan`'s declared `n`, typed wherever it lives. -/
+theorem Typed.catColBOf {m : Nat} {t : QAtomicType} {n n₁ n₂ x y : Nat} (h1 : m ≤ n₁) (h2 : m ≤ n₂)
+    (hx : m ≤ x) (hy : m ≤ y) : Typed m (fun r => m ≤ r) (Plan.catColB t n n₁ n₂ x y) := by
+  unfold Plan.catColB
+  refine (Typed.lit _).bind fun c0 h0 => (Typed.lit _).bind fun c1 h1' => (Typed.lit _).bind fun c2 h2' =>
+    (Typed.lit _).bind fun c3 h3 => (Typed.ctorB (by simp) (by simp) 0).bind fun g hg =>
+    (Typed.srcB h1 hx).bind fun x' hx' => (Typed.srcB h2 hy).bind fun y' hy' =>
+    (Typed.listB (rs := [x', y']) (by intro a ha; simp at ha; omega)).bind fun l hl =>
+    (Typed.lit _).bind fun c4 h4 => (Typed.lit _).bind fun c5 h5 =>
+    (Typed.callKOf fun fs a ha _ => useTy_kscan fs _ rfl a ha).bind fun o ho => Typed.nth ho 0 "kscan"
+
+theorem Typed.guard {m : Nat} {c : Nat} {msg : String} {as : Array Nat} (hc : m ≤ c) (has : ∀ a ∈ as, m ≤ a) :
+    Typed m (fun _ : Unit => True) (Plan.guard c msg as) := by
+  unfold Plan.guard discard
+  exact (Typed.ite hc (Typed.pure fun _ h => by simp at h)
+    ((Typed.emitGe (i := .fail msg as) (by simpa [reads] using has) 0).bind fun _ _ => Typed.pure fun _ h => by simp at h)).bind
+    fun _ _ => Typed.pure trivial
+
+/-- `concatColB` of columns of at most `k` nodes, given `concatB` of fewer than `k`: the row count `n` is a register above
+    `m` or captured (of `S`), every register it answers is too. -/
+theorem Typed.concatColB_of {m : Nat} {S : List Nat} {k : Nat}
+    (ih : ∀ n n₁ n₂ off xs ys, Col.sizes xs < k → (m ≤ n ∨ n ∈ S) → m ≤ n₁ → m ≤ n₂ → AllGe m (Cols.regs xs) →
+      AllGe m (Cols.regs ys) → Typed m (fun r => ∀ a ∈ Cols.regs r, m ≤ a ∨ a ∈ S) (Plan.concatB n n₁ n₂ off xs ys)) :
+    ∀ (n n₁ n₂ off : Nat) (x y : Col), x.size ≤ k → (m ≤ n ∨ n ∈ S) → m ≤ n₁ → m ≤ n₂ → AllGe m (Col.regs x) →
+      AllGe m (Col.regs y) → Typed m (fun c => ∀ a ∈ Col.regs c, m ≤ a ∨ a ∈ S) (Plan.concatColB n n₁ n₂ off x y) := by
+  intro n n₁ n₂ off x y hk hn h1 h2 hx hy
+  rcases x with ⟨p, t, e⟩ | ⟨p, m₁, lo₁, hi₁, f₁⟩ | ⟨p, tg₁, x₁, y₁⟩ <;>
+    rcases y with ⟨q, u, e'⟩ | ⟨q, m₂, lo₂, hi₂, f₂⟩ | ⟨q, tg₂, x₂, y₂⟩ <;> simp only [Plan.concatColB]
+  · exact (Typed.catColBOf h1 h2 (hx _ (by simp [Col.regs])) (hy _ (by simp [Col.regs]))).bind fun r hr =>
+      Typed.pure fun a ha => by simp [Col.regs] at ha; exact .inl (ha ▸ hr)
+  · first | exact Typed.throw _ | (simp only [Plan.sumB]; exact Typed.throw _)
+  · first | exact Typed.throw _ | (simp only [Plan.sumB]; exact Typed.throw _)
+  · first | exact Typed.throw _ | (simp only [Plan.sumB]; exact Typed.throw _)
+  · have hm₁ : m ≤ m₁ := hx _ (by simp [Col.regs])
+    have hm₂ : m ≤ m₂ := hy _ (by simp [Col.regs])
+    have hl₁ : m ≤ lo₁ := hx _ (by simp [Col.regs])
+    have hl₂ : m ≤ lo₂ := hy _ (by simp [Col.regs])
+    have hh₁ : m ≤ hi₁ := hx _ (by simp [Col.regs])
+    have hh₂ : m ≤ hi₂ := hy _ (by simp [Col.regs])
+    have hf₁ : AllGe m (Cols.regs f₁) := fun a ha => hx a (by simp [Col.regs, ha])
+    have hf₂ : AllGe m (Cols.regs f₂) := fun a ha => hy a (by simp [Col.regs, ha])
+    simp only [Col.size] at hk
+    refine (Typed.catB hm₁ hm₂).bind fun ⟨m', o⟩ ho => (Typed.lit _).bind fun l hl =>
+      (Typed.call1 (by simp; omega)).bind fun c hc => (Typed.guard hc (by simp; omega)).bind fun _ _ => ?_
+    dsimp only
+    have hb : ∀ x₁ x₂, m ≤ x₁ → m ≤ x₂ → Typed m (fun r => m ≤ r)
+        (do let s ← Plan.shiftB n₂ x₂ m₁; Plan.catColB QAtomicType.i64 n n₁ n₂ x₁ s) :=
+      fun x₁ x₂ a b => (Typed.shiftB h2 b).bind fun s hs => Typed.catColBOf h1 h2 a hs
+    refine (hb lo₁ lo₂ hl₁ hl₂).bind fun lo' hlo' => (hb hi₁ hi₂ hh₁ hh₂).bind fun hi' hhi' =>
+      (ih m' m₁ m₂ o f₁ f₂ (by omega) (.inl ho.1) hm₁ hm₂ hf₁ hf₂).bind fun f' hf' => Typed.pure fun a ha => ?_
+    simp only [Col.regs, List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at ha
+    rcases ha with (rfl | rfl | rfl) | ha
+    · exact .inl ho.1
+    · exact .inl hlo'
+    · exact .inl hhi'
+    · exact hf' a ha
+  · first | exact Typed.throw _ | (simp only [Plan.sumB]; exact Typed.throw _)
+  · first | exact Typed.throw _ | (simp only [Plan.sumB]; exact Typed.throw _)
+  · first | exact Typed.throw _ | (simp only [Plan.sumB]; exact Typed.throw _)
+  · have ht₁ : m ≤ tg₁ := hx _ (by simp [Col.regs])
+    have ht₂ : m ≤ tg₂ := hy _ (by simp [Col.regs])
+    have hx₁ : AllGe m (Cols.regs x₁) := fun a ha => hx a (by simp [Col.regs, ha])
+    have hy₁ : AllGe m (Cols.regs y₁) := fun a ha => hx a (by simp [Col.regs, ha])
+    have hx₂ : AllGe m (Cols.regs x₂) := fun a ha => hy a (by simp [Col.regs, ha])
+    have hy₂ : AllGe m (Cols.regs y₂) := fun a ha => hy a (by simp [Col.regs, ha])
+    simp only [Col.size] at hk
+    refine (Typed.catColBOf h1 h2 ht₁ ht₂).bind fun tg ht => (ih n n₁ n₂ off x₁ x₂ (by omega) hn h1 h2 hx₁ hx₂).bind
+      fun X hX => (ih n n₁ n₂ off y₁ y₂ (by omega) hn h1 h2 hy₁ hy₂).bind fun Y hY => Typed.pure fun a ha => ?_
+    simp only [Col.regs, List.mem_append, List.mem_singleton] at ha
+    rcases ha with (rfl | ha) | ha
+    · exact .inl ht
+    · exact hX a ha
+    · exact hY a ha
+
+/-- **`concatB` types**: the row count `n` a register above `m` or captured (of `S`), the answer's registers are too
+    (`Typed.gatherColsOf`'s shape; the pair counts `n₁ n₂` and `off` are only passed on). -/
+theorem Typed.concatBOf {m : Nat} {S : List Nat} : ∀ (k n n₁ n₂ off : Nat) (xs ys : Cols), Col.sizes xs < k →
+    (m ≤ n ∨ n ∈ S) → m ≤ n₁ → m ≤ n₂ → AllGe m (Cols.regs xs) → AllGe m (Cols.regs ys) →
+    Typed m (fun r => ∀ a ∈ Cols.regs r, m ≤ a ∨ a ∈ S) (Plan.concatB n n₁ n₂ off xs ys)
+  | 0, _, _, _, _, _, _, h, _, _, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | k + 1, n, n₁, n₂, off, xs, ys, h, hn, h1, h2, hxs, hys => by
+    unfold Plan.concatB
+    refine (Typed.mapM fun ⟨⟨x, y⟩, hxy⟩ _ => ?_).mono fun bs hb => (Cols.regs_all bs).2 hb
+    have hm := Col.size_le_of_mem (List.of_mem_zip hxy).1
+    have hxc : AllGe m (Col.regs x) := ((Cols.regs_all xs).1 hxs) x (List.of_mem_zip hxy).1
+    have hyc : AllGe m (Col.regs y) := ((Cols.regs_all ys).1 hys) y (List.of_mem_zip hxy).2
+    refine Typed.funCOf (S := S) (fun p hp => ?_) fun zs hzs => ?_
+    · simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hp
+      rcases hp with rfl | rfl
+      · exact ⟨h1, hxc⟩
+      · exact ⟨h2, hyc⟩
+    · rcases zs with _ | ⟨⟨n₁', x'⟩, _ | ⟨⟨n₂', y'⟩, _ | ⟨_, _⟩⟩⟩
+      · exact Typed.throw _
+      · exact Typed.throw _
+      · have g1 := hzs (n₁', x') (by simp)
+        have g2 := hzs (n₂', y') (by simp)
+        refine Typed.dite (fun hle => ?_) fun _ => Typed.throw _
+        exact (Typed.concatColB_of (fun _ _ _ _ _ _ h' => Typed.concatBOf k _ _ _ _ _ _ h') n n₁' n₂' off x' y'
+          (by omega) hn g1.1 g2.1 g1.2 g2.2).bind fun c hc => Typed.pure ⟨hn, hc⟩
+      · exact Typed.throw _
+
+/-- `concatB` concatenates each column pair on its own (`attach` serves only its termination): a product side's columns
+    are its two sides' concatenated one after the other. -/
+theorem concatB_append (n n₁ n₂ off : Nat) {xs xs' ys ys' : Cols} (hl : xs.length = ys.length) :
+    Plan.concatB n n₁ n₂ off (xs ++ xs') (ys ++ ys') =
+      (do let a ← Plan.concatB n n₁ n₂ off xs ys; let b ← Plan.concatB n n₁ n₂ off xs' ys'; Pure.pure (a ++ b)) := by
+  unfold Plan.concatB
+  rw [List.mapM_subtype (g := fun c => _) (fun _ _ => rfl), List.mapM_subtype (g := fun c => _) (fun _ _ => rfl),
+    List.mapM_subtype (g := fun c => _) (fun _ _ => rfl), List.unattach_attach, List.unattach_attach,
+    List.unattach_attach, List.zip_append hl, List.mapM_append]
+
 end Rel.Lang.Plan
