@@ -1707,12 +1707,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   不再走 freyd `rel_aop`。freyd 分支 `keep-prefixaop`（`ff0a26b` 桥移植、`39433b4` WIP）作废，只作参考：它选的 AOP 引理
   `relCata_UP` + `cata_square_junc_iff`、`prefix_cancel` `prefix_cat` `prefix_cata` 是 rel 里要证的同名事实；
   worktree `freyd/.claude/worktrees/prefixaop` 解锁删除。
-- ⬜ 9.6 rel_program 的 calc 改成 Agda 风格（owner 2026-11-26），样板 `~/repo/aopa/Examples/MSS/Derivation.agda` 160–232：
-  (a) 推导即程序：`mss-der : Σ prog (spec ≐ prog)`，程序取自推导的末行（`mss = proj₁ mss-der`），不另写一个再证相等——与
-  P9「没有证明写不出程序」同一件事；(b) 每一行写出完整的式子，理由夹在两行之间 `≐⟨ law(args) ⟩`，`begin … ∎`，不用
-  `_ = x := …`；(c) 只服务这条推导的引理写在它的 `where` 里（`max-sum-prefix`、`lemma1`、`lemma2`），不提到程序顶层。
-  改 `rel_program` 的语法与 rel 里检查 calc 的 elaborator，Mss、Prelude、Prefix 的 calc 全部转写。在 9.1 设计稿里一起定。
-- ✅ 9.7 决定（owner 2026-11-26，经 freyd-22 转达）：证明搬进 rel，rel 用自己的公理把 law 证掉，freyd `relaop/` 整个删掉，
+- ✅ 9.6 rel_program 的 calc 格式（owner 2026-11-27 定）：保持现状——每行一个完整式子，理由单独一行 `:= law(args)`；
+  Agda 风格的「程序取自推导末行」与「引理进 `where`」不做（已完成部分：3a95cf2 c92b80b ef5350e 11f8088 736583a）。
   freyd 与 rel 互不依赖。原状：`freyd/relaop → require rel`，`rel_aop` 在 freyd 里证 rel 程序的定理，rel 的 `lake build`
   对一条错的 `theorem zeroEntire` 照样绿，下游坏了 rel 看不见（`Op.dom/nil/…` 改成 `prims` row 后 relaop 至少从 11-23
   红到 9.4 才发现，并挡住 freyd 的 index 刷新与 note gate）。relaop 不再修。
