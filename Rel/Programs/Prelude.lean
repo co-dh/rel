@@ -7,6 +7,7 @@ public import Rel.Lang.Laws.Ecomp
 public import Rel.Lang.Laws.EstMap
 public import Rel.Lang.Laws.FoldUP
 public import Rel.Lang.Laws.PermConv
+public import Rel.Lang.Laws.StarLinear
 @[expose] public section
 /-! # The prelude: definitions every program sees (`rel_program … after prelude`), elaborated before it. A program
     that defines one of these names again gets "already defined … in the prelude". -/
@@ -94,7 +95,7 @@ rel_program prelude where
     theorem Ecomp(R : α ⟶ β, S : β ⟶ γ) if dom(E(R)) = 𝟙 : E(R S) = E(R)E(S) by Rel.Lang.Tm.Ecomp_den
     theorem estMap(f : α ⟶ β, R : β ⟶ β) if f°f ⊑ 𝟙 : (𝟙÷∋)E(f)est(R) = f by Rel.Lang.Tm.estMap_den
     theorem permConv : perm° = perm by Rel.Lang.Tm.permConv_den
-    theorem starLinear(R : α ⟶ α, S : α ⟶ β) : μX : S ∪ (R X) = star(R) S  -- a linear recursion is star(R) on S
+    theorem starLinear(R : α ⟶ α, S : α ⟶ β) : μX : S ∪ (R X) = star(R) S by Rel.Lang.Tm.starLinear_den  -- a linear recursion is star(R) on S
     theorem foldUP(e : 1 ⟶ β, S : β×α ⟶ β, X : [α] ⟶ β) if X = nil°e ∪ (snoc°(X×𝟙)S) : X = ⦇[e, S]⦈ by Rel.Lang.Tm.foldUP_den  -- B&dM (5.12): the left fold's universal property
     theorem foldrUP(e : 1 ⟶ β, S : α×β ⟶ β, X : [α] ⟶ β) if X = nil°e ∪ (cons°(𝟙×X)S) : X = ⦇[e, S]⦈ʳ by Rel.Lang.Tm.foldrUP_den  -- B&dM (5.12): the right fold's universal property
 

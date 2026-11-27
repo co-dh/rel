@@ -1,6 +1,7 @@
 module
 
 public import Rel.Lang.PreludeRows
+public import Rel.Lang.Laws.StarLinear
 public import Rel.Programs.Prelude
 
 @[expose] public section
@@ -16,18 +17,6 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 /-- `star(P)` at `B ⟶ B`: `μX : 𝟙 ∪ (P X)`, `X` the variable `k`. -/
 def Tm.starDef {B : Obj} (k : Nat) (what : String) (cap : Nat) (P : Tm B B) : Tm B B :=
   .mu k what cap (.join .id (.comp P (.var k)))
-
-theorem Prim.den_star {B : Obj} (T : Core.Rel (Obj.El B) (Obj.El B)) :
-    Prim.den (rowOf "star") B B [⟨B, B, T⟩] = Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X := by
-  have hs : (rowOf "star").sig = ([((.var {} "B", .var {} "B"), some false)], .var {} "B", .var {} "B") := rfl
-  have ho : (rowOf "star").objs B B [(B, B)] = some [B] := by
-    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
-      List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == (rowOf "star").sym) = some ⟨RowCode.star, fun σ =>
-      Sem.one (X := σ₁ σ) (Y := σ₁ σ) fun T => Core.Rel.mu fun X => 𝟙 _ ∪ T ≫ X⟩ := rfl
-  unfold Prim.den; simp only [List.map_cons, List.map_nil]
-  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
-  simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
 /-- **The definition of `star(P)` means the row**: the least fixed point of `X ↦ 𝟙 ∪ P X`, `P` not mentioning `X`. -/
 theorem Tm.starDef_row (ρ : Val) {B : Obj} (k : Nat) (what : String) (cap : Nat) (P : Tm B B)
