@@ -314,5 +314,144 @@ theorem repath_eq : ∀ (A : Obj) {pre : String} {cs : Cols}, ColsOf A cs →
       refine ⟨[.sum pre tag x' y'], by simp [repath, hband, ex, ey],
         by simp only [ColsOf, hband]; exact ⟨pre, tag, x', y', rfl, gx, gy⟩, by simp [Cols.regs, Col.regs, rx, ry]⟩
 
+/-! ### `Grows`, `Typed` -/
+
+theorem Grows.noneAtomB (z : Nat) (t : QAtomicType) (p : String) : Grows (Plan.noneAtomB z t p) := by
+  unfold Plan.noneAtomB
+  exact (Grows.wordsB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.noneB (z : Nat) (A : Obj) : ∀ p, Grows (Plan.noneB z A p) := by
+  induction A with
+  | atom t => intro p; unfold Plan.noneB; exact Grows.noneAtomB _ _ _
+  | prod a b iha ihb =>
+    intro p; unfold Plan.noneB
+    exact (iha _).bind fun _ => (ihb _).bind fun _ => Grows.pure _
+  | arr b ih =>
+    intro p; unfold Plan.noneB
+    exact (Grows.wordsB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+      (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (ih _).bind fun _ => Grows.pure _
+  | one => intro p; unfold Plan.noneB; exact Grows.pure _
+  | sum a b iha ihb =>
+    intro p; unfold Plan.noneB
+    split
+    · exact Grows.noneAtomB _ _ _
+    · exact (Grows.wordsB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+        (iha _).bind fun _ => (ihb _).bind fun _ => Grows.pure _
+
+theorem Grows.zeroB (A B : Obj) : Grows (Plan.zeroB A B) := by
+  unfold Plan.zeroB
+  exact (Grows.lit _).bind fun _ => (Grows.noneB _ _ _).bind fun _ => (Grows.noneB _ _ _).bind fun _ => Grows.pure _
+
+
+theorem Typed.noneAtomB {m z : Nat} {t : QAtomicType} {p : String} (hz : m ≤ z) :
+    Typed m (fun r => AllGe m (Cols.regs r)) (Plan.noneAtomB z t p) := by
+  unfold Plan.noneAtomB
+  exact (Typed.wordsB hz 0).bind fun c hc => (Typed.mapB hz hc hc).bind fun e he =>
+    Typed.pure fun a ha => by simp [Cols.regs, Col.regs] at ha; omega
+
+theorem Typed.noneB {m z : Nat} (hz : m ≤ z) (A : Obj) :
+    ∀ p, Typed m (fun r => AllGe m (Cols.regs r)) (Plan.noneB z A p) := by
+  induction A with
+  | atom t => intro p; unfold Plan.noneB; exact Typed.noneAtomB hz
+  | prod a b iha ihb =>
+    intro p; unfold Plan.noneB
+    exact (iha _).bind fun x hx => (ihb _).bind fun y hy => Typed.pure fun a ha => by
+      rw [Cols.regs_append] at ha; rcases List.mem_append.1 ha with ha | ha <;> first | exact hx a ha | exact hy a ha
+  | arr b ih =>
+    intro p; unfold Plan.noneB
+    exact (Typed.wordsB hz 0).bind fun c hc => (Typed.mapB hz hc hc).bind fun lo hlo =>
+      (Typed.mapB hz hc hc).bind fun hi hhi => (ih _).bind fun f hf => Typed.pure fun a ha => by
+        simp only [Cols.regs, Col.regs, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false] at ha
+        rcases ha with (rfl | rfl | rfl) | ha <;> first | exact hz | exact hlo | exact hhi | exact hf _ ha
+  | one => intro p; unfold Plan.noneB; exact Typed.pure fun a ha => by simp [Cols.regs] at ha
+  | sum a b iha ihb =>
+    intro p; unfold Plan.noneB
+    split
+    · exact Typed.noneAtomB hz
+    · exact (Typed.wordsB hz 0).bind fun c hc => (Typed.mapB hz hc hc).bind fun tag htag =>
+        (iha _).bind fun x hx => (ihb _).bind fun y hy => Typed.pure fun a ha => by
+          simp only [Cols.regs, Col.regs, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false,
+            List.append_nil] at ha
+          rcases ha with (rfl | ha) | ha <;> first | exact htag | exact hx _ ha | exact hy _ ha
+
+theorem Typed.zeroB {m : Nat} (A B : Obj) :
+    Typed m (fun T : TabB => AllGe m T.regs) (Plan.zeroB A B) := by
+  unfold Plan.zeroB
+  exact (Typed.lit _).bind fun z hz => (Typed.noneB hz A "").bind fun x hx =>
+    (Typed.noneB hz B "").bind fun y hy => Typed.pure fun a ha => by
+      simp only [TabB.regs, List.mem_cons, List.mem_append, Cols.regs_append] at ha
+      rcases ha with rfl | ha | ha <;> first | exact hz | exact hx _ ha | exact hy _ ha
+
+/-- A sub-list of the columns holds registers among theirs. -/
+theorem AllGe.sub {m : Nat} {cs ds : Cols} (h : AllGe m (Cols.regs cs)) (hs : ∀ c ∈ ds, c ∈ cs) :
+    AllGe m (Cols.regs ds) := (Cols.regs_all ds).2 fun c hc => (Cols.regs_all cs).1 h c (hs c hc)
+
+theorem Typed.repath {m : Nat} (A : Obj) :
+    ∀ (pre : String) (cs : Cols), AllGe m (Cols.regs cs) →
+      Typed m (fun r => AllGe m (Cols.regs r)) (Plan.repath A pre cs) := by
+  induction A with
+  | atom t =>
+    intro pre cs hcs
+    rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;> simp only [Plan.repath] <;>
+      first | exact Typed.throw _ | exact Typed.pure fun a ha => hcs a (by simpa [Cols.regs, Col.regs] using ha)
+  | prod a b iha ihb =>
+    intro pre cs hcs; simp only [Plan.repath]
+    exact (iha _ _ (hcs.sub fun c hc => List.mem_of_mem_take hc)).bind fun x hx =>
+      (ihb _ _ (hcs.sub fun c hc => List.mem_of_mem_drop hc)).bind fun y hy => Typed.pure fun r hr => by
+        rw [Cols.regs_append] at hr
+        rcases List.mem_append.1 hr with hr | hr <;> first | exact hx r hr | exact hy r hr
+  | arr b ih =>
+    intro pre cs hcs
+    rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;> simp only [Plan.repath] <;>
+      first | exact Typed.throw _ | skip
+    have hf : AllGe m (Cols.regs f) := fun a ha => hcs a (by simp [Cols.regs, Col.regs, ha])
+    exact (ih _ _ hf).bind fun f' hf' => Typed.pure fun a ha => by
+      simp only [Cols.regs, Col.regs, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false] at ha
+      rcases ha with (rfl | rfl | rfl) | ha <;>
+        first | exact hf' _ ha | exact hcs _ (by simp [Cols.regs, Col.regs])
+  | one =>
+    intro pre cs hcs
+    rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;> simp only [Plan.repath] <;>
+      first | exact Typed.throw _ | exact Typed.pure fun a ha => by simp [Cols.regs] at ha
+  | sum a b iha ihb =>
+    intro pre cs hcs
+    rcases hb : Obj.band a b with _ | t
+    · rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;>
+        simp only [Plan.repath, hb] <;> first | exact Typed.throw _ | skip
+      have hx : AllGe m (Cols.regs x) := fun a ha => hcs a (by simp [Cols.regs, Col.regs, ha])
+      have hy : AllGe m (Cols.regs y) := fun a ha => hcs a (by simp [Cols.regs, Col.regs, ha])
+      exact (iha _ _ hx).bind fun x' hx' => (ihb _ _ hy).bind fun y' hy' => Typed.pure fun a ha => by
+        simp only [Cols.regs, Col.regs, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false,
+          List.append_nil] at ha
+        rcases ha with (rfl | ha) | ha <;>
+          first | exact hx' _ ha | exact hy' _ ha | exact hcs _ (by simp [Cols.regs, Col.regs])
+    · rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;>
+        simp only [Plan.repath, hb] <;>
+        first | exact Typed.throw _ | exact Typed.pure fun a ha => hcs a (by simpa [Cols.regs, Col.regs] using ha)
+
+theorem Grows.repath (A : Obj) : ∀ (pre : String) (cs : Cols), Grows (Plan.repath A pre cs) := by
+  induction A with
+  | atom t =>
+    intro pre cs
+    rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;> simp only [Plan.repath] <;>
+      first | exact Grows.throw _ | exact Grows.pure _
+  | prod a b iha ihb =>
+    intro pre cs; simp only [Plan.repath]
+    exact (iha _ _).bind fun _ => (ihb _ _).bind fun _ => Grows.pure _
+  | arr b ih =>
+    intro pre cs
+    rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;> simp only [Plan.repath] <;>
+      first | exact Grows.throw _ | exact (ih _ _).bind fun _ => Grows.pure _
+  | one =>
+    intro pre cs
+    rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;> simp only [Plan.repath] <;>
+      first | exact Grows.throw _ | exact Grows.pure _
+  | sum a b iha ihb =>
+    intro pre cs
+    rcases hb : Obj.band a b with _ | t <;>
+      rcases cs with _ | ⟨⟨p, t', e⟩ | ⟨p, m', lo, hi, f⟩ | ⟨p, tag, x, y⟩, _ | ⟨d, cs⟩⟩ <;>
+      simp only [Plan.repath, hb] <;>
+      first | exact Grows.throw _ | exact Grows.pure _ | exact (iha _ _).bind fun _ => (ihb _ _).bind fun _ => Grows.pure _
+
 end Rel.Lang.Plan
 
