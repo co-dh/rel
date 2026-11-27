@@ -584,8 +584,10 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
 def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) (den : Bool := false) : Except Err Top := do
   let (q, s, t) := r.plain
   let δ : Dem := (q.demVars.contains ·)
-  let generic := den && (zonk mc s).bases.any fun n => (env.objs.lookup n).any (·.fullUniverse)
-  let ⟨A, B, tm⟩ ← build env.objs mc p δ (if generic then q else .close p q s noLeft)
+  -- a denotation-only term is never run, so where its source has no universe it has no left context to key on
+  let generic := (zonk mc s).bases.any fun n => (env.objs.lookup n).any (·.fullUniverse)
+  let open_ := den && (generic || (uniOf env.objs (zonk mc s)).isNone)
+  let ⟨A, B, tm⟩ ← build env.objs mc p δ (if open_ then q else .close p q s noLeft)
   if den || !tm.dem δ [] then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
 
 def unifySides (p : Pos) (r r' : Arg) : M Unit := do

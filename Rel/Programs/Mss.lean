@@ -32,6 +32,7 @@ rel_program mss where
     shape : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum)est(≥))est(≥)               -- the largest over suffixes of the largest prefix sum
     fused : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)   -- `prefix sum` fused into the fold `⦇S⦈`
     greedy : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E(g)est(≥)                                -- each suffix keeps the one value `g`
+    safe : [N] ⟶ [N] ≜ 𝟙 − dom(segment (𝟙 − dom(sum)))   -- the lists whose every segment has a sum in `N`
 
     /- `k ≜ [zero⟨𝟙,Λ(𝟙)⟩, ⟨w,⟨wΛ(𝟙),π₂π₂⟩ cup⟩]` (note :844) is the fold's seed and step below; the step's set is Lean's
        own `Λ(w ∪ π₂π₂∋)` (`k`, :756), an array: the language has no `cup`. -/
@@ -48,7 +49,19 @@ rel_program mss where
     check A greedy = A mss
     check A scan = A mss
 
-    /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. The laws with no
+    /- The arrays over {-9,5,10,15}, where sums pass 20: unguarded `mss`/`scan`, `shape`/`fused` and `gl`/`gr` differ
+       there (`[5,15,15]`, `[10,15,-9]`, `[15,15]`), guarded by `safe` they agree. -/
+
+    D9 : N ⟶ N ≜ {(-9,-9),(5,5),(10,10),(15,15)}
+    A9 : [N] ⟶ [N] ≜ ran((𝟙÷∋)E(⊤(1,N)D9)⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤D9⟩snoc)]⦈)
+    check A9 safe mss = A9 safe scan
+    check A9 safe shape = A9 safe fused
+    check A9 safe fused = A9 safe greedy
+    check A9 safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = A9 safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
+
+    /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. `plus` has no value
+       past 20, so the steps past `toShape` hold only on the lists `safe` keeps: `[5,15,15]` has `mss` 20 and `scan` 15,
+       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. The laws with no
        `calc` are owed to Lean: `rel_aop mss` (relaop/RelAop/Mss.lean) proves them over the book's model (`Int`, cons
        lists, the power object), so `linear` is a theorem about that model, not about the executable `mss.rel.*`; the evidence
        between those two is the `check`s above. -/
@@ -60,7 +73,7 @@ rel_program mss where
     theorem geqRefl : 𝟙(N) ⊑ ≥ by Rel.Lang.Tm.geq_refl
     theorem estUnion : (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(∋)est(≥) = (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(est(≥))est(≥)  -- no set empty
     -- the greedy row (𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈
-    theorem greedyFold : (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
+    theorem greedyFold : safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
 
     theorem toShape : mss = shape := calc         -- note `mss-shape`
       mss
@@ -78,32 +91,32 @@ rel_program mss where
       shape
     -- B&dM's fusion of a fold into `prefix`; its premises are the no-overflow laws (`+` associates, `0` commutes with it)
     theorem prefixFuse(e : 1 ⟶ β, S : β×β ⟶ β) if ⟨⊤e,𝟙⟩S = ⟨𝟙,⊤e⟩S, ⟨π₁ S, π₂⟩S = ⟨π₁π₁, ⟨π₁π₂,π₂⟩S⟩S : prefix ⦇[e, S]⦈ = ⦇[e, ⊤e ∪ S]⦈ʳ by Rel.Lang.Tm.prefixFuse_var_den
-    theorem toFused : shape = fused               -- note `mss-prefix-sum`
-    theorem toGreedy : fused = greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
-      fused
+    theorem toFused : safe shape = safe fused               -- note `mss-prefix-sum`
+    theorem toGreedy : safe fused = safe greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
+      safe fused
         := ≜ fused
-      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)
+      safe (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)
         := greedyFold
-      (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
+      safe (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
         := estMap(zero, ≥)
-      (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
+      safe (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
         := ≜ oplus
-      (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥)
+      safe (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥)
         := ≜ g
-      (𝟙÷∋)E(suffix) E(g)est(≥)
+      safe (𝟙÷∋)E(suffix) E(g)est(≥)
         := ≜ greedy
-      greedy
+      safe greedy
     theorem toScan : greedy = scan                -- note `mss-scan`
-    theorem linear : mss = scan := calc
-      mss
+    theorem linear : safe mss = safe scan := calc
+      safe mss
         := toShape
-      shape
+      safe shape
         := toFused
-      fused
+      safe fused
         := toGreedy
-      greedy
+      safe greedy
         := toScan
-      scan
+      safe scan
 
     /- Inputs: [3,1,4,1,5], [2,0,7], [], [3,-4,2,-1,2], [-2,-1,-3] keyed by a, b, c, d, e. -/
 
