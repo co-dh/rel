@@ -633,19 +633,22 @@ def spanB (n m lo hi : Nat) : Bld (Nat × Nat) := do
     | throw "cellSpan: not two columns"
   pure (s, e)
 
+/-- `groupsB`'s plan function body: the `N` rows' groups `g` and permutation `p` (`ws`), the group count `K` and the
+    count `nr` of `R`'s rows, both read from the enclosing block. -/
+def groupsW (nr K : Nat) (N : Nat) (ws : List Nat) : Bld (Nat × List Nat) := do
+  let [g, p] := ws | throw "compGroups: not two columns"
+  let nR ← constB N (← call1 (kernel% USize.toUInt64) #[nr])
+  let cR ← scatterB .add N g (← mapB .lt N p nR) K
+  let cS ← mapB .sub K (← scatterB .add N g (← wordsB N 1) K) cR
+  pure (K, [cR, cS, ← mapB .mul K cR cS])
+
 /-- **`Tab.compGroups`**: the `N` rows of `R.val` then `S.key`, their permutation `p`, groups `g`, first rows `f`, the
     count `K` of groups, per group the counts `cR`, `cS` and the width `w = cR · cS`. -/
 def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) := do
   let (N, off) ← catB R.n S.n
   let (K, g, f, p) ← ascSeenB N (← concatB N R.n S.n off R.val S.key)
   -- the counts on words alone, one plan function (`funW`) whatever the tables' shapes
-  let (_, [cR, cS, w]) ← funW N [g, p] fun N ws => do
-      let [g, p] := ws | throw "compGroups: not two columns"
-      let nR ← constB N (← call1 (kernel% USize.toUInt64) #[R.n])
-      let cR ← scatterB .add N g (← mapB .lt N p nR) K
-      let cS ← mapB .sub K (← scatterB .add N g (← wordsB N 1) K) cR
-      pure (K, [cR, cS, ← mapB .mul K cR cS])
-    | throw "compGroups: not three columns"
+  let (_, [cR, cS, w]) ← funW N [g, p] (groupsW R.n K) | throw "compGroups: not three columns"
   pure (N, p, g, f, K, cR, cS, w)
 
 /-- **`R ≫ S`** (`Tab.compOne`): the groups of equal middle values of `R.val` then `S.key` (`kasc` is stable, so a

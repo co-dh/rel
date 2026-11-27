@@ -266,4 +266,93 @@ theorem expandB_spec : ExpandSpec := by
   rw [← hr0e] at ho; rw [← hr1e] at hGe
   exact expandB_builds hK hw hz0 hk0 hr0 hT' ho hsce hz1 hk1 hr1 hGe hg1 hu hfo hkk
 
+/-! ### `groupsB`'s counts (`groupsW`): a plan function reading two enclosing registers
+
+The body reads `R.n` and the group count `K` from the enclosing block, which `funW_builds` takes as it is: `hT` is `Typed
+rs.size` of the body at `Q = True`, and `Typed.mapBAny`, `Typed.scatterB`, `Typed.u64B` type a read of a captured count by
+the kernel call that declares it. -/
+
+theorem Free.constB (n fill : Nat) : Free (Plan.constB n fill) := by unfold Plan.constB; free
+
+theorem Free.wordsB (n : Nat) (w : UInt64) : Free (Plan.wordsB n w) := by unfold Plan.wordsB; free
+
+theorem Grows.groupsW (nr K n : Nat) (ws : List Nat) : Grows (Plan.groupsW nr K n ws) := by
+  unfold Plan.groupsW
+  split
+  · exact (Grows.call1 _ _).bind fun _ => (Grows.constB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+      (Grows.scatterB _ _ _ _ _ _).bind fun _ => (Grows.wordsB _ _).bind fun _ =>
+      (Grows.scatterB _ _ _ _ _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+      (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => Grows.pure _
+  · exact Grows.throw _
+
+theorem Typed.groupsW {m nr K N g p : Nat} (hN : m ≤ N) (hg : m ≤ g) (hp : m ≤ p) :
+    Typed m (fun _ => True) (Plan.groupsW nr K N [g, p]) := by
+  unfold Plan.groupsW
+  dsimp only
+  refine Typed.u64B.bind fun w _ => Typed.constB.bind fun nR hnR => (Typed.mapB hN hp hnR).bind fun o ho =>
+    Typed.scatterB.bind fun cR hcR => Typed.wordsB.bind fun one _ => Typed.scatterB.bind fun sc hsc =>
+    (Typed.mapBAny hsc hcR).bind fun cS hcS => (Typed.mapBAny hcR hcS).bind fun wv _ => Typed.pure trivial
+
+/-- **`groupsW` builds `compGroups`' counts**: `nr` holds `R`'s row count `nv`, `N` the sorted rows' count `Nv`, `K` the
+    group count `Kv`, `g` and `p` the groups and the permutation. Each kernel answer is a premise, as in `expandB_builds`:
+    `hk` the constant column of `nv`, `ho` its `kscan .lt` against `p`, `hcR` the per-group sum of it, `h1`, `hsc` the
+    group sizes, `hcS` and `hw` the two `kscan`s of the groups. `kk` continues with the count register and the three
+    columns, holding `Kv`, `cR`, `cS`, `wc`. -/
+theorem groupsW_builds {fg : Array Fun × Array Fun} {rs : Array Val} {nr N g p K : Nat} {nv Nv Kv : USize}
+    {gv pe kc oc cR one sc cS wc : Enc} {f1 f2 f3 : Option UInt64} {kk : Nat × List Nat → Bld (Array Nat)}
+    {out : Array Val} (hr : rs[nr]? = some (.size nv)) (hN : rs[N]? = some (.size Nv))
+    (hg : rs[g]? = some (Reg.put gv)) (hp : rs[p]? = some (Reg.put pe)) (hK : rs[K]? = some (.size Kv))
+    (hk : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) Nv nv.toUInt64 = .ok kc)
+    (ho : kscan .lt false .i64 .i64 Nv none [(Nv, pe), (Nv, kc)] [] [] = .ok (oc, f1))
+    (hcR : kscatter .add Nv gv oc Kv 0 = .ok cR)
+    (h1 : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) Nv 1 = .ok one)
+    (hsc : kscatter .add Nv gv one Kv 0 = .ok sc)
+    (hcS : kscan .sub false .i64 .i64 Kv none [(Kv, sc), (Kv, cR)] [] [] = .ok (cS, f2))
+    (hw : kscan .mul false .i64 .i64 Kv none [(Kv, cR), (Kv, cS)] [] [] = .ok (wc, f3)) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (m : Nat) (es : List Nat) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → es.length = 3 →
+      (m :: es).mapM (fun i => (rs ++ ys)[i]?) = some [.size Kv, Reg.put cR, Reg.put cS, Reg.put wc] →
+      ∃ fg', Builds abiOf fg2 fg' (kk (m, es)) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (funW N [g, p] (groupsW nr K) >>= kk) rs out := by
+  refine funW_builds (k := 3) (pv := #[.size Nv, Reg.put gv, Reg.put pe])
+    (o := #[.size Kv, Reg.put cR, Reg.put cS, Reg.put wc]) (fun _ => reads_of (by simp [hN, hg, hp])) rfl ?_ ?_
+    (fun n ws => Grows.groupsW _ _ _ _) hfo ?_
+  · rw [show List.range' (rs.size + 1) [g, p].length = [rs.size + 1, rs.size + 2] from rfl]
+    unfold Plan.groupsW
+    dsimp only
+    simp only [bind_assoc]
+    have hn1 : (rs ++ #[Val.size Nv, Reg.put gv, Reg.put pe])[rs.size]? = some (.size Nv) := by simp
+    have hg1 : (rs ++ #[Val.size Nv, Reg.put gv, Reg.put pe])[rs.size + 1]? = some (Reg.put gv) := by simp
+    have hp1 : (rs ++ #[Val.size Nv, Reg.put gv, Reg.put pe])[rs.size + 2]? = some (Reg.put pe) := by simp
+    have hr1 := get_app (xs := #[Val.size Nv, Reg.put gv, Reg.put pe]) hr
+    have hK1 := get_app (xs := #[Val.size Nv, Reg.put gv, Reg.put pe]) hK
+    refine Builds.bind1F (Free.call1 _ _) (u64B_builds hr1) fun w R1 hw1 hE1 => ?_
+    up hE1 [hn1 hg1 hp1 hK1]
+    refine Builds.bind1F (Free.constB _ _) (constB_builds hn1 hw1 hk) fun nR R2 hnR hE2 => ?_
+    up hE2 [hn1 hg1 hp1 hK1]
+    refine Builds.bind1F (Free.mapB _ _ _ _ _ _ _ _) (mapB_builds hn1 hp1 (enc_get_put _) hnR (enc_get_put _)
+      (by rop) (qtype_get_put _) (qtype_get_put _) (by rop) (by rop) ho) fun o R3 ho3 hE3 => ?_
+    up hE3 [hn1 hg1 hK1]
+    refine Builds.bind1F (Free.scatterB _ _ _ _ _ _) (scatterB_builds hn1 hg1 ho3 hK1 (by rop) hcR)
+      fun cr R4 hcr4 hE4 => ?_
+    up hE4 [hn1 hg1 hK1]
+    refine Builds.bind1F (Free.wordsB _ _) (wordsB_builds hn1 h1) fun on R5 hon hE5 => ?_
+    up hE5 [hn1 hg1 hK1 hcr4]
+    refine Builds.bind1F (Free.scatterB _ _ _ _ _ _) (scatterB_builds hn1 hg1 hon hK1 (by rop) hsc)
+      fun s R6 hs6 hE6 => ?_
+    up hE6 [hK1 hcr4]
+    refine Builds.bind1F (Free.mapB _ _ _ _ _ _ _ _) (mapB_builds hK1 hs6 (enc_get_put _) hcr4 (enc_get_put _)
+      (by rop) (qtype_get_put _) (qtype_get_put _) (by rop) (by rop) hcS) fun cs R7 hcs7 hE7 => ?_
+    up hE7 [hK1 hcr4]
+    refine Builds.bind1F (Free.mapB _ _ _ _ _ _ _ _) (mapB_builds hK1 hcr4 (enc_get_put _) hcs7 (enc_get_put _)
+      (by rop) (qtype_get_put _) (qtype_get_put _) (by rop) (by rop) hw) fun wr R8 hw8 hE8 => ?_
+    up hE8 [hK1 hcr4 hcs7]
+    simp only [pure_bind]
+    exact ⟨fg, Builds.answerRegs ⟨rfl, [cr, cs, wr], rfl, rfl⟩ (tabsRegs_eq _) fun _ =>
+      reads_of (by simp [TabB.regs, Cols.regs, Col.regs, hK1, hcr4, hcs7, hw8])⟩
+  · rw [show List.range' (rs.size + 1) [g, p].length = [rs.size + 1, rs.size + 2] from rfl]
+    exact Typed.groupsW (Nat.le_refl _) (Nat.le_succ _) (Nat.le_succ_of_le (Nat.le_succ _))
+  · intro fg2 m es ys he hf ho' hlen hread
+    exact hkk fg2 m es ys he hf ho' hlen hread
+
 end Rel.Lang.Plan

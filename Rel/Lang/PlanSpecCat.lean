@@ -353,6 +353,149 @@ theorem Typed.mapB {m : Nat} {op : Kernel.Op} {n a b : Nat} {t s : QAtomicType} 
     (Typed.lit _).bind fun c4 h4 => (Typed.lit _).bind fun c5 h5 =>
     (Typed.callK (by intro a ha; simp at ha; omega)).bind fun o ho => Typed.nth ho 0 "kscan"
 
+/-! ### A captured register read before the instruction that types it
+
+`srcB n x` is a `ctor`, which types none of its reads, and the `kscan` call after it declares `n`; so a captured count
+`d < m` is read untyped by the prefix and typed by the call. `TypedE m d false` is a prefix that leaves `d` open,
+`TypedE m d true` a block that also types `d`, which is then a `Typed`. -/
+
+theorem useTyB_lift1 {F G y : Array Fun} {a : Nat} {js1 : List Instr} (js2 : List Instr) {t : Ty}
+    (ht : useTyB (F ++ (G ++ y)) a js1 = some t) : useTyB (F ++ G ++ y) a (js1 ++ js2) = some t := by
+  rw [Array.append_assoc, useTyB_append, ht]; rfl
+
+theorem useTyB_lift2 {F : Array Fun} {a : Nat} (js1 : List Instr) {js2 : List Instr} {t : Ty}
+    (ht : useTyB F a js2 = some t) : ∃ u, useTyB F a (js1 ++ js2) = some u := by
+  rw [useTyB_append]
+  cases h : useTyB F a js1 with
+  | some u => exact ⟨u, rfl⟩
+  | none => exact ⟨t, by rw [ht]; rfl⟩
+
+/-- `Typed`, but while `c` is `false` a register `d` may be read by an instruction that does not type it; at `c = true`
+    the block also types `d` (when `d < m`). -/
+def TypedE {α : Type} (m d : Nat) (c : Bool) (Q : α → Prop) (b : Bld α) : Prop :=
+  ∀ is n fs gs x s', m ≤ n → b.run (is, n, fs, gs) = .ok (x, s') → ∃ js fa, s'.1 = is ++ js ∧
+    s'.2.2.1 = fs ++ fa ∧ n ≤ s'.2.1 ∧ Q x ∧
+      (∀ y, ∀ a ∈ readsB m js.toList, a < m → (c = false ∧ a = d) ∨ ∃ t, useTyB (s'.2.2.1 ++ y) a js.toList = some t) ∧
+      (c = true → d < m → ∀ y, ∃ t, useTyB (s'.2.2.1 ++ y) d js.toList = some t)
+
+theorem Typed.toE {α : Type} {m d : Nat} {Q : α → Prop} {b : Bld α} (hb : Typed m Q b) : TypedE m d false Q b :=
+    fun is n fs gs x s' hm h => by
+  obtain ⟨js, fa, e, f, l, q, t⟩ := hb is n fs gs x s' hm h
+  exact ⟨js, fa, e, f, l, q, fun y a ha hlt => .inr (t y a ha hlt), fun h => by cases h⟩
+
+theorem TypedE.typed {α : Type} {m d : Nat} {Q : α → Prop} {b : Bld α} (hb : TypedE m d true Q b) : Typed m Q b :=
+    fun is n fs gs x s' hm h => by
+  obtain ⟨js, fa, e, f, l, q, t, -⟩ := hb is n fs gs x s' hm h
+  exact ⟨js, fa, e, f, l, q, fun y a ha hlt => (t y a ha hlt).resolve_left (by simp)⟩
+
+/-- A prefix leaving `d` open, then a block `f` (open or closed): the block's flag. -/
+theorem TypedE.bind {α β : Type} {m d : Nat} {c : Bool} {Q : α → Prop} {R : β → Prop} {b : Bld α} {f : α → Bld β}
+    (hb : TypedE m d false Q b) (hf : ∀ a, Q a → TypedE m d c R (f a)) : TypedE m d c R (b >>= f) :=
+    fun is n fs gs x s' hm h => by
+  rw [StateT.run_bind] at h
+  obtain ⟨⟨a, ⟨is1, n1, fs1, gs1⟩⟩, h₁, h₂⟩ := bind_ok h
+  obtain ⟨js1, fa1, e1, f1, l1, q1, t1, -⟩ := hb _ _ _ _ _ _ hm h₁
+  simp only at e1 f1 l1
+  subst e1 f1
+  obtain ⟨js2, fa2, e2, f2, l2, q2, t2, td⟩ := hf a q1 _ _ _ _ _ _ (by omega) h₂
+  refine ⟨js1 ++ js2, fa1 ++ fa2, by rw [e2, Array.append_assoc], by rw [f2, Array.append_assoc],
+    by omega, q2, fun y a ha hlt => ?_, fun hc hd y => ?_⟩
+  · rw [Array.toList_append, readsB_append] at ha
+    rw [Array.toList_append]
+    rcases List.mem_append.1 ha with ha | ha
+    · rcases t1 (fa2 ++ y) a ha hlt with ⟨-, rfl⟩ | ⟨t, ht⟩
+      · cases hc : c
+        · exact .inl ⟨rfl, rfl⟩
+        · obtain ⟨t, ht⟩ := td hc hlt y
+          obtain ⟨u, hu⟩ := useTyB_lift2 js1.toList ht
+          exact .inr ⟨u, hu⟩
+      · simp only at ht
+        rw [f2]
+        exact .inr ⟨t, useTyB_lift1 _ ht⟩
+    · rcases t2 y a ha hlt with h | ⟨t, ht⟩
+      · exact .inl h
+      · obtain ⟨u, hu⟩ := useTyB_lift2 js1.toList ht
+        exact .inr ⟨u, hu⟩
+  · obtain ⟨t, ht⟩ := td hc hd y
+    obtain ⟨u, hu⟩ := useTyB_lift2 js1.toList ht
+    exact ⟨u, by rw [Array.toList_append]; exact hu⟩
+
+/-- A closed block then a `Typed` one stays closed. -/
+theorem TypedE.bindT {α β : Type} {m d : Nat} {Q : α → Prop} {R : β → Prop} {b : Bld α} {f : α → Bld β}
+    (hb : TypedE m d true Q b) (hf : ∀ a, Q a → Typed m R (f a)) : TypedE m d true R (b >>= f) :=
+    fun is n fs gs x s' hm h => by
+  rw [StateT.run_bind] at h
+  obtain ⟨⟨a, ⟨is1, n1, fs1, gs1⟩⟩, h₁, h₂⟩ := bind_ok h
+  obtain ⟨js1, fa1, e1, f1, l1, q1, t1, td⟩ := hb _ _ _ _ _ _ hm h₁
+  simp only at e1 f1 l1
+  subst e1 f1
+  obtain ⟨js2, fa2, e2, f2, l2, q2, t2⟩ := hf a q1 _ _ _ _ _ _ (by omega) h₂
+  refine ⟨js1 ++ js2, fa1 ++ fa2, by rw [e2, Array.append_assoc], by rw [f2, Array.append_assoc],
+    by omega, q2, fun y a ha hlt => ?_, fun _ hd y => ?_⟩
+  · rw [Array.toList_append, readsB_append] at ha
+    rw [Array.toList_append]
+    rcases List.mem_append.1 ha with ha | ha
+    · rcases t1 (fa2 ++ y) a ha hlt with ⟨h, -⟩ | ⟨t, ht⟩
+      · exact absurd h (by simp)
+      · simp only at ht
+        rw [f2]
+        exact .inr ⟨t, useTyB_lift1 _ ht⟩
+    · obtain ⟨t, ht⟩ := t2 y a ha hlt
+      obtain ⟨u, hu⟩ := useTyB_lift2 js1.toList ht
+      exact .inr ⟨u, hu⟩
+  · obtain ⟨t, ht⟩ := td rfl hd (fa2 ++ y)
+    simp only at ht
+    rw [f2, Array.toList_append]
+    exact ⟨t, useTyB_lift1 _ ht⟩
+
+theorem TypedE.emit1 {m d : Nat} {i : Instr} (hi : ∀ a ∈ reads m i, m ≤ a ∨ a = d) :
+    TypedE m d false (fun r => m ≤ r) (Plan.emit1 i) := fun is n fs gs x s' hm h => by
+  have : (Plan.emit1 i).run (is, n, fs, gs) = .ok (n, (is.push i, n + 1, fs, gs)) := rfl
+  rw [this] at h
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+  refine ⟨#[i], #[], rfl, by simp, by simp, hm, fun y a ha hlt => ?_, fun h => by cases h⟩
+  simp only [List.toArray, readsB, List.append_nil] at ha
+  exact (hi a ha).elim (fun h => absurd h (by omega)) fun h => .inl ⟨rfl, h⟩
+
+/-- One instruction defining `nres` registers, whose reads it types itself, `d` among them. -/
+theorem TypedE.emit {m d : Nat} {i : Instr} (hi : ∀ fs, ∀ a ∈ reads m i, a < m → ∃ t, useTy fs a i = some t)
+    (hd : ∀ fs, d < m → ∃ t, useTy fs d i = some t) (nres : Nat) :
+    TypedE m d true (fun r => ∀ a ∈ r, m ≤ a) (Plan.emit i nres) := fun is n fs gs x s' hm h => by
+  rw [emit_run] at h
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+  refine ⟨#[i], #[], rfl, by simp, by simp, fun a ha => ?_, fun y a ha hlt => ?_, fun _ hlt y => ?_⟩
+  · simp at ha; omega
+  · simp only [readsB, List.append_nil] at ha
+    obtain ⟨t, ht⟩ := hi (fs ++ y) a ha hlt
+    exact .inr ⟨t, by show (useTy _ a i <|> none) = some t; rw [ht]; rfl⟩
+  · obtain ⟨t, ht⟩ := hd (fs ++ y) hlt
+    exact ⟨t, by show (useTy _ d i <|> none) = some t; rw [ht]; rfl⟩
+
+/-- `Typed.mapB` with the row count `n` any register, captured or not: `kscan` declares it. -/
+theorem Typed.mapBAny {m : Nat} {op : Kernel.Op} {n a b : Nat} {t s : QAtomicType} {pre post : List (Kernel.Op × UInt64)}
+    (ha : m ≤ a) (hb : m ≤ b) : Typed m (fun r => m ≤ r) (Plan.mapB op n a b t s pre post) := by
+  unfold Plan.mapB
+  refine TypedE.typed (d := n) ?_
+  refine (Typed.lit _).toE.bind fun c0 h0 => (Typed.lit _).toE.bind fun c1 h1 => (Typed.lit _).toE.bind fun c2 h2 =>
+    (Typed.lit _).toE.bind fun c3 h3 => (Typed.ctorB (by simp) (by simp) 0).toE.bind fun g hg =>
+    (TypedE.emit1 (i := .ctor 0 #[n, a] #[]) fun x hx => by simp [reads] at hx; omega).bind fun x hx =>
+    (TypedE.emit1 (i := .ctor 0 #[n, b] #[]) fun x hx => by simp [reads] at hx; omega).bind fun y hy =>
+    (Typed.listB (rs := [x, y]) (by intro a ha; simp at ha; omega)).toE.bind fun l hl =>
+    (Typed.lit _).toE.bind fun c4 h4 => (Typed.lit _).toE.bind fun c5 h5 => ?_
+  refine (TypedE.emit (i := .call (kernel% Rel.Kernel.kscan).sym #[c0, c1, c2, c3, n, g, l, c4, c5]) ?_ ?_ _).bindT
+    fun o ho => Typed.nth ho 0 "kscan"
+  · intro fs a' ha' _
+    obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (l := [c0, c1, c2, c3, n, g, l, c4, c5]) (by simpa [reads] using ha')
+    simp only [List.length_cons, List.length_nil] at hjl
+    simp only [useTy, hj, Option.bind_some]
+    rcases j with _ | _ | _ | _ | _ | _ | _ | _ | _ | j <;>
+      first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
+  · intro fs _
+    obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem (a := n) (l := [c0, c1, c2, c3, n, g, l, c4, c5]) (by simp)
+    simp only [List.length_cons, List.length_nil] at hjl
+    simp only [useTy, hj, Option.bind_some]
+    rcases j with _ | _ | _ | _ | _ | _ | _ | _ | _ | j <;>
+      first | exact absurd hjl (by omega) | exact ⟨_, by with_unfolding_all rfl⟩
 theorem Typed.catColB {m : Nat} {t : QAtomicType} {n n₁ n₂ x y : Nat} (hn : m ≤ n) (h1 : m ≤ n₁) (h2 : m ≤ n₂)
     (hx : m ≤ x) (hy : m ≤ y) : Typed m (fun r => m ≤ r) (Plan.catColB t n n₁ n₂ x y) := by
   unfold Plan.catColB
