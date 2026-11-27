@@ -8,8 +8,8 @@ public import Rel.Lang.PlanSpecCat
 /-! # `concatB` builds what `ValsB.concat` answers
 
 `ValsB.concat`'s kernels as the calls the builders make: `ColB.concat` is one `kscan .first` stream at either ownership
-(`ColB.concat_kscan`), `ColB.shift` one `kscan` with the post step `(.add, s)` (`ColB.shift_kscan`), whose op is
-`.first` on an owned column (`Arr.shift`) and `.max` on a nullable one (`Opt.shift`); `shiftB` calls `.max` at both. -/
+(`ColB.concat_kscan`), `ColB.shift` one `kscan` with the post step `(.add, s)` (`ColB.shift_kscan`): `.max`
+at both ownerships, `Arr.shift`'s `.first` being the same call on a null-free column (`kscan_max_first`). -/
 
 namespace Rel.Lang.Plan
 
@@ -37,19 +37,76 @@ theorem ColB.concat_kscan : ∀ {o : Bool} {t : QAtomicType} {n₁ n₂ n : USiz
   | false, _, _, _, _, _, _, _, h => Arr.concat_kscan h
   | true, _, _, _, _, _, _, _, h => Opt.concat_kscan h
 
-/-- `Arr.shift` is `kscan .first` of the column with itself and the post step `(.add, s)`. -/
+theorem Except.ok_bind' {α β : Type} (a : α) (f : α → Except String β) : (Except.ok a >>= f) = f a := rfl
+
+/-- Two copies of one null-free column: `max` and `first` read the same columns (`first` stays a stream only at no post step). -/
+theorem kscanCols_max_first {n : USize} {e : Enc} (hN : hasNul e = false) {s : QAtomicType}
+    {pre post : List (Kernel.Op × UInt64)} (hp : post.isEmpty = false) :
+    kscanCols .max s n [(n, e), (n, e)] pre post = kscanCols .first s n [(n, e), (n, e)] pre post := by
+  unfold kscanCols
+  simp [kscanStream, hp, nulFillOf, Kernel.Op.nulFold, hN]
+
+theorem foldlM_congr_mem {α β : Type} (f g : β → α → Except String β) (l : List α) (b : β)
+    (h : ∀ a ∈ l, ∀ b, f b a = g b a) : l.foldlM f b = l.foldlM g b := by
+  induction l generalizing b with
+  | nil => rfl
+  | cons a l ih =>
+    simp only [List.foldlM_cons]
+    rw [h a (by simp) b]
+    cases g b a with
+    | error _ => rfl
+    | ok b' => exact ih b' fun a ha => h a (List.mem_cons_of_mem _ ha)
+
+/-- **`max` of a column with itself is `first`**: at a column holding no null (`hasNul e = false`, as every `Arr`) and a
+    post step, `kscan .max` and `kscan .first` of `[(n, e), (n, e)]` agree: a segment-per-row carry equals its folded
+    column, `max w w = w = first w w`, and nothing else reads the op. -/
+theorem kscan_max_first {n : USize} {e : Enc} (hN : hasNul e = false) {s t : QAtomicType}
+    {pre post : List (Kernel.Op × UInt64)} (hp : post.isEmpty = false) :
+    kscan .max false s t n none [(n, e), (n, e)] pre post = kscan .first false s t n none [(n, e), (n, e)] pre post := by
+  have hr : kscanRefuses .max n [(n, e), (n, e)] pre post = kscanRefuses .first n [(n, e), (n, e)] pre post := by
+    simp [kscanRefuses, Kernel.Op.readsDivisor]
+  unfold kscan
+  rw [hr, kscanCols_max_first hN hp]
+  have hc : kscanCols .first s n [(n, e), (n, e)] pre post =
+      (rawAll s n e >>= chainAll pre).bind fun w =>
+        (rawAll s n e >>= chainAll pre).bind fun w' => .ok ([w, w'], []) := by
+    unfold kscanCols
+    have hpn : post ≠ [] := by rintro rfl; simp at hp
+    rcases hr : rawAll s n e with _ | w0
+    · simp [kscanStream, hpn, hr, bind, Except.bind] <;> rfl
+    · rcases hc : chainAll pre w0 with _ | w1 <;>
+        simp [kscanStream, hpn, nulFillOf, Kernel.Op.nulFold, hN, noNul, hr, hc, bind, Except.bind] <;> rfl
+  rw [hc]
+  cases hw : (rawAll s n e >>= chainAll pre) with
+  | error _ => rfl
+  | ok w =>
+    simp only [Except.ok_bind', Except.bind, segAll, Bool.false_eq_true, if_false, List.map_cons, List.map_nil, List.drop_nil,
+      List.map_id']
+    have hrow : ∀ i ∈ List.range n.toNat, ∀ out, kscanRow .max (Array.replicate n.toNat 1) w [w] out i =
+        kscanRow .first (Array.replicate n.toNat 1) w [w] out i := by
+      intro i hi out
+      have := List.mem_range.1 hi
+      simp [kscanRow, Kernel.Op.eval, this, List.foldlM]
+    have hnl : ∀ (a b : Kernel.Op) (g : Array UInt64) (sd : Array UInt64), List.foldlM (kscanRow a g sd []) #[] (List.range n.toNat) =
+        List.foldlM (kscanRow b g sd []) #[] (List.range n.toNat) :=
+      fun a b g sd => foldlM_congr_mem _ _ _ _ fun i _ out => by simp [kscanRow, List.foldlM]
+    rw [foldlM_congr_mem _ _ _ _ hrow, hnl _ .first]
+    simp only [Kernel.Op.nulFold, Option.elim]
+
+/-- `Arr.shift` is `kscan .max` of the column with itself and the post step `(.add, s)` (`kscan_max_first` from the
+    `.first` that `colArr` calls). -/
 theorem Arr.shift_kscan {n : USize} {s : UInt64} {x z : Arr .i64 n} (h : Arr.shift s x = .ok z) :
-    ∃ f, kscan .first false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.add, s)] = .ok (z.enc, f) := by
+    ∃ f, kscan .max false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.add, s)] = .ok (z.enc, f) := by
   have hm := colArr_ok h
   unfold colMap at hm
-  cases hk : kscan .first false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.add, s)] with
+  rw [← kscan_max_first x.plain (pre := []) (post := [(.add, s)]) rfl] at hm
+  cases hk : kscan .max false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.add, s)] with
   | error e => rw [hk] at hm; cases hm
   | ok r => rw [hk] at hm; injection hm with hm; exact ⟨r.2, by rw [← hm]⟩
 
-/-- `ColB.shift` is one `kscan` of the column with itself and the post step `(.add, s)`: `.first` on an owned column,
-    `.max` on a nullable one (where `.first` refuses a null row). -/
+/-- `ColB.shift` is one `kscan .max` of the column with itself and the post step `(.add, s)`, at either ownership. -/
 theorem ColB.shift_kscan {o : Bool} {n : USize} {s : UInt64} {x z : ColB o .i64 n} (h : ColB.shift s x = .ok z) :
-    ∃ f, kscan (if o then .max else .first) false .i64 .i64 n none [(n, ColB.enc x), (n, ColB.enc x)] []
+    ∃ f, kscan .max false .i64 .i64 n none [(n, ColB.enc x), (n, ColB.enc x)] []
       [(.add, s)] = .ok (ColB.enc z, f) := by
   cases o
   · exact Arr.shift_kscan h
