@@ -18,6 +18,20 @@ rel_program prefixCata where
 
     prefixC : [α] ⟶ [α] ≜ ⦇[nil, nil ∪ cons]⦈ʳ    -- B&dM p.126 prefix = ⦇[nil, nil ∪ cons]⦈
 
+    /- B&dM p.126 `⦇[nil, nil ∪ cons]⦈ʳ = prefix`: `cat° π₁` satisfies the fixed-point equation of the fold, so by the
+       fold's universal property it is the fold. -/
+
+    theorem prefixEq : cat° π₁ = nil°nil ∪ (cons°(𝟙×(cat° π₁))(nil ∪ cons)) by Rel.Lang.Tm.prefixEq_den  -- `prefix` satisfies the equation
+
+    theorem prefixFold : prefixC = prefix := calc
+      prefixC
+        := ≜ prefixC
+      ⦇[nil, nil ∪ cons]⦈ʳ
+        := foldrUP(nil, nil ∪ cons, cat° π₁)
+      cat° π₁
+        := ≜ prefix
+      prefix
+
     check x prefixC = x prefix by Rel.Lang.Tm.prefixFold_input
     check e prefixC = e prefix
     check {(∗,3 1)} ⊑ x prefixC
@@ -25,3 +39,4 @@ rel_program prefixCata where
 #guard prefixCata.ok
 
 end Rel.Programs
+

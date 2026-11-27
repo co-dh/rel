@@ -1,4 +1,5 @@
 import Rel.Lang.PreludePrefix
+import Rel.Lang.Laws.FoldUP
 
 /-! Denotation of the prefix fold, reusable by programs that derive it. -/
 
@@ -75,5 +76,38 @@ theorem Tm.prefixFold_input {A B : Obj} {X : Tm A B.arr} (ρ : Val) :
     simp only [Tm.den]
   rw [compDen, compDen]
   rw [Tm.prefixFold_row ρ _ (Tm.prefixFold_seed ρ)]
+
+/-- **`cat° π₁` satisfies the fixed-point equation of `⦇[nil, nil ∪ cons]⦈ʳ`**, as `prefixCata` elaborates it:
+    `X = nil°nil ∪ (cons°(𝟙×X)(nil ∪ cons))` for `X = cat° π₁`; the premise of the fold's universal property. -/
+theorem Tm.prefixEq_den {B : Obj} (ρ : Val) :
+    Tm.den ρ ((Tm.prim (rowOf "uncat") : Tm B.arr (.prod B.arr B.arr)).comp Tm.outl) =
+    Tm.den ρ (Tm.join ((Tm.closedNil B).conv.comp (Tm.nil : Tm .one B.arr))
+      (((Tm.prim (rowOf "uncons") : Tm B.arr (.prod B B.arr)).comp
+        ((Tm.outl.comp Tm.id : Tm (.prod B B.arr) B).pair
+          (Tm.outr.comp ((Tm.prim (rowOf "uncat") : Tm B.arr (.prod B.arr B.arr)).comp Tm.outl)))).comp
+        (Tm.join (Tm.nil : Tm (.prod B B.arr) B.arr) (Tm.prim (rowOf "cons"))))) := by
+  funext xs ys; apply propext
+  simp only [↓Tm.closedNil_den, Tm.nil, Tm.den, Prim.den_nilRow, Prim.den_cons, Prim.den_uncat, Prim.den_uncons, nilDen,
+    Core.Rel.union, Core.Rel.comp, Core.Rel.rpair, Core.Rel.recip, Core.Rel.graph, Core.Rel.id]
+  constructor
+  · rintro ⟨⟨a, t⟩, h1, h2⟩
+    simp only at h1 h2; subst h2
+    cases xs with
+    | nil =>
+      obtain ⟨rfl, rfl⟩ := List.append_eq_nil_iff.1 h1.symm
+      exact Or.inl ⟨(), rfl, rfl⟩
+    | cons x xs' =>
+      cases ys with
+      | nil => exact Or.inr ⟨(x, []), ⟨(x, xs'), rfl, ⟨x, rfl, rfl⟩, ⟨xs', rfl, ⟨([], xs'), rfl, rfl⟩⟩⟩, Or.inl rfl⟩
+      | cons y a' =>
+        obtain ⟨rfl, h⟩ := List.cons.inj h1
+        exact Or.inr ⟨(x, a'), ⟨(x, xs'), rfl, ⟨x, rfl, rfl⟩, ⟨xs', rfl, ⟨(a', t), h, rfl⟩⟩⟩, Or.inr rfl⟩
+  · rintro (⟨_, ⟨_, ⟨_, -, -⟩, rfl⟩, rfl⟩ | ⟨⟨y, u⟩, ⟨⟨x, xs'⟩, rfl, ⟨_, rfl, rfl⟩, _, rfl, ⟨⟨p, t⟩, hp, rfl⟩⟩, h⟩)
+    · exact ⟨([], []), rfl, rfl⟩
+    · simp only at hp ⊢
+      subst hp
+      rcases h with rfl | rfl
+      · exact ⟨([], _), rfl, rfl⟩
+      · exact ⟨(_ :: u, t), rfl, rfl⟩
 
 end Rel.Lang
