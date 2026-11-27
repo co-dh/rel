@@ -1,4 +1,5 @@
 import Rel.Programs.Prelude
+import Rel.Lang.Laws.Cylinder
 
 /-! # Shortest paths on a cylinder
 
@@ -76,19 +77,52 @@ rel_program cylinder where
        cheapest of the rows' cheapest is a cheapest of the laid end to end (`est_concat`, `R` transitive). -/
 
     theorem qfoldLe : qFold ⊑ genFold F(est(R))
-    theorem estConcat(S : α ⟶ α) if S S ⊑ S : F(est(S)) est(S) ⊑ concat est(S)
+    theorem estConcat(S : α ⟶ α) if S S ⊑ S : F(est(S)) est(S) ⊑ concat est(S) by Rel.Lang.Tm.estConcat_den
     check x qFold ⊑ x genFold F(est(R))
     check c F(est(R)) est(R) ⊑ c concat est(R)
 
     /- B&dM p.183 (7.13) on `Vec`: the new square in front of each of the candidates and then the cheapest of them is
        beaten by the cheapest first (`cyl_7_13`); with `zip`, `trans` and `moves` lax natural it is `fusion`. -/
 
-    theorem cons713 : (𝟙×est(R))cons ⊑ cp F(cons) est(R)
+    theorem cons713 if (𝟙×R) ⊑ cons R cons° : (𝟙×est(R))cons ⊑ cp F(cons) est(R) by Rel.Lang.Tm.cons713_den
     check w (𝟙×F(est(R)))Q ⊑ w gen F(est(R))
 
-    theorem fusion : (𝟙×F(est(R)))Q ⊑ gen F(est(R)) := calc
+    /- The laws `fusion` cites besides `cons713` and `estConcat`: `×` and `F` are functors, and `moves`, `trans`, `zip`
+       are lax natural (a natural function `η` has `F(S) η ⊑ η G(S)`). -/
+
+    theorem prodComp(A : α ⟶ β, B : β ⟶ γ) : (𝟙×A)(𝟙×B) = (𝟙×(A B))
+    theorem Fcomp(A : α ⟶ β, B : β ⟶ γ) : F(A)F(B) = F(A B)
+    theorem movesLax(S : α ⟶ β) : F(S) moves ⊑ moves F(F(S))
+    theorem transLax(S : α ⟶ β) : F(F(S)) trans ⊑ trans F(F(S))
+    theorem zipLax(S : α ⟶ β) : (𝟙×F(S)) zip ⊑ zip F(𝟙×S)
+
+    theorem fusion if (𝟙×R) ⊑ cons R cons°, R R ⊑ R : (𝟙×F(est(R)))Q ⊑ gen F(est(R)) := calc
       (𝟙×F(est(R)))Q
+        := ≜ Q
+      (𝟙×F(est(R))) (𝟙×(moves trans F(est(R)))) zip F(cons)
+        = := prodComp(F(est(R)), moves trans F(est(R)))
+      (𝟙×(F(est(R)) moves trans F(est(R)))) zip F(cons)
+        ⊑ := movesLax(est(R))
+      (𝟙×(moves F(F(est(R))) trans F(est(R)))) zip F(cons)
+        ⊑ := transLax(est(R))
+      (𝟙×(moves trans F(F(est(R))) F(est(R)))) zip F(cons)
+        = := Fcomp(F(est(R)), est(R))
+      (𝟙×(moves trans F(F(est(R)) est(R)))) zip F(cons)
+        ⊑ := estConcat(R)
+      (𝟙×(moves trans F(concat est(R)))) zip F(cons)
+        = := Fcomp(concat, est(R))
+      (𝟙×(moves trans F(concat) F(est(R)))) zip F(cons)
+        = := prodComp(moves trans F(concat), F(est(R)))
+      (𝟙×(moves trans F(concat)))(𝟙×F(est(R))) zip F(cons)
+        ⊑ := zipLax(est(R))
+      (𝟙×(moves trans F(concat))) zip F(𝟙×est(R)) F(cons)
+        = := Fcomp(𝟙×est(R), cons)
+      (𝟙×(moves trans F(concat))) zip F((𝟙×est(R))cons)
         ⊑ := cons713
+      (𝟙×(moves trans F(concat))) zip F(cp F(cons) est(R))
+        = := Fcomp(cp F(cons), est(R))
+      (𝟙×(moves trans F(concat))) zip F(cp F(cons)) F(est(R))
+        = := ≜ gen
       gen F(est(R))
 
     theorem cylLaws : qFold est(R) ⊑ paths est(R) := calc
