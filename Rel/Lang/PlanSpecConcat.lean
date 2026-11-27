@@ -518,4 +518,119 @@ theorem concatAtom_builds {A : Obj} {o : Bool} {nv n1v n2v : USize} {x : ValsB o
     (omapM_cons.mpr ⟨_, _, hr, rfl, by simp [hzv]⟩)
 
 
+/-- `b` reads nothing of the block it is built after: whatever block it starts from, it appends the same instructions
+    `js` and answers the same, so a register number it answers is fixed before the block is known. -/
+def Free {α : Type} (b : Bld α) : Prop :=
+  ∀ is n fg r is' n' fg', b.run (is, n, fg) = .ok (r, is', n', fg') →
+    ∃ js, is' = is ++ js ∧ ∀ is2, b.run (is2, n, fg) = .ok (r, is2 ++ js, n', fg')
+
+theorem Free.pure {α : Type} (a : α) : Free (Pure.pure a : Bld α) := by
+  intro is n fg r is' n' fg' h
+  cases h; exact ⟨#[], by simp, fun _ => by simp; rfl⟩
+
+theorem Free.throw {α : Type} (e : String) : Free (throw e : Bld α) := by
+  intro is n fg r is' n' fg' h; cases h
+
+theorem Free.bind {α β : Type} {b : Bld α} {k : α → Bld β} (hb : Free b) (hk : ∀ a, Free (k a)) :
+    Free (b >>= k) := by
+  intro is n fg r is' n' fg' h
+  simp only [StateT.run_bind] at h
+  cases h1 : b.run (is, n, fg) with
+  | error e => rw [h1] at h; cases h
+  | ok p =>
+    obtain ⟨a, is1, n1, fg1⟩ := p
+    rw [h1] at h
+    obtain ⟨js, rfl, hb'⟩ := hb _ _ _ _ _ _ _ h1
+    obtain ⟨js2, rfl, hk'⟩ := hk a _ _ _ _ _ _ _ h
+    refine ⟨js ++ js2, by simp [Array.append_assoc], fun is2 => ?_⟩
+    simp only [StateT.run_bind, hb' is2]
+    exact (hk' _).trans (by simp [Array.append_assoc])
+
+theorem Free.emit (i : Instr) (k : Nat) : Free (Plan.emit i k) := by
+  intro is n fg r is' n' fg' h
+  simp only [Plan.emit, modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, StateT.run] at h
+  cases h; exact ⟨#[i], by simp, fun _ => by simp [Plan.emit, modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, StateT.run]; rfl⟩
+
+theorem Free.emit1 (i : Instr) : Free (Plan.emit1 i) := by
+  intro is n fg r is' n' fg' h
+  simp only [Plan.emit1, modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, StateT.run] at h
+  cases h; exact ⟨#[i], by simp, fun _ => by simp [Plan.emit1, modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, StateT.run]; rfl⟩
+
+theorem Free.lit (v : Val) : Free (Plan.lit v) := Free.emit1 _
+theorem Free.ctorB (t : Nat) (o s : Array Nat) : Free (Plan.ctorB t o s) := Free.emit1 _
+
+theorem Free.nth (rs : Array Nat) (i : Nat) (who : String) : Free (Plan.nth rs i who) := by
+  unfold Plan.nth; split
+  · exact Free.pure _
+  · exact Free.throw _
+
+theorem Free.callK (k : Kernel) (as : Array Nat) : Free (Plan.callK k as) := Free.emit _ _
+
+theorem Free.call1 (k : Kernel) (as : Array Nat) : Free (Plan.call1 k as) := by
+  unfold Plan.call1; dsimp only
+  split
+  · exact Free.bind (Free.pure _) fun _ => Free.emit1 _
+  · exact Free.bind (Free.throw _) fun _ => Free.emit1 _
+
+theorem Free.listB (l : List Nat) : Free (Plan.listB l) := by
+  unfold Plan.listB
+  refine Free.bind (Free.ctorB _ _ _) fun z => ?_
+  induction l generalizing z with
+  | nil => exact Free.pure _
+  | cons x l ih => simp only [List.foldrM_cons]; exact Free.bind (ih z) fun _ => Free.ctorB _ _ _
+
+/-- Discharges `Free` of a straight-line builder: a `bind` split, each step one of the primitives. -/
+macro "free" : tactic => `(tactic| repeat (first
+    | apply Free.bind
+    | apply Free.pure
+    | apply Free.lit
+    | apply Free.ctorB
+    | apply Free.nth
+    | apply Free.callK
+    | apply Free.call1
+    | apply Free.listB
+    | apply Free.emit1
+    | apply Free.emit
+    | intro _))
+
+theorem Free.catColB (t : QAtomicType) (n n₁ n₂ x y : Nat) : Free (Plan.catColB t n n₁ n₂ x y) := by
+  unfold Plan.catColB Plan.srcB; free
+
+theorem Free.shiftB (n x s : Nat) : Free (Plan.shiftB n x s) := by
+  unfold Plan.shiftB Plan.srcB Plan.u64B; free
+
+theorem Free.catB (n₁ n₂ : Nat) : Free (Plan.catB n₁ n₂) := by
+  unfold Plan.catB Plan.mapB Plan.posB Plan.constB Plan.srcB; free
+
+/-- `Builds.bind` where `b` reads nothing of its block (`Free`): its registers are fixed, so `k`'s functions and globals
+    may depend on them. -/
+theorem Builds.bindF {fg fg1 : Array Fun × Array Fun} {b : Bld (Array Nat)} {k : Array Nat → Bld (Array Nat)}
+    {rs o out : Array Val} (hF : Free b) (hb : Builds abiOf fg fg1 b rs o)
+    (hk : ∀ r xs, (∀ who, r.mapM (reg (rs ++ xs) who) = .ok o) → ∃ fg', Builds abiOf fg1 fg' (k r) (rs ++ xs) out) :
+    ∃ fg', Builds abiOf fg fg' (b >>= k) rs out := by
+  obtain ⟨⟨a1, ha1⟩, hb1, hb⟩ := hb
+  obtain ⟨js0, xs0, r0, hr0, hs0, hm0⟩ := hb #[]
+  obtain ⟨w, hw, hF0⟩ := hF _ _ _ _ _ _ _ hr0
+  simp only [Array.empty_append] at hw; subst hw
+  obtain ⟨fg', ⟨a2, ha2⟩, hb2, hk'⟩ := hk r0 xs0 hm0
+  refine ⟨fg', ⟨a1 ++ a2, by rw [ha2, ha1, Array.append_assoc]⟩, hb1.trans hb2, fun is => ?_⟩
+  obtain ⟨js2, xs2, r2, hr2, hs2, hm2⟩ := hk' (is ++ js0)
+  refine ⟨js0 ++ js2, xs0 ++ xs2, r2, ?_, fun fs gs hE ws => ?_, fun who => by simpa [Array.append_assoc] using hm2 who⟩
+  · rw [StateT.run_bind, hF0 is]
+    show (k r0).run (is ++ js0, (rs ++ xs0).size, fg1) = _
+    rw [hr2]; simp [Array.append_assoc]
+  · rw [Array.toList_append, runB_append, hs0 fs gs (Env.mono ⟨a2, ha2⟩ hb2 hE) ws, ok_bind]
+    simpa [Array.append_assoc] using hs2 fs gs hE ws
+
+theorem Builds.bind1F {fg fg1 : Array Fun × Array Fun} {b : Bld Nat} {k : Nat → Bld (Array Nat)}
+    {rs out : Array Val} {o : Val} (hF : Free b) (hb : Builds abiOf fg fg1 (do let r ← b; Pure.pure #[r]) rs #[o])
+    (hk : ∀ r R, R[r]? = some o → Extends rs R → ∃ fg', Builds abiOf fg1 fg' (k r) R out) :
+    ∃ fg', Builds abiOf fg fg' (b >>= k) rs out := by
+  have e : b >>= k = (do let r ← b; Pure.pure #[r]) >>= fun a => k (a[0]?.getD 0) := by simp
+  rw [e]
+  refine Builds.bindF (hF.bind fun _ => Free.pure _) hb fun a xs h => ?_
+  obtain ⟨r, hr, hR⟩ := holds_at (holds_of_reg (h "")) (i := 0) (v := o) rfl
+  rw [show a[0]?.getD 0 = r by simp at hr; simp [hr]]
+  exact hk r _ hR fun h => get_app h
+
 end Rel.Lang.Plan
