@@ -551,4 +551,409 @@ theorem compBlockB_spec (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A
     (hk jv Bk hb) hfo fun fg2 W Rn' ext he hf ho hsk hsv hreg =>
       hkk fg2 W Rn' ext he hf ho (ColsOf.shape A hRk hsk) (ColsOf.shape C hSv hsv) hreg
 
+/-! ### `compBlocksB`'s two plan functions, named -/
+
+/-- `compBlocksB`'s `blk`: block `j`, the block words read off the pseudo-table `C` (`col1`). -/
+def compBlkB (C R S : TabB) (j : Nat) : Bld TabB := do
+  compOneB (← keepB R (← mapWB .first R.n (← col1 C.key) (← col1 C.key) [(.eq, ← u64B j)])) S
+
+/-- `compBlocksB`'s loop function on the block `A0`, the pseudo-table `C` and the sides `R`, `S`. -/
+def compLoopBody : List TabB → Bld TabB
+  | [A0, C, R, S] => do
+    let one ← lit (.size 1)
+    let init := (← tabsRegs [A0]).toArray.push (← lit (.size 0))
+    let rs ← loop C.n init "comp: a block loop ran past its blocks" (compRoundB A0 C.n one (compBlkB C R S))
+    match (← tabsAt [A0] rs.toList).1 with
+    | [U] => pure U
+    | _ => throw "comp: the block loop's answer is not one table"
+  | _ => throw "comp: not four tables"
+
+/-- `compBlocksB`'s function on the pseudo-table `C` and the sides `R`, `S`. -/
+def compBlocksBody : List TabB → Bld TabB
+  | [C, R, S] => do
+    let one ← lit (.size 1)
+    let A0 ← compBlkB C R S (← lit (.size 0))
+    iteT (← call1 (kernel% USize.decEq) #[C.n, one]) R.key S.val (pure A0) (funT [A0, C, R, S] compLoopBody)
+  | _ => throw "comp: not three tables"
+
+theorem compBlocksB_eq (R S : TabB) (nb bid : Nat) : compBlocksB R S nb bid = (do
+    guard (← call1 (kernel% USize.decLt) #[nb, ← lit (.size (2 ^ 63))]) "comp: blocks past 2^63" #[nb]
+    let c ← clampB R.n bid (← call1 (kernel% USize.sub) #[nb, ← lit (.size 1)])
+    funT [⟨nb, [.atom "" .i64 c], []⟩, R, S] compBlocksBody) := rfl
+
+theorem Grows.compBlkB (C R S : TabB) (j : Nat) : Grows (Plan.compBlkB C R S j) := by
+  unfold Plan.compBlkB
+  exact (Grows.col1 _).bind fun _ => (Grows.col1 _).bind fun _ => (Grows.u64B _).bind fun _ =>
+    (Grows.mapWB _ _ _ _ _).bind fun _ => (Grows.keepB _ _).bind fun _ => Grows.compOneB _ _
+
+theorem Grows.compRoundB (A0 : TabB) (Cn one : Nat) {blk : Nat → Bld TabB} (hb : ∀ j, Grows (blk j))
+    (st : Array Nat) : Grows (Plan.compRoundB A0 Cn one blk st) := by
+  unfold Plan.compRoundB
+  refine (Grows.tabsAt _ _).bind fun x => ?_
+  obtain ⟨Ts, js⟩ := x
+  rcases Ts with _ | ⟨A, _ | ⟨A', Ts⟩⟩ <;> try exact Grows.throw _
+  rcases js with _ | ⟨j, _ | ⟨j', js⟩⟩ <;> try exact Grows.throw _
+  exact (Grows.call1 _ _).bind fun _ => (Grows.packT _ _).bind fun _ => (hb _).bind fun _ =>
+    (Grows.unionB _ _).bind fun _ => (Grows.tabsRegs _).bind fun _ => (Grows.call1 _ _).bind fun _ =>
+    (Grows.call1 _ _).bind fun _ => Grows.pure _
+
+theorem Grows.compLoopBody (Us : List TabB) : Grows (Plan.compLoopBody Us) := by
+  rcases Us with _ | ⟨A0, _ | ⟨C, _ | ⟨R, _ | ⟨S, _ | ⟨_, _⟩⟩⟩⟩⟩ <;> try exact Grows.throw _
+  unfold Plan.compLoopBody
+  refine (Grows.lit _).bind fun _ => (Grows.tabsRegs _).bind fun _ => (Grows.lit _).bind fun _ =>
+    (Grows.loop fun _ => Grows.compRoundB _ _ _ (fun _ => Grows.compBlkB _ _ _ _) _).bind fun _ =>
+    (Grows.tabsAt _ _).bind fun x => ?_
+  rcases x with ⟨_ | ⟨U, _ | _⟩, _⟩ <;> first | exact Grows.pure _ | exact Grows.throw _
+
+theorem Grows.compBlocksBody (Us : List TabB) : Grows (Plan.compBlocksBody Us) := by
+  rcases Us with _ | ⟨C, _ | ⟨R, _ | ⟨S, _ | ⟨_, _⟩⟩⟩⟩ <;> try exact Grows.throw _
+  unfold Plan.compBlocksBody
+  exact (Grows.lit _).bind fun _ => (Grows.lit _).bind fun _ => (Grows.compBlkB _ _ _ _).bind fun _ =>
+    (Grows.call1 _ _).bind fun _ => Grows.iteT (Grows.pure _) (Grows.funT fun Us => Grows.compLoopBody Us)
+
+theorem Typed.col1 {m : Nat} {cs : Cols} (h : AllGe m (Cols.regs cs)) : Typed m (fun r => m ≤ r) (Plan.col1 cs) := by
+  unfold Plan.col1; split
+  · exact Typed.pure (h _ (by simp [Cols.regs, Col.regs]))
+  · exact Typed.throw _
+
+theorem Typed.compBlkB {m j : Nat} {C R S : TabB} (hC : AllGe m (Cols.regs C.key)) (hR : AllGe m R.regs)
+    (hS : AllGe m S.regs) : Typed m (fun U => AllGe m U.regs) (Plan.compBlkB C R S j) := by
+  have hn : m ≤ R.n := hR _ (by rw [TabB.regs_eq]; simp)
+  unfold Plan.compBlkB
+  exact (Typed.col1 hC).bind fun a ha => (Typed.col1 hC).bind fun b hb => (Typed.u64B (s := j)).bind fun u hu =>
+    (Typed.mapWB hn ha hb (by simp [hu])).bind fun w hw => (Typed.keepB hR hw).bind fun K hK => Typed.compOneB hK hS
+
+theorem Typed.compRoundB {m n' : Nat} {A0 : TabB} {Cn one : Nat} {blk : Nat → Bld TabB} (hn' : m ≤ n') (hCn : m ≤ Cn)
+    (hone : m ≤ one) (hb : ∀ j, m ≤ j → Typed m (fun U => AllGe m U.regs) (blk j)) :
+    Typed m (fun r => (∀ a ∈ r.1, m ≤ a) ∧ m ≤ r.2)
+      (Plan.compRoundB A0 Cn one blk (List.range' n' (A0.regs.length + 1)).toArray) := by
+  obtain ⟨L, Y0, h1, -, -, h4⟩ := tab_spec A0
+  rw [tabsRegs_eq] at h1
+  obtain rfl : A0.regs = L := by simpa using pure_inj h1
+  obtain ⟨V, hV, hVr, -, -, -⟩ := h4 (List.range' n' A0.regs.length) [n' + A0.regs.length] (by simp)
+  rw [tabsRegs_eq] at hVr
+  have hVr' : V.regs = List.range' n' A0.regs.length := by simpa using pure_inj hVr
+  have hVg : AllGe m V.regs := fun a ha => by rw [hVr', List.mem_range'_1] at ha; omega
+  have e : (List.range' n' (A0.regs.length + 1)).toArray.toList =
+      List.range' n' A0.regs.length ++ [n' + A0.regs.length] := by
+    rw [List.toList_toArray, List.range'_concat, Nat.one_mul]
+  unfold Plan.compRoundB
+  rw [e, hV]
+  simp only [pure_bind, tabsRegs_eq, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+  refine (Typed.call1 ?_).bind fun j1 hj1 => (Typed.packT hVg).bind fun P hP => (hb j1 hj1).bind fun B hB =>
+    (Typed.unionB hP hB).bind fun U hU => (Typed.call1 ?_).bind fun d1 hd1 => (Typed.call1 ?_).bind fun d hd =>
+    Typed.pure ⟨fun a ha => ?_, hd⟩
+  · simp only [List.mem_toArray, List.mem_cons, List.not_mem_nil, or_false]; omega
+  · simp only [List.mem_toArray, List.mem_cons, List.not_mem_nil, or_false]; omega
+  · simp only [List.mem_toArray, List.mem_cons, List.not_mem_nil, or_false]; omega
+  · simp only [Array.mem_push, List.mem_toArray] at ha
+    rcases ha with ha | rfl
+    · exact hU a ha
+    · exact hj1
+
+/-- `compLoopBody` after its two `lit`s (the round's `1` in `one`, the first block number in `z`). -/
+def compLoopRest (A0 C R S : TabB) (one z : Nat) : Bld TabB := do
+  let rs ← loop C.n (A0.regs.toArray.push z) "comp: a block loop ran past its blocks" (compRoundB A0 C.n one (compBlkB C R S))
+  match (← tabsAt [A0] rs.toList).1 with
+  | [U] => pure U
+  | _ => throw "comp: the block loop's answer is not one table"
+
+theorem compLoopBody_eq (A0 C R S : TabB) : compLoopBody [A0, C, R, S] =
+    (do let one ← lit (.size 1); let z ← lit (.size 0); compLoopRest A0 C R S one z) := by
+  simp only [compLoopBody, compLoopRest, tabsRegs_eq, List.flatMap_cons, List.flatMap_nil, List.append_nil, pure_bind]
+
+theorem Typed.compLoopRest {m one z : Nat} {A0 C R S : TabB} (hA0 : AllGe m A0.regs) (hC : AllGe m C.regs)
+    (hR : AllGe m R.regs) (hS : AllGe m S.regs) (hone : m ≤ one) (hz : m ≤ z) :
+    Typed m (fun U => AllGe m U.regs) (Plan.compLoopRest A0 C R S one z) := by
+  have hCn : m ≤ C.n := hC _ (by rw [TabB.regs_eq]; simp)
+  have hCk : AllGe m (Cols.regs C.key) := fun a ha => hC a (by rw [TabB.regs_eq]; simp [ha])
+  obtain ⟨L, Y0, h1, -, -, h4⟩ := tab_spec A0
+  rw [tabsRegs_eq] at h1
+  obtain rfl : A0.regs = L := by simpa using pure_inj h1
+  unfold Plan.compLoopRest
+  refine (Typed.loop (k := C.n) (fun a ha => ?_) fun n' hn' => ?_).bind fun r hr => ?_
+  · simp only [Array.mem_push, List.mem_toArray] at ha
+    rcases ha with ha | rfl
+    · exact hA0 a ha
+    · exact hz
+  · simp only [Array.size_push, List.size_toArray]
+    exact Typed.compRoundB hn' hCn hone fun _ _ => Typed.compBlkB hCk hR hS
+  · have hl : (r.toList.take A0.regs.length).length = A0.regs.length := by
+      simp only [List.length_take, Array.length_toList, hr.1, Array.size_push, List.size_toArray]; omega
+    obtain ⟨V, hV, hVr, -⟩ := h4 _ (r.toList.drop A0.regs.length) hl
+    rw [List.take_append_drop] at hV
+    rw [hV]
+    simp only [pure_bind]
+    rw [tabsRegs_eq] at hVr
+    refine Typed.pure fun a ha => hr.2 a ?_
+    have : a ∈ r.toList.take A0.regs.length := by simpa [← pure_inj hVr] using ha
+    exact Array.mem_toList_iff.1 (List.mem_of_mem_take this)
+
+theorem Typed.compLoopBody {m : Nat} {Us : List TabB} (hU : AllGe m (Us.flatMap TabB.regs)) :
+    Typed m (fun U => AllGe m U.regs) (Plan.compLoopBody Us) := by
+  rcases Us with _ | ⟨A0, _ | ⟨C, _ | ⟨R, _ | ⟨S, _ | ⟨_, _⟩⟩⟩⟩⟩ <;> try exact Typed.throw _
+  have g : ∀ T ∈ [A0, C, R, S], AllGe m T.regs := fun T hT a ha => hU a (List.mem_flatMap.2 ⟨T, hT, ha⟩)
+  rw [compLoopBody_eq]
+  exact (Typed.lit _).bind fun one hone => (Typed.lit _).bind fun z hz =>
+    Typed.compLoopRest (g A0 (by simp)) (g C (by simp)) (g R (by simp)) (g S (by simp)) hone hz
+
+theorem lit_bind_run {β : Type} (v : Val) (k : Nat → Bld β) (is : Array Instr) (n : Nat) (fg : Array Fun × Array Fun) :
+    (Plan.lit v >>= k).run (is, n, fg) = (k n).run (is.push (.lit v), n + 1, fg) := rfl
+
+/-- **`compLoopBody` is never spliced**: its block holds the two `lit`s and more, so its `funT` is an `apply`
+    (`Typed.funTNS`' `hns`). -/
+theorem compLoopBody_ns (Us : List TabB) (n : Nat) (fg : Array Fun × Array Fun) (U : TabB)
+    (s' : Array Instr × Nat × Array Fun × Array Fun) (h : (compLoopBody Us).run (#[], n, fg) = .ok (U, s')) :
+    spliceable s'.1 = false := by
+  rcases Us with _ | ⟨A0, _ | ⟨C, _ | ⟨R, _ | ⟨S, _ | ⟨_, _⟩⟩⟩⟩⟩ <;> try cases h
+  rw [compLoopBody_eq] at h
+  simp only [lit_bind_run] at h
+  obtain ⟨js, fa, e, -⟩ := Typed.compLoopRest (m := 0) (fun _ _ => Nat.zero_le _) (fun _ _ => Nat.zero_le _)
+    (fun _ _ => Nat.zero_le _) (fun _ _ => Nat.zero_le _) (Nat.zero_le _) (Nat.zero_le _) _ _ _ _ _ _ (Nat.zero_le _) h
+  have hs : ¬ (s'.1.size ≤ 1) := by rw [e]; simp; omega
+  simp [spliceable, hs]
+
+theorem Typed.compBlocksBody {m : Nat} {Us : List TabB} (hU : AllGe m (Us.flatMap TabB.regs)) :
+    Typed m (fun U => AllGe m U.regs) (Plan.compBlocksBody Us) := by
+  rcases Us with _ | ⟨C, _ | ⟨R, _ | ⟨S, _ | ⟨_, _⟩⟩⟩⟩ <;> try exact Typed.throw _
+  have g : ∀ T ∈ [C, R, S], AllGe m T.regs := fun T hT a ha => hU a (List.mem_flatMap.2 ⟨T, hT, ha⟩)
+  have hC := g C (by simp)
+  have hCn : m ≤ C.n := hC _ (by rw [TabB.regs_eq]; simp)
+  have hCk : AllGe m (Cols.regs C.key) := fun a ha => hC a (by rw [TabB.regs_eq]; simp [ha])
+  unfold Plan.compBlocksBody
+  refine (Typed.lit _).bind fun one hone => (Typed.lit _).bind fun z hz =>
+    (Typed.compBlkB hCk (g R (by simp)) (g S (by simp))).bind fun A0 hA0 => (Typed.call1 ?_).bind fun d hd =>
+    Typed.iteT hd (Typed.pure hA0) (Typed.funT ?_ fun Us hUs => Typed.compLoopBody hUs)
+  · simp only [List.mem_toArray, List.mem_cons, List.not_mem_nil, or_false]; omega
+  · intro a ha
+    obtain ⟨T, hT, hTa⟩ := List.mem_flatMap.1 ha
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hT
+    rcases hT with rfl | rfl | rfl | rfl
+    · exact hA0 a hTa
+    · exact hC a hTa
+    · exact g _ (by simp) a hTa
+    · exact g _ (by simp) a hTa
+
+/-- **`funT_builds` for a body that builds a table**: the parameters `Ts` read `pv` in `rs`, the body on the parameter
+    tables `Us` builds (in continuation form) a table of the shapes `K`, `V` holding `Y`, and `Typed` types what it
+    closes over; `kk` continues on a table of those shapes holding `Y`. -/
+theorem funTab_builds {A C : Obj} {Ts Us : List TabB} {b : List TabB → Bld TabB} {K V : Cols} {Y : Tab A C}
+    {fg : Array Fun × Array Fun} {rs pv out : Array Val} {kk : TabB → Bld (Array Nat)}
+    (hK : ColsOf A K) (hV : ColsOf C V)
+    (ha : ∀ who, (Ts.flatMap TabB.regs).toArray.mapM (reg rs who) = .ok pv)
+    (hUs : tabsAt Ts (List.range' rs.size (Ts.flatMap TabB.regs).length) = Pure.pure (Us, []))
+    (hfo : Ordered fg.1) (hb : ∀ Ts', Grows (b Ts')) (hT : Typed rs.size (fun _ => True) (b Us))
+    (hB : ∀ (kt : TabB → Bld (Array Nat)) (ot : Array Val), (∀ (fg2 : Array Fun × Array Fun) (W : TabB)
+      (Rn : Array Val), Extends (rs ++ pv) Rn → Cols.shape W.key = Cols.shape K → Cols.shape W.val = Cols.shape V →
+      TabHolds W Y Rn → Builds abiOf fg2 fg2 (kt W) Rn ot) → ∃ fg', Builds abiOf fg fg' (b Us >>= kt) (rs ++ pv) ot)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape K → Cols.shape W.val = Cols.shape V →
+      TabHolds W Y (rs ++ ys) → ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (funT Ts b >>= kk) rs out := by
+  let P : TabB → Prop := fun W => Cols.shape W.key = Cols.shape K ∧ Cols.shape W.val = Cols.shape V
+  let o : Array Val := (tabVals Y).toArray
+  obtain ⟨fg1, hB'⟩ := hB (answerRegs P) o fun fg2 W Rn _ hsk hsv hW =>
+    Builds.answerRegs (P := P) ⟨hsk, hsv⟩ (tabsRegs_eq _) fun _ => by simpa [o] using reads_of hW
+  obtain ⟨⟨a1, ha1⟩, hb1, hB1⟩ := hB'
+  obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg1) (k := (Ts.flatMap TabB.regs).length) (rs := rs) hT
+  refine funT_builds (P := P) (Us := Us) (ctys := ctys) (o := o) (tabsRegs_eq Ts) ha hUs (hB1 #[]) hfo hb
+    (fun U body xs R rtys h _ hR hy is => hcl U body _ R rtys h hR hy is) ?_
+  intro U' ⟨hsk', hsv'⟩ fg2 Rr V' ys he hf ho' hRr hV'
+  obtain ⟨AU, YU, u1, -, -, u4⟩ := tab_spec U'
+  rw [tabsRegs_eq] at u1
+  obtain rfl := (pure_inj u1).symm
+  have hl : Rr.toList.length = ([U'].flatMap TabB.regs).length := by
+    have h1 := mapM_ok_size (hRr "")
+    simp only [o, List.size_toArray] at h1
+    simp [h1, TabB.regs_length (ColsOf.shape A hK hsk') (ColsOf.shape C hV hsv') Y]
+  obtain ⟨V'', f1, f2, -, f4, f5⟩ := u4 Rr.toList [] hl
+  rw [List.append_nil] at f1
+  obtain rfl : V' = V'' := by
+    have := pure_inj (hV'.symm.trans f1); simp only [Prod.mk.injEq, List.cons.injEq, and_true] at this; exact this
+  rw [tabsRegs_eq] at f2
+  have f2' := pure_inj f2
+  have hread := holds_of_reg (hRr "")
+  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil] at f2'
+  rw [← f2'] at hread
+  obtain ⟨e1', he1⟩ := he
+  exact hkk fg2 V' ys ⟨a1 ++ e1', by rw [he1, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
+    (f4.trans hsk') (f5.trans hsv') (by simpa [o] using hread)
+
+/-- `Typed.funBOf` for a body that is never spliced: the `apply` reads `args` (any registers, also below `m`) and the
+    closure, each typed by the function's parameter, so `args` need not be above `m`. -/
+theorem Typed.funBNS {α : Type} {m : Nat} {Q : Array Nat × List Ty × α → Prop} {tys : List Ty}
+    {args : List Nat} {b : List Nat → Bld (Array Nat × List Ty × α)}
+    (hb : ∀ ps, (∀ p ∈ ps, m ≤ p) → ps.length = tys.length → Typed m Q (b ps))
+    (hns : ∀ n fg x s', (b (List.range' n tys.length)).run (#[], n + tys.length, fg) = .ok (x, s') →
+      spliceable s'.1 = false) :
+    Typed m (fun x : Array Nat × α => (∀ a ∈ x.1, m ≤ a) ∧ ∃ r rtys, Q (r, rtys, x.2) ∧ r.size = x.1.size)
+      (Plan.funB tys args b) := by
+  intro is n fs gs x s' hm h
+  by_cases hk : args.length = tys.length
+  · cases hr : (b (List.range' n tys.length)).run (#[], n + tys.length, fs, gs) with
+    | error _ => simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr,
+        err_bind_eq, Functor.map, Except.map] at h
+    | ok p =>
+      obtain ⟨⟨r, rtys, x0⟩, body, n1, fs1, gs1⟩ := p
+      have hC : spliceable body = false := hns n (fs, gs) _ _ hr
+      obtain ⟨js, fa, e1, f1, l1, q2, t1⟩ :=
+        hb _ (fun p hp => by simp [List.mem_range'] at hp; omega) (by simp) _ _ _ _ _ _ (by omega) hr
+      simp only [Array.empty_append] at e1 f1 l1
+      subst e1 f1
+      simp [Plan.funB, StateT.run_bind, StateT.run_get, StateT.run_monadLift, liftM, monadLift_self, hk, hr, hC,
+        ok_bind, -List.filter_append] at h
+      obtain ⟨ctys, hty, h⟩ := bind_ok h
+      simp only [Functor.map, Except.map] at h
+      split at h
+      · cases h
+      · rename_i v hv
+        obtain ⟨r', s1⟩ := v
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+        have hcl : ctys.length = (((readsB n body.toList ++ r.toList).filter (· < n)).eraseDups).length := by
+          revert hty
+          cases hc : Plan.cloTys (fs ++ fa) gs1 is body n r rtys
+              ((readsB n body.toList ++ r.toList).filter (· < n)).eraseDups with
+          | error e => intro h; cases h
+          | ok ts => intro h; cases h; exact cloTys_length hc
+        rcases addFun_spec (fs ++ fa) _ with ⟨e2, hlt, hget⟩ | ⟨e2, e1⟩
+        · rw [e2] at hv
+          rw [apply_run hlt, emit_ok] at hv
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hv)
+          refine ⟨#[.apply _ _], fa, rfl, rfl, Nat.le_add_right _ _, ⟨fun a ha => ?_, r, rtys, q2, by simp⟩,
+            fun y a ha hlt' => ?_⟩
+          · simp at ha; omega
+          · simp only [readsB, reads, List.append_nil] at ha
+            obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
+            have hjt : j < (tys ++ ctys).toArray.size := by
+              simp only [List.length_append] at hjl; simp only [List.size_toArray, List.length_append]; omega
+            refine ⟨((tys ++ ctys).toArray)[j], ?_⟩
+            show (useTy _ a (.apply _ _) <|> none) = _
+            simp only [useTy, hj, Option.bind_some, Array.getElem?_append_left hlt,
+              Array.getElem?_eq_getElem hlt, hget, Option.bind_some]
+            try rw [Array.getElem?_eq_getElem hjt]
+            try rfl
+        · rw [e2] at hv
+          rw [apply_run (by rw [e1]; simp), emit_ok] at hv
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj hv)
+          refine ⟨#[.apply _ _], fa.push _, rfl, Array.push_append, Nat.le_add_right _ _,
+            ⟨fun a ha => ?_, r, rtys, q2, by simp⟩, fun y a ha hlt' => ?_⟩
+          · simp at ha; omega
+          · simp only [readsB, reads, List.append_nil] at ha
+            obtain ⟨j, hj, hjl⟩ := idxOf?_of_mem ha
+            have hjt : j < (tys ++ ctys).toArray.size := by
+              simp only [List.length_append] at hjl; simp only [List.size_toArray, List.length_append]; omega
+            refine ⟨((tys ++ ctys).toArray)[j], ?_⟩
+            show (useTy _ a (.apply _ _) <|> none) = _
+            simp only [useTy, hj, Option.bind_some, e1]
+            rw [Array.getElem?_append_left (by simp), Array.getElem?_push_size, Option.bind_some]
+            try rw [Array.getElem?_eq_getElem hjt]
+            try rfl
+  · simp [Plan.funB, StateT.run_bind, StateT.run_get, hk, throwThe, MonadExceptOf.throw, MonadExcept.throw,
+      err_bind_eq, Functor.map, Except.map] at h
+
+/-- `Typed.funT` for a body that is never spliced (`Typed.funBNS`): the tables `Ts` may lie below `m`, as an `iteT`
+    branch's `funT []` closes over the tables of the enclosing function. -/
+theorem Typed.funTNS {m : Nat} {Ts : List TabB} {b : List TabB → Bld TabB}
+    (hb : ∀ Us, AllGe m (Us.flatMap TabB.regs) → Typed m (fun _ => True) (b Us))
+    (hns : ∀ Us n fg U s', (b Us).run (#[], n, fg) = .ok (U, s') → spliceable s'.1 = false) :
+    Typed m (fun V => AllGe m V.regs) (Plan.funT Ts b) := by
+  obtain ⟨A, Y, h1, h2, h3, -⟩ := tabs_spec Ts
+  obtain rfl : A = Ts.flatMap TabB.regs := pure_inj (h1.symm.trans (tabsRegs_eq Ts))
+  unfold Plan.funT
+  rw [h2, h1]
+  simp only [pure_bind]
+  refine (Typed.funBNS (Q := fun x => x.2.2.regs = x.1.toList) (fun ps hps hlen => ?_) ?_).bind fun x hx => ?_
+  · obtain ⟨Us, hat, hUs⟩ := tabsAt_regs (Ts := Ts) (ps := ps) (hlen.trans h3.symm)
+    rw [hat]
+    simp only [pure_bind]
+    refine (hb Us (by rw [hUs]; exact hps)).bind fun U _ => ?_
+    obtain ⟨A1, Y1, g1, g2, -⟩ := tab_spec U
+    obtain rfl : A1 = U.regs := by simpa using pure_inj (g1.symm.trans (tabsRegs_eq [U]))
+    rw [g1, g2]
+    simp only [pure_bind]
+    exact Typed.pure (by simp)
+  · intro n fg x s' h
+    obtain ⟨Us, hat, -⟩ := tabsAt_regs (Ts := Ts) (ps := List.range' n Y.flatten.length) (by simp [h3])
+    simp only [hat, pure_bind, StateT.run_bind] at h
+    rcases hU : (b Us).run (#[], n + Y.flatten.length, fg) with e | ⟨U, s1⟩
+    · rw [hU] at h; cases h
+    · rw [hU, ok_bind] at h
+      obtain ⟨A1, Y1, g1, g2, -⟩ := tab_spec U
+      simp only [g1, g2, pure_bind, StateT.run_pure] at h
+      obtain ⟨-, rfl⟩ := Prod.mk.inj (Except.ok.inj h)
+      exact hns Us _ fg U s1 hU
+  · rcases x with ⟨rs, U⟩
+    obtain ⟨hrs, r, rtys, hr, hsz⟩ := hx
+    simp only at hrs hr hsz
+    obtain ⟨Us, hat, hUs⟩ := tabsAt_regs (Ts := [U]) (ps := rs.toList) (by simp [hr, hsz])
+    dsimp only
+    rw [hat]
+    simp only [pure_bind]
+    rcases Us with _ | ⟨V, _ | ⟨W, Vs⟩⟩
+    · exact Typed.throw _
+    · refine Typed.pure fun a ha => hrs a ?_
+      have : V.regs = rs.toList := by simpa using hUs
+      rw [this] at ha; simpa using ha
+    · exact Typed.throw _
+
+/-! ### The loop function builds `compBlocks`' fold -/
+
+/-- On a pseudo-table of one atom column `cr`, `compBlkB` is `compBlockB` of the words in `cr`. -/
+theorem compBlkB_atom (cn cr : Nat) (p : String) (t : QAtomicType) (cvs : Cols) (R S : TabB) :
+    compBlkB ⟨cn, [.atom p t cr], cvs⟩ R S = compBlockB R S cr := by
+  funext j; simp only [compBlkB, compBlockB, col1, pure_bind]
+
+/-- **The loop function's body builds `compBlocks`' fold** for `nb ≥ 2` blocks: `A1` holds the block `X0`, the
+    pseudo-table's count register `cn` the block count `nb` and its column `cr` the clamped words `ce`, `R1`, `S1` hold
+    `R`, `S`; where the fold over the blocks `1 … nb - 1` answers `Yf` from `X0`, `kk` continues on a table of `A1`'s
+    shape holding `Yf` (in the continuation form `iteFlat_builds` and `funT_builds` read). -/
+theorem compLoopBody_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B C : Obj) {R : Tab A B}
+    {S : Tab B C} {X0 Yf : Tab A C} {A1 R1 S1 : TabB} {cn cr : Nat} {p : String} {t : QAtomicType} {cvs : Cols}
+    {ce : Enc} {nb : USize} {fg : Array Fun × Array Fun} {rs out : Array Val} {kk : TabB → Bld (Array Nat)}
+    (hP : TabSpec A C Tab.pack (fun T => packT T))
+    (hAk : ColsOf A A1.key) (hAv : ColsOf C A1.val) (hRk : ColsOf A R1.key) (hRv : ColsOf B R1.val)
+    (hSk : ColsOf B S1.key) (hSv : ColsOf C S1.val) (hA : TabHolds A1 X0 rs) (hR : TabHolds R1 R rs)
+    (hS : TabHolds S1 S rs) (hcn : rs[cn]? = some (.size nb)) (hce : rs[cr]? = some (Reg.put ce))
+    (h2 : 2 ≤ nb.toNat) (hnb : nb.toNat < 2 ^ 63)
+    (hk : ∀ (jv : USize) (X : Tab A C), Tab.compBlock R S ce jv.toNat = .ok X → ∀ m Rk,
+      colMap .first R.n ce ce .i64 .i64 [] [(.eq, jv.toUInt64)] = .ok m → R.keep m = .ok Rk →
+      (∀ K sel, whereCol R.n m = .ok (K, sel) → WhereAgree R.n K m sel) ∧ CompPre A B C Rk S ∧ CompPost A B C Rk X)
+    (hY : (List.range (nb.toNat - 1)).foldlM (fun acc j => do (← acc.pack).union (← Tab.compBlock R S ce (j + 1))) X0 =
+      .ok Yf)
+    (hU : ∀ i acc Y Bk, i + 1 < nb.toNat →
+      (List.range i).foldlM (fun acc j => do (← acc.pack).union (← Tab.compBlock R S ce (j + 1))) X0 = .ok acc →
+      acc.pack = .ok Y → Tab.compBlock R S ce (i + 1) = .ok Bk → UnionPre Y Bk) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (Rn : Array Val), Extends rs Rn →
+      Cols.shape W.key = Cols.shape A1.key → Cols.shape W.val = Cols.shape A1.val → TabHolds W Yf Rn →
+      Builds abiOf fg2 fg2 (kk W) Rn out) :
+    ∃ fg', Builds abiOf fg fg' (compLoopBody [A1, ⟨cn, [.atom p t cr], cvs⟩, R1, S1] >>= kk) rs out := by
+  obtain ⟨L, Y0, h1, -, -, h4⟩ := tab_spec A1
+  have hL : L = A1.regs := by rw [tabsRegs_eq] at h1; simpa using (pure_inj h1).symm
+  subst hL
+  have hl : A1.regs.length = (tabVals X0).length := mapM_get_length hA
+  simp only [compLoopBody, compBlkB_atom, tabsRegs_eq, List.flatMap_cons, List.flatMap_nil, List.append_nil, bind_assoc,
+    pure_bind]
+  refine litE fun one R0 hone m0 => litE fun z R2 hz m1 => ?_
+  have hE : Extends rs R2 := fun h => m1 (m0 h)
+  have hi : (A1.regs.toArray.push z).mapM (reg R2 "loop") = .ok (tabVals X0 ++ [Val.size 0]).toArray := by
+    rw [show A1.regs.toArray.push z = (A1.regs ++ [z]).toArray by simp]
+    exact reads_of (by rw [List.mapM_append, mapM_extends hE hA]; simp [hz])
+  have hB := @compBlockB_spec hc h63 A B C _ _ _ _ _ _ _ hRk hRv hSk hSv (mapM_extends hE hR) (mapM_extends hE hS) (hE hce) hk
+  obtain ⟨fg1, i, hL⟩ := compLoop_builds (msg := "comp: a block loop ran past its blocks") hc h63 hP hB hAk hAv
+    (hE hcn) (m1 hone) hfo (by simp) hi h2 hnb hY hU
+  refine ⟨fg1, Builds.bind hL fun r xs hr => ?_⟩
+  have hrr := holds_of_reg (hr "")
+  have hlr : (r.toList.take A1.regs.length).length = A1.regs.length := by
+    have := mapM_ok_size (hr ""); simp only [List.size_toArray, List.length_append, List.length_singleton] at this
+    have := TabB.regs_length hAk hAv Yf; simp only [List.length_take, Array.length_toList]; omega
+  obtain ⟨V, hV, hVr, -, hVk, hVv⟩ := h4 _ (r.toList.drop A1.regs.length) hlr
+  rw [List.take_append_drop] at hV
+  rw [hV]
+  simp only [pure_bind]
+  rw [tabsRegs_eq] at hVr
+  have hVr' : V.regs = r.toList.take A1.regs.length := by simpa using pure_inj hVr
+  rw [← List.take_append_drop A1.regs.length r.toList] at hrr
+  obtain ⟨hY1, -⟩ := mapM_split (by rw [hlr, TabB.regs_length hAk hAv Yf]) hrr
+  exact hkk fg1 V (R2 ++ xs) (fun h => get_app (hE h)) hVk hVv (by unfold TabHolds; rw [hVr']; exact hY1)
+
 end Rel.Lang.Plan
