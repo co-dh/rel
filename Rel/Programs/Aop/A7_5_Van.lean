@@ -23,11 +23,13 @@ rel_program aopA7_5_Van where
     -- Freyd.Alg.RelSet.Van.inter_le_RH, 07-optimisation.typ:1952
     theorem interLeRH(R : α ⟶ α, H : α ⟶ α) : (R ∩ H) ⊑ (R ∩ (R° ⇒ H)) by Rel.Lang.Tm.inter_le_rh_den
 
+    -- Freyd.Alg.RelSet.Van.van_7_18, 07-optimisation.typ:1920. Stronger form: any `T` for the book's `⊤` (the proof reads nothing of it); `H = head prefix° head° ∪ nil° nil` written out
+    theorem van718(T : [[α]] ⟶ [[α]]) : (𝟙×T) new ⊑ new (head prefix° head° ∪ (nil° nil)) by Rel.Lang.Tm.van718_den
+
 -- not ported: RH_eq (07-optimisation.typ:1745): `R;H` is written R ∩ (R° ⇒ H) here, so the equation is a syntactic identity
 -- not ported: new_eq (07-optimisation.typ:1806): `new` is defined as `(τ×𝟙) cons`, so `new = (τ×𝟙) cons` is a syntactic identity
 -- not ported: glue_eq (07-optimisation.typ:1811): `glue` would be defined as the book's `(𝟙×cons°) assocl (cons×𝟙) cons`, so the equation is a syntactic identity
 -- not ported: RH_eq_strict (1749): `|R| ≜ R ∩ ¬R°` needs `R` a total preorder (`length ≤ length°`), which cannot be written at `[[α]]`
--- not ported: van_7_18 (1920): needs `head`, `prefix` and `nil° nil` at schedules with den lemmas for `at(0)` and `cat° π₁` on lists of lists
 -- not ported: R_eq (1687): `graph` of a Lean function `clen`; `length°` has no universe at `[[α]]`
 -- not ported: partition_cata (1721): `partition` is `cconcat° ∩ allNonempty`, a host function on `ConsList`, and the fold-uniqueness proof needs list-level `cat°` reasoning
 -- not ported: old_eq (1816), prog_le_greedy (2043), secure_bmax (1767), secure_prefix (1761), van_7_14 (1876), van_7_19 (1961), van_7_20 (1962), van_7_21 (1963), van_mono (1956), van_mono_new (1915), van_strict_old (2015): class parameters `[Amount A] [Van]` (a host `Int` amount and capacity); the prelude has no minus, max or signed object, so `ceiling`, `floor`, `secure` cannot be defined

@@ -1,4 +1,6 @@
 import Rel.Lang.Laws.AopA4_4
+import Rel.Lang.Laws.AopA5_7_ListBeads
+import Rel.Lang.PreludeHead
 
 /-! # Laws of freyd §7.5 `AOP/A7_5_Van.lean`, on the concrete core
 
@@ -64,5 +66,35 @@ theorem Tm.cons_mono_r_den {L G V : Obj} {K : Tm (.prod V L) L} {l : Tm L G} {O 
   obtain rfl := sl _ g n0 hyg hy
   have hO' := Core.Rel.le_iff.1 hb m' v ⟨g, ⟨m, hu1, hO⟩, hug⟩
   exact ⟨c, hKc, v, ⟨m', hlc, hO'⟩, hlw⟩
+
+/-- **(7.18)** `(𝟙×T) new ⊑ new H` for `H = head prefix° head° ∪ X`, any `T` and `X`: both sides open the segment `[a]`
+    of their own, so the two first segments are equal and the first branch of `H` holds by `prefix` reflexive. -/
+theorem Tm.van718_den {B : Obj} {T X : Tm (.arr (.arr B)) (.arr (.arr B))} {t1 : Tm (.arr (.arr B)) (.arr B)}
+    {os1 os2 : List Obj}
+    (ht1 : Rel.Programs.prelude.head.body.instObj [.general] [.arr B] = .ok t1 := by rfl) (ρ : Val) :
+    (Tm.comp (Tm.pair (Tm.comp Tm.outl Tm.id) (Tm.comp Tm.outr T))
+      (Tm.comp (Tm.pair (Tm.comp Tm.outl (Tm.prim (rowOf "τ") : Tm B (.arr B))) (Tm.comp Tm.outr Tm.id))
+        (Tm.prim (rowOf "cons") : Tm (.prod (.arr B) (.arr (.arr B))) (.arr (.arr B))))).den ρ ⊑
+    (Tm.comp (Tm.comp (Tm.pair (Tm.comp Tm.outl (Tm.prim (rowOf "τ") : Tm B (.arr B))) (Tm.comp Tm.outr Tm.id))
+        (Tm.prim (rowOf "cons") : Tm (.prod (.arr B) (.arr (.arr B))) (.arr (.arr B))))
+      (Tm.join (Tm.comp (Tm.comp (Tm.call [] `Rel.Programs.prelude.head (some `Rel.Programs.prelude.head.conv) os1 t1)
+        (Tm.conv (Tm.comp Tm.id (Tm.prim (rowOf "prefix") : Tm (.arr B) (.arr B)))))
+        (Tm.call [] `Rel.Programs.prelude.head.conv (some `Rel.Programs.prelude.head) os2 (Tm.headConvBody (B := .arr B)))) X)).den ρ := by
+  refine Core.Rel.le_iff.2 fun p r h => ?_
+  obtain ⟨a, x⟩ := p
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, Core.Rel.recip, Core.Rel.union, Prim.den_tau, Prim.den_cons, Prod.exists] at h ⊢
+  obtain ⟨a1, y, ⟨⟨a2, h1, h2⟩, x2, h3, hT⟩, a3, b1, ⟨⟨a4, h4, h5⟩, x3, h6, h7⟩, h8⟩ := h
+  obtain rfl := h1.symm
+  obtain rfl := h2
+  obtain rfl := h3.symm
+  obtain rfl := h4.symm
+  obtain rfl := h5
+  obtain rfl := h6.symm
+  obtain rfl := h7
+  obtain rfl := h8
+  exact ⟨[a] :: x, ⟨[a], x, ⟨⟨a, rfl, rfl⟩, x, rfl, rfl⟩, rfl⟩, Or.inl ⟨[a],
+    ⟨[a], (Tm.headDef_den [.general] [.arr B] _ ht1 _ _).2 ⟨by simp, rfl⟩, [a], rfl,
+      (Tm.prefixRow_iff ρ [a] [a]).2 (List.prefix_refl _)⟩,
+    (Tm.headConvBody_den _ [a] ([a] :: y)).2 ⟨by simp, rfl⟩⟩⟩
 
 end Rel.Lang

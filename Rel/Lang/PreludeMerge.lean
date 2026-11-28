@@ -122,11 +122,12 @@ theorem Prim.den_merge {B : Obj} (T : Core.Rel (Obj.El (.prod B B)) (Obj.El (.pr
   simp only [Sem.one]; exact dif_pos ⟨rfl, rfl⟩
 
 /-- `at(0)` as the prelude elaborates it: `Tm.at0` with the one-row table `{(0, 0)}` of `i64` for `0`. -/
-def Tm.headAt {B : Obj} : Tm (.arr B) B :=
-  .comp (.pair .id (.top (.val (Gen.relV (.atom .i64) (.atom .i64) (USize.ofNat 1)
+def Tm.zeroTop {A : Obj} : Tm A (.atom .i64) :=
+  .top (.val (Gen.relV (.atom .i64) (.atom .i64) (USize.ofNat 1)
     (Gen.atom .i64 (USize.ofNat 1) ["0000000000000000000000000000000000000000000000000000000000000000", "000000000000008001000000000000000a0000000000000000"] [])
-    (Gen.atom .i64 (USize.ofNat 1) ["0000000000000000000000000000000000000000000000000000000000000000", "000000000000008001000000000000000a0000000000000000"] [])).1)))
-    (.prim indexRow)
+    (Gen.atom .i64 (USize.ofNat 1) ["0000000000000000000000000000000000000000000000000000000000000000", "000000000000008001000000000000000a0000000000000000"] [])).1)
+
+def Tm.headAt {B : Obj} : Tm (.arr B) B := .comp (.pair .id Tm.zeroTop) (.prim indexRow)
 
 /-- The prelude's `tail`, `cat° dom(π₁ (at(0)τ ∩ 𝟙))π₂`, as a call. -/
 def Tm.tailCall (B : Obj) (os : List Obj := [B]) : Tm (.arr B) (.arr B) :=
@@ -138,7 +139,7 @@ theorem Tm.headAt_den (ρ : Val) {B : Obj} (xs : Obj.El (.arr B)) (b : Obj.El B)
   rw [← Tm.at0_den ρ xs b]
   have hz := Tm.zeroLit_den ρ
   simp only [Tm.den] at hz
-  simp only [Tm.headAt, Tm.at0, Tm.den, Gen.atom_zero, hz]
+  simp only [Tm.headAt, Tm.zeroTop, Tm.at0, Tm.den, Gen.atom_zero, hz]
 
 theorem Tm.tailCall_den (ρ : Val) {B : Obj} {os : List Obj} (xs ys : Obj.El (.arr B)) :
     (Tm.tailCall B os).den ρ xs ys ↔ ∃ a, xs = a :: ys := by
