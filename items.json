@@ -4766,7 +4766,8 @@
     "sha": "",
     "deps": [],
     "content": "rel_program: `test A = B` for runs; a failing test/check is an elaboration error; n.failures/n.ok and #guard n.ok deleted",
-    "note": ""
+    "note": "",
+    "what": "新增 `test A = B` 表示用具体数据跑一遍；任何 test 或 check 失败时程序直接编译不过，不再只记在 n.failures 里。"
   },
   {
     "id": "GP-1b",
@@ -4776,7 +4777,8 @@
       "GP-1a"
     ],
     "content": "`check` without `by` is an elaboration error; ~1053 run-checks migrated to `test` at parser-reported positions",
-    "note": ""
+    "note": "",
+    "what": "不带 `by` 的 `check` 变成编译错误；现有约 1053 个靠运行判定的 check 按 parser 报出的位置改成 `test`。"
   },
   {
     "id": "GP-1c",
@@ -4784,7 +4786,8 @@
     "sha": "",
     "deps": [],
     "content": "a theorem with no `by` and no `calc` is an elaboration error (TestIO conv, EmbedTest unit, PrefixCata unprovedWitness)",
-    "note": ""
+    "note": "",
+    "what": "只写了 theorem 却没给 `by` 或 `calc` 的，编译报错；修掉现有 3 处。"
   },
   {
     "id": "GP-2",
@@ -4792,7 +4795,8 @@
     "sha": "",
     "deps": [],
     "content": "Mss: certify the unproved calc steps (toShape, toGreedy, linear)",
-    "note": ""
+    "note": "",
+    "what": "Mss 程序里还没证的 calc 步骤（toShape、toGreedy、linear）全部证掉。"
   },
   {
     "id": "GP-3",
@@ -4800,7 +4804,8 @@
     "sha": "",
     "deps": [],
     "content": "Cylinder: certify the unproved calc steps (fusion, stepFuse, cylLaws); certify ⊑ chains",
-    "note": ""
+    "note": "",
+    "what": "Cylinder 程序里还没证的 calc 步骤（fusion、stepFuse、cylLaws）证掉，并让 certify 能处理 ⊑ 链。"
   },
   {
     "id": "GP-4",
@@ -4811,7 +4816,8 @@
       "GP-3"
     ],
     "content": "a non-empty n.proof.unproved is an elaboration error (Embed.lean certify)",
-    "note": ""
+    "note": "",
+    "what": "unproved 列表非空时编译报错，于是任何未证的步骤都让程序写不出来。"
   },
   {
     "id": "GP-5",
@@ -4819,6 +4825,7 @@
     "sha": "",
     "deps": [],
     "content": "Sound for Code.args: IO inputs bound by Code.args covered by n.proof.sound (doc rel-proof-program §9.2)",
-    "note": ""
+    "note": "",
+    "what": "读输入的程序（Code.args 绑定的 IO 输入）也有编译结果等于语义的证明。"
   }
 ]
