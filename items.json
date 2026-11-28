@@ -4677,8 +4677,8 @@
   },
   {
     "id": "GOAL-RELAOP-DEL",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "freyd a884a27",
     "deps": [
       "9.10"
     ],
@@ -4688,8 +4688,8 @@
   },
   {
     "id": "GOAL-FREYD-NO-REL",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "freyd a884a27",
     "deps": [
       "GOAL-RELAOP-DEL"
     ],
