@@ -165,7 +165,7 @@ theorem forest_inv (hs : SimpleR B) : ∀ e w, FB e w → ForestInv B e w := by
   have hA : ¬ PlusR B e e := forest_acyc e w ((forest_unfold _ _ e w).2
     ⟨ks, vs, hk, Core.Rel.le_iff.1 (mapDen_mono (Core.Rel.le_iff.2 fun _ _ h => h.1)) _ _ hm, hS⟩)
   have hkin : ∀ k ∈ ks, B k e := fun k h => (kids_iff hk k).1 h
-  obtain ⟨h1, qs, hq, h2⟩ := hS
+  obtain ⟨h1, qs, hq, h2⟩ := (SX_iff _ _ _).1 hS
   have m1 : mapDen (A := .long) (B := .arr .long) (fun k q => (∀ x ∈ q, PlusR B k x) ∧ IndepL B q) ks
       (vs.map Prod.snd) := by
     have : (mapDen (fun a b => FB a b ∧ ForestInv B a b) ≫ mapDen (fun p ys => ys = Prod.snd p)) ks (vs.map Prod.snd) :=
@@ -255,7 +255,7 @@ theorem forest_ofSet : ∀ e w, FB e w → ∀ S : Int64 → Prop, (∀ x, S x �
         exact ⟨v, v.2, hv, rfl, hvm⟩
     obtain rfl := (mapDen_graph _ _ _).1 hq
     refine ⟨(e :: (vs'.map Prod.snd).flatten, (vs'.map Prod.snd).flatten),
-      (forest_unfold _ _ e _).2 ⟨ks, vs', hk, hvs, rfl, _, hsnd vs', rfl⟩, fun x => ?_⟩
+      (forest_unfold _ _ e _).2 ⟨ks, vs', hk, hvs, (SX_iff _ _ _).2 ⟨rfl, _, hsnd vs', rfl⟩⟩, fun x => ?_⟩
     show x ∈ e :: (vs'.map Prod.snd).flatten ↔ S x
     rw [List.mem_cons, hmem]
     constructor
@@ -274,7 +274,7 @@ theorem forest_ofSet : ∀ e w, FB e w → ∀ S : Int64 → Prop, (∀ x, S x �
       · obtain ⟨v, hv, hvm⟩ := (ihk k hk').2 fun h => hSk h.1
         exact ⟨v, v.2, hv, .inr rfl, hvm⟩
     refine ⟨(e :: (vs'.map Prod.snd).flatten, qs.flatten),
-      (forest_unfold _ _ e _).2 ⟨ks, vs', hk, hvs, rfl, qs, hq, rfl⟩, fun x => ?_⟩
+      (forest_unfold _ _ e _).2 ⟨ks, vs', hk, hvs, (SX_iff _ _ _).2 ⟨rfl, qs, hq, rfl⟩⟩, fun x => ?_⟩
     show x ∈ qs.flatten ↔ S x
     rw [hmem]
     constructor
@@ -340,7 +340,7 @@ theorem Tm.partySet_den {n12 : USize} {m12 p12 : List String} {hw12 : QAtomicTyp
   intro U h1 h2
   have hF : ∀ k w, k ≠ 0 →
       (Tm.forestHylo k w Tm.partyS).den ρ = Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF) :=
-    fun k w hk => Tm.forestHylo_den w _ SF ρ hk (fun _ => Tm.partyS_den _)
+    fun k w hk => Tm.forestHylo_den w _ SF ρ hk (fun _ => by rw [Tm.partyX_den, Tm.chooseT_den])
   have hPC : ∀ k w, k ≠ 0 → (Tm.partyT k w).den ρ =
       Core.Rel.comp (Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF)) CH :=
     fun k w hk => by show Core.Rel.comp _ _ = _; rw [hF k w hk]; rfl

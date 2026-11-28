@@ -23,18 +23,28 @@ open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
 section Forest
 variable {A V : Obj}
 
-/-- One step of `hylo(⟨𝟙, K⟩, S)`: `e` to `v` through the children `ks` of `e` and their values `vs`. -/
+/-- One step of `hylo(⟨𝟙, K⟩, S)`: `⟨𝟙, K⟩ (𝟙 × F(X)) S`, `e` to `v` through the children of `e` and their values. -/
 def forestStep (K : Core.Rel A.El (Obj.El (.arr A))) (S : Core.Rel (Obj.El (.prod A (.arr V))) V.El)
     (X : Core.Rel A.El V.El) : Core.Rel A.El V.El :=
-  fun e v => ∃ ks vs, K e ks ∧ mapDen X ks vs ∧ S (e, vs) v
+  rpair (𝟙 _) K ≫ rprodMap (𝟙 _) (mapDen X) ≫ S
+
+theorem forestStep_iff (K : Core.Rel A.El (Obj.El (.arr A))) (S : Core.Rel (Obj.El (.prod A (.arr V))) V.El)
+    (X : Core.Rel A.El V.El) (e : A.El) (v : V.El) :
+    forestStep K S X e v ↔ ∃ ks vs, K e ks ∧ mapDen X ks vs ∧ S (e, vs) v := by
+  simp only [forestStep, Core.Rel.comp_apply, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.id, Prod.exists]
+  constructor
+  · rintro ⟨a, ks, ⟨rfl, hk⟩, b, vs, ⟨rfl, hm⟩, hs⟩; exact ⟨ks, vs, hk, hm, hs⟩
+  · rintro ⟨ks, vs, hk, hm, hs⟩; exact ⟨e, ks, ⟨rfl, hk⟩, e, vs, ⟨rfl, hm⟩, hs⟩
 
 theorem forestStep_mono (K : Core.Rel A.El (Obj.El (.arr A))) (S : Core.Rel (Obj.El (.prod A (.arr V))) V.El) :
-    Monotonic (forestStep K S) := fun _ _ h => Core.Rel.le_iff.2 fun _ _ ⟨ks, vs, hk, hm, hs⟩ =>
-  ⟨ks, vs, hk, Core.Rel.le_iff.1 (mapDen_mono h) _ _ hm, hs⟩
+    Monotonic (forestStep K S) := fun _ _ h => Core.Rel.le_iff.2 fun _ _ hx => by
+  obtain ⟨ks, vs, hk, hm, hs⟩ := (forestStep_iff _ _ _ _ _).1 hx
+  exact (forestStep_iff _ _ _ _ _).2 ⟨ks, vs, hk, Core.Rel.le_iff.1 (mapDen_mono h) _ _ hm, hs⟩
 
 theorem forest_unfold (K : Core.Rel A.El (Obj.El (.arr A))) (S : Core.Rel (Obj.El (.prod A (.arr V))) V.El)
-    (e : A.El) (v : V.El) : mu (forestStep K S) e v ↔ forestStep K S (mu (forestStep K S)) e v := by
-  rw [mu_fix (forestStep_mono K S)]
+    (e : A.El) (v : V.El) :
+    mu (forestStep K S) e v ↔ ∃ ks vs, K e ks ∧ mapDen (mu (forestStep K S)) ks vs ∧ S (e, vs) v := by
+  rw [← forestStep_iff, mu_fix (forestStep_mono K S)]
 
 /-- Induction over the derivation of a least fixed point value: `P` holds at `e` once it holds at its children. -/
 theorem forest_ind (K : Core.Rel A.El (Obj.El (.arr A))) (S : Core.Rel (Obj.El (.prod A (.arr V))) V.El)
@@ -42,7 +52,7 @@ theorem forest_ind (K : Core.Rel A.El (Obj.El (.arr A))) (S : Core.Rel (Obj.El (
     (h : ∀ e ks vs v, K e ks → mapDen (fun a b => mu (forestStep K S) a b ∧ P a b) ks vs → S (e, vs) v → P e v)
     (e : A.El) (v : V.El) (hv : mu (forestStep K S) e v) : P e v := by
   have hY : forestStep K S (fun a b => mu (forestStep K S) a b ∧ P a b) ⊑ fun a b => mu (forestStep K S) a b ∧ P a b :=
-    Core.Rel.le_iff.2 fun e v ⟨ks, vs, hk, hm, hs⟩ =>
+    Core.Rel.le_iff.2 fun e v hx => have ⟨ks, vs, hk, hm, hs⟩ := (forestStep_iff _ _ _ _ _).1 hx
       ⟨(forest_unfold K S e v).2 ⟨ks, vs, hk, Core.Rel.le_iff.1 (mapDen_mono (Core.Rel.le_iff.2 fun _ _ h => h.1)) _ _ hm, hs⟩,
         h e ks vs v hk hm hs⟩
   exact (Core.Rel.le_iff.1 (mu_le hY) e v hv).2
@@ -151,6 +161,15 @@ theorem mapDen_mem_left {A B : Obj} {T : Core.Rel A.El B.El} : ∀ {xs : List A.
     · exact ⟨y, h0⟩
     · exact mapDen_mem_left h z hz
 
+theorem mapDen_corefl (P : Int64 → Prop) : ∀ (xs ys : List Int64),
+    mapDen (A := .long) (B := .long) (fun a b => a = b ∧ P a) xs ys ↔ ys = xs ∧ ∀ x ∈ xs, P x
+  | [], ys => by rw [mapDen_nil_iff]; simp
+  | x :: xs, ys => by
+    rw [mapDen_cons_iff, List.forall_mem_cons]
+    constructor
+    · rintro ⟨y, ys, rfl, ⟨rfl, hp⟩, h⟩; obtain ⟨rfl, h⟩ := (mapDen_corefl P xs ys).1 h; exact ⟨rfl, hp, h⟩
+    · rintro ⟨rfl, hp, h⟩; exact ⟨x, xs, rfl, ⟨rfl, hp⟩, (mapDen_corefl P xs xs).2 ⟨rfl, h⟩⟩
+
 /-! ### The party semantics: costs, the fold `⟨include, exclude⟩` and the pair of best costs `tally` -/
 
 section Party
@@ -203,20 +222,68 @@ theorem costI_nonneg (hnn : ∀ x, uN x → 0 ≤ x.toInt) {p : List Int64} {z :
   obtain ⟨ys, -, hu, rfl⟩ := h; exact isum_nonneg fun y hy => hnn y (hu y hy)
 
 /-- `choose = π₁ ∪ π₂` on a pair of parties. -/
-def CH : Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long)) := fun p q => q = p.1 ∨ q = p.2
+def CH : Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long)) := graph Prod.fst ∪ graph Prod.snd
 
-/-- `S = ⟨include, exclude⟩` read pointwise. -/
-def SF : Core.Rel (Obj.El (.prod .long (.arr (.prod (.arr .long) (.arr .long))))) (Obj.El (.prod (.arr .long) (.arr .long))) :=
-  fun q w => w.1 = q.1 :: (q.2.map Prod.snd).flatten ∧ ∃ qs, mapDen CH q.2 qs ∧ w.2 = qs.flatten
+/-- `⟨(𝟙 × F(π₂) concat) cons, π₂ F(C) concat⟩`: include, and exclude through the choice `C` of each child's pair. -/
+def SX (C : Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long))) :
+    Core.Rel (Obj.El (.prod .long (.arr (.prod (.arr .long) (.arr .long))))) (Obj.El (.prod (.arr .long) (.arr .long))) :=
+  rpair (rprodMap (𝟙 Int64) (graph (List.map Prod.snd) ≫ graph List.flatten) ≫ graph (Function.uncurry List.cons))
+    (graph Prod.snd ≫ mapDen (A := .prod (.arr .long) (.arr .long)) (B := .arr .long) C ≫ graph List.flatten)
 
-/-- The binary `max` on `N`, guarded. -/
+theorem SX_iff (C : Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long)))
+    (q : Obj.El (.prod .long (.arr (.prod (.arr .long) (.arr .long))))) (w : Obj.El (.prod (.arr .long) (.arr .long))) :
+    SX C q w ↔ w.1 = q.1 :: (q.2.map Prod.snd).flatten ∧ ∃ qs, mapDen C q.2 qs ∧ w.2 = qs.flatten := by
+  simp [SX, Core.Rel.rpair, Core.Rel.rprodMap, Core.Rel.graph, Core.Rel.id]
+  intro _ _ _; exact ⟨by rintro ⟨_, _, ⟨rfl, rfl⟩, h⟩; exact h, fun h => ⟨_, _, ⟨rfl, rfl⟩, h⟩⟩
+
+/-- `S = ⟨include, exclude⟩`, exclude choosing by `choose`. -/
+abbrev SF := SX CH
+
+/-- `F(U) sum U` at the integers: a list to the word of `N` its integer sum is. -/
+def sumN : Core.Rel (List Int64) Int64 := graph isum ≫ (graph Int64.toInt)° ≫ corefl uN
+
+theorem sumN_iff (ys : List Int64) (s : Int64) : sumN uN ys s ↔ uN s ∧ s.toInt = isum ys := by
+  simp only [sumN, Core.Rel.comp_apply, Core.Rel.recip_apply, Core.Rel.graph, Core.Rel.corefl]
+  constructor
+  · rintro ⟨_, rfl, _, h, rfl, hs⟩; exact ⟨hs, h.symm⟩
+  · rintro ⟨hs, h⟩; exact ⟨_, rfl, s, h.symm, rfl, hs⟩
+
+/-- The binary `max` on `N`, guarded: `(N × N) max`. -/
 def MX : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long) :=
-  fun v m => uN v.1 ∧ uN v.2 ∧ m = if v.2 < v.1 then v.1 else v.2
+  rprodMap (corefl uN) (corefl uN) ≫ graph fun v : Int64 × Int64 => if v.2 < v.1 then v.1 else v.2
 
-/-- `tally(r)` read pointwise, its sums already integers (`sumDen_nn`). -/
+theorem MX_iff (v : Obj.El (.prod .long .long)) (m : Int64) :
+    MX uN v m ↔ uN v.1 ∧ uN v.2 ∧ m = if v.2 < v.1 then v.1 else v.2 := by
+  obtain ⟨a, b⟩ := v
+  simp only [MX, Core.Rel.comp_apply, Core.Rel.rprodMap, Core.Rel.corefl, Core.Rel.graph, Prod.exists]
+  constructor
+  · rintro ⟨_, _, ⟨⟨rfl, ha⟩, rfl, hb⟩, rfl⟩; exact ⟨ha, hb, rfl⟩
+  · rintro ⟨ha, hb, rfl⟩; exact ⟨a, b, ⟨⟨rfl, ha⟩, rfl, hb⟩, rfl⟩
+
+/-- `tally(r) = ⟨⟨π₁ r N, π₂ F(π₂) F(N) sum N⟩ + , π₂ F(max) sum N⟩`, its sums integers (`sumDen_nn`), `+` the sum
+    of the two-element list. -/
 def ST : Core.Rel (Obj.El (.prod .long (.arr (.prod .long .long)))) (Obj.El (.prod .long .long)) :=
-  fun q w => (∃ y s, r q.1 y ∧ uN y ∧ (∀ x ∈ q.2, uN x.2) ∧ uN s ∧ s.toInt = isum (q.2.map Prod.snd) ∧ uN w.1 ∧
-      w.1.toInt = y.toInt + s.toInt) ∧ ∃ ms, mapDen (MX uN) q.2 ms ∧ uN w.2 ∧ w.2.toInt = isum ms
+  rpair (rpair (graph Prod.fst ≫ r ≫ corefl uN)
+      (graph Prod.snd ≫ mapDen (A := .prod .long .long) (B := .long) (graph Prod.snd) ≫
+        mapDen (A := .long) (B := .long) (corefl uN) ≫ sumN uN) ≫
+      graph (fun v : Int64 × Int64 => [v.1, v.2]) ≫ sumN uN)
+    (graph Prod.snd ≫ mapDen (MX uN) ≫ sumN uN)
+
+theorem ST_iff (q : Obj.El (.prod .long (.arr (.prod .long .long)))) (w : Obj.El (.prod .long .long)) :
+    ST r uN q w ↔ (∃ y s, r q.1 y ∧ uN y ∧ (∀ x ∈ q.2, uN x.2) ∧ uN s ∧ s.toInt = isum (q.2.map Prod.snd) ∧ uN w.1 ∧
+      w.1.toInt = y.toInt + s.toInt) ∧ ∃ ms, mapDen (MX uN) q.2 ms ∧ uN w.2 ∧ w.2.toInt = isum ms := by
+  have hg : ∀ (m : List (Int64 × Int64)) w, mapDen (A := .prod .long .long) (B := .long) (graph Prod.snd) m w ↔
+    w = m.map Prod.snd := mapDen_graph (A := .prod .long .long) (B := .long) Prod.snd
+  simp only [ST, Core.Rel.comp_apply, Core.Rel.rpair, Core.Rel.graph, Prod.exists, sumN_iff, hg]
+  constructor
+  · rintro ⟨⟨y, s, ⟨⟨_, rfl, y', hy, rfl, hyu⟩, _, rfl, _, rfl, ys, hys, hsu, hs⟩, _, rfl, hw1u, hw1⟩, _, rfl, ms, hms, hw2⟩
+    obtain ⟨rfl, hall⟩ := (mapDen_corefl uN _ _).1 hys
+    exact ⟨⟨_, s, hy, hyu, fun x hx => hall _ (List.mem_map_of_mem hx), hsu, hs, hw1u, by rw [hw1]; simp [isum]⟩,
+      ms, hms, hw2⟩
+  · rintro ⟨⟨y, s, hy, hyu, hall, hsu, hs, hw1u, hw1⟩, ms, hms, hw2⟩
+    refine ⟨⟨y, s, ⟨⟨_, rfl, y, hy, rfl, hyu⟩, _, rfl, _, rfl, _, (mapDen_corefl uN _ _).2 ⟨rfl, ?_⟩, hsu, hs⟩, _, rfl, hw1u,
+      by rw [hw1]; simp [isum]⟩, _, rfl, ms, hms, hw2⟩
+    intro z hz; obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz; exact hall x hx
 
 variable (K : Core.Rel (Obj.El .long) (Obj.El (.arr .long)))
 
@@ -261,7 +328,7 @@ theorem exc_bound : ∀ {ks : List Int64} {vs : List (Obj.El (.prod .long .long)
     obtain ⟨z1, z2, h1, h2, rfl⟩ := (costI_append r uN _ _ _).1 hz
     rw [isum_cons]
     have := exc_bound hv hp hq hm h2
-    obtain ⟨-, -, rfl⟩ := hm0
+    obtain ⟨-, -, rfl⟩ := (MX_iff uN _ _).1 hm0
     have hb := hv0.2.2.1 p hp0
     have hle : z1 ≤ (if v.2 < v.1 then v.1 else v.2).toInt := by
       rcases hq0 with rfl | rfl
@@ -287,9 +354,9 @@ theorem attain : ∀ {ks : List Int64} {vs : List (Obj.El (.prod .long .long))} 
     obtain ⟨m, ms, rfl, hm0, hm⟩ := (mapDen_cons_iff _ _ _ _).1 hm
     obtain ⟨ps, qs, hp, hq, h1, h2⟩ := attain hv hm
     obtain ⟨p, hp0, hc1, hc2⟩ := hv0.2.2.2
-    obtain ⟨-, -, rfl⟩ := hm0
+    obtain ⟨-, -, rfl⟩ := (MX_iff uN _ _).1 hm0
     refine ⟨p :: ps, (if v.2 < v.1 then p.1 else p.2) :: qs, (mapDen_cons_iff _ _ _ _).2 ⟨p, ps, rfl, hp0, hp⟩,
-      (mapDen_cons_iff _ _ _ _).2 ⟨_, qs, rfl, by unfold CH; split <;> simp, hq⟩, ?_, ?_⟩
+      (mapDen_cons_iff _ _ _ _).2 ⟨_, qs, rfl, by split <;> simp [CH, Core.Rel.graph], hq⟩, ?_, ?_⟩
     · simp only [List.map_cons, List.flatten_cons, isum_cons]
       exact (costI_append r uN _ _ _).2 ⟨_, _, hc2, h1, rfl⟩
     · simp only [List.flatten_cons, isum_cons]
@@ -309,9 +376,9 @@ theorem tally_best : ∀ e w, mu (forestStep K (ST r uN)) e w → PA r uN K e w 
   intro e ks vs w hk hv hS
   have hv' : mapDen (A := .long) (B := .prod .long .long) (fun k v => PA r uN K k v) ks vs :=
     Core.Rel.le_iff.1 (mapDen_mono (Core.Rel.le_iff.2 fun _ _ h => h.2)) _ _ hv
-  obtain ⟨⟨y, s, hy, hyu, -, -, hs, hw1u, hw1⟩, ms, hm, hw2u, hw2⟩ := hS
+  obtain ⟨⟨y, s, hy, hyu, -, -, hs, hw1u, hw1⟩, ms, hm, hw2u, hw2⟩ := (ST_iff r uN _ _).1 hS
   refine ⟨hw1u, hw2u, fun p hp => ?_, ?_⟩
-  · obtain ⟨ks', ps, hk', hps, h1, qs, hq, h2⟩ := (forest_unfold K SF e p).1 hp
+  · obtain ⟨ks', ps, hk', hps, hS'⟩ := (forest_unfold K SF e p).1 hp; obtain ⟨h1, qs, hq, h2⟩ := (SX_iff _ _ _).1 hS'
     obtain rfl := hK _ _ _ hk hk'
     refine ⟨fun z hz => ?_, fun z hz => ?_⟩
     · rw [h1] at hz
@@ -324,7 +391,7 @@ theorem tally_best : ∀ e w, mu (forestStep K (ST r uN)) e w → PA r uN K e w 
       omega
   · obtain ⟨ps, qs, hps, hq, h1, h2⟩ := attain r uN K hv' hm
     refine ⟨(e :: (ps.map Prod.snd).flatten, qs.flatten),
-      (forest_unfold K SF e _).2 ⟨ks, ps, hk, hps, rfl, qs, hq, rfl⟩, ?_, ?_⟩
+      (forest_unfold K SF e _).2 ⟨ks, ps, hk, hps, (SX_iff _ _ _).2 ⟨rfl, qs, hq, rfl⟩⟩, ?_, ?_⟩
     · exact (costI_cons r uN _ _ _).2 ⟨y, _, hy, hyu, h1, by simp only at hs; omega⟩
     · rw [hw2]; exact h2
 
@@ -343,15 +410,15 @@ theorem tally_total : ∀ e p, mu (forestStep K SF) e p → uE e → ∃ w, mu (
   have hvu : ∀ v ∈ vs, uN v.1 ∧ uN v.2 := fun v hv => by
     obtain ⟨k, -, hk⟩ := mapDen_mem hv' v hv; exact ⟨hk.1, hk.2.1⟩
   obtain ⟨ms, hms⟩ := mapDen_choice (A := .prod .long .long) (B := .long) (T := MX uN) (xs := vs)
-    fun v hv => ⟨_, (hvu v hv).1, (hvu v hv).2, rfl⟩
+    fun v hv => ⟨_, (MX_iff uN _ _).2 ⟨(hvu v hv).1, (hvu v hv).2, rfl⟩⟩
   obtain ⟨ps', qs', hps', hq', h1, h2⟩ := attain r uN K hv' hms
   have hf1 : mu (forestStep K SF) e (e :: (ps'.map Prod.snd).flatten, qs'.flatten) :=
-    (forest_unfold K SF e _).2 ⟨ks, ps', hk, hps', rfl, qs', hq', rfl⟩
+    (forest_unfold K SF e _).2 ⟨ks, ps', hk, hps', (SX_iff _ _ _).2 ⟨rfl, qs', hq', rfl⟩⟩
   have hsnd : mapDen CH ps' (ps'.map Prod.snd) :=
     Core.Rel.le_iff.1 (mapDen_mono (T := fun p ys => ys = Prod.snd p) (Core.Rel.le_iff.2 fun _ _ h => .inr h)) _ _
       ((mapDen_graph _ _ _).2 rfl)
   have hf2 : mu (forestStep K SF) e (e :: (ps'.map Prod.snd).flatten, (ps'.map Prod.snd).flatten) :=
-    (forest_unfold K SF e _).2 ⟨ks, ps', hk, hps', rfl, _, hsnd, rfl⟩
+    (forest_unfold K SF e _).2 ⟨ks, ps', hk, hps', (SX_iff _ _ _).2 ⟨rfl, _, hsnd, rfl⟩⟩
   obtain ⟨n1, hn1u, hn1⟩ := hP _ _ _ he hf1 (.inl rfl)
   obtain ⟨n0, hn0u, hn0⟩ := hP _ _ _ he hf2 (.inr rfl)
   obtain ⟨n2, hn2u, hn2⟩ := hP _ _ _ he hf1 (.inr rfl)
@@ -359,8 +426,8 @@ theorem tally_total : ∀ e p, mu (forestStep K SF) e p → uE e → ∃ w, mu (
   have e0 := costI_fun r uN hr hn0 h1
   have e1 := costI_fun r uN hr hz' h1
   have e2 := costI_fun r uN hr hn2 h2
-  exact ⟨(n1, n2), (forest_unfold K (ST r uN) e _).2 ⟨ks, vs, hk, hvs,
-    ⟨y, n0, hy, hyu, fun x hx => (hvu x hx).2, hn0u, e0, hn1u, show n1.toInt = y.toInt + n0.toInt by omega⟩, ms, hms, hn2u, e2⟩⟩
+  exact ⟨(n1, n2), (forest_unfold K (ST r uN) e _).2 ⟨ks, vs, hk, hvs, (ST_iff r uN _ _).2
+    ⟨⟨y, n0, hy, hyu, fun x hx => (hvu x hx).2, hn0u, e0, hn1u, show n1.toInt = y.toInt + n0.toInt by omega⟩, ms, hms, hn2u, e2⟩⟩⟩
 
 /-- `p` costs the word `n` of `N`. -/
 def Cost (r : Core.Rel (Obj.El .long) (Obj.El .long)) (uN : Int64 → Prop) (p : List Int64) (n : Int64) : Prop :=
@@ -374,12 +441,12 @@ theorem cMax_sem (e : Int64) (he : uE e) (n : Int64) (Lp : List (List Int64))
     (∃ w, mu (forestStep K (ST r uN)) e w ∧ MX uN w n) ↔
       ∃ p, p ∈ Lp ∧ (∀ q ∈ Lp, q = p ∨ ∃ a b, Cost r uN p a ∧ Cost r uN q b ∧ b ≤ a) ∧ Cost r uN p n := by
   constructor
-  · rintro ⟨w, hw, hw1u, hw2u, rfl⟩
+  · rintro ⟨w, hw, hmx⟩; obtain ⟨hw1u, hw2u, rfl⟩ := (MX_iff uN _ _).1 hmx
     obtain ⟨-, -, hb, p, hp, hc1, hc2⟩ := tally_best hK hr e w hw
     have hn : uN (if w.2 < w.1 then w.1 else w.2) := by split <;> assumption
     have hc : CostI r uN (if w.2 < w.1 then p.1 else p.2) (if w.2 < w.1 then w.1 else w.2).toInt := by
       split <;> assumption
-    refine ⟨_, (hL _).2 ⟨p, hp, by unfold CH; split <;> simp⟩, fun q hq => .inr ?_, hn, hc⟩
+    refine ⟨_, (hL _).2 ⟨p, hp, by split <;> simp [CH, Core.Rel.graph]⟩, fun q hq => .inr ?_, hn, hc⟩
     obtain ⟨p', hp', hch⟩ := (hL q).1 hq
     obtain ⟨b, hbu, hbc⟩ := hP _ _ _ he hp' hch
     refine ⟨_, b, ⟨hn, hc⟩, ⟨hbu, hbc⟩, Int64.le_iff_toInt_le.2 ?_⟩
@@ -405,7 +472,7 @@ theorem cMax_sem (e : Int64) (he : uE e) (n : Int64) (Lp : List (List Int64))
     have l1 := hle _ _ hw1u hc1 (.inl rfl)
     have l2 := hle _ _ hw2u hc2 (.inr rfl)
     have hlt := @Int64.lt_iff_toInt_lt w.2 w.1
-    refine ⟨w, hw, hw1u, hw2u, Int64.toInt_inj.1 ?_⟩
+    refine ⟨w, hw, (MX_iff uN _ _).2 ⟨hw1u, hw2u, Int64.toInt_inj.1 ?_⟩⟩
     rcases hch0 with rfl | rfl
     · have := (hb p0 hp0).1 _ hpc; split <;> rename_i h
       · omega
@@ -434,7 +501,7 @@ theorem Tm.forestHylo_den {V : Obj} {k : Nat} (w : String) (S : Tm (.prod .long 
   have h0 : ρ.bind k X 0 = ρ 0 := Val.bind_ne (Ne.symm hk)
   have h1 : ρ.bind k X k .long V = X := by simp [Val.bind]
   simp only [Tm.den, Tm.argDen, Prim.den_mapRow, hS, h0, h1, Core.Rel.comp_apply, Core.Rel.rpair, Core.Rel.graph,
-    forestStep]
+    forestStep_iff]
   apply propext; constructor
   · rintro ⟨⟨a, vs⟩, ⟨⟨e', ks⟩, ⟨he, hk⟩, ⟨_, rfl, ha⟩, _, rfl, hm⟩, hs⟩
     obtain rfl : _ = _ := he
@@ -443,26 +510,33 @@ theorem Tm.forestHylo_den {V : Obj} {k : Nat} (w : String) (S : Tm (.prod .long 
   · rintro ⟨ks, vs, hk, hm, hs⟩
     exact ⟨(e, vs), ⟨(e, ks), ⟨rfl, hk⟩, ⟨e, rfl, rfl⟩, ks, rfl, hm⟩, hs⟩
 
-/-- `S = ⟨(𝟙×(F(π₂)concat))cons, π₂F(choose)concat⟩`. -/
-abbrev Tm.partyS : Tm (.prod .long (.arr (.prod (.arr .long) (.arr .long)))) (.prod (.arr .long) (.arr .long)) :=
+/-- `⟨(𝟙×(F(π₂)concat))cons, π₂F(C)concat⟩`, exclude choosing by `C`. -/
+abbrev Tm.partyX (C : Tm (.prod (.arr .long) (.arr .long)) (.arr .long)) :
+    Tm (.prod .long (.arr (.prod (.arr .long) (.arr .long)))) (.prod (.arr .long) (.arr .long)) :=
   Tm.pair (Tm.comp (Tm.crossId (Tm.comp (Tm.fmapT Tm.outr) (Tm.prim (rowOf "concat") : Tm (.arr (.arr .long)) (.arr .long)))) (Tm.prim (rowOf "cons")))
-    (Tm.comp (Tm.comp Tm.outr (Tm.fmapT Tm.chooseT)) (Tm.prim (rowOf "concat")))
+    (Tm.comp (Tm.comp Tm.outr (Tm.fmapT C)) (Tm.prim (rowOf "concat")))
 
-theorem Tm.partyS_den (ρ : Val) : Tm.partyS.den ρ = SF := by
+/-- `S = ⟨(𝟙×(F(π₂)concat))cons, π₂F(choose)concat⟩`. -/
+abbrev Tm.partyS := Tm.partyX Tm.chooseT
+
+theorem Tm.partyX_den (C : Tm (.prod (.arr .long) (.arr .long)) (.arr .long)) (ρ : Val) :
+    (Tm.partyX C).den ρ = SX (C.den ρ) := by
   funext q w
   simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Prim.den_cons, Prim.den_concat, Core.Rel.comp_apply, Core.Rel.rpair,
-    Core.Rel.graph, SF]
-  have hc : (graph Prod.fst ∪ graph Prod.snd : Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long))) = CH :=
-    rfl
+    Core.Rel.graph, SX_iff]
   have hg : ∀ m w, mapDen (graph Prod.snd : Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long))) m w ↔
     w = m.map Prod.snd := mapDen_graph (A := .prod (.arr .long) (.arr .long)) (B := .arr .long) Prod.snd
-  rw [hc]; apply propext; constructor
+  apply propext; constructor
   · rintro ⟨⟨⟨a, b⟩, ⟨⟨_, rfl, ha⟩, _, rfl, ys, hys, rfl⟩, h1⟩, qs, ⟨_, rfl, hq⟩, h2⟩
     obtain rfl : _ = _ := ha
     rw [(hg _ _).1 hys] at h1
     exact ⟨h1, qs, hq, h2⟩
   · rintro ⟨h1, qs, hq, h2⟩
     exact ⟨⟨(q.1, (q.2.map Prod.snd).flatten), ⟨⟨_, rfl, rfl⟩, _, rfl, _, (hg _ _).2 rfl, rfl⟩, h1⟩, qs, ⟨_, rfl, hq⟩, h2⟩
+
+theorem Tm.chooseT_den (ρ : Val) :
+    (Tm.chooseT : Tm (.prod (.arr .long) (.arr .long)) (.arr .long)).den ρ = CH := by
+  simp only [Tm.chooseT, Tm.den]; rfl
 
 /-- `arithRow "max"` at the atom `t` is `stepAt t greater`, as `Prim.den_plusRow`. -/
 theorem Prim.den_maxRow {t : QAtomicType} :
@@ -499,15 +573,6 @@ theorem uni_den' (ρ : Val) : (Tm.uni U).den ρ = fun a b => a = b ∧ InU U a :
 
 theorem uni_graph : ((graph U.row)° ≫ graph U.row : Core.Rel (Obj.El .long) (Obj.El .long)) =
     fun a b => a = b ∧ InU U a := uni_den' U Val.empty
-
-theorem mapDen_corefl (P : Int64 → Prop) : ∀ (xs ys : List Int64),
-    mapDen (A := .long) (B := .long) (fun a b => a = b ∧ P a) xs ys ↔ ys = xs ∧ ∀ x ∈ xs, P x
-  | [], ys => by rw [mapDen_nil_iff]; simp
-  | x :: xs, ys => by
-    rw [mapDen_cons_iff, List.forall_mem_cons]
-    constructor
-    · rintro ⟨y, ys, rfl, ⟨rfl, hp⟩, h⟩; obtain ⟨rfl, h⟩ := (mapDen_corefl P xs ys).1 h; exact ⟨rfl, hp, h⟩
-    · rintro ⟨rfl, hp, h⟩; exact ⟨x, xs, rfl, ⟨rfl, hp⟩, (mapDen_corefl P xs xs).2 ⟨rfl, h⟩⟩
 
 variable (hnn : ∀ i, 0 ≤ (U.row i).toInt)
 
@@ -561,7 +626,7 @@ include hnn in
 theorem Tm.cutMax_den (ρ : Val) : (Tm.cut2 (arithRow "max") (Tm.uni U)).den ρ = MX (InU U) := by
   rw [Tm.cut2_max_den ρ _ (fun x y h => by rw [uni_den'] at h; exact h.1), uni_den']
   funext p m; obtain ⟨a, b⟩ := p; apply propext; rw [arithDen_iff]
-  show _ ↔ InU U a ∧ InU U b ∧ m = if b < a then a else b
+  rw [MX_iff]; show _ ↔ InU U a ∧ InU U b ∧ m = if b < a then a else b
   constructor
   · rintro ⟨⟨_, -, ha⟩, ⟨_, -, hb⟩, v, hs, rfl, -⟩
     exact ⟨ha, hb, ((stepDen_iff _ _ _).1 hs).1.trans (intStep_greater a b)⟩
@@ -603,7 +668,7 @@ theorem Tm.tallyT_den {i j : Nat} (ρ : Val) (hij : j ≠ i := by decide) : (Tm.
     ite_true, dite_true, and_self, ↓reduceIte]
   have hg : ∀ m w, mapDen (graph Prod.snd : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long)) m w ↔
     w = m.map Prod.snd := mapDen_graph (A := .prod .long .long) (B := .long) Prod.snd
-  unfold ST
+  rw [ST_iff]
   constructor
   · rintro ⟨⟨⟨y, s⟩, ⟨⟨_, rfl, hy⟩, ys, ⟨_, rfl, hm⟩, hall, hs, hse⟩, hyu, hsu, hw1, hwe⟩, ms, ⟨_, rfl, hms⟩, -, hw2,
       hw2e⟩
@@ -613,7 +678,7 @@ theorem Tm.tallyT_den {i j : Nat} (ρ : Val) (hij : j ≠ i := by decide) : (Tm.
     refine ⟨⟨(y, s), ⟨⟨e, rfl, hy⟩, vs.map Prod.snd, ⟨vs, rfl, (hg _ _).2 rfl⟩, ?_, hsu, hse⟩, hyu, hsu, hw1, hwe⟩,
       ms, ⟨vs, rfl, hms⟩, ?_, hw2, hw2e⟩
     · intro z hz; obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz; exact hall x hx
-    · intro m hm; obtain ⟨x, -, ha, hb, rfl⟩ := mapDen_mem hms m hm; split <;> assumption
+    · intro m hm; obtain ⟨x, -, hx⟩ := mapDen_mem hms m hm; obtain ⟨ha, hb, rfl⟩ := (MX_iff _ _ _).1 hx; split <;> assumption
 
 theorem uniComp_den {B : Obj} (ρ : Val) (S : Tm .long B) (a : Int64) (b : B.El) :
     (Tm.comp (Tm.uni U) S).den ρ a b ↔ InU U a ∧ S.den ρ a b := by
@@ -705,7 +770,7 @@ theorem Tm.cMax_den {n12 n41 : USize} {m12 p12 m41 p41 : List String}
   have hN := hnn N rfl
   have hF : ∀ k w, k ≠ 0 →
       (Tm.forestHylo k w Tm.partyS).den ρ = Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF) :=
-    fun k w hk => Tm.forestHylo_den w _ SF ρ hk (fun _ => Tm.partyS_den _)
+    fun k w hk => Tm.forestHylo_den w _ SF ρ hk (fun _ => by rw [Tm.partyX_den, Tm.chooseT_den])
   have hPC : ∀ k w, k ≠ 0 → (Tm.comp (Tm.forestHylo k w Tm.partyS) Tm.chooseT).den ρ =
       Core.Rel.comp (Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF)) CH :=
     fun k w hk => by show Core.Rel.comp _ _ = _; rw [hF k w hk]; rfl

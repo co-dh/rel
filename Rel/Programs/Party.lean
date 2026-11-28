@@ -47,6 +47,7 @@ rel_program partyPlan where
     exclude₁(r : E ⟶ N) : E×[[E]×[E]] ⟶ [E] ≜ π₂F(Λ(choose)est(R(r)°))concat
     gfold(B : E ⟶ E, r : E ⟶ N) : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids(B)⟩, ⟨include, exclude₁(r)⟩)
     test gfold(boss, rating) Λ(choose)est(R(rating)°) ⊑ best(boss, rating)
+    theorem gfoldBest(B : E ⟶ E, r : E ⟶ N) if r°r ⊑ 𝟙, B ⊑ 𝟙B, dom(Λ(party(B))) = 𝟙, party(B) ⊑ party(B) dom(cost(r)) : gfold(B, r) Λ(choose)est(R(r)°) ⊑ best(B, r) by Rel.Lang.Tm.gfoldBest_den
 
     /- The efficient form: c is (cost with e, cost without e), win the employees whose best party holds them, ties
        to include, and guests the party as a relation into E. -/

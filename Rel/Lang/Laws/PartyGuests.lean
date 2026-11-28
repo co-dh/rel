@@ -45,11 +45,11 @@ theorem attainG : ∀ {ks : List Int64} {vs : List (Obj.El (.prod .long .long))}
     obtain ⟨m, ms, rfl, hm0, hm⟩ := (mapDen_cons_iff _ _ _ _).1 hm
     obtain ⟨ps, qs, hp, hq, h1, h2, hm1, hm2⟩ := attainG hv hm
     obtain ⟨p, hp0, hc1, hc2, hs1, hs2⟩ := hv0
-    obtain ⟨-, -, rfl⟩ := hm0
+    obtain ⟨-, -, rfl⟩ := (MX_iff uN _ _).1 hm0
     have hlt := @Int64.lt_iff_toInt_lt v.2 v.1
     have hle := @Int64.le_iff_toInt_le v.2 v.1
     refine ⟨p :: ps, (if v.2 ≤ v.1 then p.1 else p.2) :: qs, (mapDen_cons_iff _ _ _ _).2 ⟨p, ps, rfl, hp0, hp⟩,
-      (mapDen_cons_iff _ _ _ _).2 ⟨_, qs, rfl, by unfold CH; split <;> simp, hq⟩, ?_, ?_, ?_, ?_⟩
+      (mapDen_cons_iff _ _ _ _).2 ⟨_, qs, rfl, by split <;> simp [CH, Core.Rel.graph], hq⟩, ?_, ?_, ?_, ?_⟩
     · simp only [List.map_cons, List.flatten_cons, isum_cons]
       exact (costI_append r uN _ _ _).2 ⟨_, _, hc2, h1, rfl⟩
     · simp only [List.flatten_cons, isum_cons]
@@ -74,10 +74,10 @@ include hG hW in
 theorem guests_fold : ∀ e w, CB e w → GP B r uN G e w := by
   refine forest_ind (lamDen (A := Obj.long) (B := Obj.long) B°) (ST r uN) (fun e w => GP B r uN G e w) ?_
   intro e ks vs w hk hv hS
-  obtain ⟨⟨y, s, hy, hyu, -, -, hs, -, hw1⟩, ms, hm, -, hw2⟩ := hS
+  obtain ⟨⟨y, s, hy, hyu, -, -, hs, -, hw1⟩, ms, hm, -, hw2⟩ := (ST_iff r uN _ _).1 hS
   obtain ⟨ps, qs, hps, hq, h1, h2, hm1, hm2⟩ := attainG hG hW hv hm
   refine ⟨(e :: (ps.map Prod.snd).flatten, qs.flatten),
-    (forest_unfold _ SF e _).2 ⟨ks, ps, hk, hps, rfl, qs, hq, rfl⟩, ?_, ?_, ?_, ?_⟩
+    (forest_unfold _ SF e _).2 ⟨ks, ps, hk, hps, (SX_iff _ _ _).2 ⟨rfl, qs, hq, rfl⟩⟩, ?_, ?_, ?_, ?_⟩
   · exact (costI_cons r uN _ _ _).2 ⟨y, _, hy, hyu, h1, by simp only at hs hw1; omega⟩
   · rw [hw2]; exact h2
   · intro x; simp only [List.mem_cons, hm1, kids_iff hk]
@@ -110,7 +110,7 @@ theorem guestsBest_sem (e : Int64) (he : uE e) (p0 : Obj.El (.prod (.arr .long) 
   obtain ⟨w, hw⟩ := tally_total hK hr hKE hP e p0 hp0 he
   obtain ⟨p, hp, hc1, hc2, hs1, hs2⟩ := guests_fold hG hW e w hw
   obtain ⟨hw1u, hw2u, -⟩ := tally_best hK hr e w hw
-  obtain ⟨ps, hps, hmax, hcs⟩ := (cMax_sem hK hr hKE hP e he _ Lp hL).1 ⟨w, hw, hw1u, hw2u, rfl⟩
+  obtain ⟨ps, hps, hmax, hcs⟩ := (cMax_sem hK hr hKE hP e he _ Lp hL).1 ⟨w, hw, (MX_iff uN _ _).2 ⟨hw1u, hw2u, rfl⟩⟩
   have hlt := @Int64.lt_iff_toInt_lt w.2 w.1
   have hle := @Int64.le_iff_toInt_le w.2 w.1
   have hqc : Cost r uN (if w.2 ≤ w.1 then p.1 else p.2) (if w.2 < w.1 then w.1 else w.2) := by
@@ -122,7 +122,7 @@ theorem guestsBest_sem (e : Int64) (he : uE e) (p0 : Obj.El (.prod (.arr .long) 
         have e : w.2.toInt = w.1.toInt := by have := hle.1 h'; have : ¬ w.2.toInt < w.1.toInt := fun x => h (hlt.2 x); omega
         exact ⟨hw2u, by rw [e]; exact hc1⟩
       · rw [if_neg h']; exact ⟨hw2u, hc2⟩
-  refine ⟨if w.2 ≤ w.1 then p.1 else p.2, fun y => ?_, (hL _).2 ⟨p, hp, by unfold CH; split <;> simp⟩, fun c hc => .inr ?_⟩
+  refine ⟨if w.2 ≤ w.1 then p.1 else p.2, fun y => ?_, (hL _).2 ⟨p, hp, by split <;> simp [CH, Core.Rel.graph]⟩, fun c hc => .inr ?_⟩
   · rw [hG e y, hW e w hw]
     by_cases h' : w.2 ≤ w.1 <;> simp [h', hs1, hs2]
   · rcases hmax c hc with rfl | ⟨a, b, ha, hb, hab⟩
@@ -131,6 +131,167 @@ theorem guestsBest_sem (e : Int64) (he : uE e) (p0 : Obj.El (.prod (.arr .long) 
       exact ⟨_, b, hqc, hb, hab⟩
 
 end Guests
+
+/-! ### The greedy fold `hylo(⟨𝟙, kids⟩, ⟨include, exclude₁(r)⟩)` (p. 178, law 43) -/
+
+section Greedy
+
+/-- `R(r)° = cost(r) ≥ cost(r)°` at the costs of `N`. -/
+def QC (r : Core.Rel (Obj.El .long) (Obj.El .long)) (uN : Int64 → Prop) : Core.Rel (List Int64) (List Int64) :=
+  Cost r uN ≫ (GE.ge : Core.Rel Int64 Int64) ≫ (Cost r uN)°
+
+/-- `est(R(r)°) = ∋° ∩ (∋° ⧹ (R(r)° ∪ 𝟙)°)`: a member of the list no other member outweighs. -/
+def estR (r : Core.Rel (Obj.El .long) (Obj.El .long)) (uN : Int64 → Prop) : Core.Rel (List (List Int64)) (List Int64) :=
+  memDen (A := .arr .long) ∩ Core.Rel.ldiv (memDen (A := .arr .long))° ((QC r uN ∪ 𝟙 _)°)
+
+/-- `Λ(choose) est(R(r)°)`: the better part of a fold pair. -/
+def PK (r : Core.Rel (Obj.El .long) (Obj.El .long)) (uN : Int64 → Prop) :
+    Core.Rel (Obj.El (.prod (.arr .long) (.arr .long))) (Obj.El (.arr .long)) :=
+  lamDen CH ≫ estR r uN
+
+/-- `⟨include, exclude₁(r)⟩`: exclude keeps the better part of each child's pair. -/
+abbrev SG (r : Core.Rel (Obj.El .long) (Obj.El .long)) (uN : Int64 → Prop) := SX (PK r uN)
+
+variable {B : Core.Rel Int64 Int64} {r : Core.Rel (Obj.El .long) (Obj.El .long)} {uN : Int64 → Prop}
+
+local notation "FB" => Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) SF)
+local notation "CB" => Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) (ST r uN))
+
+theorem estR_iff (L : List (List Int64)) (c : List Int64) :
+    estR r uN L c ↔ c ∈ L ∧ ∀ d ∈ L, d = c ∨ ∃ a b, Cost r uN c a ∧ Cost r uN d b ∧ b ≤ a := by
+  simp only [estR, QC, Core.Rel.inter_apply, Core.Rel.ldiv_apply, Core.Rel.recip_apply, Core.Rel.union_apply,
+    Core.Rel.comp_apply, memDen]
+  refine and_congr_right fun _ => forall_congr' fun d => imp_congr_right fun _ => ?_
+  constructor
+  · rintro (⟨a, ha, b, hab, hb⟩ | h)
+    · exact .inr ⟨a, b, ha, hb, hab⟩
+    · exact .inl (show c = d from h).symm
+  · rintro (h | ⟨a, b, ha, hb, hab⟩)
+    · exact .inr (show c = d from h.symm)
+    · exact .inl ⟨a, ha, b, hab, hb⟩
+
+/-- The greedy pair at `e` is a fold pair whose parts cost `c`'s components. -/
+def GQ (B : Core.Rel Int64 Int64) (r : Core.Rel (Obj.El .long) (Obj.El .long)) (uN : Int64 → Prop) (e : Int64)
+    (g : Obj.El (.prod (.arr .long) (.arr .long))) : Prop :=
+  Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) SF) e g ∧
+    ∃ w, Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) (ST r uN)) e w ∧ CostI r uN g.1 w.1.toInt ∧
+      CostI r uN g.2 w.2.toInt
+
+theorem mapDen_imp {A B : Obj} {T T' : Core.Rel A.El B.El} : ∀ {xs : List A.El} {ys : List B.El}, mapDen T xs ys →
+    (∀ x ∈ xs, ∀ y, T x y → T' x y) → mapDen T' xs ys
+  | [], ys, h, _ => by rw [(mapDen_nil_iff _ _).1 h]; exact mapDen_nil_nil _
+  | x :: xs, _, h, hT => by
+    obtain ⟨y, ys, rfl, h0, h⟩ := (mapDen_cons_iff _ _ _ _).1 h
+    exact (mapDen_cons_iff _ _ _ _).2 ⟨y, ys, rfl, hT x (by simp) y h0, mapDen_imp h fun z hz => hT z (by simp [hz])⟩
+
+variable (hr : ∀ e y y', r e y → r e y' → y = y')
+
+include hr in
+/-- The better part of a pair costing `v` is a part, and costs the larger component. -/
+theorem pick_cost {p : Obj.El (.prod (.arr .long) (.arr .long))} {v : Obj.El (.prod .long .long)} {c : List Int64}
+    (h1 : CostI r uN p.1 v.1.toInt) (h2 : CostI r uN p.2 v.2.toInt) (h : PK r uN p c) :
+    CH p c ∧ CostI r uN c (if v.2 < v.1 then v.1 else v.2).toInt := by
+  obtain ⟨L, hL, hE⟩ := h
+  obtain ⟨hc, hmax⟩ := (estR_iff L c).1 hE
+  have mem := ((lamDen_iff _ _ _).1 hL).2
+  have hlt := @Int64.lt_iff_toInt_lt v.2 v.1
+  have hch := (mem c).1 hc
+  refine ⟨hch, ?_⟩
+  rcases hch with rfl | rfl
+  · have hle : v.2.toInt ≤ v.1.toInt := by
+      rcases hmax p.2 ((mem _).2 (.inr rfl)) with he | ⟨a, b, ha, hb, hab⟩
+      · rw [he] at h2; exact Int.le_of_eq (costI_fun r uN hr h2 h1)
+      · rw [costI_fun r uN hr h1 ha.2, costI_fun r uN hr h2 hb.2]; exact Int64.le_iff_toInt_le.1 hab
+    split <;> rename_i hs
+    · exact h1
+    · rw [show v.2.toInt = v.1.toInt by have : ¬ v.2.toInt < v.1.toInt := fun x => hs (hlt.2 x); omega]; exact h1
+  · have hle : v.1.toInt ≤ v.2.toInt := by
+      rcases hmax p.1 ((mem _).2 (.inl rfl)) with he | ⟨a, b, ha, hb, hab⟩
+      · rw [he] at h1; exact Int.le_of_eq (costI_fun r uN hr h1 h2)
+      · rw [costI_fun r uN hr h2 ha.2, costI_fun r uN hr h1 hb.2]; exact Int64.le_iff_toInt_le.1 hab
+    split <;> rename_i hs
+    · rw [show v.1.toInt = v.2.toInt by have := hlt.1 hs; omega]; exact h2
+    · exact h2
+
+include hr in
+/-- The children's greedy pairs: their parts cost what `c` gives the children. -/
+theorem greedy_list : ∀ {ks : List Int64} {gs : List (Obj.El (.prod (.arr .long) (.arr .long)))}
+    {cs : List (List Int64)} {vs : List (Obj.El (.prod .long .long))} {ms : List Int64},
+    mapDen (A := .long) (B := .prod (.arr .long) (.arr .long)) (fun k g => GQ B r uN k g) ks gs →
+    mapDen (PK r uN) gs cs → mapDen (A := .long) (B := .prod .long .long) CB ks vs → mapDen (MX uN) vs ms →
+    CostI r uN (gs.map Prod.snd).flatten (isum (vs.map Prod.snd)) ∧ CostI r uN cs.flatten (isum ms)
+  | [], gs, cs, vs, ms, hg, hc, hv, hm => by
+    rw [(mapDen_nil_iff _ _).1 hg] at hc ⊢; rw [(mapDen_nil_iff _ _).1 hv] at hm ⊢
+    rw [(mapDen_nil_iff _ _).1 hc, (mapDen_nil_iff _ _).1 hm]
+    exact ⟨(costI_nil r uN _).2 rfl, (costI_nil r uN _).2 rfl⟩
+  | k :: ks, _, _, _, _, hg, hc, hv, hm => by
+    obtain ⟨g, gs, rfl, ⟨-, w, hw, h1, h2⟩, hg⟩ := (mapDen_cons_iff _ _ _ _).1 hg
+    obtain ⟨c, cs, rfl, hc0, hc⟩ := (mapDen_cons_iff _ _ _ _).1 hc
+    obtain ⟨v, vs, rfl, hv0, hv⟩ := (mapDen_cons_iff _ _ _ _).1 hv
+    obtain ⟨m, ms, rfl, hm0, hm⟩ := (mapDen_cons_iff _ _ _ _).1 hm
+    obtain ⟨r3, r4⟩ := greedy_list hg hc hv hm
+    obtain rfl := tally_fun hr hv0 hw
+    obtain ⟨-, -, rfl⟩ := (MX_iff uN _ _).1 hm0
+    obtain ⟨-, hcc⟩ := pick_cost hr h1 h2 hc0
+    refine ⟨?_, ?_⟩
+    · simp only [List.map_cons, List.flatten_cons, isum_cons]
+      exact (costI_append r uN _ _ _).2 ⟨_, _, h2, r3, rfl⟩
+    · simp only [List.flatten_cons, isum_cons]
+      exact (costI_append r uN _ _ _).2 ⟨_, _, hcc, r4, rfl⟩
+
+variable {uE : Int64 → Prop} (hKE : ∀ e ks, uE e → lamDen (A := Obj.long) (B := Obj.long) B° e ks → ∀ k ∈ ks, uE k)
+  (hP : ∀ e p q, uE e → Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) SF) e p → CH p q →
+    ∃ n, uN n ∧ CostI r uN q n.toInt)
+
+include hr hKE hP in
+/-- Induction on the greedy fold: each greedy pair is a fold pair costing `c` (`GQ`). -/
+theorem greedy_fold : ∀ e g, Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) (SG r uN)) e g → uE e →
+    GQ B r uN e g := by
+  have hK : ∀ e ks ks', lamDen (A := Obj.long) (B := Obj.long) B° e ks →
+      lamDen (A := Obj.long) (B := Obj.long) B° e ks' → ks = ks' := fun _ _ _ h h' => lamDen_unique _ h h'
+  refine forest_ind (lamDen (A := Obj.long) (B := Obj.long) B°) (SG r uN) (fun e g => uE e → GQ B r uN e g) ?_
+  intro e ks gs g hk hgs hS he
+  have hgs' : mapDen (A := .long) (B := .prod (.arr .long) (.arr .long)) (fun k g => GQ B r uN k g) ks gs :=
+    mapDen_imp hgs fun k hk' _ h => h.2 (hKE e ks he hk k hk')
+  obtain ⟨hg1, cs, hcs, hg2⟩ := (SX_iff _ _ _).1 hS
+  have hfb : mapDen (A := .long) (B := .prod (.arr .long) (.arr .long)) FB ks gs := mapDen_imp hgs' fun _ _ _ h => h.1
+  have hch : mapDen CH gs cs := mapDen_imp hcs fun _ _ c ⟨L, hL, hE⟩ =>
+    (((lamDen_iff _ _ _).1 hL).2 c).1 ((estR_iff L c).1 hE).1
+  have hf : FB e g := (forest_unfold _ _ e g).2 ⟨ks, gs, hk, hfb, (SX_iff _ _ _).2 ⟨hg1, cs, hch, hg2⟩⟩
+  obtain ⟨w, hw⟩ := tally_total hK hr hKE hP e g hf he
+  obtain ⟨ks', vs, hk', hvs, hST⟩ := (forest_unfold _ _ e w).1 hw
+  obtain rfl := hK _ _ _ hk hk'
+  obtain ⟨⟨y, s, hy, hyu, -, -, hs, -, hw1⟩, ms, hms, -, hw2⟩ := (ST_iff r uN _ _).1 hST
+  obtain ⟨h3, h4⟩ := greedy_list hr hgs' hcs hvs hms
+  refine ⟨hf, w, hw, ?_, ?_⟩
+  · rw [hg1]; exact (costI_cons r uN _ _ _).2 ⟨y, _, hy, hyu, h3, by rw [hw1, hs]⟩
+  · rw [hg2, hw2]; exact h4
+
+include hr hKE hP in
+/-- **The greedy pair's better part is a best party** (law 43 pointwise), given the list `Lp` of `e`'s parties. -/
+theorem gfoldBest_sem (e : Int64) (he : uE e) (g : Obj.El (.prod (.arr .long) (.arr .long)))
+    (hg : Core.Rel.mu (forestStep (A := Obj.long) (lamDen B°) (SG r uN)) e g) (c : List Int64) (hc : PK r uN g c)
+    (Lp : List (List Int64)) (hL : ∀ q, q ∈ Lp ↔ ∃ p, FB e p ∧ CH p q) : estR r uN Lp c := by
+  have hK : ∀ e ks ks', lamDen (A := Obj.long) (B := Obj.long) B° e ks →
+      lamDen (A := Obj.long) (B := Obj.long) B° e ks' → ks = ks' := fun _ _ _ h h' => lamDen_unique _ h h'
+  obtain ⟨hf, w, hw, h1, h2⟩ := greedy_fold hr hKE hP e g hg he
+  obtain ⟨hw1u, hw2u, hb, -⟩ := tally_best hK hr e w hw
+  obtain ⟨hch, hcc⟩ := pick_cost hr h1 h2 hc
+  have hn : uN (if w.2 < w.1 then w.1 else w.2) := by split <;> assumption
+  refine (estR_iff Lp c).2 ⟨(hL c).2 ⟨g, hf, hch⟩, fun d hd => .inr ?_⟩
+  obtain ⟨p', hp', hch'⟩ := (hL d).1 hd
+  obtain ⟨b, hbu, hbc⟩ := hP _ _ _ he hp' hch'
+  refine ⟨_, b, ⟨hn, hcc⟩, ⟨hbu, hbc⟩, Int64.le_iff_toInt_le.2 ?_⟩
+  have hlt := @Int64.lt_iff_toInt_lt w.2 w.1
+  rcases hch' with rfl | rfl
+  · have := (hb p' hp').1 _ hbc; split <;> rename_i h
+    · omega
+    · have : ¬ w.2.toInt < w.1.toInt := fun h' => h (hlt.2 h'); omega
+  · have := (hb p' hp').2 _ hbc; split <;> rename_i h
+    · have := hlt.1 h; omega
+    · omega
+
+end Greedy
 
 /-! ### The terms of `guestsBest` -/
 
@@ -214,7 +375,7 @@ theorem Tm.guestsBest_den {n12 n41 : USize} {m12 p12 m41 p41 : List String}
   have hN := hnn N rfl
   have hPC : ∀ k w, k ≠ 0 → (Tm.partyT k w).den ρ =
       Core.Rel.comp (Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF)) CH := fun k w hk => by
-    show Core.Rel.comp _ _ = _; rw [Tm.forestHylo_den w _ SF ρ hk (fun _ => Tm.partyS_den _)]; rfl
+    show Core.Rel.comp _ _ = _; rw [Tm.forestHylo_den w _ SF ρ hk (fun _ => by rw [Tm.partyX_den, Tm.chooseT_den])]; rfl
   have hT : ∀ k i j w, k ≠ 0 → 1 ≠ k → j ≠ i → (Tm.cT N k i j w).den ρ =
       Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) (ST (ρ 1 .long .long) (InU N))) := fun k i j w hk hk1 hij =>
     Tm.forestHylo_den w _ _ ρ hk (fun X => by rw [Tm.tallyT_den N hN _ hij, Val.bind_ne hk1])
@@ -342,5 +503,89 @@ theorem Tm.guestsBest_den {n12 n41 : USize} {m12 p12 m41 p41 : List String}
   refine (uniComp_den U ρ _ a ys).2 ⟨he, q, ⟨Lp, hLp9, (Tm.estCost_den N hN ρ (Tm.var 1) Lp q).2 ⟨hq, hbest⟩⟩, ?_⟩
   show Prim.den (rowOf "setify") (.arr .long) (.arr .long) [] q ys
   rw [hset]; exact hmem
+
+/-! ### The terms of `gfoldBest` -/
+
+/-- `Λ(choose)est(R(r)°)`, `r` at variable 1, `N` the universe of `N`. -/
+abbrev Tm.pickT {n : USize} (N : Vals .long n) : Tm (.prod (.arr .long) (.arr .long)) (.arr .long) :=
+  Tm.comp (Tm.lam Tm.chooseT) (Tm.est (pairTest (Tm.costQ N (Tm.var 1))))
+
+theorem Tm.pickT_den {n : USize} (N : Vals .long n) (hnn : ∀ i, 0 ≤ (N.row i).toInt) (ρ : Val) :
+    (Tm.pickT N).den ρ = PK (ρ 1 .long .long) (InU N) := by
+  have he : (Tm.est (pairTest (Tm.costQ N (Tm.var 1)))).den ρ = estR (ρ 1 .long .long) (InU N) := by
+    funext L c; apply propext; rw [Tm.estCost_den N hnn, estR_iff]; rfl
+  show Core.Rel.comp _ _ = _; rw [he]; rfl
+
+/-- **`gfold(B, r) Λ(choose)est(R(r)°) ⊑ best(B, r)`** (law 43, `gfoldBest` of `Party.lean`): the better part of the
+    greedy pair is a best party. Premises as `Tm.cMax_den`; the hylo indices `k*` are the elaborator's. -/
+theorem Tm.gfoldBest_den {n12 n41 : USize} {m12 p12 m41 p41 : List String}
+    {hw12 hw41 : QAtomicType.i64.width.isSome = true} {kg kb k22 k24 k25 : Nat} {wg wb w22 w24 w25 : String}
+    (hkg : kg ≠ 0 := by decide) (hkg1 : 1 ≠ kg := by decide) (hkb : kb ≠ 0 := by decide)
+    (hk22 : k22 ≠ 0 := by decide) (hk24 : k24 ≠ 0 := by decide)
+    (hnn : ∀ U : Vals .long n41, U = (Gen.atom .i64 n41 m41 p41 hw41).1 → ∀ i, 0 ≤ (U.row i).toInt := by
+      intro U hU i; subst hU
+      exact (Rel.Lang.Gen.atom_get_bound rfl (by bnd_size) (by decide +kernel) (by decide +kernel)
+        (by rw [Rel.Lang.Gen.unhex_size]; decide +kernel) 0 (2 ^ 62 - 1) (by decide) (by decide) (by decide +kernel) i).1)
+    (ρ : Val) :
+    let U := (Gen.atom .i64 n12 m12 p12 hw12).1
+    let N := (Gen.atom .i64 n41 m41 p41 hw41).1
+    Tm.den ρ (Tm.comp (Tm.conv (Tm.var 1 : Tm .long .long)) (Tm.var 1 : Tm .long .long)) ⊑
+      Tm.den ρ (Tm.comp (Tm.uni N) Tm.id) →
+    Tm.den ρ (Tm.var 0 : Tm .long .long) ⊑ Tm.den ρ (Tm.comp (Tm.uni U) (Tm.comp Tm.id (Tm.var 0 : Tm .long .long))) →
+    Tm.den ρ (Tm.comp (Tm.uni U) (Tm.dom (Tm.lam (Tm.partyT k22 w22)))) = Tm.den ρ (Tm.comp (Tm.uni U) Tm.id) →
+    Tm.den ρ (Tm.comp (Tm.uni U) (Tm.partyT k24 w24)) ⊑
+      Tm.den ρ (Tm.comp (Tm.uni U) (Tm.comp (Tm.partyT k25 w25)
+        (Tm.dom (Tm.comp (Tm.fmapT (Tm.var 1 : Tm .long .long)) (Tm.sumU N))))) →
+    Tm.den ρ (Tm.comp (Tm.uni U) (Tm.comp (Tm.comp (Tm.forestHylo kg wg (Tm.partyX (Tm.pickT N))) (Tm.lam Tm.chooseT))
+        (Tm.est (pairTest (Tm.costQ N (Tm.var 1)))))) ⊑
+    Tm.den ρ (Tm.comp (Tm.uni U) (Tm.comp (Tm.lam (Tm.partyT kb wb)) (Tm.est (pairTest (Tm.costQ N (Tm.var 1)))))) := by
+  intro U N h1 h4 h2 h3
+  have hN := hnn N rfl
+  have hPC : ∀ k w, k ≠ 0 → (Tm.partyT k w).den ρ =
+      Core.Rel.comp (Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF)) CH := fun k w hk => by
+    show Core.Rel.comp _ _ = _; rw [Tm.forestHylo_den w _ SF ρ hk (fun _ => by rw [Tm.partyX_den, Tm.chooseT_den])]; rfl
+  have hG : (Tm.forestHylo kg wg (Tm.partyX (Tm.pickT N))).den ρ =
+      Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) (SG (ρ 1 .long .long) (InU N))) :=
+    Tm.forestHylo_den wg _ _ ρ hkg (fun X => by rw [Tm.partyX_den, Tm.pickT_den N hN, Val.bind_ne hkg1])
+  have hcost : (Tm.comp (Tm.fmapT (Tm.var 1 : Tm .long .long)) (Tm.sumU N)).den ρ = Cost (ρ 1 .long .long) (InU N) :=
+    Tm.costU_den N hN ρ _
+  have hD : ∀ {A B : Obj} (R : Tm A B), (Tm.dom R).den ρ = 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)° :=
+    fun R => Prim.den_domRow _
+  have hr : ∀ e y y', ρ 1 .long .long e y → ρ 1 .long .long e y' → y = y' := fun e y y' h h' =>
+    ((uniComp_den N ρ _ y y').1 (Core.Rel.le_iff.1 h1 y y'
+      (show Core.Rel.comp ((ρ 1 .long .long)°) (ρ 1 .long .long) y y' from ⟨e, h, h'⟩))).2
+  have hKE : ∀ e ks, InU U e → lamDen ((ρ 0 .long .long)°) e ks → ∀ k ∈ ks, InU U k := fun e ks _ hk k hk' => by
+    have h0 : ρ 0 .long .long k e := (((lamDen_iff _ _ _).1 hk).2 k).1 hk'
+    exact ((uniComp_den U ρ (Tm.comp Tm.id (Tm.var 0 : Tm .long .long)) k e).1 (Core.Rel.le_iff.1 h4 k e h0)).1
+  have hP : ∀ e p q, InU U e → Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF) e p → CH p q →
+      ∃ n, InU N n ∧ CostI (ρ 1 .long .long) (InU N) q n.toInt := fun e p q he hp hq => by
+    have h := Core.Rel.le_iff.1 h3 e q ((uniComp_den U ρ _ e q).2 ⟨he, by rw [hPC k24 w24 hk24]; exact ⟨p, hp, hq⟩⟩)
+    obtain ⟨-, h⟩ := (uniComp_den U ρ _ e q).1 h
+    obtain ⟨q', -, hd⟩ := h
+    rw [hD, hcost] at hd
+    obtain ⟨h0, n, hn, -⟩ := hd
+    obtain rfl : q' = q := h0
+    exact ⟨n, hn.1, hn.2⟩
+  have he : (Tm.est (pairTest (Tm.costQ N (Tm.var 1)))).den ρ = estR (ρ 1 .long .long) (InU N) := by
+    funext L c; apply propext; rw [Tm.estCost_den N hN, estR_iff]; rfl
+  refine Core.Rel.le_iff.2 fun a c h => ?_
+  obtain ⟨ha, d, ⟨g, hg, hd⟩, hc⟩ := (uniComp_den U ρ _ a c).1 h
+  rw [hG] at hg
+  have hpk : PK (ρ 1 .long .long) (InU N) g c := by rw [← Tm.pickT_den N hN]; exact ⟨d, hd, hc⟩
+  refine (uniComp_den U ρ _ a c).2 ⟨ha, ?_⟩
+  have hL : ∃ Lp, lamDen (Core.Rel.comp (Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) SF)) CH) a Lp := by
+    have h := (uniComp_den U ρ Tm.id a a).2 ⟨ha, show (Tm.id : Tm .long .long).den ρ a a from rfl⟩
+    rw [← h2] at h
+    obtain ⟨-, h⟩ := (uniComp_den U ρ _ a a).1 h
+    rw [hD] at h
+    obtain ⟨-, Lp, hLp, -⟩ := h
+    change lamDen ((Tm.partyT k22 w22).den ρ) a Lp at hLp
+    rw [hPC k22 w22 hk22] at hLp
+    exact ⟨Lp, hLp⟩
+  obtain ⟨Lp, hLp⟩ := hL
+  refine ⟨Lp, ?_, ?_⟩
+  · change lamDen ((Tm.partyT kb wb).den ρ) a Lp; rw [hPC kb wb hkb]; exact hLp
+  · rw [he]
+    exact gfoldBest_sem hr hKE hP a ha g hg c hpk Lp fun q => ((lamDen_iff _ _ _).1 hLp).2 q
 
 end Rel.Lang
