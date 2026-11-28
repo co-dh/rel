@@ -1701,7 +1701,7 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
 - 🔄 9.3 Prefix 已接 `check … by …`。Lean 检查两侧实际 elaboration 后的 `Tm.den`，失败时拒绝发出可执行定义。
   通用 fold 证明在 `Rel/Lang/PrefixFold.lean`，原手写 slot 证明由生成的证书取代。
   后续补 `derive`、独立测试语法和完整迁移，再要求所有证明类声明提供证据。
-- 🔄 9.4 B&dM p.126 `⦇[nil, nil ∪ cons]⦈ʳ = prefix` 在 Rel 里证：陈述与 calc 写在 `rel_program prefixCata`
+- ✅ 9.4（a1de75f：prefixEq、prefixRow、prefixFold 全部 certified；foldUP 由 Prelude 的 Tm.foldUP_den 证） B&dM p.126 `⦇[nil, nil ∪ cons]⦈ʳ = prefix` 在 Rel 里证：陈述与 calc 写在 `rel_program prefixCata`
   （`theorem foldUP`（fold 唯一性，owed）、`prefixEq`（owed）、`prefixFold : prefixC = prefix := calc …`），rel 侧 ✅
   `fdb180c`（分支 `keep-prefixfold-rel`）。按 9.7 决定，owed 的 `foldUP`、`prefixEq` 在 rel 里由 `Rel.Core` 的公理证（9.10），
   不再走 freyd `rel_aop`。freyd 分支 `keep-prefixaop`（`ff0a26b` 桥移植、`39433b4` WIP）作废，只作参考：它选的 AOP 引理
