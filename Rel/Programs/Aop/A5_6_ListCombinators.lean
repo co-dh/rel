@@ -20,12 +20,20 @@ rel_program aopA5_6_ListCombinators where
     theorem sumMapJunc(R : α ⟶ β, S : α' ⟶ β', P : β ⟶ γ, Q : β' ⟶ γ) : [R inl, S inr] [P, Q] = [R P, S Q] by Rel.Lang.Tm.sumMapJunc_den  -- Freyd.Alg.RelSet.ListRel.subseq_alg_sum_map and subseq_alg_sum_junc (F(∋) is the sum map 𝟙+(𝟙×∋)), STRONGER FORM: R S P Q any relations, 05-datatypes.typ:675,679
     theorem subseqAlgLam : Λ([𝟙 inl, ⟨π₁, π₂ ∋⟩ inr] [nil, cons ∪ π₂]) = [nil Λ(𝟙), Λ(⟨π₁, π₂ ∋⟩ (cons ∪ π₂))] by Rel.Lang.Tm.subseqAlgLam_den  -- Freyd.Alg.RelSet.ListRel.subseq_alg_Λ (F(∋) = 𝟙+(𝟙×∋), via sumMapJunc), 05-datatypes.typ:660
     theorem subseqAlgLamNil(T : β ⟶ [[α]]) : [Λ(nil), Λ(T)] = [nil Λ(𝟙), Λ(T)] by Rel.Lang.Tm.lamNilJunc_den
+    -- `cpr`, `cpl`, `cpp` (B&dM p.125) are left folds `loop` whose state keeps the argument the step reads (`a`, `b`, `y`): a seed that depends on the input, which `⦇[e, S]⦈` cannot carry
+    cpr : α×[β] ⟶ [α×β] ≜ ⟨⟨π₁, nil⟩, π₂⟩ loop(⟨π₁π₁, ⟨π₁π₂, ⟨π₁π₁, π₂⟩⟩snoc⟩) π₂
+    cpl : [α]×β ⟶ [α×β] ≜ ⟨⟨π₂, nil⟩, π₁⟩ loop(⟨π₁π₁, ⟨π₁π₂, ⟨π₂, π₁π₁⟩⟩snoc⟩) π₂
+    cpp : [α]×[β] ⟶ [α×β] ≜ ⟨⟨π₂, nil⟩, π₁⟩ loop(⟨π₁π₁, ⟨π₁π₂, ⟨π₂, π₁π₁⟩cpr⟩cat⟩) π₂
+    theorem setifyCpr : cpr Λ(∋) = ⟨π₁, π₂ Λ(∋)⟩ Λ(⟨π₁, π₂ ∋⟩) by Rel.Lang.Tm.setifyCpr_den  -- Freyd.Alg.RelSet.ListRel.setify_cpr (setify = Λ(∋); 𝟙×∋ written ⟨π₁, π₂ ∋⟩), 05-datatypes.typ:588
+    theorem setifyCpl : cpl Λ(∋) = ⟨π₁ Λ(∋), π₂⟩ Λ(⟨π₁ ∋, π₂⟩) by Rel.Lang.Tm.setifyCpl_den  -- Freyd.Alg.RelSet.ListRel.setify_cpl (∋×𝟙 written ⟨π₁ ∋, π₂⟩), 05-datatypes.typ:587
+    theorem setifyCpp(U : [α] ⟶ [α], V : [β] ⟶ [β]) if U = Λ(∋), V = Λ(∋), dom(U) = 𝟙, dom(V) = 𝟙 : cpp Λ(∋) = ⟨π₁ U, π₂ V⟩ Λ(⟨π₁ ∋, π₂ ∋⟩) by Rel.Lang.Tm.setifyCpp_den  -- Freyd.Alg.RelSet.ListRel.setify_cpp (∋×∋ written ⟨π₁ ∋, π₂ ∋⟩), PREMISES dom(Λ(∋)) = 𝟙 at [α] and [β]: Λ(∋) has no set where an atom type ties in Obj.lt, and cpp with one empty argument has no use for the other, 05-datatypes.typ:587
+    theorem subseqCata : subseq = ⦇[nil, cons ∪ π₂]⦈ʳ by Rel.Lang.Tm.subseqCata_den  -- Freyd.Alg.RelSet.ListRel.subseq_cata (the prelude's snoc fold = the cons fold), 05-datatypes.typ:547, 07-optimisation.typ:909, 08-thinning.typ:631
 
--- ported: Λ_nil_singleton (05-datatypes.typ:695), Λ_prod_ni_cons (05:648), prod_ni_union_dist (05:647), prod_ni_proj_slide (05:701), prod_ni_union_slide (05:656), Λ_proj_ni (05:657, stronger), Λ_prod_ni_proj (05:653, stronger), subseq_alg_sum_map (05:679), subseq_alg_sum_junc (05:675), subseq_alg_Λ (05:660), subseq_alg_Λ_nil (05:693)
+-- ported: Λ_nil_singleton (05-datatypes.typ:695), Λ_prod_ni_cons (05:648), prod_ni_union_dist (05:647), prod_ni_proj_slide (05:701), prod_ni_union_slide (05:656), Λ_proj_ni (05:657, stronger), Λ_prod_ni_proj (05:653, stronger), subseq_alg_sum_map (05:679), subseq_alg_sum_junc (05:675), subseq_alg_Λ (05:660), subseq_alg_Λ_nil (05:693), subseq_cata (05:547, 07:909, 08:631; via Tm.subseqDef_den), setify_cpr (05:588), setify_cpl (05:587), setify_cpp (05:587, with the two dom(Λ(∋)) = 𝟙 premises)
 -- not ported: alphaR_eq_junc (07-optimisation.typ:443): the initial algebra `[nil, cons]` is the fold's own seed pair, a syntactic identity
 -- not ported: concat_cata (05-datatypes.typ:568), sum_cata_nat (03-applications.typ:21): the prelude defines `concat`, `sum` as these folds, so the statement is a syntactic identity
 -- not ported: list_cata (05-datatypes.typ:542), cplist_cata (05:603), cp_list (05:598), cp_list_alg (05:598): `list(R)` and `cpMap listRelator` are definitions as the very fold `⦇[nil,(R×𝟙)cons]⦈`; `cp` is a relator-indexed family and `cp_list` needs `powerRel`
--- not ported: setify_cpl (05:587), setify_cpp (05:587), setify_cpr (05:588): need `cpl`/`cpp`/`cpr` (not in the prelude) defined as list-level folds and a Cartesian-product-of-lists induction (freyd inlistP_cpp/cpl/cpr); opus-sized proof, the one open item of this unit
+
 -- not ported: setify_ni_iff (08-thinning.typ:421): `↔` of pointwise membership (inlistP), a statement about elements not a relation law
 -- not ported: partition_concat (05:563), concat_glue (05:611): `partition`, `glue` are not in the prelude and freyd defines them by `∃` over the split; stating them means defining them as these very folds
 -- not ported: segment_eq (07:708): `mss.segment` is defined as `suffix prefix` in Rel/Programs/Mss.lean, so the statement is a syntactic identity
@@ -36,7 +44,6 @@ rel_program aopA5_6_ListCombinators where
 -- not ported: length_cata (03:26), pair_sum_length_cata (03:49): prelude length/sum at a generic result object do not elaborate (lessons A9_1), and `length` is a Lean function used as a relation
 -- not ported: total_eq (08:628): `graph (total f) = list(graph f) sum` with a Lean function `f : A → Int` as a relation and `sum` at Int; needs `list(R)` defined and a numeric object
 -- not ported: listRelator_obj (03:17, 05:537): an equation of objects (`listRelator.obj A = dList A`), no relation
--- not ported: subseq_cata (05:547, 07:909, 08:631): `subseq = ⦇[nil, cons ∪ π₂]⦈ʳ` states the cons fold against the prelude `subseq`, a snoc fold (Prelude.lean:75) read through a call node; needs a Sublist induction on both folds and a call-node den lemma (lessons A6_6b); A7_7_Filter defines `subseqC` as the cons fold
 -- not ported: subseq_alg_Λ_junc (05:688): `Λ([R,S]) = [Λ(R), Λ(S)]` is the theorem `lamJunc` of Rel/Programs/Aop/A5_3.lean, cited not restated
 -- not ported: subseq_alg_join (05:704), Λ_prod_ni_union (05:725), subseq_alg_transpose (05:737), Λ_subseq (05:634): the right side uses the power-object union `cup` and `powerRel`/`Λ_relCata`, neither has a closed term (lessons A5_4, A7_1est)
 
