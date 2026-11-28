@@ -356,12 +356,20 @@ def denAssocEq (a b : Lean.Expr) : MetaM (Option Lean.Expr) := do
   unless ← Meta.isDefEq ra.expr rb.expr do return none
   some <$> Meta.mkEqTrans (← ra.getProof) (← Meta.mkEqSymm (← rb.getProof))
 
-/-- Use definitional equality first, then expose the denotation equations and evaluate typed variable lookups. -/
+/-- Use definitional equality first, then expose the denotation equations and evaluate typed variable lookups, reading
+    compositions modulo bracketing (`comp_assoc`): a chain is written flat, so a law's `A B` with `B` a chain is
+    `A (B₁ B₂)` where the step's `A B₁ B₂` elaborates left-nested. -/
 def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) := do
   let proofTy ← Meta.inferType proof
   if ← Meta.isDefEq proofTy ty then return some proof
   unless subst && proofTy.getAppFn == ty.getAppFn do return none
-  let ctx ← Meta.Simp.mkContext (simpTheorems := #[← denRules])
+  -- the relation types first (`Eq`'s, `⊑`'s two objects): they assign the citation's open objects, which simp cannot
+  let (pa, ta) := (proofTy.getAppArgs, ty.getAppArgs)
+  if pa.size == ta.size then
+    for (x, y) in (pa.zip ta).toList.take (pa.size - 2) do
+      unless ← Meta.isDefEq x y do return none
+  let proofTy ← instantiateMVars proofTy
+  let ctx ← Meta.Simp.mkContext (simpTheorems := #[← (← denRules).addConst `Rel.Core.Rel.comp_assoc])
   let discharge : Meta.Simp.Discharge := fun p => Meta.withTransparency .default do
     if let some (_, a, b) := p.eq? then
       -- The caller and the citation can express the same object with different substitutions.
@@ -403,6 +411,130 @@ def leOfEq (h : Lean.Expr) : MetaM Lean.Expr := do
   let motive ← Meta.withLocalDeclD `x ty fun x => do
     Meta.mkLambdaFVars #[x] (.app (← Meta.inferType refl).appFn! x)
   Meta.mkEqMP (← Meta.mkCongrArg motive h) refl
+
+/-- The factors of a composition, whatever its bracketing. -/
+partial def Res.chain : Res → List Res
+  | ⟨_, _, .comp R S⟩ => Res.chain ⟨_, _, R⟩ ++ Res.chain ⟨_, _, S⟩
+  | r => [r]
+
+/-- The composition of factors whose objects meet. -/
+def Res.compose : List Res → Option Res
+  | [] => none
+  | [r] => some r
+  | ⟨A, B, R⟩ :: rs => do
+    let ⟨B', C, S⟩ ← Res.compose rs
+    if h : B = B' then some ⟨A, C, .comp (cast (congrArg (Tm A) h) R) S⟩ else none
+
+/-- One term: the same objects and the same `Expr` (a term `tmE` cannot build is equal to none). -/
+def Res.same (a b : Res) : Bool :=
+  a.1 == b.1 && a.2.1 == b.2.1 && match Expand.tmE #[] a.2.2, Expand.tmE #[] b.2.2 with
+    | .ok x, .ok y => x == y
+    | _, _ => false
+
+/-- `r` with its `i`-th part (`Tm.mapM`'s order) replaced by `p`, if `p` has that part's objects. -/
+def Res.withPart (r : Res) (i : Nat) (p : Res) : Option Res :=
+  let step {C D : Obj} (c : Tm C D) : StateM (Nat × Bool) (Tm C D) := do
+    let (j, ok) ← get
+    set (j + 1, ok)
+    if j != i then return c
+    let ⟨C', D', t⟩ := p
+    if h : C' = C ∧ D' = D then set (j + 1, true); return cast (by rw [h.1, h.2]) t else return c
+  let (t, _, ok) := (r.2.2.mapM step).run (0, false)
+  if ok then some ⟨r.1, r.2.1, t⟩ else none
+
+/-- A variable index above every variable and binder in `r`, a call's body included. -/
+partial def Res.freshVar (r : Res) : Nat :=
+  let own := match r.2.2 with
+    | .var k | .nu k .. | .mu k .. | .hylo k .. => k + 1
+    | .call ks .. => ks.foldl (fun m k => max m (k + 1)) 0
+    | _ => 0
+  r.2.2.inner.foldl (fun m p => max m (Res.freshVar p)) own
+
+/-- Each way `a` and `b`, of one type, are one context around a part of each, outermost first: the context with the
+    variable `k` at the hole, and the two parts. A composition is read as its chain of factors, so the hole is any
+    run of factors the two chains do not share, widened into the shared ends; another node with one differing part
+    puts the hole inside that part. -/
+partial def holes (k : Nat) (a b : Res) : List (Res × Res × Res) :=
+  if Res.same a b then [] else
+  let whole : Res × Res × Res := (⟨a.1, a.2.1, .var k⟩, a, b)
+  let (fa, fb) := (Res.chain a, Res.chain b)
+  let (n, m) := (fa.length, fb.length)
+  if n > 1 || m > 1 then
+    let p := ((fa.zip fb).takeWhile fun (x, y) => Res.same x y).length
+    let s := min (((fa.reverse.zip fb.reverse).takeWhile fun (x, y) => Res.same x y).length) (min n m - p)
+    let seg (i j : Nat) : Option (Res × Res × Res) := do
+      let ma ← Res.compose ((fa.drop i).take (n - i - j))
+      let mb ← Res.compose ((fb.drop i).take (m - i - j))
+      let c ← Res.compose (fa.take i ++ [⟨ma.1, ma.2.1, .var k⟩] ++ fa.drop (n - j))
+      pure (c, ma, mb)
+    let segs := (List.range (p + 1)).flatMap fun i => (List.range (s + 1)).filterMap fun j =>
+      if i + j == 0 then none else seg i j
+    -- one factor against one: the hole can also be inside it
+    let inner := match (fa.drop p).take (n - p - s), (fb.drop p).take (m - p - s) with
+      | [x], [y] => ((holes k x y).drop 1).filterMap fun (c, u, v) => do
+          pure (← Res.compose (fa.take p ++ [c] ++ fa.drop (n - s)), u, v)
+      | _, _ => []
+    whole :: segs ++ inner
+  else
+    let zero {C D : Obj} (_ : Tm C D) : Id (Tm C D) := pure .zero
+    let head (r : Res) := Expand.tmE #[] (Id.run (r.2.2.mapM zero))
+    let same := match head a, head b with | .ok x, .ok y => x == y | _, _ => false
+    let (pa, pb) := (a.2.2.parts, b.2.2.parts)
+    match same, (pa.zip pb).zipIdx.filter (fun ((x, y), _) => !Res.same x y) with
+    -- all of `holes k x y`, its whole included: here no segment covers the part `i` itself, unlike a chain's factor
+    | true, [((x, y), i)] => whole :: (holes k x y).filterMap fun (c, u, v) => do
+        pure (← Res.withPart a i c, u, v)
+    | _, _ => [whole]
+
+/-- `Tm.den_mono` at `target` (`⟦C⟧(ρ.bind k u) ⊑ ⟦C⟧(ρ.bind k v)`) from `h : u ⊑ v`, its polarity premise by
+    `decide`. -/
+def denMonoAt (q : Pos) (target h : Lean.Expr) : MetaM Lean.Expr := do
+  let (ms, bis, body) ← Meta.forallMetaTelescope (← Meta.inferType (mkConst `Rel.Lang.Tm.den_mono))
+  unless ← Meta.isDefEq body target do
+    throwError "rel_program: {q}: Tm.den_mono does not state {← Meta.ppExpr target}"
+  let hs := ((ms.zip bis).filter (·.2.isExplicit)).map (·.1)
+  let (some hp, some hl) := (hs[0]?, hs[1]?) | throwError "rel_program: Tm.den_mono has not two explicit premises"
+  let polTy ← instantiateMVars (← Meta.inferType hp)
+  unless (← Meta.whnf (← Meta.mkDecide polTy)).isConstOf ``Bool.true do
+    throwError "rel_program: {q}: {← Meta.ppExpr polTy} does not reduce to true"
+  unless ← Meta.isDefEq hp (← Meta.mkDecideProof polTy) do throwError "rel_program: {q}: cannot assign {← Meta.ppExpr polTy}"
+  unless ← Meta.isDefEq hl h do throwError "rel_program: {q}: the cited law does not fit Tm.den_mono's `⊑` premise"
+  instantiateMVars (mkAppN (mkConst `Rel.Lang.Tm.den_mono) ms)
+
+/-- The step `C[u] = C[v]` (`⊑`) from a cited law `pr` proving `u = v` (`⊑`), for the first context `C` of `holes`
+    the law matches: congruence for `=`, `Tm.den_mono` for `⊑` where `Tm.pol` finds the hole positive (a context
+    reading it with negative or mixed sign is refused). The whole step is the caller's first try, so not here. -/
+def lawInContext (ρ : Lean.Expr) (σ : Option Lean.Expr) (ph : List QAtomicType) (q : Pos) (A B : Obj)
+    (a b : Tm A B) (pr expected : Lean.Expr) (isEq subst : Bool) : TermElabM (Except String Lean.Expr) := do
+  let k := max (Res.freshVar ⟨A, B, a⟩) (Res.freshVar ⟨A, B, b⟩)
+  let mut refused : Option String := none
+  let saved ← saveState
+  for (⟨CA, CB, C⟩, ⟨X, Y, u⟩, ⟨X', Y', v⟩) in (holes k ⟨A, B, a⟩ ⟨A, B, b⟩).drop 1 do
+    -- a failed context must not leave the citation's open objects assigned
+    saved.restore
+    let (x, y, du) ← termAt ρ σ ph q "the rewritten part" X Y u
+    let (_, _, dv) ← termAt ρ σ ph q "the rewritten part" X' Y' v
+    let part ← if isEq then Meta.mkEq du dv else
+      pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) x, mkApp (mkConst ``Rel.Obj.El) y, du, dv])
+    let some h ← (do match ← calcMatch pr part subst with
+      | some h => pure (some h)
+      | none => if isEq then calcMatch (← Meta.mkEqSymm pr) part subst else pure none) | continue
+    if !isEq && !C.pol true k then
+      refused := some "the cited law fits a part the step's context reads with negative or mixed sign (`Tm.pol`), so `⊑` does not pass through it"
+      continue
+    let ctxAt (d : Lean.Expr) :=
+      termAt (mkAppN (mkConst `Rel.Lang.Val.bind) #[ρ, toExpr k, x, y, d]) σ ph q "the context" CA CB C
+    let step ← if isEq then do
+        let motive ← Meta.withLocalDeclD `X (← Meta.inferType du) fun d => do Meta.mkLambdaFVars #[d] (← ctxAt d).2.2
+        Meta.mkCongrArg motive h
+      else do
+        let (oa, ob, cu) ← ctxAt du
+        let (_, _, cv) ← ctxAt dv
+        denMonoAt q (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) oa, mkApp (mkConst ``Rel.Obj.El) ob, cu, cv]) h
+    if let some p ← calcMatch step expected true then return .ok p
+    refused := some s!"the cited law fits a part, but the context rebuilt around it proves {← Meta.ppExpr (← Meta.inferType step)}"
+  let cs := (holes k ⟨A, B, a⟩ ⟨A, B, b⟩).drop 1
+  return .error (refused.getD s!"no part of the step is the cited law ({(Res.chain ⟨A, B, a⟩).length}/{(Res.chain ⟨A, B, b⟩).length} factors, {cs.length} contexts:{cs.map fun (_, u, v) => (Res.chain u).length + 100 * (Res.chain v).length})")
 
 /-- The theorem `t` of the program `n` with steps `:= why` then `x` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
@@ -456,13 +588,21 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
           for (⟨A, B, x⟩, k) in l.args.zipIdx do
             let (a, b, den) ← termAt ρ σ cert.ph q s!"argument {k + 1} of {why w}" A B x
             ρ' := mkAppN (mkConst `Rel.Lang.Val.bind) #[ρ', toExpr k, a, b, den]
-          let σ' ← if subst then do
-            let os := l.objects.map fun (o, ph) => match o, σ with
-              | some o, some σ => mkApp3 (mkConst ``Rel.Obj.inst) (toExpr cert.ph) σ (Expand.oE o)
-              | some o, none => Expand.oE o
-              | none, _ => Expand.oE (.atom ph)
-            pure (some (← Meta.mkListLit (mkConst ``Rel.Obj) os))
-          else pure σ
+          -- an object the citation's arguments and the step's whole type leave open (`citationArgs`: the `𝟙` of
+          -- `(𝟙×A)(𝟙×B)` cited on a part) is a metavariable the match assigns, else its placeholder
+          let mut opens : List (Lean.Expr × QAtomicType) := []
+          let mut σ' := σ
+          if subst then
+            let mut os := #[]
+            for (o, ph) in l.objects do
+              match o, σ with
+              | some o, some σ => os := os.push (mkApp3 (mkConst ``Rel.Obj.inst) (toExpr cert.ph) σ (Expand.oE o))
+              | some o, none => os := os.push (Expand.oE o)
+              | none, _ =>
+                let m ← Meta.mkFreshExprMVar (mkConst ``Rel.Obj)
+                opens := opens ++ [(m, ph)]
+                os := os.push m
+            σ' := some (← Meta.mkListLit (mkConst ``Rel.Obj) os.toList)
           let mut pr := mkConst c
           if let .forallE _ dom _ _ := (← Meta.inferType pr) then
             if dom == substTy then
@@ -482,10 +622,22 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
             ty := body.instantiate1 h
           let expected ← stepProp a b
           -- an `=` step may read the cited law right to left
-          let some proof ← (do match ← calcMatch pr expected subst with
+          let saved ← saveState
+          let whole ← (do match ← calcMatch pr expected subst with
             | some p => pure (some p)
-            | none => if isEq then calcMatch (← Meta.mkEqSymm pr) expected subst else pure none) |
-            return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr expected}"
+            | none => if isEq then calcMatch (← Meta.mkEqSymm pr) expected subst else pure none)
+          if whole.isNone then saved.restore
+          -- else the law rewrites one part of the step, inside a context both sides share
+          let (_, _, _, _, _, _, ⟨A, B, tA, tB⟩) := l.sides
+          let proof ← match whole with
+            | some proof => pure proof
+            | none => match ← lawInContext ρ σ cert.ph q A B tA tB pr expected isEq subst with
+              | .ok proof => pure proof
+              | .error e => return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr expected}; {e}"
+          for (m, ph) in opens do
+            if let .mvar g ← instantiateMVars m then g.assign (Expand.oE (.atom ph))
+          let proof ← instantiateMVars proof
+          if proof.hasExprMVar then return .error s!"step at {q}: {c} leaves an object of the citation unsolved"
           pure proof
       acc ← match acc with
         | none => pure (some (step, !isEq))
