@@ -37,7 +37,7 @@ rel_program detab where
        ``` -/
 
     step : ([Ch]×N)×Ch ⟶ [Ch]×N ≜ dom(π₂nl)⟨⟨π₁π₁,π₂⟩snoc,z⟩ ∪ (dom(π₂tb)⟨⟨π₁π₁,w blanks⟩cat,⟨π₁π₂,w⟩plus⟩) ∪ (dom(π₂ (𝟙(Ch) − nl − tb))⟨⟨π₁π₁,π₂⟩snoc,π₁π₂ succ⟩) where w ≜ ⟨⊤m,⟨π₁π₂,⊤m⟩mod⟩minus
-    detab : [Ch] ⟶ [Ch] ≜ ⟨⟨nil,z⟩,𝟙⟩loop(step)π₁
+    detab : [Ch] ⟶ [Ch] ≜ ⦇[⟨nil,z⟩, step]⦈π₁
 
     /- The specification Λ(detab°)est(R), R ≜ length ≤ length° (entab_laws, 10:148), on the candidates C: every string of
        length ≤ 5 over {a,BL,TB}. detab never shortens, so C holds every preimage of a string of D. H ≜ detab° is
@@ -57,7 +57,7 @@ rel_program detab where
     /- op((x,(t,c)),a): hold the blank, or emit a tab on a tab stop, or cash the t held blanks in and append a. -/
 
     op : ([Ch]×(N×N))×Ch ⟶ [Ch]×(N×N) ≜ ⟨g π₁π₁ ∪ ((dom(π₂bl) − g)⟨π₁π₁,⊤tb⟩snoc) ∪ (dom(π₂ (𝟙(Ch) − bl))⟨⟨π₁π₁,π₁π₂π₁ blanks⟩cat,π₂⟩snoc),⟨π₁π₂,π₂⟩tc⟩ where g ≜ dom(⟨π₁π₂,π₂⟩h)
-    triple : [Ch] ⟶ [Ch]×(N×N) ≜ ⟨⟨nil,⟨z,z⟩⟩,𝟙⟩loop(op)
+    triple : [Ch] ⟶ [Ch]×(N×N) ≜ ⦇[⟨nil,⟨z,z⟩⟩, op]⦈
     assocl : α×(β×γ) ⟶ (α×β)×γ ≜ ⟨⟨π₁,π₂π₁⟩,π₂π₂⟩
     entab : [Ch] ⟶ [Ch] ≜ triple assocl π₁ (𝟙×blanks) cat
 
