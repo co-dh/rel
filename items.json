@@ -4816,7 +4816,7 @@
   },
   {
     "id": "GP-4",
-    "mark": "○",
+    "mark": "▶",
     "sha": "",
     "deps": [
       "GP-2",
@@ -4825,7 +4825,7 @@
     "content": "a non-empty n.proof.unproved is an elaboration error (Embed.lean certify)",
     "note": "",
     "what": "unproved 列表非空时编译报错，于是任何未证的步骤都让程序写不出来。",
-    "hold": null
+    "hold": "GP-4b agent: certifier fix for Cylinder stepFuse"
   },
   {
     "id": "GP-5",
@@ -4885,8 +4885,8 @@
   },
   {
     "id": "GP-5d",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "a1f78a7",
     "deps": [
       "GP-5c"
     ],
@@ -4905,6 +4905,18 @@
     "content": "certify a cited law inside a context (GP-3b holes) and modulo comp_assoc (calcMatch); Cylinder fusion certifies",
     "note": "agent aeca062 stopped 11-27 23:17 with 765a11f + WIP; merging in main 11-28",
     "what": "在上下文里引用定律的计算步骤也能被检查。",
+    "hold": null
+  },
+  {
+    "id": "GP-5e",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GP-5d"
+    ],
+    "content": "close the load-time WF gap GP-5d found: (1) a dense (non-band) sum: the reader accepts a null in an owned summand row (ColB.OwnedOn needs Opt.get x i ≠ none there); add that test to the same per-row pass fillBad/leafFill already makes (no new decode pass), then prove fillBad/leafFill success gives the OwnedOn clauses and drop the noGen premise of read_wf; (2) readCsvDict: prove its ofCsv/encVals/frame/canon path gives Tab.WF, or route it through the same check",
+    "note": "GP-5d 3897503 report: noGen = no dense sum; leafFill needs Std.Legacy.Range forIn to List.forIn",
+    "what": "读入含稠密 sum 的表时也检查已占用行非空，从而对所有表证明编码合法。",
     "hold": null
   }
 ]
