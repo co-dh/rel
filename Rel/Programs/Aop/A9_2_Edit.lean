@@ -14,6 +14,7 @@ rel_program aopA9_2_Edit where
     step : (α+(α+α))×([α]×[α]) ⟶ [α]×[α] ≜ ⟨⟨π₁cpy°,π₂π₁⟩cons,⟨π₁cpy°,π₂π₂⟩cons⟩ ∪ ⟨⟨π₁del°,π₂π₁⟩cons,π₂π₂⟩ ∪ ⟨π₂π₁,⟨π₁ins°,π₂π₂⟩cons⟩
     edit : [α+(α+α)] ⟶ [α]×[α] ≜ ⦇[⟨nil,nil⟩, step]⦈ʳ
     R(U : [α] ⟶ [α]) : [α] ⟶ [α] ≜ length ≤(N,N) (U length)°
+    Rfull : [α+(α+α)] ⟶ [α+(α+α)] ≜ length ≤(N,N) length°
     dropStep : (α+(α+α))×([α+(α+α)]×[α+(α+α)]) ⟶ [α+(α+α)]×[α+(α+α)] ≜ ⟨⟨π₁ (cpy°cpy),π₂π₁⟩cons,⟨π₁cpy°del,π₂π₁⟩cons⟩ ∪ ⟨⟨π₁ (del°del),π₂π₁⟩cons,⟨π₁ (del°del),π₂π₂⟩cons⟩ ∪ ⟨⟨π₁ (ins°ins),π₂π₁⟩cons,π₂π₁⟩
     dropT : [α+(α+α)] ⟶ [α+(α+α)]×[α+(α+α)] ≜ ⦇[⟨nil,nil⟩, dropStep]⦈ʳ
     dropTgt : [α+(α+α)] ⟶ [α+(α+α)] ≜ dropT π₂

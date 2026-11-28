@@ -2386,6 +2386,7 @@ def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
   let rec fullUni : OTy → Bool
     | .base n => (objs.lookup n).any (·.fullUniverse)
     | .arr a => fullUni a
+    | .prod a b | .sum a b => fullUni a && fullUni b
     | _ => false
   if let some ⟨A', U⟩ := uniOf objs o then
     -- the one reader that forces the universe: a product past `crossMax` fails the definition that reads it
