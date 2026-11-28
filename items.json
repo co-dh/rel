@@ -4816,8 +4816,8 @@
   },
   {
     "id": "GP-4",
-    "mark": "▶",
-    "sha": "",
+    "mark": "✓",
+    "sha": "81dbba7",
     "deps": [
       "GP-2",
       "GP-3"
@@ -4825,7 +4825,7 @@
     "content": "a non-empty n.proof.unproved is an elaboration error (Embed.lean certify)",
     "note": "",
     "what": "unproved 列表非空时编译报错，于是任何未证的步骤都让程序写不出来。",
-    "hold": "GP-4b agent: certifier fix for Cylinder stepFuse"
+    "hold": null
   },
   {
     "id": "GP-5",
