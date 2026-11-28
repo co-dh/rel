@@ -78,6 +78,11 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **A spec is a composition of relations first** — before writing or shortening a program, say which relations it
   composes; definition bodies are point-free (no `∃` in a body), because a pointwise body hides the composition the
   laws are about.
+- **Write a recursion as a plain fold `⦇[e, S]⦈` (or `⦇[e, S]⦈ʳ`); `loop`/`foldI` is the last resort** — the fold has
+  the laws a proof cites (`foldUP`, `foldrUP`, fusion), where `loop` is a prelude definition over `foldI` that every proof
+  must unfold first; a seed that depends on the input is usually a `nil` seed plus an empty-accumulator branch
+  (`genStep`), and `loop` stays only when the step must read an input value no constant seed can carry (`cp`'s `a`),
+  with the reason in a comment beside it.
 - **Constructive in `Rel.Core` only** — its axioms stay within `{propext, Quot.sound}`, so the core holds in every
   allegory freyd's bridge maps it to. The rest uses `Classical` freely (`Column.atoms`, `Classical.propDecidable`).
 - **No `sorry`, `native_decide`, `!` indexing, raised `maxHeartbeats`, and no new `panic!`** — a `panic!` already in
