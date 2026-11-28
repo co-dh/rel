@@ -283,6 +283,205 @@ theorem ldivCat_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {B 
   simp only [List.mapM_cons, List.mapM_nil, hr1x, ha, hb, hc', hd, hpp, hco]
   rfl
 
+set_option hygiene false in
+/-- `up`, and the column-register facts `hx1`, `hx2` and the extension `hext` of the first registers with it. -/
+local macro "upc " m:ident " [" hs:ident* "]" : tactic => do
+  let rs ← hs.mapM fun h => `(tactic| replace $h:ident := $m:ident $h:ident)
+  `(tactic| ($[$rs];*; replace hx1 := mapM_extends $m hx1; replace hx2 := mapM_extends $m hx2; replace hext := ext_trans hext $m))
+
+/-- **`ldivOfB`, stage C** (`q` gathered at the group firsts, the count `d` of `r`'s rows of each group's `b` read through
+    `code`, the groups with `cnt = d` by `whereB` (`WhereAgree`: its chain answers as `whereCol`), `P`'s columns `Q.key`,
+    `Q.val.2` gathered at them). `kk` continues with `P`, of the shapes of `cs1`, `cs2`, whose registers hold `yk`, `yv`. -/
+theorem ldivSel_builds {B C : Obj} {Kv Qn n1 Nv bkv Mv : USize} {Qk : Vals B Qn} {Qc : Vals C Qn}
+    {yk : Vals B Mv} {yv : Vals C Mv} {cs1 cs2 : Cols} {fg : Array Fun × Array Fun} {rs out : Array Val}
+    {rK rF rP rcnt rN rBk rCode rCR rQn a1 : Nat} {f p cnt cR code q qa d1 d bits sel ix : Enc}
+    {kk : TabB → Bld (Array Nat)}
+    (hcs1 : ColsOf B cs1) (hcs2 : ColsOf C cs2)
+    (hx1 : (Cols.regs cs1).mapM (fun i => rs[i]?) = some Qk.regVals)
+    (hx2 : (Cols.regs cs2).mapM (fun i => rs[i]?) = some Qc.regVals)
+    (hQn : rs[rQn]? = some (.size Qn)) (hn1 : rs[a1]? = some (.size n1)) (hK : rs[rK]? = some (.size Kv))
+    (hf : rs[rF]? = some (Reg.put f)) (hp : rs[rP]? = some (Reg.put p)) (hcnt : rs[rcnt]? = some (Reg.put cnt))
+    (hN : rs[rN]? = some (.size Nv)) (hbk : rs[rBk]? = some (.size bkv))
+    (hcR : rs[rCR]? = some (Reg.put cR)) (hcode : rs[rCode]? = some (Reg.put code))
+    (hq : kgather Kv f Qn p = .ok q)
+    (hkn : ∃ k, colConst Kv n1.toUInt64 = .ok k ∧ ∃ o, colMap .add Kv q k = .ok o)
+    (hqa : colMap .first Kv q q .i64 .i64 [] [(.add, n1.toUInt64)] = .ok qa)
+    (hd1 : kgather Kv qa Nv code = .ok d1) (hd : kgather Kv d1 bkv cR = .ok d)
+    (hkeep : colMap .eq Kv cnt d = .ok bits)
+    (hW : WhereAgree Kv Mv bits sel) (hix : kgather Mv sel Kv q = .ok ix)
+    (hgk : ValsB.gather Mv ix Qk = .ok yk) (hgv : ValsB.gather Mv ix Qc = .ok yv) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (P : TabB) (R : Array Val), (∃ y, fg2.1 = fg.1 ++ y) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → Cols.shape P.key = Cols.shape cs1 →
+      Cols.shape P.val = Cols.shape cs2 →
+      P.regs.mapM (fun i => R[i]?) = some (.size Mv :: (yk.regVals ++ yv.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk P) R out) :
+    ∃ fg', Builds abiOf fg fg' (do
+      let q ← gatherB rK rF rQn rP
+      let d ← gatherB rK (← gatherB rK (← mapB .add rK q (← constB rK (← wordOf a1))) rN rCode) rBk rCR
+      let (M, sel) ← whereB rK (← mapB .eq rK rcnt d)
+      let ix ← gatherB M sel rK q
+      kk ⟨M, ← gatherCols M ix rQn cs1, ← gatherCols M ix rQn cs2⟩) rs out := by
+  have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+  have hext : ∀ (i : Nat) (v : Val), rs[i]? = some v → rs[i]? = some v := fun _ _ h => h
+  obtain ⟨kcc, hkc, o, ho⟩ := hkn
+  obtain ⟨f1, ho'⟩ := colMap_kscan ho
+  obtain rfl : o = qa := colMap_const_eq hkc ho hqa (fun w v h => by simpa [Op.eval, UInt64.add_comm] using h)
+  obtain ⟨f2, hk'⟩ := colMap_kscan hkeep
+  obtain ⟨zc2, pc, ixc, ix1c, zrc, onec, cutc, fo, ixf, cutf, fw, hz2, hp2, hf2, hK2, hix2, hs2, hzr, hone2, hcut,
+    hg2, hrt⟩ := hW
+  refine Builds.bind1F (Free.gatherB _ _ _ _) (gatherB_builds1 hK hf hQn hp hq) fun qr R1 hqr m1 => ?_
+  upc m1 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode]
+  refine call1E (v := .u64 n1.toUInt64) (by abiK) rfl (reads_of (l := [a1]) (vs := [.size n1])
+    (by simp only [List.mapM_cons, List.mapM_nil, hn1]; rfl))
+    (by simp [arg, hsz, Out.out]; rfl) rfl fun w R2 hw m2 => ?_
+  upc m2 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind1F (Free.constB _ _) (constB_builds hK hw (by rw [← Rel.colConst_eq]; exact hkc)) fun cc R3 hcc m3 => ?_
+  upc m3 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind1F (Free.mapB _ _ _ _ _ _ _ _) (mapB_builds hK hqr (enc_get_put _) hcc (enc_get_put _) (by rop)
+    (qtype_get_put _) (qtype_get_put _) (by rop) (by rop) ho') fun mm R4 hmm m4 => ?_
+  upc m4 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind1F (Free.gatherB _ _ _ _) (gatherB_builds1 hK hmm hN hcode hd1) fun g1 R5 hg1 m5 => ?_
+  upc m5 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind1F (Free.gatherB _ _ _ _) (gatherB_builds1 hK hg1 hbk hcR hd) fun g2 R6 hg2' m6 => ?_
+  upc m6 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind1F (Free.mapB _ _ _ _ _ _ _ _) (mapB_builds hK hcnt (enc_get_put _) hg2' (enc_get_put _) (by rop)
+    (qtype_get_put _) (qtype_get_put _) (by rop) (by rop) hk') fun bt R7 hbt m7 => ?_
+  upc m7 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind2F (Free.whereB _ _) (whereB_builds hK (by simp [hbt, enc_get_put]) hz2 hp2 hf2 hK2 hix2 hs2 hzr
+    hone2 hcut hg2 hrt) fun kr sr R8 hk8 hsr8 m8 => ?_
+  dsimp only
+  upc m8 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr]
+  refine Builds.bind1F (Free.gatherB _ _ _ _) (gatherB_builds1 hk8 hsr8 hK hqr hix) fun i1 R9 hi1 m9 => ?_
+  upc m9 [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr hk8 hsr8]
+  refine gatherCols_builds B (x := Qk) (y := yk) hcs1 hx1 hk8 hi1 hQn hgk hfo ?_
+  intro fg7 ks'' ys7 he7 hf7 ho7 hs7 hr7
+  have mg : Extends R9 (R9 ++ ys7) := fun h => get_app h
+  upc mg [hQn hn1 hK hf hp hcnt hN hbk hcR hcode hqr hk8 hsr8 hi1]
+  refine gatherCols_builds C (x := Qc) (y := yv) hcs2 hx2 hk8 hi1 hQn hgv ho7 ?_
+  intro fg8 vs'' ys8 he8 hf8 ho8 hs8 hr8
+  refine hkk fg8 ⟨kr, ks'', vs''⟩ ((R9 ++ ys7) ++ ys8) (FExt.trans he7 he8) (hf7.trans hf8) ho8
+    (fun h => get_app (hext _ _ h)) hs7 hs8 ?_
+  simp only [TabB.regs, Cols.regs_append]
+  refine omapM_cons.mpr ⟨_, _, get_app hk8, ?_, rfl⟩
+  rw [List.mapM_append, mapM_get_app hr7, hr8]
+  rfl
+
+/-- The kernel facts `coreflB_ran_builds` takes of the table `R` whose `ran` it builds (`hN`, `hz`, `hsc` there). -/
+def RanPre {a b : Obj} (R : Tab a b) : Prop := R.n.toNat ≤ 2 ^ 63 ∧
+  ∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) R.n 0 = .ok z ∧
+    ∀ es vs p k g f, ValsB.cols R.val = .ok es → kasc R.n es = .ok (vs, p) →
+      kseen R.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+      ∃ r, kscan .max false .i64 .i64 R.n (some z) [(R.n, z), (R.n, g)] [] [] = .ok r
+
+/-- The kernel facts `selBody_builds` takes (all but `TagOff`) of the tables `R`, `S` that `Tab.select kp` selects. -/
+def SelPre {a b : Obj} (kp : USize → Enc → Enc → Except String Enc) (R S : Tab a b) : Prop :=
+  R.n.toNat + S.n.toNat < 2 ^ 63 ∧
+  (∀ C tag, R.tagged S = .ok (C, tag) → ∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) C.n 0 = .ok z) ∧
+  (∀ C tag es vs p k g f z, R.tagged S = .ok (C, tag) →
+      kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) C.n 0 = .ok z →
+      ValsB.cols (A := .prod a b) (C.key, C.val) = .ok es → kasc C.n es = .ok (vs, p) →
+      kseen C.n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+      ∃ r, kscan .max false .i64 .i64 C.n (some z) [(C.n, z), (C.n, g)] [] [] = .ok r) ∧
+  (∀ m mn mx bits K sel, kp m mn mx = .ok bits → whereCol m bits = .ok (K, sel) → WhereAgree m K bits sel)
+
+/-- The kernel answers `crossB_cross_builds` takes: the constant column of `mv`, then the `.div` and `.mod` of the `Tv`
+    positions by it. -/
+def CrossPre (Tv mv : USize) : Prop := ∃ (k d r : Enc) (f1 f2 : Option UInt64), colConst Tv mv.toUInt64 = .ok k ∧
+  kscan .div false .i64 .i64 Tv none [(Tv, .pos), (Tv, k)] [] [] = .ok (d, f1) ∧
+  kscan .mod false .i64 .i64 Tv none [(Tv, .pos), (Tv, k)] [] [] = .ok (r, f2)
+
+/-- `Extends rs R` is `R = rs ++ ys`. -/
+theorem Extends.exists_app {rs R : Array Val} (h : Extends rs R) : ∃ ys, R = rs ++ ys := by
+  refine ⟨(R.toList.drop rs.size).toArray, Array.ext_getElem? fun i => ?_⟩
+  by_cases hi : i < rs.size
+  · have := h (Array.getElem?_eq_getElem hi)
+    rw [Array.getElem?_append_left hi, this]
+    exact (Array.getElem?_eq_getElem hi).symm
+  · rw [Array.getElem?_append_right (by omega)]
+    simp [List.getElem?_drop, show rs.size + (i - rs.size) = i by omega]
+
+/-- **`ldivOfB`, stage D** (`(ran UB − ran r) × ran UC` unioned into `P`): `coreflB` of `UB`'s and `r`'s values
+    (`coreflB_ran_builds`), `selectB` of them (`diffB_builds`), `coreflB` of `UC`'s, `crossB` of the two key sides
+    (`crossB_cross_builds`), `unionB` of `P` and the product (`unionB_builds`). `hunion` states `P.union` of the raw
+    product: `Tab.cross` canonises it first, and `union` canonises again. -/
+theorem ldivTail_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B C : Obj} {r : Tab A B}
+    {UB : Tab B B} {UC : Tab C C} {RU RR V : Tab B B} {WC : Tab C C} {Tv Mv : USize} {x' : Vals B Tv}
+    {y' : Vals C Tv} {yk : Vals B Mv} {yv : Vals C Mv} {U : Tab B C} {r' ub uc P : TabB} {fg : Array Fun × Array Fun}
+    {rs out : Array Val} {kk : TabB → Bld (Array Nat)}
+    (hrv : ColsOf B r'.val) (hubv : ColsOf B ub.val) (hucv : ColsOf C uc.val) (hPk : ColsOf B P.key)
+    (hPv : ColsOf C P.val)
+    (hrx : (Cols.regs r'.val).mapM (fun i => rs[i]?) = some r.val.regVals) (hrn : rs[r'.n]? = some (.size r.n))
+    (hubx : (Cols.regs ub.val).mapM (fun i => rs[i]?) = some UB.val.regVals) (hubn : rs[ub.n]? = some (.size UB.n))
+    (hucx : (Cols.regs uc.val).mapM (fun i => rs[i]?) = some UC.val.regVals) (hucn : rs[uc.n]? = some (.size UC.n))
+    (hP : P.regs.mapM (fun i => rs[i]?) = some (.size Mv :: (yk.regVals ++ yv.regVals)))
+    (hran1 : UB.ran = .ok RU) (hran2 : r.ran = .ok RR) (hran3 : UC.ran = .ok WC) (hdiff : RU.diff RR = .ok V)
+    (hcr : Vals.cross V.key WC.key = .ok ⟨Tv, x', y'⟩)
+    (hunion : Tab.union (⟨Mv, yk, yv⟩ : Tab B C) ⟨Tv, x', y'⟩ = .ok U)
+    (hpre1 : RanPre UB) (hpre2 : RanPre r) (hpre3 : RanPre UC)
+    (hsel : SelPre (fun m _ mx => colMap .not m mx mx) RU RR) (hcpre : CrossPre Tv WC.n)
+    (hcan : ∀ Cc, Tab.concat (⟨Mv, yk, yv⟩ : Tab B C) ⟨Tv, x', y'⟩ = .ok Cc → CanOK Cc) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (R : Array Val), (∃ y, fg2.1 = fg.1 ++ y) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → Cols.shape W.key = Cols.shape P.key →
+      Cols.shape W.val = Cols.shape P.val →
+      W.regs.mapM (fun i => R[i]?) = some (.size U.n :: (U.key.regVals ++ U.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk W) R out) :
+    ∃ fg', Builds abiOf fg fg' (do
+      let V ← selectB (fun m _ mx => mapB .not m mx mx) (← coreflB ub.n ub.val) (← coreflB r'.n r'.val)
+      let W ← coreflB uc.n uc.val
+      let (T, x, y) ← crossB V.n W.n V.key W.key
+      unionB P ⟨T, x, y⟩ >>= kk) rs out := by
+  obtain ⟨hN1, z1, hz1, hsc1⟩ := hpre1
+  obtain ⟨hN2, z2, hz2, hsc2⟩ := hpre2
+  obtain ⟨hN3, z3, hz3, hsc3⟩ := hpre3
+  obtain ⟨hlt, hzs, hscs, hWs⟩ := hsel
+  obtain ⟨kc, dc, rc, f1, f2, hkc, hdc, hrc⟩ := hcpre
+  refine coreflB_ran_builds (R := UB) (R' := RU) hubv hubx hubn hran1 hN1 hz1 hsc1 hfo ?_
+  intro fg1 U1 ys1 he1 hf1 ho1 hsk1 hsv1 hr1
+  refine coreflB_ran_builds (R := r) (R' := RR) hrv (mapM_get_app hrx) (get_app hrn) hran2 hN2 hz2 hsc2 ho1 ?_
+  intro fg2 U2 ys2 he2 hf2 ho2 hsk2 hsv2 hr2
+  refine diffB_builds hT h63 B B (R := RU) (S := RR) (T' := V) (R' := U1) (S' := U2)
+    (ColsOf.shape B hubv hsk1) (ColsOf.shape B hubv hsv1) (ColsOf.shape B hrv hsk2) (ColsOf.shape B hrv hsv2)
+    (mapM_get_app hr1) hr2 hdiff hlt hzs hscs hWs ho2 ?_
+  intro fg3 V1 ys3 he3 hf3 ho3 hsk3 hsv3 hr3
+  refine coreflB_ran_builds (R := UC) (R' := WC) hucv (mapM_get_app (mapM_get_app (mapM_get_app hucx)))
+    (get_app (get_app (get_app hucn))) hran3 hN3 hz3 hsc3 ho3 ?_
+  intro fg4 W1 ys4 he4 hf4 ho4 hsk4 hsv4 hr4
+  have hVk : ColsOf B V1.key := ColsOf.shape B hubv (hsk3.trans hsk1)
+  have hVv : ColsOf B V1.val := ColsOf.shape B hubv (hsv3.trans hsv1)
+  have hWk : ColsOf C W1.key := ColsOf.shape C hucv hsk4
+  have hVe : V1.regs = V1.n :: (Cols.regs V1.key ++ Cols.regs V1.val) := by simp [TabB.regs, Cols.regs_append]
+  have hr3' : V1.regs.mapM (fun i => (rs ++ ys1 ++ ys2 ++ ys3 ++ ys4)[i]?) = _ := mapM_get_app hr3
+  rw [hVe] at hr3'
+  obtain ⟨hn3, hr3''⟩ := mapM_get_cons hr3'
+  obtain ⟨hVkx, -⟩ := mapM_split (ColsOf.regs_length hVk V.key) hr3''
+  have hWe : W1.regs = W1.n :: (Cols.regs W1.key ++ Cols.regs W1.val) := by simp [TabB.regs, Cols.regs_append]
+  rw [hWe] at hr4
+  obtain ⟨hn4, hr4'⟩ := mapM_get_cons hr4
+  obtain ⟨hWkx, -⟩ := mapM_split (ColsOf.regs_length hWk WC.key) hr4'
+  refine crossB_cross_builds (A := B) (B := C) (xs := V1.key) (ys := W1.key) (x := V.key) (y := WC.key) hcr h63
+    hn3 hn4 hkc hdc hrc hVk hWk hVkx hWkx ho4 ?_
+  intro fg5 T xs' ys' R5 he5 hf5 ho5 hs5 hs6 hE5 hr5
+  have hPR : P.regs.mapM (fun i => R5[i]?) = some (.size Mv :: (yk.regVals ++ yv.regVals)) :=
+    mapM_extends (fun h => hE5 (get_app (get_app (get_app (get_app h))))) hP
+  have hSR : (⟨T, xs', ys'⟩ : TabB).regs.mapM (fun i => R5[i]?) =
+      some (.size (⟨Tv, x', y'⟩ : Tab B C).n :: ((⟨Tv, x', y'⟩ : Tab B C).key.regVals ++
+        (⟨Tv, x', y'⟩ : Tab B C).val.regVals)) := by
+    simp only [TabB.regs, Cols.regs_append]; exact hr5
+  refine unionB_builds hT.catOff h63 B C (R := ⟨Mv, yk, yv⟩) (S := ⟨Tv, x', y'⟩) (U := U) (R' := P) (S' := ⟨T, xs', ys'⟩)
+    hPk hPv (ColsOf.shape B hVk hs5) (ColsOf.shape C hWk hs6) hPR hSR hunion hcan ho5 ?_
+  intro fg6 W ys6 he6 hf6 ho6 hsk hsv hr6
+  obtain ⟨e1, h1⟩ := he1
+  obtain ⟨e2, h2⟩ := he2
+  obtain ⟨e3, h3⟩ := he3
+  obtain ⟨e4, h4⟩ := he4
+  obtain ⟨e5, h5⟩ := he5
+  obtain ⟨e6, h6⟩ := he6
+  refine hkk fg6 W (R5 ++ ys6) ⟨e1 ++ (e2 ++ (e3 ++ (e4 ++ (e5 ++ e6)))), by
+      rw [h6, h5, h4, h3, h2, h1, Array.append_assoc, Array.append_assoc, Array.append_assoc, Array.append_assoc,
+        Array.append_assoc]⟩
+    (hf1.trans (hf2.trans (hf3.trans (hf4.trans (hf5.trans hf6))))) ho6
+    (fun h => get_app (hE5 (get_app (get_app (get_app (get_app h)))))) hsk hsv hr6
+
 /-- The kernel facts `convT_builds` takes of a table `R` it converses (`hN`, `hz`, `hsc` there). -/
 def ConvPre {A B : Obj} (R : Tab A B) : Prop := R.n.toNat ≤ 2 ^ 63 ∧
   ∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) R.n 0 = .ok z ∧
