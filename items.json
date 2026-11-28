@@ -4825,7 +4825,7 @@
     "content": "a non-empty n.proof.unproved is an elaboration error (Embed.lean certify)",
     "note": "",
     "what": "unproved 列表非空时编译报错，于是任何未证的步骤都让程序写不出来。",
-    "hold": "after GP-3c and GP-1b merge"
+    "hold": null
   },
   {
     "id": "GP-5",
@@ -4893,6 +4893,18 @@
     "content": "theorem: readValsB (Table.read, readKeyed, readCsvDict, readOwn) returning .ok t gives t.WF, from the checks the reader already runs (cellBadB/ColB.bound, fillBad); lemmas cellBad = none gives the cell bounds (Rel.cellBad_none, RepCols) and fillBad success gives the filler clauses; IO unfolding as in Rel/Lang/TableIO.lean",
     "note": "the reader is not a kernel: its existing per-row checks stay; this only proves what they establish",
     "what": "证明读入表时已有的检查确实保证了编码合法，t.WF 不再是假设。",
+    "hold": null
+  },
+  {
+    "id": "GP-3c",
+    "mark": "✓",
+    "sha": "69f2217",
+    "deps": [
+      "GP-3"
+    ],
+    "content": "certify a cited law inside a context (GP-3b holes) and modulo comp_assoc (calcMatch); Cylinder fusion certifies",
+    "note": "agent aeca062 stopped 11-27 23:17 with 765a11f + WIP; merging in main 11-28",
+    "what": "在上下文里引用定律的计算步骤也能被检查。",
     "hold": null
   }
 ]
