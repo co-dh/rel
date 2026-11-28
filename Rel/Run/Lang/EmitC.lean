@@ -740,18 +740,21 @@ def keepB (T : TabB) (b : Nat) : Bld TabB := do
   let (k, sel) ← whereB T.n b
   pure ⟨k, ← gatherCols k sel T.n T.key, ← gatherCols k sel T.n T.val⟩
 
+/-- A branch of `iteT c ks vs`: its table's count and registers (`regsOf`), checked to be `ks`, `vs` wide and `w`
+    registers. A def of its own so that a lemma names the branch, not a restated copy of it. -/
+def iteFlat (c : Nat) (ks vs : Cols) (w : Nat) (b : Bld TabB) : Bld (Array Nat) := do
+  let T ← b
+  let rs ← regsOf (T.key ++ T.val)
+  unless T.key.length == ks.length && T.val.length == vs.length && rs.length == w do
+    throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, {rs.length} registers, not {ks.length} and {vs.length}, {w}"
+  pure (#[T.n] ++ rs.toArray)
+
 /-- `if c then t else e` of two tables whose sides have the shape of `ks`, `vs` (`regsOf`): the new registers, read
     back into that shape (`withRegs`). -/
 def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
   let w := (← regsOf (ks ++ vs)).length
-  let flat (b : Bld TabB) : Bld (Array Nat) := do
-    let T ← b
-    let rs ← regsOf (T.key ++ T.val)
-    unless T.key.length == ks.length && T.val.length == vs.length && rs.length == w do
-      throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, {rs.length} registers, not {ks.length} and {vs.length}, {w}"
-    pure (#[T.n] ++ rs.toArray)
   -- each branch one plan function (`funT`), as a node is: a choice between two recipes inlines neither
-  let rs ← ite c (flat (funT [] fun _ => t)) (flat (funT [] fun _ => e))
+  let rs ← ite c (iteFlat c ks vs w (funT [] fun _ => t)) (iteFlat c ks vs w (funT [] fun _ => e))
   let (cs, _) ← withRegs (ks ++ vs) (rs.toList.drop 1)
   pure ⟨← nth rs 0 "if", cs.take ks.length, cs.drop ks.length⟩
 

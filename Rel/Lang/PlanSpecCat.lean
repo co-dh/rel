@@ -524,4 +524,130 @@ theorem Typed.catB {m : Nat} {n₁ n₂ : Nat} (h1 : m ≤ n₁) (h2 : m ≤ n�
     (Typed.call1 (by simp; omega)).bind fun c hc => Typed.constB.bind fun z hz =>
     (Typed.mapB h2 hp hz).bind fun o ho => Typed.pure ⟨ha, ho⟩
 
+/-- `mapWB`'s post chain `ps` (each step an op and a register, holding `vs`), then `k` on its registers: each the pair of
+    the op and its register's value. -/
+theorem Builds.postChain {fg fg' : Array Fun × Array Fun} {out : Array Val} :
+    ∀ (ps : List (Kernel.Op × Nat)) {vs : List Val} {rs : Array Val} {k : List Nat → Bld (Array Nat)},
+    (ps.map Prod.snd).mapM (fun x => rs[x]?) = some vs →
+    (∀ R rl, Extends rs R → rl.mapM (fun r => R[r]?) = some ((ps.zip vs).map fun q => Val.ctor 0 #[Reg.put q.1.1, q.2] #[]) →
+      Builds abiOf fg fg' (k rl) R out) →
+    Builds abiOf fg fg' (ps.mapM (fun (o, w) => do Plan.ctorB 0 #[← Plan.lit (Reg.put o), w] #[]) >>= k) rs out
+  | [], _, rs, k, h, hk => by
+    simp at h; subst h; simpa using hk rs [] (fun h => h) rfl
+  | (o, w) :: ps, _, rs, k, h, hk => by
+    rw [List.map_cons] at h
+    obtain ⟨v, vs, hx, h1, rfl⟩ := omapM_cons.mp h
+    rw [List.mapM_cons]; simp only [bind_assoc, pure_bind]
+    refine Builds.litG fun c R0 h0 m0 => Builds.ctorBG (reads_of (l := [c, w]) (vs := [Reg.put o, v])
+      (by simp [h0, m0 hx])) (reads_of (l := []) (vs := []) rfl) fun y R1 hy m1 => ?_
+    refine Builds.postChain ps (mapM_extends (fun h => m1 (m0 h)) h1) fun R rl m2 hrl => ?_
+    exact hk R (y :: rl) (fun h => m2 (m1 (m0 h))) (omapM_cons.mpr ⟨_, _, m2 hy, hrl, rfl⟩)
+
+/-- `mapWB op n a b ps`: the registers hold the count `nv`, the columns `ca`, `cb` and the post chain's operands `vs`,
+    which read back as `post`; the new register holds the column of `kscan op` with every row a segment. -/
+theorem mapWB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {op : Kernel.Op} {n a b : Nat}
+    {ps : List (Kernel.Op × Nat)} {vs : List Val} {post : List (Kernel.Op × UInt64)} {nv : USize} {ua ub : Val}
+    {ca cb rc : Enc} {f : Option UInt64}
+    (hn : rs[n]? = some (.size nv)) (ha : rs[a]? = some ua) (hga : Reg.get? ua = some ca) (hb : rs[b]? = some ub)
+    (hgb : Reg.get? ub = some cb) (hop : (Reg.get? (Reg.put op) : Option Kernel.Op) = some op)
+    (hw : (ps.map Prod.snd).mapM (fun x => rs[x]?) = some vs)
+    (hpost : ((ps.zip vs).map fun q => Val.ctor 0 #[Reg.put q.1.1, q.2] #[]).mapM
+      (Reg.get? (α := Kernel.Op × UInt64)) = some post)
+    (hk : kscan op false .i64 .i64 nv none [(nv, ca), (nv, cb)] [] post = .ok (rc, f)) :
+    Builds abiOf fg fg (do let r ← mapWB op n a b ps; Pure.pure #[r]) rs #[Reg.put rc] := by
+  unfold mapWB
+  simp only [bind_assoc]
+  refine Builds.litG fun c0 R0 h0 m0 => ?_
+  up m0 [hn ha hb]
+  refine Builds.litG fun c1 R1 h1 m1 => ?_
+  up m1 [hn ha hb h0]
+  refine Builds.litG fun c2 R2 h2 m2 => ?_
+  up m2 [hn ha hb h0 h1]
+  refine Builds.litG fun c3 R3 h3 m3 => ?_
+  up m3 [hn ha hb h0 h1 h2]
+  refine Builds.ctorBG (reads_of (l := []) (vs := []) rfl) (reads_of (l := []) (vs := []) rfl) fun g R4 hg m4 => ?_
+  up m4 [hn ha hb h0 h1 h2 h3]
+  refine Builds.ctorBG (os := #[.size nv, ua]) (reads_of (l := [n, a]) (vs := [.size nv, ua]) (by simp [hn, ha]))
+    (reads_of (l := []) (vs := []) rfl) fun y1 R5 hy1 m5 => ?_
+  up m5 [hn hb h0 h1 h2 h3 hg]
+  refine Builds.ctorBG (os := #[.size nv, ub]) (reads_of (l := [n, b]) (vs := [.size nv, ub]) (by simp [hn, hb]))
+    (reads_of (l := []) (vs := []) rfl) fun y2 R6 hy2 m6 => ?_
+  up m6 [hn h0 h1 h2 h3 hg hy1]
+  refine Builds.listBG (l := [y1, y2]) (vs := [.ctor 0 #[.size nv, ua] #[], .ctor 0 #[.size nv, ub] #[]])
+    (by simp [hy1, hy2]) fun l R7 hl m7 => ?_
+  up m7 [hn h0 h1 h2 h3 hg]
+  refine Builds.listBG (l := []) (vs := []) rfl fun pr R8 hpr m8 => ?_
+  up m8 [hn h0 h1 h2 h3 hg hl]
+  have hw8 := mapM_extends (fun h => m8 (m7 (m6 (m5 (m4 (m3 (m2 (m1 (m0 h))))))))) hw
+  refine Builds.postChain ps hw8 fun R9 rl m9 hrl => ?_
+  up m9 [hn h0 h1 h2 h3 hg hl hpr]
+  refine Builds.listBG (l := rl) hrl fun po R10 hpo m10 => ?_
+  up m10 [hn h0 h1 h2 h3 hg hl hpr]
+  have hv1 : (Reg.get? (Val.ctor 0 #[.size nv, ua] #[]) : Option (USize × Enc)) = some (nv, ca) := by
+    show (do pure (← Reg.get? (Val.size nv), ← Reg.get? ua)) = _; rw [hga]; rfl
+  have hv2 : (Reg.get? (Val.ctor 0 #[.size nv, ub] #[]) : Option (USize × Enc)) = some (nv, cb) := by
+    show (do pure (← Reg.get? (Val.size nv), ← Reg.get? ub)) = _; rw [hgb]; rfl
+  have hlist : (Reg.get? (Val.ctor 1 #[Val.ctor 0 #[.size nv, ua] #[], Val.ctor 1 #[Val.ctor 0 #[.size nv, ub] #[],
+      Val.ctor 0 #[] #[]] #[]] #[]) : Option (List (USize × Enc))) = some [(nv, ca), (nv, cb)] := by
+    have h := listGet?_foldr (α := USize × Enc) [Val.ctor 0 #[.size nv, ua] #[], Val.ctor 0 #[.size nv, ub] #[]]
+    simp only [List.foldr] at h; rw [h]; simp [hv1, hv2]
+  have hpl : (Reg.get? ((((ps.zip vs).map fun q => Val.ctor 0 #[Reg.put q.1.1, q.2] #[]).foldr
+      (fun v c => Val.ctor 1 #[v, c] #[]) (.ctor 0 #[] #[]))) : Option (List (Kernel.Op × UInt64))) = some post := by
+    rw [listGet?_foldr]; exact hpost
+  have hpre : (Reg.get? (Val.ctor 0 #[] #[]) : Option (List (Kernel.Op × UInt64))) = some [] := by rop
+  have hgv : (Reg.get? (Val.ctor 0 #[] #[]) : Option (Option Enc)) = some none := rfl
+  refine Builds.callKG (vs := #[Reg.put op, .bit false, Reg.put QAtomicType.i64, Reg.put QAtomicType.i64,
+      .size nv, .ctor 0 #[] #[], .ctor 1 #[.ctor 0 #[.size nv, ua] #[], .ctor 1 #[.ctor 0 #[.size nv, ub] #[],
+        .ctor 0 #[] #[]] #[]] #[], .ctor 0 #[] #[],
+      (((ps.zip vs).map fun q => Val.ctor 0 #[Reg.put q.1.1, q.2] #[]).foldr (fun v c => Val.ctor 1 #[v, c] #[])
+        (.ctor 0 #[] #[]))])
+    (o := #[Reg.put rc, Reg.put f]) (by abiK) (by rop) ?_ ?_ rfl fun a' R hR m => ?_
+  · refine reads_of (l := [c0, c1, c2, c3, n, g, l, pr, po]) (vs := _) ?_
+    simp [h0, h1, h2, h3, hn, hg, hl, hpr, hpo]
+  · simp [arg, hop, qtype_get_put, hpre, hpl, hlist, hgv, hk, Out.out]
+    rfl
+  · obtain ⟨p, hp0, hpR⟩ := holds_at hR (i := 0) (v := Reg.put rc) rfl
+    rw [nth_of (by simpa using hp0), pure_bind]
+    exact Builds.pure fun who => by simp [reg, hpR]; rfl
+
+/-- `Arr.clampShift` is `kscan .first` of the column with itself and the post chain `max 0`, `min c`, `add s`. -/
+theorem Arr.clampShift_kscan {n : USize} {c s : UInt64} {x y : Arr .i64 n} (h : Arr.clampShift c s x = .ok y) :
+    ∃ f, kscan .first false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.max, 0), (.min, c), (.add, s)] =
+      .ok (y.enc, f) := by
+  unfold Arr.clampShift colArr at h
+  split at h
+  · rename_i o ho
+    cases h
+    unfold colMap at ho
+    cases hk : kscan .first false .i64 .i64 n none [(n, x.enc), (n, x.enc)] [] [(.max, 0), (.min, c), (.add, s)] with
+    | error e => rw [hk] at ho; cases ho
+    | ok r =>
+      rw [hk] at ho
+      cases ho
+      exact ⟨r.2, rfl⟩
+  · cases h
+
+/-- **`clampB n x c` builds `Arr.clampShift c 0`**: the registers hold the count `nv`, the words `X` and the size `cv`;
+    the new register holds `X` clamped into `[0, cv]`. -/
+theorem clampB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n x c : Nat} {nv cv : USize} {X Y : Arr .i64 nv}
+    (hn : rs[n]? = some (.size nv)) (hx : rs[x]? = some (Reg.put X.enc)) (hc : rs[c]? = some (.size cv))
+    (hk : Arr.clampShift cv.toUInt64 0 X = .ok Y) :
+    Builds abiOf fg fg (do let r ← clampB n x c; Pure.pure #[r]) rs #[Reg.put Y.enc] := by
+  obtain ⟨f, hf⟩ := Arr.clampShift_kscan hk
+  unfold clampB
+  simp only [bind_assoc]
+  refine Builds.litG fun z R0 hz m0 => ?_
+  up m0 [hn hx hc]
+  refine Builds.bind1G (u64B_builds hc) fun w R1 hw m1 => ?_
+  up m1 [hn hx hz]
+  refine mapWB_builds (vs := [.u64 0, .u64 cv.toUInt64, .u64 0]) hn hx (enc_get_put _) hx (enc_get_put _) (by rop)
+    (by simp [hz, hw]) ?_ hf
+  have hop : ∀ o : Kernel.Op, o = .max ∨ o = .min ∨ o = .add → (Reg.get? (Reg.put o) : Option Kernel.Op) = some o := by
+    rintro o (rfl | rfl | rfl) <;> rop
+  have hp : ∀ (o : Kernel.Op) (u : UInt64), (Reg.get? (Reg.put o) : Option Kernel.Op) = some o →
+      (Reg.get? (Val.ctor 0 #[Reg.put o, .u64 u] #[]) : Option (Kernel.Op × UInt64)) = some (o, u) := fun o u h => by
+    show (do pure (← Reg.get? (Reg.put o), ← Reg.get? (Val.u64 u))) = _
+    rw [h]; rfl
+  simp [hp _ _ (hop _ (.inl rfl)), hp _ _ (hop _ (.inr (.inl rfl))), hp _ _ (hop _ (.inr (.inr rfl)))]
+
 end Rel.Lang.Plan

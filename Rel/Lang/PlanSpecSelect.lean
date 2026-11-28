@@ -489,4 +489,54 @@ theorem diffB_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B 
     SelectSpec A B (fun m _ mx => colMap .not m mx mx) (fun m _ mx => mapB .not m mx mx) :=
   selectB_builds hT h63 keepSpec_diff A B
 
+/-- **`keepB` builds `Tab.keep`**: `R` holds `Rv` in `rs` and the register `bm` its `0`/`1` words `bits`; where `whereB`
+    agrees with `whereCol` on them (`WhereAgree`, as `selBody_builds`' `hW`), `kk` continues with a table of `R`'s
+    shape whose registers hold the kept rows `T'`. -/
+theorem keepB_builds {a b : Obj} {Rv T' : Tab a b} {R : TabB} {bm : Nat} {bits : Enc} {fg : Array Fun × Array Fun}
+    {rs : Array Val} {kk : TabB → Bld (Array Nat)} {out : Array Val} (hRk : ColsOf a R.key) (hRv : ColsOf b R.val)
+    (hR : R.regs.mapM (fun i => rs[i]?) = some (.size Rv.n :: (Rv.key.regVals ++ Rv.val.regVals)))
+    (hb : rs[bm]? = some (Reg.put bits)) (hk : Rv.keep bits = .ok T')
+    (hW : ∀ K sel, whereCol Rv.n bits = .ok (K, sel) → WhereAgree Rv.n K bits sel) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (Rn : Array Val), Extends rs Rn → (∃ e, fg2.1 = fg.1 ++ e) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape R.key → Cols.shape U.val = Cols.shape R.val →
+      U.regs.mapM (fun i => Rn[i]?) = some (.size T'.n :: (T'.key.regVals ++ T'.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk U) Rn out) :
+    ∃ fg', Builds abiOf fg fg' (keepB R bm >>= kk) rs out := by
+  unfold Tab.keep at hk
+  obtain ⟨⟨K, sel⟩, hwh, h⟩ := except_bind_ok hk
+  obtain ⟨y1, y2, hy1, hy2, hT'⟩ : ∃ y1 y2, ValsB.gather K sel Rv.key = .ok y1 ∧ ValsB.gather K sel Rv.val = .ok y2 ∧
+      (⟨K, y1, y2⟩ : Tab a b) = T' := by
+    dsimp only at h
+    cases h1 : ValsB.gather K sel Rv.key with
+    | error e => rw [h1] at h; cases h
+    | ok y1 =>
+      cases h2 : ValsB.gather K sel Rv.val with
+      | error e => rw [h1, h2] at h; cases h
+      | ok y2 =>
+        rw [h1, h2] at h
+        exact ⟨y1, y2, rfl, rfl, Except.ok.inj h⟩
+  subst hT'
+  have hRe : R.regs = R.n :: (Cols.regs R.key ++ Cols.regs R.val) := by simp [TabB.regs, Cols.regs_append]
+  rw [hRe] at hR
+  obtain ⟨hRn, hR⟩ := mapM_get_cons hR
+  obtain ⟨hRk', hRv'⟩ := mapM_split (ColsOf.regs_length hRk Rv.key) hR
+  obtain ⟨zc2, pc, ixc, ix1c, zrc, onec, cutc, fo, ixf, cutf, f1, hz2, hp2, hf2, hK2, hix2, hs2, hzr, hone2, hcut, hg2,
+    hrt⟩ := hW K sel hwh
+  unfold keepB
+  simp only [bind_assoc, pure_bind]
+  refine Builds.bind2F (Free.whereB _ _) (whereB_builds hRn (by simp [hb, enc_get_put]) hz2 hp2 hf2 hK2 hix2
+    hs2 hzr hone2 hcut hg2 hrt) fun kr sr R9 hk9 hsr9 hE9 => ?_
+  dsimp only
+  refine gatherCols_builds a (x := Rv.key) (y := y1) hRk (mapM_extends hE9 hRk') hk9 hsr9 (hE9 hRn) hy1 hfo ?_
+  intro fg7 ks'' ys7 he7 hf7' ho7 hs7 hr7
+  refine gatherCols_builds b (x := Rv.val) (y := y2) hRv (mapM_get_app (mapM_extends hE9 hRv')) (get_app hk9)
+    (get_app hsr9) (get_app (hE9 hRn)) hy2 ho7 ?_
+  intro fg8 vs'' ys8 he8 hf8 ho8 hs8 hr8
+  refine hkk fg8 ⟨kr, ks'', vs''⟩ ((R9 ++ ys7) ++ ys8) (fun h => get_app (get_app (hE9 h)))
+    (FExt.trans he7 he8) (hf7'.trans hf8) ho8 hs7 hs8 ?_
+  simp only [TabB.regs, Cols.regs_append]
+  refine omapM_cons.mpr ⟨_, _, get_app (get_app hk9), ?_, rfl⟩
+  rw [List.mapM_append, mapM_get_app hr7, hr8]
+  rfl
+
 end Rel.Lang.Plan
