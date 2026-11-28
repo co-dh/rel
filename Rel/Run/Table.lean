@@ -737,9 +737,14 @@ def writeCsv (ds : Option Dict) (K S : Schema) (cols : Db.CsvCols) (path : Strin
   let es ← IO.ofExcept (decodeCsv path ds cols (ks ++ (← IO.ofExcept (csvEncs path t.val))))
   Db.csvWrite path (← IO.ofExcept ((Db.Csv.symText cols).mapError (s!"{path}: " ++ ·))) sep t.n es
 
-/-- The table of the run-time definition `x` (IO design B): its code run closed, as a closed definition's is
-    (`Expand.emit`), its error the op's message after `x`. -/
+/-- The table of the run-time definition `x` (IO design B) as an `Except`: its code run closed, as a closed
+    definition's is (`Expand.emit`), its error the op's message after `x`. `ofRun` is this lifted to `IO`; the
+    theorem `ofRun_runE` (`Rel.Lang.TableIO`) reads this side. -/
+def ofRunE {A B : Obj} (x : String) (r : Rel.Rel A B) : Except String (Tab A B) :=
+  (r.runE {}).mapError (s!"{x}: " ++ ·)
+
+/-- `ofRunE` in `IO`. -/
 def ofRun {A B : Obj} (x : String) (r : Rel.Rel A B) : IO (Tab A B) :=
-  IO.ofExcept ((r.runE {}).mapError (s!"{x}: " ++ ·))
+  IO.ofExcept (ofRunE x r)
 
 end Rel.Lang.Table

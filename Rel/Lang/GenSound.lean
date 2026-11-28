@@ -10,6 +10,7 @@ public import Rel.Lang.GenKHylo
 public import Rel.Lang.Den
 public import Rel.Run.Lang.TmGen
 public import Rel.RepCast
+public import Rel.Lang.TableIO
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
