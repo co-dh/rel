@@ -12,10 +12,12 @@ namespace Rel.Programs
 
 open Rel.Programs.prelude in
 rel_program aopA6_6b_SortConcrete where
+    -- B&dM p.152 ok(Q): (xs, a) with x Q a for every x in xs (the snoc form of the book's `ok cons`)
+    ok(Q : α ⟶ α) : [α]×α ⟶ [α]×α ≜ dom(⟨π₂,π₁⟩cor(Q°/∋))
+    theorem orderedCata(Q : α ⟶ α) : ordered(Q) = ⦇[nil, ok(Q) snoc]⦈ by Rel.Lang.Tm.orderedCata_den  -- Freyd.Alg.RelSet.Sort.ordered_cata, 06-recursive.typ:295
     theorem selectProviso(P : [α] ⟶ [α], K : [α]×α ⟶ [α]×α, S : [α] ⟶ [α]×α) if K (P×𝟙) = (P×𝟙) K, snoc P = ((P×𝟙) snoc) P, S° ⊑ (K snoc) P : (P×𝟙) S° ⊑ (K snoc) P by Rel.Lang.Tm.selectProviso_den  -- Freyd.Alg.RelSet.Sort.select_proviso, 06-recursive.typ:317
     theorem selectionSort(P : [α] ⟶ [α], O : [α] ⟶ [α], K : [α]×α ⟶ [α]×α, S : [α] ⟶ [α]×α, e : 1 ⟶ [α]) if P° = P, O ⊑ 𝟙, O = ⦇[e, K snoc]⦈, K (P×𝟙) = (P×𝟙) K, snoc P = ((P×𝟙) snoc) P, e ⊑ e P, S° ⊑ (K snoc) P : ⦇[e, S°]⦈° ⊑ P O by Rel.Lang.Tm.selectionSort_den  -- Freyd.Alg.RelSet.Sort.selection_sort, 06-recursive.typ:308
     theorem sortRec(S : [α] ⟶ [α]×α, e : 1 ⟶ [α]) : ⦇[e, S°]⦈° = e° nil ∪ ((S (⦇[e, S°]⦈°×𝟙)) snoc) by Rel.Lang.Tm.sortRec_den  -- Freyd.Alg.RelSet.Sort.sort_rec, 06-recursive.typ:330
 
--- not ported: ordered_cata (Freyd.Alg.RelSet.Sort.ordered_cata, 06-recursive.typ:295): `ordered(Q)` at a relation variable `Q` elaborates (a `Tm.arg (Tm.call …) Q` node, checked), but rel has no `Tm.orderedDef_den`: it needs the pointwise meaning of the body `𝟙 − dom(tails ∋ ⟨at(0),tail⟩(π₁∼Q ∩ (π₂∋)))` (tails, `at(0)` literal with its cast, `∼`) and the book's `ok Q` needs `Q/∋` at a variable (`a term that needs keys`, as in A6_6e check'); a proof-sized unit for an opus agent. selectionSort takes `O = ⦇[e, K snoc]⦈` as a premise instead
 
 end Rel.Programs

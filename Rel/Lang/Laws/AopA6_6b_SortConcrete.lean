@@ -1,4 +1,7 @@
 import Rel.Lang.Laws.AopA6_2
+import Rel.Lang.Laws.AopA6_6e_Quicksort
+import Rel.Lang.PreludeMerge
+import Rel.Lang.PreludeTails
 
 /-! # Laws of freyd `AOP/A6_6b_SortConcrete.lean` (B&dM §6.6, selection sort), at the list fold on snoc
 
@@ -99,5 +102,166 @@ theorem Tm.sortRec_den {B : Obj} {S : Tm (.arr B) (.prod (.arr B) B)} {e : Tm .o
         obtain rfl := (List.cons.inj h2).1
         subst hs
         exact ⟨u, hf, hS⟩
+
+/-- `xs` is `Q`-pairwise iff at every suffix `h :: t`, `h` is `Q`-related to every element of `t`. -/
+theorem pairwise_iff_drop {α : Type} (Q : α → α → Prop) (xs : List α) :
+    xs.Pairwise Q ↔ ∀ k h t, xs.drop k = h :: t → ∀ x ∈ t, Q h x := by
+  induction xs with
+  | nil => simp
+  | cons a l ih =>
+    rw [List.pairwise_cons, ih]
+    constructor
+    · rintro ⟨h1, h2⟩ (_ | k) h t e x hx
+      · simp only [List.drop_zero, List.cons.injEq] at e
+        obtain ⟨rfl, rfl⟩ := e
+        exact h1 x hx
+      · exact h2 k h t e x hx
+    · intro H
+      exact ⟨fun x hx => H 0 a l rfl x hx, fun k h t e => H (k + 1) h t e⟩
+
+/-- `∼Q` on pairs as the prelude's `ordered` elaborates it, `𝟙 − dom(π₂ ∩ π₁Q)`, `Q` the variable 1. -/
+def Tm.orderedNotQ (B : Obj) : Tm (.prod B B) (.prod B B) :=
+  Tm.id.diff (Tm.dom (Tm.outr.meet (Tm.outl.comp (Tm.var 1 : Tm B B))))
+
+/-- What breaks `ordered(Q)`: `tails ∋ ⟨at(0),tail⟩ (π₁∼Q ∩ π₂∋)` relates `xs` to `x` at a suffix `h :: t` with `x ∈ t`
+    and not `h Q x`; `at(0)` is `Tm.headAt`, `tail` the call `Tm.tailCall`. -/
+def Tm.orderedBad (B : Obj) (os : List Obj) : Tm (.arr B) B :=
+  (((Tm.prim (rowOf "tails") : Tm (.arr B) (.arr (.arr B))).comp Tm.mem).comp
+      ((Tm.headAt (B := B)).pair (Tm.tailCall B os))).comp
+    (((Tm.id : Tm (.prod B (.arr B)) (.prod B (.arr B))).pair (Tm.outr.comp Tm.mem)).comp
+      ((Tm.dom ((((Tm.outl : Tm (.prod (.prod B (.arr B)) B) (.prod B (.arr B))).comp Tm.outl).pair Tm.outr).comp
+        (Tm.orderedNotQ B))).comp Tm.outr))
+
+/-- `ordered(Q) ≜ 𝟙 − dom(tails ∋ ⟨at(0),tail⟩(π₁∼Q ∩ (π₂∋)))` (Prelude) at the object `B`, `Q` the variable 1. -/
+def Tm.orderedDef (B : Obj) (os : List Obj) : Tm (.arr B) (.arr B) := Tm.id.diff (Tm.dom (Tm.orderedBad B os))
+
+/-- `Tm.orderedDef` keeps exactly the `Q`-pairwise arrays, `Q` the meaning of the variable 1. -/
+theorem Tm.orderedDef_iff {B : Obj} (ρ : Val) (Q : Core.Rel B.El B.El) (hv : ρ 1 B B = Q) (xs ys : List B.El) :
+    (Tm.orderedDef B [B]).den ρ xs ys ↔ xs = ys ∧ xs.Pairwise (fun a b => Q a b) := by
+  have dc : ∀ {X Y Z : Obj} (R : Tm X Y) (S : Tm Y Z), (R.comp S).den ρ = R.den ρ ≫ S.den ρ := fun _ _ => rfl
+  have dp : ∀ {X Y Z : Obj} (R : Tm X Y) (S : Tm X Z), (R.pair S).den ρ = Core.Rel.rpair (R.den ρ) (S.den ρ) :=
+    fun _ _ => rfl
+  have dd : ∀ {X Y : Obj} (R S : Tm X Y), (R.diff S).den ρ = Core.Rel.diff (R.den ρ) (S.den ρ) := fun _ _ => rfl
+  have dm : ∀ {X Y : Obj} (R S : Tm X Y), (R.meet S).den ρ = Core.Rel.inter (R.den ρ) (S.den ρ) := fun _ _ => rfl
+  have di : ∀ {X : Obj}, (Tm.id : Tm X X).den ρ = Core.Rel.id _ := rfl
+  have dl : ∀ {X Y : Obj}, (Tm.outl : Tm (.prod X Y) X).den ρ = Core.Rel.graph Prod.fst := rfl
+  have dr : ∀ {X Y : Obj}, (Tm.outr : Tm (.prod X Y) Y).den ρ = Core.Rel.graph Prod.snd := rfl
+  have dmem : ∀ {X : Obj}, (Tm.mem : Tm (.arr X) X).den ρ = memDen := rfl
+  have dv : (Tm.var 1 : Tm B B).den ρ = Q := hv
+  have dt : (Tm.prim (rowOf "tails") : Tm (.arr B) (.arr (.arr B))).den ρ =
+      fun xs yss => yss = (List.range (xs.length + 1)).map fun k => xs.drop k := Prim.den_tails
+  have hH : (Tm.headAt (B := B)).den ρ = fun xs b => ∃ h : 0 < xs.length, b = xs[0]'h :=
+    funext fun xs => funext fun b => propext (Tm.headAt_den ρ xs b)
+  have hT : (Tm.tailCall B [B]).den ρ = fun xs ys => ∃ a, xs = a :: ys :=
+    funext fun xs => funext fun ys => propext (Tm.tailCall_den ρ xs ys)
+  have hN : (Tm.orderedNotQ B).den ρ = fun p q => p = q ∧ ¬ Q p.1 p.2 := by
+    funext p q; apply propext
+    simp only [Tm.orderedNotQ, dd, di, Tm.dom_den, dm, dc, dl, dr, dv, Core.Rel.diff, Core.Rel.inter,
+      Core.Rel.comp_apply, Core.Rel.recip_apply, Core.Rel.graph, Core.Rel.id]
+    constructor
+    · rintro ⟨rfl, h⟩; exact ⟨rfl, fun hq => h ⟨rfl, p.2, ⟨rfl, p.1, rfl, hq⟩, rfl, p.1, rfl, hq⟩⟩
+    · rintro ⟨rfl, h⟩; exact ⟨rfl, fun ⟨_, c, ⟨e, b, eb, hq⟩, _⟩ => h (by subst e eb; exact hq)⟩
+  have hBad : ∀ xs z, (Tm.orderedBad B [B]).den ρ xs z ↔ ∃ k h t, xs.drop k = h :: t ∧ z ∈ t ∧ ¬ Q h z := by
+    intro xs z
+    simp only [Tm.orderedBad, dc, dp, di, Tm.dom_den, dl, dr, dmem, dt, hH, hT, hN, Core.Rel.comp_apply,
+      Core.Rel.inter, Core.Rel.recip_apply, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, memDen]
+    constructor
+    · rintro ⟨⟨h, t⟩, ⟨s, ⟨_, rfl, hs⟩, ⟨hl, hh⟩, a, rfl⟩, ⟨⟨h', t'⟩, x⟩, ⟨e1, _, rfl, hx⟩, _,
+        ⟨rfl, _, ⟨⟨c1, c2⟩, ⟨⟨_, rfl, ec⟩, ec2⟩, rfl, hq⟩, -⟩, rfl⟩
+      obtain ⟨k, -, hk⟩ := List.mem_map.1 hs
+      simp only [Prod.mk.injEq] at e1
+      obtain ⟨rfl, rfl⟩ := e1
+      dsimp only at hh ec ec2 hq hx
+      subst ec ec2
+      simp only [List.getElem_cons_zero] at hh
+      subst hh
+      exact ⟨k, _, _, hk, hx, hq⟩
+    · rintro ⟨k, h, t, hk, hx, hq⟩
+      have hl : k < xs.length + 1 := by
+        have := congrArg List.length hk
+        simp only [List.length_drop, List.length_cons] at this
+        omega
+      exact ⟨(h, t), ⟨h :: t, ⟨_, rfl, List.mem_map.2 ⟨k, List.mem_range.2 hl, hk⟩⟩, ⟨by simp, rfl⟩, h, rfl⟩,
+        ((h, t), z), ⟨rfl, _, rfl, hx⟩, _, ⟨rfl, (h, z), ⟨(h, z), ⟨⟨_, rfl, rfl⟩, rfl⟩, rfl, hq⟩, (h, z),
+        ⟨⟨_, rfl, rfl⟩, rfl⟩, rfl, hq⟩, rfl⟩
+  simp only [Tm.orderedDef, dd, di, Tm.dom_den, Core.Rel.diff, Core.Rel.inter, Core.Rel.comp_apply,
+    Core.Rel.recip_apply, Core.Rel.id, hBad]
+  rw [pairwise_iff_drop]
+  constructor
+  · rintro ⟨rfl, H⟩
+    exact ⟨rfl, fun k h t e x hx => Classical.byContradiction fun hq =>
+      H ⟨rfl, x, ⟨k, h, t, e, hx, hq⟩, k, h, t, e, hx, hq⟩⟩
+  · rintro ⟨rfl, H⟩
+    exact ⟨rfl, fun ⟨_, x, ⟨k, h, t, e, hx, hq⟩, _⟩ => hq (H k h t e x hx)⟩
+
+/-- **`ordered`'s text is `Q`-pairwise**: the body the prelude elaborates, `prelude.ordered.body`, at any objects `σ`,
+    its parameter bound to `Q`, keeps exactly the arrays whose every element is `Q`-related to each later one. A law
+    about a call of `ordered` takes `(ht : prelude.ordered.body.instObj [.general] [B] = .ok t' := by rfl)`. -/
+theorem Tm.orderedDef_den (ph : List QAtomicType) (σ : List Obj)
+    {t' : Tm ((Obj.atom .general).arr.inst ph σ) ((Obj.atom .general).arr.inst ph σ)}
+    (ht : Rel.Programs.prelude.ordered.body.instObj ph σ = .ok t')
+    (Q : Core.Rel (Obj.El ((Obj.atom .general).inst ph σ)) (Obj.El ((Obj.atom .general).inst ph σ))) (xs ys) :
+    t'.den (Val.args [1] [⟨_, _, Q⟩]) xs ys ↔ xs = ys ∧ xs.Pairwise (fun a b => Q a b) := by
+  obtain rfl : Tm.orderedDef _ [(Obj.atom .general).inst ph σ] = t' := Except.ok.inj ht
+  exact Tm.orderedDef_iff _ Q (Val.bind_apply _ _ _ rfl rfl) xs ys
+
+/-- A left fold whose seed is `[]` and whose step appends `x` to `u` exactly when every `c ∈ u` has `Q c x` is the
+    coreflexive of the `Q`-sorted arrays. -/
+theorem foldDen_pairwise {A : Obj} (Te : Core.Rel (Obj.El (.arr A)) (Obj.El (.arr A)))
+    (TS : Core.Rel (Obj.El (.prod (.arr A) A)) (Obj.El (.arr A))) (Q : A.El → A.El → Prop)
+    (hseed : ∀ v, (∃ a, Te a v) ↔ v = []) (hstep : ∀ u x w, TS (u, x) w ↔ (∀ c ∈ u, Q c x) ∧ w = u ++ [x])
+    (xs ys : List A.El) : foldDen Te TS xs ys ↔ xs = ys ∧ xs.Pairwise Q := by
+  obtain ⟨n, hn⟩ : ∃ n, xs.length = n := ⟨_, rfl⟩
+  induction n generalizing xs ys with
+  | zero =>
+    obtain rfl := List.length_eq_zero_iff.1 hn
+    rw [foldDen_empty, hseed]
+    exact ⟨fun h => ⟨h.symm, List.Pairwise.nil⟩, fun h => h.1.symm⟩
+  | succ n ih =>
+    obtain ⟨L, x, rfl⟩ := (List.eq_nil_or_concat xs).resolve_left (by rintro rfl; simp at hn)
+    rw [List.concat_eq_append] at *
+    rw [foldDen_snoc]
+    simp only [hstep, ih L _ (by simpa using hn)]
+    constructor
+    · rintro ⟨_, ⟨rfl, hp⟩, hc, rfl⟩
+      exact ⟨rfl, List.pairwise_append.2 ⟨hp, List.pairwise_singleton _ _,
+        fun a ha b hb => (List.mem_singleton.1 hb) ▸ hc a ha⟩⟩
+    · rintro ⟨rfl, h⟩
+      obtain ⟨hp, -, hc⟩ := List.pairwise_append.1 h
+      exact ⟨L, ⟨rfl, hp⟩, fun c hc' => hc c hc' x (List.mem_singleton_self x), rfl⟩
+
+/-- `ordered(Q) = ⦇[nil, ok(Q) snoc]⦈` (B&dM p.152), with `ok(Q) = dom(⟨π₂,π₁⟩cor(Q°/∋))` inline: both sides are the
+    coreflexive of the `Q`-sorted arrays. -/
+theorem Tm.orderedCata_den {A : Obj} {cvo cv : Option Lean.Name} {oso os : List Obj}
+    {to : Tm (.arr A) (.arr A)} {tc : Tm (.prod A (.arr A)) (.prod A (.arr A))}
+    (ho : Rel.Programs.prelude.ordered.body.instObj [.general] [A] = .ok to := by rfl)
+    (hc : Rel.Programs.prelude.cor.body.instObj [.general, .u1] [A, .arr A] = .ok tc := by rfl) (ρ : Val) :
+    Tm.den ρ (Tm.arg (Tm.call [1] `Rel.Programs.prelude.ordered cvo oso to) (Tm.var 0 : Tm A A)) =
+    Tm.den ρ (Tm.fold (Tm.ran (Tm.closedNil A))
+      ((Tm.dom (((Tm.outr : Tm (.prod (.arr A) A) A).pair Tm.outl).comp
+        (Tm.arg (Tm.call [2] `Rel.Programs.prelude.cor cv os tc)
+          ((Tm.var 0 : Tm A A).conv.rdiv (Tm.id.comp Tm.mem) Tm.id Tm.id)))).comp
+        (Tm.prim (rowOf "snoc")))) := by
+  have hseed (v : List A.El) : (∃ a, (Tm.ran (Tm.closedNil A)).den ρ a v) ↔ v = [] := by
+    simp [Tm.ran_den, Tm.closedNil_den, Core.Rel.id, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
+  have h1 : ∀ p q, (Tm.arg (Tm.call [2] `Rel.Programs.prelude.cor cv os tc)
+      ((Tm.var 0 : Tm A A).conv.rdiv (Tm.id.comp Tm.mem) Tm.id Tm.id)).den ρ p q ↔ p = q ∧ ∀ c ∈ p.2, ρ 0 A A c p.1 :=
+    fun p q => (Tm.corCall_den hc ρ _ p q).trans (and_congr Iff.rfl (rdivDen_mem_iff _ _ _))
+  apply Core.Rel.ext
+  intro xs ys
+  refine (Tm.orderedDef_den [.general] [A] ho (ρ 0 A A) xs ys).trans (Iff.symm (foldDen_pairwise _ _ _ hseed ?_ xs ys))
+  intro u x w
+  show Core.Rel.comp (Tm.den ρ (Tm.dom _)) (Tm.den ρ (Tm.prim _)) _ _ ↔ _
+  rw [Tm.dom_den]
+  simp only [Tm.den, Core.Rel.inter, Core.Rel.comp_apply, Core.Rel.recip_apply, Core.Rel.graph, Core.Rel.rpair,
+    Core.Rel.id, Prim.den_snoc] at h1 ⊢
+  simp only [h1]
+  constructor
+  · rintro ⟨_, ⟨rfl, _, ⟨⟨a, b⟩, ⟨hx, hu⟩, rfl, hq⟩, -⟩, rfl⟩
+    dsimp only at hx hu hq ⊢
+    subst hx hu
+    exact ⟨hq, rfl⟩
+  · rintro ⟨hq, rfl⟩
+    exact ⟨(u, x), ⟨rfl, (x, u), ⟨(x, u), ⟨rfl, rfl⟩, rfl, hq⟩, (x, u), ⟨rfl, rfl⟩, rfl, hq⟩, rfl⟩
 
 end Rel.Lang
