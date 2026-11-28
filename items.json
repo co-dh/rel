@@ -4340,7 +4340,7 @@
   {
     "id": "PLAN-THM-E4",
     "mark": "✓",
-    "hold": "",
+    "hold": null,
     "content": "unionB vs Tab.concat/Tab.union",
     "deps": [],
     "sha": "712b96e",
@@ -4350,7 +4350,7 @@
   {
     "id": "PLAN-THM-E6",
     "mark": "✓",
-    "hold": "",
+    "hold": null,
     "content": "selectB/interB/diffB vs Tab.tagged/select/inter/diff",
     "deps": [],
     "sha": "9d51213",
@@ -4360,7 +4360,7 @@
   {
     "id": "PLAN-THM-E7",
     "mark": "✓",
-    "hold": "",
+    "hold": null,
     "content": "expandB/groupsB vs expand, Tab.compGroups",
     "deps": [],
     "sha": "b275cdc",
@@ -4389,7 +4389,7 @@
   },
   {
     "id": "PLAN-THM-E11",
-    "mark": "○",
+    "mark": "▶",
     "hold": "after E4 E6 E10",
     "content": "packT/fixB/nuB/muB vs Tab.pack/fixOn/nu/mu",
     "deps": [],
@@ -4493,7 +4493,7 @@
   {
     "id": "9.6",
     "mark": "✓",
-    "hold": "",
+    "hold": null,
     "deps": [
       "9.1"
     ],
@@ -4771,7 +4771,7 @@
   },
   {
     "id": "GP-1b",
-    "mark": "○",
+    "mark": "▶",
     "sha": "",
     "deps": [
       "GP-1a"

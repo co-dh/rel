@@ -624,14 +624,10 @@ def expandB (K w : Nat) : Bld (Nat × Nat × Nat) := do
     | throw "expand: not two columns"
   pure (T, G, u)
 
-/-- **`cellSpan`**: the `n` cells `lo`, `hi` clamped to a payload of `m` rows, `[s, e)`. -/
-def spanB (n m lo hi : Nat) : Bld (Nat × Nat) := do
-  let (_, [s, e]) ← funW n [lo, hi] fun n ws => do
-      let [lo, hi] := ws | throw "cellSpan: not two columns"
-      let s ← mapB .max n lo (← wordsB n 0)
-      pure (n, [s, ← mapB .max n (← mapB .min n hi (← constB n (← u64B m))) s])
-    | throw "cellSpan: not two columns"
-  pure (s, e)
+/-- **`Vals.cells`** bounds of the `n` cells of widths `w` and prefix sum `P`: `lo = P - w` and `hi` = `kscan .first`
+    of `P` (`scanArr .first`), as the model reads them. -/
+def cellsLayB (n w P : Nat) : Bld (Nat × Nat) :=
+  do pure (← mapB .sub n P w, ← nth (← scanB .first .i64 n none [P]) 0 "kscan")
 
 /-- `groupsB`'s plan function body: the `N` rows' groups `g` and permutation `p` (`ws`), the group count `K` and the
     count `nr` of `R`'s rows, both read from the enclosing block. -/
@@ -680,25 +676,39 @@ def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
     ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, one]]) (lit (.bit false)) (lit (.bit true))
   guard ok s!"{what}: n cells × m elements past 2^63, n · m + n + m" #[n, m]
 
+/-- **`ValsB.pack`'s starts and widths** of the `n` cells `lo`, `hi`: a summand's cell (`o`) reads a null bound as `0`
+    (`max`), else `[lo, hi)` as is. A def of its own, so `packB` binds it with no `do`-`if`, whose join point would copy
+    the rest of `packB` into both branches. -/
+def packWidthsB (o : Bool) (n lo hi : Nat) : Bld (Nat × Nat) :=
+  if o then do
+    let z ← wordsB n 0
+    let s ← mapB .max n lo z
+    pure (s, ← mapB .sub n (← mapB .max n hi z) s)
+  else do pure (lo, ← mapB .sub n hi lo)
+
+/-- **`packB`'s `wide` test** on the payload count `m` and the summed widths `T`: `T ≤ m / k` is where the model cuts
+    (`k · T ≤ m`, no product wraps), so `wide` is `m / k < T`; `k = 0` always cuts. -/
+def packWideB (k m T : Nat) : Bld Nat :=
+  if k = 0 then lit (.bit false) else do
+    call1 (kernel% USize.decLt) #[← call1 (kernel% USize.div) #[m, ← lit (.size k.toUSize)], T]
+
 /-- **`ValsB.pack k`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at
     most `1/k` of it is read (`0 < m`, `k · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered
     there, laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. `k = 0` cuts every
     payload, the form an output file holds (`Table.writeVals`). `o` is `ValsB`'s ownership: inside a summand (`true`) a
-    cell may have null bounds (width `0` through `spanB`, null orders below), and the laid-out bounds are `min`ed with
+    cell may have null bounds (width `0` through `max` with `0`, null orders below), and the laid-out bounds are `min`ed with
     `big`, `i64` max where a bound is a value and null where it is null, so they stay null (`Opt.maskWith`). -/
 def packB (o : Bool) (k n : Nat) (cs : Cols) : Bld Cols := cs.attach.mapM fun ⟨c, hc⟩ => match c with
   | c@(.atom ..) => pure c
   | .arr p m lo hi f => do
     cellsBoundB "pack" n m
-    let (s, e) ← spanB n m lo hi
-    let w ← mapB .sub n e s
+    let (s, w) ← packWidthsB o n lo hi
     let (P, T) ← prefixB .add n w
     let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB false k m f)]).toArray
     let cut : Bld (Array Nat) := do
       let (T', G, u) ← expandB n w
       let g ← gatherCols T' (← mapB .add T' (← gatherB T' G n s) u) m f
-      let lo' ← mapB .sub n P w
-      let hi' ← mapB .add n P (← wordsB n 0)
+      let (lo', hi') ← cellsLayB n w P
       let (lo'', hi'') ← if o then do
           let big ← mapB .max n lo lo .i64 .i64 [] [(.and, 0), (.or, 0x7fffffffffffffff)]
           pure (← mapB .min n big lo', ← mapB .min n big hi')
@@ -706,7 +716,7 @@ def packB (o : Bool) (k n : Nat) (cs : Cols) : Bld Cols := cs.attach.mapM fun �
       -- `g` is `f` gathered, the same shape, so no larger (the guard says so to the termination checker)
       if h : Col.sizes g ≤ Col.sizes f then pure (← regsOf [.arr p T' lo'' hi'' (← packB false k T' g)]).toArray
       else throw "pack: the gathered payload is larger than the payload"
-    let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.mul) #[T, ← lit (.size k.toUSize)]]
+    let wide ← packWideB k m T
     let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) keep (ite wide keep cut)
     match ← withRegs [.arr p m lo hi f] rs.toList with
     | ([c], _) => pure c
@@ -1175,14 +1185,14 @@ def arrCol (what : String) : Cols → Bld (Nat × Nat × Nat × Cols)
   | cs => throw s!"{what}: a side of {cs.length} columns where one array side is read"
 
 /-- **`Tab.ymd`** (`Db.Csv.ymd`) on the texts `X` (`n` cells): each cell's ten chars gathered from its payload (`kgather`
-    at `lo + j`, the clamped span's start, the payload padded by one cell so a short cell reads in bounds), the digits,
+    at `lo + j`, the payload padded by one cell so a short cell reads in bounds; `lo`, `hi` as they are, the clamp of
+    `ValsB.row` being the identity on a `Vals.WF` cell, `ValsB.row_arr`), the digits,
     separators, ranges and `mdays` tested and the day count (`Db.Csv.daysFrom`) computed as `kscan` maps over those ten
     columns, the day written at `date` (its `Int32` as a word), kept where the cell reads as a day. No cell is decoded
     to a list: every step is a map over words, so the whole column goes through the kernels. -/
 def ymdB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
   | .arr (.atom .char), .atom .date => do
     let (m, lo, hi, f) ← arrCol "ymd" X
-    let (s, e) ← spanB n m lo hi
     let one ← lit (.size 1)
     let (M, _) ← catB m one
     let P ← catColB .char M m one (← col1 f) (← wordsB one 0)
@@ -1191,7 +1201,7 @@ def ymdB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
     let k (w : UInt64) : Bld Nat := wordsB n w
     -- a map by a constant, as a post chain (`rdiv`/`rmod` not needed: only commutative steps and `add`)
     let ch (x : Nat) (st : List (Kernel.Op × UInt64)) : Bld Nat := mapB .first n x x .i64 .i64 [] st
-    let cs ← (List.range 10).mapM fun (j : Nat) => do gatherB n (← m2 .min (← ch s [(.add, j.toUInt64)]) mc) M P
+    let cs ← (List.range 10).mapM fun (j : Nat) => do gatherB n (← m2 .min (← ch lo [(.add, j.toUInt64)]) mc) M P
     let [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9] := cs | throw "ymd: not ten chars"
     let [d0, d1, d2, d3, d5, d6, d8, d9] ← [c0, c1, c2, c3, c5, c6, c8, c9].mapM (ch · [(.add, (0 : UInt64) - 48)])
       | throw "ymd: not eight digits"
@@ -1207,7 +1217,7 @@ def ymdB (A B : Obj) (n : Nat) (X : Cols) : Bld TabB := match A, B with
       (← m2 .or (← m2 .ne (← m2 .mod y (← k 100)) z) (← m2 .eq (← m2 .mod y (← k 400)) z))
     let is30 ← fold .or (← ch mo [(.eq, 4)]) [← ch mo [(.eq, 6)], ← ch mo [(.eq, 9)], ← ch mo [(.eq, 11)]]
     let md ← m2 .sub (← m2 .sub (← k 31) (← m2 .mul (← ch mo [(.eq, 2)]) (← m2 .sub (← k 3) leap))) is30
-    let ok ← fold .and (← m2 .eq (← m2 .sub e s) (← k 10)) (isDig ++ [
+    let ok ← fold .and (← m2 .eq (← m2 .sub hi lo) (← k 10)) (isDig ++ [
       ← m2 .or (← ch c4 [(.eq, 46)]) (← ch c4 [(.eq, 45)]), ← m2 .eq c7 c4, ← m2 .ge y (← k 1),
       ← m2 .ge mo (← k 1), ← m2 .le mo (← k 12), ← m2 .ge dd (← k 1), ← m2 .le dd md])
     let le2 ← m2 .le mo (← k 2)
@@ -1230,14 +1240,13 @@ def ascB (B : Obj) (P : TabB) : Bld TabB := do
   let U ← canonT ⟨P.n, [.atom "" .i64 (← wordsB P.n 0)], P.key⟩
   pure ⟨U.n, [.atom "" .i64 (← posB)], U.val⟩
 
-/-- **`Tab.mem`** (`∋`) on the arrays `X` (`n` rows): EXPAND of the clamped widths `e - s`, the key the cell `X[G]`,
-    the value the payload at `s[G] + u`; then `canonT`. -/
+/-- **`Tab.mem`** (`∋`) on the arrays `X` (`n` rows): EXPAND of the widths `hi - lo`, the key the cell `X[G]`,
+    the value the payload at `lo[G] + u`; then `canonT`. -/
 def memB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
   let (m, lo, hi, f) ← arrCol "∋" X
   cellsBoundB "mem" n m
-  let (s, e) ← spanB n m lo hi
-  let (T, G, u) ← expandB n (← mapB .sub n e s)
-  canonT ⟨T, ← gatherCols T G n X, ← repath B "" (← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f)⟩
+  let (T, G, u) ← expandB n (← mapB .sub n hi lo)
+  canonT ⟨T, ← gatherCols T G n X, ← repath B "" (← gatherCols T (← mapB .add T (← gatherB T G n lo) u) m f)⟩
 
 /-! #### `R \ S` and `R / S` (`GenK.ldiv`, `GenK.rdiv`: `Tab.ldivSel`) -/
 
@@ -1445,16 +1454,15 @@ def sumBoundB (what : String) (n m : Nat) : Bld Unit := do
 def unconsB (B : Obj) (left : Bool) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
   let (m, lo, hi, f) ← arrCol (if left then "uncons" else "unsnoc") X
   sumBoundB (if left then "uncons" else "unsnoc") n m
-  let (s, e) ← spanB n m lo hi
-  let (M, sel) ← whereB n (← mapB .lt n s e)
+  let (M, sel) ← whereB n (← mapB .lt n lo hi)
   let key ← gatherCols M sel n X
   if left then
-    let sM ← gatherB M sel n s
+    let sM ← gatherB M sel n lo
     canonT ⟨M, key, (← repath B ".1" (← gatherCols M sM m f)) ++
-      [.arr ".2" m (← mapB .add M sM (← wordsB M 1)) (← gatherB M sel n e) (← repath B ".2.e" f)]⟩
+      [.arr ".2" m (← mapB .add M sM (← wordsB M 1)) (← gatherB M sel n hi) (← repath B ".2.e" f)]⟩
   else
-    let l ← mapB .sub M (← gatherB M sel n e) (← wordsB M 1)
-    canonT ⟨M, key, [.arr ".1" m (← gatherB M sel n s) l (← repath B ".1.e" f)] ++ (← repath B ".2" (← gatherCols M l m f))⟩
+    let l ← mapB .sub M (← gatherB M sel n hi) (← wordsB M 1)
+    canonT ⟨M, key, [.arr ".1" m (← gatherB M sel n lo) l (← repath B ".1.e" f)] ++ (← repath B ".2" (← gatherCols M l m f))⟩
 
 /-- The check `Tab.uncat` makes on `n` cells over `m` elements, `n · (m + 1) + n + m + 1 < 2^63`, i.e. `(n + 1) · (m + 2) ≤ 2^63`,
     on size registers as `n, m < 2^63` and `¬ 2^63 / (m + 2) < n + 1` (no sum or product wraps); else `fail`. -/
@@ -1471,11 +1479,10 @@ def uncatBoundB (n m : Nat) : Bld Unit := do
 def uncatB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => do
   let (m, lo, hi, f) ← arrCol "uncat" X
   uncatBoundB n m
-  let (s, e) ← spanB n m lo hi
-  let (T, G, u) ← expandB n (← mapB .add n (← mapB .sub n e s) (← wordsB n 1))
-  let sG ← gatherB T G n s
+  let (T, G, u) ← expandB n (← mapB .add n (← mapB .sub n hi lo) (← wordsB n 1))
+  let sG ← gatherB T G n lo
   let mid ← mapB .add T sG u
-  canonT ⟨T, ← gatherCols T G n X, [.arr ".1" m sG mid (← repath B ".1.e" f), .arr ".2" m mid (← gatherB T G n e) (← repath B ".2.e" f)]⟩
+  canonT ⟨T, ← gatherCols T G n X, [.arr ".1" m sG mid (← repath B ".1.e" f), .arr ".2" m mid (← gatherB T G n hi) (← repath B ".2.e" f)]⟩
 
 /-- **`Vals.cat`** of the `n` cells `x`, `y` of `B` (`arrCol`s): row `i` the cell `x[i] ++ y[i]`, the payloads joined
     (`concatB`), EXPAND of the summed widths, element `u` of cell `G` read at `s₁[G] + u` where `u < w₁`, else at
@@ -1486,17 +1493,15 @@ def cellCatB (B : Obj) (n : Nat) (x y : Nat × Nat × Nat × Cols) : Bld Col := 
   let (N, off) ← catB m₁ m₂
   cellsBoundB "cat" n N
   let F ← concatB N m₁ m₂ off f₁ f₂
-  let (s₁, e₁) ← spanB n m₁ lo₁ hi₁
-  let (s₂, e₂) ← spanB n m₂ lo₂ hi₂
-  let w₁ ← mapB .sub n e₁ s₁
-  let w ← mapB .add n w₁ (← mapB .sub n e₂ s₂)
+  let w₁ ← mapB .sub n hi₁ lo₁
+  let w ← mapB .add n w₁ (← mapB .sub n hi₂ lo₂)
   let (T, G, u) ← expandB n w
-  let a ← mapB .add T (← gatherB T G n s₁) u
-  let b ← mapB .add T (← gatherB T G n (← mapB .sub n (← mapB .add n s₂ (← constB n (← u64B m₁))) w₁)) u
+  let a ← mapB .add T (← gatherB T G n lo₁) u
+  let b ← mapB .add T (← gatherB T G n (← mapB .sub n (← mapB .add n lo₂ (← constB n (← u64B m₁))) w₁)) u
   let c ← mapB .lt T u (← gatherB T G n w₁)
   let pay ← gatherCols T (← mapB .add T b (← mapB .mul T c (← mapB .sub T a b))) N F
-  let (P, _) ← prefixB .add n w
-  pure (.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" pay))
+  let (lo', hi') ← cellsLayB n w (← prefixB .add n w).1
+  pure (.arr "" T lo' hi' (← repath B ".e" pay))
 
 /-- **`Tab.snoc`**: `(xs, a)` to `xs ++ [a]`, `Vals.cat` after `𝟙 × τ` (`Vals.tau`: row `i` the one-element cell
     `[i, i + 1)` over the rows of `a`); then `canonT`. -/
@@ -1526,15 +1531,12 @@ def zipB (A B : Obj) (P : TabB) : Bld TabB := funT [P] fun Ps => do
   let (m₁, lo₁, hi₁, f₁) ← arrCol "zip" (P.val.take 1)
   let (m₂, lo₂, hi₂, f₂) ← arrCol "zip" (P.val.drop 1)
   cellsBoundB "zip" P.n (← call1 (kernel% USize.add) #[m₁, m₂])
-  let (s₁, e₁) ← spanB P.n m₁ lo₁ hi₁
-  let (s₂, e₂) ← spanB P.n m₂ lo₂ hi₂
-  let w ← mapB .min P.n (← mapB .sub P.n e₁ s₁) (← mapB .sub P.n e₂ s₂)
+  let w ← mapB .min P.n (← mapB .sub P.n hi₁ lo₁) (← mapB .sub P.n hi₂ lo₂)
   let (T, G, u) ← expandB P.n w
-  let x ← gatherCols T (← mapB .add T (← gatherB T G P.n s₁) u) m₁ f₁
-  let y ← gatherCols T (← mapB .add T (← gatherB T G P.n s₂) u) m₂ f₂
-  let (S, _) ← prefixB .add P.n w
-  canonT ⟨P.n, P.key, [.arr "" T (← mapB .sub P.n S w) (← mapB .add P.n S (← wordsB P.n 0))
-    ((← repath A ".e.1" x) ++ (← repath B ".e.2" y))]⟩
+  let x ← gatherCols T (← mapB .add T (← gatherB T G P.n lo₁) u) m₁ f₁
+  let y ← gatherCols T (← mapB .add T (← gatherB T G P.n lo₂) u) m₂ f₂
+  let (lo', hi') ← cellsLayB P.n w (← prefixB .add P.n w).1
+  canonT ⟨P.n, P.key, [.arr "" T lo' hi' ((← repath A ".e.1" x) ++ (← repath B ".e.2" y))]⟩
 
 /-- **`Tab.peelL`** (`left`) or **`Tab.peelR`** on `rest`, cells of `E`: `rest ≫ cons°` (`snoc°`), its first (last)
     element read now and the rest (`projT`). -/
@@ -1660,17 +1662,16 @@ def cellsMapB (A B : Obj) (n : Nat) (X : Cols) (R : TabB) : Bld TabB := funV n X
   let [R] := Rs | throw "F: not one table"
   let (m, lo, hi, f) ← arrCol "F" X
   cellsBoundB "map" n m
-  let (s, e) ← spanB n m lo hi
-  let w ← mapB .sub n e s
+  let w ← mapB .sub n hi lo
   let (T, G, u) ← expandB n w
-  let v ← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f
+  let v ← gatherCols T (← mapB .add T (← gatherB T G n lo) u) m f
   let C ← compB ⟨T, [.atom "" .i64 (← posB)], v⟩ R
   let fn ← andB (← call1 (kernel% USize.decEq) #[C.n, T]) do
     call1 (kernel% USize.decEq) #[(← nubB C.n C.key).1, T]
   -- the value side's shape for `iteT`: its registers are not read
   iteT fn X [.arr "" T lo hi (← repath B ".e" C.val)] (do
-      let (P, _) ← prefixB .add n w
-      canonT ⟨n, X, [.arr "" T (← mapB .sub n P w) (← mapB .add n P (← wordsB n 0)) (← repath B ".e" C.val)]⟩)
+      let (lo', hi') ← cellsLayB n w (← prefixB .add n w).1
+      canonT ⟨n, X, [.arr "" T lo' hi' (← repath B ".e" C.val)]⟩)
     (do mapFoldB A B (← coreflB n X) R)
 
 /-- **`Tab.lam`** on the keys `X` (`n` rows) of `R` (`lamOf` of `canonT R`): one GROUP over `X` then `r`'s keys, a
@@ -1706,14 +1707,14 @@ def positionsB (n : Nat) (X : Cols) (P : TabB) : Bld TabB := funV n X [P] fun n 
   let [P] := Ps | throw "positions: not one table"
   let (m, lo, hi, f) ← arrCol "positions" X
   cellsBoundB "positions" n m
-  let (s, e) ← spanB n m lo hi
-  let (T, G, u) ← expandB n (← mapB .sub n e s)
-  let v ← gatherCols T (← mapB .add T (← gatherB T G n s) u) m f
+  let (T, G, u) ← expandB n (← mapB .sub n hi lo)
+  let v ← gatherCols T (← mapB .add T (← gatherB T G n lo) u) m f
   let C ← compB ⟨T, [.atom "" .i64 (← posB)], v⟩ (← coreflB P.n P.key)
   let sel ← col1 C.key
   let c ← scatterB .add T G (← scatterB .add C.n sel (← wordsB C.n 1) T) n
   let (Q, _) ← prefixB .add n c
-  canonT ⟨n, X, [.arr "" C.n (← mapB .sub n Q c) (← mapB .add n Q (← wordsB n 0)) [.atom ".e" .i64 (← gatherB C.n sel T u)]]⟩
+  let (lo', hi') ← cellsLayB n c Q
+  canonT ⟨n, X, [.arr "" C.n lo' hi' [.atom ".e" .i64 (← gatherB C.n sel T u)]]⟩
 
 /-- **`dom (T ≫ diag q (ran T))`** (`Tab.diag`): the rows of `T` whose pair value `p` has `q` relate `p` to `p`, `q` run
     knowing its domain is the pairs `D = ran T`; `diag q D = q(D) ∩ D`. The one reading of a test in `front`, `thinL`,
@@ -1881,10 +1882,9 @@ def atIxB (B : Obj) (n : Nat) (X : Cols) : Bld TabB := funV n X [] fun n X _ => 
   let (m, lo, hi, f) ← arrCol "at" (X.take 1)
   let k ← col1 (X.drop 1)
   guard (← call1 (kernel% USize.decLt) #[m, ← lit (.size (2 ^ 63))]) s!"at: a payload of m rows, past 2^63" #[m]
-  let (s, e) ← spanB n m lo hi
-  let c ← mapB .and n (← mapB .lt n k (← mapB .sub n e s)) (← mapB .first n k k .i64 .i64 [] [(.le, 0)])
+  let c ← mapB .and n (← mapB .lt n k (← mapB .sub n hi lo)) (← mapB .first n k k .i64 .i64 [] [(.le, 0)])
   let (M, sel) ← whereB n c
-  let ix ← gatherB M sel n (← mapB .add n s k)
+  let ix ← gatherB M sel n (← mapB .add n lo k)
   canonT ⟨M, ← gatherCols M sel n X, ← repath B "" (← gatherCols M ix m f)⟩
 
 /-- **`Tab.cmpOp s`** on the pairs `X` of `A` (`cmpAt`): the rows whose two words, through `wideB`, pass the row's
