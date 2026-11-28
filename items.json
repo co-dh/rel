@@ -4713,7 +4713,7 @@
     "deps": [],
     "content": "compB emits Tab.compOne only; Tab.compPairs runs compBlocks when compCuts blockRows splits — find where the emitted C covers the block branch, or add the builder, then drop OneBlock from pairB_builds",
     "what": "E9c：Lean 模型 compPairs 在大连接时走 compBlocks（分块再 union），而 EmitC 的 compB 只对应 compOne。查清 C 代码是否覆盖分块分支；有则证明，无则补 builder，然后去掉 pairB_builds 的 OneBlock 前提。",
-    "note": "",
+    "note": "11-28 sonnet a2678dc: emitted C already covers the block branch (EmitC compB = compWithB blockRows → compFromWithB iteT(bound<T): compCutsB+compBlocksB | compFromB); no builder needed. Left: proofs — 1 compOneB_builds per block (keepB R), 2 keepB/packT/clampB_builds, 3 compCutsB_builds, 4 compBlocksB_builds (fixLoop_builds-style, unionB_builds), 5 compFromWithB/compWithB_builds → CompPairsSpec compB without OneBlock; drop OneBlock (PlanSpecCross 271-361). Next: opus. ",
     "hold": null
   },
   {
@@ -4724,7 +4724,7 @@
     "content": "archive R6: open share has no producer (Expand.number wraps only closed terms)",
     "note": "风险：Expand.number 只包裹 closed 的 term，而 Tm.gap 有 open share 分支，convTm、convProj 重建 share，没有找到 producer；closed 用 !d 定义，含义随 3.11 改变。Tm.share 已在 B9d 删除，需核对此风险是否随之消失（archive R6）",
     "what": "旧计划记下一个风险：某种「开放的共享子项」没有任何地方生成它，却有代码处理它。共享子项的构造已改过，需要核对这条是否已不成立，成立就补上或删掉死分支。",
-    "hold": null
+    "hold": "fable agent reviewing (11-28)"
   },
   {
     "id": "RISK-2",
@@ -4734,7 +4734,7 @@
     "content": "archive R11: Tm.pol treats foldI/flat as \"must not mention k\"; as definitions their polarity follows comp/meet/conv",
     "note": "风险：Tm.pol 把 foldI、flat 当作「不得提及 k」；它们成为 definition 后，polarity 由 comp/meet/conv 推出，所以被接受的程序集合会改变。需核对现状（archive R11）",
     "what": "旧计划记下一个风险：折叠和展平改成定义之后，判断「递归变量能不能出现」的规则给出的结果不同，被接受的程序可能变多或变少。需要核对现在的行为是否符合预期。",
-    "hold": null
+    "hold": "fable agent reviewing (11-28)"
   },
   {
     "id": "RISK-3",
@@ -4744,7 +4744,7 @@
     "content": "archive Q6: where Elab inserts the universe prefix that closeRes inserted before",
     "note": "风险：没有 d 之后，Elab 在哪里插入原来由 closeRes 插入的宇宙前缀，旧计划未答（archive Q6）",
     "what": "旧计划留下一个没回答的问题：以前由 closeRes 补上的「宇宙前缀」，现在由谁在哪里补。需要确认现有代码已答，并记下答案。",
-    "hold": null
+    "hold": "fable agent reviewing (11-28)"
   },
   {
     "id": "RISK-4",
@@ -4754,7 +4754,7 @@
     "content": "archive Q10: where the Ordered/KeyInj hypotheses of lam/E/thin come from in compile's type",
     "note": "风险：lam、E、thin 的 Ordered、KeyInj 假设在 compile 的类型中从哪里来，旧计划未答（archive Q10）",
     "what": "旧计划留下一个没回答的问题：lam、E、thin 这几个运算要求元素有序、键唯一，这些条件在 compile 的类型里由谁提供。需要确认现有代码已答，并记下答案。",
-    "hold": null
+    "hold": "fable agent reviewing (11-28)"
   },
   {
     "id": "RISK-5",
@@ -4764,7 +4764,7 @@
     "content": "archive R3: foldI/flat derived terms may run slower than the direct kernels, never measured",
     "note": "风险：foldI、flat 作为 definition 后，推导出的 term 每次调用要运行 outl°、一个 meet 和一个复合（Chess、Edit、Knapsack、Quicksort 用到），可能比直接 kernel 慢；flat 在 4.2 测过（Chess +21% 所以留融合行），foldI 没有测量（archive R3）",
     "what": "旧计划记下一个风险：折叠这一类运算改成由更基本的运算拼出来之后，可能比直接用专门的 kernel 慢，而且没有测过。需要测一次，慢得多就改成融合行。",
-    "hold": null
+    "hold": "fable agent reviewing (11-28)"
   },
   {
     "id": "GP-1a",
@@ -4777,8 +4777,8 @@
   },
   {
     "id": "GP-1b",
-    "mark": "▶",
-    "sha": "",
+    "mark": "✓",
+    "sha": "4d24002",
     "deps": [
       "GP-1a"
     ],
@@ -4845,7 +4845,7 @@
     "content": "Stop-hook blocks counted as refusals: cc-db stores each Stop hook block (time, feedback text, preventedContinuation) as a row; cc-guard/dash/gen refusals() unions them as kind `Stop:` plus the message prefix; cc-guard turn-end rule made one rule (the `no text at all` and the `ends with 。` messages contradict and loop)",
     "note": "408 Stop blocks in session fd528c53 (~10.9M units), 229 of them turn-end text; none in the dashboard because refusals() reads only tool rows with ok=0",
     "what": "dashboard 的 refusal 统计包含 Stop hook 拦截；回合结尾规则只有一条，不再互相拦截。",
-    "hold": null
+    "hold": "cc-db lives in ~/.claude/skills, write-denied by the sandbox; needs owner"
   },
   {
     "id": "PARTY-LAWS",
