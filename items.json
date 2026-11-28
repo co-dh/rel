@@ -1,0 +1,4718 @@
+[
+  {
+    "id": "3.13",
+    "mark": "✓",
+    "sha": "304facc",
+    "deps": [],
+    "content": "inline <code>Den</code>（274 个 decl）",
+    "note": "LR notate 改写 206 处（12 module），删 abbrev Den；完整构建绿"
+  },
+  {
+    "id": "7.4",
+    "mark": "✓",
+    "sha": "0be1fd4",
+    "deps": [],
+    "content": "清理：<code>LR unused</code>、<code>unused-simp</code>、<code>remove-import</code>",
+    "note": "master 已合并，未 push（gate 停用至变快）"
+  },
+  {
+    "id": "7.4b",
+    "mark": "✓",
+    "deps": [
+      "7.4"
+    ],
+    "content": "清理：删无引用的声明（index 查 <code>use_site</code>）",
+    "note": "7.4c 合入 master：删 219 个无引用声明（-2499 行）；kgather/kscatter G1/G2/S1 定律保留（PLAN 点名的交付物）",
+    "sha": "3259cd1"
+  },
+  {
+    "id": "8.1",
+    "mark": "✓",
+    "sha": "12000b6",
+    "deps": [],
+    "content": "<code>Tab</code> 的规范序由产生它的一步给出，已规范的表跳过 <code>canon</code>",
+    "note": "tails 走 lamOf（uncat 答案已 canonical），每次省 9 次 kernel 调用；其余 canon 各有理由保留，见 PLAN 8.1"
+  },
+  {
+    "id": "8.2",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "nullband"
+    ],
+    "content": "稠密 sum",
+    "note": "wip 8b3487e; 8.2b continues"
+  },
+  {
+    "id": "8.3",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "<code>Enc</code> 只留 foR（bytes、alp、syms/enum 已删，Rust ALP 已删）",
+    "note": "alp.rs 已不在 crate/src；PLAN 行待改 ✅"
+  },
+  {
+    "id": "8.4",
+    "mark": "✓",
+    "sha": "dea75c1",
+    "deps": [
+      "0c90b1e"
+    ],
+    "content": "<code>Arr</code> 去掉 <code>QValue</code> 盒子",
+    "note": "Arr 直接存编码列；余项转 8.4b"
+  },
+  {
+    "id": "8.5",
+    "mark": "✓",
+    "sha": "dc14769",
+    "deps": [
+      "0c90b1e"
+    ],
+    "content": "<code>Obj.arr</code> 的 <code>0 ≤ lo ≤ hi ≤ m</code> 作不变式，只在 <code>readVals</code> 查一次，删 clamp",
+    "note": "PLAN 1521 ✅"
+  },
+  {
+    "id": "8.5s2h",
+    "mark": "✓",
+    "sha": "043e279",
+    "deps": [
+      "6278e1c"
+    ],
+    "content": "删 <code>Vals.concat</code> 的 clamp 后，把 WF 前提沿调用链传下去",
+    "note": "8.5s2g 到 <code>6278e1c</code>（GenKFold、RepWhere、GenKEst/Fix/Hylo 已过），<code>043e279</code> 全量 build 绿，0 error；<code>Vals.concat</code> 去 clamp（每格 kernel 调用 24→4），<code>cellSpan</code> 部分仍 ⬜。master <code>9b333b1</code> 已 push（check-135 绿）"
+  },
+  {
+    "id": "8.5s2i",
+    "mark": "✓",
+    "deps": [
+      "8.5s2h"
+    ],
+    "content": "删 clamp 第二步之二：<code>cellSpan</code> 在 <code>Vals.WF</code> 下直接读 <code>lo</code>/<code>hi</code>",
+    "note": "master 已合并，未 push；kernel 调用每处 5→0",
+    "sha": "a6b41cc"
+  },
+  {
+    "id": "B3b",
+    "mark": "✓",
+    "sha": "62218be",
+    "deps": [
+      "4392c7b"
+    ],
+    "content": "Tm28 B3：<code>Prim.objs</code> 从实参取对象；<code>dom</code>/<code>ran</code>/<code>nil</code> 的 row 已加入 <code>prims</code>",
+    "note": "已 push（<code>e7281ea</code>）"
+  },
+  {
+    "id": "B3c",
+    "mark": "✓",
+    "sha": "dfbcec1",
+    "deps": [
+      "B3b"
+    ],
+    "content": "Tm28 B3 收尾：删 <code>Tm.dom</code>/<code>ran</code>/<code>nil</code> 构造子，改为 row；<code>conv</code>、<code>flat_den</code>、<code>prodUni_den</code>",
+    "note": "<code>dfbcec1</code> 已 push（check-136 绿）"
+  },
+  {
+    "id": "D.9",
+    "mark": "✓",
+    "sha": "2b60e50",
+    "deps": [],
+    "content": "语言里的 <code>input</code>/<code>output</code> 声明，<code>col \"…\"</code>",
+    "note": "语法早已合并（io-i2、D.11）；本次只把 TestFrame 改为按 schema 写，PLAN 标记更正"
+  },
+  {
+    "id": "I11",
+    "mark": "✓",
+    "sha": "b293e35",
+    "deps": [],
+    "content": "<code>main</code> 仍 12k 行",
+    "note": "main 12371→250 行；cc -O2 28.2→17.6 s；每个节点、每个输出、ite 分支各一个函数"
+  },
+  {
+    "id": "cap-wait",
+    "mark": "✓",
+    "sha": "7a2d1c6",
+    "deps": [],
+    "content": "cap 等待循环：无上限、listing 看不到、等不到的条件不报错",
+    "note": "孤儿是 RSS 采样子进程（主 cap 被杀后无人停它）→ 采样随锁结束；cap -w 可见、死持有者立即返回、CAP_WAIT_S 上限；未知选项拒绝，修 basename 为空"
+  },
+  {
+    "id": "cc-guard",
+    "mark": "✓",
+    "sha": "41aa114",
+    "deps": [],
+    "content": "<code>SubagentStart</code> 注入 worktree 规则、预算、index 查询",
+    "note": "quiet 钩子：非人发起的轮次只许回 无。；Stop 拒绝并记 ~/.cache/cc-guard/quiet.jsonl，MessageDisplay 隐藏显示；待 owner 安装"
+  },
+  {
+    "id": "dash",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "agent 任务看板：依赖图、agent 状态、最近调用；db 实时，事件触发更新",
+    "note": "<code>/home/dh/repo/cc-guard/dash/gen</code>；cc-guard 仓库未 commit",
+    "what": "维护这个看板本身：生成数据的脚本和页面。"
+  },
+  {
+    "id": "fsum",
+    "mark": "✓",
+    "sha": "4da8614",
+    "deps": [],
+    "content": "float sum/sums 自左向右（f64 一次 kscan .fadd；f32 看 stepAt）PLAN ~451",
+    "note": "f64 早已完成（S4e–g）；补 sumF32T；f32 要 kscan carry 链，按 owner 原决定保持拒绝"
+  },
+  {
+    "id": "gate2",
+    "mark": "✓",
+    "sha": "819a7b0",
+    "deps": [
+      "68a8cf3"
+    ],
+    "content": "去掉两处全量重编：kernel 测试模块在 <code>librel_RelKernel.so</code> 里、<code>relk.o</code> 按输入文件 hash；删与 Lean <code>decide</code>/<code>#guard</code> 重复的 Rust 测试",
+    "note": "已 push。kernel 测试改一行只重编 1 个模块；crate 注释本来就不触发重编（relk.o trace 已是输出 hash）；删 11 个重复 Rust 测试，crate-test 4 s；<code>kscan_agrees_with_its_rows</code> 留（4/2 字节宽、null 无 Lean 对）"
+  },
+  {
+    "id": "gs-clean",
+    "mark": "✓",
+    "sha": "6d9c1d8",
+    "deps": [],
+    "content": "gen_sound 欠账：ConvOK 的 callCv 前提、两处重复证明、spineHead 死分支（PLAN ~1029）",
+    "note": "删重复 Arr.pos_get、expand_cells_le；ConvOK/spineHead/reread 早已完成"
+  },
+  {
+    "id": "ldiv-nodecode",
+    "mark": "✓",
+    "sha": "13e834c",
+    "deps": [],
+    "content": "ldiv(tab,bits) 在 bit matrix 上算，不读回 2800 万行；带定律（PLAN ~891）",
+    "note": "无代码改动：I2 已做；sudokupc9 现 41 s，PLAN 记 3.1 s"
+  },
+  {
+    "id": "lr-notate",
+    "mark": "✓",
+    "sha": "5df1bb2",
+    "deps": [],
+    "content": "lean-refactor：<code>notate</code> 跳过看不到该常量的文件，候选文件取自 index 引用",
+    "note": "6 个改写命令的候选文件改由 index 给出；看不到常量的文件跳过"
+  },
+  {
+    "id": "native-io2",
+    "mark": "✓",
+    "sha": "02ac1b4",
+    "deps": [],
+    "content": "native IO：keyed input、文件 float 列、mapped 列写 CSV（PLAN ~257；可空 CSV 等 rq17）",
+    "note": ""
+  },
+  {
+    "id": "perf10",
+    "mark": "✓",
+    "sha": "1745c16",
+    "deps": [
+      "0c90b1e"
+    ],
+    "content": "kernel 提速：<code>for_meta</code>、<code>res_get_in</code>、<code>gather::Take</code>、<code>Coc::get</code>、<code>asc</code>/<code>scatter</code>/<code>seen</code>",
+    "note": "cells 排序 lex memcmp；res_get_in inline；meta 一遍；pc9 3.1→2.8 s"
+  },
+  {
+    "id": "perf11",
+    "mark": "✓",
+    "sha": "38f7213",
+    "deps": [
+      "perf7"
+    ],
+    "content": "Rel 语言层优化：plan 少调 kernel、合并相邻原语、每个程序只求值一次",
+    "note": "kernel 调用 −5~10%（全来自 kscatter：常量操作数并入 kscan post 链）；wall 噪声内；等 check-139 后合入"
+  },
+  {
+    "id": "perf11b",
+    "mark": "✓",
+    "sha": "662b501",
+    "deps": [
+      "perf11"
+    ],
+    "content": "<code>Arr.clampShift</code> 合成一次 kscan；<code>Tab.select</code> 共用 seg；其余 colConst→colMap 同律改写",
+    "note": "clampShift 一次 kscan；select 共用 seg；常量操作数规则用到 cast/succ/stepCols/ldivOf；8 个模块 kernel 调用 −2.8%（Bench.Edit −18%）"
+  },
+  {
+    "id": "perf11c",
+    "mark": "✓",
+    "sha": "2e9cc10",
+    "deps": [
+      "perf11b"
+    ],
+    "content": "常量操作数并入 kscan post 链：余下 ~25 处（Bits、List、Where、Comp、Div.lamOf、sumTail、sumsOn）+ sumsOn 用 seenSeg",
+    "note": "部分：List/Where/compBlock/lamOf/bitMatrix/ldivBits 已换；Bits 其余与 sums 退回 → perf11d"
+  },
+  {
+    "id": "perf11d",
+    "mark": "✓",
+    "sha": "b8ae06b",
+    "deps": [
+      "perf11c"
+    ],
+    "content": "常量操作数规则：Bits（colIota/keepBits/compTabMat/ldivTabMat）、sumTail/sumsOn/sumOn、Struct 等；全构建 + 调用计数",
+    "note": "Bits/sumTail/sumsOn/sumOn/atPos 成 post 步；全 gate 绿；Blocks scatter 90725→88248"
+  },
+  {
+    "id": "perf11e",
+    "mark": "✓",
+    "sha": "5ff00ff",
+    "deps": [
+      "perf11d"
+    ],
+    "content": "post 步规则：Struct zeros/injCols、compCuts；colConst 调用者清单",
+    "note": ""
+  },
+  {
+    "id": "perf11f",
+    "mark": "✓",
+    "sha": "3da3cb3",
+    "content": "flipped div/mod Op 作 kscan post 步，去 crossIx/ofBits/compCuts bc/ldivTabMat 的 8 处 colConst；tagCount 去 colConst",
+    "deps": [],
+    "note": "rdiv/rmod post 步、kscanRefuses、colIota 内联；BitsTest panic 为旧 scatter-once（基于 2ac3cd2）→ perf11g"
+  },
+  {
+    "id": "perf12",
+    "mark": "✓",
+    "sha": "755d326",
+    "deps": [],
+    "content": "cc-guard 去掉内存采样，dashboard 读一次 /proc/meminfo",
+    "note": "cc-guard 755d326 删除 memSample；dash 3ae2d02 读一次 /proc/meminfo。make test 1 个失败 ccdb_help_over_threshold（cc-db 计时数据，与本改动无关）"
+  },
+  {
+    "id": "perf13",
+    "mark": "✓",
+    "sha": "1c8e2a9",
+    "deps": [],
+    "content": "<code>Obj.sortByC</code> 的 <code>.arr</code> 排序按元素位置逐遍，改为与元素总数成正比",
+    "note": "旧 sortByC 已在 T10f 删除；.arr 走 kasc cells，与元素总数成正比；加了偏斜组回归测试"
+  },
+  {
+    "id": "perf14",
+    "mark": "✓",
+    "sha": "531cfd1",
+    "deps": [],
+    "content": "compile-diff 超预算：jobshop 1001–1045 ms、chess 1045 ms（上限 1000 ms）",
+    "note": "jobshop 1287→340 ms：gate 比较两表改走 Tab.le 两向（编译 kernel），rowsOf 只在不等时列行；chess 1460→1328，余因是 gate 把程序跑两遍"
+  },
+  {
+    "id": "perf14b",
+    "mark": "✓",
+    "sha": "229a8a6",
+    "deps": [],
+    "content": "TestCompile 每个程序只跑一遍：<code>expanded</code> 求值与 <code>Code.shares</code> 重跑合一",
+    "note": "与生成槽相同的部分只跑一遍：joinBig 640→373、query4 596→477 ms；chess 1010、knapsack 820 未降（重读得到 callCv，不匹配）"
+  },
+  {
+    "id": "perf14c",
+    "mark": "✓",
+    "sha": "c6f97f8",
+    "deps": [
+      "perf14b"
+    ],
+    "content": "reread 用程序自身读时的 registry（不含自己 os 的注册），chess/knapsack 的部分匹配生成槽、只跑一遍",
+    "note": "reread 去掉程序自己建的 key：全部部分匹配；chess 1010→590、knapsack 824→400 ms"
+  },
+  {
+    "id": "perf14d",
+    "mark": "✓",
+    "sha": "cd3523e",
+    "deps": [
+      "perf14c"
+    ],
+    "content": "frameUnboundedT 1027 ms 超 gate 预算；perf14c 后 reread 自己展开 once 体（frameScaleN3/frameStatT +100 ms）",
+    "note": "reread 以程序自己的 once 体为种子，不再重新展开：frameUnboundedT 1046→290 ms；11 个程序全部 < 600 ms"
+  },
+  {
+    "id": "perf5",
+    "mark": "✓",
+    "sha": "d5b6a26",
+    "deps": [
+      "4cc017c"
+    ],
+    "content": "剩余大整数：<code>Csv.stamp</code>、<code>floatBits</code>/<code>floatText</code>、Csv、<code>Coc.packRes</code>；CsvTest ≤ 5 s 则恢复",
+    "note": "<code>d5b6a26</code>，master <code>9b333b1</code> 已 push（check-135 绿）。<code>stamp</code> 72→0，<code>floatBits</code> 1182→950；CsvTest 时间在 kernel <code>decide</code>（13 s）不在 GMP，仍 disabled。剩 <code>packRes</code>（~210k）、<code>intStep</code>、float 十进制转换 → perf6（<code>/data/tmp/perf6-handoff.md</code>）"
+  },
+  {
+    "id": "perf6",
+    "mark": "✓",
+    "sha": "79f6a98",
+    "deps": [
+      "perf5"
+    ],
+    "content": "<code>Coc.packRes</code>（~210k GMP）与 <code>Ew.intStep</code> 改字运算 + <code>@[csimp]</code>；CsvTest 的 kernel <code>decide</code> 13 s",
+    "note": "<code>79f6a98</code> 已 merge，check-137 在跑：<code>packRes</code> ~210k→0、<code>intStep</code> 477→0 GMP"
+  },
+  {
+    "id": "perf7",
+    "mark": "✓",
+    "deps": [
+      "perf6"
+    ],
+    "content": "<code>make check</code> 时间：量各步 → TestCompile 解释执行的声明",
+    "note": "0729b04：Pre.rewrite 共享遍历修掉 reread 的指数开销（bench2 4164→256 ms，合计 17.4→13.8 s，differential 996/996）。剩 chess 1071 ms（自身 kernel 工作）→ 缩小 gate 实例的棋子数",
+    "sha": "d8030bc"
+  },
+  {
+    "id": "perf8a",
+    "mark": "✓",
+    "deps": [
+      "perf7"
+    ],
+    "content": "<code>lean-refactor index</code> 不再重新 elaborate（107–133 s，34% 在 <code>librelk</code>）",
+    "note": "lean-refactor master 30df7fc 已装：index --full 170.6 s → 59.9 s，9 张表逐行相同；peak RSS 4.9→4.2 GB（TestFrameBench 的 rel_program 仍要跑）",
+    "sha": "30df7fc"
+  },
+  {
+    "id": "perf9",
+    "mark": "✓",
+    "sha": "3891815",
+    "deps": [],
+    "content": "Lean <code>module</code> 系统：改证明不重编下游",
+    "note": "4.28 可用：module 导入者只看公开 .olean。Core/{Rel,Fix} 试点已合并 master。改 Rel.Core.Rel 的证明今天重编 26 个模块 301 s，RepTabDiv 17 个 244 s"
+  },
+  {
+    "id": "perf9b",
+    "mark": "✓",
+    "sha": "bd41d8c",
+    "deps": [
+      "perf9",
+      "0c90b1e",
+      "7.4b"
+    ],
+    "content": "证明/定律层自底向上转 <code>module</code>：KernelSpec、Rep*、HyloSpec、Lang 证明",
+    "note": "Kernel 层 module；KernelSpec 转 perf9c"
+  },
+  {
+    "id": "relaop-star",
+    "mark": "✓",
+    "sha": "5fd8bd4",
+    "deps": [],
+    "content": "freyd relaop Prelude：rel_aop 形式陈述（starLinear 等）经桥接证明（PLAN ~1381；freyd 分支，不并 master）",
+    "note": "freyd branch relaop-star (not master); Rel.Programs.prelude.starLinear.aop axioms [propext, Quot.sound]; bridge fixed for front/⦇⦈ʳ"
+  },
+  {
+    "id": "rq17",
+    "mark": "✓",
+    "sha": "0c90b1e",
+    "deps": [],
+    "content": "null = 块内保留残差",
+    "note": "rq17merge in master"
+  },
+  {
+    "id": "rq17d",
+    "mark": "✓",
+    "sha": "8d0bbba",
+    "deps": [
+      "rq17"
+    ],
+    "content": "kernel 携带 null 位（gather/scatter/asc/seen），null 排最前",
+    "note": "WIP：kernel 体带 null 位；定理留给 rq17e"
+  },
+  {
+    "id": "rq17dec",
+    "mark": "✓",
+    "sha": "97561d9",
+    "deps": [
+      "rq17f2"
+    ],
+    "content": "含 null 的 kernel 测试 decide 太慢（166 s 不归约，48% expr_eq_fn）：在模型里修",
+    "note": "慢因是 core 的 instDecidableEqSum；Sum.elim 实例后 5 个 *Test 各 <1 min"
+  },
+  {
+    "id": "rq17e",
+    "mark": "✓",
+    "sha": "f55cd2c",
+    "deps": [
+      "rq17"
+    ],
+    "content": "kernel 定理改写到含 null 的读法（路线 B），修复下游约 50 处",
+    "note": "WIP：Encoding/Alp/Scatter/Asc/KGather/KSeen 定理已改到含 null；Closure 未完；发现编码器 bug"
+  },
+  {
+    "id": "rq17f",
+    "mark": "✓",
+    "sha": "361c818",
+    "deps": [
+      "rq17e"
+    ],
+    "content": "完成 kscatter_closed、kernel 测试、cargo/syms、Rel 调用处",
+    "note": "到 125 次调用停止：kscatter_closed、Enc.WF u1 界（决定 A）、合入 rq17g；余下 Gather/Asc/Rep* 调用处交 rq17f2"
+  },
+  {
+    "id": "rq17f2",
+    "mark": "✓",
+    "sha": "9d8d2ea",
+    "deps": [
+      "rq17f",
+      "rq17g"
+    ],
+    "content": "route B 收尾：kernel 测试、Arr.kgather_wf、ascKeys_row 只看 flag 0 行、Rep* 调用处；RelKernel RelRun Rel 全绿",
+    "note": "停于 ~85 次：Encoding/Raw/Closure/Ids、Run.Core、Run.Gather 绿（wordsFoR_nul、kgather_wf 走 null-aware 读）"
+  },
+  {
+    "id": "rq17f3",
+    "mark": "✓",
+    "sha": "8495add",
+    "deps": [
+      "rq17f2"
+    ],
+    "content": "ascKeys_row 只看 flag 0 行；RepCanon/RepSetOps/RepTabComp/RepCols/GenK* 调用处",
+    "note": "nulWords；ascKeys_row 只看非 null 行；KernelSpec.Asc/KSeen 绿；调用处未完"
+  },
+  {
+    "id": "rq17f4",
+    "mark": "✓",
+    "sha": "3411814",
+    "deps": [
+      "rq17f3"
+    ],
+    "content": "Enc 有效性加“置 null 标志的块含 null 行”（决定 A）→ hasNul 由行决定；hkey 一处证明；RepCanon/RepCols/RepSetOps/RepTabComp/GenK* 调用处",
+    "note": "部分：WF 加决定 A 条件、hasNul_flags 等绿；RepCanon 未绿；kasc_grade 带 hN<2^32 → 由 rq17h（决定 I）去掉"
+  },
+  {
+    "id": "rq17f5",
+    "mark": "✓",
+    "sha": "124afee",
+    "deps": [
+      "rq17f4"
+    ],
+    "content": "RepCanon/RepCols/RepSetOps/RepTabComp/GenK* 调用处（Vals.cols 的 Enc.WF 引理、gather_row 走 foROpt）",
+    "note": "部分：Vals.cols_wf、sorted_key、hN 前提；null 行令行引理为假"
+  },
+  {
+    "id": "rq17g",
+    "mark": "✓",
+    "sha": "949dbda",
+    "deps": [
+      "rq17e"
+    ],
+    "content": "编码器：含 null 的块里残差等于 null 码的非 null 行进 patch，去掉 hmax",
+    "note": "null 码处的值进 patch；去掉 hmax；新 rawOpt_encodeAt；nul_pack 2 的幂宽度 panic 已修；由 rq17f 合入"
+  },
+  {
+    "id": "scatter-once",
+    "mark": "✓",
+    "sha": "f468b91",
+    "deps": [],
+    "content": "Rust encode_scatter 两遍写改一遍（PLAN 6.10 ~718）",
+    "note": "修 panic：每个答案块自查所用 ix 块；新测试；29 ms 不变。check-147 后 squash 合并"
+  },
+  {
+    "id": "seen-rest",
+    "mark": "✓",
+    "sha": "f341a12",
+    "deps": [],
+    "content": "kseen 余下：kasc≫kseen 组合定理与 runs 引理、移植 Order.groupIds* 调用者、architecture 文档（PLAN ~393）",
+    "note": "kasc_kseen（RepSeen）；groupIds* 早已删；architecture §4 更新；1024 行例子等 rq17dec"
+  },
+  {
+    "id": "t-compbits",
+    "mark": "✓",
+    "sha": "23f5370",
+    "deps": [],
+    "content": "编译器选用 compBits、去掉 sudokupc9/muGrow 的固定（PLAN ~869，先核实是否已做）",
+    "note": "master 已做（66384ef/f1d2884/9907da6/3d7d677），只改 PLAN"
+  },
+  {
+    "id": "mugrow",
+    "mark": "✓",
+    "sha": "b9d957f",
+    "deps": [],
+    "note": "32 s → 5.0 s；每轮仍对全部 X 排序",
+    "content": "muGrow 上新层：μ 不跑 1024 轮、每轮不重排；去旧层固定"
+  },
+  {
+    "id": "rq17f6",
+    "mark": "✓",
+    "sha": "9199fbf",
+    "deps": [
+      "rq17f5"
+    ],
+    "note": "Arr 类型上无 null 块；Run.* 与 RepCanon 绿；下游交 rq17f7",
+    "content": "按决定 K：Arr t n 不变式含无带标志块；V+1 行读 foROpt；收尾 Rep*/GenK* 调用处"
+  },
+  {
+    "id": "pc9-regress",
+    "mark": "✓",
+    "sha": "765a9f2",
+    "deps": [],
+    "note": "首因 paramL2 的 meetOn 把 matrix 读回（35→12.4 s）；第二处约 8 s 未定",
+    "content": "sudokupc9 41 s vs 记录 3.1 s：先确认同口径，再 bisect f90f42e..9aed3b4"
+  },
+  {
+    "id": "seen1024",
+    "mark": "✓",
+    "sha": "cdde257",
+    "deps": [],
+    "note": "诊断：decide 卡在 Coc.encodeAt 体（frameAt 块内平方、pushBits ByteArray）；40 行即 OOM；交 cocspec",
+    "content": "kseen/kasc 跨 1024 行块边界的 Lean decide 例子（Sum.elim 实例后重试）"
+  },
+  {
+    "id": "symrank",
+    "mark": "✓",
+    "sha": "2291300",
+    "deps": [
+      "B5a3"
+    ],
+    "note": "owner J：elaboration 改写成 rank ≫ <ℕ ≫ rank°；等 B5a2（同改 Elab/lt）",
+    "content": "sym 上 </asc 经 rank（owner J）"
+  },
+  {
+    "id": "rq17f7",
+    "mark": "✓",
+    "sha": "2c948e0",
+    "deps": [
+      "rq17f6"
+    ],
+    "note": "RepCols/RepOrder/RepSeen/Gather/RepCanon 绿；kscatter_plain 超时，RepSetOps 未绿 → rq17f8",
+    "content": "plain Arr 下 Rep*/GenK* 下游变绿、rq17f5 余项、RepSeen kasc_grade"
+  },
+  {
+    "id": "cocspec",
+    "mark": "✓",
+    "sha": "884979e",
+    "deps": [
+      "seen1024"
+    ],
+    "note": "planOf 线性、输出不变；1100 行 decide 仍不可行（按位读 ByteArray O(i)、Array.range.map、kernel 每步内存）；1024 边界按决定 S 关闭",
+    "content": "Coc.encodeAt 的 Lean 体可被 kernel 线性归约，输出不变；再加跨 1024 边界 decide 例子"
+  },
+  {
+    "id": "perf11g",
+    "mark": "✓",
+    "sha": "6533a8d",
+    "deps": [
+      "perf11f"
+    ],
+    "note": "全量绿 385 jobs；Edit scatter 67148→66482、wall 1319→1199 ms；Blocks 1031→985 ms",
+    "content": "perf11f 合 master 的 scatter 修复，全量构建、计数、PLAN"
+  },
+  {
+    "id": "rq17f8",
+    "mark": "✓",
+    "sha": "a1e9257",
+    "deps": [
+      "rq17f7"
+    ],
+    "note": "kscatter_plain、RepSetOps、RepTabComp 绿；hN 从 canon 链删去（只留 kasc_grade 的有界分支）；RepTabDiv 未绿",
+    "content": "kscatter_plain、RepSetOps 绿、hN 穿到 ~30 调用点、余下 Rep*/GenK*、全量"
+  },
+  {
+    "id": "B3d",
+    "mark": "✓",
+    "deps": [
+      "dfbcec1"
+    ],
+    "content": "<code>dom ran nil</code> 的 prelude 定义 + <code>Prim.den_domRow/ranRow/nilRow</code>",
+    "note": "dfns 加 dom/ran/nil，Tm.dfnCut_den 三情形；Prim.den_*Row 在 Den；Tm.nil_den 删",
+    "sha": "8e197fc"
+  },
+  {
+    "id": "B4",
+    "mark": "✓",
+    "deps": [
+      "62218be"
+    ],
+    "content": "行 <code>est</code> <code>front</code>（<code>thin</code>→<code>front</code>），prelude 定义，<code>Tm.est_den</code> <code>Tm.thin_den</code>",
+    "note": "B4b 续作：dfns 定义、定理、余下各处（8ba929a + /data/tmp/b4-handoff.md）",
+    "sha": "d97eb24"
+  },
+  {
+    "id": "B5",
+    "mark": "✓",
+    "deps": [
+      "62218be"
+    ],
+    "content": "B5a：atom 运算成行（<code>succ arith leq lt</code> 删构造子），<code>&lt;</code> <code>≤</code> 定义，未验证项 (1)(3)",
+    "note": "分为 B5a（在做）与 B5b（等 B5a）",
+    "sha": "eb8c78b"
+  },
+  {
+    "id": "B5b",
+    "mark": "✓",
+    "sha": "eb8c78b",
+    "deps": [
+      "B5a4"
+    ],
+    "content": "二元行 <code>at</code>、删 <code>atPos</code>、任意 object 的 <code>lt</code> 定义 + fused 行、<code>asc</code> 定义（未验证项 2）",
+    "note": "split: B5b1 ▶ at row; then atPos migration, lt, asc"
+  },
+  {
+    "id": "pc9fix",
+    "mark": "✓",
+    "sha": "16749c2",
+    "deps": [
+      "765a9f2"
+    ],
+    "content": "<code>GenK.meetOn</code> 的 bits 分支 + <code>meetOn_sound</code>/<code>meetOn_wf</code> 情形",
+    "note": "sudokupc9 35→10.4–11.1 s；Known.WF.orElse，meetOn_sound/meetOn_wf 新情形"
+  },
+  {
+    "id": "pc9-regress2",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "765a9f2"
+    ],
+    "content": "bisect 666343f..e80c027 的第二处 ~8 s 回退",
+    "note": "首个坏提交 02ea872（callcost 4ef484c：dem=false 项一律 memo），3.5→18 s"
+  },
+  {
+    "id": "rq17f9",
+    "mark": "✓",
+    "sha": "ddeb62f",
+    "deps": [
+      "rq17f8"
+    ],
+    "content": "RepTabDiv 绿 + 下游 13 个 module + crate 检查 + 全量",
+    "note": "WIP：RepTabDiv/RepSetOps/RepTabComp 绿；RepBits:378 余 1 错；交 rq17f10"
+  },
+  {
+    "id": "pc9-regress3",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "pc9-regress2"
+    ],
+    "content": "确认并诊断 callcost memo 在 sudokupc9 的代价，给出一般规则",
+    "note": "根因：GenK.memo 把 bits 读回成行；规则：memo 只 force lazy（12.4→3.0 s）"
+  },
+  {
+    "id": "rq17f10",
+    "mark": "✓",
+    "sha": "eba5811",
+    "deps": [
+      "rq17f9"
+    ],
+    "content": "rq17 续：RepBits:378、12 个下游模块、colMap/colPrefix 并入 _closed、crate syms/cargo test、全量构建",
+    "note": "RepBits 绿；GenKBits 约 22 错；交 rq17f11"
+  },
+  {
+    "id": "dash-q",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "dashboard：待答问题的 ? 徽标与面板（questions.json）",
+    "note": "sonnet"
+  },
+  {
+    "id": "B5a",
+    "mark": "✓",
+    "sha": "a08f414",
+    "deps": [
+      "8e197fc"
+    ],
+    "content": "atom 运算 succ/arith/leq/lt 改为行，删构造子",
+    "note": "前半落地：arith/succ/cmp 行与定理；B5a2 续删构造子"
+  },
+  {
+    "id": "B4b",
+    "mark": "✓",
+    "sha": "d97eb24",
+    "deps": [
+      "8ba929a"
+    ],
+    "content": "B4 续：est/front 的定义、定理与余下各处",
+    "note": "opus，接 8ba929a"
+  },
+  {
+    "id": "dash-layout",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "dashboard：运行中面板放在依赖图下面",
+    "note": ""
+  },
+  {
+    "id": "tmreport",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "tm-minimal B0–B10 实现报告（给 rel-6b）",
+    "note": ""
+  },
+  {
+    "id": "pc9fix2",
+    "mark": "✓",
+    "sha": "026c1ce",
+    "deps": [
+      "pc9-regress3"
+    ],
+    "content": "GenK.memo 只 force lazy，tab/bits 原样；memo_sound/memo_wf；doc §0",
+    "note": "sudokupc9 12.4→3.1 s"
+  },
+  {
+    "id": "B5a2",
+    "mark": "✓",
+    "sha": "ac3f31f",
+    "deps": [
+      "a08f414"
+    ],
+    "content": "B5 续：删 succ/arith/leq/lt 构造子，elaborator 改为有界 cut，convTm 规则 A",
+    "note": "WIP：ConvSpec den_conv 未绿；succ/arith 已删"
+  },
+  {
+    "id": "docH",
+    "mark": "✓",
+    "sha": "a4079c5",
+    "deps": [],
+    "content": "文档：atom+1 是一般的 sum（决定 H）",
+    "note": "已撤回（d59ccff）：用户确认用带内 null"
+  },
+  {
+    "id": "B5c",
+    "mark": "✓",
+    "sha": "062ce55",
+    "deps": [
+      "B5a3"
+    ],
+    "content": "整数溢出报错（succ 与 plus 等算术行），不再置 null 或丢行；然后 succ ≜ ⟨𝟙,⊤1⟩ plus 与 Tm.succ_den",
+    "note": "Lean side; C emitter -> B5c2"
+  },
+  {
+    "id": "rq17f11",
+    "mark": "✓",
+    "sha": "d3592a3",
+    "deps": [
+      "eba5811"
+    ],
+    "content": "rq17 续：GenKBits 绿、11 个下游模块、PLAN、全量构建",
+    "note": "GenKBits、GenKFix 绿；GenKFold 的 lexLe_i64 在有 null 的列上不成立"
+  },
+  {
+    "id": "nullband",
+    "mark": "✓",
+    "sha": "a652ec3",
+    "deps": [
+      "0c90b1e"
+    ],
+    "content": "代码随文档：Vals (.sum (.atom t) .one) 存成一列带内 null（决定 K，用户 2026-11-22 重申），foROpt 读成 Option",
+    "note": "Opt t n 类型 + 测试；Vals 切换待 null 排序决定"
+  },
+  {
+    "id": "expandguard",
+    "mark": "✓",
+    "sha": "f87c894",
+    "deps": [],
+    "content": "展开超大时打印警告（唯一入口），运行路径禁止转 List（gate 查询），sudokupc9 6 s 时间预算进 make check",
+    "note": "expandNote 三处；listban 允许表 85 项；pc9-time 6 s"
+  },
+  {
+    "id": "u64patch",
+    "mark": "✓",
+    "sha": "7e63bb8",
+    "deps": [],
+    "content": "patch list 块偏移改 u64，≥2^32 行也写 patch；去掉 N<2^32 前提",
+    "note": "块偏移 u64，own v6；分支上的 hbig 待 rq17 落地后删"
+  },
+  {
+    "id": "rq17f12",
+    "mark": "✓",
+    "sha": "1213090",
+    "deps": [
+      "d3592a3"
+    ],
+    "content": "rq17 续：lexLe_i64 改述在解码后的 Option 序上（null 合法，决定 K），GenKFold 及下游、PLAN、全量构建",
+    "note": "经 rq17merge 0c90b1e 并入"
+  },
+  {
+    "id": "symlib",
+    "mark": "✓",
+    "sha": "23aabb9",
+    "deps": [],
+    "content": "own 库 sym 字典：整库一个、只追加（N）、写时追加（Q）、跨库拒绝并提供 unenum（O+unenum）",
+    "note": "每库一个追加字典 `lib/sym`；跨库拒绝；Table.unenum 在运行路径；待 check-155 后合并"
+  },
+  {
+    "id": "listban-fix",
+    "mark": "✓",
+    "sha": "e05fd53",
+    "deps": [
+      "f87c894"
+    ],
+    "content": "运行路径 85 个 List 用处改数组（先 compBlocks、Table.readArr/readDict），允许表只缩",
+    "note": "allow 85→73"
+  },
+  {
+    "id": "B5a3",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "ac3f31f"
+    ],
+    "content": "B5a 续：ConvSpec 绿、任意行的 converse 是 lazy（用户 2026-11-22）、删 leq/lt（pairs 路径作模式优化+定理）",
+    "note": "superseded by B5a4 0c54107"
+  },
+  {
+    "id": "ccg-stall",
+    "mark": "✓",
+    "sha": "b7f1771",
+    "deps": [],
+    "content": "cc-guard：去掉 120 次硬停，改按进展停：距上次 commit 或绿构建 40 次调用提醒、80 次停；计数在外部、跨 compact",
+    "note": "cc-guard b7f1771；待用户部署；make test 唯一失败 ccdb_help_over_threshold 与本改动无关（cc-db 数据漂移）"
+  },
+  {
+    "id": "mugrow2",
+    "mark": "✓",
+    "sha": "c6b2073",
+    "deps": [
+      "b9d957f"
+    ],
+    "content": "muLin 每轮只按 Δ 计：X ∪ Δ 用有序归并，Δ − X 用对有序 X 的成员测试（kernel 组合）",
+    "note": "5.0 → 3.2 s：write_nul 只查有 null 位的行、span 用稳定排序、unionDiff 一次排序"
+  },
+  {
+    "id": "hbig-drop",
+    "mark": "✓",
+    "sha": "0c90b1e",
+    "deps": [
+      "rq17merge"
+    ],
+    "content": "rq17 落地后删 Closure 的 hbig（u64 偏移已让它恒假）",
+    "note": "并入 rq17merge"
+  },
+  {
+    "id": "unenum-row",
+    "mark": "✓",
+    "sha": "2bb6764",
+    "deps": [
+      "23aabb9",
+      "B5a3"
+    ],
+    "content": "语言层 unenum 行：Tm 需要字典项，再加 prelude 行 unenum = I ≫ D",
+    "note": "sonnet"
+  },
+  {
+    "id": "u64fix",
+    "mark": "✓",
+    "sha": "6e08933",
+    "deps": [
+      "7e63bb8"
+    ],
+    "content": "重写 test/native/in/{t,f,k} 为 own v6（由 nativeIO 的 out/io 生成；k 保留非键序），native gate 绿",
+    "note": "t/f 由 relc run 写出，k 复制 t（顺序不变）；native 绿"
+  },
+  {
+    "id": "rq17merge",
+    "mark": "✓",
+    "sha": "0c90b1e",
+    "deps": [
+      "1213090",
+      "426ba6c"
+    ],
+    "content": "把 rq17f12 1213090 合入 master：Alp/Encoding 证明与 u64patch 冲突（2^32→2^64）",
+    "note": "冲突取 rq17 结构 + 2^64；hbig 删除；kasc_grade 去掉 N<2^32 前提"
+  },
+  {
+    "id": "decodefix",
+    "mark": "✓",
+    "sha": "190b328",
+    "deps": [
+      "6e08933"
+    ],
+    "content": "check-156 红：decode gate 新增 7 处（symlib 的 Table.*、mugrow 的 Tab.muLin）改为在编码上计算",
+    "note": "Table.lean 去掉真实解码（symIds、unenum 走 comp、writeLib 走 diff）；7 个名字仍被 gate 标记，经 lastCount 的 Arr.get 与 Arr.of 的 WF 判定，等 owner"
+  },
+  {
+    "id": "mugrow3",
+    "mark": "✓",
+    "sha": "0d586f9",
+    "deps": [
+      "c6b2073"
+    ],
+    "content": "μ 一轮 ∝ |Δ|：concat 搬移 X 的已编码块（Producer::take），X ++ T，池子空转",
+    "note": "块搬移 + X 在前；3.2→2.4 s"
+  },
+  {
+    "id": "B5a4",
+    "mark": "✓",
+    "sha": "0c54107",
+    "deps": [
+      "ea28997"
+    ],
+    "content": "B5a3 收尾：ConvSpec 绿、决定 2（删 leq/lt）、决定 3（死代码）",
+    "note": "ConvSpec 绿；决定 3 完成；决定 2 待派；check-158 后合"
+  },
+  {
+    "id": "8.5s2k",
+    "mark": "✓",
+    "sha": "6a1fef2",
+    "deps": [
+      "dc14769"
+    ],
+    "content": "cells key 的 lo/hi clamp 删除，Vals.WF 穿过 RepCanon 链",
+    "note": "clamp 删；WF 链停在 RepTabComp，待续作"
+  },
+  {
+    "id": "8.4b",
+    "mark": "✓",
+    "sha": "df1328d",
+    "deps": [
+      "dea75c1"
+    ],
+    "content": "删 general/Enc.gen/QValue；own 头去 attr/domain，版本 +1",
+    "note": "own v7 头；OwnTest/native gate 转 8.4c；删 general 未做"
+  },
+  {
+    "id": "perf9c",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "bd41d8c"
+    ],
+    "content": "KernelSpec 层转 module（#print axioms 移出、core 引理改写）",
+    "note": ""
+  },
+  {
+    "id": "mugrow4",
+    "mark": "✓",
+    "sha": "24e86c0",
+    "deps": [
+      "0d586f9"
+    ],
+    "content": "池子小任务空转；搬块的多块测试",
+    "note": "搬块测试全过；SPIN 改动撤回（MuGrow 变慢）"
+  },
+  {
+    "id": "listban2",
+    "mark": "✓",
+    "sha": "9cd0f0d",
+    "deps": [
+      "e05fd53"
+    ],
+    "content": "own 写读走 ByteArray，KernelSpec/Own 改述",
+    "note": "allow 73→67；make listban 待 master gate"
+  },
+  {
+    "id": "branch-sweep",
+    "mark": "✓",
+    "sha": "74cf74f",
+    "deps": [
+      "ac3c904"
+    ],
+    "content": "33 个未合并分支：合并、rebase 或已被取代",
+    "note": "26 已取代；1 合入；pool_stats rebase 等 qlean；8.4 剩余 WIP 由 8.4b 接手"
+  },
+  {
+    "id": "decodeG",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "decode gate 的 IR 遍历停在 allowlist 名字；清掉过期条目",
+    "note": "owner G"
+  },
+  {
+    "id": "nullband2",
+    "mark": "✓",
+    "sha": "27be090",
+    "deps": [
+      "a652ec3"
+    ],
+    "content": "Vals 的 atom+1 改存 Opt；null 排最前（随 q）",
+    "note": "gather 证明、guard、doc；Vals→Opt 未做；sum 序待 owner"
+  },
+  {
+    "id": "decodeWF",
+    "mark": "✓",
+    "sha": "eccc9a4",
+    "deps": [],
+    "content": "Arr.of 的 u1 <2 检查改由块 metadata 判，不逐元素解码",
+    "note": ""
+  },
+  {
+    "id": "8.4c",
+    "mark": "✓",
+    "sha": "b3b29d3",
+    "deps": [
+      "df1328d",
+      "9cd0f0d"
+    ],
+    "content": "own v7 收尾：OwnTest、native gate，与 listban2 合",
+    "note": "v7 收尾；native gate 绿；check-158 后合"
+  },
+  {
+    "id": "8.5s2l",
+    "mark": "✓",
+    "sha": "2ba4528",
+    "deps": [
+      "6a1fef2"
+    ],
+    "content": "8.5s2k 续作：Vals.WF 从 RepTabComp 往下穿完，全量 build 绿",
+    "note": "superseded by 8.5s2p"
+  },
+  {
+    "id": "slowtest-coc",
+    "mark": "✓",
+    "sha": "bb13de3",
+    "deps": [],
+    "content": "`Rel.Kernel.CocTest` 编译 17 min+、峰值 14–16 GB：perf 为缺页 + Lean expr hash `find` ~52%；找出哪个 `#guard`/`decide` 展开大项并改小",
+    "note": "CocTest 14 s / 1.6 GB"
+  },
+  {
+    "id": "slowtest-asc",
+    "mark": "✓",
+    "sha": "989bac4",
+    "deps": [],
+    "content": "`AscTest` 436 s 与 `GatherTest` 252 s：perf 定位后改小（一个 agent 做两个）",
+    "note": "暂停解除后派"
+  },
+  {
+    "id": "mfix159",
+    "mark": "✓",
+    "sha": "e4473a5",
+    "deps": [
+      "8eb9354"
+    ],
+    "content": "check-159 合并修复：B5a 原子行 arithOps/succ/cmpOps 的 native plan recipe；decode allowlist 重生成",
+    "note": "合并修复"
+  },
+  {
+    "id": "8.5s2m",
+    "mark": "✓",
+    "sha": "8c2b355",
+    "deps": [],
+    "content": "8.5s2l 续作：WIP a9102da 合到最新 master，Vals.WF 穿完，row_arr 改单行界，全量 build 绿",
+    "note": "停在 40 call：RepCanon/RepOrder/RepTabComp/RepStruct 绿；RepTabDiv 34 错，RepBits/RepSums/Gen* 未做；内存 <80% 时从 8c2b355 续派（按模块拆）"
+  },
+  {
+    "id": "mfix160",
+    "mark": "✓",
+    "sha": "ce77727",
+    "deps": [],
+    "content": "check-160 红在 listban：packResImpl 改名（private→public），hasNul 新的 List 用法",
+    "note": "sonnet"
+  },
+  {
+    "id": "perf9d",
+    "mark": "✓",
+    "sha": "7535f4a",
+    "deps": [],
+    "content": "Rel/Run、Rel/Lang 改 `module`，证明改动不再重建 ~157 模块",
+    "note": "module migration continued in perf9e/perf9f, all in master"
+  },
+  {
+    "id": "8.5s2n",
+    "mark": "✓",
+    "sha": "2ba4528",
+    "deps": [],
+    "content": "RepTabDiv 34 错（从 8c2b355）",
+    "note": "superseded by 8.5s2p"
+  },
+  {
+    "id": "8.5s2o",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "RepBits + RepSums（从 8c2b355）",
+    "note": "e0ea224：RepBits/RepSums 0 错（单文件检查）；等 8.5s2n 的 RepTabDiv 后由 8.5s2n 合并并构建"
+  },
+  {
+    "id": "8.5s2p",
+    "mark": "✓",
+    "sha": "eb0d571",
+    "deps": [
+      "8.5s2n",
+      "8.5s2o"
+    ],
+    "content": "Lang/Gen* 调用者 + 全量 build，PLAN 8.5s2k ✅",
+    "note": "opus：RepWFOps、RepSums、GenKBits、Lang/Gen* 调用点；全量构建绿后整条 WF 分支合 master"
+  },
+  {
+    "id": "df-F3",
+    "mark": "✓",
+    "sha": "0b97c22",
+    "deps": [],
+    "content": "dataframe F3 字符串：`arr char` 上 contains、splitOn、match、parseDate（prim 行，或定为逐字符 fold）",
+    "note": "F3b, F3c in master"
+  },
+  {
+    "id": "df-F1",
+    "mark": "✓",
+    "sha": "ffdf2c6",
+    "deps": [],
+    "content": "dataframe F1 依数据的 schema：结果对象的元素取自数据（wide pivot、get_dummies、读入时推断）",
+    "note": "merged 41bba49"
+  },
+  {
+    "id": "df-F7",
+    "mark": "✓",
+    "sha": "17cd069",
+    "deps": [],
+    "content": "dataframe F7 宿主函数：用户给的元素函数（lift/apply/bind），extern Op 行或用户定义 Op",
+    "note": "lift/lift2/apply/bind/nullLift/nullLift2 为库定义；已合并，待 gate"
+  },
+  {
+    "id": "df-F8",
+    "mark": "✓",
+    "sha": "90bea9b",
+    "deps": [],
+    "content": "dataframe F8 随机源：带种子的 prim（sample/shuffle/randomSplit/kFolds）",
+    "note": "opus；按原则定，已派"
+  },
+  {
+    "id": "df-F6b",
+    "mark": "✓",
+    "sha": "f018e64",
+    "deps": [],
+    "content": "dataframe F6b 输入格式：TSV（CSV 分隔符选项）；parquet/JSON 可能不做",
+    "note": "opus；按原则定，已派"
+  },
+  {
+    "id": "df-M8",
+    "mark": "✓",
+    "sha": "0d23df8",
+    "deps": [],
+    "content": "dataframe M8：TestFrameApp.tradeApp 编译成 rel-native，out/ 等于 relc run（Plan.ofTm 覆盖它用到的每个节点）",
+    "note": "all children ✓ (M8a–e, c2–c11, d-T1–T7)"
+  },
+  {
+    "id": "df-f32sum",
+    "mark": "✓",
+    "sha": "7d114ef",
+    "deps": [],
+    "content": "f32 `sum` 经 kscan 进位链（sumF32T 现被拒）",
+    "note": "f32/f64 sum 在 f64 累加、一次舍入；RepSums 绿"
+  },
+  {
+    "id": "null1x",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "可空类型写作 `1+X`（null = `inl ()`）：CSV 输入、带内编码、nulls/fills 次序、prelude ⊕；null 码仍是顶残差",
+    "note": "31c4f96 待合：语言侧 1+X 完成，TestFrameApp 红到库翻转；不进 master，交 dataframe 在其上翻库后一起合"
+  },
+  {
+    "id": "df-null1x",
+    "mark": "✓",
+    "sha": "234739e",
+    "deps": [
+      "null1x"
+    ],
+    "content": "dataframe 库与测试翻成 `1+X`，连同 §1.3 文档（8c14ff7）一个 sha",
+    "note": "merged a81d242"
+  },
+  {
+    "id": "df-M8a",
+    "mark": "✓",
+    "sha": "79ed083",
+    "deps": [],
+    "content": "plan 的 sum/sums recipe（sumTailB），make native 比对",
+    "note": ""
+  },
+  {
+    "id": "df-M8b",
+    "mark": "✓",
+    "sha": "4b609dc",
+    "deps": [],
+    "content": "plan：demand 穿过 dom(<°≫lit)；π₁ leaf 拿不到域",
+    "note": "merged via 5fc17bb"
+  },
+  {
+    "id": "df-M8c",
+    "mark": "✓",
+    "sha": "ee6b3b3",
+    "deps": [],
+    "content": "plan 里的 sum 对象表示（tag、位置、两份 payload）+ nullable/sym CSV 读写",
+    "note": "partial; rest df-M8c2/3"
+  },
+  {
+    "id": "df-M8d",
+    "mark": "✓",
+    "sha": "1a9da59",
+    "deps": [],
+    "content": "make native 加 tradeApp 第二程序，out/ 逐字节比对",
+    "note": "opus plan /data/tmp/dfm8d/plan.md, then sonnet tasks"
+  },
+  {
+    "id": "df-M8e",
+    "mark": "✓",
+    "sha": "e11031f",
+    "deps": [],
+    "content": "plan 的 length recipe（top2 → sortByDesc → idesc 卡在 length）",
+    "note": ""
+  },
+  {
+    "id": "perf9e",
+    "mark": "✓",
+    "sha": "094b744",
+    "deps": [
+      "perf9d"
+    ],
+    "content": "Rel/Rep*.lean 17 个文件迁到 module（改证明只重建本身）",
+    "note": "14/17 Rep* 转 module（RepAsc/RepWhere/RepSums 待 Lang/*）；改 RepCanon 证明重建 125→1 个模块（106 s→3 s）"
+  },
+  {
+    "id": "mfix165",
+    "mark": "✓",
+    "sha": "00fff71",
+    "deps": [
+      "df-f32sum",
+      "perf9e"
+    ],
+    "content": "master 红：pointfree 拒 froundDen（body 有 ∃）；f32sum+perf9e 合并后的全量构建",
+    "note": "froundDen 改为 fto ≫ corefl ≫ graph ofBits；全量绿"
+  },
+  {
+    "id": "perf9f",
+    "mark": "✓",
+    "sha": "5fb4dde",
+    "deps": [
+      "perf9e"
+    ],
+    "content": "Rel/Lang/* 与 RepAsc/RepWhere/RepSums 迁到 module",
+    "note": "Lang/* 与剩 3 个 Rep* 转 module；改 GenSound 证明只重建本身 ~27 s，RepSums ~5 s"
+  },
+  {
+    "id": "8.5s3",
+    "mark": "✓",
+    "sha": "07ab767",
+    "deps": [
+      "8.5s2p"
+    ],
+    "content": "删 clamp 第三步：kasc/kseen cells 键去 min（Lean + Rust），定理取 Vals.WF",
+    "note": "已在 8.5s2k（73a8853）做完，本项只更新 PLAN；8.5 整体 ✅"
+  },
+  {
+    "id": "dry-lex",
+    "mark": "✓",
+    "sha": "0e6e436",
+    "deps": [],
+    "content": "lexLe_congr_right 折入 lexLe_congr（rq17f5/f7 遗留），顺带 Rep* 里的同类特化",
+    "note": "早在 4e2420e 做完，只改 PLAN；Rep* 无其他特化可折"
+  },
+  {
+    "id": "nullband3",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "Vals (.sum (.atom t) .one) := Opt t n（nullband 第 2 步，约 90 处 .sum 匹配）",
+    "note": "in master via 805d8d7"
+  },
+  {
+    "id": "nullorder",
+    "mark": "✓",
+    "sha": "43687d5",
+    "deps": [],
+    "content": "sum 次序随 q：inr（null）在前；Obj.key、Vals.cols 用 ¬tag、lt_of_codes/codes 的 sum 支",
+    "note": "inr 在前；合并 5c91b3f"
+  },
+  {
+    "id": "mfix-df",
+    "mark": "✓",
+    "sha": "f3fd6e5",
+    "deps": [
+      "df-F6b",
+      "df-F8",
+      "df-F3"
+    ],
+    "content": "merge F6b/F8/F3b; native writes .d; EmitC mix",
+    "note": "check-8b055dd red at native"
+  },
+  {
+    "id": "df-F3c",
+    "mark": "✓",
+    "sha": "4b13b06",
+    "deps": [],
+    "content": "ymd : [C] ⟶ D row, parseDate",
+    "note": "owner approved Lean decode (A)"
+  },
+  {
+    "id": "nullband3a2",
+    "mark": "✓",
+    "sha": "00c486d",
+    "deps": [],
+    "content": "nullable = 1+A, standard sum order (revert nullorder flip); continue nullband3a from Gen.sumV",
+    "note": "owner 2026-11-23"
+  },
+  {
+    "id": "nullband3b",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "nullband3a2"
+    ],
+    "content": "Rel library (Rep*, GenK*, Frame tests) green on 1+X band",
+    "note": "partial, continued"
+  },
+  {
+    "id": "nullband3c",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "nullband3a2"
+    ],
+    "content": "CSV 1+atom as one in-band Opt column; TestNullband",
+    "note": "partial, continued"
+  },
+  {
+    "id": "mfix-f3c",
+    "mark": "✓",
+    "sha": "6592182",
+    "deps": [
+      "df-F3c"
+    ],
+    "content": "merge F3c onto master; decode-allow elaboration reads",
+    "note": "check-db76abf red at decode"
+  },
+  {
+    "id": "nullband3b2",
+    "mark": "✓",
+    "sha": "b4635dd",
+    "deps": [
+      "nullband3b"
+    ],
+    "content": "RepCanon Opt.gather_row, Opt codes",
+    "note": ""
+  },
+  {
+    "id": "nullband3b3",
+    "mark": "✓",
+    "sha": "3b84eb7",
+    "deps": [
+      "nullband3b"
+    ],
+    "content": "RepCanon key columns with nulls",
+    "note": ""
+  },
+  {
+    "id": "nullband3c2",
+    "mark": "✓",
+    "sha": "cce15f6",
+    "deps": [
+      "nullband3c"
+    ],
+    "content": "Rust CSV SH_OPT, CsvTest opt, TestNullband",
+    "note": "partial: TestIO red"
+  },
+  {
+    "id": "df-F8b",
+    "mark": "✓",
+    "sha": "ece54bd",
+    "deps": [
+      "df-F8"
+    ],
+    "content": "stratifiedSample, mkRandom, EmitC mix",
+    "note": ""
+  },
+  {
+    "id": "nullband3d",
+    "mark": "✓",
+    "sha": "030ac8b",
+    "deps": [
+      "nullband3b2"
+    ],
+    "content": "RepOrder null-least, RepCols/RepStruct/RepWF/GenKBits on Vals view",
+    "note": "RepOrder, RepCols green"
+  },
+  {
+    "id": "nullband3c3",
+    "mark": "✓",
+    "sha": "c314e6e",
+    "deps": [
+      "nullband3c2"
+    ],
+    "content": "TestIO 1+N csv path, TestNullband, encVals u1, PLAN",
+    "note": ""
+  },
+  {
+    "id": "mfix-listban",
+    "mark": "✓",
+    "sha": "8ea0a9d",
+    "deps": [
+      "mfix-f3c"
+    ],
+    "content": "listban gate: array rewrite of run-path toList, allow elaboration reads",
+    "note": "check-6592182 red"
+  },
+  {
+    "id": "df-F1c",
+    "mark": "✓",
+    "sha": "c9d3350",
+    "deps": [
+      "cf0e4cb"
+    ],
+    "content": "readSide checks .d against declared schema",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3e",
+    "mark": "✓",
+    "sha": "76f3e36",
+    "deps": [
+      "nullband3d"
+    ],
+    "content": "RepStruct, RepWF, GenKBits on Vals view",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-F1d",
+    "mark": "✓",
+    "sha": "ccc6958",
+    "deps": [
+      "cf0e4cb"
+    ],
+    "content": "obj V from reads any atom column",
+    "note": ""
+  },
+  {
+    "id": "fix-objOf",
+    "mark": "✓",
+    "sha": "18d98be",
+    "deps": [
+      "df-F1c"
+    ],
+    "content": "Table.objOf? terminates on missing column",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3f",
+    "mark": "✓",
+    "sha": "857289c",
+    "deps": [
+      "nullband3e",
+      "nullband3c3"
+    ],
+    "content": "merge 3c3, full build green on nullband chain",
+    "note": "runtime red: concat, inl°/inr°"
+  },
+  {
+    "id": "nullband3g",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "nullband3f"
+    ],
+    "content": "Opt.concat merges null bits",
+    "note": "in master via 805d8d7"
+  },
+  {
+    "id": "nullband3h",
+    "mark": "✓",
+    "sha": "a463aa4",
+    "deps": [
+      "nullband3f"
+    ],
+    "content": "inl°/inr° on 1+t band column",
+    "note": "inl° done; inr° -> 3h2"
+  },
+  {
+    "id": "nullband3g1",
+    "mark": "✓",
+    "sha": "a9c205a",
+    "deps": [
+      "nullband3f"
+    ],
+    "content": "segmented kscan: Kernel/Scan, KernelSpec, Rust, EmitC",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3h2",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "nullband3h"
+    ],
+    "content": "Vals.WF opt carries Enc.Valid; inr° on 1+t via where+gather",
+    "note": "superseded by 3h3 (owner: scan compare with all-ones)"
+  },
+  {
+    "id": "S8",
+    "mark": "✓",
+    "sha": "debfb19",
+    "deps": [],
+    "content": "float library definitions mean stddev correlation skewness zScore valueProportions describe daysBetween",
+    "note": "already in frameStat; PLAN updated"
+  },
+  {
+    "id": "nullband-pivot",
+    "mark": "✓",
+    "sha": "a4843b7",
+    "deps": [
+      "nullband3h"
+    ],
+    "content": "TestPivotDisk dummy answer inverted on nullband chain",
+    "note": "test expectations swapped; pivotT waits 3g2"
+  },
+  {
+    "id": "nullband3g2",
+    "mark": "✓",
+    "sha": "15b73ae",
+    "deps": [
+      "nullband3g1"
+    ],
+    "content": "kscan callers: Closure, KGather, ScanTest, EmitC, Plan, Run/Rep",
+    "note": "sonnet"
+  },
+  {
+    "id": "B5c2",
+    "mark": "✓",
+    "sha": "34e7c53",
+    "deps": [
+      "B5c"
+    ],
+    "content": "C emitter overflow error = Lean",
+    "note": "sonnet"
+  },
+  {
+    "id": "B5b1",
+    "mark": "✓",
+    "sha": "0fdbff0",
+    "deps": [
+      "B5a4"
+    ],
+    "content": "binary at prim row",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3h3",
+    "mark": "✓",
+    "sha": "8b84e97",
+    "deps": [
+      "nullband3g1",
+      "nullband-pivot"
+    ],
+    "content": "kscan op null (residual all-ones) + inr° on 1+t band",
+    "note": "op null only; inr° → 3h4"
+  },
+  {
+    "id": "nullband3g3",
+    "mark": "✓",
+    "sha": "4d04bb0",
+    "deps": [
+      "nullband3g2"
+    ],
+    "content": "RepCanon kscan pairs; red runtime guards; concat = one kscan stream",
+    "note": "RepCanon only; rest → 3g4/3g5"
+  },
+  {
+    "id": "nullband3h4",
+    "mark": "✓",
+    "sha": "3aed3f3",
+    "deps": [
+      "nullband3g2",
+      "nullband3h3"
+    ],
+    "content": "inr° on 1+t band via kscan .null + proofs",
+    "note": "run+guards; proofs → 3h5 after 3g4"
+  },
+  {
+    "id": "nullzero-design",
+    "mark": "✓",
+    "sha": "8ef8b0e",
+    "deps": [],
+    "content": "design: in-band null = residual 0, per-op null propagation",
+    "note": "fable"
+  },
+  {
+    "id": "B5b2",
+    "mark": "✓",
+    "sha": "f60582a",
+    "deps": [
+      "B5b1"
+    ],
+    "content": "at(k) ≜ ⟨𝟙,⊤k⟩ at; retire Tm.atPos; guards",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3g4",
+    "mark": "✓",
+    "sha": "0201d16",
+    "deps": [
+      "nullband3g3"
+    ],
+    "content": "RepCols + downstream hs ripple; Rel to guard-only red",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3g5",
+    "mark": "✓",
+    "sha": "5f39d79",
+    "deps": [
+      "nullband3g3"
+    ],
+    "content": "kscan stream lemma over nullable sources",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullzero-impl",
+    "mark": "✓",
+    "sha": "e541af1",
+    "deps": [
+      "nullband3g5"
+    ],
+    "content": "switch null code to residual 0 (foRNul, Coc.nulBlock, Rust is_nul); max/min order (A)",
+    "note": "partial 0398dfe; nullzero2 continues"
+  },
+  {
+    "id": "nullband3g6",
+    "mark": "✓",
+    "sha": "2bd49cd",
+    "deps": [
+      "nullband3g4",
+      "nullband3g5"
+    ],
+    "content": "concat = one kscan .first stream; delete shiftCol/catPlan",
+    "note": "Run green; laws in 3g6b"
+  },
+  {
+    "id": "B5b3",
+    "mark": "✓",
+    "sha": "82f6469",
+    "deps": [
+      "B5b2"
+    ],
+    "content": "lt ≜ dom(Λ(π₁∪π₂) at(0) ∩ π₁) − dom(π₁∩π₂); Tm.lt_den",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3g7",
+    "mark": "✓",
+    "sha": "05f45b3",
+    "deps": [
+      "nullband3g4"
+    ],
+    "content": "hs ripple RepTabArith onward; Rel to guard-only red",
+    "note": "green to RepBits"
+  },
+  {
+    "id": "B5b4",
+    "mark": "✓",
+    "sha": "1672b18",
+    "deps": [
+      "B5b3"
+    ],
+    "content": "ltAt t ↔ Obj.lt per ordered atom; lt_row_den without h",
+    "note": "sonnet"
+  },
+  {
+    "id": "B5b5",
+    "mark": "✓",
+    "sha": "b34db9e",
+    "deps": [
+      "B5b4"
+    ],
+    "content": "asc row = ascDen for intOrd atoms; asc → rowsProved",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3g6b",
+    "mark": "✓",
+    "sha": "e5b16d6",
+    "deps": [
+      "nullband3g6"
+    ],
+    "content": "concat read laws RepCols, RepSetOps, concatNulKeeps guards",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3g8",
+    "mark": "✓",
+    "sha": "66c394c",
+    "deps": [
+      "nullband3g7"
+    ],
+    "content": "hs ripple GenKBits onward; guard error texts",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3g9",
+    "mark": "✓",
+    "sha": "b8a90a7",
+    "deps": [
+      "nullband3g8",
+      "nullband3g6b"
+    ],
+    "content": "join 3g8+3g6b; downstream concat sites; lake build Rel green",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullband3h5",
+    "mark": "✓",
+    "sha": "a4e9457",
+    "deps": [
+      "nullband3g9",
+      "nullband3h4"
+    ],
+    "content": "inrConv on 1+t band + inrConv_wf; Rel test guards green",
+    "note": "sonnet"
+  },
+  {
+    "id": "tmmin-audit",
+    "mark": "✓",
+    "sha": "d695835",
+    "deps": [
+      "B5b"
+    ],
+    "content": "tm-minimal batch status after B5; anchors for B7/B9/B10 and leftovers",
+    "note": "fable"
+  },
+  {
+    "id": "S9",
+    "mark": "✓",
+    "sha": "5b9558e",
+    "deps": [],
+    "content": "S9 docs: architecture §1, §4.3, dataframe F4, PLAN",
+    "note": "PLAN 668"
+  },
+  {
+    "id": "B5d",
+    "mark": "✓",
+    "sha": "66ca7d9",
+    "deps": [],
+    "content": "Tm.leq/Tm.lt → defs over cmpRow; constructors deleted",
+    "note": "B5d2: fused row cmpRelRow"
+  },
+  {
+    "id": "B9a",
+    "mark": "✓",
+    "sha": "94525bb",
+    "deps": [],
+    "content": "permConv, Elab.convs, convOf name→name (decls only)",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10ab",
+    "mark": "✓",
+    "sha": "077fa2b",
+    "deps": [],
+    "content": "unproved list guard; row=def theorems filter/takewhile/tails/prefix/suffix",
+    "note": "merged ea7bb51"
+  },
+  {
+    "id": "B9b-e",
+    "mark": "✓",
+    "sha": "32ff518",
+    "deps": [
+      "B5d",
+      "B9a"
+    ],
+    "content": "B9 traversal changes (serial), PLAN 1834",
+    "note": "B9bc running (sonnet); B9d/B9e after"
+  },
+  {
+    "id": "B10cd",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "B10cd-D3e-asc"
+    ],
+    "content": "B10c: length/sum/flat/lt/asc/foldI… defs into Prim.prelude (PLAN 1962); B10d after",
+    "note": "opus plan /data/tmp/b10cd/plan.md, then sonnet tasks"
+  },
+  {
+    "id": "permConv-aop",
+    "mark": "✓",
+    "sha": "e3a0faa",
+    "deps": [
+      "relaop-whr"
+    ],
+    "content": "freyd relaop: rel_aop proof of perm° = perm",
+    "note": "freyd relaop-star, RelAop green; not in freyd master"
+  },
+  {
+    "id": "symrank2",
+    "mark": "✓",
+    "sha": "ab47b73",
+    "deps": [
+      "symrank"
+    ],
+    "content": "< and asc rows on sym read the database dictionary; symLt_holds/symAsc_holds",
+    "note": "fable advisor: dictionary in Code/Val or expansion"
+  },
+  {
+    "id": "relaop-whr",
+    "mark": "✓",
+    "sha": "e3a0faa",
+    "deps": [],
+    "content": "freyd Calc reads where, left fold, cat/snoc; permConv.aop",
+    "note": "freyd relaop-star, RelAop green; not in freyd master"
+  },
+  {
+    "id": "B10b2",
+    "mark": "✓",
+    "sha": "8d5f17e",
+    "deps": [
+      "B10ab"
+    ],
+    "content": "takewhileDef_den, tailsDef_den, starDef_den",
+    "note": "merged 53631dc"
+  },
+  {
+    "id": "nullband-merge",
+    "mark": "✓",
+    "sha": "805d8d7",
+    "deps": [
+      "nullband3h5"
+    ],
+    "content": "merge nullband line into master, resolve doc conflict, full build",
+    "note": "sonnet, main checkout"
+  },
+  {
+    "id": "ready-gate",
+    "mark": "✓",
+    "sha": "b42e9b0",
+    "deps": [],
+    "content": "cc-guard Stop hook enforces the 80% dispatch rule",
+    "note": "cc-guard master, installed"
+  },
+  {
+    "id": "nudge-fix",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "Stop hook allows one line after CLI empty-output nudge",
+    "note": "dropped: owner says nudges are fine"
+  },
+  {
+    "id": "symAsc-hb",
+    "mark": "✓",
+    "sha": "4a580d9",
+    "deps": [],
+    "content": "symAsc_holds at text level",
+    "note": "merged a81d242"
+  },
+  {
+    "id": "symrank3",
+    "mark": "✓",
+    "sha": "720ff57",
+    "deps": [],
+    "content": "< and asc at sym expand to rank over the program dictionary; Tm.symLt_den",
+    "note": "partial; rest in symrank4"
+  },
+  {
+    "id": "B10b-concat",
+    "mark": "✓",
+    "sha": "b6887db",
+    "deps": [],
+    "content": "concatDef_den; unproved empty",
+    "note": "merged a81d242"
+  },
+  {
+    "id": "kseen-wide",
+    "mark": "✓",
+    "sha": "2141ae7",
+    "deps": [],
+    "content": "one group-id rule; Rust agrees with Lean on wide unordered keys (PLAN 419)",
+    "note": "merged a81d242"
+  },
+  {
+    "id": "symrank4",
+    "mark": "✓",
+    "sha": "ceedb22",
+    "deps": [],
+    "content": "asc at sym via rank, instObj sym case, symLt_den/symAsc_den, delete Table.symLt/symAsc/symRanked",
+    "note": "sonnet, on 720ff57"
+  },
+  {
+    "id": "8.2b",
+    "mark": "✓",
+    "sha": "a425655",
+    "deps": [],
+    "content": "finish dense sum proofs; filler checked on read",
+    "note": "partial; 8.2c + filler advisor"
+  },
+  {
+    "id": "gate-decode",
+    "mark": "✓",
+    "sha": "eb8fe99",
+    "deps": [],
+    "content": "30 new decode-gate hits after nullband merge",
+    "note": "27/30; encVals rest in nullzero2"
+  },
+  {
+    "id": "df-M8c2",
+    "mark": "✓",
+    "sha": "026c704",
+    "deps": [],
+    "content": "native sym CSV columns",
+    "note": "own-format sym + dictionary stmt in df-M8c5"
+  },
+  {
+    "id": "df-M8c3",
+    "mark": "✓",
+    "sha": "33ae83a",
+    "deps": [],
+    "content": "native sum recipes still refused",
+    "note": "partial; rest df-M8c4"
+  },
+  {
+    "id": "nullzero2",
+    "mark": "✓",
+    "sha": "157b8cd",
+    "deps": [],
+    "content": "finish null=residual 0: RelRun/Rel build, sum theorem, max/min order",
+    "note": "partial; nullzero3 + nullmaxmin"
+  },
+  {
+    "id": "df-M8c4",
+    "mark": "✓",
+    "sha": "3e7d940",
+    "deps": [],
+    "content": "native non-band 1+S CSV, own-table sums, summand 1, asc key over list/sum",
+    "note": "partial; c7 c8 c9"
+  },
+  {
+    "id": "B9bc",
+    "mark": "✓",
+    "sha": "b170bc4",
+    "deps": [],
+    "content": "delete Tm.own and Tm.callCv: call carries cv; convTm self/derived",
+    "note": "WIP; B9bc2 continues"
+  },
+  {
+    "id": "df-M8c5",
+    "mark": "✓",
+    "sha": "767baad",
+    "deps": [],
+    "content": "native sym own-format output + dictionary statement",
+    "note": "partial; df-M8c6"
+  },
+  {
+    "id": "8.2c",
+    "mark": "✓",
+    "sha": "be1e4fc",
+    "deps": [],
+    "content": "dense sum ports RepWF/RepTabDiv/GenKBits/GenSound, tests, dead code",
+    "note": "partial; 8.2d"
+  },
+  {
+    "id": "nullzero3",
+    "mark": "✓",
+    "sha": "b4eec30",
+    "deps": [],
+    "content": "u1 flagged block width<=1, wf? per block, drop encVals fallback",
+    "note": "partial; nullzero5"
+  },
+  {
+    "id": "nullmaxmin",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "max/min null order on encoded column",
+    "note": "analysis only; nullmaxmin2"
+  },
+  {
+    "id": "B5d3",
+    "mark": "✓",
+    "sha": "9f323c5",
+    "deps": [],
+    "content": "native plan recipe for cmpRelRow; native gate red",
+    "note": "sonnet"
+  },
+  {
+    "id": "B9bc2",
+    "mark": "✓",
+    "sha": "96ae4eb",
+    "deps": [],
+    "content": "compile B9bc WIP: RelRun + ConvSpec/Den",
+    "note": "partial; B9bc3"
+  },
+  {
+    "id": "symrank5",
+    "mark": "✓",
+    "sha": "e5972c9",
+    "deps": [],
+    "content": "merge symrank4 onto B5d2; generic α ordering def",
+    "note": "merge; generic fix -> symrank6"
+  },
+  {
+    "id": "nullmaxmin2",
+    "mark": "✓",
+    "sha": "4cf6fe1",
+    "deps": [],
+    "content": "kscan max/min null order (nulFold)",
+    "note": "partial, unmerged; 3+4"
+  },
+  {
+    "id": "8.2d",
+    "mark": "✓",
+    "sha": "fb4ab1a",
+    "deps": [],
+    "content": "ValsB o: nullable summand columns, filler=null, WFOn",
+    "note": "partial, unmerged; 8.2e"
+  },
+  {
+    "id": "nullzero4",
+    "mark": "✓",
+    "sha": "765ed02",
+    "deps": [],
+    "content": "rewrite test/native/in own files at v8",
+    "note": "haiku"
+  },
+  {
+    "id": "nullzero5",
+    "mark": "✓",
+    "sha": "13eaef4",
+    "deps": [],
+    "content": "encoder least key from type; drop encVals fallback",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c6",
+    "mark": "✓",
+    "sha": "b9e271f",
+    "deps": [],
+    "content": "native own sym output: readOpt + writeLib prefix check",
+    "note": "sonnet"
+  },
+  {
+    "id": "B9bc3",
+    "mark": "✓",
+    "sha": "0e58ee1",
+    "deps": [],
+    "content": "RepStruct nuls_get fix; GenSound/EmitC/GenSoundTest on new call node",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullzero6",
+    "mark": "✓",
+    "sha": "92aa0fb",
+    "deps": [],
+    "content": "k fixtures unsorted at v8",
+    "note": "haiku"
+  },
+  {
+    "id": "symrank6",
+    "mark": "✓",
+    "sha": "80ed550",
+    "deps": [],
+    "content": "generic < at α: rank only at sym object",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c7",
+    "mark": "✓",
+    "sha": "133fb8f",
+    "deps": [],
+    "content": "native CSV non-band 1+S",
+    "note": "merge via df-M8c7m"
+  },
+  {
+    "id": "df-M8c8",
+    "mark": "✓",
+    "sha": "03440f4",
+    "deps": [],
+    "content": "native own read of sum columns",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c9",
+    "mark": "✓",
+    "sha": "adf496f",
+    "deps": [],
+    "content": "1+(N×N) canon: sem vs lean count",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin3",
+    "mark": "✓",
+    "sha": "0b9ee3b",
+    "deps": [],
+    "content": "max/min null: Lean chain from RepTabComp; undo stepCols refusal",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin4",
+    "mark": "✓",
+    "sha": "e9b021b",
+    "deps": [],
+    "content": "max/min null: Rust scan.rs + guards",
+    "note": "merges with nullmaxmin3"
+  },
+  {
+    "id": "8.2e",
+    "mark": "✓",
+    "sha": "6e10a32",
+    "deps": [],
+    "content": "dense sum: List/Plan generic, Rep* on WFOn to RepWF",
+    "note": "partial: run side"
+  },
+  {
+    "id": "df-M8c10",
+    "mark": "✓",
+    "sha": "0c938fb",
+    "deps": [],
+    "content": "1-summand count from tag in gather; kernel count",
+    "note": "superseded by 8.2g dense sums; keep-m8c10b 260a19f"
+  },
+  {
+    "id": "B9bc4",
+    "mark": "✓",
+    "sha": "69a4b2c",
+    "deps": [],
+    "content": "B9bc handoff items 5-8",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullzero7",
+    "mark": "✓",
+    "sha": "daf6742",
+    "deps": [],
+    "content": "lowKey = k==least only; decode gate as set",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c11",
+    "mark": "✓",
+    "sha": "ec13181",
+    "deps": [],
+    "content": "native own read refuses a 1 file with parts, as Lean",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c7m",
+    "mark": "✓",
+    "sha": "133fb8f",
+    "deps": [
+      "B9bc4"
+    ],
+    "content": "merge df-M8c7 onto master; native CSV write of a 1 side",
+    "note": "merge commit e78c4bb; built by df-M8c7m2"
+  },
+  {
+    "id": "8.2f",
+    "mark": "✓",
+    "sha": "088fb5c",
+    "deps": [],
+    "content": "8.2 Rep* proofs on ValsB/WFOn from 6e10a32",
+    "note": "partial"
+  },
+  {
+    "id": "symrank7",
+    "mark": "✓",
+    "sha": "27a70e8",
+    "deps": [],
+    "content": "asc at sym in generic def (numsAt .ranked)",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c7m2",
+    "mark": "✓",
+    "sha": "133fb8f",
+    "deps": [],
+    "content": "build+gate df-M8c7 merge e78c4bb",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8c10b",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "GenKBits gather_ok_of_* with M<2^63 + tagCount_ok; gate m8c9",
+    "note": "superseded by 8.2g dense sums; keep-m8c10b 260a19f"
+  },
+  {
+    "id": "nullzero8",
+    "mark": "✓",
+    "sha": "e541af1",
+    "deps": [],
+    "content": "hle from atom type at run-path encoders; TestNullband/RelRun green",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin5",
+    "mark": "✓",
+    "sha": "064240d",
+    "deps": [],
+    "content": "max/min over nullable 1+N column end to end",
+    "note": "partial: guards only"
+  },
+  {
+    "id": "8.2g",
+    "mark": "✓",
+    "sha": "76a6bce",
+    "deps": [],
+    "content": "8.2 Rep* proofs from 088fb5c; native cases on dense design",
+    "note": "partial"
+  },
+  {
+    "id": "nullmaxmin6",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "max/min row admits 1+N; Opt column reaches kscan nulFold; hF Or.inl proof",
+    "note": "no commit; handoff hnmm6"
+  },
+  {
+    "id": "B9d",
+    "mark": "✓",
+    "sha": "de83595",
+    "deps": [],
+    "content": "Tm.share -> nullary call",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin7",
+    "mark": "✓",
+    "sha": "2c5e033",
+    "deps": [],
+    "content": "kscan_nul_row (Opt sources with nulls, nulFold some)",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin8",
+    "mark": "✓",
+    "sha": "725d688",
+    "deps": [
+      "nullmaxmin7"
+    ],
+    "content": "stepOn/Tab.arithOp at 1+N, arithOp_den/wf, rowOK_arith; Elab numObj; guards",
+    "note": "part merged"
+  },
+  {
+    "id": "8.2h",
+    "mark": "✓",
+    "sha": "7f949dd",
+    "deps": [],
+    "content": "8.2 Rep* downstream proofs from 76a6bce",
+    "note": "part: RepOrder green; keep-82h"
+  },
+  {
+    "id": "8.2i",
+    "mark": "✓",
+    "sha": "e1afa6e",
+    "deps": [],
+    "content": "8.2 native side: EmitC/nativeIO on dense ValsB true layout",
+    "note": "part: EmitC dense; keep-82i"
+  },
+  {
+    "id": "wfsw1",
+    "mark": "✓",
+    "sha": "0cddb58",
+    "deps": [],
+    "content": "Rel.Wf switch step 1 (Known.WF; 136 decls)",
+    "note": "already done (lohi10)"
+  },
+  {
+    "id": "planaudit",
+    "mark": "✓",
+    "sha": "469463f",
+    "deps": [],
+    "content": "PLAN ⬜/🔄 lines checked vs git log + index",
+    "note": "sonnet"
+  },
+  {
+    "id": "8.2h2",
+    "mark": "✓",
+    "sha": "4d7d5ae",
+    "deps": [],
+    "content": "gather range lemma + Vals.nub_wf",
+    "note": "sonnet, from keep-82h"
+  },
+  {
+    "id": "8.2h3",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "Opt.shift_get, ColB.concat_get, concat_row/wf over ValsB o",
+    "note": "partial keep-82h3"
+  },
+  {
+    "id": "B9e",
+    "mark": "✓",
+    "sha": "32ff518",
+    "deps": [
+      "B9d"
+    ],
+    "content": "Tm.dem gains δ, var drops d",
+    "note": "partial keep-b9e"
+  },
+  {
+    "id": "8.2i2",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "Table.readVals dense summands + CSV null dense",
+    "note": "partial keep-82i2"
+  },
+  {
+    "id": "B9e-design",
+    "mark": "✓",
+    "sha": "78d9648",
+    "deps": [],
+    "content": "fable: δ rule for Tm.dem (arg/call, top-level, converse var)",
+    "note": "fable"
+  },
+  {
+    "id": "allocerr",
+    "mark": "✓",
+    "sha": "d1ed393",
+    "deps": [],
+    "content": "asc/sort/Sink alloc failure -> error",
+    "note": "sonnet"
+  },
+  {
+    "id": "6.13b",
+    "mark": "✓",
+    "sha": "e35876a",
+    "deps": [],
+    "content": "Enc.pos kernel side; delete tilCol/tilLongs",
+    "note": "sonnet"
+  },
+  {
+    "id": "colplain",
+    "mark": "✓",
+    "sha": "4715b56",
+    "deps": [],
+    "content": "fold colMap_plain/colPrefix_plain into _closed",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin9",
+    "mark": "✓",
+    "sha": "d59e97f",
+    "deps": [],
+    "content": "Tab.arithOp opt case + arithOp_den/wf row proof",
+    "note": "opus"
+  },
+  {
+    "id": "nullmaxmin10",
+    "mark": "✓",
+    "sha": "3ab4981",
+    "deps": [
+      "nullmaxmin9"
+    ],
+    "content": "Elab numObj/arithOk on 1+N, EmitC arithOpB, TestNullMaxMin guards",
+    "note": ""
+  },
+  {
+    "id": "8.2h4",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "restate Vals.gather_wf; ~40 Rep* callers",
+    "note": "restated in 8.2h3b df1559a"
+  },
+  {
+    "id": "allocerr2",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "8.2h",
+      "8.2i"
+    ],
+    "content": "coc_alloc / Enc.encode return Except (extern signature)",
+    "note": "opus plan /data/tmp/allocerr2/plan.md, then sonnet tasks"
+  },
+  {
+    "id": "6.13c",
+    "mark": "✓",
+    "sha": "a32a704",
+    "deps": [],
+    "content": "Enc.pos in Plan and C emitter",
+    "note": "sonnet"
+  },
+  {
+    "id": "8.2h3b",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "ValsB concat_row/concat_wf + 8.2h4 patch; RepCols + 9 importers green",
+    "note": "partial keep-82h3b"
+  },
+  {
+    "id": "8.2i3",
+    "mark": "✓",
+    "sha": "0f68f6c",
+    "deps": [],
+    "content": "CSV write non-band 1+S (dense→tag/pos/where), regen test/native/in, run TestNative/TestTable; handoff /data/tmp/h82i2; EmitC catSideB/catSummandB still sparse vs Lean dense ValsB.concat",
+    "note": "keep-82i3, merges with the 8.2 chain"
+  },
+  {
+    "id": "planaudit2",
+    "mark": "✓",
+    "sha": "1af2913",
+    "deps": [],
+    "content": "verify PLAN 366/610/906/1062; fix stale; do small open one",
+    "note": "sonnet"
+  },
+  {
+    "id": "I3b",
+    "mark": "✓",
+    "sha": "676d3a5",
+    "deps": [
+      "B9e"
+    ],
+    "content": "runtime .defn: emit only the kernel copy, no second parametrized constant (Expand.walk pend / n.io rts)",
+    "note": ""
+  },
+  {
+    "id": "sortmerge-design",
+    "mark": "✓",
+    "sha": "20e180e",
+    "deps": [],
+    "content": "fable: merge of sorted Tabs + member test on sorted X as kernel composition (unionDiff per round)",
+    "note": "fable"
+  },
+  {
+    "id": "8.2h3c",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "RepStruct inl/inr over ValsB true, RepTabArith, then TabDiv/WF/WFOps/GenK*/Where/Sums/Bits green",
+    "note": "partial keep-82h3c"
+  },
+  {
+    "id": "sortmerge",
+    "mark": "✓",
+    "sha": "479af7d",
+    "deps": [],
+    "content": "rank(X) bisection + Tab.mergeDiff (brief /data/tmp/hsortmerge/brief.md); measure vs unionDiff before wiring muLin/star",
+    "note": " based on keep-82h3d"
+  },
+  {
+    "id": "B9e2",
+    "mark": "✓",
+    "sha": "32ff518",
+    "deps": [],
+    "content": "GenSound args/argGen ∀ ds, ConvSpec dem clauses over δ ds; RelRun Rel green (handoff /data/tmp/hb9e/handoff.md)",
+    "note": "keep-b9e2 2c5fd08; TestFrameBench timeout"
+  },
+  {
+    "id": "8.2h3d",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "RepStruct green (5 error sites), then RepTabDiv/WF/WFOps/GenKBits/GenKFold/Where/Sums/Bits/GenKFix (handoff /data/tmp/h82h3c/handoff.md)",
+    "note": "partial keep-82h3d"
+  },
+  {
+    "id": "B9e3",
+    "mark": "✓",
+    "sha": "32ff518",
+    "deps": [],
+    "content": "TestFrameBench benchN heartbeat timeout after B9e: find the reduction, fix at root; RelRun Rel green (handoff /data/tmp/hb9e2/handoff.md)",
+    "note": "sonnet"
+  },
+  {
+    "id": "nullmaxmin11",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "nullmaxmin10"
+    ],
+    "content": "pointwise arith on 1+N propagates null (plus/minus/times…): Tab.arithOp + Elab + EmitC + proof + guards",
+    "note": "superseded by nullmaxmin11b 41044e2"
+  },
+  {
+    "id": "nullmaxmin11b",
+    "mark": "✓",
+    "sha": "41044e2",
+    "deps": [
+      "nullmaxmin10"
+    ],
+    "content": "+,-,* on 1+N propagate null by kscan composition (null carrier min, fill max, stepCols, min) per /data/tmp/hnmm11/handoff.md",
+    "note": "partial keep-nmm11b"
+  },
+  {
+    "id": "preshare",
+    "mark": "✓",
+    "sha": "4d71ebe",
+    "deps": [],
+    "content": "every whole-tree Pre walk shared by address (nilSrcs, lits, occ, onDemand), as demVars/rewriteShared",
+    "note": "sonnet"
+  },
+  {
+    "id": "8.2h3e",
+    "mark": "✓",
+    "sha": "fad69cf",
+    "deps": [],
+    "content": "RepTabDiv, then RepWF/WFOps/GenKBits/GenKFold/Where/Sums/Bits/GenKFix green (handoff /data/tmp/h82h3d/handoff.md)",
+    "note": "opus"
+  },
+  {
+    "id": "B10c-design",
+    "mark": "✓",
+    "sha": "7ae95de",
+    "deps": [],
+    "content": "fable: base literal in fold text, num-restricted object var, float sum, which Tm constructors stay prims (arch §1/§7)",
+    "note": "fable"
+  },
+  {
+    "id": "nullmaxmin11c",
+    "mark": "✓",
+    "sha": "41044e2",
+    "deps": [],
+    "content": "kscan_nul_row/kscanCols_fill post chain, arithOvf_keep, nulStepCol_den; RelRun Rel green (handoff /data/tmp/hnmm11b/handoff.md)",
+    "note": "opus"
+  },
+  {
+    "id": "B10c12",
+    "mark": "✓",
+    "sha": "cd2cb89",
+    "deps": [],
+    "content": "B10c1+B10c2 per /data/tmp/hb10c/brief.md",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10c-q",
+    "mark": "✓",
+    "sha": "884851b",
+    "deps": [],
+    "content": "decide B10c Q1 (base 0 at object without 0) and Q3 (Def_den theorem target), write into arch doc",
+    "note": "fable"
+  },
+  {
+    "id": "sortmerge2",
+    "mark": "✓",
+    "sha": "479af7d",
+    "deps": [],
+    "content": "empty-X rank segfault, guards for all Obj shapes (handoff /data/tmp/hsortmerge/handoff.md)",
+    "note": "keep-sortmerge2, merges with 8.2 chain"
+  },
+  {
+    "id": "8.2i4",
+    "mark": "✓",
+    "sha": "e3a388a",
+    "deps": [],
+    "content": "readValsB checks a dense summand unowned rows are filler; CSV extern gathered value column checked against crate",
+    "note": "keep-82i4, merges with 8.2 chain"
+  },
+  {
+    "id": "8.2h3f",
+    "mark": "✓",
+    "sha": "8baa1d3",
+    "deps": [],
+    "content": "GenKBits, GenKFold, RepWhere, RepSums, RepBits, GenKFix green; lake build RelRun Rel (handoff /data/tmp/h82h3e/handoff.md)",
+    "note": "opus"
+  },
+  {
+    "id": "B10c2b",
+    "mark": "✓",
+    "sha": "14d7f14",
+    "deps": [],
+    "content": "finish B10c2: RelRun green, PreludeDfn theorems, tests, timing (handoff /data/tmp/hb10c12/handoff.md)",
+    "note": "sonnet"
+  },
+  {
+    "id": "rcdiag",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "root cause of the (← e, ← e) double free in Vals.rank: Lean codegen bug or an extern borrow/ownership mismatch; minimal repro; sweep the class",
+    "note": "Lean 4.28.0 codegen bug; sweep 0 sites; /data/tmp/rcdiag"
+  },
+  {
+    "id": "8.2h3g",
+    "mark": "✓",
+    "sha": "e419b8e",
+    "deps": [],
+    "content": "RepChecks/Canon + RepCast green on keep-82h3f + master",
+    "note": "opus"
+  },
+  {
+    "id": "8.2h3h",
+    "mark": "✓",
+    "sha": "ccf9136",
+    "deps": [],
+    "content": "EmitC readOpt, TestSum/Quicksort/TopProd/Hylo/Edit/Arith guards, TestFrameApp, TestIO on keep-82h3f + keep-82i3",
+    "note": "sonnet"
+  },
+  {
+    "id": "8.2i5",
+    "mark": "✓",
+    "sha": "e76a5fe",
+    "deps": [],
+    "content": "move Opt.filler (RepCanon) into the run core so Table.fillBad reads it instead of restating null-except-general",
+    "note": "mech haiku, from keep-82i4"
+  },
+  {
+    "id": "8.2h3i",
+    "mark": "✓",
+    "sha": "64e3058",
+    "deps": [],
+    "content": "ValsB.cellsOkOn (Bool WFOn over owned rows, general filler test) replaces cellsOk refusal; runtime guards TestSum, Quicksort, TopProd, Hylo, Edit, Arith green",
+    "note": "opus, from keep-82h3h"
+  },
+  {
+    "id": "B10c2c",
+    "mark": "✓",
+    "sha": "2e71c15",
+    "deps": [],
+    "content": "finish B10c2: openSrc verified, test opens, Edit/Orders universe errors, RelRun Rel green, timings, avgS",
+    "note": "sonnet, from keep-b10c2b"
+  },
+  {
+    "id": "8.2h3j",
+    "mark": "✓",
+    "sha": "49fb3c3",
+    "deps": [],
+    "content": "kasc .cells reads a null lo/hi row as the empty cell (Lean body, Rust qlean_k_asc, Verify.ascKey, RepCanon codes_of_unowned); Quicksort, TestHylo, Test/Arith green",
+    "note": "opus, from keep-82h3i"
+  },
+  {
+    "id": "cc-cdrewrite",
+    "mark": "✓",
+    "sha": "50d34f6",
+    "deps": [],
+    "content": "cc-guard: rewrite a leading cd into the agent own worktree away via updatedInput instead of refusing (306 refusals on 11-23)",
+    "note": "50d34f6 committed, not deployed: guard-test 76 failures to baseline first"
+  },
+  {
+    "id": "cc-quietlog",
+    "mark": "✓",
+    "sha": "20f7031",
+    "deps": [],
+    "content": "cc-guard Quiet: blanked main-thread text appended to rel-dash log; nudge turns (silent_turn_reminder) count as unasked; guard-test baseline",
+    "note": "sonnet"
+  },
+  {
+    "id": "cc-dashcounts",
+    "mark": "✓",
+    "sha": "77f7567",
+    "deps": [],
+    "content": "dashboard: live worktree count and hook-refusal count (today, last hour, top 3 kinds)",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8d-T1",
+    "mark": "✓",
+    "sha": "13b8ebc",
+    "deps": [],
+    "content": "injConvB: inl°/inr° in Plan.nodeB",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8d-T2",
+    "mark": "✓",
+    "sha": "33191af",
+    "deps": [],
+    "content": "uncatB: cat° recipe in Plan.rowB",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-L0",
+    "mark": "✓",
+    "sha": "d101dc7",
+    "deps": [],
+    "content": "rename Tm.ltDef_den/leqDef_den to cmpDef_*",
+    "note": "haiku mech"
+  },
+  {
+    "id": "B10cd-C3",
+    "mark": "✓",
+    "sha": "15bc5dd",
+    "deps": [],
+    "content": "length, sum as prelude text",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-design",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "fable: O1 est text, O2 lt/le, O3 universe rows",
+    "note": "fable"
+  },
+  {
+    "id": "allocerr2-design",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "fable: O1 Except reach (61 modules), O2 answer alloc, O3 doc",
+    "note": "fable; T1-T12 wait on it"
+  },
+  {
+    "id": "sandbox-size",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "report which settings entries make the sandbox mount list 186 KB (limit 131 KB) and the edit that fixes it",
+    "note": "sonnet read-only; owner edits settings"
+  },
+  {
+    "id": "allocerr2-T1",
+    "mark": "✓",
+    "sha": "f774836",
+    "deps": [],
+    "content": "Rust Sink/coc_alloc fallible; Err to Except.error or die; checked Layout",
+    "note": "sonnet (fable O1=C: T2-T11 deleted)"
+  },
+  {
+    "id": "allocerr2-T13",
+    "mark": "✓",
+    "sha": "c4e7e96",
+    "deps": [],
+    "content": "architecture card: Lean body .ok vs Rust alloc .error stated once",
+    "note": "haiku mech"
+  },
+  {
+    "id": "df-M8d-T6",
+    "mark": "✓",
+    "sha": "d8b42ed",
+    "deps": [],
+    "content": "rowB recipes for tau, prefix, suffix (last/init/tail/perm reach native)",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8d-T7",
+    "mark": "✓",
+    "sha": "bdb08c9",
+    "deps": [],
+    "content": "CSV writer: top-level N to 1 output (all-positions table row count)",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8d-T4",
+    "mark": "✓",
+    "sha": "25b9c9a",
+    "deps": [],
+    "content": "re-run dfm8d probe.sh on master; recipes for every remaining refusal",
+    "note": "sonnet"
+  },
+  {
+    "id": "allocerr2-T12",
+    "mark": "✓",
+    "sha": "d5eacd1",
+    "deps": [],
+    "content": "PLAN.md 968-975 records the allocerr2 decision (O1=C, O2 accept, O3 card)",
+    "note": "haiku mech"
+  },
+  {
+    "id": "B10cd-C4",
+    "mark": "✓",
+    "sha": "5064dfd",
+    "deps": [],
+    "content": "C4 of /data/tmp/b10cd/plan.md on top of C3",
+    "note": "sonnet"
+  },
+  {
+    "id": "df-M8d-T5",
+    "mark": "✓",
+    "sha": "826c9d0",
+    "deps": [],
+    "content": "master make native + tradeApp relc c + ldd green",
+    "note": "verified on master: 11/11 df outputs plan, run, diff, ldd clean; agent fixes superseded by T7/T4"
+  },
+  {
+    "id": "B10cd-O5",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "fable: asc text at an undeclared product object (> via cmpRelRow needs a universe)",
+    "note": "fable"
+  },
+  {
+    "id": "B10cd-C6-freyd",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "check freyd relaop (estMap) still builds without Op.est at 62e6f02",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-C3-fix",
+    "mark": "✓",
+    "sha": "8c730a1",
+    "deps": [],
+    "content": "master red after C3: TestFusedM ran at Q, Kern45 sum vs Rel.Tab.sum",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-C7",
+    "mark": "✓",
+    "sha": "4c0c5b9",
+    "deps": [
+      "B10cd-C5"
+    ],
+    "content": "< ≤ at a non-atom = Tm.cmpDef c U (decide-O5.md C7)",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-C4b",
+    "mark": "✓",
+    "sha": "abc4978",
+    "deps": [
+      "B10cd-C7"
+    ],
+    "content": "apply C4-prelude.patch, C4 tests, docs",
+    "note": "branch keep-b10cd-c4b; merges with D3e-asc"
+  },
+  {
+    "id": "B10cd-D1",
+    "mark": "✓",
+    "sha": "f29ea66",
+    "deps": [],
+    "content": "D1 body constants of the rows definitions (plan.md)",
+    "note": "opus"
+  },
+  {
+    "id": "B10cd-D2a",
+    "mark": "✓",
+    "sha": "0e02c2f",
+    "deps": [],
+    "content": "D2a Prim.native and the cut derived from the signature",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3a",
+    "mark": "✓",
+    "sha": "fde984b",
+    "deps": [],
+    "content": "D3a ran nil front binding theorems",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3b",
+    "mark": "✓",
+    "sha": "35de828",
+    "deps": [],
+    "content": "D3b flat foldI",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3c",
+    "mark": "✓",
+    "sha": "6cd2ac7",
+    "deps": [],
+    "content": "D3c filter takewhile",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3d",
+    "mark": "✓",
+    "sha": "ea8d9ce",
+    "deps": [],
+    "content": "D3d tails prefix suffix",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3e1",
+    "mark": "✓",
+    "sha": "90f4702",
+    "deps": [],
+    "content": "D3e concat star",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3e2",
+    "mark": "✓",
+    "sha": "e781692",
+    "deps": [],
+    "content": "D3e length sum",
+    "note": "renames only; length/sum den folded into D3d-tails (literal den lemma)"
+  },
+  {
+    "id": "df-M8d-T3",
+    "mark": "✓",
+    "sha": "1a9da59",
+    "deps": [],
+    "content": "merge keep-dfm8d-t3: tradeApp in the make native gate",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D2b",
+    "mark": "✓",
+    "sha": "41bc1c1",
+    "deps": [
+      "B10cd-D3a",
+      "B10cd-D3b",
+      "B10cd-D3c",
+      "B10cd-D3d",
+      "B10cd-D3e1",
+      "B10cd-D3e2",
+      "B10cd-D3a-front",
+      "B10cd-D3d-unhex"
+    ],
+    "content": "D2b: the universe cut for every num-row",
+    "note": "D2b input: starDef_den needs hU : ρ 0 B B = 𝟙 (α universe full); D2b decides whether a bounded α universe needs a bounded-universe star; foldIDef_den needs hU0,hU1 (ι, β universes = 𝟙), length/sum likewise"
+  },
+  {
+    "id": "B10cd-C5",
+    "mark": "✓",
+    "sha": "8181cea",
+    "deps": [
+      "B10cd-D2b"
+    ],
+    "content": "C5 (plan.md)",
+    "note": ""
+  },
+  {
+    "id": "B10cd-D3e-asc",
+    "mark": "✓",
+    "sha": "e96e272",
+    "deps": [
+      "B10cd-C4b"
+    ],
+    "content": "D3e asc binding theorem (opus)",
+    "note": ""
+  },
+  {
+    "id": "B10cd-D3a-front",
+    "mark": "✓",
+    "sha": "b461fa6",
+    "deps": [],
+    "content": "front text parses as (∋ − ∋)(Q − Q°): fix precedence, prove frontDef_den",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-D3d-tails",
+    "mark": "✓",
+    "sha": "9ff20cd",
+    "deps": [],
+    "content": "tailsDef_den: den lemmas for generated literals, step off []",
+    "note": "partial: literal den lemmas, tailsFold_row; blocked on Gen.unhex in module"
+  },
+  {
+    "id": "B10cd-D3d-unhex",
+    "mark": "✓",
+    "sha": "3a53bc9",
+    "deps": [],
+    "content": "Gen.unhex spec lemma (any hex literal); close tails/length/sum _den",
+    "note": "opus; chose B (general spec) over A (special-case 0 in generator) and C (rewrite unhex)"
+  },
+  {
+    "id": "B10cd-D4",
+    "mark": "✓",
+    "sha": "870af69",
+    "deps": [
+      "B10cd-D2b"
+    ],
+    "content": "D4: PreludeDen gate reads the body constant; comments/docs on the one .prim rule",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-callE-err",
+    "mark": "✓",
+    "sha": "7d0da6e",
+    "deps": [
+      "B10cd-D2b"
+    ],
+    "content": "callE fallback swallows internal errors; fall back only on a typed refusal",
+    "note": "opus; from D2b report"
+  },
+  {
+    "id": "sa-7",
+    "mark": "✓",
+    "sha": "5755213",
+    "deps": [],
+    "content": ".gitattributes RELK.txt merge=union (session analysis item 7)",
+    "note": "haiku"
+  },
+  {
+    "id": "B10cd-C7fix",
+    "mark": "✓",
+    "sha": "2d4896c",
+    "deps": [
+      "B10cd-C7"
+    ],
+    "content": "cmpTest reads prelude lt/le by full name, only at non-atoms (build10 red)",
+    "note": "sonnet"
+  },
+  {
+    "id": "B10cd-catchall",
+    "mark": "✓",
+    "sha": "0384c21",
+    "deps": [
+      "B10cd-callE-err"
+    ],
+    "content": "Elab test and Expand form trials catch only their refusal; take internal error",
+    "note": "opus"
+  },
+  {
+    "id": "MRG-1",
+    "mark": "✓",
+    "sha": "9397de7",
+    "deps": [],
+    "content": "Vals.cmpRows_spec, Vals.rank_spec (RepMerge)",
+    "note": "ready.md; sonnet"
+  },
+  {
+    "id": "MRG-2",
+    "mark": "✓",
+    "sha": "f436b04",
+    "deps": [
+      "MRG-1"
+    ],
+    "content": "Tab.mergeDiff_holds",
+    "note": "abstract part done (keep-mrg2); word-level steps → MRG-2b (opus)"
+  },
+  {
+    "id": "MRG-3",
+    "mark": "✓",
+    "sha": "d9d6194",
+    "deps": [
+      "MRG-2"
+    ],
+    "content": "muLin/star use unionDiffSel",
+    "note": "d9d6194 kept (keep-mrg3), not merged: muGrow 1.18→1.62 s; MRG-3b profiles"
+  },
+  {
+    "id": "TOP-P",
+    "mark": "✓",
+    "sha": "588a4cd",
+    "deps": [],
+    "content": "GenK.top reads the pairs a meet hands it",
+    "note": "ready.md; sonnet"
+  },
+  {
+    "id": "TOARR",
+    "mark": "✓",
+    "sha": "910ff29",
+    "deps": [],
+    "content": "Tab.toArray/toList implemented_by → @[csimp]",
+    "note": "ready.md; sonnet"
+  },
+  {
+    "id": "PF-DIV",
+    "mark": "✓",
+    "sha": "8dcd5ba",
+    "deps": [],
+    "content": "ldivDen/rdivDen point-free",
+    "note": "ready.md; sonnet"
+  },
+  {
+    "id": "BANG",
+    "mark": "✓",
+    "sha": "e1c3c7b",
+    "deps": [],
+    "content": "no ! indexing in overStep/fitConst/hex/emit",
+    "note": "ready.md; sonnet"
+  },
+  {
+    "id": "PANIC",
+    "mark": "✓",
+    "sha": "f91221f",
+    "deps": [],
+    "content": "Ew.intStep/bitStep panic! → Kernel.stop",
+    "note": "ready.md; sonnet"
+  },
+  {
+    "id": "MARKS",
+    "mark": "✓",
+    "sha": "05eac39",
+    "deps": [],
+    "content": "27 stale plan lines marked with shas",
+    "note": "ready.md; haiku"
+  },
+  {
+    "id": "DEAD",
+    "mark": "✓",
+    "sha": "6d13b19",
+    "deps": [
+      "MRG-1",
+      "TOP-P",
+      "TOARR",
+      "PF-DIV",
+      "BANG",
+      "PANIC"
+    ],
+    "content": "unreferenced declarations since 7.4b",
+    "note": "r1 blocked: stale index (lean-refactor index builds the red tests). Keep: @[csimp] *_eq_impl, RepSymRank"
+  },
+  {
+    "id": "B10cd-asc-gen",
+    "mark": "✓",
+    "deps": [
+      "B10cd-D3e-asc"
+    ],
+    "sha": "a413b79",
+    "content": "elaborator builds asc through cmpTest/cmpDef so prelude.asc.body is generic over B (today fixed at i64 by the num-constrained < row)",
+    "note": "WIP keep-asc-gen: bodies generic; TestCmpMeet red → asc-gen2 (decided A: instObj rewrites cmpDef lt/le text to the row at integer atoms; floats unchanged, Q2 open)"
+  },
+  {
+    "id": "B10cd-asc-red",
+    "mark": "✓",
+    "deps": [
+      "B10cd-D3e-asc"
+    ],
+    "sha": "d7c0851",
+    "content": "build13 red after D3e-asc+C4b: TestGenericN, TestFrameScale, TestFrameUnbounded (timeout), TestIO (asc on sym refused)",
+    "note": "TestIO fixed; TestGenericN/FrameScale/FrameUnbounded: asc definition built over unsegmented ovar universe (cross blow-up) → B10cd-asc-red2"
+  },
+  {
+    "id": "cc-idxwt",
+    "mark": "✓",
+    "deps": [],
+    "sha": "f2fbe27",
+    "content": "lean-refactor index fails in seeded worktrees (.lake mixes two builds; 4 agents reported)",
+    "note": "lean-refactor: rebuildMixed before index children (one lake build of stale modules); success path unverified because master red; seed .lake only from a quiet main"
+  },
+  {
+    "id": "PF-GATE",
+    "mark": "✓",
+    "deps": [],
+    "sha": "db61a46",
+    "content": "pointfree gate flags only Exists in a body; a ∀/¬ pointwise body (diffDen, Den.lean:50) passes",
+    "note": "from PF-DIV design"
+  },
+  {
+    "id": "FREYD-DIV",
+    "mark": "✓",
+    "deps": [
+      "PF-DIV"
+    ],
+    "sha": "576c848 (freyd)",
+    "content": "freyd relaop/RelAop/Core.lean: rdiv_eq/ldiv_eq rfl lines after rel sha bump (text in /data/tmp/ready/pfdiv.md)",
+    "note": ""
+  },
+  {
+    "id": "PF-25",
+    "mark": "✓",
+    "deps": [
+      "PF-GATE"
+    ],
+    "sha": "",
+    "content": "25 Rel.Lang pointwise bodies the new gate flags: triage (denotation itself vs rewrite) and briefs",
+    "note": "triage → /data/tmp/ready/pf25.md: A=1 (stepDen), B=18 in 4 batches, C=6 in 2"
+  },
+  {
+    "id": "B10cd-asc-red2",
+    "mark": "✓",
+    "deps": [
+      "B10cd-asc-red"
+    ],
+    "sha": "0b2dc3e",
+    "content": "asc .prim rule: an ovar with seg/num undecided must not choose the definition q (cross blow-up in TestGenericN:110, TestFrameScale:72, TestFrameUnbounded:11)",
+    "note": ""
+  },
+  {
+    "id": "PF25-B1",
+    "mark": "✓",
+    "deps": [
+      "PF-25"
+    ],
+    "sha": "d3a8a0a",
+    "content": "defeq rewrites (7)",
+    "note": "brief /data/tmp/ready/pf25.md"
+  },
+  {
+    "id": "PF25-B2",
+    "mark": "✓",
+    "deps": [
+      "PF-25"
+    ],
+    "sha": "254f372",
+    "content": "partial-function graphs (5)",
+    "note": "brief /data/tmp/ready/pf25.md"
+  },
+  {
+    "id": "PF25-B3",
+    "mark": "✓",
+    "deps": [
+      "PF-25"
+    ],
+    "sha": "ec041d9",
+    "content": "pair plumbing: atOn foldIDen flatDen ordDen",
+    "note": "brief /data/tmp/ready/pf25.md"
+  },
+  {
+    "id": "PF25-B4",
+    "mark": "✓",
+    "deps": [
+      "PF-25"
+    ],
+    "sha": "35d71ee",
+    "content": "nulStep, mapDen with proofs (opus)",
+    "note": "brief /data/tmp/ready/pf25.md"
+  },
+  {
+    "id": "PF25-C1",
+    "mark": "✓",
+    "deps": [
+      "PF-25"
+    ],
+    "sha": "95ee1a1",
+    "content": "Core.Rel.diff; diffDen froundDen",
+    "note": "brief /data/tmp/ready/pf25.md"
+  },
+  {
+    "id": "PF25-C2",
+    "mark": "✓",
+    "deps": [
+      "PF-25"
+    ],
+    "sha": "86cc396",
+    "content": "memDen leaf; lamDen via rdiv, EDen, Tm.den, Tm.argDen",
+    "note": "brief /data/tmp/ready/pf25.md"
+  },
+  {
+    "id": "cc-idxattr",
+    "mark": "✓",
+    "deps": [],
+    "sha": "ee51c5c (lean-refactor idxattr)",
+    "content": "lean-refactor index: decl_range l1 includes every leading @[...] attribute; use_site counts attribute references (@[csimp] lhs/rhs, @[simp] sets) and private-proof uses",
+    "note": "found by DEAD r1"
+  },
+  {
+    "id": "PF25-fix",
+    "mark": "✓",
+    "sha": "353970d",
+    "deps": [
+      "PF25-C2"
+    ],
+    "content": "GenSound:945/1067, PreludeDfn:163 after PF25 merges",
+    "note": "sonnet"
+  },
+  {
+    "id": "MRG-3b",
+    "mark": "✓",
+    "sha": "593a8f8",
+    "deps": [],
+    "content": "profile MRG-3 muGrow slowdown, fix, re-measure",
+    "note": "sonnet"
+  },
+  {
+    "id": "PF25-fix2",
+    "mark": "✓",
+    "sha": "29e494b",
+    "deps": [],
+    "content": "PreludeOrd Tm.le_row_den through ordDen_iff (build16 red)",
+    "note": "sonnet"
+  },
+  {
+    "id": "DEC-1",
+    "mark": "✓",
+    "sha": "edd266b",
+    "deps": [],
+    "content": "decode gate red: Opt.nuls/fill decide Enc.WF at run time (77 roots); rowsImpl bypasses Arr.get leaf (TOARR)",
+    "note": "sonnet"
+  },
+  {
+    "id": "DEC-2",
+    "mark": "✓",
+    "sha": "7e0380d",
+    "deps": [],
+    "content": "decode gate: Table.leafFill/fillBad read through Opt.get/Arr.get; rowsImpl per-element Enc.get is O(blocks) → reader leaf with hoisted starts",
+    "note": "sonnet"
+  },
+  {
+    "id": "READY2",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "next ready list (ready2.md) from PLAN/architecture/dfplan/allow lists",
+    "note": "opus, read-only"
+  },
+  {
+    "id": "NAT-L",
+    "mark": "✓",
+    "sha": "c77d136",
+    "deps": [],
+    "content": "ready2.md §NAT-L",
+    "note": ""
+  },
+  {
+    "id": "NAT-P",
+    "mark": "✓",
+    "sha": "f52983c",
+    "deps": [],
+    "content": "ready2.md §NAT-P",
+    "note": "merged via NAT-DRY c83e91e"
+  },
+  {
+    "id": "NAT-S",
+    "mark": "✓",
+    "sha": "86a808c",
+    "deps": [],
+    "content": "ready2.md §NAT-S",
+    "note": ""
+  },
+  {
+    "id": "NAT-F",
+    "mark": "✓",
+    "sha": "3ff1cba",
+    "deps": [],
+    "content": "ready2.md §NAT-F",
+    "note": "star, loop native; ymd open (Q4)"
+  },
+  {
+    "id": "LISTBAN-IR",
+    "mark": "✓",
+    "sha": "29a59bc",
+    "deps": [],
+    "content": "ready2.md §LISTBAN-IR",
+    "note": ""
+  },
+  {
+    "id": "PF-VERB",
+    "mark": "✓",
+    "sha": "df975a4",
+    "deps": [],
+    "content": "ready2.md §PF-VERB",
+    "note": "merged 8ce8ede"
+  },
+  {
+    "id": "PF-EST",
+    "mark": "✓",
+    "sha": "8334bf8",
+    "deps": [],
+    "content": "ready2.md §PF-EST",
+    "note": ""
+  },
+  {
+    "id": "PF-FOLD",
+    "mark": "✓",
+    "sha": "00924e1",
+    "deps": [],
+    "content": "ready2.md §PF-FOLD",
+    "note": "merged d1c1d31"
+  },
+  {
+    "id": "PF-ROWS",
+    "mark": "✓",
+    "sha": "c6218a8",
+    "deps": [],
+    "content": "ready2.md §PF-ROWS",
+    "note": "loopDen stays pointwise until PF-FOLD has a fold with input start"
+  },
+  {
+    "id": "MARKS2",
+    "mark": "✓",
+    "sha": "f4c240e",
+    "deps": [],
+    "content": "ready2.md §MARKS2",
+    "note": "architecture:693 Tm inl/inr/mem line left: no sha found"
+  },
+  {
+    "id": "NAT-DRY",
+    "mark": "✓",
+    "sha": "c83e91e",
+    "deps": [],
+    "content": "EmitC: replace NAT-S bumpConsB/mergeCatB by NAT-L consB/catTabB; TestNativeL/S/P use TestNative.writesAgree",
+    "note": ""
+  },
+  {
+    "id": "PF-EST-fix",
+    "mark": "✓",
+    "sha": "efc7d25",
+    "deps": [],
+    "content": "repair estDen/frontDen consumers (PreludeDfn) after PF-EST; full build green",
+    "note": ""
+  },
+  {
+    "id": "PF-FOLD2",
+    "mark": "✓",
+    "sha": "00924e1",
+    "deps": [],
+    "content": "finish PF-FOLD from keep-pffold-wip: foldIDen_iff, foldDen/foldrDen consumers, build Rel",
+    "note": "merged d1c1d31"
+  },
+  {
+    "id": "LOOP-FOLD",
+    "mark": "✓",
+    "sha": "71c9e17",
+    "deps": [
+      "PF-FOLD2"
+    ],
+    "content": "loopDen as foldIDen (Te = diagonal, TS = ⟨π₁≫π₁,(π₁≫π₂×𝟙)≫T⟩), off pointfree-allow",
+    "note": ""
+  },
+  {
+    "id": "CD-SHARE",
+    "mark": "✓",
+    "sha": "ce8765f",
+    "deps": [],
+    "content": "test/TestCompile.lean still matches removed Tm.share (B9d); port to slot = nullary call",
+    "note": "check22 red at compile-diff"
+  },
+  {
+    "id": "PF-AT",
+    "mark": "✓",
+    "sha": "80f0815",
+    "deps": [],
+    "content": "pointfree gate flags Rel.Lang.atDen (graph (·[k]?) ≫ (graph some)°) — fix gate rule or body",
+    "note": "check23 red at pointfree"
+  },
+  {
+    "id": "CHESS-SMALL",
+    "mark": "✓",
+    "sha": "0a06fa4",
+    "deps": [],
+    "content": "Rel.Programs.chess 1057 ms > 1000 ms compile-diff budget: small instance, large to Bench/, check regression",
+    "note": "check24 red only at compile-diff"
+  },
+  {
+    "id": "PF-ROUNDS",
+    "mark": "✓",
+    "sha": "6fbc880",
+    "deps": [],
+    "content": "Hylo.rounds point-free (pending coreflexive, ready = P − ch≫P≫⊤)",
+    "note": ""
+  },
+  {
+    "id": "PF-STEP",
+    "mark": "✓",
+    "sha": "35c3dac",
+    "deps": [],
+    "content": "stepDen = graph stepOpt ≫ (graph some)°, stepDen_iff",
+    "note": ""
+  },
+  {
+    "id": "ROW-DFN",
+    "mark": "✓",
+    "sha": "80d8756",
+    "deps": [],
+    "content": "setify ≜ Λ(∋), inits ≜ Λ(prefix) prelude definitions + _den theorems",
+    "note": "merge last, alone"
+  },
+  {
+    "id": "DEC-3",
+    "mark": "✓",
+    "sha": "e6fe607",
+    "deps": [],
+    "content": "decode-allow down to Arr/Opt.getWith: delete dead bit helpers, move test-only ofAtoms/inrBand out of RelRun",
+    "note": ""
+  },
+  {
+    "id": "BITS-CANON",
+    "mark": "✓",
+    "sha": "98347a0",
+    "deps": [],
+    "content": "compBits/ldivBits give the same table as comp/ldiv (Canon), architecture:417",
+    "note": "opus; done, merge after check26 (toList equality, not Tab =)"
+  },
+  {
+    "id": "MARKS3",
+    "mark": "✓",
+    "sha": "f868799",
+    "deps": [],
+    "content": "architecture:692-693 Tm inl/inr/mem line ✅ 1ab20ac",
+    "note": "haiku"
+  },
+  {
+    "id": "TAU-DFN",
+    "mark": "✓",
+    "sha": "9fee149",
+    "deps": [],
+    "content": "τ ≜ Λ(𝟙) prelude definition + Tm.τDef_den",
+    "note": ""
+  },
+  {
+    "id": "LOOP-DFN",
+    "mark": "✓",
+    "sha": "11d846a",
+    "deps": [],
+    "content": "loop(F) ≜ foldI(⟨𝟙,𝟙⟩, ⟨π₁π₁, ⟨π₁π₂,π₂⟩F⟩) + Tm.loopDef_den",
+    "note": ""
+  },
+  {
+    "id": "THINL-DFN",
+    "mark": "✓",
+    "sha": "09a7562",
+    "deps": [],
+    "content": "thinL(Q) ≜ ⦇[nil, bump]⦈ʳ + Tm.thinLDef_den",
+    "note": "sonnet first"
+  },
+  {
+    "id": "MERGE-DFN",
+    "mark": "✓",
+    "sha": "a58f429",
+    "deps": [],
+    "content": "merge(Q) as loop clocked by cat + Tm.mergeDef_den",
+    "note": "sonnet first"
+  },
+  {
+    "id": "POS-DFN",
+    "mark": "✓",
+    "sha": "fc6214f",
+    "deps": [],
+    "content": "positions(p) definition with ℕ guard; drops the no-dfn caveat",
+    "note": "sonnet first"
+  },
+  {
+    "id": "MARKS4",
+    "mark": "✓",
+    "sha": "005878d",
+    "deps": [
+      "TAU-DFN",
+      "LOOP-DFN",
+      "THINL-DFN",
+      "MERGE-DFN",
+      "POS-DFN"
+    ],
+    "content": "architecture §4 rows + TODO :699 + PLAN for the five definitions",
+    "note": "haiku, after all five"
+  },
+  {
+    "id": "PIN-LINE",
+    "mark": "✓",
+    "sha": "4bc8d0a",
+    "deps": [],
+    "content": "#guard_msgs must not pin prelude line numbers (each new prelude line bumped 3 pins)",
+    "note": ""
+  },
+  {
+    "id": "CATSNOC-DFN",
+    "mark": "✓",
+    "sha": "31a390b",
+    "deps": [],
+    "content": "Q3=G: cat as fold definition + Tm.catDef_den/_row; snoc ≜ cat + τ definition + Tm.snocDef_den; nil/cons stay native",
+    "note": "sonnet"
+  },
+  {
+    "id": "NATPROG-L",
+    "mark": "✓",
+    "sha": "9e3d884",
+    "deps": [],
+    "content": "ProgL partial: Mss/Quicksort/Detab/Edit sides agree; gaps → GAP-SEL, GAP-HYLO, GAP-PAY",
+    "note": "ready3"
+  },
+  {
+    "id": "NATPROG-S",
+    "mark": "✓",
+    "sha": "c017eff via PROGS-LAND",
+    "deps": [],
+    "content": "Knapsack JobShop Party Blocks Circuit CSP Wumpus planned natively",
+    "note": "ready3"
+  },
+  {
+    "id": "NATPROG-B",
+    "mark": "✓",
+    "sha": "a71db8d (branch keep-natprogb, not merged: Chess plan 60-75 s)",
+    "deps": [],
+    "content": "Chess SudokuAC SudokuPC planned natively (mu/nu/hylo arms)",
+    "note": "ready3"
+  },
+  {
+    "id": "NATPROG-D",
+    "mark": "✓",
+    "sha": "0946fbd",
+    "deps": [],
+    "content": "Frame library test programs planned natively",
+    "note": "ready3"
+  },
+  {
+    "id": "SEEN-PRIM",
+    "mark": "✓",
+    "sha": "db3d738 (e384691)",
+    "deps": [],
+    "content": "kseen = scan/scatter composition theorem",
+    "note": "ready3"
+  },
+  {
+    "id": "NAT-EXE",
+    "mark": "✓",
+    "sha": "2e86e0a (c115d13)",
+    "deps": [
+      "NATPROG-L"
+    ],
+    "content": "mss as native executable in make native",
+    "note": "ready3"
+  },
+  {
+    "id": "MARKS5",
+    "mark": "✓",
+    "sha": "63382a1: EmitC path in PLAN/doc; RELK count already 9; item shas live in items.json (PLAN/docs do not track these ids)",
+    "deps": [
+      "PLAN-THM-C",
+      "SEEN-PRIM",
+      "ASC-PRIM-B",
+      "NATPROG-L",
+      "NATPROG-S",
+      "NATPROG-B",
+      "NATPROG-D",
+      "NAT-EXE"
+    ],
+    "content": "PLAN phase counters, RELK count, native-design §13, architecture :444-446",
+    "note": "ready3"
+  },
+  {
+    "id": "PLAN-THM-A",
+    "mark": "✓",
+    "sha": "d7a96e2",
+    "deps": [],
+    "content": "constB_builds proved; scanB_builds open → PLAN-THM-B2",
+    "note": "ready3"
+  },
+  {
+    "id": "PLAN-THM-B",
+    "mark": "✓",
+    "sha": "38a4618",
+    "deps": [],
+    "content": "whereB primitives (ctorB projB callK ite_true nth_of); theorem open → PLAN-THM-B2",
+    "note": "ready3"
+  },
+  {
+    "id": "PLAN-THM-C",
+    "mark": "✓",
+    "sha": "f14825b",
+    "deps": [
+      "PLAN-THM-A"
+    ],
+    "content": "groupIdsB_builds, arithB_builds",
+    "note": "ready3"
+  },
+  {
+    "id": "ASC-PRIM-A",
+    "mark": "✓",
+    "sha": "135d59e",
+    "deps": [],
+    "content": "countPass + countPass_stable",
+    "note": "ready3"
+  },
+  {
+    "id": "ASC-PRIM-B",
+    "mark": "✓",
+    "sha": "3f8b424 (ascGrade_cons, ascGrade_eq_passes via List.Perm.eq_of_pairwise)",
+    "deps": [
+      "ASC-PRIM-A"
+    ],
+    "content": "ascGrade_cons + ascGrade_eq_passes; uniqueness step: two perms of range m with same strict key order are equal (AscPrim helpers place_*, nodup_perm_range)",
+    "note": "ready3"
+  },
+  {
+    "id": "PLAN-THM-B2",
+    "mark": "✓",
+    "sha": "cbf761c merged",
+    "deps": [
+      "PLAN-THM-A"
+    ],
+    "content": "scanB_builds + whereB_builds (handoffs /data/tmp/ready/scanB-handoff.md, whereB-handoff.md)",
+    "note": "opus (sonnet partial)"
+  },
+  {
+    "id": "GAP-SEL",
+    "mark": "✓",
+    "sha": "41466fd (83d926f)",
+    "deps": [],
+    "content": "outputOf re-expands home program with no calls: selsort X (select°) refused",
+    "note": "sonnet"
+  },
+  {
+    "id": "GAP-HYLO",
+    "mark": "✓",
+    "sha": "eab47eb (narrowed, not fixed) → GAP-HYLO2",
+    "deps": [],
+    "content": "quicksort sort hylo plan: kscan row 0 is null",
+    "note": "sonnet"
+  },
+  {
+    "id": "GAP-PAY",
+    "mark": "✓",
+    "sha": "829ef23 (5f610e9): canonical packed output, both sides",
+    "deps": [],
+    "content": "est/last pick: plan payload longer than Lean value (detab Λ(H)est(R), edit mle)",
+    "note": "sonnet"
+  },
+  {
+    "id": "CHESS-PLAN",
+    "mark": "✓",
+    "sha": "f110a88 merged (ProgB: SudokuAC/PC)",
+    "deps": [],
+    "content": "profile+fix Chess 3x3 plan build 45 s / run 15-27 s, then merge TestNativeProgB (keep-natprogb a71db8d)",
+    "note": "sonnet"
+  },
+  {
+    "id": "PROGS-LAND",
+    "mark": "✓",
+    "sha": "c017eff (j7 5.08 s, just over 5 s)",
+    "deps": [],
+    "content": "TestNativeProgS within heartbeats (withCurrHeartbeats per check), import in AllPrograms",
+    "note": "sonnet"
+  },
+  {
+    "id": "BLOCKS-PLAN",
+    "mark": "✓",
+    "sha": "0c0bba4 not merged (its Abi move duplicates c26fb58); diagnosis: 46M kernel calls, closed defs re-inlined at every use",
+    "deps": [],
+    "content": "Blocks plan native >20 min: profile, fix or measured reason",
+    "note": "sonnet"
+  },
+  {
+    "id": "DF-M567",
+    "mark": "✓",
+    "sha": "M5 96d951b, M6 d348413, M7 c899c29",
+    "deps": [],
+    "content": "dfplan M5/M6/M7: cards name TestFrameIO/Float/Str, absent; check coverage by TestFrameApp/Text/Stat, mark or open work",
+    "note": "sonnet"
+  },
+  {
+    "id": "GAP-HYLO2",
+    "mark": "✓",
+    "sha": "e25be5f",
+    "deps": [],
+    "content": "sum-value recipe (inl°/𝟙 at 1/inl) yields null row in hylo round; e c disagrees",
+    "note": "sonnet"
+  },
+  {
+    "id": "EST-S",
+    "mark": "✓",
+    "sha": "560fcd0: 15 sides added, all agree; knap 5.6 s, knap∩s 6.8 s over budget",
+    "deps": [],
+    "content": "Knapsack/Party est(R) + untested JobShop sides into TestNativeProgS",
+    "note": "sonnet"
+  },
+  {
+    "id": "PACK-SUM3",
+    "mark": "✓",
+    "sha": "38de45d",
+    "deps": [],
+    "content": "ValsB.pack/packB: array inside a sum summand",
+    "note": "merged via PACK-MERGE d28ea81"
+  },
+  {
+    "id": "FUNB-MEMO",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "funB rebuilds each recipe ~500× (503,827 calls for 1010 funs, 66–75 s Chess plan): memo keyed on recipe + hash index for Fun dedup in Bld state; then Chess back if run < 5 s",
+    "note": "dropped: no sound memo key (recipes are closures over Vars closures); 75% of Chess plan is IR interpreter → precompile, folded into KNAP-RUN"
+  },
+  {
+    "id": "NATIVE-RED",
+    "mark": "✓",
+    "sha": "7d7b047",
+    "deps": [],
+    "content": "make native red on 14cd1c7: plan: proj r3.0 reads constructor 2, not 0 (suspect GAP-PAY outSides/packB)",
+    "note": "sonnet"
+  },
+  {
+    "id": "KNAP-RUN",
+    "mark": "✓",
+    "sha": "c26fb58: EmitC → Rel/Run/Lang (precompiled), abi → Abi.lean; ProgS worst 2.4 s",
+    "deps": [],
+    "content": "native plan/run speed: precompile EmitC (75% interpreter, Chess plan 44–56 s run 15–25 s) or fix recipes; knap 5.6 s, knap∩s 6.8 s, JobShop ~4.5 s",
+    "note": "sonnet"
+  },
+  {
+    "id": "HYLO-MERGE",
+    "mark": "✓",
+    "sha": "ee75dc1",
+    "deps": [],
+    "content": "master 3d0bffb red: ProgL xc disagrees after GAP-HYLO2 output leaf order + GAP-PAY outSides pack merge",
+    "note": "sonnet"
+  },
+  {
+    "id": "ARITH-TAIL",
+    "mark": "✓",
+    "sha": "afd474f",
+    "deps": [],
+    "content": "PlanSpec arithTail is a copy of arithB tail: factor arithB so arithTail is its own def, delete the copy",
+    "note": "sonnet"
+  },
+  {
+    "id": "CHESS-BACK",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "hold": "folded into PLAN-SHARE",
+    "content": "measure Chess plan/run with precompiled EmitC; put natChess.mm back in TestNativeProgB if < 5 s; else profile what remains",
+    "note": "sonnet"
+  },
+  {
+    "id": "PLAN-SHARE",
+    "mark": "✓",
+    "sha": "a499b42",
+    "deps": [],
+    "content": "share closed Tm subterms as Plan.globals (cache (Tm,D) in Bld): Blocks 46M kernel calls/116 s, Chess plan 44–56 s; land TestNativeProgBlocks + Chess when < 5 s",
+    "note": "kept; Blocks 116 s→0.4 s, Chess ~60 s→4.5 s; merged by PLAN-SHARE2"
+  },
+  {
+    "id": "PACK-MERGE",
+    "mark": "✓",
+    "sha": "d28ea81",
+    "deps": [],
+    "content": "merge 38de45d onto master: packB follows the merged ValsB.pack (summand arrays packed, nulls masked) instead of HYLO-MERGE sm; xc + s agree",
+    "note": "sonnet"
+  },
+  {
+    "id": "PLAN-SHARE2",
+    "mark": "✓",
+    "sha": "224414a",
+    "deps": [],
+    "content": "merge a499b42 (closed parts as plan globals) onto master with packB/output fixes; all gates + make native; count shareB fallbacks",
+    "note": "sonnet"
+  },
+  {
+    "id": "SHARE-DOM",
+    "mark": "✓",
+    "sha": "960330a",
+    "deps": [],
+    "content": "ProgS: 2913 shareB fallbacks from 9 slots (sum/F leaf on demand with domain unknown): confirm cause, share those slots too (key must include what the leaf reads from the use site)",
+    "note": "sum°/F(R)° slots have no standalone table; failure now per slot and printed"
+  },
+  {
+    "id": "DEM-CONV",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "Tm.dem: conv R is on demand when R is (not only inl°/inr°), so Expand.closed stops numbering sum°/F(R)° as slots; keep GenSound/Tm.number_spec proved; ProgS closed build failed → 0",
+    "note": "dropped per DEM-DESIGN"
+  },
+  {
+    "id": "DEM-DESIGN",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "fable: is a range-side demand bit beside Tm.dem worth it (perf gain nil so far), and its exact rule",
+    "note": "fable: keep fallback (twin of GenK.memo lazy); no range-side bit (static shadow of Known.ran, §1 deletes Dem); only split counts"
+  },
+  {
+    "id": "SLOT-COUNT",
+    "mark": "✓",
+    "sha": "c7ae79f",
+    "deps": [],
+    "content": "typed split: lazy slots (known: bound unknown) vs closed build failed; agree fails when the latter > 0",
+    "note": "sonnet"
+  },
+  {
+    "id": "EAGER-SWALLOW",
+    "mark": "✓",
+    "sha": "75c558b",
+    "deps": [],
+    "content": "EmitC ~1994 try … catch _ => lazy swallows every eager-build error: catch only BErr.lazy, rethrow the rest; fix whatever F>0 surfaces",
+    "note": "sonnet"
+  },
+  {
+    "id": "READY4",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "next ready list from PLAN.md ⬜/未做/▶, dfplan and architecture gaps → /data/tmp/ready/ready4.md",
+    "note": "7 items; stale PLAN lines → MARKS6; owner questions Q-GEN (fable first), Q4 ymd, Q2 float <"
+  },
+  {
+    "id": "NATIVE-ALL",
+    "mark": "✓",
+    "sha": "a6e09ff",
+    "deps": [],
+    "content": "gate: plan + writesAgree every closed table-valued definition of every rel_program; native-all-allow.txt",
+    "note": "1217 defs, 18 fail; 124 s → kept out of GATES_LIST (db2aff9)"
+  },
+  {
+    "id": "NATIVE-GAPS",
+    "mark": "✓",
+    "sha": "ec9c5e4",
+    "deps": [
+      "NATIVE-ALL"
+    ],
+    "content": "fix the largest error families of native-all-allow.txt by general EmitC rules",
+    "note": "conflicts with NATIVE-ALL-FAST + Enc change → NATIVE-GAPS-MERGE"
+  },
+  {
+    "id": "DF-IMPORT-EACH",
+    "mark": "✓",
+    "sha": "92fa0d2",
+    "deps": [],
+    "content": "generate over an imported finite object (PLAN :412)",
+    "note": "real cause: parse-time Parse.S.fin only local; Parse.finOf + Expand.finOfConst; test TestPivotDiskImport"
+  },
+  {
+    "id": "SCALE-AJ",
+    "mark": "✓",
+    "sha": "afa578f",
+    "deps": [],
+    "content": "aj at 10^5 rows < 5 s (was 11.8 s)",
+    "note": "aj 10^5 ≈ 2.4 s already at 75c558b; check added in Bench/FrameScale; stale cumAggPast pin fixed"
+  },
+  {
+    "id": "PLAN-THM-D",
+    "mark": "✓",
+    "sha": "5a93a08",
+    "deps": [],
+    "content": "canonT_builds = Tab.canon in PlanSpec",
+    "note": "e4285f0 Grows.funT/funV merged; canonT_builds itself after D5-D8"
+  },
+  {
+    "id": "LISTBAN-3",
+    "mark": "✓",
+    "sha": "122579b",
+    "deps": [],
+    "content": "shrink listban-allow (dead Coc.alpElems, run-path Tab.toList/rowsImpl to arrays)",
+    "note": "92→90; rest is #guard/elab/Obj.El .arr = List (design)"
+  },
+  {
+    "id": "MARKS6",
+    "mark": "✓",
+    "sha": "d28cd2a",
+    "deps": [],
+    "content": "stale PLAN/architecture lines: perf9 ✅, .d output, Obj.arr, cons row, ProgS header",
+    "note": "haiku mech"
+  },
+  {
+    "id": "Q-GEN",
+    "mark": "✓",
+    "sha": "",
+    "deps": [],
+    "content": "fable: delete general/Enc.gen/QValue (PLAN R5/M) or keep (CLAUDE.md, architecture :392)?",
+    "note": "fable: 8.4 newest → delete box (steps 1-3 = GEN-DEL); constructor removal = owner question Q-GEN"
+  },
+  {
+    "id": "TOTAL-COLS",
+    "mark": "✓",
+    "sha": "ac6bbad",
+    "deps": [],
+    "content": "EmitC/Plan partial defs over Col/Cols/Obj made total (unfold works), native gate unchanged",
+    "note": "merged; Col walkers total (Col.size measure); Tm/Instr/Val walkers still partial; plan times +5%"
+  },
+  {
+    "id": "GEN-DEL-A",
+    "mark": "✓",
+    "sha": "dd0d7bc",
+    "deps": [],
+    "content": "drop general test cases; Carrier .general = Unit, Carrier.of? over QAtom (PLAN 8.4 steps 1-2)",
+    "note": "merge after mergeverify11; ValEq kept (encEq still has .gen arm)"
+  },
+  {
+    "id": "GEN-DEL-B",
+    "mark": "✓",
+    "sha": "52741fd",
+    "deps": [
+      "GEN-DEL-A"
+    ],
+    "content": "delete QValue/QTable/Enc.gen and every .gen arm; CLAUDE.md/architecture/PLAN text (8.4 step 3)",
+    "note": "merge after mergeverify13; Enc = foR|pos (tag POS 2→1), Rel.Ext.* → Rel.*; qlean uses QValue.ext/Rel.Ext.* — breaks"
+  },
+  {
+    "id": "PLAN-THM-D1",
+    "mark": "✓",
+    "sha": "cb1626d",
+    "deps": [
+      "TOTAL-COLS"
+    ],
+    "content": "funB_builds for the real funB (spliced and applied cases)",
+    "note": "funB_builds both cases; reads/Instr.rename total; hyps: LawfulBEq Fun, Ordered, hext, hty"
+  },
+  {
+    "id": "NATIVE-ALL-FAST",
+    "mark": "✓",
+    "sha": "d5ffc50",
+    "deps": [
+      "NATIVE-ALL"
+    ],
+    "content": "native-all < 30 s by process shards, then back in GATES_LIST",
+    "note": "14 s real (124 s), 16 children via mkdir claims; back in GATES_LIST; merge after mergeverify14"
+  },
+  {
+    "id": "KERN-ASC-CRASH",
+    "mark": "✓",
+    "sha": "cc9773a",
+    "deps": [
+      "NATIVE-ALL"
+    ],
+    "content": "Rust panic asc.rs:134 on Test.cycle native plans (4 defs)",
+    "note": "Cells::span sliced an empty cell at lo>len; now 0..0; AscTest emptyAt"
+  },
+  {
+    "id": "PLAN-THM-D2",
+    "mark": "✓",
+    "sha": "112bf31",
+    "deps": [
+      "PLAN-THM-D1"
+    ],
+    "content": "LawfulBEq Fun instance; funV/funT Builds lemmas discharging funB_builds hyps",
+    "note": "LawfulBEq Fun/Val/Instr by hand (no toList), addFun_ordered; preservation needs Grows predicate on builders"
+  },
+  {
+    "id": "QLEAN-ADAPT",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GEN-DEL-B"
+    ],
+    "content": "qlean builds against rel without QValue/Rel.Ext (GEN-DEL-B)",
+    "note": "survey done: no Rel.Ext/QValue.ext use; ~67 Rel.Enc hits to check on pin move",
+    "hold": "qlean pins rel at qlean-base (e024297); own QValue/Enc.gen in QLean.Value; act only when the pin moves",
+    "what": "qlean 项目里还有自己的一套值类型，和 rel 重复。这一项让 qlean 直接用 rel 的类型，删掉重复的那套。要等 qlean 升级它依赖的 rel 版本时再做。"
+  },
+  {
+    "id": "NATIVE-POS-RULE",
+    "mark": "✓",
+    "sha": "c195243",
+    "deps": [
+      "NATIVE-GAPS"
+    ],
+    "content": "a pos column reaching any sink (ite result, kernel answer, .arr lo/hi) is read correctly: decide pos-vs-foR from the register type, not by tracking literals",
+    "note": "encRegs branches on Enc tag (new Instr.isTag); isPosB/posIn deleted; merge after mergeverify17 (EmitC conflicts possible with e6ace09)"
+  },
+  {
+    "id": "NATIVE-CMP-UNBOUNDED",
+    "mark": "✓",
+    "sha": "e6ace09",
+    "deps": [
+      "NATIVE-GAPS"
+    ],
+    "content": "cmpMeetT either/ge/gel/gt/le/lt: < or ≤ on an unbounded object plans (Lean succeeds, native refuses in known)",
+    "note": "Tm.dem lz: bounds rows lazy in meet/pair/diff, as meetK; allow 7→1"
+  },
+  {
+    "id": "NATIVE-GAPS-MERGE",
+    "mark": "✓",
+    "sha": "e725ad8",
+    "deps": [
+      "NATIVE-GAPS",
+      "NATIVE-ALL-FAST"
+    ],
+    "content": "merge ec9c5e4 onto sharded NativeAll and two-constructor Enc; regenerate allow list",
+    "note": "merge after mergeverify15; allow list 7 (cmpMeetT ×6, nativeF dy); native-all 15 s"
+  },
+  {
+    "id": "PLAN-THM-D3",
+    "mark": "✓",
+    "sha": "b07ed61",
+    "deps": [
+      "PLAN-THM-D2"
+    ],
+    "content": "Grows predicate on Bld; Grows for every primitive and combinator; apply checks f < fs.size; funB keeps Grows",
+    "note": "Grows proved through funB; apply checks f<fs.size; emit needs calls=[]"
+  },
+  {
+    "id": "PLAN-THM-D4",
+    "mark": "✓",
+    "sha": "bdf9113",
+    "deps": [
+      "PLAN-THM-D3"
+    ],
+    "content": "useTy structural mutual pair; defTy by recursion on function index under Ordered (hty)",
+    "note": "useTy/defTy total (no partial); cloTys_ok; hty stays a hypothesis (depends on enclosing block); defTyB no-throw needs a global-ordering invariant"
+  },
+  {
+    "id": "PLAN-THM-D3b",
+    "mark": "✓",
+    "sha": "01cb7a6",
+    "deps": [
+      "PLAN-THM-D3"
+    ],
+    "content": "restate funB_builds with Grows of the body instead of hord/hext",
+    "note": "funB_builds takes hfo + Grows body; merge after mergeverify18"
+  },
+  {
+    "id": "NATIVE-YMD",
+    "mark": "✓",
+    "sha": "ccd4587",
+    "deps": [],
+    "content": "Tab.ymd gets a plan recipe (nativeF dy, last native-all-allow line)",
+    "note": "ymdB recipe; native-all-allow empty; open: raw invalid-day write made kscan fail (n rows), masked with ok"
+  },
+  {
+    "id": "PLAN-THM-D3c",
+    "mark": "✓",
+    "sha": "d5bfef8",
+    "deps": [
+      "PLAN-THM-D3b"
+    ],
+    "content": "funT_builds/funV_builds: Grows for tysOf/tabsRegs/tabsAt, specs of tabsRegs/tabsAt, final match shape",
+    "note": "funT_builds/funV_builds proved; merge after mergeverify20"
+  },
+  {
+    "id": "GUARD-GREP-INDEX",
+    "mark": "✓",
+    "sha": "f4f1dfd",
+    "deps": [],
+    "content": "cc-guard: the grep-on-.lean refusal carries the index answer (file:line ranges of the grepped names)",
+    "note": "cc-guard; ranges used signature span sl → fix in GUARD-GREP-INDEX-2"
+  },
+  {
+    "id": "GUARD-GREP-INDEX-2",
+    "mark": "✓",
+    "sha": "4976621",
+    "deps": [
+      "GUARD-GREP-INDEX"
+    ],
+    "content": "index answer gives the full declaration range (l1..l2), not the signature line; check cap-test-207 pre-existing",
+    "note": "full span l1/l2; cap-test wait failure pre-existing (de2a983)"
+  },
+  {
+    "id": "PLAN-THM-D3d",
+    "mark": "✓",
+    "sha": "af190f5",
+    "deps": [
+      "PLAN-THM-D3c"
+    ],
+    "content": "DRY: name funT local tysT as EmitC tysTab, funT uses it; delete PlanSpec copies tysTab and funT_eq",
+    "note": "merged e580668"
+  },
+  {
+    "id": "GUARD-GREP-INDEX-3",
+    "mark": "✓",
+    "sha": "bbf58d1",
+    "deps": [
+      "GUARD-GREP-INDEX-2"
+    ],
+    "content": "refusal text and its suggested query say l1/l2 (full span), not sl1/sl2; then install binary",
+    "note": "installed in ~/.claude/hooks"
+  },
+  {
+    "id": "GUARD-GREP-INDEX-4",
+    "mark": "✓",
+    "sha": "f6a319f",
+    "deps": [
+      "GUARD-GREP-INDEX-3"
+    ],
+    "content": "grep on .lean refused only when the index answers every searched word; else allowed",
+    "note": "installed; unknown word or string-only pattern passes"
+  },
+  {
+    "id": "PLAN-THM-D5",
+    "mark": "✓",
+    "sha": "d506794",
+    "deps": [],
+    "content": "funT_builds composition form: body hypothesis is a Builds statement",
+    "note": "merged ba75126 (conflict with D6: both kept)"
+  },
+  {
+    "id": "PLAN-THM-D6",
+    "mark": "✓",
+    "sha": "02ac3e0",
+    "deps": [],
+    "content": "Grows for Plan builders, key loop, gatherCols, ascSeenB, nubB, canonT body",
+    "note": "all builders + gatherCols/nubB/canonT Grows, unconditional; grows tactic"
+  },
+  {
+    "id": "PLAN-THM-D7",
+    "mark": "✓",
+    "sha": "94d0b41",
+    "deps": [],
+    "content": "Builds keysB/keysL/kasc/seenB + seen count = kseen",
+    "note": "kseen_count_max, lastB/seenB/sortedB_builds; sortedB extracted in EmitC; merge after mergeverify27 (Grows.ascSeenOnB from D6 may need update)"
+  },
+  {
+    "id": "PLAN-THM-D8",
+    "mark": "✓",
+    "sha": "0d82abe",
+    "deps": [],
+    "content": "ValsB.regVals; gatherCols_builds against ValsB.gather",
+    "note": "ValsB.regVals, gatherB_builds, hk gets Ordered; gatherCols_builds not proved; merge after mergeverify26 (conflicts expected with D5 funT_builds)"
+  },
+  {
+    "id": "PLAN-THM-D9",
+    "mark": "✓",
+    "sha": "e86847c",
+    "deps": [
+      "PLAN-THM-D5"
+    ],
+    "content": "compositional hty: cloTys of a body built from funV/funC parts, so canonT_builds discharges hty",
+    "note": "Typed invariant + Typed.cloTys gives hty; merge after mergeverify29 (cloTys_ok also changed by D8)"
+  },
+  {
+    "id": "PLAN-THM-D10",
+    "mark": "✓",
+    "sha": "2783a52",
+    "deps": [
+      "PLAN-THM-D8",
+      "PLAN-THM-D9"
+    ],
+    "content": "gatherCols_builds: Fits A cs, shape conjunct in regsOf_spec/tab_spec, gatherCols = mapM funC, induction on Fits (handoff /data/tmp/ready/gathercols-handoff.md)",
+    "note": "groundwork: Fits, shape conjuncts, Typed.*Of with captured S; theorem → D10b"
+  },
+  {
+    "id": "PLAN-THM-D8-MERGE",
+    "mark": "✓",
+    "sha": "396c0a5",
+    "deps": [
+      "PLAN-THM-D8"
+    ],
+    "content": "merge keep-d8 (0d82abe) onto master: D5 funT_builds form + D8 Ordered hk premise + PlanSpecGather",
+    "note": "opus"
+  },
+  {
+    "id": "PLAN-THM-D11",
+    "mark": "✓",
+    "sha": "9b3926a",
+    "deps": [
+      "PLAN-THM-D7",
+      "PLAN-THM-D8-MERGE"
+    ],
+    "content": "keysB/keysL registers hold the key columns of a ValsB (reuse ValsB.regVals from PlanSpecGather; .opt band view), then ascSeenB_builds via funV_builds",
+    "note": "keysL_builds, ascSeenOnB_builds, total ascGet?; merge after mergeverify31"
+  },
+  {
+    "id": "PLAN-THM-D9b",
+    "mark": "✓",
+    "sha": "ed72d39",
+    "deps": [
+      "PLAN-THM-D9"
+    ],
+    "content": "Typed lemmas for tabsAt/withRegs, funT/funV/funC, builders, seenB/keysB/ascSeenB/gatherCols, nubB/canonT (handoff /data/tmp/ready/typed-handoff.md)",
+    "note": "sonnet, mirrors Grows.* proofs"
+  },
+  {
+    "id": "PLAN-THM-D7-FIX",
+    "mark": "✓",
+    "sha": "8f9b4a1",
+    "deps": [
+      "PLAN-THM-D7",
+      "PLAN-THM-D9"
+    ],
+    "content": "master red: Grows.ascSeenOnB vs extracted sortedB; add Grows.sortedB; merge keep-d9",
+    "note": "sonnet"
+  },
+  {
+    "id": "PLAN-THM-D12",
+    "mark": "✓",
+    "sha": "a1ef218",
+    "deps": [
+      "PLAN-THM-D11",
+      "PLAN-THM-D9b"
+    ],
+    "content": "ascSeenB_builds via funV_builds (hty from Typed.cloTys + Typed.ascSeenBody); drop hak of groupIdsB_builds via ascGet?_atom (move ascKey_get/qtype_get_put/ascGet?_atom before PlanSpec 852)",
+    "note": "opus"
+  },
+  {
+    "id": "PLAN-THM-D10b",
+    "mark": "✓",
+    "sha": "d5e8eca",
+    "deps": [
+      "PLAN-THM-D10",
+      "PLAN-THM-D12"
+    ],
+    "content": "merge keep-d10 onto master; funC_builds + gatherCols_builds (induction on Obj)",
+    "note": "keep-d10 merged (Fits→ColsOf), funC_builds"
+  },
+  {
+    "id": "PLAN-THM-D10c",
+    "mark": "✓",
+    "sha": "897f57e",
+    "deps": [
+      "PLAN-THM-D10b"
+    ],
+    "content": "gatherCols_builds by induction on Obj (handoff3)",
+    "note": "opus"
+  },
+  {
+    "id": "PLAN-THM-NEXT",
+    "mark": "✓",
+    "sha": "",
+    "deps": [
+      "PLAN-THM-D"
+    ],
+    "content": "fable: list builders without *_builds, the end theorem, next items PLAN-THM-E*",
+    "note": "fable, read-only → /data/tmp/ready/planthm-next.md"
+  },
+  {
+    "id": "PLAN-THM-E1",
+    "mark": "✓",
+    "content": "coreflB_builds; .conv/.outl/.outr corollaries of canonT_builds",
+    "note": "coreflB_builds, dom/ran, convT_builds; outl/outr wait on repath_builds (E9a)",
+    "deps": [],
+    "sha": "b85061a"
+  },
+  {
+    "id": "PLAN-THM-E2",
+    "mark": "✓",
+    "content": "scatterB/catB/u64B/catColB/shiftB Builds",
+    "note": "sonnet",
+    "deps": [],
+    "sha": "a59b92b"
+  },
+  {
+    "id": "PLAN-THM-E0",
+    "mark": "✓",
+    "content": "bridge constB+mapB vs colMap post chains (B3)",
+    "note": "option (a): colMap_enc, colMap_const_eq in RepCanon; hf terms for groupsB/crossB/compFromB in hand-back",
+    "deps": [],
+    "sha": "e9cb1dc"
+  },
+  {
+    "id": "PLAN-THM-E10",
+    "mark": "✓",
+    "content": "Builds.loop, Builds.tryCatch, Builds.global",
+    "note": "df6a313 ready to merge after mergeverify38: tryCatch_ok/_err, loop, global (hk: fg1.2.size ≤ k)",
+    "deps": [],
+    "sha": "df6a313"
+  },
+  {
+    "id": "PLAN-THM-E13",
+    "mark": "✓",
+    "content": "tabB/nodeB/argB total, plans unchanged",
+    "note": "opus",
+    "deps": [],
+    "sha": "aa349ce"
+  },
+  {
+    "id": "PLAN-THM-E9a",
+    "mark": "✓",
+    "content": "noneAtomB/noneB/zeroB/repath Builds",
+    "note": "builds done 7662bc8 (noneAtomB/noneB/zeroB/repath_eq); left: Grows/Typed of the four, /data/tmp/ready/none-handoff.md",
+    "deps": [],
+    "sha": "19808a6",
+    "hold": null
+  },
+  {
+    "id": "PLAN-THM-E3",
+    "mark": "✓",
+    "content": "concatColB/concatB vs ValsB.concat Cols:228",
+    "deps": [],
+    "sha": "ee5e702",
+    "note": "concatB_builds under CatOff + h63",
+    "hold": null,
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：把两列首尾接成一列（concat）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E5",
+    "mark": "✓",
+    "content": "funW/prefixB/groupFoldB vs colPrefix, seenSeg, groupFold",
+    "deps": [],
+    "sha": "02a5c44",
+    "note": ""
+  },
+  {
+    "id": "PLAN-THM-E4",
+    "mark": "✓",
+    "hold": "",
+    "content": "unionB vs Tab.concat/Tab.union",
+    "deps": [],
+    "sha": "712b96e",
+    "note": "",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：两张表合并（union）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E6",
+    "mark": "✓",
+    "hold": "",
+    "content": "selectB/interB/diffB vs Tab.tagged/select/inter/diff",
+    "deps": [],
+    "sha": "9d51213",
+    "note": "",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：按条件取行（select）、取交集（inter）、取差集（diff）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E7",
+    "mark": "✓",
+    "hold": "",
+    "content": "expandB/groupsB vs expand, Tab.compGroups",
+    "deps": [],
+    "sha": "b275cdc",
+    "note": "colMap_const_eq (RepCanon, e9cb1dc): groupsB .lt vs (.gt,n): hf = fun _ _ h => h; ho from colMap_ok (GenKBits) given hasNul a = false",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：把每行展开成多行（expand）和按键分组（group）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E8",
+    "mark": "✓",
+    "hold": "after E7",
+    "content": "compFromB/compB vs Tab.compExpand/compOne",
+    "deps": [],
+    "sha": "541254d",
+    "note": "colMap_const_eq: compFromB .sub vs (.add,0-n): hf = fun w _ h => by rw [← h]; exact congrArg Except.ok (neg_add_word w _).symm (neg_add_word in RepCols)",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：两个关系的复合 R≫S（先走 R 再走 S）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E9b",
+    "mark": "✓",
+    "hold": "after E0 E8",
+    "content": "crossB/pairB vs crossIx/Vals.cross/Tab.pair",
+    "deps": [],
+    "sha": "c610013",
+    "note": "colMap_const_eq: crossB .div/.mod vs (.rdiv/.rmod,m), a = .pos: hf = fun _ _ h => by revert h; simp only [Op.eval]; split <;> simp_all",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：笛卡尔积（cross，两边所有配对）和配对（pair）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E11",
+    "mark": "▶",
+    "hold": "after E4 E6 E10",
+    "content": "packT/fixB/nuB/muB vs Tab.pack/fixOn/nu/mu",
+    "deps": [],
+    "sha": "",
+    "note": "",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：打包（pack）和递归定义的不动点（fix、μ、ν）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E12",
+    "mark": "▶",
+    "hold": "after E8 E10",
+    "content": "compBitsB/compSelB/compTB, ldiv*/rdivB vs Bits/Div specs",
+    "deps": [],
+    "sha": "",
+    "note": "",
+    "what": "Rel 程序最终编译成 C 代码运行。这一项证明：位集上的复合和关系除法（ldiv、rdiv）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
+  },
+  {
+    "id": "PLAN-THM-E14",
+    "mark": "○",
+    "hold": "after E1 E4 E6 E8 E9 E12 E13",
+    "content": "NodeSound per nodeB node (allegory+Boolean+product fragment), mirrors gen_sound_spine",
+    "deps": [],
+    "sha": "",
+    "note": "",
+    "what": "把上面每一种运算的正确性拼起来：编译出的 plan 里每个节点都正确，所以整棵 plan 正确。"
+  },
+  {
+    "id": "PLAN-THM-E15",
+    "mark": "○",
+    "hold": "after E14",
+    "content": "ofTm_sound (Holds ↔ den) + Plan.run_ofTm in Rel/Lang/PlanSound.lean",
+    "deps": [],
+    "sha": "",
+    "note": "",
+    "what": "最终定理：任何 Rel 程序编译后运行的结果，等于它的数学含义。完成后，编译器的正确性就有了完整证明。"
+  },
+  {
+    "id": "PLAN-THM-E10b",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "PLAN-THM-E10"
+    ],
+    "sha": "8eb5b07",
+    "content": "Env: an unbuilt global slot (empty res) unconstrained, so Builds.global drops hk (shareB fills slot k below an already-built higher slot)",
+    "note": "opus"
+  },
+  {
+    "id": "PLAN-THM-E5b",
+    "mark": "✓",
+    "deps": [
+      "PLAN-THM-E5"
+    ],
+    "sha": "ede7caf",
+    "hold": null,
+    "content": "DRY: Typed.constBAny/wordsBAny replace Typed.constB/wordsB (drop m ≤ n, m ≤ fill); kscatter of 0 rows ignores dst/x, so constB = colConst and prefixB/groupFoldB premises become colPrefix/groupFold = .ok",
+    "note": "sonnet; prefixB_builds keeps hk/hr: colPrefix returns only r.1, no kscan lemma gives r.2.isSome"
+  },
+  {
+    "id": "9.1",
+    "mark": "✓",
+    "hold": null,
+    "deps": [],
+    "sha": "220945d",
+    "content": "design note doc/rel-proof-program.zh.typ: compile subtype, check by proof, proofs live in rel",
+    "note": ""
+  },
+  {
+    "id": "9.2",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.1"
+    ],
+    "sha": "9f49f12",
+    "content": "compile replaces Tm.gen/Tm.gen_sound (GenHyp discharged at elaboration)",
+    "note": ""
+  },
+  {
+    "id": "9.3",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.1"
+    ],
+    "sha": "220945d",
+    "content": "check … by …: Prefix check proved, prefixCata_check deleted",
+    "note": "check … by lemma in 220945d; prefixCata_check no longer in the tree"
+  },
+  {
+    "id": "9.4",
+    "mark": "✓",
+    "hold": "verify: foldUP proved 87f9a1e, prefixEq no longer in tree; close after 9.10 batch",
+    "deps": [],
+    "sha": "a1de75f",
+    "content": "prefixFold : prefixC = prefix (calc in rel; owed foldUP, prefixEq proved in rel)",
+    "note": "prefixEq、prefixRow、prefixFold 全部 certified（a1de75f）；foldUP 由 Prelude 的 Tm.foldUP_den 证",
+    "what": "Prefix 程序里有一条推导（prefix 的两种写法相等）。它依赖的定律已在 rel 里证完；这一项只是核对一遍然后关掉。"
+  },
+  {
+    "id": "9.6",
+    "mark": "✓",
+    "hold": "",
+    "deps": [
+      "9.1"
+    ],
+    "sha": "",
+    "content": "rel_program calc in Agda style (aopa MSS Derivation.agda)",
+    "note": "owner 2026-11-27: current calc format kept; parts a, c dropped"
+  },
+  {
+    "id": "9.7",
+    "mark": "✓",
+    "deps": [],
+    "sha": "e2e86c3",
+    "content": "decided: proofs move into rel, freyd relaop deleted, repos independent",
+    "note": "owner via freyd-22"
+  },
+  {
+    "id": "9.8a",
+    "mark": "✓",
+    "deps": [],
+    "sha": "aad1059",
+    "content": "Mss: Λ(X) → (𝟙 ÷ ∋)E(X); R ÷ ∋ elaborates to Pre.lam; lamDen_symDiv",
+    "note": "sonnet"
+  },
+  {
+    "id": "9.8",
+    "mark": "✓",
+    "deps": [
+      "9.8a"
+    ],
+    "sha": "220945d",
+    "content": "Λ stays a primitive, Λ(R) = (𝟙÷∋)E(R) (owner decision; PR #1)",
+    "note": ""
+  },
+  {
+    "id": "9.9",
+    "mark": "○",
+    "hold": "after 9.10 (dep); Claude agent, not codex",
+    "deps": [
+      "9.6",
+      "9.8"
+    ],
+    "sha": "",
+    "content": "companion Lean proofs also as rel_program calc; diagram reader (open: where it lives)",
+    "note": "",
+    "what": "freyd 仓库的伴读材料里有一批用 Lean 写的算法推导证明。这一项把它们逐条改写成 Rel 语言里的推导（calc），让 rel 自己就能检查。"
+  },
+  {
+    "id": "9.10",
+    "mark": "▶",
+    "deps": [
+      "9.1",
+      "9.4"
+    ],
+    "sha": "",
+    "content": "owed laws proved in rel (Mss, Prelude, Prefix); then tell freyd-22 to delete relaop",
+    "note": "",
+    "what": "Mss（最大子段和）等程序里的推导，引用了一些定律。这一项在 rel 里把这些定律全部证明出来，之后 freyd 仓库里旧的替代证明（relaop）就可以删掉。现在只剩 Mss 的几条。"
+  },
+  {
+    "id": "9.8b",
+    "mark": "✓",
+    "deps": [
+      "9.8a"
+    ],
+    "sha": "4ade249",
+    "content": "fuse (𝟙÷∋)E(X) into the Λ(X) node at elaboration; lamDen_absorb",
+    "note": "sonnet"
+  },
+  {
+    "id": "9.8c",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.8b"
+    ],
+    "sha": "",
+    "content": "Prelude.lean: Λ → (𝟙÷∋)E(…) (rows nil τ front lt asc inits setify positions, laws)",
+    "note": ""
+  },
+  {
+    "id": "9.8d",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.8b"
+    ],
+    "sha": "",
+    "content": "Detab, Blocks, Knapsack + their tests",
+    "note": ""
+  },
+  {
+    "id": "9.8e",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.8b"
+    ],
+    "sha": "",
+    "content": "Party, Edit, JobShop, Frame, FrameGroup, Chess + their tests",
+    "note": ""
+  },
+  {
+    "id": "9.8f",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.8b"
+    ],
+    "sha": "",
+    "content": "rel_program blocks in Rel/Lang/Test*",
+    "note": ""
+  },
+  {
+    "id": "9.8g",
+    "mark": "✓",
+    "hold": null,
+    "deps": [
+      "9.8c",
+      "9.8d",
+      "9.8e",
+      "9.8f"
+    ],
+    "sha": "",
+    "content": "drop Λ from Op/Op.table; architecture doc §1 §4",
+    "note": ""
+  },
+  {
+    "id": "9.8b′",
+    "mark": "✓",
+    "deps": [
+      "9.8b"
+    ],
+    "sha": "71e9296",
+    "content": "general absorption lamDen_absorb (finite-image premise); Pre.compFuse any (S÷∋)E(T); E(R) ≜ (∋R)÷∋",
+    "note": "DeepSeek flash"
+  },
+  {
+    "id": "CYL",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "§7.4 cylinder shortest paths as rel_program Rel/Programs/Cylinder.lean (companion Vec version; N,P,L = [α])",
+    "what": "把伴读材料 §7.4「圆柱面上的最短路径」写成一个 Rel 程序：输入是一个方格矩阵，从左走到右，每步可以往上、平移或往下一格，求代价最小的路径。程序同时检查：贪心逐列只保留每行最便宜那条路径，得到的结果和枚举全部路径再取最便宜的一样。",
+    "note": "程序与 pp.182–183 两段 calc 已合并（9ad813d）；已证 estConcat、cons713、prodComp、Fcomp、zipLax；待证 movesLax、transLax（CYL-PROOF3 进行中）、qfoldLe"
+  },
+  {
+    "id": "CYL-PROOF3",
+    "mark": "✓",
+    "sha": "395f14e",
+    "deps": [],
+    "content": "movesLax, transLax: den lemmas of prelude head/tail/last/init calls, then certify both in Cylinder.lean",
+    "what": "证明圆柱面程序里剩下的两条「松弛自然性」定律（moves 和 trans 两步）：先给 prelude 的 head、tail、last、init 写出语义引理，再用它们把这两步从「待证」变成有证明的步骤。",
+    "note": "进行中"
+  },
+  {
+    "id": "9.10c",
+    "mark": "✓",
+    "sha": "f0f9d05",
+    "deps": [],
+    "content": "Mss: hU autoParam of Tm.simple_single fails after the structural unhex change (25a8971); fix for every atom literal, then merge 9.10b",
+    "what": "修复 Mss 程序的构建：上次为降低 kernel 求值开销改写了 unhex，之后 rel_program mss 的自动证明参数 hU 证不出来；找出原因并对所有字面量通用地修好，然后合并 Mss 的提速。",
+    "note": "进行中"
+  },
+  {
+    "id": "CYL-QFOLD",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "qfoldLe: fold fusion (7.13) for the cylinder qFold step, certified with by in Cylinder.lean",
+    "what": "证明圆柱面程序 calc 里最后一条待证的不等式 qfoldLe：用书中 7.13 的 fold 融合定理，把「先枚举全部路径再取最便宜」换成「逐列折叠只保留最便宜」。",
+    "note": "stepFuse merged; domLax/diffLax citation open (CYL-HEAD)"
+  },
+  {
+    "id": "GOAL-REL-ALONE",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "rel depends on nothing but the Lean toolchain: no require, no import Freyd, no script or law that reaches ~/repo/freyd",
+    "what": "目标一：rel 独立成立——只依赖 Lean 工具链，不 require、不 import freyd，也没有脚本或定律需要 freyd 仓库。现状已满足，此项保持它不被打破。",
+    "note": "现状满足：lakefile 无 require，Rel/ 无 import Freyd"
+  },
+  {
+    "id": "GOAL-RELAOP-DEL",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "9.10"
+    ],
+    "content": "freyd deletes relaop/ (its prelude-law proofs live in rel): after 9.10 tell freyd to delete it",
+    "what": "目标二：删除 freyd 里的 relaop 子包。它目前替 rel 证明 Mss、Prelude 的定律；这些定律在 rel 里证完（9.10）后，通知 freyd 删掉它。",
+    "note": "等 9.10（Mss 已合并 f0f9d05；Prefix 9.4 进行中）"
+  },
+  {
+    "id": "GOAL-FREYD-NO-REL",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GOAL-RELAOP-DEL"
+    ],
+    "content": "freyd depends on no rel: no package of freyd requires rel once relaop is gone",
+    "what": "目标三：freyd 不再依赖 rel。现在唯一的依赖是 relaop 的 require rel；relaop 删掉后，确认 freyd 的任何包都不再 require rel。",
+    "note": "等 GOAL-RELAOP-DEL"
+  },
+  {
+    "id": "CYL-HEAD",
+    "mark": "✓",
+    "sha": "33a0839",
+    "deps": [],
+    "content": "cite domLax/diffLax by their den lemmas: state them over the elaborated head term (Tm.headCall)",
+    "what": "Cylinder：domLax、diffLax 已证但未引用；引用时 head 的展开项与引理里的 Tm.at0 不一致导致 whnf 超时，改成按 PreludeEnds 的 headCall 陈述。",
+    "note": ""
+  },
+  {
+    "id": "PLAN-THM-E9c",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "compB emits Tab.compOne only; Tab.compPairs runs compBlocks when compCuts blockRows splits — find where the emitted C covers the block branch, or add the builder, then drop OneBlock from pairB_builds",
+    "what": "E9c：Lean 模型 compPairs 在大连接时走 compBlocks（分块再 union），而 EmitC 的 compB 只对应 compOne。查清 C 代码是否覆盖分块分支；有则证明，无则补 builder，然后去掉 pairB_builds 的 OneBlock 前提。",
+    "note": ""
+  }
+]
