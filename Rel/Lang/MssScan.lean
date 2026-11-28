@@ -205,19 +205,19 @@ theorem lamSuffix_total {B : Obj} (hB : B.flat = true) (xs : List B.El) :
       exact List.mem_map.2 ⟨_, List.mem_range.2 (by omega), h.symm⟩)
     fun b c _ _ e => arr_key_inj B b c (fun x _ y _ e' => Obj.key_inj_of_flat B hB x y e') e
 
-/-- `Λ(S) ∋ T` is `S T` where every `S a` is an array: the prelude's `Λ(Λ(S) E(∋ T))` is `Λ(S T)`. -/
-theorem lamDen_lam_mem {A B C : Obj} (S : Core.Rel (Obj.El A) (Obj.El B)) (F : Core.Rel (Obj.El B) (Obj.El C))
-    (hS : ∀ a, ∃ ys, lamDen S a ys) : lamDen (lamDen S ≫ (memDen ≫ F)) = lamDen (S ≫ F) := by
-  have : lamDen S ≫ (memDen ≫ F) = S ≫ F := by
-    funext a c
-    refine propext ⟨fun ⟨ys, hy, y, hm, hf⟩ => ⟨y, ((lamDen_iff _ _ _).1 hy).2 y |>.1 hm, hf⟩,
-      fun ⟨y, hy, hf⟩ => ?_⟩
-    obtain ⟨ys, hys⟩ := hS a
-    exact ⟨ys, hys, y, ((lamDen_iff _ _ _).1 hys).2 y |>.2 hy, hf⟩
-  rw [this]
+/-- `Λ(S) E(F)` is `Λ(S F)` where every `S a` is an array: `E(F) = Λ(∋ F)` reads its argument only by membership. -/
+theorem lamDen_comp_lam_mem {A B C : Obj} (S : Core.Rel (Obj.El A) (Obj.El B)) (F : Core.Rel (Obj.El B) (Obj.El C))
+    (hS : ∀ a, ∃ ys, lamDen S a ys) : lamDen S ≫ lamDen (memDen ≫ F) = lamDen (S ≫ F) := by
+  funext a zs
+  simp only [Core.Rel.comp, lamDen_iff]
+  refine propext ⟨fun ⟨ys, ⟨_, hy⟩, hp, hz⟩ => ⟨hp, fun w => (hz w).trans ?_⟩, fun ⟨hp, hz⟩ => ?_⟩
+  · exact exists_congr fun y => and_congr_left fun _ => hy y
+  · obtain ⟨ys, hys⟩ := hS a
+    obtain ⟨hp', hy⟩ := (lamDen_iff _ _ _).1 hys
+    exact ⟨ys, ⟨hp', hy⟩, hp, fun w => (hz w).trans (exists_congr fun y => and_congr_left fun _ => (hy y).symm)⟩
 
 /-- **`toScan` at the terms the elaborator builds**: on the lists the guard `G` (`safe`) admits,
-    `G Λ(Λ(suffix) E(∋ ⦇[ran z, S]⦈ʳ)) est(R) = G ⦇[ran(z⟨𝟙,Λ𝟙⟩), ⟨w, Λ(w ∪ π₂π₂∋)⟩]⦈ʳ π₂ est(R)` with `w = ⟨π₁𝟙,π₂π₁⟩S`
+    `G Λ(suffix) E(⦇[ran z, S]⦈ʳ) est(R) = G ⦇[ran(z⟨𝟙,Λ𝟙⟩), ⟨w, Λ(w ∪ π₂π₂∋)⟩]⦈ʳ π₂ est(R)` with `w = ⟨π₁𝟙,π₂π₁⟩S`
     (`S`, the step `OP`, is not looked into). `G` is coreflexive (`hGd`) and `⦇[ran z, S]⦈ʳ` has a value on each guarded
     list (`hG`: `S` is partial outside `N × N`, so on `[100]` the left side is `{0}` and the right side is empty);
     the seed `z` has at most one value (`hz`) and `S` is simple (`hTO`). -/
@@ -226,7 +226,7 @@ theorem Tm.toScan_den {N : Obj} (hN : N.flat = true := by decide) {G : Tm (.arr 
     (hG : ∀ xs, G.den ρ xs xs → ∃ g, (Tm.foldr (Tm.ran z) OP).den ρ xs g)
     (hz : ∀ x y, (∃ m, z.den ρ m x) → (∃ m, z.den ρ m y) → x = y)
     (hTO : ∀ p w w', OP.den ρ p w → OP.den ρ p w' → w = w') :
-    (Tm.comp (Tm.comp G (Tm.lam (Tm.comp (Tm.lam (Tm.prim (rowOf "suffix"))) (Tm.comp Tm.mem
+    (Tm.comp (Tm.comp G (Tm.comp (Tm.lam (Tm.prim (rowOf "suffix"))) (Tm.lam (Tm.comp Tm.mem
         (Tm.foldr (Tm.ran z) OP))))) (Tm.est (Tm.dom (.meet .outr (.comp .outl R))))).den ρ =
       (Tm.comp (Tm.comp G (Tm.comp (Tm.foldr (Tm.ran (Tm.comp z (.pair .id (.lam .id))))
         (.pair (.comp (.pair (.comp .outl .id) (.comp .outr .outl)) OP)
@@ -254,10 +254,10 @@ theorem Tm.toScan_den {N : Obj} (hN : N.flat = true := by decide) {G : Tm (.arr 
       obtain ⟨rfl, m, hm⟩ := (Tm.ran_den' ρ z a v).1 h
       obtain ⟨rfl, m', hm'⟩ := (Tm.ran_den' ρ z a' v').1 h'
       exact hz _ _ ⟨m, hm⟩ ⟨m', hm'⟩) hTO hGd hG hW
-  have hS := lamDen_lam_mem (A := .arr N) (B := .arr N) (C := N) (splitDen false N.El) (foldrDen ((Tm.ran z).den ρ) (OP.den ρ)) (lamSuffix_total hN)
-  simp only [Tm.den, Tm.est_den, Prim.den_suffix, Core.Rel.comp_assoc]
+  have hS := lamDen_comp_lam_mem (A := .arr N) (B := .arr N) (C := N) (splitDen false N.El) (foldrDen ((Tm.ran z).den ρ) (OP.den ρ)) (lamSuffix_total hN)
+  simp only [Tm.den, Tm.est_den, Prim.den_suffix]
   rw [hS]
-  simp only [Core.Rel.comp_assoc] at key
+  simp only [Core.Rel.comp_assoc] at key ⊢
   exact key
 
 #print axioms Tm.toScan_den

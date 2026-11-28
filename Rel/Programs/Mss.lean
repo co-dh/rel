@@ -4,6 +4,7 @@ import Rel.Lang.Laws.Order
 import Rel.Lang.Laws.MssFused
 import Rel.Lang.Laws.MssEst
 import Rel.Lang.Laws.MssGreedy
+import Rel.Lang.Laws.MssScan
 
 /-! # The maximum segment sum
 
@@ -64,12 +65,9 @@ rel_program mss where
 
     /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. `plus` has no value
        past 20, so the steps past `toShape` hold only on the lists `safe` keeps: `[5,15,15]` has `mss` 20 and `scan` 15,
-       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. `estUnion`, `greedyFold` and
-       `toFused` are proved here, `by` a Lean lemma about `Tm.den` (`Rel/Lang/Laws/MssEst.lean`, `MssFused.lean`, `MssGreedy.lean`); the
-       laws with neither a `by` nor a `calc` (`toScan`, `linear`'s steps) are still owed to Lean:
-       `rel_aop mss` (relaop/RelAop/Mss.lean) proves them over the book's model (`Int`, cons lists, the power object), so
-       they are theorems about that model, not about the executable `mss.rel.*`; the evidence between those two is the
-       `check`s above. -/
+       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. `estUnion`, `greedyFold`, `toFused`
+       and `toScan` are proved here, `by` a Lean lemma about `Tm.den` (`Rel/Lang/Laws/MssEst.lean`, `MssFused.lean`,
+       `MssGreedy.lean`, `MssScan.lean`), so `linear` is a `calc` of proved steps. -/
 
     /- The facts that discharge `estMap(zero, ≥)`'s hypotheses: `zero` is a map and `≥` is reflexive. -/
 
@@ -111,7 +109,8 @@ rel_program mss where
       safe (𝟙÷∋)E(suffix) E(g)est(≥)
         := ≜ greedy
       safe greedy
-    theorem toScan : greedy = scan                -- note `mss-scan`
+    -- `safe`: on `[x]` with `x` outside `N`, `oplus` has no value, so `scan` is empty where `greedy` holds the 0 of `[]`
+    theorem toScan : safe greedy = safe scan by Rel.Lang.Tm.toScanMss_den   -- note `mss-scan`
     theorem linear : safe mss = safe scan := calc
       safe mss
         := toShape

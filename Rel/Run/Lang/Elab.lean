@@ -2390,7 +2390,9 @@ def uniPart (δ : Dem) (o : OTy) (A : Obj) : Except Err (Option (Tm A A)) := do
     | .arr a => fullUni a
     | .prod a b | .sum a b => fullUni a && fullUni b
     | _ => false
-  if let some ⟨A', U⟩ := uniOf objs o then
+  -- a product's universe is the product of its sides' (`Tm.prodUni`, below), never an `n · m`-row literal: its rows
+  -- are the pairs of the sides' rows by `Tm.prodUni_den`, where a literal's are a check of every row
+  if let some ⟨A', U⟩ := if o matches .prod .. then none else uniOf objs o then
     -- the one reader that forces the universe: a product past `crossMax` fails the definition that reads it
     let ⟨_, U⟩ ← U.get.mapError fun e => (⟨dp, .user e⟩ : Err)
     return ← if h : A' = A then pure (some (.uni (h ▸ U))) else internal dp "universe objects disagree"
