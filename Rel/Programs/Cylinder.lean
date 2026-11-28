@@ -15,12 +15,13 @@ rel_program cylinder where
     obj N = 0…40                                  -- the squares and their sums, non-negative
 
     /- The moves of a row: rotate it up, leave it, rotate it down (`moves(x) = (up(x), x, down(x))`, a 3×n matrix), and
-       the transpose `trans`, a left fold of `zip`/`snoc` from the first row's singletons. -/
+       the transpose `trans`, a left fold of `zip`/`snoc` that starts from `nil`: on `nil` the step gives the row's
+    singletons, after that it is `zip F(snoc)`. -/
 
     up : [α] ⟶ [α] ≜ ⟨tail, head τ⟩cat
     down : [α] ⟶ [α] ≜ ⟨last τ, init⟩cat
     moves : [α] ⟶ [[α]] ≜ ⟨up τ, ⟨τ, down τ⟩cat⟩cat
-    trans : [[α]] ⟶ [[α]] ≜ ⟨head F(τ), tail⟩loop(zip F(snoc))
+    trans : [[α]] ⟶ [[α]] ≜ ⦇[nil, (dom(π₁ head)zip F(snoc)) ∪ ((𝟙 − dom(π₁ head))π₂ F(τ))]⦈
     cp : α×[β] ⟶ [α×β] ≜ ⟨⟨π₁,nil⟩,π₂⟩loop(⟨π₁π₁,⟨π₁π₂,⟨π₁π₁,π₂⟩⟩snoc⟩)π₂
 
     /- `gen` (table `vec-defn-cyl`): the new column's squares each in front of every candidate path of their three

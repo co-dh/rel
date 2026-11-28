@@ -318,71 +318,72 @@ theorem mapDen_graph {A B : Obj} (f : A.El → B.El) (m : List A.El) (w : List B
     rw [List.getElem_map]; exact h t (by simpa using h2) h1
   · rintro rfl; exact ⟨by simp, fun t ht ht' => by simp⟩
 
-/-- The left fold `loop(T)` of a step `T` that is the function `f` on (acc, y) is `List.foldl f`. -/
-theorem loopDen_foldl {X Y : Obj} (T : Core.Rel (Obj.El (.prod X Y)) (Obj.El X)) (f : X.El → Y.El → X.El)
-    (hT : ∀ acc y w, T (acc, y) w ↔ w = f acc y) (a : X.El) (l : List Y.El) (c : X.El) :
-    loopDen T (a, l) c ↔ c = l.foldl f a := by
-  rw [loopDen_iff]
-  have tk : ∀ t (h : t < l.length), l.take (t + 1) = l.take t ++ [l[t]] := fun t h => by
-    rw [List.take_add_one, List.getElem?_eq_getElem h]; rfl
-  have key : ∀ g : Nat → X.El, g 0 = a → (∀ t (ht : t < l.length), T (g t, l[t]'ht) (g (t + 1))) →
-      ∀ t, t ≤ l.length → g t = (l.take t).foldl f a := by
-    intro g h0 hg t
-    induction t with
-    | zero => intro _; simpa using h0
-    | succ t ih =>
-      intro ht
-      rw [(hT _ _ _).1 (hg t (by omega)), ih (by omega), tk t (by omega), List.foldl_append]; rfl
-  constructor
-  · rintro ⟨g, h0, hg, rfl⟩
-    rw [key g h0 hg _ (Nat.le_refl _)]; simp
-  · rintro rfl
-    refine ⟨fun t => (l.take t).foldl f a, by simp, fun t ht => (hT _ _ _).2 ?_, by simp⟩
-    dsimp only
-    rw [tk t ht, List.foldl_append]; rfl
+/-- `ran(⟨⟩ nil)` at `[V]`: the base `[nil, S]` of a fold over `[nil, cons]` as the program elaborates it. -/
+abbrev ranNil (V : Obj) : Tm (.arr V) (.arr V) :=
+  (Tm.prim ranRow : Tm (.arr V) (.arr V)).arg (((Tm.uni (Gen.oneV false (USize.ofNat 1)).fst : Tm .one .one).comp
+    (Tm.prim nilRow : Tm .one (.arr V))))
 
-/-- The step of `trans`, `zip F(snoc)`: `(acc, y) ↦ (acc zip y).map (++ [·])`. -/
-def Tm.transStep (B : Obj) : Tm (.prod (.arr (.arr B)) (.arr B)) (.arr (.arr B)) :=
-  .comp (B := .arr (.prod (.arr B) B)) (.prim (rowOf "zip"))
-    ((Tm.prim mapRow : Tm (.arr (.prod (.arr B) B)) (.arr (.arr B))).arg (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B)))
+/-- `dom(π₁ head)` at the accumulator `[[B]]` and the row `[B]`: the accumulator is not `nil`. -/
+abbrev Tm.accHead (B : Obj) (os : List Obj) : Tm (.prod (.arr (.arr B)) (.arr B)) (.arr B) :=
+  .comp Tm.outl (Tm.headCall (.arr B) os)
 
-/-- `loop(zip F(snoc))`, the left fold of `Tm.transStep` over the rows. -/
-def Tm.transLoop (B : Obj) : Tm (.prod (.arr (.arr B)) (.arr (.arr B))) (.arr (.arr B)) :=
-  (Tm.prim (rowOf "loop") : Tm (.prod (.arr (.arr B)) (.arr (.arr B))) (.arr (.arr B))).arg (Tm.transStep B)
+/-- The step of `trans`, `(dom(π₁ head) zip F(snoc)) ∪ ((𝟙 − dom(π₁ head)) π₂ F(τ))`, as the program elaborates it,
+    the calls of `head` at `os`. -/
+def Tm.transStep (B : Obj) (os : List Obj) : Tm (.prod (.arr (.arr B)) (.arr B)) (.arr (.arr B)) :=
+  .join
+    (.comp (B := .arr (.prod (.arr B) B)) (.comp (Tm.dom (Tm.accHead B os)) (.prim (rowOf "zip")))
+      ((Tm.prim mapRow : Tm (.arr (.prod (.arr B) B)) (.arr (.arr B))).arg (.prim (rowOf "snoc") : Tm (.prod (.arr B) B) (.arr B))))
+    (.comp (B := .arr B) (.comp (.diff .id (Tm.dom (Tm.accHead B os))) .outr)
+      ((Tm.prim mapRow : Tm (.arr B) (.arr (.arr B))).arg (.prim (rowOf "τ") : Tm B (.arr B))))
 
-/-- `trans : [[α]] ⟶ [[α]] ≜ ⟨head F(τ), tail⟩loop(zip F(snoc))` as it elaborates, the calls at `os`. -/
+/-- `trans : [[α]] ⟶ [[α]] ≜ ⦇[nil, (dom(π₁ head) zip F(snoc)) ∪ ((𝟙 − dom(π₁ head)) π₂ F(τ))]⦈` as it elaborates. -/
 def Tm.transCall (B : Obj) (os : List Obj) : Tm (.arr (.arr B)) (.arr (.arr B)) :=
-  .comp (B := .prod (.arr (.arr B)) (.arr (.arr B)))
-    (.pair (.comp (B := .arr B) (Tm.headCall (.arr B) os)
-      ((Tm.prim mapRow : Tm (.arr B) (.arr (.arr B))).arg (.prim (rowOf "τ") : Tm B (.arr B)))) (Tm.tailCall (.arr B) os))
-    (Tm.transLoop B)
+  (ranNil (.arr B)).fold (Tm.transStep B os)
 
 /-- One row `y` laid under the columns `acc`. -/
 def snocRow {α : Type} (acc : List (List α)) (y : List α) : List (List α) := (acc.zip y).map fun p => p.1 ++ [p.2]
 
-theorem Tm.transStep_den (ρ : Val) {B : Obj} (acc : List (List B.El)) (y : List B.El) (w : List (List B.El)) :
-    (Tm.transStep B).den ρ (acc, y) w ↔ w = snocRow acc y := by
-  simp only [Tm.transStep, Tm.den, Tm.argDen, Core.Rel.comp, Prim.den_zip, Prim.den_mapRow, Prim.den_snoc,
-    Core.Rel.graph, exists_eq_left, snocRow]
-  exact mapDen_graph (A := .prod (.arr B) B) (B := .arr B) (fun p => p.1 ++ [p.2]) _ _
+/-- The step of `trans` on `(acc, y)`: the row's singletons on the empty accumulator, `snocRow` after. -/
+def transF {α : Type} (acc : List (List α)) (y : List α) : List (List α) :=
+  if acc = [] then y.map fun a => [a] else snocRow acc y
 
-theorem Tm.transCall_den (ρ : Val) {B : Obj} {os : List Obj} (xss : List (List B.El)) (zss : List (List B.El)) :
-    (Tm.transCall B os).den ρ xss zss ↔
-      ∃ r rs, xss = r :: rs ∧ zss = rs.foldl snocRow (r.map fun a => [a]) := by
-  have hl : ∀ (p : List (List B.El) × List (List B.El)) zs, (Tm.transLoop B).den ρ p zs ↔ zs = p.2.foldl snocRow p.1 := by
-    intro p zs
-    simp only [Tm.transLoop, Tm.den, Tm.argDen, Prim.den_loopRow]
-    exact loopDen_foldl (X := .arr (.arr B)) (Y := .arr B) _ snocRow (fun acc y w => Tm.transStep_den ρ acc y w) p.1 p.2 zs
-  simp only [Tm.transCall, Tm.den, Tm.argDen, Core.Rel.comp, Core.Rel.rpair, hl, Tm.headCall_den, Tm.tailCall_den, Prim.den_mapRow,
-    Prim.den_tau]
-  constructor
-  · rintro ⟨⟨c, rs⟩, ⟨⟨b1, ⟨h, hb1⟩, hm⟩, ⟨a, hx⟩⟩, hz⟩
-    have hb : b1 = a := by subst hx; simpa using hb1
-    subst hb
-    rw [mapDen_graph (A := B) (B := .arr B) (fun a => [a])] at hm
-    exact ⟨_, rs, hx, by rw [hz, hm]⟩
-  · rintro ⟨r, rs, rfl, rfl⟩
-    exact ⟨(r.map fun a => [a], rs), ⟨⟨r, ⟨by simp, rfl⟩, (mapDen_graph (A := B) (B := .arr B) (fun a => [a]) _ _).2 rfl⟩, ⟨r, rfl⟩⟩, rfl⟩
+theorem Tm.transStep_den (ρ : Val) {B : Obj} {os : List Obj} (acc : List (List B.El)) (y : List B.El)
+    (w : List (List B.El)) : (Tm.transStep B os).den ρ (acc, y) w ↔ w = transF acc y := by
+  have e1 (m : List (List B.El × B.El)) (w : List (List B.El)) :
+      mapDen (fun p ys => ys = p.1 ++ [p.2] : Core.Rel (Obj.El (.prod (.arr B) B)) (Obj.El (.arr B))) m w ↔
+        w = m.map fun p => p.1 ++ [p.2] :=
+    mapDen_graph (A := .prod (.arr B) B) (B := .arr B) (fun p => p.1 ++ [p.2]) m w
+  have e2 (m : List B.El) (w : List (List B.El)) :
+      mapDen (fun a Y => Y = [a] : Core.Rel (Obj.El B) (Obj.El (.arr B))) m w ↔ w = m.map fun a => [a] :=
+    mapDen_graph (A := B) (B := .arr B) (fun a => [a]) m w
+  by_cases h : acc = []
+  · subst h
+    simp only [Tm.transStep, Tm.accHead, transF, Tm.den, Tm.argDen, Tm.dom_den, Core.Rel.union, Core.Rel.diff,
+      Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip, Core.Rel.graph, Prim.den_zip, Prim.den_mapRow,
+      Prim.den_snoc, Prim.den_tau, Tm.headCall_den]
+    simp [e1, e2]
+  · simp only [Tm.transStep, Tm.accHead, transF, if_neg h, Tm.den, Tm.argDen, Tm.dom_den, Core.Rel.union,
+      Core.Rel.diff, Core.Rel.comp, Core.Rel.inter, Core.Rel.id, Core.Rel.recip, Core.Rel.graph, Prim.den_zip,
+      Prim.den_mapRow, Prim.den_snoc, Prim.den_tau, Tm.headCall_den]
+    simp [e1, e2, snocRow, List.length_pos_iff.2 h]
+    constructor
+    · rintro (⟨b, ⟨a, b1, ⟨⟨rfl, rfl⟩, -⟩, rfl⟩, hw⟩ | ⟨b, ⟨a, ⟨rfl, rfl⟩, hne⟩, hw⟩)
+      · exact hw
+      · exact absurd rfl (hne rfl rfl (List.length_pos_iff.2 h))
+    · intro hw
+      exact Or.inl ⟨_, ⟨acc, y, ⟨⟨rfl, rfl⟩, List.length_pos_iff.2 h, rfl⟩, rfl⟩, hw⟩
+
+theorem Tm.transCall_den (ρ : Val) {B : Obj} {os : List Obj} (xss zss : List (List B.El)) :
+    (Tm.transCall B os).den ρ xss zss ↔ zss = xss.foldl transF [] := by
+  have hseed (v : List (List B.El)) : (∃ a, (ranNil (.arr B)).den ρ a v) ↔ v = [] := by
+    simp only [Tm.den, Tm.argDen, Prim.den_ranRow, Prim.den_nilRow, Core.Rel.comp, Core.Rel.inter, Core.Rel.recip,
+      Core.Rel.id, nilDen, Core.Rel.graph]
+    simp
+    exact fun _ => ⟨⟨0, by simp⟩, trivial⟩
+  show foldDen ((ranNil (.arr B)).den ρ) ((Tm.transStep B os).den ρ) xss zss ↔ _
+  rw [foldDen_start]
+  simp only [hseed, exists_eq_left]
+  exact foldDen_foldl (E := .arr B) (V := .arr (.arr B)) (f := transF) (fun a x w => Tm.transStep_den ρ a x w) xss [] zss
 
 theorem snocRow_all2 {α β : Type} {S : α → β → Prop} {acc : List (List α)} {acc' : List (List β)}
     (h : All2 (All2 S) acc acc') : ∀ {y y'}, All2 S y y' → All2 (All2 S) (snocRow acc y) (snocRow acc' y') := by
@@ -394,18 +395,24 @@ theorem snocRow_all2 {α β : Type} {S : α → β → Prop} {acc : List (List �
     | nil => exact .nil
     | cons hx hys => exact .cons (All2.append hl (.cons hx .nil)) (ih hys)
 
-theorem foldl_snocRow_all2 {α β : Type} {S : α → β → Prop} {rs : List (List α)} {rs' : List (List β)}
-    (h : All2 (All2 S) rs rs') : ∀ {acc acc'}, All2 (All2 S) acc acc' →
-      All2 (All2 S) (rs.foldl snocRow acc) (rs'.foldl snocRow acc') := by
-  induction h with
-  | nil => intro acc acc' ha; exact ha
-  | cons hy _ ih => intro acc acc' ha; exact ih (snocRow_all2 ha hy)
-
 theorem singleton_all2 {α β : Type} {S : α → β → Prop} {r : List α} {r' : List β} (h : All2 S r r') :
     All2 (All2 S) (r.map fun a => [a]) (r'.map fun a => [a]) := by
   induction h with
   | nil => exact .nil
   | cons hx _ ih => exact .cons (.cons hx .nil) ih
+
+theorem transF_all2 {α β : Type} {S : α → β → Prop} {acc : List (List α)} {acc' : List (List β)}
+    (h : All2 (All2 S) acc acc') {y y'} (hy : All2 S y y') : All2 (All2 S) (transF acc y) (transF acc' y') := by
+  cases h with
+  | nil => simpa [transF] using singleton_all2 hy
+  | cons hl ht => simpa [transF] using snocRow_all2 (.cons hl ht) hy
+
+theorem foldl_transF_all2 {α β : Type} {S : α → β → Prop} {rs : List (List α)} {rs' : List (List β)}
+    (h : All2 (All2 S) rs rs') : ∀ {acc acc'}, All2 (All2 S) acc acc' →
+      All2 (All2 S) (rs.foldl transF acc) (rs'.foldl transF acc') := by
+  induction h with
+  | nil => intro acc acc' ha; exact ha
+  | cons hy _ ih => intro acc acc' ha; exact ih (transF_all2 ha hy)
 
 /-- `F(F(S)) trans ⊑ trans F(F(S))` as the program elaborates it, `S` the variable `0`, the calls of `trans` at the object
     instantiations `os` (of `S`'s target) and `os'` (of its source). -/
@@ -418,14 +425,11 @@ theorem Tm.transLax_den {A B : Obj} {os os' : List Obj} (ρ : Val) :
   refine Core.Rel.le_iff.2 fun xss zss h => ?_
   simp only [Tm.den, Tm.argDen, Prim.den_mapRow, Core.Rel.comp] at h ⊢
   obtain ⟨yss, hxy, ht⟩ := h
-  obtain ⟨r', rs', rfl, rfl⟩ := (Tm.transCall_den ρ _ _).1 ht
+  obtain rfl := (Tm.transCall_den ρ _ _).1 ht
   rw [mapDen_all2] at hxy
-  cases hxy with
-  | cons hr hrs =>
-    have hr' := (mapDen_all2 _ _ _).1 hr
-    have hrs' := hrs.mono fun a b h => (mapDen_all2 _ a b).1 h
-    exact ⟨_, (Tm.transCall_den ρ _ _).2 ⟨_, _, rfl, rfl⟩, (mapDen_all2 _ _ _).2
-      ((foldl_snocRow_all2 hrs' (singleton_all2 hr')).mono fun a b h => (mapDen_all2 _ a b).2 h)⟩
+  have hxy' := hxy.mono fun a b h => (mapDen_all2 _ a b).1 h
+  exact ⟨_, (Tm.transCall_den ρ _ _).2 rfl, (mapDen_all2 _ _ _).2
+    ((foldl_transF_all2 hxy' .nil).mono fun a b h => (mapDen_all2 _ a b).2 h)⟩
 
 end Rel.Lang
 
@@ -453,11 +457,6 @@ theorem foldrDen_fuse {E V W : Obj} (Te₁ : Core.Rel (Obj.El V) (Obj.El V)) (Te
     obtain ⟨g, hg, hTg⟩ := ih u hu
     obtain ⟨g', hS2, hT'⟩ := h1 x g u r hTg hS
     exact ⟨g', (foldrDen_cons _ _ _ _ _).2 ⟨g, hg, hS2⟩, hT'⟩
-
-/-- `ran(⟨⟩ nil)` at `[V]`: the base `[nil, S]` of a fold over `[nil, cons]` as the program elaborates it. -/
-abbrev ranNil (V : Obj) : Tm (.arr V) (.arr V) :=
-  (Tm.prim ranRow : Tm (.arr V) (.arr V)).arg (((Tm.uni (Gen.oneV false (USize.ofNat 1)).fst : Tm .one .one).comp
-    (Tm.prim nilRow : Tm .one (.arr V))))
 
 /-- `qfoldLe` as the program elaborates it: with the step of `qFold` followed-by-covered by the step of `genFold`
     after `T = F(U)` (`(𝟙×T) S₁ ⊑ S₂ T`), `⦇nil, S₁⦈ ⊑ ⦇nil, S₂⦈ T`. -/
