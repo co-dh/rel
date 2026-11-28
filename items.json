@@ -4389,7 +4389,7 @@
   },
   {
     "id": "PLAN-THM-E11",
-    "mark": "▶",
+    "mark": "○",
     "hold": "after E4 E6 E10",
     "content": "packT/fixB/nuB/muB vs Tab.pack/fixOn/nu/mu",
     "deps": [],
@@ -4399,7 +4399,7 @@
   },
   {
     "id": "PLAN-THM-E12",
-    "mark": "▶",
+    "mark": "○",
     "hold": "after E8 E10",
     "content": "compBitsB/compSelB/compTB, ldiv*/rdivB vs Bits/Div specs",
     "deps": [],
@@ -4632,7 +4632,7 @@
   },
   {
     "id": "CYL",
-    "mark": "▶",
+    "mark": "○",
     "sha": "",
     "deps": [],
     "content": "§7.4 cylinder shortest paths as rel_program Rel/Programs/Cylinder.lean (companion Vec version; N,P,L = [α])",
@@ -4659,7 +4659,7 @@
   },
   {
     "id": "CYL-QFOLD",
-    "mark": "▶",
+    "mark": "○",
     "sha": "",
     "deps": [],
     "content": "qfoldLe: fold fusion (7.13) for the cylinder qFold step, certified with by in Cylinder.lean",
@@ -4668,7 +4668,7 @@
   },
   {
     "id": "GOAL-REL-ALONE",
-    "mark": "▶",
+    "mark": "○",
     "sha": "",
     "deps": [],
     "content": "rel depends on nothing but the Lean toolchain: no require, no import Freyd, no script or law that reaches ~/repo/freyd",
@@ -4708,7 +4708,7 @@
   },
   {
     "id": "PLAN-THM-E9c",
-    "mark": "▶",
+    "mark": "○",
     "sha": "",
     "deps": [],
     "content": "compB emits Tab.compOne only; Tab.compPairs runs compBlocks when compCuts blockRows splits — find where the emitted C covers the block branch, or add the builder, then drop OneBlock from pairB_builds",

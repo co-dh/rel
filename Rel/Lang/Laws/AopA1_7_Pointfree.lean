@@ -162,4 +162,106 @@ theorem Tm.filterPointfree_den {A B C : Obj} {k d k' d' : Nat} {c c' : Lean.Name
   · rintro ⟨ps, qs, hp, hq, hm⟩
     exact ⟨qs, ⟨_, ⟨(xs, ps), ⟨rfl, (mapDen_all2 _ _ _).2 hp⟩, rfl⟩, hq⟩, (mapDen_all2 _ _ _).2 hm⟩
 
+/-- `cond(K, D, R, S) ≜ dom(K) R ∪ (dom(D) S)` as the program elaborates its body, its parameters the variables
+    `k`, `d`, `r`, `s`. -/
+abbrev Tm.condBody (E B C : Obj) (k d r s : Nat) : Tm E B :=
+  ((Tm.dom (Tm.var k : Tm E C)).comp (Tm.var r : Tm E B)).join ((Tm.dom (Tm.var d : Tm E C)).comp (Tm.var s : Tm E B))
+
+theorem Tm.condBody_iff {E B C : Obj} (ρ : Val) (k d r s : Nat) (x : E.El) (y : B.El) :
+    (Tm.condBody E B C k d r s).den ρ x y ↔
+      ((∃ c, ρ k E C x c) ∧ ρ r E B x y) ∨ ((∃ c, ρ d E C x c) ∧ ρ s E B x y) := by
+  simp only [Tm.den, Tm.dom_den, Core.Rel.union_apply, Core.Rel.comp_apply, Core.Rel.inter_apply, Core.Rel.id,
+    Core.Rel.recip]
+  constructor
+  · rintro (⟨w, ⟨rfl, c, h, -⟩, h2⟩ | ⟨w, ⟨rfl, c, h, -⟩, h2⟩)
+    · exact Or.inl ⟨⟨c, h⟩, h2⟩
+    · exact Or.inr ⟨⟨c, h⟩, h2⟩
+  · rintro (⟨⟨c, h⟩, h2⟩ | ⟨⟨c, h⟩, h2⟩)
+    · exact Or.inl ⟨x, ⟨rfl, c, h, h⟩, h2⟩
+    · exact Or.inr ⟨x, ⟨rfl, c, h, h⟩, h2⟩
+
+/-- A call of the program's `cond` given `X`, `Y`, `Z`, `W`: `dom(X) Z ∪ (dom(Y) W)`. -/
+theorem Tm.condCall_iff {E B C : Obj} {k d r s : Nat} {c : Lean.Name} {cv : Option Lean.Name} {os : List Obj}
+    (hkd : k ≠ d) (hkr : k ≠ r) (hks : k ≠ s) (hdr : d ≠ r) (hds : d ≠ s) (hrs : r ≠ s)
+    (ρ : Val) (X Y : Tm E C) (Z W : Tm E B) (x : E.El) (y : B.El) :
+    (((((Tm.call [k, d, r, s] c cv os (Tm.condBody E B C k d r s)).arg X).arg Y).arg Z).arg W).den ρ x y ↔
+      ((∃ c, X.den ρ x c) ∧ Z.den ρ x y) ∨ ((∃ c, Y.den ρ x c) ∧ W.den ρ x y) := by
+  have hs' : Val.args [s] [⟨_, _, W.den ρ⟩] s E B = W.den ρ := Val.bind_apply _ _ _ rfl rfl
+  have hr' : Val.args [r, s] [⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] r E B = Z.den ρ := Val.bind_apply _ _ _ rfl rfl
+  have hs'' : Val.args [r, s] [⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] s E B = W.den ρ := by
+    show ((Val.args [s] [⟨_, _, W.den ρ⟩]).bind r (Z.den ρ)) s E B = _
+    rw [Val.bind_ne hrs.symm]; exact hs'
+  have hd' : Val.args [d, r, s] [⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] d E C = Y.den ρ :=
+    Val.bind_apply _ _ _ rfl rfl
+  have hr'' : Val.args [d, r, s] [⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] r E B = Z.den ρ := by
+    show ((Val.args [r, s] [⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩]).bind d (Y.den ρ)) r E B = _
+    rw [Val.bind_ne hdr.symm]; exact hr'
+  have hs3 : Val.args [d, r, s] [⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] s E B = W.den ρ := by
+    show ((Val.args [r, s] [⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩]).bind d (Y.den ρ)) s E B = _
+    rw [Val.bind_ne hds.symm]; exact hs''
+  have hk : Val.args [k, d, r, s] [⟨_, _, X.den ρ⟩, ⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] k E C = X.den ρ :=
+    Val.bind_apply _ _ _ rfl rfl
+  have hd : Val.args [k, d, r, s] [⟨_, _, X.den ρ⟩, ⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] d E C = Y.den ρ := by
+    show ((Val.args [d, r, s] [⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩]).bind k (X.den ρ)) d E C = _
+    rw [Val.bind_ne hkd.symm]; exact hd'
+  have hr : Val.args [k, d, r, s] [⟨_, _, X.den ρ⟩, ⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] r E B = Z.den ρ := by
+    show ((Val.args [d, r, s] [⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩]).bind k (X.den ρ)) r E B = _
+    rw [Val.bind_ne hkr.symm]; exact hr''
+  have hs : Val.args [k, d, r, s] [⟨_, _, X.den ρ⟩, ⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩] s E B = W.den ρ := by
+    show ((Val.args [d, r, s] [⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩]).bind k (X.den ρ)) s E B = _
+    rw [Val.bind_ne hks.symm]; exact hs3
+  show (Tm.condBody E B C k d r s).den
+    (Val.args [k, d, r, s] [⟨_, _, X.den ρ⟩, ⟨_, _, Y.den ρ⟩, ⟨_, _, Z.den ρ⟩, ⟨_, _, W.den ρ⟩]) x y ↔ _
+  rw [Tm.condBody_iff]; simp only [hk, hd, hr, hs]
+
+/-- (1.11) `cond(K, D, R, S) T = cond(K, D, R T, S T)` as the program elaborates it. -/
+theorem Tm.conditionalComp_den {A B C D : Obj} {c : Lean.Name} {cv : Option Lean.Name} {os : List Obj} (ρ : Val) :
+    Tm.den ρ ((Tm.condBody A B C 0 1 2 3).comp (Tm.var 4 : Tm B D)) =
+    Tm.den ρ (((((Tm.call [0, 1, 5, 6] c cv os (Tm.condBody A D C 0 1 5 6)).arg (Tm.var 0 : Tm A C)).arg
+      (Tm.var 1 : Tm A C)).arg ((Tm.var 2 : Tm A B).comp (Tm.var 4 : Tm B D))).arg
+      ((Tm.var 3 : Tm A B).comp (Tm.var 4 : Tm B D))) := by
+  funext x z; apply propext
+  rw [Tm.condCall_iff (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)]
+  show (∃ y, (Tm.condBody A B C 0 1 2 3).den ρ x y ∧ (Tm.var 4 : Tm B D).den ρ y z) ↔ _
+  simp only [Tm.condBody_iff]
+  simp only [Tm.den, Core.Rel.comp_apply]
+  constructor
+  · rintro ⟨y, (⟨hk, hr⟩ | ⟨hd, hs⟩), ht⟩
+    · exact Or.inl ⟨hk, y, hr, ht⟩
+    · exact Or.inr ⟨hd, y, hs, ht⟩
+  · rintro (⟨hk, y, hr, ht⟩ | ⟨hd, y, hs, ht⟩)
+    · exact ⟨y, Or.inl ⟨hk, hr⟩, ht⟩
+    · exact ⟨y, Or.inr ⟨hd, hs⟩, ht⟩
+
+/-- (1.10) `⟨𝟙, P⟩ cond(π₂K, π₂D, π₁R, π₁S) = cond(P K, P D, R, S)` as the program elaborates it: the test reads
+    `P`, the branches read the element. -/
+theorem Tm.pairConditional_den {A B C D : Obj} {c c' : Lean.Name} {cv cv' : Option Lean.Name} {os os' : List Obj}
+    (ρ : Val) :
+    Tm.den ρ ((Tm.id.pair (Tm.var 0 : Tm A B)).comp
+      (((((Tm.call [5, 6, 7, 8] c cv os (Tm.condBody (.prod A B) D C 5 6 7 8)).arg
+        ((Tm.outr : Tm (.prod A B) B).comp (Tm.var 1 : Tm B C))).arg
+        ((Tm.outr : Tm (.prod A B) B).comp (Tm.var 2 : Tm B C))).arg
+        ((Tm.outl : Tm (.prod A B) A).comp (Tm.var 3 : Tm A D))).arg
+        ((Tm.outl : Tm (.prod A B) A).comp (Tm.var 4 : Tm A D)))) =
+    Tm.den ρ (((((Tm.call [9, 10, 3, 4] c' cv' os' (Tm.condBody A D C 9 10 3 4)).arg
+      ((Tm.var 0 : Tm A B).comp (Tm.var 1 : Tm B C))).arg ((Tm.var 0 : Tm A B).comp (Tm.var 2 : Tm B C))).arg
+      (Tm.var 3 : Tm A D)).arg (Tm.var 4 : Tm A D)) := by
+  funext x z; apply propext
+  rw [Tm.condCall_iff (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)]
+  show (∃ q, (Tm.id.pair (Tm.var 0 : Tm A B)).den ρ x q ∧ _) ↔ _
+  simp only [Tm.condCall_iff (by decide : (5 : Nat) ≠ 6) (by decide : (5 : Nat) ≠ 7) (by decide : (5 : Nat) ≠ 8)
+    (by decide : (6 : Nat) ≠ 7) (by decide : (6 : Nat) ≠ 8) (by decide : (7 : Nat) ≠ 8)]
+  simp only [Tm.den, Core.Rel.comp_apply, Core.Rel.rpair, Core.Rel.id, Core.Rel.graph]
+  constructor
+  · rintro ⟨⟨a, b⟩, ⟨rfl, hp⟩, (⟨⟨c, hk⟩, hr⟩ | ⟨⟨c, hd⟩, hs⟩)⟩
+    · obtain ⟨_, rfl, hk⟩ := hk
+      obtain ⟨_, rfl, hr⟩ := hr
+      exact Or.inl ⟨⟨c, _, hp, hk⟩, hr⟩
+    · obtain ⟨_, rfl, hd⟩ := hd
+      obtain ⟨_, rfl, hs⟩ := hs
+      exact Or.inr ⟨⟨c, _, hp, hd⟩, hs⟩
+  · rintro (⟨⟨c, b, hp, hk⟩, hr⟩ | ⟨⟨c, b, hp, hd⟩, hs⟩)
+    · exact ⟨(x, b), ⟨rfl, hp⟩, Or.inl ⟨⟨c, b, rfl, hk⟩, x, rfl, hr⟩⟩
+    · exact ⟨(x, b), ⟨rfl, hp⟩, Or.inr ⟨⟨c, b, rfl, hd⟩, x, rfl, hs⟩⟩
+
 end Rel.Lang
