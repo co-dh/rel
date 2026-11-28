@@ -3,6 +3,7 @@ import Rel.Lang.Laws.Map
 import Rel.Lang.Laws.Order
 import Rel.Lang.Laws.MssFused
 import Rel.Lang.Laws.MssEst
+import Rel.Lang.Laws.MssGreedy
 
 /-! # The maximum segment sum
 
@@ -63,9 +64,9 @@ rel_program mss where
 
     /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. `plus` has no value
        past 20, so the steps past `toShape` hold only on the lists `safe` keeps: `[5,15,15]` has `mss` 20 and `scan` 15,
-       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. `estUnion` and
-       `toFused` are proved here, `by` a Lean lemma about `Tm.den` (`Rel/Lang/Laws/MssEst.lean`, `MssFused.lean`); the
-       laws with neither a `by` nor a `calc` (`greedyFold`, `toScan`, `linear`'s steps) are still owed to Lean:
+       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. `estUnion`, `greedyFold` and
+       `toFused` are proved here, `by` a Lean lemma about `Tm.den` (`Rel/Lang/Laws/MssEst.lean`, `MssFused.lean`, `MssGreedy.lean`); the
+       laws with neither a `by` nor a `calc` (`toScan`, `linear`'s steps) are still owed to Lean:
        `rel_aop mss` (relaop/RelAop/Mss.lean) proves them over the book's model (`Int`, cons lists, the power object), so
        they are theorems about that model, not about the executable `mss.rel.*`; the evidence between those two is the
        `check`s above. -/
@@ -77,7 +78,7 @@ rel_program mss where
     theorem geqRefl : 𝟙(N) ⊑ ≥ by Rel.Lang.Tm.geq_refl
     theorem estUnion : sets E(∋)est(≥) = sets E(est(≥))est(≥) by Rel.Lang.Tm.estUnion_den
     -- the greedy row (𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈
-    theorem greedyFold : safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
+    theorem greedyFold : safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ by Rel.Lang.Tm.greedyMss_den
 
     theorem toShape : mss = shape := calc         -- note `mss-shape`
       mss

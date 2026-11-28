@@ -97,7 +97,7 @@ theorem Tm.closedNil_den (E : Obj) (ρ : Val) :
   · intro h
     exact ⟨(), ⟨⟨0, by simp⟩, trivial, trivial⟩, h⟩
 
-private theorem foldSeed_den {E V : Obj} (ρ : Val) (e : Tm .one V) :
+theorem foldSeed_den {E V : Obj} (ρ : Val) (e : Tm .one V) :
     (Tm.comp (Tm.closedNil E).conv e).den ρ =
       corefl (Eq ([] : List E.El)) ≫ top ≫ (𝟙 _ ∩ ((Tm.ran e).den ρ)° ≫ top) := by
   change ((Tm.closedNil E).den ρ)° ≫ e.den ρ = _
@@ -110,7 +110,7 @@ private theorem foldSeed_den {E V : Obj} (ρ : Val) (e : Tm .one V) :
   · rintro ⟨_, ⟨rfl, rfl⟩, _, _, rfl, _, ⟨rfl, u, hu, _⟩, _⟩
     exact ⟨u, rfl, hu⟩
 
-private theorem pairComp_den {A B C D : Obj} (ρ : Val) (R : Tm A C) (S : Tm B D) :
+theorem pairComp_den {A B C D : Obj} (ρ : Val) (R : Tm A C) (S : Tm B D) :
     (Tm.pair (.comp .outl R) (.comp .outr S)).den ρ = rprodMap (R.den ρ) (S.den ρ) := by
   funext p q
   simp [Tm.den, rpair, rprodMap, Core.Rel.comp, graph]
