@@ -87,7 +87,7 @@ rel_program prelude where
     perm : [α] ⟶ [α] ≜ ⦇[nil, add]⦈ where add ≜ (cat°×𝟙)⟨⟨π₁π₁,π₂⟩snoc,π₁π₂⟩cat
     ordered(Q : α ⟶ α) : [α] ⟶ [α] ≜ 𝟙 − dom(tails ∋ ⟨at(0),tail⟩(π₁∼Q ∩ (π₂∋)))   -- every element is Q-related to each later one
     sort(Q : α ⟶ α) : [α] ⟶ [α] ≜ perm ordered(Q)
-    -- Laws of any relation, proved by `rel_aop prelude` (relaop/RelAop/Prelude.lean); a map is `dom(f) = 𝟙` and `simple(f)`.
+    -- Laws of any relation; a map is `dom(f) = 𝟙` and `simple(f)`.
 
     simple(f : α ⟶ β) ≜ f°f ⊑ 𝟙                                   -- f relates each input to at most one output
     theorem absorption(S : α ⟶ β, R : β ⟶ γ) if dom(Λ(S)) = 𝟙 : (𝟙÷∋)E(S)E(R) = (𝟙÷∋)E(S R) by Rel.Lang.Tm.absorption_den

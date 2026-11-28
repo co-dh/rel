@@ -79,7 +79,7 @@ rel_program thm where
       two
 
 #guard thm.ok
--- the chains stay in the program's constant, for `rel_aop` to read back
+-- the chains stay in the program's constant, so a reader of the program can recover each theorem's steps
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss _ => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
