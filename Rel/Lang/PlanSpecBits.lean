@@ -546,4 +546,225 @@ theorem funT2_builds {A B C D E F : Obj} {R : Tab A B} {S : Tab C D} {T' : Tab E
     exact hkk fg2 V ys ⟨a1 ++ e1', by rw [he1, ha1, Array.append_assoc]⟩ (by rw [hf]; exact hb1) ho'
       (f4.trans hsk) (f5.trans hsv) (by simpa [o] using hread)
 
+/-! ### `compBitsBody` builds `Tab.compBits` -/
+
+theorem Free.bitMatrixB (n na w r c : Nat) : Free (Plan.bitMatrixB n na w r c) := by
+  unfold Plan.bitMatrixB
+  exact Free.bind (by show Free (Plan.u64B _); unfold Plan.u64B; free) fun _ => Free.bind (Free.constB _ _) fun _ =>
+    Free.bind (Free.mapB _ _ _ _ _ _ _ _) fun _ => Free.bind (Free.mapB _ _ _ _ _ _ _ _) fun _ =>
+    Free.bind (Free.wordsB _ _) fun _ => Free.bind (Free.call1 _ _) fun _ => Free.scatterB _ _ _ _ _ _
+
+/-- The kernel facts `ascSeenB_builds` asks of the numbering of `x` that its `kasc`, `kseen` answers do not give: the
+    zero column `z` and the `kscan .max` of the groups. -/
+def CodePre {o : Bool} {A : Obj} {n : USize} (x : ValsB o A n) : Prop :=
+  ∀ es vs p k g f, x.cols = .ok es → kasc n es = .ok (vs, p) → kseen n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+    ∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) n 0 = .ok z ∧
+      ∃ r, kscan .max false .i64 .i64 n (some z) [(n, z), (n, g)] [] [] = .ok r
+
+/-- The kernel facts `compBitsBody_builds` leaves open for `Tab.compBits R S`, as `CompPre` does for `compB`: the `2^63`
+    bound on the two row counts, `CodePre` of the three numbered sides, and where the model's `colMap` with a post step
+    (`bitMatrix`'s `.mul`, `Tab.ofBits`' `.rdiv`, `.rmod`) and the plan's `kscan` against a constant column are one column
+    (as `WhereAgree` for `whereCol`). -/
+def CompBitsPre {A B C : Obj} (R : Tab A B) (S : Tab B C) : Prop :=
+  R.n.toNat + S.n.toNat < 2 ^ 63 ∧
+  (∀ N Z, catRows R.n S.n = .ok N → ValsB.concat N R.val S.key = .ok Z → CodePre Z) ∧
+  CodePre R.key ∧ CodePre S.val ∧
+  (∀ n na w r c m, bitMatrix n na w r c = .ok m → ∃ wcol mc ac one f1 f2,
+    kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) n w.toUInt64 = .ok wcol ∧
+    kscan .mul false .i64 .i64 n none [(n, r), (n, wcol)] [] [] = .ok (mc, f1) ∧
+    kscan .add false .i64 .i64 n none [(n, mc), (n, c)] [] [] = .ok (ac, f2) ∧
+    kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) n 1 = .ok one ∧ kscatter .last n ac one (na * w) 0 = .ok m) ∧
+  (∀ ka kc o ra rc, Tab.compMat R S = .ok (ka, kc, o, ra, rc) → ∀ M sel, whereCol (ka * kc) o = .ok (M, sel) →
+    WhereAgree (ka * kc) M o sel ∧ ∃ wcol, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) M kc.toUInt64 = .ok wcol ∧
+      (∀ d, colMap .first M sel sel .i64 .i64 [] [(.rdiv, kc.toUInt64)] = .ok d →
+        ∃ f, kscan .div false .i64 .i64 M none [(M, sel), (M, wcol)] [] [] = .ok (d, f)) ∧
+      (∀ d, colMap .first M sel sel .i64 .i64 [] [(.rmod, kc.toUInt64)] = .ok d →
+        ∃ f, kscan .mod false .i64 .i64 M none [(M, sel), (M, wcol)] [] [] = .ok (d, f)))
+
+
+/-- **`compBitsBody` builds `Tab.compBits`**: `R'`, `S'"'` hold `R`, `S` in `rs`, `R.compBits S = T'`; `kk` continues with a table of
+    `R'`s key shape and `S'`s value shape whose registers hold `T'`. The chain is `compBits`'s binds, each by its `_builds`: `code2B`,
+    two `codeB`, `csrB`, `bitMatrixB`, `kbitrows` (`callK`), `ofBitsB`; the answers they run are read off `compBits = .ok`,
+    the facts that are not (`CompBitsPre`) are premises. -/
+theorem compBitsBody_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B C : Obj}
+    {R : Tab A B} {S : Tab B C} {T' : Tab A C} {R' S' : TabB} {fg : Array Fun × Array Fun} {rs : Array Val}
+    {kk : TabB → Bld (Array Nat)} {out : Array Val}
+    (hRk : ColsOf A R'.key) (hRv : ColsOf B R'.val) (hSk : ColsOf B S'.key) (hSv : ColsOf C S'.val)
+    (hR : R'.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)))
+    (hS : S'.regs.mapM (fun i => rs[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)))
+    (hc : R.compBits S = .ok T') (hpre : CompBitsPre R S) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (U : TabB) (Rn : Array Val), Extends rs Rn → (∃ e, fg2.1 = fg.1 ++ e) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Cols.shape U.key = Cols.shape R'.key → Cols.shape U.val = Cols.shape S'.val →
+      U.regs.mapM (fun i => Rn[i]?) = some (.size T'.n :: (T'.key.regVals ++ T'.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk U) Rn out) :
+    ∃ fg', Builds abiOf fg fg' (Plan.compBitsBody R' S' >>= kk) rs out := by
+  obtain ⟨hlt, hP2, hP1, hP3, hBM, hOB⟩ := hpre
+  unfold Tab.compBits at hc
+  obtain ⟨⟨ka, kc, o, ra, rc⟩, hm, hof⟩ := except_bind_ok hc
+  have hm0 := hm
+  unfold Tab.compMat at hm
+  obtain ⟨⟨kb, bR, bS, Zs⟩, h2, hm⟩ := except_bind_ok hm
+  obtain ⟨⟨ka', aR, ra'⟩, h3, hm⟩ := except_bind_ok hm
+  obtain ⟨⟨kc', cS, rc'⟩, h4, hm⟩ := except_bind_ok hm
+  dsimp only at hm
+  by_cases hbig : 2 ^ 63 ≤ (kb.toNat + ka'.toNat) * kc'.toNat
+  · rw [if_pos hbig] at hm; cases hm
+  rw [if_neg hbig] at hm
+  simp only [pure_bind] at hm
+  obtain ⟨⟨ends, idx⟩, hcsr, hm⟩ := except_bind_ok hm
+  obtain ⟨bm, hbm, hm⟩ := except_bind_ok hm
+  obtain ⟨ob, hkb, hm⟩ := except_bind_ok hm
+  have hmi := Except.ok.inj hm
+  simp only [Prod.mk.injEq] at hmi
+  obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hmi
+  unfold Vals.code2 at h2
+  obtain ⟨N, hp, h2a⟩ := except_bind_ok h2
+  obtain ⟨sh, hsh, h2b⟩ := except_bind_ok h2a
+  obtain ⟨Z, hZ, h2c⟩ := except_bind_ok h2b
+  obtain ⟨⟨k2, c2, rep2⟩, hcz, h2d⟩ := except_bind_ok h2c
+  obtain ⟨e1, hg1, h2e⟩ := except_bind_ok h2d
+  obtain ⟨e2, hg2, h2f⟩ := except_bind_ok h2e
+  unfold Vals.code at hcz
+  obtain ⟨esZ, hesZ, hcz⟩ := except_bind_ok hcz
+  obtain ⟨⟨vsZ, pZ⟩, haZ, hcz⟩ := except_bind_ok hcz
+  obtain ⟨⟨kZ, gZ, fZ⟩, hkZ, hcz⟩ := except_bind_ok hcz
+  obtain ⟨cZ, hcZ, hcz⟩ := except_bind_ok hcz
+  obtain ⟨dZ, hdZ, hcz⟩ := except_bind_ok hcz
+  have hi1 := Except.ok.inj hcz
+  simp only [Prod.mk.injEq] at hi1
+  obtain ⟨rfl, rfl, rfl⟩ := hi1
+  have hi2 := Except.ok.inj h2f
+  simp only [Prod.mk.injEq] at hi2
+  obtain ⟨rfl, rfl, rfl, rfl⟩ := hi2
+  unfold Vals.code at h3 h4
+  obtain ⟨esA, hesA, h3⟩ := except_bind_ok h3
+  obtain ⟨⟨vsA, pA⟩, haA, h3⟩ := except_bind_ok h3
+  obtain ⟨⟨kA, gA, fA⟩, hkA, h3⟩ := except_bind_ok h3
+  obtain ⟨cA, hcA, h3⟩ := except_bind_ok h3
+  obtain ⟨dA, hdA, h3⟩ := except_bind_ok h3
+  have hi3 := Except.ok.inj h3
+  simp only [Prod.mk.injEq] at hi3
+  obtain ⟨rfl, rfl, rfl⟩ := hi3
+  obtain ⟨esC, hesC, h4⟩ := except_bind_ok h4
+  obtain ⟨⟨vsC, pC⟩, haC, h4⟩ := except_bind_ok h4
+  obtain ⟨⟨kC, gC, fC⟩, hkC, h4⟩ := except_bind_ok h4
+  obtain ⟨cC, hcC, h4⟩ := except_bind_ok h4
+  obtain ⟨dC, hdC, h4⟩ := except_bind_ok h4
+  have hi4 := Except.ok.inj h4
+  simp only [Prod.mk.injEq] at hi4
+  obtain ⟨rfl, rfl, rfl⟩ := hi4
+  unfold csr at hcsr
+  obtain ⟨one, hone, hcsr⟩ := except_bind_ok hcsr
+  obtain ⟨sc, hsc, hcsr⟩ := except_bind_ok hcsr
+  obtain ⟨P, hP, hcsr⟩ := except_bind_ok hcsr
+  obtain ⟨⟨vsR, pR⟩, haR, hcsr⟩ := except_bind_ok hcsr
+  obtain ⟨y, hy, hcsr⟩ := except_bind_ok hcsr
+  have hi5 := Except.ok.inj hcsr
+  simp only [Prod.mk.injEq] at hi5
+  obtain ⟨rfl, rfl⟩ := hi5
+  dsimp only at hkb
+  unfold Tab.ofBits at hof
+  obtain ⟨⟨M, sel⟩, hwh, hof⟩ := except_bind_ok hof
+  dsimp only [Rel.expandNote] at hof
+  obtain ⟨d1, hd1, hof⟩ := except_bind_ok hof
+  obtain ⟨ix, hix, hof⟩ := except_bind_ok hof
+  obtain ⟨d2, hd2, hof⟩ := except_bind_ok hof
+  obtain ⟨iy, hiy, hof⟩ := except_bind_ok hof
+  obtain ⟨X', hgx, hof⟩ := except_bind_ok hof
+  obtain ⟨Y', hgy, hof⟩ := except_bind_ok hof
+  obtain rfl := (Except.ok.inj hof).symm
+  have hRe : R'.regs = R'.n :: (Cols.regs R'.key ++ Cols.regs R'.val) := by simp [TabB.regs, Cols.regs_append]
+  have hSe : S'.regs = S'.n :: (Cols.regs S'.key ++ Cols.regs S'.val) := by simp [TabB.regs, Cols.regs_append]
+  rw [hRe] at hR
+  rw [hSe] at hS
+  obtain ⟨hRn, hR⟩ := mapM_get_cons hR
+  obtain ⟨hSn, hS⟩ := mapM_get_cons hS
+  obtain ⟨hRk', hRv'⟩ := mapM_split (ColsOf.regs_length hRk R.key) hR
+  obtain ⟨hSk', hSv'⟩ := mapM_split (ColsOf.regs_length hSk S.key) hS
+  obtain ⟨zz, hzz, rr, hrr⟩ := hP2 N Z hp hZ esZ vsZ pZ kZ gZ fZ hesZ haZ hkZ
+  obtain ⟨zA, hzA, rA, hrA⟩ := hP1 esA vsA pA kA gA fA hesA haA hkA
+  obtain ⟨zC, hzC, rC, hrC⟩ := hP3 esC vsC pC kC gC fC hesC haC hkC
+  have hNR : R.n.toNat ≤ 2 ^ 63 := by omega
+  have hNS : S.n.toNat ≤ 2 ^ 63 := by omega
+  have hone' : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) R.n 1 = .ok one := (Rel.colConst_eq _ _).symm.trans hone
+  obtain ⟨wcol, mc, ac, one2, f1, f2, hwc, hmul, hadd, hone2, hsc2⟩ := hBM _ _ _ _ _ _ hbm
+  obtain ⟨hWA, wcol2, hwc2, hdiv', hmod'⟩ := hOB _ _ _ _ _ hm0 M sel hwh
+  obtain ⟨fd, hdiv⟩ := hdiv' d1 hd1
+  obtain ⟨fm, hmod⟩ := hmod' d2 hd2
+  unfold Plan.compBitsBody
+  simp only [bind_assoc]
+  refine code2B_builds hT h63 B hRv hSk hRv' hSk' hRn hSn hlt hp hZ hsh hesZ haZ hkZ hzz hrr hcZ hdZ hg1 hg2 hfo ?_
+  intro fg1 R1 a1 b1 c1 d1' zs1 e1' he1 hf1 ho1 hE1 hsh1 hzs1 hr1
+  obtain ⟨hkb1, hr1⟩ := mapM_get_cons hr1
+  obtain ⟨hbR1, hr1⟩ := mapM_get_cons hr1
+  obtain ⟨hbS1, -⟩ := mapM_get_cons hr1
+  dsimp only
+  refine codeB_builds A (x := R.key) (cs := R'.key) (L := Cols.regs R'.key) (n := R'.n) hRk (regsOf_eq _)
+    (mapM_extends hE1 hRk') (hE1 hRn) hesA hNR haA hkA hzA hrA hcA hdA ho1 ?_
+  intro fg2 R2 a2 b2 e2' he2 hf2 ho2 hE2 hr2
+  obtain ⟨hka2, hr2⟩ := mapM_get_cons hr2
+  obtain ⟨haR2, hr2⟩ := mapM_get_cons hr2
+  obtain ⟨hra2, -⟩ := mapM_get_cons hr2
+  have X2 : Extends rs R2 := fun h => hE2 (hE1 h)
+  refine codeB_builds C (x := S.val) (cs := S'.val) (L := Cols.regs S'.val) (n := S'.n) hSv (regsOf_eq _)
+    (mapM_extends X2 hSv') (X2 hSn) hesC hNS haC hkC hzC hrC hcC hdC ho2 ?_
+  intro fg3 R3 a3 b3 e3' he3 hf3 ho3 hE3 hr3
+  obtain ⟨hkc3, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨hcS3, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨hrc3, -⟩ := mapM_get_cons hr3
+  have X3 : Extends rs R3 := fun h => hE3 (X2 h)
+  refine csrB_builds (X3 hRn) (hE3 hka2) (hE3 haR2) (hE3 (hE2 hbR1)) hone' hsc hP haR hy ho3 ?_
+  intro fg4 R4 a4 b4 he4 hf4 ho4 hE4 hr4
+  obtain ⟨hends4, hr4⟩ := mapM_get_cons hr4
+  obtain ⟨hidx4, -⟩ := mapM_get_cons hr4
+  have X4 : Extends rs R4 := fun h => hE4 (X3 h)
+  have hkb4 : R4[a1]? = some (.size kZ.toUSize) := hE4 (hE3 (hE2 hkb1))
+  have hbS4 : R4[c1]? = some (Reg.put e2) := hE4 (hE3 (hE2 hbS1))
+  refine Builds.bind1F (Free.bitMatrixB _ _ _ _ _) (bitMatrixB_builds (X4 hSn) hkb4 (hE4 hkc3) hbS4 (hE4 hcS3) hwc hmul
+    hadd hone2 hsc2) fun mr R5 hmr hE5 => ?_
+  have X5 : Extends rs R5 := fun h => hE5 (X4 h)
+  refine Builds.litF fun lb R6 hlb hE6 => ?_
+  have X6 : Extends rs R6 := fun h => hE6 (X5 h)
+  refine Builds.callKF (o := #[Reg.put ob]) (by abiK) rfl
+    (reads_of (l := [lb, a3, a1, R'.n, a2, a4, b4, mr]) (vs := [.bit false, .size kC.toUSize, .size kZ.toUSize,
+      .size R.n, .size kA.toUSize, Reg.put P, Reg.put y, Reg.put bm])
+      (by simp [hlb, hE6 (hE5 (hE4 hkc3)), hE6 (hE5 hkb4), X6 hRn, hE6 (hE5 (hE4 (hE3 hka2))), hE6 (hE5 hends4),
+        hE6 (hE5 hidx4), hE6 hmr])) ?_ rfl fun sp R7 hsp hE7 => ?_
+  · have hsz : ∀ x : USize, (Reg.get? (Val.size x) : Option USize) = some x := fun _ => rfl
+    have hbit : (Reg.get? (Val.bit false) : Option Bool) = some false := rfl
+    simp [arg, hsz, hbit, enc_get_put, hkb, Out.out]
+    rfl
+  have X7 : Extends rs R7 := fun h => hE7 (X6 h)
+  obtain ⟨p1, hp1, hpR1⟩ := holds_at hsp (i := 0) rfl
+  rw [nth_of (by simpa using hp1), pure_bind]
+  refine ofBitsB_builds A C (X := R.key) (Y := S.val) (xs := R'.key) (ys := S'.val) hRk hSv (mapM_extends X7 hRk')
+    (mapM_extends X7 hSv') (hE7 (hE6 (hE5 (hE4 (hE3 hka2))))) (hE7 (hE6 (hE5 (hE4 hkc3)))) hpR1 (X7 hRn)
+    (hE7 (hE6 (hE5 (hE4 (hE3 hra2))))) (X7 hSn) (hE7 (hE6 (hE5 (hE4 hrc3)))) hWA hwc2 hdiv hmod hix hiy hgx hgy ho4 ?_
+  intro fg8 R8 W he8 hf8 ho8 hE8 hsk hsv hreg
+  exact hkk fg8 W R8 (fun h => hE8 (X7 h)) (FExt.trans (FExt.trans (FExt.trans (FExt.trans he1 he2) he3) he4) he8)
+    ((((hf1.trans hf2).trans hf3).trans hf4).trans hf8) ho8 hsk hsv hreg
+
+
+/-- **`compBitsB` builds `Tab.compBits`**: `funT2_builds` of `compBitsBody_builds`; `kk` continues with a table of `R'`'s key
+    shape and `S'`'s value shape whose registers hold `T'`. -/
+theorem compBitsB_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B C : Obj}
+    {R : Tab A B} {S : Tab B C} {T' : Tab A C} {R' S' : TabB} {fg : Array Fun × Array Fun} {rs : Array Val}
+    {kk : TabB → Bld (Array Nat)} {out : Array Val}
+    (hRk : ColsOf A R'.key) (hRv : ColsOf B R'.val) (hSk : ColsOf B S'.key) (hSv : ColsOf C S'.val)
+    (hR : R'.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)))
+    (hS : S'.regs.mapM (fun i => rs[i]?) = some (.size S.n :: (S.key.regVals ++ S.val.regVals)))
+    (hc : R.compBits S = .ok T') (hpre : CompBitsPre R S) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape R'.key → Cols.shape W.val = Cols.shape S'.val →
+      W.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size T'.n :: (T'.key.regVals ++ T'.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (compBitsB R' S' >>= kk) rs out := by
+  rw [compBitsB_eq]
+  refine funT2_builds (body := Plan.compBitsBody) (nm := "compBits: not two tables") (E := A) (F := C) (K := R'.key)
+    (V := S'.val) Grows.compBitsBody (fun hR hS => Typed.compBitsBody hR hS) hRk hSv hR hS hfo ?_ hkk
+  intro R1 S1 rs' kk' out' h1 h2 h3 h4 hr hs hk'
+  exact compBitsBody_builds hT h63 (ColsOf.shape A hRk h1) (ColsOf.shape B hRv h2) (ColsOf.shape B hSk h3)
+    (ColsOf.shape C hSv h4) hr hs hc hpre hfo fun fg2 U Rn he hfe hge hoo hsk hsv hreg =>
+      hk' fg2 U Rn he hfe hge hoo (hsk.trans h1) (hsv.trans h4) hreg
+
 end Rel.Lang.Plan
