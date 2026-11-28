@@ -1,5 +1,6 @@
 import Rel.Lang.Laws.Map
 import Rel.Lang.PreludeRows
+import Rel.Lang.Laws.Cylinder
 
 /-! # The list type functor `F(R)` of B&dM §2.7 (`AOP/A5_5_TypeFunctor.lean`), on the concrete core
 
@@ -10,18 +11,6 @@ namespace Rel.Lang
 open Tab Rel.Rep
 open scoped Rel.Core.Rel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
-
-/-- `F(T)` the row at its one argument is `mapDen T` (the corefl case `Prim.den_mapRow_corefl` for general `T`). -/
-theorem Prim.den_mapRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
-    Prim.den mapRow (.arr A) (.arr B) [⟨A, B, T⟩] = mapDen T := by
-  have ho : ∀ ps, mapRow.objs (.arr A) (.arr B) ps = some [A, B] := by
-    simp [Prim.objs, Option.orElse, mapRow, OExp.unify, Prim.vars, OExp.vars, List.eraseDups, List.eraseDupsBy,
-      List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == mapRow.sym) =
-      some ⟨RowCode.map, fun σ => Sem.one (X := σ₁ σ) (Y := σ₂ σ) mapDen⟩ := rfl
-  unfold Prim.den; rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]
-  simp only [Sem.one, σ₁, σ₂, List.headD, List.getD, List.getElem?_cons_succ, List.getElem?_cons_zero,
-    Option.getD_some, dite_true, and_self]
 
 theorem Tm.fmap_den (ρ : Val) {A B : Obj} (R : Tm A B) :
     (Tm.arg (Tm.prim mapRow : Tm (.arr A) (.arr B)) R).den ρ = mapDen (R.den ρ) := by
@@ -39,22 +28,6 @@ theorem mapDen_recip {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) : (mapDen 
   Core.Rel.ext fun ys xs => by
     show mapDen T xs ys ↔ mapDen T° ys xs; rw [mapDen_iff, mapDen_iff]; exact ⟨fun ⟨hl, h⟩ => ⟨hl.symm, fun t h1 h2 => h t h2 h1⟩,
       fun ⟨hl, h⟩ => ⟨hl.symm, fun t h1 h2 => h t h2 h1⟩⟩
-
-theorem mapDen_comp {A B C : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) (U : Core.Rel (Obj.El B) (Obj.El C)) :
-    mapDen T ≫ mapDen U = mapDen (T ≫ U) :=
-  Core.Rel.ext fun xs zs => by
-    classical
-    constructor
-    · rintro ⟨ys, h1, h2⟩
-      obtain ⟨hl1, h1⟩ := (mapDen_iff _ _ _).1 h1
-      obtain ⟨hl2, h2⟩ := (mapDen_iff _ _ _).1 h2
-      exact (mapDen_iff _ _ _).2 ⟨hl2.trans hl1, fun t ht ht' => ⟨ys[t]'(by omega), h1 t ht _, h2 t _ ht'⟩⟩
-    · intro h
-      obtain ⟨hl, h⟩ := (mapDen_iff _ _ _).1 h
-      refine ⟨List.ofFn fun i : Fin xs.length => Classical.choose (h i.1 i.2 (by omega)),
-        (mapDen_iff _ _ _).2 ⟨by simp, fun t ht ht' => ?_⟩, (mapDen_iff _ _ _).2 ⟨by simp [hl], fun t ht ht' => ?_⟩⟩
-      · simpa using (Classical.choose_spec (h t ht (by omega))).1
-      · simpa using (Classical.choose_spec (h t (by simpa using ht) ht')).2
 
 theorem Tm.fmap_id_den {A : Obj} (ρ : Val) :
     (Tm.arg (Tm.prim mapRow : Tm (.arr A) (.arr A)) (Tm.id (A := A))).den ρ = (Tm.id (A := .arr A)).den ρ := by
