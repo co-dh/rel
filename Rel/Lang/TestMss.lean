@@ -30,7 +30,7 @@ def arrays : List (List Int64) :=
 /-- Equal as sets of rows: row order is not part of a relation. -/
 def seteq (a b : List (List Int64 × Int64)) : Bool := a.all b.contains && b.all a.contains
 
-#guard given.ok
+
 #guard arrays.length == 40
 -- the specification and the fold on all 40 arrays, against `mssL`
 #guard ["s", "p"].all fun n => match get given.expanded n (.arr .long) .long with
@@ -46,7 +46,7 @@ def rows : String := s!"\{(a, {mssL [3,1,4,1,5]}), (b, {mssL [2,0,7]}), (c, {mss
   (arrays.any fun xs => mssL xs > (xs.foldl (· + ·) 0))
 -- the program's checks hold and it prints nothing; printed here, `x mss` and `x` then the fold are the rows `mssL`
 -- computes
-#guard Programs.mss.ok && Programs.mss.prints == []
+#guard Programs.mss.prints == []
 #guard given.prints == [s!"x mss = {rows}",
   s!"x scan = {rows}"]
 

@@ -41,7 +41,6 @@ def agrees (n : String) : Bool := match packs n with
     !mine.isEmpty && mine.all (fun ys => weight ys ≤ cap && value ys == best xs && ys.all xs.contains) &&
       mine.length == bestL.eraseDups.length
 
-#guard Programs.knapsack.ok
 #guard items.map (best ·.2) == [11, 11, 1, 10]
 #guard agrees "s"
 #guard agrees "p"
@@ -64,11 +63,11 @@ rel_program shown where
   "p = {(a, (5, 4) (6, 5)), (b, (2, 2) (9, 8)), (c, [(1, 9)]), (d, (5, 4) (5, 5)), (d, (5, 4) (5, 6))}",
   "knap = {(a, (5, 4) (6, 5)), (b, (2, 2) (9, 8)), (c, [(1, 9)]), (d, (5, 4) (5, 5))}"]
 
+-- a `check` that fails is an error of the program
+/-- error: rel_program Rel.Lang.TestKnapsack.wrong: line 71, col 5: claim failed: p = {(a, (5, 4) (6, 5)), (b, (2, 2) (9, 8)), (c, [(1, 9)]), (d, (5, 4) (5, 5)), (d, (5, 4) (5, 6))}, X subseq = {(a, []), (a, [(3, 3)]), (a, (3, 3) (4, 6)), (a, (3, 3) (4, 6) (5, 4)), (a, (3, 3) (4, 6) (5, 4) (6, 5)), (a, (3, 3) (4, 6) (6, 5)), (a, (3, 3) (5, 4)), (a, (3, 3) (5, 4) (6, 5)), (a, (3, 3) (6, 5)), (a, [(4, 6)]), (a, (4, 6) (5, 4)), (a, (4, 6) (5, 4) (6, 5)), (a, (4, 6) (6, 5)), (a, [(5, 4)]), (a, (5, 4) (6, 5)), (a, [(6, 5)]), (b, []), (b, [(2, 2)]), (b, (2, 2) (7, 4)), (b, (2, 2) (7, 4) (9, 8)), (b, (2, 2) (9, 8)), (b, [(7, 4)]), (b, (7, 4) (9, 8)), (b, [(9, 8)]), (c, []), (c, [(1, 9)]), (d, []), (d, [(5, 4)]), (d, (5, 4) (5, 5)), (d, (5, 4) (5, 5) (5, 6)), (d, (5, 4) (5, 6)), (d, [(5, 5)]), (d, (5, 5) (5, 6)), (d, [(5, 6)])} -/
+#guard_msgs in
 open Rel.Programs.prelude Programs.knapsack in
 rel_program wrong where
     check p = X subseq
-
--- a `check` that fails is a failure: the guards above would not see a silently skipped one
-#guard !wrong.ok
 
 end Rel.Lang.TestKnapsack

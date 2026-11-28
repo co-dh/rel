@@ -17,7 +17,7 @@ open Rel.Programs.prelude Programs.circuit in
 rel_program shown where
     print answer
 
-#guard Programs.circuit.ok
+
 -- the program's own `check answer = …` holds and prints nothing; `answer` printed here is the same literal
 #guard Programs.circuit.prints == []
 #guard shown.prints == ["answer = {(0 1 1, 0), (1 0 1, 0), (1 1 0, 0)}"]

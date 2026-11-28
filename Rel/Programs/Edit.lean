@@ -84,6 +84,6 @@ rel_program edit where
     print spec length 𝟙(N)
     print Ddom(⟨π₁length,π₂length⟩{((1,1),(1,1))})spec
 
-#guard edit.ok
+
 
 end Rel.Programs

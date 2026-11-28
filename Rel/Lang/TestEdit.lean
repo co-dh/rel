@@ -36,12 +36,12 @@ open Rel.Programs.prelude Programs.edit in
 rel_program mleLength where
     print D mle length 𝟙(N)
 
-#guard Programs.edit.ok
+
 #guard Programs.edit.prints.head? == some (expected "spec length 𝟙(N)")
 -- the second `print`, the shortest sequences of the pairs of one-letter strings, is for reading only
 #guard Programs.edit.prints.length == 2
 -- the tabulation: the program's `check D mle ⊑ spec` and `check D mle length 𝟙(N) = (spec length 𝟙(N))` hold (`ok`),
 -- and `mle`'s lengths printed here are the edit-distance recursion's, on the same 9 pairs
-#guard mleLength.ok && mleLength.prints == [expected "D mle length 𝟙(N)"]
+#guard mleLength.prints == [expected "D mle length 𝟙(N)"]
 
 end Rel.Lang.TestEdit

@@ -32,8 +32,8 @@ rel_program genLitQT where
     check percentile(x, a, s) = {(∗,3)}
 
 -- by hand: `inc` adds 1 to 5; `percentile` adds 100 to 5, `a` takes 105 to 7, `s` takes 7 to 3
-#guard genLitNT.failures.map toString == []
-#guard genLitQT.failures.map toString == []
+
+
 
 -- refused at the use, where `numCheck` reads the literal `quantile` is given at the object ν is put at
 /-- error: line 47, col 11: in `Rel.Lang.TestGenericLit.genLitG.percentile` (its line 14): `quantile` at this call, where ν is P: 100 is not in P = 0…15 -/

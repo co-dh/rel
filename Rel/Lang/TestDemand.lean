@@ -29,7 +29,6 @@ rel_program demandT where
 -- `(1,2)` (`10 < 40`); `(0,1)` is `30 < 10`, `(2,3)` is `40 < 20`, `(0,3)` is `30 < 20`, all false.
 -- `p(x×x)`: `(0,1) ↦ (x(0),x(1)) = (30,10)`, `(2,3) ↦ (40,20)`. `p₂(x×q)`: `(0,10) ↦ (x(0),q(10)) = (30,20)`,
 -- `(2,30) ↦ (40,10)`.
-#guard demandT.ok
 
 /-! `⟨R, S⟩` relates `a` only where both do, so a table operand (`K`, `c`) runs first and its domain bounds the lazy
     `𝟙` (`GenK.pairK`): the same rows at the unbounded `obj N` as at a declared finite one. -/
@@ -43,7 +42,6 @@ rel_program pairN where
     check ⟨K, 𝟙⟩ = {(1,(7,1)),(3,(5,3)),(3,(8,3))}
     check K ⟨𝟙, 𝟙⟩ = {(1,(7,7)),(3,(5,5)),(3,(8,8))}
     check asc(ran(⟨c, 𝟙⟩)) π₂ = {(0,1),(1,3),(2,0),(3,2)}
-    bad : N ⟶ N×N ≜ ⟨<, <⟩
 
 open Rel.Programs.prelude in
 rel_program pairFin where
@@ -59,11 +57,12 @@ rel_program pairFin where
 -- itself; `⟨K, 𝟙⟩` puts `K`'s value first. `K ⟨𝟙, 𝟙⟩` doubles each value of `K`. `ran⟨c, 𝟙⟩` is the pairs
 -- `(c(i), i)`: in value order `(10,1) (20,3) (30,0) (40,2)`, so `asc` numbers them 0…3 and `π₂` reads the positions
 -- `1 3 0 2` (q's `iasc 30 10 40 20`). `bad` pairs two lazy `<` with nothing to bound either: `R` fails, then `S`; the
--- failure names both (`retryE`).
-#guard pairN.failures.map toString == ["bad: < on an unbounded object: nothing bounds its left side; compose it " ++
-  "with a table on that side (a leaf on demand ran with its domain unknown); run the other operand first: " ++
-  "< on an unbounded object: nothing bounds its left side; compose it " ++
-  "with a table on that side (a leaf on demand ran with its domain unknown)"]
-#guard pairFin.ok
+-- error names both (`retryE`).
+/-- error: rel_program Rel.Lang.TestDemand.pairBad: bad: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (a leaf on demand ran with its domain unknown); run the other operand first: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (a leaf on demand ran with its domain unknown) -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program pairBad where
+    obj N
+    bad : N ⟶ N×N ≜ ⟨<, <⟩
 
 end Rel.Lang.TestDemand

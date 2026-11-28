@@ -32,16 +32,15 @@ rel_program dateLitT where
     t : N ⟶ T ≜ {(0,2024.01.15D12:30:00.5),(1,1969.12.31D23:59:59.999999999),(2,1970.01.01D00:00:00)}
     check t = {(0,1705321800500000000),(1,-1),(2,0)}
 
-#guard dateLitT.failures.map toString == []
 
 -- a date at an object of another atom
-/-- error: line 42, col 17: no declared object has the elements [2024.01.15] ('2024.01.15' is not an element of N, an object of i64) -/
+/-- error: line 41, col 17: no declared object has the elements [2024.01.15] ('2024.01.15' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program dateAtLongT where
     obj N
     x : N ⟶ N ≜ {(0,2024.01.15)}
 
-/-- error: line 49, col 17: no declared object has the elements [2024.01.15] ('2024.01.15' is not an element of F, an object of f64; '2024.01.15' is not an element of N, an object of i64) -/
+/-- error: line 48, col 17: no declared object has the elements [2024.01.15] ('2024.01.15' is not an element of F, an object of f64; '2024.01.15' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program dateAtFloatT where
     obj N
@@ -49,21 +48,21 @@ rel_program dateAtFloatT where
     x : N ⟶ F ≜ {(0,2024.01.15)}
 
 -- no such day: February 30, month 13, February 29 of a century year not divisible by 400
-/-- error: line 57, col 17: no declared object has the elements [2024.02.30] ('2024.02.30' is not an element of D, an object of date: it is no integer and no day yyyy.mm.dd of the years 0001–9999 in the range of date; '2024.02.30' is not an element of N, an object of i64) -/
+/-- error: line 56, col 17: no declared object has the elements [2024.02.30] ('2024.02.30' is not an element of D, an object of date: it is no integer and no day yyyy.mm.dd of the years 0001–9999 in the range of date; '2024.02.30' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program feb30T where
     obj N
     obj D : date
     x : N ⟶ D ≜ {(0,2024.02.30)}
 
-/-- error: line 64, col 17: no declared object has the elements [2024.13.01] ('2024.13.01' is not an element of D, an object of date: it is no integer and no day yyyy.mm.dd of the years 0001–9999 in the range of date; '2024.13.01' is not an element of N, an object of i64) -/
+/-- error: line 63, col 17: no declared object has the elements [2024.13.01] ('2024.13.01' is not an element of D, an object of date: it is no integer and no day yyyy.mm.dd of the years 0001–9999 in the range of date; '2024.13.01' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program month13T where
     obj N
     obj D : date
     x : N ⟶ D ≜ {(0,2024.13.01)}
 
-/-- error: line 71, col 17: no declared object has the elements [1900.02.29] ('1900.02.29' is not an element of D, an object of date: it is no integer and no day yyyy.mm.dd of the years 0001–9999 in the range of date; '1900.02.29' is not an element of N, an object of i64) -/
+/-- error: line 70, col 17: no declared object has the elements [1900.02.29] ('1900.02.29' is not an element of D, an object of date: it is no integer and no day yyyy.mm.dd of the years 0001–9999 in the range of date; '1900.02.29' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program feb29T where
     obj N
@@ -71,7 +70,7 @@ rel_program feb29T where
     x : N ⟶ D ≜ {(0,1900.02.29)}
 
 -- beyond the range of `datetime`: nanoseconds from 1970 in `i64` end at 2262.04.11D23:47:16.854775807
-/-- error: line 79, col 17: no declared object has the elements [2262.04.12D00:00:00] ('2262.04.12D00:00:00' is not an element of T, an object of datetime: it is no integer and no time yyyy.mm.ddDhh:mm:ss[.f] of the years 0001–9999 in the range of datetime; '2262.04.12D00:00:00' is not an element of N, an object of i64) -/
+/-- error: line 78, col 17: no declared object has the elements [2262.04.12D00:00:00] ('2262.04.12D00:00:00' is not an element of T, an object of datetime: it is no integer and no time yyyy.mm.ddDhh:mm:ss[.f] of the years 0001–9999 in the range of datetime; '2262.04.12D00:00:00' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program stampRangeT where
     obj N
@@ -99,10 +98,9 @@ rel_program textLitT where
     -- a text in an input's table
     check x = {(0,"TK, main"),(1,"a\"b\\c")} where x ≜ {(0,"TK, main"),(1,"a\"b\\c")}
 
-#guard textLitT.failures.map toString == []
 
 -- a text at an object of another atom than `char`
-/-- error: line 109, col 19: no declared object has the elements ["N", "Y"] ('"N"' is not an element of N, an object of i64) -/
+/-- error: line 107, col 19: no declared object has the elements ["N", "Y"] ('"N"' is not an element of N, an object of i64) -/
 #guard_msgs in
 rel_program textAtLongT where
     obj N
@@ -121,9 +119,8 @@ rel_program dateKeyCheckT where
     check perDay = {(2024.01.15,1),(2024.01.16,2)}
     check agg((x π₁ π₂)°, length) = {(2024.01.15,1),(2024.01.16,2)}
 
-#guard dateKeyCheckT.failures.map toString == []
 
--- a date and a time shown as q shows them, in a `print` and in a failing `check`'s message
+-- a date and a time shown as q shows them, in a `print`
 rel_program dateShowT where
     obj N
     obj D : date
@@ -132,10 +129,16 @@ rel_program dateShowT where
     t : N ⟶ T ≜ {(0,2024.01.15D12:30:00.5)}
     print d
     print t
-    check d = {(0,2024.01.16)}
 
 #guard dateShowT.prints == ["d = {(0, 2024.01.15), (1, 1969.12.31)}", "t = {(0, 2024.01.15D12:30:00.500000000)}"]
-#guard dateShowT.failures.map toString ==
-  ["line 135, col 5: check failed: d = {(0, 2024.01.15), (1, 1969.12.31)}, {(0, 2024.01.16)} = {(0, 2024.01.16)}"]
+
+-- and in a failing `check`'s message
+/-- error: rel_program Rel.Lang.TestDateLit.dateShowFailT: line 142, col 5: claim failed: d = {(0, 2024.01.15), (1, 1969.12.31)}, {(0, 2024.01.16)} = {(0, 2024.01.16)} -/
+#guard_msgs in
+rel_program dateShowFailT where
+    obj N
+    obj D : date
+    d : N ⟶ D ≜ {(0,2024.01.15),(1,1969.12.31)}
+    check d = {(0,2024.01.16)}
 
 end Rel.Lang.TestDateLit

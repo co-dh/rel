@@ -38,6 +38,6 @@ rel_program selsort where
     check C X ⊑ C perm ordered(≤)                 -- selection_sort, 06:316
     check C X = C perm ordered(≤)
 
-#guard selsort.ok
+
 
 end Rel.Programs

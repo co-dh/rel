@@ -32,7 +32,7 @@ rel_program arithD where
 -- by hand: `(-2.0)·0.0 = -0` is written `0`; `0/0` is NaN, so row 1 of `div` and of `mod` has no image; `1/0 = ∞`
 -- is a value, so rows 3, 4 of `div` are kept, and `mod` there is `1 - 0·∞` = NaN, none; `7.5 div 2 = 3`,
 -- `7.5 mod 2 = 1.5`; `1e308·10` overflows to `∞`, a value
-#guard arithD.failures.map toString == []
+
 
 open Rel.Programs.prelude in
 rel_program arithS where
@@ -57,7 +57,7 @@ rel_program arithS where
 
 -- by hand: as `arithD`, and at `f32` `0.1 + 0.2` rounds to the `f32` nearest `0.3`, the word `0.3` reads as;
 -- `3e38·10` overflows the `f32` range to `∞`, a value
-#guard arithS.failures.map toString == []
+
 
 rel_program orderT where
     obj N
@@ -72,7 +72,7 @@ rel_program orderT where
     check g < h° = {(1,0),(1,1),(2,0)}
     check g ≤ h° = {(0,0),(1,0),(1,1),(2,0),(2,1)}
 
-#guard orderT.failures.map toString == []
+
 
 -- `< ≤ max min` at every ordered atom with no value step (`ordNum`): the integer order of the stored values,
 -- `date` as its days, `datetime` as its nanoseconds; `max`/`min` pick an operand by `≤`
@@ -112,7 +112,7 @@ rel_program orderIntT where
     check ⟨t, t⟩ max = {(0,5),(1,-5)}
 
 -- by hand: `u8` 200 > 3 (unsigned); `i8` -5 < 3; `date` -1 (1969-12-31) < 19000; equal operands give themselves
-#guard orderIntT.failures.map toString == []
+
 
 -- an `i64` and an `f64` operand: refused naming both objects; the program casts one with `$` first
 /-- error: line 125, col 24: the source of the right factor of a composition: found N×N, expected N×F -/
@@ -170,7 +170,7 @@ rel_program divideT where
 -- by hand: `1/3` is the `f64` nearest a third, the literal `0.3333333333333333` reads as; `-7.5/2.5 = -3` exact;
 -- `1/0 = ∞` is a value (the one `1e308·10` overflows to), `-1/0 = -∞` another, `0/0` NaN, no row; at `f32` `1/3` is
 -- the `f32` nearest a third (`0x3eaaaaab`), the word `0.33333334` reads as
-#guard divideT.failures.map toString == []
+
 
 -- `%` at an integer object: refused, the quotient of two integers being no integer; the program casts with `$` first
 /-- error: line 181, col 24: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
@@ -214,7 +214,7 @@ rel_program unaryT where
 -- by hand: `√4 = 2`, `√0 = 0` exact; `√2` correctly rounded is `0x3ff6a09e667f3bcd`, the word the literal
 -- `1.4142135623730951` reads as, at `f64` from the `f32` `2.0` too; `√-1` is NaN, no row 2;
 -- `-0` is written `0`; `exp 0 = 1`, `log 1 = 0`, `log 0 = -∞` a value, `log -1` NaN no row; `floor -2.5 = -3`
-#guard unaryT.failures.map toString == []
+
 
 -- `floor`'s last step `cast f64 i64` (`Op.ofF64 .i64`): `-3.0` to `-3`; `2^63` (out of range), NaN, `±∞` to `2^63`,
 -- the word `nanFlag` drops
@@ -238,7 +238,7 @@ rel_program roundT where
 
 -- by hand: ties `0.5 1.5 2.5 -0.5 -1.5` to the even `0 2 2 -0 -2` (`-0` is the `i64` `0`), `2.4 2.6` to `2 3`;
 -- `1e300` has no `i64` word, no row 7; the `f32` `2.5 -3.5 0.75` widened, then `2 -4 1`
-#guard roundT.failures.map toString == []
+
 -- a column holds no NaN (it is the float null), so the NaN row is checked on the words: `fround` keeps the NaN and
 -- `Op.ofF64 .i64` writes `2^63`, the word the flag drops; `1e300` the same
 #guard [0x7ff8000000000000, (1e300 : Float).toBits].map (fun x => (Kernel.Op.fround.eval 0 x >>=
@@ -265,7 +265,7 @@ rel_program xexpT where
 -- by hand: `2^10 = 1024`, `(-2)^3 = -8` (an integer exponent on a negative base, which `exp(y·log x)` has no value
 -- for), `(-8)^0.5` NaN no row 2, `0^0 = 1` as libm's `pow`; `2^3`, `(-2)^2` with the `i64` exponents cast by `$`;
 -- the `f32` operands widened, the answer at `f64`
-#guard xexpT.failures.map toString == []
+
 
 -- `sqrt` at an integer object: refused by name, with the cast the program writes first
 /-- error: line 276, col 5: sqrt on N: N is an object of i64, and sqrt runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/

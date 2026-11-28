@@ -62,7 +62,7 @@ rel_program query3 where
     l5 : N ⟶ (N×N)×(1+(N×N)) ≜ lj5(sales(P))
     check q5(l5) = {(∗,(500,12750))}
 
-#guard query3.failures.map toString == []
+
 
 -- n = 10⁴, the same closed forms
 open Rel.Programs.prelude queryN in
@@ -79,6 +79,6 @@ rel_program query4 where
     l5 : N ⟶ (N×N)×(1+(N×N)) ≜ lj5(sales(P))
     check q5(l5) = {(∗,(5000,127500))}
 
-#guard query4.failures.map toString == []
+
 
 end Rel.Lang.TestFrameQuery

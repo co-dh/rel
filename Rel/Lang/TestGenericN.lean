@@ -51,8 +51,6 @@ rel_program genericPT where
 -- by hand: `5 0 7 0` has 4 elements; `x`'s values sum to 5+0+7+0 = 12, `y`'s to 9+9 = 18, which `P = 0…15` does not
 -- hold, so at `P` the fold's last step leaves the object and `sm(y)` has no value; `x` has 4 rows; `rk` each element
 -- of `p` to the count of elements below it (2 has none, 9 has 2 5 7).
-#guard genericNT.failures.map toString == []
-#guard genericPT.failures.map toString == []
 
 /-! A relation argument that needs keys (`π₁`, `π₂`, `𝟙`) is passed on demand (`Expand.callDef`), so it runs bounded
     by what the constant's body composes it with, as the inlined body runs it, not on its source's whole universe:
@@ -105,19 +103,17 @@ rel_program paramBigT where
 -- rows 0 1 2; `x`'s keys B A B C meet `y`'s A C at (1,0), (3,1); `q ∩ 𝟙` keeps (2,2), `q − 𝟙` keeps (1,5); at `M`
 -- the rows with `i ≥ 19950` renumbered `j = i − 19950` (`j + 19950` in `M`: `j < 50`), and `x` joined with itself on
 -- `π₁` matches each row with itself, pair `j` the row `j`.
-#guard paramNT.failures.map toString == []
-#guard paramPT.failures.map toString == []
-#guard paramBigT.failures.map toString == []
 
 -- the universe of `M×M` is `prodUni` of `M`'s twice (`uniPart`), no `n · m` literal, so the definition elaborates; `whole`
 -- reads it whole, 4·10⁸ pairs past `crossMax`: `Vals.cross` refuses before allocating, at every run of `whole`
+/-- error: rel_program Rel.Lang.TestGenericN.bigUniT: line 117, col 5: check whole, whole: cross: 20000 values of the left object by 20000 of the right is 400000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown
+whole: cross: 20000 values of the left object by 20000 of the right is 400000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown
+whole: cross: 20000 values of the left object by 20000 of the right is 400000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown
+whole: cross: 20000 values of the left object by 20000 of the right is 400000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`); run the other operand first: a leaf on demand ran with its domain unknown -/
+#guard_msgs in
 rel_program bigUniT where
     obj M = 0…19999
     whole : M×M ⟶ M×M ≜ 𝟙
     check whole = whole
-
-#guard !bigUniT.failures.isEmpty && bigUniT.failures.all fun f =>
-  1 < ((toString f).splitOn
-    "cross: 20000 values of the left object by 20000 of the right is 400000000 pairs, past the bound 268435456").length
 
 end Rel.Lang.TestGenericN

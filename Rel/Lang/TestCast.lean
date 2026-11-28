@@ -19,7 +19,7 @@ rel_program castT where
     print af
 
 -- by hand: `2^53 + 1` is no `f64` value (53 bits of mantissa), so row 4 has no image; `-7`, `0` are exact
-#guard castT.failures.map toString == []
+
 #guard castT.prints == ["af = {(0, 0.0), (1, -7.0), (2, 3.0), (3, 9007199254740992.0)}"]
 
 /-- error: line 31, col 5: $ from F (f64) to N (i64): not every f64 value is a i64 value, and $ keeps a number's value -/
@@ -73,7 +73,7 @@ rel_program dateCastT where
     -- by hand: `2^24 + 1` is no `f32` value (24 bits of mantissa), so day 16777217 has no image
     check d $ G = {(0,19000),(1,-5)}
 
-#guard dateCastT.failures.map toString == []
+
 
 -- a date and a datetime count in different units, so neither casts to the other
 /-- error: line 86, col 5: $ from D (date) to T (datetime): not every date value is a datetime value, and $ keeps a number's value -/

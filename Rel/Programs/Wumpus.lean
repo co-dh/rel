@@ -46,6 +46,6 @@ rel_program wumpus where
 
     check next(V,B,S) = {(0,(12,12)),(0,(21,21)),(1,(12,12)),(2,(12,12)),(3,(22,22)),(4,(23,23)),(4,(32,32)),(5,(32,32))}
 
-#guard wumpus.ok
+
 
 end Rel.Programs

@@ -24,7 +24,6 @@ rel_program cmpMeetT where
     check gel = {(1,0),(1,1),(4,4)}
     check either = {(1,0),(1,2),(3,5)}
 
-#guard cmpMeetT.ok
 
 -- `Bench/CmpMeet.lean`'s `cmpMeetBig` at 10³ rows over `M` of 10⁵ values: `P` the positions 0…999, `R0` each to its
 -- successor and to its half, so `R0 ∩ ≥` has range 0…499, `R0 ∩ <` range 1…1000, `R0 ∩ 𝟙` is `(0,0)`. `bad` reads
@@ -41,11 +40,12 @@ rel_program cmpMeet3 where
     check count(ran(R0 ∩ ≥)) = {(∗,500)}
     check count(ran(R0 ∩ <)) = {(∗,1000)}
     check R0 ∩ 𝟙 = {(0,0)}
-    bad : M ⟶ M ≜ ⊤(M,M)
 
-#guard cmpMeet3.failures.map toString == ["bad: cross: 100000 values of the left object by 100000 of the right " ++
-  "is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where " ++
-  "nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller " ++
-  "table on each side (`K ≤ L`)"]
+/-- error: rel_program Rel.Lang.TestCmpMeet.cmpMeetBad: bad: cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`) -/
+#guard_msgs in
+open Rel.Programs.prelude Rel.Programs.frame in
+rel_program cmpMeetBad where
+    obj M = 0…99999
+    bad : M ⟶ M ≜ ⊤(M,M)
 
 end Rel.Lang.TestCmpMeet

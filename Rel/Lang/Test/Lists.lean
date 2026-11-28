@@ -32,7 +32,7 @@ rel_program lists where
     print ⟨{(a,0),(b,1)},x⟩loop(plus)
 
 -- `thinL(≤)` runs the one-pass thinning: each element bumped into the thinned rest keeps the lower of the two
-#guard lists.ok && lists.prints == [
+#guard lists.prints == [
   "x inits = {(a, [] [3] [3 1] [3 1 2]), (b, [] [1] [1 5])}",
   "x tails = {(a, [3 1 2] [1 2] [2] []), (b, [1 5] [5] [])}",
   "⟨x, y⟩ cat = {(a, 3 1 2 7), (b, 1 5 8 9)}",
@@ -69,7 +69,7 @@ rel_program ats where
     check x tail at(1) = x at(2)
     check x tail at(2) = x at(3)
     check x at(3) = 𝟘
-#guard ats.ok && ats.prints == ["x at(0) = {(a, 3), (b, 1)}", "x at(1) = {(a, 1), (b, 5)}", "x at(2) = {(a, 2)}",
+#guard ats.prints == ["x at(0) = {(a, 3), (b, 1)}", "x at(1) = {(a, 1), (b, 5)}", "x at(2) = {(a, 2)}",
   "x at(3) = {}"]
 -- `at(k)` is `⟨𝟙, ⊤ {k}⟩ at` on an i64 index: the first, the third and an out-of-range position of a list column, and
 -- `head` of an empty list has no row
@@ -82,7 +82,7 @@ rel_program atsE where
     print e at(2)
     print e at(12)
     print e head
-#guard atsE.ok && atsE.prints == ["e at(0) = {(a, 3)}", "e at(2) = {(a, 2)}", "e at(12) = {}", "e head = {(a, 3)}"]
+#guard atsE.prints == ["e at(0) = {(a, 3)}", "e at(2) = {(a, 2)}", "e at(12) = {}", "e head = {(a, 3)}"]
 #eval errAt "obj N = 0…9\nf : [N] ⟶ N ≜ at(x)\n" 2 "at( ) takes a position, a number from 0, found 'x'"
 #eval errAt "obj N = 0…9\nf : [N] ⟶ N ≜ at(-1)\n" 2 "at( ) takes a position from 0 that fits a long, found -1"
 
@@ -101,7 +101,7 @@ rel_program listsLifted where
     check {(i,i)}fF = {(i,i)}⊤(J,K)⟨𝟙,f(R₀)⟩
     check {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
 
-#guard listsLifted.ok
+
 
 open Rel.Programs.prelude in
 /-- Orders on demand (§a): each operator runs its order on the pairs it compares, here `R ≜ length ≤ length°` on
@@ -124,7 +124,7 @@ rel_program onDemand where
     print Λ({(a,3),(a,1),(b,5)})est(≤)
     print G est(∼R)
 
-#guard onDemand.ok && onDemand.prints == [
+#guard onDemand.prints == [
   "G est(R) = {(a, [3]), (a, [8]), (b, [5]), (b, [9])}",
   "G front(R) = {(a, [3] [8]), (b, [5] [9])}",
   "L filter(p) = {(a, [3] [8]), (b, [5] [9])}",
@@ -154,7 +154,7 @@ rel_program concats where
     print d concat
     print e concat
 
-#guard concats.ok && concats.prints == [
+#guard concats.prints == [
   "w concat = {(a, 3 1 2 1)}",
   "d concat = {(a, 1 1), (b, [1])}",
   "e concat = {(a, 3 1), (b, [])}"]
@@ -170,7 +170,7 @@ rel_program convs where
     print y perm°
     print y (f° y)°
 
-#guard convs.ok && convs.prints == [
+#guard convs.prints == [
   "y perm° = {(a, [7]), (b, 8 9), (b, 9 8)}",
   "y (f° y)° = {(a, [7]), (b, 8 9)}"]
 

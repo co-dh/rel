@@ -39,7 +39,7 @@ rel_program kernMap where
     -- the size of each subtree: `sz(e) = 1 + Σ sz(kids(e))`
     check sz = {(0,6),(1,4),(2,1),(3,3),(4,1),(5,1),(6,1)}
 
-#guard kernMap.ok
+
 -- not vacuous: the kernel tables have rows where the input does, none on the empty demand
 #guard ["f1", "f2"].all fun d => ((get kernMap.expanded d .long (.arr .long)).map (·.n.toNat != 0)) == some true
 #guard ((get kernMap.expanded "f3" .long (.arr .long)).map (·.n.toNat)) == some 0

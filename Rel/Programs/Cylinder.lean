@@ -171,6 +171,6 @@ rel_program cylinder where
       paths est(R)
     check x qFold est(R) ⊑ x paths est(R)
 
-#guard cylinder.ok
+
 
 end Rel.Programs

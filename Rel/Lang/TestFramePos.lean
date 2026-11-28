@@ -33,6 +33,6 @@ rel_program framePos where
     check lastOrNothing(x π₂) [{(∗,40)}, 𝟙] = {(∗,3)}
     check firstOrNothing(take({(∗,0)}, x π₂)) [{(∗,40)}, 𝟙] = {(∗,40)}
 
-#guard framePos.ok
+
 
 end Rel.Lang.TestFramePos

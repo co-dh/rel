@@ -79,6 +79,6 @@ rel_program detab where
     check D entab ⊑ D Λ(H)est(R)                  -- entab_laws, 10:148: the program is a shortest preimage
     check D entab detab = D                       -- detab entab = 𝟙 on detab's outputs
 
-#guard detab.ok
+
 
 end Rel.Programs

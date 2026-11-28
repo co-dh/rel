@@ -58,7 +58,7 @@ rel_program kernRows5 where
     -- each `k` with `(n, tails(x(m)))` for `(n, m)` in `Fm(k)`
     check hF = {(0,(2,[[]])),(0,(4,[2 2] [2] [])),(1,(3,[2 2] [2] [])),(2,(1,[3 1 2] [1 2] [2] [])),(2,(2,[[]]))}
 
-#guard kernRows5.ok
+
 -- not vacuous: the kernel tables have rows
 #guard ["c1", "c2", "c3", "a1", "a2", "w1", "w2"].all fun d =>
   ((get kernRows5.expanded d .long (.arr .long)).map (·.n.toNat != 0)) == some true

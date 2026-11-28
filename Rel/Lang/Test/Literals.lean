@@ -11,7 +11,7 @@ rel_program nested where
     obj N = 0…1
     L : X×N ⟶ N×X ≜ {((A,0),(1,B)),((B,1),(0,A))}
     print L
-#guard nested.ok && nested.prints == ["L = {((A, 0), (1, B)), ((B, 1), (0, A))}"] &&
+#guard nested.prints == ["L = {((A, 0), (1, B)), ((B, 1), (0, A))}"] &&
   (get nested.expanded "L" (.prod .long .long) (.prod .long .long)).map (·.toList) ==
     some [((0, 0), (1, 1)), ((1, 1), (0, 0))]
 #eval errAt "obj X = {A,B}\nL ≜ {((A,B),A),(A,B)}\n" 2 "nest alike"
@@ -80,7 +80,7 @@ rel_program arrs where
     print {(3 1 2,a b)}
     print {(∗,[[]] [[1]])}
 
-#guard arrs.ok && printed arrs.prints == ["{(∗, 3 1 2)}", "{(a b, 1)}", "{(∗, (1, 2) (3, 4))}", "{(∗, [1] [2 3])}",
+#guard printed arrs.prints == ["{(∗, 3 1 2)}", "{(a b, 1)}", "{(∗, (1, 2) (3, 4))}", "{(∗, [1] [2 3])}",
   "{((a, 1 2), [3])}", "{(a, -1 2), (b, [])}", "{(∗, [1 2] [])}", "{(3 1 2, a b)}", "{(∗, [[]] [[1]])}"]
 #guard (get arrs.expanded "x" .one (.arr .long)).map (·.toList) == some [((), [(3 : Int64), 1, 2])]
 -- a printed literal reads back as itself
@@ -118,7 +118,7 @@ rel_program arrCtx where
     check {(∗,[] [3])} = ⟨e,⟨{(∗,[3])},nil⟩cons⟩cons
     print d
     print nn
-#guard arrCtx.ok && printed arrCtx.prints == ["{(∗, [])}", "{(∗, [[]])}"]
+#guard printed arrCtx.prints == ["{(∗, [])}", "{(∗, [[]])}"]
 -- words two objects hold: open too, fixed by the context, else the error at the literal
 def twoObjs : String := "obj A = {a,b}\nobj B = {a,c}\n"
 open Rel.Programs.prelude in
@@ -130,12 +130,26 @@ rel_program twoObjsX where
 #guard printed twoObjsX.prints == ["{(a, a)}"]
 #eval errAt (twoObjs ++ "print {(a,c)}\n") 3 "the elements [a] are in [B, A]; write the literal after its object" (col := some 7)
 -- a wrong expectation is a failed check, not an object error
+/-- error: rel_program Rel.Lang.Test.wrongCheck: line 139, col 5: claim failed: x = {(∗, 1 2)}, {(∗, [])} = {(∗, [])} -/
+#guard_msgs in
 open Rel.Programs.prelude in
 rel_program wrongCheck where
     obj N = 0…9
     x : 1 ⟶ [N] ≜ {(∗,1 2)}
     check x = {(∗,[])}
-#guard wrongCheck.failures.any fun e => ((toString e.msg).splitOn "check failed").length > 1
+-- `test` is decided by the run as a `check` is: it holds here, and a wrong one is an error
+open Rel.Programs.prelude in
+rel_program testHolds where
+    obj N = 0…9
+    x : 1 ⟶ [N] ≜ {(∗,1 2)}
+    test x = {(∗,1 2)}
+/-- error: rel_program Rel.Lang.Test.testFails: line 152, col 5: claim failed: x = {(∗, 1 2)}, {(∗, [])} = {(∗, [])} -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program testFails where
+    obj N = 0…9
+    x : 1 ⟶ [N] ≜ {(∗,1 2)}
+    test x = {(∗,[])}
 #eval errAt (arrE ++ "e ≜ {(∗,1 12)}\n") 2 "no declared object has the elements [1, 12]"
 #eval errAt (arrE ++ "e ≜ {(∗,1 2),(∗,3)}\n") 2
   "the rows of a literal nest alike: found 3, expected the form of 1 2"
@@ -169,7 +183,6 @@ rel_program signed where
 
 def ints (R : Tab .long .long) : List (Int × Int) := R.toList.map fun (a, b) => (a.toInt, b.toInt)
 
-#guard signed.ok
 #guard signed.prints == ["x = {(a, -3), (a, -1), (b, 2)}", "Λ(x) = {(a, -3 -1), (b, [2])}",
   "x − {(a, -3)} = {(a, -1), (b, 2)}", "{(-1, -1)} − {(2, 2)} = {(-1, -1)}"]
 -- `succ` at `-1` gives `0`, at the top `3` nothing; `≤`, `<` the numeric order

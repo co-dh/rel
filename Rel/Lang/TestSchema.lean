@@ -70,9 +70,10 @@ rel_program kvProg where
     check k = {(0,B),(1,A),(2,B)}
     check v = {(0,5),(1,3),(2,7)}
 
-#guard kvProg.ok
 
--- `ok` reads the column: `v` checked against `k`'s values fails
+-- `v` checked against `k`'s values fails
+/-- error: rel_program Rel.Lang.TestSchema.kvSwap: line 82, col 5: claim failed: x col S "v" = {(0, A), (1, C)}, {(0, B), (1, A)} = {(0, B), (1, A)} -/
+#guard_msgs in
 rel_program kvSwap where
     obj K = {A,B,C}
     obj P = 0…1
@@ -80,15 +81,13 @@ rel_program kvSwap where
     x : P ⟶ S ≜ {(0,(B,A)),(1,(A,C))}
     check x col S "v" = {(0,B),(1,A)}
 
-#guard !kvSwap.ok
-
-/-- error: line 89, col 17: column 'k' appears twice in schema [k, k] -/
+/-- error: line 88, col 17: column 'k' appears twice in schema [k, k] -/
 #guard_msgs in
 rel_program kvTwice where
     obj K = {A,B}
     schema S = {k : K, k : K}
 
-/-- error: line 96, col 17: schema `S`: no column 'w' in schema [k, v] -/
+/-- error: line 95, col 17: schema `S`: no column 'w' in schema [k, v] -/
 #guard_msgs in
 rel_program kvBad where
     obj K = {A,B}

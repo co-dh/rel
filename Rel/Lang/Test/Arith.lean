@@ -23,7 +23,7 @@ rel_program arith where
     check D⟨mod,π₂⟩ = D⟨mod,π₂⟩(𝟙 ∩ (π₁ < π₂°))
 
 -- `a = b·div + mod` and `mod < b` on every pair of `N` with a divisor other than `0`
-#guard arith.ok
+
 #guard arith.prints == [
   "w plus = {((2, 7), 9), ((3, 5), 8), ((7, 0), 7), ((7, 2), 9)}",
   "w times = {((2, 7), 14), ((3, 5), 15), ((7, 0), 0), ((7, 2), 14)}",
@@ -50,7 +50,7 @@ rel_program arithLifted where
     check {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
     print f(R₀)
 
-#guard arithLifted.ok
+
 #guard arithLifted.prints == ["f(R₀) = {(a, 1), (a, 9), (b, 0), (b, 1)}"]
 
 open Rel.Programs.prelude in
@@ -70,7 +70,7 @@ rel_program digits where
     ds : N ⟶ [N] ≜ r⦇[x⟨𝟙,nil⟩, π₁ step]⦈π₂
     print ds
 
-#guard digits.ok && digits.prints == ["ds = {(107, 1 0 7)}"]
+#guard digits.prints == ["ds = {(107, 1 0 7)}"]
 
 open Rel.Programs.prelude in
 /-- `⦇R⦈` with `R` not written as `[a,S]`, a name and a composite: read through `inl R`, `inr R`, the fold of
@@ -83,7 +83,7 @@ rel_program foldNamed where
     check As⦇R 𝟙⦈ = As
     check As⦇[nil, snoc]⦈ = As
 
-#guard foldNamed.ok
+
 
 -- a prelude definition given a family through a typed parameter: the lifted body reaches `perm`, closed on `[N]`
 #eval errAt "obj N = 0…3\nobj St = [N×N]\nf(S : N ⟶ N) : [N] ⟶ [N] ≜ sort(S)\ng : St ⟶ [N]×[N] ≜ f(∋)\n" 3

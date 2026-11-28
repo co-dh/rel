@@ -37,6 +37,6 @@ rel_program liftDiv where
 -- by hand, at key 0: `R₀ 0 = {0,1}`, `R₀ 1 = {0}`, `S₀ 0 = {0}`, `S₀ 1 = {1}`; `a (R/S) c ⟺ S c ⊆ R a`, so `c = 0`
 -- takes `a ∈ {0,1}` and `c = 1` takes `a = 0`. At key 1: `R₁ 1 = {1}`, `S₁ 0 = {1}`, `S₁ 1 = ∅`, so `c = 0` takes
 -- `a = 1` and `c = 1` every `a`. `b (R\S) c ⟺ R°b ⊆ S°c`; `÷` pairs the equal images (`(R₀,S₀)`: `1 ↦ 0`).
-#guard liftDiv.ok
+
 
 end Rel.Lang.TestLiftDiv

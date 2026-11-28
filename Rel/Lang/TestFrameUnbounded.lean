@@ -186,7 +186,7 @@ rel_program frameUnboundedT where
     sa : N ⟶ N ≜ asc(s)
     check sa = {(0,2),(1,5),(2,9)}
 
-#guard frameUnboundedT.failures.map toString == []
+
 
 -- describe `v` (`frameStat`, a program of its own as in `TestFrameCols`): count 8, mean 27/8 = 3.375, min 1, max 7;
 -- sample std √(255/56) ≈ 2.1339 is no float, pinned in (2.125, 2.25): 2.125² = 4.515625 < 255/56 < 5.0625 = 2.25²
@@ -200,6 +200,6 @@ rel_program frameDescribeU where
     check describe(x π₂) π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙] <° {(2.125,∗)} = {(∗,∗)}
     check describe(x π₂) π₂ π₂ π₁ [{(∗,-1.0)}, 𝟙] < {(2.25,∗)} = {(∗,∗)}
 
-#guard frameDescribeU.failures.map toString == []
+
 
 end Rel.Lang.TestFrameUnbounded

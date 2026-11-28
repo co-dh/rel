@@ -31,6 +31,6 @@ rel_program circuit where
 
     check answer = {(0 1 1,0),(1 0 1,0),(1 1 0,0)}
 
-#guard circuit.ok
+
 
 end Rel.Programs

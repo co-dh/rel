@@ -27,7 +27,7 @@ rel_program trades where
     output t to "copy"
 
 -- by hand: qty 500 > 100 keeps row 0 only; with a third row of qty 101 rows 0 and 2 are kept, renumbered 0, 1
-#guard trades.failures.map toString == []
+
 #guard trades.prints == ["bigPx(big({(0, ((C, 7), 200))})) = {(0, 7)}"]
 
 /-- error: line 37, col 5: input `t` from "t": its type N ⟶ α has the object variable 'α'; write a declared object there -/

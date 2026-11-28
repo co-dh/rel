@@ -59,6 +59,6 @@ rel_program knapsack where
     check p = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5)),(d,(5,4) (5,6))}
     check knap = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5))}
 
-#guard knapsack.ok
+
 
 end Rel.Programs

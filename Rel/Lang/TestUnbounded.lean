@@ -25,7 +25,6 @@ rel_program unboundedT where
     len : 1 ⟶ N ≜ xs length
     rank : N ⟶ N ≜ p Λ(> p) length
     wh : N ⟶ N ≜ rank°
-    bad : N ⟶ N ≜ <
     check sp = {(0,1),(1,2),(2,3),(3,4)}
     check dbl = {(0,60),(1,20),(2,80),(3,40)}
     check tk = {(0,30),(1,10)}
@@ -43,8 +42,12 @@ rel_program unboundedT where
 -- positions below 2; `5 0 7 0` has its elements of {3,5,7} at positions 0 and 2, `pss` those plus one; `lt2` the
 -- pairs of positions in order; `gt`, `ge` the pairs of `p` in descending (or equal) order; `pl` each element doubled;
 -- `len` 4 elements; `rank` each element of `p` to the count of elements below it (2 has none, 9 has 2 5 7), `wh` its
--- converse. `bad` is `<` with nothing on either side: its one failure, the left side named.
-#guard unboundedT.failures.map toString == ["bad: < on an unbounded object: nothing bounds its left side; compose it " ++
-  "with a table on that side (a leaf on demand ran with its domain unknown)"]
+-- converse. `bad` is `<` with nothing on either side: its one error, the left side named.
+/-- error: rel_program Rel.Lang.TestUnbounded.unboundedBad: bad: < on an unbounded object: nothing bounds its left side; compose it with a table on that side (a leaf on demand ran with its domain unknown) -/
+#guard_msgs in
+open Rel.Programs.prelude in
+rel_program unboundedBad where
+    obj N
+    bad : N ⟶ N ≜ <
 
 end Rel.Lang.TestUnbounded

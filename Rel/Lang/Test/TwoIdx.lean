@@ -14,7 +14,7 @@ rel_program twoIdx where
     print (s₀×{(1,1)})k(∋,ζ∋)
 
 -- `ζ(0) = S₀`; `ζ(1)` is `S₀` with `C` moved to the table
-#guard twoIdx.ok && twoIdx.prints == [
+#guard twoIdx.prints == [
   "s₀ × {(0, 0)} k(∋, ζ ∋) = {(((A, A) (B, B) (C, A), 0), (A, A)), (((A, A) (B, B) (C, A), 0), (B, B)), " ++
     "(((A, A) (B, B) (C, A), 0), (C, A))}",
   "s₀ × {(1, 1)} k(∋, ζ ∋) = {(((A, A) (B, B) (C, A), 1), (A, A)), (((A, A) (B, B) (C, A), 1), (B, B))}"]

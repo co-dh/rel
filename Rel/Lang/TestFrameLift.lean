@@ -32,6 +32,6 @@ rel_program frameLiftT where
     -- both present only at 2 (5 + 2·4) and 7 (3 + 2·1)
     check nullLift2(wsum, nc, n2) [{(∗,40)}, 𝟙] = {(0,40),(1,40),(2,13),(3,40),(4,40),(5,40),(6,40),(7,5)}
 
-#guard frameLiftT.ok
+
 
 end Rel.Lang.TestFrameLift

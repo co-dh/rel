@@ -58,7 +58,7 @@ rel_program sumsP where
     check sovf = {((0,0),9223372036854775807),((1,0),2),((1,1),-1)}
     check snul = {((0,0),1),((1,0),-6),((1,4),-4)}
 
-#guard sumsP.failures.isEmpty
+
 
 -- The positions and the values are two objects: positions in `P = 0…9`, values in `N`. Key 0: 3, 3+4, 7+5;
 -- key 1: −2, −2+6, 4+9 at positions 2, 8, 9.
@@ -69,7 +69,7 @@ rel_program sumsPN where
     s : N×P ⟶ N ≜ sums(x)
     check s = {((0,0),3),((0,1),7),((0,3),12),((1,2),-2),((1,8),4),((1,9),13)}
 
-#guard sumsPN.failures.isEmpty
+
 
 -- The values are summed, so they are a number object of i64 or f64 (`sumAtoms`; f64 runs in `TestFrameTyped`): an
 -- object of i32 is refused, naming it, its atom, the ones accepted and the cast to them.

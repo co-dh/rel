@@ -41,6 +41,6 @@ rel_program sumT where
 -- empty. `[f,g]`: `inl 2 ↦ f(2) = 0`, `inl 3 ↦ 1`, `inr 4 ↦ g(4) = 5` twice. With `e = 𝟘` in place of `f` only the
 -- right rows answer, in place of `g` only the left ones; `il [f,g]` reads the left part only (its right payload is
 -- empty). `jc` is the case closed at the top level, run on `sm`'s values by composition: the same rows as `both`.
-#guard sumT.ok
+
 
 end Rel.Lang.TestSum

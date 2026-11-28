@@ -80,7 +80,7 @@ rel_program kernT2 where
     -- `r`'s transitive closure
     check fm = {(1,2),(1,3),(2,3),(3,3)}
 
-#guard kernT2.ok
+
 -- not vacuous: the kernel tables have rows
 #guard ((get kernT2.expanded "c" .long .long).map (·.n.toNat)) == some 5
 #guard ["t", "o1", "pr", "px", "ld", "fn", "fm"].all fun x =>

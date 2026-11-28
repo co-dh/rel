@@ -31,7 +31,7 @@ rel_program fusedMT where
 -- by hand: `xs` is `1 2 … 10` thirty times: 300 elements, sum 30 × 55 = 1650; `x8` is `xs` eight times: 2400 elements, sum 13200. `ys`: every row has two elements,
 -- row 2 sums to 5 + 0 = 5; row 0 sums to 19999 + 1 = 20000, which `M` does not hold, so it has no sum; row 1
 -- sums to 19999 + 0 = 19999.
-#guard fusedMT.failures.map toString == []
+
 
 open Rel.Programs.prelude in
 rel_program fusedG where
@@ -57,7 +57,7 @@ rel_program fusedGT where
     check gz = 𝟘
 
 -- by hand: `x4` is `1 2 … 10` four times: 40 elements, sum 4 × 55 = 220; `zs` sums to 20000, not in `M`.
-#guard fusedGT.failures.map toString == []
+
 
 -- at `Q` the definitions' fold base is the literal `0 ∉ Q`, read at the target like any literal: refused there
 /-- error: line 69, col 21: in `Rel.Programs.prelude.length`: `ran` at this call, where α is 1, β is Q: 0 is not in Q = 1…5 -/

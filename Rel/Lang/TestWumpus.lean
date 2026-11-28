@@ -54,7 +54,7 @@ def at? (k i : Nat) : Option (Tab .long .long) := do
 def views : List (List (String × Tab .long .long)) :=
   (List.range 6).map fun i => tables.zipIdx.filterMap fun ((n, _), k) => (at? k i).map (n, ·)
 
-#guard given.ok
+
 #guard views.length == 6 && views.all (·.length == tables.length)
 
 -- row order is not part of a table, so rows compare sorted
@@ -89,7 +89,7 @@ def page : List String := [
 
 -- the program's own `check next(V,B,S) = …` holds and it prints nothing; printed here, `next(V,B,S)` is the table
 -- `page` states
-#guard Programs.wumpus.ok && Programs.wumpus.prints == []
+#guard Programs.wumpus.prints == []
 #guard given.prints == ["next(V, B, S) = {(0, (12, 12)), (0, (21, 21)), " ++
   "(1, (12, 12)), (2, (12, 12)), (3, (22, 22)), (4, (23, 23)), (4, (32, 32)), (5, (32, 32))}"]
 

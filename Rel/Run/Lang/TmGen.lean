@@ -574,8 +574,8 @@ def ioE (io : List Io) (reach : List String) (sh : Lean.Expr) (body : Lean.Name 
     of the run-time definitions an output reaches) numbered together (`Code.program`): `n.c.t<k>` the term of slot
     `k`, `n.shares` the table (`Code.shares`), each slot computed once per program; `n.x` each closed definition's
     `Tm.gen n.shares` run in the empty context. Then `n.expanded` (the definitions with their objects), `n.objs`,
-    `n.printed` (each `print`'s line and ok bit), `n.prints` (the lines), `n.failures` (`failures`: each `check` that
-    does not hold, and each term that threw) and `n.ok`, that there is none; `n.inputs`, `n.outputs` (each
+    `n.printed` (each `print`'s line and ok bit), `n.prints` (the lines); an error if a `check` or `test` does not
+    hold or a term threw (`failures`, evaluated here); `n.inputs`, `n.outputs` (each
     statement's name, `csv`, path, an import's inputs first) and `n.io` (`ioE`). -/
 def emit (n : Name) (r : Read) : MetaM Unit := do
   let (ds, ps, cs, _, objs, os, io) := r
@@ -711,10 +711,12 @@ def emit (n : Name) (r : Read) : MetaM Unit := do
   addConst (n ++ `prints) (listT (mkConst ``String)) (mkApp4 (mkConst ``List.map [0, 0]) pty (mkConst ``String)
     (mkApp2 (mkConst ``Prod.fst [0, 0]) (mkConst ``String) (mkConst ``Bool)) (mkConst (n ++ `printed)))
   let cty := pairT (mkApp (mkConst ``Option [0]) (mkConst ``Err)) (mkConst ``Bool)
-  addConst (n ++ `failures) (listT (mkConst ``Err))
-    (g ``failures #[← mkListLit cty checked,
+  -- a claim that does not hold, or a term that threw, is an error of the program: there is no `n.failures` to guard
+  let fs ← withCurrHeartbeats do
+    unsafe evalExpr (List Err) (listT (mkConst ``Err)) (g ``failures #[← mkListLit cty checked,
       ← mkListLit (pairT (mkConst ``String) (mkApp (mkConst ``Option [0]) (mkConst ``String))) errs])
-  addConst (n ++ `ok) (mkConst ``Bool) (mkApp2 (mkConst ``List.isEmpty [0]) (mkConst ``Err) (mkConst (n ++ `failures)))
+  unless fs.isEmpty do
+    throwError "rel_program {n}: {"\n".intercalate (fs.map toString)}"
   -- IO design B: what the program reads and writes, by statement, and the one action that does it
   let lty := listT (pairT (mkConst ``String) (pairT (mkConst ``Bool) (mkConst ``String)))
   addConst (n ++ `inputs) lty (toExpr (io.filterMap fun | .input x _ _ _ _ c p => some (x, c.isSome, p) | _ => none))

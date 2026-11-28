@@ -50,7 +50,7 @@ rel_program frameScaleN3 where
     -- sorted position `p` holds key `p div T`, row `p div T + 100·(p mod T)`
     check sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩
 
-#guard frameScaleN3.ok
+
 
 -- The generator on a DECLARED object: `n = 10³`, `T = 10`, `M` holding the largest sum 49T + 50T(T−1) = 4990 and
 -- 1275T = 12750; `Bench/FrameScale.lean` runs it at 10⁴ rows on 0…499999
@@ -69,6 +69,6 @@ rel_program frameScaleT3 where
     check count(j) = {(∗,500)}
     check summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
 
-#guard frameScaleT3.ok
+
 
 end Rel.Lang.TestFrameScale

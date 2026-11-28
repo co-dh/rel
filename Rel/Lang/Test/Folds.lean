@@ -31,7 +31,7 @@ def fibres (gs : List (String × Gen.Gv)) : Bool :=
       !R.toList.isEmpty && f.all R.toList.contains && R.toList.all f.contains
     | _, _ => false
 
-#guard foldLaw.ok && fibres foldLaw.expanded
+#guard fibres foldLaw.expanded
 
 open Rel.Programs.prelude in
 /-- A lifted fold whose step has closed parts (§e, cost of the keyed fold): `G`, `∼R ∩ G` (a complement, so
@@ -53,7 +53,7 @@ rel_program foldClosed where
     p₁ : X×X ⟶ X×X ≜ p(R₁)
     p₂ : X×X ⟶ X×X ≜ p(R₂)
 
-#guard foldClosed.ok && fibres foldClosed.expanded
+#guard fibres foldClosed.expanded
 
 open Rel.Programs.prelude in
 /-- Object variables (§e): `uq : α ⟶ β` at `X ⟶ N` and at `N ⟶ X` against the ground copies `uX`, `uN`; and
@@ -83,7 +83,7 @@ rel_program objVars where
 
 #guard let o := objVars.expanded
   let g (n : String) := get o n .long .long
-  objVars.ok && (g "a₁").map (·.toList) == (g "b₁").map (·.toList) &&
+  (g "a₁").map (·.toList) == (g "b₁").map (·.toList) &&
     (g "a₂").map (·.toList) == (g "b₂").map (·.toList) &&
     (g "a₁").map (·.toList) == some [(1, 2)] &&
     (g "a₂").map (·.n) == some 2 &&
@@ -122,7 +122,7 @@ rel_program estConv where
     print Λ(H)est(R(rating))
 
 -- `R°` picks the greatest cost (`a b`, 10), `R` the least (`a c`, 5)
-#guard estConv.ok && estConv.prints == [
+#guard estConv.prints == [
   "Λ(Hn) est(≤°) = {(1, 5), (2, 9)}", "Λ(H) est(R(rating)°) = {(a, a b), (b, a b)}",
   "Λ(H) est(R(rating)) = {(a, a c), (b, b c)}"]
 

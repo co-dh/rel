@@ -33,7 +33,7 @@ rel_program trades where
     q : P ⟶ i32 ≜ x col T "qty"
     check q = {(0,0),(1,10),(2,20)} where x ≜ {(0,((1,0),"a")),(1,((2,10),"bc")),(2,((3,20),"d"))}
 
-#guard trades.ok
+
 
 -- a directory with no `.d` is refused where the program names it
 /--

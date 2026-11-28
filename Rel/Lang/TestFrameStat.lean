@@ -119,7 +119,7 @@ rel_program frameStatT where
     k : N ⟶ K ≜ {(0,A),(1,B),(2,A),(3,A)}
     check valueProportions(𝟙, k) = {(0,(A,0.75)),(1,(B,0.25))}
 
-#guard frameStatT.failures.map toString == []
+
 
 -- an `f64` column: the same definitions, the cast to `F` the identity
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
@@ -155,7 +155,7 @@ rel_program frameStatFloatT where
     g : N ⟶ F ≜ {(0,1.0),(1,1e16),(2,-1e16)}
     check summarize(F(g) avg, g) = {(∗,0.0)}
 
-#guard frameStatFloatT.failures.map toString == []
+
 
 -- the result at an `f32` object: the typed definition fixes `φ` at `H`, whose `sum` adds in `f64` and rounds once
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
@@ -166,7 +166,7 @@ rel_program frameStatF32T where
     m : 1 ⟶ H ≜ summarize(F(t) avg, t)
     check m = {(∗,4.0)}
 
-#guard frameStatF32T.failures.map toString == []
+
 
 -- a bounded object: 7³ = 343 and 40³ lie outside `N`, so the cubes, deviations and weights are computed in `F`
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameStat in
@@ -184,6 +184,6 @@ rel_program frameStatBoundT where
     s5 : N ⟶ N ≜ {(0,40),(1,0),(2,0),(3,0),(4,0)}
     check summarize(F(s5) skewness, s5) = {(∗,1.5)}
 
-#guard frameStatBoundT.failures.map toString == []
+
 
 end Rel.Lang.TestFrameStat

@@ -148,8 +148,8 @@ def checkErr (A B : Obj) (objs : Objs) (p : Pos) (x y : String) (eq : Bool) (s t
   (match holds with
    | .ok (_, _, true) => none
    | .ok (a, b, false) => some ⟨p, match showRel objs s t a, showRel objs s t b with
-     | .ok r, .ok q => s!"check failed: {x} = {r}, {y} = {q}"
-     | .error e, _ | _, .error e => s!"check failed: {x}, {y}: {e}"⟩
+     | .ok r, .ok q => s!"claim failed: {x} = {r}, {y} = {q}"
+     | .error e, _ | _, .error e => s!"claim failed: {x}, {y}: {e}"⟩
    | .error e => some ⟨p, s!"check {x}, {y}: {e}"⟩, R.toBool && S.toBool)
 
 /-- A program's failures: each `check` that does not hold, and each term that threw (`Rel.runE`), named by `es`,
@@ -855,7 +855,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   let mut outs : List (String × Pos) := []
   for d in prog do
     -- an imported program's prints, checks, theorems and outputs ran where it was defined; only its scope is read
-    if imported && (match d with | .print .. | .check .. | .«theorem» .. | .output .. => true | _ => false) then
+    if imported && (match d with | .print .. | .check .. | .test .. | .«theorem» .. | .output .. => true | _ => false) then
       continue
     match d with
     | .input p n ty csv path =>
@@ -975,7 +975,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       let (r, st) ← (do let r ← elabE env none e; settleOpen env p [r.plain.1]; settleUses; pure r).run { specs, objs := env.objs }
       specs := st.specs
       pr := pr ++ [(e.show, ← top env (← Lean.getMCtx) p e r)]
-    | .check p e f eq bs _ =>
+    | .check p e f eq bs _ | .test p e f eq bs =>
       let (e, f, bs) := (rtNamesE env rt e, rtNamesE env rt f, bs.map fun (x, l) => (rtName env rt x, l))
       let σ ← liftExcept (bindIns rt p "check" [e, f] bs)
       let (c, sp) ← checkOf env p (e.subst σ) (f.subst σ) eq specs; specs := sp; cs := cs ++ [c]

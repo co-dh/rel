@@ -39,7 +39,7 @@ rel_program nativeF where
   writesAgree "lq" (← planOfIn ``nativeF "lq") nativeF.lq
 
 -- the Lean values the plans match (the `check` lines), so an agreeing plan of a wrong value is caught here
-#guard nativeF.failures.map toString == []
+
 
 -- `ymd`: the day count and the keep flag computed by the plan's `kscan` maps equal `Tab.ymd`'s (`Db.Csv.ymd`)
 #eval show Lean.Meta.MetaM Unit from do

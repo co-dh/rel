@@ -40,7 +40,7 @@ rel_program sorts where
 
 -- every `check` of the program holds (a failed one is a failure) and it prints nothing; printed here, the
 -- specification and the program give the input sorted by `List.mergeSort`
-#guard Programs.selsort.ok
+
 #guard Programs.selsort.prints == []
 #guard sorts.prints ==
   inputs.map (fun (n, l) => s!"{n} perm ordered(≤) = {shown (sorted l)}") ++

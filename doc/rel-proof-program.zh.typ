@@ -30,7 +30,8 @@ Lean kernel 检查的是两侧实际 elaboration 后的 `Tm.den` 的等式或包
   [证明目标], [关系判断 `R = S` / `R ⊑ S`，对象与关系参数在 `∀ ρ` 之下量化，`if` 假设是目标的前提。证明常量为 `n.proof.<t>`，`check` 为 `n.proof.check<i>`。], [`derive p : {r // spec = r}`：推导的末式生成定义体，没有实现。定义体与 spec 仍是两个声明。],
   [证明来源], [`by lemma`：Lean 定理的类型与目标核对（`certify`）。calc 的一步引用已有证明常量的 theorem（`certifyCalc`）。], [`using`：前提只能取自 theorem 的 `if` 假设，没有 `using` 语法。],
   [缺证明时], [calc 中无法认证的步骤列入 `n.proof.unproved`，附原因，不报错。`by lemma` 的类型不符是 elaboration 错误，不发出可执行定义。], [`rel_program` 在缺证明时拒绝 elaborate：未实现，没有 `by` 也没有 calc 的 `theorem` 照常通过（见 9.10 表）。],
-  [测试], [具体输入比较仍是 `check`（无 `by`）。], [独立的 `test` 声明：没有实现。],
+  [测试], [`test A = B`：语法同 `check A = B`，由运行两侧判定，走与无 `by` 的 `check` 相同的路径（`checkOf`）。具体输入比较只作测试，不作程序的断言。无 `by` 的 `check` 暂时仍同样运行判定。], [无 `by` 的 `check` 尚未改为错误；现有约 1053 条运行判定的 `check` 尚未迁移为 `test`。],
+  [运行判定失败], [`test` 或运行判定的 `check` 不成立，或某项求值抛错，是 `rel_program` 的 elaboration 错误，信息含程序名、断言文本与两侧的值（`Expand.failures` 在 `emit` 内求值）。没有 `n.failures`、`n.ok`，也没有 `#guard n.ok`。], [],
 )
 
 9.8：用户可写 `Λ(R)`，定义为 `(𝟙÷∋)E(R)`；Mss 与 Prelude 的等式写显式复合。
@@ -88,7 +89,7 @@ rel_program hypThm where
   [`check … by lemma`], [Prefix 的第一条 check 由 `Rel.Lang.Tm.prefixFold_input` 证；`check e prefixC = e prefix` 与 `check {(∗,3 1)} ⊑ x prefixC` 仍无证明。通用 fold 证明在 `Rel/Lang/PrefixFold.lean`。],
 )
 
-开放：9.6f（calc 一步引用 `t(args)`，带实参）进行中；`derive`、`using`、`test` 声明、`where` 局部引理、`⊑` 链、Agda 风格 calc 未做。
+开放：9.6f（calc 一步引用 `t(args)`，带实参）进行中；`derive`、`using`、`where` 局部引理、`⊑` 链、Agda 风格 calc 未做。
 
 = 9.10 / 9.9 义务表
 

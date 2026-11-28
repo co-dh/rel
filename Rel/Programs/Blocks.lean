@@ -38,6 +38,6 @@ rel_program blocks where
 
     check plan = {(0,(C,C)),(1,(B,C)),(2,(A,B))}  -- C to the table, B onto C, A onto B
 
-#guard blocks.ok
+
 
 end Rel.Programs

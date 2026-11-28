@@ -98,7 +98,7 @@ rel_program tradeApp where
     check unquoted = {(∗,2)} where trades ≜ tt, quotes ≜ qq
     check filterNothing(π₂, lj) π₁ ⟨col Trade "sym", col Trade "time"⟩ = {(0,(C,3)),(1,(C,6))} where trades ≜ tt, quotes ≜ qq
 
-#guard tradeApp.failures.map toString == []
+
 
 /-! ## `tradeApp.io`: the two CSV inputs read, every output written as CSV (IO step I9) -/
 

@@ -23,13 +23,15 @@ rel_program hylos where
     print {(m,m)} total
     print 𝟘(E,E) total
 
-#guard hylos.ok && hylos.prints == [
+#guard hylos.prints == [
   "{(a, a)} total = {(a, 26)}",
   "{(g, g)} total = {(g, 13)}",
   "{(m, m)} total = {(m, 0)}",
   "𝟘(E, E) total = {}"]
 
 -- a cyclic coalgebra over the list functor: it fails, never a silent `𝟘`
+/-- error: rel_program Rel.Lang.TestHylo.hyloCycle: bad: the coalgebra c at line 41, col 24 reaches a node from itself, so it is not well-founded there (2 of 3 nodes) -/
+#guard_msgs in
 open Rel.Programs.prelude in
 rel_program hyloCycle where
     obj E = {a,b,m}
@@ -37,9 +39,6 @@ rel_program hyloCycle where
     next : E ⟶ E ≜ {(a,b),(b,a)}                  -- a and b each other's child: c is not well-founded
     S : E×[N] ⟶ N ≜ π₂ sum
     bad : E ⟶ N ≜ hylo(⟨𝟙, Λ(next)⟩, S)
-
-#guard hyloCycle.failures.map (s!"{·.msg}") == [s!"bad: the coalgebra c at line {decl_line% hyloCycle + 5}, col 24 " ++
-  "reaches a node from itself, so it is not well-founded there (2 of 3 nodes)"]
 
 open Rel.Programs.prelude in
 rel_program quicksort where
@@ -56,6 +55,6 @@ rel_program quicksort where
     print y sort
     print e sort
 
-#guard quicksort.ok && quicksort.prints == ["x sort = {(∗, 1 2 3)}", "y sort = {(∗, 1 2 2)}", "e sort = {(∗, [])}"]
+#guard quicksort.prints == ["x sort = {(∗, 1 2 3)}", "y sort = {(∗, 1 2 2)}", "e sort = {(∗, [])}"]
 
 end Rel.Lang.TestHylo

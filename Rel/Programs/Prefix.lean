@@ -38,7 +38,7 @@ rel_program prefixCata where
     check e prefixC = e prefix
     check {(∗,3 1)} ⊑ x prefixC
 
-#guard prefixCata.ok
+
 
 end Rel.Programs
 

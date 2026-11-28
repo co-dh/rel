@@ -28,9 +28,8 @@ open Rel.Programs.prelude Programs.blocks in
 rel_program printPlan where
     print plan
 
-#guard given.ok && table.ok && cycle.ok
 -- the file's own `check plan = …` holds and it prints nothing; `plan` printed here is the move list below
-#guard Programs.blocks.ok && Programs.blocks.prints == [] && given.prints == []
+#guard Programs.blocks.prints == [] && given.prints == []
 #guard printPlan.prints == ["plan = {(0, (C, C)), (1, (B, C)), (2, (A, B))}"]
 #guard moves Programs.blocks.expanded == some [(2, 2), (1, 2), (0, 1)]
 #guard moves table.expanded == some [(1, 2), (0, 1)]

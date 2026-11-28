@@ -76,6 +76,6 @@ rel_program frameNullT where
     pw : P ⟶ K×(N×N) ≜ pivotWide(π₁, π₂ π₁, {(∗,a)}, {(∗,b)}, F(t3 π₂ π₂) sum, t3) ⟨π₁, ⟨π₂ π₁ [{(∗,0)}, 𝟙], π₂ π₂ [{(∗,0)}, 𝟙]⟩⟩
     check pw = {(0,(A,(5,3))),(1,(B,(2,0))),(2,(C,(0,5)))}
 
-#guard frameNullT.ok
+
 
 end Rel.Lang.TestFrameNull

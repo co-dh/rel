@@ -20,6 +20,6 @@ import Rel.Lang.Test.KernMap
 
 /-! The Rel language on the blocks world of `doc/rel-lang-design.md` §g, the program `Programs.blocks`; its
     front-end errors; the round trip of `rel_program`'s grammar on every operator of §b. Every program runs as its
-    expansion (`rel_program`, `Expand`): its definitions `n.expanded`, its prints `n.prints`, its checks and ok bits
-    `n.failures`, `n.ok`; a front-end error is read off statements by `Expand.read`, which evaluates nothing.
+    expansion (`rel_program`, `Expand`): its definitions `n.expanded`, its prints `n.prints`; a `check` or `test` that does not
+    hold is an elaboration error; a front-end error is read off statements by `Expand.read`, which evaluates nothing.
     The tests are split by subject into `Rel/Lang/Test/*.lean`, so that the parts build in parallel. -/

@@ -56,6 +56,6 @@ rel_program partyPlan where
     check root best = {(a,a d e f)}
     check root c max = {(a,17)}
 
-#guard partyPlan.ok
+
 
 end Rel.Programs

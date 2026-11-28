@@ -37,6 +37,6 @@ rel_program frameRandT where
     -- one group: `sample`
     check stratifiedSample(s0, two, ⊤ {(∗,u)}, x) = sample(s0, two, x)
 
-#guard frameRandT.failures.map toString == []
+
 
 end Rel.Lang.TestFrameRand

@@ -71,7 +71,7 @@ open Rel.Programs.prelude in
 rel_program kwNames where
     do : [α] ⟶ [α] ≜ suffix prefix
 example : True := trivial
-#guard kwNames.ok
+
 
 #eval trips ["inits", "tails", "cat", "cat°", "zip", "snoc", "snoc°", "init", "concat", "perm", "setify", "asc(R)", "distinct",
   "subseq", "tic", "ordered(R)", "sort(R)", "thinL(R)", "merge(R)", "loop(R)", "R inits concat", "⟨R, S⟩ merge(p)"]
@@ -92,7 +92,7 @@ rel_program powerDefinition where
     R : B ⟶ B ≜ {(a,c),(a,b)}
     check Λ(R) = (𝟙÷∋)E(R)
 
-#guard powerDefinition.ok
+
 
 
 end Rel.Lang.Test

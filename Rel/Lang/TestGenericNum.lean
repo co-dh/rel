@@ -45,7 +45,7 @@ rel_program genNumT where
 
 -- by hand: 3/4 = 0.75, 4/2 = 2, √4 = 2; 3 as f64 is 3.0; 2024-01-05 − 2024-01-01 = 4 days, 2024-03-01 −
 -- 2024-02-28 = 2 days (2024 is a leap year)
-#guard genNumT.failures.map toString == []
+
 
 -- `%` at the integer object `N`: refused at the call, naming the variable and its object
 /-- error: line 57, col 11: `avg` at this call, where φ is N: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
@@ -83,8 +83,8 @@ rel_program wsumT where
     check w = {(0,3.0),(1,2.0)}
 
 -- by hand: [A B C] has 3 elements, [A] one; the B and C of [A B C] are at 1, 2 (sum 3), of [C A C] at 0, 2 (sum 2)
-#guard lenT.failures.map toString == []
-#guard wsumT.failures.map toString == []
+
+
 
 -- a `check` is no definition: an object open in it is still refused
 /-- error: line 97, col 13: in `Rel.Programs.prelude.length`: in `Rel.Programs.prelude.ran`: `dom` at this use: nothing here fixes its object variable 'α' (`dom` : α ⟶ α); give the use an expected type: a typed definition, a check against a typed term, or a composition that fixes α -/
@@ -116,7 +116,7 @@ rel_program avgGT where
     check g = {(0,2.5),(1,5.0)}
 
 -- by hand: (1+2+3+4)/4 = 2.5, 5/1 = 5
-#guard avgGT.failures.map toString == []
+
 
 -- a use nothing fixes the variable at is refused, naming the variable, the definition and the use
 /-- error: line 128, col 13: `avgG` at this use: nothing here fixes its object variable 'φ' (`avgG` : [Z] ⟶ φ); give the use an expected type: a typed definition, a check against a typed term, or a composition that fixes φ -/
@@ -154,7 +154,7 @@ rel_program sumGT where
     check sumN(z) = {(0,3)}
 
 -- by hand: 1.5+2.5 = 4, 4/2 = 2; 1+2+3 = 6, 5−7 = −2; at P = 0…5, 1+2 = 3 and 4+3 = 7 ∉ P, so row 1 has no sum
-#guard sumGT.failures.map toString == []
+
 
 -- a number literal in a generic body is open (`Elab.litTy`), a float one too: `{(∗,0.5)}` beside `a` is at φ, and
 -- each use reads its words at the object the use puts there (`numCheck`); a word that object does not hold is
@@ -173,7 +173,7 @@ rel_program litGT where
     check inc(y) = {(∗,2.75)}
 
 -- by hand: 1.5 + 0.5 = 2, 2.25 + 0.5 = 2.75, both exact in f32
-#guard litGT.failures.map toString == []
+
 
 /-- error: line 184, col 11: `inc` at this call, where φ is N: '0.5' is not an element of N, an object of i64 -/
 #guard_msgs in
@@ -203,6 +203,6 @@ rel_program sumLitT where
     check s(z, c) = {(∗,7.0)}
 
 -- by hand: 0 ≤ 1.5, so h = 1.5 and q = {−0.5, 0.5, 2.5}, sum 2.5; 0 ≤ 0, so h = 0 and q = c, sum 7
-#guard sumLitT.failures.map toString == []
+
 
 end Rel.Lang.TestGenericNum

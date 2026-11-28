@@ -31,7 +31,7 @@ rel_program nmm where
     check ⟨nc, nd⟩ times [{(∗,40)}, 𝟙] = {(0,10),(1,40),(2,40),(3,40),(4,7),(5,40),(6,40),(7,40)}
     ls : 1 ⟶ [1+N] ≜ Λ(⊤(1,P) nc)
     check ls ⦇[{(∗,∗)} inl, maxO]⦈ [{(∗,40)}, 𝟙] = {(∗,7)}
-#guard nmm.ok
+
 
 -- a verb with no row at `1+i64` (`nulVerb`: a zero divisor drops a non-null row) is refused by name
 open Rel.Lang.Test in

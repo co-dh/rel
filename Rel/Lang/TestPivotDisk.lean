@@ -36,7 +36,7 @@ rel_program dummiesT where
     check g = d where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
     check g col D "c_9" [{(∗,no)}, {(∗,yes)}] = {(0,no),(1,no),(2,no),(3,yes)} where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
 
-#guard dummiesT.ok
+
 
 -- `obj V from` at the atom the `.d` names: a `date` column, its distinct days in date order, each named as a date
 -- literal writes it; `5` rows `(d, v)` with two on 2024.01.15 (day 19737 of the epoch 1970.01.01)
@@ -61,7 +61,7 @@ rel_program datesT where
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "d", e, x)⟩
     check d col D "c_2024.01.15" [{(∗,no)}, {(∗,yes)}] = {(0,yes),(1,no),(2,yes),(3,no)} where x ≜ {(0,(2024.01.15,10)),(1,(2022.01.08,20)),(2,(2024.01.15,30)),(3,(2024.03.18,40))}
 
-#guard datesT.ok
+
 
 -- a `f64` column: the floats in totalOrder (`-2.5` before `1.5`), each named as a float literal writes it
 /-- Three rows `(f, v)`: `f` is `1.5`, `-2.5`, `1.5`; written afresh to `p`. -/
@@ -85,7 +85,7 @@ rel_program floatsT where
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "f", e, x)⟩
     check d col D "c_-2.5" [{(∗,no)}, {(∗,yes)}] = {(0,no),(1,yes),(2,no)} where x ≜ {(0,(1.5,10)),(1,(-2.5,20)),(2,(1.5,30))}
 
-#guard floatsT.ok
+
 
 -- a `sym` column: the ids as stored (a symbol is its 8-byte id), ascending
 /-- Three rows `(s, v)`: `s` is the symbol id `5`, `2`, `5`; written afresh to `p`. -/
@@ -109,7 +109,7 @@ rel_program symsT where
     d : P ⟶ D ≜ ⟨e ∈ V ↦ dummy(col T "s", e, x)⟩
     check d col D "c_5" [{(∗,no)}, {(∗,yes)}] = {(0,yes),(1,no),(2,yes)} where x ≜ {(0,(5,10)),(1,(2,20)),(2,(5,30))}
 
-#guard symsT.ok
+
 
 -- a `u1` column has no literal to name an element by (`litLayout`), as `schema S from` and `obj F : u1` refuse it
 /-- Three rows of a `u1` column `b`, written afresh to `p`. -/
@@ -137,7 +137,7 @@ rel_program pivotT where
     pw : P ⟶ K×(N×N) ≜ pivotOn(π₁, ⟨w ∈ S ↦ pivotCol(π₁, π₂ π₁, w, F(t3 π₂ π₂) sum, t3)⟩, t3) ⟨π₁, ⟨π₂ π₁ [{(∗,0)}, 𝟙], π₂ π₂ [{(∗,0)}, 𝟙]⟩⟩
     check pw = {(0,(A,(5,3))),(1,(B,(2,0))),(2,(C,(0,5)))}
 
-#guard pivotT.ok
+
 
 -- an unbounded object has no elements to generate over
 /-- error: line 147, col 21: `N` is no finite object of this program: a schema over an object needs its elements -/

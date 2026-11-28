@@ -84,7 +84,7 @@ rel_program kernT9 where
     check dd = {(0,0),(1,1),(3,3),(5,5)}
     check dbl = {(0,0),(1,2),(3,6),(5,10)}
 
-#guard kernT9.ok
+
 -- not vacuous: the kernel tables have rows where the input does, none on the empty demand
 #guard ["l1", "l2", "dbl", "sub", "leaf", "ch"].all fun d => ((get kernT9.expanded d .long .long).map (·.n.toNat != 0)) == some true
 #guard ["m1", "m2", "t1", "t2"].all fun d =>

@@ -50,7 +50,7 @@ rel_program qual where
     s : A ⟶ D ≜ csp.AC3(≠, ≠, s₀)
     t : A ⟶ D ≜ AC3(s₀)
     check s ⊑ t
-#guard qual.ok
+
 
 /-! Selective: `open csp (AC3)` brings `AC3`; without it `AC3` is unknown. -/
 section
@@ -59,7 +59,7 @@ open csp (AC3)
 rel_program sel where
     obj A = 0…2
     s : A ⟶ A ≜ AC3(≠, ≠, 𝟙)
-#guard sel.ok
+
 end
 
 /-- error: line 70, col 17: unknown name 'AC3' -/
@@ -155,7 +155,7 @@ rel_program kfUse where
     obj A = 0…2
     m : [A×A] ⟶ A×A ≜ ∋
     print {(∗, (0,1) (1,2))} kf.refl(m)
-#guard kfUse.ok
+
 #guard kfUse.printed ==
   [("{(∗, (0, 1) (1, 2))} kf.refl(m) = {(∗, (0, 0)), (∗, (0, 1)), (∗, (1, 1)), (∗, (1, 2)), (∗, (2, 2))}", true)]
 

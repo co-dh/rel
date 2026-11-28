@@ -30,7 +30,7 @@ rel_program ascT where
 -- by hand: `as`: {7,3,9,2} ascending is 2 3 7 9. `ia`: `7 3 7`, pairs (7,0) (3,1) (7,2) ascending (3,1) (7,0) (7,2),
 -- so 1 0 2. `ib`: `4 1 4 1 0`, pairs ascending (0,4) (1,1) (1,3) (4,0) (4,2), so 4 1 3 0 2. `ic`: `2 -3 0 -5 2`,
 -- (-5,3) (-3,1) (0,2) (2,0) (2,4), so 3 1 2 0 4. `ik`: `B A`, `K`'s elements in declared order A < B, so 1 0.
-#guard ascT.failures.isEmpty
+
 
 -- At the unbounded object a row runs on demand (§a), so each is read at a frame's positions: `as` at `dom(b)`'s
 -- 0…4, of which `asc(s)` has 0…3; `iasc(x)` at `dom(x)`, its own domain.
@@ -50,6 +50,6 @@ rel_program ascU where
     check ib = {(0,4),(1,1),(2,3),(3,0),(4,2)}
     check ic = {(0,3),(1,1),(2,2),(3,0),(4,4)}
 
-#guard ascU.failures.isEmpty
+
 
 end Rel.Lang.TestAsc

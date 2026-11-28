@@ -39,7 +39,7 @@ rel_program frameTypedT where
     v : N ⟶ N ≜ {(0,5),(1,3),(2,7)}
     check sortBy(𝟙, v $ F) = {(0,3),(1,5),(2,7)}
 
-#guard frameTypedT.ok
+
 
 -- `aj` with a date time column: its `sums` runs along the days
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
@@ -55,7 +55,7 @@ rel_program ajDateT where
     -- 3 (A,2019.04.14) none; none reads (C,(0,0))
     check a = {(0,((A,2022.01.08),(A,(2021.12.29,1)))),(1,((A,2022.01.18),(A,(2022.01.09,2)))),(2,((B,2016.07.18),(C,(0,0)))),(3,((A,2019.04.14),(C,(0,0))))}
 
-#guard ajDateT.failures.map toString == []
+
 
 -- `minus` at a date stays refused: a difference of days is no date; `daysBetween` reads each as its day count
 /-- error: line 67, col 23: minus on D: D is an object of date, and minus runs on objects of i64, f32, f64 only; cast first, `x $ F` with `F` an object of i64, f32, f64 -/
@@ -77,7 +77,7 @@ rel_program daysCastT where
     check d $ Z = {(0,19000),(1,18990),(2,19783)}
     check daysBetween(d, e) = {(0,5),(1,-10),(2,60)}
 
-#guard daysCastT.failures.map toString == []
+
 
 -- the orders and `max`/`min` at a `date` and an `f64` column: the integer order of the days, IEEE's order
 open Rel.Programs.prelude Rel.Programs.frame in
@@ -93,7 +93,7 @@ rel_program frameOrderT where
     check x π₁ ⟨𝟙, {(2021.12.29,2022.01.03),(2022.01.08,2022.01.03),(2022.01.13,2022.01.03)}⟩min = {(0,2022.01.03),(1,2021.12.29),(2,2022.01.03),(3,2022.01.03)}
     check x π₁ ⟨𝟙, {(2021.12.29,2022.01.03),(2022.01.08,2022.01.03),(2022.01.13,2022.01.03)}⟩max = {(0,2022.01.08),(1,2022.01.03),(2,2022.01.08),(3,2022.01.13)}
 
-#guard frameOrderT.failures.map toString == []
+
 
 -- `sums` with its positions at a `date` and at a `datetime`: each key's prefix sums in the order of the positions
 rel_program sumsTimeT where
@@ -109,7 +109,7 @@ rel_program sumsTimeT where
     -- a negative datetime first: −5 → 2, 10^9 → 2+1 = 3; B: 10
     check sums(y) = {((A,-5),2),((A,1000000000),3),((B,7),10)}
 
-#guard sumsTimeT.failures.map toString == []
+
 
 -- positions at an `f64`: its canon order is its bits' until S5, so `sums` is refused by name
 /-- error: line 122, col 5: sums' position object G is an object of f64; sums orders positions of u8, i16, i32, i64, char, i8, date, datetime -/
@@ -134,7 +134,7 @@ rel_program sumFloatT where
     g : N ⟶ G ≜ {(0,1.0),(1,1e16),(2,-1e16)}
     check summarize(F(g) sum, g) = {(∗,0.0)}
 
-#guard sumFloatT.failures.map toString == []
+
 
 -- `sums` at `f64` values: one IEEE sum per row, left to right along the positions (q's order)
 rel_program sumsFloatT where
@@ -155,7 +155,7 @@ rel_program sumsFloatT where
     m : K×N ⟶ G ≜ {((A,0),-0.0)}
     check sums(m) = {((A,0),0.0)}
 
-#guard sumsFloatT.failures.map toString == []
+
 
 -- `sums` at `f32` values (`Lang.sumDen`): each prefix the `f64` sum rounded once to `f32`; `2^24 + 1` is a tie and
 -- rounds to the even `2^24`, `2^24 + 2` is exact, where rounding each step would stay at `2^24`

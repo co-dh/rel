@@ -7,7 +7,7 @@ open Tab Rel.Lang Rel.Alg Rel
 
 -- the prelude's definitions type-check
 #eval show Lean.Meta.MetaM Unit from do match ← (typesOf none).run with | .error e => throwError "{e}" | .ok _ => pure ()
-#guard Programs.prelude.ok
+
 
 -- `prims` names the prelude definitions its rows run unchecked (Syntax cannot import the prelude), so each is checked here
 run_cmd do
@@ -93,7 +93,7 @@ rel_program infixes where
     print {(1,1)}(< ∪ 𝟙(N) ≼ ≤)
     print {(1,1)}(𝟙(N) ∩ {(1,2)} ⇒ <)
     print {(1,1)}inl(N,N+N)(𝟙 ⊕ succ)
-#guard infixes.ok && printed infixes.prints ==
+#guard printed infixes.prints ==
   ["{((2, 3), 5), ((4, 1), 5)}", "{(1, 1), (2, 2)}",
    "{(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9)}", "{(1, 1)}",
    "{(1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9)}", "{(1, inl 1)}"]

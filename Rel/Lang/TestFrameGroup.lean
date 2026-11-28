@@ -51,6 +51,6 @@ rel_program frameGroupT where
     check mode(π₁, x) = {(∗,B)}
     check mode(π₂, x) = {(∗,5)}
 
-#guard frameGroupT.ok
+
 
 end Rel.Lang.TestFrameGroup

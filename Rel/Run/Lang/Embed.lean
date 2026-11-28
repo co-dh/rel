@@ -191,6 +191,7 @@ def stmt (s : Syntax) : C Decl := do
   | ``sCheck =>
     let proof := if s[5].getNumArgs == 0 then none else some s[5][1].getId
     pure (.check p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]) proof)
+  | ``sTest => pure (.test p (← expr s[1]) (← expr s[3]) (atomIn s[2] == "=") (← binds s[4]))
   | ``sInput => do
     let n ← wordOf s[1]
     Parse.fresh p n (← get).taken
@@ -627,7 +628,7 @@ def define (stx id : Syntax) (prog : Program) (used : List Name) (more : List Na
       match named d with
       | some x => unless base.any (named · == some x) do throwErrorAt stx "`{x}` is no definition of `{b}`"
       | none => throwErrorAt stx "a variant only replaces definitions"
-    let kept := base.filter fun | .check .. | .«theorem» .. => false | _ => true
+    let kept := base.filter fun | .check .. | .test .. | .«theorem» .. => false | _ => true
     let kept ← if stx[5].getNumArgs == 0 then pure kept else do
       let x ← match (wordOf stx[5][1]).run (← getFileMap) |>.run' s with
         | .ok x => pure x

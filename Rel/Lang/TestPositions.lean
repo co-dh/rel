@@ -30,6 +30,6 @@ rel_program positionsT where
 -- `3 4 5` keeps every position; `1 2 1` none, so `pnone` is the empty list (checked by its length: a literal list
 -- cannot be empty), and `positions` of that empty input is empty again. `twelve` passes everywhere, but its positions
 -- 10 and 11 lie outside `N = 0…9`, so `positions` cut to `N` gives it no list at all (`Tm.positionsDef_den`).
-#guard positionsT.ok
+
 
 end Rel.Lang.TestPositions

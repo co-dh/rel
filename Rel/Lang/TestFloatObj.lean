@@ -29,7 +29,7 @@ rel_program floatT where
 
 -- by hand: `-0.0` is read as `0.0` (one zero), so `a ∩ b` keeps `(0,0)`; `a b` joins `a`'s targets `0` and `3` to
 -- `b`'s sources; `sw`, `both` are generic definitions instantiated at `F` (placeholders other than `f64`)
-#guard floatT.failures.map toString == []
+
 #guard floatT.prints == ["a = {(-2.5, 3.0), (0.0, 0.0), (0.001, 15000000000.0), (2.5, 1.0)}",
   "c = {(1e-8, 1e21), (0.1, 123.456), (0.3333333333333333, -0.00000015)}"]
 

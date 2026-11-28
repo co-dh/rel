@@ -18,6 +18,6 @@ rel_program frameBoundT where
     check summarize(F(x ⟨𝟙, ⊤ {(∗,10)}⟩mod) sum, x) = {(∗,2250)}
     check agg((x ⟨𝟙, ⊤ {(∗,10)}⟩mod)°, length) = below({(∗,10)}) ⊤ {(∗,50)}
 
-#guard frameBoundT.failures.map toString == []
+
 
 end Rel.Lang.TestFrameBound

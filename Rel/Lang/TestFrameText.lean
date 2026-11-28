@@ -28,7 +28,7 @@ rel_program frameText where
     check nums matchAll(dfa, {(∗,0)}, {(1,1)}) = {(0,"2"),(0,"0"),(0,"4"),(0,"20"),(0,"02"),(0,"24"),(0,"202"),
       (0,"024"),(0,"2024"),(1,"1"),(1,"2"),(1,"12"),(3,"7"),(4,"1")}
 
-#guard frameText.failures.map toString == []
+
 
 -- `ymd` (q's `"D"$`): a text to the day it spells, both separators, no row for a text that spells none
 #guard Db.Csv.daysFrom 2024 1 15 = 19737
@@ -43,6 +43,6 @@ rel_program frameDate where
       (5,"2000.02.29")}
     check txt ymd = {(0,2024.01.15),(1,2024.01.15),(5,2000.02.29)}
 
-#guard frameDate.failures.map toString == []
+
 
 end Rel.Lang.TestFrameText

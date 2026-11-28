@@ -38,7 +38,7 @@ rel_program topProdFin where
 -- first sides, so `asc` numbers them 0…3 and `x × 𝟙` maps `(i, x(i))` to `(x(i), x(i))`. `tt` sends `0 ↦ inl 5`,
 -- `2 ↦ inl 6` and the other keys of `x` to `inr`; `asc` numbers `(0,inl 5) (1,inr) (2,inl 6) (3,inr)` 0…3 by the
 -- first side, `x × 𝟙` maps the first side by `x`, and `𝟙 × inl°` keeps the `inl` rows: `0 ↦ (30,5)`, `2 ↦ (40,6)`.
-#guard topProdN.ok
-#guard topProdFin.ok
+
+
 
 end Rel.Lang.TestTopProd

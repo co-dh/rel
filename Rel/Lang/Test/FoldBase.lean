@@ -33,6 +33,6 @@ rel_program foldBase where
     b1 : N ⟶ M ≜ m sum
     check b1 = a6
 
-#guard foldBase.failures.isEmpty
+
 
 end Rel.Lang.Test

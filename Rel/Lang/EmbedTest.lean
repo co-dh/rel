@@ -82,7 +82,6 @@ rel_program thm where
         := unit
       two
 
-#guard thm.ok
 -- the chains stay in the program's constant, so a reader of the program can recover each theorem's steps
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss _ => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
@@ -161,16 +160,14 @@ rel_program thmLe where
         ⊑ := unit
       two
 
+/-- error: rel_program Rel.Lang.EmbedTest.thmData: line 166, col 7: claim failed: x up = {(a, 2)}, x two = {(a, 2), (b, 2)} -/
+#guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmData where
     theorem t on x : up = two := calc
       up
         := unit
       two
-
-#guard !thmData.ok
-#guard thmData.failures.map toString ==
-  [s!"line {decl_line% thmData + 4}, col 7: check failed: x up = \{(a, 2)}, x two = \{(a, 2), (b, 2)}"]
 
 /-! A juxtaposed antiquotation ends its statement at its line, as a name does: the next line, a statement or a Lean
     command, is not read into it. `#rel_stmts` shows each statement a program's lines parse to. -/

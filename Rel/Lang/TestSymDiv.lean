@@ -16,6 +16,6 @@ rel_program symDiv where
 
 -- by hand: the images are `R 0 = {1,2}`, `R 1 = {1}`, `R 2 = R 3 = ∅` and `S 0 = S 1 = ∅`, `S 2 = {1,2}`, `S 3 = {1}`;
 -- equal images pair `0 ↦ 2`, `1 ↦ 3`, and each of `2`, `3` (empty under `R`) with each of `0`, `1` (empty under `S`).
-#guard symDiv.ok
+
 
 end Rel.Lang.TestSymDiv

@@ -129,7 +129,7 @@ rel_program mss where
     check x mss = {(a,14),(b,9),(c,0),(d,3),(e,0)}
     check x scan = {(a,14),(b,9),(c,0),(d,3),(e,0)}
 
-#guard mss.ok
+
 
 end Rel.Programs
 

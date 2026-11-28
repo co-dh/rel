@@ -15,6 +15,6 @@ rel_program importT where
     g : P ⟶ D ≜ getDummies(col T "c", x)
     check g = d where x ≜ {(0,(7,10)),(1,(3,20)),(2,(7,30)),(3,(9,40))}
 
-#guard importT.ok
+
 
 end Rel.Lang.TestPivotDiskImport

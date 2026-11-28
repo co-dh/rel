@@ -15,7 +15,7 @@ rel_program closure where
     R : N ⟶ N ≜ {(0,1),(1,2),(2,3)}
     c : N ⟶ N ≜ μX : 𝟙 ∪ (R X)
     check c = {(0,0),(1,1),(2,2),(3,3),(4,4),(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
-#guard closure.ok
+
 -- postfix `*`, at the level of `°`: `R*` reads as the prelude's `star(R)` (`μX : 𝟙 ∪ R X`); `°` and `*` chain
 -- either way
 #eval readsAll [("R*", "star(R)"), ("R°*", "star(R°)"), ("R*°", "star(R)°"), ("R S*", "(R star(S))"),
@@ -34,7 +34,7 @@ rel_program star where
     check R*° = c°
     check (R X)* = μZ : 𝟙 ∪ (R X Z)
     check (R X)* = {(0,0),(1,1),(2,2),(3,3),(4,4),(2,4)}
-#guard star.ok
+
 -- `*` is no name
 #eval errAt "obj B = 0…1\n* : B ⟶ B ≜ 𝟙(B)\n" 0 "expected"
 -- the points with an infinite `R`-path: the rounds from `𝟙` written out, which stop changing at the second
@@ -49,7 +49,7 @@ rel_program infPath where
     check v = x₂
     check x₃ = x₂
     check v = {(0,0),(1,1),(2,2)}
-#guard infPath.ok
+
 
 -- `μ` on an array target, its values duplicate-free lists: the unions of the singletons `s`, which stop growing
 -- once every set of three is reached; against the two levels of union written out
@@ -62,7 +62,7 @@ rel_program muArr where
     e : B ⟶ [B] ≜ ⟨d, s⟩ cat setify
     check f = s ∪ d ∪ e
     print f
-#guard muArr.ok
+
 #guard muArr.prints == ["f = {(0, [0]), (0, 0 1), (0, 0 1 2), (0, 0 2), (0, [1]), (0, 1 2), (0, [2]), (1, []), (2, [])}"]
 
 -- `X` under an operator not monotonic in its argument, or in an antitone place; `ν` with no bound

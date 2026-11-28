@@ -87,7 +87,7 @@ rel_program kernT45 where
     check es = {(1,1),(3,1),(4,1)}
     check th = {(1,[1]),(2,[]),(3,[1]),(4,[1])}
 
-#guard kernT45.ok
+
 
 /-! `sum = ⦇[0, plus]⦈` and `length = ⦇[0, π₁ succ]⦈` at an object with a universe run as their folds, so every
     step, not only the result, is in the object: `3 3 -3` has the partial sum `3+3 = 6 ∉ M`; `length` starts at
@@ -103,7 +103,7 @@ rel_program sumFold where
     check s = {(2,3),(3,0)}
     check t = {(2,3),(3,0)}
 
-#guard sumFold.ok
+
 
 -- the fold's base is the literal `0`, read at the target like any literal: `0 ∉ P`, so the text is refused there
 /-- error: line 115, col 19: in `Rel.Programs.prelude.length`: `ran` at this call, where α is 1, β is P: 0 is not in P = 1…5 -/
@@ -128,7 +128,7 @@ rel_program frontDiag where
     qn : N×N ⟶ N×N ≜ {((1,2),(2,1)),((2,1),(2,1))}
     pp : N ⟶ [N]×[N] ≜ {(1,([1],[2])),(2,([2],[1])),(3,([],[1]))}
 
-#guard frontDiag.ok
+
 #guard (do
     let X ← get frontDiag.expanded "x" .long (.arr .long)
     let Q ← get frontDiag.expanded "qn" (.prod .long .long) (.prod .long .long)

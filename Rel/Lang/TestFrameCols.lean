@@ -65,7 +65,7 @@ rel_program frameCols where
     check filterBy(𝟙 − dom(π₂ big), x) = {(0,(C,1)),(1,(C,2)),(2,(B,1))}
 
 -- by hand from the fixture `k = B A B C A C B A`, `v = 5 3 5 1 7 2 1 3`: sum 27, quotient 27 div 8 = 3
-#guard frameCols.ok
+
 
 -- describe `v` (`frameStat`, a program of its own: its float objects would take part in reading the literals above):
 -- count 8, mean 27/8 = 3.375, min 1, max 7; std √(255/56) ≈ 2.1339 is no float, so it is pinned in (2.125, 2.25):
@@ -81,7 +81,7 @@ rel_program frameDescribe where
     check summarize(F(x π₂) var, x) = {(∗,3.984375)}
     check summarize(F(⟨x π₂, x π₂ ⟨𝟙,𝟙⟩plus⟩) cov, x) = {(∗,7.96875)}
 
-#guard frameDescribe.failures.map toString == []
+
 
 -- `pow` (DataHaskell `x ^ i`, `i` an `Int`): no definition, the column expression `⟨c $ F, i $ F⟩xexp`, the exponent a
 -- literal or a column; libm `pow` is exact on these, a negative base with an integer exponent included
@@ -103,7 +103,7 @@ rel_program framePow where
 
 -- by hand: `(-2)^3 = -8`, `3^3 = 27`, `0^3 = 0`; `3^2 = 9`, `0^0 = 1`, `1^5 = 1`; `1.5^2 = 2.25`, `(-0.5)^2 = 0.25`,
 -- `1.5^3 = 3.375`, `4^0 = 1`; `5^5 = 3125`, `7^7 = 823543`
-#guard framePow.failures.map toString == []
+
 
 -- `fround` (DataHaskell, Haskell's `round`: half to even, float to integral): no definition, the row `round : F ⟶ L`
 open Rel.Programs.prelude frameData in
@@ -120,6 +120,6 @@ rel_program frameRound where
 
 -- by hand: ties `0.5 1.5 2.5 -0.5 -1.5` to the even `0 2 2 -0 -2` (`-0` is the `i64` `0`), `2.4 2.6 -2.6` to
 -- `2 3 -3`; derive: `2.5 -2.6 3.5` to `2 -3 4`
-#guard frameRound.failures.map toString == []
+
 
 end Rel.Lang.TestFrameCols

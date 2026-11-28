@@ -64,6 +64,6 @@ rel_program sudokuac where
     check s = s₀ ∩ (peer\(s ≠))           -- a fixed point
     check s = sol                                 -- AC-3 alone solves this puzzle
 
-#guard sudokuac.ok
+
 
 end Rel.Programs

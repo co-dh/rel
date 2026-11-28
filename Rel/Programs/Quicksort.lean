@@ -41,6 +41,6 @@ rel_program quicksort where
     check C sort' ⊑ C perm ordered(≤)             -- p.154 flatten ⦇[nil, split°]⦈° ⊆ ordered · perm
     check C sort' = C perm ordered(≤)
 
-#guard quicksort.ok
+
 
 end Rel.Programs

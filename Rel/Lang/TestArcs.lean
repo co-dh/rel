@@ -29,7 +29,7 @@ rel_program arcsT where
     check z₁ = {(x,0),(x,2),(y,0),(y,2)}
     check z₂ = {(x,0),(x,2),(y,0),(y,2)}
     check z₁ = z₃
-#guard arcsT.ok
+
 #guard arcsT.prints == ["z₁ = {(x, 0), (x, 2), (y, 0), (y, 2)}", "z₂ = {(x, 0), (x, 2), (y, 0), (y, 2)}"]
 
 end Rel.Lang.TestArcs

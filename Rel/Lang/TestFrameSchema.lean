@@ -66,6 +66,6 @@ rel_program frameSchemaT where
     top3(t : N ⟶ Trade) : N ⟶ Trade ≜ topK({(∗,3)}, col Trade "px", t)
     check top3(tt) = {(0,(((D,30),1),buy)),(1,(((B,20),3),sell)),(2,(((B,18),4),buy))}
 
-#guard frameSchemaT.failures.map toString == []
+
 
 end Rel.Lang.TestFrameSchema

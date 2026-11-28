@@ -54,9 +54,9 @@ rel_program out where
 
 -- every `check` holds, including entab ⊑ the specification and detab entab = 𝟙, on D; the program prints nothing
 -- itself
-#guard Programs.detab.ok
+
 #guard Programs.detab.prints == []
-#guard out.ok && out.prints.length == 8
+#guard out.prints.length == 8
 -- the note's run: detab of ab, a tab, c d
 #guard out.prints[0]? == some s!"x detab = {shown [detabL x]}"
 -- the specification is every shortest preimage; q has two

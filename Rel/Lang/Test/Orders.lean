@@ -25,7 +25,7 @@ rel_program orders where
     print s₀tf(Y(∋),Of)
 
 -- at `S₀`, `∼S₀` gives `A` the values `B C`, `B` the values `A C`, `C` the values `B C`: the least of each
-#guard orders.ok && orders.prints == [
+#guard orders.prints == [
   "s₀ lf(Y(∋), Of) = {((A, A) (B, B) (C, A), (A, B)), ((A, A) (B, B) (C, A), (B, A)), " ++
     "((A, A) (B, B) (C, A), (C, B))}",
   "s₀ tf(Y(∋), Of) = {((A, A) (B, B) (C, A), (A, [B])), ((A, A) (B, B) (C, A), (B, [A])), " ++
@@ -53,7 +53,7 @@ rel_program ltObjs where
     check p le = (p lt) ∪ (p dom(π₁ ∩ π₂))
     check s le = (s lt) ∪ (s dom(π₁ ∩ π₂))
 
-#guard ltObjs.ok && ltObjs.failures.map toString == []
+
 
 /-! The operators `<`, `≤`, `>` at an object that is no atom (`Tm.cmpDef`): the pairs of `dom U` the prelude's test
     holds at, `Obj.lt` of the object. `(0,2) < (1,0)` at `N×N` (first component first), null below every value at
@@ -74,7 +74,7 @@ rel_program cmpObjs where
     check inr < ∩ nl = 𝟘
     check nl ≤ ∩ nl = nl
 
-#guard cmpObjs.ok && cmpObjs.failures.map toString == []
+
 
 /-! `asc(P)` at an object that is no atom runs its prelude text `(dom(P) Λ(> dom(P)) length)°`: number `j` is the `j`-th
     smallest pair of `dom P` in `Obj.lt` order. -/
@@ -85,7 +85,7 @@ rel_program ascObjs where
     P : N×N ⟶ N×N ≜ {((1,0),(1,0)), ((0,2),(0,2))}
     check asc(P) = {(0,(0,2)), (1,(1,0))}
 
-#guard ascObjs.ok && ascObjs.failures.map toString == []
+
 
 -- an object with no universe, and an atom with no order code
 #eval errAt "obj N = 0…2\nobj C : char\ng : [C] ⟶ [C] ≜ <\n" 3 "has no universe"

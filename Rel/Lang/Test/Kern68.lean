@@ -76,7 +76,7 @@ rel_program kernT68 where
     check pr = {(1,[]),(1,[3]),(1,3 1),(1,3 1 2),(2,[]),(3,[]),(3,[1]),(3,1 2),(4,[]),(4,[1]),(4,1 2),(5,[]),(5,[2]),(5,2 2)}
     check su = {(1,3 1 2),(1,1 2),(1,[2]),(1,[]),(2,[]),(3,1 2),(3,[2]),(3,[]),(4,1 2),(4,[2]),(4,[]),(5,2 2),(5,[2]),(5,[])}
 
-#guard kernT68.ok
+
 -- not vacuous: the kernel tables have rows
 #guard ["j1", "j3", "f1", "f2", "f3", "f8"].all fun d =>
   ((get kernT68.expanded d .long .long).map (·.n.toNat != 0)) == some true

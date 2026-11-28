@@ -60,6 +60,6 @@ rel_program chess where
 
     check m = {((0,6),R)}                         -- Ra1-a3 mates: Kb1 holds a2, b2, c2; the rook a3, b3
 
-#guard chess.ok
+
 
 end Rel.Programs
