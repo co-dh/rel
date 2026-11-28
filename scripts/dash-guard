@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Project hook: keeps the dashboard page in step with items.json. Reads a hook payload on stdin.
+# PostToolUse(ArtifactData set dash/state): record the pushed state.json hash. PreToolUse (main thread): nudge, never deny.
+# Plain shell + jq + git + sha256sum so it stays cheap on every tool call; every failure is a nudge naming the command.
+D=${DASH_DIR:-/data/tmp/rel-dash}; R=${DASH_REPO:-/home/dh/repo/rel}; S=$D/state.json; P=$D/pushed.sha; C=$D/checked.sha; I=$R/items.json
+msg=''; add() { msg+="$1"$'\n'; }
+hsh() { H=''; local o; if o=$(sha256sum "$1" 2>&1); then H=${o%% *}; else add "dash-guard: cannot read $1 (sha256sum: $o); run /home/dh/repo/cc-guard/dash/gen"; return 1; fi; }
+say() { [ -n "$msg" ] && jq -n --arg e "$1" --arg m "$msg" '{hookSpecificOutput:{hookEventName:$e,additionalContext:$m}}'; return 0; }
+
+f=$(jq -r '[.hook_event_name, (.agent_id // ""), (.tool_input.doc_id // ""), (.tool_input.file_path // ""),
+  ((.tool_response | if type == "object" then (.is_error // false) else false end) | tostring)] | join("\u001f")') \
+  || { echo "dash-guard: stdin is not a hook payload (jq failed)" >&2; exit 1; }
+IFS=$'\x1f' read -r ev aid doc fp err <<<"$f"
+
+if [ "$ev" = PostToolUse ]; then
+  if [ "$doc" = state ] && [ "$fp" = "$S" ] && [ "$err" = false ]; then
+    hsh "$S" && { printf '%s\n' "$H" > "$P" || add "dash-guard: cannot write $P"; }
+  fi
+  say PostToolUse; exit 0
+fi
+[ "$ev" = PreToolUse ] && [ -z "$aid" ] || exit 0
+
+# a. state.json generated but not pushed
+if hsh "$S"; then
+  if [ ! -r "$P" ]; then add "dash state generated but never pushed ($P missing): call ArtifactData set (dash/state, file_path $S, if_version = last version)"
+  else read -r ph < "$P"; [ "$H" = "$ph" ] || add "dash state generated but not pushed: call ArtifactData set (dash/state, file_path $S, if_version = last version)"; fi
+fi
+
+# b. commits on origin/master naming an item whose mark is not ✓, or items.json newer than state.json
+head=$(git -C "$R" rev-parse origin/master 2>&1) || { add "dash-guard: git -C $R rev-parse origin/master failed: $head"; head=''; }
+if [ -n "$head" ]; then
+  if [ ! -r "$C" ]; then printf '%s\n' "$head" > "$C" || add "dash-guard: cannot write $C"
+  else
+    read -r last < "$C"
+    if [ "$last" != "$head" ]; then
+      subj=$(git -C "$R" log --format=%s "$last..$head" 2>&1) || { add "dash-guard: git -C $R log $last..$head failed: $subj"; subj=''; }
+      if [ -n "$subj" ]; then
+        pend=$(jq -r --arg s "$subj" '($s | split("\n")) as $L | .[] | select(.mark != "✓" and (. as $t | any($L[]; startswith($t.id + ":")))) | .id' "$I" 2>&1) \
+          || { add "dash-guard: jq over $I failed: $pend"; pend=''; }
+        [ -n "$pend" ] && while read -r id; do add "item $id merged; items.json mark / gen / ArtifactData set not done"; done <<<"$pend"
+      fi
+      # advance only when nothing is pending, so a nudge repeats until the mark is set
+      [ -z "${pend:-}" ] && { printf '%s\n' "$head" > "$C" || add "dash-guard: cannot write $C"; }
+    fi
+  fi
+fi
+[ -r "$I" ] || add "dash-guard: cannot read $I"
+[ "$I" -nt "$S" ] && add "items.json is newer than state.json: run /home/dh/repo/cc-guard/dash/gen, then ArtifactData set (dash/state, file_path $S)"
+say PreToolUse; exit 0
