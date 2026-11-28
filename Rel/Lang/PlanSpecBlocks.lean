@@ -180,4 +180,375 @@ theorem compLoop_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A
       exact ⟨s', bt, hs', hc', hB'⟩
   exact ⟨io, hB⟩
 
+/-! ### `Grows`, `Typed` of `compBlocksB`'s parts (`funT_builds`' `hb`, `hty`) -/
+
+/-- A builder that `Grows` keeps the functions `Ordered`: what a continuation asks of the functions a build leaves. -/
+theorem Builds.ordered {abi : String → Option Kernel} {fg fg' : Array Fun × Array Fun} {b : Bld (Array Nat)}
+    {rs out : Array Val} (hB : Builds abi fg fg' b rs out) (hg : Grows b) (ho : Ordered fg.1) : Ordered fg'.1 := by
+  obtain ⟨-, -, h⟩ := hB
+  obtain ⟨js, xs, r, hr, -, -⟩ := h #[]
+  exact ((hg _ _ _ hr) ho (fun j hj => by simp [Instr.callsB] at hj)).1
+
+/-- The builders `compBlocksB` is made of, closing on their own `Grows` lemmas. -/
+local macro "growsB" : tactic => `(tactic| repeat' first
+  | exact Grows.pure _ | exact Grows.throw _ | (with_reducible refine Grows.bind ?_ (fun _ => ?_))
+  | (with_reducible refine Grows.ite ?_ ?_) | (with_reducible refine Grows.mapM (fun _ => ?_) _)
+  | exact Grows.lit _ | exact Grows.call1 _ _ | exact Grows.callK _ _ | exact Grows.nth _ _ _
+  | exact Grows.ctorB _ _ _ | exact Grows.listB _ | exact Grows.srcB _ _ | exact Grows.mapB _ _ _ _ _ _ _ _
+  | exact Grows.u64B _ | exact Grows.gatherB _ _ _ _ | exact Grows.prefixB _ _ _ | exact Grows.expandB _ _
+  | exact Grows.withRegs _ _ | exact Grows.cellsBoundB _ _ _ | exact Grows.scanB _ _ _ _ _ | exact Grows.wordsB _ _
+  | exact Grows.gatherCols _ _ _ _ | exact Grows.whereB _ _ | exact Grows.guard _ _ _
+  | exact Grows.of_pure (regsOf_eq _) | dsimp only | split)
+
+theorem Grows.mapWB (op : Kernel.Op) (n a b : Nat) (ps : List (Kernel.Op × Nat)) : Grows (Plan.mapWB op n a b ps) := by
+  unfold Plan.mapWB; growsB
+
+theorem Grows.clampB (n x c : Nat) : Grows (Plan.clampB n x c) := by
+  unfold Plan.clampB
+  exact (Grows.lit _).bind fun _ => (Grows.u64B _).bind fun _ => Grows.mapWB _ _ _ _ _
+
+theorem Grows.keepB (T : TabB) (b : Nat) : Grows (Plan.keepB T b) := by
+  unfold Plan.keepB
+  exact (Grows.whereB _ _).bind fun ⟨_, _⟩ => (Grows.gatherCols _ _ _ _).bind fun _ =>
+    (Grows.gatherCols _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.compOneB (R S : TabB) : Grows (Plan.compOneB R S) := by
+  unfold Plan.compOneB
+  refine Grows.funT fun Us => ?_
+  rcases Us with _ | ⟨T1, _ | ⟨T2, _ | ⟨T3, Us⟩⟩⟩ <;> try exact Grows.throw _
+  exact (Grows.groupsB _ _).bind fun x => Grows.compFromB _ _ x
+
+theorem Grows.iteT {c : Nat} {ks vs : Cols} {t e : Bld TabB} (ht : Grows t) (he : Grows e) :
+    Grows (Plan.iteT c ks vs t e) := by
+  have hf : ∀ {b : Bld TabB}, Grows b → ∀ w, Grows (Plan.iteFlat c ks vs w (Plan.funT [] fun _ => b)) := fun hb w => by
+    unfold Plan.iteFlat
+    refine (Grows.funT fun _ => hb).bind fun T => ?_
+    rw [regsOf_eq, pure_bind]
+    split
+    · exact Grows.pure _
+    · exact (Grows.throw _).bind fun _ => Grows.pure _
+  unfold Plan.iteT
+  rw [regsOf_eq, pure_bind]
+  exact (Grows.ite (hf ht _) (hf he _)).bind fun _ => (Grows.withRegs _ _).bind fun ⟨_, _⟩ =>
+    (Grows.nth _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.col1 (cs : Cols) : Grows (Plan.col1 cs) := by
+  unfold Plan.col1; split
+  · exact Grows.pure _
+  · exact Grows.throw _
+
+-- The registers `withRegs` hands back are among those it was given.
+mutual
+theorem Typed.withRegs {m : Nat} : ∀ (cs : Cols) (rs : List Nat), AllGe m rs →
+    Typed m (fun r => AllGe m (Cols.regs r.1) ∧ AllGe m r.2) (withRegs cs rs)
+  | [], rs, h => by unfold Rel.Lang.Plan.withRegs; exact Typed.pure ⟨fun a ha => by simp [Cols.regs] at ha, h⟩
+  | c :: cs, rs, h => by
+    unfold Rel.Lang.Plan.withRegs
+    exact (Typed.withReg c rs h).bind fun ⟨c', rs1⟩ h1 => (Typed.withRegs cs rs1 h1.2).bind fun ⟨cs', rs2⟩ h2 =>
+      Typed.pure ⟨fun a ha => by
+        simp only [Cols.regs, List.mem_append] at ha; exact ha.elim (h1.1 a) (h2.1 a), h2.2⟩
+theorem Typed.withReg {m : Nat} : ∀ (c : Col) (rs : List Nat), AllGe m rs →
+    Typed m (fun r => AllGe m (Col.regs r.1) ∧ AllGe m r.2) (withReg c rs)
+  | .atom p t e, r :: rs, h => by
+    unfold Rel.Lang.Plan.withReg
+    exact Typed.pure ⟨fun a ha => by simp [Col.regs] at ha; subst ha; exact h _ (by simp),
+      fun a ha => h a (by simp [ha])⟩
+  | .atom p t e, [], h => by unfold Rel.Lang.Plan.withReg; exact Typed.throw _
+  | .arr p m' lo hi f, a :: b :: d :: rs, h => by
+    unfold Rel.Lang.Plan.withReg
+    exact (Typed.withRegs f rs fun x hx => h x (by simp [hx])).bind fun ⟨f', rs1⟩ h1 =>
+      Typed.pure ⟨fun x hx => by
+        simp only [Col.regs, List.cons_append, List.nil_append, List.mem_cons] at hx
+        rcases hx with rfl | rfl | rfl | hx
+        · exact h _ (by simp)
+        · exact h _ (by simp)
+        · exact h _ (by simp)
+        · exact h1.1 x hx, h1.2⟩
+  | .arr p m' lo hi f, [], h => by unfold Rel.Lang.Plan.withReg; exact Typed.throw _
+  | .arr p m' lo hi f, [_], h => by unfold Rel.Lang.Plan.withReg; exact Typed.throw _
+  | .arr p m' lo hi f, [_, _], h => by unfold Rel.Lang.Plan.withReg; exact Typed.throw _
+  | .sum p tag x y, a :: rs, h => by
+    unfold Rel.Lang.Plan.withReg
+    exact (Typed.withRegs x rs fun z hz => h z (by simp [hz])).bind fun ⟨x', rs1⟩ h1 =>
+      (Typed.withRegs y rs1 h1.2).bind fun ⟨y', rs2⟩ h2 => Typed.pure ⟨fun z hz => by
+        simp only [Col.regs, List.cons_append, List.nil_append, List.mem_cons, List.mem_append] at hz
+        rcases hz with rfl | hz | hz
+        · exact h _ (by simp)
+        · exact h1.1 z hz
+        · exact h2.1 z hz, h2.2⟩
+  | .sum p tag x y, [], h => by unfold Rel.Lang.Plan.withReg; exact Typed.throw _
+end
+
+theorem Typed.mapWB {m : Nat} {op : Kernel.Op} {n a b : Nat} {ps : List (Kernel.Op × Nat)} (hn : m ≤ n) (ha : m ≤ a)
+    (hb : m ≤ b) (hps : ∀ p ∈ ps, m ≤ p.2) : Typed m (fun r => m ≤ r) (Plan.mapWB op n a b ps) := by
+  unfold Plan.mapWB
+  refine (Typed.lit _).bind fun r1 h1 => (Typed.lit _).bind fun r2 h2 => (Typed.lit _).bind fun r3 h3 =>
+    (Typed.lit _).bind fun r4 h4 => (Typed.ctorB (by simp) (by simp) 0).bind fun r5 h5 =>
+    (Typed.srcB hn ha).bind fun r6 h6 => (Typed.srcB hn hb).bind fun r7 h7 =>
+    (Typed.listB (by simp [AllGe, h6, h7])).bind fun r8 h8 => (Typed.listB (by simp [AllGe])).bind fun r9 h9 =>
+    (Typed.mapM (Q := fun r => m ≤ r) fun ⟨o, w⟩ hw => (Typed.lit _).bind fun r h =>
+      Typed.ctorB (by simp [h, hps _ hw]) (by simp) 0).bind fun l hl =>
+    (Typed.listB hl).bind fun r10 h10 => (Typed.callK ?_).bind fun rs hrs => Typed.nth hrs 0 _
+  simp [h1, h2, h3, h4, h5, h8, h9, h10]; omega
+
+theorem Typed.clampB {m n x c : Nat} (hn : m ≤ n) (hx : m ≤ x) :
+    Typed m (fun r => m ≤ r) (Plan.clampB n x c) := by
+  unfold Plan.clampB
+  exact (Typed.lit _).bind fun z hz => Typed.u64B.bind fun u hu =>
+    Typed.mapWB hn hx hx (by simp [hz, hu])
+
+theorem Typed.keepB {m : Nat} {T : TabB} {b : Nat} (hT : AllGe m T.regs) (hb : m ≤ b) :
+    Typed m (fun U => AllGe m U.regs) (Plan.keepB T b) := by
+  have hn : m ≤ T.n := hT _ (by rw [TabB.regs_eq]; simp)
+  have hk : AllGe m (Cols.regs T.key) := fun a ha => hT a (by rw [TabB.regs_eq]; simp [ha])
+  have hv : AllGe m (Cols.regs T.val) := fun a ha => hT a (by rw [TabB.regs_eq]; simp [ha])
+  unfold Plan.keepB
+  refine (Typed.whereB hn hb).bind fun ⟨k, sel⟩ hks => ?_
+  refine (Typed.gatherCols hks.1 _ _ hn hk).bind fun ck hck => (Typed.gatherCols hks.1 _ _ hn hv).bind
+    fun cv hcv => Typed.pure ?_
+  intro a ha
+  simp only [TabB.regs, Cols.regs_append, List.mem_cons, List.mem_append] at ha
+  rcases ha with rfl | ha | ha
+  · exact hks.1
+  · exact hck a ha
+  · exact hcv a ha
+
+theorem Typed.compOneB {m : Nat} {R S : TabB} (hR : AllGe m R.regs) (hS : AllGe m S.regs) :
+    Typed m (fun U => AllGe m U.regs) (Plan.compOneB R S) := by
+  unfold Plan.compOneB
+  refine Typed.funT (fun a ha => ?_) fun Us hU => ?_
+  · simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, List.mem_append] at ha
+    exact ha.elim (hR a) (hS a)
+  rcases Us with _ | ⟨R1, _ | ⟨S1, _ | ⟨T3, Us⟩⟩⟩ <;> try exact Typed.throw _
+  have hm1 : AllGe m R1.regs := fun a ha => hU a (by simp [ha])
+  have hm2 : AllGe m S1.regs := fun a ha => hU a (by simp [ha])
+  exact (Typed.groupsB hm1 hm2).bind fun x hx => Typed.compFromB hm1 hm2 hx
+
+theorem Typed.iteFlat {m c w : Nat} {ks vs : Cols} {b : Bld TabB} (hb : Typed m (fun U => AllGe m U.regs) b) :
+    Typed m (fun r => ∀ a ∈ r, m ≤ a) (Plan.iteFlat c ks vs w b) := by
+  unfold Plan.iteFlat
+  refine hb.bind fun T hT => ?_
+  rw [regsOf_eq, pure_bind]
+  have hn : m ≤ T.n := hT _ (by rw [TabB.regs_eq]; simp)
+  have hr : AllGe m (Cols.regs (T.key ++ T.val)) := fun a ha => hT a (by simp [TabB.regs, ha])
+  split
+  · exact Typed.pure fun a ha => by
+      simp only [Array.mem_append, List.mem_toArray] at ha
+      rcases ha with ha | ha
+      · simp at ha; omega
+      · exact hr a ha
+  · exact (Typed.throw (Q := fun _ => True) _).bind fun _ _ => Typed.pure fun a ha => by
+      simp only [Array.mem_append, List.mem_toArray] at ha
+      rcases ha with ha | ha
+      · simp at ha; omega
+      · exact hr a ha
+
+theorem Typed.iteT {m c : Nat} {ks vs : Cols} {t e : Bld TabB} (hc : m ≤ c)
+    (ht : Typed m (fun U => AllGe m U.regs) t) (he : Typed m (fun U => AllGe m U.regs) e) :
+    Typed m (fun U => AllGe m U.regs) (Plan.iteT c ks vs t e) := by
+  unfold Plan.iteT
+  rw [regsOf_eq, pure_bind]
+  refine (Typed.ite hc (Typed.iteFlat (Typed.funT (by simp [AllGe]) fun _ _ => ht))
+    (Typed.iteFlat (Typed.funT (by simp [AllGe]) fun _ _ => he))).bind fun rs hrs => ?_
+  refine (Typed.withRegs _ _ fun a ha => hrs a (by simpa using List.mem_of_mem_drop ha)).bind
+    fun ⟨cs, rest⟩ hcs => (Typed.nth hrs 0 _).bind fun n0 hn0 => Typed.pure ?_
+  intro a ha
+  simp only [TabB.regs, List.take_append_drop, List.mem_cons] at ha
+  rcases ha with rfl | ha
+  · exact hn0
+  · exact hcs.1 a ha
+
+/-! ### `Grows`, `Typed` of `packB`, `packT` -/
+
+theorem Grows.packWidthsB (o : Bool) (n lo hi : Nat) : Grows (Plan.packWidthsB o n lo hi) := by
+  unfold Plan.packWidthsB
+  split
+  · exact (Grows.wordsB _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+      (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => Grows.pure _
+  · exact (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Grows.packWideB (k m T : Nat) : Grows (Plan.packWideB k m T) := by
+  unfold Plan.packWideB
+  split
+  · exact Grows.lit _
+  · exact (Grows.lit _).bind fun _ => (Grows.call1 _ _).bind fun _ => Grows.call1 _ _
+
+theorem Grows.cellsLayB (n w P : Nat) : Grows (Plan.cellsLayB n w P) := by
+  unfold Plan.cellsLayB
+  exact (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.scanB _ _ _ _ _).bind fun _ =>
+    (Grows.nth _ _ _).bind fun _ => Grows.pure _
+
+/-- Induction on `Col.sizes`, the measure `packB` terminates by. -/
+theorem Grows.packB (k : Nat) : ∀ (o : Bool) (n : Nat) (cs : Cols), Grows (Plan.packB o k n cs) := by
+  intro o n cs
+  induction hs : Col.sizes cs using Nat.strongRecOn generalizing o n cs with
+  | _ s ih =>
+    unfold Plan.packB
+    refine Grows.mapM (fun x => ?_) _
+    obtain ⟨c, hc⟩ := x
+    have hle := Col.size_le_of_mem hc
+    rcases c with ⟨p, t, e⟩ | ⟨p, m, lo, hi, f⟩ | ⟨p, tag, x, y⟩
+    · exact Grows.pure _
+    · have hf : Col.sizes f < s := by simp [Col.size] at hle; omega
+      refine (Grows.cellsBoundB _ _ _).bind fun _ => (Grows.packWidthsB _ _ _ _).bind fun ⟨sw, w⟩ =>
+        (Grows.prefixB _ _ _).bind fun ⟨P, T⟩ => ?_
+      dsimp only
+      have hkeep : Grows (Plan.packB false k m f >>= fun f' => regsOf [Col.arr p m lo hi f'] >>= fun L =>
+          (Pure.pure L.toArray : Bld (Array Nat))) :=
+        (ih _ hf false m f rfl).bind fun _ => (Grows.of_pure (regsOf_eq _)).bind fun _ => Grows.pure _
+      refine (Grows.packWideB _ _ _).bind fun wide => (Grows.lit _).bind fun _ => (Grows.call1 _ _).bind fun _ =>
+        (Grows.ite hkeep (Grows.ite hkeep ?_)).bind fun rs => (Grows.withRegs _ _).bind fun x => ?_
+      · refine (Grows.expandB _ _).bind fun ⟨T', G, u⟩ => (Grows.gatherB _ _ _ _).bind fun _ =>
+          (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.gatherCols _ _ _ _).bind fun g =>
+          (Grows.cellsLayB _ _ _).bind fun ⟨lo', hi'⟩ => ?_
+        dsimp only
+        split
+        · refine (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ =>
+            (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => (Grows.pure _).bind fun _ => ?_
+          split
+          · exact (ih _ (by omega) false T' g rfl).bind fun _ => (Grows.of_pure (regsOf_eq _)).bind fun _ =>
+              Grows.pure _
+          · exact Grows.throw _
+        · refine (Grows.pure _).bind fun _ => ?_
+          split
+          · exact (ih _ (by omega) false T' g rfl).bind fun _ => (Grows.of_pure (regsOf_eq _)).bind fun _ =>
+              Grows.pure _
+          · exact Grows.throw _
+      · rcases x with ⟨_ | ⟨c, _ | _⟩, _⟩
+        all_goals first | exact Grows.pure _ | exact Grows.throw _
+    · have hx : Col.sizes x < s := by simp [Col.size] at hle; omega
+      have hy : Col.sizes y < s := by simp [Col.size] at hle; omega
+      exact (ih _ hx true n x rfl).bind fun _ => (ih _ hy true n y rfl).bind fun _ => Grows.pure _
+
+theorem Grows.packT (T : TabB) (k : Nat) : Grows (Plan.packT T k) := by
+  unfold Plan.packT
+  refine Grows.funT fun Us => ?_
+  rcases Us with _ | ⟨T1, _ | ⟨T2, Us⟩⟩ <;> try exact Grows.throw _
+  exact (Grows.packB _ _ _ _).bind fun _ => (Grows.packB _ _ _ _).bind fun _ => Grows.pure _
+
+theorem Typed.packWidthsB {m : Nat} {o : Bool} {n lo hi : Nat} (hn : m ≤ n) (hlo : m ≤ lo) (hhi : m ≤ hi) :
+    Typed m (fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) (Plan.packWidthsB o n lo hi) := by
+  unfold Plan.packWidthsB
+  split
+  · exact Typed.wordsB.bind fun z hz => (Typed.mapB hn hlo hz).bind fun s hs => (Typed.mapB hn hhi hz).bind
+      fun e he => (Typed.mapB hn he hs).bind fun w hw => Typed.pure ⟨hs, hw⟩
+  · exact (Typed.mapB hn hhi hlo).bind fun w hw => Typed.pure ⟨hlo, hw⟩
+
+theorem Typed.packWideB {m k mm T : Nat} (hm : m ≤ mm) (hT : m ≤ T) :
+    Typed m (fun r => m ≤ r) (Plan.packWideB k mm T) := by
+  unfold Plan.packWideB
+  split
+  · exact Typed.lit _
+  · exact (Typed.lit _).bind fun l hl => (Typed.call1 (by simp [hm, hl])).bind fun q hq =>
+      Typed.call1 (by simp [hq, hT])
+
+theorem Typed.cellsLayB {m n w P : Nat} (hn : m ≤ n) (hw : m ≤ w) (hP : m ≤ P) :
+    Typed m (fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) (Plan.cellsLayB n w P) := by
+  unfold Plan.cellsLayB
+  exact (Typed.mapB hn hP hw).bind fun a ha => (Typed.scanB hn (by simp) (by simp [AllGe, hP])).bind fun r hr =>
+    (Typed.nth hr 0 _).bind fun b hb => Typed.pure ⟨ha, hb⟩
+
+/-- `packB` reads only registers it was given, and answers registers above `m`: induction on `Col.sizes`. -/
+theorem Typed.packB {m : Nat} (k : Nat) : ∀ (o : Bool) (n : Nat) (cs : Cols), m ≤ n → AllGe m (Cols.regs cs) →
+    Typed m (fun r => AllGe m (Cols.regs r)) (Plan.packB o k n cs) := by
+  intro o n cs hn hcs
+  induction hs : Col.sizes cs using Nat.strongRecOn generalizing o n cs with
+  | _ s ih =>
+    unfold Plan.packB
+    refine (Typed.mapM (Q := fun c => AllGe m (Col.regs c)) fun x hx => ?_).mono
+      fun r hr => (Cols.regs_all (P := fun a => m ≤ a) r).2 hr
+    obtain ⟨c, hc⟩ := x
+    have hcr : AllGe m (Col.regs c) := (Cols.regs_all (P := fun a => m ≤ a) cs).1 hcs c hc
+    have hle := Col.size_le_of_mem hc
+    rcases c with ⟨p, t, e⟩ | ⟨p, mm, lo, hi, f⟩ | ⟨p, tag, x, y⟩
+    · exact Typed.pure hcr
+    · have hf : Col.sizes f < s := by simp [Col.size] at hle; omega
+      have h1 : m ≤ mm := hcr _ (by simp [Col.regs])
+      have hlo : m ≤ lo := hcr _ (by simp [Col.regs])
+      have hhi : m ≤ hi := hcr _ (by simp [Col.regs])
+      have hfr : AllGe m (Cols.regs f) := fun a ha => hcr a (by simp [Col.regs, ha])
+      refine (Typed.cellsBoundB hn h1).bind fun _ _ => (Typed.packWidthsB hn hlo hhi).bind fun ⟨sw, w⟩ hsw =>
+        (Typed.prefixB hn hsw.2).bind fun ⟨P, T⟩ hPT => ?_
+      dsimp only
+      have hrec : ∀ (n' l h : Nat) (g : Cols), Col.sizes g < s → m ≤ n' → m ≤ l → m ≤ h → AllGe m (Cols.regs g) →
+          Typed m (fun r => ∀ a ∈ r, m ≤ a) (Plan.packB false k n' g >>= fun f' =>
+            regsOf [Col.arr p n' l h f'] >>= fun L => (Pure.pure L.toArray : Bld (Array Nat))) :=
+        fun n' l h g hg h1 h2 h3 hgr => (ih _ hg false n' g h1 hgr rfl).bind fun f' hf' => by
+          rw [regsOf_eq, pure_bind]
+          exact Typed.pure fun a ha => by
+            simp only [List.mem_toArray, Cols.regs, Col.regs, List.append_nil, List.cons_append, List.nil_append,
+              List.mem_cons] at ha
+            rcases ha with rfl | rfl | rfl | ha
+            · exact h1
+            · exact h2
+            · exact h3
+            · exact hf' a ha
+      refine (Typed.packWideB h1 hPT.2).bind fun wide hwd => (Typed.lit _).bind fun z hz =>
+        (Typed.call1 (by simp [h1, hz])).bind fun d hd =>
+        (Typed.ite hd (hrec _ _ _ _ hf h1 hlo hhi hfr) (Typed.ite hwd (hrec _ _ _ _ hf h1 hlo hhi hfr) ?_)).bind
+        fun rs hrs => (Typed.withRegs _ _ fun a ha => hrs a (by simpa using ha)).bind fun x hx => ?_
+      · refine (Typed.expandB hn hsw.2).bind fun ⟨T', G, u⟩ he => Typed.gatherB.bind fun g0 hg0 =>
+          (Typed.mapB he.1 hg0 he.2.2).bind fun ix hix => (Typed.gatherCols he.1 mm f h1 hfr).bind fun g hg =>
+          (Typed.cellsLayB hn hsw.2 hPT.1).bind fun ⟨lo', hi'⟩ hl => ?_
+        dsimp only
+        split
+        · refine (Typed.mapB hn hlo hlo).bind fun big hb => (Typed.mapB hn hb hl.1).bind fun a ha =>
+            (Typed.mapB hn hb hl.2).bind fun b hb' =>
+            (Typed.pure (Q := fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) ⟨ha, hb'⟩).bind fun y hy => ?_
+          split
+          · exact hrec _ _ _ _ (by omega) he.1 hy.1 hy.2 hg
+          · exact Typed.throw _
+        · refine (Typed.pure (Q := fun r : Nat × Nat => m ≤ r.1 ∧ m ≤ r.2) hl).bind fun y hy => ?_
+          split
+          · exact hrec _ _ _ _ (by omega) he.1 hy.1 hy.2 hg
+          · exact Typed.throw _
+      · rcases x with ⟨_ | ⟨c, _ | _⟩, rest⟩
+        all_goals first
+          | exact Typed.throw _
+          | exact Typed.pure fun a ha => hx.1 a (by simp [Cols.regs, ha])
+    · have hx : Col.sizes x < s := by simp [Col.size] at hle; omega
+      have hy : Col.sizes y < s := by simp [Col.size] at hle; omega
+      have ht : m ≤ tag := hcr _ (by simp [Col.regs])
+      have hxr : AllGe m (Cols.regs x) := fun a ha => hcr a (by simp [Col.regs, ha])
+      have hyr : AllGe m (Cols.regs y) := fun a ha => hcr a (by simp [Col.regs, ha])
+      refine (ih _ hx true n x hn hxr rfl).bind fun x' hx' => (ih _ hy true n y hn hyr rfl).bind fun y' hy' =>
+        Typed.pure fun a ha => ?_
+      simp only [Col.regs, List.cons_append, List.nil_append, List.mem_cons, List.mem_append] at ha
+      rcases ha with rfl | ha | ha
+      · exact ht
+      · exact hx' a ha
+      · exact hy' a ha
+
+theorem Typed.packT {m : Nat} {T : TabB} {k : Nat} (hT : AllGe m T.regs) :
+    Typed m (fun U => AllGe m U.regs) (Plan.packT T k) := by
+  unfold Plan.packT
+  refine Typed.funT (by simpa using hT) fun Us hU => ?_
+  rcases Us with _ | ⟨T1, _ | ⟨T2, Us⟩⟩ <;> try exact Typed.throw _
+  have hm : AllGe m T1.regs := fun a ha => hU a (by simp [ha])
+  have hn : m ≤ T1.n := hm _ (by rw [TabB.regs_eq]; simp)
+  have hk : AllGe m (Cols.regs T1.key) := fun a ha => hm a (by rw [TabB.regs_eq]; simp [ha])
+  have hv : AllGe m (Cols.regs T1.val) := fun a ha => hm a (by rw [TabB.regs_eq]; simp [ha])
+  refine (Typed.packB k false _ _ hn hk).bind fun ck hck => (Typed.packB k false _ _ hn hv).bind fun cv hcv =>
+    Typed.pure fun a ha => ?_
+  simp only [TabB.regs, Cols.regs_append, List.mem_cons, List.mem_append] at ha
+  rcases ha with rfl | ha | ha
+  · exact hn
+  · exact hck a ha
+  · exact hcv a ha
+
+/-- **`compBlockB` is a block builder** (`BlockSpec`) of `Tab.compBlock R S ce`: `R'`, `S'` hold `R`, `S` and `c` the
+    block words `ce` in `rs0`; `hk` is `compBlockB_builds`' premise at every block number. -/
+theorem compBlockB_spec (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B C : Obj) {R : Tab A B}
+    {S : Tab B C} {R' S' : TabB} {c : Nat} {ce : Enc} {rs0 : Array Val}
+    (hRk : ColsOf A R'.key) (hRv : ColsOf B R'.val) (hSk : ColsOf B S'.key) (hSv : ColsOf C S'.val)
+    (hR : TabHolds R' R rs0) (hS : TabHolds S' S rs0) (hce : rs0[c]? = some (Reg.put ce))
+    (hk : ∀ (jv : USize) (X : Tab A C), Tab.compBlock R S ce jv.toNat = .ok X → ∀ m Rk,
+      colMap .first R.n ce ce .i64 .i64 [] [(.eq, jv.toUInt64)] = .ok m → R.keep m = .ok Rk →
+      (∀ K sel, whereCol R.n m = .ok (K, sel) → WhereAgree R.n K m sel) ∧ CompPre A B C Rk S ∧ CompPost A B C Rk X) :
+    BlockSpec A C rs0 (fun j => Tab.compBlock R S ce j) (fun j => compBlockB R' S' c j) := by
+  intro j jv Bk fg Rn kk out hE hj hb hfo hkk
+  exact compBlockB_builds hc h63 A B C hRk hRv hSk hSv (mapM_extends hE hR) (mapM_extends hE hS) (hE hce) hj hb
+    (hk jv Bk hb) hfo fun fg2 W Rn' ext he hf ho hsk hsv hreg =>
+      hkk fg2 W Rn' ext he hf ho (ColsOf.shape A hRk hsk) (ColsOf.shape C hSv hsv) hreg
+
 end Rel.Lang.Plan
