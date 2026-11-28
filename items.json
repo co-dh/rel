@@ -4849,8 +4849,8 @@
   },
   {
     "id": "PARTY-LAWS",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "aa66e3e",
     "deps": [
       "GP-1b"
     ],
