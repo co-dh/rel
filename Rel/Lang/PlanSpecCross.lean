@@ -292,10 +292,10 @@ theorem compPairs_eq_compOne {A B C : Obj} {L : Tab A B} {S : Tab B C} {T : Tab 
     · rw [hf x hx] at h
       simpa only [Tab.compOne, hx] using h
 
-/-- **`compB` builds `Tab.compPairs`** (what `pairB` runs) where `compPairs` is `compOne` (`OneBlock`): the stated
-    hypothesis of `pairB_builds`, proved from `compB_builds`. A table `L` of `a`-key and `b`-value columns in registers,
+/-- **`comp` builds `Tab.compPairs`** (what `pairB` runs) where `compPairs` is `compOne` (`OneBlock`): the stated
+    hypothesis of `pairB_builds`, proved for `compOneB` (one block) from `compOneB_builds`; `pairB` runs `compB`, whose block loop is not yet covered. A table `L` of `a`-key and `b`-value columns in registers,
     `S` of `b` and `c`; `kk` continues on a table of `a` and `c` columns holding the answer `T`. -/
-def CompPairsSpec (a b c : Obj) : Prop := ∀ {fg : Array Fun × Array Fun} {L : Tab a b} {S : Tab b c} {T : Tab a c}
+def CompPairsSpec (comp : TabB → TabB → Bld TabB) (a b c : Obj) : Prop := ∀ {fg : Array Fun × Array Fun} {L : Tab a b} {S : Tab b c} {T : Tab a c}
     {TL TS : TabB} {rs out : Array Val} {kk : TabB → Bld (Array Nat)}, ColsOf a TL.key → ColsOf b TL.val →
     ColsOf b TS.key → ColsOf c TS.val →
     TL.regs.mapM (fun i => rs[i]?) = some (.size L.n :: (L.key.regVals ++ L.val.regVals)) →
@@ -305,16 +305,16 @@ def CompPairsSpec (a b c : Obj) : Prop := ∀ {fg : Array Fun × Array Fun} {L :
       Ordered fg2.1 → ColsOf a U.key → ColsOf c U.val →
       U.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size T.n :: (T.key.regVals ++ T.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk U) (rs ++ ys) out) →
-    ∃ fg', Builds abiOf fg fg' (compB TL TS >>= kk) rs out
+    ∃ fg', Builds abiOf fg fg' (comp TL TS >>= kk) rs out
 
-theorem compPairsB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (a b c : Obj) : CompPairsSpec a b c := by
+theorem compPairsB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (a b c : Obj) : CompPairsSpec compOneB a b c := by
   intro fg L S T TL TS rs out kk hLk hLv hSk hSv hL hS hp ho hpre hpost hfo hkk
-  refine compB_builds hc h63 a b c hLk hLv hSk hSv hL hS (compPairs_eq_compOne hp ho) hpre hpost hfo ?_
+  refine compOneB_builds hc h63 a b c hLk hLv hSk hSv hL hS (compPairs_eq_compOne hp ho) hpre hpost hfo ?_
   intro fg2 W ys he hf ho2 hsk hsv hr
   exact hkk fg2 W ys he hf ho2 (ColsOf.shape a hLk hsk) (ColsOf.shape c hSv hsv) hr
 
 /-- **`pairB` builds `Tab.pair`**, given `compB`'s spec: the rebracketing of the key (`repath`) keeps the registers. -/
-theorem pairB_builds {A B C : Obj} (hcomp : CompPairsSpec (.prod A B) A C) {fg : Array Fun × Array Fun} {R : Tab A B}
+theorem pairB_builds {A B C : Obj} (hcomp : CompPairsSpec compB (.prod A B) A C) {fg : Array Fun × Array Fun} {R : Tab A B}
     {S : Tab A C} {T : Tab A (.prod B C)} {RB SB : TabB} {rs out : Array Val} {kk : TabB → Bld (Array Nat)}
     (hRk : ColsOf A RB.key) (hRv : ColsOf B RB.val) (hSk : ColsOf A SB.key) (hSv : ColsOf C SB.val)
     (hR : RB.regs.mapM (fun i => rs[i]?) = some (.size R.n :: (R.key.regVals ++ R.val.regVals)))

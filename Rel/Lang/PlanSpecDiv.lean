@@ -18,7 +18,7 @@ public import Rel.Lang.PlanSpecCross
 
 `ldivB R S UB UC` is `ldivOfB` of `canonT R`, `canonT S`: two `canonT_builds` and then `ldivOfB`'s own spec `LdivOfSpec`.
 `rdivB` is `convB` twice around `ldivSelB ldivOfB`. The kernel facts `Tab.ldivOf` leaves open (no totality lemma for them
-exists) are one premise `Tot` on `ldivOf`'s four arguments, `ldivOfB`'s chain of `compB`, `ascSeenB`, `groupFoldB`,
+exists) are one premise `Tot` on `ldivOf`'s four arguments, `ldivOfB`'s chain of `compOneB`, `ascSeenB`, `groupFoldB`,
 `whereB`, `gatherB`, `selectB`, `crossB` and `unionB` being the owed proof of `LdivOfSpec Tot`. -/
 
 namespace Rel.Lang.Plan
@@ -52,7 +52,7 @@ def DivSpec (A B C : Obj) (Tot : Tab A B → Tab A C → Tab B B → Tab C C →
       ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) →
     ∃ fg', Builds abiOf fg fg' (d r' s' ub uc >>= kk) rs out
 
-/-- `ldivOfB` builds `Tab.ldivOf`: the owed spec (the chain `compB`, `ascSeenB`, `groupFoldB`, `whereB`, `gatherB`,
+/-- `ldivOfB` builds `Tab.ldivOf`: the owed spec (the chain `compOneB`, `ascSeenB`, `groupFoldB`, `whereB`, `gatherB`,
     `selectB`, `crossB`, `unionB`). -/
 abbrev LdivOfSpec (A B C : Obj) (Tot : Tab A B → Tab A C → Tab B B → Tab C C → Prop) : Prop := DivSpec A B C Tot ldivOfB
 
@@ -104,7 +104,7 @@ theorem ldivB_builds {A B C : Obj} {Tot : Tab A B → Tab A C → Tab B B → Ta
       (hf.trans (hf2.trans hf3)) ho3 hsk3 hsv3 (by simpa [Array.append_assoc] using hr4)
     simpa only [Array.append_assoc] using this
 
-/-- **`ldivOfB`, stage A** (`compB` to the group counts): `Q = r° ≫ ⟨𝟙, s⟩` (`compB_builds`), its rows' groups over
+/-- **`ldivOfB`, stage A** (`compOneB` to the group counts): `Q = r° ≫ ⟨𝟙, s⟩` (`compOneB_builds`), its rows' groups over
     `(b, c)` (`ascSeenB_builds`), their row counts `cnt` (`groupFoldB_builds` over `wordsB`). `kk` continues with `Q`'s
     table `W`, the registers of `K`, `g`, `f`, `p`, `cnt`, and `W`'s columns `key ++ val.drop` (`Q.key`, the `C` side). -/
 theorem ldivA_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B C : Obj} {r : Tab A B} {s : Tab A C}
@@ -131,7 +131,7 @@ theorem ldivA_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B 
       [a, b, c, d, e].mapM (fun i => R[i]?) = some [.size k.toUSize, Reg.put g, Reg.put f, Reg.put p, Reg.put cnt] →
       ∃ fg', Builds abiOf fg2 fg' (kk W a b c d e) R out) :
     ∃ fg', Builds abiOf fg fg' (do
-      let W ← compB ⟨r'.n, r'.val, r'.key⟩ ⟨s'.n, s'.key, s'.key ++ s'.val⟩
+      let W ← compOneB ⟨r'.n, r'.val, r'.key⟩ ⟨s'.n, s'.key, s'.key ++ s'.val⟩
       let (K, g, f, p) ← ascSeenB W.n (W.key ++ W.val.drop s'.key.length)
       let cnt ← groupFoldB .add W.n g f K 0 (← wordsB W.n 1)
       kk W K g f p cnt) rs out := by
@@ -143,7 +143,7 @@ theorem ldivA_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B 
   obtain ⟨hn2, gS⟩ := mapM_get_cons hS
   obtain ⟨gRk, gRv⟩ := mapM_split (ColsOf.regs_length hRk r.key) gR
   obtain ⟨gSk, gSv⟩ := mapM_split (ColsOf.regs_length hSk s.key) gS
-  refine compB_builds hc h63 B A (.prod A C) (R := ⟨r.n, r.val, r.key⟩) (S := ⟨s.n, s.key, (s.key, s.val)⟩) (T' := Q)
+  refine compOneB_builds hc h63 B A (.prod A C) (R := ⟨r.n, r.val, r.key⟩) (S := ⟨s.n, s.key, (s.key, s.val)⟩) (T' := Q)
     (R' := ⟨r'.n, r'.val, r'.key⟩) (S' := ⟨s'.n, s'.key, s'.key ++ s'.val⟩) hRv hRk hSk ⟨s'.key, s'.val, rfl, hSk, hSv⟩
     ?_ ?_ hone hpre hpost hfo ?_
   · simp only [TabB.regs, Cols.regs_append, List.mapM_cons, hn1, List.mapM_append, gRv, gRk]
@@ -555,7 +555,7 @@ def AscPre {B : Obj} {n : USize} (x : Vals B n) : Prop :=
     `UB`, `UC`: kernel facts of the run of `r.ldivOf s UB UC` (each gated by the run's own earlier values) and three
     that the plan and the model do not yet agree on. -/
 structure LdivTot {A B C : Obj} (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) (r' s' ub uc : TabB) : Prop where
-  /-- `compB`'s output has the columns of `r'.val`, which `ub.key` must share: the plan does not say it (open). -/
+  /-- `compOneB`'s output has the columns of `r'.val`, which `ub.key` must share: the plan does not say it (open). -/
   shapeB : Cols.shape r'.val = Cols.shape ub.key
   /-- Likewise `s'.val` and `uc.key` (open). -/
   shapeC : Cols.shape s'.val = Cols.shape uc.key
@@ -613,7 +613,7 @@ def ldivR1 (r s ub uc : TabB) (kk : TabB → Bld (Array Nat)) (W : TabB) (K f p 
   ldivR2 r s ub uc kk W K f p cnt N bk cR code
 
 theorem ldivOfB_cps (r s ub uc : TabB) (kk : TabB → Bld (Array Nat)) : (ldivOfB r s ub uc >>= kk) = (do
-    let W ← compB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
+    let W ← compOneB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
     let (K, g, f, p) ← ascSeenB W.n (W.key ++ W.val.drop s.key.length)
     let cnt ← groupFoldB .add W.n g f K 0 (← wordsB W.n 1)
     ldivR1 r s ub uc kk W K f p cnt) := by

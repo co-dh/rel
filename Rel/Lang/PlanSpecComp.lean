@@ -404,8 +404,8 @@ theorem Typed.compFromB {m : Nat} {R S : TabB} (hR : AllGe m R.regs) (hS : AllGe
 /-- The body of `compB`'s plan function (`funT [R, S]`). -/
 def compBody (R S : TabB) : Bld TabB := do compFromB R S (← groupsB R S)
 
-theorem compB_eq (R S : TabB) :
-    compB R S = funT [R, S] (fun | [R, S] => compBody R S | _ => throw "comp: not two tables") := rfl
+theorem compOneB_eq (R S : TabB) :
+    compOneB R S = funT [R, S] (fun | [R, S] => compBody R S | _ => throw "comp: not two tables") := rfl
 
 theorem Grows.compBody (R S : TabB) : Grows (Plan.compBody R S) :=
   (Grows.groupsB R S).bind fun x => Grows.compFromB R S x
@@ -475,9 +475,9 @@ def CompSpec (A B C : Obj) : Prop := ∀ {R : Tab A B} {S : Tab B C} {T' : Tab A
       Ordered fg2.1 → Cols.shape W.key = Cols.shape R'.key → Cols.shape W.val = Cols.shape S'.val →
       W.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size T'.n :: (T'.key.regVals ++ T'.val.regVals)) →
       ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) →
-    ∃ fg', Builds abiOf fg fg' (compB R' S' >>= kk) rs out
+    ∃ fg', Builds abiOf fg fg' (compOneB R' S' >>= kk) rs out
 
-theorem compB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B C : Obj) : CompSpec A B C := by
+theorem compOneB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B C : Obj) : CompSpec A B C := by
   intro R S T' R' S' fg rs kk out hRk hRv hSk hSv hR hS hone hpre hpost hfo hkk
   have hlR := mapM_get_length hR
   have hlS := mapM_get_length hS
@@ -506,7 +506,7 @@ theorem compB_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) (A B 
   have hm2 : AllGe rs.size S1.regs := fun a ha => by rw [hs1, List.mem_range'_1] at ha; omega
   have hTy : Typed rs.size (fun _ => True) (compBody R1 S1) := (Typed.compBody hm1 hm2).mono fun _ _ => trivial
   obtain ⟨ctys, hcl⟩ := Typed.cloTys (fg := fg) (fg1 := fg1) (k := (R'.regs ++ S'.regs).length) hTy
-  rw [compB_eq]
+  rw [compOneB_eq]
   refine funT_builds (P := P) (Us := [R1, S1]) (ctys := ctys) (o := o) hA ha hUs (hB1 #[]) hfo ?_
     (fun U body xs R rtys h _ hR hy is => hcl U body _ R rtys h hR hy is) ?_
   · intro Ts

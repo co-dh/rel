@@ -654,7 +654,7 @@ def groupsB (R S : TabB) : Bld (Nat × Nat × Nat × Nat × Nat × Nat × Nat ×
 /-- **`R ≫ S`** (`Tab.compOne`): the groups of equal middle values of `R.val` then `S.key` (`kasc` is stable, so a
     group's `R` rows come first), per group the counts `cR`, `cS` and the width `w = cR · cS`, EXPAND of `w` (each
     output row's group `G` and offset `u`), its `R` row `p[f + u / cS]` and `S` row `p[f + cR + u % cS] - n`, both
-    sides gathered there, then `canonT`. `Tab.comp`'s blocks past `blockRows` and its bit matrices change no answer. -/
+    sides gathered there, then `canonT`: one block of `Tab.comp`, which `compFromWithB` cuts past `blockRows`. -/
 def compFromB (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) : Bld TabB := do
   let (N, p, _, f, K, cR, cS, w) := x
   -- the rows of each side on words alone, one plan function (`funW`) whatever the tables' shapes
@@ -669,10 +669,172 @@ def compFromB (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat ×
     | throw "compOne: not two columns"
   canonT ⟨T, ← gatherCols T iR R.n R.key, ← gatherCols T iS S.n S.val⟩
 
-/-- `compFromB` on `groupsB R S`. -/
-def compB (R S : TabB) : Bld TabB := funT [R, S] fun
+/-- The check `Vals.pack`, `Tab.mem`, `Tab.map` make before reading `n` cells over `m` elements signed:
+    `n · m + n + m < 2^63`, on size registers as `n, m < 2^63` and `(n + 1) · (m + 1) ≤ 2^63`, the last tested as
+    `¬ 2^63 / (m + 1) < n + 1` (no sum or product wraps); else `fail` with `what` and the two counts. -/
+def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
+  let c ← lit (.size (2 ^ 63))
+  let one ← lit (.size 1)
+  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
+    let q ← call1 (kernel% USize.div) #[c, ← call1 (kernel% USize.add) #[m, one]]
+    ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, one]]) (lit (.bit false)) (lit (.bit true))
+  guard ok s!"{what}: n cells × m elements past 2^63, n · m + n + m" #[n, m]
+
+/-- **`ValsB.pack k`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at
+    most `1/k` of it is read (`0 < m`, `k · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered
+    there, laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. `k = 0` cuts every
+    payload, the form an output file holds (`Table.writeVals`). `o` is `ValsB`'s ownership: inside a summand (`true`) a
+    cell may have null bounds (width `0` through `spanB`, null orders below), and the laid-out bounds are `min`ed with
+    `big`, `i64` max where a bound is a value and null where it is null, so they stay null (`Opt.maskWith`). -/
+def packB (o : Bool) (k n : Nat) (cs : Cols) : Bld Cols := cs.attach.mapM fun ⟨c, hc⟩ => match c with
+  | c@(.atom ..) => pure c
+  | .arr p m lo hi f => do
+    cellsBoundB "pack" n m
+    let (s, e) ← spanB n m lo hi
+    let w ← mapB .sub n e s
+    let (P, T) ← prefixB .add n w
+    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB false k m f)]).toArray
+    let cut : Bld (Array Nat) := do
+      let (T', G, u) ← expandB n w
+      let g ← gatherCols T' (← mapB .add T' (← gatherB T' G n s) u) m f
+      let lo' ← mapB .sub n P w
+      let hi' ← mapB .add n P (← wordsB n 0)
+      let (lo'', hi'') ← if o then do
+          let big ← mapB .max n lo lo .i64 .i64 [] [(.and, 0), (.or, 0x7fffffffffffffff)]
+          pure (← mapB .min n big lo', ← mapB .min n big hi')
+        else pure (lo', hi')
+      -- `g` is `f` gathered, the same shape, so no larger (the guard says so to the termination checker)
+      if h : Col.sizes g ≤ Col.sizes f then pure (← regsOf [.arr p T' lo'' hi'' (← packB false k T' g)]).toArray
+      else throw "pack: the gathered payload is larger than the payload"
+    let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.mul) #[T, ← lit (.size k.toUSize)]]
+    let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) keep (ite wide keep cut)
+    match ← withRegs [.arr p m lo hi f] rs.toList with
+    | ([c], _) => pure c
+    | _ => throw "pack: an array's registers read as no one column"
+  | .sum p tag x y => return .sum p tag (← packB true k n x) (← packB true k n y)
+termination_by Col.sizes cs
+decreasing_by
+  all_goals have := Col.size_le_of_mem hc
+  all_goals simp_all [Col.size]
+  all_goals omega
+
+example (o k n) : packB o k n [] = pure [] := by unfold packB; rfl
+
+/-- **`Tab.pack`** at `k`: both sides' payloads cut (`packB`). -/
+def packT (T : TabB) (k : Nat := 2) : Bld TabB := funT [T] fun
+  | [T] => return ⟨T.n, ← packB false k T.n T.key, ← packB false k T.n T.val⟩
+  | _ => throw "pack: not one table"
+
+/-- **`Tab.keep`**: the rows of `T` whose `0`/`1` word in `b` is `1` (`whereB`), both sides gathered there. -/
+def keepB (T : TabB) (b : Nat) : Bld TabB := do
+  let (k, sel) ← whereB T.n b
+  pure ⟨k, ← gatherCols k sel T.n T.key, ← gatherCols k sel T.n T.val⟩
+
+/-- `if c then t else e` of two tables whose sides have the shape of `ks`, `vs` (`regsOf`): the new registers, read
+    back into that shape (`withRegs`). -/
+def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
+  let w := (← regsOf (ks ++ vs)).length
+  let flat (b : Bld TabB) : Bld (Array Nat) := do
+    let T ← b
+    let rs ← regsOf (T.key ++ T.val)
+    unless T.key.length == ks.length && T.val.length == vs.length && rs.length == w do
+      throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, {rs.length} registers, not {ks.length} and {vs.length}, {w}"
+    pure (#[T.n] ++ rs.toArray)
+  -- each branch one plan function (`funT`), as a node is: a choice between two recipes inlines neither
+  let rs ← ite c (flat (funT [] fun _ => t)) (flat (funT [] fun _ => e))
+  let (cs, _) ← withRegs (ks ++ vs) (rs.toList.drop 1)
+  pure ⟨← nth rs 0 "if", cs.take ks.length, cs.drop ks.length⟩
+
+/-- **`Tab.compOne`**: `compFromB` on `groupsB R S`, the whole expansion in one block. -/
+def compOneB (R S : TabB) : Bld TabB := funT [R, S] fun
   | [R, S] => do compFromB R S (← groupsB R S)
   | _ => throw "comp: not two tables"
+
+/-- `kscan op` at `i64` over the `n` words `a`, `b` with the post chain `ps`, each step's word a register
+    (`mapB`'s chain holds constants; `shiftB`'s `(.add, s)` is the one-step case). -/
+def mapWB (op : Kernel.Op) (n a b : Nat) (ps : List (Kernel.Op × Nat)) : Bld Nat := do
+  nth (← callK (kernel% Rel.Kernel.kscan) #[← lit (Reg.put op), ← lit (.bit false), ← lit (Reg.put QAtomicType.i64),
+    ← lit (Reg.put QAtomicType.i64), n, ← ctorB 0 #[] #[], ← listB [← srcB n a, ← srcB n b], ← listB [],
+    ← listB (← ps.mapM fun (o, w) => do ctorB 0 #[← lit (Reg.put o), w] #[])]) 0 "kscan"
+
+/-- **`Arr.clampShift c 0`**: the `n` words `x` clamped into `[0, c]`, `c` a `size` register. -/
+def clampB (n x c : Nat) : Bld Nat := do
+  let z ← lit (.u64 0)
+  mapWB .first n x x [(.max, z), (.min, ← u64B c), (.add, z)]
+
+/-- **`Tab.compCuts`** past `bound` (its `some` branch, the caller tests `bound < T`): the count `nb` of blocks (a `size`)
+    and the `n` words `bid`, each row of `R` its group's block. Step for step as `compCuts`: the window `(P - 1) / bound` of
+    each group's last output row, a cut where it changes or a group alone reaches `bound`, the prefix sum of the cuts. -/
+def compCutsB (bound : Nat) (n : Nat) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) : Bld (Nat × Nat) := do
+  let (N, p, g, _, K, _, _, w) := x
+  let (P, _) ← prefixB .add K w
+  let b := (max bound 1).toUInt64
+  let dec : List (Kernel.Op × UInt64) := [(.add, 0 - 1), (.max, 0)]
+  let win ← mapB .first K P P .i64 .i64 [] (dec ++ [(.rdiv, b)])
+  let big ← mapB .first K w w .i64 .i64 [] [(.le, b)]
+  let pos ← posB
+  let prev ← mapB .first K pos pos .i64 .i64 [] dec
+  let pw ← gatherB K prev K win
+  let pb ← gatherB K prev K big
+  let cut ← mapB .or K (← mapB .ne K win pw) (← mapB .or K big pb)
+  let (I, last) ← prefixB .add K (← mapB .and K cut (← mapB .first K pos pos .i64 .i64 [] [(.lt, 0)]))
+  let rowG ← gatherB n pos N (← scatterB .last N p g N 0)
+  pure (← call1 (kernel% USize.add) #[last, ← lit (.size 1)], ← gatherB n rowG K I)
+
+/-- The `Enc` of a one-column side. -/
+def col1 (cs : Cols) : Bld Nat := match cs with
+  | [.atom _ _ e] => pure e
+  | _ => throw s!"a side of {cs.length} columns where an atom's one column is read"
+
+/-- **`Tab.compBlocks`**: `bid` clamped into `[0, nb - 1]`; block `j` is `compOneB` of the rows of `R` whose word is `j`
+    (`keepB`) with `S`; the accumulator is `packT`ed before each `∪` and the last `∪` is not. Block `0` seeds the loop,
+    which runs the other `nb - 1` rounds (none at `nb = 1`, where `nb` rounds is its cap). `nb` and the clamped `bid` go
+    to each plan function as a pseudo-table `C` (count `nb`, one column), because a function typed by closure conversion
+    cannot read a register that only a `ctor` or a `loop`'s initial state reads. -/
+def compBlocksB (R S : TabB) (nb bid : Nat) : Bld TabB := do
+  guard (← call1 (kernel% USize.decLt) #[nb, ← lit (.size (2 ^ 63))]) "comp: blocks past 2^63" #[nb]
+  let c ← clampB R.n bid (← call1 (kernel% USize.sub) #[nb, ← lit (.size 1)])
+  let blk (C R S : TabB) (j : Nat) : Bld TabB := do
+    compOneB (← keepB R (← mapWB .first R.n (← col1 C.key) (← col1 C.key) [(.eq, ← u64B j)])) S
+  funT [⟨nb, [.atom "" .i64 c], []⟩, R, S] fun
+    | [C, R, S] => do
+      let one ← lit (.size 1)
+      let A0 ← blk C R S (← lit (.size 0))
+      iteT (← call1 (kernel% USize.decEq) #[C.n, one]) R.key S.val (pure A0) (funT [A0, C, R, S] fun
+        | [A0, C, R, S] => do
+          let one ← lit (.size 1)
+          let init := (← tabsRegs [A0]).toArray.push (← lit (.size 0))
+          let rs ← loop C.n init "comp: a block loop ran past its blocks" fun st => do
+            let ([A], js) ← tabsAt [A0] st.toList | throw "comp: the loop state is not one table"
+            let [j] := js | throw "comp: the loop state holds no block number"
+            let j1 ← call1 (kernel% USize.add) #[j, one]
+            let U ← unionB (← packT A) (← blk C R S j1)
+            pure ((← tabsRegs [U]).toArray.push j1,
+              ← call1 (kernel% USize.decEq) #[← call1 (kernel% USize.add) #[j1, one], C.n])
+          match (← tabsAt [A0] rs.toList).1 with
+          | [U] => pure U
+          | _ => throw "comp: the block loop's answer is not one table"
+        | _ => throw "comp: not four tables")
+    | _ => throw "comp: not three tables"
+
+/-- **`Tab.compFrom bound`** on the groups `x`: `compFromB` where the expansion `T` is within `bound`, else the blocks of
+    `compCutsB`, chosen at run time (`T` is a count). -/
+def compFromWithB (bound : Nat) (R S : TabB) (x : Nat × Nat × Nat × Nat × Nat × Nat × Nat × Nat) : Bld TabB := do
+  -- `T < 2^63` (`groupsB`'s guard), so a bound past it never cuts
+  if 2 ^ 63 ≤ bound then compFromB R S x else do
+    let (_, _, _, _, K, _, _, w) := x
+    let (_, T) ← prefixB .add K w
+    iteT (← call1 (kernel% USize.decLt) #[← lit (.size bound.toUSize), T]) R.key S.val
+      (do let (nb, bid) ← compCutsB bound R.n x; compBlocksB R S nb bid) (compFromB R S x)
+
+/-- **`Tab.compWith bound`**: `groupsB`, then `compFromWithB`. `compWith` tests `R.n · S.n ≤ bound` first; that product
+    bounds `T`, so there `compFromWithB` takes the one block too, and the test is not repeated. -/
+def compWithB (bound : Nat) (R S : TabB) : Bld TabB := funT [R, S] fun
+  | [R, S] => do compFromWithB bound R S (← groupsB R S)
+  | _ => throw "comp: not two tables"
+
+/-- **`Tab.comp`** (`R ≫ S`): `compWithB blockRows`. -/
+def compB (R S : TabB) : Bld TabB := compWithB Tab.blockRows R S
 
 /-- **`Vals.cross`** of `n` rows `xs` and `m` rows `ys` (`crossIx`): `T = n · m` rows, `xs` at `pos / m`, `ys` at
     `pos % m`. Its two checks first, as `Vals.cross` and `crossIx` make them: `n · m ≤ crossMax` (tested as
@@ -880,62 +1042,6 @@ def bothB (r s : Dom → Bld TabB) (dr ds : Bool) (D : Dom) (ctx : TabB → Bld 
 /-- **`R ∩ S`** (`Tab.inter`): `Tab.select` keeping the groups of a row of each. -/
 def interB (R S : TabB) : Bld TabB := selectB (fun m mn mx => mapB .lt m mn mx) R S
 
-/-- The check `Vals.pack`, `Tab.mem`, `Tab.map` make before reading `n` cells over `m` elements signed:
-    `n · m + n + m < 2^63`, on size registers as `n, m < 2^63` and `(n + 1) · (m + 1) ≤ 2^63`, the last tested as
-    `¬ 2^63 / (m + 1) < n + 1` (no sum or product wraps); else `fail` with `what` and the two counts. -/
-def cellsBoundB (what : String) (n m : Nat) : Bld Unit := do
-  let c ← lit (.size (2 ^ 63))
-  let one ← lit (.size 1)
-  let ok ← andB (← call1 (kernel% USize.decLt) #[n, c]) do andB (← call1 (kernel% USize.decLt) #[m, c]) do
-    let q ← call1 (kernel% USize.div) #[c, ← call1 (kernel% USize.add) #[m, one]]
-    ite1 (← call1 (kernel% USize.decLt) #[q, ← call1 (kernel% USize.add) #[n, one]]) (lit (.bit false)) (lit (.bit true))
-  guard ok s!"{what}: n cells × m elements past 2^63, n · m + n + m" #[n, m]
-
-/-- **`ValsB.pack k`** of the `n`-row columns `cs`: each array's payload cut to the elements its cells read where at
-    most `1/k` of it is read (`0 < m`, `k · T ≤ m`, `T` the summed widths): the widths EXPANDed, the payload gathered
-    there, laid out one cell after another (`Vals.cells`); else kept. Nested payloads the same. `k = 0` cuts every
-    payload, the form an output file holds (`Table.writeVals`). `o` is `ValsB`'s ownership: inside a summand (`true`) a
-    cell may have null bounds (width `0` through `spanB`, null orders below), and the laid-out bounds are `min`ed with
-    `big`, `i64` max where a bound is a value and null where it is null, so they stay null (`Opt.maskWith`). -/
-def packB (o : Bool) (k n : Nat) (cs : Cols) : Bld Cols := cs.attach.mapM fun ⟨c, hc⟩ => match c with
-  | c@(.atom ..) => pure c
-  | .arr p m lo hi f => do
-    cellsBoundB "pack" n m
-    let (s, e) ← spanB n m lo hi
-    let w ← mapB .sub n e s
-    let (P, T) ← prefixB .add n w
-    let keep : Bld (Array Nat) := do pure (← regsOf [.arr p m lo hi (← packB false k m f)]).toArray
-    let cut : Bld (Array Nat) := do
-      let (T', G, u) ← expandB n w
-      let g ← gatherCols T' (← mapB .add T' (← gatherB T' G n s) u) m f
-      let lo' ← mapB .sub n P w
-      let hi' ← mapB .add n P (← wordsB n 0)
-      let (lo'', hi'') ← if o then do
-          let big ← mapB .max n lo lo .i64 .i64 [] [(.and, 0), (.or, 0x7fffffffffffffff)]
-          pure (← mapB .min n big lo', ← mapB .min n big hi')
-        else pure (lo', hi')
-      -- `g` is `f` gathered, the same shape, so no larger (the guard says so to the termination checker)
-      if h : Col.sizes g ≤ Col.sizes f then pure (← regsOf [.arr p T' lo'' hi'' (← packB false k T' g)]).toArray
-      else throw "pack: the gathered payload is larger than the payload"
-    let wide ← call1 (kernel% USize.decLt) #[m, ← call1 (kernel% USize.mul) #[T, ← lit (.size k.toUSize)]]
-    let rs ← ite (← call1 (kernel% USize.decEq) #[m, ← lit (.size 0)]) keep (ite wide keep cut)
-    match ← withRegs [.arr p m lo hi f] rs.toList with
-    | ([c], _) => pure c
-    | _ => throw "pack: an array's registers read as no one column"
-  | .sum p tag x y => return .sum p tag (← packB true k n x) (← packB true k n y)
-termination_by Col.sizes cs
-decreasing_by
-  all_goals have := Col.size_le_of_mem hc
-  all_goals simp_all [Col.size]
-  all_goals omega
-
-example (o k n) : packB o k n [] = pure [] := by unfold packB; rfl
-
-/-- **`Tab.pack`** at `k`: both sides' payloads cut (`packB`). -/
-def packT (T : TabB) (k : Nat := 2) : Bld TabB := funT [T] fun
-  | [T] => return ⟨T.n, ← packB false k T.n T.key, ← packB false k T.n T.val⟩
-  | _ => throw "pack: not one table"
-
 /-- **`Tab.fixOn`**: rounds of `step` from the tables `Xs` (`Plan.loop`, the state each one's count and columns), at
     most the register `k` of them, until a round leaves the first table's row count as it was; that round's first
     table. `k` rounds with the count still moving fail with `msg`. Each round's tables have their payloads cut
@@ -963,16 +1069,6 @@ def muB (msg : String) (k : Nat) (f : TabB → Bld TabB) (Z : TabB) : Bld TabB :
 def sizeB (c : Nat) : Bld Nat := do
   unless c < USize.size do throw s!"a cap of {c} rounds, past a size"
   lit (.size c.toUSize)
-
-/-- The `Enc` of a one-column side. -/
-def col1 (cs : Cols) : Bld Nat := match cs with
-  | [.atom _ _ e] => pure e
-  | _ => throw s!"a side of {cs.length} columns where an atom's one column is read"
-
-/-- **`Tab.keep`**: the rows of `T` whose `0`/`1` word in `b` is `1` (`whereB`), both sides gathered there. -/
-def keepB (T : TabB) (b : Nat) : Bld TabB := do
-  let (k, sel) ← whereB T.n b
-  pure ⟨k, ← gatherCols k sel T.n T.key, ← gatherCols k sel T.n T.val⟩
 
 /-- **`wideCol`**: the `n` words of `a` read at `t` through `widen t`, `a` itself where the chain is empty. -/
 def wideB (t : QAtomicType) (n a : Nat) : Bld Nat :=
@@ -1191,9 +1287,9 @@ def ofBitsB (g w o nx : Nat) (x : Cols) (ra ny : Nat) (y : Cols) (rc : Nat) : Bl
 
 /-- **`Tab.ldivOf`** (`r`, `s` canonical): `Q = r° ≫ ⟨𝟙, s⟩`; per group of equal `(b, c)` its row count `cnt`; the
     count `d` of `r`'s rows of `b` (CODE over `r.val ++ Q.key`); the groups with `cnt = d`; `∪` the vacuous part
-    `(ran UB − ran r) × ran UC`. -/
+    `(ran UB − ran r) × ran UC`. `compOneB`, not the blocked `compB`, as `Tab.ldivOf`: `Q` has no duplicate row. -/
 def ldivOfB (r s UB UC : TabB) : Bld TabB := do
-  let Q ← compB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
+  let Q ← compOneB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
   let C := Q.val.drop s.key.length
   let (K, g, f, p) ← ascSeenB Q.n (Q.key ++ C)
   let cnt ← groupFoldB .add Q.n g f K 0 (← wordsB Q.n 1)
@@ -1246,21 +1342,6 @@ def bitsWinB (bits : Nat) (T na g w : Nat) : Bld Nat := do
   andB (← leW na) do andB (← leW g) do
     let s ← call1 (kernel% USize.add) #[← call1 (kernel% USize.mul) #[na, w], ← call1 (kernel% USize.mul) #[g, w]]
     call1 (kernel% USize.decLt) #[← call1 (kernel% USize.div) #[s, ← lit (.size Tab.rowBits.toUSize)], T]
-
-/-- `if c then t else e` of two tables whose sides have the shape of `ks`, `vs` (`regsOf`): the new registers, read
-    back into that shape (`withRegs`). -/
-def iteT (c : Nat) (ks vs : Cols) (t e : Bld TabB) : Bld TabB := do
-  let w := (← regsOf (ks ++ vs)).length
-  let flat (b : Bld TabB) : Bld (Array Nat) := do
-    let T ← b
-    let rs ← regsOf (T.key ++ T.val)
-    unless T.key.length == ks.length && T.val.length == vs.length && rs.length == w do
-      throw s!"if r{c}: a branch's table of {T.key.length} and {T.val.length} columns, {rs.length} registers, not {ks.length} and {vs.length}, {w}"
-    pure (#[T.n] ++ rs.toArray)
-  -- each branch one plan function (`funT`), as a node is: a choice between two recipes inlines neither
-  let rs ← ite c (flat (funT [] fun _ => t)) (flat (funT [] fun _ => e))
-  let (cs, _) ← withRegs (ks ++ vs) (rs.toList.drop 1)
-  pure ⟨← nth rs 0 "if", cs.take ks.length, cs.drop ks.length⟩
 
 /-- **`Tab.ldivSel d bits`**: `T` the expansion of `R° ≫ S` (`groupsB`), `ka` its groups; the division `d` where
     `rowBits · T ≤ ka + 2` (tested as `(ka + 2) / rowBits < T`, no product), else `ldivBitsB` where `bitsWinB T

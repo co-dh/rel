@@ -465,7 +465,7 @@ theorem Typed.compBitsBody {m : Nat} {R S : TabB} (hR : AllGe m R.regs) (hS : Al
 
 /-! ### `funT` of a two-table body
 
-`selectB_builds` and `compB_builds` are one proof with the body and the output shape changed: `funT [R', S']` of a body
+`selectB_builds` and `compOneB_builds` are one proof with the body and the output shape changed: `funT [R', S']` of a body
 `body R S` builds what the body builds at the two tables renamed to fresh registers (`tabsAt_two`), when the body grows
 and is typed (`Grows`, `Typed`), and the answer's columns have the shape `K`, `V`. -/
 
