@@ -4632,8 +4632,8 @@
   },
   {
     "id": "CYL",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "395f14e",
     "deps": [],
     "content": "§7.4 cylinder shortest paths as rel_program Rel/Programs/Cylinder.lean (companion Vec version; N,P,L = [α])",
     "what": "把伴读材料 §7.4「圆柱面上的最短路径」写成一个 Rel 程序：输入是一个方格矩阵，从左走到右，每步可以往上、平移或往下一格，求代价最小的路径。程序同时检查：贪心逐列只保留每行最便宜那条路径，得到的结果和枚举全部路径再取最便宜的一样。",
@@ -4659,8 +4659,8 @@
   },
   {
     "id": "CYL-QFOLD",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "f73af0e",
     "deps": [],
     "content": "qfoldLe: fold fusion (7.13) for the cylinder qFold step, certified with by in Cylinder.lean",
     "what": "证明圆柱面程序 calc 里最后一条待证的不等式 qfoldLe：用书中 7.13 的 fold 融合定理，把「先枚举全部路径再取最便宜」换成「逐列折叠只保留最便宜」。",
