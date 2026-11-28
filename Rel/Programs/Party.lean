@@ -1,4 +1,5 @@
 import Rel.Programs.Prelude
+import Rel.Lang.Laws.PartyCost
 
 /-! # Planning a company party
 
@@ -52,6 +53,12 @@ rel_program partyPlan where
     guests(B : E ⟶ E, r : E ⟶ N) : E ⟶ E ≜ (win(B, r) B° B° ∪ ((𝟙 − win(B, r))B°))* win(B, r)   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
     test Λ(guests(boss, rating)) ⊑ best(boss, rating)
     test c(boss, rating) max = best(boss, rating) cost(rating)
+    -- the premises of cMax at the sample: rating simple, boss inside E, parties a list, every party a cost
+    test rating°rating ⊑ 𝟙
+    test boss ⊑ 𝟙boss
+    test dom(Λ(party(boss))) = 𝟙
+    test party(boss) ⊑ party(boss) dom(cost(rating))
+    theorem cMax(B : E ⟶ E, r : E ⟶ N) if r°r ⊑ 𝟙, B ⊑ 𝟙B, dom(Λ(party(B))) = 𝟙, party(B) ⊑ party(B) dom(cost(r)) : c(B, r) max = best(B, r) cost(r) by Rel.Lang.Tm.cMax_den
     root   : E ⟶ E         ≜ {(a,a)}
     test root best(boss, rating) = {(a,a d e f)}
     test root c(boss, rating) max = {(a,17)}
