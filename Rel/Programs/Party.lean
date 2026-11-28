@@ -1,5 +1,5 @@
 import Rel.Programs.Prelude
-import Rel.Lang.Laws.PartyCost
+import Rel.Lang.Laws.PartySet
 
 /-! # Planning a company party
 
@@ -37,6 +37,10 @@ rel_program partyPlan where
 
     -- the sets with no employee beside his boss
     test party(boss) setify = Λ(under(boss))subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    -- the premises of partySet at the sample: each employee has at most one boss, and a party
+    test boss°boss ⊑ 𝟙
+    test dom(party(boss)) = 𝟙
+    theorem partySet(B : E ⟶ E) if B°B ⊑ 𝟙, dom(party(B)) = 𝟙 : party(B) setify = Λ(under(B))subseq (𝟙 − dom(∋ ∩ (∋ B)))setify by Rel.Lang.Tm.partySet_den
 
     /- The greedy form (p. 178): exclude keeps only the best party of each child. -/
 
