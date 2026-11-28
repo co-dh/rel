@@ -1,5 +1,6 @@
 import Rel.Lang.Laws.MssSafe
 import Rel.Lang.PreludeRows
+import Rel.Lang.PreludeSuffix
 
 /-! # `safe` and the segment sum, read through the denotation
 
@@ -9,16 +10,6 @@ import Rel.Lang.PreludeRows
 namespace Rel.Lang
 open Rel.Kernel
 open Rel.Core.Rel hiding id comp recip inter union zero le inl inr junc
-
-theorem Prim.den_suffix {B : Obj} : Prim.den (rowOf "suffix") (.arr B) (.arr B) [] = splitDen false B.El := by
-  have hs : (rowOf "suffix").sig = ([], .list (.var {} "B"), .list (.var {} "B")) := rfl
-  have ho : (rowOf "suffix").objs (.arr B) (.arr B) [] = some [B] := by
-    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
-      List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == (rowOf "suffix").sym) =
-      some ⟨RowCode.suffix, fun σ _ => splitDen false (σ₁ σ).El⟩ := rfl
-  unfold Prim.den; simp only [List.map_nil]
-  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
 
 theorem Prim.den_prefix {B : Obj} : Prim.den (rowOf "prefix") (.arr B) (.arr B) [] = splitDen true B.El := by
   have hs : (rowOf "prefix").sig = ([], .list (.var {} "B"), .list (.var {} "B")) := rfl

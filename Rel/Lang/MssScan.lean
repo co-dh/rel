@@ -184,18 +184,6 @@ theorem lamEst_entire {A : Obj} (TQ : Core.Rel (Obj.El (.prod V V)) (Obj.El (.pr
     (List.ne_nil_of_mem ((hm c0).2 hc0))
   exact ⟨u, ys, hy, (estDen_lam TQ hy u).2 ⟨(hm u).1 hu, fun c hc hne => hmax c ((hm c).2 hc) hne⟩⟩
 
-/-- The row `suffix` means `<:+`. -/
-theorem Prim.den_suffix {B : Obj} : Prim.den (rowOf "suffix") (.arr B) (.arr B) [] = splitDen false B.El := by
-  have hs : (rowOf "suffix").sig = ([], .list (.var {} "B"), .list (.var {} "B")) := rfl
-  have ho : (rowOf "suffix").objs (.arr B) (.arr B) [] = some [B] := by
-    simp [Prim.objs, Prim.vars, hs, Option.orElse, OExp.unify, OExp.vars, List.eraseDups, List.eraseDupsBy,
-      List.eraseDupsBy.loop, List.lookup]
-  have hf : rowDens.find? (·.1.sym == (rowOf "suffix").sym) =
-      some ⟨RowCode.suffix, fun σ _ => splitDen false (σ₁ σ).El⟩ := rfl
-  unfold Prim.den; simp only [List.map_nil]
-  rw [hf, ho]; dsimp only; rw [dif_pos ⟨rfl, rfl⟩]; rfl
-
-
 /-- `Λ(suffix)` has an array at every list of a flat object: the suffixes are the `drop`s, told apart by key. -/
 theorem lamSuffix_total {B : Obj} (hB : B.flat = true) (xs : List B.El) :
     ∃ ys, lamDen (A := .arr B) (B := .arr B) (splitDen false B.El) xs ys :=

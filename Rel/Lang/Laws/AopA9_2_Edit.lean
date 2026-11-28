@@ -328,7 +328,7 @@ theorem Tm.editSuffixRight_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B 
   obtain ⟨⟨x, y⟩, he, hw⟩ := h
   obtain ⟨⟨m, hm⟩, hxy⟩ := (hE es (x, y)).1 he
   obtain ⟨u, hu⟩ := ((Tm.nilPairSeed_iff ρ P m _).1 hm).2
-  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix] at hw
+  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix_iff] at hw
   obtain ⟨⟨x, rfl, hw1⟩, y, rfl, t, hw2⟩ := hw
   obtain ⟨w1, w2⟩ := w
   obtain rfl : x = w1 := hw1
@@ -352,7 +352,7 @@ theorem Tm.editSuffixLeft_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (
   obtain ⟨⟨x, y⟩, he, hw⟩ := h
   obtain ⟨⟨m, hm⟩, hxy⟩ := (hE es (x, y)).1 he
   obtain ⟨u, hu⟩ := ((Tm.nilPairSeed_iff ρ P m _).1 hm).2
-  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix] at hw
+  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix_iff] at hw
   obtain ⟨⟨x, rfl, t, hw1⟩, y, rfl, hw2⟩ := hw
   obtain ⟨w1, w2⟩ := w
   obtain rfl : t ++ w1 = x := hw1
@@ -378,7 +378,7 @@ theorem Tm.editVrecip_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum
   obtain ⟨⟨x, y⟩, he, hw⟩ := h
   obtain ⟨⟨m, hm⟩, hxy⟩ := (hE es (x, y)).1 he
   obtain ⟨u, hu⟩ := ((Tm.nilPairSeed_iff ρ P m _).1 hm).2
-  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix] at hw
+  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix_iff] at hw
   obtain ⟨⟨x, rfl, t, hw1⟩, y, rfl, t', hw2⟩ := hw
   obtain ⟨w1, w2⟩ := w
   obtain rfl : t ++ w1 = x := hw1
