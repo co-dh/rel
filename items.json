@@ -4389,11 +4389,11 @@
   },
   {
     "id": "PLAN-THM-E11",
-    "mark": "▶",
+    "mark": "✓",
     "hold": "after E4 E6 E10",
     "content": "packT/fixB/nuB/muB vs Tab.pack/fixOn/nu/mu",
     "deps": [],
-    "sha": "",
+    "sha": "227b9cd",
     "note": "",
     "what": "Rel 程序最终编译成 C 代码运行。这一项证明：打包（pack）和递归定义的不动点（fix、μ、ν）这一步生成的 C 代码，算出的结果和它的数学定义完全一样，所以编译不会改变程序的意思。"
   },
@@ -4668,12 +4668,12 @@
   },
   {
     "id": "GOAL-REL-ALONE",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "227b9cd",
     "deps": [],
     "content": "rel depends on nothing but the Lean toolchain: no require, no import Freyd, no script or law that reaches ~/repo/freyd",
     "what": "目标一：rel 独立成立——只依赖 Lean 工具链，不 require、不 import freyd，也没有脚本或定律需要 freyd 仓库。现状已满足，此项保持它不被打破。",
-    "note": "现状满足：lakefile 无 require，Rel/ 无 import Freyd"
+    "note": "11-27 checked: no require, no import Freyd, no file outside doc/ names ~/repo/freyd (freyd relaop deleted a884a27)"
   },
   {
     "id": "GOAL-RELAOP-DEL",
@@ -4713,7 +4713,8 @@
     "deps": [],
     "content": "compB emits Tab.compOne only; Tab.compPairs runs compBlocks when compCuts blockRows splits — find where the emitted C covers the block branch, or add the builder, then drop OneBlock from pairB_builds",
     "what": "E9c：Lean 模型 compPairs 在大连接时走 compBlocks（分块再 union），而 EmitC 的 compB 只对应 compOne。查清 C 代码是否覆盖分块分支；有则证明，无则补 builder，然后去掉 pairB_builds 的 OneBlock 前提。",
-    "note": ""
+    "note": "",
+    "hold": "owner: no new agent (11-27)"
   },
   {
     "id": "RISK-1",
@@ -4722,7 +4723,8 @@
     "deps": [],
     "content": "archive R6: open share has no producer (Expand.number wraps only closed terms)",
     "note": "风险：Expand.number 只包裹 closed 的 term，而 Tm.gap 有 open share 分支，convTm、convProj 重建 share，没有找到 producer；closed 用 !d 定义，含义随 3.11 改变。Tm.share 已在 B9d 删除，需核对此风险是否随之消失（archive R6）",
-    "what": "旧计划记下一个风险：某种「开放的共享子项」没有任何地方生成它，却有代码处理它。共享子项的构造已改过，需要核对这条是否已不成立，成立就补上或删掉死分支。"
+    "what": "旧计划记下一个风险：某种「开放的共享子项」没有任何地方生成它，却有代码处理它。共享子项的构造已改过，需要核对这条是否已不成立，成立就补上或删掉死分支。",
+    "hold": "owner: no new agent (11-27)"
   },
   {
     "id": "RISK-2",
@@ -4731,7 +4733,8 @@
     "deps": [],
     "content": "archive R11: Tm.pol treats foldI/flat as \"must not mention k\"; as definitions their polarity follows comp/meet/conv",
     "note": "风险：Tm.pol 把 foldI、flat 当作「不得提及 k」；它们成为 definition 后，polarity 由 comp/meet/conv 推出，所以被接受的程序集合会改变。需核对现状（archive R11）",
-    "what": "旧计划记下一个风险：折叠和展平改成定义之后，判断「递归变量能不能出现」的规则给出的结果不同，被接受的程序可能变多或变少。需要核对现在的行为是否符合预期。"
+    "what": "旧计划记下一个风险：折叠和展平改成定义之后，判断「递归变量能不能出现」的规则给出的结果不同，被接受的程序可能变多或变少。需要核对现在的行为是否符合预期。",
+    "hold": "owner: no new agent (11-27)"
   },
   {
     "id": "RISK-3",
@@ -4740,7 +4743,8 @@
     "deps": [],
     "content": "archive Q6: where Elab inserts the universe prefix that closeRes inserted before",
     "note": "风险：没有 d 之后，Elab 在哪里插入原来由 closeRes 插入的宇宙前缀，旧计划未答（archive Q6）",
-    "what": "旧计划留下一个没回答的问题：以前由 closeRes 补上的「宇宙前缀」，现在由谁在哪里补。需要确认现有代码已答，并记下答案。"
+    "what": "旧计划留下一个没回答的问题：以前由 closeRes 补上的「宇宙前缀」，现在由谁在哪里补。需要确认现有代码已答，并记下答案。",
+    "hold": "owner: no new agent (11-27)"
   },
   {
     "id": "RISK-4",
@@ -4749,7 +4753,8 @@
     "deps": [],
     "content": "archive Q10: where the Ordered/KeyInj hypotheses of lam/E/thin come from in compile's type",
     "note": "风险：lam、E、thin 的 Ordered、KeyInj 假设在 compile 的类型中从哪里来，旧计划未答（archive Q10）",
-    "what": "旧计划留下一个没回答的问题：lam、E、thin 这几个运算要求元素有序、键唯一，这些条件在 compile 的类型里由谁提供。需要确认现有代码已答，并记下答案。"
+    "what": "旧计划留下一个没回答的问题：lam、E、thin 这几个运算要求元素有序、键唯一，这些条件在 compile 的类型里由谁提供。需要确认现有代码已答，并记下答案。",
+    "hold": "owner: no new agent (11-27)"
   },
   {
     "id": "RISK-5",
@@ -4758,7 +4763,8 @@
     "deps": [],
     "content": "archive R3: foldI/flat derived terms may run slower than the direct kernels, never measured",
     "note": "风险：foldI、flat 作为 definition 后，推导出的 term 每次调用要运行 outl°、一个 meet 和一个复合（Chess、Edit、Knapsack、Quicksort 用到），可能比直接 kernel 慢；flat 在 4.2 测过（Chess +21% 所以留融合行），foldI 没有测量（archive R3）",
-    "what": "旧计划记下一个风险：折叠这一类运算改成由更基本的运算拼出来之后，可能比直接用专门的 kernel 慢，而且没有测过。需要测一次，慢得多就改成融合行。"
+    "what": "旧计划记下一个风险：折叠这一类运算改成由更基本的运算拼出来之后，可能比直接用专门的 kernel 慢，而且没有测过。需要测一次，慢得多就改成融合行。",
+    "hold": "owner: no new agent (11-27)"
   },
   {
     "id": "GP-1a",
@@ -4778,7 +4784,8 @@
     ],
     "content": "`check` without `by` is an elaboration error; ~1053 run-checks migrated to `test` at parser-reported positions",
     "note": "",
-    "what": "不带 `by` 的 `check` 变成编译错误；现有约 1053 个靠运行判定的 check 按 parser 报出的位置改成 `test`。"
+    "what": "不带 `by` 的 `check` 变成编译错误；现有约 1053 个靠运行判定的 check 按 parser 报出的位置改成 `test`。",
+    "hold": "awaits owner A/B on Rel/Programs/Party.lean bare checks (lines 38-57)"
   },
   {
     "id": "GP-1c",
@@ -4817,7 +4824,8 @@
     ],
     "content": "a non-empty n.proof.unproved is an elaboration error (Embed.lean certify)",
     "note": "",
-    "what": "unproved 列表非空时编译报错，于是任何未证的步骤都让程序写不出来。"
+    "what": "unproved 列表非空时编译报错，于是任何未证的步骤都让程序写不出来。",
+    "hold": "after GP-3c and GP-1b merge"
   },
   {
     "id": "GP-5",
@@ -4826,6 +4834,7 @@
     "deps": [],
     "content": "Sound for Code.args: IO inputs bound by Code.args covered by n.proof.sound (doc rel-proof-program §9.2)",
     "note": "",
-    "what": "读输入的程序（Code.args 绑定的 IO 输入）也有编译结果等于语义的证明。"
+    "what": "读输入的程序（Code.args 绑定的 IO 输入）也有编译结果等于语义的证明。",
+    "hold": "owner: no new agent (11-27)"
   }
 ]
