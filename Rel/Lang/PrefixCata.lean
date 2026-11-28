@@ -174,6 +174,9 @@ rel_program citeSibling where
 #check citeSibling.proof.fromSibling
 #check citeSibling.proof.fromHypothesis
 
+/-- error: line 185, col 5: blocked: step at line 188, col 7: Rel.Lang.citeMissingPremise.proof.given requires the premise Tm.den ((ρ.bind 0 (Tm.den ρ Tm.zero)).bind 1 (Tm.den ρ Tm.zero)) (Tm.var 0) =
+  Tm.den ((ρ.bind 0 (Tm.den ρ Tm.zero)).bind 1 (Tm.den ρ Tm.zero)) (Tm.var 1), with no matching hypothesis or certified theorem -/
+#guard_msgs in
 rel_program citeMissingPremise where
     obj N = 0…3
     x : N ⟶ N ≜ 𝟘
@@ -184,12 +187,8 @@ rel_program citeMissingPremise where
         := given(x, y)
       y
 
-#guard citeMissingPremise.proof.unproved.length == 1
-#guard citeMissingPremise.proof.unproved.any fun msg =>
-  msg.startsWith "blocked:" && (msg.splitOn "given requires the premise").length == 2
-
--- a theorem with neither `by` nor `calc` states a claim nothing proves: an error, not an entry of `unproved`
-/-- error: line 198, col 5: theorem `unprovedWitness` states a claim with no proof: add `by <lemma>` or a `calc` -/
+-- a theorem with neither `by` nor `calc` states a claim nothing proves: an error at once
+/-- error: line 197, col 5: theorem `unprovedWitness` states a claim with no proof: add `by <lemma>` or a `calc` -/
 #guard_msgs in
 rel_program noProof where
     obj N = 0…3

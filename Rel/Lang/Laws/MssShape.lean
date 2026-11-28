@@ -1,3 +1,4 @@
+import Rel.Lang.Laws.MssFused
 import Rel.Lang.MssScan
 import Rel.Lang.Laws.MssEst
 import Rel.Lang.Laws.MssGreedy
@@ -77,6 +78,31 @@ theorem Tm.toShape_den {n : USize} {m p m0 p0 : List String} {hw : QAtomicType.i
     (lamSuffixLam_total (B := .atom .i64) (C := .atom .i64) rfl _ hP) hE
   simp only [Core.Rel.comp_assoc] at key ⊢
   exact key
+
+/-- **`toShape` under `safe`**: `safe mss = safe shape`, `Tm.toShape_den` composed after `safe` (a `calc` step has no
+    congruence through the `safe` context, so the step is stated whole, as `Tm.toFused_den` is). -/
+theorem Tm.toShapeSafe_den {n : USize} {m p m0 p0 : List String} {hw : QAtomicType.i64.width.isSome = true}
+    {hw0 : QAtomicType.i64.width.isSome = true}
+    (hb : ∀ U : Vals (.atom .i64) n, U = (Gen.atom .i64 n m p hw).1 → ∀ i, Bnd (U.row i) := by
+      intro U hU i; subst hU; exact Rel.Lang.Gen.atom_bnd (i := i))
+    (hz0 : ∀ i : Fin (USize.ofNat 1).toNat, ∃ j : Fin n.toNat,
+      (Gen.atom .i64 n m p hw).1.get j = (Gen.atom .i64 (USize.ofNat 1) m0 p0 hw0).1.get i := by
+      atom_mem)
+    (ρ : Val) :
+    let T := (Gen.relV Obj.one (.atom .i64) (USize.ofNat 1) (Gen.oneV false (USize.ofNat 1))
+      (Gen.atom .i64 (USize.ofNat 1) m0 p0 hw0)).1
+    let U := (Gen.atom .i64 n m p hw).1
+    Tm.den ρ (Tm.comp (Tm.safeTm (Tm.sumTm T (Tm.uni U))) (Tm.comp (Tm.lam (Tm.comp (Tm.comp
+        (Tm.prim (rowOf "suffix") : Tm (.arr (.atom .i64)) (.arr (.atom .i64))) (Tm.prim (rowOf "prefix")))
+        (Tm.sumTm T (Tm.uni U))))
+      (Tm.est (Tm.dom (Tm.outr.meet (Tm.outl.comp (Tm.geqTm U))))))) =
+    Tm.den ρ (Tm.comp (Tm.safeTm (Tm.sumTm T (Tm.uni U))) (Tm.outerTm (Tm.comp
+      (Tm.prim (rowOf "prefix") : Tm (.arr (.atom .i64)) (.arr (.atom .i64))) (Tm.sumTm T (Tm.uni U)))
+      (Tm.est (Tm.dom (Tm.outr.meet (Tm.outl.comp (Tm.geqTm U))))))) := by
+  have h := Tm.toShape_den (hb := hb) (hz0 := hz0) ρ
+  dsimp only at h ⊢
+  simp only [Tm.den] at h ⊢
+  rw [h]
 
 /-- `(𝟙÷∋)E(suffix)E(J)est(Q)` reads `J` only at the suffixes of its argument (`Tm.outer_congr` is `J = Λ(IN) est`). -/
 theorem Tm.outerJ_congr (ρ : Val) {B : Obj} (EST J1 J2 : Tm B.arr B) (xs : B.arr.El)

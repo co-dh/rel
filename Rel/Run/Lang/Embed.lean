@@ -387,17 +387,24 @@ def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) :
   let pr ← a.proof?.elim (pure proof) (Meta.mkEqMP · proof)
   return some (← b.proof?.elim (pure pr) (Meta.mkEqMPR · pr))
 
-/-- A certified sibling at the call's valuation, with its object arguments inferred from the premise when needed. -/
-def siblingProof (ρ : Lean.Expr) (σs : List Lean.Expr) (premise : Lean.Expr)
+/-- `calcMatch` of `h` after its own hypotheses (a sibling `if` premises) are each given by one of `hyps`. -/
+partial def calcMatchUnder (hyps : List Lean.Expr) (h premise : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) := do
+  let .forallE _ dom _ _ := ← Meta.whnf (← Meta.inferType h) | calcMatch h premise subst
+  let some a ← hyps.findSomeM? fun x => calcMatch x dom subst | return none
+  calcMatchUnder hyps (mkApp h a) premise subst
+
+/-- A certified sibling at the call's valuation, with its object arguments inferred from the premise when needed;
+    its own hypotheses are given by `hyps`, the theorem's. -/
+def siblingProof (ρ : Lean.Expr) (σs : List Lean.Expr) (hyps : List Lean.Expr) (premise : Lean.Expr)
     (c : Name) (ph : List QAtomicType) (subst : Bool) : TermElabM (Option Lean.Expr) := do
   let pr := mkConst c
-  if ph.isEmpty then return ← calcMatch (mkApp pr ρ) premise subst
+  if ph.isEmpty then return ← calcMatchUnder hyps (mkApp pr ρ) premise subst
   for σ in σs do
-    if let some h ← calcMatch (mkApp2 pr σ ρ) premise subst then return some h
+    if let some h ← calcMatchUnder hyps (mkApp2 pr σ ρ) premise subst then return some h
   Meta.withNewMCtxDepth do
     let os ← ph.mapM fun _ => Meta.mkFreshExprMVar (mkConst ``Rel.Obj)
     let σ ← Meta.mkListLit (mkConst ``Rel.Obj) os
-    let some h ← calcMatch (mkApp2 pr σ ρ) premise subst | return none
+    let some h ← calcMatchUnder hyps (mkApp2 pr σ ρ) premise subst | return none
     for (o, a) in os.zip ph do
       if let .mvar m ← instantiateMVars o then m.assign (Expand.oE (.atom a))
     let h ← instantiateMVars h
@@ -509,30 +516,34 @@ def lawInContext (ρ : Lean.Expr) (σ : Option Lean.Expr) (ph : List QAtomicType
   let k := max (Res.freshVar ⟨A, B, a⟩) (Res.freshVar ⟨A, B, b⟩)
   let mut refused : Option String := none
   let saved ← saveState
-  for (⟨CA, CB, C⟩, ⟨X, Y, u⟩, ⟨X', Y', v⟩) in (holes k ⟨A, B, a⟩ ⟨A, B, b⟩).drop 1 do
-    -- a failed context must not leave the citation's open objects assigned
-    saved.restore
-    let (x, y, du) ← termAt ρ σ ph q "the rewritten part" X Y u
-    let (_, _, dv) ← termAt ρ σ ph q "the rewritten part" X' Y' v
-    let part ← if isEq then Meta.mkEq du dv else
-      pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) x, mkApp (mkConst ``Rel.Obj.El) y, du, dv])
-    let some h ← (do match ← calcMatch pr part subst with
-      | some h => pure (some h)
-      | none => if isEq then calcMatch (← Meta.mkEqSymm pr) part subst else pure none) | continue
-    if !isEq && !C.pol true k then
-      refused := some "the cited law fits a part the step's context reads with negative or mixed sign (`Tm.pol`), so `⊑` does not pass through it"
-      continue
-    let ctxAt (d : Lean.Expr) :=
-      termAt (mkAppN (mkConst `Rel.Lang.Val.bind) #[ρ, toExpr k, x, y, d]) σ ph q "the context" CA CB C
-    let step ← if isEq then do
-        let motive ← Meta.withLocalDeclD `X (← Meta.inferType du) fun d => do Meta.mkLambdaFVars #[d] (← ctxAt d).2.2
-        Meta.mkCongrArg motive h
-      else do
-        let (oa, ob, cu) ← ctxAt du
-        let (_, _, cv) ← ctxAt dv
-        denMonoAt q (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) oa, mkApp (mkConst ``Rel.Obj.El) ob, cu, cv]) h
-    if let some p ← calcMatch step expected true then return .ok p
-    refused := some s!"the cited law fits a part, but the context rebuilt around it proves {← Meta.ppExpr (← Meta.inferType step)}"
+  -- a law cited without arguments (`subst` false) is matched by defeq in every context first, then modulo bracketing:
+  -- the sub-chain a hole selects is bracketed as the step wrote it, the law's sides as its own definition did; the
+  -- second pass is the costly one and a heartbeat budget is shared by the whole program
+  for sb in (if subst then [true] else [false, true]) do
+    for (⟨CA, CB, C⟩, ⟨X, Y, u⟩, ⟨X', Y', v⟩) in (holes k ⟨A, B, a⟩ ⟨A, B, b⟩).drop 1 do
+      -- a failed context must not leave the citation's open objects assigned
+      saved.restore
+      let (x, y, du) ← termAt ρ σ ph q "the rewritten part" X Y u
+      let (_, _, dv) ← termAt ρ σ ph q "the rewritten part" X' Y' v
+      let part ← if isEq then Meta.mkEq du dv else
+        pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) x, mkApp (mkConst ``Rel.Obj.El) y, du, dv])
+      let some h ← (do match ← calcMatch pr part sb with
+        | some h => pure (some h)
+        | none => if isEq then calcMatch (← Meta.mkEqSymm pr) part sb else pure none) | continue
+      if !isEq && !C.pol true k then
+        refused := some "the cited law fits a part the step's context reads with negative or mixed sign (`Tm.pol`), so `⊑` does not pass through it"
+        continue
+      let ctxAt (d : Lean.Expr) :=
+        termAt (mkAppN (mkConst `Rel.Lang.Val.bind) #[ρ, toExpr k, x, y, d]) σ ph q "the context" CA CB C
+      let step ← if isEq then do
+          let motive ← Meta.withLocalDeclD `X (← Meta.inferType du) fun d => do Meta.mkLambdaFVars #[d] (← ctxAt d).2.2
+          Meta.mkCongrArg motive h
+        else do
+          let (oa, ob, cu) ← ctxAt du
+          let (_, _, cv) ← ctxAt dv
+          denMonoAt q (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) oa, mkApp (mkConst ``Rel.Obj.El) ob, cu, cv]) h
+      if let some p ← calcMatch step expected true then return .ok p
+      refused := some s!"the cited law fits a part, but the context rebuilt around it proves {← Meta.ppExpr (← Meta.inferType step)}"
   let cs := (holes k ⟨A, B, a⟩ ⟨A, B, b⟩).drop 1
   return .error (refused.getD s!"no part of the step is the cited law ({(Res.chain ⟨A, B, a⟩).length}/{(Res.chain ⟨A, B, b⟩).length} factors, {cs.length} contexts:{cs.map fun (_, u, v) => (Res.chain u).length + 100 * (Res.chain v).length})")
 
@@ -615,7 +626,7 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
             let .forallE _ premise body _ := ty | break
             let h ← premises.toList.findSomeM? fun h => calcMatch h premise subst
             let h ← if h.isSome then pure h else
-              siblings.findSomeM? (fun (c, ph) => siblingProof ρ objectLists premise c ph subst)
+              siblings.findSomeM? (fun (c, ph) => siblingProof ρ objectLists premises.toList premise c ph subst)
             let some h := h |
               return .error s!"step at {q}: {c} requires the premise {← Meta.ppExpr premise}, with no matching hypothesis or certified theorem"
             pr := mkApp pr h
@@ -659,11 +670,12 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
 /-- Check each named proof of `prog` (`check e = f by lemma`, `theorem t : e = f by lemma`) against the denotation of
     the typed terms that emission consumes (`checks`, `thms`, matched by position), as the statement `goalOf`:
     `n.proof.check<i>` for the `i`-th proved check, `n.proof.<t>` for the theorem `t`. A `calc` theorem is certified
-    by `certifyCalc`; the ones it cannot are the strings of the constant `n.proof.unproved`. -/
+    by `certifyCalc`; a claim it cannot certify is an error naming the claim and the reason, because a `rel_program` must
+    not elaborate with a claim nothing proves. -/
 def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
     (thms : Expand.Thms) (prelude : List (Name × List QAtomicType)) : TermElabM Unit := do
   let mut index := 0
-  let mut unproved : List String := []
+  let mut unproved : List String := []  -- one `line, col: reason` per claim certifyCalc refused
   let mut siblings : List (Name × List QAtomicType) := []
   for decl in prog do
     let (p, proof, name) ← match decl with
@@ -673,7 +685,8 @@ def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
       | .«theorem» p t _ _ _ _ _ _ _ (some proof) => pure (p, proof, Name.mkSimple t)
       | .«theorem» p t _ _ _ eq _ _ steps none =>
         if steps.isEmpty then continue
-        if let some m ← certifyCalc n thms p t eq steps (siblings ++ prelude) then unproved := unproved ++ [m]
+        -- a theorem is checked against the heartbeat budget of its own, as a `theorem` command is, not the program's
+        if let some m ← Core.withCurrHeartbeats (certifyCalc n thms p t eq steps (siblings ++ prelude)) then unproved := unproved ++ [s!"line {p.line}, col {p.col}: {m}"]
         else if let some cert := thms.1.lookup p then
           siblings := (n ++ `proof ++ Name.mkSimple t, cert.ph) :: siblings
         continue
@@ -702,11 +715,7 @@ def certify (n : Name) (prog : Program) (checks : List Expand.Chk)
     let c := n ++ `proof ++ name
     addDecl (.thmDecl { name := c, levelParams := [], type := goal, value })
     if let .«theorem» .. := decl then siblings := (c, cert.ph) :: siblings
-  unless unproved.isEmpty do
-    let ty := mkApp (mkConst ``List [0]) (mkConst ``String)
-    addAndCompile <| .defnDecl
-      { name := n ++ `proof ++ `unproved, levelParams := [], type := ty, value := toExpr unproved
-        hints := .abbrev, safety := .safe }
+  unless unproved.isEmpty do throwError "{"\n".intercalate unproved}"
 
 /-- The program `n` named by `id`, read in the scope `s` that left `used`, what it reads (`Expand.emit`): each closed
     definition as the Lean definition `n.x`, its prints, its checks; then its definitions and objects registered,

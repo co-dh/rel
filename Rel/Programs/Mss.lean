@@ -80,6 +80,7 @@ rel_program mss where
     theorem greedyFold : safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ by Rel.Lang.Tm.greedyMss_den
 
     theorem toShape : mss = shape by Rel.Lang.Tm.toShape_den
+    theorem toShapeSafe : safe mss = safe shape by Rel.Lang.Tm.toShapeSafe_den   -- `toShape` after `safe`: a calc step has no congruence through it
     -- B&dM's fusion of a fold into `prefix`; its premises are the no-overflow laws (`+` associates, `0` commutes with it)
     theorem prefixFuse(e : 1 ⟶ β, S : β×β ⟶ β) if ⟨⊤e,𝟙⟩S = ⟨𝟙,⊤e⟩S, ⟨π₁ S, π₂⟩S = ⟨π₁π₁, ⟨π₁π₂,π₂⟩S⟩S : prefix ⦇[e, S]⦈ = ⦇[e, ⊤e ∪ S]⦈ʳ by Rel.Lang.Tm.prefixFuse_var_den
     theorem toFused : safe shape = safe fused by Rel.Lang.Tm.toFused_den               -- note `mss-prefix-sum`
@@ -90,7 +91,7 @@ rel_program mss where
     theorem toScan : safe greedy = safe scan by Rel.Lang.Tm.toScanMss_den   -- note `mss-scan`
     theorem linear : safe mss = safe scan := calc
       safe mss
-        := toShape
+        := toShapeSafe
       safe shape
         := toFused
       safe fused
