@@ -4783,9 +4783,9 @@
       "GP-1a"
     ],
     "content": "`check` without `by` is an elaboration error; ~1053 run-checks migrated to `test` at parser-reported positions",
-    "note": "",
+    "note": "Party.lean decided by fable (11-28, owner: let fable decide): C — lines 37,43,53,54,56,57 become `test` now; 56,57 stay tests (sample values); 37,43,53,54 restated as laws over parameters in PARTY-LAWS. ",
     "what": "不带 `by` 的 `check` 变成编译错误；现有约 1053 个靠运行判定的 check 按 parser 报出的位置改成 `test`。",
-    "hold": "awaits owner A/B on Rel/Programs/Party.lean bare checks (lines 38-57)"
+    "hold": null
   },
   {
     "id": "GP-1c",
@@ -4845,6 +4845,18 @@
     "content": "Stop-hook blocks counted as refusals: cc-db stores each Stop hook block (time, feedback text, preventedContinuation) as a row; cc-guard/dash/gen refusals() unions them as kind `Stop:` plus the message prefix; cc-guard turn-end rule made one rule (the `no text at all` and the `ends with 。` messages contradict and loop)",
     "note": "408 Stop blocks in session fd528c53 (~10.9M units), 229 of them turn-end text; none in the dashboard because refusals() reads only tool rows with ok=0",
     "what": "dashboard 的 refusal 统计包含 Stop hook 拦截；回合结尾规则只有一条，不再互相拦截。",
+    "hold": "owner: no new agent (11-27)"
+  },
+  {
+    "id": "PARTY-LAWS",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GP-1b"
+    ],
+    "content": "Party laws as theorems over parameters boss, rating (premises: boss functional and acyclic, N holds every subtree total): 37 party setify = Λ(under)subseq(𝟙 − dom(∋ ∩ (∋ boss)))setify; 43 gfold Λ(choose)est(R(rating)°) ⊑ best (p.178); 54 c max = best cost(rating); 53 restated Λ(guests) setify ⊑ best setify (as written it compares list orders)",
+    "note": "fable 11-28: the current lines name the literal sample boss/rating, so adding `by` would prove a fact about the sample only",
+    "what": "Party 的四条定律对任意森林和 rating 证明，不只在样例数据上运行。",
     "hold": "owner: no new agent (11-27)"
   }
 ]
