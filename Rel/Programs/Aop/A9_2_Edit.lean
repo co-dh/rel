@@ -24,11 +24,20 @@ rel_program aopA9_2_Edit where
     -- `R°` at a generic `Q` (stronger form): `R = length ≤(N,N) length°` compares `Int64.ofNat` lengths, which wrap at 2^63, so the rows are stated with what `R°` supplies as premises
     theorem dropTgtLe(Q : [α+(α+α)] ⟶ [α+(α+α)]) if nil°nil ⊑ Q, ⟨π₁, π₂ Q⟩cons ⊑ cons Q, ⟨π₁ cpy°del, π₂⟩cons ⊑ ⟨π₁ (cpy°cpy), π₂⟩cons Q, ⟨π₁ (ins°ins), π₂⟩π₂ ⊑ ⟨π₁ (ins°ins), π₂⟩cons Q : dropTgt ⊑ Q by Rel.Lang.Tm.dropTgtLe_den  -- Freyd.Alg.RelSet.Edit.dropTgt_le, 09-dynamic.typ:434
     theorem editTailSnd(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropTgt ⊑ Q : edit (𝟙×tail) ⊑ Q edit by Rel.Lang.Tm.editTailSnd_den  -- Freyd.Alg.RelSet.Edit.edit_tail_snd, 09-dynamic.typ:449
+    dropStepS : (α+(α+α))×([α+(α+α)]×[α+(α+α)]) ⟶ [α+(α+α)]×[α+(α+α)] ≜ ⟨⟨π₁ (cpy°cpy),π₂π₁⟩cons,⟨π₁cpy°ins,π₂π₁⟩cons⟩ ∪ ⟨⟨π₁ (del°del),π₂π₁⟩cons,π₂π₁⟩ ∪ ⟨⟨π₁ (ins°ins),π₂π₁⟩cons,⟨π₁ (ins°ins),π₂π₂⟩cons⟩
+    dropS : [α+(α+α)] ⟶ [α+(α+α)]×[α+(α+α)] ≜ ⦇[⟨nil,nil⟩, dropStepS]⦈ʳ
+    dropSrc : [α+(α+α)] ⟶ [α+(α+α)] ≜ dropS π₂
+    Vc : [α]×[α] ⟶ [α]×[α] ≜ suffix×suffix
+    -- the rows below iterate `editTailSnd`'s step along `suffix = tail*`, `Q` standing for `R°` (reflexive, transitive)
+    theorem editSuffixRight(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropTgt ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : edit (𝟙×suffix) ⊑ Q edit by Rel.Lang.Tm.editSuffixRight_den  -- Freyd.Alg.RelSet.Edit.edit_suffix_right, 09-dynamic.typ:517
+    theorem editSuffixLeft(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropSrc ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : edit (suffix×𝟙) ⊑ Q edit by Rel.Lang.Tm.editSuffixLeft_den  -- Freyd.Alg.RelSet.Edit.edit_suffix_left, 09-dynamic.typ:519
+    -- freyd's `V ≜ suffix°×suffix°`: the converse of the row `suffix` at `[α]` has no universe, so only `V° = Vc` is statable
+    theorem editVrecip(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropSrc ⊑ Q, dropTgt ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : edit Vc ⊑ Q edit by Rel.Lang.Tm.editVrecip_den  -- Freyd.Alg.RelSet.Edit.edit_Vrecip, 09-dynamic.typ:357
 
 -- not ported: F_obj (09-dynamic.typ:335), edit_cata (338), length_cata (349), R_eq (352), V_eq (355): syntactic identities once `edit`, `R`, `V`, `length` are defined as these folds
 -- not ported: editFn_dropTgt_of_eq (09-dynamic.typ:403): host pointwise fact about `edit` as a Lean function; its content is `Rel.Lang.editDrop_core`, which `editDropTgt` uses
 -- not ported: α_pres_R (09-dynamic.typ:387), edit_mono (505): `cons` is not monotone on `R = length ≤(N,N) length°` (`Int64.ofNat` lengths wrap: `|xs| = 0 ≤ |ys| = 2^63−1`, but `ofNat 1 ≤ ofNat 2^63` fails); at a generic `Q` the row is its own premise
--- not ported: edit_suffix_right (09-dynamic.typ:517), edit_suffix_left (519), edit_Vrecip (357), edit_V (513): not attempted this run; portable at a generic `Q` (premises `dropTgt ⊑ Q`, `𝟙 ⊑ Q`, `Q Q ⊑ Q`) by iterating `editTailSnd` along `suffix = tail*` (row `suffix` means `<:+`, `Tm.suffixDef_den`); the source side needs a `dropSrc` fold mirroring `dropT`
+-- not ported: edit_V (09-dynamic.typ:513): the converse of `editVrecip`, `V edit° ⊑ edit° R`; it needs `V = suffix°×suffix°` and `edit°`, whose converse at `[α]×[α]` has no universe (a lazy converse of a row reads it on its source's universe); `editVrecip` is its content
 -- not ported: edit_thin_condition (09-dynamic.typ:509), edit_branch (537), edit_body_split (527): thinning `thin(F(⊤,V))`, `P(…)` and Proposition 9.1/9.4 over the base bifunctor at `Op`; not attempted this run
 -- not ported: mle_head_column (09-dynamic.typ:596): host functions `mle`, `column`, `head` over `ConsList`, no relation statement
 

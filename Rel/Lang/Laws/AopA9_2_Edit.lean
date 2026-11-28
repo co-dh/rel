@@ -1,5 +1,6 @@
 import Rel.Programs.Prelude
 import Rel.Lang.PreludeMerge
+import Rel.Lang.PreludeSuffix
 
 /-! # Laws of freyd §9.2 `AOP/A9_2_Edit.lean`, on the concrete core
 
@@ -211,5 +212,183 @@ theorem Tm.dropTgtLe_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum 
         simp [Tm.den, Core.Rel.comp, Core.Rel.rpair, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr, Core.Rel.graph])
       simpa [Tm.den, Prim.den_cons, Core.Rel.comp, Core.Rel.rpair, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr,
         Core.Rel.graph, dropStep, and_assoc, exists_eq_left] using this
+
+/-! ## The `suffix` rows: `suffix = tail*`, so the tail/drop step of `edit` iterates along it -/
+
+/-- The source mirror of `dropStep`: the first operation that reads the source goes (`del` goes, `cpy` becomes `ins`). -/
+def dropStepS {A : Type} : A ⊕ (A ⊕ A) → List (A ⊕ (A ⊕ A)) × List (A ⊕ (A ⊕ A)) → List (A ⊕ (A ⊕ A)) × List (A ⊕ (A ⊕ A))
+  | .inl c, (es, _) => (.inl c :: es, .inr (.inr c) :: es)
+  | .inr (.inl c), (es, _) => (.inr (.inl c) :: es, es)
+  | .inr (.inr c), (es, ds) => (.inr (.inr c) :: es, .inr (.inr c) :: ds)
+
+theorem dropFoldS_fst {A : Type} : ∀ es : List (A ⊕ (A ⊕ A)), (es.foldr dropStepS ([], [])).1 = es
+  | [] => rfl
+  | o :: es => by
+    have ih := dropFoldS_fst es
+    simp only [List.foldr_cons]
+    generalize es.foldr dropStepS ([], []) = d at ih
+    obtain ⟨d1, d2⟩ := d
+    obtain rfl : d1 = es := ih
+    rcases o with c | c | c <;> rfl
+
+/-- The source twin of `editDrop_core`: editing the dropped sequence drops the head of the source. -/
+theorem editDropS_core {A : Type} : ∀ es : List (A ⊕ (A ⊕ A)),
+    (es.foldr dropStepS ([], [])).2.foldr editStep ([], [])
+      = ((es.foldr editStep ([], [])).1.tail, (es.foldr editStep ([], [])).2)
+  | [] => rfl
+  | o :: es => by
+    have ih := editDropS_core es
+    have h1 := dropFoldS_fst es
+    simp only [List.foldr_cons]
+    generalize es.foldr dropStepS ([], []) = d at ih h1
+    obtain ⟨d1, d2⟩ := d
+    obtain rfl : es = d1 := h1.symm
+    generalize hE : es.foldr editStep ([], []) = e at ih ⊢
+    obtain ⟨e1, e2⟩ := e
+    rcases o with c | c | c <;> simp only [dropStepS, editStep, List.foldr_cons, ih, hE, List.tail_cons]
+
+/-- `dropStepS` of the program: `π₁cpy°ins` turns a copy into an insert. -/
+def Tm.dropStepST (B : Obj) :
+    Tm (.prod (.sum B (.sum B B)) (.prod (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))))
+      (.prod (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))) :=
+  .join (.join
+    (.pair (.comp (.pair (.comp .outl (.comp (.conv .inl) .inl)) (.comp .outr .outl)) (.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B)))))
+      (.comp (.pair (.comp (.comp .outl (.conv .inl)) (.comp .inr .inr)) (.comp .outr .outl)) (.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B))))))
+    (.pair (.comp (.pair (.comp .outl (.comp (.comp (.conv .inr) (.conv .inl)) (.comp .inl .inr))) (.comp .outr .outl))
+        (.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B)))))
+      (.comp .outr .outl)))
+    (.pair (.comp (.pair (.comp .outl (.comp (.comp (.conv .inr) (.conv .inr)) (.comp .inr .inr))) (.comp .outr .outl))
+        (.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B)))))
+      (.comp (.pair (.comp .outl (.comp (.comp (.conv .inr) (.conv .inr)) (.comp .inr .inr))) (.comp .outr .outr))
+        (.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B))))))
+
+theorem Tm.dropStepST_iff (ρ : Val) {B : Obj} (o : Obj.El (.sum B (.sum B B)))
+    (p : List (Obj.El (.sum B (.sum B B))) × List (Obj.El (.sum B (.sum B B))))
+    (w : List (Obj.El (.sum B (.sum B B))) × List (Obj.El (.sum B (.sum B B)))) :
+    (Tm.dropStepST B).den ρ (o, p) w ↔ w = dropStepS o p := by
+  obtain ⟨xs, ys⟩ := p; obtain ⟨w1, w2⟩ := w
+  rcases o with c | c | c <;>
+    simp [Tm.dropStepST, Tm.den, Prim.den_cons, dropStepS, Core.Rel.union, Core.Rel.comp, Core.Rel.rpair,
+      Core.Rel.recip, Core.Rel.inl, Core.Rel.inr, Core.Rel.graph, and_assoc, exists_eq_left, exists_eq_left', eq_comm]
+
+/-- `suffix = tail*`: `Qp` answers one dropped head (`hs`, `mk` puts the shortened list back in its pair), `Qp`
+    reflexive and transitive, so `Qp` answers dropping any prefix `t`, i.e. `y' <:+ t ++ y'`. -/
+theorem iterSuffix {E C β : Type} (Qp : List E → List E → Prop) (hr : ∀ a, Qp a a)
+    (ht : ∀ a b c, Qp a b → Qp b c → Qp a c) (F : List E → β) (mk : List C → β)
+    (hs : ∀ es y c, F es = mk (c :: y) → ∃ fs, Qp es fs ∧ F fs = mk y) (y' : List C) :
+    ∀ (t : List C) es, F es = mk (t ++ y') → ∃ fs, Qp es fs ∧ F fs = mk y'
+  | [], es, h => ⟨es, hr _, h⟩
+  | c :: t, es, h => by
+    obtain ⟨fs, hq, hf⟩ := hs es (t ++ y') c h
+    obtain ⟨gs, hq', hg⟩ := iterSuffix Qp hr ht F mk hs y' t fs hf
+    exact ⟨gs, ht _ _ _ hq hq', hg⟩
+
+/-- `edit` of the program, seeded by `P`: its meaning is `List.foldr editStep` (`Tm.foldrRan_fun`). -/
+abbrev Tm.editF {X M : Obj} (P : Tm X M) (B : Obj) :=
+  Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.editStepT B)
+
+/-- One step of `Q` along `edit`'s target: from `edit es = (x, c::y)` to some `fs` with `Q es fs`, `edit fs = (x, y)`. -/
+theorem Tm.editTgtStep {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    (ρ : Val) {m : X.El} {u : M.El} (hu : P.den ρ m u)
+    (hQ : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepT B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (es : List (Obj.El (.sum B (.sum B B)))) (x y : List B.El) (c : B.El)
+    (h : es.foldr editStep ([], []) = (x, c :: y)) :
+    ∃ fs, Tm.den ρ Q es fs ∧ fs.foldr editStep ([], []) = (x, y) := by
+  have hD := Tm.foldrRan_fun ρ _ (Tm.dropStepT B) (fun m v h => ((Tm.nilPairSeed_iff ρ P m v).1 h).1)
+    (Tm.dropStepT_iff ρ)
+  refine ⟨(es.foldr dropStep ([], [])).2, Core.Rel.le_iff.1 hQ es _
+    ⟨_, (hD es _).2 ⟨⟨m, (Tm.nilPairSeed_iff ρ P m _).2 ⟨rfl, u, hu⟩⟩, rfl⟩, rfl⟩, ?_⟩
+  simp [editDrop_core, h]
+
+/-- The source twin of `Tm.editTgtStep`: from `edit es = (c::x, y)` to some `fs` with `edit fs = (x, y)`. -/
+theorem Tm.editSrcStep {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    (ρ : Val) {m : X.El} {u : M.El} (hu : P.den ρ m u)
+    (hQ : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepST B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (es : List (Obj.El (.sum B (.sum B B)))) (x y : List B.El) (c : B.El)
+    (h : es.foldr editStep ([], []) = (c :: x, y)) :
+    ∃ fs, Tm.den ρ Q es fs ∧ fs.foldr editStep ([], []) = (x, y) := by
+  have hD := Tm.foldrRan_fun ρ _ (Tm.dropStepST B) (fun m v h => ((Tm.nilPairSeed_iff ρ P m v).1 h).1)
+    (Tm.dropStepST_iff ρ)
+  refine ⟨(es.foldr dropStepS ([], [])).2, Core.Rel.le_iff.1 hQ es _
+    ⟨_, (hD es _).2 ⟨⟨m, (Tm.nilPairSeed_iff ρ P m _).2 ⟨rfl, u, hu⟩⟩, rfl⟩, rfl⟩, ?_⟩
+  simp [editDropS_core, h]
+
+/-- **edit-suffix, target side** at a generic `Q` for `R°`: `edit (𝟙×suffix) ⊑ Q edit`, `suffix = tail*` and
+    `editTailSnd` iterated; `𝟙 ⊑ Q` and `Q Q ⊑ Q` are `R°`'s reflexivity and transitivity. -/
+theorem Tm.editSuffixRight_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    (ρ : Val)
+    (hQ : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepT B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (h1 : Tm.den ρ Tm.id ⊑ Tm.den ρ Q) (h2 : Tm.den ρ (Q.comp Q) ⊑ Tm.den ρ Q) :
+    Tm.den ρ ((Tm.editF P B).comp
+        ((Tm.outl.comp Tm.id).pair (Tm.outr.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B))))) ⊑
+      Tm.den ρ (Q.comp (Tm.editF P B)) := by
+  have hE := Tm.foldrRan_fun ρ _ (Tm.editStepT B) (fun m v h => ((Tm.nilPairSeed_iff ρ P m v).1 h).1)
+    (Tm.editStepT_iff ρ)
+  refine Core.Rel.le_iff.2 fun es w h => ?_
+  obtain ⟨⟨x, y⟩, he, hw⟩ := h
+  obtain ⟨⟨m, hm⟩, hxy⟩ := (hE es (x, y)).1 he
+  obtain ⟨u, hu⟩ := ((Tm.nilPairSeed_iff ρ P m _).1 hm).2
+  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix] at hw
+  obtain ⟨⟨x, rfl, hw1⟩, y, rfl, t, hw2⟩ := hw
+  obtain ⟨w1, w2⟩ := w
+  obtain rfl : x = w1 := hw1
+  obtain rfl : t ++ w2 = y := hw2
+  obtain ⟨fs, hq, hf⟩ := iterSuffix (Tm.den ρ Q) (fun a => Core.Rel.le_iff.1 h1 a a rfl)
+    (fun a b c hab hbc => Core.Rel.le_iff.1 h2 a c ⟨b, hab, hbc⟩) (fun es => es.foldr editStep ([], []))
+    (fun y => (x, y)) (fun es y c h => Tm.editTgtStep ρ hu hQ es x y c h) w2 t es hxy.symm
+  exact ⟨fs, hq, (hE fs _).2 ⟨⟨m, hm⟩, hf.symm⟩⟩
+
+/-- **edit-suffix, source side**: `edit (suffix×𝟙) ⊑ Q edit`, the mirror of `Tm.editSuffixRight_den` along `dropSrc`. -/
+theorem Tm.editSuffixLeft_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    (ρ : Val)
+    (hQ : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepST B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (h1 : Tm.den ρ Tm.id ⊑ Tm.den ρ Q) (h2 : Tm.den ρ (Q.comp Q) ⊑ Tm.den ρ Q) :
+    Tm.den ρ ((Tm.editF P B).comp
+        ((Tm.outl.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B))).pair (Tm.outr.comp Tm.id))) ⊑
+      Tm.den ρ (Q.comp (Tm.editF P B)) := by
+  have hE := Tm.foldrRan_fun ρ _ (Tm.editStepT B) (fun m v h => ((Tm.nilPairSeed_iff ρ P m v).1 h).1)
+    (Tm.editStepT_iff ρ)
+  refine Core.Rel.le_iff.2 fun es w h => ?_
+  obtain ⟨⟨x, y⟩, he, hw⟩ := h
+  obtain ⟨⟨m, hm⟩, hxy⟩ := (hE es (x, y)).1 he
+  obtain ⟨u, hu⟩ := ((Tm.nilPairSeed_iff ρ P m _).1 hm).2
+  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix] at hw
+  obtain ⟨⟨x, rfl, t, hw1⟩, y, rfl, hw2⟩ := hw
+  obtain ⟨w1, w2⟩ := w
+  obtain rfl : t ++ w1 = x := hw1
+  obtain rfl : y = w2 := hw2
+  obtain ⟨fs, hq, hf⟩ := iterSuffix (Tm.den ρ Q) (fun a => Core.Rel.le_iff.1 h1 a a rfl)
+    (fun a b c hab hbc => Core.Rel.le_iff.1 h2 a c ⟨b, hab, hbc⟩) (fun es => es.foldr editStep ([], []))
+    (fun x => (x, y)) (fun es x c h => Tm.editSrcStep ρ hu hQ es x y c h) w1 t es hxy.symm
+  exact ⟨fs, hq, (hE fs _).2 ⟨⟨m, hm⟩, hf.symm⟩⟩
+
+/-- **edit-Vrecip**: `edit (suffix×suffix) ⊑ Q edit` (freyd `V°`), the source side and then the target side. -/
+theorem Tm.editVrecip_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    (ρ : Val)
+    (hS : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepST B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (hT : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepT B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (h1 : Tm.den ρ Tm.id ⊑ Tm.den ρ Q) (h2 : Tm.den ρ (Q.comp Q) ⊑ Tm.den ρ Q) :
+    Tm.den ρ ((Tm.editF P B).comp
+        ((Tm.outl.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B))).pair
+          (Tm.outr.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B))))) ⊑
+      Tm.den ρ (Q.comp (Tm.editF P B)) := by
+  have hE := Tm.foldrRan_fun ρ _ (Tm.editStepT B) (fun m v h => ((Tm.nilPairSeed_iff ρ P m v).1 h).1)
+    (Tm.editStepT_iff ρ)
+  refine Core.Rel.le_iff.2 fun es w h => ?_
+  obtain ⟨⟨x, y⟩, he, hw⟩ := h
+  obtain ⟨⟨m, hm⟩, hxy⟩ := (hE es (x, y)).1 he
+  obtain ⟨u, hu⟩ := ((Tm.nilPairSeed_iff ρ P m _).1 hm).2
+  simp only [Tm.den, Core.Rel.rpair, Core.Rel.comp, Core.Rel.graph, Core.Rel.id, Prim.den_suffix] at hw
+  obtain ⟨⟨x, rfl, t, hw1⟩, y, rfl, t', hw2⟩ := hw
+  obtain ⟨w1, w2⟩ := w
+  obtain rfl : t ++ w1 = x := hw1
+  obtain rfl : t' ++ w2 = y := hw2
+  have hr := fun a => Core.Rel.le_iff.1 h1 a a rfl
+  have ht := fun a b c hab hbc => Core.Rel.le_iff.1 h2 a c ⟨b, hab, hbc⟩
+  obtain ⟨fs, hq, hf⟩ := iterSuffix (Tm.den ρ Q) hr ht (fun es => es.foldr editStep ([], []))
+    (fun x => (x, t' ++ w2)) (fun es x c h => Tm.editSrcStep ρ hu hS es x _ c h) w1 t es hxy.symm
+  obtain ⟨gs, hq', hg⟩ := iterSuffix (Tm.den ρ Q) hr ht (fun es => es.foldr editStep ([], []))
+    (fun y => (w1, y)) (fun es y c h => Tm.editTgtStep ρ hu hT es w1 y c h) w2 t' fs hf
+  exact ⟨gs, ht _ _ _ hq hq', (hE gs _).2 ⟨⟨m, hm⟩, hg.symm⟩⟩
 
 end Rel.Lang
