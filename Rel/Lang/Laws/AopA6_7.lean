@@ -1,3 +1,5 @@
+import Rel.Programs.Prelude
+import Rel.Lang.PreludeCup
 import Rel.Lang.Laws.Map
 import Rel.Lang.PreludeStar
 
@@ -104,6 +106,31 @@ theorem theta_zero_right (T : Core.Rel α α) (P : Core.Rel β α) :
   rw [this]
   exact Core.Rel.ext fun a b => ⟨fun h => h.elim id False.elim, Or.inl⟩
 
+/-- `R* = 𝟙 ∪ R R*`: the fixed point of the body, which is monotonic. -/
+theorem cstar_unfold (T : Core.Rel α α) : cstar T = 𝟙 α ∪ T ≫ cstar T :=
+  (mu_fix (fun X Y h => Core.Rel.le_iff.2 fun a b hx => by
+    rcases hx with hx | ⟨c, hT, hX⟩
+    · exact Or.inl hx
+    · exact Or.inr ⟨c, hT, Core.Rel.le_iff.1 h c b hX⟩)).symm
+
+/-- `Λ(A ∪ B) = ⟨Λ(A),Λ(B)⟩ cup` where both sets exist: `cup` is the set of the joined lists. -/
+theorem lamDen_union {X Y : Obj} (A B : Core.Rel (Obj.El X) (Obj.El Y)) (hA : ∀ a, ∃ s, lamDen A a s)
+    (hB : ∀ a, ∃ s, lamDen B a s) (a : Obj.El X) (s : Obj.El (.arr Y)) :
+    lamDen (A ∪ B) a s ↔ ∃ s1 s2, lamDen A a s1 ∧ lamDen B a s2 ∧ lamDen (memDen (A := Y)) (s1 ++ s2) s := by
+  constructor
+  · intro h
+    obtain ⟨hs, hm⟩ := (lamDen_iff _ _ _).1 h
+    obtain ⟨s1, h1⟩ := hA a
+    obtain ⟨s2, h2⟩ := hB a
+    refine ⟨s1, s2, h1, h2, (lamDen_iff _ _ _).2 ⟨hs, fun b => ?_⟩⟩
+    rw [hm b]; show _ ↔ b ∈ s1 ++ s2; rw [List.mem_append, ((lamDen_iff _ _ _).1 h1).2 b, ((lamDen_iff _ _ _).1 h2).2 b]
+    exact Iff.rfl
+  · rintro ⟨s1, s2, h1, h2, h3⟩
+    obtain ⟨hs, hm⟩ := (lamDen_iff _ _ _).1 h3
+    refine (lamDen_iff _ _ _).2 ⟨hs, fun b => ?_⟩
+    rw [hm b]; show b ∈ s1 ++ s2 ↔ _; rw [List.mem_append, ((lamDen_iff _ _ _).1 h1).2 b, ((lamDen_iff _ _ _).1 h2).2 b]
+    exact Iff.rfl
+
 end Core
 
 theorem Tm.star_den {A : Obj} (T : Core.Rel (Obj.El A) (Obj.El A)) (ρ : Val) :
@@ -158,5 +185,39 @@ theorem Tm.theta_zero_right_den {A B : Obj} {what : String} {cap : Nat} (ρ : Va
       (.var 1 : Tm B A).den ρ := by
   simp only [Tm.den, Val.bind, if_true]
   exact theta_zero_right _ _
+
+/-- `Λ(R*) = ⟨Λ(𝟙),Λ(RR*)⟩cup`: `R* = 𝟙 ∪ RR*` and `Λ` of a union is the `cup` of the `Λ`s (the sets of `R R*` exist). -/
+theorem Tm.lam_star_den {A : Obj} {R : Tm A A} {cv : Option Lean.Name} {os : List Obj}
+    {t' : Tm (.prod (.arr A) (.arr A)) (.arr A)}
+    (ht : Rel.Programs.prelude.cup.body.instObj [.general] [A] = .ok t' := by rfl) (ρ : Val)
+    (hd : Tm.den ρ (Tm.dom (Tm.lam (R.comp (Tm.star R)))) = Tm.den ρ Tm.id) :
+    Tm.den ρ (Tm.lam (Tm.star R)) =
+      Tm.den ρ ((Tm.pair (Tm.lam Tm.id) (Tm.lam (R.comp (Tm.star R)))).comp
+        (Tm.call [] `Rel.Programs.prelude.cup cv os t')) := by
+  have hB : ∀ a, ∃ s, lamDen ((R.comp (Tm.star R)).den ρ) a s := fun a => by
+    have h : Core.Rel.inter (Core.Rel.id _) (Core.Rel.comp (Tm.den ρ (Tm.lam (R.comp (Tm.star R))))
+        (Core.Rel.recip (Tm.den ρ (Tm.lam (R.comp (Tm.star R)))))) a a := by
+      rw [← Tm.dom_den, hd]; exact rfl
+    obtain ⟨-, s, hs, -⟩ := h
+    exact ⟨s, hs⟩
+  have hA : ∀ a, ∃ s, lamDen (𝟙 (Obj.El A)) a s := fun a =>
+    ⟨[a], (lamDen_iff _ _ _).2 ⟨List.pairwise_singleton _ _, fun b => by simp [Tm.den, Core.Rel.id, eq_comm]⟩⟩
+  apply Core.Rel.ext
+  intro a s
+  have e1 : Tm.den ρ (Tm.lam (Tm.star R)) = lamDen (cstar (R.den ρ)) := by simp only [Tm.den, Tm.star_den]
+  have hc : ∀ p zs, t'.den (Val.args [] []) p zs ↔ lamDen (memDen (A := A)) (p.1 ++ p.2) zs := fun p zs =>
+    Tm.cupDef_den [.general] [A] _ ht p zs
+  rw [e1, cstar_unfold]
+  have hB' : ∀ a, ∃ s, lamDen (R.den ρ ≫ cstar (R.den ρ)) a s := fun a => by
+    obtain ⟨s, hs⟩ := hB a
+    simp only [Tm.den, Tm.star_den] at hs
+    exact ⟨s, hs⟩
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.rpair, Tm.star_den, hc]
+  rw [lamDen_union _ _ hA hB' a s]
+  constructor
+  · rintro ⟨s1, s2, h1, h2, h3⟩
+    exact ⟨(s1, s2), ⟨h1, h2⟩, h3⟩
+  · rintro ⟨⟨s1, s2⟩, ⟨h1, h2⟩, h3⟩
+    exact ⟨s1, s2, h1, h2, h3⟩
 
 end Rel.Lang

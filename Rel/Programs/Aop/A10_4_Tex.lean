@@ -17,7 +17,7 @@ rel_program aopA10_4_Tex where
     -- Freyd.Alg.RelSet.Tex.tex_fusion_condition, 10-greedy.typ:44
     theorem texFusionCondition(e : 1 ⟶ β, S : δ×β ⟶ β, e' : 1 ⟶ γ, S' : δ×γ ⟶ γ, R : γ ⟶ β) if e ⊑ e' R, ⟨π₁,π₂R⟩ S ⊑ S' R : [e, ⟨π₁,π₂R⟩ S] ⊑ [e', S'] R by Rel.Lang.Tm.tex_fusion_condition_den
 
--- not ported: tex_greedy (Freyd.Alg.RelSet.Tex.tex_greedy, 10-greedy.typ:46): needs the order `length ≤ length°` of lists and `length nil = 0` as laws of the prelude `length` fold, with the objects 1+δ×α; no such lemma exists in rel yet and the budget of this unit ran out
+-- not ported: tex_greedy (Freyd.Alg.RelSet.Tex.tex_greedy, 10-greedy.typ:46): no length lemmas needed (state at a parameter `R` with premises `𝟙 ⊑ R, nil ⊤ ⊑ nil R`); the statement `((inl° ⊤ inr) ∪ 𝟙) (𝟙 ⊕ (𝟙×X)) [nil, cons] ⊑ (𝟙 ⊕ (𝟙×X)) [nil, cons] R` elaborates, but `𝟙 ⊕ (𝟙×X)` is a `Tm.call [2,3] «_⊕_»` node (`Tm.arg (Tm.arg call 𝟙) (𝟙×X)`) whose den needs a Def lemma of the prelude `_⊕_` (F(X) inl = inl) that does not exist yet
 -- not ported: round_recip (10-greedy.typ:530): `round°=interval inrange` is the definition of `round` on the host `Real` (a quotient of `Int × Nat`), not a law of relations
 -- not ported: digit_unique (10-greedy.typ:627), f_agree (637), tex_extern (641): statements about `Real`/`Int`/`Fin 65536` host arithmetic (`IsDigit`, `Prog.f`)
 -- not ported: run_input, run_pick0, run_pick1, run_pick2, run_pick3, run_cands3, run_out (10-greedy.typ:650-674): `#eval`-style checks of the integer program `Prog` on host `Int` lists, no relation statement

@@ -22,7 +22,8 @@ rel_program aopA6_7 where
     theorem thetaZeroLeft(R : α ⟶ α, S : β ⟶ α) : 𝟘 ∪ (μX : S ∪ ((X R) − 𝟘)) = S star(R) by Rel.Lang.Tm.theta_zero_left_den  -- Freyd.Alg.theta_zero_left, 06-recursive.typ:586
     theorem thetaZeroRight(R : α ⟶ α, P : β ⟶ α) : P ∪ (μX : 𝟘 ∪ ((X R) − P)) = P by Rel.Lang.Tm.theta_zero_right_den  -- Freyd.Alg.theta_zero_right, 06-recursive.typ:595
 
--- not ported: Λ_star (Freyd.Alg.Λ_star, 06-recursive.typ:540): `cup` (the union of two sets) is not in the prelude
+    -- `Λ` is partial (a set must be a finite sorted list), so the sets of `R R*` are assumed to exist, as freyd's power allegory has `Λ` total
+    theorem lamStar(R : α ⟶ α) if dom(Λ(R star(R))) = 𝟙 : Λ(star(R)) = ⟨Λ(𝟙), Λ(R star(R))⟩ cup by Rel.Lang.Tm.lam_star_den  -- Freyd.Alg.Λ_star, 06-recursive.typ:540
 -- not ported: star_simulation_by_fusion (Freyd.Alg.star_simulation_by_fusion, 10-appendix.typ:471): the statement is `starSimulation`'s, proved there by fusion instead
 -- not ported: star_div_prefixed (Freyd.Alg.star_div_prefixed, 06-recursive.typ:515): a step of freyd's division proof of `starTrans`; `starTrans` is proved directly
 end Rel.Programs
