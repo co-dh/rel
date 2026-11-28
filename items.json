@@ -4762,8 +4762,8 @@
   },
   {
     "id": "GP-1a",
-    "mark": "▶",
-    "sha": "",
+    "mark": "✓",
+    "sha": "aae6c7e",
     "deps": [],
     "content": "rel_program: `test A = B` for runs; a failing test/check is an elaboration error; n.failures/n.ok and #guard n.ok deleted",
     "note": "",
@@ -4791,8 +4791,8 @@
   },
   {
     "id": "GP-2",
-    "mark": "▶",
-    "sha": "",
+    "mark": "✓",
+    "sha": "6ba7afd",
     "deps": [],
     "content": "Mss: certify the unproved calc steps (toShape, toGreedy, linear)",
     "note": "",
@@ -4800,8 +4800,8 @@
   },
   {
     "id": "GP-3",
-    "mark": "▶",
-    "sha": "",
+    "mark": "✓",
+    "sha": "730498f",
     "deps": [],
     "content": "Cylinder: certify the unproved calc steps (fusion, stepFuse, cylLaws); certify ⊑ chains",
     "note": "",
