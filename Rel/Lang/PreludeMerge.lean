@@ -150,6 +150,16 @@ theorem Tm.tailCall_den (ρ : Val) {B : Obj} {os : List Obj} (xs ys : Obj.El (.a
   · rintro ⟨a, rfl⟩
     exact ⟨([a], ys), ⟨([a], ys), rfl, rfl, [a], ⟨⟨a, ⟨by simp, rfl⟩, rfl⟩, rfl⟩, ⟨a, ⟨by simp, rfl⟩, rfl⟩, rfl⟩, rfl⟩
 
+/-- **`tail`'s text drops the head**: the body the prelude elaborates, `prelude.tail.body`, at any objects
+    `σ` (`Tm.instObj`), relates `xs` to `ys` iff `xs = a :: ys`. A law about a call of `tail` takes
+    `(ht : prelude.tail.body.instObj [.general] [B] = .ok t' := by rfl)` and states the node `Tm.call ks c cv os t'`. -/
+theorem Tm.tailDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
+    {t' : Tm ((Obj.atom .general).arr.inst ph σ) ((Obj.atom .general).arr.inst ph σ)}
+    (ht : Rel.Programs.prelude.tail.body.instObj ph σ = .ok t') (xs ys : Obj.El ((Obj.atom .general).inst ph σ).arr) :
+    t'.den ρ xs ys ↔ ∃ a, xs = a :: ys := by
+  obtain rfl := Except.ok.inj ht
+  exact Tm.tailCall_den ρ (os := []) xs ys
+
 set_option hygiene false in
 /-- The merge loop's state `((xs, ys), acc)`. -/
 local notation "𝕊" => Obj.prod (Obj.prod (Obj.arr B) (Obj.arr B)) (Obj.arr B)

@@ -16,29 +16,6 @@ abbrev Tm.permCall (B : Obj) (n : Lean.Name) (cv : Option Lean.Name) (os0 : List
     (os : List Obj) : Tm (.arr B) (.arr B) :=
   .call [] n cv os0 ((Tm.call [k] c none os (.fold (Tm.ran (Tm.closedNil B)) (.var k))).arg (Tm.permStep B))
 
-/-- The prelude's insertion fold is `permDen` (the lemma inside `Tm.permConv_den`). -/
-theorem Tm.permFold_den {B : Obj} (ρ : Val) :
-    foldDen ((Tm.ran (Tm.closedNil B)).den ρ) ((Tm.permStep B).den ρ) = permDen := by
-  have hseed (v : List B.El) : (∃ a, (Tm.ran (Tm.closedNil B)).den ρ a v) ↔ v = [] := by
-    simp [Tm.ran_den, Tm.closedNil_den, Core.Rel.id, Core.Rel.inter, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
-  apply Core.Rel.ext
-  intro xs ys
-  unfold permDen
-  rw [foldDen_iff, foldDen_iff]
-  simp only [hseed, Tm.den, Tm.prod_den, Prim.den_uncat, Prim.den_snoc, Prim.den_cat,
-    nilDen, Core.Rel.graph, Core.Rel.comp_assoc, exists_const]
-
-theorem Tm.permCall_den {B : Obj} {n : Lean.Name} {cv : Option Lean.Name} {os0 : List Obj} {k : Nat} {c : Lean.Name}
-    {os : List Obj} (ρ : Val) : (Tm.permCall B n cv os0 k c os).den ρ = permDen := by
-  have hfold := Tm.permFold_den (B := B) (Val.args [] [])
-  have h := Tm.permConv_den (B := B) (k := k) (c := c) (os := os) (Val.args [] [])
-  change (Tm.arg (Tm.call [k] c none os (.fold (Tm.ran (Tm.closedNil B)) (.var k))) (Tm.permStep B)).den (Val.args [] [])
-    = _
-  rw [← h]
-  change (𝟙 _ ≫ foldDen ((Tm.ran (Tm.closedNil B)).den (Val.args [] [])) ((Tm.permStep B).den (Val.args [] [])))° = _
-  rw [Core.Rel.id_comp, hfold]
-  exact permDen_conv
-
 /-- **Ex 6.30**: `⦇[nil, ins]⦈ ⊑ perm O` for any `ins` with `(O×𝟙) ins ⊑ add O`, given `nil ⊑ nil O`. -/
 theorem Tm.insertionSort_den {B : Obj} {ins : Tm (.prod (.arr B) B) (.arr B)} {O : Tm (.arr B) (.arr B)}
     {n : Lean.Name} {cv : Option Lean.Name} {os0 : List Obj} {k : Nat} {c : Lean.Name} {os : List Obj} (ρ : Val)
@@ -46,7 +23,7 @@ theorem Tm.insertionSort_den {B : Obj} {ins : Tm (.prod (.arr B) B) (.arr B)} {O
     (h2 : (Tm.comp (Tm.pair (Tm.comp .outl O) (Tm.comp .outr .id)) ins).den ρ ⊑ ((Tm.permStep B).comp O).den ρ) :
     (Tm.fold (Tm.ran (Tm.closedNil B)) ins).den ρ ⊑ ((Tm.permCall B n cv os0 k c os).comp O).den ρ := by
   change foldDen _ _ ⊑ (Tm.permCall B n cv os0 k c os).den ρ ≫ O.den ρ
-  rw [Tm.permCall_den]
+  rw [show (Tm.permCall B n cv os0 k c os).den ρ = permDen from Tm.permCall_den (k := k) (c := c) (os := os) ρ]
   rw [← Tm.permFold_den ρ]
   refine foldDen_le_comp ?_ ?_
   · intro w hw
