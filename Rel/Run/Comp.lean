@@ -2,6 +2,7 @@ module
 
 public import Rel.Run.Cols
 public import Rel.Run.SetOps
+public import Rel.Run.Pack
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -19,22 +20,6 @@ own column; the output count is the one element `Arr.get` reads. -/
 
 namespace Rel
 open  Rel.Kernel Rel.Verify
-
-/-- **EXPAND** (`doc/rel-kernels.md`) of the `K` widths `w`: `T` output rows, each row's group `G` and its offset `u`
-in the group. A prefix sum `P` places the groups (`o = P - w`), `kscatter (.max)` of each group id at its offset,
-filled forward by `colPrefix (.max)`, the spare cell `T` cut off by `kgather`; `u = pos - o[G]`. The one scalar read
-is the count `T` (`lastCount`). -/
-def expand (K : USize) (w : Enc) : Except String (USize × Enc × Enc) := do
-  match hP : colPrefix .add K w with
-  | .error s => throw s
-  | .ok P =>
-    let T := lastCount K P (colPrefix_closed hP).2.1 (colPrefix_closed hP).2.2
-    if USize.size ≤ T + 1 then throw s!"expand: {T} output rows past USize"
-    let T := T.toUSize
-    expandNote s!"the {K} groups of a composition (expand)" T.toNat fun _ => do
-      let o ← colMap .sub K P w
-      let G ← kgather T .pos (T + 1) (← colPrefix .max (T + 1) (← kscatter .max K o .pos (T + 1) 0))
-      pure (T, G, ← colMap .sub T .pos (← kgather T G K o))
 
 namespace Tab
 variable {A B C : Obj}
@@ -118,11 +103,12 @@ def compBlock (R : Tab A B) (S : Tab B C) (c : Enc) (j : Nat) : Except String (T
 /-- **`R ≫ S` over the blocks `bid`** (`nb` of them, one word per row of `R`): `bid` clamped into `[0, nb - 1]`
 (`Arr.clampShift`), so every row of `R` is in one block whatever `bid` holds; the blocks' tables met by `∪`. Only
 `R` is cut: `S` whole in every block makes each block exact on its own, with no claim that `bid` is a function of the
-middle value. -/
+middle value. The accumulator is `pack`ed before each `∪` (as `fixOn`'s rounds are), so its payload stays the live
+rows' and not every block's; the last `∪` is not packed, so the answer is still a `canon`. -/
 def compBlocks (R : Tab A B) (S : Tab B C) (nb : Nat) (bid : Arr .i64 R.n) : Except String (Tab A C) := do
   if 2 ^ 63 ≤ nb then throw s!"comp: {nb} blocks past 2^63"
   let c ← bid.clampShift (nb - 1).toUInt64 0
-  (Array.range (nb - 1)).foldlM (fun acc j => do acc.union (← compBlock R S c.enc (j + 1))) (← compBlock R S c.enc 0)
+  (Array.range (nb - 1)).foldlM (fun acc j => do (← acc.pack).union (← compBlock R S c.enc (j + 1))) (← compBlock R S c.enc 0)
 
 /-- The output rows of `compGroups`' answer before `canon`: the last word of the prefix sum of `w` (`compCuts`' `P`). -/
 def compRows : USize × Enc × Enc × Enc × USize × Enc × Enc × Enc → Except String Nat

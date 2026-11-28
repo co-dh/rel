@@ -69,9 +69,6 @@ theorem Opt.fill_enc {t : QAtomicType} {n : USize} {x : Opt t n} (hg : t ≠ .ge
   have hn : Opt.fill t n = Opt.nuls t n := by cases t <;> first | exact absurd rfl hg | rfl
   rw [hn] at h; unfold Opt.nuls at h; split at h <;> cases h; rfl
 
-theorem Opt.filler_ne {t : QAtomicType} (hg : t ≠ .general) : Opt.filler t = none := by
-  cases t <;> first | exact absurd rfl hg | rfl
-
 /-- **Every row of `Opt.fill t n` is `Opt.filler t`**: `Opt.nuls`'s nulls off `general`, `default` at `general`. -/
 theorem Opt.fill_get {t : QAtomicType} {n : USize} {x : Opt t n} (h : Opt.fill t n = .ok x) (i : Fin n.toNat) :
     x.get i = Opt.filler t := by
