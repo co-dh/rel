@@ -57,7 +57,7 @@ rel_program prelude where
 
     -- `cat` is the left fold over the reversed first list from the second, by `cons` alone (`snoc` is defined from `cat`):
     -- `r` reverses a list (the left fold of `cons` from `[]`), `s` is `cons` on (acc, x)
-    cat : [α]×[α] ⟶ [α] ≜ ⟨π₂, π₁ r⟩ loop(s) where s ≜ ⟨π₂,π₁⟩cons, r ≜ ⟨nil,𝟙⟩ loop(s)   -- B&dM p.129 ⧺: (xs, ys) ↦ xs ++ ys
+    cat : [α]×[α] ⟶ [α] ≜ ⟨π₂, π₁ r⟩ loop(s) where s ≜ ⟨π₂,π₁⟩cons, r ≜ ⦇[nil, s]⦈   -- B&dM p.129 ⧺: (xs, ys) ↦ xs ++ ys
     snoc : [α]×α ⟶ [α] ≜ (𝟙×τ) cat                                 -- B&dM p.249 snoc: (xs, x) ↦ xs ++ [x]
 
     head : [α] ⟶ α ≜ at(0)                                       -- B&dM p.267 head = outl cons°

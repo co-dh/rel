@@ -42,16 +42,14 @@ theorem loopDen_cons {B : Obj} (T : Core.Rel (Obj.El (.prod (.arr B) B)) (Obj.El
     simp only [List.reverse_append, List.reverse_cons, List.reverse_nil, List.nil_append, List.cons_append]
 
 /-- `cat` at `[B]×[B] ⟶ [B]`: the prelude body `prelude.cat.body` as the term the elaborator builds (`s` the variable 1,
-    `r` the variable 8). -/
+    `r` the variable 4). -/
 def Tm.catDef (B : Obj) : Tm (.prod (.arr B) (.arr B)) (.arr B) :=
   .arg (.call [1] `s none []
-    (.arg (.arg (.call [8, 1] `r none []
-        (.comp (.pair .outr (.comp .outl (.var 8 : Tm (.arr B) (.arr B))))
+    (.arg (.arg (.call [4, 1] `r none []
+        (.comp (.pair .outr (.comp .outl (.var 4 : Tm (.arr B) (.arr B))))
           (.arg (.prim (rowOf "loop") : Tm (.prod (.arr B) (.arr B)) (.arr B)) (.var 1 : Tm (.prod (.arr B) B) (.arr B)))
           : Tm (.prod (.arr B) (.arr B)) (.arr B)))
-      (.comp (.pair (.nil : Tm (.arr B) (.arr B)) .id)
-        (.arg (.prim (rowOf "loop") : Tm (.prod (.arr B) (.arr B)) (.arr B)) (.var 1 : Tm (.prod (.arr B) B) (.arr B)))
-        : Tm (.arr B) (.arr B)))
+      (.fold (.nil : Tm (.arr B) (.arr B)) (.var 1 : Tm (.prod (.arr B) B) (.arr B))))
       (.var 1 : Tm (.prod (.arr B) B) (.arr B))))
     (.comp (.pair .outr .outl) (.prim (rowOf "cons")) : Tm (.prod (.arr B) B) (.arr B))
 
@@ -71,9 +69,22 @@ theorem Tm.catDef_row (ρ : Val) {B : Obj} (p : (Obj.prod (.arr B) (.arr B)).El)
   generalize loopDen (X := .arr B) (Y := B)
       (Core.Rel.comp (Core.Rel.rpair (Core.Rel.graph Prod.snd) (Core.Rel.graph Prod.fst))
         (fun (p : B.El × List B.El) (ys : List B.El) => ys = p.1 :: p.2)) = L at hL ⊢
-  simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, Core.Rel.id, nilDen, Prod.exists, hL]
-  simp only [exists_eq_left', exists_and_left, and_assoc, exists_eq_left]
-  simp
+  have hr : ∀ (l w : List B.El), foldDen (E := B) (V := .arr B) nilDen
+      (Core.Rel.comp (Core.Rel.rpair (Core.Rel.graph Prod.snd) (Core.Rel.graph Prod.fst))
+        (fun (p : B.El × List B.El) (ys : List B.El) => ys = p.1 :: p.2)) l w ↔ w = l.reverse := fun l w => by
+    refine (foldDen_foldl (E := B) (V := .arr B) (f := fun acc x => x :: acc) (fun a x w => ?_) l [] w).trans ?_
+    · simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph]
+      exact ⟨fun ⟨b, ⟨h1, h2⟩, h⟩ => by rw [h, h1, h2], fun h => ⟨(x, a), ⟨rfl, rfl⟩, h⟩⟩
+    · have : ∀ (l acc : List B.El), l.foldl (fun acc x => x :: acc) acc = l.reverse ++ acc := fun l => by
+        induction l with
+        | nil => simp
+        | cons x l ih => intro acc; simp [ih]
+      simp [this]
+  simp only [Core.Rel.comp, Core.Rel.rpair, Core.Rel.graph, hr, Prod.exists]
+  simp only [hL]
+  constructor
+  · rintro ⟨a, b, ⟨rfl, c, rfl, rfl⟩, h⟩; simpa using h
+  · intro h; exact ⟨ys, xs.reverse, ⟨rfl, xs, rfl, rfl⟩, by simpa using h⟩
 
 /-- **`cat`'s text means the row** (Q3 = G): the body the prelude elaborates, `prelude.cat.body`, at any objects `σ`
     (`Tm.instObj`), means `cat` there. -/
@@ -83,7 +94,31 @@ theorem Tm.catDef_den (ph : List QAtomicType) (σ : List Obj) (ρ : Val)
     (ht : Rel.Programs.prelude.cat.body.instObj ph σ = .ok t') (p zs) :
     t'.den ρ p zs ↔ Prim.den (rowOf "cat") (.prod (.arr ((Obj.atom .general).inst ph σ)) (.arr ((Obj.atom .general).inst ph σ)))
       (.arr ((Obj.atom .general).inst ph σ)) [] p zs := by
-  obtain rfl : Tm.catDef _ = t' := Except.ok.inj ht
-  exact Tm.catDef_row ρ p zs
+  obtain rfl := Except.ok.inj ht
+  rw [← Tm.catDef_row ρ p zs]
+  have hu : ∀ {C : Obj} (h : Tm Obj.one Obj.one = Tm (Obj.inst ph σ Obj.one) (Obj.inst ph σ Obj.one)) ρ
+      (t : Tm (Obj.inst ph σ Obj.one) C),
+      Tm.den ρ (.comp (cast h (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) t) = Tm.den ρ t :=
+    fun h ρ t => Tm.uni_cast_comp_den _ (by simp) rfl h ρ t
+  have hd : Obj.inst ph σ ((Obj.atom .general).arr.prod (Obj.atom .general)) =
+      (Obj.inst ph σ (Obj.atom .general).arr).prod (Obj.inst ph σ (Obj.atom .general)) := rfl
+  simp only [↓hu, hd, Tm.catDef, Tm.den, Tm.argDen, Val.args, Val.bind, Val.empty, Nat.reduceEqDiff,
+    reduceIte, and_self, ↓reduceDIte, Tm.nil, Prim.den_nilRow]
+  have key : ∀ S, foldDen (Prim.den (rowOf "ran") (Obj.inst ph σ (Obj.atom .general).arr)
+      (Obj.inst ph σ (Obj.atom .general).arr) [⟨Obj.inst ph σ Obj.one, ⟨Obj.inst ph σ (Obj.atom .general).arr,
+        Prim.den (rowOf "nil") (Obj.inst ph σ Obj.one) (Obj.inst ph σ (Obj.atom .general).arr) []⟩⟩]) S =
+      foldDen (E := Obj.inst ph σ (Obj.atom .general)) (V := Obj.inst ph σ (Obj.atom .general).arr) nilDen S := by
+    intro S; funext xs w; apply propext
+    rw [foldDen_start, foldDen_start (Te := nilDen)]
+    refine exists_congr fun v => and_congr_left' ?_
+    have hn : Prim.den nilRow (Obj.inst ph σ Obj.one) (Obj.inst ph σ (Obj.atom .general).arr) [] = nilDen :=
+      Prim.den_nilRow (B := Obj.inst ph σ (Obj.atom .general))
+    rw [show rowOf "ran" = ranRow from rfl, Prim.den_ranRow, show rowOf "nil" = nilRow from rfl, hn]
+    simp [Core.Rel.comp, Core.Rel.inter, Core.Rel.recip, Core.Rel.id, nilDen]
+    constructor
+    · rintro ⟨b, h⟩; exact ⟨[], h⟩
+    · rintro ⟨a, h⟩; exact ⟨(), h⟩
+  erw [key]
+  exact Iff.rfl
 
 end Rel.Lang
