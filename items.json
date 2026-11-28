@@ -4873,14 +4873,26 @@
   },
   {
     "id": "GP-5c",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "343236c",
     "deps": [
       "GP-5b"
     ],
     "content": "close the GP-5b boundary: (1) Table.ofRun goes through an Except-level function ioGo also uses, so ofRun x r s = .ok t s implies r.runE {} = .ok t is a theorem (IO.ofExcept does not unfold in a module file); (2) the readers (Table.read, readKeyed, readCsvDict, readOwn) check Vals.WF of what they read, so t.WF is established at load instead of assumed",
-    "note": "GP-5b a50a20a report",
+    "note": "part 1 done (Rel/Lang/TableIO.lean, import all Init.System.IO). Part 2 split to GP-5d: Vals.WF (RepCanon 510-528) needs per-row values; the readers already check it by decoding (cellBadB/ColB.bound Table.lean 95-107, fillBad 139-157), so no new decode is added. GP-5b a50a20a report",
     "what": "读入的表在加载时检查编码合法，证明不再假设它。",
+    "hold": null
+  },
+  {
+    "id": "GP-5d",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GP-5c"
+    ],
+    "content": "theorem: readValsB (Table.read, readKeyed, readCsvDict, readOwn) returning .ok t gives t.WF, from the checks the reader already runs (cellBadB/ColB.bound, fillBad); lemmas cellBad = none gives the cell bounds (Rel.cellBad_none, RepCols) and fillBad success gives the filler clauses; IO unfolding as in Rel/Lang/TableIO.lean",
+    "note": "the reader is not a kernel: its existing per-row checks stay; this only proves what they establish",
+    "what": "证明读入表时已有的检查确实保证了编码合法，t.WF 不再是假设。",
     "hold": null
   }
 ]
