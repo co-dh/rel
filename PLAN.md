@@ -1723,6 +1723,8 @@ Diff table 的「状态」列：✅ 后面是完成它的步骤；🔄 是部分
   或缺什么（语法写不出的定理形式、rel 公理里缺的 law）。(b) owner 定 D（2026-11-26，暂不做）：rel 自带图导出器，读 rel_program；按 9.7 两仓互不依赖，freyd 的
   `scripts/diag-export`（`diag/tool/DiagExport.lean`）不能 import rel，所以导出器在 rel 里，读 calc（经 rel 的 parser/`Tm`，
   不做字符串匹配），输出与 freyd 同一种图数据（画法复制 `strdiag.typ` 或抽成两边共用的 typst 包）。依赖 9.6、9.8、9.10。
+  - 义务表（步骤一）：`doc/rel-aop-companion.zh.typ`（PDF 同名）。719 条不同定理（742 行）：rel ✓ 13、core ✓ 16、可写 448、语法缺 242、公理缺 0；
+    状态由陈述按规则机械得出，派发前逐行核对；另有 291 条定义只列名。
 - ⬜ 9.10 owed law 在 rel 里证（9.7）：每个 `rel_program` 里没有 `calc` 的 `theorem` 由 rel 自己的公理（`Rel.Core` 的 allegory
   律，或对 `Tm.den` 证）证掉，rel_program 在缺证明时拒绝 elaborate（机制在 9.1 设计稿定）。义务表：Mss 的 `zeroEntire`
   `zeroSimple` `geqRefl` `estUnion` `greedyFold` `toFused` `toScan`；Prelude 的 `absorption` `Eunion` `Ecomp` `estMap`
