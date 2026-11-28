@@ -1001,6 +1001,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
             s!"the statement's {e.show} is {zonk mc s} ⟶ {zonk mc t}"⟩
         : M Unit).run { specs, objs := env.objs }
       specs := st.specs
+      if proof.isNone && steps.isEmpty then
+        throw ⟨p, s!"theorem `{n}` states a claim with no proof: add `by <lemma>` or a `calc`"⟩
       -- A `calc` of `=` steps is certified step by step.
       let calcOk := proof.isNone && !steps.isEmpty && eq && steps.all (·.2.1)
       -- Both certificate forms use the same denotation checks for the premises and conclusion.

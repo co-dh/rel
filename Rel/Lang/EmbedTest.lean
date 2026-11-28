@@ -57,6 +57,10 @@ rel_program antiquot2 where
 /-! `theorem n : e = f := calc` (`doc/rel-mss-proof-design.md` §3, §8): the chain alternates terms and reason lines
     `:= n` (`⊑ := n` for `⊑`); `n` cites a theorem, `≜ n` a definition; `on A` evaluates each step as a `check`. -/
 
+private theorem compIdDen {A B : Rel.Obj} {R : Rel.Lang.Tm A B} (ρ : Rel.Lang.Val) :
+    (Rel.Lang.Tm.comp R Rel.Lang.Tm.id).den ρ = R.den ρ := by
+  simp only [Rel.Lang.Tm.den]; exact Rel.Core.Rel.comp_id _
+
 open Rel.Programs.prelude in
 rel_program thm where
     obj N = 0…3
@@ -64,7 +68,7 @@ rel_program thm where
     two : N ⟶ N ≜ {(1,2),(2,2)}
     up : N ⟶ N ≜ {(1,2)}
     x : K ⟶ N ≜ {(a,1),(b,2)}
-    theorem unit : two 𝟙 = two
+    theorem unit : two 𝟙 = two by compIdDen
     theorem good on x : two 𝟙 = two := calc
       two 𝟙
         := ≜ two
@@ -83,7 +87,7 @@ rel_program thm where
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss _ => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
-/-- error: line 93, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
+/-- error: line 97, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmType where
@@ -94,7 +98,7 @@ rel_program thmType where
         := unit
       two
 
-/-- error: line 104, col 7: `unit` is a theorem, not a relation -/
+/-- error: line 108, col 7: `unit` is a theorem, not a relation -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsRel where
@@ -103,7 +107,7 @@ rel_program thmAsRel where
         := unit
       unit
 
-/-- error: line 112, col 12: `two` is a definition; write `≜ two` -/
+/-- error: line 116, col 12: `two` is a definition; write `≜ two` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program relAsThm where
@@ -112,7 +116,7 @@ rel_program relAsThm where
         := two
       two
 
-/-- error: line 121, col 14: `unit` is a theorem, not a definition -/
+/-- error: line 125, col 14: `unit` is a theorem, not a definition -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsDef where
@@ -121,7 +125,7 @@ rel_program thmAsDef where
         := ≜ unit
       two
 
-/-- error: line 130, col 12: unknown theorem 'nope' -/
+/-- error: line 134, col 12: unknown theorem 'nope' -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmUnknown where
@@ -130,7 +134,7 @@ rel_program thmUnknown where
         := nope
       two
 
-/-- error: line 140, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
+/-- error: line 144, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmEnds where
@@ -139,7 +143,7 @@ rel_program thmEnds where
         := unit
       two 𝟙
 
-/-- error: line 147, col 7: the chain starts at `up`, the statement's left side is `two` -/
+/-- error: line 151, col 7: the chain starts at `up`, the statement's left side is `two` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmStarts where
@@ -148,7 +152,7 @@ rel_program thmStarts where
         := unit
       two
 
-/-- error: line 157, col 9: `t` states `=`: a step `⊑` proves only `⊑` -/
+/-- error: line 161, col 9: `t` states `=`: a step `⊑` proves only `⊑` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmLe where

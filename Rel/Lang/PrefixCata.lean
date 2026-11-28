@@ -179,7 +179,6 @@ rel_program citeMissingPremise where
     x : N ⟶ N ≜ 𝟘
     y : N ⟶ N ≜ x
     theorem given(R : N ⟶ N, S : N ⟶ N) if R = S : R = S by hypId
-    theorem unprovedWitness : x = y
     theorem blocked : x = y := calc
       x
         := given(x, y)
@@ -188,6 +187,15 @@ rel_program citeMissingPremise where
 #guard citeMissingPremise.proof.unproved.length == 1
 #guard citeMissingPremise.proof.unproved.any fun msg =>
   msg.startsWith "blocked:" && (msg.splitOn "given requires the premise").length == 2
+
+-- a theorem with neither `by` nor `calc` states a claim nothing proves: an error, not an entry of `unproved`
+/-- error: line 198, col 5: theorem `unprovedWitness` states a claim with no proof: add `by <lemma>` or a `calc` -/
+#guard_msgs in
+rel_program noProof where
+    obj N = 0…3
+    x : N ⟶ N ≜ 𝟘
+    y : N ⟶ N ≜ x
+    theorem unprovedWitness : x = y
 
 #print axioms Val.bind_apply
 
