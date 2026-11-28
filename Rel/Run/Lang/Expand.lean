@@ -1003,8 +1003,8 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
       specs := st.specs
       if proof.isNone && steps.isEmpty then
         throw ⟨p, s!"theorem `{n}` states a claim with no proof: add `by <lemma>` or a `calc`"⟩
-      -- A `calc` of `=` steps is certified step by step.
-      let calcOk := proof.isNone && !steps.isEmpty && eq && steps.all (·.2.1)
+      -- A `calc` is certified step by step: an `=` statement by `=` steps, a `⊑` one by `=` and `⊑` steps.
+      let calcOk := proof.isNone && !steps.isEmpty && (!eq || steps.all (·.2.1))
       -- Both certificate forms use the same denotation checks for the premises and conclusion.
       if proof.isSome || calcOk then
         try

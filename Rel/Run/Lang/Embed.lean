@@ -334,11 +334,8 @@ def goalOf (c : Expand.Chk) (hs : List Expand.Chk := []) (ph : List QAtomicType 
   if ph.isEmpty then goal none else
     Meta.withLocalDeclD `σ substTy fun σ => do Meta.mkForallFVars #[σ] (← goal (some σ))
 
-/-- Use definitional equality first, then expose the denotation equations and evaluate typed variable lookups. -/
-def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) := do
-  let proofTy ← Meta.inferType proof
-  if ← Meta.isDefEq proofTy ty then return some proof
-  unless subst && proofTy.getAppFn == ty.getAppFn do return none
+/-- The rules that expose a denotation: unfold `Tm.den` and evaluate typed variable lookups. -/
+def denRules : MetaM Meta.SimpTheorems := do
   let mut rules : Meta.SimpTheorems := {}
   for d in [`Rel.Lang.Tm.den, `Rel.Lang.Tm.argDen, `Rel.Lang.Val.args] do
     rules ← rules.addDeclToUnfold d
@@ -347,7 +344,23 @@ def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) :
   rules ← rules.addConst `Rel.Lang.Tm.uni_cast_comp_den (post := false)
   rules ← rules.addConst `Rel.Lang.Val.bind_apply
   rules ← rules.addConst `Rel.Lang.Val.bind_ne
-  let ctx ← Meta.Simp.mkContext (simpTheorems := #[rules])
+  pure rules
+
+/-- `a = b` for two denotations that differ only in how a composition is bracketed (a `≜` step unfolds a definition
+    into a chain written flat): both sides simplified by `denRules` and `comp_assoc`. -/
+def denAssocEq (a b : Lean.Expr) : MetaM (Option Lean.Expr) := do
+  let ctx ← Meta.Simp.mkContext (simpTheorems := #[← (← denRules).addConst `Rel.Core.Rel.comp_assoc])
+  let (ra, _) ← Meta.simp a ctx
+  let (rb, _) ← Meta.simp b ctx
+  unless ← Meta.isDefEq ra.expr rb.expr do return none
+  some <$> Meta.mkEqTrans (← ra.getProof) (← Meta.mkEqSymm (← rb.getProof))
+
+/-- Use definitional equality first, then expose the denotation equations and evaluate typed variable lookups. -/
+def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) := do
+  let proofTy ← Meta.inferType proof
+  if ← Meta.isDefEq proofTy ty then return some proof
+  unless subst && proofTy.getAppFn == ty.getAppFn do return none
+  let ctx ← Meta.Simp.mkContext (simpTheorems := #[← denRules])
   let discharge : Meta.Simp.Discharge := fun p => Meta.withTransparency .default do
     if let some (_, a, b) := p.eq? then
       -- The caller and the citation can express the same object with different substitutions.
@@ -381,9 +394,19 @@ def siblingProof (ρ : Lean.Expr) (σs : List Lean.Expr) (premise : Lean.Expr)
     let h ← instantiateMVars h
     return if h.hasMVar then none else some h
 
+/-- An equal pair is `⊑`: a `=` step inside a `⊑` chain. -/
+def leOfEq (h : Lean.Expr) : MetaM Lean.Expr := do
+  let some (ty, r, _) := (← Meta.inferType h).eq? | throwError "rel_program: leOfEq of a non-equation"
+  let refl ← Meta.mkAppM `Rel.Core.Rel.le_refl #[r]
+  -- `le R R` rewritten along `h` in its second argument
+  let motive ← Meta.withLocalDeclD `x ty fun x => do
+    Meta.mkLambdaFVars #[x] (.app (← Meta.inferType refl).appFn! x)
+  Meta.mkEqMP (← Meta.mkCongrArg motive h) refl
+
 /-- The theorem `t` of the program `n` with steps `:= why` then `x` (`theorem t : e = f := calc …`) certified as the chain
     of its steps, `n.proof.t`: a `≜ m` step is `rfl` (the expander inlines definitions, so both sides elaborate to one
-    `Tm`), a step citing a theorem is that theorem's own `….proof.m`, joined by `Eq.trans`.
+    `Tm`), a step citing a theorem is that theorem's own `….proof.m`, joined by `Eq.trans`; a chain with a `⊑` step
+    (goal `e ⊑ f`) joins by `Rel.le_trans`, each `=` step lifted by `leOfEq`.
     A citation can use the elaborated hypotheses and previously certified theorems. -/
 def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Bool)
     (steps : List (Pos × Bool × Expr × Why)) (siblings : List (Name × List QAtomicType)) :
@@ -398,7 +421,7 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
       | some (.str h m') => some (.str (h ++ `proof) m')
       | _ => some (n ++ `proof ++ Name.mkSimple m)
   let why := fun (w : Why) => match w with | .thm _ m _ _ => m | .unfold _ m => m
-  if !eq || steps.any (!·.2.1) then return some s!"{t}: the theorem has `⊑` steps"
+  if eq && steps.any (!·.2.1) then return some s!"{t}: an `=` theorem has `⊑` steps"
   if let some (q, _, _, w) := steps.find? (fun (_, _, _, w) => (cite w).any (!env.contains ·)) then
     return some s!"{t}: step at {q}: no proof constant for {why w}"
   let some cert := thms.1.lookup p |
@@ -411,15 +434,21 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
     let arity := if generic then 2 else 1
     let some ρ := args[arity - 1]? | throwError "rel_program: theorem {t} has no valuation binder"
     let premises := args.extract arity args.size
-    let mut acc : Option Lean.Expr := none
-    for (q, _, _, w) in steps do
+    -- the chain so far and whether its proof is `⊑` (else `=`)
+    let mut acc : Option (Lean.Expr × Bool) := none
+    for (q, isEq, _, w) in steps do
       let some l := cert.links.find? (·.sides.1 == q) | throwError "rel_program: no elaborated step at {q}"
-      let (_, _, a, b) ← sidesAt ρ l.sides σ cert.ph
+      let (oa, ob, a, b) ← sidesAt ρ l.sides σ cert.ph
+      let stepProp (x y : Lean.Expr) : MetaM Lean.Expr :=
+        if isEq then Meta.mkEq x y
+        else pure (mkAppN (mkConst `Rel.Core.Rel.le [0, 0]) #[mkApp (mkConst ``Rel.Obj.El) oa, mkApp (mkConst ``Rel.Obj.El) ob, x, y])
       let step ← match cite w with
         | none =>
-          unless ← Meta.isDefEq a b do
-            return .error s!"step at {q}: `≜ {why w}` unfolds a definition, but both sides are not one term: {← Meta.ppExpr a} and {← Meta.ppExpr b}"
-          Meta.mkEqRefl a
+          let r ← if ← Meta.isDefEq a b then Meta.mkEqRefl a else
+            let some r ← denAssocEq a b |
+              return .error s!"step at {q}: `≜ {why w}` unfolds a definition, but both sides are not one term: {← Meta.ppExpr a} and {← Meta.ppExpr b}"
+            pure r
+          if isEq then pure r else leOfEq r
         | some c =>
           let subst := !l.args.isEmpty
           let mut ρ' := ρ
@@ -450,15 +479,22 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
               return .error s!"step at {q}: {c} requires the premise {← Meta.ppExpr premise}, with no matching hypothesis or certified theorem"
             pr := mkApp pr h
             ty := body.instantiate1 h
-          let expected ← Meta.mkEq a b
-          -- a step may read the cited law right to left
+          let expected ← stepProp a b
+          -- an `=` step may read the cited law right to left
           let some proof ← (do match ← calcMatch pr expected subst with
             | some p => pure (some p)
-            | none => calcMatch (← Meta.mkEqSymm pr) expected subst) |
+            | none => if isEq then calcMatch (← Meta.mkEqSymm pr) expected subst else pure none) |
             return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr expected}"
           pure proof
-      acc ← match acc with | none => pure (some step) | some s => some <$> Meta.mkEqTrans s step
-    let some chain := acc | throwError "rel_program: theorem {t} has no steps"
+      acc ← match acc with
+        | none => pure (some (step, !isEq))
+        | some (s, sLe) =>
+          if !sLe && isEq then pure (some (← Meta.mkEqTrans s step, false)) else
+            let s ← if sLe then pure s else leOfEq s
+            let step ← if isEq then leOfEq step else pure step
+            pure (some (← Meta.mkAppM `Rel.Core.Rel.le_trans #[s, step], true))
+    let some (chain, chainLe) := acc | throwError "rel_program: theorem {t} has no steps"
+    let chain ← if !eq && !chainLe then leOfEq chain else pure chain
     pure (.ok (← Meta.mkLambdaFVars args chain))
   let value ← match value with | .ok v => pure v | .error e => return some s!"{t}: {e}"
   unless ← Meta.isDefEq (← Meta.inferType value) goal do
