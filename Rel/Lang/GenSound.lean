@@ -1907,14 +1907,51 @@ theorem Code.program_reps_args (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp f
   let s := Code.program_sound ds h
   Tm.gen_sound d.2.2 _ _ (by rw [Code.args_sh]; exact s.2 d hd) (Code.args_sound s.1 ks bs dm hb) K hK
 
-/-- `Code.program_reps` and `Code.program_reps_args`: what `n.proof.sound` states. -/
+/-- **A table that is `WF` is a `Wf` code that represents it** (`GenK.val_sound`'s case, without the literal's
+    canonicalisation): `Rel.tab (.ok t)` is what `Expand.tabRel` binds an input's or a run-time definition's table to
+    (`Expand.ioGo`), so this is `hb` of `Code.program_reps_args` for it. -/
+theorem _root_.Rel.Rel.tab_input {A B : Obj} {t : Tab A B} (h : t.WF) :
+    (∀ K, K.WF → (Rel.Rel.tab (.ok t) : Rel A B).Reps K (rep t)) ∧ (Rel.Rel.tab (.ok t) : Rel A B).Wf :=
+  ⟨fun _ _ _ _ _ _ _ => Iff.rfl, h⟩
+
+/-- **What a closed run computes** (`Table.ofRun`): a `Wf` code that represents `X` in every context runs in the empty
+    context to a `WF` table that is `X`. `Table.ofRun x r` is `IO.ofExcept (r.runE {} …)` (its body is not visible
+    here, so no theorem names the IO action): the table it returns is the `t` of `h`. -/
+theorem _root_.Rel.Rel.runE_empty {A B : Obj} {r : Rel A B} {X : Core.Rel A.El B.El} (hr : ∀ K, K.WF → r.Reps K X)
+    (hw : r.Wf) {t : Tab A B} (h : r.runE {} = .ok t) : t.WF ∧ rep t = X :=
+  ⟨hw.runE Known.wf_empty h, (GenK.agrees_empty ((GenK.reps_iff _ _ _).1 (hr {} Known.wf_empty) t h)).symm⟩
+
+/-- A table bound to a variable of a run-time definition: its objects and the table (`Expand.ioGo`'s `σ`). -/
+abbrev TabArg := (A : Obj) × (B : Obj) × Tab A B
+
+/-- **`Code.program_reps_args` with `hb` discharged for the tables `n.io` binds**: each argument is `Rel.tab (.ok t)`
+    (`Expand.tabRel`) with its meaning `rep t`, and the one premise left is `t.WF`. For a table `Table.ofRun` returned
+    that is `Rel.Rel.runE_empty` of its body's `Tm.gen_sound` and `Tm.gen_wf`; for one `Table.read`, `readKeyed`,
+    `readCsvDict` or `readOwn` read from a file it is the format of the file, which no Lean statement about the
+    reader holds (they check schema, counts and symbols, not `Vals.WF`). -/
+theorem Code.program_reps_tabs (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) :
+    ∀ d ∈ (Code.program ds).1, ∀ (ks : List Nat) (bs : List TabArg) (dm : List Bool), (∀ b ∈ bs, b.2.2.WF) → ∀ K, K.WF →
+      (d.2.2.gen (Code.args (Code.shares (Code.program ds).2) ks
+        (bs.map fun b => ⟨b.1, b.2.1, (Rel.Rel.tab (.ok b.2.2) : Rel b.1 b.2.1)⟩) dm)).Reps K
+        (d.2.2.den (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, rep b.2.2⟩))) := fun d hd ks bs dm hb K hK => by
+  have := Code.program_reps_args ds h d hd ks (bs.map fun b => ⟨b.1, b.2.1, Rel.Rel.tab (.ok b.2.2), rep b.2.2⟩) dm
+    (fun c hc => by
+      obtain ⟨b, hb', rfl⟩ := List.mem_map.1 hc
+      exact Rel.Rel.tab_input (hb b hb')) K hK
+  simpa only [List.map_map, Function.comp_def] using this
+
+/-- `Code.program_reps`, `Code.program_reps_args` and `Code.program_reps_tabs`: what `n.proof.sound` states. -/
 theorem Code.program_sound_all (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) :
     (∀ d ∈ (Code.program ds).1, ∀ K, K.WF →
       (d.2.2.gen (Code.shares (Code.program ds).2)).Reps K (d.2.2.den Val.empty)) ∧
-    ∀ d ∈ (Code.program ds).1, ∀ (ks : List Nat) (bs : List ArgPair) (dm : List Bool),
+    (∀ d ∈ (Code.program ds).1, ∀ (ks : List Nat) (bs : List ArgPair) (dm : List Bool),
       (∀ b ∈ bs, (∀ K, K.WF → b.2.2.1.Reps K b.2.2.2) ∧ b.2.2.1.Wf) → ∀ K, K.WF →
       (d.2.2.gen (Code.args (Code.shares (Code.program ds).2) ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.1⟩) dm)).Reps K
-        (d.2.2.den (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.2⟩))) :=
-  ⟨Code.program_reps ds h, Code.program_reps_args ds h⟩
+        (d.2.2.den (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.2⟩)))) ∧
+    ∀ d ∈ (Code.program ds).1, ∀ (ks : List Nat) (bs : List TabArg) (dm : List Bool), (∀ b ∈ bs, b.2.2.WF) → ∀ K, K.WF →
+      (d.2.2.gen (Code.args (Code.shares (Code.program ds).2) ks
+        (bs.map fun b => ⟨b.1, b.2.1, (Rel.Rel.tab (.ok b.2.2) : Rel b.1 b.2.1)⟩) dm)).Reps K
+        (d.2.2.den (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, rep b.2.2⟩))) :=
+  ⟨Code.program_reps ds h, Code.program_reps_args ds h, Code.program_reps_tabs ds h⟩
 
 end Rel.Lang
