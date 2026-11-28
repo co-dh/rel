@@ -5,6 +5,7 @@ import Rel.Lang.Laws.MssFused
 import Rel.Lang.Laws.MssEst
 import Rel.Lang.Laws.MssGreedy
 import Rel.Lang.Laws.MssScan
+import Rel.Lang.Laws.MssShape
 
 /-! # The maximum segment sum
 
@@ -78,37 +79,13 @@ rel_program mss where
     -- the greedy row (𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈
     theorem greedyFold : safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ by Rel.Lang.Tm.greedyMss_den
 
-    theorem toShape : mss = shape := calc         -- note `mss-shape`
-      mss
-        := ≜ segment
-      (𝟙÷∋)E(suffix      prefix sum)       est(≥)
-        := absorption(suffix, prefix sum)
-      (𝟙÷∋)E(suffix) E(  prefix sum)       est(≥)
-        := Eunion(prefix sum)
-      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(∋) est(≥)
-        := estUnion
-      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)) E(   est(≥)) est(≥)
-        := Ecomp((𝟙÷∋)E(prefix sum), est(≥))
-      (𝟙÷∋)E(suffix) E((𝟙÷∋)E(prefix sum)       est(≥)) est(≥)
-        := ≜ shape
-      shape
+    theorem toShape : mss = shape by Rel.Lang.Tm.toShape_den
     -- B&dM's fusion of a fold into `prefix`; its premises are the no-overflow laws (`+` associates, `0` commutes with it)
     theorem prefixFuse(e : 1 ⟶ β, S : β×β ⟶ β) if ⟨⊤e,𝟙⟩S = ⟨𝟙,⊤e⟩S, ⟨π₁ S, π₂⟩S = ⟨π₁π₁, ⟨π₁π₂,π₂⟩S⟩S : prefix ⦇[e, S]⦈ = ⦇[e, ⊤e ∪ S]⦈ʳ by Rel.Lang.Tm.prefixFuse_var_den
     theorem toFused : safe shape = safe fused by Rel.Lang.Tm.toFused_den               -- note `mss-prefix-sum`
-    theorem toGreedy : safe fused = safe greedy := calc     -- note `mss-mono`, `mss-step`, the greedy row
-      safe fused
-        := ≜ fused
-      safe (𝟙÷∋)E(suffix) E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)
-        := greedyFold
-      safe (𝟙÷∋)E(suffix) E(⦇[(𝟙÷∋)E(zero) est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
-        := estMap(zero, ≥)
-      safe (𝟙÷∋)E(suffix) E(⦇[  zero, (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ)est(≥)
-        := ≜ oplus
-      safe (𝟙÷∋)E(suffix) E(⦇[  zero, oplus]⦈ʳ)est(≥)
-        := ≜ g
-      safe (𝟙÷∋)E(suffix) E(g)est(≥)
-        := ≜ greedy
-      safe greedy
+    -- note `mss-mono`, `mss-step`, the greedy row: `greedyFold` at each suffix, then `estMap(zero, ≥)`; the steps sit
+    -- inside `E(suffix)`, where a calc step has no congruence, so the whole statement is one lemma
+    theorem toGreedy : safe fused = safe greedy by Rel.Lang.Tm.toGreedy_den
     -- `safe`: on `[x]` with `x` outside `N`, `oplus` has no value, so `scan` is empty where `greedy` holds the 0 of `[]`
     theorem toScan : safe greedy = safe scan by Rel.Lang.Tm.toScanMss_den   -- note `mss-scan`
     theorem linear : safe mss = safe scan := calc

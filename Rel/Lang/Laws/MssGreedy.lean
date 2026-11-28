@@ -63,6 +63,17 @@ abbrev Tm.mssS (T : Tab .one (.atom .i64)) {n : USize} (U : Vals (.atom .i64) n)
     Tm (.prod (.atom .i64) (.atom .i64)) (.atom .i64) :=
   .join (.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) (Tm.val T)) (Tm.cut2 (arithRow "plus") (Tm.uni U))
 
+/-- `⊤zero ∪ plus` at `(x, u)`: the seed `z` or the sum `x + u` in `U`. -/
+theorem Tm.mssS_iff (ρ : Val) (T : Tab .one (.atom .i64)) {n : USize} (U : Vals (.atom .i64) n)
+    (hU : ∀ a b, (Tm.uni U).den ρ a b → a = b) {z : Obj.El (.atom .i64)}
+    (hz : ∀ u, (∃ a, (Tm.ran (Tm.val T)).den ρ a u) ↔ u = z) (x u w : Obj.El (.atom .i64)) :
+    (Tm.mssS T U).den ρ (x, u) w ↔ w = z ∨ arithDen .i64 Ew.add ((Tm.uni U).den ρ) (x, u) w := by
+  change ((Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) (Tm.val T) : Tm (Obj.prod _ _) _).den ρ (x, u) w ∨
+    (Tm.cut2 (arithRow "plus") (Tm.uni U)).den ρ (x, u) w) ↔ _
+  rw [Tm.topSeed_den, Tm.cut2_plus_den ρ (Tm.uni U) hU]
+  refine or_congr ?_ Iff.rfl
+  rw [← hz w, Tm.ran_seed_iff]
+
 /-- The program's `est(≥)`. -/
 abbrev Tm.mssEst {n : USize} (U : Vals (.atom .i64) n) : Tm (.arr (.atom .i64)) (.atom .i64) :=
   Tm.est (Tm.dom (Tm.meet Tm.outr (Tm.comp Tm.outl (Tm.mssR U))))
@@ -122,14 +133,8 @@ theorem Tm.greedyMss_den {n : USize} {m p m0 p0 : List String} {hw : QAtomicType
         ValsB.row (o := false) (A := .atom .i64) (Gen.atom .i64 (USize.ofNat 1) m0 p0 hw0).1 i := by
       rw [Vals.row_atom, Vals.row_atom]; exact hj
     exact ⟨j, hj'.symm, hj'.symm⟩
-  have hS := Tm.cut2_plus_den ρ (Tm.uni U) hU
   have hSum := Tm.sumTm_den ρ T (Tm.uni U) hU
-  have hT : ∀ x u w, (Tm.mssS T U).den ρ (x, u) w ↔ w = z ∨ arithDen .i64 Ew.add ((Tm.uni U).den ρ) (x, u) w := fun x u w => by
-    change ((Tm.comp (.top (Tm.uni (Gen.oneV false (USize.ofNat 1)).fst)) (Tm.val T) : Tm (Obj.prod _ _) _).den ρ (x, u) w ∨
-      (Tm.cut2 (arithRow "plus") (Tm.uni U)).den ρ (x, u) w) ↔ _
-    rw [Tm.topSeed_den, hS]
-    refine or_congr ?_ Iff.rfl
-    rw [← hz w, Tm.ran_seed_iff]
+  have hT := Tm.mssS_iff ρ T U hU hz
   have hG : ∀ a b, (Tm.safeTm (Tm.sumTm T (Tm.uni U))).den ρ a b → a = b := fun a b h => ((Tm.safeG_den ρ _ a b).1 h).1
   have hGd : ∀ xs, (Tm.safeTm (Tm.sumTm T (Tm.uni U))).den ρ xs xs ↔ SumGood (foldDen ((Tm.ran (Tm.val T)).den ρ)
       (arithDen .i64 Ew.add ((Tm.uni U).den ρ))) xs := fun xs => by
