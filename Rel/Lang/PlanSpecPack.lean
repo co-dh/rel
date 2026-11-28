@@ -2,6 +2,7 @@ module
 
 public import Rel.Lang.PlanSpecPrefix
 public import Rel.Lang.PlanSpecConcat
+public import Rel.Lang.PlanSpecSelect
 
 -- exposed: every def body is a spec a downstream `rfl`/`decide`/`simp` may unfold (PLAN W.8)
 @[expose] public section
@@ -156,6 +157,42 @@ theorem spanB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n m lo hi :
       simp only [pure_bind]
       exact hkk fg2 s e ys he' hf ho hp hq
 
+theorem Grows.expandB (K w : Nat) : Grows (Plan.expandB K w) := by
+  unfold Plan.expandB
+  refine (Grows.funW fun n ws => ?_).bind fun p => ?_
+  · dsimp only
+    split
+    · exact (Grows.prefixB _ _ _).bind fun ⟨P, T⟩ => (Grows.lit _).bind fun _ => (Grows.call1 _ _).bind fun _ =>
+        (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => Grows.posB.bind fun _ => Grows.posB.bind fun _ =>
+        (Grows.scatterB _ _ _ _ _ _).bind fun _ => (Grows.prefixB _ _ _).bind fun _ =>
+        (Grows.gatherB _ _ _ _).bind fun _ => Grows.posB.bind fun _ => (Grows.gatherB _ _ _ _).bind fun _ =>
+        (Grows.mapB _ _ _ _ _ _ _ _).bind fun _ => Grows.pure _
+    · exact Grows.throw _
+  · dsimp only
+    split
+    · exact Grows.pure _
+    · exact Grows.throw _
+
+theorem Typed.expandB {lv K w : Nat} (hK : lv ≤ K) (hw : lv ≤ w) :
+    Typed lv (fun r => lv ≤ r.1 ∧ lv ≤ r.2.1 ∧ lv ≤ r.2.2) (Plan.expandB K w) := by
+  unfold Plan.expandB
+  refine (Typed.funW hK (fun _ h => by simp at h; omega) fun n ws hn' hws => ?_).bind fun p hp => ?_
+  · rcases ws with _ | ⟨w', _ | ⟨_, _⟩⟩
+    · exact Typed.throw _
+    · have hw' : lv ≤ w' := hws w' (by simp)
+      exact (Typed.prefixB hn' hw').bind fun ⟨P, T⟩ hPT => (Typed.lit _).bind fun one h1 =>
+        (Typed.call1 (by simp; omega)).bind fun T1 hT1 => (Typed.mapB hn' hPT.1 hw').bind fun o ho =>
+        Typed.posB.bind fun a ha => Typed.posB.bind fun b hb => Typed.scatterB.bind fun s hs =>
+        (Typed.prefixB hT1 hs).bind fun r hr => Typed.gatherB.bind fun G hG => Typed.posB.bind fun c hc =>
+        Typed.gatherB.bind fun g hg => (Typed.mapB hPT.2 hc hg).bind fun u hu =>
+        Typed.pure ⟨hPT.2, fun x hx => by simp at hx; omega⟩
+    · exact Typed.throw _
+  · obtain ⟨T, _ | ⟨G, _ | ⟨u, _ | ⟨_, _⟩⟩⟩⟩ := p
+    · exact Typed.throw _
+    · exact Typed.throw _
+    · exact Typed.pure ⟨hp.1, hp.2 G (by simp), hp.2 u (by simp)⟩
+    · exact Typed.throw _
+
 /-- **`ite1` builds the branch the bit `bt` picks**: the branches' one register each, `nth` of the `if`'s result. -/
 theorem ite1_builds {fg : Array Fun × Array Fun} {rs : Array Val} {c : Nat} {bt : Bool} {t e : Bld Nat}
     {vt ve : Val} (hc : rs[c]? = some (.bit bt)) (ht : Builds abiOf fg fg (do let r ← t; Pure.pure #[r]) rs #[vt])
@@ -252,5 +289,122 @@ theorem cellsBoundB_builds {fg fg' : Array Fun × Array Fun} {rs : Array Val} {n
       (Builds.litG fun r R hr m => Builds.pure fun who => by simp [reg, hr]; rfl)
       (Builds.litG fun r R hr m => Builds.pure fun who => by simp [reg, hr]; rfl)
   · exact Builds.guard hok4 (hk R4 fun h => m4 (m3 (m2 (m1 h))))
+
+theorem out_decLt' (a b : USize) : Out.out (a.decLt b) = .ok #[Val.bit (decide (a < b))] := by
+  by_cases h : a < b
+  · simp only [h, decide_true]; exact out_decLt h
+  · simp only [h, decide_false]; exact out_decLt_not h
+
+theorem out_decEq (a b : USize) : Out.out (a.decEq b) = .ok #[Val.bit (decide (a = b))] := by
+  by_cases h : a = b
+  · rw [Subsingleton.elim (a.decEq b) (isTrue h)]; simp only [h, decide_true]; rfl
+  · rw [Subsingleton.elim (a.decEq b) (isFalse h)]; simp only [h, decide_false]; rfl
+
+/-- **The `wide` test of `packB`**: `m < T · k` on the size registers `m`, `T`, as `USize.mul` and `USize.decLt` read
+    them. -/
+theorem wideB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {m T k : Nat} {mv Tv : USize}
+    (hm : rs[m]? = some (.size mv)) (hT : rs[T]? = some (.size Tv)) :
+    Builds abiOf fg fg (do
+      let r ← (do let c ← lit (.size k.toUSize); let q ← call1 (kernel% USize.mul) #[T, c]
+                  call1 (kernel% USize.decLt) #[m, q])
+      Pure.pure #[r]) rs #[Val.bit (decide (mv < Tv * k.toUSize))] := by
+  simp only [bind_assoc]
+  refine Builds.litG fun c R1 hc1 m1 => ?_
+  up m1 [hm hT]
+  refine Builds.call1G (vs := #[.size Tv, .size k.toUSize]) (v := .size (Tv * k.toUSize)) (by abiK) (by rop) ?_ ?_ rfl
+    fun q R2 hq2 m2 => ?_
+  · rw [List.mapM_toArray]; simp [reg, hT, hc1]; rfl
+  · simp [arg]; rfl
+  up m2 [hm]
+  refine Builds.call1G (vs := #[.size mv, .size (Tv * k.toUSize)]) (v := Val.bit (decide (mv < Tv * k.toUSize)))
+    (by abiK) (by rop) ?_ ?_ rfl fun b R3 hb3 m3 => Builds.pure fun who => ?_
+  · rw [List.mapM_toArray]; simp [reg, hm, hq2]; rfl
+  · simp [arg]; exact out_decLt' _ _
+  · simp [reg, hb3]; rfl
+
+/-- **`packB`'s test of an empty payload**: `m = 0` on the size register `m`, as `USize.decEq` reads it. -/
+theorem decEq0B_builds {fg : Array Fun × Array Fun} {rs : Array Val} {m : Nat} {mv : USize}
+    (hm : rs[m]? = some (.size mv)) :
+    Builds abiOf fg fg (do
+      let r ← (do let c ← lit (.size 0); call1 (kernel% USize.decEq) #[m, c]); Pure.pure #[r]) rs
+      #[Val.bit (decide (mv = 0))] := by
+  simp only [bind_assoc]
+  refine Builds.litG fun c R1 hc1 m1 => ?_
+  up m1 [hm]
+  refine Builds.call1G (vs := #[.size mv, .size 0]) (v := Val.bit (decide (mv = 0))) (by abiK) (by rop) ?_ ?_ rfl
+    fun b R2 hb2 m2 => Builds.pure fun who => ?_
+  · rw [List.mapM_toArray]; simp [reg, hm, hc1]; rfl
+  · simp [arg]; exact out_decEq _ _
+  · simp [reg, hb2]; rfl
+
+theorem Free.discard {α : Type} {b : Bld α} (hb : Free b) : Free (Functor.discard b) := by
+  have e : Functor.discard b = (b >>= fun _ => Pure.pure PUnit.unit) := by simp [Functor.discard, Functor.mapConst, Functor.map]
+  rw [e]; exact hb.bind fun _ => Free.pure _
+
+macro "free''" : tactic => `(tactic| repeat (first
+    | with_reducible apply Free.discard
+    | with_reducible apply Free.ite
+    | with_reducible apply Free.bind
+    | with_reducible apply Free.pure
+    | with_reducible apply Free.lit
+    | with_reducible apply Free.nth
+    | with_reducible apply Free.call1
+    | with_reducible apply Free.emit
+    | intro _))
+
+theorem Free.cellsBoundB (what : String) (n m : Nat) : Free (Plan.cellsBoundB what n m) := by
+  unfold Plan.cellsBoundB Plan.andB Plan.ite1 Plan.guard
+  free''
+
+/-- **The head of `packB`'s array case builds**: `cellsBoundB`, `spanB`, `mapB .sub n e s` (the widths `w`), `prefixB .add`
+    (`P`, the last word `T`). Every step before `prefixB` reads nothing of its block (`Free`) or is `spanB`, so the
+    continuation `kk` is stated on registers `R` extending `rs`; the kernel answers are premises, as in
+    `expandB_builds`. -/
+theorem packHeadB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {n m lo hi : Nat} {nv mv Tv : USize}
+    {what : String} {lc hc z cm sc dc ec z0 wc : Enc} {f1 f2 f3 f4 : Option UInt64} {r0 : Enc × Option UInt64}
+    {kk : Nat × Nat × Nat × Nat × Nat → Bld (Array Nat)} {out : Array Val}
+    (hn : rs[n]? = some (.size nv)) (hm : rs[m]? = some (.size mv)) (hlo : rs[lo]? = some (Reg.put lc))
+    (hhi : rs[hi]? = some (Reg.put hc)) (h1 : nv < 2 ^ 63) (h2 : mv < 2 ^ 63) (h3 : ¬ 2 ^ 63 / (mv + 1) < nv + 1)
+    (hz : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv 0 = .ok z)
+    (hs : kscan .max false .i64 .i64 nv none [(nv, lc), (nv, z)] [] [] = .ok (sc, f1))
+    (hcm : kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) nv mv.toUInt64 = .ok cm)
+    (hd : kscan .min false .i64 .i64 nv none [(nv, hc), (nv, cm)] [] [] = .ok (dc, f2))
+    (he : kscan .max false .i64 .i64 nv none [(nv, dc), (nv, sc)] [] [] = .ok (ec, f3))
+    (hw : kscan .sub false .i64 .i64 nv none [(nv, ec), (nv, sc)] [] [] = .ok (wc, f4))
+    (hz0 : colConst nv 0 = .ok z0)
+    (hk0 : kscan .add false .i64 .i64 nv (some z0) [(nv, z0), (nv, wc)] [] [] = .ok r0) (hr0 : nv ≠ 0 → r0.2.isSome)
+    (hT : Tv = if nv = 0 then 0 else (r0.2.getD 0).toUSize + 0) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (s e w P T : Nat) (R : Array Val), (∃ a, fg2.1 = fg.1 ++ a) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → R[s]? = some (Reg.put sc) → R[e]? = some (Reg.put ec) →
+      R[w]? = some (Reg.put wc) → R[P]? = some (Reg.put r0.1) → R[T]? = some (.size Tv) →
+      ∃ fg', Builds abiOf fg2 fg' (kk (s, e, w, P, T)) R out) :
+    ∃ fg', Builds abiOf fg fg' (do
+      cellsBoundB what n m
+      let (s, e) ← spanB n m lo hi
+      let w ← mapB .sub n e s
+      let (P, T) ← prefixB .add n w
+      kk (s, e, w, P, T)) rs out := by
+  have key : ∀ X : Unit → Bld (Array Nat), (cellsBoundB what n m >>= X) =
+      ((cellsBoundB what n m >>= fun _ => Pure.pure (#[] : Array Nat)) >>= fun _ => X ()) := fun X => by simp
+  rw [key]
+  refine Builds.bindF (Free.bind (Free.cellsBoundB _ _ _) fun _ => Free.pure _)
+    (cellsBoundB_builds (out := (#[] : Array Val)) hn hm h1 h2 h3 fun R _ => Builds.pure fun who => by simp; rfl) fun r xs hr => ?_
+  have hn1 := get_app (xs := xs) hn
+  have hm1 := get_app (xs := xs) hm
+  have hlo1 := get_app (xs := xs) hlo
+  have hhi1 := get_app (xs := xs) hhi
+  refine spanB_builds hn1 hm1 hlo1 hhi1 hz hs hcm hd he hfo ?_
+  intro fg2 s e ys he1 hf hfo2 hsr her
+  have hn2 := get_app (xs := ys) hn1
+  refine Builds.bind1F (Free.mapB _ _ _ _ _ _ _ _) (mapB_builds hn2 her (enc_get_put _) hsr (enc_get_put _)
+    (by rop) (qtype_get_put _) (qtype_get_put _) (by rop) (by rop) hw) fun w R hwR hE => ?_
+  up hE [hn2 hsr her]
+  refine prefixB_builds (nv := nv) (av := wc) (z := z0) (r := r0) (by rop) hn2 hwR hz0 hk0 hr0 hfo2 ?_
+  intro fg3 P Tr ys' he3 hf3 hfo3 hP hTr
+  rw [← hT] at hTr
+  obtain ⟨a1, ha1⟩ := he1
+  obtain ⟨a3, ha3⟩ := he3
+  refine hkk fg3 s e w P Tr (R ++ ys') ⟨a1 ++ a3, by rw [ha3, ha1, Array.append_assoc]⟩ (hf.trans hf3) hfo3
+    (fun h => get_app (hE (get_app (get_app h)))) (get_app hsr) (get_app her) (get_app hwR) hP hTr
 
 end Rel.Lang.Plan
