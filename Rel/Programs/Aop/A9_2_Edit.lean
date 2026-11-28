@@ -31,14 +31,16 @@ rel_program aopA9_2_Edit where
     -- the rows below iterate `editTailSnd`'s step along `suffix = tail*`, `Q` standing for `R°` (reflexive, transitive)
     theorem editSuffixRight(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropTgt ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : edit (𝟙×suffix) ⊑ Q edit by Rel.Lang.Tm.editSuffixRight_den  -- Freyd.Alg.RelSet.Edit.edit_suffix_right, 09-dynamic.typ:517
     theorem editSuffixLeft(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropSrc ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : edit (suffix×𝟙) ⊑ Q edit by Rel.Lang.Tm.editSuffixLeft_den  -- Freyd.Alg.RelSet.Edit.edit_suffix_left, 09-dynamic.typ:519
-    -- freyd's `V ≜ suffix°×suffix°`: the converse of the row `suffix` at `[α]` has no universe, so only `V° = Vc` is statable
+    -- freyd's `V ≜ suffix°×suffix°`: the converse of the row `suffix` at `[α]` has no universe, so `V` is a parameter with
+    -- `V° ⊑ Vc` (stronger form); `F(U,V) = 1+(U×V)` is the junction `[𝟙(1) inl, ⟨π₁U,π₂V⟩ inr]`, `U` any (freyd's `⊤`)
     theorem editVrecip(Q : [α+(α+α)] ⟶ [α+(α+α)]) if dropSrc ⊑ Q, dropTgt ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : edit Vc ⊑ Q edit by Rel.Lang.Tm.editVrecip_den  -- Freyd.Alg.RelSet.Edit.edit_Vrecip, 09-dynamic.typ:357
+    theorem editV(V : [α]×[α] ⟶ [α]×[α], Q : [α+(α+α)] ⟶ [α+(α+α)]) if V° ⊑ Vc, dropSrc ⊑ Q, dropTgt ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q : V edit° ⊑ edit° Q° by Rel.Lang.Tm.editV_den  -- Freyd.Alg.RelSet.Edit.edit_V, 09-dynamic.typ:513
+    theorem editThinCondition(U : (α+(α+α)) ⟶ (α+(α+α)), V : [α]×[α] ⟶ [α]×[α], Q : [α+(α+α)] ⟶ [α+(α+α)]) if V° ⊑ Vc, dropSrc ⊑ Q, dropTgt ⊑ Q, 𝟙 ⊑ Q, Q Q ⊑ Q, ⟨π₁U, π₂Q°⟩cons ⊑ cons Q° : [𝟙(1) inl, ⟨π₁U,π₂V⟩ inr] [𝟙(1) inl, ⟨π₁,π₂ edit°⟩ inr] [nil, cons] ⊑ [𝟙(1) inl, ⟨π₁,π₂ edit°⟩ inr] [nil, cons] Q° by Rel.Lang.Tm.editThinCondition_den  -- Freyd.Alg.RelSet.Edit.edit_thin_condition, 09-dynamic.typ:509
 
 -- not ported: F_obj (09-dynamic.typ:335), edit_cata (338), length_cata (349), R_eq (352), V_eq (355): syntactic identities once `edit`, `R`, `V`, `length` are defined as these folds
 -- not ported: editFn_dropTgt_of_eq (09-dynamic.typ:403): host pointwise fact about `edit` as a Lean function; its content is `Rel.Lang.editDrop_core`, which `editDropTgt` uses
 -- not ported: α_pres_R (09-dynamic.typ:387), edit_mono (505): `cons` is not monotone on `R = length ≤(N,N) length°` (`Int64.ofNat` lengths wrap: `|xs| = 0 ≤ |ys| = 2^63−1`, but `ofNat 1 ≤ ofNat 2^63` fails); at a generic `Q` the row is its own premise
--- not ported: edit_V (09-dynamic.typ:513): the converse of `editVrecip`, `V edit° ⊑ edit° R`; it needs `V = suffix°×suffix°` and `edit°`, whose converse at `[α]×[α]` has no universe (a lazy converse of a row reads it on its source's universe); `editVrecip` is its content
--- not ported: edit_thin_condition (09-dynamic.typ:509), edit_branch (537), edit_body_split (527): all three read `V = suffix°×suffix°` (thin(U×V), thin(F(⊤,V))), whose converse of `suffix` at `[α]` has no universe (see `editVrecip`); edit_branch and edit_body_split also take `P((𝟙×X)cons)` = powerRel at a generic relation `X` (powerRel has a port only at a map, and `X`, the fixed point of the body, is not one), `Λ(editAlg°)` over the sum object `1+(Op×[pair])` and Proposition 9.1 `thin` over the base bifunctor `F(⊤,V)`; `edit_body_split` is not a plain union split of the step body: its content is that thinning/`P`/`est(R)` distribute over the two disjoint ranges of `[base,step]`
+-- not ported: edit_branch (537), edit_body_split (527): `V` and `F(⊤,V)` are statable as in `editThinCondition`; the one blocker is `P((𝟙×X)cons)` / `P(F(X)[nil,cons])`, powerRel at the relation `X` (the fixed point of the body, not a map): `E(f)` stands for `P(f)` only at a map (`estMap`), and `P(Y) = (∋°\(Y∋°)) ∩ ((∋Y)/∋)` does not elaborate (a right division by `∋` needs keys); replacing `P` by `E` on both sides is a different law, not a stronger form
 -- not ported: mle_head_column (09-dynamic.typ:596): host functions `mle`, `column`, `head` over `ConsList`, no relation statement
 
 end Rel.Programs

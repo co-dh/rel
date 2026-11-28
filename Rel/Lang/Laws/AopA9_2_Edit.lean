@@ -391,4 +391,79 @@ theorem Tm.editVrecip_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum
     (fun y => (w1, y)) (fun es y c h => Tm.editTgtStep ρ hu hT es w1 y c h) w2 t' fs hf
   exact ⟨gs, ht _ _ _ hq hq', (hE gs _).2 ⟨⟨m, hm⟩, hg.symm⟩⟩
 
+/-- **edit-V** at any `V` with `V° ⊑ suffix×suffix` (freyd's `V = suffix°×suffix°` is one): `V edit° ⊑ edit° Q°`,
+    the converse of `Tm.editVrecip_den`. -/
+theorem Tm.editV_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    {V : Tm (.prod (.arr B) (.arr B)) (.prod (.arr B) (.arr B))} (ρ : Val)
+    (hV : Tm.den ρ V.conv ⊑ Tm.den ρ ((Tm.outl.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B))).pair
+          (Tm.outr.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B)))))
+    (hS : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepST B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (hT : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepT B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (h1 : Tm.den ρ Tm.id ⊑ Tm.den ρ Q) (h2 : Tm.den ρ (Q.comp Q) ⊑ Tm.den ρ Q) :
+    Tm.den ρ (V.comp (Tm.id.comp (Tm.editF P B)).conv) ⊑ Tm.den ρ ((Tm.id.comp (Tm.editF P B)).conv.comp Q.conv) := by
+  refine Core.Rel.le_iff.2 fun p es h => ?_
+  obtain ⟨q, hv, b, hb, he⟩ := h
+  obtain rfl : es = b := hb
+  obtain ⟨fs, hq, hf⟩ := Core.Rel.le_iff.1 (Tm.editVrecip_den ρ hS hT h1 h2) es p ⟨q, he, Core.Rel.le_iff.1 hV q p hv⟩
+  exact ⟨fs, ⟨fs, rfl, hf⟩, hq⟩
+
+/-- **edit-thin** (Proposition 9.4 at `F(U,V) = 1+(U×V)`, written as the junction `[𝟙 inl, ⟨π₁U,π₂V⟩ inr]`):
+    `F(U,V) F(𝟙,edit°) [nil,cons] ⊑ F(𝟙,edit°) [nil,cons] Q°`, from `Tm.editV_den` and `cons` lifting `Q°` under `U`
+    (freyd's `α_pres_R` at `U = ⊤`); the `1` summand needs only `𝟙 ⊑ Q`. -/
+theorem Tm.editThinCondition_den {B X M : Obj} {P : Tm X M} {Q : Tm (.arr (.sum B (.sum B B))) (.arr (.sum B (.sum B B)))}
+    {U : Tm (.sum B (.sum B B)) (.sum B (.sum B B))} {V : Tm (.prod (.arr B) (.arr B)) (.prod (.arr B) (.arr B))}
+    (ρ : Val)
+    (hV : Tm.den ρ V.conv ⊑ Tm.den ρ ((Tm.outl.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B))).pair
+          (Tm.outr.comp (Tm.prim (rowOf "suffix") : Tm (.arr B) (.arr B)))))
+    (hS : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepST B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (hT : Tm.den ρ ((Tm.foldr (Tm.ran (P.comp (Tm.nil.pair Tm.nil))) (Tm.dropStepT B)).comp Tm.outr) ⊑ Tm.den ρ Q)
+    (h1 : Tm.den ρ Tm.id ⊑ Tm.den ρ Q) (h2 : Tm.den ρ (Q.comp Q) ⊑ Tm.den ρ Q)
+    (hC : Tm.den ρ (((Tm.outl.comp U).pair (Tm.outr.comp Q.conv)).comp
+          (Tm.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B))))) ⊑
+        Tm.den ρ ((Tm.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B)))).comp
+          Q.conv)) :
+    Tm.den ρ ((((Tm.inl.conv.comp (Tm.id.comp Tm.inl)).join
+          (Tm.inr.conv.comp (((Tm.outl.comp U).pair (Tm.outr.comp V)).comp Tm.inr))).comp
+        ((Tm.inl.conv.comp (Tm.id.comp Tm.inl)).join
+          (Tm.inr.conv.comp ((Tm.outl.pair (Tm.outr.comp (Tm.id.comp (Tm.editF P B)).conv)).comp Tm.inr)))).comp
+        ((Tm.inl.conv.comp (Tm.nil : Tm .one (.arr (.sum B (.sum B B))))).join (Tm.inr.conv.comp
+          (Tm.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B))))))) ⊑
+      Tm.den ρ ((((Tm.inl.conv.comp (Tm.id.comp Tm.inl)).join
+          (Tm.inr.conv.comp ((Tm.outl.pair (Tm.outr.comp (Tm.id.comp (Tm.editF P B)).conv)).comp Tm.inr))).comp
+        ((Tm.inl.conv.comp (Tm.nil : Tm .one (.arr (.sum B (.sum B B))))).join (Tm.inr.conv.comp
+          (Tm.prim (rowOf "cons") : Tm (.prod (.sum B (.sum B B)) (.arr (.sum B (.sum B B)))) (.arr (.sum B (.sum B B))))))).comp
+        Q.conv) := by
+  have hEV : ∀ p q es, Tm.den ρ V p q → Tm.den ρ (Tm.editF P B) es q →
+      ∃ fs, Tm.den ρ (Tm.editF P B) fs p ∧ Tm.den ρ Q es fs := fun p q es hv he => by
+    obtain ⟨fs, ⟨b, hb, hf⟩, hq⟩ := Core.Rel.le_iff.1 (Tm.editV_den ρ hV hS hT h1 h2) p es ⟨q, hv, es, rfl, he⟩
+    obtain rfl : fs = b := hb
+    exact ⟨fs, hf, hq⟩
+  have hCp := Core.Rel.le_iff.1 hC
+  have h1p := Core.Rel.le_iff.1 h1
+  refine Core.Rel.le_iff.2 fun s l h => ?_
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.union, Core.Rel.recip, Core.Rel.inl, Core.Rel.inr, Core.Rel.graph,
+    Core.Rel.id, Core.Rel.rpair, Prim.den_cons, Tm.nil, Prim.den_nilRow, nilDen] at h hCp h1p ⊢
+  obtain ⟨b, ⟨b1, hb1, hb⟩, hl⟩ := h
+  rcases s with u | ⟨o, p⟩
+  · rcases hb1 with ⟨_, -, c, -, rfl⟩ | ⟨_, hc, _⟩
+    · rcases hb with ⟨_, -, d, -, rfl⟩ | ⟨_, hd, _⟩
+      · rcases hl with ⟨_, -, hn⟩ | ⟨_, he, _⟩
+        · exact ⟨l, ⟨Sum.inl c, Or.inl ⟨u, rfl, c, trivial, rfl⟩, Or.inl ⟨c, rfl, hn⟩⟩, h1p l l rfl⟩
+        · exact nomatch he
+      · exact nomatch hd
+    · exact nomatch hc
+  · rcases hb1 with ⟨_, hc, _⟩ | ⟨r, hr, w, ⟨⟨_, rfl, hu⟩, _, rfl, hv⟩, rfl⟩
+    · exact nomatch hc
+    obtain rfl := Sum.inr.inj hr
+    rcases hb with ⟨_, hd, _⟩ | ⟨w', hw', t, ⟨ht1, _, rfl, es, ht2, hes⟩, rfl⟩
+    · exact nomatch hd
+    obtain rfl := Sum.inr.inj hw'
+    rcases hl with ⟨_, he, _⟩ | ⟨t', he, hcons⟩
+    · exact nomatch he
+    obtain rfl := Sum.inr.inj he
+    obtain ⟨fs, hf, hq⟩ := hEV p w.2 es hv hes
+    obtain ⟨l', hl', hql⟩ := hCp (o, fs) l ⟨(w.1, es), ⟨⟨o, rfl, hu⟩, fs, rfl, hq⟩, by rw [hcons, ht1, ht2]⟩
+    exact ⟨l', ⟨Sum.inr (o, fs), Or.inr ⟨(o, p), rfl, (o, fs), ⟨rfl, p, rfl, fs, rfl, hf⟩, rfl⟩,
+      Or.inr ⟨(o, fs), rfl, hl'⟩⟩, hql⟩
+
 end Rel.Lang
