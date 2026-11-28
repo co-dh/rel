@@ -4782,8 +4782,8 @@
   },
   {
     "id": "GP-1c",
-    "mark": "▶",
-    "sha": "",
+    "mark": "✓",
+    "sha": "f44a874",
     "deps": [],
     "content": "a theorem with no `by` and no `calc` is an elaboration error (TestIO conv, EmbedTest unit, PrefixCata unprovedWitness)",
     "note": "",
