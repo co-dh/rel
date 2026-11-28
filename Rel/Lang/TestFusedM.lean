@@ -21,12 +21,12 @@ rel_program fusedMT where
     xsm : 1 ⟶ M ≜ xs sum
     yn : K ⟶ M ≜ ys length
     ysm : K ⟶ M ≜ ys sum
-    check xn = {(∗,300)}
-    check xsm = {(∗,1650)}
-    check zn = {(∗,2400)}
-    check zsm = {(∗,13200)}
-    check yn = {(0,2),(1,2),(2,2)}
-    check ysm = {(1,19999),(2,5)}
+    test xn = {(∗,300)}
+    test xsm = {(∗,1650)}
+    test zn = {(∗,2400)}
+    test zsm = {(∗,13200)}
+    test yn = {(0,2),(1,2),(2,2)}
+    test ysm = {(1,19999),(2,5)}
 
 -- by hand: `xs` is `1 2 … 10` thirty times: 300 elements, sum 30 × 55 = 1650; `x8` is `xs` eight times: 2400 elements, sum 13200. `ys`: every row has two elements,
 -- row 2 sums to 5 + 0 = 5; row 0 sums to 19999 + 1 = 20000, which `M` does not hold, so it has no sum; row 1
@@ -52,9 +52,9 @@ rel_program fusedGT where
     gn : 1 ⟶ M ≜ lenG(x4)
     gs : 1 ⟶ M ≜ sumG(x4)
     gz : 1 ⟶ M ≜ sumG(zs)
-    check gn = {(∗,40)}
-    check gs = {(∗,220)}
-    check gz = 𝟘
+    test gn = {(∗,40)}
+    test gs = {(∗,220)}
+    test gz = 𝟘
 
 -- by hand: `x4` is `1 2 … 10` four times: 40 elements, sum 4 × 55 = 220; `zs` sums to 20000, not in `M`.
 

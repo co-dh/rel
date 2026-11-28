@@ -18,24 +18,24 @@ rel_program frameRandT where
     two : 1 ⟶ P ≜ {(∗,2)}
     three : 1 ⟶ R ≜ {(∗,3)}
     -- seed 0: splitmix64's first three outputs halved
-    check rand(s0, x) = {(0,8147104208329303767),(1,3980143261097177850),(2,243808509735772839)}
-    check shuffle(s0, x) = {(0,C),(1,B),(2,A)}
-    check sample(s0, two, x) = {(0,C),(1,B)}
+    test rand(s0, x) = {(0,8147104208329303767),(1,3980143261097177850),(2,243808509735772839)}
+    test shuffle(s0, x) = {(0,C),(1,B),(2,A)}
+    test sample(s0, two, x) = {(0,C),(1,B)}
     -- same seed, same answer: the draws at seed 42 are those at seed 0 shifted by 42 counters
-    check rand(s42, x) = {(0,283244664701664340),(1,675551852842775707),(2,7350826267122727452)}
-    check randomSplit(s42, half, y) = {(0,A),(1,B),(4,E),(5,F),(6,G),(7,H)}
-    check randomRest(s42, half, y) = {(2,C),(3,D)}
-    check count(randomSplit(s42, half, y)) = {(∗,6)}
-    check kFolds(s42, three, y) = {(0,1),(1,1),(2,0),(3,0),(4,0),(5,1),(6,1),(7,2)}
+    test rand(s42, x) = {(0,283244664701664340),(1,675551852842775707),(2,7350826267122727452)}
+    test randomSplit(s42, half, y) = {(0,A),(1,B),(4,E),(5,F),(6,G),(7,H)}
+    test randomRest(s42, half, y) = {(2,C),(3,D)}
+    test count(randomSplit(s42, half, y)) = {(∗,6)}
+    test kFolds(s42, three, y) = {(0,1),(1,1),(2,0),(3,0),(4,0),(5,1),(6,1),(7,2)}
     -- the stream's first two draws: splitmix64 at counters 0, 1 and at 42, 43
-    check take(two, mkRandom(s0)) = {(0,8147104208329303767),(1,3980143261097177850)}
-    check take(two, mkRandom(s42)) = {(0,283244664701664340),(1,675551852842775707)}
+    test take(two, mkRandom(s0)) = {(0,8147104208329303767),(1,3980143261097177850)}
+    test take(two, mkRandom(s42)) = {(0,283244664701664340),(1,675551852842775707)}
     -- groups u = A…D, v = E…H; seed 0 shuffles `y` to C E G F B H A D, so the first two of u are C B, of v E G;
     -- seed 42 to A B H E F G C D: A B of u, H E of v
-    check stratifiedSample(s0, two, g, y) = {(0,C),(1,E),(2,G),(3,B)}
-    check stratifiedSample(s42, two, g, y) = {(0,A),(1,B),(2,H),(3,E)}
+    test stratifiedSample(s0, two, g, y) = {(0,C),(1,E),(2,G),(3,B)}
+    test stratifiedSample(s42, two, g, y) = {(0,A),(1,B),(2,H),(3,E)}
     -- one group: `sample`
-    check stratifiedSample(s0, two, ⊤ {(∗,u)}, x) = sample(s0, two, x)
+    test stratifiedSample(s0, two, ⊤ {(∗,u)}, x) = sample(s0, two, x)
 
 
 

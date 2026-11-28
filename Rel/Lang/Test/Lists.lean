@@ -64,11 +64,11 @@ rel_program ats where
     print x at(1)
     print x at(2)
     print x at(3)
-    check x at(0) = x head
-    check x tail at(0) = x at(1)
-    check x tail at(1) = x at(2)
-    check x tail at(2) = x at(3)
-    check x at(3) = 𝟘
+    test x at(0) = x head
+    test x tail at(0) = x at(1)
+    test x tail at(1) = x at(2)
+    test x tail at(2) = x at(3)
+    test x at(3) = 𝟘
 #guard ats.prints == ["x at(0) = {(a, 3), (b, 1)}", "x at(1) = {(a, 1), (b, 5)}", "x at(2) = {(a, 2)}",
   "x at(3) = {}"]
 -- `at(k)` is `⟨𝟙, ⊤ {k}⟩ at` on an i64 index: the first, the third and an out-of-range position of a list column, and
@@ -98,8 +98,8 @@ rel_program listsLifted where
     Fm : J ⟶ K×N ≜ {(i,i)}⊤(J,K)⟨𝟙,R₀⟩ ∪ ({(j,j)}⊤(J,K)⟨𝟙,R₁⟩)
     f(S : K ⟶ N) : K ⟶ [[N]] ≜ ⟨S,Λ(S)⟩cons inits ∪ (Λ(S)cat°π₁ tails)
     fF : J ⟶ K×[[N]] ≜ f(Fm)
-    check {(i,i)}fF = {(i,i)}⊤(J,K)⟨𝟙,f(R₀)⟩
-    check {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
+    test {(i,i)}fF = {(i,i)}⊤(J,K)⟨𝟙,f(R₀)⟩
+    test {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
 
 
 

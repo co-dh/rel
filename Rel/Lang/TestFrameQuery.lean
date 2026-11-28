@@ -49,18 +49,18 @@ open Rel.Programs.prelude queryN in
 rel_program query3 where
     P : 1 ⟶ N ≜ ext(ext(D))
     -- T = 10: key k sums Tk + 50T(T−1) over T rows (increasing in k): 4990, 4980, 4970 for k = 49, 48, 47
-    check q1(sales(P)) = {(0,(49,4990)),(1,(48,4980)),(2,(47,4970))}
+    test q1(sales(P)) = {(0,(49,4990)),(1,(48,4980)),(2,(47,4970))}
     -- T = 50 rows per r = i mod 20 = a + 4b, sum Tr + 10T(T−1); group r is position r, sorted r = 19…0
-    check q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,50)}⟩times, ⊤ {(∗,24500)}⟩plus⟩
+    test q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,50)}⟩times, ⊤ {(∗,24500)}⟩plus⟩
     -- region g: products p < 50, p ≡ g (4): 13,13,12,12 of them summing 312,325,288,300; T·Σp + |S|·50T(T−1)
-    check q3(sales(P)) = {(0,(0,61620)),(1,(1,61750)),(2,(2,56880)),(3,(3,57000))}
+    test q3(sales(P)) = {(0,(0,61620)),(1,(1,61750)),(2,(2,56880)),(3,(3,57000))}
     -- T = 100 rows per key; sorted row p is (p div T, t = p mod T), running sum 0+…+t
-    check q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨𝟙, ⊤ {(∗,100)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩
+    test q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⟨𝟙, ⊤ {(∗,100)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩
     r4 : N ⟶ N×N ≜ q4(ticks(P))
-    check q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,4950)}⟩
+    test q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,4950)}⟩
     -- keys ≥ 50 unmatched: 50T rows; matched rows sum T(1+…+50)
     l5 : N ⟶ (N×N)×(1+(N×N)) ≜ lj5(sales(P))
-    check q5(l5) = {(∗,(500,12750))}
+    test q5(l5) = {(∗,(500,12750))}
 
 
 
@@ -69,15 +69,15 @@ open Rel.Programs.prelude queryN in
 rel_program query4 where
     P : 1 ⟶ N ≜ ext(ext(ext(D)))
     -- T = 100: 100k + 495000, 499900, 499800, 499700 for k = 49, 48, 47
-    check q1(sales(P)) = {(0,(49,499900)),(1,(48,499800)),(2,(47,499700))}
-    check q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,500)}⟩times, ⊤ {(∗,2495000)}⟩plus⟩
-    check q3(sales(P)) = {(0,(0,6466200)),(1,(1,6467500)),(2,(2,5968800)),(3,(3,5970000))}
-    check q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨𝟙, ⊤ {(∗,1000)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩
+    test q1(sales(P)) = {(0,(49,499900)),(1,(48,499800)),(2,(47,499700))}
+    test q2(cells(P)) = ran(ext({(∗,0),(∗,1)})) ⟨⊤ {(∗,19)}, 𝟙⟩minus ⟨⟨⟨𝟙, ⊤ {(∗,4)}⟩mod, ⟨𝟙, ⊤ {(∗,4)}⟩div⟩, ⟨⟨𝟙, ⊤ {(∗,500)}⟩times, ⊤ {(∗,2495000)}⟩plus⟩
+    test q3(sales(P)) = {(0,(0,6466200)),(1,(1,6467500)),(2,(2,5968800)),(3,(3,5970000))}
+    test q4(ticks(P)) = ran(P) ⟨⟨𝟙, ⊤ {(∗,1000)}⟩div, ⟨𝟙, ⊤ {(∗,1000)}⟩mod ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div⟩
     -- T = 1000: each key's total 0+…+999
     r4 : N ⟶ N×N ≜ q4(ticks(P))
-    check q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,499500)}⟩
+    test q4t(r4) = ran(D) ⟨𝟙, ⊤ {(∗,499500)}⟩
     l5 : N ⟶ (N×N)×(1+(N×N)) ≜ lj5(sales(P))
-    check q5(l5) = {(∗,(5000,127500))}
+    test q5(l5) = {(∗,(5000,127500))}
 
 
 

@@ -23,14 +23,14 @@ rel_program dateLitT where
     -- a set literal, the day integer form beside it, the same rows
     d : N ⟶ D ≜ {(0,2024.01.15),(1,1969.12.31),(2,2024.02.29),(3,1970.01.01),(4,1900.01.01),(5,2000.02.29)}
     e : N ⟶ D ≜ {(0,19737),(1,-1),(2,19782),(3,0),(4,-25567),(5,11016)}
-    check d = e
+    test d = e
     -- a pair of dates
-    check {(2024.01.15,2024.02.29)} = {(19737,19782)}
+    test {(2024.01.15,2024.02.29)} = {(19737,19782)}
     -- `<` against the integer form: d(i) < e(j) for some j, every i but the largest, 2 (19782)
-    check dom(d < e°) = {(0,0),(1,1),(3,3),(4,4),(5,5)}
+    test dom(d < e°) = {(0,0),(1,1),(3,3),(4,4),(5,5)}
     -- times: 19737·86400 + 12·3600 + 30·60 seconds and half of one; the last nanosecond before 1970
     t : N ⟶ T ≜ {(0,2024.01.15D12:30:00.5),(1,1969.12.31D23:59:59.999999999),(2,1970.01.01D00:00:00)}
-    check t = {(0,1705321800500000000),(1,-1),(2,0)}
+    test t = {(0,1705321800500000000),(1,-1),(2,0)}
 
 
 -- a date at an object of another atom
@@ -92,11 +92,11 @@ rel_program textLitT where
     input x : N ⟶ [C] from csv "x.csv"
     t : N ⟶ [C] ≜ {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
     codes : N ⟶ [C] ≜ {(0,[78 89]),(1,[84 75 44 32 109 97 105 110]),(2,[97 34 98 92 99]),(3,[195 169]),(4,[])}
-    check t = codes
+    test t = codes
     -- no type: the key words are elements of N and of C, `t`'s type decides
-    check t = {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
+    test t = {(0,"NY"),(1,"TK, main"),(2,"a\"b\\c"),(3,"é"),(4,"")}
     -- a text in an input's table
-    check x = {(0,"TK, main"),(1,"a\"b\\c")} where x ≜ {(0,"TK, main"),(1,"a\"b\\c")}
+    test x = {(0,"TK, main"),(1,"a\"b\\c")} where x ≜ {(0,"TK, main"),(1,"a\"b\\c")}
 
 
 -- a text at an object of another atom than `char`
@@ -116,8 +116,8 @@ rel_program dateKeyCheckT where
     obj D : date
     x : N ⟶ (N×D)×N ≜ {(0,((1,2024.01.15),5)),(1,((2,2024.01.16),6)),(2,((3,2024.01.16),7))}
     perDay : D ⟶ N ≜ agg((x π₁ π₂)°, length)
-    check perDay = {(2024.01.15,1),(2024.01.16,2)}
-    check agg((x π₁ π₂)°, length) = {(2024.01.15,1),(2024.01.16,2)}
+    test perDay = {(2024.01.15,1),(2024.01.16,2)}
+    test agg((x π₁ π₂)°, length) = {(2024.01.15,1),(2024.01.16,2)}
 
 
 -- a date and a time shown as q shows them, in a `print`
@@ -139,6 +139,6 @@ rel_program dateShowFailT where
     obj N
     obj D : date
     d : N ⟶ D ≜ {(0,2024.01.15),(1,1969.12.31)}
-    check d = {(0,2024.01.16)}
+    test d = {(0,2024.01.16)}
 
 end Rel.Lang.TestDateLit

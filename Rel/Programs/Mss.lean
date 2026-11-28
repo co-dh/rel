@@ -49,20 +49,20 @@ rel_program mss where
     D : N ⟶ N ≜ {(-2,-2),(-1,-1),(3,3)}
     A : [N] ⟶ [N] ≜ ran((𝟙÷∋)E(⊤(1,N)D)⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤D⟩snoc)]⦈)
 
-    check A shape = A mss
-    check A fused = A mss
-    check A greedy = A mss
-    check A scan = A mss
+    test A shape = A mss
+    test A fused = A mss
+    test A greedy = A mss
+    test A scan = A mss
 
     /- The arrays over {-9,5,10,15}, where sums pass 20: unguarded `mss`/`scan`, `shape`/`fused` and `gl`/`gr` differ
        there (`[5,15,15]`, `[10,15,-9]`, `[15,15]`), guarded by `safe` they agree. -/
 
     D9 : N ⟶ N ≜ {(-9,-9),(5,5),(10,10),(15,15)}
     A9 : [N] ⟶ [N] ≜ ran((𝟙÷∋)E(⊤(1,N)D9)⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤D9⟩snoc)]⦈)
-    check A9 safe mss = A9 safe scan
-    check A9 safe shape = A9 safe fused
-    check A9 safe fused = A9 safe greedy
-    check A9 safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = A9 safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
+    test A9 safe mss = A9 safe scan
+    test A9 safe shape = A9 safe fused
+    test A9 safe fused = A9 safe greedy
+    test A9 safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = A9 safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
 
     /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. `plus` has no value
        past 20, so the steps past `toShape` hold only on the lists `safe` keeps: `[5,15,15]` has `mss` 20 and `scan` 15,
@@ -103,8 +103,8 @@ rel_program mss where
 
     obj K = {a,b,c,d,e}
     x : K ⟶ [N] ≜ {(a,3 1 4 1 5),(b,2 0 7),(c,[]),(d,3 -4 2 -1 2),(e,-2 -1 -3)}
-    check x mss = {(a,14),(b,9),(c,0),(d,3),(e,0)}
-    check x scan = {(a,14),(b,9),(c,0),(d,3),(e,0)}
+    test x mss = {(a,14),(b,9),(c,0),(d,3),(e,0)}
+    test x scan = {(a,14),(b,9),(c,0),(d,3),(e,0)}
 
 
 

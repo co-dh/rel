@@ -24,13 +24,13 @@ rel_program genericNT where
     y : N ⟶ N ≜ {(0,9),(1,9)}
     p : N ⟶ N ≜ {(2,2),(5,5),(7,7),(9,9)}
     t4 : 1 ⟶ N ≜ lenL(xs)
-    check t4 = {(∗,4)}
-    check lenL2(xs) = {(∗,4)}
-    check sm(x) = {(∗,12)}
-    check sm(y) = {(∗,18)}
-    check len2(x) = {(∗,4)}
-    check cnt(x) = {(∗,4)}
-    check rk(p) = {(2,0),(5,1),(7,2),(9,3)}
+    test t4 = {(∗,4)}
+    test lenL2(xs) = {(∗,4)}
+    test sm(x) = {(∗,12)}
+    test sm(y) = {(∗,18)}
+    test len2(x) = {(∗,4)}
+    test cnt(x) = {(∗,4)}
+    test rk(p) = {(2,0),(5,1),(7,2),(9,3)}
 
 open Rel.Programs.prelude Rel.Programs.frame genericG in
 rel_program genericPT where
@@ -40,13 +40,13 @@ rel_program genericPT where
     y : P ⟶ P ≜ {(0,9),(1,9)}
     p : P ⟶ P ≜ {(2,2),(5,5),(7,7),(9,9)}
     t4 : 1 ⟶ P ≜ lenL(xs)
-    check t4 = {(∗,4)}
-    check lenL2(xs) = {(∗,4)}
-    check sm(x) = {(∗,12)}
-    check sm(y) = 𝟘
-    check len2(x) = {(∗,4)}
-    check cnt(x) = {(∗,4)}
-    check rk(p) = {(2,0),(5,1),(7,2),(9,3)}
+    test t4 = {(∗,4)}
+    test lenL2(xs) = {(∗,4)}
+    test sm(x) = {(∗,12)}
+    test sm(y) = 𝟘
+    test len2(x) = {(∗,4)}
+    test cnt(x) = {(∗,4)}
+    test rk(p) = {(2,0),(5,1),(7,2),(9,3)}
 
 -- by hand: `5 0 7 0` has 4 elements; `x`'s values sum to 5+0+7+0 = 12, `y`'s to 9+9 = 18, which `P = 0…15` does not
 -- hold, so at `P` the fold's last step leaves the object and `sm(y)` has no value; `x` has 4 rows; `rk` each element
@@ -63,13 +63,13 @@ rel_program paramNT where
     x : N ⟶ K×N ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1))}
     xn : N ⟶ K×(1+N) ≜ ⟨x π₁, dom(x) tot({(0,5),(2,5)})⟩
     y : N ⟶ K×N ≜ {(0,(A,9)),(1,(C,8))}
-    check filterJust(π₂, xn) ⟨π₁, π₂ inr°⟩ = {(0,(B,5)),(1,(B,5))}
-    check filterNothing(π₂, xn) π₁ = {(0,A),(1,C)}
-    check filterBy(dom(π₂ {(3,3),(5,5)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
-    check innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((C,1),(C,8)))}
+    test filterJust(π₂, xn) ⟨π₁, π₂ inr°⟩ = {(0,(B,5)),(1,(B,5))}
+    test filterNothing(π₂, xn) π₁ = {(0,A),(1,C)}
+    test filterBy(dom(π₂ {(3,3),(5,5)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
+    test innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((C,1),(C,8)))}
     q : N ⟶ N ≜ {(1,5),(2,2)}
-    check ran(q ∩ 𝟙) = {(2,2)}
-    check ran(q − 𝟙) = {(5,5)}
+    test ran(q ∩ 𝟙) = {(2,2)}
+    test ran(q − 𝟙) = {(5,5)}
 
 open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Programs.frameJoin in
 rel_program paramPT where
@@ -78,13 +78,13 @@ rel_program paramPT where
     x : P ⟶ K×P ≜ {(0,(B,5)),(1,(A,3)),(2,(B,5)),(3,(C,1))}
     xn : P ⟶ K×(1+P) ≜ ⟨x π₁, dom(x) tot({(0,5),(2,5)})⟩
     y : P ⟶ K×P ≜ {(0,(A,9)),(1,(C,8))}
-    check filterJust(π₂, xn) ⟨π₁, π₂ inr°⟩ = {(0,(B,5)),(1,(B,5))}
-    check filterNothing(π₂, xn) π₁ = {(0,A),(1,C)}
-    check filterBy(dom(π₂ {(3,3),(5,5)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
-    check innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((C,1),(C,8)))}
+    test filterJust(π₂, xn) ⟨π₁, π₂ inr°⟩ = {(0,(B,5)),(1,(B,5))}
+    test filterNothing(π₂, xn) π₁ = {(0,A),(1,C)}
+    test filterBy(dom(π₂ {(3,3),(5,5)}), x) = {(0,(B,5)),(1,(A,3)),(2,(B,5))}
+    test innerJoin(π₁, π₁, x, y) = {(0,((A,3),(A,9))),(1,((C,1),(C,8)))}
     q : P ⟶ P ≜ {(1,5),(2,2)}
-    check ran(q ∩ 𝟙) = {(2,2)}
-    check ran(q − 𝟙) = {(5,5)}
+    test ran(q ∩ 𝟙) = {(2,2)}
+    test ran(q − 𝟙) = {(5,5)}
 
 -- a 1000-row frame `j ↦ (i,i)`, `i = j + 19000`, in `M×M`, `|M×M| = 4·10⁸`: the argument `π₁` read on its universe
 -- does not fit memory
@@ -96,8 +96,8 @@ rel_program paramBigT where
     a : 1 ⟶ M ≜ {(∗,19000)}
     b : 1 ⟶ M ≜ {(∗,19950)}
     x : M ⟶ M×M ≜ dom(⟨𝟙, ⊤ a⟩plus) ⟨𝟙, ⊤ a⟩plus ⟨𝟙, 𝟙⟩
-    check filterBy(dom(π₁ dom(⟨𝟙, ⊤ b⟩minus)), x) = dom(⟨𝟙, ⊤ b⟩plus) ⟨𝟙, ⊤ b⟩plus ⟨𝟙, 𝟙⟩
-    check innerJoin(π₁, π₁, x, x) = dom(⟨𝟙, ⊤ a⟩plus) ⟨𝟙, ⊤ a⟩plus ⟨⟨𝟙, 𝟙⟩, ⟨𝟙, 𝟙⟩⟩
+    test filterBy(dom(π₁ dom(⟨𝟙, ⊤ b⟩minus)), x) = dom(⟨𝟙, ⊤ b⟩plus) ⟨𝟙, ⊤ b⟩plus ⟨𝟙, 𝟙⟩
+    test innerJoin(π₁, π₁, x, x) = dom(⟨𝟙, ⊤ a⟩plus) ⟨𝟙, ⊤ a⟩plus ⟨⟨𝟙, 𝟙⟩, ⟨𝟙, 𝟙⟩⟩
 
 -- by hand: `xn` holds a value at rows 0 2 (B,5), the null at 1 3 (A),(C), renumbered 0 1; the values 3 5 are at
 -- rows 0 1 2; `x`'s keys B A B C meet `y`'s A C at (1,0), (3,1); `q ∩ 𝟙` keeps (2,2), `q − 𝟙` keeps (1,5); at `M`
@@ -114,6 +114,6 @@ whole: cross: 20000 values of the left object by 20000 of the right is 400000000
 rel_program bigUniT where
     obj M = 0…19999
     whole : M×M ⟶ M×M ≜ 𝟙
-    check whole = whole
+    test whole = whole
 
 end Rel.Lang.TestGenericN

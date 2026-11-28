@@ -16,11 +16,11 @@ rel_program orders where
     tc(S : X ⟶ X) : X ⟶ [X] ≜ Λ(S)front(O)
     tf(S : X ⟶ X, V : X ⟶ X) : X ⟶ [X] ≜ Λ(S)front(V)
     Y(S : X ⟶ X) : X ⟶ X ≜ ∼S
-    check Qlc(∋) = Q∋
-    check Qlf(∋,Of) = Qlc(∋)
-    check Qlf(Y(∋),Of) = Qlc(Y(∋))
-    check Qtf(∋,Of) = Qtc(∋)
-    check Qtf(Y(∋),Of) = Qtc(Y(∋))
+    test Qlc(∋) = Q∋
+    test Qlf(∋,Of) = Qlc(∋)
+    test Qlf(Y(∋),Of) = Qlc(Y(∋))
+    test Qtf(∋,Of) = Qtc(∋)
+    test Qtf(Y(∋),Of) = Qtc(Y(∋))
     print s₀lf(Y(∋),Of)
     print s₀tf(Y(∋),Of)
 
@@ -42,16 +42,16 @@ rel_program ltObjs where
     s : N ⟶ [C]×[C] ≜ {(0,("ab","b")),(1,("b","ab")),(2,("a","ab")),(3,("ab","ab")),(4,("","a"))}
     -- `inl ∗ < inr n` (null below every value), `inr` in N's order
     v : N ⟶ (1+N)×(1+N) ≜ ⟨⊤(N,1) inl, inr⟩ ∪ ⟨inr, < inr⟩ ∪ ⟨inr, inr⟩
-    check v lt = ⟨⊤(N,1) inl, inr⟩ ∪ ⟨inr, < inr⟩
-    check v le = v
-    check dom(p lt) ∪ dom(p ⟨π₂,π₁⟩ lt) ∪ dom(p dom(π₁ ∩ π₂)) = dom(p)
-    check dom(p lt) ∩ dom(p ⟨π₂,π₁⟩ lt) = 𝟘
-    check dom(p lt) ∩ dom(p dom(π₁ ∩ π₂)) = 𝟘
-    check dom(s lt) ∪ dom(s ⟨π₂,π₁⟩ lt) ∪ dom(s dom(π₁ ∩ π₂)) = dom(s)
-    check dom(s lt) ∩ dom(s ⟨π₂,π₁⟩ lt) = 𝟘
-    check dom(s lt) ∩ dom(s dom(π₁ ∩ π₂)) = 𝟘
-    check p le = (p lt) ∪ (p dom(π₁ ∩ π₂))
-    check s le = (s lt) ∪ (s dom(π₁ ∩ π₂))
+    test v lt = ⟨⊤(N,1) inl, inr⟩ ∪ ⟨inr, < inr⟩
+    test v le = v
+    test dom(p lt) ∪ dom(p ⟨π₂,π₁⟩ lt) ∪ dom(p dom(π₁ ∩ π₂)) = dom(p)
+    test dom(p lt) ∩ dom(p ⟨π₂,π₁⟩ lt) = 𝟘
+    test dom(p lt) ∩ dom(p dom(π₁ ∩ π₂)) = 𝟘
+    test dom(s lt) ∪ dom(s ⟨π₂,π₁⟩ lt) ∪ dom(s dom(π₁ ∩ π₂)) = dom(s)
+    test dom(s lt) ∩ dom(s ⟨π₂,π₁⟩ lt) = 𝟘
+    test dom(s lt) ∩ dom(s dom(π₁ ∩ π₂)) = 𝟘
+    test p le = (p lt) ∪ (p dom(π₁ ∩ π₂))
+    test s le = (s lt) ∪ (s dom(π₁ ∩ π₂))
 
 
 
@@ -65,14 +65,14 @@ rel_program cmpObjs where
     obj C : char
     lo : N ⟶ N×N ≜ {(0,(0,2))}
     hi : N ⟶ N×N ≜ {(0,(1,0))}
-    check lo < ∩ hi = hi
-    check hi < ∩ lo = 𝟘
-    check lo ≤ ∩ lo = lo
-    check hi > ∩ lo = lo
+    test lo < ∩ hi = hi
+    test hi < ∩ lo = 𝟘
+    test lo ≤ ∩ lo = lo
+    test hi > ∩ lo = lo
     nl : N ⟶ 1+N ≜ ⊤(N,1) inl
-    check nl < ∩ inr = inr
-    check inr < ∩ nl = 𝟘
-    check nl ≤ ∩ nl = nl
+    test nl < ∩ inr = inr
+    test inr < ∩ nl = 𝟘
+    test nl ≤ ∩ nl = nl
 
 
 
@@ -83,7 +83,7 @@ open Rel.Programs.prelude in
 rel_program ascObjs where
     obj N = 0…2
     P : N×N ⟶ N×N ≜ {((1,0),(1,0)), ((0,2),(0,2))}
-    check asc(P) = {(0,(0,2)), (1,(1,0))}
+    test asc(P) = {(0,(0,2)), (1,(1,0))}
 
 
 

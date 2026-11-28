@@ -76,8 +76,8 @@ rel_program edit where
 
     /- The tabulation gives a shortest edit sequence of every pair of `D`, of the specification's length. -/
 
-    check D mle ⊑ spec
-    check D mle length 𝟙(N) = (spec length 𝟙(N))
+    test D mle ⊑ spec
+    test D mle length 𝟙(N) = (spec length 𝟙(N))
 
     /- The specification's own values are not written out, being too many rows; `TestEdit.lean` checks the first print. -/
 

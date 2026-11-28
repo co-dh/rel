@@ -18,9 +18,9 @@ rel_program trades where
     -- qty above 100: `<°{(100,∗)}`, a closed term on the unbounded `N`, so bounded inside `big` by `t`
     big : N ⟶ Big ≜ filterBy(dom(col Trade "qty" dom(<°{(100,∗)})), t) ⟨col Trade "sym", col Trade "px"⟩
     bigPx : N ⟶ N ≜ big col Big "px"
-    check big = {(0,(A,10))} where t ≜ {(0,((A,10),500)),(1,((B,20),50))}
-    check bigPx = {(0,10),(1,30)} where t ≜ {(0,((A,10),500)),(1,((B,20),50)),(2,((C,30),101))}
-    check t col Trade "sym" = {(0,B)} where t ≜ {(0,((B,20),50))}
+    test big = {(0,(A,10))} where t ≜ {(0,((A,10),500)),(1,((B,20),50))}
+    test bigPx = {(0,10),(1,30)} where t ≜ {(0,((A,10),500)),(1,((B,20),50)),(2,((C,30),101))}
+    test t col Trade "sym" = {(0,B)} where t ≜ {(0,((B,20),50))}
     print bigPx where t ≜ {(0,((C,7),200))}
     output big to "big"
     output bigPx to csv "bigpx.csv"
@@ -98,7 +98,7 @@ rel_program undefinedT where
 rel_program unboundT where
     obj N
     input t : N ⟶ N from "t"
-    check t = t
+    test t = t
 
 /-- error: line 109, col 5: print reaches the input `t` (through `w`), which has no table at elaboration; give one: `print … where t ≜ {…}`, a table N ⟶ N -/
 #guard_msgs in
@@ -114,7 +114,7 @@ rel_program notInputT where
     obj N
     input t : N ⟶ N from "t"
     c : N ⟶ N ≜ {(1,2)}
-    check t = c where c ≜ {(1,1)}
+    test t = c where c ≜ {(1,1)}
 
 /-- error: line 124, col 5: `f` has parameters and mentions `t`, which has no table at elaboration; add the parameter `t : N ⟶ N` to `f` and pass `t` where `f` is used -/
 #guard_msgs in

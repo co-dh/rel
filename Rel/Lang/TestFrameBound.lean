@@ -14,9 +14,9 @@ rel_program frameBoundT where
     obj M = 0…49999
     below(b : 1 ⟶ M) : M ⟶ M ≜ dom(⟨𝟙, ⊤ b⟩div {(0,0)})
     x : M ⟶ M ≜ below({(∗,500)})
-    check count(x) = {(∗,500)}
-    check summarize(F(x ⟨𝟙, ⊤ {(∗,10)}⟩mod) sum, x) = {(∗,2250)}
-    check agg((x ⟨𝟙, ⊤ {(∗,10)}⟩mod)°, length) = below({(∗,10)}) ⊤ {(∗,50)}
+    test count(x) = {(∗,500)}
+    test summarize(F(x ⟨𝟙, ⊤ {(∗,10)}⟩mod) sum, x) = {(∗,2250)}
+    test agg((x ⟨𝟙, ⊤ {(∗,10)}⟩mod)°, length) = below({(∗,10)}) ⊤ {(∗,50)}
 
 
 

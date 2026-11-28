@@ -90,7 +90,7 @@ open Rel.Programs.prelude in
 rel_program powerDefinition where
     obj B = {a,b,c}
     R : B ⟶ B ≜ {(a,c),(a,b)}
-    check Λ(R) = (𝟙÷∋)E(R)
+    test Λ(R) = (𝟙÷∋)E(R)
 
 
 

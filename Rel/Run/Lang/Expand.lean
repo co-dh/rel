@@ -853,6 +853,12 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
   -- each closed definition that computes a whole table, with its type; each output's path
   let mut whole : List (String × (OExp × OExp)) := []
   let mut outs : List (String × Pos) := []
+  -- a `check` is a claim about all inputs, so it needs its proof; one run on concrete input is a `test`. Every such
+  -- check of the program is listed at once, so one build finds them all.
+  let bare := prog.filterMap fun | .check p _ _ _ _ none => some p | _ => none
+  if !imported then if let some p := bare.head? then
+    throw ⟨p, s!"check at line {p.line}, col {p.col} states a claim with no proof: add `by <lemma>`, or write it as " ++
+      s!"`test`" ++ if bare.length > 1 then s!" (all: {", ".intercalate (bare.map fun q => s!"{q.line}:{q.col}")})" else ""⟩
   for d in prog do
     -- an imported program's prints, checks, theorems and outputs ran where it was defined; only its scope is read
     if imported && (match d with | .print .. | .check .. | .test .. | .«theorem» .. | .output .. => true | _ => false) then

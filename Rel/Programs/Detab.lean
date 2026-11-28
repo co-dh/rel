@@ -68,16 +68,16 @@ rel_program detab where
     q : 1 ⟶ [Ch] ≜ {(∗,a a a BL a)}
     y : 1 ⟶ [Ch] ≜ {(∗,BL BL BL BL BL)}
 
-    check x detab = {(∗,a b BL BL c BL d)}
-    check x detab entab = {(∗,a b TB c BL d)}
-    check p Λ(H)est(R) = {(∗,a TB)}
-    check q Λ(H)est(R) = {(∗,a a a BL a),(∗,a a a TB a)}
-    check y Λ(H)est(R) = {(∗,TB BL)}
-    check p entab = {(∗,a TB)}
-    check q entab = {(∗,a a a TB a)}
-    check y entab = {(∗,TB BL)}
-    check D entab ⊑ D Λ(H)est(R)                  -- entab_laws, 10:148: the program is a shortest preimage
-    check D entab detab = D                       -- detab entab = 𝟙 on detab's outputs
+    test x detab = {(∗,a b BL BL c BL d)}
+    test x detab entab = {(∗,a b TB c BL d)}
+    test p Λ(H)est(R) = {(∗,a TB)}
+    test q Λ(H)est(R) = {(∗,a a a BL a),(∗,a a a TB a)}
+    test y Λ(H)est(R) = {(∗,TB BL)}
+    test p entab = {(∗,a TB)}
+    test q entab = {(∗,a a a TB a)}
+    test y entab = {(∗,TB BL)}
+    test D entab ⊑ D Λ(H)est(R)                  -- entab_laws, 10:148: the program is a shortest preimage
+    test D entab detab = D                       -- detab entab = 𝟙 on detab's outputs
 
 
 

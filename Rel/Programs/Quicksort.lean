@@ -34,12 +34,12 @@ rel_program quicksort where
 
     C : [N] ⟶ [N] ≜ ran((x ∪ y ∪ z ∪ e)perm)
 
-    check x sort' = {(∗,1 2 3)}
-    check y sort' = {(∗,1 2 2)}
-    check z sort' = {(∗,1 2 3 4)}
-    check e sort' = {(∗,[])}
-    check C sort' ⊑ C perm ordered(≤)             -- p.154 flatten ⦇[nil, split°]⦈° ⊆ ordered · perm
-    check C sort' = C perm ordered(≤)
+    test x sort' = {(∗,1 2 3)}
+    test y sort' = {(∗,1 2 2)}
+    test z sort' = {(∗,1 2 3 4)}
+    test e sort' = {(∗,[])}
+    test C sort' ⊑ C perm ordered(≤)             -- p.154 flatten ⦇[nil, split°]⦈° ⊆ ordered · perm
+    test C sort' = C perm ordered(≤)
 
 
 

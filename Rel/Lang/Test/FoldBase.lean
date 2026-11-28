@@ -24,14 +24,14 @@ rel_program foldBase where
     a4 : N ⟶ P ≜ z len
     a6 : N ⟶ M ≜ m sm
     a7 : N ⟶ F ≜ f sm
-    check a1 = {(0,3),(1,2)}
-    check a2 = {(0,6),(1,-2)}
-    check a3 = {(0,3)}
-    check a4 = {(0,2),(1,2)}
-    check a6 = {(1,3)}
-    check a7 = {(0,4.0)}
+    test a1 = {(0,3),(1,2)}
+    test a2 = {(0,6),(1,-2)}
+    test a3 = {(0,3)}
+    test a4 = {(0,2),(1,2)}
+    test a6 = {(1,3)}
+    test a7 = {(0,4.0)}
     b1 : N ⟶ M ≜ m sum
-    check b1 = a6
+    test b1 = a6
 
 
 

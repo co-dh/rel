@@ -86,7 +86,7 @@ rel_program infixes where
     obj N = 0…9
     w : N×N ⟶ N×N ≜ {((2,3),(2,3)),((4,1),(4,1))}
     print w (π₁ + π₂)
-    check w (π₁ + π₂) = w⟨π₁,π₂⟩plus
+    test w (π₁ + π₂) = w⟨π₁,π₂⟩plus
     _≼_(R : α ⟶ β, S : β ⟶ α) : α ⟶ β ≜ R ∩ S°
     print {(1,1),(2,2)}(≤ ≼ ≤)
     print {(1,1)}(≤ ≼ ≤ ∪ <)

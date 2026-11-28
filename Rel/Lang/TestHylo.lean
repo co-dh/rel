@@ -17,7 +17,7 @@ rel_program hylos where
     S : E×[N] ⟶ N ≜ ⟨π₁ rating, π₂ sum⟩ plus      -- the ratings of a subtree, summed
     total : E ⟶ N ≜ hylo(⟨𝟙, kids⟩, S)
     totalμ : E ⟶ N ≜ μX : ⟨𝟙, kids F(X)⟩S
-    check total = totalμ
+    test total = totalμ
     print {(a,a)} total
     print {(g,g)} total
     print {(m,m)} total

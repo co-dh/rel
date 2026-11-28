@@ -17,17 +17,17 @@ rel_program arithD where
     q : N ⟶ F ≜ {(0,0.2)}
     big : N ⟶ F ≜ {(0,1e308)}
     ten : N ⟶ F ≜ {(0,10.0)}
-    check ⟨a, b⟩ plus = {(0,3.5),(1,0),(2,9.5),(3,1),(4,-2)}
-    check ⟨a, b⟩ minus = {(0,-0.5),(1,0),(2,5.5),(3,1),(4,-2)}
-    check ⟨a, b⟩ times = {(0,3),(1,0),(2,15),(3,0),(4,0)}
-    check ⟨a, a⟩ div = {(0,1),(2,1),(3,1),(4,1)}
+    test ⟨a, b⟩ plus = {(0,3.5),(1,0),(2,9.5),(3,1),(4,-2)}
+    test ⟨a, b⟩ minus = {(0,-0.5),(1,0),(2,5.5),(3,1),(4,-2)}
+    test ⟨a, b⟩ times = {(0,3),(1,0),(2,15),(3,0),(4,0)}
+    test ⟨a, a⟩ div = {(0,1),(2,1),(3,1),(4,1)}
 
-    check dom(⟨a, b⟩ div) = {(0,0),(2,2),(3,3),(4,4)}
-    check ⟨a, b⟩ mod = {(0,1.5),(2,1.5)}
-    check ⟨a, b⟩ max = {(0,2),(1,0),(2,7.5),(3,1),(4,0)}
-    check ⟨a, b⟩ min = {(0,1.5),(1,0),(2,2),(3,0),(4,-2)}
-    check ⟨p, q⟩ plus = {(0,0.30000000000000004)}
-    check dom(⟨big, ten⟩ times) = {(0,0)}
+    test dom(⟨a, b⟩ div) = {(0,0),(2,2),(3,3),(4,4)}
+    test ⟨a, b⟩ mod = {(0,1.5),(2,1.5)}
+    test ⟨a, b⟩ max = {(0,2),(1,0),(2,7.5),(3,1),(4,0)}
+    test ⟨a, b⟩ min = {(0,1.5),(1,0),(2,2),(3,0),(4,-2)}
+    test ⟨p, q⟩ plus = {(0,0.30000000000000004)}
+    test dom(⟨big, ten⟩ times) = {(0,0)}
 
 -- by hand: `(-2.0)·0.0 = -0` is written `0`; `0/0` is NaN, so row 1 of `div` and of `mod` has no image; `1/0 = ∞`
 -- is a value, so rows 3, 4 of `div` are kept, and `mod` there is `1 - 0·∞` = NaN, none; `7.5 div 2 = 3`,
@@ -44,16 +44,16 @@ rel_program arithS where
     q : N ⟶ G ≜ {(0,0.2)}
     big : N ⟶ G ≜ {(0,3e38)}
     ten : N ⟶ G ≜ {(0,10.0)}
-    check ⟨a, b⟩ plus = {(0,3.5),(1,0),(2,9.5),(3,1),(4,-2)}
-    check ⟨a, b⟩ minus = {(0,-0.5),(1,0),(2,5.5),(3,1),(4,-2)}
-    check ⟨a, b⟩ times = {(0,3),(1,0),(2,15),(3,0),(4,0)}
-    check ⟨a, a⟩ div = {(0,1),(2,1),(3,1),(4,1)}
-    check dom(⟨a, b⟩ div) = {(0,0),(2,2),(3,3),(4,4)}
-    check ⟨a, b⟩ mod = {(0,1.5),(2,1.5)}
-    check ⟨a, b⟩ max = {(0,2),(1,0),(2,7.5),(3,1),(4,0)}
-    check ⟨a, b⟩ min = {(0,1.5),(1,0),(2,2),(3,0),(4,-2)}
-    check ⟨p, q⟩ plus = {(0,0.3)}
-    check dom(⟨big, ten⟩ times) = {(0,0)}
+    test ⟨a, b⟩ plus = {(0,3.5),(1,0),(2,9.5),(3,1),(4,-2)}
+    test ⟨a, b⟩ minus = {(0,-0.5),(1,0),(2,5.5),(3,1),(4,-2)}
+    test ⟨a, b⟩ times = {(0,3),(1,0),(2,15),(3,0),(4,0)}
+    test ⟨a, a⟩ div = {(0,1),(2,1),(3,1),(4,1)}
+    test dom(⟨a, b⟩ div) = {(0,0),(2,2),(3,3),(4,4)}
+    test ⟨a, b⟩ mod = {(0,1.5),(2,1.5)}
+    test ⟨a, b⟩ max = {(0,2),(1,0),(2,7.5),(3,1),(4,0)}
+    test ⟨a, b⟩ min = {(0,1.5),(1,0),(2,2),(3,0),(4,-2)}
+    test ⟨p, q⟩ plus = {(0,0.3)}
+    test dom(⟨big, ten⟩ times) = {(0,0)}
 
 -- by hand: as `arithD`, and at `f32` `0.1 + 0.2` rounds to the `f32` nearest `0.3`, the word `0.3` reads as;
 -- `3e38·10` overflows the `f32` range to `∞`, a value
@@ -67,10 +67,10 @@ rel_program orderT where
     y : N ⟶ F ≜ {(0,1.5),(1,0.0)}
     g : N ⟶ G ≜ {(0,1.5),(1,-2.0),(2,0.0)}
     h : N ⟶ G ≜ {(0,1.5),(1,0.0)}
-    check x < y° = {(1,0),(1,1),(2,0)}
-    check x ≤ y° = {(0,0),(1,0),(1,1),(2,0),(2,1)}
-    check g < h° = {(1,0),(1,1),(2,0)}
-    check g ≤ h° = {(0,0),(1,0),(1,1),(2,0),(2,1)}
+    test x < y° = {(1,0),(1,1),(2,0)}
+    test x ≤ y° = {(0,0),(1,0),(1,1),(2,0),(2,1)}
+    test g < h° = {(1,0),(1,1),(2,0)}
+    test g ≤ h° = {(0,0),(1,0),(1,1),(2,0),(2,1)}
 
 
 
@@ -94,22 +94,22 @@ rel_program orderIntT where
     d : N ⟶ D ≜ {(0,19000),(1,-1)}
     d2 : N ⟶ D ≜ {(0,18000),(1,0)}
     t : N ⟶ T ≜ {(0,5),(1,-5)}
-    check b < b° = {(1,0)}
-    check b ≤ b° = {(0,0),(1,0),(1,1)}
-    check c < c° = {(0,1)}
-    check h < h° = {(0,1)}
-    check i < i° = {(0,1)}
-    check d < d° = {(1,0)}
-    check dom(d < d°) = {(1,1)}
-    check t < t° = {(1,0)}
-    check t ≤ t° = {(0,0),(1,0),(1,1)}
-    check ⟨b, b2⟩ max = {(0,200),(1,250)}
-    check ⟨b, b2⟩ min = {(0,100),(1,3)}
-    check ⟨c, c2⟩ max = {(0,3),(1,3)}
-    check ⟨c, c2⟩ min = {(0,-5),(1,-7)}
-    check ⟨d, d2⟩ max = {(0,19000),(1,0)}
-    check ⟨d, d2⟩ min = {(0,18000),(1,-1)}
-    check ⟨t, t⟩ max = {(0,5),(1,-5)}
+    test b < b° = {(1,0)}
+    test b ≤ b° = {(0,0),(1,0),(1,1)}
+    test c < c° = {(0,1)}
+    test h < h° = {(0,1)}
+    test i < i° = {(0,1)}
+    test d < d° = {(1,0)}
+    test dom(d < d°) = {(1,1)}
+    test t < t° = {(1,0)}
+    test t ≤ t° = {(0,0),(1,0),(1,1)}
+    test ⟨b, b2⟩ max = {(0,200),(1,250)}
+    test ⟨b, b2⟩ min = {(0,100),(1,3)}
+    test ⟨c, c2⟩ max = {(0,3),(1,3)}
+    test ⟨c, c2⟩ min = {(0,-5),(1,-7)}
+    test ⟨d, d2⟩ max = {(0,19000),(1,0)}
+    test ⟨d, d2⟩ min = {(0,18000),(1,-1)}
+    test ⟨t, t⟩ max = {(0,5),(1,-5)}
 
 -- by hand: `u8` 200 > 3 (unsigned); `i8` -5 < 3; `date` -1 (1969-12-31) < 19000; equal operands give themselves
 
@@ -158,14 +158,14 @@ rel_program divideT where
     g : N ⟶ G ≜ {(0,1.0),(1,1.0)}
     h : N ⟶ G ≜ {(0,2.0),(1,3.0)}
     g0 : N ⟶ G ≜ {(0,0.0)}
-    check ⟨a, b⟩ % = {(0,0.5),(1,0.3333333333333333),(2,-3.0)}
-    check ⟨a, b⟩ divide = ⟨a, b⟩ %
-    check ⟨one, z⟩ % = ⟨big, ten⟩ times
-    check dom(⟨m, z⟩ %) = {(0,0)}
-    check (⟨m, z⟩ %) ∩ (⟨one, z⟩ %) = 𝟘
-    check ⟨z, z⟩ % = 𝟘
-    check ⟨g, h⟩ % = {(0,0.5),(1,0.33333334)}
-    check ⟨g0, g0⟩ % = 𝟘
+    test ⟨a, b⟩ % = {(0,0.5),(1,0.3333333333333333),(2,-3.0)}
+    test ⟨a, b⟩ divide = ⟨a, b⟩ %
+    test ⟨one, z⟩ % = ⟨big, ten⟩ times
+    test dom(⟨m, z⟩ %) = {(0,0)}
+    test (⟨m, z⟩ %) ∩ (⟨one, z⟩ %) = 𝟘
+    test ⟨z, z⟩ % = 𝟘
+    test ⟨g, h⟩ % = {(0,0.5),(1,0.33333334)}
+    test ⟨g0, g0⟩ % = 𝟘
 
 -- by hand: `1/3` is the `f64` nearest a third, the literal `0.3333333333333333` reads as; `-7.5/2.5 = -3` exact;
 -- `1/0 = ∞` is a value (the one `1e308·10` overflows to), `-1/0 = -∞` another, `0/0` NaN, no row; at `f32` `1/3` is
@@ -192,24 +192,24 @@ rel_program unaryT where
     z : N ⟶ F ≜ {(0,0.0)}
     one : N ⟶ F ≜ {(0,1.0)}
     x : N ⟶ F ≜ {(0,2.5),(1,-2.5),(2,1.5)}
-    check a sqrt = {(0,2.0),(1,1.4142135623730951),(3,0.0)}
+    test a sqrt = {(0,2.0),(1,1.4142135623730951),(3,0.0)}
     gs : N ⟶ F ≜ g sqrt
-    check gs = {(0,2.0),(1,1.4142135623730951)}
-    check x neg = {(0,-2.5),(1,2.5),(2,-1.5)}
-    check z neg = z
-    check x abs = {(0,2.5),(1,2.5),(2,1.5)}
-    check z exp = one
-    check one log = z
+    test gs = {(0,2.0),(1,1.4142135623730951)}
+    test x neg = {(0,-2.5),(1,2.5),(2,-1.5)}
+    test z neg = z
+    test x abs = {(0,2.5),(1,2.5),(2,1.5)}
+    test z exp = one
+    test one log = z
     al : N ⟶ F ≜ (a log) ∩ (z log)
-    check al = 𝟘
-    check z sin = z
-    check z cos = one
-    check z tan = z
-    check z asin = z
-    check one acos = z
-    check z atan = z
+    test al = 𝟘
+    test z sin = z
+    test z cos = one
+    test z tan = z
+    test z asin = z
+    test one acos = z
+    test z atan = z
     xf : N ⟶ L ≜ x floor
-    check xf = {(0,2),(1,-3),(2,1)}
+    test xf = {(0,2),(1,-3),(2,1)}
 
 -- by hand: `√4 = 2`, `√0 = 0` exact; `√2` correctly rounded is `0x3ff6a09e667f3bcd`, the word the literal
 -- `1.4142135623730951` reads as, at `f64` from the `f32` `2.0` too; `√-1` is NaN, no row 2;
@@ -232,9 +232,9 @@ rel_program roundT where
     x : N ⟶ F ≜ {(0,0.5),(1,1.5),(2,2.5),(3,-0.5),(4,-1.5),(5,2.4),(6,2.6),(7,1e300)}
     g : N ⟶ G ≜ {(0,2.5),(1,-3.5),(2,0.75)}
     xr : N ⟶ L ≜ x round
-    check xr = {(0,0),(1,2),(2,2),(3,0),(4,-2),(5,2),(6,3)}
+    test xr = {(0,0),(1,2),(2,2),(3,0),(4,-2),(5,2),(6,3)}
     gr : N ⟶ L ≜ g round
-    check gr = {(0,2),(1,-4),(2,1)}
+    test gr = {(0,2),(1,-4),(2,1)}
 
 -- by hand: ties `0.5 1.5 2.5 -0.5 -1.5` to the even `0 2 2 -0 -2` (`-0` is the `i64` `0`), `2.4 2.6` to `2 3`;
 -- `1e300` has no `i64` word, no row 7; the `f32` `2.5 -3.5 0.75` widened, then `2 -4 1`
@@ -256,11 +256,11 @@ rel_program xexpT where
     k : N ⟶ L ≜ {(0,3),(1,2)}
     g : N ⟶ G ≜ {(0,2.0),(1,4.0)}
     h : N ⟶ G ≜ {(0,3.0),(1,0.5)}
-    check ⟨two, y⟩ xexp = {(0,1024.0),(1,-8.0),(3,1.0)}
+    test ⟨two, y⟩ xexp = {(0,1024.0),(1,-8.0),(3,1.0)}
     kf : N ⟶ F ≜ k $ F
-    check ⟨two, kf⟩ xexp = {(0,8.0),(1,4.0)}
+    test ⟨two, kf⟩ xexp = {(0,8.0),(1,4.0)}
     gh : N ⟶ F ≜ ⟨g, h⟩ xexp
-    check gh = {(0,8.0),(1,2.0)}
+    test gh = {(0,8.0),(1,2.0)}
 
 -- by hand: `2^10 = 1024`, `(-2)^3 = -8` (an integer exponent on a negative base, which `exp(y·log x)` has no value
 -- for), `(-8)^0.5` NaN no row 2, `0^0 = 1` as libm's `pow`; `2^3`, `(-2)^2` with the `i64` exponents cast by `$`;

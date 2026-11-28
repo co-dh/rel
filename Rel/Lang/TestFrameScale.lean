@@ -25,30 +25,30 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Program
 rel_program frameScaleN3 where
     x : N ⟶ N×N ≜ ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
     xf : N ⟶ N×N ≜ filterBy(dom(π₁ k50), x)
-    check count(xf) = {(∗,500)}
+    test count(xf) = {(∗,500)}
     j : N ⟶ (N×N)×(N×N) ≜ innerJoin(π₁, π₁, xf, y)
-    check count(j) = {(∗,500)}
-    check summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
-    check aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,10)}⟩times, ⊤ {(∗,4500)}⟩plus⟩
+    test count(j) = {(∗,500)}
+    test summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
+    test aggregate(π₁, F(xf π₂) sum, xf) = k50 ⟨𝟙, ⟨⟨𝟙, ⊤ {(∗,10)}⟩times, ⊤ {(∗,4500)}⟩plus⟩
     -- the comparison rows, `x π₂ = i`: `take`/`drop` of n/2 sum to h(h−1)/2 and the rest of n(n−1)/2; the window of
     -- 3 ending at `i` sums all three times but rows 0, 1, n−2, n−1: 3n(n−1)/2 − 3n + 4
     t : N ⟶ N×N ≜ take({(∗,500)}, x)
-    check summarize(F(t π₂) sum, t) = {(∗,124750)}
+    test summarize(F(t π₂) sum, t) = {(∗,124750)}
     dr : N ⟶ N×N ≜ drop({(∗,500)}, x)
-    check summarize(F(dr π₂) sum, dr) = {(∗,374750)}
+    test summarize(F(dr π₂) sum, dr) = {(∗,374750)}
     r : N ⟶ N ≜ rolling({(∗,3)}, F(x π₂) sum, x)
-    check summarize(F(r) sum, r) = {(∗,1495504)}
-    check cumAgg(F(x π₂) sum, x) = ran(d3) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
+    test summarize(F(r) sum, r) = {(∗,1495504)}
+    test cumAgg(F(x π₂) sum, x) = ran(d3) ⟨⟨𝟙, succ⟩times, ⊤ {(∗,2)}⟩div
     -- `c` holds a value at key 0, i.e. at multiples of 100: `fills` reads `100·(i div 100)`
     c : N ⟶ 1+N ≜ dom(x) tot(dom(x π₁ {(0,0)}) x π₂)
-    check fills(c) [{(∗,0)}, 𝟙] = ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
+    test fills(c) [{(∗,0)}, 𝟙] = ran(d3) ⟨⟨𝟙, ⊤ {(∗,100)}⟩div, ⊤ {(∗,100)}⟩times
     -- `q` is `x` one step later: row `i ≥ 100` meets `i − 99` of its key, so Σ (i − 99) = (n−100)(n−99)/2
     q : N ⟶ N×N ≜ x ⟨π₁, π₂ succ⟩
     a : N ⟶ (N×N)×(1+(N×N)) ≜ aj(π₁, π₂, π₁, π₂, x, q)
-    check summarize(F(a π₂ [{(∗,0)}, π₂]) sum, a) = {(∗,405450)}
-    check topK({(∗,3)}, π₂, x) = {(0,(99,999)),(1,(98,998)),(2,(97,997))}
+    test summarize(F(a π₂ [{(∗,0)}, π₂]) sum, a) = {(∗,405450)}
+    test topK({(∗,3)}, π₂, x) = {(0,(99,999)),(1,(98,998)),(2,(97,997))}
     -- sorted position `p` holds key `p div T`, row `p div T + 100·(p mod T)`
-    check sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩
+    test sortBy(π₁, x) = ran(d3) ⟨⟨𝟙, ⊤ {(∗,10)}⟩div, ⟨⟨⟨𝟙, ⊤ {(∗,10)}⟩mod, ⊤ {(∗,100)}⟩times, ⟨𝟙, ⊤ {(∗,10)}⟩div⟩plus⟩
 
 
 
@@ -62,12 +62,12 @@ rel_program frameScaleT3 where
     x : M ⟶ M×M ≜ below({(∗,1000)}) ⟨⟨𝟙, ⊤ {(∗,100)}⟩mod, 𝟙⟩
     y : M ⟶ M×M ≜ below({(∗,100)}) ⟨𝟙, succ⟩
     xf : M ⟶ M×M ≜ filterBy(dom(π₁ below({(∗,50)})), x)
-    check count(xf) = {(∗,500)}
+    test count(xf) = {(∗,500)}
     -- group `j` is key `j`: `(j, 10j + 4500)`
-    check aggregate(π₁, F(xf π₂) sum, xf) = below({(∗,50)}) ⟨𝟙, ⟨𝟙, ⊤ {(∗,10)}⟩times ⟨𝟙, ⊤ {(∗,4500)}⟩plus⟩
+    test aggregate(π₁, F(xf π₂) sum, xf) = below({(∗,50)}) ⟨𝟙, ⟨𝟙, ⊤ {(∗,10)}⟩times ⟨𝟙, ⊤ {(∗,4500)}⟩plus⟩
     j : M ⟶ (M×M)×(M×M) ≜ innerJoin(π₁, π₁, xf, y)
-    check count(j) = {(∗,500)}
-    check summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
+    test count(j) = {(∗,500)}
+    test summarize(F(j π₂ π₂) sum, j) = {(∗,12750)}
 
 
 

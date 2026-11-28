@@ -71,32 +71,32 @@ rel_program tradeApp where
     vv : N ⟶ Venue ≜ {(0,(A,"NY")),(1,(B,"LN, main"))}
 
     -- kept rows 0 2 3 4 6: A 100+200, B 150, C 300+100
-    check bySym = {(A,(300,2)),(B,(150,1)),(C,(400,2))} where trades ≜ tt
+    test bySym = {(A,(300,2)),(B,(150,1)),(C,(400,2))} where trades ≜ tt
     -- prices 21.5 (row 4), 20.25 (row 1)
-    check top2 = {(0,((((B,2024.01.16),5),21.5),150)),(1,((((B,2024.01.15),2),20.25),50))} where trades ≜ tt
+    test top2 = {(0,((((B,2024.01.16),5),21.5),150)),(1,((((B,2024.01.15),2),20.25),50))} where trades ≜ tt
     -- rows 3–6 are after 2024.01.15; per day 100+50+200, 300+150, 50+100
-    check late = {(0,((((C,2024.01.16),3),7.75),300)),(1,((((B,2024.01.16),5),21.5),150)),
+    test late = {(0,((((C,2024.01.16),3),7.75),300)),(1,((((B,2024.01.16),5),21.5),150)),
       (2,((((A,2024.01.17),5),12.5),50)),(3,((((C,2024.01.17),6),8.25),100))} where trades ≜ tt
-    check perDay = {(2024.01.15,350),(2024.01.16,450),(2024.01.17,150)} where trades ≜ tt
+    test perDay = {(2024.01.15,350),(2024.01.16,450),(2024.01.17,150)} where trades ≜ tt
     -- trades per day, untyped: rows 0–2, 3–4, 5–6
-    check agg((trades col Trade "day")°, length) = {(2024.01.15,3),(2024.01.16,2),(2024.01.17,2)} where trades ≜ tt
+    test agg((trades col Trade "day")°, length) = {(2024.01.15,3),(2024.01.16,2),(2024.01.17,2)} where trades ≜ tt
     -- the trades of A and B in position order, each with its sym's one venue
-    check tradeVenue = {(0,((A,1),"NY")),(1,((B,2),"LN, main")),(2,((A,3),"NY")),(3,((B,5),"LN, main")),
+    test tradeVenue = {(0,((A,1),"NY")),(1,((B,2),"LN, main")),(2,((A,3),"NY")),(3,((B,5),"LN, main")),
       (4,((A,5),"NY"))} where trades ≜ tt, venues ≜ vv
     -- A at 1 → q0 (9); B at 2 → q1 (19); A at 3 → q2, q3 tie, the later q3 (11); C none (null, read as 0);
     -- B at 5 → q4 (20); A at 5 → q3 (11)
-    check withBid ⟨π₁, π₂ [{(∗,0)}, 𝟙]⟩ = {(0,(((A,1),10.5),9)),(1,(((B,2),20.25),19)),(2,(((A,3),11.5),11)),
+    test withBid ⟨π₁, π₂ [{(∗,0)}, 𝟙]⟩ = {(0,(((A,1),10.5),9)),(1,(((B,2),20.25),19)),(2,(((A,3),11.5),11)),
       (3,(((C,3),7.75),0)),(4,(((B,5),21.5),20)),(5,(((A,5),12.5),11)),(6,(((C,6),8.25),0))} where trades ≜ tt, quotes ≜ qq
-    check nulls(col TradeBid "bid", withBid) = {(∗,2)} where trades ≜ tt, quotes ≜ qq
+    test nulls(col TradeBid "bid", withBid) = {(∗,2)} where trades ≜ tt, quotes ≜ qq
     -- px · 5 · 7 ·: 3 nulls; fills 5 at row 2, 7 at row 4, the leading null stays (read as 0)
-    check markNulls = {(∗,3)} where marks ≜ mm
-    check filled ⟨π₁, π₂ [{(∗,0)}, 𝟙]⟩ = {(0,(A,0)),(1,(B,5)),(2,(C,5)),(3,(A,7)),(4,(B,7))} where marks ≜ mm
+    test markNulls = {(∗,3)} where marks ≜ mm
+    test filled ⟨π₁, π₂ [{(∗,0)}, 𝟙]⟩ = {(0,(A,0)),(1,(B,5)),(2,(C,5)),(3,(A,7)),(4,(B,7))} where marks ≜ mm
     -- A rows 0 2 5: 100 300 350; B rows 1 4: 50 200; C rows 3 6: 300 400
-    check cumSize = {(0,(A,100)),(1,(B,50)),(2,(A,300)),(3,(C,300)),(4,(B,200)),(5,(A,350)),(6,(C,400))} where trades ≜ tt
+    test cumSize = {(0,(A,100)),(1,(B,50)),(2,(A,300)),(3,(C,300)),(4,(B,200)),(5,(A,350)),(6,(C,400))} where trades ≜ tt
     -- A 3 trades × 4 quotes, B 2 × 2, C 2 once each: 18 rows, 2 of them null (C's rows 3, 6)
-    check count(lj) = {(∗,18)} where trades ≜ tt, quotes ≜ qq
-    check unquoted = {(∗,2)} where trades ≜ tt, quotes ≜ qq
-    check filterNothing(π₂, lj) π₁ ⟨col Trade "sym", col Trade "time"⟩ = {(0,(C,3)),(1,(C,6))} where trades ≜ tt, quotes ≜ qq
+    test count(lj) = {(∗,18)} where trades ≜ tt, quotes ≜ qq
+    test unquoted = {(∗,2)} where trades ≜ tt, quotes ≜ qq
+    test filterNothing(π₂, lj) π₁ ⟨col Trade "sym", col Trade "time"⟩ = {(0,(C,3)),(1,(C,6))} where trades ≜ tt, quotes ≜ qq
 
 
 

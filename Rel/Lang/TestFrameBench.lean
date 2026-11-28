@@ -47,13 +47,13 @@ rel_program bench2 where
     li : N ⟶ LI ≜ lineitem(ext(D))
     od : N ⟶ Ord ≜ orders(D)
     cu : N ⟶ Cust ≜ customer(F5)
-    check b1(li) = {(0,((0,0),(420,(910,(86680,20))))),(1,((0,1),(520,(1110,(105780,20))))),
+    test b1(li) = {(0,((0,0),(420,(910,(86680,20))))),(1,((0,1),(520,(1110,(105780,20))))),
       (2,((1,0),(315,(675,(64710,15))))),(3,((1,1),(390,(825,(79110,15))))),
       (4,((2,0),(315,(690,(65460,15))))),(5,((2,1),(390,(840,(79710,15)))))}
-    check b3(cu, od, li) = 𝟘
-    check b4(od, li) = 𝟘
-    check b6(li) = 𝟘
-    check b13(cu, od) = {(0,(3,3)),(1,(1,1)),(2,(0,1))}
+    test b3(cu, od, li) = 𝟘
+    test b4(od, li) = 𝟘
+    test b6(li) = 𝟘
+    test b13(cu, od) = {(0,(3,3)),(1,(1,1)),(2,(0,1))}
 
 
 
@@ -63,8 +63,8 @@ open Rel.Programs.prelude Rel.Programs.frame Rel.Programs.frameGroup Rel.Program
 rel_program joinBig where
     x : N ⟶ N ≜ ran(ext(ext(ext(D)))) dom(𝟙 < {(1500,∗)})
     y : N ⟶ N ≜ ran(ext(ext(ext(ext(D))))) dom(𝟙 ≤ {(55000,∗)})
-    check count(innerJoin(𝟙, 𝟙, x, y)) = {(∗,1500)}
-    check count(asc(ran(⟨𝟙, J(𝟙, 𝟙, x, y)⟩)) ⟨π₁ x, π₂ y⟩) = {(∗,1500)}
+    test count(innerJoin(𝟙, 𝟙, x, y)) = {(∗,1500)}
+    test count(asc(ran(⟨𝟙, J(𝟙, 𝟙, x, y)⟩)) ⟨π₁ x, π₂ y⟩) = {(∗,1500)}
 
 
 

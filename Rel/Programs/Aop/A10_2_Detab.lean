@@ -9,9 +9,9 @@ namespace Rel.Programs
 
 open Rel.Programs.prelude Rel.Programs.detab in
 rel_program aopA10_2_Detab where
-    check x = {(∗,a b TB c BL d)}                                                   -- run_input, 10-greedy.typ:273
-    check x detab = {(∗,a b BL BL c BL d)}                                          -- run_detab, 10-greedy.typ:277
-    check x detab entab = {(∗,a b TB c BL d)}                                       -- run_entab, 10-greedy.typ:289
+    test x = {(∗,a b TB c BL d)}                                                   -- run_input, 10-greedy.typ:273
+    test x detab = {(∗,a b BL BL c BL d)}                                          -- run_detab, 10-greedy.typ:277
+    test x detab entab = {(∗,a b TB c BL d)}                                       -- run_entab, 10-greedy.typ:289
 
 -- not ported: Q_eq (Freyd.Alg.RelSet.Detab.Q_eq, 10-greedy.typ:108): `Q` is a relation by cases on `F(String)`; written `𝟙+(V×U)` it is its own definition, a syntactic identity
 -- not ported: detab_cata (10-greedy.typ:87): identifies the fold `⦇[nil,expand]⦈` with `graph detabFn`, a host function with no relation in Rel; needs the snoc-list relator F

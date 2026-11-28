@@ -26,35 +26,35 @@ rel_program partyPlan where
 
     /- The book's fold ⦇S⦈ (p. 177), : unfold by ⟨𝟙, kids⟩, fold by S, the tree never built. -/
 
-    choose : [E]×[E] ⟶ [E] ≜ π₁ ∪ π₂
-    include : E×[[E]×[E]] ⟶ [E] ≜ (𝟙×(F(π₂)concat))cons
-    exclude : E×[[E]×[E]] ⟶ [E] ≜ π₂F(choose)concat
-    S : E×[[E]×[E]] ⟶ [E]×[E] ≜ ⟨include, exclude⟩
-    fold : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids⟩, S)
-    party : E ⟶ [E] ≜ fold choose
-    best : E ⟶ [E] ≜ Λ(party)est(R(rating)°)
+    choose  : [E]×[E] ⟶ [E]         ≜ π₁ ∪ π₂
+    include : E×[[E]×[E]] ⟶ [E]     ≜ (𝟙×(F(π₂)concat))cons
+    exclude : E×[[E]×[E]] ⟶ [E]     ≜ π₂F(choose)concat
+    S       : E×[[E]×[E]] ⟶ [E]×[E] ≜ ⟨include, exclude⟩
+    fold    : E ⟶ [E]×[E]           ≜ hylo(⟨𝟙, kids⟩, S)
+    party   : E ⟶ [E]               ≜ fold choose
+    best    : E ⟶ [E]               ≜ Λ(party)est(R(rating)°)
 
     -- the sets with no employee beside his boss
-    check party setify = Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    test party setify = Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
 
     /- The greedy form (p. 178): exclude keeps only the best party of each child. -/
 
     exclude₁ : E×[[E]×[E]] ⟶ [E] ≜ π₂F(Λ(choose)est(R(rating)°))concat
     gfold : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids⟩, ⟨include, exclude₁⟩)
-    check gfold Λ(choose)est(R(rating)°) ⊑ best
+    test gfold Λ(choose)est(R(rating)°) ⊑ best
 
     /- The efficient form: c is (cost with e, cost without e), win the employees whose best party holds them, ties
        to include, and guests the party as a relation into E. -/
 
-    tally : E×[N×N] ⟶ N×N ≜ ⟨(π₁rating) + (π₂F(π₂)sum), π₂F(max)sum⟩
-    c : E ⟶ N×N ≜ hylo(⟨𝟙, kids⟩, tally)
-    win : E ⟶ E ≜ dom((c π₁ ≥) ∩ (c π₂))
-    guests : E ⟶ E ≜ (win boss° boss° ∪ ((𝟙 − win)boss°))* win   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
-    check Λ(guests) ⊑ best
-    check c max = best cost(rating)
-    root : E ⟶ E ≜ {(a,a)}
-    check root best = {(a,a d e f)}
-    check root c max = {(a,17)}
+    tally  : E×[N×N] ⟶ N×N ≜ ⟨(π₁rating) + (π₂F(π₂)sum), π₂F(max)sum⟩
+    c      : E ⟶ N×N       ≜ hylo(⟨𝟙, kids⟩, tally)
+    win    : E ⟶ E         ≜ dom((c π₁ ≥) ∩ (c π₂))
+    guests : E ⟶ E         ≜ (win boss° boss° ∪ ((𝟙 − win)boss°))* win   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
+    test Λ(guests) ⊑ best
+    test c max = best cost(rating)
+    root   : E ⟶ E         ≜ {(a,a)}
+    test root best = {(a,a d e f)}
+    test root c max = {(a,17)}
 
 
 

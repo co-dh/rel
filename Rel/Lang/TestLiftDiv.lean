@@ -21,18 +21,18 @@ rel_program liftDiv where
     rdRows(R : N ⟶ N, S : N ⟶ N) : N ⟶ N ≜ ∼((∼R)S°)
     ldRows(R : N ⟶ N, S : N ⟶ N) : N ⟶ N ≜ ∼(R°(∼S))
     sdRows(R : N ⟶ N, S : N ⟶ N) : N ⟶ N ≜ ∼((∼R)S°) ∩ (∼((∼S)R°))°
-    check rd(Rk,Sk) = {(0,(0,0)),(0,(0,1)),(0,(1,0)),(1,(0,1)),(1,(1,0)),(1,(1,1))}
-    check R₀/S₀ = {(0,0),(0,1),(1,0)}
-    check R₁/S₁ = {(0,1),(1,0),(1,1)}
-    check rd(Rk,Sk) = rdRows(Rk,Sk)
-    check ld(Rk,Sk) = {(0,(1,0)),(1,(0,0)),(1,(0,1))}
-    check R₀\S₀ = {(1,0)}
-    check R₁\S₁ = {(0,0),(0,1)}
-    check ld(Rk,Sk) = ldRows(Rk,Sk)
-    check sd(Rk,Sk) = {(0,(1,0)),(1,(0,1)),(1,(1,0))}
-    check R₀ ÷ S₀ = {(1,0)}
-    check R₁ ÷ S₁ = {(0,1),(1,0)}
-    check sd(Rk,Sk) = sdRows(Rk,Sk)
+    test rd(Rk,Sk) = {(0,(0,0)),(0,(0,1)),(0,(1,0)),(1,(0,1)),(1,(1,0)),(1,(1,1))}
+    test R₀/S₀ = {(0,0),(0,1),(1,0)}
+    test R₁/S₁ = {(0,1),(1,0),(1,1)}
+    test rd(Rk,Sk) = rdRows(Rk,Sk)
+    test ld(Rk,Sk) = {(0,(1,0)),(1,(0,0)),(1,(0,1))}
+    test R₀\S₀ = {(1,0)}
+    test R₁\S₁ = {(0,0),(0,1)}
+    test ld(Rk,Sk) = ldRows(Rk,Sk)
+    test sd(Rk,Sk) = {(0,(1,0)),(1,(0,1)),(1,(1,0))}
+    test R₀ ÷ S₀ = {(1,0)}
+    test R₁ ÷ S₁ = {(0,1),(1,0)}
+    test sd(Rk,Sk) = sdRows(Rk,Sk)
 
 -- by hand, at key 0: `R₀ 0 = {0,1}`, `R₀ 1 = {0}`, `S₀ 0 = {0}`, `S₀ 1 = {1}`; `a (R/S) c ⟺ S c ⊆ R a`, so `c = 0`
 -- takes `a ∈ {0,1}` and `c = 1` takes `a = 0`. At key 1: `R₁ 1 = {1}`, `S₁ 0 = {1}`, `S₁ 1 = ∅`, so `c = 0` takes

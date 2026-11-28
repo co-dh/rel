@@ -109,14 +109,14 @@ rel_program estConv where
     c₀ : [E] ⟶ N ≜ F(rating)sum
     R₀ : [E] ⟶ [E] ≜ c₀ ≤ c₀°
     R₀c : [E] ⟶ [E] ≜ c₀ ≥ c₀°
-    check Λ(Hn)est(≤°) = Λ(Hn)est(≥)
-    check Λ(Hn)front(≤°) = Λ(Hn)front(≥)
-    check Λ(H)est(R(rating)°) = Λ(H)est(Rc(rating))
-    check Λ(H)front(R(rating)°) = Λ(H)front(Rc(rating))
-    check Λ(H)est(R₀°) = Λ(H)est(R₀c)
-    check Λ(H)front(R₀°) = Λ(H)front(R₀c)
-    check Λ(H)thinL(R₀°) = Λ(H)thinL(R₀c)
-    check Λ(H)est(R₀) = Λ(H)est(R(rating))
+    test Λ(Hn)est(≤°) = Λ(Hn)est(≥)
+    test Λ(Hn)front(≤°) = Λ(Hn)front(≥)
+    test Λ(H)est(R(rating)°) = Λ(H)est(Rc(rating))
+    test Λ(H)front(R(rating)°) = Λ(H)front(Rc(rating))
+    test Λ(H)est(R₀°) = Λ(H)est(R₀c)
+    test Λ(H)front(R₀°) = Λ(H)front(R₀c)
+    test Λ(H)thinL(R₀°) = Λ(H)thinL(R₀c)
+    test Λ(H)est(R₀) = Λ(H)est(R(rating))
     print Λ(Hn)est(≤°)
     print Λ(H)est(R(rating)°)
     print Λ(H)est(R(rating))

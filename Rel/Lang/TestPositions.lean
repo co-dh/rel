@@ -20,11 +20,11 @@ rel_program positionsT where
     nempty : 1 ⟶ N ≜ pempty length
     twelve : 1 ⟶ [N] ≜ {(∗,3 4 5 6 7 8 9 3 4 5 6 7)}
     ptwelve : 1 ⟶ [N] ≜ twelve positions(big)
-    check pdup = {(∗,0 2 4 5)}
-    check ptwelve = 𝟘
-    check pall = {(∗,0 1 2)}
-    check nnone = {(∗,0)}
-    check nempty = {(∗,0)}
+    test pdup = {(∗,0 2 4 5)}
+    test ptwelve = 𝟘
+    test pall = {(∗,0 1 2)}
+    test nnone = {(∗,0)}
+    test nempty = {(∗,0)}
 
 -- by hand: `big` keeps 3…9. `5 0 7 0 3 3` keeps positions 0 2 4 5 (the two `3`s each count: positions, not values);
 -- `3 4 5` keeps every position; `1 2 1` none, so `pnone` is the empty list (checked by its length: a literal list

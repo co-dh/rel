@@ -58,7 +58,7 @@ rel_program chess where
     mate : [Sq×Pc]×(Sq×Sq) ⟶ [Sq×Pc]×(Sq×Sq) ≜ j a(k(⇝),f(⇝),W₁) i(B(⇝),Pin₁,W₁,k(⇝))   -- the moves that mate
     m : Sq×Sq ⟶ Pc ≜ ran(mate π₂)π₁ on           -- each mating move, the piece it moves
 
-    check m = {((0,6),R)}                         -- Ra1-a3 mates: Kb1 holds a2, b2, c2; the rook a3, b3
+    test m = {((0,6),R)}                         -- Ra1-a3 mates: Kb1 holds a2, b2, c2; the rook a3, b3
 
 
 

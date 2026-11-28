@@ -35,8 +35,8 @@ rel_program prefixCata where
       prefix
 
     check x prefixC = x prefix by Rel.Lang.Tm.prefixFold_input
-    check e prefixC = e prefix
-    check {(∗,3 1)} ⊑ x prefixC
+    test e prefixC = e prefix
+    test {(∗,3 1)} ⊑ x prefixC
 
 
 

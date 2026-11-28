@@ -33,11 +33,11 @@ rel_program jobshop where
     sched : 1 ⟶ [Job×N] ≜ jobs ⦇[nil, step]⦈
     s : Job ⟶ N ≜ π₁° ran(sched ∋) π₂
 
-    check 𝟙(Job) ⊑ s s°                          -- s is entire
-    check s° s ⊑ 𝟙(N)                            -- s is simple
-    check jobs ⊑ jobs ordered(∼pre°)             -- the declaration order is topological
-    check ⟨𝟙,s⟩ bad ⟨𝟙,s⟩° = 𝟘                   -- no two assignments of s conflict
-    check s = {(AxleF,0),(AxleB,10),(WheelRF,10),(WheelLF,10),(WheelRB,20),(WheelLB,20),(NutsRF,11),(NutsLF,11),(NutsRB,21),(NutsLB,21),(CapRF,13),(CapLF,13),(CapRB,23),(CapLB,23),(Inspect,24)}
+    test 𝟙(Job) ⊑ s s°                          -- s is entire
+    test s° s ⊑ 𝟙(N)                            -- s is simple
+    test jobs ⊑ jobs ordered(∼pre°)             -- the declaration order is topological
+    test ⟨𝟙,s⟩ bad ⟨𝟙,s⟩° = 𝟘                   -- no two assignments of s conflict
+    test s = {(AxleF,0),(AxleB,10),(WheelRF,10),(WheelLF,10),(WheelRB,20),(WheelLB,20),(NutsRF,11),(NutsLF,11),(NutsRB,21),(NutsLB,21),(CapRF,13),(CapLF,13),(CapRB,23),(CapLB,23),(Inspect,24)}
 
 
 

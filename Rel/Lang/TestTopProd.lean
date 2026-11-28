@@ -15,11 +15,11 @@ rel_program topProdN where
     tt : N ⟶ N+1 ≜ (J inl) ∪ ((𝟙 − dom(J)) ⊤(N,1) inr)
     tq : N ⟶ N ≜ {(0,5),(1,6),(2,9)}
     vq : N ⟶ N ≜ {(5,5),(6,6),(7,7)}
-    check dom(x) ⊤ dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
-    check dom(x) ⊤(N,1) ⊤(1,N) dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
-    check asc(ran(⟨𝟙, x⟩)) (x × 𝟙) = {(0,(30,30)),(1,(10,10)),(2,(40,40)),(3,(20,20))}
-    check asc(ran(⟨𝟙, dom(x) tt⟩)) (x × 𝟙) (𝟙 × inl°) = {(0,(30,5)),(2,(40,6))}
-    check tq ∩ (⊤ vq) = {(0,5),(1,6)}
+    test dom(x) ⊤ dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
+    test dom(x) ⊤(N,1) ⊤(1,N) dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
+    test asc(ran(⟨𝟙, x⟩)) (x × 𝟙) = {(0,(30,30)),(1,(10,10)),(2,(40,40)),(3,(20,20))}
+    test asc(ran(⟨𝟙, dom(x) tt⟩)) (x × 𝟙) (𝟙 × inl°) = {(0,(30,5)),(2,(40,6))}
+    test tq ∩ (⊤ vq) = {(0,5),(1,6)}
 
 open Rel.Programs.prelude in
 rel_program topProdFin where
@@ -28,10 +28,10 @@ rel_program topProdFin where
     y : N ⟶ N ≜ {(5,1),(7,2)}
     J : N ⟶ N ≜ {(0,5),(2,6)}
     tt : N ⟶ N+1 ≜ (J inl) ∪ ((𝟙 − dom(J)) ⊤(N,1) inr)
-    check dom(x) ⊤ dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
-    check dom(x) ⊤(N,1) ⊤(1,N) dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
-    check asc(ran(⟨𝟙, x⟩)) (x × 𝟙) = {(0,(30,30)),(1,(10,10)),(2,(40,40)),(3,(20,20))}
-    check asc(ran(⟨𝟙, dom(x) tt⟩)) (x × 𝟙) (𝟙 × inl°) = {(0,(30,5)),(2,(40,6))}
+    test dom(x) ⊤ dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
+    test dom(x) ⊤(N,1) ⊤(1,N) dom(y) = {(0,5),(0,7),(1,5),(1,7),(2,5),(2,7),(3,5),(3,7)}
+    test asc(ran(⟨𝟙, x⟩)) (x × 𝟙) = {(0,(30,30)),(1,(10,10)),(2,(40,40)),(3,(20,20))}
+    test asc(ran(⟨𝟙, dom(x) tt⟩)) (x × 𝟙) (𝟙 × inl°) = {(0,(30,5)),(2,(40,6))}
 
 -- by hand: `dom(x) ⊤ dom(y)` is every key of `x` (0…3) to every key of `y` (5, 7), eight pairs; through the unit
 -- `⊤(N,1) ⊤(1,N)` is the same product. `ran⟨𝟙, x⟩` is `(0,30) (1,10) (2,40) (3,20)`, in value order by the distinct

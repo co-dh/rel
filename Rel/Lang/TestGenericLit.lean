@@ -19,8 +19,8 @@ rel_program genLitNT where
     x : 1 ⟶ N ≜ {(∗,5)}
     a : N ⟶ N ≜ {(105,7),(6,9)}
     s : N ⟶ N ≜ {(7,3)}
-    check inc(x) = {(∗,6)}
-    check percentile(x, a, s) = {(∗,3)}
+    test inc(x) = {(∗,6)}
+    test percentile(x, a, s) = {(∗,3)}
 
 open Rel.Programs.prelude genLitG in
 rel_program genLitQT where
@@ -28,15 +28,15 @@ rel_program genLitQT where
     x : 1 ⟶ Q ≜ {(∗,5)}
     a : Q ⟶ Q ≜ {(105,7),(6,9)}
     s : Q ⟶ Q ≜ {(7,3)}
-    check inc(x) = {(∗,6)}
-    check percentile(x, a, s) = {(∗,3)}
+    test inc(x) = {(∗,6)}
+    test percentile(x, a, s) = {(∗,3)}
 
 -- by hand: `inc` adds 1 to 5; `percentile` adds 100 to 5, `a` takes 105 to 7, `s` takes 7 to 3
 
 
 
 -- refused at the use, where `numCheck` reads the literal `quantile` is given at the object ν is put at
-/-- error: line 47, col 11: in `Rel.Lang.TestGenericLit.genLitG.percentile` (its line 14): `quantile` at this call, where ν is P: 100 is not in P = 0…15 -/
+/-- error: line 47, col 10: in `Rel.Lang.TestGenericLit.genLitG.percentile` (its line 14): `quantile` at this call, where ν is P: 100 is not in P = 0…15 -/
 #guard_msgs in
 open Rel.Programs.prelude genLitG in
 rel_program genLitPT where
@@ -44,6 +44,6 @@ rel_program genLitPT where
     x : 1 ⟶ P ≜ {(∗,5)}
     a : P ⟶ P ≜ {(7,7)}
     s : P ⟶ P ≜ {(7,3)}
-    check percentile(x, a, s) = 𝟘
+    test percentile(x, a, s) = 𝟘
 
 end Rel.Lang.TestGenericLit

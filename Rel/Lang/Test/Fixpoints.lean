@@ -14,7 +14,7 @@ rel_program closure where
     obj N = 0…4
     R : N ⟶ N ≜ {(0,1),(1,2),(2,3)}
     c : N ⟶ N ≜ μX : 𝟙 ∪ (R X)
-    check c = {(0,0),(1,1),(2,2),(3,3),(4,4),(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
+    test c = {(0,0),(1,1),(2,2),(3,3),(4,4),(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
 
 -- postfix `*`, at the level of `°`: `R*` reads as the prelude's `star(R)` (`μX : 𝟙 ∪ R X`); `°` and `*` chain
 -- either way
@@ -28,12 +28,12 @@ rel_program star where
     R : N ⟶ N ≜ {(0,1),(1,2),(2,3)}
     X : N ⟶ N ≜ {(3,4)}
     c : N ⟶ N ≜ μZ : 𝟙 ∪ (R Z)
-    check R* = c
-    check R* = {(0,0),(1,1),(2,2),(3,3),(4,4),(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
-    check R°* = c°
-    check R*° = c°
-    check (R X)* = μZ : 𝟙 ∪ (R X Z)
-    check (R X)* = {(0,0),(1,1),(2,2),(3,3),(4,4),(2,4)}
+    test R* = c
+    test R* = {(0,0),(1,1),(2,2),(3,3),(4,4),(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
+    test R°* = c°
+    test R*° = c°
+    test (R X)* = μZ : 𝟙 ∪ (R X Z)
+    test (R X)* = {(0,0),(1,1),(2,2),(3,3),(4,4),(2,4)}
 
 -- `*` is no name
 #eval errAt "obj B = 0…1\n* : B ⟶ B ≜ 𝟙(B)\n" 0 "expected"
@@ -46,9 +46,9 @@ rel_program infPath where
     x₁ : N ⟶ N ≜ 𝟙(N) ∩ dom(R 𝟙(N))
     x₂ : N ⟶ N ≜ 𝟙(N) ∩ dom(R x₁)
     x₃ : N ⟶ N ≜ 𝟙(N) ∩ dom(R x₂)
-    check v = x₂
-    check x₃ = x₂
-    check v = {(0,0),(1,1),(2,2)}
+    test v = x₂
+    test x₃ = x₂
+    test v = {(0,0),(1,1),(2,2)}
 
 
 -- `μ` on an array target, its values duplicate-free lists: the unions of the singletons `s`, which stop growing
@@ -60,7 +60,7 @@ rel_program muArr where
     f : B ⟶ [B] ≜ μX : s ∪ (⟨X, X⟩ cat setify)
     d : B ⟶ [B] ≜ ⟨s, s⟩ cat setify
     e : B ⟶ [B] ≜ ⟨d, s⟩ cat setify
-    check f = s ∪ d ∪ e
+    test f = s ∪ d ∪ e
     print f
 
 #guard muArr.prints == ["f = {(0, [0]), (0, 0 1), (0, 0 1 2), (0, 0 2), (0, [1]), (0, 1 2), (0, [2]), (1, []), (2, [])}"]

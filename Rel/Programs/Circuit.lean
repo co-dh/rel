@@ -29,7 +29,7 @@ rel_program circuit where
     p : B ⟶ B×B ≜ ⟨{(0,0)},{(0,1)}⟩               -- the point (0,1) at the bit 0
     answer : [B] ⟶ B ≜ add p°                     -- the inputs giving sum 0, carry 1
 
-    check answer = {(0 1 1,0),(1 0 1,0),(1 1 0,0)}
+    test answer = {(0 1 1,0),(1 0 1,0),(1 1 0,0)}
 
 
 

@@ -49,7 +49,7 @@ rel_program qual where
     AC3(X : A ⟶ D) : A ⟶ D ≜ X
     s : A ⟶ D ≜ csp.AC3(≠, ≠, s₀)
     t : A ⟶ D ≜ AC3(s₀)
-    check s ⊑ t
+    test s ⊑ t
 
 
 /-! Selective: `open csp (AC3)` brings `AC3`; without it `AC3` is unknown. -/

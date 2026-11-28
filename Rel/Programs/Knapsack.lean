@@ -51,13 +51,13 @@ rel_program knapsack where
     step : [[N×N]]×(N×N) ⟶ [[N×N]] ≜ cpr(⟨⊤,π₂⟩,⟨⊤,π₁⟩)π₂⟨F(snoc)filter(within(w)), F(π₁)⟩merge(R)thinL(Q)
     knap : K ⟶ [N×N] ≜ X⦇[X nil τ, step]⦈est(R)   -- minL(R) is est(R) on the thinned array
 
-    check X⦇[X nil, S]⦈ = X subseq within(w)   -- knap_spec
-    check p = s                                   -- knap_laws_step2
-    check knap ⊑ s                                -- knap_fold: the derived program refines the specification
+    test X⦇[X nil, S]⦈ = X subseq within(w)   -- knap_spec
+    test p = s                                   -- knap_laws_step2
+    test knap ⊑ s                                -- knap_fold: the derived program refines the specification
 
-    check s = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5)),(d,(5,4) (5,6))}
-    check p = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5)),(d,(5,4) (5,6))}
-    check knap = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5))}
+    test s = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5)),(d,(5,4) (5,6))}
+    test p = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5)),(d,(5,4) (5,6))}
+    test knap = {(a,(5,4) (6,5)),(b,(2,2) (9,8)),(c,[(1,9)]),(d,(5,4) (5,5))}
 
 
 

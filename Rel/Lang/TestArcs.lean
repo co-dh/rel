@@ -26,9 +26,9 @@ rel_program arcsT where
     z₃ : V ⟶ D ≜ νZ : st ∩ (A\(Z e))
     print z₁
     print z₂
-    check z₁ = {(x,0),(x,2),(y,0),(y,2)}
-    check z₂ = {(x,0),(x,2),(y,0),(y,2)}
-    check z₁ = z₃
+    test z₁ = {(x,0),(x,2),(y,0),(y,2)}
+    test z₂ = {(x,0),(x,2),(y,0),(y,2)}
+    test z₁ = z₃
 
 #guard arcsT.prints == ["z₁ = {(x, 0), (x, 2), (y, 0), (y, 2)}", "z₂ = {(x, 0), (x, 2), (y, 0), (y, 2)}"]
 

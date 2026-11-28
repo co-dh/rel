@@ -30,8 +30,8 @@ Lean kernel 检查的是两侧实际 elaboration 后的 `Tm.den` 的等式或包
   [证明目标], [关系判断 `R = S` / `R ⊑ S`，对象与关系参数在 `∀ ρ` 之下量化，`if` 假设是目标的前提。证明常量为 `n.proof.<t>`，`check` 为 `n.proof.check<i>`。], [`derive p : {r // spec = r}`：推导的末式生成定义体，没有实现。定义体与 spec 仍是两个声明。],
   [证明来源], [`by lemma`：Lean 定理的类型与目标核对（`certify`）。calc 的一步引用已有证明常量的 theorem（`certifyCalc`）。], [`using`：前提只能取自 theorem 的 `if` 假设，没有 `using` 语法。],
   [缺证明时], [calc 中无法认证的步骤列入 `n.proof.unproved`，附原因，不报错。`by lemma` 的类型不符是 elaboration 错误，不发出可执行定义。], [`rel_program` 在缺证明时拒绝 elaborate：未实现，没有 `by` 也没有 calc 的 `theorem` 照常通过（见 9.10 表）。],
-  [测试], [`test A = B`：语法同 `check A = B`，由运行两侧判定，走与无 `by` 的 `check` 相同的路径（`checkOf`）。具体输入比较只作测试，不作程序的断言。无 `by` 的 `check` 暂时仍同样运行判定。], [无 `by` 的 `check` 尚未改为错误；现有约 1053 条运行判定的 `check` 尚未迁移为 `test`。],
-  [运行判定失败], [`test` 或运行判定的 `check` 不成立，或某项求值抛错，是 `rel_program` 的 elaboration 错误，信息含程序名、断言文本与两侧的值（`Expand.failures` 在 `emit` 内求值）。没有 `n.failures`、`n.ok`，也没有 `#guard n.ok`。], [],
+  [测试], [`test A = B`：语法同 `check A = B`，由运行两侧判定，与 `check` 共用 `checkOf`。具体输入比较只作测试，不作程序的断言。无 `by` 的 `check` 是 elaboration 错误：`check at line L, col C states a claim with no proof: add `by <lemma>`, or write it as `test``。], [],
+  [运行判定失败], [`test` 或带 `by` 的 `check` 不成立，或某项求值抛错，是 `rel_program` 的 elaboration 错误，信息含程序名、断言文本与两侧的值（`Expand.failures` 在 `emit` 内求值）。没有 `n.failures`、`n.ok`，也没有 `#guard n.ok`。], [],
 )
 
 9.8：用户可写 `Λ(R)`，定义为 `(𝟙÷∋)E(R)`；Mss 与 Prelude 的等式写显式复合。
@@ -114,7 +114,7 @@ rel_program hypThm where
   [Prefix `prefixEq`], [不存在], [基线的 `prefixCata` 里只有一条 `check … by prefixFold_input`；`foldUP` 在 Prelude 已证，`prefixEq` 尚无陈述。],
 )
 
-- 其余程序：`Rel/Programs` 与 `Rel/Lang` 的 `check` 仍为具体输入测试，没有迁移，全仓严格模式未启用。
+- 其余程序：`Rel/Programs` 与 `Rel/Lang` 中原无 `by` 的 `check` 已全部迁移为 `test`。
 - 9.9：companion 引用的 law 尚无逐条记录（原文位置、量化、前提、Rel 声明、阻塞）；图导出暂缓。
 - 完成判据不变：rel 内全部证明完毕且运行路径无 `relaop` / `rel_aop` 引用，再通知 freyd 会话清理。
   Mss 与 Prelude 里「owed to Lean: `rel_aop` …」的注释对应上表未证的行，随证明接上改写。

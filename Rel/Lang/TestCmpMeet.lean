@@ -16,13 +16,13 @@ rel_program cmpMeetT where
     eq : N ⟶ N ≜ t ∩ 𝟙
     gel : N ⟶ N ≜ ≥ ∩ t
     either : N ⟶ N ≜ t ∩ (< ∪ >)
-    check ge = {(1,0),(1,1),(4,4)}
-    check lt = {(1,2),(3,5)}
-    check gt = {(1,0)}
-    check le = {(1,1),(1,2),(3,5),(4,4)}
-    check eq = {(1,1),(4,4)}
-    check gel = {(1,0),(1,1),(4,4)}
-    check either = {(1,0),(1,2),(3,5)}
+    test ge = {(1,0),(1,1),(4,4)}
+    test lt = {(1,2),(3,5)}
+    test gt = {(1,0)}
+    test le = {(1,1),(1,2),(3,5),(4,4)}
+    test eq = {(1,1),(4,4)}
+    test gel = {(1,0),(1,1),(4,4)}
+    test either = {(1,0),(1,2),(3,5)}
 
 
 -- `Bench/CmpMeet.lean`'s `cmpMeetBig` at 10³ rows over `M` of 10⁵ values: `P` the positions 0…999, `R0` each to its
@@ -36,10 +36,10 @@ rel_program cmpMeet3 where
     d3 : 1 ⟶ M ≜ ⟨d2, D⟩ ⟨⟨π₁, ⊤ {(∗,10)}⟩times, π₂⟩plus
     P : M ⟶ M ≜ ran(d3)
     R0 : M ⟶ M ≜ (P succ) ∪ (P ⟨𝟙, ⊤ {(∗,2)}⟩div)
-    check count(R0) = {(∗,1000)}
-    check count(ran(R0 ∩ ≥)) = {(∗,500)}
-    check count(ran(R0 ∩ <)) = {(∗,1000)}
-    check R0 ∩ 𝟙 = {(0,0)}
+    test count(R0) = {(∗,1000)}
+    test count(ran(R0 ∩ ≥)) = {(∗,500)}
+    test count(ran(R0 ∩ <)) = {(∗,1000)}
+    test R0 ∩ 𝟙 = {(0,0)}
 
 /-- error: rel_program Rel.Lang.TestCmpMeet.cmpMeetBad: bad: cross: 100000 values of the left object by 100000 of the right is 10000000000 pairs, past the bound 268435456: a relation on two whole objects (`≤`, `<`, `⊤`) read where nothing bounds it to fewer pairs; meet it with a table (`T ∩ ≤` tests T's pairs only) or compose a smaller table on each side (`K ≤ L`) -/
 #guard_msgs in

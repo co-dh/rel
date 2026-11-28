@@ -19,8 +19,8 @@ rel_program arith where
     print w max
     print w min
     D : N×N ⟶ N×N ≜ dom(𝟙(N×N) div)
-    check D⟨⟨π₂,div⟩times,mod⟩plus = Dπ₁
-    check D⟨mod,π₂⟩ = D⟨mod,π₂⟩(𝟙 ∩ (π₁ < π₂°))
+    test D⟨⟨π₂,div⟩times,mod⟩plus = Dπ₁
+    test D⟨mod,π₂⟩ = D⟨mod,π₂⟩(𝟙 ∩ (π₁ < π₂°))
 
 -- `a = b·div + mod` and `mod < b` on every pair of `N` with a divisor other than `0`
 
@@ -46,8 +46,8 @@ rel_program arithLifted where
     Fm : J ⟶ K×N ≜ {(i,i)}⊤(J,K)⟨𝟙,R₀⟩ ∪ ({(j,j)}⊤(J,K)⟨𝟙,R₁⟩)
     f(S : K ⟶ N) : K ⟶ N ≜ ⟨S,S⟩times ∪ (⟨S succ,S⟩mod)
     fF : J ⟶ K×N ≜ f(Fm)
-    check {(i,i)}fF = {(i,i)}⊤(J,K)⟨𝟙,f(R₀)⟩
-    check {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
+    test {(i,i)}fF = {(i,i)}⊤(J,K)⟨𝟙,f(R₀)⟩
+    test {(j,j)}fF = {(j,j)}⊤(J,K)⟨𝟙,f(R₁)⟩
     print f(R₀)
 
 
@@ -79,9 +79,9 @@ rel_program foldNamed where
     obj X = {A,B}
     R : 1+([X]×X) ⟶ [X] ≜ [nil, snoc]
     As : [X] ⟶ [X] ≜ ran(Λ(⊤(1,X))⦇[⊤(1,1)nil, π₁ ∪ (⟨π₁,⊤⟩snoc)]⦈)
-    check As⦇R⦈ = As
-    check As⦇R 𝟙⦈ = As
-    check As⦇[nil, snoc]⦈ = As
+    test As⦇R⦈ = As
+    test As⦇R 𝟙⦈ = As
+    test As⦇[nil, snoc]⦈ = As
 
 
 

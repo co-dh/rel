@@ -32,29 +32,29 @@ rel_program genNumT where
     x : 1 ⟶ F ≜ {(∗,3.0)}
     y : 1 ⟶ F ≜ {(∗,4.0)}
     k : 1 ⟶ N ≜ {(∗,3)}
-    check avg(x, y) = {(∗,0.75)}
-    check half(y) = {(∗,2.0)}
-    check root(y) = {(∗,2.0)}
+    test avg(x, y) = {(∗,0.75)}
+    test half(y) = {(∗,2.0)}
+    test root(y) = {(∗,2.0)}
     kf : 1 ⟶ F ≜ to(k)
-    check kf = {(∗,3.0)}
+    test kf = {(∗,3.0)}
     a : N ⟶ D ≜ {(0,2024.01.05),(1,2024.03.01)}
     b : N ⟶ D ≜ {(0,2024.01.01),(1,2024.02.28)}
     dn : N ⟶ N ≜ daysBetween(a, b)
-    check dn = {(0,4),(1,2)}
-    check daysZ(a, b) = {(0,4),(1,2)}
+    test dn = {(0,4),(1,2)}
+    test daysZ(a, b) = {(0,4),(1,2)}
 
 -- by hand: 3/4 = 0.75, 4/2 = 2, √4 = 2; 3 as f64 is 3.0; 2024-01-05 − 2024-01-01 = 4 days, 2024-03-01 −
 -- 2024-02-28 = 2 days (2024 is a leap year)
 
 
 -- `%` at the integer object `N`: refused at the call, naming the variable and its object
-/-- error: line 57, col 11: `avg` at this call, where φ is N: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
+/-- error: line 57, col 10: `avg` at this call, where φ is N: divide on N: N is an object of i64, and divide runs on objects of f32, f64 only; cast first, `x $ F` with `F` an object of f32, f64 -/
 #guard_msgs in
 open Rel.Programs.prelude genNumG in
 rel_program genNumNT where
     obj N
     k : 1 ⟶ N ≜ {(∗,3)}
-    check avg(k, k) = {(∗,1)}
+    test avg(k, k) = {(∗,1)}
 
 -- an object the body leaves open and its type does not show (dataframe request 9): `length`'s ℕ in `lenF`, the ℕ
 -- of `positions` and `sum` in the generic `wsum`, each the definition's implicit object variable at `.long`
@@ -66,7 +66,7 @@ rel_program lenT where
     obj F : f64
     lenF : [K] ⟶ F ≜ length $ F
     x : N ⟶ [K] ≜ {(0,[A B C]),(1,[A])}
-    check x lenF = {(0,3.0),(1,1.0)}
+    test x lenF = {(0,3.0),(1,1.0)}
 
 open Rel.Programs.prelude in
 rel_program wsumG where
@@ -80,21 +80,21 @@ rel_program wsumT where
     sel : K ⟶ K ≜ {(B,B),(C,C)}
     x : N ⟶ [K] ≜ {(0,[A B C]),(1,[C A C])}
     w : N ⟶ F ≜ x wsum(sel)
-    check w = {(0,3.0),(1,2.0)}
+    test w = {(0,3.0),(1,2.0)}
 
 -- by hand: [A B C] has 3 elements, [A] one; the B and C of [A B C] are at 1, 2 (sum 3), of [C A C] at 0, 2 (sum 2)
 
 
 
 -- a `check` is no definition: an object open in it is still refused
-/-- error: line 97, col 13: in `Rel.Programs.prelude.length`: in `Rel.Programs.prelude.ran`: `dom` at this use: nothing here fixes its object variable 'α' (`dom` : α ⟶ α); give the use an expected type: a typed definition, a check against a typed term, or a composition that fixes α -/
+/-- error: line 97, col 12: in `Rel.Programs.prelude.length`: in `Rel.Programs.prelude.ran`: `dom` at this use: nothing here fixes its object variable 'α' (`dom` : α ⟶ α); give the use an expected type: a typed definition, a check against a typed term, or a composition that fixes α -/
 #guard_msgs in
 open Rel.Programs.prelude in
 rel_program openCheckT where
     obj K = {A,B,C}
     obj F : f64
     x : 1 ⟶ [K] ≜ {(∗,[A B C])}
-    check x length $ F = {(∗,3.0)}
+    test x length $ F = {(∗,3.0)}
 
 -- an object variable only the result names (dataframe request 10): each use's expected type puts an object at it,
 -- a typed definition's or a check's other side, and the number checks run there (`Elab.settleUses`)
@@ -110,10 +110,10 @@ rel_program avgGT where
     obj G : f64
     x : N ⟶ [Z] ≜ {(0,[1 2 3 4]),(1,[5])}
     m : N ⟶ F ≜ x avgG
-    check m = {(0,2.5),(1,5.0)}
-    check x avgG = m
+    test m = {(0,2.5),(1,5.0)}
+    test x avgG = m
     g : N ⟶ G ≜ x avgG
-    check g = {(0,2.5),(1,5.0)}
+    test g = {(0,2.5),(1,5.0)}
 
 -- by hand: (1+2+3+4)/4 = 2.5, 5/1 = 5
 
@@ -146,12 +146,12 @@ rel_program sumGT where
     x : N ⟶ [F] ≜ {(0,[1.5 2.5]),(1,[0.25])}
     y : N ⟶ [I] ≜ {(0,[1 2 3]),(1,[5 -7])}
     z : N ⟶ [P] ≜ {(0,[1 2]),(1,[4 3])}
-    check sumT(x) = {(0,4.0),(1,0.25)}
-    check sumN(x) = {(0,4.0),(1,0.25)}
-    check x avgS = {(0,2.0),(1,0.25)}
-    check sumT(y) = {(0,6),(1,-2)}
-    check sumN(y) = {(0,6),(1,-2)}
-    check sumN(z) = {(0,3)}
+    test sumT(x) = {(0,4.0),(1,0.25)}
+    test sumN(x) = {(0,4.0),(1,0.25)}
+    test x avgS = {(0,2.0),(1,0.25)}
+    test sumT(y) = {(0,6),(1,-2)}
+    test sumN(y) = {(0,6),(1,-2)}
+    test sumN(z) = {(0,3)}
 
 -- by hand: 1.5+2.5 = 4, 4/2 = 2; 1+2+3 = 6, 5−7 = −2; at P = 0…5, 1+2 = 3 and 4+3 = 7 ∉ P, so row 1 has no sum
 
@@ -169,19 +169,19 @@ rel_program litGT where
     obj E : f32
     x : 1 ⟶ F ≜ {(∗,1.5)}
     y : 1 ⟶ E ≜ {(∗,2.25)}
-    check inc(x) = {(∗,2.0)}
-    check inc(y) = {(∗,2.75)}
+    test inc(x) = {(∗,2.0)}
+    test inc(y) = {(∗,2.75)}
 
 -- by hand: 1.5 + 0.5 = 2, 2.25 + 0.5 = 2.75, both exact in f32
 
 
-/-- error: line 184, col 11: `inc` at this call, where φ is N: '0.5' is not an element of N, an object of i64 -/
+/-- error: line 184, col 10: `inc` at this call, where φ is N: '0.5' is not an element of N, an object of i64 -/
 #guard_msgs in
 open Rel.Programs.prelude litGG in
 rel_program litGN where
     obj N
     k : 1 ⟶ N ≜ {(∗,3)}
-    check inc(k) = {(∗,3)}
+    test inc(k) = {(∗,3)}
 
 -- a call's argument holding a literal whose object `settleOpen` settles last (`{(∗,0)}`, open in a generic body)
 -- has no form until it is settled: the use is the expansion (`Expand.callDef`); the literal no use reaches is read
@@ -199,8 +199,8 @@ rel_program sumLitT where
     p : 1 ⟶ F ≜ {(∗,1.5)}
     z : 1 ⟶ F ≜ {(∗,0.0)}
     c : N ⟶ F ≜ {(0,1.0),(1,2.0),(2,4.0)}
-    check s(p, c) = {(∗,2.5)}
-    check s(z, c) = {(∗,7.0)}
+    test s(p, c) = {(∗,2.5)}
+    test s(z, c) = {(∗,7.0)}
 
 -- by hand: 0 ≤ 1.5, so h = 1.5 and q = {−0.5, 0.5, 2.5}, sum 2.5; 0 ≤ 0, so h = 0 and q = c, sum 7
 

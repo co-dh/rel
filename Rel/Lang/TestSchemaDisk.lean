@@ -31,7 +31,7 @@ rel_program trades where
     obj P
     input x : P ⟶ T from "/data/tmp/rel-test-schema-disk/trade"
     q : P ⟶ i32 ≜ x col T "qty"
-    check q = {(0,0),(1,10),(2,20)} where x ≜ {(0,((1,0),"a")),(1,((2,10),"bc")),(2,((3,20),"d"))}
+    test q = {(0,0),(1,10),(2,20)} where x ≜ {(0,((1,0),"a")),(1,((2,10),"bc")),(2,((3,20),"d"))}
 
 
 

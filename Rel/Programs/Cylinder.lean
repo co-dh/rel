@@ -42,53 +42,53 @@ rel_program cylinder where
 
     obj K = {a}
     row : K ⟶ [N] ≜ {(a,5 6 7 8)}
-    check row moves = {(a,[6 7 8 5] [5 6 7 8] [8 5 6 7])}
-    check row moves trans = {(a,[6 5 8] [7 6 5] [8 7 6] [5 8 7])}
+    test row moves = {(a,[6 7 8 5] [5 6 7 8] [8 5 6 7])}
+    test row moves trans = {(a,[6 5 8] [7 6 5] [8 7 6] [5 8 7])}
 
     x : K ⟶ [[N]] ≜ {(a,[1 2 3 4] [5 6 7 8])}
     y : K ⟶ [[N]] ≜ {(a,[[5 6 7 8]])}
 
     /- `vec-fold-step`: the last column alone, each square its own one-square path. -/
 
-    check y genFold = {(a,[[5]] [[6]] [[7]] [[8]])}
-    check y qFold = {(a,[5] [6] [7] [8])}
+    test y genFold = {(a,[[5]] [[6]] [[7]] [[8]])}
+    test y qFold = {(a,[5] [6] [7] [8])}
 
     /- `vec-step`: one `gen` on the column `1 2 3 4` and that fold, stage by stage. -/
 
     c : K ⟶ [[[N]]] ≜ y genFold
     w : K ⟶ [N]×[[[N]]] ≜ ⟨x head, c⟩
-    check c moves = {(a,[[[6]] [[7]] [[8]] [[5]]] [[[5]] [[6]] [[7]] [[8]]] [[[8]] [[5]] [[6]] [[7]]])}
-    check c moves trans = {(a,[[[6]] [[5]] [[8]]] [[[7]] [[6]] [[5]]] [[[8]] [[7]] [[6]]] [[[5]] [[8]] [[7]]])}
-    check w π₂ moves trans F(concat) = {(a,[[6] [5] [8]] [[7] [6] [5]] [[8] [7] [6]] [[5] [8] [7]])}
-    check w gen = {(a,[[1 6] [1 5] [1 8]] [[2 7] [2 6] [2 5]] [[3 8] [3 7] [3 6]] [[4 5] [4 8] [4 7]])}
+    test c moves = {(a,[[[6]] [[7]] [[8]] [[5]]] [[[5]] [[6]] [[7]] [[8]]] [[[8]] [[5]] [[6]] [[7]]])}
+    test c moves trans = {(a,[[[6]] [[5]] [[8]]] [[[7]] [[6]] [[5]]] [[[8]] [[7]] [[6]]] [[[5]] [[8]] [[7]]])}
+    test w π₂ moves trans F(concat) = {(a,[[6] [5] [8]] [[7] [6] [5]] [[8] [7] [6]] [[5] [8] [7]])}
+    test w gen = {(a,[[1 6] [1 5] [1 8]] [[2 7] [2 6] [2 5]] [[3 8] [3 7] [3 6]] [[4 5] [4 8] [4 7]])}
 
     /- The defining equation of the folds at the first column (`cons_genFold`), and the whole fold. -/
 
-    check x genFold = x ⟨head, tail genFold⟩gen
-    check x qFold = x ⟨head, tail qFold⟩Q
-    check x genFold = {(a,[[1 6] [1 5] [1 8]] [[2 7] [2 6] [2 5]] [[3 8] [3 7] [3 6]] [[4 5] [4 8] [4 7]])}
-    check x paths = {(a,[1 6] [1 5] [1 8] [2 7] [2 6] [2 5] [3 8] [3 7] [3 6] [4 5] [4 8] [4 7])}
+    test x genFold = x ⟨head, tail genFold⟩gen
+    test x qFold = x ⟨head, tail qFold⟩Q
+    test x genFold = {(a,[[1 6] [1 5] [1 8]] [[2 7] [2 6] [2 5]] [[3 8] [3 7] [3 6]] [[4 5] [4 8] [4 7]])}
+    test x paths = {(a,[1 6] [1 5] [1 8] [2 7] [2 6] [2 5] [3 8] [3 7] [3 6] [4 5] [4 8] [4 7])}
 
     /- `vec-q-step`: the greedy fold keeps one path per square (`run_kept`), the cheapest of those costs 6 (`run_cyl`). -/
 
-    check x qFold = {(a,[1 5] [2 5] [3 6] [4 5])}
-    check x qFold est(R) = {(a,1 5)}
-    check x qFold est(R) sum = {(a,6)}
-    check x paths est(R) = {(a,1 5)}
+    test x qFold = {(a,[1 5] [2 5] [3 6] [4 5])}
+    test x qFold est(R) = {(a,1 5)}
+    test x qFold est(R) sum = {(a,6)}
+    test x paths est(R) = {(a,1 5)}
 
     /- B&dM p.182, the three laws behind `cyl_laws`: the greedy path is among the generated (`Qfold_le_genFold`), and a
        cheapest of the rows' cheapest is a cheapest of the laid end to end (`est_concat`, `R` transitive). -/
 
     theorem qfoldLe if (𝟙×F(est(R)))qStep ⊑ genStep F(est(R)) : qFold ⊑ genFold F(est(R)) by Rel.Lang.Tm.qfoldLe_den
     theorem estConcat(S : α ⟶ α) if S S ⊑ S : F(est(S)) est(S) ⊑ concat est(S) by Rel.Lang.Tm.estConcat_den
-    check x qFold ⊑ x genFold F(est(R))
-    check c F(est(R)) est(R) ⊑ c concat est(R)
+    test x qFold ⊑ x genFold F(est(R))
+    test c F(est(R)) est(R) ⊑ c concat est(R)
 
     /- B&dM p.183 (7.13) on `Vec`: the new square in front of each of the candidates and then the cheapest of them is
        beaten by the cheapest first (`cyl_7_13`); with `zip`, `trans` and `moves` lax natural it is `fusion`. -/
 
     theorem cons713 if (𝟙×R) ⊑ cons R cons° : (𝟙×est(R))cons ⊑ cp F(cons) est(R) by Rel.Lang.Tm.cons713_den
-    check w (𝟙×F(est(R)))Q ⊑ w gen F(est(R))
+    test w (𝟙×F(est(R)))Q ⊑ w gen F(est(R))
 
     /- The laws `fusion` cites besides `cons713` and `estConcat`: `×` and `F` are functors, and `moves`, `trans`, `zip`
        are lax natural (a natural function `η` has `F(S) η ⊑ η G(S)`). -/
@@ -169,7 +169,7 @@ rel_program cylinder where
       genFold concat est(R)
         = := ≜ paths
       paths est(R)
-    check x qFold est(R) ⊑ x paths est(R)
+    test x qFold est(R) ⊑ x paths est(R)
 
 
 

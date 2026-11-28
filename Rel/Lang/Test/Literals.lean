@@ -65,11 +65,11 @@ rel_program arrs where
     obj K = {a,b}
     x : 1 ⟶ [N] ≜ {(∗,3 1 2)}
     xc : 1 ⟶ [N] ≜ ⟨{(∗,3)}, ⟨{(∗,1)}, ⟨{(∗,2)}, nil⟩cons⟩cons⟩cons
-    check x = xc
-    check {(∗,[3 1 2])} = xc
-    check {(∗,[1])} = ⟨{(∗,1)},nil⟩cons
-    check {(∗,[1] [2 3])} = ⟨{(∗,[1])},⟨{(∗,2 3)},nil⟩cons⟩cons
-    check {(∗,(1,2) (3,4))} = ⟨{(∗,(1,2))},⟨{(∗,(3,4))},nil⟩cons⟩cons
+    test x = xc
+    test {(∗,[3 1 2])} = xc
+    test {(∗,[1])} = ⟨{(∗,1)},nil⟩cons
+    test {(∗,[1] [2 3])} = ⟨{(∗,[1])},⟨{(∗,2 3)},nil⟩cons⟩cons
+    test {(∗,(1,2) (3,4))} = ⟨{(∗,(1,2))},⟨{(∗,(3,4))},nil⟩cons⟩cons
     print x
     print {(a b,1)}
     print {(∗,(1,2) (3,4))}
@@ -102,20 +102,20 @@ rel_program arrCtx where
     obj K = {a,b}
     e : 1 ⟶ [N] ≜ nil
     x : 1 ⟶ [N] ≜ {(∗,1 2)}
-    check e = {(∗,[])}
-    check {(∗,[])} = e
-    check e ⊑ {(∗,[])}
-    check x ∪ {(∗,[])} = {(∗,1 2),(∗,[])}
-    check x ∩ {(∗,[])} = 𝟘(1,[N])
-    check x − {(∗,[])} = x
+    test e = {(∗,[])}
+    test {(∗,[])} = e
+    test e ⊑ {(∗,[])}
+    test x ∪ {(∗,[])} = {(∗,1 2),(∗,[])}
+    test x ∩ {(∗,[])} = 𝟘(1,[N])
+    test x − {(∗,[])} = x
     d : 1 ⟶ [N] ≜ {(∗,[])}
-    check d = e
+    test d = e
     nn : 1 ⟶ [[N]] ≜ {(∗,[[]])}
-    check nn = ⟨e,nil⟩cons
+    test nn = ⟨e,nil⟩cons
     c : 1 ⟶ N ≜ {(∗,[])}{([],3),([1],4)}
-    check c = {(∗,3)}
-    check ⟨{(∗,[])},{(∗,a)}⟩ = ⟨e,{(∗,a)}⟩
-    check {(∗,[] [3])} = ⟨e,⟨{(∗,[3])},nil⟩cons⟩cons
+    test c = {(∗,3)}
+    test ⟨{(∗,[])},{(∗,a)}⟩ = ⟨e,{(∗,a)}⟩
+    test {(∗,[] [3])} = ⟨e,⟨{(∗,[3])},nil⟩cons⟩cons
     print d
     print nn
 #guard printed arrCtx.prints == ["{(∗, [])}", "{(∗, [[]])}"]
@@ -136,7 +136,7 @@ open Rel.Programs.prelude in
 rel_program wrongCheck where
     obj N = 0…9
     x : 1 ⟶ [N] ≜ {(∗,1 2)}
-    check x = {(∗,[])}
+    test x = {(∗,[])}
 -- `test` is decided by the run as a `check` is: it holds here, and a wrong one is an error
 open Rel.Programs.prelude in
 rel_program testHolds where

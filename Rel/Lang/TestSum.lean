@@ -26,15 +26,15 @@ rel_program sumT where
     lOnly : N ⟶ N ≜ il [f, g]
     jc : N+N ⟶ N ≜ [f, g]
     whole : N ⟶ N ≜ sm jc
-    check lc = {(1,2),(2,3)}
-    check rc = {(3,4),(4,4)}
-    check lr = 𝟘
-    check rl = 𝟘
-    check both = {(1,0),(2,1),(3,5),(4,5)}
-    check rEmpty = {(3,5),(4,5)}
-    check sEmpty = {(1,0),(2,1)}
-    check lOnly = {(1,0),(2,1)}
-    check whole = {(1,0),(2,1),(3,5),(4,5)}
+    test lc = {(1,2),(2,3)}
+    test rc = {(3,4),(4,4)}
+    test lr = 𝟘
+    test rl = 𝟘
+    test both = {(1,0),(2,1),(3,5),(4,5)}
+    test rEmpty = {(3,5),(4,5)}
+    test sEmpty = {(1,0),(2,1)}
+    test lOnly = {(1,0),(2,1)}
+    test whole = {(1,0),(2,1),(3,5),(4,5)}
 
 -- by hand: `sm` is `1 ↦ inl 2`, `2 ↦ inl 3`, `3 ↦ inr 4`, `4 ↦ inr 4`. `inl°` keeps the left rows with their payload
 -- (`lc` = `r`), `inr°` the right ones (`rc` = `s`); `il` has no right row and `ir` no left one, so `lr`, `rl` are

@@ -25,18 +25,18 @@ rel_program unboundedT where
     len : 1 ⟶ N ≜ xs length
     rank : N ⟶ N ≜ p Λ(> p) length
     wh : N ⟶ N ≜ rank°
-    check sp = {(0,1),(1,2),(2,3),(3,4)}
-    check dbl = {(0,60),(1,20),(2,80),(3,40)}
-    check tk = {(0,30),(1,10)}
-    check ps = {(∗,0 2)}
-    check pss = {(∗,1 3)}
-    check lt2 = {(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
-    check gt = {(5,2),(7,2),(7,5),(9,2),(9,5),(9,7)}
-    check ge = {(2,2),(5,2),(5,5),(7,2),(7,5),(7,7),(9,2),(9,5),(9,7),(9,9)}
-    check pl = {(2,4),(5,10),(7,14),(9,18)}
-    check len = {(∗,4)}
-    check rank = {(2,0),(5,1),(7,2),(9,3)}
-    check wh = {(0,2),(1,5),(2,7),(3,9)}
+    test sp = {(0,1),(1,2),(2,3),(3,4)}
+    test dbl = {(0,60),(1,20),(2,80),(3,40)}
+    test tk = {(0,30),(1,10)}
+    test ps = {(∗,0 2)}
+    test pss = {(∗,1 3)}
+    test lt2 = {(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)}
+    test gt = {(5,2),(7,2),(7,5),(9,2),(9,5),(9,7)}
+    test ge = {(2,2),(5,2),(5,5),(7,2),(7,5),(7,7),(9,2),(9,5),(9,7),(9,9)}
+    test pl = {(2,4),(5,10),(7,14),(9,18)}
+    test len = {(∗,4)}
+    test rank = {(2,0),(5,1),(7,2),(9,3)}
+    test wh = {(0,2),(1,5),(2,7),(3,9)}
 
 -- by hand: `sp` each position to the next; `dbl` each value doubled; `tk` (take 2, dataframe §3 `(<n) ≫ x`) the
 -- positions below 2; `5 0 7 0` has its elements of {3,5,7} at positions 0 and 2, `pss` those plus one; `lt2` the

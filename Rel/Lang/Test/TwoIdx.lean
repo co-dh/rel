@@ -9,7 +9,7 @@ open Rel.Programs.prelude Programs.blocks in
     `St×N`: the fibre at `(s,k)` is `s ∩ ζ(k)`. Against the same meet written by hand, and at `(s₀,0)`, `(s₀,1)`. -/
 rel_program twoIdx where
     k(S : X ⟶ X, T : X ⟶ X) : X ⟶ X ≜ S ∩ T
-    check (Q×𝟙(N))k(∋,ζ∋) = (Q×𝟙(N))⟨π₁∋,π₂ζ∋⟩cor(𝟙)π₁
+    test (Q×𝟙(N))k(∋,ζ∋) = (Q×𝟙(N))⟨π₁∋,π₂ζ∋⟩cor(𝟙)π₁
     print (s₀×{(0,0)})k(∋,ζ∋)
     print (s₀×{(1,1)})k(∋,ζ∋)
 
