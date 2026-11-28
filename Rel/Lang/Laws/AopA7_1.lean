@@ -40,6 +40,25 @@ theorem Tm.lamCompLb_den {A B C : Obj} {S : Tm B A} {R : Tm A C} (ρ : Val)
     rintro a ⟨y, rfl, hma⟩
     exact (ldivDen_iff.1 hd).1 a ((hm a).1 hma)
 
+/-- `union = Λ(X)` for `X = ∋ ∋`, so `union (∋°\R) = ∋°\(∋°\R)`: `Λ_comp_lb` at `S = X`, with `(∋ ∋)°\R = ∋°\(∋°\R)`. -/
+theorem Tm.bigUnionCompLb_den {A C : Obj} {R : Tm A C} {X : Tm (.arr (.arr A)) A} (ρ : Val)
+    (hX : X.den ρ = (Tm.comp (Tm.mem (B := .arr A)) Tm.mem).den ρ)
+    (h : (Tm.dom (Tm.lam X)).den ρ = (Tm.id (A := .arr (.arr A))).den ρ) :
+    (Tm.comp (Tm.lam X) (Tm.ldiv (Tm.comp Tm.id Tm.mem).conv R Tm.id Tm.id)).den ρ =
+      (Tm.ldiv (Tm.comp Tm.id Tm.mem).conv (Tm.ldiv (Tm.comp Tm.id Tm.mem).conv R Tm.id Tm.id) Tm.id Tm.id).den ρ := by
+  rw [Tm.lamCompLb_den ρ h]
+  refine Core.Rel.ext fun xss c => ?_
+  simp only [Tm.den, hX, Core.Rel.comp]
+  refine ⟨fun hd => ?_, fun hd => ?_⟩
+  · refine ldivDen_iff.2 ⟨?_, .inr ⟨⟨xss, rfl⟩, ⟨c, rfl⟩⟩⟩
+    rintro xs ⟨y, rfl, hxs⟩
+    refine ldivDen_iff.2 ⟨?_, .inr ⟨⟨xs, rfl⟩, ⟨c, rfl⟩⟩⟩
+    rintro a ⟨z, rfl, ha⟩
+    exact (ldivDen_iff.1 hd).1 a ⟨xs, hxs, ha⟩
+  · refine ldivDen_iff.2 ⟨?_, .inr ⟨⟨xss, rfl⟩, ⟨c, rfl⟩⟩⟩
+    rintro a ⟨xs, hxs, ha⟩
+    exact (ldivDen_iff.1 ((ldivDen_iff.1 hd).1 xs ⟨xss, rfl, hxs⟩)).1 a ⟨xs, rfl, ha⟩
+
 /-- `∋°\Z = (∋°\∋°) Λ(Z°)°`: `xs` lies in `Z`'s column at `c` iff it is inside the list of `c`'s `Z`-preimages. -/
 theorem Tm.memLeftDivEq_den {A C : Obj} {Z : Tm A C} (ρ : Val)
     (h : (Tm.dom (Tm.lam Z.conv)).den ρ = (Tm.id (A := C)).den ρ) :
