@@ -4857,7 +4857,7 @@
     "content": "Party laws as theorems over parameters boss, rating (premises: boss functional and acyclic, N holds every subtree total): 37 party setify = Λ(under)subseq(𝟙 − dom(∋ ∩ (∋ boss)))setify; 43 gfold Λ(choose)est(R(rating)°) ⊑ best (p.178); 54 c max = best cost(rating); 53 restated Λ(guests) setify ⊑ best setify (as written it compares list orders)",
     "note": "11-28 PARTY-LAWS-a f426266: definitions parameterised (under(B), kids(B), fold(B), party(B), best(B,r), exclude₁(r), gfold(B,r), tally(r), c(B,r), win(B,r), guests(B,r)); next: opus proves the four laws as theorem … if … by Rel.Lang.Tm.*_den. 11-28 sonnet ad454c0: form is theorem name(B, r) if HYP : LAW by Rel.Lang.Tm.LAW_den (Prelude 94-101, A7_3_Party partyMono). Decided by DRY: parameterise the Party definitions (under(B), kids(B), party(B,r), best(B,r), c(B,r), win(B,r), guests(B,r)) like cost(r), sample tests unchanged; then one _den lemma per law, order c max, party setify, guests, gfold. fable 11-28: the current lines name the literal sample boss/rating, so adding `by` would prove a fact about the sample only",
     "what": "Party 的四条定律对任意森林和 rating 证明，不只在样例数据上运行。",
-    "hold": "PARTY-LAWS-b opus agent: c max and party setify laws"
+    "hold": "cMax merged a231552; PARTY-LAWS-c (partySet) waits for memory under 80%"
   },
   {
     "id": "GP-5b",
