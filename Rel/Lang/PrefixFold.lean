@@ -39,6 +39,12 @@ theorem Tm.prefixFold_prefixDef (ρ ρ' : Val) {B : Obj} (e : Tm (.arr B) (.arr 
   · rintro ⟨t, ht⟩; exact ⟨(ys, t), ht.symm, rfl⟩
   · rintro ⟨p, hp, rfl⟩; exact ⟨p.2, hp.symm⟩
 
+/-- **`cat° π₁` is the prelude row `prefix`**, the row `Tm.prefixDef` is the definition of. -/
+theorem Tm.prefixRow_den {B : Obj} (ρ : Val) :
+    Tm.den ρ ((Tm.prim (rowOf "uncat") : Tm B.arr (.prod B.arr B.arr)).comp Tm.outl) =
+    Tm.den ρ (Tm.prim (rowOf "prefix") : Tm B.arr B.arr) :=
+  funext fun xs => funext fun ys => propext (Tm.prefixDef_row ρ xs ys)
+
 /-- The prefix fold can replace the prelude row in any denotation. -/
 theorem Tm.prefixFold_row (ρ : Val) {B : Obj} (e : Tm (.arr B) (.arr B))
     (he : ∀ v, (∃ a, e.den ρ a v) ↔ v = []) :

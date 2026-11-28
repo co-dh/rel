@@ -342,6 +342,9 @@ def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) :
   let mut rules : Meta.SimpTheorems := {}
   for d in [`Rel.Lang.Tm.den, `Rel.Lang.Tm.argDen, `Rel.Lang.Val.args] do
     rules ← rules.addDeclToUnfold d
+  -- `uni U ; t` and `t` are one closed term; the rule fires before `Tm.den` unfolds its `comp`
+  rules ← rules.addConst `Rel.Lang.Tm.uni_comp_den (post := false)
+  rules ← rules.addConst `Rel.Lang.Tm.uni_cast_comp_den (post := false)
   rules ← rules.addConst `Rel.Lang.Val.bind_apply
   rules ← rules.addConst `Rel.Lang.Val.bind_ne
   let ctx ← Meta.Simp.mkContext (simpTheorems := #[rules])
@@ -351,7 +354,11 @@ def calcMatch (proof ty : Lean.Expr) (subst : Bool) : MetaM (Option Lean.Expr) :
       if ← Meta.isDefEq a b then return some (← Meta.mkEqRefl a)
       return none
     let q ← Meta.mkDecide p
-    if (← Meta.whnf q).isConstOf ``Bool.true then some <$> Meta.mkDecideProof p else pure none
+    if (← Meta.whnf q).isConstOf ``Bool.true then return some (← Meta.mkDecideProof p)
+    -- a bound on a `USize` (`0 < (USize.ofNat 1).toNat`) does not reduce by `decide`, only by the default simp set
+    let (r, _) ← Meta.simp p (← Meta.Simp.mkContext (simpTheorems := #[← Meta.getSimpTheorems]))
+      (simprocs := #[← Meta.Simp.getSimprocs])
+    if r.expr.isConstOf ``True then some <$> Meta.mkOfEqTrue (← r.getProof) else pure none
   let (a, _) ← Meta.simp proofTy ctx #[] (discharge? := some discharge)
   let (b, _) ← Meta.simp ty ctx #[] (discharge? := some discharge)
   unless ← Meta.isDefEq a.expr b.expr do return none
@@ -444,7 +451,10 @@ def certifyCalc (n : Name) (thms : Expand.Thms) (p : Pos) (t : String) (eq : Boo
             pr := mkApp pr h
             ty := body.instantiate1 h
           let expected ← Meta.mkEq a b
-          let some proof ← calcMatch pr expected subst |
+          -- a step may read the cited law right to left
+          let some proof ← (do match ← calcMatch pr expected subst with
+            | some p => pure (some p)
+            | none => calcMatch (← Meta.mkEqSymm pr) expected subst) |
             return .error s!"step at {q}: {c} proves {← Meta.ppExpr (← Meta.inferType pr)}, not {← Meta.ppExpr expected}"
           pure proof
       acc ← match acc with | none => pure (some step) | some s => some <$> Meta.mkEqTrans s step

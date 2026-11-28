@@ -23,13 +23,15 @@ rel_program prefixCata where
 
     theorem prefixEq : cat° π₁ = nil°nil ∪ (cons°(𝟙×(cat° π₁))(nil ∪ cons)) by Rel.Lang.Tm.prefixEq_den  -- `prefix` satisfies the equation
 
+    theorem prefixRow : cat° π₁ = prefix by Rel.Lang.Tm.prefixRow_den  -- the row `prefix` is `cat° π₁`
+
     theorem prefixFold : prefixC = prefix := calc
       prefixC
         := ≜ prefixC
       ⦇[nil, nil ∪ cons]⦈ʳ
         := foldrUP(nil, nil ∪ cons, cat° π₁)
       cat° π₁
-        := ≜ prefix
+        := prefixRow
       prefix
 
     check x prefixC = x prefix by Rel.Lang.Tm.prefixFold_input

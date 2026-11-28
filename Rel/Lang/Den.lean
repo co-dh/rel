@@ -1005,6 +1005,25 @@ noncomputable def Tm.argDen : Val → {A B : Obj} → Tm A B → List Sem → Co
   | _, _, _, _, _ => 𝟘
 end
 
+/-- A nonempty universe at the unit, in front of any `t` from the unit, changes nothing: `uni U` there is `𝟙`, so
+    `uni U ; t` and `t` mean one relation (`calcMatch` reads a closed term up to this). -/
+theorem Tm.uni_comp_den {m : USize} (U : Vals .one m) (h : 0 < m.toNat) {B : Obj} (ρ : Val) (t : Tm .one B) :
+    Tm.den ρ (.comp (.uni U) t) = Tm.den ρ t := by
+  funext a b; apply propext
+  simp only [Tm.den, Core.Rel.comp, Core.Rel.recip, Core.Rel.graph]
+  constructor
+  · rintro ⟨c, -, hc⟩
+    cases a; cases c; exact hc
+  · intro H
+    exact ⟨a, ⟨⟨0, h⟩, trivial, trivial⟩, H⟩
+
+/-- `Tm.uni_comp_den` for the universe as `Tm.instObj` leaves it at objects `A` that are the unit (`hA`), under the
+    cast of its type. -/
+theorem Tm.uni_cast_comp_den {m : USize} (U : Vals .one m) (h0 : 0 < m.toNat) {A B : Obj} (hA : A = .one)
+    (h : Tm .one .one = Tm A A) (ρ : Val) (t : Tm A B) :
+    Tm.den ρ (.comp (cast h (Tm.uni U)) t) = Tm.den ρ t := by
+  subst hA; exact Tm.uni_comp_den U h0 ρ t
+
 /-- `domRow` at `A ⟶ A` given `T : A ⟶ B` means `𝟙 ∩ T T°`; its definition `⟨𝟙,R⟩π₁` means the same
     (`Tm.domDef_den`). -/
 theorem Prim.den_domRow {A B : Obj} (T : Core.Rel (Obj.El A) (Obj.El B)) :
