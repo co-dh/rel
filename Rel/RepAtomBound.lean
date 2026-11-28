@@ -41,6 +41,15 @@ theorem foRBits_bound (md pk : ByteArray) (i : Nat) (hp : pk.size ≤ Column.blo
     (i % Column.blk md), Verify.resAt_le_ones _ _ _ _, ?_⟩
   simp [Column.foRBits, Column.foRExc, Column.foRFrame, hp]
 
+/-- A `foR` `i64` element is `foRBits` of its header and payload read as an `Int64`: the one reading the bound and the
+equality of two literals' rows both go through. -/
+theorem Arr.get_foR_eq {n : USize} (x : Arr .i64 n) {md pk : ByteArray} (hx : x.enc = .foR md pk) (i : Fin n.toNat) :
+    x.get i = (Column.foRBits md pk #[] i.1).toInt64 := by
+  rw [Arr.get_i64, hx]
+  have hraw : (Enc.raw .i64 n (.foR md pk))[i.1]?.getD 0 = Column.foRBits md pk #[] i.1 := by
+    simp [Enc.raw, QAtomicType.width, foRBits_starts]
+  rw [hraw]
+
 /-- **Every row of a `foR` `i64` column lies in `[lo, hi]`** when each block's base and base plus `ones w` do: the
 condition `hb` reads only the header (`baseAt`, `widthAt` per block), and `hp` says the payload has no patch list. -/
 theorem Arr.get_foR_bound {n : USize} (x : Arr .i64 n) {md pk : ByteArray} (hx : x.enc = .foR md pk)
@@ -54,17 +63,25 @@ theorem Arr.get_foR_bound {n : USize} (x : Arr .i64 n) {md pk : ByteArray} (hx :
     have := hw.2.2.1; have := i.2; have := Nat.mul_comm (Column.blk md) (Column.nblk md); omega)
   obtain ⟨r, hr, he⟩ := foRBits_bound md pk i.1 hp
   obtain ⟨h1, h2⟩ := hb _ hlt
-  rw [Arr.get_i64, hx]
-  have hraw : (Enc.raw .i64 n (.foR md pk))[i.1]?.getD 0 = Column.foRBits md pk #[] i.1 := by
-    simp [Enc.raw, QAtomicType.width, foRBits_starts]
-  rw [hraw, he]
+  rw [Arr.get_foR_eq x hx i, he]
   have := add_toInt64 (Column.baseAt md (i.1 / Column.blk md)) r (by omega) (by omega)
   rw [this]; omega
 
-/-- `Arr.get_foR_bound` at a generated literal (`Gen.atom`, header text `m`, pack text `p`): an `i64` column whose header
-`md` says it is well formed with no flagged block, and whose pack ends with the last block (`hp`), has every row in
-`[lo, hi]` if each block's range does. Every hypothesis reads `md`, and `p` only by its size, so a header is checked
-without the pack. -/
+/-- A generated `i64` literal (`Gen.atom`, header text `m`, pack text `p`) whose header `md` says it is well formed with no
+flagged block is the `foR` column of its two texts. -/
+theorem Lang.Gen.atom_enc {n : USize} {m p : List String} {hw : QAtomicType.i64.width.isSome = true}
+    (hn : n.toNat ≤ Column.blk (Gen.unhex m) * Column.nblk (Gen.unhex m)) (hl : Column.lgOk (Gen.unhex m) = true)
+    (hN : (Array.range (Column.nblk (Gen.unhex m))).any (Column.nulAt (Gen.unhex m)) = false) :
+    (Gen.atom .i64 n m p hw).1.enc = .foR (Gen.unhex m) (Gen.unhex p) := by
+  have hw' : Enc.WF .i64 n (.foR (Gen.unhex m) (Gen.unhex p)) := by
+    refine ⟨by decide, fun h => absurd h (by decide), hn, hl, fun b hb hnul => ?_⟩
+    have : (Array.range (Column.nblk (Gen.unhex m))).any (Column.nulAt (Gen.unhex m)) = true :=
+      Array.any_eq_true.2 ⟨b, by simpa using hb, by simpa using hnul⟩
+    rw [hN] at this; exact absurd this (by decide)
+  rw [Gen.atom_eq rfl hw' (fun _ _ _ h => nomatch h) hN hw]; rfl
+
+/-- `Arr.get_foR_bound` at a generated literal: every row lies in `[lo, hi]` if each block's range does. Every hypothesis
+reads `md`, and `p` only by its size, so a header is checked without the pack. -/
 theorem Lang.Gen.atom_get_bound {n : USize} {m p : List String} {md : ByteArray} (hm : Gen.unhex m = md)
     (hn : n.toNat ≤ Column.blk md * Column.nblk md) (hl : Column.lgOk md = true)
     (hN : (Array.range (Column.nblk md)).any (Column.nulAt md) = false)
@@ -75,13 +92,26 @@ theorem Lang.Gen.atom_get_bound {n : USize} {m p : List String} {md : ByteArray}
     (i : Fin n.toNat) :
     lo ≤ ((Gen.atom .i64 n m p).1.get i).toInt ∧ ((Gen.atom .i64 n m p).1.get i).toInt ≤ hi := by
   subst hm
-  have hw : Enc.WF .i64 n (.foR (Gen.unhex m) (Gen.unhex p)) := by
-    refine ⟨by decide, fun h => absurd h (by decide), hn, hl, fun b hb hnul => ?_⟩
-    have : (Array.range (Column.nblk (Gen.unhex m))).any (Column.nulAt (Gen.unhex m)) = true :=
-      Array.any_eq_true.2 ⟨b, by simpa using hb, by simpa using hnul⟩
-    rw [hN] at this; exact absurd this (by decide)
-  rw [Gen.atom_eq rfl hw (fun _ _ _ h => nomatch h) hN (by decide)]
-  exact Arr.get_foR_bound _ rfl hp lo hi hlo hhi hb i
+  exact Arr.get_foR_bound _ (Lang.Gen.atom_enc hn hl hN) hp lo hi hlo hhi hb i
+
+/-- **A row of one generated literal is a row of another** when some position `j` of the first has the same `foRBits` as
+position `i` of the second: the search is over `Nat` positions below `n.toNat`, so a decision procedure on the two
+headers and packs settles it once `n.toNat` is a literal. -/
+theorem Lang.Gen.atom_row_mem {n n0 : USize} {m p m0 p0 : List String} {hw : QAtomicType.i64.width.isSome = true}
+    {hw0 : QAtomicType.i64.width.isSome = true}
+    (hn : n.toNat ≤ Column.blk (Gen.unhex m) * Column.nblk (Gen.unhex m)) (hl : Column.lgOk (Gen.unhex m) = true)
+    (hN : (Array.range (Column.nblk (Gen.unhex m))).any (Column.nulAt (Gen.unhex m)) = false)
+    (hn0 : n0.toNat ≤ Column.blk (Gen.unhex m0) * Column.nblk (Gen.unhex m0)) (hl0 : Column.lgOk (Gen.unhex m0) = true)
+    (hN0 : (Array.range (Column.nblk (Gen.unhex m0))).any (Column.nulAt (Gen.unhex m0)) = false)
+    (i : Nat) (hi : i < n0.toNat)
+    (h : ∃ j, j < n.toNat ∧
+      Column.foRBits (Gen.unhex m) (Gen.unhex p) #[] j = Column.foRBits (Gen.unhex m0) (Gen.unhex p0) #[] i) :
+    ∃ j : Fin n.toNat, (Gen.atom .i64 n m p hw).1.get j = (Gen.atom .i64 n0 m0 p0 hw0).1.get ⟨i, hi⟩ := by
+  obtain ⟨j, hj, h⟩ := h
+  refine ⟨⟨j, hj⟩, ?_⟩
+  rw [Arr.get_foR_eq _ (Lang.Gen.atom_enc hn hl hN), Arr.get_foR_eq _ (Lang.Gen.atom_enc hn0 hl0 hN0)]
+  exact congrArg UInt64.toInt64 h
+
 /-- The header of the range literal `-10…20`: one block of 31 elements, residual width 5, no null. -/
 def rangeMd : ByteArray :=
   ⟨#[246, 255, 255, 255, 255, 255, 255, 255, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 155, 0, 0, 0, 0, 0, 0, 0,

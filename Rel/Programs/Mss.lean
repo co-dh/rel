@@ -2,6 +2,7 @@ import Rel.Programs.Prelude
 import Rel.Lang.Laws.Map
 import Rel.Lang.Laws.Order
 import Rel.Lang.Laws.MssFused
+import Rel.Lang.Laws.MssEst
 
 /-! # The maximum segment sum
 
@@ -33,6 +34,7 @@ rel_program mss where
     fused : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E((𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥))est(≥)   -- `prefix sum` fused into the fold `⦇S⦈`
     greedy : [N] ⟶ N ≜ (𝟙÷∋)E(suffix)E(g)est(≥)                                -- each suffix keeps the one value `g`
     safe : [N] ⟶ [N] ≜ 𝟙 − dom(segment (𝟙 − dom(sum)))   -- the lists whose every segment has a sum in `N`
+    sets : [N] ⟶ [[N]] ≜ (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))   -- per suffix, the set of its prefix sums
 
     /- `k ≜ [zero⟨𝟙,Λ(𝟙)⟩, ⟨w,⟨wΛ(𝟙),π₂π₂⟩ cup⟩]` (note :844) is the fold's seed and step below; the step's set is Lean's
        own `Λ(w ∪ π₂π₂∋)` (`k`, :756), an array: the language has no `cup`. -/
@@ -61,17 +63,19 @@ rel_program mss where
 
     /- B&dM Ex 7.40: the spec is the linear `scan`, one theorem per step of the note's derivation. `plus` has no value
        past 20, so the steps past `toShape` hold only on the lists `safe` keeps: `[5,15,15]` has `mss` 20 and `scan` 15,
-       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. The laws with no
-       `calc` are owed to Lean: `rel_aop mss` (relaop/RelAop/Mss.lean) proves them over the book's model (`Int`, cons
-       lists, the power object), so `linear` is a theorem about that model, not about the executable `mss.rel.*`; the evidence
-       between those two is the `check`s above. -/
+       `[10,15,-9]` has `shape` 15 and `fused` 16, `[15,15]` breaks `greedyFold`. `estUnion` and
+       `toFused` are proved here, `by` a Lean lemma about `Tm.den` (`Rel/Lang/Laws/MssEst.lean`, `MssFused.lean`); the
+       laws with neither a `by` nor a `calc` (`greedyFold`, `toScan`, `linear`'s steps) are still owed to Lean:
+       `rel_aop mss` (relaop/RelAop/Mss.lean) proves them over the book's model (`Int`, cons lists, the power object), so
+       they are theorems about that model, not about the executable `mss.rel.*`; the evidence between those two is the
+       `check`s above. -/
 
     /- The facts that discharge `estMap(zero, ≥)`'s hypotheses: `zero` is a map and `≥` is reflexive. -/
 
     theorem zeroEntire : dom(zero) = 𝟙 by Rel.Lang.Tm.dom_single
     theorem zeroSimple : zero°zero ⊑ 𝟙 by Rel.Lang.Tm.simple_single
     theorem geqRefl : 𝟙(N) ⊑ ≥ by Rel.Lang.Tm.geq_refl
-    theorem estUnion : (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(∋)est(≥) = (𝟙÷∋)E(suffix)E((𝟙÷∋)E(prefix sum))E(est(≥))est(≥)  -- no set empty
+    theorem estUnion : sets E(∋)est(≥) = sets E(est(≥))est(≥) by Rel.Lang.Tm.estUnion_den
     -- the greedy row (𝟙÷∋)E(⦇S⦈)est(≥) = ⦇(𝟙÷∋)E(S)est(≥)⦈
     theorem greedyFold : safe (𝟙÷∋)E(⦇[zero, ⊤zero ∪ plus]⦈ʳ)est(≥) = safe ⦇[(𝟙÷∋)E(zero)est(≥), (𝟙÷∋)E(⊤zero ∪ plus)est(≥)]⦈ʳ
 

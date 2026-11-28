@@ -100,7 +100,7 @@ theorem estUnion_den (Q : Core.Rel (Obj.El A) (Obj.El (.arr (.arr B))))
 
 /-- `estUnion` as the prelude builds it: `Q ≫ E(∋) ≫ est(W)` with `est(W)` the `est` row applied to the pair test `W`,
     left-nested as the program elaborates; the premises are `estUnion_den`'s at `Q.den ρ` and `W.den ρ`. -/
-theorem Tm.estUnion_den {Q : Tm A (.arr (.arr B))} {W : Tm (.prod B B) (.prod B B)} (ρ : Val)
+theorem Tm.estUnionAt_den {Q : Tm A (.arr (.arr B))} {W : Tm (.prod B B) (.prod B B)} (ρ : Val)
     (hne : ∀ a xss, Q.den ρ a xss → ∀ xs ∈ xss, xs ≠ [])
     (hr : ∀ a xss, Q.den ρ a xss → ∀ xs ∈ xss, ∀ b ∈ xs, W.den ρ (b, b) (b, b))
     (ht : ∀ a xss, Q.den ρ a xss → ∀ xs ∈ xss, ∀ zs ∈ xss, ∀ b ∈ xs, ∀ c ∈ zs,
