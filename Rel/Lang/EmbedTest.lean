@@ -86,7 +86,7 @@ rel_program thm where
 #guard (thm.filterMap fun | .«theorem» _ n _ _ _ _ _ _ ss _ => some (n, ss.length) | _ => none) ==
   [("unit", 0), ("good", 2), ("le", 2)]
 
-/-- error: line 97, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
+/-- error: line 96, col 7: theorem `t`: this step x is K ⟶ N, the statement's two is N ⟶ N -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmType where
@@ -97,7 +97,7 @@ rel_program thmType where
         := unit
       two
 
-/-- error: line 108, col 7: `unit` is a theorem, not a relation -/
+/-- error: line 107, col 7: `unit` is a theorem, not a relation -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsRel where
@@ -106,7 +106,7 @@ rel_program thmAsRel where
         := unit
       unit
 
-/-- error: line 116, col 12: `two` is a definition; write `≜ two` -/
+/-- error: line 115, col 12: `two` is a definition; write `≜ two` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program relAsThm where
@@ -115,7 +115,7 @@ rel_program relAsThm where
         := two
       two
 
-/-- error: line 125, col 14: `unit` is a theorem, not a definition -/
+/-- error: line 124, col 14: `unit` is a theorem, not a definition -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmAsDef where
@@ -124,7 +124,7 @@ rel_program thmAsDef where
         := ≜ unit
       two
 
-/-- error: line 134, col 12: unknown theorem 'nope' -/
+/-- error: line 133, col 12: unknown theorem 'nope' -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmUnknown where
@@ -133,7 +133,7 @@ rel_program thmUnknown where
         := nope
       two
 
-/-- error: line 144, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
+/-- error: line 143, col 7: the chain of `t` ends at two 𝟙, not at its right side two -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmEnds where
@@ -142,7 +142,7 @@ rel_program thmEnds where
         := unit
       two 𝟙
 
-/-- error: line 151, col 7: the chain starts at `up`, the statement's left side is `two` -/
+/-- error: line 150, col 7: the chain starts at `up`, the statement's left side is `two` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmStarts where
@@ -151,7 +151,7 @@ rel_program thmStarts where
         := unit
       two
 
-/-- error: line 161, col 9: `t` states `=`: a step `⊑` proves only `⊑` -/
+/-- error: line 160, col 9: `t` states `=`: a step `⊑` proves only `⊑` -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmLe where
@@ -160,7 +160,7 @@ rel_program thmLe where
         ⊑ := unit
       two
 
-/-- error: rel_program Rel.Lang.EmbedTest.thmData: line 166, col 7: claim failed: x up = {(a, 2)}, x two = {(a, 2), (b, 2)} -/
+/-- error: rel_program Rel.Lang.EmbedTest.thmData: line 170, col 7: claim failed: x up = {(a, 2)}, x two = {(a, 2), (b, 2)} -/
 #guard_msgs in
 open Rel.Programs.prelude thm in
 rel_program thmData where
