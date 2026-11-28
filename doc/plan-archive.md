@@ -1,3 +1,5 @@
+<!-- Frozen at 51fff18 (2026-11-27): item status lives in items.json; this file is an archive and is not edited. -->
+
 # Rel: 从 master 059f46c 迁移到 `rel-architecture.zh.typ` 的计划
 
 目标的来源：`doc/rel-architecture.zh.typ`。现状的来源：`/home/dh/repo/rel` 在 059f46c 的 refactor index 及其指向的文件。

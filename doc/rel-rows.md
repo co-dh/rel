@@ -1,8 +1,8 @@
-# Rel: the 28 rows of `prims` as terms (PLAN.md step 2.6)
+# Rel: the 28 rows of `prims` as terms (doc/plan-archive.md step 2.6)
 
 Source: `rowCodes` (`Rel/Run/Lang/Compile.lean` 77-112), their meanings `rowDens` (`Rel/Lang/Den.lean` 201-239), the
 prelude (`Rel/Programs/Prelude.lean`), at e78e922. Analysis only: no term below was type-checked or proved; each
-equation is against the row's meaning in `rowDens`. Feeds Q5 of PLAN.md. Owner rules:
+equation is against the row's meaning in `rowDens`. Feeds Q5 of doc/plan-archive.md. Owner rules:
 - **Build only by appending.** The kept list primitive is `snoc` (appending uses the array's spare capacity; `cons`
   shifts every element). No row term builds an array with `cons` or reverses one (`rev`).
 - **Read left to right where the meaning allows, right to left only where it needs it.** `fold` is the left fold

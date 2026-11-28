@@ -2765,7 +2765,7 @@
     "mark": "✓",
     "sha": "d5eacd1",
     "deps": [],
-    "content": "PLAN.md 968-975 records the allocerr2 decision (O1=C, O2 accept, O3 card)",
+    "content": "doc/plan-archive.md (frozen PLAN) records the allocerr2 decision (O1=C, O2 accept, O3 card)",
     "note": "haiku mech"
   },
   {
@@ -3859,7 +3859,7 @@
     "mark": "✓",
     "sha": "",
     "deps": [],
-    "content": "next ready list from PLAN.md ⬜/未做/▶, dfplan and architecture gaps → /data/tmp/ready/ready4.md",
+    "content": "next ready list from doc/plan-archive.md ⬜/未做/▶, dfplan and architecture gaps → /data/tmp/ready/ready4.md",
     "note": "7 items; stale PLAN lines → MARKS6; owner questions Q-GEN (fable first), Q4 ymd, Q2 float <"
   },
   {

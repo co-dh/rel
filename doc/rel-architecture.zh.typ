@@ -654,7 +654,7 @@ atom 的位宽、符号、指数和尾数位读出，不逐对列出），另加
 #grid(columns: (1fr, 1fr), gutter: 8pt,
   card(c-rs, [crate 结构])[`scan.rs` `gather.rs` `scatter.rs` `asc.rs` `seen.rs` 各一个导出；`pack.rs` 是分块编解码（不导出）；
     `pod::Elt`、`by_width!`（u1、char、i8–i64、f32、f64）、`pool` 保留。`RELK.txt` = 5 个 kernel 加保留的 `stop`、
-    `coc_encode`、`coc_decode`（`PLAN.md` 第 5 节 R4）；`RELIO.txt` = IO 导出（`own_map` `own_write` `csv_read` `csv_write`）。
+    `coc_encode`、`coc_decode`（`doc/plan-archive.md` 第 5 节 R4）；`RELIO.txt` = IO 导出（`own_map` `own_write` `csv_read` `csv_write`）。
     `syms` gate 读两个文件：二者不相交，并集 = crate 定义的 `qlean_*`。],
   card(c-rs, [融合 kernel])[如 join、intern、group ids：只是优化，每个配一条定理说明它等于上表中的某个复合；
     在第二个真实需要出现前不加。],
