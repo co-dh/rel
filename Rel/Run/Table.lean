@@ -112,29 +112,36 @@ def readCol : (o : Bool) → (t : QAtomicType) → (path : String) → IO ((n : 
   | false, t, path => readArr t path
   | true, t, path => readOpt t path
 
-/-- The summand leaf `x` (named by `path`) holds `Opt.filler t` on every row `own` does not own: the null of its block
-    (`Column.foRNul`, read per row off the flagged residual, never decoded); a general leaf's filler, its `default`, is
-    in no file. A summand's
-    unowned rows are `Opt.fill`'s, so two unowned rows read alike (`ColB.OwnedOn`). -/
-def leafFill {t : QAtomicType} {n : USize} (path : String) (own : Array Bool) (x : Opt t n) : IO Unit := do
+/-- The first message `f` gives over the rows `i < k`, thrown: the one pass over the rows (`rowsOk_ok`). -/
+def rowsOk (k : Nat) (f : (i : Nat) → i < k → Option String) : IO Unit := do
+  for h : i in [0:k] do
+    if let some m := f i h.2.1 then throw (IO.userError m)
+
+/-- The summand leaf `x` (named by `path`), row by row in one pass, tests each row's null on its block
+    (`Opt.isNulWith`, the test `Opt.get` makes; never decoded): a row `own` does not own holds `Opt.filler t`, the null
+    of its block (a general leaf's filler, its `default`, is in no file), so two unowned rows read alike
+    (`ColB.OwnedOn`); a row it owns holds no null where `dense` (an atom or list-bound leaf; a band sum's leaf is a
+    value or the sum's own null). -/
+def leafFill {t : QAtomicType} {n : USize} (path : String) (own : Array Bool) (dense : Bool) (x : Opt t n) : IO Unit :=
   let starts := x.enc.starts
-  for h : i in [0:n.toNat] do
-    unless own.getD i true do
-      let bad : Option String := match x.enc with
-        -- the one offending element is read through `Opt.get`, never the whole column decoded for a message
-        | .foR md pk => if Column.foRNul md pk starts i then none
-            else some (match Opt.get x ⟨i, h.2.1⟩ with
-              | some y => s!"the {repr t} word {QAtomicType.word t y}"
-              | none => "a null")
-        | .pos => some s!"the position {i}"
-      if let some v := bad then
-        throw (IO.userError s!"{path}: row {i} is a row the other summand owns and holds {v}, not null: a summand of a \
-          dense sum is `Opt.fill` where its tag names the other summand")
+  rowsOk n.toNat fun i h =>
+    let nul := x.isNulWith starts i
+    if own.getD i true then
+      if dense && nul then some s!"{path}: row {i} is a row this summand owns and holds a null: an atom or list bound \
+        of a dense sum's summand is a value where its tag names the summand" else none
+    else if nul then none else
+      -- the one offending element is read through `Opt.get`, never the whole column decoded for a message
+      some s!"{path}: row {i} is a row the other summand owns and holds {match x.enc with
+        | .foR .. => match Opt.get x ⟨i, h⟩ with
+          | some y => s!"the {repr t} word {QAtomicType.word t y}"
+          | none => "a null"
+        | .pos => s!"the position {i}"}, not null: a summand of a dense sum is `Opt.fill` where its tag names the \
+        other summand"
 
 /-- `leafFill` of the atom column `x` at ownership `o`: an `Arr` (`false`) has no unowned row. -/
 def colFill : {o : Bool} → {t : QAtomicType} → {n : USize} → String → Array Bool → ColB o t n → IO Unit
   | false, _, _, _, _, _ => pure ()
-  | true, _, _, path, own, x => leafFill path own x
+  | true, _, _, path, own, x => leafFill path own true x
 
 /-- Every summand of the dense sum (or of one inside a summand) in `x`, over the rows `own` owns, holds the filler off
     the rows it owns (`leafFill`; `ValsB.WFOn`'s `OwnedOn` clauses), the tag `false` off `own`, and a summand owns the
@@ -146,13 +153,12 @@ def fillBad (dir : String) : {o : Bool} → {A : Obj} → {n : USize} → String
     colFill (file dir (p ++ ".lo")) own lo; colFill (file dir (p ++ ".hi")) own hi
   | _, .one, _, _, _, _ => pure ()
   | _, .sum _ _, n, p, own, s => match ValsB.view s with
-    | .opt _ x => leafFill (file dir p) own x
+    | .opt _ x => leafFill (file dir p) own false x
     | .gen _ tag x y => do
       let tags := Arr.rowsImpl tag
-      for i in [0:n.toNat] do
-        if !own.getD i true && tags.getD i false then
-          throw (IO.userError s!"{file dir (p ++ ".tag")}: row {i} is not owned by the side and its tag is `true`, \
-            not `false`: a dense sum's tag is `false` where its side owns no row")
+      rowsOk n.toNat fun i _ => if !own.getD i true && tags.getD i false then
+        some s!"{file dir (p ++ ".tag")}: row {i} is not owned by the side and its tag is `true`, not `false`: a dense \
+          sum's tag is `false` where its side owns no row" else none
       let owns (v : Bool) := (Array.range n.toNat).map fun i => own.getD i true && tags.getD i false == v
       fillBad dir (p ++ ".l") (owns false) x; fillBad dir (p ++ ".r") (owns true) y
 
