@@ -4759,5 +4759,66 @@
     "content": "archive R3: foldI/flat derived terms may run slower than the direct kernels, never measured",
     "note": "风险：foldI、flat 作为 definition 后，推导出的 term 每次调用要运行 outl°、一个 meet 和一个复合（Chess、Edit、Knapsack、Quicksort 用到），可能比直接 kernel 慢；flat 在 4.2 测过（Chess +21% 所以留融合行），foldI 没有测量（archive R3）",
     "what": "旧计划记下一个风险：折叠这一类运算改成由更基本的运算拼出来之后，可能比直接用专门的 kernel 慢，而且没有测过。需要测一次，慢得多就改成融合行。"
+  },
+  {
+    "id": "GP-1a",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "rel_program: `test A = B` for runs; a failing test/check is an elaboration error; n.failures/n.ok and #guard n.ok deleted",
+    "note": ""
+  },
+  {
+    "id": "GP-1b",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GP-1a"
+    ],
+    "content": "`check` without `by` is an elaboration error; ~1053 run-checks migrated to `test` at parser-reported positions",
+    "note": ""
+  },
+  {
+    "id": "GP-1c",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "a theorem with no `by` and no `calc` is an elaboration error (TestIO conv, EmbedTest unit, PrefixCata unprovedWitness)",
+    "note": ""
+  },
+  {
+    "id": "GP-2",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "Mss: certify the unproved calc steps (toShape, toGreedy, linear)",
+    "note": ""
+  },
+  {
+    "id": "GP-3",
+    "mark": "▶",
+    "sha": "",
+    "deps": [],
+    "content": "Cylinder: certify the unproved calc steps (fusion, stepFuse, cylLaws); certify ⊑ chains",
+    "note": ""
+  },
+  {
+    "id": "GP-4",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GP-2",
+      "GP-3"
+    ],
+    "content": "a non-empty n.proof.unproved is an elaboration error (Embed.lean certify)",
+    "note": ""
+  },
+  {
+    "id": "GP-5",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "Sound for Code.args: IO inputs bound by Code.args covered by n.proof.sound (doc rel-proof-program §9.2)",
+    "note": ""
   }
 ]
