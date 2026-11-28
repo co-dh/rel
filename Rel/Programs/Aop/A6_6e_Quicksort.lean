@@ -19,7 +19,7 @@ rel_program aopA6_6e_Quicksort where
 -- not ported: split_step (434): host `List`/`Nat`/`Decidable` (step by `if R a b`), `embed`/`list⁺` object
 -- not ported: split_cata (411): `embed ⦇[base, step]⦈` is a fold on the non-empty list `list⁺ A`, which rel does not have
 
--- not ported: check'_perm (06-recursive.typ:390), split_base (422): a statement applies `check'(R)` to a relation variable `R`, whose divisions `R°/∋`, `R/∋` give `internal: a term that needs keys where none are supplied` (checked); the join_perm row is ported by `Tm.joinPerm_den` (a `Tm.call` node of prelude `perm`, `Tm.permDef_den`)
+-- not ported: check'_perm (06-recursive.typ:390), split_base (422): a statement applies `check'(R)` to a relation variable `R`; it now elaborates (`closed?` under `den`), but the call is inlined at the placeholder σ with `cor` and `perm` call nodes whose bodies need a `Tm.corDef_den` (`dom(π₁S ∩ π₂)`) and the `rdiv`/`conv` den of `R°/∋`, `R/∋`, not yet proved; the join_perm row is ported by `Tm.joinPerm_den` (a `Tm.call` node of prelude `perm`, `Tm.permDef_den`)
 -- not ported: qsort_rec (445): `X = (⦇[nil, split°]⦈)° flatten` is a fold over `tree A`, which rel does not have
 
 end Rel.Programs

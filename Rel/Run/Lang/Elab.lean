@@ -2357,7 +2357,7 @@ def convOf (cs : List (String × String)) (c : String) : Option String := (Prim.
 
 section Build
 
-variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos)
+variable (objs : Objs) (mc : Lean.MetavarContext) (dp : Pos) (den : Bool)
 
 def toObj (o : OTy) : Except Err Obj := objOf objs dp (zonk mc o)
 
@@ -2374,10 +2374,12 @@ def at? {A B : Obj} (r : Res) : Except Err (Tm A B) :=
   match r with
   | ⟨A', B', t⟩ => if h : A' = A ∧ B' = B then pure (h.1 ▸ h.2 ▸ t) else internal dp "objects disagree"
 
-/-- `r` at `A ⟶ B` as a closed term: the old index `false`, now `t.dem = false`, which the type no longer states. -/
+/-- `r` at `A ⟶ B` as a closed term: the old index `false`, now `t.dem = false`, which the type no longer states.
+    `den`: a term typed for its denotation only is never run, so what it reads whole (a universe `𝟙` of a theorem's
+    object variable is on demand) needs no keys: the statement `R/∋` has the meaning `Tm.den` gives it. -/
 def closed? {A B : Obj} (δ : Dem) (r : Res) : Except Err (Tm A B) := do
   let t ← at? dp (A := A) (B := B) r
-  if t.dem δ [] then internal dp "a term that needs keys where none are supplied" else pure t
+  if !den && t.dem δ [] then internal dp "a term that needs keys where none are supplied" else pure t
 
 /-- `𝟙` on the universe of `o`, or the error that `o` has none: a declared one's literal (`uniOf`), an unbounded
     number object's `𝟙` itself; else built from its parts, an object variable's being the universe its constant is
@@ -2609,7 +2611,7 @@ def build (δ : Dem) : Pre → Except Err Res
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let V ← match tgt with
       | none => uniTm objs mc dp δ p b B "⊤'s target"
-      | some q => do closed? dp δ (← build δ q)
+      | some q => do closed? dp den δ (← build δ q)
     pure ⟨A, B, .top V⟩
   | .outl a b => return ⟨_, _, .outl (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
   | .outr a b => return ⟨_, _, .outr (A := ← toObj objs mc dp a) (B := ← toObj objs mc dp b)⟩
@@ -2640,7 +2642,7 @@ def build (δ : Dem) : Pre → Except Err Res
   -- closed, or a converse that runs on demand itself (`Tm.dem`: `inl°`, `inr°`)
   | .conv p => do
     let r ← build δ p; let ⟨A, B, _⟩ := r; let t ← at? dp (A := A) (B := B) r
-    if (Tm.conv t).dem δ [] then pure ⟨B, A, .conv t⟩ else pure ⟨B, A, .conv (← closed? dp δ (A := A) (B := B) r)⟩
+    if (Tm.conv t).dem δ [] then pure ⟨B, A, .conv t⟩ else pure ⟨B, A, .conv (← closed? dp den δ (A := A) (B := B) r)⟩
   -- a side that cannot run is tested on the pairs the other side gives (`test`)
   | .meet p q => match build δ p, build δ q with
     | .ok ⟨A, B, t⟩, .ok s => do let u ← at? dp (A := A) (B := B) s; pure ⟨A, B, .meet t u⟩
@@ -2659,14 +2661,14 @@ def build (δ : Dem) : Pre → Except Err Res
       | .error _ => throw err
     | .error err, _ => throw err
   | .dom p => do let ⟨A, _, t⟩ ← build δ p; pure ⟨A, A, .dom t⟩
-  | .ran p => do let r ← build δ p; let ⟨A, B, _⟩ := r; pure ⟨B, B, .ran (← closed? dp δ (A := A) (B := B) r)⟩
+  | .ran p => do let r ← build δ p; let ⟨A, B, _⟩ := r; pure ⟨B, B, .ran (← closed? dp den δ (A := A) (B := B) r)⟩
   | .ldiv pos p q b c => do
     let r ← build δ p; let s ← build δ q; let ⟨A, B, _⟩ := r; let ⟨_, C, _⟩ := s
-    let R ← closed? dp δ (A := A) (B := B) r; let S ← closed? dp δ (A := A) (B := C) s
+    let R ← closed? dp den δ (A := A) (B := B) r; let S ← closed? dp den δ (A := A) (B := C) s
     pure ⟨B, C, .ldiv R S (← uniTm objs mc dp δ pos b B "R\\S") (← uniTm objs mc dp δ pos c C "R\\S")⟩
   | .rdiv pos p q a b => do
     let r ← build δ p; let s ← build δ q; let ⟨A, C, _⟩ := r; let ⟨B, _, _⟩ := s
-    let R ← closed? dp δ (A := A) (B := C) r; let S ← closed? dp δ (A := B) (B := C) s
+    let R ← closed? dp den δ (A := A) (B := C) r; let S ← closed? dp den δ (A := B) (B := C) s
     pure ⟨A, B, .rdiv R S (← uniTm objs mc dp δ pos a A "R/S") (← uniTm objs mc dp δ pos b B "R/S")⟩
   | .pair p q => do
     let ⟨A, _, t⟩ ← build δ p; let s ← build δ q; let ⟨_, C, _⟩ := s
@@ -2793,7 +2795,7 @@ def build (δ : Dem) : Pre → Except Err Res
     match ← build δ s with
     | ⟨.prod E V', V'', S⟩ =>
       if h : V' = V ∧ V'' = V then
-        pure ⟨.arr E, V, .foldr (← closed? dp δ (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod E V') V) : Tm (.prod E V) V)⟩
+        pure ⟨.arr E, V, .foldr (← closed? dp den δ (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod E V') V) : Tm (.prod E V) V)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
   | .fold false e s => do
@@ -2801,7 +2803,7 @@ def build (δ : Dem) : Pre → Except Err Res
     match ← build δ s with
     | ⟨.prod V' E, V'', S⟩ =>
       if h : V' = V ∧ V'' = V then
-        pure ⟨.arr E, V, .fold (← closed? dp δ (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod V' E) V) : Tm (.prod V E) V)⟩
+        pure ⟨.arr E, V, .fold (← closed? dp den δ (A := V) (B := V) r) (h.1 ▸ (h.2 ▸ S : Tm (.prod V' E) V) : Tm (.prod V E) V)⟩
       else internal dp "the fold's objects"
     | _ => internal dp "the fold's step"
   | .lit p a b ps gd => litRes objs mc dp p a b ps gd
@@ -2873,7 +2875,7 @@ def build (δ : Dem) : Pre → Except Err Res
     let A ← toObj objs mc dp a; let B ← toObj objs mc dp b
     let why := s!"{if least then "μ" else "ν"}'s body is read whole each round"
     let δ' := δ.bind k false
-    let body ← closed? dp δ' (A := A) (B := B) (← closeRes objs mc dp δ' p a why (← build δ' q))
+    let body ← closed? dp den δ' (A := A) (B := B) (← closeRes objs mc dp δ' p a why (← build δ' q))
     unless body.pol true k do
       -- `Tm.pol` answers a Bool and `Tm.var` holds no position, so the source term gives the first occurrence
       let some o := q.occ k | internal dp s!"{x} is not positive in {if least then "μ" else "ν"}{x} at {p} but does not occur"
@@ -2888,7 +2890,7 @@ def build (δ : Dem) : Pre → Except Err Res
       pure ⟨A, B, .mu k s!"the μ at {p}" cap body⟩
     else match S with
       | some s => do
-        let s ← closed? dp δ' (A := A) (B := B) (← closeRes objs mc dp δ' p a why (← build δ' s))
+        let s ← closed? dp den δ' (A := A) (B := B) (← closeRes objs mc dp δ' p a why (← build δ' s))
         pure ⟨A, B, .nu k s body⟩
       | none => internal dp "ν without its bound"
 termination_by x => (sizeOf x, 0)

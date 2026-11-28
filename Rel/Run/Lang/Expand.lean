@@ -452,8 +452,8 @@ def once (env : Env) (p : Pos) (n : String) (qs : List Param) (e : Expr) (ty : O
       pure x
     let mc ← Lean.getMCtx
     let dv := q.demVars; let δ : Dem := (dv.contains ·)
-    let tst := (test objs mc p δ q).map fun ⟨A, B, t⟩ => (⟨.prod A B, .prod A B, t⟩ : Res)
-    match ← fits (build objs mc p δ q), ← (kq.map fun kx => let kδ : Dem := (kx.demVars.contains ·); build objs mc p kδ kx).mapM fits, ← fits tst with
+    let tst := (test objs mc p false δ q).map fun ⟨A, B, t⟩ => (⟨.prod A B, .prod A B, t⟩ : Res)
+    match ← fits (build objs mc p false δ q), ← (kq.map fun kx => let kδ : Dem := (kx.demVars.contains ·); build objs mc p false kδ kx).mapM fits, ← fits tst with
     | .ok res, _, _ => pure (mk res false false)
     | .error _, some (.ok res), _ => pure (mk res false true)
     | .error _, _, .ok res => pure (mk res true false)
@@ -518,11 +518,11 @@ def callDef (env : Env) (dp : Pos) (n : String) (qs : List Param) (e : Expr) (ty
         -- tested on pairs; else closed, whose build reports why
         let st ← get; let mc ← Lean.getMCtx
         let δ : Dem := (xe.demVars.contains ·)
-        let bx := build st.objs mc p δ xe
+        let bx := build st.objs mc p false δ xe
         let f : Option Bool :=
-          if (build st.objs mc p δ (Pre.close p xe a why)).toOption.isSome then none
+          if (build st.objs mc p false δ (Pre.close p xe a why)).toOption.isSome then none
           else if bx.toOption.isSome then some false
-          else if (test st.objs mc p δ xe).toOption.isSome then some true else none
+          else if (test st.objs mc p false δ xe).toOption.isSome then some true else none
         fs := fs ++ [(f, k?)]; xs := xs ++ [(if f.isNone then Pre.close p x a why else x, f == some true)]
         -- closed, an argument that needs keys would be read on its source's whole universe (`closeRes`); on demand it
         -- runs bounded by what the body composes it with, as the inlined body runs it
@@ -587,7 +587,7 @@ def top (env : Env) (mc : Lean.MetavarContext) (p : Pos) (e : Expr) (r : Arg) (d
   -- a denotation-only term is never run, so where its source has no universe it has no left context to key on
   let generic := (zonk mc s).bases.any fun n => (env.objs.lookup n).any (·.fullUniverse)
   let open_ := den && (generic || (uniOf env.objs (zonk mc s)).isNone)
-  let ⟨A, B, tm⟩ ← build env.objs mc p δ (if open_ then q else .close p q s noLeft)
+  let ⟨A, B, tm⟩ ← build env.objs mc p den δ (if open_ then q else .close p q s noLeft)
   if den || !tm.dem δ [] then pure (⟨A, B, tm⟩, zonk mc s, zonk mc t) else throw ⟨p, s!"{e.show}: {zonk mc s} has no universe; compose a set of its elements before it (§a)"⟩
 
 def unifySides (p : Pos) (r r' : Arg) : M Unit := do
@@ -947,7 +947,7 @@ def walk (prog : Program) (env : Env) (wrap : String → Def → Def) (own : Lea
         if s.poly || t.poly then env := { env with defs := (n, each) :: env.defs }; continue
         let q := if (uniOf env.objs s).isSome then Pre.close p q s noLeft else q
         let δ : Dem := (q.demVars.contains ·)
-        let res@⟨_, _, tm⟩ ← match build env.objs mc p δ q, test env.objs mc p δ q with
+        let res@⟨_, _, tm⟩ ← match build env.objs mc p false δ q, test env.objs mc p false δ q with
           | .ok r, _ => pure r
           | .error _, .ok _ => env := { env with defs := (n, each) :: env.defs }; continue
           | .error e, .error _ => throw e
