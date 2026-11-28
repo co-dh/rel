@@ -528,6 +528,11 @@ theorem decEq0B_free (m : Nat) : Free (do
 
 
 
+theorem exFun_trans {a b c : Array Fun} (h1 : ∃ d, b = a ++ d) (h2 : ∃ d, c = b ++ d) : ∃ d, c = a ++ d := by
+  obtain ⟨d, rfl⟩ := h1
+  obtain ⟨e, rfl⟩ := h2
+  exact ⟨d ++ e, by simp [Array.append_assoc]⟩
+
 theorem omapM_length {R : Array Val} : ∀ {l : List Nat} {vs : List Val}, l.mapM (fun x => R[x]?) = some vs →
     l.length = vs.length
   | [], _, h => by cases h; rfl
@@ -543,10 +548,10 @@ theorem omapM_length {R : Array Val} : ∀ {l : List Nat} {vs : List Val}, l.map
     new bounds `loc`, `hic`, and `y`'s registers). The link to `ValsB.pack` (that `Tv` is its `lastCount`, that `k · lastCount
     ≤ m` where `cut` runs, that `spanB`'s clamp is its `cellSpan`) is not in this statement. -/
 theorem packLeafB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {o : Bool} {k n m lo hi : Nat} {p : String}
-    {f : Cols} {A : Obj} {ox : Bool} {nv mv Tv : USize} {x : ValsB ox A mv} {y : ValsB ox A Tv}
+    {f : Cols} {A : Obj} {ox : Bool} {nv mv Tv : USize} {x xk : ValsB ox A mv} {y yk : ValsB ox A Tv}
     {lc hcl z cm sc dc ec z0 wc oc z1 scx G0 g1 uc gs ac hic0 bc loc hic : Enc} {f1 f2 f3 f4 f7 f8 f9 : Option UInt64}
     {r0 r1 : Enc × Option UInt64} {kk : Cols → Bld (Array Nat)} {out : Array Val}
-    (hA : ColsOf A f) (hat : ∀ c ∈ f, ∃ q t e, c = Col.atom q t e)
+    (hA : ColsOf A f)
     (hn : rs[n]? = some (.size nv)) (hm : rs[m]? = some (.size mv)) (hlo : rs[lo]? = some (Reg.put lc))
     (hhi : rs[hi]? = some (Reg.put hcl)) (hx : (Cols.regs f).mapM (fun i => rs[i]?) = some x.regVals)
     (h1 : nv < 2 ^ 63) (h2 : mv < 2 ^ 63) (h3 : ¬ 2 ^ 63 / (mv + 1) < nv + 1)
@@ -575,11 +580,26 @@ theorem packLeafB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {o : Boo
     (hloc : o = true → ∃ f, kscan .min false .i64 .i64 nv none [(nv, bc), (nv, oc)] [] [] = .ok (loc, f))
     (hhic : o = true → ∃ f, kscan .min false .i64 .i64 nv none [(nv, bc), (nv, hic0)] [] [] = .ok (hic, f))
     (hloc0 : o = false → loc = oc) (hhic0 : o = false → hic = hic0) (hfo : Ordered fg.1)
+    (hrecK : ∀ (fg2 : Array Fun × Array Fun) (R : Array Val), (∃ a, fg2.1 = fg.1 ++ a) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Extends rs R → R[m]? = some (.size mv) → R[lo]? = some (Reg.put lc) →
+      R[hi]? = some (Reg.put hcl) → (Cols.regs f).mapM (fun i => R[i]?) = some x.regVals →
+      ∃ fg', Builds abiOf fg2 fg' (do
+        let f' ← packB false k m f
+        let L ← regsOf [.arr p m lo hi f']
+        Pure.pure L.toArray) R ([.size mv, Reg.put lc, Reg.put hcl] ++ xk.regVals).toArray ∧ Ordered fg'.1)
+    (hrecC : ∀ (fg2 : Array Fun × Array Fun) (R : Array Val) (T' l2 h2 : Nat) (g' : Cols), (∃ a, fg2.1 = fg.1 ++ a) →
+      GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → R[T']? = some (.size Tv) → R[l2]? = some (Reg.put loc) →
+      R[h2]? = some (Reg.put hic) → Cols.shape g' = Cols.shape f →
+      (Cols.regs g').mapM (fun i => R[i]?) = some y.regVals →
+      ∃ fg', Builds abiOf fg2 fg' (do
+        let f' ← packB false k T' g'
+        let L ← regsOf [.arr p T' l2 h2 f']
+        Pure.pure L.toArray) R ([.size Tv, Reg.put loc, Reg.put hic] ++ yk.regVals).toArray)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (R : Array Val) (c : Col), (∃ a, fg2.1 = fg.1 ++ a) → GExt fg.2 fg2.2 →
       Extends rs R → ColsOf (.arr A) [c] →
-      (Cols.regs [c]).mapM (fun i => R[i]?) = some (if decide (mv = 0) then [.size mv, Reg.put lc, Reg.put hcl] ++ x.regVals
-        else if decide (mv < Tv * k.toUSize) then [.size mv, Reg.put lc, Reg.put hcl] ++ x.regVals
-        else [.size Tv, Reg.put loc, Reg.put hic] ++ y.regVals) →
+      (Cols.regs [c]).mapM (fun i => R[i]?) = some (if decide (mv = 0) then [.size mv, Reg.put lc, Reg.put hcl] ++ xk.regVals
+        else if decide (mv < Tv * k.toUSize) then [.size mv, Reg.put lc, Reg.put hcl] ++ xk.regVals
+        else [.size Tv, Reg.put loc, Reg.put hic] ++ yk.regVals) →
       ∃ fg', Builds abiOf fg2 fg' (kk [c]) R out) :
     ∃ fg', Builds abiOf fg fg' (packB o k n [.arr p m lo hi f] >>= kk) rs out := by
   unfold packB
@@ -632,14 +652,16 @@ theorem packLeafB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {o : Boo
   refine Builds.bind1F (decEq0B_free _) (decEq0B_builds hm2) fun xz R2 hxz hE2 => ?_
   up hE2 [hm2 hn3 hs3 hw3 hlo3 hhi3 hP hTr hxw]
   replace hx3 := mapM_extends hE2 hx3
-  have hlen := hA.regs_length x
-  have hlen' := hA.regs_length y
-  have hkeep : ∀ fg0 : Array Fun × Array Fun, Builds abiOf fg0 fg0 (do
-      let f' ← packB false k m f; let L ← regsOf [Col.arr p m lo hi f']; Pure.pure L.toArray) R2
-      ([.size mv, Reg.put lc, Reg.put hcl] ++ x.regVals).toArray := fun fg0 => by
-    rw [packB_atoms _ _ _ _ hat, pure_bind, regsOf_eq, pure_bind]
-    exact Builds.pure fun who => reads_of (by simp [Cols.regs, Col.regs, hm2, hlo3, hhi3, hx3])
-  have hcut : ∃ fg', Builds abiOf fg3 fg' (do
+  have hlen := hA.regs_length xk
+  have hlen' := hA.regs_length yk
+  have hER2 : Extends rs R2 := fun h => hE2 (hE1 (get_app (hE (get_app (get_app h)))))
+  have hkeep : ∀ fg0 : Array Fun × Array Fun, (∃ a, fg0.1 = fg.1 ++ a) → GExt fg.2 fg0.2 → Ordered fg0.1 →
+      ∃ fg', Builds abiOf fg0 fg' (do
+        let f' ← packB false k m f; let L ← regsOf [Col.arr p m lo hi f']; Pure.pure L.toArray) R2
+        ([.size mv, Reg.put lc, Reg.put hcl] ++ xk.regVals).toArray ∧ Ordered fg'.1 :=
+    fun fg0 h0 g0 o0 => hrecK fg0 R2 h0 g0 o0 hER2 hm2 hlo3 hhi3 hx3
+  have hcut : ∀ fg0 : Array Fun × Array Fun, (∃ a, fg0.1 = fg.1 ++ a) → GExt fg.2 fg0.2 → Ordered fg0.1 →
+      ∃ fg', Builds abiOf fg0 fg' (do
       let __discr ← expandB n w
       let __do_lift ← gatherB __discr.fst __discr.2.fst n s
       let __do_lift ← mapB Op.add __discr.fst __do_lift __discr.2.snd
@@ -662,20 +684,22 @@ theorem packLeafB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {o : Boo
             let __do_lift ← regsOf [Col.arr p __discr.fst lo' hi' __do_lift]
             pure __do_lift.toArray
           else throw "pack: the gathered payload is larger than the payload") R2
-      ([.size Tv, Reg.put loc, Reg.put hic] ++ y.regVals).toArray := by
+      ([.size Tv, Reg.put loc, Reg.put hic] ++ yk.regVals).toArray := fun fg0 h0 g0 o0 => by
     refine packCutB_builds (hi := hi) hA hn3 hm2 hlo3 hs3 hw3 hP hx3 hz0 hk0 hr0 hT ho hsc hz1 hk1 hr1 hG hg1 hu hgs hac hgy hz hhi0
-      hbig hloc hhic hloc0 hhic0 hfo3 ?_
+      hbig hloc hhic hloc0 hhic0 o0 ?_
     intro fg2' R T' l2 h2 g' he hf hfo' hE hT' hl2 hh2 hsh hreg
-    refine ⟨fg2', ?_⟩
-    rw [packB_atoms _ _ _ _ (atoms_of_shape hsh hat), pure_bind, regsOf_eq, pure_bind]
-    exact Builds.pure fun who => reads_of (by simp [Cols.regs, Col.regs, hT', hl2, hh2, hreg])
-  obtain ⟨fgc, hcut⟩ := hcut
-  have hsz : ([Val.size mv, Reg.put lc, Reg.put hcl] ++ x.regVals).toArray.size =
-      ([Val.size Tv, Reg.put loc, Reg.put hic] ++ y.regVals).toArray.size := by simp [← hlen, ← hlen']
-  refine Builds.bindFG (Free.ite _ _ _) (Builds.ite hxz (hkeep fg3) (Builds.ite hxw (hkeep fg3) hcut hsz)
+    exact hrecC fg2' R T' l2 h2 g' (exFun_trans h0 he) (g0.trans hf) hfo' (fun h => hE (hER2 h)) hT' hl2 hh2 hsh hreg
+  have e3 := exFun_trans he1 he3
+  have g3 := hf.trans hf3
+  obtain ⟨fk1, hk1', ok1⟩ := hkeep fg3 e3 g3 hfo3
+  obtain ⟨fk2, hk2', ok2⟩ := hkeep fk1 (exFun_trans e3 hk1'.1) (g3.trans hk1'.2.1) ok1
+  obtain ⟨fgc, hcut⟩ := hcut fk2 (exFun_trans (exFun_trans e3 hk1'.1) hk2'.1) ((g3.trans hk1'.2.1).trans hk2'.2.1) ok2
+  have hsz : ([Val.size mv, Reg.put lc, Reg.put hcl] ++ xk.regVals).toArray.size =
+      ([Val.size Tv, Reg.put loc, Reg.put hic] ++ yk.regVals).toArray.size := by simp [← hlen, ← hlen']
+  refine Builds.bindFG (Free.ite _ _ _) (Builds.ite hxz hk1' (Builds.ite hxw hk2' hcut hsz)
     (by split <;> simp [← hlen, ← hlen'])) ?_
   intro a R3 hread hE3
-  have hEa : Extends rs R3 := fun h => hE3 (hE2 (hE1 (get_app (hE (get_app (get_app h))))))
+  have hEa : Extends rs R3 := fun h => hE3 (hER2 h)
   have hl : a.toList.length = (Cols.regs [Col.arr p m lo hi f]).length := by
     rw [omapM_length hread]; split <;> (try split) <;> simp [Cols.regs, Col.regs, ← hlen, ← hlen']
   obtain ⟨cs', hw, hcs', hreg, hlen1⟩ := withRegs_colsOf (.arr A) (cs := [Col.arr p m lo hi f])
@@ -685,12 +709,9 @@ theorem packLeafB_builds {fg : Array Fun × Array Fun} {rs : Array Val} {o : Boo
     cases cs' with
     | nil => simp at hlen1
     | cons c t => cases t <;> simp at hlen1 ⊢
-  obtain ⟨a1, ha1⟩ := he1
-  obtain ⟨a3, ha3⟩ := he3
-  obtain ⟨ac, hac'⟩ := hcut.1
   simp only [hw, pure_bind]
-  refine hkk fgc R3 c ⟨a1 ++ (a3 ++ ac), by simp [hac', ha3, ha1, Array.append_assoc]⟩
-    (hf.trans (hf3.trans hcut.2.1)) hEa hcs' ?_
+  refine hkk fgc R3 c (exFun_trans (exFun_trans (exFun_trans e3 hk1'.1) hk2'.1) hcut.1)
+    (((g3.trans hk1'.2.1).trans hk2'.2.1).trans hcut.2.1) hEa hcs' ?_
   rw [hreg]
   rw [hread]; congr 1
   split <;> (try split) <;> simp
