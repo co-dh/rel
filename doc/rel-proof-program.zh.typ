@@ -41,10 +41,10 @@ Lean kernel 检查的是两侧实际 elaboration 后的 `Tm.den` 的等式或包
 
 #tbl(violet, (auto, 1fr), ([证书], [内容]),
   [`n.proof.shares`], [`Tm.shareOK_iff` 把闭性与极性判定（`Tm.shareOK`）变成 `∀ d ∈ input, d.2.2.GenHyp (fun _ R => R.fv = [])`；`Expand.emit`（`Rel/Run/Lang/TmGen.lean`）发出。只在程序 import 了 `Rel.Lang.GenSound` 时发出（现为 Prelude、Prefix），共享子项含自由变量或不动点体非正时报错。],
-  [`n.proof.sound`], [`Code.program_reps` 应用于 `n.proof.shares`：在共享表下，每个已编号项的生成码 `Reps` 其 denotation `d.2.2.den Val.empty`，对任意良构 store 成立。内部使用 `Code.program_sound` 与 `Tm.gen_sound`。],
+  [`n.proof.sound`], [`Code.program_sound_all` 应用于 `n.proof.shares`，是两个陈述的合取，对任意良构 store 成立。(1) `Code.program_reps`：在共享表下，每个已编号项的生成码 `Reps` 其 denotation `d.2.2.den Val.empty`。(2) `Code.program_reps_args`：对任意变量表 `ks` 与任意参数列表 `bs`（每个参数是 `Wf` 的码，且 `Reps` 对应的表），`d.2.2.gen (Code.args sh ks xs ds)` `Reps` `d.2.2.den (Val.args ks ss)`，其中 `xs`、`ss` 是 `bs` 的码与意义两侧。内部使用 `Code.program_sound`、`Code.args_sound`（`Sound.bind` 沿 `ks` 归纳）与 `Tm.gen_sound`。],
 )
 
-- 范围：`n.proof.sound` 覆盖空 `Known` 下的项。IO 入口经 `Code.args` 绑定输入，其 `Sound` 保持未单独验证，仍为开放项。
+- 范围：`n.proof.sound` 覆盖空 `Known` 下的项，也覆盖 IO 入口经 `Code.args` 绑定输入的情形：`n.io` 运行的每个运行期定义的体都在编号项中，(2) 对所有 `ks`、`bs` 量化，故对任意绑定成立。尚未陈述的是：每次运行的实参（`Table.read` 读入的表，`Rel.tab` 包装后）满足 (2) 的前提，即其码 `Wf` 且 `Reps` 其表的意义；该前提由读入的表良构给出（`GenK.val_sound`），不在证书里。
 - 证明项在编译时擦除；Rust extern 与文件 IO 沿用现有差分和往返测试。
 
 = 9.3–9.6 语法与认证

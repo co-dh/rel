@@ -182,6 +182,23 @@ theorem Code.args_wf {η : Code} (hη : η.Wf) :
     · exact ih.1 j A' B'
   | [], _, _, _ | _ :: _, [], _, _ => ⟨fun _ _ _ => GenK.zero_wf, hη.2⟩
 
+/-- The arguments of a call, bound at `ks` (`Code.args`, `Val.args`): a code `r` that represents `X` and is `Wf`, with
+    its objects, per argument. -/
+abbrev ArgPair := (A : Obj) × (B : Obj) × (Rel A B × Core.Rel (Obj.El A) (Obj.El B))
+
+/-- `Code.args` over a sound table (no variable bound) is `Sound` for `Val.args` of the same arguments, as meanings:
+    what `n.io` runs a run-time definition's body under (`Expand.ioGo`: `Code.args` of the input tables). -/
+theorem Code.args_sound {η : Code} (hs : Sound η Val.empty) :
+    ∀ (ks : List Nat) (bs : List ArgPair) (ds : List Bool),
+      (∀ b ∈ bs, (∀ K, K.WF → b.2.2.1.Reps K b.2.2.2) ∧ b.2.2.1.Wf) →
+      Sound (Code.args η ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.1⟩) ds)
+        (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.2⟩))
+  | k :: ks, b :: bs, ds, hb =>
+    (Code.args_sound hs ks bs ds.tail fun c hc => hb c (List.mem_cons_of_mem _ hc)).bind k (hb b List.mem_cons_self).1
+      (hb b List.mem_cons_self).2
+  | [], _, _, _ | _ :: _, [], _, _ =>
+    ⟨fun _ _ _ K hK => GenK.zero_sound K hK, ⟨fun _ _ _ => GenK.zero_wf, hs.2.2⟩⟩
+
 /-- The rows whose case of `Tm.gen_sound` is proved (`rowsProved_ok`); `rowGens_proved` checks every row of
     `rowGens` is one. -/
 def rowsProved : List String :=
@@ -1878,5 +1895,26 @@ theorem Code.program_reps (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ 
       (d.2.2.gen (Code.shares (Code.program ds).2)).Reps K (d.2.2.den Val.empty) := fun d hd K hK =>
   let s := Code.program_sound ds h
   Tm.gen_sound d.2.2 _ _ (s.2 d hd) s.1 K hK
+
+/-- **`Code.program_reps` for the run-time definitions `n.io` computes**: a numbered body read under any arguments
+    bound at any variables `ks` (`Code.args` of the share table; `Expand.ioGo`) has code that `Reps` the body's
+    denotation under the same arguments as meanings (`Val.args`), each argument a `Wf` code representing its table. -/
+theorem Code.program_reps_args (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) :
+    ∀ d ∈ (Code.program ds).1, ∀ (ks : List Nat) (bs : List ArgPair) (dm : List Bool),
+      (∀ b ∈ bs, (∀ K, K.WF → b.2.2.1.Reps K b.2.2.2) ∧ b.2.2.1.Wf) → ∀ K, K.WF →
+      (d.2.2.gen (Code.args (Code.shares (Code.program ds).2) ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.1⟩) dm)).Reps K
+        (d.2.2.den (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.2⟩))) := fun d hd ks bs dm hb K hK =>
+  let s := Code.program_sound ds h
+  Tm.gen_sound d.2.2 _ _ (by rw [Code.args_sh]; exact s.2 d hd) (Code.args_sound s.1 ks bs dm hb) K hK
+
+/-- `Code.program_reps` and `Code.program_reps_args`: what `n.proof.sound` states. -/
+theorem Code.program_sound_all (ds : List Res) (h : ∀ d ∈ ds, d.2.2.GenHyp fun _ R => R.fv = []) :
+    (∀ d ∈ (Code.program ds).1, ∀ K, K.WF →
+      (d.2.2.gen (Code.shares (Code.program ds).2)).Reps K (d.2.2.den Val.empty)) ∧
+    ∀ d ∈ (Code.program ds).1, ∀ (ks : List Nat) (bs : List ArgPair) (dm : List Bool),
+      (∀ b ∈ bs, (∀ K, K.WF → b.2.2.1.Reps K b.2.2.2) ∧ b.2.2.1.Wf) → ∀ K, K.WF →
+      (d.2.2.gen (Code.args (Code.shares (Code.program ds).2) ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.1⟩) dm)).Reps K
+        (d.2.2.den (Val.args ks (bs.map fun b => ⟨b.1, b.2.1, b.2.2.2⟩))) :=
+  ⟨Code.program_reps ds h, Code.program_reps_args ds h⟩
 
 end Rel.Lang
