@@ -125,6 +125,7 @@ theorem ldivA_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B 
     (hgf : Tab.groupFold .add Q.n g sg k.toUSize 0 o1 = .ok cnt) (hfo : Ordered fg.1)
     (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (R : Array Val) (a b c d e : Nat), (∃ y, fg2.1 = fg.1 ++ y) →
       GExt fg.2 fg2.2 → Ordered fg2.1 → Extends rs R → ColsOf B W.key → ColsOf C (W.val.drop s'.key.length) →
+      Cols.shape W.key = Cols.shape r'.val → Cols.shape (W.val.drop s'.key.length) = Cols.shape s'.val →
       R[W.n]? = some (.size Q.n) →
       (Cols.regs (W.key ++ W.val.drop s'.key.length)).mapM (fun i => R[i]?) = some x.regVals →
       [a, b, c, d, e].mapM (fun i => R[i]?) = some [.size k.toUSize, Reg.put g, Reg.put f, Reg.put p, Reg.put cnt] →
@@ -155,6 +156,10 @@ theorem ldivA_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B 
   have hdrop : W.val.drop s'.key.length = c2 := by
     rw [hW, show s'.key.length = c1.length from (ColsOf.length_eq hSk).trans (ColsOf.length_eq hc1).symm,
       List.drop_left' rfl]
+  have hshC : Cols.shape (W.val.drop s'.key.length) = Cols.shape s'.val := by
+    have hWv' : Cols.shape W.val = Cols.shape (s'.key ++ s'.val) := hWv
+    rw [Cols.shape_eq_map, List.map_drop, ← Cols.shape_eq_map, hWv', Cols.shape_eq_map, List.map_append,
+      List.drop_left' (by simp), ← Cols.shape_eq_map]
   have e3 : W.regs = W.n :: (Cols.regs W.key ++ (Cols.regs c1 ++ Cols.regs c2)) := by
     simp [TabB.regs, Cols.regs_append, hW]
   rw [e3] at hWr
@@ -186,7 +191,7 @@ theorem ldivA_builds (hc : CatOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B 
   rw [hf3] at hf4
   refine hkk fg4 W (R ++ ys4) a b c d pp ⟨e1' ++ (e2' ++ e3'), by
       rw [h3', h2', h1', Array.append_assoc, Array.append_assoc]⟩ (hf.trans hf4) ho4
-    (fun h => get_app (m (get_app (get_app h)))) hWk' (by rw [hdrop]; exact hc2) (get_app (m (get_app hn3)))
+    (fun h => get_app (m (get_app (get_app h)))) hWk' (by rw [hdrop]; exact hc2) hWk hshC (get_app (m (get_app hn3)))
     (by rw [hdrop]; exact mapM_get_app (mapM_extends m (mapM_get_app hxr))) ?_
   simp only [List.mapM_cons, List.mapM_nil, get_app (m ha), get_app (m hb), get_app (m hc'), get_app (m hd), hpp]
   rfl
@@ -539,5 +544,198 @@ theorem rdivB_builds {A B C : Obj} {Tot : Tab C B → Tab C A → Tab B B → Ta
     (hf.trans (hf2.trans (hf3.trans hf4))) ho4 (hWk'.trans hWv) (hWv'.trans hWk)
     (by simpa [Array.append_assoc] using hr5)
   simpa only [Array.append_assoc] using this
+
+/-- The kernel facts `ascSeenB_builds` takes of the columns `x` it groups (`hz`, `hsc` there). -/
+def AscPre {B : Obj} {n : USize} (x : Vals B n) : Prop :=
+  ∃ z, kscatter .last 0 (wordsFoR #[]) (wordsFoR #[]) n 0 = .ok z ∧
+    ∀ es vs p k g f, ValsB.cols x = .ok es → kasc n es = .ok (vs, p) → kseen n ((es.map (·.1)).zip vs) = .ok (k, g, f) →
+      ∃ r, kscan .max false .i64 .i64 n (some z) [(n, z), (n, g)] [] [] = .ok r
+
+/-- **The premises the four stages of `ldivOfB` leave open**, for the tables `r'`, `s'`, `ub`, `uc` holding `r`, `s`,
+    `UB`, `UC`: kernel facts of the run of `r.ldivOf s UB UC` (each gated by the run's own earlier values) and three
+    that the plan and the model do not yet agree on. -/
+structure LdivTot {A B C : Obj} (r : Tab A B) (s : Tab A C) (UB : Tab B B) (UC : Tab C C) (r' s' ub uc : TabB) : Prop where
+  /-- `compB`'s output has the columns of `r'.val`, which `ub.key` must share: the plan does not say it (open). -/
+  shapeB : Cols.shape r'.val = Cols.shape ub.key
+  /-- Likewise `s'.val` and `uc.key` (open). -/
+  shapeC : Cols.shape s'.val = Cols.shape uc.key
+  /-- `Tab.cross` canonises its product and `ldivOfB` unions the raw one, so the unions agree only if `canon` of the
+      concatenation ignores that (open). -/
+  hunion : ∀ (P : Tab B C) (V : Tab B B) (WC : Tab C C) (Tv : USize) (x' : Vals B Tv) (y' : Vals C Tv) (Cr U : Tab B C),
+    Vals.cross V.key WC.key = .ok ⟨Tv, x', y'⟩ → Tab.cross V.key WC.key = .ok Cr → P.union Cr = .ok U →
+    P.union ⟨Tv, x', y'⟩ = .ok U
+  comp : ∀ Q, (⟨r.n, r.val, r.key⟩ : Tab B A).compOne (⟨s.n, s.key, (s.key, s.val)⟩ : Tab A (.prod A C)) = .ok Q →
+    CompPre B A (.prod A C) (⟨r.n, r.val, r.key⟩ : Tab B A) (⟨s.n, s.key, (s.key, s.val)⟩ : Tab A (.prod A C)) ∧
+    CompPost B A (.prod A C) (⟨r.n, r.val, r.key⟩ : Tab B A) Q ∧
+    AscPre (B := .prod B C) (n := Q.n) (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)
+  cat : ∀ {N : USize} (Z : Vals B N) bs bv bp, ValsB.cols Z = .ok bs → kasc N bs = .ok (bv, bp) →
+    AscPre Z ∧ ∃ k, colConst N r.n.toUInt64 = .ok k ∧ ∃ o, colMap .lt N bp k = .ok o
+  addC : ∀ (K Qn : USize) f p q, kgather K f Qn p = .ok q →
+    ∃ k, colConst K r.n.toUInt64 = .ok k ∧ ∃ o, colMap .add K q k = .ok o
+  whereC : ∀ Kv cnt d bits M sel, colMap .eq Kv cnt d = .ok bits → whereCol Kv bits = .ok (M, sel) →
+    WhereAgree Kv M bits sel
+  ranUB : RanPre UB
+  ranR : RanPre r
+  ranUC : RanPre UC
+  sel : ∀ RU RR, UB.ran = .ok RU → r.ran = .ok RR → SelPre (fun m _ mx => colMap .not m mx mx) RU RR
+  cross : ∀ (V : Tab B B) (WC : Tab C C) Tv x' y', Vals.cross V.key WC.key = .ok ⟨Tv, x', y'⟩ → CrossPre Tv WC.n
+  can : ∀ (P : Tab B C) (V : Tab B B) (WC : Tab C C) Tv x' y', Vals.cross V.key WC.key = .ok ⟨Tv, x', y'⟩ →
+    ∀ Cc, Tab.concat P ⟨Tv, x', y'⟩ = .ok Cc → CanOK Cc
+
+/-! `ldivOfB` then `kk`, cut into the continuations of its stages. Each stage theorem states its goal with `kk` innermost
+and `bind_assoc` cannot commute `kk` into `ldivOfB`'s pair matches (`simp` turns them into projections that the
+stage statements do not unify with, a timeout): so each continuation is a named definition and the unification is
+first-order. -/
+
+/-- Stage D and `kk` (`ldivTail_builds`). -/
+def ldivR3 (r ub uc : TabB) (kk : TabB → Bld (Array Nat)) (P : TabB) : Bld (Array Nat) := do
+  let V ← selectB (fun m _ mx => mapB .not m mx mx) (← coreflB ub.n ub.val) (← coreflB r.n r.val)
+  let W2 ← coreflB uc.n uc.val
+  let (T, x, y) ← crossB V.n W2.n V.key W2.key
+  unionB P ⟨T, x, y⟩ >>= kk
+
+/-- Stage C and what follows (`ldivSel_builds`). -/
+def ldivR2 (r s ub uc : TabB) (kk : TabB → Bld (Array Nat)) (W : TabB) (K f p cnt N bk cR code : Nat) :
+    Bld (Array Nat) := do
+  let q ← gatherB K f W.n p
+  let d ← gatherB K (← gatherB K (← mapB .add K q (← constB K (← wordOf r.n))) N code) bk cR
+  let (M, sel) ← whereB K (← mapB .eq K cnt d)
+  let ix ← gatherB M sel K q
+  ldivR3 r ub uc kk ⟨M, ← gatherCols M ix W.n W.key, ← gatherCols M ix W.n (W.val.drop s.key.length)⟩
+
+/-- Stage B and what follows (`ldivCat_builds`). -/
+def ldivR1 (r s ub uc : TabB) (kk : TabB → Bld (Array Nat)) (W : TabB) (K f p cnt : Nat) : Bld (Array Nat) := do
+  let (N, sh) ← catB r.n W.n
+  guard (← call1 (kernel% USize.decLt) #[N, ← lit (.size (2 ^ 63))]) "ldiv: rows past 2^63" #[N]
+  let (bk, bg, bf, bp) ← ascSeenB N (← concatB N r.n W.n sh r.val W.key)
+  let cR ← groupFoldB .add N bg bf bk 0 (← mapB .lt N bp (← constB N (← wordOf r.n)))
+  let code ← scatterB .last N bp bg N
+  ldivR2 r s ub uc kk W K f p cnt N bk cR code
+
+theorem ldivOfB_cps (r s ub uc : TabB) (kk : TabB → Bld (Array Nat)) : (ldivOfB r s ub uc >>= kk) = (do
+    let W ← compB ⟨r.n, r.val, r.key⟩ ⟨s.n, s.key, s.key ++ s.val⟩
+    let (K, g, f, p) ← ascSeenB W.n (W.key ++ W.val.drop s.key.length)
+    let cnt ← groupFoldB .add W.n g f K 0 (← wordsB W.n 1)
+    ldivR1 r s ub uc kk W K f p cnt) := by
+  simp only [ldivOfB, ldivR1, ldivR2, ldivR3, bind_assoc]
+
+/-- **`ldivOfB` builds `Tab.ldivOf`**: the four stages in order (`ldivA_builds`, `ldivCat_builds`, `ldivSel_builds`,
+    `ldivTail_builds`), the values of each read off the run `hU` of the model, the kernel facts in `LdivTot`. -/
+theorem ldivOfB_builds (hT : TagOff) (h63 : (2 ^ 63 : USize).toNat = 2 ^ 63) {A B C : Obj} {r : Tab A B} {s : Tab A C}
+    {UB : Tab B B} {UC : Tab C C} {U : Tab B C} {r' s' ub uc : TabB} {fg : Array Fun × Array Fun}
+    {rs out : Array Val} {kk : TabB → Bld (Array Nat)}
+    (hRk : ColsOf A r'.key) (hRv : ColsOf B r'.val) (hSk : ColsOf A s'.key) (hSv : ColsOf C s'.val)
+    (hbv : ColsOf B ub.val) (hcv : ColsOf C uc.val)
+    (hR : r'.regs.mapM (fun i => rs[i]?) = some (.size r.n :: (r.key.regVals ++ r.val.regVals)))
+    (hS : s'.regs.mapM (fun i => rs[i]?) = some (.size s.n :: (s.key.regVals ++ s.val.regVals)))
+    (hB : ub.regs.mapM (fun i => rs[i]?) = some (.size UB.n :: (UB.key.regVals ++ UB.val.regVals)))
+    (hC : uc.regs.mapM (fun i => rs[i]?) = some (.size UC.n :: (UC.key.regVals ++ UC.val.regVals)))
+    (hU : r.ldivOf s UB UC = .ok U) (hTot : LdivTot r s UB UC r' s' ub uc) (hfo : Ordered fg.1)
+    (hkk : ∀ (fg2 : Array Fun × Array Fun) (W : TabB) (ys : Array Val), (∃ e, fg2.1 = fg.1 ++ e) → GExt fg.2 fg2.2 →
+      Ordered fg2.1 → Cols.shape W.key = Cols.shape ub.key → Cols.shape W.val = Cols.shape uc.key →
+      W.regs.mapM (fun i => (rs ++ ys)[i]?) = some (.size U.n :: (U.key.regVals ++ U.val.regVals)) →
+      ∃ fg', Builds abiOf fg2 fg' (kk W) (rs ++ ys) out) :
+    ∃ fg', Builds abiOf fg fg' (ldivOfB r' s' ub uc >>= kk) rs out := by
+  unfold Tab.ldivOf at hU
+  obtain ⟨Q, hone, hU⟩ := except_bind_ok hU
+  obtain ⟨es, hes, hU⟩ := except_bind_ok hU
+  obtain ⟨⟨vs, p⟩, hka, hU⟩ := except_bind_ok hU
+  obtain ⟨⟨k, g, f⟩, hks, hU⟩ := except_bind_ok hU
+  obtain ⟨sg, hseg, hU⟩ := except_bind_ok hU
+  obtain ⟨o1, h1, hU⟩ := except_bind_ok hU
+  obtain ⟨cnt, hgf, hU⟩ := except_bind_ok hU
+  obtain ⟨N, hcat, hU⟩ := except_bind_ok hU
+  obtain ⟨hlt, hU⟩ : N.toNat < 2 ^ 63 ∧ _ := by
+    split at hU
+    · cases hU
+    · exact ⟨by omega, by simpa using hU⟩
+  obtain ⟨Z, hconc, hU⟩ := except_bind_ok hU
+  obtain ⟨bs, hbs, hU⟩ := except_bind_ok hU
+  obtain ⟨⟨bv, bp⟩, hka2, hU⟩ := except_bind_ok hU
+  obtain ⟨⟨bk, bg, bf⟩, hks2, hU⟩ := except_bind_ok hU
+  obtain ⟨sg2, hseg2, hU⟩ := except_bind_ok hU
+  obtain ⟨cm, hcm, hU⟩ := except_bind_ok hU
+  obtain ⟨cR, hgf2, hU⟩ := except_bind_ok hU
+  obtain ⟨code, hsca, hU⟩ := except_bind_ok hU
+  obtain ⟨q, hq, hU⟩ := except_bind_ok hU
+  obtain ⟨qa, hqa, hU⟩ := except_bind_ok hU
+  obtain ⟨d1, hd1, hU⟩ := except_bind_ok hU
+  obtain ⟨d, hd, hU⟩ := except_bind_ok hU
+  obtain ⟨bits, hkeep, hU⟩ := except_bind_ok hU
+  obtain ⟨⟨M, sel⟩, hwh, hU⟩ := except_bind_ok hU
+  obtain ⟨ix, hix, hU⟩ := except_bind_ok hU
+  obtain ⟨yk, hgk, hU⟩ := except_bind_ok hU
+  obtain ⟨yv, hgv, hU⟩ := except_bind_ok hU
+  obtain ⟨RU, hran1, hU⟩ := except_bind_ok hU
+  obtain ⟨RR, hran2, hU⟩ := except_bind_ok hU
+  obtain ⟨V, hdiff, hU⟩ := except_bind_ok hU
+  obtain ⟨WC, hran3, hU⟩ := except_bind_ok hU
+  obtain ⟨Cr, hCr, hU⟩ := except_bind_ok hU
+  have hcr' : Tab.cross V.key WC.key = .ok Cr := hCr
+  unfold Tab.cross at hCr
+  obtain ⟨⟨Tv, x', y'⟩, hcr, -⟩ := except_bind_ok hCr
+  have hQN : Q.n.toNat ≤ 2 ^ 63 := by have := catRows_ok hcat; omega
+  obtain ⟨hpre, hpost, zA, hzA, hscA⟩ := hTot.comp Q hone
+  obtain ⟨rrA, hsA⟩ := hscA es vs p k g f hes hka hks
+  obtain ⟨⟨zB, hzB, hscB⟩, hknB⟩ := hTot.cat Z bs bv bp hbs hka2
+  obtain ⟨rrB, hsB⟩ := hscB bs bv bp bk bg bf hbs hka2 hks2
+  have hcO := hT.catOff
+  have eR : r'.regs = r'.n :: (Cols.regs r'.key ++ Cols.regs r'.val) := by simp [TabB.regs, Cols.regs_append]
+  have eB : ub.regs = ub.n :: (Cols.regs ub.key ++ Cols.regs ub.val) := by simp [TabB.regs, Cols.regs_append]
+  have eC : uc.regs = uc.n :: (Cols.regs uc.key ++ Cols.regs uc.val) := by simp [TabB.regs, Cols.regs_append]
+  obtain ⟨hrn, gR⟩ := mapM_get_cons (eR ▸ hR)
+  obtain ⟨-, gRv⟩ := mapM_split (ColsOf.regs_length hRk r.key) gR
+  obtain ⟨hubn, gB⟩ := mapM_get_cons (eB ▸ hB)
+  obtain ⟨-, gBv⟩ := mapM_split (ColsOf.regs_length (A := B) (ColsOf.shape B hRv hTot.shapeB.symm) UB.key) gB
+  obtain ⟨hucn, gC⟩ := mapM_get_cons (eC ▸ hC)
+  obtain ⟨-, gCv⟩ := mapM_split (ColsOf.regs_length (A := C) (ColsOf.shape C hSv hTot.shapeC.symm) UC.key) gC
+  rw [ldivOfB_cps]
+  refine ldivA_builds (r := r) (s := s) (r' := r') (s' := s') (fg := fg) (rs := rs) (out := out) hcO h63 (Q := Q) rfl hRk hRv hSk hSv hR hS hone hpre hpost hes hka hks hQN hzA hsA hseg h1 hgf hfo
+    (kk := fun W K _ f p cnt => ldivR1 r' s' ub uc kk W K f p cnt) ?_
+  intro fg2 W R a b c d e he hf ho hex hWk hWc hshK hshC hWn hWx hr5
+  unfold ldivR1
+  have hxr : ValsB.regVals (show Vals (.prod B C) Q.n from (Q.key, (Q.val : Vals A Q.n × Vals C Q.n).2)) =
+      Q.key.regVals ++ (Q.val : Vals A Q.n × Vals C Q.n).2.regVals := by simp [ValsB.regVals]
+  rw [Cols.regs_append, hxr] at hWx
+  obtain ⟨hy, hz2⟩ := mapM_split (ColsOf.regs_length hWk Q.key) hWx
+  refine ldivCat_builds hcO h63 (B := B) (n1 := r.n) (n2 := Q.n) (N := N) (X := r.val) (Y := Q.key) (Z := Z)
+    (cx := r'.val) (cy := W.key) (a1 := r'.n) (a2 := W.n) (fg := fg2) (rs := R) hRv hWk (hex hrn) hWn
+    (mapM_extends hex gRv) hy hcat hlt hconc hbs hka2 hks2 hzB hsB hseg2 hknB hcm hgf2 hsca ho
+    (kk := fun N bk _ _ _ cR code => ldivR2 r' s' ub uc kk W a c d e N bk cR code) ?_
+  intro fg3 R2 a' b' c' d' e' f' g' he3 hf3 ho3 hex3 hr3
+  unfold ldivR2
+  obtain ⟨hKa, hr5⟩ := mapM_get_cons hr5
+  obtain ⟨-, hr5⟩ := mapM_get_cons hr5
+  obtain ⟨hFc, hr5⟩ := mapM_get_cons hr5
+  obtain ⟨hPd, hr5⟩ := mapM_get_cons hr5
+  obtain ⟨hCe, -⟩ := mapM_get_cons hr5
+  obtain ⟨hNa, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨hBb, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨-, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨-, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨-, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨hCRf, hr3⟩ := mapM_get_cons hr3
+  obtain ⟨hCodeg, -⟩ := mapM_get_cons hr3
+  obtain ⟨kc, hkc, o, ho'⟩ := hTot.addC _ _ _ _ _ hq
+  refine ldivSel_builds (B := B) (C := C) (Kv := k.toUSize) (Qn := Q.n) (n1 := r.n) (Nv := N) (bkv := bk.toUSize)
+    (Mv := M) (Qk := Q.key) (Qc := (Q.val : Vals A Q.n × Vals C Q.n).2) (yk := yk) (yv := yv) (cs1 := W.key)
+    (cs2 := W.val.drop s'.key.length) (fg := fg3) (rs := R2) (rK := a) (rF := c) (rP := d) (rcnt := e) (rN := a')
+    (rBk := b') (rCode := g') (rCR := f') (rQn := W.n) (a1 := r'.n) hWk hWc (mapM_extends hex3 hy)
+    (mapM_extends hex3 hz2) (hex3 hWn) (hex3 (hex hrn)) (hex3 hKa) (hex3 hFc) (hex3 hPd) (hex3 hCe) hNa hBb hCRf
+    hCodeg hq ⟨kc, hkc, o, ho'⟩ hqa hd1 hd hkeep (hTot.whereC _ _ _ _ _ _ hkeep hwh) hix hgk hgv ho3
+    (kk := ldivR3 r' ub uc kk) ?_
+  intro fg4 P R3 he4 hf4 ho4 hex4 hPk hPv hPr
+  unfold ldivR3
+  have hE3 : Extends rs R3 := fun h => hex4 (hex3 (hex h))
+  refine ldivTail_builds hT h63 (r := r) (UB := UB) (UC := UC) (RU := RU) (RR := RR) (V := V) (WC := WC) (Tv := Tv)
+    (Mv := M) (x' := x') (y' := y') (yk := yk) (yv := yv) (U := U) (r' := r') (ub := ub) (uc := uc) (P := P)
+    (fg := fg4) (rs := R3) hRv hbv hcv (ColsOf.shape B hWk hPk) (ColsOf.shape C hWc hPv) (mapM_extends hE3 gRv)
+    (hE3 hrn) (mapM_extends hE3 gBv) (hE3 hubn) (mapM_extends hE3 gCv) (hE3 hucn) hPr hran1 hran2 hran3 hdiff hcr
+    (hTot.hunion _ V WC Tv x' y' Cr U hcr hcr' hU) hTot.ranUB hTot.ranR hTot.ranUC (hTot.sel RU RR hran1 hran2)
+    (hTot.cross V WC Tv x' y' hcr) (hTot.can _ V WC Tv x' y' hcr) ho4 ?_
+  intro fg5 W' R5 he5 hf5 ho5 hex5 hsk hsv hr5'
+  obtain ⟨ys, rfl⟩ := Extends.exists_app fun h => hex5 (hE3 h)
+  exact hkk fg5 W' ys (FExt.trans (FExt.trans (FExt.trans he he3) he4) he5) (hf.trans (hf3.trans (hf4.trans hf5))) ho5
+    (hsk.trans (hPk.trans (hshK.trans hTot.shapeB))) (hsv.trans (hPv.trans (hshC.trans hTot.shapeC))) hr5'
 
 end Rel.Lang.Plan
