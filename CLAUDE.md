@@ -97,8 +97,14 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Find a declaration with the index**, never by grepping `*.lean`: `./scripts`-less here, so run
   `/home/dh/repo/lean-refactor/scripts/lean-refactor index` in this checkout and query `.lake/build/refactor-index.db`
   (`decl_info`, `module`, `decl_range`; keep `internal = 0`).
+- **Find the users of a declaration with `use_site`** — `select use_module, group_concat(l1+1) from use_site where
+  name='<FULL NAME>' group by 1` in the index, never a grep, because the index lists every use by module and line,
+  where a text search misses notation and instances.
 - **Renames go through `lean-refactor`** (`rename`, `move`); after each, query the index for a doubled namespace
   (`Rel.Rel.` other than the structure `Rel.Rel` and its fields, `Rel.LeetQ.`, `Rel.QLean.`).
+- **Run every `lean-refactor` command first without `--apply`, then with it, then re-run `index`** — the preview
+  shows what it would rewrite before the tree changes, and the doubled-namespace query above reads the index, which
+  is stale until it is rebuilt.
 - **Search before creating a type** — a `Rel k v`, `RelRep`, `FinRel` or `Column` twin is the duplicate this
   repository was split to avoid; extend the one that exists.
 - **DRY**: one authoritative definition per fact; a stronger theorem with the weaker by specialisation.
@@ -108,6 +114,15 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Break a task into small pieces and give each piece to a sonnet agent** — the main thread does the analysis and
   writes each piece with its anchors and values decided, because a small decided piece is what sonnet finishes
   first time, while one large task on a stronger model costs more and stalls on the open parts.
+- **A sonnet step whose build fails on a proof stops and reports; it does not prove** — Lean proofs and algorithm
+  design go to opus, because sonnet's proofs fail `cite-check` and a mechanical step that starts proving stalls.
+- **A step that renames or deletes a `Gen.*` constant edits its line in `Expand.node` (`Rel/Run/Lang/Expand.lean`)
+  in the same step and rebuilds `Rel.Programs.Prelude`** — every `rel_program` constant in `Rel/Programs/*` and
+  `Rel/Lang/Test*` is emitted by `Expand.node` through `mkConst ``Gen.…`, so the old name left there breaks every
+  program at its next elaboration.
+- **The phase gate is `make check`, run once in main before a phase merges** — it covers build, compile-diff,
+  crate-test, syms, native, ldd, index-complete, axioms, noreduce, panic and externs, which the worktree builds
+  skip; run it in main only, never per worktree.
 - Build under the memory cap: `CAP_MEM_MB=20000 /home/dh/.local/bin/cap lake build RelCore RelKernel RelRun Rel`.
   Name the targets; a worktree builds only the modules it edited. Temporary files go under `/data/tmp`.
 

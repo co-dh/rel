@@ -4414,7 +4414,7 @@
     "content": "NodeSound per nodeB node (allegory+Boolean+product fragment), mirrors gen_sound_spine",
     "deps": [],
     "sha": "",
-    "note": "",
+    "note": "风险：nuAC。Expand.node 对 AC-3 形状的 body 发出 Gen.nuAC，compile 用 Gen.nu；二者只靠 compile-diff 测试保证一致，nuAC 没有 soundness 引理（设计文档 §7.2 说它需要自己的）。要么 compile 选 nuAC 并补这条引理，要么 AC-3 程序变慢。（archive R10）",
     "what": "把上面每一种运算的正确性拼起来：编译出的 plan 里每个节点都正确，所以整棵 plan 正确。"
   },
   {
@@ -4424,7 +4424,7 @@
     "content": "ofTm_sound (Holds ↔ den) + Plan.run_ofTm in Rel/Lang/PlanSound.lean",
     "deps": [],
     "sha": "",
-    "note": "",
+    "note": "风险：compile 要在 Tm 上是全函数，但正的 μ/ν body、closed 的 share 部分、已解析的 call 是对 Tm 递归算出的性质（Tm.pol、Tm.fv），不能做 constructor 字段；留一个可判定的 t.illFormed = none。它算不算「所有 gap 已关闭」，待 owner 决定。compile 在 precompiled 的 RelRun，Tm.den 和证明在 Rel。（archive R2/Q12）",
     "what": "最终定理：任何 Rel 程序编译后运行的结果，等于它的数学含义。完成后，编译器的正确性就有了完整证明。"
   },
   {
@@ -4537,7 +4537,7 @@
     ],
     "sha": "",
     "content": "companion Lean proofs also as rel_program calc; diagram reader (open: where it lives)",
-    "note": "",
+    "note": "决定（owner 2026-11-26）：companion 的 Lean 证明与 Rel 版本两份都留；freyd AOP/A*.lean 的 Lean 证明不动。决定（owner 2026-11-26，定 D）：rel 自带图导出器（读 rel_program 的 calc，经 rel 的 parser/Tm，不做字符串匹配）暂不做；freyd 的 diag-export 不能 import rel，所以导出器若做就在 rel 里，输出与 freyd 同一种图数据",
     "what": "freyd 仓库的伴读材料里有一批用 Lean 写的算法推导证明。这一项把它们逐条改写成 Rel 语言里的推导（calc），让 rel 自己就能检查。"
   },
   {
@@ -4549,7 +4549,7 @@
     ],
     "sha": "",
     "content": "owed laws proved in rel (Mss, Prelude, Prefix); then tell freyd-22 to delete relaop",
-    "note": "",
+    "note": "决定（owner 2026-11-26，经 freyd-22 转达，见 9.7）：证明搬进 rel，rel 用自己的公理把 law 证掉，freyd relaop/ 整个删掉，freyd 与 rel 互不依赖；完成后通知 freyd-22 删 freyd/relaop/",
     "what": "Mss（最大子段和）等程序里的推导，引用了一些定律。这一项在 rel 里把这些定律全部证明出来，之后 freyd 仓库里旧的替代证明（relaop）就可以删掉。现在只剩 Mss 的几条。"
   },
   {
@@ -4714,5 +4714,50 @@
     "content": "compB emits Tab.compOne only; Tab.compPairs runs compBlocks when compCuts blockRows splits — find where the emitted C covers the block branch, or add the builder, then drop OneBlock from pairB_builds",
     "what": "E9c：Lean 模型 compPairs 在大连接时走 compBlocks（分块再 union），而 EmitC 的 compB 只对应 compOne。查清 C 代码是否覆盖分块分支；有则证明，无则补 builder，然后去掉 pairB_builds 的 OneBlock 前提。",
     "note": ""
+  },
+  {
+    "id": "RISK-1",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "archive R6: open share has no producer (Expand.number wraps only closed terms)",
+    "note": "风险：Expand.number 只包裹 closed 的 term，而 Tm.gap 有 open share 分支，convTm、convProj 重建 share，没有找到 producer；closed 用 !d 定义，含义随 3.11 改变。Tm.share 已在 B9d 删除，需核对此风险是否随之消失（archive R6）",
+    "what": "旧计划记下一个风险：某种「开放的共享子项」没有任何地方生成它，却有代码处理它。共享子项的构造已改过，需要核对这条是否已不成立，成立就补上或删掉死分支。"
+  },
+  {
+    "id": "RISK-2",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "archive R11: Tm.pol treats foldI/flat as \"must not mention k\"; as definitions their polarity follows comp/meet/conv",
+    "note": "风险：Tm.pol 把 foldI、flat 当作「不得提及 k」；它们成为 definition 后，polarity 由 comp/meet/conv 推出，所以被接受的程序集合会改变。需核对现状（archive R11）",
+    "what": "旧计划记下一个风险：折叠和展平改成定义之后，判断「递归变量能不能出现」的规则给出的结果不同，被接受的程序可能变多或变少。需要核对现在的行为是否符合预期。"
+  },
+  {
+    "id": "RISK-3",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "archive Q6: where Elab inserts the universe prefix that closeRes inserted before",
+    "note": "风险：没有 d 之后，Elab 在哪里插入原来由 closeRes 插入的宇宙前缀，旧计划未答（archive Q6）",
+    "what": "旧计划留下一个没回答的问题：以前由 closeRes 补上的「宇宙前缀」，现在由谁在哪里补。需要确认现有代码已答，并记下答案。"
+  },
+  {
+    "id": "RISK-4",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "archive Q10: where the Ordered/KeyInj hypotheses of lam/E/thin come from in compile's type",
+    "note": "风险：lam、E、thin 的 Ordered、KeyInj 假设在 compile 的类型中从哪里来，旧计划未答（archive Q10）",
+    "what": "旧计划留下一个没回答的问题：lam、E、thin 这几个运算要求元素有序、键唯一，这些条件在 compile 的类型里由谁提供。需要确认现有代码已答，并记下答案。"
+  },
+  {
+    "id": "RISK-5",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "archive R3: foldI/flat derived terms may run slower than the direct kernels, never measured",
+    "note": "风险：foldI、flat 作为 definition 后，推导出的 term 每次调用要运行 outl°、一个 meet 和一个复合（Chess、Edit、Knapsack、Quicksort 用到），可能比直接 kernel 慢；flat 在 4.2 测过（Chess +21% 所以留融合行），foldI 没有测量（archive R3）",
+    "what": "旧计划记下一个风险：折叠这一类运算改成由更基本的运算拼出来之后，可能比直接用专门的 kernel 慢，而且没有测过。需要测一次，慢得多就改成融合行。"
   }
 ]
