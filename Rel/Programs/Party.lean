@@ -18,8 +18,8 @@ rel_program partyPlan where
     boss : E ⟶ E ≜ {(b,a),(c,a),(d,b),(e,b),(f,c),(h,g),(i,h),(l,k)}
     rating : E ⟶ N ≜ {(a,3),(b,7),(c,2),(d,5),(e,1),(f,8),(g,4),(h,5),(i,4),(k,2),(l,2),(m,0)}
 
-    under : E ⟶ E ≜ boss°*                        -- e and everyone below e
-    kids : E ⟶ [E] ≜ Λ(boss°)
+    under(B : E ⟶ E) : E ⟶ E ≜ B°*                        -- e and everyone below e
+    kids(B : E ⟶ E) : E ⟶ [E] ≜ Λ(B°)
     -- builtin F(r) : [α] ⟶ [β] relates [a₁,…,aₙ] to [b₁,…,bₙ] when every aᵢ r bᵢ (Run/Lang/Elab.lean, `.map`)
     cost(r : α ⟶ β) : [α] ⟶ β ≜ F(r) sum
     R(r : α ⟶ β) : [α] ⟶ [α] ≜ cost(r) ≤ cost(r)°
@@ -30,31 +30,31 @@ rel_program partyPlan where
     include : E×[[E]×[E]] ⟶ [E]     ≜ (𝟙×(F(π₂)concat))cons
     exclude : E×[[E]×[E]] ⟶ [E]     ≜ π₂F(choose)concat
     S       : E×[[E]×[E]] ⟶ [E]×[E] ≜ ⟨include, exclude⟩
-    fold    : E ⟶ [E]×[E]           ≜ hylo(⟨𝟙, kids⟩, S)
-    party   : E ⟶ [E]               ≜ fold choose
-    best    : E ⟶ [E]               ≜ Λ(party)est(R(rating)°)
+    fold(B : E ⟶ E) : E ⟶ [E]×[E]  ≜ hylo(⟨𝟙, kids(B)⟩, S)
+    party(B : E ⟶ E) : E ⟶ [E]      ≜ fold(B) choose
+    best(B : E ⟶ E, r : E ⟶ N) : E ⟶ [E] ≜ Λ(party(B))est(R(r)°)
 
     -- the sets with no employee beside his boss
-    test party setify = Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    test party(boss) setify = Λ(under(boss))subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
 
     /- The greedy form (p. 178): exclude keeps only the best party of each child. -/
 
-    exclude₁ : E×[[E]×[E]] ⟶ [E] ≜ π₂F(Λ(choose)est(R(rating)°))concat
-    gfold : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids⟩, ⟨include, exclude₁⟩)
-    test gfold Λ(choose)est(R(rating)°) ⊑ best
+    exclude₁(r : E ⟶ N) : E×[[E]×[E]] ⟶ [E] ≜ π₂F(Λ(choose)est(R(r)°))concat
+    gfold(B : E ⟶ E, r : E ⟶ N) : E ⟶ [E]×[E] ≜ hylo(⟨𝟙, kids(B)⟩, ⟨include, exclude₁(r)⟩)
+    test gfold(boss, rating) Λ(choose)est(R(rating)°) ⊑ best(boss, rating)
 
     /- The efficient form: c is (cost with e, cost without e), win the employees whose best party holds them, ties
        to include, and guests the party as a relation into E. -/
 
-    tally  : E×[N×N] ⟶ N×N ≜ ⟨(π₁rating) + (π₂F(π₂)sum), π₂F(max)sum⟩
-    c      : E ⟶ N×N       ≜ hylo(⟨𝟙, kids⟩, tally)
-    win    : E ⟶ E         ≜ dom((c π₁ ≥) ∩ (c π₂))
-    guests : E ⟶ E         ≜ (win boss° boss° ∪ ((𝟙 − win)boss°))* win   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
-    test Λ(guests) ⊑ best
-    test c max = best cost(rating)
+    tally(r : E ⟶ N) : E×[N×N] ⟶ N×N ≜ ⟨(π₁r) + (π₂F(π₂)sum), π₂F(max)sum⟩
+    c(B : E ⟶ E, r : E ⟶ N) : E ⟶ N×N ≜ hylo(⟨𝟙, kids(B)⟩, tally(r))
+    win(B : E ⟶ E, r : E ⟶ N) : E ⟶ E ≜ dom((c(B, r) π₁ ≥) ∩ (c(B, r) π₂))
+    guests(B : E ⟶ E, r : E ⟶ N) : E ⟶ E ≜ (win(B, r) B° B° ∪ ((𝟙 − win(B, r))B°))* win(B, r)   -- μX : win (𝟙 ∪ boss° boss° X) ∪ ((𝟙 − win)boss° X)
+    test Λ(guests(boss, rating)) ⊑ best(boss, rating)
+    test c(boss, rating) max = best(boss, rating) cost(rating)
     root   : E ⟶ E         ≜ {(a,a)}
-    test root best = {(a,a d e f)}
-    test root c max = {(a,17)}
+    test root best(boss, rating) = {(a,a d e f)}
+    test root c(boss, rating) max = {(a,17)}
 
 
 

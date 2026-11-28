@@ -41,18 +41,18 @@ rel_program natJ where
 
 open Rel.Programs.prelude Rel.Programs.partyPlan in
 rel_program natY where
-    y1 : E ⟶ [E] ≜ party setify
-    y2 : E ⟶ [E] ≜ Λ(under)subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
-    y3 : E ⟶ [E] ≜ gfold Λ(choose)est(R(rating)°)
-    y4 : E ⟶ [E] ≜ best
-    y5 : E ⟶ [E] ≜ (gfold Λ(choose)est(R(rating)°)) ∩ best
-    y6 : E ⟶ [E] ≜ Λ(guests)
-    y7 : E ⟶ [E] ≜ Λ(guests) ∩ best
-    y8 : E ⟶ N ≜ c max
-    y9 : E ⟶ N ≜ best cost(rating)
-    y10 : E ⟶ [E] ≜ root best
+    y1 : E ⟶ [E] ≜ party(boss) setify
+    y2 : E ⟶ [E] ≜ Λ(under(boss))subseq (𝟙 − dom(∋ ∩ (∋ boss)))setify
+    y3 : E ⟶ [E] ≜ gfold(boss, rating) Λ(choose)est(R(rating)°)
+    y4 : E ⟶ [E] ≜ best(boss, rating)
+    y5 : E ⟶ [E] ≜ (gfold(boss, rating) Λ(choose)est(R(rating)°)) ∩ best(boss, rating)
+    y6 : E ⟶ [E] ≜ Λ(guests(boss, rating))
+    y7 : E ⟶ [E] ≜ Λ(guests(boss, rating)) ∩ best(boss, rating)
+    y8 : E ⟶ N ≜ c(boss, rating) max
+    y9 : E ⟶ N ≜ best(boss, rating) cost(rating)
+    y10 : E ⟶ [E] ≜ root best(boss, rating)
     y11 : E ⟶ [E] ≜ {(a,a d e f)}
-    y12 : E ⟶ N ≜ root c max
+    y12 : E ⟶ N ≜ root c(boss, rating) max
     y13 : E ⟶ N ≜ {(a,17)}
 
 open Rel.Programs.prelude Rel.Programs.circuit in
