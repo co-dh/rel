@@ -20,8 +20,8 @@ kernels its programs run on. It was split out of freyd's `leetq/` and qlean's `Q
   kernel tests, read from the directory), `RelGate` (`test/TestCompile.lean`, the differential test `make compile-diff`
   builds). `extern_lib relk` builds `crate/` with `crate/build.sh`. `lean_exe relc` prints a plan as C; `target
   rel-native` links it with `librelk.a` and `qrt.o`.
-- No `require`. Lean namespaces say nothing about qlean or freyd: qlean `require`s this package and names `Rel.*`;
-  freyd's bridge (`relaop/`) ties `Rel.Core` to freyd's `RelSet` by `rfl`.
+- No `require`: rel depends on the Lean toolchain alone. Lean namespaces say nothing about qlean or freyd; qlean
+  `require`s this package and names `Rel.*`.
 
 ## What RelRep is
 - The core: a relation is a pair of typed arrays of one length, `Rel k v = {n, key : Arr k n, val : Arr v n}`.
@@ -84,7 +84,7 @@ Rel is a programming language of its own, not an implementation of k or q:
   (`genStep`), and `loop` stays only when the step must read an input value no constant seed can carry (`cp`'s `a`),
   with the reason in a comment beside it.
 - **Constructive in `Rel.Core` only** — its axioms stay within `{propext, Quot.sound}`, so the core holds in every
-  allegory freyd's bridge maps it to. The rest uses `Classical` freely (`Column.atoms`, `Classical.propDecidable`).
+  allegory, not only in sets. The rest uses `Classical` freely (`Column.atoms`, `Classical.propDecidable`).
 - **No `sorry`, `native_decide`, `!` indexing, raised `maxHeartbeats`, and no new `panic!`** — a `panic!` already in
   the tree is on the allowlist until removed, and the gate refuses any other.
 - **A kernel computes on the encoded column, never on a decoded copy** — it reads the foR blocks (frame, width,
@@ -108,9 +108,9 @@ Rel is a programming language of its own, not an implementation of k or q:
 - **Search before creating a type** — a `Rel k v`, `RelRep`, `FinRel` or `Column` twin is the duplicate this
   repository was split to avoid; extend the one that exists.
 - **DRY**: one authoritative definition per fact; a stronger theorem with the weaker by specialisation.
-- **Add no new dependency on `~/repo/freyd`** — rel is to stand alone (a goal, not yet reached: freyd's `relaop/`
-  still proves some prelude laws), so a law, a proof, a script or a tool rel needs lives in rel, because each new
-  reference to freyd is one more thing to undo before rel can leave it.
+- **Depend on nothing outside the Lean toolchain** — no `require`, no import of freyd, no script or path reaching
+  `~/repo/freyd`; a law, a proof, a script or a tool rel needs lives in rel, because rel stands alone and freyd no
+  longer bridges to it.
 - **Break a task into small pieces and give each piece to a sonnet agent** — the main thread does the analysis and
   writes each piece with its anchors and values decided, because a small decided piece is what sonnet finishes
   first time, while one large task on a stronger model costs more and stalls on the open parts.
