@@ -587,18 +587,19 @@ theorem Tm.cutPlus_den (ρ : Val) : (Tm.cut2 (arithRow "plus") (Tm.uni U)).den �
     exact ⟨⟨a, rfl, ha⟩, ⟨b, rfl, hb⟩, w, (stepDen_add_iff _ _ _).2
       ⟨inU_ne_nul U hnn ha, inU_ne_nul U hnn hb, by omega, by omega, hs.symm⟩, rfl, hw⟩
 
-/-- `tally(r) = ⟨(π₁r) + (π₂F(π₂)sum), π₂F(max)sum⟩`, `r` at variable 1, as the elaborator writes it. -/
-abbrev Tm.tallyT : Tm (.prod .long (.arr (.prod .long .long))) (.prod .long .long) :=
-  Tm.pair (Tm.arg (Tm.arg (Tm.call [4, 5] `«_+_» none []
-      (Tm.comp (Tm.pair (Tm.var 4) (Tm.var 5)) (Tm.cut2 (arithRow "plus") (Tm.uni U)))) (Tm.comp Tm.outl (Tm.var 1) : Tm (.prod .long (.arr (.prod .long .long))) .long))
+/-- `tally(r) = ⟨(π₁r) + (π₂F(π₂)sum), π₂F(max)sum⟩`, `r` at variable 1, as the elaborator writes it; `+` binds its
+    arguments at `i`, `j`, which the elaborator numbers per occurrence. -/
+abbrev Tm.tallyT (i : Nat := 4) (j : Nat := 5) : Tm (.prod .long (.arr (.prod .long .long))) (.prod .long .long) :=
+  Tm.pair (Tm.arg (Tm.arg (Tm.call [i, j] `«_+_» none []
+      (Tm.comp (Tm.pair (Tm.var i) (Tm.var j)) (Tm.cut2 (arithRow "plus") (Tm.uni U)))) (Tm.comp Tm.outl (Tm.var 1) : Tm (.prod .long (.arr (.prod .long .long))) .long))
       (Tm.comp (Tm.comp Tm.outr (Tm.fmapT (Tm.outr (A := .long)))) (Tm.sumU U) : Tm (.prod .long (.arr (.prod .long .long))) .long))
     (Tm.comp (Tm.comp Tm.outr (Tm.fmapT (Tm.cut2 (arithRow "max") (Tm.uni U)))) (Tm.sumU U))
 
 include hnn in
-theorem Tm.tallyT_den (ρ : Val) : (Tm.tallyT U).den ρ = ST (ρ 1 .long .long) (InU U) := by
+theorem Tm.tallyT_den {i j : Nat} (ρ : Val) (hij : j ≠ i := by decide) : (Tm.tallyT U i j).den ρ = ST (ρ 1 .long .long) (InU U) := by
   funext q w; obtain ⟨e, vs⟩ := q; obtain ⟨w1, w2⟩ := w; apply propext
   simp (config := {decide := true}) only [Tm.tallyT, Tm.den, Tm.argDen, Val.args, Val.bind, Tm.cutPlus_den U hnn,
-    Tm.cutMax_den U hnn, Tm.sumU_den U hnn, Prim.den_mapRow, Core.Rel.comp_apply, Core.Rel.rpair, Core.Rel.graph,
+    Tm.cutMax_den U hnn, Tm.sumU_den U hnn, Prim.den_mapRow, Core.Rel.comp_apply, Core.Rel.rpair, Core.Rel.graph, hij,
     ite_true, dite_true, and_self, ↓reduceIte]
   have hg : ∀ m w, mapDen (graph Prod.snd : Core.Rel (Obj.El (.prod .long .long)) (Obj.El .long)) m w ↔
     w = m.map Prod.snd := mapDen_graph (A := .prod .long .long) (B := .long) Prod.snd
@@ -710,7 +711,7 @@ theorem Tm.cMax_den {n12 n41 : USize} {m12 p12 m41 p41 : List String}
     fun k w hk => by show Core.Rel.comp _ _ = _; rw [hF k w hk]; rfl
   have hT : (Tm.forestHylo k8 w8 (Tm.tallyT N)).den ρ =
       Core.Rel.mu (forestStep (lamDen (ρ 0 .long .long)°) (ST (ρ 1 .long .long) (InU N))) :=
-    Tm.forestHylo_den w8 _ _ ρ hk8 (fun X => by rw [Tm.tallyT_den N hN, Val.bind_ne hk81])
+    Tm.forestHylo_den w8 _ _ ρ hk8 (fun X => by rw [Tm.tallyT_den (i := 4) (j := 5) N hN, Val.bind_ne hk81])
   have hcost : (Tm.comp (Tm.fmapT (Tm.var 1 : Tm .long .long)) (Tm.sumU N)).den ρ = Cost (ρ 1 .long .long) (InU N) :=
     Tm.costU_den N hN ρ _
   have hD : ∀ {A B : Obj} (R : Tm A B), (Tm.dom R).den ρ = 𝟙 _ ∩ R.den ρ ≫ (R.den ρ)° :=

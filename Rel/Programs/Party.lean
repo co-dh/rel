@@ -1,5 +1,5 @@
 import Rel.Programs.Prelude
-import Rel.Lang.Laws.PartySet
+import Rel.Lang.Laws.PartyGuests
 
 /-! # Planning a company party
 
@@ -63,6 +63,10 @@ rel_program partyPlan where
     test dom(Λ(party(boss))) = 𝟙
     test party(boss) ⊑ party(boss) dom(cost(rating))
     theorem cMax(B : E ⟶ E, r : E ⟶ N) if r°r ⊑ 𝟙, B ⊑ 𝟙B, dom(Λ(party(B))) = 𝟙, party(B) ⊑ party(B) dom(cost(r)) : c(B, r) max = best(B, r) cost(r) by Rel.Lang.Tm.cMax_den
+    -- law 53 compared as sets (the list orders differ); the premises are cMax's (rating simple, so win reads c's one
+    -- value) and partySet's dom(party(boss)) = 𝟙 (each employee has a fold value, so c has one), all tested above
+    test Λ(guests(boss, rating)) setify ⊑ best(boss, rating) setify
+    theorem guestsBest(B : E ⟶ E, r : E ⟶ N) if r°r ⊑ 𝟙, B ⊑ 𝟙B, dom(party(B)) = 𝟙, dom(Λ(party(B))) = 𝟙, party(B) ⊑ party(B) dom(cost(r)) : Λ(guests(B, r)) setify ⊑ best(B, r) setify by Rel.Lang.Tm.guestsBest_den
     root   : E ⟶ E         ≜ {(a,a)}
     test root best(boss, rating) = {(a,a d e f)}
     test root c(boss, rating) max = {(a,17)}
