@@ -708,3 +708,215 @@ index-complete · axioms · noreduce · panic · externs；`syms` 读 `RELK.txt`
 - symmetric division 不加构造子：它是定义 `R/S ∩ (S/R)°`（`Pre.symDiv`），由 `rdiv` `meet` `conv` 组成，表层语法 `R ÷ S`（已完成）。
 - 改名：去掉 `Den` `Dem` `CRel`，`Rel k v` 改为 `Rel A B`（`tab` ┃ `lazy`），`Tm` 去掉 `d`：做法是 `d` 移入环境 `δ`（tm-minimal-design §5）；`Fn d A B` 仍在 `GenK` 里使用，本文不处理。
 - kernel 缩到 5 个：原语 `scan` `scatter`，优化 `gather` `asc` `seen`（各配「= 原语复合」的定理）、编码只留 foR（块长 `lg` 每列可选 ✅ a2dca9e（原：未做））、原子 u1 char i8–i64 f32 f64 sym；q 专用 kernel 留在 qlean 的副本（tag `qlean-base`）。
+
+// ───────────────────────────── 8
+= `fix F`：多项式函子的初始代数（设计，待审；未动代码）
+
+数据类型是多项式函子 `F` 的初始代数 `α : F(fix F) ⟶ fix F`（B&dM §2.6）：`F` 的每个 `+` 是一个构造子，`α = [c₁,…,cₖ]`；
+`B` 上的 `F`-代数也是一个 `[h₁,…,hₖ]`，`⦇[h₁,…,hₖ]⦈` 把每个 `cᵢ` 换成 `hᵢ`。先例后式，`F = 1 + X`（Nat），`(+m) = ⦇[m, succ]⦈`，跟踪 `2`：
+
+```
+2 {α°} inr(1) {𝟙 + X} inr(m+1) {[m, succ]} m+2        // 已知 1 {X} m+1；α° 拆开构造子，F(X) 在子节点上递归，代数合并
+X = α° F(X) h   ⟺   X = ⦇h⦈                           // UP（B&dM 2.10，图序）：⦇h⦈ 是这个方程的唯一解
+```
+
+#tbl(c-syn, (auto, auto, auto, 1fr), ([数据类型], [函子 F], [初始代数 α], [例（每个都是一个 catamorphism）]),
+  [Nat], [`1 + X`], [`[zero, succ]`], [`(+m) = ⦇[m, succ]⦈`；`⦇[zero, succ ∪ 𝟙]⦈` 是 `≥`],
+  [Bool], [`1 + 1`], [`[true, false]`], [`not = ⦇[false, true]⦈`；`even = ⦇[true, not]⦈`（在 Nat 上）],
+  [snoc list], [`1 + X×A`], [`[nil, snoc]`], [今天的 `fold`：`⦇e,S⦈`],
+  [cons list], [`1 + A×X`], [`[nil, cons]`], [今天的 `foldr`：`length = ⦇[zero, π₂ succ]⦈ʳ`],
+  [非空 list], [`A + A×X`], [`[wrap, cons]`], [],
+  [tip tree], [`A + X×X`], [`[tip, bin]`], [],
+  [node tree], [`1 + X×A×X`], [`[null, node]`], [`Quicksort` 的 `hylo(c, [nil, join])` 的中间结构],
+  [rose tree], [`A×[X]`], [`fork`], [`Party` 的 `hylo(⟨𝟙, kids(B)⟩, S)` 的中间结构],
+)
+
+== 已定（由已有规则决定）
+
+#tbl(c-syn, (auto, 1.5fr, 1fr), ([项], [设计], [依据]),
+  [1 `PF`], [`PF ::= 1 | A | X | PF+PF | PF×PF | [PF]`，`A` 是闭的 `Obj`。作用在 `Obj` 上：`F(B)` 把 `X` 换成 `B`，其余是 `Obj` 的
+    同名构造子（`one` `sum` `prod` `arr`）。作用在 `Tm` 上：`F(R)` 在 `X` 处是 `R`，`A` 与 `1` 处是 `𝟙`，`×` 处 `⟨π₁F₁(R), π₂F₂(R)⟩`，
+    `+` 处 `[F₁(R) inl, F₂(R) inr]`，`[ ]` 处是行 `F`（`mapRow`）],
+    [这就是 `hyloG`（`Elab.lean`）今天沿 `×` `+` `[ ]` 造 `G(X)` 的四条规则；不写第二个函子作用。`hyloG` 改为「先从两个类型读出 `PF`，
+    再调 `PF.map`」。显式的 `PF` 还消去它今天的歧义：`hylo` 的源与目标是同一个对象（或 `S` 的源尚未解出）时，等于该对象的常量也被读成 `X`。
+    范围：`PF` 只有一个位置 `X`；两个位置的 `F(A, X)`（type functor 要它）与幂 relator `E` 不在其中，见待定 P3、P5],
+  [2 relator], [每个 `PF` 的 `F(R)` 是 relator（B&dM 5.1）：`F(𝟙) = 𝟙`，`F(R)F(S) = F(RS)`，`R ⊑ S ⟹ F(R) ⊑ F(S)`，`F(R°) = F(R)°`。
+    对 `PF` 归纳证一次（`PF.mapDen_id` `_comp` `_mono` `_recip`）。语义 `PF.mapDen` 在 `Core.Rel` 上只用已有的 `rprodMap`、`junc` 配 `inl` `inr`、`mapDen`],
+    [UP 引用单调（`mu_fix`）；fusion `h g = F(g) k ⟹ ⦇h⦈ g = ⦇k⦈` 引用 `F(R)F(S) = F(RS)`；`α°` 的自然性引用 `F(R°) = F(R)°`。
+    list 一例已证（`mapDen_id` `mapDen_comp` `mapDen_recip` `mapDen_mono`），`×` 只有 `rprodMap_comp_id`，`+` 没有],
+  [3 成员 `∋ᶠ`], [`∋ᶠ : F(X) ⟶ X` 对 `PF` 归纳：`X` 处 `𝟙`，`A` `1` 处 `𝟘`，`×` 处 `π₁∋ ∪ π₂∋`，`+` 处 `[∋, ∋]`，`[ ]` 处 `∋ ∋`。
+    它是 lax natural `F ⇝ id`：`F(R) ∋ᶠ ⊑ ∋ᶠ R`。局部性：`F(X)` 在 `a` 上的值只读 `X` 在 `a {∋ᶠ}` 的点上的值],
+    [`Tm.kids` 今天算的就是 `c ∋ᶠ`（hylo 的子节点），`Tm.den_local` 就是这条局部性；二者按 `PF` 重述，不新增],
+  [4 代数], [`F`-代数 `[h₁,…,hₖ] : F(B) ⟶ B` 是已有的和情形 `[R,S]`（`Pre.junc`）；构造子 `cᵢ ≜ inᵢ α` 是普通定义。不加语法],
+    [§2.1 的规则：定义用语言已有的形式写出],
+  [5 `⦇h⦈`], [`⦇h⦈ ≜ hylo(α°, h) = μX. α° F(X) h`。`hylo(c, h)` 对任意余代数 `c : K ⟶ F(K)` 不变；`hylo(c, h) = hylo(c, α) ⦇h⦈`
+    （先展开成 `fix F` 的值，再折叠）是定律，不是执行路径],
+    [`hylo` 已是构造子，`⦇h⦈` 没有其余构造子写不出的 `den`，所以是定义（tm-minimal-design §1.2 条件 1）],
+  [6 数组], [`arr E` 留作对象，它同时是 `1 + X×E`（`α = [nil, snoc]`）与 `1 + E×X`（`α = [nil, cons]`）的初始代数；不加 `fix(1 + X×E)` 这个孪生类型。
+    `⦇e,S⦈ = hylo([nil,snoc]°, [⊤ ran(e), S])`，`⦇e,S⦈ʳ = hylo([nil,cons]°, [⊤ ran(e), S])`（`Tm.fold` 的 `e : V ⟶ V`，代数的 `1 ⟶ V` 分量是 `⊤ ran(e)`，
+    即 `foldStep` 里的那一项）。`fold` `foldr` 留作构造子，`Tab.foldRounds` 是这两个定义的 fused 运行，由上面两条等式（待证定理）绑定],
+    [CLAUDE.md「search before creating a type」；§7 与 tm-minimal-design 决定 E：`fold` `foldr` `hylo` 是 AOP 的标准递归组合子，留作构造子。
+    改成「定义 + fused 行」要 owner 撤销决定 E（上一次同样的提议已撤回），本节不提],
+  [7 一个 UP], [`hyloUP`：`c ∋ᶠ` 良基（每个点 `Acc`）时 `X = c F(X) h ⟺ X = μX. c F(X) h`。`⟸` 是 `mu_fix`（relator 单调），`⟹` 对 `Acc` 归纳、每步用局部性。
+    特例：`c = [nil,snoc]°`（按长度良基）得 `foldUP`，`[nil,cons]°` 得 `foldrUP`，`c = α°` 得 B&dM 2.10。
+    `forest_ind` 不是它的特例：它没有良基前提（`K` 有环也成立），是 `μ` 上的归纳，只用单调；它改为第二条泛型引理 `hyloInd`
+    （`P` 在子节点的值上成立则在该点成立 ⟹ `P` 在 `μX. c F(X) h` 上成立）在 `F = E×[X]` 的特例。两条都不需要 `El(fix F)`],
+    [DRY：强定理证一次，弱的按特例得到。陈述在 `PF` 上还是在抽象 relator 上，见待定 P5],
+  [8 布局], [数组：平坦的 `lo` `hi` 布局不变。非 list 的 `F`：一个值是节点表 `c : K ⟶ F(K)`（`F(K)` 按 §1 的 `sum` `prod` `arr` 列布局）加一个根键；
+    这正是 `GenK.hylo` 今天读的东西（`N = μN. D ∪ ran(N c ∋ᶠ)`，再自底向上）。`α°` 就是这张表。不加 kernel],
+    [§4.2 的 `hylo` 行；`Party` 的 `B : E ⟶ E` 是 `F = E×[X]` 的节点表按 `Λ` 读（`kids(B)`）],
+  [9 lax natural 在程序里], [今天已能说：泛型定义 `φ : G₁(α) ⟶ G₂(α)` 加一条对 `R` 泛型的定理，由 Lean 定理认证，如
+    `theorem prefixLaxNatural(R : α ⟶ β) : F(R) prefix ⊑ prefix F(R) by …`。`α` 与 `α°` 是（严格）自然的：type functor `T(R) ≜ ⦇F(R, 𝟙) α⦈` 满足
+    `α T(R) = F(R, T(R)) α`（list 一例是已证的 `alphaNatSnoc`），`α°` 由 `F(R°) = F(R)°` 取逆得到。`∋ : [X] ⇝ X` 是项 3 在 `F = [X]` 的特例。
+    `Λ` 把 lax natural `∋ᶠ : F ⇝ id` 变成 `Λ(∋ᶠ) : F ⇝ E`（`[X]` 上即 `setify = Λ(∋)`），对函数 `f` 严格自然：`F(f) Λ(∋ᶠ) = Λ(∋ᶠ) E(f)`；`τ = Λ(𝟙) : id ⇝ E` 同理],
+    [已有的认证定理（索引中名字含 lax、natural）：`prefixLaxNatural` `transLax` `movesLax` `zipLax` `domLax` `diffLax` `pi1Lax` `zipNatural`
+    `singleton_natural`（`τ`，前提 `f` 是函数）；`E` 的 relator 律 `EDen_comp` `EDen_union` `EDen_absorb`；`∋` `est` `front` 有含义与若干律
+    （`Tm.mem_den` `Tm.est_den` `Tm.front_den` `estMap_den` `fmapEstCompLeFmapEpsComp`）。缺：对函子泛型的陈述（每条都写死在 list 的 `F` 或 `E` 上）。
+    未逐条读：`∋` `est` `front` 是否已有形如 `F(R) φ ⊑ φ G(R)` 的定理（索引里没有以 lax 命名的），步骤 3 先核对],
+)
+
+== 待 owner 决定
+
+`Obj.El` 在 `Rel/Run/Core.lean`（RelRun），不在 `Rel/Core`；`{propext, Quot.sound}` 的限制只管 `Rel/Core`，所以它不挡下面任何一项，挡路的是 Lean 的归纳类型规则。
+探针 `/data/tmp/fixf/probe.lean`（玩具 `Obj`，不在仓库里）：直接写 `inductive Fix (F) | mk : F.app (Fix F) → Fix F` 被 kernel 拒绝（经计算出的类型出现，非严格正）；
+`Obj` 与 `PF` 互归纳、下面 B 的族都被接受且不依赖任何公理。探针没有量的：互归纳之后 `Obj.El` 的等式是否仍按 `rfl` 成立、`Obj` 的派生实例（`DecidableEq` 等）是否还能派生。
+问题编号 P1–P5（§2.1 已有一个未决的 Q2）。
+
+#tbl(c-run, (auto, 1fr, 1.3fr), ([问题], [选项（首字母即答案）], [代价与推荐]),
+  [P1 `El(fix F)`：语义里 `fix F` 的元素是什么], [
+    A　W-type：`W F.Shape F.Pos`，子节点是函数 `Pos s → W`。\
+    B　按 `F` 内位置索引的一个归纳族 `PEl F : PF → Type`（构造子 `one const roll inl inr pair nil cons`），`El(fix F) = PEl F F`。\
+    C　一棵无类型的树 `Raw`（嵌套 `List`）加良形谓词：`{t : Raw // Fits F t}`。\
+    D　不加 `Obj.fix`：`fix F` 只出现在定律里，程序只有键上的余代数 `c`（今天的状态加已定 1–7）],
+    [A：相等要 `funext`（由 `Quot.sound` 可得），没有 `DecidableEq`，`[PF]` 的位置要 `Fin n`。
+    B：一阶、结构相等、无公理；`const A` 处要 `A.El`，而 `El` 又要 `PEl`（归纳–递归，Lean 不支持），所以 `F` 里的常量对象须不含 `fix`
+    （`El₀`，证 `El₀ A = El A` 一次）；rose tree 走 `[PF]` 不受影响。C：每个值带证明，atom 的字要统一成一个类型。
+    A B C 共同的代价：`Obj` 多一个构造子（`Obj.El` 被 116 个模块、`Obj.arr` 被 139 个模块使用，每个对 `Obj` 的 `match` 加一支），
+    `α` 的语义是同构 `El(F(fix F)) ≃ El(fix F)` 的图而不是 defeq。D：零代价，但 `⦇h⦈` 没有类型为 `fix F ⟶ B` 的项。推荐 B],
+  [P2 `fix F` 的值进不进列（相等 ⇔ code 相等）], [
+    E　每个 `fix F` 对象一张 canonical 的节点表，键即 code（同 `sym` 的字典，只追加）；`α` = 在表中 `rank` 查找、未命中则追加（§4.4 的 `rank` 与 `mergeDiff`）。\
+    F　键只在自己的节点表内有意义：`fix F` 的列只能作 `hylo` 的源，`=` `∪` `asc` 在它上面 elaboration 时报错],
+    [E：`∪` `seen` `asc` 照常，不加 kernel，但运行时多一份随程序增长的表，`<` 在 `fix F` 上还要一条递归的 `lt` 文本。
+    F：今天的 `Party` `Quicksort` 都只需要它。推荐 F；E 等第一个要把树当数据比较的程序出现],
+  [P3 程序怎样叫一个声明的 `F` 的 `F(R)`], [
+    G　带参数的对象声明就是 `PF`：`obj G(X) = 1 + X×A`；`G(B)` 是对象，`G(R)` 是它的 relator，`fix(G)` 是初始代数，prelude 的 `F` 是 `[X]` 这一例。
+    参数可以多个：`obj G(A, X) = 1 + X×A`，`G(R, S)` 是两个位置的 relator，type functor 是 `T(R) ≜ ⦇G(R, 𝟙) α⦈`。\
+    H　不命名：`F(R)` 用已有的 `×`、`[· inl, · inr]`、`F( )`、`𝟙` 写出；递归对象写 `obj T = 1 + T×A`],
+    [G：`Grammar` 加对象参数与 `fix( )`，`PF` 的位置从一个 `X` 改为编号的位置；定律才能对一个有名字的 relator 陈述，声明的 `fix F` 才有可写的 type functor。
+    H：不加语法，但 relator 与 type functor 在程序里没有名字。推荐 G],
+  [P4 lax natural 的声明形式], [
+    I　不加：仍是普通定理 `theorem …(R : α ⟶ β) : G₁(R) φ ⊑ φ G₂(R) by …`。\
+    J　加陈述形式 `φ : G₁ ⇝ G₂`，展开为 I 的包含式，并可作另一条定理的前提],
+    [I：零工作量，名字含 lax 的已有 7 条。J：泛型定律（lax natural 的复合、`∋ᶠ` 是最大的 lax natural `F ⇝ id`）才有可引用的前提；它依赖 P3 = G。
+    推荐 I，J 等第一条以 lax natural 为前提的定理],
+  [P5 relator 这个概念放在哪里], [
+    K　只有 `PF`：四律与 UP 陈述在 `PF` 与 `Obj.El` 上，放 `Rel/Lang/Laws`；`E` 的律仍是自己的一份。\
+    L　`Rel/Core` 加结构 `Relator`（`map` 及 id、复合、单调、converse 四律）；list、`×`、`+`、`E`、每个 `PF` 是实例，UP、fusion、lax natural 的定律陈述在它上面],
+    [K：不动 `Rel/Core`；`φ : F ⇝ E`（如 `Λ(∋ᶠ)`）的两端不是同一种东西，泛型定律写不出。
+    L：已有四个实例（list、`×`、`+`、`E`），不是为单个使用者造的抽象；`Rel/Core` 在 `Type` 上，实例的 `map` 要在 `Core.Rel` 上给出，且证明须留在 `{propext, Quot.sound}` 内
+    （`mapDen` 的四律今天在 Lang 里证，是否构造性未核对）。推荐 L],
+)
+
+== 取代什么、保留什么
+
+- 取代：`hyloG` 的「从两个类型猜 `G`」→ 显式 `PF`；`foldUP` `foldrUP` `forest_ind` 三份各自的归纳 → `hyloUP` 与 `hyloInd` 的特例；只写在 list 上的 relator 定律 → 对 `PF` 的一份。
+- 保留：`Tm` 的 28 个构造子（P1 取 A–C 时加叶子 `α`）；`fold` `foldr` `hylo` `mu` 的运行（`Tab.foldRounds`、`GenK.hylo`、`Tab.muLin`）；5 个 kernel；数组布局；
+  `Party` 的 `UnderR`（`μX. 𝟙 ∪ B° X` 是线性 `μ`，不是 hylo，不受影响）。
+
+== 工作表（owner 批准后；1 不依赖待定项，2–5 只依赖 P5）
+
+#tbl(c-run, (auto, 1.4fr, 1fr, auto), ([步], [内容], [文件], [依赖]),
+  [1], [`PF`（`const (A : Obj)`，暂不互归纳）、`PF.app`、`PF.map : Tm A B → Tm F(A) F(B)`；`hyloG` 改为读出 `PF` 再调 `PF.map`], [`Rel/Run/Lang/Tm.lean`、`Elab.lean`], [—],
+  [2], [`PF.mapDen`、`PF.map_den`；relator 四律（补 `+` 与 `×` 两例）], [新 `Rel/Lang/Laws/Relator.lean`；`Den.lean`（P5 = L 时结构在 `Rel/Core`）], [1、P5],
+  [3], [`∋ᶠ`、`F(R) ∋ᶠ ⊑ ∋ᶠ R`、局部性；`Tm.kids` `Tm.den_local` 按它重述], [`Relator.lean`、`Tm.lean`、`Den.lean`], [2],
+  [4], [`hyloUP`、`hyloInd`；引理 `foldStep = [nil,snoc]° F(X) [⊤ ran(e), S]`（与 `ʳ` 的一条）；`foldUP` `foldrUP` 改为 `hyloUP` 的特例、`forest_ind` 改为 `hyloInd` 的特例（三条的陈述不变）], [新 `Rel/Lang/Laws/HyloUP.lean`；`FoldUP.lean`、`PartyCost.lean`], [3、P5],
+  [5], [`⦇e,S⦈ = hylo([nil,snoc]°, [⊤ ran(e), S])` 与 `ʳ` 的一条：构造子与定义的绑定定理], [`Rel/Lang/Laws/FoldUP.lean`], [4],
+  [6], [`Obj.fix`、`El(fix F)`、叶子 `α` 及其 `den`、Lambek 同构；`⦇h⦈` 在源为 `fix F` 时 elaborate 为 `hylo(α°, h)`], [`Rel/Run/Core.lean`、`Tm.lean`、`Den.lean`、`Elab.lean`], [P1],
+  [7], [`fix F` 的列与 `α` 的运行；新的 `Gen.*` 常量同步改 `Expand.node`], [`Rel/Run/Lang/GenK.lean`、`Expand.lean`、`Schema.lean`], [6、P2],
+  [8], [表层：对象参数、`fix( )`、`G(R)`；B&dM §2.6 的例子作为程序（`(+m)` `even` `≥`）；relator 与 lax 定律对 `G` 陈述], [`Grammar.lean`、`Elab.lean`、`Rel/Programs/Aop/`], [6、P3、P4],
+  [9], [本文 §2 的「递归」行、§4.2 的 `hylo` 行、§7 的归属表按结果改写], [本文], [各步之后],
+)
+
+== 程序里的多项式 relator：`F(R)` 怎样写、怎样运行
+
+先例后式，`G(X) = 1 + X×A`，`R = {(1,7),(1,8)}`，跟踪 `inr(1, a)`：
+
+```
+inr(1,a) {inr°} (1,a) {⟨π₁R, π₂⟩} (7,a) {inr} inr(7,a)     以及 inr(8,a)        // R 有两个像，G(R) 就有两个像：G(R) 是关系，不只是 map
+G(R) = [inl, (R×𝟙) inr] = inl° inl ∪ inr° ⟨π₁R, π₂⟩ inr                       // PF.map 展开成已有的构造子，没有新的运行路径
+```
+
+- 声明（待定 P3）：取 G 时写 `obj G(X) = 1 + X×A`，文法即 `1 | A | X | F+F | F×F | [F]`，右侧是已有的对象表达式加参数名；取 H 时不声明，
+  直接写上面第二行的右侧（`×`、`[· , ·]`、`inl` `inr`、list 的 `F( )` 今天都可写）。
+- `R` 是任意关系时每一例都能运行，结果是有限表：`F(R)` 在需求键（`Known.dom`）上求值，同 §1 的 `lazy`。
+- 两种布局是同一条路径：节点表的值列 `F(K)` 与数组元素的 `F(A)` 都按 §1 的 `sum` `prod` `arr` 列布局，`F(R)` 只看列。
+
+#tbl(c-sem, (auto, 1fr, 1.4fr, auto), ([F 的情形], [展开成的项], [运行（§4.2、§4.3 的行）], [kernel]),
+  [`X`], [`R`], [`R` 自己的表], [—],
+  [`1`、常量 `A`], [`𝟙`], [`lazy`：`dom` 已知即 `dom ⟨K, K⟩`（`asc → seen → gather`）], [`asc` `seen` `gather`],
+  [`F₁×F₂`], [`⟨π₁F₁(R), π₂F₂(R)⟩`], [`π₁ ≫ F₁(R)` 是在第一列上的 `≫`（按该列 `asc`、取组、组内展开）；`⟨ , ⟩` 是 `Tab.pair`
+    （`Rel/Run/Struct.lean:160`）：按源行相等再做一次 `Tab.comp`。`R×𝟙` 因此是两次 join，不是一次：没有「在一列上 join、其余列随行带走」的融合形式],
+    [五个都用],
+  [`F₁+F₂`], [`inl° F₁(R) inl ∪ inr° F₂(R) inr`], [`inl°`：按 tag 列取行（`Tab.inlConv`，`Struct.lean:182`：`scan` 取反 tag → where → `gather` → `canon`）；
+    `inl`：加 tag 列与另一侧的空列；`∪`：拼接 → `canon`（`Rel/Run/SetOps.lean:42`）。即带 tag 的并],
+    [`scan` `scatter` `gather` `asc` `seen`],
+  [`[F₁]`], [行 `F`（`mapRow`）作用于 `F₁(R)`], [`Tab.map`（`Rel/Run/Fix.lean:165`）。`F₁(R)` 在这些元素上是函数时一遍：格宽 `scan(sub)` → EXPAND → `gather` 成平铺 payload →
+    `⟨pos, v⟩ ≫ R` → 像按位置序即新 payload。某元素 0 个或 ≥ 2 个像时退为左折叠 `⦇nil, ⟨π₁, π₂R⟩ snoc⦈`（`Tab.foldRounds`），轮数 = 最长格的长度],
+    [五个都用；关系情形另乘轮数],
+)
+
+- 与 `fix F`、`⦇h⦈` 的关系：`hylo(c, h)` 的体是 `c F(X) h`，`X` 是这一轮已算出的节点值的表（一般是关系）；`GenK.hylo`（`Rel/Run/Lang/GenK.lean:344`）每轮
+  运行的就是上表的行，`⦇h⦈` 只是取 `c = α°`。所以多项式 relator 不需要新 kernel，也不需要 `fix F` 的列（P2）就能运行。
+- 可做的融合（未提议，按 §4.5「融合 kernel」等量出需要）：`R×𝟙` 的一次 join；`[R]` 在关系情形的一遍展开（每格像数的乘积行）。各配定理「= 上表的复合」。
+
+== 复核：「数组是唯一的数据结构」
+
+逐条对照代码。结论先行：代码里唯一的#emph[存储]是列（`Vals`，`Rel/Run/Core.lean:506`），但含义有两种——表的含义是集合，数组值的含义是 `List`。
+
+#tbl(c-run, (auto, 1.5fr, auto), ([论点], [代码里的事实（文件:行）], [判定]),
+  [赞成 1：一套 kernel、一种 Expand/Gen 形状], [5 个 kernel（`crate/RELK.txt`）；每个 `Obj` 都是若干列。但列的布局已有四种，不止数组：`prod` 多列、`sum` 的 tag 加两列、
+    `arr` 的 `lo` `hi` 加 payload（`Core.lean:423-429`），以及位矩阵 `Rel.bits`（`Rel/Run/Lang/Lazy.lean:23-31`）], [成立；「数组」应读作「列」],
+  [赞成 2：数组 = `fix(1+X×A)`，数组的 fold 是泛型 fold 的特例], [`foldStep` `foldrStep`（`Rel/Lang/Den.lean:239-255`）、`foldUP` `foldrUP`（`Rel/Lang/Laws/FoldUP.lean:13-82`）。
+    数组同时是 `1+A×X` 的初始代数；「特例」今天是两份各自的证明，§8.1 项 7 才把它们变成特例], [成立，待 §8.4 步 4],
+  [赞成 3：序与重数是显式的], [`Obj.arr` 的注释「order and multiplicity are part of the value」（`Core.lean:420-426`）；`El (.arr b) = List b.El`（`Core.lean:444`）], [成立],
+  [赞成 4：一种含义（`List`）], [数组#emph[值]的含义是 `List`（`Obj.El`，`Core.lean:441-446`）；#emph[表]的含义是谓词 `Tab.Holds R x y ↔ ∃ i, key.row i = x ∧ val.row i = y`
+    （`Core.lean:669-670`），行的次序与重复不在含义里], [要改：两种含义],
+  [反对 1：集合有多种数组表示，`∪` `∩` 的律只在置换与重复之下成立，范式要排序或去重], [律不是「至多差一个置换」：`union_holds` 是 `Holds` 上的恰好相等（`Rel/RepSetOps.lean:280-288`）。
+    范式存在：`Tab.canon` 与证明 `Tab.Canonical`（`Rel/Run/Canon.lean:54-61`）。代价属实：`Tab.union` 是拼接 → `canon`（`SetOps.lean:42`），每次一遍 `asc` 加 `seen`。
+    已有的减免：产生处已知 canonical 时用 `…Of` 形式跳过 `canon`（`lamOf`，`Rel/Run/Div.lean:40`）。格内的集合（`𝒫B` 存为 `[B]`）：`lamDen` 只取严格升序的那一个 list
+    （`Den.lean:507-510`，`Pairwise B.lt`），`setify = Λ(∋)` 把任意数组规范化], [前半不成立（含义已是集合）；代价成立],
+  [反对 2：树没有原生布局], [`Obj` 没有树的情形（`Core.lean:423-429`）；树是键关系加 `hylo`（`Rel/Programs/Party.lean:34`，`GenK.lean:344`）], [成立；§8.1 项 8 保持这样],
+  [反对 3：没有序或索引时按键查找是 O(n)], [`≫` 每次按中间列排序两侧（`Tab.comp`，`Rel/Run/Comp.lean:127-134`；§4.2 的 `≫` 行），不保留索引。已有的两条快路：键是位置时（key 对象是 `.long` 的数对象，§2）
+    查找是 `gather`；canonical 表上的二分 `Vals.bisect`（`Rel/Run/Merge.lean:32-45`，`Vals.rank_spec`，`Rel/RepMerge.lean:327`）。但二分只被 `Tab.mergeDiff` 调用。
+    未读：`Tab.comp` 是否利用一侧已 canonical], [对 `≫` 成立；位置键与二分是例外],
+  [反对 4：不可变更新是 O(n)], [`Tab.mergeDiff`（`Merge.lean:64-84`）不再排序 `X`，但仍写出整个 `X'`（§4.4「没有解决的」）；`snoc` `cat` 重建 payload（§4.3 的 `cat` 行）。
+    便宜的只有拆：`cons°` `snoc°` `cat°` 共享原 payload（§4.3）], [成立],
+  [反对 5：bag 与 `𝒫` 没有规范数组], [`𝒫` 有：按 `Obj.lt` 严格升序（`lamDen`；`Obj.lt` 在 `Rel/ObjOrder.lean:50`，float 经保序位映射，§7 TODO 3）。bag：索引里没有名字含 bag 或 multiset 的声明，rel 没有这个对象], [`𝒫` 不成立；bag 成立（不存在）],
+)
+
+对三条建议：
+
+#tbl(c-run, (auto, 1.5fr, auto), ([建议], [代码里的事实], [差什么]),
+  [数组只作存储], [已是现状：CLAUDE.md「`Arr` is the implementation, `List` is for proofs only」；表的含义是谓词], [只差表述（P6）],
+  [「集合」= 已排序去重的数组，作为带类型的不变量；`∪` = 归并，查找 = 二分], [不变量存在但不是类型：表上是证明 `Tab.Canonical`，格内写在 `Λ` 的含义里；`[B]` 这个类型不区分集合与 list。
+    归并与二分已写好并已证（`Tab.mergeDiff_holds`，`RepMerge.lean:698`），但 `use_site` 显示调用者只有 `Rel/Run/Merge.lean`、`RepMerge`、`MergeTest`：
+    没有运行路径用它。这与 §4.4（草稿）写的选用规则「`m·L ≤ n` 时用 `mergeDiff`」不一致，代码里 `Tab.muLin` 不调用它], [类型（P7）；接线（P8）],
+  [「树」= 带键的节点表数组], [已是现状（`Party`、`Quicksort`），§8.1 项 8 沿用], [P1、P2],
+)
+
+待 owner 决定：
+
+#tbl(c-run, (auto, 1fr, 1.2fr), ([问题], [选项], [代价与推荐]),
+  [P6 这句话怎样表述], [
+    M　保留「数组是唯一的数据结构」。\
+    N　改为「列是唯一的存储；表的含义是集合（谓词），数组值的含义是 `List`；集合、树是列上的不变量与键关系」],
+    [N 与代码一致，只改 CLAUDE.md 与本文的措辞。推荐 N],
+  [P7 集合要不要是 `Obj` 的一种], [
+    O　维持：`𝒫B` 存为 `[B]`（决定 D2 = C），不变量是证明与 `Λ` 的含义。\
+    R　加对象 `set B`：格内保证严格升序，`∪` `∩` 在格上是归并],
+    [R：`Obj` 多一个构造子（代价同 P1），且是 `arr` 的孪生布局；撤销 D2 = C。O：零代价，`[B]` 上的集合律仍要带 `setify`。推荐 O],
+  [P8 已排序的事实用不用于 `∪` `−` `≫`], [
+    S　现状：`union` = 拼接 → `canon`；`mergeDiff` 无调用者。\
+    T　接线：两侧已 `Canonical` 时 `∪` `−` 与 `muLin` 的每轮走 `mergeDiff`（规则 `m·L ≤ n`）；`≫` 的一侧已按中间列 canonical 时用 `bisect`],
+    [T：不加 kernel，`∪` `−` 的定理已有（`mergeDiff_holds`）；`≫` 用二分是新代码加新定理，且小调用多（§4.4 的代价表），要先量。推荐 T 的前半，`≫` 等量出需要],
+)
