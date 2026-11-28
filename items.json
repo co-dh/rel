@@ -4836,5 +4836,15 @@
     "note": "",
     "what": "读输入的程序（Code.args 绑定的 IO 输入）也有编译结果等于语义的证明。",
     "hold": "owner: no new agent (11-27)"
+  },
+  {
+    "id": "DASH-STOP",
+    "mark": "○",
+    "sha": "",
+    "deps": [],
+    "content": "Stop-hook blocks counted as refusals: cc-db stores each Stop hook block (time, feedback text, preventedContinuation) as a row; cc-guard/dash/gen refusals() unions them as kind `Stop:<prefix>`; cc-guard turn-end rule made one rule (the `no text at all` and the `ends with 。` messages contradict and loop)",
+    "note": "408 Stop blocks in session fd528c53 (~10.9M units), 229 of them turn-end text; none in the dashboard because refusals() reads only tool rows with ok=0",
+    "what": "dashboard 的 refusal 统计包含 Stop hook 拦截；回合结尾规则只有一条，不再互相拦截。",
+    "hold": "owner: no new agent (11-27)"
   }
 ]
