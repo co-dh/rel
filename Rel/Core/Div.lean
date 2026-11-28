@@ -1,12 +1,11 @@
 /-
-  Division on the concrete core (Freyd §2.31, §2.312): `rdiv R S` is the body of the `div` field of freyd's
-  `RelSet` `DivisionAllegory` instance and `ldiv` is freyd's `leftDiv`, so the bridge ties both by `rfl`.
+  Division on the concrete core (Freyd §2.31, §2.312): `rdiv R S` is right division and `ldiv` left division.
 -/
 module
 
 public import Rel.Core.Rel
 
--- exposed: the bodies are unfolded by the denotation proofs and by freyd's `rfl` bridge
+-- exposed: the bodies are unfolded by the denotation proofs
 @[expose] public section
 
 namespace Rel.Core.Rel

@@ -1,11 +1,11 @@
 /-
   The concrete core (`doc/rel-repo-split-design.md` §2.1): a relation `Rel α β` is a predicate on pairs, with the
   allegory operators of `Rel(Set)` defined on it pointwise. No class: Rel proper is about this one model, and
-  `LeetQ.Aop` ties each definition to the field of freyd's `RelSet` instance by `rfl`. Imports only the toolchain.
+  Imports only the toolchain.
 -/
 module
 
--- exposed: the bodies are the interface, unfolded by every importer and by freyd's `rfl` bridge
+-- exposed: the bodies are the interface, unfolded by every importer
 @[expose] public section
 
 namespace Rel.Core
@@ -19,7 +19,7 @@ namespace Rel
 
 variable {α : Type u} {β : Type v} {γ : Type w} {δ : Type x}
 
-/-! ### Operations — the bodies of freyd's `RelSet` instance fields, so the bridge ties them by `rfl` -/
+/-! ### Operations -/
 
 /-- The identity relation on `α`. -/
 def id (α : Type u) : Rel α α := fun a b => a = b

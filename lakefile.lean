@@ -4,7 +4,7 @@ open Lake DSL
 /-!
 The Rel language: its concrete allegory core, its kernels (Lean model + `@[extern]` into the Rust crate `relk` in
 `crate/`), its runtime and compiler, its laws and its programs. No `require`: the package depends on the toolchain
-alone; freyd's bridge and qlean `require` it.
+alone; qlean `require`s it.
 
 Lean rather than TOML because a TOML configuration cannot declare an `extern_lib`, and fails silently.
 -/
