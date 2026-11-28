@@ -4857,18 +4857,30 @@
     "content": "Party laws as theorems over parameters boss, rating (premises: boss functional and acyclic, N holds every subtree total): 37 party setify = Λ(under)subseq(𝟙 − dom(∋ ∩ (∋ boss)))setify; 43 gfold Λ(choose)est(R(rating)°) ⊑ best (p.178); 54 c max = best cost(rating); 53 restated Λ(guests) setify ⊑ best setify (as written it compares list orders)",
     "note": "11-28 PARTY-LAWS-a f426266: definitions parameterised (under(B), kids(B), fold(B), party(B), best(B,r), exclude₁(r), gfold(B,r), tally(r), c(B,r), win(B,r), guests(B,r)); next: opus proves the four laws as theorem … if … by Rel.Lang.Tm.*_den. 11-28 sonnet ad454c0: form is theorem name(B, r) if HYP : LAW by Rel.Lang.Tm.LAW_den (Prelude 94-101, A7_3_Party partyMono). Decided by DRY: parameterise the Party definitions (under(B), kids(B), party(B,r), best(B,r), c(B,r), win(B,r), guests(B,r)) like cost(r), sample tests unchanged; then one _den lemma per law, order c max, party setify, guests, gfold. fable 11-28: the current lines name the literal sample boss/rating, so adding `by` would prove a fact about the sample only",
     "what": "Party 的四条定律对任意森林和 rating 证明，不只在样例数据上运行。",
-    "hold": null
+    "hold": "PARTY-LAWS-b opus agent: c max and party setify laws"
   },
   {
     "id": "GP-5b",
-    "mark": "○",
-    "sha": "",
+    "mark": "✓",
+    "sha": "48f1ca2",
     "deps": [
       "GP-5"
     ],
     "content": "discharge hb of Code.program_reps_args: each Code.args-bound input (Table.read/ofRun output wrapped as Rel.tab, via GenK.val_sound) is a Wf code that Reps its meaning, and a run-time definition output feeding the next one (as Sound.inputs)",
-    "note": "GP-5 c4d4f91 left this as a hypothesis; Table.ofRun and file IO uncovered",
+    "note": "5e5b3d4: bound inputs are Expand.tabRel = Rel.tab (.ok t), Reps is Iff.rfl, only premise t.WF; run-time outputs WF by Rel.runE_empty. GP-5 c4d4f91 left this as a hypothesis; Table.ofRun and file IO uncovered",
     "what": "读入的每个输入表本身也被证明表示它的语义，不再是证明的前提。",
+    "hold": null
+  },
+  {
+    "id": "GP-5c",
+    "mark": "○",
+    "sha": "",
+    "deps": [
+      "GP-5b"
+    ],
+    "content": "close the GP-5b boundary: (1) Table.ofRun goes through an Except-level function ioGo also uses, so ofRun x r s = .ok t s implies r.runE {} = .ok t is a theorem (IO.ofExcept does not unfold in a module file); (2) the readers (Table.read, readKeyed, readCsvDict, readOwn) check Vals.WF of what they read, so t.WF is established at load instead of assumed",
+    "note": "GP-5b a50a20a report",
+    "what": "读入的表在加载时检查编码合法，证明不再假设它。",
     "hold": null
   }
 ]
